@@ -395,6 +395,41 @@ export async function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
+export type BoosterAiImagePayload = {
+  name: string;
+  type: string;
+  dataUrl: string;
+};
+
+export async function fileToBoosterAiImagePayload(file: File): Promise<BoosterAiImagePayload> {
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const img = await loadHtmlImage(objectUrl);
+    const sourceW = img.naturalWidth || img.width || 1;
+    const sourceH = img.naturalHeight || img.height || 1;
+    const maxSide = 1280;
+    const scale = Math.min(1, maxSide / Math.max(sourceW, sourceH));
+    const width = Math.max(1, Math.round(sourceW * scale));
+    const height = Math.max(1, Math.round(sourceH * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas indisponible.");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, width, height);
+    ctx.drawImage(img, 0, 0, width, height);
+
+    return {
+      name: file.name || "image",
+      type: "image/jpeg",
+      dataUrl: canvas.toDataURL("image/jpeg", 0.76),
+    };
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
 export function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }

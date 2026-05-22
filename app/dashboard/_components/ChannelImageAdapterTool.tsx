@@ -942,10 +942,10 @@ export function ChannelImageAdapterCardsPanel({
           : 5;
   const cardGridTemplate = `repeat(${cardColumnCount}, minmax(0, 1fr))`;
   const statusStyles: Record<NonNullable<ChannelTab["tone"]>, React.CSSProperties> = {
-    ready: { borderColor: "rgba(34,197,94,0.34)", color: "#bbf7d0", background: "rgba(34,197,94,0.10)" },
-    warning: { borderColor: "rgba(251,191,36,0.36)", color: "#fde68a", background: "rgba(251,191,36,0.10)" },
-    blocked: { borderColor: "rgba(248,113,113,0.38)", color: "#fecaca", background: "rgba(248,113,113,0.10)" },
-    empty: { borderColor: "rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.72)", background: "rgba(255,255,255,0.045)" },
+    ready: { border: "1px solid rgba(34,197,94,0.34)", color: "#bbf7d0", background: "rgba(34,197,94,0.10)" },
+    warning: { border: "1px solid rgba(251,191,36,0.36)", color: "#fde68a", background: "rgba(251,191,36,0.10)" },
+    blocked: { border: "1px solid rgba(248,113,113,0.38)", color: "#fecaca", background: "rgba(248,113,113,0.10)" },
+    empty: { border: "1px solid rgba(255,255,255,0.12)", color: "rgba(255,255,255,0.72)", background: "rgba(255,255,255,0.045)" },
   };
 
   return (
@@ -974,7 +974,14 @@ export function ChannelImageAdapterCardsPanel({
                 style={{
                   ...pillButtonStyle,
                   ...(statusStyle || {}),
-                  ...(isActive ? pillButtonActiveStyle : {}),
+                  ...(isActive
+                    ? statusStyle
+                      ? {
+                          boxShadow:
+                            "0 0 0 1px rgba(76,195,255,0.25) inset, 0 0 14px rgba(76,195,255,0.16)",
+                        }
+                      : pillButtonActiveStyle
+                    : {}),
                   display: "inline-flex",
                   alignItems: "center",
                   justifyContent: "center",

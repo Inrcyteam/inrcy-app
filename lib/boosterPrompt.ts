@@ -283,6 +283,8 @@ Ta mission : à partir d'une même intention du pro, générer EN UNE FOIS des c
 
 Important :
 - L'intention libre saisie par le pro est le sujet principal obligatoire. Tous les contenus doivent rester clairement centrés dessus.
+- Si des images sont jointes, elles servent uniquement de contexte visuel pour enrichir et préciser l'intention libre. Elles ne doivent jamais prendre le dessus ni changer le sujet demandé.
+- Priorité de raisonnement : 1) intention libre, 2) images si pertinentes, 3) activité/profil, 4) adaptation par canal.
 - Le contexte métier, l'activité, les prestations, la ville, le thème, le style, l'historique et l'angle éditorial servent uniquement à contextualiser cette intention : ils ne doivent jamais la remplacer.
 - Si l'intention du pro est précise, ne pars pas sur un sujet général de l'activité et n'invente pas un autre angle plus commode.
 - Tu dois adapter le ton, la longueur, le rythme, l'accroche et l'ambiance au canal ET au style demandé.

@@ -45,6 +45,7 @@ import {
   getDefaultTransform,
   getEffectiveTransformZoom,
   getOptimizedTransform,
+  fileToBoosterAiImagePayload,
   getWebsiteSourceLabelForChannel,
   getWebsiteUrlForChannel,
   isSiteDisplayKey,
@@ -277,6 +278,7 @@ export default function PublishModal({
   const [images, setImages] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [imgError, setImgError] = useState("");
+  const [useImagesForAI, setUseImagesForAI] = useState(true);
   const [imageMetaByKey, setImageMetaByKey] = useState<
     Record<string, ImageMeta>
   >({});
@@ -562,6 +564,12 @@ export default function PublishModal({
     images.length,
   ]);
 
+  useEffect(() => {
+    if (!images.length && !useImagesForAI) {
+      setUseImagesForAI(true);
+    }
+  }, [images.length, useImagesForAI]);
+
   const displayCards = useMemo(() => {
     const ordered: DisplayKey[] = [
       "inrcy_site",
@@ -769,6 +777,7 @@ export default function PublishModal({
       postsByChannel,
       instagramHashtagsInput,
       imageNames,
+      useImagesForAI,
       imageSettingsByChannel: channelImageEditors,
     });
   }, [
@@ -779,6 +788,7 @@ export default function PublishModal({
     postsByChannel,
     instagramHashtagsInput,
     images,
+    useImagesForAI,
     channelImageEditors,
   ]);
 
@@ -865,6 +875,7 @@ export default function PublishModal({
         const nextContentStyle = isStyleKey(payload.contentStyle) ? payload.contentStyle : "equilibre";
         const nextPostsByChannel = (payload.postByChannel && typeof payload.postByChannel === "object") ? payload.postByChannel : {};
         const nextEditors = (payload.imageSettingsByChannel && typeof payload.imageSettingsByChannel === "object") ? payload.imageSettingsByChannel : {};
+        const nextUseImagesForAI = typeof payload.useImagesForAI === "boolean" ? payload.useImagesForAI : true;
         const imageDrafts = Array.isArray(payload.imageDrafts) ? payload.imageDrafts : [];
         const { restoredFiles, restoredPreviews, restoredMeta } = await restorePublicationDraftImages(imageDrafts);
 
@@ -885,6 +896,7 @@ export default function PublishModal({
         setInstagramHashtagsInput(nextInstagramHashtags);
         setImages(restoredFiles);
         setImagePreviews(restoredPreviews);
+        setUseImagesForAI(nextUseImagesForAI);
         setImageMetaByKey(restoredMeta);
         setChannelImageEditors(nextEditors);
         setLoadedPublicationDraftId(publicationDraftIdParam);
@@ -902,6 +914,7 @@ export default function PublishModal({
           postsByChannel: nextPostsByChannel,
           instagramHashtagsInput: nextInstagramHashtags,
           imageNames,
+          useImagesForAI: nextUseImagesForAI,
           imageSettingsByChannel: nextEditors,
         }));
         onUnsavedChange?.(false);
@@ -997,6 +1010,7 @@ export default function PublishModal({
     setImages([]);
     setImagePreviews([]);
     setImgError("");
+    setUseImagesForAI(true);
     setImageMetaByKey({});
     setChannelImageEditors({});
     setActiveImageKeyByChannel({});
@@ -1024,6 +1038,8 @@ export default function PublishModal({
       return;
     }
 
+    const shouldUseImagesForAI = images.length > 0 && useImagesForAI;
+
     clearGenerationTimers();
     setGenerating(true);
     setGenerationProgress(10);
@@ -1031,7 +1047,13 @@ export default function PublishModal({
     setDuplicateFeedback(null);
 
     const generationSteps = [
-      { percent: 25, label: "Analyse de l’intention", delay: 650 },
+      {
+        percent: 25,
+        label: shouldUseImagesForAI
+          ? "Analyse de l’intention et des images"
+          : "Analyse de l’intention",
+        delay: 650,
+      },
       { percent: 45, label: "Génération des contenus", delay: 1500 },
       { percent: 70, label: "Adaptation par canal", delay: 2800 },
       { percent: 90, label: "Finalisation", delay: 4200 },
@@ -1045,6 +1067,10 @@ export default function PublishModal({
 
     let didGenerate = false;
     try {
+      const imagesForAI = shouldUseImagesForAI
+        ? await Promise.all(images.map((file) => fileToBoosterAiImagePayload(file)))
+        : [];
+
       const res = await fetch("/api/booster/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1053,6 +1079,9 @@ export default function PublishModal({
           theme,
           style: contentStyle,
           channels: selectedForGeneration,
+          useImagesForAI: shouldUseImagesForAI,
+          imageCount: imagesForAI.length,
+          imagesForAI,
         }),
       });
 
@@ -1078,7 +1107,11 @@ export default function PublishModal({
       );
       didGenerate = true;
     } catch {
-      setGenError("Connexion impossible pour le moment. Merci de réessayer.");
+      setGenError(
+        shouldUseImagesForAI
+          ? "Impossible de préparer ou d’analyser les images pour le moment. Merci de réessayer."
+          : "Connexion impossible pour le moment. Merci de réessayer.",
+      );
     } finally {
       clearGenerationTimers();
       if (didGenerate) {
@@ -1155,6 +1188,7 @@ export default function PublishModal({
 
   const onPickImagesClick = () => {
     setImgError("");
+    if (images.length >= 5) return;
     fileInputRef.current?.click();
   };
 
@@ -2104,6 +2138,7 @@ export default function PublishModal({
             postByChannel: preparedPostsByChannel,
             imageNames,
             imageDrafts,
+            useImagesForAI,
             imageSettingsByChannel: channelImageEditors,
             instagramHashtagsInput,
             saved_at: new Date().toISOString(),
@@ -2217,15 +2252,20 @@ export default function PublishModal({
       const blockers: string[] = [];
       const hasTitle = !!String(post?.title || "").trim();
       const hasContent = !!String(post?.content || "").trim();
+      const hasText = hasTitle || hasContent;
+      const hasImage = imageKeysToPublish.length > 0;
 
       if (!hasContent) warnings.push("Contenu vide");
       if (!hasTitle) warnings.push("Titre vide");
-      if (!imageKeysToPublish.length) {
+      if (!hasImage) {
         if (channel === "instagram")
           blockers.push("Instagram nécessite au moins 1 image.");
         else if (channel === "gmb")
           warnings.push("Google Business sera publié sans photo.");
         else warnings.push("Aucune image sélectionnée.");
+      }
+      if (!hasText && !hasImage) {
+        blockers.push("Ajoutez au moins du texte ou une image.");
       }
       if (channel === "gmb" && rawImageKeys.length > 1) {
         warnings.push("Google Business publiera uniquement la première photo.");
@@ -2239,6 +2279,8 @@ export default function PublishModal({
         blockers,
         hasContent,
         hasTitle,
+        hasText,
+        hasImage,
       };
     });
   };
@@ -2262,21 +2304,30 @@ export default function PublishModal({
     const reviewItem = publishReadinessItems.find(
       (item) => item.channel === channel,
     );
-    const blockerCount = reviewItem?.blockers.length || 0;
-    const warningCount = reviewItem?.warnings.length || 0;
     const count =
       reviewItem?.imageCount ?? getPublishImageKeysForChannel(channel).length;
     return {
       key: channel,
       label: getImageAdapterLabel(channel),
       count,
-      tone: blockerCount
-        ? ("blocked" as const)
-        : warningCount
+      tone: count ? ("ready" as const) : ("warning" as const),
+    };
+  });
+
+  const previewReadinessTabs = imageAdapterChannels.map((channel) => {
+    const reviewItem = publishReadinessItems.find(
+      (item) => item.channel === channel,
+    );
+    const hasText = !!reviewItem?.hasText;
+    const hasImage = !!reviewItem?.hasImage;
+    return {
+      key: channel,
+      label: getImageAdapterLabel(channel),
+      tone: hasText && hasImage
+        ? ("ready" as const)
+        : hasText || hasImage
           ? ("warning" as const)
-          : count
-            ? ("ready" as const)
-            : ("empty" as const),
+          : ("blocked" as const),
     };
   });
 
@@ -2289,6 +2340,7 @@ export default function PublishModal({
       ? `${drawerViewportHeight}px`
       : "100svh"
     : "100%";
+  const publicationImagesPanelVisible = true;
 
   const confirmFinalReview = async () => {
     const preparedPostsByChannel =
@@ -2320,6 +2372,33 @@ export default function PublishModal({
             Vous pourrez la consulter, la modifier ou la supprimer depuis
             l'outil.
           </p>
+          <div
+            style={{
+              display: "grid",
+              gap: 8,
+              borderTop: "1px solid rgba(255,255,255,0.12)",
+              paddingTop: 10,
+            }}
+          >
+            <strong>États des canaux</strong>
+            <div style={{ display: "grid", gap: 6 }}>
+              <div>
+                <span style={{ color: "#5ee28a", fontWeight: 900 }}>Vert</span>{" "}
+                : prêt / complet.
+              </div>
+              <div>
+                <span style={{ color: "#f2c94c", fontWeight: 900 }}>Jaune</span>{" "}
+                : à vérifier, publication possible.
+              </div>
+              <div>
+                <span style={{ color: "#ff8a8a", fontWeight: 900 }}>Rouge</span>{" "}
+                : canal vide, publication bloquée.
+              </div>
+            </div>
+            <p style={{ margin: 0 }}>
+              Texte seul ou image seule : autorisé. Sans texte ni image : bloqué.
+            </p>
+          </div>
         </div>
       </HelpModal>
 
@@ -2830,8 +2909,8 @@ export default function PublishModal({
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: isMobile ? "1fr" : "repeat(2, minmax(0, 1fr))",
-            gap: 10,
+            gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+            gap: isMobile ? 8 : 10,
           }}
         >
           {(Object.keys(CHANNEL_LABELS) as ChannelKey[]).map((key) => {
@@ -2839,6 +2918,150 @@ export default function PublishModal({
             const isConnected = connected[key];
             const isSelected = channels[key] && isConnected;
             const isInfoVisible = channelInfoOpen === key && !!info;
+
+            if (isMobile) {
+              return (
+                <div
+                  key={key}
+                  onClick={() => toggle(key)}
+                  role="button"
+                  tabIndex={isConnected ? 0 : -1}
+                  aria-disabled={!isConnected}
+                  aria-pressed={isSelected}
+                  onKeyDown={(event) => {
+                    if (!isConnected) return;
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      toggle(key);
+                    }
+                  }}
+                  style={{
+                    ...channelBtn,
+                    ...(!isConnected ? channelBtnDisabled : {}),
+                    minHeight: 43,
+                    padding: "8px 8px",
+                    position: "relative",
+                    overflow: "visible",
+                    border: isSelected
+                      ? "1px solid rgba(56,189,248,0.82)"
+                      : "1px solid rgba(255,255,255,0.12)",
+                    boxShadow: isSelected
+                      ? "0 0 0 1px rgba(56,189,248,0.26) inset, 0 10px 24px rgba(14,165,233,0.12)"
+                      : "none",
+                    background: isSelected
+                      ? "linear-gradient(135deg, rgba(56,189,248,0.22), rgba(14,116,144,0.20))"
+                      : "rgba(255,255,255,0.04)",
+                    cursor: isConnected ? "pointer" : "not-allowed",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 7,
+                  }}
+                >
+                  <span
+                    style={{
+                      minWidth: 0,
+                      flex: 1,
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      fontWeight: 850,
+                      fontSize: 12.4,
+                      lineHeight: 1.1,
+                      letterSpacing: "-0.025em",
+                      color: isConnected
+                        ? "rgba(255,255,255,0.97)"
+                        : "rgba(255,255,255,0.48)",
+                    }}
+                  >
+                    {CHANNEL_LABELS[key]}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={
+                      info
+                        ? `Voir les détails de ${CHANNEL_LABELS[key]}`
+                        : `${CHANNEL_LABELS[key]} ${isConnected ? "connecté" : "non connecté"}`
+                    }
+                    title={
+                      info
+                        ? `Voir les détails de ${CHANNEL_LABELS[key]}`
+                        : isConnected
+                          ? "Canal connecté"
+                          : "Canal non connecté"
+                    }
+                    disabled={!info}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      if (!info) return;
+                      setChannelInfoOpen((prev) =>
+                        prev === key ? null : key,
+                      );
+                    }}
+                    style={{
+                      width: 24,
+                      height: 24,
+                      borderRadius: 999,
+                      border: isConnected
+                        ? "1px solid rgba(187,247,208,0.42)"
+                        : "1px solid rgba(255,255,255,0.12)",
+                      background: isConnected
+                        ? "rgba(34,197,94,0.92)"
+                        : "rgba(255,255,255,0.08)",
+                      color: isConnected ? "#052e16" : "rgba(255,255,255,0.46)",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      flexShrink: 0,
+                      cursor: info ? "pointer" : "default",
+                      fontSize: 12,
+                      fontWeight: 900,
+                      opacity: isConnected ? 1 : 0.6,
+                      boxShadow: isConnected
+                        ? "0 0 14px rgba(34,197,94,0.35)"
+                        : "none",
+                    }}
+                  >
+                    🔗
+                  </button>
+                  {isInfoVisible && info ? (
+                    <div
+                      onPointerDown={(event) => event.stopPropagation()}
+                      onClick={(event) => event.stopPropagation()}
+                      style={{
+                        position: "absolute",
+                        top: "50%",
+                        right: 36,
+                        transform: "translateY(-50%)",
+                        zIndex: 20,
+                        maxWidth: "min(200px, calc(100% - 54px))",
+                        borderRadius: 999,
+                        padding: "8px 12px",
+                        background: "rgba(9,16,31,0.96)",
+                        border: "1px solid rgba(148,163,184,0.22)",
+                        boxShadow: "0 18px 40px rgba(0,0,0,0.34)",
+                        textAlign: "left",
+                      }}
+                    >
+                      <div
+                        style={{
+                          fontSize: 12,
+                          lineHeight: 1.35,
+                          color: "rgba(255,255,255,0.92)",
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {info.mobileLabel}
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            }
+
             return (
               <div
                 key={key}
@@ -2846,6 +3069,7 @@ export default function PublishModal({
                 role="button"
                 tabIndex={isConnected ? 0 : -1}
                 aria-disabled={!isConnected}
+                aria-pressed={isSelected}
                 onKeyDown={(event) => {
                   if (!isConnected) return;
                   if (event.key === "Enter" || event.key === " ") {
@@ -2856,13 +3080,13 @@ export default function PublishModal({
                 style={{
                   ...channelBtn,
                   ...(!isConnected ? channelBtnDisabled : {}),
-                  minHeight: isMobile ? 58 : 62,
-                  padding: isMobile ? "10px 12px" : "10px 12px",
+                  minHeight: 62,
+                  padding: "10px 12px",
                   position: "relative",
                   overflow: "visible",
-                  borderColor: isSelected
-                    ? "rgba(76,195,255,0.45)"
-                    : "rgba(255,255,255,0.10)",
+                  border: isSelected
+                    ? "1px solid rgba(76,195,255,0.45)"
+                    : "1px solid rgba(255,255,255,0.10)",
                   boxShadow: isSelected
                     ? "0 0 0 1px rgba(76,195,255,0.18) inset, 0 10px 24px rgba(8,18,34,0.18)"
                     : "none",
@@ -2930,7 +3154,7 @@ export default function PublishModal({
                     >
                       {CHANNEL_LABELS[key]}
                     </span>
-                    {!isMobile && info ? (
+                    {info ? (
                       <>
                         <span
                           style={{
@@ -2963,11 +3187,7 @@ export default function PublishModal({
                     <button
                       type="button"
                       aria-label={`Voir les détails de ${CHANNEL_LABELS[key]}`}
-                      title={
-                        isMobile
-                          ? `Voir les détails de ${CHANNEL_LABELS[key]}`
-                          : info.fullLabel
-                      }
+                      title={info.fullLabel}
                       onPointerDown={(event) => event.stopPropagation()}
                       onClick={(event) => {
                         event.stopPropagation();
@@ -3006,11 +3226,9 @@ export default function PublishModal({
                           right: 50,
                           transform: "translateY(-50%)",
                           zIndex: 20,
-                          maxWidth: isMobile
-                            ? "min(200px, calc(100% - 70px))"
-                            : 240,
+                          maxWidth: 240,
                           borderRadius: 999,
-                          padding: isMobile ? "8px 12px" : "10px 14px",
+                          padding: "10px 14px",
                           background: "rgba(9,16,31,0.96)",
                           border: "1px solid rgba(148,163,184,0.22)",
                           boxShadow: "0 18px 40px rgba(0,0,0,0.34)",
@@ -3073,7 +3291,7 @@ export default function PublishModal({
           className={styles.subtitle}
           style={{ marginBottom: 10, maxWidth: "none", whiteSpace: "normal" }}
         >
-Expliquez votre idée : iNrCy la transforme en contenu efficace et adapté à chaque canal. Plus votre phrase est détaillée, meilleur sera le résultat.
+Décrivez votre idée. Ajoutez des images pour aider iNrCy à rédiger un contenu plus précis.
         </div>
         <div style={{ display: "grid", gap: 10 }}>
           <div>
@@ -3087,6 +3305,174 @@ Expliquez votre idée : iNrCy la transforme en contenu efficace et adapté à ch
               onChange={(e) => setIdea(e.target.value)}
             />
           </div>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            style={{ display: "none" }}
+            onChange={(e) => {
+              onImagesChange(e.target.files);
+              e.currentTarget.value = "";
+            }}
+          />
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: isMobile ? 7 : 8,
+              minWidth: 0,
+              padding: isMobile ? "8px 10px" : "10px 12px",
+              borderRadius: 14,
+              border: "1px solid rgba(255,255,255,0.10)",
+              background: "rgba(255,255,255,0.035)",
+              overflow: "visible",
+              flexWrap: "wrap",
+            }}
+          >
+            <button
+              type="button"
+              className={styles.secondaryBtn}
+              onClick={onPickImagesClick}
+              disabled={images.length >= 5}
+              title={images.length >= 5 ? "5 images maximum" : undefined}
+              style={{
+                flex: "0 0 auto",
+                minHeight: isMobile ? 32 : 34,
+                padding: isMobile ? "6px 9px" : "7px 12px",
+                fontSize: isMobile ? 11 : 12,
+                whiteSpace: "nowrap",
+                opacity: images.length >= 5 ? 0.48 : 1,
+                filter: images.length >= 5 ? "grayscale(1)" : undefined,
+                cursor: images.length >= 5 ? "not-allowed" : "pointer",
+              }}
+            >
+              + Ajouter des images
+            </button>
+            {imagePreviews.length ? (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: isMobile ? 6 : 7,
+                  minWidth: 0,
+                  overflow: "visible",
+                  flexWrap: "wrap",
+                }}
+              >
+                {imagePreviews.map((url, index) => (
+                  <div
+                    key={`${url}-${index}`}
+                    title={images[index]?.name || `Image ${index + 1}`}
+                    style={{
+                      position: "relative",
+                      width: isMobile ? 38 : 48,
+                      height: isMobile ? 38 : 48,
+                      flex: "0 0 auto",
+                      borderRadius: 10,
+                      overflow: "hidden",
+                      border: "1px solid rgba(255,255,255,0.20)",
+                      background: "rgba(255,255,255,0.06)",
+                    }}
+                  >
+                    <img
+                      src={url}
+                      alt={`Image ${index + 1}`}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                        display: "block",
+                      }}
+                    />
+                    <button
+                      type="button"
+                      aria-label={`Supprimer l’image ${index + 1}`}
+                      onClick={() => removeImage(index)}
+                      style={{
+                        position: "absolute",
+                        top: 2,
+                        right: 2,
+                        width: isMobile ? 17 : 18,
+                        height: isMobile ? 17 : 18,
+                        borderRadius: 999,
+                        border: "1px solid rgba(255,255,255,0.30)",
+                        background: "rgba(10,16,30,0.88)",
+                        color: "#fff",
+                        display: "grid",
+                        placeItems: "center",
+                        fontSize: isMobile ? 11 : 12,
+                        fontWeight: 900,
+                        lineHeight: 1,
+                        cursor: "pointer",
+                        padding: 0,
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
+            <label
+              title={
+                useImagesForAI
+                  ? "Les images aideront iNrCy à rédiger un contenu plus précis."
+                  : "Les images seront utilisées uniquement pour la publication."
+              }
+              style={{
+                flex: "0 0 auto",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: isMobile ? 5 : 7,
+                minHeight: isMobile ? 30 : 32,
+                padding: isMobile ? "5px 8px" : "6px 10px",
+                borderRadius: 999,
+                border: useImagesForAI
+                  ? "1px solid rgba(76,195,255,0.34)"
+                  : "1px solid rgba(255,255,255,0.14)",
+                background: useImagesForAI
+                  ? "rgba(76,195,255,0.12)"
+                  : "rgba(255,255,255,0.055)",
+                color: useImagesForAI ? "#dff6ff" : "rgba(255,255,255,0.76)",
+                fontSize: isMobile ? 10.5 : 12,
+                fontWeight: 850,
+                whiteSpace: "nowrap",
+                cursor: images.length ? "pointer" : "default",
+                userSelect: "none",
+                opacity: images.length ? 1 : 0.9,
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={useImagesForAI}
+                disabled={!images.length}
+                onChange={(event) => setUseImagesForAI(event.target.checked)}
+                style={{
+                  width: isMobile ? 13 : 14,
+                  height: isMobile ? 13 : 14,
+                  margin: 0,
+                  accentColor: "#4cc3ff",
+                }}
+              />
+              {useImagesForAI
+                ? "Images utilisées par l’IA"
+                : "Images hors génération"}
+            </label>
+            <div
+              style={{
+                flex: "0 0 auto",
+                fontSize: isMobile ? 11 : 12,
+                opacity: 0.82,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {images.length}/5 image{images.length === 1 ? "" : "s"}
+            </div>
+          </div>
+          {imgError ? (
+            <div style={{ fontSize: 13, color: "#ffb4b4" }}>{imgError}</div>
+          ) : null}
           {genError ? (
             <div style={{ fontSize: 13, color: "#ffb4b4" }}>{genError}</div>
           ) : null}
@@ -3112,7 +3498,9 @@ Expliquez votre idée : iNrCy la transforme en contenu efficace et adapté à ch
             </div>
             {generating ? (
               <div style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}>
-                iNrCy prépare les variantes adaptées à chaque canal.
+                {images.length && useImagesForAI
+                  ? "iNrCy analyse l’intention et les images, puis prépare les variantes par canal."
+                  : "iNrCy prépare les variantes adaptées à chaque canal."}
               </div>
             ) : null}
           </div>
@@ -3146,31 +3534,56 @@ Expliquez votre idée : iNrCy la transforme en contenu efficace et adapté à ch
                 overflowX: "hidden",
               }}
             >
-              {displayCards.map((key) => (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setSynchronizedActiveChannel(key)}
-                  style={{
-                    ...pillBtn,
-                    ...(activeCard === key ? pillBtnActive : {}),
-                    ...(isMobile
-                      ? {
-                          width: "100%",
-                          minWidth: 0,
-                          minHeight: 36,
-                          padding: "0 8px",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontSize: 13,
-                        }
-                      : {}),
-                  }}
-                >
-                  {DISPLAY_LABELS[key]}
-                </button>
-              ))}
+              {displayCards.map((key) => {
+                const post = getDisplayPost(key);
+                const hasText = !!(
+                  String(post.title || "").trim() ||
+                  String(post.content || "").trim()
+                );
+                const statusStyle = hasText
+                  ? {
+                      border: "1px solid rgba(34,197,94,0.34)",
+                      color: "#bbf7d0",
+                      background: "rgba(34,197,94,0.10)",
+                    }
+                  : {
+                      border: "1px solid rgba(251,191,36,0.36)",
+                      color: "#fde68a",
+                      background: "rgba(251,191,36,0.10)",
+                    };
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setSynchronizedActiveChannel(key)}
+                    title={hasText ? "Texte présent" : "Texte à vérifier"}
+                    style={{
+                      ...pillBtn,
+                      ...statusStyle,
+                      ...(activeCard === key
+                        ? {
+                            boxShadow:
+                              "0 0 0 1px rgba(76,195,255,0.25) inset, 0 0 14px rgba(76,195,255,0.16)",
+                          }
+                        : {}),
+                      ...(isMobile
+                        ? {
+                            width: "100%",
+                            minWidth: 0,
+                            minHeight: 36,
+                            padding: "0 8px",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            fontSize: 13,
+                          }
+                        : {}),
+                    }}
+                  >
+                    {DISPLAY_LABELS[key]}
+                  </button>
+                );
+              })}
             </div>
             <div
               style={{
@@ -3693,28 +4106,24 @@ Expliquez votre idée : iNrCy la transforme en contenu efficace et adapté à ch
         className={styles.blockCard}
         style={{ minWidth: 0, maxWidth: "100%", boxSizing: "border-box" }}
       >
-        <div className={styles.blockTitle} style={{ marginBottom: 8 }}>
-          Images de la publication
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 10,
+            flexWrap: "wrap",
+            marginBottom: 8,
+          }}
+        >
+          <div className={styles.blockTitle}>Images de la publication</div>
         </div>
         <div
           className={styles.subtitle}
           style={{ marginBottom: 12, maxWidth: "none", whiteSpace: "normal" }}
         >
-          Ajoutez vos images, puis gérez directement leur rendu par canal. Les
-          images sont cochées par défaut sur tous les canaux, sauf Google
-          Business limité à une photo.
+          Ajoutez vos images, puis ajustez-les par canal. Google Business : 1 photo maximum.
         </div>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          multiple
-          style={{ display: "none" }}
-          onChange={(e) => {
-            onImagesChange(e.target.files);
-            e.currentTarget.value = "";
-          }}
-        />
         <input
           ref={gmbFileInputRef}
           type="file"
@@ -3732,19 +4141,26 @@ Expliquez votre idée : iNrCy la transforme en contenu efficace et adapté à ch
             gap: 10,
             flexWrap: "wrap",
             alignItems: "center",
-            marginBottom: 12,
+            marginBottom: publicationImagesPanelVisible ? 12 : 0,
           }}
         >
           <button
             type="button"
             className={styles.secondaryBtn}
             onClick={onPickImagesClick}
+            disabled={images.length >= 5}
+            title={images.length >= 5 ? "5 images maximum" : undefined}
+            style={{
+              opacity: images.length >= 5 ? 0.48 : 1,
+              filter: images.length >= 5 ? "grayscale(1)" : undefined,
+              cursor: images.length >= 5 ? "not-allowed" : "pointer",
+            }}
           >
             + Ajouter des images
           </button>
           {images.length ? (
             <div style={{ fontSize: 12, opacity: 0.85 }}>
-              {images.length} image(s) ajoutée(s)
+              {images.length}/5 image{images.length === 1 ? "" : "s"} ajoutée{images.length === 1 ? "" : "s"}
             </div>
           ) : (
             <div style={{ fontSize: 12, opacity: 0.7 }}>
@@ -3757,7 +4173,7 @@ Expliquez votre idée : iNrCy la transforme en contenu efficace et adapté à ch
             {imgError}
           </div>
         ) : null}
-        {!selectedChannels.length ? (
+        {publicationImagesPanelVisible ? !selectedChannels.length ? (
           <div style={{ fontSize: 13, opacity: 0.75 }}>
             Sélectionnez d’abord vos canaux.
           </div>
@@ -3792,7 +4208,18 @@ Expliquez votre idée : iNrCy la transforme en contenu efficace et adapté à ch
                   <button
                     type="button"
                     className={styles.secondaryBtn}
-                    onClick={() => gmbFileInputRef.current?.click()}
+                    onClick={() => {
+                      setImgError("");
+                      if (images.length >= 5) return;
+                      gmbFileInputRef.current?.click();
+                    }}
+                    disabled={images.length >= 5}
+                    title={images.length >= 5 ? "5 images maximum" : undefined}
+                    style={{
+                      opacity: images.length >= 5 ? 0.48 : 1,
+                      filter: images.length >= 5 ? "grayscale(1)" : undefined,
+                      cursor: images.length >= 5 ? "not-allowed" : "pointer",
+                    }}
                   >
                     + Ajouter une image spécifique Google Business
                   </button>
@@ -3873,7 +4300,7 @@ Expliquez votre idée : iNrCy la transforme en contenu efficace et adapté à ch
               pillButtonActiveStyle={pillBtnActive}
             />
           </>
-        )}
+        ) : null}
       </div>
 
       {activePublicationPreview ? (
@@ -3917,29 +4344,62 @@ Expliquez votre idée : iNrCy la transforme en contenu efficace et adapté à ch
                   marginBottom: 0,
                 }}
               >
-                {imageAdapterTabs.map((tab) => (
-                  <button
-                    key={tab.key}
-                    type="button"
-                    onClick={() => setSynchronizedActiveChannel(tab.key as ChannelKey)}
-                    style={{
-                      ...pillBtn,
-                      ...(activeImageChannel === tab.key ? pillBtnActive : {}),
-                      padding: "6px 10px",
-                      fontSize: 11,
-                      whiteSpace: "nowrap",
-                      flex: isMobile ? undefined : "0 0 auto",
-                      width: isMobile ? "100%" : undefined,
-                      minWidth: 0,
-                      minHeight: isMobile ? 32 : undefined,
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
+                {previewReadinessTabs.map((tab) => {
+                  const previewStatusStyle =
+                    tab.tone === "ready"
+                      ? {
+                          border: "1px solid rgba(34,197,94,0.34)",
+                          color: "#bbf7d0",
+                          background: "rgba(34,197,94,0.10)",
+                        }
+                      : tab.tone === "blocked"
+                        ? {
+                            border: "1px solid rgba(248,113,113,0.34)",
+                            color: "#fecaca",
+                            background: "rgba(248,113,113,0.10)",
+                          }
+                        : {
+                            border: "1px solid rgba(251,191,36,0.36)",
+                            color: "#fde68a",
+                            background: "rgba(251,191,36,0.10)",
+                          };
+                  return (
+                    <button
+                      key={tab.key}
+                      type="button"
+                      onClick={() => setSynchronizedActiveChannel(tab.key as ChannelKey)}
+                      title={
+                        tab.tone === "ready"
+                          ? "Texte + image"
+                          : tab.tone === "blocked"
+                            ? "Canal vide"
+                            : "Texte seul ou image seule"
+                      }
+                      style={{
+                        ...pillBtn,
+                        ...previewStatusStyle,
+                        ...(activeImageChannel === tab.key
+                          ? {
+                              boxShadow:
+                                "0 0 0 1px rgba(76,195,255,0.25) inset, 0 0 14px rgba(76,195,255,0.16)",
+                            }
+                          : {}),
+                        padding: "6px 10px",
+                        fontSize: 11,
+                        whiteSpace: "nowrap",
+                        flex: isMobile ? undefined : "0 0 auto",
+                        width: isMobile ? "100%" : undefined,
+                        minWidth: 0,
+                        minHeight: isMobile ? 32 : undefined,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      {tab.label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
             <button

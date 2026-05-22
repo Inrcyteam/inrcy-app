@@ -10,15 +10,30 @@ export async function openaiGenerateJSON<T extends OpenAIResponseJSON>(opts: {
   model?: string;
   system: string;
   input: string;
+  images?: Array<{ dataUrl: string; detail?: "low" | "high" | "auto" }>;
   maxOutputTokens?: number;
   temperature?: number;
 }): Promise<T> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("Missing OPENAI_API_KEY");
 
-  const model = opts.model || process.env.OPENAI_MODEL || "gpt-4o-mini";
+  const hasImages = Array.isArray(opts.images) && opts.images.length > 0;
+  const model =
+    opts.model ||
+    (hasImages ? process.env.OPENAI_VISION_MODEL : "") ||
+    process.env.OPENAI_MODEL ||
+    "gpt-4o-mini";
   const max_output_tokens = Math.max(128, Math.min(6000, opts.maxOutputTokens ?? 700));
   const temperature = typeof opts.temperature === "number" ? Math.max(0, Math.min(2, opts.temperature)) : undefined;
+
+  const userContent: Array<Record<string, unknown>> = [
+    { type: "input_text", text: opts.input },
+    ...((opts.images || []).map((image) => ({
+      type: "input_image",
+      image_url: image.dataUrl,
+      detail: image.detail || "low",
+    }))),
+  ];
 
   const res = await fetchWithRetry("https://api.openai.com/v1/responses", {
     method: "POST",
@@ -39,7 +54,7 @@ export async function openaiGenerateJSON<T extends OpenAIResponseJSON>(opts: {
       // ✅ Responses API: content part types are input_text / input_image / etc.
       input: [
         { role: "system", content: [{ type: "input_text", text: opts.system }] },
-        { role: "user", content: [{ type: "input_text", text: opts.input }] },
+        { role: "user", content: userContent },
       ],
     }),
     retries: 2,

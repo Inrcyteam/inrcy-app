@@ -24,6 +24,14 @@ type Payload = {
   theme?: BoosterTheme;
   style?: BoosterStyle;
   channels?: BoosterChannels[];
+  useImagesForAI?: boolean;
+  imageCount?: number;
+  imagesForAI?: Array<{ name?: string; type?: string; dataUrl?: string }>;
+};
+
+type BoosterAiImage = {
+  dataUrl: string;
+  detail: "low" | "high" | "auto";
 };
 
 type ChannelPost = {
@@ -43,6 +51,57 @@ const allowedChannels: BoosterChannels[] = ["inrcy_site", "site_web", "gmb", "fa
 const allowedThemes: BoosterTheme[] = ["", "promotion", "information", "conseil", "avis_client", "realisation", "actualite", "autre"];
 const allowedStyles: BoosterStyle[] = ["sobre", "equilibre", "dynamique"];
 const siteChannels = new Set<BoosterChannels>(["inrcy_site", "site_web"]);
+const AI_IMAGE_MAX_COUNT = 5;
+const AI_IMAGE_MAX_DATA_URL_LENGTH = 3_500_000;
+const AI_IMAGE_MAX_TOTAL_DATA_URL_LENGTH = 10_000_000;
+const AI_IMAGE_DATA_URL_RE = /^data:image\/(?:jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$/;
+
+function sanitizeImagesForAI(body: Payload): BoosterAiImage[] {
+  if (!body.useImagesForAI || !Array.isArray(body.imagesForAI)) return [];
+
+  const images: BoosterAiImage[] = [];
+  let totalLength = 0;
+
+  for (const image of body.imagesForAI.slice(0, AI_IMAGE_MAX_COUNT)) {
+    const dataUrl = String(image?.dataUrl || "").trim();
+    if (!dataUrl || dataUrl.length > AI_IMAGE_MAX_DATA_URL_LENGTH || !AI_IMAGE_DATA_URL_RE.test(dataUrl)) {
+      continue;
+    }
+
+    totalLength += dataUrl.length;
+    if (totalLength > AI_IMAGE_MAX_TOTAL_DATA_URL_LENGTH) break;
+
+    images.push({ dataUrl, detail: "low" });
+  }
+
+  return images;
+}
+
+function buildImageGenerationInstructions(imageCount: number) {
+  if (imageCount <= 0) return "";
+
+  return `Contexte visuel fourni : ${imageCount} image(s) sont jointes et doivent servir uniquement à mieux personnaliser le contenu.
+
+Priorité éditoriale obligatoire :
+1. L'intention libre du pro reste le sujet principal. Elle pilote le titre, l'accroche, le contenu et le CTA.
+2. Les images enrichissent le sujet si elles sont cohérentes avec l'intention : contexte réel, ambiance, résultat visible, produit, chantier, plat, local, geste métier, avant/après apparent, saison, couleurs, matière, soin apporté.
+3. Mon activité et Mon profil servent à rendre le texte crédible, local et adapté au métier.
+4. Les canaux adaptent seulement le ton, le format et la longueur.
+
+Règles d'utilisation des images :
+- Ne jamais laisser les images changer le sujet demandé dans la phrase libre.
+- Si une image semble hors sujet, floue, ambiguë ou impossible à interpréter avec certitude, l'utiliser très peu ou l'ignorer.
+- Ne décrire que des éléments visibles ou très prudents : éviter d'affirmer un lieu, une marque, une personne, une date, un prix, un avis client, une certification ou un résultat non certain.
+- Ne pas écrire "sur la photo", "comme on le voit" ou "image ci-dessus" sauf si cela sonne naturel pour le canal. Préférer intégrer discrètement les détails visuels dans le texte.
+- Pour une réalisation ou un chantier : parler du résultat, du soin, de la méthode ou de l'étape visible, sans inventer d'avant/après si ce n'est pas évident.
+- Pour un produit, un plat, un soin, un local ou une ambiance : utiliser les détails visuels pour rendre le texte plus concret et moins générique.
+- Pour Instagram et Facebook : exploiter davantage l'ambiance visuelle et le côté vivant.
+- Pour LinkedIn : transformer les éléments visuels en expertise, méthode ou exigence professionnelle.
+- Pour Google Business : rester factuel et sobre, même si l'image est très visuelle.
+- Pour Site iNrCy / Site web : utiliser les images pour ancrer le contenu dans une réalisation concrète, sans sacrifier le SEO local.
+
+En résumé : les images ne pilotent pas le sujet, elles l'affinent.`;
+}
 
 function cleanHashtags(channel: BoosterChannels, input: unknown) {
   if (channel === "gmb" || siteChannels.has(channel)) return [];
@@ -240,6 +299,7 @@ async function generateVersionsForChannels(args: {
   recentPublications?: BoosterRecentPublication[];
   extraInstructions?: string;
   hiddenAngle?: BoosterHiddenAngle;
+  imagesForAI?: BoosterAiImage[];
 }) {
   const versions: Partial<Record<BoosterChannels, Partial<ChannelPost>>> = {};
   const batches = buildGenerationBatches(args.channels);
@@ -309,6 +369,7 @@ async function generateVersions(args: {
   recentPublications?: BoosterRecentPublication[];
   extraInstructions?: string;
   hiddenAngle?: BoosterHiddenAngle;
+  imagesForAI?: BoosterAiImage[];
 }) {
   const system = boosterSystemPrompt();
   const baseInput = boosterUserPrompt({
@@ -321,13 +382,13 @@ async function generateVersions(args: {
     hiddenAngle: args.hiddenAngle,
     recentPublications: args.recentPublications,
   });
-  const input = args.extraInstructions ? `${baseInput}
-
-${args.extraInstructions}` : baseInput;
+  const imageInstructions = buildImageGenerationInstructions(args.imagesForAI?.length || 0);
+  const input = [baseInput, imageInstructions, args.extraInstructions].filter(Boolean).join("\n\n");
 
   return openaiGenerateJSON<BoosterGenResponse>({
     system,
     input,
+    images: args.imagesForAI,
     maxOutputTokens: computeMaxOutputTokens(args.channels),
     temperature: getCreativityTemperature(args.business),
   });
@@ -362,6 +423,8 @@ const handler = async (req: Request) => {
       return NextResponse.json({ error: "Canaux manquants." }, { status: 400 });
     }
 
+    const imagesForAI = sanitizeImagesForAI(body);
+
     const { data: profile } = await supabase.from("profiles").select("*").eq("user_id", userId).maybeSingle();
 
     let business: JsonRecord | null = null;
@@ -385,6 +448,7 @@ const handler = async (req: Request) => {
       business,
       recentPublications,
       hiddenAngle,
+      imagesForAI,
     });
 
     const rawVersions =
@@ -413,6 +477,7 @@ const handler = async (req: Request) => {
         business,
         recentPublications,
         hiddenAngle,
+        imagesForAI,
         extraInstructions: `IMPORTANT : regénère uniquement les canaux demandés ci-dessus.
 - Le contenu précédent était soit vide/trop court, soit trop éloigné de l'intention libre du pro.
 - Sujet libre obligatoire à respecter mot pour mot dans le fond : "${idea}".
