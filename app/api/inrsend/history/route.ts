@@ -607,15 +607,15 @@ function mapEventItems(rows: any[]): OutboxItem[] {
   return rows
     .filter((e) => supportedModules.has(String(e.module)))
     .map<OutboxItem>((e: any) => {
-      const module = String(e.module || "") as "booster" | "propulser" | "fideliser";
+      const eventModule = String(e.module || "") as "booster" | "propulser" | "fideliser";
       const t = String(e.type || "");
       const payload = (e.payload || {}) as any;
       const isDraft = String(payload?.status || "").toLowerCase() === "draft" || t === "publish_draft";
       const actionType = t === "publish_draft" ? "publish" : t;
-      const action = getActionFromTrack(module, actionType);
+      const action = getActionFromTrack(eventModule, actionType);
       const folder: Folder = action
         ? historyFolderForAction(action)
-        : module === "fideliser"
+        : eventModule === "fideliser"
           ? "fidelisations"
           : t === "publish"
             ? "publications"
@@ -647,10 +647,10 @@ function mapEventItems(rows: any[]): OutboxItem[] {
       return {
         id: e.id,
         source: "app_events",
-        module,
+        module: eventModule,
         folder,
         ...workflowMeta,
-        provider: module === "fideliser" ? "Fidéliser" : module === "propulser" ? "Propulser" : "Booster",
+        provider: eventModule === "fideliser" ? "Fidéliser" : eventModule === "propulser" ? "Propulser" : "Booster",
         status: isDraft ? "draft" : "sent",
         created_at: e.created_at,
         title,
