@@ -1,0 +1,102 @@
+import AiConfigurationContent from "../../../settings/_components/AiConfigurationContent";
+
+type PublishAiConfigurationDrawerProps = {
+  open: boolean;
+  isMobile: boolean;
+  drawerHeight: string;
+  onClose: () => void;
+};
+
+export default function PublishAiConfigurationDrawer({
+  open,
+  isMobile,
+  drawerHeight,
+  onClose,
+}: PublishAiConfigurationDrawerProps) {
+  if (!open) return null;
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label="Configuration IA"
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        zIndex: 10020,
+        background: "rgba(0,0,0,0.55)",
+        display: "flex",
+        justifyContent: isMobile ? "stretch" : "flex-end",
+        overflow: "hidden",
+        padding: isMobile ? 0 : undefined,
+      }}
+    >
+      <aside
+        onClick={(event) => event.stopPropagation()}
+        style={{
+          width: isMobile ? "100vw" : "min(560px, 92vw)",
+          maxWidth: "100vw",
+          height: drawerHeight,
+          maxHeight: drawerHeight,
+          boxSizing: "border-box",
+          background: "rgba(16,16,16,0.98)",
+          borderLeft: isMobile ? 0 : "1px solid rgba(255,255,255,0.08)",
+          padding: isMobile
+            ? "max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left))"
+            : 16,
+          overflowY: "auto",
+          overflowX: "hidden",
+          overscrollBehavior: "contain",
+          WebkitOverflowScrolling: "touch",
+        }}
+      >
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 1fr) auto",
+            alignItems: "center",
+            gap: 12,
+            minWidth: 0,
+            width: "100%",
+          }}
+        >
+          <h2
+            style={{
+              margin: 0,
+              fontSize: "clamp(16px, 4.3vw, 18px)",
+              fontWeight: 800,
+              minWidth: 0,
+              maxWidth: "100%",
+              overflowWrap: "break-word",
+              wordBreak: "normal",
+              hyphens: "auto",
+              lineHeight: 1.25,
+              color: "white",
+            }}
+          >
+            Configuration IA
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              border: "1px solid rgba(255,255,255,0.12)",
+              background: "transparent",
+              color: "white",
+              borderRadius: 10,
+              padding: "8px 10px",
+              cursor: "pointer",
+              flexShrink: 0,
+            }}
+          >
+            Fermer
+          </button>
+        </div>
+        <div style={{ marginTop: 12, minWidth: 0, maxWidth: "100%", overflowX: "hidden" }}>
+          <AiConfigurationContent mode="drawer" />
+        </div>
+      </aside>
+    </div>
+  );
+}

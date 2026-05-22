@@ -5,29 +5,111 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { enforceRateLimit } from "@/lib/rateLimit";
 
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const DEFAULT_UPLOAD_FOLDER = "booster-prepublish";
+
+const MIME_EXTENSION: Record<string, string> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/jpg": "jpg",
+  "image/webp": "webp",
+  "image/gif": "gif",
+  "image/avif": "avif",
+  "image/heic": "heic",
+  "image/heif": "heif",
+};
+
+const ALLOWED_IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "webp", "gif", "avif", "heic", "heif"]);
 
 function isAllowedImageMime(type: string) {
   return /^image\/(png|jpe?g|webp|gif|avif|heic|heif)$/i.test(type || "");
 }
 
-function sanitizeFileName(name: string) {
-  return String(name || "image")
+function normalizeSafeSegment(value: string, fallback: string) {
+  const safe = String(value || "")
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[’'`]/g, "")
     .replace(/[^a-zA-Z0-9._-]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/(^-|-$)+/g, "") || "image";
+    .replace(/\.{2,}/g, ".")
+    .replace(/[-_]{2,}/g, "-")
+    .replace(/^[-_.]+|[-_.]+$/g, "")
+    .slice(0, 90);
+
+  return safe || fallback;
 }
 
-function sanitizeStoragePath(path: string, fallbackName: string, userId: string) {
-  const clean = String(path || "")
-    .replace(/\\/g, "/")
-    .replace(/\.\.+/g, "")
-    .replace(/^\/+/, "")
-    .trim();
+function sanitizeUserId(userId: string) {
+  return normalizeSafeSegment(userId, randomUUID()).replace(/\./g, "-");
+}
 
-  const relative = clean || `booster-prepublish/${randomUUID()}-${sanitizeFileName(fallbackName)}`;
-  return relative.startsWith(`${userId}/`) ? relative : `${userId}/${relative}`;
+function getSafeExtension(name: string, mimeType: string) {
+  const mimeExtension = MIME_EXTENSION[String(mimeType || "").toLowerCase()];
+  if (mimeExtension) return mimeExtension;
+
+  const rawName = String(name || "").split(/[\\/]/).pop() || "";
+  const ext = rawName.includes(".") ? rawName.split(".").pop()?.toLowerCase() || "" : "";
+  return ALLOWED_IMAGE_EXTENSIONS.has(ext) ? (ext === "jpeg" ? "jpg" : ext) : "jpg";
+}
+
+function sanitizeFileName(name: string, mimeType: string) {
+  const rawName = String(name || "image").split(/[\\/]/).pop() || "image";
+  const withoutExtension = rawName.replace(/\.[^.]*$/, "");
+  const base = normalizeSafeSegment(withoutExtension, "image");
+  return `${base}.${getSafeExtension(rawName, mimeType)}`.toLowerCase();
+}
+
+function sanitizeStorageFolder(folder: string) {
+  return normalizeSafeSegment(folder, DEFAULT_UPLOAD_FOLDER).replace(/\./g, "-").toLowerCase();
+}
+
+function getRequestedFolder(path: string, userId: string) {
+  const safeUserId = sanitizeUserId(userId);
+  const cleanParts = String(path || "")
+    .replace(/\\/g, "/")
+    .replace(/\u0000/g, "")
+    .replace(/^\/+/, "")
+    .trim()
+    .split("/")
+    .filter(Boolean);
+
+  if (cleanParts[0] === userId || cleanParts[0] === safeUserId) cleanParts.shift();
+  const firstFolder = cleanParts.find((part) => part !== "." && part !== "..");
+  return sanitizeStorageFolder(firstFolder || DEFAULT_UPLOAD_FOLDER);
+}
+
+function sanitizeStoragePath(path: string, fallbackName: string, userId: string, mimeType: string) {
+  const safeUserId = sanitizeUserId(userId);
+  const rawParts = String(path || "")
+    .replace(/\\/g, "/")
+    .replace(/\u0000/g, "")
+    .replace(/^\/+/, "")
+    .trim()
+    .split("/")
+    .filter(Boolean);
+
+  if (rawParts[0] === userId || rawParts[0] === safeUserId) rawParts.shift();
+
+  const cleanParts = rawParts.filter((part) => part !== "." && part !== "..");
+  const rawFileName = cleanParts.length ? cleanParts[cleanParts.length - 1] : fallbackName;
+  const fileName = sanitizeFileName(rawFileName || fallbackName, mimeType);
+  const folders = cleanParts.slice(0, -1).map(sanitizeStorageFolder).filter(Boolean).slice(0, 4);
+
+  const relativePath = [...(folders.length ? folders : [DEFAULT_UPLOAD_FOLDER]), fileName].join("/");
+  return `${safeUserId}/${relativePath}`;
+}
+
+function buildFallbackStoragePath(userId: string, fallbackName: string, mimeType: string, requestedPath: string) {
+  const safeUserId = sanitizeUserId(userId);
+  const folder = getRequestedFolder(requestedPath, userId);
+  return `${safeUserId}/${folder}/${randomUUID()}-${sanitizeFileName(fallbackName, mimeType)}`;
+}
+
+async function uploadToBoosterStorage(storagePath: string, buffer: Buffer, contentType: string) {
+  return await supabaseAdmin.storage.from("booster").upload(storagePath, buffer, {
+    contentType: contentType || "application/octet-stream",
+    upsert: false,
+    cacheControl: "3600",
+  });
 }
 
 export async function POST(req: Request) {
@@ -63,14 +145,24 @@ export async function POST(req: Request) {
     }
 
     const requestedPath = String(formData.get("path") || "");
-    const storagePath = sanitizeStoragePath(requestedPath, file.name || "image", user.id);
     const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    let storagePath = sanitizeStoragePath(requestedPath, file.name || "image", user.id, file.type);
 
-    const upload = await supabaseAdmin.storage.from("booster").upload(storagePath, Buffer.from(arrayBuffer), {
-      contentType: file.type || "application/octet-stream",
-      upsert: false,
-      cacheControl: "3600",
-    });
+    let upload = await uploadToBoosterStorage(storagePath, buffer, file.type || "application/octet-stream");
+
+    // Sécurité anti-casse : si Supabase refuse encore une clé ou si elle existe déjà,
+    // on retente avec un nom 100 % généré côté serveur.
+    if (upload.error) {
+      const fallbackPath = buildFallbackStoragePath(user.id, file.name || "image", file.type, requestedPath);
+      if (fallbackPath !== storagePath) {
+        const retry = await uploadToBoosterStorage(fallbackPath, buffer, file.type || "application/octet-stream");
+        if (!retry.error) {
+          storagePath = fallbackPath;
+          upload = retry;
+        }
+      }
+    }
 
     if (upload.error) {
       return NextResponse.json({ error: upload.error.message || "Upload impossible." }, { status: 500 });

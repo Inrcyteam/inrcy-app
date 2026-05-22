@@ -5,13 +5,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import styles from "../dashboard.module.css";
 import b from "../booster/booster.module.css";
 import BaseModal from "./WorkflowBaseModal";
-import PublishModal from "../booster/publier/PublishModal";
 import StatusMessage from "./StatusMessage";
 import { WEEKLY_GOALS, clampProgress, getGoalCopy } from "@/lib/weeklyGoals";
 import { getSimpleFrenchApiError, getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { confirmInrcy } from "@/lib/inrcyDialog";
 import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
 import { useUnsavedExitGuard } from "../_hooks/useUnsavedExitGuard";
+import PublishModal from "../booster/publier/PublishModal";
 
 type DashboardBoosterModalMode = "publish" | "stats" | null;
 

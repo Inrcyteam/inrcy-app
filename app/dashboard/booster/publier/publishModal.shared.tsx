@@ -535,19 +535,35 @@ export async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
   return await res.blob();
 }
 
-export function sanitizeUploadName(name: string): string {
-  return String(name || "image")
+const ALLOWED_UPLOAD_EXTENSIONS = new Set(["png", "jpg", "jpeg", "webp", "gif", "avif", "heic", "heif"]);
+
+function normalizeUploadSegment(value: string, fallback: string): string {
+  const safe = String(value || "")
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[’'`]/g, "")
     .replace(/[^a-zA-Z0-9._-]+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/(^-|-$)+/g, "") || "image";
+    .replace(/\.{2,}/g, ".")
+    .replace(/[-_]{2,}/g, "-")
+    .replace(/^[-_.]+|[-_.]+$/g, "")
+    .slice(0, 90);
+
+  return safe || fallback;
 }
 
-export function buildBoosterUploadPath(fileName: string): string {
+export function sanitizeUploadName(name: string): string {
+  const rawName = String(name || "image").split(/[\\/]/).pop() || "image";
+  const rawExtension = rawName.includes(".") ? rawName.split(".").pop()?.toLowerCase() || "" : "";
+  const extension = ALLOWED_UPLOAD_EXTENSIONS.has(rawExtension) ? (rawExtension === "jpeg" ? "jpg" : rawExtension) : "jpg";
+  const base = normalizeUploadSegment(rawName.replace(/\.[^.]*$/, ""), "image");
+  return `${base}.${extension}`.toLowerCase();
+}
+
+export function buildBoosterUploadPath(fileName: string, folder = "booster-prepublish"): string {
+  const safeFolder = normalizeUploadSegment(folder, "booster-prepublish").replace(/\./g, "-").toLowerCase();
   const safeName = sanitizeUploadName(fileName);
   const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-  return `booster-prepublish/${unique}-${safeName}`;
+  return `${safeFolder}/${unique}-${safeName}`;
 }
 
 export function clampPercent(value: number, min = 0, max = 100) {
