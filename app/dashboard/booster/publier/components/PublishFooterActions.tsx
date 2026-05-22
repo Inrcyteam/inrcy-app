@@ -11,10 +11,8 @@ type PublishFooterActionsProps = {
   draftSaving: boolean;
   publishProgress: number;
   publishProgressLabel: string;
-  draftMessage: string;
   publishError: string;
   onOpenHelp: () => void;
-  onSavePublicationDraft: () => void;
   onPublish: () => void;
 };
 
@@ -25,10 +23,8 @@ export default function PublishFooterActions({
   draftSaving,
   publishProgress,
   publishProgressLabel,
-  draftMessage,
   publishError,
   onOpenHelp,
-  onSavePublicationDraft,
   onPublish,
 }: PublishFooterActionsProps) {
   return (
@@ -48,6 +44,7 @@ export default function PublishFooterActions({
           justifyContent: "flex-end",
           flexWrap: "wrap",
           alignItems: "center",
+          width: "100%",
         }}
       >
         <HelpButton
@@ -55,26 +52,6 @@ export default function PublishFooterActions({
           title="Aide publication et iNr'Send"
           size={32}
         />
-        <button
-          type="button"
-          className={styles.secondaryBtn}
-          onClick={onSavePublicationDraft}
-          disabled={saving || draftSaving}
-          title="Enregistrer le brouillon publication"
-          aria-label="Enregistrer le brouillon publication"
-          style={{
-            width: 52,
-            minHeight: 52,
-            padding: 0,
-            display: "inline-grid",
-            placeItems: "center",
-            fontSize: 22,
-            opacity: saving || draftSaving ? 0.64 : 1,
-            cursor: saving || draftSaving ? "wait" : "pointer",
-          }}
-        >
-          {draftSaving ? "…" : "💾"}
-        </button>
         <button
           type="button"
           className={styles.primaryBtn}
@@ -97,7 +74,7 @@ export default function PublishFooterActions({
       <div
         style={{
           width: "min(440px, 100%)",
-          minHeight: saving || publishError || draftMessage ? 58 : 0,
+          minHeight: saving || publishError ? 58 : 0,
           display: "grid",
           gap: 8,
           justifyItems: "stretch",
@@ -149,19 +126,6 @@ export default function PublishFooterActions({
               />
             </div>
           </div>
-        ) : null}
-        {draftMessage ? (
-          <StatusMessage
-            variant="success"
-            style={{
-              marginTop: 0,
-              textAlign: "right",
-              maxWidth: 440,
-              justifySelf: "end",
-            }}
-          >
-            {draftMessage}
-          </StatusMessage>
         ) : null}
         {publishError ? (
           <StatusMessage

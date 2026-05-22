@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import styles from "../dashboard.module.css";
 import b from "../booster/booster.module.css";
 import BaseModal from "./WorkflowBaseModal";
@@ -22,6 +22,12 @@ type WeeklySummary = {
   };
 };
 
+type PublishDraftHeaderState = {
+  saving: boolean;
+  draftSaving: boolean;
+  draftMessage: string;
+};
+
 export default function DashboardBoosterModalLayer({
   mode,
   onClose,
@@ -34,6 +40,12 @@ export default function DashboardBoosterModalLayer({
   const [publishSummary, setPublishSummary] = useState<any>(null);
   const [publishEditorOverlayOpen, setPublishEditorOverlayOpen] = useState(false);
   const [publishHasUnsavedChanges, setPublishHasUnsavedChanges] = useState(false);
+  const publishSaveDraftRef = useRef<(() => void) | null>(null);
+  const [publishDraftHeaderState, setPublishDraftHeaderState] = useState<PublishDraftHeaderState>({
+    saving: false,
+    draftSaving: false,
+    draftMessage: "",
+  });
   const [metrics, setMetrics] = useState<any>(null);
   const [weeklySummary, setWeeklySummary] = useState<WeeklySummary | null>(null);
 
@@ -86,6 +98,23 @@ export default function DashboardBoosterModalLayer({
     }
     closePublishModal();
   }, [closePublishModal, publishHasUnsavedChanges]);
+
+
+  const handlePublishDraftHeaderStateChange = useCallback((next: PublishDraftHeaderState) => {
+    setPublishDraftHeaderState((prev) =>
+      prev.saving === next.saving &&
+      prev.draftSaving === next.draftSaving &&
+      prev.draftMessage === next.draftMessage
+        ? prev
+        : next,
+    );
+  }, []);
+
+  useEffect(() => {
+    if (mode === "publish") return;
+    publishSaveDraftRef.current = null;
+    setPublishDraftHeaderState({ saving: false, draftSaving: false, draftMessage: "" });
+  }, [mode]);
 
   useUnsavedExitGuard({
     active: mode === "publish",
@@ -268,13 +297,60 @@ export default function DashboardBoosterModalLayer({
       ) : null}
 
       {mode === "publish" ? (
-        <BaseModal title="Publier" moduleLabel="Module Booster" onClose={requestClosePublishModal} headerHidden={publishEditorOverlayOpen}>
+        <BaseModal
+          title="Publier"
+          moduleLabel="Module Booster"
+          onClose={requestClosePublishModal}
+          headerHidden={publishEditorOverlayOpen}
+          headerStatus={
+            publishDraftHeaderState.draftMessage ? (
+              <StatusMessage
+                variant="success"
+                style={{
+                  marginTop: 0,
+                  minHeight: 38,
+                  padding: "0 12px",
+                  fontSize: 12,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {publishDraftHeaderState.draftMessage}
+              </StatusMessage>
+            ) : null
+          }
+          headerActions={
+            <button
+              type="button"
+              className={styles.secondaryBtn}
+              onClick={() => publishSaveDraftRef.current?.()}
+              disabled={publishDraftHeaderState.saving || publishDraftHeaderState.draftSaving}
+              title="Enregistrer le brouillon publication"
+              aria-label="Enregistrer le brouillon publication"
+              style={{
+                width: 42,
+                minWidth: 42,
+                minHeight: 38,
+                padding: 0,
+                display: "inline-grid",
+                placeItems: "center",
+                fontSize: 19,
+                borderRadius: 999,
+                opacity: publishDraftHeaderState.saving || publishDraftHeaderState.draftSaving ? 0.64 : 1,
+                cursor: publishDraftHeaderState.saving || publishDraftHeaderState.draftSaving ? "wait" : "pointer",
+              }}
+            >
+              {publishDraftHeaderState.draftSaving ? "…" : "💾"}
+            </button>
+          }
+        >
           <PublishModal
             styles={styles}
             onClose={closePublishModal}
             trackEvent={trackEvent}
             onOverlayOpenChange={setPublishEditorOverlayOpen}
             onUnsavedChange={setPublishHasUnsavedChanges}
+            saveDraftActionRef={publishSaveDraftRef}
+            onDraftHeaderStateChange={handlePublishDraftHeaderStateChange}
             onPublishSuccess={(result) => {
               setPublishSummary(result?.summary || null);
               setPublishSuccessOpen(true);

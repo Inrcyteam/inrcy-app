@@ -8,6 +8,8 @@ export default function BaseModal({
   moduleLabel,
   onClose,
   headerHidden = false,
+  headerStatus,
+  headerActions,
   compact = false,
   maxWidth,
   children,
@@ -16,6 +18,8 @@ export default function BaseModal({
   moduleLabel?: string; // ex: "Module Booster", "Module Fidéliser"
   onClose: () => void | Promise<void>;
   headerHidden?: boolean;
+  headerStatus?: React.ReactNode;
+  headerActions?: React.ReactNode;
   compact?: boolean;
   maxWidth?: number | string;
   children: React.ReactNode;
@@ -128,13 +132,49 @@ export default function BaseModal({
                 <span style={pillStyle}>{title}</span>
               </div>
 
-              {/* Right close */}
-              <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                <button type="button" className={styles.ghostBtn} onClick={() => void onClose()} style={closeBtnStyle}>
-                  Fermer
+              {/* Right actions */}
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  alignItems: "center",
+                  gap: 8,
+                  minWidth: 0,
+                  flexWrap: "nowrap",
+                }}
+              >
+                {headerStatus ? (
+                  <div
+                    className={styles.modalHeaderStatusDesktop}
+                    style={{
+                      minWidth: 0,
+                      maxWidth: "min(360px, 42vw)",
+                      display: "flex",
+                      justifyContent: "flex-end",
+                    }}
+                  >
+                    {headerStatus}
+                  </div>
+                ) : null}
+                {headerActions}
+                <button
+                  type="button"
+                  className={[styles.ghostBtn, styles.modalCloseButton].join(" ")}
+                  onClick={() => void onClose()}
+                  style={closeBtnStyle}
+                  aria-label="Fermer"
+                  title="Fermer"
+                >
+                  <span className={styles.modalCloseDesktopLabel}>Fermer</span>
+                  <span className={styles.modalCloseMobileLabel} aria-hidden="true">×</span>
                 </button>
               </div>
             </div>
+            {headerStatus ? (
+              <div className={styles.modalHeaderStatusMobile}>
+                {headerStatus}
+              </div>
+            ) : null}
           </div>
         ) : null}
 

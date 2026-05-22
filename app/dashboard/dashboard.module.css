@@ -4192,6 +4192,31 @@ transform: scale(1.50);
     rgba(255, 255, 255, 0.08) !important;
 }
 
+
+.modalHeaderStatusDesktop{
+  display: flex;
+}
+
+.modalHeaderStatusMobile{
+  display: none;
+}
+
+.modalCloseButton{
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.modalCloseDesktopLabel{
+  display: inline;
+}
+
+.modalCloseMobileLabel{
+  display: none;
+  font-size: 18px;
+  line-height: 1;
+}
+
 /* =========================================================
    Mobile modal width boost (Booster / Propulser / Fidéliser)
    Objectif : moins de cadres dans les cadres sur téléphone,
@@ -4221,6 +4246,39 @@ transform: scale(1.50);
 
   .fullscreenModalHeader{
     gap: 8px;
+  }
+
+  .modalHeaderStatusDesktop{
+    display: none !important;
+  }
+
+  .modalHeaderStatusMobile{
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 8px;
+    min-width: 0;
+  }
+
+  .modalHeaderStatusMobile .statusMessage{
+    min-height: 32px !important;
+    padding: 0 10px !important;
+    font-size: 11px !important;
+    max-width: 100%;
+  }
+
+  .modalCloseDesktopLabel{
+    display: none;
+  }
+
+  .modalCloseMobileLabel{
+    display: inline;
+  }
+
+  .modalCloseButton{
+    width: 38px;
+    min-width: 38px;
+    padding-left: 0 !important;
+    padding-right: 0 !important;
   }
 
   .fullscreenModalScroll{

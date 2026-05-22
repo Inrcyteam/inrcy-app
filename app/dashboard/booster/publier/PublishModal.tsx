@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { readSanitizedElementHtml } from "@/lib/sanitizeHtml";
@@ -147,6 +147,8 @@ export default function PublishModal({
   onPublishSuccess,
   onOverlayOpenChange,
   onUnsavedChange,
+  saveDraftActionRef,
+  onDraftHeaderStateChange,
 }: {
   styles: typeof stylesDash;
   onClose: () => void;
@@ -154,6 +156,8 @@ export default function PublishModal({
   onPublishSuccess?: (result?: any) => void;
   onOverlayOpenChange?: (open: boolean) => void;
   onUnsavedChange?: (hasUnsavedChanges: boolean) => void;
+  saveDraftActionRef?: MutableRefObject<(() => void) | null>;
+  onDraftHeaderStateChange?: (state: { saving: boolean; draftSaving: boolean; draftMessage: string }) => void;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -172,6 +176,10 @@ export default function PublishModal({
   const [draftSaving, setDraftSaving] = useState(false);
   const [draftMessage, setDraftMessage] = useState("");
   const [lastPublicationDraftSnapshot, setLastPublicationDraftSnapshot] = useState<string | null>(null);
+
+  useEffect(() => {
+    onDraftHeaderStateChange?.({ saving, draftSaving, draftMessage });
+  }, [saving, draftSaving, draftMessage, onDraftHeaderStateChange]);
   const [publishProgress, setPublishProgress] = useState(0);
   const [publishProgressLabel, setPublishProgressLabel] = useState("");
   const [postsByChannel, setPostsByChannel] = useState<
@@ -802,7 +810,7 @@ export default function PublishModal({
     let cancelled = false;
 
     const loadPublicationDraft = async () => {
-      setDraftMessage("Chargement du brouillon publication…");
+      setDraftMessage("Chargement du brouillon…");
       setPublishError("");
       try {
         const response = await fetch(`/api/booster/events?draftId=${encodeURIComponent(publicationDraftIdParam)}`, {
@@ -2118,7 +2126,7 @@ export default function PublishModal({
       }
       setLastPublicationDraftSnapshot(currentPublicationDraftSnapshot);
       onUnsavedChange?.(false);
-      setDraftMessage("Brouillon publication enregistré ✅");
+      setDraftMessage("Brouillon enregistré");
     } catch (e) {
       setPublishError(
         getSimpleFrenchErrorMessage(
@@ -2130,6 +2138,16 @@ export default function PublishModal({
       setDraftSaving(false);
     }
   };
+
+  useEffect(() => {
+    if (!saveDraftActionRef) return;
+    saveDraftActionRef.current = onSavePublicationDraft;
+    return () => {
+      if (saveDraftActionRef.current === onSavePublicationDraft) {
+        saveDraftActionRef.current = null;
+      }
+    };
+  }, [saveDraftActionRef, onSavePublicationDraft]);
 
   const onPublish = async () => {
     if (saving || draftSaving) return;
@@ -2581,10 +2599,8 @@ export default function PublishModal({
         draftSaving={draftSaving}
         publishProgress={publishProgress}
         publishProgressLabel={publishProgressLabel}
-        draftMessage={draftMessage}
         publishError={publishError}
         onOpenHelp={() => setPublishHelpOpen(true)}
-        onSavePublicationDraft={onSavePublicationDraft}
         onPublish={onPublish}
       />
     </div>
