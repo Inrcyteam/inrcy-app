@@ -3000,30 +3000,44 @@ export default function PublishModal({
                       );
                     }}
                     style={{
-                      width: 24,
-                      height: 24,
+                      width: 28,
+                      height: 28,
                       borderRadius: 999,
                       border: isConnected
-                        ? "1px solid rgba(187,247,208,0.42)"
+                        ? "1px solid rgba(134,239,172,0.58)"
                         : "1px solid rgba(255,255,255,0.12)",
                       background: isConnected
-                        ? "rgba(34,197,94,0.92)"
+                        ? "linear-gradient(180deg, rgba(34,197,94,0.96), rgba(22,163,74,0.96))"
                         : "rgba(255,255,255,0.08)",
-                      color: isConnected ? "#052e16" : "rgba(255,255,255,0.46)",
+                      color: isConnected ? "#ffffff" : "rgba(255,255,255,0.46)",
                       display: "inline-flex",
                       alignItems: "center",
                       justifyContent: "center",
                       flexShrink: 0,
                       cursor: info ? "pointer" : "default",
-                      fontSize: 12,
-                      fontWeight: 900,
                       opacity: isConnected ? 1 : 0.6,
                       boxShadow: isConnected
-                        ? "0 0 14px rgba(34,197,94,0.35)"
+                        ? "0 0 0 1px rgba(255,255,255,0.10) inset, 0 8px 18px rgba(34,197,94,0.34)"
                         : "none",
                     }}
                   >
-                    🔗
+                    <svg
+                      viewBox="0 0 24 24"
+                      width="15"
+                      height="15"
+                      aria-hidden="true"
+                      focusable="false"
+                      style={{ display: "block" }}
+                    >
+                      <path
+                        d="M10.6 13.4a3 3 0 0 0 4.24 0l3.18-3.18a3 3 0 1 0-4.24-4.24l-1.41 1.41M13.4 10.6a3 3 0 0 0-4.24 0l-3.18 3.18a3 3 0 1 0 4.24 4.24l1.41-1.41"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.4"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
                   </button>
                   {isInfoVisible && info ? (
                     <div
