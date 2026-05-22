@@ -887,6 +887,7 @@ const loadSiteInrcy = useCallback(async () => {
       if (states?.gmb?.email) nextState.gmbAccountEmail = String(states.gmb.email);
       if (states?.gmb?.resource_id) nextState.gmbLocationName = String(states.gmb.resource_id);
       if (states?.gmb?.resource_label) nextState.gmbLocationLabel = String(states.gmb.resource_label);
+      if (states?.gmb?.url) nextState.gmbUrl = String(states.gmb.url);
 
       nextState.facebookAccountConnected = !!states?.facebook?.accountConnected;
       nextState.facebookPageConnected = !!states?.facebook?.pageConnected;

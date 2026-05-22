@@ -1,3 +1,5 @@
+import { stripSiteTextFormatting } from "@/lib/boosterFormatting";
+
 export type GmbDraft = {
   title: string;
   content: string;
@@ -44,7 +46,7 @@ function softenPromotionalLanguage(input: string) {
 
 function sanitizeText(input: string) {
   return collapseWhitespace(
-    softenPromotionalLanguage(stripHashtags(stripUrls(stripEmails(stripPhones(input))))),
+    softenPromotionalLanguage(stripHashtags(stripUrls(stripEmails(stripPhones(stripSiteTextFormatting(input)))))),
   );
 }
 

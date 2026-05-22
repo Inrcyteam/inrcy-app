@@ -352,7 +352,10 @@ export default function DashboardBoosterModalLayer({
             saveDraftActionRef={publishSaveDraftRef}
             onDraftHeaderStateChange={handlePublishDraftHeaderStateChange}
             onPublishSuccess={(result) => {
-              setPublishSummary(result?.summary || null);
+              const summary = result?.summary
+                ? { ...result.summary, channelLinks: result?.channelLinks || {} }
+                : null;
+              setPublishSummary(summary);
               setPublishSuccessOpen(true);
             }}
           />
@@ -373,13 +376,32 @@ export default function DashboardBoosterModalLayer({
             </StatusMessage>
             {Array.isArray(publishSummary?.entries) ? (
               <div style={{ marginTop: 14, display: "grid", gap: 8, textAlign: "left" }}>
-                {publishSummary.entries.map((entry: any) => (
-                  <div key={entry.channel} style={{ borderRadius: 14, padding: "10px 12px", border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}><strong>{entry.ok ? "✅" : "❌"} {entry.label}</strong><span style={{ fontSize: 12, opacity: 0.75 }}>{entry.ok ? "Publié" : "Échec"}</span></div>
-                    {entry.error ? <div style={{ marginTop: 6, fontSize: 13, color: "#ffb4b4" }}>{entry.error}</div> : null}
-                    {entry.warning_message ? <div style={{ marginTop: 6, fontSize: 13, color: "#fde68a" }}>{entry.warning_message}</div> : null}
-                  </div>
-                ))}
+                {publishSummary.entries.map((entry: any) => {
+                  const channelHref = String(publishSummary?.channelLinks?.[entry.channel] || "").trim();
+                  return (
+                    <div key={entry.channel} style={{ borderRadius: 14, padding: "10px 12px", border: "1px solid rgba(255,255,255,0.08)", background: "rgba(255,255,255,0.03)" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+                        <strong>{entry.ok ? "✅" : "❌"} {entry.label}</strong>
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                          {channelHref ? (
+                            <a
+                              href={channelHref}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className={styles.secondaryBtn}
+                              style={{ minHeight: 28, minWidth: 0, padding: "4px 10px", borderRadius: 999, fontSize: 12, textDecoration: "none" }}
+                            >
+                              Voir
+                            </a>
+                          ) : null}
+                          <span style={{ fontSize: 12, opacity: 0.75 }}>{entry.ok ? "Publié" : "Échec"}</span>
+                        </span>
+                      </div>
+                      {entry.error ? <div style={{ marginTop: 6, fontSize: 13, color: "#ffb4b4" }}>{entry.error}</div> : null}
+                      {entry.warning_message ? <div style={{ marginTop: 6, fontSize: 13, color: "#fde68a" }}>{entry.warning_message}</div> : null}
+                    </div>
+                  );
+                })}
               </div>
             ) : null}
             <div style={{ marginTop: 16, display: "flex", justifyContent: "center", gap: 10, flexWrap: "wrap" }}>

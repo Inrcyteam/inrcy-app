@@ -35,6 +35,7 @@ import {
   getBackgroundMode,
   getChannelDefaultCtaLabel,
   getCtaModeHelp,
+  getDefaultCtaModeForChannel,
   getDefaultTransform,
   getEffectiveTransformZoom,
   getOptimizedTransform,
@@ -116,6 +117,45 @@ function isThemeKey(value: unknown): value is ThemeKey {
 function isStyleKey(value: unknown): value is StyleKey {
   const raw = String(value || "");
   return STYLE_OPTIONS.some((option) => option.value === raw);
+}
+
+function normalizeExternalHref(input: unknown) {
+  const raw = String(input || "").trim();
+  if (!raw) return "";
+  if (/^(https?:)?\/\//i.test(raw)) return raw.startsWith("//") ? `https:${raw}` : raw;
+  if (/^www\./i.test(raw)) return `https://${raw}`;
+  if (/^[a-z0-9.-]+\.[a-z]{2,}(?:[/:?#].*)?$/i.test(raw)) return `https://${raw}`;
+  return raw;
+}
+
+function sanitizePostForEditor(channel: ChannelKey, value: Partial<ChannelPost> | null | undefined): ChannelPost {
+  const normalized = normalizePost(value);
+  if (isSiteDisplayKey(channel)) return normalized;
+  return {
+    ...normalized,
+    title: stripSiteTextFormatting(normalized.title),
+    content: stripSiteTextFormatting(normalized.content),
+    cta: stripSiteTextFormatting(normalized.cta),
+  };
+}
+
+function sanitizePostsForEditor(input: unknown): Partial<Record<ChannelKey, ChannelPost>> {
+  const source = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+  const next: Partial<Record<ChannelKey, ChannelPost>> = {};
+  for (const key of CHANNEL_KEYS) {
+    if (source[key] == null) continue;
+    next[key] = sanitizePostForEditor(key, source[key] as Partial<ChannelPost>);
+  }
+  return next;
+}
+
+function sanitizePatchForEditor(channel: ChannelKey, patch: Partial<ChannelPost>): Partial<ChannelPost> {
+  if (isSiteDisplayKey(channel)) return patch;
+  const next: Partial<ChannelPost> = { ...patch };
+  if ("title" in next) next.title = stripSiteTextFormatting(next.title || "");
+  if ("content" in next) next.content = stripSiteTextFormatting(next.content || "");
+  if ("cta" in next) next.cta = stripSiteTextFormatting(next.cta || "");
+  return next;
 }
 
 function simplifyChannelDetail(value?: string | null) {
@@ -273,6 +313,7 @@ export default function PublishModal({
   const [ctaDefaults, setCtaDefaults] = useState<BoosterCtaDefaults | null>(
     null,
   );
+  const preferredCtaDefaultsAppliedRef = useRef(false);
 
   const clearGenerationTimers = () => {
     generationTimersRef.current.forEach((timerId) =>
@@ -385,6 +426,9 @@ export default function PublishModal({
           siteWebUrl: String(json?.siteWebUrl || "").trim(),
           inrcySiteUrl: String(json?.inrcySiteUrl || "").trim(),
           phone: String(json?.phone || "").trim(),
+          preferredCta: ["devis", "appeler", "message"].includes(String(json?.preferredCta || ""))
+            ? String(json?.preferredCta || "devis") as BoosterCtaDefaults["preferredCta"]
+            : "devis",
         });
       } catch {
         // ignore
@@ -397,6 +441,9 @@ export default function PublishModal({
 
   useEffect(() => {
     if (!ctaDefaults) return;
+    const shouldApplyPreferredDefaults = !preferredCtaDefaultsAppliedRef.current;
+    if (shouldApplyPreferredDefaults) preferredCtaDefaultsAppliedRef.current = true;
+
     setPostsByChannel((prev) => {
       let changed = false;
       const next: Partial<Record<ChannelKey, ChannelPost>> = { ...prev };
@@ -409,9 +456,17 @@ export default function PublishModal({
         "linkedin",
       ];
       for (const key of keys) {
-        const current = normalizePost(prev[key]);
-        const mode = current.ctaMode || "none";
-        if (mode !== "website" && mode !== "call") continue;
+        const current = sanitizePostForEditor(key, prev[key]);
+        const hasExistingCta = Boolean(
+          String(current.cta || "").trim() ||
+          String(current.ctaUrl || "").trim() ||
+          String(current.ctaPhone || "").trim(),
+        );
+        let mode = current.ctaMode || "none";
+        const shouldSetPreferredMode = shouldApplyPreferredDefaults && mode === "none" && !hasExistingCta;
+        if (shouldSetPreferredMode) mode = getDefaultCtaModeForChannel(key, ctaDefaults);
+        if (mode !== "website" && mode !== "call" && mode !== "message") continue;
+
         const patch = buildAutoPrefillPatch(
           key,
           mode,
@@ -419,11 +474,13 @@ export default function PublishModal({
           ctaDefaults,
         );
         const hasMeaningfulPatch = Object.entries(patch).some(
-          ([patchKey, patchValue]) =>
-            patchKey !== "ctaMode" && String(patchValue || "").trim(),
+          ([patchKey, patchValue]) => {
+            if (patchKey === "ctaMode") return shouldSetPreferredMode && patchValue !== current.ctaMode;
+            return String(patchValue || "").trim();
+          },
         );
         if (!hasMeaningfulPatch) continue;
-        const merged = { ...current, ...patch };
+        const merged = sanitizePostForEditor(key, { ...current, ...patch });
         const before = JSON.stringify(current);
         const after = JSON.stringify(merged);
         if (before === after) continue;
@@ -839,7 +896,9 @@ export default function PublishModal({
 
         const nextTheme = isThemeKey(payload.theme) ? payload.theme : "";
         const nextContentStyle = isStyleKey(payload.contentStyle) ? payload.contentStyle : "equilibre";
-        const nextPostsByChannel = (payload.postByChannel && typeof payload.postByChannel === "object") ? payload.postByChannel : {};
+        const nextPostsByChannel = sanitizePostsForEditor(
+          payload.postByChannel && typeof payload.postByChannel === "object" ? payload.postByChannel : {},
+        );
         const nextEditors = (payload.imageSettingsByChannel && typeof payload.imageSettingsByChannel === "object") ? payload.imageSettingsByChannel : {};
         const nextUseImagesForAI = typeof payload.useImagesForAI === "boolean" ? payload.useImagesForAI : true;
         const imageDrafts = Array.isArray(payload.imageDrafts) ? payload.imageDrafts : [];
@@ -1075,14 +1134,7 @@ export default function PublishModal({
       }
 
       const versions = json?.versions || {};
-      setPostsByChannel(
-        Object.fromEntries(
-          Object.entries(versions).map(([key, value]) => [
-            key,
-            normalizePost(value as Partial<ChannelPost>),
-          ]),
-        ) as Partial<Record<ChannelKey, ChannelPost>>,
-      );
+      setPostsByChannel(sanitizePostsForEditor(versions));
       didGenerate = true;
     } catch {
       setGenError(
@@ -1323,10 +1375,10 @@ export default function PublishModal({
   const updatePost = (channel: ChannelKey, patch: Partial<ChannelPost>) => {
     setPostsByChannel((prev) => ({
       ...prev,
-      [channel]: {
+      [channel]: sanitizePostForEditor(channel, {
         ...normalizePost(prev[channel]),
-        ...patch,
-      },
+        ...sanitizePatchForEditor(channel, patch),
+      }),
     }));
   };
 
@@ -2081,7 +2133,13 @@ export default function PublishModal({
       setPublishProgressLabel("Publié");
       await sleep(220);
       onUnsavedChange?.(false);
-      onPublishSuccess?.(result);
+      const channelLinks = Object.fromEntries(
+        selectedChannels.map((channel) => [
+          channel,
+          normalizeExternalHref(channelDetails[channel]?.href),
+        ]),
+      );
+      onPublishSuccess?.({ ...result, channelLinks });
       onClose();
     } catch (e) {
       if (publishPulseTimerRef.current) {

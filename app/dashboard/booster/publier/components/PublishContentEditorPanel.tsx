@@ -290,7 +290,7 @@ export default function PublishContentEditorPanel({
                     ref={contentTextAreaRef}
                     value={getDisplayPost(activeCard).content}
                     onChange={(e) => updatePost(activeCard, { content: e.target.value })}
-                    style={{ ...textAreaStyle, minHeight: 160 }}
+                    style={{ ...textAreaStyle, minHeight: 280 }}
                     placeholder="Contenu"
                   />
                 )}

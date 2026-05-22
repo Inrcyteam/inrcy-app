@@ -38,6 +38,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [checkingSession, setCheckingSession] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // ✅ ajout : message info (succès reset password)
@@ -76,9 +77,13 @@ useEffect(() => {
     hash.includes("error=") ||
     search.includes("error=");
 
-  if (hasAuthFlowInUrl) return;
+  if (hasAuthFlowInUrl) {
+    setCheckingSession(false);
+    return;
+  }
 
   let cancelled = false;
+  setCheckingSession(true);
 
   const redirectToDashboard = () => {
     if (cancelled) return;
@@ -86,18 +91,22 @@ useEffect(() => {
   };
 
   const ensureExistingSession = async () => {
-    const { data: sessionData } = await supabase.auth.getSession();
-    const session = sessionData.session;
-    if (!session || cancelled) return;
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const session = sessionData.session;
+      if (!session || cancelled) return;
 
-    const {
-      data: { user },
-      error,
-    } = await supabase.auth.getUser();
+      const {
+        data: { user },
+        error,
+      } = await supabase.auth.getUser();
 
-    if (!cancelled && !error && user) {
-      setActiveBrowserUserId(user.id);
-      redirectToDashboard();
+      if (!cancelled && !error && user) {
+        setActiveBrowserUserId(user.id);
+        redirectToDashboard();
+      }
+    } finally {
+      if (!cancelled) setCheckingSession(false);
     }
   };
 
@@ -106,6 +115,7 @@ useEffect(() => {
   const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
     if (!session) {
       setActiveBrowserUserId(null);
+      setCheckingSession(false);
       return;
     }
     if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED" || event === "INITIAL_SESSION") {
@@ -320,6 +330,15 @@ useEffect(() => {
     <main className="relative min-h-screen inrcy-soft-noise overflow-hidden">
       <div className="inrcy-noise-overlay" />
 
+      {checkingSession ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-white/30 backdrop-blur-sm">
+          <div className="rounded-2xl border border-white/70 bg-white/80 px-5 py-4 text-center shadow-xl">
+            <div className="text-sm font-black text-slate-800">Connexion en cours…</div>
+            <div className="mt-1 text-xs font-semibold text-slate-500">Vérification de votre session.</div>
+          </div>
+        </div>
+      ) : null}
+
       <svg className="inrcy-lines" viewBox="0 0 1200 700" preserveAspectRatio="none" aria-hidden="true">
         <defs>
           <linearGradient id="gLine" x1="0" x2="1">
@@ -471,8 +490,8 @@ useEffect(() => {
               </div>
             ) : null}
 
-            <button className="inrcy-btn w-full" type="submit" disabled={loading || !supabaseReady}>
-              {loading ? "Connexion..." : !supabaseReady ? "Initialisation..." : "Se connecter"}
+            <button className="inrcy-btn w-full" type="submit" disabled={loading || checkingSession || !supabaseReady}>
+              {loading ? "Connexion..." : checkingSession ? "Vérification..." : !supabaseReady ? "Initialisation..." : "Se connecter"}
             </button>
 
             {/* ✅ ajout : mot de passe oublié */}
@@ -480,7 +499,7 @@ useEffect(() => {
               type="button"
               onClick={onForgotPassword}
               className="w-full text-xs underline text-slate-600"
-              disabled={loading || !supabaseReady}
+              disabled={loading || checkingSession || !supabaseReady}
             >
               Mot de passe oublié ?
             </button>

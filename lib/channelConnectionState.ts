@@ -49,6 +49,7 @@ export type ChannelStates = {
     resource_id: string | null;
     resource_label: string | null;
     email: string | null;
+    url: string | null;
   };
   facebook: {
     accountConnected: boolean;
@@ -107,6 +108,16 @@ function latestIntegration(rows: IntegrationLite[], provider: string, source: st
 
 function hasTruthyString(v: unknown) {
   return !!(asString(v) || "").trim();
+}
+
+function buildGoogleMapsSearchUrl(label: string | null) {
+  const clean = (label || "").trim();
+  return clean ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(clean)}` : null;
+}
+
+function buildFacebookPageUrl(resourceId: string | null) {
+  const clean = (resourceId || "").trim();
+  return clean ? `https://www.facebook.com/${encodeURIComponent(clean)}` : null;
 }
 
 function hasGoogleSetting(settingsNode: unknown, product: "ga4" | "gsc") {
@@ -192,7 +203,7 @@ export async function getChannelConnectionStates(
   const fbAccountConnected = Boolean(((fbStatus === "account_connected" || fbStatus === "connected") && !fbExpired && fbHasToken) || fbSettings.accountConnected);
   const fbResourceId = asString(fb.resource_id) || asString(fbSettings.pageId) || null;
   const fbResourceLabel = asString(fb.resource_label) || asString(fbSettings.pageName) || null;
-  const fbPageUrl = asString(asRecord(fb.meta).page_url) || asString(fbSettings.url) || null;
+  const fbPageUrl = asString(asRecord(fb.meta).page_url) || asString(fbSettings.url) || buildFacebookPageUrl(fbResourceId);
   const fbPageConnected = Boolean((fbAccountConnected && fbResourceId) || fbSettings.pageConnected);
   const fbConnectionStatus = getConnectionDisplayStatus(fbPageConnected, "channel:facebook", fbMeta);
   const fbRequiresUpdate = fbConnectionStatus === "needs_update";
@@ -240,6 +251,7 @@ export async function getChannelConnectionStates(
   );
   const gmbResourceId = asString(gmb.resource_id) || asString(gmbSettings.locationName) || null;
   const gmbResourceLabel = asString(gmb.resource_label) || asString(gmbSettings.locationTitle) || null;
+  const gmbUrl = asString(gmbMeta.url) || asString(gmbSettings.url) || buildGoogleMapsSearchUrl(gmbResourceLabel || gmbResourceId);
   const gmbConfigured = Boolean((gmbAccountConnected && gmbResourceId) || (gmbSettings.connected && (gmbSettings.locationName || gmbSettings.locationTitle)));
   const gmbConnectionStatus = getConnectionDisplayStatus(gmbConfigured, "channel:gmb", gmbMeta);
   const gmbRequiresUpdate = gmbConnectionStatus === "needs_update";
@@ -271,6 +283,7 @@ export async function getChannelConnectionStates(
       resource_id: gmbResourceId,
       resource_label: gmbResourceLabel,
       email: asString(gmb.email_address) || asString(gmbSettings.accountEmail) || null,
+      url: gmbUrl,
     },
     facebook: {
       accountConnected: fbAccountConnected,

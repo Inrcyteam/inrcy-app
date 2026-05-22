@@ -30,8 +30,8 @@ export async function GET() {
         },
         gmb: {
           type: "location",
-          label: states.gmb.resource_label || states.gmb.email,
-          href: null,
+          label: states.gmb.resource_label || states.gmb.email || states.gmb.url,
+          href: states.gmb.url,
         },
         facebook: {
           type: "page",

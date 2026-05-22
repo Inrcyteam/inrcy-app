@@ -19,12 +19,15 @@ export type ChannelPost = {
   hashtags?: string[];
 };
 
+export type BoosterPreferredCta = "" | "devis" | "appeler" | "message";
+
 export type BoosterCtaDefaults = {
   preferredWebsiteUrl: string;
   preferredWebsiteLabel: string;
   siteWebUrl: string;
   inrcySiteUrl: string;
   phone: string;
+  preferredCta: BoosterPreferredCta;
 };
 
 export type ImagePayload = {
@@ -266,6 +269,23 @@ export function getWebsiteSourceLabelForChannel(channel: DisplayKey, defaults: B
   if (defaults.siteWebUrl && url === defaults.siteWebUrl) return "Site web connecté";
   if (defaults.inrcySiteUrl && url === defaults.inrcySiteUrl) return "Site iNrCy";
   return defaults.preferredWebsiteLabel || "Site connecté";
+}
+
+export function getDefaultCtaModeForChannel(channel: DisplayKey, defaults: BoosterCtaDefaults | null): BoosterCtaMode {
+  const preferred = defaults?.preferredCta || "devis";
+
+  if (preferred === "appeler") {
+    if (defaults?.phone) return "call";
+    return getWebsiteUrlForChannel(channel, defaults) ? "website" : "none";
+  }
+
+  if (preferred === "message") {
+    const supportsPrivateMessage = CTA_MODE_OPTIONS[channel].some((option) => option.value === "message");
+    if (supportsPrivateMessage) return "message";
+    return getWebsiteUrlForChannel(channel, defaults) ? "website" : "none";
+  }
+
+  return getWebsiteUrlForChannel(channel, defaults) ? "website" : "none";
 }
 
 export function buildAutoPrefillPatch(channel: DisplayKey, mode: BoosterCtaMode, post: ChannelPost, defaults: BoosterCtaDefaults | null): Partial<ChannelPost> {
