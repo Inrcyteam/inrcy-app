@@ -171,6 +171,7 @@ export default function PublishModal({
   const [generationProgress, setGenerationProgress] = useState(0);
   const [generationStage, setGenerationStage] = useState("");
   const generationTimersRef = useRef<number[]>([]);
+  const generationPulseTimerRef = useRef<number | null>(null);
   const [genError, setGenError] = useState("");
   const [publishError, setPublishError] = useState("");
   const [draftSaving, setDraftSaving] = useState(false);
@@ -230,6 +231,7 @@ export default function PublishModal({
   const contentTextAreaRef = useRef<HTMLTextAreaElement | null>(null);
   const siteContentEditorRef = useRef<HTMLDivElement | null>(null);
   const publishPulseTimerRef = useRef<number | null>(null);
+  const publishPulseProgressRef = useRef(0);
   const dragStateRef = useRef<{
     pointerId: number;
     startX: number;
@@ -277,6 +279,10 @@ export default function PublishModal({
       window.clearTimeout(timerId),
     );
     generationTimersRef.current = [];
+    if (generationPulseTimerRef.current) {
+      window.clearInterval(generationPulseTimerRef.current);
+      generationPulseTimerRef.current = null;
+    }
   };
 
   useEffect(() => {
@@ -285,6 +291,10 @@ export default function PublishModal({
         window.clearTimeout(timerId),
       );
       generationTimersRef.current = [];
+      if (generationPulseTimerRef.current) {
+        window.clearInterval(generationPulseTimerRef.current);
+        generationPulseTimerRef.current = null;
+      }
     };
   }, []);
 
@@ -998,21 +1008,25 @@ export default function PublishModal({
 
     clearGenerationTimers();
     setGenerating(true);
-    setGenerationProgress(10);
+    setGenerationProgress(8);
     setGenerationStage("Préparation");
     setDuplicateFeedback(null);
 
     const generationSteps = [
-      {
-        percent: 25,
-        label: shouldUseImagesForAI
-          ? "Analyse de l’intention et des images"
-          : "Analyse de l’intention",
-        delay: 650,
-      },
-      { percent: 45, label: "Génération des contenus", delay: 1500 },
-      { percent: 70, label: "Adaptation par canal", delay: 2800 },
-      { percent: 90, label: "Finalisation", delay: 4200 },
+      { percent: 16, label: "Préparation du brief", delay: 500 },
+      { percent: 26, label: "Analyse de l’intention", delay: 1200 },
+      ...(shouldUseImagesForAI
+        ? [
+            { percent: 36, label: "Préparation des images", delay: 2200 },
+            { percent: 48, label: "Analyse des visuels", delay: 3800 },
+          ]
+        : [{ percent: 42, label: "Construction du contenu", delay: 2600 }]),
+      { percent: 58, label: "Rédaction du contenu principal", delay: 5200 },
+      { percent: 70, label: "Adaptation par canal", delay: 7600 },
+      { percent: 80, label: "Vérification des textes", delay: 10200 },
+      { percent: 88, label: "Mise en forme", delay: 13200 },
+      { percent: 94, label: "Finalisation", delay: 17000 },
+      { percent: 97, label: "Encore quelques secondes...", delay: 23000 },
     ];
     generationTimersRef.current = generationSteps.map((step) =>
       window.setTimeout(() => {
@@ -1020,6 +1034,14 @@ export default function PublishModal({
         setGenerationStage(step.label);
       }, step.delay),
     );
+    generationPulseTimerRef.current = window.setInterval(() => {
+      setGenerationProgress((current) => {
+        if (current >= 98) return current;
+        const step = current < 60 ? 2 : 1;
+        return Math.min(98, current + step);
+      });
+      setGenerationStage((current) => current || "Génération en cours");
+    }, 1400);
 
     let didGenerate = false;
     try {
@@ -2001,12 +2023,42 @@ export default function PublishModal({
       }
 
       setPublishProgress((prev) => Math.max(prev, 74));
-      setPublishProgressLabel("Envoi aux canaux...");
+      publishPulseProgressRef.current = 74;
+      setPublishProgressLabel("Création de l’historique iNr’Send...");
       if (publishPulseTimerRef.current)
         window.clearInterval(publishPulseTimerRef.current);
+
+      const publishStartedAt = Date.now();
+      const publishChannels = [...selectedChannels];
+      const estimatedPublishMs = Math.max(
+        9000,
+        5500 + publishChannels.length * 6500 + (uploadTargets ? 2500 : 0),
+      );
+      const getPublishPulseLabel = (ratio: number) => {
+        if (ratio < 0.08) return "Création de l’historique iNr’Send...";
+        if (ratio < 0.78 && publishChannels.length) {
+          const channelRatio = Math.max(0, (ratio - 0.08) / 0.7);
+          const channelIndex = Math.min(
+            publishChannels.length - 1,
+            Math.floor(channelRatio * publishChannels.length),
+          );
+          const channel = publishChannels[channelIndex];
+          const label = CHANNEL_LABELS[channel] || channel;
+          return publishChannels.length > 1
+            ? `Canal ${channelIndex + 1}/${publishChannels.length} — publication sur ${label}...`
+            : `Publication sur ${label}...`;
+        }
+        if (ratio < 0.86) return "Récupération des retours canaux...";
+        if (ratio < 0.93) return "Vérification des succès et erreurs...";
+        return "Finalisation dans iNr’Send...";
+      };
+
       publishPulseTimerRef.current = window.setInterval(() => {
-        setPublishProgress((prev) => (prev >= 94 ? prev : prev + 1));
-      }, 220);
+        const ratio = Math.min(1, (Date.now() - publishStartedAt) / estimatedPublishMs);
+        publishPulseProgressRef.current = clampPercent(74 + ratio * 24, 74, 98);
+        setPublishProgressLabel(getPublishPulseLabel(ratio));
+        setPublishProgress((prev) => Math.max(prev, publishPulseProgressRef.current));
+      }, 500);
 
       const result = await trackEvent("publish", {
         idea: idea.trim(),

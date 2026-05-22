@@ -277,9 +277,7 @@ export default function PublishIntentPanel({
               onClick={onGenerate}
               disabled={generating}
             >
-              {generating
-                ? `${generationStage || "Génération"} ${generationProgress}%`
-                : "Générer avec iNrCy"}
+              {generating ? "Génération en cours..." : "Générer avec iNrCy"}
             </button>
             <button
               type="button"
@@ -290,10 +288,54 @@ export default function PublishIntentPanel({
             </button>
           </div>
           {generating ? (
-            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.72)" }}>
-              {images.length && useImagesForAI
-                ? "iNrCy analyse l’intention et les images, puis prépare les variantes par canal."
-                : "iNrCy prépare les variantes adaptées à chaque canal."}
+            <div
+              style={{
+                width: "min(520px, 100%)",
+                display: "grid",
+                gap: 7,
+                color: "rgba(255,255,255,0.72)",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  fontSize: 12,
+                  lineHeight: 1.25,
+                }}
+              >
+                <span>{generationStage || "Génération en cours"}</span>
+                <strong style={{ color: "rgba(255,255,255,0.9)", whiteSpace: "nowrap" }}>
+                  {generationProgress}%
+                </strong>
+              </div>
+              <div
+                aria-hidden="true"
+                style={{
+                  height: 7,
+                  borderRadius: 999,
+                  background: "rgba(255,255,255,0.10)",
+                  overflow: "hidden",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                }}
+              >
+                <div
+                  style={{
+                    height: "100%",
+                    width: `${generationProgress}%`,
+                    borderRadius: 999,
+                    background:
+                      "linear-gradient(90deg, rgba(76,195,255,0.92), rgba(99,102,241,0.95))",
+                    transition: "width 420ms ease",
+                  }}
+                />
+              </div>
+              <div style={{ fontSize: 12 }}>
+                {images.length && useImagesForAI
+                  ? "iNrCy analyse l’intention et les images, puis prépare les variantes par canal."
+                  : "iNrCy prépare les variantes adaptées à chaque canal."}
+              </div>
             </div>
           ) : null}
         </div>
