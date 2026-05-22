@@ -268,24 +268,7 @@ function campaignTitleFromFolder(folder: Folder, subject: string) {
   return `Campagne — ${safeSubject}`;
 }
 
-function extractChannelsFromPayload(payload: any): string[] {
-  if (!payload || typeof payload !== "object") return [];
-
-  const candidates: any[] = [];
-  if (Array.isArray(payload.channels)) candidates.push(...payload.channels);
-  if (Array.isArray(payload.platforms)) candidates.push(...payload.platforms);
-  if (Array.isArray(payload.targets)) candidates.push(...payload.targets);
-  if (Array.isArray(payload.destinations)) candidates.push(...payload.destinations);
-
-  const postByChannel = payload?.postByChannel && typeof payload.postByChannel === "object" ? payload.postByChannel : null;
-  if (postByChannel) candidates.push(...Object.keys(postByChannel));
-
-  const results = payload?.results && typeof payload.results === "object" ? payload.results : null;
-  if (results) candidates.push(...Object.keys(results));
-
-  const single = firstNonEmpty(payload.channel, payload.platform, payload.target, payload.destination);
-  if (single && !looksLikeDelimitedChannelList(single)) candidates.push(single);
-
+function normalizeChannelCandidates(candidates: any[]): string[] {
   const seen = new Set<string>();
   return candidates
     .flat()
@@ -298,6 +281,31 @@ function extractChannelsFromPayload(payload: any): string[] {
       seen.add(key);
       return true;
     });
+}
+
+function extractChannelsFromPayload(payload: any): string[] {
+  if (!payload || typeof payload !== "object") return [];
+
+  const explicitCandidates: any[] = [];
+  if (Array.isArray(payload.channels)) explicitCandidates.push(...payload.channels);
+  if (Array.isArray(payload.platforms)) explicitCandidates.push(...payload.platforms);
+  if (Array.isArray(payload.targets)) explicitCandidates.push(...payload.targets);
+  if (Array.isArray(payload.destinations)) explicitCandidates.push(...payload.destinations);
+
+  const explicitChannels = normalizeChannelCandidates(explicitCandidates);
+  if (explicitChannels.length) return explicitChannels;
+
+  const candidates: any[] = [];
+  const postByChannel = payload?.postByChannel && typeof payload.postByChannel === "object" ? payload.postByChannel : null;
+  if (postByChannel) candidates.push(...Object.keys(postByChannel));
+
+  const results = payload?.results && typeof payload.results === "object" ? payload.results : null;
+  if (results) candidates.push(...Object.keys(results));
+
+  const single = firstNonEmpty(payload.channel, payload.platform, payload.target, payload.destination);
+  if (single && !looksLikeDelimitedChannelList(single)) candidates.push(single);
+
+  return normalizeChannelCandidates(candidates);
 }
 
 function extractMessageFromPayload(payload: any): { html?: string | null; text?: string | null } {

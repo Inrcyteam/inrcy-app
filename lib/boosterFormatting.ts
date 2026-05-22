@@ -48,6 +48,7 @@ function applyInlineSiteFormattingToEscaped(input: string) {
   }
 
   // Keep backward compatibility with generated Markdown content.
+  out = out.replace(/\*\*\*([^*\n]+?)\*\*\*/g, "<strong><em>$1</em></strong>");
   out = out.replace(/\*\*([^*\n]+?)\*\*/g, "<strong>$1</strong>");
   out = out.replace(/(^|[^*])\*([^*\n]+?)\*/g, "$1<em>$2</em>");
 
@@ -167,6 +168,7 @@ export function stripSiteTextFormatting(input: unknown) {
   return decodeBasicHtmlEntities(String(input ?? ""))
     .replace(new RegExp(`<\\/?\\s*(${ALLOWED_INLINE_TAGS})[^>]*>`, "gi"), "")
     .replace(new RegExp(`&lt;\\/?\\s*(${ALLOWED_INLINE_TAGS})[^&]*?&gt;`, "gi"), "")
+    .replace(/\*\*\*([^*\n]+?)\*\*\*/g, "$1")
     .replace(/\*\*([^*\n]+?)\*\*/g, "$1")
     .replace(/(^|[^*])\*([^*\n]+?)\*/g, "$1$2")
     .replace(/[ \t]+\n/g, "\n")

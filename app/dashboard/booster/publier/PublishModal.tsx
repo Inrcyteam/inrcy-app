@@ -1347,6 +1347,17 @@ export default function PublishModal({
     return prepared;
   };
 
+  const filterPostsForSelectedChannels = (
+    preparedPosts: Partial<Record<ChannelKey, ChannelPost>>,
+    channelsToKeep: ChannelKey[],
+  ): Partial<Record<ChannelKey, ChannelPost>> => {
+    return channelsToKeep.reduce((acc, channel) => {
+      const post = preparedPosts[channel];
+      if (post) acc[channel] = post;
+      return acc;
+    }, {} as Partial<Record<ChannelKey, ChannelPost>>);
+  };
+
   const getPreparedDisplayPost = (
     key: DisplayKey,
     preparedPosts: Partial<Record<ChannelKey, ChannelPost>>,
@@ -2048,7 +2059,10 @@ export default function PublishModal({
       return;
     }
 
-    const preparedPostsByChannel = buildPreparedPostsByChannel();
+    const preparedPostsByChannel = filterPostsForSelectedChannels(
+      buildPreparedPostsByChannel(),
+      selectedChannels,
+    );
     const imageNames = images.map((file) => ({
       name: file.name,
       type: file.type,

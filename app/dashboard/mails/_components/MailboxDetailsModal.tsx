@@ -1,6 +1,7 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { sanitizeHtml } from "@/lib/sanitizeHtml";
+import { renderBoosterSiteContentHtml } from "@/lib/boosterFormatting";
 import styles from "../mails.module.css";
 import { ChannelImageAdapterCardsPanel, ChannelPublicationPreview } from "@/app/dashboard/_components/ChannelImageAdapterTool";
 import {
@@ -688,7 +689,16 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                         {parts.content ? (
                                           <div>
                                             <div className={styles.publicationLabel}>Contenu</div>
-                                            <pre className={styles.publicationPre}>{parts.content}</pre>
+                                            {activePublicationEntry.key === "inrcy_site" || activePublicationEntry.key === "site_web" ? (
+                                              <div
+                                                className={styles.publicationPre}
+                                                dangerouslySetInnerHTML={{
+                                                  __html: sanitizeHtml(renderBoosterSiteContentHtml(parts.content)),
+                                                }}
+                                              />
+                                            ) : (
+                                              <pre className={styles.publicationPre}>{parts.content}</pre>
+                                            )}
                                           </div>
                                         ) : null}
                                         {parts.cta ? (

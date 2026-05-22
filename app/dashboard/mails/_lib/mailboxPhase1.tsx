@@ -618,25 +618,7 @@ function looksLikeDelimitedChannelList(value: string) {
   return /\s[\/]\s|[,;\n]/.test(v);
 }
 
-export function extractChannelsFromPayload(payload: any): string[] {
-  if (!payload || typeof payload !== "object") return [];
-
-  const candidates: any[] = [];
-  // common patterns
-  if (Array.isArray(payload.channels)) candidates.push(...payload.channels);
-  if (Array.isArray(payload.platforms)) candidates.push(...payload.platforms);
-  if (Array.isArray(payload.targets)) candidates.push(...payload.targets);
-  if (Array.isArray(payload.destinations)) candidates.push(...payload.destinations);
-
-  const postByChannel = payload?.postByChannel && typeof payload.postByChannel === "object" ? payload.postByChannel : null;
-  if (postByChannel) candidates.push(...Object.keys(postByChannel));
-
-  const results = payload?.results && typeof payload.results === "object" ? payload.results : null;
-  if (results) candidates.push(...Object.keys(results));
-
-  const single = firstNonEmpty(payload.channel, payload.platform, payload.target, payload.destination);
-  if (single && !looksLikeDelimitedChannelList(single)) candidates.push(single);
-
+function normalizeChannelCandidates(candidates: any[]): string[] {
   const seen = new Set<string>();
   return candidates
     .flat()
@@ -649,6 +631,33 @@ export function extractChannelsFromPayload(payload: any): string[] {
       seen.add(key);
       return true;
     });
+}
+
+export function extractChannelsFromPayload(payload: any): string[] {
+  if (!payload || typeof payload !== "object") return [];
+
+  const explicitCandidates: any[] = [];
+  // Si un brouillon/publication déclare explicitement ses canaux, on respecte cette liste.
+  // Les contenus gardés en mémoire pour d'autres canaux ne doivent pas recréer des bulles fantômes.
+  if (Array.isArray(payload.channels)) explicitCandidates.push(...payload.channels);
+  if (Array.isArray(payload.platforms)) explicitCandidates.push(...payload.platforms);
+  if (Array.isArray(payload.targets)) explicitCandidates.push(...payload.targets);
+  if (Array.isArray(payload.destinations)) explicitCandidates.push(...payload.destinations);
+
+  const explicitChannels = normalizeChannelCandidates(explicitCandidates);
+  if (explicitChannels.length) return explicitChannels;
+
+  const candidates: any[] = [];
+  const postByChannel = payload?.postByChannel && typeof payload.postByChannel === "object" ? payload.postByChannel : null;
+  if (postByChannel) candidates.push(...Object.keys(postByChannel));
+
+  const results = payload?.results && typeof payload.results === "object" ? payload.results : null;
+  if (results) candidates.push(...Object.keys(results));
+
+  const single = firstNonEmpty(payload.channel, payload.platform, payload.target, payload.destination);
+  if (single && !looksLikeDelimitedChannelList(single)) candidates.push(single);
+
+  return normalizeChannelCandidates(candidates);
 }
 
 export function extractMessageFromPayload(payload: any): { html?: string | null; text?: string | null } {
@@ -1027,6 +1036,7 @@ export function extractChannelPublications(payload: any): ChannelPublication[] {
     .filter(Boolean);
 
   const channelSet = new Set(explicitChannels);
+  const hasExplicitChannels = channelSet.size > 0;
   const postByChannel = payload?.postByChannel && typeof payload.postByChannel === "object" ? payload.postByChannel : {};
   const postByNormalizedChannel = Object.entries(postByChannel).reduce<Record<string, any>>((acc, [key, value]) => {
     const cleaned = normalizeChannelKey(String(key || ""));
@@ -1035,7 +1045,7 @@ export function extractChannelPublications(payload: any): ChannelPublication[] {
     if (channelSet.has(cleaned)) return acc;
 
     const isSiteMirror = (cleaned === "inrcy_site" || cleaned === "site_web") && (channelSet.has("inrcy_site") || channelSet.has("site_web"));
-    if (!channelSet.size || !isSiteMirror) {
+    if (!hasExplicitChannels && !isSiteMirror) {
       channelSet.add(cleaned);
     }
     return acc;
