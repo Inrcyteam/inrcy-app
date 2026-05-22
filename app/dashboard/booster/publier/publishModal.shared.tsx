@@ -644,8 +644,6 @@ export async function renderChannelImage(params: {
     const dx = (cw - drawW) / 2 - maxX * clamp(transform.offsetX || 0, -100, 100) / 100;
     const dy = (ch - drawH) / 2 - maxY * clamp(transform.offsetY || 0, -100, 100) / 100;
 
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = "high";
     ctx.clearRect(0, 0, cw, ch);
 
     const backgroundMode = getBackgroundMode(transform);
@@ -658,7 +656,7 @@ export async function renderChannelImage(params: {
 
     const exportAsPng = backgroundMode === "transparent";
     const outputType = exportAsPng ? "image/png" : "image/jpeg";
-    const dataUrl = canvas.toDataURL(outputType, exportAsPng ? undefined : 0.96);
+    const dataUrl = canvas.toDataURL(outputType, 0.92);
     return {
       name: file.name.replace(/\.[^.]+$/, "") + `-${preset.width}x${preset.height}.${exportAsPng ? "png" : "jpg"}`,
       type: outputType,
