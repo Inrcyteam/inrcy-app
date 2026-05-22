@@ -151,16 +151,23 @@ export function editableHtmlToSiteText(input: unknown) {
   return sanitizeBoosterSiteText(html);
 }
 
+export function renderBoosterSiteInlineHtml(input: unknown) {
+  const raw = sanitizeBoosterSiteText(input);
+  if (!raw) return "";
+
+  return applyInlineSiteFormattingToEscaped(escapeHtml(raw).replace(/\r\n/g, "\n"))
+    .replace(/\n/g, "<br />");
+}
+
 export function renderBoosterSiteContentHtml(input: unknown) {
   const raw = sanitizeBoosterSiteText(input);
   if (!raw) return "";
 
-  const escaped = escapeHtml(raw).replace(/\r\n/g, "\n");
-  return escaped
+  return raw
     .split(/\n{2,}/)
     .map((p) => p.trim())
     .filter(Boolean)
-    .map((p) => `<p>${applyInlineSiteFormattingToEscaped(p).replace(/\n/g, "<br />")}</p>`)
+    .map((p) => `<p>${renderBoosterSiteInlineHtml(p)}</p>`)
     .join("");
 }
 

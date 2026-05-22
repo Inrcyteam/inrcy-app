@@ -1,7 +1,7 @@
 import React from "react";
 import { useRouter } from "next/navigation";
 import { sanitizeHtml } from "@/lib/sanitizeHtml";
-import { renderBoosterSiteContentHtml } from "@/lib/boosterFormatting";
+import { renderBoosterSiteContentHtml, renderBoosterSiteInlineHtml, stripSiteTextFormatting } from "@/lib/boosterFormatting";
 import styles from "../mails.module.css";
 import { ChannelImageAdapterCardsPanel, ChannelPublicationPreview } from "@/app/dashboard/_components/ChannelImageAdapterTool";
 import {
@@ -595,6 +595,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                           ) : activePublicationEntry ? (
                             (() => {
                               const parts = activeParts;
+                              const isSitePublication = activePublicationEntry.key === "inrcy_site" || activePublicationEntry.key === "site_web" || activePublicationEntry.key === "site";
                               const showInstagramHashtags = activePublicationEntry.key === "instagram";
                               const deletedAt = activePublicationResult?.deleted_at ? new Date(String(activePublicationResult.deleted_at)).toLocaleString() : null;
                               const hasAny = !!(parts.title || parts.content || parts.cta || (showInstagramHashtags && parts.hashtags?.length));
@@ -683,7 +684,16 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                         {parts.title ? (
                                           <div>
                                             <div className={styles.publicationLabel}>Titre</div>
-                                            <div className={styles.publicationValue}>{parts.title}</div>
+                                            {isSitePublication ? (
+                                              <div
+                                                className={styles.publicationValue}
+                                                dangerouslySetInnerHTML={{
+                                                  __html: sanitizeHtml(renderBoosterSiteInlineHtml(parts.title)),
+                                                }}
+                                              />
+                                            ) : (
+                                              <div className={styles.publicationValue}>{stripSiteTextFormatting(parts.title)}</div>
+                                            )}
                                           </div>
                                         ) : null}
                                         {parts.content ? (
@@ -697,14 +707,14 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                                 }}
                                               />
                                             ) : (
-                                              <pre className={styles.publicationPre}>{parts.content}</pre>
+                                              <pre className={styles.publicationPre}>{stripSiteTextFormatting(parts.content)}</pre>
                                             )}
                                           </div>
                                         ) : null}
                                         {parts.cta ? (
                                           <div>
                                             <div className={styles.publicationLabel}>CTA</div>
-                                            <div className={styles.publicationCtaBox}>{parts.cta}</div>
+                                            <div className={styles.publicationCtaBox}>{stripSiteTextFormatting(parts.cta)}</div>
                                           </div>
                                         ) : null}
                                         {activePublicationEntry.key === "instagram" && parts.hashtags && parts.hashtags.length ? (

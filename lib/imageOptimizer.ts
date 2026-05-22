@@ -15,6 +15,7 @@ const GMB_HEIGHT = 900;
 
 const DEFAULT_BACKGROUND = { r: 255, g: 255, b: 255, alpha: 1 };
 const COVER_CROP_THRESHOLD = 0.08;
+const HIGH_QUALITY_CHROMA_THRESHOLD = 90;
 
 export type OptimizeResult = {
   buffer: Buffer;
@@ -59,8 +60,8 @@ async function createSmartJpeg(params: {
     width,
     height,
     maxBytes,
-    startQuality = 88,
-    minQuality = 52,
+    startQuality = 94,
+    minQuality = 56,
     background = DEFAULT_BACKGROUND,
   } = params;
 
@@ -88,7 +89,9 @@ async function createSmartJpeg(params: {
         quality: q,
         mozjpeg: true,
         progressive: true,
-        chromaSubsampling: "4:2:0",
+        // 4:4:4 keeps text, logos and UI screenshots much sharper.
+        // If the image is too heavy, the loop lowers quality and falls back to 4:2:0.
+        chromaSubsampling: q >= HIGH_QUALITY_CHROMA_THRESHOLD ? "4:4:4" : "4:2:0",
       })
       .toBuffer();
   }
@@ -117,8 +120,8 @@ export async function optimizeForInstagram(inputBuffer: Buffer): Promise<Optimiz
     width: INSTAGRAM_WIDTH,
     height: INSTAGRAM_HEIGHT,
     maxBytes: INSTAGRAM_MAX_BYTES,
-    startQuality: 86,
-    minQuality: 52,
+    startQuality: 94,
+    minQuality: 64,
   });
 
   if (result.size > INSTAGRAM_MAX_BYTES) {
@@ -127,8 +130,8 @@ export async function optimizeForInstagram(inputBuffer: Buffer): Promise<Optimiz
       width: 900,
       height: 1125,
       maxBytes: INSTAGRAM_MAX_BYTES,
-      startQuality: 78,
-      minQuality: 48,
+      startQuality: 88,
+      minQuality: 54,
     });
   }
 
@@ -141,8 +144,8 @@ export async function optimizeForSocialFeed(inputBuffer: Buffer): Promise<Optimi
     width: SOCIAL_FEED_WIDTH,
     height: SOCIAL_FEED_HEIGHT,
     maxBytes: SOCIAL_FEED_MAX_BYTES,
-    startQuality: 88,
-    minQuality: 56,
+    startQuality: 94,
+    minQuality: 64,
   });
 
   if (result.size > SOCIAL_FEED_MAX_BYTES) {
@@ -151,8 +154,8 @@ export async function optimizeForSocialFeed(inputBuffer: Buffer): Promise<Optimi
       width: 1080,
       height: 1080,
       maxBytes: SOCIAL_FEED_MAX_BYTES,
-      startQuality: 80,
-      minQuality: 50,
+      startQuality: 88,
+      minQuality: 54,
     });
   }
 
@@ -165,8 +168,8 @@ export async function optimizeForSiteCard(inputBuffer: Buffer): Promise<Optimize
     width: SITE_CARD_WIDTH,
     height: SITE_CARD_HEIGHT,
     maxBytes: SITE_CARD_MAX_BYTES,
-    startQuality: 88,
-    minQuality: 56,
+    startQuality: 94,
+    minQuality: 64,
   });
 
   if (result.size > SITE_CARD_MAX_BYTES) {
@@ -175,8 +178,8 @@ export async function optimizeForSiteCard(inputBuffer: Buffer): Promise<Optimize
       width: 1280,
       height: 800,
       maxBytes: SITE_CARD_MAX_BYTES,
-      startQuality: 80,
-      minQuality: 50,
+      startQuality: 88,
+      minQuality: 54,
     });
   }
 
@@ -190,8 +193,8 @@ export async function optimizeForGoogleBusiness(inputBuffer: Buffer): Promise<Op
     width: GMB_WIDTH,
     height: GMB_HEIGHT,
     maxBytes: GMB_MAX_BYTES,
-    startQuality: 86,
-    minQuality: 52,
+    startQuality: 92,
+    minQuality: 60,
   });
 
   if (result.size > GMB_MAX_BYTES) {
@@ -200,8 +203,8 @@ export async function optimizeForGoogleBusiness(inputBuffer: Buffer): Promise<Op
       width: 960,
       height: 720,
       maxBytes: GMB_MAX_BYTES,
-      startQuality: 78,
-      minQuality: 48,
+      startQuality: 88,
+      minQuality: 54,
     });
   }
 

@@ -1,4 +1,6 @@
 import React, { useEffect, useState } from "react";
+import { renderBoosterSiteInlineHtml, stripSiteTextFormatting } from "@/lib/boosterFormatting";
+import { sanitizeHtml } from "@/lib/sanitizeHtml";
 
 type BackgroundMode = "blur" | "transparent" | "color" | "white" | "black" | "gray" | "sand" | "brand";
 
@@ -194,6 +196,14 @@ function cleanText(value?: string | null) {
     .replace(/[ \t]+/g, " ")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+}
+
+function cleanNetworkText(value?: string | null) {
+  return stripSiteTextFormatting(cleanText(value));
+}
+
+function renderSafeSiteInlineHtml(value: string) {
+  return sanitizeHtml(renderBoosterSiteInlineHtml(value));
 }
 
 function getTransformBackgroundMode(transform?: RenderTransform, fallbackMode?: BackgroundMode): BackgroundMode {
@@ -695,8 +705,14 @@ function SitePreviewCard({
           )}
         </div>
         <div style={{ minWidth: 0, display: "grid", gap: isMobile ? 7 : 8 }}>
-          <h3 style={{ fontSize: isMobile ? 15 : 18, lineHeight: 1.15, margin: 0, color: "#0f172a", display: "-webkit-box", WebkitLineClamp: isMobile ? 2 : 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{title}</h3>
-          <p style={{ fontSize: isMobile ? 12 : 13, lineHeight: isMobile ? 1.42 : 1.45, margin: 0, color: "#475569", display: "-webkit-box", WebkitLineClamp: isMobile ? 4 : 5, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{content}</p>
+          <h3
+            style={{ fontSize: isMobile ? 15 : 18, lineHeight: 1.15, margin: 0, color: "#0f172a", display: "-webkit-box", WebkitLineClamp: isMobile ? 2 : 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}
+            dangerouslySetInnerHTML={{ __html: renderSafeSiteInlineHtml(title) }}
+          />
+          <p
+            style={{ fontSize: isMobile ? 12 : 13, lineHeight: isMobile ? 1.42 : 1.45, margin: 0, color: "#475569", display: "-webkit-box", WebkitLineClamp: isMobile ? 4 : 5, WebkitBoxOrient: "vertical", overflow: "hidden" }}
+            dangerouslySetInnerHTML={{ __html: renderSafeSiteInlineHtml(content) }}
+          />
           {cta ? <span style={{ justifySelf: "start", marginTop: 1, padding: isMobile ? "7px 10px" : "8px 12px", borderRadius: isInrcySite ? 999 : 8, background: accent, color: "#fff", fontSize: isMobile ? 11 : 12, fontWeight: 800 }}>{cta}</span> : null}
         </div>
       </article>
@@ -841,11 +857,13 @@ export function ChannelPublicationPreview({ preview }: { preview: PublicationPre
   const isInstagram = key === "instagram";
   const isLinkedin = key === "linkedin";
   const isGmb = key === "gmb" || key === "google_business" || key === "google_business_profile";
-  const titleValue = cleanText(preview.title);
-  const contentValue = cleanText(preview.content);
+  const rawTitleValue = isSite ? String(preview.title || "").trim() : cleanText(preview.title);
+  const rawContentValue = isSite ? String(preview.content || "").trim() : cleanText(preview.content);
+  const titleValue = isSite ? rawTitleValue : cleanNetworkText(rawTitleValue);
+  const contentValue = isSite ? rawContentValue : cleanNetworkText(rawContentValue);
   const title = titleValue || "Titre de la publication";
   const content = contentValue || "Le contenu apparaîtra ici.";
-  const cta = cleanText(preview.cta);
+  const cta = isSite ? cleanText(preview.cta) : cleanNetworkText(preview.cta);
   const hashtags = (preview.hashtags || []).map((tag) => String(tag || "").replace(/^#+/, "").trim()).filter(Boolean).slice(0, 8);
   const fallbackPreset = isSite ? { width: 1440, height: 900 } : isInstagram ? { width: 1080, height: 1350 } : isGmb ? { width: 1200, height: 900 } : { width: 1200, height: 1200 };
   const rawImages = (preview.images || []).filter((item) => item?.previewUrl);
