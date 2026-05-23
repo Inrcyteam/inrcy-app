@@ -39,6 +39,7 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [checkingSession, setCheckingSession] = useState(true);
+  const [redirectingToDashboard, setRedirectingToDashboard] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // ✅ ajout : message info (succès reset password)
@@ -63,6 +64,7 @@ export default function LoginPage() {
   const [mounted, setMounted] = useState(false);
   const [dots, setDots] = useState<WanderDot[]>([]);
   const handledHashRef = useRef(false);
+  const redirectingToDashboardRef = useRef(false);
 
 useEffect(() => {
   if (typeof window === "undefined" || !supabaseReady) return;
@@ -78,6 +80,8 @@ useEffect(() => {
     search.includes("error=");
 
   if (hasAuthFlowInUrl) {
+    redirectingToDashboardRef.current = false;
+    setRedirectingToDashboard(false);
     setCheckingSession(false);
     return;
   }
@@ -87,6 +91,9 @@ useEffect(() => {
 
   const redirectToDashboard = () => {
     if (cancelled) return;
+    redirectingToDashboardRef.current = true;
+    setRedirectingToDashboard(true);
+    setCheckingSession(true);
     window.location.replace("/dashboard");
   };
 
@@ -106,7 +113,7 @@ useEffect(() => {
         redirectToDashboard();
       }
     } finally {
-      if (!cancelled) setCheckingSession(false);
+      if (!cancelled && !redirectingToDashboardRef.current) setCheckingSession(false);
     }
   };
 
@@ -114,6 +121,8 @@ useEffect(() => {
 
   const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
     if (!session) {
+      redirectingToDashboardRef.current = false;
+      setRedirectingToDashboard(false);
       setActiveBrowserUserId(null);
       setCheckingSession(false);
       return;
@@ -330,7 +339,7 @@ useEffect(() => {
     <main className="relative min-h-screen inrcy-soft-noise overflow-hidden">
       <div className="inrcy-noise-overlay" />
 
-      {checkingSession ? (
+      {checkingSession || redirectingToDashboard ? (
         <div className="fixed inset-0 z-50 grid place-items-center bg-white/30 backdrop-blur-sm">
           <div className="rounded-2xl border border-white/70 bg-white/80 px-5 py-4 text-center shadow-xl">
             <div className="text-sm font-black text-slate-800">Connexion en cours…</div>
@@ -490,8 +499,8 @@ useEffect(() => {
               </div>
             ) : null}
 
-            <button className="inrcy-btn w-full" type="submit" disabled={loading || checkingSession || !supabaseReady}>
-              {loading ? "Connexion..." : checkingSession ? "Vérification..." : !supabaseReady ? "Initialisation..." : "Se connecter"}
+            <button className="inrcy-btn w-full" type="submit" disabled={loading || checkingSession || redirectingToDashboard || !supabaseReady}>
+              {loading ? "Connexion..." : checkingSession || redirectingToDashboard ? "Vérification..." : !supabaseReady ? "Initialisation..." : "Se connecter"}
             </button>
 
             {/* ✅ ajout : mot de passe oublié */}
@@ -499,7 +508,7 @@ useEffect(() => {
               type="button"
               onClick={onForgotPassword}
               className="w-full text-xs underline text-slate-600"
-              disabled={loading || checkingSession || !supabaseReady}
+              disabled={loading || checkingSession || redirectingToDashboard || !supabaseReady}
             >
               Mot de passe oublié ?
             </button>

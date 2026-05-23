@@ -1,3 +1,4 @@
+import { useLayoutEffect } from "react";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import { stripSiteTextFormatting } from "@/lib/boosterFormatting";
 import {
@@ -72,6 +73,18 @@ export default function PublishContentEditorPanel({
   duplicateFeedback,
   onDuplicateContentToAllChannels,
 }: PublishContentEditorPanelProps) {
+  const activePost = getDisplayPost(activeCard);
+  const autoResizeContentTextArea = (element: HTMLTextAreaElement | null) => {
+    if (!element) return;
+    element.style.height = "auto";
+    element.style.height = `${element.scrollHeight}px`;
+  };
+
+  useLayoutEffect(() => {
+    if (isSiteDisplayKey(activeCard)) return;
+    autoResizeContentTextArea(contentTextAreaRef.current);
+  }, [activeCard, activePost.content, contentTextAreaRef]);
+
   return (
     <div
       className={styles.blockCard}
@@ -287,10 +300,23 @@ export default function PublishContentEditorPanel({
                   />
                 ) : (
                   <textarea
-                    ref={contentTextAreaRef}
+                    ref={(element) => {
+                      contentTextAreaRef.current = element;
+                      autoResizeContentTextArea(element);
+                    }}
                     value={getDisplayPost(activeCard).content}
-                    onChange={(e) => updatePost(activeCard, { content: e.target.value })}
-                    style={{ ...textAreaStyle, minHeight: 280 }}
+                    onChange={(e) => {
+                      updatePost(activeCard, { content: e.target.value });
+                      autoResizeContentTextArea(e.currentTarget);
+                    }}
+                    style={{
+                      ...textAreaStyle,
+                      minHeight: 280,
+                      height: 280,
+                      resize: "none",
+                      overflowY: "hidden",
+                    }}
+                    rows={1}
                     placeholder="Contenu"
                   />
                 )}
