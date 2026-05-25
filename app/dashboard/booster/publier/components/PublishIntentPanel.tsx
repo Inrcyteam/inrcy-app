@@ -170,8 +170,11 @@ type PublishIntentPanelProps = {
   idea: string;
   setIdea: Dispatch<SetStateAction<string>>;
   fileInputRef: MutableRefObject<HTMLInputElement | null>;
+  cameraInputRef: MutableRefObject<HTMLInputElement | null>;
   onImagesChange: (files: FileList | null) => void;
+  onCameraImagesChange: (files: FileList | null) => void;
   onPickImagesClick: () => void;
+  onTakePhotoClick: () => void;
   images: File[];
   imagePreviews: string[];
   removeImage: (index: number) => void;
@@ -194,8 +197,11 @@ export default function PublishIntentPanel({
   idea,
   setIdea,
   fileInputRef,
+  cameraInputRef,
   onImagesChange,
+  onCameraImagesChange,
   onPickImagesClick,
+  onTakePhotoClick,
   images,
   imagePreviews,
   removeImage,
@@ -722,6 +728,17 @@ export default function PublishIntentPanel({
             e.currentTarget.value = "";
           }}
         />
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            onCameraImagesChange(e.target.files);
+            e.currentTarget.value = "";
+          }}
+        />
         <div
           style={{
             display: "flex",
@@ -754,6 +771,25 @@ export default function PublishIntentPanel({
             }}
           >
             + Ajouter des images
+          </button>
+          <button
+            type="button"
+            className={styles.secondaryBtn}
+            onClick={onTakePhotoClick}
+            disabled={images.length >= 5}
+            title={images.length >= 5 ? "5 images maximum" : "Prendre une photo avec l’appareil"}
+            style={{
+              flex: "0 0 auto",
+              minHeight: isMobile ? 32 : 34,
+              padding: isMobile ? "6px 9px" : "7px 12px",
+              fontSize: isMobile ? 11 : 12,
+              whiteSpace: "nowrap",
+              opacity: images.length >= 5 ? 0.48 : 1,
+              filter: images.length >= 5 ? "grayscale(1)" : undefined,
+              cursor: images.length >= 5 ? "not-allowed" : "pointer",
+            }}
+          >
+            {isMobile ? "📷 Photo" : "📷 Prendre une photo"}
           </button>
           {imagePreviews.length ? (
             <div

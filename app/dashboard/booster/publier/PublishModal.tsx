@@ -249,6 +249,8 @@ export default function PublishModal({
   > | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const cameraTargetChannelRef = useRef<ChannelKey | undefined>(undefined);
   const gmbFileInputRef = useRef<HTMLInputElement | null>(null);
   const [images, setImages] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
@@ -1220,6 +1222,19 @@ export default function PublishModal({
     setImgError("");
     if (images.length >= 5) return;
     fileInputRef.current?.click();
+  };
+
+  const onTakePhotoClick = (targetChannel?: ChannelKey) => {
+    setImgError("");
+    if (images.length >= 5) return;
+    cameraTargetChannelRef.current = targetChannel;
+    cameraInputRef.current?.click();
+  };
+
+  const onCameraImagesChange = (files: FileList | null) => {
+    const targetChannel = cameraTargetChannelRef.current;
+    cameraTargetChannelRef.current = undefined;
+    void onImagesChange(files, targetChannel);
   };
 
   const onImagesChange = async (
@@ -2501,8 +2516,11 @@ export default function PublishModal({
         idea={idea}
         setIdea={setIdea}
         fileInputRef={fileInputRef}
+        cameraInputRef={cameraInputRef}
         onImagesChange={onImagesChange}
+        onCameraImagesChange={onCameraImagesChange}
         onPickImagesClick={onPickImagesClick}
+        onTakePhotoClick={() => onTakePhotoClick()}
         images={images}
         imagePreviews={imagePreviews}
         removeImage={removeImage}
@@ -2553,6 +2571,7 @@ export default function PublishModal({
         getImageAdapterLabel={getImageAdapterLabel}
         setSynchronizedActiveChannel={setSynchronizedActiveChannel}
         onPickImagesClick={onPickImagesClick}
+        onTakePhotoClick={onTakePhotoClick}
         onImagesChange={onImagesChange}
         gmbFileInputRef={gmbFileInputRef}
         setImgError={setImgError}

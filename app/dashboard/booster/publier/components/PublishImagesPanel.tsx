@@ -34,6 +34,7 @@ type PublishImagesPanelProps = {
   getImageAdapterLabel: (channel: ChannelKey) => string;
   setSynchronizedActiveChannel: (channel: ChannelKey) => void;
   onPickImagesClick: () => void;
+  onTakePhotoClick: (preferredChannel?: ChannelKey) => void;
   onImagesChange: (files: FileList | null, preferredChannel?: ChannelKey) => void;
   gmbFileInputRef: MutableRefObject<HTMLInputElement | null>;
   setImgError: (message: string) => void;
@@ -59,6 +60,7 @@ export default function PublishImagesPanel({
   getImageAdapterLabel,
   setSynchronizedActiveChannel,
   onPickImagesClick,
+  onTakePhotoClick,
   onImagesChange,
   gmbFileInputRef,
   setImgError,
@@ -127,6 +129,20 @@ export default function PublishImagesPanel({
         >
           + Ajouter des images
         </button>
+        <button
+          type="button"
+          className={styles.secondaryBtn}
+          onClick={() => onTakePhotoClick()}
+          disabled={images.length >= 5}
+          title={images.length >= 5 ? "5 images maximum" : "Prendre une photo avec l’appareil"}
+          style={{
+            opacity: images.length >= 5 ? 0.48 : 1,
+            filter: images.length >= 5 ? "grayscale(1)" : undefined,
+            cursor: images.length >= 5 ? "not-allowed" : "pointer",
+          }}
+        >
+          📷 Prendre une photo
+        </button>
         {images.length ? (
           <div style={{ fontSize: 12, opacity: 0.85 }}>
             {images.length}/5 image{images.length === 1 ? "" : "s"} ajoutée{images.length === 1 ? "" : "s"}
@@ -184,6 +200,24 @@ export default function PublishImagesPanel({
                   }}
                 >
                   + Ajouter une image spécifique Google Business
+                </button>
+                <button
+                  type="button"
+                  className={styles.secondaryBtn}
+                  onClick={() => {
+                    setImgError("");
+                    if (images.length >= 5) return;
+                    onTakePhotoClick("gmb");
+                  }}
+                  disabled={images.length >= 5}
+                  title={images.length >= 5 ? "5 images maximum" : "Prendre une photo pour Google Business"}
+                  style={{
+                    opacity: images.length >= 5 ? 0.48 : 1,
+                    filter: images.length >= 5 ? "grayscale(1)" : undefined,
+                    cursor: images.length >= 5 ? "not-allowed" : "pointer",
+                  }}
+                >
+                  📷 Photo Google Business
                 </button>
               </div>
             </div>
