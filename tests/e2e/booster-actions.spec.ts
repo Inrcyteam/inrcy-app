@@ -7,17 +7,17 @@ const password = process.env.E2E_PASSWORD;
 test.describe('booster actions', () => {
   test.skip(!email || !password, 'E2E_EMAIL et E2E_PASSWORD requis');
 
-  test('booster page has actionable UI elements', async ({ page }) => {
+  test('booster publish modal has actionable UI elements', async ({ page }) => {
     await login(page);
 
-    await page.goto('/dashboard/booster', {
+    // /dashboard/booster redirects intentionally to the dashboard modal layer.
+    await page.goto('/dashboard?action=publish', {
       waitUntil: 'domcontentloaded',
     });
 
-    await expect(page).toHaveURL(/booster/);
-
-    await expect(
-      page.locator('button, a').first()
-    ).toBeVisible({ timeout: 15000 });
+    await expect(page).toHaveURL(/\/dashboard(?:\?.*action=publish)?/);
+    await expect(page.getByText(/Publier|Module Booster/i).first()).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText(/Phrase libre|Votre intention/i).first()).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator('button, a, textarea').first()).toBeVisible({ timeout: 15_000 });
   });
 });

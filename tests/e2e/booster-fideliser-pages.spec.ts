@@ -8,18 +8,28 @@ const password = process.env.E2E_PASSWORD;
 test.describe('booster and fideliser pages', () => {
   test.skip(!email || !password, 'E2E_EMAIL et E2E_PASSWORD sont requis');
 
-  test('booster page loads', async ({ page }) => {
+  test('booster publish modal loads from dashboard', async ({ page }) => {
     const runtime = attachRuntimeErrorTracking(page);
 
     await login(page);
-    await page.goto('/dashboard/booster', { waitUntil: 'domcontentloaded' });
+    await page.goto('/dashboard?action=publish', { waitUntil: 'domcontentloaded' });
 
-    await expect(page).toHaveURL(/\/dashboard\/booster/, { timeout: 30_000 });
+    await expect(page).toHaveURL(/\/dashboard(?:\?.*action=publish)?/, { timeout: 30_000 });
     await expect(
-      page.getByText(/Booster|Aide Booster|Module Booster/i).first()
+      page.getByText(/Publier|Module Booster|Phrase libre|Votre intention/i).first()
     ).toBeVisible({ timeout: 20_000 });
 
     await runtime.expectNoErrors();
+  });
+
+  test('legacy booster route redirects to dashboard publish modal', async ({ page }) => {
+    await login(page);
+    await page.goto('/dashboard/booster?action=publish', { waitUntil: 'domcontentloaded' });
+
+    await expect(page).toHaveURL(/\/dashboard(?:\?.*action=publish)?/, { timeout: 30_000 });
+    await expect(
+      page.getByText(/Publier|Module Booster|Phrase libre|Votre intention/i).first()
+    ).toBeVisible({ timeout: 20_000 });
   });
 
   test('fideliser page loads', async ({ page }) => {
