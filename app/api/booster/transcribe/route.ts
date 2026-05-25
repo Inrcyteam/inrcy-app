@@ -116,6 +116,20 @@ const handler = async (request: Request) => {
 
     const formData = await request.formData().catch(() => null);
     const audio = formData?.get("audio");
+    const textEntry = formData?.get("text");
+    const liveText = cleanTranscriptText(typeof textEntry === "string" ? textEntry : "");
+
+    if (liveText) {
+      const correctedText = await correctTranscript(liveText);
+      if (!correctedText) {
+        return jsonUserFacingError("Le vocal n’a pas pu être converti en texte.", {
+          status: 502,
+          code: "voice_text_cleanup_empty",
+        });
+      }
+
+      return NextResponse.json({ ok: true, text: correctedText, raw_text: liveText, source: "live_text" });
+    }
 
     if (!(audio instanceof File)) {
       return jsonUserFacingError("Fichier audio manquant.", { status: 400, code: "audio_missing" });

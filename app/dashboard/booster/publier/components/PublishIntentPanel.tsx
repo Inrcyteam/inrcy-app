@@ -5,6 +5,7 @@ import { textAreaStyle } from "../publishModal.styles";
 type PublishModalStyles = Readonly<Record<string, string>>;
 
 type VoiceState = "idle" | "recording" | "transcribing";
+type VoiceRecordingMode = "media" | "liveOnly";
 
 type VoiceSpeechRecognitionAlternative = {
   transcript?: string;
@@ -88,6 +89,10 @@ function normalizeLiveVoiceText(value: string) {
   return value.replace(/\s+/g, " ").trim();
 }
 
+function cleanTranscriptTextForSubmission(value: string) {
+  return normalizeLiveVoiceText(value).slice(0, 1400).trim();
+}
+
 function getSpeechRecognitionConstructor() {
   if (typeof window === "undefined") return null;
   const speechWindow = window as Window & {
@@ -95,6 +100,67 @@ function getSpeechRecognitionConstructor() {
     webkitSpeechRecognition?: VoiceSpeechRecognitionConstructor;
   };
   return speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition || null;
+}
+
+function waitForVoiceWarmup(ms: number) {
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+function getVoicePlatformInfo() {
+  if (typeof window === "undefined" || typeof navigator === "undefined") {
+    return {
+      isIOS: false,
+      isSafari: false,
+      hasSpeechRecognition: false,
+      canUseLivePreview: false,
+      shouldUseLiveOnly: false,
+      shouldWarmupMicrophone: false,
+    };
+  }
+
+  const userAgent = navigator.userAgent || "";
+  const platform = navigator.platform || "";
+  const isIOS =
+    /iPad|iPhone|iPod/i.test(userAgent) ||
+    (platform === "MacIntel" && Number(navigator.maxTouchPoints || 0) > 1);
+  const isSafari =
+    /Safari/i.test(userAgent) &&
+    !/Chrome|Chromium|CriOS|FxiOS|Edg|EdgiOS|OPR|Opera/i.test(userAgent);
+  const hasSpeechRecognition = Boolean(getSpeechRecognitionConstructor());
+  const shouldUseLiveOnly = hasSpeechRecognition && (isIOS || isSafari);
+
+  return {
+    isIOS,
+    isSafari,
+    hasSpeechRecognition,
+    canUseLivePreview: hasSpeechRecognition && !isIOS && !isSafari,
+    shouldUseLiveOnly,
+    shouldWarmupMicrophone: isIOS || isSafari,
+  };
+}
+
+async function warmupVoiceMicrophoneIfNeeded() {
+  const { shouldWarmupMicrophone } = getVoicePlatformInfo();
+  if (!shouldWarmupMicrophone) return;
+
+  try {
+    if (window.sessionStorage.getItem("inrcy_voice_micro_warmed_v1") === "1") return;
+  } catch {
+    // sessionStorage peut être indisponible en navigation privée stricte.
+  }
+
+  const warmupStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  warmupStream.getTracks().forEach((track) => track.stop());
+
+  try {
+    window.sessionStorage.setItem("inrcy_voice_micro_warmed_v1", "1");
+  } catch {
+    // Best-effort only.
+  }
+
+  await waitForVoiceWarmup(450);
 }
 
 type PublishIntentPanelProps = {
@@ -149,6 +215,7 @@ export default function PublishIntentPanel({
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
+  const voiceRecordingModeRef = useRef<VoiceRecordingMode | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<number | null>(null);
   const maxRecordingTimerRef = useRef<number | null>(null);
@@ -156,6 +223,7 @@ export default function PublishIntentPanel({
   const liveVoiceBaseTextRef = useRef("");
   const liveVoiceLastTextRef = useRef("");
   const hasLiveVoiceDraftRef = useRef(false);
+  const liveOnlyUnavailableRef = useRef(false);
   const [liveVoiceEnabled, setLiveVoiceEnabled] = useState(false);
 
   const clearVoiceTimers = () => {
@@ -236,11 +304,24 @@ export default function PublishIntentPanel({
       recognition.onerror = () => {
         speechRecognitionRef.current = null;
         setLiveVoiceEnabled(false);
+        if (voiceRecordingModeRef.current === "liveOnly") {
+          clearVoiceTimers();
+          voiceRecordingModeRef.current = null;
+          liveOnlyUnavailableRef.current = true;
+          setRecordingSeconds(0);
+          setVoiceState("idle");
+          setVoiceError("Dictée en direct indisponible sur ce navigateur. Réessaie : iNrCy basculera sur le vocal classique.");
+        }
       };
 
       recognition.onend = () => {
         speechRecognitionRef.current = null;
         setLiveVoiceEnabled(false);
+        if (voiceRecordingModeRef.current === "liveOnly") {
+          clearVoiceTimers();
+          voiceRecordingModeRef.current = null;
+          void submitLiveVoiceTextForCorrection();
+        }
       };
 
       recognition.start();
@@ -251,6 +332,50 @@ export default function PublishIntentPanel({
       speechRecognitionRef.current = null;
       setLiveVoiceEnabled(false);
       return false;
+    }
+  };
+
+  const submitLiveVoiceTextForCorrection = async () => {
+    const liveTranscript = cleanTranscriptTextForSubmission(liveVoiceLastTextRef.current);
+    if (!liveTranscript) {
+      setVoiceError("Aucun texte n’a été détecté pendant le vocal. Réessaie en parlant un peu plus longtemps.");
+      resetLiveVoiceDraft();
+      setVoiceState("idle");
+      setRecordingSeconds(0);
+      return;
+    }
+
+    setVoiceState("transcribing");
+    setVoiceError("");
+
+    try {
+      const formData = new FormData();
+      formData.append("text", liveTranscript);
+
+      const response = await fetch("/api/booster/transcribe", {
+        method: "POST",
+        body: formData,
+      });
+      const json = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(String(json?.user_message || json?.error || "Correction impossible."));
+      }
+
+      const correctedText = String(json?.text || "").trim();
+      if (!correctedText) {
+        throw new Error("Aucun texte n’a été détecté dans le vocal.");
+      }
+
+      setIdea(() => appendVoiceText(liveVoiceBaseTextRef.current, correctedText));
+      resetLiveVoiceDraft();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Le vocal n’a pas pu être corrigé.";
+      setVoiceError(`${message} Le texte affiché en direct est conservé sans correction finale.`);
+      resetLiveVoiceDraft();
+    } finally {
+      setVoiceState("idle");
+      setRecordingSeconds(0);
     }
   };
 
@@ -314,6 +439,16 @@ export default function PublishIntentPanel({
   };
 
   const stopVoiceRecording = () => {
+    const recordingMode = voiceRecordingModeRef.current;
+
+    if (recordingMode === "liveOnly") {
+      clearVoiceTimers();
+      stopLiveSpeechRecognition();
+      voiceRecordingModeRef.current = null;
+      void submitLiveVoiceTextForCorrection();
+      return;
+    }
+
     stopLiveSpeechRecognition();
     const recorder = mediaRecorderRef.current;
     if (recorder && recorder.state === "recording") {
@@ -322,25 +457,38 @@ export default function PublishIntentPanel({
     }
     clearVoiceTimers();
     stopMediaStream();
+    voiceRecordingModeRef.current = null;
     setVoiceState("idle");
   };
 
-  const startVoiceRecording = async () => {
-    setVoiceError("");
-    stopLiveSpeechRecognition();
-    resetLiveVoiceDraft();
-
-    if (typeof window === "undefined" || typeof navigator === "undefined") return;
-    if (!window.isSecureContext && window.location.hostname !== "localhost") {
-      setVoiceError("Le micro nécessite une connexion sécurisée HTTPS.");
-      return;
+  const startLiveOnlyVoiceRecording = () => {
+    const started = startLiveSpeechRecognition(idea);
+    if (!started) {
+      liveOnlyUnavailableRef.current = true;
+      return false;
     }
+
+    voiceRecordingModeRef.current = "liveOnly";
+    setRecordingSeconds(0);
+    setVoiceState("recording");
+    recordingTimerRef.current = window.setInterval(() => {
+      setRecordingSeconds((value) => Math.min(VOICE_MAX_SECONDS, value + 1));
+    }, 1000);
+    maxRecordingTimerRef.current = window.setTimeout(() => {
+      stopVoiceRecording();
+    }, VOICE_MAX_SECONDS * 1000);
+    return true;
+  };
+
+  const startMediaVoiceRecording = async (allowLivePreview: boolean) => {
     if (!navigator.mediaDevices?.getUserMedia || typeof window.MediaRecorder === "undefined") {
       setVoiceError("Ce navigateur ne permet pas l’enregistrement vocal. Utilise Chrome, Edge ou Safari récent.");
       return;
     }
 
     try {
+      await warmupVoiceMicrophoneIfNeeded();
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mimeType = pickVoiceMimeType();
       const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
@@ -348,6 +496,7 @@ export default function PublishIntentPanel({
       audioChunksRef.current = [];
       mediaStreamRef.current = stream;
       mediaRecorderRef.current = recorder;
+      voiceRecordingModeRef.current = "media";
 
       recorder.ondataavailable = (event) => {
         if (event.data?.size) audioChunksRef.current.push(event.data);
@@ -359,6 +508,7 @@ export default function PublishIntentPanel({
         stopLiveSpeechRecognition();
         resetLiveVoiceDraft();
         stopMediaStream();
+        voiceRecordingModeRef.current = null;
         setVoiceState("idle");
       };
 
@@ -368,12 +518,15 @@ export default function PublishIntentPanel({
         const type = recorder.mimeType || mimeType || "audio/webm";
         const audioBlob = new Blob(audioChunksRef.current, { type });
         mediaRecorderRef.current = null;
+        voiceRecordingModeRef.current = null;
         audioChunksRef.current = [];
         void submitVoiceBlob(audioBlob);
       };
 
       recorder.start(1000);
-      startLiveSpeechRecognition(idea);
+      if (allowLivePreview) {
+        startLiveSpeechRecognition(idea);
+      }
       setRecordingSeconds(0);
       setVoiceState("recording");
       recordingTimerRef.current = window.setInterval(() => {
@@ -386,6 +539,7 @@ export default function PublishIntentPanel({
       stopLiveSpeechRecognition();
       resetLiveVoiceDraft();
       stopMediaStream();
+      voiceRecordingModeRef.current = null;
       const name = error instanceof DOMException ? error.name : "";
       if (name === "NotAllowedError" || name === "SecurityError") {
         setVoiceError("Micro refusé. Autorise le micro dans le navigateur puis réessaie.");
@@ -396,6 +550,26 @@ export default function PublishIntentPanel({
       }
       setVoiceState("idle");
     }
+  };
+
+  const startVoiceRecording = async () => {
+    setVoiceError("");
+    stopLiveSpeechRecognition();
+    resetLiveVoiceDraft();
+    voiceRecordingModeRef.current = null;
+
+    if (typeof window === "undefined" || typeof navigator === "undefined") return;
+    if (!window.isSecureContext && window.location.hostname !== "localhost") {
+      setVoiceError("Le micro nécessite une connexion sécurisée HTTPS.");
+      return;
+    }
+
+    const platformInfo = getVoicePlatformInfo();
+    if (platformInfo.shouldUseLiveOnly && !liveOnlyUnavailableRef.current && startLiveOnlyVoiceRecording()) {
+      return;
+    }
+
+    await startMediaVoiceRecording(platformInfo.canUseLivePreview);
   };
 
   const onVoiceButtonClick = () => {
@@ -413,6 +587,7 @@ export default function PublishIntentPanel({
       clearVoiceTimers();
       stopLiveSpeechRecognition();
       stopMediaStream();
+      voiceRecordingModeRef.current = null;
       const recorder = mediaRecorderRef.current;
       if (recorder && recorder.state === "recording") recorder.stop();
     };
