@@ -332,6 +332,19 @@ function pickLimit(pathname: string, method: string): LimitPlan {
       : { tokens: 30, windowSeconds: 60, name: "booster-generate-read" };
   }
 
+  if (pathname === "/api/booster/transcribe") {
+    return isWrite
+      ? {
+          tokens: Number(process.env.RL_BOOSTER_TRANSCRIBE_PER_MIN || 6),
+          windowSeconds: 60,
+          name: "booster-transcribe-write",
+          // Keep vocal usable if KV / rate limiting is unavailable.
+          failClosed: false,
+          dailyQuota: Number(process.env.QUOTA_BOOSTER_TRANSCRIBE_PER_DAY || 120),
+        }
+      : { tokens: 30, windowSeconds: 60, name: "booster-transcribe-read" };
+  }
+
   if (pathname === "/api/templates/render") {
     return isWrite
       ? {
