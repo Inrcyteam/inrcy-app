@@ -173,7 +173,6 @@ type PublishIntentPanelProps = {
   onImagesChange: (files: FileList | null) => void;
   onPickImagesClick: () => void;
   onTakePhotoClick: () => void;
-  cameraPreparing: boolean;
   images: File[];
   imagePreviews: string[];
   removeImage: (index: number) => void;
@@ -199,7 +198,6 @@ export default function PublishIntentPanel({
   onImagesChange,
   onPickImagesClick,
   onTakePhotoClick,
-  cameraPreparing,
   images,
   imagePreviews,
   removeImage,
@@ -598,7 +596,7 @@ export default function PublishIntentPanel({
   }, []);
 
   const voiceDisabled = generating || voiceState === "transcribing";
-  const generationDisabled = generating || voiceState !== "idle" || cameraPreparing;
+  const generationDisabled = generating || voiceState !== "idle";
   const voiceButtonLabel =
     voiceState === "recording"
       ? `Arrêter le vocal ${formatVoiceDuration(recordingSeconds)}`
@@ -728,17 +726,14 @@ export default function PublishIntentPanel({
         />
         <div
           style={{
-            display: "flex",
-            flexDirection: isMobile ? "column" : "row",
-            alignItems: isMobile ? "stretch" : "center",
-            gap: isMobile ? 8 : 8,
+            display: "grid",
+            gap: isMobile ? 8 : 10,
             minWidth: 0,
             padding: isMobile ? "8px 10px" : "10px 12px",
             borderRadius: 14,
             border: "1px solid rgba(255,255,255,0.10)",
             background: "rgba(255,255,255,0.035)",
             overflow: "visible",
-            flexWrap: isMobile ? "nowrap" : "wrap",
           }}
         >
           <div
@@ -746,7 +741,6 @@ export default function PublishIntentPanel({
               display: "flex",
               alignItems: "center",
               gap: isMobile ? 7 : 8,
-              minWidth: 0,
               flexWrap: "wrap",
             }}
           >
@@ -754,7 +748,7 @@ export default function PublishIntentPanel({
               type="button"
               className={styles.secondaryBtn}
               onClick={onPickImagesClick}
-              disabled={cameraPreparing || images.length >= 5}
+              disabled={images.length >= 5}
               title={images.length >= 5 ? "5 images maximum" : undefined}
               style={{
                 flex: "0 0 auto",
@@ -762,9 +756,9 @@ export default function PublishIntentPanel({
                 padding: isMobile ? "6px 9px" : "7px 12px",
                 fontSize: isMobile ? 11 : 12,
                 whiteSpace: "nowrap",
-                opacity: cameraPreparing || images.length >= 5 ? 0.48 : 1,
-                filter: cameraPreparing || images.length >= 5 ? "grayscale(1)" : undefined,
-                cursor: cameraPreparing || images.length >= 5 ? "not-allowed" : "pointer",
+                opacity: images.length >= 5 ? 0.48 : 1,
+                filter: images.length >= 5 ? "grayscale(1)" : undefined,
+                cursor: images.length >= 5 ? "not-allowed" : "pointer",
               }}
             >
               + Ajouter des images
@@ -774,17 +768,17 @@ export default function PublishIntentPanel({
                 type="button"
                 className={styles.secondaryBtn}
                 onClick={onTakePhotoClick}
-                disabled={cameraPreparing || images.length >= 5}
-                title={images.length >= 5 ? "5 images maximum" : "Prendre une photo avec l’appareil"}
+                disabled={images.length >= 5}
+                title={images.length >= 5 ? "5 images maximum" : "Prendre une photo dans iNrCy"}
                 style={{
                   flex: "0 0 auto",
                   minHeight: 32,
                   padding: "6px 9px",
                   fontSize: 11,
                   whiteSpace: "nowrap",
-                  opacity: cameraPreparing || images.length >= 5 ? 0.48 : 1,
-                  filter: cameraPreparing || images.length >= 5 ? "grayscale(1)" : undefined,
-                  cursor: cameraPreparing || images.length >= 5 ? "not-allowed" : "pointer",
+                  opacity: images.length >= 5 ? 0.48 : 1,
+                  filter: images.length >= 5 ? "grayscale(1)" : undefined,
+                  cursor: images.length >= 5 ? "not-allowed" : "pointer",
                 }}
               >
                 📷 Photo
@@ -797,7 +791,6 @@ export default function PublishIntentPanel({
               display: "flex",
               alignItems: "center",
               gap: isMobile ? 7 : 8,
-              minWidth: 0,
               flexWrap: "wrap",
             }}
           >
@@ -856,14 +849,13 @@ export default function PublishIntentPanel({
             </div>
           </div>
 
-          {imagePreviews.length || cameraPreparing ? (
+          {imagePreviews.length ? (
             <div
               style={{
                 display: "flex",
                 alignItems: "center",
                 gap: isMobile ? 6 : 7,
                 minWidth: 0,
-                width: isMobile ? "100%" : "auto",
                 overflow: "visible",
                 flexWrap: "wrap",
               }}
@@ -920,26 +912,6 @@ export default function PublishIntentPanel({
                   </button>
                 </div>
               ))}
-              {cameraPreparing ? (
-                <div
-                  aria-label="Photo en cours d’ajout"
-                  title="Photo en cours d’ajout"
-                  style={{
-                    width: isMobile ? 38 : 48,
-                    height: isMobile ? 38 : 48,
-                    flex: "0 0 auto",
-                    borderRadius: 10,
-                    border: "1px solid rgba(255,255,255,0.18)",
-                    background: "linear-gradient(135deg, rgba(76,195,255,0.16), rgba(255,255,255,0.07))",
-                    display: "grid",
-                    placeItems: "center",
-                    color: "rgba(255,255,255,0.72)",
-                    fontSize: isMobile ? 15 : 17,
-                  }}
-                >
-                  📷
-                </div>
-              ) : null}
             </div>
           ) : null}
         </div>

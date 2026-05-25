@@ -250,13 +250,12 @@ export default function PublishModal({
   > | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const cameraTargetChannelRef = useRef<ChannelKey | undefined>(undefined);
   const gmbFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [cameraCaptureOpen, setCameraCaptureOpen] = useState(false);
+  const [cameraCaptureTargetChannel, setCameraCaptureTargetChannel] = useState<ChannelKey | null>(null);
   const [images, setImages] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [imgError, setImgError] = useState("");
-  const [cameraPreparing, setCameraPreparing] = useState(false);
-  const [cameraCaptureOpen, setCameraCaptureOpen] = useState(false);
   const [useImagesForAI, setUseImagesForAI] = useState(true);
   const [imageMetaByKey, setImageMetaByKey] = useState<
     Record<string, ImageMeta>
@@ -1226,41 +1225,14 @@ export default function PublishModal({
     fileInputRef.current?.click();
   };
 
-  const onTakePhotoClick = (targetChannel?: ChannelKey) => {
-    setImgError("");
-    if (cameraPreparing || images.length >= 5) return;
-    cameraTargetChannelRef.current = targetChannel;
-    setCameraCaptureOpen(true);
-  };
-
-  const closeCameraCapture = () => {
-    cameraTargetChannelRef.current = undefined;
-    setCameraCaptureOpen(false);
-  };
-
-  const onCameraCapture = async (file: File) => {
-    const targetChannel = cameraTargetChannelRef.current;
-    cameraTargetChannelRef.current = undefined;
-    setImgError("");
-    setCameraPreparing(true);
-    try {
-      await onImagesChange([file], targetChannel);
-    } finally {
-      setCameraPreparing(false);
-    }
-  };
-
-  const onImagesChange = async (
-    files: FileList | File[] | null,
+  const addImageFiles = async (
+    pickedFiles: File[],
     targetChannel?: ChannelKey,
   ) => {
-    const pickedFiles = Array.isArray(files) ? files : files ? Array.from(files) : [];
     if (!pickedFiles.length) return;
     setImgError("");
 
-    const incoming = pickedFiles.filter((file) =>
-      file.type.startsWith("image/"),
-    );
+    const incoming = pickedFiles.filter((file) => file.type.startsWith("image/"));
     if (!incoming.length) {
       setImgError("Ajoutez des fichiers image valides.");
       return;
@@ -1333,29 +1305,44 @@ export default function PublishModal({
         next[targetChannel] = {
           imageKeys:
             targetChannel === "gmb"
-              ? (current.imageKeys || []).length
-                ? [...(current.imageKeys || [])]
-                : newKeys.slice(0, 1)
-              : Array.from(new Set([...(current.imageKeys || []), ...newKeys])),
-          transforms: {
-            ...(current.transforms || {}),
-            ...Object.fromEntries(
-              newKeys.map((key) => [
-                key,
-                current.transforms?.[key] ||
-                  getOptimizedTransform(targetChannel, nextMetaMap[key]),
-              ]),
-            ),
-          },
+              ? [newKeys[0]].filter(Boolean)
+              : Array.from(new Set([...current.imageKeys, ...newKeys])),
+          transforms: current.transforms,
         };
         return next;
       });
-      setSynchronizedActiveChannel(targetChannel);
-      setActiveImageKeyByChannel((prev) => ({
-        ...prev,
-        [targetChannel]: newKeys[0] || prev[targetChannel] || "",
-      }));
+    } else {
+      setChannelImageEditors((prev) =>
+        syncChannelImageEditors({
+          previous: prev,
+          imageKeys: nextFiles.map((file) => makeImageKey(file)),
+          selectedChannels,
+          imageMetaByKey: { ...imageMetaByKey, ...nextMetaMap },
+        }),
+      );
     }
+  };
+
+  const onImagesChange = async (
+    files: FileList | null,
+    targetChannel?: ChannelKey,
+  ) => {
+    if (!files?.length) return;
+    await addImageFiles(Array.from(files), targetChannel);
+  };
+
+  const onTakePhotoClick = (targetChannel?: ChannelKey) => {
+    setImgError("");
+    if (images.length >= 5) {
+      setImgError("Maximum 5 images.");
+      return;
+    }
+    setCameraCaptureTargetChannel(targetChannel ?? null);
+    setCameraCaptureOpen(true);
+  };
+
+  const onCameraCapture = async (file: File) => {
+    await addImageFiles([file], cameraCaptureTargetChannel ?? undefined);
   };
 
   const removeImage = (index: number) => {
@@ -2502,15 +2489,6 @@ export default function PublishModal({
         onConfirm={confirmFinalReview}
       />
 
-
-      <InrcyCameraCaptureModal
-        open={cameraCaptureOpen}
-        title="Prendre une photo"
-        subtitle="Caméra intégrée iNrCy : capturez sans quitter l’application."
-        onClose={closeCameraCapture}
-        onCapture={onCameraCapture}
-      />
-
       <PublishWarningModals
         styles={styles}
         emptyContentChannel={currentEmptyContentWarningChannel}
@@ -2519,6 +2497,13 @@ export default function PublishModal({
         onValidateEmptyContentWarning={onValidateEmptyContentWarning}
         onChooseGmbImage={onChooseGmbImage}
         onContinueWithoutGmbImage={onContinueWithoutGmbImage}
+      />
+
+      <InrcyCameraCaptureModal
+        open={cameraCaptureOpen}
+        title="Prendre une photo"
+        onClose={() => setCameraCaptureOpen(false)}
+        onCapture={onCameraCapture}
       />
 
       <PublishChannelSelector
@@ -2542,7 +2527,6 @@ export default function PublishModal({
         onImagesChange={onImagesChange}
         onPickImagesClick={onPickImagesClick}
         onTakePhotoClick={() => onTakePhotoClick()}
-        cameraPreparing={cameraPreparing}
         images={images}
         imagePreviews={imagePreviews}
         removeImage={removeImage}
@@ -2596,7 +2580,6 @@ export default function PublishModal({
         onPickImagesClick={onPickImagesClick}
         onTakePhotoClick={onTakePhotoClick}
         onImagesChange={onImagesChange}
-        cameraPreparing={cameraPreparing}
         gmbFileInputRef={gmbFileInputRef}
         setImgError={setImgError}
         toggleChannelImage={toggleChannelImage}

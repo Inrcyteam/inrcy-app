@@ -2048,12 +2048,10 @@ async function deleteDraftPermanently(id: string) {
     publicationImageAdapterDragRef.current = null;
   }
 
-  function addPublicationFiles(fileList: FileList | File[] | null) {
-    if (!fileList) return;
+  function addPublicationPickedFiles(picked: File[]) {
     const channel = normalizeChannelKey(activeDetailsChannelEntry?.key || "");
     if (!channel) return;
     setDetailsActionError(null);
-    const picked = Array.isArray(fileList) ? fileList : Array.from(fileList);
     if (!picked.length) return;
 
     const invalid = picked.find((file) => !file.type.startsWith("image/"));
@@ -2090,6 +2088,15 @@ async function deleteDraftPermanently(id: string) {
       }
       return merged;
     });
+  }
+
+  function addPublicationFiles(fileList: FileList | null) {
+    if (!fileList) return;
+    addPublicationPickedFiles(Array.from(fileList));
+  }
+
+  function addPublicationPhoto(file: File) {
+    addPublicationPickedFiles([file]);
   }
 
   const fileToDataUrl = (file: File): Promise<string> =>
@@ -2428,6 +2435,7 @@ async function deleteDraftPermanently(id: string) {
           resetPublicationImage={resetPublicationImage}
           movePublicationImage={movePublicationImage}
           addPublicationFiles={addPublicationFiles}
+          addPublicationPhoto={addPublicationPhoto}
           saveChannelPublication={saveChannelPublication}
           deleteChannelPublication={deleteChannelPublication}
           retryCampaignFailedRecipients={retryCampaignFailedRecipients}

@@ -12,7 +12,6 @@ function buildPhotoFileName() {
 type InrcyCameraCaptureModalProps = {
   open: boolean;
   title?: string;
-  subtitle?: string;
   onClose: () => void;
   onCapture: (file: File) => void | Promise<void>;
 };
@@ -20,7 +19,6 @@ type InrcyCameraCaptureModalProps = {
 export default function InrcyCameraCaptureModal({
   open,
   title = "Prendre une photo",
-  subtitle = "Cadrez la photo, puis validez sans quitter iNrCy.",
   onClose,
   onCapture,
 }: InrcyCameraCaptureModalProps) {
@@ -32,6 +30,7 @@ export default function InrcyCameraCaptureModal({
   const [phase, setPhase] = React.useState<"idle" | "loading" | "ready" | "capturing" | "error">("idle");
   const [error, setError] = React.useState("");
   const [facingMode, setFacingMode] = React.useState<"environment" | "user">("environment");
+  const [hasMultipleCameras, setHasMultipleCameras] = React.useState(true);
 
   const stopStream = React.useCallback(() => {
     const stream = streamRef.current;
@@ -85,6 +84,13 @@ export default function InrcyCameraCaptureModal({
       }
 
       streamRef.current = stream;
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const videoInputs = devices.filter((device) => device.kind === "videoinput");
+        setHasMultipleCameras(videoInputs.length !== 1);
+      } catch {
+        setHasMultipleCameras(true);
+      }
       const video = videoRef.current;
       if (video) {
         video.srcObject = stream;
@@ -206,9 +212,6 @@ export default function InrcyCameraCaptureModal({
         <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
           <div style={{ minWidth: 0 }}>
             <div style={{ fontSize: 17, fontWeight: 950, lineHeight: 1.15 }}>{title}</div>
-            <div style={{ marginTop: 4, fontSize: 12.5, color: "rgba(255,255,255,0.66)", lineHeight: 1.35 }}>
-              {subtitle}
-            </div>
           </div>
           <button
             type="button"
@@ -294,24 +297,26 @@ export default function InrcyCameraCaptureModal({
           <div style={{ color: "#ffb4b4", fontSize: 12.5, lineHeight: 1.35 }}>{error}</div>
         ) : null}
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-          <button
-            type="button"
-            onClick={() => setFacingMode((value) => (value === "environment" ? "user" : "environment"))}
-            disabled={phase === "capturing" || phase === "loading"}
-            style={{
-              minHeight: 42,
-              borderRadius: 999,
-              border: "1px solid rgba(255,255,255,0.18)",
-              background: "rgba(255,255,255,0.08)",
-              color: "#fff",
-              fontWeight: 850,
-              cursor: phase === "capturing" || phase === "loading" ? "not-allowed" : "pointer",
-              opacity: phase === "capturing" || phase === "loading" ? 0.55 : 1,
-            }}
-          >
-            Changer caméra
-          </button>
+        <div style={{ display: "grid", gridTemplateColumns: hasMultipleCameras ? "1fr 1fr" : "1fr", gap: 10 }}>
+          {hasMultipleCameras ? (
+            <button
+              type="button"
+              onClick={() => setFacingMode((value) => (value === "environment" ? "user" : "environment"))}
+              disabled={phase === "capturing" || phase === "loading"}
+              style={{
+                minHeight: 42,
+                borderRadius: 999,
+                border: "1px solid rgba(255,255,255,0.18)",
+                background: "rgba(255,255,255,0.08)",
+                color: "#fff",
+                fontWeight: 850,
+                cursor: phase === "capturing" || phase === "loading" ? "not-allowed" : "pointer",
+                opacity: phase === "capturing" || phase === "loading" ? 0.55 : 1,
+              }}
+            >
+              {facingMode === "environment" ? "Caméra avant" : "Caméra arrière"}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}

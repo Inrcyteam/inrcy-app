@@ -37,7 +37,6 @@ type PublishImagesPanelProps = {
   onPickImagesClick: () => void;
   onTakePhotoClick: (preferredChannel?: ChannelKey) => void;
   onImagesChange: (files: FileList | null, preferredChannel?: ChannelKey) => void;
-  cameraPreparing: boolean;
   gmbFileInputRef: MutableRefObject<HTMLInputElement | null>;
   setImgError: (message: string) => void;
   toggleChannelImage: (channel: ChannelKey, imageKey: string) => void;
@@ -65,7 +64,6 @@ export default function PublishImagesPanel({
   onPickImagesClick,
   onTakePhotoClick,
   onImagesChange,
-  cameraPreparing,
   gmbFileInputRef,
   setImgError,
   toggleChannelImage,
@@ -74,7 +72,7 @@ export default function PublishImagesPanel({
   removeImage,
   moveChannelImage,
 }: PublishImagesPanelProps) {
-  const publicationImagesPanelVisible = !cameraPreparing;
+  const publicationImagesPanelVisible = true;
 
   return (
     <div
@@ -123,12 +121,12 @@ export default function PublishImagesPanel({
           type="button"
           className={styles.secondaryBtn}
           onClick={onPickImagesClick}
-          disabled={cameraPreparing || images.length >= 5}
+          disabled={images.length >= 5}
           title={images.length >= 5 ? "5 images maximum" : undefined}
           style={{
-            opacity: cameraPreparing || images.length >= 5 ? 0.48 : 1,
-            filter: cameraPreparing || images.length >= 5 ? "grayscale(1)" : undefined,
-            cursor: cameraPreparing || images.length >= 5 ? "not-allowed" : "pointer",
+            opacity: images.length >= 5 ? 0.48 : 1,
+            filter: images.length >= 5 ? "grayscale(1)" : undefined,
+            cursor: images.length >= 5 ? "not-allowed" : "pointer",
           }}
         >
           + Ajouter des images
@@ -138,45 +136,24 @@ export default function PublishImagesPanel({
             type="button"
             className={styles.secondaryBtn}
             onClick={() => onTakePhotoClick()}
-            disabled={cameraPreparing || images.length >= 5}
-            title={images.length >= 5 ? "5 images maximum" : "Prendre une photo avec l’appareil"}
+            disabled={images.length >= 5}
+            title={images.length >= 5 ? "5 images maximum" : "Prendre une photo dans iNrCy"}
             style={{
-              opacity: cameraPreparing || images.length >= 5 ? 0.48 : 1,
-              filter: cameraPreparing || images.length >= 5 ? "grayscale(1)" : undefined,
-              cursor: cameraPreparing || images.length >= 5 ? "not-allowed" : "pointer",
+              opacity: images.length >= 5 ? 0.48 : 1,
+              filter: images.length >= 5 ? "grayscale(1)" : undefined,
+              cursor: images.length >= 5 ? "not-allowed" : "pointer",
             }}
           >
             📷 Photo
           </button>
         ) : null}
-        <div style={{ display: "inline-flex", alignItems: "center", gap: 8, minHeight: 32 }}>
-          {cameraPreparing ? (
-            <span
-              aria-label="Photo en cours d’ajout"
-              title="Photo en cours d’ajout"
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: 9,
-                border: "1px solid rgba(255,255,255,0.18)",
-                background: "linear-gradient(135deg, rgba(76,195,255,0.16), rgba(255,255,255,0.07))",
-                display: "inline-grid",
-                placeItems: "center",
-                color: "rgba(255,255,255,0.72)",
-                fontSize: 13,
-              }}
-            >
-              📷
-            </span>
-          ) : null}
-          {images.length ? (
-            <span style={{ fontSize: 12, opacity: 0.85 }}>
-              {images.length}/5 image{images.length === 1 ? "" : "s"} ajoutée{images.length === 1 ? "" : "s"}
-            </span>
-          ) : (
-            <span style={{ fontSize: 12, opacity: 0.7 }}>Aucune image ajoutée</span>
-          )}
-        </div>
+        {images.length ? (
+          <div style={{ fontSize: 12, opacity: 0.85 }}>
+            {images.length}/5 image{images.length === 1 ? "" : "s"} ajoutée{images.length === 1 ? "" : "s"}
+          </div>
+        ) : (
+          <div style={{ fontSize: 12, opacity: 0.7 }}>Aucune image ajoutée</div>
+        )}
       </div>
       {imgError ? (
         <div style={{ marginBottom: 10, fontSize: 13, color: "#ffb4b4" }}>
@@ -218,12 +195,12 @@ export default function PublishImagesPanel({
                     if (images.length >= 5) return;
                     gmbFileInputRef.current?.click();
                   }}
-                  disabled={cameraPreparing || images.length >= 5}
+                  disabled={images.length >= 5}
                   title={images.length >= 5 ? "5 images maximum" : undefined}
                   style={{
-                    opacity: cameraPreparing || images.length >= 5 ? 0.48 : 1,
-                    filter: cameraPreparing || images.length >= 5 ? "grayscale(1)" : undefined,
-                    cursor: cameraPreparing || images.length >= 5 ? "not-allowed" : "pointer",
+                    opacity: images.length >= 5 ? 0.48 : 1,
+                    filter: images.length >= 5 ? "grayscale(1)" : undefined,
+                    cursor: images.length >= 5 ? "not-allowed" : "pointer",
                   }}
                 >
                   + Ajouter une image spécifique Google Business
@@ -234,15 +211,15 @@ export default function PublishImagesPanel({
                     className={styles.secondaryBtn}
                     onClick={() => {
                       setImgError("");
-                      if (cameraPreparing || images.length >= 5) return;
+                      if (images.length >= 5) return;
                       onTakePhotoClick("gmb");
                     }}
-                    disabled={cameraPreparing || images.length >= 5}
+                    disabled={images.length >= 5}
                     title={images.length >= 5 ? "5 images maximum" : "Prendre une photo pour Google Business"}
                     style={{
-                      opacity: cameraPreparing || images.length >= 5 ? 0.48 : 1,
-                      filter: cameraPreparing || images.length >= 5 ? "grayscale(1)" : undefined,
-                      cursor: cameraPreparing || images.length >= 5 ? "not-allowed" : "pointer",
+                      opacity: images.length >= 5 ? 0.48 : 1,
+                      filter: images.length >= 5 ? "grayscale(1)" : undefined,
+                      cursor: images.length >= 5 ? "not-allowed" : "pointer",
                     }}
                   >
                     📷 Photo Google Business
