@@ -29,12 +29,132 @@ type PublishKo = {
 
 export type InstagramPublishResult = PublishOk | PublishKo;
 
+export type InstagramTokenCandidate = {
+  source: string;
+  accessToken: string;
+};
+
+type InstagramPublishAttempt = {
+  source: string;
+  ok: boolean;
+  error?: string | null;
+  graphErrors?: Array<{
+    message: string | null;
+    code: number | null;
+    subcode: number | null;
+    type: string | null;
+    fbtrace_id: string | null;
+  }>;
+};
+
 type WaitForContainerReadyResult =
   | { ok: true; checks: any[] }
   | { ok: false; error: string; checks: any[] };
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+
+function normalizeTokenCandidates(accessToken: string, tokenCandidates?: InstagramTokenCandidate[]): InstagramTokenCandidate[] {
+  const seen = new Set<string>();
+  const candidates: InstagramTokenCandidate[] = [];
+
+  const push = (source: string, token: string) => {
+    const clean = String(token || "").trim();
+    if (!clean || seen.has(clean)) return;
+    seen.add(clean);
+    candidates.push({ source: source || `token_${candidates.length + 1}`, accessToken: clean });
+  };
+
+  push("primary", accessToken);
+  for (const candidate of tokenCandidates || []) {
+    push(candidate.source, candidate.accessToken);
+  }
+
+  return candidates;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+}
+
+function extractGraphErrors(value: unknown, depth = 0): InstagramPublishAttempt["graphErrors"] {
+  if (depth > 6 || !value || typeof value !== "object") return [];
+  const rec = asRecord(value);
+  const errors: NonNullable<InstagramPublishAttempt["graphErrors"]> = [];
+  const err = asRecord(rec["error"]);
+  if (Object.keys(err).length) {
+    errors.push({
+      message: String(err["message"] || "").trim() || null,
+      code: typeof err["code"] === "number" ? err["code"] : Number(err["code"] || 0) || null,
+      subcode: typeof err["error_subcode"] === "number" ? err["error_subcode"] : Number(err["error_subcode"] || 0) || null,
+      type: String(err["type"] || "").trim() || null,
+      fbtrace_id: String(err["fbtrace_id"] || "").trim() || null,
+    });
+  }
+
+  for (const child of Object.values(rec)) {
+    if (!child || typeof child !== "object") continue;
+    if (Array.isArray(child)) {
+      for (const item of child) errors.push(...(extractGraphErrors(item, depth + 1) || []));
+    } else {
+      errors.push(...(extractGraphErrors(child, depth + 1) || []));
+    }
+  }
+
+  const seen = new Set<string>();
+  return errors.filter((error) => {
+    const key = `${error.message}|${error.code}|${error.subcode}|${error.type}|${error.fbtrace_id}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+export function isInstagramAuthorizationErrorResult(result: InstagramPublishResult): boolean {
+  if (result.ok) return false;
+  const graphErrors = extractGraphErrors(result.diagnostics) || [];
+  const haystack = [
+    result.error,
+    ...graphErrors.flatMap((error) => [error.message || "", String(error.code || ""), String(error.subcode || ""), error.type || ""]),
+  ].join(" ").toLowerCase();
+
+  return (
+    haystack.includes("authorization")
+    || haystack.includes("authorisation")
+    || haystack.includes("not authorized")
+    || haystack.includes("not authorised")
+    || haystack.includes("permission")
+    || haystack.includes("permissions")
+    || haystack.includes("access token")
+    || haystack.includes("oauth")
+    || haystack.includes("expired")
+    || haystack.includes("session")
+    || /(^|\s)(10|190|200)(\s|$)/.test(haystack)
+  );
+}
+
+function withTokenFallbackDiagnostics<T extends InstagramPublishResult>(
+  result: T,
+  attempts: InstagramPublishAttempt[],
+): T {
+  if (result.ok) {
+    return {
+      ...result,
+      diagnostics: {
+        ...(result.diagnostics || {}),
+        tokenFallbackAttempts: attempts,
+      },
+    } as T;
+  }
+  return {
+    ...result,
+    diagnostics: {
+      ...(result.diagnostics || {}),
+      tokenFallbackAttempts: attempts,
+    },
+  } as T;
 }
 
 async function fetchJson(url: string, init?: RequestInit) {
@@ -450,4 +570,81 @@ export async function instagramPublishCarousel(params: {
   } catch (e: any) {
     return { ok: false, error: e?.message || "Une erreur est survenue lors de la publication Instagram." };
   }
+}
+
+
+/**
+ * Same Instagram publishing flow as instagramPublishPhoto, but retries with stored user/page tokens
+ * when Meta returns an authorization/permission error. This prevents a stale or limited Page token
+ * from blocking a valid Instagram connection.
+ */
+export async function instagramPublishPhotoWithTokenFallback(params: {
+  igUserId: string;
+  accessToken: string;
+  tokenCandidates?: InstagramTokenCandidate[];
+  caption: string;
+  imageUrl: string;
+}): Promise<InstagramPublishResult> {
+  const candidates = normalizeTokenCandidates(params.accessToken, params.tokenCandidates);
+  const attempts: InstagramPublishAttempt[] = [];
+  let lastResult: InstagramPublishResult | null = null;
+
+  for (const candidate of candidates) {
+    const result = await instagramPublishPhoto({
+      igUserId: params.igUserId,
+      accessToken: candidate.accessToken,
+      caption: params.caption,
+      imageUrl: params.imageUrl,
+    });
+
+    attempts.push({
+      source: candidate.source,
+      ok: result.ok,
+      error: result.ok ? null : result.error,
+      graphErrors: result.ok ? [] : extractGraphErrors(result.diagnostics),
+    });
+
+    if (result.ok) return withTokenFallbackDiagnostics(result, attempts);
+    lastResult = result;
+    if (!isInstagramAuthorizationErrorResult(result)) break;
+  }
+
+  return withTokenFallbackDiagnostics(lastResult || { ok: false, error: "La connexion Instagram a expiré. Merci de reconnecter votre compte." }, attempts);
+}
+
+/**
+ * Same Instagram carousel publishing flow, with authorization fallback across valid stored tokens.
+ */
+export async function instagramPublishCarouselWithTokenFallback(params: {
+  igUserId: string;
+  accessToken: string;
+  tokenCandidates?: InstagramTokenCandidate[];
+  caption: string;
+  imageUrls: string[];
+}): Promise<InstagramPublishResult> {
+  const candidates = normalizeTokenCandidates(params.accessToken, params.tokenCandidates);
+  const attempts: InstagramPublishAttempt[] = [];
+  let lastResult: InstagramPublishResult | null = null;
+
+  for (const candidate of candidates) {
+    const result = await instagramPublishCarousel({
+      igUserId: params.igUserId,
+      accessToken: candidate.accessToken,
+      caption: params.caption,
+      imageUrls: params.imageUrls,
+    });
+
+    attempts.push({
+      source: candidate.source,
+      ok: result.ok,
+      error: result.ok ? null : result.error,
+      graphErrors: result.ok ? [] : extractGraphErrors(result.diagnostics),
+    });
+
+    if (result.ok) return withTokenFallbackDiagnostics(result, attempts);
+    lastResult = result;
+    if (!isInstagramAuthorizationErrorResult(result)) break;
+  }
+
+  return withTokenFallbackDiagnostics(lastResult || { ok: false, error: "La connexion Instagram a expiré. Merci de reconnecter votre compte." }, attempts);
 }

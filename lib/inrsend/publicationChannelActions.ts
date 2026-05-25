@@ -3,7 +3,7 @@ import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { tryDecryptToken } from "@/lib/oauthCrypto";
 import { facebookPublishToPage } from "@/lib/facebookPublish";
-import { instagramPublishCarousel, instagramPublishPhoto } from "@/lib/instagramPublish";
+import { instagramPublishCarouselWithTokenFallback, instagramPublishPhotoWithTokenFallback } from "@/lib/instagramPublish";
 import { linkedinPublishImage, linkedinPublishMultiImage, linkedinPublishText } from "@/lib/linkedinPublish";
 import { getGmbToken, gmbCreateLocalPost } from "@/lib/googleBusiness";
 import { optimizeForGoogleBusiness, optimizeForInstagram, optimizeForSiteCard, optimizeForSocialFeed } from "@/lib/imageOptimizer";
@@ -909,20 +909,36 @@ async function replaceChannelDelivery(params: {
         result: previousDeleteResult as unknown as JsonRecord,
       });
     }
+    const instagramTokenCandidates = buildInstagramDeleteTokenCandidates([
+      { sourceLabel: "instagram", row: igRow },
+      { sourceLabel: "facebook", row: fbRow },
+    ]).map((candidate) => ({ source: candidate.source, accessToken: candidate.token }));
+    const caption = buildBoosterInstagramCaption(nextPost, { websiteUrl, phone });
     const resp = instagramImages.length > 1
-      ? await instagramPublishCarousel({
+      ? await instagramPublishCarouselWithTokenFallback({
           igUserId,
           accessToken: igToken,
-          caption: buildBoosterInstagramCaption(nextPost, { websiteUrl, phone }),
+          tokenCandidates: instagramTokenCandidates,
+          caption,
           imageUrls: instagramImages,
         })
-      : await instagramPublishPhoto({
+      : await instagramPublishPhotoWithTokenFallback({
           igUserId,
           accessToken: igToken,
-          caption: buildBoosterInstagramCaption(nextPost, { websiteUrl, phone }),
+          tokenCandidates: instagramTokenCandidates,
+          caption,
           imageUrl: instagramImages[0],
         });
-    if (!resp.ok) throw new Error(resp.error);
+    if (!resp.ok) {
+      log.warn("instagram_publish_failed", {
+        route: "inrsend_publication_channel_action",
+        userId,
+        publicationId: publicationId || null,
+        error: resp.error,
+        diagnostics: resp.diagnostics || null,
+      });
+      throw new Error(resp.error);
+    }
     return {
       externalId: resp.mediaId,
       status: "delivered",

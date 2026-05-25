@@ -6,7 +6,7 @@ import { randomUUID } from "crypto";
 
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { facebookPublishToPage } from "@/lib/facebookPublish";
-import { instagramPublishCarousel, instagramPublishPhoto } from "@/lib/instagramPublish";
+import { instagramPublishCarouselWithTokenFallback, instagramPublishPhotoWithTokenFallback } from "@/lib/instagramPublish";
 import { linkedinPublishImage, linkedinPublishMultiImage, linkedinPublishText } from "@/lib/linkedinPublish";
 import { getGmbToken, gmbCreateLocalPost } from "@/lib/googleBusiness";
 import { optimizeForGoogleBusiness, optimizeForInstagram, optimizeForSiteCard, optimizeForSocialFeed } from "@/lib/imageOptimizer";
@@ -130,6 +130,36 @@ function isExpired(expiresAt: unknown, skewSeconds = 60) {
   const t = Date.parse(iso);
   if (!Number.isFinite(t)) return false;
   return t <= Date.now() + skewSeconds * 1000;
+}
+
+
+function buildInstagramPublishTokenCandidates(igRowLike: unknown, fbRowLike?: unknown) {
+  const candidates: Array<{ source: string; accessToken: string }> = [];
+  const seen = new Set<string>();
+
+  const push = (source: string, rawEncrypted: unknown) => {
+    const token = tryDecryptToken(String(rawEncrypted || "")) || "";
+    if (!token || seen.has(token)) return;
+    seen.add(token);
+    candidates.push({ source, accessToken: token });
+  };
+
+  const ig = asRecord(igRowLike);
+  const igMeta = asRecord(ig["meta"]);
+  push("instagram.access_token_enc", ig["access_token_enc"]);
+  push("instagram.meta.page_access_token_enc", igMeta["page_access_token_enc"]);
+  push("instagram.meta.standard_user_access_token_enc", igMeta["standard_user_access_token_enc"]);
+  push("instagram.meta.business_user_access_token_enc", igMeta["business_user_access_token_enc"]);
+  push("instagram.meta.user_access_token_enc", igMeta["user_access_token_enc"]);
+  push("instagram.meta.user_access_token", igMeta["user_access_token"]);
+
+  const fb = asRecord(fbRowLike);
+  const fbMeta = asRecord(fb["meta"]);
+  push("facebook.access_token_enc", fb["access_token_enc"]);
+  push("facebook.meta.page_access_token_enc", fbMeta["page_access_token_enc"]);
+  push("facebook.meta.user_access_token_enc", fbMeta["user_access_token_enc"]);
+
+  return candidates;
 }
 
 async function buildUrlsFromStoragePath(path: string): Promise<{ publicUrl: string | null; signedUrl: string | null }> {
@@ -781,21 +811,31 @@ const body = await req.json().catch(() => null);
             continue;
           }
 
+          const instagramTokenCandidates = buildInstagramPublishTokenCandidates(ig, fbRow);
           const resp = instagramImages.length > 1
-            ? await instagramPublishCarousel({
+            ? await instagramPublishCarouselWithTokenFallback({
                 igUserId,
                 accessToken: igToken,
+                tokenCandidates: instagramTokenCandidates,
                 caption: instagramCaption,
                 imageUrls: instagramImages,
               })
-            : await instagramPublishPhoto({
+            : await instagramPublishPhotoWithTokenFallback({
                 igUserId,
                 accessToken: igToken,
+                tokenCandidates: instagramTokenCandidates,
                 caption: instagramCaption,
                 imageUrl: instagramImages[0],
               });
 
           if (!resp.ok) {
+            console.warn("instagram_publish_failed", {
+              route: "booster_publish_now",
+              userId,
+              publicationId,
+              error: resp.error,
+              diagnostics: resp.diagnostics || null,
+            });
             await setDelivery(ch, { status: "failed", error: resp.error });
             results[ch] = { ok: false, error: resp.error, diagnostics: resp };
             continue;
@@ -1026,7 +1066,7 @@ const body = await req.json().catch(() => null);
           results,
           summary,
         },
-        { status: 502 }
+        { status: 200 }
       );
     }
 

@@ -92,6 +92,11 @@ export function getSimpleFrenchErrorMessage(input: unknown, fallback = "Cette ac
     return "La connexion Google a expiré. Merci de reconnecter votre compte.";
   }
 
+  if (matches(message, ["authorization error", "autorisation error", "not authorized", "not authorised", "instagram_content_publish", "application does not have permission", "permission"])
+    && matches(message, ["instagram", "authorization error", "autorisation error", "instagram_content_publish"])) {
+    return "Instagram refuse l’autorisation de publication. Reconnectez Instagram puis re-sélectionnez le profil relié à la bonne page Facebook.";
+  }
+
   if (matches(message, ["compte google business invalide", "compte linkedin invalide", "connexion linkedin invalide", "boîte outlook introuvable", "boite outlook introuvable", "compte imap introuvable", "source invalide"])) {
     return "La connexion concernée n'est pas valide ou n'est plus disponible.";
   }

@@ -67,6 +67,7 @@ export async function POST(req: Request) {
         page_name: page.name || null,
         page_source: page.source,
         business_name: page.business_name || null,
+        page_access_token_enc: encryptToken(page.access_token),
         user_access_token_enc: metaRec["user_access_token_enc"] || rowRec["access_token_enc"],
         standard_user_access_token_enc: metaRec["standard_user_access_token_enc"] || null,
         business_user_access_token_enc: metaRec["business_user_access_token_enc"] || null,
