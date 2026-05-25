@@ -255,6 +255,7 @@ export default function PublishModal({
   const [images, setImages] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [imgError, setImgError] = useState("");
+  const [cameraPreparing, setCameraPreparing] = useState(false);
   const [useImagesForAI, setUseImagesForAI] = useState(true);
   const [imageMetaByKey, setImageMetaByKey] = useState<
     Record<string, ImageMeta>
@@ -1226,25 +1227,48 @@ export default function PublishModal({
 
   const onTakePhotoClick = (targetChannel?: ChannelKey) => {
     setImgError("");
-    if (images.length >= 5) return;
+    if (cameraPreparing || images.length >= 5) return;
     cameraTargetChannelRef.current = targetChannel;
     cameraInputRef.current?.click();
   };
 
+  const waitForCameraReturn = () =>
+    new Promise<void>((resolve) => {
+      window.setTimeout(() => {
+        window.requestAnimationFrame(() => {
+          window.requestAnimationFrame(() => resolve());
+        });
+      }, 450);
+    });
+
   const onCameraImagesChange = (files: FileList | null) => {
     const targetChannel = cameraTargetChannelRef.current;
     cameraTargetChannelRef.current = undefined;
-    void onImagesChange(files, targetChannel);
+    const picked = files ? Array.from(files) : [];
+    if (!picked.length) return;
+
+    setImgError("");
+    setCameraPreparing(true);
+    void (async () => {
+      try {
+        await waitForCameraReturn();
+        await onImagesChange(picked, targetChannel);
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 220));
+      } finally {
+        setCameraPreparing(false);
+      }
+    })();
   };
 
   const onImagesChange = async (
-    files: FileList | null,
+    files: FileList | File[] | null,
     targetChannel?: ChannelKey,
   ) => {
-    if (!files?.length) return;
+    const pickedFiles = Array.isArray(files) ? files : files ? Array.from(files) : [];
+    if (!pickedFiles.length) return;
     setImgError("");
 
-    const incoming = Array.from(files).filter((file) =>
+    const incoming = pickedFiles.filter((file) =>
       file.type.startsWith("image/"),
     );
     if (!incoming.length) {
@@ -2521,6 +2545,7 @@ export default function PublishModal({
         onCameraImagesChange={onCameraImagesChange}
         onPickImagesClick={onPickImagesClick}
         onTakePhotoClick={() => onTakePhotoClick()}
+        cameraPreparing={cameraPreparing}
         images={images}
         imagePreviews={imagePreviews}
         removeImage={removeImage}
@@ -2558,6 +2583,7 @@ export default function PublishModal({
 
       <PublishImagesPanel
         styles={styles}
+        isMobile={isMobile}
         images={images}
         imgError={imgError}
         selectedChannels={selectedChannels}
@@ -2573,6 +2599,7 @@ export default function PublishModal({
         onPickImagesClick={onPickImagesClick}
         onTakePhotoClick={onTakePhotoClick}
         onImagesChange={onImagesChange}
+        cameraPreparing={cameraPreparing}
         gmbFileInputRef={gmbFileInputRef}
         setImgError={setImgError}
         toggleChannelImage={toggleChannelImage}

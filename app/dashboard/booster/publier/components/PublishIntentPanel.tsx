@@ -175,6 +175,7 @@ type PublishIntentPanelProps = {
   onCameraImagesChange: (files: FileList | null) => void;
   onPickImagesClick: () => void;
   onTakePhotoClick: () => void;
+  cameraPreparing: boolean;
   images: File[];
   imagePreviews: string[];
   removeImage: (index: number) => void;
@@ -202,6 +203,7 @@ export default function PublishIntentPanel({
   onCameraImagesChange,
   onPickImagesClick,
   onTakePhotoClick,
+  cameraPreparing,
   images,
   imagePreviews,
   removeImage,
@@ -600,7 +602,7 @@ export default function PublishIntentPanel({
   }, []);
 
   const voiceDisabled = generating || voiceState === "transcribing";
-  const generationDisabled = generating || voiceState !== "idle";
+  const generationDisabled = generating || voiceState !== "idle" || cameraPreparing;
   const voiceButtonLabel =
     voiceState === "recording"
       ? `Arrêter le vocal ${formatVoiceDuration(recordingSeconds)}`
@@ -742,62 +744,141 @@ export default function PublishIntentPanel({
         <div
           style={{
             display: "flex",
-            alignItems: "center",
-            gap: isMobile ? 7 : 8,
+            flexDirection: isMobile ? "column" : "row",
+            alignItems: isMobile ? "stretch" : "center",
+            gap: isMobile ? 8 : 8,
             minWidth: 0,
             padding: isMobile ? "8px 10px" : "10px 12px",
             borderRadius: 14,
             border: "1px solid rgba(255,255,255,0.10)",
             background: "rgba(255,255,255,0.035)",
             overflow: "visible",
-            flexWrap: "wrap",
+            flexWrap: isMobile ? "nowrap" : "wrap",
           }}
         >
-          <button
-            type="button"
-            className={styles.secondaryBtn}
-            onClick={onPickImagesClick}
-            disabled={images.length >= 5}
-            title={images.length >= 5 ? "5 images maximum" : undefined}
+          <div
             style={{
-              flex: "0 0 auto",
-              minHeight: isMobile ? 32 : 34,
-              padding: isMobile ? "6px 9px" : "7px 12px",
-              fontSize: isMobile ? 11 : 12,
-              whiteSpace: "nowrap",
-              opacity: images.length >= 5 ? 0.48 : 1,
-              filter: images.length >= 5 ? "grayscale(1)" : undefined,
-              cursor: images.length >= 5 ? "not-allowed" : "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: isMobile ? 7 : 8,
+              minWidth: 0,
+              flexWrap: "wrap",
             }}
           >
-            + Ajouter des images
-          </button>
-          <button
-            type="button"
-            className={styles.secondaryBtn}
-            onClick={onTakePhotoClick}
-            disabled={images.length >= 5}
-            title={images.length >= 5 ? "5 images maximum" : "Prendre une photo avec l’appareil"}
+            <button
+              type="button"
+              className={styles.secondaryBtn}
+              onClick={onPickImagesClick}
+              disabled={cameraPreparing || images.length >= 5}
+              title={images.length >= 5 ? "5 images maximum" : undefined}
+              style={{
+                flex: "0 0 auto",
+                minHeight: isMobile ? 32 : 34,
+                padding: isMobile ? "6px 9px" : "7px 12px",
+                fontSize: isMobile ? 11 : 12,
+                whiteSpace: "nowrap",
+                opacity: cameraPreparing || images.length >= 5 ? 0.48 : 1,
+                filter: cameraPreparing || images.length >= 5 ? "grayscale(1)" : undefined,
+                cursor: cameraPreparing || images.length >= 5 ? "not-allowed" : "pointer",
+              }}
+            >
+              + Ajouter des images
+            </button>
+            {isMobile ? (
+              <button
+                type="button"
+                className={styles.secondaryBtn}
+                onClick={onTakePhotoClick}
+                disabled={cameraPreparing || images.length >= 5}
+                title={images.length >= 5 ? "5 images maximum" : "Prendre une photo avec l’appareil"}
+                style={{
+                  flex: "0 0 auto",
+                  minHeight: 32,
+                  padding: "6px 9px",
+                  fontSize: 11,
+                  whiteSpace: "nowrap",
+                  opacity: cameraPreparing || images.length >= 5 ? 0.48 : 1,
+                  filter: cameraPreparing || images.length >= 5 ? "grayscale(1)" : undefined,
+                  cursor: cameraPreparing || images.length >= 5 ? "not-allowed" : "pointer",
+                }}
+              >
+                📷 Photo
+              </button>
+            ) : null}
+          </div>
+
+          <div
             style={{
-              flex: "0 0 auto",
-              minHeight: isMobile ? 32 : 34,
-              padding: isMobile ? "6px 9px" : "7px 12px",
-              fontSize: isMobile ? 11 : 12,
-              whiteSpace: "nowrap",
-              opacity: images.length >= 5 ? 0.48 : 1,
-              filter: images.length >= 5 ? "grayscale(1)" : undefined,
-              cursor: images.length >= 5 ? "not-allowed" : "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: isMobile ? 7 : 8,
+              minWidth: 0,
+              flexWrap: "wrap",
             }}
           >
-            {isMobile ? "📷 Photo" : "📷 Prendre une photo"}
-          </button>
-          {imagePreviews.length ? (
+            <label
+              title={
+                useImagesForAI
+                  ? "Les images aideront iNrCy à rédiger un contenu plus précis."
+                  : "Les images seront utilisées uniquement pour la publication."
+              }
+              style={{
+                flex: "0 0 auto",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: isMobile ? 5 : 7,
+                minHeight: isMobile ? 30 : 32,
+                padding: isMobile ? "5px 8px" : "6px 10px",
+                borderRadius: 999,
+                border: useImagesForAI
+                  ? "1px solid rgba(76,195,255,0.34)"
+                  : "1px solid rgba(255,255,255,0.14)",
+                background: useImagesForAI
+                  ? "rgba(76,195,255,0.12)"
+                  : "rgba(255,255,255,0.055)",
+                color: useImagesForAI ? "#dff6ff" : "rgba(255,255,255,0.76)",
+                fontSize: isMobile ? 10.5 : 12,
+                fontWeight: 850,
+                whiteSpace: "nowrap",
+                cursor: images.length ? "pointer" : "default",
+                userSelect: "none",
+                opacity: images.length ? 1 : 0.9,
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={useImagesForAI}
+                disabled={!images.length}
+                onChange={(event) => setUseImagesForAI(event.target.checked)}
+                style={{
+                  width: isMobile ? 13 : 14,
+                  height: isMobile ? 13 : 14,
+                  margin: 0,
+                  accentColor: "#4cc3ff",
+                }}
+              />
+              {useImagesForAI ? "Images utilisées par l’IA" : "Images hors génération"}
+            </label>
+            <div
+              style={{
+                flex: "0 0 auto",
+                fontSize: isMobile ? 11 : 12,
+                opacity: 0.82,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {images.length}/5 image{images.length === 1 ? "" : "s"}
+            </div>
+          </div>
+
+          {imagePreviews.length || cameraPreparing ? (
             <div
               style={{
                 display: "flex",
                 alignItems: "center",
                 gap: isMobile ? 6 : 7,
                 minWidth: 0,
+                width: isMobile ? "100%" : "auto",
                 overflow: "visible",
                 flexWrap: "wrap",
               }}
@@ -854,61 +935,28 @@ export default function PublishIntentPanel({
                   </button>
                 </div>
               ))}
+              {cameraPreparing ? (
+                <div
+                  aria-label="Photo en cours d’ajout"
+                  title="Photo en cours d’ajout"
+                  style={{
+                    width: isMobile ? 38 : 48,
+                    height: isMobile ? 38 : 48,
+                    flex: "0 0 auto",
+                    borderRadius: 10,
+                    border: "1px solid rgba(255,255,255,0.18)",
+                    background: "linear-gradient(135deg, rgba(76,195,255,0.16), rgba(255,255,255,0.07))",
+                    display: "grid",
+                    placeItems: "center",
+                    color: "rgba(255,255,255,0.72)",
+                    fontSize: isMobile ? 15 : 17,
+                  }}
+                >
+                  📷
+                </div>
+              ) : null}
             </div>
           ) : null}
-          <label
-            title={
-              useImagesForAI
-                ? "Les images aideront iNrCy à rédiger un contenu plus précis."
-                : "Les images seront utilisées uniquement pour la publication."
-            }
-            style={{
-              flex: "0 0 auto",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: isMobile ? 5 : 7,
-              minHeight: isMobile ? 30 : 32,
-              padding: isMobile ? "5px 8px" : "6px 10px",
-              borderRadius: 999,
-              border: useImagesForAI
-                ? "1px solid rgba(76,195,255,0.34)"
-                : "1px solid rgba(255,255,255,0.14)",
-              background: useImagesForAI
-                ? "rgba(76,195,255,0.12)"
-                : "rgba(255,255,255,0.055)",
-              color: useImagesForAI ? "#dff6ff" : "rgba(255,255,255,0.76)",
-              fontSize: isMobile ? 10.5 : 12,
-              fontWeight: 850,
-              whiteSpace: "nowrap",
-              cursor: images.length ? "pointer" : "default",
-              userSelect: "none",
-              opacity: images.length ? 1 : 0.9,
-            }}
-          >
-            <input
-              type="checkbox"
-              checked={useImagesForAI}
-              disabled={!images.length}
-              onChange={(event) => setUseImagesForAI(event.target.checked)}
-              style={{
-                width: isMobile ? 13 : 14,
-                height: isMobile ? 13 : 14,
-                margin: 0,
-                accentColor: "#4cc3ff",
-              }}
-            />
-            {useImagesForAI ? "Images utilisées par l’IA" : "Images hors génération"}
-          </label>
-          <div
-            style={{
-              flex: "0 0 auto",
-              fontSize: isMobile ? 11 : 12,
-              opacity: 0.82,
-              whiteSpace: "nowrap",
-            }}
-          >
-            {images.length}/5 image{images.length === 1 ? "" : "s"}
-          </div>
         </div>
         {imgError ? (
           <div style={{ fontSize: 13, color: "#ffb4b4" }}>{imgError}</div>

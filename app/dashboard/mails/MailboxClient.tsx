@@ -2048,12 +2048,12 @@ async function deleteDraftPermanently(id: string) {
     publicationImageAdapterDragRef.current = null;
   }
 
-  function addPublicationFiles(fileList: FileList | null) {
+  function addPublicationFiles(fileList: FileList | File[] | null) {
     if (!fileList) return;
     const channel = normalizeChannelKey(activeDetailsChannelEntry?.key || "");
     if (!channel) return;
     setDetailsActionError(null);
-    const picked = Array.from(fileList);
+    const picked = Array.isArray(fileList) ? fileList : Array.from(fileList);
     if (!picked.length) return;
 
     const invalid = picked.find((file) => !file.type.startsWith("image/"));

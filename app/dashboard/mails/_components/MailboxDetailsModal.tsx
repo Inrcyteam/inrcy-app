@@ -74,7 +74,7 @@ type MailboxDetailsModalProps = {
   removePublicationImageEverywhere?: (channel: string, imageKey: string) => void;
   resetPublicationImage?: (channel: string, imageKey: string) => void;
   movePublicationImage?: (channel: string, imageKey: string, direction: -1 | 1) => void;
-  addPublicationFiles: (fileList: FileList | null) => void;
+  addPublicationFiles: (fileList: FileList | File[] | null) => void;
   saveChannelPublication: () => Promise<void>;
   deleteChannelPublication: () => Promise<void>;
   retryCampaignFailedRecipients: (campaignId: string) => Promise<void>;
@@ -139,6 +139,8 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
   const router = useRouter();
   const [publicationPreviewOpen, setPublicationPreviewOpen] = React.useState(false);
   const [isMobileViewport, setIsMobileViewport] = React.useState(false);
+  const [publicationCameraPreparing, setPublicationCameraPreparing] = React.useState(false);
+  const publicationEditCameraInputRef = React.useRef<HTMLInputElement | null>(null);
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;
@@ -156,6 +158,32 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
   React.useEffect(() => {
     if (open) setPublicationPreviewOpen(false);
   }, [open, detailsItem?.id, detailsEditMode]);
+
+  const waitForPublicationCameraReturn = React.useCallback(() => {
+    return new Promise<void>((resolve) => {
+      window.setTimeout(() => {
+        window.requestAnimationFrame(() => {
+          window.requestAnimationFrame(() => resolve());
+        });
+      }, 450);
+    });
+  }, []);
+
+  const addPublicationCameraFiles = React.useCallback((files: FileList | null) => {
+    const picked = files ? Array.from(files) : [];
+    if (!picked.length) return;
+    setDetailsActionError(null);
+    setPublicationCameraPreparing(true);
+    void (async () => {
+      try {
+        await waitForPublicationCameraReturn();
+        addPublicationFiles(picked);
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 220));
+      } finally {
+        setPublicationCameraPreparing(false);
+      }
+    })();
+  }, [addPublicationFiles, setDetailsActionError, waitForPublicationCameraReturn]);
 
   if (!open) return null;
 
@@ -766,18 +794,71 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                     if (input) input.value = "";
                                   }}
                                 />
+                                <input
+                                  ref={publicationEditCameraInputRef}
+                                  type="file"
+                                  accept="image/*"
+                                  capture="environment"
+                                  className={styles.hiddenFileInput}
+                                  onChange={(e) => {
+                                    const input = e.currentTarget;
+                                    const files = input?.files ?? null;
+                                    addPublicationCameraFiles(files);
+                                    if (input) input.value = "";
+                                  }}
+                                />
                                 <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                                  <label htmlFor={publicationEditFileInputId} className={styles.btnAttach}>📎 Ajouter des images</label>
+                                  <label
+                                    htmlFor={publicationEditFileInputId}
+                                    className={styles.btnAttach}
+                                    style={{ opacity: publicationCameraPreparing ? 0.55 : 1, pointerEvents: publicationCameraPreparing ? "none" : undefined }}
+                                  >
+                                    📎 Ajouter des images
+                                  </label>
+                                  {isMobileViewport ? (
+                                    <button
+                                      type="button"
+                                      className={styles.btnAttach}
+                                      onClick={() => publicationEditCameraInputRef.current?.click()}
+                                      disabled={publicationCameraPreparing || activePublicationEditAssets.length >= 5}
+                                      style={{
+                                        opacity: publicationCameraPreparing || activePublicationEditAssets.length >= 5 ? 0.55 : 1,
+                                        cursor: publicationCameraPreparing || activePublicationEditAssets.length >= 5 ? "not-allowed" : "pointer",
+                                      }}
+                                    >
+                                      📷 Photo
+                                    </button>
+                                  ) : null}
                                   <span style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
-                                    {activePublicationEditAssets.length} image(s) pour {activePublicationEntry?.label || "ce canal"}
+                                    {`${activePublicationEditAssets.length} image(s) pour ${activePublicationEntry?.label || "ce canal"}`}
                                   </span>
+                                  {publicationCameraPreparing ? (
+                                    <span
+                                      aria-label="Photo en cours d’ajout"
+                                      title="Photo en cours d’ajout"
+                                      style={{
+                                        width: 28,
+                                        height: 28,
+                                        borderRadius: 9,
+                                        border: "1px solid rgba(255,255,255,0.18)",
+                                        background: "linear-gradient(135deg, rgba(76,195,255,0.16), rgba(255,255,255,0.07))",
+                                        display: "inline-grid",
+                                        placeItems: "center",
+                                        color: "rgba(255,255,255,0.72)",
+                                        fontSize: 13,
+                                      }}
+                                    >
+                                      📷
+                                    </span>
+                                  ) : null}
                                 </div>
 
                                 <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>
                                   iNrCy prépare automatiquement le rendu du canal. Utilisez Adapter seulement si le cadrage doit être corrigé. Site iNrCy et Site web restent indépendants.
                                 </div>
 
-                                <ChannelImageAdapterCardsPanel
+                                {publicationCameraPreparing ? null : (
+                                  <ChannelImageAdapterCardsPanel
                                   tabs={[{ key: activePublicationEditChannelKey, label: activePublicationEntry?.label || formatChannelLabel(activePublicationEditChannelKey) }]}
                                   activeChannel={activePublicationEditChannelKey}
                                   onActiveChannelChange={() => {}}
@@ -818,7 +899,8 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                   pillButtonActiveStyle={pillBtnActive}
                                   showTabs={false}
                                   emptyMessage="Aucune image pour ce canal."
-                                />
+                                  />
+                                )}
                               </div>
                             </section>
 
