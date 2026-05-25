@@ -1,4 +1,5 @@
 import React from "react";
+import { createPortal } from "react-dom";
 
 function buildPhotoFileName() {
   const stamp = new Date()
@@ -55,25 +56,39 @@ export default function InrcyCameraCaptureModal({
   const streamRef = React.useRef<MediaStream | null>(null);
   const mountedRef = React.useRef(false);
   const pointersRef = React.useRef<Map<number, PointerPoint>>(new Map());
-  const pinchStartRef = React.useRef<{ distance: number; zoom: number } | null>(null);
+  const pinchStartRef = React.useRef<{ distance: number; zoom: number } | null>(
+    null,
+  );
 
-  const [phase, setPhase] = React.useState<"idle" | "loading" | "ready" | "capturing" | "error">("idle");
+  const [phase, setPhase] = React.useState<
+    "idle" | "loading" | "ready" | "capturing" | "error"
+  >("idle");
   const [error, setError] = React.useState("");
-  const [facingMode, setFacingMode] = React.useState<"environment" | "user">("environment");
+  const [facingMode, setFacingMode] = React.useState<"environment" | "user">(
+    "environment",
+  );
   const [hasMultipleCameras, setHasMultipleCameras] = React.useState(true);
   const [isLandscapeViewport, setIsLandscapeViewport] = React.useState(false);
-  const [isMobileCameraViewport, setIsMobileCameraViewport] = React.useState(false);
+  const [isMobileCameraViewport, setIsMobileCameraViewport] =
+    React.useState(false);
   const [torchSupported, setTorchSupported] = React.useState(false);
   const [torchOn, setTorchOn] = React.useState(false);
-  const [hardwareZoomSupported, setHardwareZoomSupported] = React.useState(false);
+  const [hardwareZoomSupported, setHardwareZoomSupported] =
+    React.useState(false);
   const [zoom, setZoom] = React.useState(1);
-  const [zoomLimits, setZoomLimits] = React.useState({ min: 1, max: 4, step: 0.05 });
+  const [zoomLimits, setZoomLimits] = React.useState({
+    min: 1,
+    max: 4,
+    step: 0.05,
+  });
+  const [flashNotice, setFlashNotice] = React.useState("");
 
   React.useEffect(() => {
     if (!open || typeof window === "undefined") return;
 
     const updateViewport = () => {
-      const coarsePointer = window.matchMedia?.("(pointer: coarse)").matches ?? false;
+      const coarsePointer =
+        window.matchMedia?.("(pointer: coarse)").matches ?? false;
       setIsLandscapeViewport(window.innerWidth > window.innerHeight);
       setIsMobileCameraViewport(coarsePointer || window.innerWidth <= 820);
     };
@@ -89,12 +104,15 @@ export default function InrcyCameraCaptureModal({
   }, [open]);
 
   React.useEffect(() => {
-    if (typeof document === "undefined" || typeof window === "undefined") return;
+    if (typeof document === "undefined" || typeof window === "undefined")
+      return;
 
     const dispatchCameraState = (active: boolean) => {
-      document.documentElement.dataset.inrcyCameraCaptureActive = active ? "true" : "false";
+      document.documentElement.dataset.inrcyCameraCaptureActive = active
+        ? "true"
+        : "false";
       window.dispatchEvent(
-        new CustomEvent("inrcy-camera-capture-active", { detail: { active } })
+        new CustomEvent("inrcy-camera-capture-active", { detail: { active } }),
       );
     };
 
@@ -108,14 +126,34 @@ export default function InrcyCameraCaptureModal({
     dispatchCameraState(false);
   }, [open]);
 
+  React.useEffect(() => {
+    if (!open || typeof document === "undefined") return;
+
+    const previousOverflow = document.body.style.overflow;
+    const previousTouchAction = document.body.style.touchAction;
+    document.body.style.overflow = "hidden";
+    document.body.style.touchAction = "none";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.body.style.touchAction = previousTouchAction;
+    };
+  }, [open]);
+
   const applyTorch = React.useCallback(async (enabled: boolean) => {
     const track = streamRef.current?.getVideoTracks()[0];
     if (!track) return;
     try {
-      await track.applyConstraints({ advanced: [{ torch: enabled }] as unknown as MediaTrackConstraintSet[] });
+      await track.applyConstraints({
+        advanced: [{ torch: enabled }] as unknown as MediaTrackConstraintSet[],
+      });
       setTorchOn(enabled);
-    } catch {
+    } catch (err) {
+      console.warn("inrcy_camera_torch_apply_failed", err);
       setTorchOn(false);
+      setTorchSupported(false);
+      setFlashNotice("Flash indisponible sur cet appareil");
+      window.setTimeout(() => setFlashNotice(""), 1800);
     }
   }, []);
 
@@ -145,72 +183,95 @@ export default function InrcyCameraCaptureModal({
     pinchStartRef.current = null;
     setTorchOn(false);
     setTorchSupported(false);
+    setFlashNotice("");
     setHardwareZoomSupported(false);
     setZoom(1);
   }, []);
 
-  const applyZoom = React.useCallback(async (nextZoom: number) => {
-    const normalizedZoom = clamp(nextZoom, zoomLimits.min, zoomLimits.max);
-    setZoom(normalizedZoom);
+  const applyZoom = React.useCallback(
+    async (nextZoom: number) => {
+      const normalizedZoom = clamp(nextZoom, zoomLimits.min, zoomLimits.max);
+      setZoom(normalizedZoom);
 
-    if (!hardwareZoomSupported) return;
+      if (!hardwareZoomSupported) return;
 
-    const track = streamRef.current?.getVideoTracks()[0];
-    if (!track) return;
+      const track = streamRef.current?.getVideoTracks()[0];
+      if (!track) return;
 
-    try {
-      await track.applyConstraints({ advanced: [{ zoom: normalizedZoom }] as unknown as MediaTrackConstraintSet[] });
-    } catch {
-      setHardwareZoomSupported(false);
-    }
-  }, [hardwareZoomSupported, zoomLimits.max, zoomLimits.min]);
+      try {
+        await track.applyConstraints({
+          advanced: [
+            { zoom: normalizedZoom },
+          ] as unknown as MediaTrackConstraintSet[],
+        });
+      } catch {
+        setHardwareZoomSupported(false);
+      }
+    },
+    [hardwareZoomSupported, zoomLimits.max, zoomLimits.min],
+  );
 
-  const readCameraCapabilities = React.useCallback((stream: MediaStream) => {
-    const track = stream.getVideoTracks()[0];
-    if (!track || typeof track.getCapabilities !== "function") {
-      setTorchSupported(false);
-      setHardwareZoomSupported(false);
-      setZoomLimits({ min: 1, max: 4, step: 0.05 });
-      setZoom(1);
-      return;
-    }
-
-    try {
-      const capabilities = track.getCapabilities() as ExtendedCapabilities;
-      const zoomCapability = capabilities.zoom;
-      const nextTorchSupported = Boolean(capabilities.torch) && facingMode === "environment";
-      let nextZoomLimits = { min: 1, max: 4, step: 0.05 };
-      let nextHardwareZoomSupported = false;
-
-      if (typeof zoomCapability === "object" && zoomCapability !== null) {
-        const min = Number.isFinite(zoomCapability.min) ? Number(zoomCapability.min) : 1;
-        const max = Number.isFinite(zoomCapability.max) ? Number(zoomCapability.max) : 4;
-        const step = Number.isFinite(zoomCapability.step) ? Number(zoomCapability.step) : 0.05;
-        nextHardwareZoomSupported = max > min;
-        nextZoomLimits = {
-          min: Math.max(1, min),
-          max: Math.max(1, max),
-          step: Math.max(0.01, step),
-        };
+  const readCameraCapabilities = React.useCallback(
+    (stream: MediaStream) => {
+      const track = stream.getVideoTracks()[0];
+      if (!track || typeof track.getCapabilities !== "function") {
+        setTorchSupported(false);
+        setHardwareZoomSupported(false);
+        setZoomLimits({ min: 1, max: 4, step: 0.05 });
+        setZoom(1);
+        return;
       }
 
-      setTorchSupported(nextTorchSupported);
-      setHardwareZoomSupported(nextHardwareZoomSupported);
-      setZoomLimits(nextZoomLimits);
-      setZoom(nextZoomLimits.min || 1);
-    } catch {
-      setTorchSupported(false);
-      setHardwareZoomSupported(false);
-      setZoomLimits({ min: 1, max: 4, step: 0.05 });
-      setZoom(1);
-    }
-  }, [facingMode]);
+      try {
+        const capabilities = track.getCapabilities() as ExtendedCapabilities;
+        const zoomCapability = capabilities.zoom;
+        const nextTorchSupported =
+          Boolean(capabilities.torch) && facingMode === "environment";
+        let nextZoomLimits = { min: 1, max: 4, step: 0.05 };
+        let nextHardwareZoomSupported = false;
+
+        if (typeof zoomCapability === "object" && zoomCapability !== null) {
+          const min = Number.isFinite(zoomCapability.min)
+            ? Number(zoomCapability.min)
+            : 1;
+          const max = Number.isFinite(zoomCapability.max)
+            ? Number(zoomCapability.max)
+            : 4;
+          const step = Number.isFinite(zoomCapability.step)
+            ? Number(zoomCapability.step)
+            : 0.05;
+          nextHardwareZoomSupported = max > min;
+          nextZoomLimits = {
+            min: Math.max(1, min),
+            max: Math.max(1, max),
+            step: Math.max(0.01, step),
+          };
+        }
+
+        setTorchSupported(nextTorchSupported);
+        setHardwareZoomSupported(nextHardwareZoomSupported);
+        setZoomLimits(nextZoomLimits);
+        setZoom(nextZoomLimits.min || 1);
+      } catch {
+        setTorchSupported(false);
+        setHardwareZoomSupported(false);
+        setZoomLimits({ min: 1, max: 4, step: 0.05 });
+        setZoom(1);
+      }
+    },
+    [facingMode],
+  );
 
   const startCamera = React.useCallback(async () => {
     if (!open) return;
-    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.mediaDevices?.getUserMedia
+    ) {
       setPhase("error");
-      setError("Caméra indisponible sur ce navigateur. Importez une image à la place.");
+      setError(
+        "Caméra indisponible sur ce navigateur. Importez une image à la place.",
+      );
       return;
     }
 
@@ -230,7 +291,10 @@ export default function InrcyCameraCaptureModal({
           },
         });
       } catch {
-        stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: true });
+        stream = await navigator.mediaDevices.getUserMedia({
+          audio: false,
+          video: true,
+        });
       }
 
       if (!mountedRef.current) {
@@ -241,7 +305,9 @@ export default function InrcyCameraCaptureModal({
       streamRef.current = stream;
       try {
         const devices = await navigator.mediaDevices.enumerateDevices();
-        const videoInputs = devices.filter((device) => device.kind === "videoinput");
+        const videoInputs = devices.filter(
+          (device) => device.kind === "videoinput",
+        );
         setHasMultipleCameras(videoInputs.length !== 1);
       } catch {
         setHasMultipleCameras(true);
@@ -324,7 +390,17 @@ export default function InrcyCameraCaptureModal({
       const sourceHeight = height / zoom;
       const sourceX = (width - sourceWidth) / 2;
       const sourceY = (height - sourceHeight) / 2;
-      context.drawImage(video, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, width, height);
+      context.drawImage(
+        video,
+        sourceX,
+        sourceY,
+        sourceWidth,
+        sourceHeight,
+        0,
+        0,
+        width,
+        height,
+      );
     } else {
       context.drawImage(video, 0, 0, width, height);
     }
@@ -344,51 +420,78 @@ export default function InrcyCameraCaptureModal({
     await applyTorch(false);
     await onCapture(file);
     close();
-  }, [applyTorch, close, facingMode, hardwareZoomSupported, onCapture, phase, zoom]);
+  }, [
+    applyTorch,
+    close,
+    facingMode,
+    hardwareZoomSupported,
+    onCapture,
+    phase,
+    zoom,
+  ]);
 
-  const pickFallbackImage = React.useCallback((files: FileList | null) => {
-    const file = files?.[0];
-    if (!file) return;
-    void Promise.resolve(onCapture(file)).finally(close);
-  }, [close, onCapture]);
+  const pickFallbackImage = React.useCallback(
+    (files: FileList | null) => {
+      const file = files?.[0];
+      if (!file) return;
+      void Promise.resolve(onCapture(file)).finally(close);
+    },
+    [close, onCapture],
+  );
 
-  const handlePointerDown = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
-    try {
-      event.currentTarget.setPointerCapture(event.pointerId);
-    } catch {
-      // Best effort.
-    }
+  const handlePointerDown = React.useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      pointersRef.current.set(event.pointerId, {
+        x: event.clientX,
+        y: event.clientY,
+      });
+      try {
+        event.currentTarget.setPointerCapture(event.pointerId);
+      } catch {
+        // Best effort.
+      }
 
-    const points = Array.from(pointersRef.current.values());
-    if (points.length === 2) {
-      pinchStartRef.current = {
-        distance: getPointerDistance(points),
-        zoom,
-      };
-    }
-  }, [zoom]);
+      const points = Array.from(pointersRef.current.values());
+      if (points.length === 2) {
+        pinchStartRef.current = {
+          distance: getPointerDistance(points),
+          zoom,
+        };
+      }
+    },
+    [zoom],
+  );
 
-  const handlePointerMove = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (!pointersRef.current.has(event.pointerId)) return;
-    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+  const handlePointerMove = React.useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      if (!pointersRef.current.has(event.pointerId)) return;
+      pointersRef.current.set(event.pointerId, {
+        x: event.clientX,
+        y: event.clientY,
+      });
 
-    const points = Array.from(pointersRef.current.values());
-    const pinchStart = pinchStartRef.current;
-    if (points.length !== 2 || !pinchStart || pinchStart.distance <= 0) return;
+      const points = Array.from(pointersRef.current.values());
+      const pinchStart = pinchStartRef.current;
+      if (points.length !== 2 || !pinchStart || pinchStart.distance <= 0)
+        return;
 
-    event.preventDefault();
-    const currentDistance = getPointerDistance(points);
-    const ratio = currentDistance / pinchStart.distance;
-    void applyZoom(pinchStart.zoom * ratio);
-  }, [applyZoom]);
+      event.preventDefault();
+      const currentDistance = getPointerDistance(points);
+      const ratio = currentDistance / pinchStart.distance;
+      void applyZoom(pinchStart.zoom * ratio);
+    },
+    [applyZoom],
+  );
 
-  const handlePointerEnd = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    pointersRef.current.delete(event.pointerId);
-    if (pointersRef.current.size < 2) {
-      pinchStartRef.current = null;
-    }
-  }, []);
+  const handlePointerEnd = React.useCallback(
+    (event: React.PointerEvent<HTMLDivElement>) => {
+      pointersRef.current.delete(event.pointerId);
+      if (pointersRef.current.size < 2) {
+        pinchStartRef.current = null;
+      }
+    },
+    [],
+  );
 
   if (!open) return null;
 
@@ -421,7 +524,9 @@ export default function InrcyCameraCaptureModal({
     height: isLandscapeViewport ? 64 : 78,
     borderRadius: 999,
     border: "4px solid rgba(255,255,255,0.92)",
-    background: canCapture ? "linear-gradient(135deg, #48c6ef, #7c3aed 56%, #ff4fd8)" : "rgba(255,255,255,0.14)",
+    background: canCapture
+      ? "linear-gradient(135deg, #48c6ef, #7c3aed 56%, #ff4fd8)"
+      : "rgba(255,255,255,0.14)",
     color: "#fff",
     display: "grid",
     placeItems: "center",
@@ -467,24 +572,41 @@ export default function InrcyCameraCaptureModal({
     <button
       type="button"
       onClick={() => {
-        setFacingMode((value) => (value === "environment" ? "user" : "environment"));
+        setFacingMode((value) =>
+          value === "environment" ? "user" : "environment",
+        );
       }}
       disabled={isBusy}
-      aria-label={facingMode === "environment" ? "Passer en caméra avant" : "Passer en caméra arrière"}
+      aria-label={
+        facingMode === "environment"
+          ? "Passer en caméra avant"
+          : "Passer en caméra arrière"
+      }
       title={facingMode === "environment" ? "Caméra avant" : "Caméra arrière"}
       style={iconButtonBase}
     >
       ⇄
     </button>
   ) : (
-    <span style={{ width: iconButtonBase.width, height: iconButtonBase.height, flex: "0 0 auto" }} />
+    <span
+      style={{
+        width: iconButtonBase.width,
+        height: iconButtonBase.height,
+        flex: "0 0 auto",
+      }}
+    />
   );
 
   const flashButton = (
     <button
       type="button"
       onClick={() => {
-        if (!torchSupported || isBusy) return;
+        if (isBusy) return;
+        if (!torchSupported) {
+          setFlashNotice("Flash indisponible sur cet appareil");
+          window.setTimeout(() => setFlashNotice(""), 1800);
+          return;
+        }
         void applyTorch(!torchOn);
       }}
       disabled={isBusy}
@@ -496,19 +618,29 @@ export default function InrcyCameraCaptureModal({
             : "Activer le flash"
           : "Flash indisponible sur cet appareil"
       }
-      title={torchSupported ? (torchOn ? "Flash activé" : "Flash") : "Flash indisponible sur cet appareil"}
+      title={
+        torchSupported
+          ? torchOn
+            ? "Flash activé"
+            : "Flash"
+          : "Flash indisponible sur cet appareil"
+      }
       style={{
         ...iconButtonBase,
         background: torchSupported
           ? torchOn
             ? "linear-gradient(135deg, #f59e0b, #ff4fd8)"
             : iconButtonBase.background
-          : "rgba(255,255,255,0.08)",
-        color: torchSupported ? "#fff" : "rgba(255,255,255,0.48)",
-        borderColor: torchSupported ? "rgba(255,255,255,0.26)" : "rgba(255,255,255,0.14)",
+          : "rgba(15,23,42,0.72)",
+        color: torchSupported ? "#fff" : "rgba(255,255,255,0.78)",
+        borderColor: torchSupported
+          ? "rgba(255,255,255,0.26)"
+          : "rgba(255,255,255,0.34)",
         cursor: torchSupported && !isBusy ? "pointer" : "not-allowed",
-        opacity: isBusy ? 0.55 : torchSupported ? 1 : 0.52,
-        boxShadow: torchSupported ? iconButtonBase.boxShadow : "none",
+        opacity: isBusy ? 0.55 : 1,
+        boxShadow: torchSupported
+          ? iconButtonBase.boxShadow
+          : "0 12px 28px rgba(0,0,0,0.24)",
       }}
     >
       ⚡
@@ -520,7 +652,9 @@ export default function InrcyCameraCaptureModal({
       type="button"
       onClick={capture}
       disabled={!canCapture}
-      aria-label={phase === "capturing" ? "Ajout de la photo" : "Capturer la photo"}
+      aria-label={
+        phase === "capturing" ? "Ajout de la photo" : "Capturer la photo"
+      }
       title="Capturer la photo"
       style={captureButtonStyle}
     >
@@ -528,7 +662,7 @@ export default function InrcyCameraCaptureModal({
     </button>
   );
 
-  return (
+  const dialog = (
     <div
       role="dialog"
       aria-modal="true"
@@ -537,8 +671,10 @@ export default function InrcyCameraCaptureModal({
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 100000,
-        background: "rgba(5,8,18,0.94)",
+        zIndex: 2147483000,
+        width: "100dvw",
+        height: "100dvh",
+        background: "rgba(5,8,18,0.96)",
         display: "grid",
         placeItems: "center",
         padding: shellIsFullscreen ? 0 : 14,
@@ -553,9 +689,13 @@ export default function InrcyCameraCaptureModal({
           display: "flex",
           flexDirection: "column",
           borderRadius: shellIsFullscreen ? 0 : 28,
-          border: shellIsFullscreen ? "none" : "1px solid rgba(255,255,255,0.16)",
+          border: shellIsFullscreen
+            ? "none"
+            : "1px solid rgba(255,255,255,0.16)",
           background: "#050816",
-          boxShadow: shellIsFullscreen ? "none" : "0 28px 80px rgba(0,0,0,0.55)",
+          boxShadow: shellIsFullscreen
+            ? "none"
+            : "0 28px 80px rgba(0,0,0,0.55)",
           color: "#fff",
           overflow: "hidden",
         }}
@@ -588,8 +728,11 @@ export default function InrcyCameraCaptureModal({
               width: "100%",
               height: "100%",
               objectFit: "cover",
-              display: phase === "ready" || phase === "capturing" ? "block" : "none",
-              transform: `${facingMode === "user" ? "scaleX(-1) " : ""}${showVisualZoom ? `scale(${zoom})` : ""}`.trim() || undefined,
+              display:
+                phase === "ready" || phase === "capturing" ? "block" : "none",
+              transform:
+                `${facingMode === "user" ? "scaleX(-1) " : ""}${showVisualZoom ? `scale(${zoom})` : ""}`.trim() ||
+                undefined,
               transformOrigin: "center center",
             }}
           />
@@ -606,12 +749,15 @@ export default function InrcyCameraCaptureModal({
                 color: "rgba(255,255,255,0.84)",
                 fontSize: 14,
                 lineHeight: 1.45,
-                background: "radial-gradient(circle at 50% 35%, rgba(124,58,237,0.22), transparent 38%), #050816",
+                background:
+                  "radial-gradient(circle at 50% 35%, rgba(124,58,237,0.22), transparent 38%), #050816",
               }}
             >
               <div style={{ maxWidth: 340 }}>
                 <div style={{ fontSize: 36, marginBottom: 12 }}>📷</div>
-                <div>{phase === "error" ? error : "Ouverture de la caméra…"}</div>
+                <div>
+                  {phase === "error" ? error : "Ouverture de la caméra…"}
+                </div>
                 {phase === "error" ? (
                   <button
                     type="button"
@@ -625,7 +771,7 @@ export default function InrcyCameraCaptureModal({
             </div>
           ) : null}
 
-          {phase === "ready" || phase === "capturing" ? (
+          {phase !== "idle" && phase !== "error" ? (
             <div
               style={{
                 position: "absolute",
@@ -636,17 +782,47 @@ export default function InrcyCameraCaptureModal({
                 padding: "7px 11px",
                 minWidth: 42,
                 textAlign: "center",
-                background: "rgba(6,10,24,0.62)",
-                border: "1px solid rgba(255,255,255,0.2)",
+                background: "rgba(6,10,24,0.72)",
+                border: "1px solid rgba(255,255,255,0.26)",
+                color: "#fff",
                 backdropFilter: "blur(12px)",
                 WebkitBackdropFilter: "blur(12px)",
                 fontSize: 13,
                 fontWeight: 950,
-                boxShadow: "0 10px 24px rgba(0,0,0,0.24)",
+                boxShadow: "0 10px 24px rgba(0,0,0,0.3)",
               }}
               title="Pincez avec deux doigts pour zoomer"
             >
-              {zoom <= (zoomLimits.min || 1) + 0.02 ? "1x" : `${zoom.toFixed(1)}x`}
+              {zoom <= (zoomLimits.min || 1) + 0.02
+                ? "1x"
+                : `${zoom.toFixed(1)}x`}
+            </div>
+          ) : null}
+
+          {flashNotice ? (
+            <div
+              role="status"
+              style={{
+                position: "absolute",
+                left: "50%",
+                bottom: isLandscapeViewport ? 86 : 106,
+                transform: "translateX(-50%)",
+                zIndex: 5,
+                maxWidth: "calc(100% - 32px)",
+                borderRadius: 999,
+                padding: "9px 13px",
+                background: "rgba(15,23,42,0.82)",
+                border: "1px solid rgba(255,255,255,0.24)",
+                color: "#fff",
+                fontSize: 13,
+                fontWeight: 850,
+                textAlign: "center",
+                boxShadow: "0 14px 34px rgba(0,0,0,0.32)",
+                backdropFilter: "blur(14px)",
+                WebkitBackdropFilter: "blur(14px)",
+              }}
+            >
+              {flashNotice}
             </div>
           ) : null}
         </div>
@@ -682,9 +858,15 @@ export default function InrcyCameraCaptureModal({
                 gap: 12,
               }}
             >
-              <div style={{ display: "flex", justifyContent: "flex-start" }}>{switchCameraButton}</div>
-              <div style={{ display: "flex", justifyContent: "center" }}>{flashButton}</div>
-              <div style={{ display: "flex", justifyContent: "flex-end" }}>{captureButton}</div>
+              <div style={{ display: "flex", justifyContent: "flex-start" }}>
+                {switchCameraButton}
+              </div>
+              <div style={{ display: "flex", justifyContent: "center" }}>
+                {flashButton}
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                {captureButton}
+              </div>
             </div>
           ) : (
             <div
@@ -695,13 +877,22 @@ export default function InrcyCameraCaptureModal({
                 gap: 14,
               }}
             >
-              <div style={{ display: "flex", justifyContent: "flex-start" }}>{switchCameraButton}</div>
-              <div style={{ display: "flex", justifyContent: "center" }}>{captureButton}</div>
-              <div style={{ display: "flex", justifyContent: "flex-end" }}>{flashButton}</div>
+              <div style={{ display: "flex", justifyContent: "flex-start" }}>
+                {switchCameraButton}
+              </div>
+              <div style={{ display: "flex", justifyContent: "center" }}>
+                {captureButton}
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                {flashButton}
+              </div>
             </div>
           )}
         </div>
       </div>
     </div>
   );
+
+  if (typeof document === "undefined") return dialog;
+  return createPortal(dialog, document.body);
 }
