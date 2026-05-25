@@ -480,22 +480,39 @@ export default function InrcyCameraCaptureModal({
     <span style={{ width: iconButtonBase.width, height: iconButtonBase.height, flex: "0 0 auto" }} />
   );
 
-  const flashButton = torchSupported ? (
+  const flashButton = (
     <button
       type="button"
-      onClick={() => void applyTorch(!torchOn)}
+      onClick={() => {
+        if (!torchSupported || isBusy) return;
+        void applyTorch(!torchOn);
+      }}
       disabled={isBusy}
-      aria-label={torchOn ? "Désactiver le flash" : "Activer le flash"}
-      title={torchOn ? "Flash activé" : "Flash"}
+      aria-disabled={!torchSupported}
+      aria-label={
+        torchSupported
+          ? torchOn
+            ? "Désactiver le flash"
+            : "Activer le flash"
+          : "Flash indisponible sur cet appareil"
+      }
+      title={torchSupported ? (torchOn ? "Flash activé" : "Flash") : "Flash indisponible sur cet appareil"}
       style={{
         ...iconButtonBase,
-        background: torchOn ? "linear-gradient(135deg, #f59e0b, #ff4fd8)" : iconButtonBase.background,
+        background: torchSupported
+          ? torchOn
+            ? "linear-gradient(135deg, #f59e0b, #ff4fd8)"
+            : iconButtonBase.background
+          : "rgba(255,255,255,0.08)",
+        color: torchSupported ? "#fff" : "rgba(255,255,255,0.48)",
+        borderColor: torchSupported ? "rgba(255,255,255,0.26)" : "rgba(255,255,255,0.14)",
+        cursor: torchSupported && !isBusy ? "pointer" : "not-allowed",
+        opacity: isBusy ? 0.55 : torchSupported ? 1 : 0.52,
+        boxShadow: torchSupported ? iconButtonBase.boxShadow : "none",
       }}
     >
       ⚡
     </button>
-  ) : (
-    <span style={{ width: iconButtonBase.width, height: iconButtonBase.height, flex: "0 0 auto" }} />
   );
 
   const captureButton = (
@@ -608,7 +625,7 @@ export default function InrcyCameraCaptureModal({
             </div>
           ) : null}
 
-          {phase === "ready" && zoom > 1.02 ? (
+          {phase === "ready" || phase === "capturing" ? (
             <div
               style={{
                 position: "absolute",
@@ -616,16 +633,20 @@ export default function InrcyCameraCaptureModal({
                 left: "max(14px, env(safe-area-inset-left))",
                 zIndex: 3,
                 borderRadius: 999,
-                padding: "7px 10px",
-                background: "rgba(6,10,24,0.58)",
-                border: "1px solid rgba(255,255,255,0.18)",
+                padding: "7px 11px",
+                minWidth: 42,
+                textAlign: "center",
+                background: "rgba(6,10,24,0.62)",
+                border: "1px solid rgba(255,255,255,0.2)",
                 backdropFilter: "blur(12px)",
                 WebkitBackdropFilter: "blur(12px)",
-                fontSize: 12,
-                fontWeight: 900,
+                fontSize: 13,
+                fontWeight: 950,
+                boxShadow: "0 10px 24px rgba(0,0,0,0.24)",
               }}
+              title="Pincez avec deux doigts pour zoomer"
             >
-              {zoom.toFixed(1)}×
+              {zoom <= (zoomLimits.min || 1) + 0.02 ? "1x" : `${zoom.toFixed(1)}x`}
             </div>
           ) : null}
         </div>
