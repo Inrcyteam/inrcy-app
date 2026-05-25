@@ -6,6 +6,44 @@ type PublishModalStyles = Readonly<Record<string, string>>;
 
 type VoiceState = "idle" | "recording" | "transcribing";
 
+type VoiceSpeechRecognitionAlternative = {
+  transcript?: string;
+};
+
+type VoiceSpeechRecognitionResult = {
+  readonly isFinal?: boolean;
+  readonly length: number;
+  readonly [index: number]: VoiceSpeechRecognitionAlternative | undefined;
+};
+
+type VoiceSpeechRecognitionResultList = {
+  readonly length: number;
+  readonly [index: number]: VoiceSpeechRecognitionResult | undefined;
+};
+
+type VoiceSpeechRecognitionEvent = Event & {
+  readonly results?: VoiceSpeechRecognitionResultList;
+};
+
+type VoiceSpeechRecognitionErrorEvent = Event & {
+  readonly error?: string;
+};
+
+type VoiceSpeechRecognition = {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  maxAlternatives: number;
+  onresult: ((event: VoiceSpeechRecognitionEvent) => void) | null;
+  onerror: ((event: VoiceSpeechRecognitionErrorEvent) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+};
+
+type VoiceSpeechRecognitionConstructor = new () => VoiceSpeechRecognition;
+
 const VOICE_MAX_SECONDS = 90;
 const VOICE_MIN_BYTES = 900;
 
@@ -44,6 +82,19 @@ function appendVoiceText(current: string, next: string) {
   if (!cleanCurrent) return cleanNext;
   if (!cleanNext) return cleanCurrent;
   return `${cleanCurrent}\n${cleanNext}`;
+}
+
+function normalizeLiveVoiceText(value: string) {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function getSpeechRecognitionConstructor() {
+  if (typeof window === "undefined") return null;
+  const speechWindow = window as Window & {
+    SpeechRecognition?: VoiceSpeechRecognitionConstructor;
+    webkitSpeechRecognition?: VoiceSpeechRecognitionConstructor;
+  };
+  return speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition || null;
 }
 
 type PublishIntentPanelProps = {
@@ -101,6 +152,11 @@ export default function PublishIntentPanel({
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<number | null>(null);
   const maxRecordingTimerRef = useRef<number | null>(null);
+  const speechRecognitionRef = useRef<VoiceSpeechRecognition | null>(null);
+  const liveVoiceBaseTextRef = useRef("");
+  const liveVoiceLastTextRef = useRef("");
+  const hasLiveVoiceDraftRef = useRef(false);
+  const [liveVoiceEnabled, setLiveVoiceEnabled] = useState(false);
 
   const clearVoiceTimers = () => {
     if (recordingTimerRef.current) {
@@ -118,9 +174,95 @@ export default function PublishIntentPanel({
     mediaStreamRef.current = null;
   };
 
+  const stopLiveSpeechRecognition = () => {
+    const recognition = speechRecognitionRef.current;
+    speechRecognitionRef.current = null;
+    setLiveVoiceEnabled(false);
+    if (!recognition) return;
+    recognition.onresult = null;
+    recognition.onerror = null;
+    recognition.onend = null;
+    try {
+      recognition.stop();
+    } catch {
+      try {
+        recognition.abort();
+      } catch {
+        // Best-effort cleanup only.
+      }
+    }
+  };
+
+  const resetLiveVoiceDraft = () => {
+    liveVoiceBaseTextRef.current = "";
+    liveVoiceLastTextRef.current = "";
+    hasLiveVoiceDraftRef.current = false;
+  };
+
+  const startLiveSpeechRecognition = (baseText: string) => {
+    const SpeechRecognitionConstructor = getSpeechRecognitionConstructor();
+    if (!SpeechRecognitionConstructor) return false;
+
+    try {
+      stopLiveSpeechRecognition();
+      resetLiveVoiceDraft();
+
+      const recognition = new SpeechRecognitionConstructor();
+      recognition.lang = "fr-FR";
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.maxAlternatives = 1;
+
+      liveVoiceBaseTextRef.current = baseText;
+
+      recognition.onresult = (event) => {
+        const results = event.results;
+        if (!results?.length) return;
+
+        let liveText = "";
+        for (let index = 0; index < results.length; index += 1) {
+          const transcript = results[index]?.[0]?.transcript || "";
+          liveText += ` ${transcript}`;
+        }
+
+        const normalizedLiveText = normalizeLiveVoiceText(liveText);
+        if (!normalizedLiveText) return;
+
+        liveVoiceLastTextRef.current = normalizedLiveText;
+        hasLiveVoiceDraftRef.current = true;
+        setIdea(() => appendVoiceText(liveVoiceBaseTextRef.current, normalizedLiveText));
+      };
+
+      recognition.onerror = () => {
+        speechRecognitionRef.current = null;
+        setLiveVoiceEnabled(false);
+      };
+
+      recognition.onend = () => {
+        speechRecognitionRef.current = null;
+        setLiveVoiceEnabled(false);
+      };
+
+      recognition.start();
+      speechRecognitionRef.current = recognition;
+      setLiveVoiceEnabled(true);
+      return true;
+    } catch {
+      speechRecognitionRef.current = null;
+      setLiveVoiceEnabled(false);
+      return false;
+    }
+  };
+
   const submitVoiceBlob = async (audioBlob: Blob) => {
     if (!audioBlob.size || audioBlob.size < VOICE_MIN_BYTES) {
-      setVoiceError("Vocal trop court ou vide. Réessaie en parlant un peu plus longtemps.");
+      const liveDraftKept = hasLiveVoiceDraftRef.current && liveVoiceLastTextRef.current.trim();
+      setVoiceError(
+        liveDraftKept
+          ? "Vocal trop court pour la correction finale. Le texte affiché en direct est conservé."
+          : "Vocal trop court ou vide. Réessaie en parlant un peu plus longtemps.",
+      );
+      resetLiveVoiceDraft();
       setVoiceState("idle");
       return;
     }
@@ -150,9 +292,21 @@ export default function PublishIntentPanel({
         throw new Error("Aucun texte n’a été détecté dans le vocal.");
       }
 
-      setIdea((current) => appendVoiceText(current, transcript));
+      if (hasLiveVoiceDraftRef.current) {
+        setIdea(() => appendVoiceText(liveVoiceBaseTextRef.current, transcript));
+      } else {
+        setIdea((current) => appendVoiceText(current, transcript));
+      }
+      resetLiveVoiceDraft();
     } catch (error) {
-      setVoiceError(error instanceof Error ? error.message : "Le vocal n’a pas pu être transcrit.");
+      const liveDraftKept = hasLiveVoiceDraftRef.current && liveVoiceLastTextRef.current.trim();
+      const message = error instanceof Error ? error.message : "Le vocal n’a pas pu être transcrit.";
+      setVoiceError(
+        liveDraftKept
+          ? `${message} Le texte affiché en direct est conservé sans correction finale.`
+          : message,
+      );
+      resetLiveVoiceDraft();
     } finally {
       setVoiceState("idle");
       setRecordingSeconds(0);
@@ -160,6 +314,7 @@ export default function PublishIntentPanel({
   };
 
   const stopVoiceRecording = () => {
+    stopLiveSpeechRecognition();
     const recorder = mediaRecorderRef.current;
     if (recorder && recorder.state === "recording") {
       recorder.stop();
@@ -172,6 +327,8 @@ export default function PublishIntentPanel({
 
   const startVoiceRecording = async () => {
     setVoiceError("");
+    stopLiveSpeechRecognition();
+    resetLiveVoiceDraft();
 
     if (typeof window === "undefined" || typeof navigator === "undefined") return;
     if (!window.isSecureContext && window.location.hostname !== "localhost") {
@@ -199,6 +356,8 @@ export default function PublishIntentPanel({
       recorder.onerror = () => {
         setVoiceError("Erreur micro pendant l’enregistrement. Réessaie dans quelques secondes.");
         clearVoiceTimers();
+        stopLiveSpeechRecognition();
+        resetLiveVoiceDraft();
         stopMediaStream();
         setVoiceState("idle");
       };
@@ -214,6 +373,7 @@ export default function PublishIntentPanel({
       };
 
       recorder.start(1000);
+      startLiveSpeechRecognition(idea);
       setRecordingSeconds(0);
       setVoiceState("recording");
       recordingTimerRef.current = window.setInterval(() => {
@@ -223,6 +383,8 @@ export default function PublishIntentPanel({
         stopVoiceRecording();
       }, VOICE_MAX_SECONDS * 1000);
     } catch (error) {
+      stopLiveSpeechRecognition();
+      resetLiveVoiceDraft();
       stopMediaStream();
       const name = error instanceof DOMException ? error.name : "";
       if (name === "NotAllowedError" || name === "SecurityError") {
@@ -249,6 +411,7 @@ export default function PublishIntentPanel({
   useEffect(() => {
     return () => {
       clearVoiceTimers();
+      stopLiveSpeechRecognition();
       stopMediaStream();
       const recorder = mediaRecorderRef.current;
       if (recorder && recorder.state === "recording") recorder.stop();
@@ -358,7 +521,9 @@ export default function PublishIntentPanel({
             </div>
             {voiceState === "recording" ? (
               <div style={{ fontSize: isMobile ? 11 : 12, color: "#ffdfdf", fontWeight: 800 }}>
-                Parlez maintenant, puis recliquez sur le micro pour arrêter.
+                {liveVoiceEnabled
+                  ? "Les mots apparaissent en direct. Recliquez sur le micro pour corriger le vocal."
+                  : "Parlez maintenant, puis recliquez sur le micro pour arrêter."}
               </div>
             ) : null}
             {voiceState === "transcribing" ? (
