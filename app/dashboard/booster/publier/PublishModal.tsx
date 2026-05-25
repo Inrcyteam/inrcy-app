@@ -87,18 +87,7 @@ import PublishImagesPanel from "./components/PublishImagesPanel";
 import PublishPreviewPanel from "./components/PublishPreviewPanel";
 import PublishHelpModal from "./components/PublishHelpModal";
 import PublishWarningModals from "./components/PublishWarningModals";
-
-const CAMERA_RETURN_STABILIZATION_MS = 2500;
-const CAMERA_RETURN_WAIT_MS = 450;
-
-function shouldStabilizeCameraReturn() {
-  if (typeof window === "undefined") return false;
-  return Boolean(
-    window.matchMedia?.("(pointer: coarse)")?.matches ||
-    window.matchMedia?.("(max-width: 1024px)")?.matches ||
-    window.innerWidth <= 1024
-  );
-}
+import InrcyCameraCaptureModal from "@/app/dashboard/_components/InrcyCameraCaptureModal";
 
 type ChannelConnectionDetail = {
   type?: string | null;
@@ -261,15 +250,13 @@ export default function PublishModal({
   > | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const cameraTargetChannelRef = useRef<ChannelKey | undefined>(undefined);
   const gmbFileInputRef = useRef<HTMLInputElement | null>(null);
   const [images, setImages] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [imgError, setImgError] = useState("");
   const [cameraPreparing, setCameraPreparing] = useState(false);
-  const [cameraReturnStabilizing, setCameraReturnStabilizing] = useState(false);
-  const cameraReturnStabilizingTimerRef = useRef<number | null>(null);
+  const [cameraCaptureOpen, setCameraCaptureOpen] = useState(false);
   const [useImagesForAI, setUseImagesForAI] = useState(true);
   const [imageMetaByKey, setImageMetaByKey] = useState<
     Record<string, ImageMeta>
@@ -529,29 +516,6 @@ export default function PublishModal({
       window.visualViewport?.removeEventListener("scroll", updateViewport);
     };
   }, []);
-
-  useEffect(() => {
-    return () => {
-      if (cameraReturnStabilizingTimerRef.current) {
-        window.clearTimeout(cameraReturnStabilizingTimerRef.current);
-      }
-      document.documentElement.removeAttribute("data-camera-return-stabilizing");
-    };
-  }, []);
-
-  const triggerCameraReturnStabilization = () => {
-    if (!shouldStabilizeCameraReturn()) return;
-    setCameraReturnStabilizing(true);
-    document.documentElement.setAttribute("data-camera-return-stabilizing", "true");
-    if (cameraReturnStabilizingTimerRef.current) {
-      window.clearTimeout(cameraReturnStabilizingTimerRef.current);
-    }
-    cameraReturnStabilizingTimerRef.current = window.setTimeout(() => {
-      setCameraReturnStabilizing(false);
-      document.documentElement.removeAttribute("data-camera-return-stabilizing");
-      cameraReturnStabilizingTimerRef.current = null;
-    }, CAMERA_RETURN_STABILIZATION_MS);
-  };
 
   const scrollToPublishArea = (behavior: ScrollBehavior = "smooth") => {
     if (typeof window === "undefined") return;
@@ -1266,36 +1230,24 @@ export default function PublishModal({
     setImgError("");
     if (cameraPreparing || images.length >= 5) return;
     cameraTargetChannelRef.current = targetChannel;
-    cameraInputRef.current?.click();
+    setCameraCaptureOpen(true);
   };
 
-  const waitForCameraReturn = () =>
-    new Promise<void>((resolve) => {
-      window.setTimeout(() => {
-        window.requestAnimationFrame(() => {
-          window.requestAnimationFrame(() => resolve());
-        });
-      }, CAMERA_RETURN_WAIT_MS);
-    });
+  const closeCameraCapture = () => {
+    cameraTargetChannelRef.current = undefined;
+    setCameraCaptureOpen(false);
+  };
 
-  const onCameraImagesChange = (files: FileList | null) => {
+  const onCameraCapture = async (file: File) => {
     const targetChannel = cameraTargetChannelRef.current;
     cameraTargetChannelRef.current = undefined;
-    const picked = files ? Array.from(files) : [];
-    if (!picked.length) return;
-
     setImgError("");
-    triggerCameraReturnStabilization();
     setCameraPreparing(true);
-    void (async () => {
-      try {
-        await waitForCameraReturn();
-        await onImagesChange(picked, targetChannel);
-        await new Promise<void>((resolve) => window.setTimeout(resolve, 220));
-      } finally {
-        setCameraPreparing(false);
-      }
-    })();
+    try {
+      await onImagesChange([file], targetChannel);
+    } finally {
+      setCameraPreparing(false);
+    }
   };
 
   const onImagesChange = async (
@@ -2524,27 +2476,7 @@ export default function PublishModal({
   };
 
   return (
-    <div
-      data-camera-return-stabilizing={cameraReturnStabilizing ? "true" : undefined}
-      style={{ display: "grid", gap: 12, minWidth: 0 }}
-    >
-      <style>{`
-        [data-camera-return-stabilizing="true"],
-        [data-camera-return-stabilizing="true"] * {
-          animation: none !important;
-          transition: none !important;
-          scroll-behavior: auto !important;
-        }
-        [data-camera-return-stabilizing="true"] *,
-        [data-camera-return-stabilizing="true"]::before,
-        [data-camera-return-stabilizing="true"]::after,
-        [data-camera-return-stabilizing="true"] *::before,
-        [data-camera-return-stabilizing="true"] *::after {
-          -webkit-backdrop-filter: none !important;
-          backdrop-filter: none !important;
-          filter: none !important;
-        }
-      `}</style>
+    <div style={{ display: "grid", gap: 12, minWidth: 0 }}>
       <PublishHelpModal
         open={publishHelpOpen}
         onClose={() => setPublishHelpOpen(false)}
@@ -2568,6 +2500,15 @@ export default function PublishModal({
         saving={saving}
         onClose={closeFinalReview}
         onConfirm={confirmFinalReview}
+      />
+
+
+      <InrcyCameraCaptureModal
+        open={cameraCaptureOpen}
+        title="Prendre une photo"
+        subtitle="Caméra intégrée iNrCy : capturez sans quitter l’application."
+        onClose={closeCameraCapture}
+        onCapture={onCameraCapture}
       />
 
       <PublishWarningModals
@@ -2598,9 +2539,7 @@ export default function PublishModal({
         idea={idea}
         setIdea={setIdea}
         fileInputRef={fileInputRef}
-        cameraInputRef={cameraInputRef}
         onImagesChange={onImagesChange}
-        onCameraImagesChange={onCameraImagesChange}
         onPickImagesClick={onPickImagesClick}
         onTakePhotoClick={() => onTakePhotoClick()}
         cameraPreparing={cameraPreparing}

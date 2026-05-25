@@ -4,6 +4,7 @@ import { sanitizeHtml } from "@/lib/sanitizeHtml";
 import { renderBoosterSiteContentHtml, renderBoosterSiteInlineHtml, stripSiteTextFormatting } from "@/lib/boosterFormatting";
 import styles from "../mails.module.css";
 import { ChannelImageAdapterCardsPanel, ChannelPublicationPreview } from "@/app/dashboard/_components/ChannelImageAdapterTool";
+import InrcyCameraCaptureModal from "@/app/dashboard/_components/InrcyCameraCaptureModal";
 import {
   MAILBOX_RECIPIENTS_PAGE_SIZE,
   type CampaignRecipientsFilterId,
@@ -33,18 +34,6 @@ import {
   splitList,
 } from "../_lib/mailboxPhase1";
 import { pillBtn, pillBtnActive } from "./mailboxInlineStyles";
-
-const PUBLICATION_CAMERA_RETURN_STABILIZATION_MS = 2500;
-const PUBLICATION_CAMERA_RETURN_WAIT_MS = 450;
-
-function shouldStabilizePublicationCameraReturn() {
-  if (typeof window === "undefined") return false;
-  return Boolean(
-    window.matchMedia?.("(pointer: coarse)")?.matches ||
-    window.matchMedia?.("(max-width: 1024px)")?.matches ||
-    window.innerWidth <= 1024
-  );
-}
 
 type MailboxDetailsModalProps = {
   open: boolean;
@@ -152,9 +141,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
   const [publicationPreviewOpen, setPublicationPreviewOpen] = React.useState(false);
   const [isMobileViewport, setIsMobileViewport] = React.useState(false);
   const [publicationCameraPreparing, setPublicationCameraPreparing] = React.useState(false);
-  const [publicationCameraReturnStabilizing, setPublicationCameraReturnStabilizing] = React.useState(false);
-  const publicationCameraReturnStabilizingTimerRef = React.useRef<number | null>(null);
-  const publicationEditCameraInputRef = React.useRef<HTMLInputElement | null>(null);
+  const [publicationCameraCaptureOpen, setPublicationCameraCaptureOpen] = React.useState(false);
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;
@@ -173,83 +160,23 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
     if (open) setPublicationPreviewOpen(false);
   }, [open, detailsItem?.id, detailsEditMode]);
 
-  React.useEffect(() => {
-    return () => {
-      if (publicationCameraReturnStabilizingTimerRef.current) {
-        window.clearTimeout(publicationCameraReturnStabilizingTimerRef.current);
-      }
-      document.documentElement.removeAttribute("data-camera-return-stabilizing");
-    };
-  }, []);
-
-  const triggerPublicationCameraReturnStabilization = React.useCallback(() => {
-    if (!shouldStabilizePublicationCameraReturn()) return;
-    setPublicationCameraReturnStabilizing(true);
-    document.documentElement.setAttribute("data-camera-return-stabilizing", "true");
-    if (publicationCameraReturnStabilizingTimerRef.current) {
-      window.clearTimeout(publicationCameraReturnStabilizingTimerRef.current);
-    }
-    publicationCameraReturnStabilizingTimerRef.current = window.setTimeout(() => {
-      setPublicationCameraReturnStabilizing(false);
-      document.documentElement.removeAttribute("data-camera-return-stabilizing");
-      publicationCameraReturnStabilizingTimerRef.current = null;
-    }, PUBLICATION_CAMERA_RETURN_STABILIZATION_MS);
-  }, []);
-
-  const waitForPublicationCameraReturn = React.useCallback(() => {
-    return new Promise<void>((resolve) => {
-      window.setTimeout(() => {
-        window.requestAnimationFrame(() => {
-          window.requestAnimationFrame(() => resolve());
-        });
-      }, PUBLICATION_CAMERA_RETURN_WAIT_MS);
-    });
-  }, []);
-
-  const addPublicationCameraFiles = React.useCallback((files: FileList | null) => {
-    const picked = files ? Array.from(files) : [];
-    if (!picked.length) return;
+  const addPublicationCameraFile = React.useCallback(async (file: File) => {
+    if (!file) return;
     setDetailsActionError(null);
-    triggerPublicationCameraReturnStabilization();
     setPublicationCameraPreparing(true);
-    void (async () => {
-      try {
-        await waitForPublicationCameraReturn();
-        addPublicationFiles(picked);
-        await new Promise<void>((resolve) => window.setTimeout(resolve, 220));
-      } finally {
-        setPublicationCameraPreparing(false);
-      }
-    })();
-  }, [addPublicationFiles, setDetailsActionError, triggerPublicationCameraReturnStabilization, waitForPublicationCameraReturn]);
+    try {
+      await Promise.resolve(addPublicationFiles([file]));
+    } finally {
+      setPublicationCameraPreparing(false);
+    }
+  }, [addPublicationFiles, setDetailsActionError]);
 
   if (!open) return null;
 
   const safeDetailHtml = detailsItem?.detailHtml ? sanitizeHtml(detailsItem.detailHtml) : "";
 
   return (
-          <div
-            className={styles.modalOverlay}
-            data-camera-return-stabilizing={publicationCameraReturnStabilizing ? "true" : undefined}
-            onClick={() => onClose()}
-          >
-            <style>{`
-              [data-camera-return-stabilizing="true"],
-              [data-camera-return-stabilizing="true"] * {
-                animation: none !important;
-                transition: none !important;
-                scroll-behavior: auto !important;
-              }
-              [data-camera-return-stabilizing="true"] *,
-              [data-camera-return-stabilizing="true"]::before,
-              [data-camera-return-stabilizing="true"]::after,
-              [data-camera-return-stabilizing="true"] *::before,
-              [data-camera-return-stabilizing="true"] *::after {
-                -webkit-backdrop-filter: none !important;
-                backdrop-filter: none !important;
-                filter: none !important;
-              }
-            `}</style>
+          <div className={styles.modalOverlay} onClick={() => onClose()}>
             <div className={`${styles.modalCard} ${styles.detailsModalCard}`} onClick={(e) => e.stopPropagation()}>
               <div className={styles.modalHeader}>
                 <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -840,6 +767,13 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                 <div className={styles.messageHeaderTitle}>Images de la publication</div>
                               </div>
                               <div style={{ display: "grid", gap: 12 }}>
+                                <InrcyCameraCaptureModal
+                                  open={publicationCameraCaptureOpen}
+                                  title="Prendre une photo"
+                                  subtitle="Caméra intégrée iNrCy : capturez sans quitter l’application."
+                                  onClose={() => setPublicationCameraCaptureOpen(false)}
+                                  onCapture={addPublicationCameraFile}
+                                />
                                 <input
                                   id={publicationEditFileInputId}
                                   type="file"
@@ -850,19 +784,6 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                     const input = e.currentTarget;
                                     const files = input?.files ?? null;
                                     addPublicationFiles(files);
-                                    if (input) input.value = "";
-                                  }}
-                                />
-                                <input
-                                  ref={publicationEditCameraInputRef}
-                                  type="file"
-                                  accept="image/*"
-                                  capture="environment"
-                                  className={styles.hiddenFileInput}
-                                  onChange={(e) => {
-                                    const input = e.currentTarget;
-                                    const files = input?.files ?? null;
-                                    addPublicationCameraFiles(files);
                                     if (input) input.value = "";
                                   }}
                                 />
@@ -878,7 +799,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                     <button
                                       type="button"
                                       className={styles.btnAttach}
-                                      onClick={() => publicationEditCameraInputRef.current?.click()}
+                                      onClick={() => setPublicationCameraCaptureOpen(true)}
                                       disabled={publicationCameraPreparing || activePublicationEditAssets.length >= 5}
                                       style={{
                                         opacity: publicationCameraPreparing || activePublicationEditAssets.length >= 5 ? 0.55 : 1,

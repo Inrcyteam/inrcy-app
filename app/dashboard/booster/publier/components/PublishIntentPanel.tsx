@@ -170,9 +170,7 @@ type PublishIntentPanelProps = {
   idea: string;
   setIdea: Dispatch<SetStateAction<string>>;
   fileInputRef: MutableRefObject<HTMLInputElement | null>;
-  cameraInputRef: MutableRefObject<HTMLInputElement | null>;
   onImagesChange: (files: FileList | null) => void;
-  onCameraImagesChange: (files: FileList | null) => void;
   onPickImagesClick: () => void;
   onTakePhotoClick: () => void;
   cameraPreparing: boolean;
@@ -198,9 +196,7 @@ export default function PublishIntentPanel({
   idea,
   setIdea,
   fileInputRef,
-  cameraInputRef,
   onImagesChange,
-  onCameraImagesChange,
   onPickImagesClick,
   onTakePhotoClick,
   cameraPreparing,
@@ -727,17 +723,6 @@ export default function PublishIntentPanel({
           style={{ display: "none" }}
           onChange={(e) => {
             onImagesChange(e.target.files);
-            e.currentTarget.value = "";
-          }}
-        />
-        <input
-          ref={cameraInputRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          style={{ display: "none" }}
-          onChange={(e) => {
-            onCameraImagesChange(e.target.files);
             e.currentTarget.value = "";
           }}
         />
