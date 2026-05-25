@@ -215,6 +215,75 @@ export default function InrcyCameraCaptureModal({
 
   if (!open) return null;
 
+  const isBusy = phase === "capturing" || phase === "loading";
+  const switchCameraLabel = facingMode === "environment" ? "Caméra avant" : "Caméra arrière";
+
+  const secondaryButtonStyle: React.CSSProperties = {
+    minHeight: isLandscapeViewport ? 40 : 42,
+    borderRadius: 999,
+    border: "1px solid rgba(255,255,255,0.18)",
+    background: "rgba(255,255,255,0.08)",
+    color: "#fff",
+    fontWeight: 850,
+    fontSize: isLandscapeViewport ? 13 : 14,
+    cursor: isBusy ? "not-allowed" : "pointer",
+    opacity: isBusy ? 0.55 : 1,
+    padding: "0 14px",
+    whiteSpace: "nowrap",
+  };
+
+  const captureButtonStyle: React.CSSProperties = {
+    minHeight: isLandscapeViewport ? 42 : 48,
+    borderRadius: 999,
+    border: "1px solid rgba(76,195,255,0.45)",
+    background: phase === "ready" ? "linear-gradient(135deg, #48c6ef, #7c3aed)" : "rgba(255,255,255,0.10)",
+    color: "#fff",
+    fontWeight: 950,
+    fontSize: isLandscapeViewport ? 14 : 15,
+    cursor: phase === "ready" ? "pointer" : "not-allowed",
+    opacity: phase === "ready" ? 1 : 0.58,
+    boxShadow: phase === "ready" ? "0 14px 35px rgba(76,195,255,0.22)" : undefined,
+    padding: "0 18px",
+    whiteSpace: "nowrap",
+  };
+
+  const switchCameraButton = hasMultipleCameras ? (
+    <button
+      type="button"
+      onClick={() => setFacingMode((value) => (value === "environment" ? "user" : "environment"))}
+      disabled={isBusy}
+      style={secondaryButtonStyle}
+    >
+      {switchCameraLabel}
+    </button>
+  ) : null;
+
+  const importButton = (
+    <button
+      type="button"
+      onClick={() => fileInputRef.current?.click()}
+      disabled={phase === "capturing"}
+      style={{
+        ...secondaryButtonStyle,
+        cursor: phase === "capturing" ? "not-allowed" : "pointer",
+        opacity: phase === "capturing" ? 0.55 : 1,
+      }}
+    >
+      Importer
+    </button>
+  );
+
+  const captureButton = (
+    <button
+      type="button"
+      onClick={capture}
+      disabled={phase !== "ready"}
+      style={captureButtonStyle}
+    >
+      {phase === "capturing" ? "Ajout de la photo…" : "Capturer la photo"}
+    </button>
+  );
+
   return (
     <div
       role="dialog"
@@ -228,36 +297,52 @@ export default function InrcyCameraCaptureModal({
         background: "rgba(5,8,18,0.88)",
         display: "grid",
         placeItems: "center",
-        padding: 14,
+        padding: isLandscapeViewport ? 8 : 14,
+        paddingTop: isLandscapeViewport ? "max(8px, env(safe-area-inset-top))" : 14,
+        paddingRight: isLandscapeViewport ? "max(8px, env(safe-area-inset-right))" : 14,
+        paddingBottom: isLandscapeViewport ? "max(8px, env(safe-area-inset-bottom))" : 14,
+        paddingLeft: isLandscapeViewport ? "max(8px, env(safe-area-inset-left))" : 14,
       }}
     >
       <div
         onClick={(event) => event.stopPropagation()}
         style={{
-          width: isLandscapeViewport ? "min(96vw, 860px)" : "min(100%, 520px)",
-          maxHeight: "min(92dvh, 760px)",
-          display: "grid",
-          gap: 12,
-          borderRadius: 24,
+          width: isLandscapeViewport ? "min(98vw, 980px)" : "min(100%, 520px)",
+          height: isLandscapeViewport ? "min(96dvh, 560px)" : undefined,
+          maxHeight: isLandscapeViewport ? "96dvh" : "min(92dvh, 760px)",
+          display: "flex",
+          flexDirection: "column",
+          gap: isLandscapeViewport ? 8 : 12,
+          borderRadius: isLandscapeViewport ? 22 : 24,
           border: "1px solid rgba(255,255,255,0.16)",
           background: "linear-gradient(180deg, rgba(18,24,44,0.98), rgba(8,12,26,0.98))",
           boxShadow: "0 28px 80px rgba(0,0,0,0.55)",
-          padding: 14,
+          padding: isLandscapeViewport ? 10 : 14,
           color: "#fff",
           overflow: "hidden",
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 12,
+            alignItems: "center",
+            flex: "0 0 auto",
+          }}
+        >
           <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 17, fontWeight: 950, lineHeight: 1.15 }}>{title}</div>
+            <div style={{ fontSize: isLandscapeViewport ? 15 : 17, fontWeight: 950, lineHeight: 1.15 }}>
+              {title}
+            </div>
           </div>
           <button
             type="button"
             onClick={close}
             aria-label="Fermer la caméra"
             style={{
-              width: 34,
-              height: 34,
+              width: isLandscapeViewport ? 32 : 34,
+              height: isLandscapeViewport ? 32 : 34,
               borderRadius: 999,
               border: "1px solid rgba(255,255,255,0.18)",
               background: "rgba(255,255,255,0.08)",
@@ -266,6 +351,7 @@ export default function InrcyCameraCaptureModal({
               fontSize: 18,
               fontWeight: 900,
               lineHeight: 1,
+              flex: "0 0 auto",
             }}
           >
             ×
@@ -276,9 +362,11 @@ export default function InrcyCameraCaptureModal({
           style={{
             position: "relative",
             width: "100%",
-            aspectRatio: isLandscapeViewport ? "16 / 9" : "3 / 4",
-            maxHeight: isLandscapeViewport ? "58dvh" : "58dvh",
-            borderRadius: 20,
+            flex: isLandscapeViewport ? "1 1 auto" : "0 1 auto",
+            minHeight: isLandscapeViewport ? 0 : undefined,
+            aspectRatio: isLandscapeViewport ? undefined : "3 / 4",
+            maxHeight: isLandscapeViewport ? undefined : "58dvh",
+            borderRadius: isLandscapeViewport ? 18 : 20,
             overflow: "hidden",
             border: "1px solid rgba(255,255,255,0.14)",
             background: "#050816",
@@ -332,67 +420,50 @@ export default function InrcyCameraCaptureModal({
         />
 
         {error ? (
-          <div style={{ color: "#ffb4b4", fontSize: 12.5, lineHeight: 1.35 }}>{error}</div>
-        ) : null}
-
-        <div style={{ display: "grid", gridTemplateColumns: hasMultipleCameras ? "1fr 1fr" : "1fr", gap: 10 }}>
-          {hasMultipleCameras ? (
-            <button
-              type="button"
-              onClick={() => setFacingMode((value) => (value === "environment" ? "user" : "environment"))}
-              disabled={phase === "capturing" || phase === "loading"}
-              style={{
-                minHeight: 42,
-                borderRadius: 999,
-                border: "1px solid rgba(255,255,255,0.18)",
-                background: "rgba(255,255,255,0.08)",
-                color: "#fff",
-                fontWeight: 850,
-                cursor: phase === "capturing" || phase === "loading" ? "not-allowed" : "pointer",
-                opacity: phase === "capturing" || phase === "loading" ? 0.55 : 1,
-              }}
-            >
-              {facingMode === "environment" ? "Caméra avant" : "Caméra arrière"}
-            </button>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={phase === "capturing"}
+          <div
             style={{
-              minHeight: 42,
-              borderRadius: 999,
-              border: "1px solid rgba(255,255,255,0.18)",
-              background: "rgba(255,255,255,0.08)",
-              color: "#fff",
-              fontWeight: 850,
-              cursor: phase === "capturing" ? "not-allowed" : "pointer",
-              opacity: phase === "capturing" ? 0.55 : 1,
+              color: "#ffb4b4",
+              fontSize: isLandscapeViewport ? 11.5 : 12.5,
+              lineHeight: 1.25,
+              flex: "0 0 auto",
             }}
           >
-            Importer
-          </button>
-        </div>
+            {error}
+          </div>
+        ) : null}
 
-        <button
-          type="button"
-          onClick={capture}
-          disabled={phase !== "ready"}
-          style={{
-            minHeight: 48,
-            borderRadius: 999,
-            border: "1px solid rgba(76,195,255,0.45)",
-            background: phase === "ready" ? "linear-gradient(135deg, #48c6ef, #7c3aed)" : "rgba(255,255,255,0.10)",
-            color: "#fff",
-            fontWeight: 950,
-            fontSize: 15,
-            cursor: phase === "ready" ? "pointer" : "not-allowed",
-            opacity: phase === "ready" ? 1 : 0.58,
-            boxShadow: phase === "ready" ? "0 14px 35px rgba(76,195,255,0.22)" : undefined,
-          }}
-        >
-          {phase === "capturing" ? "Ajout de la photo…" : "Capturer la photo"}
-        </button>
+        {isLandscapeViewport ? (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: hasMultipleCameras
+                ? "minmax(0, 1fr) minmax(0, 0.9fr) minmax(0, 1.35fr)"
+                : "minmax(0, 1fr) minmax(0, 1.35fr)",
+              gap: 8,
+              alignItems: "center",
+              flex: "0 0 auto",
+            }}
+          >
+            {switchCameraButton}
+            {importButton}
+            {captureButton}
+          </div>
+        ) : (
+          <>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: hasMultipleCameras ? "1fr 1fr" : "1fr",
+                gap: 10,
+                flex: "0 0 auto",
+              }}
+            >
+              {switchCameraButton}
+              {importButton}
+            </div>
+            <div style={{ flex: "0 0 auto" }}>{captureButton}</div>
+          </>
+        )}
       </div>
     </div>
   );
