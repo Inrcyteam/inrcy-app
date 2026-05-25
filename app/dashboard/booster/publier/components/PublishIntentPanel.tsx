@@ -1,8 +1,50 @@
-import type { Dispatch, MutableRefObject, SetStateAction } from "react";
+import { useEffect, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
 import { THEME_PLACEHOLDERS, type ThemeKey } from "../publishModal.shared";
 import { textAreaStyle } from "../publishModal.styles";
 
 type PublishModalStyles = Readonly<Record<string, string>>;
+
+type VoiceState = "idle" | "recording" | "transcribing";
+
+const VOICE_MAX_SECONDS = 90;
+const VOICE_MIN_BYTES = 900;
+
+const voiceMimeCandidates = [
+  "audio/webm;codecs=opus",
+  "audio/webm",
+  "audio/mp4",
+  "audio/mpeg",
+  "audio/ogg;codecs=opus",
+  "audio/wav",
+];
+
+function formatVoiceDuration(seconds: number) {
+  const safeSeconds = Math.max(0, seconds);
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainingSeconds = safeSeconds % 60;
+  return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
+}
+
+function pickVoiceMimeType() {
+  if (typeof window === "undefined" || typeof window.MediaRecorder === "undefined") return "";
+  return voiceMimeCandidates.find((type) => window.MediaRecorder.isTypeSupported(type)) || "";
+}
+
+function voiceExtensionFromMime(type: string) {
+  if (type.includes("mp4")) return "m4a";
+  if (type.includes("mpeg")) return "mp3";
+  if (type.includes("ogg")) return "ogg";
+  if (type.includes("wav")) return "wav";
+  return "webm";
+}
+
+function appendVoiceText(current: string, next: string) {
+  const cleanCurrent = current.trim();
+  const cleanNext = next.trim();
+  if (!cleanCurrent) return cleanNext;
+  if (!cleanNext) return cleanCurrent;
+  return `${cleanCurrent}\n${cleanNext}`;
+}
 
 type PublishIntentPanelProps = {
   styles: PublishModalStyles;
@@ -51,6 +93,183 @@ export default function PublishIntentPanel({
   onReset,
   onOpenAiConfiguration,
 }: PublishIntentPanelProps) {
+  const [voiceState, setVoiceState] = useState<VoiceState>("idle");
+  const [voiceError, setVoiceError] = useState("");
+  const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const recordingTimerRef = useRef<number | null>(null);
+  const maxRecordingTimerRef = useRef<number | null>(null);
+
+  const clearVoiceTimers = () => {
+    if (recordingTimerRef.current) {
+      window.clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+    if (maxRecordingTimerRef.current) {
+      window.clearTimeout(maxRecordingTimerRef.current);
+      maxRecordingTimerRef.current = null;
+    }
+  };
+
+  const stopMediaStream = () => {
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    mediaStreamRef.current = null;
+  };
+
+  const submitVoiceBlob = async (audioBlob: Blob) => {
+    if (!audioBlob.size || audioBlob.size < VOICE_MIN_BYTES) {
+      setVoiceError("Vocal trop court ou vide. Réessaie en parlant un peu plus longtemps.");
+      setVoiceState("idle");
+      return;
+    }
+
+    setVoiceState("transcribing");
+    setVoiceError("");
+
+    try {
+      const mimeType = audioBlob.type || "audio/webm";
+      const extension = voiceExtensionFromMime(mimeType);
+      const audioFile = new File([audioBlob], `booster-vocal.${extension}`, { type: mimeType });
+      const formData = new FormData();
+      formData.append("audio", audioFile);
+
+      const response = await fetch("/api/booster/transcribe", {
+        method: "POST",
+        body: formData,
+      });
+      const json = await response.json().catch(() => ({}));
+
+      if (!response.ok) {
+        throw new Error(String(json?.user_message || json?.error || "Transcription impossible."));
+      }
+
+      const transcript = String(json?.text || "").trim();
+      if (!transcript) {
+        throw new Error("Aucun texte n’a été détecté dans le vocal.");
+      }
+
+      setIdea((current) => appendVoiceText(current, transcript));
+    } catch (error) {
+      setVoiceError(error instanceof Error ? error.message : "Le vocal n’a pas pu être transcrit.");
+    } finally {
+      setVoiceState("idle");
+      setRecordingSeconds(0);
+    }
+  };
+
+  const stopVoiceRecording = () => {
+    const recorder = mediaRecorderRef.current;
+    if (recorder && recorder.state === "recording") {
+      recorder.stop();
+      return;
+    }
+    clearVoiceTimers();
+    stopMediaStream();
+    setVoiceState("idle");
+  };
+
+  const startVoiceRecording = async () => {
+    setVoiceError("");
+
+    if (typeof window === "undefined" || typeof navigator === "undefined") return;
+    if (!window.isSecureContext && window.location.hostname !== "localhost") {
+      setVoiceError("Le micro nécessite une connexion sécurisée HTTPS.");
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia || typeof window.MediaRecorder === "undefined") {
+      setVoiceError("Ce navigateur ne permet pas l’enregistrement vocal. Utilise Chrome, Edge ou Safari récent.");
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = pickVoiceMimeType();
+      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+
+      audioChunksRef.current = [];
+      mediaStreamRef.current = stream;
+      mediaRecorderRef.current = recorder;
+
+      recorder.ondataavailable = (event) => {
+        if (event.data?.size) audioChunksRef.current.push(event.data);
+      };
+
+      recorder.onerror = () => {
+        setVoiceError("Erreur micro pendant l’enregistrement. Réessaie dans quelques secondes.");
+        clearVoiceTimers();
+        stopMediaStream();
+        setVoiceState("idle");
+      };
+
+      recorder.onstop = () => {
+        clearVoiceTimers();
+        stopMediaStream();
+        const type = recorder.mimeType || mimeType || "audio/webm";
+        const audioBlob = new Blob(audioChunksRef.current, { type });
+        mediaRecorderRef.current = null;
+        audioChunksRef.current = [];
+        void submitVoiceBlob(audioBlob);
+      };
+
+      recorder.start(1000);
+      setRecordingSeconds(0);
+      setVoiceState("recording");
+      recordingTimerRef.current = window.setInterval(() => {
+        setRecordingSeconds((value) => Math.min(VOICE_MAX_SECONDS, value + 1));
+      }, 1000);
+      maxRecordingTimerRef.current = window.setTimeout(() => {
+        stopVoiceRecording();
+      }, VOICE_MAX_SECONDS * 1000);
+    } catch (error) {
+      stopMediaStream();
+      const name = error instanceof DOMException ? error.name : "";
+      if (name === "NotAllowedError" || name === "SecurityError") {
+        setVoiceError("Micro refusé. Autorise le micro dans le navigateur puis réessaie.");
+      } else if (name === "NotFoundError" || name === "DevicesNotFoundError") {
+        setVoiceError("Aucun micro détecté sur cet appareil.");
+      } else {
+        setVoiceError("Impossible d’activer le micro. Vérifie l’autorisation navigateur/appareil.");
+      }
+      setVoiceState("idle");
+    }
+  };
+
+  const onVoiceButtonClick = () => {
+    if (voiceState === "recording") {
+      stopVoiceRecording();
+      return;
+    }
+    if (voiceState === "idle") {
+      void startVoiceRecording();
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      clearVoiceTimers();
+      stopMediaStream();
+      const recorder = mediaRecorderRef.current;
+      if (recorder && recorder.state === "recording") recorder.stop();
+    };
+  }, []);
+
+  const voiceDisabled = generating || voiceState === "transcribing";
+  const generationDisabled = generating || voiceState !== "idle";
+  const voiceButtonLabel =
+    voiceState === "recording"
+      ? `Arrêter le vocal ${formatVoiceDuration(recordingSeconds)}`
+      : voiceState === "transcribing"
+        ? "Correction du vocal en cours"
+        : "Faire un vocal";
+  const voiceButtonShortLabel =
+    voiceState === "recording"
+      ? `■ ${formatVoiceDuration(recordingSeconds)}`
+      : voiceState === "transcribing"
+        ? "…"
+        : "🎙️";
+
   return (
     <div
       className={styles.blockCard}
@@ -93,12 +312,64 @@ export default function PublishIntentPanel({
           <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6 }}>
             Phrase libre
           </div>
-          <textarea
-            placeholder={THEME_PLACEHOLDERS[theme] || THEME_PLACEHOLDERS[""]}
-            style={textAreaStyle}
-            value={idea}
-            onChange={(e) => setIdea(e.target.value)}
-          />
+          <div style={{ display: "grid", gap: 8 }}>
+            <div style={{ position: "relative", minWidth: 0 }}>
+              <textarea
+                placeholder={THEME_PLACEHOLDERS[theme] || THEME_PLACEHOLDERS[""]}
+                style={{
+                  ...textAreaStyle,
+                  paddingRight: isMobile ? 58 : 66,
+                  paddingBottom: isMobile ? 52 : 56,
+                }}
+                value={idea}
+                onChange={(e) => setIdea(e.target.value)}
+              />
+              <button
+                type="button"
+                className={voiceState === "recording" ? styles.primaryBtn : styles.secondaryBtn}
+                onClick={onVoiceButtonClick}
+                disabled={voiceDisabled}
+                aria-label={voiceButtonLabel}
+                title="Dictez votre idée : iNrCy la transcrit et corrige les fautes."
+                style={{
+                  position: "absolute",
+                  right: isMobile ? 10 : 12,
+                  bottom: isMobile ? 10 : 12,
+                  zIndex: 2,
+                  minWidth: voiceState === "recording" ? (isMobile ? 82 : 90) : isMobile ? 38 : 42,
+                  height: isMobile ? 36 : 40,
+                  minHeight: isMobile ? 36 : 40,
+                  borderRadius: 999,
+                  padding: voiceState === "recording" ? (isMobile ? "0 10px" : "0 12px") : 0,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: voiceState === "recording" ? (isMobile ? 11 : 12) : isMobile ? 16 : 18,
+                  fontWeight: 950,
+                  lineHeight: 1,
+                  whiteSpace: "nowrap",
+                  boxShadow: "0 10px 24px rgba(0,0,0,0.28)",
+                  opacity: voiceDisabled ? 0.6 : 1,
+                  cursor: voiceDisabled ? "not-allowed" : "pointer",
+                }}
+              >
+                {voiceButtonShortLabel}
+              </button>
+            </div>
+            {voiceState === "recording" ? (
+              <div style={{ fontSize: isMobile ? 11 : 12, color: "#ffdfdf", fontWeight: 800 }}>
+                Parlez maintenant, puis recliquez sur le micro pour arrêter.
+              </div>
+            ) : null}
+            {voiceState === "transcribing" ? (
+              <div style={{ fontSize: isMobile ? 11 : 12, color: "#dff6ff", fontWeight: 800 }}>
+                Transcription + correction en cours...
+              </div>
+            ) : null}
+            {voiceError ? (
+              <div style={{ fontSize: 12.5, color: "#ffb4b4", lineHeight: 1.35 }}>{voiceError}</div>
+            ) : null}
+          </div>
         </div>
         <input
           ref={fileInputRef}
@@ -275,9 +546,9 @@ export default function PublishIntentPanel({
               type="button"
               className={styles.primaryBtn}
               onClick={onGenerate}
-              disabled={generating}
+              disabled={generationDisabled}
             >
-              {generating ? "Génération en cours..." : "Générer avec iNrCy"}
+              {generating ? "Génération en cours..." : voiceState !== "idle" ? "Vocal en cours..." : "Générer avec iNrCy"}
             </button>
             <button
               type="button"
