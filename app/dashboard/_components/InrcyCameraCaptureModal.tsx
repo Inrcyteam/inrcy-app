@@ -31,6 +31,44 @@ export default function InrcyCameraCaptureModal({
   const [error, setError] = React.useState("");
   const [facingMode, setFacingMode] = React.useState<"environment" | "user">("environment");
   const [hasMultipleCameras, setHasMultipleCameras] = React.useState(true);
+  const [isLandscapeViewport, setIsLandscapeViewport] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!open || typeof window === "undefined") return;
+
+    const updateViewportOrientation = () => {
+      setIsLandscapeViewport(window.innerWidth > window.innerHeight);
+    };
+
+    updateViewportOrientation();
+    window.addEventListener("resize", updateViewportOrientation);
+    window.addEventListener("orientationchange", updateViewportOrientation);
+
+    return () => {
+      window.removeEventListener("resize", updateViewportOrientation);
+      window.removeEventListener("orientationchange", updateViewportOrientation);
+    };
+  }, [open]);
+
+  React.useEffect(() => {
+    if (typeof document === "undefined" || typeof window === "undefined") return;
+
+    const dispatchCameraState = (active: boolean) => {
+      document.documentElement.dataset.inrcyCameraCaptureActive = active ? "true" : "false";
+      window.dispatchEvent(
+        new CustomEvent("inrcy-camera-capture-active", { detail: { active } })
+      );
+    };
+
+    if (open) {
+      dispatchCameraState(true);
+      return () => {
+        dispatchCameraState(false);
+      };
+    }
+
+    dispatchCameraState(false);
+  }, [open]);
 
   const stopStream = React.useCallback(() => {
     const stream = streamRef.current;
@@ -196,8 +234,8 @@ export default function InrcyCameraCaptureModal({
       <div
         onClick={(event) => event.stopPropagation()}
         style={{
-          width: "min(100%, 520px)",
-          maxHeight: "min(92vh, 760px)",
+          width: isLandscapeViewport ? "min(96vw, 860px)" : "min(100%, 520px)",
+          maxHeight: "min(92dvh, 760px)",
           display: "grid",
           gap: 12,
           borderRadius: 24,
@@ -238,8 +276,8 @@ export default function InrcyCameraCaptureModal({
           style={{
             position: "relative",
             width: "100%",
-            aspectRatio: "3 / 4",
-            maxHeight: "58vh",
+            aspectRatio: isLandscapeViewport ? "16 / 9" : "3 / 4",
+            maxHeight: isLandscapeViewport ? "58dvh" : "58dvh",
             borderRadius: 20,
             overflow: "hidden",
             border: "1px solid rgba(255,255,255,0.14)",

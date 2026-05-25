@@ -18,6 +18,7 @@ export default function OrientationGuard() {
   // ✅ Mobile + tablette uniquement (≤ 1024px)
   const [isMobileOrTablet, setIsMobileOrTablet] = useState(false);
   const [isLandscape, setIsLandscape] = useState(false);
+  const [isCameraCaptureActive, setIsCameraCaptureActive] = useState(false);
 
   const landscapeRoutes = useMemo(
     () => ["/dashboard/factures", "/dashboard/devis"],
@@ -42,8 +43,47 @@ export default function OrientationGuard() {
     };
   }, []);
 
+
+  useEffect(() => {
+    const readCameraState = () => {
+      setIsCameraCaptureActive(
+        document.documentElement.dataset.inrcyCameraCaptureActive === "true"
+      );
+    };
+
+    const onCameraStateChange = (event: Event) => {
+      const detail = (event as CustomEvent<{ active?: boolean }>).detail;
+      if (typeof detail?.active === "boolean") {
+        setIsCameraCaptureActive(detail.active);
+        return;
+      }
+      readCameraState();
+    };
+
+    readCameraState();
+    window.addEventListener("inrcy-camera-capture-active", onCameraStateChange);
+
+    return () => {
+      window.removeEventListener("inrcy-camera-capture-active", onCameraStateChange);
+    };
+  }, []);
+
   useEffect(() => {
     if (!pathname || !isMobileOrTablet) return;
+
+    if (isCameraCaptureActive) {
+      try {
+        const anyScreen = screen as Screen & {
+          orientation?: {
+            unlock?: () => void;
+          };
+        };
+        anyScreen.orientation?.unlock?.();
+      } catch {
+        // Best effort: certains navigateurs refusent unlock(), l’overlay est quand même désactivé.
+      }
+      return;
+    }
 
     const target = mustBeLandscape ? "landscape" : "portrait";
     let cancelled = false;
@@ -74,7 +114,7 @@ export default function OrientationGuard() {
     return () => {
       cancelled = true;
     };
-  }, [pathname, mustBeLandscape, isMobileOrTablet]);
+  }, [pathname, mustBeLandscape, isMobileOrTablet, isCameraCaptureActive]);
 
 
   // ✅ Logo: on tente png puis svg puis sans extension
@@ -91,6 +131,9 @@ export default function OrientationGuard() {
 
   // ✅ Desktop large → jamais d’overlay
   if (!isMobileOrTablet) return null;
+
+  // ✅ Pendant la prise de photo intégrée iNrCy, on autorise le paysage.
+  if (isCameraCaptureActive) return null;
 
   const showLandscapeBlock = mustBeLandscape && !isLandscape;
   const showPortraitBlock = !mustBeLandscape && isLandscape;
