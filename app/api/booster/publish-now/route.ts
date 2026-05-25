@@ -6,12 +6,13 @@ import { randomUUID } from "crypto";
 
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { facebookPublishToPage } from "@/lib/facebookPublish";
-import { instagramPublishCarouselWithTokenFallback, instagramPublishPhotoWithTokenFallback } from "@/lib/instagramPublish";
+import { instagramPublishCarouselWithTokenFallback, instagramPublishPhotoWithTokenFallback, isInstagramAuthorizationErrorResult } from "@/lib/instagramPublish";
 import { linkedinPublishImage, linkedinPublishMultiImage, linkedinPublishText } from "@/lib/linkedinPublish";
 import { getGmbToken, gmbCreateLocalPost } from "@/lib/googleBusiness";
 import { optimizeForGoogleBusiness, optimizeForInstagram, optimizeForSiteCard, optimizeForSocialFeed } from "@/lib/imageOptimizer";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
-import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { GOOGLE_BUSINESS_RECONNECT_USER_MESSAGE, INSTAGRAM_RECONNECT_USER_MESSAGE, getSimpleFrenchErrorMessage, isInstagramAuthorizationLikeMessage } from "@/lib/userFacingErrors";
+import { getPublishChannelUserMessage, logPublishChannelFailure } from "@/lib/channelPublishDiagnostics";
 import { hasActiveInrcySite } from "@/lib/inrcySite";
 import { buildBoosterGmbSummary, buildBoosterInstagramCaption, buildBoosterMessage, getBoosterGmbCallToAction } from "@/lib/boosterCta";
 import { getLinkedInAccessToken } from "@/lib/linkedinOAuth";
@@ -745,8 +746,18 @@ const body = await req.json().catch(() => null);
           });
 
           if (artErr) {
-            await setDelivery(ch, { status: "failed", error: "Impossible de créer l'article pour le moment." });
-            results[ch] = { ok: false, error: "Impossible de créer l'article pour le moment." };
+            const siteUserError = getPublishChannelUserMessage(ch, artErr, "Impossible de créer l'article pour le moment.");
+            logPublishChannelFailure({
+              route: "booster_publish_now",
+              channel: ch,
+              userId,
+              publicationId,
+              stage: "site_article",
+              error: artErr,
+              userMessage: siteUserError,
+            });
+            await setDelivery(ch, { status: "failed", error: siteUserError });
+            results[ch] = { ok: false, error: siteUserError, raw_error: artErr.message || String(artErr) };
             continue;
           }
 
@@ -766,8 +777,20 @@ const body = await req.json().catch(() => null);
           const fbMeta = asRecord(fb["meta"]);
           const fbExpired = isExpired(fb["expires_at"]) && !String(fbMeta["selected"] ?? "") && !pageId;
           if (String(fb["status"] ?? "") !== "connected" || !pageId || !pageToken || fbExpired) {
-            await setDelivery(ch, { status: "failed", error: fbExpired ? "Facebook expiré : reconnectez le compte." : "Votre compte Facebook n’est pas encore correctement relié." });
-            results[ch] = { ok: false, error: "Le compte Facebook n'est pas encore correctement connecté." };
+            const facebookUserError = fbExpired
+              ? getPublishChannelUserMessage("facebook", "token expired")
+              : "Facebook à connecter. Rendez-vous dans Canaux.";
+            logPublishChannelFailure({
+              route: "booster_publish_now",
+              channel: "facebook",
+              userId,
+              publicationId,
+              stage: "precheck",
+              error: fbExpired ? "token_expired" : "not_connected",
+              userMessage: facebookUserError,
+            });
+            await setDelivery(ch, { status: "failed", error: facebookUserError });
+            results[ch] = { ok: false, error: facebookUserError };
             continue;
           }
 
@@ -779,8 +802,19 @@ const body = await req.json().catch(() => null);
           });
 
           if (!resp.ok) {
-            await setDelivery(ch, { status: "failed", error: resp.error });
-            results[ch] = { ok: false, error: resp.error, diagnostics: resp };
+            const facebookUserError = getPublishChannelUserMessage("facebook", resp.error);
+            logPublishChannelFailure({
+              route: "booster_publish_now",
+              channel: "facebook",
+              userId,
+              publicationId,
+              stage: "publish",
+              error: resp.error,
+              userMessage: facebookUserError,
+              diagnostics: resp,
+            });
+            await setDelivery(ch, { status: "failed", error: facebookUserError });
+            results[ch] = { ok: false, error: facebookUserError, raw_error: resp.error, diagnostics: resp };
             continue;
           }
 
@@ -798,8 +832,20 @@ const body = await req.json().catch(() => null);
           const igMeta = asRecord(ig["meta"]);
           const igExpired = isExpired(ig["expires_at"]) && !String(igMeta["page_id"] ?? "") && !igUserId;
           if (String(ig["status"] ?? "") !== "connected" || !igUserId || !igToken || igExpired) {
-            await setDelivery(ch, { status: "failed", error: igExpired ? "Instagram expiré : reconnectez le compte puis re-sélectionnez le profil Instagram." : "Votre compte Instagram n’est pas encore correctement relié." });
-            results[ch] = { ok: false, error: "Le compte Instagram n'est pas encore correctement connecté." };
+            const instagramUserError = igExpired
+              ? INSTAGRAM_RECONNECT_USER_MESSAGE
+              : "Instagram à connecter. Rendez-vous dans Canaux.";
+            logPublishChannelFailure({
+              route: "booster_publish_now",
+              channel: "instagram",
+              userId,
+              publicationId,
+              stage: "precheck",
+              error: igExpired ? "token_expired" : "not_connected",
+              userMessage: instagramUserError,
+            });
+            await setDelivery(ch, { status: "failed", error: instagramUserError });
+            results[ch] = { ok: false, error: instagramUserError };
             continue;
           }
 
@@ -829,15 +875,21 @@ const body = await req.json().catch(() => null);
               });
 
           if (!resp.ok) {
-            console.warn("instagram_publish_failed", {
+            const instagramUserError = (isInstagramAuthorizationErrorResult(resp) || isInstagramAuthorizationLikeMessage(`instagram ${resp.error}`))
+              ? INSTAGRAM_RECONNECT_USER_MESSAGE
+              : getSimpleFrenchErrorMessage(`instagram ${resp.error}`, resp.error || "La publication Instagram a échoué.");
+            logPublishChannelFailure({
               route: "booster_publish_now",
+              channel: "instagram",
               userId,
               publicationId,
+              stage: "publish",
               error: resp.error,
-              diagnostics: resp.diagnostics || null,
+              userMessage: instagramUserError,
+              diagnostics: resp,
             });
-            await setDelivery(ch, { status: "failed", error: resp.error });
-            results[ch] = { ok: false, error: resp.error, diagnostics: resp };
+            await setDelivery(ch, { status: "failed", error: instagramUserError });
+            results[ch] = { ok: false, error: instagramUserError, raw_error: resp.error, diagnostics: resp };
             continue;
           }
 
@@ -865,13 +917,24 @@ const body = await req.json().catch(() => null);
           const orgUrn = auth.orgUrn || String(liMeta["org_urn"] || "") || (selectedOrgId ? `urn:li:organization:${selectedOrgId}` : "");
           const useAuthor = orgUrn || authorUrn;
           if (String(li["status"] ?? "") !== "connected" || !accessToken || !useAuthor) {
-            const liError = auth.error && auth.refreshTokenPresent
-              ? "LinkedIn indisponible pour le moment : le rafraîchissement du token a échoué."
+            const liRawError = auth.error && auth.refreshTokenPresent
+              ? `token refresh failed: ${auth.error}`
               : auth.error && !auth.refreshTokenPresent
-                ? "LinkedIn expiré : reconnectez le compte une fois pour activer le refresh automatique."
-                : "Votre compte LinkedIn n’est pas encore correctement relié.";
+                ? `token expired: ${auth.error}`
+                : "not_connected";
+            const liError = getPublishChannelUserMessage("linkedin", liRawError, "LinkedIn à connecter. Rendez-vous dans Canaux.");
+            logPublishChannelFailure({
+              route: "booster_publish_now",
+              channel: "linkedin",
+              userId,
+              publicationId,
+              stage: "precheck",
+              error: liRawError,
+              userMessage: liError,
+              diagnostics: { refreshTokenPresent: auth.refreshTokenPresent, refreshed: auth.refreshed, canReconnectSilently: auth.canReconnectSilently },
+            });
             await setDelivery(ch, { status: "failed", error: liError });
-            results[ch] = { ok: false, error: liError };
+            results[ch] = { ok: false, error: liError, raw_error: auth.error || null };
             continue;
           }
           const linkedInImages = (getChannelImageSet(ch).socialFeedPublishableUrls.length ? getChannelImageSet(ch).socialFeedPublishableUrls : socialFeedImageUrls.length ? socialFeedImageUrls : externalImageUrls).filter(Boolean).slice(0, 20);
@@ -916,8 +979,19 @@ const body = await req.json().catch(() => null);
           }
 
           if (!resp.ok) {
-            await setDelivery(ch, { status: "failed", error: resp.error });
-            results[ch] = { ok: false, error: resp.error, diagnostics: resp };
+            const linkedInUserError = getPublishChannelUserMessage("linkedin", resp.error);
+            logPublishChannelFailure({
+              route: "booster_publish_now",
+              channel: "linkedin",
+              userId,
+              publicationId,
+              stage: "publish",
+              error: resp.error,
+              userMessage: linkedInUserError,
+              diagnostics: resp,
+            });
+            await setDelivery(ch, { status: "failed", error: linkedInUserError });
+            results[ch] = { ok: false, error: linkedInUserError, raw_error: resp.error, diagnostics: resp };
             continue;
           }
 
@@ -933,15 +1007,35 @@ const body = await req.json().catch(() => null);
           const gmbMeta = asRecord(gmb["meta"]);
           const accountName = String(gmbMeta["account"] ?? "");
           if (String(gmb["status"] ?? "") !== "connected" || !locationName || !accountName) {
-            await setDelivery(ch, { status: "failed", error: "Votre fiche Google Business n’est pas encore correctement reliée." });
-            results[ch] = { ok: false, error: "Le compte Google Business n'est pas encore correctement connecté." };
+            const gmbUserError = "Google Business à connecter. Rendez-vous dans Canaux.";
+            logPublishChannelFailure({
+              route: "booster_publish_now",
+              channel: "gmb",
+              userId,
+              publicationId,
+              stage: "precheck",
+              error: "not_connected",
+              userMessage: gmbUserError,
+            });
+            await setDelivery(ch, { status: "failed", error: gmbUserError });
+            results[ch] = { ok: false, error: gmbUserError };
             continue;
           }
 
           const tok = await getGmbToken();
           if (!tok?.accessToken) {
-            await setDelivery(ch, { status: "failed", error: "La connexion Google a expiré. Merci de reconnecter votre compte." });
-            results[ch] = { ok: false, error: "La connexion Google a expiré. Merci de reconnecter votre compte." };
+            const gmbUserError = GOOGLE_BUSINESS_RECONNECT_USER_MESSAGE;
+            logPublishChannelFailure({
+              route: "booster_publish_now",
+              channel: "gmb",
+              userId,
+              publicationId,
+              stage: "token",
+              error: "missing_or_expired_token",
+              userMessage: gmbUserError,
+            });
+            await setDelivery(ch, { status: "failed", error: gmbUserError });
+            results[ch] = { ok: false, error: gmbUserError };
             continue;
           }
 
@@ -1018,9 +1112,18 @@ const body = await req.json().catch(() => null);
 
         results[ch] = { ok: false, error: "unsupported_channel" };
       } catch (e: unknown) {
-        const msg = errMessage(e, "L'action n'a pas pu être finalisée.");
+        const msg = getPublishChannelUserMessage(ch, e, "L'action n'a pas pu être finalisée.");
+        logPublishChannelFailure({
+          route: "booster_publish_now",
+          channel: ch,
+          userId,
+          publicationId,
+          stage: "exception",
+          error: e,
+          userMessage: msg,
+        });
         await setDelivery(ch, { status: "failed", error: msg });
-        results[ch] = { ok: false, error: msg };
+        results[ch] = { ok: false, error: msg, raw_error: e instanceof Error ? e.message : String(e || "") };
       }
     }
 

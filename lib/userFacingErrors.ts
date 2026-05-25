@@ -1,8 +1,91 @@
+export const FACEBOOK_RECONNECT_USER_MESSAGE = "Facebook à reconnecter. Rendez-vous dans Canaux.";
+export const INSTAGRAM_RECONNECT_USER_MESSAGE = "Instagram à reconnecter. Rendez-vous dans Canaux.";
+export const LINKEDIN_RECONNECT_USER_MESSAGE = "LinkedIn à reconnecter. Rendez-vous dans Canaux.";
+export const GOOGLE_BUSINESS_RECONNECT_USER_MESSAGE = "Google Business à reconnecter. Rendez-vous dans Canaux.";
+
+function hasAuthSignal(raw: string): boolean {
+  return matches(raw, [
+    "authorization error",
+    "autorisation error",
+    "authorisation error",
+    "not authorized",
+    "not authorised",
+    "unauthorized",
+    "unauthorised",
+    "permission",
+    "permissions",
+    "scope",
+    "scopes",
+    "insufficient",
+    "access token",
+    "oauth",
+    "token expired",
+    "expired token",
+    "session has expired",
+    "invalid_grant",
+    "invalid token",
+    "refresh token",
+    "consent",
+    "code 10",
+    "code 190",
+    "code 200",
+    "(#10)",
+    "(#190)",
+    "(#200)",
+    "401",
+    "403",
+  ]);
+}
+
+export function isFacebookAuthorizationLikeMessage(input: unknown): boolean {
+  const raw = normalizeRawMessage(input).toLowerCase();
+  if (!raw) return false;
+  const hasFacebook = matches(raw, ["facebook", "meta", "graph", "page token", "page access", "pages_manage_posts", "pages_read_engagement"]);
+  return hasFacebook && hasAuthSignal(raw);
+}
+
+export function isInstagramAuthorizationLikeMessage(input: unknown): boolean {
+  const raw = normalizeRawMessage(input).toLowerCase();
+  if (!raw) return false;
+  const hasInstagram = matches(raw, ["instagram", "ig_user", "ig user", "instagram_content_publish"]);
+  return hasInstagram && hasAuthSignal(raw);
+}
+
+export function isLinkedInAuthorizationLikeMessage(input: unknown): boolean {
+  const raw = normalizeRawMessage(input).toLowerCase();
+  if (!raw) return false;
+  const hasLinkedIn = matches(raw, ["linkedin", "urn:li", "restli", "member", "organization"]);
+  return hasLinkedIn && hasAuthSignal(raw);
+}
+
+export function isGoogleBusinessAuthorizationLikeMessage(input: unknown): boolean {
+  const raw = normalizeRawMessage(input).toLowerCase();
+  if (!raw) return false;
+  const hasGoogleBusiness = matches(raw, ["google business", "gmb", "business profile", "mybusiness", "fiche google"]);
+  return hasGoogleBusiness && hasAuthSignal(raw);
+}
+
 export function getSimpleFrenchErrorMessage(input: unknown, fallback = "Cette action n'a pas pu aboutir. Merci de réessayer."): string {
   const raw = normalizeRawMessage(input);
   if (!raw) return fallback;
 
   const message = raw.toLowerCase();
+
+  if (isFacebookAuthorizationLikeMessage(raw)) {
+    return FACEBOOK_RECONNECT_USER_MESSAGE;
+  }
+
+  if (isInstagramAuthorizationLikeMessage(raw)) {
+    return INSTAGRAM_RECONNECT_USER_MESSAGE;
+  }
+
+  if (isLinkedInAuthorizationLikeMessage(raw)) {
+    return LINKEDIN_RECONNECT_USER_MESSAGE;
+  }
+
+  if (isGoogleBusinessAuthorizationLikeMessage(raw)) {
+    return GOOGLE_BUSINESS_RECONNECT_USER_MESSAGE;
+  }
 
   if (matches(message, ["fetch_failed:429", "summary_failed:429", "rate limit", "rate-limit", "too many requests", "quota exceeded", "quotas atteints", "quota backend unavailable", "rate limiter unavailable", "too_many_requests", "resource_exhausted"])) {
     return "Quotas atteints, merci de réessayer dans quelques minutes.";
@@ -90,11 +173,6 @@ export function getSimpleFrenchErrorMessage(input: unknown, fallback = "Cette ac
 
   if (matches(message, ["google a expiré", "connexion google expirée", "connexion google expiree"])) {
     return "La connexion Google a expiré. Merci de reconnecter votre compte.";
-  }
-
-  if (matches(message, ["authorization error", "autorisation error", "not authorized", "not authorised", "instagram_content_publish", "application does not have permission", "permission"])
-    && matches(message, ["instagram", "authorization error", "autorisation error", "instagram_content_publish"])) {
-    return "Instagram refuse l’autorisation de publication. Reconnectez Instagram puis re-sélectionnez le profil relié à la bonne page Facebook.";
   }
 
   if (matches(message, ["compte google business invalide", "compte linkedin invalide", "connexion linkedin invalide", "boîte outlook introuvable", "boite outlook introuvable", "compte imap introuvable", "source invalide"])) {

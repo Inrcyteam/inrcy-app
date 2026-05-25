@@ -1,3 +1,5 @@
+import { log } from "@/lib/observability/logger";
+
 const FACEBOOK_GRAPH_VERSION = "v19.0";
 
 type PublishOk = {
@@ -96,7 +98,7 @@ export async function facebookPublishToPage(params: {
       const up = await uploadUnpublishedPhoto({ pageId, pageAccessToken, imageUrl: url });
       if (!up.ok) {
         // Continue with remaining images, but keep diagnostics
-        console.warn("[facebookPublish] image upload failed:", up.error);
+        log.warn("facebook_image_upload_failed", { error: up.error });
         photoErrors.push({ url, error: up.error });
         continue;
       }

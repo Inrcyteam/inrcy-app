@@ -3,7 +3,7 @@ import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { tryDecryptToken } from "@/lib/oauthCrypto";
 import { facebookPublishToPage } from "@/lib/facebookPublish";
-import { instagramPublishCarouselWithTokenFallback, instagramPublishPhotoWithTokenFallback } from "@/lib/instagramPublish";
+import { instagramPublishCarouselWithTokenFallback, instagramPublishPhotoWithTokenFallback, isInstagramAuthorizationErrorResult } from "@/lib/instagramPublish";
 import { linkedinPublishImage, linkedinPublishMultiImage, linkedinPublishText } from "@/lib/linkedinPublish";
 import { getGmbToken, gmbCreateLocalPost } from "@/lib/googleBusiness";
 import { optimizeForGoogleBusiness, optimizeForInstagram, optimizeForSiteCard, optimizeForSocialFeed } from "@/lib/imageOptimizer";
@@ -12,6 +12,8 @@ import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { buildBoosterGmbSummary, buildBoosterInstagramCaption, buildBoosterMessage, getBoosterGmbCallToAction } from "@/lib/boosterCta";
 import { log } from "@/lib/observability/logger";
 import { getLinkedInAccessToken } from "@/lib/linkedinOAuth";
+import { INSTAGRAM_RECONNECT_USER_MESSAGE, isInstagramAuthorizationLikeMessage } from "@/lib/userFacingErrors";
+import { getPublishChannelUserMessage, logPublishChannelFailure } from "@/lib/channelPublishDiagnostics";
 
 const FACEBOOK_GRAPH_VERSION = "v20.0";
 const LINKEDIN_VERSION = "202603";
@@ -870,7 +872,19 @@ async function replaceChannelDelivery(params: {
     const fb = asRecord(fbRow);
     const pageId = String(fb.resource_id ?? "");
     const pageToken = tryDecryptToken(String(fb.access_token_enc ?? "")) || "";
-    if (String(fb.status ?? "") !== "connected" || !pageId || !pageToken) throw new Error("Votre compte Facebook n’est pas encore correctement relié.");
+    if (String(fb.status ?? "") !== "connected" || !pageId || !pageToken) {
+      const facebookUserError = "Facebook à connecter. Rendez-vous dans Canaux.";
+      logPublishChannelFailure({
+        route: "inrsend_publication_channel_action",
+        channel: "facebook",
+        userId,
+        publicationId: publicationId || null,
+        stage: "precheck",
+        error: "not_connected",
+        userMessage: facebookUserError,
+      });
+      throw new Error(facebookUserError);
+    }
 
     const currentImageSet = getChannelImageSet(eventPayload, publication, channel);
     const facebookImagesChanged = !areImageListsEqual(currentImageSet.images, resolvedImageSet.images);
@@ -887,7 +901,20 @@ async function replaceChannelDelivery(params: {
     }
 
     const resp = await facebookPublishToPage({ pageId, pageAccessToken: pageToken, message: canonMessage, imageUrls: socialFeedImageUrls });
-    if (!resp.ok) throw new Error(resp.error);
+    if (!resp.ok) {
+      const facebookUserError = getPublishChannelUserMessage("facebook", resp.error);
+      logPublishChannelFailure({
+        route: "inrsend_publication_channel_action",
+        channel: "facebook",
+        userId,
+        publicationId: publicationId || null,
+        stage: "publish",
+        error: resp.error,
+        userMessage: facebookUserError,
+        diagnostics: resp,
+      });
+      throw new Error(facebookUserError);
+    }
     return { externalId: resp.postId, status: "delivered", error: null };
   }
 
@@ -895,7 +922,19 @@ async function replaceChannelDelivery(params: {
     const ig = asRecord(igRow);
     const igUserId = String(ig.resource_id ?? "");
     const igToken = tryDecryptToken(String(ig.access_token_enc ?? "")) || "";
-    if (String(ig.status ?? "") !== "connected" || !igUserId || !igToken) throw new Error("Votre compte Instagram n’est pas encore correctement relié.");
+    if (String(ig.status ?? "") !== "connected" || !igUserId || !igToken) {
+      const instagramUserError = "Instagram à connecter. Rendez-vous dans Canaux.";
+      logPublishChannelFailure({
+        route: "inrsend_publication_channel_action",
+        channel: "instagram",
+        userId,
+        publicationId: publicationId || null,
+        stage: "precheck",
+        error: "not_connected",
+        userMessage: instagramUserError,
+      });
+      throw new Error(instagramUserError);
+    }
     const instagramImages = instagramImageUrls.filter(Boolean).slice(0, 10);
     if (!instagramImages.length) throw new Error("Instagram nécessite au moins 1 image.");
     let previousDeleteResult: InstagramDeleteResult | null = null;
@@ -930,14 +969,20 @@ async function replaceChannelDelivery(params: {
           imageUrl: instagramImages[0],
         });
     if (!resp.ok) {
-      log.warn("instagram_publish_failed", {
+      const instagramUserError = (isInstagramAuthorizationErrorResult(resp) || isInstagramAuthorizationLikeMessage(`instagram ${resp.error}`))
+        ? INSTAGRAM_RECONNECT_USER_MESSAGE
+        : getPublishChannelUserMessage("instagram", resp.error, "La publication Instagram a échoué.");
+      logPublishChannelFailure({
         route: "inrsend_publication_channel_action",
+        channel: "instagram",
         userId,
         publicationId: publicationId || null,
+        stage: "publish",
         error: resp.error,
-        diagnostics: resp.diagnostics || null,
+        userMessage: instagramUserError,
+        diagnostics: resp,
       });
-      throw new Error(resp.error);
+      throw new Error(instagramUserError);
     }
     return {
       externalId: resp.mediaId,
@@ -964,7 +1009,19 @@ async function replaceChannelDelivery(params: {
     const selectedOrgId = String(liMeta.org_id || "").trim();
     const authorUrn = auth.orgUrn || String(liMeta.org_urn || "") || (selectedOrgId ? `urn:li:organization:${selectedOrgId}` : "") || memberAuthorUrn;
     if (String(li.status ?? "") !== "connected" || !accessToken || !authorUrn) {
-      throw new Error(auth.error || "Votre compte LinkedIn n’est pas encore correctement relié.");
+      const linkedInRawError = auth.error || "not_connected";
+      const linkedInUserError = getPublishChannelUserMessage("linkedin", linkedInRawError, "LinkedIn à connecter. Rendez-vous dans Canaux.");
+      logPublishChannelFailure({
+        route: "inrsend_publication_channel_action",
+        channel: "linkedin",
+        userId,
+        publicationId: publicationId || null,
+        stage: "precheck",
+        error: linkedInRawError,
+        userMessage: linkedInUserError,
+        diagnostics: { refreshTokenPresent: auth.refreshTokenPresent, refreshed: auth.refreshed, canReconnectSilently: auth.canReconnectSilently },
+      });
+      throw new Error(linkedInUserError);
     }
     if (previousExternalId) await deleteLinkedInPost(previousExternalId, accessToken);
     const linkedInImages = socialFeedImageUrls.filter(Boolean).slice(0, 20);
@@ -973,7 +1030,20 @@ async function replaceChannelDelivery(params: {
       : linkedInImages[0]
         ? await linkedinPublishImage({ accessToken, authorUrn, text: canonMessage, imageUrl: linkedInImages[0], title: nextPost.title || undefined })
         : await linkedinPublishText({ accessToken, authorUrn, text: canonMessage });
-    if (!resp.ok) throw new Error(resp.error);
+    if (!resp.ok) {
+      const linkedInUserError = getPublishChannelUserMessage("linkedin", resp.error);
+      logPublishChannelFailure({
+        route: "inrsend_publication_channel_action",
+        channel: "linkedin",
+        userId,
+        publicationId: publicationId || null,
+        stage: "publish",
+        error: resp.error,
+        userMessage: linkedInUserError,
+        diagnostics: resp,
+      });
+      throw new Error(linkedInUserError);
+    }
     return { externalId: resp.postUrn || null, status: "delivered", error: null };
   }
 
@@ -982,20 +1052,58 @@ async function replaceChannelDelivery(params: {
     const meta = asRecord(gmb.meta);
     const accountName = String(meta.account ?? "");
     const locationName = String(gmb.resource_id ?? "");
-    if (String(gmb.status ?? "") !== "connected" || !accountName || !locationName) throw new Error("Votre fiche Google Business n’est pas encore correctement reliée.");
+    if (String(gmb.status ?? "") !== "connected" || !accountName || !locationName) {
+      const gmbUserError = "Google Business à connecter. Rendez-vous dans Canaux.";
+      logPublishChannelFailure({
+        route: "inrsend_publication_channel_action",
+        channel: "gmb",
+        userId,
+        publicationId: publicationId || null,
+        stage: "precheck",
+        error: "not_connected",
+        userMessage: gmbUserError,
+      });
+      throw new Error(gmbUserError);
+    }
     const token = await getGmbToken();
-    if (!token?.accessToken) throw new Error("La connexion Google a expiré. Merci de reconnecter votre compte.");
-    if (previousExternalId) await deleteGmbPost(previousExternalId, token.accessToken);
-    const resp = await gmbCreateLocalPost({
-      accessToken: token.accessToken,
-      accountName,
-      locationName,
-      summary: buildBoosterGmbSummary(nextPost),
-      imageUrls: gmbImageUrls,
-      languageCode: "fr-FR",
-      callToAction: getBoosterGmbCallToAction(nextPost, { websiteUrl, phone }) || undefined,
-    });
-    return { externalId: String(asRecord(resp).name ?? "") || null, status: "delivered", error: null };
+    if (!token?.accessToken) {
+      const gmbUserError = getPublishChannelUserMessage("gmb", "token expired");
+      logPublishChannelFailure({
+        route: "inrsend_publication_channel_action",
+        channel: "gmb",
+        userId,
+        publicationId: publicationId || null,
+        stage: "token",
+        error: "missing_or_expired_token",
+        userMessage: gmbUserError,
+      });
+      throw new Error(gmbUserError);
+    }
+    try {
+      if (previousExternalId) await deleteGmbPost(previousExternalId, token.accessToken);
+      const resp = await gmbCreateLocalPost({
+        accessToken: token.accessToken,
+        accountName,
+        locationName,
+        summary: buildBoosterGmbSummary(nextPost),
+        imageUrls: gmbImageUrls,
+        languageCode: "fr-FR",
+        callToAction: getBoosterGmbCallToAction(nextPost, { websiteUrl, phone }) || undefined,
+      });
+      return { externalId: String(asRecord(resp).name ?? "") || null, status: "delivered", error: null };
+    } catch (gmbError: unknown) {
+      const gmbUserError = getPublishChannelUserMessage("gmb", gmbError);
+      logPublishChannelFailure({
+        route: "inrsend_publication_channel_action",
+        channel: "gmb",
+        userId,
+        publicationId: publicationId || null,
+        stage: "publish",
+        error: gmbError,
+        userMessage: gmbUserError,
+      });
+      throw new Error(gmbUserError);
+    }
   }
 
   throw new Error("Canal non supporté.");
@@ -1242,7 +1350,15 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
 
       return NextResponse.json({ ok: true, publication_id: publicationId, channel, external_id: replaceResult.externalId, payload: nextPayload });
     } catch (e: unknown) {
-      return jsonUserFacingError(e, { status: 500, fallback: "La modification de la publication a échoué.", code: "publication_update_failed" });
+      const userMessage = getPublishChannelUserMessage(channel, e, "La modification de la publication a échoué.");
+      logPublishChannelFailure({
+        route: "inrsend_publication_channel_update",
+        channel,
+        stage: "exception",
+        error: e,
+        userMessage,
+      });
+      return jsonUserFacingError(userMessage, { status: 500, fallback: userMessage, code: "publication_update_failed" });
     }
   }
 
@@ -1276,7 +1392,15 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
 
       return NextResponse.json({ ok: true, deleted: true, removed_publication: false, payload: nextPayload });
     } catch (e: unknown) {
-      return jsonUserFacingError(e, { status: 500, fallback: "La suppression de la publication a échoué.", code: "publication_delete_failed" });
+      const userMessage = getPublishChannelUserMessage(channel, e, "La suppression de la publication a échoué.");
+      logPublishChannelFailure({
+        route: "inrsend_publication_channel_delete",
+        channel,
+        stage: "exception",
+        error: e,
+        userMessage,
+      });
+      return jsonUserFacingError(userMessage, { status: 500, fallback: userMessage, code: "publication_delete_failed" });
     }
   }
 
