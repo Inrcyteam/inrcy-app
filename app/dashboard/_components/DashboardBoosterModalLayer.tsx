@@ -169,12 +169,19 @@ export default function DashboardBoosterModalLayer({
 
         const summary = json?.summary || null;
         const failed = Object.entries((json?.results || {}) as Record<string, any>).filter(([, value]) => value && value.ok === false);
-        if (summary?.allFailed || (!summary && failed.length)) {
+
+        // Si l’API renvoie un bilan canal par canal, on laisse toujours la modale
+        // de résultat l’afficher, même quand un seul canal échoue.
+        // Le message en bas de page reste réservé aux vrais problèmes techniques
+        // sans résumé exploitable : réseau, serveur, JSON invalide, etc.
+        if (!summary && failed.length) {
           const detail = failed.map(([channel, value]) => `${channel}: ${String((value as any)?.error || "erreur")}`).join(" | ");
           throw new Error(getSimpleFrenchErrorMessage(detail, "La publication a échoué."));
         }
 
-        await award("create_actu", 10, `week-${isoWeekId()}`, "Actu créée");
+        if (!summary || Number(summary.successCount || 0) > 0) {
+          await award("create_actu", 10, `week-${isoWeekId()}`, "Actu créée");
+        }
         return json;
       } finally {
         await refreshMetrics();
@@ -364,15 +371,29 @@ export default function DashboardBoosterModalLayer({
 
       {publishSuccessOpen ? (
         <div style={{ position: "fixed", inset: 0, display: "grid", placeItems: "center", background: "rgba(3, 8, 20, 0.52)", zIndex: 110, padding: 16 }}>
-          <div className={styles.blockCard} style={{ width: "min(560px, 100%)", textAlign: "center", position: "relative", boxShadow: "0 30px 80px rgba(0,0,0,0.40)", border: `1px solid ${publishSummary?.failureCount ? "rgba(251,191,36,0.28)" : "rgba(34,197,94,0.28)"}`, background: "linear-gradient(180deg, rgba(12,18,32,0.98), rgba(10,14,24,0.98))" }}>
+          <div className={styles.blockCard} style={{ width: "min(560px, 100%)", textAlign: "center", position: "relative", boxShadow: "0 30px 80px rgba(0,0,0,0.40)", border: `1px solid ${publishSummary?.allFailed ? "rgba(248,113,113,0.34)" : publishSummary?.failureCount ? "rgba(251,191,36,0.28)" : "rgba(34,197,94,0.28)"}`, background: "linear-gradient(180deg, rgba(12,18,32,0.98), rgba(10,14,24,0.98))" }}>
             <button type="button" onClick={() => setPublishSuccessOpen(false)} aria-label="Fermer" className={styles.secondaryBtn} style={{ position: "absolute", top: 14, right: 14, minWidth: 42, padding: "0 12px" }}>✕</button>
-            <div style={{ fontSize: 42, marginBottom: 8 }}>{publishSummary?.failureCount ? "✅" : "🎉"}</div>
-            <div className={styles.blockTitle} style={{ marginBottom: 8 }}>{publishSummary?.failureCount ? "Publication envoyée partiellement" : "Publication envoyée avec succès"}</div>
+            <div style={{ fontSize: 42, marginBottom: 8 }}>{publishSummary?.allFailed ? "❌" : publishSummary?.failureCount ? "✅" : "🎉"}</div>
+            <div className={styles.blockTitle} style={{ marginBottom: 8 }}>
+              {publishSummary?.allFailed
+                ? "Publication échouée"
+                : publishSummary?.failureCount
+                  ? "Publication envoyée partiellement"
+                  : "Publication envoyée avec succès"}
+            </div>
             <div className={styles.subtitle} style={{ maxWidth: 460, margin: "0 auto 14px auto" }}>
-              {publishSummary?.failureCount ? `Votre publication a été envoyée sur ${publishSummary?.successCount || 0} canal(aux). ${publishSummary?.failureCount || 0} canal(aux) n'ont pas pu publier.` : "Votre actualité a bien été prise en compte. Elle est maintenant en cours de diffusion sur vos canaux sélectionnés."}
+              {publishSummary?.allFailed
+                ? "Aucun canal n’a pu publier. Vérifiez le détail ci-dessous."
+                : publishSummary?.failureCount
+                  ? `Votre publication a été envoyée sur ${publishSummary?.successCount || 0} canal(aux). ${publishSummary?.failureCount || 0} canal(aux) n'ont pas pu publier.`
+                  : "Votre actualité a bien été prise en compte. Elle est maintenant en cours de diffusion sur vos canaux sélectionnés."}
             </div>
             <StatusMessage variant={publishSummary?.failureCount ? "error" : "success"} style={{ marginTop: 0, fontSize: 14 }}>
-              {publishSummary?.failureCount ? "Succès partiel : vérifiez le détail ci-dessous." : "C’est parfait, votre publication est lancée."}
+              {publishSummary?.allFailed
+                ? "Échec : vérifiez le détail ci-dessous."
+                : publishSummary?.failureCount
+                  ? "Succès partiel : vérifiez le détail ci-dessous."
+                  : "C’est parfait, votre publication est lancée."}
             </StatusMessage>
             {Array.isArray(publishSummary?.entries) ? (
               <div style={{ marginTop: 14, display: "grid", gap: 8, textAlign: "left" }}>

@@ -161,7 +161,7 @@ export default function MailboxClient() {
   const [campaignHealth, setCampaignHealth] = useState<CampaignHealthSummary | null>(null);
   const [campaignHealthLoading, setCampaignHealthLoading] = useState(false);
   const [campaignActionBusyId, setCampaignActionBusyId] = useState<string | null>(null);
-  const [publicationEditForm, setPublicationEditForm] = useState<PublicationEditForm>({ title: "", content: "", cta: "", hashtags: "" });
+  const [publicationEditForm, setPublicationEditForm] = useState<PublicationEditForm>({ title: "", content: "", cta: "", ctaMode: "none", ctaUrl: "", ctaPhone: "", hashtags: "" });
   const [publicationEditImagesByChannel, setPublicationEditImagesByChannel] = useState<Record<string, PublicationChannelImagesState>>({});
   const [publicationImageAdapterChannelKey, setPublicationImageAdapterChannelKey] = useState<string | null>(null);
   const [publicationImageAdapterImageKey, setPublicationImageAdapterImageKey] = useState<string | null>(null);
@@ -1036,6 +1036,9 @@ export default function MailboxClient() {
       title: parts.title || "",
       content: parts.content || "",
       cta: parts.cta || "",
+      ctaMode: parts.ctaMode || (parts.ctaUrl ? "website" : parts.ctaPhone ? "call" : parts.cta ? "custom" : "none"),
+      ctaUrl: parts.ctaUrl || "",
+      ctaPhone: parts.ctaPhone || "",
       hashtags: tagsToEditorString(parts.hashtags),
     });
     setDetailsEditMode(false);
@@ -2159,6 +2162,9 @@ async function deleteDraftPermanently(id: string) {
           title: publicationEditForm.title,
           content: publicationEditForm.content,
           cta: publicationEditForm.cta,
+          ctaMode: publicationEditForm.ctaMode,
+          ctaUrl: publicationEditForm.ctaUrl,
+          ctaPhone: publicationEditForm.ctaPhone,
           hashtags,
           externalId: (activeDetailsChannelResult as any)?.external_id || null,
           retainedImages,

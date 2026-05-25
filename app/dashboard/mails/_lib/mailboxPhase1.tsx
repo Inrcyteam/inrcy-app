@@ -341,6 +341,9 @@ export type PublicationParts = {
   title?: string | null;
   content?: string | null;
   cta?: string | null;
+  ctaMode?: string | null;
+  ctaUrl?: string | null;
+  ctaPhone?: string | null;
   hashtags?: string[];
   attachments?: { name: string; type?: string | null; size?: number | null; url?: string | null; downloadUrl?: string | null; role?: string | null }[];
 };
@@ -355,6 +358,9 @@ export type PublicationEditForm = {
   title: string;
   content: string;
   cta: string;
+  ctaMode: string;
+  ctaUrl: string;
+  ctaPhone: string;
   hashtags: string;
 };
 
@@ -853,6 +859,21 @@ export function extractPublicationParts(payload: any): PublicationParts {
     (typeof payload.cta === "string" && payload.cta.trim() ? payload.cta.trim() : null) ||
     null;
 
+  const ctaMode =
+    (typeof post.ctaMode === "string" && post.ctaMode.trim() ? post.ctaMode.trim() : null) ||
+    (typeof payload.ctaMode === "string" && payload.ctaMode.trim() ? payload.ctaMode.trim() : null) ||
+    null;
+
+  const ctaUrl =
+    (typeof post.ctaUrl === "string" && post.ctaUrl.trim() ? post.ctaUrl.trim() : null) ||
+    (typeof payload.ctaUrl === "string" && payload.ctaUrl.trim() ? payload.ctaUrl.trim() : null) ||
+    null;
+
+  const ctaPhone =
+    (typeof post.ctaPhone === "string" && post.ctaPhone.trim() ? post.ctaPhone.trim() : null) ||
+    (typeof payload.ctaPhone === "string" && payload.ctaPhone.trim() ? payload.ctaPhone.trim() : null) ||
+    null;
+
   const hashtagsRaw = (post as any).hashtags ?? (payload as any).hashtags;
   const hashtags = Array.isArray(hashtagsRaw)
     ? hashtagsRaw.map((x: any) => String(x || "").trim()).filter(Boolean)
@@ -860,7 +881,7 @@ export function extractPublicationParts(payload: any): PublicationParts {
 
   const attachments = extractAttachmentsFromPayload(payload);
 
-  return { title, content, cta, hashtags, attachments };
+  return { title, content, cta, ctaMode, ctaUrl, ctaPhone, hashtags, attachments };
 }
 
 export function normalizeChannelKey(channel: string): string {
@@ -1072,6 +1093,9 @@ export function extractChannelPublications(payload: any): ChannelPublication[] {
         title: channelParts.title || fallbackParts.title || null,
         content: channelParts.content || fallbackParts.content || null,
         cta: channelParts.cta || fallbackParts.cta || null,
+        ctaMode: channelParts.ctaMode || fallbackParts.ctaMode || null,
+        ctaUrl: channelParts.ctaUrl || fallbackParts.ctaUrl || null,
+        ctaPhone: channelParts.ctaPhone || fallbackParts.ctaPhone || null,
         hashtags: channelParts.hashtags?.length ? channelParts.hashtags : fallbackParts.hashtags || [],
         attachments: channelOwnsAttachments ? channelParts.attachments || [] : fallbackParts.attachments || [],
       },

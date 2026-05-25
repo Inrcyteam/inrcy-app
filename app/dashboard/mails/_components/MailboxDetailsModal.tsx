@@ -1,10 +1,27 @@
 import React from "react";
 import { useRouter } from "next/navigation";
-import { sanitizeHtml } from "@/lib/sanitizeHtml";
-import { renderBoosterSiteContentHtml, renderBoosterSiteInlineHtml, stripSiteTextFormatting } from "@/lib/boosterFormatting";
+import { readSanitizedElementHtml, sanitizeHtml } from "@/lib/sanitizeHtml";
+import { editableHtmlToSiteText, renderBoosterSiteContentHtml, renderBoosterSiteInlineHtml, stripSiteTextFormatting } from "@/lib/boosterFormatting";
 import styles from "../mails.module.css";
 import { ChannelImageAdapterCardsPanel, ChannelPublicationPreview } from "@/app/dashboard/_components/ChannelImageAdapterTool";
 import InrcyCameraCaptureModal from "@/app/dashboard/_components/InrcyCameraCaptureModal";
+import RichSiteContentEditor from "@/app/dashboard/booster/publier/components/RichSiteContentEditor";
+import {
+  buildAutoPrefillPatch,
+  CHANNEL_TEXT_GUIDELINES,
+  CTA_MODE_OPTIONS,
+  getChannelDefaultCtaLabel,
+  getCtaModeHelp,
+  getWebsiteSourceLabelForChannel,
+  getWebsiteUrlForChannel,
+  isSiteDisplayKey,
+  type BoosterCtaDefaults,
+  type BoosterCtaMode,
+  type ChannelPost,
+  type DisplayKey,
+} from "@/app/dashboard/booster/publier/publishModal.shared";
+import { darkOptionStyle, darkSelectStyle, lightFieldStyle, textAreaStyle } from "@/app/dashboard/booster/publier/publishModal.styles";
+import { confirmInrcy } from "@/lib/inrcyDialog";
 import {
   MAILBOX_RECIPIENTS_PAGE_SIZE,
   type CampaignRecipientsFilterId,
@@ -161,12 +178,147 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
     if (open) setPublicationPreviewOpen(false);
   }, [open, detailsItem?.id, detailsEditMode]);
 
+  const [publicationEditDirty, setPublicationEditDirty] = React.useState(false);
+  const [publicationCtaDefaults, setPublicationCtaDefaults] = React.useState<BoosterCtaDefaults | null>(null);
+  const publicationSiteContentEditorRef = React.useRef<HTMLDivElement | null>(null);
+
+  const publicationDisplayKey = React.useMemo<DisplayKey>(() => {
+    const key = String(activePublicationEditChannelKey || "");
+    if (["inrcy_site", "site_web", "gmb", "facebook", "instagram", "linkedin"].includes(key)) {
+      return key as DisplayKey;
+    }
+    return "facebook";
+  }, [activePublicationEditChannelKey]);
+
+  const markPublicationEditDirty = React.useCallback(() => {
+    setPublicationEditDirty(true);
+  }, []);
+
+  const updatePublicationEdit = React.useCallback((patch: Partial<PublicationEditForm>) => {
+    markPublicationEditDirty();
+    setPublicationEditForm((prev) => ({ ...prev, ...patch }));
+  }, [markPublicationEditDirty, setPublicationEditForm]);
+
+  React.useEffect(() => {
+    let alive = true;
+    if (!open || !detailsEditMode || detailsItem?.source !== "app_events") return () => { alive = false; };
+
+    (async () => {
+      try {
+        const res = await fetch("/api/booster/cta-defaults", { cache: "no-store" as const });
+        if (!res.ok) return;
+        const json = await res.json().catch(() => ({}));
+        if (!alive) return;
+        setPublicationCtaDefaults({
+          preferredWebsiteUrl: String(json?.preferredWebsiteUrl || "").trim(),
+          preferredWebsiteLabel: String(json?.preferredWebsiteLabel || "").trim(),
+          siteWebUrl: String(json?.siteWebUrl || "").trim(),
+          inrcySiteUrl: String(json?.inrcySiteUrl || "").trim(),
+          phone: String(json?.phone || "").trim(),
+          preferredCta: ["devis", "appeler", "message"].includes(String(json?.preferredCta || ""))
+            ? String(json?.preferredCta || "devis") as BoosterCtaDefaults["preferredCta"]
+            : "devis",
+        });
+      } catch {
+        // CTA defaults are helpful but not required to edit a publication.
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [open, detailsEditMode, detailsItem?.source]);
+
+  const applyPublicationSiteContentFormat = React.useCallback((kind: "bold" | "italic" | "underline") => {
+    if (!isSiteDisplayKey(publicationDisplayKey) || typeof document === "undefined") return;
+    const editor = publicationSiteContentEditorRef.current;
+    if (!editor) return;
+
+    editor.focus();
+    const command = kind === "bold" ? "bold" : kind === "italic" ? "italic" : "underline";
+    document.execCommand(command, false);
+    updatePublicationEdit({ content: editableHtmlToSiteText(readSanitizedElementHtml(editor)) });
+  }, [publicationDisplayKey, updatePublicationEdit]);
+
+  const applyPublicationCtaModePrefill = React.useCallback((mode: BoosterCtaMode) => {
+    const current = {
+      title: publicationEditForm.title,
+      content: publicationEditForm.content,
+      cta: publicationEditForm.cta,
+      ctaMode: publicationEditForm.ctaMode || "none",
+      ctaUrl: publicationEditForm.ctaUrl || "",
+      ctaPhone: publicationEditForm.ctaPhone || "",
+      hashtags: [],
+    } as ChannelPost;
+    const patch = buildAutoPrefillPatch(publicationDisplayKey, mode, current, publicationCtaDefaults);
+    updatePublicationEdit({
+      ctaMode: String(patch.ctaMode || mode),
+      ...(typeof patch.cta === "string" ? { cta: patch.cta } : {}),
+      ...(typeof patch.ctaUrl === "string" ? { ctaUrl: patch.ctaUrl } : {}),
+      ...(typeof patch.ctaPhone === "string" ? { ctaPhone: patch.ctaPhone } : {}),
+    });
+  }, [publicationCtaDefaults, publicationDisplayKey, publicationEditForm.content, publicationEditForm.cta, publicationEditForm.ctaMode, publicationEditForm.ctaPhone, publicationEditForm.ctaUrl, publicationEditForm.title, updatePublicationEdit]);
+
+  const getPublicationPreviewCta = React.useCallback((channel: DisplayKey, form: PublicationEditForm) => {
+    const mode = (form.ctaMode || "none") as BoosterCtaMode;
+    const explicit = String(form.cta || "").trim();
+    const phone = String(form.ctaPhone || "").trim();
+    if (mode === "none") return "";
+    if (mode === "call") {
+      const label = explicit || getChannelDefaultCtaLabel(channel, "call") || "Appeler";
+      return phone ? `${label} · ${phone}` : label;
+    }
+    if (explicit) return explicit;
+    if (mode === "website") return getChannelDefaultCtaLabel(channel, mode);
+    if (mode === "message") return channel === "instagram" ? "Message privé" : "Envoyer un message";
+    return "";
+  }, []);
+
+  React.useEffect(() => {
+    if (!open || !detailsEditMode) setPublicationEditDirty(false);
+  }, [open, detailsItem?.id, activePublicationEditChannelKey, detailsEditMode]);
+
+  const confirmDiscardPublicationEdit = React.useCallback(async () => {
+    if (!detailsEditMode) return true;
+    if (detailsActionBusy) return false;
+
+    const ok = await confirmInrcy({
+      eyebrow: "Modification en cours",
+      title: "Quitter la modification ?",
+      message: publicationEditDirty
+        ? "Vos changements ne seront pas enregistrés."
+        : "Vous êtes en mode modification.",
+      cancelLabel: "Continuer l’édition",
+      confirmLabel: "Quitter",
+      variant: "danger",
+    });
+    if (ok) setPublicationEditDirty(false);
+    return ok;
+  }, [detailsActionBusy, detailsEditMode, publicationEditDirty]);
+
+  const requestClose = React.useCallback(async () => {
+    const ok = await confirmDiscardPublicationEdit();
+    if (!ok) return;
+    setDetailsEditMode(false);
+    onClose();
+  }, [confirmDiscardPublicationEdit, onClose, setDetailsEditMode]);
+
+  const requestChannelChange = React.useCallback(async (channelKey: string) => {
+    if (!channelKey || channelKey === activePublicationEditChannelKey) return;
+    const ok = await confirmDiscardPublicationEdit();
+    if (!ok) return;
+    setDetailsEditMode(false);
+    setDetailsActionError(null);
+    setDetailsActionSuccess(null);
+    setDetailsChannelKey(channelKey);
+  }, [activePublicationEditChannelKey, confirmDiscardPublicationEdit, setDetailsActionError, setDetailsActionSuccess, setDetailsChannelKey, setDetailsEditMode]);
+
   if (!open) return null;
 
   const safeDetailHtml = detailsItem?.detailHtml ? sanitizeHtml(detailsItem.detailHtml) : "";
 
   return (
-          <div className={styles.modalOverlay} onClick={() => onClose()}>
+          <div className={styles.modalOverlay} onClick={() => void requestClose()}>
             <div className={`${styles.modalCard} ${styles.detailsModalCard}`} onClick={(e) => e.stopPropagation()}>
               <div className={styles.modalHeader}>
                 <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -183,7 +335,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
 
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   {/* Trash removed intentionally */}
-                  <button className={styles.btnGhost} onClick={() => onClose()} type="button">
+                  <button className={styles.btnGhost} onClick={() => void requestClose()} type="button">
                     ✕
                   </button>
                 </div>
@@ -272,7 +424,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                       channelLabel: activePublicationEntry?.label || formatChannelLabel(activePublicationEditChannelKey),
                       title: publicationEditForm.title,
                       content: publicationEditForm.content,
-                      cta: publicationEditForm.cta,
+                      cta: getPublicationPreviewCta(publicationDisplayKey, publicationEditForm),
                       hashtags,
                       imageCount: selectedAssets.length,
                       formatLabel: activePublicationEditChannelKey === "inrcy_site" || activePublicationEditChannelKey === "site_web" ? "Rendu site / iframe" : `Image finale : ${activePublicationEditPreset.width}×${activePublicationEditPreset.height}`,
@@ -457,7 +609,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                         key={`${entry.key}-${idx}`}
                                         type="button"
                                         className={`${styles.channelBubbleBtn} ${activePublicationEntry?.key === entry.key ? styles.channelBubbleBtnActive : ""}`}
-                                        onClick={() => setDetailsChannelKey(entry.key)}
+                                        onClick={() => void requestChannelChange(entry.key)}
                                       >
                                         <span className={styles.channelBubble}>
                                           <span>{entry.label}</span>
@@ -505,7 +657,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                     <button
                                       type="button"
                                       className={styles.btnGhost}
-                                      onClick={() => { setDetailsEditMode(true); setDetailsActionError(null); setDetailsActionSuccess(null); }}
+                                      onClick={() => { setPublicationEditDirty(false); setDetailsEditMode(true); setDetailsActionError(null); setDetailsActionSuccess(null); }}
                                       disabled={detailsActionBusy}
                                     >
                                       Modifier
@@ -630,7 +782,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                           {isMobileViewport ? (
                                             <textarea
                                               value={publicationEditForm.title}
-                                              onChange={(e) => setPublicationEditForm((prev) => ({ ...prev, title: e.target.value }))}
+                                              onChange={(e) => updatePublicationEdit({ title: e.target.value })}
                                               className={`${styles.publicationFieldInput} ${styles.publicationFieldInputMultiline}`}
                                               placeholder="Titre"
                                               rows={2}
@@ -640,7 +792,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                             <input
                                               type="text"
                                               value={publicationEditForm.title}
-                                              onChange={(e) => setPublicationEditForm((prev) => ({ ...prev, title: e.target.value }))}
+                                              onChange={(e) => updatePublicationEdit({ title: e.target.value })}
                                               className={styles.publicationFieldInput}
                                               placeholder="Titre"
                                               disabled={detailsActionBusy}
@@ -648,26 +800,218 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                           )}
                                         </div>
                                         <div>
-                                          <div className={styles.publicationLabel}>Contenu</div>
-                                          <textarea
-                                            value={publicationEditForm.content}
-                                            onChange={(e) => setPublicationEditForm((prev) => ({ ...prev, content: e.target.value }))}
-                                            className={styles.publicationFieldTextarea}
-                                            placeholder="Contenu"
-                                            rows={8}
-                                            disabled={detailsActionBusy}
-                                          />
+                                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap", marginBottom: 6 }}>
+                                            <div className={styles.publicationLabel} style={{ marginBottom: 0 }}>Contenu</div>
+                                            {isSitePublication ? (
+                                              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                                                {([
+                                                  ["bold", "B", "Gras"],
+                                                  ["italic", "I", "Italique"],
+                                                  ["underline", "U", "Souligné"],
+                                                ] as const).map(([kind, label, title]) => (
+                                                  <button
+                                                    key={kind}
+                                                    type="button"
+                                                    title={title}
+                                                    aria-label={title}
+                                                    disabled={detailsActionBusy}
+                                                    onMouseDown={(event) => {
+                                                      if (event.cancelable) event.preventDefault();
+                                                      applyPublicationSiteContentFormat(kind);
+                                                    }}
+                                                    style={{
+                                                      minWidth: 32,
+                                                      height: 30,
+                                                      borderRadius: 9,
+                                                      border: "1px solid rgba(76,195,255,0.35)",
+                                                      background: "rgba(76,195,255,0.12)",
+                                                      color: "#eaf7ff",
+                                                      fontWeight: 900,
+                                                      fontStyle: kind === "italic" ? "italic" : "normal",
+                                                      textDecoration: kind === "underline" ? "underline" : "none",
+                                                      cursor: detailsActionBusy ? "not-allowed" : "pointer",
+                                                      opacity: detailsActionBusy ? 0.55 : 1,
+                                                    }}
+                                                  >
+                                                    {label}
+                                                  </button>
+                                                ))}
+                                              </div>
+                                            ) : null}
+                                          </div>
+                                          {isSitePublication ? (
+                                            <RichSiteContentEditor
+                                              value={publicationEditForm.content}
+                                              onChange={(content) => updatePublicationEdit({ content })}
+                                              minHeight={180}
+                                              editorRef={publicationSiteContentEditorRef}
+                                              style={{ ...textAreaStyle, minHeight: 180 }}
+                                            />
+                                          ) : (
+                                            <textarea
+                                              value={publicationEditForm.content}
+                                              onChange={(e) => updatePublicationEdit({ content: e.target.value })}
+                                              className={styles.publicationFieldTextarea}
+                                              placeholder="Contenu"
+                                              rows={8}
+                                              disabled={detailsActionBusy}
+                                            />
+                                          )}
                                         </div>
                                         <div>
-                                          <div className={styles.publicationLabel}>CTA</div>
-                                          <input
-                                            type="text"
-                                            value={publicationEditForm.cta}
-                                            onChange={(e) => setPublicationEditForm((prev) => ({ ...prev, cta: e.target.value }))}
-                                            className={styles.publicationFieldInput}
-                                            placeholder="CTA"
-                                            disabled={detailsActionBusy}
-                                          />
+                                          {(() => {
+                                            const ctaMode = (publicationEditForm.ctaMode || "none") as BoosterCtaMode;
+                                            const activeWebsiteUrl = getWebsiteUrlForChannel(publicationDisplayKey, publicationCtaDefaults);
+                                            const activeWebsiteSourceLabel = getWebsiteSourceLabelForChannel(publicationDisplayKey, publicationCtaDefaults);
+                                            const websiteChoices = [
+                                              publicationCtaDefaults?.inrcySiteUrl
+                                                ? { label: "Site iNrCy", url: publicationCtaDefaults.inrcySiteUrl }
+                                                : null,
+                                              publicationCtaDefaults?.siteWebUrl
+                                                ? { label: "Site web", url: publicationCtaDefaults.siteWebUrl }
+                                                : null,
+                                            ].filter(Boolean) as Array<{ label: string; url: string }>;
+                                            const ctaGridColumns = isMobileViewport
+                                              ? "1fr"
+                                              : ctaMode === "website"
+                                                ? "minmax(0, 0.8fr) minmax(0, 1.1fr) minmax(0, 1fr)"
+                                                : ctaMode === "call" || ctaMode === "custom"
+                                                  ? "minmax(0, 0.9fr) minmax(0, 1.1fr)"
+                                                  : "minmax(0, 0.9fr)";
+                                            return (
+                                              <>
+                                                <div style={{ display: "grid", gridTemplateColumns: ctaGridColumns, gap: 10, alignItems: "start" }}>
+                                                  <div>
+                                                    <div className={styles.publicationLabel}>CTA</div>
+                                                    <select
+                                                      value={ctaMode}
+                                                      onChange={(e) => applyPublicationCtaModePrefill(e.target.value as BoosterCtaMode)}
+                                                      style={darkSelectStyle}
+                                                      disabled={detailsActionBusy}
+                                                    >
+                                                      {CTA_MODE_OPTIONS[publicationDisplayKey].map((option) => (
+                                                        <option key={option.value} value={option.value} style={darkOptionStyle}>
+                                                          {option.label}
+                                                        </option>
+                                                      ))}
+                                                    </select>
+                                                  </div>
+
+                                                  {ctaMode === "website" ? (
+                                                    <>
+                                                      <div>
+                                                        <div className={styles.publicationLabel}>Lien du CTA</div>
+                                                        <input
+                                                          value={publicationEditForm.ctaUrl || ""}
+                                                          onChange={(e) => updatePublicationEdit({ ctaUrl: e.target.value })}
+                                                          style={lightFieldStyle}
+                                                          placeholder={
+                                                            activeWebsiteUrl
+                                                              ? `URL du site préremplie (${activeWebsiteSourceLabel})`
+                                                              : websiteChoices.length > 1
+                                                                ? "Choisissez Site iNrCy ou Site web"
+                                                                : "URL du site (optionnel)"
+                                                          }
+                                                          disabled={detailsActionBusy}
+                                                        />
+                                                        {websiteChoices.length ? (
+                                                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 7 }}>
+                                                            {websiteChoices.map((choice) => (
+                                                              <button
+                                                                key={choice.label}
+                                                                type="button"
+                                                                onClick={() => updatePublicationEdit({ ctaUrl: choice.url })}
+                                                                disabled={detailsActionBusy}
+                                                                style={{
+                                                                  border: publicationEditForm.ctaUrl === choice.url
+                                                                    ? "1px solid rgba(76,195,255,0.55)"
+                                                                    : "1px solid rgba(255,255,255,0.14)",
+                                                                  background: publicationEditForm.ctaUrl === choice.url
+                                                                    ? "rgba(76,195,255,0.14)"
+                                                                    : "rgba(255,255,255,0.06)",
+                                                                  color: "rgba(255,255,255,0.86)",
+                                                                  borderRadius: 999,
+                                                                  padding: "5px 9px",
+                                                                  fontSize: 11,
+                                                                  fontWeight: 800,
+                                                                  cursor: detailsActionBusy ? "not-allowed" : "pointer",
+                                                                  opacity: detailsActionBusy ? 0.55 : 1,
+                                                                }}
+                                                              >
+                                                                {choice.label}
+                                                              </button>
+                                                            ))}
+                                                          </div>
+                                                        ) : null}
+                                                      </div>
+                                                      <div>
+                                                        <div className={styles.publicationLabel}>Libellé du lien</div>
+                                                        <input
+                                                          value={publicationEditForm.cta}
+                                                          onChange={(e) => updatePublicationEdit({ cta: e.target.value })}
+                                                          style={lightFieldStyle}
+                                                          placeholder={`Libellé du lien (ex : ${getChannelDefaultCtaLabel(publicationDisplayKey, "website") || "Demander un devis"})`}
+                                                          disabled={detailsActionBusy}
+                                                        />
+                                                      </div>
+                                                    </>
+                                                  ) : null}
+
+                                                  {ctaMode === "call" ? (
+                                                    <div>
+                                                      <div className={styles.publicationLabel}>Téléphone</div>
+                                                      <input
+                                                        value={publicationEditForm.ctaPhone || ""}
+                                                        onChange={(e) => updatePublicationEdit({ ctaPhone: e.target.value })}
+                                                        style={lightFieldStyle}
+                                                        placeholder={
+                                                          publicationCtaDefaults?.phone
+                                                            ? "Téléphone prérempli depuis Mon profil"
+                                                            : "Téléphone (optionnel)"
+                                                        }
+                                                        disabled={detailsActionBusy}
+                                                      />
+                                                    </div>
+                                                  ) : null}
+
+                                                  {ctaMode === "custom" ? (
+                                                    <div>
+                                                      <div className={styles.publicationLabel}>Libellé du CTA</div>
+                                                      <input
+                                                        value={publicationEditForm.cta}
+                                                        onChange={(e) => updatePublicationEdit({ cta: e.target.value })}
+                                                        style={lightFieldStyle}
+                                                        placeholder={publicationDisplayKey === "gmb" ? "Ex : En savoir plus" : "Ex : Contactez-nous"}
+                                                        disabled={detailsActionBusy}
+                                                      />
+                                                    </div>
+                                                  ) : null}
+                                                </div>
+                                                <div style={{ fontSize: 11, marginTop: 6, color: "rgba(255,255,255,0.62)", lineHeight: 1.45 }}>
+                                                  {getCtaModeHelp(publicationDisplayKey, ctaMode)}
+                                                </div>
+                                                {ctaMode === "website" && activeWebsiteUrl ? (
+                                                  <div style={{ fontSize: 11, marginTop: 8, color: "rgba(255,255,255,0.62)", lineHeight: 1.45 }}>
+                                                    Valeur par défaut disponible depuis {activeWebsiteSourceLabel.toLowerCase()} : {activeWebsiteUrl}
+                                                  </div>
+                                                ) : ctaMode === "website" && websiteChoices.length > 1 ? (
+                                                  <div style={{ fontSize: 11, marginTop: 8, color: "rgba(255,255,255,0.62)", lineHeight: 1.45 }}>
+                                                    Deux sites sont connectés : choisissez le lien à utiliser avec les boutons ci-dessus.
+                                                  </div>
+                                                ) : null}
+                                                {ctaMode === "call" && publicationCtaDefaults?.phone ? (
+                                                  <div style={{ fontSize: 11, marginTop: 8, color: "rgba(255,255,255,0.62)", lineHeight: 1.45 }}>
+                                                    Valeur par défaut disponible depuis Mon profil : {publicationCtaDefaults.phone}
+                                                  </div>
+                                                ) : null}
+                                                {ctaMode === "website" || ctaMode === "custom" ? (
+                                                  <div style={{ fontSize: 11, marginTop: 6, textAlign: "right", color: publicationEditForm.cta.length > CHANNEL_TEXT_GUIDELINES[publicationDisplayKey].cta ? "#ff8f8f" : "rgba(255,255,255,0.62)" }}>
+                                                    CTA : {publicationEditForm.cta.length} / {CHANNEL_TEXT_GUIDELINES[publicationDisplayKey].cta}
+                                                  </div>
+                                                ) : null}
+                                              </>
+                                            );
+                                          })()}
                                         </div>
                                         {activePublicationEntry.key === "instagram" ? (
                                           <div>
@@ -675,7 +1019,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                             <input
                                               type="text"
                                               value={publicationEditForm.hashtags}
-                                              onChange={(e) => setPublicationEditForm((prev) => ({ ...prev, hashtags: e.target.value }))}
+                                              onChange={(e) => updatePublicationEdit({ hashtags: e.target.value })}
                                               className={styles.publicationFieldInput}
                                               placeholder="maçonnerie lens btp"
                                               disabled={detailsActionBusy}
@@ -756,7 +1100,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                               open={publicationCameraOpen}
                               title="Prendre une photo"
                                                     onClose={() => setPublicationCameraOpen(false)}
-                              onCapture={async (file) => addPublicationPhoto(file)}
+                              onCapture={async (file) => { markPublicationEditDirty(); addPublicationPhoto(file); }}
                             />
 
                             <section className={styles.detailSectionCard}>
@@ -773,6 +1117,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                   onChange={(e) => {
                                     const input = e.currentTarget;
                                     const files = input?.files ?? null;
+                                    if (files?.length) markPublicationEditDirty();
                                     addPublicationFiles(files);
                                     if (input) input.value = "";
                                   }}
@@ -829,13 +1174,13 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                       backgroundColor: asset.transform.backgroundColor,
                                       transform: asset.transform,
                                       preset: activePublicationEditPreset,
-                                      onToggle: () => togglePublicationImage(activePublicationEditChannelKey, asset.key),
+                                      onToggle: () => { markPublicationEditDirty(); togglePublicationImage(activePublicationEditChannelKey, asset.key); },
                                       onAdapt: () => openPublicationImageAdapter(activePublicationEditChannelKey, asset.key),
-                                      onReset: resetPublicationImage ? () => resetPublicationImage(activePublicationEditChannelKey, asset.key) : undefined,
-                                      onRemove: asset.selected ? () => togglePublicationImage(activePublicationEditChannelKey, asset.key) : undefined,
-                                      onRemoveEverywhere: removePublicationImageEverywhere ? () => removePublicationImageEverywhere(activePublicationEditChannelKey, asset.key) : () => removePublicationImage(activePublicationEditChannelKey, asset.key),
-                                      onMovePrevious: movePublicationImage && asset.selected && selectedIndex > 0 ? () => movePublicationImage(activePublicationEditChannelKey, asset.key, -1) : undefined,
-                                      onMoveNext: movePublicationImage && asset.selected && selectedIndex >= 0 && selectedIndex < selectedAssets.length - 1 ? () => movePublicationImage(activePublicationEditChannelKey, asset.key, 1) : undefined,
+                                      onReset: resetPublicationImage ? () => { markPublicationEditDirty(); resetPublicationImage(activePublicationEditChannelKey, asset.key); } : undefined,
+                                      onRemove: asset.selected ? () => { markPublicationEditDirty(); togglePublicationImage(activePublicationEditChannelKey, asset.key); } : undefined,
+                                      onRemoveEverywhere: removePublicationImageEverywhere ? () => { markPublicationEditDirty(); removePublicationImageEverywhere(activePublicationEditChannelKey, asset.key); } : () => { markPublicationEditDirty(); removePublicationImage(activePublicationEditChannelKey, asset.key); },
+                                      onMovePrevious: movePublicationImage && asset.selected && selectedIndex > 0 ? () => { markPublicationEditDirty(); movePublicationImage(activePublicationEditChannelKey, asset.key, -1); } : undefined,
+                                      onMoveNext: movePublicationImage && asset.selected && selectedIndex >= 0 && selectedIndex < selectedAssets.length - 1 ? () => { markPublicationEditDirty(); movePublicationImage(activePublicationEditChannelKey, asset.key, 1); } : undefined,
                                     };
                                   })}
                                   buttonClassName={styles.btnGhost}

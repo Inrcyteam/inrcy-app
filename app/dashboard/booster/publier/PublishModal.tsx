@@ -2146,7 +2146,7 @@ export default function PublishModal({
         publishPulseTimerRef.current = null;
       }
       setPublishProgress(100);
-      setPublishProgressLabel("Publié");
+      setPublishProgressLabel(result?.summary?.allFailed ? "Échec" : "Publié");
       await sleep(220);
       onUnsavedChange?.(false);
       const channelLinks = Object.fromEntries(
