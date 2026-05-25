@@ -1124,20 +1124,31 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                 />
                                 <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                                   <label htmlFor={publicationEditFileInputId} className={styles.btnAttach}>📎 Ajouter des images</label>
-                                  {isMobileViewport ? (
+                                  <span
+                                    title={
+                                      isMobileViewport
+                                        ? activePublicationEditAssets.length >= 5
+                                          ? "5 images maximum"
+                                          : "Prendre une photo dans iNrCy"
+                                        : "Utilisable en version mobile"
+                                    }
+                                    style={{ display: "inline-flex" }}
+                                  >
                                     <button
                                       type="button"
                                       className={styles.btnAttach}
-                                      onClick={() => setPublicationCameraOpen(true)}
-                                      disabled={activePublicationEditAssets.length >= 5}
+                                      onClick={isMobileViewport ? () => setPublicationCameraOpen(true) : undefined}
+                                      disabled={isMobileViewport && activePublicationEditAssets.length >= 5}
+                                      aria-disabled={!isMobileViewport || activePublicationEditAssets.length >= 5}
                                       style={{
-                                        opacity: activePublicationEditAssets.length >= 5 ? 0.55 : 1,
-                                        cursor: activePublicationEditAssets.length >= 5 ? "not-allowed" : "pointer",
+                                        opacity: !isMobileViewport || activePublicationEditAssets.length >= 5 ? 0.55 : 1,
+                                        filter: !isMobileViewport || activePublicationEditAssets.length >= 5 ? "grayscale(1)" : undefined,
+                                        cursor: !isMobileViewport || activePublicationEditAssets.length >= 5 ? "not-allowed" : "pointer",
                                       }}
                                     >
                                       📷 Photo
                                     </button>
-                                  ) : null}
+                                  </span>
                                   <span style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
                                     {activePublicationEditAssets.length} image(s) pour {activePublicationEntry?.label || "ce canal"}
                                   </span>

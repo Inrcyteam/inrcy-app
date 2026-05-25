@@ -763,27 +763,36 @@ export default function PublishIntentPanel({
             >
               + Ajouter des images
             </button>
-            {isMobile ? (
+            <span
+              title={
+                isMobile
+                  ? images.length >= 5
+                    ? "5 images maximum"
+                    : "Prendre une photo dans iNrCy"
+                  : "Utilisable en version mobile"
+              }
+              style={{ display: "inline-flex", flex: "0 0 auto" }}
+            >
               <button
                 type="button"
                 className={styles.secondaryBtn}
-                onClick={onTakePhotoClick}
-                disabled={images.length >= 5}
-                title={images.length >= 5 ? "5 images maximum" : "Prendre une photo dans iNrCy"}
+                onClick={isMobile ? onTakePhotoClick : undefined}
+                disabled={isMobile && images.length >= 5}
+                aria-disabled={!isMobile || images.length >= 5}
                 style={{
                   flex: "0 0 auto",
                   minHeight: 32,
                   padding: "6px 9px",
                   fontSize: 11,
                   whiteSpace: "nowrap",
-                  opacity: images.length >= 5 ? 0.48 : 1,
-                  filter: images.length >= 5 ? "grayscale(1)" : undefined,
-                  cursor: images.length >= 5 ? "not-allowed" : "pointer",
+                  opacity: !isMobile || images.length >= 5 ? 0.48 : 1,
+                  filter: !isMobile || images.length >= 5 ? "grayscale(1)" : undefined,
+                  cursor: !isMobile || images.length >= 5 ? "not-allowed" : "pointer",
                 }}
               >
                 📷 Photo
               </button>
-            ) : null}
+            </span>
           </div>
 
           <div

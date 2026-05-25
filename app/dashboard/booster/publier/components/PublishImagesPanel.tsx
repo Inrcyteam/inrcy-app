@@ -131,22 +131,31 @@ export default function PublishImagesPanel({
         >
           + Ajouter des images
         </button>
-        {isMobile ? (
+        <span
+          title={
+            isMobile
+              ? images.length >= 5
+                ? "5 images maximum"
+                : "Prendre une photo dans iNrCy"
+              : "Utilisable en version mobile"
+          }
+          style={{ display: "inline-flex" }}
+        >
           <button
             type="button"
             className={styles.secondaryBtn}
-            onClick={() => onTakePhotoClick()}
-            disabled={images.length >= 5}
-            title={images.length >= 5 ? "5 images maximum" : "Prendre une photo dans iNrCy"}
+            onClick={isMobile ? () => onTakePhotoClick() : undefined}
+            disabled={isMobile && images.length >= 5}
+            aria-disabled={!isMobile || images.length >= 5}
             style={{
-              opacity: images.length >= 5 ? 0.48 : 1,
-              filter: images.length >= 5 ? "grayscale(1)" : undefined,
-              cursor: images.length >= 5 ? "not-allowed" : "pointer",
+              opacity: !isMobile || images.length >= 5 ? 0.48 : 1,
+              filter: !isMobile || images.length >= 5 ? "grayscale(1)" : undefined,
+              cursor: !isMobile || images.length >= 5 ? "not-allowed" : "pointer",
             }}
           >
             📷 Photo
           </button>
-        ) : null}
+        </span>
         {images.length ? (
           <div style={{ fontSize: 12, opacity: 0.85 }}>
             {images.length}/5 image{images.length === 1 ? "" : "s"} ajoutée{images.length === 1 ? "" : "s"}
@@ -205,26 +214,35 @@ export default function PublishImagesPanel({
                 >
                   + Ajouter une image spécifique Google Business
                 </button>
-                {isMobile ? (
+                <span
+                  title={
+                    isMobile
+                      ? images.length >= 5
+                        ? "5 images maximum"
+                        : "Prendre une photo pour Google Business"
+                      : "Utilisable en version mobile"
+                  }
+                  style={{ display: "inline-flex" }}
+                >
                   <button
                     type="button"
                     className={styles.secondaryBtn}
-                    onClick={() => {
+                    onClick={isMobile ? () => {
                       setImgError("");
                       if (images.length >= 5) return;
                       onTakePhotoClick("gmb");
-                    }}
-                    disabled={images.length >= 5}
-                    title={images.length >= 5 ? "5 images maximum" : "Prendre une photo pour Google Business"}
+                    } : undefined}
+                    disabled={isMobile && images.length >= 5}
+                    aria-disabled={!isMobile || images.length >= 5}
                     style={{
-                      opacity: images.length >= 5 ? 0.48 : 1,
-                      filter: images.length >= 5 ? "grayscale(1)" : undefined,
-                      cursor: images.length >= 5 ? "not-allowed" : "pointer",
+                      opacity: !isMobile || images.length >= 5 ? 0.48 : 1,
+                      filter: !isMobile || images.length >= 5 ? "grayscale(1)" : undefined,
+                      cursor: !isMobile || images.length >= 5 ? "not-allowed" : "pointer",
                     }}
                   >
                     📷 Photo Google Business
                   </button>
-                ) : null}
+                </span>
               </div>
             </div>
           ) : null}
