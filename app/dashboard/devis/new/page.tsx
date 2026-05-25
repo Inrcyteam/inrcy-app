@@ -268,7 +268,10 @@ export default function NewDevisPage() {
   const previewRef = useRef<HTMLDivElement | null>(null);
 
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [isEditingProvider, setIsEditingProvider] = useState(false);
+  const [providerOverride, setProviderOverride] = useState<Partial<Profile>>({});
   const vatDispense = !!profile?.vat_dispense;
+  const providerData = { ...(profile || {}), ...(providerOverride || {}) } as Profile;
 
   // IMPORTANT: stable SSR/CSR
   const [number, setNumber] = useState<string>("");
@@ -2610,7 +2613,15 @@ export default function NewDevisPage() {
                 }}
                 disabled={addingToCrm || finalizing}
               >
-                Sauvegarder
+                <>
+                  Sauvegarder
+                  <span
+                    className={styles.helpBubble}
+                    title="Retrouvez vos sauvegardes dans Devis > Documents > Sauvegardes"
+                  >
+                    ?
+                  </span>
+                </>
               </button>
               <button
                 type="button"
@@ -2619,7 +2630,15 @@ export default function NewDevisPage() {
                 }}
                 disabled={addingToCrm || finalizing}
               >
-                Créer modèle
+                <>
+                  Créer modèle
+                  <span
+                    className={styles.helpBubble}
+                    title="Retrouvez vos modèles dans Devis > Documents > Modèles"
+                  >
+                    ?
+                  </span>
+                </>
               </button>
               <button
                 type="button"
@@ -2737,39 +2756,34 @@ export default function NewDevisPage() {
           <div className={styles.previewParties}>
             <div className={styles.previewPartyCard}>
               <div className={styles.previewPartyTitle}>Prestataire</div>
-              <div style={{ fontWeight: 600 }}>
-                {profile?.company_legal_name ?? "—"}
+              <div style={{ display: "flex", gap: 8, marginBottom: 8, marginTop: 4 }}>
+                <button type="button" onClick={() => setIsEditingProvider((prev) => !prev)} style={{ fontSize: 12, padding: "4px 8px", borderRadius: 8, border: "1px solid #cbb4ff" }}>✏️ Modifier</button>
+                <button type="button" onClick={() => setProviderOverride({})} style={{ fontSize: 12, padding: "4px 8px", borderRadius: 8, border: "1px solid #cbb4ff" }}>↩ Réinitialiser</button>
               </div>
-              <div>{profile?.hq_address ?? ""}</div>
+              <div style={{ fontWeight: 600 }}>
+                {isEditingProvider ? (<input value={providerData.company_legal_name ?? ""} onChange={(e) => setProviderOverride((prev) => ({ ...prev, company_legal_name: e.target.value }))} style={{ width: "100%" }} />) : (providerData.company_legal_name ?? "—")}
+              </div>
+              <div>{isEditingProvider ? (<input value={providerData.hq_address ?? ""} onChange={(e) => setProviderOverride((prev) => ({ ...prev, hq_address: e.target.value }))} placeholder="Adresse" style={{ width: "100%", marginTop: 4 }} />) : (providerData.hq_address ?? "")}</div>
               <div>
-                {profile?.hq_zip ?? ""} {profile?.hq_city ?? ""}
+                {isEditingProvider ? (<input value={providerData.hq_zip ?? ""} onChange={(e) => setProviderOverride((prev) => ({ ...prev, hq_zip: e.target.value }))} placeholder="CP" style={{ width: "100%", marginTop: 4 }} />) : (providerData.hq_zip ?? "")} {isEditingProvider ? (<input value={providerData.hq_city ?? ""} onChange={(e) => setProviderOverride((prev) => ({ ...prev, hq_city: e.target.value }))} placeholder="Ville" style={{ width: "100%", marginTop: 4 }} />) : (providerData.hq_city ?? "")}
               </div>
 
               <div style={{ marginTop: 6, fontSize: 13, color: "#444" }}>
-                {profile?.phone ? (
+                {isEditingProvider ? (
+                  <div style={{ display: "grid", gap: 6 }}>
+                    <input value={providerData.phone ?? ""} onChange={(e) => setProviderOverride((prev) => ({ ...prev, phone: e.target.value }))} placeholder="Téléphone" />
+                    <input value={providerData.contact_email ?? ""} onChange={(e) => setProviderOverride((prev) => ({ ...prev, contact_email: e.target.value }))} placeholder="Email" />
+                    <input value={providerData.siren ?? ""} onChange={(e) => setProviderOverride((prev) => ({ ...prev, siren: e.target.value }))} placeholder="SIREN" />
+                    <input value={providerData.vat_number ?? ""} onChange={(e) => setProviderOverride((prev) => ({ ...prev, vat_number: e.target.value }))} placeholder="TVA" />
+                  </div>
+                ) : (
                   <>
-                    Tél : {profile.phone}
-                    <br />
+                    {providerData?.phone ? (<><div>Tél : {providerData.phone}</div></>) : null}
+                    {providerData?.contact_email ? (<><div>Email : {providerData.contact_email}</div></>) : null}
+                    {providerData?.siren ? (<><div>SIREN : {providerData.siren}</div></>) : null}
+                    {providerData?.vat_number ? (<><div>TVA : {providerData.vat_number}</div></>) : null}
                   </>
-                ) : null}
-                {profile?.contact_email ? (
-                  <>
-                    Email : {profile.contact_email}
-                    <br />
-                  </>
-                ) : null}
-                {profile?.siren ? (
-                  <>
-                    SIREN : {profile.siren}
-                    <br />
-                  </>
-                ) : null}
-                {profile?.vat_number ? (
-                  <>
-                    TVA : {profile.vat_number}
-                    <br />
-                  </>
-                ) : null}
+                )}
               </div>
             </div>
 
