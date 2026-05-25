@@ -765,6 +765,7 @@ export default function NewFacturePage() {
       deliveryPostalCode?: string;
       deliveryCity?: string;
       sameAddresses?: boolean;
+      providerOverride?: Partial<Profile>;
       clientEmail: string;
       clientSiren?: string;
       clientVatNumber?: string;
@@ -947,6 +948,8 @@ export default function NewFacturePage() {
     setDeliveryPostalCode(nextDeliveryPostalCode);
     setDeliveryCity(nextDeliveryCity);
     setSameAddresses(nextSameAddresses);
+    setProviderOverride((s.providerOverride || {}) as Partial<Profile>);
+    setIsEditingProvider(false);
     setClientEmail(s.clientEmail);
     setClientSiren(s.clientSiren || "");
     setClientVatNumber(s.clientVatNumber || "");
@@ -1376,6 +1379,7 @@ export default function NewFacturePage() {
         : deliveryPostalCode.trim(),
       deliveryCity: sameAddresses ? billingCity.trim() : deliveryCity.trim(),
       sameAddresses,
+      providerOverride,
       clientEmail,
       clientSiren,
       clientVatNumber,
@@ -1498,6 +1502,7 @@ export default function NewFacturePage() {
       serviceDateMode === "period" ? servicePeriodEnd : "";
     const snapshot = prepareTemplateSnapshot<FactureDraft["snapshot"]>(
       {
+        providerOverride,
         vatDispense,
         operationCategory,
         serviceDateMode,
@@ -1792,7 +1797,11 @@ export default function NewFacturePage() {
     await refreshSaves();
   };
 
-  const print = () => window.print();
+  const print = async () => {
+    setIsEditingProvider(false);
+    await waitForDomUpdate();
+    window.print();
+  };
 
   const waitForDomUpdate = () =>
     new Promise<void>((resolve) => {
@@ -1801,6 +1810,8 @@ export default function NewFacturePage() {
 
   const buildPdfBlob = async (): Promise<Blob | null> => {
     if (typeof window === "undefined") return null;
+    setIsEditingProvider(false);
+    await waitForDomUpdate();
     const el = previewRef.current;
     if (!el) return null;
 
@@ -3317,7 +3328,7 @@ export default function NewFacturePage() {
           <div className={styles.previewParties}>
             <div className={styles.previewPartyCard}>
               <div className={styles.previewPartyTitle}>Prestataire</div>
-              <div style={{ display: "flex", gap: 8, marginBottom: 8, marginTop: 4 }}>
+              <div className={styles.noPrint} style={{ display: "flex", gap: 8, marginBottom: 8, marginTop: 4 }}>
                 <button type="button" onClick={() => setIsEditingProvider((prev) => !prev)} style={{ fontSize: 12, padding: "4px 8px", borderRadius: 8, border: "1px solid #cbb4ff" }}>✏️ Modifier</button>
                 <button type="button" onClick={() => setProviderOverride({})} style={{ fontSize: 12, padding: "4px 8px", borderRadius: 8, border: "1px solid #cbb4ff" }}>↩ Réinitialiser</button>
               </div>
