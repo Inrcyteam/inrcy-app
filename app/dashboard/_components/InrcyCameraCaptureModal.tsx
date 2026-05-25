@@ -16,6 +16,33 @@ type InrcyCameraCaptureModalProps = {
   onCapture: (file: File) => void | Promise<void>;
 };
 
+type ZoomCapability = {
+  min?: number;
+  max?: number;
+  step?: number;
+};
+
+type ExtendedCapabilities = MediaTrackCapabilities & {
+  torch?: boolean;
+  zoom?: ZoomCapability | number;
+};
+
+type PointerPoint = {
+  x: number;
+  y: number;
+};
+
+function clamp(value: number, min: number, max: number) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function getPointerDistance(points: PointerPoint[]) {
+  if (points.length < 2) return 0;
+  const dx = points[0].x - points[1].x;
+  const dy = points[0].y - points[1].y;
+  return Math.hypot(dx, dy);
+}
+
 export default function InrcyCameraCaptureModal({
   open,
   title = "Prendre une photo",
@@ -27,26 +54,37 @@ export default function InrcyCameraCaptureModal({
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const streamRef = React.useRef<MediaStream | null>(null);
   const mountedRef = React.useRef(false);
+  const pointersRef = React.useRef<Map<number, PointerPoint>>(new Map());
+  const pinchStartRef = React.useRef<{ distance: number; zoom: number } | null>(null);
+
   const [phase, setPhase] = React.useState<"idle" | "loading" | "ready" | "capturing" | "error">("idle");
   const [error, setError] = React.useState("");
   const [facingMode, setFacingMode] = React.useState<"environment" | "user">("environment");
   const [hasMultipleCameras, setHasMultipleCameras] = React.useState(true);
   const [isLandscapeViewport, setIsLandscapeViewport] = React.useState(false);
+  const [isMobileCameraViewport, setIsMobileCameraViewport] = React.useState(false);
+  const [torchSupported, setTorchSupported] = React.useState(false);
+  const [torchOn, setTorchOn] = React.useState(false);
+  const [hardwareZoomSupported, setHardwareZoomSupported] = React.useState(false);
+  const [zoom, setZoom] = React.useState(1);
+  const [zoomLimits, setZoomLimits] = React.useState({ min: 1, max: 4, step: 0.05 });
 
   React.useEffect(() => {
     if (!open || typeof window === "undefined") return;
 
-    const updateViewportOrientation = () => {
+    const updateViewport = () => {
+      const coarsePointer = window.matchMedia?.("(pointer: coarse)").matches ?? false;
       setIsLandscapeViewport(window.innerWidth > window.innerHeight);
+      setIsMobileCameraViewport(coarsePointer || window.innerWidth <= 820);
     };
 
-    updateViewportOrientation();
-    window.addEventListener("resize", updateViewportOrientation);
-    window.addEventListener("orientationchange", updateViewportOrientation);
+    updateViewport();
+    window.addEventListener("resize", updateViewport);
+    window.addEventListener("orientationchange", updateViewport);
 
     return () => {
-      window.removeEventListener("resize", updateViewportOrientation);
-      window.removeEventListener("orientationchange", updateViewportOrientation);
+      window.removeEventListener("resize", updateViewport);
+      window.removeEventListener("orientationchange", updateViewport);
     };
   }, [open]);
 
@@ -70,16 +108,31 @@ export default function InrcyCameraCaptureModal({
     dispatchCameraState(false);
   }, [open]);
 
+  const applyTorch = React.useCallback(async (enabled: boolean) => {
+    const track = streamRef.current?.getVideoTracks()[0];
+    if (!track) return;
+    try {
+      await track.applyConstraints({ advanced: [{ torch: enabled }] as unknown as MediaTrackConstraintSet[] });
+      setTorchOn(enabled);
+    } catch {
+      setTorchOn(false);
+    }
+  }, []);
+
   const stopStream = React.useCallback(() => {
     const stream = streamRef.current;
     streamRef.current = null;
-    stream?.getTracks().forEach((track) => {
-      try {
-        track.stop();
-      } catch {
-        // Best effort.
-      }
-    });
+
+    if (stream) {
+      stream.getTracks().forEach((track) => {
+        try {
+          track.stop();
+        } catch {
+          // Best effort.
+        }
+      });
+    }
+
     if (videoRef.current) {
       try {
         videoRef.current.srcObject = null;
@@ -87,7 +140,71 @@ export default function InrcyCameraCaptureModal({
         // Best effort.
       }
     }
+
+    pointersRef.current.clear();
+    pinchStartRef.current = null;
+    setTorchOn(false);
+    setTorchSupported(false);
+    setHardwareZoomSupported(false);
+    setZoom(1);
   }, []);
+
+  const applyZoom = React.useCallback(async (nextZoom: number) => {
+    const normalizedZoom = clamp(nextZoom, zoomLimits.min, zoomLimits.max);
+    setZoom(normalizedZoom);
+
+    if (!hardwareZoomSupported) return;
+
+    const track = streamRef.current?.getVideoTracks()[0];
+    if (!track) return;
+
+    try {
+      await track.applyConstraints({ advanced: [{ zoom: normalizedZoom }] as unknown as MediaTrackConstraintSet[] });
+    } catch {
+      setHardwareZoomSupported(false);
+    }
+  }, [hardwareZoomSupported, zoomLimits.max, zoomLimits.min]);
+
+  const readCameraCapabilities = React.useCallback((stream: MediaStream) => {
+    const track = stream.getVideoTracks()[0];
+    if (!track || typeof track.getCapabilities !== "function") {
+      setTorchSupported(false);
+      setHardwareZoomSupported(false);
+      setZoomLimits({ min: 1, max: 4, step: 0.05 });
+      setZoom(1);
+      return;
+    }
+
+    try {
+      const capabilities = track.getCapabilities() as ExtendedCapabilities;
+      const zoomCapability = capabilities.zoom;
+      const nextTorchSupported = Boolean(capabilities.torch) && facingMode === "environment";
+      let nextZoomLimits = { min: 1, max: 4, step: 0.05 };
+      let nextHardwareZoomSupported = false;
+
+      if (typeof zoomCapability === "object" && zoomCapability !== null) {
+        const min = Number.isFinite(zoomCapability.min) ? Number(zoomCapability.min) : 1;
+        const max = Number.isFinite(zoomCapability.max) ? Number(zoomCapability.max) : 4;
+        const step = Number.isFinite(zoomCapability.step) ? Number(zoomCapability.step) : 0.05;
+        nextHardwareZoomSupported = max > min;
+        nextZoomLimits = {
+          min: Math.max(1, min),
+          max: Math.max(1, max),
+          step: Math.max(0.01, step),
+        };
+      }
+
+      setTorchSupported(nextTorchSupported);
+      setHardwareZoomSupported(nextHardwareZoomSupported);
+      setZoomLimits(nextZoomLimits);
+      setZoom(nextZoomLimits.min || 1);
+    } catch {
+      setTorchSupported(false);
+      setHardwareZoomSupported(false);
+      setZoomLimits({ min: 1, max: 4, step: 0.05 });
+      setZoom(1);
+    }
+  }, [facingMode]);
 
   const startCamera = React.useCallback(async () => {
     if (!open) return;
@@ -108,8 +225,8 @@ export default function InrcyCameraCaptureModal({
           audio: false,
           video: {
             facingMode: { ideal: facingMode },
-            width: { ideal: 1600 },
-            height: { ideal: 1200 },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
           },
         });
       } catch {
@@ -129,6 +246,9 @@ export default function InrcyCameraCaptureModal({
       } catch {
         setHasMultipleCameras(true);
       }
+
+      readCameraCapabilities(stream);
+
       const video = videoRef.current;
       if (video) {
         video.srcObject = stream;
@@ -143,7 +263,7 @@ export default function InrcyCameraCaptureModal({
       setPhase("error");
       setError("Autorisez la caméra ou importez une image à la place.");
     }
-  }, [facingMode, open, stopStream]);
+  }, [facingMode, open, readCameraCapabilities, stopStream]);
 
   React.useEffect(() => {
     mountedRef.current = true;
@@ -163,9 +283,11 @@ export default function InrcyCameraCaptureModal({
   }, [open, stopStream]);
 
   const close = React.useCallback(() => {
-    stopStream();
-    onClose();
-  }, [onClose, stopStream]);
+    void applyTorch(false).finally(() => {
+      stopStream();
+      onClose();
+    });
+  }, [applyTorch, onClose, stopStream]);
 
   const capture = React.useCallback(async () => {
     if (phase !== "ready") return;
@@ -191,7 +313,23 @@ export default function InrcyCameraCaptureModal({
       return;
     }
 
-    context.drawImage(video, 0, 0, width, height);
+    context.save();
+    if (facingMode === "user") {
+      context.translate(width, 0);
+      context.scale(-1, 1);
+    }
+
+    if (!hardwareZoomSupported && zoom > 1) {
+      const sourceWidth = width / zoom;
+      const sourceHeight = height / zoom;
+      const sourceX = (width - sourceWidth) / 2;
+      const sourceY = (height - sourceHeight) / 2;
+      context.drawImage(video, sourceX, sourceY, sourceWidth, sourceHeight, 0, 0, width, height);
+    } else {
+      context.drawImage(video, 0, 0, width, height);
+    }
+    context.restore();
+
     const blob = await new Promise<Blob | null>((resolve) => {
       canvas.toBlob(resolve, "image/jpeg", 0.92);
     });
@@ -203,9 +341,10 @@ export default function InrcyCameraCaptureModal({
     }
 
     const file = new File([blob], buildPhotoFileName(), { type: "image/jpeg" });
+    await applyTorch(false);
     await onCapture(file);
     close();
-  }, [close, onCapture, phase]);
+  }, [applyTorch, close, facingMode, hardwareZoomSupported, onCapture, phase, zoom]);
 
   const pickFallbackImage = React.useCallback((files: FileList | null) => {
     const file = files?.[0];
@@ -213,74 +352,162 @@ export default function InrcyCameraCaptureModal({
     void Promise.resolve(onCapture(file)).finally(close);
   }, [close, onCapture]);
 
+  const handlePointerDown = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      // Best effort.
+    }
+
+    const points = Array.from(pointersRef.current.values());
+    if (points.length === 2) {
+      pinchStartRef.current = {
+        distance: getPointerDistance(points),
+        zoom,
+      };
+    }
+  }, [zoom]);
+
+  const handlePointerMove = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    if (!pointersRef.current.has(event.pointerId)) return;
+    pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+    const points = Array.from(pointersRef.current.values());
+    const pinchStart = pinchStartRef.current;
+    if (points.length !== 2 || !pinchStart || pinchStart.distance <= 0) return;
+
+    event.preventDefault();
+    const currentDistance = getPointerDistance(points);
+    const ratio = currentDistance / pinchStart.distance;
+    void applyZoom(pinchStart.zoom * ratio);
+  }, [applyZoom]);
+
+  const handlePointerEnd = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    pointersRef.current.delete(event.pointerId);
+    if (pointersRef.current.size < 2) {
+      pinchStartRef.current = null;
+    }
+  }, []);
+
   if (!open) return null;
 
   const isBusy = phase === "capturing" || phase === "loading";
-  const switchCameraLabel = facingMode === "environment" ? "Caméra avant" : "Caméra arrière";
+  const canCapture = phase === "ready";
+  const shellIsFullscreen = isMobileCameraViewport;
+  const showVisualZoom = !hardwareZoomSupported && zoom > 1;
 
-  const secondaryButtonStyle: React.CSSProperties = {
-    minHeight: isLandscapeViewport ? 40 : 42,
+  const iconButtonBase: React.CSSProperties = {
+    width: isLandscapeViewport ? 48 : 54,
+    height: isLandscapeViewport ? 48 : 54,
     borderRadius: 999,
-    border: "1px solid rgba(255,255,255,0.18)",
-    background: "rgba(255,255,255,0.08)",
+    border: "1px solid rgba(255,255,255,0.26)",
+    background: "rgba(6,10,24,0.58)",
     color: "#fff",
-    fontWeight: 850,
-    fontSize: isLandscapeViewport ? 13 : 14,
+    display: "grid",
+    placeItems: "center",
+    fontSize: isLandscapeViewport ? 20 : 22,
+    fontWeight: 950,
     cursor: isBusy ? "not-allowed" : "pointer",
     opacity: isBusy ? 0.55 : 1,
-    padding: "0 14px",
-    whiteSpace: "nowrap",
+    backdropFilter: "blur(14px)",
+    WebkitBackdropFilter: "blur(14px)",
+    boxShadow: "0 12px 28px rgba(0,0,0,0.28)",
+    flex: "0 0 auto",
   };
 
   const captureButtonStyle: React.CSSProperties = {
-    minHeight: isLandscapeViewport ? 42 : 48,
+    width: isLandscapeViewport ? 64 : 78,
+    height: isLandscapeViewport ? 64 : 78,
+    borderRadius: 999,
+    border: "4px solid rgba(255,255,255,0.92)",
+    background: canCapture ? "linear-gradient(135deg, #48c6ef, #7c3aed 56%, #ff4fd8)" : "rgba(255,255,255,0.14)",
+    color: "#fff",
+    display: "grid",
+    placeItems: "center",
+    fontSize: isLandscapeViewport ? 25 : 30,
+    cursor: canCapture ? "pointer" : "not-allowed",
+    opacity: canCapture ? 1 : 0.58,
+    boxShadow: canCapture ? "0 18px 42px rgba(124,58,237,0.34)" : undefined,
+    flex: "0 0 auto",
+  };
+
+  const fallbackButtonStyle: React.CSSProperties = {
+    minHeight: 44,
     borderRadius: 999,
     border: "1px solid rgba(76,195,255,0.45)",
-    background: phase === "ready" ? "linear-gradient(135deg, #48c6ef, #7c3aed)" : "rgba(255,255,255,0.10)",
+    background: "linear-gradient(135deg, #48c6ef, #7c3aed)",
     color: "#fff",
     fontWeight: 950,
-    fontSize: isLandscapeViewport ? 14 : 15,
-    cursor: phase === "ready" ? "pointer" : "not-allowed",
-    opacity: phase === "ready" ? 1 : 0.58,
-    boxShadow: phase === "ready" ? "0 14px 35px rgba(76,195,255,0.22)" : undefined,
     padding: "0 18px",
-    whiteSpace: "nowrap",
+    cursor: "pointer",
   };
+
+  const closeButton = (
+    <button
+      type="button"
+      onClick={close}
+      aria-label="Fermer la caméra"
+      style={{
+        ...iconButtonBase,
+        position: "absolute",
+        top: "max(12px, env(safe-area-inset-top))",
+        right: "max(12px, env(safe-area-inset-right))",
+        zIndex: 4,
+        width: isLandscapeViewport ? 42 : 46,
+        height: isLandscapeViewport ? 42 : 46,
+        fontSize: isLandscapeViewport ? 22 : 24,
+      }}
+    >
+      ×
+    </button>
+  );
 
   const switchCameraButton = hasMultipleCameras ? (
     <button
       type="button"
-      onClick={() => setFacingMode((value) => (value === "environment" ? "user" : "environment"))}
+      onClick={() => {
+        setFacingMode((value) => (value === "environment" ? "user" : "environment"));
+      }}
       disabled={isBusy}
-      style={secondaryButtonStyle}
+      aria-label={facingMode === "environment" ? "Passer en caméra avant" : "Passer en caméra arrière"}
+      title={facingMode === "environment" ? "Caméra avant" : "Caméra arrière"}
+      style={iconButtonBase}
     >
-      {switchCameraLabel}
+      ⇄
     </button>
-  ) : null;
+  ) : (
+    <span style={{ width: iconButtonBase.width, height: iconButtonBase.height, flex: "0 0 auto" }} />
+  );
 
-  const importButton = (
+  const flashButton = torchSupported ? (
     <button
       type="button"
-      onClick={() => fileInputRef.current?.click()}
-      disabled={phase === "capturing"}
+      onClick={() => void applyTorch(!torchOn)}
+      disabled={isBusy}
+      aria-label={torchOn ? "Désactiver le flash" : "Activer le flash"}
+      title={torchOn ? "Flash activé" : "Flash"}
       style={{
-        ...secondaryButtonStyle,
-        cursor: phase === "capturing" ? "not-allowed" : "pointer",
-        opacity: phase === "capturing" ? 0.55 : 1,
+        ...iconButtonBase,
+        background: torchOn ? "linear-gradient(135deg, #f59e0b, #ff4fd8)" : iconButtonBase.background,
       }}
     >
-      Importer
+      ⚡
     </button>
+  ) : (
+    <span style={{ width: iconButtonBase.width, height: iconButtonBase.height, flex: "0 0 auto" }} />
   );
 
   const captureButton = (
     <button
       type="button"
       onClick={capture}
-      disabled={phase !== "ready"}
+      disabled={!canCapture}
+      aria-label={phase === "capturing" ? "Ajout de la photo" : "Capturer la photo"}
+      title="Capturer la photo"
       style={captureButtonStyle}
     >
-      {phase === "capturing" ? "Ajout de la photo…" : "Capturer la photo"}
+      {phase === "capturing" ? "…" : "📷"}
     </button>
   );
 
@@ -294,82 +521,45 @@ export default function InrcyCameraCaptureModal({
         position: "fixed",
         inset: 0,
         zIndex: 100000,
-        background: "rgba(5,8,18,0.88)",
+        background: "rgba(5,8,18,0.94)",
         display: "grid",
         placeItems: "center",
-        padding: isLandscapeViewport ? 8 : 14,
-        paddingTop: isLandscapeViewport ? "max(8px, env(safe-area-inset-top))" : 14,
-        paddingRight: isLandscapeViewport ? "max(8px, env(safe-area-inset-right))" : 14,
-        paddingBottom: isLandscapeViewport ? "max(8px, env(safe-area-inset-bottom))" : 14,
-        paddingLeft: isLandscapeViewport ? "max(8px, env(safe-area-inset-left))" : 14,
+        padding: shellIsFullscreen ? 0 : 14,
       }}
     >
       <div
         onClick={(event) => event.stopPropagation()}
         style={{
-          width: isLandscapeViewport ? "min(98vw, 980px)" : "min(100%, 520px)",
-          height: isLandscapeViewport ? "min(96dvh, 560px)" : undefined,
-          maxHeight: isLandscapeViewport ? "96dvh" : "min(92dvh, 760px)",
+          position: "relative",
+          width: shellIsFullscreen ? "100vw" : "min(100%, 540px)",
+          height: shellIsFullscreen ? "100dvh" : "min(92dvh, 760px)",
           display: "flex",
           flexDirection: "column",
-          gap: isLandscapeViewport ? 8 : 12,
-          borderRadius: isLandscapeViewport ? 22 : 24,
-          border: "1px solid rgba(255,255,255,0.16)",
-          background: "linear-gradient(180deg, rgba(18,24,44,0.98), rgba(8,12,26,0.98))",
-          boxShadow: "0 28px 80px rgba(0,0,0,0.55)",
-          padding: isLandscapeViewport ? 10 : 14,
+          borderRadius: shellIsFullscreen ? 0 : 28,
+          border: shellIsFullscreen ? "none" : "1px solid rgba(255,255,255,0.16)",
+          background: "#050816",
+          boxShadow: shellIsFullscreen ? "none" : "0 28px 80px rgba(0,0,0,0.55)",
           color: "#fff",
           overflow: "hidden",
         }}
       >
-        <div
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            gap: 12,
-            alignItems: "center",
-            flex: "0 0 auto",
-          }}
-        >
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: isLandscapeViewport ? 15 : 17, fontWeight: 950, lineHeight: 1.15 }}>
-              {title}
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={close}
-            aria-label="Fermer la caméra"
-            style={{
-              width: isLandscapeViewport ? 32 : 34,
-              height: isLandscapeViewport ? 32 : 34,
-              borderRadius: 999,
-              border: "1px solid rgba(255,255,255,0.18)",
-              background: "rgba(255,255,255,0.08)",
-              color: "#fff",
-              cursor: "pointer",
-              fontSize: 18,
-              fontWeight: 900,
-              lineHeight: 1,
-              flex: "0 0 auto",
-            }}
-          >
-            ×
-          </button>
-        </div>
+        {closeButton}
 
         <div
+          onPointerDown={handlePointerDown}
+          onPointerMove={handlePointerMove}
+          onPointerUp={handlePointerEnd}
+          onPointerCancel={handlePointerEnd}
+          onDoubleClick={() => void applyZoom(zoomLimits.min)}
           style={{
             position: "relative",
             width: "100%",
-            flex: isLandscapeViewport ? "1 1 auto" : "0 1 auto",
-            minHeight: isLandscapeViewport ? 0 : undefined,
-            aspectRatio: isLandscapeViewport ? undefined : "3 / 4",
-            maxHeight: isLandscapeViewport ? undefined : "58dvh",
-            borderRadius: isLandscapeViewport ? 18 : 20,
+            height: "100%",
+            minHeight: 0,
+            flex: "1 1 auto",
             overflow: "hidden",
-            border: "1px solid rgba(255,255,255,0.14)",
             background: "#050816",
+            touchAction: "none",
           }}
         >
           <video
@@ -382,9 +572,11 @@ export default function InrcyCameraCaptureModal({
               height: "100%",
               objectFit: "cover",
               display: phase === "ready" || phase === "capturing" ? "block" : "none",
-              transform: facingMode === "user" ? "scaleX(-1)" : undefined,
+              transform: `${facingMode === "user" ? "scaleX(-1) " : ""}${showVisualZoom ? `scale(${zoom})` : ""}`.trim() || undefined,
+              transformOrigin: "center center",
             }}
           />
+
           {phase !== "ready" && phase !== "capturing" ? (
             <div
               style={{
@@ -392,17 +584,48 @@ export default function InrcyCameraCaptureModal({
                 inset: 0,
                 display: "grid",
                 placeItems: "center",
-                padding: 20,
+                padding: 28,
                 textAlign: "center",
-                color: "rgba(255,255,255,0.78)",
-                fontSize: 13,
+                color: "rgba(255,255,255,0.84)",
+                fontSize: 14,
                 lineHeight: 1.45,
+                background: "radial-gradient(circle at 50% 35%, rgba(124,58,237,0.22), transparent 38%), #050816",
               }}
             >
-              <div>
-                <div style={{ fontSize: 28, marginBottom: 10 }}>📷</div>
-                {phase === "error" ? error : "Ouverture de la caméra…"}
+              <div style={{ maxWidth: 340 }}>
+                <div style={{ fontSize: 36, marginBottom: 12 }}>📷</div>
+                <div>{phase === "error" ? error : "Ouverture de la caméra…"}</div>
+                {phase === "error" ? (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    style={{ ...fallbackButtonStyle, marginTop: 16 }}
+                  >
+                    Importer une image
+                  </button>
+                ) : null}
               </div>
+            </div>
+          ) : null}
+
+          {phase === "ready" && zoom > 1.02 ? (
+            <div
+              style={{
+                position: "absolute",
+                top: "max(14px, env(safe-area-inset-top))",
+                left: "max(14px, env(safe-area-inset-left))",
+                zIndex: 3,
+                borderRadius: 999,
+                padding: "7px 10px",
+                background: "rgba(6,10,24,0.58)",
+                border: "1px solid rgba(255,255,255,0.18)",
+                backdropFilter: "blur(12px)",
+                WebkitBackdropFilter: "blur(12px)",
+                fontSize: 12,
+                fontWeight: 900,
+              }}
+            >
+              {zoom.toFixed(1)}×
             </div>
           ) : null}
         </div>
@@ -419,51 +642,44 @@ export default function InrcyCameraCaptureModal({
           }}
         />
 
-        {error ? (
-          <div
-            style={{
-              color: "#ffb4b4",
-              fontSize: isLandscapeViewport ? 11.5 : 12.5,
-              lineHeight: 1.25,
-              flex: "0 0 auto",
-            }}
-          >
-            {error}
-          </div>
-        ) : null}
-
-        {isLandscapeViewport ? (
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: hasMultipleCameras
-                ? "minmax(0, 1fr) minmax(0, 0.9fr) minmax(0, 1.35fr)"
-                : "minmax(0, 1fr) minmax(0, 1.35fr)",
-              gap: 8,
-              alignItems: "center",
-              flex: "0 0 auto",
-            }}
-          >
-            {switchCameraButton}
-            {importButton}
-            {captureButton}
-          </div>
-        ) : (
-          <>
+        <div
+          style={{
+            position: "absolute",
+            left: "max(14px, env(safe-area-inset-left))",
+            right: "max(14px, env(safe-area-inset-right))",
+            bottom: "max(14px, env(safe-area-inset-bottom))",
+            zIndex: 4,
+            pointerEvents: phase === "error" ? "none" : "auto",
+          }}
+        >
+          {isLandscapeViewport ? (
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: hasMultipleCameras ? "1fr 1fr" : "1fr",
-                gap: 10,
-                flex: "0 0 auto",
+                gridTemplateColumns: "1fr 1fr 1fr",
+                alignItems: "center",
+                gap: 12,
               }}
             >
-              {switchCameraButton}
-              {importButton}
+              <div style={{ display: "flex", justifyContent: "flex-start" }}>{switchCameraButton}</div>
+              <div style={{ display: "flex", justifyContent: "center" }}>{flashButton}</div>
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>{captureButton}</div>
             </div>
-            <div style={{ flex: "0 0 auto" }}>{captureButton}</div>
-          </>
-        )}
+          ) : (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr auto 1fr",
+                alignItems: "center",
+                gap: 14,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "flex-start" }}>{switchCameraButton}</div>
+              <div style={{ display: "flex", justifyContent: "center" }}>{captureButton}</div>
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>{flashButton}</div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
