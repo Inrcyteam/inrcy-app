@@ -376,7 +376,9 @@ export function computeOpportunityPerDaySocial(cubeKey: CubeKey, ov: Overview): 
   const m = node.metrics;
   if (!connected) return 0;
 
-  const coldStartBaseline = cubeKey === 'instagram' ? 0.18 : cubeKey === 'linkedin' ? 0 : 0.20;
+  // LinkedIn doit garder un potentiel minimum quand le canal est connecté,
+  // même si l'API ne remonte pas encore de signaux exploitables.
+  const coldStartBaseline = cubeKey === 'instagram' ? 0.18 : cubeKey === 'linkedin' ? 0.14 : 0.20;
   if (!m) return coldStartBaseline;
 
   const audienceTotal = getTotalMetric(m, ['followers', 'followerCount', 'memberFollowersCount', 'organicFollowerCount', 'paidFollowerCount', 'follower_count', 'followers_count', 'fans', 'fanCount', 'fan_count', 'audience', 'subscribers']) || 0;
@@ -417,7 +419,7 @@ export function computeOpportunityPerDaySocial(cubeKey: CubeKey, ov: Overview): 
       contentProfileViewsTotal > 0 ||
       audienceTotal > 0;
 
-    if (!hasRealLinkedInSignal) return 0;
+    if (!hasRealLinkedInSignal) return coldStartBaseline;
 
     const currentPerDay = clamp(
       0.03 +
