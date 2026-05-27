@@ -156,6 +156,8 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
   const [publicationPreviewOpen, setPublicationPreviewOpen] = React.useState(false);
   const [publicationCameraOpen, setPublicationCameraOpen] = React.useState(false);
   const [isMobileViewport, setIsMobileViewport] = React.useState(false);
+  const detailsBodyRef = React.useRef<HTMLDivElement | null>(null);
+  const detailsScrollSnapshotRef = React.useRef<number | null>(null);
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;
@@ -173,6 +175,37 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
   React.useEffect(() => {
     if (open) setPublicationPreviewOpen(false);
   }, [open, detailsItem?.id, detailsEditMode]);
+
+  const preserveDetailsModalScroll = React.useCallback(() => {
+    if (typeof document === "undefined") return;
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLElement) activeElement.blur();
+    detailsScrollSnapshotRef.current = detailsBodyRef.current?.scrollTop ?? 0;
+  }, []);
+
+  const restoreDetailsModalScroll = React.useCallback(() => {
+    if (typeof window === "undefined") return;
+    const snapshot = detailsScrollSnapshotRef.current;
+    if (snapshot === null) return;
+    const restore = () => {
+      if (detailsBodyRef.current) detailsBodyRef.current.scrollTop = snapshot;
+    };
+    window.requestAnimationFrame(() => {
+      restore();
+      window.setTimeout(restore, 80);
+      window.setTimeout(restore, 220);
+    });
+  }, []);
+
+  const openPublicationCamera = React.useCallback(() => {
+    preserveDetailsModalScroll();
+    setPublicationCameraOpen(true);
+  }, [preserveDetailsModalScroll]);
+
+  const closePublicationCamera = React.useCallback(() => {
+    setPublicationCameraOpen(false);
+    restoreDetailsModalScroll();
+  }, [restoreDetailsModalScroll]);
 
   const [publicationEditDirty, setPublicationEditDirty] = React.useState(false);
   const [publicationCtaDefaults, setPublicationCtaDefaults] = React.useState<BoosterCtaDefaults | null>(null);
@@ -337,7 +370,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                 </div>
               </div>
 
-              <div className={styles.modalBody} data-inrsend-details-body="true">
+              <div ref={detailsBodyRef} className={styles.modalBody} data-inrsend-details-body="true">
                 {!detailsItem ? (
                   <div style={{ color: "rgba(255,255,255,0.65)" }}>Sélectionne un élément.</div>
                 ) : (() => {
@@ -1095,8 +1128,12 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                             <InrcyCameraCaptureModal
                               open={publicationCameraOpen}
                               title="Prendre une photo"
-                                                    onClose={() => setPublicationCameraOpen(false)}
-                              onCapture={async (file) => { markPublicationEditDirty(); addPublicationPhoto(file); }}
+                              onClose={closePublicationCamera}
+                              onCapture={async (file) => {
+                                markPublicationEditDirty();
+                                addPublicationPhoto(file);
+                                restoreDetailsModalScroll();
+                              }}
                             />
 
                             <section className={styles.detailSectionCard}>
@@ -1133,7 +1170,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                     <button
                                       type="button"
                                       className={styles.btnAttach}
-                                      onClick={isMobileViewport ? () => setPublicationCameraOpen(true) : undefined}
+                                      onClick={isMobileViewport ? openPublicationCamera : undefined}
                                       disabled={isMobileViewport && activePublicationEditAssets.length >= 5}
                                       aria-disabled={!isMobileViewport || activePublicationEditAssets.length >= 5}
                                       style={{

@@ -288,6 +288,12 @@ export default function PublishModal({
   });
   const [isDraggingImage, setIsDraggingImage] = useState(false);
   const [isImageEditorOpen, setIsImageEditorOpen] = useState(false);
+  const publishRootRef = useRef<HTMLDivElement | null>(null);
+  const publishScrollSnapshotRef = useRef<{
+    element: HTMLElement | null;
+    scrollTop: number;
+    windowY: number;
+  } | null>(null);
 
   const [channels, setChannels] = useState<Record<ChannelKey, boolean>>({
     inrcy_site: true,
@@ -524,6 +530,46 @@ export default function PublishModal({
         block: "end",
         inline: "nearest",
       });
+    });
+  };
+
+  const getPublishScrollContainer = () => {
+    if (typeof document === "undefined") return null;
+    const root = publishRootRef.current;
+    if (!root) return null;
+    const scrollClass = styles.fullscreenModalScroll;
+    if (!scrollClass) return null;
+    return root.closest<HTMLElement>(`.${scrollClass}`);
+  };
+
+  const preservePublishScroll = () => {
+    if (typeof window === "undefined") return;
+    const activeElement = document.activeElement;
+    if (activeElement instanceof HTMLElement) activeElement.blur();
+    const element = getPublishScrollContainer();
+    publishScrollSnapshotRef.current = {
+      element,
+      scrollTop: element?.scrollTop ?? 0,
+      windowY: window.scrollY,
+    };
+  };
+
+  const restorePublishScroll = () => {
+    if (typeof window === "undefined") return;
+    const snapshot = publishScrollSnapshotRef.current;
+    if (!snapshot) return;
+    const restore = () => {
+      const element = snapshot.element || getPublishScrollContainer();
+      if (element) {
+        element.scrollTop = snapshot.scrollTop;
+      } else {
+        window.scrollTo(window.scrollX, snapshot.windowY);
+      }
+    };
+    window.requestAnimationFrame(() => {
+      restore();
+      window.setTimeout(restore, 80);
+      window.setTimeout(restore, 220);
     });
   };
 
@@ -1337,12 +1383,19 @@ export default function PublishModal({
       setImgError("Maximum 5 images.");
       return;
     }
+    preservePublishScroll();
     setCameraCaptureTargetChannel(targetChannel ?? null);
     setCameraCaptureOpen(true);
   };
 
+  const closeCameraCapture = () => {
+    setCameraCaptureOpen(false);
+    restorePublishScroll();
+  };
+
   const onCameraCapture = async (file: File) => {
     await addImageFiles([file], cameraCaptureTargetChannel ?? undefined);
+    restorePublishScroll();
   };
 
   const removeImage = (index: number) => {
@@ -1916,6 +1969,7 @@ export default function PublishModal({
   };
 
   const openImageEditor = (channel: ChannelKey, imageKey: string) => {
+    preservePublishScroll();
     setSynchronizedActiveChannel(channel);
     setActiveImageKeyByChannel((prev) => ({ ...prev, [channel]: imageKey }));
     setIsImageEditorOpen(true);
@@ -1925,6 +1979,7 @@ export default function PublishModal({
     dragStateRef.current = null;
     setIsDraggingImage(false);
     setIsImageEditorOpen(false);
+    restorePublishScroll();
   };
 
   const fileToImagePayload = (file: File): Promise<ImagePayload> =>
@@ -2515,7 +2570,7 @@ export default function PublishModal({
   };
 
   return (
-    <div style={{ display: "grid", gap: 12, minWidth: 0 }}>
+    <div ref={publishRootRef} style={{ display: "grid", gap: 12, minWidth: 0 }}>
       <PublishHelpModal
         open={publishHelpOpen}
         onClose={() => setPublishHelpOpen(false)}
@@ -2554,7 +2609,7 @@ export default function PublishModal({
       <InrcyCameraCaptureModal
         open={cameraCaptureOpen}
         title="Prendre une photo"
-        onClose={() => setCameraCaptureOpen(false)}
+        onClose={closeCameraCapture}
         onCapture={onCameraCapture}
       />
 
