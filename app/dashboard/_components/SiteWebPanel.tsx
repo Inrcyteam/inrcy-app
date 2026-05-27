@@ -43,6 +43,7 @@ export default function SiteWebPanel(props: any) {
     widgetTokenSiteWeb,
     showSiteWebWidgetCode,
     setShowSiteWebWidgetCode,
+    saveSiteWebActusWidgetSettings,
     siteWebSettingsError,
     resetSiteWebAll,
   } = props;
@@ -421,6 +422,8 @@ export default function SiteWebPanel(props: any) {
           token={widgetTokenSiteWeb}
           showCode={showSiteWebWidgetCode}
           onToggle={() => setShowSiteWebWidgetCode((prev: boolean) => !prev)}
+          onHideCode={() => setShowSiteWebWidgetCode(false)}
+          onGenerate={saveSiteWebActusWidgetSettings}
         />
       </div>
 

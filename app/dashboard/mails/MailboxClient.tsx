@@ -166,6 +166,7 @@ export default function MailboxClient() {
   const [publicationImageAdapterChannelKey, setPublicationImageAdapterChannelKey] = useState<string | null>(null);
   const [publicationImageAdapterImageKey, setPublicationImageAdapterImageKey] = useState<string | null>(null);
   const publicationImageAdapterDragRef = useRef<{ channel: string; imageKey: string; startX: number; startY: number; startOffsetX: number; startOffsetY: number } | null>(null);
+  const publicationImageAdapterReturnScrollTopRef = useRef<number | null>(null);
   const publicationImageAdapterStageRef = useRef<HTMLDivElement | null>(null);
   const [publicationImageAdapterStageSize, setPublicationImageAdapterStageSize] = useState({ width: 0, height: 0 });
   const [publicationImageAdapterImageMeta, setPublicationImageAdapterImageMeta] = useState<Record<string, { width: number; height: number }>>({});
@@ -1992,32 +1993,6 @@ async function deleteDraftPermanently(id: string) {
     });
   }
 
-  function removePublicationImage(channel: string, imageKey: string) {
-    updatePublicationChannelAssets(channel, (assets) => assets.filter((asset) => asset.key !== imageKey));
-  }
-
-  function removePublicationImageEverywhere(channel: string, imageKey: string) {
-    const normalizedChannel = normalizeChannelKey(channel);
-    const sourceAsset = publicationEditImagesByChannel[normalizedChannel]?.assets.find((asset) => asset.key === imageKey);
-    const sourceUrl = String(sourceAsset?.sourceUrl || sourceAsset?.previewUrl || "");
-    const sourceName = String(sourceAsset?.name || "");
-    setPublicationEditImagesByChannel((prev) => {
-      const next: Record<string, PublicationChannelImagesState> = {};
-      for (const [channelKey, rawState] of Object.entries(prev)) {
-        const state = rawState as PublicationChannelImagesState;
-        next[channelKey] = {
-          assets: (state.assets || []).filter((asset) => {
-            if (asset.key === imageKey) return false;
-            const assetUrl = String(asset.sourceUrl || asset.previewUrl || "");
-            if (sourceUrl && assetUrl === sourceUrl) return false;
-            if (!sourceUrl && sourceName && asset.name === sourceName) return false;
-            return true;
-          }),
-        };
-      }
-      return next;
-    });
-  }
 
   function resetPublicationImage(channel: string, imageKey: string) {
     updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === imageKey ? { ...asset, transform: buildPublicationDefaultTransform(normalizeChannelKey(channel)) } : asset));
@@ -2040,15 +2015,32 @@ async function deleteDraftPermanently(id: string) {
   }
 
   function openPublicationImageAdapter(channel: string, imageKey: string) {
+    if (typeof document !== "undefined") {
+      const detailsBody = document.querySelector<HTMLElement>("[data-inrsend-details-body='true']");
+      publicationImageAdapterReturnScrollTopRef.current = detailsBody?.scrollTop ?? null;
+      (document.activeElement as HTMLElement | null)?.blur?.();
+    }
     setPublicationImageAdapterChannelKey(normalizeChannelKey(channel));
     setPublicationImageAdapterImageKey(imageKey);
     setDetailsActionError(null);
   }
 
   function closePublicationImageAdapter() {
+    const scrollTopToRestore = publicationImageAdapterReturnScrollTopRef.current;
     setPublicationImageAdapterChannelKey(null);
     setPublicationImageAdapterImageKey(null);
     publicationImageAdapterDragRef.current = null;
+    setIsPublicationImageAdapterDragging(false);
+
+    if (typeof window !== "undefined" && scrollTopToRestore !== null) {
+      window.requestAnimationFrame(() => {
+        const detailsBody = document.querySelector<HTMLElement>("[data-inrsend-details-body='true']");
+        if (detailsBody) detailsBody.scrollTop = scrollTopToRestore;
+        publicationImageAdapterReturnScrollTopRef.current = null;
+      });
+    } else {
+      publicationImageAdapterReturnScrollTopRef.current = null;
+    }
   }
 
   function addPublicationPickedFiles(picked: File[]) {
@@ -2436,8 +2428,6 @@ async function deleteDraftPermanently(id: string) {
           activePublicationEditAssets={activePublicationEditAssets}
           togglePublicationImage={togglePublicationImage}
           openPublicationImageAdapter={openPublicationImageAdapter}
-          removePublicationImage={removePublicationImage}
-          removePublicationImageEverywhere={removePublicationImageEverywhere}
           resetPublicationImage={resetPublicationImage}
           movePublicationImage={movePublicationImage}
           addPublicationFiles={addPublicationFiles}

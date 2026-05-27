@@ -88,8 +88,6 @@ type MailboxDetailsModalProps = {
   activePublicationEditAssets: any[];
   togglePublicationImage: (channel: string, imageKey: string) => void;
   openPublicationImageAdapter: (channel: string, imageKey: string) => void;
-  removePublicationImage: (channel: string, imageKey: string) => void;
-  removePublicationImageEverywhere?: (channel: string, imageKey: string) => void;
   resetPublicationImage?: (channel: string, imageKey: string) => void;
   movePublicationImage?: (channel: string, imageKey: string, direction: -1 | 1) => void;
   addPublicationFiles: (fileList: FileList | null) => void;
@@ -141,8 +139,6 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
     activePublicationEditAssets,
     togglePublicationImage,
     openPublicationImageAdapter,
-    removePublicationImage,
-    removePublicationImageEverywhere,
     resetPublicationImage,
     movePublicationImage,
     addPublicationFiles,
@@ -341,7 +337,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                 </div>
               </div>
 
-              <div className={styles.modalBody}>
+              <div className={styles.modalBody} data-inrsend-details-body="true">
                 {!detailsItem ? (
                   <div style={{ color: "rgba(255,255,255,0.65)" }}>Sélectionne un élément.</div>
                 ) : (() => {
@@ -1189,7 +1185,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                       onAdapt: () => openPublicationImageAdapter(activePublicationEditChannelKey, asset.key),
                                       onReset: resetPublicationImage ? () => { markPublicationEditDirty(); resetPublicationImage(activePublicationEditChannelKey, asset.key); } : undefined,
                                       onRemove: asset.selected ? () => { markPublicationEditDirty(); togglePublicationImage(activePublicationEditChannelKey, asset.key); } : undefined,
-                                      onRemoveEverywhere: removePublicationImageEverywhere ? () => { markPublicationEditDirty(); removePublicationImageEverywhere(activePublicationEditChannelKey, asset.key); } : () => { markPublicationEditDirty(); removePublicationImage(activePublicationEditChannelKey, asset.key); },
+                                      removeLabel: "Retirer de ce canal",
                                       onMovePrevious: movePublicationImage && asset.selected && selectedIndex > 0 ? () => { markPublicationEditDirty(); movePublicationImage(activePublicationEditChannelKey, asset.key, -1); } : undefined,
                                       onMoveNext: movePublicationImage && asset.selected && selectedIndex >= 0 && selectedIndex < selectedAssets.length - 1 ? () => { markPublicationEditDirty(); movePublicationImage(activePublicationEditChannelKey, asset.key, 1); } : undefined,
                                     };

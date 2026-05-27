@@ -1041,6 +1041,10 @@
   gap: 12px;
   padding: 12px 12px 10px 14px;
   border-bottom: 1px solid rgba(255,255,255,0.10);
+  flex: 0 0 auto;
+  position: relative;
+  z-index: 2;
+  background: rgba(10, 12, 26, 0.94);
 }
 
 .modalTitle {
@@ -1052,6 +1056,10 @@
 .modalBody {
   padding: 12px 14px 14px;
   overflow: auto;
+  overflow-anchor: none;
+  overscroll-behavior: contain;
+  scroll-behavior: auto;
+  scrollbar-gutter: stable;
   -webkit-overflow-scrolling: touch;
   min-height: 0; /* scroll interne */
   flex: 1;

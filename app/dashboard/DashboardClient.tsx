@@ -34,7 +34,7 @@ import { computeInertiaSnapshot } from "@/lib/loyalty/inertia";
 import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
 import { getDrawerTitle, isDrawerPanel } from "./dashboard.utils";
 import { inferChannelsFromRealtimePayload, inferChannelsFromSearchParams } from "./dashboard.shared";
-import type { GoogleProduct, GoogleSource, ModuleStatus, Ownership } from "./dashboard.types";
+import type { ActusFont, ActusLayout, ActusTheme, GoogleProduct, GoogleSource, ModuleStatus, Ownership } from "./dashboard.types";
 import { DASHBOARD_CHANNEL_KEYS, type DashboardChannelKey } from "@/lib/dashboardChannels";
 import { buildFluxBubbleItems } from "./dashboard.flux-bubbles";
 import { buildDashboardPanelProps } from "./dashboard.panel-props";
@@ -332,6 +332,7 @@ const {
   disconnectSiteInrcyGsc,
   saveSiteInrcyUrl,
   deleteSiteInrcyUrl,
+  saveSiteInrcyActusWidgetSettings,
   resetSiteInrcyAll,
 } = useSiteInrcyChannel({
   normalizeSiteUrl,
@@ -378,6 +379,7 @@ const {
   setSiteWebGscConnected,
   saveSiteWebUrl,
   deleteSiteWebUrl,
+  saveSiteWebActusWidgetSettings,
   resetSiteWebAll,
   attachWebsiteGoogleAnalytics,
   attachWebsiteGoogleSearchConsole,
@@ -829,12 +831,20 @@ const loadSiteInrcy = useCallback(async () => {
     ga4MeasurementId: ga4MeasurementIdValue,
     ga4PropertyId: ga4PropertyIdValue,
     gscProperty: gscPropertyValue,
+    siteInrcyActusLayout: ((inrcySettingsObj as any)?.actus_widget?.layout === "carousel" ? "carousel" : "list") as ActusLayout,
+    siteInrcyActusLimit: [3, 5, 10].includes(Number((inrcySettingsObj as any)?.actus_widget?.limit)) ? Number((inrcySettingsObj as any)?.actus_widget?.limit) : 5,
+    siteInrcyActusFont: (["site", "inter", "poppins", "montserrat", "lora"] as const).includes((inrcySettingsObj as any)?.actus_widget?.font as never) ? (inrcySettingsObj as any)?.actus_widget?.font as ActusFont : "site" as ActusFont,
+    siteInrcyActusTheme: (["white", "dark", "gray", "nature", "sand"] as const).includes((inrcySettingsObj as any)?.actus_widget?.theme as never) ? (inrcySettingsObj as any)?.actus_widget?.theme as ActusTheme : "nature" as ActusTheme,
     siteWebSettingsText: siteWebSettingsTextValue,
     siteWebUrl: (siteWebObj as any)?.url ?? "",
     siteWebSavedUrl: (siteWebObj as any)?.url ?? "",
     siteWebGa4MeasurementId: (siteWebObj as any)?.ga4?.measurement_id ?? "",
     siteWebGa4PropertyId: String((siteWebObj as any)?.ga4?.property_id ?? ""),
     siteWebGscProperty: (siteWebObj as any)?.gsc?.property ?? "",
+    siteWebActusLayout: ((siteWebObj as any)?.actus_widget?.layout === "carousel" ? "carousel" : "list") as ActusLayout,
+    siteWebActusLimit: [3, 5, 10].includes(Number((siteWebObj as any)?.actus_widget?.limit)) ? Number((siteWebObj as any)?.actus_widget?.limit) : 5,
+    siteWebActusFont: (["site", "inter", "poppins", "montserrat", "lora"] as const).includes((siteWebObj as any)?.actus_widget?.font as never) ? (siteWebObj as any)?.actus_widget?.font as ActusFont : "site" as ActusFont,
+    siteWebActusTheme: (["white", "dark", "gray", "nature", "sand"] as const).includes((siteWebObj as any)?.actus_widget?.theme as never) ? (siteWebObj as any)?.actus_widget?.theme as ActusTheme : "nature" as ActusTheme,
     instagramUrl: igObj?.url ?? "",
     instagramAccountConnected: !!igObj?.accountConnected,
     instagramConnected: !!igObj?.connected,
@@ -941,6 +951,10 @@ const loadSiteInrcy = useCallback(async () => {
   setGa4MeasurementId(nextState.ga4MeasurementId);
   setGa4PropertyId(nextState.ga4PropertyId);
   setGscProperty(nextState.gscProperty);
+  setSiteInrcyActusLayout(nextState.siteInrcyActusLayout);
+  setSiteInrcyActusLimit(nextState.siteInrcyActusLimit);
+  setSiteInrcyActusFont(nextState.siteInrcyActusFont);
+  setSiteInrcyActusTheme(nextState.siteInrcyActusTheme);
   setSiteWebSettingsText(nextState.siteWebSettingsText);
   setSiteWebSettingsError(null);
   setSiteWebUrl(nextState.siteWebUrl);
@@ -948,6 +962,10 @@ const loadSiteInrcy = useCallback(async () => {
   setSiteWebGa4MeasurementId(nextState.siteWebGa4MeasurementId);
   setSiteWebGa4PropertyId(nextState.siteWebGa4PropertyId);
   setSiteWebGscProperty(nextState.siteWebGscProperty);
+  setSiteWebActusLayout(nextState.siteWebActusLayout);
+  setSiteWebActusLimit(nextState.siteWebActusLimit);
+  setSiteWebActusFont(nextState.siteWebActusFont);
+  setSiteWebActusTheme(nextState.siteWebActusTheme);
   setInstagramUrl(nextState.instagramUrl);
   setInstagramAccountConnected(nextState.instagramAccountConnected);
   setInstagramConnected(nextState.instagramConnected);
@@ -2264,7 +2282,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     linkedinAccountConnected, linkedinConnected, linkedinConnectionStatus, linkedinDisplayName, linkedinUrl, linkedinUrlError, linkedinUrlNotice,
     linkedinOrganizations, linkedinOrganizationsLoading, linkedinOrganizationPickerOpen, linkedinSelectedOrganizationId, linkedinSelectedOrganizationName, loadLinkedinOrganizations, selectLinkedinOrganization, useLinkedinPersonalProfile,
     loadFacebookPages, loadGmbAccountsAndLocations, loadInstagramAccounts,
-    resetSiteInrcyAll, resetSiteWebAll,
+    resetSiteInrcyAll, resetSiteWebAll, saveSiteInrcyActusWidgetSettings, saveSiteWebActusWidgetSettings,
     saveFacebookPageFromDrawer, saveGmbLocationFromDrawer, saveInstagramProfileFromDrawer, saveLinkedinProfileUrlFromDrawer, saveSiteInrcyUrlFromDrawer, saveSiteWebUrlFromDrawer,
     setFbSelectedPageId, setIgSelectedPageId, setGmbLocationName, setLinkedinUrl, setLinkedinUrlNotice,
     setShowSiteInrcyWidgetCode, setShowSiteWebWidgetCode,

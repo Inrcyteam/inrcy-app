@@ -35,6 +35,7 @@ export function buildDashboardPanelProps(a: any) {
     widgetTokenSiteWeb: a.widgetTokenSiteWeb,
     showSiteWebWidgetCode: a.showSiteWebWidgetCode,
     setShowSiteWebWidgetCode: a.setShowSiteWebWidgetCode,
+    saveSiteWebActusWidgetSettings: a.saveSiteWebActusWidgetSettings,
     siteWebSettingsError: a.siteWebSettingsError,
     resetSiteWebAll: a.resetSiteWebAll,
   };
@@ -134,6 +135,7 @@ export function buildDashboardPanelProps(a: any) {
     widgetTokenInrcySite: a.widgetTokenInrcySite,
     showSiteInrcyWidgetCode: a.showSiteInrcyWidgetCode,
     setShowSiteInrcyWidgetCode: a.setShowSiteInrcyWidgetCode,
+    saveSiteInrcyActusWidgetSettings: a.saveSiteInrcyActusWidgetSettings,
     siteInrcySettingsError: a.siteInrcySettingsError,
     resetSiteInrcyAll: a.resetSiteInrcyAll,
   };

@@ -46,6 +46,7 @@ export default function SiteInrcyPanel(props: any) {
     widgetTokenInrcySite,
     showSiteInrcyWidgetCode,
     setShowSiteInrcyWidgetCode,
+    saveSiteInrcyActusWidgetSettings,
     siteInrcySettingsError,
     resetSiteInrcyAll,
   } = props;
@@ -453,6 +454,8 @@ export default function SiteInrcyPanel(props: any) {
           token={widgetTokenInrcySite}
           showCode={showSiteInrcyWidgetCode}
           onToggle={() => setShowSiteInrcyWidgetCode((prev: boolean) => !prev)}
+          onHideCode={() => setShowSiteInrcyWidgetCode(false)}
+          onGenerate={saveSiteInrcyActusWidgetSettings}
         />
       </div>
 

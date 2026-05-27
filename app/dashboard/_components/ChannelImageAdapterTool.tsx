@@ -56,6 +56,7 @@ type CardItem = {
   onToggle: () => void;
   onAdapt: () => void;
   onRemove?: () => void;
+  removeLabel?: string;
   onRemoveEverywhere?: () => void;
   onReset?: () => void;
   onMovePrevious?: () => void;
@@ -1110,7 +1111,7 @@ export function ChannelImageAdapterCardsPanel({
                   {(item.onRemove || item.onRemoveEverywhere) ? (
                     <div style={{ display: "grid", gridTemplateColumns: item.onRemove && item.onRemoveEverywhere ? "1fr 1fr" : "1fr", gap: 6 }}>
                       {item.onRemove ? (
-                        <button type="button" className={buttonClassName} onClick={item.onRemove} style={{ justifyContent: "center", fontSize: 12, padding: "0 8px" }}>Retirer</button>
+                        <button type="button" className={buttonClassName} onClick={item.onRemove} style={{ justifyContent: "center", fontSize: 12, padding: "0 8px" }}>{item.removeLabel || "Retirer"}</button>
                       ) : null}
                       {item.onRemoveEverywhere ? (
                         <button type="button" className={buttonClassName} onClick={item.onRemoveEverywhere} style={{ justifyContent: "center", fontSize: 12, padding: "0 8px", background: "rgba(248,113,113,0.10)", border: "1px solid rgba(248,113,113,0.24)", color: "#fecaca" }}>Suppr. partout</button>

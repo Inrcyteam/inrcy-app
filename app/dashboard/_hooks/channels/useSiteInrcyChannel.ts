@@ -97,12 +97,12 @@ export function useSiteInrcyChannel({
   }, [siteInrcyUrl, extractDomain, fetchWidgetToken]);
 
   const updateSiteInrcySettings = useCallback(async (nextSettings: any) => {
-    if (siteInrcyOwnership === "none") return;
+    if (siteInrcyOwnership === "none") return false;
 
     const supabase = createClient();
     const { data: authData } = await supabase.auth.getUser();
     const user = authData?.user;
-    if (!user) return;
+    if (!user) return false;
 
     const { error } = await supabase
       .from("inrcy_site_configs")
@@ -110,7 +110,7 @@ export function useSiteInrcyChannel({
 
     if (error) {
       setSiteInrcySettingsError(getSimpleFrenchErrorMessage(error));
-      return;
+      return false;
     }
 
     setSiteInrcySettingsError(null);
@@ -119,6 +119,7 @@ export function useSiteInrcyChannel({
     } catch {
       setSiteInrcySettingsText("{}");
     }
+    return true;
   }, [siteInrcyOwnership]);
 
   const saveSiteInrcySettings = useCallback(async () => {
@@ -601,6 +602,40 @@ export function useSiteInrcyChannel({
     triggerChannelRefresh("site_inrcy");
   }, [patchChannelConnectionLocally, siteInrcyOwnership, triggerChannelRefresh, updateSiteInrcySettings]);
 
+  const saveSiteInrcyActusWidgetSettings = useCallback(async () => {
+    if (siteInrcyOwnership === "none") {
+      setSiteInrcySettingsError("Widget indisponible : aucun site iNrCy.");
+      return false;
+    }
+    if (!siteInrcySavedUrl.trim()) {
+      setSiteInrcySettingsError("Enregistrez le lien du site iNrCy avant de générer le code du widget.");
+      return false;
+    }
+
+    let parsed: any;
+    try {
+      parsed = siteInrcySettingsText?.trim() ? JSON.parse(siteInrcySettingsText) : {};
+    } catch {
+      setSiteInrcySettingsError("JSON invalide. Corrige la configuration avant de générer le widget.");
+      return false;
+    }
+
+    parsed = parsed && typeof parsed === "object" ? { ...parsed } : {};
+    parsed.actus_widget = {
+      layout: siteInrcyActusLayout,
+      limit: siteInrcyActusLimit,
+      font: siteInrcyActusFont,
+      theme: siteInrcyActusTheme,
+      generated_at: new Date().toISOString(),
+    };
+
+    const ok = await updateSiteInrcySettings(parsed);
+    if (!ok) return false;
+    setSiteInrcyUrlNotice("✅ Widget enregistré. Code généré.");
+    window.setTimeout(() => setSiteInrcyUrlNotice(null), 2500);
+    return true;
+  }, [siteInrcyActusFont, siteInrcyActusLayout, siteInrcyActusLimit, siteInrcyActusTheme, siteInrcyOwnership, siteInrcySavedUrl, siteInrcySettingsText, updateSiteInrcySettings]);
+
   return {
     siteInrcyOwnership,
     setSiteInrcyOwnership,
@@ -653,6 +688,7 @@ export function useSiteInrcyChannel({
     disconnectSiteInrcyGsc,
     saveSiteInrcyUrl,
     deleteSiteInrcyUrl,
+    saveSiteInrcyActusWidgetSettings,
     resetSiteInrcyAll,
   };
 }

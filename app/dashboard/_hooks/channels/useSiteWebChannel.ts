@@ -97,7 +97,7 @@ export function useSiteWebChannel({
       const supabase = createClient();
       const { data: authData } = await supabase.auth.getUser();
       const user = authData?.user;
-      if (!user) return;
+      if (!user) return false;
 
       const { data: row, error: readErr } = await supabase
         .from("pro_tools_configs")
@@ -107,7 +107,7 @@ export function useSiteWebChannel({
 
       if (readErr) {
         setSiteWebSettingsError(getSimpleFrenchErrorMessage(readErr));
-        return;
+        return false;
       }
 
       const current = (row as any)?.settings ?? {};
@@ -116,7 +116,7 @@ export function useSiteWebChannel({
       const { error } = await supabase.from("pro_tools_configs").upsert({ user_id: user.id, settings: merged }, { onConflict: "user_id" });
       if (error) {
         setSiteWebSettingsError(getSimpleFrenchErrorMessage(error));
-        return;
+        return false;
       }
 
       setSiteWebSettingsError(null);
@@ -125,6 +125,7 @@ export function useSiteWebChannel({
       } catch {
         setSiteWebSettingsText("{}");
       }
+      return true;
     },
     []
   );
@@ -333,6 +334,37 @@ export function useSiteWebChannel({
     triggerChannelRefresh("site_web");
   }, [patchChannelConnectionLocally, updateSiteWebSettings, triggerChannelRefresh]);
 
+  const saveSiteWebActusWidgetSettings = useCallback(async () => {
+    if (!siteWebSavedUrl.trim()) {
+      setSiteWebSettingsError("Enregistrez le lien du site avant de générer le code du widget.");
+      return false;
+    }
+
+    let parsed: any;
+    try {
+      parsed = siteWebSettingsText?.trim() ? JSON.parse(siteWebSettingsText) : {};
+    } catch {
+      setSiteWebSettingsError("JSON invalide. Corrige la configuration avant de générer le widget.");
+      return false;
+    }
+
+    parsed = parsed && typeof parsed === "object" ? { ...parsed } : {};
+    parsed.url = siteWebSavedUrl.trim();
+    parsed.actus_widget = {
+      layout: siteWebActusLayout,
+      limit: siteWebActusLimit,
+      font: siteWebActusFont,
+      theme: siteWebActusTheme,
+      generated_at: new Date().toISOString(),
+    };
+
+    const ok = await updateSiteWebSettings(parsed);
+    if (!ok) return false;
+    setSiteWebUrlNotice("✅ Widget enregistré. Code généré.");
+    window.setTimeout(() => setSiteWebUrlNotice(null), 2500);
+    return true;
+  }, [siteWebActusFont, siteWebActusLayout, siteWebActusLimit, siteWebActusTheme, siteWebSavedUrl, siteWebSettingsText, updateSiteWebSettings]);
+
   const saveSiteWebSettings = useCallback(async () => {
     let parsed: any;
     try {
@@ -479,6 +511,7 @@ export function useSiteWebChannel({
     saveSiteWebUrl,
     deleteSiteWebUrl,
     resetSiteWebAll,
+    saveSiteWebActusWidgetSettings,
     saveSiteWebSettings,
     attachWebsiteGoogleAnalytics,
     attachWebsiteGoogleSearchConsole,
