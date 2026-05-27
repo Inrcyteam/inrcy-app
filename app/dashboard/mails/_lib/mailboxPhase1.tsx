@@ -337,6 +337,25 @@ export type OutboxItem = {
   reopenHref?: string | null;
 };
 
+export type PublicationAttachment = {
+  name: string;
+  type?: string | null;
+  size?: number | null;
+  url?: string | null;
+  downloadUrl?: string | null;
+  role?: string | null;
+  renderedUrl?: string | null;
+  publicUrl?: string | null;
+  originalUrl?: string | null;
+  originalPublicUrl?: string | null;
+  originalStoragePath?: string | null;
+  originalName?: string | null;
+  originalType?: string | null;
+  imageKey?: string | null;
+  transform?: PublicationImageTransform | null;
+  imageMeta?: { width?: number; height?: number; ratio?: number } | null;
+};
+
 export type PublicationParts = {
   title?: string | null;
   content?: string | null;
@@ -345,7 +364,7 @@ export type PublicationParts = {
   ctaUrl?: string | null;
   ctaPhone?: string | null;
   hashtags?: string[];
-  attachments?: { name: string; type?: string | null; size?: number | null; url?: string | null; downloadUrl?: string | null; role?: string | null }[];
+  attachments?: PublicationAttachment[];
 };
 
 export type ChannelPublication = {
@@ -364,12 +383,7 @@ export type PublicationEditForm = {
   hashtags: string;
 };
 
-export type EditablePublicationAttachment = {
-  name: string;
-  type?: string | null;
-  size?: number | null;
-  url?: string | null;
-};
+export type EditablePublicationAttachment = PublicationAttachment;
 
 export type PublicationImageFitMode = "contain" | "cover";
 export type PublicationImageBackgroundMode = "blur" | "transparent" | "color" | "white" | "black" | "gray" | "sand" | "brand";
@@ -390,9 +404,16 @@ export type PublicationImageAsset = {
   type: string;
   previewUrl: string;
   sourceUrl: string | null;
+  originalUrl?: string | null;
+  renderedUrl?: string | null;
+  originalStoragePath?: string | null;
+  originalName?: string | null;
+  originalType?: string | null;
   file: File | null;
   selected: boolean;
   transform: PublicationImageTransform;
+  savedTransform?: PublicationImageTransform | null;
+  imageMeta?: { width?: number; height?: number; ratio?: number } | null;
 };
 
 export type PublicationChannelImagesState = {
@@ -473,15 +494,20 @@ export function getPublicationBackgroundFill(mode: PublicationImageBackgroundMod
   }
 }
 
+export function arePublicationTransformsEquivalent(a: PublicationImageTransform, b: PublicationImageTransform): boolean {
+  return (
+    a.fit === b.fit &&
+    Math.abs((a.zoom || 1) - (b.zoom || 1)) <= 0.001 &&
+    Math.abs((a.offsetX || 0) - (b.offsetX || 0)) <= 0.001 &&
+    Math.abs((a.offsetY || 0) - (b.offsetY || 0)) <= 0.001 &&
+    getPublicationBackgroundMode(a) === getPublicationBackgroundMode(b) &&
+    String(a.backgroundColor || "") === String(b.backgroundColor || "")
+  );
+}
+
 export function isPublicationTransformModified(transform: PublicationImageTransform, channel: string): boolean {
   const defaults = buildPublicationDefaultTransform(channel);
-  return (
-    transform.fit !== defaults.fit ||
-    Math.abs((transform.zoom || 1) - 1) > 0.001 ||
-    Math.abs(transform.offsetX || 0) > 0.001 ||
-    Math.abs(transform.offsetY || 0) > 0.001 ||
-    getPublicationBackgroundMode(transform) !== getPublicationBackgroundMode(defaults)
-  );
+  return !arePublicationTransformsEquivalent(transform, defaults);
 }
 
 export function computePublicationPreviewLayout(params: {
@@ -770,7 +796,7 @@ function downloadUrlForDraftAttachment(bucket: string, path: string, name?: stri
   return `/api/inrsend/attachments/download?${params.toString()}`;
 }
 
-export function extractAttachmentsFromPayload(payload: any): { name: string; type?: string | null; size?: number | null; url?: string | null; downloadUrl?: string | null; role?: string | null }[] {
+export function extractAttachmentsFromPayload(payload: any): PublicationAttachment[] {
   if (!payload || typeof payload !== "object") return [];
   const candidates = parseMaybeJsonArray(
     payload.attachments ||
@@ -806,8 +832,10 @@ export function extractAttachmentsFromPayload(payload: any): { name: string; typ
       }
       const bucket = String(a.bucket || a.storage_bucket || "").trim();
       const storagePath = String(a.path || a.storage_path || "").trim();
-      const url = a.url || a.href || a.publicUrl || a.public_url || (storagePath && isLikelyUrl(storagePath) ? storagePath : null);
-      const name = a.name || a.filename || a.fileName || a.originalname || (storagePath && !isLikelyUrl(storagePath) ? storagePath.split("/").pop() : null) || url;
+      const renderedUrl = a.renderedUrl || a.rendered_url || a.url || a.href || a.publicUrl || a.public_url || null;
+      const originalUrl = a.originalUrl || a.original_url || a.originalPublicUrl || a.original_public_url || null;
+      const url = renderedUrl || originalUrl || (storagePath && isLikelyUrl(storagePath) ? storagePath : null);
+      const name = a.name || a.filename || a.fileName || a.originalname || a.originalName || (storagePath && !isLikelyUrl(storagePath) ? storagePath.split("/").pop() : null) || url;
       if (!name && !url) return null;
       const finalName = String(name || buildNameFromUrl(String(url || "")));
       const downloadUrl = bucket && storagePath && !isLikelyUrl(storagePath)
@@ -815,13 +843,23 @@ export function extractAttachmentsFromPayload(payload: any): { name: string; typ
         : null;
       return {
         name: finalName,
-        type: a.type || a.mime || a.mimeType || null,
+        type: a.type || a.mime || a.mimeType || a.originalType || null,
         size: typeof a.size === "number" ? a.size : typeof a.bytes === "number" ? a.bytes : null,
         url: url || null,
+        renderedUrl: renderedUrl || url || null,
+        publicUrl: a.publicUrl || a.public_url || renderedUrl || url || null,
+        originalUrl: originalUrl || null,
+        originalPublicUrl: a.originalPublicUrl || a.original_public_url || originalUrl || null,
+        originalStoragePath: a.originalStoragePath || a.original_storage_path || null,
+        originalName: a.originalName || a.original_name || null,
+        originalType: a.originalType || a.original_type || null,
+        imageKey: a.imageKey || a.image_key || null,
+        transform: a.transform || null,
+        imageMeta: a.imageMeta || a.image_meta || null,
         downloadUrl,
       };
     })
-    .filter(Boolean) as any;
+    .filter(Boolean) as PublicationAttachment[];
 }
 
 

@@ -78,6 +78,31 @@ type ImagePayload = {
   dataUrl?: string; // base64 data URL
   storagePath?: string; // Supabase Storage path (bucket: booster)
   publicUrl?: string;
+  renderedUrl?: string;
+  originalUrl?: string;
+  originalPublicUrl?: string;
+  originalStoragePath?: string;
+  originalName?: string;
+  originalType?: string;
+  imageKey?: string;
+  transform?: unknown;
+  imageMeta?: unknown;
+};
+
+type EditableImageAttachment = {
+  name: string;
+  type?: string | null;
+  url: string;
+  renderedUrl: string;
+  publicUrl: string;
+  originalUrl?: string | null;
+  originalPublicUrl?: string | null;
+  originalStoragePath?: string | null;
+  originalName?: string | null;
+  originalType?: string | null;
+  imageKey?: string | null;
+  transform?: unknown;
+  imageMeta?: unknown;
 };
 
 type PostPayload = {
@@ -99,6 +124,7 @@ type ImageSet = {
   socialFeedPublishableUrls: string[];
   siteCardPublishableUrls: string[];
   gmbPublishableUrls: string[];
+  editableAttachments?: EditableImageAttachment[];
 };
 
 type ResolvedImageInput = {
@@ -297,6 +323,30 @@ function mergeImageFormats(...formatsList: ImageOptimizationFormats[]): ImageOpt
     siteCard: Boolean(acc.siteCard || formats.siteCard),
     gmb: Boolean(acc.gmb || formats.gmb),
   }), {});
+}
+
+function buildEditableImageAttachments(rawImages: ImagePayload[], imageSet: ImageSet): EditableImageAttachment[] {
+  return imageSet.images.map((renderedUrl, index) => {
+    const raw = rawImages[index] || ({} as ImagePayload);
+    const originalUrl = String(raw.originalPublicUrl || raw.originalUrl || raw.publicUrl || renderedUrl || "").trim();
+    const name = String(raw.originalName || raw.name || `image-${index + 1}.jpg`).trim() || `image-${index + 1}.jpg`;
+    const type = String(raw.originalType || raw.type || "image/jpeg").trim() || "image/jpeg";
+    return {
+      name,
+      type,
+      url: renderedUrl,
+      renderedUrl,
+      publicUrl: renderedUrl,
+      originalUrl: originalUrl || null,
+      originalPublicUrl: originalUrl || null,
+      originalStoragePath: String(raw.originalStoragePath || "").trim() || null,
+      originalName: String(raw.originalName || raw.name || "").trim() || null,
+      originalType: String(raw.originalType || raw.type || "").trim() || null,
+      imageKey: String(raw.imageKey || "").trim() || null,
+      transform: raw.transform || null,
+      imageMeta: raw.imageMeta || null,
+    };
+  });
 }
 
 async function uploadImageSet(userId: string, images: ImagePayload[], formats: ImageOptimizationFormats = EMPTY_IMAGE_FORMATS): Promise<{ imageSet: ImageSet; uploadErrors: Array<{ name: string; reason: string; stage: string }> }> {
@@ -591,7 +641,10 @@ const body = await req.json().catch(() => null);
       const channelImagesToUpload = channel === "gmb" ? rawChannelImages.slice(0, 1) : rawChannelImages;
       if (!channelImagesToUpload.length) continue;
       const { imageSet, uploadErrors: channelErrors } = await uploadImageSet(userId, channelImagesToUpload, getRequiredImageFormatsForChannel(channel));
-      channelImageSets[channel] = imageSet;
+      channelImageSets[channel] = {
+        ...imageSet,
+        editableAttachments: buildEditableImageAttachments(channelImagesToUpload, imageSet),
+      };
       uploadErrors.push(...channelErrors.map((entry) => ({ ...entry, stage: `${channel}:${entry.stage}` })));
     }
 
@@ -1137,7 +1190,7 @@ const body = await req.json().catch(() => null);
             ? {
                 ...(baseValue || {}),
                 images: imageSet.images,
-                attachments: imageSet.images,
+                attachments: imageSet.editableAttachments?.length ? imageSet.editableAttachments : imageSet.images,
                 publishableUrls: imageSet.publishableUrls,
                 instagramPublishableUrls: imageSet.instagramPublishableUrls,
                 socialFeedPublishableUrls: imageSet.socialFeedPublishableUrls,

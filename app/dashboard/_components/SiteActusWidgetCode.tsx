@@ -129,7 +129,7 @@ export default function SiteActusWidgetCode({
       if (ok === false) return;
       setGeneratedConfig(currentConfig);
       onHideCode();
-      setGenerateNotice("✅ Paramètres enregistrés. Code généré.");
+      setGenerateNotice("✅ Code généré avec succès. Vous pouvez l’afficher ou le copier.");
     } catch {
       setGenerateNotice("Enregistrement impossible pour le moment.");
     } finally {
@@ -184,7 +184,7 @@ export default function SiteActusWidgetCode({
 
     {!hasGeneratedCode ? (
       <div className={styles.blockSub} style={{ color: "rgba(251,191,36,0.95)", fontWeight: 800 }}>
-        Choisissez les paramètres, puis cliquez sur “Enregistrer et générer le code”.
+        Réglez les paramètres, puis cliquez sur “Enregistrer et générer le code”.
       </div>
     ) : paramsChanged ? (
       <div className={styles.blockSub} style={{ color: "rgba(251,191,36,0.95)", fontWeight: 800 }}>

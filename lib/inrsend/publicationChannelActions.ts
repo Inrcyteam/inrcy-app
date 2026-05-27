@@ -67,7 +67,7 @@ type PostPayload = {
   ctaPhone?: string;
   hashtags: string[];
   images?: string[];
-  attachments?: string[];
+  attachments?: unknown[];
   publishableUrls?: string[];
   instagramPublishableUrls?: string[];
   socialFeedPublishableUrls?: string[];
@@ -79,6 +79,28 @@ type ImagePayload = {
   name: string;
   type: string;
   dataUrl: string;
+  originalUrl?: string | null;
+  originalPublicUrl?: string | null;
+  originalName?: string | null;
+  originalType?: string | null;
+  imageKey?: string | null;
+  transform?: unknown;
+  imageMeta?: unknown;
+};
+
+type EditableImageAttachment = {
+  name: string;
+  type?: string | null;
+  url: string;
+  renderedUrl: string;
+  publicUrl: string;
+  originalUrl?: string | null;
+  originalPublicUrl?: string | null;
+  originalName?: string | null;
+  originalType?: string | null;
+  imageKey?: string | null;
+  transform?: unknown;
+  imageMeta?: unknown;
 };
 
 type ImageSet = {
@@ -87,6 +109,7 @@ type ImageSet = {
   socialFeedPublishableUrls: string[];
   siteCardPublishableUrls: string[];
   gmbPublishableUrls: string[];
+  editableAttachments?: EditableImageAttachment[];
 };
 
 function asRecord(v: unknown): JsonRecord {
@@ -149,6 +172,7 @@ async function uploadPublicationImages(userId: string, newImages: ImagePayload[]
   const socialFeedPublishableUrls: string[] = [];
   const siteCardPublishableUrls: string[] = [];
   const gmbPublishableUrls: string[] = [];
+  const editableAttachments: EditableImageAttachment[] = [];
 
   for (const img of newImages.slice(0, 5)) {
     const parsed = dataUrlToBuffer(img.dataUrl);
@@ -166,6 +190,19 @@ async function uploadPublicationImages(userId: string, newImages: ImagePayload[]
     const originalUrl = String(originalPublic?.data?.publicUrl || "").trim();
     if (!originalUrl) throw new Error(`URL publique introuvable pour ${img?.name || "image"}.`);
     uploadedUrls.push(originalUrl);
+    const sourceOriginalUrl = String(img.originalPublicUrl || img.originalUrl || originalUrl || "").trim();
+    editableAttachments.push({
+      name: String(img.originalName || img.name || "image.jpg").trim() || "image.jpg",
+      type: String(img.originalType || img.type || parsed.mime || "image/jpeg").trim() || "image/jpeg",
+      url: originalUrl,
+      renderedUrl: originalUrl,
+      publicUrl: originalUrl,
+      originalUrl: sourceOriginalUrl || originalUrl,
+      originalPublicUrl: sourceOriginalUrl || originalUrl,
+      imageKey: String(img.imageKey || "").trim() || null,
+      transform: img.transform || null,
+      imageMeta: img.imageMeta || null,
+    });
 
     const instagramOptimized = await optimizeForInstagram(parsed.buffer);
     const instagramPath = `${userId}/instagram/${randomUUID()}.${instagramOptimized.extension}`;
@@ -218,7 +255,7 @@ async function uploadPublicationImages(userId: string, newImages: ImagePayload[]
     gmbPublishableUrls.push(gmbUrl);
   }
 
-  return { images: uploadedUrls, instagramPublishableUrls, socialFeedPublishableUrls, siteCardPublishableUrls, gmbPublishableUrls };
+  return { images: uploadedUrls, instagramPublishableUrls, socialFeedPublishableUrls, siteCardPublishableUrls, gmbPublishableUrls, editableAttachments };
 }
 
 function filterUrlsByIndexes(values: unknown, indexes: number[]): string[] {
@@ -227,7 +264,15 @@ function filterUrlsByIndexes(values: unknown, indexes: number[]): string[] {
 }
 
 function emptyImageSet(): ImageSet {
-  return { images: [], instagramPublishableUrls: [], socialFeedPublishableUrls: [], siteCardPublishableUrls: [], gmbPublishableUrls: [] };
+  return { images: [], instagramPublishableUrls: [], socialFeedPublishableUrls: [], siteCardPublishableUrls: [], gmbPublishableUrls: [], editableAttachments: [] };
+}
+
+function getRenderedImageUrl(value: unknown): string {
+  const record = asRecord(value);
+  if (Object.keys(record).length) {
+    return String(record.renderedUrl || record.rendered_url || record.url || record.publicUrl || record.public_url || "").trim();
+  }
+  return String(value || "").trim();
 }
 
 function getChannelImageSet(eventPayload: JsonRecord, publication: JsonRecord, channel: ChannelKey): ImageSet {
@@ -241,7 +286,7 @@ function getChannelImageSet(eventPayload: JsonRecord, publication: JsonRecord, c
   const images = Array.isArray(raw.images)
     ? raw.images.map((value) => String(value || "").trim()).filter(Boolean)
     : Array.isArray(raw.attachments)
-      ? raw.attachments.map((value) => String(value || "").trim()).filter(Boolean)
+      ? raw.attachments.map(getRenderedImageUrl).filter(Boolean)
       : publicationImages;
 
   const inheritedIndexes = images.map((url) => publicationImages.indexOf(url)).filter((index) => index >= 0);
@@ -263,6 +308,34 @@ function getChannelImageSet(eventPayload: JsonRecord, publication: JsonRecord, c
   };
 }
 
+function getChannelEditableAttachments(eventPayload: JsonRecord, publication: JsonRecord, channel: ChannelKey): EditableImageAttachment[] {
+  const postByChannel = asRecord(eventPayload.postByChannel);
+  const fallbackChannelPost = channel === "inrcy_site" ? postByChannel.site_web : channel === "site_web" ? postByChannel.inrcy_site : null;
+  const raw = asRecord(postByChannel[channel] ?? fallbackChannelPost);
+  const imageSet = getChannelImageSet(eventPayload, publication, channel);
+  const rawAttachments = Array.isArray(raw.attachments) ? raw.attachments : [];
+  return imageSet.images.map((url, index) => {
+    const rawAttachment = rawAttachments[index];
+    const record = asRecord(rawAttachment);
+    const renderedUrl = String(record.renderedUrl || record.rendered_url || record.url || record.publicUrl || record.public_url || url || "").trim();
+    const originalUrl = String(record.originalUrl || record.original_url || record.originalPublicUrl || record.original_public_url || renderedUrl || "").trim();
+    return {
+      name: String(record.originalName || record.original_name || record.name || `image-${index + 1}.jpg`).trim() || `image-${index + 1}.jpg`,
+      type: String(record.originalType || record.original_type || record.type || "image/jpeg").trim() || "image/jpeg",
+      url: renderedUrl || url,
+      renderedUrl: renderedUrl || url,
+      publicUrl: String(record.publicUrl || record.public_url || renderedUrl || url || "").trim() || renderedUrl || url,
+      originalUrl: originalUrl || null,
+      originalPublicUrl: originalUrl || null,
+      originalName: String(record.originalName || record.original_name || record.name || "").trim() || null,
+      originalType: String(record.originalType || record.original_type || record.type || "").trim() || null,
+      imageKey: String(record.imageKey || record.image_key || "").trim() || null,
+      transform: record.transform || null,
+      imageMeta: record.imageMeta || record.image_meta || null,
+    };
+  });
+}
+
 async function updatePublicationImages(params: {
   userId: string;
   publication: JsonRecord;
@@ -279,12 +352,14 @@ async function updatePublicationImages(params: {
     .map((url) => currentImages.indexOf(url))
     .filter((index, position, arr) => index >= 0 && arr.indexOf(index) === position);
 
+  const currentAttachments = getChannelEditableAttachments(eventPayload, publication, channel);
   const baseImageSet: ImageSet = {
     images: retainedIndexes.map((index) => currentImages[index]).filter(Boolean),
     instagramPublishableUrls: filterUrlsByIndexes(currentImageSet.instagramPublishableUrls, retainedIndexes),
     socialFeedPublishableUrls: filterUrlsByIndexes(currentImageSet.socialFeedPublishableUrls, retainedIndexes),
     siteCardPublishableUrls: filterUrlsByIndexes(currentImageSet.siteCardPublishableUrls, retainedIndexes),
     gmbPublishableUrls: filterUrlsByIndexes(currentImageSet.gmbPublishableUrls, retainedIndexes),
+    editableAttachments: retainedIndexes.map((index) => currentAttachments[index]).filter(Boolean),
   };
 
   const uploadedSet = newImages.length ? await uploadPublicationImages(userId, newImages) : emptyImageSet();
@@ -294,6 +369,7 @@ async function updatePublicationImages(params: {
     socialFeedPublishableUrls: [...baseImageSet.socialFeedPublishableUrls, ...uploadedSet.socialFeedPublishableUrls].slice(0, 20),
     siteCardPublishableUrls: [...baseImageSet.siteCardPublishableUrls, ...uploadedSet.siteCardPublishableUrls].slice(0, 20),
     gmbPublishableUrls: [...baseImageSet.gmbPublishableUrls, ...uploadedSet.gmbPublishableUrls].slice(0, 20),
+    editableAttachments: [...(baseImageSet.editableAttachments || []), ...(uploadedSet.editableAttachments || [])].slice(0, 5),
   };
 }
 
@@ -1211,7 +1287,7 @@ function buildUpdatedPayload(params: {
 
   if (imageSet) {
     nextChannelPost.images = imageSet.images;
-    nextChannelPost.attachments = imageSet.images;
+    nextChannelPost.attachments = imageSet.editableAttachments?.length ? imageSet.editableAttachments : imageSet.images;
     nextChannelPost.publishableUrls = imageSet.images;
     nextChannelPost.instagramPublishableUrls = imageSet.instagramPublishableUrls;
     nextChannelPost.socialFeedPublishableUrls = imageSet.socialFeedPublishableUrls;
@@ -1307,6 +1383,13 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
               name: String(value.name ?? "image").trim() || "image",
               type: String(value.type ?? "image/jpeg").trim() || "image/jpeg",
               dataUrl: String(value.dataUrl ?? "").trim(),
+              originalUrl: String(value.originalUrl ?? value.originalPublicUrl ?? "").trim() || null,
+              originalPublicUrl: String(value.originalPublicUrl ?? value.originalUrl ?? "").trim() || null,
+              originalName: String(value.originalName ?? value.name ?? "").trim() || null,
+              originalType: String(value.originalType ?? value.type ?? "").trim() || null,
+              imageKey: String(value.imageKey ?? "").trim() || null,
+              transform: value.transform || null,
+              imageMeta: value.imageMeta || null,
             }))
             .filter((value) => value.dataUrl)
         : [];

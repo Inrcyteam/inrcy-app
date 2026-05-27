@@ -1927,6 +1927,30 @@ export default function PublishModal({
     setIsImageEditorOpen(false);
   };
 
+  const fileToImagePayload = (file: File): Promise<ImagePayload> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () =>
+        resolve({
+          name: file.name || "image.jpg",
+          type: file.type || "image/jpeg",
+          dataUrl: String(reader.result || ""),
+        });
+      reader.onerror = () => reject(reader.error ?? new Error("Impossible de préparer l'image originale."));
+      reader.readAsDataURL(file);
+    });
+
+  const uploadOriginalImagesForPublication = async (
+    onProgress?: (current: number, total: number) => void,
+  ): Promise<Record<string, ImagePayload>> => {
+    if (!images.length) return {};
+    const originalPayloads = await Promise.all(images.map((file) => fileToImagePayload(file)));
+    const uploadedOriginals = await uploadPreparedImages(originalPayloads, onProgress);
+    return Object.fromEntries(
+      images.map((file, index) => [makeImageKey(file), uploadedOriginals[index]]),
+    );
+  };
+
   const buildChannelImagesPayload = async (
     onProgress?: (current: number, total: number) => void,
   ): Promise<{
@@ -2064,7 +2088,17 @@ export default function PublishModal({
         });
 
       setPublishProgress((prev) => Math.max(prev, 35));
-      setPublishProgressLabel("Upload des images...");
+      setPublishProgressLabel("Upload des images originales...");
+
+      const originalImageByKey = await uploadOriginalImagesForPublication((current, total) => {
+        if (!total) return;
+        const ratio = current / total;
+        setPublishProgress(clampPercent(35 + ratio * 12));
+        setPublishProgressLabel(`Upload des images originales ${clampPercent(ratio * 100)}%`);
+      });
+
+      setPublishProgress((prev) => Math.max(prev, images.length ? 47 : 35));
+      setPublishProgressLabel("Upload des images adaptées...");
 
       const uploadedChannelImages = {} as ChannelImagePayload;
       const uploadTargets = selectedChannels.reduce(
@@ -2076,18 +2110,36 @@ export default function PublishModal({
       );
       let uploadedCount = 0;
       for (const channel of selectedChannels) {
-        uploadedChannelImages[channel] = await uploadPreparedImages(
+        const uploadedImages = await uploadPreparedImages(
           channelImages[channel] || [],
           (current, total) => {
             if (!total) return;
             uploadedCount += 1;
             const ratio = uploadTargets ? uploadedCount / uploadTargets : 1;
-            setPublishProgress(clampPercent(35 + ratio * 35));
+            setPublishProgress(clampPercent((images.length ? 47 : 35) + ratio * (images.length ? 23 : 35)));
             setPublishProgressLabel(
-              `Upload des images ${clampPercent(ratio * 100)}%`,
+              `Upload des images adaptées ${clampPercent(ratio * 100)}%`,
             );
           },
         );
+        const imageKeysForChannel = channelSettings[channel]?.imageKeys || [];
+        uploadedChannelImages[channel] = uploadedImages.map((image, index) => {
+          const imageKey = imageKeysForChannel[index] || "";
+          const original = imageKey ? originalImageByKey[imageKey] : undefined;
+          const originalUrl = String(original?.publicUrl || original?.originalPublicUrl || original?.originalUrl || "").trim();
+          return {
+            ...image,
+            renderedUrl: image.publicUrl || image.renderedUrl || "",
+            imageKey,
+            originalUrl,
+            originalPublicUrl: originalUrl,
+            originalStoragePath: original?.storagePath || original?.originalStoragePath || "",
+            originalName: original?.name || image.name,
+            originalType: original?.type || image.type,
+            transform: imageKey ? channelSettings[channel]?.transforms?.[imageKey] : undefined,
+            imageMeta: imageKey ? imageMetaByKey[imageKey] : undefined,
+          };
+        });
       }
 
       setPublishProgress((prev) => Math.max(prev, 74));

@@ -24,6 +24,7 @@ import {
   MAILBOX_RECIPIENTS_PAGE_SIZE,
   MAIL_ACCOUNTS_UPDATED_EVENT,
   applyCampaignRecipientsFilter,
+  arePublicationTransformsEquivalent,
   buildDefaultMailText,
   bulkConfirmationMessage,
   campaignCounts,
@@ -1054,17 +1055,31 @@ export default function MailboxClient() {
       const channel = normalizeChannelKey(entry.key);
       const defaultTransform = buildPublicationDefaultTransform(channel);
       const assets = (Array.isArray(entry.parts.attachments) ? entry.parts.attachments : [])
-        .filter((att) => att?.url && isImageAttachment(att))
-        .map((att, index) => ({
-          key: makePublicationImageAssetKey("existing", att.name || `image-${index + 1}`, `${index}:${String(att.url || "")}`),
-          name: att.name || `Image ${index + 1}`,
-          type: String(att.type || "image/jpeg") || "image/jpeg",
-          previewUrl: String(att.url || ""),
-          sourceUrl: String(att.url || "") || null,
-          file: null,
-          selected: channel === "gmb" ? index === 0 : true,
-          transform: { ...defaultTransform },
-        }));
+        .filter((att) => (att?.url || att?.originalUrl || att?.originalPublicUrl || att?.renderedUrl) && isImageAttachment({ ...att, url: att.url || att.originalUrl || att.originalPublicUrl || att.renderedUrl }))
+        .map((att, index) => {
+          const renderedUrl = String(att.renderedUrl || att.url || att.publicUrl || "").trim();
+          const originalUrl = String(att.originalUrl || att.originalPublicUrl || "").trim();
+          const previewUrl = originalUrl || renderedUrl;
+          const storedTransform = att.transform && typeof att.transform === "object" ? att.transform as Partial<PublicationImageTransform> : null;
+          const initialTransform = storedTransform ? { ...defaultTransform, ...storedTransform } : { ...defaultTransform };
+          return {
+            key: makePublicationImageAssetKey("existing", att.name || `image-${index + 1}`, `${index}:${previewUrl || renderedUrl}`),
+            name: att.originalName || att.name || `Image ${index + 1}`,
+            type: String(att.originalType || att.type || "image/jpeg") || "image/jpeg",
+            previewUrl,
+            sourceUrl: renderedUrl || previewUrl || null,
+            originalUrl: originalUrl || null,
+            renderedUrl: renderedUrl || null,
+            originalStoragePath: att.originalStoragePath || null,
+            originalName: att.originalName || att.name || null,
+            originalType: att.originalType || att.type || null,
+            file: null,
+            selected: channel === "gmb" ? index === 0 : true,
+            transform: initialTransform,
+            savedTransform: { ...initialTransform },
+            imageMeta: att.imageMeta || null,
+          };
+        });
       nextState[channel] = { assets };
     }
     setPublicationEditImagesByChannel(nextState);
@@ -2123,7 +2138,10 @@ async function deleteDraftPermanently(id: string) {
       const newImages: Array<{ name: string; type: string; dataUrl: string }> = [];
 
       for (const asset of selectedAssets) {
-        const canRetain = !!asset.sourceUrl && !asset.file && !isPublicationTransformModified(asset.transform, channel);
+        const transformChanged = asset.savedTransform
+          ? !arePublicationTransformsEquivalent(asset.transform, asset.savedTransform)
+          : isPublicationTransformModified(asset.transform, channel);
+        const canRetain = !!asset.sourceUrl && !asset.file && !transformChanged;
         if (canRetain) {
           retainedImages.push(String(asset.sourceUrl || ""));
           continue;
@@ -2134,17 +2152,29 @@ async function deleteDraftPermanently(id: string) {
             name: asset.name,
             type: asset.type,
             dataUrl: await fileToDataUrl(asset.file),
-          });
+            originalName: asset.originalName || asset.name,
+            originalType: asset.originalType || asset.type,
+            transform: asset.transform,
+            imageMeta: publicationImageAdapterImageMeta[asset.key] || asset.imageMeta || null,
+          } as any);
           continue;
         }
 
-        newImages.push(await renderPublicationImageAsset({
+        const renderedImage = await renderPublicationImageAsset({
           source: asset.file || asset.previewUrl,
           transform: asset.transform,
           channel,
           name: asset.name,
           type: asset.type,
-        }));
+        });
+        newImages.push({
+          ...renderedImage,
+          originalUrl: asset.originalUrl || asset.previewUrl || null,
+          originalName: asset.originalName || asset.name,
+          originalType: asset.originalType || asset.type,
+          transform: asset.transform,
+          imageMeta: publicationImageAdapterImageMeta[asset.key] || asset.imageMeta || null,
+        } as any);
       }
 
       const res = await fetch(`/api/inrsend/publications/${encodeURIComponent(publicationId)}/${encodeURIComponent(channelApiPath(channel))}`, {

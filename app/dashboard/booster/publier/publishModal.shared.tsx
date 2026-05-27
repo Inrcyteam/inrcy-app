@@ -36,6 +36,15 @@ export type ImagePayload = {
   dataUrl?: string;
   storagePath?: string;
   publicUrl?: string;
+  renderedUrl?: string;
+  originalUrl?: string;
+  originalPublicUrl?: string;
+  originalStoragePath?: string;
+  originalName?: string;
+  originalType?: string;
+  imageKey?: string;
+  transform?: ImageTransform;
+  imageMeta?: ImageMeta;
 };
 
 export type ImageTransform = {
@@ -622,6 +631,8 @@ export async function uploadPreparedImages(
     if (!res.ok) throw new Error(String(json?.error || "Impossible d'uploader l'image préparée."));
 
     uploaded.push({
+      ...image,
+      dataUrl: undefined,
       name: image.name,
       type: image.type || blob.type || "application/octet-stream",
       storagePath: String(json?.storagePath || ""),
