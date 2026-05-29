@@ -136,6 +136,13 @@ export default function PublishImagesPanel({
     return 0;
   };
 
+  const getMediaIconForChannel = (channel: ChannelKey) => {
+    const mode = getModeForChannel(channel);
+    if (mode === "video") return "🎥";
+    if (mode === "images") return "📷";
+    return "🚫";
+  };
+
   const mediaModeButton = (mode: ChannelMediaMode, label: string, disabled = false) => {
     const active = activeMode === mode;
     return (
@@ -303,6 +310,7 @@ export default function PublishImagesPanel({
           >
             {selectedChannels.map((channel) => {
               const count = getMediaCountForChannel(channel);
+              const mediaIcon = getMediaIconForChannel(channel);
               const toneReady = count > 0;
               const isActive = activeImageChannel === channel;
               return (
@@ -361,6 +369,17 @@ export default function PublishImagesPanel({
                     }}
                   >
                     {count}
+                  </span>
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      flex: "0 0 auto",
+                      fontSize: 13,
+                      lineHeight: 1,
+                      filter: toneReady ? undefined : "grayscale(0.15)",
+                    }}
+                  >
+                    {mediaIcon}
                   </span>
                 </button>
               );
