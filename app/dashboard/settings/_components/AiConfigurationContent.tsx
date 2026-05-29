@@ -3,12 +3,17 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabaseClient";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import {
+  BOOSTER_PREFERRED_CTA_OPTIONS,
+  normalizeBoosterPreferredCta,
+  type BoosterPreferredCta,
+} from "../../booster/publier/publishModal.shared";
 
 type Props = { mode?: "page" | "drawer" };
 
 type AiConfigForm = {
   tone: "pro" | "friendly" | "premium" | "direct";
-  preferredCta: "devis" | "appeler" | "message";
+  preferredCta: BoosterPreferredCta;
   communicationStyle: "local_humain" | "professionnel" | "premium" | "simple" | "moderne";
   emojiLevel: "none" | "light" | "moderate" | "dynamic";
   length: "short" | "medium" | "detailed";
@@ -122,7 +127,7 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
           if (dbErr) throw new Error(dbErr.message);
           dbTone = {
             tone: (data?.tone || initialForm.tone) as AiConfigForm["tone"],
-            preferredCta: (data?.preferred_cta || initialForm.preferredCta) as AiConfigForm["preferredCta"],
+            preferredCta: normalizeBoosterPreferredCta(data?.preferred_cta || initialForm.preferredCta),
             communicationStyle: (data?.communication_style || initialForm.communicationStyle) as AiConfigForm["communicationStyle"],
             emojiLevel: (data?.emoji_level || initialForm.emojiLevel) as AiConfigForm["emojiLevel"],
             length: (data?.ai_length || initialForm.length) as AiConfigForm["length"],
@@ -133,7 +138,11 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
           };
         }
 
-        setForm({ ...initialForm, ...local, ...dbTone });
+        const merged = { ...initialForm, ...local, ...dbTone } as AiConfigForm;
+        setForm({
+          ...merged,
+          preferredCta: normalizeBoosterPreferredCta(merged.preferredCta),
+        });
       } catch (e) {
         setError(getSimpleFrenchErrorMessage(e, "Impossible de charger la configuration IA."));
       } finally {
@@ -296,9 +305,11 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
               <label style={label}>
                 <span style={labelTitle}>Bouton préféré</span>
                 <select style={input} value={form.preferredCta} onChange={(e) => set("preferredCta", e.target.value as AiConfigForm["preferredCta"])}>
-                  <option value="devis" style={selectOption}>Demander un devis</option>
-                  <option value="appeler" style={selectOption}>Appeler</option>
-                  <option value="message" style={selectOption}>Envoyer un message</option>
+                  {BOOSTER_PREFERRED_CTA_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value} style={selectOption}>
+                      {option.label}
+                    </option>
+                  ))}
                 </select>
               </label>
             </div>

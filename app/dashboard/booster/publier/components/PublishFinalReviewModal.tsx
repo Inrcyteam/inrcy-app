@@ -137,7 +137,7 @@ export default function PublishFinalReviewModal({
                   display: "grid",
                   gridTemplateColumns: isMobile
                     ? "1fr"
-                    : "minmax(140px, 0.8fr) minmax(120px, 0.55fr) minmax(0, 1.4fr)",
+                    : "minmax(150px, 0.85fr) minmax(190px, 0.9fr) minmax(0, 1.05fr)",
                   gap: 10,
                   alignItems: "center",
                   borderRadius: 16,
@@ -187,7 +187,15 @@ export default function PublishFinalReviewModal({
                     Canal sélectionné
                   </div>
                 </div>
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 8,
+                    flexWrap: isMobile ? "wrap" : "nowrap",
+                    alignItems: "center",
+                    minWidth: 0,
+                  }}
+                >
                   <span
                     style={{
                       fontSize: 12,
@@ -195,6 +203,7 @@ export default function PublishFinalReviewModal({
                       borderRadius: 999,
                       background: "rgba(255,255,255,0.07)",
                       color: "rgba(255,255,255,0.84)",
+                      whiteSpace: "nowrap",
                     }}
                   >
                     {item.mediaLabel}
@@ -208,6 +217,7 @@ export default function PublishFinalReviewModal({
                         ? "rgba(34,197,94,0.12)"
                         : "rgba(251,191,36,0.12)",
                       color: item.hasContent ? "#bbf7d0" : "#fde68a",
+                      whiteSpace: "nowrap",
                     }}
                   >
                     {item.hasContent ? "Texte OK" : "Texte vide"}

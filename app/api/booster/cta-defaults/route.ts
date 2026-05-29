@@ -2,6 +2,21 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
 import { asRecord, asString } from "@/lib/tsSafe";
 
+const VALID_PREFERRED_CTAS = new Set([
+  "none",
+  "site",
+  "devis",
+  "appeler",
+  "message",
+  "custom",
+]);
+
+function normalizePreferredCta(value: unknown) {
+  const raw = String(value || "").trim();
+  return VALID_PREFERRED_CTAS.has(raw) ? raw : "devis";
+}
+
+
 export async function GET() {
   try {
     const { supabase, user, errorResponse } = await requireUser();
@@ -26,9 +41,7 @@ export async function GET() {
     const preferredWebsiteLabel = siteWebUrl ? "Site web connecté" : inrcySiteUrl ? "Site iNrCy" : "";
     const phone = (asString(profile.phone) || "").trim();
     const rawPreferredCta = (asString(businessProfile.preferred_cta) || "devis").trim();
-    const preferredCta = ["devis", "appeler", "message"].includes(rawPreferredCta)
-      ? rawPreferredCta
-      : "devis";
+    const preferredCta = normalizePreferredCta(rawPreferredCta);
 
     return NextResponse.json({
       preferredWebsiteUrl,

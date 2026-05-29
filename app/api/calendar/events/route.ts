@@ -261,11 +261,13 @@ type ConfirmationMailRow = {
 };
 
 type ConfirmationRecipient = {
+  kind?: "contact" | "pro";
   email: string;
   firstName?: string | null;
   lastName?: string | null;
   displayName?: string | null;
   companyName?: string | null;
+  phone?: string | null;
 };
 
 type ProMailDetails = {
@@ -291,6 +293,13 @@ function getSendConfirmationOnSaveFromSettings(settings: unknown) {
   const root = safeObj(settings);
   const inrcalendar = safeObj(root.inrcalendar);
   return inrcalendar.send_confirmation_on_save === true;
+}
+
+function getSelectedMailAccountIdFromMeta(metaInput: unknown) {
+  const meta = safeObj(metaInput);
+  const reminders = safeObj(meta.reminders);
+  const value = reminders.mailAccountId ?? reminders.mail_account_id;
+  return typeof value === "string" && value.trim() ? value.trim() : "";
 }
 
 async function getCalendarMailSettings(userId: string): Promise<CalendarMailSettings> {
@@ -393,6 +402,7 @@ function getContactDetailsFromMeta(metaInput: unknown): ConfirmationRecipient & 
   address?: string | null;
   city?: string | null;
   postalCode?: string | null;
+  notes?: string | null;
 } {
   const meta = safeObj(metaInput);
   const contact = safeObj(meta.contact);
@@ -406,6 +416,7 @@ function getContactDetailsFromMeta(metaInput: unknown): ConfirmationRecipient & 
     address: typeof contact.address === "string" ? contact.address : null,
     city: typeof contact.city === "string" ? contact.city : null,
     postalCode: typeof contact.postal_code === "string" ? contact.postal_code : null,
+    notes: typeof contact.notes === "string" ? contact.notes : null,
   };
 }
 
@@ -415,18 +426,43 @@ function getConfirmationRecipients(metaInput: unknown) {
   const guests = Array.isArray(meta.guests) ? meta.guests : [];
   const unique = new Map<string, ConfirmationRecipient>();
 
-  if (contact.email) unique.set(contact.email, contact);
+  if (contact.email) unique.set(contact.email, { ...contact, kind: "contact" });
 
   for (const item of guests) {
     const guest = safeObj(item);
     const email = normalizeEmail(guest.email);
     if (!email || unique.has(email)) continue;
     unique.set(email, {
+      kind: "contact",
       email,
       firstName: typeof guest.first_name === "string" ? guest.first_name : null,
       lastName: typeof guest.last_name === "string" ? guest.last_name : null,
       companyName: typeof guest.company_name === "string" ? guest.company_name : null,
       displayName: typeof guest.display_name === "string" ? guest.display_name : null,
+      phone: typeof guest.phone === "string" ? guest.phone : null,
+    });
+  }
+
+  return Array.from(unique.values());
+}
+
+function addProToConfirmationRecipients(recipients: ConfirmationRecipient[], pro: ProMailDetails) {
+  const unique = new Map<string, ConfirmationRecipient>();
+
+  for (const recipient of recipients) {
+    if (!recipient.email) continue;
+    unique.set(recipient.email, recipient);
+  }
+
+  const proEmail = normalizeEmail(pro.email);
+  if (proEmail && !unique.has(proEmail)) {
+    unique.set(proEmail, {
+      kind: "pro",
+      email: proEmail,
+      firstName: pro.firstName ?? null,
+      displayName: pro.firstName ?? null,
+      companyName: pro.companyName ?? null,
+      phone: pro.phone ?? null,
     });
   }
 
@@ -461,25 +497,61 @@ function buildConfirmationMail(args: {
     || [cleanString(contact.address), [cleanString(contact.postalCode), cleanString(contact.city)].filter(Boolean).join(" ").trim()].filter(Boolean).join(", ");
   const notes = cleanString(row.description);
 
-  const subjectBase = mode === "updated"
-    ? `Mise à jour de votre rendez-vous - ${eventTitle}`
-    : `Confirmation de votre rendez-vous - ${eventTitle}`;
+  const isProRecipient = recipient.kind === "pro";
+  const clientName = buildDisplayName({
+    firstName: contact.firstName,
+    lastName: contact.lastName,
+    displayName: contact.displayName,
+    companyName: contact.companyName,
+    fallback: "Client",
+  });
+  const phoneClient = cleanString(contact.phone);
+  const emailClient = cleanString(contact.email);
+
+  const subjectBase = isProRecipient
+    ? mode === "updated"
+      ? `Mise à jour RDV iNr'Calendar - ${clientName}`
+      : `Nouveau rendez-vous enregistré - ${clientName}`
+    : mode === "updated"
+      ? `Mise à jour de votre rendez-vous - ${eventTitle}`
+      : `Confirmation de votre rendez-vous - ${eventTitle}`;
   const subject = subjectSafe(subjectBase) || "Confirmation de rendez-vous";
 
-  const title = mode === "updated" ? "Votre rendez-vous a été mis à jour" : "Votre rendez-vous est confirmé";
-  const intro = mode === "updated"
-    ? `Votre rendez-vous avec ${companyName} a été modifié.`
-    : `Votre rendez-vous avec ${companyName} est bien enregistré.`;
+  const title = isProRecipient
+    ? mode === "updated"
+      ? "Rendez-vous mis à jour"
+      : "Nouveau rendez-vous enregistré"
+    : mode === "updated"
+      ? "Votre rendez-vous a été mis à jour"
+      : "Votre rendez-vous est confirmé";
+  const intro = isProRecipient
+    ? mode === "updated"
+      ? "Le rendez-vous a été mis à jour dans votre agenda."
+      : "Le rendez-vous est bien enregistré dans votre agenda."
+    : mode === "updated"
+      ? `Votre rendez-vous avec ${companyName} a été modifié.`
+      : `Votre rendez-vous avec ${companyName} est bien enregistré.`;
 
-  const rows = [
-    ["Date", dateLabel],
-    ["Horaire", `${startTime}${endTime !== "-" ? ` → ${endTime}` : ""}`],
-    ["Motif", eventTitle],
-    address ? ["Lieu", address] : null,
-    ["Interlocuteur", proName],
-    phonePro ? ["Téléphone", phonePro] : null,
-    notes ? ["Informations utiles", notes] : null,
-  ].filter(Boolean) as string[][];
+  const rows = isProRecipient
+    ? [
+        ["Client", clientName],
+        ["Date", dateLabel],
+        ["Horaire", `${startTime}${endTime !== "-" ? ` → ${endTime}` : ""}`],
+        ["Motif", eventTitle],
+        address ? ["Lieu", address] : null,
+        emailClient ? ["Email client", emailClient] : null,
+        phoneClient ? ["Téléphone client", phoneClient] : null,
+        notes ? ["Notes / précisions", notes] : null,
+      ].filter(Boolean) as string[][]
+    : [
+        ["Date", dateLabel],
+        ["Horaire", `${startTime}${endTime !== "-" ? ` → ${endTime}` : ""}`],
+        ["Motif", eventTitle],
+        address ? ["Lieu", address] : null,
+        ["Interlocuteur", proName],
+        phonePro ? ["Téléphone", phonePro] : null,
+        notes ? ["Informations utiles", notes] : null,
+      ].filter(Boolean) as string[][];
 
   const htmlRows = rows.map(([label, value]) => `
     <tr>
@@ -559,10 +631,10 @@ async function sendAgendaConfirmationEmails(args: {
   const settings = await getCalendarMailSettings(args.userId);
   if (!settings.sendConfirmationOnSave) return;
 
-  const recipients = getConfirmationRecipients(args.meta);
-  if (!recipients.length) return;
-
   const pro = await getProMailDetails(args.userId);
+  const recipients = addProToConfirmationRecipients(getConfirmationRecipients(args.meta), pro);
+  if (!recipients.length) return;
+  const selectedMailAccountId = settings.selectedMailAccountId || getSelectedMailAccountIdFromMeta(args.meta);
   const smtpConfigured = Boolean(
     optionalEnv("TX_SMTP_HOST") &&
     optionalEnv("TX_SMTP_PORT") &&
@@ -576,11 +648,11 @@ async function sendAgendaConfirmationEmails(args: {
     try {
       let sent = false;
 
-      if (settings.selectedMailAccountId) {
+      if (selectedMailAccountId) {
         try {
           await sendMailFromIntegration({
             userId: args.userId,
-            accountId: settings.selectedMailAccountId,
+            accountId: selectedMailAccountId,
             to: recipient.email,
             subject: mail.subject,
             text: mail.text,
@@ -591,7 +663,7 @@ async function sendAgendaConfirmationEmails(args: {
         } catch (integrationError) {
           console.error("[calendar-events] confirmation integration delivery failed, fallback to iNrCy", {
             recipient: recipient.email,
-            accountId: settings.selectedMailAccountId,
+            accountId: selectedMailAccountId,
             error: integrationError,
           });
         }

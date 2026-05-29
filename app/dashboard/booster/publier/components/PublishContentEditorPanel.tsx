@@ -2,17 +2,18 @@ import { useLayoutEffect } from "react";
 import type { Dispatch, MutableRefObject, SetStateAction } from "react";
 import { stripSiteTextFormatting } from "@/lib/boosterFormatting";
 import {
+  BOOSTER_PREFERRED_CTA_OPTIONS,
   CHANNEL_TEXT_GUIDELINES,
-  CTA_MODE_OPTIONS,
   DISPLAY_LABELS,
   getChannelDefaultCtaLabel,
   getCtaModeHelp,
+  getPreferredCtaChoiceFromPost,
   getWebsiteSourceLabelForChannel,
   getWebsiteUrlForChannel,
   isSiteDisplayKey,
   renderLimitCounter,
   type BoosterCtaDefaults,
-  type BoosterCtaMode,
+  type BoosterPreferredCta,
   type ChannelKey,
   type ChannelPost,
   type DisplayKey,
@@ -46,7 +47,7 @@ type PublishContentEditorPanelProps = {
   siteContentEditorRef: MutableRefObject<HTMLDivElement | null>;
   contentTextAreaRef: MutableRefObject<HTMLTextAreaElement | null>;
   ctaDefaults: BoosterCtaDefaults | null;
-  applyCtaModePrefill: (channel: ChannelKey, mode: BoosterCtaMode) => void;
+  applyPreferredCtaPrefill: (channel: ChannelKey, choice: BoosterPreferredCta) => void;
   instagramHashtagsInput: string;
   setInstagramHashtagsInput: Dispatch<SetStateAction<string>>;
   getLiveInstagramHashtags: () => string[];
@@ -66,7 +67,7 @@ export default function PublishContentEditorPanel({
   siteContentEditorRef,
   contentTextAreaRef,
   ctaDefaults,
-  applyCtaModePrefill,
+  applyPreferredCtaPrefill,
   instagramHashtagsInput,
   setInstagramHashtagsInput,
   getLiveInstagramHashtags,
@@ -336,6 +337,7 @@ export default function PublishContentEditorPanel({
                 {(() => {
                   const currentPost = getDisplayPost(activeCard);
                   const ctaMode = currentPost.ctaMode || "none";
+                  const ctaChoice = getPreferredCtaChoiceFromPost(activeCard, currentPost);
                   const updateTarget = activeCard;
                   const activeWebsiteUrl = getWebsiteUrlForChannel(activeCard, ctaDefaults);
                   const activeWebsiteSourceLabel = getWebsiteSourceLabelForChannel(activeCard, ctaDefaults);
@@ -349,9 +351,9 @@ export default function PublishContentEditorPanel({
                   ].filter(Boolean) as Array<{ label: string; url: string }>;
                   const ctaGridColumns = isMobile
                     ? "1fr"
-                    : ctaMode === "website"
+                    : ctaMode === "website" || ctaMode === "custom"
                       ? "minmax(0, 0.8fr) minmax(0, 1.1fr) minmax(0, 1fr)"
-                      : ctaMode === "call" || ctaMode === "custom"
+                      : ctaMode === "call"
                         ? "minmax(0, 0.9fr) minmax(0, 1.1fr)"
                         : "minmax(0, 0.9fr)";
 
@@ -373,16 +375,19 @@ export default function PublishContentEditorPanel({
                               marginBottom: 6,
                             }}
                           >
-                            CTA
+                            Bouton
                           </div>
                           <select
-                            value={ctaMode}
+                            value={ctaChoice}
                             onChange={(e) =>
-                              applyCtaModePrefill(activeCard, e.target.value as BoosterCtaMode)
+                              applyPreferredCtaPrefill(
+                                activeCard,
+                                e.target.value as BoosterPreferredCta,
+                              )
                             }
                             style={darkSelectStyle}
                           >
-                            {CTA_MODE_OPTIONS[activeCard].map((option) => (
+                            {BOOSTER_PREFERRED_CTA_OPTIONS.map((option) => (
                               <option
                                 key={option.value}
                                 value={option.value}
@@ -403,7 +408,7 @@ export default function PublishContentEditorPanel({
                                   marginBottom: 6,
                                 }}
                               >
-                                Lien du CTA
+                                URL de destination
                               </div>
                               <input
                                 value={currentPost.ctaUrl || ""}
@@ -464,7 +469,7 @@ export default function PublishContentEditorPanel({
                                   marginBottom: 6,
                                 }}
                               >
-                                Libellé du lien
+                                Texte du bouton
                               </div>
                               <input
                                 value={currentPost.cta}
@@ -472,7 +477,7 @@ export default function PublishContentEditorPanel({
                                   updatePost(updateTarget, { cta: e.target.value })
                                 }
                                 style={lightFieldStyle}
-                                placeholder={`Libellé du lien (ex : ${getChannelDefaultCtaLabel(activeCard, "website") || "Demander un devis"})`}
+                                placeholder={`Texte du bouton (ex : ${getChannelDefaultCtaLabel(activeCard, "website") || "Voir le site"})`}
                               />
                             </div>
                           </>
@@ -503,29 +508,46 @@ export default function PublishContentEditorPanel({
                           </div>
                         ) : null}
                         {ctaMode === "custom" ? (
-                          <div>
-                            <div
-                              style={{
-                                fontSize: 12,
-                                opacity: 0.85,
-                                marginBottom: 6,
-                              }}
-                            >
-                              Libellé du CTA
+                          <>
+                            <div>
+                              <div
+                                style={{
+                                  fontSize: 12,
+                                  opacity: 0.85,
+                                  marginBottom: 6,
+                                }}
+                              >
+                                URL de destination
+                              </div>
+                              <input
+                                value={currentPost.ctaUrl || ""}
+                                onChange={(e) =>
+                                  updatePost(updateTarget, { ctaUrl: e.target.value })
+                                }
+                                style={lightFieldStyle}
+                                placeholder="URL personnalisée (optionnel)"
+                              />
                             </div>
-                            <input
-                              value={currentPost.cta}
-                              onChange={(e) =>
-                                updatePost(updateTarget, { cta: e.target.value })
-                              }
-                              style={lightFieldStyle}
-                              placeholder={
-                                activeCard === "gmb"
-                                  ? "Ex : En savoir plus"
-                                  : "Ex : Contactez-nous"
-                              }
-                            />
-                          </div>
+                            <div>
+                              <div
+                                style={{
+                                  fontSize: 12,
+                                  opacity: 0.85,
+                                  marginBottom: 6,
+                                }}
+                              >
+                                Texte du bouton
+                              </div>
+                              <input
+                                value={currentPost.cta}
+                                onChange={(e) =>
+                                  updatePost(updateTarget, { cta: e.target.value })
+                                }
+                                style={lightFieldStyle}
+                                placeholder="Ex : En savoir plus"
+                              />
+                            </div>
+                          </>
                         ) : null}
                       </div>
                       <div
@@ -576,7 +598,7 @@ export default function PublishContentEditorPanel({
                       ) : null}
                       {ctaMode === "website" || ctaMode === "custom"
                         ? renderLimitCounter(
-                            "CTA",
+                            "Bouton",
                             currentPost.cta.length,
                             CHANNEL_TEXT_GUIDELINES[activeCard].cta,
                           )

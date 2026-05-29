@@ -77,7 +77,7 @@ export function getCtaLabel(post: Partial<BoosterPostLike> | null | undefined, m
   if (value) return value.slice(0, 180);
   switch (mode) {
     case "website":
-      return "En savoir plus";
+      return "Voir le site";
     case "call":
       return "Appeler";
     case "message":
@@ -115,7 +115,11 @@ export function buildCtaTextForChannel(channel: BoosterChannelKey, post: Partial
       return phone ? `Appelez-nous : ${phone}` : "";
     case "message":
       return channel === "instagram" ? "Écrivez-nous en message privé." : "Envoyez-nous un message privé.";
-    case "custom":
+    case "custom": {
+      const customUrl = ensureUrl(String(post?.ctaUrl || ""));
+      if (customUrl) return `${label || "En savoir plus"} : ${customUrl}`;
+      return label;
+    }
     default:
       return label;
   }
@@ -176,6 +180,11 @@ export function getBoosterGmbCallToAction(post: Partial<BoosterPostLike> | null 
     const telUrl = phoneToTelUrl(getCtaPhone(post, context));
     if (!telUrl) return null;
     return { actionType: "CALL", url: telUrl };
+  }
+  if (mode === "custom") {
+    const url = ensureUrl(String(post?.ctaUrl || ""));
+    if (!url) return null;
+    return { actionType: "LEARN_MORE", url };
   }
   return null;
 }

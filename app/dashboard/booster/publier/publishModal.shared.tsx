@@ -46,7 +46,13 @@ export type ChannelPost = {
   hashtags?: string[];
 };
 
-export type BoosterPreferredCta = "" | "devis" | "appeler" | "message";
+export type BoosterPreferredCta =
+  | "none"
+  | "site"
+  | "devis"
+  | "appeler"
+  | "message"
+  | "custom";
 
 export type BoosterCtaDefaults = {
   preferredWebsiteUrl: string;
@@ -56,6 +62,74 @@ export type BoosterCtaDefaults = {
   phone: string;
   preferredCta: BoosterPreferredCta;
 };
+
+export const BOOSTER_PREFERRED_CTA_OPTIONS: Array<{
+  value: BoosterPreferredCta;
+  label: string;
+}> = [
+  { value: "none", label: "Aucun bouton" },
+  { value: "site", label: "Voir le site" },
+  { value: "devis", label: "Demander un devis" },
+  { value: "appeler", label: "Appeler" },
+  { value: "message", label: "Envoyer un message" },
+  { value: "custom", label: "Lien personnalisé" },
+];
+
+const BOOSTER_PREFERRED_CTA_VALUES = BOOSTER_PREFERRED_CTA_OPTIONS.map(
+  (option) => option.value,
+) as BoosterPreferredCta[];
+
+const AUTO_CTA_LABELS = [
+  "Voir le site",
+  "Demander un devis",
+  "Appeler",
+  "Envoyer un message",
+  "Message privé",
+  "Appelez-nous",
+  "Lien du site",
+  "En savoir plus",
+];
+
+export function normalizeBoosterPreferredCta(
+  value: unknown,
+): BoosterPreferredCta {
+  const raw = String(value || "").trim() as BoosterPreferredCta;
+  if (BOOSTER_PREFERRED_CTA_VALUES.includes(raw)) return raw;
+  return "devis";
+}
+
+export function getPreferredCtaOptionLabel(choice: BoosterPreferredCta) {
+  return (
+    BOOSTER_PREFERRED_CTA_OPTIONS.find((option) => option.value === choice)
+      ?.label || "Demander un devis"
+  );
+}
+
+function isAutoCtaLabel(value: string) {
+  const normalized = String(value || "").trim().toLowerCase();
+  return AUTO_CTA_LABELS.some(
+    (label) => label.trim().toLowerCase() === normalized,
+  );
+}
+
+export function getPreferredCtaChoiceFromPost(
+  channel: DisplayKey,
+  post: Partial<ChannelPost> | null | undefined,
+): BoosterPreferredCta {
+  const normalized = normalizePost(post);
+  const mode = normalized.ctaMode || "none";
+  if (mode === "none") return "none";
+  if (mode === "call") return "appeler";
+  if (mode === "message") return "message";
+  if (mode === "custom") return "custom";
+  if (mode === "website") {
+    const label = String(normalized.cta || "").trim().toLowerCase();
+    if (label.includes("devis")) return "devis";
+    if (label.includes("voir") || label.includes("site")) return "site";
+    return channel === "inrcy_site" || channel === "site_web" ? "devis" : "site";
+  }
+  return "devis";
+}
 
 export type ImagePayload = {
   name: string;
@@ -297,55 +371,55 @@ export const CTA_MODE_OPTIONS: Record<
   Array<{ value: BoosterCtaMode; label: string }>
 > = {
   inrcy_site: [
-    { value: "none", label: "Aucun CTA" },
-    { value: "website", label: "Lien site / devis" },
-    { value: "call", label: "Appel" },
-    { value: "message", label: "Message privé" },
-    { value: "custom", label: "Texte libre" },
+    { value: "none", label: "Aucun bouton" },
+    { value: "website", label: "Voir le site" },
+    { value: "call", label: "Appeler" },
+    { value: "message", label: "Envoyer un message" },
+    { value: "custom", label: "Lien personnalisé" },
   ],
   site_web: [
-    { value: "none", label: "Aucun CTA" },
-    { value: "website", label: "Lien site / devis" },
-    { value: "call", label: "Appel" },
-    { value: "message", label: "Message privé" },
-    { value: "custom", label: "Texte libre" },
+    { value: "none", label: "Aucun bouton" },
+    { value: "website", label: "Voir le site" },
+    { value: "call", label: "Appeler" },
+    { value: "message", label: "Envoyer un message" },
+    { value: "custom", label: "Lien personnalisé" },
   ],
   gmb: [
-    { value: "none", label: "Aucun CTA" },
-    { value: "website", label: "Bouton site" },
-    { value: "call", label: "Bouton appel" },
-    { value: "custom", label: "Texte simple" },
+    { value: "none", label: "Aucun bouton" },
+    { value: "website", label: "Voir le site" },
+    { value: "call", label: "Appeler" },
+    { value: "custom", label: "Lien personnalisé" },
   ],
   facebook: [
-    { value: "none", label: "Aucun CTA" },
-    { value: "website", label: "Lien site / devis" },
-    { value: "call", label: "Appel" },
-    { value: "message", label: "Message privé" },
-    { value: "custom", label: "Texte libre" },
+    { value: "none", label: "Aucun bouton" },
+    { value: "website", label: "Voir le site" },
+    { value: "call", label: "Appeler" },
+    { value: "message", label: "Envoyer un message" },
+    { value: "custom", label: "Lien personnalisé" },
   ],
   instagram: [
-    { value: "none", label: "Aucun CTA" },
-    { value: "website", label: "Lien site" },
-    { value: "call", label: "Appel" },
-    { value: "message", label: "Message privé" },
-    { value: "custom", label: "Texte libre" },
+    { value: "none", label: "Aucun bouton" },
+    { value: "website", label: "Voir le site" },
+    { value: "call", label: "Appeler" },
+    { value: "message", label: "Envoyer un message" },
+    { value: "custom", label: "Lien personnalisé" },
   ],
   linkedin: [
-    { value: "none", label: "Aucun CTA" },
-    { value: "website", label: "Lien site / devis" },
-    { value: "call", label: "Appel" },
-    { value: "message", label: "Message privé" },
-    { value: "custom", label: "Texte libre" },
+    { value: "none", label: "Aucun bouton" },
+    { value: "website", label: "Voir le site" },
+    { value: "call", label: "Appeler" },
+    { value: "message", label: "Envoyer un message" },
+    { value: "custom", label: "Lien personnalisé" },
   ],
 };
 
 export function getCtaModeHelp(channel: DisplayKey, mode: BoosterCtaMode) {
   if (mode === "none")
-    return "Aucun bloc CTA ne sera ajouté à la fin du texte.";
+    return "Aucun bouton ne sera ajouté à la fin du texte.";
   if (mode === "website")
     return channel === "gmb"
       ? "Un vrai bouton Google Business sera utilisé quand une URL de site est disponible."
-      : "Le lien du site sera ajouté proprement à la fin du contenu. Vous pouvez laisser l’URL vide pour utiliser le site connecté par défaut.";
+      : "Le lien du site sera ajouté proprement à la fin du contenu. L’URL du site est préremplie automatiquement quand elle est disponible.";
   if (mode === "call")
     return channel === "gmb"
       ? "Un vrai bouton Appeler sera utilisé si un numéro est disponible."
@@ -353,8 +427,8 @@ export function getCtaModeHelp(channel: DisplayKey, mode: BoosterCtaMode) {
   if (mode === "message")
     return "Une phrase naturelle du type “Envoyez-nous un message privé.” sera ajoutée.";
   return channel === "gmb"
-    ? "Réservé à un court texte neutre, sans faux bouton."
-    : "Texte libre. Évitez les CTA vagues du type “Message” sans destination réelle.";
+    ? "Lien ou texte personnalisé. À utiliser seulement si le bouton automatique ne convient pas."
+    : "Lien personnalisé. Renseignez une URL et le texte du bouton si besoin.";
 }
 
 export function getDefaultPost(): ChannelPost {
@@ -373,16 +447,18 @@ export function getChannelDefaultCtaLabel(
   channel: DisplayKey,
   mode: BoosterCtaMode,
 ) {
-  if (mode === "website") {
-    if (channel === "inrcy_site" || channel === "site_web")
-      return "Demander un devis";
-    if (channel === "gmb") return "Voir le site";
-    if (channel === "instagram") return "Lien du site";
-    return "Voir le site";
-  }
-  if (mode === "call") {
-    return channel === "gmb" ? "Appeler" : "Appelez-nous";
-  }
+  void channel;
+  if (mode === "website") return "Voir le site";
+  if (mode === "call") return "Appeler";
+  if (mode === "message") return "Envoyer un message";
+  return "";
+}
+
+export function getCtaLabelForPreferredChoice(choice: BoosterPreferredCta) {
+  if (choice === "site") return "Voir le site";
+  if (choice === "devis") return "Demander un devis";
+  if (choice === "appeler") return "Appeler";
+  if (choice === "message") return "Envoyer un message";
   return "";
 }
 
@@ -423,7 +499,10 @@ export function getDefaultCtaModeForChannel(
   channel: DisplayKey,
   defaults: BoosterCtaDefaults | null,
 ): BoosterCtaMode {
-  const preferred = defaults?.preferredCta || "devis";
+  const preferred = normalizeBoosterPreferredCta(defaults?.preferredCta || "devis");
+
+  if (preferred === "none") return "none";
+  if (preferred === "custom") return "custom";
 
   if (preferred === "appeler") {
     if (defaults?.phone) return "call";
@@ -441,6 +520,68 @@ export function getDefaultCtaModeForChannel(
   return getWebsiteUrlForChannel(channel, defaults) ? "website" : "none";
 }
 
+export function buildPreferredCtaPatch(
+  channel: DisplayKey,
+  choice: BoosterPreferredCta,
+  post: ChannelPost,
+  defaults: BoosterCtaDefaults | null,
+): Partial<ChannelPost> {
+  const preferred = normalizeBoosterPreferredCta(choice);
+
+  if (preferred === "none") {
+    return { ctaMode: "none", cta: "", ctaUrl: "", ctaPhone: "" };
+  }
+
+  if (preferred === "site" || preferred === "devis") {
+    const channelWebsiteUrl = getWebsiteUrlForChannel(channel, defaults);
+    return {
+      ctaMode: "website",
+      cta: getCtaLabelForPreferredChoice(preferred),
+      ctaUrl: channelWebsiteUrl || "",
+      ctaPhone: "",
+    };
+  }
+
+  if (preferred === "appeler") {
+    return {
+      ctaMode: "call",
+      cta: getCtaLabelForPreferredChoice(preferred),
+      ctaPhone: defaults?.phone || String(post.ctaPhone || ""),
+      ctaUrl: "",
+    };
+  }
+
+  if (preferred === "message") {
+    const supportsPrivateMessage = CTA_MODE_OPTIONS[channel].some(
+      (option) => option.value === "message",
+    );
+    if (supportsPrivateMessage) {
+      return {
+        ctaMode: "message",
+        cta: getCtaLabelForPreferredChoice(preferred),
+        ctaUrl: "",
+        ctaPhone: "",
+      };
+    }
+    const channelWebsiteUrl = getWebsiteUrlForChannel(channel, defaults);
+    return channelWebsiteUrl
+      ? {
+          ctaMode: "website",
+          cta: getCtaLabelForPreferredChoice("site"),
+          ctaUrl: channelWebsiteUrl,
+          ctaPhone: "",
+        }
+      : { ctaMode: "none", cta: "", ctaUrl: "", ctaPhone: "" };
+  }
+
+  return {
+    ctaMode: "custom",
+    cta: isAutoCtaLabel(post.cta || "") ? "" : post.cta || "",
+    ctaUrl: post.ctaUrl || "",
+    ctaPhone: "",
+  };
+}
+
 export function buildAutoPrefillPatch(
   channel: DisplayKey,
   mode: BoosterCtaMode,
@@ -451,16 +592,27 @@ export function buildAutoPrefillPatch(
   if (!defaults) return patch;
 
   if (mode === "website") {
+    const preferred = ["site", "devis"].includes(defaults.preferredCta)
+      ? defaults.preferredCta
+      : getPreferredCtaChoiceFromPost(channel, post);
     const channelWebsiteUrl = getWebsiteUrlForChannel(channel, defaults);
     if (!String(post.cta || "").trim())
-      patch.cta = getChannelDefaultCtaLabel(channel, mode);
+      patch.cta = getCtaLabelForPreferredChoice(preferred as BoosterPreferredCta) ||
+        getChannelDefaultCtaLabel(channel, mode);
     if (!String(post.ctaUrl || "").trim() && channelWebsiteUrl)
       patch.ctaUrl = channelWebsiteUrl;
   }
 
   if (mode === "call") {
+    if (!String(post.cta || "").trim())
+      patch.cta = getCtaLabelForPreferredChoice("appeler");
     if (!String(post.ctaPhone || "").trim() && defaults.phone)
       patch.ctaPhone = defaults.phone;
+  }
+
+  if (mode === "message") {
+    if (!String(post.cta || "").trim())
+      patch.cta = getCtaLabelForPreferredChoice("message");
   }
 
   return patch;

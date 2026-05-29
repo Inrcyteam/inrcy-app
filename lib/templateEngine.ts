@@ -38,15 +38,27 @@ export function buildDefaultContext(args: {
   const ville = String(p.hq_city || "").trim();
 
   
-const preferred = String(b.preferred_cta || "").trim();
+const preferred = String(b.preferred_cta || "devis").trim();
 const ctaLabel =
-  preferred === "appeler" ? "Appeler" : preferred === "message" ? "Envoyer un message" : "Demander un devis";
+  preferred === "none"
+    ? ""
+    : preferred === "site"
+      ? "Voir le site"
+      : preferred === "appeler"
+        ? "Appeler"
+        : preferred === "message"
+          ? "Envoyer un message"
+          : preferred === "custom"
+            ? ""
+            : "Demander un devis";
 const ctaUrl =
-  preferred === "appeler"
-    ? (String(p.phone || "").trim() ? `tel:${String(p.phone || "").trim()}` : "")
-    : preferred === "message"
-      ? (String(p.contact_email || "").trim() ? `mailto:${String(p.contact_email || "").trim()}` : "")
-      : String(links.site_url || "").trim();
+  preferred === "none" || preferred === "custom"
+    ? ""
+    : preferred === "appeler"
+      ? (String(p.phone || "").trim() ? `tel:${String(p.phone || "").trim()}` : "")
+      : preferred === "message"
+        ? (String(p.contact_email || "").trim() ? `mailto:${String(p.contact_email || "").trim()}` : "")
+        : String(links.site_url || "").trim();
 return {
     // Profile
     nom_entreprise: nomEntreprise,

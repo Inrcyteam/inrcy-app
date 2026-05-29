@@ -28,13 +28,13 @@ import {
   CHANNEL_LABELS,
   CHANNEL_PRESETS,
   CHANNEL_TEXT_GUIDELINES,
-  CTA_MODE_OPTIONS,
   DISPLAY_LABELS,
   STYLE_HELPERS,
   STYLE_OPTIONS,
   THEME_OPTIONS,
   THEME_PLACEHOLDERS,
   buildAutoPrefillPatch,
+  buildPreferredCtaPatch,
   buildInstagramPreviewCaption,
   buildBoosterUploadPath,
   buildBoosterVideoGenerationContext,
@@ -46,6 +46,7 @@ import {
   getChannelDefaultCtaLabel,
   getCtaModeHelp,
   getDefaultCtaModeForChannel,
+  normalizeBoosterPreferredCta,
   getDefaultTransform,
   getEffectiveTransformZoom,
   getPublicationMediaLabel,
@@ -71,6 +72,7 @@ import {
   uploadPreparedImages,
   type BoosterCtaDefaults,
   type BoosterCtaMode,
+  type BoosterPreferredCta,
   type ChannelImageEditorState,
   type ChannelImagePayload,
   type ChannelImageSettingsPayload,
@@ -641,13 +643,7 @@ export default function PublishModal({
           siteWebUrl: String(json?.siteWebUrl || "").trim(),
           inrcySiteUrl: String(json?.inrcySiteUrl || "").trim(),
           phone: String(json?.phone || "").trim(),
-          preferredCta: ["devis", "appeler", "message"].includes(
-            String(json?.preferredCta || ""),
-          )
-            ? (String(
-                json?.preferredCta || "devis",
-              ) as BoosterCtaDefaults["preferredCta"])
-            : "devis",
+          preferredCta: normalizeBoosterPreferredCta(json?.preferredCta),
         });
       } catch {
         // ignore
@@ -686,12 +682,23 @@ export default function PublishModal({
         let mode = current.ctaMode || "none";
         const shouldSetPreferredMode =
           shouldApplyPreferredDefaults && mode === "none" && !hasExistingCta;
+        const preferredChoice = normalizeBoosterPreferredCta(
+          ctaDefaults.preferredCta,
+        );
         if (shouldSetPreferredMode)
           mode = getDefaultCtaModeForChannel(key, ctaDefaults);
-        if (mode !== "website" && mode !== "call" && mode !== "message")
+        if (
+          mode !== "website" &&
+          mode !== "call" &&
+          mode !== "message" &&
+          mode !== "custom" &&
+          mode !== "none"
+        )
           continue;
 
-        const patch = buildAutoPrefillPatch(key, mode, current, ctaDefaults);
+        const patch = shouldSetPreferredMode
+          ? buildPreferredCtaPatch(key, preferredChoice, current, ctaDefaults)
+          : buildAutoPrefillPatch(key, mode, current, ctaDefaults);
         const hasMeaningfulPatch = Object.entries(patch).some(
           ([patchKey, patchValue]) => {
             if (patchKey === "ctaMode")
@@ -2310,12 +2317,12 @@ export default function PublishModal({
     setGmbNoImageWarningOpen(false);
   };
 
-  const applyCtaModePrefill = (
+  const applyPreferredCtaPrefill = (
     displayKey: DisplayKey,
-    mode: BoosterCtaMode,
+    choice: BoosterPreferredCta,
   ) => {
     const current = getDisplayPost(displayKey);
-    const patch = buildAutoPrefillPatch(displayKey, mode, current, ctaDefaults);
+    const patch = buildPreferredCtaPatch(displayKey, choice, current, ctaDefaults);
     updatePost(displayKey, patch);
   };
 
@@ -3600,7 +3607,7 @@ export default function PublishModal({
         siteContentEditorRef={siteContentEditorRef}
         contentTextAreaRef={contentTextAreaRef}
         ctaDefaults={ctaDefaults}
-        applyCtaModePrefill={applyCtaModePrefill}
+        applyPreferredCtaPrefill={applyPreferredCtaPrefill}
         instagramHashtagsInput={instagramHashtagsInput}
         setInstagramHashtagsInput={setInstagramHashtagsInput}
         getLiveInstagramHashtags={getLiveInstagramHashtags}

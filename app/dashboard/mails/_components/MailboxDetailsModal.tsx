@@ -7,16 +7,19 @@ import { ChannelImageAdapterCardsPanel, ChannelPublicationPreview } from "@/app/
 import InrcyCameraCaptureModal from "@/app/dashboard/_components/InrcyCameraCaptureModal";
 import RichSiteContentEditor from "@/app/dashboard/booster/publier/components/RichSiteContentEditor";
 import {
-  buildAutoPrefillPatch,
+  buildPreferredCtaPatch,
+  BOOSTER_PREFERRED_CTA_OPTIONS,
   CHANNEL_TEXT_GUIDELINES,
-  CTA_MODE_OPTIONS,
   getChannelDefaultCtaLabel,
   getCtaModeHelp,
+  getPreferredCtaChoiceFromPost,
   getWebsiteSourceLabelForChannel,
   getWebsiteUrlForChannel,
   isSiteDisplayKey,
+  normalizeBoosterPreferredCta,
   type BoosterCtaDefaults,
   type BoosterCtaMode,
+  type BoosterPreferredCta,
   type ChannelPost,
   type DisplayKey,
 } from "@/app/dashboard/booster/publier/publishModal.shared";
@@ -244,9 +247,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
           siteWebUrl: String(json?.siteWebUrl || "").trim(),
           inrcySiteUrl: String(json?.inrcySiteUrl || "").trim(),
           phone: String(json?.phone || "").trim(),
-          preferredCta: ["devis", "appeler", "message"].includes(String(json?.preferredCta || ""))
-            ? String(json?.preferredCta || "devis") as BoosterCtaDefaults["preferredCta"]
-            : "devis",
+          preferredCta: normalizeBoosterPreferredCta(json?.preferredCta),
         });
       } catch {
         // CTA defaults are helpful but not required to edit a publication.
@@ -269,7 +270,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
     updatePublicationEdit({ content: editableHtmlToSiteText(readSanitizedElementHtml(editor)) });
   }, [publicationDisplayKey, updatePublicationEdit]);
 
-  const applyPublicationCtaModePrefill = React.useCallback((mode: BoosterCtaMode) => {
+  const applyPublicationPreferredCtaPrefill = React.useCallback((choice: BoosterPreferredCta) => {
     const current = {
       title: publicationEditForm.title,
       content: publicationEditForm.content,
@@ -279,9 +280,9 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
       ctaPhone: publicationEditForm.ctaPhone || "",
       hashtags: [],
     } as ChannelPost;
-    const patch = buildAutoPrefillPatch(publicationDisplayKey, mode, current, publicationCtaDefaults);
+    const patch = buildPreferredCtaPatch(publicationDisplayKey, choice, current, publicationCtaDefaults);
     updatePublicationEdit({
-      ctaMode: String(patch.ctaMode || mode),
+      ctaMode: String(patch.ctaMode || current.ctaMode || "none"),
       ...(typeof patch.cta === "string" ? { cta: patch.cta } : {}),
       ...(typeof patch.ctaUrl === "string" ? { ctaUrl: patch.ctaUrl } : {}),
       ...(typeof patch.ctaPhone === "string" ? { ctaPhone: patch.ctaPhone } : {}),
@@ -910,6 +911,15 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                         <div>
                                           {(() => {
                                             const ctaMode = (publicationEditForm.ctaMode || "none") as BoosterCtaMode;
+                                            const publicationCtaPost: Partial<ChannelPost> = {
+                                              title: publicationEditForm.title,
+                                              content: publicationEditForm.content,
+                                              cta: publicationEditForm.cta,
+                                              ctaMode,
+                                              ctaUrl: publicationEditForm.ctaUrl,
+                                              ctaPhone: publicationEditForm.ctaPhone,
+                                            };
+                                            const ctaChoice = getPreferredCtaChoiceFromPost(publicationDisplayKey, publicationCtaPost);
                                             const activeWebsiteUrl = getWebsiteUrlForChannel(publicationDisplayKey, publicationCtaDefaults);
                                             const activeWebsiteSourceLabel = getWebsiteSourceLabelForChannel(publicationDisplayKey, publicationCtaDefaults);
                                             const websiteChoices = [
@@ -922,23 +932,23 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                             ].filter(Boolean) as Array<{ label: string; url: string }>;
                                             const ctaGridColumns = isMobileViewport
                                               ? "1fr"
-                                              : ctaMode === "website"
+                                              : ctaMode === "website" || ctaMode === "custom"
                                                 ? "minmax(0, 0.8fr) minmax(0, 1.1fr) minmax(0, 1fr)"
-                                                : ctaMode === "call" || ctaMode === "custom"
+                                                : ctaMode === "call"
                                                   ? "minmax(0, 0.9fr) minmax(0, 1.1fr)"
                                                   : "minmax(0, 0.9fr)";
                                             return (
                                               <>
                                                 <div style={{ display: "grid", gridTemplateColumns: ctaGridColumns, gap: 10, alignItems: "start" }}>
                                                   <div>
-                                                    <div className={styles.publicationLabel}>CTA</div>
+                                                    <div className={styles.publicationLabel}>Bouton</div>
                                                     <select
-                                                      value={ctaMode}
-                                                      onChange={(e) => applyPublicationCtaModePrefill(e.target.value as BoosterCtaMode)}
+                                                      value={ctaChoice}
+                                                      onChange={(e) => applyPublicationPreferredCtaPrefill(e.target.value as BoosterPreferredCta)}
                                                       style={darkSelectStyle}
                                                       disabled={detailsActionBusy}
                                                     >
-                                                      {CTA_MODE_OPTIONS[publicationDisplayKey].map((option) => (
+                                                      {BOOSTER_PREFERRED_CTA_OPTIONS.map((option) => (
                                                         <option key={option.value} value={option.value} style={darkOptionStyle}>
                                                           {option.label}
                                                         </option>
@@ -949,7 +959,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                                   {ctaMode === "website" ? (
                                                     <>
                                                       <div>
-                                                        <div className={styles.publicationLabel}>Lien du CTA</div>
+                                                        <div className={styles.publicationLabel}>URL de destination</div>
                                                         <input
                                                           value={publicationEditForm.ctaUrl || ""}
                                                           onChange={(e) => updatePublicationEdit({ ctaUrl: e.target.value })}
@@ -994,12 +1004,12 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                                         ) : null}
                                                       </div>
                                                       <div>
-                                                        <div className={styles.publicationLabel}>Libellé du lien</div>
+                                                        <div className={styles.publicationLabel}>Texte du bouton</div>
                                                         <input
                                                           value={publicationEditForm.cta}
                                                           onChange={(e) => updatePublicationEdit({ cta: e.target.value })}
                                                           style={lightFieldStyle}
-                                                          placeholder={`Libellé du lien (ex : ${getChannelDefaultCtaLabel(publicationDisplayKey, "website") || "Demander un devis"})`}
+                                                          placeholder={`Texte du bouton (ex : ${getChannelDefaultCtaLabel(publicationDisplayKey, "website") || "Voir le site"})`}
                                                           disabled={detailsActionBusy}
                                                         />
                                                       </div>
@@ -1024,16 +1034,28 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                                   ) : null}
 
                                                   {ctaMode === "custom" ? (
-                                                    <div>
-                                                      <div className={styles.publicationLabel}>Libellé du CTA</div>
-                                                      <input
-                                                        value={publicationEditForm.cta}
-                                                        onChange={(e) => updatePublicationEdit({ cta: e.target.value })}
-                                                        style={lightFieldStyle}
-                                                        placeholder={publicationDisplayKey === "gmb" ? "Ex : En savoir plus" : "Ex : Contactez-nous"}
-                                                        disabled={detailsActionBusy}
-                                                      />
-                                                    </div>
+                                                    <>
+                                                      <div>
+                                                        <div className={styles.publicationLabel}>URL de destination</div>
+                                                        <input
+                                                          value={publicationEditForm.ctaUrl || ""}
+                                                          onChange={(e) => updatePublicationEdit({ ctaUrl: e.target.value })}
+                                                          style={lightFieldStyle}
+                                                          placeholder="URL personnalisée (optionnel)"
+                                                          disabled={detailsActionBusy}
+                                                        />
+                                                      </div>
+                                                      <div>
+                                                        <div className={styles.publicationLabel}>Texte du bouton</div>
+                                                        <input
+                                                          value={publicationEditForm.cta}
+                                                          onChange={(e) => updatePublicationEdit({ cta: e.target.value })}
+                                                          style={lightFieldStyle}
+                                                          placeholder="Ex : En savoir plus"
+                                                          disabled={detailsActionBusy}
+                                                        />
+                                                      </div>
+                                                    </>
                                                   ) : null}
                                                 </div>
                                                 <div style={{ fontSize: 11, marginTop: 6, color: "rgba(255,255,255,0.62)", lineHeight: 1.45 }}>
@@ -1055,7 +1077,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                                 ) : null}
                                                 {ctaMode === "website" || ctaMode === "custom" ? (
                                                   <div style={{ fontSize: 11, marginTop: 6, textAlign: "right", color: publicationEditForm.cta.length > CHANNEL_TEXT_GUIDELINES[publicationDisplayKey].cta ? "#ff8f8f" : "rgba(255,255,255,0.62)" }}>
-                                                    CTA : {publicationEditForm.cta.length} / {CHANNEL_TEXT_GUIDELINES[publicationDisplayKey].cta}
+                                                    Bouton : {publicationEditForm.cta.length} / {CHANNEL_TEXT_GUIDELINES[publicationDisplayKey].cta}
                                                   </div>
                                                 ) : null}
                                               </>

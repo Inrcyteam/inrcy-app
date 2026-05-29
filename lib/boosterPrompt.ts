@@ -132,9 +132,12 @@ const TONE_LABELS: Record<string, string> = {
 };
 
 const CTA_LABELS: Record<string, string> = {
+  none: "Aucun bouton",
+  site: "Voir le site",
   devis: "Demander un devis",
   appeler: "Appeler",
   message: "Envoyer un message",
+  custom: "Lien personnalisé",
 };
 
 const COMMUNICATION_STYLE_LABELS: Record<string, string> = {
