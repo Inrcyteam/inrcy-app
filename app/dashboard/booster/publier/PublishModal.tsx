@@ -3359,7 +3359,7 @@ export default function PublishModal({
         if (!hasVideo) blockers.push("Ajoutez une vidéo.");
         if (channel === "gmb")
           warnings.push(
-            "Google Business peut publier sans vidéo si l’API refuse le média.",
+            "Google peut refuser certaines vidéos. Si c’est le cas, iNrCy publiera le texte sans vidéo.",
           );
         if (channel === "linkedin") {
           const linkedInVideoType = String(videoFile?.type || "").toLowerCase();
@@ -3372,7 +3372,7 @@ export default function PublishModal({
             blockers.push("LinkedIn nécessite une vidéo MP4.");
           } else {
             warnings.push(
-              "LinkedIn publiera la vidéo après finalisation de l’upload.",
+              "LinkedIn finalise la vidéo avant publication. L’envoi peut prendre quelques secondes.",
             );
           }
         }

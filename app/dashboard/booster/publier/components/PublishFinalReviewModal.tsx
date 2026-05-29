@@ -129,7 +129,7 @@ export default function PublishFinalReviewModal({
 
         <div style={{ display: "grid", gap: 10 }}>
           {items.map((item) => {
-            const hasAlerts = item.warnings.length || item.blockers.length;
+            const hasMessages = item.warnings.length || item.blockers.length;
             return (
               <div
                 key={item.channel}
@@ -145,9 +145,7 @@ export default function PublishFinalReviewModal({
                   background: "rgba(255,255,255,0.04)",
                   border: item.blockers.length
                     ? "1px solid rgba(248,113,113,0.34)"
-                    : hasAlerts
-                      ? "1px solid rgba(251,191,36,0.26)"
-                      : "1px solid rgba(255,255,255,0.08)",
+                    : "1px solid rgba(255,255,255,0.08)",
                 }}
               >
                 <div style={{ minWidth: 0, display: "grid", gap: 5 }}>
@@ -170,26 +168,14 @@ export default function PublishFinalReviewModal({
                         borderRadius: 999,
                         background: item.blockers.length
                           ? "rgba(248,113,113,0.14)"
-                          : item.warnings.length
-                            ? "rgba(251,191,36,0.14)"
-                            : "rgba(34,197,94,0.14)",
-                        color: item.blockers.length
-                          ? "#fecaca"
-                          : item.warnings.length
-                            ? "#fde68a"
-                            : "#bbf7d0",
+                          : "rgba(34,197,94,0.14)",
+                        color: item.blockers.length ? "#fecaca" : "#bbf7d0",
                         border: item.blockers.length
                           ? "1px solid rgba(248,113,113,0.25)"
-                          : item.warnings.length
-                            ? "1px solid rgba(251,191,36,0.25)"
-                            : "1px solid rgba(34,197,94,0.25)",
+                          : "1px solid rgba(34,197,94,0.25)",
                       }}
                     >
-                      {item.blockers.length
-                        ? "Bloquant"
-                        : item.warnings.length
-                          ? "À vérifier"
-                          : "Prêt"}
+                      {item.blockers.length ? "Bloquant" : "Prêt"}
                     </span>
                   </div>
                   <div
@@ -235,7 +221,7 @@ export default function PublishFinalReviewModal({
                     lineHeight: 1.45,
                   }}
                 >
-                  {!hasAlerts ? (
+                  {!hasMessages ? (
                     <span style={{ color: "#bbf7d0" }}>
                       Prêt à publier.
                     </span>
