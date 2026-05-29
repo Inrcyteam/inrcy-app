@@ -1664,15 +1664,15 @@ export async function POST(req: Request) {
           )
             .filter(Boolean)
             .slice(0, 20);
-          const isLinkedInVideo =
-            mediaModeByChannel[ch] === "video" && publicationVideo;
-          let linkedInWarning: { code: string; message: string } | null = null;
+          const isLinkedInVideo = Boolean(
+            mediaModeByChannel[ch] === "video" && publicationVideo,
+          );
           let resp = isLinkedInVideo
             ? await linkedinPublishVideo({
                 accessToken,
                 authorUrn: useAuthor,
                 text: canonMessage,
-                videoUrl: publicationVideo!.publicUrl,
+                videoUrl: publicationVideo!.publicUrl || publicationVideo!.url || "",
                 title: channelPost.title || undefined,
               })
             : linkedInImages.length > 1
@@ -1697,20 +1697,13 @@ export async function POST(req: Request) {
                     text: canonMessage,
                   });
 
-          if (!resp.ok && (isLinkedInVideo || linkedInImages[0])) {
+          if (!resp.ok && !isLinkedInVideo && linkedInImages[0]) {
             const fallbackResp = await linkedinPublishText({
               accessToken,
               authorUrn: useAuthor,
               text: canonMessage,
             });
             if (fallbackResp.ok) {
-              linkedInWarning = isLinkedInVideo
-                ? {
-                    code: "published_without_video",
-                    message:
-                      "LinkedIn a publié le texte, mais la vidéo n'a pas pu être jointe cette fois-ci.",
-                  }
-                : null;
               resp = {
                 ...fallbackResp,
                 diagnostics: {
@@ -1756,12 +1749,6 @@ export async function POST(req: Request) {
             ok: true,
             external_id: resp.postUrn || null,
             diagnostics: resp,
-            ...(linkedInWarning
-              ? {
-                  warning: linkedInWarning.code,
-                  warning_message: linkedInWarning.message,
-                }
-              : {}),
           };
           continue;
         }

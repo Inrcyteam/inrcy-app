@@ -296,6 +296,99 @@ type LinkedInVideoUploadInstruction = {
   lastByte: number;
 };
 
+type LinkedInVideoStatus =
+  | "WAITING_UPLOAD"
+  | "PROCESSING"
+  | "PROCESSING_FAILED"
+  | "AVAILABLE"
+  | string;
+
+function wait(ms: number) {
+  return new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
+function isLinkedInMp4Video(blob: Blob, sourceUrl: string) {
+  const mime = String(blob.type || "").toLowerCase();
+  const urlWithoutQuery = String(sourceUrl || "").split("?")[0].toLowerCase();
+  return mime.includes("mp4") || urlWithoutQuery.endsWith(".mp4");
+}
+
+async function getLinkedInVideoStatus(params: {
+  accessToken: string;
+  videoUrn: string;
+}) {
+  const { accessToken, videoUrn } = params;
+  const res = await fetch(
+    `https://api.linkedin.com/rest/videos/${encodeURIComponent(videoUrn)}`,
+    {
+      method: "GET",
+      headers: linkedInHeaders(accessToken),
+      cache: "no-store",
+    },
+  );
+
+  const { raw, json } = await parseResponse(res);
+  if (!res.ok) {
+    throw new Error(
+      json?.message ||
+        json?.error ||
+        raw ||
+        "Impossible de vérifier le statut de la vidéo LinkedIn.",
+    );
+  }
+
+  const status = String(json?.status || "") as LinkedInVideoStatus;
+  return { status, body: json ?? raw };
+}
+
+async function waitForLinkedInVideoAfterFinalize(params: {
+  accessToken: string;
+  videoUrn: string;
+}) {
+  const { accessToken, videoUrn } = params;
+  const delays = [900, 1400, 2200, 3200, 4600, 6200, 8000];
+  let lastStatus = "";
+  let lastBody: any = null;
+
+  for (let attempt = 0; attempt < delays.length; attempt += 1) {
+    const checked = await getLinkedInVideoStatus({ accessToken, videoUrn });
+    lastStatus = checked.status;
+    lastBody = checked.body;
+
+    if (lastStatus === "PROCESSING_FAILED") {
+      const reason = String(checked.body?.processingFailureReason || "").trim();
+      throw new Error(
+        reason
+          ? `LinkedIn a refusé le traitement vidéo : ${reason}`
+          : "LinkedIn a refusé le traitement vidéo.",
+      );
+    }
+
+    if (lastStatus === "AVAILABLE") {
+      return { status: lastStatus, body: lastBody, readyForPost: true };
+    }
+
+    // Après finalize, LinkedIn peut rester quelques secondes en PROCESSING.
+    // Le post est tenté après une courte attente, mais jamais en WAITING_UPLOAD.
+    if (lastStatus === "PROCESSING" && attempt >= 2) {
+      return { status: lastStatus, body: lastBody, readyForPost: true };
+    }
+
+    await wait(delays[attempt]);
+  }
+
+  if (lastStatus === "PROCESSING") {
+    return { status: lastStatus, body: lastBody, readyForPost: true };
+  }
+
+  throw new Error(
+    lastStatus === "WAITING_UPLOAD"
+      ? "LinkedIn attend encore la finalisation de l'upload vidéo."
+      : "LinkedIn n'a pas confirmé la disponibilité de la vidéo.",
+  );
+}
+
+
 async function fetchVideoBlob(videoUrl: string): Promise<Blob> {
   if (videoUrl.startsWith("data:")) {
     const m = videoUrl.match(/^data:([^;]+);base64,(.+)$/);
@@ -336,6 +429,10 @@ async function uploadLinkedInVideo(params: {
 }) {
   const { accessToken, ownerUrn, videoUrl } = params;
   const videoBlob = await fetchVideoBlob(videoUrl);
+  if (!isLinkedInMp4Video(videoBlob, videoUrl)) {
+    throw new Error("LinkedIn accepte uniquement les vidéos MP4 pour ce type de publication.");
+  }
+
   const videoBuffer = await videoBlob.arrayBuffer();
   const fileSizeBytes = videoBlob.size || videoBuffer.byteLength;
 
@@ -376,8 +473,7 @@ async function uploadLinkedInVideo(params: {
     const uploadRes = await fetch(instruction.uploadUrl, {
       method: "PUT",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": videoBlob.type || "video/mp4",
+        "Content-Type": "application/octet-stream",
       },
       body: part,
       cache: "no-store",
@@ -393,28 +489,40 @@ async function uploadLinkedInVideo(params: {
     if (etag) uploadedPartIds.push(etag);
   }
 
-  let finalizeJson: any = null;
-  if (uploadToken && uploadedPartIds.length) {
-    const finalizeRes = await fetch("https://api.linkedin.com/rest/videos?action=finalizeUpload", {
-      method: "POST",
-      headers: linkedInHeaders(accessToken),
-      body: JSON.stringify({
-        finalizeUploadRequest: {
-          video: videoUrn,
-          uploadToken,
-          uploadedPartIds,
-        },
-      }),
-      cache: "no-store",
-    });
-    const { raw: finalizeRaw, json } = await parseResponse(finalizeRes);
-    finalizeJson = json ?? finalizeRaw;
-    if (!finalizeRes.ok) {
-      throw new Error(json?.message || json?.error || finalizeRaw || "Impossible de finaliser la vidéo LinkedIn.");
-    }
+  if (uploadedPartIds.length !== instructions.length) {
+    throw new Error("LinkedIn n'a pas renvoyé tous les identifiants d'upload vidéo.");
   }
 
-  return { videoUrn, initJson: initJson ?? initRaw, uploadResponses, finalizeJson };
+  const finalizeRes = await fetch("https://api.linkedin.com/rest/videos?action=finalizeUpload", {
+    method: "POST",
+    headers: linkedInHeaders(accessToken),
+    body: JSON.stringify({
+      finalizeUploadRequest: {
+        video: videoUrn,
+        uploadToken,
+        uploadedPartIds,
+      },
+    }),
+    cache: "no-store",
+  });
+  const { raw: finalizeRaw, json } = await parseResponse(finalizeRes);
+  const finalizeJson = json ?? finalizeRaw;
+  if (!finalizeRes.ok) {
+    throw new Error(json?.message || json?.error || finalizeRaw || "Impossible de finaliser la vidéo LinkedIn.");
+  }
+
+  const videoStatus = await waitForLinkedInVideoAfterFinalize({
+    accessToken,
+    videoUrn,
+  });
+
+  return {
+    videoUrn,
+    initJson: initJson ?? initRaw,
+    uploadResponses,
+    finalizeJson,
+    videoStatus,
+  };
 }
 
 export async function linkedinPublishVideo(params: {

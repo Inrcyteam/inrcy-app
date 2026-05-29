@@ -3361,10 +3361,21 @@ export default function PublishModal({
           warnings.push(
             "Google Business peut publier sans vidéo si l’API refuse le média.",
           );
-        if (channel === "linkedin")
-          warnings.push(
-            "LinkedIn peut publier le texte seul si l’upload vidéo est refusé.",
-          );
+        if (channel === "linkedin") {
+          const linkedInVideoType = String(videoFile?.type || "").toLowerCase();
+          const linkedInVideoName = String(videoFile?.name || "").toLowerCase();
+          if (
+            videoFile &&
+            !linkedInVideoType.includes("mp4") &&
+            !linkedInVideoName.endsWith(".mp4")
+          ) {
+            blockers.push("LinkedIn nécessite une vidéo MP4.");
+          } else {
+            warnings.push(
+              "LinkedIn publiera la vidéo après finalisation de l’upload.",
+            );
+          }
+        }
       } else if (mode === "images") {
         if (!hasImage) {
           if (channel === "instagram")
