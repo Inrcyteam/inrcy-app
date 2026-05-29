@@ -411,6 +411,7 @@ export async function gmbCreateLocalPost(args: {
   locationName: string; // "locations/456"
   summary: string;
   imageUrls?: string[];
+  videoUrls?: string[];
   languageCode?: string; // default fr-FR
   callToAction?: { actionType: "LEARN_MORE" | "CALL"; url: string } | null;
 }) {
@@ -428,12 +429,14 @@ export async function gmbCreateLocalPost(args: {
     topicType: "STANDARD",
   };
 
-  const urls = (args.imageUrls || []).filter(Boolean).slice(0, 10);
-  if (urls.length) {
-    payload.media = urls.map((sourceUrl) => ({
-      mediaFormat: "PHOTO",
-      sourceUrl,
-    }));
+  const imageUrls = (args.imageUrls || []).filter(Boolean).slice(0, 10);
+  const videoUrls = (args.videoUrls || []).filter(Boolean).slice(0, 1);
+  const media = [
+    ...imageUrls.map((sourceUrl) => ({ mediaFormat: "PHOTO", sourceUrl })),
+    ...videoUrls.map((sourceUrl) => ({ mediaFormat: "VIDEO", sourceUrl })),
+  ];
+  if (media.length) {
+    payload.media = media;
   }
 
   if (args.callToAction?.actionType && args.callToAction?.url) {

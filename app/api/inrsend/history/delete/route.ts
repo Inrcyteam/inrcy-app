@@ -53,6 +53,7 @@ export async function POST(req: Request) {
           userData.user.id,
           items.map((entry) => ({ source: entry.source as "send_items" | "mail_campaigns" | "app_events", id: entry.id })),
         );
+
     return NextResponse.json({ success: true, deletedCount });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Suppression impossible pour le moment.";

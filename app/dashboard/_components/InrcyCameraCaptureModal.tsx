@@ -10,11 +10,55 @@ function buildPhotoFileName() {
   return `photo-inrcy-${stamp}.jpg`;
 }
 
+const DEFAULT_MAX_VIDEO_BYTES = 40 * 1024 * 1024;
+
+type CameraMode = "photo" | "video";
+type RecordingState = "idle" | "recording" | "saving";
+
+const recordedVideoMimeCandidates = [
+  "video/mp4;codecs=h264,aac",
+  "video/mp4",
+  "video/webm;codecs=vp9,opus",
+  "video/webm;codecs=vp8,opus",
+  "video/webm",
+];
+
+function getSupportedRecordedVideoMimeType() {
+  if (typeof MediaRecorder === "undefined") return "";
+  return (
+    recordedVideoMimeCandidates.find((type) =>
+      MediaRecorder.isTypeSupported(type),
+    ) || ""
+  );
+}
+
+function buildVideoFileName(mimeType: string) {
+  const stamp = new Date()
+    .toISOString()
+    .replace(/[-:]/g, "")
+    .replace(/\..+$/, "")
+    .replace("T", "-");
+  const normalizedMimeType = mimeType.toLowerCase();
+  const extension = normalizedMimeType.includes("mp4") ? "mp4" : "webm";
+  return `video-inrcy-${stamp}.${extension}`;
+}
+
+function formatRecordingSeconds(seconds: number) {
+  const safeSeconds = Math.max(0, Math.floor(seconds));
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainingSeconds = safeSeconds % 60;
+  return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
+}
+
 type InrcyCameraCaptureModalProps = {
   open: boolean;
   title?: string;
   onClose: () => void;
   onCapture: (file: File) => void | Promise<void>;
+  allowVideo?: boolean;
+  initialMode?: CameraMode;
+  maxVideoBytes?: number;
+  maxVideoSeconds?: number | null;
 };
 
 type ZoomCapability = {
@@ -49,11 +93,22 @@ export default function InrcyCameraCaptureModal({
   title = "Prendre une photo",
   onClose,
   onCapture,
+  allowVideo = true,
+  initialMode = "photo",
+  maxVideoBytes = DEFAULT_MAX_VIDEO_BYTES,
+  maxVideoSeconds = null,
 }: InrcyCameraCaptureModalProps) {
   const videoRef = React.useRef<HTMLVideoElement | null>(null);
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
   const streamRef = React.useRef<MediaStream | null>(null);
+  const mediaRecorderRef = React.useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = React.useRef<Blob[]>([]);
+  const recordedBytesRef = React.useRef(0);
+  const recordingTimerRef = React.useRef<number | null>(null);
+  const recordingStartedAtRef = React.useRef(0);
+  const cancelRecordingRef = React.useRef(false);
+  const recordingOversizedRef = React.useRef(false);
   const mountedRef = React.useRef(false);
   const pointersRef = React.useRef<Map<number, PointerPoint>>(new Map());
   const pinchStartRef = React.useRef<{ distance: number; zoom: number } | null>(
@@ -63,6 +118,12 @@ export default function InrcyCameraCaptureModal({
   const [phase, setPhase] = React.useState<
     "idle" | "loading" | "ready" | "capturing" | "error"
   >("idle");
+  const [cameraMode, setCameraMode] = React.useState<CameraMode>(
+    allowVideo ? initialMode : "photo",
+  );
+  const [recordingState, setRecordingState] =
+    React.useState<RecordingState>("idle");
+  const [recordingSeconds, setRecordingSeconds] = React.useState(0);
   const [error, setError] = React.useState("");
   const [facingMode, setFacingMode] = React.useState<"environment" | "user">(
     "environment",
@@ -82,6 +143,13 @@ export default function InrcyCameraCaptureModal({
     step: 0.05,
   });
   const [flashNotice, setFlashNotice] = React.useState("");
+
+  React.useEffect(() => {
+    if (!open) return;
+    setCameraMode(allowVideo ? initialMode : "photo");
+    setRecordingState("idle");
+    setRecordingSeconds(0);
+  }, [allowVideo, initialMode, open]);
 
   React.useEffect(() => {
     if (!open || typeof window === "undefined") return;
@@ -158,6 +226,27 @@ export default function InrcyCameraCaptureModal({
   }, []);
 
   const stopStream = React.useCallback(() => {
+    const activeRecorder = mediaRecorderRef.current;
+    if (activeRecorder && activeRecorder.state !== "inactive") {
+      cancelRecordingRef.current = true;
+      try {
+        activeRecorder.stop();
+      } catch {
+        // Best effort.
+      }
+    }
+
+    if (recordingTimerRef.current !== null) {
+      window.clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+    mediaRecorderRef.current = null;
+    recordedChunksRef.current = [];
+    recordedBytesRef.current = 0;
+    recordingOversizedRef.current = false;
+    setRecordingState("idle");
+    setRecordingSeconds(0);
+
     const stream = streamRef.current;
     streamRef.current = null;
 
@@ -270,7 +359,17 @@ export default function InrcyCameraCaptureModal({
     ) {
       setPhase("error");
       setError(
-        "Caméra indisponible sur ce navigateur. Importez une image à la place.",
+        cameraMode === "video"
+          ? "Caméra indisponible sur ce navigateur. Importez une vidéo à la place."
+          : "Caméra indisponible sur ce navigateur. Importez une image à la place.",
+      );
+      return;
+    }
+
+    if (cameraMode === "video" && typeof MediaRecorder === "undefined") {
+      setPhase("error");
+      setError(
+        "L’enregistrement vidéo n’est pas disponible sur ce navigateur.",
       );
       return;
     }
@@ -281,9 +380,10 @@ export default function InrcyCameraCaptureModal({
 
     try {
       let stream: MediaStream;
+      const audioConstraint = cameraMode === "video";
       try {
         stream = await navigator.mediaDevices.getUserMedia({
-          audio: false,
+          audio: audioConstraint,
           video: {
             facingMode: { ideal: facingMode },
             width: { ideal: 1920 },
@@ -292,7 +392,7 @@ export default function InrcyCameraCaptureModal({
         });
       } catch {
         stream = await navigator.mediaDevices.getUserMedia({
-          audio: false,
+          audio: audioConstraint,
           video: true,
         });
       }
@@ -327,9 +427,13 @@ export default function InrcyCameraCaptureModal({
       console.warn("inrcy_camera_open_failed", err);
       stopStream();
       setPhase("error");
-      setError("Autorisez la caméra ou importez une image à la place.");
+      setError(
+        cameraMode === "video"
+          ? "Autorisez la caméra et le micro ou importez une vidéo à la place."
+          : "Autorisez la caméra ou importez une image à la place.",
+      );
     }
-  }, [facingMode, open, readCameraCapabilities, stopStream]);
+  }, [cameraMode, facingMode, open, readCameraCapabilities, stopStream]);
 
   React.useEffect(() => {
     mountedRef.current = true;
@@ -348,12 +452,41 @@ export default function InrcyCameraCaptureModal({
     }
   }, [open, stopStream]);
 
+  const clearRecordingTimer = React.useCallback(() => {
+    if (recordingTimerRef.current !== null) {
+      window.clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+  }, []);
+
+  const stopActiveRecording = React.useCallback(
+    (cancel = false) => {
+      cancelRecordingRef.current = cancel;
+      const recorder = mediaRecorderRef.current;
+      if (recorder && recorder.state !== "inactive") {
+        try {
+          recorder.stop();
+          return true;
+        } catch {
+          // Continue cleanup below.
+        }
+      }
+      clearRecordingTimer();
+      mediaRecorderRef.current = null;
+      setRecordingState("idle");
+      setRecordingSeconds(0);
+      return false;
+    },
+    [clearRecordingTimer],
+  );
+
   const close = React.useCallback(() => {
+    stopActiveRecording(true);
     void applyTorch(false).finally(() => {
       stopStream();
       onClose();
     });
-  }, [applyTorch, onClose, stopStream]);
+  }, [applyTorch, onClose, stopActiveRecording, stopStream]);
 
   const capture = React.useCallback(async () => {
     if (phase !== "ready") return;
@@ -430,7 +563,141 @@ export default function InrcyCameraCaptureModal({
     zoom,
   ]);
 
-  const pickFallbackImage = React.useCallback(
+  const startVideoRecording = React.useCallback(() => {
+    if (phase !== "ready" || cameraMode !== "video") return;
+    if (typeof MediaRecorder === "undefined") {
+      setError(
+        "L’enregistrement vidéo n’est pas disponible sur ce navigateur.",
+      );
+      setPhase("error");
+      return;
+    }
+
+    const stream = streamRef.current;
+    if (!stream) return;
+    if (!stream.getAudioTracks().length) {
+      setError(
+        "Micro indisponible. Autorisez le micro pour filmer avec le son.",
+      );
+      return;
+    }
+
+    try {
+      const mimeType = getSupportedRecordedVideoMimeType();
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+
+      recordedChunksRef.current = [];
+      recordedBytesRef.current = 0;
+      recordingOversizedRef.current = false;
+      cancelRecordingRef.current = false;
+      mediaRecorderRef.current = recorder;
+      recordingStartedAtRef.current = Date.now();
+      setRecordingSeconds(0);
+      setRecordingState("recording");
+      setError("");
+
+      recorder.ondataavailable = (event) => {
+        if (!event.data?.size) return;
+        recordedChunksRef.current.push(event.data);
+        recordedBytesRef.current += event.data.size;
+        if (recordedBytesRef.current > maxVideoBytes) {
+          recordingOversizedRef.current = true;
+          stopActiveRecording(false);
+        }
+      };
+
+      recorder.onerror = () => {
+        clearRecordingTimer();
+        setRecordingState("idle");
+        setError("Enregistrement vidéo interrompu. Merci de réessayer.");
+      };
+
+      recorder.onstop = () => {
+        const shouldCancel = cancelRecordingRef.current;
+        const chunks = recordedChunksRef.current;
+        const bytes = recordedBytesRef.current;
+        const oversized =
+          recordingOversizedRef.current || bytes > maxVideoBytes;
+        const outputMimeType = recorder.mimeType || mimeType || "video/webm";
+
+        clearRecordingTimer();
+        mediaRecorderRef.current = null;
+        recordedChunksRef.current = [];
+        recordedBytesRef.current = 0;
+        recordingOversizedRef.current = false;
+        cancelRecordingRef.current = false;
+        setRecordingSeconds(0);
+
+        if (shouldCancel) {
+          setRecordingState("idle");
+          return;
+        }
+
+        if (oversized) {
+          setRecordingState("idle");
+          setError("La vidéo dépasse 40 Mo. Faites une vidéo plus courte.");
+          return;
+        }
+
+        if (!chunks.length) {
+          setRecordingState("idle");
+          setError("Aucune vidéo enregistrée. Merci de réessayer.");
+          return;
+        }
+
+        const blob = new Blob(chunks, { type: outputMimeType });
+        const file = new File([blob], buildVideoFileName(outputMimeType), {
+          type: outputMimeType,
+          lastModified: Date.now(),
+        });
+
+        setRecordingState("saving");
+        void Promise.resolve(onCapture(file))
+          .then(() => applyTorch(false))
+          .then(() => {
+            stopStream();
+            onClose();
+          })
+          .catch((err) => {
+            console.warn("inrcy_camera_video_capture_failed", err);
+            setRecordingState("idle");
+            setError("Impossible d’ajouter cette vidéo. Merci de réessayer.");
+          });
+      };
+
+      recorder.start(1000);
+      recordingTimerRef.current = window.setInterval(() => {
+        const elapsed = Math.floor(
+          (Date.now() - recordingStartedAtRef.current) / 1000,
+        );
+        setRecordingSeconds(elapsed);
+        if (typeof maxVideoSeconds === "number" && maxVideoSeconds > 0 && elapsed >= maxVideoSeconds) {
+          stopActiveRecording(false);
+        }
+      }, 250);
+    } catch (err) {
+      console.warn("inrcy_camera_video_recording_failed", err);
+      clearRecordingTimer();
+      mediaRecorderRef.current = null;
+      setRecordingState("idle");
+      setError("Impossible de lancer l’enregistrement vidéo sur cet appareil.");
+    }
+  }, [
+    applyTorch,
+    cameraMode,
+    clearRecordingTimer,
+    maxVideoBytes,
+    maxVideoSeconds,
+    onCapture,
+    onClose,
+    phase,
+    stopActiveRecording,
+    stopStream,
+  ]);
+
+  const pickFallbackMedia = React.useCallback(
     (files: FileList | null) => {
       const file = files?.[0];
       if (!file) return;
@@ -495,8 +762,15 @@ export default function InrcyCameraCaptureModal({
 
   if (!open) return null;
 
-  const isBusy = phase === "capturing" || phase === "loading";
-  const canCapture = phase === "ready";
+  const isRecording = recordingState === "recording";
+  const isSavingRecording = recordingState === "saving";
+  const isBusy =
+    phase === "capturing" || phase === "loading" || isSavingRecording;
+  const controlsLocked = isBusy || isRecording;
+  const canCapturePhoto = cameraMode === "photo" && phase === "ready";
+  const canStartVideoRecording =
+    cameraMode === "video" && phase === "ready" && recordingState === "idle";
+  const canStopVideoRecording = cameraMode === "video" && isRecording;
   const shellIsFullscreen = isMobileCameraViewport;
   const showVisualZoom = !hardwareZoomSupported && zoom > 1;
 
@@ -524,16 +798,26 @@ export default function InrcyCameraCaptureModal({
     height: isLandscapeViewport ? 64 : 78,
     borderRadius: 999,
     border: "4px solid rgba(255,255,255,0.92)",
-    background: canCapture
-      ? "linear-gradient(135deg, #48c6ef, #7c3aed 56%, #ff4fd8)"
-      : "rgba(255,255,255,0.14)",
+    background:
+      canCapturePhoto || canStartVideoRecording || canStopVideoRecording
+        ? "linear-gradient(135deg, #48c6ef, #7c3aed 56%, #ff4fd8)"
+        : "rgba(255,255,255,0.14)",
     color: "#fff",
     display: "grid",
     placeItems: "center",
     fontSize: isLandscapeViewport ? 25 : 30,
-    cursor: canCapture ? "pointer" : "not-allowed",
-    opacity: canCapture ? 1 : 0.58,
-    boxShadow: canCapture ? "0 18px 42px rgba(124,58,237,0.34)" : undefined,
+    cursor:
+      canCapturePhoto || canStartVideoRecording || canStopVideoRecording
+        ? "pointer"
+        : "not-allowed",
+    opacity:
+      canCapturePhoto || canStartVideoRecording || canStopVideoRecording
+        ? 1
+        : 0.58,
+    boxShadow:
+      canCapturePhoto || canStartVideoRecording || canStopVideoRecording
+        ? "0 18px 42px rgba(124,58,237,0.34)"
+        : undefined,
     flex: "0 0 auto",
   };
 
@@ -576,7 +860,7 @@ export default function InrcyCameraCaptureModal({
           value === "environment" ? "user" : "environment",
         );
       }}
-      disabled={isBusy}
+      disabled={controlsLocked}
       aria-label={
         facingMode === "environment"
           ? "Passer en caméra avant"
@@ -601,7 +885,7 @@ export default function InrcyCameraCaptureModal({
     <button
       type="button"
       onClick={() => {
-        if (isBusy) return;
+        if (controlsLocked) return;
         if (!torchSupported) {
           setFlashNotice("Flash indisponible sur cet appareil");
           window.setTimeout(() => setFlashNotice(""), 1800);
@@ -609,7 +893,7 @@ export default function InrcyCameraCaptureModal({
         }
         void applyTorch(!torchOn);
       }}
-      disabled={isBusy}
+      disabled={controlsLocked}
       aria-disabled={!torchSupported}
       aria-label={
         torchSupported
@@ -636,8 +920,8 @@ export default function InrcyCameraCaptureModal({
         borderColor: torchSupported
           ? "rgba(255,255,255,0.26)"
           : "rgba(255,255,255,0.34)",
-        cursor: torchSupported && !isBusy ? "pointer" : "not-allowed",
-        opacity: isBusy ? 0.55 : 1,
+        cursor: torchSupported && !controlsLocked ? "pointer" : "not-allowed",
+        opacity: controlsLocked ? 0.55 : 1,
         boxShadow: torchSupported
           ? iconButtonBase.boxShadow
           : "0 12px 28px rgba(0,0,0,0.24)",
@@ -647,18 +931,116 @@ export default function InrcyCameraCaptureModal({
     </button>
   );
 
+  const cameraModeTabs = (
+    <div
+      style={{
+        position: "absolute",
+        top: "max(14px, env(safe-area-inset-top))",
+        left: "50%",
+        transform: "translateX(-50%)",
+        zIndex: 4,
+        display: "inline-flex",
+        gap: 4,
+        padding: 4,
+        borderRadius: 999,
+        background: "rgba(6,10,24,0.72)",
+        border: "1px solid rgba(255,255,255,0.22)",
+        backdropFilter: "blur(12px)",
+        WebkitBackdropFilter: "blur(12px)",
+        boxShadow: "0 10px 24px rgba(0,0,0,0.28)",
+      }}
+      aria-label="Mode de l’Appareil iNrCy"
+    >
+      {(["photo", "video"] as CameraMode[]).map((mode) => {
+        const active = cameraMode === mode;
+        const disabled = controlsLocked || (mode === "video" && !allowVideo);
+        return (
+          <button
+            key={mode}
+            type="button"
+            disabled={disabled}
+            aria-current={active ? "true" : undefined}
+            title={
+              mode === "video" && !allowVideo
+                ? "Vidéo indisponible ici"
+                : undefined
+            }
+            onClick={() => {
+              if (disabled || active) return;
+              setCameraMode(mode);
+            }}
+            style={{
+              minHeight: 30,
+              border: "none",
+              borderRadius: 999,
+              padding: "6px 12px",
+              background: active
+                ? "linear-gradient(135deg, #48c6ef, #7c3aed)"
+                : "rgba(255,255,255,0.08)",
+              color: active ? "#fff" : "rgba(255,255,255,0.78)",
+              fontSize: 12,
+              fontWeight: active ? 950 : 900,
+              cursor: disabled || active ? "default" : "pointer",
+              opacity: disabled && !active ? 0.58 : 1,
+            }}
+          >
+            {mode === "photo" ? "Photo" : "Vidéo"}
+          </button>
+        );
+      })}
+    </div>
+  );
+
+  const captureButtonDisabled =
+    cameraMode === "photo"
+      ? !canCapturePhoto
+      : !canStartVideoRecording && !canStopVideoRecording;
+
   const captureButton = (
     <button
       type="button"
-      onClick={capture}
-      disabled={!canCapture}
+      onClick={() => {
+        if (cameraMode === "video") {
+          if (canStopVideoRecording) {
+            stopActiveRecording(false);
+          } else if (canStartVideoRecording) {
+            startVideoRecording();
+          }
+          return;
+        }
+        void capture();
+      }}
+      disabled={captureButtonDisabled}
       aria-label={
-        phase === "capturing" ? "Ajout de la photo" : "Capturer la photo"
+        cameraMode === "video"
+          ? canStopVideoRecording
+            ? "Arrêter la vidéo"
+            : "Enregistrer la vidéo"
+          : phase === "capturing"
+            ? "Ajout de la photo"
+            : "Capturer la photo"
       }
-      title="Capturer la photo"
-      style={captureButtonStyle}
+      title={
+        cameraMode === "video" ? "Enregistrer la vidéo" : "Capturer la photo"
+      }
+      style={{
+        ...captureButtonStyle,
+        cursor: captureButtonDisabled ? "not-allowed" : "pointer",
+        opacity: captureButtonDisabled ? 0.58 : 1,
+        background: canStopVideoRecording
+          ? "linear-gradient(135deg, #ef4444, #ff4fd8)"
+          : captureButtonStyle.background,
+      }}
     >
-      {phase === "capturing" ? "…" : "📷"}
+      {cameraMode === "video"
+        ? canStopVideoRecording
+          ? "■"
+          : isSavingRecording
+            ? "…"
+            : "●"
+        : phase === "capturing"
+          ? "…"
+          : "📷"}
     </button>
   );
 
@@ -701,6 +1083,7 @@ export default function InrcyCameraCaptureModal({
         }}
       >
         {closeButton}
+        {phase !== "error" ? cameraModeTabs : null}
 
         <div
           onPointerDown={handlePointerDown}
@@ -764,7 +1147,9 @@ export default function InrcyCameraCaptureModal({
                     onClick={() => fileInputRef.current?.click()}
                     style={{ ...fallbackButtonStyle, marginTop: 16 }}
                   >
-                    Importer une image
+                    {cameraMode === "video"
+                      ? "Importer une vidéo"
+                      : "Importer une image"}
                   </button>
                 ) : null}
               </div>
@@ -796,6 +1181,39 @@ export default function InrcyCameraCaptureModal({
               {zoom <= (zoomLimits.min || 1) + 0.02
                 ? "1x"
                 : `${zoom.toFixed(1)}x`}
+            </div>
+          ) : null}
+
+          {cameraMode === "video" && phase === "ready" ? (
+            <div
+              role="status"
+              style={{
+                position: "absolute",
+                left: "50%",
+                bottom: isLandscapeViewport ? 148 : 172,
+                transform: "translateX(-50%)",
+                zIndex: 5,
+                maxWidth: "calc(100% - 32px)",
+                borderRadius: 999,
+                padding: "8px 12px",
+                background: isRecording
+                  ? "rgba(127,29,29,0.78)"
+                  : "rgba(15,23,42,0.78)",
+                border: "1px solid rgba(255,255,255,0.24)",
+                color: "#fff",
+                fontSize: 13,
+                fontWeight: 900,
+                textAlign: "center",
+                boxShadow: "0 14px 34px rgba(0,0,0,0.32)",
+                backdropFilter: "blur(14px)",
+                WebkitBackdropFilter: "blur(14px)",
+              }}
+            >
+              {isRecording
+                ? typeof maxVideoSeconds === "number" && maxVideoSeconds > 0
+                  ? `REC ${formatRecordingSeconds(recordingSeconds)} / ${formatRecordingSeconds(maxVideoSeconds)}`
+                  : `REC ${formatRecordingSeconds(recordingSeconds)}`
+                : "Vidéo avec son · 40 Mo max"}
             </div>
           ) : null}
 
@@ -831,10 +1249,14 @@ export default function InrcyCameraCaptureModal({
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*"
+          accept={
+            cameraMode === "video"
+              ? "video/mp4,video/webm,video/quicktime,.mp4,.webm,.mov"
+              : "image/*"
+          }
           style={{ display: "none" }}
           onChange={(event) => {
-            pickFallbackImage(event.currentTarget.files);
+            pickFallbackMedia(event.currentTarget.files);
             event.currentTarget.value = "";
           }}
         />

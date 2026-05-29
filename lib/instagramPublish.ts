@@ -4,7 +4,7 @@ type PublishOk = {
   ok: true;
   /** Published Instagram media id. For carousels, this is the parent media id. */
   mediaId: string;
-  mediaType: "IMAGE" | "CAROUSEL_ALBUM";
+  mediaType: "IMAGE" | "CAROUSEL_ALBUM" | "VIDEO" | "REELS";
   parentMediaId?: string | null;
   childContainerIds?: string[];
   childMediaIds?: string[];
@@ -386,6 +386,138 @@ export async function instagramPublishPhoto(params: {
   }
 }
 
+
+async function createInstagramVideoContainer(params: {
+  igUserId: string;
+  accessToken: string;
+  videoUrl: string;
+  caption?: string;
+}) {
+  const createParams = new URLSearchParams({
+    media_type: "REELS",
+    video_url: params.videoUrl,
+    access_token: params.accessToken,
+  });
+
+  if (params.caption) createParams.set("caption", params.caption);
+  createParams.set("share_to_feed", "true");
+
+  const createUrl = `https://graph.facebook.com/${FACEBOOK_GRAPH_VERSION}/${encodeURIComponent(params.igUserId)}/media?${createParams.toString()}`;
+  return fetchJson(createUrl, { method: "POST" });
+}
+
+/**
+ * Publish a short video as an Instagram Reel using Instagram Graph API.
+ * The video URL must be public and reachable by Meta servers.
+ */
+export async function instagramPublishVideo(params: {
+  igUserId: string;
+  accessToken: string;
+  caption: string;
+  videoUrl: string;
+}): Promise<InstagramPublishResult> {
+  const { igUserId, accessToken, caption, videoUrl } = params;
+
+  try {
+    if (!igUserId) return { ok: false, error: "Certaines informations nécessaires à la publication Instagram sont manquantes." };
+    if (!accessToken) return { ok: false, error: "La connexion Instagram a expiré. Merci de reconnecter votre compte." };
+    if (!videoUrl?.trim()) return { ok: false, error: "Ajoutez une vidéo avant de publier sur Instagram." };
+
+    const { res: createRes, json: createJson } = await createInstagramVideoContainer({
+      igUserId,
+      accessToken,
+      caption,
+      videoUrl,
+    });
+
+    if (!createRes.ok) {
+      return {
+        ok: false,
+        error: createJson?.error?.message || "Impossible de préparer la vidéo Instagram.",
+        diagnostics: { createResponse: createJson },
+      };
+    }
+
+    const containerId = String(createJson?.id || "");
+    if (!containerId) {
+      return {
+        ok: false,
+        error: "Instagram video creation returned no id",
+        diagnostics: { createResponse: createJson },
+      };
+    }
+
+    const waitResult = await waitForContainerReady({
+      containerId,
+      accessToken,
+      maxAttempts: 14,
+      initialDelayMs: 1800,
+    });
+
+    if (!waitResult.ok) {
+      return {
+        ok: false,
+        error: ("error" in waitResult ? waitResult.error : "Instagram met trop de temps à traiter la vidéo."),
+        diagnostics: {
+          containerId,
+          createResponse: createJson,
+          statusChecks: waitResult.checks,
+        },
+      };
+    }
+
+    const { res: publishRes, json: publishJson } = await publishInstagramContainer({
+      igUserId,
+      accessToken,
+      creationId: containerId,
+    });
+
+    if (!publishRes.ok) {
+      return {
+        ok: false,
+        error: publishJson?.error?.message || "Impossible de publier la vidéo Instagram pour le moment.",
+        diagnostics: {
+          containerId,
+          createResponse: createJson,
+          statusChecks: waitResult.checks,
+          publishResponse: publishJson,
+        },
+      };
+    }
+
+    const mediaId = String(publishJson?.id || "");
+    if (!mediaId) {
+      return {
+        ok: false,
+        error: "La vidéo Instagram n’a pas pu être finalisée.",
+        diagnostics: {
+          containerId,
+          createResponse: createJson,
+          statusChecks: waitResult.checks,
+          publishResponse: publishJson,
+        },
+      };
+    }
+
+    return {
+      ok: true,
+      mediaId,
+      mediaType: "REELS",
+      parentMediaId: mediaId,
+      childContainerIds: [],
+      childMediaIds: [],
+      diagnostics: {
+        containerId,
+        createResponse: createJson,
+        statusChecks: waitResult.checks,
+        publishResponse: publishJson,
+      },
+    };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || "Une erreur est survenue lors de la publication vidéo Instagram." };
+  }
+}
+
 export async function instagramPublishCarousel(params: {
   igUserId: string;
   accessToken: string;
@@ -632,6 +764,44 @@ export async function instagramPublishCarouselWithTokenFallback(params: {
       accessToken: candidate.accessToken,
       caption: params.caption,
       imageUrls: params.imageUrls,
+    });
+
+    attempts.push({
+      source: candidate.source,
+      ok: result.ok,
+      error: result.ok ? null : result.error,
+      graphErrors: result.ok ? [] : extractGraphErrors(result.diagnostics),
+    });
+
+    if (result.ok) return withTokenFallbackDiagnostics(result, attempts);
+    lastResult = result;
+    if (!isInstagramAuthorizationErrorResult(result)) break;
+  }
+
+  return withTokenFallbackDiagnostics(lastResult || { ok: false, error: "La connexion Instagram a expiré. Merci de reconnecter votre compte." }, attempts);
+}
+
+
+/**
+ * Same Instagram video publishing flow, with authorization fallback across valid stored tokens.
+ */
+export async function instagramPublishVideoWithTokenFallback(params: {
+  igUserId: string;
+  accessToken: string;
+  tokenCandidates?: InstagramTokenCandidate[];
+  caption: string;
+  videoUrl: string;
+}): Promise<InstagramPublishResult> {
+  const candidates = normalizeTokenCandidates(params.accessToken, params.tokenCandidates);
+  const attempts: InstagramPublishAttempt[] = [];
+  let lastResult: InstagramPublishResult | null = null;
+
+  for (const candidate of candidates) {
+    const result = await instagramPublishVideo({
+      igUserId: params.igUserId,
+      accessToken: candidate.accessToken,
+      caption: params.caption,
+      videoUrl: params.videoUrl,
     });
 
     attempts.push({

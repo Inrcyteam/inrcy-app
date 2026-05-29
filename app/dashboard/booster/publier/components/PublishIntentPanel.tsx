@@ -1,8 +1,30 @@
-import { useEffect, useRef, useState, type Dispatch, type MutableRefObject, type SetStateAction } from "react";
-import { THEME_PLACEHOLDERS, type ThemeKey } from "../publishModal.shared";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type Dispatch,
+  type MutableRefObject,
+  type SetStateAction,
+} from "react";
+import {
+  BOOSTER_MAX_IMAGE_COUNT,
+  BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL,
+  BOOSTER_MAX_VIDEO_MB_LABEL,
+  THEME_PLACEHOLDERS,
+  type PublicationMediaType,
+  type ThemeKey,
+} from "../publishModal.shared";
 import { textAreaStyle } from "../publishModal.styles";
 
 type PublishModalStyles = Readonly<Record<string, string>>;
+
+function formatVideoSeconds(seconds: number | null) {
+  if (!Number.isFinite(Number(seconds))) return "";
+  const safeSeconds = Math.max(0, Math.round(Number(seconds)));
+  const minutes = Math.floor(safeSeconds / 60);
+  const remainingSeconds = safeSeconds % 60;
+  return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
+}
 
 type VoiceState = "idle" | "recording" | "transcribing";
 type VoiceRecordingMode = "media" | "liveOnly";
@@ -65,8 +87,16 @@ function formatVoiceDuration(seconds: number) {
 }
 
 function pickVoiceMimeType() {
-  if (typeof window === "undefined" || typeof window.MediaRecorder === "undefined") return "";
-  return voiceMimeCandidates.find((type) => window.MediaRecorder.isTypeSupported(type)) || "";
+  if (
+    typeof window === "undefined" ||
+    typeof window.MediaRecorder === "undefined"
+  )
+    return "";
+  return (
+    voiceMimeCandidates.find((type) =>
+      window.MediaRecorder.isTypeSupported(type),
+    ) || ""
+  );
 }
 
 function voiceExtensionFromMime(type: string) {
@@ -99,7 +129,11 @@ function getSpeechRecognitionConstructor() {
     SpeechRecognition?: VoiceSpeechRecognitionConstructor;
     webkitSpeechRecognition?: VoiceSpeechRecognitionConstructor;
   };
-  return speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition || null;
+  return (
+    speechWindow.SpeechRecognition ||
+    speechWindow.webkitSpeechRecognition ||
+    null
+  );
 }
 
 function waitForVoiceWarmup(ms: number) {
@@ -146,12 +180,15 @@ async function warmupVoiceMicrophoneIfNeeded() {
   if (!shouldWarmupMicrophone) return;
 
   try {
-    if (window.sessionStorage.getItem("inrcy_voice_micro_warmed_v1") === "1") return;
+    if (window.sessionStorage.getItem("inrcy_voice_micro_warmed_v1") === "1")
+      return;
   } catch {
     // sessionStorage peut être indisponible en navigation privée stricte.
   }
 
-  const warmupStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  const warmupStream = await navigator.mediaDevices.getUserMedia({
+    audio: true,
+  });
   warmupStream.getTracks().forEach((track) => track.stop());
 
   try {
@@ -170,11 +207,19 @@ type PublishIntentPanelProps = {
   idea: string;
   setIdea: Dispatch<SetStateAction<string>>;
   fileInputRef: MutableRefObject<HTMLInputElement | null>;
+  videoInputRef: MutableRefObject<HTMLInputElement | null>;
   onImagesChange: (files: FileList | null) => void;
+  onVideoChange: (files: FileList | null) => void;
   onPickImagesClick: () => void;
+  onPickVideoClick: () => void;
   onTakePhotoClick: () => void;
+  publicationMediaType: PublicationMediaType;
   images: File[];
   imagePreviews: string[];
+  videoFile: File | null;
+  videoPreviewUrl: string;
+  videoDurationSeconds: number | null;
+  removeVideo: () => void;
   removeImage: (index: number) => void;
   useImagesForAI: boolean;
   setUseImagesForAI: Dispatch<SetStateAction<boolean>>;
@@ -195,11 +240,19 @@ export default function PublishIntentPanel({
   idea,
   setIdea,
   fileInputRef,
+  videoInputRef,
   onImagesChange,
+  onVideoChange,
   onPickImagesClick,
+  onPickVideoClick,
   onTakePhotoClick,
+  publicationMediaType,
   images,
   imagePreviews,
+  videoFile,
+  videoPreviewUrl,
+  videoDurationSeconds,
+  removeVideo,
   removeImage,
   useImagesForAI,
   setUseImagesForAI,
@@ -300,7 +353,9 @@ export default function PublishIntentPanel({
 
         liveVoiceLastTextRef.current = normalizedLiveText;
         hasLiveVoiceDraftRef.current = true;
-        setIdea(() => appendVoiceText(liveVoiceBaseTextRef.current, normalizedLiveText));
+        setIdea(() =>
+          appendVoiceText(liveVoiceBaseTextRef.current, normalizedLiveText),
+        );
       };
 
       recognition.onerror = () => {
@@ -312,7 +367,9 @@ export default function PublishIntentPanel({
           liveOnlyUnavailableRef.current = true;
           setRecordingSeconds(0);
           setVoiceState("idle");
-          setVoiceError("Dictée en direct indisponible sur ce navigateur. Réessaie : iNrCy basculera sur le vocal classique.");
+          setVoiceError(
+            "Dictée en direct indisponible sur ce navigateur. Réessaie : iNrCy basculera sur le vocal classique.",
+          );
         }
       };
 
@@ -338,9 +395,13 @@ export default function PublishIntentPanel({
   };
 
   const submitLiveVoiceTextForCorrection = async () => {
-    const liveTranscript = cleanTranscriptTextForSubmission(liveVoiceLastTextRef.current);
+    const liveTranscript = cleanTranscriptTextForSubmission(
+      liveVoiceLastTextRef.current,
+    );
     if (!liveTranscript) {
-      setVoiceError("Aucun texte n’a été détecté pendant le vocal. Réessaie en parlant un peu plus longtemps.");
+      setVoiceError(
+        "Aucun texte n’a été détecté pendant le vocal. Réessaie en parlant un peu plus longtemps.",
+      );
       resetLiveVoiceDraft();
       setVoiceState("idle");
       setRecordingSeconds(0);
@@ -361,7 +422,9 @@ export default function PublishIntentPanel({
       const json = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        throw new Error(String(json?.user_message || json?.error || "Correction impossible."));
+        throw new Error(
+          String(json?.user_message || json?.error || "Correction impossible."),
+        );
       }
 
       const correctedText = String(json?.text || "").trim();
@@ -369,11 +432,18 @@ export default function PublishIntentPanel({
         throw new Error("Aucun texte n’a été détecté dans le vocal.");
       }
 
-      setIdea(() => appendVoiceText(liveVoiceBaseTextRef.current, correctedText));
+      setIdea(() =>
+        appendVoiceText(liveVoiceBaseTextRef.current, correctedText),
+      );
       resetLiveVoiceDraft();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Le vocal n’a pas pu être corrigé.";
-      setVoiceError(`${message} Le texte affiché en direct est conservé sans correction finale.`);
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Le vocal n’a pas pu être corrigé.";
+      setVoiceError(
+        `${message} Le texte affiché en direct est conservé sans correction finale.`,
+      );
       resetLiveVoiceDraft();
     } finally {
       setVoiceState("idle");
@@ -383,7 +453,8 @@ export default function PublishIntentPanel({
 
   const submitVoiceBlob = async (audioBlob: Blob) => {
     if (!audioBlob.size || audioBlob.size < VOICE_MIN_BYTES) {
-      const liveDraftKept = hasLiveVoiceDraftRef.current && liveVoiceLastTextRef.current.trim();
+      const liveDraftKept =
+        hasLiveVoiceDraftRef.current && liveVoiceLastTextRef.current.trim();
       setVoiceError(
         liveDraftKept
           ? "Vocal trop court pour la correction finale. Le texte affiché en direct est conservé."
@@ -400,7 +471,9 @@ export default function PublishIntentPanel({
     try {
       const mimeType = audioBlob.type || "audio/webm";
       const extension = voiceExtensionFromMime(mimeType);
-      const audioFile = new File([audioBlob], `booster-vocal.${extension}`, { type: mimeType });
+      const audioFile = new File([audioBlob], `booster-vocal.${extension}`, {
+        type: mimeType,
+      });
       const formData = new FormData();
       formData.append("audio", audioFile);
 
@@ -411,7 +484,11 @@ export default function PublishIntentPanel({
       const json = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        throw new Error(String(json?.user_message || json?.error || "Transcription impossible."));
+        throw new Error(
+          String(
+            json?.user_message || json?.error || "Transcription impossible.",
+          ),
+        );
       }
 
       const transcript = String(json?.text || "").trim();
@@ -420,14 +497,20 @@ export default function PublishIntentPanel({
       }
 
       if (hasLiveVoiceDraftRef.current) {
-        setIdea(() => appendVoiceText(liveVoiceBaseTextRef.current, transcript));
+        setIdea(() =>
+          appendVoiceText(liveVoiceBaseTextRef.current, transcript),
+        );
       } else {
         setIdea((current) => appendVoiceText(current, transcript));
       }
       resetLiveVoiceDraft();
     } catch (error) {
-      const liveDraftKept = hasLiveVoiceDraftRef.current && liveVoiceLastTextRef.current.trim();
-      const message = error instanceof Error ? error.message : "Le vocal n’a pas pu être transcrit.";
+      const liveDraftKept =
+        hasLiveVoiceDraftRef.current && liveVoiceLastTextRef.current.trim();
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Le vocal n’a pas pu être transcrit.";
       setVoiceError(
         liveDraftKept
           ? `${message} Le texte affiché en direct est conservé sans correction finale.`
@@ -483,8 +566,13 @@ export default function PublishIntentPanel({
   };
 
   const startMediaVoiceRecording = async (allowLivePreview: boolean) => {
-    if (!navigator.mediaDevices?.getUserMedia || typeof window.MediaRecorder === "undefined") {
-      setVoiceError("Ce navigateur ne permet pas l’enregistrement vocal. Utilise Chrome, Edge ou Safari récent.");
+    if (
+      !navigator.mediaDevices?.getUserMedia ||
+      typeof window.MediaRecorder === "undefined"
+    ) {
+      setVoiceError(
+        "Ce navigateur ne permet pas l’enregistrement vocal. Utilise Chrome, Edge ou Safari récent.",
+      );
       return;
     }
 
@@ -493,7 +581,9 @@ export default function PublishIntentPanel({
 
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mimeType = pickVoiceMimeType();
-      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
 
       audioChunksRef.current = [];
       mediaStreamRef.current = stream;
@@ -505,7 +595,9 @@ export default function PublishIntentPanel({
       };
 
       recorder.onerror = () => {
-        setVoiceError("Erreur micro pendant l’enregistrement. Réessaie dans quelques secondes.");
+        setVoiceError(
+          "Erreur micro pendant l’enregistrement. Réessaie dans quelques secondes.",
+        );
         clearVoiceTimers();
         stopLiveSpeechRecognition();
         resetLiveVoiceDraft();
@@ -544,11 +636,15 @@ export default function PublishIntentPanel({
       voiceRecordingModeRef.current = null;
       const name = error instanceof DOMException ? error.name : "";
       if (name === "NotAllowedError" || name === "SecurityError") {
-        setVoiceError("Micro refusé. Autorise le micro dans le navigateur puis réessaie.");
+        setVoiceError(
+          "Micro refusé. Autorise le micro dans le navigateur puis réessaie.",
+        );
       } else if (name === "NotFoundError" || name === "DevicesNotFoundError") {
         setVoiceError("Aucun micro détecté sur cet appareil.");
       } else {
-        setVoiceError("Impossible d’activer le micro. Vérifie l’autorisation navigateur/appareil.");
+        setVoiceError(
+          "Impossible d’activer le micro. Vérifie l’autorisation navigateur/appareil.",
+        );
       }
       setVoiceState("idle");
     }
@@ -560,14 +656,19 @@ export default function PublishIntentPanel({
     resetLiveVoiceDraft();
     voiceRecordingModeRef.current = null;
 
-    if (typeof window === "undefined" || typeof navigator === "undefined") return;
+    if (typeof window === "undefined" || typeof navigator === "undefined")
+      return;
     if (!window.isSecureContext && window.location.hostname !== "localhost") {
       setVoiceError("Le micro nécessite une connexion sécurisée HTTPS.");
       return;
     }
 
     const platformInfo = getVoicePlatformInfo();
-    if (platformInfo.shouldUseLiveOnly && !liveOnlyUnavailableRef.current && startLiveOnlyVoiceRecording()) {
+    if (
+      platformInfo.shouldUseLiveOnly &&
+      !liveOnlyUnavailableRef.current &&
+      startLiveOnlyVoiceRecording()
+    ) {
       return;
     }
 
@@ -609,6 +710,14 @@ export default function PublishIntentPanel({
       : voiceState === "transcribing"
         ? "…"
         : "🎙️";
+  const hasImages = images.length > 0;
+  const hasVideoMedia = publicationMediaType === "video" && Boolean(videoFile || videoPreviewUrl);
+  const imagesDisabledByVideo = hasVideoMedia;
+  const videoDisabledByImages = hasImages;
+  const imagesLimitReached = publicationMediaType === "images" && images.length >= BOOSTER_MAX_IMAGE_COUNT;
+  const pickImagesDisabled = imagesDisabledByVideo || imagesLimitReached;
+  const pickVideoDisabled = videoDisabledByImages;
+  const cameraDisabled = !isMobile || hasVideoMedia || imagesLimitReached;
 
   return (
     <div
@@ -645,7 +754,8 @@ export default function PublishIntentPanel({
         className={styles.subtitle}
         style={{ marginBottom: 10, maxWidth: "none", whiteSpace: "normal" }}
       >
-        Décrivez votre idée. Ajoutez des images pour aider iNrCy à rédiger un contenu plus précis.
+        Décrivez votre idée. <strong>Ajoutez jusqu’à 5 images ou 1 vidéo</strong> pour préparer
+        votre publication.
       </div>
       <div style={{ display: "grid", gap: 10 }}>
         <div>
@@ -655,7 +765,9 @@ export default function PublishIntentPanel({
           <div style={{ display: "grid", gap: 8 }}>
             <div style={{ position: "relative", minWidth: 0 }}>
               <textarea
-                placeholder={THEME_PLACEHOLDERS[theme] || THEME_PLACEHOLDERS[""]}
+                placeholder={
+                  THEME_PLACEHOLDERS[theme] || THEME_PLACEHOLDERS[""]
+                }
                 style={{
                   ...textAreaStyle,
                   paddingRight: isMobile ? 58 : 66,
@@ -666,7 +778,11 @@ export default function PublishIntentPanel({
               />
               <button
                 type="button"
-                className={voiceState === "recording" ? styles.primaryBtn : styles.secondaryBtn}
+                className={
+                  voiceState === "recording"
+                    ? styles.primaryBtn
+                    : styles.secondaryBtn
+                }
                 onClick={onVoiceButtonClick}
                 disabled={voiceDisabled}
                 aria-label={voiceButtonLabel}
@@ -676,15 +792,34 @@ export default function PublishIntentPanel({
                   right: isMobile ? 10 : 12,
                   bottom: isMobile ? 10 : 12,
                   zIndex: 2,
-                  minWidth: voiceState === "recording" ? (isMobile ? 82 : 90) : isMobile ? 38 : 42,
+                  minWidth:
+                    voiceState === "recording"
+                      ? isMobile
+                        ? 82
+                        : 90
+                      : isMobile
+                        ? 38
+                        : 42,
                   height: isMobile ? 36 : 40,
                   minHeight: isMobile ? 36 : 40,
                   borderRadius: 999,
-                  padding: voiceState === "recording" ? (isMobile ? "0 10px" : "0 12px") : 0,
+                  padding:
+                    voiceState === "recording"
+                      ? isMobile
+                        ? "0 10px"
+                        : "0 12px"
+                      : 0,
                   display: "inline-flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  fontSize: voiceState === "recording" ? (isMobile ? 11 : 12) : isMobile ? 16 : 18,
+                  fontSize:
+                    voiceState === "recording"
+                      ? isMobile
+                        ? 11
+                        : 12
+                      : isMobile
+                        ? 16
+                        : 18,
                   fontWeight: 950,
                   lineHeight: 1,
                   whiteSpace: "nowrap",
@@ -697,19 +832,35 @@ export default function PublishIntentPanel({
               </button>
             </div>
             {voiceState === "recording" ? (
-              <div style={{ fontSize: isMobile ? 11 : 12, color: "#ffdfdf", fontWeight: 800 }}>
+              <div
+                style={{
+                  fontSize: isMobile ? 11 : 12,
+                  color: "#ffdfdf",
+                  fontWeight: 800,
+                }}
+              >
                 {liveVoiceEnabled
                   ? "Les mots apparaissent en direct. Recliquez sur le micro pour corriger le vocal."
                   : "Parlez maintenant, puis recliquez sur le micro pour arrêter."}
               </div>
             ) : null}
             {voiceState === "transcribing" ? (
-              <div style={{ fontSize: isMobile ? 11 : 12, color: "#dff6ff", fontWeight: 800 }}>
+              <div
+                style={{
+                  fontSize: isMobile ? 11 : 12,
+                  color: "#dff6ff",
+                  fontWeight: 800,
+                }}
+              >
                 Transcription + correction en cours...
               </div>
             ) : null}
             {voiceError ? (
-              <div style={{ fontSize: 12.5, color: "#ffb4b4", lineHeight: 1.35 }}>{voiceError}</div>
+              <div
+                style={{ fontSize: 12.5, color: "#ffb4b4", lineHeight: 1.35 }}
+              >
+                {voiceError}
+              </div>
             ) : null}
           </div>
         </div>
@@ -721,6 +872,16 @@ export default function PublishIntentPanel({
           style={{ display: "none" }}
           onChange={(e) => {
             onImagesChange(e.target.files);
+            e.currentTarget.value = "";
+          }}
+        />
+        <input
+          ref={videoInputRef}
+          type="file"
+          accept="video/mp4,video/webm,video/quicktime,video/x-m4v,.mp4,.webm,.mov,.m4v"
+          style={{ display: "none" }}
+          onChange={(e) => {
+            onVideoChange(e.target.files);
             e.currentTarget.value = "";
           }}
         />
@@ -748,117 +909,256 @@ export default function PublishIntentPanel({
               type="button"
               className={styles.secondaryBtn}
               onClick={onPickImagesClick}
-              disabled={images.length >= 5}
-              title={images.length >= 5 ? "5 images maximum" : undefined}
+              disabled={pickImagesDisabled}
+              title={
+                imagesDisabledByVideo
+                  ? "Supprimez la vidéo pour ajouter des images."
+                  : imagesLimitReached
+                    ? `${BOOSTER_MAX_IMAGE_COUNT} images maximum`
+                    : undefined
+              }
               style={{
                 flex: "0 0 auto",
                 minHeight: isMobile ? 32 : 34,
                 padding: isMobile ? "6px 9px" : "7px 12px",
                 fontSize: isMobile ? 11 : 12,
                 whiteSpace: "nowrap",
-                opacity: images.length >= 5 ? 0.48 : 1,
-                filter: images.length >= 5 ? "grayscale(1)" : undefined,
-                cursor: images.length >= 5 ? "not-allowed" : "pointer",
+                opacity: pickImagesDisabled ? 0.48 : 1,
+                filter: pickImagesDisabled ? "grayscale(1)" : undefined,
+                cursor: pickImagesDisabled ? "not-allowed" : "pointer",
               }}
             >
               + Ajouter des images
             </button>
+            <button
+              type="button"
+              className={styles.secondaryBtn}
+              onClick={onPickVideoClick}
+              disabled={pickVideoDisabled}
+              title={
+                pickVideoDisabled
+                  ? "Supprimez les images pour ajouter une vidéo."
+                  : `1 vidéo maximum · ${BOOSTER_MAX_VIDEO_MB_LABEL} max · ${BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL}`
+              }
+              style={{
+                flex: "0 0 auto",
+                minHeight: isMobile ? 32 : 34,
+                padding: isMobile ? "6px 9px" : "7px 12px",
+                fontSize: isMobile ? 11 : 12,
+                whiteSpace: "nowrap",
+                opacity: pickVideoDisabled ? 0.48 : 1,
+                filter: pickVideoDisabled ? "grayscale(1)" : undefined,
+                cursor: pickVideoDisabled ? "not-allowed" : "pointer",
+              }}
+            >
+              + Ajouter une vidéo
+            </button>
             <span
               title={
-                isMobile
-                  ? images.length >= 5
-                    ? "5 images maximum"
-                    : "Prendre une photo dans iNrCy"
-                  : "Utilisable en version mobile"
+                !isMobile
+                  ? "Utilisable en version mobile"
+                  : hasVideoMedia
+                    ? "Supprimez la vidéo pour reprendre une photo."
+                    : imagesLimitReached
+                      ? `${BOOSTER_MAX_IMAGE_COUNT} images maximum`
+                      : hasImages
+                        ? "Ouvrir l’Appareil iNrCy en mode photo"
+                        : "Ouvrir l’Appareil iNrCy pour prendre une photo ou une vidéo"
               }
               style={{ display: "inline-flex", flex: "0 0 auto" }}
             >
               <button
                 type="button"
                 className={styles.secondaryBtn}
-                onClick={isMobile ? onTakePhotoClick : undefined}
-                disabled={isMobile && images.length >= 5}
-                aria-disabled={!isMobile || images.length >= 5}
+                onClick={!cameraDisabled ? onTakePhotoClick : undefined}
+                disabled={cameraDisabled}
+                aria-disabled={cameraDisabled}
                 style={{
                   flex: "0 0 auto",
                   minHeight: 32,
                   padding: "6px 9px",
                   fontSize: 11,
                   whiteSpace: "nowrap",
-                  opacity: !isMobile || images.length >= 5 ? 0.48 : 1,
-                  filter: !isMobile || images.length >= 5 ? "grayscale(1)" : undefined,
-                  cursor: !isMobile || images.length >= 5 ? "not-allowed" : "pointer",
+                  opacity: cameraDisabled ? 0.48 : 1,
+                  filter: cameraDisabled ? "grayscale(1)" : undefined,
+                  cursor: cameraDisabled ? "not-allowed" : "pointer",
                 }}
               >
-                📷 Photo
+                📷 Appareil iNrCy
               </button>
             </span>
           </div>
 
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: isMobile ? 7 : 8,
-              flexWrap: "wrap",
-            }}
-          >
-            <label
-              title={
-                useImagesForAI
-                  ? "Les images aideront iNrCy à rédiger un contenu plus précis."
-                  : "Les images seront utilisées uniquement pour la publication."
-              }
-              style={{
-                flex: "0 0 auto",
-                display: "inline-flex",
-                alignItems: "center",
-                gap: isMobile ? 5 : 7,
-                minHeight: isMobile ? 30 : 32,
-                padding: isMobile ? "5px 8px" : "6px 10px",
-                borderRadius: 999,
-                border: useImagesForAI
-                  ? "1px solid rgba(76,195,255,0.34)"
-                  : "1px solid rgba(255,255,255,0.14)",
-                background: useImagesForAI
-                  ? "rgba(76,195,255,0.12)"
-                  : "rgba(255,255,255,0.055)",
-                color: useImagesForAI ? "#dff6ff" : "rgba(255,255,255,0.76)",
-                fontSize: isMobile ? 10.5 : 12,
-                fontWeight: 850,
-                whiteSpace: "nowrap",
-                cursor: images.length ? "pointer" : "default",
-                userSelect: "none",
-                opacity: images.length ? 1 : 0.9,
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={useImagesForAI}
-                disabled={!images.length}
-                onChange={(event) => setUseImagesForAI(event.target.checked)}
-                style={{
-                  width: isMobile ? 13 : 14,
-                  height: isMobile ? 13 : 14,
-                  margin: 0,
-                  accentColor: "#4cc3ff",
-                }}
-              />
-              {useImagesForAI ? "Images utilisées par l’IA" : "Images hors génération"}
-            </label>
+          {publicationMediaType === "video" && videoFile ? (
             <div
               style={{
-                flex: "0 0 auto",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: isMobile ? 6 : 8,
+                flexWrap: "nowrap",
+                maxWidth: "100%",
+                overflowX: "auto",
+                WebkitOverflowScrolling: "touch",
                 fontSize: isMobile ? 11 : 12,
-                opacity: 0.82,
+                opacity: 0.88,
                 whiteSpace: "nowrap",
               }}
             >
-              {images.length}/5 image{images.length === 1 ? "" : "s"}
+              <span>1 vidéo ajoutée</span>
+              <span>·</span>
+              <span>{BOOSTER_MAX_VIDEO_MB_LABEL} max</span>
+              <span>·</span>
+              <span>{BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL}</span>
+              <span>·</span>
+              <span>IA : audio + captures</span>
             </div>
-          </div>
+          ) : (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: isMobile ? 7 : 8,
+                flexWrap: "wrap",
+              }}
+            >
+              <label
+                title={
+                  useImagesForAI
+                    ? "Les images aideront iNrCy à rédiger un contenu plus précis."
+                    : "Les images seront utilisées uniquement pour la publication."
+                }
+                style={{
+                  flex: "0 0 auto",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: isMobile ? 5 : 7,
+                  minHeight: isMobile ? 30 : 32,
+                  padding: isMobile ? "5px 8px" : "6px 10px",
+                  borderRadius: 999,
+                  border: useImagesForAI
+                    ? "1px solid rgba(76,195,255,0.34)"
+                    : "1px solid rgba(255,255,255,0.14)",
+                  background: useImagesForAI
+                    ? "rgba(76,195,255,0.12)"
+                    : "rgba(255,255,255,0.055)",
+                  color: useImagesForAI ? "#dff6ff" : "rgba(255,255,255,0.76)",
+                  fontSize: isMobile ? 10.5 : 12,
+                  fontWeight: 850,
+                  whiteSpace: "nowrap",
+                  cursor: images.length ? "pointer" : "default",
+                  userSelect: "none",
+                  opacity: images.length ? 1 : 0.9,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={useImagesForAI}
+                  disabled={!images.length}
+                  onChange={(event) => setUseImagesForAI(event.target.checked)}
+                  style={{
+                    width: isMobile ? 13 : 14,
+                    height: isMobile ? 13 : 14,
+                    margin: 0,
+                    accentColor: "#4cc3ff",
+                  }}
+                />
+                {useImagesForAI
+                  ? "Images utilisées par l’IA"
+                  : "Images hors génération"}
+              </label>
+              <div
+                style={{
+                  flex: "0 0 auto",
+                  fontSize: isMobile ? 11 : 12,
+                  opacity: 0.82,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {images.length}/{BOOSTER_MAX_IMAGE_COUNT} image
+                {images.length === 1 ? "" : "s"}
+              </div>
+            </div>
+          )}
 
-          {imagePreviews.length ? (
+          {videoPreviewUrl && videoFile ? (
+            <div
+              style={{
+                display: isMobile ? "grid" : "flex",
+                alignItems: "center",
+                justifyContent: isMobile ? "center" : "flex-start",
+                gap: isMobile ? 10 : 12,
+                padding: isMobile ? 10 : 12,
+                borderRadius: 14,
+                border: "1px solid rgba(76,195,255,0.22)",
+                background: "rgba(76,195,255,0.08)",
+                maxWidth: "100%",
+              }}
+            >
+              <video
+                src={videoPreviewUrl}
+                controls
+                playsInline
+                style={{
+                  width: isMobile ? "min(100%, 260px)" : 260,
+                  maxWidth: "100%",
+                  height: "auto",
+                  maxHeight: isMobile ? 150 : 150,
+                  objectFit: "contain",
+                  borderRadius: 12,
+                  background: "#050816",
+                  display: "block",
+                  boxShadow: "0 10px 28px rgba(0,0,0,0.28)",
+                }}
+              />
+              <div
+                style={{
+                  display: "grid",
+                  gap: 7,
+                  minWidth: 0,
+                  justifyItems: isMobile ? "center" : "start",
+                  textAlign: isMobile ? "center" : "left",
+                }}
+              >
+                <strong
+                  style={{
+                    fontSize: isMobile ? 11 : 12,
+                    maxWidth: isMobile ? 260 : 320,
+                    overflowWrap: "anywhere",
+                  }}
+                >
+                  {videoFile.name}
+                </strong>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: isMobile ? "center" : "flex-start",
+                    gap: 7,
+                    flexWrap: "wrap",
+                    fontSize: isMobile ? 11 : 12,
+                    opacity: 0.78,
+                  }}
+                >
+                  {formatVideoSeconds(videoDurationSeconds) ? (
+                    <span>{formatVideoSeconds(videoDurationSeconds)}</span>
+                  ) : null}
+                  <span>{BOOSTER_MAX_VIDEO_MB_LABEL} max</span>
+                  <span>{BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL}</span>
+                  <span>IA : audio + captures</span>
+                </div>
+                <button
+                  type="button"
+                  className={styles.secondaryBtn}
+                  onClick={removeVideo}
+                  style={{ minHeight: 30, padding: "5px 10px", fontSize: 11 }}
+                >
+                  Supprimer
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {publicationMediaType === "images" && imagePreviews.length ? (
             <div
               style={{
                 display: "flex",
@@ -938,7 +1238,11 @@ export default function PublishIntentPanel({
               onClick={onGenerate}
               disabled={generationDisabled}
             >
-              {generating ? "Génération en cours..." : voiceState !== "idle" ? "Vocal en cours..." : "Générer avec iNrCy"}
+              {generating
+                ? "Génération en cours..."
+                : voiceState !== "idle"
+                  ? "Vocal en cours..."
+                  : "Générer avec iNrCy"}
             </button>
             <button
               type="button"
@@ -967,7 +1271,12 @@ export default function PublishIntentPanel({
                 }}
               >
                 <span>{generationStage || "Génération en cours"}</span>
-                <strong style={{ color: "rgba(255,255,255,0.9)", whiteSpace: "nowrap" }}>
+                <strong
+                  style={{
+                    color: "rgba(255,255,255,0.9)",
+                    whiteSpace: "nowrap",
+                  }}
+                >
                   {generationProgress}%
                 </strong>
               </div>
@@ -993,9 +1302,11 @@ export default function PublishIntentPanel({
                 />
               </div>
               <div style={{ fontSize: 12 }}>
-                {images.length && useImagesForAI
-                  ? "iNrCy analyse l’intention et les images, puis prépare les variantes par canal."
-                  : "iNrCy prépare les variantes adaptées à chaque canal."}
+                {publicationMediaType === "video" && videoFile
+                  ? "iNrCy analyse l’audio et les captures de votre vidéo, puis prépare les variantes par canal."
+                  : images.length && useImagesForAI
+                    ? "iNrCy analyse l’intention et les images, puis prépare les variantes par canal."
+                    : "iNrCy prépare les variantes adaptées à chaque canal."}
               </div>
             </div>
           ) : null}

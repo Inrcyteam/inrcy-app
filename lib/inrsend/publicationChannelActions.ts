@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { tryDecryptToken } from "@/lib/oauthCrypto";
-import { facebookPublishToPage } from "@/lib/facebookPublish";
-import { instagramPublishCarouselWithTokenFallback, instagramPublishPhotoWithTokenFallback, isInstagramAuthorizationErrorResult } from "@/lib/instagramPublish";
-import { linkedinPublishImage, linkedinPublishMultiImage, linkedinPublishText } from "@/lib/linkedinPublish";
+import { facebookPublishToPage, facebookPublishVideoToPage } from "@/lib/facebookPublish";
+import { instagramPublishCarouselWithTokenFallback, instagramPublishPhotoWithTokenFallback, instagramPublishVideoWithTokenFallback, isInstagramAuthorizationErrorResult } from "@/lib/instagramPublish";
+import { linkedinPublishImage, linkedinPublishMultiImage, linkedinPublishText, linkedinPublishVideo } from "@/lib/linkedinPublish";
 import { getGmbToken, gmbCreateLocalPost } from "@/lib/googleBusiness";
 import { optimizeForGoogleBusiness, optimizeForInstagram, optimizeForSiteCard, optimizeForSocialFeed } from "@/lib/imageOptimizer";
 import { createHash, randomUUID } from "crypto";
@@ -110,6 +110,20 @@ type ImageSet = {
   siteCardPublishableUrls: string[];
   gmbPublishableUrls: string[];
   editableAttachments?: EditableImageAttachment[];
+};
+
+type PublicationMediaType = "images" | "video";
+
+type PersistedVideoAttachment = {
+  name: string;
+  type: string;
+  size: number;
+  duration: number | null;
+  url: string;
+  publicUrl: string;
+  storagePath: string | null;
+  thumbnailUrl: string | null;
+  thumbnailStoragePath?: string | null;
 };
 
 function asRecord(v: unknown): JsonRecord {
@@ -382,6 +396,101 @@ function isDeletedResult(result: JsonRecord | null | undefined): boolean {
   return result.deleted === true || String(result.status || "").toLowerCase() === "deleted";
 }
 
+function normalizePublicationMediaType(value: unknown): PublicationMediaType {
+  return String(value || "").toLowerCase() === "video" ? "video" : "images";
+}
+
+function looksLikeVideoRecord(input: unknown): boolean {
+  const record = asRecord(input);
+  const type = String(record.type || record.mime || record.mimeType || record.video_mime || "").toLowerCase();
+  const url = String(record.url || record.publicUrl || record.public_url || record.videoUrl || record.video_url || record.href || "").toLowerCase().split("?")[0];
+  const name = String(record.name || record.filename || record.fileName || record.video_name || "").toLowerCase().split("?")[0];
+  return type.startsWith("video/") || /\.(mp4|mov|webm|ogg|m4v)$/.test(url) || /\.(mp4|mov|webm|ogg|m4v)$/.test(name);
+}
+
+function normalizeVideoAttachment(input: unknown): PersistedVideoAttachment | null {
+  const record = asRecord(input);
+  if (!Object.keys(record).length) return null;
+
+  const nested = asRecord(record.video);
+  const src = Object.keys(nested).length ? { ...record, ...nested } as JsonRecord : record;
+  const url = String(src.publicUrl || src.public_url || src.url || src.videoUrl || src.video_url || src.href || "").trim();
+  const storagePath = String(src.storagePath || src.storage_path || src.video_path || src.path || "").trim();
+  if (!url && !storagePath) return null;
+
+  const type = String(src.type || src.mime || src.mimeType || src.video_mime || "video/mp4").trim() || "video/mp4";
+  if (!looksLikeVideoRecord({ ...src, type, url })) return null;
+
+  const durationRaw = Number(src.duration ?? src.video_duration_seconds ?? src.durationSeconds ?? 0);
+  const sizeRaw = Number(src.size ?? src.video_size ?? src.bytes ?? 0);
+  const publicUrl = url || (storagePath && /^https?:\/\//i.test(storagePath) ? storagePath : "");
+  if (!publicUrl) return null;
+
+  return {
+    name: String(src.name || src.filename || src.fileName || src.video_name || "video-inrcy.mp4").trim() || "video-inrcy.mp4",
+    type,
+    size: Number.isFinite(sizeRaw) && sizeRaw > 0 ? sizeRaw : 0,
+    duration: Number.isFinite(durationRaw) && durationRaw > 0 ? durationRaw : null,
+    url: publicUrl,
+    publicUrl,
+    storagePath: storagePath || null,
+    thumbnailUrl: String(src.thumbnailUrl || src.thumbnail_url || src.video_thumbnail_url || "").trim() || null,
+    thumbnailStoragePath: String(src.thumbnailStoragePath || src.thumbnail_storage_path || "").trim() || null,
+  };
+}
+
+function firstVideoAttachment(...candidates: unknown[]): PersistedVideoAttachment | null {
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    if (Array.isArray(candidate)) {
+      for (const item of candidate) {
+        const normalized = normalizeVideoAttachment(item);
+        if (normalized) return normalized;
+      }
+      continue;
+    }
+    const normalized = normalizeVideoAttachment(candidate);
+    if (normalized) return normalized;
+  }
+  return null;
+}
+
+function getPublicationVideo(eventPayload: JsonRecord, publication: JsonRecord, channel?: ChannelKey): PersistedVideoAttachment | null {
+  const postByChannel = asRecord(eventPayload.postByChannel);
+  const channelPost = channel ? asRecord(postByChannel[channel]) : {};
+  const post = asRecord(eventPayload.post);
+  const publicationMetadata = asRecord(publication.media_metadata);
+  const eventMetadata = asRecord(eventPayload.media_metadata);
+
+  return firstVideoAttachment(
+    channelPost.video,
+    channelPost.attachments,
+    channelPost.media,
+    eventPayload.video,
+    eventPayload.videoDraft,
+    post.video,
+    post.attachments,
+    eventMetadata.video,
+    publicationMetadata.video,
+    {
+      name: "video-inrcy.mp4",
+      type: publication.video_mime,
+      size: publication.video_size,
+      duration: publication.video_duration_seconds,
+      publicUrl: publication.video_url,
+      url: publication.video_url,
+      storagePath: publication.video_path,
+      thumbnailUrl: publication.video_thumbnail_url,
+    }
+  );
+}
+
+function getEventPublicationMediaType(eventPayload: JsonRecord, publication: JsonRecord, channel?: ChannelKey): PublicationMediaType {
+  const postByChannel = asRecord(eventPayload.postByChannel);
+  const channelPost = channel ? asRecord(postByChannel[channel]) : {};
+  return normalizePublicationMediaType(channelPost.mediaType || eventPayload.mediaType || eventPayload.media_type || publication.media_type || (getPublicationVideo(eventPayload, publication, channel) ? "video" : "images"));
+}
+
 function getChannelPost(eventPayload: JsonRecord, publication: JsonRecord, channel: ChannelKey): PostPayload {
   const postByChannel = asRecord(eventPayload.postByChannel);
   const fallbackChannelPost = channel === "inrcy_site" ? postByChannel.site_web : channel === "site_web" ? postByChannel.inrcy_site : null;
@@ -421,7 +530,7 @@ async function getLatestIntegrationRow(userId: string, provider: string, source:
 async function loadPublicationContext(userId: string, publicationId: string) {
   const { data: publication, error: publicationError } = await supabaseAdmin
     .from("publications")
-    .select("id,user_id,title,content,cta,hashtags,images,idea,created_at")
+    .select("id,user_id,title,content,cta,hashtags,images,idea,created_at,media_type,video_url,video_path,video_mime,video_size,video_duration_seconds,video_thumbnail_url,media_metadata")
     .eq("id", publicationId)
     .eq("user_id", userId)
     .maybeSingle();
@@ -891,9 +1000,15 @@ async function replaceChannelDelivery(params: {
   publication: JsonRecord;
   eventPayload: JsonRecord;
   nextPost: PostPayload;
+  mediaType?: PublicationMediaType;
+  video?: PersistedVideoAttachment | null;
   imageSet?: ImageSet | null;
 }) {
   const { userId, publicationId, channel, previousExternalId, publication, eventPayload, nextPost, imageSet } = params;
+  const mediaType = params.mediaType || getEventPublicationMediaType(eventPayload, publication, channel);
+  const video = params.video || getPublicationVideo(eventPayload, publication, channel);
+  const isVideoPublication = mediaType === "video" && !!video?.publicUrl;
+  const videoUrl = String(video?.publicUrl || video?.url || "").trim();
   const resolvedImageSet = imageSet ?? getChannelImageSet(eventPayload, publication, channel);
   const images = resolvedImageSet.images;
   const socialFeedImageUrls = resolvedImageSet.socialFeedPublishableUrls.length ? resolvedImageSet.socialFeedPublishableUrls : images;
@@ -924,7 +1039,17 @@ async function replaceChannelDelivery(params: {
         content: nextPost.content,
         cta: nextPost.cta,
         hashtags: nextPost.hashtags,
-        images: siteCardImageUrls.length ? siteCardImageUrls : images,
+        images: isVideoPublication ? [] : (siteCardImageUrls.length ? siteCardImageUrls : images),
+        ...(isVideoPublication && video ? {
+          media_type: "video",
+          video_url: video.publicUrl,
+          video_path: video.storagePath,
+          video_mime: video.type,
+          video_size: video.size,
+          video_duration_seconds: video.duration,
+          video_thumbnail_url: video.thumbnailUrl,
+          media_metadata: { video },
+        } : {}),
       })
       .eq("id", previousExternalId || "")
       .eq("user_id", userId)
@@ -960,6 +1085,32 @@ async function replaceChannelDelivery(params: {
         userMessage: facebookUserError,
       });
       throw new Error(facebookUserError);
+    }
+
+    if (isVideoPublication && videoUrl) {
+      if (previousExternalId) await deleteFacebookPost(previousExternalId, pageToken);
+      const resp = await facebookPublishVideoToPage({
+        pageId,
+        pageAccessToken: pageToken,
+        description: canonMessage,
+        videoUrl,
+        title: nextPost.title || undefined,
+      });
+      if (!resp.ok) {
+        const facebookUserError = getPublishChannelUserMessage("facebook", resp.error);
+        logPublishChannelFailure({
+          route: "inrsend_publication_channel_action",
+          channel: "facebook",
+          userId,
+          publicationId: publicationId || null,
+          stage: "publish_video",
+          error: resp.error,
+          userMessage: facebookUserError,
+          diagnostics: resp,
+        });
+        throw new Error(facebookUserError);
+      }
+      return { externalId: resp.postId, status: "delivered", error: null };
     }
 
     const currentImageSet = getChannelImageSet(eventPayload, publication, channel);
@@ -1011,9 +1162,63 @@ async function replaceChannelDelivery(params: {
       });
       throw new Error(instagramUserError);
     }
+    let previousDeleteResult: InstagramDeleteResult | null = null;
+    if (isVideoPublication && videoUrl) {
+      if (previousExternalId) {
+        previousDeleteResult = await deleteInstagramMediaWithFallback(previousExternalId, { igRow, fbRow, channelResult: asRecord(asRecord(eventPayload.results).instagram), allowLocalFallback: true });
+        await logInstagramAction({
+          userId,
+          publicationId: publicationId || null,
+          action: "replace",
+          externalId: previousExternalId,
+          result: previousDeleteResult as unknown as JsonRecord,
+        });
+      }
+      const instagramTokenCandidates = buildInstagramDeleteTokenCandidates([
+        { sourceLabel: "instagram", row: igRow },
+        { sourceLabel: "facebook", row: fbRow },
+      ]).map((candidate) => ({ source: candidate.source, accessToken: candidate.token }));
+      const caption = buildBoosterInstagramCaption(nextPost, { websiteUrl, phone });
+      const resp = await instagramPublishVideoWithTokenFallback({
+        igUserId,
+        accessToken: igToken,
+        tokenCandidates: instagramTokenCandidates,
+        caption,
+        videoUrl,
+      });
+      if (!resp.ok) {
+        const instagramUserError = (isInstagramAuthorizationErrorResult(resp) || isInstagramAuthorizationLikeMessage(`instagram ${resp.error}`))
+          ? INSTAGRAM_RECONNECT_USER_MESSAGE
+          : getPublishChannelUserMessage("instagram", resp.error, "La publication Instagram a échoué.");
+        logPublishChannelFailure({
+          route: "inrsend_publication_channel_action",
+          channel: "instagram",
+          userId,
+          publicationId: publicationId || null,
+          stage: "publish_video",
+          error: resp.error,
+          userMessage: instagramUserError,
+          diagnostics: resp,
+        });
+        throw new Error(instagramUserError);
+      }
+      return {
+        externalId: resp.mediaId,
+        status: "delivered",
+        error: previousDeleteResult && !previousDeleteResult.ok
+          ? "Nouvelle version publiée. Instagram n’a pas confirmé la suppression automatique de l’ancien post."
+          : null,
+        instagramMeta: {
+          instagram_media_type: resp.mediaType,
+          instagram_parent_media_id: resp.parentMediaId || resp.mediaId,
+          instagram_child_media_ids: resp.childMediaIds || resp.childContainerIds || [],
+          instagram_delete_previous_result: previousDeleteResult || null,
+        },
+      };
+    }
+
     const instagramImages = instagramImageUrls.filter(Boolean).slice(0, 10);
     if (!instagramImages.length) throw new Error("Instagram nécessite au moins 1 image.");
-    let previousDeleteResult: InstagramDeleteResult | null = null;
     if (previousExternalId) {
       previousDeleteResult = await deleteInstagramMediaWithFallback(previousExternalId, { igRow, fbRow, channelResult: asRecord(asRecord(eventPayload.results).instagram), allowLocalFallback: true });
       await logInstagramAction({
@@ -1101,11 +1306,32 @@ async function replaceChannelDelivery(params: {
     }
     if (previousExternalId) await deleteLinkedInPost(previousExternalId, accessToken);
     const linkedInImages = socialFeedImageUrls.filter(Boolean).slice(0, 20);
-    const resp = linkedInImages.length > 1
-      ? await linkedinPublishMultiImage({ accessToken, authorUrn, text: canonMessage, imageUrls: linkedInImages, title: nextPost.title || undefined })
-      : linkedInImages[0]
-        ? await linkedinPublishImage({ accessToken, authorUrn, text: canonMessage, imageUrl: linkedInImages[0], title: nextPost.title || undefined })
-        : await linkedinPublishText({ accessToken, authorUrn, text: canonMessage });
+    let linkedInWarning: { code: string; message: string } | null = null;
+    let resp = isVideoPublication && videoUrl
+      ? await linkedinPublishVideo({ accessToken, authorUrn, text: canonMessage, videoUrl, title: nextPost.title || undefined })
+      : linkedInImages.length > 1
+        ? await linkedinPublishMultiImage({ accessToken, authorUrn, text: canonMessage, imageUrls: linkedInImages, title: nextPost.title || undefined })
+        : linkedInImages[0]
+          ? await linkedinPublishImage({ accessToken, authorUrn, text: canonMessage, imageUrl: linkedInImages[0], title: nextPost.title || undefined })
+          : await linkedinPublishText({ accessToken, authorUrn, text: canonMessage });
+
+    if (!resp.ok && isVideoPublication && videoUrl) {
+      const fallbackResp = await linkedinPublishText({ accessToken, authorUrn, text: canonMessage });
+      if (fallbackResp.ok) {
+        linkedInWarning = {
+          code: "published_without_video",
+          message: "LinkedIn a publié le texte, mais la vidéo n'a pas pu être jointe cette fois-ci.",
+        };
+        resp = {
+          ...fallbackResp,
+          diagnostics: {
+            mediaPublishError: resp.error,
+            mediaPublishDiagnostics: resp.diagnostics,
+            fallback: "text_only",
+          },
+        };
+      }
+    }
     if (!resp.ok) {
       const linkedInUserError = getPublishChannelUserMessage("linkedin", resp.error);
       logPublishChannelFailure({
@@ -1120,7 +1346,13 @@ async function replaceChannelDelivery(params: {
       });
       throw new Error(linkedInUserError);
     }
-    return { externalId: resp.postUrn || null, status: "delivered", error: null };
+    return {
+      externalId: resp.postUrn || null,
+      status: "delivered",
+      error: linkedInWarning?.message || null,
+      warning: linkedInWarning?.code || null,
+      warningMessage: linkedInWarning?.message || null,
+    };
   }
 
   if (channel === "gmb") {
@@ -1157,16 +1389,41 @@ async function replaceChannelDelivery(params: {
     }
     try {
       if (previousExternalId) await deleteGmbPost(previousExternalId, token.accessToken);
-      const resp = await gmbCreateLocalPost({
-        accessToken: token.accessToken,
-        accountName,
-        locationName,
-        summary: buildBoosterGmbSummary(nextPost),
-        imageUrls: gmbImageUrls,
-        languageCode: "fr-FR",
-        callToAction: getBoosterGmbCallToAction(nextPost, { websiteUrl, phone }) || undefined,
-      });
-      return { externalId: String(asRecord(resp).name ?? "") || null, status: "delivered", error: null };
+      let gmbWarning: { code: string; message: string } | null = null;
+      let resp: unknown;
+      try {
+        resp = await gmbCreateLocalPost({
+          accessToken: token.accessToken,
+          accountName,
+          locationName,
+          summary: buildBoosterGmbSummary(nextPost),
+          imageUrls: isVideoPublication ? undefined : gmbImageUrls,
+          videoUrls: isVideoPublication && videoUrl ? [videoUrl] : undefined,
+          languageCode: "fr-FR",
+          callToAction: getBoosterGmbCallToAction(nextPost, { websiteUrl, phone }) || undefined,
+        });
+      } catch (mediaError) {
+        if (!isVideoPublication) throw mediaError;
+        resp = await gmbCreateLocalPost({
+          accessToken: token.accessToken,
+          accountName,
+          locationName,
+          summary: buildBoosterGmbSummary(nextPost),
+          languageCode: "fr-FR",
+          callToAction: getBoosterGmbCallToAction(nextPost, { websiteUrl, phone }) || undefined,
+        });
+        gmbWarning = {
+          code: "published_without_video",
+          message: "Google Business a publié le texte, mais la vidéo n'a pas pu être jointe cette fois-ci.",
+        };
+      }
+      return {
+        externalId: String(asRecord(resp).name ?? "") || null,
+        status: "delivered",
+        error: gmbWarning?.message || null,
+        warning: gmbWarning?.code || null,
+        warningMessage: gmbWarning?.message || null,
+      };
     } catch (gmbError: unknown) {
       const gmbUserError = getPublishChannelUserMessage("gmb", gmbError);
       logPublishChannelFailure({
@@ -1261,10 +1518,17 @@ function buildUpdatedPayload(params: {
   channel: ChannelKey;
   nextPost: PostPayload;
   externalId: string | null;
+  mediaType?: PublicationMediaType;
+  video?: PersistedVideoAttachment | null;
   imageSet?: ImageSet | null;
   instagramMeta?: JsonRecord | null;
+  warning?: string | null;
+  warningMessage?: string | null;
 }) {
   const { eventPayload, publication, channel, nextPost, externalId, imageSet, instagramMeta } = params;
+  const mediaType = params.mediaType || getEventPublicationMediaType(eventPayload, publication, channel);
+  const video = params.video || getPublicationVideo(eventPayload, publication, channel);
+  const isVideoPublication = mediaType === "video" && !!video?.publicUrl;
   const results = cloneRecord(asRecord(eventPayload.results));
   const channelResult = asRecord(results[channel]);
   results[channel] = {
@@ -1272,8 +1536,9 @@ function buildUpdatedPayload(params: {
     ok: true,
     status: "delivered",
     deleted: false,
-    error: null,
+    error: params.warningMessage || null,
     external_id: externalId,
+    ...(params.warning ? { warning: params.warning, warning_message: params.warningMessage || null } : {}),
     ...(channel === "instagram" && instagramMeta ? instagramMeta : {}),
     updated_at: new Date().toISOString(),
   };
@@ -1285,7 +1550,18 @@ function buildUpdatedPayload(params: {
     ...nextPost,
   };
 
-  if (imageSet) {
+  if (isVideoPublication && video) {
+    nextChannelPost.mediaType = "video";
+    nextChannelPost.images = [];
+    nextChannelPost.video = video;
+    nextChannelPost.attachments = [video];
+    nextChannelPost.publishableUrls = [];
+    nextChannelPost.instagramPublishableUrls = [];
+    nextChannelPost.socialFeedPublishableUrls = [];
+    nextChannelPost.siteCardPublishableUrls = [];
+    nextChannelPost.gmbPublishableUrls = [];
+  } else if (imageSet) {
+    nextChannelPost.mediaType = "images";
     nextChannelPost.images = imageSet.images;
     nextChannelPost.attachments = imageSet.editableAttachments?.length ? imageSet.editableAttachments : imageSet.images;
     nextChannelPost.publishableUrls = imageSet.images;
@@ -1304,6 +1580,8 @@ function buildUpdatedPayload(params: {
     },
     post: channel === "inrcy_site" || channel === "site_web" ? asRecord(eventPayload.post) : eventPayload.post,
     results,
+    mediaType: isVideoPublication ? "video" : (eventPayload.mediaType || eventPayload.media_type || "images"),
+    ...(isVideoPublication && video ? { video } : {}),
   };
 
   if (!asRecord(nextPayload.post).title && !asRecord(nextPayload.post).content) {
@@ -1373,10 +1651,15 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
           : currentPost.hashtags,
       };
 
-      const retainedImages = Array.isArray(body.retainedImages)
-        ? body.retainedImages.map((value: unknown) => String(value || "").trim()).filter(Boolean)
-        : getChannelImageSet(ctx.eventPayload, ctx.publication, channel).images;
-      const newImages = Array.isArray(body.newImages)
+      const mediaType = getEventPublicationMediaType(ctx.eventPayload, ctx.publication, channel);
+      const video = mediaType === "video" ? getPublicationVideo(ctx.eventPayload, ctx.publication, channel) : null;
+
+      const retainedImages = mediaType === "images"
+        ? Array.isArray(body.retainedImages)
+          ? body.retainedImages.map((value: unknown) => String(value || "").trim()).filter(Boolean)
+          : getChannelImageSet(ctx.eventPayload, ctx.publication, channel).images
+        : [];
+      const newImages = mediaType === "images" && Array.isArray(body.newImages)
         ? body.newImages
             .map((value: unknown) => asRecord(value))
             .map((value) => ({
@@ -1396,15 +1679,20 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
       if (retainedImages.length + newImages.length > 5) {
         return jsonUserFacingError("Maximum 5 images par publication.", { status: 400, code: "too_many_images" });
       }
+      if (mediaType === "video" && !video?.publicUrl) {
+        return jsonUserFacingError("Vidéo introuvable. Merci de relancer la publication depuis Booster.", { status: 400, code: "video_missing" });
+      }
 
-      const imageSet = await updatePublicationImages({
-        userId: user.id,
-        publication: ctx.publication,
-        eventPayload: ctx.eventPayload,
-        channel,
-        retainedImages,
-        newImages,
-      });
+      const imageSet = mediaType === "images"
+        ? await updatePublicationImages({
+            userId: user.id,
+            publication: ctx.publication,
+            eventPayload: ctx.eventPayload,
+            channel,
+            retainedImages,
+            newImages,
+          })
+        : null;
 
       const previousExternalId = String(body.externalId ?? channelResult.external_id ?? "").trim() || null;
       const replaceResult = await replaceChannelDelivery({
@@ -1415,6 +1703,8 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
         publication: ctx.publication,
         eventPayload: ctx.eventPayload,
         nextPost,
+        mediaType,
+        video,
         imageSet,
       });
 
@@ -1424,8 +1714,12 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
         channel,
         nextPost,
         externalId: replaceResult.externalId,
+        mediaType,
+        video,
         imageSet,
         instagramMeta: asRecord((replaceResult as JsonRecord).instagramMeta),
+        warning: String((replaceResult as JsonRecord).warning || "").trim() || null,
+        warningMessage: String((replaceResult as JsonRecord).warningMessage || replaceResult.error || "").trim() || null,
       });
 
       await persistEventPayload(user.id, publicationId, nextPayload);

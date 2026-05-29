@@ -27,8 +27,17 @@ type PreviewImage = {
   imageMeta?: ImageMeta;
 };
 
+type PreviewVideo = {
+  previewUrl: string;
+  name?: string | null;
+  type?: string | null;
+  size?: number | null;
+  duration?: number | null;
+};
+
 export type PublicationPreview = {
   channelKey: string;
+  mediaType?: "images" | "video";
   channelLabel: string;
   title?: string | null;
   content?: string | null;
@@ -37,6 +46,7 @@ export type PublicationPreview = {
   image?: PreviewImage | null;
   images?: PreviewImage[];
   imageCount?: number;
+  video?: PreviewVideo | null;
   formatLabel?: string;
 };
 
@@ -322,6 +332,82 @@ function FinalImageFrame({
       {badge ? (
         <div style={{ position: "absolute", right: 8, bottom: 8, fontSize: 11, padding: "5px 8px", borderRadius: 999, background: "rgba(6,10,20,0.72)", border: "1px solid rgba(255,255,255,0.12)", color: "#fff" }}>
           {badge}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+
+function formatPreviewVideoSeconds(seconds?: number | null) {
+  const numeric = Number(seconds);
+  if (!Number.isFinite(numeric) || numeric <= 0) return "";
+  const total = Math.max(0, Math.round(numeric));
+  const minutes = Math.floor(total / 60);
+  const rest = total % 60;
+  return `${minutes}:${String(rest).padStart(2, "0")}`;
+}
+
+function formatPreviewVideoBytes(bytes?: number | null) {
+  const numeric = Number(bytes);
+  if (!Number.isFinite(numeric) || numeric <= 0) return "";
+  return `${(numeric / (1024 * 1024)).toFixed(numeric >= 10 * 1024 * 1024 ? 0 : 1)} Mo`;
+}
+
+function VideoPreviewFrame({
+  video,
+  aspectRatio,
+  badge = "Vidéo",
+  dark = false,
+}: {
+  video?: PreviewVideo | null;
+  aspectRatio: string;
+  badge?: string;
+  dark?: boolean;
+}) {
+  const src = String(video?.previewUrl || "").trim();
+  const duration = formatPreviewVideoSeconds(video?.duration);
+  const size = formatPreviewVideoBytes(video?.size);
+  const meta = [duration, size].filter(Boolean).join(" · ");
+
+  return (
+    <div
+      style={{
+        position: "relative",
+        borderRadius: "inherit",
+        overflow: "hidden",
+        aspectRatio,
+        background: dark ? "#020617" : "#0f172a",
+        border: "1px solid rgba(255,255,255,0.08)",
+        display: "grid",
+        placeItems: "center",
+      }}
+    >
+      {src ? (
+        <video
+          src={src}
+          controls
+          playsInline
+          preload="metadata"
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "contain",
+            display: "block",
+            background: "#020617",
+          }}
+        />
+      ) : (
+        <div style={{ color: "rgba(255,255,255,0.68)", fontSize: 12 }}>Aucune vidéo</div>
+      )}
+      {badge ? (
+        <div style={{ position: "absolute", left: 8, bottom: 8, fontSize: 11, padding: "5px 8px", borderRadius: 999, background: "rgba(6,10,20,0.72)", border: "1px solid rgba(255,255,255,0.12)", color: "#fff", pointerEvents: "none" }}>
+          {badge}
+        </div>
+      ) : null}
+      {meta ? (
+        <div style={{ position: "absolute", right: 8, bottom: 8, fontSize: 11, padding: "5px 8px", borderRadius: 999, background: "rgba(6,10,20,0.72)", border: "1px solid rgba(255,255,255,0.12)", color: "#fff", pointerEvents: "none" }}>
+          {meta}
         </div>
       ) : null}
     </div>
@@ -674,6 +760,7 @@ function SitePreviewCard({
   content,
   cta,
   images,
+  video,
   isInrcySite,
   onOpen,
 }: {
@@ -682,6 +769,7 @@ function SitePreviewCard({
   content: string;
   cta: string;
   images: PreviewImage[];
+  video?: PreviewVideo | null;
   isInrcySite: boolean;
   onOpen: (index: number) => void;
 }) {
@@ -697,7 +785,9 @@ function SitePreviewCard({
       </div>
       <article style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "minmax(0, 0.95fr) minmax(0, 1fr)", gap: isMobile ? 10 : 14, alignItems: "start", minWidth: 0 }}>
         <div style={{ borderRadius: isInrcySite ? 16 : 10, overflow: "hidden", background: "#eef2f7", minWidth: 0 }}>
-          {safeImages.length > 1 ? (
+          {video?.previewUrl ? (
+            <VideoPreviewFrame video={video} aspectRatio={mediaAspectRatio} badge="Vidéo site" />
+          ) : safeImages.length > 1 ? (
             <SocialCarouselPreview images={safeImages} aspectRatio={mediaAspectRatio} fallbackMode="color" onOpen={onOpen} />
           ) : (
             <button type="button" onClick={() => onOpen(0)} style={{ display: "block", width: "100%", border: 0, padding: 0, background: "transparent", cursor: safeImages[0] ? "pointer" : "default" }}>
@@ -721,7 +811,7 @@ function SitePreviewCard({
   );
 }
 
-function GoogleBusinessPreviewCard({ mode, title, content, cta, image, onOpen }: { mode: "desktop" | "mobile"; title: string; content: string; cta: string; image: PreviewImage | null; onOpen: () => void }) {
+function GoogleBusinessPreviewCard({ mode, title, content, cta, image, video, onOpen }: { mode: "desktop" | "mobile"; title: string; content: string; cta: string; image: PreviewImage | null; video?: PreviewVideo | null; onOpen: () => void }) {
   const isMobile = mode === "mobile";
   return (
     <article style={{ width: "100%", maxWidth: isMobile ? 360 : 620, margin: "0 auto", borderRadius: isMobile ? 24 : 22, background: "#ffffff", color: "#111827", overflow: "hidden", border: "1px solid rgba(255,255,255,0.10)", boxShadow: "0 16px 45px rgba(0,0,0,0.22)", minWidth: 0 }}>
@@ -734,9 +824,13 @@ function GoogleBusinessPreviewCard({ mode, title, content, cta, image, onOpen }:
       </div>
       <div style={{ padding: isMobile ? "0 12px" : "0 14px" }}>
         <div style={{ borderRadius: 16, overflow: "hidden", background: "#eef2f7" }}>
-          <button type="button" onClick={onOpen} style={{ display: "block", width: "100%", border: 0, padding: 0, background: "transparent", cursor: image ? "pointer" : "default" }}>
-            <FinalImageFrame image={image} aspectRatio="4 / 3" fallbackMode="color" />
-          </button>
+          {video?.previewUrl ? (
+            <VideoPreviewFrame video={video} aspectRatio="4 / 3" badge="Vidéo" />
+          ) : (
+            <button type="button" onClick={onOpen} style={{ display: "block", width: "100%", border: 0, padding: 0, background: "transparent", cursor: image ? "pointer" : "default" }}>
+              <FinalImageFrame image={image} aspectRatio="4 / 3" fallbackMode="color" />
+            </button>
+          )}
         </div>
       </div>
       <div style={{ display: "grid", gap: 9, padding: isMobile ? 12 : 16 }}>
@@ -756,6 +850,7 @@ function InstagramPreviewCard({
   cta,
   hashtags,
   images,
+  video,
   onOpen,
 }: {
   mode: "desktop" | "mobile";
@@ -765,10 +860,13 @@ function InstagramPreviewCard({
   cta: string;
   hashtags: string[];
   images: PreviewImage[];
+  video?: PreviewVideo | null;
   onOpen: (index: number) => void;
 }) {
   const isMobile = mode === "mobile";
   const caption = titleValue ? `${title}\n\n${content}` : content;
+  const hasVideo = !!video?.previewUrl;
+
   if (isMobile) {
     return (
       <article style={{ width: "100%", maxWidth: 360, margin: "0 auto", borderRadius: 24, background: "#ffffff", color: "#111827", overflow: "hidden", border: "1px solid rgba(255,255,255,0.10)", boxShadow: "0 16px 45px rgba(0,0,0,0.22)", minWidth: 0 }}>
@@ -779,7 +877,11 @@ function InstagramPreviewCard({
             <div style={{ fontSize: 11, color: "#6b7280" }}>Instagram</div>
           </div>
         </div>
-        <SocialCarouselPreview images={images} aspectRatio="4 / 5" fallbackMode="black" dark onOpen={onOpen} />
+        {hasVideo ? (
+          <VideoPreviewFrame video={video} aspectRatio="4 / 5" badge="Vidéo Instagram" dark />
+        ) : (
+          <SocialCarouselPreview images={images} aspectRatio="4 / 5" fallbackMode="black" dark onOpen={onOpen} />
+        )}
         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, padding: "10px 12px 0", fontSize: 18 }}>
           <div style={{ display: "flex", gap: 12 }}><span>♡</span><span>💬</span><span>➤</span></div><span>⌑</span>
         </div>
@@ -795,7 +897,11 @@ function InstagramPreviewCard({
   return (
     <article style={{ width: "100%", maxWidth: 880, margin: "0 auto", borderRadius: 22, background: "#ffffff", color: "#111827", overflow: "hidden", border: "1px solid rgba(255,255,255,0.10)", boxShadow: "0 16px 45px rgba(0,0,0,0.22)", display: "grid", gridTemplateColumns: "minmax(0, 1.08fr) minmax(0, 0.92fr)", minWidth: 0 }}>
       <div style={{ minWidth: 0, background: "#000" }}>
-        <SocialCarouselPreview images={images} aspectRatio="4 / 5" fallbackMode="black" dark onOpen={onOpen} />
+        {hasVideo ? (
+          <VideoPreviewFrame video={video} aspectRatio="4 / 5" badge="Vidéo Instagram" dark />
+        ) : (
+          <SocialCarouselPreview images={images} aspectRatio="4 / 5" fallbackMode="black" dark onOpen={onOpen} />
+        )}
       </div>
       <div style={{ minWidth: 0, display: "grid", gridTemplateRows: "auto 1fr auto", maxHeight: 560 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "14px 16px", borderBottom: "1px solid #e5e7eb" }}>
@@ -812,14 +918,14 @@ function InstagramPreviewCard({
         </div>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "12px 16px", borderTop: "1px solid #e5e7eb", color: "#6b7280", fontSize: 12 }}>
           <div style={{ display: "flex", gap: 12 }}><span>♡</span><span>💬</span><span>➤</span></div>
-          <div>{images.length > 1 ? `${images.length} photos` : "1 photo"}</div>
+          <div>{hasVideo ? "1 vidéo" : images.length > 1 ? `${images.length} photos` : "1 photo"}</div>
         </div>
       </div>
     </article>
   );
 }
 
-function FeedPreviewCard({ mode, channel, title, content, cta, images, onOpen }: { mode: "desktop" | "mobile"; channel: "facebook" | "linkedin"; title: string; content: string; cta: string; images: PreviewImage[]; onOpen: (index: number) => void }) {
+function FeedPreviewCard({ mode, channel, title, content, cta, images, video, onOpen }: { mode: "desktop" | "mobile"; channel: "facebook" | "linkedin"; title: string; content: string; cta: string; images: PreviewImage[]; video?: PreviewVideo | null; onOpen: (index: number) => void }) {
   const isMobile = mode === "mobile";
   const isLinkedin = channel === "linkedin";
   const label = isLinkedin ? "LinkedIn" : "Facebook";
@@ -838,9 +944,9 @@ function FeedPreviewCard({ mode, channel, title, content, cta, images, onOpen }:
           <div style={{ display: "-webkit-box", WebkitLineClamp: isMobile ? 5 : 7, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{content}</div>
           {cta ? <div style={{ marginTop: 10, fontWeight: 800, color: isLinkedin ? "#0a66c2" : "#1877f2" }}>{cta}</div> : null}
         </div>
-        <StackedImageGridPreview images={images} aspectRatio="1 / 1" fallbackMode="color" onOpen={onOpen} />
+        {video?.previewUrl ? <div style={{ borderRadius: 18, overflow: "hidden" }}><VideoPreviewFrame video={video} aspectRatio="1 / 1" badge={`Vidéo ${label}`} /></div> : <StackedImageGridPreview images={images} aspectRatio="1 / 1" fallbackMode="color" onOpen={onOpen} />}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, paddingTop: 4, borderTop: "1px solid #e5e7eb", color: "#6b7280", fontSize: 12, flexWrap: "wrap" }}>
-          <div>{images.length > 1 ? `${images.length} photos • cliquez pour ouvrir` : "1 photo • cliquez pour ouvrir"}</div>
+          <div>{video?.previewUrl ? "1 vidéo" : images.length > 1 ? `${images.length} photos • cliquez pour ouvrir` : "1 photo • cliquez pour ouvrir"}</div>
           <div style={{ display: "flex", gap: 12 }}>
             <span>J’aime</span>
             <span>Commenter</span>
@@ -871,6 +977,8 @@ export function ChannelPublicationPreview({ preview }: { preview: PublicationPre
   const image = preview.image ? { ...preview.image, preset: preview.image.preset || fallbackPreset } : null;
   const images = (rawImages.length ? rawImages : image ? [image] : []).map((item) => ({ ...item, preset: item.preset || fallbackPreset }));
   const firstImage = images[0] || image || null;
+  const video = preview.mediaType === "video" && preview.video?.previewUrl ? preview.video : null;
+  const hasVideo = !!video;
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
   const openLightbox = (index: number) => setLightboxIndex(index);
   const closeLightbox = () => setLightboxIndex(null);
@@ -879,13 +987,13 @@ export function ChannelPublicationPreview({ preview }: { preview: PublicationPre
     const isInrcySite = key === "inrcy_site";
     return (
       <>
-        <PreviewBlockShell eyebrow="rendu iframe intégré" title={preview.channelLabel} note="Aperçu séparé desktop/mobile. Dès qu’il y a 2 images ou plus, le site passe en carousel. Cliquez sur une image pour l’ouvrir en grand.">
+        <PreviewBlockShell eyebrow="rendu iframe intégré" title={preview.channelLabel} note={hasVideo ? "Aperçu séparé desktop/mobile avec lecteur vidéo intégré." : "Aperçu séparé desktop/mobile. Dès qu’il y a 2 images ou plus, le site passe en carousel. Cliquez sur une image pour l’ouvrir en grand."}>
           <DevicePreviewSwitcher
-            desktop={<SitePreviewCard mode="desktop" title={title} content={content} cta={cta} images={images} isInrcySite={isInrcySite} onOpen={openLightbox} />}
-            mobile={<SitePreviewCard mode="mobile" title={title} content={content} cta={cta} images={images} isInrcySite={isInrcySite} onOpen={openLightbox} />}
+            desktop={<SitePreviewCard mode="desktop" title={title} content={content} cta={cta} images={images} video={video} isInrcySite={isInrcySite} onOpen={openLightbox} />}
+            mobile={<SitePreviewCard mode="mobile" title={title} content={content} cta={cta} images={images} video={video} isInrcySite={isInrcySite} onOpen={openLightbox} />}
           />
         </PreviewBlockShell>
-        <PublicationPreviewLightbox open={lightboxIndex !== null} images={images} initialIndex={lightboxIndex || 0} aspectRatio="16 / 10" fallbackMode="color" onClose={closeLightbox} />
+        {!hasVideo ? <PublicationPreviewLightbox open={lightboxIndex !== null} images={images} initialIndex={lightboxIndex || 0} aspectRatio="16 / 10" fallbackMode="color" onClose={closeLightbox} /> : null}
       </>
     );
   }
@@ -893,13 +1001,13 @@ export function ChannelPublicationPreview({ preview }: { preview: PublicationPre
   if (isInstagram) {
     return (
       <>
-        <PreviewBlockShell eyebrow={preview.formatLabel || "image finale"} title={preview.channelLabel} note="Instagram : desktop avec média à gauche et légende à droite. Mobile : image puis contenu en dessous. Carousel simulé si plusieurs photos.">
+        <PreviewBlockShell eyebrow={preview.formatLabel || "image finale"} title={preview.channelLabel} note={hasVideo ? "Instagram : lecteur vidéo à gauche en desktop, vidéo puis légende en mobile." : "Instagram : desktop avec média à gauche et légende à droite. Mobile : image puis contenu en dessous. Carousel simulé si plusieurs photos."}>
           <DevicePreviewSwitcher
-            desktop={<InstagramPreviewCard mode="desktop" titleValue={titleValue} title={title} content={content} cta={cta} hashtags={hashtags} images={images} onOpen={openLightbox} />}
-            mobile={<InstagramPreviewCard mode="mobile" titleValue={titleValue} title={title} content={content} cta={cta} hashtags={hashtags} images={images} onOpen={openLightbox} />}
+            desktop={<InstagramPreviewCard mode="desktop" titleValue={titleValue} title={title} content={content} cta={cta} hashtags={hashtags} images={images} video={video} onOpen={openLightbox} />}
+            mobile={<InstagramPreviewCard mode="mobile" titleValue={titleValue} title={title} content={content} cta={cta} hashtags={hashtags} images={images} video={video} onOpen={openLightbox} />}
           />
         </PreviewBlockShell>
-        <PublicationPreviewLightbox open={lightboxIndex !== null} images={images} initialIndex={lightboxIndex || 0} aspectRatio="4 / 5" fallbackMode="black" onClose={closeLightbox} />
+        {!hasVideo ? <PublicationPreviewLightbox open={lightboxIndex !== null} images={images} initialIndex={lightboxIndex || 0} aspectRatio="4 / 5" fallbackMode="black" onClose={closeLightbox} /> : null}
       </>
     );
   }
@@ -907,13 +1015,13 @@ export function ChannelPublicationPreview({ preview }: { preview: PublicationPre
   if (isGmb) {
     return (
       <>
-        <PreviewBlockShell eyebrow={preview.formatLabel || "image finale"} title={preview.channelLabel} note="Google Business : photo en haut, contenu en dessous, en desktop comme en mobile.">
+        <PreviewBlockShell eyebrow={preview.formatLabel || "image finale"} title={preview.channelLabel} note={hasVideo ? "Google Business : aperçu vidéo en haut, contenu en dessous. Compatibilité publication API à valider à l’étape canaux." : "Google Business : photo en haut, contenu en dessous, en desktop comme en mobile."}>
           <DevicePreviewSwitcher
-            desktop={<GoogleBusinessPreviewCard mode="desktop" title={title} content={content} cta={cta} image={firstImage} onOpen={() => openLightbox(0)} />}
-            mobile={<GoogleBusinessPreviewCard mode="mobile" title={title} content={content} cta={cta} image={firstImage} onOpen={() => openLightbox(0)} />}
+            desktop={<GoogleBusinessPreviewCard mode="desktop" title={title} content={content} cta={cta} image={firstImage} video={video} onOpen={() => openLightbox(0)} />}
+            mobile={<GoogleBusinessPreviewCard mode="mobile" title={title} content={content} cta={cta} image={firstImage} video={video} onOpen={() => openLightbox(0)} />}
           />
         </PreviewBlockShell>
-        <PublicationPreviewLightbox open={lightboxIndex !== null} images={images} initialIndex={lightboxIndex || 0} aspectRatio="4 / 3" fallbackMode="color" onClose={closeLightbox} />
+        {!hasVideo ? <PublicationPreviewLightbox open={lightboxIndex !== null} images={images} initialIndex={lightboxIndex || 0} aspectRatio="4 / 3" fallbackMode="color" onClose={closeLightbox} /> : null}
       </>
     );
   }
@@ -921,13 +1029,13 @@ export function ChannelPublicationPreview({ preview }: { preview: PublicationPre
   const networkLabel = isLinkedin ? "LinkedIn" : "Facebook";
   return (
     <>
-      <PreviewBlockShell eyebrow={preview.formatLabel || "image finale"} title={preview.channelLabel} note={`${networkLabel} : texte au-dessus, photos empilées en dessous. Clic sur les photos = carousel.`}>
+      <PreviewBlockShell eyebrow={preview.formatLabel || "image finale"} title={preview.channelLabel} note={hasVideo ? `${networkLabel} : texte au-dessus, vidéo en dessous avec lecteur.` : `${networkLabel} : texte au-dessus, photos empilées en dessous. Clic sur les photos = carousel.`}>
         <DevicePreviewSwitcher
-          desktop={<FeedPreviewCard mode="desktop" channel={isLinkedin ? "linkedin" : "facebook"} title={title} content={content} cta={cta} images={images} onOpen={openLightbox} />}
-          mobile={<FeedPreviewCard mode="mobile" channel={isLinkedin ? "linkedin" : "facebook"} title={title} content={content} cta={cta} images={images} onOpen={openLightbox} />}
+          desktop={<FeedPreviewCard mode="desktop" channel={isLinkedin ? "linkedin" : "facebook"} title={title} content={content} cta={cta} images={images} video={video} onOpen={openLightbox} />}
+          mobile={<FeedPreviewCard mode="mobile" channel={isLinkedin ? "linkedin" : "facebook"} title={title} content={content} cta={cta} images={images} video={video} onOpen={openLightbox} />}
         />
       </PreviewBlockShell>
-      <PublicationPreviewLightbox open={lightboxIndex !== null} images={images} initialIndex={lightboxIndex || 0} aspectRatio="1 / 1" fallbackMode="color" onClose={closeLightbox} />
+      {!hasVideo ? <PublicationPreviewLightbox open={lightboxIndex !== null} images={images} initialIndex={lightboxIndex || 0} aspectRatio="1 / 1" fallbackMode="color" onClose={closeLightbox} /> : null}
     </>
   );
 }

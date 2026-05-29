@@ -425,6 +425,11 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                   });
                   const imageAttachments = dedupedAttachments.filter((att) => att?.url && isImageAttachment(att));
                   const videoAttachments = dedupedAttachments.filter((att) => att?.url && isVideoAttachment(att));
+                  const activeVideoAttachment = videoAttachments[0] || null;
+                  const isVideoPublication = detailsItem.source === "app_events" && (
+                    String(payload?.mediaType || payload?.media_type || "").toLowerCase() === "video" ||
+                    Boolean(activeVideoAttachment)
+                  );
                   const fileAttachments = dedupedAttachments.filter((att) => !imageAttachments.includes(att) && !videoAttachments.includes(att));
                   const hasAttachments = imageAttachments.length > 0 || videoAttachments.length > 0 || fileAttachments.length > 0;
                   const showFallbackMessage = (() => {
@@ -450,13 +455,25 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                       .filter(Boolean);
                     return {
                       channelKey: activePublicationEditChannelKey,
+                      mediaType: isVideoPublication ? "video" as const : "images" as const,
                       channelLabel: activePublicationEntry?.label || formatChannelLabel(activePublicationEditChannelKey),
                       title: publicationEditForm.title,
                       content: publicationEditForm.content,
                       cta: getPublicationPreviewCta(publicationDisplayKey, publicationEditForm),
                       hashtags,
-                      imageCount: selectedAssets.length,
-                      formatLabel: activePublicationEditChannelKey === "inrcy_site" || activePublicationEditChannelKey === "site_web" ? "Rendu site / iframe" : `Image finale : ${activePublicationEditPreset.width}×${activePublicationEditPreset.height}`,
+                      imageCount: isVideoPublication ? 0 : selectedAssets.length,
+                      video: isVideoPublication && activeVideoAttachment?.url
+                        ? {
+                            previewUrl: activeVideoAttachment.url,
+                            name: activeVideoAttachment.name || "Vidéo iNrCy",
+                            type: activeVideoAttachment.type || "video/mp4",
+                            size: activeVideoAttachment.size || null,
+                            duration: (activeVideoAttachment as any).duration || null,
+                          }
+                        : null,
+                      formatLabel: isVideoPublication
+                        ? "Vidéo finale"
+                        : activePublicationEditChannelKey === "inrcy_site" || activePublicationEditChannelKey === "site_web" ? "Rendu site / iframe" : `Image finale : ${activePublicationEditPreset.width}×${activePublicationEditPreset.height}`,
                       image: firstAsset
                         ? {
                             previewUrl: firstAsset.previewUrl,
@@ -478,7 +495,10 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                         <section className={styles.detailSectionCard}>
                           <div className={styles.detailSectionHeader}>
                             <div>
-                              <div className={styles.detailsTitle}>{detailsItem.title || "(sans objet)"}</div>
+                              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                                <div className={styles.detailsTitle}>{detailsItem.title || "(sans objet)"}</div>
+                                {isVideoPublication ? <span className={styles.publicationMediaBadge}>🎬 Vidéo</span> : null}
+                              </div>
                               <div className={styles.detailsSub}>{formatOutboxStatusLabel(detailsItem)}</div>
                             </div>
                           </div>
@@ -1125,22 +1145,50 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
 
                         {detailsItem.source === "app_events" && detailsEditMode && activePublicationEntry && !activePublicationDeleted ? (
                           <>
-                            <InrcyCameraCaptureModal
-                              open={publicationCameraOpen}
-                              title="Prendre une photo"
-                              onClose={closePublicationCamera}
-                              onCapture={async (file) => {
-                                markPublicationEditDirty();
-                                addPublicationPhoto(file);
-                                restoreDetailsModalScroll();
-                              }}
-                            />
+                            {!isVideoPublication ? (
+                              <InrcyCameraCaptureModal
+                                open={publicationCameraOpen}
+                                title="Appareil iNrCy"
+                                onClose={closePublicationCamera}
+                                onCapture={async (file) => {
+                                  markPublicationEditDirty();
+                                  addPublicationPhoto(file);
+                                  restoreDetailsModalScroll();
+                                }}
+                              />
+                            ) : null}
 
-                            <section className={styles.detailSectionCard}>
-                              <div className={styles.detailSectionHeader}>
-                                <div className={styles.messageHeaderTitle}>Images de la publication</div>
-                              </div>
-                              <div style={{ display: "grid", gap: 12 }}>
+                            {isVideoPublication ? (
+                              <section className={styles.detailSectionCard}>
+                                <div className={styles.detailSectionHeader}>
+                                  <div className={styles.messageHeaderTitle}>Vidéo de la publication</div>
+                                </div>
+                                <div style={{ display: "grid", gap: 12 }}>
+                                  {activeVideoAttachment?.url ? (
+                                    <div className={styles.attachmentPreviewCard} style={{ width: "min(520px, 100%)", flexBasis: "min(520px, 100%)" }}>
+                                      <video
+                                        src={activeVideoAttachment.url}
+                                        className={styles.attachmentPreviewImage}
+                                        controls
+                                        preload="metadata"
+                                        style={{ height: 260 }}
+                                      />
+                                      <div className={styles.attachmentPreviewCaption}>{activeVideoAttachment.name || "Vidéo iNrCy"}</div>
+                                    </div>
+                                  ) : (
+                                    <div className={styles.emptyDetailText}>Vidéo introuvable.</div>
+                                  )}
+                                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>
+                                    En modification V1, la vidéo est conservée. Vous pouvez modifier les textes, CTA et hashtags, puis republier le canal.
+                                  </div>
+                                </div>
+                              </section>
+                            ) : (
+                              <section className={styles.detailSectionCard}>
+                                <div className={styles.detailSectionHeader}>
+                                  <div className={styles.messageHeaderTitle}>Images de la publication</div>
+                                </div>
+                                <div style={{ display: "grid", gap: 12 }}>
                                 <input
                                   id={publicationEditFileInputId}
                                   type="file"
@@ -1179,7 +1227,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                         cursor: !isMobileViewport || activePublicationEditAssets.length >= 5 ? "not-allowed" : "pointer",
                                       }}
                                     >
-                                      📷 Photo
+                                      📷 Appareil iNrCy
                                     </button>
                                   </span>
                                   <span style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
@@ -1233,8 +1281,9 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                   showTabs={false}
                                   emptyMessage="Aucune image pour ce canal."
                                 />
-                              </div>
-                            </section>
+                                </div>
+                              </section>
+                            )}
 
                             <section className={styles.detailSectionCard}>
                               <div className={styles.detailSectionHeader}>
@@ -1402,7 +1451,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                           <section className={styles.detailSectionCard}>
                             <div className={styles.detailSectionHeader}>
                               <div className={styles.messageHeaderTitle}>
-                                {detailsItem.source === "app_events" ? "Images de la publication" : "Documents envoyés"}
+                                {detailsItem.source === "app_events" ? (isVideoPublication ? "Média de la publication" : "Images de la publication") : "Documents envoyés"}
                               </div>
                             </div>
 

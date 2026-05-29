@@ -708,7 +708,9 @@
   overflow-x: hidden;
   text-overflow: ellipsis;
   max-width: 100%;
+  min-width: 0;
 }
+
 
 @media (max-width: 640px) {
   .listHeader {
@@ -3154,6 +3156,25 @@
   box-shadow:0 8px 18px rgba(0,0,0,0.16), 0 0 0 1px rgba(255,255,255,0.04) inset;
 }
 
+
+.publicationMediaBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 22px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(76, 195, 255, 0.34);
+  background: rgba(76, 195, 255, 0.13);
+  color: rgba(234, 247, 255, 0.96);
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1;
+  white-space: nowrap;
+  flex: 0 0 auto;
+  box-shadow: 0 8px 16px rgba(0,0,0,0.12);
+}
+
 .itemDateCell {
   min-width: 0;
   justify-self: stretch;
@@ -3253,7 +3274,8 @@
     color: rgba(235,242,255,0.82);
   }
 
-  .itemDateCell {
+  
+.itemDateCell {
     display: none;
   }
 

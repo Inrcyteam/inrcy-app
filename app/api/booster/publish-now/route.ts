@@ -5,9 +5,9 @@ import { tryDecryptToken } from "@/lib/oauthCrypto";
 import { randomUUID } from "crypto";
 
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { facebookPublishToPage } from "@/lib/facebookPublish";
-import { instagramPublishCarouselWithTokenFallback, instagramPublishPhotoWithTokenFallback, isInstagramAuthorizationErrorResult } from "@/lib/instagramPublish";
-import { linkedinPublishImage, linkedinPublishMultiImage, linkedinPublishText } from "@/lib/linkedinPublish";
+import { facebookPublishToPage, facebookPublishVideoToPage } from "@/lib/facebookPublish";
+import { instagramPublishCarouselWithTokenFallback, instagramPublishPhotoWithTokenFallback, instagramPublishVideoWithTokenFallback, isInstagramAuthorizationErrorResult } from "@/lib/instagramPublish";
+import { linkedinPublishImage, linkedinPublishMultiImage, linkedinPublishText, linkedinPublishVideo } from "@/lib/linkedinPublish";
 import { getGmbToken, gmbCreateLocalPost } from "@/lib/googleBusiness";
 import { optimizeForGoogleBusiness, optimizeForInstagram, optimizeForSiteCard, optimizeForSocialFeed } from "@/lib/imageOptimizer";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
@@ -88,6 +88,39 @@ type ImagePayload = {
   transform?: unknown;
   imageMeta?: unknown;
 };
+
+type PublicationMediaType = "images" | "video";
+
+type VideoPayload = {
+  name?: string;
+  type?: string;
+  size?: number;
+  lastModified?: number;
+  duration?: number | null;
+  storagePath?: string;
+  publicUrl?: string;
+  url?: string;
+  thumbnailUrl?: string | null;
+  thumbnailStoragePath?: string | null;
+};
+
+type PersistedVideoAttachment = {
+  name: string;
+  type: string;
+  size: number;
+  duration: number | null;
+  url: string;
+  publicUrl: string;
+  storagePath: string | null;
+  thumbnailUrl: string | null;
+  thumbnailStoragePath: string | null;
+};
+
+const BOOSTER_MAX_VIDEO_BYTES = 40 * 1024 * 1024;
+
+function normalizePublicationMediaType(value: unknown): PublicationMediaType {
+  return value === "video" ? "video" : "images";
+}
 
 type EditableImageAttachment = {
   name: string;
@@ -195,6 +228,43 @@ async function buildUrlsFromStoragePath(path: string): Promise<{ publicUrl: stri
   return {
     publicUrl,
     signedUrl: signed?.data?.signedUrl || publicUrl,
+  };
+}
+
+async function normalizeVideoPayload(input: unknown): Promise<{ video: PersistedVideoAttachment | null; error?: string }> {
+  const raw = asRecord(input);
+  if (!Object.keys(raw).length) return { video: null };
+
+  const storagePath = String(raw["storagePath"] || "").trim();
+  const directPublicUrl = String(raw["publicUrl"] || raw["url"] || "").trim();
+  let publicUrl = directPublicUrl;
+
+  if (!publicUrl && storagePath) {
+    const urls = await buildUrlsFromStoragePath(storagePath);
+    publicUrl = urls.publicUrl || urls.signedUrl || "";
+  }
+
+  if (!publicUrl) return { video: null, error: "Vidéo introuvable. Merci de la renvoyer." };
+
+  const size = Number(raw["size"] || 0);
+  if (Number.isFinite(size) && size > BOOSTER_MAX_VIDEO_BYTES) {
+    return { video: null, error: "Vidéo trop lourde. Taille maximale : 40 Mo." };
+  }
+
+  const durationRaw = Number(raw["duration"] || 0);
+  const duration = Number.isFinite(durationRaw) && durationRaw > 0 ? durationRaw : null;
+  return {
+    video: {
+      name: String(raw["name"] || "video-inrcy.mp4"),
+      type: String(raw["type"] || "video/mp4"),
+      size: Number.isFinite(size) && size > 0 ? size : 0,
+      duration,
+      url: publicUrl,
+      publicUrl,
+      storagePath: storagePath || null,
+      thumbnailUrl: String(raw["thumbnailUrl"] || raw["video_thumbnail_url"] || "").trim() || null,
+      thumbnailStoragePath: String(raw["thumbnailStoragePath"] || "").trim() || null,
+    },
   };
 }
 
@@ -577,9 +647,13 @@ const body = await req.json().catch(() => null);
     const post = (body.post || {}) as PostPayload;
     const postByChannel = ((body.postByChannel || {}) as PostByChannel) || {};
     const idea = String(body.idea || "").trim();
-    const images = (Array.isArray(body.images) ? body.images : []) as ImagePayload[];
-    const imagesByChannel = ((body.imagesByChannel || {}) as ImagesByChannel) || {};
-    const imageSettingsByChannel = (body.imageSettingsByChannel || {}) as Record<string, unknown>;
+    const mediaType = normalizePublicationMediaType(body.mediaType);
+    const images = mediaType === "images" ? ((Array.isArray(body.images) ? body.images : []) as ImagePayload[]) : [];
+    const imagesByChannel = mediaType === "images" ? (((body.imagesByChannel || {}) as ImagesByChannel) || {}) : {};
+    const imageSettingsByChannel = mediaType === "images" ? ((body.imageSettingsByChannel || {}) as Record<string, unknown>) : {};
+    const { video: publicationVideo, error: videoPayloadError } = mediaType === "video"
+      ? await normalizeVideoPayload(body.video)
+      : { video: null as PersistedVideoAttachment | null, error: undefined as string | undefined };
     const workflowToolRaw = String(body.workflowTool || "").trim().toLowerCase();
     const workflowActionRaw = String(body.workflowAction || "").trim().toLowerCase();
     const workflowTrackTypeRaw = String(body.workflowTrackType || "").trim().toLowerCase();
@@ -589,7 +663,14 @@ const body = await req.json().catch(() => null);
     const eventModule = isValorisation ? "propulser" : "booster";
     const eventType = isValorisation ? "valorize" : "publish";
     const workflowAction = isValorisation ? "valoriser" : "publier";
-    const hadAnyImageInput = images.length > 0 || Object.values(imagesByChannel).some((value) => Array.isArray(value) && value.length > 0);
+    const hadAnyImageInput = mediaType === "images" && (images.length > 0 || Object.values(imagesByChannel).some((value) => Array.isArray(value) && value.length > 0));
+
+    if (mediaType === "video" && videoPayloadError) {
+      return NextResponse.json({ ok: false, error: videoPayloadError }, { status: 400 });
+    }
+    if (mediaType === "video" && !publicationVideo) {
+      return NextResponse.json({ ok: false, error: "Ajoutez une vidéo avant de publier." }, { status: 400 });
+    }
 
     const selected = Array.from(new Set(channels)).filter(Boolean);
     if (!selected.length) {
@@ -623,7 +704,9 @@ const body = await req.json().catch(() => null);
 
     const firstPost = getChannelPost(selected[0]);
 
-    const selectedImageFormats = mergeImageFormats(...selected.map((channel) => getRequiredImageFormatsForChannel(channel)));
+    const selectedImageFormats = mediaType === "images"
+      ? mergeImageFormats(...selected.map((channel) => getRequiredImageFormatsForChannel(channel)))
+      : EMPTY_IMAGE_FORMATS;
 
     // 1) Upload images to Supabase Storage (bucket: booster) + collect diagnostics.
     // Only prepare the image derivatives required by the selected channels.
@@ -667,16 +750,31 @@ const body = await req.json().catch(() => null);
     // 2) Persist publication
     const publicationId = randomUUID();
 
-    const { error: pubErr } = await supabaseAdmin.from("publications").insert({
+    const publicationInsert: JsonRecord = {
       id: publicationId,
       user_id: userId,
       title: firstPost.title,
       content: firstPost.content,
       cta: firstPost.cta,
       hashtags: firstPost.hashtags,
-      images: uploadedUrls,
+      images: mediaType === "images" ? uploadedUrls : [],
       idea,
-    });
+    };
+
+    // Champs ajoutés par ops/sql/2026-05-29_booster_video_publication_columns.sql.
+    // On ne les ajoute que pour une vidéo pour ne pas casser les anciennes bases tant que le SQL n'est pas appliqué.
+    if (mediaType === "video" && publicationVideo) {
+      publicationInsert.media_type = "video";
+      publicationInsert.video_url = publicationVideo.publicUrl;
+      publicationInsert.video_path = publicationVideo.storagePath;
+      publicationInsert.video_mime = publicationVideo.type;
+      publicationInsert.video_size = publicationVideo.size;
+      publicationInsert.video_duration_seconds = publicationVideo.duration;
+      publicationInsert.video_thumbnail_url = publicationVideo.thumbnailUrl;
+      publicationInsert.media_metadata = { video: publicationVideo };
+    }
+
+    const { error: pubErr } = await supabaseAdmin.from("publications").insert(publicationInsert);
 
     if (pubErr) {
       return NextResponse.json({ error: "Impossible d'enregistrer la publication pour le moment.", uploadErrors }, { status: 500 });
@@ -750,6 +848,7 @@ const body = await req.json().catch(() => null);
       try {
         const channelPost = getChannelPost(ch);
         const canonMessage = buildBoosterMessage(ch, channelPost, { websiteUrl: siteWebUrl || inrcySiteUrl, phone: businessPhone });
+
         if (ch === "inrcy_site" || ch === "site_web") {
           // We treat "publication" as an "article/actu" for the site.
           // This creates a record that your iNrCy site renderer (or your pro's website connector)
@@ -783,7 +882,7 @@ const body = await req.json().catch(() => null);
             content: channelPost.content,
             cta: channelPost.cta,
             hashtags: channelPost.hashtags,
-            images: (() => {
+            images: mediaType === "images" ? (() => {
               const channelImageSet = getChannelImageSet(ch);
               // For website embeds, always prefer the original uploaded assets.
               // They preserve the real framing and avoid publishing the blurred
@@ -793,7 +892,17 @@ const body = await req.json().catch(() => null);
                 : channelImageSet.socialFeedPublishableUrls.length
                   ? channelImageSet.socialFeedPublishableUrls
                   : channelImageSet.siteCardPublishableUrls;
-            })(),
+            })() : [],
+            ...(mediaType === "video" && publicationVideo ? {
+              media_type: "video",
+              video_url: publicationVideo.publicUrl,
+              video_path: publicationVideo.storagePath,
+              video_mime: publicationVideo.type,
+              video_size: publicationVideo.size,
+              video_duration_seconds: publicationVideo.duration,
+              video_thumbnail_url: publicationVideo.thumbnailUrl,
+              media_metadata: { video: publicationVideo },
+            } : {}),
             external_url: externalUrl,     // ✅ si tu veux (optionnel)
             site_url: targetUrl || null,   // ✅ si tu veux (optionnel)
           });
@@ -847,12 +956,20 @@ const body = await req.json().catch(() => null);
             continue;
           }
 
-          const resp = await facebookPublishToPage({
-            pageId,
-            pageAccessToken: pageToken,
-            message: canonMessage,
-            imageUrls: (getChannelImageSet(ch).socialFeedPublishableUrls.length ? getChannelImageSet(ch).socialFeedPublishableUrls : socialFeedImageUrls).slice(0, 5),
-          });
+          const resp = mediaType === "video" && publicationVideo
+            ? await facebookPublishVideoToPage({
+                pageId,
+                pageAccessToken: pageToken,
+                description: canonMessage,
+                title: channelPost.title || undefined,
+                videoUrl: publicationVideo.publicUrl,
+              })
+            : await facebookPublishToPage({
+                pageId,
+                pageAccessToken: pageToken,
+                message: canonMessage,
+                imageUrls: (getChannelImageSet(ch).socialFeedPublishableUrls.length ? getChannelImageSet(ch).socialFeedPublishableUrls : socialFeedImageUrls).slice(0, 5),
+              });
 
           if (!resp.ok) {
             const facebookUserError = getPublishChannelUserMessage("facebook", resp.error);
@@ -903,29 +1020,39 @@ const body = await req.json().catch(() => null);
           }
 
           const instagramCaption = buildBoosterInstagramCaption(channelPost, { websiteUrl: siteWebUrl || inrcySiteUrl, phone: businessPhone });
-          const instagramImages = (getChannelImageSet(ch).instagramPublishableUrls.length ? getChannelImageSet(ch).instagramPublishableUrls : instagramImageUrls).filter(Boolean).slice(0, 10);
-          if (!instagramImages.length) {
-            await setDelivery(ch, { status: "failed", error: "Instagram nécessite au moins 1 image" });
-            results[ch] = { ok: false, error: "Instagram a besoin d'au moins une image pour publier." };
-            continue;
-          }
-
           const instagramTokenCandidates = buildInstagramPublishTokenCandidates(ig, fbRow);
-          const resp = instagramImages.length > 1
-            ? await instagramPublishCarouselWithTokenFallback({
-                igUserId,
-                accessToken: igToken,
-                tokenCandidates: instagramTokenCandidates,
-                caption: instagramCaption,
-                imageUrls: instagramImages,
-              })
-            : await instagramPublishPhotoWithTokenFallback({
-                igUserId,
-                accessToken: igToken,
-                tokenCandidates: instagramTokenCandidates,
-                caption: instagramCaption,
-                imageUrl: instagramImages[0],
-              });
+          let resp;
+          if (mediaType === "video" && publicationVideo) {
+            resp = await instagramPublishVideoWithTokenFallback({
+              igUserId,
+              accessToken: igToken,
+              tokenCandidates: instagramTokenCandidates,
+              caption: instagramCaption,
+              videoUrl: publicationVideo.publicUrl,
+            });
+          } else {
+            const instagramImages = (getChannelImageSet(ch).instagramPublishableUrls.length ? getChannelImageSet(ch).instagramPublishableUrls : instagramImageUrls).filter(Boolean).slice(0, 10);
+            if (!instagramImages.length) {
+              await setDelivery(ch, { status: "failed", error: "Instagram nécessite au moins 1 image" });
+              results[ch] = { ok: false, error: "Instagram a besoin d'au moins une image pour publier." };
+              continue;
+            }
+            resp = instagramImages.length > 1
+              ? await instagramPublishCarouselWithTokenFallback({
+                  igUserId,
+                  accessToken: igToken,
+                  tokenCandidates: instagramTokenCandidates,
+                  caption: instagramCaption,
+                  imageUrls: instagramImages,
+                })
+              : await instagramPublishPhotoWithTokenFallback({
+                  igUserId,
+                  accessToken: igToken,
+                  tokenCandidates: instagramTokenCandidates,
+                  caption: instagramCaption,
+                  imageUrl: instagramImages[0],
+                });
+          }
 
           if (!resp.ok) {
             const instagramUserError = (isInstagramAuthorizationErrorResult(resp) || isInstagramAuthorizationLikeMessage(`instagram ${resp.error}`))
@@ -991,40 +1118,56 @@ const body = await req.json().catch(() => null);
             continue;
           }
           const linkedInImages = (getChannelImageSet(ch).socialFeedPublishableUrls.length ? getChannelImageSet(ch).socialFeedPublishableUrls : socialFeedImageUrls.length ? socialFeedImageUrls : externalImageUrls).filter(Boolean).slice(0, 20);
-          let resp = linkedInImages.length > 1
-            ? await linkedinPublishMultiImage({
+          const isLinkedInVideo = mediaType === "video" && publicationVideo;
+          let linkedInWarning: { code: string; message: string } | null = null;
+          let resp = isLinkedInVideo
+            ? await linkedinPublishVideo({
                 accessToken,
                 authorUrn: useAuthor,
                 text: canonMessage,
-                imageUrls: linkedInImages,
+                videoUrl: publicationVideo!.publicUrl,
                 title: channelPost.title || undefined,
               })
-            : linkedInImages[0]
-              ? await linkedinPublishImage({
+            : linkedInImages.length > 1
+              ? await linkedinPublishMultiImage({
                   accessToken,
                   authorUrn: useAuthor,
                   text: canonMessage,
-                  imageUrl: linkedInImages[0],
+                  imageUrls: linkedInImages,
                   title: channelPost.title || undefined,
                 })
-              : await linkedinPublishText({
-                  accessToken,
-                  authorUrn: useAuthor,
-                  text: canonMessage,
-                });
+              : linkedInImages[0]
+                ? await linkedinPublishImage({
+                    accessToken,
+                    authorUrn: useAuthor,
+                    text: canonMessage,
+                    imageUrl: linkedInImages[0],
+                    title: channelPost.title || undefined,
+                  })
+                : await linkedinPublishText({
+                    accessToken,
+                    authorUrn: useAuthor,
+                    text: canonMessage,
+                  });
 
-          if (!resp.ok && linkedInImages[0]) {
+          if (!resp.ok && (isLinkedInVideo || linkedInImages[0])) {
             const fallbackResp = await linkedinPublishText({
               accessToken,
               authorUrn: useAuthor,
               text: canonMessage,
             });
             if (fallbackResp.ok) {
+              linkedInWarning = isLinkedInVideo
+                ? {
+                    code: "published_without_video",
+                    message: "LinkedIn a publié le texte, mais la vidéo n'a pas pu être jointe cette fois-ci.",
+                  }
+                : null;
               resp = {
                 ...fallbackResp,
                 diagnostics: {
-                  imagePublishError: resp.error,
-                  imagePublishDiagnostics: resp.diagnostics,
+                  mediaPublishError: resp.error,
+                  mediaPublishDiagnostics: resp.diagnostics,
                   fallback: "text_only",
                 },
               };
@@ -1050,7 +1193,12 @@ const body = await req.json().catch(() => null);
 
           await setDelivery(ch, { status: "delivered", error: null });
 
-          results[ch] = { ok: true, external_id: resp.postUrn || null, diagnostics: resp };
+          results[ch] = {
+            ok: true,
+            external_id: resp.postUrn || null,
+            diagnostics: resp,
+            ...(linkedInWarning ? { warning: linkedInWarning.code, warning_message: linkedInWarning.message } : {}),
+          };
           continue;
         }
 
@@ -1093,7 +1241,10 @@ const body = await req.json().catch(() => null);
           }
 
           const gmbChannelImageSet = getChannelImageSet(ch);
-          const gmbChannelImages = (gmbChannelImageSet.gmbPublishableUrls.length ? gmbChannelImageSet.gmbPublishableUrls : gmbImageUrls.length ? gmbImageUrls : gmbChannelImageSet.publishableUrls).filter(Boolean).slice(0, 1);
+          const gmbChannelImages = mediaType === "images"
+            ? (gmbChannelImageSet.gmbPublishableUrls.length ? gmbChannelImageSet.gmbPublishableUrls : gmbImageUrls.length ? gmbImageUrls : gmbChannelImageSet.publishableUrls).filter(Boolean).slice(0, 1)
+            : [];
+          const gmbChannelVideos = mediaType === "video" && publicationVideo ? [publicationVideo.publicUrl].filter(Boolean).slice(0, 1) : [];
           const gmbSummary = buildBoosterGmbSummary(channelPost);
           const gmbCallToAction = getBoosterGmbCallToAction(channelPost, { websiteUrl: siteWebUrl || inrcySiteUrl, phone: businessPhone });
           let gmbResp: any;
@@ -1106,11 +1257,13 @@ const body = await req.json().catch(() => null);
               locationName,
               summary: gmbSummary,
               imageUrls: gmbChannelImages.length ? gmbChannelImages : undefined,
+              videoUrls: gmbChannelVideos.length ? gmbChannelVideos : undefined,
               languageCode: "fr-FR",
               callToAction: gmbCallToAction || undefined,
             });
           } catch (gmbErr: unknown) {
-            const retryWithoutImages = async () => gmbCreateLocalPost({
+            const hasMedia = Boolean(gmbChannelImages.length || gmbChannelVideos.length);
+            const retryWithoutMedia = async () => gmbCreateLocalPost({
               accessToken: tok.accessToken,
               accountName,
               locationName,
@@ -1124,17 +1277,23 @@ const body = await req.json().catch(() => null);
               locationName,
               summary: gmbSummary,
               imageUrls: gmbChannelImages.length ? gmbChannelImages : undefined,
+              videoUrls: gmbChannelVideos.length ? gmbChannelVideos : undefined,
               languageCode: "fr-FR",
             });
             try {
-              if (!gmbChannelImages.length) throw gmbErr;
-              gmbResp = await retryWithoutImages();
-              gmbWarning = {
-                code: isGoogleBusinessImageError(gmbErr) ? "published_without_image" : "published_after_retry_without_image",
-                message: isGoogleBusinessImageError(gmbErr)
-                  ? "Google Business a publié le texte, mais n'a pas pu récupérer l'image. Vérifiez que l'image reste publique et accessible sans connexion."
-                  : "Google Business a publié le texte après une reprise automatique. L'image n'a pas pu être jointe cette fois-ci.",
-              };
+              if (!hasMedia) throw gmbErr;
+              gmbResp = await retryWithoutMedia();
+              gmbWarning = mediaType === "video"
+                ? {
+                    code: "published_without_video",
+                    message: "Google Business a publié le texte, mais la vidéo n'a pas pu être jointe cette fois-ci.",
+                  }
+                : {
+                    code: isGoogleBusinessImageError(gmbErr) ? "published_without_image" : "published_after_retry_without_image",
+                    message: isGoogleBusinessImageError(gmbErr)
+                      ? "Google Business a publié le texte, mais n'a pas pu récupérer l'image. Vérifiez que l'image reste publique et accessible sans connexion."
+                      : "Google Business a publié le texte après une reprise automatique. L'image n'a pas pu être jointe cette fois-ci.",
+                  };
             } catch (retryError: unknown) {
               if (gmbCallToAction) {
                 try {
@@ -1180,9 +1339,23 @@ const body = await req.json().catch(() => null);
       }
     }
 
+    const persistedVideo = mediaType === "video" && publicationVideo ? publicationVideo : null;
+
     const persistedPostByChannel = Object.fromEntries(
       selected.map((channel) => {
         const baseValue = (postByChannel as Record<string, unknown>)[channel] as Record<string, unknown> | undefined;
+        if (mediaType === "video" && persistedVideo) {
+          return [
+            channel,
+            {
+              ...(baseValue || {}),
+              images: [],
+              attachments: [persistedVideo],
+              video: persistedVideo,
+            },
+          ];
+        }
+
         const imageSet = channelImageSets[channel];
         return [
           channel,
@@ -1212,6 +1385,8 @@ const body = await req.json().catch(() => null);
           ok: false,
           error: "Aucun canal n'a pu publier. Les compteurs et les UI n'ont pas été mis à jour.",
           publication_id: publicationId,
+          mediaType,
+          video: persistedVideo,
           images: uploadedUrls,
           publishableUrls,
           instagramPublishableUrls,
@@ -1235,6 +1410,8 @@ const body = await req.json().catch(() => null);
       payload: {
         workflowTool: eventModule,
         workflowAction,
+        mediaType,
+        video: persistedVideo,
         idea,
         channels: summary.successChannels,
         attemptedChannels: selected,
@@ -1257,6 +1434,8 @@ const body = await req.json().catch(() => null);
     return NextResponse.json({
       ok: true,
       publication_id: publicationId,
+      mediaType,
+      video: persistedVideo,
       images: uploadedUrls,
       publishableUrls,
       instagramPublishableUrls,

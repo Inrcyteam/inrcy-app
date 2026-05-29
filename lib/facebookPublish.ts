@@ -145,3 +145,69 @@ export async function facebookPublishToPage(params: {
     };
   }
 }
+
+async function fetchMediaBlob(mediaUrl: string, fallbackType = "application/octet-stream"): Promise<Blob> {
+  if (mediaUrl.startsWith("data:")) {
+    const m = mediaUrl.match(/^data:([^;]+);base64,(.+)$/);
+    if (!m) throw new Error("Média invalide.");
+    return new Blob([Buffer.from(m[2] || "", "base64")], { type: m[1] || fallbackType });
+  }
+
+  const mediaRes = await fetch(mediaUrl, { cache: "no-store" });
+  if (!mediaRes.ok) {
+    throw new Error(`Impossible de récupérer la vidéo pour Facebook (${mediaRes.status}).`);
+  }
+  const ab = await mediaRes.arrayBuffer();
+  const contentType = mediaRes.headers.get("content-type") || fallbackType;
+  return new Blob([ab], { type: contentType });
+}
+
+export async function facebookPublishVideoToPage(params: {
+  pageId: string;
+  pageAccessToken: string;
+  description: string;
+  videoUrl: string;
+  title?: string;
+}): Promise<PublishResult> {
+  const { pageId, pageAccessToken, description, videoUrl, title } = params;
+
+  try {
+    if (!pageId || !pageAccessToken) return { ok: false, error: "Facebook à connecter. Rendez-vous dans Canaux." };
+    if (!videoUrl?.trim()) return { ok: false, error: "Ajoutez une vidéo avant de publier sur Facebook." };
+
+    const videoBlob = await fetchMediaBlob(videoUrl, "video/mp4");
+    const form = new FormData();
+    form.append("access_token", pageAccessToken);
+    form.append("description", description || "");
+    if (title?.trim()) form.append("title", title.trim().slice(0, 120));
+    form.append("source", videoBlob, "video-inrcy.mp4");
+
+    const uploadRes = await fetch(
+      `https://graph.facebook.com/${FACEBOOK_GRAPH_VERSION}/${encodeURIComponent(pageId)}/videos`,
+      { method: "POST", body: form }
+    );
+
+    const uploadJson: any = await uploadRes.json().catch(() => ({}));
+    if (!uploadRes.ok) {
+      return {
+        ok: false,
+        error: uploadJson?.error?.message || "Impossible de publier la vidéo sur Facebook pour le moment.",
+      };
+    }
+
+    const videoId = String(uploadJson?.id || "");
+    if (!videoId) return { ok: false, error: "Facebook n'a pas renvoyé l'identifiant de la vidéo." };
+
+    return {
+      ok: true,
+      postId: videoId,
+      uploadedImages: 0,
+      failedImages: 0,
+    };
+  } catch (e: any) {
+    return {
+      ok: false,
+      error: e?.message || "Impossible de publier la vidéo sur Facebook pour le moment.",
+    };
+  }
+}

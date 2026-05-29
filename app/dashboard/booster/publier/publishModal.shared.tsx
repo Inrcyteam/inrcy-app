@@ -124,8 +124,46 @@ export const CHANNEL_PRESETS: Record<ChannelKey, RenderPreset> = {
   linkedin: { width: 1200, height: 1200, defaultFit: "cover", defaultBlurBackground: false },
 };
 
+export type PublicationMediaType = "images" | "video";
+
+export const BOOSTER_MAX_IMAGE_COUNT = 5;
 export const BOOSTER_MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 export const BOOSTER_MAX_IMAGE_MB_LABEL = "8 Mo";
+export const BOOSTER_MAX_VIDEO_COUNT = 1;
+export const BOOSTER_MAX_VIDEO_BYTES = 40 * 1024 * 1024;
+export const BOOSTER_MAX_VIDEO_MB_LABEL = "40 Mo";
+export const BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL = "3 min conseillées";
+
+export const BOOSTER_ALLOWED_VIDEO_MIME_TYPES = [
+  "video/mp4",
+  "video/webm",
+  "video/quicktime",
+  "video/x-m4v",
+] as const;
+
+export function normalizePublicationMediaType(value: unknown): PublicationMediaType {
+  return value === "video" ? "video" : "images";
+}
+
+export function isBoosterImageFile(file: Pick<File, "type">) {
+  return String(file?.type || "").startsWith("image/");
+}
+
+export function isBoosterVideoFile(file: Pick<File, "type" | "name">) {
+  const type = String(file?.type || "").toLowerCase().split(";")[0]?.trim() || "";
+  const name = String(file?.name || "").toLowerCase();
+  return (
+    BOOSTER_ALLOWED_VIDEO_MIME_TYPES.includes(type as typeof BOOSTER_ALLOWED_VIDEO_MIME_TYPES[number]) ||
+    /\.(mp4|mov|webm|m4v)$/i.test(name)
+  );
+}
+
+export function getPublicationMediaLabel(mediaType: PublicationMediaType, count: number) {
+  if (mediaType === "video") return count ? "1 vidéo" : "Aucune vidéo";
+  return count
+    ? `${count}/${BOOSTER_MAX_IMAGE_COUNT} image${count > 1 ? "s" : ""}`
+    : "Aucune image";
+}
 
 export type TextFieldKey = "title" | "content" | "cta" | "hashtags";
 export type LimitTone = "ok" | "warn" | "over";
@@ -430,6 +468,11 @@ export type BoosterAiImagePayload = {
   dataUrl: string;
 };
 
+export type BoosterAiVideoFramePayload = BoosterAiImagePayload & {
+  frameTarget: "start" | "middle" | "end";
+  timeSeconds: number;
+};
+
 export async function fileToBoosterAiImagePayload(file: File): Promise<BoosterAiImagePayload> {
   const objectUrl = URL.createObjectURL(file);
   try {
@@ -459,6 +502,149 @@ export async function fileToBoosterAiImagePayload(file: File): Promise<BoosterAi
   }
 }
 
+export function loadHtmlVideo(src: string): Promise<HTMLVideoElement> {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement("video");
+    video.preload = "metadata";
+    video.muted = true;
+    video.playsInline = true;
+    let settled = false;
+    let timeoutId: number | null = null;
+
+    const cleanup = () => {
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
+      video.onloadedmetadata = null;
+      video.onerror = null;
+    };
+    const fail = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new Error("Impossible de charger la vidéo."));
+    };
+
+    video.onloadedmetadata = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(video);
+    };
+    video.onerror = fail;
+    timeoutId = window.setTimeout(fail, 8_000);
+    video.src = src;
+  });
+}
+
+export function seekHtmlVideo(video: HTMLVideoElement, timeSeconds: number): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const duration = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 0;
+    const maxSeek = duration > 0.1 ? Math.max(0, duration - 0.08) : Number.POSITIVE_INFINITY;
+    const requestedTarget = Math.max(0, Number.isFinite(timeSeconds) ? timeSeconds : 0);
+    const target = Math.min(requestedTarget, maxSeek);
+    const seekTarget = target <= 0 && duration > 0.08 ? 0.03 : target;
+    let settled = false;
+    let timeoutId: number | null = null;
+
+    const cleanup = () => {
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
+      video.onseeked = null;
+      video.onerror = null;
+    };
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve();
+    };
+    const fail = (error: Error) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+
+    video.onseeked = finish;
+    video.onerror = () => fail(new Error("Impossible de lire la vidéo."));
+    timeoutId = window.setTimeout(() => fail(new Error("Impossible de lire la vidéo.")), 5_000);
+
+    try {
+      if (Math.abs((video.currentTime || 0) - seekTarget) < 0.04 && video.readyState >= 2) {
+        finish();
+        return;
+      }
+      video.currentTime = seekTarget;
+      window.setTimeout(() => {
+        if (!settled && Math.abs((video.currentTime || 0) - seekTarget) < 0.08 && video.readyState >= 2) {
+          finish();
+        }
+      }, 150);
+    } catch {
+      fail(new Error("Impossible de positionner la vidéo."));
+    }
+  });
+}
+
+export function buildVideoFrameCapturePlan(durationSeconds: number): Array<{
+  frameTarget: "start" | "middle" | "end";
+  timeSeconds: number;
+}> {
+  const duration = Number.isFinite(durationSeconds) && durationSeconds > 0 ? durationSeconds : 3;
+  const maxSeek = duration > 0.2 ? Math.max(0, duration - 0.12) : 0;
+  const points = [
+    { frameTarget: "start" as const, ratio: duration <= 2 ? 0 : 0.15 },
+    { frameTarget: "middle" as const, ratio: 0.5 },
+    { frameTarget: "end" as const, ratio: 0.85 },
+  ];
+  return points.map((point) => ({
+    frameTarget: point.frameTarget,
+    timeSeconds: clamp(duration * point.ratio, 0, maxSeek),
+  }));
+}
+
+export async function extractVideoFramesForAI(
+  file: File,
+  options?: { maxSide?: number; quality?: number },
+): Promise<BoosterAiVideoFramePayload[]> {
+  const objectUrl = URL.createObjectURL(file);
+  try {
+    const video = await loadHtmlVideo(objectUrl);
+    const sourceW = video.videoWidth || 1280;
+    const sourceH = video.videoHeight || 720;
+    const maxSide = Math.max(480, Math.min(1600, Math.round(options?.maxSide || 1280)));
+    const quality = Math.max(0.55, Math.min(0.9, Number(options?.quality || 0.76)));
+    const scale = Math.min(1, maxSide / Math.max(sourceW, sourceH));
+    const width = Math.max(1, Math.round(sourceW * scale));
+    const height = Math.max(1, Math.round(sourceH * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas indisponible.");
+
+    const duration = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 3;
+    const plan = buildVideoFrameCapturePlan(duration);
+    const baseName = String(file.name || "video-inrcy").replace(/\.[^.]+$/, "") || "video-inrcy";
+    const frames: BoosterAiVideoFramePayload[] = [];
+
+    for (const item of plan) {
+      await seekHtmlVideo(video, item.timeSeconds);
+      ctx.fillStyle = "#000000";
+      ctx.fillRect(0, 0, width, height);
+      ctx.drawImage(video, 0, 0, width, height);
+      frames.push({
+        name: `${baseName}-${item.frameTarget}.jpg`,
+        type: "image/jpeg",
+        dataUrl: canvas.toDataURL("image/jpeg", quality),
+        frameTarget: item.frameTarget,
+        timeSeconds: Number(item.timeSeconds.toFixed(2)),
+      });
+    }
+
+    return frames;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
 export function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
@@ -565,6 +751,7 @@ export async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
 }
 
 const ALLOWED_UPLOAD_EXTENSIONS = new Set(["png", "jpg", "jpeg", "webp", "gif", "avif", "heic", "heif"]);
+const ALLOWED_VIDEO_UPLOAD_EXTENSIONS = new Set(["mp4", "mov", "webm", "m4v"]);
 
 function normalizeUploadSegment(value: string, fallback: string): string {
   const safe = String(value || "")
@@ -594,6 +781,154 @@ export function buildBoosterUploadPath(fileName: string, folder = "booster-prepu
   const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   return `${safeFolder}/${unique}-${safeName}`;
 }
+export function sanitizeVideoUploadName(name: string, mimeType = ""): string {
+  const rawName = String(name || "video-inrcy").split(/[\\/]/).pop() || "video-inrcy";
+  const rawExtension = rawName.includes(".") ? rawName.split(".").pop()?.toLowerCase() || "" : "";
+  const mime = String(mimeType || "").toLowerCase();
+  const extension = ALLOWED_VIDEO_UPLOAD_EXTENSIONS.has(rawExtension)
+    ? rawExtension === "m4v"
+      ? "mp4"
+      : rawExtension
+    : mime.includes("quicktime")
+      ? "mov"
+      : mime.includes("webm")
+        ? "webm"
+        : "mp4";
+  const base = normalizeUploadSegment(rawName.replace(/\.[^.]*$/, ""), "video-inrcy");
+  return `${base}.${extension}`.toLowerCase();
+}
+
+export function buildBoosterVideoUploadPath(fileName: string, folder = "booster-videos", mimeType = ""): string {
+  const safeFolder = normalizeUploadSegment(folder, "booster-videos").replace(/\./g, "-").toLowerCase();
+  const safeName = sanitizeVideoUploadName(fileName, mimeType);
+  const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+  return `${safeFolder}/${unique}-${safeName}`;
+}
+
+
+export type BoosterVideoGenerationSource = "browser_file" | "supabase_storage";
+
+export type BoosterVideoGenerationContext = {
+  enabled: boolean;
+  source: BoosterVideoGenerationSource;
+  name: string;
+  type: string;
+  size: number;
+  duration: number | null;
+  storagePath?: string;
+  publicUrl?: string;
+  url?: string;
+  visualFrames?: BoosterAiVideoFramePayload[];
+  audioTranscript?: string;
+  rawAudioTranscript?: string;
+  analysisPlan: {
+    visualFrames: "pending" | "ready";
+    audioTranscript: "pending" | "ready" | "unavailable";
+    frameTargets: ["start", "middle", "end"];
+  };
+};
+
+export function buildBoosterVideoGenerationContext(params: {
+  mediaType: PublicationMediaType;
+  videoFile: File | null;
+  duration: number | null;
+  storage?: Pick<VideoPayload, "storagePath" | "publicUrl" | "url"> | null;
+}): BoosterVideoGenerationContext | null {
+  const file = params.videoFile;
+  if (params.mediaType !== "video" || !file) return null;
+
+  const storagePath = String(params.storage?.storagePath || "").trim();
+  const publicUrl = String(params.storage?.publicUrl || params.storage?.url || "").trim();
+
+  return {
+    enabled: true,
+    source: storagePath || publicUrl ? "supabase_storage" : "browser_file",
+    name: file.name || "video-inrcy.mp4",
+    type: file.type || "video/mp4",
+    size: Number(file.size || 0),
+    duration: typeof params.duration === "number" && Number.isFinite(params.duration) && params.duration > 0
+      ? params.duration
+      : null,
+    ...(storagePath ? { storagePath } : {}),
+    ...(publicUrl ? { publicUrl, url: publicUrl } : {}),
+    analysisPlan: {
+      visualFrames: "pending",
+      audioTranscript: "pending",
+      frameTargets: ["start", "middle", "end"],
+    },
+  };
+}
+
+export type VideoPayload = {
+  name: string;
+  type: string;
+  size: number;
+  lastModified?: number;
+  duration?: number | null;
+  storagePath?: string;
+  publicUrl?: string;
+  url?: string;
+};
+
+export async function uploadBoosterVideo(
+  file: File,
+  options?: { folder?: string; path?: string; duration?: number | null },
+): Promise<VideoPayload> {
+  const path = options?.path || buildBoosterVideoUploadPath(file.name, options?.folder, file.type);
+  const signedRes = await fetch("/api/booster/video-upload-url", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: file.name,
+      type: file.type,
+      size: file.size,
+      path,
+      duration: options?.duration ?? null,
+    }),
+  });
+
+  const signedJson = await signedRes.json().catch(() => ({}));
+  if (!signedRes.ok) {
+    throw new Error(String(signedJson?.error || "Impossible de préparer l'upload vidéo."));
+  }
+
+  const storagePath = String(signedJson?.storagePath || signedJson?.path || path);
+  const token = String(signedJson?.token || "");
+  if (!storagePath || !token) {
+    throw new Error("Upload vidéo impossible : jeton Supabase manquant.");
+  }
+
+  const { createClient } = await import("@/lib/supabaseClient");
+  const supabase = createClient();
+  const { error } = await supabase.storage.from("booster").uploadToSignedUrl(
+    storagePath,
+    token,
+    file,
+    {
+      contentType: String(signedJson?.contentType || file.type || "video/mp4"),
+    },
+  );
+
+  if (error) {
+    throw new Error(error.message || "Impossible d'uploader la vidéo.");
+  }
+
+  const publicUrl =
+    String(signedJson?.publicUrl || "") ||
+    supabase.storage.from("booster").getPublicUrl(storagePath).data.publicUrl;
+
+  return {
+    name: String(signedJson?.name || file.name),
+    type: String(signedJson?.contentType || file.type || "video/mp4"),
+    size: Number(signedJson?.size || file.size || 0),
+    lastModified: file.lastModified,
+    duration: typeof options?.duration === "number" ? options.duration : null,
+    storagePath,
+    publicUrl,
+    url: publicUrl,
+  };
+}
+
 
 export function clampPercent(value: number, min = 0, max = 100) {
   return Math.min(max, Math.max(min, Math.round(value)));

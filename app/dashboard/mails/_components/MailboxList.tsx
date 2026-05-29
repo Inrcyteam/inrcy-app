@@ -12,6 +12,8 @@ import {
   renderPublicationChannelsWithFailures,
   getPublicationChannelStatuses,
   extractChannelPublications,
+  extractAttachmentsFromPayload,
+  isVideoAttachment,
   canDeleteHistoryItem,
   folderLabel,
   workflowActionLabelForItem,
@@ -98,6 +100,14 @@ function publicationChannelCount(item: OutboxItem): number {
 function formatChannelCountLabel(count: number): string {
   if (count <= 0) return "Canal non renseigné";
   return count === 1 ? "1 canal" : `${count} canaux`;
+}
+
+function isPublicationVideoItem(item: OutboxItem): boolean {
+  const payload = item.source === "app_events" ? (item.raw as any)?.payload : item.raw;
+  if (!payload || typeof payload !== "object") return false;
+  const record = payload as Record<string, any>;
+  if (String(record.mediaType || record.media_type || "").toLowerCase() === "video") return true;
+  return extractAttachmentsFromPayload(record).some((attachment) => isVideoAttachment(attachment));
 }
 
 function getRowTitle(item: OutboxItem, folder: Folder) {
@@ -233,6 +243,7 @@ export default function MailboxList(props: Props) {
                 : "";
               const showWorkflowAction = isGroupedActionFolder(folder);
               const workflowActionLabel = workflowActionLabelForItem(it);
+              const isVideoPublication = folder === "publications" && it.source === "app_events" && isPublicationVideoItem(it);
 
               return (
                 <div
@@ -264,6 +275,7 @@ export default function MailboxList(props: Props) {
                         </label>
                       ) : null}
                       <div className={styles.from} title={rowTitle}>{rowTitle}</div>
+                      {isVideoPublication ? <span className={styles.publicationMediaBadge}>🎬 Vidéo</span> : null}
                     </div>
 
                     {showWorkflowAction ? (

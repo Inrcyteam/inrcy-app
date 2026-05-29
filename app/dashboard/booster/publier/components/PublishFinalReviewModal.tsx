@@ -1,8 +1,10 @@
-import type { ChannelKey } from "../publishModal.shared";
+import type { ChannelKey, PublicationMediaType } from "../publishModal.shared";
 
 export type PublishFinalReviewItem = {
   channel: ChannelKey;
   label: string;
+  mediaType: PublicationMediaType;
+  mediaLabel: string;
   imageCount: number;
   warnings: string[];
   blockers: string[];
@@ -90,7 +92,7 @@ export default function PublishFinalReviewModal({
                 lineHeight: 1.5,
               }}
             >
-              Contrôlez les canaux, les images et les alertes avant l’envoi
+              Contrôlez les canaux, les médias et les alertes avant l’envoi
               final.
             </div>
           </div>
@@ -209,9 +211,7 @@ export default function PublishFinalReviewModal({
                       color: "rgba(255,255,255,0.84)",
                     }}
                   >
-                    {item.imageCount
-                      ? `${item.imageCount} image${item.imageCount > 1 ? "s" : ""}`
-                      : "Aucune image"}
+                    {item.mediaLabel}
                   </span>
                   <span
                     style={{

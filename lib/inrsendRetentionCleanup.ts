@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { cleanupBoosterVideoStorageFromPayloads } from "@/lib/boosterVideoStorageCleanup";
 import { getInrSendRetentionCutoffIso, getInrSendRetentionMonths, type InrSendFolder } from "@/lib/inrsendRetention";
 
 type SendItemCleanupRow = { id: string; type: string | null; created_at: string | null };
@@ -114,9 +115,31 @@ async function deleteMailCampaigns(ids: string[]) {
 async function deleteAppEvents(ids: string[]) {
   let deleted = 0;
   for (const part of chunk(ids)) {
+    const { data: rowsForCleanup } = await supabaseAdmin
+      .from("app_events")
+      .select("user_id,payload")
+      .in("id", part);
+
     const { error } = await supabaseAdmin.from("app_events").delete().in("id", part);
     if (error) throw error;
     deleted += part.length;
+
+    const rows = Array.isArray(rowsForCleanup) ? rowsForCleanup : [];
+    const payloadsByUser = new Map<string, unknown[]>();
+    for (const row of rows as Array<{ user_id?: string | null; payload?: unknown }>) {
+      const userId = String(row?.user_id || "").trim();
+      if (!userId) continue;
+      const payloads = payloadsByUser.get(userId) || [];
+      payloads.push(row?.payload);
+      payloadsByUser.set(userId, payloads);
+    }
+    await Promise.all(
+      Array.from(payloadsByUser.entries()).map(([userId, payloads]) =>
+        cleanupBoosterVideoStorageFromPayloads(userId, payloads).catch((cleanupError) => {
+          console.warn("[iNrSendRetention] booster video cleanup skipped", cleanupError);
+        }),
+      ),
+    );
   }
   return deleted;
 }
@@ -238,6 +261,12 @@ async function deleteInrSendHistoryItemsBySource(userId: string, source: "send_i
       continue;
     }
 
+    const { data: rowsForCleanup } = await supabaseAdmin
+      .from("app_events")
+      .select("payload")
+      .in("id", part)
+      .eq("user_id", userId);
+
     const { error, count } = await supabaseAdmin
       .from("app_events")
       .delete({ count: "exact" })
@@ -245,6 +274,16 @@ async function deleteInrSendHistoryItemsBySource(userId: string, source: "send_i
       .eq("user_id", userId);
     if (error) throw error;
     deleted += count ?? part.length;
+
+    const rows = Array.isArray(rowsForCleanup) ? rowsForCleanup : [];
+    if (rows.length) {
+      await cleanupBoosterVideoStorageFromPayloads(
+        userId,
+        (rows as Array<{ payload?: unknown }>).map((row) => row?.payload),
+      ).catch((cleanupError) => {
+        console.warn("[iNrSendDelete] booster video cleanup skipped", cleanupError);
+      });
+    }
   }
 
   return deleted;

@@ -46,6 +46,7 @@ export default function DashboardBoosterModalLayer({
     draftSaving: false,
     draftMessage: "",
   });
+  const [publishDraftMobileToast, setPublishDraftMobileToast] = useState("");
   const [metrics, setMetrics] = useState<any>(null);
   const [weeklySummary, setWeeklySummary] = useState<WeeklySummary | null>(null);
 
@@ -114,7 +115,22 @@ export default function DashboardBoosterModalLayer({
     if (mode === "publish") return;
     publishSaveDraftRef.current = null;
     setPublishDraftHeaderState({ saving: false, draftSaving: false, draftMessage: "" });
+    setPublishDraftMobileToast("");
   }, [mode]);
+
+  useEffect(() => {
+    if (mode !== "publish") return;
+    const message = publishDraftHeaderState.draftMessage;
+    const isFinalDraftNotice = message === "Brouillon enregistré" || message === "Brouillon chargé";
+    if (!isFinalDraftNotice) return;
+
+    setPublishDraftMobileToast(message);
+    const timer = window.setTimeout(() => {
+      setPublishDraftMobileToast((current) => (current === message ? "" : current));
+    }, 2000);
+
+    return () => window.clearTimeout(timer);
+  }, [mode, publishDraftHeaderState.draftMessage]);
 
   useUnsavedExitGuard({
     active: mode === "publish",
@@ -313,18 +329,23 @@ export default function DashboardBoosterModalLayer({
             publishDraftHeaderState.draftMessage ? (
               <StatusMessage
                 variant="success"
+                className={styles.publishDraftHeaderStatus}
                 style={{
                   marginTop: 0,
-                  minHeight: 38,
-                  padding: "0 12px",
+                  minHeight: 34,
+                  padding: "6px 10px",
                   fontSize: 12,
-                  whiteSpace: "nowrap",
+                  whiteSpace: "normal",
+                  maxWidth: "min(320px, calc(100vw - 120px))",
+                  minWidth: 0,
+                  overflowWrap: "anywhere",
                 }}
               >
                 {publishDraftHeaderState.draftMessage}
               </StatusMessage>
             ) : null
           }
+          headerStatusMobileHidden
           headerActions={
             <button
               type="button"
@@ -367,6 +388,14 @@ export default function DashboardBoosterModalLayer({
             }}
           />
         </BaseModal>
+      ) : null}
+
+      {mode === "publish" && publishDraftMobileToast ? (
+        <div className={styles.publishDraftMobileToast} aria-live="polite">
+          <StatusMessage variant="success" className={styles.publishDraftMobileToastMessage}>
+            {publishDraftMobileToast}
+          </StatusMessage>
+        </div>
       ) : null}
 
       {publishSuccessOpen ? (

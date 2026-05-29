@@ -9,6 +9,7 @@ export default function BaseModal({
   onClose,
   headerHidden = false,
   headerStatus,
+  headerStatusMobileHidden = false,
   headerActions,
   compact = false,
   maxWidth,
@@ -19,6 +20,7 @@ export default function BaseModal({
   onClose: () => void | Promise<void>;
   headerHidden?: boolean;
   headerStatus?: React.ReactNode;
+  headerStatusMobileHidden?: boolean;
   headerActions?: React.ReactNode;
   compact?: boolean;
   maxWidth?: number | string;
@@ -170,7 +172,7 @@ export default function BaseModal({
                 </button>
               </div>
             </div>
-            {headerStatus ? (
+            {headerStatus && !headerStatusMobileHidden ? (
               <div className={styles.modalHeaderStatusMobile}>
                 {headerStatus}
               </div>

@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type MutableRefObject,
+} from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { readSanitizedElementHtml } from "@/lib/sanitizeHtml";
@@ -14,8 +20,11 @@ import {
   ChannelPublicationPreview,
 } from "@/app/dashboard/_components/ChannelImageAdapterTool";
 import {
+  BOOSTER_MAX_IMAGE_COUNT,
   BOOSTER_MAX_IMAGE_BYTES,
   BOOSTER_MAX_IMAGE_MB_LABEL,
+  BOOSTER_MAX_VIDEO_BYTES,
+  BOOSTER_MAX_VIDEO_MB_LABEL,
   CHANNEL_LABELS,
   CHANNEL_PRESETS,
   CHANNEL_TEXT_GUIDELINES,
@@ -28,6 +37,7 @@ import {
   buildAutoPrefillPatch,
   buildInstagramPreviewCaption,
   buildBoosterUploadPath,
+  buildBoosterVideoGenerationContext,
   clamp,
   clampPercent,
   computePreviewLayout,
@@ -38,13 +48,18 @@ import {
   getDefaultCtaModeForChannel,
   getDefaultTransform,
   getEffectiveTransformZoom,
+  getPublicationMediaLabel,
   getOptimizedTransform,
+  extractVideoFramesForAI,
   fileToBoosterAiImagePayload,
   getWebsiteSourceLabelForChannel,
   getWebsiteUrlForChannel,
+  isBoosterImageFile,
+  isBoosterVideoFile,
   isSiteDisplayKey,
   makeImageKey,
   normalizePost,
+  normalizePublicationMediaType,
   offsetFromDrawPosition,
   parseInstagramHashtagsInput,
   readImageMeta,
@@ -52,6 +67,7 @@ import {
   renderLimitCounter,
   sleep,
   syncChannelImageEditors,
+  uploadBoosterVideo,
   uploadPreparedImages,
   type BoosterCtaDefaults,
   type BoosterCtaMode,
@@ -64,8 +80,10 @@ import {
   type ImageMeta,
   type ImagePayload,
   type ImageTransform,
+  type PublicationMediaType,
   type StyleKey,
   type ThemeKey,
+  type VideoPayload,
 } from "./publishModal.shared";
 import {
   darkOptionStyle,
@@ -104,7 +122,14 @@ const EMPTY_CHANNEL_DETAILS: Record<ChannelKey, ChannelConnectionDetail> = {
   linkedin: { type: "profile", label: null, href: null },
 };
 
-const CHANNEL_KEYS: ChannelKey[] = ["inrcy_site", "site_web", "gmb", "facebook", "instagram", "linkedin"];
+const CHANNEL_KEYS: ChannelKey[] = [
+  "inrcy_site",
+  "site_web",
+  "gmb",
+  "facebook",
+  "instagram",
+  "linkedin",
+];
 
 function isChannelKey(value: unknown): value is ChannelKey {
   return CHANNEL_KEYS.includes(String(value || "") as ChannelKey);
@@ -123,13 +148,90 @@ function isStyleKey(value: unknown): value is StyleKey {
 function normalizeExternalHref(input: unknown) {
   const raw = String(input || "").trim();
   if (!raw) return "";
-  if (/^(https?:)?\/\//i.test(raw)) return raw.startsWith("//") ? `https:${raw}` : raw;
+  if (/^(https?:)?\/\//i.test(raw))
+    return raw.startsWith("//") ? `https:${raw}` : raw;
   if (/^www\./i.test(raw)) return `https://${raw}`;
-  if (/^[a-z0-9.-]+\.[a-z]{2,}(?:[/:?#].*)?$/i.test(raw)) return `https://${raw}`;
+  if (/^[a-z0-9.-]+\.[a-z]{2,}(?:[/:?#].*)?$/i.test(raw))
+    return `https://${raw}`;
   return raw;
 }
 
-function sanitizePostForEditor(channel: ChannelKey, value: Partial<ChannelPost> | null | undefined): ChannelPost {
+function buildVideoFileName(file: Pick<File, "name" | "type">) {
+  const rawName =
+    String(file?.name || "video-inrcy")
+      .split(/[\\/]/)
+      .pop() || "video-inrcy";
+  if (/\.(mp4|mov|webm|m4v)$/i.test(rawName)) return rawName;
+  const type = String(file?.type || "").toLowerCase();
+  const extension = type.includes("quicktime")
+    ? "mov"
+    : type.includes("webm")
+      ? "webm"
+      : "mp4";
+  return `${rawName.replace(/\.[^.]*$/, "")}.${extension}`;
+}
+
+function readVideoDurationSeconds(file: File): Promise<number> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const video = document.createElement("video");
+    let settled = false;
+    let timeoutId: number | null = null;
+
+    const cleanup = () => {
+      if (timeoutId !== null) window.clearTimeout(timeoutId);
+      URL.revokeObjectURL(url);
+      video.removeAttribute("src");
+      video.load();
+    };
+
+    const finish = (duration: number) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(duration);
+    };
+
+    const fail = () => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(new Error("Durée vidéo illisible."));
+    };
+
+    video.preload = "metadata";
+    video.onloadedmetadata = () => {
+      const duration = Number(video.duration || 0);
+      if (Number.isFinite(duration) && duration > 0) {
+        finish(duration);
+        return;
+      }
+
+      video.ontimeupdate = () => {
+        const recoveredDuration = Number(
+          video.duration || video.currentTime || 0,
+        );
+        if (Number.isFinite(recoveredDuration) && recoveredDuration > 0) {
+          finish(recoveredDuration);
+        }
+      };
+
+      try {
+        video.currentTime = 24 * 60 * 60;
+      } catch {
+        fail();
+      }
+    };
+    video.onerror = fail;
+    timeoutId = window.setTimeout(fail, 5000);
+    video.src = url;
+  });
+}
+
+function sanitizePostForEditor(
+  channel: ChannelKey,
+  value: Partial<ChannelPost> | null | undefined,
+): ChannelPost {
   const normalized = normalizePost(value);
   if (isSiteDisplayKey(channel)) return normalized;
   return {
@@ -140,8 +242,13 @@ function sanitizePostForEditor(channel: ChannelKey, value: Partial<ChannelPost> 
   };
 }
 
-function sanitizePostsForEditor(input: unknown): Partial<Record<ChannelKey, ChannelPost>> {
-  const source = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+function sanitizePostsForEditor(
+  input: unknown,
+): Partial<Record<ChannelKey, ChannelPost>> {
+  const source =
+    input && typeof input === "object"
+      ? (input as Record<string, unknown>)
+      : {};
   const next: Partial<Record<ChannelKey, ChannelPost>> = {};
   for (const key of CHANNEL_KEYS) {
     if (source[key] == null) continue;
@@ -150,11 +257,15 @@ function sanitizePostsForEditor(input: unknown): Partial<Record<ChannelKey, Chan
   return next;
 }
 
-function sanitizePatchForEditor(channel: ChannelKey, patch: Partial<ChannelPost>): Partial<ChannelPost> {
+function sanitizePatchForEditor(
+  channel: ChannelKey,
+  patch: Partial<ChannelPost>,
+): Partial<ChannelPost> {
   if (isSiteDisplayKey(channel)) return patch;
   const next: Partial<ChannelPost> = { ...patch };
   if ("title" in next) next.title = stripSiteTextFormatting(next.title || "");
-  if ("content" in next) next.content = stripSiteTextFormatting(next.content || "");
+  if ("content" in next)
+    next.content = stripSiteTextFormatting(next.content || "");
   if ("cta" in next) next.cta = stripSiteTextFormatting(next.cta || "");
   return next;
 }
@@ -181,6 +292,50 @@ function truncateText(value: string, max = 34) {
     : value;
 }
 
+type VideoAudioTranscriptCache = {
+  key: string;
+  text: string;
+  rawText: string;
+};
+
+const VIDEO_TRANSCRIPTION_TIMEOUT_MS = 55_000;
+
+function makeVideoTranscriptCacheKey(file: File) {
+  return `${file.name}__${file.size}__${file.lastModified}`;
+}
+
+async function transcribeVideoAudioForAI(file: File): Promise<Omit<VideoAudioTranscriptCache, "key"> | null> {
+  const formData = new FormData();
+  formData.append("video", file, buildVideoFileName(file));
+
+  const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const timeoutId =
+    controller && typeof window !== "undefined"
+      ? window.setTimeout(() => controller.abort(), VIDEO_TRANSCRIPTION_TIMEOUT_MS)
+      : null;
+
+  try {
+    const res = await fetch("/api/booster/transcribe", {
+      method: "POST",
+      body: formData,
+      ...(controller ? { signal: controller.signal } : {}),
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) return null;
+
+    const text = String(json?.text || "").trim();
+    if (!text) return null;
+    return {
+      text,
+      rawText: String(json?.raw_text || text).trim() || text,
+    };
+  } catch {
+    return null;
+  } finally {
+    if (timeoutId !== null) window.clearTimeout(timeoutId);
+  }
+}
+
 export default function PublishModal({
   styles,
   onClose,
@@ -198,12 +353,20 @@ export default function PublishModal({
   onOverlayOpenChange?: (open: boolean) => void;
   onUnsavedChange?: (hasUnsavedChanges: boolean) => void;
   saveDraftActionRef?: MutableRefObject<(() => void) | null>;
-  onDraftHeaderStateChange?: (state: { saving: boolean; draftSaving: boolean; draftMessage: string }) => void;
+  onDraftHeaderStateChange?: (state: {
+    saving: boolean;
+    draftSaving: boolean;
+    draftMessage: string;
+  }) => void;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const publicationDraftIdParam = String(searchParams?.get("draftId") || "").trim();
-  const [loadedPublicationDraftId, setLoadedPublicationDraftId] = useState<string | null>(null);
+  const publicationDraftIdParam = String(
+    searchParams?.get("draftId") || "",
+  ).trim();
+  const [loadedPublicationDraftId, setLoadedPublicationDraftId] = useState<
+    string | null
+  >(null);
   const [saving, setSaving] = useState(false);
   const [idea, setIdea] = useState("");
   const [theme, setTheme] = useState<ThemeKey>("");
@@ -213,11 +376,13 @@ export default function PublishModal({
   const [generationStage, setGenerationStage] = useState("");
   const generationTimersRef = useRef<number[]>([]);
   const generationPulseTimerRef = useRef<number | null>(null);
+  const videoAudioTranscriptCacheRef = useRef<VideoAudioTranscriptCache | null>(null);
   const [genError, setGenError] = useState("");
   const [publishError, setPublishError] = useState("");
   const [draftSaving, setDraftSaving] = useState(false);
   const [draftMessage, setDraftMessage] = useState("");
-  const [lastPublicationDraftSnapshot, setLastPublicationDraftSnapshot] = useState<string | null>(null);
+  const [lastPublicationDraftSnapshot, setLastPublicationDraftSnapshot] =
+    useState<string | null>(null);
 
   useEffect(() => {
     onDraftHeaderStateChange?.({ saving, draftSaving, draftMessage });
@@ -229,7 +394,9 @@ export default function PublishModal({
   >({});
   const [activeCard, setActiveCard] = useState<DisplayKey>("inrcy_site");
   const [isMobile, setIsMobile] = useState(false);
-  const [drawerViewportHeight, setDrawerViewportHeight] = useState<number | null>(null);
+  const [drawerViewportHeight, setDrawerViewportHeight] = useState<
+    number | null
+  >(null);
   const [duplicateFeedback, setDuplicateFeedback] = useState<{
     kind: "success" | "error";
     message: string;
@@ -250,11 +417,21 @@ export default function PublishModal({
   > | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const videoInputRef = useRef<HTMLInputElement | null>(null);
   const gmbFileInputRef = useRef<HTMLInputElement | null>(null);
   const [cameraCaptureOpen, setCameraCaptureOpen] = useState(false);
-  const [cameraCaptureTargetChannel, setCameraCaptureTargetChannel] = useState<ChannelKey | null>(null);
+  const [cameraCaptureTargetChannel, setCameraCaptureTargetChannel] =
+    useState<ChannelKey | null>(null);
+  const [publicationMediaType, setPublicationMediaType] =
+    useState<PublicationMediaType>("images");
   const [images, setImages] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [videoPreviewUrl, setVideoPreviewUrl] = useState("");
+  const [videoDurationSeconds, setVideoDurationSeconds] = useState<
+    number | null
+  >(null);
+  const [videoStorageContext, setVideoStorageContext] = useState<Pick<VideoPayload, "storagePath" | "publicUrl" | "url"> | null>(null);
   const [imgError, setImgError] = useState("");
   const [useImagesForAI, setUseImagesForAI] = useState(true);
   const [imageMetaByKey, setImageMetaByKey] = useState<
@@ -435,8 +612,12 @@ export default function PublishModal({
           siteWebUrl: String(json?.siteWebUrl || "").trim(),
           inrcySiteUrl: String(json?.inrcySiteUrl || "").trim(),
           phone: String(json?.phone || "").trim(),
-          preferredCta: ["devis", "appeler", "message"].includes(String(json?.preferredCta || ""))
-            ? String(json?.preferredCta || "devis") as BoosterCtaDefaults["preferredCta"]
+          preferredCta: ["devis", "appeler", "message"].includes(
+            String(json?.preferredCta || ""),
+          )
+            ? (String(
+                json?.preferredCta || "devis",
+              ) as BoosterCtaDefaults["preferredCta"])
             : "devis",
         });
       } catch {
@@ -450,8 +631,10 @@ export default function PublishModal({
 
   useEffect(() => {
     if (!ctaDefaults) return;
-    const shouldApplyPreferredDefaults = !preferredCtaDefaultsAppliedRef.current;
-    if (shouldApplyPreferredDefaults) preferredCtaDefaultsAppliedRef.current = true;
+    const shouldApplyPreferredDefaults =
+      !preferredCtaDefaultsAppliedRef.current;
+    if (shouldApplyPreferredDefaults)
+      preferredCtaDefaultsAppliedRef.current = true;
 
     setPostsByChannel((prev) => {
       let changed = false;
@@ -472,19 +655,18 @@ export default function PublishModal({
           String(current.ctaPhone || "").trim(),
         );
         let mode = current.ctaMode || "none";
-        const shouldSetPreferredMode = shouldApplyPreferredDefaults && mode === "none" && !hasExistingCta;
-        if (shouldSetPreferredMode) mode = getDefaultCtaModeForChannel(key, ctaDefaults);
-        if (mode !== "website" && mode !== "call" && mode !== "message") continue;
+        const shouldSetPreferredMode =
+          shouldApplyPreferredDefaults && mode === "none" && !hasExistingCta;
+        if (shouldSetPreferredMode)
+          mode = getDefaultCtaModeForChannel(key, ctaDefaults);
+        if (mode !== "website" && mode !== "call" && mode !== "message")
+          continue;
 
-        const patch = buildAutoPrefillPatch(
-          key,
-          mode,
-          current,
-          ctaDefaults,
-        );
+        const patch = buildAutoPrefillPatch(key, mode, current, ctaDefaults);
         const hasMeaningfulPatch = Object.entries(patch).some(
           ([patchKey, patchValue]) => {
-            if (patchKey === "ctaMode") return shouldSetPreferredMode && patchValue !== current.ctaMode;
+            if (patchKey === "ctaMode")
+              return shouldSetPreferredMode && patchValue !== current.ctaMode;
             return String(patchValue || "").trim();
           },
         );
@@ -505,7 +687,9 @@ export default function PublishModal({
 
     const updateViewport = () => {
       setIsMobile(window.innerWidth <= 768);
-      setDrawerViewportHeight(Math.round(window.visualViewport?.height || window.innerHeight));
+      setDrawerViewportHeight(
+        Math.round(window.visualViewport?.height || window.innerHeight),
+      );
     };
 
     updateViewport();
@@ -800,15 +984,20 @@ export default function PublishModal({
       images.length > 0 ||
       imagePreviews.length > 0 ||
       Object.keys(channelImageEditors).length > 0;
+    const hasVideo = !!videoFile || !!videoPreviewUrl;
+    const hasMedia = publicationMediaType !== "images" || hasImages || hasVideo;
     const hasLiveHashtags = !!instagramHashtagsInput.trim();
-    return hasText || hasGeneratedContent || hasImages || hasLiveHashtags;
+    return hasText || hasGeneratedContent || hasMedia || hasLiveHashtags;
   }, [
+    publicationMediaType,
     idea,
     theme,
     contentStyle,
     postsByChannel,
     images.length,
     imagePreviews.length,
+    videoFile,
+    videoPreviewUrl,
     channelImageEditors,
     instagramHashtagsInput,
   ]);
@@ -819,7 +1008,16 @@ export default function PublishModal({
       type: file.type,
       size: file.size,
     }));
+    const videoName = videoFile
+      ? {
+          name: videoFile.name,
+          type: videoFile.type,
+          size: videoFile.size,
+          duration: videoDurationSeconds,
+        }
+      : null;
     return JSON.stringify({
+      mediaType: publicationMediaType,
       idea: idea.trim(),
       theme,
       contentStyle,
@@ -827,10 +1025,12 @@ export default function PublishModal({
       postsByChannel,
       instagramHashtagsInput,
       imageNames,
+      videoName,
       useImagesForAI,
       imageSettingsByChannel: channelImageEditors,
     });
   }, [
+    publicationMediaType,
     idea,
     theme,
     contentStyle,
@@ -838,33 +1038,55 @@ export default function PublishModal({
     postsByChannel,
     instagramHashtagsInput,
     images,
+    videoFile,
+    videoDurationSeconds,
     useImagesForAI,
     channelImageEditors,
   ]);
 
-
   function getSafeDraftImagePath(file: File, index: number) {
-    return buildBoosterUploadPath(file.name || `image-${index + 1}.jpg`, "booster-drafts");
+    return buildBoosterUploadPath(
+      file.name || `image-${index + 1}.jpg`,
+      "booster-drafts",
+    );
   }
 
   function getDraftImageSettingsByChannel() {
-    return selectedChannels.reduce((acc, channel) => {
-      const editor = channelImageEditors[channel] || { imageKeys: [], transforms: {} };
-      const imageKeysForChannel = (editor.imageKeys || []).filter((key) => imageKeys.includes(key));
-      acc[channel] = {
-        imageKeys: channel === "gmb" ? imageKeysForChannel.slice(0, 1) : imageKeysForChannel,
-        transforms: Object.fromEntries(
-          Object.entries(editor.transforms || {})
-            .filter(([key]) => imageKeysForChannel.includes(key))
-            .map(([key, value]) => [key, { ...(value as ImageTransform) }]),
-        ),
-      };
-      return acc;
-    }, {} as Partial<Record<ChannelKey, ChannelImageEditorState>>);
+    return selectedChannels.reduce(
+      (acc, channel) => {
+        const editor = channelImageEditors[channel] || {
+          imageKeys: [],
+          transforms: {},
+        };
+        const imageKeysForChannel = (editor.imageKeys || []).filter((key) =>
+          imageKeys.includes(key),
+        );
+        acc[channel] = {
+          imageKeys:
+            channel === "gmb"
+              ? imageKeysForChannel.slice(0, 1)
+              : imageKeysForChannel,
+          transforms: Object.fromEntries(
+            Object.entries(editor.transforms || {})
+              .filter(([key]) => imageKeysForChannel.includes(key))
+              .map(([key, value]) => [key, { ...(value as ImageTransform) }]),
+          ),
+        };
+        return acc;
+      },
+      {} as Partial<Record<ChannelKey, ChannelImageEditorState>>,
+    );
   }
 
   async function uploadPublicationDraftImages() {
-    const uploaded: Array<{ name: string; type?: string; size?: number; lastModified?: number; storagePath?: string; publicUrl?: string }> = [];
+    const uploaded: Array<{
+      name: string;
+      type?: string;
+      size?: number;
+      lastModified?: number;
+      storagePath?: string;
+      publicUrl?: string;
+    }> = [];
     for (let index = 0; index < images.length; index += 1) {
       const file = images[index];
       if (!file) continue;
@@ -877,7 +1099,11 @@ export default function PublishModal({
       });
       const json = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(String(json?.error || "Impossible d’enregistrer les images du brouillon."));
+        throw new Error(
+          String(
+            json?.error || "Impossible d’enregistrer les images du brouillon.",
+          ),
+        );
       }
       uploaded.push({
         name: file.name,
@@ -889,6 +1115,51 @@ export default function PublishModal({
       });
     }
     return uploaded;
+  }
+
+  async function uploadPublicationDraftVideo(): Promise<VideoPayload | null> {
+    if (!videoFile) return null;
+    return await uploadBoosterVideo(videoFile, {
+      folder: "booster-drafts",
+      duration: videoDurationSeconds,
+    });
+  }
+
+  async function uploadPublicationVideoForPublish(): Promise<VideoPayload | null> {
+    if (!videoFile) return null;
+    return await uploadBoosterVideo(videoFile, {
+      folder: "booster-videos",
+      duration: videoDurationSeconds,
+    });
+  }
+
+  async function restorePublicationDraftVideo(videoDraft: any) {
+    const source = String(videoDraft?.publicUrl || videoDraft?.url || "").trim();
+    if (!source) return { file: null as File | null, previewUrl: "", duration: null as number | null, storage: null as Pick<VideoPayload, "storagePath" | "publicUrl" | "url"> | null };
+
+    try {
+      const response = await fetch(source);
+      if (!response.ok) throw new Error("Vidéo indisponible.");
+      const blob = await response.blob();
+      const name = String(videoDraft?.name || "video-inrcy.mp4");
+      const type = String(videoDraft?.type || blob.type || "video/mp4");
+      const lastModified = Number(videoDraft?.lastModified || Date.now());
+      const file = new File([blob], name, { type, lastModified });
+      const rawDuration = Number(videoDraft?.duration || 0);
+      const duration = Number.isFinite(rawDuration) && rawDuration > 0 ? rawDuration : null;
+      return {
+        file,
+        previewUrl: URL.createObjectURL(file),
+        duration,
+        storage: {
+          storagePath: String(videoDraft?.storagePath || videoDraft?.path || ""),
+          publicUrl: source,
+          url: source,
+        },
+      };
+    } catch {
+      return { file: null as File | null, previewUrl: "", duration: null as number | null, storage: null as Pick<VideoPayload, "storagePath" | "publicUrl" | "url"> | null };
+    }
   }
 
   async function restorePublicationDraftImages(imageDrafts: any[]) {
@@ -922,45 +1193,89 @@ export default function PublishModal({
   }
 
   useEffect(() => {
-    if (!publicationDraftIdParam || loadedPublicationDraftId === publicationDraftIdParam) return;
+    if (
+      !publicationDraftIdParam ||
+      loadedPublicationDraftId === publicationDraftIdParam
+    )
+      return;
     let cancelled = false;
 
     const loadPublicationDraft = async () => {
       setDraftMessage("Chargement du brouillon…");
       setPublishError("");
       try {
-        const response = await fetch(`/api/booster/events?draftId=${encodeURIComponent(publicationDraftIdParam)}`, {
-          cache: "no-store" as any,
-        });
+        const response = await fetch(
+          `/api/booster/events?draftId=${encodeURIComponent(publicationDraftIdParam)}`,
+          {
+            cache: "no-store" as any,
+          },
+        );
         const result = await response.json().catch(() => ({}));
-        if (!response.ok) throw new Error(String(result?.error || "Brouillon publication introuvable."));
+        if (!response.ok)
+          throw new Error(
+            String(result?.error || "Brouillon publication introuvable."),
+          );
         const payload = (result?.payload || {}) as any;
 
-        const rawChannels = Array.isArray(payload.channels) ? payload.channels : [];
-        const savedChannels = rawChannels.map((value: unknown) => String(value || "")).filter(isChannelKey);
-        const nextChannels = CHANNEL_KEYS.reduce((acc, key) => {
-          acc[key] = savedChannels.length ? savedChannels.includes(key) : Boolean(channels[key]);
-          return acc;
-        }, {} as Record<ChannelKey, boolean>);
+        const rawChannels = Array.isArray(payload.channels)
+          ? payload.channels
+          : [];
+        const savedChannels = rawChannels
+          .map((value: unknown) => String(value || ""))
+          .filter(isChannelKey);
+        const nextChannels = CHANNEL_KEYS.reduce(
+          (acc, key) => {
+            acc[key] = savedChannels.length
+              ? savedChannels.includes(key)
+              : Boolean(channels[key]);
+            return acc;
+          },
+          {} as Record<ChannelKey, boolean>,
+        );
 
         const nextTheme = isThemeKey(payload.theme) ? payload.theme : "";
-        const nextContentStyle = isStyleKey(payload.contentStyle) ? payload.contentStyle : "equilibre";
+        const nextContentStyle = isStyleKey(payload.contentStyle)
+          ? payload.contentStyle
+          : "equilibre";
         const nextPostsByChannel = sanitizePostsForEditor(
-          payload.postByChannel && typeof payload.postByChannel === "object" ? payload.postByChannel : {},
+          payload.postByChannel && typeof payload.postByChannel === "object"
+            ? payload.postByChannel
+            : {},
         );
-        const nextEditors = (payload.imageSettingsByChannel && typeof payload.imageSettingsByChannel === "object") ? payload.imageSettingsByChannel : {};
-        const nextUseImagesForAI = typeof payload.useImagesForAI === "boolean" ? payload.useImagesForAI : true;
-        const imageDrafts = Array.isArray(payload.imageDrafts) ? payload.imageDrafts : [];
-        const { restoredFiles, restoredPreviews, restoredMeta } = await restorePublicationDraftImages(imageDrafts);
+        const nextEditors =
+          payload.imageSettingsByChannel &&
+          typeof payload.imageSettingsByChannel === "object"
+            ? payload.imageSettingsByChannel
+            : {};
+        const nextUseImagesForAI =
+          typeof payload.useImagesForAI === "boolean"
+            ? payload.useImagesForAI
+            : true;
+        const imageDrafts = Array.isArray(payload.imageDrafts)
+          ? payload.imageDrafts
+          : [];
+        const videoDraft =
+          payload.videoDraft && typeof payload.videoDraft === "object"
+            ? payload.videoDraft
+            : null;
+        const nextMediaType = normalizePublicationMediaType(payload.mediaType);
+        const { restoredFiles, restoredPreviews, restoredMeta } =
+          nextMediaType === "images"
+            ? await restorePublicationDraftImages(imageDrafts)
+            : { restoredFiles: [], restoredPreviews: [], restoredMeta: {} };
+        const restoredVideo =
+          nextMediaType === "video"
+            ? await restorePublicationDraftVideo(videoDraft)
+            : { file: null as File | null, previewUrl: "", duration: null as number | null, storage: null as Pick<VideoPayload, "storagePath" | "publicUrl" | "url"> | null };
 
         if (cancelled) return;
 
         const nextIdea = String(payload.idea || "");
-        const nextInstagramHashtags = String(payload.instagramHashtagsInput || "") || (
-          Array.isArray((nextPostsByChannel as any)?.instagram?.hashtags)
+        const nextInstagramHashtags =
+          String(payload.instagramHashtagsInput || "") ||
+          (Array.isArray((nextPostsByChannel as any)?.instagram?.hashtags)
             ? (nextPostsByChannel as any).instagram.hashtags.join(" ")
-            : ""
-        );
+            : "");
 
         setIdea(nextIdea);
         setTheme(nextTheme);
@@ -968,33 +1283,61 @@ export default function PublishModal({
         setChannels(nextChannels);
         setPostsByChannel(nextPostsByChannel);
         setInstagramHashtagsInput(nextInstagramHashtags);
-        setImages(restoredFiles);
-        setImagePreviews(restoredPreviews);
-        setUseImagesForAI(nextUseImagesForAI);
-        setImageMetaByKey(restoredMeta);
-        setChannelImageEditors(nextEditors);
+        const effectiveMediaType =
+          nextMediaType === "video" && restoredVideo.file ? "video" : "images";
+        setPublicationMediaType(effectiveMediaType);
+        setImages(effectiveMediaType === "images" ? restoredFiles : []);
+        setImagePreviews(effectiveMediaType === "images" ? restoredPreviews : []);
+        setVideoFile(effectiveMediaType === "video" ? restoredVideo.file : null);
+        setVideoPreviewUrl(effectiveMediaType === "video" ? restoredVideo.previewUrl : "");
+        setVideoDurationSeconds(effectiveMediaType === "video" ? restoredVideo.duration : null);
+        setVideoStorageContext(effectiveMediaType === "video" ? restoredVideo.storage : null);
+        setUseImagesForAI(effectiveMediaType === "images" ? nextUseImagesForAI : false);
+        setImageMetaByKey(effectiveMediaType === "images" ? restoredMeta : {});
+        setChannelImageEditors(effectiveMediaType === "images" ? nextEditors : {});
         setLoadedPublicationDraftId(publicationDraftIdParam);
         setDraftMessage("Brouillon chargé");
 
-        const imageNames = restoredFiles.map((file) => ({ name: file.name, type: file.type, size: file.size }));
+        const imageNames = restoredFiles.map((file) => ({
+          name: file.name,
+          type: file.type,
+          size: file.size,
+        }));
+        const videoName = restoredVideo.file
+          ? {
+              name: restoredVideo.file.name,
+              type: restoredVideo.file.type,
+              size: restoredVideo.file.size,
+              duration: restoredVideo.duration,
+            }
+          : null;
         const selectedDraftChannels = Object.entries(nextChannels)
           .filter(([, enabled]) => enabled)
           .map(([key]) => key as ChannelKey);
-        setLastPublicationDraftSnapshot(JSON.stringify({
-          idea: nextIdea.trim(),
-          theme: nextTheme,
-          contentStyle: nextContentStyle,
-          channels: selectedDraftChannels,
-          postsByChannel: nextPostsByChannel,
-          instagramHashtagsInput: nextInstagramHashtags,
-          imageNames,
-          useImagesForAI: nextUseImagesForAI,
-          imageSettingsByChannel: nextEditors,
-        }));
+        setLastPublicationDraftSnapshot(
+          JSON.stringify({
+            mediaType: effectiveMediaType,
+            idea: nextIdea.trim(),
+            theme: nextTheme,
+            contentStyle: nextContentStyle,
+            channels: selectedDraftChannels,
+            postsByChannel: nextPostsByChannel,
+            instagramHashtagsInput: nextInstagramHashtags,
+            imageNames: effectiveMediaType === "images" ? imageNames : [],
+            videoName: effectiveMediaType === "video" ? videoName : null,
+            useImagesForAI: effectiveMediaType === "images" ? nextUseImagesForAI : false,
+            imageSettingsByChannel: effectiveMediaType === "images" ? nextEditors : {},
+          }),
+        );
         onUnsavedChange?.(false);
       } catch (error) {
         if (cancelled) return;
-        setPublishError(getSimpleFrenchErrorMessage(error, "Impossible de charger ce brouillon publication."));
+        setPublishError(
+          getSimpleFrenchErrorMessage(
+            error,
+            "Impossible de charger ce brouillon publication.",
+          ),
+        );
         setDraftMessage("");
       }
     };
@@ -1004,6 +1347,12 @@ export default function PublishModal({
       cancelled = true;
     };
   }, [publicationDraftIdParam, loadedPublicationDraftId, onUnsavedChange]);
+
+  useEffect(() => {
+    return () => {
+      if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl);
+    };
+  }, [videoPreviewUrl]);
 
   const hasUnsavedChanges = useMemo(
     () =>
@@ -1067,6 +1416,26 @@ export default function PublishModal({
     setTheme(next);
   };
 
+  const clearImagesMedia = () => {
+    imagePreviews.forEach((url) => URL.revokeObjectURL(url));
+    setImages([]);
+    setImagePreviews([]);
+    setImageMetaByKey({});
+    setChannelImageEditors({});
+    setActiveImageKeyByChannel({});
+  };
+
+  const clearVideoMedia = () => {
+    setVideoPreviewUrl((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return "";
+    });
+    setVideoFile(null);
+    setVideoDurationSeconds(null);
+    setVideoStorageContext(null);
+    videoAudioTranscriptCacheRef.current = null;
+  };
+
   const clearPublicationWork = () => {
     setIdea("");
     setTheme("");
@@ -1080,14 +1449,11 @@ export default function PublishModal({
     setLastPublicationDraftSnapshot(null);
     setFinalReviewOpen(false);
     setFinalReviewPosts(null);
-    imagePreviews.forEach((url) => URL.revokeObjectURL(url));
-    setImages([]);
-    setImagePreviews([]);
+    clearImagesMedia();
+    clearVideoMedia();
+    setPublicationMediaType("images");
     setImgError("");
     setUseImagesForAI(true);
-    setImageMetaByKey({});
-    setChannelImageEditors({});
-    setActiveImageKeyByChannel({});
   };
 
   const onReset = async () => {
@@ -1112,7 +1478,15 @@ export default function PublishModal({
       return;
     }
 
-    const shouldUseImagesForAI = images.length > 0 && useImagesForAI;
+    const shouldUseImagesForAI =
+      publicationMediaType === "images" && images.length > 0 && useImagesForAI;
+    const videoGenerationContext = buildBoosterVideoGenerationContext({
+      mediaType: publicationMediaType,
+      videoFile,
+      duration: videoDurationSeconds,
+      storage: videoStorageContext,
+    });
+    const hasVideoForGeneration = !!videoGenerationContext?.enabled;
 
     clearGenerationTimers();
     setGenerating(true);
@@ -1128,8 +1502,21 @@ export default function PublishModal({
             { percent: 36, label: "Préparation des images", delay: 2200 },
             { percent: 48, label: "Analyse des visuels", delay: 3800 },
           ]
-        : [{ percent: 42, label: "Construction du contenu", delay: 2600 }]),
-      { percent: 58, label: "Rédaction du contenu principal", delay: 5200 },
+        : hasVideoForGeneration
+          ? [
+              { percent: 34, label: "Préparation de la vidéo", delay: 1800 },
+              { percent: 42, label: "Transcription audio de la vidéo", delay: 3200 },
+              { percent: 52, label: "Extraction des images de la vidéo", delay: 5000 },
+              { percent: 60, label: "Analyse audio + images de la vidéo", delay: 6800 },
+            ]
+          : [{ percent: 42, label: "Construction du contenu", delay: 2600 }]),
+      {
+        percent: 62,
+        label: hasVideoForGeneration
+          ? "Rédaction à partir de votre vidéo"
+          : "Rédaction du contenu principal",
+        delay: hasVideoForGeneration ? 8200 : 6200,
+      },
       { percent: 70, label: "Adaptation par canal", delay: 7600 },
       { percent: 80, label: "Vérification des textes", delay: 10200 },
       { percent: 88, label: "Mise en forme", delay: 13200 },
@@ -1154,8 +1541,71 @@ export default function PublishModal({
     let didGenerate = false;
     try {
       const imagesForAI = shouldUseImagesForAI
-        ? await Promise.all(images.map((file) => fileToBoosterAiImagePayload(file)))
+        ? await Promise.all(
+            images.map((file) => fileToBoosterAiImagePayload(file)),
+          )
         : [];
+      let videoFramesForAI: Awaited<ReturnType<typeof extractVideoFramesForAI>> = [];
+      let videoAudioTranscript = "";
+      let videoRawAudioTranscript = "";
+      let videoAudioTranscriptStatus: "pending" | "ready" | "unavailable" = "pending";
+
+      if (hasVideoForGeneration && videoFile) {
+        setGenerationProgress((current) => Math.max(current, 36));
+        setGenerationStage("Transcription audio de la vidéo");
+        try {
+          const cacheKey = makeVideoTranscriptCacheKey(videoFile);
+          const cached = videoAudioTranscriptCacheRef.current?.key === cacheKey
+            ? videoAudioTranscriptCacheRef.current
+            : null;
+          const transcript = cached || await transcribeVideoAudioForAI(videoFile);
+
+          if (transcript?.text) {
+            videoAudioTranscript = transcript.text;
+            videoRawAudioTranscript = transcript.rawText || transcript.text;
+            videoAudioTranscriptStatus = "ready";
+            videoAudioTranscriptCacheRef.current = {
+              key: cacheKey,
+              text: videoAudioTranscript,
+              rawText: videoRawAudioTranscript,
+            };
+            setGenerationProgress((current) => Math.max(current, 44));
+            setGenerationStage("Audio vidéo transcrit");
+          } else {
+            videoAudioTranscriptStatus = "unavailable";
+            setGenerationProgress((current) => Math.max(current, 42));
+            setGenerationStage("Pas de parole exploitable, génération maintenue");
+          }
+        } catch {
+          videoAudioTranscriptStatus = "unavailable";
+          setGenerationProgress((current) => Math.max(current, 42));
+          setGenerationStage("Audio indisponible, génération maintenue");
+        }
+
+        setGenerationProgress((current) => Math.max(current, 48));
+        setGenerationStage("Extraction des images de la vidéo");
+        try {
+          videoFramesForAI = await extractVideoFramesForAI(videoFile);
+          setGenerationProgress((current) => Math.max(current, 60));
+          setGenerationStage(
+            videoFramesForAI.length > 0 && videoAudioTranscript
+              ? "Analyse audio + images de la vidéo"
+              : videoFramesForAI.length > 0
+                ? "Analyse des images de la vidéo"
+                : videoAudioTranscript
+                  ? "Analyse audio de la vidéo"
+                  : "Analyse vidéo limitée, génération maintenue",
+          );
+        } catch {
+          videoFramesForAI = [];
+          setGenerationProgress((current) => Math.max(current, 52));
+          setGenerationStage(
+            videoAudioTranscript
+              ? "Analyse audio de la vidéo"
+              : "Analyse visuelle indisponible, génération maintenue",
+          );
+        }
+      }
 
       const res = await fetch("/api/booster/generate", {
         method: "POST",
@@ -1165,9 +1615,23 @@ export default function PublishModal({
           theme,
           style: contentStyle,
           channels: selectedForGeneration,
+          mediaType: publicationMediaType,
           useImagesForAI: shouldUseImagesForAI,
           imageCount: imagesForAI.length,
           imagesForAI,
+          videoForAI: hasVideoForGeneration && videoGenerationContext
+            ? {
+                ...videoGenerationContext,
+                visualFrames: videoFramesForAI,
+                audioTranscript: videoAudioTranscript,
+                rawAudioTranscript: videoRawAudioTranscript,
+                analysisPlan: {
+                  ...videoGenerationContext.analysisPlan,
+                  visualFrames: videoFramesForAI.length > 0 ? "ready" : "pending",
+                  audioTranscript: videoAudioTranscriptStatus,
+                },
+              }
+            : null,
         }),
       });
 
@@ -1189,7 +1653,9 @@ export default function PublishModal({
       setGenError(
         shouldUseImagesForAI
           ? "Impossible de préparer ou d’analyser les images pour le moment. Merci de réessayer."
-          : "Connexion impossible pour le moment. Merci de réessayer.",
+          : hasVideoForGeneration
+            ? "Impossible de préparer l’analyse vidéo pour le moment. Merci de réessayer."
+            : "Connexion impossible pour le moment. Merci de réessayer.",
       );
     } finally {
       clearGenerationTimers();
@@ -1267,8 +1733,74 @@ export default function PublishModal({
 
   const onPickImagesClick = () => {
     setImgError("");
-    if (images.length >= 5) return;
+    if (publicationMediaType === "video" && (videoFile || videoPreviewUrl)) {
+      setImgError("Supprimez la vidéo pour ajouter des images.");
+      return;
+    }
+    if (images.length >= BOOSTER_MAX_IMAGE_COUNT) return;
     fileInputRef.current?.click();
+  };
+
+  const onPickVideoClick = () => {
+    setImgError("");
+    if (images.length > 0) {
+      setImgError("Supprimez les images pour ajouter une vidéo.");
+      return;
+    }
+    videoInputRef.current?.click();
+  };
+
+  const removeVideo = () => {
+    setImgError("");
+    clearVideoMedia();
+    setPublicationMediaType("images");
+  };
+
+  const addVideoFile = async (file: File | null) => {
+    if (!file) return;
+    setImgError("");
+
+    if (!isBoosterVideoFile(file)) {
+      setImgError("Ajoutez une vidéo valide : MP4/M4V, MOV ou WebM.");
+      return;
+    }
+
+    if (file.size > BOOSTER_MAX_VIDEO_BYTES) {
+      setImgError(
+        `La vidéo ${file.name} dépasse ${BOOSTER_MAX_VIDEO_MB_LABEL}.`,
+      );
+      return;
+    }
+
+    let duration: number | null = null;
+    try {
+      duration = await readVideoDurationSeconds(file);
+    } catch {
+      duration = null;
+    }
+
+    if (images.length > 0) {
+      setImgError("Supprimez les images pour ajouter une vidéo.");
+      return;
+    }
+
+    clearImagesMedia();
+    clearVideoMedia();
+    const normalizedFile = new File([file], buildVideoFileName(file), {
+      type: file.type || "video/mp4",
+      lastModified: file.lastModified || Date.now(),
+    });
+    setPublicationMediaType("video");
+    setVideoFile(normalizedFile);
+    setVideoPreviewUrl(URL.createObjectURL(normalizedFile));
+    setVideoDurationSeconds(duration);
+    setVideoStorageContext(null);
+    setUseImagesForAI(false);
+  };
+
+  const onVideoChange = async (files: FileList | null) => {
+    const file = files?.[0] || null;
+    await addVideoFile(file);
   };
 
   const addImageFiles = async (
@@ -1278,22 +1810,34 @@ export default function PublishModal({
     if (!pickedFiles.length) return;
     setImgError("");
 
-    const incoming = pickedFiles.filter((file) => file.type.startsWith("image/"));
+    const incoming = pickedFiles.filter(isBoosterImageFile);
     if (!incoming.length) {
       setImgError("Ajoutez des fichiers image valides.");
       return;
+    }
+
+    if (publicationMediaType === "video" && (videoFile || videoPreviewUrl)) {
+      setImgError("Supprimez la vidéo pour ajouter des images.");
+      return;
+    }
+
+    if (publicationMediaType !== "images") {
+      setPublicationMediaType("images");
     }
 
     const existingKeys = new Set(images.map((file) => makeImageKey(file)));
     const deduped = incoming.filter(
       (file) => !existingKeys.has(makeImageKey(file)),
     );
-    const allowed = deduped.slice(0, Math.max(0, 5 - images.length));
+    const allowed = deduped.slice(
+      0,
+      Math.max(0, BOOSTER_MAX_IMAGE_COUNT - images.length),
+    );
 
     if (!allowed.length) {
       setImgError(
-        images.length >= 5
-          ? "Maximum 5 images."
+        images.length >= BOOSTER_MAX_IMAGE_COUNT
+          ? `Maximum ${BOOSTER_MAX_IMAGE_COUNT} images.`
           : "Ces images sont déjà ajoutées.",
       );
       return;
@@ -1301,8 +1845,8 @@ export default function PublishModal({
 
     if (incoming.length > allowed.length) {
       setImgError(
-        images.length + allowed.length >= 5
-          ? "Maximum 5 images."
+        images.length + allowed.length >= BOOSTER_MAX_IMAGE_COUNT
+          ? `Maximum ${BOOSTER_MAX_IMAGE_COUNT} images.`
           : "Certaines images étaient déjà présentes.",
       );
     }
@@ -1315,11 +1859,11 @@ export default function PublishModal({
       return;
     }
 
-    const nextFiles = [...images, ...allowed].slice(0, 5);
+    const nextFiles = [...images, ...allowed].slice(0, BOOSTER_MAX_IMAGE_COUNT);
     const nextPreviews = [
       ...imagePreviews,
       ...allowed.map((file) => URL.createObjectURL(file)),
-    ].slice(0, 5);
+    ].slice(0, BOOSTER_MAX_IMAGE_COUNT);
     const nextMetaEntries = await Promise.all(
       allowed.map(
         async (file) =>
@@ -1377,10 +1921,14 @@ export default function PublishModal({
     await addImageFiles(Array.from(files), targetChannel);
   };
 
-  const onTakePhotoClick = (targetChannel?: ChannelKey) => {
+  const onTakePhotoClick = async (targetChannel?: ChannelKey) => {
     setImgError("");
-    if (images.length >= 5) {
-      setImgError("Maximum 5 images.");
+    if (publicationMediaType === "video" && (videoFile || videoPreviewUrl)) {
+      setImgError("Supprimez la vidéo pour reprendre une photo.");
+      return;
+    }
+    if (images.length >= BOOSTER_MAX_IMAGE_COUNT) {
+      setImgError(`Maximum ${BOOSTER_MAX_IMAGE_COUNT} images.`);
       return;
     }
     preservePublishScroll();
@@ -1394,7 +1942,11 @@ export default function PublishModal({
   };
 
   const onCameraCapture = async (file: File) => {
-    await addImageFiles([file], cameraCaptureTargetChannel ?? undefined);
+    if (isBoosterVideoFile(file) && cameraCaptureTargetChannel === null) {
+      await addVideoFile(file);
+    } else {
+      await addImageFiles([file], cameraCaptureTargetChannel ?? undefined);
+    }
     restorePublishScroll();
   };
 
@@ -1502,11 +2054,14 @@ export default function PublishModal({
     preparedPosts: Partial<Record<ChannelKey, ChannelPost>>,
     channelsToKeep: ChannelKey[],
   ): Partial<Record<ChannelKey, ChannelPost>> => {
-    return channelsToKeep.reduce((acc, channel) => {
-      const post = preparedPosts[channel];
-      if (post) acc[channel] = post;
-      return acc;
-    }, {} as Partial<Record<ChannelKey, ChannelPost>>);
+    return channelsToKeep.reduce(
+      (acc, channel) => {
+        const post = preparedPosts[channel];
+        if (post) acc[channel] = post;
+        return acc;
+      },
+      {} as Partial<Record<ChannelKey, ChannelPost>>,
+    );
   };
 
   const getPreparedDisplayPost = (
@@ -1516,7 +2071,41 @@ export default function PublishModal({
     return normalizePost(preparedPosts[key]);
   };
 
-  const displayKeyForImageChannel = (channel: ChannelKey): DisplayKey => channel;
+  const displayKeyForImageChannel = (channel: ChannelKey): DisplayKey =>
+    channel;
+
+  const getPublicationVideoPreviewForChannel = (channel: ChannelKey) => {
+    const displayKey = displayKeyForImageChannel(channel);
+    const post = getDisplayPost(displayKey);
+    return {
+      channelKey: channel,
+      channelLabel: getImageAdapterLabel(channel),
+      mediaType: "video" as const,
+      title: post.title,
+      content: post.content,
+      cta: getPreviewCtaForDisplayKey(displayKey, post),
+      hashtags:
+        displayKey === "instagram"
+          ? getLiveInstagramHashtags()
+          : post.hashtags || [],
+      imageCount: 0,
+      formatLabel:
+        channel === "inrcy_site" || channel === "site_web"
+          ? "Rendu vidéo site / iframe"
+          : "Vidéo : lecteur intégré",
+      video: videoPreviewUrl
+        ? {
+            previewUrl: videoPreviewUrl,
+            name: videoFile?.name || "video-inrcy.mp4",
+            type: videoFile?.type || "video/mp4",
+            size: videoFile?.size || 0,
+            duration: videoDurationSeconds,
+          }
+        : null,
+      image: null,
+      images: [],
+    };
+  };
 
   const getPublicationPreviewForChannel = (channel: ChannelKey) => {
     const editor = channelImageEditors[channel] || {
@@ -1565,10 +2154,16 @@ export default function PublishModal({
     };
   };
 
+  const activePreviewChannel = selectedChannels.includes(activeImageChannel)
+    ? activeImageChannel
+    : selectedChannels[0] || "inrcy_site";
+
   const activePublicationPreview =
-    selectedChannels.length && images.length
-      ? getPublicationPreviewForChannel(activeImageChannel)
-      : null;
+    publicationMediaType === "video" && selectedChannels.length && videoPreviewUrl
+      ? getPublicationVideoPreviewForChannel(activePreviewChannel)
+      : publicationMediaType === "images" && selectedChannels.length && images.length
+        ? getPublicationPreviewForChannel(activePreviewChannel)
+        : null;
 
   const closeEmptyContentWarnings = () => {
     setEmptyContentWarningChannels([]);
@@ -1589,7 +2184,8 @@ export default function PublishModal({
   };
 
   const applySiteContentFormat = (kind: "bold" | "italic" | "underline") => {
-    if (!isSiteDisplayKey(activeCard) || typeof document === "undefined") return;
+    if (!isSiteDisplayKey(activeCard) || typeof document === "undefined")
+      return;
     const editor = siteContentEditorRef.current;
     if (!editor) return;
 
@@ -1991,7 +2587,11 @@ export default function PublishModal({
           type: file.type || "image/jpeg",
           dataUrl: String(reader.result || ""),
         });
-      reader.onerror = () => reject(reader.error ?? new Error("Impossible de préparer l'image originale."));
+      reader.onerror = () =>
+        reject(
+          reader.error ??
+            new Error("Impossible de préparer l'image originale."),
+        );
       reader.readAsDataURL(file);
     });
 
@@ -1999,10 +2599,18 @@ export default function PublishModal({
     onProgress?: (current: number, total: number) => void,
   ): Promise<Record<string, ImagePayload>> => {
     if (!images.length) return {};
-    const originalPayloads = await Promise.all(images.map((file) => fileToImagePayload(file)));
-    const uploadedOriginals = await uploadPreparedImages(originalPayloads, onProgress);
+    const originalPayloads = await Promise.all(
+      images.map((file) => fileToImagePayload(file)),
+    );
+    const uploadedOriginals = await uploadPreparedImages(
+      originalPayloads,
+      onProgress,
+    );
     return Object.fromEntries(
-      images.map((file, index) => [makeImageKey(file), uploadedOriginals[index]]),
+      images.map((file, index) => [
+        makeImageKey(file),
+        uploadedOriginals[index],
+      ]),
     );
   };
 
@@ -2084,6 +2692,11 @@ export default function PublishModal({
       return;
     }
 
+    if (publicationMediaType === "video" && !videoFile) {
+      setImgError("Ajoutez une vidéo avant de publier.");
+      return;
+    }
+
     const missingContentChannels = selectedChannels.filter(
       (ch) => !String(preparedPostsByChannel[ch]?.content || "").trim(),
     );
@@ -2097,6 +2710,7 @@ export default function PublishModal({
 
     const gmbImages = channelImageEditors.gmb?.imageKeys || [];
     if (
+      publicationMediaType === "images" &&
       selectedChannels.includes("gmb") &&
       !gmbImages.length &&
       !options?.skipGmbNoImageWarning
@@ -2113,7 +2727,7 @@ export default function PublishModal({
     setPendingPublishPosts(null);
     setPostsByChannel(preparedPostsByChannel);
 
-    if (selectedChannels.includes("instagram")) {
+    if (publicationMediaType === "images" && selectedChannels.includes("instagram")) {
       const instagramImages = channelImageEditors.instagram?.imageKeys || [];
       if (!instagramImages.length) {
         setImgError(
@@ -2123,78 +2737,119 @@ export default function PublishModal({
       }
     }
 
+    const isVideoPublication = publicationMediaType === "video";
     setSaving(true);
     setPublishProgress(5);
-    setPublishProgressLabel("Préparation de la publication...");
+    setPublishProgressLabel(
+      isVideoPublication
+        ? "Préparation de la publication vidéo..."
+        : "Préparation de la publication...",
+    );
 
     try {
-      const { channelImages, channelSettings } =
-        await buildChannelImagesPayload((current, total) => {
-          if (!total) {
-            setPublishProgress(25);
-            setPublishProgressLabel("Préparation des contenus...");
-            return;
-          }
-          const ratio = current / total;
-          setPublishProgress(clampPercent(8 + ratio * 27));
-          setPublishProgressLabel(
-            `Préparation des images ${clampPercent(ratio * 100)}%`,
-          );
-        });
+      const emptyChannelImages = {} as ChannelImagePayload;
+      const emptyChannelSettings = {} as ChannelImageSettingsPayload;
+      const { channelImages, channelSettings } = isVideoPublication
+        ? { channelImages: emptyChannelImages, channelSettings: emptyChannelSettings }
+        : await buildChannelImagesPayload((current, total) => {
+            if (!total) {
+              setPublishProgress(25);
+              setPublishProgressLabel("Préparation des contenus...");
+              return;
+            }
+            const ratio = current / total;
+            setPublishProgress(clampPercent(8 + ratio * 27));
+            setPublishProgressLabel(
+              `Préparation des images ${clampPercent(ratio * 100)}%`,
+            );
+          });
 
-      setPublishProgress((prev) => Math.max(prev, 35));
-      setPublishProgressLabel("Upload des images originales...");
+      const originalImageByKey: Record<string, ImagePayload> = isVideoPublication
+        ? {}
+        : await (async () => {
+            setPublishProgress((prev) => Math.max(prev, 35));
+            setPublishProgressLabel("Upload des images originales...");
+            return await uploadOriginalImagesForPublication((current, total) => {
+              if (!total) return;
+              const ratio = current / total;
+              setPublishProgress(clampPercent(35 + ratio * 12));
+              setPublishProgressLabel(
+                `Upload des images originales ${clampPercent(ratio * 100)}%`,
+              );
+            });
+          })();
 
-      const originalImageByKey = await uploadOriginalImagesForPublication((current, total) => {
-        if (!total) return;
-        const ratio = current / total;
-        setPublishProgress(clampPercent(35 + ratio * 12));
-        setPublishProgressLabel(`Upload des images originales ${clampPercent(ratio * 100)}%`);
-      });
-
-      setPublishProgress((prev) => Math.max(prev, images.length ? 47 : 35));
-      setPublishProgressLabel("Upload des images adaptées...");
+      if (!isVideoPublication) {
+        setPublishProgress((prev) => Math.max(prev, images.length ? 47 : 35));
+        setPublishProgressLabel("Upload des images adaptées...");
+      }
 
       const uploadedChannelImages = {} as ChannelImagePayload;
-      const uploadTargets = selectedChannels.reduce(
-        (sum, channel) =>
-          sum +
-          (channelImages[channel] || []).filter((image) => !!image?.dataUrl)
-            .length,
-        0,
-      );
+      const uploadTargets = isVideoPublication
+        ? 0
+        : selectedChannels.reduce(
+            (sum, channel) =>
+              sum +
+              (channelImages[channel] || []).filter((image) => !!image?.dataUrl)
+                .length,
+            0,
+          );
       let uploadedCount = 0;
-      for (const channel of selectedChannels) {
-        const uploadedImages = await uploadPreparedImages(
-          channelImages[channel] || [],
-          (current, total) => {
-            if (!total) return;
-            uploadedCount += 1;
-            const ratio = uploadTargets ? uploadedCount / uploadTargets : 1;
-            setPublishProgress(clampPercent((images.length ? 47 : 35) + ratio * (images.length ? 23 : 35)));
-            setPublishProgressLabel(
-              `Upload des images adaptées ${clampPercent(ratio * 100)}%`,
-            );
-          },
-        );
-        const imageKeysForChannel = channelSettings[channel]?.imageKeys || [];
-        uploadedChannelImages[channel] = uploadedImages.map((image, index) => {
-          const imageKey = imageKeysForChannel[index] || "";
-          const original = imageKey ? originalImageByKey[imageKey] : undefined;
-          const originalUrl = String(original?.publicUrl || original?.originalPublicUrl || original?.originalUrl || "").trim();
-          return {
-            ...image,
-            renderedUrl: image.publicUrl || image.renderedUrl || "",
-            imageKey,
-            originalUrl,
-            originalPublicUrl: originalUrl,
-            originalStoragePath: original?.storagePath || original?.originalStoragePath || "",
-            originalName: original?.name || image.name,
-            originalType: original?.type || image.type,
-            transform: imageKey ? channelSettings[channel]?.transforms?.[imageKey] : undefined,
-            imageMeta: imageKey ? imageMetaByKey[imageKey] : undefined,
-          };
-        });
+      if (!isVideoPublication) {
+        for (const channel of selectedChannels) {
+          const uploadedImages = await uploadPreparedImages(
+            channelImages[channel] || [],
+            (current, total) => {
+              if (!total) return;
+              uploadedCount += 1;
+              const ratio = uploadTargets ? uploadedCount / uploadTargets : 1;
+              setPublishProgress(
+                clampPercent(
+                  (images.length ? 47 : 35) + ratio * (images.length ? 23 : 35),
+                ),
+              );
+              setPublishProgressLabel(
+                `Upload des images adaptées ${clampPercent(ratio * 100)}%`,
+              );
+            },
+          );
+          const imageKeysForChannel = channelSettings[channel]?.imageKeys || [];
+          uploadedChannelImages[channel] = uploadedImages.map((image, index) => {
+            const imageKey = imageKeysForChannel[index] || "";
+            const original = imageKey ? originalImageByKey[imageKey] : undefined;
+            const originalUrl = String(
+              original?.publicUrl ||
+                original?.originalPublicUrl ||
+                original?.originalUrl ||
+                "",
+            ).trim();
+            return {
+              ...image,
+              renderedUrl: image.publicUrl || image.renderedUrl || "",
+              imageKey,
+              originalUrl,
+              originalPublicUrl: originalUrl,
+              originalStoragePath:
+                original?.storagePath || original?.originalStoragePath || "",
+              originalName: original?.name || image.name,
+              originalType: original?.type || image.type,
+              transform: imageKey
+                ? channelSettings[channel]?.transforms?.[imageKey]
+                : undefined,
+              imageMeta: imageKey ? imageMetaByKey[imageKey] : undefined,
+            };
+          });
+        }
+      }
+
+      let publicationVideo: any = null;
+      if (isVideoPublication) {
+        setPublishProgress((prev) => Math.max(prev, 35));
+        setPublishProgressLabel("Upload de la vidéo...");
+        publicationVideo = await uploadPublicationVideoForPublish();
+        if (!publicationVideo?.publicUrl && !publicationVideo?.url) {
+          throw new Error("La vidéo n’a pas pu être préparée pour la publication.");
+        }
       }
 
       setPublishProgress((prev) => Math.max(prev, 74));
@@ -2207,7 +2862,7 @@ export default function PublishModal({
       const publishChannels = [...selectedChannels];
       const estimatedPublishMs = Math.max(
         9000,
-        5500 + publishChannels.length * 6500 + (uploadTargets ? 2500 : 0),
+        5500 + publishChannels.length * 6500 + (uploadTargets ? 2500 : 0) + (isVideoPublication ? 2500 : 0),
       );
       const getPublishPulseLabel = (ratio: number) => {
         if (ratio < 0.08) return "Création de l’historique iNr’Send...";
@@ -2229,13 +2884,20 @@ export default function PublishModal({
       };
 
       publishPulseTimerRef.current = window.setInterval(() => {
-        const ratio = Math.min(1, (Date.now() - publishStartedAt) / estimatedPublishMs);
+        const ratio = Math.min(
+          1,
+          (Date.now() - publishStartedAt) / estimatedPublishMs,
+        );
         publishPulseProgressRef.current = clampPercent(74 + ratio * 24, 74, 98);
         setPublishProgressLabel(getPublishPulseLabel(ratio));
-        setPublishProgress((prev) => Math.max(prev, publishPulseProgressRef.current));
+        setPublishProgress((prev) =>
+          Math.max(prev, publishPulseProgressRef.current),
+        );
       }, 500);
 
       const result = await trackEvent("publish", {
+        mediaType: publicationMediaType,
+        video: publicationVideo,
         idea: idea.trim(),
         theme,
         channels: selectedChannels,
@@ -2289,13 +2951,17 @@ export default function PublishModal({
     setDraftMessage("");
 
     if (!hasDraftablePublicationContent) {
-      setPublishError("Ajoutez un contenu ou une image avant d’enregistrer le brouillon.");
+      setPublishError(
+        "Ajoutez un contenu ou un média avant d’enregistrer le brouillon.",
+      );
       scrollToPublishArea("smooth");
       return;
     }
 
     if (!selectedChannels.length) {
-      setPublishError("Sélectionnez au moins 1 canal avant d’enregistrer le brouillon.");
+      setPublishError(
+        "Sélectionnez au moins 1 canal avant d’enregistrer le brouillon.",
+      );
       scrollToPublishArea("smooth");
       return;
     }
@@ -2309,25 +2975,42 @@ export default function PublishModal({
       type: file.type,
       size: file.size,
     }));
+    const videoName = videoFile
+      ? {
+          name: videoFile.name,
+          type: videoFile.type,
+          size: videoFile.size,
+          duration: videoDurationSeconds,
+        }
+      : null;
     const channelLabels = selectedChannels
       .map((channel) => CHANNEL_LABELS[channel] || channel)
       .join(" / ");
     const firstTitle = selectedChannels
-      .map((channel) => String(preparedPostsByChannel[channel]?.title || "").trim())
+      .map((channel) =>
+        String(preparedPostsByChannel[channel]?.title || "").trim(),
+      )
       .find(Boolean);
     const firstContent = selectedChannels
-      .map((channel) => String(preparedPostsByChannel[channel]?.content || "").trim())
+      .map((channel) =>
+        String(preparedPostsByChannel[channel]?.content || "").trim(),
+      )
       .find(Boolean);
 
     setDraftSaving(true);
     try {
-      const imageDrafts = await uploadPublicationDraftImages();
+      setDraftMessage(publicationMediaType === "video" ? "Upload vidéo…" : "Enregistrement…");
+      const imageDrafts =
+        publicationMediaType === "images" ? await uploadPublicationDraftImages() : [];
+      const videoDraft =
+        publicationMediaType === "video" ? await uploadPublicationDraftVideo() : null;
       const response = await fetch("/api/booster/events", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           type: "publish_draft",
-          draftId: loadedPublicationDraftId || publicationDraftIdParam || undefined,
+          draftId:
+            loadedPublicationDraftId || publicationDraftIdParam || undefined,
           payload: {
             status: "draft",
             title: firstTitle || "Brouillon publication",
@@ -2339,10 +3022,14 @@ export default function PublishModal({
             channel: channelLabels,
             channels: selectedChannels,
             postByChannel: preparedPostsByChannel,
-            imageNames,
+            mediaType: publicationMediaType,
+            imageNames: publicationMediaType === "images" ? imageNames : [],
+            videoName: publicationMediaType === "video" ? videoName : null,
             imageDrafts,
-            useImagesForAI,
-            imageSettingsByChannel: getDraftImageSettingsByChannel(),
+            videoDraft,
+            useImagesForAI: publicationMediaType === "images" ? useImagesForAI : false,
+            imageSettingsByChannel:
+              publicationMediaType === "images" ? getDraftImageSettingsByChannel() : {},
             instagramHashtagsInput,
             saved_at: new Date().toISOString(),
           },
@@ -2350,12 +3037,29 @@ export default function PublishModal({
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(String(result?.error || "Impossible d’enregistrer le brouillon publication."));
+        throw new Error(
+          String(
+            result?.error ||
+              "Impossible d’enregistrer le brouillon publication.",
+          ),
+        );
       }
-      const savedDraftId = String(result?.id || loadedPublicationDraftId || publicationDraftIdParam || "").trim();
+      const savedDraftId = String(
+        result?.id || loadedPublicationDraftId || publicationDraftIdParam || "",
+      ).trim();
+      if (publicationMediaType === "video" && videoDraft) {
+        setVideoStorageContext({
+          storagePath: videoDraft.storagePath || "",
+          publicUrl: videoDraft.publicUrl || videoDraft.url || "",
+          url: videoDraft.url || videoDraft.publicUrl || "",
+        });
+      }
       if (savedDraftId) {
         setLoadedPublicationDraftId(savedDraftId);
-        router.replace(`/dashboard?action=publish&draftId=${encodeURIComponent(savedDraftId)}`, { scroll: false });
+        router.replace(
+          `/dashboard?action=publish&draftId=${encodeURIComponent(savedDraftId)}`,
+          { scroll: false },
+        );
       }
       setLastPublicationDraftSnapshot(currentPublicationDraftSnapshot);
       onUnsavedChange?.(false);
@@ -2467,26 +3171,37 @@ export default function PublishModal({
       const hasContent = !!String(post?.content || "").trim();
       const hasText = hasTitle || hasContent;
       const hasImage = imageKeysToPublish.length > 0;
+      const hasVideo = publicationMediaType === "video" && !!videoFile;
+      const hasMedia = publicationMediaType === "video" ? hasVideo : hasImage;
 
       if (!hasContent) warnings.push("Contenu vide");
       if (!hasTitle) warnings.push("Titre vide");
-      if (!hasImage) {
+      if (publicationMediaType === "video") {
+        if (!hasVideo) blockers.push("Ajoutez une vidéo.");
+        if (channel === "gmb") warnings.push("Google Business peut publier sans vidéo si l’API refuse le média.");
+        if (channel === "linkedin") warnings.push("LinkedIn peut publier le texte seul si l’upload vidéo est refusé.");
+      } else if (!hasImage) {
         if (channel === "instagram")
           blockers.push("Instagram nécessite au moins 1 image.");
         else if (channel === "gmb")
           warnings.push("Google Business sera publié sans photo.");
         else warnings.push("Aucune image sélectionnée.");
       }
-      if (!hasText && !hasImage) {
-        blockers.push("Ajoutez au moins du texte ou une image.");
+      if (!hasText && !hasMedia) {
+        blockers.push("Ajoutez au moins du texte ou un média.");
       }
-      if (channel === "gmb" && rawImageKeys.length > 1) {
+      if (publicationMediaType === "images" && channel === "gmb" && rawImageKeys.length > 1) {
         warnings.push("Google Business publiera uniquement la première photo.");
       }
 
       return {
         channel,
         label: CHANNEL_LABELS[channel],
+        mediaType: publicationMediaType,
+        mediaLabel: getPublicationMediaLabel(
+          publicationMediaType,
+          publicationMediaType === "video" && videoFile ? 1 : imageKeysToPublish.length,
+        ),
         imageCount: imageKeysToPublish.length,
         warnings,
         blockers,
@@ -2504,6 +3219,7 @@ export default function PublishModal({
   const finalReviewBlockers = finalReviewItems.flatMap((item) => item.blockers);
   const hasFinalReviewBlockers = finalReviewBlockers.length > 0;
   const finalReviewSiteNotice =
+    publicationMediaType === "images" &&
     selectedChannels.includes("inrcy_site") &&
     selectedChannels.includes("site_web")
       ? getPublishImageKeysForChannel("inrcy_site").join("|") !==
@@ -2532,15 +3248,17 @@ export default function PublishModal({
       (item) => item.channel === channel,
     );
     const hasText = !!reviewItem?.hasText;
-    const hasImage = !!reviewItem?.hasImage;
+    const hasMedia =
+      publicationMediaType === "video" ? !!videoPreviewUrl : !!reviewItem?.hasImage;
     return {
       key: channel,
       label: getImageAdapterLabel(channel),
-      tone: hasText && hasImage
-        ? ("ready" as const)
-        : hasText || hasImage
-          ? ("warning" as const)
-          : ("blocked" as const),
+      tone:
+        hasText && hasMedia
+          ? ("ready" as const)
+          : hasText || hasMedia
+            ? ("warning" as const)
+            : ("blocked" as const),
     };
   });
 
@@ -2583,7 +3301,6 @@ export default function PublishModal({
         onClose={() => setAiConfigurationOpen(false)}
       />
 
-
       <PublishFinalReviewModal
         open={finalReviewOpen}
         styles={styles}
@@ -2608,9 +3325,15 @@ export default function PublishModal({
 
       <InrcyCameraCaptureModal
         open={cameraCaptureOpen}
-        title="Prendre une photo"
+        title="Appareil iNrCy"
         onClose={closeCameraCapture}
         onCapture={onCameraCapture}
+        allowVideo={
+          cameraCaptureTargetChannel === null &&
+          !images.length &&
+          !(publicationMediaType === "video" && (videoFile || videoPreviewUrl))
+        }
+        maxVideoBytes={BOOSTER_MAX_VIDEO_BYTES}
       />
 
       <PublishChannelSelector
@@ -2631,11 +3354,19 @@ export default function PublishModal({
         idea={idea}
         setIdea={setIdea}
         fileInputRef={fileInputRef}
+        videoInputRef={videoInputRef}
         onImagesChange={onImagesChange}
+        onVideoChange={onVideoChange}
         onPickImagesClick={onPickImagesClick}
+        onPickVideoClick={onPickVideoClick}
         onTakePhotoClick={() => onTakePhotoClick()}
+        publicationMediaType={publicationMediaType}
         images={images}
         imagePreviews={imagePreviews}
+        videoFile={videoFile}
+        videoPreviewUrl={videoPreviewUrl}
+        videoDurationSeconds={videoDurationSeconds}
+        removeVideo={removeVideo}
         removeImage={removeImage}
         useImagesForAI={useImagesForAI}
         setUseImagesForAI={setUseImagesForAI}
@@ -2672,7 +3403,11 @@ export default function PublishModal({
       <PublishImagesPanel
         styles={styles}
         isMobile={isMobile}
+        publicationMediaType={publicationMediaType}
         images={images}
+        videoFile={videoFile}
+        videoPreviewUrl={videoPreviewUrl}
+        videoDurationSeconds={videoDurationSeconds}
         imgError={imgError}
         selectedChannels={selectedChannels}
         activeImageChannel={activeImageChannel}
@@ -2685,8 +3420,10 @@ export default function PublishModal({
         getImageAdapterLabel={getImageAdapterLabel}
         setSynchronizedActiveChannel={setSynchronizedActiveChannel}
         onPickImagesClick={onPickImagesClick}
+        onPickVideoClick={onPickVideoClick}
         onTakePhotoClick={onTakePhotoClick}
         onImagesChange={onImagesChange}
+        removeVideo={removeVideo}
         gmbFileInputRef={gmbFileInputRef}
         setImgError={setImgError}
         toggleChannelImage={toggleChannelImage}

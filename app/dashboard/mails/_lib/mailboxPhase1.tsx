@@ -332,7 +332,7 @@ export type OutboxItem = {
   to?: string | null;
   from?: string | null;
   channels?: string[];
-  attachments?: { name: string; type?: string | null; size?: number | null; url?: string | null; downloadUrl?: string | null; role?: string | null }[];
+  attachments?: { name: string; type?: string | null; size?: number | null; url?: string | null; downloadUrl?: string | null; role?: string | null; storagePath?: string | null; duration?: number | null; thumbnailUrl?: string | null }[];
   raw?: any;
   reopenHref?: string | null;
 };
@@ -352,6 +352,10 @@ export type PublicationAttachment = {
   originalName?: string | null;
   originalType?: string | null;
   imageKey?: string | null;
+  storagePath?: string | null;
+  duration?: number | null;
+  thumbnailUrl?: string | null;
+  thumbnailStoragePath?: string | null;
   transform?: PublicationImageTransform | null;
   imageMeta?: { width?: number; height?: number; ratio?: number } | null;
 };
@@ -798,7 +802,8 @@ function downloadUrlForDraftAttachment(bucket: string, path: string, name?: stri
 
 export function extractAttachmentsFromPayload(payload: any): PublicationAttachment[] {
   if (!payload || typeof payload !== "object") return [];
-  const candidates = parseMaybeJsonArray(
+
+  const baseCandidates = parseMaybeJsonArray(
     payload.attachments ||
     payload.files ||
     payload.images ||
@@ -809,6 +814,40 @@ export function extractAttachmentsFromPayload(payload: any): PublicationAttachme
     payload?.post?.media ||
     []
   );
+
+  const singleMediaCandidates = [
+    payload.video,
+    payload.videoDraft,
+    payload.video_draft,
+    payload?.post?.video,
+    payload?.post?.videoDraft,
+    payload?.media_metadata?.video,
+    payload?.mediaMetadata?.video,
+    payload?.post?.media_metadata?.video,
+    payload?.post?.mediaMetadata?.video,
+  ].filter(Boolean);
+
+  const flatVideoUrl = String(
+    payload.video_url ||
+    payload.videoUrl ||
+    payload?.post?.video_url ||
+    payload?.post?.videoUrl ||
+    ""
+  ).trim();
+  const flatVideoCandidate = flatVideoUrl
+    ? [{
+        name: payload.video_name || payload.videoName || payload?.post?.video_name || payload?.post?.videoName || "video-inrcy.mp4",
+        type: payload.video_mime || payload.videoMime || payload?.post?.video_mime || payload?.post?.videoMime || "video/mp4",
+        size: payload.video_size || payload.videoSize || payload?.post?.video_size || payload?.post?.videoSize || null,
+        duration: payload.video_duration_seconds || payload.videoDurationSeconds || payload?.post?.video_duration_seconds || payload?.post?.videoDurationSeconds || null,
+        url: flatVideoUrl,
+        publicUrl: flatVideoUrl,
+        storagePath: payload.video_path || payload.videoPath || payload?.post?.video_path || payload?.post?.videoPath || null,
+        thumbnailUrl: payload.video_thumbnail_url || payload.videoThumbnailUrl || payload?.post?.video_thumbnail_url || payload?.post?.videoThumbnailUrl || null,
+      }]
+    : [];
+
+  const candidates = [...baseCandidates, ...singleMediaCandidates, ...flatVideoCandidate];
 
   if (!Array.isArray(candidates)) return [];
 
@@ -831,8 +870,8 @@ export function extractAttachmentsFromPayload(payload: any): PublicationAttachme
           : { name: raw };
       }
       const bucket = String(a.bucket || a.storage_bucket || "").trim();
-      const storagePath = String(a.path || a.storage_path || "").trim();
-      const renderedUrl = a.renderedUrl || a.rendered_url || a.url || a.href || a.publicUrl || a.public_url || null;
+      const storagePath = String(a.path || a.storage_path || a.storagePath || a.video_path || "").trim();
+      const renderedUrl = a.renderedUrl || a.rendered_url || a.url || a.href || a.publicUrl || a.public_url || a.videoUrl || a.video_url || null;
       const originalUrl = a.originalUrl || a.original_url || a.originalPublicUrl || a.original_public_url || null;
       const url = renderedUrl || originalUrl || (storagePath && isLikelyUrl(storagePath) ? storagePath : null);
       const name = a.name || a.filename || a.fileName || a.originalname || a.originalName || (storagePath && !isLikelyUrl(storagePath) ? storagePath.split("/").pop() : null) || url;
@@ -854,6 +893,10 @@ export function extractAttachmentsFromPayload(payload: any): PublicationAttachme
         originalName: a.originalName || a.original_name || null,
         originalType: a.originalType || a.original_type || null,
         imageKey: a.imageKey || a.image_key || null,
+        storagePath: storagePath || a.storagePath || a.video_path || null,
+        duration: typeof a.duration === "number" ? a.duration : typeof a.video_duration_seconds === "number" ? a.video_duration_seconds : null,
+        thumbnailUrl: a.thumbnailUrl || a.thumbnail_url || a.video_thumbnail_url || null,
+        thumbnailStoragePath: a.thumbnailStoragePath || a.thumbnail_storage_path || null,
         transform: a.transform || null,
         imageMeta: a.imageMeta || a.image_meta || null,
         downloadUrl,
@@ -874,7 +917,14 @@ export function hasAttachmentFields(payload: any): boolean {
     payload?.post?.files,
     payload?.post?.images,
     payload?.post?.media,
-  ].some((value) => Array.isArray(value) || parseMaybeJsonArray(value).length > 0);
+    payload.video,
+    payload.videoDraft,
+    payload?.post?.video,
+    payload.video_url,
+    payload.videoUrl,
+    payload?.media_metadata?.video,
+    payload?.mediaMetadata?.video,
+  ].some((value) => Boolean(value) || Array.isArray(value) || parseMaybeJsonArray(value).length > 0);
 }
 
 export function extractPublicationParts(payload: any): PublicationParts {

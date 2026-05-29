@@ -289,3 +289,192 @@ export async function linkedinPublishMultiImage(params: {
     return { ok: false, error: e?.message || "Impossible de publier les images sur LinkedIn pour le moment." };
   }
 }
+
+type LinkedInVideoUploadInstruction = {
+  uploadUrl: string;
+  firstByte: number;
+  lastByte: number;
+};
+
+async function fetchVideoBlob(videoUrl: string): Promise<Blob> {
+  if (videoUrl.startsWith("data:")) {
+    const m = videoUrl.match(/^data:([^;]+);base64,(.+)$/);
+    if (!m) throw new Error("Vidéo LinkedIn invalide.");
+    return new Blob([Buffer.from(m[2] || "", "base64")], { type: m[1] || "video/mp4" });
+  }
+
+  const videoRes = await fetch(videoUrl, { cache: "no-store" });
+  if (!videoRes.ok) {
+    throw new Error(`Impossible de récupérer la vidéo LinkedIn (${videoRes.status}).`);
+  }
+  const ab = await videoRes.arrayBuffer();
+  const mime = videoRes.headers.get("content-type") || "video/mp4";
+  return new Blob([ab], { type: mime });
+}
+
+function normalizeLinkedInUploadInstructions(value: any, fallbackUploadUrl: string, fileSize: number): LinkedInVideoUploadInstruction[] {
+  const rawInstructions = Array.isArray(value?.uploadInstructions) ? value.uploadInstructions : [];
+  const instructions = rawInstructions
+    .map((item: any): LinkedInVideoUploadInstruction | null => {
+      const uploadUrl = String(item?.uploadUrl || "").trim();
+      const firstByte = Number(item?.firstByte ?? 0);
+      const lastByte = Number(item?.lastByte ?? fileSize - 1);
+      if (!uploadUrl || !Number.isFinite(firstByte) || !Number.isFinite(lastByte)) return null;
+      return { uploadUrl, firstByte: Math.max(0, firstByte), lastByte: Math.min(fileSize - 1, lastByte) };
+    })
+    .filter(Boolean) as LinkedInVideoUploadInstruction[];
+
+  if (instructions.length) return instructions;
+  if (fallbackUploadUrl) return [{ uploadUrl: fallbackUploadUrl, firstByte: 0, lastByte: fileSize - 1 }];
+  return [];
+}
+
+async function uploadLinkedInVideo(params: {
+  accessToken: string;
+  ownerUrn: string;
+  videoUrl: string;
+}) {
+  const { accessToken, ownerUrn, videoUrl } = params;
+  const videoBlob = await fetchVideoBlob(videoUrl);
+  const videoBuffer = await videoBlob.arrayBuffer();
+  const fileSizeBytes = videoBlob.size || videoBuffer.byteLength;
+
+  const initRes = await fetch("https://api.linkedin.com/rest/videos?action=initializeUpload", {
+    method: "POST",
+    headers: linkedInHeaders(accessToken),
+    body: JSON.stringify({
+      initializeUploadRequest: {
+        owner: ownerUrn,
+        fileSizeBytes,
+        uploadCaptions: false,
+        uploadThumbnail: false,
+      },
+    }),
+    cache: "no-store",
+  });
+
+  const { raw: initRaw, json: initJson } = await parseResponse(initRes);
+  if (!initRes.ok) {
+    throw new Error(initJson?.message || initJson?.error || initRaw || "Impossible de préparer la vidéo LinkedIn.");
+  }
+
+  const value = initJson?.value || {};
+  const videoUrn = String(value?.video || "");
+  const uploadToken = String(value?.uploadToken || "");
+  const uploadUrl = String(value?.uploadUrl || "");
+  const instructions = normalizeLinkedInUploadInstructions(value, uploadUrl, fileSizeBytes);
+
+  if (!videoUrn || !instructions.length) {
+    throw new Error("LinkedIn n'a pas renvoyé les informations d'upload vidéo.");
+  }
+
+  const uploadedPartIds: string[] = [];
+  const uploadResponses: any[] = [];
+
+  for (const instruction of instructions) {
+    const part = videoBuffer.slice(instruction.firstByte, instruction.lastByte + 1);
+    const uploadRes = await fetch(instruction.uploadUrl, {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": videoBlob.type || "video/mp4",
+      },
+      body: part,
+      cache: "no-store",
+    });
+
+    const uploadRaw = await uploadRes.text().catch(() => "");
+    const etag = String(uploadRes.headers.get("etag") || "").replace(/^\"|\"$/g, "");
+    uploadResponses.push({ status: uploadRes.status, etag, raw: uploadRaw, firstByte: instruction.firstByte, lastByte: instruction.lastByte });
+
+    if (!uploadRes.ok) {
+      throw new Error(uploadRaw || "Impossible d’envoyer la vidéo sur LinkedIn.");
+    }
+    if (etag) uploadedPartIds.push(etag);
+  }
+
+  let finalizeJson: any = null;
+  if (uploadToken && uploadedPartIds.length) {
+    const finalizeRes = await fetch("https://api.linkedin.com/rest/videos?action=finalizeUpload", {
+      method: "POST",
+      headers: linkedInHeaders(accessToken),
+      body: JSON.stringify({
+        finalizeUploadRequest: {
+          video: videoUrn,
+          uploadToken,
+          uploadedPartIds,
+        },
+      }),
+      cache: "no-store",
+    });
+    const { raw: finalizeRaw, json } = await parseResponse(finalizeRes);
+    finalizeJson = json ?? finalizeRaw;
+    if (!finalizeRes.ok) {
+      throw new Error(json?.message || json?.error || finalizeRaw || "Impossible de finaliser la vidéo LinkedIn.");
+    }
+  }
+
+  return { videoUrn, initJson: initJson ?? initRaw, uploadResponses, finalizeJson };
+}
+
+export async function linkedinPublishVideo(params: {
+  accessToken: string;
+  authorUrn: string;
+  text: string;
+  videoUrl: string;
+  visibility?: "PUBLIC" | "CONNECTIONS";
+  title?: string;
+}): Promise<LinkedInPublishResult> {
+  const { accessToken, authorUrn, text, videoUrl, visibility = "PUBLIC", title } = params;
+
+  try {
+    if (!accessToken) return { ok: false, error: "Connexion LinkedIn invalide." };
+    if (!authorUrn) return { ok: false, error: "Compte LinkedIn invalide." };
+    if (!text?.trim()) return { ok: false, error: "Le contenu de la publication est vide." };
+    if (!videoUrl?.trim()) return linkedinPublishText({ accessToken, authorUrn, text, visibility });
+
+    const uploaded = await uploadLinkedInVideo({ accessToken, ownerUrn: authorUrn, videoUrl });
+    const postResult = await createLinkedInPost({
+      accessToken,
+      payload: {
+        author: authorUrn,
+        commentary: text,
+        visibility,
+        distribution: {
+          feedDistribution: "MAIN_FEED",
+          targetEntities: [],
+          thirdPartyDistributionChannels: [],
+        },
+        content: {
+          media: {
+            id: uploaded.videoUrn,
+            title: title || undefined,
+          },
+        },
+        lifecycleState: "PUBLISHED",
+        isReshareDisabledByAuthor: false,
+      },
+    });
+
+    if (!postResult.ok) {
+      return {
+        ...postResult,
+        diagnostics: {
+          stage: "videoPost",
+          videoUpload: uploaded,
+          upstream: postResult.diagnostics,
+        },
+      };
+    }
+
+    return {
+      ...postResult,
+      diagnostics: {
+        videoUpload: uploaded,
+        upstream: postResult.diagnostics,
+      },
+    };
+  } catch (e: any) {
+    return { ok: false, error: e?.message || "Impossible de publier la vidéo sur LinkedIn pour le moment." };
+  }
+}
