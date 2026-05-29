@@ -152,13 +152,13 @@ export default function PublishImagesPanel({
         onClick={() => !disabled && setChannelMediaMode(activeImageChannel, mode)}
         style={{
           border: active
-            ? "1px solid rgba(76,195,255,0.62)"
+            ? "2px solid rgba(76,195,255,0.88)"
             : "1px solid rgba(255,255,255,0.13)",
           background: active
             ? "linear-gradient(135deg, rgba(36,145,190,0.34), rgba(124,92,255,0.22))"
             : "rgba(255,255,255,0.055)",
           color: active ? "#e6f8ff" : "rgba(255,255,255,0.76)",
-          boxShadow: active ? "0 0 0 1px rgba(76,195,255,0.16) inset" : undefined,
+          boxShadow: active ? "0 0 0 1px rgba(76,195,255,0.28) inset, 0 0 0 1px rgba(76,195,255,0.18), 0 0 14px rgba(76,195,255,0.16)" : undefined,
           borderRadius: 999,
           minHeight: isMobile ? 34 : 36,
           padding: isMobile ? "0 8px" : "0 14px",
@@ -329,15 +329,21 @@ export default function PublishImagesPanel({
                     minHeight: 38,
                     borderRadius: 999,
                     padding: "0 10px",
-                    border: toneReady
-                      ? "1px solid rgba(34,197,94,0.34)"
-                      : "1px solid rgba(251,191,36,0.36)",
+                    border: isActive
+                      ? toneReady
+                        ? "2px solid rgba(74,222,128,0.90)"
+                        : "2px solid rgba(250,204,21,0.92)"
+                      : toneReady
+                        ? "1px solid rgba(34,197,94,0.34)"
+                        : "1px solid rgba(251,191,36,0.36)",
                     background: toneReady
                       ? "rgba(34,197,94,0.10)"
                       : "rgba(251,191,36,0.10)",
                     color: toneReady ? "#bbf7d0" : "#fde68a",
                     boxShadow: isActive
-                      ? "0 0 0 1px rgba(76,195,255,0.40) inset, 0 0 14px rgba(76,195,255,0.16)"
+                      ? toneReady
+                        ? "0 0 0 1px rgba(74,222,128,0.28) inset, 0 0 0 1px rgba(74,222,128,0.22), 0 0 18px rgba(74,222,128,0.22)"
+                        : "0 0 0 1px rgba(250,204,21,0.28) inset, 0 0 0 1px rgba(250,204,21,0.22), 0 0 18px rgba(250,204,21,0.18)"
                       : undefined,
                     fontSize: isMobile ? 12 : 13,
                     fontWeight: 900,

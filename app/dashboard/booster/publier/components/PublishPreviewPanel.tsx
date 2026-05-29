@@ -114,8 +114,18 @@ export default function PublishPreviewPanel({
                     ...previewStatusStyle,
                     ...(activeImageChannel === tab.key
                       ? {
+                          border:
+                            tab.tone === "ready"
+                              ? "2px solid rgba(74,222,128,0.90)"
+                              : tab.tone === "blocked"
+                                ? "2px solid rgba(248,113,113,0.90)"
+                                : "2px solid rgba(250,204,21,0.92)",
                           boxShadow:
-                            "0 0 0 1px rgba(76,195,255,0.25) inset, 0 0 14px rgba(76,195,255,0.16)",
+                            tab.tone === "ready"
+                              ? "0 0 0 1px rgba(74,222,128,0.26) inset, 0 0 0 1px rgba(74,222,128,0.20), 0 0 18px rgba(74,222,128,0.20)"
+                              : tab.tone === "blocked"
+                                ? "0 0 0 1px rgba(248,113,113,0.26) inset, 0 0 0 1px rgba(248,113,113,0.20), 0 0 18px rgba(248,113,113,0.18)"
+                                : "0 0 0 1px rgba(250,204,21,0.26) inset, 0 0 0 1px rgba(250,204,21,0.20), 0 0 18px rgba(250,204,21,0.16)",
                         }
                       : {}),
                     padding: "6px 10px",

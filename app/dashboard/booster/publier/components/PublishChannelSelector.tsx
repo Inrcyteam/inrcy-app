@@ -242,10 +242,10 @@ export default function PublishChannelSelector({
                 position: "relative",
                 overflow: "visible",
                 border: isSelected
-                  ? "1px solid rgba(76,195,255,0.45)"
+                  ? "2px solid rgba(76,195,255,0.88)"
                   : "1px solid rgba(255,255,255,0.10)",
                 boxShadow: isSelected
-                  ? "0 0 0 1px rgba(76,195,255,0.18) inset, 0 10px 24px rgba(8,18,34,0.18)"
+                  ? "0 0 0 1px rgba(76,195,255,0.28) inset, 0 0 0 1px rgba(76,195,255,0.22), 0 0 18px rgba(76,195,255,0.18), 0 10px 24px rgba(8,18,34,0.18)"
                   : "none",
                 background: isSelected
                   ? "rgba(76,195,255,0.08)"

@@ -67,8 +67,9 @@ export const channelBtn: CSSProperties = {
 };
 
 export const channelBtnActive: CSSProperties = {
-  border: "1px solid rgba(76,195,255,0.45)",
-  boxShadow: "0 0 0 1px rgba(76,195,255,0.18) inset",
+  border: "2px solid rgba(76,195,255,0.88)",
+  boxShadow:
+    "0 0 0 1px rgba(76,195,255,0.30) inset, 0 0 0 1px rgba(76,195,255,0.22), 0 0 18px rgba(76,195,255,0.22)",
 };
 
 export const channelBtnDisabled: CSSProperties = {
@@ -88,7 +89,8 @@ export const pillBtn: CSSProperties = {
 };
 
 export const pillBtnActive: CSSProperties = {
-  border: "1px solid rgba(76,195,255,0.45)",
-  boxShadow: "0 0 0 1px rgba(76,195,255,0.18) inset",
-  background: "rgba(76,195,255,0.10)",
+  border: "2px solid rgba(76,195,255,0.88)",
+  boxShadow:
+    "0 0 0 1px rgba(76,195,255,0.28) inset, 0 0 0 1px rgba(76,195,255,0.20), 0 0 16px rgba(76,195,255,0.18)",
+  background: "rgba(76,195,255,0.12)",
 };

@@ -141,8 +141,12 @@ export default function PublishContentEditorPanel({
                     ...statusStyle,
                     ...(activeCard === key
                       ? {
-                          boxShadow:
-                            "0 0 0 1px rgba(76,195,255,0.25) inset, 0 0 14px rgba(76,195,255,0.16)",
+                          border: hasText
+                            ? "2px solid rgba(74,222,128,0.90)"
+                            : "2px solid rgba(250,204,21,0.92)",
+                          boxShadow: hasText
+                            ? "0 0 0 1px rgba(74,222,128,0.26) inset, 0 0 0 1px rgba(74,222,128,0.20), 0 0 18px rgba(74,222,128,0.20)"
+                            : "0 0 0 1px rgba(250,204,21,0.26) inset, 0 0 0 1px rgba(250,204,21,0.20), 0 0 18px rgba(250,204,21,0.16)",
                         }
                       : {}),
                     ...(isMobile
