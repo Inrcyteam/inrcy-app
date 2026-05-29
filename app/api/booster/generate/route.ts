@@ -15,7 +15,10 @@ import {
   type BoosterRecentPublication,
 } from "@/lib/boosterPrompt";
 import { sanitizeGmbGeneratedPost } from "@/lib/googleBusinessCompliance";
-import { sanitizeBoosterSiteText, stripSiteTextFormatting } from "@/lib/boosterFormatting";
+import {
+  sanitizeBoosterSiteText,
+  stripSiteTextFormatting,
+} from "@/lib/boosterFormatting";
 
 export const maxDuration = 120;
 
@@ -88,16 +91,38 @@ type BoosterGenResponse = {
 
 type JsonRecord = Record<string, unknown>;
 
-const allowedChannels: BoosterChannels[] = ["inrcy_site", "site_web", "gmb", "facebook", "instagram", "linkedin"];
-const allowedThemes: BoosterTheme[] = ["", "promotion", "information", "conseil", "avis_client", "realisation", "actualite", "autre"];
+const allowedChannels: BoosterChannels[] = [
+  "inrcy_site",
+  "site_web",
+  "gmb",
+  "facebook",
+  "instagram",
+  "linkedin",
+];
+const allowedThemes: BoosterTheme[] = [
+  "",
+  "promotion",
+  "information",
+  "conseil",
+  "avis_client",
+  "realisation",
+  "actualite",
+  "autre",
+];
 const allowedStyles: BoosterStyle[] = ["sobre", "equilibre", "dynamique"];
 const siteChannels = new Set<BoosterChannels>(["inrcy_site", "site_web"]);
 const AI_IMAGE_MAX_COUNT = 5;
 const AI_IMAGE_MAX_DATA_URL_LENGTH = 3_500_000;
 const AI_IMAGE_MAX_TOTAL_DATA_URL_LENGTH = 10_000_000;
-const AI_IMAGE_DATA_URL_RE = /^data:image\/(?:jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$/;
+const AI_IMAGE_DATA_URL_RE =
+  /^data:image\/(?:jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$/;
 const BOOSTER_MAX_VIDEO_BYTES = 40 * 1024 * 1024;
-const BOOSTER_VIDEO_MIME_TYPES = new Set(["video/mp4", "video/webm", "video/quicktime", "video/x-m4v"]);
+const BOOSTER_VIDEO_MIME_TYPES = new Set([
+  "video/mp4",
+  "video/webm",
+  "video/quicktime",
+  "video/x-m4v",
+]);
 
 function normalizeGenerationMediaType(value: unknown): "images" | "video" {
   return value === "video" ? "video" : "images";
@@ -113,7 +138,6 @@ function cleanVideoTranscript(value: unknown, maxLength = 1800) {
     .trim();
 }
 function sanitizeImagesForAI(body: Payload): BoosterAiImage[] {
-  if (normalizeGenerationMediaType(body.mediaType) === "video") return [];
   if (!body.useImagesForAI || !Array.isArray(body.imagesForAI)) return [];
 
   const images: BoosterAiImage[] = [];
@@ -121,7 +145,11 @@ function sanitizeImagesForAI(body: Payload): BoosterAiImage[] {
 
   for (const image of body.imagesForAI.slice(0, AI_IMAGE_MAX_COUNT)) {
     const dataUrl = String(image?.dataUrl || "").trim();
-    if (!dataUrl || dataUrl.length > AI_IMAGE_MAX_DATA_URL_LENGTH || !AI_IMAGE_DATA_URL_RE.test(dataUrl)) {
+    if (
+      !dataUrl ||
+      dataUrl.length > AI_IMAGE_MAX_DATA_URL_LENGTH ||
+      !AI_IMAGE_DATA_URL_RE.test(dataUrl)
+    ) {
       continue;
     }
 
@@ -136,14 +164,20 @@ function sanitizeImagesForAI(body: Payload): BoosterAiImage[] {
 
 function sanitizeVideoFramesForAI(body: Payload): BoosterAiImage[] {
   if (normalizeGenerationMediaType(body.mediaType) !== "video") return [];
-  const frames = Array.isArray(body.videoForAI?.visualFrames) ? body.videoForAI?.visualFrames : [];
+  const frames = Array.isArray(body.videoForAI?.visualFrames)
+    ? body.videoForAI?.visualFrames
+    : [];
 
   const images: BoosterAiImage[] = [];
   let totalLength = 0;
 
   for (const frame of frames.slice(0, 3)) {
     const dataUrl = String(frame?.dataUrl || "").trim();
-    if (!dataUrl || dataUrl.length > AI_IMAGE_MAX_DATA_URL_LENGTH || !AI_IMAGE_DATA_URL_RE.test(dataUrl)) {
+    if (
+      !dataUrl ||
+      dataUrl.length > AI_IMAGE_MAX_DATA_URL_LENGTH ||
+      !AI_IMAGE_DATA_URL_RE.test(dataUrl)
+    ) {
       continue;
     }
 
@@ -156,38 +190,50 @@ function sanitizeVideoFramesForAI(body: Payload): BoosterAiImage[] {
   return images;
 }
 
-
 function sanitizeVideoForAI(body: Payload): BoosterVideoContext | null {
   if (normalizeGenerationMediaType(body.mediaType) !== "video") return null;
   const video = body.videoForAI;
   if (!video || typeof video !== "object") return null;
 
-  const mimeType = String(video.type || "").toLowerCase().trim();
+  const mimeType = String(video.type || "")
+    .toLowerCase()
+    .trim();
   const size = Number(video.size || 0);
   const duration = Number(video.duration || 0);
 
-  const source = video.source === "supabase_storage" ? "supabase_storage" : "browser_file";
+  const source =
+    video.source === "supabase_storage" ? "supabase_storage" : "browser_file";
   const frameTargets = Array.isArray(video.analysisPlan?.frameTargets)
-    ? video.analysisPlan.frameTargets.filter((target): target is "start" | "middle" | "end" =>
-        target === "start" || target === "middle" || target === "end",
+    ? video.analysisPlan.frameTargets.filter(
+        (target): target is "start" | "middle" | "end" =>
+          target === "start" || target === "middle" || target === "end",
       )
     : [];
 
-  const audioTranscript = cleanVideoTranscript(video.audioTranscript || video.rawAudioTranscript);
+  const audioTranscript = cleanVideoTranscript(
+    video.audioTranscript || video.rawAudioTranscript,
+  );
   const requestedAudioStatus = video.analysisPlan?.audioTranscript;
 
   return {
     mimeType: BOOSTER_VIDEO_MIME_TYPES.has(mimeType) ? mimeType : "video/mp4",
-    size: Number.isFinite(size) && size > 0 && size <= BOOSTER_MAX_VIDEO_BYTES ? size : null,
+    size:
+      Number.isFinite(size) && size > 0 && size <= BOOSTER_MAX_VIDEO_BYTES
+        ? size
+        : null,
     duration: Number.isFinite(duration) && duration > 0 ? duration : null,
     source,
     storagePath: String(video.storagePath || "").trim(),
     publicUrl: String(video.publicUrl || video.url || "").trim(),
-    frameCount: Array.isArray(video.visualFrames) ? video.visualFrames.length : 0,
+    frameCount: Array.isArray(video.visualFrames)
+      ? video.visualFrames.length
+      : 0,
     audioTranscript,
     analysisPlan: {
       visualFrames:
-        Array.isArray(video.visualFrames) && video.visualFrames.length > 0 && video.analysisPlan?.visualFrames === "ready"
+        Array.isArray(video.visualFrames) &&
+        video.visualFrames.length > 0 &&
+        video.analysisPlan?.visualFrames === "ready"
           ? "ready"
           : "pending",
       audioTranscript: audioTranscript
@@ -195,7 +241,9 @@ function sanitizeVideoForAI(body: Payload): BoosterVideoContext | null {
         : requestedAudioStatus === "unavailable"
           ? "unavailable"
           : "pending",
-      frameTargets: frameTargets.length ? frameTargets : ["start", "middle", "end"],
+      frameTargets: frameTargets.length
+        ? frameTargets
+        : ["start", "middle", "end"],
     },
   };
 }
@@ -215,11 +263,16 @@ function buildVideoGenerationInstructions(video: BoosterVideoContext | null) {
   const durationLabel = formatVideoDurationLabel(video.duration);
   const metadata = [
     durationLabel ? `durée approximative : ${durationLabel}` : "",
-    video.mimeType ? `format : ${video.mimeType.replace("video/", "").toUpperCase()}` : "",
-  ].filter(Boolean).join(" ; ");
-  const frameContext = video.analysisPlan.visualFrames === "ready" && video.frameCount > 0
-    ? `Des captures extraites de la vidéo sont jointes au prompt (début, milieu, fin quand possible). Utilise-les pour enrichir le contenu avec des détails visibles, sans changer le sujet principal donné par la phrase libre.`
-    : `Aucune capture exploitable n'est disponible : rédiger principalement à partir de l'intention libre du pro, de Mon activité, de Mon profil et du canal demandé.`;
+    video.mimeType
+      ? `format : ${video.mimeType.replace("video/", "").toUpperCase()}`
+      : "",
+  ]
+    .filter(Boolean)
+    .join(" ; ");
+  const frameContext =
+    video.analysisPlan.visualFrames === "ready" && video.frameCount > 0
+      ? `Des captures extraites de la vidéo sont jointes au prompt (début, milieu, fin quand possible). Utilise-les pour enrichir le contenu avec des détails visibles, sans changer le sujet principal donné par la phrase libre.`
+      : `Aucune capture exploitable n'est disponible : rédiger principalement à partir de l'intention libre du pro, de Mon activité, de Mon profil et du canal demandé.`;
   const audioContext = video.audioTranscript
     ? `Transcription audio détectée dans la vidéo :
 """${video.audioTranscript}"""
@@ -280,13 +333,20 @@ function cleanHashtags(channel: BoosterChannels, input: unknown) {
   const limit = channel === "instagram" ? 8 : channel === "linkedin" ? 3 : 2;
   return Array.isArray(input)
     ? input
-        .map((h) => String(h || "").trim().replace(/^#+/, ""))
+        .map((h) =>
+          String(h || "")
+            .trim()
+            .replace(/^#+/, ""),
+        )
         .filter(Boolean)
         .slice(0, limit)
     : [];
 }
 
-function normalizePost(channel: BoosterChannels, raw: Partial<ChannelPost> | undefined): ChannelPost {
+function normalizePost(
+  channel: BoosterChannels,
+  raw: Partial<ChannelPost> | undefined,
+): ChannelPost {
   if (channel === "gmb") {
     const safe = sanitizeGmbGeneratedPost({
       title: String(raw?.title || ""),
@@ -307,20 +367,29 @@ function normalizePost(channel: BoosterChannels, raw: Partial<ChannelPost> | und
   const content = String(raw?.content || "").trim();
 
   return {
-    title: (siteChannel ? sanitizeBoosterSiteText(title) : stripSiteTextFormatting(title)).slice(0, 90),
-    content: (siteChannel ? sanitizeBoosterSiteText(content) : stripSiteTextFormatting(content)).slice(0, siteChannel ? 6000 : 2000),
+    title: (siteChannel
+      ? sanitizeBoosterSiteText(title)
+      : stripSiteTextFormatting(title)
+    ).slice(0, 90),
+    content: (siteChannel
+      ? sanitizeBoosterSiteText(content)
+      : stripSiteTextFormatting(content)
+    ).slice(0, siteChannel ? 6000 : 2000),
     cta: stripSiteTextFormatting(raw?.cta || "").slice(0, 180),
     hashtags: cleanHashtags(channel, raw?.hashtags),
   };
 }
 
-function hasRequiredContent(channel: BoosterChannels, post: ChannelPost | undefined) {
+function hasRequiredContent(
+  channel: BoosterChannels,
+  post: ChannelPost | undefined,
+) {
   if (!post) return false;
-  if (!post.title.trim() || !post.content.trim() || !post.cta.trim()) return false;
+  if (!post.title.trim() || !post.content.trim() || !post.cta.trim())
+    return false;
   const minContentLength = siteChannels.has(channel) ? 120 : 40;
   return post.content.trim().length >= minContentLength;
 }
-
 
 const ideaStopWords = new Set([
   "avec",
@@ -394,11 +463,19 @@ function extractIdeaKeywords(idea: string) {
 function getSearchablePostText(post: ChannelPost | undefined) {
   if (!post) return "";
   return normalizeIdeaToken(
-    [post.title, post.content, post.cta, ...(Array.isArray(post.hashtags) ? post.hashtags : [])].join(" "),
+    [
+      post.title,
+      post.content,
+      post.cta,
+      ...(Array.isArray(post.hashtags) ? post.hashtags : []),
+    ].join(" "),
   );
 }
 
-function isPostAnchoredToIdea(ideaKeywords: string[], post: ChannelPost | undefined) {
+function isPostAnchoredToIdea(
+  ideaKeywords: string[],
+  post: ChannelPost | undefined,
+) {
   if (!ideaKeywords.length) return true;
   const text = getSearchablePostText(post);
   if (!text) return false;
@@ -417,7 +494,9 @@ function getCreativityTemperature(business: JsonRecord | null) {
 
 function computeMaxOutputTokens(channels: BoosterChannels[]) {
   const uniqueChannels = Array.from(new Set(channels));
-  const siteCount = uniqueChannels.filter((channel) => siteChannels.has(channel)).length;
+  const siteCount = uniqueChannels.filter((channel) =>
+    siteChannels.has(channel),
+  ).length;
   const socialCount = uniqueChannels.length - siteCount;
 
   // Les contenus site sont beaucoup plus longs. Depuis que Site iNrCy et Site web
@@ -433,10 +512,17 @@ function computeMaxOutputTokens(channels: BoosterChannels[]) {
 }
 
 function buildGenerationBatches(channels: BoosterChannels[]) {
-  const uniqueChannels = allowedChannels.filter((channel) => channels.includes(channel));
+  const uniqueChannels = allowedChannels.filter((channel) =>
+    channels.includes(channel),
+  );
   const sites = uniqueChannels.filter((channel) => siteChannels.has(channel));
-  const socials = uniqueChannels.filter((channel) => !siteChannels.has(channel));
-  const batches: Array<{ channels: BoosterChannels[]; extraInstructions?: string }> = [];
+  const socials = uniqueChannels.filter(
+    (channel) => !siteChannels.has(channel),
+  );
+  const batches: Array<{
+    channels: BoosterChannels[];
+    extraInstructions?: string;
+  }> = [];
 
   if (sites.length) {
     batches.push({
@@ -479,12 +565,16 @@ async function generateVersionsForChannels(args: {
     const out = await generateVersions({
       ...args,
       channels: batch.channels,
-      extraInstructions: [batch.extraInstructions, args.extraInstructions].filter(Boolean).join("\n\n"),
+      extraInstructions: [batch.extraInstructions, args.extraInstructions]
+        .filter(Boolean)
+        .join("\n\n"),
     });
 
     const rawVersions =
       out?.versions && typeof out.versions === "object"
-        ? (out.versions as Partial<Record<BoosterChannels, Partial<ChannelPost>>>)
+        ? (out.versions as Partial<
+            Record<BoosterChannels, Partial<ChannelPost>>
+          >)
         : {};
 
     for (const channel of batch.channels) {
@@ -553,8 +643,12 @@ async function generateVersions(args: {
     hiddenAngle: args.hiddenAngle,
     recentPublications: args.recentPublications,
   });
-  const imageInstructions = buildImageGenerationInstructions(args.imagesForAI?.length || 0);
-  const input = [baseInput, imageInstructions, args.extraInstructions].filter(Boolean).join("\n\n");
+  const imageInstructions = buildImageGenerationInstructions(
+    args.imagesForAI?.length || 0,
+  );
+  const input = [baseInput, imageInstructions, args.extraInstructions]
+    .filter(Boolean)
+    .join("\n\n");
 
   return openaiGenerateJSON<BoosterGenResponse>({
     system,
@@ -571,7 +665,12 @@ const handler = async (req: Request) => {
     if (errorResponse) return errorResponse;
     const userId = user.id;
 
-    const rl = await enforceRateLimit({ name: "booster_generate", identifier: userId, limit: 10, window: "1 m" });
+    const rl = await enforceRateLimit({
+      name: "booster_generate",
+      identifier: userId,
+      limit: 10,
+      window: "1 m",
+    });
     if (rl) return rl;
 
     const body = (await req.json().catch(() => ({}))) as Payload;
@@ -580,15 +679,20 @@ const handler = async (req: Request) => {
       return NextResponse.json({ error: "Idée manquante." }, { status: 400 });
     }
 
-    const theme = allowedThemes.includes(body?.theme as BoosterTheme) ? (body.theme as BoosterTheme) : "information";
-    const style = allowedStyles.includes(body?.style as BoosterStyle) ? (body.style as BoosterStyle) : "equilibre";
+    const theme = allowedThemes.includes(body?.theme as BoosterTheme)
+      ? (body.theme as BoosterTheme)
+      : "information";
+    const style = allowedStyles.includes(body?.style as BoosterStyle)
+      ? (body.style as BoosterStyle)
+      : "equilibre";
 
     const channels = Array.from(
       new Set(
         (Array.isArray(body?.channels) ? body.channels : []).filter(
-          (c): c is BoosterChannels => allowedChannels.includes(c as BoosterChannels)
-        )
-      )
+          (c): c is BoosterChannels =>
+            allowedChannels.includes(c as BoosterChannels),
+        ),
+      ),
     );
     if (!channels.length) {
       return NextResponse.json({ error: "Canaux manquants." }, { status: 400 });
@@ -596,21 +700,36 @@ const handler = async (req: Request) => {
 
     const mediaType = normalizeGenerationMediaType(body.mediaType);
     const imagesForAI = sanitizeImagesForAI({ ...body, mediaType });
-    const videoFrameImagesForAI = sanitizeVideoFramesForAI({ ...body, mediaType });
+    const videoFrameImagesForAI = sanitizeVideoFramesForAI({
+      ...body,
+      mediaType,
+    });
     const videoForAI = sanitizeVideoForAI({ ...body, mediaType });
-    const mediaGenerationInstructions = buildVideoGenerationInstructions(videoForAI);
+    const mediaGenerationInstructions =
+      buildVideoGenerationInstructions(videoForAI);
 
-    const { data: profile } = await supabase.from("profiles").select("*").eq("user_id", userId).maybeSingle();
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("*")
+      .eq("user_id", userId)
+      .maybeSingle();
 
     let business: JsonRecord | null = null;
     try {
-      const { data } = await supabase.from("business_profiles").select("*").eq("user_id", userId).maybeSingle();
+      const { data } = await supabase
+        .from("business_profiles")
+        .select("*")
+        .eq("user_id", userId)
+        .maybeSingle();
       business = data && typeof data === "object" ? (data as JsonRecord) : null;
     } catch {
       business = null;
     }
 
-    const recentPublications = await fetchRecentPublicationMemory(supabase, userId);
+    const recentPublications = await fetchRecentPublicationMemory(
+      supabase,
+      userId,
+    );
     const hiddenAngle = pickBoosterHiddenAngle();
     const ideaKeywords = extractIdeaKeywords(idea);
 
@@ -623,13 +742,21 @@ const handler = async (req: Request) => {
       business,
       recentPublications,
       hiddenAngle,
-      imagesForAI: mediaType === "video" ? videoFrameImagesForAI : imagesForAI,
+      imagesForAI:
+        mediaType === "video"
+          ? [...videoFrameImagesForAI, ...imagesForAI].slice(
+              0,
+              AI_IMAGE_MAX_COUNT,
+            )
+          : imagesForAI,
       extraInstructions: mediaGenerationInstructions,
     });
 
     const rawVersions =
       out?.versions && typeof out.versions === "object"
-        ? (out.versions as Partial<Record<BoosterChannels, Partial<ChannelPost>>>)
+        ? (out.versions as Partial<
+            Record<BoosterChannels, Partial<ChannelPost>>
+          >)
         : {};
 
     const safeVersions: Partial<Record<BoosterChannels, ChannelPost>> = {};
@@ -637,11 +764,17 @@ const handler = async (req: Request) => {
       safeVersions[ch] = normalizePost(ch, rawVersions[ch]);
     }
 
-    const missingChannels = channels.filter((ch) => !hasRequiredContent(ch, safeVersions[ch]));
-    const offTopicChannels = channels.filter(
-      (ch) => hasRequiredContent(ch, safeVersions[ch]) && !isPostAnchoredToIdea(ideaKeywords, safeVersions[ch]),
+    const missingChannels = channels.filter(
+      (ch) => !hasRequiredContent(ch, safeVersions[ch]),
     );
-    const retryChannels = Array.from(new Set([...missingChannels, ...offTopicChannels]));
+    const offTopicChannels = channels.filter(
+      (ch) =>
+        hasRequiredContent(ch, safeVersions[ch]) &&
+        !isPostAnchoredToIdea(ideaKeywords, safeVersions[ch]),
+    );
+    const retryChannels = Array.from(
+      new Set([...missingChannels, ...offTopicChannels]),
+    );
 
     if (retryChannels.length) {
       const retryOut = await generateVersionsForChannels({
@@ -653,7 +786,13 @@ const handler = async (req: Request) => {
         business,
         recentPublications,
         hiddenAngle,
-        imagesForAI: mediaType === "video" ? videoFrameImagesForAI : imagesForAI,
+        imagesForAI:
+          mediaType === "video"
+            ? [...videoFrameImagesForAI, ...imagesForAI].slice(
+                0,
+                AI_IMAGE_MAX_COUNT,
+              )
+            : imagesForAI,
         extraInstructions: [
           mediaGenerationInstructions,
           `IMPORTANT : regénère uniquement les canaux demandés ci-dessus.
@@ -665,30 +804,42 @@ const handler = async (req: Request) => {
 - Pour chaque canal, title, content et cta doivent être non vides.
 - Pour un canal site, le content doit être complet, naturel et utile, jamais vide ni résumé en une ligne.
 - Si Site iNrCy et Site web sont présents dans ce lot, ils doivent rester deux variantes distinctes et non deux copies.`,
-        ].filter(Boolean).join("\n\n"),
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
       });
 
       const retryVersions =
         retryOut?.versions && typeof retryOut.versions === "object"
-          ? (retryOut.versions as Partial<Record<BoosterChannels, Partial<ChannelPost>>>)
+          ? (retryOut.versions as Partial<
+              Record<BoosterChannels, Partial<ChannelPost>>
+            >)
           : {};
 
       for (const ch of retryChannels) {
         const retriedPost = normalizePost(ch, retryVersions[ch]);
-        if (hasRequiredContent(ch, retriedPost) && isPostAnchoredToIdea(ideaKeywords, retriedPost)) {
+        if (
+          hasRequiredContent(ch, retriedPost) &&
+          isPostAnchoredToIdea(ideaKeywords, retriedPost)
+        ) {
           safeVersions[ch] = retriedPost;
         }
       }
     }
 
-    const stillMissingChannels = channels.filter((ch) => !hasRequiredContent(ch, safeVersions[ch]));
+    const stillMissingChannels = channels.filter(
+      (ch) => !hasRequiredContent(ch, safeVersions[ch]),
+    );
     const stillOffTopicChannels = channels.filter(
-      (ch) => hasRequiredContent(ch, safeVersions[ch]) && !isPostAnchoredToIdea(ideaKeywords, safeVersions[ch]),
+      (ch) =>
+        hasRequiredContent(ch, safeVersions[ch]) &&
+        !isPostAnchoredToIdea(ideaKeywords, safeVersions[ch]),
     );
     if (stillOffTopicChannels.length) {
       return NextResponse.json(
         {
-          error: "La génération IA n'a pas assez respecté le sujet demandé. Merci de relancer la génération ou de préciser un peu plus la phrase libre.",
+          error:
+            "La génération IA n'a pas assez respecté le sujet demandé. Merci de relancer la génération ou de préciser un peu plus la phrase libre.",
         },
         { status: 502 },
       );
@@ -697,12 +848,13 @@ const handler = async (req: Request) => {
     if (stillMissingChannels.length) {
       return NextResponse.json(
         {
-          error:
-            stillMissingChannels.some((channel) => siteChannels.has(channel))
-              ? "La génération IA n'a pas produit un contenu site exploitable. Merci de relancer la génération."
-              : "La génération IA est incomplète. Merci de relancer la génération.",
+          error: stillMissingChannels.some((channel) =>
+            siteChannels.has(channel),
+          )
+            ? "La génération IA n'a pas produit un contenu site exploitable. Merci de relancer la génération."
+            : "La génération IA est incomplète. Merci de relancer la génération.",
         },
-        { status: 502 }
+        { status: 502 },
       );
     }
 

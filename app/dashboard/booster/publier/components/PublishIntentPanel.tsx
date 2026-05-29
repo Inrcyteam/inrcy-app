@@ -11,6 +11,8 @@ import {
   BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL,
   BOOSTER_MAX_VIDEO_MB_LABEL,
   THEME_PLACEHOLDERS,
+  type ChannelKey,
+  type ChannelMediaMode,
   type PublicationMediaType,
   type ThemeKey,
 } from "../publishModal.shared";
@@ -214,6 +216,8 @@ type PublishIntentPanelProps = {
   onPickVideoClick: () => void;
   onTakePhotoClick: () => void;
   publicationMediaType: PublicationMediaType;
+  channelMediaModes: Partial<Record<ChannelKey, ChannelMediaMode>>;
+  setChannelMediaMode: (channel: ChannelKey, mode: ChannelMediaMode) => void;
   images: File[];
   imagePreviews: string[];
   videoFile: File | null;
@@ -247,6 +251,8 @@ export default function PublishIntentPanel({
   onPickVideoClick,
   onTakePhotoClick,
   publicationMediaType,
+  channelMediaModes: _channelMediaModes,
+  setChannelMediaMode: _setChannelMediaMode,
   images,
   imagePreviews,
   videoFile,
@@ -711,13 +717,11 @@ export default function PublishIntentPanel({
         ? "…"
         : "🎙️";
   const hasImages = images.length > 0;
-  const hasVideoMedia = publicationMediaType === "video" && Boolean(videoFile || videoPreviewUrl);
-  const imagesDisabledByVideo = hasVideoMedia;
-  const videoDisabledByImages = hasImages;
-  const imagesLimitReached = publicationMediaType === "images" && images.length >= BOOSTER_MAX_IMAGE_COUNT;
-  const pickImagesDisabled = imagesDisabledByVideo || imagesLimitReached;
-  const pickVideoDisabled = videoDisabledByImages;
-  const cameraDisabled = !isMobile || hasVideoMedia || imagesLimitReached;
+  const hasVideoMedia = Boolean(videoFile || videoPreviewUrl);
+  const imagesLimitReached = images.length >= BOOSTER_MAX_IMAGE_COUNT;
+  const pickImagesDisabled = imagesLimitReached;
+  const pickVideoDisabled = hasVideoMedia;
+  const cameraDisabled = !isMobile || imagesLimitReached;
 
   return (
     <div
@@ -754,7 +758,7 @@ export default function PublishIntentPanel({
         className={styles.subtitle}
         style={{ marginBottom: 10, maxWidth: "none", whiteSpace: "normal" }}
       >
-        Décrivez votre idée. <strong>Ajoutez jusqu’à 5 images ou 1 vidéo</strong> pour préparer
+        Décrivez votre idée. <strong>Ajoutez jusqu’à 5 images et 1 vidéo</strong> pour préparer
         votre publication.
       </div>
       <div style={{ display: "grid", gap: 10 }}>
@@ -911,11 +915,9 @@ export default function PublishIntentPanel({
               onClick={onPickImagesClick}
               disabled={pickImagesDisabled}
               title={
-                imagesDisabledByVideo
-                  ? "Supprimez la vidéo pour ajouter des images."
-                  : imagesLimitReached
-                    ? `${BOOSTER_MAX_IMAGE_COUNT} images maximum`
-                    : undefined
+                imagesLimitReached
+                  ? `${BOOSTER_MAX_IMAGE_COUNT} images maximum`
+                  : undefined
               }
               style={{
                 flex: "0 0 auto",
@@ -937,7 +939,7 @@ export default function PublishIntentPanel({
               disabled={pickVideoDisabled}
               title={
                 pickVideoDisabled
-                  ? "Supprimez les images pour ajouter une vidéo."
+                  ? "1 vidéo maximum. Supprimez la vidéo actuelle pour la remplacer."
                   : `1 vidéo maximum · ${BOOSTER_MAX_VIDEO_MB_LABEL} max · ${BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL}`
               }
               style={{
@@ -958,7 +960,7 @@ export default function PublishIntentPanel({
                 !isMobile
                   ? "Utilisable en version mobile"
                   : hasVideoMedia
-                    ? "Supprimez la vidéo pour reprendre une photo."
+                    ? "Ouvrir l’Appareil iNrCy en mode photo"
                     : imagesLimitReached
                       ? `${BOOSTER_MAX_IMAGE_COUNT} images maximum`
                       : hasImages
@@ -989,96 +991,83 @@ export default function PublishIntentPanel({
             </span>
           </div>
 
-          {publicationMediaType === "video" && videoFile ? (
-            <div
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: isMobile ? 6 : 8,
-                flexWrap: "nowrap",
-                maxWidth: "100%",
-                overflowX: "auto",
-                WebkitOverflowScrolling: "touch",
-                fontSize: isMobile ? 11 : 12,
-                opacity: 0.88,
-                whiteSpace: "nowrap",
-              }}
-            >
-              <span>1 vidéo ajoutée</span>
-              <span>·</span>
-              <span>{BOOSTER_MAX_VIDEO_MB_LABEL} max</span>
-              <span>·</span>
-              <span>{BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL}</span>
-              <span>·</span>
-              <span>IA : audio + captures</span>
-            </div>
-          ) : (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: isMobile ? 7 : 8,
-                flexWrap: "wrap",
-              }}
-            >
-              <label
-                title={
-                  useImagesForAI
-                    ? "Les images aideront iNrCy à rédiger un contenu plus précis."
-                    : "Les images seront utilisées uniquement pour la publication."
-                }
-                style={{
-                  flex: "0 0 auto",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: isMobile ? 5 : 7,
-                  minHeight: isMobile ? 30 : 32,
-                  padding: isMobile ? "5px 8px" : "6px 10px",
-                  borderRadius: 999,
-                  border: useImagesForAI
-                    ? "1px solid rgba(76,195,255,0.34)"
-                    : "1px solid rgba(255,255,255,0.14)",
-                  background: useImagesForAI
-                    ? "rgba(76,195,255,0.12)"
-                    : "rgba(255,255,255,0.055)",
-                  color: useImagesForAI ? "#dff6ff" : "rgba(255,255,255,0.76)",
-                  fontSize: isMobile ? 10.5 : 12,
-                  fontWeight: 850,
-                  whiteSpace: "nowrap",
-                  cursor: images.length ? "pointer" : "default",
-                  userSelect: "none",
-                  opacity: images.length ? 1 : 0.9,
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={useImagesForAI}
-                  disabled={!images.length}
-                  onChange={(event) => setUseImagesForAI(event.target.checked)}
-                  style={{
-                    width: isMobile ? 13 : 14,
-                    height: isMobile ? 13 : 14,
-                    margin: 0,
-                    accentColor: "#4cc3ff",
-                  }}
-                />
-                {useImagesForAI
-                  ? "Images utilisées par l’IA"
-                  : "Images hors génération"}
-              </label>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: isMobile ? 7 : 8,
+              flexWrap: "wrap",
+            }}
+          >
+            {videoFile ? (
               <div
                 style={{
                   flex: "0 0 auto",
                   fontSize: isMobile ? 11 : 12,
-                  opacity: 0.82,
+                  opacity: 0.88,
                   whiteSpace: "nowrap",
                 }}
               >
-                {images.length}/{BOOSTER_MAX_IMAGE_COUNT} image
-                {images.length === 1 ? "" : "s"}
+                1 vidéo ajoutée · {BOOSTER_MAX_VIDEO_MB_LABEL} max · {BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL} · IA : audio + captures
               </div>
+            ) : null}
+            <label
+              title={
+                useImagesForAI
+                  ? "Les images aideront iNrCy à rédiger un contenu plus précis."
+                  : "Les images seront utilisées uniquement pour la publication."
+              }
+              style={{
+                flex: "0 0 auto",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: isMobile ? 5 : 7,
+                minHeight: isMobile ? 30 : 32,
+                padding: isMobile ? "5px 8px" : "6px 10px",
+                borderRadius: 999,
+                border: useImagesForAI
+                  ? "1px solid rgba(76,195,255,0.34)"
+                  : "1px solid rgba(255,255,255,0.14)",
+                background: useImagesForAI
+                  ? "rgba(76,195,255,0.12)"
+                  : "rgba(255,255,255,0.055)",
+                color: useImagesForAI ? "#dff6ff" : "rgba(255,255,255,0.76)",
+                fontSize: isMobile ? 10.5 : 12,
+                fontWeight: 850,
+                whiteSpace: "nowrap",
+                cursor: images.length ? "pointer" : "default",
+                userSelect: "none",
+                opacity: images.length ? 1 : 0.9,
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={useImagesForAI}
+                disabled={!images.length}
+                onChange={(event) => setUseImagesForAI(event.target.checked)}
+                style={{
+                  width: isMobile ? 13 : 14,
+                  height: isMobile ? 13 : 14,
+                  margin: 0,
+                  accentColor: "#4cc3ff",
+                }}
+              />
+              {useImagesForAI
+                ? "Images utilisées par l’IA"
+                : "Images hors génération"}
+            </label>
+            <div
+              style={{
+                flex: "0 0 auto",
+                fontSize: isMobile ? 11 : 12,
+                opacity: 0.82,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {images.length}/{BOOSTER_MAX_IMAGE_COUNT} image
+              {images.length === 1 ? "" : "s"}
             </div>
-          )}
+          </div>
 
           {videoPreviewUrl && videoFile ? (
             <div
@@ -1171,7 +1160,7 @@ export default function PublishIntentPanel({
             </div>
           ) : null}
 
-          {publicationMediaType === "images" && imagePreviews.length ? (
+          {imagePreviews.length ? (
             <div
               style={{
                 display: "flex",
@@ -1315,11 +1304,13 @@ export default function PublishIntentPanel({
                 />
               </div>
               <div style={{ fontSize: 12 }}>
-                {publicationMediaType === "video" && videoFile
-                  ? "iNrCy analyse l’audio et les captures de votre vidéo, puis prépare les variantes par canal."
-                  : images.length && useImagesForAI
-                    ? "iNrCy analyse l’intention et les images, puis prépare les variantes par canal."
-                    : "iNrCy prépare les variantes adaptées à chaque canal."}
+                {videoFile && images.length && useImagesForAI
+                  ? "iNrCy analyse la vidéo, l’audio et les images, puis prépare les variantes par canal."
+                  : videoFile
+                    ? "iNrCy analyse l’audio et les captures de votre vidéo, puis prépare les variantes par canal."
+                    : images.length && useImagesForAI
+                      ? "iNrCy analyse l’intention et les images, puis prépare les variantes par canal."
+                      : "iNrCy prépare les variantes adaptées à chaque canal."}
               </div>
             </div>
           ) : null}

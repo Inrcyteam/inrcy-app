@@ -1,13 +1,40 @@
 import type { CSSProperties } from "react";
-import { buildBoosterGmbSummary, buildBoosterInstagramCaption, getCtaMode, type BoosterCtaMode } from "@/lib/boosterCta";
+import {
+  buildBoosterGmbSummary,
+  buildBoosterInstagramCaption,
+  getCtaMode,
+  type BoosterCtaMode,
+} from "@/lib/boosterCta";
 export type { BoosterCtaMode } from "@/lib/boosterCta";
 
-export type ChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
+export type ChannelKey =
+  | "inrcy_site"
+  | "site_web"
+  | "gmb"
+  | "facebook"
+  | "instagram"
+  | "linkedin";
 export type DisplayKey = ChannelKey;
-export type ThemeKey = "" | "promotion" | "information" | "conseil" | "avis_client" | "realisation" | "actualite" | "autre";
+export type ThemeKey =
+  | ""
+  | "promotion"
+  | "information"
+  | "conseil"
+  | "avis_client"
+  | "realisation"
+  | "actualite"
+  | "autre";
 export type StyleKey = "sobre" | "equilibre" | "dynamique";
 export type FitMode = "contain" | "cover";
-export type BackgroundMode = "blur" | "transparent" | "color" | "white" | "black" | "gray" | "sand" | "brand";
+export type BackgroundMode =
+  | "blur"
+  | "transparent"
+  | "color"
+  | "white"
+  | "black"
+  | "gray"
+  | "sand"
+  | "brand";
 
 export type ChannelPost = {
   title: string;
@@ -69,7 +96,10 @@ export type ChannelImageEditorState = {
 };
 
 export type ChannelImagePayload = Record<ChannelKey, ImagePayload[]>;
-export type ChannelImageSettingsPayload = Record<ChannelKey, { imageKeys: string[]; transforms: Record<string, ImageTransform> }>;
+export type ChannelImageSettingsPayload = Record<
+  ChannelKey,
+  { imageKeys: string[]; transforms: Record<string, ImageTransform> }
+>;
 
 export type RenderPreset = {
   width: number;
@@ -116,15 +146,46 @@ export const CHANNEL_LABELS: Record<ChannelKey, string> = {
 };
 
 export const CHANNEL_PRESETS: Record<ChannelKey, RenderPreset> = {
-  inrcy_site: { width: 1440, height: 900, defaultFit: "contain", defaultBlurBackground: false },
-  site_web: { width: 1440, height: 900, defaultFit: "contain", defaultBlurBackground: false },
-  gmb: { width: 1200, height: 900, defaultFit: "contain", defaultBlurBackground: false },
-  facebook: { width: 1200, height: 1200, defaultFit: "cover", defaultBlurBackground: false },
-  instagram: { width: 1080, height: 1350, defaultFit: "cover", defaultBlurBackground: false },
-  linkedin: { width: 1200, height: 1200, defaultFit: "cover", defaultBlurBackground: false },
+  inrcy_site: {
+    width: 1440,
+    height: 900,
+    defaultFit: "contain",
+    defaultBlurBackground: false,
+  },
+  site_web: {
+    width: 1440,
+    height: 900,
+    defaultFit: "contain",
+    defaultBlurBackground: false,
+  },
+  gmb: {
+    width: 1200,
+    height: 900,
+    defaultFit: "contain",
+    defaultBlurBackground: false,
+  },
+  facebook: {
+    width: 1200,
+    height: 1200,
+    defaultFit: "cover",
+    defaultBlurBackground: false,
+  },
+  instagram: {
+    width: 1080,
+    height: 1350,
+    defaultFit: "cover",
+    defaultBlurBackground: false,
+  },
+  linkedin: {
+    width: 1200,
+    height: 1200,
+    defaultFit: "cover",
+    defaultBlurBackground: false,
+  },
 };
 
 export type PublicationMediaType = "images" | "video";
+export type ChannelMediaMode = "video" | "images" | "none";
 
 export const BOOSTER_MAX_IMAGE_COUNT = 5;
 export const BOOSTER_MAX_IMAGE_BYTES = 8 * 1024 * 1024;
@@ -141,7 +202,9 @@ export const BOOSTER_ALLOWED_VIDEO_MIME_TYPES = [
   "video/x-m4v",
 ] as const;
 
-export function normalizePublicationMediaType(value: unknown): PublicationMediaType {
+export function normalizePublicationMediaType(
+  value: unknown,
+): PublicationMediaType {
   return value === "video" ? "video" : "images";
 }
 
@@ -150,15 +213,23 @@ export function isBoosterImageFile(file: Pick<File, "type">) {
 }
 
 export function isBoosterVideoFile(file: Pick<File, "type" | "name">) {
-  const type = String(file?.type || "").toLowerCase().split(";")[0]?.trim() || "";
+  const type =
+    String(file?.type || "")
+      .toLowerCase()
+      .split(";")[0]
+      ?.trim() || "";
   const name = String(file?.name || "").toLowerCase();
   return (
-    BOOSTER_ALLOWED_VIDEO_MIME_TYPES.includes(type as typeof BOOSTER_ALLOWED_VIDEO_MIME_TYPES[number]) ||
-    /\.(mp4|mov|webm|m4v)$/i.test(name)
+    BOOSTER_ALLOWED_VIDEO_MIME_TYPES.includes(
+      type as (typeof BOOSTER_ALLOWED_VIDEO_MIME_TYPES)[number],
+    ) || /\.(mp4|mov|webm|m4v)$/i.test(name)
   );
 }
 
-export function getPublicationMediaLabel(mediaType: PublicationMediaType, count: number) {
+export function getPublicationMediaLabel(
+  mediaType: PublicationMediaType,
+  count: number,
+) {
   if (mediaType === "video") return count ? "1 vidéo" : "Aucune vidéo";
   return count
     ? `${count}/${BOOSTER_MAX_IMAGE_COUNT} image${count > 1 ? "s" : ""}`
@@ -178,7 +249,10 @@ export type ChannelTextGuidelines = {
   totalValue?: (post: ChannelPost) => number;
 };
 
-export const CHANNEL_TEXT_GUIDELINES: Record<DisplayKey, ChannelTextGuidelines> = {
+export const CHANNEL_TEXT_GUIDELINES: Record<
+  DisplayKey,
+  ChannelTextGuidelines
+> = {
   inrcy_site: {
     title: 90,
     content: 6000,
@@ -218,7 +292,10 @@ export const CHANNEL_TEXT_GUIDELINES: Record<DisplayKey, ChannelTextGuidelines> 
   },
 };
 
-export const CTA_MODE_OPTIONS: Record<DisplayKey, Array<{ value: BoosterCtaMode; label: string }>> = {
+export const CTA_MODE_OPTIONS: Record<
+  DisplayKey,
+  Array<{ value: BoosterCtaMode; label: string }>
+> = {
   inrcy_site: [
     { value: "none", label: "Aucun CTA" },
     { value: "website", label: "Lien site / devis" },
@@ -263,26 +340,42 @@ export const CTA_MODE_OPTIONS: Record<DisplayKey, Array<{ value: BoosterCtaMode;
 };
 
 export function getCtaModeHelp(channel: DisplayKey, mode: BoosterCtaMode) {
-  if (mode === "none") return "Aucun bloc CTA ne sera ajouté à la fin du texte.";
-  if (mode === "website") return channel === "gmb"
-    ? "Un vrai bouton Google Business sera utilisé quand une URL de site est disponible."
-    : "Le lien du site sera ajouté proprement à la fin du contenu. Vous pouvez laisser l’URL vide pour utiliser le site connecté par défaut.";
-  if (mode === "call") return channel === "gmb"
-    ? "Un vrai bouton Appeler sera utilisé si un numéro est disponible."
-    : "Une phrase d’appel naturelle sera ajoutée avec le numéro si disponible.";
-  if (mode === "message") return "Une phrase naturelle du type “Envoyez-nous un message privé.” sera ajoutée.";
+  if (mode === "none")
+    return "Aucun bloc CTA ne sera ajouté à la fin du texte.";
+  if (mode === "website")
+    return channel === "gmb"
+      ? "Un vrai bouton Google Business sera utilisé quand une URL de site est disponible."
+      : "Le lien du site sera ajouté proprement à la fin du contenu. Vous pouvez laisser l’URL vide pour utiliser le site connecté par défaut.";
+  if (mode === "call")
+    return channel === "gmb"
+      ? "Un vrai bouton Appeler sera utilisé si un numéro est disponible."
+      : "Une phrase d’appel naturelle sera ajoutée avec le numéro si disponible.";
+  if (mode === "message")
+    return "Une phrase naturelle du type “Envoyez-nous un message privé.” sera ajoutée.";
   return channel === "gmb"
     ? "Réservé à un court texte neutre, sans faux bouton."
     : "Texte libre. Évitez les CTA vagues du type “Message” sans destination réelle.";
 }
 
 export function getDefaultPost(): ChannelPost {
-  return { title: "", content: "", cta: "", ctaMode: "none", ctaUrl: "", ctaPhone: "", hashtags: [] };
+  return {
+    title: "",
+    content: "",
+    cta: "",
+    ctaMode: "none",
+    ctaUrl: "",
+    ctaPhone: "",
+    hashtags: [],
+  };
 }
 
-export function getChannelDefaultCtaLabel(channel: DisplayKey, mode: BoosterCtaMode) {
+export function getChannelDefaultCtaLabel(
+  channel: DisplayKey,
+  mode: BoosterCtaMode,
+) {
   if (mode === "website") {
-    if (channel === "inrcy_site" || channel === "site_web") return "Demander un devis";
+    if (channel === "inrcy_site" || channel === "site_web")
+      return "Demander un devis";
     if (channel === "gmb") return "Voir le site";
     if (channel === "instagram") return "Lien du site";
     return "Voir le site";
@@ -297,7 +390,10 @@ export function isSiteDisplayKey(channel: DisplayKey) {
   return channel === "inrcy_site" || channel === "site_web";
 }
 
-export function getWebsiteUrlForChannel(channel: DisplayKey, defaults: BoosterCtaDefaults | null) {
+export function getWebsiteUrlForChannel(
+  channel: DisplayKey,
+  defaults: BoosterCtaDefaults | null,
+) {
   if (!defaults) return "";
   const siteWebUrl = String(defaults.siteWebUrl || "").trim();
   const inrcySiteUrl = String(defaults.inrcySiteUrl || "").trim();
@@ -310,15 +406,23 @@ export function getWebsiteUrlForChannel(channel: DisplayKey, defaults: BoosterCt
   return "";
 }
 
-export function getWebsiteSourceLabelForChannel(channel: DisplayKey, defaults: BoosterCtaDefaults | null) {
+export function getWebsiteSourceLabelForChannel(
+  channel: DisplayKey,
+  defaults: BoosterCtaDefaults | null,
+) {
   const url = getWebsiteUrlForChannel(channel, defaults);
   if (!url || !defaults) return "";
-  if (defaults.siteWebUrl && url === defaults.siteWebUrl) return "Site web connecté";
-  if (defaults.inrcySiteUrl && url === defaults.inrcySiteUrl) return "Site iNrCy";
+  if (defaults.siteWebUrl && url === defaults.siteWebUrl)
+    return "Site web connecté";
+  if (defaults.inrcySiteUrl && url === defaults.inrcySiteUrl)
+    return "Site iNrCy";
   return defaults.preferredWebsiteLabel || "Site connecté";
 }
 
-export function getDefaultCtaModeForChannel(channel: DisplayKey, defaults: BoosterCtaDefaults | null): BoosterCtaMode {
+export function getDefaultCtaModeForChannel(
+  channel: DisplayKey,
+  defaults: BoosterCtaDefaults | null,
+): BoosterCtaMode {
   const preferred = defaults?.preferredCta || "devis";
 
   if (preferred === "appeler") {
@@ -327,7 +431,9 @@ export function getDefaultCtaModeForChannel(channel: DisplayKey, defaults: Boost
   }
 
   if (preferred === "message") {
-    const supportsPrivateMessage = CTA_MODE_OPTIONS[channel].some((option) => option.value === "message");
+    const supportsPrivateMessage = CTA_MODE_OPTIONS[channel].some(
+      (option) => option.value === "message",
+    );
     if (supportsPrivateMessage) return "message";
     return getWebsiteUrlForChannel(channel, defaults) ? "website" : "none";
   }
@@ -335,18 +441,26 @@ export function getDefaultCtaModeForChannel(channel: DisplayKey, defaults: Boost
   return getWebsiteUrlForChannel(channel, defaults) ? "website" : "none";
 }
 
-export function buildAutoPrefillPatch(channel: DisplayKey, mode: BoosterCtaMode, post: ChannelPost, defaults: BoosterCtaDefaults | null): Partial<ChannelPost> {
+export function buildAutoPrefillPatch(
+  channel: DisplayKey,
+  mode: BoosterCtaMode,
+  post: ChannelPost,
+  defaults: BoosterCtaDefaults | null,
+): Partial<ChannelPost> {
   const patch: Partial<ChannelPost> = { ctaMode: mode };
   if (!defaults) return patch;
 
   if (mode === "website") {
     const channelWebsiteUrl = getWebsiteUrlForChannel(channel, defaults);
-    if (!String(post.cta || "").trim()) patch.cta = getChannelDefaultCtaLabel(channel, mode);
-    if (!String(post.ctaUrl || "").trim() && channelWebsiteUrl) patch.ctaUrl = channelWebsiteUrl;
+    if (!String(post.cta || "").trim())
+      patch.cta = getChannelDefaultCtaLabel(channel, mode);
+    if (!String(post.ctaUrl || "").trim() && channelWebsiteUrl)
+      patch.ctaUrl = channelWebsiteUrl;
   }
 
   if (mode === "call") {
-    if (!String(post.ctaPhone || "").trim() && defaults.phone) patch.ctaPhone = defaults.phone;
+    if (!String(post.ctaPhone || "").trim() && defaults.phone)
+      patch.ctaPhone = defaults.phone;
   }
 
   return patch;
@@ -354,8 +468,16 @@ export function buildAutoPrefillPatch(channel: DisplayKey, mode: BoosterCtaMode,
 
 export function getWebsiteSourceLabel(defaults: BoosterCtaDefaults | null) {
   if (!defaults?.preferredWebsiteUrl) return "";
-  if (defaults.siteWebUrl && defaults.preferredWebsiteUrl === defaults.siteWebUrl) return "Site web connecté";
-  if (defaults.inrcySiteUrl && defaults.preferredWebsiteUrl === defaults.inrcySiteUrl) return "Site iNrCy";
+  if (
+    defaults.siteWebUrl &&
+    defaults.preferredWebsiteUrl === defaults.siteWebUrl
+  )
+    return "Site web connecté";
+  if (
+    defaults.inrcySiteUrl &&
+    defaults.preferredWebsiteUrl === defaults.inrcySiteUrl
+  )
+    return "Site iNrCy";
   return defaults.preferredWebsiteLabel || "Site connecté";
 }
 
@@ -389,7 +511,9 @@ export function parseInstagramHashtagsInput(input: string): string[] {
 export function buildInstagramPreviewCaption(post: ChannelPost) {
   const cleanPost = {
     ...post,
-    hashtags: Array.isArray(post.hashtags) ? post.hashtags.map(normalizeHashtagPreview).filter(Boolean).slice(0, 8) : [],
+    hashtags: Array.isArray(post.hashtags)
+      ? post.hashtags.map(normalizeHashtagPreview).filter(Boolean).slice(0, 8)
+      : [],
   };
   return buildBoosterInstagramCaption(cleanPost);
 }
@@ -406,10 +530,21 @@ export function getLimitToneStyle(tone: LimitTone): CSSProperties {
   return { color: "rgba(255,255,255,0.62)" };
 }
 
-export function renderLimitCounter(label: string, current: number, max: number) {
+export function renderLimitCounter(
+  label: string,
+  current: number,
+  max: number,
+) {
   const tone = getLimitTone(current, max);
   return (
-    <div style={{ fontSize: 11, marginTop: 6, textAlign: "right", ...getLimitToneStyle(tone) }}>
+    <div
+      style={{
+        fontSize: 11,
+        marginTop: 6,
+        textAlign: "right",
+        ...getLimitToneStyle(tone),
+      }}
+    >
       {label} : {current} / {max}
     </div>
   );
@@ -429,12 +564,18 @@ export const THEME_OPTIONS: Array<{ value: ThemeKey; label: string }> = [
 export const THEME_PLACEHOLDERS: Record<ThemeKey, string> = {
   "": "Ex : Chantier réalisé chez Michel à Arras",
   promotion: "Ex : Offre de printemps sur la taille de haies jusqu’au 30 avril",
-  information: "Ex : Nous intervenons désormais aussi le samedi sur Berck et ses alentours",
-  conseil: "Ex : Pensez à faire entretenir votre chaudière avant l’hiver pour éviter les pannes",
-  avis_client: "Ex : Merci à Mme Dupont pour sa confiance après la rénovation complète de sa salle de bain",
-  realisation: "Ex : Terrasse en bois posée cette semaine chez un client à Montreuil",
-  actualite: "Ex : Notre nouvelle prestation de nettoyage toiture est maintenant disponible",
-  autre: "Ex : Intervention rapide réalisée ce matin suite à une fuite en cuisine",
+  information:
+    "Ex : Nous intervenons désormais aussi le samedi sur Berck et ses alentours",
+  conseil:
+    "Ex : Pensez à faire entretenir votre chaudière avant l’hiver pour éviter les pannes",
+  avis_client:
+    "Ex : Merci à Mme Dupont pour sa confiance après la rénovation complète de sa salle de bain",
+  realisation:
+    "Ex : Terrasse en bois posée cette semaine chez un client à Montreuil",
+  actualite:
+    "Ex : Notre nouvelle prestation de nettoyage toiture est maintenant disponible",
+  autre:
+    "Ex : Intervention rapide réalisée ce matin suite à une fuite en cuisine",
 };
 
 export const STYLE_OPTIONS: Array<{ value: StyleKey; label: string }> = [
@@ -445,8 +586,10 @@ export const STYLE_OPTIONS: Array<{ value: StyleKey; label: string }> = [
 
 export const STYLE_HELPERS: Record<StyleKey, string> = {
   sobre: "Ton plus posé, accroches sobres, très peu d’emojis.",
-  equilibre: "Ton chaleureux et pro, avec juste ce qu’il faut de peps et d’emojis.",
-  dynamique: "Ton plus vivant, accroches plus fortes, phrases plus rythmées et emojis adaptés au canal.",
+  equilibre:
+    "Ton chaleureux et pro, avec juste ce qu’il faut de peps et d’emojis.",
+  dynamique:
+    "Ton plus vivant, accroches plus fortes, phrases plus rythmées et emojis adaptés au canal.",
 };
 
 export function makeImageKey(file: File): string {
@@ -456,7 +599,8 @@ export function makeImageKey(file: File): string {
 export async function fileToDataUrl(file: File): Promise<string> {
   return await new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onload = () =>
+      resolve(typeof reader.result === "string" ? reader.result : "");
     reader.onerror = () => reject(new Error("read_failed"));
     reader.readAsDataURL(file);
   });
@@ -473,7 +617,9 @@ export type BoosterAiVideoFramePayload = BoosterAiImagePayload & {
   timeSeconds: number;
 };
 
-export async function fileToBoosterAiImagePayload(file: File): Promise<BoosterAiImagePayload> {
+export async function fileToBoosterAiImagePayload(
+  file: File,
+): Promise<BoosterAiImagePayload> {
   const objectUrl = URL.createObjectURL(file);
   try {
     const img = await loadHtmlImage(objectUrl);
@@ -535,11 +681,21 @@ export function loadHtmlVideo(src: string): Promise<HTMLVideoElement> {
   });
 }
 
-export function seekHtmlVideo(video: HTMLVideoElement, timeSeconds: number): Promise<void> {
+export function seekHtmlVideo(
+  video: HTMLVideoElement,
+  timeSeconds: number,
+): Promise<void> {
   return new Promise((resolve, reject) => {
-    const duration = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 0;
-    const maxSeek = duration > 0.1 ? Math.max(0, duration - 0.08) : Number.POSITIVE_INFINITY;
-    const requestedTarget = Math.max(0, Number.isFinite(timeSeconds) ? timeSeconds : 0);
+    const duration =
+      Number.isFinite(video.duration) && video.duration > 0
+        ? video.duration
+        : 0;
+    const maxSeek =
+      duration > 0.1 ? Math.max(0, duration - 0.08) : Number.POSITIVE_INFINITY;
+    const requestedTarget = Math.max(
+      0,
+      Number.isFinite(timeSeconds) ? timeSeconds : 0,
+    );
     const target = Math.min(requestedTarget, maxSeek);
     const seekTarget = target <= 0 && duration > 0.08 ? 0.03 : target;
     let settled = false;
@@ -565,16 +721,26 @@ export function seekHtmlVideo(video: HTMLVideoElement, timeSeconds: number): Pro
 
     video.onseeked = finish;
     video.onerror = () => fail(new Error("Impossible de lire la vidéo."));
-    timeoutId = window.setTimeout(() => fail(new Error("Impossible de lire la vidéo.")), 5_000);
+    timeoutId = window.setTimeout(
+      () => fail(new Error("Impossible de lire la vidéo.")),
+      5_000,
+    );
 
     try {
-      if (Math.abs((video.currentTime || 0) - seekTarget) < 0.04 && video.readyState >= 2) {
+      if (
+        Math.abs((video.currentTime || 0) - seekTarget) < 0.04 &&
+        video.readyState >= 2
+      ) {
         finish();
         return;
       }
       video.currentTime = seekTarget;
       window.setTimeout(() => {
-        if (!settled && Math.abs((video.currentTime || 0) - seekTarget) < 0.08 && video.readyState >= 2) {
+        if (
+          !settled &&
+          Math.abs((video.currentTime || 0) - seekTarget) < 0.08 &&
+          video.readyState >= 2
+        ) {
           finish();
         }
       }, 150);
@@ -588,7 +754,10 @@ export function buildVideoFrameCapturePlan(durationSeconds: number): Array<{
   frameTarget: "start" | "middle" | "end";
   timeSeconds: number;
 }> {
-  const duration = Number.isFinite(durationSeconds) && durationSeconds > 0 ? durationSeconds : 3;
+  const duration =
+    Number.isFinite(durationSeconds) && durationSeconds > 0
+      ? durationSeconds
+      : 3;
   const maxSeek = duration > 0.2 ? Math.max(0, duration - 0.12) : 0;
   const points = [
     { frameTarget: "start" as const, ratio: duration <= 2 ? 0 : 0.15 },
@@ -610,8 +779,14 @@ export async function extractVideoFramesForAI(
     const video = await loadHtmlVideo(objectUrl);
     const sourceW = video.videoWidth || 1280;
     const sourceH = video.videoHeight || 720;
-    const maxSide = Math.max(480, Math.min(1600, Math.round(options?.maxSide || 1280)));
-    const quality = Math.max(0.55, Math.min(0.9, Number(options?.quality || 0.76)));
+    const maxSide = Math.max(
+      480,
+      Math.min(1600, Math.round(options?.maxSide || 1280)),
+    );
+    const quality = Math.max(
+      0.55,
+      Math.min(0.9, Number(options?.quality || 0.76)),
+    );
     const scale = Math.min(1, maxSide / Math.max(sourceW, sourceH));
     const width = Math.max(1, Math.round(sourceW * scale));
     const height = Math.max(1, Math.round(sourceH * scale));
@@ -621,9 +796,14 @@ export async function extractVideoFramesForAI(
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Canvas indisponible.");
 
-    const duration = Number.isFinite(video.duration) && video.duration > 0 ? video.duration : 3;
+    const duration =
+      Number.isFinite(video.duration) && video.duration > 0
+        ? video.duration
+        : 3;
     const plan = buildVideoFrameCapturePlan(duration);
-    const baseName = String(file.name || "video-inrcy").replace(/\.[^.]+$/, "") || "video-inrcy";
+    const baseName =
+      String(file.name || "video-inrcy").replace(/\.[^.]+$/, "") ||
+      "video-inrcy";
     const frames: BoosterAiVideoFramePayload[] = [];
 
     for (const item of plan) {
@@ -649,12 +829,16 @@ export function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
 }
 
-export function getEffectiveTransformZoom(transform: Pick<ImageTransform, "fit" | "zoom">) {
+export function getEffectiveTransformZoom(
+  transform: Pick<ImageTransform, "fit" | "zoom">,
+) {
   const maxZoom = transform.fit === "cover" ? 3 : 1;
   return clamp(transform.zoom || 1, 0.4, maxZoom);
 }
 
-export function normalizeContainTransform(transform: ImageTransform): ImageTransform {
+export function normalizeContainTransform(
+  transform: ImageTransform,
+): ImageTransform {
   if (transform.fit === "cover") return transform;
   return {
     ...transform,
@@ -666,14 +850,24 @@ export function normalizeContainTransform(transform: ImageTransform): ImageTrans
 }
 
 export function getBackgroundMode(transform: ImageTransform): BackgroundMode {
-  if (transform.backgroundMode === "blur") return transform.backgroundColor ? "color" : "brand";
+  if (transform.backgroundMode === "blur")
+    return transform.backgroundColor ? "color" : "brand";
   if (transform.backgroundMode) return transform.backgroundMode;
-  if (transform.blurBackground) return transform.backgroundColor ? "color" : "brand";
+  if (transform.blurBackground)
+    return transform.backgroundColor ? "color" : "brand";
   return transform.backgroundColor ? "color" : "black";
 }
 
-export function withBackgroundMode(transform: ImageTransform, backgroundMode: BackgroundMode): ImageTransform {
-  const normalizedMode = backgroundMode === "blur" ? (transform.backgroundColor ? "color" : "brand") : backgroundMode;
+export function withBackgroundMode(
+  transform: ImageTransform,
+  backgroundMode: BackgroundMode,
+): ImageTransform {
+  const normalizedMode =
+    backgroundMode === "blur"
+      ? transform.backgroundColor
+        ? "color"
+        : "brand"
+      : backgroundMode;
   return {
     ...transform,
     backgroundMode: normalizedMode,
@@ -681,15 +875,24 @@ export function withBackgroundMode(transform: ImageTransform, backgroundMode: Ba
   };
 }
 
-export function getBackgroundFill(mode: BackgroundMode, backgroundColor?: string): string {
+export function getBackgroundFill(
+  mode: BackgroundMode,
+  backgroundColor?: string,
+): string {
   if (backgroundColor) return backgroundColor;
   switch (mode) {
-    case "white": return "#ffffff";
-    case "gray": return "#d6dae2";
-    case "sand": return "#efe4d3";
-    case "brand": return "#e8f6ff";
-    case "color": return "#e8f6ff";
-    default: return "#0d1320";
+    case "white":
+      return "#ffffff";
+    case "gray":
+      return "#d6dae2";
+    case "sand":
+      return "#efe4d3";
+    case "brand":
+      return "#e8f6ff";
+    case "color":
+      return "#e8f6ff";
+    default:
+      return "#0d1320";
   }
 }
 
@@ -700,21 +903,32 @@ export function computePreviewLayout(params: {
   imageHeight: number;
   transform: ImageTransform;
 }): PreviewLayout {
-  const { containerWidth, containerHeight, imageWidth, imageHeight, transform } = params;
+  const {
+    containerWidth,
+    containerHeight,
+    imageWidth,
+    imageHeight,
+    transform,
+  } = params;
   if (!containerWidth || !containerHeight || !imageWidth || !imageHeight) {
     return { drawW: 0, drawH: 0, dx: 0, dy: 0, maxX: 0, maxY: 0 };
   }
 
-  const baseScale = transform.fit === "cover"
-    ? Math.max(containerWidth / imageWidth, containerHeight / imageHeight)
-    : Math.min(containerWidth / imageWidth, containerHeight / imageHeight);
+  const baseScale =
+    transform.fit === "cover"
+      ? Math.max(containerWidth / imageWidth, containerHeight / imageHeight)
+      : Math.min(containerWidth / imageWidth, containerHeight / imageHeight);
   const scale = baseScale * getEffectiveTransformZoom(transform);
   const drawW = imageWidth * scale;
   const drawH = imageHeight * scale;
   const maxX = Math.abs(drawW - containerWidth) / 2;
   const maxY = Math.abs(drawH - containerHeight) / 2;
-  const dx = (containerWidth - drawW) / 2 - maxX * clamp(transform.offsetX || 0, -100, 100) / 100;
-  const dy = (containerHeight - drawH) / 2 - maxY * clamp(transform.offsetY || 0, -100, 100) / 100;
+  const dx =
+    (containerWidth - drawW) / 2 -
+    (maxX * clamp(transform.offsetX || 0, -100, 100)) / 100;
+  const dy =
+    (containerHeight - drawH) / 2 -
+    (maxY * clamp(transform.offsetY || 0, -100, 100)) / 100;
 
   return { drawW, drawH, dx, dy, maxX, maxY };
 }
@@ -730,8 +944,12 @@ export function offsetFromDrawPosition(params: {
   const { containerWidth, containerHeight, drawW, drawH, dx, dy } = params;
   const maxX = Math.abs(drawW - containerWidth) / 2;
   const maxY = Math.abs(drawH - containerHeight) / 2;
-  const offsetX = maxX ? clamp((((containerWidth - drawW) / 2 - dx) / maxX) * 100, -100, 100) : 0;
-  const offsetY = maxY ? clamp((((containerHeight - drawH) / 2 - dy) / maxY) * 100, -100, 100) : 0;
+  const offsetX = maxX
+    ? clamp((((containerWidth - drawW) / 2 - dx) / maxX) * 100, -100, 100)
+    : 0;
+  const offsetY = maxY
+    ? clamp((((containerHeight - drawH) / 2 - dy) / maxY) * 100, -100, 100)
+    : 0;
   return { offsetX, offsetY };
 }
 
@@ -750,7 +968,16 @@ export async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
   return await res.blob();
 }
 
-const ALLOWED_UPLOAD_EXTENSIONS = new Set(["png", "jpg", "jpeg", "webp", "gif", "avif", "heic", "heif"]);
+const ALLOWED_UPLOAD_EXTENSIONS = new Set([
+  "png",
+  "jpg",
+  "jpeg",
+  "webp",
+  "gif",
+  "avif",
+  "heic",
+  "heif",
+]);
 const ALLOWED_VIDEO_UPLOAD_EXTENSIONS = new Set(["mp4", "mov", "webm", "m4v"]);
 
 function normalizeUploadSegment(value: string, fallback: string): string {
@@ -768,22 +995,41 @@ function normalizeUploadSegment(value: string, fallback: string): string {
 }
 
 export function sanitizeUploadName(name: string): string {
-  const rawName = String(name || "image").split(/[\\/]/).pop() || "image";
-  const rawExtension = rawName.includes(".") ? rawName.split(".").pop()?.toLowerCase() || "" : "";
-  const extension = ALLOWED_UPLOAD_EXTENSIONS.has(rawExtension) ? (rawExtension === "jpeg" ? "jpg" : rawExtension) : "jpg";
+  const rawName =
+    String(name || "image")
+      .split(/[\\/]/)
+      .pop() || "image";
+  const rawExtension = rawName.includes(".")
+    ? rawName.split(".").pop()?.toLowerCase() || ""
+    : "";
+  const extension = ALLOWED_UPLOAD_EXTENSIONS.has(rawExtension)
+    ? rawExtension === "jpeg"
+      ? "jpg"
+      : rawExtension
+    : "jpg";
   const base = normalizeUploadSegment(rawName.replace(/\.[^.]*$/, ""), "image");
   return `${base}.${extension}`.toLowerCase();
 }
 
-export function buildBoosterUploadPath(fileName: string, folder = "booster-prepublish"): string {
-  const safeFolder = normalizeUploadSegment(folder, "booster-prepublish").replace(/\./g, "-").toLowerCase();
+export function buildBoosterUploadPath(
+  fileName: string,
+  folder = "booster-prepublish",
+): string {
+  const safeFolder = normalizeUploadSegment(folder, "booster-prepublish")
+    .replace(/\./g, "-")
+    .toLowerCase();
   const safeName = sanitizeUploadName(fileName);
   const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   return `${safeFolder}/${unique}-${safeName}`;
 }
 export function sanitizeVideoUploadName(name: string, mimeType = ""): string {
-  const rawName = String(name || "video-inrcy").split(/[\\/]/).pop() || "video-inrcy";
-  const rawExtension = rawName.includes(".") ? rawName.split(".").pop()?.toLowerCase() || "" : "";
+  const rawName =
+    String(name || "video-inrcy")
+      .split(/[\\/]/)
+      .pop() || "video-inrcy";
+  const rawExtension = rawName.includes(".")
+    ? rawName.split(".").pop()?.toLowerCase() || ""
+    : "";
   const mime = String(mimeType || "").toLowerCase();
   const extension = ALLOWED_VIDEO_UPLOAD_EXTENSIONS.has(rawExtension)
     ? rawExtension === "m4v"
@@ -794,17 +1040,25 @@ export function sanitizeVideoUploadName(name: string, mimeType = ""): string {
       : mime.includes("webm")
         ? "webm"
         : "mp4";
-  const base = normalizeUploadSegment(rawName.replace(/\.[^.]*$/, ""), "video-inrcy");
+  const base = normalizeUploadSegment(
+    rawName.replace(/\.[^.]*$/, ""),
+    "video-inrcy",
+  );
   return `${base}.${extension}`.toLowerCase();
 }
 
-export function buildBoosterVideoUploadPath(fileName: string, folder = "booster-videos", mimeType = ""): string {
-  const safeFolder = normalizeUploadSegment(folder, "booster-videos").replace(/\./g, "-").toLowerCase();
+export function buildBoosterVideoUploadPath(
+  fileName: string,
+  folder = "booster-videos",
+  mimeType = "",
+): string {
+  const safeFolder = normalizeUploadSegment(folder, "booster-videos")
+    .replace(/\./g, "-")
+    .toLowerCase();
   const safeName = sanitizeVideoUploadName(fileName, mimeType);
   const unique = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
   return `${safeFolder}/${unique}-${safeName}`;
 }
-
 
 export type BoosterVideoGenerationSource = "browser_file" | "supabase_storage";
 
@@ -838,7 +1092,9 @@ export function buildBoosterVideoGenerationContext(params: {
   if (params.mediaType !== "video" || !file) return null;
 
   const storagePath = String(params.storage?.storagePath || "").trim();
-  const publicUrl = String(params.storage?.publicUrl || params.storage?.url || "").trim();
+  const publicUrl = String(
+    params.storage?.publicUrl || params.storage?.url || "",
+  ).trim();
 
   return {
     enabled: true,
@@ -846,9 +1102,12 @@ export function buildBoosterVideoGenerationContext(params: {
     name: file.name || "video-inrcy.mp4",
     type: file.type || "video/mp4",
     size: Number(file.size || 0),
-    duration: typeof params.duration === "number" && Number.isFinite(params.duration) && params.duration > 0
-      ? params.duration
-      : null,
+    duration:
+      typeof params.duration === "number" &&
+      Number.isFinite(params.duration) &&
+      params.duration > 0
+        ? params.duration
+        : null,
     ...(storagePath ? { storagePath } : {}),
     ...(publicUrl ? { publicUrl, url: publicUrl } : {}),
     analysisPlan: {
@@ -874,7 +1133,9 @@ export async function uploadBoosterVideo(
   file: File,
   options?: { folder?: string; path?: string; duration?: number | null },
 ): Promise<VideoPayload> {
-  const path = options?.path || buildBoosterVideoUploadPath(file.name, options?.folder, file.type);
+  const path =
+    options?.path ||
+    buildBoosterVideoUploadPath(file.name, options?.folder, file.type);
   const signedRes = await fetch("/api/booster/video-upload-url", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -889,10 +1150,14 @@ export async function uploadBoosterVideo(
 
   const signedJson = await signedRes.json().catch(() => ({}));
   if (!signedRes.ok) {
-    throw new Error(String(signedJson?.error || "Impossible de préparer l'upload vidéo."));
+    throw new Error(
+      String(signedJson?.error || "Impossible de préparer l'upload vidéo."),
+    );
   }
 
-  const storagePath = String(signedJson?.storagePath || signedJson?.path || path);
+  const storagePath = String(
+    signedJson?.storagePath || signedJson?.path || path,
+  );
   const token = String(signedJson?.token || "");
   if (!storagePath || !token) {
     throw new Error("Upload vidéo impossible : jeton Supabase manquant.");
@@ -900,14 +1165,11 @@ export async function uploadBoosterVideo(
 
   const { createClient } = await import("@/lib/supabaseClient");
   const supabase = createClient();
-  const { error } = await supabase.storage.from("booster").uploadToSignedUrl(
-    storagePath,
-    token,
-    file,
-    {
+  const { error } = await supabase.storage
+    .from("booster")
+    .uploadToSignedUrl(storagePath, token, file, {
       contentType: String(signedJson?.contentType || file.type || "video/mp4"),
-    },
-  );
+    });
 
   if (error) {
     throw new Error(error.message || "Impossible d'uploader la vidéo.");
@@ -928,7 +1190,6 @@ export async function uploadBoosterVideo(
     url: publicUrl,
   };
 }
-
 
 export function clampPercent(value: number, min = 0, max = 100) {
   return Math.min(max, Math.max(min, Math.round(value)));
@@ -953,7 +1214,9 @@ export async function uploadPreparedImages(
     }
 
     const blob = await dataUrlToBlob(image.dataUrl);
-    const file = new File([blob], sanitizeUploadName(image.name), { type: image.type || blob.type || "application/octet-stream" });
+    const file = new File([blob], sanitizeUploadName(image.name), {
+      type: image.type || blob.type || "application/octet-stream",
+    });
     const formData = new FormData();
     formData.append("file", file);
     formData.append("path", buildBoosterUploadPath(image.name));
@@ -963,7 +1226,10 @@ export async function uploadPreparedImages(
       body: formData,
     });
     const json = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(String(json?.error || "Impossible d'uploader l'image préparée."));
+    if (!res.ok)
+      throw new Error(
+        String(json?.error || "Impossible d'uploader l'image préparée."),
+      );
 
     uploaded.push({
       ...image,
@@ -1001,20 +1267,30 @@ export async function renderChannelImage(params: {
     const ch = canvas.height;
     const iw = img.naturalWidth || img.width;
     const ih = img.naturalHeight || img.height;
-    const baseScale = transform.fit === "cover" ? Math.max(cw / iw, ch / ih) : Math.min(cw / iw, ch / ih);
+    const baseScale =
+      transform.fit === "cover"
+        ? Math.max(cw / iw, ch / ih)
+        : Math.min(cw / iw, ch / ih);
     const scale = baseScale * getEffectiveTransformZoom(transform);
     const drawW = iw * scale;
     const drawH = ih * scale;
     const maxX = Math.abs(drawW - cw) / 2;
     const maxY = Math.abs(drawH - ch) / 2;
-    const dx = (cw - drawW) / 2 - maxX * clamp(transform.offsetX || 0, -100, 100) / 100;
-    const dy = (ch - drawH) / 2 - maxY * clamp(transform.offsetY || 0, -100, 100) / 100;
+    const dx =
+      (cw - drawW) / 2 -
+      (maxX * clamp(transform.offsetX || 0, -100, 100)) / 100;
+    const dy =
+      (ch - drawH) / 2 -
+      (maxY * clamp(transform.offsetY || 0, -100, 100)) / 100;
 
     ctx.clearRect(0, 0, cw, ch);
 
     const backgroundMode = getBackgroundMode(transform);
     if (backgroundMode !== "transparent") {
-      ctx.fillStyle = getBackgroundFill(backgroundMode, transform.backgroundColor);
+      ctx.fillStyle = getBackgroundFill(
+        backgroundMode,
+        transform.backgroundColor,
+      );
       ctx.fillRect(0, 0, cw, ch);
     }
 
@@ -1024,7 +1300,9 @@ export async function renderChannelImage(params: {
     const outputType = exportAsPng ? "image/png" : "image/jpeg";
     const dataUrl = canvas.toDataURL(outputType, 0.92);
     return {
-      name: file.name.replace(/\.[^.]+$/, "") + `-${preset.width}x${preset.height}.${exportAsPng ? "png" : "jpg"}`,
+      name:
+        file.name.replace(/\.[^.]+$/, "") +
+        `-${preset.width}x${preset.height}.${exportAsPng ? "png" : "jpg"}`,
       type: outputType,
       dataUrl,
     };
@@ -1045,7 +1323,10 @@ export function getDefaultTransform(channel: ChannelKey): ImageTransform {
   };
 }
 
-export function getOptimizedTransform(channel: ChannelKey, meta?: ImageMeta): ImageTransform {
+export function getOptimizedTransform(
+  channel: ChannelKey,
+  meta?: ImageMeta,
+): ImageTransform {
   const base = getDefaultTransform(channel);
   if (!meta || !meta.width || !meta.height) return base;
 
@@ -1056,22 +1337,78 @@ export function getOptimizedTransform(channel: ChannelKey, meta?: ImageMeta): Im
   const isVeryTall = ratio <= 0.68;
 
   if (channel === "inrcy_site" || channel === "site_web" || channel === "gmb") {
-    return withBackgroundMode({ ...base, fit: "contain", zoom: 1, backgroundColor: "#e8f6ff" }, "color");
+    return withBackgroundMode(
+      { ...base, fit: "contain", zoom: 1, backgroundColor: "#e8f6ff" },
+      "color",
+    );
   }
 
   if (channel === "instagram") {
-    if (isVeryWide) return withBackgroundMode({ ...base, fit: "contain", zoom: 1, offsetX: 0, offsetY: 0, backgroundColor: "#ffffff" }, "color");
-    if (isWide) return withBackgroundMode({ ...base, fit: "contain", zoom: 1, backgroundColor: "#ffffff" }, "color");
-    if (isVeryTall) return withBackgroundMode({ ...base, fit: "contain", zoom: 1, backgroundColor: "#ffffff" }, "color");
-    if (isTall) return withBackgroundMode({ ...base, fit: "cover", zoom: 1.04, offsetX: 0, offsetY: -10 }, "black");
-    return withBackgroundMode({ ...base, fit: "cover", zoom: ratio < 1 ? 1.03 : 1.08, offsetX: 0, offsetY: ratio > 1 ? 0 : -6 }, "black");
+    if (isVeryWide)
+      return withBackgroundMode(
+        {
+          ...base,
+          fit: "contain",
+          zoom: 1,
+          offsetX: 0,
+          offsetY: 0,
+          backgroundColor: "#ffffff",
+        },
+        "color",
+      );
+    if (isWide)
+      return withBackgroundMode(
+        { ...base, fit: "contain", zoom: 1, backgroundColor: "#ffffff" },
+        "color",
+      );
+    if (isVeryTall)
+      return withBackgroundMode(
+        { ...base, fit: "contain", zoom: 1, backgroundColor: "#ffffff" },
+        "color",
+      );
+    if (isTall)
+      return withBackgroundMode(
+        { ...base, fit: "cover", zoom: 1.04, offsetX: 0, offsetY: -10 },
+        "black",
+      );
+    return withBackgroundMode(
+      {
+        ...base,
+        fit: "cover",
+        zoom: ratio < 1 ? 1.03 : 1.08,
+        offsetX: 0,
+        offsetY: ratio > 1 ? 0 : -6,
+      },
+      "black",
+    );
   }
 
   if (channel === "facebook" || channel === "linkedin") {
-    if (isVeryWide || isVeryTall) return withBackgroundMode({ ...base, fit: "contain", zoom: 1, backgroundColor: "#ffffff" }, "color");
-    if (isWide) return withBackgroundMode({ ...base, fit: "contain", zoom: 1, backgroundColor: "#ffffff" }, "color");
-    if (isTall) return withBackgroundMode({ ...base, fit: "cover", zoom: 1.06, offsetX: 0, offsetY: -12 }, "black");
-    return withBackgroundMode({ ...base, fit: "cover", zoom: ratio < 1 ? 1.02 : 1.06, offsetX: 0, offsetY: ratio < 0.98 ? -8 : 0 }, "black");
+    if (isVeryWide || isVeryTall)
+      return withBackgroundMode(
+        { ...base, fit: "contain", zoom: 1, backgroundColor: "#ffffff" },
+        "color",
+      );
+    if (isWide)
+      return withBackgroundMode(
+        { ...base, fit: "contain", zoom: 1, backgroundColor: "#ffffff" },
+        "color",
+      );
+    if (isTall)
+      return withBackgroundMode(
+        { ...base, fit: "cover", zoom: 1.06, offsetX: 0, offsetY: -12 },
+        "black",
+      );
+    return withBackgroundMode(
+      {
+        ...base,
+        fit: "cover",
+        zoom: ratio < 1 ? 1.02 : 1.06,
+        offsetX: 0,
+        offsetY: ratio < 0.98 ? -8 : 0,
+      },
+      "black",
+    );
   }
 
   return base;
@@ -1104,16 +1441,20 @@ export function syncChannelImageEditors(params: {
 
   for (const channel of selectedChannels) {
     const prevState = previous[channel];
-    const nextImageKeys = (prevState?.imageKeys || []).filter((key) => imageKeys.includes(key));
-    const autoSelectedNewKeys = channel === "gmb"
-      ? []
-      : imageKeys.filter((key) => !nextImageKeys.includes(key));
-    const mergedKeys = (nextImageKeys.length
-      ? [...nextImageKeys, ...autoSelectedNewKeys]
-      : channel === "gmb"
+    const nextImageKeys = (prevState?.imageKeys || []).filter((key) =>
+      imageKeys.includes(key),
+    );
+    const autoSelectedNewKeys =
+      channel === "gmb"
         ? []
-        : [...imageKeys])
-      .filter((key, index, arr) => arr.indexOf(key) === index);
+        : imageKeys.filter((key) => !nextImageKeys.includes(key));
+    const mergedKeys = (
+      nextImageKeys.length
+        ? [...nextImageKeys, ...autoSelectedNewKeys]
+        : channel === "gmb"
+          ? []
+          : [...imageKeys]
+    ).filter((key, index, arr) => arr.indexOf(key) === index);
     const transforms: Record<string, ImageTransform> = {};
     for (const key of imageKeys) {
       transforms[key] = prevState?.transforms?.[key]

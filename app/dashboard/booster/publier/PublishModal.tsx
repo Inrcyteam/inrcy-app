@@ -75,6 +75,7 @@ import {
   type ChannelImagePayload,
   type ChannelImageSettingsPayload,
   type ChannelKey,
+  type ChannelMediaMode,
   type ChannelPost,
   type DisplayKey,
   type ImageMeta,
@@ -304,14 +305,20 @@ function makeVideoTranscriptCacheKey(file: File) {
   return `${file.name}__${file.size}__${file.lastModified}`;
 }
 
-async function transcribeVideoAudioForAI(file: File): Promise<Omit<VideoAudioTranscriptCache, "key"> | null> {
+async function transcribeVideoAudioForAI(
+  file: File,
+): Promise<Omit<VideoAudioTranscriptCache, "key"> | null> {
   const formData = new FormData();
   formData.append("video", file, buildVideoFileName(file));
 
-  const controller = typeof AbortController !== "undefined" ? new AbortController() : null;
+  const controller =
+    typeof AbortController !== "undefined" ? new AbortController() : null;
   const timeoutId =
     controller && typeof window !== "undefined"
-      ? window.setTimeout(() => controller.abort(), VIDEO_TRANSCRIPTION_TIMEOUT_MS)
+      ? window.setTimeout(
+          () => controller.abort(),
+          VIDEO_TRANSCRIPTION_TIMEOUT_MS,
+        )
       : null;
 
   try {
@@ -376,7 +383,9 @@ export default function PublishModal({
   const [generationStage, setGenerationStage] = useState("");
   const generationTimersRef = useRef<number[]>([]);
   const generationPulseTimerRef = useRef<number | null>(null);
-  const videoAudioTranscriptCacheRef = useRef<VideoAudioTranscriptCache | null>(null);
+  const videoAudioTranscriptCacheRef = useRef<VideoAudioTranscriptCache | null>(
+    null,
+  );
   const [genError, setGenError] = useState("");
   const [publishError, setPublishError] = useState("");
   const [draftSaving, setDraftSaving] = useState(false);
@@ -424,6 +433,9 @@ export default function PublishModal({
     useState<ChannelKey | null>(null);
   const [publicationMediaType, setPublicationMediaType] =
     useState<PublicationMediaType>("images");
+  const [channelMediaModes, setChannelMediaModes] = useState<
+    Partial<Record<ChannelKey, ChannelMediaMode>>
+  >({});
   const [images, setImages] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [videoFile, setVideoFile] = useState<File | null>(null);
@@ -431,7 +443,10 @@ export default function PublishModal({
   const [videoDurationSeconds, setVideoDurationSeconds] = useState<
     number | null
   >(null);
-  const [videoStorageContext, setVideoStorageContext] = useState<Pick<VideoPayload, "storagePath" | "publicUrl" | "url"> | null>(null);
+  const [videoStorageContext, setVideoStorageContext] = useState<Pick<
+    VideoPayload,
+    "storagePath" | "publicUrl" | "url"
+  > | null>(null);
   const [imgError, setImgError] = useState("");
   const [useImagesForAI, setUseImagesForAI] = useState(true);
   const [imageMetaByKey, setImageMetaByKey] = useState<
@@ -445,6 +460,20 @@ export default function PublishModal({
   const [activeImageKeyByChannel, setActiveImageKeyByChannel] = useState<
     Partial<Record<ChannelKey, string>>
   >({});
+
+  const resolveChannelMediaMode = (channel: ChannelKey): ChannelMediaMode => {
+    const explicit = channelMediaModes[channel];
+    if (explicit === "video" && (videoFile || videoPreviewUrl)) return "video";
+    if (explicit === "images" && images.length > 0) return "images";
+    if (explicit === "none") return "none";
+    if (videoFile || videoPreviewUrl) return "video";
+    if (images.length > 0) return "images";
+    return "none";
+  };
+
+  const setChannelMediaMode = (channel: ChannelKey, mode: ChannelMediaMode) => {
+    setChannelMediaModes((prev) => ({ ...prev, [channel]: mode }));
+  };
   const [showPublicationPreview, setShowPublicationPreview] = useState(false);
   const previewStageRef = useRef<HTMLDivElement | null>(null);
   const publishAreaRef = useRef<HTMLDivElement | null>(null);
@@ -940,6 +969,40 @@ export default function PublishModal({
     });
   }, [selectedChannels.join("|"), channelImageEditors, imageKeys.join("|")]);
 
+  useEffect(() => {
+    setChannelMediaModes((prev) => {
+      const next: Partial<Record<ChannelKey, ChannelMediaMode>> = { ...prev };
+      let changed = false;
+      for (const channel of selectedChannels) {
+        const current = next[channel];
+        const valid =
+          current === "none" ||
+          (current === "video" && Boolean(videoFile || videoPreviewUrl)) ||
+          (current === "images" && images.length > 0);
+        if (!valid) {
+          next[channel] =
+            videoFile || videoPreviewUrl
+              ? "video"
+              : images.length > 0
+                ? "images"
+                : "none";
+          changed = true;
+        }
+      }
+      for (const key of Object.keys(next) as ChannelKey[]) {
+        if (!selectedChannels.includes(key)) {
+          delete next[key];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [
+    selectedChannels.join("|"),
+    Boolean(videoFile || videoPreviewUrl),
+    images.length,
+  ]);
+
   const activeEditor = channelImageEditors[activeImageChannel];
   const activeEditorImageKey =
     activeImageKeyByChannel[activeImageChannel] ||
@@ -985,11 +1048,12 @@ export default function PublishModal({
       imagePreviews.length > 0 ||
       Object.keys(channelImageEditors).length > 0;
     const hasVideo = !!videoFile || !!videoPreviewUrl;
-    const hasMedia = publicationMediaType !== "images" || hasImages || hasVideo;
+    const hasMedia = hasImages || hasVideo;
     const hasLiveHashtags = !!instagramHashtagsInput.trim();
     return hasText || hasGeneratedContent || hasMedia || hasLiveHashtags;
   }, [
     publicationMediaType,
+    channelMediaModes,
     idea,
     theme,
     contentStyle,
@@ -1018,6 +1082,7 @@ export default function PublishModal({
       : null;
     return JSON.stringify({
       mediaType: publicationMediaType,
+      channelMediaModes,
       idea: idea.trim(),
       theme,
       contentStyle,
@@ -1031,6 +1096,7 @@ export default function PublishModal({
     });
   }, [
     publicationMediaType,
+    channelMediaModes,
     idea,
     theme,
     contentStyle,
@@ -1134,8 +1200,19 @@ export default function PublishModal({
   }
 
   async function restorePublicationDraftVideo(videoDraft: any) {
-    const source = String(videoDraft?.publicUrl || videoDraft?.url || "").trim();
-    if (!source) return { file: null as File | null, previewUrl: "", duration: null as number | null, storage: null as Pick<VideoPayload, "storagePath" | "publicUrl" | "url"> | null };
+    const source = String(
+      videoDraft?.publicUrl || videoDraft?.url || "",
+    ).trim();
+    if (!source)
+      return {
+        file: null as File | null,
+        previewUrl: "",
+        duration: null as number | null,
+        storage: null as Pick<
+          VideoPayload,
+          "storagePath" | "publicUrl" | "url"
+        > | null,
+      };
 
     try {
       const response = await fetch(source);
@@ -1146,19 +1223,30 @@ export default function PublishModal({
       const lastModified = Number(videoDraft?.lastModified || Date.now());
       const file = new File([blob], name, { type, lastModified });
       const rawDuration = Number(videoDraft?.duration || 0);
-      const duration = Number.isFinite(rawDuration) && rawDuration > 0 ? rawDuration : null;
+      const duration =
+        Number.isFinite(rawDuration) && rawDuration > 0 ? rawDuration : null;
       return {
         file,
         previewUrl: URL.createObjectURL(file),
         duration,
         storage: {
-          storagePath: String(videoDraft?.storagePath || videoDraft?.path || ""),
+          storagePath: String(
+            videoDraft?.storagePath || videoDraft?.path || "",
+          ),
           publicUrl: source,
           url: source,
         },
       };
     } catch {
-      return { file: null as File | null, previewUrl: "", duration: null as number | null, storage: null as Pick<VideoPayload, "storagePath" | "publicUrl" | "url"> | null };
+      return {
+        file: null as File | null,
+        previewUrl: "",
+        duration: null as number | null,
+        storage: null as Pick<
+          VideoPayload,
+          "storagePath" | "publicUrl" | "url"
+        > | null,
+      };
     }
   }
 
@@ -1259,14 +1347,26 @@ export default function PublishModal({
             ? payload.videoDraft
             : null;
         const nextMediaType = normalizePublicationMediaType(payload.mediaType);
+        const nextChannelMediaModes =
+          payload.channelMediaModes &&
+          typeof payload.channelMediaModes === "object"
+            ? (payload.channelMediaModes as Partial<
+                Record<ChannelKey, ChannelMediaMode>
+              >)
+            : {};
         const { restoredFiles, restoredPreviews, restoredMeta } =
-          nextMediaType === "images"
-            ? await restorePublicationDraftImages(imageDrafts)
-            : { restoredFiles: [], restoredPreviews: [], restoredMeta: {} };
-        const restoredVideo =
-          nextMediaType === "video"
-            ? await restorePublicationDraftVideo(videoDraft)
-            : { file: null as File | null, previewUrl: "", duration: null as number | null, storage: null as Pick<VideoPayload, "storagePath" | "publicUrl" | "url"> | null };
+          await restorePublicationDraftImages(imageDrafts);
+        const restoredVideo = videoDraft
+          ? await restorePublicationDraftVideo(videoDraft)
+          : {
+              file: null as File | null,
+              previewUrl: "",
+              duration: null as number | null,
+              storage: null as Pick<
+                VideoPayload,
+                "storagePath" | "publicUrl" | "url"
+              > | null,
+            };
 
         if (cancelled) return;
 
@@ -1283,18 +1383,18 @@ export default function PublishModal({
         setChannels(nextChannels);
         setPostsByChannel(nextPostsByChannel);
         setInstagramHashtagsInput(nextInstagramHashtags);
-        const effectiveMediaType =
-          nextMediaType === "video" && restoredVideo.file ? "video" : "images";
+        const effectiveMediaType = restoredVideo.file ? "video" : nextMediaType;
         setPublicationMediaType(effectiveMediaType);
-        setImages(effectiveMediaType === "images" ? restoredFiles : []);
-        setImagePreviews(effectiveMediaType === "images" ? restoredPreviews : []);
-        setVideoFile(effectiveMediaType === "video" ? restoredVideo.file : null);
-        setVideoPreviewUrl(effectiveMediaType === "video" ? restoredVideo.previewUrl : "");
-        setVideoDurationSeconds(effectiveMediaType === "video" ? restoredVideo.duration : null);
-        setVideoStorageContext(effectiveMediaType === "video" ? restoredVideo.storage : null);
-        setUseImagesForAI(effectiveMediaType === "images" ? nextUseImagesForAI : false);
-        setImageMetaByKey(effectiveMediaType === "images" ? restoredMeta : {});
-        setChannelImageEditors(effectiveMediaType === "images" ? nextEditors : {});
+        setChannelMediaModes(nextChannelMediaModes);
+        setImages(restoredFiles);
+        setImagePreviews(restoredPreviews);
+        setVideoFile(restoredVideo.file);
+        setVideoPreviewUrl(restoredVideo.previewUrl);
+        setVideoDurationSeconds(restoredVideo.duration);
+        setVideoStorageContext(restoredVideo.storage);
+        setUseImagesForAI(nextUseImagesForAI);
+        setImageMetaByKey(restoredMeta);
+        setChannelImageEditors(nextEditors);
         setLoadedPublicationDraftId(publicationDraftIdParam);
         setDraftMessage("Brouillon chargé");
 
@@ -1317,16 +1417,17 @@ export default function PublishModal({
         setLastPublicationDraftSnapshot(
           JSON.stringify({
             mediaType: effectiveMediaType,
+            channelMediaModes: nextChannelMediaModes,
             idea: nextIdea.trim(),
             theme: nextTheme,
             contentStyle: nextContentStyle,
             channels: selectedDraftChannels,
             postsByChannel: nextPostsByChannel,
             instagramHashtagsInput: nextInstagramHashtags,
-            imageNames: effectiveMediaType === "images" ? imageNames : [],
-            videoName: effectiveMediaType === "video" ? videoName : null,
-            useImagesForAI: effectiveMediaType === "images" ? nextUseImagesForAI : false,
-            imageSettingsByChannel: effectiveMediaType === "images" ? nextEditors : {},
+            imageNames,
+            videoName,
+            useImagesForAI: nextUseImagesForAI,
+            imageSettingsByChannel: nextEditors,
           }),
         );
         onUnsavedChange?.(false);
@@ -1452,6 +1553,7 @@ export default function PublishModal({
     clearImagesMedia();
     clearVideoMedia();
     setPublicationMediaType("images");
+    setChannelMediaModes({});
     setImgError("");
     setUseImagesForAI(true);
   };
@@ -1478,10 +1580,9 @@ export default function PublishModal({
       return;
     }
 
-    const shouldUseImagesForAI =
-      publicationMediaType === "images" && images.length > 0 && useImagesForAI;
+    const shouldUseImagesForAI = images.length > 0 && useImagesForAI;
     const videoGenerationContext = buildBoosterVideoGenerationContext({
-      mediaType: publicationMediaType,
+      mediaType: videoFile || videoPreviewUrl ? "video" : "images",
       videoFile,
       duration: videoDurationSeconds,
       storage: videoStorageContext,
@@ -1505,9 +1606,21 @@ export default function PublishModal({
         : hasVideoForGeneration
           ? [
               { percent: 34, label: "Préparation de la vidéo", delay: 1800 },
-              { percent: 42, label: "Transcription audio de la vidéo", delay: 3200 },
-              { percent: 52, label: "Extraction des images de la vidéo", delay: 5000 },
-              { percent: 60, label: "Analyse audio + images de la vidéo", delay: 6800 },
+              {
+                percent: 42,
+                label: "Transcription audio de la vidéo",
+                delay: 3200,
+              },
+              {
+                percent: 52,
+                label: "Extraction des images de la vidéo",
+                delay: 5000,
+              },
+              {
+                percent: 60,
+                label: "Analyse audio + images de la vidéo",
+                delay: 6800,
+              },
             ]
           : [{ percent: 42, label: "Construction du contenu", delay: 2600 }]),
       {
@@ -1545,20 +1658,25 @@ export default function PublishModal({
             images.map((file) => fileToBoosterAiImagePayload(file)),
           )
         : [];
-      let videoFramesForAI: Awaited<ReturnType<typeof extractVideoFramesForAI>> = [];
+      let videoFramesForAI: Awaited<
+        ReturnType<typeof extractVideoFramesForAI>
+      > = [];
       let videoAudioTranscript = "";
       let videoRawAudioTranscript = "";
-      let videoAudioTranscriptStatus: "pending" | "ready" | "unavailable" = "pending";
+      let videoAudioTranscriptStatus: "pending" | "ready" | "unavailable" =
+        "pending";
 
       if (hasVideoForGeneration && videoFile) {
         setGenerationProgress((current) => Math.max(current, 36));
         setGenerationStage("Transcription audio de la vidéo");
         try {
           const cacheKey = makeVideoTranscriptCacheKey(videoFile);
-          const cached = videoAudioTranscriptCacheRef.current?.key === cacheKey
-            ? videoAudioTranscriptCacheRef.current
-            : null;
-          const transcript = cached || await transcribeVideoAudioForAI(videoFile);
+          const cached =
+            videoAudioTranscriptCacheRef.current?.key === cacheKey
+              ? videoAudioTranscriptCacheRef.current
+              : null;
+          const transcript =
+            cached || (await transcribeVideoAudioForAI(videoFile));
 
           if (transcript?.text) {
             videoAudioTranscript = transcript.text;
@@ -1574,7 +1692,9 @@ export default function PublishModal({
           } else {
             videoAudioTranscriptStatus = "unavailable";
             setGenerationProgress((current) => Math.max(current, 42));
-            setGenerationStage("Pas de parole exploitable, génération maintenue");
+            setGenerationStage(
+              "Pas de parole exploitable, génération maintenue",
+            );
           }
         } catch {
           videoAudioTranscriptStatus = "unavailable";
@@ -1615,23 +1735,25 @@ export default function PublishModal({
           theme,
           style: contentStyle,
           channels: selectedForGeneration,
-          mediaType: publicationMediaType,
+          mediaType: hasVideoForGeneration ? "video" : "images",
           useImagesForAI: shouldUseImagesForAI,
           imageCount: imagesForAI.length,
           imagesForAI,
-          videoForAI: hasVideoForGeneration && videoGenerationContext
-            ? {
-                ...videoGenerationContext,
-                visualFrames: videoFramesForAI,
-                audioTranscript: videoAudioTranscript,
-                rawAudioTranscript: videoRawAudioTranscript,
-                analysisPlan: {
-                  ...videoGenerationContext.analysisPlan,
-                  visualFrames: videoFramesForAI.length > 0 ? "ready" : "pending",
-                  audioTranscript: videoAudioTranscriptStatus,
-                },
-              }
-            : null,
+          videoForAI:
+            hasVideoForGeneration && videoGenerationContext
+              ? {
+                  ...videoGenerationContext,
+                  visualFrames: videoFramesForAI,
+                  audioTranscript: videoAudioTranscript,
+                  rawAudioTranscript: videoRawAudioTranscript,
+                  analysisPlan: {
+                    ...videoGenerationContext.analysisPlan,
+                    visualFrames:
+                      videoFramesForAI.length > 0 ? "ready" : "pending",
+                    audioTranscript: videoAudioTranscriptStatus,
+                  },
+                }
+              : null,
         }),
       });
 
@@ -1733,20 +1855,12 @@ export default function PublishModal({
 
   const onPickImagesClick = () => {
     setImgError("");
-    if (publicationMediaType === "video" && (videoFile || videoPreviewUrl)) {
-      setImgError("Supprimez la vidéo pour ajouter des images.");
-      return;
-    }
     if (images.length >= BOOSTER_MAX_IMAGE_COUNT) return;
     fileInputRef.current?.click();
   };
 
   const onPickVideoClick = () => {
     setImgError("");
-    if (images.length > 0) {
-      setImgError("Supprimez les images pour ajouter une vidéo.");
-      return;
-    }
     videoInputRef.current?.click();
   };
 
@@ -1754,6 +1868,14 @@ export default function PublishModal({
     setImgError("");
     clearVideoMedia();
     setPublicationMediaType("images");
+    setChannelMediaModes((prev) => {
+      const next: Partial<Record<ChannelKey, ChannelMediaMode>> = { ...prev };
+      for (const key of Object.keys(next) as ChannelKey[]) {
+        if (next[key] === "video")
+          next[key] = images.length ? "images" : "none";
+      }
+      return next;
+    });
   };
 
   const addVideoFile = async (file: File | null) => {
@@ -1779,12 +1901,6 @@ export default function PublishModal({
       duration = null;
     }
 
-    if (images.length > 0) {
-      setImgError("Supprimez les images pour ajouter une vidéo.");
-      return;
-    }
-
-    clearImagesMedia();
     clearVideoMedia();
     const normalizedFile = new File([file], buildVideoFileName(file), {
       type: file.type || "video/mp4",
@@ -1795,7 +1911,12 @@ export default function PublishModal({
     setVideoPreviewUrl(URL.createObjectURL(normalizedFile));
     setVideoDurationSeconds(duration);
     setVideoStorageContext(null);
-    setUseImagesForAI(false);
+    setUseImagesForAI(true);
+    setChannelMediaModes((prev) => {
+      const next: Partial<Record<ChannelKey, ChannelMediaMode>> = { ...prev };
+      for (const channel of selectedChannels) next[channel] = "video";
+      return next;
+    });
   };
 
   const onVideoChange = async (files: FileList | null) => {
@@ -1816,12 +1937,7 @@ export default function PublishModal({
       return;
     }
 
-    if (publicationMediaType === "video" && (videoFile || videoPreviewUrl)) {
-      setImgError("Supprimez la vidéo pour ajouter des images.");
-      return;
-    }
-
-    if (publicationMediaType !== "images") {
+    if (!(videoFile || videoPreviewUrl)) {
       setPublicationMediaType("images");
     }
 
@@ -1923,10 +2039,6 @@ export default function PublishModal({
 
   const onTakePhotoClick = async (targetChannel?: ChannelKey) => {
     setImgError("");
-    if (publicationMediaType === "video" && (videoFile || videoPreviewUrl)) {
-      setImgError("Supprimez la vidéo pour reprendre une photo.");
-      return;
-    }
     if (images.length >= BOOSTER_MAX_IMAGE_COUNT) {
       setImgError(`Maximum ${BOOSTER_MAX_IMAGE_COUNT} images.`);
       return;
@@ -2158,12 +2270,36 @@ export default function PublishModal({
     ? activeImageChannel
     : selectedChannels[0] || "inrcy_site";
 
-  const activePublicationPreview =
-    publicationMediaType === "video" && selectedChannels.length && videoPreviewUrl
-      ? getPublicationVideoPreviewForChannel(activePreviewChannel)
-      : publicationMediaType === "images" && selectedChannels.length && images.length
-        ? getPublicationPreviewForChannel(activePreviewChannel)
-        : null;
+  const activePublicationPreview = (() => {
+    if (!selectedChannels.length) return null;
+    const mode = resolveChannelMediaMode(activePreviewChannel);
+    if (mode === "video" && videoPreviewUrl)
+      return getPublicationVideoPreviewForChannel(activePreviewChannel);
+    if (mode === "images" && images.length)
+      return getPublicationPreviewForChannel(activePreviewChannel);
+    if (mode === "none") {
+      const displayKey = displayKeyForImageChannel(activePreviewChannel);
+      const post = getDisplayPost(displayKey);
+      return {
+        channelKey: activePreviewChannel,
+        channelLabel: getImageAdapterLabel(activePreviewChannel),
+        mediaType: "images" as const,
+        title: post.title,
+        content: post.content,
+        cta: getPreviewCtaForDisplayKey(displayKey, post),
+        hashtags:
+          displayKey === "instagram"
+            ? getLiveInstagramHashtags()
+            : post.hashtags || [],
+        imageCount: 0,
+        formatLabel: "Texte seul",
+        image: null,
+        images: [],
+        video: null,
+      };
+    }
+    return null;
+  })();
 
   const closeEmptyContentWarnings = () => {
     setEmptyContentWarningChannels([]);
@@ -2692,8 +2828,23 @@ export default function PublishModal({
       return;
     }
 
-    if (publicationMediaType === "video" && !videoFile) {
-      setImgError("Ajoutez une vidéo avant de publier.");
+    const publishMediaModeByChannel = Object.fromEntries(
+      selectedChannels.map((channel) => [
+        channel,
+        resolveChannelMediaMode(channel),
+      ]),
+    ) as Partial<Record<ChannelKey, ChannelMediaMode>>;
+    const hasAnyVideoPublish = selectedChannels.some(
+      (channel) => publishMediaModeByChannel[channel] === "video",
+    );
+    const hasAnyImagePublish = selectedChannels.some(
+      (channel) => publishMediaModeByChannel[channel] === "images",
+    );
+
+    if (hasAnyVideoPublish && !videoFile) {
+      setImgError(
+        "Ajoutez une vidéo avant de publier ou choisissez Photos / Aucun média par canal.",
+      );
       return;
     }
 
@@ -2710,7 +2861,7 @@ export default function PublishModal({
 
     const gmbImages = channelImageEditors.gmb?.imageKeys || [];
     if (
-      publicationMediaType === "images" &&
+      publishMediaModeByChannel.gmb === "images" &&
       selectedChannels.includes("gmb") &&
       !gmbImages.length &&
       !options?.skipGmbNoImageWarning
@@ -2727,17 +2878,26 @@ export default function PublishModal({
     setPendingPublishPosts(null);
     setPostsByChannel(preparedPostsByChannel);
 
-    if (publicationMediaType === "images" && selectedChannels.includes("instagram")) {
+    if (selectedChannels.includes("instagram")) {
+      const instagramMode = publishMediaModeByChannel.instagram || "none";
       const instagramImages = channelImageEditors.instagram?.imageKeys || [];
-      if (!instagramImages.length) {
+      if (instagramMode === "none") {
+        setImgError("Instagram nécessite une vidéo ou au moins 1 image.");
+        return;
+      }
+      if (instagramMode === "images" && !instagramImages.length) {
         setImgError(
           "Veuillez ajouter au moins 1 image pour publier sur Instagram.",
         );
         return;
       }
+      if (instagramMode === "video" && !videoFile) {
+        setImgError("Veuillez ajouter une vidéo pour publier sur Instagram.");
+        return;
+      }
     }
 
-    const isVideoPublication = publicationMediaType === "video";
+    const isVideoPublication = hasAnyVideoPublish;
     setSaving(true);
     setPublishProgress(5);
     setPublishProgressLabel(
@@ -2749,8 +2909,11 @@ export default function PublishModal({
     try {
       const emptyChannelImages = {} as ChannelImagePayload;
       const emptyChannelSettings = {} as ChannelImageSettingsPayload;
-      const { channelImages, channelSettings } = isVideoPublication
-        ? { channelImages: emptyChannelImages, channelSettings: emptyChannelSettings }
+      const { channelImages, channelSettings } = !hasAnyImagePublish
+        ? {
+            channelImages: emptyChannelImages,
+            channelSettings: emptyChannelSettings,
+          }
         : await buildChannelImagesPayload((current, total) => {
             if (!total) {
               setPublishProgress(25);
@@ -2764,28 +2927,31 @@ export default function PublishModal({
             );
           });
 
-      const originalImageByKey: Record<string, ImagePayload> = isVideoPublication
-        ? {}
-        : await (async () => {
-            setPublishProgress((prev) => Math.max(prev, 35));
-            setPublishProgressLabel("Upload des images originales...");
-            return await uploadOriginalImagesForPublication((current, total) => {
-              if (!total) return;
-              const ratio = current / total;
-              setPublishProgress(clampPercent(35 + ratio * 12));
-              setPublishProgressLabel(
-                `Upload des images originales ${clampPercent(ratio * 100)}%`,
+      const originalImageByKey: Record<string, ImagePayload> =
+        !hasAnyImagePublish
+          ? {}
+          : await (async () => {
+              setPublishProgress((prev) => Math.max(prev, 35));
+              setPublishProgressLabel("Upload des images originales...");
+              return await uploadOriginalImagesForPublication(
+                (current, total) => {
+                  if (!total) return;
+                  const ratio = current / total;
+                  setPublishProgress(clampPercent(35 + ratio * 12));
+                  setPublishProgressLabel(
+                    `Upload des images originales ${clampPercent(ratio * 100)}%`,
+                  );
+                },
               );
-            });
-          })();
+            })();
 
-      if (!isVideoPublication) {
+      if (hasAnyImagePublish) {
         setPublishProgress((prev) => Math.max(prev, images.length ? 47 : 35));
         setPublishProgressLabel("Upload des images adaptées...");
       }
 
       const uploadedChannelImages = {} as ChannelImagePayload;
-      const uploadTargets = isVideoPublication
+      const uploadTargets = !hasAnyImagePublish
         ? 0
         : selectedChannels.reduce(
             (sum, channel) =>
@@ -2795,8 +2961,9 @@ export default function PublishModal({
             0,
           );
       let uploadedCount = 0;
-      if (!isVideoPublication) {
+      if (hasAnyImagePublish) {
         for (const channel of selectedChannels) {
+          if (publishMediaModeByChannel[channel] !== "images") continue;
           const uploadedImages = await uploadPreparedImages(
             channelImages[channel] || [],
             (current, total) => {
@@ -2814,41 +2981,47 @@ export default function PublishModal({
             },
           );
           const imageKeysForChannel = channelSettings[channel]?.imageKeys || [];
-          uploadedChannelImages[channel] = uploadedImages.map((image, index) => {
-            const imageKey = imageKeysForChannel[index] || "";
-            const original = imageKey ? originalImageByKey[imageKey] : undefined;
-            const originalUrl = String(
-              original?.publicUrl ||
-                original?.originalPublicUrl ||
-                original?.originalUrl ||
-                "",
-            ).trim();
-            return {
-              ...image,
-              renderedUrl: image.publicUrl || image.renderedUrl || "",
-              imageKey,
-              originalUrl,
-              originalPublicUrl: originalUrl,
-              originalStoragePath:
-                original?.storagePath || original?.originalStoragePath || "",
-              originalName: original?.name || image.name,
-              originalType: original?.type || image.type,
-              transform: imageKey
-                ? channelSettings[channel]?.transforms?.[imageKey]
-                : undefined,
-              imageMeta: imageKey ? imageMetaByKey[imageKey] : undefined,
-            };
-          });
+          uploadedChannelImages[channel] = uploadedImages.map(
+            (image, index) => {
+              const imageKey = imageKeysForChannel[index] || "";
+              const original = imageKey
+                ? originalImageByKey[imageKey]
+                : undefined;
+              const originalUrl = String(
+                original?.publicUrl ||
+                  original?.originalPublicUrl ||
+                  original?.originalUrl ||
+                  "",
+              ).trim();
+              return {
+                ...image,
+                renderedUrl: image.publicUrl || image.renderedUrl || "",
+                imageKey,
+                originalUrl,
+                originalPublicUrl: originalUrl,
+                originalStoragePath:
+                  original?.storagePath || original?.originalStoragePath || "",
+                originalName: original?.name || image.name,
+                originalType: original?.type || image.type,
+                transform: imageKey
+                  ? channelSettings[channel]?.transforms?.[imageKey]
+                  : undefined,
+                imageMeta: imageKey ? imageMetaByKey[imageKey] : undefined,
+              };
+            },
+          );
         }
       }
 
       let publicationVideo: any = null;
-      if (isVideoPublication) {
+      if (hasAnyVideoPublish) {
         setPublishProgress((prev) => Math.max(prev, 35));
         setPublishProgressLabel("Upload de la vidéo...");
         publicationVideo = await uploadPublicationVideoForPublish();
         if (!publicationVideo?.publicUrl && !publicationVideo?.url) {
-          throw new Error("La vidéo n’a pas pu être préparée pour la publication.");
+          throw new Error(
+            "La vidéo n’a pas pu être préparée pour la publication.",
+          );
         }
       }
 
@@ -2862,7 +3035,10 @@ export default function PublishModal({
       const publishChannels = [...selectedChannels];
       const estimatedPublishMs = Math.max(
         9000,
-        5500 + publishChannels.length * 6500 + (uploadTargets ? 2500 : 0) + (isVideoPublication ? 2500 : 0),
+        5500 +
+          publishChannels.length * 6500 +
+          (uploadTargets ? 2500 : 0) +
+          (hasAnyVideoPublish ? 2500 : 0),
       );
       const getPublishPulseLabel = (ratio: number) => {
         if (ratio < 0.08) return "Création de l’historique iNr’Send...";
@@ -2896,7 +3072,8 @@ export default function PublishModal({
       }, 500);
 
       const result = await trackEvent("publish", {
-        mediaType: publicationMediaType,
+        mediaType: publicationVideo ? "video" : "images",
+        mediaModeByChannel: publishMediaModeByChannel,
         video: publicationVideo,
         idea: idea.trim(),
         theme,
@@ -2999,11 +3176,11 @@ export default function PublishModal({
 
     setDraftSaving(true);
     try {
-      setDraftMessage(publicationMediaType === "video" ? "Upload vidéo…" : "Enregistrement…");
-      const imageDrafts =
-        publicationMediaType === "images" ? await uploadPublicationDraftImages() : [];
-      const videoDraft =
-        publicationMediaType === "video" ? await uploadPublicationDraftVideo() : null;
+      setDraftMessage(videoFile ? "Upload vidéo…" : "Enregistrement…");
+      const imageDrafts = images.length
+        ? await uploadPublicationDraftImages()
+        : [];
+      const videoDraft = videoFile ? await uploadPublicationDraftVideo() : null;
       const response = await fetch("/api/booster/events", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -3022,14 +3199,14 @@ export default function PublishModal({
             channel: channelLabels,
             channels: selectedChannels,
             postByChannel: preparedPostsByChannel,
-            mediaType: publicationMediaType,
-            imageNames: publicationMediaType === "images" ? imageNames : [],
-            videoName: publicationMediaType === "video" ? videoName : null,
+            mediaType: videoFile ? "video" : "images",
+            channelMediaModes,
+            imageNames: imageNames,
+            videoName: videoName,
             imageDrafts,
             videoDraft,
-            useImagesForAI: publicationMediaType === "images" ? useImagesForAI : false,
-            imageSettingsByChannel:
-              publicationMediaType === "images" ? getDraftImageSettingsByChannel() : {},
+            useImagesForAI,
+            imageSettingsByChannel: getDraftImageSettingsByChannel(),
             instagramHashtagsInput,
             saved_at: new Date().toISOString(),
           },
@@ -3047,7 +3224,7 @@ export default function PublishModal({
       const savedDraftId = String(
         result?.id || loadedPublicationDraftId || publicationDraftIdParam || "",
       ).trim();
-      if (publicationMediaType === "video" && videoDraft) {
+      if (videoDraft) {
         setVideoStorageContext({
           storagePath: videoDraft.storagePath || "",
           publicUrl: videoDraft.publicUrl || videoDraft.url || "",
@@ -3171,37 +3348,51 @@ export default function PublishModal({
       const hasContent = !!String(post?.content || "").trim();
       const hasText = hasTitle || hasContent;
       const hasImage = imageKeysToPublish.length > 0;
-      const hasVideo = publicationMediaType === "video" && !!videoFile;
-      const hasMedia = publicationMediaType === "video" ? hasVideo : hasImage;
+      const mode = resolveChannelMediaMode(channel);
+      const hasVideo = mode === "video" && !!videoFile;
+      const hasMedia =
+        mode === "video" ? hasVideo : mode === "images" ? hasImage : false;
 
       if (!hasContent) warnings.push("Contenu vide");
       if (!hasTitle) warnings.push("Titre vide");
-      if (publicationMediaType === "video") {
+      if (mode === "video") {
         if (!hasVideo) blockers.push("Ajoutez une vidéo.");
-        if (channel === "gmb") warnings.push("Google Business peut publier sans vidéo si l’API refuse le média.");
-        if (channel === "linkedin") warnings.push("LinkedIn peut publier le texte seul si l’upload vidéo est refusé.");
-      } else if (!hasImage) {
-        if (channel === "instagram")
-          blockers.push("Instagram nécessite au moins 1 image.");
-        else if (channel === "gmb")
-          warnings.push("Google Business sera publié sans photo.");
-        else warnings.push("Aucune image sélectionnée.");
+        if (channel === "gmb")
+          warnings.push(
+            "Google Business peut publier sans vidéo si l’API refuse le média.",
+          );
+        if (channel === "linkedin")
+          warnings.push(
+            "LinkedIn peut publier le texte seul si l’upload vidéo est refusé.",
+          );
+      } else if (mode === "images") {
+        if (!hasImage) {
+          if (channel === "instagram")
+            blockers.push("Instagram nécessite au moins 1 image.");
+          else if (channel === "gmb")
+            warnings.push("Google Business sera publié sans photo.");
+          else warnings.push("Aucune image sélectionnée.");
+        }
+      } else if (channel === "instagram") {
+        blockers.push("Instagram nécessite une vidéo ou au moins 1 image.");
       }
       if (!hasText && !hasMedia) {
         blockers.push("Ajoutez au moins du texte ou un média.");
       }
-      if (publicationMediaType === "images" && channel === "gmb" && rawImageKeys.length > 1) {
+      if (mode === "images" && channel === "gmb" && rawImageKeys.length > 1) {
         warnings.push("Google Business publiera uniquement la première photo.");
       }
 
       return {
         channel,
         label: CHANNEL_LABELS[channel],
-        mediaType: publicationMediaType,
-        mediaLabel: getPublicationMediaLabel(
-          publicationMediaType,
-          publicationMediaType === "video" && videoFile ? 1 : imageKeysToPublish.length,
-        ),
+        mediaType: mode === "video" ? ("video" as const) : ("images" as const),
+        mediaLabel:
+          mode === "video"
+            ? "1 vidéo"
+            : mode === "images"
+              ? getPublicationMediaLabel("images", imageKeysToPublish.length)
+              : "Texte seul",
         imageCount: imageKeysToPublish.length,
         warnings,
         blockers,
@@ -3219,7 +3410,8 @@ export default function PublishModal({
   const finalReviewBlockers = finalReviewItems.flatMap((item) => item.blockers);
   const hasFinalReviewBlockers = finalReviewBlockers.length > 0;
   const finalReviewSiteNotice =
-    publicationMediaType === "images" &&
+    resolveChannelMediaMode("inrcy_site") === "images" &&
+    resolveChannelMediaMode("site_web") === "images" &&
     selectedChannels.includes("inrcy_site") &&
     selectedChannels.includes("site_web")
       ? getPublishImageKeysForChannel("inrcy_site").join("|") !==
@@ -3248,8 +3440,13 @@ export default function PublishModal({
       (item) => item.channel === channel,
     );
     const hasText = !!reviewItem?.hasText;
+    const mode = resolveChannelMediaMode(channel);
     const hasMedia =
-      publicationMediaType === "video" ? !!videoPreviewUrl : !!reviewItem?.hasImage;
+      mode === "video"
+        ? !!videoPreviewUrl
+        : mode === "images"
+          ? !!reviewItem?.hasImage
+          : false;
     return {
       key: channel,
       label: getImageAdapterLabel(channel),
@@ -3329,9 +3526,7 @@ export default function PublishModal({
         onClose={closeCameraCapture}
         onCapture={onCameraCapture}
         allowVideo={
-          cameraCaptureTargetChannel === null &&
-          !images.length &&
-          !(publicationMediaType === "video" && (videoFile || videoPreviewUrl))
+          cameraCaptureTargetChannel === null && !(videoFile || videoPreviewUrl)
         }
         maxVideoBytes={BOOSTER_MAX_VIDEO_BYTES}
       />
@@ -3361,6 +3556,8 @@ export default function PublishModal({
         onPickVideoClick={onPickVideoClick}
         onTakePhotoClick={() => onTakePhotoClick()}
         publicationMediaType={publicationMediaType}
+        channelMediaModes={channelMediaModes}
+        setChannelMediaMode={setChannelMediaMode}
         images={images}
         imagePreviews={imagePreviews}
         videoFile={videoFile}
@@ -3404,6 +3601,8 @@ export default function PublishModal({
         styles={styles}
         isMobile={isMobile}
         publicationMediaType={publicationMediaType}
+        channelMediaModes={channelMediaModes}
+        setChannelMediaMode={setChannelMediaMode}
         images={images}
         videoFile={videoFile}
         videoPreviewUrl={videoPreviewUrl}

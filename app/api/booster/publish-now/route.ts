@@ -5,25 +5,66 @@ import { tryDecryptToken } from "@/lib/oauthCrypto";
 import { randomUUID } from "crypto";
 
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { facebookPublishToPage, facebookPublishVideoToPage } from "@/lib/facebookPublish";
-import { instagramPublishCarouselWithTokenFallback, instagramPublishPhotoWithTokenFallback, instagramPublishVideoWithTokenFallback, isInstagramAuthorizationErrorResult } from "@/lib/instagramPublish";
-import { linkedinPublishImage, linkedinPublishMultiImage, linkedinPublishText, linkedinPublishVideo } from "@/lib/linkedinPublish";
+import {
+  facebookPublishToPage,
+  facebookPublishVideoToPage,
+} from "@/lib/facebookPublish";
+import {
+  instagramPublishCarouselWithTokenFallback,
+  instagramPublishPhotoWithTokenFallback,
+  instagramPublishVideoWithTokenFallback,
+  isInstagramAuthorizationErrorResult,
+} from "@/lib/instagramPublish";
+import {
+  linkedinPublishImage,
+  linkedinPublishMultiImage,
+  linkedinPublishText,
+  linkedinPublishVideo,
+} from "@/lib/linkedinPublish";
 import { getGmbToken, gmbCreateLocalPost } from "@/lib/googleBusiness";
-import { optimizeForGoogleBusiness, optimizeForInstagram, optimizeForSiteCard, optimizeForSocialFeed } from "@/lib/imageOptimizer";
+import {
+  optimizeForGoogleBusiness,
+  optimizeForInstagram,
+  optimizeForSiteCard,
+  optimizeForSocialFeed,
+} from "@/lib/imageOptimizer";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
-import { GOOGLE_BUSINESS_RECONNECT_USER_MESSAGE, INSTAGRAM_RECONNECT_USER_MESSAGE, getSimpleFrenchErrorMessage, isInstagramAuthorizationLikeMessage } from "@/lib/userFacingErrors";
-import { getPublishChannelUserMessage, logPublishChannelFailure } from "@/lib/channelPublishDiagnostics";
+import {
+  GOOGLE_BUSINESS_RECONNECT_USER_MESSAGE,
+  INSTAGRAM_RECONNECT_USER_MESSAGE,
+  getSimpleFrenchErrorMessage,
+  isInstagramAuthorizationLikeMessage,
+} from "@/lib/userFacingErrors";
+import {
+  getPublishChannelUserMessage,
+  logPublishChannelFailure,
+} from "@/lib/channelPublishDiagnostics";
 import { hasActiveInrcySite } from "@/lib/inrcySite";
-import { buildBoosterGmbSummary, buildBoosterInstagramCaption, buildBoosterMessage, getBoosterGmbCallToAction } from "@/lib/boosterCta";
+import {
+  buildBoosterGmbSummary,
+  buildBoosterInstagramCaption,
+  buildBoosterMessage,
+  getBoosterGmbCallToAction,
+} from "@/lib/boosterCta";
 import { getLinkedInAccessToken } from "@/lib/linkedinOAuth";
-import { sanitizeBoosterSiteText, stripSiteTextFormatting } from "@/lib/boosterFormatting";
+import {
+  sanitizeBoosterSiteText,
+  stripSiteTextFormatting,
+} from "@/lib/boosterFormatting";
 
-type ChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
+type ChannelKey =
+  | "inrcy_site"
+  | "site_web"
+  | "gmb"
+  | "facebook"
+  | "instagram"
+  | "linkedin";
 
 type JsonRecord = Record<string, unknown>;
 const asRecord = (v: unknown): JsonRecord =>
   v && typeof v === "object" && !Array.isArray(v) ? (v as JsonRecord) : {};
-const errMessage = (e: unknown, fallback: string) => getSimpleFrenchErrorMessage(e, fallback);
+const errMessage = (e: unknown, fallback: string) =>
+  getSimpleFrenchErrorMessage(e, fallback);
 
 const CHANNEL_LABELS: Record<ChannelKey, string> = {
   inrcy_site: "Site iNrCy",
@@ -34,7 +75,10 @@ const CHANNEL_LABELS: Record<ChannelKey, string> = {
   linkedin: "LinkedIn",
 };
 
-function buildResultsSummary(results: Record<string, any>, selected: ChannelKey[]) {
+function buildResultsSummary(
+  results: Record<string, any>,
+  selected: ChannelKey[],
+) {
   const entries = selected.map((channel) => {
     const value = results[channel] || {};
     return {
@@ -43,7 +87,9 @@ function buildResultsSummary(results: Record<string, any>, selected: ChannelKey[
       ok: value?.ok !== false,
       error: value?.ok === false ? String(value?.error || "erreur") : null,
       warning: value?.warning ? String(value.warning) : null,
-      warning_message: value?.warning_message ? String(value.warning_message) : null,
+      warning_message: value?.warning_message
+        ? String(value.warning_message)
+        : null,
     };
   });
 
@@ -90,6 +136,7 @@ type ImagePayload = {
 };
 
 type PublicationMediaType = "images" | "video";
+type ChannelMediaMode = "video" | "images" | "none";
 
 type VideoPayload = {
   name?: string;
@@ -120,6 +167,15 @@ const BOOSTER_MAX_VIDEO_BYTES = 40 * 1024 * 1024;
 
 function normalizePublicationMediaType(value: unknown): PublicationMediaType {
   return value === "video" ? "video" : "images";
+}
+
+function normalizeChannelMediaMode(
+  value: unknown,
+  fallback: ChannelMediaMode,
+): ChannelMediaMode {
+  return value === "video" || value === "images" || value === "none"
+    ? value
+    : fallback;
 }
 
 type EditableImageAttachment = {
@@ -192,8 +248,10 @@ function isExpired(expiresAt: unknown, skewSeconds = 60) {
   return t <= Date.now() + skewSeconds * 1000;
 }
 
-
-function buildInstagramPublishTokenCandidates(igRowLike: unknown, fbRowLike?: unknown) {
+function buildInstagramPublishTokenCandidates(
+  igRowLike: unknown,
+  fbRowLike?: unknown,
+) {
   const candidates: Array<{ source: string; accessToken: string }> = [];
   const seen = new Set<string>();
 
@@ -208,8 +266,14 @@ function buildInstagramPublishTokenCandidates(igRowLike: unknown, fbRowLike?: un
   const igMeta = asRecord(ig["meta"]);
   push("instagram.access_token_enc", ig["access_token_enc"]);
   push("instagram.meta.page_access_token_enc", igMeta["page_access_token_enc"]);
-  push("instagram.meta.standard_user_access_token_enc", igMeta["standard_user_access_token_enc"]);
-  push("instagram.meta.business_user_access_token_enc", igMeta["business_user_access_token_enc"]);
+  push(
+    "instagram.meta.standard_user_access_token_enc",
+    igMeta["standard_user_access_token_enc"],
+  );
+  push(
+    "instagram.meta.business_user_access_token_enc",
+    igMeta["business_user_access_token_enc"],
+  );
   push("instagram.meta.user_access_token_enc", igMeta["user_access_token_enc"]);
   push("instagram.meta.user_access_token", igMeta["user_access_token"]);
 
@@ -222,16 +286,24 @@ function buildInstagramPublishTokenCandidates(igRowLike: unknown, fbRowLike?: un
   return candidates;
 }
 
-async function buildUrlsFromStoragePath(path: string): Promise<{ publicUrl: string | null; signedUrl: string | null }> {
-  const publicUrl = supabaseAdmin.storage.from("booster").getPublicUrl(path)?.data?.publicUrl || null;
-  const signed = await supabaseAdmin.storage.from("booster").createSignedUrl(path, 60 * 60 * 24);
+async function buildUrlsFromStoragePath(
+  path: string,
+): Promise<{ publicUrl: string | null; signedUrl: string | null }> {
+  const publicUrl =
+    supabaseAdmin.storage.from("booster").getPublicUrl(path)?.data?.publicUrl ||
+    null;
+  const signed = await supabaseAdmin.storage
+    .from("booster")
+    .createSignedUrl(path, 60 * 60 * 24);
   return {
     publicUrl,
     signedUrl: signed?.data?.signedUrl || publicUrl,
   };
 }
 
-async function normalizeVideoPayload(input: unknown): Promise<{ video: PersistedVideoAttachment | null; error?: string }> {
+async function normalizeVideoPayload(
+  input: unknown,
+): Promise<{ video: PersistedVideoAttachment | null; error?: string }> {
   const raw = asRecord(input);
   if (!Object.keys(raw).length) return { video: null };
 
@@ -244,15 +316,20 @@ async function normalizeVideoPayload(input: unknown): Promise<{ video: Persisted
     publicUrl = urls.publicUrl || urls.signedUrl || "";
   }
 
-  if (!publicUrl) return { video: null, error: "Vidéo introuvable. Merci de la renvoyer." };
+  if (!publicUrl)
+    return { video: null, error: "Vidéo introuvable. Merci de la renvoyer." };
 
   const size = Number(raw["size"] || 0);
   if (Number.isFinite(size) && size > BOOSTER_MAX_VIDEO_BYTES) {
-    return { video: null, error: "Vidéo trop lourde. Taille maximale : 40 Mo." };
+    return {
+      video: null,
+      error: "Vidéo trop lourde. Taille maximale : 40 Mo.",
+    };
   }
 
   const durationRaw = Number(raw["duration"] || 0);
-  const duration = Number.isFinite(durationRaw) && durationRaw > 0 ? durationRaw : null;
+  const duration =
+    Number.isFinite(durationRaw) && durationRaw > 0 ? durationRaw : null;
   return {
     video: {
       name: String(raw["name"] || "video-inrcy.mp4"),
@@ -262,8 +339,12 @@ async function normalizeVideoPayload(input: unknown): Promise<{ video: Persisted
       url: publicUrl,
       publicUrl,
       storagePath: storagePath || null,
-      thumbnailUrl: String(raw["thumbnailUrl"] || raw["video_thumbnail_url"] || "").trim() || null,
-      thumbnailStoragePath: String(raw["thumbnailStoragePath"] || "").trim() || null,
+      thumbnailUrl:
+        String(
+          raw["thumbnailUrl"] || raw["video_thumbnail_url"] || "",
+        ).trim() || null,
+      thumbnailStoragePath:
+        String(raw["thumbnailStoragePath"] || "").trim() || null,
     },
   };
 }
@@ -281,7 +362,9 @@ async function canGoogleFetchImageUrl(url: string): Promise<boolean> {
         cache: "no-store",
       });
       if (!response.ok) continue;
-      const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+      const contentType = String(
+        response.headers.get("content-type") || "",
+      ).toLowerCase();
       if (contentType.startsWith("image/")) return true;
       if (method === "GET") return false;
     } catch {
@@ -292,12 +375,14 @@ async function canGoogleFetchImageUrl(url: string): Promise<boolean> {
   return false;
 }
 
-async function getGoogleBusinessPublishableUrl(path: string): Promise<string | null> {
+async function getGoogleBusinessPublishableUrl(
+  path: string,
+): Promise<string | null> {
   const urls = await buildUrlsFromStoragePath(path);
-  if (urls.publicUrl && await canGoogleFetchImageUrl(urls.publicUrl)) {
+  if (urls.publicUrl && (await canGoogleFetchImageUrl(urls.publicUrl))) {
     return urls.publicUrl;
   }
-  if (urls.signedUrl && await canGoogleFetchImageUrl(urls.signedUrl)) {
+  if (urls.signedUrl && (await canGoogleFetchImageUrl(urls.signedUrl))) {
     return urls.signedUrl;
   }
   return urls.publicUrl || urls.signedUrl || null;
@@ -321,11 +406,17 @@ function isGoogleBusinessImageError(error: unknown) {
   ].some((needle) => message.includes(needle));
 }
 
-async function resolveImageInput(img: ImagePayload): Promise<ResolvedImageInput | null> {
+async function resolveImageInput(
+  img: ImagePayload,
+): Promise<ResolvedImageInput | null> {
   if (img?.storagePath) {
-    const download = await supabaseAdmin.storage.from("booster").download(img.storagePath);
+    const download = await supabaseAdmin.storage
+      .from("booster")
+      .download(img.storagePath);
     if (download.error || !download.data) {
-      throw new Error(download.error?.message || "Impossible de relire l'image préparée.");
+      throw new Error(
+        download.error?.message || "Impossible de relire l'image préparée.",
+      );
     }
 
     const arrayBuffer = await download.data.arrayBuffer();
@@ -358,7 +449,10 @@ async function resolveImageInput(img: ImagePayload): Promise<ResolvedImageInput 
     }
     const arrayBuffer = await res.arrayBuffer();
     return {
-      mime: res.headers.get("content-type") || img.type || "application/octet-stream",
+      mime:
+        res.headers.get("content-type") ||
+        img.type ||
+        "application/octet-stream",
       buffer: Buffer.from(arrayBuffer),
       originalPublicUrl: img.publicUrl,
       originalPublishableUrl: img.publicUrl,
@@ -377,30 +471,51 @@ type ImageOptimizationFormats = {
 
 const EMPTY_IMAGE_FORMATS: ImageOptimizationFormats = {};
 
-function getRequiredImageFormatsForChannel(channel: ChannelKey): ImageOptimizationFormats {
+function getRequiredImageFormatsForChannel(
+  channel: ChannelKey,
+): ImageOptimizationFormats {
   if (channel === "instagram") return { instagram: true };
-  if (channel === "facebook" || channel === "linkedin") return { socialFeed: true };
+  if (channel === "facebook" || channel === "linkedin")
+    return { socialFeed: true };
   if (channel === "gmb") return { gmb: true };
   // Site iNrCy / Site web use the original prepared image in the article payload.
   // Avoid generating social/Instagram/GMB derivatives when they are not needed.
   return EMPTY_IMAGE_FORMATS;
 }
 
-function mergeImageFormats(...formatsList: ImageOptimizationFormats[]): ImageOptimizationFormats {
-  return formatsList.reduce<ImageOptimizationFormats>((acc, formats) => ({
-    instagram: Boolean(acc.instagram || formats.instagram),
-    socialFeed: Boolean(acc.socialFeed || formats.socialFeed),
-    siteCard: Boolean(acc.siteCard || formats.siteCard),
-    gmb: Boolean(acc.gmb || formats.gmb),
-  }), {});
+function mergeImageFormats(
+  ...formatsList: ImageOptimizationFormats[]
+): ImageOptimizationFormats {
+  return formatsList.reduce<ImageOptimizationFormats>(
+    (acc, formats) => ({
+      instagram: Boolean(acc.instagram || formats.instagram),
+      socialFeed: Boolean(acc.socialFeed || formats.socialFeed),
+      siteCard: Boolean(acc.siteCard || formats.siteCard),
+      gmb: Boolean(acc.gmb || formats.gmb),
+    }),
+    {},
+  );
 }
 
-function buildEditableImageAttachments(rawImages: ImagePayload[], imageSet: ImageSet): EditableImageAttachment[] {
+function buildEditableImageAttachments(
+  rawImages: ImagePayload[],
+  imageSet: ImageSet,
+): EditableImageAttachment[] {
   return imageSet.images.map((renderedUrl, index) => {
     const raw = rawImages[index] || ({} as ImagePayload);
-    const originalUrl = String(raw.originalPublicUrl || raw.originalUrl || raw.publicUrl || renderedUrl || "").trim();
-    const name = String(raw.originalName || raw.name || `image-${index + 1}.jpg`).trim() || `image-${index + 1}.jpg`;
-    const type = String(raw.originalType || raw.type || "image/jpeg").trim() || "image/jpeg";
+    const originalUrl = String(
+      raw.originalPublicUrl ||
+        raw.originalUrl ||
+        raw.publicUrl ||
+        renderedUrl ||
+        "",
+    ).trim();
+    const name =
+      String(raw.originalName || raw.name || `image-${index + 1}.jpg`).trim() ||
+      `image-${index + 1}.jpg`;
+    const type =
+      String(raw.originalType || raw.type || "image/jpeg").trim() ||
+      "image/jpeg";
     return {
       name,
       type,
@@ -419,26 +534,43 @@ function buildEditableImageAttachments(rawImages: ImagePayload[], imageSet: Imag
   });
 }
 
-async function uploadImageSet(userId: string, images: ImagePayload[], formats: ImageOptimizationFormats = EMPTY_IMAGE_FORMATS): Promise<{ imageSet: ImageSet; uploadErrors: Array<{ name: string; reason: string; stage: string }> }> {
+async function uploadImageSet(
+  userId: string,
+  images: ImagePayload[],
+  formats: ImageOptimizationFormats = EMPTY_IMAGE_FORMATS,
+): Promise<{
+  imageSet: ImageSet;
+  uploadErrors: Array<{ name: string; reason: string; stage: string }>;
+}> {
   const uploadedUrls: string[] = [];
   const publishableUrls: string[] = [];
   const instagramPublishableUrls: string[] = [];
   const socialFeedPublishableUrls: string[] = [];
   const siteCardPublishableUrls: string[] = [];
   const gmbPublishableUrls: string[] = [];
-  const uploadErrors: Array<{ name: string; reason: string; stage: string }> = [];
+  const uploadErrors: Array<{ name: string; reason: string; stage: string }> =
+    [];
 
   for (const img of images.slice(0, 5)) {
     let source: ResolvedImageInput | null = null;
     try {
       source = await resolveImageInput(img);
     } catch (e) {
-      uploadErrors.push({ name: img?.name || "image", reason: errMessage(e, "Impossible de préparer l'image."), stage: "resolve" });
+      uploadErrors.push({
+        name: img?.name || "image",
+        reason: errMessage(e, "Impossible de préparer l'image."),
+        stage: "resolve",
+      });
       continue;
     }
 
     if (!source) {
-      uploadErrors.push({ name: img?.name || "image", reason: "Invalid image payload (expected dataUrl, storagePath or publicUrl)", stage: "parse" });
+      uploadErrors.push({
+        name: img?.name || "image",
+        reason:
+          "Invalid image payload (expected dataUrl, storagePath or publicUrl)",
+        stage: "parse",
+      });
       continue;
     }
 
@@ -450,14 +582,23 @@ async function uploadImageSet(userId: string, images: ImagePayload[], formats: I
       const ext = (img.name || "image").split(".").pop() || "jpg";
       const path = `${userId}/${randomUUID()}.${ext}`;
 
-      const up = await supabaseAdmin.storage.from("booster").upload(path, parsed.buffer, {
-        contentType: parsed.mime || img.type || "application/octet-stream",
-        upsert: false,
-      });
+      const up = await supabaseAdmin.storage
+        .from("booster")
+        .upload(path, parsed.buffer, {
+          contentType: parsed.mime || img.type || "application/octet-stream",
+          upsert: false,
+        });
 
       if (up.error) {
-        console.error("[Booster] Storage upload error:", up.error.message, { path, name: img.name });
-        uploadErrors.push({ name: img?.name || "image", reason: up.error.message, stage: "upload" });
+        console.error("[Booster] Storage upload error:", up.error.message, {
+          path,
+          name: img.name,
+        });
+        uploadErrors.push({
+          name: img?.name || "image",
+          reason: up.error.message,
+          stage: "upload",
+        });
         continue;
       }
 
@@ -469,38 +610,64 @@ async function uploadImageSet(userId: string, images: ImagePayload[], formats: I
     if (originalPublicUrl) {
       uploadedUrls.push(originalPublicUrl);
     } else {
-      uploadErrors.push({ name: img?.name || "image", reason: "Original image public URL unavailable", stage: "publicUrl" });
+      uploadErrors.push({
+        name: img?.name || "image",
+        reason: "Original image public URL unavailable",
+        stage: "publicUrl",
+      });
     }
 
     if (originalPublishableUrl) {
       publishableUrls.push(originalPublishableUrl);
     } else if (originalPublicUrl) {
       publishableUrls.push(originalPublicUrl);
-      uploadErrors.push({ name: img?.name || "image", reason: "Signed URL unavailable, fell back to publicUrl", stage: "signedUrl" });
+      uploadErrors.push({
+        name: img?.name || "image",
+        reason: "Signed URL unavailable, fell back to publicUrl",
+        stage: "signedUrl",
+      });
     } else {
-      uploadErrors.push({ name: img?.name || "image", reason: "Original image publishable URL unavailable", stage: "signedUrl" });
+      uploadErrors.push({
+        name: img?.name || "image",
+        reason: "Original image publishable URL unavailable",
+        stage: "signedUrl",
+      });
     }
 
     if (formats.instagram) {
       try {
         const optimized = await optimizeForInstagram(parsed.buffer);
         const igPath = `${userId}/instagram/${randomUUID()}.${optimized.extension}`;
-        const igUpload = await supabaseAdmin.storage.from("booster").upload(igPath, optimized.buffer, {
-          contentType: optimized.mime,
-          upsert: false,
-        });
+        const igUpload = await supabaseAdmin.storage
+          .from("booster")
+          .upload(igPath, optimized.buffer, {
+            contentType: optimized.mime,
+            upsert: false,
+          });
 
         if (igUpload.error) {
-          uploadErrors.push({ name: img?.name || "image", reason: igUpload.error.message, stage: "instagramUpload" });
+          uploadErrors.push({
+            name: img?.name || "image",
+            reason: igUpload.error.message,
+            stage: "instagramUpload",
+          });
         } else {
-          const igSigned = await supabaseAdmin.storage.from("booster").createSignedUrl(igPath, 60 * 60 * 24);
-          const igPublic = supabaseAdmin.storage.from("booster").getPublicUrl(igPath);
+          const igSigned = await supabaseAdmin.storage
+            .from("booster")
+            .createSignedUrl(igPath, 60 * 60 * 24);
+          const igPublic = supabaseAdmin.storage
+            .from("booster")
+            .getPublicUrl(igPath);
           if (igSigned?.data?.signedUrl) {
             instagramPublishableUrls.push(igSigned.data.signedUrl);
           } else if (igPublic?.data?.publicUrl) {
             instagramPublishableUrls.push(igPublic.data.publicUrl);
           } else {
-            uploadErrors.push({ name: img?.name || "image", reason: "Instagram optimized image URL unavailable", stage: "instagramUpload" });
+            uploadErrors.push({
+              name: img?.name || "image",
+              reason: "Instagram optimized image URL unavailable",
+              stage: "instagramUpload",
+            });
           }
         }
       } catch (optErr) {
@@ -515,25 +682,39 @@ async function uploadImageSet(userId: string, images: ImagePayload[], formats: I
     if (formats.socialFeed) {
       try {
         const optimized = await optimizeForSocialFeed(parsed.buffer);
-      const socialPath = `${userId}/social-feed/${randomUUID()}.${optimized.extension}`;
-      const socialUpload = await supabaseAdmin.storage.from("booster").upload(socialPath, optimized.buffer, {
-        contentType: optimized.mime,
-        upsert: false,
-      });
+        const socialPath = `${userId}/social-feed/${randomUUID()}.${optimized.extension}`;
+        const socialUpload = await supabaseAdmin.storage
+          .from("booster")
+          .upload(socialPath, optimized.buffer, {
+            contentType: optimized.mime,
+            upsert: false,
+          });
 
-      if (socialUpload.error) {
-        uploadErrors.push({ name: img?.name || "image", reason: socialUpload.error.message, stage: "socialFeedUpload" });
-      } else {
-        const socialSigned = await supabaseAdmin.storage.from("booster").createSignedUrl(socialPath, 60 * 60 * 24);
-        const socialPublic = supabaseAdmin.storage.from("booster").getPublicUrl(socialPath);
-        if (socialSigned?.data?.signedUrl) {
-          socialFeedPublishableUrls.push(socialSigned.data.signedUrl);
-        } else if (socialPublic?.data?.publicUrl) {
-          socialFeedPublishableUrls.push(socialPublic.data.publicUrl);
+        if (socialUpload.error) {
+          uploadErrors.push({
+            name: img?.name || "image",
+            reason: socialUpload.error.message,
+            stage: "socialFeedUpload",
+          });
         } else {
-          uploadErrors.push({ name: img?.name || "image", reason: "Social feed optimized image URL unavailable", stage: "socialFeedUpload" });
+          const socialSigned = await supabaseAdmin.storage
+            .from("booster")
+            .createSignedUrl(socialPath, 60 * 60 * 24);
+          const socialPublic = supabaseAdmin.storage
+            .from("booster")
+            .getPublicUrl(socialPath);
+          if (socialSigned?.data?.signedUrl) {
+            socialFeedPublishableUrls.push(socialSigned.data.signedUrl);
+          } else if (socialPublic?.data?.publicUrl) {
+            socialFeedPublishableUrls.push(socialPublic.data.publicUrl);
+          } else {
+            uploadErrors.push({
+              name: img?.name || "image",
+              reason: "Social feed optimized image URL unavailable",
+              stage: "socialFeedUpload",
+            });
+          }
         }
-      }
       } catch (optErr) {
         uploadErrors.push({
           name: img?.name || "image",
@@ -546,25 +727,39 @@ async function uploadImageSet(userId: string, images: ImagePayload[], formats: I
     if (formats.siteCard) {
       try {
         const optimized = await optimizeForSiteCard(parsed.buffer);
-      const sitePath = `${userId}/site-card/${randomUUID()}.${optimized.extension}`;
-      const siteUpload = await supabaseAdmin.storage.from("booster").upload(sitePath, optimized.buffer, {
-        contentType: optimized.mime,
-        upsert: false,
-      });
+        const sitePath = `${userId}/site-card/${randomUUID()}.${optimized.extension}`;
+        const siteUpload = await supabaseAdmin.storage
+          .from("booster")
+          .upload(sitePath, optimized.buffer, {
+            contentType: optimized.mime,
+            upsert: false,
+          });
 
-      if (siteUpload.error) {
-        uploadErrors.push({ name: img?.name || "image", reason: siteUpload.error.message, stage: "siteCardUpload" });
-      } else {
-        const siteSigned = await supabaseAdmin.storage.from("booster").createSignedUrl(sitePath, 60 * 60 * 24);
-        const sitePublic = supabaseAdmin.storage.from("booster").getPublicUrl(sitePath);
-        if (siteSigned?.data?.signedUrl) {
-          siteCardPublishableUrls.push(siteSigned.data.signedUrl);
-        } else if (sitePublic?.data?.publicUrl) {
-          siteCardPublishableUrls.push(sitePublic.data.publicUrl);
+        if (siteUpload.error) {
+          uploadErrors.push({
+            name: img?.name || "image",
+            reason: siteUpload.error.message,
+            stage: "siteCardUpload",
+          });
         } else {
-          uploadErrors.push({ name: img?.name || "image", reason: "Site card optimized image URL unavailable", stage: "siteCardUpload" });
+          const siteSigned = await supabaseAdmin.storage
+            .from("booster")
+            .createSignedUrl(sitePath, 60 * 60 * 24);
+          const sitePublic = supabaseAdmin.storage
+            .from("booster")
+            .getPublicUrl(sitePath);
+          if (siteSigned?.data?.signedUrl) {
+            siteCardPublishableUrls.push(siteSigned.data.signedUrl);
+          } else if (sitePublic?.data?.publicUrl) {
+            siteCardPublishableUrls.push(sitePublic.data.publicUrl);
+          } else {
+            uploadErrors.push({
+              name: img?.name || "image",
+              reason: "Site card optimized image URL unavailable",
+              stage: "siteCardUpload",
+            });
+          }
         }
-      }
       } catch (optErr) {
         uploadErrors.push({
           name: img?.name || "image",
@@ -577,26 +772,39 @@ async function uploadImageSet(userId: string, images: ImagePayload[], formats: I
     if (formats.gmb) {
       try {
         const optimized = await optimizeForGoogleBusiness(parsed.buffer);
-      const gmbPath = `${userId}/gmb/${randomUUID()}.${optimized.extension}`;
-      const gmbUpload = await supabaseAdmin.storage.from("booster").upload(gmbPath, optimized.buffer, {
-        contentType: optimized.mime,
-        upsert: false,
-      });
+        const gmbPath = `${userId}/gmb/${randomUUID()}.${optimized.extension}`;
+        const gmbUpload = await supabaseAdmin.storage
+          .from("booster")
+          .upload(gmbPath, optimized.buffer, {
+            contentType: optimized.mime,
+            upsert: false,
+          });
 
-      if (gmbUpload.error) {
-        uploadErrors.push({ name: img?.name || "image", reason: gmbUpload.error.message, stage: "gmbUpload" });
-      } else {
-        const gmbUrl = await getGoogleBusinessPublishableUrl(gmbPath);
-        if (gmbUrl) {
-          gmbPublishableUrls.push(gmbUrl);
+        if (gmbUpload.error) {
+          uploadErrors.push({
+            name: img?.name || "image",
+            reason: gmbUpload.error.message,
+            stage: "gmbUpload",
+          });
         } else {
-          uploadErrors.push({ name: img?.name || "image", reason: "Google Business optimized image URL unavailable", stage: "gmbUpload" });
+          const gmbUrl = await getGoogleBusinessPublishableUrl(gmbPath);
+          if (gmbUrl) {
+            gmbPublishableUrls.push(gmbUrl);
+          } else {
+            uploadErrors.push({
+              name: img?.name || "image",
+              reason: "Google Business optimized image URL unavailable",
+              stage: "gmbUpload",
+            });
+          }
         }
-      }
       } catch (optErr) {
         uploadErrors.push({
           name: img?.name || "image",
-          reason: errMessage(optErr, "Google Business image optimization failed"),
+          reason: errMessage(
+            optErr,
+            "Google Business image optimization failed",
+          ),
           stage: "gmbOptimize",
         });
       }
@@ -616,7 +824,13 @@ async function uploadImageSet(userId: string, images: ImagePayload[], formats: I
   };
 }
 
-async function getLatestIntegrationRow(userId: string, provider: string, source: string, product: string, columns: string) {
+async function getLatestIntegrationRow(
+  userId: string,
+  provider: string,
+  source: string,
+  product: string,
+  columns: string,
+) {
   const { data, error } = await supabaseAdmin
     .from("integrations")
     .select(columns)
@@ -629,7 +843,7 @@ async function getLatestIntegrationRow(userId: string, provider: string, source:
     .limit(1);
 
   if (error) throw error;
-  return Array.isArray(data) ? data[0] ?? null : null;
+  return Array.isArray(data) ? (data[0] ?? null) : null;
 }
 
 export async function POST(req: Request) {
@@ -638,79 +852,161 @@ export async function POST(req: Request) {
     if (errorResponse) return errorResponse;
     const userId = user.id;
 
-    const rl = await enforceRateLimit({ name: "booster_publish", identifier: userId, limit: 20, window: "1 m" });
+    const rl = await enforceRateLimit({
+      name: "booster_publish",
+      identifier: userId,
+      limit: 20,
+      window: "1 m",
+    });
     if (rl) return rl;
-const body = await req.json().catch(() => null);
-    if (!body) return NextResponse.json({ error: "Données invalides." }, { status: 400 });
+    const body = await req.json().catch(() => null);
+    if (!body)
+      return NextResponse.json(
+        { error: "Données invalides." },
+        { status: 400 },
+      );
 
-    const channels = (Array.isArray(body.channels) ? body.channels : []) as ChannelKey[];
+    const channels = (
+      Array.isArray(body.channels) ? body.channels : []
+    ) as ChannelKey[];
     const post = (body.post || {}) as PostPayload;
     const postByChannel = ((body.postByChannel || {}) as PostByChannel) || {};
     const idea = String(body.idea || "").trim();
     const mediaType = normalizePublicationMediaType(body.mediaType);
-    const images = mediaType === "images" ? ((Array.isArray(body.images) ? body.images : []) as ImagePayload[]) : [];
-    const imagesByChannel = mediaType === "images" ? (((body.imagesByChannel || {}) as ImagesByChannel) || {}) : {};
-    const imageSettingsByChannel = mediaType === "images" ? ((body.imageSettingsByChannel || {}) as Record<string, unknown>) : {};
-    const { video: publicationVideo, error: videoPayloadError } = mediaType === "video"
-      ? await normalizeVideoPayload(body.video)
-      : { video: null as PersistedVideoAttachment | null, error: undefined as string | undefined };
-    const workflowToolRaw = String(body.workflowTool || "").trim().toLowerCase();
-    const workflowActionRaw = String(body.workflowAction || "").trim().toLowerCase();
-    const workflowTrackTypeRaw = String(body.workflowTrackType || "").trim().toLowerCase();
+    const selected = Array.from(new Set(channels)).filter(Boolean);
+    const rawModeByChannel = (body.mediaModeByChannel || {}) as Record<
+      string,
+      unknown
+    >;
+    const defaultMediaMode: ChannelMediaMode =
+      mediaType === "video" ? "video" : "images";
+    const mediaModeByChannel = Object.fromEntries(
+      selected.map((channel) => [
+        channel,
+        normalizeChannelMediaMode(rawModeByChannel[channel], defaultMediaMode),
+      ]),
+    ) as Partial<Record<ChannelKey, ChannelMediaMode>>;
+    const hasAnyImageChannel = selected.some(
+      (channel) => mediaModeByChannel[channel] === "images",
+    );
+    const hasAnyVideoChannel = selected.some(
+      (channel) => mediaModeByChannel[channel] === "video",
+    );
+    const images = hasAnyImageChannel
+      ? ((Array.isArray(body.images) ? body.images : []) as ImagePayload[])
+      : [];
+    const imagesByChannel = hasAnyImageChannel
+      ? ((body.imagesByChannel || {}) as ImagesByChannel) || {}
+      : {};
+    const imageSettingsByChannel = hasAnyImageChannel
+      ? ((body.imageSettingsByChannel || {}) as Record<string, unknown>)
+      : {};
+    const { video: publicationVideo, error: videoPayloadError } =
+      hasAnyVideoChannel
+        ? await normalizeVideoPayload(body.video)
+        : {
+            video: null as PersistedVideoAttachment | null,
+            error: undefined as string | undefined,
+          };
+    const workflowToolRaw = String(body.workflowTool || "")
+      .trim()
+      .toLowerCase();
+    const workflowActionRaw = String(body.workflowAction || "")
+      .trim()
+      .toLowerCase();
+    const workflowTrackTypeRaw = String(body.workflowTrackType || "")
+      .trim()
+      .toLowerCase();
     const isValorisation =
       workflowToolRaw === "propulser" &&
-      (workflowActionRaw === "valoriser" || workflowTrackTypeRaw === "valorize");
+      (workflowActionRaw === "valoriser" ||
+        workflowTrackTypeRaw === "valorize");
     const eventModule = isValorisation ? "propulser" : "booster";
     const eventType = isValorisation ? "valorize" : "publish";
     const workflowAction = isValorisation ? "valoriser" : "publier";
-    const hadAnyImageInput = mediaType === "images" && (images.length > 0 || Object.values(imagesByChannel).some((value) => Array.isArray(value) && value.length > 0));
+    const hadAnyImageInput =
+      hasAnyImageChannel &&
+      (images.length > 0 ||
+        Object.values(imagesByChannel).some(
+          (value) => Array.isArray(value) && value.length > 0,
+        ));
 
-    if (mediaType === "video" && videoPayloadError) {
-      return NextResponse.json({ ok: false, error: videoPayloadError }, { status: 400 });
+    if (hasAnyVideoChannel && videoPayloadError) {
+      return NextResponse.json(
+        { ok: false, error: videoPayloadError },
+        { status: 400 },
+      );
     }
-    if (mediaType === "video" && !publicationVideo) {
-      return NextResponse.json({ ok: false, error: "Ajoutez une vidéo avant de publier." }, { status: 400 });
+    if (hasAnyVideoChannel && !publicationVideo) {
+      return NextResponse.json(
+        { ok: false, error: "Ajoutez une vidéo avant de publier." },
+        { status: 400 },
+      );
     }
 
-    const selected = Array.from(new Set(channels)).filter(Boolean);
     if (!selected.length) {
-      return NextResponse.json({ error: "Sélectionnez au moins 1 canal." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Sélectionnez au moins 1 canal." },
+        { status: 400 },
+      );
     }
 
     const fallbackTitle = String(post.title || "").trim();
     const fallbackContent = String(post.content || "").trim();
     const fallbackCta = String(post.cta || "").trim();
     const fallbackHashtags = Array.isArray(post.hashtags)
-      ? post.hashtags.map((h) => normalizeHashtag(String(h || ""))).filter(Boolean).slice(0, 20)
+      ? post.hashtags
+          .map((h) => normalizeHashtag(String(h || "")))
+          .filter(Boolean)
+          .slice(0, 20)
       : [];
 
     const getChannelPost = (channel: ChannelKey): PostPayload => {
-      const raw = ((channel === "inrcy_site" ? postByChannel?.inrcy_site || postByChannel?.site_web : channel === "site_web" ? postByChannel?.site_web || postByChannel?.inrcy_site : postByChannel?.[channel]) || {}) as PostPayload;
+      const raw = ((channel === "inrcy_site"
+        ? postByChannel?.inrcy_site || postByChannel?.site_web
+        : channel === "site_web"
+          ? postByChannel?.site_web || postByChannel?.inrcy_site
+          : postByChannel?.[channel]) || {}) as PostPayload;
       const isSiteChannel = channel === "inrcy_site" || channel === "site_web";
       const rawTitle = String(raw.title || fallbackTitle || "").trim();
       const rawContent = String(raw.content || fallbackContent || "").trim();
       const rawCta = String(raw.cta || fallbackCta || "").trim();
-      const title = isSiteChannel ? sanitizeBoosterSiteText(rawTitle) : stripSiteTextFormatting(rawTitle);
-      const content = isSiteChannel ? sanitizeBoosterSiteText(rawContent) : stripSiteTextFormatting(rawContent);
+      const title = isSiteChannel
+        ? sanitizeBoosterSiteText(rawTitle)
+        : stripSiteTextFormatting(rawTitle);
+      const content = isSiteChannel
+        ? sanitizeBoosterSiteText(rawContent)
+        : stripSiteTextFormatting(rawContent);
       const cta = stripSiteTextFormatting(rawCta);
       const ctaMode = String(raw.ctaMode || "").trim();
       const ctaUrl = String(raw.ctaUrl || "").trim();
       const ctaPhone = String(raw.ctaPhone || "").trim();
       const hashtags = Array.isArray(raw.hashtags)
-        ? raw.hashtags.map((h) => normalizeHashtag(String(h || ""))).filter(Boolean).slice(0, 20)
+        ? raw.hashtags
+            .map((h) => normalizeHashtag(String(h || "")))
+            .filter(Boolean)
+            .slice(0, 20)
         : fallbackHashtags;
       return { title, content, cta, ctaMode, ctaUrl, ctaPhone, hashtags };
     };
 
     const firstPost = getChannelPost(selected[0]);
 
-    const selectedImageFormats = mediaType === "images"
-      ? mergeImageFormats(...selected.map((channel) => getRequiredImageFormatsForChannel(channel)))
+    const selectedImageFormats = hasAnyImageChannel
+      ? mergeImageFormats(
+          ...selected
+            .filter((channel) => mediaModeByChannel[channel] === "images")
+            .map((channel) => getRequiredImageFormatsForChannel(channel)),
+        )
       : EMPTY_IMAGE_FORMATS;
 
     // 1) Upload images to Supabase Storage (bucket: booster) + collect diagnostics.
     // Only prepare the image derivatives required by the selected channels.
-    const { imageSet: baseImageSet, uploadErrors } = await uploadImageSet(userId, images, selectedImageFormats);
+    const { imageSet: baseImageSet, uploadErrors } = await uploadImageSet(
+      userId,
+      images,
+      selectedImageFormats,
+    );
     const uploadedUrls = baseImageSet.images;
     const publishableUrls = baseImageSet.publishableUrls;
     const instagramPublishableUrls = baseImageSet.instagramPublishableUrls;
@@ -720,31 +1016,69 @@ const body = await req.json().catch(() => null);
 
     const channelImageSets: Partial<Record<ChannelKey, ImageSet>> = {};
     for (const channel of selected) {
-      const rawChannelImages = Array.isArray(imagesByChannel?.[channel]) ? (imagesByChannel[channel] as ImagePayload[]) : [];
-      const channelImagesToUpload = channel === "gmb" ? rawChannelImages.slice(0, 1) : rawChannelImages;
+      const rawChannelImages = Array.isArray(imagesByChannel?.[channel])
+        ? (imagesByChannel[channel] as ImagePayload[])
+        : [];
+      const channelImagesToUpload =
+        channel === "gmb" ? rawChannelImages.slice(0, 1) : rawChannelImages;
       if (!channelImagesToUpload.length) continue;
-      const { imageSet, uploadErrors: channelErrors } = await uploadImageSet(userId, channelImagesToUpload, getRequiredImageFormatsForChannel(channel));
+      const { imageSet, uploadErrors: channelErrors } = await uploadImageSet(
+        userId,
+        channelImagesToUpload,
+        getRequiredImageFormatsForChannel(channel),
+      );
       channelImageSets[channel] = {
         ...imageSet,
-        editableAttachments: buildEditableImageAttachments(channelImagesToUpload, imageSet),
+        editableAttachments: buildEditableImageAttachments(
+          channelImagesToUpload,
+          imageSet,
+        ),
       };
-      uploadErrors.push(...channelErrors.map((entry) => ({ ...entry, stage: `${channel}:${entry.stage}` })));
+      uploadErrors.push(
+        ...channelErrors.map((entry) => ({
+          ...entry,
+          stage: `${channel}:${entry.stage}`,
+        })),
+      );
     }
 
-    const fallbackImageSet = selected
-      .map((channel) => channelImageSets[channel])
-      .find((value): value is ImageSet => Boolean(value && (value.images.length || value.publishableUrls.length || value.instagramPublishableUrls.length || value.socialFeedPublishableUrls.length || value.siteCardPublishableUrls.length || value.gmbPublishableUrls.length)))
-      || null;
+    const fallbackImageSet =
+      selected
+        .map((channel) => channelImageSets[channel])
+        .find((value): value is ImageSet =>
+          Boolean(
+            value &&
+            (value.images.length ||
+              value.publishableUrls.length ||
+              value.instagramPublishableUrls.length ||
+              value.socialFeedPublishableUrls.length ||
+              value.siteCardPublishableUrls.length ||
+              value.gmbPublishableUrls.length),
+          ),
+        ) || null;
 
     const publicationImageSet = baseImageSet.images.length
       ? baseImageSet
       : fallbackImageSet || baseImageSet;
 
     // Hard fail only if images were provided somewhere but none could be uploaded/prepared.
-    if (hadAnyImageInput && !publicationImageSet.images.length && !publicationImageSet.publishableUrls.length && !publicationImageSet.instagramPublishableUrls.length && !publicationImageSet.socialFeedPublishableUrls.length && !publicationImageSet.siteCardPublishableUrls.length && !publicationImageSet.gmbPublishableUrls.length) {
+    if (
+      hadAnyImageInput &&
+      !publicationImageSet.images.length &&
+      !publicationImageSet.publishableUrls.length &&
+      !publicationImageSet.instagramPublishableUrls.length &&
+      !publicationImageSet.socialFeedPublishableUrls.length &&
+      !publicationImageSet.siteCardPublishableUrls.length &&
+      !publicationImageSet.gmbPublishableUrls.length
+    ) {
       return NextResponse.json(
-        { ok: false, error: "Les images sélectionnées n'ont pas pu être envoyées. Merci de réessayer.", uploadErrors },
-        { status: 400 }
+        {
+          ok: false,
+          error:
+            "Les images sélectionnées n'ont pas pu être envoyées. Merci de réessayer.",
+          uploadErrors,
+        },
+        { status: 400 },
       );
     }
     // 2) Persist publication
@@ -757,13 +1091,13 @@ const body = await req.json().catch(() => null);
       content: firstPost.content,
       cta: firstPost.cta,
       hashtags: firstPost.hashtags,
-      images: mediaType === "images" ? uploadedUrls : [],
+      images: hasAnyImageChannel ? uploadedUrls : [],
       idea,
     };
 
     // Champs ajoutés par ops/sql/2026-05-29_booster_video_publication_columns.sql.
     // On ne les ajoute que pour une vidéo pour ne pas casser les anciennes bases tant que le SQL n'est pas appliqué.
-    if (mediaType === "video" && publicationVideo) {
+    if (hasAnyVideoChannel && publicationVideo) {
       publicationInsert.media_type = "video";
       publicationInsert.video_url = publicationVideo.publicUrl;
       publicationInsert.video_path = publicationVideo.storagePath;
@@ -774,10 +1108,18 @@ const body = await req.json().catch(() => null);
       publicationInsert.media_metadata = { video: publicationVideo };
     }
 
-    const { error: pubErr } = await supabaseAdmin.from("publications").insert(publicationInsert);
+    const { error: pubErr } = await supabaseAdmin
+      .from("publications")
+      .insert(publicationInsert);
 
     if (pubErr) {
-      return NextResponse.json({ error: "Impossible d'enregistrer la publication pour le moment.", uploadErrors }, { status: 500 });
+      return NextResponse.json(
+        {
+          error: "Impossible d'enregistrer la publication pour le moment.",
+          uploadErrors,
+        },
+        { status: 500 },
+      );
     }
 
     // 3) Create deliveries
@@ -795,17 +1137,53 @@ const body = await req.json().catch(() => null);
     const results: Record<string, unknown> = {};
 
     const [fbRow, gmbRow, igRow, liRow] = await Promise.all([
-      getLatestIntegrationRow(userId, "facebook", "facebook", "facebook", "status,resource_id,access_token_enc,expires_at"),
-      getLatestIntegrationRow(userId, "google", "gmb", "gmb", "status,resource_id,meta,expires_at"),
-      getLatestIntegrationRow(userId, "instagram", "instagram", "instagram", "status,resource_id,access_token_enc,resource_label,meta,expires_at"),
-      getLatestIntegrationRow(userId, "linkedin", "linkedin", "linkedin", "status,resource_id,access_token_enc,meta,expires_at"),
+      getLatestIntegrationRow(
+        userId,
+        "facebook",
+        "facebook",
+        "facebook",
+        "status,resource_id,access_token_enc,expires_at",
+      ),
+      getLatestIntegrationRow(
+        userId,
+        "google",
+        "gmb",
+        "gmb",
+        "status,resource_id,meta,expires_at",
+      ),
+      getLatestIntegrationRow(
+        userId,
+        "instagram",
+        "instagram",
+        "instagram",
+        "status,resource_id,access_token_enc,resource_label,meta,expires_at",
+      ),
+      getLatestIntegrationRow(
+        userId,
+        "linkedin",
+        "linkedin",
+        "linkedin",
+        "status,resource_id,access_token_enc,meta,expires_at",
+      ),
     ]);
 
     // Internal channel configuration (URLs)
     const [profileRes, inrcyCfgRes, proCfgRes] = await Promise.all([
-      supabaseAdmin.from("profiles").select("inrcy_site_ownership,phone").eq("user_id", userId).maybeSingle(),
-      supabaseAdmin.from("inrcy_site_configs").select("site_url").eq("user_id", userId).maybeSingle(),
-      supabaseAdmin.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle(),
+      supabaseAdmin
+        .from("profiles")
+        .select("inrcy_site_ownership,phone")
+        .eq("user_id", userId)
+        .maybeSingle(),
+      supabaseAdmin
+        .from("inrcy_site_configs")
+        .select("site_url")
+        .eq("user_id", userId)
+        .maybeSingle(),
+      supabaseAdmin
+        .from("pro_tools_configs")
+        .select("settings")
+        .eq("user_id", userId)
+        .maybeSingle(),
     ]);
     const profile = asRecord(profileRes.data);
     const inrcyCfg = asRecord(inrcyCfgRes.data);
@@ -818,12 +1196,33 @@ const body = await req.json().catch(() => null);
     const inrcySiteUrl = String(inrcyCfg["site_url"] ?? "").trim();
     const siteWebUrl = String(proSiteWeb["url"] ?? "").trim();
 
-    const externalImageUrls = (publicationImageSet.publishableUrls.length ? publicationImageSet.publishableUrls : publicationImageSet.images).slice(0, 5);
-    const socialFeedImageUrls = (publicationImageSet.socialFeedPublishableUrls.length ? publicationImageSet.socialFeedPublishableUrls : externalImageUrls).slice(0, 5);
-    const instagramImageUrls = (publicationImageSet.instagramPublishableUrls.length ? publicationImageSet.instagramPublishableUrls : socialFeedImageUrls.length ? socialFeedImageUrls : externalImageUrls).slice(0, 5);
-    const gmbImageUrls = (publicationImageSet.gmbPublishableUrls.length ? publicationImageSet.gmbPublishableUrls : publicationImageSet.publishableUrls.length ? publicationImageSet.publishableUrls : publicationImageSet.images).slice(0, 5);
+    const externalImageUrls = (
+      publicationImageSet.publishableUrls.length
+        ? publicationImageSet.publishableUrls
+        : publicationImageSet.images
+    ).slice(0, 5);
+    const socialFeedImageUrls = (
+      publicationImageSet.socialFeedPublishableUrls.length
+        ? publicationImageSet.socialFeedPublishableUrls
+        : externalImageUrls
+    ).slice(0, 5);
+    const instagramImageUrls = (
+      publicationImageSet.instagramPublishableUrls.length
+        ? publicationImageSet.instagramPublishableUrls
+        : socialFeedImageUrls.length
+          ? socialFeedImageUrls
+          : externalImageUrls
+    ).slice(0, 5);
+    const gmbImageUrls = (
+      publicationImageSet.gmbPublishableUrls.length
+        ? publicationImageSet.gmbPublishableUrls
+        : publicationImageSet.publishableUrls.length
+          ? publicationImageSet.publishableUrls
+          : publicationImageSet.images
+    ).slice(0, 5);
 
-    const getChannelImageSet = (channel: ChannelKey): ImageSet => channelImageSets[channel] || baseImageSet;
+    const getChannelImageSet = (channel: ChannelKey): ImageSet =>
+      channelImageSets[channel] || baseImageSet;
 
     async function setDelivery(channel: ChannelKey, patch: JsonRecord) {
       const nextStatus = String(patch.status ?? "").trim();
@@ -840,28 +1239,50 @@ const body = await req.json().catch(() => null);
         .eq("channel", channel);
 
       if (error) {
-        console.error("[Booster] publication_deliveries update failed", { channel, payload, error: error.message });
+        console.error("[Booster] publication_deliveries update failed", {
+          channel,
+          payload,
+          error: error.message,
+        });
       }
     }
 
     for (const ch of selected) {
       try {
         const channelPost = getChannelPost(ch);
-        const canonMessage = buildBoosterMessage(ch, channelPost, { websiteUrl: siteWebUrl || inrcySiteUrl, phone: businessPhone });
+        const canonMessage = buildBoosterMessage(ch, channelPost, {
+          websiteUrl: siteWebUrl || inrcySiteUrl,
+          phone: businessPhone,
+        });
 
         if (ch === "inrcy_site" || ch === "site_web") {
           // We treat "publication" as an "article/actu" for the site.
           // This creates a record that your iNrCy site renderer (or your pro's website connector)
           // can consume to display the article.
           const targetUrl = ch === "inrcy_site" ? inrcySiteUrl : siteWebUrl;
-          if (ch === "inrcy_site" && (!hasActiveInrcySite(ownership) || !targetUrl)) {
-            await setDelivery(ch, { status: "failed", error: "Le site iNrCy n'est pas encore correctement configuré." });
-            results[ch] = { ok: false, error: "Le site iNrCy n'est pas encore correctement configuré." };
+          if (
+            ch === "inrcy_site" &&
+            (!hasActiveInrcySite(ownership) || !targetUrl)
+          ) {
+            await setDelivery(ch, {
+              status: "failed",
+              error: "Le site iNrCy n'est pas encore correctement configuré.",
+            });
+            results[ch] = {
+              ok: false,
+              error: "Le site iNrCy n'est pas encore correctement configuré.",
+            };
             continue;
           }
           if (ch === "site_web" && !targetUrl) {
-            await setDelivery(ch, { status: "failed", error: "Le site web n'est pas encore correctement configuré." });
-            results[ch] = { ok: false, error: "Le site web n'est pas encore correctement configuré." };
+            await setDelivery(ch, {
+              status: "failed",
+              error: "Le site web n'est pas encore correctement configuré.",
+            });
+            results[ch] = {
+              ok: false,
+              error: "Le site web n'est pas encore correctement configuré.",
+            };
             continue;
           }
 
@@ -874,41 +1295,52 @@ const body = await req.json().catch(() => null);
           // IMPORTANT: keep this insert compatible with your current `public.site_articles` table.
           // Your table currently contains at least: id, created_at, user_id, source, title, content.
           // (If you later add more columns, you can extend this insert.)
-          const { error: artErr } = await supabaseAdmin.from("site_articles").insert({
-            id: articleId,
-            user_id: userId,
-            source: ch,
-            title: channelPost.title,
-            content: channelPost.content,
-            cta: channelPost.cta,
-            hashtags: channelPost.hashtags,
-            images: mediaType === "images" ? (() => {
-              const channelImageSet = getChannelImageSet(ch);
-              // For website embeds, always prefer the original uploaded assets.
-              // They preserve the real framing and avoid publishing the blurred
-              // site-card derivative inside the iframe media slot.
-              return channelImageSet.images.length
-                ? channelImageSet.images
-                : channelImageSet.socialFeedPublishableUrls.length
-                  ? channelImageSet.socialFeedPublishableUrls
-                  : channelImageSet.siteCardPublishableUrls;
-            })() : [],
-            ...(mediaType === "video" && publicationVideo ? {
-              media_type: "video",
-              video_url: publicationVideo.publicUrl,
-              video_path: publicationVideo.storagePath,
-              video_mime: publicationVideo.type,
-              video_size: publicationVideo.size,
-              video_duration_seconds: publicationVideo.duration,
-              video_thumbnail_url: publicationVideo.thumbnailUrl,
-              media_metadata: { video: publicationVideo },
-            } : {}),
-            external_url: externalUrl,     // ✅ si tu veux (optionnel)
-            site_url: targetUrl || null,   // ✅ si tu veux (optionnel)
-          });
+          const { error: artErr } = await supabaseAdmin
+            .from("site_articles")
+            .insert({
+              id: articleId,
+              user_id: userId,
+              source: ch,
+              title: channelPost.title,
+              content: channelPost.content,
+              cta: channelPost.cta,
+              hashtags: channelPost.hashtags,
+              images:
+                mediaModeByChannel[ch] === "images"
+                  ? (() => {
+                      const channelImageSet = getChannelImageSet(ch);
+                      // For website embeds, always prefer the original uploaded assets.
+                      // They preserve the real framing and avoid publishing the blurred
+                      // site-card derivative inside the iframe media slot.
+                      return channelImageSet.images.length
+                        ? channelImageSet.images
+                        : channelImageSet.socialFeedPublishableUrls.length
+                          ? channelImageSet.socialFeedPublishableUrls
+                          : channelImageSet.siteCardPublishableUrls;
+                    })()
+                  : [],
+              ...(mediaModeByChannel[ch] === "video" && publicationVideo
+                ? {
+                    media_type: "video",
+                    video_url: publicationVideo.publicUrl,
+                    video_path: publicationVideo.storagePath,
+                    video_mime: publicationVideo.type,
+                    video_size: publicationVideo.size,
+                    video_duration_seconds: publicationVideo.duration,
+                    video_thumbnail_url: publicationVideo.thumbnailUrl,
+                    media_metadata: { video: publicationVideo },
+                  }
+                : {}),
+              external_url: externalUrl, // ✅ si tu veux (optionnel)
+              site_url: targetUrl || null, // ✅ si tu veux (optionnel)
+            });
 
           if (artErr) {
-            const siteUserError = getPublishChannelUserMessage(ch, artErr, "Impossible de créer l'article pour le moment.");
+            const siteUserError = getPublishChannelUserMessage(
+              ch,
+              artErr,
+              "Impossible de créer l'article pour le moment.",
+            );
             logPublishChannelFailure({
               route: "booster_publish_now",
               channel: ch,
@@ -919,7 +1351,11 @@ const body = await req.json().catch(() => null);
               userMessage: siteUserError,
             });
             await setDelivery(ch, { status: "failed", error: siteUserError });
-            results[ch] = { ok: false, error: siteUserError, raw_error: artErr.message || String(artErr) };
+            results[ch] = {
+              ok: false,
+              error: siteUserError,
+              raw_error: artErr.message || String(artErr),
+            };
             continue;
           }
 
@@ -927,7 +1363,11 @@ const body = await req.json().catch(() => null);
             status: "delivered",
             error: null,
           });
-          results[ch] = { ok: true, external_id: articleId, external_url: externalUrl };
+          results[ch] = {
+            ok: true,
+            external_id: articleId,
+            external_url: externalUrl,
+          };
           continue;
         }
 
@@ -937,8 +1377,16 @@ const body = await req.json().catch(() => null);
           const pageTokenRaw = String(fb["access_token_enc"] ?? "");
           const pageToken = tryDecryptToken(pageTokenRaw) || "";
           const fbMeta = asRecord(fb["meta"]);
-          const fbExpired = isExpired(fb["expires_at"]) && !String(fbMeta["selected"] ?? "") && !pageId;
-          if (String(fb["status"] ?? "") !== "connected" || !pageId || !pageToken || fbExpired) {
+          const fbExpired =
+            isExpired(fb["expires_at"]) &&
+            !String(fbMeta["selected"] ?? "") &&
+            !pageId;
+          if (
+            String(fb["status"] ?? "") !== "connected" ||
+            !pageId ||
+            !pageToken ||
+            fbExpired
+          ) {
             const facebookUserError = fbExpired
               ? getPublishChannelUserMessage("facebook", "token expired")
               : "Facebook à connecter. Rendez-vous dans Canaux.";
@@ -951,28 +1399,39 @@ const body = await req.json().catch(() => null);
               error: fbExpired ? "token_expired" : "not_connected",
               userMessage: facebookUserError,
             });
-            await setDelivery(ch, { status: "failed", error: facebookUserError });
+            await setDelivery(ch, {
+              status: "failed",
+              error: facebookUserError,
+            });
             results[ch] = { ok: false, error: facebookUserError };
             continue;
           }
 
-          const resp = mediaType === "video" && publicationVideo
-            ? await facebookPublishVideoToPage({
-                pageId,
-                pageAccessToken: pageToken,
-                description: canonMessage,
-                title: channelPost.title || undefined,
-                videoUrl: publicationVideo.publicUrl,
-              })
-            : await facebookPublishToPage({
-                pageId,
-                pageAccessToken: pageToken,
-                message: canonMessage,
-                imageUrls: (getChannelImageSet(ch).socialFeedPublishableUrls.length ? getChannelImageSet(ch).socialFeedPublishableUrls : socialFeedImageUrls).slice(0, 5),
-              });
+          const resp =
+            mediaModeByChannel[ch] === "video" && publicationVideo
+              ? await facebookPublishVideoToPage({
+                  pageId,
+                  pageAccessToken: pageToken,
+                  description: canonMessage,
+                  title: channelPost.title || undefined,
+                  videoUrl: publicationVideo.publicUrl,
+                })
+              : await facebookPublishToPage({
+                  pageId,
+                  pageAccessToken: pageToken,
+                  message: canonMessage,
+                  imageUrls: (getChannelImageSet(ch).socialFeedPublishableUrls
+                    .length
+                    ? getChannelImageSet(ch).socialFeedPublishableUrls
+                    : socialFeedImageUrls
+                  ).slice(0, 5),
+                });
 
           if (!resp.ok) {
-            const facebookUserError = getPublishChannelUserMessage("facebook", resp.error);
+            const facebookUserError = getPublishChannelUserMessage(
+              "facebook",
+              resp.error,
+            );
             logPublishChannelFailure({
               route: "booster_publish_now",
               channel: "facebook",
@@ -983,14 +1442,26 @@ const body = await req.json().catch(() => null);
               userMessage: facebookUserError,
               diagnostics: resp,
             });
-            await setDelivery(ch, { status: "failed", error: facebookUserError });
-            results[ch] = { ok: false, error: facebookUserError, raw_error: resp.error, diagnostics: resp };
+            await setDelivery(ch, {
+              status: "failed",
+              error: facebookUserError,
+            });
+            results[ch] = {
+              ok: false,
+              error: facebookUserError,
+              raw_error: resp.error,
+              diagnostics: resp,
+            };
             continue;
           }
 
           await setDelivery(ch, { status: "delivered", error: null });
 
-          results[ch] = { ok: true, external_id: resp.postId, diagnostics: resp };
+          results[ch] = {
+            ok: true,
+            external_id: resp.postId,
+            diagnostics: resp,
+          };
           continue;
         }
 
@@ -1000,8 +1471,16 @@ const body = await req.json().catch(() => null);
           const igTokenRaw = String(ig["access_token_enc"] ?? "");
           const igToken = tryDecryptToken(igTokenRaw) || "";
           const igMeta = asRecord(ig["meta"]);
-          const igExpired = isExpired(ig["expires_at"]) && !String(igMeta["page_id"] ?? "") && !igUserId;
-          if (String(ig["status"] ?? "") !== "connected" || !igUserId || !igToken || igExpired) {
+          const igExpired =
+            isExpired(ig["expires_at"]) &&
+            !String(igMeta["page_id"] ?? "") &&
+            !igUserId;
+          if (
+            String(ig["status"] ?? "") !== "connected" ||
+            !igUserId ||
+            !igToken ||
+            igExpired
+          ) {
             const instagramUserError = igExpired
               ? INSTAGRAM_RECONNECT_USER_MESSAGE
               : "Instagram à connecter. Rendez-vous dans Canaux.";
@@ -1014,15 +1493,24 @@ const body = await req.json().catch(() => null);
               error: igExpired ? "token_expired" : "not_connected",
               userMessage: instagramUserError,
             });
-            await setDelivery(ch, { status: "failed", error: instagramUserError });
+            await setDelivery(ch, {
+              status: "failed",
+              error: instagramUserError,
+            });
             results[ch] = { ok: false, error: instagramUserError };
             continue;
           }
 
-          const instagramCaption = buildBoosterInstagramCaption(channelPost, { websiteUrl: siteWebUrl || inrcySiteUrl, phone: businessPhone });
-          const instagramTokenCandidates = buildInstagramPublishTokenCandidates(ig, fbRow);
+          const instagramCaption = buildBoosterInstagramCaption(channelPost, {
+            websiteUrl: siteWebUrl || inrcySiteUrl,
+            phone: businessPhone,
+          });
+          const instagramTokenCandidates = buildInstagramPublishTokenCandidates(
+            ig,
+            fbRow,
+          );
           let resp;
-          if (mediaType === "video" && publicationVideo) {
+          if (hasAnyVideoChannel && publicationVideo) {
             resp = await instagramPublishVideoWithTokenFallback({
               igUserId,
               accessToken: igToken,
@@ -1031,33 +1519,51 @@ const body = await req.json().catch(() => null);
               videoUrl: publicationVideo.publicUrl,
             });
           } else {
-            const instagramImages = (getChannelImageSet(ch).instagramPublishableUrls.length ? getChannelImageSet(ch).instagramPublishableUrls : instagramImageUrls).filter(Boolean).slice(0, 10);
+            const instagramImages = (
+              getChannelImageSet(ch).instagramPublishableUrls.length
+                ? getChannelImageSet(ch).instagramPublishableUrls
+                : instagramImageUrls
+            )
+              .filter(Boolean)
+              .slice(0, 10);
             if (!instagramImages.length) {
-              await setDelivery(ch, { status: "failed", error: "Instagram nécessite au moins 1 image" });
-              results[ch] = { ok: false, error: "Instagram a besoin d'au moins une image pour publier." };
+              await setDelivery(ch, {
+                status: "failed",
+                error: "Instagram nécessite au moins 1 image",
+              });
+              results[ch] = {
+                ok: false,
+                error: "Instagram a besoin d'au moins une image pour publier.",
+              };
               continue;
             }
-            resp = instagramImages.length > 1
-              ? await instagramPublishCarouselWithTokenFallback({
-                  igUserId,
-                  accessToken: igToken,
-                  tokenCandidates: instagramTokenCandidates,
-                  caption: instagramCaption,
-                  imageUrls: instagramImages,
-                })
-              : await instagramPublishPhotoWithTokenFallback({
-                  igUserId,
-                  accessToken: igToken,
-                  tokenCandidates: instagramTokenCandidates,
-                  caption: instagramCaption,
-                  imageUrl: instagramImages[0],
-                });
+            resp =
+              instagramImages.length > 1
+                ? await instagramPublishCarouselWithTokenFallback({
+                    igUserId,
+                    accessToken: igToken,
+                    tokenCandidates: instagramTokenCandidates,
+                    caption: instagramCaption,
+                    imageUrls: instagramImages,
+                  })
+                : await instagramPublishPhotoWithTokenFallback({
+                    igUserId,
+                    accessToken: igToken,
+                    tokenCandidates: instagramTokenCandidates,
+                    caption: instagramCaption,
+                    imageUrl: instagramImages[0],
+                  });
           }
 
           if (!resp.ok) {
-            const instagramUserError = (isInstagramAuthorizationErrorResult(resp) || isInstagramAuthorizationLikeMessage(`instagram ${resp.error}`))
-              ? INSTAGRAM_RECONNECT_USER_MESSAGE
-              : getSimpleFrenchErrorMessage(`instagram ${resp.error}`, resp.error || "La publication Instagram a échoué.");
+            const instagramUserError =
+              isInstagramAuthorizationErrorResult(resp) ||
+              isInstagramAuthorizationLikeMessage(`instagram ${resp.error}`)
+                ? INSTAGRAM_RECONNECT_USER_MESSAGE
+                : getSimpleFrenchErrorMessage(
+                    `instagram ${resp.error}`,
+                    resp.error || "La publication Instagram a échoué.",
+                  );
             logPublishChannelFailure({
               route: "booster_publish_now",
               channel: "instagram",
@@ -1068,8 +1574,16 @@ const body = await req.json().catch(() => null);
               userMessage: instagramUserError,
               diagnostics: resp,
             });
-            await setDelivery(ch, { status: "failed", error: instagramUserError });
-            results[ch] = { ok: false, error: instagramUserError, raw_error: resp.error, diagnostics: resp };
+            await setDelivery(ch, {
+              status: "failed",
+              error: instagramUserError,
+            });
+            results[ch] = {
+              ok: false,
+              error: instagramUserError,
+              raw_error: resp.error,
+              diagnostics: resp,
+            };
             continue;
           }
 
@@ -1080,7 +1594,8 @@ const body = await req.json().catch(() => null);
             external_id: resp.mediaId,
             instagram_media_type: resp.mediaType,
             instagram_parent_media_id: resp.parentMediaId || resp.mediaId,
-            instagram_child_media_ids: resp.childMediaIds || resp.childContainerIds || [],
+            instagram_child_media_ids:
+              resp.childMediaIds || resp.childContainerIds || [],
             diagnostics: resp,
           };
           continue;
@@ -1091,18 +1606,33 @@ const body = await req.json().catch(() => null);
           const auth = await getLinkedInAccessToken({ userId });
           const accessToken = auth.accessToken || "";
           const liMeta = asRecord(li["meta"]);
-          const rawAuthorUrn = auth.authorUrn || String(li["resource_id"] ?? "");
-          const authorUrn = rawAuthorUrn.startsWith("urn:li:person:") ? rawAuthorUrn : "";
+          const rawAuthorUrn =
+            auth.authorUrn || String(li["resource_id"] ?? "");
+          const authorUrn = rawAuthorUrn.startsWith("urn:li:person:")
+            ? rawAuthorUrn
+            : "";
           const selectedOrgId = String(liMeta["org_id"] || "").trim();
-          const orgUrn = auth.orgUrn || String(liMeta["org_urn"] || "") || (selectedOrgId ? `urn:li:organization:${selectedOrgId}` : "");
+          const orgUrn =
+            auth.orgUrn ||
+            String(liMeta["org_urn"] || "") ||
+            (selectedOrgId ? `urn:li:organization:${selectedOrgId}` : "");
           const useAuthor = orgUrn || authorUrn;
-          if (String(li["status"] ?? "") !== "connected" || !accessToken || !useAuthor) {
-            const liRawError = auth.error && auth.refreshTokenPresent
-              ? `token refresh failed: ${auth.error}`
-              : auth.error && !auth.refreshTokenPresent
-                ? `token expired: ${auth.error}`
-                : "not_connected";
-            const liError = getPublishChannelUserMessage("linkedin", liRawError, "LinkedIn à connecter. Rendez-vous dans Canaux.");
+          if (
+            String(li["status"] ?? "") !== "connected" ||
+            !accessToken ||
+            !useAuthor
+          ) {
+            const liRawError =
+              auth.error && auth.refreshTokenPresent
+                ? `token refresh failed: ${auth.error}`
+                : auth.error && !auth.refreshTokenPresent
+                  ? `token expired: ${auth.error}`
+                  : "not_connected";
+            const liError = getPublishChannelUserMessage(
+              "linkedin",
+              liRawError,
+              "LinkedIn à connecter. Rendez-vous dans Canaux.",
+            );
             logPublishChannelFailure({
               route: "booster_publish_now",
               channel: "linkedin",
@@ -1111,14 +1641,31 @@ const body = await req.json().catch(() => null);
               stage: "precheck",
               error: liRawError,
               userMessage: liError,
-              diagnostics: { refreshTokenPresent: auth.refreshTokenPresent, refreshed: auth.refreshed, canReconnectSilently: auth.canReconnectSilently },
+              diagnostics: {
+                refreshTokenPresent: auth.refreshTokenPresent,
+                refreshed: auth.refreshed,
+                canReconnectSilently: auth.canReconnectSilently,
+              },
             });
             await setDelivery(ch, { status: "failed", error: liError });
-            results[ch] = { ok: false, error: liError, raw_error: auth.error || null };
+            results[ch] = {
+              ok: false,
+              error: liError,
+              raw_error: auth.error || null,
+            };
             continue;
           }
-          const linkedInImages = (getChannelImageSet(ch).socialFeedPublishableUrls.length ? getChannelImageSet(ch).socialFeedPublishableUrls : socialFeedImageUrls.length ? socialFeedImageUrls : externalImageUrls).filter(Boolean).slice(0, 20);
-          const isLinkedInVideo = mediaType === "video" && publicationVideo;
+          const linkedInImages = (
+            getChannelImageSet(ch).socialFeedPublishableUrls.length
+              ? getChannelImageSet(ch).socialFeedPublishableUrls
+              : socialFeedImageUrls.length
+                ? socialFeedImageUrls
+                : externalImageUrls
+          )
+            .filter(Boolean)
+            .slice(0, 20);
+          const isLinkedInVideo =
+            mediaModeByChannel[ch] === "video" && publicationVideo;
           let linkedInWarning: { code: string; message: string } | null = null;
           let resp = isLinkedInVideo
             ? await linkedinPublishVideo({
@@ -1160,7 +1707,8 @@ const body = await req.json().catch(() => null);
               linkedInWarning = isLinkedInVideo
                 ? {
                     code: "published_without_video",
-                    message: "LinkedIn a publié le texte, mais la vidéo n'a pas pu être jointe cette fois-ci.",
+                    message:
+                      "LinkedIn a publié le texte, mais la vidéo n'a pas pu être jointe cette fois-ci.",
                   }
                 : null;
               resp = {
@@ -1175,7 +1723,10 @@ const body = await req.json().catch(() => null);
           }
 
           if (!resp.ok) {
-            const linkedInUserError = getPublishChannelUserMessage("linkedin", resp.error);
+            const linkedInUserError = getPublishChannelUserMessage(
+              "linkedin",
+              resp.error,
+            );
             logPublishChannelFailure({
               route: "booster_publish_now",
               channel: "linkedin",
@@ -1186,8 +1737,16 @@ const body = await req.json().catch(() => null);
               userMessage: linkedInUserError,
               diagnostics: resp,
             });
-            await setDelivery(ch, { status: "failed", error: linkedInUserError });
-            results[ch] = { ok: false, error: linkedInUserError, raw_error: resp.error, diagnostics: resp };
+            await setDelivery(ch, {
+              status: "failed",
+              error: linkedInUserError,
+            });
+            results[ch] = {
+              ok: false,
+              error: linkedInUserError,
+              raw_error: resp.error,
+              diagnostics: resp,
+            };
             continue;
           }
 
@@ -1197,7 +1756,12 @@ const body = await req.json().catch(() => null);
             ok: true,
             external_id: resp.postUrn || null,
             diagnostics: resp,
-            ...(linkedInWarning ? { warning: linkedInWarning.code, warning_message: linkedInWarning.message } : {}),
+            ...(linkedInWarning
+              ? {
+                  warning: linkedInWarning.code,
+                  warning_message: linkedInWarning.message,
+                }
+              : {}),
           };
           continue;
         }
@@ -1207,8 +1771,13 @@ const body = await req.json().catch(() => null);
           const locationName = String(gmb["resource_id"] ?? "");
           const gmbMeta = asRecord(gmb["meta"]);
           const accountName = String(gmbMeta["account"] ?? "");
-          if (String(gmb["status"] ?? "") !== "connected" || !locationName || !accountName) {
-            const gmbUserError = "Google Business à connecter. Rendez-vous dans Canaux.";
+          if (
+            String(gmb["status"] ?? "") !== "connected" ||
+            !locationName ||
+            !accountName
+          ) {
+            const gmbUserError =
+              "Google Business à connecter. Rendez-vous dans Canaux.";
             logPublishChannelFailure({
               route: "booster_publish_now",
               channel: "gmb",
@@ -1241,12 +1810,26 @@ const body = await req.json().catch(() => null);
           }
 
           const gmbChannelImageSet = getChannelImageSet(ch);
-          const gmbChannelImages = mediaType === "images"
-            ? (gmbChannelImageSet.gmbPublishableUrls.length ? gmbChannelImageSet.gmbPublishableUrls : gmbImageUrls.length ? gmbImageUrls : gmbChannelImageSet.publishableUrls).filter(Boolean).slice(0, 1)
-            : [];
-          const gmbChannelVideos = mediaType === "video" && publicationVideo ? [publicationVideo.publicUrl].filter(Boolean).slice(0, 1) : [];
+          const gmbChannelImages =
+            mediaModeByChannel[ch] === "images"
+              ? (gmbChannelImageSet.gmbPublishableUrls.length
+                  ? gmbChannelImageSet.gmbPublishableUrls
+                  : gmbImageUrls.length
+                    ? gmbImageUrls
+                    : gmbChannelImageSet.publishableUrls
+                )
+                  .filter(Boolean)
+                  .slice(0, 1)
+              : [];
+          const gmbChannelVideos =
+            mediaModeByChannel[ch] === "video" && publicationVideo
+              ? [publicationVideo.publicUrl].filter(Boolean).slice(0, 1)
+              : [];
           const gmbSummary = buildBoosterGmbSummary(channelPost);
-          const gmbCallToAction = getBoosterGmbCallToAction(channelPost, { websiteUrl: siteWebUrl || inrcySiteUrl, phone: businessPhone });
+          const gmbCallToAction = getBoosterGmbCallToAction(channelPost, {
+            websiteUrl: siteWebUrl || inrcySiteUrl,
+            phone: businessPhone,
+          });
           let gmbResp: any;
           let gmbWarning: { code: string; message: string } | null = null;
 
@@ -1262,45 +1845,58 @@ const body = await req.json().catch(() => null);
               callToAction: gmbCallToAction || undefined,
             });
           } catch (gmbErr: unknown) {
-            const hasMedia = Boolean(gmbChannelImages.length || gmbChannelVideos.length);
-            const retryWithoutMedia = async () => gmbCreateLocalPost({
-              accessToken: tok.accessToken,
-              accountName,
-              locationName,
-              summary: gmbSummary,
-              languageCode: "fr-FR",
-              callToAction: gmbCallToAction || undefined,
-            });
-            const retryWithoutCta = async () => gmbCreateLocalPost({
-              accessToken: tok.accessToken,
-              accountName,
-              locationName,
-              summary: gmbSummary,
-              imageUrls: gmbChannelImages.length ? gmbChannelImages : undefined,
-              videoUrls: gmbChannelVideos.length ? gmbChannelVideos : undefined,
-              languageCode: "fr-FR",
-            });
+            const hasMedia = Boolean(
+              gmbChannelImages.length || gmbChannelVideos.length,
+            );
+            const retryWithoutMedia = async () =>
+              gmbCreateLocalPost({
+                accessToken: tok.accessToken,
+                accountName,
+                locationName,
+                summary: gmbSummary,
+                languageCode: "fr-FR",
+                callToAction: gmbCallToAction || undefined,
+              });
+            const retryWithoutCta = async () =>
+              gmbCreateLocalPost({
+                accessToken: tok.accessToken,
+                accountName,
+                locationName,
+                summary: gmbSummary,
+                imageUrls: gmbChannelImages.length
+                  ? gmbChannelImages
+                  : undefined,
+                videoUrls: gmbChannelVideos.length
+                  ? gmbChannelVideos
+                  : undefined,
+                languageCode: "fr-FR",
+              });
             try {
               if (!hasMedia) throw gmbErr;
               gmbResp = await retryWithoutMedia();
-              gmbWarning = mediaType === "video"
-                ? {
-                    code: "published_without_video",
-                    message: "Google Business a publié le texte, mais la vidéo n'a pas pu être jointe cette fois-ci.",
-                  }
-                : {
-                    code: isGoogleBusinessImageError(gmbErr) ? "published_without_image" : "published_after_retry_without_image",
-                    message: isGoogleBusinessImageError(gmbErr)
-                      ? "Google Business a publié le texte, mais n'a pas pu récupérer l'image. Vérifiez que l'image reste publique et accessible sans connexion."
-                      : "Google Business a publié le texte après une reprise automatique. L'image n'a pas pu être jointe cette fois-ci.",
-                  };
+              gmbWarning =
+                mediaModeByChannel[ch] === "video"
+                  ? {
+                      code: "published_without_video",
+                      message:
+                        "Google Business a publié le texte, mais la vidéo n'a pas pu être jointe cette fois-ci.",
+                    }
+                  : {
+                      code: isGoogleBusinessImageError(gmbErr)
+                        ? "published_without_image"
+                        : "published_after_retry_without_image",
+                      message: isGoogleBusinessImageError(gmbErr)
+                        ? "Google Business a publié le texte, mais n'a pas pu récupérer l'image. Vérifiez que l'image reste publique et accessible sans connexion."
+                        : "Google Business a publié le texte après une reprise automatique. L'image n'a pas pu être jointe cette fois-ci.",
+                    };
             } catch (retryError: unknown) {
               if (gmbCallToAction) {
                 try {
                   gmbResp = await retryWithoutCta();
                   gmbWarning = {
                     code: "published_without_cta",
-                    message: "Google Business a publié le texte sans bouton CTA.",
+                    message:
+                      "Google Business a publié le texte sans bouton CTA.",
                   };
                 } catch {
                   throw retryError;
@@ -1317,14 +1913,23 @@ const body = await req.json().catch(() => null);
           results[ch] = {
             ok: true,
             external_id: externalId || null,
-            ...(gmbWarning ? { warning: gmbWarning.code, warning_message: gmbWarning.message } : {}),
+            ...(gmbWarning
+              ? {
+                  warning: gmbWarning.code,
+                  warning_message: gmbWarning.message,
+                }
+              : {}),
           };
           continue;
         }
 
         results[ch] = { ok: false, error: "unsupported_channel" };
       } catch (e: unknown) {
-        const msg = getPublishChannelUserMessage(ch, e, "L'action n'a pas pu être finalisée.");
+        const msg = getPublishChannelUserMessage(
+          ch,
+          e,
+          "L'action n'a pas pu être finalisée.",
+        );
         logPublishChannelFailure({
           route: "booster_publish_now",
           channel: ch,
@@ -1335,16 +1940,23 @@ const body = await req.json().catch(() => null);
           userMessage: msg,
         });
         await setDelivery(ch, { status: "failed", error: msg });
-        results[ch] = { ok: false, error: msg, raw_error: e instanceof Error ? e.message : String(e || "") };
+        results[ch] = {
+          ok: false,
+          error: msg,
+          raw_error: e instanceof Error ? e.message : String(e || ""),
+        };
       }
     }
 
-    const persistedVideo = mediaType === "video" && publicationVideo ? publicationVideo : null;
+    const persistedVideo =
+      hasAnyVideoChannel && publicationVideo ? publicationVideo : null;
 
     const persistedPostByChannel = Object.fromEntries(
       selected.map((channel) => {
-        const baseValue = (postByChannel as Record<string, unknown>)[channel] as Record<string, unknown> | undefined;
-        if (mediaType === "video" && persistedVideo) {
+        const baseValue = (postByChannel as Record<string, unknown>)[
+          channel
+        ] as Record<string, unknown> | undefined;
+        if (mediaModeByChannel[channel] === "video" && persistedVideo) {
           return [
             channel,
             {
@@ -1352,6 +1964,19 @@ const body = await req.json().catch(() => null);
               images: [],
               attachments: [persistedVideo],
               video: persistedVideo,
+              mediaMode: "video",
+            },
+          ];
+        }
+
+        if (mediaModeByChannel[channel] === "none") {
+          return [
+            channel,
+            {
+              ...(baseValue || {}),
+              images: [],
+              attachments: [],
+              mediaMode: "none",
             },
           ];
         }
@@ -1363,16 +1988,19 @@ const body = await req.json().catch(() => null);
             ? {
                 ...(baseValue || {}),
                 images: imageSet.images,
-                attachments: imageSet.editableAttachments?.length ? imageSet.editableAttachments : imageSet.images,
+                attachments: imageSet.editableAttachments?.length
+                  ? imageSet.editableAttachments
+                  : imageSet.images,
                 publishableUrls: imageSet.publishableUrls,
                 instagramPublishableUrls: imageSet.instagramPublishableUrls,
                 socialFeedPublishableUrls: imageSet.socialFeedPublishableUrls,
                 siteCardPublishableUrls: imageSet.siteCardPublishableUrls,
                 gmbPublishableUrls: imageSet.gmbPublishableUrls,
+                mediaMode: "images",
               }
-            : (baseValue || {}),
+            : { ...(baseValue || {}), mediaMode: "images" },
         ];
-      })
+      }),
     );
 
     const summary = buildResultsSummary(results, selected);
@@ -1383,9 +2011,11 @@ const body = await req.json().catch(() => null);
       return NextResponse.json(
         {
           ok: false,
-          error: "Aucun canal n'a pu publier. Les compteurs et les UI n'ont pas été mis à jour.",
+          error:
+            "Aucun canal n'a pu publier. Les compteurs et les UI n'ont pas été mis à jour.",
           publication_id: publicationId,
           mediaType,
+          mediaModeByChannel,
           video: persistedVideo,
           images: uploadedUrls,
           publishableUrls,
@@ -1397,7 +2027,7 @@ const body = await req.json().catch(() => null);
           results,
           summary,
         },
-        { status: 200 }
+        { status: 200 },
       );
     }
 
@@ -1411,6 +2041,7 @@ const body = await req.json().catch(() => null);
         workflowTool: eventModule,
         workflowAction,
         mediaType,
+        mediaModeByChannel,
         video: persistedVideo,
         idea,
         channels: summary.successChannels,
@@ -1435,6 +2066,7 @@ const body = await req.json().catch(() => null);
       ok: true,
       publication_id: publicationId,
       mediaType,
+      mediaModeByChannel,
       video: persistedVideo,
       images: uploadedUrls,
       publishableUrls,
@@ -1446,7 +2078,10 @@ const body = await req.json().catch(() => null);
       summary,
     });
   } catch (e: unknown) {
-    return jsonUserFacingError(e, { status: 500, fallback: "L'action n'a pas pu être finalisée.", code: "publish_now_failed" });
+    return jsonUserFacingError(e, {
+      status: 500,
+      fallback: "L'action n'a pas pu être finalisée.",
+      code: "publish_now_failed",
+    });
   }
 }
-
