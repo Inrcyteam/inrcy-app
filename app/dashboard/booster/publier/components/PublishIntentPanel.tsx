@@ -1094,22 +1094,35 @@ export default function PublishIntentPanel({
                 maxWidth: "100%",
               }}
             >
-              <video
-                src={videoPreviewUrl}
-                controls
-                playsInline
+              <div
                 style={{
                   width: isMobile ? "min(100%, 260px)" : 260,
                   maxWidth: "100%",
-                  height: "auto",
-                  maxHeight: isMobile ? 150 : 150,
-                  objectFit: "contain",
+                  height: isMobile ? 146 : 146,
                   borderRadius: 12,
                   background: "#050816",
-                  display: "block",
+                  overflow: "hidden",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
                   boxShadow: "0 10px 28px rgba(0,0,0,0.28)",
                 }}
-              />
+              >
+                <video
+                  src={videoPreviewUrl}
+                  controls
+                  playsInline
+                  preload="metadata"
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "contain",
+                    borderRadius: 12,
+                    background: "#050816",
+                    display: "block",
+                  }}
+                />
+              </div>
               <div
                 style={{
                   display: "grid",

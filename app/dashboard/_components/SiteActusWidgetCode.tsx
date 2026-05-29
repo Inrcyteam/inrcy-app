@@ -139,7 +139,7 @@ export default function SiteActusWidgetCode({
 
   return <>
     <div style={{ display: "flex", gap: 10, justifyContent: "space-between", alignItems: "center", flexWrap: "wrap" }}>
-      <div className={styles.blockSub}>Images affichées automatiquement quand une image est présente dans l'actu.</div>
+      <div className={styles.blockSub}>Médias affichés automatiquement quand une image ou une vidéo est présente dans l’actu.</div>
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
         <button
           type="button"
