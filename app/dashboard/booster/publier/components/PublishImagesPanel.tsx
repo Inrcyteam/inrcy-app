@@ -160,13 +160,15 @@ export default function PublishImagesPanel({
           color: active ? "#e6f8ff" : "rgba(255,255,255,0.76)",
           boxShadow: active ? "0 0 0 1px rgba(76,195,255,0.16) inset" : undefined,
           borderRadius: 999,
-          minHeight: 36,
-          padding: "0 14px",
-          fontSize: 12,
+          minHeight: isMobile ? 34 : 36,
+          padding: isMobile ? "0 8px" : "0 14px",
+          fontSize: isMobile ? 11 : 12,
           fontWeight: 900,
           cursor: disabled ? "not-allowed" : "pointer",
           opacity: disabled ? 0.45 : 1,
           whiteSpace: "nowrap",
+          flex: isMobile ? "1 1 0" : "0 0 auto",
+          minWidth: 0,
         }}
       >
         {label}
@@ -283,10 +285,13 @@ export default function PublishImagesPanel({
           style={{
             fontSize: 12,
             opacity: hasImages || hasVideoMedia ? 0.85 : 0.7,
+            lineHeight: 1.45,
+            minWidth: 0,
+            overflowWrap: "anywhere",
           }}
         >
           {hasImages || hasVideoMedia
-            ? `${images.length}/${BOOSTER_MAX_IMAGE_COUNT} image${images.length > 1 ? "s" : ""}${hasVideoMedia ? ` · 1 vidéo · IA vidéo + audio · ${BOOSTER_MAX_VIDEO_MB_LABEL} max` : ""}`
+            ? `${images.length}/${BOOSTER_MAX_IMAGE_COUNT} image${images.length > 1 ? "s" : ""}${hasVideoMedia ? ` · 1 vidéo · IA vidéo + audio · ${BOOSTER_MAX_VIDEO_MB_LABEL} max · ${BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL}` : ""}`
             : "Aucun média ajouté"}
         </div>
       </div>
@@ -389,14 +394,13 @@ export default function PublishImagesPanel({
           <div
             style={{
               display: "flex",
-              gap: 8,
-              flexWrap: "wrap",
+              gap: isMobile ? 6 : 8,
+              flexWrap: isMobile ? "nowrap" : "wrap",
               alignItems: "center",
+              width: "100%",
+              minWidth: 0,
             }}
           >
-            <span style={{ fontSize: 12, fontWeight: 900, opacity: 0.76 }}>
-              {getImageAdapterLabel(activeImageChannel)} :
-            </span>
             {mediaModeButton("video", "🎥 Vidéo", !hasVideoMedia)}
             {mediaModeButton("images", "📷 Photos", !hasImages)}
             {mediaModeButton("none", "🚫 Aucun")}
@@ -425,18 +429,23 @@ export default function PublishImagesPanel({
                   justifyContent: isMobile ? "center" : "flex-start",
                   gap: isMobile ? 10 : 12,
                   borderRadius: 16,
-                  padding: 12,
+                  padding: isMobile ? 10 : 12,
                   border: "1px solid rgba(76,195,255,0.22)",
                   background: "rgba(76,195,255,0.08)",
+                  width: "100%",
                   maxWidth: "100%",
+                  minWidth: 0,
+                  boxSizing: "border-box",
+                  overflow: "hidden",
                 }}
               >
                 {videoPreviewUrl ? (
                   <div
                     style={{
-                      width: isMobile ? "min(100%, 300px)" : 320,
-                      maxWidth: "100%",
-                      height: isMobile ? 168 : 180,
+                      width: isMobile ? "100%" : 320,
+                      maxWidth: isMobile ? "min(100%, 300px)" : "100%",
+                      aspectRatio: "16 / 9",
+                      height: "auto",
                       borderRadius: 14,
                       background: "#020617",
                       overflow: "hidden",
@@ -496,17 +505,15 @@ export default function PublishImagesPanel({
                     {formatVideoSeconds(videoDurationSeconds) ? (
                       <span>{formatVideoSeconds(videoDurationSeconds)}</span>
                     ) : null}
-                    <span>{BOOSTER_MAX_VIDEO_MB_LABEL} max</span>
-                    <span>{BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL}</span>
                     <span>Publiée sur {getImageAdapterLabel(activeImageChannel)}</span>
                   </div>
                   <button
                     type="button"
                     className={styles.secondaryBtn}
-                    onClick={removeVideo}
+                    onClick={() => setChannelMediaMode(activeImageChannel, "none")}
                     style={{ minHeight: 30, padding: "5px 10px", fontSize: 11 }}
                   >
-                    Supprimer la vidéo
+                    Retirer du canal
                   </button>
                 </div>
               </div>

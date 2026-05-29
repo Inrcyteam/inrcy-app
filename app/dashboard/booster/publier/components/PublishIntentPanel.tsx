@@ -1002,10 +1002,13 @@ export default function PublishIntentPanel({
             {videoFile ? (
               <div
                 style={{
-                  flex: "0 0 auto",
+                  flex: "1 1 auto",
+                  minWidth: 0,
                   fontSize: isMobile ? 11 : 12,
                   opacity: 0.88,
-                  whiteSpace: "nowrap",
+                  whiteSpace: "normal",
+                  lineHeight: 1.4,
+                  overflowWrap: "anywhere",
                 }}
               >
                 1 vidéo ajoutée · {BOOSTER_MAX_VIDEO_MB_LABEL} max · {BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL} · IA : audio + captures
@@ -1080,14 +1083,19 @@ export default function PublishIntentPanel({
                 borderRadius: 14,
                 border: "1px solid rgba(76,195,255,0.22)",
                 background: "rgba(76,195,255,0.08)",
+                width: "100%",
                 maxWidth: "100%",
+                minWidth: 0,
+                boxSizing: "border-box",
+                overflow: "hidden",
               }}
             >
               <div
                 style={{
-                  width: isMobile ? "min(100%, 260px)" : 260,
-                  maxWidth: "100%",
-                  height: isMobile ? 146 : 146,
+                  width: isMobile ? "100%" : 260,
+                  maxWidth: isMobile ? "min(100%, 260px)" : "100%",
+                  aspectRatio: "16 / 9",
+                  height: "auto",
                   borderRadius: 12,
                   background: "#050816",
                   overflow: "hidden",
@@ -1144,9 +1152,6 @@ export default function PublishIntentPanel({
                   {formatVideoSeconds(videoDurationSeconds) ? (
                     <span>{formatVideoSeconds(videoDurationSeconds)}</span>
                   ) : null}
-                  <span>{BOOSTER_MAX_VIDEO_MB_LABEL} max</span>
-                  <span>{BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL}</span>
-                  <span>IA : audio + captures</span>
                 </div>
                 <button
                   type="button"
