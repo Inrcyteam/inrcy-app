@@ -444,6 +444,9 @@ export default function PublishImagesPanel({
                     style={{
                       width: isMobile ? "100%" : 320,
                       maxWidth: isMobile ? "min(100%, 300px)" : "100%",
+                      marginInline: isMobile ? "auto" : undefined,
+                      justifySelf: isMobile ? "center" : undefined,
+                      alignSelf: isMobile ? "center" : undefined,
                       aspectRatio: "16 / 9",
                       height: "auto",
                       borderRadius: 14,
@@ -487,26 +490,11 @@ export default function PublishImagesPanel({
                       fontSize: isMobile ? 11 : 12,
                       maxWidth: isMobile ? 280 : 360,
                       overflowWrap: "anywhere",
+                      lineHeight: 1.25,
                     }}
                   >
                     {videoFile?.name || "Vidéo sélectionnée"}
                   </strong>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: isMobile ? "center" : "flex-start",
-                      gap: 7,
-                      flexWrap: "wrap",
-                      fontSize: isMobile ? 11 : 12,
-                      opacity: 0.78,
-                    }}
-                  >
-                    {formatVideoSeconds(videoDurationSeconds) ? (
-                      <span>{formatVideoSeconds(videoDurationSeconds)}</span>
-                    ) : null}
-                    <span>Publiée sur {getImageAdapterLabel(activeImageChannel)}</span>
-                  </div>
                   <button
                     type="button"
                     className={styles.secondaryBtn}

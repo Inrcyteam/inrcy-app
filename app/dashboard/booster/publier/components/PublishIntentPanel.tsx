@@ -1094,6 +1094,9 @@ export default function PublishIntentPanel({
                 style={{
                   width: isMobile ? "100%" : 260,
                   maxWidth: isMobile ? "min(100%, 260px)" : "100%",
+                  marginInline: isMobile ? "auto" : undefined,
+                  justifySelf: isMobile ? "center" : undefined,
+                  alignSelf: isMobile ? "center" : undefined,
                   aspectRatio: "16 / 9",
                   height: "auto",
                   borderRadius: 12,
@@ -1122,44 +1125,47 @@ export default function PublishIntentPanel({
               </div>
               <div
                 style={{
-                  display: "grid",
-                  gap: 7,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: isMobile ? "center" : "space-between",
+                  gap: 8,
                   minWidth: 0,
-                  justifyItems: isMobile ? "center" : "start",
+                  width: isMobile ? "100%" : "min(360px, 100%)",
                   textAlign: isMobile ? "center" : "left",
                 }}
               >
                 <strong
                   style={{
                     fontSize: isMobile ? 11 : 12,
-                    maxWidth: isMobile ? 260 : 320,
+                    maxWidth: isMobile ? 230 : 300,
                     overflowWrap: "anywhere",
+                    lineHeight: 1.25,
                   }}
                 >
                   {videoFile.name}
                 </strong>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: isMobile ? "center" : "flex-start",
-                    gap: 7,
-                    flexWrap: "wrap",
-                    fontSize: isMobile ? 11 : 12,
-                    opacity: 0.78,
-                  }}
-                >
-                  {formatVideoSeconds(videoDurationSeconds) ? (
-                    <span>{formatVideoSeconds(videoDurationSeconds)}</span>
-                  ) : null}
-                </div>
                 <button
                   type="button"
-                  className={styles.secondaryBtn}
+                  aria-label="Supprimer la vidéo"
+                  title="Supprimer la vidéo"
                   onClick={removeVideo}
-                  style={{ minHeight: 30, padding: "5px 10px", fontSize: 11 }}
+                  style={{
+                    flex: "0 0 auto",
+                    width: isMobile ? 30 : 32,
+                    height: isMobile ? 30 : 32,
+                    borderRadius: 999,
+                    border: "1px solid rgba(255,255,255,0.22)",
+                    background: "rgba(255,255,255,0.10)",
+                    color: "#fff",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    cursor: "pointer",
+                    fontSize: isMobile ? 13 : 14,
+                    boxShadow: "0 8px 18px rgba(0,0,0,0.22)",
+                  }}
                 >
-                  Supprimer
+                  🗑️
                 </button>
               </div>
             </div>
