@@ -77,7 +77,7 @@ type PublishImagesPanelProps = {
 export default function PublishImagesPanel({
   styles,
   isMobile,
-  publicationMediaType,
+  publicationMediaType: _publicationMediaType,
   channelMediaModes,
   setChannelMediaMode,
   images,
@@ -108,13 +108,64 @@ export default function PublishImagesPanel({
   removeImage,
   moveChannelImage,
 }: PublishImagesPanelProps) {
-  const publicationImagesPanelVisible = true;
   const hasImages = images.length > 0;
   const hasVideoMedia = Boolean(videoFile || videoPreviewUrl);
   const imagesLimitReached = images.length >= BOOSTER_MAX_IMAGE_COUNT;
   const pickImagesDisabled = imagesLimitReached;
   const pickVideoDisabled = hasVideoMedia;
   const cameraDisabled = !isMobile || imagesLimitReached;
+  const activeMode: ChannelMediaMode =
+    channelMediaModes[activeImageChannel] ||
+    (hasVideoMedia ? "video" : hasImages ? "images" : "none");
+  const activeImageKeys = channelImageEditors[activeImageChannel]?.imageKeys || [];
+  const activeMediaCount =
+    activeMode === "video" && hasVideoMedia
+      ? 1
+      : activeMode === "images"
+        ? activeImageKeys.length
+        : 0;
+
+  const getModeForChannel = (channel: ChannelKey): ChannelMediaMode =>
+    channelMediaModes[channel] ||
+    (hasVideoMedia ? "video" : hasImages ? "images" : "none");
+
+  const getMediaCountForChannel = (channel: ChannelKey) => {
+    const mode = getModeForChannel(channel);
+    if (mode === "video") return hasVideoMedia ? 1 : 0;
+    if (mode === "images") return channelImageEditors[channel]?.imageKeys?.length || 0;
+    return 0;
+  };
+
+  const mediaModeButton = (mode: ChannelMediaMode, label: string, disabled = false) => {
+    const active = activeMode === mode;
+    return (
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={() => !disabled && setChannelMediaMode(activeImageChannel, mode)}
+        style={{
+          border: active
+            ? "1px solid rgba(76,195,255,0.62)"
+            : "1px solid rgba(255,255,255,0.13)",
+          background: active
+            ? "linear-gradient(135deg, rgba(36,145,190,0.34), rgba(124,92,255,0.22))"
+            : "rgba(255,255,255,0.055)",
+          color: active ? "#e6f8ff" : "rgba(255,255,255,0.76)",
+          boxShadow: active ? "0 0 0 1px rgba(76,195,255,0.16) inset" : undefined,
+          borderRadius: 999,
+          minHeight: 36,
+          padding: "0 14px",
+          fontSize: 12,
+          fontWeight: 900,
+          cursor: disabled ? "not-allowed" : "pointer",
+          opacity: disabled ? 0.45 : 1,
+          whiteSpace: "nowrap",
+        }}
+      >
+        {label}
+      </button>
+    );
+  };
 
   return (
     <div
@@ -157,7 +208,7 @@ export default function PublishImagesPanel({
           gap: 10,
           flexWrap: "wrap",
           alignItems: "center",
-          marginBottom: publicationImagesPanelVisible ? 12 : 0,
+          marginBottom: 14,
         }}
       >
         <button
@@ -202,9 +253,7 @@ export default function PublishImagesPanel({
               ? "Utilisable en version mobile"
               : imagesLimitReached
                 ? `${BOOSTER_MAX_IMAGE_COUNT} images maximum`
-                : hasImages
-                  ? "Ouvrir l’Appareil iNrCy en mode photo"
-                  : "Ouvrir l’Appareil iNrCy pour prendre une photo ou une vidéo"
+                : "Ouvrir l’Appareil iNrCy pour prendre une photo"
           }
           style={{ display: "inline-flex" }}
         >
@@ -230,7 +279,7 @@ export default function PublishImagesPanel({
           }}
         >
           {hasImages || hasVideoMedia
-            ? `${hasImages ? `${images.length}/${BOOSTER_MAX_IMAGE_COUNT} image${images.length > 1 ? "s" : ""}` : ""}${hasImages && hasVideoMedia ? " · " : ""}${hasVideoMedia ? `1 vidéo · IA vidéo + audio · ${BOOSTER_MAX_VIDEO_MB_LABEL} max` : ""}`
+            ? `${images.length}/${BOOSTER_MAX_IMAGE_COUNT} image${images.length > 1 ? "s" : ""}${hasVideoMedia ? ` · 1 vidéo · IA vidéo + audio · ${BOOSTER_MAX_VIDEO_MB_LABEL} max` : ""}`
             : "Aucun média ajouté"}
         </div>
       </div>
@@ -239,445 +288,396 @@ export default function PublishImagesPanel({
           {imgError}
         </div>
       ) : null}
-      {publicationImagesPanelVisible ? (
-        <>
-          {hasVideoMedia && videoFile ? (
-            <div
-              style={{
-                display: isMobile ? "grid" : "flex",
-                alignItems: "center",
-                justifyContent: isMobile ? "center" : "flex-start",
-                gap: isMobile ? 10 : 12,
-                borderRadius: 16,
-                padding: 12,
-                border: "1px solid rgba(76,195,255,0.22)",
-                background: "rgba(76,195,255,0.08)",
-                maxWidth: "100%",
-              }}
-            >
-              {videoPreviewUrl ? (
-                <div
+
+      {selectedChannels.length ? (
+        <div style={{ display: "grid", gap: 12 }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: isMobile
+                ? "repeat(2, minmax(0, 1fr))"
+                : `repeat(${Math.min(Math.max(selectedChannels.length, 1), 6)}, minmax(0, 1fr))`,
+              gap: 8,
+              width: "100%",
+            }}
+          >
+            {selectedChannels.map((channel) => {
+              const count = getMediaCountForChannel(channel);
+              const toneReady = count > 0;
+              const isActive = activeImageChannel === channel;
+              return (
+                <button
+                  key={channel}
+                  type="button"
+                  onClick={() => setSynchronizedActiveChannel(channel)}
                   style={{
-                    width: isMobile ? "min(100%, 260px)" : 260,
-                    maxWidth: "100%",
-                    height: isMobile ? 146 : 146,
-                    borderRadius: 12,
-                    background: "#050816",
-                    overflow: "hidden",
-                    border: "3px solid #020617",
-                    boxSizing: "border-box",
-                    display: "flex",
+                    minWidth: 0,
+                    width: "100%",
+                    minHeight: 38,
+                    borderRadius: 999,
+                    padding: "0 10px",
+                    border: toneReady
+                      ? "1px solid rgba(34,197,94,0.34)"
+                      : "1px solid rgba(251,191,36,0.36)",
+                    background: toneReady
+                      ? "rgba(34,197,94,0.10)"
+                      : "rgba(251,191,36,0.10)",
+                    color: toneReady ? "#bbf7d0" : "#fde68a",
+                    boxShadow: isActive
+                      ? "0 0 0 1px rgba(76,195,255,0.40) inset, 0 0 14px rgba(76,195,255,0.16)"
+                      : undefined,
+                    fontSize: isMobile ? 12 : 13,
+                    fontWeight: 900,
+                    cursor: "pointer",
+                    display: "inline-flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    boxShadow: "0 10px 28px rgba(0,0,0,0.28)",
-                  }}
-                >
-                  <video
-                    src={videoPreviewUrl}
-                    controls
-                    playsInline
-                    preload="metadata"
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "contain",
-                      borderRadius: 9,
-                      background: "#050816",
-                      display: "block",
-                    }}
-                  />
-                </div>
-              ) : null}
-              <div
-                style={{
-                  display: "grid",
-                  gap: 7,
-                  minWidth: 0,
-                  justifyItems: isMobile ? "center" : "start",
-                  textAlign: isMobile ? "center" : "left",
-                }}
-              >
-                <strong
-                  style={{
-                    fontSize: isMobile ? 11 : 12,
-                    maxWidth: isMobile ? 260 : 320,
-                    overflowWrap: "anywhere",
-                  }}
-                >
-                  {videoFile.name}
-                </strong>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: isMobile ? "center" : "flex-start",
                     gap: 7,
-                    flexWrap: "wrap",
-                    fontSize: isMobile ? 11 : 12,
-                    opacity: 0.78,
+                    overflow: "hidden",
                   }}
                 >
-                  {formatVideoSeconds(videoDurationSeconds) ? (
-                    <span>{formatVideoSeconds(videoDurationSeconds)}</span>
-                  ) : null}
-                  <span>{BOOSTER_MAX_VIDEO_MB_LABEL} max</span>
-                  <span>{BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL}</span>
-                  <span>IA : captures + audio</span>
-                </div>
-                <button
-                  type="button"
-                  className={styles.secondaryBtn}
-                  onClick={removeVideo}
-                  style={{ minHeight: 30, padding: "5px 10px", fontSize: 11 }}
-                >
-                  Supprimer
+                  <span
+                    style={{
+                      minWidth: 0,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {getImageAdapterLabel(channel)}
+                  </span>
+                  <span
+                    style={{
+                      flex: "0 0 auto",
+                      minWidth: 20,
+                      height: 20,
+                      padding: "0 6px",
+                      borderRadius: 999,
+                      display: "inline-grid",
+                      placeItems: "center",
+                      fontSize: 11,
+                      fontWeight: 900,
+                      background: "rgba(255,255,255,0.12)",
+                    }}
+                  >
+                    {count}
+                  </span>
                 </button>
-              </div>
-            </div>
-          ) : null}
-          {selectedChannels.length ? (
+              );
+            })}
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              flexWrap: "wrap",
+              alignItems: "center",
+            }}
+          >
+            <span style={{ fontSize: 12, fontWeight: 900, opacity: 0.76 }}>
+              {getImageAdapterLabel(activeImageChannel)} :
+            </span>
+            {mediaModeButton("video", "🎥 Vidéo", !hasVideoMedia)}
+            {mediaModeButton("images", "📷 Photos", !hasImages)}
+            {mediaModeButton("none", "🚫 Aucun")}
+          </div>
+
+          {activeMode === "none" ? (
             <div
               style={{
-                display: "grid",
-                gap: 10,
-                marginTop: hasVideoMedia && videoFile ? 12 : 0,
+                borderRadius: 16,
+                padding: "18px 16px",
+                border: "1px solid rgba(251,191,36,0.22)",
+                background: "rgba(251,191,36,0.08)",
+                color: "#fde68a",
+                fontSize: 13,
+                fontWeight: 800,
               }}
             >
+              Ce canal publiera uniquement le texte.
+            </div>
+          ) : activeMode === "video" ? (
+            hasVideoMedia ? (
               <div
                 style={{
-                  display: "flex",
-                  gap: 8,
-                  flexWrap: "wrap",
+                  display: isMobile ? "grid" : "flex",
                   alignItems: "center",
+                  justifyContent: isMobile ? "center" : "flex-start",
+                  gap: isMobile ? 10 : 12,
+                  borderRadius: 16,
+                  padding: 12,
+                  border: "1px solid rgba(76,195,255,0.22)",
+                  background: "rgba(76,195,255,0.08)",
+                  maxWidth: "100%",
                 }}
               >
-                {selectedChannels.map((channel) => {
-                  const mode =
-                    channelMediaModes[channel] ||
-                    (hasVideoMedia ? "video" : hasImages ? "images" : "none");
-                  const modeStyle = (active: boolean) =>
-                    ({
-                      border: active
-                        ? "1px solid rgba(76,195,255,0.55)"
-                        : "1px solid rgba(255,255,255,0.14)",
-                      background: active
-                        ? "rgba(76,195,255,0.14)"
-                        : "rgba(255,255,255,0.06)",
-                      color: active ? "#dff6ff" : "rgba(255,255,255,0.78)",
-                      borderRadius: 999,
-                      padding: "6px 10px",
-                      fontSize: 11,
-                      fontWeight: 800,
-                      cursor: "pointer",
-                      display: "inline-flex",
+                {videoPreviewUrl ? (
+                  <div
+                    style={{
+                      width: isMobile ? "min(100%, 300px)" : 320,
+                      maxWidth: "100%",
+                      height: isMobile ? 168 : 180,
+                      borderRadius: 14,
+                      background: "#020617",
+                      overflow: "hidden",
+                      border: "4px solid #020617",
+                      boxSizing: "border-box",
+                      display: "flex",
                       alignItems: "center",
-                      gap: 5,
-                    }) as const;
-                  const mark = (value: ChannelMediaMode) =>
-                    mode === value ? "◉" : "○";
-                  return (
-                    <div
-                      key={channel}
+                      justifyContent: "center",
+                      boxShadow: "0 12px 30px rgba(0,0,0,0.34)",
+                    }}
+                  >
+                    <video
+                      src={videoPreviewUrl}
+                      controls
+                      playsInline
+                      preload="metadata"
                       style={{
-                        display: "grid",
-                        gap: 6,
-                        padding: "8px 10px",
-                        borderRadius: 14,
-                        border:
-                          activeImageChannel === channel
-                            ? "1px solid rgba(76,195,255,0.35)"
-                            : "1px solid rgba(255,255,255,0.10)",
-                        background:
-                          activeImageChannel === channel
-                            ? "rgba(76,195,255,0.08)"
-                            : "rgba(0,0,0,0.10)",
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "contain",
+                        borderRadius: 10,
+                        background: "#020617",
+                        display: "block",
                       }}
+                    />
+                  </div>
+                ) : null}
+                <div
+                  style={{
+                    display: "grid",
+                    gap: 7,
+                    minWidth: 0,
+                    justifyItems: isMobile ? "center" : "start",
+                    textAlign: isMobile ? "center" : "left",
+                  }}
+                >
+                  <strong
+                    style={{
+                      fontSize: isMobile ? 11 : 12,
+                      maxWidth: isMobile ? 280 : 360,
+                      overflowWrap: "anywhere",
+                    }}
+                  >
+                    {videoFile?.name || "Vidéo sélectionnée"}
+                  </strong>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: isMobile ? "center" : "flex-start",
+                      gap: 7,
+                      flexWrap: "wrap",
+                      fontSize: isMobile ? 11 : 12,
+                      opacity: 0.78,
+                    }}
+                  >
+                    {formatVideoSeconds(videoDurationSeconds) ? (
+                      <span>{formatVideoSeconds(videoDurationSeconds)}</span>
+                    ) : null}
+                    <span>{BOOSTER_MAX_VIDEO_MB_LABEL} max</span>
+                    <span>{BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL}</span>
+                    <span>Publiée sur {getImageAdapterLabel(activeImageChannel)}</span>
+                  </div>
+                  <button
+                    type="button"
+                    className={styles.secondaryBtn}
+                    onClick={removeVideo}
+                    style={{ minHeight: 30, padding: "5px 10px", fontSize: 11 }}
+                  >
+                    Supprimer la vidéo
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div style={{ fontSize: 13, opacity: 0.75 }}>
+                Ajoutez une vidéo ou choisissez Photos / Aucun média pour ce canal.
+              </div>
+            )
+          ) : !images.length ? (
+            <div style={{ fontSize: 13, opacity: 0.75 }}>
+              Ajoutez une ou plusieurs images, ou choisissez Vidéo / Aucun média
+              pour ce canal.
+            </div>
+          ) : (
+            <>
+              {activeImageChannel === "gmb" ? (
+                <div
+                  style={{
+                    marginBottom: 12,
+                    borderRadius: 14,
+                    padding: "12px 14px",
+                    border: "1px solid rgba(251,191,36,0.26)",
+                    background: "rgba(251,191,36,0.10)",
+                    display: "grid",
+                    gap: 10,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 13,
+                      lineHeight: 1.5,
+                      color: "#fde68a",
+                    }}
+                  >
+                    <strong>Google Business : 1 seule photo par publication.</strong>{" "}
+                    Les autres images restent disponibles sur les autres canaux.
+                  </div>
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      className={styles.secondaryBtn}
+                      onClick={() => {
+                        setImgError("");
+                        if (images.length >= BOOSTER_MAX_IMAGE_COUNT) return;
+                        gmbFileInputRef.current?.click();
+                      }}
+                      disabled={images.length >= BOOSTER_MAX_IMAGE_COUNT}
+                      title={
+                        images.length >= BOOSTER_MAX_IMAGE_COUNT
+                          ? `${BOOSTER_MAX_IMAGE_COUNT} images maximum`
+                          : undefined
+                      }
+                      style={{
+                        opacity: images.length >= BOOSTER_MAX_IMAGE_COUNT ? 0.48 : 1,
+                        filter:
+                          images.length >= BOOSTER_MAX_IMAGE_COUNT
+                            ? "grayscale(1)"
+                            : undefined,
+                        cursor:
+                          images.length >= BOOSTER_MAX_IMAGE_COUNT
+                            ? "not-allowed"
+                            : "pointer",
+                      }}
+                    >
+                      + Ajouter une image spécifique Google Business
+                    </button>
+                    <span
+                      title={
+                        isMobile
+                          ? images.length >= BOOSTER_MAX_IMAGE_COUNT
+                            ? `${BOOSTER_MAX_IMAGE_COUNT} images maximum`
+                            : "Ouvrir l’Appareil iNrCy pour Google Business"
+                          : "Utilisable en version mobile"
+                      }
+                      style={{ display: "inline-flex" }}
                     >
                       <button
                         type="button"
-                        onClick={() => setSynchronizedActiveChannel(channel)}
+                        className={styles.secondaryBtn}
+                        onClick={
+                          isMobile
+                            ? () => {
+                                setImgError("");
+                                if (images.length >= BOOSTER_MAX_IMAGE_COUNT) return;
+                                onTakePhotoClick("gmb");
+                              }
+                            : undefined
+                        }
+                        disabled={isMobile && images.length >= BOOSTER_MAX_IMAGE_COUNT}
+                        aria-disabled={!isMobile || images.length >= BOOSTER_MAX_IMAGE_COUNT}
                         style={{
-                          ...pillBtn,
-                          ...(activeImageChannel === channel
-                            ? pillBtnActive
-                            : {}),
-                          padding: "5px 9px",
-                          fontSize: 11,
-                          justifyContent: "center",
+                          opacity:
+                            !isMobile || images.length >= BOOSTER_MAX_IMAGE_COUNT
+                              ? 0.48
+                              : 1,
+                          filter:
+                            !isMobile || images.length >= BOOSTER_MAX_IMAGE_COUNT
+                              ? "grayscale(1)"
+                              : undefined,
+                          cursor:
+                            !isMobile || images.length >= BOOSTER_MAX_IMAGE_COUNT
+                              ? "not-allowed"
+                              : "pointer",
                         }}
                       >
-                        {getImageAdapterLabel(channel)}
+                        📷 Appareil iNrCy Google Business
                       </button>
-                      <div
-                        style={{ display: "flex", gap: 6, flexWrap: "wrap" }}
-                      >
-                        <button
-                          type="button"
-                          disabled={!hasVideoMedia}
-                          onClick={() => setChannelMediaMode(channel, "video")}
-                          style={{
-                            ...modeStyle(mode === "video"),
-                            opacity: hasVideoMedia ? 1 : 0.45,
-                            cursor: hasVideoMedia ? "pointer" : "not-allowed",
-                          }}
-                        >
-                          {mark("video")} 🎥 Vidéo
-                        </button>
-                        <button
-                          type="button"
-                          disabled={!hasImages}
-                          onClick={() => setChannelMediaMode(channel, "images")}
-                          style={{
-                            ...modeStyle(mode === "images"),
-                            opacity: hasImages ? 1 : 0.45,
-                            cursor: hasImages ? "pointer" : "not-allowed",
-                          }}
-                        >
-                          {mark("images")} 📷 Photos
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setChannelMediaMode(channel, "none")}
-                          style={modeStyle(mode === "none")}
-                        >
-                          {mark("none")} 🚫 Aucun
-                        </button>
-                      </div>
-                    </div>
-                  );
+                    </span>
+                  </div>
+                </div>
+              ) : null}
+              <ChannelImageAdapterCardsPanel
+                tabs={imageAdapterTabs}
+                activeChannel={activeImageChannel}
+                onActiveChannelChange={(key) =>
+                  setSynchronizedActiveChannel(key as ChannelKey)
+                }
+                channelTitle={getImageAdapterLabel(activeImageChannel)}
+                formatLabel={
+                  activeImageChannel === "inrcy_site" ||
+                  activeImageChannel === "site_web"
+                    ? "Rendu site / iframe"
+                    : `Format final : ${CHANNEL_PRESETS[activeImageChannel].width}×${CHANNEL_PRESETS[activeImageChannel].height}`
+                }
+                aspectRatio={previewAspectRatio}
+                items={imageKeys.map((key, index) => {
+                  const selectedKeysForActiveChannel =
+                    channelImageEditors[activeImageChannel]?.imageKeys || [];
+                  const included = selectedKeysForActiveChannel.includes(key);
+                  const usedChannelCount = selectedChannels.filter((channel) =>
+                    (channelImageEditors[channel]?.imageKeys || []).includes(key),
+                  ).length;
+                  const disabledByGoogleBusinessLimit =
+                    activeImageChannel === "gmb" &&
+                    selectedKeysForActiveChannel.length >= 1 &&
+                    !included;
+                  const transform =
+                    channelImageEditors[activeImageChannel]?.transforms?.[key] ||
+                    getOptimizedTransform(activeImageChannel, imageMetaByKey[key]);
+                  const bgMode = getBackgroundMode(transform);
+                  return {
+                    key,
+                    previewUrl: previewByKey[key],
+                    included,
+                    disabled: disabledByGoogleBusinessLimit,
+                    title: `Image ${index + 1}`,
+                    subtitle: disabledByGoogleBusinessLimit
+                      ? "Une seule photo par publication Google Business"
+                      : included
+                        ? `Publiée sur ce canal · utilisée sur ${usedChannelCount} canal${usedChannelCount > 1 ? "aux" : ""}`
+                        : `Retirée de ce canal · utilisée sur ${usedChannelCount} canal${usedChannelCount > 1 ? "aux" : ""}`,
+                    fitLabel: transform.fit === "cover" ? "Remplir" : "Adapter",
+                    backgroundMode: bgMode,
+                    backgroundColor: transform.backgroundColor,
+                    transform,
+                    preset: CHANNEL_PRESETS[activeImageChannel],
+                    imageMeta: imageMetaByKey[key],
+                    onToggle: () => toggleChannelImage(activeImageChannel, key),
+                    onAdapt: () => openImageEditor(activeImageChannel, key),
+                    onReset: () => resetChannelImage(activeImageChannel, key),
+                    onRemove: included
+                      ? () => toggleChannelImage(activeImageChannel, key)
+                      : undefined,
+                    onRemoveEverywhere: () => removeImage(index),
+                    onMovePrevious:
+                      included && selectedKeysForActiveChannel.indexOf(key) > 0
+                        ? () => moveChannelImage(activeImageChannel, key, -1)
+                        : undefined,
+                    onMoveNext:
+                      included &&
+                      selectedKeysForActiveChannel.indexOf(key) >= 0 &&
+                      selectedKeysForActiveChannel.indexOf(key) <
+                        selectedKeysForActiveChannel.length - 1
+                        ? () => moveChannelImage(activeImageChannel, key, 1)
+                        : undefined,
+                  };
                 })}
-              </div>
-              {(channelMediaModes[activeImageChannel] ||
-                (hasVideoMedia ? "video" : hasImages ? "images" : "none")) ===
-              "none" ? (
-                <div style={{ fontSize: 13, opacity: 0.75 }}>
-                  Ce canal publiera uniquement le texte.
-                </div>
-              ) : (channelMediaModes[activeImageChannel] ||
-                  (hasVideoMedia ? "video" : hasImages ? "images" : "none")) ===
-                "video" ? (
-                <div style={{ fontSize: 13, opacity: 0.75 }}>
-                  Ce canal publiera la vidéo sélectionnée.
-                </div>
-              ) : !images.length ? (
-                <div style={{ fontSize: 13, opacity: 0.75 }}>
-                  Ajoutez une ou plusieurs images, ou choisissez Vidéo / Aucun
-                  média pour ce canal.
-                </div>
-              ) : (
-                <>
-                  {activeImageChannel === "gmb" ? (
-                    <div
-                      style={{
-                        marginBottom: 12,
-                        borderRadius: 14,
-                        padding: "12px 14px",
-                        border: "1px solid rgba(251,191,36,0.26)",
-                        background: "rgba(251,191,36,0.10)",
-                        display: "grid",
-                        gap: 10,
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: 13,
-                          lineHeight: 1.5,
-                          color: "#fde68a",
-                        }}
-                      >
-                        <strong>
-                          Google Business : 1 seule photo par publication.
-                        </strong>{" "}
-                        Les autres images restent disponibles sur les autres
-                        canaux.
-                      </div>
-                      <div
-                        style={{ display: "flex", gap: 10, flexWrap: "wrap" }}
-                      >
-                        <button
-                          type="button"
-                          className={styles.secondaryBtn}
-                          onClick={() => {
-                            setImgError("");
-                            if (images.length >= BOOSTER_MAX_IMAGE_COUNT)
-                              return;
-                            gmbFileInputRef.current?.click();
-                          }}
-                          disabled={images.length >= BOOSTER_MAX_IMAGE_COUNT}
-                          title={
-                            images.length >= BOOSTER_MAX_IMAGE_COUNT
-                              ? `${BOOSTER_MAX_IMAGE_COUNT} images maximum`
-                              : undefined
-                          }
-                          style={{
-                            opacity:
-                              images.length >= BOOSTER_MAX_IMAGE_COUNT
-                                ? 0.48
-                                : 1,
-                            filter:
-                              images.length >= BOOSTER_MAX_IMAGE_COUNT
-                                ? "grayscale(1)"
-                                : undefined,
-                            cursor:
-                              images.length >= BOOSTER_MAX_IMAGE_COUNT
-                                ? "not-allowed"
-                                : "pointer",
-                          }}
-                        >
-                          + Ajouter une image spécifique Google Business
-                        </button>
-                        <span
-                          title={
-                            isMobile
-                              ? images.length >= BOOSTER_MAX_IMAGE_COUNT
-                                ? `${BOOSTER_MAX_IMAGE_COUNT} images maximum`
-                                : "Ouvrir l’Appareil iNrCy pour Google Business"
-                              : "Utilisable en version mobile"
-                          }
-                          style={{ display: "inline-flex" }}
-                        >
-                          <button
-                            type="button"
-                            className={styles.secondaryBtn}
-                            onClick={
-                              isMobile
-                                ? () => {
-                                    setImgError("");
-                                    if (
-                                      images.length >= BOOSTER_MAX_IMAGE_COUNT
-                                    )
-                                      return;
-                                    onTakePhotoClick("gmb");
-                                  }
-                                : undefined
-                            }
-                            disabled={
-                              isMobile &&
-                              images.length >= BOOSTER_MAX_IMAGE_COUNT
-                            }
-                            aria-disabled={
-                              !isMobile ||
-                              images.length >= BOOSTER_MAX_IMAGE_COUNT
-                            }
-                            style={{
-                              opacity:
-                                !isMobile ||
-                                images.length >= BOOSTER_MAX_IMAGE_COUNT
-                                  ? 0.48
-                                  : 1,
-                              filter:
-                                !isMobile ||
-                                images.length >= BOOSTER_MAX_IMAGE_COUNT
-                                  ? "grayscale(1)"
-                                  : undefined,
-                              cursor:
-                                !isMobile ||
-                                images.length >= BOOSTER_MAX_IMAGE_COUNT
-                                  ? "not-allowed"
-                                  : "pointer",
-                            }}
-                          >
-                            📷 Appareil iNrCy Google Business
-                          </button>
-                        </span>
-                      </div>
-                    </div>
-                  ) : null}
-                  <ChannelImageAdapterCardsPanel
-                    tabs={imageAdapterTabs}
-                    activeChannel={activeImageChannel}
-                    onActiveChannelChange={(key) =>
-                      setSynchronizedActiveChannel(key as ChannelKey)
-                    }
-                    channelTitle={getImageAdapterLabel(activeImageChannel)}
-                    formatLabel={
-                      activeImageChannel === "inrcy_site" ||
-                      activeImageChannel === "site_web"
-                        ? "Rendu site / iframe"
-                        : `Format final : ${CHANNEL_PRESETS[activeImageChannel].width}×${CHANNEL_PRESETS[activeImageChannel].height}`
-                    }
-                    aspectRatio={previewAspectRatio}
-                    items={imageKeys.map((key, index) => {
-                      const selectedKeysForActiveChannel =
-                        channelImageEditors[activeImageChannel]?.imageKeys ||
-                        [];
-                      const included =
-                        selectedKeysForActiveChannel.includes(key);
-                      const usedChannelCount = selectedChannels.filter(
-                        (channel) =>
-                          (
-                            channelImageEditors[channel]?.imageKeys || []
-                          ).includes(key),
-                      ).length;
-                      const disabledByGoogleBusinessLimit =
-                        activeImageChannel === "gmb" &&
-                        selectedKeysForActiveChannel.length >= 1 &&
-                        !included;
-                      const transform =
-                        channelImageEditors[activeImageChannel]?.transforms?.[
-                          key
-                        ] ||
-                        getOptimizedTransform(
-                          activeImageChannel,
-                          imageMetaByKey[key],
-                        );
-                      const bgMode = getBackgroundMode(transform);
-                      return {
-                        key,
-                        previewUrl: previewByKey[key],
-                        included,
-                        disabled: disabledByGoogleBusinessLimit,
-                        title: `Image ${index + 1}`,
-                        subtitle: disabledByGoogleBusinessLimit
-                          ? "Une seule photo par publication Google Business"
-                          : included
-                            ? `Publiée sur ce canal · utilisée sur ${usedChannelCount} canal${usedChannelCount > 1 ? "aux" : ""}`
-                            : `Retirée de ce canal · utilisée sur ${usedChannelCount} canal${usedChannelCount > 1 ? "aux" : ""}`,
-                        fitLabel:
-                          transform.fit === "cover" ? "Remplir" : "Adapter",
-                        backgroundMode: bgMode,
-                        backgroundColor: transform.backgroundColor,
-                        transform,
-                        preset: CHANNEL_PRESETS[activeImageChannel],
-                        imageMeta: imageMetaByKey[key],
-                        onToggle: () =>
-                          toggleChannelImage(activeImageChannel, key),
-                        onAdapt: () => openImageEditor(activeImageChannel, key),
-                        onReset: () =>
-                          resetChannelImage(activeImageChannel, key),
-                        onRemove: included
-                          ? () => toggleChannelImage(activeImageChannel, key)
-                          : undefined,
-                        onRemoveEverywhere: () => removeImage(index),
-                        onMovePrevious:
-                          included &&
-                          selectedKeysForActiveChannel.indexOf(key) > 0
-                            ? () =>
-                                moveChannelImage(activeImageChannel, key, -1)
-                            : undefined,
-                        onMoveNext:
-                          included &&
-                          selectedKeysForActiveChannel.indexOf(key) >= 0 &&
-                          selectedKeysForActiveChannel.indexOf(key) <
-                            selectedKeysForActiveChannel.length - 1
-                            ? () => moveChannelImage(activeImageChannel, key, 1)
-                            : undefined,
-                      };
-                    })}
-                    buttonClassName={styles.secondaryBtn}
-                    pillButtonStyle={pillBtn}
-                    pillButtonActiveStyle={pillBtnActive}
-                  />
-                </>
-              )}
-            </div>
-          ) : (
-            <div style={{ fontSize: 13, opacity: 0.75 }}>
-              Sélectionnez d’abord vos canaux.
-            </div>
+                buttonClassName={styles.secondaryBtn}
+                pillButtonStyle={pillBtn}
+                pillButtonActiveStyle={pillBtnActive}
+                showTabs={false}
+              />
+            </>
           )}
-        </>
-      ) : null}
+        </div>
+      ) : (
+        <div style={{ fontSize: 13, opacity: 0.75 }}>
+          Sélectionnez d’abord vos canaux.
+        </div>
+      )}
     </div>
   );
 }
