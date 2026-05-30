@@ -339,7 +339,7 @@ export async function runGa4TopPages(accessToken: string, propertyId: string, da
         dimensions: [{ name: "pagePath" }],
         metrics: [{ name: "screenPageViews" }],
         orderBys: [{ metric: { metricName: "screenPageViews" }, desc: true }],
-        limit: 8,
+        limit: 50,
       }),
     }
   );
@@ -404,7 +404,7 @@ export async function runGscQuery(accessToken: string, property: string, days: n
         startDate: resolvedWindow.startDateYmd,
         endDate: resolvedWindow.endDateYmd,
         dimensions: ["query"],
-        rowLimit: 8,
+        rowLimit: 100,
       }),
     }
   );

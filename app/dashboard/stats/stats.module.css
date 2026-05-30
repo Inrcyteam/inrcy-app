@@ -1400,3 +1400,2831 @@
   border-color: rgba(168, 85, 247, 0.44);
   color: rgba(250, 245, 255, 0.96);
 }
+
+
+/* =========================
+   iNrStats — navigation par canal façon GPS
+   ========================= */
+.statsWorkspace {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+  margin-top: 24px;
+}
+
+.statsRail {
+  position: sticky;
+  top: 18px;
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+  border-radius: 22px;
+  border: 1px solid rgba(56, 189, 248, 0.16);
+  background:
+    radial-gradient(circle at 8% 6%, rgba(56, 189, 248, 0.12), transparent 42%),
+    rgba(8, 12, 22, 0.62);
+  box-shadow:
+    0 24px 70px rgba(0, 0, 0, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  backdrop-filter: blur(14px);
+}
+
+.statsRailItem {
+  appearance: none;
+  width: 100%;
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.045);
+  color: rgba(255, 255, 255, 0.82);
+  cursor: pointer;
+  text-align: left;
+  transition: transform .16s ease, border-color .16s ease, background .16s ease, box-shadow .16s ease;
+}
+
+.statsRailItem:hover {
+  transform: translateY(-1px);
+  border-color: rgba(125, 211, 252, 0.26);
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.statsRailItemActive {
+  border-color: rgba(125, 211, 252, 0.42);
+  background:
+    linear-gradient(135deg, rgba(56, 189, 248, 0.18), rgba(157, 78, 255, 0.14)),
+    rgba(255, 255, 255, 0.06);
+  box-shadow:
+    0 0 0 1px rgba(56, 189, 248, 0.10),
+    0 18px 46px rgba(0, 0, 0, 0.26);
+  color: rgba(255, 255, 255, 0.96);
+}
+
+.statsRailDot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.85);
+  box-shadow: 0 0 12px rgba(148, 163, 184, 0.32);
+}
+
+.statsRailItemConnected .statsRailDot,
+.statsRailItemActive .statsRailDot {
+  background: rgba(34, 197, 94, 0.96);
+  box-shadow: 0 0 14px rgba(34, 197, 94, 0.52);
+}
+
+.statsRailItemOff .statsRailDot {
+  background: rgba(251, 146, 60, 0.94);
+  box-shadow: 0 0 14px rgba(251, 146, 60, 0.36);
+}
+
+.statsRailText {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.statsRailText b {
+  font-size: 14px;
+  line-height: 1.1;
+  font-weight: 950;
+  color: rgba(255, 255, 255, 0.94);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.statsRailText small {
+  font-size: 11px;
+  line-height: 1.1;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.58);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.statsRailValue {
+  flex-shrink: 0;
+  padding: 5px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(0, 0, 0, 0.18);
+  color: rgba(255, 255, 255, 0.88);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.statsPanel {
+  min-width: 0;
+}
+
+.allStatsPanel,
+.channelStatsPanel {
+  border-radius: 24px;
+  border: 1px solid rgba(56, 189, 248, 0.18);
+  background:
+    radial-gradient(circle at 6% 4%, rgba(56, 189, 248, 0.11), transparent 38%),
+    radial-gradient(circle at 96% 8%, rgba(157, 78, 255, 0.12), transparent 42%),
+    rgba(13, 18, 30, 0.62);
+  box-shadow:
+    0 28px 90px rgba(0, 0, 0, 0.42),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  padding: 14px;
+  backdrop-filter: blur(14px);
+}
+
+.allStatsHero,
+.channelStatsHeader {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: start;
+  padding: 6px 6px 14px;
+}
+
+.allStatsEyebrow {
+  font-size: 12px;
+  line-height: 1.1;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 950;
+  color: rgba(56, 189, 248, 0.95);
+}
+
+.allStatsTitle {
+  margin: 6px 0 0;
+  color: rgba(255, 255, 255, 0.96);
+  font-size: 22px;
+  line-height: 1.08;
+  font-weight: 950;
+  letter-spacing: -0.02em;
+}
+
+.allStatsText {
+  margin: 7px 0 0;
+  max-width: 660px;
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 13px;
+  line-height: 1.35;
+  font-weight: 700;
+}
+
+.allStatsKpis {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.allStatsKpi {
+  min-width: 116px;
+  padding: 10px 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.055);
+  text-align: right;
+}
+
+.allStatsKpi span {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 900;
+  color: rgba(255, 255, 255, 0.60);
+  text-transform: uppercase;
+}
+
+.allStatsKpi b {
+  display: block;
+  color: rgba(255, 255, 255, 0.96);
+  font-size: 20px;
+  line-height: 1;
+  font-weight: 950;
+  letter-spacing: -0.02em;
+}
+
+.allStatsActions {
+  display: grid;
+  gap: 10px;
+}
+
+.allStatsActionCard {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 18px;
+  padding: 13px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.08), rgba(157, 78, 255, 0.09));
+  color: rgba(255, 255, 255, 0.86);
+  cursor: pointer;
+  text-align: left;
+  transition: transform .16s ease, border-color .16s ease, background .16s ease;
+}
+
+.allStatsActionCard:hover {
+  transform: translateY(-1px);
+  border-color: rgba(125, 211, 252, 0.26);
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.11), rgba(157, 78, 255, 0.12));
+}
+
+.allStatsActionMain {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.allStatsActionMain b {
+  color: rgba(255, 255, 255, 0.96);
+  font-size: 15px;
+  font-weight: 950;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.allStatsActionMain small {
+  color: rgba(255, 255, 255, 0.68);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.28;
+}
+
+.allStatsActionRevenue {
+  padding: 8px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(125, 211, 252, 0.22);
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.13), rgba(244, 114, 182, 0.13), rgba(157, 78, 255, 0.16));
+  color: rgba(255, 255, 255, 0.95);
+  font-size: 14px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.channelStatsPanel .cube {
+  margin-top: 2px;
+}
+
+.channelStatsPanel .cube:hover,
+.channelStatsPanel .cube:focus-within {
+  transform: none;
+}
+
+
+@media (max-width: 900px) {
+  .statsWorkspace {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 18px;
+  }
+
+  .statsRail {
+    position: relative;
+    top: auto;
+    display: flex;
+    overflow-x: auto;
+    padding: 10px;
+    scroll-snap-type: x proximity;
+  }
+
+  .statsRailItem {
+    min-width: 190px;
+    scroll-snap-align: start;
+  }
+
+  .allStatsHero,
+  .channelStatsHeader {
+    grid-template-columns: 1fr;
+  }
+
+  .allStatsKpis {
+    justify-content: flex-start;
+  }
+
+  .allStatsActionCard {
+    grid-template-columns: 1fr;
+  }
+
+  .allStatsActionRevenue {
+    justify-self: start;
+  }
+}
+
+
+/* iNrStats — vue globale corrigée : lignes par canal */
+.allStatsActionCard {
+  grid-template-columns: minmax(150px, 190px) minmax(0, 1fr) auto auto;
+}
+
+.allStatsChannelName {
+  color: rgba(255, 255, 255, 0.96);
+  font-size: 15px;
+  font-weight: 950;
+  letter-spacing: -0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.allStatsToolBadge {
+  justify-self: end;
+  padding: 7px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(93, 207, 255, 0.24);
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.18), rgba(157, 78, 255, 0.14));
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 12px;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  .allStatsActionCard {
+    grid-template-columns: 1fr;
+    align-items: start;
+  }
+
+  .allStatsToolBadge,
+  .allStatsActionRevenue {
+    justify-self: start;
+  }
+}
+
+
+/* iNrStats — second jet UX global + mobile menu */
+.statsMobileNavButton {
+  display: none;
+  appearance: none;
+  width: 44px;
+  height: 44px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.07);
+  color: rgba(255,255,255,0.92);
+  font-size: 22px;
+  font-weight: 950;
+  line-height: 1;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08);
+}
+
+.statsMobileDrawerOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(2, 6, 23, 0.62);
+  backdrop-filter: blur(10px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 92px 14px 18px;
+}
+
+.statsMobileDrawer {
+  width: min(100%, 360px);
+  border-radius: 22px;
+  border: 1px solid rgba(125, 211, 252, 0.22);
+  background:
+    radial-gradient(circle at 12% 0%, rgba(56, 189, 248, 0.13), transparent 42%),
+    linear-gradient(180deg, rgba(30, 41, 59, 0.96), rgba(11, 15, 26, 0.96));
+  box-shadow: 0 28px 90px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.08);
+  overflow: hidden;
+}
+
+.statsMobileDrawerHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 14px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.10);
+}
+
+.statsMobileDrawerHead strong {
+  color: rgba(255,255,255,0.96);
+  font-size: 16px;
+  font-weight: 950;
+}
+
+.statsMobileDrawerHead button {
+  appearance: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.06);
+  color: rgba(255,255,255,0.88);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.statsMobileDrawerList {
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+  max-height: min(70vh, 560px);
+  overflow-y: auto;
+}
+
+.statsMobileDrawerItem {
+  appearance: none;
+  width: 100%;
+  min-height: 58px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(255,255,255,0.045);
+  color: rgba(255,255,255,0.84);
+  text-align: left;
+  cursor: pointer;
+}
+
+.statsMobileDrawerItemActive {
+  border-color: rgba(125, 211, 252, 0.44);
+  background:
+    linear-gradient(135deg, rgba(56, 189, 248, 0.19), rgba(157, 78, 255, 0.16)),
+    rgba(255,255,255,0.06);
+  color: #fff;
+}
+
+.allStatsActionCard {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 18px;
+  padding: 13px;
+  display: grid;
+  grid-template-columns: minmax(210px, 1.25fr) minmax(230px, 0.95fr) minmax(170px, 0.8fr) auto;
+  gap: 14px;
+  align-items: center;
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.08), rgba(157, 78, 255, 0.09));
+  color: rgba(255, 255, 255, 0.86);
+  text-align: left;
+  transition: transform .16s ease, border-color .16s ease, background .16s ease;
+}
+
+.allStatsActionCard:hover {
+  transform: translateY(-1px);
+  border-color: rgba(125, 211, 252, 0.26);
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.11), rgba(157, 78, 255, 0.12));
+}
+
+.allStatsChannelButton {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.allStatsChannelName {
+  color: rgba(255, 255, 255, 0.98);
+  font-size: 17px;
+  line-height: 1.1;
+  font-weight: 950;
+  letter-spacing: -0.02em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.allStatsChannelButton small {
+  color: rgba(255, 255, 255, 0.67);
+  font-size: 12px;
+  line-height: 1.28;
+  font-weight: 700;
+}
+
+.allStatsMetrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  min-width: 0;
+}
+
+.allStatsMetrics span {
+  min-height: 52px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(0,0,0,0.16);
+  padding: 9px 10px;
+  display: grid;
+  align-content: center;
+  gap: 4px;
+}
+
+.allStatsMetrics small {
+  color: rgba(255,255,255,0.58);
+  font-size: 10px;
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.allStatsMetrics b {
+  color: rgba(255,255,255,0.96);
+  font-size: 17px;
+  line-height: 1;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.allStatsRecommendedAction {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  justify-items: start;
+}
+
+.allStatsRecommendedAction small {
+  color: rgba(255,255,255,0.66);
+  font-size: 12px;
+  line-height: 1.22;
+  font-weight: 750;
+}
+
+.allStatsToolBadge {
+  justify-self: start;
+  padding: 7px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(93, 207, 255, 0.24);
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.18), rgba(157, 78, 255, 0.14));
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 950;
+  white-space: nowrap;
+}
+
+.allStatsGoButton {
+  appearance: none;
+  border: 1px solid rgba(255,255,255,0.18);
+  border-radius: 999px;
+  padding: 11px 13px;
+  background: linear-gradient(135deg, rgba(56,189,248,0.30), rgba(157,78,255,0.32));
+  color: rgba(255,255,255,0.96);
+  font-size: 13px;
+  font-weight: 950;
+  cursor: pointer;
+  white-space: nowrap;
+  box-shadow: 0 14px 32px rgba(0,0,0,0.24), inset 0 1px 0 rgba(255,255,255,0.12);
+}
+
+.allStatsGoButton:hover {
+  transform: translateY(-1px);
+  border-color: rgba(125,211,252,0.36);
+}
+
+@media (max-width: 900px) {
+  .statsMobileNavButton {
+    display: inline-flex;
+  }
+
+  .statsWorkspace {
+    display: block;
+    margin-top: 14px;
+  }
+
+  .statsRail {
+    display: none !important;
+  }
+
+  .statsPanel {
+    width: 100%;
+  }
+
+  .allStatsHero,
+  .channelStatsHeader {
+    grid-template-columns: 1fr;
+  }
+
+  .allStatsKpis {
+    justify-content: flex-start;
+  }
+
+  .allStatsActionCard {
+    grid-template-columns: 1fr;
+    align-items: start;
+    gap: 11px;
+  }
+
+  .allStatsMetrics {
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+
+  .allStatsRecommendedAction,
+  .allStatsToolBadge,
+  .allStatsGoButton,
+  .allStatsActionRevenue {
+    justify-self: start;
+  }
+}
+
+@media (max-width: 430px) {
+  .allStatsMetrics {
+    grid-template-columns: 1fr;
+  }
+
+  .statsMobileDrawerOverlay {
+    padding-top: 82px;
+  }
+}
+
+
+/* iNrStats — polish final : global connecté + sélection plus visible + mobile propre */
+.statsRailItemGlobal.statsRailItemConnected .statsRailDot,
+.statsMobileDrawerItem.statsRailItemGlobal.statsRailItemConnected .statsRailDot {
+  background: rgba(34, 197, 94, 0.96);
+  box-shadow: 0 0 14px rgba(34, 197, 94, 0.52);
+}
+
+.statsRailItemGlobal.statsRailItemOff .statsRailDot,
+.statsMobileDrawerItem.statsRailItemGlobal.statsRailItemOff .statsRailDot {
+  background: rgba(148, 163, 184, 0.86);
+  box-shadow: 0 0 12px rgba(148, 163, 184, 0.30);
+}
+
+.statsRailItemActive {
+  border-color: rgba(70, 205, 255, 0.66) !important;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(56, 189, 248, 0.30), transparent 44%),
+    linear-gradient(135deg, rgba(14, 165, 233, 0.28), rgba(168, 85, 247, 0.28), rgba(244, 114, 182, 0.13)) !important;
+  box-shadow:
+    0 0 0 1px rgba(125, 211, 252, 0.18),
+    0 18px 46px rgba(56, 189, 248, 0.16),
+    0 18px 46px rgba(168, 85, 247, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
+}
+
+.statsMobileDrawerItemActive {
+  border-color: rgba(70, 205, 255, 0.66) !important;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(56, 189, 248, 0.28), transparent 44%),
+    linear-gradient(135deg, rgba(14, 165, 233, 0.28), rgba(168, 85, 247, 0.28), rgba(244, 114, 182, 0.13)) !important;
+  box-shadow:
+    0 0 0 1px rgba(125, 211, 252, 0.18),
+    0 16px 38px rgba(56, 189, 248, 0.14);
+}
+
+.statsRailItemActive .statsRailValue,
+.statsMobileDrawerItemActive .statsRailValue {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(0, 0, 0, 0.25);
+  color: #fff;
+}
+
+.allStatsKpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(104px, 1fr));
+  gap: 8px;
+}
+
+.allStatsKpi {
+  min-width: 0;
+  min-height: 58px;
+  display: grid;
+  align-content: center;
+}
+
+.allStatsActionCard {
+  min-height: 82px;
+}
+
+.allStatsChannelButton small,
+.allStatsRecommendedAction small {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+@media (max-width: 900px) {
+  .allStatsHero,
+  .channelStatsHeader {
+    text-align: center;
+  }
+
+  .allStatsText {
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .allStatsKpis {
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .allStatsKpi {
+    min-height: 74px;
+    text-align: center;
+    place-items: center;
+    padding: 12px 10px;
+  }
+
+  .allStatsKpi span {
+    min-height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    line-height: 1.15;
+  }
+
+  .allStatsKpi b {
+    font-size: 21px;
+  }
+
+  .allStatsActions {
+    gap: 12px;
+  }
+
+  .allStatsActionCard {
+    min-height: 218px;
+    padding: 16px 14px;
+    text-align: center;
+    justify-items: stretch;
+    align-content: center;
+    gap: 12px;
+  }
+
+  .allStatsChannelButton {
+    text-align: center;
+    justify-items: center;
+  }
+
+  .allStatsChannelName {
+    font-size: 18px;
+    white-space: normal;
+    text-align: center;
+  }
+
+  .allStatsChannelButton small {
+    max-width: 300px;
+    min-height: 34px;
+    -webkit-line-clamp: 3;
+    text-align: center;
+  }
+
+  .allStatsMetrics {
+    width: 100%;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .allStatsMetrics span {
+    min-height: 70px;
+    text-align: center;
+    place-items: center;
+    padding: 12px 8px;
+  }
+
+  .allStatsRecommendedAction {
+    justify-items: center;
+    text-align: center;
+    gap: 8px;
+  }
+
+  .allStatsRecommendedAction small {
+    max-width: 280px;
+    -webkit-line-clamp: 2;
+    text-align: center;
+  }
+
+  .allStatsToolBadge,
+  .allStatsGoButton,
+  .allStatsActionRevenue {
+    justify-self: center !important;
+  }
+
+  .allStatsGoButton {
+    min-width: 118px;
+    padding: 12px 18px;
+  }
+
+  .channelStatsHeader .allStatsKpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .channelStatsPanel .cubeTop {
+    text-align: center;
+    justify-content: center;
+  }
+
+  .channelStatsPanel .cubeTop > div:first-child {
+    display: grid;
+    justify-items: center;
+  }
+
+  .channelStatsPanel .cubeBadges {
+    justify-content: center;
+  }
+}
+
+@media (max-width: 430px) {
+  .allStatsKpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .allStatsActionCard {
+    min-height: 230px;
+  }
+
+  .allStatsMetrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .allStatsMetrics b {
+    font-size: 16px;
+  }
+}
+
+
+.channelStatsHeader .allStatsKpis {
+  grid-template-columns: repeat(2, minmax(112px, 1fr));
+}
+
+
+/* iNrStats — ajustements finaux desktop/mobile */
+.blockRowSingle {
+  grid-template-columns: 1fr !important;
+}
+
+.blockRowSingle .block {
+  width: 100%;
+}
+
+.allStatsDetailArrow {
+  display: none;
+}
+
+.header .brand img {
+  height: auto;
+}
+
+@media (min-width: 901px) {
+  .allStatsHero {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+    align-items: start !important;
+    padding: 10px 10px 16px !important;
+  }
+
+  .allStatsHero > div:first-child {
+    min-width: 0 !important;
+    max-width: 100% !important;
+  }
+
+  .allStatsTitle {
+    max-width: 100% !important;
+  }
+
+  .allStatsText {
+    max-width: 820px !important;
+  }
+
+  .allStatsKpis {
+    width: 100% !important;
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+    justify-content: stretch !important;
+  }
+
+  .allStatsKpi {
+    text-align: center !important;
+    min-height: 70px !important;
+    place-items: center !important;
+  }
+
+  .allStatsKpi span {
+    text-align: center !important;
+    line-height: 1.15 !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .allStatsActionCard {
+    position: relative;
+  }
+
+  .allStatsDetailArrow {
+    display: inline-flex;
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    width: 32px;
+    height: 32px;
+    border-radius: 999px;
+    border: 1px solid rgba(125, 211, 252, 0.34);
+    background: linear-gradient(135deg, rgba(56, 189, 248, 0.24), rgba(168, 85, 247, 0.24));
+    color: rgba(255, 255, 255, 0.96);
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    font-weight: 950;
+    line-height: 1;
+    box-shadow: 0 12px 26px rgba(0, 0, 0, 0.24), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    cursor: pointer;
+  }
+
+  .allStatsChannelButton {
+    gap: 11px !important;
+    padding-inline: 18px !important;
+  }
+
+  .allStatsChannelButton small {
+    margin-top: 2px !important;
+  }
+
+  .channelStatsPanel .cubeTop {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    align-items: center !important;
+    gap: 10px !important;
+    padding: 13px 14px !important;
+    min-height: 0 !important;
+    text-align: left !important;
+  }
+
+  .channelStatsPanel .cubeTop > div:first-child {
+    display: grid !important;
+    justify-items: start !important;
+    text-align: left !important;
+    gap: 4px !important;
+    min-width: 0 !important;
+  }
+
+  .channelStatsPanel .cubeTitleRow {
+    justify-content: flex-start !important;
+    width: 100% !important;
+  }
+
+  .channelStatsPanel .cubeTitle {
+    font-size: 15px !important;
+    line-height: 1.05 !important;
+    margin: 0 !important;
+  }
+
+  .channelStatsPanel .cubeIdentity {
+    font-size: 12px !important;
+    line-height: 1.15 !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  .channelStatsPanel .cubeSub {
+    font-size: 11px !important;
+    line-height: 1.15 !important;
+    opacity: 0.72 !important;
+  }
+
+  .channelStatsPanel .cubeBadges {
+    justify-content: flex-end !important;
+    align-items: center !important;
+    min-width: max-content !important;
+  }
+
+  .channelStatsPanel .pills {
+    justify-content: flex-end !important;
+    gap: 6px !important;
+  }
+
+  .channelStatsPanel .actionCompact {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    align-items: center !important;
+    gap: 10px !important;
+    padding: 10px 12px !important;
+    min-height: 0 !important;
+  }
+
+  .channelStatsPanel .actionTopRow {
+    justify-content: flex-start !important;
+    gap: 7px !important;
+  }
+
+  .channelStatsPanel .actionLeft {
+    min-width: 0 !important;
+    gap: 6px !important;
+  }
+
+  .channelStatsPanel .actionDetail {
+    font-size: 11px !important;
+    line-height: 1.22 !important;
+    display: -webkit-box !important;
+    -webkit-line-clamp: 2 !important;
+    -webkit-box-orient: vertical !important;
+    overflow: hidden !important;
+  }
+
+  .channelStatsPanel .actionBtn {
+    min-width: 54px !important;
+    width: 54px !important;
+    height: 44px !important;
+    padding: 0 !important;
+    border-radius: 16px !important;
+  }
+
+  .channelStatsPanel .detailTopRow,
+  .channelStatsPanel .blockRow {
+    gap: 10px !important;
+  }
+
+  .channelStatsPanel .block {
+    padding: 12px !important;
+  }
+}
+
+@media (max-width: 430px) {
+  .channelStatsPanel .cubeTop {
+    grid-template-columns: 1fr !important;
+    text-align: center !important;
+    justify-items: center !important;
+  }
+
+  .channelStatsPanel .cubeTop > div:first-child {
+    justify-items: center !important;
+    text-align: center !important;
+  }
+
+  .channelStatsPanel .cubeTitleRow {
+    justify-content: center !important;
+  }
+
+  .channelStatsPanel .cubeBadges,
+  .channelStatsPanel .pills {
+    justify-content: center !important;
+  }
+}
+
+
+/* iNrStats — ajustements finaux après validation */
+@media (min-width: 901px) {
+  .allStatsHero {
+    grid-template-columns: 1fr !important;
+    gap: 14px !important;
+    align-items: start !important;
+  }
+
+  .allStatsHero > div:first-child {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    align-items: baseline !important;
+    gap: 8px 12px !important;
+    max-width: 100% !important;
+  }
+
+  .allStatsEyebrow {
+    flex: 0 0 auto !important;
+  }
+
+  .allStatsTitle {
+    flex: 1 1 auto !important;
+    margin: 0 !important;
+    min-width: 320px !important;
+    white-space: normal !important;
+  }
+
+  .allStatsText {
+    flex: 0 0 100% !important;
+    margin-top: 0 !important;
+    max-width: 900px !important;
+  }
+
+  .allStatsKpis {
+    width: 100% !important;
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+
+  .allStatsActions {
+    max-height: min(47vh, 520px) !important;
+    overflow-y: auto !important;
+    padding-right: 5px !important;
+    overscroll-behavior: contain !important;
+  }
+
+  .allStatsActions::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .allStatsActions::-webkit-scrollbar-thumb {
+    background: rgba(125, 211, 252, 0.25);
+    border-radius: 999px;
+  }
+}
+
+.allStatsActionCardConnected {
+  border-color: rgba(34, 197, 94, 0.18) !important;
+  background:
+    linear-gradient(135deg, rgba(34, 197, 94, 0.09), rgba(56, 189, 248, 0.08), rgba(157, 78, 255, 0.09)) !important;
+}
+
+.allStatsActionCardConnected .allStatsChannelName::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 999px;
+  background: rgba(34, 197, 94, 0.98);
+  box-shadow: 0 0 12px rgba(34, 197, 94, 0.48);
+  vertical-align: middle;
+}
+
+.allStatsActionCardOff {
+  opacity: 0.72;
+  border-color: rgba(148, 163, 184, 0.14) !important;
+  background: rgba(255, 255, 255, 0.035) !important;
+}
+
+.allStatsActionCardOff .allStatsChannelName::before {
+  content: "";
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 8px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.88);
+  vertical-align: middle;
+}
+
+.lectureBusinessActionBlock {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  gap: 14px !important;
+  align-items: center !important;
+}
+
+.lectureBusinessContent {
+  min-width: 0;
+}
+
+.channelInlineAction {
+  min-width: 190px;
+  display: grid;
+  justify-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 18px;
+  border: 1px solid rgba(125, 211, 252, 0.16);
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.09), rgba(168, 85, 247, 0.10));
+}
+
+.channelInlineActionTop {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 900px) {
+  .allStatsRecommendedAction {
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    justify-self: stretch !important;
+    text-align: center !important;
+    gap: 8px !important;
+  }
+
+  .allStatsRecommendedAction small {
+    display: block !important;
+    width: 100% !important;
+    max-width: 280px !important;
+    margin: 0 auto !important;
+    text-align: center !important;
+  }
+
+  .allStatsToolBadge {
+    display: inline-flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    align-self: center !important;
+    justify-self: center !important;
+    margin-inline: auto !important;
+  }
+
+  .allStatsGoButton {
+    display: inline-flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    align-self: center !important;
+    justify-self: center !important;
+    margin-inline: auto !important;
+  }
+
+  .lectureBusinessActionBlock {
+    grid-template-columns: 1fr !important;
+    text-align: center !important;
+  }
+
+  .lectureBusinessContent {
+    display: grid !important;
+    justify-items: center !important;
+    text-align: center !important;
+  }
+
+  .channelInlineAction {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+}
+
+
+/* iNrStats — passe mobile dédiée + desktop sans scroll trop tôt */
+.mobileChannelHero {
+  display: none;
+}
+
+.header img {
+  height: auto;
+}
+
+@media (min-width: 901px) {
+  .allStatsActions {
+    max-height: min(64vh, 650px) !important;
+  }
+
+  .allStatsActionCard {
+    min-height: 70px !important;
+  }
+
+  .channelInlineAction {
+    min-width: 160px !important;
+    grid-template-columns: 1fr auto !important;
+    align-items: center !important;
+    padding: 9px 10px !important;
+  }
+
+  .channelInlineActionTop {
+    justify-content: flex-start !important;
+  }
+
+  .channelInlineAction .actionBtn {
+    min-width: 58px !important;
+    width: 58px !important;
+    height: 42px !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .channelStatsPanel .channelStatsHeader {
+    display: none !important;
+  }
+
+  .channelStatsPanel .cube {
+    padding-top: 0 !important;
+  }
+
+  .channelStatsPanel .cubeTop {
+    display: none !important;
+  }
+
+  .mobileChannelHero {
+    display: grid;
+    justify-items: center;
+    text-align: center;
+    gap: 7px;
+    padding: 15px 14px 14px;
+    border-bottom: 1px solid rgba(125, 211, 252, 0.12);
+    background:
+      radial-gradient(circle at 50% 0%, rgba(56, 189, 248, 0.14), transparent 52%),
+      linear-gradient(180deg, rgba(56, 189, 248, 0.055), transparent 70%);
+  }
+
+  .mobileChannelEyebrow {
+    color: rgba(56, 189, 248, 0.96);
+    font-size: 12px;
+    line-height: 1;
+    font-weight: 950;
+    letter-spacing: 0.10em;
+    text-transform: uppercase;
+  }
+
+  .mobileChannelTitle {
+    margin: 0;
+    color: rgba(255, 255, 255, 0.98);
+    font-size: 22px;
+    line-height: 1.05;
+    font-weight: 950;
+    letter-spacing: -0.02em;
+  }
+
+  .mobileChannelSub {
+    margin: 0;
+    color: rgba(255, 255, 255, 0.72);
+    font-size: 12px;
+    line-height: 1.2;
+    font-weight: 800;
+  }
+
+  .mobileChannelLink {
+    max-width: 100%;
+    margin-top: 2px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(125, 211, 252, 0.16);
+    background: rgba(0, 0, 0, 0.16);
+    color: rgba(255, 255, 255, 0.92);
+    font-size: 12px;
+    line-height: 1.15;
+    font-weight: 850;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobileChannelPills {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 7px;
+    flex-wrap: wrap;
+  }
+
+  .mobileChannelMetricGrid {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px;
+    margin-top: 5px;
+  }
+
+  .mobileChannelMetricGrid > div {
+    min-height: 62px;
+    display: grid;
+    place-items: center;
+    align-content: center;
+    gap: 5px;
+    padding: 10px 8px;
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.10);
+    background: rgba(0, 0, 0, 0.16);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.055);
+  }
+
+  .mobileChannelMetricGrid span {
+    color: rgba(255, 255, 255, 0.58);
+    font-size: 10px;
+    line-height: 1.05;
+    font-weight: 950;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    text-align: center;
+  }
+
+  .mobileChannelMetricGrid b {
+    color: rgba(255, 255, 255, 0.98);
+    font-size: 20px;
+    line-height: 1;
+    font-weight: 950;
+    letter-spacing: -0.02em;
+    text-align: center;
+  }
+
+  .channelStatsPanel .capturedLeadsBlock {
+    display: none !important;
+  }
+
+  .channelStatsPanel .detailTopRow {
+    grid-template-columns: 1fr !important;
+  }
+
+  .channelStatsPanel .provenanceCompactBlock {
+    min-height: 0 !important;
+  }
+
+  .channelStatsPanel .blockRowSingle {
+    margin-top: 10px !important;
+  }
+
+  .channelStatsPanel .qualityRow {
+    justify-content: center !important;
+  }
+
+  .lectureBusinessActionBlock {
+    gap: 10px !important;
+    padding: 13px !important;
+  }
+
+  .lectureBusinessContent .bullets {
+    margin-top: 7px !important;
+  }
+
+  .channelInlineAction {
+    min-width: 0 !important;
+    width: 100% !important;
+    max-width: 280px !important;
+    margin: 0 auto !important;
+    padding: 10px !important;
+    gap: 8px !important;
+  }
+
+  .channelInlineActionTop {
+    justify-content: center !important;
+  }
+
+  .channelInlineAction .actionBtn {
+    margin-inline: auto !important;
+  }
+
+  .allStatsActionCard {
+    min-height: 188px !important;
+    padding: 15px 14px !important;
+    gap: 10px !important;
+  }
+
+  .allStatsChannelButton {
+    gap: 9px !important;
+  }
+
+  .allStatsRecommendedAction {
+    width: 100% !important;
+    display: grid !important;
+    justify-items: center !important;
+    justify-content: center !important;
+    text-align: center !important;
+    gap: 7px !important;
+  }
+
+  .allStatsRecommendedAction small {
+    width: 100% !important;
+    max-width: 260px !important;
+    margin-inline: auto !important;
+    text-align: center !important;
+  }
+
+  .allStatsToolBadge,
+  .allStatsGoButton {
+    justify-self: center !important;
+    align-self: center !important;
+    margin-inline: auto !important;
+  }
+}
+
+@media (max-width: 430px) {
+  .mobileChannelHero {
+    padding-inline: 12px;
+  }
+
+  .mobileChannelMetricGrid > div {
+    min-height: 58px;
+  }
+
+  .mobileChannelMetricGrid b {
+    font-size: 18px;
+  }
+
+  .allStatsActionCard {
+    min-height: 178px !important;
+  }
+}
+
+
+/* iNrStats — clean final : bilan rapide + fiche canal aérée + mobile premium */
+@media (min-width: 901px) {
+  .channelStatsHeader {
+    padding: 10px 10px 18px !important;
+    align-items: center !important;
+  }
+
+  .channelStatsHeader > div:first-child {
+    display: grid !important;
+    gap: 7px !important;
+  }
+
+  .channelStatsHeader .allStatsEyebrow {
+    line-height: 1 !important;
+    margin-bottom: 2px !important;
+  }
+
+  .channelStatsHeader .allStatsTitle {
+    margin: 0 !important;
+    line-height: 1.04 !important;
+  }
+
+  .channelStatsHeader .allStatsText {
+    margin: 0 !important;
+    line-height: 1.25 !important;
+  }
+
+  .allStatsActionCard {
+    min-height: 58px !important;
+    grid-template-columns: minmax(185px, 1.1fr) minmax(210px, .95fr) minmax(112px, .45fr) auto !important;
+    gap: 12px !important;
+    padding: 10px 12px !important;
+  }
+
+  .allStatsChannelButton {
+    gap: 0 !important;
+  }
+
+  .allStatsMetrics span {
+    min-height: 46px !important;
+    padding: 7px 9px !important;
+  }
+
+  .allStatsRecommendedAction {
+    justify-items: center !important;
+  }
+
+  .allStatsGoButton {
+    min-width: 64px !important;
+    padding: 10px 12px !important;
+  }
+
+  .allStatsActions {
+    max-height: none !important;
+    overflow-y: visible !important;
+    padding-right: 0 !important;
+  }
+
+  .allStatsPanel {
+    padding-bottom: 16px !important;
+  }
+}
+
+.allStatsActionCardConnected {
+  background:
+    radial-gradient(circle at 0% 50%, rgba(34, 197, 94, 0.12), transparent 38%),
+    linear-gradient(135deg, rgba(14, 165, 233, 0.10), rgba(168, 85, 247, 0.12)) !important;
+  border-color: rgba(34, 197, 94, 0.24) !important;
+}
+
+.allStatsActionCardConnected:hover {
+  border-color: rgba(56, 189, 248, 0.38) !important;
+  box-shadow: 0 18px 46px rgba(14, 165, 233, 0.10);
+}
+
+@media (max-width: 900px) {
+  .allStatsActionCardConnected {
+    background:
+      radial-gradient(circle at 0% 0%, rgba(34, 197, 94, 0.22), transparent 38%),
+      radial-gradient(circle at 100% 0%, rgba(56, 189, 248, 0.18), transparent 40%),
+      linear-gradient(145deg, rgba(14, 165, 233, 0.13), rgba(168, 85, 247, 0.20)) !important;
+    border-color: rgba(52, 211, 153, 0.28) !important;
+    box-shadow:
+      0 18px 48px rgba(0, 0, 0, 0.28),
+      inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  }
+
+  .allStatsActionCardOff {
+    background:
+      linear-gradient(145deg, rgba(148, 163, 184, 0.06), rgba(30, 41, 59, 0.12)) !important;
+  }
+
+  .allStatsChannelButton {
+    padding-top: 4px !important;
+    padding-inline: 30px !important;
+  }
+
+  .allStatsChannelName {
+    font-size: 19px !important;
+  }
+
+  .allStatsMetrics span {
+    min-height: 58px !important;
+  }
+
+  .allStatsRecommendedAction {
+    display: grid !important;
+    justify-items: center !important;
+    gap: 0 !important;
+    margin-top: 0 !important;
+  }
+
+  .allStatsToolBadge {
+    margin-bottom: 8px !important;
+  }
+
+  .allStatsGoButton {
+    min-width: 112px !important;
+    min-height: 42px !important;
+  }
+
+  .channelInlineAction {
+    max-width: 260px !important;
+    padding: 12px 12px 13px !important;
+    border-radius: 20px !important;
+    gap: 8px !important;
+    background:
+      radial-gradient(circle at 12% 0%, rgba(56, 189, 248, 0.18), transparent 44%),
+      linear-gradient(145deg, rgba(14, 165, 233, 0.13), rgba(168, 85, 247, 0.18)) !important;
+  }
+
+  .channelInlineActionLabel {
+    color: rgba(56, 189, 248, 0.96);
+    font-size: 11px;
+    line-height: 1;
+    font-weight: 950;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    text-align: center;
+  }
+
+  .channelInlineActionTop {
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    gap: 7px !important;
+    flex-wrap: wrap !important;
+  }
+
+  .channelInlineActionText {
+    max-width: 220px;
+    color: rgba(255,255,255,0.76);
+    font-size: 12px;
+    line-height: 1.22;
+    font-weight: 800;
+    text-align: center;
+  }
+
+  .channelInlineAction .actionBtn {
+    margin-top: 2px !important;
+    min-width: 72px !important;
+    width: auto !important;
+    height: 40px !important;
+    padding: 0 15px !important;
+    border-radius: 999px !important;
+  }
+
+  .lectureBusinessActionBlock {
+    padding: 13px !important;
+  }
+
+  .lectureBusinessContent {
+    gap: 6px !important;
+  }
+}
+
+@media (max-width: 430px) {
+  .allStatsActionCard {
+    min-height: 160px !important;
+    padding: 13px 12px !important;
+    gap: 9px !important;
+  }
+
+  .allStatsMetrics span {
+    min-height: 54px !important;
+  }
+}
+
+
+/* iNrStats — correction responsive action/GO */
+@media (max-width: 900px) {
+  .allStatsActionCard {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    grid-template-areas:
+      "channel channel"
+      "metrics metrics"
+      "action go" !important;
+    align-items: center !important;
+    min-height: 132px !important;
+    padding: 13px 14px !important;
+    gap: 10px 12px !important;
+  }
+
+  .allStatsChannelButton {
+    grid-area: channel !important;
+    min-height: 0 !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+  }
+
+  .allStatsMetrics {
+    grid-area: metrics !important;
+    width: 100% !important;
+  }
+
+  .allStatsRecommendedAction {
+    grid-area: action !important;
+    width: auto !important;
+    justify-self: center !important;
+    align-self: center !important;
+    margin: 0 !important;
+  }
+
+  .allStatsToolBadge {
+    margin: 0 !important;
+  }
+
+  .allStatsGoButton {
+    grid-area: go !important;
+    justify-self: center !important;
+    align-self: center !important;
+    min-width: 92px !important;
+    min-height: 40px !important;
+    margin: 0 !important;
+  }
+
+  .channelInlineActionStack {
+    width: 100%;
+    max-width: 280px;
+    display: grid;
+    justify-items: center;
+    gap: 9px;
+    margin: 0 auto;
+  }
+
+  .channelInlineActionStack .channelInlineAction {
+    width: 100% !important;
+    max-width: 260px !important;
+    min-width: 0 !important;
+    padding: 12px 12px !important;
+    gap: 9px !important;
+  }
+
+  .channelInlineActionStack .channelInlineActionLabel {
+    margin-bottom: 2px;
+  }
+
+  .channelInlineActionStack .channelInlineGoButton {
+    min-width: 96px !important;
+    height: 42px !important;
+    border-radius: 999px !important;
+    margin: 0 auto !important;
+    background: linear-gradient(135deg, rgba(35, 47, 78, 0.92), rgba(18, 24, 42, 0.96)) !important;
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255,255,255,0.10) !important;
+  }
+}
+
+@media (max-width: 430px) {
+  .allStatsActionCard {
+    min-height: 124px !important;
+  }
+}
+
+
+/* iNrStats — Global responsive : titres non rognés + flèche dégagée + bas équilibré */
+@media (max-width: 900px) {
+  .allStatsActionCard {
+    position: relative !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    grid-template-areas:
+      "channel channel"
+      "metrics metrics"
+      "action go" !important;
+    align-items: center !important;
+    gap: 11px 10px !important;
+    padding: 15px 13px 13px !important;
+    min-height: 132px !important;
+  }
+
+  .allStatsChannelButton {
+    grid-area: channel !important;
+    width: 100% !important;
+    min-height: 36px !important;
+    padding: 2px 44px 2px 18px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    overflow: visible !important;
+  }
+
+  .allStatsChannelName {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    min-height: 28px !important;
+    line-height: 1.28 !important;
+    padding: 2px 0 3px !important;
+    overflow: visible !important;
+    white-space: nowrap !important;
+  }
+
+  .allStatsDetailArrow {
+    top: 16px !important;
+    right: 14px !important;
+    width: 28px !important;
+    height: 28px !important;
+    font-size: 14px !important;
+    z-index: 3 !important;
+  }
+
+  .allStatsMetrics {
+    grid-area: metrics !important;
+    width: 100% !important;
+  }
+
+  .allStatsRecommendedAction {
+    grid-area: action !important;
+    width: 100% !important;
+    justify-self: center !important;
+    align-self: center !important;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    margin: 0 !important;
+  }
+
+  .allStatsToolBadge {
+    margin: 0 !important;
+    justify-self: center !important;
+  }
+
+  .allStatsGoButton {
+    grid-area: go !important;
+    justify-self: center !important;
+    align-self: center !important;
+    min-width: 94px !important;
+    min-height: 40px !important;
+    margin: 0 !important;
+  }
+}
+
+@media (max-width: 430px) {
+  .allStatsActionCard {
+    min-height: 128px !important;
+    padding: 14px 12px 12px !important;
+    gap: 10px !important;
+  }
+
+  .allStatsChannelButton {
+    min-height: 35px !important;
+    padding-right: 40px !important;
+  }
+
+  .allStatsDetailArrow {
+    top: 15px !important;
+    right: 13px !important;
+  }
+}
+
+
+/* iNrStats — correction desktop uniquement : action recommandée fiche canal */
+@media (min-width: 901px) {
+  .lectureBusinessActionBlock {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    align-items: center !important;
+  }
+
+  .channelInlineActionStack {
+    width: auto !important;
+    max-width: none !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    gap: 10px !important;
+    margin: 0 0 0 auto !important;
+  }
+
+  .channelInlineActionStack .channelInlineAction {
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    display: flex !important;
+    grid-template-columns: none !important;
+    align-items: center !important;
+    justify-content: center !important;
+    justify-items: unset !important;
+    gap: 10px !important;
+    padding: 10px 12px !important;
+    border-radius: 18px !important;
+    white-space: nowrap !important;
+    background:
+      linear-gradient(135deg, rgba(56, 189, 248, 0.12), rgba(168, 85, 247, 0.14)) !important;
+  }
+
+  .channelInlineActionStack .channelInlineActionLabel {
+    margin: 0 !important;
+    color: rgba(125, 211, 252, 0.98) !important;
+    font-size: 11px !important;
+    line-height: 1 !important;
+    font-weight: 950 !important;
+    letter-spacing: 0.07em !important;
+    text-transform: uppercase !important;
+    text-align: center !important;
+  }
+
+  .channelInlineActionStack .channelInlineActionTop {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 8px !important;
+    flex-wrap: nowrap !important;
+  }
+
+  .channelInlineActionStack .channelInlineGoButton {
+    min-width: 62px !important;
+    width: 62px !important;
+    height: 42px !important;
+    margin: 0 !important;
+    border-radius: 999px !important;
+  }
+}
+
+
+/* iNrStats — desktop fiche canal : lecture business pleine largeur + action en bandeau dessous */
+@media (min-width: 901px) {
+  .lectureBusinessActionBlock {
+    grid-template-columns: 1fr !important;
+    align-items: stretch !important;
+    gap: 14px !important;
+  }
+
+  .lectureBusinessContent {
+    width: 100% !important;
+  }
+
+  .channelInlineActionStack {
+    width: 100% !important;
+    max-width: none !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    align-items: center !important;
+    gap: 12px !important;
+    margin: 0 !important;
+  }
+
+  .channelInlineActionStack .channelInlineAction {
+    width: 100% !important;
+    max-width: none !important;
+    min-width: 0 !important;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    gap: 12px !important;
+    padding: 13px 16px !important;
+    border-radius: 20px !important;
+    white-space: nowrap !important;
+    background:
+      radial-gradient(circle at 0% 50%, rgba(56, 189, 248, 0.16), transparent 42%),
+      linear-gradient(135deg, rgba(14, 165, 233, 0.14), rgba(168, 85, 247, 0.18)) !important;
+  }
+
+  .channelInlineActionStack .channelInlineActionLabel {
+    margin: 0 !important;
+    color: rgba(56, 189, 248, 1) !important;
+    font-size: 11px !important;
+    line-height: 1 !important;
+    font-weight: 950 !important;
+    letter-spacing: 0.08em !important;
+    text-transform: uppercase !important;
+  }
+
+  .channelInlineActionStack .channelInlineActionTop {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 9px !important;
+    flex-wrap: nowrap !important;
+  }
+
+  .channelInlineActionStack .channelInlineGoButton {
+    min-width: 72px !important;
+    width: 72px !important;
+    height: 46px !important;
+    margin: 0 !important;
+    border-radius: 999px !important;
+  }
+}
+
+
+/* iNrStats — Connexion active pour canaux déconnectés */
+.allStatsToolBadgeConnect {
+  border-color: rgba(251, 146, 60, 0.42) !important;
+  background:
+    radial-gradient(circle at 0% 50%, rgba(251, 146, 60, 0.22), transparent 48%),
+    linear-gradient(135deg, rgba(251, 146, 60, 0.20), rgba(124, 45, 18, 0.18)) !important;
+  color: rgba(255, 237, 213, 0.98) !important;
+}
+
+.allStatsGoButtonOn {
+  border-color: rgba(125, 211, 252, 0.34) !important;
+  background: linear-gradient(135deg, rgba(56,189,248,0.34), rgba(157,78,255,0.36)) !important;
+}
+
+.allStatsGoButtonConnect {
+  border-color: rgba(251, 146, 60, 0.48) !important;
+  background:
+    radial-gradient(circle at 18% 20%, rgba(251, 191, 36, 0.24), transparent 42%),
+    linear-gradient(135deg, rgba(251, 146, 60, 0.34), rgba(124, 45, 18, 0.38)) !important;
+  color: rgba(255, 247, 237, 0.98) !important;
+  box-shadow:
+    0 14px 34px rgba(124, 45, 18, 0.30),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
+}
+
+.allStatsGoButtonConnect:hover {
+  border-color: rgba(251, 191, 36, 0.72) !important;
+  transform: translateY(-1px);
+}
+
+.action_connexion {
+  border-color: rgba(251, 146, 60, 0.46) !important;
+  background:
+    radial-gradient(circle at 0% 50%, rgba(251, 146, 60, 0.24), transparent 48%),
+    linear-gradient(135deg, rgba(251, 146, 60, 0.24), rgba(124, 45, 18, 0.20)) !important;
+  color: rgba(255, 237, 213, 0.98) !important;
+}
+
+/* GO Connexion actif dans le détail canal */
+.channelInlineGoButton.actionBtnOff {
+  border-color: rgba(251, 146, 60, 0.58) !important;
+  color: rgba(255, 247, 237, 0.98) !important;
+  box-shadow:
+    0 14px 34px rgba(124, 45, 18, 0.26),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14) !important;
+}
+
+.channelInlineGoButton.actionBtnOff::before {
+  background:
+    radial-gradient(circle at 18% 20%, rgba(251, 191, 36, 0.26), transparent 42%),
+    linear-gradient(135deg, rgba(251, 146, 60, 0.42), rgba(124, 45, 18, 0.40)) !important;
+}
+
+.channelInlineGoButton.actionBtnOff:hover {
+  border-color: rgba(251, 191, 36, 0.76) !important;
+}
+
+.allStatsActionCardOff {
+  opacity: 1 !important;
+}
+
+.allStatsActionCardOff .allStatsChannelName::before {
+  background: rgba(251, 146, 60, 0.96) !important;
+  box-shadow: 0 0 12px rgba(251, 146, 60, 0.46);
+}
+
+
+/* iNrStats — icône prise SVG lisible dans les boutons connexion */
+.plugSvgIcon {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  display: inline-block;
+  margin-left: 3px;
+  color: rgba(255, 255, 255, 0.98);
+  stroke: currentColor;
+  stroke-width: 2.35;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  fill: none;
+  filter:
+    drop-shadow(0 0 4px rgba(255, 255, 255, 0.48))
+    drop-shadow(0 1px 2px rgba(0, 0, 0, 0.38));
+  transform: translateY(1px);
+}
+
+.allStatsGoButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+}
+
+.allStatsGoButtonConnect .plugSvgIcon,
+.channelInlineGoButton.actionBtnOff .plugSvgIcon {
+  width: 15px;
+  height: 15px;
+  color: rgba(255, 255, 255, 1);
+  filter:
+    drop-shadow(0 0 5px rgba(255, 255, 255, 0.62))
+    drop-shadow(0 0 8px rgba(251, 191, 36, 0.26))
+    drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
+}
+
+@media (max-width: 900px) {
+  .plugSvgIcon {
+    width: 13px;
+    height: 13px;
+    margin-left: 2px;
+  }
+
+  .allStatsGoButtonConnect .plugSvgIcon,
+  .channelInlineGoButton.actionBtnOff .plugSvgIcon {
+    width: 14px;
+    height: 14px;
+  }
+}
+
+
+/* iNrStats — canaux connectés plus lumineux (desktop + responsive) */
+.statsRailItemConnected:not(.statsRailItemActive),
+.statsMobileDrawerItem.statsRailItemConnected:not(.statsMobileDrawerItemActive) {
+  border-color: rgba(34, 197, 94, 0.30) !important;
+  background:
+    radial-gradient(circle at 0% 50%, rgba(34, 197, 94, 0.14), transparent 42%),
+    linear-gradient(135deg, rgba(16, 185, 129, 0.13), rgba(56, 189, 248, 0.08), rgba(157, 78, 255, 0.06)),
+    rgba(255, 255, 255, 0.050) !important;
+  box-shadow:
+    0 0 0 1px rgba(34, 197, 94, 0.07),
+    0 14px 34px rgba(16, 185, 129, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+}
+
+.statsRailItemConnected.statsRailItemActive,
+.statsMobileDrawerItem.statsRailItemConnected.statsMobileDrawerItemActive {
+  border-color: rgba(56, 189, 248, 0.62) !important;
+  background:
+    radial-gradient(circle at 0% 50%, rgba(34, 197, 94, 0.22), transparent 42%),
+    linear-gradient(135deg, rgba(56, 189, 248, 0.28), rgba(34, 197, 94, 0.14), rgba(157, 78, 255, 0.24)),
+    rgba(255, 255, 255, 0.075) !important;
+  box-shadow:
+    0 0 0 1px rgba(56, 189, 248, 0.16),
+    0 18px 46px rgba(56, 189, 248, 0.12),
+    0 12px 34px rgba(34, 197, 94, 0.10),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
+}
+
+.statsRailItemConnected .statsRailDot,
+.statsMobileDrawerItem.statsRailItemConnected .statsRailDot {
+  background: rgba(34, 197, 94, 1) !important;
+  box-shadow:
+    0 0 0 3px rgba(34, 197, 94, 0.12),
+    0 0 18px rgba(34, 197, 94, 0.78),
+    0 0 32px rgba(56, 189, 248, 0.22) !important;
+}
+
+.statsRailItemConnected .statsRailText b,
+.statsMobileDrawerItem.statsRailItemConnected .statsRailText b {
+  color: rgba(255, 255, 255, 0.99) !important;
+  text-shadow: 0 0 12px rgba(34, 197, 94, 0.10);
+}
+
+.statsRailItemConnected .statsRailText small,
+.statsMobileDrawerItem.statsRailItemConnected .statsRailText small {
+  color: rgba(187, 247, 208, 0.82) !important;
+}
+
+.statsRailItemConnected .statsRailValue,
+.statsMobileDrawerItem.statsRailItemConnected .statsRailValue {
+  border-color: rgba(34, 197, 94, 0.18) !important;
+  background:
+    radial-gradient(circle at 0% 50%, rgba(34, 197, 94, 0.14), transparent 45%),
+    rgba(0, 0, 0, 0.20) !important;
+  color: rgba(240, 253, 244, 0.96) !important;
+}
+
+.allStatsActionCardConnected {
+  border-color: rgba(34, 197, 94, 0.28) !important;
+  background:
+    radial-gradient(circle at 0% 50%, rgba(34, 197, 94, 0.20), transparent 40%),
+    linear-gradient(135deg, rgba(16, 185, 129, 0.17), rgba(56, 189, 248, 0.11), rgba(157, 78, 255, 0.13)) !important;
+  box-shadow:
+    0 0 0 1px rgba(34, 197, 94, 0.07),
+    0 14px 38px rgba(16, 185, 129, 0.09),
+    inset 0 1px 0 rgba(255, 255, 255, 0.10) !important;
+}
+
+.allStatsActionCardConnected:hover {
+  border-color: rgba(125, 211, 252, 0.42) !important;
+  background:
+    radial-gradient(circle at 0% 50%, rgba(34, 197, 94, 0.24), transparent 40%),
+    linear-gradient(135deg, rgba(16, 185, 129, 0.20), rgba(56, 189, 248, 0.14), rgba(157, 78, 255, 0.17)) !important;
+}
+
+.allStatsActionCardConnected .allStatsChannelName {
+  color: rgba(255, 255, 255, 0.99) !important;
+  text-shadow: 0 0 16px rgba(34, 197, 94, 0.14);
+}
+
+.allStatsActionCardConnected .allStatsChannelName::before {
+  background: rgba(34, 197, 94, 1) !important;
+  box-shadow:
+    0 0 0 3px rgba(34, 197, 94, 0.13),
+    0 0 18px rgba(34, 197, 94, 0.80),
+    0 0 32px rgba(56, 189, 248, 0.22) !important;
+}
+
+.allStatsActionCardOff {
+  border-color: rgba(148, 163, 184, 0.11) !important;
+  background:
+    linear-gradient(135deg, rgba(15, 23, 42, 0.48), rgba(88, 28, 135, 0.10)),
+    rgba(255, 255, 255, 0.025) !important;
+}
+
+@media (max-width: 900px) {
+  .allStatsActionCardConnected {
+    box-shadow:
+      0 0 0 1px rgba(34, 197, 94, 0.08),
+      0 12px 30px rgba(16, 185, 129, 0.10),
+      inset 0 1px 0 rgba(255, 255, 255, 0.10) !important;
+  }
+
+  .statsMobileDrawerItem.statsRailItemConnected:not(.statsMobileDrawerItemActive) {
+    box-shadow:
+      0 0 0 1px rgba(34, 197, 94, 0.07),
+      inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+  }
+}
+
+
+/* iNrStats — accents subtils sur les 4 KPI principaux */
+.allStatsKpi {
+  position: relative;
+  overflow: hidden;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 12px 28px rgba(0, 0, 0, 0.16);
+}
+
+.allStatsKpi::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.72;
+  background: radial-gradient(circle at 16% 12%, rgba(255, 255, 255, 0.10), transparent 38%);
+}
+
+.allStatsKpi > span,
+.allStatsKpi > b {
+  position: relative;
+  z-index: 1;
+}
+
+.allStatsKpi:nth-child(1) {
+  border-color: rgba(56, 189, 248, 0.30);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(56, 189, 248, 0.16), transparent 48%),
+    rgba(255, 255, 255, 0.055);
+}
+
+.allStatsKpi:nth-child(1) span {
+  color: rgba(125, 211, 252, 0.96);
+}
+
+.allStatsKpi:nth-child(2) {
+  border-color: rgba(217, 70, 239, 0.28);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(217, 70, 239, 0.14), transparent 48%),
+    rgba(255, 255, 255, 0.055);
+}
+
+.allStatsKpi:nth-child(2) span {
+  color: rgba(240, 171, 252, 0.96);
+}
+
+.allStatsKpi:nth-child(3) {
+  border-color: rgba(34, 197, 94, 0.26);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(34, 197, 94, 0.13), transparent 48%),
+    rgba(255, 255, 255, 0.055);
+}
+
+.allStatsKpi:nth-child(3) span {
+  color: rgba(134, 239, 172, 0.96);
+}
+
+.allStatsKpi:nth-child(4) {
+  border-color: rgba(129, 140, 248, 0.28);
+  background:
+    radial-gradient(circle at 0% 0%, rgba(129, 140, 248, 0.14), transparent 48%),
+    rgba(255, 255, 255, 0.055);
+}
+
+.allStatsKpi:nth-child(4) span {
+  color: rgba(199, 210, 254, 0.96);
+}
+
+/* iNrStats — nouveaux blocs détail canal + couleurs KPI plus subtiles */
+.metricOverviewBlock {
+  background:
+    radial-gradient(circle at 10% 0%, rgba(125, 211, 252, 0.08), transparent 46%),
+    rgba(255, 255, 255, 0.045);
+}
+
+.metricMiniGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.metricMiniCard {
+  min-width: 0;
+  padding: 10px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(0, 0, 0, 0.16);
+}
+
+.metricMiniCard span {
+  display: block;
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+}
+
+.metricMiniCard b {
+  display: block;
+  margin-top: 5px;
+  color: rgba(239, 246, 255, 0.96);
+  font-size: 20px;
+  line-height: 1.05;
+  font-weight: 950;
+  letter-spacing: -0.02em;
+}
+
+@media (max-width: 480px) {
+  .metricMiniGrid {
+    gap: 8px;
+  }
+
+  .metricMiniCard {
+    padding: 9px;
+  }
+
+  .metricMiniCard b {
+    font-size: 18px;
+  }
+}
+
+.allStatsKpi {
+  border-color: rgba(255, 255, 255, 0.09) !important;
+  background: rgba(255, 255, 255, 0.045) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 10px 24px rgba(0, 0, 0, 0.12) !important;
+}
+
+.allStatsKpi::before {
+  opacity: 0.46 !important;
+}
+
+.kpiToneBlue {
+  border-color: rgba(56, 189, 248, 0.20) !important;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(56, 189, 248, 0.10), transparent 46%),
+    rgba(255, 255, 255, 0.045) !important;
+}
+
+.kpiToneBlue span {
+  color: rgba(186, 230, 253, 0.92) !important;
+}
+
+.kpiTonePurple {
+  border-color: rgba(217, 70, 239, 0.18) !important;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(217, 70, 239, 0.09), transparent 46%),
+    rgba(255, 255, 255, 0.045) !important;
+}
+
+.kpiTonePurple span {
+  color: rgba(233, 213, 255, 0.92) !important;
+}
+
+.kpiToneGreen {
+  border-color: rgba(34, 197, 94, 0.18) !important;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(34, 197, 94, 0.08), transparent 46%),
+    rgba(255, 255, 255, 0.045) !important;
+}
+
+.kpiToneGreen span {
+  color: rgba(187, 247, 208, 0.92) !important;
+}
+
+.kpiToneSlate {
+  border-color: rgba(148, 163, 184, 0.18) !important;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(148, 163, 184, 0.08), transparent 46%),
+    rgba(255, 255, 255, 0.045) !important;
+}
+
+.kpiToneSlate span {
+  color: rgba(226, 232, 240, 0.92) !important;
+}
+
+/* iNrStats — compactage final détail canal sans scroll + URL sur une ligne */
+.cubeTopCompact {
+  padding: 12px 14px 10px !important;
+}
+
+.cubeHeaderInline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  width: 100%;
+}
+
+.cubeTitleInlineGroup {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.cubeIdentityInline {
+  min-width: 0;
+  flex: 1 1 auto;
+  color: rgba(255, 255, 255, 0.90);
+  font-size: 13px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (min-width: 901px) {
+  .channelStatsHeader {
+    padding: 8px 10px 12px !important;
+    gap: 12px !important;
+    align-items: center !important;
+  }
+
+  .channelStatsHeader .allStatsKpis {
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(118px, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .channelStatsHeader .allStatsKpi {
+    min-height: 62px !important;
+    padding: 8px 10px !important;
+  }
+
+  .channelStatsHeader .allStatsKpi span {
+    font-size: 10px !important;
+    line-height: 1.12 !important;
+  }
+
+  .channelStatsHeader .allStatsKpi b {
+    font-size: 18px !important;
+  }
+
+  .channelStatsPanel .cubeTopCompact {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    align-items: center !important;
+    gap: 12px !important;
+  }
+
+  .channelStatsPanel .cubeHeaderInline {
+    min-width: 0 !important;
+    gap: 8px !important;
+  }
+
+  .channelStatsPanel .cubeTitleInlineGroup {
+    flex: 0 0 auto !important;
+  }
+
+  .channelStatsPanel .cubeTitle {
+    margin: 0 !important;
+    font-size: 15px !important;
+    line-height: 1.08 !important;
+    white-space: nowrap !important;
+  }
+
+  .channelStatsPanel .cubeIdentityInline {
+    font-size: 13px !important;
+    line-height: 1.12 !important;
+  }
+
+  .channelStatsPanel .cubeBadges {
+    align-items: center !important;
+    justify-content: flex-end !important;
+  }
+
+  .channelStatsPanel .cubeBody {
+    padding: 10px 12px 12px !important;
+    gap: 10px !important;
+  }
+
+  .channelStatsPanel .detailTopRow,
+  .channelStatsPanel .blockRow {
+    gap: 10px !important;
+  }
+
+  .channelStatsPanel .block {
+    padding: 10px !important;
+  }
+
+  .channelStatsPanel .blockTitle {
+    margin-bottom: 8px !important;
+  }
+
+  .channelStatsPanel .metricMiniGrid {
+    gap: 8px !important;
+  }
+
+  .channelStatsPanel .metricMiniCard {
+    padding: 8px 10px !important;
+    border-radius: 12px !important;
+  }
+
+  .channelStatsPanel .metricMiniCard span {
+    font-size: 10.5px !important;
+    line-height: 1.08 !important;
+  }
+
+  .channelStatsPanel .metricMiniCard b {
+    margin-top: 4px !important;
+    font-size: 17px !important;
+    line-height: 1.02 !important;
+  }
+
+  .channelStatsPanel .provenanceCompactBlock .donutWrap {
+    grid-template-columns: 98px minmax(0, 1fr) !important;
+    gap: 10px !important;
+  }
+
+  .channelStatsPanel .provenanceCompactBlock .donut {
+    width: 98px !important;
+    height: 98px !important;
+  }
+
+  .channelStatsPanel .provenanceCompactBlock .donutHole {
+    width: 58px !important;
+    height: 58px !important;
+  }
+
+  .channelStatsPanel .provenanceCompactBlock .legend {
+    gap: 4px !important;
+  }
+
+  .channelStatsPanel .provenanceCompactBlock .legendRow {
+    gap: 7px !important;
+    font-size: 11.5px !important;
+  }
+
+  .channelStatsPanel .qualityRow {
+    gap: 12px !important;
+    align-items: center !important;
+  }
+
+  .channelStatsPanel .qualityRow .ring {
+    width: 70px !important;
+    height: 70px !important;
+  }
+
+  .channelStatsPanel .qualityRow .ringInner {
+    width: 52px !important;
+    height: 52px !important;
+  }
+
+  .channelStatsPanel .qualityRow .ringValue {
+    font-size: 17px !important;
+  }
+
+  .channelStatsPanel .qualityRow .ringSub {
+    font-size: 10px !important;
+  }
+
+  .channelStatsPanel .qualityLabel {
+    font-size: 16px !important;
+    line-height: 1.06 !important;
+  }
+
+  .channelStatsPanel .qualitySub {
+    margin-top: 2px !important;
+    font-size: 11.5px !important;
+  }
+
+  .channelStatsPanel .bullets {
+    gap: 4px !important;
+    font-size: 12.5px !important;
+  }
+
+  .channelStatsPanel .lectureBusinessActionBlock {
+    gap: 10px !important;
+    padding: 10px !important;
+  }
+
+  .channelStatsPanel .channelInlineActionStack {
+    gap: 10px !important;
+  }
+
+  .channelStatsPanel .channelInlineActionStack .channelInlineAction {
+    padding: 10px 14px !important;
+  }
+
+  .channelStatsPanel .channelInlineActionStack .channelInlineGoButton {
+    min-width: 68px !important;
+    width: 68px !important;
+    height: 44px !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .mobileChannelMetricGrid span {
+    line-height: 1.1 !important;
+  }
+
+  .mobileChannelMetricGrid > div {
+    padding: 10px 8px !important;
+  }
+
+  .cubeHeaderInline {
+    flex-wrap: wrap;
+  }
+
+  .cubeIdentityInline {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: unset;
+  }
+}
+
+.metricEmpty {
+  display: flex;
+  align-items: center;
+  min-height: 72px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px dashed rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+@media (max-width: 900px) {
+  .metricEmpty {
+    justify-content: center;
+    text-align: center;
+    min-height: 58px;
+  }
+}
+
+
+/* iNrStats — header canal desktop propre : titre verrouillé à gauche, KPI collés à droite */
+.channelDemandesKpiLabel {
+  white-space: nowrap !important;
+}
+
+@media (min-width: 901px) {
+  .channelStatsHeader {
+    display: grid !important;
+    grid-template-columns: minmax(0, 220px) minmax(0, 1fr) !important;
+    column-gap: 28px !important;
+    align-items: start !important;
+    padding-right: 10px !important;
+  }
+
+  .channelStatsTitleBlock {
+    min-width: 0 !important;
+    width: 100% !important;
+    max-width: 220px !important;
+    overflow: hidden !important;
+  }
+
+  .channelStatsHeader .allStatsEyebrow,
+  .channelStatsHeader .allStatsTitle,
+  .channelStatsHeader .allStatsText {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  .channelStatsHeader .allStatsTitle {
+    font-size: clamp(20px, 1.55vw, 24px) !important;
+    line-height: 1.03 !important;
+  }
+
+  .channelStatsKpis {
+    width: auto !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    margin-left: auto !important;
+    justify-self: end !important;
+    align-self: start !important;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    justify-content: flex-end !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+
+  .channelStatsHeader .allStatsKpi {
+    flex: 0 0 174px !important;
+    width: 174px !important;
+    min-width: 174px !important;
+    max-width: 174px !important;
+    min-height: 66px !important;
+    padding: 8px 10px !important;
+    display: grid !important;
+    place-items: center !important;
+    align-content: center !important;
+    gap: 5px !important;
+    text-align: center !important;
+  }
+
+  .channelStatsHeader .allStatsKpi span {
+    font-size: 8.4px !important;
+    line-height: 1.02 !important;
+    white-space: nowrap !important;
+    text-align: center !important;
+    letter-spacing: 0 !important;
+  }
+
+  .channelStatsHeader .allStatsKpi b {
+    font-size: 17px !important;
+    line-height: 1 !important;
+    text-align: center !important;
+  }
+}
+
+/* iNrStats — responsive : 4 bulles 2x2 + contenu centré dans les blocs */
+@media (max-width: 900px) {
+  .mobileChannelMetricGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 9px !important;
+  }
+
+  .mobileChannelMetricGrid > div {
+    display: grid !important;
+    place-items: center !important;
+    align-content: center !important;
+    text-align: center !important;
+  }
+
+  .mobileChannelMetricGrid span,
+  .mobileChannelMetricGrid b {
+    text-align: center !important;
+  }
+
+  .channelStatsPanel .block {
+    text-align: center !important;
+  }
+
+  .channelStatsPanel .blockTitle {
+    text-align: center !important;
+  }
+
+  .channelStatsPanel .metricMiniCard {
+    display: grid !important;
+    place-items: center !important;
+    align-content: center !important;
+    text-align: center !important;
+  }
+
+  .channelStatsPanel .metricMiniCard span,
+  .channelStatsPanel .metricMiniCard b {
+    text-align: center !important;
+  }
+
+  .channelStatsPanel .provenanceCompactBlock .donutWrap {
+    grid-template-columns: 1fr !important;
+    justify-items: center !important;
+    gap: 12px !important;
+  }
+
+  .channelStatsPanel .provenanceCompactBlock .legend {
+    justify-items: center !important;
+  }
+
+  .channelStatsPanel .provenanceCompactBlock .legendRow {
+    grid-template-columns: 10px auto auto !important;
+    justify-content: center !important;
+  }
+
+  .channelStatsPanel .qualityRow {
+    flex-direction: column !important;
+    justify-content: center !important;
+    align-items: center !important;
+    text-align: center !important;
+  }
+
+  .channelStatsPanel .qualityRow > div:last-child,
+  .channelStatsPanel .qualityLabel,
+  .channelStatsPanel .qualitySub {
+    text-align: center !important;
+  }
+
+  .channelStatsPanel .lectureBusinessContent {
+    text-align: center !important;
+  }
+
+  .channelStatsPanel .bullets {
+    padding-left: 0 !important;
+    list-style-position: inside !important;
+    justify-items: center !important;
+    text-align: center !important;
+  }
+}

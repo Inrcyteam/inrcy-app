@@ -19,6 +19,7 @@ import {
   cubeSessionKey,
   emptyCubeState,
   expectedUiSnapshotDate,
+  fmtInt,
   getLocalPeriodSyncAt,
   getOverviewSnapshotDate,
   getStatsLastChannelSyncAt,
@@ -41,9 +42,23 @@ import {
   type Period,
   type StatsBulkResponse,
 } from "./stats.shared";
-import { Cube, SummaryBar } from "./stats.ui";
+import { Cube } from "./stats.ui";
 
 const useBrowserLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
+
+type StatsPanelKey = "all" | CubeKey;
+
+function PlugIcon() {
+  return (
+    <svg className={styles.plugSvgIcon} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M9 3v5" />
+      <path d="M15 3v5" />
+      <path d="M8 8h8v4a4 4 0 0 1-4 4h0a4 4 0 0 1-4-4V8Z" />
+      <path d="M12 16v5" />
+      <path d="M9.5 21h5" />
+    </svg>
+  );
+}
 
 function normalizeCapturedLeads(raw: unknown, fallback?: CapturedLeads): CapturedLeads {
   const value = raw && typeof raw === "object" ? raw as Partial<CapturedLeads> : {};
@@ -59,25 +74,6 @@ export default function StatsClient() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [lastRefreshAt, setLastRefreshAt] = useState<number | null>(null);
 
-  const inrcyRef = useRef<HTMLDivElement | null>(null);
-  const webRef = useRef<HTMLDivElement | null>(null);
-  const gmbRef = useRef<HTMLDivElement | null>(null);
-  const fbRef = useRef<HTMLDivElement | null>(null);
-  const igRef = useRef<HTMLDivElement | null>(null);
-  const liRef = useRef<HTMLDivElement | null>(null);
-
-  const scrollTo = (key: CubeKey) => {
-    const map = {
-      site_inrcy: inrcyRef,
-      site_web: webRef,
-      gmb: gmbRef,
-      facebook: fbRef,
-      instagram: igRef,
-      linkedin: liRef,
-    } as const;
-
-    map[key].current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
 
   // ✅ Période globale (7j / 30j) pour éviter un mix incohérent entre blocs.
   const period: Period = 30;
@@ -98,9 +94,15 @@ export default function StatsClient() {
     instagram: 0,
     linkedin: 0,
   });
-  const [summaryHydrated, setSummaryHydrated] = useState(false);
-  const [summaryActionsOpen, setSummaryActionsOpen] = useState(false);
+  const [, setSummaryHydrated] = useState(false);
+  const [activeStatsPanel, setActiveStatsPanel] = useState<StatsPanelKey>("all");
+  const [statsMenuOpen, setStatsMenuOpen] = useState(false);
   const [dailyBootReady, setDailyBootReady] = useState(false);
+
+  const scrollTo = (key: CubeKey) => {
+    setActiveStatsPanel(key);
+    setStatsMenuOpen(false);
+  };
 
   // In-memory cache to avoid duplicate fetch bursts (React strict-mode/dev & quick navigations)
   const periodCacheRef = useRef(new Map<number, Record<CubeKey, Overview>>());
@@ -869,7 +871,6 @@ useEffect(() => {
 
   const centralPotential30 = summaryOpp.total;
   const centralByCube = summaryOpp.byCube;
-  const summaryDisplayReady = summaryHydrated;
 
   const computedEstimatedByCube = useMemo<Record<CubeKey, number>>(() => {
     const rate = Math.max(0, safeNum(summaryProfile.lead_conversion_rate)) / 100;
@@ -893,6 +894,36 @@ useEffect(() => {
     summaryEstimatedByCube,
   }), [centralByCube, computedEstimatedByCube, models, summaryEstimatedByCube]);
 
+  const summaryActionByChannel = useMemo(() => {
+    return new Map(summaryActionItems.map((item) => [item.key, item]));
+  }, [summaryActionItems]);
+
+  const connectedChannelsCount = useMemo(() => {
+    return models.reduce((total, model) => {
+      const isSite = model.key === "site_inrcy" || model.key === "site_web";
+      const connected = isSite ? !!model.connections.ga4 || !!model.connections.gsc : !!model.connections.main;
+      return total + (connected ? 1 : 0);
+    }, 0);
+  }, [models]);
+
+  const totalCapturedLeads30 = useMemo(() => {
+    return models.reduce((total, model) => total + safeNum(model.capturedLeads.month), 0);
+  }, [models]);
+
+  const activeModel = activeStatsPanel === "all"
+    ? null
+    : models.find((model) => model.key === activeStatsPanel) ?? models[0] ?? null;
+
+  const navigateFromStats = (href: string) => {
+    if (href.startsWith("/api/")) window.location.href = href;
+    else router.push(href);
+  };
+
+  const selectStatsPanel = (panel: StatsPanelKey) => {
+    setActiveStatsPanel(panel);
+    setStatsMenuOpen(false);
+  };
+
   return (
     <div className={styles.page}>
       <div className={styles.header}>
@@ -903,6 +934,7 @@ useEffect(() => {
               alt="iNrStats"
               width={154}
               height={64}
+              style={{ width: 154, height: "auto" }}
               priority
             />
             <div className={`${styles.tagline} ${styles.taglineDesktop}`}>Vos données analysées en mode business.</div>
@@ -911,6 +943,15 @@ useEffect(() => {
           <div className={styles.headerActions}>
             <div className={styles.headerCloseControls}>
               <HelpButton onClick={() => setHelpOpen(true)} title="Aide iNr’Stats" />
+              <button
+                type="button"
+                className={styles.statsMobileNavButton}
+                onClick={() => setStatsMenuOpen(true)}
+                aria-label="Ouvrir les canaux iNrStats"
+                title="Canaux"
+              >
+                ☰
+              </button>
               <ResponsiveActionButton
                 desktopLabel={isRefreshing ? "Actualisation…" : "Actualiser"}
                 mobileIcon="↻"
@@ -938,59 +979,218 @@ useEffect(() => {
         </ul>
       </HelpModal>
 
-      <SummaryBar
-        centralPotential30={centralPotential30}
-        summaryDisplayReady={summaryDisplayReady}
-        centralByCube={centralByCube}
-        summaryActionsOpen={summaryActionsOpen}
-        onToggleActions={() => setSummaryActionsOpen((prev) => !prev)}
-        onScrollTo={scrollTo}
-        summaryActionItems={summaryActionItems}
-      />
+      {statsMenuOpen ? (
+        <div className={styles.statsMobileDrawerOverlay} role="presentation" onClick={() => setStatsMenuOpen(false)}>
+          <aside className={styles.statsMobileDrawer} aria-label="Choisir une vue iNrStats" onClick={(event) => event.stopPropagation()}>
+            <div className={styles.statsMobileDrawerHead}>
+              <strong>Canaux</strong>
+              <button type="button" onClick={() => setStatsMenuOpen(false)} aria-label="Fermer le menu des canaux">×</button>
+            </div>
 
-      <div className={styles.grid}>
+            <div className={styles.statsMobileDrawerList}>
+              <button
+                type="button"
+                className={`${styles.statsMobileDrawerItem} ${styles.statsRailItemGlobal} ${connectedChannelsCount > 0 ? styles.statsRailItemConnected : styles.statsRailItemOff} ${activeStatsPanel === "all" ? styles.statsMobileDrawerItemActive : ""}`}
+                onClick={() => selectStatsPanel("all")}
+              >
+                <span className={styles.statsRailDot} aria-hidden />
+                <span className={styles.statsRailText}>
+                  <b>Tous</b>
+                  <small>Vue globale</small>
+                </span>
+                <span className={styles.statsRailValue}>+{fmtInt(centralPotential30)}</span>
+              </button>
 
-        <div ref={inrcyRef}>
-          <Cube
-            model={models[0]}
-            onNavigate={(href) => (href.startsWith("/api/") ? (window.location.href = href) : router.push(href))}
-          />
+              {models.map((model) => {
+                const isSite = model.key === "site_inrcy" || model.key === "site_web";
+                const connected = isSite ? !!model.connections.ga4 || !!model.connections.gsc : !!model.connections.main;
+                const isActive = activeStatsPanel === model.key;
+
+                return (
+                  <button
+                    type="button"
+                    key={model.key}
+                    className={`${styles.statsMobileDrawerItem} ${isActive ? styles.statsMobileDrawerItemActive : ""} ${connected ? styles.statsRailItemConnected : styles.statsRailItemOff}`}
+                    onClick={() => selectStatsPanel(model.key)}
+                  >
+                    <span className={styles.statsRailDot} aria-hidden />
+                    <span className={styles.statsRailText}>
+                      <b>{model.title}</b>
+                      <small>{connected ? "Connecté" : "À connecter"}</small>
+                    </span>
+                    <span className={styles.statsRailValue}>+{fmtInt(model.opportunity30)}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </aside>
         </div>
+      ) : null}
 
-        <div ref={webRef}>
-          <Cube
-            model={models[1]}
-            onNavigate={(href) => (href.startsWith("/api/") ? (window.location.href = href) : router.push(href))}
-          />
-        </div>
+      <div className={styles.statsWorkspace}>
+        <aside className={styles.statsRail} aria-label="Canaux iNrStats">
+          <button
+            type="button"
+            className={`${styles.statsRailItem} ${styles.statsRailItemGlobal} ${connectedChannelsCount > 0 ? styles.statsRailItemConnected : styles.statsRailItemOff} ${activeStatsPanel === "all" ? styles.statsRailItemActive : ""}`}
+            onClick={() => selectStatsPanel("all")}
+          >
+            <span className={styles.statsRailDot} aria-hidden />
+            <span className={styles.statsRailText}>
+              <b>Tous</b>
+              <small>Vue globale</small>
+            </span>
+            <span className={styles.statsRailValue}>+{fmtInt(centralPotential30)}</span>
+          </button>
 
-        <div ref={gmbRef}>
-          <Cube
-            model={models[2]}
-            onNavigate={(href) => (href.startsWith("/api/") ? (window.location.href = href) : router.push(href))}
-          />
-        </div>
+          {models.map((model) => {
+            const isSite = model.key === "site_inrcy" || model.key === "site_web";
+            const connected = isSite ? !!model.connections.ga4 || !!model.connections.gsc : !!model.connections.main;
+            const isActive = activeStatsPanel === model.key;
 
-        <div ref={fbRef}>
-          <Cube
-            model={models[3]}
-            onNavigate={(href) => (href.startsWith("/api/") ? (window.location.href = href) : router.push(href))}
-          />
-        </div>
+            return (
+              <button
+                key={model.key}
+                type="button"
+                className={`${styles.statsRailItem} ${isActive ? styles.statsRailItemActive : ""} ${connected ? styles.statsRailItemConnected : styles.statsRailItemOff}`}
+                onClick={() => selectStatsPanel(model.key)}
+              >
+                <span className={styles.statsRailDot} aria-hidden />
+                <span className={styles.statsRailText}>
+                  <b>{model.title}</b>
+                  <small>{connected ? "Connecté" : "À connecter"}</small>
+                </span>
+                <span className={styles.statsRailValue}>+{fmtInt(model.opportunity30)}</span>
+              </button>
+            );
+          })}
+        </aside>
 
-        <div ref={igRef}>
-          <Cube
-            model={models[4]}
-            onNavigate={(href) => (href.startsWith("/api/") ? (window.location.href = href) : router.push(href))}
-          />
-        </div>
+        <main className={styles.statsPanel}>
+          {activeStatsPanel === "all" ? (
+            <section className={styles.allStatsPanel} aria-label="Vue globale iNrStats">
+              <div className={styles.allStatsHero}>
+                <div>
+                  <div className={styles.allStatsEyebrow}>Vue globale</div>
+                  <h2 className={styles.allStatsTitle}>Tous vos canaux en un coup d’œil</h2>
+                  <p className={styles.allStatsText}>
+                    Synthèse par canal : opportunités activables, CA potentiel et outil recommandé.
+                  </p>
+                </div>
 
-        <div ref={liRef}>
-          <Cube
-            model={models[5]}
-            onNavigate={(href) => (href.startsWith("/api/") ? (window.location.href = href) : router.push(href))}
-          />
-        </div>
+                <div className={styles.allStatsKpis}>
+                  <div className={`${styles.allStatsKpi} ${styles.kpiToneBlue}`}>
+                    <span>Opportunités</span>
+                    <b>+{fmtInt(centralPotential30)}</b>
+                  </div>
+                  <div className={`${styles.allStatsKpi} ${styles.kpiTonePurple}`}>
+                    <span>CA potentiel</span>
+                    <b>+{fmtInt(summaryActionItems.reduce((total, item) => total + safeNum(item.revenue), 0))} €</b>
+                  </div>
+                  <div className={`${styles.allStatsKpi} ${styles.kpiToneGreen}`}>
+                    <span>Demandes captées 30 j</span>
+                    <b>{fmtInt(totalCapturedLeads30)}</b>
+                  </div>
+                  <div className={`${styles.allStatsKpi} ${styles.kpiToneSlate}`}>
+                    <span>Canaux</span>
+                    <b>{models.length}</b>
+                  </div>
+                </div>
+              </div>
+
+              <div className={styles.allStatsActions}>
+                {models.map((model) => {
+                  const actionItem = summaryActionByChannel.get(model.key);
+                  const revenue = summaryEstimatedByCube[model.key] || computedEstimatedByCube[model.key] || actionItem?.revenue || 0;
+                  const actionHref = model.action?.href || "#";
+                  const channelText = model.insights.find((text) => !text.toLowerCase().startsWith("recommandation")) || model.capturedLeadsHint || model.subtitle;
+                  const actionText = actionItem?.kicker || model.action.title;
+                  const isSite = model.key === "site_inrcy" || model.key === "site_web";
+                  const connected = isSite ? !!model.connections.ga4 || !!model.connections.gsc : !!model.connections.main;
+
+                  return (
+                    <article
+                      key={model.key}
+                      className={`${styles.allStatsActionCard} ${connected ? styles.allStatsActionCardConnected : styles.allStatsActionCardOff}`}
+                    >
+                      <button
+                        type="button"
+                        className={styles.allStatsDetailArrow}
+                        onClick={() => scrollTo(model.key)}
+                        aria-label={`Voir le détail ${model.title}`}
+                        title="Voir le détail"
+                      >
+                        ↗
+                      </button>
+
+                      <button type="button" className={styles.allStatsChannelButton} onClick={() => scrollTo(model.key)}>
+                        <span className={styles.allStatsChannelName}>{model.title}</span>
+                      </button>
+
+                      <div className={styles.allStatsMetrics}>
+                        <span>
+                          <small>Opportunités</small>
+                          <b>+{fmtInt(model.opportunity30)}</b>
+                        </span>
+                        <span>
+                          <small>CA potentiel</small>
+                          <b>+{fmtInt(revenue)} €</b>
+                        </span>
+                      </div>
+
+                      <div className={styles.allStatsRecommendedAction}>
+                        <span className={`${styles.allStatsToolBadge} ${connected ? "" : styles.allStatsToolBadgeConnect}`}>
+                          {actionItem?.badge ?? model.action.pill}
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        className={`${styles.allStatsGoButton} ${connected ? styles.allStatsGoButtonOn : styles.allStatsGoButtonConnect}`}
+                        onClick={() => actionHref && actionHref !== "#" ? navigateFromStats(actionHref) : scrollTo(model.key)}
+                        title={connected ? "Lancer l’action recommandée" : "Configurer ce canal"}
+                      >
+                        {connected ? "GO ⚡" : <>GO <PlugIcon /></>}
+                      </button>
+                    </article>
+                  );
+                })}
+              </div>
+            </section>
+          ) : activeModel ? (
+            <section className={styles.channelStatsPanel} aria-label={`Données ${activeModel.title}`}>
+              <div className={styles.channelStatsHeader}>
+                <div className={styles.channelStatsTitleBlock}>
+                  <div className={styles.allStatsEyebrow}>Canal actif</div>
+                  <h2 className={styles.allStatsTitle}>{activeModel.title}</h2>
+                  <p className={styles.allStatsText}>{activeModel.subtitle}</p>
+                </div>
+
+                <div className={`${styles.allStatsKpis} ${styles.channelStatsKpis}`}>
+                  <div className={`${styles.allStatsKpi} ${styles.kpiToneBlue}`}>
+                    <span>Opportunités</span>
+                    <b>+{fmtInt(activeModel.opportunity30)}</b>
+                  </div>
+                  <div className={`${styles.allStatsKpi} ${styles.kpiTonePurple}`}>
+                    <span>CA potentiel</span>
+                    <b>+{fmtInt(summaryEstimatedByCube[activeModel.key] || computedEstimatedByCube[activeModel.key] || 0)} €</b>
+                  </div>
+                  <div className={`${styles.allStatsKpi} ${styles.kpiToneGreen} ${styles.channelDemandesKpi}`}>
+                    <span className={styles.channelDemandesKpiLabel}>Demandes captées 7j / 30j</span>
+                    <b>{activeModel.capturedLeadsUnavailable ? "—" : `${fmtInt(activeModel.capturedLeads.week)} / ${fmtInt(activeModel.capturedLeads.month)}`}</b>
+                  </div>
+                </div>
+              </div>
+
+              <Cube
+                model={activeModel}
+                onNavigate={navigateFromStats}
+                forceOpen
+                hideDetailsToggle
+                estimatedRevenue={summaryEstimatedByCube[activeModel.key] || computedEstimatedByCube[activeModel.key] || 0}
+              />
+            </section>
+          ) : null}
+        </main>
       </div>
     </div>
   );

@@ -57,6 +57,37 @@ function StatusPill({ ok, label }: { ok: boolean; label: string }) {
 }
 
 
+function MiniMetricGrid({ items }: { items: Array<{ label: string; value: string }> }) {
+  if (!items.length) {
+    return <div className={styles.metricEmpty}>Données non exploitables pour le moment.</div>;
+  }
+
+  return (
+    <div className={styles.metricMiniGrid}>
+      {items.map((item) => (
+        <div key={item.label} className={styles.metricMiniCard}>
+          <span>{item.label}</span>
+          <b>{item.value}</b>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+
+function PlugIcon() {
+  return (
+    <svg className={styles.plugSvgIcon} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M9 3v5" />
+      <path d="M15 3v5" />
+      <path d="M8 8h8v4a4 4 0 0 1-4 4h0a4 4 0 0 1-4-4V8Z" />
+      <path d="M12 16v5" />
+      <path d="M9.5 21h5" />
+    </svg>
+  );
+}
+
+
 export function SummaryBar({
   centralPotential30,
   summaryDisplayReady,
@@ -167,14 +198,39 @@ export function SummaryBar({
   );
 }
 
+function getForcedCubeContextLabel(key: CubeModel["key"]) {
+  switch (key) {
+    case "site_inrcy":
+    case "site_web":
+      return "URL associée";
+    case "gmb":
+      return "Fiche Google";
+    case "facebook":
+      return "Page Facebook";
+    case "instagram":
+      return "Compte Instagram";
+    case "linkedin":
+      return "Compte LinkedIn";
+    default:
+      return "Canal associé";
+  }
+}
+
 export function Cube({
   model,
   onNavigate,
+  forceOpen = false,
+  hideDetailsToggle = false,
+  estimatedRevenue = 0,
 }: {
   model: CubeModel;
   onNavigate: (href: string) => void;
+  forceOpen?: boolean;
+  hideDetailsToggle?: boolean;
+  estimatedRevenue?: number;
 }) {
   const [open, setOpen] = useState(false);
+  const detailsOpen = forceOpen || open;
   const isSite = model.key === "site_inrcy" || model.key === "site_web";
 
   const action = (model as any).action ?? ({ key: "connect", title: "Connexion", detail: "", href: "#", pill: "Connexion" } as const);
@@ -184,17 +240,30 @@ export function Cube({
   const connectionOk = isSite
     ? !!model.connections.ga4 || !!model.connections.gsc
     : !!model.connections.main;
+  const headerTitle = hideDetailsToggle ? getForcedCubeContextLabel(model.key) : model.title;
 
   return (
     <section className={`${styles.cube} ${connectionOk ? styles.cubeOn : styles.cubeOff}`} aria-label={model.title}>
-      <div className={styles.cubeTop}>
-        <div>
-          <div className={styles.cubeTitleRow}>
-            <h2 className={styles.cubeTitle}>{model.title}</h2>
-            {model.loading ? <span className={styles.spinner} aria-hidden /> : null}
-          </div>
-          {model.accountLabel ? <div className={styles.cubeIdentity}>{model.accountLabel}</div> : null}
-          <div className={styles.cubeSub}>{model.subtitle}</div>
+      <div className={`${styles.cubeTop} ${hideDetailsToggle ? styles.cubeTopCompact : ""}`}>
+        <div className={hideDetailsToggle ? styles.cubeHeaderInline : undefined}>
+          {hideDetailsToggle ? (
+            <>
+              <div className={styles.cubeTitleInlineGroup}>
+                <h2 className={styles.cubeTitle}>{`${headerTitle} :`}</h2>
+                {model.loading ? <span className={styles.spinner} aria-hidden /> : null}
+              </div>
+              {model.accountLabel ? <div className={styles.cubeIdentityInline}>{model.accountLabel}</div> : null}
+            </>
+          ) : (
+            <>
+              <div className={styles.cubeTitleRow}>
+                <h2 className={styles.cubeTitle}>{headerTitle}</h2>
+                {model.loading ? <span className={styles.spinner} aria-hidden /> : null}
+              </div>
+              {model.accountLabel ? <div className={styles.cubeIdentity}>{model.accountLabel}</div> : null}
+              <div className={styles.cubeSub}>{model.subtitle}</div>
+            </>
+          )}
         </div>
 
         <div className={styles.cubeBadges}>
@@ -208,65 +277,101 @@ export function Cube({
               <StatusPill ok={!!model.connections.main} label={model.connections.main ? "Connecté" : "Déconnecté"} />
             )}
           </div>
-          <button
-            type="button"
-            className={styles.detailsBtn}
-            onClick={() => setOpen((v) => !v)}
-            aria-expanded={open}
-          >
-            {open ? "Masquer les détails" : "Voir les détails"}
-          </button>
+          {!hideDetailsToggle ? (
+            <button
+              type="button"
+              className={styles.detailsBtn}
+              onClick={() => setOpen((v) => !v)}
+              aria-expanded={detailsOpen}
+            >
+              {detailsOpen ? "Masquer les détails" : "Voir les détails"}
+            </button>
+          ) : null}
         </div>
       </div>
 
       {model.error ? <div className={styles.error}>{getSimpleFrenchErrorMessage(model.error, "Impossible de charger les statistiques pour le moment.")}</div> : null}
 
-      <div className={styles.actionCompact}>
-        <div className={styles.actionLeft}>
-          <div className={styles.actionTopRow}>
-            <span className={`${styles.actionPill} ${styles[`action_${pillKey}`]}`}>{pill}</span>
+      {hideDetailsToggle ? (
+        <div className={styles.mobileChannelHero}>
+          <div className={styles.mobileChannelEyebrow}>Canal actif</div>
+          <h2 className={styles.mobileChannelTitle}>{model.title}</h2>
+          <p className={styles.mobileChannelSub}>{model.subtitle}</p>
 
-            {pill === "Connexion" ? (
-              <div className={styles.actionTopText}>
-                <span className={styles.actionTitle}>{action.title}</span>
-              </div>
-            ) : null}
+          {model.accountLabel ? (
+            <div className={styles.mobileChannelLink}>{model.accountLabel}</div>
+          ) : null}
 
-            {action.effort ? (
-              <span className={`${styles.effort} ${styles[`effort_${action.effort.level}`]}`}>{action.effort.label}</span>
-            ) : null}
+          <div className={styles.mobileChannelPills}>
+            {isSite ? (
+              <>
+                <StatusPill ok={!!model.connections.ga4} label="GA4" />
+                <StatusPill ok={!!model.connections.gsc} label="GSC" />
+              </>
+            ) : (
+              <StatusPill ok={!!model.connections.main} label={model.connections.main ? "Connecté" : "Déconnecté"} />
+            )}
           </div>
 
-          <div className={styles.actionDetail}>{action.detail}</div>
+          <div className={styles.mobileChannelMetricGrid}>
+            <div>
+              <span>Opportunités</span>
+              <b>+{fmtInt(model.opportunity30)}</b>
+            </div>
+            <div>
+              <span>CA potentiel</span>
+              <b>+{fmtInt(estimatedRevenue)} €</b>
+            </div>
+            <div>
+              <span>Demandes captées 7j</span>
+              <b>{model.capturedLeadsUnavailable ? "—" : fmtInt(model.capturedLeads.week)}</b>
+            </div>
+            <div>
+              <span>Demandes captées 30j</span>
+              <b>{model.capturedLeadsUnavailable ? "—" : fmtInt(model.capturedLeads.month)}</b>
+            </div>
+          </div>
         </div>
+      ) : null}
 
-        <button
-          className={`${styles.actionBtn} ${connectionOk ? styles.actionBtnOn : styles.actionBtnOff}`}
-          onClick={() => (action.href ? onNavigate(action.href) : undefined)}
-          disabled={model.loading || !action.href}
-          aria-disabled={model.loading || !action.href}
-        >
-          <span className={styles.actionBtnDesktop}>{connectionOk ? "GO ⚡" : "GO 🔌"}</span>
-          <span className={styles.actionBtnMobile}>{connectionOk ? "GO ⚡" : "GO 🔌"}</span>
-        </button>
-      </div>
+      {!hideDetailsToggle ? (
+        <div className={styles.actionCompact}>
+          <div className={styles.actionLeft}>
+            <div className={styles.actionTopRow}>
+              <span className={`${styles.actionPill} ${styles[`action_${pillKey}`]}`}>{pill}</span>
 
-      {open ? (
+              {pill === "Connexion" ? (
+                <div className={styles.actionTopText}>
+                  <span className={styles.actionTitle}>{action.title}</span>
+                </div>
+              ) : null}
+
+              {action.effort ? (
+                <span className={`${styles.effort} ${styles[`effort_${action.effort.level}`]}`}>{action.effort.label}</span>
+              ) : null}
+            </div>
+
+            <div className={styles.actionDetail}>{action.detail}</div>
+          </div>
+
+          <button
+            className={`${styles.actionBtn} ${connectionOk ? styles.actionBtnOn : styles.actionBtnOff}`}
+            onClick={() => (action.href ? onNavigate(action.href) : undefined)}
+            disabled={model.loading || !action.href}
+            aria-disabled={model.loading || !action.href}
+          >
+            <span className={styles.actionBtnDesktop}>{connectionOk ? "GO ⚡" : <>GO <PlugIcon /></>}</span>
+            <span className={styles.actionBtnMobile}>{connectionOk ? "GO ⚡" : <>GO <PlugIcon /></>}</span>
+          </button>
+        </div>
+      ) : null}
+
+      {detailsOpen ? (
         <div className={styles.cubeBody}>
           <div className={styles.detailTopRow}>
-            <div className={`${styles.block} ${styles.capturedLeadsBlock}`}>
-              <div className={styles.blockTitle}>Demandes captées</div>
-              <div className={styles.capturedLeadsGrid}>
-                <div className={styles.capturedLeadStat}>
-                  <span>7 jours</span>
-                  <b>{model.capturedLeadsUnavailable ? "—" : fmtInt(model.capturedLeads.week)}</b>
-                </div>
-                <div className={styles.capturedLeadStat}>
-                  <span>30 jours</span>
-                  <b>{model.capturedLeadsUnavailable ? "—" : fmtInt(model.capturedLeads.month)}</b>
-                </div>
-              </div>
-              <div className={styles.capturedLeadsHint}>{model.capturedLeadsHint || "Demandes réelles mesurées sur ce canal."}</div>
+            <div className={`${styles.block} ${styles.metricOverviewBlock}`}>
+              <div className={styles.blockTitle}>Visibilité du canal</div>
+              <MiniMetricGrid items={model.visibilityStats} />
             </div>
 
             <div className={`${styles.block} ${styles.provenanceCompactBlock}`}>
@@ -278,11 +383,6 @@ export function Cube({
 
           <div className={styles.blockRow}>
             <div className={styles.block}>
-              <div className={styles.blockTitle}>Opportunité</div>
-              <div className={styles.oppValue}>+{fmtInt(model.opportunity30)}</div>
-              <div className={styles.oppSub}>{model.opportunityLabel} (projection 30 j)</div>
-            </div>
-            <div className={styles.block}>
               <div className={styles.blockTitle}>Qualité</div>
               <div className={styles.qualityRow}>
                 <RingScore value={model.qualityScore} tone={model.qualityTone} />
@@ -292,15 +392,46 @@ export function Cube({
                 </div>
               </div>
             </div>
+
+            <div className={`${styles.block} ${styles.metricOverviewBlock}`}>
+              <div className={styles.blockTitle}>Actions utiles</div>
+              <MiniMetricGrid items={model.actionStats} />
+            </div>
           </div>
 
-          <div className={styles.block}>
-            <div className={styles.blockTitle}>Lecture business</div>
-            <ul className={styles.bullets}>
-              {model.insights.map((t, i) => (
-                <li key={i}>{t}</li>
-              ))}
-            </ul>
+          <div className={`${styles.block} ${hideDetailsToggle ? styles.lectureBusinessActionBlock : ""}`}>
+            <div className={styles.lectureBusinessContent}>
+              <div className={styles.blockTitle}>Lecture business</div>
+              <ul className={styles.bullets}>
+                {model.insights.map((t, i) => (
+                  <li key={i}>{t}</li>
+                ))}
+              </ul>
+            </div>
+
+            {hideDetailsToggle ? (
+              <div className={styles.channelInlineActionStack}>
+                <div className={styles.channelInlineAction}>
+                  <div className={styles.channelInlineActionLabel}>Action recommandée</div>
+                  <div className={styles.channelInlineActionTop}>
+                    <span className={`${styles.actionPill} ${styles[`action_${pillKey}`]}`}>{pill}</span>
+                    {action.effort ? (
+                      <span className={`${styles.effort} ${styles[`effort_${action.effort.level}`]}`}>{action.effort.label}</span>
+                    ) : null}
+                  </div>
+                </div>
+
+                <button
+                  className={`${styles.actionBtn} ${styles.channelInlineGoButton} ${connectionOk ? styles.actionBtnOn : styles.actionBtnOff}`}
+                  onClick={() => (action.href ? onNavigate(action.href) : undefined)}
+                  disabled={model.loading || !action.href}
+                  aria-disabled={model.loading || !action.href}
+                >
+                  <span className={styles.actionBtnDesktop}>{connectionOk ? "GO ⚡" : <>GO <PlugIcon /></>}</span>
+                  <span className={styles.actionBtnMobile}>{connectionOk ? "GO ⚡" : <>GO <PlugIcon /></>}</span>
+                </button>
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}

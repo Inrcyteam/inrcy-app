@@ -108,6 +108,11 @@ export type ActionEffort = {
   label: string;
 };
 
+export type CubeMetricItem = {
+  label: string;
+  value: string;
+};
+
 export type CubeModel = {
   inrcyOwnership?: "none" | "sold" | "rented";
   key: CubeKey;
@@ -129,6 +134,8 @@ export type CubeModel = {
   capturedLeadsUnavailable?: boolean;
   capturedLeadsHint?: string;
   provenanceHint?: string;
+  visibilityStats: CubeMetricItem[];
+  actionStats: CubeMetricItem[];
   qualityScore: number;
   qualityLabel: string;
   qualityTone: "low" | "ok" | "solid" | "excellent";
@@ -625,6 +632,10 @@ function computeOpportunityPerDaySocial(cubeKey: CubeKey, ov: Overview): number 
       "clicks",
       "outbound_clicks",
       "outboundClicks",
+      "profile_links_taps",
+      "text_message_clicks",
+      "get_directions_clicks",
+      "get_direction_clicks",
     ]) || 0;
 
   const impressionsPerDay = impressionsTotal / baseDays;
@@ -808,31 +819,40 @@ export function isLinkedInStatsPartial(ov: Overview | null | undefined) {
 export function buildProvenance(cubeKey: CubeKey, ov: Overview) {
   if (cubeKey === "gmb") {
     const m = ov?.sources?.gmb?.metrics;
-    const { mapsImpressions: maps, searchImpressions: search } = getGmbTotals(m);
-    const total = maps + search;
+    const { impressions, mapsImpressions: maps, searchImpressions: search } = getGmbTotals(m);
+    if (maps > 0 || search > 0) {
+      return [
+        { label: "Maps", value: maps, colorVar: "--cGoogle" },
+        { label: "Search", value: search, colorVar: "--cDirect" },
+      ];
+    }
+    if (impressions > 0) {
+      return [
+        { label: "Visibilité locale", value: impressions, colorVar: "--cGoogle" },
+      ];
+    }
     return [
-      { label: "Maps", value: total > 0 ? maps : 1, colorVar: "--cGoogle" },
-      { label: "Search", value: total > 0 ? search : 1, colorVar: "--cDirect" },
+      { label: "Maps", value: 0, colorVar: "--cGoogle" },
+      { label: "Search", value: 0, colorVar: "--cDirect" },
     ];
   }
 
   if (cubeKey === "facebook") {
     const m = ov?.sources?.facebook?.metrics;
-    const audience =
-      safeNum(m?.totals?.post_impressions_sum) ||
-      safeNum(m?.totals?.fan_count) ||
-      safeNum(m?.totals?.followers_count) ||
-      safeNum(m?.totals?.page_views_total);
+    const audience = Math.max(
+      safeNum(m?.totals?.page_impressions_unique),
+      safeNum(m?.totals?.post_impressions_unique_sum),
+      safeNum(m?.totals?.reach),
+      safeNum(m?.totals?.fan_count),
+      safeNum(m?.totals?.followers_count),
+      safeNum(m?.totals?.page_views_total),
+    );
     const interactions =
-      safeNum(m?.totals?.page_engaged_users) +
-      safeNum(m?.totals?.post_engaged_users_sum) +
-      safeNum(m?.totals?.page_website_clicks_logged_in_unique) +
-      safeNum(m?.totals?.page_call_phone_clicks_logged_in_unique) +
-      safeNum(m?.totals?.page_get_directions_clicks_logged_in_unique);
-    const total = audience + interactions;
+      bestMetricValue(m, ["page_post_engagements", "page_engaged_users", "post_engaged_users_sum"]) ||
+      sumMetricValues(m, ["reactions", "comments", "shares"]);
     return [
-      { label: "Audience", value: total > 0 ? audience : 1, colorVar: "--cSocial" },
-      { label: "Interactions", value: total > 0 ? interactions : 1, colorVar: "--cGoogle" },
+      { label: "Audience", value: audience, colorVar: "--cSocial" },
+      { label: "Interactions", value: interactions, colorVar: "--cGoogle" },
     ];
   }
 
@@ -841,34 +861,23 @@ export function buildProvenance(cubeKey: CubeKey, ov: Overview) {
     const audience =
       safeNum(m?.totals?.reach) +
       safeNum(m?.totals?.profile_views) +
-      safeNum(m?.totals?.follower_count);
+      latestDailyMetricValue(m, "follower_count");
     const engagement =
-      safeNum(m?.totals?.website_clicks) +
-      safeNum(m?.totals?.phone_call_clicks) +
-      safeNum(m?.totals?.email_contacts) +
-      safeNum(m?.totals?.text_message_clicks) +
-      safeNum(m?.totals?.get_directions_clicks) +
-      safeNum(m?.totals?.get_direction_clicks);
-    const total = audience + engagement;
+      bestMetricValue(m, ["total_interactions", "accounts_engaged"]) ||
+      sumMetricValues(m, ["profile_links_taps", "website_clicks", "phone_call_clicks", "email_contacts", "text_message_clicks", "get_directions_clicks", "get_direction_clicks"]);
     return [
-      { label: "Audience", value: total > 0 ? audience : 1, colorVar: "--cSocial" },
-      { label: "Engagement", value: total > 0 ? engagement : 1, colorVar: "--cGoogle" },
+      { label: "Audience", value: audience, colorVar: "--cSocial" },
+      { label: "Engagement", value: engagement, colorVar: "--cGoogle" },
     ];
   }
 
   if (cubeKey === "linkedin") {
     const m = ov?.sources?.linkedin?.metrics;
     const impressions =
-      safeNum(m?.totals?.impressionCount) +
+      bestMetricValue(m, ["impressionCount", "impressions"]) +
       safeNum(m?.totals?.uniqueImpressionsCount) +
-      safeNum(m?.totals?.impressions) +
       safeNum(m?.totals?.pageViews);
-    const clicks =
-      safeNum(m?.totals?.clickCount) +
-      safeNum(m?.totals?.clicks) +
-      safeNum(m?.totals?.linkClickCount) +
-      safeNum(m?.totals?.premiumCtaClickCount) +
-      safeNum(m?.totals?.pageClicks);
+    const clicks = sumMetricValues(m, ["clickCount", "clicks", "linkClickCount", "premiumCtaClickCount", "pageClicks"]);
     return [
       { label: "Impressions", value: impressions, colorVar: "--cSocial" },
       { label: "Clics", value: clicks, colorVar: "--cGoogle" },
@@ -939,7 +948,7 @@ function getSocialMetrics(cubeKey: "facebook" | "instagram" | "linkedin", ov: Ov
     cubeKey === "facebook"
       ? safeNum(m?.totals?.fan_count) + safeNum(m?.totals?.followers_count) + safeNum(m?.totals?.post_impressions_sum)
       : cubeKey === "instagram"
-        ? safeNum(m?.totals?.follower_count) + safeNum(m?.totals?.reach) + safeNum(m?.totals?.profile_views)
+        ? latestDailyMetricValue(m, "follower_count") + safeNum(m?.totals?.reach) + safeNum(m?.totals?.profile_views)
         : safeNum(m?.totals?.followers) +
           safeNum(m?.totals?.followerCount) +
           safeNum(m?.totals?.memberFollowersCount) +
@@ -959,7 +968,7 @@ function getSocialMetrics(cubeKey: "facebook" | "instagram" | "linkedin", ov: Ov
     cubeKey === "facebook"
       ? safeNum(m?.totals?.page_website_clicks_logged_in_unique) + safeNum(m?.totals?.page_call_phone_clicks_logged_in_unique) + safeNum(m?.totals?.page_get_directions_clicks_logged_in_unique)
       : cubeKey === "instagram"
-        ? safeNum(m?.totals?.website_clicks) + safeNum(m?.totals?.phone_call_clicks) + safeNum(m?.totals?.email_contacts) + safeNum(m?.totals?.text_message_clicks) + safeNum(m?.totals?.get_directions_clicks) + safeNum(m?.totals?.get_direction_clicks)
+        ? safeNum(m?.totals?.profile_links_taps) + safeNum(m?.totals?.website_clicks) + safeNum(m?.totals?.phone_call_clicks) + safeNum(m?.totals?.email_contacts) + safeNum(m?.totals?.text_message_clicks) + safeNum(m?.totals?.get_directions_clicks) + safeNum(m?.totals?.get_direction_clicks)
         : safeNum(m?.totals?.clickCount) + safeNum(m?.totals?.pageClicks);
 
   const visibility =
@@ -1337,6 +1346,232 @@ export function buildInsights(cubeKey: CubeKey, ov: Overview, qualityScore: numb
   return insights.slice(0, 3);
 }
 
+function formatPercent(value: number, digits = 0) {
+  const safe = Number.isFinite(value) ? value : 0;
+  return `${new Intl.NumberFormat("fr-FR", { maximumFractionDigits: digits }).format(safe)} %`;
+}
+
+function formatSecondsToLabel(value: number) {
+  const totalSeconds = Math.max(0, Math.round(Number.isFinite(value) ? value : 0));
+  if (totalSeconds <= 0) return "0 s";
+  if (totalSeconds < 60) return `${totalSeconds} s`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return seconds > 0 ? `${minutes} min ${seconds}s` : `${minutes} min`;
+}
+
+function metricKeyExists(metrics: any, keys: string[]) {
+  const totals = safeObj(safeObj(metrics).totals);
+  return keys.some((key) => Object.prototype.hasOwnProperty.call(totals, key));
+}
+
+function sumMetricValues(metrics: any, keys: string[]) {
+  const totals = safeObj(safeObj(metrics).totals);
+  return keys.reduce((sum, key) => sum + safeNum(totals[key]), 0);
+}
+
+function bestMetricValue(metrics: any, keys: string[]) {
+  const totals = safeObj(safeObj(metrics).totals);
+  for (const key of keys) {
+    const value = safeNum(totals[key]);
+    if (value > 0) return value;
+  }
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(totals, key)) return safeNum(totals[key]);
+  }
+  return 0;
+}
+
+function latestDailyMetricValue(metrics: any, key: string) {
+  const daily = Array.isArray(metrics?.daily) ? metrics.daily : [];
+  for (let index = daily.length - 1; index >= 0; index -= 1) {
+    const value = safeNum(daily[index]?.values?.[key], NaN);
+    if (Number.isFinite(value)) return value;
+  }
+  return safeNum(metrics?.totals?.[key]);
+}
+
+function pushNumberMetric(
+  items: CubeMetricItem[],
+  label: string,
+  value: number,
+  options: { available?: boolean; keepZero?: boolean; formatter?: (value: number) => string } = {},
+) {
+  const n = Number.isFinite(value) ? value : 0;
+  const available = options.available ?? n > 0;
+  if (!available) return;
+  if (!options.keepZero && n <= 0) return;
+  items.push({ label, value: options.formatter ? options.formatter(n) : fmtInt(n) });
+}
+
+function firstFour(items: CubeMetricItem[]) {
+  return items.slice(0, 4);
+}
+
+function isWebsiteConnected(cubeKey: CubeKey, ov: Overview) {
+  if (cubeKey === "site_inrcy") {
+    return !!ov?.sources?.site_inrcy?.connected?.ga4 || !!ov?.sources?.site_inrcy?.connected?.gsc;
+  }
+  if (cubeKey === "site_web") {
+    return !!ov?.sources?.site_web?.connected?.ga4 || !!ov?.sources?.site_web?.connected?.gsc;
+  }
+  return false;
+}
+
+function buildVisibilityStats(cubeKey: CubeKey, ov: Overview): CubeMetricItem[] {
+  const items: CubeMetricItem[] = [];
+
+  if (cubeKey === "gmb") {
+    if (!ov?.sources?.gmb?.connected) return [];
+    const metrics = ov?.sources?.gmb?.metrics;
+    const totals = getGmbTotals(metrics);
+    pushNumberMetric(items, "Impressions", totals.impressions, { available: !!metrics && totals.impressions > 0 });
+    pushNumberMetric(items, "Vues Maps", totals.mapsImpressions, { available: !!metrics && totals.mapsImpressions > 0 });
+    pushNumberMetric(items, "Vues Search", totals.searchImpressions, { available: !!metrics && totals.searchImpressions > 0 });
+    pushNumberMetric(items, "Vues fiche", safeNum(metrics?.totals?.views) || safeNum(metrics?.totals?.BUSINESS_PROFILE_VIEWS), {
+      available: metricKeyExists(metrics, ["views", "BUSINESS_PROFILE_VIEWS"]),
+    });
+    return firstFour(items);
+  }
+
+  if (cubeKey === "facebook") {
+    if (!ov?.sources?.facebook?.connected) return [];
+    const m = ov?.sources?.facebook?.metrics;
+    const impressions = sumMetricValues(m, ["page_impressions", "post_impressions_sum", "impressions"]);
+    const reach = bestMetricValue(m, ["page_impressions_unique", "reach", "post_impressions_unique_sum"]);
+    const audience = Math.max(safeNum(m?.totals?.fan_count), safeNum(m?.totals?.followers_count));
+    const pageViews = safeNum(m?.totals?.page_views_total);
+    pushNumberMetric(items, "Impressions", impressions, { available: metricKeyExists(m, ["page_impressions", "post_impressions_sum", "impressions"]) });
+    pushNumberMetric(items, "Portée", reach, { available: metricKeyExists(m, ["page_impressions_unique", "reach", "post_impressions_unique_sum"]) });
+    pushNumberMetric(items, "Audience", audience, { available: metricKeyExists(m, ["fan_count", "followers_count"]) });
+    pushNumberMetric(items, "Vues page", pageViews, { available: metricKeyExists(m, ["page_views_total"]) });
+    return firstFour(items);
+  }
+
+  if (cubeKey === "instagram") {
+    if (!ov?.sources?.instagram?.connected) return [];
+    const m = ov?.sources?.instagram?.metrics;
+    const followers = latestDailyMetricValue(m, "follower_count");
+    pushNumberMetric(items, "Portée", safeNum(m?.totals?.reach), { available: metricKeyExists(m, ["reach"]) });
+    pushNumberMetric(items, "Impressions", safeNum(m?.totals?.impressions), { available: metricKeyExists(m, ["impressions"]) });
+    pushNumberMetric(items, "Vues profil", safeNum(m?.totals?.profile_views), { available: metricKeyExists(m, ["profile_views"]) });
+    pushNumberMetric(items, "Abonnés", followers, { available: metricKeyExists(m, ["follower_count"]) });
+    return firstFour(items);
+  }
+
+  if (cubeKey === "linkedin") {
+    if (!ov?.sources?.linkedin?.connected || isLinkedInStatsPartial(ov)) return [];
+    const m = ov?.sources?.linkedin?.metrics;
+    const impressions = bestMetricValue(m, ["impressionCount", "impressions"]);
+    const uniqueImpressions = safeNum(m?.totals?.uniqueImpressionsCount);
+    const pageViews = bestMetricValue(m, ["pageViews", "profileViews"]);
+    const followers = bestMetricValue(m, ["followers", "followerCount", "memberFollowersCount"]);
+    pushNumberMetric(items, "Impressions", impressions, { available: metricKeyExists(m, ["impressionCount", "impressions"]) });
+    pushNumberMetric(items, "Impr. uniques", uniqueImpressions, { available: metricKeyExists(m, ["uniqueImpressionsCount"]) });
+    pushNumberMetric(items, "Vues page", pageViews, { available: metricKeyExists(m, ["pageViews", "profileViews"]) });
+    pushNumberMetric(items, "Abonnés", followers, { available: metricKeyExists(m, ["followers", "followerCount", "memberFollowersCount"]) });
+    return firstFour(items);
+  }
+
+  if (!isWebsiteConnected(cubeKey, ov)) return [];
+  const totals = ov?.totals || ({} as any);
+  const gscConnected = cubeKey === "site_inrcy" ? !!ov.sources?.site_inrcy?.connected?.gsc : !!ov.sources?.site_web?.connected?.gsc;
+  const ga4Connected = cubeKey === "site_inrcy" ? !!ov.sources?.site_inrcy?.connected?.ga4 : !!ov.sources?.site_web?.connected?.ga4;
+  if (gscConnected) {
+    pushNumberMetric(items, "Impressions Google", safeNum(totals.impressions));
+    pushNumberMetric(items, "Clics Google", safeNum(totals.clicks));
+  }
+  if (ga4Connected) {
+    pushNumberMetric(items, "Sessions", safeNum(totals.sessions));
+    pushNumberMetric(items, "Pages vues", safeNum(totals.pageviews));
+  }
+  if (items.length < 4 && gscConnected && safeNum(totals.ctr) > 0) {
+    pushNumberMetric(items, "CTR Google", safeNum(totals.ctr) * 100, { formatter: (value) => formatPercent(value) });
+  }
+  return firstFour(items);
+}
+
+function buildActionStats(cubeKey: CubeKey, ov: Overview): CubeMetricItem[] {
+  const items: CubeMetricItem[] = [];
+
+  if (cubeKey === "gmb") {
+    if (!ov?.sources?.gmb?.connected) return [];
+    const metrics = ov?.sources?.gmb?.metrics;
+    const totals = getGmbTotals(metrics);
+    const conversations = safeNum(metrics?.totals?.conversations) || safeNum(metrics?.totals?.BUSINESS_CONVERSATIONS) || gmbMetricSeriesTotal(metrics, ["BUSINESS_CONVERSATIONS"]);
+    pushNumberMetric(items, "Appels", totals.callClicks, { available: !!metrics && totals.callClicks > 0 });
+    pushNumberMetric(items, "Itinéraires", totals.directionRequests, { available: !!metrics && totals.directionRequests > 0 });
+    pushNumberMetric(items, "Clics site", totals.websiteClicks, { available: !!metrics && totals.websiteClicks > 0 });
+    pushNumberMetric(items, "Messages", conversations, { available: !!metrics && conversations > 0 });
+    return firstFour(items);
+  }
+
+  if (cubeKey === "facebook") {
+    if (!ov?.sources?.facebook?.connected) return [];
+    const m = ov?.sources?.facebook?.metrics;
+    const interactions =
+      bestMetricValue(m, ["page_post_engagements", "page_engaged_users", "post_engaged_users_sum"]) ||
+      sumMetricValues(m, ["reactions", "comments", "shares"]);
+    pushNumberMetric(items, "Interactions", interactions, {
+      available: metricKeyExists(m, ["page_post_engagements", "page_engaged_users", "post_engaged_users_sum", "reactions", "comments", "shares"]),
+    });
+    pushNumberMetric(items, "Clics site", safeNum(m?.totals?.page_website_clicks_logged_in_unique), {
+      available: metricKeyExists(m, ["page_website_clicks_logged_in_unique"]),
+    });
+    pushNumberMetric(items, "Appels", safeNum(m?.totals?.page_call_phone_clicks_logged_in_unique), {
+      available: metricKeyExists(m, ["page_call_phone_clicks_logged_in_unique"]),
+    });
+    pushNumberMetric(items, "Itinéraires", safeNum(m?.totals?.page_get_directions_clicks_logged_in_unique), {
+      available: metricKeyExists(m, ["page_get_directions_clicks_logged_in_unique"]),
+    });
+    return firstFour(items);
+  }
+
+  if (cubeKey === "instagram") {
+    if (!ov?.sources?.instagram?.connected) return [];
+    const m = ov?.sources?.instagram?.metrics;
+    const linkClicks = sumMetricValues(m, ["profile_links_taps", "website_clicks"]);
+    const interactions = bestMetricValue(m, ["total_interactions", "accounts_engaged"]) || sumMetricValues(m, ["likes", "comments", "shares", "replies", "saves"]);
+    const messages = sumMetricValues(m, ["text_message_clicks", "replies"]);
+    const calls = safeNum(m?.totals?.phone_call_clicks);
+    const directions = safeNum(m?.totals?.get_directions_clicks) + safeNum(m?.totals?.get_direction_clicks);
+    pushNumberMetric(items, "Clics lien", linkClicks, { available: metricKeyExists(m, ["profile_links_taps", "website_clicks"]) });
+    pushNumberMetric(items, "Interactions", interactions, {
+      available: metricKeyExists(m, ["total_interactions", "accounts_engaged", "likes", "comments", "shares", "replies", "saves"]),
+    });
+    pushNumberMetric(items, "Messages", messages, { available: metricKeyExists(m, ["text_message_clicks", "replies"]) });
+    pushNumberMetric(items, "Appels", calls, { available: metricKeyExists(m, ["phone_call_clicks"]) });
+    pushNumberMetric(items, "Itinéraires", directions, { available: metricKeyExists(m, ["get_directions_clicks", "get_direction_clicks"]) });
+    return firstFour(items);
+  }
+
+  if (cubeKey === "linkedin") {
+    if (!ov?.sources?.linkedin?.connected || isLinkedInStatsPartial(ov)) return [];
+    const m = ov?.sources?.linkedin?.metrics;
+    const clicks = sumMetricValues(m, ["clickCount", "clicks", "linkClickCount", "pageClicks", "premiumCtaClickCount"]);
+    const reactions = bestMetricValue(m, ["reactionCount", "likeCount", "likes"]);
+    const comments = bestMetricValue(m, ["commentCount", "comments"]);
+    const shares = bestMetricValue(m, ["shareCount", "shares"]);
+    pushNumberMetric(items, "Clics", clicks, { available: metricKeyExists(m, ["clickCount", "clicks", "linkClickCount", "pageClicks", "premiumCtaClickCount"]) });
+    pushNumberMetric(items, "Réactions", reactions, { available: metricKeyExists(m, ["reactionCount", "likeCount", "likes"]) });
+    pushNumberMetric(items, "Commentaires", comments, { available: metricKeyExists(m, ["commentCount", "comments"]) });
+    pushNumberMetric(items, "Partages", shares, { available: metricKeyExists(m, ["shareCount", "shares"]) });
+    return firstFour(items);
+  }
+
+  if (!isWebsiteConnected(cubeKey, ov)) return [];
+  const totals = ov?.totals || ({} as any);
+  const queries = Array.isArray(ov.topQueries) ? ov.topQueries : [];
+  const topPages = Array.isArray(ov.topPages) ? ov.topPages : [];
+  const intentQueryCount = queries.filter((q) => isIntentQuery(q.query) && (safeNum(q.clicks) > 0 || safeNum(q.impressions) > 0)).length;
+  const contactViews = topPages.filter((page) => pageKind(page.path) === "contact").reduce((sum, page) => sum + safeNum(page.views), 0);
+  pushNumberMetric(items, "Pages contact", contactViews);
+  pushNumberMetric(items, "Requêtes intention", intentQueryCount);
+  pushNumberMetric(items, "Engagement", safeNum(totals.engagementRate) * 100, { formatter: (value) => formatPercent(value) });
+  pushNumberMetric(items, "Durée moy.", safeNum(totals.avgSessionDuration), { formatter: (value) => formatSecondsToLabel(value) });
+  return firstFour(items);
+}
+
 export function buildCubeModel(
   key: CubeKey,
   title: string,
@@ -1447,9 +1682,14 @@ export function buildCubeModel(
     capturedLeadsHint: linkedInPartial
       ? "Données LinkedIn non exploitables actuellement. Réessayez demain."
       : "Demandes réelles mesurées sur ce canal.",
-    provenanceHint: key === "linkedin" && (linkedInPartial || provenance.every((entry) => safeNum(entry.value) <= 0))
-      ? "Données non exploitables actuellement."
-      : undefined,
+    provenanceHint:
+      key === "linkedin" && (linkedInPartial || provenance.every((entry) => safeNum(entry.value) <= 0))
+        ? "Données non exploitables actuellement."
+        : key === "gmb" && provenance.length === 1 && provenance[0]?.label === "Visibilité locale"
+          ? "La répartition Maps / Search n’est pas remontée par Google sur cette période."
+          : undefined,
+    visibilityStats: buildVisibilityStats(key, ov),
+    actionStats: buildActionStats(key, ov),
     qualityScore: q.score,
     qualityLabel: q.label,
     qualityTone: q.tone,

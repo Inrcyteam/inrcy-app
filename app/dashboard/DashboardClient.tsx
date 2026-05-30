@@ -47,6 +47,34 @@ const FORCED_SERVER_CACHE_CHECK_DEDUP_MS = 30_000;
 const AUTO_DAILY_REFRESH_DEDUP_MS = 5 * 60_000;
 const GENERATOR_POWER_CACHE_KEY = "inrcy_generator_power_percent_v1";
 const GENERATOR_ACTIVE_CACHE_KEY = "inrcy_generator_active_v1";
+const SITE_BUBBLE_PROGRESS_CACHE_KEY = "inrcy_site_bubble_progress_v1";
+
+type SiteBubbleProgress = { status: ModuleStatus; text: string };
+type SiteBubbleProgressCache = Partial<Record<"site_inrcy" | "site_web", SiteBubbleProgress>>;
+
+function isModuleStatus(value: unknown): value is ModuleStatus {
+  return value === "connected" || value === "available" || value === "coming";
+}
+
+function readCachedSiteBubbleProgress(): SiteBubbleProgressCache {
+  try {
+    const raw = readUiCacheValue(SITE_BUBBLE_PROGRESS_CACHE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+
+    const cache: SiteBubbleProgressCache = {};
+    for (const key of ["site_inrcy", "site_web"] as const) {
+      const entry = parsed[key] as Record<string, unknown> | undefined;
+      if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+      if (!isModuleStatus(entry.status) || typeof entry.text !== "string") continue;
+      cache[key] = { status: entry.status, text: entry.text };
+    }
+    return cache;
+  } catch {
+    return {};
+  }
+}
 
 function readCachedGeneratorPowerPercent(): number | null {
   try {
@@ -82,6 +110,7 @@ export default function DashboardClient() {
   const [siteConnectionsReady, setSiteConnectionsReady] = useState(false);
   const [displayedGeneratorPower, setDisplayedGeneratorPower] = useState<number | null>(() => readCachedGeneratorPowerPercent());
   const [displayedGeneratorIsActive, setDisplayedGeneratorIsActive] = useState<boolean | null>(() => readCachedGeneratorIsActive());
+  const [displayedSiteBubbleProgress, setDisplayedSiteBubbleProgress] = useState<SiteBubbleProgressCache>(() => readCachedSiteBubbleProgress());
   const router = useRouter();
   const searchParams = useSearchParams();
   const { panel, openPanel, closePanel, goToModule } = useDashboardPanelRouting();
@@ -2181,20 +2210,42 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
 
   const estimatedValue = typeof kpis?.estimatedValue === "number" ? kpis.estimatedValue : null;
 
-  const getSiteBubbleProgress = useCallback((kind: "site_inrcy" | "site_web") => {
+  const computeSiteBubbleProgress = useCallback((kind: "site_inrcy" | "site_web"): SiteBubbleProgress => {
     const progress = kind === "site_inrcy" ? siteInrcyProgressCount : siteWebProgressCount;
     const hasUrl = kind === "site_inrcy" ? hasSiteInrcyUrl : hasSiteWebUrl;
     const canUseSite = kind === "site_inrcy" ? hasActiveInrcySite(siteInrcyOwnership) : true;
 
     if (kind === "site_inrcy" && !canUseSite) {
-      return { status: "coming" as ModuleStatus, text: "Aucun site" };
+      return { status: "coming", text: "Aucun site" };
     }
 
     return {
-      status: hasUrl ? "connected" as ModuleStatus : "available" as ModuleStatus,
+      status: hasUrl ? "connected" : "available",
       text: `${hasUrl ? "Connecté" : "A configurer"} ${progress}/3`,
     };
   }, [hasSiteInrcyUrl, hasSiteWebUrl, siteInrcyOwnership, siteInrcyProgressCount, siteWebProgressCount]);
+
+  const siteBubbleProgressSnapshot = useMemo<SiteBubbleProgressCache>(() => ({
+    site_inrcy: computeSiteBubbleProgress("site_inrcy"),
+    site_web: computeSiteBubbleProgress("site_web"),
+  }), [computeSiteBubbleProgress]);
+
+  useEffect(() => {
+    if (!siteConnectionsReady) return;
+    setDisplayedSiteBubbleProgress(siteBubbleProgressSnapshot);
+    try {
+      writeUiCacheValue(SITE_BUBBLE_PROGRESS_CACHE_KEY, JSON.stringify(siteBubbleProgressSnapshot));
+    } catch {
+      // ignore browser storage failures
+    }
+  }, [siteBubbleProgressSnapshot, siteConnectionsReady]);
+
+  const getSiteBubbleProgress = useCallback((kind: "site_inrcy" | "site_web") => {
+    if (!siteConnectionsReady && displayedSiteBubbleProgress[kind]) {
+      return displayedSiteBubbleProgress[kind] as SiteBubbleProgress;
+    }
+    return siteBubbleProgressSnapshot[kind] ?? computeSiteBubbleProgress(kind);
+  }, [computeSiteBubbleProgress, displayedSiteBubbleProgress, siteBubbleProgressSnapshot, siteConnectionsReady]);
 
   const fluxBubbleItems = useMemo(() => buildFluxBubbleItems({
     canConfigureSite,
