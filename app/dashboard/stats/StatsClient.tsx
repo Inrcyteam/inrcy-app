@@ -95,7 +95,10 @@ function readInitialStatsSnapshot(period: Period): InitialStatsSnapshot {
   try {
     const cachedCube = parseCachedCubeSnapshot(readUiCacheValue(cubeSessionKey(period)));
     const cachedSummary = parseCachedSummarySnapshot(readUiCacheValue(summarySessionKey(period)));
-    if (!cachedCube?.overviews || !cachedSummary || !hasCapturedLeadsBlocks(cachedCube.blocks)) {
+    // Anti-saut : on accepte le dernier snapshot visuel même si les nouveaux
+    // blocs complémentaires (ex: demandes captées) ne sont pas encore présents.
+    // Sinon la page rend d'abord un état vide/loading puis remplace tout juste après.
+    if (!cachedCube?.overviews || !cachedSummary) {
       return fallback;
     }
 
@@ -918,7 +921,6 @@ useEffect(() => {
 
   useEffect(() => {
     if (!dailyBootReady) return;
-    void syncFromServerCacheIfNeeded(false);
 
     const handleFocus = () => {
       void syncFromServerCacheIfNeeded(false);
