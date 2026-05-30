@@ -68,6 +68,83 @@ function normalizeCapturedLeads(raw: unknown, fallback?: CapturedLeads): Capture
   };
 }
 
+
+type InitialStatsSnapshot = {
+  dataByCube: Record<CubeKey, CubeState>;
+  summaryOpp: { loading: boolean; total: number; byCube: Record<CubeKey, number> };
+  summaryProfile: { lead_conversion_rate: number; avg_basket: number };
+  summaryEstimatedByCube: Record<CubeKey, number>;
+  hydrated: boolean;
+};
+
+function emptySummaryByCube(): Record<CubeKey, number> {
+  return { site_inrcy: 0, site_web: 0, gmb: 0, facebook: 0, instagram: 0, linkedin: 0 };
+}
+
+function readInitialStatsSnapshot(period: Period): InitialStatsSnapshot {
+  const fallback: InitialStatsSnapshot = {
+    dataByCube: emptyCubeState(),
+    summaryOpp: { loading: true, total: 0, byCube: emptySummaryByCube() },
+    summaryProfile: { lead_conversion_rate: 0, avg_basket: 0 },
+    summaryEstimatedByCube: emptySummaryByCube(),
+    hydrated: false,
+  };
+
+  if (typeof window === "undefined") return fallback;
+
+  try {
+    const cachedCube = parseCachedCubeSnapshot(readUiCacheValue(cubeSessionKey(period)));
+    const cachedSummary = parseCachedSummarySnapshot(readUiCacheValue(summarySessionKey(period)));
+    if (!cachedCube?.overviews || !cachedSummary || !hasCapturedLeadsBlocks(cachedCube.blocks)) {
+      return fallback;
+    }
+
+    const dataByCube = emptyCubeState();
+    for (const k of Object.keys(cachedCube.overviews) as CubeKey[]) {
+      dataByCube[k] = {
+        ov: cachedCube.overviews[k] ?? null,
+        loading: false,
+        error: undefined,
+        capturedLeads: normalizeCapturedLeads(cachedCube.blocks?.[k]?.capturedLeads, dataByCube[k]?.capturedLeads),
+      };
+    }
+
+    const byCubePartial = cachedSummary.byCube || {};
+    const estimatedByCubePartial = cachedSummary.estimatedByCube || {};
+
+    return {
+      dataByCube,
+      summaryOpp: {
+        loading: false,
+        total: safeNum(cachedSummary.total),
+        byCube: {
+          site_inrcy: safeNum(byCubePartial.site_inrcy),
+          site_web: safeNum(byCubePartial.site_web),
+          gmb: safeNum(byCubePartial.gmb),
+          facebook: safeNum(byCubePartial.facebook),
+          instagram: safeNum(byCubePartial.instagram),
+          linkedin: safeNum(byCubePartial.linkedin),
+        },
+      },
+      summaryProfile: {
+        lead_conversion_rate: safeNum(cachedSummary.profile?.lead_conversion_rate),
+        avg_basket: safeNum(cachedSummary.profile?.avg_basket),
+      },
+      summaryEstimatedByCube: {
+        site_inrcy: safeNum(estimatedByCubePartial.site_inrcy),
+        site_web: safeNum(estimatedByCubePartial.site_web),
+        gmb: safeNum(estimatedByCubePartial.gmb),
+        facebook: safeNum(estimatedByCubePartial.facebook),
+        instagram: safeNum(estimatedByCubePartial.instagram),
+        linkedin: safeNum(estimatedByCubePartial.linkedin),
+      },
+      hydrated: true,
+    };
+  } catch {
+    return fallback;
+  }
+}
+
 export default function StatsClient() {
   const router = useRouter();
   const [helpOpen, setHelpOpen] = useState(false);
@@ -78,23 +155,18 @@ export default function StatsClient() {
   // ✅ Période globale (7j / 30j) pour éviter un mix incohérent entre blocs.
   const period: Period = 30;
 
-  const [dataByCube, setDataByCube] = useState<Record<CubeKey, CubeState>>(emptyCubeState);
+  const initialStatsSnapshotRef = useRef<InitialStatsSnapshot | null>(null);
+  if (initialStatsSnapshotRef.current === null) {
+    initialStatsSnapshotRef.current = readInitialStatsSnapshot(period);
+  }
+  const initialStatsSnapshot = initialStatsSnapshotRef.current;
 
-  const [summaryOpp, setSummaryOpp] = useState<{ loading: boolean; total: number; byCube: Record<CubeKey, number> }>({
-    loading: true,
-    total: 0,
-    byCube: { site_inrcy: 0, site_web: 0, gmb: 0, facebook: 0, instagram: 0, linkedin: 0 },
-  });
-  const [summaryProfile, setSummaryProfile] = useState<{ lead_conversion_rate: number; avg_basket: number }>({ lead_conversion_rate: 0, avg_basket: 0 });
-  const [summaryEstimatedByCube, setSummaryEstimatedByCube] = useState<Record<CubeKey, number>>({
-    site_inrcy: 0,
-    site_web: 0,
-    gmb: 0,
-    facebook: 0,
-    instagram: 0,
-    linkedin: 0,
-  });
-  const [, setSummaryHydrated] = useState(false);
+  const [dataByCube, setDataByCube] = useState<Record<CubeKey, CubeState>>(() => initialStatsSnapshot.dataByCube);
+
+  const [summaryOpp, setSummaryOpp] = useState<{ loading: boolean; total: number; byCube: Record<CubeKey, number> }>(() => initialStatsSnapshot.summaryOpp);
+  const [summaryProfile, setSummaryProfile] = useState<{ lead_conversion_rate: number; avg_basket: number }>(() => initialStatsSnapshot.summaryProfile);
+  const [summaryEstimatedByCube, setSummaryEstimatedByCube] = useState<Record<CubeKey, number>>(() => initialStatsSnapshot.summaryEstimatedByCube);
+  const [, setSummaryHydrated] = useState(initialStatsSnapshot.hydrated);
   const [activeStatsPanel, setActiveStatsPanel] = useState<StatsPanelKey>("all");
   const [statsMenuOpen, setStatsMenuOpen] = useState(false);
   const [dailyBootReady, setDailyBootReady] = useState(false);
@@ -737,10 +809,16 @@ useEffect(() => {
 
     setDataByCube((prev) => {
       const next: any = { ...prev };
-      for (const k of keys) next[k] = { ...next[k], loading: true, error: undefined };
+      for (const k of keys) {
+        const hasVisibleData = !!next[k]?.ov;
+        next[k] = { ...next[k], loading: !hasVisibleData, error: undefined };
+      }
       return next;
     });
-    setSummaryOpp((prev) => ({ ...prev, loading: true }));
+    setSummaryOpp((prev) => {
+      const hasVisibleSummary = prev.total > 0 || Object.values(prev.byCube || {}).some((value) => safeNum(value) > 0);
+      return { ...prev, loading: !hasVisibleSummary };
+    });
 
     try {
       const next = await fetchBulkStats(period, refreshNonce > 0);
