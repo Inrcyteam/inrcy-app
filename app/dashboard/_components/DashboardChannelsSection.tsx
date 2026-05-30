@@ -346,7 +346,6 @@ export default function DashboardChannelsSection({
             <HelpButton onClick={onOpenChannelsHelp} title="Aide : Canaux" />
           </div>
 
-          <p className={styles.channelInlineSubtitle}>Votre autoroute de contacts entrants</p>
 
           <div className={styles.channelHeaderActions}>
             <div className={styles.channelSummaryBadge}>
@@ -372,7 +371,6 @@ export default function DashboardChannelsSection({
           </div>
         </div>
 
-        <p className={`${styles.h2Sub} ${styles.channelStackSubtitle}`}>Votre autoroute de contacts entrants</p>
 
         <div className={styles.channelPillRail} aria-label="Liste des canaux">
           {baseModules.map((item, index) => {
