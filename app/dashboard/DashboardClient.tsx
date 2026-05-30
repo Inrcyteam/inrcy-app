@@ -2440,6 +2440,14 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
 
       <DashboardBoosterModalLayer
         mode={dashboardBoosterModal}
+        initialConnectedChannels={{
+          inrcy_site: Boolean(hasActiveInrcySite(siteInrcyOwnership) && normalizeSiteUrl(siteInrcySavedUrl) && (siteInrcyGa4Connected || siteInrcyGscConnected)),
+          site_web: Boolean(normalizeSiteUrl(siteWebSavedUrl) && (siteWebGa4Connected || siteWebGscConnected)),
+          gmb: Boolean(gmbAccountConnected && gmbConfigured && gmbConnectionStatus !== "needs_update"),
+          facebook: Boolean(facebookAccountConnected && facebookPageConnected && facebookConnectionStatus !== "needs_update"),
+          instagram: Boolean(instagramAccountConnected && instagramConnected && instagramConnectionStatus !== "needs_update"),
+          linkedin: Boolean(linkedinAccountConnected && linkedinConnectionStatus !== "needs_update"),
+        }}
         onClose={() => {
           setDashboardBoosterModal(null);
           if (searchParams.get("action") === "publish" || searchParams.get("stats") === "1" || searchParams.get("draftId")) {

@@ -31,9 +31,11 @@ type PublishDraftHeaderState = {
 export default function DashboardBoosterModalLayer({
   mode,
   onClose,
+  initialConnectedChannels,
 }: {
   mode: DashboardBoosterModalMode;
   onClose: () => void;
+  initialConnectedChannels?: Partial<Record<"inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin", boolean>>;
 }) {
   const router = useRouter();
   const [publishSuccessOpen, setPublishSuccessOpen] = useState(false);
@@ -379,6 +381,7 @@ export default function DashboardBoosterModalLayer({
             onUnsavedChange={setPublishHasUnsavedChanges}
             saveDraftActionRef={publishSaveDraftRef}
             onDraftHeaderStateChange={handlePublishDraftHeaderStateChange}
+            initialConnectedChannels={initialConnectedChannels}
             onPublishSuccess={(result) => {
               const summary = result?.summary
                 ? { ...result.summary, channelLinks: result?.channelLinks || {} }

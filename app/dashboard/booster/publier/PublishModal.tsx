@@ -354,6 +354,7 @@ export default function PublishModal({
   onUnsavedChange,
   saveDraftActionRef,
   onDraftHeaderStateChange,
+  initialConnectedChannels,
 }: {
   styles: typeof stylesDash;
   onClose: () => void;
@@ -367,6 +368,7 @@ export default function PublishModal({
     draftSaving: boolean;
     draftMessage: string;
   }) => void;
+  initialConnectedChannels?: Partial<Record<ChannelKey, boolean>>;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -503,30 +505,29 @@ export default function PublishModal({
     windowY: number;
   } | null>(null);
 
-  const [channels, setChannels] = useState<Record<ChannelKey, boolean>>({
-    inrcy_site: true,
-    site_web: true,
-    gmb: false,
-    facebook: false,
-    instagram: false,
-    linkedin: false,
+  const getInitialConnectedChannels = (): Record<ChannelKey, boolean> => ({
+    inrcy_site: !!initialConnectedChannels?.inrcy_site,
+    site_web: !!initialConnectedChannels?.site_web,
+    gmb: !!initialConnectedChannels?.gmb,
+    facebook: !!initialConnectedChannels?.facebook,
+    instagram: !!initialConnectedChannels?.instagram,
+    linkedin: !!initialConnectedChannels?.linkedin,
   });
 
-  const [connected, setConnected] = useState<Record<ChannelKey, boolean>>({
-    inrcy_site: true,
-    site_web: true,
-    gmb: false,
-    facebook: false,
-    instagram: false,
-    linkedin: false,
-  });
+  const [channels, setChannels] = useState<Record<ChannelKey, boolean>>(() =>
+    getInitialConnectedChannels(),
+  );
+
+  const [connected, setConnected] = useState<Record<ChannelKey, boolean>>(() =>
+    getInitialConnectedChannels(),
+  );
   const [channelDetails, setChannelDetails] = useState<
     Record<ChannelKey, ChannelConnectionDetail>
   >(EMPTY_CHANNEL_DETAILS);
   const [channelInfoOpen, setChannelInfoOpen] = useState<ChannelKey | null>(
     null,
   );
-  const [didInitChannels, setDidInitChannels] = useState(false);
+  const [didInitChannels, setDidInitChannels] = useState(() => !!initialConnectedChannels);
   const [ctaDefaults, setCtaDefaults] = useState<BoosterCtaDefaults | null>(
     null,
   );
@@ -613,6 +614,22 @@ export default function PublishModal({
       alive = false;
     };
   }, []);
+
+
+  useEffect(() => {
+    if (!initialConnectedChannels || didInitChannels) return;
+    const nextConnected: Record<ChannelKey, boolean> = {
+      inrcy_site: !!initialConnectedChannels.inrcy_site,
+      site_web: !!initialConnectedChannels.site_web,
+      gmb: !!initialConnectedChannels.gmb,
+      facebook: !!initialConnectedChannels.facebook,
+      instagram: !!initialConnectedChannels.instagram,
+      linkedin: !!initialConnectedChannels.linkedin,
+    };
+    setConnected(nextConnected);
+    setChannels(nextConnected);
+    setDidInitChannels(true);
+  }, [initialConnectedChannels, didInitChannels]);
 
   useEffect(() => {
     if (!channelInfoOpen) return;
@@ -1944,7 +1961,9 @@ export default function PublishModal({
       return;
     }
 
-    if (!(videoFile || videoPreviewUrl)) {
+    const hasVideoMedia = Boolean(videoFile || videoPreviewUrl);
+
+    if (!hasVideoMedia) {
       setPublicationMediaType("images");
     }
 
@@ -2002,6 +2021,21 @@ export default function PublishModal({
     setImages(nextFiles);
     setImagePreviews(nextPreviews);
     setImageMetaByKey((prev) => ({ ...prev, ...nextMetaMap }));
+
+    // Défaut média attendu : vidéo prioritaire si elle existe, sinon photos, sinon aucun.
+    // Quand on ajoute uniquement des photos, on force donc les canaux sur "Photos"
+    // pour éviter qu'un ancien état "Aucun" reste sélectionné.
+    if (!hasVideoMedia) {
+      setChannelMediaModes((prev) => {
+        const next: Partial<Record<ChannelKey, ChannelMediaMode>> = { ...prev };
+        if (targetChannel) {
+          next[targetChannel] = "images";
+        } else {
+          for (const channel of selectedChannels) next[channel] = "images";
+        }
+        return next;
+      });
+    }
 
     if (targetChannel) {
       setChannelImageEditors((prev) => {
@@ -2110,6 +2144,17 @@ export default function PublishModal({
       }
       return next;
     });
+    if (nextFiles.length === 0) {
+      setChannelMediaModes((prev) => {
+        const next: Partial<Record<ChannelKey, ChannelMediaMode>> = { ...prev };
+        for (const channel of selectedChannels) {
+          if (next[channel] === "images") {
+            next[channel] = videoFile || videoPreviewUrl ? "video" : "none";
+          }
+        }
+        return next;
+      });
+    }
   };
 
   const updatePost = (channel: ChannelKey, patch: Partial<ChannelPost>) => {

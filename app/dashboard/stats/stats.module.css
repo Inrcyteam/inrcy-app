@@ -4228,3 +4228,65 @@
     text-align: center !important;
   }
 }
+
+/* iNrStats — desktop : espace les KPI du header canal sans bouger la première bulle */
+@media (min-width: 901px) {
+  .channelStatsKpis {
+    margin-left: 0 !important;
+    margin-right: auto !important;
+    justify-self: start !important;
+    justify-content: flex-start !important;
+    gap: 30px !important;
+  }
+}
+
+
+/* iNrStats — correction définitive : les 3 KPI du header canal ne se chevauchent plus */
+@media (min-width: 901px) {
+  .channelStatsHeader {
+    grid-template-columns: minmax(0, 220px) auto !important;
+    column-gap: 28px !important;
+  }
+
+  .channelStatsKpis,
+  .channelStatsHeader .channelStatsKpis,
+  .channelStatsHeader .allStatsKpis {
+    display: grid !important;
+    grid-template-columns: 150px 150px 172px !important;
+    gap: 14px !important;
+    width: auto !important;
+    max-width: none !important;
+    min-width: 500px !important;
+    justify-self: end !important;
+    justify-content: end !important;
+    margin-left: auto !important;
+    margin-right: 0 !important;
+    overflow: visible !important;
+  }
+
+  .channelStatsKpis .allStatsKpi,
+  .channelStatsHeader .allStatsKpis .allStatsKpi {
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+  }
+
+  .channelStatsKpis .allStatsKpi span,
+  .channelStatsHeader .allStatsKpis .allStatsKpi span {
+    display: block !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .channelStatsKpis,
+  .channelStatsHeader .allStatsKpis {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+}

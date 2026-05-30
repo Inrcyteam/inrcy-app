@@ -785,7 +785,13 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 12px;
+  width: 100%;
+}
+
+.metricValueRow .metricValue {
+  margin-top: 0;
+  line-height: 1;
 }
 
 /* Bouton "GO" aligné sur iNrStats */
@@ -837,11 +843,11 @@
   display: inline;
 }
 
-/* ✅ GO discret en bas à droite (carte Opportunités) */
+/* ✅ GO inline à côté de la valeur Opportunités */
 .generatorGoBtnCorner {
-  position: absolute;
-  right: 10px;
-  bottom: 10px;
+  position: static;
+  right: auto;
+  bottom: auto;
   width: 42px;
   height: 30px;
   border-radius: 999px;
@@ -858,6 +864,10 @@
   font-weight: 950;
   cursor: pointer;
   opacity: 0.88;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.38);
   transition: opacity 0.12s ease, transform 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease;
 }
