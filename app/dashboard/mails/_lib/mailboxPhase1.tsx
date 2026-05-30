@@ -83,12 +83,12 @@ export type Folder =
 
 // Onglets affichés dans iNr'Send : navigation simplifiée, sans scroll horizontal.
 export const ALL_FOLDERS: Folder[] = [
-  "mails",
-  "factures",
-  "devis",
   "publications",
   "propulsions",
   "fidelisations",
+  "mails",
+  "factures",
+  "devis",
 ];
 
 export const LEGACY_ACTION_FOLDERS: Folder[] = [

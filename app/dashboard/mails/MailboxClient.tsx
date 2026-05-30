@@ -132,7 +132,7 @@ export default function MailboxClient() {
   const [mobileFoldersOpen, setMobileFoldersOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
 
-  const [folder, setFolder] = useState<Folder>("mails");
+  const [folder, setFolder] = useState<Folder>("publications");
   const [boxView, setBoxView] = useState<BoxView>("sent");
   const [items, setItems] = useState<OutboxItem[]>([]);
   const [loading, setLoading] = useState(false);
