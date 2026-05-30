@@ -26,11 +26,19 @@ type DashboardPanelName =
 type DashboardModulesCardProps = {
   goToModule: (path: string) => void;
   openPanel: (panel: DashboardPanelName) => void;
+  onOpenStats?: () => void;
   onOpenBoosterPublish?: () => void;
   onOpenBoosterStats?: () => void;
 };
 
-export default function DashboardModulesCard({ goToModule, openPanel, onOpenBoosterPublish, onOpenBoosterStats }: DashboardModulesCardProps) {
+export default function DashboardModulesCard({ goToModule, openPanel, onOpenStats, onOpenBoosterPublish, onOpenBoosterStats }: DashboardModulesCardProps) {
+  const openStats = () => {
+    if (onOpenStats) {
+      onOpenStats();
+      return;
+    }
+    goToModule("/dashboard/stats");
+  };
   return (
         <div className={styles.lowerRow}>
           <div className={styles.blockCard}>
@@ -111,7 +119,7 @@ export default function DashboardModulesCard({ goToModule, openPanel, onOpenBoos
       </div>
       <div className={styles.loopSub}>Tous vos leads, enfin visibles</div>
       <div className={styles.loopActions}>
-        <button className={`${styles.actionBtn} ${styles.connectBtn}`} type="button" onClick={() => goToModule("/dashboard/stats")}>
+        <button className={`${styles.actionBtn} ${styles.connectBtn}`} type="button" onClick={openStats}>
           Voir les stats
         </button>
       </div>

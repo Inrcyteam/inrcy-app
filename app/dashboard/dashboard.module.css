@@ -5496,3 +5496,25 @@ transform: scale(1.50);
     gap:10px;
   }
 }
+
+
+/* Correctif navigation iNrStats — les décors ne doivent jamais bloquer les clics */
+.loopWheel,
+.signalHub,
+.signalWave,
+.signalCore,
+.generatorFX,
+.generatorFX2,
+.generatorFX3,
+.generatorGlow,
+.moduleGlow {
+  pointer-events: none !important;
+}
+
+.loopActions,
+.loopActions .actionBtn,
+.generatorGoBtnCorner {
+  position: relative;
+  z-index: 20;
+  pointer-events: auto;
+}

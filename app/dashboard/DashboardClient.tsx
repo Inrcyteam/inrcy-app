@@ -115,6 +115,20 @@ export default function DashboardClient() {
   const searchParams = useSearchParams();
   const { panel, openPanel, closePanel, goToModule } = useDashboardPanelRouting();
 
+  const openStatsModule = useCallback(() => {
+    try {
+      sessionStorage.setItem("inrcy_dashboard_scrollY", String(window.scrollY ?? 0));
+    } catch {}
+
+    router.push("/dashboard/stats");
+
+    window.setTimeout(() => {
+      if (window.location.pathname !== "/dashboard/stats") {
+        window.location.assign("/dashboard/stats");
+      }
+    }, 120);
+  }, [router]);
+
   useEffect(() => {
     const action = searchParams.get("action");
     const stats = searchParams.get("stats");
@@ -2409,7 +2423,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         inertiaSnapshot={inertiaSnapshot}
         estimatedValue={estimatedValue}
         oppTotal={oppTotal}
-        onOpenStats={() => router.push("/dashboard/stats")}
+        onOpenStats={openStatsModule}
         leadsWeek={leadsWeek}
         leadsMonth={leadsMonth}
       />
@@ -2419,6 +2433,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         goToModule={goToModule}
         openPanel={openPanel}
         onOpenChannelsHelp={() => setHelpCanauxOpen(true)}
+        onOpenStats={openStatsModule}
         onOpenBoosterPublish={() => setDashboardBoosterModal("publish")}
         onOpenBoosterStats={() => setDashboardBoosterModal("stats")}
       />

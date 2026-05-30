@@ -64,6 +64,7 @@ type DashboardChannelsSectionProps = {
   goToModule: (path: string) => void;
   openPanel: (panel: DashboardPanelName) => void;
   onOpenChannelsHelp: () => void;
+  onOpenStats?: () => void;
   onOpenBoosterPublish?: () => void;
   onOpenBoosterStats?: () => void;
 };
@@ -73,6 +74,7 @@ export default function DashboardChannelsSection({
   goToModule,
   openPanel,
   onOpenChannelsHelp,
+  onOpenStats,
   onOpenBoosterPublish,
   onOpenBoosterStats,
 }: DashboardChannelsSectionProps) {
@@ -569,6 +571,7 @@ export default function DashboardChannelsSection({
       <DashboardModulesCard
         goToModule={goToModule}
         openPanel={openPanel}
+        onOpenStats={onOpenStats}
         onOpenBoosterPublish={onOpenBoosterPublish}
         onOpenBoosterStats={onOpenBoosterStats}
       />
