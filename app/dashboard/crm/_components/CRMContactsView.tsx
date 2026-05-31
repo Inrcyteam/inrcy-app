@@ -67,7 +67,7 @@ export default function CRMContactsView({
     return (
       <div className={styles.mobileTable}>
         {visibleContacts.length === 0 ? (
-          <div className={styles.mobileEmpty}>{emptyMessage}</div>
+          loading && page <= 1 ? <div className={styles.mobileEmpty}>Chargement des contacts…</div> : <div className={styles.mobileEmpty}>{emptyMessage}</div>
         ) : (
           visibleContacts.map((c) => {
             const isExpanded = expandedMobileContactId === c.id;

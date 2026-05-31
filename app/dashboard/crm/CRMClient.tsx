@@ -336,7 +336,7 @@ export default function CRMClient() {
 
   // Orientation: gérée globalement via <OrientationGuard />
 
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -673,7 +673,7 @@ export default function CRMClient() {
   const emptyMessage = hasActiveSearchOrFilters
     ? "Aucun contact trouvé avec ces critères."
     : "Aucun contact pour le moment.";
-  const showDesktopEmptyMessage = visibleContacts.length === 0;
+  const showDesktopEmptyMessage = visibleContacts.length === 0 && !loading;
   const desktopPlaceholderRowCount = Math.max(0, pageSize - visibleContacts.length - (showDesktopEmptyMessage ? 1 : 0));
   const desktopPlaceholderRows = Array.from({ length: desktopPlaceholderRowCount });
   const mobileHasMore = isResponsive && contacts.length < total;
@@ -1351,13 +1351,14 @@ const exportExcel = async () => {
     }
   }
 
+  const statsValue = (value: number) => (loading && contacts.length === 0 ? "…" : value);
   const statsItems = [
-    { label: "Contacts", value: kpis.total },
-    { label: "Prospects", value: kpis.prospects },
-    { label: "Clients", value: kpis.clients },
-    { label: "Partenaires", value: kpis.partenaires },
-    { label: "Fournisseurs", value: kpis.fournisseurs },
-    { label: "Autres", value: kpis.autres },
+    { label: "Contacts", value: statsValue(kpis.total) },
+    { label: "Prospects", value: statsValue(kpis.prospects) },
+    { label: "Clients", value: statsValue(kpis.clients) },
+    { label: "Partenaires", value: statsValue(kpis.partenaires) },
+    { label: "Fournisseurs", value: statsValue(kpis.fournisseurs) },
+    { label: "Autres", value: statsValue(kpis.autres) },
   ];
 
   const openAddModal = () => setAddOpen(true);
@@ -1381,6 +1382,7 @@ const exportExcel = async () => {
         isCompactUi={isCompactUi}
         saving={saving}
         importing={importing}
+        loading={loading}
         total={total}
         exportingFormat={exportingFormat}
         exportOpen={exportOpen}

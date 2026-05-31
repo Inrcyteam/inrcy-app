@@ -462,6 +462,7 @@ export function AgendaCalendarCard({
 type AgendaSidebarProps = {
   selectedDate: Date;
   selectedEvents: DayEvent[];
+  loading?: boolean;
   query: string;
   globalMatches: DayEvent[];
   onCreateEvent: () => void;
@@ -529,6 +530,7 @@ function AgendaEventRow({
 export function AgendaSidebar({
   selectedDate,
   selectedEvents,
+  loading = false,
   query,
   globalMatches,
   onCreateEvent,
@@ -541,7 +543,7 @@ export function AgendaSidebar({
       <div className={styles.sideHeaderCentered}>
         <div className={styles.sideDate}>{formatDayLabel(selectedDate)}</div>
         <div className={styles.sideEventsCount}>
-          {selectedEvents.length} événement{selectedEvents.length > 1 ? "s" : ""}
+          {loading && selectedEvents.length === 0 ? "Chargement…" : `${selectedEvents.length} événement${selectedEvents.length > 1 ? "s" : ""}`}
         </div>
         <button className={`${styles.btnPrimaryWide} ${styles.btnBubble}`} onClick={onCreateEvent}>
           ＋ Évènement
@@ -553,7 +555,7 @@ export function AgendaSidebar({
         <div className={styles.sideTitle}>Détails du jour</div>
         {query.trim() ? (
           <div className={styles.list}>
-            {globalMatches.length === 0 && <div className={styles.empty}>Aucun résultat.</div>}
+            {globalMatches.length === 0 && (loading ? <div className={styles.empty}>Chargement des évènements…</div> : <div className={styles.empty}>Aucun résultat.</div>)}
             {globalMatches.map((ev) => {
               const when = getEventWhenLabel(ev);
               const dayLabel = ev.startDate ? formatDayLabel(ev.startDate) : "";
@@ -571,7 +573,7 @@ export function AgendaSidebar({
           </div>
         ) : (
           <div className={styles.list}>
-            {selectedEvents.length === 0 && <div className={styles.empty}>Aucun évènement ce jour-là.</div>}
+            {selectedEvents.length === 0 && (loading ? <div className={styles.empty}>Chargement des évènements…</div> : <div className={styles.empty}>Aucun évènement ce jour-là.</div>)}
             {selectedEvents.map((ev) => {
               const when = getEventWhenLabel(ev);
               const meta = `${when}${ev.location ? ` • ${ev.location}` : ""}`;

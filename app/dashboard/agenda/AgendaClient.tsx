@@ -138,7 +138,7 @@ export default function AgendaClient() {
   const searchParams = useSearchParams();
 
   const [events, setEvents] = useState<EventItem[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -1055,6 +1055,7 @@ export default function AgendaClient() {
           <AgendaSidebar
             selectedDate={selectedDate}
             selectedEvents={selectedEvents}
+            loading={loading}
             query={query}
             globalMatches={globalMatches}
             onCreateEvent={() => openCreateRdv(selectedDate)}

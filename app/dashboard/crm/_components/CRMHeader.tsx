@@ -1,14 +1,15 @@
 import HelpButton from "../../_components/HelpButton";
-import type { MutableRefObject, RefObject } from "react";
+import type { ReactNode, RefObject } from "react";
 import styles from "../crm.module.css";
 
-type StatItem = { label: string; value: number };
+type StatItem = { label: string; value: ReactNode };
 
 type Props = {
   isResponsive: boolean;
   isCompactUi: boolean;
   saving: boolean;
   importing: boolean;
+  loading: boolean;
   total: number;
   exportingFormat: "" | "csv" | "xlsx";
   exportOpen: boolean;
@@ -38,6 +39,7 @@ export default function CRMHeader({
   isCompactUi,
   saving,
   importing,
+  loading,
   total,
   exportingFormat,
   exportOpen,
@@ -156,7 +158,7 @@ export default function CRMHeader({
                         setStatsOpen(false);
                         void exportExcel();
                       }}
-                      disabled={saving || Boolean(exportingFormat) || total === 0}
+                      disabled={saving || loading || Boolean(exportingFormat) || total === 0}
                     >
                       Export Excel
                     </button>
@@ -167,7 +169,7 @@ export default function CRMHeader({
                         setStatsOpen(false);
                         void exportCsv();
                       }}
-                      disabled={saving || Boolean(exportingFormat) || total === 0}
+                      disabled={saving || loading || Boolean(exportingFormat) || total === 0}
                     >
                       Export CSV
                     </button>
@@ -230,9 +232,9 @@ export default function CRMHeader({
                 className={`${styles.ghostBtn} ${styles.headerActionBtn}`}
                 type="button"
                 onClick={() => setExportOpen((prev) => !prev)}
-                disabled={saving || Boolean(exportingFormat) || total === 0}
+                disabled={saving || loading || Boolean(exportingFormat) || total === 0}
                 aria-expanded={exportOpen ? "true" : "false"}
-                title={total === 0 ? "Aucun contact à exporter" : "Choisir le format d’export"}
+                title={loading ? "Chargement des contacts" : total === 0 ? "Aucun contact à exporter" : "Choisir le format d’export"}
               >
                 {exportingFormat ? "Export…" : "Exporter"} <span className={styles.caret}>▾</span>
               </button>

@@ -6,11 +6,12 @@ type Props = {
   open: boolean;
   folder: Folder;
   counts: FolderCounts;
+  countsLoading?: boolean;
   onClose: () => void;
   onSelectFolder: (folder: Folder) => void;
 };
 
-export default function MobileFoldersMenu({ open, folder, counts, onClose, onSelectFolder }: Props) {
+export default function MobileFoldersMenu({ open, folder, counts, countsLoading = false, onClose, onSelectFolder }: Props) {
   if (!open) return null;
   return (
     <div className={styles.mobileMenuOverlay} onClick={onClose}>
@@ -36,7 +37,7 @@ export default function MobileFoldersMenu({ open, folder, counts, onClose, onSel
                 type="button"
               >
                 <span>{folderLabel(f)}</span>
-                <span className={styles.badgeCount}>{counts[f] || 0}</span>
+                <span className={styles.badgeCount}>{countsLoading ? "…" : counts[f] || 0}</span>
               </button>
             );
           })}

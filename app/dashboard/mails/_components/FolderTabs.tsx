@@ -5,10 +5,11 @@ import { ALL_FOLDERS, folderLabel, folderTheme, type Folder, type FolderCounts }
 type Props = {
   folder: Folder;
   counts: FolderCounts;
+  countsLoading?: boolean;
   onSelectFolder: (folder: Folder) => void;
 };
 
-export default function FolderTabs({ folder, counts, onSelectFolder }: Props) {
+export default function FolderTabs({ folder, counts, countsLoading = false, onSelectFolder }: Props) {
   return (
     <div className={styles.folderTabs}>
       {ALL_FOLDERS.map((f) => {
@@ -23,7 +24,7 @@ export default function FolderTabs({ folder, counts, onSelectFolder }: Props) {
             title={folderLabel(f)}
           >
             <span className={styles.folderTabLabel}>{folderLabel(f)}</span>
-            <span className={styles.badgeCount}>{counts[f] || 0}</span>
+            <span className={styles.badgeCount}>{countsLoading ? "…" : counts[f] || 0}</span>
           </button>
         );
       })}

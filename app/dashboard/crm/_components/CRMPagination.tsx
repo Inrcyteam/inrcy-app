@@ -17,7 +17,7 @@ export default function CRMPagination({ isResponsive, total, visibleCount, page,
     return (
       <div className={styles.paginationBar}>
         <div className={styles.paginationMeta}>
-          {total > 0 ? `Affichage ${Math.min((page - 1) * pageSize + 1, total)}–${Math.min(page * pageSize, total)} sur ${total}` : "0 contact"}
+          {loading && total === 0 ? "Chargement des contacts…" : total > 0 ? `Affichage ${Math.min((page - 1) * pageSize + 1, total)}–${Math.min(page * pageSize, total)} sur ${total}` : "0 contact"}
         </div>
         <div className={styles.paginationControls}>
           <button type="button" className={styles.ghostBtn} onClick={() => setPage((prev) => Math.max(1, prev - 1))} disabled={page <= 1 || loading}>
@@ -32,5 +32,5 @@ export default function CRMPagination({ isResponsive, total, visibleCount, page,
     );
   }
 
-  return <div className={styles.mobileListSummary}>{total > 0 ? `${visibleCount} / ${total} contact${total > 1 ? "s" : ""}` : "0 contact"}</div>;
+  return <div className={styles.mobileListSummary}>{loading && total === 0 ? "Chargement des contacts…" : total > 0 ? `${visibleCount} / ${total} contact${total > 1 ? "s" : ""}` : "0 contact"}</div>;
 }

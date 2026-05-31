@@ -135,7 +135,8 @@ export default function MailboxClient() {
   const [folder, setFolder] = useState<Folder>("publications");
   const [boxView, setBoxView] = useState<BoxView>("sent");
   const [items, setItems] = useState<OutboxItem[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [historyLoadedOnce, setHistoryLoadedOnce] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [historyPage, setHistoryPage] = useState(1);
   const historyPageRef = useRef(1);
@@ -765,6 +766,7 @@ export default function MailboxClient() {
       setSelectedHistoryKeys([]);
       setSelectedId(null);
     } finally {
+      setHistoryLoadedOnce(true);
       setLoading(false);
     }
   }, [boxView, filterAccountId, folder, historyQuery]);
@@ -2349,13 +2351,14 @@ async function deleteDraftPermanently(id: string) {
           open={mobileFoldersOpen}
           folder={folder}
           counts={counts}
+          countsLoading={!historyLoadedOnce}
           onClose={() => setMobileFoldersOpen(false)}
           onSelectFolder={updateFolder}
         />
 
         <div className={styles.grid}>
           <div className={`${styles.card} ${styles.listCard}`}>
-            <FolderTabs folder={folder} counts={counts} onSelectFolder={updateFolder} />
+            <FolderTabs folder={folder} counts={counts} countsLoading={!historyLoadedOnce} onSelectFolder={updateFolder} />
 
             <MailboxToolbar
               folder={folder}

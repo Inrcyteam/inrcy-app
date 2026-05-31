@@ -30,6 +30,7 @@ export default function FideliserPage() {
   const [active, setActive] = useState<ActiveModal>(null);
   const [metrics, setMetrics] = useState<any>(null);
   const [weeklySummary, setWeeklySummary] = useState<WeeklySummary | null>(null);
+  const [metricsLoadedOnce, setMetricsLoadedOnce] = useState(false);
   const searchParams = useSearchParams();
 
   const closeActiveModal = useCallback(() => setActive(null), []);
@@ -79,6 +80,8 @@ export default function FideliserPage() {
       if (summaryRes.ok) setWeeklySummary(await summaryRes.json());
     } catch {
       // ignore
+    } finally {
+      setMetricsLoadedOnce(true);
     }
   }, []);
 
@@ -98,6 +101,8 @@ export default function FideliserPage() {
       window.removeEventListener(PROFILE_VERSION_EVENT, handleProfileVersionChange as EventListener);
     };
   }, [refreshMetrics]);
+
+  const metricsLoading = !metricsLoadedOnce;
 
   const data = useMemo(() => {
     const newsletter = metrics?.newsletter_mail ?? {};
@@ -282,12 +287,12 @@ export default function FideliserPage() {
               <div className={b.missionBannerTitle}>1 action / semaine</div>
             </div>
             <div className={b.missionBannerCenter}>
-              <span className={b.missionBannerProgress}>{data.missions.completedCount}/1</span>
-              <span className={b.missionBannerState}>{data.missions.featureDone ? "Validée" : "À lancer"}</span>
+              <span className={b.missionBannerProgress}>{metricsLoading ? <TinyLoader /> : `${data.missions.completedCount}/1`}</span>
+              <span className={b.missionBannerState}>{metricsLoading ? "Chargement" : data.missions.featureDone ? "Validée" : "À lancer"}</span>
             </div>
             <div className={b.missionBannerRight}>
-              <span className={b.missionBannerUi}>Jusqu’à +{data.missions.totalAvailable} UI</span>
-              <span className={b.missionBannerEarned}>+{data.missions.totalEarned} UI gagnés</span>
+              <span className={b.missionBannerUi}>Jusqu’à {metricsLoading ? <TinyLoader /> : `+${data.missions.totalAvailable}`} UI</span>
+              <span className={b.missionBannerEarned}>{metricsLoading ? <TinyLoader /> : `+${data.missions.totalEarned}`} UI gagnés</span>
             </div>
           </section>
 
@@ -304,7 +309,7 @@ export default function FideliserPage() {
                 return (
                   <article key={a.key} className={b.rocketColumn}>
                     <ActionCard styles={styles} accent={a.accent} title={a.title} desc={a.desc} cta={a.cta} onClick={() => setActive(a.key)} />
-                    <MetricCard styles={styles} title={m.title} month={m.month} channels={m.channels} />
+                    <MetricCard styles={styles} title={m.title} month={m.month} channels={m.channels} loading={metricsLoading} />
                     <TipPanel styles={styles} title={tip.title} lines={tip.lines} />
                   </article>
                 );
@@ -325,7 +330,7 @@ export default function FideliserPage() {
                       <span className={b.chev}>▾</span>
                     </summary>
                     <div className={b.accordionBody}>
-                      <MetricCard styles={styles} title={m.title} month={m.month} channels={m.channels} />
+                      <MetricCard styles={styles} title={m.title} month={m.month} channels={m.channels} loading={metricsLoading} />
                     </div>
                   </details>
                   <details className={[b.accordion, b.mobileAccordion].join(" ")}>
@@ -369,7 +374,11 @@ function ActionCard({ styles, accent, title, desc, cta, onClick }: any) {
   );
 }
 
-function MetricCard({ styles, title, month, channels }: any) {
+function TinyLoader() {
+  return <span aria-label="Chargement" title="Chargement">…</span>;
+}
+
+function MetricCard({ styles, title, month, channels, loading }: any) {
   return (
     <div className={[styles.blockCard, b.metricCard, b.metricCardSimple].join(" ")}>
       <div className={b.cardTopRow}>
@@ -377,13 +386,13 @@ function MetricCard({ styles, title, month, channels }: any) {
           <div className={styles.blockTitle}>{title}</div>
           <div className={b.progressLabel}>Statistiques</div>
         </div>
-        <div className={b.pill}>Ce mois : {month}</div>
+        <div className={b.pill}>Ce mois : {loading ? <TinyLoader /> : month}</div>
       </div>
       <div className={[b.channelGridCompact, b.channelGridCampaign, b.statsListSimple].join(" ")}>
         {channels.map((c: any) => (
           <div key={c.name} className={b.channelItemCompact}>
             <span>{c.name}</span>
-            <span className={b.channelCount}>{c.value}</span>
+            <span className={b.channelCount}>{loading ? <TinyLoader /> : c.value}</span>
           </div>
         ))}
       </div>
