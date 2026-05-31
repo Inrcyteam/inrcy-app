@@ -14,6 +14,10 @@ const ACCOUNT_CACHE_BASE_KEYS = [
   "inrcy_stats_server_cache_check_ui_v1",
   "inrcy_dashboard_server_cache_check_ui_v1",
   "inrcy_daily_stats_bootstrap_ui_v1",
+  "inrcy_dashboard_channel_state_v1",
+  "inrcy_generator_power_percent_v1",
+  "inrcy_generator_active_v1",
+  "inrcy_site_bubble_progress_v1",
 ] as const;
 
 const ACCOUNT_CACHE_PREFIXES = [

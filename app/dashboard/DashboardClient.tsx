@@ -48,6 +48,7 @@ const AUTO_DAILY_REFRESH_DEDUP_MS = 5 * 60_000;
 const GENERATOR_POWER_CACHE_KEY = "inrcy_generator_power_percent_v1";
 const GENERATOR_ACTIVE_CACHE_KEY = "inrcy_generator_active_v1";
 const SITE_BUBBLE_PROGRESS_CACHE_KEY = "inrcy_site_bubble_progress_v1";
+const DASHBOARD_CHANNEL_STATE_CACHE_KEY = "inrcy_dashboard_channel_state_v1";
 
 type SiteBubbleProgress = { status: ModuleStatus; text: string };
 type SiteBubbleProgressCache = Partial<Record<"site_inrcy" | "site_web", SiteBubbleProgress>>;
@@ -97,6 +98,35 @@ function readCachedGeneratorIsActive(): boolean | null {
   } catch {
     return null;
   }
+}
+
+function readCachedDashboardChannelState(): Record<string, any> | null {
+  try {
+    const raw = readUiCacheValue(DASHBOARD_CHANNEL_STATE_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as any;
+    const state = parsed?.state && typeof parsed.state === "object" ? parsed.state : parsed;
+    if (!state || typeof state !== "object" || Array.isArray(state)) return null;
+    return state as Record<string, any>;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedDashboardChannelState(state: Record<string, any>) {
+  try {
+    writeUiCacheValue(DASHBOARD_CHANNEL_STATE_CACHE_KEY, JSON.stringify({ cachedAt: Date.now(), state }));
+  } catch {
+    // ignore browser storage failures
+  }
+}
+
+function isConnectionStatus(value: unknown): value is ConnectionDisplayStatus {
+  return value === "connected" || value === "disconnected" || value === "needs_update";
+}
+
+function isOwnership(value: unknown): value is Ownership {
+  return value === "none" || value === "rented" || value === "sold";
 }
 
 export default function DashboardClient() {
@@ -172,6 +202,7 @@ export default function DashboardClient() {
   const latestTriggerChannelsRefreshRef = useRef<((channelsInput: DashboardChannelKey[]) => Promise<void>) | null>(null);
   const initialGeneratorRefreshDoneRef = useRef(false);
   const lastAutoDailyRefreshAtRef = useRef(0);
+  const dashboardChannelCacheLastWriteRef = useRef("");
   const [kpisLoading, setKpisLoading] = useState(false);
   const [dailyBootReady, setDailyBootReady] = useState(false);
   const [kpis, setKpis] = useState<null | {
@@ -588,6 +619,93 @@ const {
 
 const { profileIncomplete, activityIncomplete, checkProfile, checkActivity } = useDashboardCompletionChecks();
 
+const applyDashboardChannelState = useCallback((state: Record<string, any> | null, options?: { markReady?: boolean }) => {
+  if (!state) return false;
+
+  if (isOwnership(state.siteInrcyOwnership)) setSiteInrcyOwnership(state.siteInrcyOwnership);
+  if (typeof state.siteInrcyUrl === "string") setSiteInrcyUrl(state.siteInrcyUrl);
+  if (typeof state.siteInrcySavedUrl === "string") setSiteInrcySavedUrl(state.siteInrcySavedUrl);
+  if (typeof state.siteInrcyContactEmail === "string") setSiteInrcyContactEmail(state.siteInrcyContactEmail);
+  if (typeof state.siteInrcySettingsText === "string") setSiteInrcySettingsText(state.siteInrcySettingsText);
+  if (typeof state.ga4MeasurementId === "string") setGa4MeasurementId(state.ga4MeasurementId);
+  if (typeof state.ga4PropertyId === "string") setGa4PropertyId(state.ga4PropertyId);
+  if (typeof state.gscProperty === "string") setGscProperty(state.gscProperty);
+  if (state.siteInrcyActusLayout === "list" || state.siteInrcyActusLayout === "carousel") setSiteInrcyActusLayout(state.siteInrcyActusLayout);
+  if ([3, 5, 10].includes(Number(state.siteInrcyActusLimit))) setSiteInrcyActusLimit(Number(state.siteInrcyActusLimit));
+  if (["site", "inter", "poppins", "montserrat", "lora"].includes(String(state.siteInrcyActusFont))) setSiteInrcyActusFont(state.siteInrcyActusFont);
+  if (["white", "dark", "gray", "nature", "sand"].includes(String(state.siteInrcyActusTheme))) setSiteInrcyActusTheme(state.siteInrcyActusTheme);
+
+  if (typeof state.siteWebSettingsText === "string") setSiteWebSettingsText(state.siteWebSettingsText);
+  if (typeof state.siteWebUrl === "string") setSiteWebUrl(state.siteWebUrl);
+  if (typeof state.siteWebSavedUrl === "string") setSiteWebSavedUrl(state.siteWebSavedUrl);
+  if (typeof state.siteWebGa4MeasurementId === "string") setSiteWebGa4MeasurementId(state.siteWebGa4MeasurementId);
+  if (typeof state.siteWebGa4PropertyId === "string") setSiteWebGa4PropertyId(state.siteWebGa4PropertyId);
+  if (typeof state.siteWebGscProperty === "string") setSiteWebGscProperty(state.siteWebGscProperty);
+  if (state.siteWebActusLayout === "list" || state.siteWebActusLayout === "carousel") setSiteWebActusLayout(state.siteWebActusLayout);
+  if ([3, 5, 10].includes(Number(state.siteWebActusLimit))) setSiteWebActusLimit(Number(state.siteWebActusLimit));
+  if (["site", "inter", "poppins", "montserrat", "lora"].includes(String(state.siteWebActusFont))) setSiteWebActusFont(state.siteWebActusFont);
+  if (["white", "dark", "gray", "nature", "sand"].includes(String(state.siteWebActusTheme))) setSiteWebActusTheme(state.siteWebActusTheme);
+
+  if (typeof state.instagramUrl === "string") setInstagramUrl(state.instagramUrl);
+  if (typeof state.instagramAccountConnected === "boolean") setInstagramAccountConnected(state.instagramAccountConnected);
+  if (typeof state.instagramConnected === "boolean") setInstagramConnected(state.instagramConnected);
+  if (isConnectionStatus(state.instagramConnectionStatus)) setInstagramConnectionStatus(state.instagramConnectionStatus);
+  if (typeof state.instagramUsername === "string") setInstagramUsername(state.instagramUsername);
+
+  if (typeof state.linkedinUrl === "string") setLinkedinUrl(state.linkedinUrl);
+  if (typeof state.linkedinAccountConnected === "boolean") setLinkedinAccountConnected(state.linkedinAccountConnected);
+  if (typeof state.linkedinConnected === "boolean") setLinkedinConnected(state.linkedinConnected);
+  if (isConnectionStatus(state.linkedinConnectionStatus)) setLinkedinConnectionStatus(state.linkedinConnectionStatus);
+  if (typeof state.linkedinDisplayName === "string") setLinkedinDisplayName(state.linkedinDisplayName);
+  if (typeof state.linkedinSelectedOrganizationId === "string") setLinkedinSelectedOrganizationId(state.linkedinSelectedOrganizationId);
+  if (typeof state.linkedinSelectedOrganizationName === "string") setLinkedinSelectedOrganizationName(state.linkedinSelectedOrganizationName);
+
+  if (typeof state.gmbUrl === "string") setGmbUrl(state.gmbUrl);
+  if (typeof state.gmbAccountConnected === "boolean") setGmbAccountConnected(state.gmbAccountConnected);
+  if (typeof state.gmbConfigured === "boolean") setGmbConfigured(state.gmbConfigured);
+  if (typeof state.gmbConnected === "boolean") setGmbConnected(state.gmbConnected);
+  if (isConnectionStatus(state.gmbConnectionStatus)) setGmbConnectionStatus(state.gmbConnectionStatus);
+  if (typeof state.gmbAccountEmail === "string") setGmbAccountEmail(state.gmbAccountEmail);
+  if (typeof state.gmbLocationName === "string") setGmbLocationName(state.gmbLocationName);
+  if (typeof state.gmbLocationLabel === "string") setGmbLocationLabel(state.gmbLocationLabel);
+
+  if (typeof state.facebookUrl === "string") setFacebookUrl(state.facebookUrl);
+  if (typeof state.facebookAccountConnected === "boolean") setFacebookAccountConnected(state.facebookAccountConnected);
+  if (typeof state.facebookPageConnected === "boolean") setFacebookPageConnected(state.facebookPageConnected);
+  if (isConnectionStatus(state.facebookConnectionStatus)) setFacebookConnectionStatus(state.facebookConnectionStatus as "connected" | "disconnected" | "needs_update");
+  if (typeof state.facebookAccountEmail === "string") setFacebookAccountEmail(state.facebookAccountEmail);
+  if (typeof state.fbSelectedPageId === "string") setFbSelectedPageId(state.fbSelectedPageId);
+  if (typeof state.fbSelectedPageName === "string") setFbSelectedPageName(state.fbSelectedPageName);
+
+  if (typeof state.siteInrcyGa4Connected === "boolean") setSiteInrcyGa4Connected(state.siteInrcyGa4Connected);
+  if (typeof state.siteInrcyGscConnected === "boolean") setSiteInrcyGscConnected(state.siteInrcyGscConnected);
+  if (typeof state.siteWebGa4Connected === "boolean") setSiteWebGa4Connected(state.siteWebGa4Connected);
+  if (typeof state.siteWebGscConnected === "boolean") setSiteWebGscConnected(state.siteWebGscConnected);
+
+  setSiteInrcySettingsError(null);
+  setSiteWebSettingsError(null);
+  if (options?.markReady) setSiteConnectionsReady(true);
+  return true;
+}, [
+  setFacebookAccountConnected, setFacebookConnectionStatus, setFacebookPageConnected, setFacebookUrl,
+  setFbSelectedPageId, setFbSelectedPageName, setGa4MeasurementId, setGa4PropertyId, setGmbAccountConnected,
+  setGmbConfigured, setGmbConnected, setGmbConnectionStatus, setGmbLocationLabel, setGmbLocationName, setGmbUrl,
+  setGscProperty, setInstagramAccountConnected, setInstagramConnected, setInstagramConnectionStatus, setInstagramUrl,
+  setInstagramUsername, setLinkedinAccountConnected, setLinkedinConnected, setLinkedinConnectionStatus,
+  setLinkedinDisplayName, setLinkedinSelectedOrganizationId, setLinkedinSelectedOrganizationName, setLinkedinUrl,
+  setSiteInrcyActusFont, setSiteInrcyActusLayout, setSiteInrcyActusLimit, setSiteInrcyActusTheme, setSiteInrcyContactEmail,
+  setSiteInrcyGa4Connected, setSiteInrcyGscConnected, setSiteInrcyOwnership, setSiteInrcySavedUrl,
+  setSiteInrcySettingsError, setSiteInrcySettingsText, setSiteInrcyUrl, setSiteWebActusFont, setSiteWebActusLayout,
+  setSiteWebActusLimit, setSiteWebActusTheme, setSiteWebGa4Connected, setSiteWebGa4MeasurementId,
+  setSiteWebGa4PropertyId, setSiteWebGscConnected, setSiteWebGscProperty, setSiteWebSavedUrl,
+  setSiteWebSettingsError, setSiteWebSettingsText, setSiteWebUrl,
+]);
+
+useBrowserLayoutEffect(() => {
+  const cached = readCachedDashboardChannelState();
+  applyDashboardChannelState(cached, { markReady: true });
+}, [applyDashboardChannelState]);
+
 const setPanelSuccess = useCallback((kind: "facebook" | "instagram" | "linkedin" | "gmb", message: string, timeout = 2200) => {
   if (kind === "facebook") { setFacebookPanelSuccess(message, timeout); return; }
   if (kind === "instagram") { setInstagramPanelSuccess(message, timeout); return; }
@@ -922,9 +1040,8 @@ const loadSiteInrcy = useCallback(async () => {
   };
 
   try {
-    const states = await fetch("/api/integrations/channel-states", { cache: "no-store" })
-      .then((r) => r.json())
-      .catch(() => null) as any;
+    const statesResponse = await fetch("/api/integrations/channel-states", { cache: "no-store" });
+    const states = statesResponse.ok ? await statesResponse.json().catch(() => null) as any : null;
     if (requestSeq !== siteConfigRequestSeqRef.current) return;
 
     if (states) {
@@ -985,63 +1102,9 @@ const loadSiteInrcy = useCallback(async () => {
   }
 
   if (requestSeq !== siteConfigRequestSeqRef.current) return;
-  setSiteInrcyOwnership(nextState.siteInrcyOwnership);
-  setSiteInrcyUrl(nextState.siteInrcyUrl);
-  setSiteInrcySavedUrl(nextState.siteInrcySavedUrl);
-  setSiteInrcyContactEmail(nextState.siteInrcyContactEmail);
-  setSiteInrcySettingsText(nextState.siteInrcySettingsText);
-  setSiteInrcySettingsError(null);
-  setGa4MeasurementId(nextState.ga4MeasurementId);
-  setGa4PropertyId(nextState.ga4PropertyId);
-  setGscProperty(nextState.gscProperty);
-  setSiteInrcyActusLayout(nextState.siteInrcyActusLayout);
-  setSiteInrcyActusLimit(nextState.siteInrcyActusLimit);
-  setSiteInrcyActusFont(nextState.siteInrcyActusFont);
-  setSiteInrcyActusTheme(nextState.siteInrcyActusTheme);
-  setSiteWebSettingsText(nextState.siteWebSettingsText);
-  setSiteWebSettingsError(null);
-  setSiteWebUrl(nextState.siteWebUrl);
-  setSiteWebSavedUrl(nextState.siteWebSavedUrl);
-  setSiteWebGa4MeasurementId(nextState.siteWebGa4MeasurementId);
-  setSiteWebGa4PropertyId(nextState.siteWebGa4PropertyId);
-  setSiteWebGscProperty(nextState.siteWebGscProperty);
-  setSiteWebActusLayout(nextState.siteWebActusLayout);
-  setSiteWebActusLimit(nextState.siteWebActusLimit);
-  setSiteWebActusFont(nextState.siteWebActusFont);
-  setSiteWebActusTheme(nextState.siteWebActusTheme);
-  setInstagramUrl(nextState.instagramUrl);
-  setInstagramAccountConnected(nextState.instagramAccountConnected);
-  setInstagramConnected(nextState.instagramConnected);
-  setInstagramConnectionStatus(nextState.instagramConnectionStatus);
-  setInstagramUsername(nextState.instagramUsername);
-  setLinkedinUrl(nextState.linkedinUrl);
-  setLinkedinAccountConnected(nextState.linkedinAccountConnected);
-  setLinkedinConnected(nextState.linkedinConnected);
-  setLinkedinConnectionStatus(nextState.linkedinConnectionStatus);
-  setLinkedinDisplayName(nextState.linkedinDisplayName);
-  setLinkedinSelectedOrganizationId(nextState.linkedinSelectedOrganizationId);
-  setLinkedinSelectedOrganizationName(nextState.linkedinSelectedOrganizationName);
-  setGmbUrl(nextState.gmbUrl);
-  setGmbAccountConnected(nextState.gmbAccountConnected);
-  setGmbConfigured(nextState.gmbConfigured);
-  setGmbConnected(nextState.gmbConnected);
-  setGmbConnectionStatus(nextState.gmbConnectionStatus);
-  setGmbAccountEmail(nextState.gmbAccountEmail);
-  setGmbLocationName(nextState.gmbLocationName);
-  setGmbLocationLabel(nextState.gmbLocationLabel);
-  setFacebookUrl(nextState.facebookUrl);
-  setFacebookAccountConnected(nextState.facebookAccountConnected);
-  setFacebookPageConnected(nextState.facebookPageConnected);
-  setFacebookConnectionStatus(nextState.facebookConnectionStatus);
-  setFacebookAccountEmail(nextState.facebookAccountEmail);
-  setFbSelectedPageId(nextState.fbSelectedPageId);
-  setFbSelectedPageName(nextState.fbSelectedPageName);
-  setSiteInrcyGa4Connected(nextState.siteInrcyGa4Connected);
-  setSiteInrcyGscConnected(nextState.siteInrcyGscConnected);
-  setSiteWebGa4Connected(nextState.siteWebGa4Connected);
-  setSiteWebGscConnected(nextState.siteWebGscConnected);
-  setSiteConnectionsReady(true);
-}, [fetchGoogleConnected]);
+  writeCachedDashboardChannelState(nextState);
+  applyDashboardChannelState(nextState, { markReady: true });
+}, [applyDashboardChannelState, fetchGoogleConnected]);
 
 useEffect(() => {
   loadSiteInrcy();
@@ -2260,6 +2323,69 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     }
     return siteBubbleProgressSnapshot[kind] ?? computeSiteBubbleProgress(kind);
   }, [computeSiteBubbleProgress, displayedSiteBubbleProgress, siteBubbleProgressSnapshot, siteConnectionsReady]);
+
+  useEffect(() => {
+    if (!siteConnectionsReady) return;
+    const state = {
+      siteInrcyOwnership,
+      siteInrcyUrl,
+      siteInrcySavedUrl,
+      siteInrcyContactEmail,
+      siteInrcySettingsText,
+      ga4MeasurementId,
+      ga4PropertyId,
+      gscProperty,
+      siteInrcyActusLayout,
+      siteInrcyActusLimit,
+      siteInrcyActusFont,
+      siteInrcyActusTheme,
+      siteWebSettingsText,
+      siteWebUrl,
+      siteWebSavedUrl,
+      siteWebGa4MeasurementId,
+      siteWebGa4PropertyId,
+      siteWebGscProperty,
+      siteWebActusLayout,
+      siteWebActusLimit,
+      siteWebActusFont,
+      siteWebActusTheme,
+      instagramUrl,
+      instagramAccountConnected,
+      instagramConnected,
+      instagramConnectionStatus,
+      instagramUsername,
+      linkedinUrl,
+      linkedinAccountConnected,
+      linkedinConnected,
+      linkedinConnectionStatus,
+      linkedinDisplayName,
+      linkedinSelectedOrganizationId,
+      linkedinSelectedOrganizationName,
+      gmbUrl,
+      gmbAccountConnected,
+      gmbConfigured,
+      gmbConnected,
+      gmbConnectionStatus,
+      gmbAccountEmail,
+      gmbLocationName,
+      gmbLocationLabel,
+      facebookUrl,
+      facebookAccountConnected,
+      facebookPageConnected,
+      facebookConnectionStatus,
+      facebookAccountEmail,
+      fbSelectedPageId,
+      fbSelectedPageName,
+      siteInrcyGa4Connected,
+      siteInrcyGscConnected,
+      siteWebGa4Connected,
+      siteWebGscConnected,
+    };
+    const serialized = JSON.stringify(state);
+    if (serialized === dashboardChannelCacheLastWriteRef.current) return;
+    dashboardChannelCacheLastWriteRef.current = serialized;
+    writeCachedDashboardChannelState(state);
+  });
 
   const fluxBubbleItems = useMemo(() => buildFluxBubbleItems({
     canConfigureSite,
