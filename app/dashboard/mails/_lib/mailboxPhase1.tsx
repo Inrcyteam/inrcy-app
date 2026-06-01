@@ -1566,13 +1566,23 @@ export function isRetryableCampaignItem(item: OutboxItem | null) {
   return counts.failed > 0;
 }
 
+export function isProtectedSentInvoiceHistoryItem(item: OutboxItem | null | undefined) {
+  if (!item || item.source !== "send_items") return false;
+  const raw = (item.raw || {}) as any;
+  const type = String((item as any).type || raw?.type || "").toLowerCase();
+  const status = String(item.status || raw?.status || "").toLowerCase();
+  return type === "facture" && status === "sent";
+}
+
 export function canDeleteHistoryItem(item: OutboxItem | null | undefined) {
   if (!item) return false;
+  if (isProtectedSentInvoiceHistoryItem(item)) return false;
   return item.source === "send_items" || item.source === "mail_campaigns" || item.source === "app_events";
 }
 
 export function canBulkDeleteHistoryItem(item: OutboxItem | null | undefined) {
   if (!item) return false;
+  if (isProtectedSentInvoiceHistoryItem(item)) return false;
   return item.source === "send_items" || item.source === "mail_campaigns" || item.source === "app_events";
 }
 

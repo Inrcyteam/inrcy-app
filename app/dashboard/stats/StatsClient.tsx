@@ -71,6 +71,7 @@ function normalizeCapturedLeads(raw: unknown, fallback?: CapturedLeads): Capture
 type MailStatsSnapshot = {
   loading: boolean;
   error?: string;
+  syncedAt?: number;
   connectedCount: number;
   maxAccounts: number;
   envois30: number;
@@ -94,6 +95,67 @@ const EMPTY_MAIL_STATS: MailStatsSnapshot = {
   fidelisations30: 0,
   inrsend30: 0,
 };
+
+const MAIL_STATS_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+function mailStatsSessionKey(period: Period) {
+  return `inrcy_stats_mail_snapshot_v1:${period}`;
+}
+
+function normalizeMailStatsSnapshot(value: unknown, syncedAt?: number): MailStatsSnapshot {
+  const raw = value && typeof value === "object" ? (value as Partial<MailStatsSnapshot>) : {};
+  return {
+    loading: false,
+    error: typeof raw.error === "string" ? raw.error : undefined,
+    connectedCount: clampMailAccountCount(raw.connectedCount),
+    maxAccounts: Math.max(1, Math.round(safeNum(raw.maxAccounts, 4)) || 4),
+    envois30: Math.max(0, Math.round(safeNum(raw.envois30))),
+    campagnes30: Math.max(0, Math.round(safeNum(raw.campagnes30))),
+    destinataires30: Math.max(0, Math.round(safeNum(raw.destinataires30))),
+    contactsCrm: Math.max(0, Math.round(safeNum(raw.contactsCrm))),
+    propulsions30: Math.max(0, Math.round(safeNum(raw.propulsions30))),
+    fidelisations30: Math.max(0, Math.round(safeNum(raw.fidelisations30))),
+    inrsend30: Math.max(0, Math.round(safeNum(raw.inrsend30))),
+    syncedAt: Number.isFinite(Number(syncedAt ?? raw.syncedAt)) ? Number(syncedAt ?? raw.syncedAt) : undefined,
+  };
+}
+
+function parseCachedMailStats(raw: string | null): { syncedAt: number; snapshotDate: string | null; stats: MailStatsSnapshot } | null {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as any;
+    const syncedAt = safeNum(parsed?.syncedAt);
+    const stats = normalizeMailStatsSnapshot(parsed?.stats ?? parsed, syncedAt);
+    if (!syncedAt && !stats.syncedAt) return null;
+    return {
+      syncedAt: syncedAt || safeNum(stats.syncedAt),
+      snapshotDate: typeof parsed?.snapshotDate === "string" ? parsed.snapshotDate : null,
+      stats,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function readCachedMailStats(period: Period) {
+  const cached = parseCachedMailStats(readUiCacheValue(mailStatsSessionKey(period)));
+  if (!cached) return null;
+  const age = Date.now() - cached.syncedAt;
+  if (!Number.isFinite(age) || age < 0 || age > MAIL_STATS_CACHE_TTL_MS) return null;
+  return cached;
+}
+
+function writeCachedMailStats(period: Period, stats: MailStatsSnapshot, syncedAt = Date.now()) {
+  try {
+    writeUiCacheValue(mailStatsSessionKey(period), JSON.stringify({
+      syncedAt,
+      snapshotDate: expectedUiSnapshotDate(),
+      stats: normalizeMailStatsSnapshot(stats, syncedAt),
+    }));
+  } catch {
+    // cache UI uniquement, sans impact fonctionnel
+  }
+}
 
 function clampMailAccountCount(value: unknown) {
   return Math.max(0, Math.min(4, Math.round(safeNum(value))));
@@ -246,9 +308,20 @@ export default function StatsClient() {
   const lastServerCacheCheckAtRef = useRef(0);
   const serverCacheCheckPromiseRef = useRef<Promise<void> | null>(null);
 
+  const hydrateMailStatsFromCache = useCallback((targetPeriod: Period) => {
+    const cachedMail = readCachedMailStats(targetPeriod);
+    if (!cachedMail) return false;
+    setMailStats((prev) => {
+      if (safeNum(prev.syncedAt) > cachedMail.syncedAt) return prev;
+      return { ...cachedMail.stats, loading: false, error: undefined, syncedAt: cachedMail.syncedAt };
+    });
+    return true;
+  }, []);
+
   useBrowserLayoutEffect(() => {
     const cachedCube = parseCachedCubeSnapshot(readUiCacheValue(cubeSessionKey(period)));
     const cachedSummary = parseCachedSummarySnapshot(readUiCacheValue(summarySessionKey(period)));
+    hydrateMailStatsFromCache(period);
 
     if (cachedCube?.overviews && hasCapturedLeadsBlocks(cachedCube.blocks)) {
       periodCacheRef.current.set(period, cachedCube.overviews);
@@ -299,7 +372,7 @@ export default function StatsClient() {
         tiktok: safeNum(estimatedByCubePartial.tiktok),
       });
     }
-  }, [period]);
+  }, [hydrateMailStatsFromCache, period]);
 
   const clearCachedSnapshots = useCallback(() => {
     periodCacheRef.current.clear();
@@ -307,6 +380,7 @@ export default function StatsClient() {
       for (const p of AVAILABLE_PERIODS) {
         removeUiCacheValue(cubeSessionKey(p));
         removeUiCacheValue(summarySessionKey(p));
+        removeUiCacheValue(mailStatsSessionKey(p));
       }
     } catch {
       // ignore
@@ -642,6 +716,7 @@ export default function StatsClient() {
   const handleSharedStatsRefresh = useCallback(async () => {
     setIsRefreshing(true);
     setLastRefreshAt(Date.now());
+    setRefreshNonce((prev) => prev + 1);
 
     try {
       const bootstrap = await runDailyStatsRefreshBootstrap({ announce: true, force: true });
@@ -690,8 +765,10 @@ export default function StatsClient() {
         : 0;
       const contactsCrm = safeNum(contactsJson?.summary?.total ?? contactsJson?.total);
 
-      setMailStats({
+      const syncedAt = Date.now();
+      const nextMailStats: MailStatsSnapshot = {
         loading: false,
+        syncedAt,
         connectedCount,
         maxAccounts,
         envois30: campagnes30,
@@ -701,7 +778,9 @@ export default function StatsClient() {
         propulsions30,
         fidelisations30,
         inrsend30,
-      });
+      };
+      writeCachedMailStats(period, nextMailStats, syncedAt);
+      setMailStats(nextMailStats);
     } catch (error) {
       setMailStats((prev) => ({
         ...prev,
@@ -709,7 +788,7 @@ export default function StatsClient() {
         error: getSimpleFrenchErrorMessage(error, "Impossible de charger les données Mails pour le moment."),
       }));
     }
-  }, []);
+  }, [period]);
 
   useEffect(() => {
     void refreshMailStats();
@@ -724,6 +803,7 @@ export default function StatsClient() {
 
 
   const hydrateFromSessionCache = useCallback((targetPeriod: Period) => {
+    hydrateMailStatsFromCache(targetPeriod);
     const lastChannelSyncAt = getStatsLastChannelSyncAt();
     const cachedCube = parseCachedCubeSnapshot(readUiCacheValue(cubeSessionKey(targetPeriod)));
     const cachedSummary = parseCachedSummarySnapshot(readUiCacheValue(summarySessionKey(targetPeriod)));
@@ -779,7 +859,7 @@ export default function StatsClient() {
         tiktok: safeNum(estimatedByCubePartial.tiktok),
     });
     return true;
-  }, []);
+  }, [hydrateMailStatsFromCache]);
 
 
   const fetchBulkStats = async (period: Period, forceFresh = false): Promise<BulkFetchResult> => {

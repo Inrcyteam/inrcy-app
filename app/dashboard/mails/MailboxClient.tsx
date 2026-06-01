@@ -1817,7 +1817,8 @@ async function deleteDraftPermanently(id: string) {
       .from("send_items")
       .delete()
       .eq("id", id)
-      .eq("user_id", userId);
+      .eq("user_id", userId)
+      .eq("status", "draft");
 
     if (error) {
       setToast("Impossible de supprimer ce brouillon pour le moment. Merci de réessayer.");
@@ -2063,7 +2064,12 @@ async function deleteDraftPermanently(id: string) {
         }
 
         if (draftId) {
-          await supabase.from("send_items").delete().eq("id", draftId).eq("user_id", (await supabase.auth.getUser()).data?.user?.id || "");
+          await supabase
+            .from("send_items")
+            .delete()
+            .eq("id", draftId)
+            .eq("user_id", (await supabase.auth.getUser()).data?.user?.id || "")
+            .eq("status", "draft");
         }
         if (trackedCampaign) setPendingTrack(null);
         const queuedCount = Math.max(0, Number(data?.queued ?? recipientsList.length));

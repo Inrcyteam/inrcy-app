@@ -240,13 +240,34 @@ async function deleteInrSendHistoryItemsBySource(userId: string, source: "send_i
   let deleted = 0;
   for (const part of chunk(uniqueIds)) {
     if (source === "send_items") {
+      // Sécurité critique : une facture envoyée ne doit jamais être supprimée manuellement
+      // depuis iNrSend. Elle reste uniquement éligible au nettoyage automatique de rétention
+      // quand elle dépasse l'ancienneté prévue (voir INRSEND_RETENTION_MONTHS.factures).
+      const { data: rows, error: readError } = await supabaseAdmin
+        .from("send_items")
+        .select("id,type,status")
+        .in("id", part)
+        .eq("user_id", userId);
+      if (readError) throw readError;
+
+      const deletableIds = (Array.isArray(rows) ? rows : [])
+        .filter((row: any) => {
+          const type = String(row?.type || "").toLowerCase();
+          const status = String(row?.status || "").toLowerCase();
+          return !(type === "facture" && status === "sent");
+        })
+        .map((row: any) => String(row?.id || "").trim())
+        .filter(Boolean);
+
+      if (!deletableIds.length) continue;
+
       const { error, count } = await supabaseAdmin
         .from("send_items")
         .delete({ count: "exact" })
-        .in("id", part)
+        .in("id", deletableIds)
         .eq("user_id", userId);
       if (error) throw error;
-      deleted += count ?? part.length;
+      deleted += count ?? deletableIds.length;
       continue;
     }
 

@@ -130,6 +130,57 @@ function isOwnership(value: unknown): value is Ownership {
   return value === "none" || value === "rented" || value === "sold";
 }
 
+function sanitizeMailAccountsConnectedCount(value: unknown) {
+  const count = Number(value);
+  if (!Number.isFinite(count)) return 0;
+  return Math.max(0, Math.min(4, Math.round(count)));
+}
+
+function readCachedMailAccountsConnectedCount(): number | null {
+  try {
+    const state = readCachedDashboardChannelState();
+    if (state && Object.prototype.hasOwnProperty.call(state, "mailAccountsConnectedCount")) {
+      return sanitizeMailAccountsConnectedCount(state.mailAccountsConnectedCount);
+    }
+  } catch {
+    // ignore malformed dashboard cache
+  }
+
+  try {
+    // Même source que iNrStats : permet à la bulle Mails du dashboard
+    // d'arriver déjà hydratée si iNrStats a été ouvert avant.
+    for (const period of [30, 7] as const) {
+      const raw = readUiCacheValue(`inrcy_stats_mail_snapshot_v1:${period}`);
+      if (!raw) continue;
+      const parsed = JSON.parse(raw) as any;
+      const syncedAt = Number(parsed?.syncedAt ?? parsed?.stats?.syncedAt);
+      const age = Date.now() - syncedAt;
+      if (!Number.isFinite(age) || age < 0 || age > 7 * 24 * 60 * 60 * 1000) continue;
+      if (parsed?.stats && Object.prototype.hasOwnProperty.call(parsed.stats, "connectedCount")) {
+        return sanitizeMailAccountsConnectedCount(parsed.stats.connectedCount);
+      }
+      if (Object.prototype.hasOwnProperty.call(parsed, "connectedCount")) {
+        return sanitizeMailAccountsConnectedCount(parsed.connectedCount);
+      }
+    }
+  } catch {
+    // ignore malformed iNrStats cache
+  }
+
+  return null;
+}
+
+function mergeCachedDashboardChannelState(patch: Record<string, any>) {
+  try {
+    writeCachedDashboardChannelState({
+      ...(readCachedDashboardChannelState() ?? {}),
+      ...patch,
+    });
+  } catch {
+    // ignore browser storage failures
+  }
+}
+
 export default function DashboardClient() {
   const [helpGeneratorOpen, setHelpGeneratorOpen] = useState(false);
   const [helpCanauxOpen, setHelpCanauxOpen] = useState(false);
@@ -139,7 +190,7 @@ export default function DashboardClient() {
   const [helpInstagramOpen, setHelpInstagramOpen] = useState(false);
   const [dashboardBoosterModal, setDashboardBoosterModal] = useState<null | "publish" | "stats">(null);
   const [siteConnectionsReady, setSiteConnectionsReady] = useState(false);
-  const [mailAccountsConnectedCount, setMailAccountsConnectedCount] = useState(0);
+  const [mailAccountsConnectedCount, setMailAccountsConnectedCount] = useState(() => readCachedMailAccountsConnectedCount() ?? 0);
   const [displayedGeneratorPower, setDisplayedGeneratorPower] = useState<number | null>(() => readCachedGeneratorPowerPercent());
   const [displayedGeneratorIsActive, setDisplayedGeneratorIsActive] = useState<boolean | null>(() => readCachedGeneratorIsActive());
   const [displayedSiteBubbleProgress, setDisplayedSiteBubbleProgress] = useState<SiteBubbleProgressCache>(() => readCachedSiteBubbleProgress());
@@ -714,6 +765,10 @@ const applyDashboardChannelState = useCallback((state: Record<string, any> | nul
   if (typeof state.siteWebGa4Connected === "boolean") setSiteWebGa4Connected(state.siteWebGa4Connected);
   if (typeof state.siteWebGscConnected === "boolean") setSiteWebGscConnected(state.siteWebGscConnected);
 
+  if (Object.prototype.hasOwnProperty.call(state, "mailAccountsConnectedCount")) {
+    setMailAccountsConnectedCount(sanitizeMailAccountsConnectedCount(state.mailAccountsConnectedCount));
+  }
+
   setSiteInrcySettingsError(null);
   setSiteWebSettingsError(null);
   if (options?.markReady) setSiteConnectionsReady(true);
@@ -730,7 +785,7 @@ const applyDashboardChannelState = useCallback((state: Record<string, any> | nul
   setSiteInrcySettingsError, setSiteInrcySettingsText, setSiteInrcyUrl, setSiteWebActusFont, setSiteWebActusLayout,
   setSiteWebActusLimit, setSiteWebActusTheme, setSiteWebGa4Connected, setSiteWebGa4MeasurementId,
   setSiteWebGa4PropertyId, setSiteWebGscConnected, setSiteWebGscProperty, setSiteWebSavedUrl,
-  setSiteWebSettingsError, setSiteWebSettingsText, setSiteWebUrl,
+  setSiteWebSettingsError, setSiteWebSettingsText, setSiteWebUrl, setMailAccountsConnectedCount,
 ]);
 
 useBrowserLayoutEffect(() => {
@@ -1113,6 +1168,11 @@ const loadSiteInrcy = useCallback(async () => {
       nextState.linkedinConnected = !!states?.linkedin?.connected;
       nextState.linkedinConnectionStatus = (states?.linkedin?.connection_status || (states?.linkedin?.connected ? "connected" : "disconnected")) as ConnectionDisplayStatus;
       if (states?.linkedin?.display_name) nextState.linkedinDisplayName = String(states.linkedin.display_name);
+
+      if (states?.mails && Object.prototype.hasOwnProperty.call(states.mails, "connectedCount")) {
+        (nextState as any).mailAccountsConnectedCount = sanitizeMailAccountsConnectedCount(states.mails.connectedCount);
+      }
+
       if ((states?.linkedin as any)?.organization_id) {
         nextState.linkedinSelectedOrganizationId = String((states.linkedin as any).organization_id);
         nextState.linkedinUrl = String((states.linkedin as any).organization_url || states.linkedin.profile_url || "");
@@ -2303,7 +2363,9 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       if (!res.ok) return;
       const accounts = Array.isArray(data?.mailAccounts) ? data.mailAccounts : [];
       // Canal Mails = actif dès qu’au moins une boîte d’envoi est enregistrée.
-      setMailAccountsConnectedCount(Math.max(0, Math.min(4, accounts.length)));
+      const nextCount = sanitizeMailAccountsConnectedCount(accounts.length);
+      setMailAccountsConnectedCount(nextCount);
+      mergeCachedDashboardChannelState({ mailAccountsConnectedCount: nextCount });
     } catch {
       // On garde le dernier état affiché si le statut mail est momentanément indisponible.
     }
@@ -2441,6 +2503,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       facebookAccountEmail,
       fbSelectedPageId,
       fbSelectedPageName,
+      mailAccountsConnectedCount,
       siteInrcyGa4Connected,
       siteInrcyGscConnected,
       siteWebGa4Connected,

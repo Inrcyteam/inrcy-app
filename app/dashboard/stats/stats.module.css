@@ -4390,3 +4390,145 @@
     overscroll-behavior: contain !important;
   }
 }
+
+/* iNrStats — v86 : Global stable + scrolls uniquement quand nécessaire */
+@media (min-width: 901px) {
+  .statsWorkspace {
+    height: calc(100vh - 190px) !important;
+    min-height: 0 !important;
+    align-items: stretch !important;
+  }
+
+  .statsRail {
+    align-self: start !important;
+    max-height: calc(100vh - 190px) !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    padding-right: 10px !important;
+    overscroll-behavior: contain !important;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(125, 211, 252, 0.34) transparent;
+  }
+
+  .statsRail::-webkit-scrollbar,
+  .allStatsActions::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .statsRail::-webkit-scrollbar-track,
+  .allStatsActions::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .statsRail::-webkit-scrollbar-thumb,
+  .allStatsActions::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: rgba(125, 211, 252, 0.28);
+  }
+
+  .statsPanel,
+  .allStatsPanel {
+    min-height: 0 !important;
+  }
+
+  .statsPanel {
+    overflow: hidden !important;
+  }
+
+  .allStatsPanel {
+    height: 100% !important;
+    max-height: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+  }
+
+  .allStatsHero {
+    flex: 0 0 auto !important;
+  }
+
+  .allStatsActions {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    display: grid !important;
+    align-content: start !important;
+    gap: 10px !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    padding: 0 8px 4px 0 !important;
+    overscroll-behavior: contain !important;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(125, 211, 252, 0.34) transparent;
+  }
+
+  .allStatsActionCard {
+    display: grid !important;
+    grid-template-columns: minmax(220px, 1fr) minmax(250px, 330px) minmax(118px, 160px) minmax(74px, 88px) !important;
+    align-items: center !important;
+    gap: 10px !important;
+    min-height: 62px !important;
+    height: auto !important;
+    padding: 10px 12px !important;
+    overflow: visible !important;
+  }
+
+  .allStatsChannelButton,
+  .allStatsMetrics,
+  .allStatsRecommendedAction,
+  .allStatsGoButton {
+    min-width: 0 !important;
+  }
+
+  .allStatsMetrics {
+    width: 100% !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .allStatsMetrics span {
+    min-height: 46px !important;
+    padding: 7px 9px !important;
+  }
+
+  .allStatsRecommendedAction {
+    justify-items: center !important;
+  }
+
+  .allStatsToolBadge {
+    max-width: 100% !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .allStatsGoButton {
+    justify-self: end !important;
+    min-width: 70px !important;
+  }
+}
+
+/* iNrStats — v87 : espace vertical propre dans les lignes Global desktop */
+@media (min-width: 901px) {
+  .allStatsActionCard {
+    min-height: 68px !important;
+    padding-top: 8px !important;
+    padding-bottom: 8px !important;
+  }
+
+  .allStatsMetrics {
+    align-items: center !important;
+  }
+
+  .allStatsMetrics span {
+    box-sizing: border-box !important;
+    height: 44px !important;
+    min-height: 44px !important;
+    padding: 5px 9px !important;
+    align-content: center !important;
+    gap: 3px !important;
+  }
+
+  .allStatsMetrics small,
+  .allStatsMetrics b {
+    line-height: 1.05 !important;
+  }
+}

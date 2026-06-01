@@ -13,7 +13,7 @@ export type InrSendFolder =
 
 export const INRSEND_RETENTION_MONTHS: Record<InrSendFolder, number | null> = {
   mails: 12,
-  factures: null,
+  factures: 24,
   devis: 24,
   publications: 12,
   recoltes: 12,

@@ -10,6 +10,9 @@ type IntegrationLite = {
   provider?: string | null;
   source?: string | null;
   product?: string | null;
+  category?: string | null;
+  account_email?: string | null;
+  settings?: unknown;
   status?: string | null;
   resource_id?: string | null;
   resource_label?: string | null;
@@ -86,6 +89,14 @@ export type ChannelStates = {
     organization_id: string | null;
     organization_name: string | null;
     organization_url: string | null;
+  };
+  mails: {
+    accountConnected: boolean;
+    connected: boolean;
+    connectedCount: number;
+    maxAccounts: number;
+    requiresUpdate: boolean;
+    connection_status: ConnectionDisplayStatus;
   };
   tiktok: {
     accountConnected: boolean;
@@ -179,7 +190,7 @@ export async function getChannelConnectionStates(
         supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle(),
         supabaseAdmin
           .from("integrations")
-          .select("provider,source,product,status,resource_id,resource_label,display_name,email_address,expires_at,access_token_enc,refresh_token_enc,meta,updated_at,created_at")
+          .select("provider,source,product,category,account_email,settings,status,resource_id,resource_label,display_name,email_address,expires_at,access_token_enc,refresh_token_enc,meta,updated_at,created_at")
           .eq("user_id", userId),
       ]);
 
@@ -253,6 +264,10 @@ export async function getChannelConnectionStates(
   const tiktokConnected = Boolean(tiktokSettings.connected && tiktokSettings.accountConnected);
   const tiktokConnectionStatus = getConnectionDisplayStatus(tiktokConnected, "channel:tiktok", { mock: true });
   const tiktokRequiresUpdate = tiktokConnectionStatus === "needs_update";
+
+  const mailRows = rows.filter((row) => row.category === "mail");
+  const mailConnectedCount = Math.max(0, Math.min(4, mailRows.length));
+  const mailsConnected = mailConnectedCount > 0;
 
   const gmb = latestIntegration(rows, "google", "gmb", "gmb");
   const gmbSettings = asRecord(settings.gmb);
@@ -335,6 +350,14 @@ export async function getChannelConnectionStates(
       organization_id: asString(liMeta.org_id) || asString(liSettings.orgId) || null,
       organization_name: asString(liMeta.org_name) || asString(liSettings.orgName) || null,
       organization_url: liOrganizationUrl,
+    },
+    mails: {
+      accountConnected: mailsConnected,
+      connected: mailsConnected,
+      connectedCount: mailConnectedCount,
+      maxAccounts: 4,
+      requiresUpdate: false,
+      connection_status: mailsConnected ? "connected" : "disconnected",
     },
     tiktok: {
       accountConnected: tiktokConnected,
