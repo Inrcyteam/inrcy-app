@@ -1541,6 +1541,15 @@ export default function PublishModal({
     ];
     const existingVariants = allExistingVariants.filter((variant) => requiredSignatures.has(String(variant.signature || "")));
     cleanupObsoleteVideoVariantsBestEffort(allExistingVariants, existingVariants, "obsolete-video-variants");
+
+    // Sécurité prod : pendant une publication, on ne lance JAMAIS une adaptation vidéo automatique.
+    // FFmpeg doit uniquement être appelé quand le pro clique explicitement sur
+    // "Appliquer ce format" / "Appliquer ce format à tous les canaux".
+    // Si aucune modification n'a été demandée, la vidéo originale est publiée telle quelle.
+    if (!options?.previewOnly) {
+      return { ...baseVideo, transformedVariants: existingVariants };
+    }
+
     const existingSignatures = new Set(existingVariants.map((variant) => variant.signature).filter(Boolean));
     const variantsToGenerate = variants.filter((variant) => !existingSignatures.has(variant.format && variant.adaptationMode ? buildVideoTransformSignature(variant.format, variant.adaptationMode) : ""));
 
@@ -1638,7 +1647,7 @@ export default function PublishModal({
           ),
         }));
         setVideoTransformedVariants(existingVariants);
-        if (options?.previewOnly) setImgError(fallbackDetail);
+        if (options?.previewOnly) setImgError("");
         if (!options?.previewOnly) setPublishProgressLabel("Adaptation vidéo indisponible : publication de la vidéo originale.");
         return { ...baseVideo, transformedVariants: existingVariants };
       }
@@ -1661,9 +1670,6 @@ export default function PublishModal({
           const foundVariant = transformedVariants.find(
             (variant) => variant.signature === signature || variant.channel === channel,
           );
-          const matchingError = responseErrors.find(
-            (error) => error.key === channel || String(error.format || "") === settings.format,
-          );
           const formatLabel = getVideoFormatLabel(channel, settings.format, videoSourceMetadata);
           const adaptationMode = settings.adaptationMode as VideoAdaptationMode;
           const adaptationLabel = VIDEO_ADAPTATION_MODE_LABELS[adaptationMode];
@@ -1682,9 +1688,9 @@ export default function PublishModal({
           return [
             channel,
             {
-              status: "error" as const,
-              label: "Format non appliqué",
-              detail: matchingError?.message || `${formatLabel} · ${adaptationLabel}`,
+              status: "ready" as const,
+              label: "Vidéo originale conservée",
+              detail: "Adaptation automatique indisponible : la vidéo originale sera publiée.",
             },
           ];
         }),
@@ -1698,7 +1704,7 @@ export default function PublishModal({
       if (options?.previewOnly && !responseErrors.length) setImgError("");
 
       if (responseErrors.length) {
-        setPublishProgressLabel("Certains formats vidéo n’ont pas pu être modifiés.");
+        setPublishProgressLabel("Adaptation vidéo indisponible : publication de la vidéo originale.");
       }
 
       return {
@@ -1721,7 +1727,7 @@ export default function PublishModal({
         ),
       }));
       setVideoTransformedVariants(existingVariants);
-      if (options?.previewOnly) setImgError(fallbackDetail);
+      if (options?.previewOnly) setImgError("");
       if (!options?.previewOnly) setPublishProgressLabel("Adaptation vidéo indisponible : publication de la vidéo originale.");
       return { ...baseVideo, transformedVariants: existingVariants };
     }

@@ -2534,29 +2534,12 @@ async function deleteDraftPermanently(id: string) {
         const signature = buildVideoTransformSignature(format, adaptationMode);
         let transformedVariants = Array.isArray(editVideo.transformedVariants) ? [...editVideo.transformedVariants] : [];
         let finalVariant = transformedVariants.find((variant: any) => variant.signature === signature || variant.channel === boosterChannel);
-        if (!finalVariant?.publicUrl && !finalVariant?.url && format !== "original") {
-          const response = await requestBoosterVideoTransforms({
-            source: {
-              storagePath: baseVideo.storagePath,
-              publicUrl: baseVideo.publicUrl || baseVideo.url,
-              url: baseVideo.url || baseVideo.publicUrl,
-              name: baseVideo.name,
-              type: baseVideo.type,
-              size: baseVideo.size,
-              duration: baseVideo.duration,
-              sourceMetadata: baseVideo.sourceMetadata || editVideo.sourceMetadata,
-            },
-            variants: [{ key: `${boosterChannel}-${format}-${adaptationMode}`, channel: boosterChannel, format, adaptationMode }],
-          });
-          transformedVariants = [
-            ...transformedVariants.filter((variant: any) => variant.signature !== signature),
-            ...(Array.isArray(response.variants) ? response.variants : []),
-          ];
-          finalVariant = transformedVariants.find((variant: any) => variant.signature === signature || variant.channel === boosterChannel);
-          if (!finalVariant?.publicUrl && !finalVariant?.url) {
-            transformedVariants = [];
-            finalVariant = undefined;
-          }
+        // Sécurité prod : l’enregistrement d’une publication ne doit pas lancer
+        // une adaptation vidéo implicite. On utilise uniquement une variante déjà
+        // générée via une action explicite du pro ; sinon on conserve l’original.
+        if (!finalVariant?.publicUrl && !finalVariant?.url) {
+          transformedVariants = transformedVariants.filter((variant: any) => variant.signature !== signature);
+          finalVariant = undefined;
         }
         const finalVideo = finalVariant?.publicUrl || finalVariant?.url
           ? {

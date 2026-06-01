@@ -279,6 +279,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       ok: errors.length === 0,
+      fallbackToOriginal: errors.length > 0,
       source: {
         storagePath: source.storagePath || null,
         publicUrl: source.publicUrl || source.url || null,
@@ -287,7 +288,7 @@ export async function POST(req: Request) {
       },
       variants: generated,
       errors,
-    }, { status: errors.length && !generated.length ? 500 : 200 });
+    }, { status: 200 });
   } catch (error: any) {
     console.error("[Booster] video-transform failed", error);
     return NextResponse.json({
