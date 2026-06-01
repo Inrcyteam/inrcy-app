@@ -310,7 +310,7 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                     onClick={onOpenSettings}
                     type="button"
                     aria-label="Ouvrir les réglages iNr’Send"
-                    title="Réglages iNr’Send"
+                    title="Réglages Mails"
                   >
                     ⚙️
                   </button>

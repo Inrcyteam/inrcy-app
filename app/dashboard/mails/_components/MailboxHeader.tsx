@@ -69,7 +69,7 @@ export default function MailboxHeader({
           />
 
           <SettingsDrawer
-            title="Réglages iNr’Send"
+            title="Réglages Mails"
             isOpen={settingsOpen}
             onClose={onCloseSettings}
           >

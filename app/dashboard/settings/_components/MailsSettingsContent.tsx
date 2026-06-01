@@ -432,7 +432,7 @@ Email : {{email}}`));
         }}
       >
         <div style={{ fontSize: 16, fontWeight: 950, letterSpacing: "-0.2px", color: "rgba(255,255,255,0.95)" }}>
-          Réglages iNr’Send
+          Réglages Mails
         </div>
         <div style={{ marginTop: 6, fontSize: 13, color: "rgba(255,255,255,0.72)" }}>
           Vous pouvez connecter jusqu’à <b>4 boîtes d’envoi</b> : <b>3</b> en OAuth (Gmail / Outlook) et <b>1</b> en IMAP.

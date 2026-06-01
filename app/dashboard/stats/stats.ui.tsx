@@ -128,6 +128,10 @@ export function SummaryBar({
         <span className={styles.summarySub}>projection sur 30 jours si actions menées</span>
       </div>
       <div className={styles.summaryModules}>
+        <button type="button" className={styles.summaryItem} onClick={() => onScrollTo("mails")}>
+          <span>Mails</span>
+          <b>{summaryDisplayReady ? `+${fmtInt(centralByCube.mails)}` : "—"}</b>
+        </button>
         <button type="button" className={styles.summaryItem} onClick={() => onScrollTo("site_inrcy")}>
           <span>Site iNrCy</span>
           <b>{summaryDisplayReady ? `+${fmtInt(centralByCube.site_inrcy)}` : "—"}</b>
@@ -151,10 +155,6 @@ export function SummaryBar({
         <button type="button" className={styles.summaryItem} onClick={() => onScrollTo("linkedin")}>
           <span>LinkedIn</span>
           <b>{summaryDisplayReady ? `+${fmtInt(centralByCube.linkedin)}` : "—"}</b>
-        </button>
-        <button type="button" className={styles.summaryItem} onClick={() => onScrollTo("mails")}>
-          <span>Mails</span>
-          <b>{summaryDisplayReady ? `+${fmtInt(centralByCube.mails)}` : "—"}</b>
         </button>
         <button type="button" className={styles.summaryItem} onClick={() => onScrollTo("tiktok")}>
           <span>TikTok</span>

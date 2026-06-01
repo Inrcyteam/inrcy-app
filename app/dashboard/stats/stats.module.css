@@ -4348,3 +4348,45 @@
   box-shadow: none !important;
   transform: none !important;
 }
+
+/* iNrStats — vue globale : seul le listing des canaux scrolle sur desktop */
+@media (min-width: 901px) {
+  .statsWorkspace {
+    height: calc(100vh - 200px) !important;
+    min-height: 0 !important;
+    align-items: stretch !important;
+  }
+
+  .statsRail {
+    align-self: start !important;
+    max-height: 100% !important;
+    overflow-y: auto !important;
+    overscroll-behavior: contain !important;
+  }
+
+  .statsPanel,
+  .allStatsPanel {
+    min-height: 0 !important;
+  }
+
+  .allStatsPanel {
+    height: 100% !important;
+    max-height: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+  }
+
+  .allStatsHero {
+    flex: 0 0 auto !important;
+  }
+
+  .allStatsActions {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow-y: auto !important;
+    padding-right: 6px !important;
+    overscroll-behavior: contain !important;
+  }
+}

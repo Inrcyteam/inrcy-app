@@ -1092,13 +1092,13 @@ useEffect(() => {
   const centralPotential30 = Math.max(0, safeNum(summaryOpp.total) + mailOpportunity30);
 
   const models: CubeModel[] = useMemo(() => ([
+    buildMailCubeModel(mailStats, period),
     buildCubeModel("site_inrcy", "Site iNrCy", "Optimisé pour convertir", period, dataByCube.site_inrcy, centralByCube),
     buildCubeModel("site_web", "Site Web", "Votre image", period, dataByCube.site_web, centralByCube),
     buildCubeModel("gmb", "Google Business", "Visibilité locale", period, dataByCube.gmb, centralByCube),
     buildCubeModel("facebook", "Facebook", "Visibilité sociale", period, dataByCube.facebook, centralByCube),
     buildCubeModel("instagram", "Instagram", "Visibilité de marque", period, dataByCube.instagram, centralByCube),
     buildCubeModel("linkedin", "LinkedIn", "Visibilité professionnelle", period, dataByCube.linkedin, centralByCube),
-    buildMailCubeModel(mailStats, period),
     buildCubeModel("tiktok", "TikTok", "Photos & vidéos courtes", period, dataByCube.tiktok, centralByCube),
   ]), [centralByCube, dataByCube, mailStats, period]);
 

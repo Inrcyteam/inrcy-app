@@ -187,7 +187,7 @@ export function removeUiCacheValue(key: string) {
   removeAccountCacheValue(key);
 }
 
-const CUBE_KEYS: CubeKey[] = ["site_inrcy", "site_web", "gmb", "facebook", "instagram", "linkedin", "mails", "tiktok"];
+const CUBE_KEYS: CubeKey[] = ["mails", "site_inrcy", "site_web", "gmb", "facebook", "instagram", "linkedin", "tiktok"];
 const REMOTE_STATS_CUBE_KEYS: CubeKey[] = CUBE_KEYS.filter((key) => key !== "mails");
 
 export function hasCapturedLeadsBlocks(blocks: Partial<Record<CubeKey, InrstatsChannelBlock>> | undefined) {
