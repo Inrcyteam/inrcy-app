@@ -9,7 +9,7 @@ import {
   getSimpleFrenchErrorMessage,
 } from "@/lib/userFacingErrors";
 
-export type PublishDiagnosticChannel = "facebook" | "instagram" | "linkedin" | "gmb" | "inrcy_site" | "site_web";
+export type PublishDiagnosticChannel = "facebook" | "instagram" | "linkedin" | "gmb" | "inrcy_site" | "site_web" | "tiktok";
 
 const CHANNEL_LABELS: Record<PublishDiagnosticChannel, string> = {
   inrcy_site: "Site iNrCy",
@@ -18,6 +18,7 @@ const CHANNEL_LABELS: Record<PublishDiagnosticChannel, string> = {
   facebook: "Facebook",
   instagram: "Instagram",
   linkedin: "LinkedIn",
+  tiktok: "TikTok",
 };
 
 const CHANNEL_FALLBACKS: Record<PublishDiagnosticChannel, string> = {
@@ -27,6 +28,7 @@ const CHANNEL_FALLBACKS: Record<PublishDiagnosticChannel, string> = {
   facebook: "Facebook n'a pas pu publier. Merci de réessayer.",
   instagram: "Instagram n'a pas pu publier. Merci de réessayer.",
   linkedin: "LinkedIn n'a pas pu publier. Merci de réessayer.",
+  tiktok: "TikTok n'a pas pu publier. Merci de réessayer.",
 };
 
 const CHANNEL_RECONNECTS: Partial<Record<PublishDiagnosticChannel, string>> = {

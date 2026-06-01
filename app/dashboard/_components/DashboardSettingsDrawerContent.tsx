@@ -19,6 +19,7 @@ import InstagramPanelBlock from "./InstagramPanelBlock";
 import LinkedinPanelBlock from "./LinkedinPanelBlock";
 import GmbPanelBlock from "./GmbPanelBlock";
 import FacebookPanelBlock from "./FacebookPanelBlock";
+import TiktokPanelBlock from "./TiktokPanelBlock";
 
 type DashboardPanelName =
   | "contact"
@@ -35,6 +36,7 @@ type DashboardPanelName =
   | "linkedin"
   | "gmb"
   | "facebook"
+  | "tiktok"
   | "legal"
   | "rgpd"
   | "inertie"
@@ -68,6 +70,7 @@ type DashboardSettingsDrawerContentProps = {
   linkedinPanelProps: any;
   gmbPanelProps: any;
   facebookPanelProps: any;
+  tiktokPanelProps: any;
 };
 
 export default function DashboardSettingsDrawerContent({
@@ -95,6 +98,7 @@ export default function DashboardSettingsDrawerContent({
   linkedinPanelProps,
   gmbPanelProps,
   facebookPanelProps,
+  tiktokPanelProps,
 }: DashboardSettingsDrawerContentProps) {
   return (
     <>
@@ -146,6 +150,7 @@ export default function DashboardSettingsDrawerContent({
       <LinkedinPanelBlock panel={panel} panelProps={linkedinPanelProps} />
       <GmbPanelBlock panel={panel} panelProps={gmbPanelProps} />
       <FacebookPanelBlock panel={panel} panelProps={facebookPanelProps} />
+      <TiktokPanelBlock panel={panel} panelProps={tiktokPanelProps} />
     </>
   );
 }

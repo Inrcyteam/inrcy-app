@@ -7,6 +7,7 @@ export const MODULE_ICONS: Record<string, { src: string; alt: string }> = {
   gmb: { src: "/icons/google.jpg", alt: "Google Business" },
   instagram: { src: "/icons/instagram.jpg", alt: "Instagram" },
   linkedin: { src: "/icons/linkedin.png", alt: "LinkedIn" },
+  tiktok: { src: "/icons/tiktok.png", alt: "TikTok" },
 };
 
 export const fluxModules: Module[] = [
@@ -36,10 +37,14 @@ export const fluxModules: Module[] = [
       { key: "view", label: "Voir le compte", variant: "view", href: "#" },
       { key: "connect", label: "Connecter LinkedIn", variant: "connect", onClick: () => {} },
     ] },
+  { key: "tiktok", name: "TikTok", description: "Arrive bientôt 🎬", status: "coming", accent: "pink", actions: [
+      { key: "view", label: "Voir le compte", variant: "view", href: "#" },
+      { key: "connect", label: "Configurer", variant: "connect", onClick: () => {} },
+    ] },
 ];
 
 export const DRAWER_TITLES = {
-  contact: "Nous contacter", compte: "Mon compte", profil: "Mon profil", activite: "Mon activité", ia: "Configuration IA", abonnement: "Mon abonnement", legal: "Informations légales", rgpd: "Mes données (RGPD)", mails: "Réglages iNr’Send", agenda: "Réglages iNr’Calendar", site_inrcy: "Configuration — Site iNrCy", site_web: "Configuration — Site web", instagram: "Configuration — Instagram", linkedin: "Configuration — LinkedIn", gmb: "Configuration — Google Business", facebook: "Configuration — Facebook", inertie: "Mon inertie", boutique: "Boutique", parrainage: "Parrainer avec iNrCy", notifications: "Notifications", documents: "Réglages par défaut",
+  contact: "Nous contacter", compte: "Mon compte", profil: "Mon profil", activite: "Mon activité", ia: "Configuration IA", abonnement: "Mon abonnement", legal: "Informations légales", rgpd: "Mes données (RGPD)", mails: "Réglages iNr’Send", agenda: "Réglages iNr’Calendar", site_inrcy: "Configuration — Site iNrCy", site_web: "Configuration — Site web", instagram: "Configuration — Instagram", linkedin: "Configuration — LinkedIn", gmb: "Configuration — Google Business", facebook: "Configuration — Facebook", tiktok: "Configuration — TikTok", inertie: "Mon inertie", boutique: "Boutique", parrainage: "Parrainer avec iNrCy", notifications: "Notifications", documents: "Réglages par défaut",
 } as const satisfies Record<string, string>;
 
 export const DRAWER_PANELS = new Set(Object.keys(DRAWER_TITLES));

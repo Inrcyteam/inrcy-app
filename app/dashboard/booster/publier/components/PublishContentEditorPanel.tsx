@@ -114,8 +114,12 @@ export default function PublishContentEditorPanel({
               overflowX: "hidden",
             }}
           >
-            {displayCards.map((key) => {
+            {displayCards.map((key, index) => {
               const post = getDisplayPost(key);
+              const isLastOddMobileItem =
+                isMobile &&
+                index === displayCards.length - 1 &&
+                displayCards.length % 2 === 1;
               const hasText = !!(
                 String(post.title || "").trim() ||
                 String(post.content || "").trim()
@@ -152,7 +156,9 @@ export default function PublishContentEditorPanel({
                       : {}),
                     ...(isMobile
                       ? {
-                          width: "100%",
+                          width: isLastOddMobileItem ? "calc(50% - 4px)" : "100%",
+                          gridColumn: isLastOddMobileItem ? "1 / -1" : undefined,
+                          justifySelf: isLastOddMobileItem ? "center" : undefined,
                           minWidth: 0,
                           minHeight: 36,
                           padding: "0 8px",

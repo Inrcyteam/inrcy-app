@@ -28,6 +28,38 @@ type PublishChannelSelectorProps = {
   getChannelDetailInfo: (key: ChannelKey) => ChannelDetailInfo | null;
 };
 
+const CHANNEL_ICON_SRC: Record<ChannelKey, string> = {
+  inrcy_site: "/icons/inrcy.png",
+  site_web: "/icons/site-web.jpg",
+  gmb: "/icons/google.jpg",
+  facebook: "/icons/facebook.png",
+  instagram: "/icons/instagram.jpg",
+  linkedin: "/icons/linkedin.png",
+  tiktok: "/icons/tiktok.png",
+};
+
+function LinkIcon() {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width="15"
+      height="15"
+      aria-hidden="true"
+      focusable="false"
+      style={{ display: "block" }}
+    >
+      <path
+        d="M10.6 13.4a3 3 0 0 0 4.24 0l3.18-3.18a3 3 0 1 0-4.24-4.24l-1.41 1.41M13.4 10.6a3 3 0 0 0-4.24 0l-3.18 3.18a3 3 0 1 0 4.24 4.24l1.41-1.41"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export default function PublishChannelSelector({
   styles,
   isMobile,
@@ -38,6 +70,8 @@ export default function PublishChannelSelector({
   toggle,
   getChannelDetailInfo,
 }: PublishChannelSelectorProps) {
+  const channelKeys = Object.keys(CHANNEL_LABELS) as ChannelKey[];
+
   return (
     <div
       className={styles.blockCard}
@@ -46,21 +80,25 @@ export default function PublishChannelSelector({
       <div className={styles.blockTitle} style={{ marginBottom: 8 }}>
         Canaux
       </div>
-      <div className={styles.subtitle} style={{ marginBottom: 10 }}>
+      <div className={styles.subtitle} style={{ marginBottom: isMobile ? 10 : 8 }}>
         iNrCy publie une version adaptée sur chaque canal sélectionné.
       </div>
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-          gap: isMobile ? 8 : 10,
+          gridTemplateColumns: isMobile
+            ? "repeat(2, minmax(0, 1fr))"
+            : `repeat(${channelKeys.length}, minmax(0, 1fr))`,
+          gap: isMobile ? 8 : 7,
+          alignItems: "stretch",
         }}
       >
-        {(Object.keys(CHANNEL_LABELS) as ChannelKey[]).map((key) => {
+        {channelKeys.map((key, index) => {
           const info = getChannelDetailInfo(key);
           const isConnected = connected[key];
           const isSelected = channels[key] && isConnected;
           const isInfoVisible = channelInfoOpen === key && !!info;
+          const isLastOddMobileItem = isMobile && index === channelKeys.length - 1 && channelKeys.length % 2 === 1;
 
           if (isMobile) {
             return (
@@ -99,6 +137,13 @@ export default function PublishChannelSelector({
                   alignItems: "center",
                   justifyContent: "space-between",
                   gap: 7,
+                  ...(isLastOddMobileItem
+                    ? {
+                        gridColumn: "1 / -1",
+                        width: "calc(50% - 4px)",
+                        justifySelf: "center",
+                      }
+                    : {}),
                 }}
               >
                 <span
@@ -164,23 +209,7 @@ export default function PublishChannelSelector({
                       : "none",
                   }}
                 >
-                  <svg
-                    viewBox="0 0 24 24"
-                    width="15"
-                    height="15"
-                    aria-hidden="true"
-                    focusable="false"
-                    style={{ display: "block" }}
-                  >
-                    <path
-                      d="M10.6 13.4a3 3 0 0 0 4.24 0l3.18-3.18a3 3 0 1 0-4.24-4.24l-1.41 1.41M13.4 10.6a3 3 0 0 0-4.24 0l-3.18 3.18a3 3 0 1 0 4.24 4.24l1.41-1.41"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2.4"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
+                  <LinkIcon />
                 </button>
                 {isInfoVisible && info ? (
                   <div
@@ -227,6 +256,19 @@ export default function PublishChannelSelector({
               tabIndex={isConnected ? 0 : -1}
               aria-disabled={!isConnected}
               aria-pressed={isSelected}
+              title={info?.fullLabel || `${CHANNEL_LABELS[key]} ${isConnected ? "connecté" : "non connecté"}`}
+              onMouseEnter={() => {
+                if (info) setChannelInfoOpen(key);
+              }}
+              onMouseLeave={() => {
+                if (info) setChannelInfoOpen((prev) => (prev === key ? null : prev));
+              }}
+              onFocus={() => {
+                if (info) setChannelInfoOpen(key);
+              }}
+              onBlur={() => {
+                if (info) setChannelInfoOpen((prev) => (prev === key ? null : prev));
+              }}
               onKeyDown={(event) => {
                 if (!isConnected) return;
                 if (event.key === "Enter" || event.key === " ") {
@@ -235,178 +277,118 @@ export default function PublishChannelSelector({
                 }
               }}
               style={{
-                ...channelBtn,
                 ...(!isConnected ? channelBtnDisabled : {}),
-                minHeight: 62,
-                padding: "10px 12px",
+                minHeight: 48,
+                minWidth: 0,
+                padding: "6px 6px",
                 position: "relative",
                 overflow: "visible",
+                borderRadius: 16,
                 border: isSelected
                   ? "2px solid rgba(76,195,255,0.88)"
                   : "1px solid rgba(255,255,255,0.10)",
                 boxShadow: isSelected
-                  ? "0 0 0 1px rgba(76,195,255,0.28) inset, 0 0 0 1px rgba(76,195,255,0.22), 0 0 18px rgba(76,195,255,0.18), 0 10px 24px rgba(8,18,34,0.18)"
+                  ? "0 0 0 1px rgba(76,195,255,0.28) inset, 0 0 18px rgba(76,195,255,0.18), 0 10px 24px rgba(8,18,34,0.16)"
                   : "none",
                 background: isSelected
-                  ? "rgba(76,195,255,0.08)"
+                  ? "linear-gradient(135deg, rgba(76,195,255,0.16), rgba(34,211,238,0.08))"
                   : "rgba(255,255,255,0.03)",
                 cursor: isConnected ? "pointer" : "not-allowed",
+                display: "grid",
+                placeItems: "center",
               }}
             >
               <span
+                aria-hidden
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  minWidth: 0,
-                  flex: 1,
+                  position: "absolute",
+                  top: 8,
+                  right: 8,
+                  width: 9,
+                  height: 9,
+                  borderRadius: 999,
+                  background: isConnected ? "#43d17d" : "#ff6b7d",
+                  boxShadow: isConnected
+                    ? "0 0 12px rgba(67,209,125,0.45)"
+                    : "0 0 12px rgba(255,107,125,0.25)",
                 }}
-              >
-                <input
-                  type="checkbox"
-                  checked={!!channels[key]}
-                  onChange={() => toggle(key)}
-                  disabled={!isConnected}
-                  onClick={(e) => e.stopPropagation()}
+              />
+              {isSelected ? (
+                <span
+                  aria-hidden
                   style={{
+                    position: "absolute",
+                    top: 7,
+                    left: 7,
                     width: 18,
                     height: 18,
-                    accentColor: "#4cc3ff",
-                    cursor: isConnected ? "pointer" : "not-allowed",
-                    flexShrink: 0,
-                  }}
-                />
-                <span
-                  style={{
-                    width: 10,
-                    height: 10,
                     borderRadius: 999,
-                    background: isConnected ? "#43d17d" : "#ff6b7d",
-                    boxShadow: isConnected
-                      ? "0 0 12px rgba(67,209,125,0.35)"
-                      : "0 0 12px rgba(255,107,125,0.25)",
-                    flexShrink: 0,
-                  }}
-                />
-                <span
-                  style={{
-                    minWidth: 0,
-                    flex: 1,
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    textAlign: "left",
-                    overflow: "hidden",
+                    display: "inline-grid",
+                    placeItems: "center",
+                    background: "rgba(76,195,255,0.92)",
+                    color: "#07111f",
+                    fontSize: 12,
+                    fontWeight: 950,
+                    lineHeight: 1,
                   }}
                 >
-                  <span
+                  ✓
+                </span>
+              ) : null}
+              <img
+                src={CHANNEL_ICON_SRC[key]}
+                alt=""
+                aria-hidden="true"
+                loading="eager"
+                decoding="sync"
+                fetchPriority="high"
+                style={{
+                  width: key === "site_web" ? 29 : 31,
+                  height: key === "site_web" ? 29 : 31,
+                  borderRadius: key === "site_web" ? 10 : 999,
+                  objectFit: "cover",
+                  opacity: isConnected ? 1 : 0.48,
+                  filter: isConnected ? undefined : "grayscale(0.7)",
+                  boxShadow: isSelected ? "0 0 18px rgba(76,195,255,0.24)" : undefined,
+                }}
+              />
+              {isInfoVisible && info ? (
+                <div
+                  onPointerDown={(event) => event.stopPropagation()}
+                  onClick={(event) => event.stopPropagation()}
+                  style={{
+                    position: "absolute",
+                    top: "calc(100% + 8px)",
+                    left: "50%",
+                    transform: "translateX(-50%)",
+                    zIndex: 40,
+                    width: 230,
+                    maxWidth: "min(230px, 80vw)",
+                    borderRadius: 14,
+                    padding: "9px 11px",
+                    background: "rgba(9,16,31,0.98)",
+                    border: "1px solid rgba(148,163,184,0.24)",
+                    boxShadow: "0 18px 44px rgba(0,0,0,0.40)",
+                    textAlign: "center",
+                    pointerEvents: "none",
+                  }}
+                >
+                  <div style={{ fontSize: 12.5, fontWeight: 950, color: "rgba(255,255,255,0.96)", marginBottom: 2 }}>
+                    {CHANNEL_LABELS[key]}
+                  </div>
+                  <div
                     style={{
-                      minWidth: 0,
+                      fontSize: 12,
+                      lineHeight: 1.35,
+                      color: "rgba(255,255,255,0.76)",
                       whiteSpace: "nowrap",
                       overflow: "hidden",
                       textOverflow: "ellipsis",
-                      fontWeight: 800,
-                      flexShrink: 0,
                     }}
                   >
-                    {CHANNEL_LABELS[key]}
-                  </span>
-                  {info ? (
-                    <>
-                      <span
-                        style={{
-                          width: 4,
-                          height: 4,
-                          borderRadius: 999,
-                          background: "rgba(255,255,255,0.3)",
-                          flexShrink: 0,
-                        }}
-                      />
-                      <span
-                        style={{
-                          minWidth: 0,
-                          fontSize: 12,
-                          lineHeight: 1.35,
-                          color: "rgba(255,255,255,0.68)",
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                        }}
-                      >
-                        {info.desktopLabel}
-                      </span>
-                    </>
-                  ) : null}
-                </span>
-              </span>
-              {info ? (
-                <>
-                  <button
-                    type="button"
-                    aria-label={`Voir les détails de ${CHANNEL_LABELS[key]}`}
-                    title={info.fullLabel}
-                    onPointerDown={(event) => event.stopPropagation()}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setChannelInfoOpen((prev) =>
-                        prev === key ? null : key,
-                      );
-                    }}
-                    style={{
-                      width: 32,
-                      height: 32,
-                      borderRadius: 999,
-                      border: "1px solid rgba(255,255,255,0.14)",
-                      background: isInfoVisible
-                        ? "rgba(76,195,255,0.14)"
-                        : "rgba(255,255,255,0.06)",
-                      color: "rgba(255,255,255,0.88)",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      flexShrink: 0,
-                      cursor: "pointer",
-                      boxShadow: isInfoVisible
-                        ? "0 0 0 1px rgba(76,195,255,0.16) inset"
-                        : "none",
-                    }}
-                  >
-                    🔗
-                  </button>
-                  {isInfoVisible ? (
-                    <div
-                      onPointerDown={(event) => event.stopPropagation()}
-                      onClick={(event) => event.stopPropagation()}
-                      style={{
-                        position: "absolute",
-                        top: "50%",
-                        right: 50,
-                        transform: "translateY(-50%)",
-                        zIndex: 20,
-                        maxWidth: 240,
-                        borderRadius: 999,
-                        padding: "10px 14px",
-                        background: "rgba(9,16,31,0.96)",
-                        border: "1px solid rgba(148,163,184,0.22)",
-                        boxShadow: "0 18px 40px rgba(0,0,0,0.34)",
-                        textAlign: "left",
-                      }}
-                    >
-                      <div
-                        style={{
-                          fontSize: 12,
-                          lineHeight: 1.35,
-                          color: "rgba(255,255,255,0.92)",
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                        }}
-                      >
-                        {info.mobileLabel}
-                      </div>
-                    </div>
-                  ) : null}
-                </>
+                    {info.desktopLabel}
+                  </div>
+                </div>
               ) : null}
             </div>
           );

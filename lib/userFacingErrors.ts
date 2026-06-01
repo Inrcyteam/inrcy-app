@@ -166,7 +166,7 @@ export function getSimpleFrenchErrorMessage(input: unknown, fallback = "Cette ac
     return "Le lien n'est plus valide ou l'envoi est temporairement limité. Merci de réessayer dans quelques minutes.";
   }
 
-  if (matches(message, ["photo upload failed", "facebook feed post failed", "linkedin publish failed", "gmb create post error", "instagram", "publish error", "performance api error", "runreport failed", "gsc query failed", "microsoft send failed", "imap send failed", "token refresh failed", "db update failed", "google business", "facebook", "linkedin", "mail account not found", "missing_access_token", "google_calendar_integration_removed", "instagram optimized image url unavailable", "storage upload", "upload failed", "signature-image", "image upload", "invalid mime type"])) {
+  if (matches(message, ["photo upload failed", "facebook feed post failed", "linkedin publish failed", "gmb create post error", "instagram", "publish error", "performance api error", "runreport failed", "gsc query failed", "microsoft send failed", "imap send failed", "token refresh failed", "db update failed", "google business", "facebook", "linkedin", "tiktok", "mail account not found", "missing_access_token", "google_calendar_integration_removed", "instagram optimized image url unavailable", "storage upload", "upload failed", "signature-image", "image upload", "invalid mime type"])) {
     return "L'action demandée n'a pas pu être finalisée pour le moment. Merci de réessayer.";
   }
 

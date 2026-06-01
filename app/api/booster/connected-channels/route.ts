@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
 import { getChannelConnectionStates } from "@/lib/channelConnectionState";
+import { readTiktokSettings } from "@/lib/tiktokRouteStorage";
 
 export async function GET() {
   try {
@@ -8,6 +9,8 @@ export async function GET() {
     if (errorResponse) return errorResponse;
 
     const states = await getChannelConnectionStates(supabase, user.id);
+    const { tiktok } = await readTiktokSettings(supabase, user.id);
+    const tiktokConnected = Boolean(tiktok.connected && tiktok.accountConnected);
     return NextResponse.json({
       channels: {
         inrcy_site: states.site_inrcy.connected,
@@ -16,6 +19,7 @@ export async function GET() {
         facebook: states.facebook.connected && !states.facebook.requiresUpdate,
         instagram: states.instagram.connected && !states.instagram.requiresUpdate,
         linkedin: states.linkedin.connected && !states.linkedin.requiresUpdate,
+        tiktok: tiktokConnected,
       },
       channelDetails: {
         inrcy_site: {
@@ -51,6 +55,11 @@ export async function GET() {
           href: states.linkedin.organization_id
             ? states.linkedin.organization_url
             : states.linkedin.profile_url,
+        },
+        tiktok: {
+          type: "account",
+          label: tiktok.username || tiktok.profileUrl,
+          href: tiktok.profileUrl,
         },
       },
     });

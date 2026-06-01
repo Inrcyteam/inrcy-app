@@ -1,6 +1,6 @@
 import "server-only";
 
-export type SnapshotSource = "site_inrcy" | "site_web" | "facebook" | "instagram" | "linkedin" | "gmb";
+export type SnapshotSource = "site_inrcy" | "site_web" | "facebook" | "instagram" | "linkedin" | "tiktok" | "gmb";
 
 export type SnapshotDetail = {
   connected: boolean;

@@ -6,6 +6,7 @@ import styles from "../mails.module.css";
 import { ChannelImageAdapterCardsPanel, ChannelPublicationPreview } from "@/app/dashboard/_components/ChannelImageAdapterTool";
 import InrcyCameraCaptureModal from "@/app/dashboard/_components/InrcyCameraCaptureModal";
 import RichSiteContentEditor from "@/app/dashboard/booster/publier/components/RichSiteContentEditor";
+import BoosterVideoFormatManager, { type BoosterVideoPreparationState } from "@/app/dashboard/booster/publier/components/BoosterVideoFormatManager";
 import {
   buildPreferredCtaPatch,
   BOOSTER_PREFERRED_CTA_OPTIONS,
@@ -13,15 +14,22 @@ import {
   getChannelDefaultCtaLabel,
   getCtaModeHelp,
   getPreferredCtaChoiceFromPost,
+  getVideoFormatLabel,
+  getVideoPreviewAspectRatio,
+  getVideoPreviewFitMode,
   getWebsiteSourceLabelForChannel,
   getWebsiteUrlForChannel,
   isSiteDisplayKey,
   normalizeBoosterPreferredCta,
+  VIDEO_ADAPTATION_MODE_LABELS,
   type BoosterCtaDefaults,
   type BoosterCtaMode,
   type BoosterPreferredCta,
+  type ChannelKey,
   type ChannelPost,
   type DisplayKey,
+  type VideoAdaptationMode,
+  type VideoFormat,
 } from "@/app/dashboard/booster/publier/publishModal.shared";
 import { darkOptionStyle, darkSelectStyle, lightFieldStyle, textAreaStyle } from "@/app/dashboard/booster/publier/publishModal.styles";
 import { confirmInrcy } from "@/lib/inrcyDialog";
@@ -54,6 +62,24 @@ import {
   splitList,
 } from "../_lib/mailboxPhase1";
 import { pillBtn, pillBtnActive } from "./mailboxInlineStyles";
+
+
+type PublicationEditVideoState = {
+  file: File | null;
+  previewUrl: string;
+  name: string;
+  type: string;
+  size: number;
+  duration: number | null;
+  sourceMetadata: any | null;
+  sourceVideo: any | null;
+  transformedVariants: any[];
+  format: VideoFormat;
+  adaptationMode: VideoAdaptationMode;
+  preparation?: BoosterVideoPreparationState | null;
+  preparing?: boolean;
+  removed?: boolean;
+};
 
 type MailboxDetailsModalProps = {
   open: boolean;
@@ -95,6 +121,13 @@ type MailboxDetailsModalProps = {
   movePublicationImage?: (channel: string, imageKey: string, direction: -1 | 1) => void;
   addPublicationFiles: (fileList: FileList | null) => void;
   addPublicationPhoto: (file: File) => void;
+  publicationVideoInputId: string;
+  activePublicationEditVideo: PublicationEditVideoState | null;
+  addPublicationVideo: (fileList: FileList | null) => void;
+  removePublicationVideo: (channel?: string) => void;
+  setPublicationVideoFormatForChannel: (channel: string, format: VideoFormat) => void;
+  setPublicationVideoAdaptationModeForChannel: (channel: string, mode: VideoAdaptationMode) => void;
+  applyPublicationVideoFormatForChannel: (channel: string) => Promise<void>;
   saveChannelPublication: () => Promise<void>;
   deleteChannelPublication: () => Promise<void>;
   retryCampaignFailedRecipients: (campaignId: string) => Promise<void>;
@@ -104,6 +137,45 @@ type MailboxDetailsModalProps = {
   loadCampaignHealth: (campaignId: string, raw?: any) => Promise<void>;
   resumeDraft: (item: any) => void;
 };
+
+function formatVideoBytes(value: unknown) {
+  const bytes = typeof value === "number" ? value : Number(value || 0);
+  if (!Number.isFinite(bytes) || bytes <= 0) return null;
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} Mo`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} Ko`;
+  return `${Math.round(bytes)} o`;
+}
+
+function formatVideoDuration(value: unknown) {
+  const seconds = typeof value === "number" ? value : Number(value || 0);
+  if (!Number.isFinite(seconds) || seconds <= 0) return null;
+  const total = Math.round(seconds);
+  const min = Math.floor(total / 60);
+  const sec = total % 60;
+  return `${min}:${String(sec).padStart(2, "0")}`;
+}
+
+function getVideoAttachmentUrl(att: any) {
+  return String(att?.url || att?.publicUrl || att?.renderedUrl || att?.downloadUrl || "").trim();
+}
+
+function sameVideoAttachment(a: any, b: any) {
+  const au = getVideoAttachmentUrl(a);
+  const bu = getVideoAttachmentUrl(b);
+  if (au && bu) return au === bu;
+  const ap = String(a?.storagePath || "").trim();
+  const bp = String(b?.storagePath || "").trim();
+  return Boolean(ap && bp && ap === bp);
+}
+
+function getVideoFileLabel(att: any) {
+  const pieces = [
+    att?.name ? String(att.name) : null,
+    formatVideoBytes(att?.size),
+    formatVideoDuration(att?.duration),
+  ].filter(Boolean);
+  return pieces.join(" · ") || "Vidéo iNrCy";
+}
 
 export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
   const {
@@ -146,6 +218,13 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
     movePublicationImage,
     addPublicationFiles,
     addPublicationPhoto,
+    publicationVideoInputId,
+    activePublicationEditVideo,
+    addPublicationVideo,
+    removePublicationVideo,
+    setPublicationVideoFormatForChannel,
+    setPublicationVideoAdaptationModeForChannel,
+    applyPublicationVideoFormatForChannel,
     saveChannelPublication,
     deleteChannelPublication,
     retryCampaignFailedRecipients,
@@ -216,7 +295,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
 
   const publicationDisplayKey = React.useMemo<DisplayKey>(() => {
     const key = String(activePublicationEditChannelKey || "");
-    if (["inrcy_site", "site_web", "gmb", "facebook", "instagram", "linkedin"].includes(key)) {
+    if (["inrcy_site", "site_web", "gmb", "facebook", "instagram", "linkedin", "tiktok"].includes(key)) {
       return key as DisplayKey;
     }
     return "facebook";
@@ -427,12 +506,22 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                   const imageAttachments = dedupedAttachments.filter((att) => att?.url && isImageAttachment(att));
                   const videoAttachments = dedupedAttachments.filter((att) => att?.url && isVideoAttachment(att));
                   const activeVideoAttachment = videoAttachments[0] || null;
+                  const activeSourceVideoAttachment = activeParts.sourceVideo && !sameVideoAttachment(activeParts.sourceVideo, activeVideoAttachment)
+                    ? activeParts.sourceVideo
+                    : null;
+                  const activeVideoSourceMetadata = (activeSourceVideoAttachment as any)?.sourceMetadata || (activeVideoAttachment as any)?.sourceMetadata || null;
                   const isVideoPublication = detailsItem.source === "app_events" && (
                     String(payload?.mediaType || payload?.media_type || "").toLowerCase() === "video" ||
                     Boolean(activeVideoAttachment)
                   );
+                  const activeVideoSettings = isVideoPublication ? activeParts.videoSettings || null : null;
+                  const activeVideoFormatLabel = activeVideoSettings && activePublicationEntry
+                    ? getVideoFormatLabel(activePublicationEntry.key as any, activeVideoSettings.format as any, activeVideoSourceMetadata as any)
+                    : null;
+                  const activeVideoAdaptationLabel = activeVideoSettings
+                    ? VIDEO_ADAPTATION_MODE_LABELS[activeVideoSettings.adaptationMode]
+                    : null;
                   const fileAttachments = dedupedAttachments.filter((att) => !imageAttachments.includes(att) && !videoAttachments.includes(att));
-                  const hasAttachments = imageAttachments.length > 0 || videoAttachments.length > 0 || fileAttachments.length > 0;
                   const showFallbackMessage = (() => {
                     if (detailsItem.source !== "app_events") return true;
                     const activeHasStructured = !!(activeParts.title || activeParts.content || activeParts.cta || activeParts.hashtags?.length || activeParts.attachments?.length);
@@ -446,21 +535,36 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                     return !(activeHasStructured || fallbackTitle || fallbackContent || fallbackCta || fallbackHashtags.length || fallbackAttachments.length);
                   })();
                   const isDraftItem = String((detailsItem as any)?.status || (detailsItem as any)?.raw?.status || "").toLowerCase() === "draft";
-                  const publicationEditPreview = (() => {
-                    if (detailsItem.source !== "app_events" || !activePublicationEntry || !detailsEditMode) return null;
-                    const selectedAssets = activePublicationEditAssets.filter((asset) => asset.selected);
+                  const publicationPreviewData = (() => {
+                    if (detailsItem.source !== "app_events" || !activePublicationEntry) return null;
+                    const selectedAssets = detailsEditMode
+                      ? activePublicationEditAssets.filter((asset) => asset.selected)
+                      : imageAttachments.map((attachment) => ({
+                          previewUrl: attachment.url || "",
+                          transform: undefined,
+                          preset: activePublicationEditPreset,
+                        }));
                     const firstAsset = selectedAssets[0] || null;
-                    const hashtags = publicationEditForm.hashtags
-                      .split(/[;,\n\s]+/)
-                      .map((tag) => tag.trim().replace(/^#+/, ""))
-                      .filter(Boolean);
+                    const hashtags = detailsEditMode
+                      ? publicationEditForm.hashtags
+                          .split(/[;,\n\s]+/)
+                          .map((tag) => tag.trim().replace(/^#+/, ""))
+                          .filter(Boolean)
+                      : (Array.isArray(activeParts.hashtags) ? activeParts.hashtags : [])
+                          .map((tag: string) => String(tag || "").trim().replace(/^#+/, ""))
+                          .filter(Boolean);
+                    const previewTitle = detailsEditMode ? publicationEditForm.title : (activeParts.title || "");
+                    const previewContent = detailsEditMode ? publicationEditForm.content : (activeParts.content || "");
+                    const previewCta = detailsEditMode
+                      ? getPublicationPreviewCta(publicationDisplayKey, publicationEditForm)
+                      : (activeParts.cta || "");
                     return {
-                      channelKey: activePublicationEditChannelKey,
+                      channelKey: activePublicationEntry.key,
                       mediaType: isVideoPublication ? "video" as const : "images" as const,
-                      channelLabel: activePublicationEntry?.label || formatChannelLabel(activePublicationEditChannelKey),
-                      title: publicationEditForm.title,
-                      content: publicationEditForm.content,
-                      cta: getPublicationPreviewCta(publicationDisplayKey, publicationEditForm),
+                      channelLabel: activePublicationEntry?.label || formatChannelLabel(activePublicationEntry.key),
+                      title: previewTitle,
+                      content: previewContent,
+                      cta: previewCta,
                       hashtags,
                       imageCount: isVideoPublication ? 0 : selectedAssets.length,
                       video: isVideoPublication && activeVideoAttachment?.url
@@ -470,22 +574,26 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                             type: activeVideoAttachment.type || "video/mp4",
                             size: activeVideoAttachment.size || null,
                             duration: (activeVideoAttachment as any).duration || null,
+                            aspectRatio: activeVideoSettings ? getVideoPreviewAspectRatio(activeVideoSettings.format as any) : null,
+                            fitMode: activeVideoSettings ? getVideoPreviewFitMode(activeVideoSettings.adaptationMode as any) : null,
                           }
                         : null,
                       formatLabel: isVideoPublication
-                        ? "Vidéo finale"
-                        : activePublicationEditChannelKey === "inrcy_site" || activePublicationEditChannelKey === "site_web" ? "Rendu site / iframe" : `Image finale : ${activePublicationEditPreset.width}×${activePublicationEditPreset.height}`,
+                        ? activeVideoFormatLabel && activeVideoAdaptationLabel
+                          ? `Vidéo ${activeVideoFormatLabel} · ${activeVideoAdaptationLabel}`
+                          : "Vidéo finale"
+                        : activePublicationEntry.key === "inrcy_site" || activePublicationEntry.key === "site_web" ? "Rendu site / iframe" : `Image finale : ${activePublicationEditPreset.width}×${activePublicationEditPreset.height}`,
                       image: firstAsset
                         ? {
                             previewUrl: firstAsset.previewUrl,
-                            transform: firstAsset.transform,
-                            preset: activePublicationEditPreset,
+                          transform: firstAsset.transform,
+                          preset: firstAsset.preset || activePublicationEditPreset,
                           }
                         : null,
                       images: selectedAssets.map((asset) => ({
                         previewUrl: asset.previewUrl,
                         transform: asset.transform,
-                        preset: activePublicationEditPreset,
+                        preset: asset.preset || activePublicationEditPreset,
                       })),
                     };
                   })();
@@ -802,7 +910,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                             (() => {
                               const parts = activeParts;
                               const isSitePublication = activePublicationEntry.key === "inrcy_site" || activePublicationEntry.key === "site_web" || activePublicationEntry.key === "site";
-                              const showInstagramHashtags = activePublicationEntry.key === "instagram";
+                              const showInstagramHashtags = activePublicationEntry.key === "instagram" || activePublicationEntry.key === "tiktok";
                               const deletedAt = activePublicationResult?.deleted_at ? new Date(String(activePublicationResult.deleted_at)).toLocaleString() : null;
                               const hasAny = !!(parts.title || parts.content || parts.cta || (showInstagramHashtags && parts.hashtags?.length));
                               if (!hasAny && showFallbackMessage) {
@@ -1084,7 +1192,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                             );
                                           })()}
                                         </div>
-                                        {activePublicationEntry.key === "instagram" ? (
+                                        {activePublicationEntry.key === "instagram" || activePublicationEntry.key === "tiktok" ? (
                                           <div>
                                             <div className={styles.publicationLabel}>Hashtags</div>
                                             <input
@@ -1136,7 +1244,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                             <div className={styles.publicationCtaBox}>{stripSiteTextFormatting(parts.cta)}</div>
                                           </div>
                                         ) : null}
-                                        {activePublicationEntry.key === "instagram" && parts.hashtags && parts.hashtags.length ? (
+                                        {(activePublicationEntry.key === "instagram" || activePublicationEntry.key === "tiktok") && parts.hashtags && parts.hashtags.length ? (
                                           <div>
                                             <div className={styles.publicationLabel}>Hashtags</div>
                                             <div className={styles.publicationTagRow}>
@@ -1165,9 +1273,9 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                           )}
                         </section>
 
-                        {detailsItem.source === "app_events" && detailsEditMode && activePublicationEntry && !activePublicationDeleted ? (
+                        {detailsItem.source === "app_events" && activePublicationEntry && !activePublicationDeleted ? (
                           <>
-                            {!isVideoPublication ? (
+                            {detailsEditMode && !isVideoPublication ? (
                               <InrcyCameraCaptureModal
                                 open={publicationCameraOpen}
                                 title="Appareil iNrCy"
@@ -1181,31 +1289,97 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                             ) : null}
 
                             {isVideoPublication ? (
-                              <section className={styles.detailSectionCard}>
+                              <section
+                                className={styles.detailSectionCard}
+                                style={{
+                                  background: "#111827",
+                                  border: "1px solid rgba(255,255,255,0.10)",
+                                }}
+                              >
                                 <div className={styles.detailSectionHeader}>
-                                  <div className={styles.messageHeaderTitle}>Vidéo de la publication</div>
-                                </div>
-                                <div style={{ display: "grid", gap: 12 }}>
-                                  {activeVideoAttachment?.url ? (
-                                    <div className={styles.attachmentPreviewCard} style={{ width: "min(520px, 100%)", flexBasis: "min(520px, 100%)" }}>
-                                      <video
-                                        src={activeVideoAttachment.url}
-                                        className={styles.attachmentPreviewImage}
-                                        controls
-                                        preload="metadata"
-                                        style={{ height: 260 }}
-                                      />
-                                      <div className={styles.attachmentPreviewCaption}>{activeVideoAttachment.name || "Vidéo iNrCy"}</div>
+                                  <div>
+                                    <div className={styles.messageHeaderTitle}>Média de la publication</div>
+                                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.66)", marginTop: 4 }}>
+                                      {detailsEditMode
+                                        ? "Modifiez la vidéo, son format et son rendu avant d’enregistrer."
+                                        : `${activePublicationEntry.label || formatChannelLabel(activePublicationEntry.key)} utilise sa propre variante vidéo préparée par iNrCy.`}
                                     </div>
-                                  ) : (
-                                    <div className={styles.emptyDetailText}>Vidéo introuvable.</div>
-                                  )}
-                                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)" }}>
-                                    En modification V1, la vidéo est conservée. Vous pouvez modifier les textes, CTA et hashtags, puis republier le canal.
+                                  </div>
+                                </div>
+
+                                <input
+                                  id={publicationVideoInputId}
+                                  type="file"
+                                  accept="video/mp4,video/webm,video/quicktime,video/x-m4v,.mp4,.m4v,.mov,.webm"
+                                  className={styles.hiddenFileInput}
+                                  onChange={(e) => {
+                                    const input = e.currentTarget;
+                                    const files = input?.files ?? null;
+                                    if (files?.length) markPublicationEditDirty();
+                                    addPublicationVideo(files);
+                                    if (input) input.value = "";
+                                  }}
+                                />
+
+                                <div style={{ display: "grid", gap: 12 }}>
+                                  {detailsEditMode ? (
+                                    <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                                      <button
+                                        type="button"
+                                        className={styles.btnAttach}
+                                        onClick={() => document.getElementById(publicationVideoInputId)?.click()}
+                                      >
+                                        🎥 Ajouter / remplacer la vidéo
+                                      </button>
+                                      <span style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
+                                        1 vidéo maximum pour {activePublicationEntry?.label || "ce canal"}.
+                                      </span>
+                                    </div>
+                                  ) : null}
+
+                                  <BoosterVideoFormatManager
+                                    isMobile={isMobileViewport}
+                                    channel={(activePublicationEntry.key as ChannelKey)}
+                                    videoName={detailsEditMode ? (activePublicationEditVideo?.name || activeVideoAttachment?.name) : activeVideoAttachment?.name}
+                                    videoDisplayUrl={detailsEditMode ? (activePublicationEditVideo?.previewUrl || "") : (activeVideoAttachment?.url || "")}
+                                    videoSize={detailsEditMode ? (activePublicationEditVideo?.size || activeVideoAttachment?.size || 0) : (activeVideoAttachment?.size || 0)}
+                                    videoDurationSeconds={detailsEditMode ? (activePublicationEditVideo?.duration || activeVideoAttachment?.duration || null) : (activeVideoAttachment?.duration || null)}
+                                    videoSourceMetadata={detailsEditMode ? (activePublicationEditVideo?.sourceMetadata || null) : null}
+                                    currentFormat={(detailsEditMode ? (activePublicationEditVideo?.format || activeVideoSettings?.format || "original") : (activeVideoSettings?.format || "original")) as VideoFormat}
+                                    adaptationMode={(detailsEditMode ? (activePublicationEditVideo?.adaptationMode || activeVideoSettings?.adaptationMode || "safe_blur") : (activeVideoSettings?.adaptationMode || "safe_blur")) as VideoAdaptationMode}
+                                    videoTransformedVariants={[]}
+                                    preparationState={detailsEditMode ? (activePublicationEditVideo?.preparation || null) : null}
+                                    preparing={detailsEditMode ? Boolean(activePublicationEditVideo?.preparing) : false}
+                                    onFormatChange={detailsEditMode ? (format) => { markPublicationEditDirty(); setPublicationVideoFormatForChannel(activePublicationEntry.key, format); } : undefined}
+                                    onAdaptationModeChange={detailsEditMode ? (mode) => { markPublicationEditDirty(); setPublicationVideoAdaptationModeForChannel(activePublicationEntry.key, mode); } : undefined}
+                                    onApplyFormat={detailsEditMode ? async () => { markPublicationEditDirty(); await applyPublicationVideoFormatForChannel(activePublicationEntry.key); } : undefined}
+                                    onDeleteVideo={detailsEditMode ? () => { markPublicationEditDirty(); removePublicationVideo(activePublicationEntry.key); } : undefined}
+                                    onPickVideoClick={detailsEditMode ? () => document.getElementById(publicationVideoInputId)?.click() : undefined}
+                                    showApplyAll={false}
+                                    buttonClassName={styles.btnGhost}
+                                    compact={detailsEditMode}
+                                  />
+
+                                  {activeVideoAttachment?.url && !detailsEditMode ? (
+                                    <a className={styles.attachmentDownloadHint} href={activeVideoAttachment.url} target="_blank" rel="noreferrer" style={{ justifySelf: "start" }}>
+                                      Télécharger
+                                    </a>
+                                  ) : null}
+
+                                  {detailsEditMode && (!activePublicationEditVideo || activePublicationEditVideo.removed || !activePublicationEditVideo.previewUrl) ? (
+                                    <div style={{ borderRadius: 14, padding: "10px 12px", border: "1px solid rgba(251,191,36,0.25)", background: "rgba(251,191,36,0.10)", color: "#fde68a", fontSize: 12, lineHeight: 1.45, fontWeight: 750 }}>
+                                      Ajoutez une nouvelle vidéo avant d’enregistrer cette publication.
+                                    </div>
+                                  ) : null}
+
+                                  <div style={{ fontSize: 12, color: "rgba(255,255,255,0.7)", lineHeight: 1.45 }}>
+                                    {detailsEditMode
+                                      ? "Enregistrez ensuite pour republier ce canal avec la vidéo et le format affichés."
+                                      : "Ce détail affiche la vidéo réellement utilisée pour ce canal au moment de la publication."}
                                   </div>
                                 </div>
                               </section>
-                            ) : (
+                            ) : detailsEditMode ? (
                               <section className={styles.detailSectionCard}>
                                 <div className={styles.detailSectionHeader}>
                                   <div className={styles.messageHeaderTitle}>Images de la publication</div>
@@ -1305,14 +1479,14 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                 />
                                 </div>
                               </section>
-                            )}
+                            ) : null}
 
                             <section className={styles.detailSectionCard}>
                               <div className={styles.detailSectionHeader}>
                                 <div>
                                   <div className={styles.messageHeaderTitle}>Aperçu</div>
                                   <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)", marginTop: 4 }}>
-                                    Aperçu du canal sélectionné : {activePublicationEntry?.label || formatChannelLabel(activePublicationEditChannelKey)}.
+                                    Aperçu du canal sélectionné : {activePublicationEntry?.label || formatChannelLabel(activePublicationEntry?.key || activePublicationEditChannelKey)}.
                                   </div>
                                 </div>
                                 <button
@@ -1324,11 +1498,11 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                 </button>
                               </div>
 
-                              {publicationPreviewOpen && publicationEditPreview ? (
-                                <ChannelPublicationPreview preview={publicationEditPreview} />
+                              {publicationPreviewOpen && publicationPreviewData ? (
+                                <ChannelPublicationPreview preview={publicationPreviewData} />
                               ) : (
                                 <div style={{ fontSize: 13, color: "rgba(255,255,255,0.62)" }}>
-                                  L’aperçu est masqué par défaut.
+                                  {publicationPreviewData ? "L’aperçu est masqué par défaut." : "Aucun aperçu disponible pour ce canal."}
                                 </div>
                               )}
                             </section>
@@ -1469,11 +1643,11 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                           </section>
                         ) : null}
 
-                        {hasAttachments && !(detailsItem.source === "app_events" && detailsEditMode) ? (
+                        {(imageAttachments.length > 0 || fileAttachments.length > 0 || (videoAttachments.length > 0 && !(detailsItem.source === "app_events" && isVideoPublication))) && !(detailsItem.source === "app_events" && detailsEditMode) ? (
                           <section className={styles.detailSectionCard}>
                             <div className={styles.detailSectionHeader}>
                               <div className={styles.messageHeaderTitle}>
-                                {detailsItem.source === "app_events" ? (isVideoPublication ? "Média de la publication" : "Images de la publication") : "Documents envoyés"}
+                                {detailsItem.source === "app_events" ? "Images de la publication" : "Documents envoyés"}
                               </div>
                             </div>
 
@@ -1496,7 +1670,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                 </div>
                               ) : null}
 
-                              {videoAttachments.length ? (
+                              {videoAttachments.length && !(detailsItem.source === "app_events" && isVideoPublication) ? (
                                 <div className={styles.attachmentGallery}>
                                   {videoAttachments.map((a, idx) => (
                                     <div key={`${a.url || a.name}-${idx}`} className={styles.attachmentPreviewCard}>

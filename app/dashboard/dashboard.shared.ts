@@ -68,6 +68,7 @@ export function getBubbleViewHrefFromBlock(
     channel === "facebook" ||
     channel === "instagram" ||
     channel === "linkedin" ||
+    channel === "tiktok" ||
     channel === "site_inrcy" ||
     channel === "site_web"
   ) {
@@ -101,6 +102,7 @@ export function getChannelsFromSettingsDiff(previousSettings: unknown, nextSetti
     ["facebook", "facebook"],
     ["instagram", "instagram"],
     ["linkedin", "linkedin"],
+    ["tiktok", "tiktok"],
   ];
 
   for (const [channel, key] of map) {
@@ -155,7 +157,8 @@ export function inferChannelsFromRealtimePayload(payload: any): DashboardChannel
       source === "gmb" ||
       source === "facebook" ||
       source === "instagram" ||
-      source === "linkedin"
+      source === "linkedin" ||
+      source === "tiktok"
     ) {
       impacted.add(source);
       continue;
@@ -163,6 +166,7 @@ export function inferChannelsFromRealtimePayload(payload: any): DashboardChannel
 
     if (provider === "facebook") impacted.add("facebook");
     if (provider === "linkedin") impacted.add("linkedin");
+    if (provider === "tiktok") impacted.add("tiktok");
     if (provider === "google" && source === "gmb") impacted.add("gmb");
   }
 
@@ -173,7 +177,7 @@ export function inferChannelsFromSearchParams(
   linked: string | null,
   targetPanel: string | null,
 ): DashboardChannelKey[] {
-  if (linked === "gmb" || linked === "facebook" || linked === "instagram" || linked === "linkedin") {
+  if (linked === "gmb" || linked === "facebook" || linked === "instagram" || linked === "linkedin" || linked === "tiktok") {
     return [linked];
   }
 
@@ -187,7 +191,8 @@ export function inferChannelsFromSearchParams(
     targetPanel === "gmb" ||
     targetPanel === "facebook" ||
     targetPanel === "instagram" ||
-    targetPanel === "linkedin"
+    targetPanel === "linkedin" ||
+    targetPanel === "tiktok"
   ) {
     return [targetPanel];
   }

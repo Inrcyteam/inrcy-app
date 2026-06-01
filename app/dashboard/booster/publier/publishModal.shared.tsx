@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import type { BoosterVideoTransformedVariant } from "@/lib/boosterVideoTransforms";
 import {
   buildBoosterGmbSummary,
   buildBoosterInstagramCaption,
@@ -13,7 +14,8 @@ export type ChannelKey =
   | "gmb"
   | "facebook"
   | "instagram"
-  | "linkedin";
+  | "linkedin"
+  | "tiktok";
 export type DisplayKey = ChannelKey;
 export type ThemeKey =
   | ""
@@ -208,6 +210,7 @@ export const DISPLAY_LABELS: Record<DisplayKey, string> = {
   facebook: "Facebook",
   instagram: "Instagram",
   linkedin: "LinkedIn",
+  tiktok: "TikTok",
 };
 
 export const CHANNEL_LABELS: Record<ChannelKey, string> = {
@@ -217,6 +220,7 @@ export const CHANNEL_LABELS: Record<ChannelKey, string> = {
   facebook: "Facebook",
   instagram: "Instagram",
   linkedin: "LinkedIn",
+  tiktok: "TikTok",
 };
 
 export const CHANNEL_PRESETS: Record<ChannelKey, RenderPreset> = {
@@ -256,7 +260,39 @@ export const CHANNEL_PRESETS: Record<ChannelKey, RenderPreset> = {
     defaultFit: "cover",
     defaultBlurBackground: false,
   },
+  tiktok: {
+    width: 1080,
+    height: 1920,
+    defaultFit: "cover",
+    defaultBlurBackground: false,
+  },
 };
+
+
+export {
+  VIDEO_ADAPTATION_MODE_LABELS,
+  VIDEO_FORMAT_ASPECT_RATIOS,
+  VIDEO_FORMAT_LABELS,
+  VIDEO_FORMAT_OPTIONS_BY_CHANNEL,
+  VIDEO_RECOMMENDED_FORMAT_BY_CHANNEL,
+  buildVideoSettingsByChannel,
+  getDefaultChannelVideoSettings,
+  getRecommendedVideoFormatForSource,
+  getVideoFormatLabel,
+  getVideoPreviewAspectRatio,
+  getVideoPreviewFitMode,
+  getVideoSourceOrientation,
+  normalizeChannelVideoSettings,
+  normalizeVideoAdaptationMode,
+  normalizeVideoFormat,
+  splitVideoSettingsByChannel,
+} from "@/lib/boosterVideoSettings";
+export type {
+  ChannelVideoSettings,
+  VideoAdaptationMode,
+  VideoFormat,
+  VideoSettingsByChannel,
+} from "@/lib/boosterVideoSettings";
 
 export type PublicationMediaType = "images" | "video";
 export type ChannelMediaMode = "video" | "images" | "none";
@@ -364,6 +400,19 @@ export const CHANNEL_TEXT_GUIDELINES: Record<
     content: 3000,
     cta: 180,
   },
+  tiktok: {
+    title: 90,
+    content: 2200,
+    cta: 120,
+    hashtags: 8,
+    totalLabel: "Légende TikTok finale",
+    totalMax: 2200,
+    totalValue: (post) => {
+      const body = [post.title, post.content, post.cta].filter(Boolean).join("\n");
+      const hashtags = (post.hashtags || []).map((tag) => `#${String(tag || "").replace(/^#+/, "").trim()}`).filter(Boolean).join(" ");
+      return [body, hashtags].filter(Boolean).join("\n").length;
+    },
+  },
 };
 
 export const CTA_MODE_OPTIONS: Record<
@@ -405,6 +454,13 @@ export const CTA_MODE_OPTIONS: Record<
     { value: "custom", label: "Lien personnalisé" },
   ],
   linkedin: [
+    { value: "none", label: "Aucun bouton" },
+    { value: "website", label: "Voir le site" },
+    { value: "call", label: "Appeler" },
+    { value: "message", label: "Envoyer un message" },
+    { value: "custom", label: "Lien personnalisé" },
+  ],
+  tiktok: [
     { value: "none", label: "Aucun bouton" },
     { value: "website", label: "Voir le site" },
     { value: "call", label: "Appeler" },
@@ -1270,20 +1326,36 @@ export function buildBoosterVideoGenerationContext(params: {
   };
 }
 
+export type BoosterVideoOrientation = "horizontal" | "vertical" | "square" | "unknown";
+
+export type BoosterVideoSourceMetadata = {
+  width: number | null;
+  height: number | null;
+  duration: number | null;
+  size: number;
+  type: string;
+  ratio: number | null;
+  ratioLabel: string;
+  orientation: BoosterVideoOrientation;
+  orientationLabel: string;
+};
+
 export type VideoPayload = {
   name: string;
   type: string;
   size: number;
   lastModified?: number;
   duration?: number | null;
+  sourceMetadata?: BoosterVideoSourceMetadata | null;
   storagePath?: string;
   publicUrl?: string;
   url?: string;
+  transformedVariants?: BoosterVideoTransformedVariant[];
 };
 
 export async function uploadBoosterVideo(
   file: File,
-  options?: { folder?: string; path?: string; duration?: number | null },
+  options?: { folder?: string; path?: string; duration?: number | null; sourceMetadata?: BoosterVideoSourceMetadata | null },
 ): Promise<VideoPayload> {
   const path =
     options?.path ||
@@ -1337,6 +1409,7 @@ export async function uploadBoosterVideo(
     size: Number(signedJson?.size || file.size || 0),
     lastModified: file.lastModified,
     duration: typeof options?.duration === "number" ? options.duration : null,
+    sourceMetadata: options?.sourceMetadata || null,
     storagePath,
     publicUrl,
     url: publicUrl,

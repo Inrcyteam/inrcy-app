@@ -83,7 +83,7 @@ export default function StatsClient() {
   const [summaryOpp, setSummaryOpp] = useState<{ loading: boolean; total: number; byCube: Record<CubeKey, number> }>({
     loading: true,
     total: 0,
-    byCube: { site_inrcy: 0, site_web: 0, gmb: 0, facebook: 0, instagram: 0, linkedin: 0 },
+    byCube: { site_inrcy: 0, site_web: 0, gmb: 0, facebook: 0, instagram: 0, linkedin: 0, tiktok: 0 },
   });
   const [summaryProfile, setSummaryProfile] = useState<{ lead_conversion_rate: number; avg_basket: number }>({ lead_conversion_rate: 0, avg_basket: 0 });
   const [summaryEstimatedByCube, setSummaryEstimatedByCube] = useState<Record<CubeKey, number>>({
@@ -93,6 +93,7 @@ export default function StatsClient() {
     facebook: 0,
     instagram: 0,
     linkedin: 0,
+    tiktok: 0,
   });
   const [, setSummaryHydrated] = useState(false);
   const [activeStatsPanel, setActiveStatsPanel] = useState<StatsPanelKey>("all");
@@ -147,6 +148,7 @@ export default function StatsClient() {
           facebook: safeNum(byCubePartial.facebook),
           instagram: safeNum(byCubePartial.instagram),
           linkedin: safeNum(byCubePartial.linkedin),
+          tiktok: safeNum(byCubePartial.tiktok),
         },
       });
       setSummaryProfile({
@@ -160,6 +162,7 @@ export default function StatsClient() {
         facebook: safeNum(estimatedByCubePartial.facebook),
         instagram: safeNum(estimatedByCubePartial.instagram),
         linkedin: safeNum(estimatedByCubePartial.linkedin),
+        tiktok: safeNum(estimatedByCubePartial.tiktok),
       });
     }
   }, [period]);
@@ -280,6 +283,7 @@ export default function StatsClient() {
             facebook: safeNum(cachedSummary.byCube?.facebook),
             instagram: safeNum(cachedSummary.byCube?.instagram),
             linkedin: safeNum(cachedSummary.byCube?.linkedin),
+          tiktok: safeNum(cachedSummary.byCube?.tiktok),
           },
         });
         setSummaryProfile({
@@ -293,6 +297,7 @@ export default function StatsClient() {
           facebook: safeNum(cachedSummary.estimatedByCube?.facebook),
           instagram: safeNum(cachedSummary.estimatedByCube?.instagram),
           linkedin: safeNum(cachedSummary.estimatedByCube?.linkedin),
+        tiktok: safeNum(cachedSummary.estimatedByCube?.tiktok),
         });
       }
 
@@ -305,6 +310,7 @@ export default function StatsClient() {
             facebook: safeNum(cachedSummary.byCube?.facebook),
             instagram: safeNum(cachedSummary.byCube?.instagram),
             linkedin: safeNum(cachedSummary.byCube?.linkedin),
+          tiktok: safeNum(cachedSummary.byCube?.tiktok),
           },
           estimatedByCube: {
             site_inrcy: safeNum(cachedSummary.estimatedByCube?.site_inrcy),
@@ -313,6 +319,7 @@ export default function StatsClient() {
             facebook: safeNum(cachedSummary.estimatedByCube?.facebook),
             instagram: safeNum(cachedSummary.estimatedByCube?.instagram),
             linkedin: safeNum(cachedSummary.estimatedByCube?.linkedin),
+        tiktok: safeNum(cachedSummary.estimatedByCube?.tiktok),
           },
           profile: cachedSummary.profile,
           syncedAt: periodSyncAt,
@@ -397,6 +404,7 @@ export default function StatsClient() {
             facebook: safeNum(payload?.opportunities?.byCube?.facebook),
             instagram: safeNum(payload?.opportunities?.byCube?.instagram),
             linkedin: safeNum(payload?.opportunities?.byCube?.linkedin),
+            tiktok: safeNum(payload?.opportunities?.byCube?.tiktok),
           },
         },
         profile: {
@@ -410,6 +418,7 @@ export default function StatsClient() {
           facebook: safeNum(payload?.estimatedByCube?.facebook),
           instagram: safeNum(payload?.estimatedByCube?.instagram),
           linkedin: safeNum(payload?.estimatedByCube?.linkedin),
+          tiktok: safeNum(payload?.estimatedByCube?.tiktok),
         },
         blocks: payload?.blocks,
         snapshotDate: payloadSnapshotDate ?? null,
@@ -550,6 +559,7 @@ export default function StatsClient() {
         facebook: safeNum(byCubePartial.facebook),
         instagram: safeNum(byCubePartial.instagram),
         linkedin: safeNum(byCubePartial.linkedin),
+          tiktok: safeNum(byCubePartial.tiktok),
       },
     });
     setSummaryProfile({
@@ -563,6 +573,7 @@ export default function StatsClient() {
       facebook: safeNum(estimatedByCubePartial.facebook),
       instagram: safeNum(estimatedByCubePartial.instagram),
       linkedin: safeNum(estimatedByCubePartial.linkedin),
+        tiktok: safeNum(estimatedByCubePartial.tiktok),
     });
     return true;
   }, []);
@@ -592,6 +603,7 @@ export default function StatsClient() {
           facebook: safeNum(byCubePartial.facebook),
           instagram: safeNum(byCubePartial.instagram),
           linkedin: safeNum(byCubePartial.linkedin),
+          tiktok: safeNum(byCubePartial.tiktok),
         } as Record<CubeKey, number>,
       },
       profile: {
@@ -605,6 +617,7 @@ export default function StatsClient() {
         facebook: safeNum(json?.estimatedByCube?.facebook),
         instagram: safeNum(json?.estimatedByCube?.instagram),
         linkedin: safeNum(json?.estimatedByCube?.linkedin),
+        tiktok: safeNum(json?.estimatedByCube?.tiktok),
       } as Record<CubeKey, number>,
       blocks: json?.blocks as any,
       snapshotDate: snapshotDate ?? null,
@@ -667,7 +680,7 @@ export default function StatsClient() {
 useEffect(() => {
   if (!dailyBootReady) return;
   let cancelled = false;
-  const keys: CubeKey[] = ["site_inrcy", "site_web", "gmb", "facebook", "instagram", "linkedin"];
+  const keys: CubeKey[] = ["site_inrcy", "site_web", "gmb", "facebook", "instagram", "linkedin", "tiktok"];
 
   (async () => {
     // Fast path: cached data for this period
@@ -718,6 +731,7 @@ useEffect(() => {
           facebook: safeNum(cachedSummary.byCube?.facebook),
           instagram: safeNum(cachedSummary.byCube?.instagram),
           linkedin: safeNum(cachedSummary.byCube?.linkedin),
+          tiktok: safeNum(cachedSummary.byCube?.tiktok),
         },
       });
       setSummaryProfile({
@@ -731,6 +745,7 @@ useEffect(() => {
         facebook: safeNum(cachedSummary.estimatedByCube?.facebook),
         instagram: safeNum(cachedSummary.estimatedByCube?.instagram),
         linkedin: safeNum(cachedSummary.estimatedByCube?.linkedin),
+        tiktok: safeNum(cachedSummary.estimatedByCube?.tiktok),
       });
       return;
     }
@@ -867,6 +882,7 @@ useEffect(() => {
     buildCubeModel("facebook", "Facebook", "Visibilité sociale", period, dataByCube.facebook, summaryOpp.byCube),
     buildCubeModel("instagram", "Instagram", "Visibilité de marque", period, dataByCube.instagram, summaryOpp.byCube),
     buildCubeModel("linkedin", "LinkedIn", "Visibilité professionnelle", period, dataByCube.linkedin, summaryOpp.byCube),
+    buildCubeModel("tiktok", "TikTok", "Photos & vidéos courtes", period, dataByCube.tiktok, summaryOpp.byCube),
   ]), [dataByCube, period, summaryOpp.byCube]);
 
   const centralPotential30 = summaryOpp.total;
@@ -884,6 +900,7 @@ useEffect(() => {
       facebook: estimate(centralByCube.facebook),
       instagram: estimate(centralByCube.instagram),
       linkedin: estimate(centralByCube.linkedin),
+      tiktok: estimate(centralByCube.tiktok),
     };
   }, [centralByCube, summaryProfile.avg_basket, summaryProfile.lead_conversion_rate]);
 

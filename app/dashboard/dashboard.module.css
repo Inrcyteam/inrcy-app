@@ -5528,3 +5528,37 @@ transform: scale(1.50);
   z-index: 20;
   pointer-events: auto;
 }
+
+/* Canal provisoirement indisponible */
+.moduleBubbleCardComingSoon{
+  opacity: 0.58;
+  filter: grayscale(0.85) saturate(0.6);
+}
+
+.moduleBubbleCardComingSoon::before{
+  border-color: rgba(148,163,184,0.26) !important;
+  background:
+    radial-gradient(circle at 30% 25%, rgba(255,255,255,0.12), rgba(255,255,255,0.04) 35%, rgba(0,0,0,0) 60%),
+    rgba(71,85,105,0.10) !important;
+  box-shadow:
+    0 0 16px rgba(148,163,184,0.10),
+    0 24px 70px rgba(0,0,0,0.75),
+    inset 0 0 0 1px rgba(255,255,255,0.05) !important;
+}
+
+.moduleBubbleCardComingSoon:hover{
+  transform: none;
+}
+
+.moduleBubbleCardComingSoon .bubbleLogo{
+  animation: none;
+  box-shadow:
+    0 10px 24px rgba(0,0,0,0.28),
+    inset 0 0 0 1px rgba(255,255,255,0.05) !important;
+}
+
+.moduleBubbleCardComingSoon .bubbleActions .actionMain,
+.moduleBubbleCardComingSoon .bubbleActions .actionView{
+  cursor: not-allowed;
+  opacity: 0.55 !important;
+}

@@ -20,6 +20,7 @@ type DashboardPanelName =
   | "linkedin"
   | "gmb"
   | "facebook"
+  | "tiktok"
   | "legal"
   | "rgpd"
   | "inertie"

@@ -98,6 +98,7 @@ async function getTurboMultiplier(userId: string) {
       facebook: states.facebook.connected && !states.facebook.requiresUpdate,
       instagram: states.instagram.connected && !states.instagram.requiresUpdate,
       linkedin: states.linkedin.connected && !states.linkedin.requiresUpdate,
+      tiktok: states.tiktok.connected && !states.tiktok.requiresUpdate,
     }, { maxMultiplier: 7 });
     return snapshot.multiplier;
   } catch {

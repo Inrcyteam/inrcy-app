@@ -72,6 +72,7 @@ export async function buildStatsConnectionSignature(
     facebook: CONNECTION_REQUIRED_VERSIONS["channel:facebook"],
     instagram: CONNECTION_REQUIRED_VERSIONS["channel:instagram"],
     linkedin: CONNECTION_REQUIRED_VERSIONS["channel:linkedin"],
+    tiktok: CONNECTION_REQUIRED_VERSIONS["channel:tiktok"],
   });
 
   try {

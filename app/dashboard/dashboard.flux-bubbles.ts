@@ -19,6 +19,8 @@ type BuildFluxBubbleItemsArgs = {
   instagramUrl: string | null | undefined;
   linkedinConnected: boolean;
   linkedinUrl: string | null | undefined;
+  tiktokConnected: boolean;
+  tiktokUrl: string | null | undefined;
   openPanel: (panel: any) => void;
   savedSiteWebUrlMeta: unknown;
   setHelpSiteInrcyOpen: (open: boolean) => void;
@@ -41,6 +43,8 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
     instagramUrl,
     linkedinConnected,
     linkedinUrl,
+    tiktokConnected,
+    tiktokUrl,
     openPanel,
     savedSiteWebUrlMeta,
     setHelpSiteInrcyOpen,
@@ -50,6 +54,7 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
   } = args;
 
   return fluxModules.map((m) => {
+    const tiktokComingSoon = m.key === "tiktok";
     const channelKey = m.key as DashboardChannelKey;
     const channelBlock = channelBlocks?.[channelKey] ?? null;
     const blockDrivenStatus = getBubbleStatusFromBlock(channelKey, channelBlock as InrstatsChannelBlock);
@@ -67,7 +72,9 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
               ? { ...viewActionRaw, href: normalizeExternalHref(blockDrivenViewHref || linkedinUrl) || "#" }
               : viewActionRaw;
 
-    const { status: bubbleStatus, text: bubbleStatusText } = (m.key === "site_inrcy")
+    const { status: bubbleStatus, text: bubbleStatusText } = tiktokComingSoon
+      ? { status: "coming" as ModuleStatus, text: "Arrive bientôt" }
+      : (m.key === "site_inrcy")
       ? getSiteBubbleProgress("site_inrcy")
       : (m.key === "site_web")
         ? getSiteBubbleProgress("site_web")
@@ -76,6 +83,7 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
           if (m.key === "linkedin") return linkedinConnected ? { status: "connected" as ModuleStatus, text: "Connecté" } : { status: "available" as ModuleStatus, text: "A connecter" };
           if (m.key === "gmb") return gmbConnected ? { status: "connected" as ModuleStatus, text: "Connecté" } : { status: "available" as ModuleStatus, text: "A connecter" };
           if (m.key === "facebook") return facebookPageConnected ? { status: "connected" as ModuleStatus, text: "Connecté" } : { status: "available" as ModuleStatus, text: "A connecter" };
+          if (m.key === "tiktok") return tiktokConnected ? { status: "connected" as ModuleStatus, text: "Connecté (mock)" } : { status: "available" as ModuleStatus, text: "A connecter" };
           return { status: m.status, text: statusLabel(m.status) };
         })();
 
@@ -91,7 +99,9 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
               ? (blockDrivenViewHref || normalizeExternalHref(gmbUrl) || "#")
               : m.key === "facebook"
                 ? (blockDrivenViewHref || normalizeExternalHref(facebookUrl) || "#")
-                : undefined;
+                : m.key === "tiktok"
+                  ? "#"
+                  : undefined;
 
     const specialViewLabel = m.key === "site_inrcy"
       ? "Voir le site"
@@ -99,7 +109,7 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
         ? "Voir le site"
         : m.key === "gmb"
           ? "Voir la page"
-          : ["instagram", "linkedin", "facebook"].includes(m.key)
+          : ["instagram", "linkedin", "facebook", "tiktok"].includes(m.key)
             ? "Voir le compte"
             : undefined;
 
@@ -115,7 +125,9 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
               ? Boolean(blockDrivenViewHref || gmbUrl)
               : m.key === "facebook"
                 ? Boolean(blockDrivenViewHref || facebookUrl)
-                : undefined;
+                : m.key === "tiktok"
+                  ? false
+                  : undefined;
 
     const onConfigure = () => {
       if (m.key === "site_inrcy") {
@@ -123,7 +135,8 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
         openPanel("site_inrcy");
         return;
       }
-      if (["site_web", "instagram", "linkedin", "gmb", "facebook"].includes(m.key)) openPanel(m.key);
+      if (m.key === "tiktok") return;
+      if (["site_web", "instagram", "linkedin", "gmb", "facebook"].includes(m.key)) openPanel(m.key as any);
     };
 
     return {
@@ -143,8 +156,12 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
       canViewSpecial,
       viewAction: specialViewHref ? undefined : viewAction,
       onConfigure,
-      configureDisabled: m.key === "site_inrcy" ? !canConfigureSite : false,
-      configureTitle: m.key === "site_inrcy" && !canConfigureSite ? "Disponible uniquement si vous avez un site iNrCy" : undefined,
+      configureDisabled: m.key === "site_inrcy" ? !canConfigureSite : tiktokComingSoon,
+      configureTitle: tiktokComingSoon
+        ? "Arrive bientôt"
+        : m.key === "site_inrcy" && !canConfigureSite
+          ? "Disponible uniquement si vous avez un site iNrCy"
+          : undefined,
     };
   });
 }

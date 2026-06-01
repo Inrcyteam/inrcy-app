@@ -1,6 +1,12 @@
 import React from "react";
 import styles from "../mails.module.css";
 import type { MailCampaignRecipientInput } from "@/lib/crmRecipients";
+import {
+  getDefaultChannelVideoSettings,
+  isBoosterVideoChannelKey,
+  normalizeChannelVideoSettings,
+  type ChannelVideoSettings,
+} from "@/lib/boosterVideoSettings";
 
 export const MAILBOX_PAGE_SIZE = 20;
 export const MAILBOX_RECIPIENTS_PAGE_SIZE = 20;
@@ -369,6 +375,9 @@ export type PublicationParts = {
   ctaPhone?: string | null;
   hashtags?: string[];
   attachments?: PublicationAttachment[];
+  mediaMode?: string | null;
+  videoSettings?: ChannelVideoSettings | null;
+  sourceVideo?: PublicationAttachment | null;
 };
 
 export type ChannelPublication = {
@@ -968,8 +977,20 @@ export function extractPublicationParts(payload: any): PublicationParts {
     : [];
 
   const attachments = extractAttachmentsFromPayload(payload);
+  const sourceVideoCandidate = (post as any).sourceVideo || (post as any).source_video || (payload as any).sourceVideo || (payload as any).source_video || null;
+  const sourceVideo = sourceVideoCandidate
+    ? extractAttachmentsFromPayload({ video: sourceVideoCandidate })[0] || null
+    : null;
+  const mediaMode =
+    (typeof post.mediaMode === "string" && post.mediaMode.trim() ? post.mediaMode.trim() : null) ||
+    (typeof payload.mediaMode === "string" && payload.mediaMode.trim() ? payload.mediaMode.trim() : null) ||
+    null;
+  const videoSettings =
+    payload.videoSettings && typeof payload.videoSettings === "object"
+      ? normalizeChannelVideoSettings("inrcy_site", payload.videoSettings)
+      : null;
 
-  return { title, content, cta, ctaMode, ctaUrl, ctaPhone, hashtags, attachments };
+  return { title, content, cta, ctaMode, ctaUrl, ctaPhone, hashtags, attachments, mediaMode, videoSettings, sourceVideo };
 }
 
 export function normalizeChannelKey(channel: string): string {
@@ -1011,6 +1032,8 @@ export function formatChannelLabel(channel: string): string {
       return "Instagram";
     case "linkedin":
       return "LinkedIn";
+    case "tiktok":
+      return "TikTok";
     default:
       return normalized || "canal";
   }
@@ -1031,9 +1054,42 @@ export function channelApiPath(channel: string): string {
       return "instagram";
     case "linkedin":
       return "linkedin";
+    case "tiktok":
+      return "tiktok";
     default:
       return normalized || channel;
   }
+}
+
+function getVideoSettingsNode(payload: any, channel: string) {
+  if (!payload || typeof payload !== "object") return null;
+  const normalized = normalizeChannelKey(channel);
+  const direct = payload.videoSettings && typeof payload.videoSettings === "object" ? payload.videoSettings : null;
+  if (direct) return direct;
+  const byChannel = payload.videoSettingsByChannel && typeof payload.videoSettingsByChannel === "object" ? payload.videoSettingsByChannel : null;
+  if (byChannel && normalized && (byChannel as any)[normalized]) return (byChannel as any)[normalized];
+  return null;
+}
+
+export function extractVideoSettingsForChannel(payload: any, channel: string, channelPayload?: any): ChannelVideoSettings | null {
+  const normalized = normalizeChannelKey(channel);
+  if (!isBoosterVideoChannelKey(normalized)) return null;
+
+  const root = payload && typeof payload === "object" ? payload : {};
+  const local = channelPayload && typeof channelPayload === "object" ? channelPayload : {};
+  const settingsNode = getVideoSettingsNode(local, normalized) || getVideoSettingsNode(root, normalized);
+  const formatByChannel = root.videoFormatByChannel && typeof root.videoFormatByChannel === "object" ? root.videoFormatByChannel : {};
+  const adaptationByChannel = root.videoAdaptationModeByChannel && typeof root.videoAdaptationModeByChannel === "object" ? root.videoAdaptationModeByChannel : {};
+  const localFormat = local.videoFormat ?? local.format;
+  const localAdaptation = local.videoAdaptationMode ?? local.adaptationMode ?? local.fitMode;
+  const formatFallback = localFormat ?? (formatByChannel as any)[normalized];
+  const adaptationFallback = localAdaptation ?? (adaptationByChannel as any)[normalized];
+
+  if (!settingsNode && !formatFallback && !adaptationFallback) {
+    return getDefaultChannelVideoSettings(normalized);
+  }
+
+  return normalizeChannelVideoSettings(normalized, settingsNode, formatFallback, adaptationFallback);
 }
 
 export function isDeletedChannelResult(result: any): boolean {
@@ -1042,7 +1098,7 @@ export function isDeletedChannelResult(result: any): boolean {
 }
 
 export function orderChannelKeys(channels: string[]): string[] {
-  const priority = ["inrcy_site", "site_web", "gmb", "facebook", "instagram", "linkedin"];
+  const priority = ["inrcy_site", "site_web", "gmb", "facebook", "instagram", "linkedin", "tiktok"];
   const normalizedUnique = Array.from(new Set(channels.map((channel) => normalizeChannelKey(channel)).filter(Boolean)));
   return normalizedUnique.sort((a, b) => {
     const indexA = priority.indexOf(a);
@@ -1174,6 +1230,8 @@ export function extractChannelPublications(payload: any): ChannelPublication[] {
 
     const channelOwnsAttachments = hasAttachmentFields(channelPayload);
 
+    const channelVideoSettings = extractVideoSettingsForChannel(payload, channel, channelPayload);
+
     return {
       key: channel,
       label: formatChannelLabel(channel),
@@ -1186,6 +1244,9 @@ export function extractChannelPublications(payload: any): ChannelPublication[] {
         ctaPhone: channelParts.ctaPhone || fallbackParts.ctaPhone || null,
         hashtags: channelParts.hashtags?.length ? channelParts.hashtags : fallbackParts.hashtags || [],
         attachments: channelOwnsAttachments ? channelParts.attachments || [] : fallbackParts.attachments || [],
+        mediaMode: channelParts.mediaMode || fallbackParts.mediaMode || null,
+        videoSettings: channelVideoSettings,
+        sourceVideo: channelParts.sourceVideo || fallbackParts.sourceVideo || null,
       },
     };
   });

@@ -66,6 +66,7 @@ type SourcesStatus = {
   facebook: { connected: boolean; metrics: unknown | null };
   instagram: { connected: boolean; metrics: unknown | null };
   linkedin: { connected: boolean; metrics: unknown | null };
+  tiktok: { connected: boolean; metrics: unknown | null };
 };
 
 type LiveSourcesSnapshot = {
@@ -75,6 +76,7 @@ type LiveSourcesSnapshot = {
   facebook: { connected: boolean; metrics: unknown | null };
   instagram: { connected: boolean; metrics: unknown | null };
   linkedin: { connected: boolean; metrics: unknown | null };
+  tiktok: { connected: boolean; metrics: unknown | null };
 };
 
 type OverviewCubeKey =
@@ -83,7 +85,8 @@ type OverviewCubeKey =
   | "gmb"
   | "facebook"
   | "instagram"
-  | "linkedin";
+  | "linkedin"
+  | "tiktok";
 
 function isStatsActiveConnection(state: {
   connected: boolean;
@@ -138,6 +141,7 @@ function resolveRequestedCube(
   if (normalized === "facebook") return "facebook";
   if (normalized === "instagram") return "instagram";
   if (normalized === "linkedin") return "linkedin";
+  if (normalized === "tiktok") return "tiktok";
   if (normalized === "gmb") return "gmb";
   if (normalized.includes("site_inrcy")) return "site_inrcy";
   if (normalized.includes("site_web")) return "site_web";
@@ -845,6 +849,10 @@ export async function buildStatsOverview(args: {
       instagram: { connected: instagramConnected, metrics: null },
       linkedin: {
         connected: isStatsActiveConnection(states.linkedin),
+        metrics: null,
+      },
+      tiktok: {
+        connected: isStatsActiveConnection(states.tiktok),
         metrics: null,
       },
     } satisfies LiveSourcesSnapshot;
@@ -1640,6 +1648,7 @@ export async function buildStatsOverview(args: {
     facebook: { connected: false, metrics: null },
     instagram: { connected: false, metrics: null },
     linkedin: { connected: false, metrics: null },
+    tiktok: { connected: false, metrics: null },
   };
 
   const channelStates = await channelStatesPromise;
@@ -1653,6 +1662,21 @@ export async function buildStatsOverview(args: {
     ga4: channelStates.site_web.ga4,
     gsc: channelStates.site_web.gsc,
   };
+  sourcesStatus.tiktok.connected = isStatsActiveConnection(channelStates.tiktok);
+  sourcesStatus.tiktok.metrics = sourcesStatus.tiktok.connected
+    ? {
+        totals: {
+          impressions: 0,
+          engagements: 0,
+          video_views: 0,
+          profile_views: 0,
+          followers: 0,
+          postsPublished: 0,
+        },
+        mock: true,
+        note: "TikTok connecté en mock local : statistiques réelles à brancher après API officielle.",
+      }
+    : null;
 
   // Facebook: connected if a page has been selected (resource_id)
   try {
@@ -2317,6 +2341,10 @@ export async function buildStatsOverview(args: {
           url: channelStates.linkedin.organization_id
             ? channelStates.linkedin.organization_url
             : channelStates.linkedin.profile_url,
+        },
+        tiktok: {
+          label: channelStates.tiktok.username || null,
+          url: channelStates.tiktok.profile_url || null,
         },
       },
       totals: {

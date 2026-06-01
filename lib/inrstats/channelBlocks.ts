@@ -117,6 +117,7 @@ function getOverviewError(channel: DashboardChannelKey, overview: Overview | nul
     facebook: ['facebook'],
     instagram: ['instagram'],
     linkedin: ['linkedin'],
+    tiktok: ['tiktok'],
   };
 
   for (const sourceKey of sourceKeysByChannel[channel]) {
@@ -218,6 +219,21 @@ function mapChannelConnection(channel: DashboardChannelKey, states: ChannelState
         resourceId: state.organization_id || state.resource_id,
         resourceLabel: state.organization_name || state.display_name,
         resourceUrl: state.organization_id ? state.organization_url : state.profile_url,
+      };
+    }
+    case 'tiktok': {
+      const state = states.tiktok;
+      return {
+        connected: state.connected,
+        accountConnected: state.accountConnected,
+        configured: state.connected,
+        statsConnected: state.connected && !state.requiresUpdate,
+        expired: state.expired,
+        requiresUpdate: state.requiresUpdate,
+        connectionStatus: state.connection_status,
+        resourceId: state.resource_id,
+        resourceLabel: state.username,
+        resourceUrl: state.profile_url,
       };
     }
   }

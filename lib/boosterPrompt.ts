@@ -10,7 +10,8 @@ export type BoosterChannels =
   | "gmb"
   | "facebook"
   | "instagram"
-  | "linkedin";
+  | "linkedin"
+  | "tiktok";
 
 export type BoosterTheme =
   | ""
@@ -49,6 +50,7 @@ const CHANNEL_LABELS: Record<BoosterChannels, string> = {
   facebook: "Facebook",
   instagram: "Instagram",
   linkedin: "LinkedIn",
+  tiktok: "TikTok",
 };
 
 const THEME_LABELS: Record<BoosterTheme, string> = {
@@ -111,6 +113,8 @@ const CHANNEL_EDITORIAL_PLAYBOOKS: Record<BoosterChannels, string> = {
     "Objectif : donner une impression visuelle et vivante. Texte plus direct, spontané, chaleureux, avec des phrases courtes et du relief. Faire sentir l'ambiance, le geste, le résultat ou le moment. Hashtags utiles et ciblés. Ne pas écrire 'lien en bio' sauf si l'information est fournie.",
   linkedin:
     "Objectif : renforcer l'expertise et la crédibilité professionnelle. Ton posé, utile, structuré et humain. Montrer une méthode, un point de vigilance, une valeur métier ou une réflexion professionnelle. Éviter le ton trop commercial, les emojis excessifs et les accroches de vente directe.",
+  tiktok:
+    "Objectif : capter vite l'attention avec une accroche courte, naturelle et dynamique. Texte pensé pour accompagner une vidéo ou des photos : concret, vivant, local, avec 3 à 6 hashtags utiles. Éviter le ton institutionnel ou LinkedIn.",
 };
 
 function formatChannelPlaybooks(channels: BoosterChannels[]) {
@@ -365,7 +369,7 @@ Tu dois répondre en JSON strict, avec exactement cette structure :
   }
 }
 
-Clés de canaux autorisées : inrcy_site, site_web, gmb, facebook, instagram, linkedin.
+Clés de canaux autorisées : inrcy_site, site_web, gmb, facebook, instagram, linkedin, tiktok.
 
 Règles JSON :
 - Ne renvoyer que les canaux explicitement demandés dans la requête utilisateur.
@@ -373,7 +377,7 @@ Règles JSON :
 - Pour chaque canal demandé, title, content et cta doivent être non vides.
 - Pour Google Business, le CTA doit rester neutre et non promotionnel.
 - hashtags = tableau de 0 à 8 mots-clés sans #.
-- Les hashtags ne sont réellement utiles que pour Instagram : pour les autres canaux, renvoie de préférence [].
+- Les hashtags sont utiles pour Instagram et TikTok : pour les autres canaux, renvoie de préférence [].
 - Si un canal n'est pas demandé, ne pas l'ajouter.
 - Le title doit rester court (idéalement < 80 caractères) et ne doit jamais contenir de Markdown ni de balises HTML.
 - Le CTA doit être court et actionnable, sans Markdown ni balises HTML.

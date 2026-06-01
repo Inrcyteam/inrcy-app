@@ -116,6 +116,7 @@ async function getTurboMultiplier(supabase: TurboSupabaseLike, userId: string) {
     facebook: rows.some((r) => r.provider === "facebook" && r.status === "connected" && !!r.resource_id),
     instagram: rows.some((r) => r.provider === "instagram" && r.status === "connected" && !!r.resource_id),
     linkedin: rows.some((r) => r.provider === "linkedin" && r.status === "connected"),
+    tiktok: false,
   };
 
   return computeInertiaSnapshot(channels, { maxMultiplier: 7 }).multiplier;

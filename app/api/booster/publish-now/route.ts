@@ -47,6 +47,9 @@ import {
   getBoosterGmbCallToAction,
 } from "@/lib/boosterCta";
 import { getLinkedInAccessToken } from "@/lib/linkedinOAuth";
+import { normalizeTiktokSettings } from "@/lib/tiktokMockSettings";
+import { buildVideoSettingsByChannel } from "@/lib/boosterVideoSettings";
+import { getVariantForChannel, type BoosterVideoTransformedVariant } from "@/lib/boosterVideoTransforms";
 import {
   sanitizeBoosterSiteText,
   stripSiteTextFormatting,
@@ -58,7 +61,8 @@ type ChannelKey =
   | "gmb"
   | "facebook"
   | "instagram"
-  | "linkedin";
+  | "linkedin"
+  | "tiktok";
 
 type JsonRecord = Record<string, unknown>;
 const asRecord = (v: unknown): JsonRecord =>
@@ -73,6 +77,7 @@ const CHANNEL_LABELS: Record<ChannelKey, string> = {
   facebook: "Facebook",
   instagram: "Instagram",
   linkedin: "LinkedIn",
+  tiktok: "TikTok",
 };
 
 function buildResultsSummary(
@@ -161,6 +166,9 @@ type PersistedVideoAttachment = {
   storagePath: string | null;
   thumbnailUrl: string | null;
   thumbnailStoragePath: string | null;
+  transformedVariants?: BoosterVideoTransformedVariant[];
+  transformedVariant?: BoosterVideoTransformedVariant | null;
+  sourceVideo?: PersistedVideoAttachment | null;
 };
 
 const BOOSTER_MAX_VIDEO_BYTES = 40 * 1024 * 1024;
@@ -330,6 +338,16 @@ async function normalizeVideoPayload(
   const durationRaw = Number(raw["duration"] || 0);
   const duration =
     Number.isFinite(durationRaw) && durationRaw > 0 ? durationRaw : null;
+  const transformedVariants = Array.isArray(raw["transformedVariants"])
+    ? (raw["transformedVariants"] as BoosterVideoTransformedVariant[]).filter((variant: any) =>
+        variant &&
+        typeof variant === "object" &&
+        typeof variant.publicUrl === "string" &&
+        typeof variant.storagePath === "string" &&
+        typeof variant.signature === "string",
+      )
+    : [];
+
   return {
     video: {
       name: String(raw["name"] || "video-inrcy.mp4"),
@@ -345,6 +363,7 @@ async function normalizeVideoPayload(
         ).trim() || null,
       thumbnailStoragePath:
         String(raw["thumbnailStoragePath"] || "").trim() || null,
+      transformedVariants,
     },
   };
 }
@@ -386,6 +405,12 @@ async function getGoogleBusinessPublishableUrl(
     return urls.signedUrl;
   }
   return urls.publicUrl || urls.signedUrl || null;
+}
+
+function buildTiktokMockExternalUrl(profileUrl: string | null | undefined, externalId: string) {
+  const clean = String(profileUrl || "").trim();
+  if (!clean) return null;
+  return `${clean.replace(/\/+$/g, "")}?inrcy_mock=${encodeURIComponent(externalId)}`;
 }
 
 function isGoogleBusinessImageError(error: unknown) {
@@ -475,7 +500,7 @@ function getRequiredImageFormatsForChannel(
   channel: ChannelKey,
 ): ImageOptimizationFormats {
   if (channel === "instagram") return { instagram: true };
-  if (channel === "facebook" || channel === "linkedin")
+  if (channel === "facebook" || channel === "linkedin" || channel === "tiktok")
     return { socialFeed: true };
   if (channel === "gmb") return { gmb: true };
   // Site iNrCy / Site web use the original prepared image in the article payload.
@@ -886,6 +911,12 @@ export async function POST(req: Request) {
         normalizeChannelMediaMode(rawModeByChannel[channel], defaultMediaMode),
       ]),
     ) as Partial<Record<ChannelKey, ChannelMediaMode>>;
+    const videoSettingsByChannel = buildVideoSettingsByChannel({
+      channels: selected,
+      videoSettingsByChannel: body.videoSettingsByChannel,
+      videoFormatByChannel: body.videoFormatByChannel,
+      videoAdaptationModeByChannel: body.videoAdaptationModeByChannel,
+    });
     const hasAnyImageChannel = selected.some(
       (channel) => mediaModeByChannel[channel] === "images",
     );
@@ -908,6 +939,41 @@ export async function POST(req: Request) {
             video: null as PersistedVideoAttachment | null,
             error: undefined as string | undefined,
           };
+    const getPublicationVideoForChannel = (channel: ChannelKey): PersistedVideoAttachment | null => {
+      if (!publicationVideo) return null;
+      const settings = videoSettingsByChannel[channel];
+      if (!settings) return publicationVideo;
+      const variant = getVariantForChannel(
+        publicationVideo.transformedVariants,
+        channel as any,
+        settings.format,
+        settings.adaptationMode,
+      );
+      if (!variant?.publicUrl) return publicationVideo;
+
+      return {
+        ...publicationVideo,
+        name: `${publicationVideo.name} — ${variant.target?.label || settings.format}`,
+        type: variant.contentType || publicationVideo.type || "video/mp4",
+        size: Number(variant.size || publicationVideo.size || 0),
+        duration: variant.duration ?? publicationVideo.duration ?? null,
+        url: variant.publicUrl,
+        publicUrl: variant.publicUrl,
+        storagePath: variant.storagePath || publicationVideo.storagePath || null,
+        transformedVariant: variant,
+        sourceVideo: { ...publicationVideo, sourceVideo: null, transformedVariant: null },
+      };
+    };
+
+    const buildPublicationVideoByChannel = () => {
+      if (!publicationVideo) return {} as Partial<Record<ChannelKey, PersistedVideoAttachment>>;
+      return Object.fromEntries(
+        selected
+          .filter((channel) => mediaModeByChannel[channel] === "video")
+          .map((channel) => [channel, getPublicationVideoForChannel(channel)]),
+      ) as Partial<Record<ChannelKey, PersistedVideoAttachment>>;
+    };
+
     const workflowToolRaw = String(body.workflowTool || "")
       .trim()
       .toLowerCase();
@@ -1083,6 +1149,7 @@ export async function POST(req: Request) {
     }
     // 2) Persist publication
     const publicationId = randomUUID();
+    const publicationVideoByChannel = buildPublicationVideoByChannel();
 
     const publicationInsert: JsonRecord = {
       id: publicationId,
@@ -1105,7 +1172,7 @@ export async function POST(req: Request) {
       publicationInsert.video_size = publicationVideo.size;
       publicationInsert.video_duration_seconds = publicationVideo.duration;
       publicationInsert.video_thumbnail_url = publicationVideo.thumbnailUrl;
-      publicationInsert.media_metadata = { video: publicationVideo };
+      publicationInsert.media_metadata = { video: publicationVideo, videoByChannel: publicationVideoByChannel };
     }
 
     const { error: pubErr } = await supabaseAdmin
@@ -1254,6 +1321,7 @@ export async function POST(req: Request) {
           websiteUrl: siteWebUrl || inrcySiteUrl,
           phone: businessPhone,
         });
+        const channelVideo = mediaModeByChannel[ch] === "video" ? getPublicationVideoForChannel(ch) : null;
 
         if (ch === "inrcy_site" || ch === "site_web") {
           // We treat "publication" as an "article/actu" for the site.
@@ -1319,16 +1387,16 @@ export async function POST(req: Request) {
                           : channelImageSet.siteCardPublishableUrls;
                     })()
                   : [],
-              ...(mediaModeByChannel[ch] === "video" && publicationVideo
+              ...(mediaModeByChannel[ch] === "video" && channelVideo
                 ? {
                     media_type: "video",
-                    video_url: publicationVideo.publicUrl,
-                    video_path: publicationVideo.storagePath,
-                    video_mime: publicationVideo.type,
-                    video_size: publicationVideo.size,
-                    video_duration_seconds: publicationVideo.duration,
-                    video_thumbnail_url: publicationVideo.thumbnailUrl,
-                    media_metadata: { video: publicationVideo },
+                    video_url: channelVideo.publicUrl,
+                    video_path: channelVideo.storagePath,
+                    video_mime: channelVideo.type,
+                    video_size: channelVideo.size,
+                    video_duration_seconds: channelVideo.duration,
+                    video_thumbnail_url: channelVideo.thumbnailUrl,
+                    media_metadata: { video: channelVideo },
                   }
                 : {}),
               external_url: externalUrl, // ✅ si tu veux (optionnel)
@@ -1408,13 +1476,13 @@ export async function POST(req: Request) {
           }
 
           const resp =
-            mediaModeByChannel[ch] === "video" && publicationVideo
+            mediaModeByChannel[ch] === "video" && channelVideo
               ? await facebookPublishVideoToPage({
                   pageId,
                   pageAccessToken: pageToken,
                   description: canonMessage,
                   title: channelPost.title || undefined,
-                  videoUrl: publicationVideo.publicUrl,
+                  videoUrl: channelVideo.publicUrl,
                 })
               : await facebookPublishToPage({
                   pageId,
@@ -1510,13 +1578,13 @@ export async function POST(req: Request) {
             fbRow,
           );
           let resp;
-          if (hasAnyVideoChannel && publicationVideo) {
+          if (mediaModeByChannel[ch] === "video" && channelVideo) {
             resp = await instagramPublishVideoWithTokenFallback({
               igUserId,
               accessToken: igToken,
               tokenCandidates: instagramTokenCandidates,
               caption: instagramCaption,
-              videoUrl: publicationVideo.publicUrl,
+              videoUrl: channelVideo.publicUrl,
             });
           } else {
             const instagramImages = (
@@ -1665,14 +1733,14 @@ export async function POST(req: Request) {
             .filter(Boolean)
             .slice(0, 20);
           const isLinkedInVideo = Boolean(
-            mediaModeByChannel[ch] === "video" && publicationVideo,
+            mediaModeByChannel[ch] === "video" && channelVideo,
           );
           let resp = isLinkedInVideo
             ? await linkedinPublishVideo({
                 accessToken,
                 authorUrn: useAuthor,
                 text: canonMessage,
-                videoUrl: publicationVideo!.publicUrl || publicationVideo!.url || "",
+                videoUrl: channelVideo!.publicUrl || channelVideo!.url || "",
                 title: channelPost.title || undefined,
               })
             : linkedInImages.length > 1
@@ -1753,6 +1821,89 @@ export async function POST(req: Request) {
           continue;
         }
 
+        if (ch === "tiktok") {
+          const tiktokSettings = normalizeTiktokSettings(proSettings["tiktok"]);
+
+          if (!tiktokSettings.connected || !tiktokSettings.accountConnected) {
+            const tiktokUserError = "TikTok à connecter. Rendez-vous dans Canaux.";
+            logPublishChannelFailure({
+              route: "booster_publish_now",
+              channel: "tiktok",
+              userId,
+              publicationId,
+              stage: "precheck",
+              error: "not_connected",
+              userMessage: tiktokUserError,
+            });
+            await setDelivery(ch, { status: "failed", error: tiktokUserError });
+            results[ch] = { ok: false, error: tiktokUserError };
+            continue;
+          }
+
+          const tiktokMode = mediaModeByChannel[ch] || "none";
+          const tiktokImageSet = getChannelImageSet(ch);
+          const tiktokImageUrls = (
+            tiktokImageSet.publishableUrls.length
+              ? tiktokImageSet.publishableUrls
+              : tiktokImageSet.socialFeedPublishableUrls.length
+                ? tiktokImageSet.socialFeedPublishableUrls
+                : tiktokImageSet.images.length
+                  ? tiktokImageSet.images
+                  : externalImageUrls
+          ).filter(Boolean).slice(0, 35);
+
+          if (tiktokMode === "video" && !channelVideo) {
+            const tiktokUserError = "TikTok nécessite une vidéo pour ce format.";
+            await setDelivery(ch, { status: "failed", error: tiktokUserError });
+            results[ch] = { ok: false, error: tiktokUserError };
+            continue;
+          }
+
+          if (tiktokMode === "images" && !tiktokImageUrls.length) {
+            const tiktokUserError = "TikTok nécessite au moins 1 photo ou 1 vidéo.";
+            await setDelivery(ch, { status: "failed", error: tiktokUserError });
+            results[ch] = { ok: false, error: tiktokUserError };
+            continue;
+          }
+
+          if (tiktokMode !== "video" && tiktokMode !== "images") {
+            const tiktokUserError = "TikTok nécessite une vidéo ou au moins 1 photo.";
+            await setDelivery(ch, { status: "failed", error: tiktokUserError });
+            results[ch] = { ok: false, error: tiktokUserError };
+            continue;
+          }
+
+          const externalId = `mock_tiktok_${randomUUID()}`;
+          const isVideo = tiktokMode === "video";
+          const mediaUrls = isVideo
+            ? [channelVideo!.publicUrl || channelVideo!.url].filter(Boolean)
+            : tiktokImageUrls;
+
+          await setDelivery(ch, { status: "delivered", error: null });
+
+          results[ch] = {
+            ok: true,
+            external_id: externalId,
+            external_url: buildTiktokMockExternalUrl(tiktokSettings.profileUrl, externalId),
+            mock: true,
+            tiktok_media_type: isVideo ? "video" : "photos",
+            media_type: isVideo ? "video" : "photos",
+            media_count: mediaUrls.length,
+            username: tiktokSettings.username,
+            profile_url: tiktokSettings.profileUrl || null,
+            diagnostics: {
+              provider: "tiktok",
+              mode: "mock",
+              publish_id: externalId,
+              mediaType: isVideo ? "video" : "photos",
+              mediaUrls,
+              defaults: tiktokSettings.defaults,
+              message: "Publication TikTok simulée en local.",
+            },
+          };
+          continue;
+        }
+
         if (ch === "gmb") {
           const gmb = asRecord(gmbRow);
           const locationName = String(gmb["resource_id"] ?? "");
@@ -1809,8 +1960,8 @@ export async function POST(req: Request) {
                   .slice(0, 1)
               : [];
           const gmbChannelVideos =
-            mediaModeByChannel[ch] === "video" && publicationVideo
-              ? [publicationVideo.publicUrl].filter(Boolean).slice(0, 1)
+            mediaModeByChannel[ch] === "video" && channelVideo
+              ? [channelVideo.publicUrl].filter(Boolean).slice(0, 1)
               : [];
           const gmbSummary = buildBoosterGmbSummary(channelPost);
           const gmbCallToAction = getBoosterGmbCallToAction(channelPost, {
@@ -1937,21 +2088,31 @@ export async function POST(req: Request) {
 
     const persistedVideo =
       hasAnyVideoChannel && publicationVideo ? publicationVideo : null;
+    const videoByChannel = publicationVideoByChannel;
 
     const persistedPostByChannel = Object.fromEntries(
       selected.map((channel) => {
         const baseValue = (postByChannel as Record<string, unknown>)[
           channel
         ] as Record<string, unknown> | undefined;
-        if (mediaModeByChannel[channel] === "video" && persistedVideo) {
+        const channelPersistedVideo =
+          mediaModeByChannel[channel] === "video"
+            ? getPublicationVideoForChannel(channel)
+            : null;
+
+        if (mediaModeByChannel[channel] === "video" && channelPersistedVideo) {
           return [
             channel,
             {
               ...(baseValue || {}),
               images: [],
-              attachments: [persistedVideo],
-              video: persistedVideo,
+              attachments: [channelPersistedVideo],
+              video: channelPersistedVideo,
+              sourceVideo: persistedVideo,
               mediaMode: "video",
+              videoSettings: videoSettingsByChannel[channel] || null,
+              videoFormat: videoSettingsByChannel[channel]?.format || null,
+              videoAdaptationMode: videoSettingsByChannel[channel]?.adaptationMode || null,
             },
           ];
         }
@@ -1964,6 +2125,7 @@ export async function POST(req: Request) {
               images: [],
               attachments: [],
               mediaMode: "none",
+              videoSettings: videoSettingsByChannel[channel] || null,
             },
           ];
         }
@@ -1984,8 +2146,9 @@ export async function POST(req: Request) {
                 siteCardPublishableUrls: imageSet.siteCardPublishableUrls,
                 gmbPublishableUrls: imageSet.gmbPublishableUrls,
                 mediaMode: "images",
+                videoSettings: videoSettingsByChannel[channel] || null,
               }
-            : { ...(baseValue || {}), mediaMode: "images" },
+            : { ...(baseValue || {}), mediaMode: "images", videoSettings: videoSettingsByChannel[channel] || null },
         ];
       }),
     );
@@ -2003,7 +2166,9 @@ export async function POST(req: Request) {
           publication_id: publicationId,
           mediaType,
           mediaModeByChannel,
+          videoSettingsByChannel,
           video: persistedVideo,
+          videoByChannel,
           images: uploadedUrls,
           publishableUrls,
           instagramPublishableUrls,
@@ -2029,7 +2194,9 @@ export async function POST(req: Request) {
         workflowAction,
         mediaType,
         mediaModeByChannel,
+        videoSettingsByChannel,
         video: persistedVideo,
+        videoByChannel,
         idea,
         channels: summary.successChannels,
         attemptedChannels: selected,
@@ -2054,7 +2221,9 @@ export async function POST(req: Request) {
       publication_id: publicationId,
       mediaType,
       mediaModeByChannel,
+      videoSettingsByChannel,
       video: persistedVideo,
+      videoByChannel,
       images: uploadedUrls,
       publishableUrls,
       instagramPublishableUrls,

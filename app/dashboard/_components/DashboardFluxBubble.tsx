@@ -29,10 +29,13 @@ type Props = {
 };
 
 export default function DashboardFluxBubble({ item, itemKey }: Props) {
+  const isComingSoon = item.bubbleStatus === "coming";
   return (
     <article
       key={itemKey ?? item.key}
-      className={`${styles.moduleCard} ${styles.moduleBubbleCard} ${styles[`accent_${item.accent}`]}`}
+      className={`${styles.moduleCard} ${styles.moduleBubbleCard} ${styles[`accent_${item.accent}`]} ${isComingSoon ? styles.moduleBubbleCardComingSoon : ""}`}
+      title={isComingSoon ? item.configureTitle || "Arrive bientôt" : undefined}
+      aria-disabled={isComingSoon}
     >
       <div className={styles.bubbleStack}>
         <div className={styles.bubbleLogo} aria-hidden>

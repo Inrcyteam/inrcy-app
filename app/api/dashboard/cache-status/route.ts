@@ -23,6 +23,7 @@ const INCLUDE_TO_CHANNEL: Record<string, DashboardChannelKey> = {
   facebook: "facebook",
   instagram: "instagram",
   linkedin: "linkedin",
+  tiktok: "tiktok",
 };
 
 function emptyChannelStatus(): ChannelStatus {

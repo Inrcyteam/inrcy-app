@@ -85,14 +85,10 @@ function buildBulkPayloadFromOverviews(args: {
   };
   const leadConversionRate = Number(profile?.lead_conversion_rate ?? 0);
   const avgBasket = Number(profile?.avg_basket ?? 0);
-  const estimatedByCube: Record<CubeKey, number> = {
-    site_inrcy: Math.round((opportunities.byCube.site_inrcy || 0) * (leadConversionRate / 100) * avgBasket),
-    site_web: Math.round((opportunities.byCube.site_web || 0) * (leadConversionRate / 100) * avgBasket),
-    gmb: Math.round((opportunities.byCube.gmb || 0) * (leadConversionRate / 100) * avgBasket),
-    facebook: Math.round((opportunities.byCube.facebook || 0) * (leadConversionRate / 100) * avgBasket),
-    instagram: Math.round((opportunities.byCube.instagram || 0) * (leadConversionRate / 100) * avgBasket),
-    linkedin: Math.round((opportunities.byCube.linkedin || 0) * (leadConversionRate / 100) * avgBasket),
-  };
+  const estimatedByCube: Record<CubeKey, number> = { ...EMPTY_CUBE_RECORD };
+  for (const cube of Object.keys(estimatedByCube) as CubeKey[]) {
+    estimatedByCube[cube] = Math.round((opportunities.byCube[cube] || 0) * (leadConversionRate / 100) * avgBasket);
+  }
 
   const linkedInPreserved = applyLinkedInFallbackToStatsRecords({
     overviews,

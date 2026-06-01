@@ -12,13 +12,15 @@ import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { buildBoosterGmbSummary, buildBoosterInstagramCaption, buildBoosterMessage, getBoosterGmbCallToAction } from "@/lib/boosterCta";
 import { log } from "@/lib/observability/logger";
 import { getLinkedInAccessToken } from "@/lib/linkedinOAuth";
+import { normalizeTiktokSettings } from "@/lib/tiktokMockSettings";
+import { buildVideoSettingsByChannel, normalizeChannelVideoSettings } from "@/lib/boosterVideoSettings";
 import { INSTAGRAM_RECONNECT_USER_MESSAGE, isInstagramAuthorizationLikeMessage } from "@/lib/userFacingErrors";
 import { getPublishChannelUserMessage, logPublishChannelFailure } from "@/lib/channelPublishDiagnostics";
 
 const FACEBOOK_GRAPH_VERSION = "v20.0";
 const LINKEDIN_VERSION = "202603";
 
-export type ChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
+export type ChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin" | "tiktok";
 type JsonRecord = Record<string, unknown>;
 
 type InstagramDeleteTokenCandidate = {
@@ -124,6 +126,10 @@ type PersistedVideoAttachment = {
   storagePath: string | null;
   thumbnailUrl: string | null;
   thumbnailStoragePath?: string | null;
+  sourceMetadata?: unknown;
+  sourceVideo?: unknown;
+  transformedVariants?: unknown[];
+  videoSettings?: unknown;
 };
 
 function asRecord(v: unknown): JsonRecord {
@@ -436,6 +442,10 @@ function normalizeVideoAttachment(input: unknown): PersistedVideoAttachment | nu
     storagePath: storagePath || null,
     thumbnailUrl: String(src.thumbnailUrl || src.thumbnail_url || src.video_thumbnail_url || "").trim() || null,
     thumbnailStoragePath: String(src.thumbnailStoragePath || src.thumbnail_storage_path || "").trim() || null,
+    sourceMetadata: src.sourceMetadata || src.source_metadata || null,
+    sourceVideo: src.sourceVideo || src.source_video || null,
+    transformedVariants: Array.isArray(src.transformedVariants || src.transformed_variants) ? (src.transformedVariants || src.transformed_variants) as unknown[] : [],
+    videoSettings: src.videoSettings || src.video_settings || null,
   };
 }
 
@@ -1439,6 +1449,45 @@ async function replaceChannelDelivery(params: {
     }
   }
 
+  if (channel === "tiktok") {
+    const tiktokSettings = normalizeTiktokSettings(proSettings.tiktok);
+    if (!tiktokSettings.connected || !tiktokSettings.accountConnected) {
+      const tiktokUserError = "TikTok à connecter. Rendez-vous dans Canaux.";
+      logPublishChannelFailure({
+        route: "inrsend_publication_channel_action",
+        channel: "tiktok",
+        userId,
+        publicationId: publicationId || null,
+        stage: "precheck",
+        error: "not_connected",
+        userMessage: tiktokUserError,
+      });
+      throw new Error(tiktokUserError);
+    }
+
+    const externalId = `mock_tiktok_${randomUUID()}`;
+    return {
+      externalId,
+      status: "delivered",
+      error: null,
+      tiktokMeta: {
+        mock: true,
+        tiktok_media_type: isVideoPublication ? "video" : "photos",
+        media_type: isVideoPublication ? "video" : "photos",
+        username: tiktokSettings.username,
+        profile_url: tiktokSettings.profileUrl || null,
+        diagnostics: {
+          provider: "tiktok",
+          mode: "mock",
+          publish_id: externalId,
+          mediaType: isVideoPublication ? "video" : "photos",
+          defaults: tiktokSettings.defaults,
+          message: "Modification TikTok simulée en local.",
+        },
+      },
+    };
+  }
+
   throw new Error("Canal non supporté.");
 }
 
@@ -1505,6 +1554,11 @@ async function removeChannelDelivery(params: {
     return;
   }
 
+  if (channel === "tiktok") {
+    // Étape locale : aucune suppression API réelle, on marque simplement le canal comme supprimé côté iNrSend.
+    return;
+  }
+
   if (channel === "gmb") {
     const token = await getGmbToken();
     if (!token?.accessToken) throw new Error("La connexion Google a expiré. Merci de reconnecter votre compte.");
@@ -1522,10 +1576,12 @@ function buildUpdatedPayload(params: {
   video?: PersistedVideoAttachment | null;
   imageSet?: ImageSet | null;
   instagramMeta?: JsonRecord | null;
+  tiktokMeta?: JsonRecord | null;
   warning?: string | null;
   warningMessage?: string | null;
+  videoSettings?: JsonRecord | null;
 }) {
-  const { eventPayload, publication, channel, nextPost, externalId, imageSet, instagramMeta } = params;
+  const { eventPayload, publication, channel, nextPost, externalId, imageSet, instagramMeta, tiktokMeta } = params;
   const mediaType = params.mediaType || getEventPublicationMediaType(eventPayload, publication, channel);
   const video = params.video || getPublicationVideo(eventPayload, publication, channel);
   const isVideoPublication = mediaType === "video" && !!video?.publicUrl;
@@ -1540,14 +1596,31 @@ function buildUpdatedPayload(params: {
     external_id: externalId,
     ...(params.warning ? { warning: params.warning, warning_message: params.warningMessage || null } : {}),
     ...(channel === "instagram" && instagramMeta ? instagramMeta : {}),
+    ...(channel === "tiktok" && tiktokMeta ? tiktokMeta : {}),
     updated_at: new Date().toISOString(),
   };
 
   const currentPostByChannel = asRecord(eventPayload.postByChannel);
   const currentChannelPost = asRecord(currentPostByChannel[channel]);
+  const rootVideoSettings = buildVideoSettingsByChannel({
+    channels: [channel],
+    videoSettingsByChannel: eventPayload.videoSettingsByChannel,
+    videoFormatByChannel: eventPayload.videoFormatByChannel,
+    videoAdaptationModeByChannel: eventPayload.videoAdaptationModeByChannel,
+  });
+  const requestedVideoSettings = asRecord(params.videoSettings);
+  const channelVideoSettings = normalizeChannelVideoSettings(
+    channel,
+    Object.keys(requestedVideoSettings).length ? requestedVideoSettings : (currentChannelPost.videoSettings || rootVideoSettings[channel]),
+    currentChannelPost.videoFormat,
+    currentChannelPost.videoAdaptationMode,
+  );
   const nextChannelPost: JsonRecord = {
     ...currentChannelPost,
     ...nextPost,
+    videoSettings: channelVideoSettings,
+    videoFormat: channelVideoSettings.format,
+    videoAdaptationMode: channelVideoSettings.adaptationMode,
   };
 
   if (isVideoPublication && video) {
@@ -1574,6 +1647,18 @@ function buildUpdatedPayload(params: {
   const nextPayload: JsonRecord = {
     ...eventPayload,
     channels: Array.from(new Set([...(Array.isArray(eventPayload.channels) ? eventPayload.channels : []), channel])),
+    videoSettingsByChannel: {
+      ...asRecord(eventPayload.videoSettingsByChannel),
+      [channel]: channelVideoSettings,
+    },
+    videoFormatByChannel: {
+      ...asRecord(eventPayload.videoFormatByChannel),
+      [channel]: channelVideoSettings.format,
+    },
+    videoAdaptationModeByChannel: {
+      ...asRecord(eventPayload.videoAdaptationModeByChannel),
+      [channel]: channelVideoSettings.adaptationMode,
+    },
     postByChannel: {
       ...currentPostByChannel,
       [channel]: nextChannelPost,
@@ -1651,8 +1736,10 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
           : currentPost.hashtags,
       };
 
-      const mediaType = getEventPublicationMediaType(ctx.eventPayload, ctx.publication, channel);
-      const video = mediaType === "video" ? getPublicationVideo(ctx.eventPayload, ctx.publication, channel) : null;
+      const mediaType = normalizePublicationMediaType(body.mediaType || getEventPublicationMediaType(ctx.eventPayload, ctx.publication, channel));
+      const requestedVideoSettings = asRecord(body.videoSettings);
+      const incomingVideo = normalizeVideoAttachment(body.video || body.newVideo || body.retainedVideo);
+      const video = mediaType === "video" ? (incomingVideo || getPublicationVideo(ctx.eventPayload, ctx.publication, channel)) : null;
 
       const retainedImages = mediaType === "images"
         ? Array.isArray(body.retainedImages)
@@ -1718,8 +1805,10 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
         video,
         imageSet,
         instagramMeta: asRecord((replaceResult as JsonRecord).instagramMeta),
+        tiktokMeta: asRecord((replaceResult as JsonRecord).tiktokMeta),
         warning: String((replaceResult as JsonRecord).warning || "").trim() || null,
         warningMessage: String((replaceResult as JsonRecord).warningMessage || replaceResult.error || "").trim() || null,
+        videoSettings: requestedVideoSettings,
       });
 
       await persistEventPayload(user.id, publicationId, nextPayload);

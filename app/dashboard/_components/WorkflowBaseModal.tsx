@@ -66,9 +66,10 @@ export default function BaseModal({
         height: "100dvh",
         maxHeight: "100dvh",
         zIndex: 90,
-        background: "rgba(0,0,0,0.55)",
-        backdropFilter: "blur(14px)",
-        WebkitBackdropFilter: "blur(14px)",
+        background:
+          "radial-gradient(circle at 12% 0%, rgba(56,189,248,0.18), transparent 36%), radial-gradient(circle at 88% 8%, rgba(168,85,247,0.16), transparent 38%), linear-gradient(180deg, #050817 0%, #070a16 48%, #050711 100%)",
+        backdropFilter: "none",
+        WebkitBackdropFilter: "none",
         display: "flex",
         alignItems: compact ? "center" : "stretch",
         justifyContent: compact ? "center" : "stretch",
@@ -94,6 +95,8 @@ export default function BaseModal({
           minHeight: 0,
           display: "flex",
           flexDirection: "column",
+          background:
+            "radial-gradient(circle at 16% 8%, rgba(56,189,248,0.14), transparent 32%), radial-gradient(circle at 86% 4%, rgba(168,85,247,0.13), transparent 34%), linear-gradient(180deg, #0b1020 0%, #0a0e1c 48%, #080b17 100%)",
         }}
       >
         {/* Header sticky (unique) */}
@@ -106,9 +109,10 @@ export default function BaseModal({
               borderBottom: "1px solid rgba(255,255,255,0.08)",
               position: "sticky",
               top: 0,
-              background: "rgba(10,12,24,0.60)",
-              backdropFilter: "blur(10px)",
-              WebkitBackdropFilter: "blur(10px)",
+              background:
+                "linear-gradient(180deg, rgba(13,18,34,0.995), rgba(10,14,27,0.995))",
+              backdropFilter: "none",
+              WebkitBackdropFilter: "none",
               zIndex: 2,
             }}
           >

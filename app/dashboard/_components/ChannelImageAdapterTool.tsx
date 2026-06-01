@@ -33,6 +33,8 @@ type PreviewVideo = {
   type?: string | null;
   size?: number | null;
   duration?: number | null;
+  aspectRatio?: string | null;
+  fitMode?: "contain" | "cover" | null;
 };
 
 export type PublicationPreview = {
@@ -392,7 +394,7 @@ function VideoPreviewFrame({
           style={{
             width: "100%",
             height: "100%",
-            objectFit: "contain",
+            objectFit: video?.fitMode === "cover" ? "cover" : "contain",
             display: "block",
             background: "#020617",
           }}
@@ -925,32 +927,45 @@ function InstagramPreviewCard({
   );
 }
 
-function FeedPreviewCard({ mode, channel, title, content, cta, images, video, onOpen }: { mode: "desktop" | "mobile"; channel: "facebook" | "linkedin"; title: string; content: string; cta: string; images: PreviewImage[]; video?: PreviewVideo | null; onOpen: (index: number) => void }) {
+function FeedPreviewCard({ mode, channel, title, content, cta, hashtags = [], images, video, onOpen }: { mode: "desktop" | "mobile"; channel: "facebook" | "linkedin" | "tiktok"; title: string; content: string; cta: string; hashtags?: string[]; images: PreviewImage[]; video?: PreviewVideo | null; onOpen: (index: number) => void }) {
   const isMobile = mode === "mobile";
   const isLinkedin = channel === "linkedin";
-  const label = isLinkedin ? "LinkedIn" : "Facebook";
+  const isTiktok = channel === "tiktok";
+  const normalizedVideoAspect = String(video?.aspectRatio || "").replace(/\s+/g, "");
+  const isVerticalVideo = normalizedVideoAspect === "9/16";
+  const isSquareVideo = normalizedVideoAspect === "1/1";
+  const label = isTiktok ? "TikTok" : isLinkedin ? "LinkedIn" : "Facebook";
+  const maxWidth = isTiktok
+    ? (isMobile ? 230 : 260)
+    : isVerticalVideo
+      ? (isMobile ? 292 : 340)
+      : isSquareVideo
+        ? (isMobile ? 330 : 500)
+        : (isMobile ? 350 : 620);
+  const avatarSize = isTiktok ? (isMobile ? 28 : 34) : (isMobile ? 34 : 40);
   return (
-    <article style={{ width: "100%", maxWidth: isMobile ? 360 : 660, margin: "0 auto", borderRadius: isMobile ? 24 : 22, background: "#ffffff", color: "#111827", overflow: "hidden", border: "1px solid rgba(255,255,255,0.10)", boxShadow: "0 16px 45px rgba(0,0,0,0.22)", minWidth: 0 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: isMobile ? "12px 12px 8px" : "14px 16px 10px" }}>
-        <div style={{ width: isMobile ? 34 : 40, height: isMobile ? 34 : 40, borderRadius: 999, background: "#e5e7eb" }} />
+    <article style={{ width: "100%", maxWidth, margin: "0 auto", borderRadius: isMobile ? 24 : 22, background: "#ffffff", color: "#111827", overflow: "hidden", border: "1px solid rgba(255,255,255,0.10)", boxShadow: "0 16px 45px rgba(0,0,0,0.22)", minWidth: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: isTiktok ? 8 : 10, padding: isTiktok ? (isMobile ? "9px 10px 6px" : "10px 12px 7px") : (isMobile ? "12px 12px 8px" : "14px 16px 10px") }}>
+        <div style={{ width: avatarSize, height: avatarSize, borderRadius: 999, background: "#e5e7eb", flexShrink: 0 }} />
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: isMobile ? 13 : 14, fontWeight: 900 }}>{isLinkedin ? "Votre entreprise · 1er" : "Votre entreprise"}</div>
-          <div style={{ fontSize: 12, color: "#6b7280" }}>{label}</div>
+          <div style={{ fontSize: isTiktok ? (isMobile ? 11.5 : 12.5) : (isMobile ? 13 : 14), fontWeight: 900 }}>{isLinkedin ? "Votre entreprise · 1er" : isTiktok ? "@votreentreprise" : "Votre entreprise"}</div>
+          <div style={{ fontSize: isTiktok ? 10.5 : 12, color: "#6b7280" }}>{label}</div>
         </div>
       </div>
-      <div style={{ display: "grid", gap: 12, padding: isMobile ? "0 12px 12px" : "0 16px 14px" }}>
-        <div style={{ fontSize: isMobile ? 13 : 14, lineHeight: 1.55, whiteSpace: "pre-wrap", color: "#111827" }}>
-          <div style={{ fontWeight: 900, marginBottom: 8 }}>{title}</div>
-          <div style={{ display: "-webkit-box", WebkitLineClamp: isMobile ? 5 : 7, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{content}</div>
-          {cta ? <div style={{ marginTop: 10, fontWeight: 800, color: isLinkedin ? "#0a66c2" : "#1877f2" }}>{cta}</div> : null}
+      <div style={{ display: "grid", gap: isTiktok ? 8 : 12, padding: isTiktok ? (isMobile ? "0 10px 10px" : "0 12px 12px") : (isMobile ? "0 12px 12px" : "0 16px 14px") }}>
+        <div style={{ fontSize: isTiktok ? (isMobile ? 11.5 : 12.5) : (isMobile ? 13 : 14), lineHeight: isTiktok ? 1.45 : 1.55, whiteSpace: "pre-wrap", color: "#111827" }}>
+          <div style={{ fontWeight: 900, marginBottom: isTiktok ? 5 : 8 }}>{title}</div>
+          <div style={{ display: "-webkit-box", WebkitLineClamp: isTiktok ? (isMobile ? 3 : 4) : (isMobile ? 5 : 7), WebkitBoxOrient: "vertical", overflow: "hidden" }}>{content}</div>
+          {cta ? <div style={{ marginTop: isTiktok ? 6 : 10, fontWeight: 800, color: isTiktok ? "#111827" : isLinkedin ? "#0a66c2" : "#1877f2" }}>{cta}</div> : null}
+          {hashtags.length ? <div style={{ marginTop: isTiktok ? 5 : 8, fontWeight: 800, color: isTiktok ? "#111827" : isLinkedin ? "#0a66c2" : "#1877f2" }}>{hashtags.map((tag) => `#${tag}`).join(" ")}</div> : null}
         </div>
-        {video?.previewUrl ? <div style={{ borderRadius: 18, overflow: "hidden" }}><VideoPreviewFrame video={video} aspectRatio="1 / 1" badge={`Vidéo ${label}`} /></div> : <StackedImageGridPreview images={images} aspectRatio="1 / 1" fallbackMode="color" onOpen={onOpen} />}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, paddingTop: 4, borderTop: "1px solid #e5e7eb", color: "#6b7280", fontSize: 12, flexWrap: "wrap" }}>
+        {video?.previewUrl ? <div style={{ borderRadius: isTiktok ? 14 : 18, overflow: "hidden", background: isTiktok ? "#000" : undefined }}><VideoPreviewFrame video={video} aspectRatio={isTiktok ? (video.aspectRatio || "9 / 16") : (video.aspectRatio || "1 / 1")} badge={`Vidéo ${label}`} /></div> : <StackedImageGridPreview images={images} aspectRatio={isTiktok ? "9 / 16" : "1 / 1"} fallbackMode={isTiktok ? "black" : "color"} onOpen={onOpen} />}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: isTiktok ? 7 : 10, paddingTop: 4, borderTop: "1px solid #e5e7eb", color: "#6b7280", fontSize: isTiktok ? 10.5 : 12, flexWrap: "wrap" }}>
           <div>{video?.previewUrl ? "1 vidéo" : images.length > 1 ? `${images.length} photos • cliquez pour ouvrir` : "1 photo • cliquez pour ouvrir"}</div>
           <div style={{ display: "flex", gap: 12 }}>
             <span>J’aime</span>
             <span>Commenter</span>
-            <span>{isLinkedin ? "Republier" : "Partager"}</span>
+            <span>{isTiktok ? "Partager" : isLinkedin ? "Republier" : "Partager"}</span>
           </div>
         </div>
       </div>
@@ -963,6 +978,7 @@ export function ChannelPublicationPreview({ preview }: { preview: PublicationPre
   const isSite = key === "inrcy_site" || key === "site_web" || key === "site";
   const isInstagram = key === "instagram";
   const isLinkedin = key === "linkedin";
+  const isTiktok = key === "tiktok";
   const isGmb = key === "gmb" || key === "google_business" || key === "google_business_profile";
   const rawTitleValue = isSite ? String(preview.title || "").trim() : cleanText(preview.title);
   const rawContentValue = isSite ? String(preview.content || "").trim() : cleanText(preview.content);
@@ -972,7 +988,7 @@ export function ChannelPublicationPreview({ preview }: { preview: PublicationPre
   const content = contentValue || "Le contenu apparaîtra ici.";
   const cta = isSite ? cleanText(preview.cta) : cleanNetworkText(preview.cta);
   const hashtags = (preview.hashtags || []).map((tag) => String(tag || "").replace(/^#+/, "").trim()).filter(Boolean).slice(0, 8);
-  const fallbackPreset = isSite ? { width: 1440, height: 900 } : isInstagram ? { width: 1080, height: 1350 } : isGmb ? { width: 1200, height: 900 } : { width: 1200, height: 1200 };
+  const fallbackPreset = isSite ? { width: 1440, height: 900 } : isTiktok ? { width: 1080, height: 1920 } : isInstagram ? { width: 1080, height: 1350 } : isGmb ? { width: 1200, height: 900 } : { width: 1200, height: 1200 };
   const rawImages = (preview.images || []).filter((item) => item?.previewUrl);
   const image = preview.image ? { ...preview.image, preset: preview.image.preset || fallbackPreset } : null;
   const images = (rawImages.length ? rawImages : image ? [image] : []).map((item) => ({ ...item, preset: item.preset || fallbackPreset }));
@@ -1026,16 +1042,31 @@ export function ChannelPublicationPreview({ preview }: { preview: PublicationPre
     );
   }
 
+  if (isTiktok) {
+    return (
+      <>
+        <PreviewBlockShell eyebrow={preview.formatLabel || "format TikTok"} title={preview.channelLabel} note={hasVideo ? "TikTok : aperçu desktop + mobile en version compacte, format vertical recommandé." : "TikTok : aperçu desktop + mobile compact. Clic sur les photos = carousel."}>
+          <DevicePreviewSwitcher
+            desktop={<FeedPreviewCard mode="desktop" channel="tiktok" title={title} content={content} cta={cta} hashtags={hashtags} images={images} video={video} onOpen={openLightbox} />}
+            mobile={<FeedPreviewCard mode="mobile" channel="tiktok" title={title} content={content} cta={cta} hashtags={hashtags} images={images} video={video} onOpen={openLightbox} />}
+          />
+        </PreviewBlockShell>
+        {!hasVideo ? <PublicationPreviewLightbox open={lightboxIndex !== null} images={images} initialIndex={lightboxIndex || 0} aspectRatio="9 / 16" fallbackMode="black" onClose={closeLightbox} /> : null}
+      </>
+    );
+  }
+
   const networkLabel = isLinkedin ? "LinkedIn" : "Facebook";
+  const feedChannel = isLinkedin ? "linkedin" : "facebook";
   return (
     <>
-      <PreviewBlockShell eyebrow={preview.formatLabel || "image finale"} title={preview.channelLabel} note={hasVideo ? `${networkLabel} : texte au-dessus, vidéo en dessous avec lecteur.` : `${networkLabel} : texte au-dessus, photos empilées en dessous. Clic sur les photos = carousel.`}>
+      <PreviewBlockShell eyebrow={preview.formatLabel || "image finale"} title={preview.channelLabel} note={hasVideo ? `${networkLabel} : aperçu vertical avec texte et lecteur vidéo.` : `${networkLabel} : aperçu vertical photos/vidéo. Clic sur les photos = carousel.`}>
         <DevicePreviewSwitcher
-          desktop={<FeedPreviewCard mode="desktop" channel={isLinkedin ? "linkedin" : "facebook"} title={title} content={content} cta={cta} images={images} video={video} onOpen={openLightbox} />}
-          mobile={<FeedPreviewCard mode="mobile" channel={isLinkedin ? "linkedin" : "facebook"} title={title} content={content} cta={cta} images={images} video={video} onOpen={openLightbox} />}
+          desktop={<FeedPreviewCard mode="desktop" channel={feedChannel} title={title} content={content} cta={cta} hashtags={hashtags} images={images} video={video} onOpen={openLightbox} />}
+          mobile={<FeedPreviewCard mode="mobile" channel={feedChannel} title={title} content={content} cta={cta} hashtags={hashtags} images={images} video={video} onOpen={openLightbox} />}
         />
       </PreviewBlockShell>
-      {!hasVideo ? <PublicationPreviewLightbox open={lightboxIndex !== null} images={images} initialIndex={lightboxIndex || 0} aspectRatio="1 / 1" fallbackMode="color" onClose={closeLightbox} /> : null}
+      {!hasVideo ? <PublicationPreviewLightbox open={lightboxIndex !== null} images={images} initialIndex={lightboxIndex || 0} aspectRatio={isTiktok ? "9 / 16" : "1 / 1"} fallbackMode={isTiktok ? "black" : "color"} onClose={closeLightbox} /> : null}
     </>
   );
 }

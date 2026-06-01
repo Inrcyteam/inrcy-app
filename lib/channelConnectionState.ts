@@ -2,6 +2,7 @@ import { asRecord, asString } from "@/lib/tsSafe";
 import { getConnectionDisplayStatus, type ConnectionDisplayStatus } from "@/lib/connectionVersions";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { hasActiveInrcySite } from "@/lib/inrcySite";
+import { normalizeTiktokSettings } from "@/lib/tiktokMockSettings";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -85,6 +86,16 @@ export type ChannelStates = {
     organization_id: string | null;
     organization_name: string | null;
     organization_url: string | null;
+  };
+  tiktok: {
+    accountConnected: boolean;
+    connected: boolean;
+    expired: boolean;
+    requiresUpdate: boolean;
+    connection_status: ConnectionDisplayStatus;
+    resource_id: string | null;
+    username: string | null;
+    profile_url: string | null;
   };
 };
 
@@ -238,6 +249,11 @@ export async function getChannelConnectionStates(
   const liProfileUrl = asString(liMeta.profile_url) || asString(liMeta.profile) || asString(liSettings.profileUrl) || (!liActiveOrganizationId ? asString(liSettings.url) : "") || null;
   const liOrganizationUrl = asString(liMeta.org_url) || asString(liSettings.orgUrl) || (liActiveOrganizationId ? asString(liSettings.url) : "") || null;
 
+  const tiktokSettings = normalizeTiktokSettings(settings.tiktok);
+  const tiktokConnected = Boolean(tiktokSettings.connected && tiktokSettings.accountConnected);
+  const tiktokConnectionStatus = getConnectionDisplayStatus(tiktokConnected, "channel:tiktok", { mock: true });
+  const tiktokRequiresUpdate = tiktokConnectionStatus === "needs_update";
+
   const gmb = latestIntegration(rows, "google", "gmb", "gmb");
   const gmbSettings = asRecord(settings.gmb);
   const gmbMeta = asRecord(gmb.meta);
@@ -319,6 +335,16 @@ export async function getChannelConnectionStates(
       organization_id: asString(liMeta.org_id) || asString(liSettings.orgId) || null,
       organization_name: asString(liMeta.org_name) || asString(liSettings.orgName) || null,
       organization_url: liOrganizationUrl,
+    },
+    tiktok: {
+      accountConnected: tiktokConnected,
+      connected: tiktokConnected,
+      expired: false,
+      requiresUpdate: tiktokRequiresUpdate,
+      connection_status: tiktokConnectionStatus,
+      resource_id: tiktokConnected ? tiktokSettings.username : null,
+      username: tiktokConnected ? tiktokSettings.username : null,
+      profile_url: tiktokConnected ? tiktokSettings.profileUrl : null,
     },
   };
 }

@@ -23,6 +23,7 @@ import { useLinkedinChannel } from "./_hooks/channels/useLinkedinChannel";
 import { useGoogleBusinessChannel } from "./_hooks/channels/useGoogleBusinessChannel";
 import { useSiteInrcyChannel } from "./_hooks/channels/useSiteInrcyChannel";
 import { useSiteWebChannel } from "./_hooks/channels/useSiteWebChannel";
+import { useTiktokChannel } from "./_hooks/channels/useTiktokChannel";
 
 // ✅ IMPORTANT : même client que ta page login
 import { createClient } from "@/lib/supabaseClient";
@@ -617,6 +618,36 @@ const {
   updateRootSettingsKey,
 });
 
+const {
+  tiktokConnected,
+  tiktokUsername,
+  tiktokProfileUrl,
+  setTiktokProfileUrl,
+  tiktokProfileUrlNotice,
+  tiktokProfileUrlError,
+  tiktokSettingsNotice,
+  tiktokSettingsError,
+  tiktokLoading,
+  connectTiktokMock,
+  disconnectTiktokMock,
+  saveTiktokProfileUrl,
+  tiktokPreferredMedia,
+  setTiktokPreferredMedia,
+  tiktokAllowComments,
+  setTiktokAllowComments,
+  tiktokAllowDuo,
+  setTiktokAllowDuo,
+  tiktokAllowStitch,
+  setTiktokAllowStitch,
+  tiktokPhotoAutoMusic,
+  setTiktokPhotoAutoMusic,
+  tiktokCommercialContent,
+  setTiktokCommercialContent,
+  tiktokAiContent,
+  setTiktokAiContent,
+  saveTiktokDefaults,
+} = useTiktokChannel({ panel });
+
 const { profileIncomplete, activityIncomplete, checkProfile, checkActivity } = useDashboardCompletionChecks();
 
 const applyDashboardChannelState = useCallback((state: Record<string, any> | null, options?: { markReady?: boolean }) => {
@@ -737,6 +768,9 @@ const setPanelError = useCallback((kind: "facebook" | "instagram" | "linkedin" |
           // Instagram : compte + page/profil (resource) sélectionné.
           instagram: Boolean(instagramAccountConnected && instagramConnected && instagramConnectionStatus !== "needs_update"),
           linkedin: Boolean(linkedinAccountConnected && linkedinConnectionStatus !== "needs_update"),
+          // TikTok est affiché en "Arrive bientôt" tant que l'API n'est pas branchée.
+          // On le force donc hors des canaux actifs pour Booster / iNrStats / inertie.
+          tiktok: false,
         },
         { maxMultiplier: 7 }
       ),
@@ -759,6 +793,7 @@ const setPanelError = useCallback((kind: "facebook" | "instagram" | "linkedin" |
       instagramConnectionStatus,
       linkedinAccountConnected,
       linkedinConnectionStatus,
+      tiktokConnected,
       gmbConnectionStatus,
     ]
   );
@@ -2361,6 +2396,10 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       linkedinDisplayName,
       linkedinSelectedOrganizationId,
       linkedinSelectedOrganizationName,
+      tiktokConnected,
+      tiktokUsername,
+      tiktokProfileUrl,
+      tiktokPreferredMedia,
       gmbUrl,
       gmbAccountConnected,
       gmbConfigured,
@@ -2400,6 +2439,8 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     instagramUrl,
     linkedinConnected,
     linkedinUrl,
+    tiktokConnected: false,
+    tiktokUrl: tiktokProfileUrl,
     openPanel,
     savedSiteWebUrlMeta,
     setHelpSiteInrcyOpen,
@@ -2419,6 +2460,8 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     instagramUrl,
     linkedinConnected,
     linkedinUrl,
+    tiktokConnected,
+    tiktokProfileUrl,
     openPanel,
     savedSiteWebUrlMeta,
     siteInrcySavedUrl,
@@ -2487,6 +2530,12 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     siteWebGa4Connected, siteWebGa4MeasurementId, siteWebGa4Notice, siteWebGa4PropertyId, siteWebGscConnected, siteWebGscNotice, siteWebGscProperty,
     siteWebSavedUrl, siteWebSettingsError, siteWebUrl, siteWebUrlNotice,
     widgetTokenInrcySite, widgetTokenSiteWeb, hasSiteInrcyUrl, hasSiteWebUrl,
+    tiktokConnected, tiktokUsername, tiktokProfileUrl, setTiktokProfileUrl, tiktokProfileUrlNotice, tiktokProfileUrlError, tiktokLoading,
+    tiktokPreferredMedia, setTiktokPreferredMedia, tiktokAllowComments, setTiktokAllowComments,
+    tiktokAllowDuo, setTiktokAllowDuo, tiktokAllowStitch, setTiktokAllowStitch,
+    tiktokPhotoAutoMusic, setTiktokPhotoAutoMusic, tiktokCommercialContent, setTiktokCommercialContent,
+    tiktokAiContent, setTiktokAiContent, tiktokSettingsNotice, tiktokSettingsError,
+    connectTiktokMock, disconnectTiktokMock, saveTiktokProfileUrl, saveTiktokDefaults,
   };
 
   const {
@@ -2496,6 +2545,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     siteInrcyPanelProps,
     instagramPanelProps,
     facebookPanelProps,
+    tiktokPanelProps,
   } = buildDashboardPanelProps(locals);
 
   return (
@@ -2573,6 +2623,8 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
           facebook: Boolean(facebookAccountConnected && facebookPageConnected && facebookConnectionStatus !== "needs_update"),
           instagram: Boolean(instagramAccountConnected && instagramConnected && instagramConnectionStatus !== "needs_update"),
           linkedin: Boolean(linkedinAccountConnected && linkedinConnectionStatus !== "needs_update"),
+          // TikTok visible mais non sélectionnable en prod tant que le branchement API n'est pas finalisé.
+          tiktok: false,
         }}
         onClose={() => {
           setDashboardBoosterModal(null);
@@ -2619,6 +2671,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
           linkedinPanelProps={linkedinPanelProps}
           gmbPanelProps={gmbPanelProps}
           facebookPanelProps={facebookPanelProps}
+          tiktokPanelProps={tiktokPanelProps}
         />
       </SettingsDrawer>
 

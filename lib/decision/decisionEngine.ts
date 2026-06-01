@@ -9,7 +9,7 @@ export type ActionType =
 
 export type ModeType = "booster" | "fideliser";
 export type ChannelType = "website" | "social" | "gmb";
-export type ChannelKey = "site_inrcy" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin";
+export type ChannelKey = "site_inrcy" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin" | "tiktok";
 
 export type DecisionInput = {
   channelType: ChannelType;

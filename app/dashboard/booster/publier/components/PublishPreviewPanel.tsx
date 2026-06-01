@@ -78,7 +78,11 @@ export default function PublishPreviewPanel({
               marginBottom: 0,
             }}
           >
-            {previewReadinessTabs.map((tab) => {
+            {previewReadinessTabs.map((tab, index) => {
+              const isLastOddMobileItem =
+                isMobile &&
+                index === previewReadinessTabs.length - 1 &&
+                previewReadinessTabs.length % 2 === 1;
               const previewStatusStyle =
                 tab.tone === "ready"
                   ? {
@@ -132,7 +136,9 @@ export default function PublishPreviewPanel({
                     fontSize: 11,
                     whiteSpace: "nowrap",
                     flex: isMobile ? undefined : "0 0 auto",
-                    width: isMobile ? "100%" : undefined,
+                    width: isMobile ? (isLastOddMobileItem ? "calc(50% - 3px)" : "100%") : undefined,
+                    gridColumn: isLastOddMobileItem ? "1 / -1" : undefined,
+                    justifySelf: isLastOddMobileItem ? "center" : undefined,
                     minWidth: 0,
                     minHeight: isMobile ? 32 : undefined,
                     display: "inline-flex",

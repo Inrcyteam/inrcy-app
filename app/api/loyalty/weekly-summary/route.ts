@@ -39,6 +39,7 @@ export async function GET() {
     facebook: states.facebook.connected && !states.facebook.requiresUpdate,
     instagram: states.instagram.connected && !states.instagram.requiresUpdate,
     linkedin: states.linkedin.connected && !states.linkedin.requiresUpdate,
+    tiktok: states.tiktok.connected && !states.tiktok.requiresUpdate,
   }, { maxMultiplier: 7 });
 
   const events = ((ledgerRes.data ?? []) as LedgerRow[]).filter((row) => new Date(row.created_at) >= weekStart);

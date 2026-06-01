@@ -98,6 +98,7 @@ const allowedChannels: BoosterChannels[] = [
   "facebook",
   "instagram",
   "linkedin",
+  "tiktok",
 ];
 const allowedThemes: BoosterTheme[] = [
   "",
@@ -319,7 +320,7 @@ Règles d'utilisation des images :
 - Ne pas écrire "sur la photo", "comme on le voit" ou "image ci-dessus" sauf si cela sonne naturel pour le canal. Préférer intégrer discrètement les détails visuels dans le texte.
 - Pour une réalisation ou un chantier : parler du résultat, du soin, de la méthode ou de l'étape visible, sans inventer d'avant/après si ce n'est pas évident.
 - Pour un produit, un plat, un soin, un local ou une ambiance : utiliser les détails visuels pour rendre le texte plus concret et moins générique.
-- Pour Instagram et Facebook : exploiter davantage l'ambiance visuelle et le côté vivant.
+- Pour Instagram, TikTok et Facebook : exploiter davantage l'ambiance visuelle et le côté vivant.
 - Pour LinkedIn : transformer les éléments visuels en expertise, méthode ou exigence professionnelle.
 - Pour Google Business : rester factuel et sobre, même si l'image est très visuelle.
 - Pour Site iNrCy / Site web : utiliser les images pour ancrer le contenu dans une réalisation concrète, sans sacrifier le SEO local.
@@ -330,7 +331,7 @@ En résumé : les images ne pilotent pas le sujet, elles l'affinent.`;
 function cleanHashtags(channel: BoosterChannels, input: unknown) {
   if (channel === "gmb" || siteChannels.has(channel)) return [];
 
-  const limit = channel === "instagram" ? 8 : channel === "linkedin" ? 3 : 2;
+  const limit = channel === "instagram" || channel === "tiktok" ? 8 : channel === "linkedin" ? 3 : 2;
   return Array.isArray(input)
     ? input
         .map((h) =>

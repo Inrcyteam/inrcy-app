@@ -189,5 +189,35 @@ export function buildDashboardPanelProps(a: any) {
     disconnectFacebookPage: a.disconnectFacebookPageFromDrawer,
   };
 
-  return { siteWebPanelProps, gmbPanelProps, linkedinPanelProps, siteInrcyPanelProps, instagramPanelProps, facebookPanelProps };
+  const tiktokPanelProps = {
+    tiktokConnected: a.tiktokConnected,
+    tiktokUsername: a.tiktokUsername,
+    tiktokProfileUrl: a.tiktokProfileUrl,
+    setTiktokProfileUrl: a.setTiktokProfileUrl,
+    tiktokProfileUrlNotice: a.tiktokProfileUrlNotice,
+    tiktokProfileUrlError: a.tiktokProfileUrlError,
+    tiktokSettingsNotice: a.tiktokSettingsNotice,
+    tiktokSettingsError: a.tiktokSettingsError,
+    tiktokLoading: a.tiktokLoading,
+    connectTiktokMock: a.connectTiktokMock,
+    disconnectTiktokMock: a.disconnectTiktokMock,
+    saveTiktokProfileUrl: a.saveTiktokProfileUrl,
+    tiktokPreferredMedia: a.tiktokPreferredMedia,
+    setTiktokPreferredMedia: a.setTiktokPreferredMedia,
+    tiktokAllowComments: a.tiktokAllowComments,
+    setTiktokAllowComments: a.setTiktokAllowComments,
+    tiktokAllowDuo: a.tiktokAllowDuo,
+    setTiktokAllowDuo: a.setTiktokAllowDuo,
+    tiktokAllowStitch: a.tiktokAllowStitch,
+    setTiktokAllowStitch: a.setTiktokAllowStitch,
+    tiktokPhotoAutoMusic: a.tiktokPhotoAutoMusic,
+    setTiktokPhotoAutoMusic: a.setTiktokPhotoAutoMusic,
+    tiktokCommercialContent: a.tiktokCommercialContent,
+    setTiktokCommercialContent: a.setTiktokCommercialContent,
+    tiktokAiContent: a.tiktokAiContent,
+    setTiktokAiContent: a.setTiktokAiContent,
+    saveTiktokDefaults: a.saveTiktokDefaults,
+  };
+
+  return { siteWebPanelProps, gmbPanelProps, linkedinPanelProps, siteInrcyPanelProps, instagramPanelProps, facebookPanelProps, tiktokPanelProps };
 }
