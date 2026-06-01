@@ -541,6 +541,27 @@ export default function BoosterVideoFormatManager({
               {preparing ? "Modification des formats..." : "Appliquer ce format à tous les canaux"}
             </button>
           ) : null}
+        </div>
+
+        {(onApplyFormat || (showApplyAll && onApplyFormatToAllChannels)) ? (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              marginTop: 4,
+              color: "rgba(226,232,240,0.84)",
+              fontSize: 11.5,
+              lineHeight: 1.35,
+              fontWeight: 650,
+            }}
+          >
+            <span aria-hidden="true" style={{ color: "#93c5fd", fontWeight: 900 }}>ⓘ</span>
+            <span>Une modification du format peut prendre environ 1 à 2 minutes.</span>
+          </div>
+        ) : null}
+
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: isMobile ? "stretch" : "flex-start" }}>
           {onPickVideoClick ? (
             <button
               type="button"

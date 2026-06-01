@@ -66,9 +66,7 @@ export default function PublishFooterActions({
             cursor: saving || draftSaving ? "wait" : "pointer",
           }}
         >
-          {saving
-            ? `Publication en cours ${publishProgress}%`
-            : "Vérifier et publier"}
+          {saving ? "Publication en cours" : "Vérifier et publier"}
         </button>
       </div>
       <div

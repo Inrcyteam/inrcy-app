@@ -1582,12 +1582,6 @@ export default function PublishModal({
           ? `Modification des ${variants.length} formats vidéo...`
           : "Modification du format vidéo...",
       );
-    } else {
-      setImgError(
-        variants.length > 1
-          ? `Modification des ${variants.length} formats vidéo...`
-          : "Modification du format vidéo...",
-      );
     }
 
     if (!variantsToGenerate.length) {
