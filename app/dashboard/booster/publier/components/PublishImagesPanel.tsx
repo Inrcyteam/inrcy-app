@@ -268,9 +268,7 @@ export default function PublishImagesPanel({
     activeVideoAdaptationMode,
   );
   const activeVideoPreparedVariant = videoTransformedVariants.find(
-    (variant) =>
-      variant.signature === activeVideoSignature ||
-      (!variant.signature && variant.channel === activeImageChannel),
+    (variant) => variant.signature === activeVideoSignature,
   );
   const activeVideoDisplayUrl = String(activeVideoPreparedVariant?.publicUrl || "").trim() || videoPreviewUrl;
   const activeVideoIsApplied = Boolean(activeVideoPreparedVariant?.publicUrl);

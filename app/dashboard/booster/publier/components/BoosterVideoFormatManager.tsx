@@ -141,7 +141,11 @@ export default function BoosterVideoFormatManager({
   const technicalDetails = getVideoTechnicalDetails(videoSourceMetadata);
   const aspectRatio = getVideoPreviewAspectRatio(currentFormat, videoSourceMetadata);
   const signature = buildVideoTransformSignature(currentFormat, adaptationMode);
-  const preparedVariant = videoTransformedVariants.find((variant) => variant.signature === signature || variant.channel === channel);
+  const exactPreparedVariant = videoTransformedVariants.find((variant) => variant.signature === signature);
+  const channelPreparedVariant = videoTransformedVariants.find((variant) => variant.channel === channel);
+  const preparedVariant = exactPreparedVariant || null;
+  const appliedFormat = exactPreparedVariant?.format || channelPreparedVariant?.format || smartRecommendedFormat;
+  const hasPendingFormat = currentFormat !== appliedFormat;
   const displayUrl = String(preparedVariant?.publicUrl || preparedVariant?.url || "").trim() || videoDisplayUrl;
   const isApplied = Boolean(preparedVariant?.publicUrl || preparedVariant?.url);
   const isHorizontalSource = videoSourceMetadata?.orientation === "horizontal";
@@ -367,21 +371,35 @@ export default function BoosterVideoFormatManager({
           <div style={{ fontSize: 11, fontWeight: 900, color: "rgba(226,232,240,0.78)" }}>Format actuel</div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: isMobile ? "center" : "flex-start" }}>
             {videoFormatOptions.map((format) => {
-              const active = currentFormat === format;
+              const applied = appliedFormat === format;
+              const pending = hasPendingFormat && currentFormat === format;
               return (
                 <button
                   key={format}
                   type="button"
                   onClick={() => onFormatChange?.(format)}
                   disabled={!onFormatChange}
+                  title={applied ? "Format actif qui sera publié" : pending ? "Format sélectionné à appliquer" : undefined}
                   style={{
                     minHeight: 30,
                     borderRadius: 999,
                     padding: "5px 10px",
-                    border: active ? "2px solid rgba(74,222,128,0.90)" : "1px solid rgba(255,255,255,0.13)",
-                    background: active ? "rgba(34,197,94,0.14)" : "rgba(255,255,255,0.055)",
-                    color: active ? "#bbf7d0" : "rgba(255,255,255,0.78)",
-                    boxShadow: active ? "0 0 0 1px rgba(74,222,128,0.22) inset, 0 0 14px rgba(74,222,128,0.14)" : undefined,
+                    border: applied
+                      ? "2px solid rgba(74,222,128,0.90)"
+                      : pending
+                        ? "2px solid rgba(251,191,36,0.92)"
+                        : "1px solid rgba(255,255,255,0.13)",
+                    background: applied
+                      ? "rgba(34,197,94,0.14)"
+                      : pending
+                        ? "rgba(251,191,36,0.15)"
+                        : "rgba(255,255,255,0.055)",
+                    color: applied ? "#bbf7d0" : pending ? "#fde68a" : "rgba(255,255,255,0.78)",
+                    boxShadow: applied
+                      ? "0 0 0 1px rgba(74,222,128,0.22) inset, 0 0 14px rgba(74,222,128,0.14)"
+                      : pending
+                        ? "0 0 0 1px rgba(251,191,36,0.24) inset, 0 0 14px rgba(251,191,36,0.14)"
+                        : undefined,
                     cursor: onFormatChange ? "pointer" : "default",
                     fontSize: 11,
                     fontWeight: 900,
@@ -488,13 +506,13 @@ export default function BoosterVideoFormatManager({
               type="button"
               className={btnClass}
               onClick={onApplyFormat}
-              disabled={preparing || !displayUrl}
+              disabled={preparing || !displayUrl || !hasPendingFormat}
               style={{
                 minHeight: 34,
                 padding: "7px 12px",
                 fontSize: 11.5,
-                opacity: preparing || !displayUrl ? 0.64 : 1,
-                cursor: preparing ? "wait" : !displayUrl ? "not-allowed" : "pointer",
+                opacity: preparing || !displayUrl || !hasPendingFormat ? 0.52 : 1,
+                cursor: preparing ? "wait" : !displayUrl || !hasPendingFormat ? "not-allowed" : "pointer",
                 flex: isMobile ? "1 1 100%" : "0 0 auto",
                 border: "1px solid rgba(76,195,255,0.32)",
                 background: "rgba(76,195,255,0.12)",
@@ -508,13 +526,13 @@ export default function BoosterVideoFormatManager({
               type="button"
               className={btnClass}
               onClick={onApplyFormatToAllChannels}
-              disabled={preparing || !displayUrl}
+              disabled={preparing || !displayUrl || !hasPendingFormat}
               style={{
                 minHeight: 34,
                 padding: "7px 12px",
                 fontSize: 11.5,
-                opacity: preparing || !displayUrl ? 0.56 : 0.9,
-                cursor: preparing ? "wait" : !displayUrl ? "not-allowed" : "pointer",
+                opacity: preparing || !displayUrl || !hasPendingFormat ? 0.46 : 0.9,
+                cursor: preparing ? "wait" : !displayUrl || !hasPendingFormat ? "not-allowed" : "pointer",
                 flex: isMobile ? "1 1 100%" : "0 0 auto",
                 border: "1px solid rgba(255,255,255,0.13)",
                 background: "rgba(255,255,255,0.055)",

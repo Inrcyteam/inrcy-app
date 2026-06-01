@@ -557,14 +557,15 @@ export default function PublishModal({
 
   const setVideoFormatForChannel = (channel: ChannelKey, format: VideoFormat) => {
     setVideoFormatByChannel((prev) => ({ ...prev, [channel]: normalizeVideoFormat(channel, format) }));
+    // Changer de bulle choisit seulement un format en attente : on ne supprime pas
+    // la variante déjà appliquée, qui reste le format vert réellement publié.
     clearVideoVariantPreparationForChannel(channel);
-    clearPreparedVideoVariantsForChannel(channel);
   };
 
   const setVideoAdaptationModeForChannel = (channel: ChannelKey, mode: VideoAdaptationMode) => {
     setVideoAdaptationModeByChannel((prev) => ({ ...prev, [channel]: normalizeVideoAdaptationMode(mode) }));
+    // Même logique : l'adaptation choisie devient une intention, pas une transformation.
     clearVideoVariantPreparationForChannel(channel);
-    clearPreparedVideoVariantsForChannel(channel);
   };
   const [showPublicationPreview, setShowPublicationPreview] = useState(false);
   const previewStageRef = useRef<HTMLDivElement | null>(null);
@@ -1497,7 +1498,7 @@ export default function PublishModal({
       const settings = settingsByChannel?.[channel] || videoSettingsByChannel[channel];
       if (!settings) return acc;
       const signature = buildVideoTransformSignature(settings.format, settings.adaptationMode);
-      const found = variants.find((variant) => variant.signature === signature || variant.channel === channel);
+      const found = variants.find((variant) => variant.signature === signature);
       if (!found?.publicUrl) return acc;
       const formatLabel = getVideoFormatLabel(channel, settings.format, videoSourceMetadata);
       const adaptationLabel = VIDEO_ADAPTATION_MODE_LABELS[settings.adaptationMode];
@@ -1668,7 +1669,7 @@ export default function PublishModal({
             settings.adaptationMode,
           );
           const foundVariant = transformedVariants.find(
-            (variant) => variant.signature === signature || variant.channel === channel,
+            (variant) => variant.signature === signature,
           );
           const formatLabel = getVideoFormatLabel(channel, settings.format, videoSourceMetadata);
           const adaptationMode = settings.adaptationMode as VideoAdaptationMode;
@@ -2960,7 +2961,7 @@ export default function PublishModal({
       selectedVideoAdaptation,
     );
     const preparedVariant = videoTransformedVariants.find(
-      (variant) => variant.signature === signature || variant.channel === channel,
+      (variant) => variant.signature === signature,
     );
     const preparedPreviewUrl = String(preparedVariant?.publicUrl || "").trim();
     const finalPreviewUrl = preparedPreviewUrl || videoPreviewUrl;
