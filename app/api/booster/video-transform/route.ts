@@ -5,6 +5,7 @@ import { promisify } from "util";
 import { mkdir, readFile, rm, writeFile } from "fs/promises";
 import os from "os";
 import path from "path";
+import ffmpegStaticPath from "ffmpeg-static";
 import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { enforceRateLimit } from "@/lib/rateLimit";
@@ -87,11 +88,17 @@ async function downloadSourceVideo(source: BoosterVideoTransformSource) {
   return Buffer.from(arrayBuffer);
 }
 
+function getFfmpegPath() {
+  return String(ffmpegStaticPath || process.env.FFMPEG_PATH || "ffmpeg");
+}
+
 async function ensureFfmpegAvailable() {
+  const ffmpegPath = getFfmpegPath();
   try {
-    await execFileAsync("ffmpeg", ["-version"], { timeout: 6000, maxBuffer: 1024 * 1024 });
+    await execFileAsync(ffmpegPath, ["-version"], { timeout: 6000, maxBuffer: 1024 * 1024 });
+    return ffmpegPath;
   } catch {
-    throw new Error("FFmpeg est indisponible sur cet environnement. Installez ffmpeg pour générer les formats vidéo.");
+    throw new Error("Adaptation automatique indisponible : la vidéo originale sera utilisée.");
   }
 }
 
@@ -127,7 +134,7 @@ function buildFilter(plan: BoosterVideoTransformVariantPlan) {
   ].join(";");
 }
 
-async function runFfmpegVariant(inputPath: string, outputPath: string, plan: BoosterVideoTransformVariantPlan) {
+async function runFfmpegVariant(ffmpegPath: string, inputPath: string, outputPath: string, plan: BoosterVideoTransformVariantPlan) {
   const filter = buildFilter(plan);
   const quality = getVideoTransformQualityProfile(plan.format);
   const commonOutputArgs = [
@@ -151,7 +158,7 @@ async function runFfmpegVariant(inputPath: string, outputPath: string, plan: Boo
     : ["-y", "-i", inputPath, "-map", "0:v:0", "-map", "0:a?", ...commonOutputArgs];
 
   try {
-    await execFileAsync("ffmpeg", args, { timeout: 180000, maxBuffer: 16 * 1024 * 1024 });
+    await execFileAsync(ffmpegPath, args, { timeout: 180000, maxBuffer: 16 * 1024 * 1024 });
   } catch (error: any) {
     const details = String(error?.stderr || error?.message || "").slice(0, 900);
     throw new Error(`Transformation vidéo échouée (${plan.target.label}). ${details}`.trim());
@@ -197,7 +204,17 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Aucun format vidéo à générer." }, { status: 400 });
     }
 
-    await ensureFfmpegAvailable();
+    let ffmpegPath = "";
+    try {
+      ffmpegPath = await ensureFfmpegAvailable();
+    } catch (error: any) {
+      return NextResponse.json({
+        ok: false,
+        fallbackToOriginal: true,
+        variants: [],
+        errors: [{ message: error?.message || "Adaptation automatique indisponible : la vidéo originale sera utilisée." }],
+      }, { status: 200 });
+    }
 
     const sourceBuffer = await downloadSourceVideo(source);
     if (!sourceBuffer.length) {
@@ -222,7 +239,7 @@ export async function POST(req: Request) {
     for (const variant of plan) {
       const outputPath = path.join(tempDir, `${variant.key}.mp4`);
       try {
-        await runFfmpegVariant(inputPath, outputPath, variant);
+        await runFfmpegVariant(ffmpegPath, inputPath, outputPath, variant);
         const outputBuffer = await readFile(outputPath);
         const quality = getVideoTransformQualityProfile(variant.format);
         if (outputBuffer.length > quality.maxOutputBytes) {
@@ -273,7 +290,12 @@ export async function POST(req: Request) {
     }, { status: errors.length && !generated.length ? 500 : 200 });
   } catch (error: any) {
     console.error("[Booster] video-transform failed", error);
-    return NextResponse.json({ error: error?.message || "Transformation vidéo impossible." }, { status: 500 });
+    return NextResponse.json({
+      ok: false,
+      fallbackToOriginal: true,
+      variants: [],
+      error: error?.message || "Adaptation automatique indisponible : la vidéo originale sera utilisée.",
+    }, { status: 200 });
   } finally {
     if (tempDir) {
       await rm(tempDir, { recursive: true, force: true }).catch(() => {});

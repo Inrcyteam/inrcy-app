@@ -1623,8 +1623,24 @@ export default function PublishModal({
         ...(Array.isArray(response.variants) ? response.variants : []),
       ];
       if (!transformedVariants.length && !response.ok) {
-        const firstError = response.errors?.[0]?.message || response.error;
-        throw new Error(firstError || "Les formats vidéo n’ont pas pu être modifiés.");
+        const fallbackDetail = "Adaptation automatique indisponible : la vidéo originale sera publiée.";
+        setVideoVariantPreparationByChannel((prev) => ({
+          ...prev,
+          ...Object.fromEntries(
+            videoChannels.map((channel) => [
+              channel,
+              {
+                status: "ready" as const,
+                label: "Vidéo originale conservée",
+                detail: fallbackDetail,
+              },
+            ]),
+          ),
+        }));
+        setVideoTransformedVariants(existingVariants);
+        if (options?.previewOnly) setImgError(fallbackDetail);
+        if (!options?.previewOnly) setPublishProgressLabel("Adaptation vidéo indisponible : publication de la vidéo originale.");
+        return { ...baseVideo, transformedVariants: existingVariants };
       }
 
       const responseErrors = Array.isArray(response.errors) ? response.errors : [];
@@ -1690,24 +1706,24 @@ export default function PublishModal({
         transformedVariants,
       };
     } catch (error) {
-      const message = getSimpleFrenchErrorMessage(
-        error,
-        "Les formats vidéo n’ont pas pu être modifiés.",
-      );
+      const fallbackDetail = "Adaptation automatique indisponible : la vidéo originale sera publiée.";
       setVideoVariantPreparationByChannel((prev) => ({
         ...prev,
         ...Object.fromEntries(
           videoChannels.map((channel) => [
             channel,
             {
-              status: "error" as const,
-              label: "Erreur modification vidéo",
-              detail: message,
+              status: "ready" as const,
+              label: "Vidéo originale conservée",
+              detail: fallbackDetail,
             },
           ]),
         ),
       }));
-      throw error;
+      setVideoTransformedVariants(existingVariants);
+      if (options?.previewOnly) setImgError(fallbackDetail);
+      if (!options?.previewOnly) setPublishProgressLabel("Adaptation vidéo indisponible : publication de la vidéo originale.");
+      return { ...baseVideo, transformedVariants: existingVariants };
     }
   }
 

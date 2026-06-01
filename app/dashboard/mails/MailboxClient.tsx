@@ -2453,7 +2453,20 @@ async function deleteDraftPermanently(id: string) {
       ];
       const found = variants.find((variant: any) => variant.signature === signature || variant.channel === channel);
       if (!found?.publicUrl && !found?.url) {
-        throw new Error(response.errors?.[0]?.message || response.error || "Format vidéo impossible.");
+        setPublicationEditVideoByChannel((prev) => ({
+          ...prev,
+          [channel]: {
+            ...(prev[channel] || current),
+            sourceVideo: base,
+            transformedVariants: variants,
+            previewUrl: base.publicUrl || base.url || current.previewUrl,
+            file: current.file,
+            preparing: false,
+            preparation: { status: "ready", label: "Vidéo originale conservée", detail: "Adaptation automatique indisponible : la vidéo originale sera utilisée." },
+          },
+        }));
+        setDetailsActionError("Adaptation automatique indisponible : la vidéo originale sera utilisée.");
+        return;
       }
       setPublicationEditVideoByChannel((prev) => ({
         ...prev,
@@ -2468,13 +2481,14 @@ async function deleteDraftPermanently(id: string) {
         },
       }));
     } catch (error: any) {
-      setDetailsActionError(getSimpleFrenchErrorMessage(error, "Impossible de modifier le format vidéo."));
+      const fallbackDetail = "Adaptation automatique indisponible : la vidéo originale sera utilisée.";
+      setDetailsActionError(fallbackDetail);
       setPublicationEditVideoByChannel((prev) => ({
         ...prev,
         [channel]: {
           ...(prev[channel] || current),
           preparing: false,
-          preparation: { status: "error", label: "Format non appliqué", detail: getSimpleFrenchErrorMessage(error, "Transformation vidéo impossible.") },
+          preparation: { status: "ready", label: "Vidéo originale conservée", detail: fallbackDetail },
         },
       }));
     }
@@ -2540,7 +2554,8 @@ async function deleteDraftPermanently(id: string) {
           ];
           finalVariant = transformedVariants.find((variant: any) => variant.signature === signature || variant.channel === boosterChannel);
           if (!finalVariant?.publicUrl && !finalVariant?.url) {
-            throw new Error(response.errors?.[0]?.message || response.error || "Format vidéo impossible.");
+            transformedVariants = [];
+            finalVariant = undefined;
           }
         }
         const finalVideo = finalVariant?.publicUrl || finalVariant?.url
