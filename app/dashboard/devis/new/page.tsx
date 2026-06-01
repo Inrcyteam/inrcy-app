@@ -2959,6 +2959,7 @@ export default function NewDevisPage() {
           ) : null}
 
           <div
+            className={styles.previewBottomGrid}
             style={{
               display: "grid",
               gridTemplateColumns: "1fr 260px",
@@ -3173,6 +3174,7 @@ export default function NewDevisPage() {
 
           {/* ✅ Bon pour accord / Signature */}
           <div
+            className={styles.previewSignatureGrid}
             style={{
               marginTop: 18,
               display: "grid",
@@ -3183,6 +3185,7 @@ export default function NewDevisPage() {
           >
             <div />
             <div
+              className={styles.previewSignatureBox}
               style={{
                 border: "2px solid #111",
                 borderRadius: 12,

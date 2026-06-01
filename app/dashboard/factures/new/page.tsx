@@ -3521,6 +3521,7 @@ export default function NewFacturePage() {
           ) : null}
 
           <div
+            className={styles.previewBottomGrid}
             style={{
               display: "grid",
               gridTemplateColumns: "1fr 280px",
