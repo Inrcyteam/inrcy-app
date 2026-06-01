@@ -25,6 +25,7 @@ const BOOSTER_BUCKET = "booster";
 const MAX_VARIANTS_PER_REQUEST = 8;
 const MAX_INPUT_BYTES = 80 * 1024 * 1024;
 const OUTPUT_CONTENT_TYPE = "video/mp4";
+const FFMPEG_TRANSFORM_TIMEOUT_MS = 120000;
 
 function normalizeSafeSegment(value: string, fallback: string) {
   const safe = String(value || "")
@@ -169,7 +170,9 @@ async function runFfmpegVariant(ffmpegPath: string, inputPath: string, outputPat
   const quality = getVideoTransformQualityProfile(plan.format);
   const commonOutputArgs = [
     "-c:v", "libx264",
-    "-preset", "veryfast",
+    // Mode rapide volontaire : sur Vercel, on privilégie un résultat utilisable vite
+    // plutôt qu'un réencodage lourd en très haute définition.
+    "-preset", "ultrafast",
     "-crf", String(quality.crf),
     "-b:v", quality.videoBitrate,
     "-maxrate", quality.maxrate,
@@ -179,6 +182,7 @@ async function runFfmpegVariant(ffmpegPath: string, inputPath: string, outputPat
     "-b:a", quality.audioBitrate,
     "-ac", "2",
     "-movflags", "+faststart",
+    "-threads", "2",
     "-shortest",
     outputPath,
   ];
@@ -188,9 +192,27 @@ async function runFfmpegVariant(ffmpegPath: string, inputPath: string, outputPat
     : ["-y", "-i", inputPath, "-map", "0:v:0", "-map", "0:a?", ...commonOutputArgs];
 
   try {
-    await execFileAsync(ffmpegPath, args, { timeout: 180000, maxBuffer: 16 * 1024 * 1024 });
+    const startedAt = Date.now();
+    console.info("[Booster] ffmpeg transform started", {
+      format: plan.format,
+      adaptationMode: plan.adaptationMode,
+      target: plan.target.label,
+      output: `${plan.target.width || "auto"}x${plan.target.height || "auto"}`,
+    });
+    await execFileAsync(ffmpegPath, args, { timeout: FFMPEG_TRANSFORM_TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024 });
+    console.info("[Booster] ffmpeg transform completed", {
+      format: plan.format,
+      adaptationMode: plan.adaptationMode,
+      elapsedMs: Date.now() - startedAt,
+    });
   } catch (error: any) {
     const details = String(error?.stderr || error?.message || "").slice(0, 900);
+    console.error("[Booster] ffmpeg transform failed", {
+      format: plan.format,
+      adaptationMode: plan.adaptationMode,
+      target: plan.target.label,
+      details,
+    });
     throw new Error(`Transformation vidéo échouée (${plan.target.label}). ${details}`.trim());
   }
 }
