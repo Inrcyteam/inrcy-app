@@ -28,12 +28,13 @@ export type Overview = {
     instagram: { connected: boolean; metrics?: any | null };
     linkedin: { connected: boolean; metrics?: any | null };
     tiktok: { connected: boolean; metrics?: any | null };
+    mails?: { connected: boolean; metrics?: any | null };
   };
   identities?: Partial<Record<CubeKey, { label?: string | null; url?: string | null }>>;
   meta?: { generatedAt?: string; snapshotDate?: string | null; live?: boolean };
 };
 
-export type CubeKey = "site_inrcy" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin" | "tiktok";
+export type CubeKey = "site_inrcy" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin" | "mails" | "tiktok";
 
 export type Period = 7 | 14 | 30 | 60;
 
@@ -186,11 +187,12 @@ export function removeUiCacheValue(key: string) {
   removeAccountCacheValue(key);
 }
 
-const CUBE_KEYS: CubeKey[] = ["site_inrcy", "site_web", "gmb", "facebook", "instagram", "linkedin", "tiktok"];
+const CUBE_KEYS: CubeKey[] = ["site_inrcy", "site_web", "gmb", "facebook", "instagram", "linkedin", "mails", "tiktok"];
+const REMOTE_STATS_CUBE_KEYS: CubeKey[] = CUBE_KEYS.filter((key) => key !== "mails");
 
 export function hasCapturedLeadsBlocks(blocks: Partial<Record<CubeKey, InrstatsChannelBlock>> | undefined) {
   if (!blocks || typeof blocks !== "object") return false;
-  return CUBE_KEYS.every((key) => {
+  return REMOTE_STATS_CUBE_KEYS.every((key) => {
     const leads = blocks[key]?.capturedLeads;
     return Number.isFinite(Number(leads?.week)) && Number.isFinite(Number(leads?.month));
   });
@@ -300,6 +302,7 @@ export function emptyCubeState(): Record<CubeKey, CubeState> {
     facebook: { ov: null, loading: true, capturedLeads: { week: 0, month: 0 } },
     instagram: { ov: null, loading: true, capturedLeads: { week: 0, month: 0 } },
     linkedin: { ov: null, loading: true, capturedLeads: { week: 0, month: 0 } },
+    mails: { ov: null, loading: false, capturedLeads: { week: 0, month: 0 } },
     tiktok: { ov: null, loading: true, capturedLeads: { week: 0, month: 0 } },
   };
 }
@@ -747,6 +750,16 @@ export function computeOpportunity30(cubeKey: CubeKey, ov: Overview) {
 
     return Math.max(0, Math.round(clamp(baseline + intentOpportunity + visibilityOpportunity, 0, 80)));
   }
+  if (cubeKey === "mails") {
+    const connected = !!ov?.sources?.mails?.connected;
+    if (!connected) return 0;
+    const m = ov?.sources?.mails?.metrics;
+    const base = safeNum(m?.campagnes30) <= 0 ? 8 : 3;
+    const contactsPotential = Math.min(28, safeNum(m?.contactsCrm) / 14);
+    const activityPotential = Math.min(14, safeNum(m?.campagnes30) * 2 + safeNum(m?.envois30) / 35);
+    return Math.max(0, Math.round(base + contactsPotential + activityPotential));
+  }
+
   if (cubeKey === "facebook" || cubeKey === "instagram" || cubeKey === "linkedin" || cubeKey === "tiktok") {
     const perDay = computeOpportunityPerDaySocial(cubeKey, ov);
     return Math.max(0, Math.round(perDay * 30));
@@ -819,6 +832,15 @@ export function isLinkedInStatsPartial(ov: Overview | null | undefined) {
 }
 
 export function buildProvenance(cubeKey: CubeKey, ov: Overview) {
+  if (cubeKey === "mails") {
+    const m = ov?.sources?.mails?.metrics;
+    return [
+      { label: "Envois", value: safeNum(m?.envois30), colorVar: "--cSocial" },
+      { label: "Campagnes", value: safeNum(m?.campagnes30), colorVar: "--cGoogle" },
+      { label: "CRM", value: safeNum(m?.contactsCrm), colorVar: "--cDirect" },
+    ];
+  }
+
   if (cubeKey === "gmb") {
     const m = ov?.sources?.gmb?.metrics;
     const { impressions, mapsImpressions: maps, searchImpressions: search } = getGmbTotals(m);
@@ -917,6 +939,18 @@ export function computeQuality(cubeKey: CubeKey, ov: Overview) {
     const m = ov?.sources?.gmb?.metrics;
     if (m?.error) return { score: 55, ...qualityLabel(55) };
     return { score: 70, ...qualityLabel(70) };
+  }
+
+  if (cubeKey === "mails") {
+    const connected = !!ov?.sources?.mails?.connected;
+    if (!connected) return { score: 0, ...qualityLabel(0) };
+    const m = ov?.sources?.mails?.metrics;
+    const accounts = safeNum(m?.connectedCount);
+    const contacts = safeNum(m?.contactsCrm);
+    const campaigns = safeNum(m?.campagnes30);
+    const envois = safeNum(m?.envois30);
+    const score = clamp(Math.round(35 + Math.min(25, accounts * 8) + Math.min(20, contacts / 10) + Math.min(20, campaigns * 4 + envois * 0.25)), 35, 92);
+    return { score, ...qualityLabel(score) };
   }
 
   if (cubeKey === "facebook" || cubeKey === "instagram" || cubeKey === "linkedin" || cubeKey === "tiktok") {
@@ -1038,6 +1072,25 @@ function getDecisionInput(
   provenance: Array<{ label: string; value: number; colorVar: string }>,
   capturedLeads: CapturedLeads,
 ) {
+  if (cubeKey === "mails") {
+    const m = ov?.sources?.mails?.metrics;
+    return {
+      channelType: "social" as const,
+      channelKey: "linkedin" as const,
+      connected: !!ov?.sources?.mails?.connected,
+      opportunities: opp30,
+      quality: qualityScore,
+      capturedLeads,
+      metrics: {
+        audience: safeNum(m?.contactsCrm),
+        engagement: safeNum(m?.campagnes30),
+        conversions: safeNum(m?.destinataires30),
+        visibility: safeNum(m?.envois30),
+      },
+      provenance: provenance.map((entry) => ({ label: entry.label, value: entry.value })),
+    };
+  }
+
   if (cubeKey === "facebook" || cubeKey === "instagram" || cubeKey === "linkedin" || cubeKey === "tiktok") {
     const metrics = getSocialMetrics(cubeKey, ov);
     const connected =
@@ -1308,6 +1361,19 @@ function recommendAction(cubeKey: CubeKey, ov: Overview, qualityScore: number): 
     return boosterToolAction("Publiez une actualité locale pour relancer la visibilité et le trafic.");
   }
 
+  if (cubeKey === "mails") {
+    if (!ov?.sources?.mails?.connected) {
+      return {
+        key: "connect",
+        title: "Configurer",
+        detail: "Connectez une boîte d’envoi pour activer iNr’Send, Propulser et Fidéliser.",
+        href: "/dashboard?panel=mails",
+        pill: "Connexion",
+      };
+    }
+    return fideliserToolAction("Communiquez avec vos contacts depuis le canal Mails : information, suivi ou relance.");
+  }
+
   if (cubeKey === "gmb") {
     const m = ov?.sources?.gmb?.metrics;
     const hasError = !!m?.error;
@@ -1344,6 +1410,18 @@ export function buildInsights(cubeKey: CubeKey, ov: Overview, qualityScore: numb
         ? "Recommandation : utiliser Propulser pour choisir une action business adaptée."
         : "Recommandation : utiliser Fidéliser pour entretenir et convertir la relation client.";
     return [toolLine, decision.reason].filter(Boolean).slice(0, 3);
+  }
+
+  if (cubeKey === "mails") {
+    if (!ov?.sources?.mails?.connected) {
+      return ["Canal mail non connecté.", "Connectez une boîte d’envoi pour activer iNr’Send, Propulser et Fidéliser."];
+    }
+    const m = ov?.sources?.mails?.metrics;
+    return [
+      `Boîtes connectées : ${fmtInt(safeNum(m?.connectedCount))}/4.`,
+      `${fmtInt(safeNum(m?.contactsCrm))} contacts CRM exploitables pour vos campagnes.`,
+      safeNum(m?.campagnes30) > 0 ? "Des campagnes sont déjà visibles dans iNr’Send." : "Canal prêt : lancez une première campagne Fidéliser ou Propulser.",
+    ];
   }
 
   if (cubeKey === "facebook") {
@@ -1512,6 +1590,16 @@ function buildVisibilityStats(cubeKey: CubeKey, ov: Overview): CubeMetricItem[] 
     return firstFour(items);
   }
 
+  if (cubeKey === "mails") {
+    if (!ov?.sources?.mails?.connected) return [];
+    const m = ov?.sources?.mails?.metrics;
+    pushNumberMetric(items, "Boîtes", safeNum(m?.connectedCount), { formatter: (value) => `${fmtInt(value)}/4` });
+    pushNumberMetric(items, "Envois", safeNum(m?.envois30));
+    pushNumberMetric(items, "Campagnes", safeNum(m?.campagnes30));
+    pushNumberMetric(items, "Contacts CRM", safeNum(m?.contactsCrm));
+    return firstFour(items);
+  }
+
   if (cubeKey === "linkedin") {
     if (!ov?.sources?.linkedin?.connected || isLinkedInStatsPartial(ov)) return [];
     const m = ov?.sources?.linkedin?.metrics;
@@ -1611,6 +1699,16 @@ function buildActionStats(cubeKey: CubeKey, ov: Overview): CubeMetricItem[] {
     return firstFour(items);
   }
 
+  if (cubeKey === "mails") {
+    if (!ov?.sources?.mails?.connected) return [];
+    const m = ov?.sources?.mails?.metrics;
+    pushNumberMetric(items, "Boîtes", safeNum(m?.connectedCount), { formatter: (value) => `${fmtInt(value)}/4` });
+    pushNumberMetric(items, "Envois", safeNum(m?.envois30));
+    pushNumberMetric(items, "Campagnes", safeNum(m?.campagnes30));
+    pushNumberMetric(items, "Contacts CRM", safeNum(m?.contactsCrm));
+    return firstFour(items);
+  }
+
   if (cubeKey === "linkedin") {
     if (!ov?.sources?.linkedin?.connected || isLinkedInStatsPartial(ov)) return [];
     const m = ov?.sources?.linkedin?.metrics;
@@ -1662,6 +1760,7 @@ export function buildCubeModel(
         instagram: { connected: false },
         linkedin: { connected: false },
         tiktok: { connected: false },
+        mails: { connected: false },
       },
     } as Overview);
 
@@ -1682,9 +1781,11 @@ export function buildCubeModel(
             ? { main: !!ov.sources?.facebook?.connected }
             : key === "instagram"
               ? { main: !!ov.sources?.instagram?.connected }
-              : key === "tiktok"
-                ? { main: !!ov.sources?.tiktok?.connected }
-                : { main: !!ov.sources?.linkedin?.connected };
+              : key === "mails"
+                ? { main: !!ov.sources?.mails?.connected }
+                : key === "tiktok"
+                  ? { main: !!ov.sources?.tiktok?.connected }
+                  : { main: !!ov.sources?.linkedin?.connected };
 
   const provenance = buildProvenance(key, ov);
   const computedOpp30 = computeOpportunity30(key, ov);
@@ -1702,7 +1803,7 @@ export function buildCubeModel(
   let action = recommendAction(key, ov, q.score);
   let decision: DecisionResult | undefined;
 
-  if (action.key !== "connect" && action.key !== "loading") {
+  if (key !== "mails" && action.key !== "connect" && action.key !== "loading") {
     decision = decideAction(getDecisionInput(key, ov, q.score, opp30, provenance, capturedLeads));
     action = actionFromDecision(action, decision);
   }
@@ -1785,6 +1886,7 @@ export function buildSummaryActionItems({
     facebook: !!models.find((m) => m.key === "facebook")?.connections.main,
     instagram: !!models.find((m) => m.key === "instagram")?.connections.main,
     linkedin: !!models.find((m) => m.key === "linkedin")?.connections.main,
+    mails: !!models.find((m) => m.key === "mails")?.connections.main,
     tiktok: !!models.find((m) => m.key === "tiktok")?.connections.main,
   };
 
@@ -1806,6 +1908,12 @@ export function buildSummaryActionItems({
       kicker: "Renforcez votre crédibilité pro",
       motive: "Booster vous aide à prendre la parole simplement sur LinkedIn.",
       badge: "Booster",
+    },
+    mails: {
+      label: "Utiliser Fidéliser",
+      kicker: "Relancez vos contacts par mail",
+      motive: "Mails connecte iNr’Send, Propulser et Fidéliser pour transformer votre base CRM en actions concrètes.",
+      badge: "Fidéliser",
     },
     tiktok: {
       label: "Utiliser Booster",
@@ -1852,6 +1960,12 @@ export function buildSummaryActionItems({
       motive: "Reliez LinkedIn pour publier facilement et préparer le suivi analytics dès que les accès seront disponibles.",
       badge: "Connexion",
     },
+    mails: {
+      label: "Connecter une boîte mail",
+      kicker: "Activez vos campagnes",
+      motive: "Connectez au moins une boîte d’envoi pour utiliser iNr’Send, Propulser et Fidéliser.",
+      badge: "Connexion",
+    },
     tiktok: {
       label: "Connecter TikTok",
       kicker: "Préparez le canal vidéo/photo",
@@ -1885,6 +1999,7 @@ export function buildSummaryActionItems({
     { key: "facebook" as CubeKey, opportunities: centralByCube.facebook, revenue: computedEstimatedByCube.facebook || summaryEstimatedByCube.facebook },
     { key: "instagram" as CubeKey, opportunities: centralByCube.instagram, revenue: computedEstimatedByCube.instagram || summaryEstimatedByCube.instagram },
     { key: "linkedin" as CubeKey, opportunities: centralByCube.linkedin, revenue: computedEstimatedByCube.linkedin || summaryEstimatedByCube.linkedin },
+    { key: "mails" as CubeKey, opportunities: centralByCube.mails, revenue: computedEstimatedByCube.mails || summaryEstimatedByCube.mails },
     { key: "tiktok" as CubeKey, opportunities: centralByCube.tiktok, revenue: computedEstimatedByCube.tiktok || summaryEstimatedByCube.tiktok },
   ].map((item) => ({
     ...item,

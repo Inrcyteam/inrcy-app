@@ -152,6 +152,10 @@ export function SummaryBar({
           <span>LinkedIn</span>
           <b>{summaryDisplayReady ? `+${fmtInt(centralByCube.linkedin)}` : "—"}</b>
         </button>
+        <button type="button" className={styles.summaryItem} onClick={() => onScrollTo("mails")}>
+          <span>Mails</span>
+          <b>{summaryDisplayReady ? `+${fmtInt(centralByCube.mails)}` : "—"}</b>
+        </button>
         <button type="button" className={styles.summaryItem} onClick={() => onScrollTo("tiktok")}>
           <span>TikTok</span>
           <b>{summaryDisplayReady ? `+${fmtInt(centralByCube.tiktok)}` : "—"}</b>
@@ -215,6 +219,8 @@ function getForcedCubeContextLabel(key: CubeModel["key"]) {
       return "Compte Instagram";
     case "linkedin":
       return "Compte LinkedIn";
+    case "mails":
+      return "Boîtes d’envoi";
     case "tiktok":
       return "Compte TikTok";
     default:

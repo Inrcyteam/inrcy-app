@@ -7,6 +7,7 @@ export const MODULE_ICONS: Record<string, { src: string; alt: string }> = {
   gmb: { src: "/icons/google.jpg", alt: "Google Business" },
   instagram: { src: "/icons/instagram.jpg", alt: "Instagram" },
   linkedin: { src: "/icons/linkedin.png", alt: "LinkedIn" },
+  mails: { src: "/icons/mails-inrcy.svg", alt: "Mails iNrCy" },
   tiktok: { src: "/icons/tiktok.png", alt: "TikTok" },
 };
 
@@ -36,6 +37,10 @@ export const fluxModules: Module[] = [
   { key: "linkedin", name: "LinkedIn", description: "Crédibilise votre expertise 💼", status: "available", accent: "cyan", actions: [
       { key: "view", label: "Voir le compte", variant: "view", href: "#" },
       { key: "connect", label: "Connecter LinkedIn", variant: "connect", onClick: () => {} },
+    ] },
+  { key: "mails", name: "Mails", description: "Communique avec vos contacts ✉️", status: "available", accent: "cyan", actions: [
+      { key: "view", label: "Voir les mails", variant: "view", href: "/dashboard/mails" },
+      { key: "connect", label: "Configurer", variant: "connect", onClick: () => {} },
     ] },
   { key: "tiktok", name: "TikTok", description: "Arrive bientôt 🎬", status: "coming", accent: "pink", actions: [
       { key: "view", label: "Voir le compte", variant: "view", href: "#" },

@@ -68,6 +68,136 @@ function normalizeCapturedLeads(raw: unknown, fallback?: CapturedLeads): Capture
   };
 }
 
+type MailStatsSnapshot = {
+  loading: boolean;
+  error?: string;
+  connectedCount: number;
+  maxAccounts: number;
+  envois30: number;
+  campagnes30: number;
+  destinataires30: number;
+  contactsCrm: number;
+  propulsions30: number;
+  fidelisations30: number;
+  inrsend30: number;
+};
+
+const EMPTY_MAIL_STATS: MailStatsSnapshot = {
+  loading: true,
+  connectedCount: 0,
+  maxAccounts: 4,
+  envois30: 0,
+  campagnes30: 0,
+  destinataires30: 0,
+  contactsCrm: 0,
+  propulsions30: 0,
+  fidelisations30: 0,
+  inrsend30: 0,
+};
+
+function clampMailAccountCount(value: unknown) {
+  return Math.max(0, Math.min(4, Math.round(safeNum(value))));
+}
+
+function countHistoryRecipients(item: any) {
+  const raw = item?.raw || {};
+  const direct = safeNum(raw?.total_count ?? raw?.sent_count ?? raw?.recipient_count ?? raw?.recipients_count ?? raw?.queued_count, NaN);
+  if (Number.isFinite(direct) && direct > 0) return direct;
+
+  const target = String(item?.target || "");
+  const match = target.match(/(\d+)/);
+  if (match) return safeNum(match[1]);
+
+  const to = String(item?.to || raw?.to_emails || raw?.to || "");
+  if (!to.trim()) return 0;
+  return to.split(/[;,\n]/).map((entry) => entry.trim()).filter(Boolean).length || 1;
+}
+
+function buildMailOpportunity30(stats: MailStatsSnapshot) {
+  if (stats.connectedCount <= 0) return 0;
+  const base = stats.campagnes30 <= 0 ? 8 : 3;
+  const contactsPotential = Math.min(28, stats.contactsCrm / 14);
+  const activityPotential = Math.min(14, stats.campagnes30 * 2 + stats.envois30 / 35);
+  return Math.max(0, Math.round(base + contactsPotential + activityPotential));
+}
+
+function buildMailCubeModel(stats: MailStatsSnapshot, period: Period): CubeModel {
+  const connected = stats.connectedCount > 0;
+  const opportunity30 = buildMailOpportunity30(stats);
+  const qualityScore = !connected
+    ? 0
+    : Math.max(35, Math.min(92, Math.round(38 + Math.min(24, stats.connectedCount * 8) + Math.min(18, stats.contactsCrm / 12) + Math.min(12, stats.campagnes30 * 3))));
+  const qualityLabel = qualityScore >= 75 ? "Solide" : qualityScore >= 55 ? "Correct" : connected ? "À travailler" : "À connecter";
+  const qualityTone: CubeModel["qualityTone"] = qualityScore >= 80 ? "excellent" : qualityScore >= 65 ? "solid" : qualityScore >= 45 ? "ok" : "low";
+
+  return {
+    key: "mails",
+    title: "Mails",
+    subtitle: "iNr’Send, Propulser & Fidéliser",
+    accountLabel: connected ? `Connecté ${stats.connectedCount}/${stats.maxAccounts}` : `À connecter 0/${stats.maxAccounts}`,
+    period,
+    loading: stats.loading,
+    error: stats.error,
+    connections: { main: connected },
+    provenance: [
+      { label: "iNr’Send", value: stats.inrsend30, colorVar: "--cDirect" },
+      { label: "Propulser", value: stats.propulsions30, colorVar: "--cGoogle" },
+      { label: "Fidéliser", value: stats.fidelisations30, colorVar: "--cSocial" },
+    ],
+    opportunity30,
+    opportunityLabel: opportunity30 >= 14 ? "Fort potentiel" : opportunity30 >= 7 ? "Potentiel réel" : connected ? "À développer" : "À activer",
+    capturedLeads: { week: 0, month: 0 },
+    capturedLeadsHint: connected
+      ? "Le canal Mails suit vos actions iNr’Send, Propulser et Fidéliser."
+      : "Connectez une boîte mail pour activer ce canal.",
+    visibilityStats: connected
+      ? [
+          { label: "Boîtes", value: `${fmtInt(stats.connectedCount)}/${fmtInt(stats.maxAccounts)}` },
+          { label: "Envois", value: fmtInt(stats.envois30) },
+          { label: "Campagnes", value: fmtInt(stats.campagnes30) },
+          { label: "Contacts CRM", value: fmtInt(stats.contactsCrm) },
+        ]
+      : [],
+    actionStats: connected
+      ? [
+          { label: "Destinataires", value: fmtInt(stats.destinataires30) },
+          { label: "Propulser", value: fmtInt(stats.propulsions30) },
+          { label: "Fidéliser", value: fmtInt(stats.fidelisations30) },
+          { label: "iNr’Send", value: fmtInt(stats.inrsend30) },
+        ]
+      : [],
+    qualityScore,
+    qualityLabel,
+    qualityTone,
+    insights: connected
+      ? [
+          `Boîtes connectées : ${stats.connectedCount}/${stats.maxAccounts}.`,
+          `${fmtInt(stats.contactsCrm)} contacts CRM exploitables pour vos campagnes.`,
+          stats.campagnes30 > 0 ? "Des campagnes sont déjà visibles sur les 30 derniers jours." : "Canal prêt : lancez une première campagne Fidéliser ou Propulser.",
+        ]
+      : [
+          "Canal mail non connecté.",
+          "Connectez au moins une boîte d’envoi pour débloquer iNr’Send, Propulser et Fidéliser.",
+        ],
+    action: connected
+      ? {
+          key: "fideliser_action",
+          title: "Fidéliser",
+          detail: "Communiquez avec vos contacts depuis une boîte mail connectée.",
+          href: "/dashboard/fideliser",
+          pill: "Fidéliser",
+          effort: { level: "moyen", label: "Effort moyen • 10-15 min" },
+        }
+      : {
+          key: "connect",
+          title: "Configurer",
+          detail: "Connectez une boîte d’envoi pour activer le canal Mails.",
+          href: "/dashboard?panel=mails",
+          pill: "Connexion",
+        },
+  };
+}
+
 export default function StatsClient() {
   const router = useRouter();
   const [helpOpen, setHelpOpen] = useState(false);
@@ -83,7 +213,7 @@ export default function StatsClient() {
   const [summaryOpp, setSummaryOpp] = useState<{ loading: boolean; total: number; byCube: Record<CubeKey, number> }>({
     loading: true,
     total: 0,
-    byCube: { site_inrcy: 0, site_web: 0, gmb: 0, facebook: 0, instagram: 0, linkedin: 0, tiktok: 0 },
+    byCube: { site_inrcy: 0, site_web: 0, gmb: 0, facebook: 0, instagram: 0, linkedin: 0, mails: 0, tiktok: 0 },
   });
   const [summaryProfile, setSummaryProfile] = useState<{ lead_conversion_rate: number; avg_basket: number }>({ lead_conversion_rate: 0, avg_basket: 0 });
   const [summaryEstimatedByCube, setSummaryEstimatedByCube] = useState<Record<CubeKey, number>>({
@@ -93,12 +223,14 @@ export default function StatsClient() {
     facebook: 0,
     instagram: 0,
     linkedin: 0,
+    mails: 0,
     tiktok: 0,
   });
   const [, setSummaryHydrated] = useState(false);
   const [activeStatsPanel, setActiveStatsPanel] = useState<StatsPanelKey>("all");
   const [statsMenuOpen, setStatsMenuOpen] = useState(false);
   const [dailyBootReady, setDailyBootReady] = useState(false);
+  const [mailStats, setMailStats] = useState<MailStatsSnapshot>(EMPTY_MAIL_STATS);
 
   const scrollTo = (key: CubeKey) => {
     setActiveStatsPanel(key);
@@ -148,6 +280,7 @@ export default function StatsClient() {
           facebook: safeNum(byCubePartial.facebook),
           instagram: safeNum(byCubePartial.instagram),
           linkedin: safeNum(byCubePartial.linkedin),
+          mails: 0,
           tiktok: safeNum(byCubePartial.tiktok),
         },
       });
@@ -162,6 +295,7 @@ export default function StatsClient() {
         facebook: safeNum(estimatedByCubePartial.facebook),
         instagram: safeNum(estimatedByCubePartial.instagram),
         linkedin: safeNum(estimatedByCubePartial.linkedin),
+        mails: 0,
         tiktok: safeNum(estimatedByCubePartial.tiktok),
       });
     }
@@ -283,7 +417,8 @@ export default function StatsClient() {
             facebook: safeNum(cachedSummary.byCube?.facebook),
             instagram: safeNum(cachedSummary.byCube?.instagram),
             linkedin: safeNum(cachedSummary.byCube?.linkedin),
-          tiktok: safeNum(cachedSummary.byCube?.tiktok),
+            mails: 0,
+            tiktok: safeNum(cachedSummary.byCube?.tiktok),
           },
         });
         setSummaryProfile({
@@ -297,7 +432,8 @@ export default function StatsClient() {
           facebook: safeNum(cachedSummary.estimatedByCube?.facebook),
           instagram: safeNum(cachedSummary.estimatedByCube?.instagram),
           linkedin: safeNum(cachedSummary.estimatedByCube?.linkedin),
-        tiktok: safeNum(cachedSummary.estimatedByCube?.tiktok),
+          mails: 0,
+          tiktok: safeNum(cachedSummary.estimatedByCube?.tiktok),
         });
       }
 
@@ -310,7 +446,7 @@ export default function StatsClient() {
             facebook: safeNum(cachedSummary.byCube?.facebook),
             instagram: safeNum(cachedSummary.byCube?.instagram),
             linkedin: safeNum(cachedSummary.byCube?.linkedin),
-          tiktok: safeNum(cachedSummary.byCube?.tiktok),
+            tiktok: safeNum(cachedSummary.byCube?.tiktok),
           },
           estimatedByCube: {
             site_inrcy: safeNum(cachedSummary.estimatedByCube?.site_inrcy),
@@ -319,7 +455,7 @@ export default function StatsClient() {
             facebook: safeNum(cachedSummary.estimatedByCube?.facebook),
             instagram: safeNum(cachedSummary.estimatedByCube?.instagram),
             linkedin: safeNum(cachedSummary.estimatedByCube?.linkedin),
-        tiktok: safeNum(cachedSummary.estimatedByCube?.tiktok),
+            tiktok: safeNum(cachedSummary.estimatedByCube?.tiktok),
           },
           profile: cachedSummary.profile,
           syncedAt: periodSyncAt,
@@ -404,6 +540,7 @@ export default function StatsClient() {
             facebook: safeNum(payload?.opportunities?.byCube?.facebook),
             instagram: safeNum(payload?.opportunities?.byCube?.instagram),
             linkedin: safeNum(payload?.opportunities?.byCube?.linkedin),
+            mails: 0,
             tiktok: safeNum(payload?.opportunities?.byCube?.tiktok),
           },
         },
@@ -418,6 +555,7 @@ export default function StatsClient() {
           facebook: safeNum(payload?.estimatedByCube?.facebook),
           instagram: safeNum(payload?.estimatedByCube?.instagram),
           linkedin: safeNum(payload?.estimatedByCube?.linkedin),
+          mails: 0,
           tiktok: safeNum(payload?.estimatedByCube?.tiktok),
         },
         blocks: payload?.blocks,
@@ -519,7 +657,70 @@ export default function StatsClient() {
     }
   }, [applyBootstrapPayload, syncFromServerCacheIfNeeded]);
 
+  const refreshMailStats = useCallback(async () => {
+    setMailStats((prev) => ({ ...prev, loading: true, error: undefined }));
+    try {
+      const [statusRes, historyRes, contactsRes] = await Promise.all([
+        fetch("/api/integrations/status", { cache: "no-store", credentials: "include" }),
+        fetch("/api/inrsend/history?boxView=sent&page=1&pageSize=20", { cache: "no-store", credentials: "include" }),
+        fetch("/api/crm/contacts?page=1&pageSize=1", { cache: "no-store", credentials: "include" }),
+      ]);
 
+      if (!statusRes.ok) throw new Error(await getSimpleFrenchApiError(statusRes));
+      const statusJson = await statusRes.json().catch(() => ({}));
+
+      const historyJson = historyRes.ok ? await historyRes.json().catch(() => ({})) : {};
+      const contactsJson = contactsRes.ok ? await contactsRes.json().catch(() => ({})) : {};
+
+      const mailAccounts = Array.isArray(statusJson?.mailAccounts) ? statusJson.mailAccounts : [];
+      const connectedCount = clampMailAccountCount(mailAccounts.filter((account: any) => {
+        const status = String(account?.status || "").toLowerCase();
+        const displayStatus = String(account?.connection_status || "").toLowerCase();
+        return status === "connected" || displayStatus === "connected" || displayStatus === "ok";
+      }).length || mailAccounts.length);
+      const maxAccounts = Math.max(1, Math.round(safeNum(statusJson?.limits?.maxMailAccounts, 4)) || 4);
+
+      const folderCounts = historyJson?.folderCounts || {};
+      const inrsend30 = safeNum(folderCounts.mails);
+      const propulsions30 = safeNum(folderCounts.propulsions) + safeNum(folderCounts.recoltes) + safeNum(folderCounts.offres);
+      const fidelisations30 = safeNum(folderCounts.fidelisations) + safeNum(folderCounts.informations) + safeNum(folderCounts.suivis) + safeNum(folderCounts.enquetes);
+      const campagnes30 = inrsend30 + propulsions30 + fidelisations30;
+      const destinataires30 = Array.isArray(historyJson?.items)
+        ? historyJson.items.reduce((sum: number, item: any) => sum + countHistoryRecipients(item), 0)
+        : 0;
+      const contactsCrm = safeNum(contactsJson?.summary?.total ?? contactsJson?.total);
+
+      setMailStats({
+        loading: false,
+        connectedCount,
+        maxAccounts,
+        envois30: campagnes30,
+        campagnes30,
+        destinataires30,
+        contactsCrm,
+        propulsions30,
+        fidelisations30,
+        inrsend30,
+      });
+    } catch (error) {
+      setMailStats((prev) => ({
+        ...prev,
+        loading: false,
+        error: getSimpleFrenchErrorMessage(error, "Impossible de charger les données Mails pour le moment."),
+      }));
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshMailStats();
+    const handler = () => void refreshMailStats();
+    window.addEventListener("focus", handler);
+    window.addEventListener("inrsend:mail-accounts-updated", handler);
+    return () => {
+      window.removeEventListener("focus", handler);
+      window.removeEventListener("inrsend:mail-accounts-updated", handler);
+    };
+  }, [refreshMailStats, refreshNonce]);
 
 
   const hydrateFromSessionCache = useCallback((targetPeriod: Period) => {
@@ -559,6 +760,7 @@ export default function StatsClient() {
         facebook: safeNum(byCubePartial.facebook),
         instagram: safeNum(byCubePartial.instagram),
         linkedin: safeNum(byCubePartial.linkedin),
+          mails: 0,
           tiktok: safeNum(byCubePartial.tiktok),
       },
     });
@@ -573,6 +775,7 @@ export default function StatsClient() {
       facebook: safeNum(estimatedByCubePartial.facebook),
       instagram: safeNum(estimatedByCubePartial.instagram),
       linkedin: safeNum(estimatedByCubePartial.linkedin),
+        mails: 0,
         tiktok: safeNum(estimatedByCubePartial.tiktok),
     });
     return true;
@@ -603,6 +806,7 @@ export default function StatsClient() {
           facebook: safeNum(byCubePartial.facebook),
           instagram: safeNum(byCubePartial.instagram),
           linkedin: safeNum(byCubePartial.linkedin),
+          mails: 0,
           tiktok: safeNum(byCubePartial.tiktok),
         } as Record<CubeKey, number>,
       },
@@ -617,6 +821,7 @@ export default function StatsClient() {
         facebook: safeNum(json?.estimatedByCube?.facebook),
         instagram: safeNum(json?.estimatedByCube?.instagram),
         linkedin: safeNum(json?.estimatedByCube?.linkedin),
+        mails: 0,
         tiktok: safeNum(json?.estimatedByCube?.tiktok),
       } as Record<CubeKey, number>,
       blocks: json?.blocks as any,
@@ -731,6 +936,7 @@ useEffect(() => {
           facebook: safeNum(cachedSummary.byCube?.facebook),
           instagram: safeNum(cachedSummary.byCube?.instagram),
           linkedin: safeNum(cachedSummary.byCube?.linkedin),
+          mails: 0,
           tiktok: safeNum(cachedSummary.byCube?.tiktok),
         },
       });
@@ -745,6 +951,7 @@ useEffect(() => {
         facebook: safeNum(cachedSummary.estimatedByCube?.facebook),
         instagram: safeNum(cachedSummary.estimatedByCube?.instagram),
         linkedin: safeNum(cachedSummary.estimatedByCube?.linkedin),
+        mails: 0,
         tiktok: safeNum(cachedSummary.estimatedByCube?.tiktok),
       });
       return;
@@ -875,18 +1082,25 @@ useEffect(() => {
   }, [dailyBootReady, syncFromServerCacheIfNeeded]);
 
 
-  const models: CubeModel[] = useMemo(() => ([
-    buildCubeModel("site_inrcy", "Site iNrCy", "Optimisé pour convertir", period, dataByCube.site_inrcy, summaryOpp.byCube),
-    buildCubeModel("site_web", "Site Web", "Votre image", period, dataByCube.site_web, summaryOpp.byCube),
-    buildCubeModel("gmb", "Google Business", "Visibilité locale", period, dataByCube.gmb, summaryOpp.byCube),
-    buildCubeModel("facebook", "Facebook", "Visibilité sociale", period, dataByCube.facebook, summaryOpp.byCube),
-    buildCubeModel("instagram", "Instagram", "Visibilité de marque", period, dataByCube.instagram, summaryOpp.byCube),
-    buildCubeModel("linkedin", "LinkedIn", "Visibilité professionnelle", period, dataByCube.linkedin, summaryOpp.byCube),
-    buildCubeModel("tiktok", "TikTok", "Photos & vidéos courtes", period, dataByCube.tiktok, summaryOpp.byCube),
-  ]), [dataByCube, period, summaryOpp.byCube]);
+  const mailOpportunity30 = useMemo(() => buildMailOpportunity30(mailStats), [mailStats]);
 
-  const centralPotential30 = summaryOpp.total;
-  const centralByCube = summaryOpp.byCube;
+  const centralByCube = useMemo<Record<CubeKey, number>>(() => ({
+    ...summaryOpp.byCube,
+    mails: mailOpportunity30,
+  }), [mailOpportunity30, summaryOpp.byCube]);
+
+  const centralPotential30 = Math.max(0, safeNum(summaryOpp.total) + mailOpportunity30);
+
+  const models: CubeModel[] = useMemo(() => ([
+    buildCubeModel("site_inrcy", "Site iNrCy", "Optimisé pour convertir", period, dataByCube.site_inrcy, centralByCube),
+    buildCubeModel("site_web", "Site Web", "Votre image", period, dataByCube.site_web, centralByCube),
+    buildCubeModel("gmb", "Google Business", "Visibilité locale", period, dataByCube.gmb, centralByCube),
+    buildCubeModel("facebook", "Facebook", "Visibilité sociale", period, dataByCube.facebook, centralByCube),
+    buildCubeModel("instagram", "Instagram", "Visibilité de marque", period, dataByCube.instagram, centralByCube),
+    buildCubeModel("linkedin", "LinkedIn", "Visibilité professionnelle", period, dataByCube.linkedin, centralByCube),
+    buildMailCubeModel(mailStats, period),
+    buildCubeModel("tiktok", "TikTok", "Photos & vidéos courtes", period, dataByCube.tiktok, centralByCube),
+  ]), [centralByCube, dataByCube, mailStats, period]);
 
   const computedEstimatedByCube = useMemo<Record<CubeKey, number>>(() => {
     const rate = Math.max(0, safeNum(summaryProfile.lead_conversion_rate)) / 100;
@@ -900,6 +1114,7 @@ useEffect(() => {
       facebook: estimate(centralByCube.facebook),
       instagram: estimate(centralByCube.instagram),
       linkedin: estimate(centralByCube.linkedin),
+      mails: estimate(centralByCube.mails),
       tiktok: estimate(centralByCube.tiktok),
     };
   }, [centralByCube, summaryProfile.avg_basket, summaryProfile.lead_conversion_rate]);

@@ -139,6 +139,7 @@ export default function DashboardClient() {
   const [helpInstagramOpen, setHelpInstagramOpen] = useState(false);
   const [dashboardBoosterModal, setDashboardBoosterModal] = useState<null | "publish" | "stats">(null);
   const [siteConnectionsReady, setSiteConnectionsReady] = useState(false);
+  const [mailAccountsConnectedCount, setMailAccountsConnectedCount] = useState(0);
   const [displayedGeneratorPower, setDisplayedGeneratorPower] = useState<number | null>(() => readCachedGeneratorPowerPercent());
   const [displayedGeneratorIsActive, setDisplayedGeneratorIsActive] = useState<boolean | null>(() => readCachedGeneratorIsActive());
   const [displayedSiteBubbleProgress, setDisplayedSiteBubbleProgress] = useState<SiteBubbleProgressCache>(() => readCachedSiteBubbleProgress());
@@ -2295,6 +2296,30 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     };
   }, [dailyBootReady]);
 
+  const refreshMailChannelStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/integrations/status", { cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) return;
+      const accounts = Array.isArray(data?.mailAccounts) ? data.mailAccounts : [];
+      // Canal Mails = actif dès qu’au moins une boîte d’envoi est enregistrée.
+      setMailAccountsConnectedCount(Math.max(0, Math.min(4, accounts.length)));
+    } catch {
+      // On garde le dernier état affiché si le statut mail est momentanément indisponible.
+    }
+  }, []);
+
+  useEffect(() => {
+    void refreshMailChannelStatus();
+    const handler = () => void refreshMailChannelStatus();
+    window.addEventListener("inrsend:mail-accounts-updated", handler);
+    window.addEventListener("focus", handler);
+    return () => {
+      window.removeEventListener("inrsend:mail-accounts-updated", handler);
+      window.removeEventListener("focus", handler);
+    };
+  }, [refreshMailChannelStatus]);
+
   const leadsToday = typeof kpis?.leads?.today === "number" ? kpis.leads.today : null;
   const leadsWeek = typeof kpis?.leads?.week === "number" ? kpis.leads.week : null;
   const leadsMonth = typeof kpis?.leads?.month === "number" ? kpis.leads.month : null;
@@ -2304,7 +2329,8 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     gmbConnected ||
     facebookPageConnected ||
     instagramConnected ||
-    linkedinConnected
+    linkedinConnected ||
+    mailAccountsConnectedCount > 0
   );
   const generatorIsActive = !siteConnectionsReady && displayedGeneratorIsActive !== null
     ? displayedGeneratorIsActive
@@ -2439,6 +2465,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     instagramUrl,
     linkedinConnected,
     linkedinUrl,
+    mailAccountsConnectedCount,
     tiktokConnected: false,
     tiktokUrl: tiktokProfileUrl,
     openPanel,
@@ -2460,6 +2487,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     instagramUrl,
     linkedinConnected,
     linkedinUrl,
+    mailAccountsConnectedCount,
     tiktokConnected,
     tiktokProfileUrl,
     openPanel,
