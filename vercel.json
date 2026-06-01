@@ -28,5 +28,13 @@
       "path": "/api/cron/inrsend-retention",
       "schedule": "30 3 * * *"
     }
-  ]
+  ],
+  "functions": {
+    "app/api/booster/video-transform/route.ts": {
+      "includeFiles": [
+        "node_modules/ffmpeg-static/ffmpeg",
+        "node_modules/ffmpeg-static/ffmpeg.exe"
+      ]
+    }
+  }
 }

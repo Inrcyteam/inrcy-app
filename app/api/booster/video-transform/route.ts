@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { execFile } from "child_process";
 import { promisify } from "util";
-import { mkdir, readFile, rm, writeFile } from "fs/promises";
+import { access, chmod, mkdir, readFile, rm, writeFile } from "fs/promises";
 import os from "os";
 import path from "path";
 import ffmpegStaticPath from "ffmpeg-static";
@@ -88,18 +88,48 @@ async function downloadSourceVideo(source: BoosterVideoTransformSource) {
   return Buffer.from(arrayBuffer);
 }
 
-function getFfmpegPath() {
-  return String(ffmpegStaticPath || process.env.FFMPEG_PATH || "ffmpeg");
+function getBundledFfmpegCandidate() {
+  const binaryName = process.platform === "win32" ? "ffmpeg.exe" : "ffmpeg";
+  return path.join(process.cwd(), "node_modules", "ffmpeg-static", binaryName);
+}
+
+function getFfmpegPathCandidates() {
+  return [
+    process.env.FFMPEG_PATH,
+    ffmpegStaticPath,
+    getBundledFfmpegCandidate(),
+    "ffmpeg",
+  ]
+    .map((candidate) => String(candidate || "").trim())
+    .filter(Boolean);
+}
+
+async function makeFfmpegExecutableIfNeeded(ffmpegPath: string) {
+  if (!ffmpegPath || ffmpegPath === "ffmpeg" || process.platform === "win32") return;
+  try {
+    await access(ffmpegPath);
+    await chmod(ffmpegPath, 0o755);
+  } catch {
+    // On laisse le test "-version" ci-dessous retourner l'erreur exacte.
+  }
 }
 
 async function ensureFfmpegAvailable() {
-  const ffmpegPath = getFfmpegPath();
-  try {
-    await execFileAsync(ffmpegPath, ["-version"], { timeout: 6000, maxBuffer: 1024 * 1024 });
-    return ffmpegPath;
-  } catch {
-    throw new Error("Adaptation automatique indisponible : la vidéo originale sera utilisée.");
+  const errors: string[] = [];
+
+  for (const ffmpegPath of getFfmpegPathCandidates()) {
+    try {
+      await makeFfmpegExecutableIfNeeded(ffmpegPath);
+      await execFileAsync(ffmpegPath, ["-version"], { timeout: 6000, maxBuffer: 1024 * 1024 });
+      console.info("[Booster] ffmpeg available", { ffmpegPath });
+      return ffmpegPath;
+    } catch (error: any) {
+      errors.push(`${ffmpegPath}: ${String(error?.stderr || error?.message || error || "indisponible").slice(0, 260)}`);
+    }
   }
+
+  console.error("[Booster] ffmpeg unavailable", errors);
+  throw new Error("Adaptation automatique indisponible : FFmpeg n’est pas exécutable sur le serveur.");
 }
 
 async function probeDurationSeconds(filePath: string): Promise<number | null> {
