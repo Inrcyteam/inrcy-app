@@ -1020,20 +1020,21 @@ useEffect(() => {
 
               {models.map((model) => {
                 const isSite = model.key === "site_inrcy" || model.key === "site_web";
-                const connected = isSite ? !!model.connections.ga4 || !!model.connections.gsc : !!model.connections.main;
+                const isTikTokComingSoon = model.key === "tiktok";
+                const connected = !isTikTokComingSoon && (isSite ? !!model.connections.ga4 || !!model.connections.gsc : !!model.connections.main);
                 const isActive = activeStatsPanel === model.key;
 
                 return (
                   <button
                     type="button"
                     key={model.key}
-                    className={`${styles.statsMobileDrawerItem} ${isActive ? styles.statsMobileDrawerItemActive : ""} ${connected ? styles.statsRailItemConnected : styles.statsRailItemOff}`}
+                    className={`${styles.statsMobileDrawerItem} ${isActive ? styles.statsMobileDrawerItemActive : ""} ${isTikTokComingSoon ? styles.statsRailItemDisabled : connected ? styles.statsRailItemConnected : styles.statsRailItemOff}`}
                     onClick={() => selectStatsPanel(model.key)}
                   >
                     <span className={styles.statsRailDot} aria-hidden />
                     <span className={styles.statsRailText}>
                       <b>{model.title}</b>
-                      <small>{connected ? "Connecté" : "À connecter"}</small>
+                      <small>{isTikTokComingSoon ? "Arrive bientôt" : connected ? "Connecté" : "À connecter"}</small>
                     </span>
                     <span className={styles.statsRailValue}>+{fmtInt(model.opportunity30)}</span>
                   </button>
@@ -1061,20 +1062,21 @@ useEffect(() => {
 
           {models.map((model) => {
             const isSite = model.key === "site_inrcy" || model.key === "site_web";
-            const connected = isSite ? !!model.connections.ga4 || !!model.connections.gsc : !!model.connections.main;
+            const isTikTokComingSoon = model.key === "tiktok";
+            const connected = !isTikTokComingSoon && (isSite ? !!model.connections.ga4 || !!model.connections.gsc : !!model.connections.main);
             const isActive = activeStatsPanel === model.key;
 
             return (
               <button
                 key={model.key}
                 type="button"
-                className={`${styles.statsRailItem} ${isActive ? styles.statsRailItemActive : ""} ${connected ? styles.statsRailItemConnected : styles.statsRailItemOff}`}
+                className={`${styles.statsRailItem} ${isActive ? styles.statsRailItemActive : ""} ${isTikTokComingSoon ? styles.statsRailItemDisabled : connected ? styles.statsRailItemConnected : styles.statsRailItemOff}`}
                 onClick={() => selectStatsPanel(model.key)}
               >
                 <span className={styles.statsRailDot} aria-hidden />
                 <span className={styles.statsRailText}>
                   <b>{model.title}</b>
-                  <small>{connected ? "Connecté" : "À connecter"}</small>
+                  <small>{isTikTokComingSoon ? "Arrive bientôt" : connected ? "Connecté" : "À connecter"}</small>
                 </span>
                 <span className={styles.statsRailValue}>+{fmtInt(model.opportunity30)}</span>
               </button>
@@ -1122,12 +1124,13 @@ useEffect(() => {
                   const channelText = model.insights.find((text) => !text.toLowerCase().startsWith("recommandation")) || model.capturedLeadsHint || model.subtitle;
                   const actionText = actionItem?.kicker || model.action.title;
                   const isSite = model.key === "site_inrcy" || model.key === "site_web";
-                  const connected = isSite ? !!model.connections.ga4 || !!model.connections.gsc : !!model.connections.main;
+                  const isTikTokComingSoon = model.key === "tiktok";
+                  const connected = !isTikTokComingSoon && (isSite ? !!model.connections.ga4 || !!model.connections.gsc : !!model.connections.main);
 
                   return (
                     <article
                       key={model.key}
-                      className={`${styles.allStatsActionCard} ${connected ? styles.allStatsActionCardConnected : styles.allStatsActionCardOff}`}
+                      className={`${styles.allStatsActionCard} ${isTikTokComingSoon ? styles.allStatsActionCardDisabled : connected ? styles.allStatsActionCardConnected : styles.allStatsActionCardOff}`}
                     >
                       <button
                         type="button"
@@ -1156,17 +1159,18 @@ useEffect(() => {
 
                       <div className={styles.allStatsRecommendedAction}>
                         <span className={`${styles.allStatsToolBadge} ${connected ? "" : styles.allStatsToolBadgeConnect}`}>
-                          {actionItem?.badge ?? model.action.pill}
+                          {isTikTokComingSoon ? "Arrive bientôt" : actionItem?.badge ?? model.action.pill}
                         </span>
                       </div>
 
                       <button
                         type="button"
-                        className={`${styles.allStatsGoButton} ${connected ? styles.allStatsGoButtonOn : styles.allStatsGoButtonConnect}`}
-                        onClick={() => actionHref && actionHref !== "#" ? navigateFromStats(actionHref) : scrollTo(model.key)}
-                        title={connected ? "Lancer l’action recommandée" : "Configurer ce canal"}
+                        className={`${styles.allStatsGoButton} ${isTikTokComingSoon ? styles.allStatsGoButtonDisabled : connected ? styles.allStatsGoButtonOn : styles.allStatsGoButtonConnect}`}
+                        onClick={() => isTikTokComingSoon ? undefined : actionHref && actionHref !== "#" ? navigateFromStats(actionHref) : scrollTo(model.key)}
+                        disabled={isTikTokComingSoon}
+                        title={isTikTokComingSoon ? "TikTok arrive bientôt" : connected ? "Lancer l’action recommandée" : "Configurer ce canal"}
                       >
-                        {connected ? "GO ⚡" : <>GO <PlugIcon /></>}
+                        {isTikTokComingSoon ? "Bientôt" : connected ? "GO ⚡" : <>GO <PlugIcon /></>}
                       </button>
                     </article>
                   );

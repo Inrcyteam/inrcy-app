@@ -1665,7 +1665,7 @@ export function buildCubeModel(
       },
     } as Overview);
 
-  const accountLabel = String(ov?.identities?.[key]?.label || ov?.identities?.[key]?.url || "").trim();
+  const accountLabel = key === "tiktok" ? "" : String(ov?.identities?.[key]?.label || ov?.identities?.[key]?.url || "").trim();
   const inrcyOwnership = (ov as any)?.inrcySiteOwnership;
   const inrcyDisconnected = inrcyOwnership === "none";
 

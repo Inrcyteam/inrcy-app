@@ -4290,3 +4290,61 @@
     gap: 8px !important;
   }
 }
+
+/* TikTok en préparation — iNrStats : canal visible mais neutralisé */
+.statsRailItemDisabled,
+.statsMobileDrawerItem.statsRailItemDisabled {
+  opacity: .58;
+  filter: grayscale(1);
+  background: rgba(15, 23, 42, .72) !important;
+  border-color: rgba(148, 163, 184, .20) !important;
+  box-shadow: none !important;
+}
+
+.statsRailItemDisabled .statsRailDot,
+.statsMobileDrawerItem.statsRailItemDisabled .statsRailDot {
+  background: #94a3b8 !important;
+  box-shadow: none !important;
+}
+
+.statsRailItemDisabled .statsRailValue,
+.statsMobileDrawerItem.statsRailItemDisabled .statsRailValue {
+  opacity: .45;
+}
+
+.allStatsActionCardDisabled {
+  opacity: .62;
+  filter: grayscale(1);
+  background: linear-gradient(135deg, rgba(15, 23, 42, .86), rgba(17, 24, 39, .72)) !important;
+  border-color: rgba(148, 163, 184, .18) !important;
+  box-shadow: none !important;
+}
+
+.allStatsActionCardDisabled .allStatsDetailArrow,
+.allStatsActionCardDisabled .allStatsChannelButton {
+  cursor: default;
+}
+
+.allStatsGoButtonDisabled,
+.allStatsGoButtonDisabled:hover,
+.allStatsGoButtonDisabled:focus-visible {
+  cursor: not-allowed !important;
+  opacity: .55 !important;
+  color: rgba(226, 232, 240, .74) !important;
+  background: rgba(30, 41, 59, .78) !important;
+  border-color: rgba(148, 163, 184, .22) !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.actionBtnDisabled,
+.actionBtnDisabled:hover,
+.actionBtnDisabled:focus-visible {
+  cursor: not-allowed !important;
+  opacity: .55 !important;
+  color: rgba(226, 232, 240, .74) !important;
+  background: rgba(30, 41, 59, .78) !important;
+  border-color: rgba(148, 163, 184, .22) !important;
+  box-shadow: none !important;
+  transform: none !important;
+}

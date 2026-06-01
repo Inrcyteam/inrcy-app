@@ -2179,6 +2179,10 @@ export default function PublishModal({
   };
 
   const getChannelDetailInfo = (key: ChannelKey) => {
+    // TikTok est volontairement masqué tant que le canal est en préparation :
+    // on ne montre pas le compte mock/demo dans Booster > Publier côté clients.
+    if (key === "tiktok") return null;
+
     const detail = channelDetails[key] || EMPTY_CHANNEL_DETAILS[key];
     const rawLabel = String(detail?.label || "").trim();
     const simplifiedLabel = simplifyChannelDetail(rawLabel);
