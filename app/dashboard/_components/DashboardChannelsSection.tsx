@@ -151,7 +151,7 @@ export default function DashboardChannelsSection({
       aria-hidden
     >
       <div className={styles.desktopSideBubbleStack}>
-        <div className={styles.bubbleLogo}>
+        <div className={`${styles.bubbleLogo} ${item.key === "mails" ? styles.bubbleLogoMail : ""}`}>
           <img className={styles.bubbleLogoImg} src={item.logoSrc} alt={item.logoAlt} />
         </div>
 

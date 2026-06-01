@@ -38,7 +38,7 @@ export default function DashboardFluxBubble({ item, itemKey }: Props) {
       aria-disabled={isComingSoon}
     >
       <div className={styles.bubbleStack}>
-        <div className={styles.bubbleLogo} aria-hidden>
+        <div className={`${styles.bubbleLogo} ${item.key === "mails" ? styles.bubbleLogoMail : ""}`} aria-hidden>
           <img className={styles.bubbleLogoImg} src={item.logoSrc} alt={item.logoAlt} />
         </div>
 

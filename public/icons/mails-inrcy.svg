@@ -1,30 +1,43 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="Mails iNrCy">
   <defs>
-    <linearGradient id="bg" x1="18" y1="30" x2="238" y2="226" gradientUnits="userSpaceOnUse">
+    <linearGradient id="ring" x1="34" y1="30" x2="222" y2="226" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#35d4ff"/>
       <stop offset="0.42" stop-color="#7c5cff"/>
-      <stop offset="0.72" stop-color="#ec5aa6"/>
+      <stop offset="0.74" stop-color="#ec5aa6"/>
       <stop offset="1" stop-color="#ff9f4a"/>
     </linearGradient>
-    <linearGradient id="mail" x1="58" y1="76" x2="200" y2="176" gradientUnits="userSpaceOnUse">
+    <linearGradient id="env" x1="70" y1="80" x2="186" y2="176" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#ffffff"/>
       <stop offset="1" stop-color="#dff7ff"/>
     </linearGradient>
+    <linearGradient id="tag" x1="92" y1="156" x2="164" y2="192" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#35d4ff"/>
+      <stop offset="0.48" stop-color="#7c5cff"/>
+      <stop offset="1" stop-color="#ec5aa6"/>
+    </linearGradient>
     <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%">
-      <feDropShadow dx="0" dy="12" stdDeviation="12" flood-color="#050816" flood-opacity="0.35"/>
+      <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#050816" flood-opacity="0.35"/>
     </filter>
   </defs>
-  <circle cx="128" cy="128" r="116" fill="#071225"/>
-  <circle cx="128" cy="128" r="108" fill="url(#bg)" opacity="0.96"/>
-  <circle cx="128" cy="128" r="94" fill="#071225" opacity="0.18"/>
+
+  <circle cx="128" cy="128" r="118" fill="#071225"/>
+  <circle cx="128" cy="128" r="112" fill="url(#ring)" opacity="0.96"/>
+  <circle cx="128" cy="128" r="101" fill="#0b1026" opacity="0.94"/>
+  <circle cx="128" cy="128" r="90" fill="#0f1736" opacity="0.72"/>
+
   <g filter="url(#shadow)">
-    <rect x="48" y="72" width="160" height="112" rx="26" fill="url(#mail)"/>
-    <path d="M62 91l58 49c5 4 11 4 16 0l58-49" fill="none" stroke="#4f46e5" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" opacity="0.86"/>
-    <path d="M64 166l43-39" fill="none" stroke="#16a7db" stroke-width="10" stroke-linecap="round" opacity="0.65"/>
-    <path d="M192 166l-43-39" fill="none" stroke="#ec4899" stroke-width="10" stroke-linecap="round" opacity="0.65"/>
+    <rect x="62" y="78" width="132" height="86" rx="22" fill="url(#env)"/>
+    <path d="M76 94l44 34c5 4 11 4 16 0l44-34" fill="none" stroke="#5b53ff" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" opacity="0.95"/>
+    <path d="M78 148l34-30" fill="none" stroke="#25b6e6" stroke-width="8" stroke-linecap="round" opacity="0.72"/>
+    <path d="M178 148l-34-30" fill="none" stroke="#ec5aa6" stroke-width="8" stroke-linecap="round" opacity="0.72"/>
   </g>
-  <rect x="78" y="149" width="100" height="34" rx="17" fill="#071225" opacity="0.82"/>
-  <text x="128" y="172" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="24" font-weight="900" fill="#ffffff" letter-spacing="-1.2">iNrCy</text>
-  <circle cx="202" cy="62" r="22" fill="#071225" opacity="0.8"/>
-  <path d="M192 62h20M202 52v20" stroke="#7dd3fc" stroke-width="8" stroke-linecap="round"/>
+
+  <g filter="url(#shadow)">
+    <rect x="86" y="151" width="84" height="28" rx="14" fill="#071225" opacity="0.96"/>
+    <rect x="91" y="156" width="74" height="18" rx="9" fill="url(#tag)" opacity="0.96"/>
+    <text x="128" y="170" text-anchor="middle" font-family="Inter, Arial, sans-serif" font-size="16" font-weight="900" fill="#ffffff" letter-spacing="-0.6">iNrCy</text>
+  </g>
+
+  <circle cx="189" cy="67" r="16" fill="#071225" opacity="0.88"/>
+  <path d="M189 59v16M181 67h16" stroke="#7dd3fc" stroke-width="6" stroke-linecap="round"/>
 </svg>

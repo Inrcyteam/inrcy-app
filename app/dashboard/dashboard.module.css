@@ -5562,3 +5562,59 @@ transform: scale(1.50);
   cursor: not-allowed;
   opacity: 0.55 !important;
 }
+
+/* ✅ Mails : même gabarit que les autres bulles du coverflow.
+   Cause du décalage précédent : Mails avait un logo central à 42px + position:absolute,
+   alors que tous les autres canaux utilisent 38px dans le flux normal.
+   On conserve l'icône dédiée, mais on réaligne le conteneur sur le standard commun. */
+.bubbleLogoMail{
+  border-radius:999px !important;
+  overflow:hidden !important;
+  padding:0 !important;
+  background:rgba(255,255,255,0.08) !important;
+}
+
+.bubbleLogoMail .bubbleLogoImg{
+  width:100% !important;
+  height:100% !important;
+  object-fit:contain !important;
+  object-position:center center !important;
+  border-radius:999px !important;
+  display:block !important;
+  transform:none !important;
+  clip-path:none !important;
+}
+
+.desktopCoverflowCenter .bubbleLogoMail{
+  position:relative !important;
+  display:block !important;
+  flex:0 0 38px !important;
+  width:38px !important;
+  height:38px !important;
+  min-width:38px !important;
+  min-height:38px !important;
+  max-width:38px !important;
+  max-height:38px !important;
+  margin:0 0 4px 0 !important;
+  padding:0 !important;
+  overflow:hidden !important;
+  border-radius:999px !important;
+  line-height:0 !important;
+  z-index:10 !important;
+}
+
+.desktopCoverflowCenter .bubbleLogoMail .bubbleLogoImg{
+  position:static !important;
+  inset:auto !important;
+  width:100% !important;
+  height:100% !important;
+  min-width:0 !important;
+  min-height:0 !important;
+  max-width:100% !important;
+  max-height:100% !important;
+}
+
+.desktopCoverflowCenter .bubbleLogoMail ~ .bubbleTagline{
+  max-width:none !important;
+  white-space:nowrap !important;
+}
