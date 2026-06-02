@@ -6326,3 +6326,73 @@ transform: scale(1.50);
     transform-origin:top center !important;
   }
 }
+
+
+/* ✅ Correctif final responsive : netteté + cercle actif non coupé */
+@media (max-width: 560px){
+  .carouselNav{
+    overflow: visible !important;
+    padding-top: 9px !important;
+  }
+
+  .carouselNavWrap{
+    overflow: visible !important;
+  }
+
+  .carouselIconRail{
+    overflow: visible !important;
+    padding: 4px 0 3px !important;
+    margin: -2px 0 0 !important;
+    align-items: center !important;
+  }
+
+  .carouselIconBtn{
+    box-sizing: border-box !important;
+    flex: 0 0 auto !important;
+    overflow: visible !important;
+    transform: none !important;
+    backface-visibility: hidden !important;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .carouselIconBtnActive{
+    transform: none !important;
+    outline: 1px solid rgba(125, 211, 252, .40) !important;
+    outline-offset: 1px !important;
+    box-shadow:
+      0 0 0 2px rgba(125,211,252,.16),
+      0 0 14px rgba(56,189,248,.20),
+      inset 0 1px 0 rgba(255,255,255,.16) !important;
+  }
+
+  .carouselIconImg{
+    display:block !important;
+    width:100% !important;
+    height:100% !important;
+    object-fit:contain !important;
+    transform:none !important;
+    backface-visibility:hidden !important;
+    image-rendering:auto !important;
+  }
+}
+
+@media (max-width: 420px){
+  .carouselIconRail{
+    overflow: visible !important;
+    padding: 4px 0 3px !important;
+  }
+}
+
+@media (max-width: 340px){
+  .carouselIconRail{
+    overflow: visible !important;
+    padding: 3px 0 2px !important;
+  }
+
+  .carouselIconBtnActive{
+    box-shadow:
+      0 0 0 1px rgba(125,211,252,.18),
+      0 0 10px rgba(56,189,248,.18),
+      inset 0 1px 0 rgba(255,255,255,.14) !important;
+  }
+}
