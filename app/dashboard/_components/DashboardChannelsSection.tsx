@@ -443,21 +443,37 @@ export default function DashboardChannelsSection({
                   <span aria-hidden="true">&lt;</span>
                 </button>
 
-                <div className={styles.carouselDots}>
-                  {baseModules.map((_, i) => (
-                    <button
-                      key={i}
-                      type="button"
-                      className={`${styles.carouselDot} ${i === activeDot ? styles.carouselDotActive : ""}`}
-                      onClick={() => {
-                        if (isAnimating.current) return;
-                        isAnimating.current = true;
-                        setCarouselTransition(true);
-                        setCarouselIndex(i + 1);
-                      }}
-                      aria-label={`Aller au canal ${i + 1}`}
-                    />
-                  ))}
+                <div className={styles.carouselIconRail}>
+                  {baseModules.map((item, i) => {
+                    const tone = getChannelPillTone(item);
+
+                    return (
+                      <button
+                        key={item.key}
+                        type="button"
+                        className={[
+                          styles.carouselIconBtn,
+                          i === activeDot ? styles.carouselIconBtnActive : "",
+                          tone === "connected"
+                            ? styles.carouselIconBtnConnected
+                            : tone === "warning"
+                              ? styles.carouselIconBtnWarning
+                              : styles.carouselIconBtnAvailable,
+                        ].join(" ")}
+                        onClick={() => {
+                          if (isAnimating.current) return;
+                          isAnimating.current = true;
+                          setCarouselTransition(true);
+                          setCarouselIndex(i + 1);
+                        }}
+                        aria-label={`Aller au canal ${item.name}`}
+                        aria-pressed={i === activeDot}
+                        title={item.name}
+                      >
+                        <img className={styles.carouselIconImg} src={item.logoSrc} alt="" aria-hidden />
+                      </button>
+                    );
+                  })}
                 </div>
 
                 <button
