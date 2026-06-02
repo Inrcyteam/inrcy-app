@@ -1756,6 +1756,36 @@
 }
 
 
+.previewPrintSpacer {
+  display: none;
+}
+
+.previewFinalFooter {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+
+.documentPrintPages {
+  display: none;
+}
+
+.documentPrintPage {
+  box-sizing: border-box;
+}
+
+.documentPrintFooter {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
+.documentPrintContinuation {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+  margin-bottom: 8px;
+}
+
 
 /* =========================================================
    IMPRESSION A4 FACTURES / DEVIS - VERSION PROPRE
@@ -1822,7 +1852,7 @@
     max-width: none !important;
     min-height: 0 !important;
     margin: 0 !important;
-    padding: 8mm 9mm !important;
+    padding: 0 !important;
     box-sizing: border-box !important;
     background: #fff !important;
     color: #111 !important;
@@ -1835,8 +1865,86 @@
     print-color-adjust: exact !important;
   }
 
+  .preview > :not(.documentPrintPages) {
+    display: none !important;
+  }
+
+  .documentPrintPages {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    line-height: 0 !important;
+    font-size: 0 !important;
+  }
+
+  .documentPrintPage {
+    display: flex !important;
+    flex-direction: column !important;
+    width: 100% !important;
+    min-height: calc(297mm - 22mm) !important;
+    height: calc(297mm - 22mm) !important;
+    padding: 7mm 9mm !important;
+    box-sizing: border-box !important;
+    background: #fff !important;
+    font-size: 8pt !important;
+    line-height: 1.25 !important;
+    break-after: auto !important;
+    page-break-after: auto !important;
+    overflow: visible !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  .documentPrintPage + .documentPrintPage {
+    break-before: page !important;
+    page-break-before: always !important;
+  }
+
+  .documentPrintPage:last-child {
+    break-after: auto !important;
+    page-break-after: auto !important;
+    margin-bottom: 0 !important;
+  }
+
+  .documentPrintPages::after {
+    content: none !important;
+    display: none !important;
+  }
+
+  .documentPrintContinuation {
+    display: block !important;
+    color: #64748b !important;
+    font-size: 8pt !important;
+    font-weight: 800 !important;
+    margin: 0 0 3mm 0 !important;
+  }
+
+  .documentPrintFooter {
+    margin-top: auto !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  /*
+     Bordure extérieure = cadre de page A4, pas cadre du contenu.
+     En impression/PDF, une bordure positionnée en fixed se répète
+     sur chaque feuille et ne dépend plus de la hauteur réelle du document.
+  */
   .previewFrame {
+    border: 0 !important;
+  }
+
+  .previewFrame::before {
+    content: "" !important;
+    position: fixed !important;
+    inset: 0 !important;
+    box-sizing: border-box !important;
     border: 2px solid var(--doc-accent) !important;
+    pointer-events: none !important;
+    z-index: 9999 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
   }
 
   .previewHeader {
@@ -1936,6 +2044,41 @@
     line-height: 1.22 !important;
     vertical-align: top !important;
     overflow: visible !important;
+  }
+
+  .table th:nth-child(2),
+  .table td:nth-child(2),
+  .table th:nth-child(3),
+  .table td:nth-child(3),
+  .table th:nth-child(4),
+  .table td:nth-child(4) {
+    text-align: center !important;
+  }
+
+  .table th:nth-child(5),
+  .table td:nth-child(5) {
+    text-align: right !important;
+  }
+
+  .table td:nth-child(2) input,
+  .table td:nth-child(3) input,
+  .table td:nth-child(4) select {
+    margin-left: auto !important;
+    margin-right: auto !important;
+    text-align: center !important;
+  }
+
+  .previewPrintSpacer {
+    display: block !important;
+    width: 100% !important;
+    min-height: 0 !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .previewFinalFooter {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
   }
 
   .previewBottomGrid {

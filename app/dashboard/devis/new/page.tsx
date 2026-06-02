@@ -72,6 +72,92 @@ type ClientType = "" | "particulier" | "professionnel" | "institution";
 
 type ServiceDateMode = "single" | "period";
 
+function getQuotePrintFooterSpacerMm(lineCount: number): number {
+  const count = Math.max(1, Number(lineCount) || 1);
+
+  // Le devis a un footer plus haut que la facture grâce à la signature.
+  // La logique garde le footer en bas de la dernière page utilisée,
+  // sans le répéter sur toutes les pages.
+  if (count <= 24) {
+    return Math.max(0, 90 - (count - 1) * 12);
+  }
+
+  const firstPageRows = 24;
+  const rowsPerNextPage = 39;
+  const rowsAfterFirstPage = count - firstPageRows;
+  const rowsOnLastPage = ((rowsAfterFirstPage - 1) % rowsPerNextPage) + 1;
+
+  return Math.max(0, 150 - (rowsOnLastPage - 1) * 4.2);
+}
+
+type QuotePrintPage = {
+  includeHeader: boolean;
+  includeFooter: boolean;
+  lines: LineItem[];
+};
+
+function buildQuotePrintPages(lines: LineItem[]): QuotePrintPage[] {
+  const safeLines = lines.length ? lines : [];
+
+  /*
+   * Pagination print maîtrisée V112.
+   * Le devis a un footer plus haut (signature), donc les seuils sont plus
+   * prudents. On réserve toujours quelques lignes pour la dernière page afin
+   * que le footer ne parte pas seul si des prestations peuvent l'accompagner.
+   */
+  const firstPageWithFooterRows = 13;
+  const firstPageRowsWithoutFooter = 32;
+  const middlePageRows = 32;
+  const lastPageRowsWithFooter = 12;
+
+  if (safeLines.length <= firstPageWithFooterRows) {
+    return [{ includeHeader: true, includeFooter: true, lines: safeLines }];
+  }
+
+  const pages: QuotePrintPage[] = [];
+  let cursor = 0;
+
+  const firstPageLines = safeLines.slice(cursor, cursor + firstPageRowsWithoutFooter);
+  pages.push({
+    includeHeader: true,
+    includeFooter: false,
+    lines: firstPageLines,
+  });
+  cursor += firstPageLines.length;
+
+  let remaining = safeLines.length - cursor;
+
+  while (remaining > middlePageRows + lastPageRowsWithFooter) {
+    const pageLines = safeLines.slice(cursor, cursor + middlePageRows);
+    pages.push({
+      includeHeader: false,
+      includeFooter: false,
+      lines: pageLines,
+    });
+    cursor += pageLines.length;
+    remaining = safeLines.length - cursor;
+  }
+
+  if (remaining > lastPageRowsWithFooter) {
+    const linesBeforeFooter = remaining - lastPageRowsWithFooter;
+    const pageLines = safeLines.slice(cursor, cursor + linesBeforeFooter);
+    pages.push({
+      includeHeader: false,
+      includeFooter: false,
+      lines: pageLines,
+    });
+    cursor += pageLines.length;
+  }
+
+  pages.push({
+    includeHeader: false,
+    includeFooter: true,
+    lines: safeLines.slice(cursor),
+  });
+
+  return pages;
+}
+
 function normalizeClientType(value: unknown): ClientType {
   const normalized = String(value ?? "")
     .trim()
@@ -1642,6 +1728,7 @@ export default function NewDevisPage() {
   ]
     .filter(Boolean)
     .join(" ");
+  const quotePrintPages = buildQuotePrintPages(lines);
 
   return (
     <div className={`${dash.page} ${styles.editorPage}`}>
@@ -2959,14 +3046,23 @@ export default function NewDevisPage() {
           ) : null}
 
           <div
-            className={styles.previewBottomGrid}
+            className={styles.previewPrintSpacer}
+            aria-hidden="true"
             style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 260px",
-              marginTop: 18,
-              gap: 24,
+              height: `${getQuotePrintFooterSpacerMm(lines.length)}mm`,
             }}
-          >
+          />
+
+          <div className={styles.previewFinalFooter}>
+            <div
+              className={styles.previewBottomGrid}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 260px",
+                marginTop: 18,
+                gap: 24,
+              }}
+            >
             <div style={{ fontSize: 12, color: "#444", lineHeight: 1.4 }}>
               <div>
                 Les prix sont exprimés en euros. Le devis est valable{" "}
@@ -3199,6 +3295,133 @@ export default function NewDevisPage() {
               <div style={{ fontSize: 12, color: "#444" }}>Signature :</div>
             </div>
           </div>
+          </div>
+
+          <div className={styles.documentPrintPages} aria-hidden="true">
+            {quotePrintPages.map((page, pageIndex) => (
+              <section
+                key={`quote-print-page-${pageIndex}`}
+                className={styles.documentPrintPage}
+              >
+                {page.includeHeader ? (
+                  <>
+                    <div className={styles.previewHeader}>
+                      <div>
+                        <div className={styles.title}>DEVIS</div>
+                        <div>{number || "—"}</div>
+                        <div style={{ marginTop: 6, color: "#444" }}>
+                          Date : {docDateISO ? new Date(docDateISO).toLocaleDateString("fr-FR") : "—"}
+                        </div>
+                        {serviceDateMode === "single" && serviceDate ? (
+                          <div style={{ marginTop: 4, color: "#444" }}>Prestation / livraison : {new Date(serviceDate).toLocaleDateString("fr-FR")}</div>
+                        ) : null}
+                        {serviceDateMode === "period" && (servicePeriodStart || servicePeriodEnd) ? (
+                          <div style={{ marginTop: 4, color: "#444" }}>
+                            Période : {servicePeriodStart ? new Date(servicePeriodStart).toLocaleDateString("fr-FR") : "—"}
+                            {servicePeriodEnd ? ` → ${new Date(servicePeriodEnd).toLocaleDateString("fr-FR")}` : ""}
+                          </div>
+                        ) : null}
+                      </div>
+                      {profile?.logo_url ? (
+                        <div className={styles.logoBox} aria-label="Logo">
+                          <img src={profile.logo_url} alt="Logo" className={styles.logoImg} />
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className={styles.previewParties}>
+                      <div className={styles.previewPartyCard}>
+                        <div className={styles.previewPartyTitle}>Prestataire</div>
+                        <div style={{ fontWeight: 600 }}>{providerData.company_legal_name ?? "—"}</div>
+                        <div>{providerData.hq_address ?? ""}</div>
+                        <div>{providerData.hq_zip ?? ""} {providerData.hq_city ?? ""}</div>
+                        <div style={{ marginTop: 6, fontSize: 13, color: "#444" }}>
+                          {providerData?.phone ? <div>Tél : {providerData.phone}</div> : null}
+                          {providerData?.contact_email ? <div>Email : {providerData.contact_email}</div> : null}
+                          {providerData?.siren ? <div>SIREN : {providerData.siren}</div> : null}
+                          {providerData?.vat_number ? <div>TVA : {providerData.vat_number}</div> : null}
+                        </div>
+                      </div>
+
+                      <div className={styles.previewPartyCard}>
+                        <div className={styles.previewPartyTitle}>Client</div>
+                        <div style={{ fontWeight: 600 }}>{clientName || "—"}</div>
+                        {clientSiren ? <div>SIREN : {clientSiren}</div> : null}
+                        {clientVatNumber ? <div>TVA : {clientVatNumber}</div> : null}
+                        <div>{billingFullAddress}</div>
+                        {!sameAddresses && deliveryAddress ? (
+                          <div style={{ marginTop: 6 }}><strong>Adresse de livraison :</strong> {deliveryFullAddress}</div>
+                        ) : null}
+                        <div style={{ fontSize: 13, color: "#444", marginTop: 6 }}>{clientEmail || ""}</div>
+                      </div>
+                    </div>
+                  </>
+                ) : page.lines.length ? (
+                  <div className={styles.documentPrintContinuation}>Suite des prestations</div>
+                ) : null}
+
+                {page.lines.length ? (
+                  <table className={styles.table}>
+                    <thead>
+                      <tr>
+                        <th>Désignation</th>
+                        <th style={{ width: 70 }}>Qté</th>
+                        <th style={{ width: 120 }}>PU HT</th>
+                        <th style={{ width: 90 }}>TVA</th>
+                        <th style={{ width: 120, textAlign: "right" }}>Total HT</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {page.lines.map((l) => (
+                        <tr key={`${pageIndex}-${l.id}`}>
+                          <td>{l.label || "—"}</td>
+                          <td>{l.qty}</td>
+                          <td>{formatEuro(l.unitPrice)}</td>
+                          <td>{vatDispense ? 0 : l.vatRate}%</td>
+                          <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{formatEuro(calcLineHT(l))}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : null}
+
+                {page.includeFooter ? (
+                  <div className={styles.documentPrintFooter}>
+                    <div className={styles.previewBottomGrid}>
+                      <div style={{ fontSize: 12, color: "#444", lineHeight: 1.4 }}>
+                        <div>Les prix sont exprimés en euros. Le devis est valable {validityDays} jours.</div>
+                        {paymentMethod || paymentDetails ? <div style={{ marginTop: 6 }}><strong>Paiement :</strong> {paymentLabel}{paymentDetails ? <> — {paymentDetails}</> : null}</div> : null}
+                        {notes ? <div style={{ marginTop: 6 }}>{notes}</div> : null}
+                        {quoteMention ? <div style={{ marginTop: 6 }}>{quoteMention}</div> : null}
+                        {operationCategory ? <div style={{ marginTop: 6 }}><strong>Catégorie :</strong> {OPERATION_CATEGORY_OPTIONS.find((option) => option.key === operationCategory)?.label}</div> : null}
+                        {serviceDateMode === "single" && serviceDate ? <div style={{ marginTop: 6 }}><strong>Date de prestation / livraison :</strong> {new Date(serviceDate).toLocaleDateString("fr-FR")}</div> : null}
+                        {serviceDateMode === "period" && (servicePeriodStart || servicePeriodEnd) ? <div style={{ marginTop: 6 }}><strong>Période de prestation :</strong> {servicePeriodStart ? new Date(servicePeriodStart).toLocaleDateString("fr-FR") : "—"}{servicePeriodEnd ? ` → ${new Date(servicePeriodEnd).toLocaleDateString("fr-FR")}` : ""}</div> : null}
+                        {purchaseOrderReference ? <div style={{ marginTop: 6 }}><strong>Référence commande / PO :</strong> {purchaseOrderReference}</div> : null}
+                        {depositKind && depositValue ? <div style={{ marginTop: 6 }}><strong>Acompte demandé :</strong> {depositKind === "amount" ? `${depositValue} €` : `${depositValue} %`}</div> : null}
+                        {vatDispense ? <div style={{ marginTop: 6 }}><strong>TVA non applicable</strong> — Article 293 B du CGI.</div> : null}
+                      </div>
+                      <div className={styles.previewTotalsBox}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><span>Total HT</span><strong>{formatEuro(totals.totalHT)}</strong></div>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><span>TVA</span><strong>{formatEuro(totals.totalTVA)}</strong></div>
+                        <div className={styles.previewTotalsMain} style={{ display: "flex", justifyContent: "space-between", marginTop: 10, fontSize: 18 }}><span>Total TTC</span><strong>{formatEuro(totals.totalTTC)}</strong></div>
+                        {totals.discountTTC > 0 ? <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}><span>Remise</span><strong>- {formatEuro(totals.discountTTC)}</strong></div> : null}
+                        {discountDetails && totals.discountTTC > 0 ? <div style={{ fontSize: 12, color: "#444", marginTop: 4 }}>{discountDetails}</div> : null}
+                        {totals.discountTTC > 0 ? <div className={styles.previewTotalsMain} style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 18 }}><span>Total à payer</span><strong>{formatEuro(totals.totalDue)}</strong></div> : null}
+                      </div>
+                    </div>
+                    <div className={styles.previewSignatureGrid}>
+                      <div />
+                      <div className={styles.previewSignatureBox} style={{ border: "2px solid #111", borderRadius: 12, padding: 12, minHeight: 90 }}>
+                        <div style={{ fontWeight: 750, marginBottom: 6 }}>Bon pour accord</div>
+                        <div style={{ fontSize: 12, color: "#444" }}>Signature :</div>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </section>
+            ))}
+          </div>
+
         </div>
       </div>
     </div>
