@@ -23,6 +23,9 @@ const ACCOUNT_CACHE_BASE_KEYS = [
 const ACCOUNT_CACHE_PREFIXES = [
   "inrcy_stats_cube_snapshot_v1:",
   "inrcy_stats_summary_snapshot_v2:",
+  "inrcy_stats_mail_snapshot_v1:",
+  "inrcy_stats_mail_snapshot_v2:",
+  "inrcy_stats_mail_snapshot_v3:",
 ] as const;
 
 function canUseWindow() {

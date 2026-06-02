@@ -117,9 +117,18 @@ const EMPTY_MAIL_STATS: MailStatsSnapshot = {
 };
 
 const MAIL_STATS_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const DASHBOARD_CHANNEL_STATE_CACHE_KEY = "inrcy_dashboard_channel_state_v1";
 
 function mailStatsSessionKey(period: Period) {
   return `inrcy_stats_mail_snapshot_v3:${period}`;
+}
+
+function legacyMailStatsSessionKeys(period: Period) {
+  return [
+    mailStatsSessionKey(period),
+    `inrcy_stats_mail_snapshot_v2:${period}`,
+    `inrcy_stats_mail_snapshot_v1:${period}`,
+  ];
 }
 
 function normalizeMailStatsSnapshot(value: unknown, syncedAt?: number): MailStatsSnapshot {
@@ -167,11 +176,55 @@ function parseCachedMailStats(raw: string | null): { syncedAt: number; snapshotD
 }
 
 function readCachedMailStats(period: Period) {
-  const cached = parseCachedMailStats(readUiCacheValue(mailStatsSessionKey(period)));
-  if (!cached) return null;
-  const age = Date.now() - cached.syncedAt;
-  if (!Number.isFinite(age) || age < 0 || age > MAIL_STATS_CACHE_TTL_MS) return null;
-  return cached;
+  for (const key of legacyMailStatsSessionKeys(period)) {
+    const cached = parseCachedMailStats(readUiCacheValue(key));
+    if (!cached) continue;
+    const age = Date.now() - cached.syncedAt;
+    if (!Number.isFinite(age) || age < 0 || age > MAIL_STATS_CACHE_TTL_MS) continue;
+    return cached;
+  }
+  return null;
+}
+
+function readCachedDashboardMailAccountsConnectedCount(): number | null {
+  try {
+    const raw = readUiCacheValue(DASHBOARD_CHANNEL_STATE_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as any;
+    const state = parsed?.state && typeof parsed.state === "object" ? parsed.state : parsed;
+    if (!state || typeof state !== "object" || Array.isArray(state)) return null;
+
+    if (Object.prototype.hasOwnProperty.call(state, "mailAccountsConnectedCount")) {
+      return clampMailAccountCount(state.mailAccountsConnectedCount);
+    }
+
+    if (state.mails && typeof state.mails === "object" && Object.prototype.hasOwnProperty.call(state.mails, "connectedCount")) {
+      return clampMailAccountCount(state.mails.connectedCount);
+    }
+  } catch {
+    // cache UI uniquement, sans impact fonctionnel
+  }
+
+  return null;
+}
+
+function buildInitialMailStatsSnapshot(period: Period): MailStatsSnapshot {
+  const cachedMail = readCachedMailStats(period);
+  if (cachedMail) {
+    return { ...cachedMail.stats, loading: false, error: undefined, syncedAt: cachedMail.syncedAt };
+  }
+
+  const cachedDashboardConnectedCount = readCachedDashboardMailAccountsConnectedCount();
+  if (cachedDashboardConnectedCount !== null) {
+    return {
+      ...EMPTY_MAIL_STATS,
+      loading: true,
+      connectedCount: cachedDashboardConnectedCount,
+      syncedAt: Date.now(),
+    };
+  }
+
+  return EMPTY_MAIL_STATS;
 }
 
 function writeCachedMailStats(period: Period, stats: MailStatsSnapshot, syncedAt = Date.now()) {
@@ -257,15 +310,22 @@ function buildMailCubeModel(stats: MailStatsSnapshot, period: Period): CubeModel
     };
   })();
 
+  const connectionPending = stats.loading && stats.connectedCount <= 0;
+
   return {
     key: "mails",
     title: "Mails",
     subtitle: "Actions mails par usage.",
-    accountLabel: connected ? `Connecté ${stats.connectedCount}/${stats.maxAccounts}` : `À connecter 0/${stats.maxAccounts}`,
+    accountLabel: connected
+      ? `Connecté ${stats.connectedCount}/${stats.maxAccounts}`
+      : connectionPending
+        ? "Vérification en cours..."
+        : `À connecter 0/${stats.maxAccounts}`,
     period,
     loading: stats.loading,
     error: stats.error,
     connections: { main: connected },
+    connectionPending,
     provenance: [
       { label: "Valoriser", value: safeNum(propulserBreakdown.valoriser), colorVar: "--cValoriser" },
       { label: "Récolter", value: safeNum(propulserBreakdown.recolter), colorVar: "--cRecolter" },
@@ -348,7 +408,7 @@ export default function StatsClient() {
   const [activeStatsPanel, setActiveStatsPanel] = useState<StatsPanelKey>("all");
   const [statsMenuOpen, setStatsMenuOpen] = useState(false);
   const [dailyBootReady, setDailyBootReady] = useState(false);
-  const [mailStats, setMailStats] = useState<MailStatsSnapshot>(EMPTY_MAIL_STATS);
+  const [mailStats, setMailStats] = useState<MailStatsSnapshot>(() => buildInitialMailStatsSnapshot(period));
 
   const scrollTo = (key: CubeKey) => {
     setActiveStatsPanel(key);
@@ -1234,7 +1294,7 @@ useEffect(() => {
   const connectedChannelsCount = useMemo(() => {
     return models.reduce((total, model) => {
       const isSite = model.key === "site_inrcy" || model.key === "site_web";
-      const connected = isSite ? !!model.connections.ga4 || !!model.connections.gsc : !!model.connections.main;
+      const connected = isSite ? !!model.connections.ga4 || !!model.connections.gsc : !!model.connections.main || !!model.connectionPending;
       return total + (connected ? 1 : 0);
     }, 0);
   }, [models]);
@@ -1338,7 +1398,8 @@ useEffect(() => {
               {models.map((model) => {
                 const isSite = model.key === "site_inrcy" || model.key === "site_web";
                 const isTikTokComingSoon = model.key === "tiktok";
-                const connected = !isTikTokComingSoon && (isSite ? !!model.connections.ga4 || !!model.connections.gsc : !!model.connections.main);
+                const connectionPending = model.key === "mails" && !!model.connectionPending;
+                const connected = !isTikTokComingSoon && (connectionPending || (isSite ? !!model.connections.ga4 || !!model.connections.gsc : !!model.connections.main));
                 const isActive = activeStatsPanel === model.key;
 
                 return (
@@ -1351,7 +1412,7 @@ useEffect(() => {
                     <span className={styles.statsRailDot} aria-hidden />
                     <span className={styles.statsRailText}>
                       <b>{model.title}</b>
-                      <small>{isTikTokComingSoon ? "Arrive bientôt" : connected ? "Connecté" : "À connecter"}</small>
+                      <small>{isTikTokComingSoon ? "Arrive bientôt" : connectionPending ? "Vérification" : connected ? "Connecté" : "À connecter"}</small>
                     </span>
                     <span className={styles.statsRailValue}>+{fmtInt(model.opportunity30)}</span>
                   </button>
@@ -1380,7 +1441,8 @@ useEffect(() => {
           {models.map((model) => {
             const isSite = model.key === "site_inrcy" || model.key === "site_web";
             const isTikTokComingSoon = model.key === "tiktok";
-            const connected = !isTikTokComingSoon && (isSite ? !!model.connections.ga4 || !!model.connections.gsc : !!model.connections.main);
+            const connectionPending = model.key === "mails" && !!model.connectionPending;
+            const connected = !isTikTokComingSoon && (connectionPending || (isSite ? !!model.connections.ga4 || !!model.connections.gsc : !!model.connections.main));
             const isActive = activeStatsPanel === model.key;
 
             return (
@@ -1393,7 +1455,7 @@ useEffect(() => {
                 <span className={styles.statsRailDot} aria-hidden />
                 <span className={styles.statsRailText}>
                   <b>{model.title}</b>
-                  <small>{isTikTokComingSoon ? "Arrive bientôt" : connected ? "Connecté" : "À connecter"}</small>
+                  <small>{isTikTokComingSoon ? "Arrive bientôt" : connectionPending ? "Vérification" : connected ? "Connecté" : "À connecter"}</small>
                 </span>
                 <span className={styles.statsRailValue}>+{fmtInt(model.opportunity30)}</span>
               </button>
@@ -1442,7 +1504,8 @@ useEffect(() => {
                   const actionText = actionItem?.kicker || model.action.title;
                   const isSite = model.key === "site_inrcy" || model.key === "site_web";
                   const isTikTokComingSoon = model.key === "tiktok";
-                  const connected = !isTikTokComingSoon && (isSite ? !!model.connections.ga4 || !!model.connections.gsc : !!model.connections.main);
+                  const connectionPending = model.key === "mails" && !!model.connectionPending;
+                  const connected = !isTikTokComingSoon && (connectionPending || (isSite ? !!model.connections.ga4 || !!model.connections.gsc : !!model.connections.main));
 
                   return (
                     <article

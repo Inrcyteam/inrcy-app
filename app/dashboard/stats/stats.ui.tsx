@@ -260,9 +260,10 @@ export function Cube({
   const pill = (action as any)?.pill ?? "Connexion";
   const pillKey = actionPillClassKey(pill);
 
-  const connectionOk = !isTikTokComingSoon && (isSite
+  const connectionPending = model.key === "mails" && !!model.connectionPending;
+  const connectionOk = !isTikTokComingSoon && (connectionPending || (isSite
     ? !!model.connections.ga4 || !!model.connections.gsc
-    : !!model.connections.main);
+    : !!model.connections.main));
   const headerTitle = hideDetailsToggle ? getForcedCubeContextLabel(model.key) : model.title;
 
   return (
@@ -297,7 +298,7 @@ export function Cube({
                 <StatusPill ok={!!model.connections.gsc} label="GSC" />
               </>
             ) : (
-              <StatusPill ok={!isTikTokComingSoon && !!model.connections.main} label={isTikTokComingSoon ? "Arrive bientôt" : model.connections.main ? "Connecté" : "Déconnecté"} />
+              <StatusPill ok={!isTikTokComingSoon && (!!model.connections.main || connectionPending)} label={isTikTokComingSoon ? "Arrive bientôt" : connectionPending ? "Vérification" : model.connections.main ? "Connecté" : "Déconnecté"} />
             )}
           </div>
           {!hideDetailsToggle ? (
@@ -332,7 +333,7 @@ export function Cube({
                 <StatusPill ok={!!model.connections.gsc} label="GSC" />
               </>
             ) : (
-              <StatusPill ok={!isTikTokComingSoon && !!model.connections.main} label={isTikTokComingSoon ? "Arrive bientôt" : model.connections.main ? "Connecté" : "Déconnecté"} />
+              <StatusPill ok={!isTikTokComingSoon && (!!model.connections.main || connectionPending)} label={isTikTokComingSoon ? "Arrive bientôt" : connectionPending ? "Vérification" : model.connections.main ? "Connecté" : "Déconnecté"} />
             )}
           </div>
 

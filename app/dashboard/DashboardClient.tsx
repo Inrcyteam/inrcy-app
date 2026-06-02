@@ -150,7 +150,11 @@ function readCachedMailAccountsConnectedCount(): number | null {
     // Même source que iNrStats : permet à la bulle Mails du dashboard
     // d'arriver déjà hydratée si iNrStats a été ouvert avant.
     for (const period of [30, 7] as const) {
-      const raw = readUiCacheValue(`inrcy_stats_mail_snapshot_v1:${period}`);
+      const raw = [
+        `inrcy_stats_mail_snapshot_v3:${period}`,
+        `inrcy_stats_mail_snapshot_v2:${period}`,
+        `inrcy_stats_mail_snapshot_v1:${period}`,
+      ].map((key) => readUiCacheValue(key)).find(Boolean);
       if (!raw) continue;
       const parsed = JSON.parse(raw) as any;
       const syncedAt = Number(parsed?.syncedAt ?? parsed?.stats?.syncedAt);

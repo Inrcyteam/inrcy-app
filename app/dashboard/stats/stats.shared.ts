@@ -131,6 +131,7 @@ export type CubeModel = {
     gsc?: boolean;
     main?: boolean;
   };
+  connectionPending?: boolean;
   provenance: Array<{ label: string; value: number; colorVar: string }>;
   opportunity30: number;
   opportunityLabel: string;
