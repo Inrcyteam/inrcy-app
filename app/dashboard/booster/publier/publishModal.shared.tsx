@@ -298,11 +298,13 @@ export type PublicationMediaType = "images" | "video";
 export type ChannelMediaMode = "video" | "images" | "none";
 
 export const BOOSTER_MAX_IMAGE_COUNT = 5;
-export const BOOSTER_MAX_IMAGE_BYTES = 8 * 1024 * 1024;
-export const BOOSTER_MAX_IMAGE_MB_LABEL = "8 Mo";
+export const BOOSTER_MAX_MEDIA_BYTES = 40 * 1024 * 1024;
+export const BOOSTER_MAX_MEDIA_MB_LABEL = "40 Mo";
+export const BOOSTER_MAX_IMAGE_BYTES = BOOSTER_MAX_MEDIA_BYTES;
+export const BOOSTER_MAX_IMAGE_MB_LABEL = BOOSTER_MAX_MEDIA_MB_LABEL;
 export const BOOSTER_MAX_VIDEO_COUNT = 1;
-export const BOOSTER_MAX_VIDEO_BYTES = 40 * 1024 * 1024;
-export const BOOSTER_MAX_VIDEO_MB_LABEL = "40 Mo";
+export const BOOSTER_MAX_VIDEO_BYTES = BOOSTER_MAX_MEDIA_BYTES;
+export const BOOSTER_MAX_VIDEO_MB_LABEL = BOOSTER_MAX_MEDIA_MB_LABEL;
 export const BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL = "3 min conseillées";
 
 export const BOOSTER_ALLOWED_VIDEO_MIME_TYPES = [
@@ -1424,6 +1426,59 @@ export function sleep(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
+
+async function loadImageElementFromBlob(blob: Blob): Promise<HTMLImageElement> {
+  const url = URL.createObjectURL(blob);
+  try {
+    const img = new Image();
+    img.decoding = "async";
+    const loaded = new Promise<HTMLImageElement>((resolve, reject) => {
+      img.onload = () => resolve(img);
+      img.onerror = () => reject(new Error("Image illisible."));
+    });
+    img.src = url;
+    return await loaded;
+  } finally {
+    window.setTimeout(() => URL.revokeObjectURL(url), 500);
+  }
+}
+
+async function compressImageBlobForUpload(blob: Blob): Promise<Blob> {
+  if (typeof window === "undefined" || typeof document === "undefined") return blob;
+  if (!String(blob.type || "").startsWith("image/")) return blob;
+  if (/image\/(gif|svg\+xml|heic|heif|avif)/i.test(blob.type || "")) return blob;
+
+  const img = await loadImageElementFromBlob(blob);
+  const sourceWidth = Number(img.naturalWidth || img.width || 0);
+  const sourceHeight = Number(img.naturalHeight || img.height || 0);
+  if (!sourceWidth || !sourceHeight) return blob;
+
+  const maxSide = 2500;
+  const ratio = Math.min(1, maxSide / Math.max(sourceWidth, sourceHeight));
+  const width = Math.max(1, Math.round(sourceWidth * ratio));
+  const height = Math.max(1, Math.round(sourceHeight * ratio));
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d", { alpha: false });
+  if (!ctx) return blob;
+  ctx.drawImage(img, 0, 0, width, height);
+
+  const jpegBlob = await new Promise<Blob | null>((resolve) =>
+    canvas.toBlob(resolve, "image/jpeg", 0.84),
+  );
+  if (!jpegBlob) return blob;
+
+  // On garde l'original si la compression ne gagne rien.
+  return jpegBlob.size < blob.size ? jpegBlob : blob;
+}
+
+function withJpegExtension(name: string) {
+  const safeName = sanitizeUploadName(name || "image");
+  return safeName.replace(/\.[^.]+$/, "") + ".jpg";
+}
+
 export async function uploadPreparedImages(
   images: ImagePayload[],
   onProgress?: (current: number, total: number) => void,
@@ -1439,8 +1494,13 @@ export async function uploadPreparedImages(
     }
 
     const blob = await dataUrlToBlob(image.dataUrl);
-    const file = new File([blob], sanitizeUploadName(image.name), {
-      type: image.type || blob.type || "application/octet-stream",
+    const uploadBlob = await compressImageBlobForUpload(blob);
+    const uploadName = uploadBlob.type === "image/jpeg" ? withJpegExtension(image.name) : sanitizeUploadName(image.name);
+    if (uploadBlob.size > BOOSTER_MAX_MEDIA_BYTES) {
+      throw new Error(`Image préparée trop lourde. Taille maximale : ${BOOSTER_MAX_MEDIA_MB_LABEL}.`);
+    }
+    const file = new File([uploadBlob], uploadName, {
+      type: uploadBlob.type || image.type || blob.type || "application/octet-stream",
     });
     const formData = new FormData();
     formData.append("file", file);
@@ -1460,7 +1520,7 @@ export async function uploadPreparedImages(
       ...image,
       dataUrl: undefined,
       name: image.name,
-      type: image.type || blob.type || "application/octet-stream",
+      type: uploadBlob.type || image.type || blob.type || "application/octet-stream",
       storagePath: String(json?.storagePath || ""),
       publicUrl: String(json?.publicUrl || ""),
     });

@@ -4,7 +4,7 @@ import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { enforceRateLimit } from "@/lib/rateLimit";
 
-const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_IMAGE_BYTES = 40 * 1024 * 1024;
 const DEFAULT_UPLOAD_FOLDER = "booster-prepublish";
 
 const MIME_EXTENSION: Record<string, string> = {
@@ -120,7 +120,7 @@ export async function POST(req: Request) {
     const rateLimited = await enforceRateLimit({
       name: "booster_upload_prepared",
       identifier: user.id,
-      limit: 20,
+      limit: 80,
       window: "1 m",
       // Ne bloque pas l upload si Upstash / KV est momentanement indisponible.
       // Sinon l ajout d une photo empeche la publication avec une erreur 503.
@@ -141,7 +141,7 @@ export async function POST(req: Request) {
     }
 
     if (file.size > MAX_IMAGE_BYTES) {
-      return NextResponse.json({ error: "Image trop lourde. Taille maximale : 10 Mo." }, { status: 413 });
+      return NextResponse.json({ error: "Image trop lourde. Taille maximale : 40 Mo." }, { status: 413 });
     }
 
     const requestedPath = String(formData.get("path") || "");

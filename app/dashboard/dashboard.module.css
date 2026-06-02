@@ -5618,3 +5618,130 @@ transform: scale(1.50);
   max-width:none !important;
   white-space:nowrap !important;
 }
+
+
+.publishFooterRoot {
+  display: grid;
+  gap: 8px;
+  justify-items: end;
+  scroll-margin-bottom: 24px;
+}
+
+.publishFooterRow {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  align-items: center;
+  width: 100%;
+}
+
+.publishProgressBox {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 52px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid rgba(76,195,255,0.22);
+  background: rgba(76,195,255,0.08);
+  min-width: 420px;
+  max-width: 700px;
+}
+
+.publishProgressHeader {
+  display: contents;
+}
+
+.publishProgressTitle {
+  white-space: nowrap;
+}
+
+.publishProgressLabel {
+  font-size: 12px;
+  opacity: 0.9;
+  flex: 1;
+  min-width: 0;
+}
+
+.publishProgressPercent {
+  white-space: nowrap;
+}
+
+.publishProgressTrack {
+  width: 140px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255,255,255,0.10);
+  overflow: hidden;
+  flex: 0 0 140px;
+}
+
+@media (max-width: 640px) {
+  .publishFooterRoot {
+    justify-items: stretch;
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .publishFooterRow {
+    justify-content: stretch;
+    align-items: stretch;
+    gap: 8px;
+    flex-wrap: nowrap;
+    max-width: 100%;
+  }
+
+  .publishProgressBox {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 6px;
+    min-width: 0;
+    max-width: 100%;
+    width: 100%;
+    min-height: 0;
+    padding: 10px 12px;
+    border-radius: 18px;
+    box-sizing: border-box;
+    overflow: hidden;
+  }
+
+  .publishProgressHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .publishProgressTitle,
+  .publishProgressPercent {
+    line-height: 1.1;
+  }
+
+  .publishProgressLabel {
+    flex: initial;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 1.25;
+  }
+
+  .publishProgressTrack {
+    width: 100%;
+    flex: initial;
+  }
+}
+
+.publishProgressTitle { order: 1; }
+.publishProgressLabel { order: 2; }
+.publishProgressPercent { order: 3; }
+.publishProgressTrack { order: 4; }
+
+@media (max-width: 640px) {
+  .publishProgressHeader { order: 1; }
+  .publishProgressLabel { order: 2; }
+  .publishProgressTrack { order: 3; }
+}

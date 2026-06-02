@@ -4,6 +4,7 @@ import { ChannelImageAdapterCardsPanel } from "@/app/dashboard/_components/Chann
 import BoosterVideoFormatManager from "./BoosterVideoFormatManager";
 import {
   BOOSTER_MAX_IMAGE_COUNT,
+  BOOSTER_MAX_MEDIA_MB_LABEL,
   BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL,
   BOOSTER_MAX_VIDEO_MB_LABEL,
   CHANNEL_PRESETS,
@@ -470,8 +471,8 @@ export default function PublishImagesPanel({
           }}
         >
           {hasImages || hasVideoMedia
-            ? `${images.length}/${BOOSTER_MAX_IMAGE_COUNT} image${images.length > 1 ? "s" : ""}${hasVideoMedia ? ` · 1 vidéo · IA vidéo + audio · ${BOOSTER_MAX_VIDEO_MB_LABEL} max · ${BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL}` : ""}`
-            : "Aucun média ajouté"}
+            ? `${images.length}/${BOOSTER_MAX_IMAGE_COUNT} image${images.length > 1 ? "s" : ""} · ${BOOSTER_MAX_MEDIA_MB_LABEL} max au total${hasVideoMedia ? ` · 1 vidéo · IA vidéo + audio · ${BOOSTER_MAX_VIDEO_MB_LABEL} max · ${BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL}` : ""}`
+            : `Aucun média ajouté · ${BOOSTER_MAX_IMAGE_COUNT} images max ou 1 vidéo · ${BOOSTER_MAX_MEDIA_MB_LABEL} max`}
         </div>
       </div>
       {imgError ? (

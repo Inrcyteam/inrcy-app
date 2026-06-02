@@ -25,6 +25,8 @@ import {
   BOOSTER_MAX_IMAGE_COUNT,
   BOOSTER_MAX_IMAGE_BYTES,
   BOOSTER_MAX_IMAGE_MB_LABEL,
+  BOOSTER_MAX_MEDIA_BYTES,
+  BOOSTER_MAX_MEDIA_MB_LABEL,
   BOOSTER_MAX_VIDEO_BYTES,
   BOOSTER_MAX_VIDEO_MB_LABEL,
   CHANNEL_LABELS,
@@ -2701,6 +2703,14 @@ export default function PublishModal({
     if (tooBig) {
       setImgError(
         `L'image ${tooBig.name} dépasse ${BOOSTER_MAX_IMAGE_MB_LABEL}.`,
+      );
+      return;
+    }
+
+    const totalImageBytes = [...images, ...allowed].reduce((sum, file) => sum + (file?.size || 0), 0);
+    if (totalImageBytes > BOOSTER_MAX_MEDIA_BYTES) {
+      setImgError(
+        `Vos images dépassent ${BOOSTER_MAX_MEDIA_MB_LABEL} au total. Réduisez le nombre ou le poids des photos.`,
       );
       return;
     }

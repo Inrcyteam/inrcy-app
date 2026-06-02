@@ -8,6 +8,7 @@ import {
 } from "react";
 import {
   BOOSTER_MAX_IMAGE_COUNT,
+  BOOSTER_MAX_MEDIA_MB_LABEL,
   BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL,
   BOOSTER_MAX_VIDEO_MB_LABEL,
   THEME_PLACEHOLDERS,
@@ -758,7 +759,7 @@ export default function PublishIntentPanel({
         className={styles.subtitle}
         style={{ marginBottom: 10, maxWidth: "none", whiteSpace: "normal" }}
       >
-        Décrivez votre idée. <strong>Ajoutez jusqu’à 5 images et 1 vidéo</strong> pour préparer
+        Décrivez votre idée. <strong>Ajoutez jusqu’à 5 images ou 1 vidéo</strong> pour préparer
         votre publication.
       </div>
       <div style={{ display: "grid", gap: 10 }}>
@@ -999,21 +1000,20 @@ export default function PublishIntentPanel({
               flexWrap: "wrap",
             }}
           >
-            {videoFile ? (
-              <div
-                style={{
-                  flex: "1 1 auto",
-                  minWidth: 0,
-                  fontSize: isMobile ? 11 : 12,
-                  opacity: 0.88,
-                  whiteSpace: "normal",
-                  lineHeight: 1.4,
-                  overflowWrap: "anywhere",
-                }}
-              >
-                1 vidéo ajoutée · {BOOSTER_MAX_VIDEO_MB_LABEL} max · {BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL} · IA : audio + captures
-              </div>
-            ) : null}
+            <div
+              style={{
+                flex: "1 1 100%",
+                minWidth: 0,
+                fontSize: isMobile ? 10.5 : 12,
+                opacity: hasImages || hasVideoMedia ? 0.85 : 0.7,
+                lineHeight: 1.45,
+                overflowWrap: "anywhere",
+              }}
+            >
+              {hasImages || hasVideoMedia
+                ? `${images.length}/${BOOSTER_MAX_IMAGE_COUNT} image${images.length > 1 ? "s" : ""} · ${BOOSTER_MAX_MEDIA_MB_LABEL} max au total${hasVideoMedia ? ` · 1 vidéo · IA vidéo + audio · ${BOOSTER_MAX_VIDEO_MB_LABEL} max · ${BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL}` : ""}`
+                : `Aucun média ajouté · ${BOOSTER_MAX_IMAGE_COUNT} images max ou 1 vidéo · ${BOOSTER_MAX_MEDIA_MB_LABEL} max`}
+            </div>
             <label
               title={
                 useImagesForAI
@@ -1059,17 +1059,6 @@ export default function PublishIntentPanel({
                 ? "Images utilisées par l’IA"
                 : "Images hors génération"}
             </label>
-            <div
-              style={{
-                flex: "0 0 auto",
-                fontSize: isMobile ? 11 : 12,
-                opacity: 0.82,
-                whiteSpace: "nowrap",
-              }}
-            >
-              {images.length}/{BOOSTER_MAX_IMAGE_COUNT} image
-              {images.length === 1 ? "" : "s"}
-            </div>
           </div>
 
           {videoPreviewUrl && videoFile ? (
