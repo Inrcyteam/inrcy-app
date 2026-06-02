@@ -2,7 +2,6 @@
 
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import styles from "./stats.module.css";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import ResponsiveActionButton from "../_components/ResponsiveActionButton";
 import HelpButton from "../_components/HelpButton";
@@ -1241,13 +1240,14 @@ useEffect(() => {
       <div className={styles.header}>
         <div className={styles.headerTop}>
           <div className={styles.brand}>
-            <Image
+            <img
               src="/inrstats-logo.png"
               alt="iNrStats"
               width={154}
               height={64}
-              style={{ width: 154, height: "auto" }}
-              priority
+              className={styles.headerLogo}
+              loading="eager"
+              decoding="async"
             />
             <div className={`${styles.tagline} ${styles.taglineDesktop}`}>Vos données analysées en mode business.</div>
           </div>
