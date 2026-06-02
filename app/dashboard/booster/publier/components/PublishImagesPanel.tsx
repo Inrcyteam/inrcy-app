@@ -1,20 +1,17 @@
 import type { MutableRefObject } from "react";
-import { buildVideoTransformSignature, type BoosterVideoTransformedVariant } from "@/lib/boosterVideoTransforms";
+import type { BoosterVideoTransformedVariant } from "@/lib/boosterVideoTransforms";
 import { ChannelImageAdapterCardsPanel } from "@/app/dashboard/_components/ChannelImageAdapterTool";
-import BoosterVideoFormatManager from "./BoosterVideoFormatManager";
+import PublishVideoAdapterPanel, {
+  type PublishVideoVariantPreparationState,
+} from "./PublishVideoAdapterPanel";
 import {
   BOOSTER_MAX_IMAGE_COUNT,
   BOOSTER_MAX_MEDIA_MB_LABEL,
   BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL,
   BOOSTER_MAX_VIDEO_MB_LABEL,
   CHANNEL_PRESETS,
-  VIDEO_ADAPTATION_MODE_LABELS,
-  VIDEO_FORMAT_ASPECT_RATIOS,
-  VIDEO_FORMAT_OPTIONS_BY_CHANNEL,
-  VIDEO_RECOMMENDED_FORMAT_BY_CHANNEL,
   getBackgroundMode,
   getOptimizedTransform,
-  getRecommendedVideoFormatForSource,
   type ChannelImageEditorState,
   type ChannelKey,
   type ImageMeta,
@@ -54,78 +51,16 @@ function MediaModeGlyph({ mode, size = 14 }: { mode: ChannelMediaMode; size?: nu
   );
 }
 
-function formatVideoSeconds(seconds: number | null) {
-  if (!Number.isFinite(Number(seconds))) return "";
-  const safeSeconds = Math.max(0, Math.round(Number(seconds)));
-  const minutes = Math.floor(safeSeconds / 60);
-  const remainingSeconds = safeSeconds % 60;
-  return `${minutes}:${String(remainingSeconds).padStart(2, "0")}`;
-}
-
-function formatVideoBytes(bytes: number | null | undefined) {
-  const value = Number(bytes || 0);
-  if (!Number.isFinite(value) || value <= 0) return "Poids inconnu";
-  if (value >= 1024 * 1024) return `${(value / (1024 * 1024)).toFixed(value >= 10 * 1024 * 1024 ? 0 : 1)} Mo`;
-  if (value >= 1024) return `${Math.round(value / 1024)} Ko`;
-  return `${Math.round(value)} o`;
-}
-
-function getVideoSourceSummary(meta: BoosterVideoSourceMetadata | null | undefined, fallbackDuration: number | null, fallbackSize?: number) {
-  const duration = formatVideoSeconds(meta?.duration ?? fallbackDuration ?? null);
-  const dimension = meta?.width && meta?.height ? `${meta.width}×${meta.height}` : "Dimensions inconnues";
-  const orientation = meta?.orientationLabel || "Orientation inconnue";
-  const ratio = meta?.ratioLabel && meta.ratioLabel !== "Ratio inconnu" ? meta.ratioLabel : null;
-  const size = formatVideoBytes(meta?.size || fallbackSize || 0);
-  return [orientation, ratio, dimension, duration ? duration : null, size].filter(Boolean).join(" · ");
-}
-
 function getCompactChannelLabel(channel: ChannelKey, label: string) {
   if (channel === "gmb") return "Google";
   return label;
 }
-
-function getVideoFormatOptionLabel(channel: ChannelKey, format: VideoFormat) {
-  const base = format === "original" ? "Original" : format.replace("_", ":");
-  return format === VIDEO_RECOMMENDED_FORMAT_BY_CHANNEL[channel] ? `${base} recommandé` : base;
-}
-
-
-function getVideoPreviewAspectRatio(format: VideoFormat, metadata?: BoosterVideoSourceMetadata | null) {
-  if (format === "original" && metadata?.width && metadata?.height) {
-    return `${metadata.width} / ${metadata.height}`;
-  }
-  return VIDEO_FORMAT_ASPECT_RATIOS[format] || "16 / 9";
-}
-
-function getVideoFrameWidth(params: {
-  format: VideoFormat;
-  metadata?: BoosterVideoSourceMetadata | null;
-  isMobile: boolean;
-}) {
-  const { format, metadata, isMobile } = params;
-  const orientation = metadata?.orientation || "unknown";
-
-  if (format === "9_16") return isMobile ? "min(68vw, 202px)" : "190px";
-  if (format === "1_1") return isMobile ? "min(82vw, 268px)" : "260px";
-  if (format === "16_9") return isMobile ? "min(92vw, 360px)" : "348px";
-
-  if (orientation === "vertical") return isMobile ? "min(68vw, 202px)" : "190px";
-  if (orientation === "square") return isMobile ? "min(82vw, 268px)" : "260px";
-  return isMobile ? "min(92vw, 360px)" : "348px";
-}
-
 
 type ImageAdapterTab = {
   key: ChannelKey;
   label: string;
   count: number;
   tone: "ready" | "warning";
-};
-
-type VideoVariantPreparationState = {
-  status: "idle" | "preparing" | "ready" | "error";
-  label: string;
-  detail?: string;
 };
 
 type PublishImagesPanelProps = {
@@ -143,7 +78,7 @@ type PublishImagesPanelProps = {
   videoPreviewUrl: string;
   videoDurationSeconds: number | null;
   videoSourceMetadata: BoosterVideoSourceMetadata | null;
-  videoVariantPreparationByChannel?: Partial<Record<ChannelKey, VideoVariantPreparationState>>;
+  videoVariantPreparationByChannel?: Partial<Record<ChannelKey, PublishVideoVariantPreparationState>>;
   videoTransformedVariants?: BoosterVideoTransformedVariant[];
   videoPreviewVariantsPreparing?: boolean;
   onApplyVideoFormatForChannel?: (channel: ChannelKey) => void;
@@ -166,7 +101,6 @@ type PublishImagesPanelProps = {
     files: FileList | null,
     preferredChannel?: ChannelKey,
   ) => void;
-  removeVideo: () => void;
   gmbFileInputRef: MutableRefObject<HTMLInputElement | null>;
   setImgError: (message: string) => void;
   toggleChannelImage: (channel: ChannelKey, imageKey: string) => void;
@@ -215,7 +149,6 @@ export default function PublishImagesPanel({
   onPickVideoClick,
   onTakePhotoClick,
   onImagesChange,
-  removeVideo,
   gmbFileInputRef,
   setImgError,
   toggleChannelImage,
@@ -233,69 +166,7 @@ export default function PublishImagesPanel({
   const activeMode: ChannelMediaMode =
     channelMediaModes[activeImageChannel] ||
     (hasVideoMedia ? "video" : hasImages ? "images" : "none");
-  const activeImageKeys = channelImageEditors[activeImageChannel]?.imageKeys || [];
-  const activeMediaCount =
-    activeMode === "video" && hasVideoMedia
-      ? 1
-      : activeMode === "images"
-        ? activeImageKeys.length
-        : 0;
-  const activeVideoFormat =
-    videoFormatByChannel[activeImageChannel] ||
-    getRecommendedVideoFormatForSource(activeImageChannel, videoSourceMetadata);
-  const activeVideoAdaptationMode =
-    videoAdaptationModeByChannel[activeImageChannel] || "safe_blur";
-  const activeVideoAspectRatio = getVideoPreviewAspectRatio(activeVideoFormat, videoSourceMetadata);
-  const videoFormatOptions = VIDEO_FORMAT_OPTIONS_BY_CHANNEL[activeImageChannel] || ["original"];
-  const videoSourceSummary = getVideoSourceSummary(videoSourceMetadata, videoDurationSeconds, videoFile?.size || 0);
-  const videoTechnicalDetails = [
-    videoSourceMetadata?.width && videoSourceMetadata?.height
-      ? `Résolution ${videoSourceMetadata.width} × ${videoSourceMetadata.height}`
-      : null,
-    videoSourceMetadata?.ratioLabel && videoSourceMetadata.ratioLabel !== "Ratio inconnu"
-      ? `Ratio ${videoSourceMetadata.ratioLabel}`
-      : null,
-    videoSourceMetadata?.orientationLabel
-      ? `Source ${videoSourceMetadata.orientationLabel.toLowerCase()}`
-      : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-  const isHorizontalSource = videoSourceMetadata?.orientation === "horizontal";
-  const isVerticalDestination = activeVideoFormat === "9_16";
-  const activeVideoPreparation = videoVariantPreparationByChannel[activeImageChannel];
-  const activeVideoSignature = buildVideoTransformSignature(
-    activeVideoFormat,
-    activeVideoAdaptationMode,
-  );
-  const activeVideoPreparedVariant = videoTransformedVariants.find(
-    (variant) => variant.signature === activeVideoSignature,
-  );
-  const activeVideoDisplayUrl = String(activeVideoPreparedVariant?.publicUrl || "").trim() || videoPreviewUrl;
-  const activeVideoIsApplied = Boolean(activeVideoPreparedVariant?.publicUrl);
-  const activeVideoFrameWidth = getVideoFrameWidth({
-    format: activeVideoFormat,
-    metadata: videoSourceMetadata,
-    isMobile,
-  });
-  const activeVideoUsesSafeBlurPreview =
-    !activeVideoIsApplied &&
-    activeVideoAdaptationMode === "safe_blur" &&
-    activeVideoFormat !== "original";
-  const activeVideoSourceIsWiderThanFrame = (() => {
-    const width = Number(videoSourceMetadata?.width || 0);
-    const height = Number(videoSourceMetadata?.height || 0);
-    const sourceRatio = width > 0 && height > 0 ? width / height : 16 / 9;
-    const targetRatio = VIDEO_FORMAT_ASPECT_RATIOS[activeVideoFormat] || "16 / 9";
-    const [targetWidth, targetHeight] = targetRatio
-      .split("/")
-      .map((part) => Number(part.trim()))
-      .filter((value) => Number.isFinite(value) && value > 0);
-    const frameRatio = targetWidth && targetHeight ? targetWidth / targetHeight : sourceRatio;
-    return sourceRatio >= frameRatio;
-  })();
-
-  const getPreparationTone = (state?: VideoVariantPreparationState) => {
+  const getPreparationTone = (state?: PublishVideoVariantPreparationState) => {
     if (state?.status === "ready") return { icon: "✅", color: "#bbf7d0", border: "rgba(34,197,94,0.28)", background: "rgba(34,197,94,0.10)" };
     if (state?.status === "preparing") return { icon: "⏳", color: "#bfdbfe", border: "rgba(96,165,250,0.30)", background: "rgba(59,130,246,0.12)" };
     if (state?.status === "error") return { icon: "⚠️", color: "#fecaca", border: "rgba(248,113,113,0.28)", background: "rgba(248,113,113,0.10)" };
@@ -633,32 +504,25 @@ export default function PublishImagesPanel({
               Ce canal publiera uniquement le texte.
             </div>
           ) : activeMode === "video" ? (
-            hasVideoMedia ? (
-              <BoosterVideoFormatManager
-                isMobile={isMobile}
-                channel={activeImageChannel}
-                videoName={videoFile?.name || "Vidéo sélectionnée"}
-                videoDisplayUrl={activeVideoDisplayUrl}
-                videoSize={videoFile?.size || videoSourceMetadata?.size || 0}
-                videoDurationSeconds={videoDurationSeconds}
-                videoSourceMetadata={videoSourceMetadata}
-                currentFormat={activeVideoFormat}
-                adaptationMode={activeVideoAdaptationMode}
-                videoTransformedVariants={videoTransformedVariants}
-                preparationState={activeVideoPreparation || null}
-                preparing={videoPreviewVariantsPreparing}
-                onFormatChange={(format) => setVideoFormatForChannel(activeImageChannel, format)}
-                onAdaptationModeChange={(mode) => setVideoAdaptationModeForChannel(activeImageChannel, mode)}
-                onApplyFormat={onApplyVideoFormatForChannel ? () => onApplyVideoFormatForChannel(activeImageChannel) : undefined}
-                onApplyFormatToAllChannels={onApplyVideoFormatToAllChannels ? () => onApplyVideoFormatToAllChannels(activeImageChannel) : undefined}
-                onRemoveFromChannel={() => setChannelMediaMode(activeImageChannel, "none")}
-                buttonClassName={styles.secondaryBtn}
-              />
-            ) : (
-              <div style={{ fontSize: 13, opacity: 0.75 }}>
-                Ajoutez une vidéo ou choisissez Photos / Aucun média pour ce canal.
-              </div>
-            )
+            <PublishVideoAdapterPanel
+              styles={styles}
+              isMobile={isMobile}
+              activeChannel={activeImageChannel}
+              videoFile={videoFile}
+              videoPreviewUrl={videoPreviewUrl}
+              videoDurationSeconds={videoDurationSeconds}
+              videoSourceMetadata={videoSourceMetadata}
+              videoFormatByChannel={videoFormatByChannel}
+              setVideoFormatForChannel={setVideoFormatForChannel}
+              videoAdaptationModeByChannel={videoAdaptationModeByChannel}
+              setVideoAdaptationModeForChannel={setVideoAdaptationModeForChannel}
+              videoVariantPreparationByChannel={videoVariantPreparationByChannel}
+              videoTransformedVariants={videoTransformedVariants}
+              videoPreviewVariantsPreparing={videoPreviewVariantsPreparing}
+              onApplyVideoFormatForChannel={onApplyVideoFormatForChannel}
+              onApplyVideoFormatToAllChannels={onApplyVideoFormatToAllChannels}
+              setChannelMediaMode={setChannelMediaMode}
+            />
           ) : !images.length ? (
             <div style={{ fontSize: 13, opacity: 0.75 }}>
               Ajoutez une ou plusieurs images, ou choisissez Vidéo / Aucun média

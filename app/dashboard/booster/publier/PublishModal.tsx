@@ -7,7 +7,6 @@ import {
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
-import { requestBoosterVideoStorageCleanup, requestBoosterVideoTransforms } from "@/lib/boosterVideoTransformClient";
 import { buildVideoTransformSignature } from "@/lib/boosterVideoTransforms";
 import { readSanitizedElementHtml } from "@/lib/sanitizeHtml";
 import { confirmInrcy } from "@/lib/inrcyDialog";
@@ -16,73 +15,41 @@ import {
   stripSiteTextFormatting,
 } from "@/lib/boosterFormatting";
 import stylesDash from "../../dashboard.module.css";
-import {
-  ChannelImageAdapterCardsPanel,
-  ChannelImageAdapterModal,
-  ChannelPublicationPreview,
-} from "@/app/dashboard/_components/ChannelImageAdapterTool";
+import { ChannelImageAdapterModal } from "@/app/dashboard/_components/ChannelImageAdapterTool";
 import {
   BOOSTER_MAX_IMAGE_COUNT,
-  BOOSTER_MAX_IMAGE_BYTES,
-  BOOSTER_MAX_IMAGE_MB_LABEL,
-  BOOSTER_MAX_MEDIA_BYTES,
-  BOOSTER_MAX_MEDIA_MB_LABEL,
   BOOSTER_MAX_VIDEO_BYTES,
   BOOSTER_MAX_VIDEO_MB_LABEL,
   CHANNEL_LABELS,
   CHANNEL_PRESETS,
-  CHANNEL_TEXT_GUIDELINES,
-  DISPLAY_LABELS,
-  STYLE_HELPERS,
   STYLE_OPTIONS,
   THEME_OPTIONS,
-  THEME_PLACEHOLDERS,
   buildAutoPrefillPatch,
   buildPreferredCtaPatch,
-  buildInstagramPreviewCaption,
-  buildBoosterUploadPath,
   buildBoosterVideoGenerationContext,
-  clamp,
+  buildVideoSettingsByChannel,
   clampPercent,
-  computePreviewLayout,
-  getBackgroundFill,
-  getBackgroundMode,
   getChannelDefaultCtaLabel,
-  getCtaModeHelp,
   getDefaultCtaModeForChannel,
   normalizeBoosterPreferredCta,
-  getDefaultTransform,
-  getEffectiveTransformZoom,
   getPublicationMediaLabel,
   getOptimizedTransform,
-  buildVideoSettingsByChannel,
   getRecommendedVideoFormatForSource,
   getVideoFormatLabel,
   VIDEO_ADAPTATION_MODE_LABELS,
   VIDEO_FORMAT_ASPECT_RATIOS,
   extractVideoFramesForAI,
   fileToBoosterAiImagePayload,
-  getWebsiteSourceLabelForChannel,
-  getWebsiteUrlForChannel,
-  isBoosterImageFile,
   isBoosterVideoFile,
   isSiteDisplayKey,
-  makeImageKey,
   normalizePost,
   normalizePublicationMediaType,
   normalizeVideoAdaptationMode,
   normalizeVideoFormat,
-  offsetFromDrawPosition,
   parseInstagramHashtagsInput,
-  readImageMeta,
-  renderChannelImage,
-  renderLimitCounter,
   sleep,
-  syncChannelImageEditors,
-  uploadBoosterVideo,
   uploadPreparedImages,
   type BoosterCtaDefaults,
-  type BoosterCtaMode,
   type BoosterPreferredCta,
   type ChannelImageEditorState,
   type ChannelImagePayload,
@@ -95,22 +62,13 @@ import {
   type DisplayKey,
   type ImageMeta,
   type ImagePayload,
-  type ImageTransform,
   type PublicationMediaType,
   type StyleKey,
   type ThemeKey,
   type BoosterVideoSourceMetadata,
   type VideoPayload,
 } from "./publishModal.shared";
-import {
-  darkOptionStyle,
-  darkSelectStyle,
-  inputStyle,
-  lightFieldStyle,
-  pillBtn,
-  pillBtnActive,
-  textAreaStyle,
-} from "./publishModal.styles";
+import { pillBtn, pillBtnActive } from "./publishModal.styles";
 
 import PublishAiConfigurationDrawer from "./components/PublishAiConfigurationDrawer";
 import PublishChannelSelector from "./components/PublishChannelSelector";
@@ -122,14 +80,12 @@ import PublishImagesPanel from "./components/PublishImagesPanel";
 import PublishPreviewPanel from "./components/PublishPreviewPanel";
 import PublishHelpModal from "./components/PublishHelpModal";
 import PublishWarningModals from "./components/PublishWarningModals";
+import usePublishImageController from "./usePublishImageController";
+import usePublishVideoController, {
+  normalizeRestoredVideoVariants,
+  type VideoVariantPreparationState,
+} from "./usePublishVideoController";
 
-type VideoVariantPreparationStatus = "idle" | "preparing" | "ready" | "error";
-
-type VideoVariantPreparationState = {
-  status: VideoVariantPreparationStatus;
-  label: string;
-  detail?: string;
-};
 import InrcyCameraCaptureModal from "@/app/dashboard/_components/InrcyCameraCaptureModal";
 
 type ChannelConnectionDetail = {
@@ -211,33 +167,66 @@ function simplifyChannelDetail(value: unknown) {
   }
 }
 
-function sanitizePatchForEditor(channel: ChannelKey, patch: Partial<ChannelPost>): Partial<ChannelPost> {
+function sanitizePatchForEditor(
+  channel: ChannelKey,
+  patch: Partial<ChannelPost>,
+): Partial<ChannelPost> {
   const next: Partial<ChannelPost> = { ...patch };
   if (!isSiteDisplayKey(channel)) {
-    if (typeof next.title === "string") next.title = stripSiteTextFormatting(next.title);
-    if (typeof next.content === "string") next.content = stripSiteTextFormatting(next.content);
-    if (typeof next.cta === "string") next.cta = stripSiteTextFormatting(next.cta);
+    if (typeof next.title === "string")
+      next.title = stripSiteTextFormatting(next.title);
+    if (typeof next.content === "string")
+      next.content = stripSiteTextFormatting(next.content);
+    if (typeof next.cta === "string")
+      next.cta = stripSiteTextFormatting(next.cta);
   }
   if (next.ctaUrl !== undefined) next.ctaUrl = String(next.ctaUrl || "");
   if (next.ctaPhone !== undefined) next.ctaPhone = String(next.ctaPhone || "");
   if (next.hashtags !== undefined) {
     next.hashtags = Array.isArray(next.hashtags)
-      ? next.hashtags.map((tag) => String(tag || "").replace(/^#+/, "").trim()).filter(Boolean).slice(0, 20)
+      ? next.hashtags
+          .map((tag) =>
+            String(tag || "")
+              .replace(/^#+/, "")
+              .trim(),
+          )
+          .filter(Boolean)
+          .slice(0, 20)
       : [];
   }
   return next;
 }
 
-function sanitizePostForEditor(channel: ChannelKey, post?: Partial<ChannelPost> | null): ChannelPost {
-  return normalizePost(sanitizePatchForEditor(channel, normalizePost(post)) as Partial<ChannelPost>);
+function sanitizePostForEditor(
+  channel: ChannelKey,
+  post?: Partial<ChannelPost> | null,
+): ChannelPost {
+  return normalizePost(
+    sanitizePatchForEditor(
+      channel,
+      normalizePost(post),
+    ) as Partial<ChannelPost>,
+  );
 }
 
-function sanitizePostsForEditor(raw: unknown): Partial<Record<ChannelKey, ChannelPost>> {
-  const node = raw && typeof raw === "object" && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
-  return CHANNEL_KEYS.reduce((acc, channel) => {
-    if (node[channel] !== undefined) acc[channel] = sanitizePostForEditor(channel, node[channel] as Partial<ChannelPost>);
-    return acc;
-  }, {} as Partial<Record<ChannelKey, ChannelPost>>);
+function sanitizePostsForEditor(
+  raw: unknown,
+): Partial<Record<ChannelKey, ChannelPost>> {
+  const node =
+    raw && typeof raw === "object" && !Array.isArray(raw)
+      ? (raw as Record<string, unknown>)
+      : {};
+  return CHANNEL_KEYS.reduce(
+    (acc, channel) => {
+      if (node[channel] !== undefined)
+        acc[channel] = sanitizePostForEditor(
+          channel,
+          node[channel] as Partial<ChannelPost>,
+        );
+      return acc;
+    },
+    {} as Partial<Record<ChannelKey, ChannelPost>>,
+  );
 }
 
 function buildVideoFileName(file: Pick<File, "name" | "type">) {
@@ -277,21 +266,28 @@ function buildVideoRatioLabel(width: number | null, height: number | null) {
   return closestDistance <= 0.08 ? closestLabel : `${width}:${height}`;
 }
 
-function buildVideoOrientation(width: number | null, height: number | null): BoosterVideoSourceMetadata["orientation"] {
+function buildVideoOrientation(
+  width: number | null,
+  height: number | null,
+): BoosterVideoSourceMetadata["orientation"] {
   if (!width || !height) return "unknown";
   const delta = Math.abs(width - height) / Math.max(width, height);
   if (delta <= 0.06) return "square";
   return width > height ? "horizontal" : "vertical";
 }
 
-function getVideoOrientationLabel(orientation: BoosterVideoSourceMetadata["orientation"]) {
+function getVideoOrientationLabel(
+  orientation: BoosterVideoSourceMetadata["orientation"],
+) {
   if (orientation === "horizontal") return "Horizontale";
   if (orientation === "vertical") return "Verticale";
   if (orientation === "square") return "Carrée";
   return "Orientation inconnue";
 }
 
-function readVideoSourceMetadata(file: File): Promise<BoosterVideoSourceMetadata> {
+function readVideoSourceMetadata(
+  file: File,
+): Promise<BoosterVideoSourceMetadata> {
   return new Promise((resolve) => {
     const url = URL.createObjectURL(file);
     const video = document.createElement("video");
@@ -311,7 +307,8 @@ function readVideoSourceMetadata(file: File): Promise<BoosterVideoSourceMetadata
       const width = Number(partial?.width ?? video.videoWidth ?? 0) || null;
       const height = Number(partial?.height ?? video.videoHeight ?? 0) || null;
       const rawDuration = Number(partial?.duration ?? video.duration ?? 0);
-      const duration = Number.isFinite(rawDuration) && rawDuration > 0 ? rawDuration : null;
+      const duration =
+        Number.isFinite(rawDuration) && rawDuration > 0 ? rawDuration : null;
       const orientation = buildVideoOrientation(width, height);
       cleanup();
       resolve({
@@ -394,6 +391,7 @@ export default function PublishModal({
   onOverlayOpenChange,
   onUnsavedChange,
   saveDraftActionRef,
+  openHelpActionRef,
   onDraftHeaderStateChange,
   initialConnectedChannels,
 }: {
@@ -404,6 +402,7 @@ export default function PublishModal({
   onOverlayOpenChange?: (open: boolean) => void;
   onUnsavedChange?: (hasUnsavedChanges: boolean) => void;
   saveDraftActionRef?: MutableRefObject<(() => void) | null>;
+  openHelpActionRef?: MutableRefObject<(() => void) | null>;
   onDraftHeaderStateChange?: (state: {
     saving: boolean;
     draftSaving: boolean;
@@ -456,6 +455,14 @@ export default function PublishModal({
     message: string;
   } | null>(null);
   const [publishHelpOpen, setPublishHelpOpen] = useState(false);
+
+  useEffect(() => {
+    if (!openHelpActionRef) return;
+    openHelpActionRef.current = () => setPublishHelpOpen(true);
+    return () => {
+      openHelpActionRef.current = null;
+    };
+  }, [openHelpActionRef]);
   const [aiConfigurationOpen, setAiConfigurationOpen] = useState(false);
   const [instagramHashtagsInput, setInstagramHashtagsInput] = useState("");
   const [emptyContentWarningChannels, setEmptyContentWarningChannels] =
@@ -481,31 +488,8 @@ export default function PublishModal({
   const [channelMediaModes, setChannelMediaModes] = useState<
     Partial<Record<ChannelKey, ChannelMediaMode>>
   >({});
-  const [videoFormatByChannel, setVideoFormatByChannel] = useState<
-    Partial<Record<ChannelKey, VideoFormat>>
-  >({});
-  const [videoAdaptationModeByChannel, setVideoAdaptationModeByChannel] = useState<
-    Partial<Record<ChannelKey, VideoAdaptationMode>>
-  >({});
   const [images, setImages] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
-  const [videoFile, setVideoFile] = useState<File | null>(null);
-  const [videoPreviewUrl, setVideoPreviewUrl] = useState("");
-  const [videoDurationSeconds, setVideoDurationSeconds] = useState<
-    number | null
-  >(null);
-  const [videoSourceMetadata, setVideoSourceMetadata] = useState<BoosterVideoSourceMetadata | null>(null);
-  const [videoStorageContext, setVideoStorageContext] = useState<Pick<
-    VideoPayload,
-    "storagePath" | "publicUrl" | "url"
-  > | null>(null);
-  const [videoVariantPreparationByChannel, setVideoVariantPreparationByChannel] = useState<
-    Partial<Record<ChannelKey, VideoVariantPreparationState>>
-  >({});
-  const [videoTransformedVariants, setVideoTransformedVariants] = useState<
-    NonNullable<VideoPayload["transformedVariants"]>
-  >([]);
-  const [videoPreviewVariantsPreparing, setVideoPreviewVariantsPreparing] = useState(false);
   const [imgError, setImgError] = useState("");
   const [useImagesForAI, setUseImagesForAI] = useState(true);
   const [imageMetaByKey, setImageMetaByKey] = useState<
@@ -520,55 +504,6 @@ export default function PublishModal({
     Partial<Record<ChannelKey, string>>
   >({});
 
-  const resolveChannelMediaMode = (channel: ChannelKey): ChannelMediaMode => {
-    const explicit = channelMediaModes[channel];
-    if (explicit === "video" && (videoFile || videoPreviewUrl)) return "video";
-    if (explicit === "images" && images.length > 0) return "images";
-    if (explicit === "none") return "none";
-    if (videoFile || videoPreviewUrl) return "video";
-    if (images.length > 0) return "images";
-    return "none";
-  };
-
-  const clearVideoVariantPreparationForChannel = (channel: ChannelKey) => {
-    setVideoVariantPreparationByChannel((prev) => {
-      if (!prev[channel]) return prev;
-      const next = { ...prev };
-      delete next[channel];
-      return next;
-    });
-  };
-
-  const clearPreparedVideoVariantsForChannel = (channel: ChannelKey) => {
-    const currentSettings = videoSettingsByChannel[channel];
-    if (!currentSettings) return;
-    const signature = buildVideoTransformSignature(
-      currentSettings.format,
-      currentSettings.adaptationMode,
-    );
-    setVideoTransformedVariants((prev) =>
-      prev.filter((variant) => variant.signature !== signature && variant.channel !== channel),
-    );
-  };
-
-  const setChannelMediaMode = (channel: ChannelKey, mode: ChannelMediaMode) => {
-    setChannelMediaModes((prev) => ({ ...prev, [channel]: mode }));
-    clearVideoVariantPreparationForChannel(channel);
-    clearPreparedVideoVariantsForChannel(channel);
-  };
-
-  const setVideoFormatForChannel = (channel: ChannelKey, format: VideoFormat) => {
-    setVideoFormatByChannel((prev) => ({ ...prev, [channel]: normalizeVideoFormat(channel, format) }));
-    // Changer de bulle choisit seulement un format en attente : on ne supprime pas
-    // la variante déjà appliquée, qui reste le format vert réellement publié.
-    clearVideoVariantPreparationForChannel(channel);
-  };
-
-  const setVideoAdaptationModeForChannel = (channel: ChannelKey, mode: VideoAdaptationMode) => {
-    setVideoAdaptationModeByChannel((prev) => ({ ...prev, [channel]: normalizeVideoAdaptationMode(mode) }));
-    // Même logique : l'adaptation choisie devient une intention, pas une transformation.
-    clearVideoVariantPreparationForChannel(channel);
-  };
   const [showPublicationPreview, setShowPublicationPreview] = useState(false);
   const previewStageRef = useRef<HTMLDivElement | null>(null);
   const publishAreaRef = useRef<HTMLDivElement | null>(null);
@@ -576,17 +511,6 @@ export default function PublishModal({
   const siteContentEditorRef = useRef<HTMLDivElement | null>(null);
   const publishPulseTimerRef = useRef<number | null>(null);
   const publishPulseProgressRef = useRef(0);
-  const dragStateRef = useRef<{
-    pointerId: number;
-    startX: number;
-    startY: number;
-    startOffsetX: number;
-    startOffsetY: number;
-  } | null>(null);
-  const [previewStageSize, setPreviewStageSize] = useState({
-    width: 0,
-    height: 0,
-  });
   const [isDraggingImage, setIsDraggingImage] = useState(false);
   const [isImageEditorOpen, setIsImageEditorOpen] = useState(false);
   const publishRootRef = useRef<HTMLDivElement | null>(null);
@@ -619,7 +543,9 @@ export default function PublishModal({
   const [channelInfoOpen, setChannelInfoOpen] = useState<ChannelKey | null>(
     null,
   );
-  const [didInitChannels, setDidInitChannels] = useState(() => !!initialConnectedChannels);
+  const [didInitChannels, setDidInitChannels] = useState(
+    () => !!initialConnectedChannels,
+  );
   const [ctaDefaults, setCtaDefaults] = useState<BoosterCtaDefaults | null>(
     null,
   );
@@ -707,7 +633,6 @@ export default function PublishModal({
       alive = false;
     };
   }, []);
-
 
   useEffect(() => {
     if (!initialConnectedChannels || didInitChannels) return;
@@ -924,34 +849,6 @@ export default function PublishModal({
     };
   }, []);
 
-  useEffect(() => {
-    const node = previewStageRef.current;
-    if (!node || typeof ResizeObserver === "undefined") return;
-
-    const update = () => {
-      setPreviewStageSize({
-        width: node.clientWidth || 0,
-        height: node.clientHeight || 0,
-      });
-    };
-
-    update();
-    const observer = new ResizeObserver(update);
-    observer.observe(node);
-    return () => observer.disconnect();
-  }, [
-    activeImageChannel,
-    activeImageKeyByChannel[activeImageChannel],
-    isImageEditorOpen,
-    images.length,
-  ]);
-
-  useEffect(() => {
-    if (!images.length && !useImagesForAI) {
-      setUseImagesForAI(true);
-    }
-  }, [images.length, useImagesForAI]);
-
   const displayCards = useMemo(() => {
     const ordered: DisplayKey[] = [
       "inrcy_site",
@@ -986,34 +883,205 @@ export default function PublishModal({
     [channels, connected],
   );
 
-  const videoSettingsByChannel = useMemo(
-    () =>
-      buildVideoSettingsByChannel({
-        channels: selectedChannels.length ? selectedChannels : CHANNEL_KEYS,
-        videoFormatByChannel,
-        videoAdaptationModeByChannel,
-        sourceMetadata: videoSourceMetadata,
-      }),
-    [selectedChannels, videoFormatByChannel, videoAdaptationModeByChannel, videoSourceMetadata],
-  );
+  const {
+    videoFormatByChannel,
+    setVideoFormatByChannel,
+    videoAdaptationModeByChannel,
+    setVideoAdaptationModeByChannel,
+    videoFile,
+    setVideoFile,
+    videoPreviewUrl,
+    setVideoPreviewUrl,
+    videoDurationSeconds,
+    setVideoDurationSeconds,
+    videoSourceMetadata,
+    setVideoSourceMetadata,
+    videoStorageContext,
+    setVideoStorageContext,
+    videoVariantPreparationByChannel,
+    setVideoVariantPreparationByChannel,
+    videoTransformedVariants,
+    setVideoTransformedVariants,
+    videoPreviewVariantsPreparing,
+    videoSettingsByChannel,
+    clearVideoVariantPreparationForChannel,
+    clearPreparedVideoVariantsForChannel,
+    setVideoFormatForChannel,
+    setVideoAdaptationModeForChannel,
+    uploadPublicationVideoForPublish,
+    buildPublicationDraftVideoPayload,
+    buildVideoPreparationStateFromVariants,
+    preparePublicationVideoVariants,
+    applyVideoFormatsForChannels,
+    clearVideoMediaState,
+  } = usePublishVideoController({
+    allChannels: CHANNEL_KEYS,
+    selectedChannels,
+    setImgError,
+    setPublishProgress,
+    setPublishProgressLabel,
+  });
 
-  const imageAdapterChannels = useMemo<ChannelKey[]>(() => {
-    const adapterChannels: ChannelKey[] = [];
-    if (selectedChannels.includes("inrcy_site"))
-      adapterChannels.push("inrcy_site");
-    if (selectedChannels.includes("site_web")) adapterChannels.push("site_web");
-    if (selectedChannels.includes("gmb")) adapterChannels.push("gmb");
-    if (selectedChannels.includes("facebook")) adapterChannels.push("facebook");
-    if (selectedChannels.includes("instagram"))
-      adapterChannels.push("instagram");
-    if (selectedChannels.includes("linkedin")) adapterChannels.push("linkedin");
-    if (selectedChannels.includes("tiktok")) adapterChannels.push("tiktok");
-    return adapterChannels;
-  }, [selectedChannels]);
-  const getImageAdapterLabel = (channel: ChannelKey) => CHANNEL_LABELS[channel];
-  const getImpactedImageChannels = (channel: ChannelKey): ChannelKey[] => [
-    channel,
-  ];
+  const resolveChannelMediaMode = (channel: ChannelKey): ChannelMediaMode => {
+    const explicit = channelMediaModes[channel];
+    if (explicit === "video" && (videoFile || videoPreviewUrl)) return "video";
+    if (explicit === "images" && images.length > 0) return "images";
+    if (explicit === "none") return "none";
+    if (videoFile || videoPreviewUrl) return "video";
+    if (images.length > 0) return "images";
+    return "none";
+  };
+
+  const setChannelMediaMode = (channel: ChannelKey, mode: ChannelMediaMode) => {
+    setChannelMediaModes((prev) => ({ ...prev, [channel]: mode }));
+    clearVideoVariantPreparationForChannel(channel);
+    clearPreparedVideoVariantsForChannel(channel);
+  };
+
+  async function applyVideoFormatForChannel(channel: ChannelKey) {
+    const mediaModeByChannel = {
+      [channel]: resolveChannelMediaMode(channel),
+    } as Partial<Record<ChannelKey, ChannelMediaMode>>;
+
+    await applyVideoFormatsForChannels({
+      channels: [channel],
+      mediaModeByChannel,
+    });
+  }
+
+  async function applyVideoFormatToAllChannels(sourceChannel: ChannelKey) {
+    const publishMediaModeByChannel = Object.fromEntries(
+      selectedChannels.map((channel) => [
+        channel,
+        resolveChannelMediaMode(channel),
+      ]),
+    ) as Partial<Record<ChannelKey, ChannelMediaMode>>;
+    const videoChannels = selectedChannels.filter(
+      (channel) => publishMediaModeByChannel[channel] === "video",
+    );
+    if (!videoChannels.length) {
+      setImgError("Sélectionnez au moins un canal en mode vidéo.");
+      return;
+    }
+
+    const sourceSettings = videoSettingsByChannel[sourceChannel];
+    if (!sourceSettings) {
+      setImgError("Choisissez d’abord le format vidéo à appliquer.");
+      return;
+    }
+
+    const sharedSettingsByChannel = videoChannels.reduce(
+      (acc, channel) => {
+        acc[channel] = {
+          format: normalizeVideoFormat(channel, sourceSettings.format),
+          adaptationMode: normalizeVideoAdaptationMode(
+            sourceSettings.adaptationMode,
+          ),
+        };
+        return acc;
+      },
+      {} as Partial<
+        Record<
+          ChannelKey,
+          { format: VideoFormat; adaptationMode: VideoAdaptationMode }
+        >
+      >,
+    );
+
+    setVideoFormatByChannel((prev) => {
+      const next = { ...prev };
+      videoChannels.forEach((channel) => {
+        const settings = sharedSettingsByChannel[channel];
+        if (settings) next[channel] = settings.format;
+      });
+      return next;
+    });
+    setVideoAdaptationModeByChannel((prev) => {
+      const next = { ...prev };
+      videoChannels.forEach((channel) => {
+        const settings = sharedSettingsByChannel[channel];
+        if (settings) next[channel] = settings.adaptationMode;
+      });
+      return next;
+    });
+
+    await applyVideoFormatsForChannels({
+      channels: videoChannels,
+      mediaModeByChannel: publishMediaModeByChannel,
+      settingsByChannel: sharedSettingsByChannel,
+    });
+  }
+
+  const {
+    imageAdapterChannels,
+    getImageAdapterLabel,
+    imageKeys,
+    previewByKey,
+    activeEditorImageKey,
+    activeEditorTransform,
+    activeEditorMeta,
+    activeEffectiveZoom,
+    activeBackgroundMode,
+    activeBackgroundColor,
+    previewAspectRatio,
+    previewLayout,
+    clearImagesMedia,
+    onPickImagesClick,
+    addImageFiles,
+    onImagesChange,
+    removeImage,
+    getDraftImageSettingsByChannel,
+    uploadPublicationDraftImages,
+    restorePublicationDraftImages,
+    updateChannelTransform,
+    setContainMode,
+    setCoverMode,
+    nudgeZoom,
+    handlePreviewWheel,
+    handlePreviewPointerDown,
+    handlePreviewPointerMove,
+    endPreviewDrag,
+    toggleChannelImage,
+    resetChannelImage,
+    resetActiveChannelImages,
+    applyCurrentCadrageToActiveChannelImages,
+    moveChannelImage,
+    applyCurrentImageToSelectedChannels,
+    openImageEditor,
+    closeImageEditor,
+    uploadOriginalImagesForPublication,
+    buildChannelImagesPayload,
+    getPublishImageKeysForChannel,
+  } = usePublishImageController({
+    fileInputRef,
+    previewStageRef,
+    selectedChannels,
+    images,
+    setImages,
+    imagePreviews,
+    setImagePreviews,
+    useImagesForAI,
+    setUseImagesForAI,
+    imageMetaByKey,
+    setImageMetaByKey,
+    channelImageEditors,
+    setChannelImageEditors,
+    activeImageChannel,
+    setActiveImageChannel,
+    activeImageKeyByChannel,
+    setActiveImageKeyByChannel,
+    isImageEditorOpen,
+    setIsImageEditorOpen,
+    isDraggingImage,
+    setIsDraggingImage,
+    hasVideoMedia: Boolean(videoFile || videoPreviewUrl),
+    setImgError,
+    setActiveCard,
+    setPublicationMediaType,
+    setChannelMediaModes,
+    preservePublishScroll,
+    restorePublishScroll,
+  });
 
   const selectedForGeneration = useMemo(() => {
     const out = new Set<ChannelKey>();
@@ -1031,76 +1099,6 @@ export default function PublishModal({
     setActiveCard(channel);
     setActiveImageChannel(channel);
   };
-
-  const imageKeys = useMemo(
-    () => images.map((file) => makeImageKey(file)),
-    [images],
-  );
-  const imageFileByKey = useMemo(
-    () => Object.fromEntries(images.map((file) => [makeImageKey(file), file])),
-    [images],
-  );
-  const previewByKey = useMemo(
-    () =>
-      Object.fromEntries(
-        imageKeys.map((key, index) => [key, imagePreviews[index]]),
-      ),
-    [imageKeys, imagePreviews],
-  );
-
-  useEffect(() => {
-    setChannelImageEditors((prev) =>
-      syncChannelImageEditors({
-        previous: prev,
-        imageKeys,
-        selectedChannels,
-        imageMetaByKey,
-      }),
-    );
-  }, [
-    imageKeys.join("|"),
-    selectedChannels.join("|"),
-    Object.keys(imageMetaByKey)
-      .sort()
-      .map(
-        (key) =>
-          `${key}:${imageMetaByKey[key]?.width || 0}x${imageMetaByKey[key]?.height || 0}`,
-      )
-      .join("|"),
-  ]);
-
-  useEffect(() => {
-    if (!imageAdapterChannels.length) {
-      setActiveImageChannel("inrcy_site");
-      setActiveCard("inrcy_site");
-      return;
-    }
-    if (!imageAdapterChannels.includes(activeImageChannel)) {
-      const fallback = imageAdapterChannels[0];
-      setActiveImageChannel(fallback);
-      setActiveCard(fallback);
-    }
-  }, [imageAdapterChannels, activeImageChannel]);
-
-  useEffect(() => {
-    setActiveImageKeyByChannel((prev) => {
-      const next = { ...prev };
-      for (const channel of selectedChannels) {
-        const available = channelImageEditors[channel]?.imageKeys || [];
-        if (!available.length) {
-          delete next[channel];
-          continue;
-        }
-        if (!next[channel] || !available.includes(next[channel] as string)) {
-          next[channel] = available[0];
-        }
-      }
-      for (const key of Object.keys(next) as ChannelKey[]) {
-        if (!selectedChannels.includes(key)) delete next[key];
-      }
-      return next;
-    });
-  }, [selectedChannels.join("|"), channelImageEditors, imageKeys.join("|")]);
 
   useEffect(() => {
     setChannelMediaModes((prev) => {
@@ -1135,33 +1133,6 @@ export default function PublishModal({
     Boolean(videoFile || videoPreviewUrl),
     images.length,
   ]);
-
-  const activeEditor = channelImageEditors[activeImageChannel];
-  const activeEditorImageKey =
-    activeImageKeyByChannel[activeImageChannel] ||
-    activeEditor?.imageKeys?.[0] ||
-    "";
-  const activeEditorTransform =
-    activeEditor?.transforms?.[activeEditorImageKey] ||
-    getOptimizedTransform(
-      activeImageChannel,
-      imageMetaByKey[activeEditorImageKey],
-    );
-  const activeEditorMeta = imageMetaByKey[activeEditorImageKey];
-  const activeEffectiveZoom = getEffectiveTransformZoom(activeEditorTransform);
-  const activeBackgroundMode = getBackgroundMode(activeEditorTransform);
-  const activeBackgroundColor = getBackgroundFill(
-    activeEditorTransform.backgroundMode || activeBackgroundMode,
-    activeEditorTransform.backgroundColor,
-  );
-  const previewAspectRatio = `${CHANNEL_PRESETS[activeImageChannel].width} / ${CHANNEL_PRESETS[activeImageChannel].height}`;
-  const previewLayout = computePreviewLayout({
-    containerWidth: previewStageSize.width,
-    containerHeight: previewStageSize.height,
-    imageWidth: activeEditorMeta?.width || 0,
-    imageHeight: activeEditorMeta?.height || 0,
-    transform: activeEditorTransform,
-  });
 
   const hasDraftablePublicationContent = useMemo(() => {
     const hasText = !!idea.trim() || !!theme || contentStyle !== "equilibre";
@@ -1232,7 +1203,9 @@ export default function PublishModal({
       instagramHashtagsInput,
       imageNames,
       videoName,
-      videoTransformedVariants: normalizeRestoredVideoVariants(videoTransformedVariants),
+      videoTransformedVariants: normalizeRestoredVideoVariants(
+        videoTransformedVariants,
+      ),
       useImagesForAI,
       imageSettingsByChannel: channelImageEditors,
     });
@@ -1256,579 +1229,6 @@ export default function PublishModal({
     useImagesForAI,
     channelImageEditors,
   ]);
-
-  function getSafeDraftImagePath(file: File, index: number) {
-    return buildBoosterUploadPath(
-      file.name || `image-${index + 1}.jpg`,
-      "booster-drafts",
-    );
-  }
-
-  function getDraftImageSettingsByChannel() {
-    return selectedChannels.reduce(
-      (acc, channel) => {
-        const editor = channelImageEditors[channel] || {
-          imageKeys: [],
-          transforms: {},
-        };
-        const imageKeysForChannel = (editor.imageKeys || []).filter((key) =>
-          imageKeys.includes(key),
-        );
-        acc[channel] = {
-          imageKeys:
-            channel === "gmb"
-              ? imageKeysForChannel.slice(0, 1)
-              : imageKeysForChannel,
-          transforms: Object.fromEntries(
-            Object.entries(editor.transforms || {})
-              .filter(([key]) => imageKeysForChannel.includes(key))
-              .map(([key, value]) => [key, { ...(value as ImageTransform) }]),
-          ),
-        };
-        return acc;
-      },
-      {} as Partial<Record<ChannelKey, ChannelImageEditorState>>,
-    );
-  }
-
-  async function uploadPublicationDraftImages() {
-    const uploaded: Array<{
-      name: string;
-      type?: string;
-      size?: number;
-      lastModified?: number;
-      storagePath?: string;
-      publicUrl?: string;
-    }> = [];
-    for (let index = 0; index < images.length; index += 1) {
-      const file = images[index];
-      if (!file) continue;
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("path", getSafeDraftImagePath(file, index));
-      const response = await fetch("/api/booster/upload-prepared", {
-        method: "POST",
-        body: formData,
-      });
-      const json = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(
-          String(
-            json?.error || "Impossible d’enregistrer les images du brouillon.",
-          ),
-        );
-      }
-      uploaded.push({
-        name: file.name,
-        type: file.type,
-        size: file.size,
-        lastModified: file.lastModified,
-        storagePath: String(json?.storagePath || ""),
-        publicUrl: String(json?.publicUrl || ""),
-      });
-    }
-    return uploaded;
-  }
-
-  async function uploadPublicationDraftVideo(): Promise<VideoPayload | null> {
-    if (!videoFile) return null;
-    return await uploadBoosterVideo(videoFile, {
-      folder: "booster-drafts",
-      duration: videoDurationSeconds,
-      sourceMetadata: videoSourceMetadata,
-    });
-  }
-
-  async function uploadPublicationVideoForPublish(): Promise<VideoPayload | null> {
-    if (!videoFile) return null;
-    return await uploadBoosterVideo(videoFile, {
-      folder: "booster-videos",
-      duration: videoDurationSeconds,
-      sourceMetadata: videoSourceMetadata,
-    });
-  }
-
-  function buildStoredVideoPayloadForTransforms(): VideoPayload | null {
-    const publicUrl = String(videoStorageContext?.publicUrl || videoStorageContext?.url || "").trim();
-    const storagePath = String(videoStorageContext?.storagePath || "").trim();
-    if (!publicUrl && !storagePath) return null;
-    return {
-      name: videoFile?.name || "video-inrcy.mp4",
-      type: videoFile?.type || "video/mp4",
-      size: videoFile?.size || videoSourceMetadata?.size || 0,
-      lastModified: videoFile?.lastModified || Date.now(),
-      duration: videoDurationSeconds,
-      sourceMetadata: videoSourceMetadata,
-      storagePath,
-      publicUrl,
-      url: publicUrl,
-      transformedVariants: videoTransformedVariants,
-    };
-  }
-
-
-  function buildCurrentVideoStorageCleanupPayload(): VideoPayload | null {
-    const publicUrl = String(videoStorageContext?.publicUrl || videoStorageContext?.url || "").trim();
-    const storagePath = String(videoStorageContext?.storagePath || "").trim();
-    const hasVariants = videoTransformedVariants.length > 0;
-    if (!publicUrl && !storagePath && !hasVariants) return null;
-    return {
-      name: videoFile?.name || "video-inrcy.mp4",
-      type: videoFile?.type || "video/mp4",
-      size: videoFile?.size || videoSourceMetadata?.size || 0,
-      lastModified: videoFile?.lastModified || Date.now(),
-      duration: videoDurationSeconds,
-      sourceMetadata: videoSourceMetadata,
-      storagePath,
-      publicUrl,
-      url: publicUrl,
-      transformedVariants: videoTransformedVariants,
-    };
-  }
-
-  function cleanupVideoStorageBestEffort(payloads: unknown[], reason: string) {
-    const cleanPayloads = payloads.filter(Boolean);
-    if (!cleanPayloads.length) return;
-    requestBoosterVideoStorageCleanup({ payloads: cleanPayloads }).catch((cleanupError) => {
-      console.warn(`[Booster] video cleanup skipped (${reason})`, cleanupError);
-    });
-  }
-
-  function cleanupObsoleteVideoVariantsBestEffort(
-    previousVariants: NonNullable<VideoPayload["transformedVariants"]>,
-    keptVariants: NonNullable<VideoPayload["transformedVariants"]>,
-    reason: string,
-  ) {
-    if (!previousVariants.length) return;
-    const keptPaths = new Set(keptVariants.map((variant) => String(variant.storagePath || "")).filter(Boolean));
-    const obsoleteVariants = previousVariants.filter((variant) => {
-      const path = String(variant.storagePath || "").trim();
-      return path && !keptPaths.has(path);
-    });
-    if (!obsoleteVariants.length) return;
-    cleanupVideoStorageBestEffort([{ mediaType: "video", transformedVariants: obsoleteVariants }], reason);
-  }
-
-  async function ensureVideoSourceUploadedForTransforms(): Promise<VideoPayload | null> {
-    const existing = buildStoredVideoPayloadForTransforms();
-    if (existing?.publicUrl || existing?.url) return existing;
-    const uploaded = await uploadPublicationVideoForPublish();
-    if (uploaded?.publicUrl || uploaded?.url) {
-      setVideoStorageContext({
-        storagePath: uploaded.storagePath || "",
-        publicUrl: uploaded.publicUrl || uploaded.url || "",
-        url: uploaded.url || uploaded.publicUrl || "",
-      });
-    }
-    return uploaded;
-  }
-
-  async function buildPublicationDraftVideoPayload(): Promise<VideoPayload | null> {
-    if (!videoFile) return null;
-    const stored = buildStoredVideoPayloadForTransforms();
-    const base = stored?.publicUrl || stored?.url ? stored : await uploadPublicationDraftVideo();
-    if (!base) return null;
-    return {
-      ...base,
-      sourceMetadata: base.sourceMetadata || videoSourceMetadata,
-      transformedVariants: normalizeRestoredVideoVariants([
-        ...(Array.isArray(base.transformedVariants) ? base.transformedVariants : []),
-        ...videoTransformedVariants,
-      ]),
-    };
-  }
-
-  function buildRequiredVideoTransformVariants(
-    channels: readonly ChannelKey[],
-    mediaModeByChannel: Partial<Record<ChannelKey, ChannelMediaMode>>,
-    settingsByChannel: Partial<Record<ChannelKey, { format: VideoFormat; adaptationMode: VideoAdaptationMode }>> = videoSettingsByChannel,
-  ) {
-    const seen = new Set<string>();
-    return channels.flatMap((channel) => {
-      if (mediaModeByChannel[channel] !== "video") return [];
-      const settings = settingsByChannel[channel];
-      if (!settings) return [];
-      const signature = `${settings.format}:${settings.adaptationMode}`;
-      if (seen.has(signature)) return [];
-      seen.add(signature);
-      return [{
-        key: `${channel}-${settings.format}-${settings.adaptationMode}`,
-        channel,
-        format: settings.format,
-        adaptationMode: settings.adaptationMode,
-      }];
-    });
-  }
-
-  function normalizeRestoredVideoVariants(raw: unknown): NonNullable<VideoPayload["transformedVariants"]> {
-    if (!Array.isArray(raw)) return [];
-    const seen = new Set<string>();
-    return raw
-      .filter((variant: any) => {
-        const signature = String(variant?.signature || "").trim();
-        const publicUrl = String(variant?.publicUrl || variant?.url || "").trim();
-        const storagePath = String(variant?.storagePath || "").trim();
-        return Boolean(signature && publicUrl && storagePath);
-      })
-      .map((variant: any) => ({
-        ...variant,
-        publicUrl: String(variant.publicUrl || variant.url || ""),
-        storagePath: String(variant.storagePath || ""),
-        contentType: String(variant.contentType || variant.type || "video/mp4"),
-        size: Number(variant.size || 0),
-        duration: Number.isFinite(Number(variant.duration)) ? Number(variant.duration) : null,
-        generatedAt: String(variant.generatedAt || new Date().toISOString()),
-      }))
-      .filter((variant: any) => {
-        if (seen.has(variant.signature)) return false;
-        seen.add(variant.signature);
-        return true;
-      }) as NonNullable<VideoPayload["transformedVariants"]>;
-  }
-
-  function buildVideoPreparationStateFromVariants(params: {
-    channels: readonly ChannelKey[];
-    mediaModeByChannel: Partial<Record<ChannelKey, ChannelMediaMode>>;
-    variants: NonNullable<VideoPayload["transformedVariants"]>;
-    settingsByChannel?: Partial<Record<ChannelKey, { format: VideoFormat; adaptationMode: VideoAdaptationMode }>>;
-  }): Partial<Record<ChannelKey, VideoVariantPreparationState>> {
-    const { channels, mediaModeByChannel, variants, settingsByChannel } = params;
-    if (!variants.length) return {};
-
-    return channels.reduce((acc, channel) => {
-      if (mediaModeByChannel[channel] !== "video") return acc;
-      const settings = settingsByChannel?.[channel] || videoSettingsByChannel[channel];
-      if (!settings) return acc;
-      const signature = buildVideoTransformSignature(settings.format, settings.adaptationMode);
-      const found = variants.find((variant) => variant.signature === signature);
-      if (!found?.publicUrl) return acc;
-      const formatLabel = getVideoFormatLabel(channel, settings.format, videoSourceMetadata);
-      const adaptationLabel = VIDEO_ADAPTATION_MODE_LABELS[settings.adaptationMode];
-      acc[channel] = {
-        status: "ready",
-        label: "Format appliqué",
-        detail: `${formatLabel} · ${adaptationLabel} · conservé du brouillon`,
-      };
-      return acc;
-    }, {} as Partial<Record<ChannelKey, VideoVariantPreparationState>>);
-  }
-
-  async function preparePublicationVideoVariants(
-    baseVideo: VideoPayload | null,
-    channels: readonly ChannelKey[],
-    mediaModeByChannel: Partial<Record<ChannelKey, ChannelMediaMode>>,
-    options?: {
-      previewOnly?: boolean;
-      settingsByChannel?: Partial<Record<ChannelKey, { format: VideoFormat; adaptationMode: VideoAdaptationMode }>>;
-    },
-  ): Promise<VideoPayload | null> {
-    if (!baseVideo) return null;
-
-    const effectiveVideoSettingsByChannel = options?.settingsByChannel || videoSettingsByChannel;
-    const videoChannels = channels.filter(
-      (channel) => mediaModeByChannel[channel] === "video",
-    );
-    const variants = buildRequiredVideoTransformVariants(channels, mediaModeByChannel, effectiveVideoSettingsByChannel);
-    if (!variants.length) return baseVideo;
-
-    const requiredSignatures = new Set(
-      variants.map((variant) =>
-        variant.format && variant.adaptationMode
-          ? buildVideoTransformSignature(variant.format, variant.adaptationMode)
-          : "",
-      ).filter(Boolean),
-    );
-    const allExistingVariants = [
-      ...(Array.isArray(baseVideo.transformedVariants) ? baseVideo.transformedVariants : []),
-      ...videoTransformedVariants,
-    ];
-    const existingVariants = allExistingVariants.filter((variant) => requiredSignatures.has(String(variant.signature || "")));
-    cleanupObsoleteVideoVariantsBestEffort(allExistingVariants, existingVariants, "obsolete-video-variants");
-
-    // Sécurité prod : pendant une publication, on ne lance JAMAIS une adaptation vidéo automatique.
-    // FFmpeg doit uniquement être appelé quand le pro clique explicitement sur
-    // "Appliquer ce format" / "Appliquer ce format à tous les canaux".
-    // Si aucune modification n'a été demandée, la vidéo originale est publiée telle quelle.
-    if (!options?.previewOnly) {
-      return { ...baseVideo, transformedVariants: existingVariants };
-    }
-
-    const existingSignatures = new Set(existingVariants.map((variant) => variant.signature).filter(Boolean));
-    const variantsToGenerate = variants.filter((variant) => !existingSignatures.has(variant.format && variant.adaptationMode ? buildVideoTransformSignature(variant.format, variant.adaptationMode) : ""));
-
-    const preparingState = Object.fromEntries(
-      videoChannels.map((channel) => {
-        const settings = effectiveVideoSettingsByChannel[channel];
-        const formatLabel = settings ? getVideoFormatLabel(channel, settings.format, videoSourceMetadata) : "Format vidéo";
-        const adaptationMode = settings?.adaptationMode as VideoAdaptationMode | undefined;
-        const adaptationLabel = adaptationMode ? VIDEO_ADAPTATION_MODE_LABELS[adaptationMode] : "Adaptation vidéo";
-        return [
-          channel,
-          {
-            status: "preparing" as const,
-            label: "Modification du format...",
-            detail: `${formatLabel} · ${adaptationLabel}`,
-          },
-        ];
-      }),
-    ) as Partial<Record<ChannelKey, VideoVariantPreparationState>>;
-
-    setVideoVariantPreparationByChannel((prev) => ({
-      ...prev,
-      ...preparingState,
-    }));
-    if (!options?.previewOnly) {
-      setPublishProgress((prev) => Math.max(prev, 58));
-      setPublishProgressLabel(
-        variants.length > 1
-          ? `Modification des ${variants.length} formats vidéo...`
-          : "Modification du format vidéo...",
-      );
-    }
-
-    if (!variantsToGenerate.length) {
-      const readyState = Object.fromEntries(
-        videoChannels.map((channel) => {
-          const settings = effectiveVideoSettingsByChannel[channel];
-          const formatLabel = settings ? getVideoFormatLabel(channel, settings.format, videoSourceMetadata) : "Format vidéo";
-          const adaptationMode = settings?.adaptationMode as VideoAdaptationMode | undefined;
-          const adaptationLabel = adaptationMode ? VIDEO_ADAPTATION_MODE_LABELS[adaptationMode] : "Adaptation vidéo";
-          return [
-            channel,
-            {
-              status: "ready" as const,
-              label: "Format appliqué",
-              detail: `${formatLabel} · ${adaptationLabel}`,
-            },
-          ];
-        }),
-      ) as Partial<Record<ChannelKey, VideoVariantPreparationState>>;
-      setVideoVariantPreparationByChannel((prev) => ({ ...prev, ...readyState }));
-      setVideoTransformedVariants(existingVariants);
-      if (options?.previewOnly) setImgError("");
-      return { ...baseVideo, transformedVariants: existingVariants };
-    }
-
-    try {
-      const response = await requestBoosterVideoTransforms({
-        source: {
-          storagePath: baseVideo.storagePath,
-          publicUrl: baseVideo.publicUrl || baseVideo.url,
-          url: baseVideo.url,
-          name: baseVideo.name,
-          type: baseVideo.type,
-          size: baseVideo.size,
-          duration: baseVideo.duration,
-          sourceMetadata: baseVideo.sourceMetadata || videoSourceMetadata,
-        },
-        variants: variantsToGenerate,
-      });
-
-      const transformedVariants = [
-        ...existingVariants,
-        ...(Array.isArray(response.variants) ? response.variants : []),
-      ];
-      if (!transformedVariants.length && !response.ok) {
-        const fallbackDetail = "Adaptation automatique indisponible : la vidéo originale sera publiée.";
-        setVideoVariantPreparationByChannel((prev) => ({
-          ...prev,
-          ...Object.fromEntries(
-            videoChannels.map((channel) => [
-              channel,
-              {
-                status: "ready" as const,
-                label: "Vidéo originale conservée",
-                detail: fallbackDetail,
-              },
-            ]),
-          ),
-        }));
-        setVideoTransformedVariants(existingVariants);
-        if (options?.previewOnly) setImgError("");
-        if (!options?.previewOnly) setPublishProgressLabel("Adaptation vidéo indisponible : publication de la vidéo originale.");
-        return { ...baseVideo, transformedVariants: existingVariants };
-      }
-
-      const responseErrors = Array.isArray(response.errors) ? response.errors : [];
-      const nextState = Object.fromEntries(
-        videoChannels.map((channel) => {
-          const settings = effectiveVideoSettingsByChannel[channel];
-          if (!settings) {
-            return [
-              channel,
-              { status: "error" as const, label: "Réglage vidéo incomplet" },
-            ];
-          }
-
-          const signature = buildVideoTransformSignature(
-            settings.format,
-            settings.adaptationMode,
-          );
-          const foundVariant = transformedVariants.find(
-            (variant) => variant.signature === signature,
-          );
-          const formatLabel = getVideoFormatLabel(channel, settings.format, videoSourceMetadata);
-          const adaptationMode = settings.adaptationMode as VideoAdaptationMode;
-          const adaptationLabel = VIDEO_ADAPTATION_MODE_LABELS[adaptationMode];
-
-          if (foundVariant?.publicUrl) {
-            return [
-              channel,
-              {
-                status: "ready" as const,
-                label: "Format appliqué",
-                detail: `${formatLabel} · ${adaptationLabel}`,
-              },
-            ];
-          }
-
-          return [
-            channel,
-            {
-              status: "ready" as const,
-              label: "Vidéo originale conservée",
-              detail: "Adaptation automatique indisponible : la vidéo originale sera publiée.",
-            },
-          ];
-        }),
-      ) as Partial<Record<ChannelKey, VideoVariantPreparationState>>;
-
-      setVideoVariantPreparationByChannel((prev) => ({
-        ...prev,
-        ...nextState,
-      }));
-      setVideoTransformedVariants(transformedVariants);
-      if (options?.previewOnly && !responseErrors.length) setImgError("");
-
-      if (responseErrors.length) {
-        setPublishProgressLabel("Adaptation vidéo indisponible : publication de la vidéo originale.");
-      }
-
-      return {
-        ...baseVideo,
-        transformedVariants,
-      };
-    } catch (error) {
-      const fallbackDetail = "Adaptation automatique indisponible : la vidéo originale sera publiée.";
-      setVideoVariantPreparationByChannel((prev) => ({
-        ...prev,
-        ...Object.fromEntries(
-          videoChannels.map((channel) => [
-            channel,
-            {
-              status: "ready" as const,
-              label: "Vidéo originale conservée",
-              detail: fallbackDetail,
-            },
-          ]),
-        ),
-      }));
-      setVideoTransformedVariants(existingVariants);
-      if (options?.previewOnly) setImgError("");
-      if (!options?.previewOnly) setPublishProgressLabel("Adaptation vidéo indisponible : publication de la vidéo originale.");
-      return { ...baseVideo, transformedVariants: existingVariants };
-    }
-  }
-
-  async function applyVideoFormatsForChannels(params: {
-    channels: ChannelKey[];
-    mediaModeByChannel: Partial<Record<ChannelKey, ChannelMediaMode>>;
-    settingsByChannel?: Partial<Record<ChannelKey, { format: VideoFormat; adaptationMode: VideoAdaptationMode }>>;
-  }) {
-    if (videoPreviewVariantsPreparing) return;
-    const videoChannels = params.channels.filter(
-      (channel) => params.mediaModeByChannel[channel] === "video",
-    );
-    if (!videoChannels.length) {
-      setImgError("Sélectionnez au moins un canal en mode vidéo.");
-      return;
-    }
-
-    try {
-      setImgError("");
-      setVideoPreviewVariantsPreparing(true);
-      const baseVideo = await ensureVideoSourceUploadedForTransforms();
-      if (!baseVideo?.publicUrl && !baseVideo?.url) {
-        throw new Error("La vidéo source n’a pas pu être chargée.");
-      }
-      await preparePublicationVideoVariants(
-        baseVideo,
-        videoChannels,
-        params.mediaModeByChannel,
-        { previewOnly: true, settingsByChannel: params.settingsByChannel },
-      );
-    } catch (error) {
-      setImgError(
-        getSimpleFrenchErrorMessage(
-          error,
-          "Les formats vidéo n’ont pas pu être modifiés.",
-        ),
-      );
-    } finally {
-      setVideoPreviewVariantsPreparing(false);
-    }
-  }
-
-  async function applyVideoFormatForChannel(channel: ChannelKey) {
-    const mediaModeByChannel = {
-      [channel]: resolveChannelMediaMode(channel),
-    } as Partial<Record<ChannelKey, ChannelMediaMode>>;
-
-    await applyVideoFormatsForChannels({
-      channels: [channel],
-      mediaModeByChannel,
-    });
-  }
-
-  async function applyVideoFormatToAllChannels(sourceChannel: ChannelKey) {
-    const publishMediaModeByChannel = Object.fromEntries(
-      selectedChannels.map((channel) => [channel, resolveChannelMediaMode(channel)]),
-    ) as Partial<Record<ChannelKey, ChannelMediaMode>>;
-    const videoChannels = selectedChannels.filter(
-      (channel) => publishMediaModeByChannel[channel] === "video",
-    );
-    if (!videoChannels.length) {
-      setImgError("Sélectionnez au moins un canal en mode vidéo.");
-      return;
-    }
-
-    const sourceSettings = videoSettingsByChannel[sourceChannel];
-    if (!sourceSettings) {
-      setImgError("Choisissez d’abord le format vidéo à appliquer.");
-      return;
-    }
-
-    const sharedSettingsByChannel = videoChannels.reduce((acc, channel) => {
-      acc[channel] = {
-        format: normalizeVideoFormat(channel, sourceSettings.format),
-        adaptationMode: normalizeVideoAdaptationMode(sourceSettings.adaptationMode),
-      };
-      return acc;
-    }, {} as Partial<Record<ChannelKey, { format: VideoFormat; adaptationMode: VideoAdaptationMode }>>);
-
-    setVideoFormatByChannel((prev) => {
-      const next = { ...prev };
-      videoChannels.forEach((channel) => {
-        const settings = sharedSettingsByChannel[channel];
-        if (settings) next[channel] = settings.format;
-      });
-      return next;
-    });
-    setVideoAdaptationModeByChannel((prev) => {
-      const next = { ...prev };
-      videoChannels.forEach((channel) => {
-        const settings = sharedSettingsByChannel[channel];
-        if (settings) next[channel] = settings.adaptationMode;
-      });
-      return next;
-    });
-
-    await applyVideoFormatsForChannels({
-      channels: videoChannels,
-      mediaModeByChannel: publishMediaModeByChannel,
-      settingsByChannel: sharedSettingsByChannel,
-    });
-  }
 
   async function restorePublicationDraftVideo(videoDraft: any): Promise<{
     file: File | null;
@@ -1865,10 +1265,14 @@ export default function PublishModal({
       const rawDuration = Number(videoDraft?.duration || 0);
       const duration =
         Number.isFinite(rawDuration) && rawDuration > 0 ? rawDuration : null;
-      const sourceMetadata = videoDraft?.sourceMetadata && typeof videoDraft.sourceMetadata === "object"
-        ? videoDraft.sourceMetadata as BoosterVideoSourceMetadata
-        : await readVideoSourceMetadata(file);
-      const transformedVariants = normalizeRestoredVideoVariants((videoDraft as any)?.transformedVariants);
+      const sourceMetadata =
+        videoDraft?.sourceMetadata &&
+        typeof videoDraft.sourceMetadata === "object"
+          ? (videoDraft.sourceMetadata as BoosterVideoSourceMetadata)
+          : await readVideoSourceMetadata(file);
+      const transformedVariants = normalizeRestoredVideoVariants(
+        (videoDraft as any)?.transformedVariants,
+      );
       return {
         file,
         previewUrl: URL.createObjectURL(file),
@@ -1893,39 +1297,11 @@ export default function PublishModal({
           VideoPayload,
           "storagePath" | "publicUrl" | "url"
         > | null,
-        transformedVariants: normalizeRestoredVideoVariants((videoDraft as any)?.transformedVariants),
+        transformedVariants: normalizeRestoredVideoVariants(
+          (videoDraft as any)?.transformedVariants,
+        ),
       };
     }
-  }
-
-  async function restorePublicationDraftImages(imageDrafts: any[]) {
-    const restoredFiles: File[] = [];
-    const restoredPreviews: string[] = [];
-    const restoredMeta: Record<string, ImageMeta> = {};
-
-    for (const image of imageDrafts) {
-      const publicUrl = String(image?.publicUrl || image?.url || "").trim();
-      const dataUrl = String(image?.dataUrl || "").trim();
-      const source = publicUrl || dataUrl;
-      if (!source) continue;
-      try {
-        const response = await fetch(source);
-        if (!response.ok) continue;
-        const blob = await response.blob();
-        const name = String(image?.name || "image.jpg");
-        const type = String(image?.type || blob.type || "image/jpeg");
-        const lastModified = Number(image?.lastModified || Date.now());
-        const file = new File([blob], name, { type, lastModified });
-        const key = makeImageKey(file);
-        restoredFiles.push(file);
-        restoredPreviews.push(URL.createObjectURL(file));
-        restoredMeta[key] = await readImageMeta(file);
-      } catch {
-        // Une ancienne image de brouillon peut ne plus être disponible : on recharge le reste du brouillon.
-      }
-    }
-
-    return { restoredFiles, restoredPreviews, restoredMeta };
   }
 
   useEffect(() => {
@@ -2003,36 +1379,58 @@ export default function PublishModal({
               >)
             : {};
         const nextVideoFormatByChannel =
-          payload.videoFormatByChannel && typeof payload.videoFormatByChannel === "object"
-            ? Object.fromEntries(
-                Object.entries(payload.videoFormatByChannel as Record<string, unknown>)
+          payload.videoFormatByChannel &&
+          typeof payload.videoFormatByChannel === "object"
+            ? (Object.fromEntries(
+                Object.entries(
+                  payload.videoFormatByChannel as Record<string, unknown>,
+                )
                   .filter(([channel]) => isChannelKey(channel))
-                  .map(([channel, value]) => [channel, normalizeVideoFormat(channel as ChannelKey, value)]),
-              ) as Partial<Record<ChannelKey, VideoFormat>>
+                  .map(([channel, value]) => [
+                    channel,
+                    normalizeVideoFormat(channel as ChannelKey, value),
+                  ]),
+              ) as Partial<Record<ChannelKey, VideoFormat>>)
             : {};
         const rawVideoSettingsByChannel =
-          payload.videoSettingsByChannel && typeof payload.videoSettingsByChannel === "object"
+          payload.videoSettingsByChannel &&
+          typeof payload.videoSettingsByChannel === "object"
             ? payload.videoSettingsByChannel
             : null;
         const nextVideoAdaptationModeByChannel =
-          payload.videoAdaptationModeByChannel && typeof payload.videoAdaptationModeByChannel === "object"
-            ? Object.fromEntries(
-                Object.entries(payload.videoAdaptationModeByChannel as Record<string, unknown>)
+          payload.videoAdaptationModeByChannel &&
+          typeof payload.videoAdaptationModeByChannel === "object"
+            ? (Object.fromEntries(
+                Object.entries(
+                  payload.videoAdaptationModeByChannel as Record<
+                    string,
+                    unknown
+                  >,
+                )
                   .filter(([channel]) => isChannelKey(channel))
-                  .map(([channel, value]) => [channel, normalizeVideoAdaptationMode(value)]),
-              ) as Partial<Record<ChannelKey, VideoAdaptationMode>>
+                  .map(([channel, value]) => [
+                    channel,
+                    normalizeVideoAdaptationMode(value),
+                  ]),
+              ) as Partial<Record<ChannelKey, VideoAdaptationMode>>)
             : {};
-        const nextCanonicalVideoSettingsByChannel = buildVideoSettingsByChannel({
-          channels: CHANNEL_KEYS,
-          videoSettingsByChannel: rawVideoSettingsByChannel,
-          videoFormatByChannel: nextVideoFormatByChannel,
-          videoAdaptationModeByChannel: nextVideoAdaptationModeByChannel,
-        });
+        const nextCanonicalVideoSettingsByChannel = buildVideoSettingsByChannel(
+          {
+            channels: CHANNEL_KEYS,
+            videoSettingsByChannel: rawVideoSettingsByChannel,
+            videoFormatByChannel: nextVideoFormatByChannel,
+            videoAdaptationModeByChannel: nextVideoAdaptationModeByChannel,
+          },
+        );
         const nextCanonicalVideoFormatByChannel = Object.fromEntries(
-          Object.entries(nextCanonicalVideoSettingsByChannel).map(([channel, settings]) => [channel, settings?.format]),
+          Object.entries(nextCanonicalVideoSettingsByChannel).map(
+            ([channel, settings]) => [channel, settings?.format],
+          ),
         ) as Partial<Record<ChannelKey, VideoFormat>>;
         const nextCanonicalVideoAdaptationModeByChannel = Object.fromEntries(
-          Object.entries(nextCanonicalVideoSettingsByChannel).map(([channel, settings]) => [channel, settings?.adaptationMode]),
+          Object.entries(nextCanonicalVideoSettingsByChannel).map(
+            ([channel, settings]) => [channel, settings?.adaptationMode],
+          ),
         ) as Partial<Record<ChannelKey, VideoAdaptationMode>>;
         const { restoredFiles, restoredPreviews, restoredMeta } =
           await restorePublicationDraftImages(imageDrafts);
@@ -2047,7 +1445,9 @@ export default function PublishModal({
                 VideoPayload,
                 "storagePath" | "publicUrl" | "url"
               > | null,
-              transformedVariants: [] as NonNullable<VideoPayload["transformedVariants"]>,
+              transformedVariants: [] as NonNullable<
+                VideoPayload["transformedVariants"]
+              >,
             };
 
         if (cancelled) return;
@@ -2069,7 +1469,9 @@ export default function PublishModal({
         setPublicationMediaType(effectiveMediaType);
         setChannelMediaModes(nextChannelMediaModes);
         setVideoFormatByChannel(nextCanonicalVideoFormatByChannel);
-        setVideoAdaptationModeByChannel(nextCanonicalVideoAdaptationModeByChannel);
+        setVideoAdaptationModeByChannel(
+          nextCanonicalVideoAdaptationModeByChannel,
+        );
         setImages(restoredFiles);
         setImagePreviews(restoredPreviews);
         setVideoFile(restoredVideo.file);
@@ -2114,7 +1516,8 @@ export default function PublishModal({
             mediaType: effectiveMediaType,
             channelMediaModes: nextChannelMediaModes,
             videoFormatByChannel: nextCanonicalVideoFormatByChannel,
-            videoAdaptationModeByChannel: nextCanonicalVideoAdaptationModeByChannel,
+            videoAdaptationModeByChannel:
+              nextCanonicalVideoAdaptationModeByChannel,
             videoSettingsByChannel: nextCanonicalVideoSettingsByChannel,
             idea: nextIdea.trim(),
             theme: nextTheme,
@@ -2220,32 +1623,11 @@ export default function PublishModal({
     setTheme(next);
   };
 
-  const clearImagesMedia = () => {
-    imagePreviews.forEach((url) => URL.revokeObjectURL(url));
-    setImages([]);
-    setImagePreviews([]);
-    setImageMetaByKey({});
-    setChannelImageEditors({});
-    setActiveImageKeyByChannel({});
-  };
-
-  const clearVideoMedia = (options?: { cleanupStorage?: boolean; reason?: string }) => {
-    if (options?.cleanupStorage) {
-      const cleanupPayload = buildCurrentVideoStorageCleanupPayload();
-      if (cleanupPayload) cleanupVideoStorageBestEffort([cleanupPayload], options.reason || "clear-video");
-    }
-
-    setVideoPreviewUrl((current) => {
-      if (current) URL.revokeObjectURL(current);
-      return "";
-    });
-    setVideoFile(null);
-    setVideoDurationSeconds(null);
-    setVideoSourceMetadata(null);
-    setVideoStorageContext(null);
-    setVideoVariantPreparationByChannel({});
-    setVideoTransformedVariants([]);
-    setVideoPreviewVariantsPreparing(false);
+  const clearVideoMedia = (options?: {
+    cleanupStorage?: boolean;
+    reason?: string;
+  }) => {
+    clearVideoMediaState(options);
     videoAudioTranscriptCacheRef.current = null;
   };
 
@@ -2565,12 +1947,6 @@ export default function PublishModal({
     });
   };
 
-  const onPickImagesClick = () => {
-    setImgError("");
-    if (images.length >= BOOSTER_MAX_IMAGE_COUNT) return;
-    fileInputRef.current?.click();
-  };
-
   const onPickVideoClick = () => {
     setImgError("");
     videoInputRef.current?.click();
@@ -2629,15 +2005,26 @@ export default function PublishModal({
     setVideoStorageContext(null);
     setVideoFormatByChannel((prev) => {
       const next: Partial<Record<ChannelKey, VideoFormat>> = { ...prev };
-      for (const channel of selectedChannels.length ? selectedChannels : CHANNEL_KEYS) {
-        next[channel] = getRecommendedVideoFormatForSource(channel, sourceMetadata);
+      for (const channel of selectedChannels.length
+        ? selectedChannels
+        : CHANNEL_KEYS) {
+        next[channel] = getRecommendedVideoFormatForSource(
+          channel,
+          sourceMetadata,
+        );
       }
       return next;
     });
     setVideoAdaptationModeByChannel((prev) => {
-      const next: Partial<Record<ChannelKey, VideoAdaptationMode>> = { ...prev };
-      for (const channel of selectedChannels.length ? selectedChannels : CHANNEL_KEYS) {
-        next[channel] = normalizeVideoAdaptationMode(next[channel] || "safe_blur");
+      const next: Partial<Record<ChannelKey, VideoAdaptationMode>> = {
+        ...prev,
+      };
+      for (const channel of selectedChannels.length
+        ? selectedChannels
+        : CHANNEL_KEYS) {
+        next[channel] = normalizeVideoAdaptationMode(
+          next[channel] || "safe_blur",
+        );
       }
       return next;
     });
@@ -2652,144 +2039,6 @@ export default function PublishModal({
   const onVideoChange = async (files: FileList | null) => {
     const file = files?.[0] || null;
     await addVideoFile(file);
-  };
-
-  const addImageFiles = async (
-    pickedFiles: File[],
-    targetChannel?: ChannelKey,
-  ) => {
-    if (!pickedFiles.length) return;
-    setImgError("");
-
-    const incoming = pickedFiles.filter(isBoosterImageFile);
-    if (!incoming.length) {
-      setImgError("Ajoutez des fichiers image valides.");
-      return;
-    }
-
-    const hasVideoMedia = Boolean(videoFile || videoPreviewUrl);
-
-    if (!hasVideoMedia) {
-      setPublicationMediaType("images");
-    }
-
-    const existingKeys = new Set(images.map((file) => makeImageKey(file)));
-    const deduped = incoming.filter(
-      (file) => !existingKeys.has(makeImageKey(file)),
-    );
-    const allowed = deduped.slice(
-      0,
-      Math.max(0, BOOSTER_MAX_IMAGE_COUNT - images.length),
-    );
-
-    if (!allowed.length) {
-      setImgError(
-        images.length >= BOOSTER_MAX_IMAGE_COUNT
-          ? `Maximum ${BOOSTER_MAX_IMAGE_COUNT} images.`
-          : "Ces images sont déjà ajoutées.",
-      );
-      return;
-    }
-
-    if (incoming.length > allowed.length) {
-      setImgError(
-        images.length + allowed.length >= BOOSTER_MAX_IMAGE_COUNT
-          ? `Maximum ${BOOSTER_MAX_IMAGE_COUNT} images.`
-          : "Certaines images étaient déjà présentes.",
-      );
-    }
-
-    const tooBig = allowed.find((file) => file.size > BOOSTER_MAX_IMAGE_BYTES);
-    if (tooBig) {
-      setImgError(
-        `L'image ${tooBig.name} dépasse ${BOOSTER_MAX_IMAGE_MB_LABEL}.`,
-      );
-      return;
-    }
-
-    const totalImageBytes = [...images, ...allowed].reduce((sum, file) => sum + (file?.size || 0), 0);
-    if (totalImageBytes > BOOSTER_MAX_MEDIA_BYTES) {
-      setImgError(
-        `Vos images dépassent ${BOOSTER_MAX_MEDIA_MB_LABEL} au total. Réduisez le nombre ou le poids des photos.`,
-      );
-      return;
-    }
-
-    const nextFiles = [...images, ...allowed].slice(0, BOOSTER_MAX_IMAGE_COUNT);
-    const nextPreviews = [
-      ...imagePreviews,
-      ...allowed.map((file) => URL.createObjectURL(file)),
-    ].slice(0, BOOSTER_MAX_IMAGE_COUNT);
-    const nextMetaEntries = await Promise.all(
-      allowed.map(
-        async (file) =>
-          [makeImageKey(file), await readImageMeta(file)] as const,
-      ),
-    );
-    const nextMetaMap = Object.fromEntries(nextMetaEntries) as Record<
-      string,
-      ImageMeta
-    >;
-    const newKeys = allowed.map((file) => makeImageKey(file));
-
-    setImages(nextFiles);
-    setImagePreviews(nextPreviews);
-    setImageMetaByKey((prev) => ({ ...prev, ...nextMetaMap }));
-
-    // Défaut média attendu : vidéo prioritaire si elle existe, sinon photos, sinon aucun.
-    // Quand on ajoute uniquement des photos, on force donc les canaux sur "Photos"
-    // pour éviter qu'un ancien état "Aucun" reste sélectionné.
-    if (!hasVideoMedia) {
-      setChannelMediaModes((prev) => {
-        const next: Partial<Record<ChannelKey, ChannelMediaMode>> = { ...prev };
-        if (targetChannel) {
-          next[targetChannel] = "images";
-        } else {
-          for (const channel of selectedChannels) next[channel] = "images";
-        }
-        return next;
-      });
-    }
-
-    if (targetChannel) {
-      setChannelImageEditors((prev) => {
-        const next = syncChannelImageEditors({
-          previous: prev,
-          imageKeys: nextFiles.map((file) => makeImageKey(file)),
-          selectedChannels,
-          imageMetaByKey: { ...imageMetaByKey, ...nextMetaMap },
-        });
-        const current = next[targetChannel] || {
-          imageKeys: [],
-          transforms: {},
-        };
-        next[targetChannel] = {
-          imageKeys:
-            targetChannel === "gmb"
-              ? [newKeys[0]].filter(Boolean)
-              : Array.from(new Set([...current.imageKeys, ...newKeys])),
-          transforms: current.transforms,
-        };
-        return next;
-      });
-    } else {
-      setChannelImageEditors((prev) =>
-        syncChannelImageEditors({
-          previous: prev,
-          imageKeys: nextFiles.map((file) => makeImageKey(file)),
-          selectedChannels,
-          imageMetaByKey: { ...imageMetaByKey, ...nextMetaMap },
-        }),
-      );
-    }
-  };
-
-  const onImagesChange = async (
-    files: FileList | null,
-    targetChannel?: ChannelKey,
-  ) => {
-    if (!files?.length) return;
-    await addImageFiles(Array.from(files), targetChannel);
   };
 
   const onTakePhotoClick = async (targetChannel?: ChannelKey) => {
@@ -2815,60 +2064,6 @@ export default function PublishModal({
       await addImageFiles([file], cameraCaptureTargetChannel ?? undefined);
     }
     restorePublishScroll();
-  };
-
-  const removeImage = (index: number) => {
-    setImgError("");
-    const removedFile = images[index];
-    const removedPreview = imagePreviews[index];
-    if (!removedFile) return;
-
-    if (removedPreview) {
-      try {
-        URL.revokeObjectURL(removedPreview);
-      } catch {}
-    }
-
-    const removedKey = makeImageKey(removedFile);
-    const nextFiles = images.filter((_, idx) => idx !== index);
-    const nextPreviews = imagePreviews.filter((_, idx) => idx !== index);
-    const remainingKeys = nextFiles.map((file) => makeImageKey(file));
-
-    setImages(nextFiles);
-    setImagePreviews(nextPreviews);
-    setImageMetaByKey((prev) => {
-      const next = { ...prev };
-      delete next[removedKey];
-      return next;
-    });
-    setChannelImageEditors((prev) =>
-      syncChannelImageEditors({
-        previous: prev,
-        imageKeys: remainingKeys,
-        selectedChannels,
-        imageMetaByKey,
-      }),
-    );
-    setActiveImageKeyByChannel((prev) => {
-      const next = { ...prev };
-      for (const channel of Object.keys(next) as ChannelKey[]) {
-        if (next[channel] === removedKey) {
-          next[channel] = remainingKeys[0] || "";
-        }
-      }
-      return next;
-    });
-    if (nextFiles.length === 0) {
-      setChannelMediaModes((prev) => {
-        const next: Partial<Record<ChannelKey, ChannelMediaMode>> = { ...prev };
-        for (const channel of selectedChannels) {
-          if (next[channel] === "images") {
-            next[channel] = videoFile || videoPreviewUrl ? "video" : "none";
-          }
-        }
-        return next;
-      });
-    }
   };
 
   const updatePost = (channel: ChannelKey, patch: Partial<ChannelPost>) => {
@@ -2915,7 +2110,13 @@ export default function PublishModal({
         hashtags: getLiveInstagramHashtags(),
       }),
     };
-    for (const key of ["gmb", "facebook", "instagram", "linkedin", "tiktok"] as const) {
+    for (const key of [
+      "gmb",
+      "facebook",
+      "instagram",
+      "linkedin",
+      "tiktok",
+    ] as const) {
       if (!prepared[key]) continue;
       prepared[key] = normalizePost({
         ...prepared[key],
@@ -2957,9 +2158,12 @@ export default function PublishModal({
     const post = getDisplayPost(displayKey);
     const selectedVideoFormat = normalizeVideoFormat(
       channel,
-      videoFormatByChannel[channel] || getRecommendedVideoFormatForSource(channel, videoSourceMetadata),
+      videoFormatByChannel[channel] ||
+        getRecommendedVideoFormatForSource(channel, videoSourceMetadata),
     );
-    const selectedVideoAdaptation = normalizeVideoAdaptationMode(videoAdaptationModeByChannel[channel]);
+    const selectedVideoAdaptation = normalizeVideoAdaptationMode(
+      videoAdaptationModeByChannel[channel],
+    );
     const signature = buildVideoTransformSignature(
       selectedVideoFormat,
       selectedVideoAdaptation,
@@ -2986,12 +2190,18 @@ export default function PublishModal({
         ? {
             previewUrl: finalPreviewUrl,
             name: preparedVariant?.key || videoFile?.name || "video-inrcy.mp4",
-            type: preparedVariant?.contentType || videoFile?.type || "video/mp4",
+            type:
+              preparedVariant?.contentType || videoFile?.type || "video/mp4",
             size: preparedVariant?.size || videoFile?.size || 0,
             duration: preparedVariant?.duration ?? videoDurationSeconds,
             sourceMetadata: videoSourceMetadata,
-            aspectRatio: VIDEO_FORMAT_ASPECT_RATIOS[selectedVideoFormat] || "16 / 9",
-            fitMode: preparedPreviewUrl ? "contain" : selectedVideoAdaptation === "cover_crop" ? "cover" : "contain",
+            aspectRatio:
+              VIDEO_FORMAT_ASPECT_RATIOS[selectedVideoFormat] || "16 / 9",
+            fitMode: preparedPreviewUrl
+              ? "contain"
+              : selectedVideoAdaptation === "cover_crop"
+                ? "cover"
+                : "contain",
           }
         : null,
       image: null,
@@ -3097,7 +2307,12 @@ export default function PublishModal({
     choice: BoosterPreferredCta,
   ) => {
     const current = getDisplayPost(displayKey);
-    const patch = buildPreferredCtaPatch(displayKey, choice, current, ctaDefaults);
+    const patch = buildPreferredCtaPatch(
+      displayKey,
+      choice,
+      current,
+      ctaDefaults,
+    );
     updatePost(displayKey, patch);
   };
 
@@ -3114,479 +2329,6 @@ export default function PublishModal({
     updatePost(activeCard, {
       content: editableHtmlToSiteText(readSanitizedElementHtml(editor)),
     });
-  };
-
-  const updateChannelTransform = (
-    channel: ChannelKey,
-    imageKey: string,
-    patch: Partial<ImageTransform>,
-  ) => {
-    setChannelImageEditors((prev) => {
-      const next = { ...prev };
-      for (const targetChannel of getImpactedImageChannels(channel)) {
-        const current = next[targetChannel] || {
-          imageKeys: imageKeys.slice(),
-          transforms: {},
-        };
-        next[targetChannel] = {
-          imageKeys: current.imageKeys,
-          transforms: {
-            ...current.transforms,
-            [imageKey]: {
-              ...(current.transforms[imageKey] ||
-                getOptimizedTransform(targetChannel, imageMetaByKey[imageKey])),
-              ...patch,
-            },
-          },
-        };
-      }
-      return next;
-    });
-  };
-
-  const setContainMode = (channel: ChannelKey, imageKey: string) => {
-    const current =
-      channelImageEditors[channel]?.transforms?.[imageKey] ||
-      getOptimizedTransform(channel, imageMetaByKey[imageKey]);
-    const backgroundMode =
-      current.fit === "contain"
-        ? getBackgroundMode(current)
-        : channel === "inrcy_site" ||
-            channel === "site_web" ||
-            channel === "gmb"
-          ? "color"
-          : "white";
-    const backgroundColor =
-      current.backgroundColor ||
-      (channel === "inrcy_site" || channel === "site_web" || channel === "gmb"
-        ? "#e8f6ff"
-        : "#ffffff");
-    updateChannelTransform(channel, imageKey, {
-      fit: "contain",
-      zoom: 1,
-      offsetX: 0,
-      offsetY: 0,
-      backgroundMode:
-        backgroundMode === "transparent" ? "transparent" : "color",
-      backgroundColor,
-      blurBackground: false,
-    });
-  };
-
-  const setCoverMode = (channel: ChannelKey, imageKey: string) => {
-    updateChannelTransform(channel, imageKey, {
-      fit: "cover",
-      backgroundMode: "black",
-      blurBackground: false,
-    });
-  };
-
-  const nudgeZoom = (delta: number) => {
-    if (!activeEditorImageKey) return;
-    const maxZoom = activeEditorTransform.fit === "cover" ? 3 : 1;
-    const currentZoom = getEffectiveTransformZoom(activeEditorTransform);
-    const nextZoom = clamp(currentZoom + delta, 0.4, maxZoom);
-    updateChannelTransform(activeImageChannel, activeEditorImageKey, {
-      zoom: nextZoom,
-    });
-  };
-
-  const handlePreviewWheel = (event: React.WheelEvent<HTMLDivElement>) => {
-    if (
-      !activeEditorImageKey ||
-      !activeEditorMeta?.width ||
-      !activeEditorMeta?.height ||
-      !previewStageRef.current
-    )
-      return;
-    if (event.cancelable) event.preventDefault();
-
-    const rect = previewStageRef.current.getBoundingClientRect();
-    const pointerX = event.clientX - rect.left;
-    const pointerY = event.clientY - rect.top;
-    const maxZoom = activeEditorTransform.fit === "cover" ? 3 : 1;
-    const currentZoom = getEffectiveTransformZoom(activeEditorTransform);
-    const nextZoom = clamp(
-      currentZoom + (event.deltaY < 0 ? 0.08 : -0.08),
-      0.4,
-      maxZoom,
-    );
-
-    const nextLayout = computePreviewLayout({
-      containerWidth: rect.width,
-      containerHeight: rect.height,
-      imageWidth: activeEditorMeta.width,
-      imageHeight: activeEditorMeta.height,
-      transform: { ...activeEditorTransform, zoom: nextZoom },
-    });
-
-    const currentDrawW = previewLayout.drawW || nextLayout.drawW;
-    const currentDrawH = previewLayout.drawH || nextLayout.drawH;
-    const ux = currentDrawW
-      ? (pointerX - previewLayout.dx) / currentDrawW
-      : 0.5;
-    const uy = currentDrawH
-      ? (pointerY - previewLayout.dy) / currentDrawH
-      : 0.5;
-    const nextDx = pointerX - ux * nextLayout.drawW;
-    const nextDy = pointerY - uy * nextLayout.drawH;
-    const offsets = offsetFromDrawPosition({
-      containerWidth: rect.width,
-      containerHeight: rect.height,
-      drawW: nextLayout.drawW,
-      drawH: nextLayout.drawH,
-      dx: nextDx,
-      dy: nextDy,
-    });
-
-    updateChannelTransform(activeImageChannel, activeEditorImageKey, {
-      zoom: nextZoom,
-      ...offsets,
-    });
-  };
-
-  const handlePreviewPointerDown = (
-    event: React.PointerEvent<HTMLDivElement>,
-  ) => {
-    if (!activeEditorImageKey) return;
-    dragStateRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      startOffsetX: activeEditorTransform.offsetX,
-      startOffsetY: activeEditorTransform.offsetY,
-    };
-    setIsDraggingImage(true);
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-  };
-
-  const handlePreviewPointerMove = (
-    event: React.PointerEvent<HTMLDivElement>,
-  ) => {
-    const drag = dragStateRef.current;
-    if (!drag || drag.pointerId !== event.pointerId || !activeEditorImageKey)
-      return;
-    const nextOffsetX = previewLayout.maxX
-      ? clamp(
-          drag.startOffsetX -
-            ((event.clientX - drag.startX) / previewLayout.maxX) * 100,
-          -100,
-          100,
-        )
-      : 0;
-    const nextOffsetY = previewLayout.maxY
-      ? clamp(
-          drag.startOffsetY -
-            ((event.clientY - drag.startY) / previewLayout.maxY) * 100,
-          -100,
-          100,
-        )
-      : 0;
-    updateChannelTransform(activeImageChannel, activeEditorImageKey, {
-      offsetX: nextOffsetX,
-      offsetY: nextOffsetY,
-    });
-  };
-
-  const endPreviewDrag = (event?: React.PointerEvent<HTMLDivElement>) => {
-    if (event && dragStateRef.current?.pointerId === event.pointerId) {
-      event.currentTarget.releasePointerCapture?.(event.pointerId);
-    }
-    dragStateRef.current = null;
-    setIsDraggingImage(false);
-  };
-
-  const toggleChannelImage = (channel: ChannelKey, imageKey: string) => {
-    const impactedChannels = getImpactedImageChannels(channel);
-    setChannelImageEditors((prev) => {
-      const current = prev[channel] || {
-        imageKeys: imageKeys.slice(),
-        transforms: {},
-      };
-      const exists = current.imageKeys.includes(imageKey);
-      const nextKeys =
-        channel === "gmb"
-          ? exists
-            ? []
-            : [imageKey]
-          : exists
-            ? current.imageKeys.filter((key) => key !== imageKey)
-            : [...current.imageKeys, imageKey];
-      const next = { ...prev };
-      for (const targetChannel of impactedChannels) {
-        const currentTarget = next[targetChannel] || {
-          imageKeys: imageKeys.slice(),
-          transforms: {},
-        };
-        next[targetChannel] = {
-          imageKeys: nextKeys,
-          transforms: {
-            ...currentTarget.transforms,
-            [imageKey]:
-              currentTarget.transforms[imageKey] ||
-              getOptimizedTransform(targetChannel, imageMetaByKey[imageKey]),
-          },
-        };
-      }
-      return next;
-    });
-    setActiveImageKeyByChannel((prev) => {
-      const currentKeys = channelImageEditors[channel]?.imageKeys || [];
-      const exists = currentKeys.includes(imageKey);
-      if (channel === "gmb") {
-        return { ...prev, [channel]: exists ? "" : imageKey };
-      }
-      if (prev[channel] !== imageKey) return prev;
-      const nextKeys = currentKeys.filter((key) => key !== imageKey);
-      return {
-        ...prev,
-        ...Object.fromEntries(
-          impactedChannels.map((targetChannel) => [
-            targetChannel,
-            nextKeys[0] || "",
-          ]),
-        ),
-      };
-    });
-  };
-
-  const resetChannelImage = async (channel: ChannelKey, imageKey: string) => {
-    const ok = await confirmInrcy({
-      eyebrow: "Retouche image",
-      title: "Réinitialiser le cadrage ?",
-      message:
-        "Le cadrage actuel de cette image sera remplacé par le cadrage automatique.",
-      cancelLabel: "Annuler",
-      confirmLabel: "Réinitialiser",
-      variant: "warning",
-    });
-    if (!ok) return;
-    updateChannelTransform(
-      channel,
-      imageKey,
-      getOptimizedTransform(channel, imageMetaByKey[imageKey]),
-    );
-  };
-
-  const resetActiveChannelImages = async () => {
-    const imageKeysForChannel =
-      channelImageEditors[activeImageChannel]?.imageKeys || [];
-    if (!imageKeysForChannel.length) return;
-    const ok = await confirmInrcy({
-      eyebrow: "Retouche image",
-      title: "Réinitialiser tous les cadrages du canal ?",
-      message:
-        "Tous les cadrages de ce canal seront remplacés par le cadrage automatique.",
-      cancelLabel: "Annuler",
-      confirmLabel: "Réinitialiser",
-      variant: "warning",
-    });
-    if (!ok) return;
-    setChannelImageEditors((prev) => {
-      const next = { ...prev };
-      const current = next[activeImageChannel] || {
-        imageKeys: imageKeysForChannel,
-        transforms: {},
-      };
-      const transforms = { ...current.transforms };
-      for (const imageKey of imageKeysForChannel) {
-        transforms[imageKey] = getOptimizedTransform(
-          activeImageChannel,
-          imageMetaByKey[imageKey],
-        );
-      }
-      next[activeImageChannel] = {
-        ...current,
-        imageKeys: imageKeysForChannel,
-        transforms,
-      };
-      return next;
-    });
-  };
-
-  const applyCurrentCadrageToActiveChannelImages = () => {
-    if (!activeEditorImageKey) return;
-    const imageKeysForChannel =
-      channelImageEditors[activeImageChannel]?.imageKeys || [];
-    if (imageKeysForChannel.length <= 1) return;
-    setChannelImageEditors((prev) => {
-      const next = { ...prev };
-      const current = next[activeImageChannel] || {
-        imageKeys: imageKeysForChannel,
-        transforms: {},
-      };
-      const transforms = { ...current.transforms };
-      for (const imageKey of imageKeysForChannel) {
-        transforms[imageKey] = { ...activeEditorTransform };
-      }
-      next[activeImageChannel] = {
-        ...current,
-        imageKeys: imageKeysForChannel,
-        transforms,
-      };
-      return next;
-    });
-  };
-
-  const moveChannelImage = (
-    channel: ChannelKey,
-    imageKey: string,
-    direction: -1 | 1,
-  ) => {
-    setChannelImageEditors((prev) => {
-      const current = prev[channel] || {
-        imageKeys: imageKeys.slice(),
-        transforms: {},
-      };
-      const index = current.imageKeys.indexOf(imageKey);
-      const targetIndex = index + direction;
-      if (
-        index < 0 ||
-        targetIndex < 0 ||
-        targetIndex >= current.imageKeys.length
-      )
-        return prev;
-      const nextKeys = current.imageKeys.slice();
-      const [moved] = nextKeys.splice(index, 1);
-      nextKeys.splice(targetIndex, 0, moved);
-      return {
-        ...prev,
-        [channel]: { ...current, imageKeys: nextKeys },
-      };
-    });
-  };
-
-  const applyCurrentImageToSelectedChannels = () => {
-    if (!activeEditorImageKey) return;
-    setChannelImageEditors((prev) => {
-      const next = { ...prev };
-      for (const channel of selectedChannels) {
-        const current = next[channel] || {
-          imageKeys: imageKeys.slice(),
-          transforms: {},
-        };
-        next[channel] = {
-          imageKeys:
-            channel === "gmb"
-              ? [activeEditorImageKey]
-              : current.imageKeys.includes(activeEditorImageKey)
-                ? current.imageKeys
-                : [...current.imageKeys, activeEditorImageKey],
-          transforms: {
-            ...current.transforms,
-            [activeEditorImageKey]: { ...activeEditorTransform },
-          },
-        };
-      }
-      return next;
-    });
-  };
-
-  const openImageEditor = (channel: ChannelKey, imageKey: string) => {
-    preservePublishScroll();
-    setSynchronizedActiveChannel(channel);
-    setActiveImageKeyByChannel((prev) => ({ ...prev, [channel]: imageKey }));
-    setIsImageEditorOpen(true);
-  };
-
-  const closeImageEditor = () => {
-    dragStateRef.current = null;
-    setIsDraggingImage(false);
-    setIsImageEditorOpen(false);
-    restorePublishScroll();
-  };
-
-  const fileToImagePayload = (file: File): Promise<ImagePayload> =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () =>
-        resolve({
-          name: file.name || "image.jpg",
-          type: file.type || "image/jpeg",
-          dataUrl: String(reader.result || ""),
-        });
-      reader.onerror = () =>
-        reject(
-          reader.error ??
-            new Error("Impossible de préparer l'image originale."),
-        );
-      reader.readAsDataURL(file);
-    });
-
-  const uploadOriginalImagesForPublication = async (
-    onProgress?: (current: number, total: number) => void,
-  ): Promise<Record<string, ImagePayload>> => {
-    if (!images.length) return {};
-    const originalPayloads = await Promise.all(
-      images.map((file) => fileToImagePayload(file)),
-    );
-    const uploadedOriginals = await uploadPreparedImages(
-      originalPayloads,
-      onProgress,
-    );
-    return Object.fromEntries(
-      images.map((file, index) => [
-        makeImageKey(file),
-        uploadedOriginals[index],
-      ]),
-    );
-  };
-
-  const buildChannelImagesPayload = async (
-    onProgress?: (current: number, total: number) => void,
-  ): Promise<{
-    channelImages: ChannelImagePayload;
-    channelSettings: ChannelImageSettingsPayload;
-  }> => {
-    const channelImages = {} as ChannelImagePayload;
-    const channelSettings = {} as ChannelImageSettingsPayload;
-    const getEditorForPublish = (channel: ChannelKey) => {
-      return channelImageEditors[channel] || { imageKeys: [], transforms: {} };
-    };
-
-    const totalRenders = selectedChannels.reduce((sum, channel) => {
-      const editor = getEditorForPublish(channel);
-      const keys =
-        channel === "gmb" ? editor.imageKeys.slice(0, 1) : editor.imageKeys;
-      return sum + keys.length;
-    }, 0);
-    let doneRenders = 0;
-
-    for (const channel of selectedChannels) {
-      const editor = getEditorForPublish(channel);
-      const renderList: ImagePayload[] = [];
-      const imageKeysToRender =
-        channel === "gmb" ? editor.imageKeys.slice(0, 1) : editor.imageKeys;
-      for (const imageKey of imageKeysToRender) {
-        const file = imageFileByKey[imageKey];
-        if (!file) continue;
-        const transform =
-          editor.transforms[imageKey] || getDefaultTransform(channel);
-        renderList.push(
-          await renderChannelImage({
-            file,
-            transform,
-            preset: CHANNEL_PRESETS[channel],
-          }),
-        );
-        doneRenders += 1;
-        onProgress?.(doneRenders, totalRenders);
-      }
-      channelImages[channel] = renderList;
-      channelSettings[channel] = {
-        imageKeys: [...imageKeysToRender],
-        transforms: Object.fromEntries(
-          Object.entries(editor.transforms || {}).map(([key, value]) => [
-            key,
-            { ...(value as ImageTransform) },
-          ]),
-        ),
-      };
-    }
-
-    if (!totalRenders) onProgress?.(0, 0);
-
-    return { channelImages, channelSettings };
   };
 
   const runPublish = async (options?: {
@@ -4019,7 +2761,9 @@ export default function PublishModal({
         result?.id || loadedPublicationDraftId || publicationDraftIdParam || "",
       ).trim();
       if (videoDraft) {
-        const draftVariants = normalizeRestoredVideoVariants((videoDraft as any).transformedVariants);
+        const draftVariants = normalizeRestoredVideoVariants(
+          (videoDraft as any).transformedVariants,
+        );
         setVideoStorageContext({
           storagePath: videoDraft.storagePath || "",
           publicUrl: videoDraft.publicUrl || videoDraft.url || "",
@@ -4125,13 +2869,9 @@ export default function PublishModal({
 
   const onChooseGmbImage = () => {
     closeGmbNoImageWarning();
-    setSynchronizedActiveChannel("gmb");
+    setActiveCard("gmb");
+    setActiveImageChannel("gmb");
     setPendingPublishPosts(null);
-  };
-
-  const getPublishImageKeysForChannel = (channel: ChannelKey) => {
-    const keys = channelImageEditors[channel]?.imageKeys || [];
-    return channel === "gmb" ? keys.slice(0, 1) : keys;
   };
 
   const getReviewPostForChannel = (
@@ -4164,7 +2904,9 @@ export default function PublishModal({
       if (mode === "video") {
         if (!hasVideo) blockers.push("Ajoutez une vidéo.");
         if (channel === "tiktok")
-          warnings.push("TikTok : publication simulée en local pour valider l’UX complète.");
+          warnings.push(
+            "TikTok : publication simulée en local pour valider l’UX complète.",
+          );
         if (channel === "gmb")
           warnings.push(
             "Google peut refuser certaines vidéos. Si c’est le cas, iNrCy publiera le texte sans vidéo.",
@@ -4195,7 +2937,9 @@ export default function PublishModal({
           else warnings.push("Aucune image sélectionnée.");
         }
         if (channel === "tiktok" && hasImage)
-          warnings.push("TikTok : publication photos simulée en local pour valider l’UX complète.");
+          warnings.push(
+            "TikTok : publication photos simulée en local pour valider l’UX complète.",
+          );
       } else if (channel === "instagram") {
         blockers.push("Instagram nécessite une vidéo ou au moins 1 image.");
       } else if (channel === "tiktok") {
@@ -4457,7 +3201,6 @@ export default function PublishModal({
         onPickVideoClick={onPickVideoClick}
         onTakePhotoClick={onTakePhotoClick}
         onImagesChange={onImagesChange}
-        removeVideo={removeVideo}
         gmbFileInputRef={gmbFileInputRef}
         setImgError={setImgError}
         toggleChannelImage={toggleChannelImage}
@@ -4614,7 +3357,6 @@ export default function PublishModal({
         publishProgress={publishProgress}
         publishProgressLabel={publishProgressLabel}
         publishError={publishError}
-        onOpenHelp={() => setPublishHelpOpen(true)}
         onPublish={onPublish}
       />
     </div>

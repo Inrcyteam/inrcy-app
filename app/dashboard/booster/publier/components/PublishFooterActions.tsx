@@ -1,5 +1,4 @@
 import type { MutableRefObject } from "react";
-import HelpButton from "../../../_components/HelpButton";
 import StatusMessage from "../../../_components/StatusMessage";
 
 type PublishModalStyles = Readonly<Record<string, string>>;
@@ -12,16 +11,13 @@ type PublishFooterActionsProps = {
   publishProgress: number;
   publishProgressLabel: string;
   publishError: string;
-  onOpenHelp: () => void;
   onPublish: () => void;
 };
 
-export default function PublishFooterActions({styles,publishAreaRef,saving,draftSaving,publishProgress,publishProgressLabel,publishError,onOpenHelp,onPublish,}: PublishFooterActionsProps) {
+export default function PublishFooterActions({styles,publishAreaRef,saving,draftSaving,publishProgress,publishProgressLabel,publishError,onPublish,}: PublishFooterActionsProps) {
   return (
     <div ref={publishAreaRef} className={styles.publishFooterRoot}>
       <div className={styles.publishFooterRow}>
-        <HelpButton onClick={onOpenHelp} title="Aide publication et iNr'Send" size={32} />
-
         {saving ? (
           <div className={styles.publishProgressBox}>
             <div className={styles.publishProgressHeader}>

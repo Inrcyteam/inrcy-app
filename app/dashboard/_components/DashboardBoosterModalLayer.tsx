@@ -6,6 +6,7 @@ import styles from "../dashboard.module.css";
 import b from "../booster/booster.module.css";
 import BaseModal from "./WorkflowBaseModal";
 import StatusMessage from "./StatusMessage";
+import HelpButton from "./HelpButton";
 import { WEEKLY_GOALS, clampProgress, getGoalCopy } from "@/lib/weeklyGoals";
 import { getSimpleFrenchApiError, getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { confirmInrcy } from "@/lib/inrcyDialog";
@@ -43,6 +44,7 @@ export default function DashboardBoosterModalLayer({
   const [publishEditorOverlayOpen, setPublishEditorOverlayOpen] = useState(false);
   const [publishHasUnsavedChanges, setPublishHasUnsavedChanges] = useState(false);
   const publishSaveDraftRef = useRef<(() => void) | null>(null);
+  const publishOpenHelpRef = useRef<(() => void) | null>(null);
   const [publishDraftHeaderState, setPublishDraftHeaderState] = useState<PublishDraftHeaderState>({
     saving: false,
     draftSaving: false,
@@ -349,28 +351,35 @@ export default function DashboardBoosterModalLayer({
           }
           headerStatusMobileHidden
           headerActions={
-            <button
-              type="button"
-              className={styles.secondaryBtn}
-              onClick={() => publishSaveDraftRef.current?.()}
-              disabled={publishDraftHeaderState.saving || publishDraftHeaderState.draftSaving}
-              title="Enregistrer le brouillon publication"
-              aria-label="Enregistrer le brouillon publication"
-              style={{
-                width: 42,
-                minWidth: 42,
-                minHeight: 38,
-                padding: 0,
-                display: "inline-grid",
-                placeItems: "center",
-                fontSize: 19,
-                borderRadius: 999,
-                opacity: publishDraftHeaderState.saving || publishDraftHeaderState.draftSaving ? 0.64 : 1,
-                cursor: publishDraftHeaderState.saving || publishDraftHeaderState.draftSaving ? "wait" : "pointer",
-              }}
-            >
-              {publishDraftHeaderState.draftSaving ? "…" : "💾"}
-            </button>
+            <>
+              <HelpButton
+                onClick={() => publishOpenHelpRef.current?.()}
+                title="Aide publication et iNr'Send"
+                size={32}
+              />
+              <button
+                type="button"
+                className={styles.secondaryBtn}
+                onClick={() => publishSaveDraftRef.current?.()}
+                disabled={publishDraftHeaderState.saving || publishDraftHeaderState.draftSaving}
+                title="Enregistrer le brouillon publication"
+                aria-label="Enregistrer le brouillon publication"
+                style={{
+                  width: 38,
+                  minWidth: 38,
+                  minHeight: 36,
+                  padding: 0,
+                  display: "inline-grid",
+                  placeItems: "center",
+                  fontSize: 18,
+                  borderRadius: 999,
+                  opacity: publishDraftHeaderState.saving || publishDraftHeaderState.draftSaving ? 0.64 : 1,
+                  cursor: publishDraftHeaderState.saving || publishDraftHeaderState.draftSaving ? "wait" : "pointer",
+                }}
+              >
+                {publishDraftHeaderState.draftSaving ? "…" : "💾"}
+              </button>
+            </>
           }
         >
           <PublishModal
@@ -380,6 +389,7 @@ export default function DashboardBoosterModalLayer({
             onOverlayOpenChange={setPublishEditorOverlayOpen}
             onUnsavedChange={setPublishHasUnsavedChanges}
             saveDraftActionRef={publishSaveDraftRef}
+            openHelpActionRef={publishOpenHelpRef}
             onDraftHeaderStateChange={handlePublishDraftHeaderStateChange}
             initialConnectedChannels={initialConnectedChannels}
             onPublishSuccess={(result) => {

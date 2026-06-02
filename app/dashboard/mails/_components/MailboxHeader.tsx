@@ -5,6 +5,7 @@ import HelpButton from "../../_components/HelpButton";
 import HelpModal from "../../_components/HelpModal";
 import MailsSettingsContent from "../../settings/_components/MailsSettingsContent";
 import ResponsiveActionButton from "../../_components/ResponsiveActionButton";
+import { getInrSendRetentionLabel } from "@/lib/inrsendRetention";
 import styles from "../mails.module.css";
 
 type Props = {
@@ -94,6 +95,28 @@ export default function MailboxHeader({
           <li>Gagnez du temps pour communiquer sur vos canaux.</li>
           <li>Utilisez les réglages pour connecter/configurer les envois.</li>
         </ul>
+
+        <div style={{ marginTop: 16 }}>
+          <strong>Durées d’affichage dans iNr’Send</strong>
+          <ul style={{ margin: "8px 0 0", paddingLeft: 18 }}>
+            <li>Publications : {getInrSendRetentionLabel("publications")}</li>
+            <li>Propulsions : {getInrSendRetentionLabel("propulsions")}</li>
+            <li>Fidélisations : {getInrSendRetentionLabel("fidelisations")}</li>
+            <li>Mails : {getInrSendRetentionLabel("mails")}</li>
+            <li>Devis : {getInrSendRetentionLabel("devis")}</li>
+            <li>Factures : {getInrSendRetentionLabel("factures")}</li>
+          </ul>
+          <p style={{ margin: "10px 0 0", opacity: 0.86 }}>
+            Ces durées concernent uniquement l’historique iNr’Send. Le professionnel reste responsable de la conservation légale de ses documents comptables.
+          </p>
+        </div>
+
+        <div style={{ marginTop: 14 }}>
+          <strong>Factures envoyées</strong>
+          <p style={{ margin: "8px 0 0", opacity: 0.86 }}>
+            Une facture envoyée est considérée comme officielle dans l’application. Elle n’est pas supprimable manuellement depuis iNr’Send. Toute demande exceptionnelle de suppression doit être faite par écrit, par mail, au support iNrCy.
+          </p>
+        </div>
       </HelpModal>
     </>
   );
