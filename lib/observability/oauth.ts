@@ -35,6 +35,32 @@ function sentryLevelForOutcome(outcome: OAuthOutcome): 'info' | 'warning' | 'err
   return 'error';
 }
 
+function shouldCaptureOAuthInSentry(input: OAuthEventInput): boolean {
+  if (!input.capture_in_sentry) return false;
+  // Les retours OAuth expirés/refusés et les mauvais comptes sont des cas terrain normaux.
+  // Ils restent dans les logs métier, mais ne doivent pas polluer Sentry comme des bugs techniques.
+  if (input.outcome === 'cancelled' || input.outcome === 'state_invalid' || input.outcome === 'not_authenticated') return false;
+  const statusCode = typeof input.status_code === 'number' ? input.status_code : null;
+  if (input.outcome === 'failed') return statusCode !== null && statusCode >= 500;
+  return true;
+}
+
+function isUserResolvableOAuthException(message: string): boolean {
+  const raw = String(message || '').toLowerCase();
+  return [
+    'insufficient authentication scopes',
+    'request had insufficient authentication scopes',
+    'aucune propriété ga4 ne correspond à ce domaine',
+    'aucune propriete ga4 ne correspond a ce domaine',
+    'aucune propriété search console ne correspond',
+    'aucune propriete search console ne correspond',
+    'access_denied',
+    'user_denied',
+    'invalid_state',
+    'state invalid',
+  ].some((needle) => raw.includes(needle));
+}
+
 export function oauthCallbackEvent(req: Request, input: OAuthEventInput) {
   const request_id = getRequestId(req);
   const meta = getRequestMeta(req);
@@ -50,7 +76,7 @@ export function oauthCallbackEvent(req: Request, input: OAuthEventInput) {
 
   log[level]('oauth_callback', payload);
 
-  if (input.capture_in_sentry) {
+  if (shouldCaptureOAuthInSentry(input)) {
     Sentry.withScope((scope: any) => {
       scope.setTag('area', 'oauth');
       scope.setTag('provider', input.provider);
@@ -92,6 +118,8 @@ export function oauthCallbackException(
     message,
     ...extra,
   });
+
+  if (isUserResolvableOAuthException(message)) return;
 
   Sentry.withScope((scope: any) => {
     scope.setTag('area', 'oauth');

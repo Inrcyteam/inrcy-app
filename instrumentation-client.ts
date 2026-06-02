@@ -3,6 +3,7 @@
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
 import * as Sentry from "@sentry/nextjs";
+import { filterSentryEvent } from "@/lib/observability/sentryEventFilter";
 
 const sentryDsn = process.env.NEXT_PUBLIC_SENTRY_DSN || process.env.SENTRY_DSN;
 
@@ -11,13 +12,7 @@ if (sentryDsn) {
     dsn: sentryDsn,
     sendDefaultPii: false,
     beforeSend(event) {
-      if (event.user) {
-        delete event.user.email;
-        delete event.user.ip_address;
-        delete event.user.username;
-      }
-
-      return event;
+      return filterSentryEvent(event);
     },
   });
 }

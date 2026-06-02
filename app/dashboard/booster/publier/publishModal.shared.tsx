@@ -324,6 +324,23 @@ export function isBoosterImageFile(file: Pick<File, "type">) {
   return String(file?.type || "").startsWith("image/");
 }
 
+export function getUploadFileExtension(file: Pick<File, "name">): string {
+  const name = String(file?.name || "").toLowerCase().split("?")[0] || "";
+  return name.includes(".") ? name.split(".").pop() || "" : "";
+}
+
+export function isUnsupportedBrowserImageFile(file: Pick<File, "name" | "type">): boolean {
+  const type = String(file?.type || "").toLowerCase().split(";")[0]?.trim() || "";
+  const extension = getUploadFileExtension(file as Pick<File, "name">);
+  return type === "image/heic" || type === "image/heif" || extension === "heic" || extension === "heif";
+}
+
+export function unsupportedBrowserImageMessage(file?: Pick<File, "name" | "type"> | null): string {
+  const name = String(file?.name || "").trim();
+  const prefix = name ? `L'image ${name} n'est pas lisible par le navigateur.` : "Cette image n'est pas lisible par le navigateur.";
+  return `${prefix} Utilisez une image JPG, PNG ou WebP.`;
+}
+
 export function isBoosterVideoFile(file: Pick<File, "type" | "name">) {
   const type =
     String(file?.type || "")
@@ -1165,9 +1182,14 @@ export function offsetFromDrawPosition(params: {
 
 export function loadHtmlImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
+    if (!src) {
+      reject(new Error("Image manquante."));
+      return;
+    }
     const img = new Image();
+    img.decoding = "async";
     img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error("Impossible de charger l'image."));
+    img.onerror = () => reject(new Error("Image illisible. Utilisez une image JPG, PNG ou WebP."));
     img.src = src;
   });
 }

@@ -95,6 +95,14 @@ export function getSimpleFrenchErrorMessage(input: unknown, fallback = "Cette ac
     return "Cette action n'est pas encore disponible.";
   }
 
+  if (matches(message, ["insufficient authentication scopes", "request had insufficient authentication scopes"])) {
+    return "Compte Google à reconnecter avec les autorisations demandées.";
+  }
+
+  if (matches(message, ["aucune propriété ga4 ne correspond à ce domaine", "aucune propriete ga4 ne correspond a ce domaine"])) {
+    return "Aucune propriété GA4 ne correspond à ce domaine sur ce compte Google.";
+  }
+
   if (matches(message, ["failed to fetch", "networkerror", "network request failed", "load failed", "fetch failed", "impossible de joindre le serveur", "network error", "econnreset", "econnrefused", "enotfound", "socket hang up"])) {
     return "Connexion au serveur impossible pour le moment. Merci de réessayer.";
   }

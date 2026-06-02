@@ -4,6 +4,7 @@
 // https://docs.sentry.io/platforms/javascript/guides/nextjs/
 
 import * as Sentry from "@sentry/nextjs";
+import { filterSentryEvent } from "@/lib/observability/sentryEventFilter";
 
 const sentryDsn = process.env.SENTRY_DSN || process.env.NEXT_PUBLIC_SENTRY_DSN;
 
@@ -12,20 +13,7 @@ if (sentryDsn) {
     dsn: sentryDsn,
     sendDefaultPii: false,
     beforeSend(event) {
-      if (event.user) {
-        delete event.user.email;
-        delete event.user.ip_address;
-        delete event.user.username;
-      }
-
-      if (event.request?.headers) {
-        delete event.request.headers.authorization;
-        delete event.request.headers.Authorization;
-        delete event.request.headers.cookie;
-        delete event.request.headers.Cookie;
-      }
-
-      return event;
+      return filterSentryEvent(event, { scrubHeaders: true });
     },
   });
 }

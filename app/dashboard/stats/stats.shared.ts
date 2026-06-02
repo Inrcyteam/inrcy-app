@@ -1745,11 +1745,14 @@ export function buildCubeModel(
   title: string,
   subtitle: string,
   period: Period,
-  state: CubeState,
+  state: CubeState | undefined | null,
   summaryOppByCube: Record<CubeKey, number>,
 ): CubeModel {
-  const hasRealOverview = !!state.ov;
-  const ov = state.ov ||
+  const safeState: CubeState = state && typeof state === "object"
+    ? state
+    : { ov: null, loading: false, error: undefined, capturedLeads: { week: 0, month: 0 } };
+  const hasRealOverview = !!safeState.ov;
+  const ov = safeState.ov ||
     ({
       days: period,
       totals: { users: 0, sessions: 0, pageviews: 0, engagementRate: 0, avgSessionDuration: 0, clicks: 0, impressions: 0, ctr: 0 },
@@ -1801,8 +1804,8 @@ export function buildCubeModel(
 
   const q = computeQuality(key, ov);
   const capturedLeads: CapturedLeads = {
-    week: Math.max(0, Math.round(safeNum(state.capturedLeads?.week))),
-    month: Math.max(0, Math.round(safeNum(state.capturedLeads?.month))),
+    week: Math.max(0, Math.round(safeNum(safeState.capturedLeads?.week))),
+    month: Math.max(0, Math.round(safeNum(safeState.capturedLeads?.month))),
   };
   let action = recommendAction(key, ov, q.score);
   let decision: DecisionResult | undefined;
@@ -1825,7 +1828,7 @@ export function buildCubeModel(
 
   const insights = buildInsights(key, ov, q.score, decision);
 
-  if (state.loading && !hasRealOverview) {
+  if (safeState.loading && !hasRealOverview) {
     action = {
       key: "loading",
       title: "Connexion…",
@@ -1845,8 +1848,8 @@ export function buildCubeModel(
     subtitle,
     accountLabel: accountLabel || undefined,
     period,
-    loading: !!state.loading,
-    error: state.error,
+    loading: !!safeState.loading,
+    error: safeState.error,
     connections,
     provenance,
     opportunity30: opp30,

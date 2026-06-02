@@ -571,10 +571,15 @@ export function makePublicationImageAssetKey(prefix: string, name: string, suffi
 
 export function loadPublicationHtmlImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
+    if (!src) {
+      reject(new Error("Image manquante."));
+      return;
+    }
     const img = new window.Image();
     img.crossOrigin = "anonymous";
+    img.decoding = "async";
     img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error("Impossible de charger l'image."));
+    img.onerror = () => reject(new Error("Image illisible. Utilisez une image JPG, PNG ou WebP."));
     img.src = src;
   });
 }
@@ -1270,7 +1275,7 @@ export function tagsToEditorString(tags?: string[]): string {
 export function isImageAttachment(att: { name: string; type?: string | null; url?: string | null }): boolean {
   const type = String(att.type || "").toLowerCase();
   const raw = String(att.url || att.name || "").toLowerCase().split("?")[0];
-  return type.startsWith("image/") || /\.(png|jpe?g|webp|gif|bmp|svg|avif)$/.test(raw);
+  return (type.startsWith("image/") && type !== "image/heic" && type !== "image/heif") || /\.(png|jpe?g|webp|gif|bmp|svg|avif)$/.test(raw);
 }
 
 export function isVideoAttachment(att: { name: string; type?: string | null; url?: string | null }): boolean {

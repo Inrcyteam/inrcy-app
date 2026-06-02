@@ -27,12 +27,14 @@ import {
   getEffectiveTransformZoom,
   getOptimizedTransform,
   isBoosterImageFile,
+  isUnsupportedBrowserImageFile,
   makeImageKey,
   offsetFromDrawPosition,
   readImageMeta,
   renderChannelImage,
   syncChannelImageEditors,
   uploadPreparedImages,
+  unsupportedBrowserImageMessage,
   type ChannelImageEditorState,
   type ChannelImagePayload,
   type ChannelImageSettingsPayload,
@@ -313,6 +315,12 @@ export default function usePublishImageController({
       return;
     }
 
+    const unsupported = incoming.find(isUnsupportedBrowserImageFile);
+    if (unsupported) {
+      setImgError(unsupportedBrowserImageMessage(unsupported));
+      return;
+    }
+
     if (!hasVideoMedia) {
       setPublicationMediaType("images");
     }
@@ -363,16 +371,22 @@ export default function usePublishImageController({
     }
 
     const nextFiles = [...images, ...allowed].slice(0, BOOSTER_MAX_IMAGE_COUNT);
+    let nextMetaEntries: Array<readonly [string, ImageMeta]>;
+    try {
+      nextMetaEntries = await Promise.all(
+        allowed.map(
+          async (file) =>
+            [makeImageKey(file), await readImageMeta(file)] as const,
+        ),
+      );
+    } catch {
+      setImgError("Une image n'est pas lisible. Utilisez une image JPG, PNG ou WebP.");
+      return;
+    }
     const nextPreviews = [
       ...imagePreviews,
       ...allowed.map((file) => URL.createObjectURL(file)),
     ].slice(0, BOOSTER_MAX_IMAGE_COUNT);
-    const nextMetaEntries = await Promise.all(
-      allowed.map(
-        async (file) =>
-          [makeImageKey(file), await readImageMeta(file)] as const,
-      ),
-    );
     const nextMetaMap = Object.fromEntries(nextMetaEntries) as Record<
       string,
       ImageMeta

@@ -129,6 +129,8 @@ import {
   VIDEO_ADAPTATION_MODE_LABELS,
   getRecommendedVideoFormatForSource,
   getVideoFormatLabel,
+  isUnsupportedBrowserImageFile,
+  unsupportedBrowserImageMessage,
   type BoosterVideoSourceMetadata,
   type ChannelKey as BoosterChannelKey,
   type VideoAdaptationMode,
@@ -2238,6 +2240,12 @@ async function deleteDraftPermanently(id: string) {
     const invalid = picked.find((file) => !file.type.startsWith("image/"));
     if (invalid) {
       setDetailsActionError("Seules les images sont acceptées dans les pièces jointes d'une publication.");
+      return;
+    }
+
+    const unsupported = picked.find(isUnsupportedBrowserImageFile);
+    if (unsupported) {
+      setDetailsActionError(unsupportedBrowserImageMessage(unsupported));
       return;
     }
 
