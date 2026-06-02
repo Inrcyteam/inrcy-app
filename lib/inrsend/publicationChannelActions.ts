@@ -1623,10 +1623,29 @@ function buildUpdatedPayload(params: {
     videoAdaptationMode: channelVideoSettings.adaptationMode,
   };
 
+  const existingChannelVideo = asRecord(currentChannelPost.video);
+  const existingRootVideo = asRecord(eventPayload.video);
+  const originalVideoForWork = isVideoPublication && video
+    ? normalizeVideoAttachment(
+        asRecord(video).sourceVideo ||
+        asRecord(video).source_video ||
+        currentChannelPost.sourceVideo ||
+        currentChannelPost.source_video ||
+        existingChannelVideo.sourceVideo ||
+        existingChannelVideo.source_video ||
+        eventPayload.sourceVideo ||
+        eventPayload.source_video ||
+        existingRootVideo.sourceVideo ||
+        existingRootVideo.source_video ||
+        video,
+      )
+    : null;
+
   if (isVideoPublication && video) {
     nextChannelPost.mediaType = "video";
     nextChannelPost.images = [];
     nextChannelPost.video = video;
+    nextChannelPost.sourceVideo = originalVideoForWork || video;
     nextChannelPost.attachments = [video];
     nextChannelPost.publishableUrls = [];
     nextChannelPost.instagramPublishableUrls = [];
@@ -1666,7 +1685,7 @@ function buildUpdatedPayload(params: {
     post: channel === "inrcy_site" || channel === "site_web" ? asRecord(eventPayload.post) : eventPayload.post,
     results,
     mediaType: isVideoPublication ? "video" : (eventPayload.mediaType || eventPayload.media_type || "images"),
-    ...(isVideoPublication && video ? { video } : {}),
+    ...(isVideoPublication && video ? { video, sourceVideo: originalVideoForWork || asRecord(video).sourceVideo || asRecord(video).source_video || null } : {}),
   };
 
   if (!asRecord(nextPayload.post).title && !asRecord(nextPayload.post).content) {

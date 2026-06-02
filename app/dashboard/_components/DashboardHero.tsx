@@ -1,9 +1,14 @@
+"use client";
+
+import { useEffect, useRef, useState } from "react";
 import HelpButton from "./HelpButton";
 import styles from "../dashboard.module.css";
 
 type GeneratorPowerStep = {
-  label: string;
-  weight: number;
+  readonly label: string;
+  readonly shortLabel: string;
+  readonly weight: number;
+  readonly completed: boolean;
 };
 
 type InertiaSnapshot = {
@@ -14,6 +19,7 @@ type InertiaSnapshot = {
 
 type DashboardHeroProps = {
   generatorPower: number;
+  generatorPowerSteps: readonly GeneratorPowerStep[];
   remainingGeneratorPowerSteps: number;
   nextGeneratorPowerStep: GeneratorPowerStep | null;
   onOpenGeneratorHelp: () => void;
@@ -31,6 +37,7 @@ type DashboardHeroProps = {
 
 export default function DashboardHero({
   generatorPower,
+  generatorPowerSteps,
   remainingGeneratorPowerSteps,
   nextGeneratorPowerStep,
   onOpenGeneratorHelp,
@@ -45,6 +52,52 @@ export default function DashboardHero({
   leadsWeek,
   leadsMonth,
 }: DashboardHeroProps) {
+  const [powerBreakdownOpen, setPowerBreakdownOpen] = useState(false);
+  const powerBreakdownRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!powerBreakdownOpen) return;
+
+    const handlePointerDown = (event: MouseEvent | TouchEvent) => {
+      const target = event.target as Node | null;
+      if (target && powerBreakdownRef.current?.contains(target)) return;
+      setPowerBreakdownOpen(false);
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPowerBreakdownOpen(false);
+    };
+
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("touchstart", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("touchstart", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [powerBreakdownOpen]);
+
+  const powerInfoPanel = powerBreakdownOpen ? (
+    <div className={styles.powerInfoPanel} role="dialog" aria-label="Détail de la puissance du générateur">
+      <div className={styles.powerInfoPanelTitle}>Détail puissance</div>
+
+      <div className={styles.powerInfoCompact}>
+        {generatorPowerSteps.map((step) => (
+          <span
+            key={step.label}
+            className={`${styles.powerInfoMiniItem} ${step.completed ? styles.powerInfoMiniItemCompleted : ""}`}
+          >
+            <span className={styles.powerInfoMiniDot} aria-hidden />
+            <span>{step.shortLabel}</span>
+            <strong>{step.weight}%</strong>
+          </span>
+        ))}
+      </div>
+    </div>
+  ) : null;
+
   return (
     <section className={styles.hero}>
       <div className={styles.heroLeft}>
@@ -70,10 +123,23 @@ export default function DashboardHero({
           </div>
         </div>
 
-        <div className={styles.powerBlock}>
+        <div className={styles.powerBlock} ref={powerBreakdownRef}>
           <div className={styles.powerHeader}>
             <div className={styles.powerInlineTitle}>
-              Puissance du générateur : <span className={styles.powerInlineValue}>{generatorPower}%</span>
+              Puissance du générateur :
+              <span className={styles.powerValueWrap}>
+                <span className={styles.powerInlineValue}>{generatorPower}%</span>
+                <button
+                  type="button"
+                  className={styles.powerInfoBtn}
+                  onClick={() => setPowerBreakdownOpen((open) => !open)}
+                  aria-label="Voir le détail de la puissance du générateur"
+                  aria-expanded={powerBreakdownOpen}
+                  title="Voir le détail"
+                >
+                  i
+                </button>
+              </span>
             </div>
             <div className={styles.powerMeta}>
               {remainingGeneratorPowerSteps === 0
@@ -81,6 +147,8 @@ export default function DashboardHero({
                 : `${remainingGeneratorPowerSteps} étape${remainingGeneratorPowerSteps > 1 ? "s" : ""} restante${remainingGeneratorPowerSteps > 1 ? "s" : ""}`}
             </div>
           </div>
+
+          {powerInfoPanel}
 
           <div
             className={styles.powerBar}
@@ -222,10 +290,6 @@ export default function DashboardHero({
             </div>
           </div>
         </div>
-
-        <div className={styles.generatorFooter} />
-
-        <div className={styles.generatorGlow} aria-hidden />
       </div>
     </section>
   );

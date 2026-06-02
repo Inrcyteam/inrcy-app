@@ -509,6 +509,8 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                   const activeSourceVideoAttachment = activeParts.sourceVideo && !sameVideoAttachment(activeParts.sourceVideo, activeVideoAttachment)
                     ? activeParts.sourceVideo
                     : null;
+                  // iNrSend conserve la vidéo originale comme source de travail, même si une variante publiée existe.
+                  const activeVideoDisplayAttachment = activeSourceVideoAttachment || activeVideoAttachment;
                   const activeVideoSourceMetadata = (activeSourceVideoAttachment as any)?.sourceMetadata || (activeVideoAttachment as any)?.sourceMetadata || null;
                   const isVideoPublication = detailsItem.source === "app_events" && (
                     String(payload?.mediaType || payload?.media_type || "").toLowerCase() === "video" ||
@@ -567,13 +569,13 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                       cta: previewCta,
                       hashtags,
                       imageCount: isVideoPublication ? 0 : selectedAssets.length,
-                      video: isVideoPublication && activeVideoAttachment?.url
+                      video: isVideoPublication && activeVideoDisplayAttachment?.url
                         ? {
-                            previewUrl: activeVideoAttachment.url,
-                            name: activeVideoAttachment.name || "Vidéo iNrCy",
-                            type: activeVideoAttachment.type || "video/mp4",
-                            size: activeVideoAttachment.size || null,
-                            duration: (activeVideoAttachment as any).duration || null,
+                            previewUrl: activeVideoDisplayAttachment.url,
+                            name: activeVideoDisplayAttachment.name || "Vidéo iNrCy",
+                            type: activeVideoDisplayAttachment.type || "video/mp4",
+                            size: activeVideoDisplayAttachment.size || null,
+                            duration: (activeVideoDisplayAttachment as any).duration || null,
                             aspectRatio: activeVideoSettings ? getVideoPreviewAspectRatio(activeVideoSettings.format as any) : null,
                             fitMode: activeVideoSettings ? getVideoPreviewFitMode(activeVideoSettings.adaptationMode as any) : null,
                           }
@@ -1340,10 +1342,10 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                   <BoosterVideoFormatManager
                                     isMobile={isMobileViewport}
                                     channel={(activePublicationEntry.key as ChannelKey)}
-                                    videoName={detailsEditMode ? (activePublicationEditVideo?.name || activeVideoAttachment?.name) : activeVideoAttachment?.name}
-                                    videoDisplayUrl={detailsEditMode ? (activePublicationEditVideo?.previewUrl || "") : (activeVideoAttachment?.url || "")}
-                                    videoSize={detailsEditMode ? (activePublicationEditVideo?.size || activeVideoAttachment?.size || 0) : (activeVideoAttachment?.size || 0)}
-                                    videoDurationSeconds={detailsEditMode ? (activePublicationEditVideo?.duration || activeVideoAttachment?.duration || null) : (activeVideoAttachment?.duration || null)}
+                                    videoName={detailsEditMode ? (activePublicationEditVideo?.name || activeVideoDisplayAttachment?.name) : activeVideoDisplayAttachment?.name}
+                                    videoDisplayUrl={detailsEditMode ? (activePublicationEditVideo?.previewUrl || "") : (activeVideoDisplayAttachment?.url || "")}
+                                    videoSize={detailsEditMode ? (activePublicationEditVideo?.size || activeVideoDisplayAttachment?.size || 0) : (activeVideoDisplayAttachment?.size || 0)}
+                                    videoDurationSeconds={detailsEditMode ? (activePublicationEditVideo?.duration || activeVideoDisplayAttachment?.duration || null) : (activeVideoDisplayAttachment?.duration || null)}
                                     videoSourceMetadata={detailsEditMode ? (activePublicationEditVideo?.sourceMetadata || null) : null}
                                     currentFormat={(detailsEditMode ? (activePublicationEditVideo?.format || activeVideoSettings?.format || "original") : (activeVideoSettings?.format || "original")) as VideoFormat}
                                     adaptationMode={(detailsEditMode ? (activePublicationEditVideo?.adaptationMode || activeVideoSettings?.adaptationMode || "safe_blur") : (activeVideoSettings?.adaptationMode || "safe_blur")) as VideoAdaptationMode}
@@ -1360,8 +1362,8 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                     compact={detailsEditMode}
                                   />
 
-                                  {activeVideoAttachment?.url && !detailsEditMode ? (
-                                    <a className={styles.attachmentDownloadHint} href={activeVideoAttachment.url} target="_blank" rel="noreferrer" style={{ justifySelf: "start" }}>
+                                  {activeVideoDisplayAttachment?.url && !detailsEditMode ? (
+                                    <a className={styles.attachmentDownloadHint} href={activeVideoDisplayAttachment.url} target="_blank" rel="noreferrer" style={{ justifySelf: "start" }}>
                                       Télécharger
                                     </a>
                                   ) : null}

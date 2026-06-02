@@ -173,7 +173,8 @@ function attachmentToVideoPayload(att: any): VideoPayload | null {
     publicUrl: url,
     url,
     transformedVariants: Array.isArray(att?.transformedVariants) ? att.transformedVariants : [],
-  };
+    ...((att?.sourceVideo || att?.source_video) ? { sourceVideo: att.sourceVideo || att.source_video } : {}),
+  } as VideoPayload & { sourceVideo?: unknown };
 }
 
 function readPublicationVideoMetadata(file: File, previewUrl: string): Promise<BoosterVideoSourceMetadata> {

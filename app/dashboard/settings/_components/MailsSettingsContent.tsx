@@ -125,6 +125,13 @@ function MailConnectionStatusLabel(acc: MailAccount) {
   return "Déconnectée";
 }
 
+function MailConnectionStatusColor(acc: MailAccount) {
+  const status = acc.connection_status || (acc.status === "connected" ? "connected" : "disconnected");
+  if (status === "needs_update") return "#fbbf24";
+  if (status === "connected") return "#34d399";
+  return "rgba(255,255,255,0.72)";
+}
+
 function mailAccountRefreshUrl(acc: MailAccount) {
   if (acc.provider === "gmail") return "/api/integrations/google/start";
   if (acc.provider === "microsoft") return "/api/integrations/microsoft/start";
@@ -544,7 +551,7 @@ Email : {{email}}`));
                 </>
               ) : (
                 <>
-                  <div style={{ fontSize: 12, color: acc.connection_status === "needs_update" ? "#fbbf24" : "rgba(255,255,255,0.72)", marginTop: 4 }}>Statut : {MailConnectionStatusLabel(acc)}</div>
+                  <div style={{ fontSize: 12, color: MailConnectionStatusColor(acc), marginTop: 4 }}>Statut : {MailConnectionStatusLabel(acc)}</div>
                   {acc.connection_status === "needs_update" && mailAccountRefreshUrl(acc) ? (
                     <Btn
                       label="Actualiser"

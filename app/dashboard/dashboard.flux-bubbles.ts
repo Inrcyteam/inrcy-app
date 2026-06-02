@@ -86,10 +86,10 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
           if (m.key === "gmb") return gmbConnected ? { status: "connected" as ModuleStatus, text: "Connecté" } : { status: "available" as ModuleStatus, text: "A connecter" };
           if (m.key === "facebook") return facebookPageConnected ? { status: "connected" as ModuleStatus, text: "Connecté" } : { status: "available" as ModuleStatus, text: "A connecter" };
           if (m.key === "mails") {
-            const count = Math.max(0, Math.min(4, Math.round(Number(mailAccountsConnectedCount) || 0)));
+            const count = Math.max(0, Math.round(Number(mailAccountsConnectedCount) || 0));
             return count > 0
-              ? { status: "connected" as ModuleStatus, text: `Connecté ${count}/4` }
-              : { status: "available" as ModuleStatus, text: "A connecter 0/4" };
+              ? { status: "connected" as ModuleStatus, text: "Connecté" }
+              : { status: "available" as ModuleStatus, text: "A connecter" };
           }
           if (m.key === "tiktok") return tiktokConnected ? { status: "connected" as ModuleStatus, text: "Connecté (mock)" } : { status: "available" as ModuleStatus, text: "A connecter" };
           return { status: m.status, text: statusLabel(m.status) };

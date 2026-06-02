@@ -192,6 +192,7 @@ export default function DashboardClient() {
   const [helpSiteWebOpen, setHelpSiteWebOpen] = useState(false);
   const [helpInertieOpen, setHelpInertieOpen] = useState(false);
   const [helpInstagramOpen, setHelpInstagramOpen] = useState(false);
+  const [helpFacebookOpen, setHelpFacebookOpen] = useState(false);
   const [dashboardBoosterModal, setDashboardBoosterModal] = useState<null | "publish" | "stats">(null);
   const [siteConnectionsReady, setSiteConnectionsReady] = useState(false);
   const [mailAccountsConnectedCount, setMailAccountsConnectedCount] = useState(() => readCachedMailAccountsConnectedCount() ?? 0);
@@ -1236,15 +1237,16 @@ const sitePowerGa4Connected = (hasSiteInrcyUrl && siteInrcyGa4Connected) || (has
 const sitePowerGscConnected = (hasSiteInrcyUrl && siteInrcyGscConnected) || (hasSiteWebUrl && siteWebGscConnected);
 
 const generatorPowerSteps = [
-  { key: "profile", label: "Compléter mon profil", shortLabel: "Profil", weight: 15, completed: profileCompleted },
-  { key: "activity", label: "Compléter mon activité", shortLabel: "Activité", weight: 15, completed: activityCompleted },
-  { key: "site_link", label: "Connecter un site internet", shortLabel: "Site internet", weight: 10, completed: sitePowerLinkConnected },
+  { key: "profile", label: "Compléter mon profil", shortLabel: "Profil", weight: 10, completed: profileCompleted },
+  { key: "activity", label: "Compléter mon activité", shortLabel: "Activité", weight: 10, completed: activityCompleted },
+  { key: "site_link", label: "Connecter un site internet", shortLabel: "Site internet", weight: 12, completed: sitePowerLinkConnected },
   { key: "site_ga4", label: "Brancher GA4", shortLabel: "GA4", weight: 5, completed: sitePowerGa4Connected },
   { key: "site_gsc", label: "Brancher GSC", shortLabel: "GSC", weight: 5, completed: sitePowerGscConnected },
-  { key: "gmb", label: "Connecter Google Business", shortLabel: "Google Business", weight: 20, completed: gmbConnected && gmbConnectionStatus !== "needs_update" },
-  { key: "facebook", label: "Connecter Facebook", shortLabel: "Facebook", weight: 10, completed: facebookPageConnected && facebookConnectionStatus !== "needs_update" },
-  { key: "instagram", label: "Connecter Instagram", shortLabel: "Instagram", weight: 10, completed: instagramConnected && instagramConnectionStatus !== "needs_update" },
-  { key: "linkedin", label: "Connecter LinkedIn", shortLabel: "LinkedIn", weight: 10, completed: linkedinConnected && linkedinConnectionStatus !== "needs_update" },
+  { key: "gmb", label: "Connecter Google Business", shortLabel: "Google Business", weight: 22, completed: gmbConnected && gmbConnectionStatus !== "needs_update" },
+  { key: "facebook", label: "Connecter Facebook", shortLabel: "Facebook", weight: 11, completed: facebookPageConnected && facebookConnectionStatus !== "needs_update" },
+  { key: "instagram", label: "Connecter Instagram", shortLabel: "Instagram", weight: 11, completed: instagramConnected && instagramConnectionStatus !== "needs_update" },
+  { key: "linkedin", label: "Connecter LinkedIn", shortLabel: "LinkedIn", weight: 8, completed: linkedinConnected && linkedinConnectionStatus !== "needs_update" },
+  { key: "mails", label: "Connecter Mails", shortLabel: "Mails", weight: 6, completed: mailAccountsConnectedCount > 0 },
 ] as const;
 
 const computedGeneratorPower = generatorPowerSteps.reduce((sum, step) => sum + (step.completed ? step.weight : 0), 0);
@@ -2682,6 +2684,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
 
       <DashboardHero
         generatorPower={generatorPower}
+        generatorPowerSteps={generatorPowerSteps}
         remainingGeneratorPowerSteps={remainingGeneratorPowerSteps}
         nextGeneratorPowerStep={nextGeneratorPowerStep}
         onOpenGeneratorHelp={() => setHelpGeneratorOpen(true)}
@@ -2736,6 +2739,8 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         headerActions={
           panel === "inertie" ? (
             <HelpButton onClick={() => setHelpInertieOpen(true)} title="Aide : Mon inertie" />
+          ) : panel === "facebook" ? (
+            <HelpButton onClick={() => setHelpFacebookOpen(true)} title="Aide connexion Facebook" />
           ) : panel === "instagram" ? (
             <HelpButton onClick={() => setHelpInstagramOpen(true)} title="Aide connexion Instagram" />
           ) : null
@@ -2776,12 +2781,14 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         helpSiteInrcyOpen={helpSiteInrcyOpen}
         helpSiteWebOpen={helpSiteWebOpen}
         helpInertieOpen={helpInertieOpen}
+        helpFacebookOpen={helpFacebookOpen}
         helpInstagramOpen={helpInstagramOpen}
         onCloseGenerator={() => setHelpGeneratorOpen(false)}
         onCloseCanaux={() => setHelpCanauxOpen(false)}
         onCloseSiteInrcy={() => setHelpSiteInrcyOpen(false)}
         onCloseSiteWeb={() => setHelpSiteWebOpen(false)}
         onCloseInertie={() => setHelpInertieOpen(false)}
+        onCloseFacebook={() => setHelpFacebookOpen(false)}
         onCloseInstagram={() => setHelpInstagramOpen(false)}
       />
 

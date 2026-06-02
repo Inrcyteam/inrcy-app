@@ -9,11 +9,13 @@ type DashboardHelpModalsProps = {
   helpSiteWebOpen: boolean;
   helpInertieOpen: boolean;
   helpInstagramOpen: boolean;
+  helpFacebookOpen: boolean;
   onCloseGenerator: () => void;
   onCloseCanaux: () => void;
   onCloseSiteInrcy: () => void;
   onCloseSiteWeb: () => void;
   onCloseInertie: () => void;
+  onCloseFacebook: () => void;
   onCloseInstagram: () => void;
 };
 
@@ -34,11 +36,13 @@ export default function DashboardHelpModals({
   helpSiteWebOpen,
   helpInertieOpen,
   helpInstagramOpen,
+  helpFacebookOpen,
   onCloseGenerator,
   onCloseCanaux,
   onCloseSiteInrcy,
   onCloseSiteWeb,
   onCloseInertie,
+  onCloseFacebook,
   onCloseInstagram,
 }: DashboardHelpModalsProps) {
   return (
@@ -186,6 +190,77 @@ export default function DashboardHelpModals({
         </div>
       </HelpModal>
 
+      <HelpModal open={helpFacebookOpen} title="Connexion Facebook" onClose={onCloseFacebook}>
+        <div
+          style={{
+            marginTop: 0,
+            borderRadius: 18,
+            padding: 24,
+            background:
+              "linear-gradient(135deg, rgba(0,180,255,0.14), rgba(167,72,255,0.14), rgba(255,92,138,0.10))",
+            border: "1px solid rgba(110,180,255,0.18)",
+            boxShadow: "0 0 40px rgba(87,117,255,0.12)",
+          }}
+        >
+          <p style={{ marginTop: 0, marginBottom: 18, fontSize: 15.5, lineHeight: 1.75 }}>
+            Pour connecter Facebook à iNrCy, utilisez le <strong>compte Facebook personnel</strong> qui possède les droits sur votre <strong>Page Facebook professionnelle</strong>.
+            iNrCy ne publie pas sur votre profil personnel : ce compte sert uniquement à accéder à la Page de votre entreprise.
+          </p>
+
+          <div style={{ display: "grid", gap: 16 }}>
+            <div
+              style={{
+                borderRadius: 16,
+                padding: 16,
+                background: "rgba(255,255,255,0.05)",
+                border: "1px solid rgba(255,255,255,0.09)",
+              }}
+            >
+              <div style={{ fontWeight: 800, color: "#66d9ff", marginBottom: 10 }}>✅ Configuration correcte</div>
+              <ol style={{ margin: 0, paddingLeft: 18, lineHeight: 1.7, fontSize: 14.5 }}>
+                <li>Vous avez un <strong>compte Facebook personnel</strong>.</li>
+                <li>Ce compte gère une <strong>Page Facebook professionnelle</strong>.</li>
+                <li>Vous connectez ce compte Facebook à iNrCy.</li>
+                <li>Vous sélectionnez ensuite la bonne <strong>Page professionnelle</strong>.</li>
+              </ol>
+            </div>
+
+            <div
+              style={{
+                borderRadius: 16,
+                padding: 16,
+                background: "rgba(255,255,255,0.05)",
+                border: "1px solid rgba(255,255,255,0.09)",
+              }}
+            >
+              <div style={{ fontWeight: 800, color: "#ff9ad5", marginBottom: 10 }}>📘 Créer une Page professionnelle</div>
+              <ol style={{ margin: 0, paddingLeft: 18, lineHeight: 1.7, fontSize: 14.5 }}>
+                <li>Ouvrez Facebook avec votre <strong>compte personnel</strong>.</li>
+                <li>Allez dans <strong>Pages</strong>.</li>
+                <li>Cliquez sur <strong>Créer une Page</strong>.</li>
+                <li>Ajoutez le nom de l’entreprise, la catégorie et les informations.</li>
+                <li>Vérifiez qu’il s’agit bien d’une <strong>Page</strong>, pas d’un profil personnel.</li>
+              </ol>
+            </div>
+          </div>
+
+          <div
+            style={{
+              marginTop: 18,
+              padding: "13px 15px",
+              borderRadius: 14,
+              background: "rgba(245,158,11,0.10)",
+              border: "1px solid rgba(245,158,11,0.20)",
+              fontSize: 13.5,
+              lineHeight: 1.6,
+              opacity: 0.98,
+            }}
+          >
+            Attention : si votre “page entreprise” a des amis au lieu d’abonnés ou de mentions J’aime, il s’agit probablement d’un profil personnel mal configuré. Dans ce cas, iNrCy ne pourra pas l’utiliser comme Page professionnelle.
+          </div>
+        </div>
+      </HelpModal>
+
       <HelpModal open={helpInstagramOpen} title="Connexion Instagram" onClose={onCloseInstagram}>
         <div
           style={{
@@ -199,9 +274,7 @@ export default function DashboardHelpModals({
           }}
         >
           <p style={{ marginTop: 0, marginBottom: 18, fontSize: 15.5, lineHeight: 1.75 }}>
-            Vous ne parvenez pas à vous connecter ou vous ne trouvez pas votre compte Instagram ?
-            Pour fonctionner avec iNrCy, votre compte Instagram <strong>Business / Creator</strong> doit être relié à une
-            <strong> Page Facebook professionnelle</strong> accessible par votre profil Facebook ou votre portefeuille Meta Business.
+            Pour connecter Instagram à iNrCy, votre compte Instagram doit être <strong>professionnel</strong> : Business ou Creator. Il doit ensuite être relié à une <strong>Page Facebook professionnelle</strong> accessible par votre compte Facebook ou votre portefeuille Meta Business.
           </p>
 
           <div style={{ display: "grid", gap: 16 }}>
@@ -213,13 +286,13 @@ export default function DashboardHelpModals({
                 border: "1px solid rgba(255,255,255,0.09)",
               }}
             >
-              <div style={{ fontWeight: 800, color: "#66d9ff", marginBottom: 10 }}>📘 Solution 1 — Depuis Facebook</div>
+              <div style={{ fontWeight: 800, color: "#66d9ff", marginBottom: 10 }}>📸 Passer Instagram en compte professionnel</div>
               <ol style={{ margin: 0, paddingLeft: 18, lineHeight: 1.7, fontSize: 14.5 }}>
-                <li>Ouvrez Facebook et passez sur votre <strong>Page professionnelle</strong>.</li>
-                <li>Allez dans <strong>Paramètres et confidentialité</strong>, puis <strong>Paramètres</strong>.</li>
-                <li>Dans les réglages de la Page, ouvrez <strong>Comptes liés</strong> ou <strong>Autorisations</strong>.</li>
-                <li>Choisissez <strong>Instagram</strong>, puis cliquez sur <strong>Connecter un compte</strong>.</li>
-                <li>Connectez le bon compte Instagram <strong>Business / Creator</strong> et validez la liaison.</li>
+                <li>Ouvrez Instagram, puis allez sur votre <strong>profil</strong>.</li>
+                <li>Ouvrez le menu <strong>☰</strong>, puis <strong>Paramètres et activité</strong>.</li>
+                <li>Cherchez <strong>Type de compte et outils</strong> ou <strong>Outils professionnels</strong>.</li>
+                <li>Cliquez sur <strong>Passer à un compte professionnel</strong>.</li>
+                <li>Choisissez <strong>Business</strong> ou <strong>Creator</strong>.</li>
               </ol>
             </div>
 
@@ -231,14 +304,26 @@ export default function DashboardHelpModals({
                 border: "1px solid rgba(255,255,255,0.09)",
               }}
             >
-              <div style={{ fontWeight: 800, color: "#ff9ad5", marginBottom: 10 }}>📸 Solution 2 — Depuis Instagram</div>
+              <div style={{ fontWeight: 800, color: "#ff9ad5", marginBottom: 10 }}>🔗 Relier Instagram à Facebook</div>
               <ol style={{ margin: 0, paddingLeft: 18, lineHeight: 1.7, fontSize: 14.5 }}>
-                <li>Ouvrez Instagram avec le compte professionnel à connecter.</li>
-                <li>Allez sur le profil, puis cliquez sur <strong>Modifier le profil</strong>.</li>
-                <li>Dans <strong>Informations publiques de l’entreprise</strong>, ouvrez <strong>Page</strong>.</li>
-                <li>Sélectionnez la bonne <strong>Page Facebook professionnelle</strong>.</li>
-                <li>Si la Page n’apparaît pas, vérifiez que le profil Facebook utilisé possède bien les droits sur cette Page.</li>
+                <li><strong>Depuis Instagram</strong> : Profil → Modifier le profil → Page → sélectionnez la bonne Page Facebook professionnelle.</li>
+                <li><strong>Depuis Facebook</strong> : ouvrez la Page professionnelle → Paramètres → Comptes liés ou Instagram → connectez le compte Instagram professionnel.</li>
+                <li>Si la Page n’apparaît pas, vérifiez que le compte Facebook utilisé possède bien les droits sur cette Page.</li>
               </ol>
+            </div>
+
+            <div
+              style={{
+                borderRadius: 16,
+                padding: 16,
+                background: "rgba(255,255,255,0.05)",
+                border: "1px solid rgba(255,255,255,0.09)",
+              }}
+            >
+              <div style={{ fontWeight: 800, color: "#7df7c4", marginBottom: 10 }}>🏢 Cas Meta Business</div>
+              <div style={{ lineHeight: 1.7, fontSize: 14.5 }}>
+                Si vous utilisez Meta Business Suite, vérifiez que la <strong>Page Facebook</strong> et le <strong>compte Instagram</strong> sont dans le même portefeuille Business, et que votre compte Facebook personnel a les droits sur les deux.
+              </div>
             </div>
           </div>
 
@@ -254,9 +339,7 @@ export default function DashboardHelpModals({
               opacity: 0.98,
             }}
           >
-            Une fois la liaison faite, revenez dans iNrCy, ouvrez <strong>Configuration — Instagram</strong>, puis cliquez sur
-            <strong> Charger mes comptes</strong>. Si vous utilisez un portefeuille Meta Business, essayez aussi la connexion
-            <strong> Business / Meta</strong>.
+            Si le compte Instagram ou la Page Facebook n’apparaît pas dans iNrCy, le problème vient presque toujours d’un compte personnel, d’une Page mal créée ou de droits Meta insuffisants.
           </div>
         </div>
       </HelpModal>

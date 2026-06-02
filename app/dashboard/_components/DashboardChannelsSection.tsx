@@ -432,48 +432,60 @@ export default function DashboardChannelsSection({
           </div>
 
           {hasCarousel && (
-            <div className={styles.carouselNav} aria-label="Position dans le carrousel">
-              <button
-                type="button"
-                className={styles.carouselArrow}
-                onClick={goPrev}
-                aria-label="Canal précédent"
-              >
-                <span aria-hidden="true">&lt;</span>
-              </button>
+            <div className={styles.carouselNavWrap}>
+              <div className={styles.carouselNav} aria-label="Position dans le carrousel">
+                <button
+                  type="button"
+                  className={styles.carouselArrow}
+                  onClick={goPrev}
+                  aria-label="Canal précédent"
+                >
+                  <span aria-hidden="true">&lt;</span>
+                </button>
 
-              <div className={styles.carouselDots}>
-                {baseModules.map((_, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    className={`${styles.carouselDot} ${i === activeDot ? styles.carouselDotActive : ""}`}
-                    onClick={() => {
-                      if (isAnimating.current) return;
-                      isAnimating.current = true;
-                      setCarouselTransition(true);
-                      setCarouselIndex(i + 1);
-                    }}
-                    aria-label={`Aller au canal ${i + 1}`}
-                  />
-                ))}
+                <div className={styles.carouselDots}>
+                  {baseModules.map((_, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      className={`${styles.carouselDot} ${i === activeDot ? styles.carouselDotActive : ""}`}
+                      onClick={() => {
+                        if (isAnimating.current) return;
+                        isAnimating.current = true;
+                        setCarouselTransition(true);
+                        setCarouselIndex(i + 1);
+                      }}
+                      aria-label={`Aller au canal ${i + 1}`}
+                    />
+                  ))}
+                </div>
+
+                <button
+                  type="button"
+                  className={styles.carouselArrow}
+                  onClick={goNext}
+                  aria-label="Canal suivant"
+                >
+                  <span aria-hidden="true">&gt;</span>
+                </button>
               </div>
 
-              <button
-                type="button"
-                className={styles.carouselArrow}
-                onClick={goNext}
-                aria-label="Canal suivant"
-              >
-                <span aria-hidden="true">&gt;</span>
-              </button>
+              <div className={styles.mobileChannelSummary} aria-label={`${connectedChannelsCount} canaux connectés sur ${baseModules.length}`}>
+                {connectedChannelsCount}/{baseModules.length} connectés
+              </div>
             </div>
           )}
         </>
       ) : isMobile && bubbleView === "list" ? (
-        <div className={styles.moduleGrid}>
-          {fluxBubbleItems.map((item) => renderFluxBubble(item, item.key))}
-        </div>
+        <>
+          <div className={styles.moduleGrid}>
+            {fluxBubbleItems.map((item) => renderFluxBubble(item, item.key))}
+          </div>
+
+          <div className={styles.mobileChannelSummary} aria-label={`${connectedChannelsCount} canaux connectés sur ${baseModules.length}`}>
+            {connectedChannelsCount}/{baseModules.length} connectés
+          </div>
+        </>
       ) : (
         <>
           <div

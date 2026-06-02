@@ -977,7 +977,18 @@ export function extractPublicationParts(payload: any): PublicationParts {
     : [];
 
   const attachments = extractAttachmentsFromPayload(payload);
-  const sourceVideoCandidate = (post as any).sourceVideo || (post as any).source_video || (payload as any).sourceVideo || (payload as any).source_video || null;
+  const postVideoRecord = (post as any).video && typeof (post as any).video === "object" ? (post as any).video : null;
+  const payloadVideoRecord = (payload as any).video && typeof (payload as any).video === "object" ? (payload as any).video : null;
+  const sourceVideoCandidate =
+    (post as any).sourceVideo ||
+    (post as any).source_video ||
+    postVideoRecord?.sourceVideo ||
+    postVideoRecord?.source_video ||
+    (payload as any).sourceVideo ||
+    (payload as any).source_video ||
+    payloadVideoRecord?.sourceVideo ||
+    payloadVideoRecord?.source_video ||
+    null;
   const sourceVideo = sourceVideoCandidate
     ? extractAttachmentsFromPayload({ video: sourceVideoCandidate })[0] || null
     : null;
