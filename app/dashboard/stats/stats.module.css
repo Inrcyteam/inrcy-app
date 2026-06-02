@@ -4689,3 +4689,184 @@
     min-height: 40px !important;
   }
 }
+
+/* iNrStats — Mails : header canal sans KPI demandes captées */
+.action_mail_simple {
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.24), rgba(20, 184, 166, 0.16));
+  border-color: rgba(56, 189, 248, 0.42);
+  color: rgba(240, 249, 255, 0.96);
+}
+
+@media (min-width: 901px) {
+  .channelStatsKpisMail,
+  .channelStatsHeader .channelStatsKpisMail,
+  .channelStatsHeader .allStatsKpis.channelStatsKpisMail {
+    grid-template-columns: 160px 160px !important;
+    min-width: 334px !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .channelStatsKpisMail,
+  .channelStatsHeader .channelStatsKpisMail,
+  .channelStatsHeader .allStatsKpis.channelStatsKpisMail {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+/* iNrStats — lecture Mails spécifique (canal différent des réseaux/sites) */
+:root {
+  --cValoriser: rgba(251, 146, 60, 0.96);
+  --cRecolter: rgba(244, 114, 182, 0.96);
+  --cOffrir: rgba(250, 204, 21, 0.96);
+  --cInformer: rgba(56, 189, 248, 0.96);
+  --cSuivre: rgba(34, 197, 94, 0.96);
+  --cEnqueter: rgba(129, 140, 248, 0.96);
+  --cMailSimple: rgba(157, 78, 255, 0.96);
+}
+
+@media (min-width: 901px) {
+  .channelStatsPanel .cube_mails .cubeBody {
+    padding: 9px 12px 12px !important;
+    gap: 9px !important;
+  }
+
+  .channelStatsPanel .cube_mails .detailTopRow,
+  .channelStatsPanel .cube_mails .blockRow {
+    gap: 9px !important;
+  }
+
+  .channelStatsPanel .cube_mails .block {
+    padding: 9px 10px !important;
+    border-radius: 13px !important;
+  }
+
+  .channelStatsPanel .cube_mails .blockTitle {
+    margin-bottom: 7px !important;
+    font-size: 11.5px !important;
+  }
+
+  .channelStatsPanel .cube_mails .metricMiniGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px !important;
+  }
+
+  .channelStatsPanel .cube_mails .metricMiniCard {
+    padding: 7px 9px !important;
+    border-radius: 12px !important;
+  }
+
+  .channelStatsPanel .cube_mails .metricMiniCard span {
+    font-size: 10px !important;
+    line-height: 1.04 !important;
+  }
+
+  .channelStatsPanel .cube_mails .metricMiniCard b {
+    margin-top: 3px !important;
+    font-size: 16px !important;
+    line-height: 1 !important;
+  }
+
+  .channelStatsPanel .cube_mails .provenanceCompactBlock .donutWrap {
+    grid-template-columns: 84px minmax(0, 1fr) !important;
+    gap: 10px !important;
+    align-items: center !important;
+  }
+
+  .channelStatsPanel .cube_mails .provenanceCompactBlock .donut {
+    width: 84px !important;
+    height: 84px !important;
+  }
+
+  .channelStatsPanel .cube_mails .provenanceCompactBlock .donutHole {
+    width: 50px !important;
+    height: 50px !important;
+  }
+
+  .channelStatsPanel .cube_mails .provenanceCompactBlock .legend {
+    gap: 3px !important;
+  }
+
+  .channelStatsPanel .cube_mails .provenanceCompactBlock .legendRow {
+    grid-template-columns: 10px minmax(0, 1fr) 34px !important;
+    gap: 6px !important;
+    font-size: 10.5px !important;
+    line-height: 1.06 !important;
+  }
+
+  .channelStatsPanel .cube_mails .legendDot {
+    width: 9px !important;
+    height: 9px !important;
+  }
+
+  .channelStatsPanel .cube_mails .qualityRow {
+    gap: 10px !important;
+  }
+
+  .channelStatsPanel .cube_mails .ring {
+    width: 66px !important;
+    height: 66px !important;
+  }
+
+  .channelStatsPanel .cube_mails .ringInner {
+    width: 48px !important;
+    height: 48px !important;
+  }
+
+  .channelStatsPanel .cube_mails .ringValue {
+    font-size: 19px !important;
+  }
+
+  .channelStatsPanel .cube_mails .ringSub {
+    font-size: 9px !important;
+  }
+
+  .channelStatsPanel .cube_mails .qualityLabel {
+    font-size: 15px !important;
+  }
+
+  .channelStatsPanel .cube_mails .qualitySub {
+    font-size: 11px !important;
+  }
+
+  .channelStatsPanel .cube_mails .lectureBusinessActionBlock {
+    padding: 9px 10px !important;
+    gap: 10px !important;
+  }
+
+  .channelStatsPanel .cube_mails .lectureBusinessContent .bullets {
+    gap: 3px !important;
+    font-size: 12px !important;
+    line-height: 1.22 !important;
+  }
+
+  .channelStatsPanel .cube_mails .channelInlineAction {
+    padding: 8px 10px !important;
+  }
+
+  .channelStatsPanel .cube_mails .actionBtn.channelInlineGoButton {
+    height: 42px !important;
+  }
+}
+
+.cube_mails {
+  --mailStatsCompact: 1;
+}
+
+/* iNrStats Mails — chiffres 30j + total sans alourdir la fiche */
+.metricMiniCard small {
+  display: block;
+  margin-top: 3px;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 10.5px;
+  font-weight: 800;
+  line-height: 1.05;
+}
+
+@media (min-width: 901px) {
+  .channelStatsPanel .cube_mails .metricMiniCard small {
+    margin-top: 2px !important;
+    font-size: 9.8px !important;
+    line-height: 1 !important;
+  }
+}

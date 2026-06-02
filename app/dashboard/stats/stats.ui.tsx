@@ -56,8 +56,17 @@ function StatusPill({ ok, label }: { ok: boolean; label: string }) {
   return <span className={`${styles.pill} ${ok ? styles.pillOn : styles.pillOff}`}>{label}</span>;
 }
 
+function actionPillClassKey(label: string) {
+  return String(label || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+}
 
-function MiniMetricGrid({ items }: { items: Array<{ label: string; value: string }> }) {
+
+function MiniMetricGrid({ items }: { items: Array<{ label: string; value: string; subValue?: string }> }) {
   if (!items.length) {
     return <div className={styles.metricEmpty}>Données non exploitables pour le moment.</div>;
   }
@@ -68,6 +77,7 @@ function MiniMetricGrid({ items }: { items: Array<{ label: string; value: string
         <div key={item.label} className={styles.metricMiniCard}>
           <span>{item.label}</span>
           <b>{item.value}</b>
+          {item.subValue ? <small>{item.subValue}</small> : null}
         </div>
       ))}
     </div>
@@ -248,7 +258,7 @@ export function Cube({
 
   const action = (model as any).action ?? ({ key: "connect", title: "Connexion", detail: "", href: "#", pill: "Connexion" } as const);
   const pill = (action as any)?.pill ?? "Connexion";
-  const pillKey = String(pill).toLowerCase();
+  const pillKey = actionPillClassKey(pill);
 
   const connectionOk = !isTikTokComingSoon && (isSite
     ? !!model.connections.ga4 || !!model.connections.gsc
@@ -256,7 +266,7 @@ export function Cube({
   const headerTitle = hideDetailsToggle ? getForcedCubeContextLabel(model.key) : model.title;
 
   return (
-    <section className={`${styles.cube} ${connectionOk ? styles.cubeOn : styles.cubeOff}`} aria-label={model.title}>
+    <section className={`${styles.cube} ${styles[`cube_${model.key}`] ?? ""} ${connectionOk ? styles.cubeOn : styles.cubeOff}`} aria-label={model.title}>
       <div className={`${styles.cubeTop} ${hideDetailsToggle ? styles.cubeTopCompact : ""}`}>
         <div className={hideDetailsToggle ? styles.cubeHeaderInline : undefined}>
           {hideDetailsToggle ? (
@@ -335,14 +345,18 @@ export function Cube({
               <span>CA potentiel</span>
               <b>+{fmtInt(estimatedRevenue)} €</b>
             </div>
-            <div>
-              <span>Demandes captées 7j</span>
-              <b>{model.capturedLeadsUnavailable ? "—" : fmtInt(model.capturedLeads.week)}</b>
-            </div>
-            <div>
-              <span>Demandes captées 30j</span>
-              <b>{model.capturedLeadsUnavailable ? "—" : fmtInt(model.capturedLeads.month)}</b>
-            </div>
+            {model.key !== "mails" ? (
+              <>
+                <div>
+                  <span>Demandes captées 7j</span>
+                  <b>{model.capturedLeadsUnavailable ? "—" : fmtInt(model.capturedLeads.week)}</b>
+                </div>
+                <div>
+                  <span>Demandes captées 30j</span>
+                  <b>{model.capturedLeadsUnavailable ? "—" : fmtInt(model.capturedLeads.month)}</b>
+                </div>
+              </>
+            ) : null}
           </div>
         </div>
       ) : null}
@@ -383,12 +397,12 @@ export function Cube({
         <div className={styles.cubeBody}>
           <div className={styles.detailTopRow}>
             <div className={`${styles.block} ${styles.metricOverviewBlock}`}>
-              <div className={styles.blockTitle}>Visibilité du canal</div>
+              <div className={styles.blockTitle}>{model.key === "mails" ? "Activité mail" : "Visibilité du canal"}</div>
               <MiniMetricGrid items={model.visibilityStats} />
             </div>
 
             <div className={`${styles.block} ${styles.provenanceCompactBlock}`}>
-              <div className={styles.blockTitle}>Provenance</div>
+              <div className={styles.blockTitle}>{model.key === "mails" ? "Répartition des actions mail" : "Provenance"}</div>
               <Donut segments={model.provenance} />
               {model.provenanceHint ? <div className={styles.provenanceHint}>{model.provenanceHint}</div> : null}
             </div>
@@ -407,7 +421,7 @@ export function Cube({
             </div>
 
             <div className={`${styles.block} ${styles.metricOverviewBlock}`}>
-              <div className={styles.blockTitle}>Actions utiles</div>
+              <div className={styles.blockTitle}>{model.key === "mails" ? "Automatiques & business" : "Actions utiles"}</div>
               <MiniMetricGrid items={model.actionStats} />
             </div>
           </div>

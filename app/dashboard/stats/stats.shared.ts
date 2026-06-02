@@ -102,6 +102,7 @@ export type ActionKey =
   | "fideliser_informer"
   | "fideliser_satisfaction"
   | "fideliser_remercier"
+  | "mail_simple"
   | "connect"
   | "loading";
 
@@ -113,6 +114,7 @@ export type ActionEffort = {
 export type CubeMetricItem = {
   label: string;
   value: string;
+  subValue?: string;
 };
 
 export type CubeModel = {
@@ -147,7 +149,7 @@ export type CubeModel = {
     title: string;
     detail: string;
     href: string;
-    pill: "Booster" | "Propulser" | "Fidéliser" | "Connexion";
+    pill: "Booster" | "Propulser" | "Fidéliser" | "Mail simple" | "Connexion";
     effort?: ActionEffort;
   };
 };
@@ -756,7 +758,7 @@ export function computeOpportunity30(cubeKey: CubeKey, ov: Overview) {
     const m = ov?.sources?.mails?.metrics;
     const base = safeNum(m?.campagnes30) <= 0 ? 8 : 3;
     const contactsPotential = Math.min(28, safeNum(m?.contactsCrm) / 14);
-    const activityPotential = Math.min(14, safeNum(m?.campagnes30) * 2 + safeNum(m?.envois30) / 35);
+    const activityPotential = Math.min(14, safeNum(m?.campagnes30) * 2 + safeNum(m?.destinataires30) / 45 + safeNum(m?.agendaReminders30) / 20);
     return Math.max(0, Math.round(base + contactsPotential + activityPotential));
   }
 
@@ -835,9 +837,9 @@ export function buildProvenance(cubeKey: CubeKey, ov: Overview) {
   if (cubeKey === "mails") {
     const m = ov?.sources?.mails?.metrics;
     return [
-      { label: "Envois", value: safeNum(m?.envois30), colorVar: "--cSocial" },
-      { label: "Campagnes", value: safeNum(m?.campagnes30), colorVar: "--cGoogle" },
-      { label: "CRM", value: safeNum(m?.contactsCrm), colorVar: "--cDirect" },
+      { label: "Fidéliser", value: safeNum(m?.fidelisations30), colorVar: "--cSocial" },
+      { label: "Propulser", value: safeNum(m?.propulsions30), colorVar: "--cGoogle" },
+      { label: "Mails simples", value: safeNum(m?.mailsSimples30), colorVar: "--cDirect" },
     ];
   }
 
@@ -948,8 +950,9 @@ export function computeQuality(cubeKey: CubeKey, ov: Overview) {
     const accounts = safeNum(m?.connectedCount);
     const contacts = safeNum(m?.contactsCrm);
     const campaigns = safeNum(m?.campagnes30);
-    const envois = safeNum(m?.envois30);
-    const score = clamp(Math.round(35 + Math.min(25, accounts * 8) + Math.min(20, contacts / 10) + Math.min(20, campaigns * 4 + envois * 0.25)), 35, 92);
+    const destinataires = safeNum(m?.destinataires30);
+    const agenda = safeNum(m?.agendaReminders30);
+    const score = clamp(Math.round(35 + Math.min(25, accounts * 8) + Math.min(20, contacts / 10) + Math.min(20, campaigns * 4 + destinataires * 0.10 + agenda * 0.12)), 35, 92);
     return { score, ...qualityLabel(score) };
   }
 
@@ -1085,7 +1088,7 @@ function getDecisionInput(
         audience: safeNum(m?.contactsCrm),
         engagement: safeNum(m?.campagnes30),
         conversions: safeNum(m?.destinataires30),
-        visibility: safeNum(m?.envois30),
+        visibility: safeNum(m?.destinataires30),
       },
       provenance: provenance.map((entry) => ({ label: entry.label, value: entry.value })),
     };
@@ -1366,7 +1369,7 @@ function recommendAction(cubeKey: CubeKey, ov: Overview, qualityScore: number): 
       return {
         key: "connect",
         title: "Configurer",
-        detail: "Connectez une boîte d’envoi pour activer iNr’Send, Propulser et Fidéliser.",
+        detail: "Connectez une boîte d’envoi pour activer Fidéliser, Propulser et les mails simples.",
         href: "/dashboard?panel=mails",
         pill: "Connexion",
       };
@@ -1414,13 +1417,13 @@ export function buildInsights(cubeKey: CubeKey, ov: Overview, qualityScore: numb
 
   if (cubeKey === "mails") {
     if (!ov?.sources?.mails?.connected) {
-      return ["Canal mail non connecté.", "Connectez une boîte d’envoi pour activer iNr’Send, Propulser et Fidéliser."];
+      return ["Canal mail non connecté.", "Connectez une boîte d’envoi pour activer Fidéliser, Propulser et les mails simples."];
     }
     const m = ov?.sources?.mails?.metrics;
     return [
       `Boîtes connectées : ${fmtInt(safeNum(m?.connectedCount))}/4.`,
       `${fmtInt(safeNum(m?.contactsCrm))} contacts CRM exploitables pour vos campagnes.`,
-      safeNum(m?.campagnes30) > 0 ? "Des campagnes sont déjà visibles dans iNr’Send." : "Canal prêt : lancez une première campagne Fidéliser ou Propulser.",
+      safeNum(m?.campagnes30) > 0 ? "Des campagnes sont déjà visibles sur les 30 derniers jours." : "Canal prêt : lancez une première campagne Fidéliser ou Propulser.",
     ];
   }
 
@@ -1594,9 +1597,9 @@ function buildVisibilityStats(cubeKey: CubeKey, ov: Overview): CubeMetricItem[] 
     if (!ov?.sources?.mails?.connected) return [];
     const m = ov?.sources?.mails?.metrics;
     pushNumberMetric(items, "Boîtes", safeNum(m?.connectedCount), { formatter: (value) => `${fmtInt(value)}/4` });
-    pushNumberMetric(items, "Envois", safeNum(m?.envois30));
-    pushNumberMetric(items, "Campagnes", safeNum(m?.campagnes30));
-    pushNumberMetric(items, "Contacts CRM", safeNum(m?.contactsCrm));
+    pushNumberMetric(items, "Contacts email", safeNum(m?.contactsEmail) || safeNum(m?.contactsCrm));
+    pushNumberMetric(items, "Campagnes 30j", safeNum(m?.campagnes30));
+    pushNumberMetric(items, "Destinataires", safeNum(m?.destinataires30));
     return firstFour(items);
   }
 
@@ -1703,9 +1706,9 @@ function buildActionStats(cubeKey: CubeKey, ov: Overview): CubeMetricItem[] {
     if (!ov?.sources?.mails?.connected) return [];
     const m = ov?.sources?.mails?.metrics;
     pushNumberMetric(items, "Boîtes", safeNum(m?.connectedCount), { formatter: (value) => `${fmtInt(value)}/4` });
-    pushNumberMetric(items, "Envois", safeNum(m?.envois30));
-    pushNumberMetric(items, "Campagnes", safeNum(m?.campagnes30));
-    pushNumberMetric(items, "Contacts CRM", safeNum(m?.contactsCrm));
+    pushNumberMetric(items, "Contacts email", safeNum(m?.contactsEmail) || safeNum(m?.contactsCrm));
+    pushNumberMetric(items, "Campagnes 30j", safeNum(m?.campagnes30));
+    pushNumberMetric(items, "Destinataires", safeNum(m?.destinataires30));
     return firstFour(items);
   }
 
@@ -1911,8 +1914,8 @@ export function buildSummaryActionItems({
     },
     mails: {
       label: "Utiliser Fidéliser",
-      kicker: "Relancez vos contacts par mail",
-      motive: "Mails connecte iNr’Send, Propulser et Fidéliser pour transformer votre base CRM en actions concrètes.",
+      kicker: "Animez votre base par mail",
+      motive: "Mails analyse vos usages Fidéliser, Propulser et mails simples pour transformer votre CRM en actions concrètes.",
       badge: "Fidéliser",
     },
     tiktok: {
@@ -1963,7 +1966,7 @@ export function buildSummaryActionItems({
     mails: {
       label: "Connecter une boîte mail",
       kicker: "Activez vos campagnes",
-      motive: "Connectez au moins une boîte d’envoi pour utiliser iNr’Send, Propulser et Fidéliser.",
+      motive: "Connectez au moins une boîte d’envoi pour utiliser Fidéliser, Propulser et les mails simples.",
       badge: "Connexion",
     },
     tiktok: {
