@@ -62,7 +62,7 @@ export default function LegalContent({ mode = "page" }: Props) {
       <div style={{ ...card, ...shell, padding: 18 }}>
         <h2 style={titleAccent}>Informations légales</h2>
         <p style={{ margin: "10px 0 0", opacity: 0.85, lineHeight: 1.5 }}>
-          Retrouvez ici la politique de confidentialité, les mentions légales et les conditions générales d’abonnement.
+          Retrouvez ici la politique de confidentialité, les mentions légales, les conditions générales d’abonnement et les règles d’utilisation du générateur iNrCy.
         </p>
       </div>
 
@@ -76,7 +76,7 @@ export default function LegalContent({ mode = "page" }: Props) {
             Mentions légales
           </button>
           <button type="button" onClick={() => setOpenDoc("cga")} style={btn}>
-            CGA (Conditions Générales d’Abonnement)
+            CGA et Conditions d’utilisation
           </button>
         </div>
         {mode === "drawer" ? null : null}

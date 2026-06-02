@@ -31,8 +31,8 @@ export const legalDocs: Record<
   },
   cga: {
     key: "cga",
-    title: "CGA",
-    subtitle: "Version du 11/02/2026",
+    title: "CGA et Conditions d’utilisation",
+    subtitle: "Version du 02/06/2026",
     Content: CgaContent,
   },
 };
