@@ -269,6 +269,11 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
     ? { href: `/badge/${slug}/rdv`, label: "Prendre RDV", iconSrc: "/inrcalendar-logo.png", tone: "appointment" as ActionTone }
     : null;
 
+  const headerInlineInfo = [
+    shareSettings.company ? company : "",
+    shareSettings.name ? displayName : "",
+  ].filter(Boolean).join(" / ");
+
   return (
     <main className={styles.page}>
       <section className={styles.shell}>
@@ -277,18 +282,14 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
           <div className={styles.cardGlowB} />
 
           <div className={styles.headerRow}>
-            <BadgeShareButton publicUrl={publicUrl} company={company} vCardUri={vCardUri} vCardFilename={vCardFilename} />
-
-            <div className={styles.headerIdentity}>
-              <div className={styles.logo} aria-hidden="true">
+            <div className={styles.headerTopLine}>
+              <div className={styles.logoWide} aria-hidden="true">
                 {shareSettings.logo && logo.logoUrl ? <img src={logo.logoUrl} alt="" /> : <span>iNr</span>}
               </div>
-
-              <div className={styles.identityText}>
-                {shareSettings.company ? <h1 className={styles.title}>{company}</h1> : null}
-                {shareSettings.name && displayName ? <p className={styles.name}>{displayName}</p> : null}
-              </div>
+              <BadgeShareButton publicUrl={publicUrl} company={company} vCardUri={vCardUri} vCardFilename={vCardFilename} />
             </div>
+
+            {headerInlineInfo ? <div className={styles.headerInlineInfo}>{headerInlineInfo}</div> : null}
           </div>
 
           {decodedSector.profession ? <p className={styles.job}>{decodedSector.profession}</p> : null}

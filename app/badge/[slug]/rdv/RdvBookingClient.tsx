@@ -159,13 +159,16 @@ export default function RdvBookingClient({ slug, company, displayName, logoUrl, 
     <main className={styles.page}>
       <section className={styles.shell}>
         <div className={styles.card}>
-          <div className={styles.rdvTopActions}>
-            <a className={`${styles.previousPageButton} ${styles.iconActionButton}`} href={`/badge/${slug}`} aria-label="Retour à la fiche" title="Retour">←</a>
-            <button type="button" className={`${styles.closePageButton} ${styles.iconActionButton}`} onClick={handleClosePage} aria-label="Fermer" title="Fermer">×</button>
-          </div>
-
           <div className={styles.calendarHeader}>
-            <img className={styles.calendarHeroLogo} src="/inrcalendar-logo.png" alt="iNr'Calendar" />
+            <div className={styles.headerTopLine}>
+              <div className={styles.calendarLogoWide}>
+                <img className={styles.calendarHeroLogo} src="/inrcalendar-logo.png" alt="iNr'Calendar" />
+              </div>
+              <div className={styles.rdvTopActions}>
+                <a className={`${styles.previousPageButton} ${styles.iconActionButton}`} href={`/badge/${slug}`} aria-label="Retour à la fiche" title="Retour">←</a>
+                <button type="button" className={`${styles.closePageButton} ${styles.iconActionButton}`} onClick={handleClosePage} aria-label="Fermer" title="Fermer">×</button>
+              </div>
+            </div>
             <h1 className={styles.calendarTitle}>Réserver un rendez-vous</h1>
             <p className={styles.calendarSubtitle}>
               avec <strong>{company}</strong>{displayName ? <span> · {displayName}</span> : null}
