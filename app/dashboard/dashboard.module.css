@@ -2009,7 +2009,7 @@ aspect-ratio: 2.8 / 4;
   .bubbleActions .actionBtn,
   .bubbleActions .actionMain{
     width: 100%;
-    max-width: 242px;
+    max-width: 216px;
     box-sizing: border-box;
   }
 }
@@ -2242,8 +2242,8 @@ font-size: 12px;
     align-items: center;  /* centre horizontalement */
     margin-top: 10px;      /* espace naturel */
     /* ✅ conteneur de boutons plus étroit sur mobile */
-    width: min(78%, 242px);
-    max-width: 242px;
+    width: min(70%, 216px);
+    max-width: 216px;
     gap: 10px;
   }
 
@@ -2359,17 +2359,17 @@ font-size: 12px;
   }
 
   .bubbleActions{
-    width: min(78%, 242px);
-    max-width: 242px;
+    width: min(70%, 216px);
+    max-width: 216px;
     gap: 10px;
   }
 
   .bubbleActions .actionBtn,
   .bubbleActions .actionMain{
     width: 100% !important;
-    max-width: 242px !important;
+    max-width: 216px !important;
     min-width: 0 !important;
-    padding: 11px 18px !important;
+    padding: 11px 16px !important;
     white-space: nowrap !important;
     box-sizing: border-box !important;
   }
@@ -2412,8 +2412,8 @@ font-size: 12px;
   }
 
   .bubbleActions{
-    width: min(74%, 242px) !important;
-    max-width: 242px !important;
+    width: min(70%, 216px) !important;
+    max-width: 216px !important;
     gap: 10px !important;
   }
 
@@ -2421,9 +2421,9 @@ font-size: 12px;
   .bubbleActions .actionBtn,
   .bubbleActions .actionMain{
     width: 100% !important;
-    max-width: 242px !important;
+    max-width: 216px !important;
     min-width: 0 !important;
-    padding: 11px 18px !important;
+    padding: 11px 16px !important;
     white-space: nowrap !important;
     box-sizing: border-box !important;
   }
@@ -2468,9 +2468,9 @@ font-size: 12px;
 :global(html.isTouch) .bubbleActions .actionMain{
   /* ✅ téléphone : largeur pilotée par .bubbleActions */
   width: 100% !important;
-  max-width: 242px !important;
+  max-width: 216px !important;
   min-width: 0 !important;
-  padding: 11px 18px !important;
+  padding: 11px 16px !important;
   white-space: nowrap !important;
   box-sizing: border-box !important;
 }
@@ -2525,9 +2525,9 @@ font-size: 12px;
   :global(html.isTouch) .bubbleActions .actionBtn,
   :global(html.isTouch) .bubbleActions .actionMain{
     width: 100% !important;
-    max-width: 242px !important;
+    max-width: 216px !important;
     min-width: 0 !important;
-    padding: 11px 18px !important;
+    padding: 11px 16px !important;
     white-space: nowrap !important;
     box-sizing: border-box !important;
   }
@@ -3421,7 +3421,7 @@ transform: scale(1.50);
 :global(html.isTouch) .bubbleActions .actionMain{
   /* ✅ responsive : largeur pilotée par .bubbleActions */
   width: 100% !important;
-  max-width: 242px !important;
+  max-width: 216px !important;
   box-sizing: border-box !important;
   white-space: nowrap !important;
 }
@@ -5468,8 +5468,8 @@ transform: scale(1.50);
   transform:none !important;
   margin-top:auto !important;
   margin-bottom:12px !important;
-  width:min(74%, 242px) !important;
-  max-width:242px !important;
+  width:min(70%, 216px) !important;
+  max-width:216px !important;
   gap:10px !important;
 }
 
@@ -5477,8 +5477,8 @@ transform: scale(1.50);
 .desktopCoverflowCenter .bubbleActions .actionMain{
   width:100% !important;
   min-width:0 !important;
-  max-width:242px !important;
-  padding-inline:18px !important;
+  max-width:216px !important;
+  padding-inline:16px !important;
   white-space:nowrap !important;
   box-sizing:border-box !important;
 }
@@ -6634,13 +6634,13 @@ transform: scale(1.50);
   }
 }
 
-/* === Dashboard bulles mobile : source propre + iPhone préservé === */
+/* === Dashboard bulles mobile : équilibre Android / iPhone === */
 /* Sécurité globale mobile : les boutons gardent la largeur du conteneur */
 @media (max-width: 560px) {
   .mobileCarousel .bubbleActions,
   .desktopCoverflowCenter .bubbleActions {
-    width: min(78%, 242px) !important;
-    max-width: 242px !important;
+    width: min(70%, 216px) !important;
+    max-width: 216px !important;
   }
 
   .mobileCarousel .bubbleActions .actionBtn,
@@ -6648,9 +6648,9 @@ transform: scale(1.50);
   .desktopCoverflowCenter .bubbleActions .actionBtn,
   .desktopCoverflowCenter .bubbleActions .actionMain {
     width: 100% !important;
-    max-width: 242px !important;
+    max-width: 216px !important;
     min-width: 0 !important;
-    padding-inline: 18px !important;
+    padding-inline: 16px !important;
     white-space: nowrap !important;
     box-sizing: border-box !important;
   }
@@ -6661,16 +6661,16 @@ transform: scale(1.50);
   @media (any-hover: none) and (any-pointer: coarse) and (max-width: 560px) {
     .mobileCarousel .bubbleActions,
     .desktopCoverflowCenter .bubbleActions {
-      width: min(68%, 210px) !important;
-      max-width: 210px !important;
+      width: min(64%, 200px) !important;
+      max-width: 200px !important;
     }
 
     .mobileCarousel .bubbleActions .actionBtn,
     .mobileCarousel .bubbleActions .actionMain,
     .desktopCoverflowCenter .bubbleActions .actionBtn,
     .desktopCoverflowCenter .bubbleActions .actionMain {
-      max-width: 210px !important;
-      padding-inline: 16px !important;
+      max-width: 200px !important;
+      padding-inline: 15px !important;
     }
 
     .mobileCarousel .bubbleStack,
