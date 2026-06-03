@@ -308,7 +308,6 @@ export default function InrBadgeSettingsContent({
   const [settings, setSettings] = useState<ShareSettings>(() => loadShareSettings(storageKey));
   const [appointmentSettings, setAppointmentSettings] = useState<AppointmentSettings>(() => loadAppointmentSettings(storageKey));
   const [notice, setNotice] = useState<string | null>(null);
-  const [previewOpen, setPreviewOpen] = useState(false);
   const [downloadSheetOpen, setDownloadSheetOpen] = useState(false);
 
   useEffect(() => {
@@ -383,7 +382,7 @@ export default function InrBadgeSettingsContent({
 
   const openPreview = () => {
     if (!publicUrl) return;
-    setPreviewOpen(true);
+    window.open(publicUrl, "_blank", "noopener,noreferrer");
   };
 
   const openDownloadSheet = () => {
@@ -537,24 +536,7 @@ export default function InrBadgeSettingsContent({
         </div>
       ) : null}
 
-      {previewOpen ? (
-        <div style={previewOverlayStyle} role="dialog" aria-modal="true" aria-label="Aperçu de la fiche iNr'Badge">
-          <button type="button" style={previewBackdropStyle} aria-label="Fermer l'aperçu" onClick={() => setPreviewOpen(false)} />
-          <div style={previewModalStyle}>
-            <div style={previewModalHeaderStyle}>
-              <div>
-                <strong style={{ display: "block", color: "#fff", fontSize: 16 }}>Aperçu fiche iNr'Badge</strong>
-                <span style={{ display: "block", marginTop: 4, color: "rgba(226,232,240,0.68)", fontSize: 12 }}>Vue réelle de la fiche publique telle que votre client la découvrira après scan.</span>
-              </div>
-              <button type="button" onClick={() => setPreviewOpen(false)} style={previewCloseButtonStyle}>Fermer</button>
-            </div>
-            <div style={previewPhoneShellStyle}>
-              <iframe title="Aperçu fiche iNr'Badge" src={publicUrl} style={previewIframeStyle} />
-            </div>
-          </div>
-        </div>
-      ) : null}
-    </div>
+   </div>
   );
 }
 
