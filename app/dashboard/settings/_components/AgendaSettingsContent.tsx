@@ -437,7 +437,7 @@ export default function AgendaSettingsContent() {
       </GlassCard>
 
       <GlassCard
-        title="Prise de RDV iNr’Badge"
+        title="Prise de RDV"
         subtitle="Ces réglages concernent uniquement les créneaux proposés aux clients sur la fiche iNr’Badge. L’ajout manuel d’un RDV dans iNr’Calendar reste libre."
       >
         <div className="agendaSettings_responsiveTwo" style={globalGridStyle}>
