@@ -5,6 +5,8 @@ import InrBadgeQrCode from "./InrBadgeQrCode";
 import type { InrBadgeProfileSummary } from "@/lib/inrBadge";
 import styles from "../dashboard.module.css";
 
+const INRBADGE_HEADER_LINE = "iNr'Badge : mon entreprise en QR Code";
+
 type Props = {
   profile: InrBadgeProfileSummary;
   publicUrl: string;
@@ -22,7 +24,7 @@ export default function InrBadgePreviewModal({ profile, publicUrl, onClose, onCo
 
   return (
     <WorkflowBaseModal
-      title="iNr'Badge"
+      title={INRBADGE_HEADER_LINE}
       moduleLabel="Canal iNrCy"
       onClose={onClose}
       compact
@@ -61,7 +63,7 @@ export default function InrBadgePreviewModal({ profile, publicUrl, onClose, onCo
         </div>
 
         <div className={styles.inrBadgeModalText}>
-          <strong>Mon entreprise en QR Code</strong>
+          <strong>{INRBADGE_HEADER_LINE}</strong>
           {publicUrl ? (
             <span className={styles.inrBadgeModalUrl}>{publicUrl}</span>
           ) : (

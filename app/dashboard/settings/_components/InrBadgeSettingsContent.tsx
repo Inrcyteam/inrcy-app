@@ -42,6 +42,8 @@ type ShareKey = InrBadgeShareKey;
 type ShareSettings = InrBadgeShareSettings;
 type AppointmentSettings = InrBadgeAppointmentSettings;
 
+const INRBADGE_HEADER_LINE = "iNr'Badge : mon entreprise en QR Code";
+
 function trim(value: unknown) {
   return String(value || "").trim();
 }
@@ -145,13 +147,9 @@ async function downloadQrPng(publicUrl: string, profile: InrBadgeProfileSummary)
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   ctx.fillStyle = "#111827";
-  ctx.font = "700 72px Arial, sans-serif";
+  ctx.font = "700 54px Arial, sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText("iNr'Badge", canvas.width / 2, 130);
-
-  ctx.fillStyle = "#4b5563";
-  ctx.font = "400 36px Arial, sans-serif";
-  ctx.fillText("Mon entreprise en QR Code", canvas.width / 2, 190);
+  ctx.fillText(INRBADGE_HEADER_LINE, canvas.width / 2, 155);
 
   drawQrOnCanvas(ctx, matrix, 220, 300, 760);
 
@@ -204,9 +202,7 @@ function createPdfBlob(publicUrl: string, profile: InrBadgeProfileSummary) {
   const stream = [
     "1 1 1 rg 0 0 595 842 re f",
     "0.07 0.09 0.16 rg",
-    "BT /F1 26 Tf 246 760 Td (iNr'Badge) Tj ET",
-    "0.29 0.33 0.42 rg",
-    "BT /F1 14 Tf 204 735 Td (Mon entreprise en QR Code) Tj ET",
+    "BT /F1 17 Tf 126 752 Td (iNr'Badge : mon entreprise en QR Code) Tj ET",
     "1 1 1 rg",
     `${(qrX - 18).toFixed(2)} ${(qrY - 18).toFixed(2)} ${(qrSize + 36).toFixed(2)} ${(qrSize + 36).toFixed(2)} re f`,
     "0.07 0.09 0.16 rg",
@@ -313,6 +309,7 @@ export default function InrBadgeSettingsContent({
   const [appointmentSettings, setAppointmentSettings] = useState<AppointmentSettings>(() => loadAppointmentSettings(storageKey));
   const [notice, setNotice] = useState<string | null>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [downloadSheetOpen, setDownloadSheetOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -389,6 +386,11 @@ export default function InrBadgeSettingsContent({
     setPreviewOpen(true);
   };
 
+  const openDownloadSheet = () => {
+    if (!publicUrl) return;
+    setDownloadSheetOpen(true);
+  };
+
   const downloadPdf = () => {
     if (!publicUrl) return;
     const blob = createPdfBlob(publicUrl, profile);
@@ -416,8 +418,7 @@ export default function InrBadgeSettingsContent({
       <div style={heroCardStyle}>
         <div style={heroIconStyle}>{profile.logoUrl ? <img src={profile.logoUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span>iNr</span>}</div>
         <div style={{ minWidth: 0 }}>
-          <h2 style={heroTitleStyle}>iNr'Badge</h2>
-          <p style={heroTextStyle}>Mon entreprise en QR Code</p>
+          <h2 style={heroTitleStyle}>{INRBADGE_HEADER_LINE}</h2>
           <p style={heroSubTextStyle}>Le QR reste permanent. Les informations partagées peuvent évoluer sans réimprimer vos supports.</p>
         </div>
       </div>
@@ -436,8 +437,7 @@ export default function InrBadgeSettingsContent({
         <div style={buttonGridStyle}>
           <button type="button" style={smallButtonStyle} onClick={openPreview} disabled={!publicUrl}>Aperçu fiche</button>
           <button type="button" style={smallButtonStyle} onClick={copyLink} disabled={!publicUrl}>copier le lien</button>
-          <button type="button" style={smallButtonStyle} onClick={downloadPng} disabled={!publicUrl}>télécharger png</button>
-          <button type="button" style={smallButtonStyle} onClick={downloadPdf} disabled={!publicUrl}>télécharger pdf</button>
+          <button type="button" style={smallButtonStyle} onClick={openDownloadSheet} disabled={!publicUrl}>Télécharger PNG / PDF</button>
         </div>
       </div>
 
@@ -498,6 +498,45 @@ export default function InrBadgeSettingsContent({
 
       {notice ? <div style={noticeStyle}>{notice}</div> : null}
 
+      {downloadSheetOpen ? (
+        <div style={previewOverlayStyle} role="dialog" aria-modal="true" aria-label="Télécharger le QR Code iNr'Badge">
+          <button type="button" style={previewBackdropStyle} aria-label="Fermer le choix de téléchargement" onClick={() => setDownloadSheetOpen(false)} />
+          <div style={downloadModalStyle}>
+            <div style={previewModalHeaderStyle}>
+              <div>
+                <strong style={{ display: "block", color: "#fff", fontSize: 16 }}>Télécharger PNG / PDF</strong>
+                <span style={{ display: "block", marginTop: 4, color: "rgba(226,232,240,0.68)", fontSize: 12 }}>Choisissez le format à télécharger pour votre QR Code iNr'Badge.</span>
+              </div>
+              <button type="button" onClick={() => setDownloadSheetOpen(false)} style={previewCloseButtonStyle}>Fermer</button>
+            </div>
+            <div style={downloadActionsStyle}>
+              <button
+                type="button"
+                style={downloadActionButtonStyle}
+                onClick={() => {
+                  setDownloadSheetOpen(false);
+                  downloadPng();
+                }}
+              >
+                <strong>Télécharger en PNG</strong>
+                <span>Idéal pour un envoi rapide ou une intégration visuelle.</span>
+              </button>
+              <button
+                type="button"
+                style={downloadActionButtonStyle}
+                onClick={() => {
+                  setDownloadSheetOpen(false);
+                  downloadPdf();
+                }}
+              >
+                <strong>Télécharger en PDF</strong>
+                <span>Parfait pour l'impression ou le partage en document.</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {previewOpen ? (
         <div style={previewOverlayStyle} role="dialog" aria-modal="true" aria-label="Aperçu de la fiche iNr'Badge">
           <button type="button" style={previewBackdropStyle} aria-label="Fermer l'aperçu" onClick={() => setPreviewOpen(false)} />
@@ -549,8 +588,7 @@ const heroIconStyle: CSSProperties = {
   border: "1px solid rgba(255,255,255,0.22)",
 };
 
-const heroTitleStyle: CSSProperties = { margin: 0, color: "#fff", fontSize: 19 };
-const heroTextStyle: CSSProperties = { margin: "4px 0 0", color: "rgba(255,255,255,0.88)", fontWeight: 700 };
+const heroTitleStyle: CSSProperties = { margin: 0, color: "#fff", fontSize: 18, lineHeight: 1.3 };
 const heroSubTextStyle: CSSProperties = { margin: "6px 0 0", color: "rgba(226,232,240,0.72)", fontSize: 12, lineHeight: 1.45 };
 const sectionTitleStyle: CSSProperties = { margin: "0 0 10px", color: "#fff", fontSize: 15 };
 const mutedStyle: CSSProperties = { margin: "0 0 12px", color: "rgba(226,232,240,0.70)", fontSize: 12, overflowWrap: "anywhere" };
@@ -624,9 +662,12 @@ const toggleHelperStyle: CSSProperties = { display: "block", marginTop: 3, fontS
 const previewOverlayStyle: CSSProperties = { position: "fixed", inset: 0, zIndex: 1200, display: "grid", placeItems: "center", padding: 16 };
 const previewBackdropStyle: CSSProperties = { position: "absolute", inset: 0, border: "none", background: "rgba(2,6,23,0.72)", cursor: "pointer" };
 const previewModalStyle: CSSProperties = { position: "relative", zIndex: 1, width: "min(100%, 560px)", maxHeight: "calc(100vh - 32px)", overflow: "auto", borderRadius: 24, padding: 14, border: "1px solid rgba(255,255,255,0.12)", background: "linear-gradient(180deg, rgba(9,16,32,0.96), rgba(15,23,42,0.98))", boxShadow: "0 30px 90px rgba(0,0,0,0.45)" };
+const downloadModalStyle: CSSProperties = { ...previewModalStyle, width: "min(100%, 440px)" };
 const previewModalHeaderStyle: CSSProperties = { display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 14 };
 const previewCloseButtonStyle: CSSProperties = { ...smallButtonStyle, whiteSpace: "nowrap" };
 const previewPhoneShellStyle: CSSProperties = { width: "min(100%, 390px)", margin: "0 auto", padding: 10, borderRadius: 30, background: "linear-gradient(180deg, rgba(2,6,23,0.98), rgba(15,23,42,0.98))", border: "1px solid rgba(255,255,255,0.10)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.07), 0 20px 60px rgba(0,0,0,0.35)" };
+const downloadActionsStyle: CSSProperties = { display: "grid", gap: 10 };
+const downloadActionButtonStyle: CSSProperties = { display: "grid", gap: 4, width: "100%", textAlign: "left", borderRadius: 18, border: "1px solid rgba(255,255,255,0.10)", background: "rgba(255,255,255,0.05)", color: "#fff", padding: "14px 16px", cursor: "pointer" };
 const previewIframeStyle: CSSProperties = { width: "100%", height: 760, border: "none", borderRadius: 22, background: "#08111f" };
 
 const noticeStyle: CSSProperties = { position: "sticky", bottom: 10, justifySelf: "center", padding: "9px 12px", borderRadius: 999, background: "rgba(16,185,129,0.18)", border: "1px solid rgba(16,185,129,0.32)", color: "#d1fae5", fontSize: 12, fontWeight: 800 };
