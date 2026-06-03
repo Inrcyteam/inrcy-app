@@ -6672,3 +6672,58 @@ transform: scale(1.50);
     }
   }
 }
+
+
+/* === Dashboard mobile bulles v2 : Android plus large + iPhone un peu plus bas === */
+/* Android / navigateurs tactiles non iOS : boutons encore un peu plus larges */
+@supports not (-webkit-touch-callout: none) {
+  @media (any-hover: none) and (any-pointer: coarse) and (max-width: 560px) {
+    .mobileCarousel .bubbleActions,
+    .desktopCoverflowCenter .bubbleActions {
+      width: min(74%, 226px) !important;
+      max-width: 226px !important;
+    }
+
+    .mobileCarousel .bubbleActions .actionBtn,
+    .mobileCarousel .bubbleActions .actionMain,
+    .desktopCoverflowCenter .bubbleActions .actionBtn,
+    .desktopCoverflowCenter .bubbleActions .actionMain {
+      max-width: 226px !important;
+      padding-inline: 17px !important;
+      font-size: 13px !important;
+      white-space: nowrap !important;
+    }
+  }
+
+  @media (any-hover: none) and (any-pointer: coarse) and (min-width: 560px) and (max-width: 980px) {
+    .bubbleActions,
+    .desktopCoverflowCenter .bubbleActions {
+      width: min(72%, 226px) !important;
+      max-width: 226px !important;
+    }
+
+    .bubbleActions .actionBtn,
+    .bubbleActions .actionMain,
+    .desktopCoverflowCenter .bubbleActions .actionBtn,
+    .desktopCoverflowCenter .bubbleActions .actionMain {
+      max-width: 226px !important;
+      padding-inline: 17px !important;
+      white-space: nowrap !important;
+    }
+  }
+}
+
+/* iPhone uniquement : contenu interne descendu très légèrement plus */
+@supports (-webkit-touch-callout: none) {
+  @media (any-hover: none) and (any-pointer: coarse) and (max-width: 560px) {
+    .mobileCarousel .bubbleStack,
+    .desktopCoverflowCenter .bubbleStack {
+      transform: translateY(13px) !important;
+    }
+
+    .mobileCarousel .bubbleTagline,
+    .desktopCoverflowCenter .bubbleTagline {
+      margin-top: 11px !important;
+    }
+  }
+}
