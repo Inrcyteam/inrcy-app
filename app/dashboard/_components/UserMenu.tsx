@@ -155,7 +155,7 @@ export default function UserMenu(props: {
 
       {userMenuOpen && (
         <div className={styles.userMenuPanel} role="menu" aria-label="Menu utilisateur">
-          <button type="button" className={styles.userMenuItem} role="menuitem" onClick={() => closeAndOpen("compte")}>Mon compte</button>
+          <button type="button" className={styles.userMenuItem} role="menuitem" onClick={() => closeAndOpen("compte")}>Compte iNrCytizen</button>
           <button type="button" className={styles.userMenuItem} role="menuitem" onClick={() => closeAndOpen("profil")}>Mon profil</button>
           <button type="button" className={styles.userMenuItem} role="menuitem" onClick={() => closeAndOpen("activite")}>Mon activité</button>
           <button type="button" className={styles.userMenuItem} role="menuitem" onClick={() => closeAndOpen("ia")}>Configuration IA</button>

@@ -236,7 +236,7 @@ export default function DashboardTopbar({
                 openPanel("compte");
               }}
             >
-              Mon compte
+              Compte iNrCytizen
             </button>
 
             <button

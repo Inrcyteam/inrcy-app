@@ -312,6 +312,7 @@ export default function InrBadgeSettingsContent({
   const [settings, setSettings] = useState<ShareSettings>(() => loadShareSettings(storageKey));
   const [appointmentSettings, setAppointmentSettings] = useState<AppointmentSettings>(() => loadAppointmentSettings(storageKey));
   const [notice, setNotice] = useState<string | null>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -383,6 +384,11 @@ export default function InrBadgeSettingsContent({
     window.setTimeout(() => setNotice(null), 1800);
   };
 
+  const openPreview = () => {
+    if (!publicUrl) return;
+    setPreviewOpen(true);
+  };
+
   const downloadPdf = () => {
     if (!publicUrl) return;
     const blob = createPdfBlob(publicUrl, profile);
@@ -428,6 +434,7 @@ export default function InrBadgeSettingsContent({
         <h3 style={sectionTitleStyle}>QR Code</h3>
         <p style={mutedStyle}>{publicUrl || "Le lien sera généré dès que Mon profil sera complété."}</p>
         <div style={buttonGridStyle}>
+          <button type="button" style={smallButtonStyle} onClick={openPreview} disabled={!publicUrl}>Aperçu fiche</button>
           <button type="button" style={smallButtonStyle} onClick={copyLink} disabled={!publicUrl}>copier le lien</button>
           <button type="button" style={smallButtonStyle} onClick={downloadPng} disabled={!publicUrl}>télécharger png</button>
           <button type="button" style={smallButtonStyle} onClick={downloadPdf} disabled={!publicUrl}>télécharger pdf</button>
@@ -488,22 +495,26 @@ export default function InrBadgeSettingsContent({
         <p style={{ ...mutedStyle, marginTop: 12, marginBottom: 0 }}>Le client choisit un créneau libre. Vous recevez la demande par mail puis vous validez l'enregistrement dans iNr'Calendar.</p>
       </div>
 
-      <div style={cardStyle}>
-        <h3 style={sectionTitleStyle}>Aperçu rapide</h3>
-        <div style={previewCardStyle}>
-          {settings.logo && profile.logoUrl ? <img src={profile.logoUrl} alt="" style={previewLogoStyle} /> : <div style={previewLogoFallbackStyle}>iNr</div>}
-          {settings.company ? <strong>{company}</strong> : null}
-          {settings.name ? <span>{displayName}</span> : null}
-          <div style={previewPillsStyle}>
-            {settings.phone && phone ? <span>Appeler</span> : null}
-            {settings.email && email ? <span>Email</span> : null}
-            {channelItems.filter((item) => item.connected && settings[item.key]).slice(0, 5).map((item) => <span key={item.key}>{item.label}</span>)}
-            {settings.appointment ? <span>Prendre RDV</span> : null}
-          </div>
-        </div>
-      </div>
 
       {notice ? <div style={noticeStyle}>{notice}</div> : null}
+
+      {previewOpen ? (
+        <div style={previewOverlayStyle} role="dialog" aria-modal="true" aria-label="Aperçu de la fiche iNr'Badge">
+          <button type="button" style={previewBackdropStyle} aria-label="Fermer l'aperçu" onClick={() => setPreviewOpen(false)} />
+          <div style={previewModalStyle}>
+            <div style={previewModalHeaderStyle}>
+              <div>
+                <strong style={{ display: "block", color: "#fff", fontSize: 16 }}>Aperçu fiche iNr'Badge</strong>
+                <span style={{ display: "block", marginTop: 4, color: "rgba(226,232,240,0.68)", fontSize: 12 }}>Vue réelle de la fiche publique telle que votre client la découvrira après scan.</span>
+              </div>
+              <button type="button" onClick={() => setPreviewOpen(false)} style={previewCloseButtonStyle}>Fermer</button>
+            </div>
+            <div style={previewPhoneShellStyle}>
+              <iframe title="Aperçu fiche iNr'Badge" src={publicUrl} style={previewIframeStyle} />
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -543,7 +554,6 @@ const heroTextStyle: CSSProperties = { margin: "4px 0 0", color: "rgba(255,255,2
 const heroSubTextStyle: CSSProperties = { margin: "6px 0 0", color: "rgba(226,232,240,0.72)", fontSize: 12, lineHeight: 1.45 };
 const sectionTitleStyle: CSSProperties = { margin: "0 0 10px", color: "#fff", fontSize: 15 };
 const mutedStyle: CSSProperties = { margin: "0 0 12px", color: "rgba(226,232,240,0.70)", fontSize: 12, overflowWrap: "anywhere" };
-const gridStyle: CSSProperties = { display: "grid", gap: 10 };
 const twoColumnsGridStyle: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 };
 const buttonGridStyle: CSSProperties = { display: "flex", flexWrap: "wrap", gap: 8 };
 
@@ -610,8 +620,13 @@ const weekdayActiveStyle: CSSProperties = { ...weekdayButtonStyle, background: "
 
 const toggleTitleStyle: CSSProperties = { display: "block", fontSize: 13, color: "rgba(255,255,255,0.94)" };
 const toggleHelperStyle: CSSProperties = { display: "block", marginTop: 3, fontSize: 11, color: "rgba(226,232,240,0.62)", lineHeight: 1.35 };
-const previewCardStyle: CSSProperties = { display: "grid", gap: 7, justifyItems: "center", textAlign: "center", padding: 16, borderRadius: 18, background: "rgba(255,255,255,0.06)", color: "#fff" };
-const previewLogoStyle: CSSProperties = { width: 62, height: 62, borderRadius: 999, objectFit: "cover", border: "1px solid rgba(255,255,255,0.22)" };
-const previewLogoFallbackStyle: CSSProperties = { ...heroIconStyle, width: 62, height: 62 };
-const previewPillsStyle: CSSProperties = { display: "flex", flexWrap: "wrap", gap: 6, justifyContent: "center", marginTop: 6, fontSize: 11, color: "rgba(255,255,255,0.82)" };
+
+const previewOverlayStyle: CSSProperties = { position: "fixed", inset: 0, zIndex: 1200, display: "grid", placeItems: "center", padding: 16 };
+const previewBackdropStyle: CSSProperties = { position: "absolute", inset: 0, border: "none", background: "rgba(2,6,23,0.72)", cursor: "pointer" };
+const previewModalStyle: CSSProperties = { position: "relative", zIndex: 1, width: "min(100%, 560px)", maxHeight: "calc(100vh - 32px)", overflow: "auto", borderRadius: 24, padding: 14, border: "1px solid rgba(255,255,255,0.12)", background: "linear-gradient(180deg, rgba(9,16,32,0.96), rgba(15,23,42,0.98))", boxShadow: "0 30px 90px rgba(0,0,0,0.45)" };
+const previewModalHeaderStyle: CSSProperties = { display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 12, marginBottom: 14 };
+const previewCloseButtonStyle: CSSProperties = { ...smallButtonStyle, whiteSpace: "nowrap" };
+const previewPhoneShellStyle: CSSProperties = { width: "min(100%, 390px)", margin: "0 auto", padding: 10, borderRadius: 30, background: "linear-gradient(180deg, rgba(2,6,23,0.98), rgba(15,23,42,0.98))", border: "1px solid rgba(255,255,255,0.10)", boxShadow: "inset 0 1px 0 rgba(255,255,255,0.07), 0 20px 60px rgba(0,0,0,0.35)" };
+const previewIframeStyle: CSSProperties = { width: "100%", height: 760, border: "none", borderRadius: 22, background: "#08111f" };
+
 const noticeStyle: CSSProperties = { position: "sticky", bottom: 10, justifySelf: "center", padding: "9px 12px", borderRadius: 999, background: "rgba(16,185,129,0.18)", border: "1px solid rgba(16,185,129,0.32)", color: "#d1fae5", fontSize: 12, fontWeight: 800 };

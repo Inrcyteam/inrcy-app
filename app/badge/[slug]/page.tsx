@@ -92,9 +92,6 @@ function safeFilename(value: string) {
     .slice(0, 48) || "contact";
 }
 
-type ActionTone = "phone" | "mail" | "contact" | "site" | "google" | "linkedin" | "instagram" | "facebook" | "tiktok" | "neutral" | "appointment";
-
-
 function getBadgeBaseUrl() {
   return String(
     process.env.NEXT_PUBLIC_INRBADGE_BASE_URL ||
@@ -104,21 +101,38 @@ function getBadgeBaseUrl() {
   ).replace(/\/+$/, "");
 }
 
+type ActionTone = "phone" | "mail" | "contact" | "site" | "google" | "linkedin" | "instagram" | "facebook" | "tiktok" | "neutral" | "appointment";
+
 type ActionLinkProps = {
   href: string;
   label: string;
   detail?: string;
   download?: string;
-  icon: string;
+  icon?: string;
+  iconSrc?: string;
   tone?: ActionTone;
   compact?: boolean;
 };
 
-function ActionLink({ href, label, detail, download, icon, tone = "neutral", compact = false }: ActionLinkProps) {
-  const className = [styles.action, compact ? styles.actionCompact : styles.actionWide, styles[`tone_${tone}`]].filter(Boolean).join(" ");
+function ActionLink({ href, label, detail, download, icon, iconSrc, tone = "neutral", compact = false }: ActionLinkProps) {
+  const className = [
+    styles.action,
+    compact ? styles.actionCompact : styles.actionWide,
+    styles[`tone_${tone}`],
+    detail ? styles.actionWithDetail : styles.actionWithoutDetail,
+  ].filter(Boolean).join(" ");
+
   return (
-    <a className={className} href={href} target={download ? undefined : href.startsWith("http") ? "_blank" : undefined} rel={href.startsWith("http") ? "noreferrer" : undefined} download={download}>
-      <span className={styles.actionIcon} aria-hidden="true">{icon}</span>
+    <a
+      className={className}
+      href={href}
+      target={download ? undefined : href.startsWith("http") ? "_blank" : undefined}
+      rel={href.startsWith("http") ? "noreferrer" : undefined}
+      download={download}
+    >
+      <span className={styles.actionIcon} aria-hidden="true">
+        {iconSrc ? <img className={styles.iconImage} src={iconSrc} alt="" /> : <span>{icon}</span>}
+      </span>
       <span className={styles.actionBody}>
         <strong>{label}</strong>
         {detail ? <small>{detail}</small> : null}
@@ -221,27 +235,32 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
   const vCardFilename = `${safeFilename(company || displayName)}.vcf`;
 
   const primaryActions = [
-    shareSettings.phone && phone && phoneHref(phone) ? { href: phoneHref(phone), label: "Appeler", detail: phone, icon: "☎", tone: "phone" as ActionTone } : null,
-    shareSettings.email && email ? { href: createMailto(email), label: "Envoyer un mail", detail: email, icon: "✉", tone: "mail" as ActionTone } : null,
-    shareSettings.saveContact ? { href: vCardUri, label: "Enregistrer", detail: "Le contact", download: vCardFilename, icon: "👤", tone: "contact" as ActionTone } : null,
+    shareSettings.phone && phone && phoneHref(phone) ? { href: phoneHref(phone), label: "Appeler", icon: "☎", tone: "phone" as ActionTone } : null,
+    shareSettings.email && email ? { href: createMailto(email), label: "Envoyer un mail", icon: "✉", tone: "mail" as ActionTone } : null,
+    shareSettings.saveContact ? { href: vCardUri, label: "Enregistrer le contact", download: vCardFilename, icon: "👤", tone: "contact" as ActionTone } : null,
   ].filter(Boolean) as ActionLinkProps[];
 
   const channelActions = [
-    shareSettings.siteInrcy && siteInrcyUrl ? { href: siteInrcyUrl, label: "Site iNrCy", detail: "inrcy.com", icon: "◎", tone: "site" as ActionTone } : null,
-    shareSettings.siteWeb && siteWebUrl ? { href: siteWebUrl, label: "Site web", detail: siteWebUrl.replace(/^https?:\/\//, ""), icon: "◌", tone: "site" as ActionTone } : null,
-    shareSettings.googleBusiness && gmbUrl ? { href: gmbUrl, label: "Google Business", detail: "Voir la fiche", icon: "G", tone: "google" as ActionTone } : null,
-    shareSettings.linkedin && linkedinUrl ? { href: linkedinUrl, label: "LinkedIn", detail: "Ajouter / suivre", icon: "in", tone: "linkedin" as ActionTone } : null,
-    shareSettings.instagram && instagramUrl ? { href: instagramUrl, label: "Instagram", detail: "Suivre le compte", icon: "◎", tone: "instagram" as ActionTone } : null,
-    shareSettings.facebook && facebookUrl ? { href: facebookUrl, label: "Facebook", detail: "Voir la page", icon: "f", tone: "facebook" as ActionTone } : null,
-    shareSettings.tiktok && tiktokUrl ? { href: tiktokUrl, label: "TikTok", detail: "Voir le profil", icon: "♪", tone: "tiktok" as ActionTone } : null,
+    shareSettings.siteInrcy && siteInrcyUrl ? { href: siteInrcyUrl, label: "Site iNrCy", iconSrc: "/icons/inrcy.png", tone: "site" as ActionTone } : null,
+    shareSettings.siteWeb && siteWebUrl ? { href: siteWebUrl, label: "Site web", iconSrc: "/icons/site-web.jpg", tone: "site" as ActionTone } : null,
+    shareSettings.googleBusiness && gmbUrl ? { href: gmbUrl, label: "Google Business", iconSrc: "/icons/google.jpg", tone: "google" as ActionTone } : null,
+    shareSettings.linkedin && linkedinUrl ? { href: linkedinUrl, label: "LinkedIn", iconSrc: "/icons/linkedin.png", tone: "linkedin" as ActionTone } : null,
+    shareSettings.instagram && instagramUrl ? { href: instagramUrl, label: "Instagram", iconSrc: "/icons/instagram.jpg", tone: "instagram" as ActionTone } : null,
+    shareSettings.facebook && facebookUrl ? { href: facebookUrl, label: "Facebook", iconSrc: "/icons/facebook.png", tone: "facebook" as ActionTone } : null,
+    shareSettings.tiktok && tiktokUrl ? { href: tiktokUrl, label: "TikTok", iconSrc: "/icons/tiktok.png", tone: "tiktok" as ActionTone } : null,
   ].filter(Boolean) as ActionLinkProps[];
 
-  const appointmentAction = shareSettings.appointment ? { href: `/badge/${slug}/rdv`, label: "Prendre RDV", detail: "Réserver dans iNr'Calendar", icon: "◷", tone: "appointment" as ActionTone } : null;
+  const appointmentAction = shareSettings.appointment
+    ? { href: `/badge/${slug}/rdv`, label: "Prendre RDV", detail: "Réserver dans iNr'Calendar", icon: "◷", tone: "appointment" as ActionTone }
+    : null;
 
   return (
     <main className={styles.page}>
       <section className={styles.shell}>
         <div className={styles.card}>
+          <div className={styles.cardGlowA} />
+          <div className={styles.cardGlowB} />
+
           <div className={styles.headerRow}>
             <div className={styles.headerIdentity}>
               <div className={styles.logo} aria-hidden="true">
