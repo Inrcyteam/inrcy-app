@@ -4,6 +4,7 @@ import { INRCY_WORKFLOW_TOOLS } from "@/lib/inrcyWorkflow";
 type DashboardPanelName =
   | "contact"
   | "profil"
+  | "inrbadge"
   | "compte"
   | "activite"
   | "abonnement"

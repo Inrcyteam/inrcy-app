@@ -9,9 +9,14 @@ export const MODULE_ICONS: Record<string, { src: string; alt: string }> = {
   linkedin: { src: "/icons/linkedin.png", alt: "LinkedIn" },
   mails: { src: "/icons/mails-inrcy-dashboard-v2.png", alt: "Mails iNrCy" },
   tiktok: { src: "/icons/tiktok.png", alt: "TikTok" },
+  inrbadge: { src: "/icons/inrcy.png", alt: "iNr'Badge" },
 };
 
 export const fluxModules: Module[] = [
+  { key: "inrbadge", name: "iNr'Badge", description: "Mon entreprise en QR Code", status: "available", accent: "purple", actions: [
+      { key: "view", label: "Voir mon badge", variant: "view", href: "#" },
+      { key: "connect", label: "Configurer", variant: "connect", onClick: () => {} },
+    ] },
   { key: "mails", name: "Mails", description: "Diffuse à votre réseau ✉️", status: "available", accent: "cyan", actions: [
       { key: "view", label: "Ouvrir iNr\'Send", variant: "view", href: "/dashboard/mails" },
       { key: "connect", label: "Configurer", variant: "connect", onClick: () => {} },
@@ -49,7 +54,7 @@ export const fluxModules: Module[] = [
 ];
 
 export const DRAWER_TITLES = {
-  contact: "Nous contacter", compte: "Mon compte", profil: "Mon profil", activite: "Mon activité", ia: "Configuration IA", abonnement: "Mon abonnement", legal: "Informations légales", rgpd: "Mes données (RGPD)", mails: "Réglages Mails", agenda: "Réglages iNr’Calendar", site_inrcy: "Configuration — Site iNrCy", site_web: "Configuration — Site web", instagram: "Configuration — Instagram", linkedin: "Configuration — LinkedIn", gmb: "Configuration — Google Business", facebook: "Configuration — Facebook", tiktok: "Configuration — TikTok", inertie: "Mon inertie", boutique: "Boutique", parrainage: "Parrainer avec iNrCy", notifications: "Notifications", documents: "Réglages par défaut",
+  contact: "Nous contacter", compte: "Mon compte", profil: "Mon profil", inrbadge: "Réglages iNr'Badge", activite: "Mon activité", ia: "Configuration IA", abonnement: "Mon abonnement", legal: "Informations légales", rgpd: "Mes données (RGPD)", mails: "Réglages Mails", agenda: "Réglages iNr’Calendar", site_inrcy: "Configuration — Site iNrCy", site_web: "Configuration — Site web", instagram: "Configuration — Instagram", linkedin: "Configuration — LinkedIn", gmb: "Configuration — Google Business", facebook: "Configuration — Facebook", tiktok: "Configuration — TikTok", inertie: "Mon inertie", boutique: "Boutique", parrainage: "Parrainer avec iNrCy", notifications: "Notifications", documents: "Réglages par défaut",
 } as const satisfies Record<string, string>;
 
 export const DRAWER_PANELS = new Set(Object.keys(DRAWER_TITLES));

@@ -20,10 +20,12 @@ import LinkedinPanelBlock from "./LinkedinPanelBlock";
 import GmbPanelBlock from "./GmbPanelBlock";
 import FacebookPanelBlock from "./FacebookPanelBlock";
 import TiktokPanelBlock from "./TiktokPanelBlock";
+import InrBadgeSettingsContent from "../settings/_components/InrBadgeSettingsContent";
 
 type DashboardPanelName =
   | "contact"
   | "profil"
+  | "inrbadge"
   | "compte"
   | "activite"
   | "ia"
@@ -71,6 +73,7 @@ type DashboardSettingsDrawerContentProps = {
   gmbPanelProps: any;
   facebookPanelProps: any;
   tiktokPanelProps: any;
+  inrBadgeSettingsProps: any;
 };
 
 export default function DashboardSettingsDrawerContent({
@@ -99,12 +102,14 @@ export default function DashboardSettingsDrawerContent({
   gmbPanelProps,
   facebookPanelProps,
   tiktokPanelProps,
+  inrBadgeSettingsProps,
 }: DashboardSettingsDrawerContentProps) {
   return (
     <>
       {panel === "contact" && <ContactContent mode="drawer" />}
       {panel === "compte" && <AccountContent mode="drawer" />}
       {panel === "profil" && <ProfilContent mode="drawer" onProfileSaved={checkProfile} onProfileReset={checkProfile} onCloseDrawer={onCloseDrawer} />}
+      {panel === "inrbadge" && <InrBadgeSettingsContent {...inrBadgeSettingsProps} />}
       {panel === "activite" && <ActivityContent mode="drawer" onActivitySaved={checkActivity} onActivityReset={checkActivity} onCloseDrawer={onCloseDrawer} />}
       {panel === "ia" && <AiConfigurationContent mode="drawer" />}
       {panel === "abonnement" && <AbonnementContent mode="drawer" />}

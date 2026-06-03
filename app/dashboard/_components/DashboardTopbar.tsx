@@ -10,6 +10,7 @@ import type { NotificationItem } from "../dashboard.types";
 type DashboardPanelName =
   | "contact"
   | "profil"
+  | "inrbadge"
   | "compte"
   | "activite"
   | "ia"

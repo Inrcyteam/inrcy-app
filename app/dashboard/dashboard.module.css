@@ -6396,3 +6396,217 @@ transform: scale(1.50);
       inset 0 1px 0 rgba(255,255,255,.14) !important;
   }
 }
+
+/* =========================================================
+   iNrBadge — étapes 1/2 : bulle Dashboard + URL badge automatique
+========================================================= */
+.bubbleLogoProfile{
+  border-radius:999px !important;
+  overflow:hidden !important;
+  padding:0 !important;
+  background:rgba(255,255,255,0.08) !important;
+}
+
+.bubbleLogoProfile .bubbleLogoImg{
+  width:100% !important;
+  height:100% !important;
+  object-fit:cover !important;
+  object-position:center center !important;
+  border-radius:999px !important;
+  display:block !important;
+  transform:none !important;
+  clip-path:none !important;
+}
+
+.inrBadgeModalCard{
+  width:100%;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:14px;
+  padding:10px 4px 4px;
+  text-align:center;
+}
+
+.inrBadgeModalLogo{
+  width:76px;
+  height:76px;
+  border-radius:999px;
+  display:grid;
+  place-items:center;
+  overflow:hidden;
+  border:1px solid rgba(255,255,255,0.22);
+  background:rgba(255,255,255,0.08);
+  box-shadow:0 18px 48px rgba(0,0,0,0.34), 0 0 24px rgba(56,189,248,0.18);
+}
+
+.inrBadgeModalLogo img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+  display:block;
+}
+
+.inrBadgeModalLogo span{
+  font-weight:800;
+  letter-spacing:0.04em;
+  color:rgba(255,255,255,0.92);
+}
+
+.inrBadgeModalIntro{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  color:rgba(255,255,255,0.88);
+}
+
+.inrBadgeModalIntro strong{
+  font-size:18px;
+  color:#fff;
+}
+
+.inrBadgeModalIntro span{
+  font-size:13px;
+  opacity:0.82;
+}
+
+.inrBadgeQrPreview{
+  position:relative;
+  width:min(68vw,220px);
+  aspect-ratio:1/1;
+  border-radius:24px;
+  padding:22px;
+  display:grid;
+  place-items:center;
+  background:#f8fafc;
+  border:1px solid rgba(255,255,255,0.28);
+  box-shadow:0 24px 70px rgba(0,0,0,0.42);
+  overflow:hidden;
+}
+
+.inrBadgeQrGrid{
+  width:100%;
+  height:100%;
+  display:grid;
+  grid-template-columns:repeat(7,1fr);
+  grid-template-rows:repeat(7,1fr);
+  gap:6px;
+  opacity:0.88;
+}
+
+.inrBadgeQrGrid span,
+.inrBadgeQrPixelOn{
+  border-radius:5px;
+}
+
+.inrBadgeQrGrid span{
+  background:transparent;
+}
+
+.inrBadgeQrPixelOn{
+  background:#0f172a !important;
+}
+
+.inrBadgeQrCorner{
+  position:absolute;
+  width:48px;
+  height:48px;
+  border:10px solid #0f172a;
+  border-radius:12px;
+  z-index:2;
+}
+
+.inrBadgeQrCorner:nth-child(1){ top:20px; left:20px; }
+.inrBadgeQrCorner:nth-child(2){ top:20px; right:20px; }
+.inrBadgeQrCorner:nth-child(3){ bottom:20px; left:20px; }
+
+.inrBadgeModalText{
+  display:flex;
+  flex-direction:column;
+  gap:5px;
+  max-width:340px;
+}
+
+.inrBadgeModalText strong{
+  font-size:16px;
+  color:#fff;
+}
+
+.inrBadgeModalText span{
+  font-size:13px;
+  line-height:1.45;
+  color:rgba(255,255,255,0.70);
+}
+
+.inrBadgeModalUrl{
+  display:block;
+  width:100%;
+  max-width:360px;
+  margin:0 auto;
+  padding:9px 12px;
+  border-radius:14px;
+  border:1px solid rgba(255,255,255,0.16);
+  background:rgba(255,255,255,0.08);
+  color:rgba(255,255,255,0.86) !important;
+  font-size:12px !important;
+  line-height:1.35 !important;
+  word-break:break-all;
+}
+
+.inrBadgeModalActions{
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:center;
+  gap:10px;
+  margin-top:2px;
+}
+
+/* =========================================================
+   iNrBadge — étape 3 : QR Code réel dans la modale Dashboard
+========================================================= */
+.inrBadgeQrRealWrap{
+  width:min(74vw,286px);
+  aspect-ratio:1/1;
+  display:grid;
+  place-items:center;
+  padding:14px;
+  border-radius:28px;
+  background:#f8fafc;
+  border:1px solid rgba(255,255,255,0.30);
+  box-shadow:0 26px 78px rgba(0,0,0,0.44), 0 0 30px rgba(56,189,248,0.13);
+}
+
+.inrBadgeQrSvg{
+  width:100%;
+  height:100%;
+  display:block;
+}
+
+.inrBadgeQrSvgBackground{
+  color:#ffffff;
+}
+
+.inrBadgeQrSvgModules{
+  color:#0f172a;
+}
+
+.inrBadgeQrUnavailable{
+  width:min(74vw,260px);
+  aspect-ratio:1/1;
+  display:grid;
+  place-items:center;
+  border-radius:24px;
+  border:1px dashed rgba(15,23,42,0.28);
+  background:#f8fafc;
+  color:#334155;
+  font-weight:800;
+  letter-spacing:0.02em;
+}
+
+@media (max-width:640px){
+  .inrBadgeQrRealWrap{
+    width:min(76vw,260px);
+    padding:12px;
+    border-radius:24px;
+  }
+}

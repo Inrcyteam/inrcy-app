@@ -30,13 +30,19 @@ const REQUIRED_ACTIVITY_FIELDS = [
 export function useDashboardCompletionChecks() {
   const [profileIncomplete, setProfileIncomplete] = useState(false);
   const [activityIncomplete, setActivityIncomplete] = useState(false);
+  const [profileCheckReady, setProfileCheckReady] = useState(false);
+  const [activityCheckReady, setActivityCheckReady] = useState(false);
 
   const checkProfile = useCallback(async () => {
     const supabase = createClient();
 
     const { data: authData } = await supabase.auth.getUser();
     const user = authData?.user;
-    if (!user) return;
+    if (!user) {
+      setProfileIncomplete(true);
+      setProfileCheckReady(true);
+      return;
+    }
 
     const { data: profile } = await supabase
       .from("profiles")
@@ -48,6 +54,7 @@ export function useDashboardCompletionChecks() {
 
     if (!profile) {
       setProfileIncomplete(true);
+      setProfileCheckReady(true);
       return;
     }
 
@@ -57,6 +64,7 @@ export function useDashboardCompletionChecks() {
     });
 
     setProfileIncomplete(incomplete);
+    setProfileCheckReady(true);
   }, []);
 
   const checkActivity = useCallback(async () => {
@@ -64,7 +72,11 @@ export function useDashboardCompletionChecks() {
 
     const { data: authData } = await supabase.auth.getUser();
     const user = authData?.user;
-    if (!user) return;
+    if (!user) {
+      setActivityIncomplete(true);
+      setActivityCheckReady(true);
+      return;
+    }
 
     const { data: business } = await supabase
       .from("business_profiles")
@@ -74,6 +86,7 @@ export function useDashboardCompletionChecks() {
 
     if (!business) {
       setActivityIncomplete(true);
+      setActivityCheckReady(true);
       return;
     }
 
@@ -94,6 +107,7 @@ export function useDashboardCompletionChecks() {
       });
 
     setActivityIncomplete(incomplete);
+    setActivityCheckReady(true);
   }, []);
 
   useEffect(() => {
@@ -104,6 +118,8 @@ export function useDashboardCompletionChecks() {
   return {
     profileIncomplete,
     activityIncomplete,
+    profileCheckReady,
+    activityCheckReady,
     checkProfile,
     checkActivity,
   };

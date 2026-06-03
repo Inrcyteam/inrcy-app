@@ -2141,3 +2141,97 @@
     -webkit-appearance: none !important;
   }
 }
+
+/* =========================================================
+   Sécurité impression iPhone / AirPrint
+   Safari iOS garde une zone utile plus petite que Chrome/Android.
+   On compacte très légèrement le gabarit print uniquement sur WebKit iOS
+   pour éviter que le bloc final Facture/Devis parte seul en page 2.
+   ========================================================= */
+@media print {
+  @supports (-webkit-touch-callout: none) {
+    .documentPrintPage {
+      min-height: calc(297mm - 34mm) !important;
+      height: calc(297mm - 34mm) !important;
+      padding: 5.5mm 7.5mm !important;
+    }
+
+    .previewHeader {
+      min-height: 18mm !important;
+      margin-bottom: 4mm !important;
+    }
+
+    .previewParties {
+      gap: 4mm !important;
+      margin-bottom: 4mm !important;
+    }
+
+    .previewPartyCard {
+      min-height: 25mm !important;
+      padding: 7px !important;
+      font-size: 8pt !important;
+      line-height: 1.18 !important;
+    }
+
+    .previewPartyTitle {
+      margin-bottom: 3px !important;
+      font-size: 8pt !important;
+    }
+
+    .table th,
+    .table td {
+      padding: 3px 4px !important;
+      font-size: 7.8pt !important;
+      line-height: 1.16 !important;
+    }
+
+    .previewBottomGrid {
+      grid-template-columns: minmax(0, 1fr) 46mm !important;
+      gap: 4mm !important;
+      margin-top: 3.5mm !important;
+      font-size: 7.8pt !important;
+      line-height: 1.18 !important;
+    }
+
+    .previewTotalsBox {
+      padding: 7px !important;
+      border-radius: 8px !important;
+      font-size: 8.2pt !important;
+      line-height: 1.14 !important;
+    }
+
+    .previewTotalsMain {
+      font-size: 11pt !important;
+    }
+
+    .previewSignatureGrid {
+      grid-template-columns: minmax(0, 1fr) 46mm !important;
+      gap: 4mm !important;
+      margin-top: 3.5mm !important;
+    }
+
+    .previewSignatureBox {
+      min-height: 15mm !important;
+      padding: 6px !important;
+      border-radius: 8px !important;
+      font-size: 8pt !important;
+    }
+
+    .documentPrintFooter {
+      margin-top: auto !important;
+      padding-bottom: 1mm !important;
+      break-before: avoid !important;
+      page-break-before: avoid !important;
+      break-inside: avoid !important;
+      page-break-inside: avoid !important;
+    }
+
+    .documentPrintContinuation {
+      margin-bottom: 2mm !important;
+    }
+
+    .previewFrame::before {
+      inset: 0.5mm !important;
+    }
+  }
+}

@@ -9,6 +9,7 @@ import DashboardModulesCard from "./DashboardModulesCard";
 type DashboardPanelName =
   | "contact"
   | "profil"
+  | "inrbadge"
   | "compte"
   | "activite"
   | "abonnement"
@@ -151,7 +152,7 @@ export default function DashboardChannelsSection({
       aria-hidden
     >
       <div className={styles.desktopSideBubbleStack}>
-        <div className={`${styles.bubbleLogo} ${item.key === "mails" ? styles.bubbleLogoMail : ""}`}>
+        <div className={`${styles.bubbleLogo} ${item.key === "mails" ? styles.bubbleLogoMail : ""} ${item.key === "inrbadge" ? styles.bubbleLogoProfile : ""}`}>
           <img className={styles.bubbleLogoImg} src={item.logoSrc} alt={item.logoAlt} />
         </div>
 

@@ -17,6 +17,7 @@ export type DashboardFluxBubbleData = {
   specialViewHref?: string;
   specialViewLabel?: string;
   canViewSpecial?: boolean;
+  onSpecialView?: () => void;
   viewAction?: ModuleAction;
   onConfigure: () => void;
   configureDisabled?: boolean;
@@ -38,7 +39,7 @@ export default function DashboardFluxBubble({ item, itemKey }: Props) {
       aria-disabled={isComingSoon}
     >
       <div className={styles.bubbleStack}>
-        <div className={`${styles.bubbleLogo} ${item.key === "mails" ? styles.bubbleLogoMail : ""}`} aria-hidden>
+        <div className={`${styles.bubbleLogo} ${item.key === "mails" ? styles.bubbleLogoMail : ""} ${item.key === "inrbadge" ? styles.bubbleLogoProfile : ""}`} aria-hidden>
           <img className={styles.bubbleLogoImg} src={item.logoSrc} alt={item.logoAlt} />
         </div>
 
@@ -64,7 +65,18 @@ export default function DashboardFluxBubble({ item, itemKey }: Props) {
         <div className={styles.bubbleTagline}>{item.description}</div>
 
         <div className={styles.bubbleActions}>
-          {item.specialViewHref && item.specialViewLabel ? (
+          {item.onSpecialView && item.specialViewLabel ? (
+            <button
+              type="button"
+              className={`${styles.actionBtn} ${styles.actionView}`}
+              onClick={item.onSpecialView}
+              disabled={!item.canViewSpecial}
+              aria-disabled={!item.canViewSpecial}
+              style={{ opacity: !item.canViewSpecial ? 0.5 : 1, pointerEvents: !item.canViewSpecial ? "none" : "auto" }}
+            >
+              {item.specialViewLabel}
+            </button>
+          ) : item.specialViewHref && item.specialViewLabel ? (
             <a
               href={item.canViewSpecial ? item.specialViewHref : "#"}
               className={`${styles.actionBtn} ${styles.actionView}`}

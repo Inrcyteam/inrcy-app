@@ -11,6 +11,7 @@ import DashboardTopbar from "./_components/DashboardTopbar";
 import DashboardChannelsSection from "./_components/DashboardChannelsSection";
 import DashboardBoosterModalLayer from "./_components/DashboardBoosterModalLayer";
 import DashboardSettingsDrawerContent from "./_components/DashboardSettingsDrawerContent";
+import InrBadgePreviewModal from "./_components/InrBadgePreviewModal";
 import { useDrawerMutationGuard } from "./_hooks/useDrawerMutationGuard";
 import { useDashboardNotifications } from "./_hooks/useDashboardNotifications";
 import { useReferralForm } from "./_hooks/useReferralForm";
@@ -33,11 +34,13 @@ import { markDailyStatsRefreshBootstrapChecked, markServerCacheSyncChecked, runD
 import { hasActiveInrcySite } from "@/lib/inrcySite";
 import { computeInertiaSnapshot } from "@/lib/loyalty/inertia";
 import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
+import { resolveProfileLogoUrl } from "@/lib/profileLogo";
 import { getDrawerTitle, isDrawerPanel } from "./dashboard.utils";
 import { inferChannelsFromRealtimePayload, inferChannelsFromSearchParams } from "./dashboard.shared";
 import type { ActusFont, ActusLayout, ActusTheme, GoogleProduct, GoogleSource, ModuleStatus, Ownership } from "./dashboard.types";
 import { DASHBOARD_CHANNEL_KEYS, type DashboardChannelKey } from "@/lib/dashboardChannels";
 import { buildFluxBubbleItems } from "./dashboard.flux-bubbles";
+import { createInrBadgePublicUrl, type InrBadgeProfileSummary } from "@/lib/inrBadge";
 import { buildDashboardPanelProps } from "./dashboard.panel-props";
 import { createEmptyChannelBlock, createEmptyChannelBlocks, type InrstatsChannelBlock, type InrstatsChannelBlocksByChannel } from "@/lib/inrstats/channelBlocks";
 import type { ConnectionDisplayStatus } from "@/lib/connectionVersions";
@@ -53,6 +56,37 @@ const DASHBOARD_CHANNEL_STATE_CACHE_KEY = "inrcy_dashboard_channel_state_v1";
 
 type SiteBubbleProgress = { status: ModuleStatus; text: string };
 type SiteBubbleProgressCache = Partial<Record<"site_inrcy" | "site_web", SiteBubbleProgress>>;
+
+const EMPTY_INRBADGE_PROFILE: InrBadgeProfileSummary = {
+  userId: "",
+  logoUrl: "",
+  companyLegalName: "",
+  firstName: "",
+  lastName: "",
+  phone: "",
+  contactEmail: "",
+};
+
+function normalizeCachedString(value: unknown) {
+  return typeof value === "string" ? value : "";
+}
+
+function sanitizeCachedInrBadgeProfile(value: unknown): InrBadgeProfileSummary {
+  const source = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
+  return {
+    userId: normalizeCachedString(source.userId),
+    logoUrl: normalizeCachedString(source.logoUrl),
+    companyLegalName: normalizeCachedString(source.companyLegalName),
+    firstName: normalizeCachedString(source.firstName),
+    lastName: normalizeCachedString(source.lastName),
+    phone: normalizeCachedString(source.phone),
+    contactEmail: normalizeCachedString(source.contactEmail),
+  };
+}
+
+function isEmptyInrBadgeProfile(profile: InrBadgeProfileSummary) {
+  return !profile.userId && !profile.logoUrl && !profile.companyLegalName && !profile.firstName && !profile.lastName && !profile.phone && !profile.contactEmail;
+}
 
 function isModuleStatus(value: unknown): value is ModuleStatus {
   return value === "connected" || value === "available" || value === "coming";
@@ -109,6 +143,26 @@ function readCachedDashboardChannelState(): Record<string, any> | null {
     const state = parsed?.state && typeof parsed.state === "object" ? parsed.state : parsed;
     if (!state || typeof state !== "object" || Array.isArray(state)) return null;
     return state as Record<string, any>;
+  } catch {
+    return null;
+  }
+}
+
+function readCachedInrBadgeProfile() {
+  try {
+    const state = readCachedDashboardChannelState();
+    if (!state || !state.inrBadgeProfile) return { ...EMPTY_INRBADGE_PROFILE };
+    const profile = sanitizeCachedInrBadgeProfile(state.inrBadgeProfile);
+    return isEmptyInrBadgeProfile(profile) ? { ...EMPTY_INRBADGE_PROFILE } : profile;
+  } catch {
+    return { ...EMPTY_INRBADGE_PROFILE };
+  }
+}
+
+function readCachedInrBadgeProfileReady(): boolean | null {
+  try {
+    const state = readCachedDashboardChannelState();
+    return typeof state?.inrBadgeProfileReady === "boolean" ? state.inrBadgeProfileReady : null;
   } catch {
     return null;
   }
@@ -196,6 +250,9 @@ export default function DashboardClient() {
   const [dashboardBoosterModal, setDashboardBoosterModal] = useState<null | "publish" | "stats">(null);
   const [siteConnectionsReady, setSiteConnectionsReady] = useState(false);
   const [mailAccountsConnectedCount, setMailAccountsConnectedCount] = useState(() => readCachedMailAccountsConnectedCount() ?? 0);
+  const [inrBadgeProfile, setInrBadgeProfile] = useState<InrBadgeProfileSummary>(() => readCachedInrBadgeProfile());
+  const [cachedInrBadgeProfileReady, setCachedInrBadgeProfileReady] = useState<boolean | null>(() => readCachedInrBadgeProfileReady());
+  const [inrBadgeModalOpen, setInrBadgeModalOpen] = useState(false);
   const [displayedGeneratorPower, setDisplayedGeneratorPower] = useState<number | null>(() => readCachedGeneratorPowerPercent());
   const [displayedGeneratorIsActive, setDisplayedGeneratorIsActive] = useState<boolean | null>(() => readCachedGeneratorIsActive());
   const [displayedSiteBubbleProgress, setDisplayedSiteBubbleProgress] = useState<SiteBubbleProgressCache>(() => readCachedSiteBubbleProgress());
@@ -705,7 +762,7 @@ const {
   saveTiktokDefaults,
 } = useTiktokChannel({ panel });
 
-const { profileIncomplete, activityIncomplete, checkProfile, checkActivity } = useDashboardCompletionChecks();
+const { profileIncomplete, activityIncomplete, profileCheckReady, checkProfile, checkActivity } = useDashboardCompletionChecks();
 
 const applyDashboardChannelState = useCallback((state: Record<string, any> | null, options?: { markReady?: boolean }) => {
   if (!state) return false;
@@ -772,6 +829,14 @@ const applyDashboardChannelState = useCallback((state: Record<string, any> | nul
 
   if (Object.prototype.hasOwnProperty.call(state, "mailAccountsConnectedCount")) {
     setMailAccountsConnectedCount(sanitizeMailAccountsConnectedCount(state.mailAccountsConnectedCount));
+  }
+
+  if (state.inrBadgeProfile && typeof state.inrBadgeProfile === "object") {
+    setInrBadgeProfile(sanitizeCachedInrBadgeProfile(state.inrBadgeProfile));
+  }
+
+  if (typeof state.inrBadgeProfileReady === "boolean") {
+    setCachedInrBadgeProfileReady(state.inrBadgeProfileReady);
   }
 
   setSiteInrcySettingsError(null);
@@ -1025,13 +1090,31 @@ const loadSiteInrcy = useCallback(async () => {
 
   const profileRes = await supabase
     .from("profiles")
-    .select("inrcy_site_ownership")
+    .select("inrcy_site_ownership,logo_url,logo_path,company_legal_name,first_name,last_name,phone,contact_email")
     .eq("user_id", user.id)
     .maybeSingle();
   if (requestSeq !== siteConfigRequestSeqRef.current) return;
 
   const profile = profileRes.data as any | null;
   const ownership = (profile?.inrcy_site_ownership ?? "none") as Ownership;
+  const resolvedProfileLogo = await resolveProfileLogoUrl(supabase, {
+    logo_path: profile?.logo_path ?? null,
+    logo_url: profile?.logo_url ?? null,
+  });
+  if (requestSeq !== siteConfigRequestSeqRef.current) return;
+
+  const nextInrBadgeProfile: InrBadgeProfileSummary = {
+    userId: user.id,
+    logoUrl: resolvedProfileLogo.logoUrl || "",
+    companyLegalName: String(profile?.company_legal_name ?? ""),
+    firstName: String(profile?.first_name ?? ""),
+    lastName: String(profile?.last_name ?? ""),
+    phone: String(profile?.phone ?? ""),
+    contactEmail: String(profile?.contact_email ?? ""),
+  };
+
+  setInrBadgeProfile(nextInrBadgeProfile);
+  mergeCachedDashboardChannelState({ inrBadgeProfile: nextInrBadgeProfile });
 
   const [inrcyRes, proRes] = await Promise.all([
     supabase
@@ -1133,6 +1216,7 @@ const loadSiteInrcy = useCallback(async () => {
     siteInrcyGscConnected: !!gscPropertyValue,
     siteWebGa4Connected: !!((siteWebObj as any)?.ga4?.measurement_id || (siteWebObj as any)?.ga4?.property_id),
     siteWebGscConnected: !!((siteWebObj as any)?.gsc?.property),
+    inrBadgeProfile: nextInrBadgeProfile,
   };
 
   try {
@@ -2510,6 +2594,8 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       fbSelectedPageId,
       fbSelectedPageName,
       mailAccountsConnectedCount,
+      inrBadgeProfile,
+      inrBadgeProfileReady,
       siteInrcyGa4Connected,
       siteInrcyGscConnected,
       siteWebGa4Connected,
@@ -2520,6 +2606,30 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     dashboardChannelCacheLastWriteRef.current = serialized;
     writeCachedDashboardChannelState(state);
   });
+
+  const inrBadgeProfileReady = useMemo(() => {
+    // iNr'Badge se connecte quand "Mon profil" est complété.
+    // Pendant l'hydratation, on garde le dernier état connu pour éviter le flash Déconnecté -> Connecté.
+    // Si aucun cache n'existe encore, on reste optimiste comme les autres bulles : le contrôle profil corrigera ensuite si besoin.
+    if (profileCheckReady) return !profileIncomplete;
+    return cachedInrBadgeProfileReady ?? !profileIncomplete;
+  }, [cachedInrBadgeProfileReady, profileCheckReady, profileIncomplete]);
+
+  useEffect(() => {
+    if (!profileCheckReady) return;
+    const ready = !profileIncomplete;
+    setCachedInrBadgeProfileReady(ready);
+    mergeCachedDashboardChannelState({ inrBadgeProfileReady: ready });
+  }, [profileCheckReady, profileIncomplete]);
+
+  const inrBadgePublicUrl = useMemo(() => {
+    if (!inrBadgeProfileReady) return "";
+    return createInrBadgePublicUrl(inrBadgeProfile);
+  }, [inrBadgeProfile, inrBadgeProfileReady]);
+
+  const openInrBadgeModal = useCallback(() => {
+    setInrBadgeModalOpen(true);
+  }, []);
 
   const fluxBubbleItems = useMemo(() => buildFluxBubbleItems({
     canConfigureSite,
@@ -2532,6 +2642,9 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     gmbUrl,
     instagramConnected,
     instagramUrl,
+    inrBadgeLogoUrl: inrBadgeProfile.logoUrl,
+    inrBadgeProfileReady,
+    onOpenInrBadgeModal: openInrBadgeModal,
     linkedinConnected,
     linkedinUrl,
     mailAccountsConnectedCount,
@@ -2554,6 +2667,9 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     gmbUrl,
     instagramConnected,
     instagramUrl,
+    inrBadgeProfile.logoUrl,
+    inrBadgeProfileReady,
+    openInrBadgeModal,
     linkedinConnected,
     linkedinUrl,
     mailAccountsConnectedCount,
@@ -2563,6 +2679,66 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     savedSiteWebUrlMeta,
     siteInrcySavedUrl,
     siteWebSavedUrl,
+  ]);
+
+  const inrBadgeSettingsProps = useMemo(() => ({
+    profile: inrBadgeProfile,
+    publicUrl: inrBadgePublicUrl,
+    profileReady: inrBadgeProfileReady,
+    channels: {
+      siteInrcy: {
+        connected: Boolean(hasActiveInrcySite(siteInrcyOwnership) && normalizeSiteUrl(siteInrcySavedUrl)),
+        url: siteInrcySavedUrl,
+      },
+      siteWeb: {
+        connected: Boolean(normalizeSiteUrl(siteWebSavedUrl)),
+        url: siteWebSavedUrl,
+      },
+      googleBusiness: {
+        connected: Boolean(gmbConnected && gmbUrl),
+        url: gmbUrl,
+      },
+      facebook: {
+        connected: Boolean(facebookPageConnected && facebookUrl),
+        url: facebookUrl,
+      },
+      instagram: {
+        connected: Boolean(instagramConnected && instagramUrl),
+        url: instagramUrl,
+      },
+      linkedin: {
+        connected: Boolean(linkedinConnected && linkedinUrl),
+        url: linkedinUrl,
+      },
+      mails: {
+        connected: mailAccountsConnectedCount > 0,
+        url: null,
+      },
+      tiktok: {
+        connected: false,
+        url: tiktokProfileUrl,
+      },
+    },
+    onOpenProfile: () => openPanel("profil"),
+    onOpenActivity: () => openPanel("activite"),
+  }), [
+    inrBadgeProfile,
+    inrBadgePublicUrl,
+    inrBadgeProfileReady,
+    siteInrcyOwnership,
+    siteInrcySavedUrl,
+    siteWebSavedUrl,
+    gmbConnected,
+    gmbUrl,
+    facebookPageConnected,
+    facebookUrl,
+    instagramConnected,
+    instagramUrl,
+    linkedinConnected,
+    linkedinUrl,
+    mailAccountsConnectedCount,
+    tiktokProfileUrl,
+    openPanel,
   ]);
 
   const saveSiteInrcyUrlFromDrawer = useCallback(() => runDrawerMutation("site_inrcy:url:save", saveSiteInrcyUrl), [runDrawerMutation, saveSiteInrcyUrl]);
@@ -2732,6 +2908,19 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         }}
       />
 
+
+      {inrBadgeModalOpen ? (
+        <InrBadgePreviewModal
+          profile={inrBadgeProfile}
+          publicUrl={inrBadgePublicUrl}
+          onClose={() => setInrBadgeModalOpen(false)}
+          onConfigure={() => {
+            setInrBadgeModalOpen(false);
+            openPanel("inrbadge");
+          }}
+        />
+      ) : null}
+
       <SettingsDrawer
         title={getDrawerTitle(panel)}
         isOpen={isDrawerPanel(panel)}
@@ -2772,6 +2961,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
           gmbPanelProps={gmbPanelProps}
           facebookPanelProps={facebookPanelProps}
           tiktokPanelProps={tiktokPanelProps}
+          inrBadgeSettingsProps={inrBadgeSettingsProps}
         />
       </SettingsDrawer>
 

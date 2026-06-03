@@ -17,6 +17,9 @@ type BuildFluxBubbleItemsArgs = {
   gmbUrl: string | null | undefined;
   instagramConnected: boolean;
   instagramUrl: string | null | undefined;
+  inrBadgeLogoUrl?: string | null;
+  inrBadgeProfileReady: boolean;
+  onOpenInrBadgeModal: () => void;
   linkedinConnected: boolean;
   linkedinUrl: string | null | undefined;
   mailAccountsConnectedCount: number;
@@ -42,6 +45,9 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
     gmbUrl,
     instagramConnected,
     instagramUrl,
+    inrBadgeLogoUrl,
+    inrBadgeProfileReady,
+    onOpenInrBadgeModal,
     linkedinConnected,
     linkedinUrl,
     mailAccountsConnectedCount,
@@ -81,6 +87,7 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
       : (m.key === "site_web")
         ? getSiteBubbleProgress("site_web")
         : blockDrivenStatus ?? (() => {
+          if (m.key === "inrbadge") return inrBadgeProfileReady ? { status: "connected" as ModuleStatus, text: "Connecté" } : { status: "available" as ModuleStatus, text: "Déconnecté" };
           if (m.key === "instagram") return instagramConnected ? { status: "connected" as ModuleStatus, text: "Connecté" } : { status: "available" as ModuleStatus, text: "A connecter" };
           if (m.key === "linkedin") return linkedinConnected ? { status: "connected" as ModuleStatus, text: "Connecté" } : { status: "available" as ModuleStatus, text: "A connecter" };
           if (m.key === "gmb") return gmbConnected ? { status: "connected" as ModuleStatus, text: "Connecté" } : { status: "available" as ModuleStatus, text: "A connecter" };
@@ -111,18 +118,22 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
                   ? "#"
                   : undefined;
 
-    const specialViewLabel = m.key === "site_inrcy"
-      ? "Voir le site"
-      : m.key === "site_web"
+    const specialViewLabel = m.key === "inrbadge"
+      ? "Voir mon badge"
+      : m.key === "site_inrcy"
         ? "Voir le site"
-        : m.key === "gmb"
-          ? "Voir la page"
-          : ["instagram", "linkedin", "facebook", "tiktok"].includes(m.key)
-            ? "Voir le compte"
-            : undefined;
+        : m.key === "site_web"
+          ? "Voir le site"
+          : m.key === "gmb"
+            ? "Voir la page"
+            : ["instagram", "linkedin", "facebook", "tiktok"].includes(m.key)
+              ? "Voir le compte"
+              : undefined;
 
-    const canViewSpecial = m.key === "site_inrcy"
-      ? Boolean(blockDrivenViewHref || canViewSite)
+    const canViewSpecial = m.key === "inrbadge"
+      ? inrBadgeProfileReady
+      : m.key === "site_inrcy"
+        ? Boolean(blockDrivenViewHref || canViewSite)
       : m.key === "site_web"
         ? Boolean(blockDrivenViewHref || savedSiteWebUrlMeta)
         : m.key === "instagram"
@@ -144,6 +155,10 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
         return;
       }
       if (m.key === "tiktok") return;
+      if (m.key === "inrbadge") {
+        openPanel("inrbadge");
+        return;
+      }
       if (m.key === "mails") {
         openPanel("mails");
         return;
@@ -156,8 +171,8 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
       name: m.name,
       description: m.description,
       accent: m.accent,
-      logoSrc: MODULE_ICONS[m.key]?.src,
-      logoAlt: MODULE_ICONS[m.key]?.alt,
+      logoSrc: m.key === "inrbadge" ? (inrBadgeLogoUrl || MODULE_ICONS.inrbadge?.src) : MODULE_ICONS[m.key]?.src,
+      logoAlt: m.key === "inrbadge" ? "Logo du professionnel" : MODULE_ICONS[m.key]?.alt,
       bubbleStatus,
       bubbleStatusText,
       helpKind: m.key === "site_inrcy" ? "site_inrcy" : m.key === "site_web" ? "site_web" : undefined,
@@ -166,7 +181,8 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
       specialViewHref,
       specialViewLabel,
       canViewSpecial,
-      viewAction: specialViewHref ? undefined : viewAction,
+      onSpecialView: m.key === "inrbadge" ? onOpenInrBadgeModal : undefined,
+      viewAction: specialViewHref || m.key === "inrbadge" ? undefined : viewAction,
       onConfigure,
       configureDisabled: m.key === "site_inrcy" ? !canConfigureSite : tiktokComingSoon,
       configureTitle: tiktokComingSoon
