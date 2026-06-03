@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createInrBadgeQrMatrix } from "@/lib/inrBadgeQr";
 import type { InrBadgeProfileSummary } from "@/lib/inrBadge";
 import {
@@ -308,7 +308,8 @@ export default function InrBadgeSettingsContent({
   const [settings, setSettings] = useState<ShareSettings>(() => loadShareSettings(storageKey));
   const [appointmentSettings, setAppointmentSettings] = useState<AppointmentSettings>(() => loadAppointmentSettings(storageKey));
   const [notice, setNotice] = useState<string | null>(null);
-  const [downloadSheetOpen, setDownloadSheetOpen] = useState(false);
+  const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
+  const downloadMenuRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -337,6 +338,25 @@ export default function InrBadgeSettingsContent({
       cancelled = true;
     };
   }, [storageKey]);
+
+  useEffect(() => {
+    if (!downloadMenuOpen) return;
+    const handlePointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (downloadMenuRef.current && target && !downloadMenuRef.current.contains(target)) {
+        setDownloadMenuOpen(false);
+      }
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setDownloadMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handlePointerDown);
+    document.addEventListener("keydown", handleEscape);
+    return () => {
+      document.removeEventListener("mousedown", handlePointerDown);
+      document.removeEventListener("keydown", handleEscape);
+    };
+  }, [downloadMenuOpen]);
 
   const updateSetting = (key: ShareKey, value: boolean) => {
     const next = { ...settings, [key]: value };
@@ -385,19 +405,21 @@ export default function InrBadgeSettingsContent({
     window.open(publicUrl, "_blank", "noopener,noreferrer");
   };
 
-  const openDownloadSheet = () => {
+  const toggleDownloadMenu = () => {
     if (!publicUrl) return;
-    setDownloadSheetOpen(true);
+    setDownloadMenuOpen((current) => !current);
   };
 
   const downloadPdf = () => {
     if (!publicUrl) return;
+    setDownloadMenuOpen(false);
     const blob = createPdfBlob(publicUrl, profile);
     downloadBlob(blob, `${safeFilename(company)}-inrbadge.pdf`);
   };
 
   const downloadPng = () => {
     if (!publicUrl) return;
+    setDownloadMenuOpen(false);
     void downloadQrPng(publicUrl, profile);
   };
 
@@ -436,7 +458,25 @@ export default function InrBadgeSettingsContent({
         <div style={buttonGridStyle}>
           <button type="button" style={smallButtonStyle} onClick={openPreview} disabled={!publicUrl}>Aperçu fiche</button>
           <button type="button" style={smallButtonStyle} onClick={copyLink} disabled={!publicUrl}>copier le lien</button>
-          <button type="button" style={smallButtonStyle} onClick={openDownloadSheet} disabled={!publicUrl}>Télécharger PNG / PDF</button>
+          <div style={downloadDropdownWrapStyle} ref={downloadMenuRef}>
+            <button
+              type="button"
+              style={smallButtonStyle}
+              onClick={toggleDownloadMenu}
+              disabled={!publicUrl}
+              aria-haspopup="menu"
+              aria-expanded={downloadMenuOpen}
+            >
+              <span>Télécharger</span>
+              <span aria-hidden="true" style={downloadChevronStyle}>▾</span>
+            </button>
+            {downloadMenuOpen ? (
+              <div style={downloadDropdownMenuStyle} role="menu" aria-label="Choisir un format de téléchargement">
+                <button type="button" style={downloadDropdownItemStyle} onClick={downloadPng} role="menuitem">PNG</button>
+                <button type="button" style={downloadDropdownItemStyle} onClick={downloadPdf} role="menuitem">PDF</button>
+              </div>
+            ) : null}
+          </div>
         </div>
       </div>
 
@@ -497,45 +537,6 @@ export default function InrBadgeSettingsContent({
 
       {notice ? <div style={noticeStyle}>{notice}</div> : null}
 
-      {downloadSheetOpen ? (
-        <div style={previewOverlayStyle} role="dialog" aria-modal="true" aria-label="Télécharger le QR Code iNr'Badge">
-          <button type="button" style={previewBackdropStyle} aria-label="Fermer le choix de téléchargement" onClick={() => setDownloadSheetOpen(false)} />
-          <div style={downloadModalStyle}>
-            <div style={previewModalHeaderStyle}>
-              <div>
-                <strong style={{ display: "block", color: "#fff", fontSize: 16 }}>Télécharger PNG / PDF</strong>
-                <span style={{ display: "block", marginTop: 4, color: "rgba(226,232,240,0.68)", fontSize: 12 }}>Choisissez le format à télécharger pour votre QR Code iNr'Badge.</span>
-              </div>
-              <button type="button" onClick={() => setDownloadSheetOpen(false)} style={previewCloseButtonStyle}>Fermer</button>
-            </div>
-            <div style={downloadActionsStyle}>
-              <button
-                type="button"
-                style={downloadActionButtonStyle}
-                onClick={() => {
-                  setDownloadSheetOpen(false);
-                  downloadPng();
-                }}
-              >
-                <strong>Télécharger en PNG</strong>
-                <span>Idéal pour un envoi rapide ou une intégration visuelle.</span>
-              </button>
-              <button
-                type="button"
-                style={downloadActionButtonStyle}
-                onClick={() => {
-                  setDownloadSheetOpen(false);
-                  downloadPdf();
-                }}
-              >
-                <strong>Télécharger en PDF</strong>
-                <span>Parfait pour l'impression ou le partage en document.</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
    </div>
   );
 }
@@ -576,6 +577,33 @@ const sectionTitleStyle: CSSProperties = { margin: "0 0 10px", color: "#fff", fo
 const mutedStyle: CSSProperties = { margin: "0 0 12px", color: "rgba(226,232,240,0.70)", fontSize: 12, overflowWrap: "anywhere" };
 const twoColumnsGridStyle: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 };
 const buttonGridStyle: CSSProperties = { display: "flex", flexWrap: "wrap", gap: 8 };
+const downloadDropdownWrapStyle: CSSProperties = { position: "relative", display: "inline-flex" };
+const downloadChevronStyle: CSSProperties = { fontSize: 10, opacity: 0.8 };
+const downloadDropdownMenuStyle: CSSProperties = {
+  position: "absolute",
+  top: "calc(100% + 8px)",
+  right: 0,
+  minWidth: 150,
+  display: "grid",
+  gap: 6,
+  padding: 8,
+  borderRadius: 14,
+  border: "1px solid rgba(255,255,255,0.12)",
+  background: "rgba(15,23,42,0.96)",
+  boxShadow: "0 18px 40px rgba(0,0,0,0.28)",
+  zIndex: 20,
+};
+const downloadDropdownItemStyle: CSSProperties = {
+  border: "1px solid rgba(255,255,255,0.10)",
+  background: "rgba(255,255,255,0.05)",
+  color: "#fff",
+  borderRadius: 12,
+  padding: "10px 12px",
+  fontSize: 12,
+  fontWeight: 800,
+  textAlign: "left",
+  cursor: "pointer",
+};
 
 const smallButtonStyle: CSSProperties = {
   border: "1px solid rgba(255,255,255,0.14)",
@@ -586,6 +614,9 @@ const smallButtonStyle: CSSProperties = {
   fontSize: 12,
   fontWeight: 800,
   cursor: "pointer",
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
 };
 
 const primarySmallButtonStyle: CSSProperties = {

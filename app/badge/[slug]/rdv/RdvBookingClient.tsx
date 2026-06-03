@@ -55,6 +55,7 @@ export default function RdvBookingClient({ slug, company, displayName, logoUrl, 
   const [selectedDay, setSelectedDay] = useState("");
   const [selectedSlot, setSelectedSlot] = useState<{ start: string; end: string; label: string } | null>(null);
   const [name, setName] = useState("");
+  const [companyName, setCompanyName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [message, setMessage] = useState("");
@@ -98,6 +99,17 @@ export default function RdvBookingClient({ slug, company, displayName, logoUrl, 
     return output;
   }, [activeDay, settings, events]);
 
+  const slotValue = selectedSlot?.start || "";
+
+  function handleClosePage() {
+    window.close();
+    window.setTimeout(() => {
+      if (!window.closed && document.visibilityState === "visible") {
+        window.history.back();
+      }
+    }, 120);
+  }
+
   async function submitRequest(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
@@ -117,13 +129,22 @@ export default function RdvBookingClient({ slug, company, displayName, logoUrl, 
       const response = await fetch("/api/inrbadge/appointment-request", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slug, start: selectedSlot.start, end: selectedSlot.end, name, email, phone, message }),
+        body: JSON.stringify({
+          slug,
+          start: selectedSlot.start,
+          end: selectedSlot.end,
+          name,
+          email,
+          phone,
+          message: [companyName.trim() ? `Société : ${companyName.trim()}` : "", message.trim()].filter(Boolean).join("\n\n"),
+        }),
       });
       const json = await response.json().catch(() => ({}));
       if (!response.ok || !json.ok) throw new Error(String(json.error || "Impossible d'envoyer la demande."));
       setFeedback("Demande envoyée. Le professionnel va confirmer ou proposer un autre créneau.");
       setSelectedSlot(null);
       setName("");
+      setCompanyName("");
       setEmail("");
       setPhone("");
       setMessage("");
@@ -138,15 +159,17 @@ export default function RdvBookingClient({ slug, company, displayName, logoUrl, 
     <main className={styles.page}>
       <section className={styles.shell}>
         <div className={styles.card}>
-          <div className={styles.headerRow}>
-            <div className={styles.headerIdentity}>
-              <div className={styles.logo}>{logoUrl ? <img src={logoUrl} alt="" /> : <span>iNr</span>}</div>
-              <div className={styles.identityText}>
-                <div className={styles.badgeLabel}>iNr&apos;Calendar</div>
-                <h1 className={styles.title}>{company}</h1>
-                {displayName ? <p className={styles.name}>{displayName}</p> : null}
-              </div>
-            </div>
+          <div className={styles.rdvTopActions}>
+            <a className={`${styles.previousPageButton} ${styles.iconActionButton}`} href={`/badge/${slug}`} aria-label="Retour à la fiche" title="Retour">←</a>
+            <button type="button" className={`${styles.closePageButton} ${styles.iconActionButton}`} onClick={handleClosePage} aria-label="Fermer" title="Fermer">×</button>
+          </div>
+
+          <div className={styles.calendarHeader}>
+            <img className={styles.calendarHeroLogo} src="/inrcalendar-logo.png" alt="iNr'Calendar" />
+            <h1 className={styles.calendarTitle}>Réserver un rendez-vous</h1>
+            <p className={styles.calendarSubtitle}>
+              avec <strong>{company}</strong>{displayName ? <span> · {displayName}</span> : null}
+            </p>
           </div>
 
           <section className={styles.section}>
@@ -155,38 +178,66 @@ export default function RdvBookingClient({ slug, company, displayName, logoUrl, 
               <h2>Choisir un créneau</h2>
             </div>
 
-            <div className={styles.dayGrid}>
-              {days.map((day) => (
-                <button key={day.key} type="button" className={day.key === activeDay ? styles.dayActive : styles.dayButton} onClick={() => { setSelectedDay(day.key); setSelectedSlot(null); }}>
-                  {day.label}
-                </button>
-              ))}
+            <div className={styles.rdvSelectGrid}>
+              <label>
+                Date
+                <select
+                  value={activeDay}
+                  onChange={(event) => {
+                    setSelectedDay(event.target.value);
+                    setSelectedSlot(null);
+                  }}
+                >
+                  {days.map((day) => (
+                    <option key={day.key} value={day.key}>{day.label}</option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Horaire
+                <select
+                  value={slotValue}
+                  onChange={(event) => {
+                    const nextSlot = slots.find((slot) => slot.start === event.target.value) || null;
+                    setSelectedSlot(nextSlot);
+                  }}
+                  disabled={!slots.length}
+                >
+                  <option value="">{slots.length ? "Choisir un horaire" : "Aucun créneau"}</option>
+                  {slots.map((slot) => (
+                    <option key={slot.start} value={slot.start}>{slot.label}</option>
+                  ))}
+                </select>
+              </label>
             </div>
 
-            {activeDay ? <p className={styles.rdvDateLabel}>{formatLongDate(activeDay)}</p> : null}
-
-            <div className={styles.slotGrid}>
-              {slots.length ? slots.map((slot) => (
-                <button key={slot.start} type="button" className={selectedSlot?.start === slot.start ? styles.slotActive : styles.slotButton} onClick={() => setSelectedSlot(slot)}>
-                  {slot.label}
-                </button>
-              )) : <p className={styles.emptySlots}>Aucun créneau disponible sur cette journée.</p>}
-            </div>
+            {!slots.length ? <p className={styles.emptySlots}>Aucun créneau disponible sur cette journée.</p> : null}
           </section>
 
           <form className={styles.rdvForm} onSubmit={submitRequest}>
-            <label>
-              Nom / prénom *
-              <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Votre nom" />
-            </label>
-            <label>
-              Email *
-              <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="votre@email.fr" />
-            </label>
-            <label>
-              Téléphone
-              <input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="06..." />
-            </label>
+            <div className={styles.rdvFieldGrid}>
+              <label>
+                Nom / prénom *
+                <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Votre nom" />
+              </label>
+              <label>
+                Société
+                <input value={companyName} onChange={(event) => setCompanyName(event.target.value)} placeholder="Votre société" />
+              </label>
+            </div>
+
+            <div className={styles.rdvFieldGrid}>
+              <label>
+                Mail *
+                <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="votre@email.fr" />
+              </label>
+              <label>
+                Téléphone
+                <input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="06..." />
+              </label>
+            </div>
+
             <label>
               Message / motif
               <textarea value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Expliquez rapidement votre besoin" rows={3} />

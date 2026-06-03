@@ -1,3 +1,4 @@
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { extractInrBadgeUserIdFromSlug } from "@/lib/inrBadge";
@@ -92,9 +93,16 @@ function safeFilename(value: string) {
     .slice(0, 48) || "contact";
 }
 
-function getBadgeBaseUrl() {
+async function getBadgeBaseUrl() {
+  const explicitBase = String(process.env.NEXT_PUBLIC_INRBADGE_BASE_URL || "").trim();
+  if (explicitBase) return explicitBase.replace(/\/+$/, "");
+
+  const headerStore = await headers();
+  const host = headerStore.get("x-forwarded-host") || headerStore.get("host") || "";
+  const proto = headerStore.get("x-forwarded-proto") || (host.includes("localhost") || host.includes("127.0.0.1") ? "http" : "https");
+  if (host) return `${proto}://${host}`.replace(/\/+$/, "");
+
   return String(
-    process.env.NEXT_PUBLIC_INRBADGE_BASE_URL ||
     process.env.NEXT_PUBLIC_APP_URL ||
     process.env.NEXT_PUBLIC_SITE_URL ||
     "https://app.inrcy.com"
@@ -134,10 +142,17 @@ function ActionLink({ href, label, detail, download, icon, iconSrc, tone = "neut
         {iconSrc ? <img className={styles.iconImage} src={iconSrc} alt="" /> : <span>{icon}</span>}
       </span>
       <span className={styles.actionBody}>
-        <strong>{label}</strong>
+        {compact ? (
+          <span className={styles.compactLabelRow}>
+            <strong>{label}</strong>
+            <span className={styles.arrowInline}>›</span>
+          </span>
+        ) : (
+          <strong>{label}</strong>
+        )}
         {detail ? <small>{detail}</small> : null}
       </span>
-      <span className={styles.arrow}>›</span>
+      {!compact ? <span className={styles.arrow}>›</span> : null}
     </a>
   );
 }
@@ -217,7 +232,7 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
   const tiktokUrl = normalizeUrl(tiktokSettings.url);
   const primaryWebsite = siteWebUrl || siteInrcyUrl;
 
-  const publicUrl = `${getBadgeBaseUrl()}/badge/${slug}`;
+  const publicUrl = `${await getBadgeBaseUrl()}/badge/${slug}`;
 
   const vCardUri = createVCardDataUri({
     firstName,
@@ -236,8 +251,8 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
 
   const primaryActions = [
     shareSettings.phone && phone && phoneHref(phone) ? { href: phoneHref(phone), label: "Appeler", icon: "☎", tone: "phone" as ActionTone } : null,
-    shareSettings.email && email ? { href: createMailto(email), label: "Envoyer un mail", icon: "✉", tone: "mail" as ActionTone } : null,
-    shareSettings.saveContact ? { href: vCardUri, label: "Enregistrer le contact", download: vCardFilename, icon: "👤", tone: "contact" as ActionTone } : null,
+    shareSettings.email && email ? { href: createMailto(email), label: "Mail", icon: "✉", tone: "mail" as ActionTone } : null,
+    shareSettings.saveContact ? { href: vCardUri, label: "Enregistrer", download: vCardFilename, icon: "👤", tone: "contact" as ActionTone } : null,
   ].filter(Boolean) as ActionLinkProps[];
 
   const channelActions = [
@@ -251,7 +266,7 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
   ].filter(Boolean) as ActionLinkProps[];
 
   const appointmentAction = shareSettings.appointment
-    ? { href: `/badge/${slug}/rdv`, label: "Prendre RDV", detail: "Réserver dans iNr'Calendar", icon: "◷", tone: "appointment" as ActionTone }
+    ? { href: `/badge/${slug}/rdv`, label: "Prendre RDV", iconSrc: "/inrcalendar-logo.png", tone: "appointment" as ActionTone }
     : null;
 
   return (
@@ -262,19 +277,18 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
           <div className={styles.cardGlowB} />
 
           <div className={styles.headerRow}>
+            <BadgeShareButton publicUrl={publicUrl} company={company} vCardUri={vCardUri} vCardFilename={vCardFilename} />
+
             <div className={styles.headerIdentity}>
               <div className={styles.logo} aria-hidden="true">
                 {shareSettings.logo && logo.logoUrl ? <img src={logo.logoUrl} alt="" /> : <span>iNr</span>}
               </div>
 
               <div className={styles.identityText}>
-                <div className={styles.badgeLabel}>iNr&apos;Badge</div>
                 {shareSettings.company ? <h1 className={styles.title}>{company}</h1> : null}
                 {shareSettings.name && displayName ? <p className={styles.name}>{displayName}</p> : null}
               </div>
             </div>
-
-            <BadgeShareButton publicUrl={publicUrl} company={company} vCardUri={vCardUri} vCardFilename={vCardFilename} />
           </div>
 
           {decodedSector.profession ? <p className={styles.job}>{decodedSector.profession}</p> : null}
@@ -333,7 +347,9 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
         </div>
 
         <div className={styles.footer}>
-          Propulsé par <strong>iNrCy</strong>
+          <span>iNr&apos;Badge</span>
+          <span className={styles.footerDot}>·</span>
+          <span>Propulsé par <strong>iNrCy</strong></span>
         </div>
       </section>
     </main>

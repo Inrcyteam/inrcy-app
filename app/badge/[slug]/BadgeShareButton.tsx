@@ -106,11 +106,31 @@ export default function BadgeShareButton({ publicUrl, company, vCardUri, vCardFi
     link.remove();
   }
 
+  function handleClosePage() {
+    window.close();
+    window.setTimeout(() => {
+      if (!window.closed && document.visibilityState === "visible") {
+        window.history.back();
+      }
+    }, 120);
+  }
+
   return (
     <>
-      <button type="button" className={styles.shareButton} onClick={() => setOpen(true)} aria-label="Partager cette fiche">
-        <span aria-hidden="true">↗</span>
-      </button>
+      <div className={styles.floatingActions}>
+        <button type="button" className={styles.shareButton} onClick={() => setOpen(true)} aria-label="Partager cette fiche" title="Partager">
+          <span className={styles.shareGlyph} aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M15.5 8.5L8.5 12" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M15.5 15.5L8.5 12" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"/>
+              <circle cx="18" cy="7" r="2.5" stroke="currentColor" strokeWidth="1.9"/>
+              <circle cx="6" cy="12" r="2.5" stroke="currentColor" strokeWidth="1.9"/>
+              <circle cx="18" cy="17" r="2.5" stroke="currentColor" strokeWidth="1.9"/>
+            </svg>
+          </span>
+        </button>
+        <button type="button" className={`${styles.closePageButton} ${styles.iconActionButton}`} onClick={handleClosePage} aria-label="Fermer" title="Fermer">×</button>
+      </div>
 
       {open ? <button type="button" className={styles.sheetBackdrop} aria-label="Fermer" onClick={() => setOpen(false)} /> : null}
 
@@ -129,7 +149,17 @@ export default function BadgeShareButton({ publicUrl, company, vCardUri, vCardFi
 
           <div className={styles.sheetActions}>
             <button type="button" className={styles.sheetAction} onClick={handleNativeShare}>
-              <span className={`${styles.sheetActionIcon} ${styles.shareTone}`}>↗</span>
+              <span className={`${styles.sheetActionIcon} ${styles.shareTone}`}>
+                <span className={styles.shareGlyph}>
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M15.5 8.5L8.5 12" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M15.5 15.5L8.5 12" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"/>
+                    <circle cx="18" cy="7" r="2.5" stroke="currentColor" strokeWidth="1.9"/>
+                    <circle cx="6" cy="12" r="2.5" stroke="currentColor" strokeWidth="1.9"/>
+                    <circle cx="18" cy="17" r="2.5" stroke="currentColor" strokeWidth="1.9"/>
+                  </svg>
+                </span>
+              </span>
               <span>
                 Partager
                 <small>WhatsApp, SMS, mail…</small>
