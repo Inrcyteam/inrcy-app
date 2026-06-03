@@ -9,7 +9,7 @@ export const MODULE_ICONS: Record<string, { src: string; alt: string }> = {
   linkedin: { src: "/icons/linkedin.png", alt: "LinkedIn" },
   mails: { src: "/icons/mails-inrcy-dashboard-v2.png", alt: "Mails iNrCy" },
   tiktok: { src: "/icons/tiktok.png", alt: "TikTok" },
-  inrbadge: { src: "/icons/inrcy.png", alt: "iNr'Badge" },
+  inrbadge: { src: "/icons/inrbadge-dashboard.png", alt: "iNr'Badge" },
 };
 
 export const fluxModules: Module[] = [

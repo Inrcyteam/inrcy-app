@@ -2721,6 +2721,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     },
     onOpenProfile: () => openPanel("profil"),
     onOpenActivity: () => openPanel("activite"),
+    onOpenCalendarSettings: () => openPanel("agenda"),
   }), [
     inrBadgeProfile,
     inrBadgePublicUrl,

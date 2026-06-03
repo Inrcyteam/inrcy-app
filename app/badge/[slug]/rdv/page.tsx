@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { extractInrBadgeUserIdFromSlug } from "@/lib/inrBadge";
-import { normalizeInrBadgeAppointmentSettings, normalizeInrBadgeShareSettings } from "@/lib/inrBadgeSettings";
+import { normalizeInrBadgeShareSettings, resolveInrBadgeAppointmentSettings } from "@/lib/inrBadgeSettings";
 import { resolveProfileLogoUrl } from "@/lib/profileLogo";
 import RdvBookingClient from "./RdvBookingClient";
 
@@ -38,7 +38,7 @@ export default async function InrBadgeRdvPage({ params }: { params: Promise<{ sl
 
   const rootSettings = safeObj((toolsRes.data as { settings?: unknown } | null)?.settings);
   const shareSettings = normalizeInrBadgeShareSettings(rootSettings.inrBadgeShareSettings);
-  const appointmentSettings = normalizeInrBadgeAppointmentSettings(rootSettings.inrBadgeAppointmentSettings);
+  const appointmentSettings = resolveInrBadgeAppointmentSettings(rootSettings);
   if (!shareSettings.appointment) notFound();
 
   const profile = profileRes.data as Record<string, unknown>;

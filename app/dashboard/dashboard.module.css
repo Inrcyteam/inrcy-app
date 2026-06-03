@@ -6414,7 +6414,7 @@ transform: scale(1.50);
   object-position:center center !important;
   border-radius:999px !important;
   display:block !important;
-  transform:none !important;
+  transform:scale(1.06) !important;
   clip-path:none !important;
 }
 
@@ -6445,6 +6445,7 @@ transform: scale(1.50);
   height:100%;
   object-fit:cover;
   display:block;
+  transform:scale(1.04);
 }
 
 .inrBadgeModalLogo span{

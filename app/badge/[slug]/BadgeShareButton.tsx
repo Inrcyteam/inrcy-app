@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import styles from "./badge.module.css";
 
 type Props = {
@@ -48,6 +49,15 @@ export default function BadgeShareButton({ publicUrl, company, vCardUri, vCardFi
 
   useEffect(() => {
     if (!open) setHelperText("");
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
   }, [open]);
 
   async function handleNativeShare() {
@@ -132,68 +142,72 @@ export default function BadgeShareButton({ publicUrl, company, vCardUri, vCardFi
         <button type="button" className={`${styles.closePageButton} ${styles.iconActionButton}`} onClick={handleClosePage} aria-label="Fermer" title="Fermer">×</button>
       </div>
 
-      {open ? <button type="button" className={styles.sheetBackdrop} aria-label="Fermer" onClick={() => setOpen(false)} /> : null}
+      {open && typeof document !== "undefined"
+        ? createPortal(
+            <div className={styles.sheetLayer} aria-hidden={false}>
+              <button type="button" className={styles.sheetBackdrop} aria-label="Fermer" onClick={() => setOpen(false)} />
+              <div className={styles.sheet} role="dialog" aria-modal="true" aria-label="Partager cette fiche">
+                <div className={styles.sheetHandle} />
+                <div className={styles.sheetHeader}>
+                  <div>
+                    <strong>Garder cette fiche</strong>
+                    <p>Partagez-la, copiez le lien ou ajoutez-la à l'écran d'accueil.</p>
+                  </div>
+                  <button type="button" className={styles.sheetClose} onClick={() => setOpen(false)} aria-label="Fermer">
+                    ×
+                  </button>
+                </div>
 
-      {open ? (
-        <div className={styles.sheet} role="dialog" aria-modal="true" aria-label="Partager cette fiche">
-          <div className={styles.sheetHandle} />
-          <div className={styles.sheetHeader}>
-            <div>
-              <strong>Garder cette fiche</strong>
-              <p>Partagez-la, copiez le lien ou ajoutez-la à l'écran d'accueil.</p>
-            </div>
-            <button type="button" className={styles.sheetClose} onClick={() => setOpen(false)} aria-label="Fermer">
-              ×
-            </button>
-          </div>
+                <div className={styles.sheetActions}>
+                  <button type="button" className={styles.sheetAction} onClick={handleNativeShare}>
+                    <span className={`${styles.sheetActionIcon} ${styles.shareTone}`}>
+                      <span className={styles.shareGlyph}>
+                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M15.5 8.5L8.5 12" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"/>
+                          <path d="M15.5 15.5L8.5 12" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"/>
+                          <circle cx="18" cy="7" r="2.5" stroke="currentColor" strokeWidth="1.9"/>
+                          <circle cx="6" cy="12" r="2.5" stroke="currentColor" strokeWidth="1.9"/>
+                          <circle cx="18" cy="17" r="2.5" stroke="currentColor" strokeWidth="1.9"/>
+                        </svg>
+                      </span>
+                    </span>
+                    <span>
+                      Partager
+                      <small>WhatsApp, SMS, mail…</small>
+                    </span>
+                  </button>
 
-          <div className={styles.sheetActions}>
-            <button type="button" className={styles.sheetAction} onClick={handleNativeShare}>
-              <span className={`${styles.sheetActionIcon} ${styles.shareTone}`}>
-                <span className={styles.shareGlyph}>
-                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M15.5 8.5L8.5 12" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"/>
-                    <path d="M15.5 15.5L8.5 12" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"/>
-                    <circle cx="18" cy="7" r="2.5" stroke="currentColor" strokeWidth="1.9"/>
-                    <circle cx="6" cy="12" r="2.5" stroke="currentColor" strokeWidth="1.9"/>
-                    <circle cx="18" cy="17" r="2.5" stroke="currentColor" strokeWidth="1.9"/>
-                  </svg>
-                </span>
-              </span>
-              <span>
-                Partager
-                <small>WhatsApp, SMS, mail…</small>
-              </span>
-            </button>
+                  <button type="button" className={styles.sheetAction} onClick={handleCopyLink}>
+                    <span className={`${styles.sheetActionIcon} ${styles.copyTone}`}>⧉</span>
+                    <span>
+                      Copier le lien
+                      <small>Conserver la fiche pour plus tard</small>
+                    </span>
+                  </button>
 
-            <button type="button" className={styles.sheetAction} onClick={handleCopyLink}>
-              <span className={`${styles.sheetActionIcon} ${styles.copyTone}`}>⧉</span>
-              <span>
-                Copier le lien
-                <small>Conserver la fiche pour plus tard</small>
-              </span>
-            </button>
+                  <button type="button" className={styles.sheetAction} onClick={handleInstall}>
+                    <span className={`${styles.sheetActionIcon} ${styles.installTone}`}>＋</span>
+                    <span>
+                      Ajouter à l&apos;écran d&apos;accueil
+                      <small>iPhone / Android</small>
+                    </span>
+                  </button>
 
-            <button type="button" className={styles.sheetAction} onClick={handleInstall}>
-              <span className={`${styles.sheetActionIcon} ${styles.installTone}`}>＋</span>
-              <span>
-                Ajouter à l&apos;écran d&apos;accueil
-                <small>iPhone / Android</small>
-              </span>
-            </button>
+                  <button type="button" className={styles.sheetAction} onClick={handleSaveContact}>
+                    <span className={`${styles.sheetActionIcon} ${styles.contactTone}`}>👤</span>
+                    <span>
+                      Enregistrer le contact
+                      <small>Ajouter la fiche dans le téléphone</small>
+                    </span>
+                  </button>
+                </div>
 
-            <button type="button" className={styles.sheetAction} onClick={handleSaveContact}>
-              <span className={`${styles.sheetActionIcon} ${styles.contactTone}`}>👤</span>
-              <span>
-                Enregistrer le contact
-                <small>Ajouter la fiche dans le téléphone</small>
-              </span>
-            </button>
-          </div>
-
-          {helperText ? <div className={styles.sheetHelper}>{helperText}</div> : null}
-        </div>
-      ) : null}
+                {helperText ? <div className={styles.sheetHelper}>{helperText}</div> : null}
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </>
   );
 }

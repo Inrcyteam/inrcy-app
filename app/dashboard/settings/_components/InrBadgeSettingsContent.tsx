@@ -36,6 +36,7 @@ type Props = {
   channels: InrBadgeSettingsChannels;
   onOpenProfile: () => void;
   onOpenActivity: () => void;
+  onOpenCalendarSettings: () => void;
 };
 
 type ShareKey = InrBadgeShareKey;
@@ -43,6 +44,7 @@ type ShareSettings = InrBadgeShareSettings;
 type AppointmentSettings = InrBadgeAppointmentSettings;
 
 const INRBADGE_HEADER_LINE = "iNr'Badge : mon entreprise en QR Code";
+const INRBADGE_ICON_SRC = "/icons/inrbadge-dashboard.png";
 
 function trim(value: unknown) {
   return String(value || "").trim();
@@ -89,12 +91,12 @@ function saveBadgeSettings(storageKey: string, settings: ShareSettings, appointm
   }
 }
 
-async function persistBadgeSettings(settings: ShareSettings, appointmentSettings: AppointmentSettings) {
+async function persistBadgeSettings(settings: ShareSettings, _appointmentSettings?: AppointmentSettings) {
   try {
     await fetch("/api/inrbadge/settings", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ settings, appointmentSettings }),
+      body: JSON.stringify({ settings }),
     });
   } catch {
     // Le localStorage garde une copie instantanée si le réseau est indisponible.
@@ -303,6 +305,7 @@ export default function InrBadgeSettingsContent({
   channels,
   onOpenProfile,
   onOpenActivity,
+  onOpenCalendarSettings,
 }: Props) {
   const storageKey = useMemo(() => getStorageKey(profile, publicUrl), [profile, publicUrl]);
   const [settings, setSettings] = useState<ShareSettings>(() => loadShareSettings(storageKey));
@@ -437,7 +440,7 @@ export default function InrBadgeSettingsContent({
   return (
     <div style={{ display: "grid", gap: 14 }}>
       <div style={heroCardStyle}>
-        <div style={heroIconStyle}>{profile.logoUrl ? <img src={profile.logoUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : <span>iNr</span>}</div>
+        <div style={heroIconStyle}><img src={INRBADGE_ICON_SRC} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", transform: "scale(1.04)", display: "block" }} /></div>
         <div style={{ minWidth: 0 }}>
           <h2 style={heroTitleStyle}>{INRBADGE_HEADER_LINE}</h2>
           <p style={heroSubTextStyle}>Le QR reste permanent. Les informations partagées peuvent évoluer sans réimprimer vos supports.</p>
@@ -510,28 +513,21 @@ export default function InrBadgeSettingsContent({
 
       <div style={cardStyle}>
         <h3 style={sectionTitleStyle}>Prise de RDV</h3>
-        <div style={twoColumnsGridStyle}>
-          <FieldToggle label="Afficher Prendre RDV" checked={settings.appointment} helper="Ajoute le bouton sur la fiche publique." onChange={(value) => updateSetting("appointment", value)} />
-          <FieldSelect label="Durée d'un RDV" value={appointmentSettings.durationMinutes} options={[15, 30, 45, 60, 90, 120].map((value) => ({ value, label: `${value} min` }))} onChange={(value) => updateAppointmentSettings({ durationMinutes: Number(value) })} />
-          <FieldSelect label="Proposer sur" value={appointmentSettings.daysAhead} options={[7, 14, 21, 30, 45, 60].map((value) => ({ value, label: `${value} jours` }))} onChange={(value) => updateAppointmentSettings({ daysAhead: Number(value) })} />
-          <FieldSelect label="Délai minimum" value={appointmentSettings.minNoticeHours} options={[0, 2, 4, 12, 24, 48, 72].map((value) => ({ value, label: value === 0 ? "Immédiat" : `${value}h avant` }))} onChange={(value) => updateAppointmentSettings({ minNoticeHours: Number(value) })} />
-          <FieldSelect label="Début des créneaux" value={appointmentSettings.startTime} options={["07:00", "08:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00"].map((value) => ({ value, label: value }))} onChange={(value) => updateAppointmentSettings({ startTime: value })} />
-          <FieldSelect label="Fin des créneaux" value={appointmentSettings.endTime} options={["12:00", "13:00", "14:00", "15:00", "16:00", "17:00", "18:00", "19:00", "20:00", "21:00"].map((value) => ({ value, label: value }))} onChange={(value) => updateAppointmentSettings({ endTime: value })} />
-        </div>
-        <div style={{ marginTop: 12 }}>
-          <strong style={toggleTitleStyle}>Jours ouverts à la réservation</strong>
-          <div style={weekdayGridStyle}>
-            {[{ d: 1, l: "Lun" }, { d: 2, l: "Mar" }, { d: 3, l: "Mer" }, { d: 4, l: "Jeu" }, { d: 5, l: "Ven" }, { d: 6, l: "Sam" }, { d: 0, l: "Dim" }].map((item) => {
-              const active = appointmentSettings.weekdays.includes(item.d);
-              return (
-                <button key={item.d} type="button" onClick={() => toggleWeekday(item.d)} style={active ? weekdayActiveStyle : weekdayButtonStyle}>
-                  {item.l}
-                </button>
-              );
-            })}
+        <div style={appointmentActionRowStyle}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <FieldToggle label="Afficher Prendre RDV" checked={settings.appointment} helper="Ajoute le bouton sur la fiche publique." onChange={(value) => updateSetting("appointment", value)} />
           </div>
+          <button
+            type="button"
+            style={settingsGearButtonStyle}
+            onClick={onOpenCalendarSettings}
+            aria-label="Ouvrir les réglages iNr’Calendar"
+            title="Réglages iNr’Calendar"
+          >
+            <span aria-hidden="true" style={{ fontSize: 18, lineHeight: 1 }}>⚙</span>
+          </button>
         </div>
-        <p style={{ ...mutedStyle, marginTop: 12, marginBottom: 0 }}>Le client choisit un créneau libre. Vous recevez la demande par mail puis vous validez l'enregistrement dans iNr'Calendar.</p>
+        <p style={{ ...mutedStyle, marginTop: 12, marginBottom: 0 }}>iNr’Badge affiche le bouton. Les jours, horaires, durées de créneaux, délai minimum et rappels se règlent dans iNr’Calendar.</p>
       </div>
 
 
@@ -567,8 +563,10 @@ const heroIconStyle: CSSProperties = {
   placeItems: "center",
   color: "#fff",
   fontWeight: 900,
-  background: "linear-gradient(135deg, rgba(139,92,246,0.95), rgba(14,165,233,0.75))",
+  background: "rgba(255,255,255,0.08)",
   border: "1px solid rgba(255,255,255,0.22)",
+  boxShadow: "0 12px 28px rgba(0,0,0,0.24), 0 0 18px rgba(168,85,247,0.16)",
+  padding: 0,
 };
 
 const heroTitleStyle: CSSProperties = { margin: 0, color: "#fff", fontSize: 18, lineHeight: 1.3 };
@@ -624,6 +622,27 @@ const primarySmallButtonStyle: CSSProperties = {
   width: "fit-content",
   background: "linear-gradient(135deg, rgba(139,92,246,0.95), rgba(14,165,233,0.78))",
   border: "none",
+};
+
+const appointmentActionRowStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+};
+
+const settingsGearButtonStyle: CSSProperties = {
+  width: 46,
+  height: 46,
+  flex: "0 0 auto",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  borderRadius: 999,
+  border: "1px solid rgba(255,255,255,0.18)",
+  background: "linear-gradient(135deg, rgba(139,92,246,0.92), rgba(14,165,233,0.82))",
+  color: "#fff",
+  cursor: "pointer",
+  boxShadow: "0 12px 28px rgba(14,165,233,0.18), 0 10px 24px rgba(139,92,246,0.20)",
 };
 
 const warningCardStyle: CSSProperties = {

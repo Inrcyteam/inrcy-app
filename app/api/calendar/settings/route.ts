@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
+import {
+  resolveInrBadgeAppointmentSettings,
+  sanitizeInrBadgeAppointmentSettingsPayload,
+} from "@/lib/inrBadgeSettings";
 
 const DEFAULT_REMINDER_OFFSETS_MINUTES = [1440, 120];
 const ALLOWED_REMINDER_OFFSETS_MINUTES = [2880, 1440, 120];
@@ -55,6 +59,7 @@ export async function GET() {
   const selectedMailAccountId = typeof inrcalendar.selected_mail_account_id === "string" ? inrcalendar.selected_mail_account_id : "";
   const sendConfirmationOnSave = inrcalendar.send_confirmation_on_save === true;
   const reminderOffsetsMinutes = normalizeReminderOffsets(inrcalendar.reminder_offsets_minutes);
+  const appointmentSettings = resolveInrBadgeAppointmentSettings(rootSettings);
 
   const accounts = (accountsRes.data ?? []).map((row: MailIntegrationRow) => {
     const settings = safeObj(row.settings);
@@ -71,6 +76,7 @@ export async function GET() {
     selectedMailAccountId,
     sendConfirmationOnSave,
     reminderOffsetsMinutes,
+    appointmentSettings,
     accounts,
   });
 }
@@ -119,13 +125,20 @@ export async function PATCH(req: Request) {
     ? normalizeReminderOffsets(body?.reminderOffsetsMinutes)
     : normalizeReminderOffsets(currentInrCalendar.reminder_offsets_minutes);
 
+  const appointmentSettings = hasOwn(body, "appointmentSettings")
+    ? sanitizeInrBadgeAppointmentSettingsPayload(body?.appointmentSettings)
+    : resolveInrBadgeAppointmentSettings(currentSettings);
+
   const nextSettings = {
     ...currentSettings,
+    // Compatibilité avec l'existant public iNr'Badge.
+    inrBadgeAppointmentSettings: appointmentSettings,
     inrcalendar: {
       ...currentInrCalendar,
       selected_mail_account_id: selectedMailAccountId || null,
       send_confirmation_on_save: sendConfirmationOnSave,
       reminder_offsets_minutes: reminderOffsetsMinutes,
+      appointment_settings: appointmentSettings,
     },
   };
 
@@ -137,5 +150,6 @@ export async function PATCH(req: Request) {
     selectedMailAccountId: selectedMailAccountId || "",
     sendConfirmationOnSave,
     reminderOffsetsMinutes,
+    appointmentSettings,
   });
 }

@@ -6,6 +6,7 @@ import type { InrBadgeProfileSummary } from "@/lib/inrBadge";
 import styles from "../dashboard.module.css";
 
 const INRBADGE_HEADER_LINE = "iNr'Badge : mon entreprise en QR Code";
+const INRBADGE_ICON_SRC = "/icons/inrbadge-dashboard.png";
 
 type Props = {
   profile: InrBadgeProfileSummary;
@@ -44,7 +45,7 @@ export default function InrBadgePreviewModal({ profile, publicUrl, onClose, onCo
     >
       <div className={styles.inrBadgeModalCard}>
         <div className={styles.inrBadgeModalLogo} aria-hidden="true">
-          {profile.logoUrl ? <img src={profile.logoUrl} alt="" /> : <span>iNr</span>}
+          <img src={INRBADGE_ICON_SRC} alt="" />
         </div>
 
         <div className={styles.inrBadgeModalIntro}>

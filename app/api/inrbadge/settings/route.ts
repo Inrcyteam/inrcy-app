@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import {
-  normalizeInrBadgeAppointmentSettings,
   normalizeInrBadgeShareSettings,
+  resolveInrBadgeAppointmentSettings,
   sanitizeInrBadgeAppointmentSettingsPayload,
   sanitizeInrBadgeShareSettingsPayload,
 } from "@/lib/inrBadgeSettings";
@@ -28,7 +28,7 @@ export async function GET() {
   return NextResponse.json({
     ok: true,
     settings: normalizeInrBadgeShareSettings(rootSettings.inrBadgeShareSettings),
-    appointmentSettings: normalizeInrBadgeAppointmentSettings(rootSettings.inrBadgeAppointmentSettings),
+    appointmentSettings: resolveInrBadgeAppointmentSettings(rootSettings),
   });
 }
 
@@ -55,12 +55,18 @@ export async function PATCH(req: Request) {
     : normalizeInrBadgeShareSettings(currentSettings.inrBadgeShareSettings);
   const nextAppointmentSettings = hasAppointmentSettings
     ? sanitizeInrBadgeAppointmentSettingsPayload(input.appointmentSettings)
-    : normalizeInrBadgeAppointmentSettings(currentSettings.inrBadgeAppointmentSettings);
+    : resolveInrBadgeAppointmentSettings(currentSettings);
+
+  const currentInrCalendar = safeObj(currentSettings.inrcalendar);
 
   const nextSettings = {
     ...currentSettings,
     inrBadgeShareSettings: nextShareSettings,
     inrBadgeAppointmentSettings: nextAppointmentSettings,
+    inrcalendar: {
+      ...currentInrCalendar,
+      appointment_settings: nextAppointmentSettings,
+    },
   };
 
   const { error } = await supabase

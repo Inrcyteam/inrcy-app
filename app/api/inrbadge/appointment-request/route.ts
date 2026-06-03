@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { optionalEnv } from "@/lib/env";
 import { extractInrBadgeUserIdFromSlug } from "@/lib/inrBadge";
-import { normalizeInrBadgeAppointmentSettings, normalizeInrBadgeShareSettings } from "@/lib/inrBadgeSettings";
+import { normalizeInrBadgeShareSettings, resolveInrBadgeAppointmentSettings } from "@/lib/inrBadgeSettings";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendTxMail } from "@/lib/txMailer";
 
@@ -69,6 +69,16 @@ function timeInParisParts(date: Date) {
   return { minutes: hour * 60 + minute, weekday: weekdayMap[weekdayLabel.slice(0, 3)] ?? date.getDay() };
 }
 
+
+function getAppointmentDaySettings(settings: ReturnType<typeof resolveInrBadgeAppointmentSettings>, weekday: number) {
+  return settings.dailySlots[String(weekday)] || {
+    enabled: settings.weekdays.includes(weekday),
+    startTime: settings.startTime,
+    endTime: settings.endTime,
+    durationMinutes: settings.durationMinutes,
+  };
+}
+
 function getBaseUrl(req: Request) {
   return String(
     process.env.NEXT_PUBLIC_APP_URL ||
@@ -125,21 +135,22 @@ export async function POST(req: Request) {
   if (profileRes.error || !profileRes.data) return bad("Professionnel introuvable", 404);
   const rootSettings = safeObj((toolsRes.data as { settings?: unknown } | null)?.settings);
   const shareSettings = normalizeInrBadgeShareSettings(rootSettings.inrBadgeShareSettings);
-  const appointmentSettings = normalizeInrBadgeAppointmentSettings(rootSettings.inrBadgeAppointmentSettings);
+  const appointmentSettings = resolveInrBadgeAppointmentSettings(rootSettings);
   if (!shareSettings.appointment) return bad("La prise de RDV n'est pas activée", 403);
 
   const durationMinutes = Math.round((end.getTime() - start.getTime()) / 60000);
-  if (durationMinutes !== appointmentSettings.durationMinutes) return bad("Durée du créneau invalide");
 
   const minDate = new Date(Date.now() + appointmentSettings.minNoticeHours * 60 * 60 * 1000);
   if (start < minDate) return bad("Ce créneau n'est plus disponible");
 
   const paris = timeInParisParts(start);
-  const startMinutes = parseMinutes(appointmentSettings.startTime);
-  const endMinutes = parseMinutes(appointmentSettings.endTime);
-  if (!appointmentSettings.weekdays.includes(paris.weekday)) return bad("Ce jour n'est pas ouvert à la réservation");
+  const daySettings = getAppointmentDaySettings(appointmentSettings, paris.weekday);
+  const startMinutes = parseMinutes(daySettings.startTime);
+  const endMinutes = parseMinutes(daySettings.endTime);
+  if (!daySettings.enabled) return bad("Ce jour n'est pas ouvert à la réservation");
+  if (durationMinutes !== daySettings.durationMinutes) return bad("Durée du créneau invalide");
   if (paris.minutes < startMinutes || paris.minutes + durationMinutes > endMinutes) return bad("Ce créneau n'est pas dans les horaires proposés");
-  if ((paris.minutes - startMinutes) % appointmentSettings.durationMinutes !== 0) return bad("Ce créneau n'est pas proposé");
+  if ((paris.minutes - startMinutes) % daySettings.durationMinutes !== 0) return bad("Ce créneau n'est pas proposé");
 
   const { data: conflicts, error: conflictsError } = await supabaseAdmin
     .from("agenda_events")

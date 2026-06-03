@@ -44,6 +44,17 @@ function buildLocalDateTime(dateKeyValue: string, time: string) {
   return new Date(`${dateKeyValue}T${time}:00`);
 }
 
+
+function getSettingsForDate(settings: InrBadgeAppointmentSettings, dateKeyValue: string) {
+  const weekday = new Date(`${dateKeyValue}T12:00:00`).getDay();
+  return settings.dailySlots[String(weekday)] || {
+    enabled: settings.weekdays.includes(weekday),
+    startTime: settings.startTime,
+    endTime: settings.endTime,
+    durationMinutes: settings.durationMinutes,
+  };
+}
+
 function overlaps(start: Date, end: Date, event: BusyEvent) {
   const eventStart = new Date(event.start);
   const eventEnd = new Date(event.end);
@@ -70,19 +81,22 @@ export default function RdvBookingClient({ slug, company, displayName, logoUrl, 
       const date = new Date(now);
       date.setDate(now.getDate() + offset);
       const weekday = date.getDay();
-      if (!settings.weekdays.includes(weekday)) continue;
+      const daySettings = settings.dailySlots[String(weekday)];
+      if (daySettings ? !daySettings.enabled : !settings.weekdays.includes(weekday)) continue;
       items.push({ key: dateKey(date), label: formatDayLabel(date) });
     }
     return items;
-  }, [settings.daysAhead, settings.weekdays]);
+  }, [settings]);
 
   const activeDay = selectedDay || days[0]?.key || "";
 
   const slots = useMemo(() => {
     if (!activeDay) return [];
-    const startMinutes = minutesFromTime(settings.startTime);
-    const endMinutes = minutesFromTime(settings.endTime);
-    const duration = settings.durationMinutes;
+    const daySettings = getSettingsForDate(settings, activeDay);
+    if (!daySettings.enabled) return [];
+    const startMinutes = minutesFromTime(daySettings.startTime);
+    const endMinutes = minutesFromTime(daySettings.endTime);
+    const duration = daySettings.durationMinutes;
     const minDate = new Date(Date.now() + settings.minNoticeHours * 60 * 60 * 1000);
     const output: Array<{ start: string; end: string; label: string }> = [];
 
@@ -160,19 +174,14 @@ export default function RdvBookingClient({ slug, company, displayName, logoUrl, 
       <section className={styles.shell}>
         <div className={styles.card}>
           <div className={styles.calendarHeader}>
-            <div className={styles.headerTopLine}>
-              <div className={styles.calendarLogoWide}>
-                <img className={styles.calendarHeroLogo} src="/inrcalendar-logo.png" alt="iNr'Calendar" />
-              </div>
+            <div className={styles.calendarTopBar}>
               <div className={styles.rdvTopActions}>
                 <a className={`${styles.previousPageButton} ${styles.iconActionButton}`} href={`/badge/${slug}`} aria-label="Retour à la fiche" title="Retour">←</a>
                 <button type="button" className={`${styles.closePageButton} ${styles.iconActionButton}`} onClick={handleClosePage} aria-label="Fermer" title="Fermer">×</button>
               </div>
+              <img className={styles.calendarHeroLogo} src="/inrcalendar-logo.png" alt="iNr'Calendar" />
             </div>
-            <h1 className={styles.calendarTitle}>Réserver un rendez-vous</h1>
-            <p className={styles.calendarSubtitle}>
-              avec <strong>{company}</strong>{displayName ? <span> · {displayName}</span> : null}
-            </p>
+            <p className={styles.calendarInlineInfo}>Réserver un rendez-vous</p>
           </div>
 
           <section className={styles.section}>

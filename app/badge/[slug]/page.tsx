@@ -269,7 +269,7 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
     ? { href: `/badge/${slug}/rdv`, label: "Prendre RDV", iconSrc: "/inrcalendar-logo.png", tone: "appointment" as ActionTone }
     : null;
 
-  const headerInlineInfo = [
+  const headerInfoLine = [
     shareSettings.company ? company : "",
     shareSettings.name ? displayName : "",
   ].filter(Boolean).join(" / ");
@@ -282,21 +282,23 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
           <div className={styles.cardGlowB} />
 
           <div className={styles.headerRow}>
-            <div className={styles.headerTopLine}>
-              <div className={styles.logoWide} aria-hidden="true">
-                {shareSettings.logo && logo.logoUrl ? <img src={logo.logoUrl} alt="" /> : <span>iNr</span>}
-              </div>
+            <div className={styles.headerTopBar}>
               <BadgeShareButton publicUrl={publicUrl} company={company} vCardUri={vCardUri} vCardFilename={vCardFilename} />
+              <div className={styles.headerIdentity}>
+                <div className={styles.logo} aria-hidden="true">
+                  {shareSettings.logo && logo.logoUrl ? <img src={logo.logoUrl} alt="" /> : <span>iNr</span>}
+                </div>
+              </div>
             </div>
 
-            {headerInlineInfo ? <div className={styles.headerInlineInfo}>{headerInlineInfo}</div> : null}
+            {headerInfoLine ? <p className={styles.headerInfoLine}>{headerInfoLine}</p> : null}
           </div>
 
           {decodedSector.profession ? <p className={styles.job}>{decodedSector.profession}</p> : null}
           {description ? <p className={styles.description}>{description}</p> : null}
 
           {primaryActions.length > 0 ? (
-            <div className={styles.primaryGrid}>
+            <div className={styles.primaryGrid} data-count={primaryActions.length}>
               {primaryActions.map((action) => (
                 <ActionLink key={`${action.label}-${action.href}`} {...action} compact />
               ))}
@@ -309,7 +311,7 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
                 <span className={styles.sectionMark} />
                 <h2>Mes canaux</h2>
               </div>
-              <div className={styles.channelsGrid}>
+              <div className={styles.channelsGrid} data-count={channelActions.length}>
                 {channelActions.map((action) => (
                   <ActionLink key={`${action.label}-${action.href}`} {...action} />
                 ))}
