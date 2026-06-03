@@ -351,6 +351,63 @@ export default function AgendaSettingsContent() {
           .agendaSettings_responsiveTwo {
             grid-template-columns: 1fr !important;
           }
+
+          .agendaSettings_daysCard {
+            padding: 8px !important;
+            gap: 6px !important;
+            overflow: hidden !important;
+            max-width: 100% !important;
+            box-sizing: border-box !important;
+          }
+
+          .agendaSettings_dayHeader,
+          .agendaSettings_dayRow {
+            grid-template-columns: minmax(66px, 0.95fr) minmax(48px, 0.72fr) minmax(48px, 0.72fr) minmax(54px, 0.78fr) !important;
+            gap: 5px !important;
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            box-sizing: border-box !important;
+          }
+
+          .agendaSettings_dayHeader {
+            padding: 0 6px !important;
+            font-size: 9px !important;
+            letter-spacing: 0.025em !important;
+          }
+
+          .agendaSettings_dayRow {
+            padding: 7px !important;
+            border-radius: 12px !important;
+          }
+
+          .agendaSettings_daySelect {
+            width: 100% !important;
+            min-width: 0 !important;
+            max-width: 100% !important;
+            padding: 7px 4px !important;
+            font-size: 10.5px !important;
+            border-radius: 8px !important;
+            box-sizing: border-box !important;
+          }
+        }
+
+        @media (max-width: 380px) {
+          .agendaSettings_dayHeader,
+          .agendaSettings_dayRow {
+            grid-template-columns: minmax(58px, 0.9fr) minmax(44px, 0.7fr) minmax(44px, 0.7fr) minmax(50px, 0.75fr) !important;
+            gap: 4px !important;
+          }
+
+          .agendaSettings_dayRow {
+            padding: 6px !important;
+          }
+
+          .agendaSettings_daySelect {
+            padding-left: 3px !important;
+            padding-right: 3px !important;
+            font-size: 10px !important;
+          }
         }
       `}</style>
 
@@ -457,8 +514,8 @@ export default function AgendaSettingsContent() {
           />
         </div>
 
-        <div style={dayCardStyle}>
-          <div style={dayTableHeaderStyle}>
+        <div className="agendaSettings_daysCard" style={dayCardStyle}>
+          <div className="agendaSettings_dayHeader" style={dayTableHeaderStyle}>
             <span>Jour</span>
             <span>Début</span>
             <span>Fin</span>
@@ -468,7 +525,7 @@ export default function AgendaSettingsContent() {
           {WEEKDAY_ITEMS.map((day) => {
             const daySettings = getDaySettings(appointmentSettings, day.key);
             return (
-              <div key={day.key} style={{ ...dayRowStyle, opacity: daySettings.enabled ? 1 : 0.62 }}>
+              <div key={day.key} className="agendaSettings_dayRow" style={{ ...dayRowStyle, opacity: daySettings.enabled ? 1 : 0.62 }}>
                 <div style={dayMetaStackStyle}>
                   <span style={dayNameStyle}>{day.label}</span>
                   <label style={dayToggleInlineStyle}>
@@ -484,7 +541,7 @@ export default function AgendaSettingsContent() {
                 </div>
 
                 <select
-                  className="agendaSettings_select"
+                  className="agendaSettings_select agendaSettings_daySelect"
                   style={compactSelectStyle}
                   value={daySettings.startTime}
                   disabled={!daySettings.enabled || loading}
@@ -496,7 +553,7 @@ export default function AgendaSettingsContent() {
                 </select>
 
                 <select
-                  className="agendaSettings_select"
+                  className="agendaSettings_select agendaSettings_daySelect"
                   style={compactSelectStyle}
                   value={daySettings.endTime}
                   disabled={!daySettings.enabled || loading}
@@ -508,7 +565,7 @@ export default function AgendaSettingsContent() {
                 </select>
 
                 <select
-                  className="agendaSettings_select"
+                  className="agendaSettings_select agendaSettings_daySelect"
                   style={compactSelectStyle}
                   value={String(daySettings.durationMinutes)}
                   disabled={!daySettings.enabled || loading}
