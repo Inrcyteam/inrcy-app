@@ -449,9 +449,20 @@ export default function AgendaClient() {
     const contactAddress = searchParams?.get("contactAddress") || "";
     const contactPostalCode = searchParams?.get("contactPostalCode") || "";
     const contactCity = searchParams?.get("contactCity") || "";
+    const rdvDateParam = searchParams?.get("rdvDate") || "";
+    const rdvStartParam = searchParams?.get("rdvStart") || "";
+    const rdvEndParam = searchParams?.get("rdvEnd") || "";
+    const summaryParam = searchParams?.get("summary") || "";
+    const notesParam = searchParams?.get("notes") || "";
 
     loadContacts();
     openCreateRdv(selectedDate);
+
+    if (/^\d{4}-\d{2}-\d{2}$/.test(rdvDateParam)) setRdvDate(rdvDateParam);
+    if (/^\d{2}:\d{2}$/.test(rdvStartParam)) setRdvStart(rdvStartParam);
+    if (/^\d{2}:\d{2}$/.test(rdvEndParam)) setRdvEnd(rdvEndParam);
+    if (summaryParam) setRdvSummary(summaryParam);
+    if (notesParam) setRdvNotes(notesParam);
 
     if (contactId) setRdvContactId(contactId);
     if (contactName || contactFirstName || contactCompany) {

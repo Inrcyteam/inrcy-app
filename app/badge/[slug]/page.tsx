@@ -5,6 +5,7 @@ import { normalizeInrBadgeShareSettings } from "@/lib/inrBadgeSettings";
 import { resolveProfileLogoUrl } from "@/lib/profileLogo";
 import { decodeBusinessSector } from "@/lib/activitySectors";
 import styles from "./badge.module.css";
+import BadgeShareButton from "./BadgeShareButton";
 
 export const dynamic = "force-dynamic";
 
@@ -81,11 +82,45 @@ function createVCardDataUri(input: {
   return `data:text/vcard;charset=utf-8,${encodeURIComponent(lines.join("\n"))}`;
 }
 
-function ActionLink({ href, label, detail, download }: { href: string; label: string; detail?: string; download?: string }) {
+function safeFilename(value: string) {
+  return trim(value)
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 48) || "contact";
+}
+
+type ActionTone = "phone" | "mail" | "contact" | "site" | "google" | "linkedin" | "instagram" | "facebook" | "tiktok" | "neutral" | "appointment";
+
+
+function getBadgeBaseUrl() {
+  return String(
+    process.env.NEXT_PUBLIC_INRBADGE_BASE_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    "https://app.inrcy.com"
+  ).replace(/\/+$/, "");
+}
+
+type ActionLinkProps = {
+  href: string;
+  label: string;
+  detail?: string;
+  download?: string;
+  icon: string;
+  tone?: ActionTone;
+  compact?: boolean;
+};
+
+function ActionLink({ href, label, detail, download, icon, tone = "neutral", compact = false }: ActionLinkProps) {
+  const className = [styles.action, compact ? styles.actionCompact : styles.actionWide, styles[`tone_${tone}`]].filter(Boolean).join(" ");
   return (
-    <a className={styles.action} href={href} target={download ? undefined : href.startsWith("http") ? "_blank" : undefined} rel={href.startsWith("http") ? "noreferrer" : undefined} download={download}>
-      <span>
-        {label}
+    <a className={className} href={href} target={download ? undefined : href.startsWith("http") ? "_blank" : undefined} rel={href.startsWith("http") ? "noreferrer" : undefined} download={download}>
+      <span className={styles.actionIcon} aria-hidden="true">{icon}</span>
+      <span className={styles.actionBody}>
+        <strong>{label}</strong>
         {detail ? <small>{detail}</small> : null}
       </span>
       <span className={styles.arrow}>›</span>
@@ -168,6 +203,8 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
   const tiktokUrl = normalizeUrl(tiktokSettings.url);
   const primaryWebsite = siteWebUrl || siteInrcyUrl;
 
+  const publicUrl = `${getBadgeBaseUrl()}/badge/${slug}`;
+
   const vCardUri = createVCardDataUri({
     firstName,
     lastName,
@@ -181,36 +218,76 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
     zip,
     country,
   });
+  const vCardFilename = `${safeFilename(company || displayName)}.vcf`;
+
+  const primaryActions = [
+    shareSettings.phone && phone && phoneHref(phone) ? { href: phoneHref(phone), label: "Appeler", detail: phone, icon: "☎", tone: "phone" as ActionTone } : null,
+    shareSettings.email && email ? { href: createMailto(email), label: "Envoyer un mail", detail: email, icon: "✉", tone: "mail" as ActionTone } : null,
+    shareSettings.saveContact ? { href: vCardUri, label: "Enregistrer", detail: "Le contact", download: vCardFilename, icon: "👤", tone: "contact" as ActionTone } : null,
+  ].filter(Boolean) as ActionLinkProps[];
+
+  const channelActions = [
+    shareSettings.siteInrcy && siteInrcyUrl ? { href: siteInrcyUrl, label: "Site iNrCy", detail: "inrcy.com", icon: "◎", tone: "site" as ActionTone } : null,
+    shareSettings.siteWeb && siteWebUrl ? { href: siteWebUrl, label: "Site web", detail: siteWebUrl.replace(/^https?:\/\//, ""), icon: "◌", tone: "site" as ActionTone } : null,
+    shareSettings.googleBusiness && gmbUrl ? { href: gmbUrl, label: "Google Business", detail: "Voir la fiche", icon: "G", tone: "google" as ActionTone } : null,
+    shareSettings.linkedin && linkedinUrl ? { href: linkedinUrl, label: "LinkedIn", detail: "Ajouter / suivre", icon: "in", tone: "linkedin" as ActionTone } : null,
+    shareSettings.instagram && instagramUrl ? { href: instagramUrl, label: "Instagram", detail: "Suivre le compte", icon: "◎", tone: "instagram" as ActionTone } : null,
+    shareSettings.facebook && facebookUrl ? { href: facebookUrl, label: "Facebook", detail: "Voir la page", icon: "f", tone: "facebook" as ActionTone } : null,
+    shareSettings.tiktok && tiktokUrl ? { href: tiktokUrl, label: "TikTok", detail: "Voir le profil", icon: "♪", tone: "tiktok" as ActionTone } : null,
+  ].filter(Boolean) as ActionLinkProps[];
+
+  const appointmentAction = shareSettings.appointment ? { href: `/badge/${slug}/rdv`, label: "Prendre RDV", detail: "Réserver dans iNr'Calendar", icon: "◷", tone: "appointment" as ActionTone } : null;
 
   return (
     <main className={styles.page}>
       <section className={styles.shell}>
         <div className={styles.card}>
-          <div className={styles.header}>
-            <div className={styles.verified}>iNr'Badge vérifié</div>
-            <div className={styles.logo} aria-hidden="true">
-              {shareSettings.logo && logo.logoUrl ? <img src={logo.logoUrl} alt="" /> : <span>iNr</span>}
+          <div className={styles.headerRow}>
+            <div className={styles.headerIdentity}>
+              <div className={styles.logo} aria-hidden="true">
+                {shareSettings.logo && logo.logoUrl ? <img src={logo.logoUrl} alt="" /> : <span>iNr</span>}
+              </div>
+
+              <div className={styles.identityText}>
+                <div className={styles.badgeLabel}>iNr&apos;Badge</div>
+                {shareSettings.company ? <h1 className={styles.title}>{company}</h1> : null}
+                {shareSettings.name && displayName ? <p className={styles.name}>{displayName}</p> : null}
+              </div>
             </div>
-            {shareSettings.company ? <h1 className={styles.title}>{company}</h1> : null}
-            {shareSettings.name && displayName ? <p className={styles.name}>{displayName}</p> : null}
-            {decodedSector.profession ? <p className={styles.job}>{decodedSector.profession}</p> : null}
-            {description ? <p className={styles.description}>{description}</p> : null}
+
+            <BadgeShareButton publicUrl={publicUrl} company={company} vCardUri={vCardUri} vCardFilename={vCardFilename} />
           </div>
 
-          <div className={styles.actions}>
-            {shareSettings.phone && phone && phoneHref(phone) ? <ActionLink href={phoneHref(phone)} label="Appeler" detail={phone} /> : null}
-            {shareSettings.email && email ? <ActionLink href={createMailto(email)} label="Envoyer un mail" detail={email} /> : null}
-            {shareSettings.saveContact ? <ActionLink href={vCardUri} label="Enregistrer le contact" detail="Fiche contact téléphone" download={`${company.toLowerCase().replace(/[^a-z0-9]+/gi, "-") || "contact"}.vcf`} /> : null}
-            {shareSettings.siteInrcy && siteInrcyUrl ? <ActionLink href={siteInrcyUrl} label="Site iNrCy" detail={siteInrcyUrl} /> : null}
-            {shareSettings.siteWeb && siteWebUrl ? <ActionLink href={siteWebUrl} label="Site web" detail={siteWebUrl} /> : null}
-            {shareSettings.googleBusiness && gmbUrl ? <ActionLink href={gmbUrl} label="Google Business" detail="Voir la fiche" /> : null}
-            {shareSettings.linkedin && linkedinUrl ? <ActionLink href={linkedinUrl} label="LinkedIn" detail="Ajouter / suivre" /> : null}
-            {shareSettings.instagram && instagramUrl ? <ActionLink href={instagramUrl} label="Instagram" detail="Suivre le compte" /> : null}
-            {shareSettings.facebook && facebookUrl ? <ActionLink href={facebookUrl} label="Facebook" detail="Voir la page" /> : null}
-            {shareSettings.tiktok && tiktokUrl ? <ActionLink href={tiktokUrl} label="TikTok" detail="Voir le profil" /> : null}
-            {shareSettings.appointment && email ? <ActionLink href={createMailto(email, `Demande de rendez-vous - ${company}`)} label="Prendre RDV" detail="Envoyer une demande" /> : null}
-            {shareSettings.quote && email ? <ActionLink href={createMailto(email, `Demande de devis - ${company}`)} label="Demander un devis" detail="Envoyer une demande" /> : null}
-          </div>
+          {decodedSector.profession ? <p className={styles.job}>{decodedSector.profession}</p> : null}
+          {description ? <p className={styles.description}>{description}</p> : null}
+
+          {primaryActions.length > 0 ? (
+            <div className={styles.primaryGrid}>
+              {primaryActions.map((action) => (
+                <ActionLink key={`${action.label}-${action.href}`} {...action} compact />
+              ))}
+            </div>
+          ) : null}
+
+          {channelActions.length > 0 ? (
+            <section className={styles.section}>
+              <div className={styles.sectionHeader}>
+                <span className={styles.sectionMark} />
+                <h2>Mes canaux</h2>
+              </div>
+              <div className={styles.channelsGrid}>
+                {channelActions.map((action) => (
+                  <ActionLink key={`${action.label}-${action.href}`} {...action} />
+                ))}
+              </div>
+            </section>
+          ) : null}
+
+          {appointmentAction ? (
+            <div className={styles.ctaWrap}>
+              <ActionLink {...appointmentAction} />
+            </div>
+          ) : null}
 
           {(openingDays || openingHours || zones.length > 0) ? (
             <div className={styles.infoGrid}>
@@ -237,7 +314,7 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
         </div>
 
         <div className={styles.footer}>
-          Propulsé par <strong>iNrCy</strong> — Mon entreprise en QR Code
+          Propulsé par <strong>iNrCy</strong>
         </div>
       </section>
     </main>

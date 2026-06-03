@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import {
+  normalizeInrBadgeAppointmentSettings,
   normalizeInrBadgeShareSettings,
+  sanitizeInrBadgeAppointmentSettingsPayload,
   sanitizeInrBadgeShareSettingsPayload,
 } from "@/lib/inrBadgeSettings";
 
@@ -26,6 +28,7 @@ export async function GET() {
   return NextResponse.json({
     ok: true,
     settings: normalizeInrBadgeShareSettings(rootSettings.inrBadgeShareSettings),
+    appointmentSettings: normalizeInrBadgeAppointmentSettings(rootSettings.inrBadgeAppointmentSettings),
   });
 }
 
@@ -34,7 +37,7 @@ export async function PATCH(req: Request) {
   if (errorResponse) return errorResponse;
 
   const body = await req.json().catch(() => ({}));
-  const nextShareSettings = sanitizeInrBadgeShareSettingsPayload((body as Record<string, unknown>)?.settings);
+  const input = safeObj(body);
 
   const { data: current, error: currentError } = await supabase
     .from("pro_tools_configs")
@@ -45,9 +48,19 @@ export async function PATCH(req: Request) {
   if (currentError) return jsonUserFacingError(currentError, { status: 500 });
 
   const currentSettings = safeObj(current?.settings);
+  const hasShareSettings = Object.prototype.hasOwnProperty.call(input, "settings");
+  const hasAppointmentSettings = Object.prototype.hasOwnProperty.call(input, "appointmentSettings");
+  const nextShareSettings = hasShareSettings
+    ? sanitizeInrBadgeShareSettingsPayload(input.settings)
+    : normalizeInrBadgeShareSettings(currentSettings.inrBadgeShareSettings);
+  const nextAppointmentSettings = hasAppointmentSettings
+    ? sanitizeInrBadgeAppointmentSettingsPayload(input.appointmentSettings)
+    : normalizeInrBadgeAppointmentSettings(currentSettings.inrBadgeAppointmentSettings);
+
   const nextSettings = {
     ...currentSettings,
     inrBadgeShareSettings: nextShareSettings,
+    inrBadgeAppointmentSettings: nextAppointmentSettings,
   };
 
   const { error } = await supabase
@@ -56,5 +69,5 @@ export async function PATCH(req: Request) {
 
   if (error) return jsonUserFacingError(error, { status: 500 });
 
-  return NextResponse.json({ ok: true, settings: nextShareSettings });
+  return NextResponse.json({ ok: true, settings: nextShareSettings, appointmentSettings: nextAppointmentSettings });
 }
