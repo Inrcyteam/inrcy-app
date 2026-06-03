@@ -6727,3 +6727,42 @@ transform: scale(1.50);
     }
   }
 }
+
+
+/* === Dashboard mobile bulles v3 : Android uniquement, boutons encore plus larges === */
+/* Ne touche pas iPhone : uniquement supports non-iOS */
+@supports not (-webkit-touch-callout: none) {
+  @media (any-hover: none) and (any-pointer: coarse) and (max-width: 560px) {
+    .mobileCarousel .bubbleActions,
+    .desktopCoverflowCenter .bubbleActions {
+      width: min(80%, 242px) !important;
+      max-width: 242px !important;
+    }
+
+    .mobileCarousel .bubbleActions .actionBtn,
+    .mobileCarousel .bubbleActions .actionMain,
+    .desktopCoverflowCenter .bubbleActions .actionBtn,
+    .desktopCoverflowCenter .bubbleActions .actionMain {
+      max-width: 242px !important;
+      padding-inline: 18px !important;
+      white-space: nowrap !important;
+    }
+  }
+
+  @media (any-hover: none) and (any-pointer: coarse) and (min-width: 560px) and (max-width: 980px) {
+    .bubbleActions,
+    .desktopCoverflowCenter .bubbleActions {
+      width: min(78%, 242px) !important;
+      max-width: 242px !important;
+    }
+
+    .bubbleActions .actionBtn,
+    .bubbleActions .actionMain,
+    .desktopCoverflowCenter .bubbleActions .actionBtn,
+    .desktopCoverflowCenter .bubbleActions .actionMain {
+      max-width: 242px !important;
+      padding-inline: 18px !important;
+      white-space: nowrap !important;
+    }
+  }
+}
