@@ -29,6 +29,7 @@ export async function GET() {
     ok: true,
     settings: normalizeInrBadgeShareSettings(rootSettings.inrBadgeShareSettings),
     appointmentSettings: resolveInrBadgeAppointmentSettings(rootSettings),
+    selectedMailAccountId: typeof rootSettings.inrBadgeMailAccountId === "string" ? rootSettings.inrBadgeMailAccountId : "",
   });
 }
 
@@ -50,6 +51,7 @@ export async function PATCH(req: Request) {
   const currentSettings = safeObj(current?.settings);
   const hasShareSettings = Object.prototype.hasOwnProperty.call(input, "settings");
   const hasAppointmentSettings = Object.prototype.hasOwnProperty.call(input, "appointmentSettings");
+  const hasSelectedMailAccountId = Object.prototype.hasOwnProperty.call(input, "selectedMailAccountId");
   const nextShareSettings = hasShareSettings
     ? sanitizeInrBadgeShareSettingsPayload(input.settings)
     : normalizeInrBadgeShareSettings(currentSettings.inrBadgeShareSettings);
@@ -58,11 +60,17 @@ export async function PATCH(req: Request) {
     : resolveInrBadgeAppointmentSettings(currentSettings);
 
   const currentInrCalendar = safeObj(currentSettings.inrcalendar);
+  const nextSelectedMailAccountId = hasSelectedMailAccountId
+    ? String(input.selectedMailAccountId || "").trim()
+    : typeof currentSettings.inrBadgeMailAccountId === "string"
+      ? currentSettings.inrBadgeMailAccountId
+      : "";
 
   const nextSettings = {
     ...currentSettings,
     inrBadgeShareSettings: nextShareSettings,
     inrBadgeAppointmentSettings: nextAppointmentSettings,
+    inrBadgeMailAccountId: nextSelectedMailAccountId,
     inrcalendar: {
       ...currentInrCalendar,
       appointment_settings: nextAppointmentSettings,
@@ -75,5 +83,5 @@ export async function PATCH(req: Request) {
 
   if (error) return jsonUserFacingError(error, { status: 500 });
 
-  return NextResponse.json({ ok: true, settings: nextShareSettings, appointmentSettings: nextAppointmentSettings });
+  return NextResponse.json({ ok: true, settings: nextShareSettings, appointmentSettings: nextAppointmentSettings, selectedMailAccountId: nextSelectedMailAccountId });
 }

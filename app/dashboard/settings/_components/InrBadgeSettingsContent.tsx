@@ -29,6 +29,16 @@ type InrBadgeSettingsChannels = {
   tiktok: InrBadgeChannelStatus;
 };
 
+type MailAccountOption = {
+  id: string;
+  provider?: string | null;
+  email_address?: string | null;
+  display_name?: string | null;
+  status?: string | null;
+  connection_status?: string | null;
+  requires_update?: boolean | null;
+};
+
 type Props = {
   profile: InrBadgeProfileSummary;
   publicUrl: string;
@@ -48,6 +58,22 @@ const INRBADGE_ICON_SRC = "/icons/inrbadge-dashboard.png";
 
 function trim(value: unknown) {
   return String(value || "").trim();
+}
+
+function canShareChannel(channel: InrBadgeChannelStatus) {
+  return Boolean(channel.connected && trim(channel.url));
+}
+
+function providerLabel(provider: unknown) {
+  const value = trim(provider).toLowerCase();
+  if (value === "microsoft") return "Microsoft";
+  if (value === "gmail" || value === "google") return "Gmail";
+  if (value === "imap") return "IMAP";
+  return value ? value.charAt(0).toUpperCase() + value.slice(1) : "Mail";
+}
+
+function isUsableMailAccount(account: MailAccountOption): boolean {
+  return Boolean(trim(account.id) && trim(account.email_address) && trim(account.status).toLowerCase() === "connected" && account.connection_status !== "needs_update" && !account.requires_update);
 }
 
 function getDisplayName(profile: InrBadgeProfileSummary) {
@@ -82,21 +108,31 @@ function loadAppointmentSettings(storageKey: string): AppointmentSettings {
   }
 }
 
-function saveBadgeSettings(storageKey: string, settings: ShareSettings, appointmentSettings: AppointmentSettings) {
+function loadSelectedMailAccountId(storageKey: string) {
+  if (typeof window === "undefined") return "";
+  try {
+    return trim(window.localStorage.getItem(`${storageKey}:mailAccountId`));
+  } catch {
+    return "";
+  }
+}
+
+function saveBadgeSettings(storageKey: string, settings: ShareSettings, appointmentSettings: AppointmentSettings, selectedMailAccountId = "") {
   try {
     window.localStorage.setItem(storageKey, JSON.stringify(settings));
     window.localStorage.setItem(`${storageKey}:rdv`, JSON.stringify(appointmentSettings));
+    window.localStorage.setItem(`${storageKey}:mailAccountId`, selectedMailAccountId);
   } catch {
     // stockage navigateur indisponible : on garde l'état en mémoire
   }
 }
 
-async function persistBadgeSettings(settings: ShareSettings, _appointmentSettings?: AppointmentSettings) {
+async function persistBadgeSettings(settings: ShareSettings, _appointmentSettings?: AppointmentSettings, selectedMailAccountId?: string) {
   try {
     await fetch("/api/inrbadge/settings", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ settings }),
+      body: JSON.stringify({ settings, selectedMailAccountId }),
     });
   } catch {
     // Le localStorage garde une copie instantanée si le réseau est indisponible.
@@ -275,21 +311,23 @@ function FieldSelect({
   value,
   options,
   helper,
+  disabled,
   onChange,
 }: {
   label: string;
   value: string | number;
   options: Array<{ value: string | number; label: string }>;
   helper?: string;
+  disabled?: boolean;
   onChange: (value: string) => void;
 }) {
   return (
-    <label style={selectRowStyle}>
+    <label style={{ ...selectRowStyle, opacity: disabled ? 0.55 : 1 }}>
       <span style={{ minWidth: 0 }}>
         <strong style={toggleTitleStyle}>{label}</strong>
         {helper ? <small style={toggleHelperStyle}>{helper}</small> : null}
       </span>
-      <select value={String(value)} onChange={(event) => onChange(event.target.value)} style={selectStyle}>
+      <select value={String(value)} disabled={disabled} onChange={(event) => onChange(event.target.value)} style={selectStyle}>
         {options.map((option) => (
           <option key={String(option.value)} value={String(option.value)}>{option.label}</option>
         ))}
@@ -310,6 +348,8 @@ export default function InrBadgeSettingsContent({
   const storageKey = useMemo(() => getStorageKey(profile, publicUrl), [profile, publicUrl]);
   const [settings, setSettings] = useState<ShareSettings>(() => loadShareSettings(storageKey));
   const [appointmentSettings, setAppointmentSettings] = useState<AppointmentSettings>(() => loadAppointmentSettings(storageKey));
+  const [selectedMailAccountId, setSelectedMailAccountId] = useState<string>(() => loadSelectedMailAccountId(storageKey));
+  const [mailAccounts, setMailAccounts] = useState<MailAccountOption[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
   const downloadMenuRef = useRef<HTMLDivElement | null>(null);
@@ -318,19 +358,36 @@ export default function InrBadgeSettingsContent({
     let cancelled = false;
     const localSettings = loadShareSettings(storageKey);
     const localAppointmentSettings = loadAppointmentSettings(storageKey);
+    const localSelectedMailAccountId = loadSelectedMailAccountId(storageKey);
     setSettings(localSettings);
     setAppointmentSettings(localAppointmentSettings);
+    setSelectedMailAccountId(localSelectedMailAccountId);
 
     const loadServerSettings = async () => {
       try {
-        const res = await fetch("/api/inrbadge/settings", { cache: "no-store" });
-        const json = await res.json().catch(() => null) as { settings?: unknown; appointmentSettings?: unknown } | null;
-        if (!res.ok || cancelled) return;
+        const [settingsRes, accountsRes] = await Promise.all([
+          fetch("/api/inrbadge/settings", { cache: "no-store" }),
+          fetch("/api/integrations/status", { cache: "no-store" }),
+        ]);
+        const json = await settingsRes.json().catch(() => null) as { settings?: unknown; appointmentSettings?: unknown; selectedMailAccountId?: unknown } | null;
+        const accountsJson = await accountsRes.json().catch(() => null) as { mailAccounts?: unknown } | null;
+        if (cancelled) return;
+
+        if (accountsRes.ok) {
+          const nextAccounts = Array.isArray(accountsJson?.mailAccounts)
+            ? accountsJson.mailAccounts.filter((account): account is MailAccountOption => !!account && typeof account === "object" && isUsableMailAccount(account as MailAccountOption))
+            : [];
+          setMailAccounts(nextAccounts);
+        }
+
+        if (!settingsRes.ok) return;
         const serverSettings = normalizeInrBadgeShareSettings(json?.settings);
         const serverAppointmentSettings = normalizeInrBadgeAppointmentSettings(json?.appointmentSettings);
+        const serverSelectedMailAccountId = trim(json?.selectedMailAccountId);
         setSettings(serverSettings);
         setAppointmentSettings(serverAppointmentSettings);
-        saveBadgeSettings(storageKey, serverSettings, serverAppointmentSettings);
+        setSelectedMailAccountId(serverSelectedMailAccountId);
+        saveBadgeSettings(storageKey, serverSettings, serverAppointmentSettings, serverSelectedMailAccountId);
       } catch {
         // On garde les réglages locaux en secours.
       }
@@ -364,8 +421,8 @@ export default function InrBadgeSettingsContent({
   const updateSetting = (key: ShareKey, value: boolean) => {
     const next = { ...settings, [key]: value };
     setSettings(next);
-    saveBadgeSettings(storageKey, next, appointmentSettings);
-    void persistBadgeSettings(next, appointmentSettings);
+    saveBadgeSettings(storageKey, next, appointmentSettings, selectedMailAccountId);
+    void persistBadgeSettings(next, appointmentSettings, selectedMailAccountId);
     setNotice("Réglages iNr'Badge enregistrés.");
     window.setTimeout(() => setNotice(null), 1800);
   };
@@ -373,8 +430,8 @@ export default function InrBadgeSettingsContent({
   const updateAppointmentSettings = (patch: Partial<AppointmentSettings>) => {
     const next = normalizeInrBadgeAppointmentSettings({ ...appointmentSettings, ...patch });
     setAppointmentSettings(next);
-    saveBadgeSettings(storageKey, settings, next);
-    void persistBadgeSettings(settings, next);
+    saveBadgeSettings(storageKey, settings, next, selectedMailAccountId);
+    void persistBadgeSettings(settings, next, selectedMailAccountId);
     setNotice("Réglages de prise de RDV enregistrés.");
     window.setTimeout(() => setNotice(null), 1800);
   };
@@ -427,18 +484,57 @@ export default function InrBadgeSettingsContent({
   };
 
   const channelItems: Array<{ key: ShareKey; label: string; connected: boolean; helper: string }> = [
-    { key: "siteInrcy", label: "Site iNrCy", connected: channels.siteInrcy.connected, helper: "Disponible si le site iNrCy est actif." },
-    { key: "siteWeb", label: "Site web", connected: channels.siteWeb.connected, helper: "Disponible si le site web est renseigné." },
-    { key: "googleBusiness", label: "Google Business", connected: channels.googleBusiness.connected, helper: "Disponible si Google Business est connecté." },
-    { key: "facebook", label: "Facebook", connected: channels.facebook.connected, helper: "Disponible si la page Facebook est connectée." },
-    { key: "instagram", label: "Instagram", connected: channels.instagram.connected, helper: "Disponible si Instagram est connecté." },
-    { key: "linkedin", label: "LinkedIn", connected: channels.linkedin.connected, helper: "Disponible si LinkedIn est connecté." },
-    { key: "mails", label: "Mails", connected: channels.mails.connected, helper: "Disponible si au moins une boîte mail est connectée." },
-    { key: "tiktok", label: "TikTok", connected: channels.tiktok.connected, helper: "Arrive bientôt." },
+    { key: "siteInrcy", label: "Site iNrCy", connected: canShareChannel(channels.siteInrcy), helper: "Disponible si le site iNrCy est actif avec un lien enregistré." },
+    { key: "siteWeb", label: "Site web", connected: canShareChannel(channels.siteWeb), helper: "Disponible si le site web est renseigné." },
+    { key: "googleBusiness", label: "Google Business", connected: canShareChannel(channels.googleBusiness), helper: "Disponible si Google Business est connecté avec un lien enregistré." },
+    { key: "facebook", label: "Facebook", connected: canShareChannel(channels.facebook), helper: "Disponible si la page Facebook est connectée avec un lien enregistré." },
+    { key: "instagram", label: "Instagram", connected: canShareChannel(channels.instagram), helper: "Disponible si Instagram est connecté avec un lien enregistré." },
+    { key: "linkedin", label: "LinkedIn", connected: canShareChannel(channels.linkedin), helper: "Disponible si LinkedIn est connecté avec un lien enregistré." },
+    { key: "tiktok", label: "TikTok", connected: false, helper: "Arrive bientôt." },
   ];
+
+  const mailSelectOptions = [
+    ...(email ? [{ value: "", label: `Email du profil — ${email}` }] : []),
+    ...mailAccounts.map((account) => ({
+      value: account.id,
+      label: `${providerLabel(account.provider)} — ${trim(account.display_name) || trim(account.email_address)}`,
+    })),
+  ];
+  const selectedMailAccountExists = Boolean(selectedMailAccountId && mailAccounts.some((account) => account.id === selectedMailAccountId));
+  const fallbackMailAccountId = trim(mailAccounts[0]?.id);
+  const selectedMailValue = selectedMailAccountExists
+    ? selectedMailAccountId
+    : email
+      ? ""
+      : fallbackMailAccountId;
+  const canShowMailButton = Boolean(email || mailAccounts.length > 0);
+  const mailHelper = !canShowMailButton
+    ? "Ajoutez un email dans Mon profil ou connectez une boîte dans Mails."
+    : selectedMailValue
+      ? "Le bouton Mail utilisera cette boîte connectée."
+      : "Le bouton Mail utilisera l'email du profil.";
+
+  const updateSelectedMailAccount = (value: string) => {
+    const nextId = trim(value);
+    setSelectedMailAccountId(nextId);
+    saveBadgeSettings(storageKey, settings, appointmentSettings, nextId);
+    void persistBadgeSettings(settings, appointmentSettings, nextId);
+  };
+
+  useEffect(() => {
+    if (email || !fallbackMailAccountId || selectedMailAccountExists) return;
+    setSelectedMailAccountId(fallbackMailAccountId);
+    saveBadgeSettings(storageKey, settings, appointmentSettings, fallbackMailAccountId);
+    void persistBadgeSettings(settings, appointmentSettings, fallbackMailAccountId);
+  }, [appointmentSettings, email, fallbackMailAccountId, selectedMailAccountExists, settings, storageKey]);
 
   return (
     <div style={{ display: "grid", gap: 14 }}>
+      <div style={autoSaveBadgeStyle} aria-label="Sauvegarde automatique activée">
+        <span aria-hidden="true" style={autoSaveDotStyle} />
+        <span>Sauvegarde automatique</span>
+      </div>
+
       <div style={heroCardStyle}>
         <div style={heroIconStyle}><img src={INRBADGE_ICON_SRC} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", transform: "scale(1.04)", display: "block" }} /></div>
         <div style={{ minWidth: 0 }}>
@@ -486,12 +582,47 @@ export default function InrBadgeSettingsContent({
       <div style={cardStyle}>
         <h3 style={sectionTitleStyle}>Informations partagées</h3>
         <div style={twoColumnsGridStyle}>
-          <FieldToggle label="Logo" checked={settings.logo} disabled={!profile.logoUrl} helper={profile.logoUrl ? "Affiché en haut du badge." : "Ajoutez un logo dans Mon profil."} onChange={(value) => updateSetting("logo", value)} />
+          <FieldToggle label="Logo" checked={settings.logo} helper={profile.logoUrl ? "Affiché en haut du badge." : "Logo iNr’Badge utilisé par défaut."} onChange={(value) => updateSetting("logo", value)} />
           <FieldToggle label="Nom du professionnel" checked={settings.name} onChange={(value) => updateSetting("name", value)} />
           <FieldToggle label="Entreprise" checked={settings.company} onChange={(value) => updateSetting("company", value)} />
+        </div>
+      </div>
+
+      <div style={cardStyle}>
+        <h3 style={sectionTitleStyle}>Actions rapides</h3>
+        <div style={twoColumnsGridStyle}>
           <FieldToggle label="Téléphone" checked={settings.phone} disabled={!phone} helper={!phone ? "À compléter dans Mon profil." : undefined} onChange={(value) => updateSetting("phone", value)} />
-          <FieldToggle label="Email" checked={settings.email} disabled={!email} helper={!email ? "À compléter dans Mon profil." : undefined} onChange={(value) => updateSetting("email", value)} />
           <FieldToggle label="Enregistrer le contact" checked={settings.saveContact} helper="Prépare la fiche contact vCard pour l'étape publique." onChange={(value) => updateSetting("saveContact", value)} />
+
+          <div style={fullWidthGridItemStyle}>
+            <div style={{ ...mailActionCardStyle, opacity: canShowMailButton ? 1 : 0.55 }}>
+              <label style={mailActionHeaderStyle}>
+                <span style={mailActionHeaderTextStyle}>
+                  <strong style={toggleTitleStyle}>Mail</strong>
+                  <small style={toggleHelperStyle}>{mailHelper}</small>
+                </span>
+                <input
+                  type="checkbox"
+                  checked={settings.email && canShowMailButton}
+                  disabled={!canShowMailButton}
+                  onChange={(event) => updateSetting("email", event.target.checked)}
+                  style={{ width: 18, height: 18, accentColor: "#8b5cf6", flex: "0 0 auto" }}
+                />
+              </label>
+
+              <select
+                value={selectedMailValue}
+                disabled={!settings.email || !canShowMailButton || mailSelectOptions.length === 0}
+                onChange={(event) => updateSelectedMailAccount(event.target.value)}
+                style={selectStyle}
+                aria-label="Adresse du bouton Mail"
+              >
+                {(mailSelectOptions.length ? mailSelectOptions : [{ value: "", label: "Aucune adresse disponible" }]).map((option) => (
+                  <option key={String(option.value)} value={String(option.value)}>{option.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -545,6 +676,30 @@ const cardStyle: CSSProperties = {
   boxShadow: "0 18px 40px rgba(0,0,0,0.18)",
 };
 
+const autoSaveBadgeStyle: CSSProperties = {
+  width: "fit-content",
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 7,
+  margin: "-2px 0 -4px",
+  padding: "6px 10px",
+  borderRadius: 999,
+  border: "1px solid rgba(34,197,94,0.20)",
+  background: "rgba(34,197,94,0.08)",
+  color: "rgba(187,247,208,0.92)",
+  fontSize: 12,
+  fontWeight: 850,
+};
+
+const autoSaveDotStyle: CSSProperties = {
+  width: 7,
+  height: 7,
+  borderRadius: 999,
+  background: "rgba(34,197,94,0.95)",
+  boxShadow: "0 0 12px rgba(34,197,94,0.55)",
+  flex: "0 0 auto",
+};
+
 const heroCardStyle: CSSProperties = {
   ...cardStyle,
   display: "flex",
@@ -574,6 +729,7 @@ const heroSubTextStyle: CSSProperties = { margin: "6px 0 0", color: "rgba(226,23
 const sectionTitleStyle: CSSProperties = { margin: "0 0 10px", color: "#fff", fontSize: 15 };
 const mutedStyle: CSSProperties = { margin: "0 0 12px", color: "rgba(226,232,240,0.70)", fontSize: 12, overflowWrap: "anywhere" };
 const twoColumnsGridStyle: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 10 };
+const fullWidthGridItemStyle: CSSProperties = { gridColumn: "1 / -1" };
 const buttonGridStyle: CSSProperties = { display: "flex", flexWrap: "wrap", gap: 8 };
 const downloadDropdownWrapStyle: CSSProperties = { position: "relative", display: "inline-flex" };
 const downloadChevronStyle: CSSProperties = { fontSize: 10, opacity: 0.8 };
@@ -671,6 +827,26 @@ const selectRowStyle: CSSProperties = {
   alignItems: "stretch",
   flexDirection: "column",
   gap: 8,
+};
+
+const mailActionCardStyle: CSSProperties = {
+  ...selectRowStyle,
+  gap: 10,
+  padding: "12px 12px",
+  background: "linear-gradient(135deg, rgba(139,92,246,0.10), rgba(14,165,233,0.06)), rgba(255,255,255,0.045)",
+};
+
+const mailActionHeaderStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+};
+
+const mailActionHeaderTextStyle: CSSProperties = {
+  minWidth: 0,
+  display: "grid",
+  gap: 2,
 };
 
 const selectStyle: CSSProperties = {

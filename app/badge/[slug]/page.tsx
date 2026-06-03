@@ -3,12 +3,15 @@ import { notFound } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { extractInrBadgeUserIdFromSlug } from "@/lib/inrBadge";
 import { normalizeInrBadgeShareSettings } from "@/lib/inrBadgeSettings";
+import { getChannelConnectionStates } from "@/lib/channelConnectionState";
 import { resolveProfileLogoUrl } from "@/lib/profileLogo";
 import { decodeBusinessSector } from "@/lib/activitySectors";
 import styles from "./badge.module.css";
 import BadgeShareButton from "./BadgeShareButton";
 
 export const dynamic = "force-dynamic";
+
+const DEFAULT_INRBADGE_LOGO_SRC = "/icons/inrbadge-dashboard.png";
 
 function trim(value: unknown) {
   return String(value || "").trim();
@@ -163,10 +166,10 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
   const userId = extractInrBadgeUserIdFromSlug(slug);
   if (!userId) notFound();
 
-  const [profileRes, businessRes, toolsRes, siteInrcyRes] = await Promise.all([
+  const [profileRes, businessRes, toolsRes, siteInrcyRes, integrationsRes] = await Promise.all([
     supabaseAdmin
       .from("profiles")
-      .select("user_id,logo_url,logo_path,company_legal_name,first_name,last_name,phone,contact_email,hq_address,hq_zip,hq_city,hq_country")
+      .select("user_id,inrcy_site_ownership,logo_url,logo_path,company_legal_name,first_name,last_name,phone,contact_email,hq_address,hq_zip,hq_city,hq_country")
       .eq("user_id", userId)
       .maybeSingle(),
     supabaseAdmin
@@ -181,9 +184,13 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
       .maybeSingle(),
     supabaseAdmin
       .from("inrcy_site_configs")
-      .select("site_url")
+      .select("site_url,settings")
       .eq("user_id", userId)
       .maybeSingle(),
+    supabaseAdmin
+      .from("integrations")
+      .select("provider,source,product,category,account_email,settings,status,resource_id,resource_label,display_name,email_address,expires_at,access_token_enc,refresh_token_enc,meta,updated_at,created_at")
+      .eq("user_id", userId),
   ]);
 
   if (profileRes.error || !profileRes.data) notFound();
@@ -193,6 +200,12 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
   const toolSettings = safeObj((toolsRes.data as { settings?: unknown } | null)?.settings);
   const shareSettings = normalizeInrBadgeShareSettings(toolSettings.inrBadgeShareSettings);
   const decodedSector = decodeBusinessSector(trim(business.sector));
+  const channelStates = await getChannelConnectionStates(supabaseAdmin, userId, {
+    profile,
+    inrcySiteConfig: siteInrcyRes.data,
+    proToolsConfig: toolsRes.data,
+    integrations: Array.isArray(integrationsRes.data) ? integrationsRes.data : [],
+  });
 
   const logo = await resolveProfileLogoUrl(supabaseAdmin, {
     logo_path: trim(profile.logo_path) || null,
@@ -223,14 +236,55 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
   const linkedinSettings = safeObj(toolSettings.linkedin);
   const tiktokSettings = safeObj(toolSettings.tiktok);
 
-  const siteInrcyUrl = normalizeUrl((siteInrcyRes.data as { site_url?: string | null } | null)?.site_url);
-  const siteWebUrl = normalizeUrl(siteWebSettings.url);
-  const gmbUrl = normalizeUrl(gmbSettings.url);
-  const facebookUrl = normalizeUrl(facebookSettings.url);
-  const instagramUrl = normalizeUrl(instagramSettings.url);
-  const linkedinUrl = normalizeUrl(linkedinSettings.orgUrl || linkedinSettings.profileUrl || linkedinSettings.url);
-  const tiktokUrl = normalizeUrl(tiktokSettings.url);
+  const siteInrcyUrl = normalizeUrl(channelStates.site_inrcy.url || (siteInrcyRes.data as { site_url?: string | null } | null)?.site_url);
+  const siteWebUrl = normalizeUrl(channelStates.site_web.url || siteWebSettings.url);
+  const gmbUrl = normalizeUrl(channelStates.gmb.url || gmbSettings.url);
+  const facebookUrl = normalizeUrl(channelStates.facebook.page_url || facebookSettings.url);
+  const instagramUsername = trim(
+    instagramSettings.username ||
+    instagramSettings.resource_label ||
+    instagramSettings.resourceLabel ||
+    instagramSettings.handle,
+  ).replace(/^@+/, "");
+  const instagramUrl = normalizeUrl(
+    channelStates.instagram.profile_url ||
+    instagramSettings.url ||
+    instagramSettings.profile_url ||
+    instagramSettings.profileUrl ||
+    instagramSettings.profile ||
+    (instagramUsername ? `https://www.instagram.com/${instagramUsername}/` : ""),
+  );
+  const linkedinUrl = normalizeUrl(channelStates.linkedin.organization_url || channelStates.linkedin.profile_url || linkedinSettings.orgUrl || linkedinSettings.profileUrl || linkedinSettings.url);
+  const tiktokUrl = normalizeUrl(channelStates.tiktok.profile_url || tiktokSettings.url);
   const primaryWebsite = siteWebUrl || siteInrcyUrl;
+
+  const publicChannelCanShare = {
+    siteInrcy: Boolean(channelStates.site_inrcy.connected && siteInrcyUrl),
+    siteWeb: Boolean(channelStates.site_web.connected && siteWebUrl),
+    googleBusiness: Boolean(channelStates.gmb.connected && gmbUrl),
+    facebook: Boolean(channelStates.facebook.connected && facebookUrl),
+    instagram: Boolean(channelStates.instagram.connected && instagramUrl),
+    linkedin: Boolean(channelStates.linkedin.connected && linkedinUrl),
+    tiktok: Boolean(channelStates.tiktok.connected && tiktokUrl),
+  };
+  const selectedMailAccountId = trim(toolSettings.inrBadgeMailAccountId);
+  let selectedMailAccountEmail = "";
+
+  if (selectedMailAccountId) {
+    const selectedMailRes = await supabaseAdmin
+      .from("integrations")
+      .select("account_email,status,settings")
+      .eq("user_id", userId)
+      .eq("id", selectedMailAccountId)
+      .eq("category", "mail")
+      .maybeSingle();
+    const selectedMailRow = (selectedMailRes.data ?? {}) as Record<string, unknown>;
+    if (trim(selectedMailRow.status).toLowerCase() === "connected") {
+      selectedMailAccountEmail = trim(selectedMailRow.account_email);
+    }
+  }
+
+  const badgeEmail = selectedMailAccountEmail || email;
 
   const publicUrl = `${await getBadgeBaseUrl()}/badge/${slug}`;
 
@@ -240,7 +294,7 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
     displayName,
     company,
     phone: shareSettings.phone ? phone : "",
-    email: shareSettings.email ? email : "",
+    email: shareSettings.email ? badgeEmail : "",
     website: primaryWebsite,
     address,
     city,
@@ -251,18 +305,18 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
 
   const primaryActions = [
     shareSettings.phone && phone && phoneHref(phone) ? { href: phoneHref(phone), label: "Appeler", icon: "☎", tone: "phone" as ActionTone } : null,
-    shareSettings.email && email ? { href: createMailto(email), label: "Mail", icon: "✉", tone: "mail" as ActionTone } : null,
+    shareSettings.email && badgeEmail ? { href: createMailto(badgeEmail), label: "Mail", icon: "✉", tone: "mail" as ActionTone } : null,
     shareSettings.saveContact ? { href: vCardUri, label: "Enregistrer", download: vCardFilename, icon: "👤", tone: "contact" as ActionTone } : null,
   ].filter(Boolean) as ActionLinkProps[];
 
   const channelActions = [
-    shareSettings.siteInrcy && siteInrcyUrl ? { href: siteInrcyUrl, label: "Site iNrCy", iconSrc: "/icons/inrcy.png", tone: "site" as ActionTone } : null,
-    shareSettings.siteWeb && siteWebUrl ? { href: siteWebUrl, label: "Site web", iconSrc: "/icons/site-web.jpg", tone: "site" as ActionTone } : null,
-    shareSettings.googleBusiness && gmbUrl ? { href: gmbUrl, label: "Google Business", iconSrc: "/icons/google.jpg", tone: "google" as ActionTone } : null,
-    shareSettings.linkedin && linkedinUrl ? { href: linkedinUrl, label: "LinkedIn", iconSrc: "/icons/linkedin.png", tone: "linkedin" as ActionTone } : null,
-    shareSettings.instagram && instagramUrl ? { href: instagramUrl, label: "Instagram", iconSrc: "/icons/instagram.jpg", tone: "instagram" as ActionTone } : null,
-    shareSettings.facebook && facebookUrl ? { href: facebookUrl, label: "Facebook", iconSrc: "/icons/facebook.png", tone: "facebook" as ActionTone } : null,
-    shareSettings.tiktok && tiktokUrl ? { href: tiktokUrl, label: "TikTok", iconSrc: "/icons/tiktok.png", tone: "tiktok" as ActionTone } : null,
+    shareSettings.siteInrcy && publicChannelCanShare.siteInrcy ? { href: siteInrcyUrl, label: "Site iNrCy", iconSrc: "/icons/inrcy.png", tone: "site" as ActionTone } : null,
+    shareSettings.siteWeb && publicChannelCanShare.siteWeb ? { href: siteWebUrl, label: "Site web", iconSrc: "/icons/site-web.jpg", tone: "site" as ActionTone } : null,
+    shareSettings.googleBusiness && publicChannelCanShare.googleBusiness ? { href: gmbUrl, label: "Google Business", iconSrc: "/icons/google.jpg", tone: "google" as ActionTone } : null,
+    shareSettings.linkedin && publicChannelCanShare.linkedin ? { href: linkedinUrl, label: "LinkedIn", iconSrc: "/icons/linkedin.png", tone: "linkedin" as ActionTone } : null,
+    shareSettings.instagram && publicChannelCanShare.instagram ? { href: instagramUrl, label: "Instagram", iconSrc: "/icons/instagram.jpg", tone: "instagram" as ActionTone } : null,
+    shareSettings.facebook && publicChannelCanShare.facebook ? { href: facebookUrl, label: "Facebook", iconSrc: "/icons/facebook.png", tone: "facebook" as ActionTone } : null,
+    shareSettings.tiktok && publicChannelCanShare.tiktok ? { href: tiktokUrl, label: "TikTok", iconSrc: "/icons/tiktok.png", tone: "tiktok" as ActionTone } : null,
   ].filter(Boolean) as ActionLinkProps[];
 
   const appointmentAction = shareSettings.appointment
@@ -286,7 +340,7 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
               <BadgeShareButton publicUrl={publicUrl} company={company} vCardUri={vCardUri} vCardFilename={vCardFilename} />
               <div className={styles.headerIdentity}>
                 <div className={styles.logo} aria-hidden="true">
-                  {shareSettings.logo && logo.logoUrl ? <img src={logo.logoUrl} alt="" /> : <span>iNr</span>}
+                  {shareSettings.logo ? <img src={logo.logoUrl || DEFAULT_INRBADGE_LOGO_SRC} alt="" /> : <span>iNr</span>}
                 </div>
               </div>
             </div>

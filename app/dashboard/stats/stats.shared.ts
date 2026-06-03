@@ -34,7 +34,7 @@ export type Overview = {
   meta?: { generatedAt?: string; snapshotDate?: string | null; live?: boolean };
 };
 
-export type CubeKey = "site_inrcy" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin" | "mails" | "tiktok";
+export type CubeKey = "inrbadge" | "site_inrcy" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin" | "mails" | "tiktok";
 
 export type Period = 7 | 14 | 30 | 60;
 
@@ -190,8 +190,8 @@ export function removeUiCacheValue(key: string) {
   removeAccountCacheValue(key);
 }
 
-const CUBE_KEYS: CubeKey[] = ["mails", "site_inrcy", "site_web", "gmb", "facebook", "instagram", "linkedin", "tiktok"];
-const REMOTE_STATS_CUBE_KEYS: CubeKey[] = CUBE_KEYS.filter((key) => key !== "mails");
+const CUBE_KEYS: CubeKey[] = ["inrbadge", "mails", "site_inrcy", "site_web", "gmb", "facebook", "instagram", "linkedin", "tiktok"];
+const REMOTE_STATS_CUBE_KEYS: CubeKey[] = CUBE_KEYS.filter((key) => key !== "mails" && key !== "inrbadge");
 
 export function hasCapturedLeadsBlocks(blocks: Partial<Record<CubeKey, InrstatsChannelBlock>> | undefined) {
   if (!blocks || typeof blocks !== "object") return false;
@@ -299,6 +299,7 @@ export function hasFreshLocalPeriodSnapshot(period: Period) {
 
 export function emptyCubeState(): Record<CubeKey, CubeState> {
   return {
+    inrbadge: { ov: null, loading: false, capturedLeads: { week: 0, month: 0 } },
     site_inrcy: { ov: null, loading: true, capturedLeads: { week: 0, month: 0 } },
     site_web: { ov: null, loading: true, capturedLeads: { week: 0, month: 0 } },
     gmb: { ov: null, loading: true, capturedLeads: { week: 0, month: 0 } },
@@ -1145,6 +1146,25 @@ function getDecisionInput(
     };
   }
 
+  if (cubeKey === "inrbadge") {
+    return {
+      channelType: "website" as const,
+      channelKey: "site_web" as const,
+      connected: true,
+      opportunities: opp30,
+      quality: qualityScore,
+      capturedLeads,
+      metrics: {
+        traffic: 0,
+        intent: 0,
+        conversions: 0,
+        engagement: 0,
+        visibility: 0,
+      },
+      provenance: provenance.map((entry) => ({ label: entry.label, value: entry.value })),
+    };
+  }
+
   const queries = Array.isArray(ov.topQueries) ? ov.topQueries : [];
   const topPages = Array.isArray(ov.topPages) ? ov.topPages : [];
   const intentClicks = queries.filter((q) => isIntentQuery(q.query)).reduce((s, q) => s + safeNum(q.clicks), 0);
@@ -1810,7 +1830,7 @@ export function buildCubeModel(
   let action = recommendAction(key, ov, q.score);
   let decision: DecisionResult | undefined;
 
-  if (key !== "mails" && action.key !== "connect" && action.key !== "loading") {
+  if (key !== "mails" && key !== "inrbadge" && action.key !== "connect" && action.key !== "loading") {
     decision = decideAction(getDecisionInput(key, ov, q.score, opp30, provenance, capturedLeads));
     action = actionFromDecision(action, decision);
   }
@@ -1887,6 +1907,7 @@ export function buildSummaryActionItems({
   summaryEstimatedByCube: Record<CubeKey, number>;
 }) {
   const connectionStateByCube: Record<CubeKey, boolean> = {
+    inrbadge: !!models.find((m) => m.key === "inrbadge")?.connections.main,
     site_inrcy: !!models.find((m) => m.key === "site_inrcy")?.connections.ga4 || !!models.find((m) => m.key === "site_inrcy")?.connections.gsc,
     site_web: !!models.find((m) => m.key === "site_web")?.connections.ga4 || !!models.find((m) => m.key === "site_web")?.connections.gsc,
     gmb: !!models.find((m) => m.key === "gmb")?.connections.main,
@@ -1898,6 +1919,12 @@ export function buildSummaryActionItems({
   };
 
   const connectedCopy: Record<CubeKey, { label: string; kicker: string; motive: string; badge: string }> = {
+    inrbadge: {
+      label: "Partager le badge",
+      kicker: "Votre hub de conversion",
+      motive: "iNr’Badge centralise vos canaux et transforme vos visiteurs en actions utiles.",
+      badge: "Booster",
+    },
     facebook: {
       label: "Utiliser Booster",
       kicker: "Relancez votre visibilité locale",
@@ -1949,6 +1976,12 @@ export function buildSummaryActionItems({
   };
 
   const disconnectedCopy: Record<CubeKey, { label: string; kicker: string; motive: string; badge: string }> = {
+    inrbadge: {
+      label: "Configurer iNr’Badge",
+      kicker: "Activez votre fiche publique",
+      motive: "Complétez iNr’Badge pour centraliser vos canaux, vos actions rapides et votre QR Code.",
+      badge: "Connexion",
+    },
     facebook: {
       label: "Connecter Facebook",
       kicker: "Activez un levier social local",
@@ -2000,6 +2033,7 @@ export function buildSummaryActionItems({
   };
 
   return [
+    { key: "inrbadge" as CubeKey, opportunities: centralByCube.inrbadge, revenue: computedEstimatedByCube.inrbadge || summaryEstimatedByCube.inrbadge },
     { key: "site_inrcy" as CubeKey, opportunities: centralByCube.site_inrcy, revenue: computedEstimatedByCube.site_inrcy || summaryEstimatedByCube.site_inrcy },
     { key: "site_web" as CubeKey, opportunities: centralByCube.site_web, revenue: computedEstimatedByCube.site_web || summaryEstimatedByCube.site_web },
     { key: "gmb" as CubeKey, opportunities: centralByCube.gmb, revenue: computedEstimatedByCube.gmb || summaryEstimatedByCube.gmb },

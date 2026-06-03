@@ -4870,3 +4870,482 @@
     line-height: 1 !important;
   }
 }
+
+
+/* === iNrStats compact pass + iNr'Badge integration === */
+.statsRailDot,
+.statsMobileDrawerItem .statsRailDot {
+  display: none !important;
+}
+
+.statsRailItem,
+.statsMobileDrawerItem {
+  grid-template-columns: minmax(0, 1fr) auto !important;
+  gap: 8px !important;
+  min-height: 52px !important;
+  padding: 8px 10px !important;
+}
+
+.statsRail {
+  gap: 7px !important;
+  padding: 10px !important;
+  overflow: visible !important;
+}
+
+.statsRailText {
+  gap: 2px !important;
+}
+
+.statsRailText b {
+  font-size: 13px !important;
+}
+
+.statsRailText small {
+  font-size: 11px !important;
+  line-height: 1.12 !important;
+}
+
+.statsRailValue {
+  min-width: 42px !important;
+  padding: 6px 8px !important;
+  font-size: 12px !important;
+}
+
+.statsRailItemConnected:not(.statsRailItemActive),
+.statsMobileDrawerItem.statsRailItemConnected:not(.statsMobileDrawerItemActive) {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.10), rgba(56, 189, 248, 0.06), rgba(157, 78, 255, 0.05)), rgba(255,255,255,0.05) !important;
+}
+
+.statsRailItemConnected .statsRailText small,
+.statsMobileDrawerItem.statsRailItemConnected .statsRailText small {
+  color: rgba(226, 232, 240, 0.76) !important;
+}
+
+.allStatsHero {
+  padding-bottom: 8px !important;
+}
+
+.allStatsKpis {
+  gap: 7px !important;
+}
+
+.allStatsKpi {
+  min-width: 108px !important;
+  min-height: 54px !important;
+  padding: 8px 10px !important;
+  border-radius: 14px !important;
+}
+
+.allStatsKpi span {
+  margin-bottom: 3px !important;
+  font-size: 10.5px !important;
+}
+
+.allStatsKpi b {
+  font-size: 18px !important;
+}
+
+.allStatsActions {
+  gap: 8px !important;
+  overflow: visible !important;
+  max-height: none !important;
+  padding: 0 !important;
+}
+
+.allStatsActionCard {
+  min-height: 72px !important;
+  padding: 10px 12px !important;
+  border-radius: 16px !important;
+  gap: 10px !important;
+}
+
+.allStatsActionMain {
+  gap: 2px !important;
+}
+
+.allStatsActionMain b,
+.allStatsChannelName {
+  font-size: 14px !important;
+}
+
+.allStatsActionMain small,
+.allStatsChannelButton small {
+  font-size: 11px !important;
+  line-height: 1.18 !important;
+}
+
+.allStatsMetric {
+  padding: 8px 10px !important;
+}
+
+.allStatsMetric span:first-child {
+  font-size: 10px !important;
+}
+
+.allStatsMetric b {
+  font-size: 15px !important;
+}
+
+.allStatsToolBadge {
+  min-height: 30px !important;
+  padding: 6px 10px !important;
+  font-size: 11px !important;
+}
+
+.allStatsGoButton {
+  padding: 9px 12px !important;
+  font-size: 12px !important;
+}
+
+.allStatsActionCardConnected .allStatsChannelName::before {
+  width: 8px !important;
+  height: 8px !important;
+  left: -14px !important;
+}
+
+@media (min-width: 901px) {
+  .statsWorkspace {
+    grid-template-columns: 236px minmax(0, 1fr) !important;
+    gap: 14px !important;
+    align-items: start !important;
+  }
+
+  .statsRail,
+  .statsPanel,
+  .allStatsPanel {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+}
+
+
+/* === iNrStats final fit : page fixe + scroll interne des lignes si nécessaire === */
+@media (min-width: 901px) {
+  .page {
+    height: 100dvh !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    padding-top: 18px !important;
+    padding-bottom: 18px !important;
+  }
+
+  .header {
+    margin-bottom: 12px !important;
+  }
+
+  .statsWorkspace {
+    height: calc(100dvh - 112px) !important;
+    min-height: 0 !important;
+    margin-top: 14px !important;
+    grid-template-columns: 224px minmax(0, 1fr) !important;
+    align-items: stretch !important;
+  }
+
+  .statsRail {
+    position: static !important;
+    align-self: start !important;
+    max-height: 100% !important;
+    gap: 6px !important;
+    padding: 9px !important;
+    overflow: hidden !important;
+  }
+
+  .statsRailItem,
+  .statsMobileDrawerItem {
+    min-height: 46px !important;
+    padding: 7px 9px !important;
+    border-radius: 14px !important;
+  }
+
+  .statsRailText b {
+    font-size: 12.5px !important;
+  }
+
+  .statsRailText small {
+    font-size: 10.5px !important;
+  }
+
+  .statsRailValue {
+    min-width: 38px !important;
+    padding: 5px 7px !important;
+    font-size: 11.5px !important;
+  }
+
+  .statsPanel,
+  .allStatsPanel {
+    min-height: 0 !important;
+    height: 100% !important;
+  }
+
+  .allStatsPanel {
+    display: flex !important;
+    flex-direction: column !important;
+    padding: 12px !important;
+    overflow: hidden !important;
+  }
+
+  .allStatsHero {
+    flex: 0 0 auto !important;
+    padding: 2px 4px 8px !important;
+    gap: 8px !important;
+  }
+
+  .allStatsTitle {
+    margin-top: 3px !important;
+    font-size: 20px !important;
+    line-height: 1.02 !important;
+  }
+
+  .allStatsText {
+    margin-top: 4px !important;
+    font-size: 12px !important;
+    line-height: 1.18 !important;
+  }
+
+  .allStatsKpis {
+    gap: 6px !important;
+  }
+
+  .allStatsKpi {
+    min-height: 48px !important;
+    padding: 6px 8px !important;
+    border-radius: 13px !important;
+  }
+
+  .allStatsKpi span {
+    margin-bottom: 2px !important;
+    font-size: 9.6px !important;
+    line-height: 1 !important;
+  }
+
+  .allStatsKpi b {
+    font-size: 17px !important;
+    line-height: 1 !important;
+  }
+
+  .allStatsActions {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    overscroll-behavior: contain !important;
+    display: grid !important;
+    align-content: start !important;
+    gap: 6px !important;
+    padding: 0 4px 0 0 !important;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(125, 211, 252, 0.34) transparent;
+  }
+
+  .allStatsActions::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .allStatsActions::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .allStatsActions::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: rgba(125, 211, 252, 0.30);
+  }
+
+  .allStatsActionCard {
+    min-height: 48px !important;
+    padding: 6px 10px !important;
+    border-radius: 14px !important;
+    gap: 8px !important;
+    grid-template-columns: minmax(190px, 1fr) minmax(230px, 330px) minmax(100px, 145px) minmax(62px, 78px) !important;
+  }
+
+  .allStatsChannelButton {
+    gap: 0 !important;
+  }
+
+  .allStatsChannelName {
+    font-size: 13.5px !important;
+  }
+
+  .allStatsChannelButton small,
+  .allStatsRecommendedAction small {
+    font-size: 10.5px !important;
+    line-height: 1.05 !important;
+    -webkit-line-clamp: 1 !important;
+  }
+
+  .allStatsMetrics {
+    gap: 6px !important;
+  }
+
+  .allStatsMetrics span {
+    height: 34px !important;
+    min-height: 34px !important;
+    padding: 3px 8px !important;
+    border-radius: 12px !important;
+    gap: 2px !important;
+  }
+
+  .allStatsMetrics small {
+    font-size: 8.8px !important;
+    line-height: 1 !important;
+  }
+
+  .allStatsMetrics b {
+    font-size: 14.5px !important;
+    line-height: 1 !important;
+  }
+
+  .allStatsRecommendedAction {
+    min-height: 30px !important;
+    align-self: center !important;
+  }
+
+  .allStatsToolBadge {
+    padding: 5px 9px !important;
+    font-size: 10.5px !important;
+  }
+
+  .allStatsGoButton {
+    min-width: 58px !important;
+    height: 34px !important;
+    padding: 7px 10px !important;
+    font-size: 11.5px !important;
+  }
+}
+
+@media (min-width: 901px) and (max-height: 790px) {
+  .statsWorkspace {
+    height: calc(100dvh - 104px) !important;
+    margin-top: 10px !important;
+  }
+
+  .allStatsActionCard {
+    min-height: 44px !important;
+    padding-top: 5px !important;
+    padding-bottom: 5px !important;
+  }
+
+  .allStatsMetrics span {
+    height: 31px !important;
+    min-height: 31px !important;
+  }
+
+  .statsRailItem,
+  .statsMobileDrawerItem {
+    min-height: 42px !important;
+  }
+}
+
+
+/* === iNrStats : lignes globales réparties sur toute la hauteur du cadre === */
+@media (min-width: 901px) {
+  .allStatsActions {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    display: grid !important;
+    grid-auto-rows: minmax(0, 1fr) !important;
+    align-content: stretch !important;
+    gap: 7px !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    padding: 0 4px 0 0 !important;
+  }
+
+  .allStatsActionCard {
+    height: 100% !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    align-self: stretch !important;
+    padding-top: 6px !important;
+    padding-bottom: 6px !important;
+  }
+
+  .allStatsChannelButton,
+  .allStatsRecommendedAction,
+  .allStatsMetrics,
+  .allStatsGoButton {
+    align-self: center !important;
+  }
+
+  .allStatsMetrics span {
+    height: min(38px, 100%) !important;
+    min-height: 30px !important;
+  }
+}
+
+
+/* === iNrStats : statuts lisibles + colonne outil centrée === */
+.statsRailItemConnected .statsRailText small,
+.statsMobileDrawerItem.statsRailItemConnected .statsRailText small {
+  color: rgba(74, 222, 128, 0.98) !important;
+  text-shadow: 0 0 10px rgba(34, 197, 94, 0.18);
+}
+
+.statsRailItemOff .statsRailText small,
+.statsMobileDrawerItem.statsRailItemOff .statsRailText small {
+  color: rgba(251, 191, 36, 0.96) !important;
+  text-shadow: 0 0 10px rgba(251, 146, 60, 0.14);
+}
+
+.statsRailItemDisabled .statsRailText small,
+.statsMobileDrawerItem.statsRailItemDisabled .statsRailText small {
+  color: rgba(148, 163, 184, 0.78) !important;
+  text-shadow: none !important;
+}
+
+@media (min-width: 901px) {
+  .allStatsRecommendedAction {
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 100% !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    justify-self: stretch !important;
+    align-self: stretch !important;
+    text-align: center !important;
+  }
+
+  .allStatsToolBadge {
+    justify-self: center !important;
+    align-self: center !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: fit-content !important;
+    min-width: 76px !important;
+    max-width: 100% !important;
+    min-height: 30px !important;
+    padding: 6px 11px !important;
+    text-align: center !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+  }
+
+  .allStatsActionCard {
+    grid-template-columns:
+      minmax(150px, 1.25fr)
+      minmax(220px, 1fr)
+      minmax(108px, 0.62fr)
+      minmax(62px, 0.42fr) !important;
+  }
+}
+
+@media (min-width: 901px) and (max-width: 1180px) {
+  .allStatsActionCard {
+    grid-template-columns:
+      minmax(132px, 1.05fr)
+      minmax(190px, 1fr)
+      minmax(96px, 0.58fr)
+      minmax(56px, 0.38fr) !important;
+    column-gap: 7px !important;
+  }
+
+  .allStatsToolBadge {
+    min-width: 68px !important;
+    padding-inline: 9px !important;
+    font-size: 10.5px !important;
+  }
+}

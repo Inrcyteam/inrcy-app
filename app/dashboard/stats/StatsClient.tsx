@@ -376,6 +376,57 @@ function buildMailCubeModel(stats: MailStatsSnapshot, period: Period): CubeModel
     action: recommendedAction,
   };
 }
+function buildInrBadgeCubeModel(period: Period): CubeModel {
+  return {
+    key: "inrbadge",
+    title: "iNr’Badge",
+    subtitle: "Hub de conversion",
+    accountLabel: "Connecté",
+    period,
+    loading: false,
+    error: undefined,
+    connections: { main: true },
+    provenance: [
+      { label: "Vues fiche", value: 0, colorVar: "--cSocial" },
+      { label: "Scans QR", value: 0, colorVar: "--cDirect" },
+      { label: "Actions", value: 0, colorVar: "--cGoogle" },
+    ],
+    provenanceHint: "Le détail des vues, scans et clics sera branché dans la prochaine étape de tracking iNr’Badge.",
+    opportunity30: 0,
+    opportunityLabel: "Hub actif",
+    capturedLeads: { week: 0, month: 0 },
+    capturedLeadsHint: "iNr’Badge mesure surtout les actions utiles vers vos canaux et vos CTA.",
+    visibilityStats: [
+      { label: "Vues fiche", value: "Bientôt" },
+      { label: "Scans QR", value: "Bientôt" },
+      { label: "Canaux", value: "Actifs" },
+      { label: "CTA rapides", value: "Actifs" },
+    ],
+    actionStats: [
+      { label: "Appels", value: "Bientôt" },
+      { label: "Mails", value: "Bientôt" },
+      { label: "Contacts", value: "Bientôt" },
+      { label: "RDV", value: "Bientôt" },
+    ],
+    qualityScore: 76,
+    qualityLabel: "Actif",
+    qualityTone: "solid",
+    insights: [
+      "iNr’Badge centralise la fiche publique, les actions rapides et l’accès à tous vos canaux.",
+      "Le suivi détaillé des scans QR, vues et clics sera ajouté dans une prochaine passe.",
+      "Utilisez le badge comme porte d’entrée premium vers votre écosystème iNrCy.",
+    ],
+    action: {
+      key: "booster_promotion",
+      title: "Partager votre badge",
+      detail: "Diffusez votre fiche publique et votre QR Code pour générer plus d’actions utiles.",
+      href: "/dashboard?panel=inrbadge",
+      pill: "Booster",
+      effort: { level: "faible", label: "Rapide" },
+    },
+  };
+}
+
 export default function StatsClient() {
   const router = useRouter();
   const [helpOpen, setHelpOpen] = useState(false);
@@ -391,10 +442,11 @@ export default function StatsClient() {
   const [summaryOpp, setSummaryOpp] = useState<{ loading: boolean; total: number; byCube: Record<CubeKey, number> }>({
     loading: true,
     total: 0,
-    byCube: { site_inrcy: 0, site_web: 0, gmb: 0, facebook: 0, instagram: 0, linkedin: 0, mails: 0, tiktok: 0 },
+    byCube: { inrbadge: 0, site_inrcy: 0, site_web: 0, gmb: 0, facebook: 0, instagram: 0, linkedin: 0, mails: 0, tiktok: 0 },
   });
   const [summaryProfile, setSummaryProfile] = useState<{ lead_conversion_rate: number; avg_basket: number }>({ lead_conversion_rate: 0, avg_basket: 0 });
   const [summaryEstimatedByCube, setSummaryEstimatedByCube] = useState<Record<CubeKey, number>>({
+    inrbadge: 0,
     site_inrcy: 0,
     site_web: 0,
     gmb: 0,
@@ -463,6 +515,7 @@ export default function StatsClient() {
         loading: false,
         total: safeNum(cachedSummary.total),
         byCube: {
+          inrbadge: 0,
           site_inrcy: safeNum(byCubePartial.site_inrcy),
           site_web: safeNum(byCubePartial.site_web),
           gmb: safeNum(byCubePartial.gmb),
@@ -478,6 +531,7 @@ export default function StatsClient() {
         avg_basket: safeNum(cachedSummary.profile?.avg_basket),
       });
       setSummaryEstimatedByCube({
+        inrbadge: 0,
         site_inrcy: safeNum(estimatedByCubePartial.site_inrcy),
         site_web: safeNum(estimatedByCubePartial.site_web),
         gmb: safeNum(estimatedByCubePartial.gmb),
@@ -601,6 +655,7 @@ export default function StatsClient() {
           loading: false,
           total: safeNum(cachedSummary.total),
           byCube: {
+            inrbadge: 0,
             site_inrcy: safeNum(cachedSummary.byCube?.site_inrcy),
             site_web: safeNum(cachedSummary.byCube?.site_web),
             gmb: safeNum(cachedSummary.byCube?.gmb),
@@ -616,6 +671,7 @@ export default function StatsClient() {
           avg_basket: safeNum(cachedSummary.profile?.avg_basket),
         });
         setSummaryEstimatedByCube({
+          inrbadge: 0,
           site_inrcy: safeNum(cachedSummary.estimatedByCube?.site_inrcy),
           site_web: safeNum(cachedSummary.estimatedByCube?.site_web),
           gmb: safeNum(cachedSummary.estimatedByCube?.gmb),
@@ -724,6 +780,7 @@ export default function StatsClient() {
         summary: {
           total: safeNum(payload?.opportunities?.total),
           byCube: {
+            inrbadge: 0,
             site_inrcy: safeNum(payload?.opportunities?.byCube?.site_inrcy),
             site_web: safeNum(payload?.opportunities?.byCube?.site_web),
             gmb: safeNum(payload?.opportunities?.byCube?.gmb),
@@ -739,6 +796,7 @@ export default function StatsClient() {
           avg_basket: safeNum(payload?.profile?.avg_basket),
         },
         estimatedByCube: {
+          inrbadge: 0,
           site_inrcy: safeNum(payload?.estimatedByCube?.site_inrcy),
           site_web: safeNum(payload?.estimatedByCube?.site_web),
           gmb: safeNum(payload?.estimatedByCube?.gmb),
@@ -915,6 +973,7 @@ export default function StatsClient() {
       loading: false,
       total: safeNum(cachedSummary?.total),
       byCube: {
+        inrbadge: 0,
         site_inrcy: safeNum(byCubePartial.site_inrcy),
         site_web: safeNum(byCubePartial.site_web),
         gmb: safeNum(byCubePartial.gmb),
@@ -930,6 +989,7 @@ export default function StatsClient() {
       avg_basket: safeNum(cachedSummary?.profile?.avg_basket),
     });
     setSummaryEstimatedByCube({
+      inrbadge: 0,
       site_inrcy: safeNum(estimatedByCubePartial.site_inrcy),
       site_web: safeNum(estimatedByCubePartial.site_web),
       gmb: safeNum(estimatedByCubePartial.gmb),
@@ -961,6 +1021,7 @@ export default function StatsClient() {
       summary: {
         total: safeNum(json?.opportunities?.total),
         byCube: {
+          inrbadge: 0,
           site_inrcy: safeNum(byCubePartial.site_inrcy),
           site_web: safeNum(byCubePartial.site_web),
           gmb: safeNum(byCubePartial.gmb),
@@ -976,6 +1037,7 @@ export default function StatsClient() {
         avg_basket: safeNum(json?.profile?.avg_basket),
       },
       estimatedByCube: {
+        inrbadge: 0,
         site_inrcy: safeNum(json?.estimatedByCube?.site_inrcy),
         site_web: safeNum(json?.estimatedByCube?.site_web),
         gmb: safeNum(json?.estimatedByCube?.gmb),
@@ -1091,6 +1153,7 @@ useEffect(() => {
         loading: false,
         total: safeNum(cachedSummary.total),
         byCube: {
+          inrbadge: 0,
           site_inrcy: safeNum(cachedSummary.byCube?.site_inrcy),
           site_web: safeNum(cachedSummary.byCube?.site_web),
           gmb: safeNum(cachedSummary.byCube?.gmb),
@@ -1106,6 +1169,7 @@ useEffect(() => {
         avg_basket: safeNum(cachedSummary.profile?.avg_basket),
       });
       setSummaryEstimatedByCube({
+        inrbadge: 0,
         site_inrcy: safeNum(cachedSummary.estimatedByCube?.site_inrcy),
         site_web: safeNum(cachedSummary.estimatedByCube?.site_web),
         gmb: safeNum(cachedSummary.estimatedByCube?.gmb),
@@ -1247,12 +1311,14 @@ useEffect(() => {
 
   const centralByCube = useMemo<Record<CubeKey, number>>(() => ({
     ...summaryOpp.byCube,
+    inrbadge: 0,
     mails: mailOpportunity30,
   }), [mailOpportunity30, summaryOpp.byCube]);
 
   const centralPotential30 = Math.max(0, safeNum(summaryOpp.total) + mailOpportunity30);
 
   const models: CubeModel[] = useMemo(() => ([
+    buildInrBadgeCubeModel(period),
     buildMailCubeModel(mailStats, period),
     buildCubeModel("site_inrcy", "Site iNrCy", "Optimisé pour convertir", period, dataByCube.site_inrcy, centralByCube),
     buildCubeModel("site_web", "Site Web", "Votre image", period, dataByCube.site_web, centralByCube),
@@ -1269,6 +1335,7 @@ useEffect(() => {
     const estimate = (opportunities: number) => Math.round(Math.max(0, safeNum(opportunities)) * rate * basket);
 
     return {
+      inrbadge: 0,
       site_inrcy: estimate(centralByCube.site_inrcy),
       site_web: estimate(centralByCube.site_web),
       gmb: estimate(centralByCube.gmb),
@@ -1412,7 +1479,7 @@ useEffect(() => {
                     <span className={styles.statsRailDot} aria-hidden />
                     <span className={styles.statsRailText}>
                       <b>{model.title}</b>
-                      <small>{isTikTokComingSoon ? "Arrive bientôt" : connectionPending ? "Vérification" : connected ? "Connecté" : "À connecter"}</small>
+                      <small>{isTikTokComingSoon ? "Arrive bientôt" : connectionPending ? "Vérification" : connected ? "Connecté" : "Déconnecté"}</small>
                     </span>
                     <span className={styles.statsRailValue}>+{fmtInt(model.opportunity30)}</span>
                   </button>
@@ -1455,7 +1522,7 @@ useEffect(() => {
                 <span className={styles.statsRailDot} aria-hidden />
                 <span className={styles.statsRailText}>
                   <b>{model.title}</b>
-                  <small>{isTikTokComingSoon ? "Arrive bientôt" : connectionPending ? "Vérification" : connected ? "Connecté" : "À connecter"}</small>
+                  <small>{isTikTokComingSoon ? "Arrive bientôt" : connectionPending ? "Vérification" : connected ? "Connecté" : "Déconnecté"}</small>
                 </span>
                 <span className={styles.statsRailValue}>+{fmtInt(model.opportunity30)}</span>
               </button>

@@ -150,8 +150,8 @@ export default function BadgeShareButton({ publicUrl, company, vCardUri, vCardFi
                 <div className={styles.sheetHandle} />
                 <div className={styles.sheetHeader}>
                   <div>
-                    <strong>Garder cette fiche</strong>
-                    <p>Partagez-la, copiez le lien ou ajoutez-la à l'écran d'accueil.</p>
+                    <strong>Fiche contact</strong>
+                    <p>Partagez, copiez le lien ou enregistrez le contact.</p>
                   </div>
                   <button type="button" className={styles.sheetClose} onClick={() => setOpen(false)} aria-label="Fermer">
                     ×

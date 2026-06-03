@@ -5,7 +5,7 @@ import InrBadgeQrCode from "./InrBadgeQrCode";
 import type { InrBadgeProfileSummary } from "@/lib/inrBadge";
 import styles from "../dashboard.module.css";
 
-const INRBADGE_HEADER_LINE = "iNr'Badge : mon entreprise en QR Code";
+const INRBADGE_HEADER_LINE = "iNr'Badge";
 const INRBADGE_ICON_SRC = "/icons/inrbadge-dashboard.png";
 
 type Props = {
