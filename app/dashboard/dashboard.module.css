@@ -6766,3 +6766,79 @@ transform: scale(1.50);
     }
   }
 }
+
+
+/* === Dashboard mobile bulles v4 : règle fiable Android + iPhone préservé === */
+/* Tous les mobiles tactiles : boutons plus larges. Android/Samsung passe forcément ici. */
+@media (any-hover: none) and (any-pointer: coarse) and (max-width: 560px) {
+  .mobileCarousel .bubbleActions,
+  .desktopCoverflowCenter .bubbleActions {
+    width: min(80%, 242px) !important;
+    max-width: 242px !important;
+  }
+
+  .mobileCarousel .bubbleActions .actionBtn,
+  .mobileCarousel .bubbleActions .actionMain,
+  .desktopCoverflowCenter .bubbleActions .actionBtn,
+  .desktopCoverflowCenter .bubbleActions .actionMain {
+    width: 100% !important;
+    max-width: 242px !important;
+    min-width: 0 !important;
+    min-height: 38px !important;
+    padding-inline: 18px !important;
+    white-space: nowrap !important;
+    text-align: center !important;
+  }
+}
+
+@media (any-hover: none) and (any-pointer: coarse) and (min-width: 560px) and (max-width: 980px) {
+  .bubbleActions,
+  .desktopCoverflowCenter .bubbleActions {
+    width: min(78%, 242px) !important;
+    max-width: 242px !important;
+  }
+
+  .bubbleActions .actionBtn,
+  .bubbleActions .actionMain,
+  .desktopCoverflowCenter .bubbleActions .actionBtn,
+  .desktopCoverflowCenter .bubbleActions .actionMain {
+    max-width: 242px !important;
+    padding-inline: 18px !important;
+    white-space: nowrap !important;
+  }
+}
+
+/* iPhone uniquement : on remet la largeur validée et on ne touche pas au réglage validé. */
+@supports (-webkit-touch-callout: none) {
+  @media (any-hover: none) and (any-pointer: coarse) and (max-width: 560px) {
+    .mobileCarousel .bubbleActions,
+    .desktopCoverflowCenter .bubbleActions {
+      width: min(68%, 210px) !important;
+      max-width: 210px !important;
+    }
+
+    .mobileCarousel .bubbleActions .actionBtn,
+    .mobileCarousel .bubbleActions .actionMain,
+    .desktopCoverflowCenter .bubbleActions .actionBtn,
+    .desktopCoverflowCenter .bubbleActions .actionMain {
+      max-width: 210px !important;
+      padding-inline: 16px !important;
+    }
+  }
+
+  @media (any-hover: none) and (any-pointer: coarse) and (min-width: 560px) and (max-width: 980px) {
+    .bubbleActions,
+    .desktopCoverflowCenter .bubbleActions {
+      width: min(66%, 210px) !important;
+      max-width: 210px !important;
+    }
+
+    .bubbleActions .actionBtn,
+    .bubbleActions .actionMain,
+    .desktopCoverflowCenter .bubbleActions .actionBtn,
+    .desktopCoverflowCenter .bubbleActions .actionMain {
+      max-width: 210px !important;
+      padding-inline: 16px !important;
+    }
+  }
+}
