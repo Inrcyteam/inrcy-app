@@ -121,7 +121,7 @@ export default function DashboardModulesCard({ goToModule, openPanel, onOpenStat
       <div className={styles.loopSub}>Tous vos leads, enfin visibles</div>
       <div className={styles.loopActions}>
         <button className={`${styles.actionBtn} ${styles.connectBtn}`} type="button" onClick={openStats}>
-          Voir les stats
+          iNr'Stats →
         </button>
       </div>
     </div>
@@ -153,7 +153,7 @@ export default function DashboardModulesCard({ goToModule, openPanel, onOpenStat
   type="button"
   onClick={() => goToModule("/dashboard/mails")}
 >
-  Ouvrir iNr'Send
+  iNr'Send →
 </button>
       </div>
     </div>
@@ -185,7 +185,7 @@ export default function DashboardModulesCard({ goToModule, openPanel, onOpenStat
   type="button"
   onClick={() => goToModule("/dashboard/agenda")}
 >
-  Voir l’agenda
+  iNr'Calendar →
 </button>
       </div>
     </div>
@@ -203,7 +203,7 @@ export default function DashboardModulesCard({ goToModule, openPanel, onOpenStat
           type="button"
           onClick={() => goToModule("/dashboard/crm")}
         >
-          Ouvrir le CRM
+          iNr'CRM →
         </button>
       </div>
     </div>
