@@ -2005,10 +2005,12 @@ aspect-ratio: 2.8 / 4;
 @media (max-width: 560px){
   .moduleBubble{ max-width: 100%; }
   .bubbleBoost{ width: 100%; }
-  /* ✅ mobile : on garde des boutons nettement plus étroits */
+  /* ✅ mobile : boutons lisibles sans plein écran */
   .bubbleActions .actionBtn,
   .bubbleActions .actionMain{
-    width: min(60%, 180px);
+    width: 100%;
+    max-width: 242px;
+    box-sizing: border-box;
   }
 }
 
@@ -2240,7 +2242,8 @@ font-size: 12px;
     align-items: center;  /* centre horizontalement */
     margin-top: 10px;      /* espace naturel */
     /* ✅ conteneur de boutons plus étroit sur mobile */
-    width: min(60%, 180px);
+    width: min(78%, 242px);
+    max-width: 242px;
     gap: 10px;
   }
 
@@ -2356,12 +2359,19 @@ font-size: 12px;
   }
 
   .bubbleActions{
-    width: min(60%, 180px);
+    width: min(78%, 242px);
+    max-width: 242px;
     gap: 10px;
   }
 
-  .bubbleActions .actionBtn{
-    padding: 11px 14px;
+  .bubbleActions .actionBtn,
+  .bubbleActions .actionMain{
+    width: 100% !important;
+    max-width: 242px !important;
+    min-width: 0 !important;
+    padding: 11px 18px !important;
+    white-space: nowrap !important;
+    box-sizing: border-box !important;
   }
 
   /* ✅ taille sphère en mobile */
@@ -2402,7 +2412,8 @@ font-size: 12px;
   }
 
   .bubbleActions{
-    width: min(60%, 180px) !important;
+    width: min(74%, 242px) !important;
+    max-width: 242px !important;
     gap: 10px !important;
   }
 
@@ -2410,9 +2421,11 @@ font-size: 12px;
   .bubbleActions .actionBtn,
   .bubbleActions .actionMain{
     width: 100% !important;
-    max-width: 180px !important;
+    max-width: 242px !important;
     min-width: 0 !important;
-    padding: 11px 14px !important;
+    padding: 11px 18px !important;
+    white-space: nowrap !important;
+    box-sizing: border-box !important;
   }
 }
 
@@ -2453,11 +2466,13 @@ font-size: 12px;
 /* ✅ Téléphone détecté (même en “Version ordinateur”) */
 :global(html.isTouch) .bubbleActions .actionBtn,
 :global(html.isTouch) .bubbleActions .actionMain{
-  /* ✅ téléphone : ne pas prendre toute la largeur */
-  width: min(60%, 180px) !important;
-  max-width: 180px !important;
+  /* ✅ téléphone : largeur pilotée par .bubbleActions */
+  width: 100% !important;
+  max-width: 242px !important;
   min-width: 0 !important;
-  padding: 11px 14px !important;
+  padding: 11px 18px !important;
+  white-space: nowrap !important;
+  box-sizing: border-box !important;
 }
 
 /* ✅ Mobile "Version ordinateur" : 4 lignes fixes, plus de chevauchement */
@@ -2509,10 +2524,12 @@ font-size: 12px;
   /* ✅ mêmes tailles pour les 2 boutons */
   :global(html.isTouch) .bubbleActions .actionBtn,
   :global(html.isTouch) .bubbleActions .actionMain{
-    width: min(60%, 180px) !important;
-    max-width: 180px !important;
+    width: 100% !important;
+    max-width: 242px !important;
     min-width: 0 !important;
-    padding: 11px 14px !important;
+    padding: 11px 18px !important;
+    white-space: nowrap !important;
+    box-sizing: border-box !important;
   }
 }
 
@@ -3402,10 +3419,11 @@ transform: scale(1.50);
 
 :global(html.isTouch) .bubbleActions .actionBtn,
 :global(html.isTouch) .bubbleActions .actionMain{
-  /* ✅ responsive : boutons courts (évite le plein écran) */
-  width: min(60%, 180px) !important;
-  max-width: 180px !important;
-  box-sizing: border-box;
+  /* ✅ responsive : largeur pilotée par .bubbleActions */
+  width: 100% !important;
+  max-width: 242px !important;
+  box-sizing: border-box !important;
+  white-space: nowrap !important;
 }
 
 /* ✅ Mobile + "Version ordinateur" : espace entre le flux et la barre de puissance */
@@ -5450,7 +5468,8 @@ transform: scale(1.50);
   transform:none !important;
   margin-top:auto !important;
   margin-bottom:12px !important;
-  width:min(58%, 190px) !important;
+  width:min(74%, 242px) !important;
+  max-width:242px !important;
   gap:10px !important;
 }
 
@@ -5458,7 +5477,10 @@ transform: scale(1.50);
 .desktopCoverflowCenter .bubbleActions .actionMain{
   width:100% !important;
   min-width:0 !important;
-  max-width:190px !important;
+  max-width:242px !important;
+  padding-inline:18px !important;
+  white-space:nowrap !important;
+  box-sizing:border-box !important;
 }
 
 .desktopSideBubbleCard{
@@ -6612,203 +6634,29 @@ transform: scale(1.50);
   }
 }
 
-
-/* === Dashboard mobile bulles : boutons plus confortables + ajustement iPhone === */
-/* Mobile responsive normal : boutons légèrement élargis pour éviter les textes limite */
-@media (any-hover: none) and (any-pointer: coarse) and (max-width: 560px) {
+/* === Dashboard bulles mobile : source propre + iPhone préservé === */
+/* Sécurité globale mobile : les boutons gardent la largeur du conteneur */
+@media (max-width: 560px) {
   .mobileCarousel .bubbleActions,
-  .desktopCoverflowCenter .bubbleActions {
-    width: min(68%, 210px) !important;
-    max-width: 210px !important;
-    gap: 10px !important;
-  }
-
-  .mobileCarousel .bubbleActions .actionBtn,
-  .mobileCarousel .bubbleActions .actionMain,
-  .desktopCoverflowCenter .bubbleActions .actionBtn,
-  .desktopCoverflowCenter .bubbleActions .actionMain {
-    width: 100% !important;
-    max-width: 210px !important;
-    min-width: 0 !important;
-    min-height: 38px !important;
-    padding: 11px 16px !important;
-    font-size: 13px !important;
-    line-height: 1 !important;
-    white-space: nowrap !important;
-    text-align: center !important;
-  }
-}
-
-/* Mobile en "version ordinateur" / largeur tablette tactile : même confort sans toucher desktop */
-@media (any-hover: none) and (any-pointer: coarse) and (min-width: 560px) and (max-width: 980px) {
-  .bubbleActions,
-  .desktopCoverflowCenter .bubbleActions {
-    width: min(66%, 210px) !important;
-    max-width: 210px !important;
-  }
-
-  .bubbleActions .actionBtn,
-  .bubbleActions .actionMain,
-  .desktopCoverflowCenter .bubbleActions .actionBtn,
-  .desktopCoverflowCenter .bubbleActions .actionMain {
-    max-width: 210px !important;
-    min-height: 38px !important;
-    padding-inline: 16px !important;
-    white-space: nowrap !important;
-  }
-}
-
-/* iPhone uniquement : on descend légèrement le contenu interne des bulles */
-@supports (-webkit-touch-callout: none) {
-  @media (any-hover: none) and (any-pointer: coarse) and (max-width: 560px) {
-    .mobileCarousel .bubbleStack,
-    .desktopCoverflowCenter .bubbleStack {
-      transform: translateY(9px) !important;
-    }
-
-    .mobileCarousel .bubbleTagline,
-    .desktopCoverflowCenter .bubbleTagline {
-      margin-top: 10px !important;
-    }
-  }
-}
-
-
-/* === Dashboard mobile bulles v2 : Android plus large + iPhone un peu plus bas === */
-/* Android / navigateurs tactiles non iOS : boutons encore un peu plus larges */
-@supports not (-webkit-touch-callout: none) {
-  @media (any-hover: none) and (any-pointer: coarse) and (max-width: 560px) {
-    .mobileCarousel .bubbleActions,
-    .desktopCoverflowCenter .bubbleActions {
-      width: min(74%, 226px) !important;
-      max-width: 226px !important;
-    }
-
-    .mobileCarousel .bubbleActions .actionBtn,
-    .mobileCarousel .bubbleActions .actionMain,
-    .desktopCoverflowCenter .bubbleActions .actionBtn,
-    .desktopCoverflowCenter .bubbleActions .actionMain {
-      max-width: 226px !important;
-      padding-inline: 17px !important;
-      font-size: 13px !important;
-      white-space: nowrap !important;
-    }
-  }
-
-  @media (any-hover: none) and (any-pointer: coarse) and (min-width: 560px) and (max-width: 980px) {
-    .bubbleActions,
-    .desktopCoverflowCenter .bubbleActions {
-      width: min(72%, 226px) !important;
-      max-width: 226px !important;
-    }
-
-    .bubbleActions .actionBtn,
-    .bubbleActions .actionMain,
-    .desktopCoverflowCenter .bubbleActions .actionBtn,
-    .desktopCoverflowCenter .bubbleActions .actionMain {
-      max-width: 226px !important;
-      padding-inline: 17px !important;
-      white-space: nowrap !important;
-    }
-  }
-}
-
-/* iPhone uniquement : contenu interne descendu très légèrement plus */
-@supports (-webkit-touch-callout: none) {
-  @media (any-hover: none) and (any-pointer: coarse) and (max-width: 560px) {
-    .mobileCarousel .bubbleStack,
-    .desktopCoverflowCenter .bubbleStack {
-      transform: translateY(13px) !important;
-    }
-
-    .mobileCarousel .bubbleTagline,
-    .desktopCoverflowCenter .bubbleTagline {
-      margin-top: 11px !important;
-    }
-  }
-}
-
-
-/* === Dashboard mobile bulles v3 : Android uniquement, boutons encore plus larges === */
-/* Ne touche pas iPhone : uniquement supports non-iOS */
-@supports not (-webkit-touch-callout: none) {
-  @media (any-hover: none) and (any-pointer: coarse) and (max-width: 560px) {
-    .mobileCarousel .bubbleActions,
-    .desktopCoverflowCenter .bubbleActions {
-      width: min(80%, 242px) !important;
-      max-width: 242px !important;
-    }
-
-    .mobileCarousel .bubbleActions .actionBtn,
-    .mobileCarousel .bubbleActions .actionMain,
-    .desktopCoverflowCenter .bubbleActions .actionBtn,
-    .desktopCoverflowCenter .bubbleActions .actionMain {
-      max-width: 242px !important;
-      padding-inline: 18px !important;
-      white-space: nowrap !important;
-    }
-  }
-
-  @media (any-hover: none) and (any-pointer: coarse) and (min-width: 560px) and (max-width: 980px) {
-    .bubbleActions,
-    .desktopCoverflowCenter .bubbleActions {
-      width: min(78%, 242px) !important;
-      max-width: 242px !important;
-    }
-
-    .bubbleActions .actionBtn,
-    .bubbleActions .actionMain,
-    .desktopCoverflowCenter .bubbleActions .actionBtn,
-    .desktopCoverflowCenter .bubbleActions .actionMain {
-      max-width: 242px !important;
-      padding-inline: 18px !important;
-      white-space: nowrap !important;
-    }
-  }
-}
-
-
-/* === Dashboard mobile bulles v4 : règle fiable Android + iPhone préservé === */
-/* Tous les mobiles tactiles : boutons plus larges. Android/Samsung passe forcément ici. */
-@media (any-hover: none) and (any-pointer: coarse) and (max-width: 560px) {
-  .mobileCarousel .bubbleActions,
-  .desktopCoverflowCenter .bubbleActions {
-    width: min(80%, 242px) !important;
-    max-width: 242px !important;
-  }
-
-  .mobileCarousel .bubbleActions .actionBtn,
-  .mobileCarousel .bubbleActions .actionMain,
-  .desktopCoverflowCenter .bubbleActions .actionBtn,
-  .desktopCoverflowCenter .bubbleActions .actionMain {
-    width: 100% !important;
-    max-width: 242px !important;
-    min-width: 0 !important;
-    min-height: 38px !important;
-    padding-inline: 18px !important;
-    white-space: nowrap !important;
-    text-align: center !important;
-  }
-}
-
-@media (any-hover: none) and (any-pointer: coarse) and (min-width: 560px) and (max-width: 980px) {
-  .bubbleActions,
   .desktopCoverflowCenter .bubbleActions {
     width: min(78%, 242px) !important;
     max-width: 242px !important;
   }
 
-  .bubbleActions .actionBtn,
-  .bubbleActions .actionMain,
+  .mobileCarousel .bubbleActions .actionBtn,
+  .mobileCarousel .bubbleActions .actionMain,
   .desktopCoverflowCenter .bubbleActions .actionBtn,
   .desktopCoverflowCenter .bubbleActions .actionMain {
+    width: 100% !important;
     max-width: 242px !important;
+    min-width: 0 !important;
     padding-inline: 18px !important;
     white-space: nowrap !important;
+    box-sizing: border-box !important;
   }
 }
 
-/* iPhone uniquement : on remet la largeur validée et on ne touche pas au réglage validé. */
+/* iPhone uniquement : on conserve la largeur validée et le contenu légèrement descendu */
 @supports (-webkit-touch-callout: none) {
   @media (any-hover: none) and (any-pointer: coarse) and (max-width: 560px) {
     .mobileCarousel .bubbleActions,
@@ -6824,21 +6672,16 @@ transform: scale(1.50);
       max-width: 210px !important;
       padding-inline: 16px !important;
     }
-  }
 
-  @media (any-hover: none) and (any-pointer: coarse) and (min-width: 560px) and (max-width: 980px) {
-    .bubbleActions,
-    .desktopCoverflowCenter .bubbleActions {
-      width: min(66%, 210px) !important;
-      max-width: 210px !important;
+    .mobileCarousel .bubbleStack,
+    .desktopCoverflowCenter .bubbleStack {
+      transform: translateY(13px) !important;
     }
 
-    .bubbleActions .actionBtn,
-    .bubbleActions .actionMain,
-    .desktopCoverflowCenter .bubbleActions .actionBtn,
-    .desktopCoverflowCenter .bubbleActions .actionMain {
-      max-width: 210px !important;
-      padding-inline: 16px !important;
+    .mobileCarousel .bubbleTagline,
+    .desktopCoverflowCenter .bubbleTagline {
+      margin-top: 11px !important;
     }
   }
 }
+
