@@ -2143,208 +2143,210 @@
 }
 
 /* =========================================================
-   Sécurité impression iPhone / AirPrint
-   Safari iOS garde une zone utile plus petite que Chrome/Android.
-   On compacte très légèrement le gabarit print uniquement sur WebKit iOS
-   pour éviter que le bloc final Facture/Devis parte seul en page 2.
+   Export PDF fiable pour iPhone / Safari
+   On ne passe plus par AirPrint HTML sur iOS : le PDF est généré
+   depuis ces pages A4 fixes, puis ouvert dans le lecteur PDF natif.
    ========================================================= */
-@media print {
-  @supports (-webkit-touch-callout: none) {
-    .documentPrintPage {
-      min-height: calc(297mm - 34mm) !important;
-      height: calc(297mm - 34mm) !important;
-      padding: 5.5mm 7.5mm !important;
-    }
-
-    .previewHeader {
-      min-height: 18mm !important;
-      margin-bottom: 4mm !important;
-    }
-
-    .previewParties {
-      gap: 4mm !important;
-      margin-bottom: 4mm !important;
-    }
-
-    .previewPartyCard {
-      min-height: 25mm !important;
-      padding: 7px !important;
-      font-size: 8pt !important;
-      line-height: 1.18 !important;
-    }
-
-    .previewPartyTitle {
-      margin-bottom: 3px !important;
-      font-size: 8pt !important;
-    }
-
-    .table th,
-    .table td {
-      padding: 3px 4px !important;
-      font-size: 7.8pt !important;
-      line-height: 1.16 !important;
-    }
-
-    .previewBottomGrid {
-      grid-template-columns: minmax(0, 1fr) 46mm !important;
-      gap: 4mm !important;
-      margin-top: 3.5mm !important;
-      font-size: 7.8pt !important;
-      line-height: 1.18 !important;
-    }
-
-    .previewTotalsBox {
-      padding: 7px !important;
-      border-radius: 8px !important;
-      font-size: 8.2pt !important;
-      line-height: 1.14 !important;
-    }
-
-    .previewTotalsMain {
-      font-size: 11pt !important;
-    }
-
-    .previewSignatureGrid {
-      grid-template-columns: minmax(0, 1fr) 46mm !important;
-      gap: 4mm !important;
-      margin-top: 3.5mm !important;
-    }
-
-    .previewSignatureBox {
-      min-height: 15mm !important;
-      padding: 6px !important;
-      border-radius: 8px !important;
-      font-size: 8pt !important;
-    }
-
-    .documentPrintFooter {
-      margin-top: auto !important;
-      padding-bottom: 1mm !important;
-      break-before: avoid !important;
-      page-break-before: avoid !important;
-      break-inside: avoid !important;
-      page-break-inside: avoid !important;
-    }
-
-    .documentPrintContinuation {
-      margin-bottom: 2mm !important;
-    }
-
-    .previewFrame::before {
-      inset: 0.5mm !important;
-    }
-  }
+.pdfExportStaging {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  width: 794px;
+  background: #fff;
+  pointer-events: none;
+  opacity: 1;
+  z-index: -1;
 }
 
-/* =========================================================
-   Correctif définitif iPhone / Safari / AirPrint
-   Activé par JS juste avant window.print() sur iPhone/iPad.
-   Équivaut au 80% AirPrint, mais automatiquement dans l'app.
-   Desktop + Android restent inchangés.
-   ========================================================= */
-@media print {
-  :global(html.inrcy-ios-airprint-compact) .documentPrintPages {
-    width: 125% !important;
-    zoom: 0.8 !important;
-    margin: 0 !important;
-    padding: 0 !important;
-    overflow: visible !important;
-  }
+.pdfExportStaging .documentPrintPages {
+  display: block !important;
+  width: 794px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  background: #fff !important;
+  line-height: 0 !important;
+  font-size: 0 !important;
+}
 
-  :global(html.inrcy-ios-airprint-compact) .documentPrintPage {
-    width: 100% !important;
-    min-height: 335mm !important;
-    height: 335mm !important;
-    padding: 6mm 8mm !important;
-    overflow: hidden !important;
-    break-after: auto !important;
-    page-break-after: auto !important;
-  }
+.pdfExportStaging .documentPrintPage {
+  position: relative !important;
+  display: flex !important;
+  flex-direction: column !important;
+  width: 794px !important;
+  min-width: 794px !important;
+  max-width: 794px !important;
+  height: 1123px !important;
+  min-height: 1123px !important;
+  max-height: 1123px !important;
+  margin: 0 !important;
+  padding: 26px 34px !important;
+  box-sizing: border-box !important;
+  background: #fff !important;
+  color: #111 !important;
+  overflow: hidden !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  font-size: 11px !important;
+  line-height: 1.25 !important;
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}
 
-  :global(html.inrcy-ios-airprint-compact) .documentPrintPage + .documentPrintPage {
-    break-before: page !important;
-    page-break-before: always !important;
-  }
+.pdfExportStaging .documentPrintPage + .documentPrintPage {
+  margin-top: 0 !important;
+}
 
-  :global(html.inrcy-ios-airprint-compact) .documentPrintPage:last-child {
-    break-after: avoid !important;
-    page-break-after: avoid !important;
-    margin-bottom: 0 !important;
-  }
+.pdfExportStaging .previewHeader {
+  position: relative !important;
+  min-height: 76px !important;
+  margin: 0 0 19px 0 !important;
+  padding-top: 0 !important;
+}
 
-  :global(html.inrcy-ios-airprint-compact) .previewHeader {
-    min-height: 18mm !important;
-    margin-bottom: 4mm !important;
-  }
+.pdfExportStaging .previewDesignSignature .previewHeader {
+  border-left-width: 5px !important;
+  padding-left: 10px !important;
+}
 
-  :global(html.inrcy-ios-airprint-compact) .logoBox {
-    width: 34mm !important;
-    height: 17mm !important;
-  }
+.pdfExportStaging .title {
+  font-size: 23px !important;
+  line-height: 1.08 !important;
+}
 
-  :global(html.inrcy-ios-airprint-compact) .previewParties {
-    gap: 4mm !important;
-    margin-bottom: 4mm !important;
-  }
+.pdfExportStaging .logoBox {
+  position: absolute !important;
+  top: 0 !important;
+  right: 0 !important;
+  width: 136px !important;
+  height: 68px !important;
+  margin-left: 0 !important;
+}
 
-  :global(html.inrcy-ios-airprint-compact) .previewPartyCard {
-    min-height: 24mm !important;
-    padding: 7px !important;
-    font-size: 8pt !important;
-    line-height: 1.16 !important;
-  }
+.pdfExportStaging .logoImg {
+  max-width: 100% !important;
+  max-height: 100% !important;
+  width: auto !important;
+  height: auto !important;
+  object-fit: contain !important;
+}
 
-  :global(html.inrcy-ios-airprint-compact) .table th,
-  :global(html.inrcy-ios-airprint-compact) .table td {
-    padding: 3px 4px !important;
-    font-size: 7.6pt !important;
-    line-height: 1.14 !important;
-  }
+.pdfExportStaging .previewParties {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+  gap: 19px !important;
+  margin-bottom: 19px !important;
+}
 
-  :global(html.inrcy-ios-airprint-compact) .documentPrintFooter {
-    margin-top: auto !important;
-    padding-bottom: 0 !important;
-    break-before: avoid !important;
-    page-break-before: avoid !important;
-    break-inside: avoid !important;
-    page-break-inside: avoid !important;
-  }
+.pdfExportStaging .previewPartyCard {
+  min-height: 106px !important;
+  padding: 8px !important;
+  box-sizing: border-box !important;
+  font-size: 11px !important;
+  line-height: 1.25 !important;
+  border-radius: 10px !important;
+}
 
-  :global(html.inrcy-ios-airprint-compact) .previewBottomGrid {
-    grid-template-columns: minmax(0, 1fr) 45mm !important;
-    gap: 4mm !important;
-    margin-top: 3mm !important;
-    font-size: 7.6pt !important;
-    line-height: 1.15 !important;
-  }
+.pdfExportStaging .previewPartyTitle {
+  margin-bottom: 4px !important;
+  font-size: 11px !important;
+}
 
-  :global(html.inrcy-ios-airprint-compact) .previewTotalsBox {
-    padding: 7px !important;
-    border-radius: 8px !important;
-    font-size: 8pt !important;
-    line-height: 1.12 !important;
-  }
+.pdfExportStaging .table {
+  width: 100% !important;
+  table-layout: fixed !important;
+  border-collapse: collapse !important;
+  margin: 0 !important;
+}
 
-  :global(html.inrcy-ios-airprint-compact) .previewTotalsMain {
-    font-size: 10.5pt !important;
-  }
+.pdfExportStaging .table thead {
+  display: table-header-group !important;
+}
 
-  :global(html.inrcy-ios-airprint-compact) .previewSignatureGrid {
-    grid-template-columns: minmax(0, 1fr) 45mm !important;
-    gap: 4mm !important;
-    margin-top: 3mm !important;
-  }
+.pdfExportStaging .table th,
+.pdfExportStaging .table td {
+  padding: 4px !important;
+  font-size: 10.5px !important;
+  line-height: 1.22 !important;
+  vertical-align: top !important;
+  overflow-wrap: anywhere !important;
+}
 
-  :global(html.inrcy-ios-airprint-compact) .previewSignatureBox {
-    min-height: 14mm !important;
-    padding: 6px !important;
-    border-radius: 8px !important;
-    font-size: 7.8pt !important;
-    break-inside: avoid !important;
-    page-break-inside: avoid !important;
-  }
+.pdfExportStaging .documentPrintContinuation {
+  display: block !important;
+  color: #64748b !important;
+  font-size: 11px !important;
+  line-height: 1.25 !important;
+  font-weight: 800 !important;
+  margin: 0 0 11px 0 !important;
+}
 
-  :global(html.inrcy-ios-airprint-compact) .previewFrame::before {
-    inset: 0.5mm !important;
-  }
+.pdfExportStaging .documentPrintFooter {
+  margin-top: auto !important;
+}
+
+.pdfExportStaging .previewBottomGrid {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) 189px !important;
+  gap: 23px !important;
+  margin-top: 19px !important;
+  font-size: 10.5px !important;
+  line-height: 1.25 !important;
+}
+
+.pdfExportStaging .previewBottomGrid > *,
+.pdfExportStaging .previewTotalsBox {
+  break-inside: avoid !important;
+  page-break-inside: avoid !important;
+}
+
+.pdfExportStaging .previewTotalsBox {
+  padding: 8px !important;
+  border-radius: 10px !important;
+  font-size: 11px !important;
+  line-height: 1.2 !important;
+}
+
+.pdfExportStaging .previewTotalsMain {
+  font-size: 14px !important;
+}
+
+.pdfExportStaging .previewSignatureGrid {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) 189px !important;
+  gap: 23px !important;
+  margin-top: 19px !important;
+  align-items: end !important;
+}
+
+.pdfExportStaging .previewSignatureBox {
+  min-height: 68px !important;
+  padding: 7px !important;
+  border-radius: 8px !important;
+  font-size: 11px !important;
+}
+
+.pdfExportStaging .previewColoredParties .previewPartyCard,
+.pdfExportStaging .previewDesignEncadre .previewPartyCard,
+.pdfExportStaging .previewDesignSignature .previewPartyCard,
+.pdfExportStaging .previewColoredTotals .previewTotalsBox,
+.pdfExportStaging .previewDesignBusiness .previewTotalsBox,
+.pdfExportStaging .previewDesignEncadre .previewTotalsBox,
+.pdfExportStaging .previewDesignSignature .previewTotalsBox {
+  background: var(--doc-accent-soft) !important;
+  border-color: var(--doc-accent-border) !important;
+}
+
+.pdfExportStaging .previewPartyTitle,
+.pdfExportStaging .previewTotalsMain,
+.pdfExportStaging .previewDesignBusiness .title,
+.pdfExportStaging .previewDesignEncadre .title,
+.pdfExportStaging .previewDesignSignature .title,
+.pdfExportStaging .previewDesignBusiness .table thead th,
+.pdfExportStaging .previewDesignEncadre .table thead th,
+.pdfExportStaging .previewDesignSignature .table thead th {
+  color: var(--doc-accent) !important;
+}
+
+.pdfExportStaging .previewFrame .documentPrintPage {
+  border: 2px solid var(--doc-accent) !important;
 }

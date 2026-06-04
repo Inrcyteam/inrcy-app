@@ -35,9 +35,7 @@ import {
 } from "../../_documents/documentTemplateUtils";
 
 
-const IOS_AIRPRINT_COMPACT_CLASS = "inrcy-ios-airprint-compact";
-
-function isIOSAirPrintDevice(): boolean {
+function isIOSPdfPrintDevice(): boolean {
   if (typeof navigator === "undefined") return false;
 
   const userAgent = navigator.userAgent || "";
@@ -50,13 +48,81 @@ function isIOSAirPrintDevice(): boolean {
   );
 }
 
-function prepareIOSAirPrintCompactMode(): void {
-  if (typeof document === "undefined") return;
-  if (!isIOSAirPrintDevice()) return;
+function makePdfFilename(rawName: string, fallbackName: string): string {
+  const normalized = rawName
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
 
-  // Safari / AirPrint iOS imprime avec une zone utile plus petite qu'Android.
-  // On active donc un gabarit print compact uniquement pour iPhone/iPad.
-  document.documentElement.classList.add(IOS_AIRPRINT_COMPACT_CLASS);
+  return `${normalized || fallbackName}.pdf`;
+}
+
+function openPdfPreparingWindow(): Window | null {
+  if (typeof window === "undefined") return null;
+
+  const openedWindow = window.open("", "_blank");
+  if (!openedWindow) return null;
+
+  openedWindow.document.write(`<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Préparation du PDF</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #111827;
+      background: #ffffff;
+    }
+    div {
+      max-width: 320px;
+      padding: 24px;
+      text-align: center;
+      line-height: 1.45;
+    }
+    strong { display: block; margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+  <div>
+    <strong>Préparation du PDF…</strong>
+    Le document va s’ouvrir automatiquement.
+  </div>
+</body>
+</html>`);
+  openedWindow.document.close();
+
+  return openedWindow;
+}
+
+function openPdfBlob(blob: Blob, filename: string, targetWindow?: Window | null): void {
+  if (typeof window === "undefined" || typeof document === "undefined") return;
+
+  const url = URL.createObjectURL(blob);
+  const revokeLater = () => window.setTimeout(() => URL.revokeObjectURL(url), 120_000);
+
+  if (targetWindow && !targetWindow.closed) {
+    targetWindow.location.href = url;
+    revokeLater();
+    return;
+  }
+
+  const link = document.createElement("a");
+  link.href = url;
+  link.target = "_blank";
+  link.rel = "noopener";
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  revokeLater();
 }
 
 type Profile = {
@@ -882,6 +948,7 @@ export default function NewDevisPage() {
   const [isFinalized, setIsFinalized] = useState(false);
   const [finalizedAt, setFinalizedAt] = useState<string>("");
   const [finalizing, setFinalizing] = useState(false);
+  const [pdfPreparing, setPdfPreparing] = useState(false);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -1488,7 +1555,42 @@ export default function NewDevisPage() {
 
   const print = async () => {
     setIsEditingProvider(false);
-    prepareIOSAirPrintCompactMode();
+
+    if (isIOSPdfPrintDevice()) {
+      const waitingWindow = openPdfPreparingWindow();
+      setPdfPreparing(true);
+      setFormMessage({
+        type: "success",
+        text: "Préparation du PDF iPhone…",
+      });
+
+      try {
+        const pdfBlob = await buildPdfBlob();
+        if (!pdfBlob) throw new Error("PDF_BLOB_EMPTY");
+
+        openPdfBlob(
+          pdfBlob,
+          makePdfFilename(number || generateNumber("DEV"), "devis"),
+          waitingWindow,
+        );
+        setFormMessage({
+          type: "success",
+          text: "PDF ouvert. Sur iPhone : bouton Partager, puis Imprimer.",
+        });
+      } catch (error) {
+        console.error("[devis] iOS PDF print failed", error);
+        if (waitingWindow && !waitingWindow.closed) waitingWindow.close();
+        setFormMessage({
+          type: "error",
+          text: "Impossible de préparer le PDF. Réessayez ou utilisez l’envoi par mail.",
+        });
+      } finally {
+        setPdfPreparing(false);
+      }
+
+      return;
+    }
+
     await waitForDomUpdate();
     window.print();
   };
@@ -1499,11 +1601,70 @@ export default function NewDevisPage() {
     });
 
   const buildPdfBlob = async (): Promise<Blob | null> => {
-    if (typeof window === "undefined") return null;
+    if (typeof window === "undefined" || typeof document === "undefined") return null;
+
     setIsEditingProvider(false);
     await waitForDomUpdate();
+
     const el = previewRef.current;
     if (!el) return null;
+
+    const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
+      import("html2canvas"),
+      import("jspdf"),
+    ]);
+
+    const pdf = new jsPDF("p", "mm", "a4");
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const printPages = el.querySelector(`.${styles.documentPrintPages}`) as HTMLElement | null;
+
+    if (printPages) {
+      const staging = document.createElement("div");
+      staging.className = styles.pdfExportStaging;
+
+      const printPagesClone = printPages.cloneNode(true) as HTMLElement;
+      const previewClasses =
+        typeof el.className === "string" ? el.className : "";
+      printPagesClone.className = `${printPagesClone.className} ${previewClasses}`.trim();
+      printPagesClone.removeAttribute("aria-hidden");
+      staging.appendChild(printPagesClone);
+      document.body.appendChild(staging);
+
+      try {
+        await waitForDomUpdate();
+
+        const pageEls = Array.from(
+          printPagesClone.querySelectorAll(`.${styles.documentPrintPage}`),
+        ) as HTMLElement[];
+
+        if (pageEls.length) {
+          for (const [index, pageEl] of pageEls.entries()) {
+            const canvas = await html2canvas(pageEl, {
+              scale: 2,
+              useCORS: true,
+              backgroundColor: "#ffffff",
+              windowWidth: 794,
+              windowHeight: 1123,
+            });
+
+            if (index > 0) pdf.addPage();
+            pdf.addImage(
+              canvas.toDataURL("image/png"),
+              "PNG",
+              0,
+              0,
+              pageWidth,
+              pageHeight,
+            );
+          }
+
+          return pdf.output("blob") as Blob;
+        }
+      } finally {
+        staging.remove();
+      }
+    }
 
     const hiddenSelector = [
       styles.noPrint,
@@ -1531,11 +1692,6 @@ export default function NewDevisPage() {
       node.style.display = "block";
     });
 
-    const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
-      import("html2canvas"),
-      import("jspdf"),
-    ]);
-
     let canvas: HTMLCanvasElement;
     try {
       canvas = await html2canvas(el, {
@@ -1553,10 +1709,6 @@ export default function NewDevisPage() {
     }
 
     const imgData = canvas.toDataURL("image/png");
-    const pdf = new jsPDF("p", "mm", "a4");
-
-    const pageWidth = pdf.internal.pageSize.getWidth();
-    const pageHeight = pdf.internal.pageSize.getHeight();
     const imgProps = (pdf as any).getImageProperties(imgData);
     const imgWidth = pageWidth;
     const imgHeight = (imgProps.height * imgWidth) / imgProps.width;
@@ -2812,8 +2964,8 @@ export default function NewDevisPage() {
                   </>
                 )}
               </button>
-              <button type="button" onClick={print} disabled={finalizing}>
-                Imprimer / PDF
+              <button type="button" onClick={print} disabled={finalizing || pdfPreparing}>
+                {pdfPreparing ? "Préparation PDF…" : "Imprimer / PDF"}
               </button>
             </div>
 
