@@ -2143,9 +2143,9 @@
 }
 
 /* =========================================================
-   Export PDF fiable pour iPhone / Safari
-   On ne passe plus par AirPrint HTML sur iOS : le PDF est généré
-   depuis ces pages A4 fixes, puis ouvert dans le lecteur PDF natif.
+   Export PDF interne pour les pièces jointes Factures / Devis.
+   Ce bloc ne pilote pas le bouton Imprimer : iPhone, Android et desktop
+   passent tous par le même window.print().
    ========================================================= */
 .pdfExportStaging {
   position: fixed;

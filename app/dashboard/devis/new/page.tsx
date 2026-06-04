@@ -35,95 +35,6 @@ import {
 } from "../../_documents/documentTemplateUtils";
 
 
-function isIOSPdfPrintDevice(): boolean {
-  if (typeof navigator === "undefined") return false;
-
-  const userAgent = navigator.userAgent || "";
-  const platform = navigator.platform || "";
-  const maxTouchPoints = navigator.maxTouchPoints || 0;
-
-  return (
-    /iPad|iPhone|iPod/i.test(userAgent) ||
-    (platform === "MacIntel" && maxTouchPoints > 1)
-  );
-}
-
-function makePdfFilename(rawName: string, fallbackName: string): string {
-  const normalized = rawName
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-zA-Z0-9._-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 80);
-
-  return `${normalized || fallbackName}.pdf`;
-}
-
-function openPdfPreparingWindow(): Window | null {
-  if (typeof window === "undefined") return null;
-
-  const openedWindow = window.open("", "_blank");
-  if (!openedWindow) return null;
-
-  openedWindow.document.write(`<!doctype html>
-<html lang="fr">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Préparation du PDF</title>
-  <style>
-    body {
-      margin: 0;
-      min-height: 100vh;
-      display: grid;
-      place-items: center;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      color: #111827;
-      background: #ffffff;
-    }
-    div {
-      max-width: 320px;
-      padding: 24px;
-      text-align: center;
-      line-height: 1.45;
-    }
-    strong { display: block; margin-bottom: 8px; }
-  </style>
-</head>
-<body>
-  <div>
-    <strong>Préparation du PDF…</strong>
-    Le document va s’ouvrir automatiquement.
-  </div>
-</body>
-</html>`);
-  openedWindow.document.close();
-
-  return openedWindow;
-}
-
-function openPdfBlob(blob: Blob, filename: string, targetWindow?: Window | null): void {
-  if (typeof window === "undefined" || typeof document === "undefined") return;
-
-  const url = URL.createObjectURL(blob);
-  const revokeLater = () => window.setTimeout(() => URL.revokeObjectURL(url), 120_000);
-
-  if (targetWindow && !targetWindow.closed) {
-    targetWindow.location.href = url;
-    revokeLater();
-    return;
-  }
-
-  const link = document.createElement("a");
-  link.href = url;
-  link.target = "_blank";
-  link.rel = "noopener";
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  revokeLater();
-}
 
 type Profile = {
   user_id: string;
@@ -948,7 +859,6 @@ export default function NewDevisPage() {
   const [isFinalized, setIsFinalized] = useState(false);
   const [finalizedAt, setFinalizedAt] = useState<string>("");
   const [finalizing, setFinalizing] = useState(false);
-  const [pdfPreparing, setPdfPreparing] = useState(false);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -1555,42 +1465,6 @@ export default function NewDevisPage() {
 
   const print = async () => {
     setIsEditingProvider(false);
-
-    if (isIOSPdfPrintDevice()) {
-      const waitingWindow = openPdfPreparingWindow();
-      setPdfPreparing(true);
-      setFormMessage({
-        type: "success",
-        text: "Préparation du PDF iPhone…",
-      });
-
-      try {
-        const pdfBlob = await buildPdfBlob();
-        if (!pdfBlob) throw new Error("PDF_BLOB_EMPTY");
-
-        openPdfBlob(
-          pdfBlob,
-          makePdfFilename(number || generateNumber("DEV"), "devis"),
-          waitingWindow,
-        );
-        setFormMessage({
-          type: "success",
-          text: "PDF ouvert. Sur iPhone : bouton Partager, puis Imprimer.",
-        });
-      } catch (error) {
-        console.error("[devis] iOS PDF print failed", error);
-        if (waitingWindow && !waitingWindow.closed) waitingWindow.close();
-        setFormMessage({
-          type: "error",
-          text: "Impossible de préparer le PDF. Réessayez ou utilisez l’envoi par mail.",
-        });
-      } finally {
-        setPdfPreparing(false);
-      }
-
-      return;
-    }
-
     await waitForDomUpdate();
     window.print();
   };
@@ -2964,8 +2838,8 @@ export default function NewDevisPage() {
                   </>
                 )}
               </button>
-              <button type="button" onClick={print} disabled={finalizing || pdfPreparing}>
-                {pdfPreparing ? "Préparation PDF…" : "Imprimer / PDF"}
+              <button type="button" onClick={print} disabled={finalizing}>
+                Imprimer / PDF
               </button>
             </div>
 
