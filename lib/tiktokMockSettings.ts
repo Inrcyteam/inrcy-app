@@ -99,7 +99,7 @@ export function normalizeTiktokSettings(value: unknown): TiktokMockSettings {
   return {
     connected,
     accountConnected,
-    username: asString(raw.username) || TIKTOK_DEFAULT_MOCK_ACCOUNT.username,
+    username: asString(raw.username),
     displayName: asString(raw.displayName),
     profileUrl: asString(raw.profileUrl),
     avatarUrl: asString(raw.avatarUrl),

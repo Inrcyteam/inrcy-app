@@ -254,14 +254,12 @@ export function Cube({
   const [open, setOpen] = useState(false);
   const detailsOpen = forceOpen || open;
   const isSite = model.key === "site_inrcy" || model.key === "site_web";
-  const isTikTokComingSoon = model.key === "tiktok";
-
   const action = (model as any).action ?? ({ key: "connect", title: "Connexion", detail: "", href: "#", pill: "Connexion" } as const);
   const pill = (action as any)?.pill ?? "Connexion";
   const pillKey = actionPillClassKey(pill);
 
   const connectionPending = model.key === "mails" && !!model.connectionPending;
-  const connectionOk = !isTikTokComingSoon && (connectionPending || (isSite
+  const connectionOk = (connectionPending || (isSite
     ? !!model.connections.ga4 || !!model.connections.gsc
     : !!model.connections.main));
   const headerTitle = hideDetailsToggle ? getForcedCubeContextLabel(model.key) : model.title;
@@ -298,7 +296,7 @@ export function Cube({
                 <StatusPill ok={!!model.connections.gsc} label="GSC" />
               </>
             ) : (
-              <StatusPill ok={!isTikTokComingSoon && (!!model.connections.main || connectionPending)} label={isTikTokComingSoon ? "Arrive bientôt" : connectionPending ? "Vérification" : model.connections.main ? "Connecté" : "Déconnecté"} />
+              <StatusPill ok={(!!model.connections.main || connectionPending)} label={connectionPending ? "Vérification" : model.connections.main ? "Connecté" : "Déconnecté"} />
             )}
           </div>
           {!hideDetailsToggle ? (
@@ -333,7 +331,7 @@ export function Cube({
                 <StatusPill ok={!!model.connections.gsc} label="GSC" />
               </>
             ) : (
-              <StatusPill ok={!isTikTokComingSoon && (!!model.connections.main || connectionPending)} label={isTikTokComingSoon ? "Arrive bientôt" : connectionPending ? "Vérification" : model.connections.main ? "Connecté" : "Déconnecté"} />
+              <StatusPill ok={(!!model.connections.main || connectionPending)} label={connectionPending ? "Vérification" : model.connections.main ? "Connecté" : "Déconnecté"} />
             )}
           </div>
 
@@ -383,13 +381,13 @@ export function Cube({
           </div>
 
           <button
-            className={`${styles.actionBtn} ${isTikTokComingSoon ? styles.actionBtnDisabled : connectionOk ? styles.actionBtnOn : styles.actionBtnOff}`}
-            onClick={() => (isTikTokComingSoon ? undefined : action.href ? onNavigate(action.href) : undefined)}
-            disabled={isTikTokComingSoon || model.loading || !action.href}
-            aria-disabled={isTikTokComingSoon || model.loading || !action.href}
+            className={`${styles.actionBtn} ${connectionOk ? styles.actionBtnOn : styles.actionBtnOff}`}
+            onClick={() => (action.href ? onNavigate(action.href) : undefined)}
+            disabled={model.loading || !action.href}
+            aria-disabled={model.loading || !action.href}
           >
-            <span className={styles.actionBtnDesktop}>{isTikTokComingSoon ? "Bientôt" : connectionOk ? "GO ⚡" : <>GO <PlugIcon /></>}</span>
-            <span className={styles.actionBtnMobile}>{isTikTokComingSoon ? "Bientôt" : connectionOk ? "GO ⚡" : <>GO <PlugIcon /></>}</span>
+            <span className={styles.actionBtnDesktop}>{connectionOk ? "GO ⚡" : <>GO <PlugIcon /></>}</span>
+            <span className={styles.actionBtnMobile}>{connectionOk ? "GO ⚡" : <>GO <PlugIcon /></>}</span>
           </button>
         </div>
       ) : null}
@@ -450,13 +448,13 @@ export function Cube({
                 </div>
 
                 <button
-                  className={`${styles.actionBtn} ${styles.channelInlineGoButton} ${isTikTokComingSoon ? styles.actionBtnDisabled : connectionOk ? styles.actionBtnOn : styles.actionBtnOff}`}
-                  onClick={() => (isTikTokComingSoon ? undefined : action.href ? onNavigate(action.href) : undefined)}
-                  disabled={isTikTokComingSoon || model.loading || !action.href}
-                  aria-disabled={isTikTokComingSoon || model.loading || !action.href}
+                  className={`${styles.actionBtn} ${styles.channelInlineGoButton} ${connectionOk ? styles.actionBtnOn : styles.actionBtnOff}`}
+                  onClick={() => (action.href ? onNavigate(action.href) : undefined)}
+                  disabled={model.loading || !action.href}
+                  aria-disabled={model.loading || !action.href}
                 >
-                  <span className={styles.actionBtnDesktop}>{isTikTokComingSoon ? "Bientôt" : connectionOk ? "GO ⚡" : <>GO <PlugIcon /></>}</span>
-                  <span className={styles.actionBtnMobile}>{isTikTokComingSoon ? "Bientôt" : connectionOk ? "GO ⚡" : <>GO <PlugIcon /></>}</span>
+                  <span className={styles.actionBtnDesktop}>{connectionOk ? "GO ⚡" : <>GO <PlugIcon /></>}</span>
+                  <span className={styles.actionBtnMobile}>{connectionOk ? "GO ⚡" : <>GO <PlugIcon /></>}</span>
                 </button>
               </div>
             ) : null}

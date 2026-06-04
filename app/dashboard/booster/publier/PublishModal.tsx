@@ -1601,10 +1601,6 @@ export default function PublishModal({
   };
 
   const getChannelDetailInfo = (key: ChannelKey) => {
-    // TikTok est volontairement masqué tant que le canal est en préparation :
-    // on ne montre pas le compte mock/demo dans Booster > Publier côté clients.
-    if (key === "tiktok") return null;
-
     const detail = channelDetails[key] || EMPTY_CHANNEL_DETAILS[key];
     const rawLabel = String(detail?.label || "").trim();
     const simplifiedLabel = simplifyChannelDetail(rawLabel);
@@ -2905,7 +2901,7 @@ export default function PublishModal({
         if (!hasVideo) blockers.push("Ajoutez une vidéo.");
         if (channel === "tiktok")
           warnings.push(
-            "TikTok : publication simulée en local pour valider l’UX complète.",
+            "TikTok publiera la vidéo sur le compte connecté après validation finale.",
           );
         if (channel === "gmb")
           warnings.push(
@@ -2938,7 +2934,7 @@ export default function PublishModal({
         }
         if (channel === "tiktok" && hasImage)
           warnings.push(
-            "TikTok : publication photos simulée en local pour valider l’UX complète.",
+            "TikTok publiera les photos sur le compte connecté après validation finale.",
           );
       } else if (channel === "instagram") {
         blockers.push("Instagram nécessite une vidéo ou au moins 1 image.");

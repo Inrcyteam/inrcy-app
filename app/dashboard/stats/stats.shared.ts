@@ -716,7 +716,9 @@ function computeOpportunityPerDaySocial(cubeKey: CubeKey, ov: Overview): number 
   const refs =
     cubeKey === "instagram"
       ? { imp: 2500, eng: 120, cta: 6, aud: 3000 }
-      : { imp: 3000, eng: 90, cta: 5, aud: 5000 };
+      : cubeKey === "tiktok"
+        ? { imp: 3200, eng: 160, cta: 5, aud: 2500 }
+        : { imp: 3000, eng: 90, cta: 5, aud: 5000 };
 
   const exposureN = logNorm(impressionsPerDay, refs.imp);
   const engagementN = logNorm(engagementsPerDay, refs.eng);
@@ -1459,7 +1461,7 @@ export function buildInsights(cubeKey: CubeKey, ov: Overview, qualityScore: numb
     if (!ov?.sources?.tiktok?.connected) {
       return ["Canal non connecté : aucune lecture possible.", "Connectez TikTok pour préparer vos publications photos et vidéos."];
     }
-    return ["TikTok est prêt en mock local.", "Publiez régulièrement des photos ou vidéos courtes pour activer ce nouveau levier."];
+    return ["TikTok est connecté et mesurable.", "Publiez régulièrement des photos ou vidéos courtes pour développer votre audience."];
   }
 
   if (cubeKey === "gmb") {
@@ -1608,9 +1610,9 @@ function buildVisibilityStats(cubeKey: CubeKey, ov: Overview): CubeMetricItem[] 
     if (!ov?.sources?.tiktok?.connected) return [];
     const m = ov?.sources?.tiktok?.metrics;
     pushNumberMetric(items, "Vues vidéo", safeNum(m?.totals?.video_views) || safeNum(m?.totals?.views), { available: metricKeyExists(m, ["video_views", "views"]) });
-    pushNumberMetric(items, "Impressions", safeNum(m?.totals?.impressions), { available: metricKeyExists(m, ["impressions"]) });
-    pushNumberMetric(items, "Vues profil", safeNum(m?.totals?.profile_views), { available: metricKeyExists(m, ["profile_views"]) });
     pushNumberMetric(items, "Abonnés", safeNum(m?.totals?.followers), { available: metricKeyExists(m, ["followers"]) });
+    pushNumberMetric(items, "J’aime reçus", safeNum(m?.totals?.likes_total), { available: metricKeyExists(m, ["likes_total"]) });
+    pushNumberMetric(items, "Vidéos profil", safeNum(m?.totals?.video_count), { available: metricKeyExists(m, ["video_count"]) });
     return firstFour(items);
   }
 
@@ -1714,11 +1716,10 @@ function buildActionStats(cubeKey: CubeKey, ov: Overview): CubeMetricItem[] {
     if (!ov?.sources?.tiktok?.connected) return [];
     const m = ov?.sources?.tiktok?.metrics;
     const interactions = sumMetricValues(m, ["engagements", "likes", "comments", "shares", "saves"]);
-    const clicks = sumMetricValues(m, ["website_clicks", "profile_clicks", "profile_views"]);
-    const messages = sumMetricValues(m, ["messages", "comments"]);
     pushNumberMetric(items, "Interactions", interactions, { available: metricKeyExists(m, ["engagements", "likes", "comments", "shares", "saves"]) });
-    pushNumberMetric(items, "Clics", clicks, { available: metricKeyExists(m, ["website_clicks", "profile_clicks", "profile_views"]) });
-    pushNumberMetric(items, "Messages", messages, { available: metricKeyExists(m, ["messages", "comments"]) });
+    pushNumberMetric(items, "J’aime", safeNum(m?.totals?.likes), { available: metricKeyExists(m, ["likes"]) });
+    pushNumberMetric(items, "Commentaires", safeNum(m?.totals?.comments), { available: metricKeyExists(m, ["comments"]) });
+    pushNumberMetric(items, "Partages", safeNum(m?.totals?.shares), { available: metricKeyExists(m, ["shares"]) });
     pushNumberMetric(items, "Posts", safeNum(m?.totals?.postsPublished), { available: metricKeyExists(m, ["postsPublished"]) });
     return firstFour(items);
   }
@@ -1952,7 +1953,7 @@ export function buildSummaryActionItems({
     tiktok: {
       label: "Utiliser Booster",
       kicker: "Activez vos contenus courts",
-      motive: "Booster vous aidera à publier photos et vidéos TikTok depuis le même flux.",
+      motive: "Booster vous aide à publier photos et vidéos TikTok depuis le même flux.",
       badge: "Booster",
     },
     site_web: {
@@ -2009,7 +2010,7 @@ export function buildSummaryActionItems({
     tiktok: {
       label: "Connecter TikTok",
       kicker: "Préparez le canal vidéo/photo",
-      motive: "Reliez TikTok pour tester l’expérience complète avant le branchement API officiel.",
+      motive: "Reliez TikTok pour publier photos et vidéos, suivre le profil et lire les vidéos publiques dans iNrStats.",
       badge: "Connexion",
     },
     site_web: {

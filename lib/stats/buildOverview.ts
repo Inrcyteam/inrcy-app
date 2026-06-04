@@ -3,12 +3,14 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import type { StatsSourceKey } from "@/lib/googleStats";
-import { tryDecryptToken } from "@/lib/oauthCrypto";
+import { encryptToken, tryDecryptToken } from "@/lib/oauthCrypto";
 import { getChannelConnectionStates } from "@/lib/channelConnectionState";
 import { hasActiveInrcySite } from "@/lib/inrcySite";
 import { decodeBusinessSector } from "@/lib/activitySectors";
 import { buildSnapshotWindow } from "@/lib/stats/snapshotWindow";
 import { getLinkedInAccessToken } from "@/lib/linkedinOAuth";
+import { refreshTiktokAccessToken } from "@/lib/tiktokOAuth";
+import { fetchTiktokAnalyticsSnapshot } from "@/lib/tiktokAnalytics";
 
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v)
@@ -597,7 +599,7 @@ export async function buildStatsOverview(args: {
   const { data: integrationsAll = [] } = await supabase
     .from("integrations")
     .select(
-      "provider,source,product,status,resource_id,resource_label,access_token_enc,expires_at,meta,updated_at,created_at",
+      "provider,source,product,status,resource_id,resource_label,display_name,access_token_enc,refresh_token_enc,scopes,expires_at,meta,updated_at,created_at",
     )
     .eq("user_id", userId);
 
@@ -1662,21 +1664,90 @@ export async function buildStatsOverview(args: {
     ga4: channelStates.site_web.ga4,
     gsc: channelStates.site_web.gsc,
   };
-  sourcesStatus.tiktok.connected = isStatsActiveConnection(channelStates.tiktok);
-  sourcesStatus.tiktok.metrics = sourcesStatus.tiktok.connected
-    ? {
-        totals: {
-          impressions: 0,
-          engagements: 0,
-          video_views: 0,
-          profile_views: 0,
-          followers: 0,
-          postsPublished: 0,
-        },
-        mock: true,
-        note: "TikTok connecté en mock local : statistiques réelles à brancher après API officielle.",
+  // TikTok: Display API / User Info + video.list.
+  // Données réelles : profil (followers/likes/vidéos) + vidéos publiques publiées sur la période.
+  try {
+    const tiktokRow = bestIntegrationAny(
+      "tiktok",
+      "tiktok",
+      "tiktok",
+      (row) => Boolean(row["access_token_enc"] || row["refresh_token_enc"]),
+    );
+    const tiktokHasAuth = Boolean(tiktokRow["access_token_enc"] || tiktokRow["refresh_token_enc"]);
+    const tiktokStatus = String(tiktokRow["status"] || "");
+    const tiktokExpiredWithoutRefresh = isExpired(tiktokRow["expires_at"]) && !tiktokRow["refresh_token_enc"];
+    sourcesStatus.tiktok.connected = Boolean(
+      (tiktokStatus === "connected" || tiktokStatus === "account_connected") &&
+        tiktokRow["resource_id"] &&
+        tiktokHasAuth &&
+        !tiktokExpiredWithoutRefresh,
+    );
+
+    const includeTikTok = includeAll || includeSet.has("tiktok");
+    if (!includeTikTok) {
+      sourcesStatus.tiktok.metrics = null;
+    } else if (sourcesStatus.tiktok.connected) {
+      try {
+        let accessToken = tryDecryptToken(String(tiktokRow["access_token_enc"] || "")) || "";
+        const refreshToken = tryDecryptToken(String(tiktokRow["refresh_token_enc"] || "")) || "";
+
+        if ((!accessToken || isExpired(tiktokRow["expires_at"])) && refreshToken) {
+          const refreshed = await refreshTiktokAccessToken(refreshToken);
+          const nextAccessToken = String(refreshed["access_token"] || "").trim();
+          const nextRefreshToken = String(refreshed["refresh_token"] || "").trim() || refreshToken;
+          const expiresIn = Number(refreshed["expires_in"] || 0);
+          const refreshExpiresIn = Number(refreshed["refresh_expires_in"] || 0);
+          const expiresAt = Number.isFinite(expiresIn) && expiresIn > 0
+            ? new Date(Date.now() + expiresIn * 1000).toISOString()
+            : null;
+          const nextMeta = {
+            ...asRecord(tiktokRow["meta"]),
+            refresh_expires_at: Number.isFinite(refreshExpiresIn) && refreshExpiresIn > 0
+              ? new Date(Date.now() + refreshExpiresIn * 1000).toISOString()
+              : asRecord(tiktokRow["meta"])["refresh_expires_at"] || null,
+            tiktok_token_refreshed_at: new Date().toISOString(),
+          };
+
+          if (nextAccessToken) {
+            await supabase
+              .from("integrations")
+              .update({
+                access_token_enc: encryptToken(nextAccessToken),
+                refresh_token_enc: nextRefreshToken ? encryptToken(nextRefreshToken) : tiktokRow["refresh_token_enc"] || null,
+                expires_at: expiresAt || tiktokRow["expires_at"] || null,
+                meta: nextMeta,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("user_id", userId)
+              .eq("provider", "tiktok")
+              .eq("source", "tiktok")
+              .eq("product", "tiktok");
+            accessToken = nextAccessToken;
+          }
+        }
+
+        if (!accessToken) {
+          throw new Error("Connexion TikTok expirée. Reconnecte TikTok dans Canaux.");
+        }
+
+        sourcesStatus.tiktok.metrics = await fetchTiktokAnalyticsSnapshot({
+          accessToken,
+          start: dateWindow.start,
+          end: dateWindow.end,
+        });
+      } catch (e) {
+        console.error("[TIKTOK_STATS_REAL_ERROR]", e);
+        sourcesStatus.tiktok.metrics = {
+          error: getSimpleFrenchErrorMessage(
+            e,
+            "Impossible de récupérer les statistiques TikTok pour le moment.",
+          ),
+        };
       }
-    : null;
+    } else {
+      sourcesStatus.tiktok.metrics = null;
+    }
+  } catch {}
 
   // Facebook: connected if a page has been selected (resource_id)
   try {
@@ -2365,7 +2436,7 @@ export async function buildStatsOverview(args: {
         profession: decodedBusinessSector.profession || null,
       },
       sources: sourcesStatus,
-      note: "Sources connectées: site iNrCy (GA4/GSC), site web (GA4/GSC), GMB, Facebook, Instagram, LinkedIn.",
+      note: "Sources connectées: site iNrCy (GA4/GSC), site web (GA4/GSC), GMB, Facebook, Instagram, LinkedIn, TikTok.",
       meta: {
         generatedAt,
         snapshotDate: dateWindow.snapshotDate,

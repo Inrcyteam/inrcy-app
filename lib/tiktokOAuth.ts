@@ -102,3 +102,17 @@ export async function fetchTiktokCreatorInfo(accessToken: string) {
   }
   return asRecord(rec["data"]);
 }
+
+export async function refreshTiktokAccessToken(refreshToken: string) {
+  const clientKey = process.env.TIKTOK_CLIENT_KEY;
+  const clientSecret = process.env.TIKTOK_CLIENT_SECRET;
+  if (!clientKey || !clientSecret) {
+    throw new Error("Configuration TikTok incomplète côté serveur.");
+  }
+  return tiktokPostForm("https://open.tiktokapis.com/v2/oauth/token/", {
+    client_key: clientKey,
+    client_secret: clientSecret,
+    grant_type: "refresh_token",
+    refresh_token: refreshToken,
+  });
+}

@@ -1,23 +1,24 @@
 import { NextResponse } from "next/server";
 
 import { requireUser } from "@/lib/requireUser";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import {
   buildTiktokSettingsPatch,
   normalizeTiktokCommercialContent,
   normalizeTiktokPreferredMedia,
   normalizeTiktokProfileUrl,
 } from "@/lib/tiktokMockSettings";
-import { readTiktokSettings, saveTiktokSettings } from "@/lib/tiktokRouteStorage";
+import { readTiktokSettings, readTiktokSettingsWithOAuth, saveTiktokSettings } from "@/lib/tiktokRouteStorage";
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
 export async function GET() {
-  const { supabase, user, errorResponse } = await requireUser();
+  const { user, errorResponse } = await requireUser();
   if (errorResponse) return errorResponse;
 
-  const { tiktok } = await readTiktokSettings(supabase, user.id);
+  const { tiktok } = await readTiktokSettingsWithOAuth(supabaseAdmin, user.id);
   return NextResponse.json({ ok: true, tiktok });
 }
 
@@ -55,7 +56,8 @@ export async function POST(request: Request) {
   if (Object.keys(defaultPatch).length) patch.defaults = defaultPatch;
 
   const next = buildTiktokSettingsPatch(current, patch);
-  await saveTiktokSettings(supabase, user.id, root, next);
+  await saveTiktokSettings(supabaseAdmin, user.id, root, next);
+  const refreshed = await readTiktokSettingsWithOAuth(supabaseAdmin, user.id);
 
-  return NextResponse.json({ ok: true, tiktok: next });
+  return NextResponse.json({ ok: true, tiktok: refreshed.tiktok });
 }

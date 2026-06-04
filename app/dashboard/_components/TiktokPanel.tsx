@@ -196,7 +196,6 @@ export default function TiktokPanel(props: any) {
       <div style={cardStyle}>
         <div className={styles.blockHeaderRow}>
           <div className={styles.blockTitle}>Réglages TikTok par défaut</div>
-          <ConnectionPill connected={tiktokConnected} />
         </div>
         <div className={styles.blockSub}>
           Ces préférences serviront dans Booster pour préparer la publication TikTok photo et vidéo avant validation finale.

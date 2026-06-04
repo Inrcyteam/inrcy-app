@@ -268,11 +268,13 @@ export async function getChannelConnectionStates(
   const tkExpired = isExpired(tk.expires_at) && !tkHasRefreshToken;
   const tkStatus = asString(tk.status);
   const tkMeta = asRecord(tk.meta);
-  const tiktokConnected = Boolean(((tkStatus === "connected" || tkStatus === "account_connected") && tkHasReusableAuth && !tkExpired) || (tiktokSettings.connected && tiktokSettings.accountConnected));
+  // TikTok est connecté uniquement si une intégration OAuth réelle est active.
+  // Les anciens réglages/mock ou un simple lien public ne doivent jamais rendre la bulle verte.
+  const tiktokConnected = Boolean((tkStatus === "connected" || tkStatus === "account_connected") && tkHasReusableAuth && !tkExpired);
   const tiktokConnectionStatus = getConnectionDisplayStatus(tiktokConnected, "channel:tiktok", tkMeta);
   const tiktokRequiresUpdate = tiktokConnectionStatus === "needs_update";
   const tiktokUsername = asString(tkMeta.username) || asString(tk.resource_label) || tiktokSettings.username || null;
-  const tiktokProfileUrl = asString(tkMeta.profile_url) || tiktokSettings.profileUrl || null;
+  const tiktokProfileUrl = tiktokSettings.profileUrl || asString(tkMeta.profile_url) || null;
 
   const mailRows = rows.filter((row) => row.category === "mail");
   const mailConnectedCount = Math.max(0, Math.min(4, mailRows.length));

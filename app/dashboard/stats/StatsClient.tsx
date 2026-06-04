@@ -1464,22 +1464,21 @@ useEffect(() => {
 
               {models.map((model) => {
                 const isSite = model.key === "site_inrcy" || model.key === "site_web";
-                const isTikTokComingSoon = model.key === "tiktok";
                 const connectionPending = model.key === "mails" && !!model.connectionPending;
-                const connected = !isTikTokComingSoon && (connectionPending || (isSite ? !!model.connections.ga4 || !!model.connections.gsc : !!model.connections.main));
+                const connected = (connectionPending || (isSite ? !!model.connections.ga4 || !!model.connections.gsc : !!model.connections.main));
                 const isActive = activeStatsPanel === model.key;
 
                 return (
                   <button
                     type="button"
                     key={model.key}
-                    className={`${styles.statsMobileDrawerItem} ${isActive ? styles.statsMobileDrawerItemActive : ""} ${isTikTokComingSoon ? styles.statsRailItemDisabled : connected ? styles.statsRailItemConnected : styles.statsRailItemOff}`}
+                    className={`${styles.statsMobileDrawerItem} ${isActive ? styles.statsMobileDrawerItemActive : ""} ${connected ? styles.statsRailItemConnected : styles.statsRailItemOff}`}
                     onClick={() => selectStatsPanel(model.key)}
                   >
                     <span className={styles.statsRailDot} aria-hidden />
                     <span className={styles.statsRailText}>
                       <b>{model.title}</b>
-                      <small>{isTikTokComingSoon ? "Arrive bientôt" : connectionPending ? "Vérification" : connected ? "Connecté" : "Déconnecté"}</small>
+                      <small>{connectionPending ? "Vérification" : connected ? "Connecté" : "Déconnecté"}</small>
                     </span>
                     <span className={styles.statsRailValue}>+{fmtInt(model.opportunity30)}</span>
                   </button>
@@ -1507,22 +1506,21 @@ useEffect(() => {
 
           {models.map((model) => {
             const isSite = model.key === "site_inrcy" || model.key === "site_web";
-            const isTikTokComingSoon = model.key === "tiktok";
             const connectionPending = model.key === "mails" && !!model.connectionPending;
-            const connected = !isTikTokComingSoon && (connectionPending || (isSite ? !!model.connections.ga4 || !!model.connections.gsc : !!model.connections.main));
+            const connected = (connectionPending || (isSite ? !!model.connections.ga4 || !!model.connections.gsc : !!model.connections.main));
             const isActive = activeStatsPanel === model.key;
 
             return (
               <button
                 key={model.key}
                 type="button"
-                className={`${styles.statsRailItem} ${isActive ? styles.statsRailItemActive : ""} ${isTikTokComingSoon ? styles.statsRailItemDisabled : connected ? styles.statsRailItemConnected : styles.statsRailItemOff}`}
+                className={`${styles.statsRailItem} ${isActive ? styles.statsRailItemActive : ""} ${connected ? styles.statsRailItemConnected : styles.statsRailItemOff}`}
                 onClick={() => selectStatsPanel(model.key)}
               >
                 <span className={styles.statsRailDot} aria-hidden />
                 <span className={styles.statsRailText}>
                   <b>{model.title}</b>
-                  <small>{isTikTokComingSoon ? "Arrive bientôt" : connectionPending ? "Vérification" : connected ? "Connecté" : "Déconnecté"}</small>
+                  <small>{connectionPending ? "Vérification" : connected ? "Connecté" : "Déconnecté"}</small>
                 </span>
                 <span className={styles.statsRailValue}>+{fmtInt(model.opportunity30)}</span>
               </button>
@@ -1570,14 +1568,13 @@ useEffect(() => {
                   const channelText = model.insights.find((text) => !text.toLowerCase().startsWith("recommandation")) || model.capturedLeadsHint || model.subtitle;
                   const actionText = actionItem?.kicker || model.action.title;
                   const isSite = model.key === "site_inrcy" || model.key === "site_web";
-                  const isTikTokComingSoon = model.key === "tiktok";
-                  const connectionPending = model.key === "mails" && !!model.connectionPending;
-                  const connected = !isTikTokComingSoon && (connectionPending || (isSite ? !!model.connections.ga4 || !!model.connections.gsc : !!model.connections.main));
+                    const connectionPending = model.key === "mails" && !!model.connectionPending;
+                  const connected = (connectionPending || (isSite ? !!model.connections.ga4 || !!model.connections.gsc : !!model.connections.main));
 
                   return (
                     <article
                       key={model.key}
-                      className={`${styles.allStatsActionCard} ${isTikTokComingSoon ? styles.allStatsActionCardDisabled : connected ? styles.allStatsActionCardConnected : styles.allStatsActionCardOff}`}
+                      className={`${styles.allStatsActionCard} ${connected ? styles.allStatsActionCardConnected : styles.allStatsActionCardOff}`}
                     >
                       <button
                         type="button"
@@ -1606,18 +1603,18 @@ useEffect(() => {
 
                       <div className={styles.allStatsRecommendedAction}>
                         <span className={`${styles.allStatsToolBadge} ${connected ? "" : styles.allStatsToolBadgeConnect}`}>
-                          {isTikTokComingSoon ? "Arrive bientôt" : actionItem?.badge ?? model.action.pill}
+                          {actionItem?.badge ?? model.action.pill}
                         </span>
                       </div>
 
                       <button
                         type="button"
-                        className={`${styles.allStatsGoButton} ${isTikTokComingSoon ? styles.allStatsGoButtonDisabled : connected ? styles.allStatsGoButtonOn : styles.allStatsGoButtonConnect}`}
-                        onClick={() => isTikTokComingSoon ? undefined : actionHref && actionHref !== "#" ? navigateFromStats(actionHref) : scrollTo(model.key)}
-                        disabled={isTikTokComingSoon}
-                        title={isTikTokComingSoon ? "TikTok arrive bientôt" : connected ? "Lancer l’action recommandée" : "Configurer ce canal"}
+                        className={`${styles.allStatsGoButton} ${connected ? styles.allStatsGoButtonOn : styles.allStatsGoButtonConnect}`}
+                        onClick={() => actionHref && actionHref !== "#" ? navigateFromStats(actionHref) : scrollTo(model.key)}
+                        disabled={false}
+                        title={connected ? "Lancer l’action recommandée" : "Configurer ce canal"}
                       >
-                        {isTikTokComingSoon ? "Bientôt" : connected ? "GO ⚡" : <>GO <PlugIcon /></>}
+                        {connected ? "GO ⚡" : <>GO <PlugIcon /></>}
                       </button>
                     </article>
                   );

@@ -7,7 +7,6 @@ import {
   normalizeTiktokDefaults,
   normalizeTiktokPreferredMedia,
   normalizeTiktokSettings,
-  TIKTOK_DEFAULT_MOCK_ACCOUNT,
   type TiktokCommercialContent,
   type TiktokPreferredMedia,
 } from "@/lib/tiktokMockSettings";
@@ -26,7 +25,7 @@ async function readJson(res: Response) {
 
 export function useTiktokChannel({ panel }: UseTiktokChannelArgs) {
   const [tiktokConnected, setTiktokConnected] = useState(false);
-  const [tiktokUsername, setTiktokUsername] = useState(TIKTOK_DEFAULT_MOCK_ACCOUNT.username);
+  const [tiktokUsername, setTiktokUsername] = useState("");
   const [tiktokProfileUrl, setTiktokProfileUrl] = useState("");
   const [tiktokProfileUrlNotice, setTiktokProfileUrlNotice] = useState<string | null>(null);
   const [tiktokProfileUrlError, setTiktokProfileUrlError] = useState<string | null>(null);
@@ -59,7 +58,7 @@ export function useTiktokChannel({ panel }: UseTiktokChannelArgs) {
     const defaults = normalizeTiktokDefaults(tiktok.defaults);
 
     setTiktokConnected(Boolean(tiktok.connected));
-    setTiktokUsername(tiktok.username || TIKTOK_DEFAULT_MOCK_ACCOUNT.username);
+    setTiktokUsername(tiktok.connected ? (tiktok.username || "") : "");
     setTiktokProfileUrl(tiktok.profileUrl || "");
     setTiktokPreferredMediaState(defaults.preferredMedia);
     setTiktokAllowComments(defaults.allowComments);

@@ -102,7 +102,7 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
               ? { status: "connected" as ModuleStatus, text: "Connecté" }
               : { status: "available" as ModuleStatus, text: "A connecter" };
           }
-          if (m.key === "tiktok") return tiktokConnected ? { status: "connected" as ModuleStatus, text: "Connecté (mock)" } : { status: "available" as ModuleStatus, text: "A connecter" };
+          if (m.key === "tiktok") return tiktokConnected ? { status: "connected" as ModuleStatus, text: "Connecté" } : { status: "available" as ModuleStatus, text: "A connecter" };
           if (m.key === "inr_agent") return { status: "connected" as ModuleStatus, text: "Connecté" };
           return { status: m.status, text: statusLabel(m.status) };
         })();
@@ -120,7 +120,7 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
               : m.key === "facebook"
                 ? (blockDrivenViewHref || normalizeExternalHref(facebookUrl) || "#")
                 : m.key === "tiktok"
-                  ? "#"
+                  ? (blockDrivenViewHref || normalizeExternalHref(tiktokUrl) || "#")
                   : m.key === "inr_agent"
                     ? "/dashboard/agent"
                     : undefined;
@@ -154,7 +154,7 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
               : m.key === "facebook"
                 ? Boolean(blockDrivenViewHref || facebookUrl)
                 : m.key === "tiktok"
-                  ? false
+                  ? Boolean(blockDrivenViewHref || tiktokUrl)
                   : m.key === "inr_agent"
                     ? true
                     : undefined;

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
 import { enforceRateLimit } from "@/lib/rateLimit";
-import { tryDecryptToken } from "@/lib/oauthCrypto";
+import { encryptToken, tryDecryptToken } from "@/lib/oauthCrypto";
 import { randomUUID } from "crypto";
 
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
@@ -48,6 +48,10 @@ import {
 } from "@/lib/boosterCta";
 import { getLinkedInAccessToken } from "@/lib/linkedinOAuth";
 import { normalizeTiktokSettings } from "@/lib/tiktokMockSettings";
+import { isTiktokIntegrationActive } from "@/lib/tiktokRouteStorage";
+import { buildTiktokMediaProxyUrl } from "@/lib/tiktokMediaUrl";
+import { refreshTiktokAccessToken } from "@/lib/tiktokOAuth";
+import { tiktokDirectPostPhotos, tiktokDirectPostVideo } from "@/lib/tiktokPublish";
 import { buildVideoSettingsByChannel } from "@/lib/boosterVideoSettings";
 import { getVariantForChannel, type BoosterVideoTransformedVariant } from "@/lib/boosterVideoTransforms";
 import {
@@ -221,6 +225,9 @@ type ImageSet = {
   socialFeedPublishableUrls: string[];
   siteCardPublishableUrls: string[];
   gmbPublishableUrls: string[];
+  storagePaths: string[];
+  publishableStoragePaths: string[];
+  socialFeedStoragePaths: string[];
   editableAttachments?: EditableImageAttachment[];
 };
 
@@ -407,12 +414,6 @@ async function getGoogleBusinessPublishableUrl(
   return urls.publicUrl || urls.signedUrl || null;
 }
 
-function buildTiktokMockExternalUrl(profileUrl: string | null | undefined, externalId: string) {
-  const clean = String(profileUrl || "").trim();
-  if (!clean) return null;
-  return `${clean.replace(/\/+$/g, "")}?inrcy_mock=${encodeURIComponent(externalId)}`;
-}
-
 function isGoogleBusinessImageError(error: unknown) {
   const message = errMessage(error, "").toLowerCase();
   return [
@@ -573,6 +574,9 @@ async function uploadImageSet(
   const socialFeedPublishableUrls: string[] = [];
   const siteCardPublishableUrls: string[] = [];
   const gmbPublishableUrls: string[] = [];
+  const storagePaths: string[] = [];
+  const publishableStoragePaths: string[] = [];
+  const socialFeedStoragePaths: string[] = [];
   const uploadErrors: Array<{ name: string; reason: string; stage: string }> =
     [];
 
@@ -602,6 +606,7 @@ async function uploadImageSet(
     const parsed = { mime: source.mime, buffer: source.buffer };
     let originalPublicUrl = source.originalPublicUrl;
     let originalPublishableUrl = source.originalPublishableUrl;
+    let sourceStoragePath = source.storagePath || "";
 
     if (!source.storagePath) {
       const ext = (img.name || "image").split(".").pop() || "jpg";
@@ -630,6 +635,7 @@ async function uploadImageSet(
       const urls = await buildUrlsFromStoragePath(path);
       originalPublicUrl = urls.publicUrl;
       originalPublishableUrl = urls.signedUrl;
+      sourceStoragePath = path;
     }
 
     if (originalPublicUrl) {
@@ -640,6 +646,11 @@ async function uploadImageSet(
         reason: "Original image public URL unavailable",
         stage: "publicUrl",
       });
+    }
+
+    if (sourceStoragePath) {
+      storagePaths.push(sourceStoragePath);
+      publishableStoragePaths.push(sourceStoragePath);
     }
 
     if (originalPublishableUrl) {
@@ -730,8 +741,10 @@ async function uploadImageSet(
             .getPublicUrl(socialPath);
           if (socialSigned?.data?.signedUrl) {
             socialFeedPublishableUrls.push(socialSigned.data.signedUrl);
+            socialFeedStoragePaths.push(socialPath);
           } else if (socialPublic?.data?.publicUrl) {
             socialFeedPublishableUrls.push(socialPublic.data.publicUrl);
+            socialFeedStoragePaths.push(socialPath);
           } else {
             uploadErrors.push({
               name: img?.name || "image",
@@ -844,6 +857,9 @@ async function uploadImageSet(
       socialFeedPublishableUrls,
       siteCardPublishableUrls,
       gmbPublishableUrls,
+      storagePaths,
+      publishableStoragePaths,
+      socialFeedStoragePaths,
     },
     uploadErrors,
   };
@@ -1203,7 +1219,7 @@ export async function POST(req: Request) {
     // 4) Publish now
     const results: Record<string, unknown> = {};
 
-    const [fbRow, gmbRow, igRow, liRow] = await Promise.all([
+    const [fbRow, gmbRow, igRow, liRow, tiktokRow] = await Promise.all([
       getLatestIntegrationRow(
         userId,
         "facebook",
@@ -1231,6 +1247,13 @@ export async function POST(req: Request) {
         "linkedin",
         "linkedin",
         "status,resource_id,access_token_enc,meta,expires_at",
+      ),
+      getLatestIntegrationRow(
+        userId,
+        "tiktok",
+        "tiktok",
+        "tiktok",
+        "status,resource_id,resource_label,display_name,access_token_enc,refresh_token_enc,scopes,meta,expires_at",
       ),
     ]);
 
@@ -1312,6 +1335,49 @@ export async function POST(req: Request) {
           error: error.message,
         });
       }
+    }
+
+    async function getTiktokAccessToken(rowLike: unknown) {
+      const row = asRecord(rowLike);
+      let accessToken = tryDecryptToken(String(row.access_token_enc || "")) || "";
+      const refreshToken = tryDecryptToken(String(row.refresh_token_enc || "")) || "";
+
+      if (accessToken && !isExpired(row.expires_at, 120)) return accessToken;
+      if (!refreshToken) return accessToken;
+
+      const refreshed = await refreshTiktokAccessToken(refreshToken);
+      const nextAccessToken = String(refreshed.access_token || "").trim();
+      const nextRefreshToken = String(refreshed.refresh_token || "").trim() || refreshToken;
+      const expiresIn = Number(refreshed.expires_in || 0);
+      const refreshExpiresIn = Number(refreshed.refresh_expires_in || 0);
+      const expiresAt = Number.isFinite(expiresIn) && expiresIn > 0
+        ? new Date(Date.now() + expiresIn * 1000).toISOString()
+        : null;
+      const nextMeta = {
+        ...asRecord(row.meta),
+        refresh_expires_at: Number.isFinite(refreshExpiresIn) && refreshExpiresIn > 0
+          ? new Date(Date.now() + refreshExpiresIn * 1000).toISOString()
+          : asRecord(row.meta).refresh_expires_at || null,
+        tiktok_token_refreshed_at: new Date().toISOString(),
+      };
+
+      if (nextAccessToken) {
+        await supabaseAdmin
+          .from("integrations")
+          .update({
+            access_token_enc: encryptToken(nextAccessToken),
+            refresh_token_enc: nextRefreshToken ? encryptToken(nextRefreshToken) : row.refresh_token_enc || null,
+            expires_at: expiresAt || row.expires_at || null,
+            meta: nextMeta,
+          })
+          .eq("user_id", userId)
+          .eq("provider", "tiktok")
+          .eq("source", "tiktok")
+          .eq("product", "tiktok");
+        accessToken = nextAccessToken;
+      }
+
+      return accessToken;
     }
 
     for (const ch of selected) {
@@ -1823,8 +1889,10 @@ export async function POST(req: Request) {
 
         if (ch === "tiktok") {
           const tiktokSettings = normalizeTiktokSettings(proSettings["tiktok"]);
+          const activeTiktok = isTiktokIntegrationActive(tiktokRow);
+          const tiktokAccessToken = activeTiktok ? await getTiktokAccessToken(tiktokRow) : "";
 
-          if (!tiktokSettings.connected || !tiktokSettings.accountConnected) {
+          if (!activeTiktok || !tiktokAccessToken) {
             const tiktokUserError = "TikTok à connecter. Rendez-vous dans Canaux.";
             logPublishChannelFailure({
               route: "booster_publish_now",
@@ -1842,7 +1910,14 @@ export async function POST(req: Request) {
 
           const tiktokMode = mediaModeByChannel[ch] || "none";
           const tiktokImageSet = getChannelImageSet(ch);
-          const tiktokImageUrls = (
+          const tiktokImageStoragePaths = (
+            tiktokImageSet.socialFeedStoragePaths?.length
+              ? tiktokImageSet.socialFeedStoragePaths
+              : tiktokImageSet.publishableStoragePaths?.length
+                ? tiktokImageSet.publishableStoragePaths
+                : tiktokImageSet.storagePaths || []
+          ).filter(Boolean).slice(0, 35);
+          const tiktokFallbackImageUrls = (
             tiktokImageSet.publishableUrls.length
               ? tiktokImageSet.publishableUrls
               : tiktokImageSet.socialFeedPublishableUrls.length
@@ -1851,6 +1926,12 @@ export async function POST(req: Request) {
                   ? tiktokImageSet.images
                   : externalImageUrls
           ).filter(Boolean).slice(0, 35);
+          const tiktokImageUrls = tiktokImageStoragePaths.length
+            ? tiktokImageStoragePaths
+                .map((path) => buildTiktokMediaProxyUrl(req.url, path))
+                .filter(Boolean)
+                .slice(0, 35)
+            : tiktokFallbackImageUrls;
 
           if (tiktokMode === "video" && !channelVideo) {
             const tiktokUserError = "TikTok nécessite une vidéo pour ce format.";
@@ -1873,32 +1954,73 @@ export async function POST(req: Request) {
             continue;
           }
 
-          const externalId = `mock_tiktok_${randomUUID()}`;
           const isVideo = tiktokMode === "video";
-          const mediaUrls = isVideo
-            ? [channelVideo!.publicUrl || channelVideo!.url].filter(Boolean)
-            : tiktokImageUrls;
+          const videoUrl = isVideo && channelVideo?.storagePath
+            ? buildTiktokMediaProxyUrl(req.url, channelVideo.storagePath)
+            : isVideo
+              ? String(channelVideo?.publicUrl || channelVideo?.url || "").trim()
+              : "";
+
+          if (isVideo && !videoUrl) {
+            const tiktokUserError = "TikTok ne trouve pas l'URL publique de la vidéo.";
+            await setDelivery(ch, { status: "failed", error: tiktokUserError });
+            results[ch] = { ok: false, error: tiktokUserError };
+            continue;
+          }
+
+          const tiktokTitle = canonMessage || channelPost.content || channelPost.title || "Publication iNrCy";
+          const tiktokResult = isVideo
+            ? await tiktokDirectPostVideo({
+                accessToken: tiktokAccessToken,
+                videoUrl,
+                title: tiktokTitle,
+                defaults: tiktokSettings.defaults,
+              })
+            : await tiktokDirectPostPhotos({
+                accessToken: tiktokAccessToken,
+                imageUrls: tiktokImageUrls,
+                title: channelPost.title || "Publication iNrCy",
+                description: tiktokTitle,
+                defaults: tiktokSettings.defaults,
+              });
+
+          if (!tiktokResult.ok) {
+            const tiktokUserError = tiktokResult.error || "TikTok n'a pas accepté la publication.";
+            logPublishChannelFailure({
+              route: "booster_publish_now",
+              channel: "tiktok",
+              userId,
+              publicationId,
+              stage: "publish",
+              error: tiktokResult.error || "tiktok_publish_failed",
+              userMessage: tiktokUserError,
+              diagnostics: tiktokResult,
+            });
+            await setDelivery(ch, { status: "failed", error: tiktokUserError });
+            results[ch] = { ok: false, error: tiktokUserError, diagnostics: tiktokResult };
+            continue;
+          }
 
           await setDelivery(ch, { status: "delivered", error: null });
 
           results[ch] = {
             ok: true,
-            external_id: externalId,
-            external_url: buildTiktokMockExternalUrl(tiktokSettings.profileUrl, externalId),
-            mock: true,
+            external_id: tiktokResult.publishId || null,
+            external_url: tiktokSettings.profileUrl || null,
             tiktok_media_type: isVideo ? "video" : "photos",
             media_type: isVideo ? "video" : "photos",
-            media_count: mediaUrls.length,
+            media_count: isVideo ? 1 : tiktokImageUrls.length,
             username: tiktokSettings.username,
             profile_url: tiktokSettings.profileUrl || null,
             diagnostics: {
               provider: "tiktok",
-              mode: "mock",
-              publish_id: externalId,
+              mode: "direct_post",
+              publish_id: tiktokResult.publishId || null,
               mediaType: isVideo ? "video" : "photos",
-              mediaUrls,
+              privacyLevel: tiktokResult.privacyLevel || null,
+              mediaUrls: isVideo ? [videoUrl] : tiktokImageUrls,
               defaults: tiktokSettings.defaults,
-              message: "Publication TikTok simulée en local.",
+              raw: tiktokResult.raw,
             },
           };
           continue;
@@ -2145,6 +2267,9 @@ export async function POST(req: Request) {
                 socialFeedPublishableUrls: imageSet.socialFeedPublishableUrls,
                 siteCardPublishableUrls: imageSet.siteCardPublishableUrls,
                 gmbPublishableUrls: imageSet.gmbPublishableUrls,
+                storagePaths: imageSet.storagePaths,
+                publishableStoragePaths: imageSet.publishableStoragePaths,
+                socialFeedStoragePaths: imageSet.socialFeedStoragePaths,
                 mediaMode: "images",
                 videoSettings: videoSettingsByChannel[channel] || null,
               }

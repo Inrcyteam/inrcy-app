@@ -922,9 +922,8 @@ const setPanelError = useCallback((kind: "facebook" | "instagram" | "linkedin" |
           // Instagram : compte + page/profil (resource) sélectionné.
           instagram: Boolean(instagramAccountConnected && instagramConnected && instagramConnectionStatus !== "needs_update"),
           linkedin: Boolean(linkedinAccountConnected && linkedinConnectionStatus !== "needs_update"),
-          // TikTok est affiché en "Arrive bientôt" tant que l'API n'est pas branchée.
-          // On le force donc hors des canaux actifs pour Booster / iNrStats / inertie.
-          tiktok: false,
+          // TikTok est compté uniquement quand la vraie connexion OAuth est active.
+          tiktok: Boolean(tiktokConnected),
         },
         { maxMultiplier: 7 }
       ),
@@ -2692,7 +2691,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     linkedinConnected,
     linkedinUrl,
     mailAccountsConnectedCount,
-    tiktokConnected: false,
+    tiktokConnected,
     tiktokUrl: tiktokProfileUrl,
     openPanel,
     savedSiteWebUrlMeta,
@@ -2760,7 +2759,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         url: null,
       },
       tiktok: {
-        connected: false,
+        connected: Boolean(tiktokConnected),
         url: tiktokProfileUrl,
       },
     },
@@ -2783,6 +2782,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     linkedinConnected,
     linkedinUrl,
     mailAccountsConnectedCount,
+    tiktokConnected,
     tiktokProfileUrl,
     openPanel,
   ]);
@@ -2943,7 +2943,8 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
           facebook: Boolean(facebookAccountConnected && facebookPageConnected && facebookConnectionStatus !== "needs_update"),
           instagram: Boolean(instagramAccountConnected && instagramConnected && instagramConnectionStatus !== "needs_update"),
           linkedin: Boolean(linkedinAccountConnected && linkedinConnectionStatus !== "needs_update"),
-          // TikTok visible mais non sélectionnable en prod tant que le branchement API n'est pas finalisé.
+          // TikTok sera sélectionnable dans Booster dès que la publication réelle sera branchée.
+          // Pour l'instant, on garde la sélection désactivée malgré l'OAuth connecté.
           tiktok: false,
         }}
         onClose={() => {
