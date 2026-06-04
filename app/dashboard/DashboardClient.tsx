@@ -31,7 +31,7 @@ import { createClient } from "@/lib/supabaseClient";
 import { purgeAllBrowserAccountCaches, readAccountCacheValue, setActiveBrowserUserId, writeAccountCacheValue } from "@/lib/browserAccountCache";
 import { expectedUiSnapshotDate, getLastChannelSyncAt, getOverviewSnapshotDate, hasFreshLocalGeneratorSnapshot, markChannelsSynced, mergeChannelBlockIntoCachedSnapshots, mergeGeneratorChannelBlockIntoCachedKpis, syncGeneratorOpportunitiesFromStatsSummary, readCachedChannelBlocks, readCachedChannelSyncAt, readCachedGeneratorChannelSyncAt, readCachedOppTotal, readGeneratorCache, readInrStatsPeriodSyncAt, statsCubeSessionKey, statsSummarySessionKey, type StatsWarmPeriod, readUiCacheValue, writeUiCacheValue } from "./dashboard.client-cache";
 import { markDailyStatsRefreshBootstrapChecked, markServerCacheSyncChecked, runDailyStatsRefreshBootstrap, wasDailyStatsRefreshBootstrapCheckedRecently, wasServerCacheSyncCheckedRecently, type DailyStatsRefreshBootstrapResponse } from "@/lib/dailyStatsRefreshClient";
-import { buildBubbleAccessMap, createDefaultBubbleAccessMap, createDefaultBubbleAccessRows, isBubbleEnabled, type AppBubbleAccessMap, type AppBubbleAccessRow } from "@/lib/bubbleAccess";
+import { buildBubbleAccessMap, createDefaultBubbleAccessMap, isBubbleEnabled, type AppBubbleAccessMap } from "@/lib/bubbleAccess";
 import { computeInertiaSnapshot } from "@/lib/loyalty/inertia";
 import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
 import { resolveProfileLogoUrl } from "@/lib/profileLogo";
@@ -1116,41 +1116,26 @@ const loadSiteInrcy = useCallback(async () => {
     return;
   }
 
-  const [profileRes, bubbleAccessRes] = await Promise.all([
+  const [profileRes, bubbleAccessEnsureRes] = await Promise.all([
     supabase
       .from("profiles")
       .select("inrcy_site_ownership,logo_url,logo_path,company_legal_name,first_name,last_name,phone,contact_email")
       .eq("user_id", user.id)
       .maybeSingle(),
-    supabase
-      .from("app_bubble_access")
-      .select("bubble_key,enabled")
-      .eq("user_id", user.id),
+    fetch("/api/bubble-access/ensure", { method: "GET", cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .catch(() => null),
   ]);
   if (requestSeq !== siteConfigRequestSeqRef.current) return;
 
-  const existingBubbleKeys = new Set(((bubbleAccessRes.data as AppBubbleAccessRow[] | null) ?? [])
-    .map((row) => row.bubble_key)
-    .filter((key): key is string => typeof key === "string"));
-  const missingDefaultRows = createDefaultBubbleAccessRows(user.id)
-    .filter((row) => !existingBubbleKeys.has(row.bubble_key));
+  const nextBubbleAccessMap =
+    bubbleAccessEnsureRes?.bubbleAccessMap && typeof bubbleAccessEnsureRes.bubbleAccessMap === "object"
+      ? buildBubbleAccessMap(Object.entries(bubbleAccessEnsureRes.bubbleAccessMap).map(([bubble_key, enabled]) => ({
+          bubble_key,
+          enabled: Boolean(enabled),
+        })))
+      : createDefaultBubbleAccessMap();
 
-  let nextBubbleAccessRows = bubbleAccessRes.data as AppBubbleAccessRow[] | null;
-  if (missingDefaultRows.length > 0) {
-    await supabase
-      .from("app_bubble_access")
-      .upsert(missingDefaultRows, { onConflict: "user_id,bubble_key", ignoreDuplicates: true });
-
-    const refreshedBubbleAccessRes = await supabase
-      .from("app_bubble_access")
-      .select("bubble_key,enabled")
-      .eq("user_id", user.id);
-
-    nextBubbleAccessRows = refreshedBubbleAccessRes.data as AppBubbleAccessRow[] | null;
-  }
-
-  if (requestSeq !== siteConfigRequestSeqRef.current) return;
-  const nextBubbleAccessMap = buildBubbleAccessMap(nextBubbleAccessRows);
   setBubbleAccessMap(nextBubbleAccessMap);
   writeCachedBubbleAccessMap(nextBubbleAccessMap);
 

@@ -65,31 +65,31 @@ export const GPS_SECTIONS: GpsSection[] = [
     id: "canaux",
     title: "Les canaux",
     emoji: "🧩",
-    description: "Relier les endroits où l’entreprise est visible : sites, Google et réseaux.",
+    description: "Comprendre les 10 canaux : diffusion, entrée et action.",
     articles: [
       {
         id: "canaux-express",
         title: "Connecter les bonnes bulles",
-        keywords: ["canaux", "bulles", "connexion", "configurer", "connecter", "site inrcy", "site web", "google", "facebook", "instagram", "linkedin", "statistiques", "publications"],
+        keywords: ["canaux", "bulles", "connexion", "configurer", "connecter", "site inrcy", "site web", "google", "facebook", "instagram", "linkedin", "tiktok", "mails", "inrbadge", "agent", "statistiques", "publications"],
         duration: "5 min",
         goal: "Visibilité reliée",
         intro:
-          "Les canaux relient iNrCy aux plateformes du pro. La connexion permet de récupérer des données, d’alimenter iNrStats et de publier sur le canal concerné.",
+          "Les canaux iNrCy ont des rôles différents : les canaux de diffusion publient et rendent visible, iNr'Badge capte les contacts, et iNr'Agent prépare des actions à valider.",
         steps: [
           "Ouvrir **Les canaux**, choisir la bulle concernée, puis cliquer sur **Configurer**.",
-          "Cliquer sur **Connecter** et suivre la procédure demandée par Google, Meta, LinkedIn ou le site.",
-          "Vérifier que le bon compte professionnel est relié et que les autorisations nécessaires sont acceptées.",
-          "Une fois connecté, le canal peut remonter des statistiques et recevoir des publications depuis **Booster**.",
+          "Connecter les canaux de diffusion : Site iNrCy, Site web, Google Business, Facebook, Instagram, LinkedIn, TikTok ou Mails.",
+          "Configurer **iNr'Badge** comme canal d’entrée pour capter contacts et rendez-vous via QR Code.",
+          "Activer **iNr'Agent** comme canal d’action lorsqu’il doit préparer des publications, campagnes ou relances.",
         ],
         checks: [
           "Le canal affiche bien Connecté ou Configuré.",
           "Le bon compte professionnel est relié.",
           "Les autorisations de stats et de publication sont acceptées quand elles sont demandées.",
-          "Site iNrCy se configure maintenant comme un vrai site : URL, informations, GA4/GSC si disponibles.",
+          "Les canaux désactivés restent visibles mais leurs boutons sont bloqués.",
         ],
         pitfalls: [
-          "Commencer par les canaux les plus utiles : souvent Google Business, Site iNrCy ou Site web.",
-          "Un canal connecté sert à analyser, comprendre et publier plus facilement.",
+          "Commencer par les canaux les plus utiles : Google Business, Site iNrCy, Site web et Mails.",
+          "Tous les canaux ne font pas la même chose : diffusion, entrée ou action.",
         ],
         links: [{ label: "Ouvrir les canaux", href: "/dashboard" }],
       },
@@ -108,7 +108,7 @@ export const GPS_SECTIONS: GpsSection[] = [
         duration: "2 min",
         goal: "Vision rapide",
         intro:
-          "Le Générateur montre en un coup d’œil ce que les canaux ont généré sur 7 et 30 jours, puis estime le potentiel des 30 prochains jours.",
+          "Le Générateur montre en un coup d’œil ce que les canaux ont généré sur 7 et 30 jours : diffusion, entrées captées et actions préparées.",
         steps: [
           "Lire les **demandes captées** sur 7 et 30 jours : appels, clics, formulaires ou autres signaux utiles.",
           "Regarder les **opportunités activables** : le potentiel estimé pour les 30 prochains jours.",
@@ -118,6 +118,7 @@ export const GPS_SECTIONS: GpsSection[] = [
         checks: [
           "Mon activité, panier moyen et taux de transformation sont renseignés.",
           "Au moins un canal important est connecté ou configuré.",
+          "Les canaux de diffusion, iNr'Badge et iNr'Agent sont bien activés selon le forfait.",
           "Les données 7j / 30j ont eu le temps de remonter.",
           "Les Unités d’Inertie progressent avec les actions et peuvent servir dans la Boutique.",
         ],
@@ -147,12 +148,12 @@ export const GPS_SECTIONS: GpsSection[] = [
         duration: "2 min",
         goal: "Comprendre",
         intro:
-          "iNrStats traduit les données des canaux en lecture business simple : appels, clics, visites, formulaires, demandes et signaux utiles.",
+          "iNrStats traduit les données des canaux en lecture business simple : appels, clics, visites, formulaires, demandes, envois et signaux utiles.",
         steps: [
           "Connecter les canaux utiles pour laisser iNrCy récupérer les données disponibles.",
-          "Lire les résultats par canal : Google, sites, Facebook, Instagram ou LinkedIn selon les connexions.",
-          "Repérer ce qui fonctionne : appels, clics, itinéraires, visites, formulaires ou interactions.",
-          "Utiliser ensuite **Booster**, **Propulser** ou **Fidéliser** selon le levier recommandé.",
+          "Lire les résultats par canal : Google Business, sites, Facebook, Instagram, LinkedIn, TikTok ou Mails selon les connexions.",
+          "Repérer ce qui fonctionne : appels, clics, itinéraires, visites, formulaires, interactions ou campagnes.",
+          "Utiliser ensuite **Booster**, **Propulser**, **Fidéliser** ou **iNr'Agent** selon le levier recommandé.",
         ],
         checks: [
           "Les canaux sont bien connectés.",
@@ -190,7 +191,7 @@ export const GPS_SECTIONS: GpsSection[] = [
         steps: [
           "Cliquer sur **Publier maintenant** pour ouvrir directement l’outil de publication.",
           "Préparer un contenu : chantier, nouveauté, conseil, photo, actualité ou preuve terrain.",
-          "Choisir les canaux utiles : site, Google Business, Facebook, Instagram ou LinkedIn.",
+          "Choisir les canaux utiles : sites, Google Business, Facebook, Instagram, LinkedIn, TikTok ou Mails.",
           "Vérifier le texte, l’image, le ton et l’appel à l’action avant l’envoi.",
           "Pour une action commerciale guidée, passer ensuite par **Propulser**.",
         ],
