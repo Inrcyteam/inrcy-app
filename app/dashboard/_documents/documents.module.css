@@ -2128,6 +2128,15 @@
     page-break-inside: avoid !important;
   }
 
+
+  /* iPhone Safari : reproduit automatiquement le rendu qui sort proprement à 70 %.
+     Android et desktop ne passent jamais par ce mode. */
+  :global(html[data-inrcy-print="ios-safari"]) .documentPrintPage {
+    zoom: 0.7 !important;
+    transform-origin: top center !important;
+    -webkit-transform-origin: top center !important;
+  }
+
   .preview input,
   .preview textarea,
   .preview select {

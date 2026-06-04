@@ -1412,6 +1412,18 @@
 }
 
 
+
+/* Fix iNrCalendar header: buttons pinned to the full header width */
+.calendarTopBar {
+  width: 100%;
+  justify-self: stretch;
+}
+
+.calendarTopBar .rdvTopActions {
+  inset: 0;
+  width: 100%;
+}
+
 /* === Final iNr'Badge layout polish === */
 .headerTopBar {
   min-height: 78px;

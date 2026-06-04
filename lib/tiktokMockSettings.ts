@@ -15,9 +15,20 @@ export type TiktokMockSettings = {
   connected: boolean;
   accountConnected: boolean;
   username: string;
+  displayName: string;
   profileUrl: string;
+  avatarUrl: string;
+  openId: string;
+  scopes: string;
+  expiresAt: string | null;
   mode: "mock" | "oauth";
   defaults: TiktokDefaultSettings;
+  stats: {
+    followerCount: number | null;
+    followingCount: number | null;
+    likesCount: number | null;
+    videoCount: number | null;
+  };
   updatedAt: string | null;
 };
 
@@ -48,6 +59,15 @@ function asBoolean(value: unknown, fallback: boolean): boolean {
   return typeof value === "boolean" ? value : fallback;
 }
 
+function asNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
 export function normalizeTiktokPreferredMedia(value: unknown): TiktokPreferredMedia {
   return value === "photos" ? "photos" : "video";
 }
@@ -75,13 +95,25 @@ export function normalizeTiktokSettings(value: unknown): TiktokMockSettings {
   const defaults = normalizeTiktokDefaults(raw.defaults);
   const connected = asBoolean(raw.connected, false);
   const accountConnected = asBoolean(raw.accountConnected, connected);
+  const stats = asRecord(raw.stats);
   return {
     connected,
     accountConnected,
     username: asString(raw.username) || TIKTOK_DEFAULT_MOCK_ACCOUNT.username,
+    displayName: asString(raw.displayName),
     profileUrl: asString(raw.profileUrl),
+    avatarUrl: asString(raw.avatarUrl),
+    openId: asString(raw.openId),
+    scopes: asString(raw.scopes),
+    expiresAt: asString(raw.expiresAt) || null,
     mode: raw.mode === "oauth" ? "oauth" : "mock",
     defaults,
+    stats: {
+      followerCount: asNumber(stats.followerCount),
+      followingCount: asNumber(stats.followingCount),
+      likesCount: asNumber(stats.likesCount),
+      videoCount: asNumber(stats.videoCount),
+    },
     updatedAt: asString(raw.updatedAt) || null,
   };
 }

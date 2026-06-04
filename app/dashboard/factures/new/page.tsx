@@ -33,6 +33,7 @@ import {
   hasReusableDocumentLine,
   prepareTemplateSnapshot,
 } from "../../_documents/documentTemplateUtils";
+import { printWithIosSafariScale } from "../../_documents/printUtils";
 
 
 
@@ -1887,8 +1888,7 @@ export default function NewFacturePage() {
 
   const print = async () => {
     setIsEditingProvider(false);
-    await waitForDomUpdate();
-    window.print();
+    await printWithIosSafariScale(waitForDomUpdate);
   };
 
   const waitForDomUpdate = () =>

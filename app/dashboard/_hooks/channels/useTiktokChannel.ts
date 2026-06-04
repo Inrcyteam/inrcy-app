@@ -91,25 +91,13 @@ export function useTiktokChannel({ panel }: UseTiktokChannelArgs) {
     void loadTiktokStatus();
   }, [panel, loadTiktokStatus]);
 
-  const connectTiktokMock = useCallback(async () => {
+  const connectTiktokMock = useCallback(() => {
     setTiktokLoading(true);
-    try {
-      const json = await readJson(await fetch("/api/integrations/tiktok/mock-connect", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username: tiktokUsername, profileUrl: tiktokProfileUrl }),
-      }));
-      applyTiktok(json.tiktok);
-      setTiktokProfileUrlNotice("Compte TikTok mock connecté en local.");
-      setTiktokProfileUrlError(null);
-      setTiktokSettingsError(null);
-    } catch (error) {
-      setTiktokProfileUrlError(error instanceof Error ? error.message : "Connexion TikTok impossible.");
-    } finally {
-      setTiktokLoading(false);
-    }
-  }, [applyTiktok, tiktokProfileUrl, tiktokUsername]);
+    setTiktokProfileUrlNotice(null);
+    setTiktokProfileUrlError(null);
+    const returnTo = encodeURIComponent("/dashboard?panel=tiktok");
+    window.location.href = `/api/integrations/tiktok/start?returnTo=${returnTo}`;
+  }, []);
 
   const disconnectTiktokMock = useCallback(async () => {
     setTiktokLoading(true);

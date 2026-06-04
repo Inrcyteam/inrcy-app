@@ -98,7 +98,7 @@ export default function TiktokPanel(props: any) {
     saveTiktokDefaults,
   } = props;
 
-  const statusLabel = tiktokConnected ? "Connecté (mock local)" : "À connecter";
+  const statusLabel = tiktokConnected ? "Connecté" : "À connecter";
   const statusColor = tiktokConnected ? "rgba(34,197,94,0.95)" : "rgba(148,163,184,0.9)";
 
   return (
@@ -128,7 +128,7 @@ export default function TiktokPanel(props: any) {
           <ConnectionPill connected={tiktokConnected} />
         </div>
         <div className={styles.blockSub}>
-          Étape 2 locale : le compte TikTok mock est maintenant branché sur des endpoints internes et sauvegardé dans les réglages.
+          Connexion officielle TikTok : le pro autorise son compte via Login Kit, puis iNrCy conserve les jetons chiffrés côté serveur.
         </div>
 
         <input
@@ -146,7 +146,7 @@ export default function TiktokPanel(props: any) {
           ) : (
             <>
               <button type="button" className={`${styles.actionBtn} ${styles.secondaryBtn}`} onClick={() => void connectTiktokMock?.()} disabled={tiktokLoading}>
-                {tiktokLoading ? "Chargement..." : "Recharger le mock"}
+                {tiktokLoading ? "Chargement..." : "Reconnecter TikTok"}
               </button>
               <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={() => void disconnectTiktokMock?.()} disabled={tiktokLoading}>
                 {tiktokLoading ? "Déconnexion..." : "Déconnecter"}
@@ -199,7 +199,7 @@ export default function TiktokPanel(props: any) {
           <ConnectionPill connected={tiktokConnected} />
         </div>
         <div className={styles.blockSub}>
-          Ces préférences serviront plus tard dans Booster pour accélérer la publication TikTok photo et vidéo.
+          Ces préférences serviront dans Booster pour préparer la publication TikTok photo et vidéo avant validation finale.
         </div>
 
         <div style={{ display: "grid", gap: 10 }}>

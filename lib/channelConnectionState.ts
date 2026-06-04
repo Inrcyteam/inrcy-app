@@ -260,10 +260,19 @@ export async function getChannelConnectionStates(
   const liProfileUrl = asString(liMeta.profile_url) || asString(liMeta.profile) || asString(liSettings.profileUrl) || (!liActiveOrganizationId ? asString(liSettings.url) : "") || null;
   const liOrganizationUrl = asString(liMeta.org_url) || asString(liSettings.orgUrl) || (liActiveOrganizationId ? asString(liSettings.url) : "") || null;
 
+  const tk = latestIntegration(rows, "tiktok", "tiktok", "tiktok");
   const tiktokSettings = normalizeTiktokSettings(settings.tiktok);
-  const tiktokConnected = Boolean(tiktokSettings.connected && tiktokSettings.accountConnected);
-  const tiktokConnectionStatus = getConnectionDisplayStatus(tiktokConnected, "channel:tiktok", { mock: true });
+  const tkHasToken = hasTruthyString(tk.access_token_enc);
+  const tkHasRefreshToken = hasTruthyString(tk.refresh_token_enc);
+  const tkHasReusableAuth = tkHasToken || tkHasRefreshToken;
+  const tkExpired = isExpired(tk.expires_at) && !tkHasRefreshToken;
+  const tkStatus = asString(tk.status);
+  const tkMeta = asRecord(tk.meta);
+  const tiktokConnected = Boolean(((tkStatus === "connected" || tkStatus === "account_connected") && tkHasReusableAuth && !tkExpired) || (tiktokSettings.connected && tiktokSettings.accountConnected));
+  const tiktokConnectionStatus = getConnectionDisplayStatus(tiktokConnected, "channel:tiktok", tkMeta);
   const tiktokRequiresUpdate = tiktokConnectionStatus === "needs_update";
+  const tiktokUsername = asString(tkMeta.username) || asString(tk.resource_label) || tiktokSettings.username || null;
+  const tiktokProfileUrl = asString(tkMeta.profile_url) || tiktokSettings.profileUrl || null;
 
   const mailRows = rows.filter((row) => row.category === "mail");
   const mailConnectedCount = Math.max(0, Math.min(4, mailRows.length));
@@ -362,12 +371,12 @@ export async function getChannelConnectionStates(
     tiktok: {
       accountConnected: tiktokConnected,
       connected: tiktokConnected,
-      expired: false,
+      expired: tkExpired,
       requiresUpdate: tiktokRequiresUpdate,
       connection_status: tiktokConnectionStatus,
-      resource_id: tiktokConnected ? tiktokSettings.username : null,
-      username: tiktokConnected ? tiktokSettings.username : null,
-      profile_url: tiktokConnected ? tiktokSettings.profileUrl : null,
+      resource_id: tiktokConnected ? (asString(tk.resource_id) || tiktokUsername) : null,
+      username: tiktokConnected ? tiktokUsername : null,
+      profile_url: tiktokConnected ? tiktokProfileUrl : null,
     },
   };
 }
