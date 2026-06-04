@@ -177,6 +177,41 @@ function getVideoFileLabel(att: any) {
   return pieces.join(" · ") || "Vidéo iNrCy";
 }
 
+function firstStringDeep(...values: unknown[]) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+function getNestedString(record: any, path: string[]) {
+  let current = record;
+  for (const key of path) {
+    if (!current || typeof current !== "object") return "";
+    current = current[key];
+  }
+  return typeof current === "string" ? current.trim() : "";
+}
+
+function getTiktokPublicationUrl(result: any) {
+  const direct = firstStringDeep(
+    result?.external_url,
+    result?.share_url,
+    result?.post_url,
+    result?.video_url,
+    result?.profile_url,
+    getNestedString(result, ["diagnostics", "share_url"]),
+    getNestedString(result, ["diagnostics", "status", "shareUrl"]),
+    getNestedString(result, ["diagnostics", "status", "raw", "data", "share_url"]),
+    getNestedString(result, ["diagnostics", "raw", "data", "share_url"]),
+  );
+  if (direct) return direct;
+
+  const username = firstStringDeep(result?.username, getNestedString(result, ["diagnostics", "creatorInfo", "creator_username"]));
+  const cleanUsername = username.replace(/^@+/, "").trim();
+  return cleanUsername ? `https://www.tiktok.com/@${cleanUsername}` : "https://www.tiktok.com";
+}
+
 export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
   const {
     open,
@@ -475,6 +510,8 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                   const activePublicationDeleted = isDeletedChannelResult(activePublicationResult);
                   const activePublicationFailed = isFailedChannelResult(activePublicationResult);
                   const activePublicationFailureMessage = getFailedChannelMessage(activePublicationResult);
+                  const isTiktokPublicationEntry = activePublicationEntry?.key === "tiktok";
+                  const tiktokPublicationHref = isTiktokPublicationEntry ? getTiktokPublicationUrl(activePublicationResult) : "";
                   const activeParts = activePublicationEntry?.parts || defaultParts;
                   const sourceDocAttachments = detailsItem.source === "send_items"
                     ? extractAttachmentsFromPayload(detailsSourceDocPayload)
@@ -795,7 +832,19 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                       <b>Action :</b> {detailsActionSuccess}
                                     </div>
                                   ) : null}
-                                  {isDraftItem ? (
+                                  {isTiktokPublicationEntry && !isDraftItem ? (
+                                    <button
+                                      type="button"
+                                      className={styles.btnPrimary}
+                                      onClick={() => {
+                                        if (typeof window !== "undefined") window.open(tiktokPublicationHref || "https://www.tiktok.com", "_blank", "noopener,noreferrer");
+                                      }}
+                                      disabled={detailsActionBusy}
+                                      title="Ouvrir TikTok pour modifier ou supprimer la publication"
+                                    >
+                                      Ouvrir TikTok
+                                    </button>
+                                  ) : isDraftItem ? (
                                     <button
                                       type="button"
                                       className={styles.btnPrimary}
@@ -823,7 +872,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                       Modifier
                                     </button>
                                   )}
-                                  {!isDraftItem ? (
+                                  {!isDraftItem && !isTiktokPublicationEntry ? (
                                     <button
                                       type="button"
                                       className={styles.btnDangerSmall}
@@ -873,6 +922,22 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                           {detailsActionError ? (
                             <div className={styles.detailsError}>
                               <b>Action :</b> {detailsActionError}
+                            </div>
+                          ) : null}
+
+                          {isTiktokPublicationEntry && !isDraftItem && !detailsEditMode ? (
+                            <div
+                              style={{
+                                marginTop: 12,
+                                padding: "10px 12px",
+                                borderRadius: 14,
+                                border: "1px solid rgba(56,189,248,0.24)",
+                                background: "rgba(56,189,248,0.08)",
+                                color: "rgba(225,245,255,0.92)",
+                                fontSize: 13,
+                              }}
+                            >
+                              <b>TikTok :</b> la modification ou la suppression réelle se fait directement dans TikTok.
                             </div>
                           ) : null}
 

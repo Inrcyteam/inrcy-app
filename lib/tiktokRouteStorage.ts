@@ -71,9 +71,19 @@ export function applyTiktokIntegrationState(settings: unknown, integration: unkn
       ...base,
       connected: false,
       accountConnected: false,
+      username: "",
+      displayName: "",
+      profileUrl: "",
+      avatarUrl: "",
       openId: "",
       scopes: "",
       expiresAt: null,
+      stats: {
+        followerCount: null,
+        followingCount: null,
+        likesCount: null,
+        videoCount: null,
+      },
     };
   }
 

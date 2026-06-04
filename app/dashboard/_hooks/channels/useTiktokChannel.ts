@@ -57,9 +57,10 @@ export function useTiktokChannel({ panel }: UseTiktokChannelArgs) {
     const tiktok = normalizeTiktokSettings(payload);
     const defaults = normalizeTiktokDefaults(tiktok.defaults);
 
-    setTiktokConnected(Boolean(tiktok.connected));
-    setTiktokUsername(tiktok.connected ? (tiktok.username || "") : "");
-    setTiktokProfileUrl(tiktok.profileUrl || "");
+    const connected = Boolean(tiktok.connected);
+    setTiktokConnected(connected);
+    setTiktokUsername(connected ? (tiktok.username || "") : "");
+    setTiktokProfileUrl(connected ? (tiktok.profileUrl || "") : "");
     setTiktokPreferredMediaState(defaults.preferredMedia);
     setTiktokAllowComments(defaults.allowComments);
     setTiktokAllowDuo(defaults.allowDuo);

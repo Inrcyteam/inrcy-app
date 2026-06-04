@@ -550,6 +550,7 @@ export default function PublishModal({
     null,
   );
   const preferredCtaDefaultsAppliedRef = useRef(false);
+  const didAutoSelectConnectedTikTokRef = useRef(false);
 
   const clearGenerationTimers = () => {
     generationTimersRef.current.forEach((timerId) =>
@@ -649,6 +650,18 @@ export default function PublishModal({
     setChannels(nextConnected);
     setDidInitChannels(true);
   }, [initialConnectedChannels, didInitChannels]);
+
+  useEffect(() => {
+    if (!connected.tiktok) {
+      didAutoSelectConnectedTikTokRef.current = false;
+      return;
+    }
+    if (didAutoSelectConnectedTikTokRef.current) return;
+    didAutoSelectConnectedTikTokRef.current = true;
+    setChannels((prev) =>
+      prev.tiktok ? prev : ({ ...prev, tiktok: true } as Record<ChannelKey, boolean>),
+    );
+  }, [connected.tiktok]);
 
   useEffect(() => {
     if (!channelInfoOpen) return;

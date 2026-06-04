@@ -52,10 +52,20 @@ export async function POST() {
   const next = buildTiktokSettingsPatch(current, {
     connected: false,
     accountConnected: false,
+    username: "",
+    displayName: "",
+    profileUrl: "",
+    avatarUrl: "",
     openId: "",
     scopes: "",
     expiresAt: null,
     mode: "oauth",
+    stats: {
+      followerCount: null,
+      followingCount: null,
+      likesCount: null,
+      videoCount: null,
+    },
   });
 
   await saveTiktokSettings(supabaseAdmin, user.id, root, next);

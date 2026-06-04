@@ -2003,10 +2003,14 @@ export async function POST(req: Request) {
 
           await setDelivery(ch, { status: "delivered", error: null });
 
+          const tiktokOpenUrl = String(tiktokResult.shareUrl || tiktokSettings.profileUrl || "").trim() || null;
+
           results[ch] = {
             ok: true,
             external_id: tiktokResult.publishId || null,
-            external_url: tiktokSettings.profileUrl || null,
+            external_url: tiktokOpenUrl,
+            share_url: tiktokResult.shareUrl || null,
+            tiktok_status: tiktokResult.status?.status || "PUBLISH_COMPLETE",
             tiktok_media_type: isVideo ? "video" : "photos",
             media_type: isVideo ? "video" : "photos",
             media_count: isVideo ? 1 : tiktokImageUrls.length,
@@ -2020,6 +2024,8 @@ export async function POST(req: Request) {
               privacyLevel: tiktokResult.privacyLevel || null,
               mediaUrls: isVideo ? [videoUrl] : tiktokImageUrls,
               defaults: tiktokSettings.defaults,
+              status: tiktokResult.status || null,
+              share_url: tiktokResult.shareUrl || null,
               raw: tiktokResult.raw,
             },
           };
