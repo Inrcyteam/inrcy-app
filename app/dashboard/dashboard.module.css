@@ -5703,38 +5703,22 @@ transform: scale(1.50);
   pointer-events: auto;
 }
 
-/* Canal provisoirement indisponible */
+/* Bulle désactivée par l'accès Supabase : seule l'action est verrouillée.
+   La bulle reste en couleur pour conserver l'effet premium du dashboard. */
 .moduleBubbleCardComingSoon{
-  opacity: 0.58;
-  filter: grayscale(0.85) saturate(0.6);
-}
-
-.moduleBubbleCardComingSoon::before{
-  border-color: rgba(148,163,184,0.26) !important;
-  background:
-    radial-gradient(circle at 30% 25%, rgba(255,255,255,0.12), rgba(255,255,255,0.04) 35%, rgba(0,0,0,0) 60%),
-    rgba(71,85,105,0.10) !important;
-  box-shadow:
-    0 0 16px rgba(148,163,184,0.10),
-    0 24px 70px rgba(0,0,0,0.75),
-    inset 0 0 0 1px rgba(255,255,255,0.05) !important;
+  opacity: 1;
+  filter: none;
 }
 
 .moduleBubbleCardComingSoon:hover{
   transform: none;
 }
 
-.moduleBubbleCardComingSoon .bubbleLogo{
-  animation: none;
-  box-shadow:
-    0 10px 24px rgba(0,0,0,0.28),
-    inset 0 0 0 1px rgba(255,255,255,0.05) !important;
-}
-
 .moduleBubbleCardComingSoon .bubbleActions .actionMain,
 .moduleBubbleCardComingSoon .bubbleActions .actionView{
   cursor: not-allowed;
   opacity: 0.55 !important;
+  filter: grayscale(0.55) saturate(0.65);
 }
 
 /* ✅ Mails : même gabarit que les autres bulles du coverflow.
@@ -6417,6 +6401,56 @@ transform: scale(1.50);
       0 0 10px rgba(56,189,248,.18),
       inset 0 1px 0 rgba(255,255,255,.14) !important;
   }
+}
+
+
+/* ✅ iNr'Agent : logo officiel rond, même logique que Mails. */
+.bubbleLogoAgent{
+  border-radius:999px !important;
+  overflow:hidden !important;
+  padding:0 !important;
+  background:rgba(255,255,255,0.08) !important;
+}
+
+.bubbleLogoAgent .bubbleLogoImg{
+  width:100% !important;
+  height:100% !important;
+  object-fit:contain !important;
+  object-position:center center !important;
+  border-radius:999px !important;
+  display:block !important;
+  transform:none !important;
+  clip-path:none !important;
+}
+
+.desktopCoverflowCenter .bubbleLogoAgent{
+  position:relative !important;
+  display:block !important;
+  flex:0 0 54px !important;
+  width:54px !important;
+  height:54px !important;
+  min-width:54px !important;
+  min-height:54px !important;
+  max-width:54px !important;
+  max-height:54px !important;
+  margin:0 0 4px 0 !important;
+  padding:0 !important;
+  overflow:hidden !important;
+  border-radius:999px !important;
+  line-height:0 !important;
+  z-index:10 !important;
+}
+
+.desktopCoverflowCenter .bubbleLogoAgent .bubbleLogoImg{
+  position:static !important;
+  inset:auto !important;
+  width:100% !important;
+  height:100% !important;
+  min-width:0 !important;
+  min-height:0 !important;
+  max-width:100% !important;
+  max-height:100% !important;
+  object-fit:contain !important;
 }
 
 /* =========================================================

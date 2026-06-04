@@ -5,8 +5,10 @@ import { getBubbleStatusFromBlock, getBubbleViewHrefFromBlock, normalizeExternal
 import type { DashboardChannelKey } from "@/lib/dashboardChannels";
 import type { InrstatsChannelBlock } from "@/lib/inrstats/channelBlocks";
 import type { ModuleStatus } from "./dashboard.types";
+import { isBubbleEnabled, normalizeAppBubbleKey, type AppBubbleAccessMap } from "@/lib/bubbleAccess";
 
 type BuildFluxBubbleItemsArgs = {
+  bubbleAccessMap: AppBubbleAccessMap;
   canConfigureSite: boolean;
   canViewSite: boolean;
   channelBlocks: any;
@@ -35,6 +37,7 @@ type BuildFluxBubbleItemsArgs = {
 
 export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardFluxBubbleData[] {
   const {
+    bubbleAccessMap,
     canConfigureSite,
     canViewSite,
     channelBlocks,
@@ -62,7 +65,8 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
   } = args;
 
   return fluxModules.map((m) => {
-    const tiktokComingSoon = m.key === "tiktok";
+    const bubbleKey = normalizeAppBubbleKey(m.key);
+    const accessEnabled = bubbleKey ? isBubbleEnabled(bubbleAccessMap, bubbleKey) : true;
     const channelKey = m.key as DashboardChannelKey;
     const channelBlock = channelBlocks?.[channelKey] ?? null;
     const blockDrivenStatus = getBubbleStatusFromBlock(channelKey, channelBlock as InrstatsChannelBlock);
@@ -80,8 +84,8 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
               ? { ...viewActionRaw, href: normalizeExternalHref(blockDrivenViewHref || linkedinUrl) || "#" }
               : viewActionRaw;
 
-    const { status: bubbleStatus, text: bubbleStatusText } = tiktokComingSoon
-      ? { status: "coming" as ModuleStatus, text: "Arrive bientôt" }
+    const { status: bubbleStatus, text: bubbleStatusText } = !accessEnabled
+      ? { status: "coming" as ModuleStatus, text: "Désactivé" }
       : (m.key === "site_inrcy")
       ? getSiteBubbleProgress("site_inrcy")
       : (m.key === "site_web")
@@ -99,6 +103,7 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
               : { status: "available" as ModuleStatus, text: "A connecter" };
           }
           if (m.key === "tiktok") return tiktokConnected ? { status: "connected" as ModuleStatus, text: "Connecté (mock)" } : { status: "available" as ModuleStatus, text: "A connecter" };
+          if (m.key === "inr_agent") return { status: "connected" as ModuleStatus, text: "Connecté" };
           return { status: m.status, text: statusLabel(m.status) };
         })();
 
@@ -116,7 +121,9 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
                 ? (blockDrivenViewHref || normalizeExternalHref(facebookUrl) || "#")
                 : m.key === "tiktok"
                   ? "#"
-                  : undefined;
+                  : m.key === "inr_agent"
+                    ? "/dashboard/agent"
+                    : undefined;
 
     const specialViewLabel = m.key === "inrbadge"
       ? "Voir mon badge"
@@ -128,7 +135,9 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
             ? "Voir la page"
             : ["instagram", "linkedin", "facebook", "tiktok"].includes(m.key)
               ? "Voir le compte"
-              : undefined;
+              : m.key === "inr_agent"
+                ? "Ouvrir iNr'Agent"
+                : undefined;
 
     const canViewSpecial = m.key === "inrbadge"
       ? inrBadgeProfileReady
@@ -146,15 +155,25 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
                 ? Boolean(blockDrivenViewHref || facebookUrl)
                 : m.key === "tiktok"
                   ? false
-                  : undefined;
+                  : m.key === "inr_agent"
+                    ? true
+                    : undefined;
 
     const onConfigure = () => {
+      if (!accessEnabled) return;
       if (m.key === "site_inrcy") {
         if (!canConfigureSite) return;
         openPanel("site_inrcy");
         return;
       }
-      if (m.key === "tiktok") return;
+      if (m.key === "tiktok") {
+        openPanel("tiktok");
+        return;
+      }
+      if (m.key === "inr_agent") {
+        openPanel("inr_agent");
+        return;
+      }
       if (m.key === "inrbadge") {
         openPanel("inrbadge");
         return;
@@ -180,13 +199,13 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
       onHelpSiteWeb: () => setHelpSiteWebOpen(true),
       specialViewHref,
       specialViewLabel,
-      canViewSpecial,
-      onSpecialView: m.key === "inrbadge" ? onOpenInrBadgeModal : undefined,
-      viewAction: specialViewHref || m.key === "inrbadge" ? undefined : viewAction,
+      canViewSpecial: accessEnabled ? canViewSpecial : false,
+      onSpecialView: accessEnabled && m.key === "inrbadge" ? onOpenInrBadgeModal : undefined,
+      viewAction: accessEnabled && !(specialViewHref || m.key === "inrbadge") ? viewAction : undefined,
       onConfigure,
-      configureDisabled: m.key === "site_inrcy" ? !canConfigureSite : tiktokComingSoon,
-      configureTitle: tiktokComingSoon
-        ? "Arrive bientôt"
+      configureDisabled: !accessEnabled || (m.key === "site_inrcy" ? !canConfigureSite : false),
+      configureTitle: !accessEnabled
+        ? "Option désactivée"
         : m.key === "site_inrcy" && !canConfigureSite
           ? "Disponible uniquement si vous avez un site iNrCy"
           : undefined,

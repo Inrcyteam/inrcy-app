@@ -18,6 +18,7 @@ const ACCOUNT_CACHE_BASE_KEYS = [
   "inrcy_generator_power_percent_v1",
   "inrcy_generator_active_v1",
   "inrcy_site_bubble_progress_v1",
+  "inrcy_bubble_access_map_v1",
 ] as const;
 
 const ACCOUNT_CACHE_PREFIXES = [

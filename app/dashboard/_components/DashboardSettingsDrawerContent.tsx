@@ -21,6 +21,7 @@ import GmbPanelBlock from "./GmbPanelBlock";
 import FacebookPanelBlock from "./FacebookPanelBlock";
 import TiktokPanelBlock from "./TiktokPanelBlock";
 import InrBadgeSettingsContent from "../settings/_components/InrBadgeSettingsContent";
+import InrAgentSettingsContent from "../settings/_components/InrAgentSettingsContent";
 
 type DashboardPanelName =
   | "contact"
@@ -39,6 +40,7 @@ type DashboardPanelName =
   | "gmb"
   | "facebook"
   | "tiktok"
+  | "inr_agent"
   | "legal"
   | "rgpd"
   | "inertie"
@@ -148,6 +150,7 @@ export default function DashboardSettingsDrawerContent({
       )}
       {panel === "notifications" && <NotificationsSettingsContent />}
       {panel === "documents" && <DocumentsSettingsContent />}
+      {panel === "inr_agent" && <InrAgentSettingsContent />}
 
       <SiteInrcyPanelBlock panel={panel} panelProps={siteInrcyPanelProps} />
       <SiteWebPanelBlock panel={panel} panelProps={siteWebPanelProps} />

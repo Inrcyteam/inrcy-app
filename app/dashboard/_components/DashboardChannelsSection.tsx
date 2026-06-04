@@ -22,6 +22,7 @@ type DashboardPanelName =
   | "gmb"
   | "facebook"
   | "tiktok"
+  | "inr_agent"
   | "legal"
   | "rgpd"
   | "inertie"

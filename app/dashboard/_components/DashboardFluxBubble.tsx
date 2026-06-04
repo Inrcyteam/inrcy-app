@@ -35,10 +35,10 @@ export default function DashboardFluxBubble({ item, itemKey }: Props) {
     <article
       key={itemKey ?? item.key}
       className={`${styles.moduleCard} ${styles.moduleBubbleCard} ${styles[`accent_${item.accent}`]} ${isComingSoon ? styles.moduleBubbleCardComingSoon : ""}`}
-      title={isComingSoon ? item.configureTitle || "Arrive bientôt" : undefined}
+      title={isComingSoon ? item.configureTitle || "Option désactivée" : undefined}
     >
       <div className={styles.bubbleStack}>
-        <div className={`${styles.bubbleLogo} ${item.key === "mails" ? styles.bubbleLogoMail : ""} ${item.key === "inrbadge" ? styles.bubbleLogoProfile : ""}`} aria-hidden>
+        <div className={`${styles.bubbleLogo} ${item.key === "mails" ? styles.bubbleLogoMail : ""} ${item.key === "inrbadge" ? styles.bubbleLogoProfile : ""} ${item.key === "inr_agent" ? styles.bubbleLogoAgent : ""}`} aria-hidden>
           <img className={styles.bubbleLogoImg} src={item.logoSrc} alt={item.logoAlt} />
         </div>
 

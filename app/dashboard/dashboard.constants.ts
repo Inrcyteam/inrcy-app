@@ -9,6 +9,7 @@ export const MODULE_ICONS: Record<string, { src: string; alt: string }> = {
   linkedin: { src: "/icons/linkedin.png", alt: "LinkedIn" },
   mails: { src: "/icons/mails-inrcy-dashboard-v2.png", alt: "Mails iNrCy" },
   tiktok: { src: "/icons/tiktok.png", alt: "TikTok" },
+  inr_agent: { src: "/icons/inr-agent.png", alt: "iNr'Agent" },
   inrbadge: { src: "/icons/inrbadge-dashboard.png", alt: "iNr'Badge" },
 };
 
@@ -47,14 +48,18 @@ export const fluxModules: Module[] = [
       { key: "view", label: "Voir le compte", variant: "view", href: "#" },
       { key: "connect", label: "Connecter LinkedIn", variant: "connect", onClick: () => {} },
     ] },
-  { key: "tiktok", name: "TikTok", description: "Arrive bientôt 🎬", status: "coming", accent: "pink", actions: [
+  { key: "tiktok", name: "TikTok", description: "Développe votre audience 🎬", status: "available", accent: "pink", actions: [
       { key: "view", label: "Voir le compte", variant: "view", href: "#" },
       { key: "connect", label: "Configurer", variant: "connect", onClick: () => {} },
+    ] },
+  { key: "inr_agent", name: "iNr'Agent", description: "Prépare vos actions à valider", status: "available", accent: "purple", actions: [
+      { key: "view", label: "Ouvrir iNr'Agent", variant: "view", href: "/dashboard/agent" },
+      { key: "connect", label: "Configurer iNr'Agent", variant: "connect", onClick: () => {} },
     ] },
 ];
 
 export const DRAWER_TITLES = {
-  contact: "Nous contacter", compte: "Compte iNrCytizen", profil: "Mon profil", inrbadge: "Réglages iNr'Badge", activite: "Mon activité", ia: "Configuration IA", abonnement: "Mon abonnement", legal: "Informations légales", rgpd: "Mes données (RGPD)", mails: "Réglages Mails", agenda: "Réglages iNr’Calendar", site_inrcy: "Configuration — Site iNrCy", site_web: "Configuration — Site web", instagram: "Configuration — Instagram", linkedin: "Configuration — LinkedIn", gmb: "Configuration — Google Business", facebook: "Configuration — Facebook", tiktok: "Configuration — TikTok", inertie: "Mon inertie", boutique: "Boutique", parrainage: "Parrainer avec iNrCy", notifications: "Notifications", documents: "Réglages par défaut",
+  contact: "Nous contacter", compte: "Compte iNrCytizen", profil: "Mon profil", inrbadge: "Réglages iNr'Badge", activite: "Mon activité", ia: "Configuration IA", abonnement: "Mon abonnement", legal: "Informations légales", rgpd: "Mes données (RGPD)", mails: "Réglages Mails", agenda: "Réglages iNr’Calendar", site_inrcy: "Configuration — Site iNrCy", site_web: "Configuration — Site web", instagram: "Configuration — Instagram", linkedin: "Configuration — LinkedIn", gmb: "Configuration — Google Business", facebook: "Configuration — Facebook", tiktok: "Configuration — TikTok", inr_agent: "Configuration — iNr'Agent", inertie: "Mon inertie", boutique: "Boutique", parrainage: "Parrainer avec iNrCy", notifications: "Notifications", documents: "Réglages par défaut",
 } as const satisfies Record<string, string>;
 
 export const DRAWER_PANELS = new Set(Object.keys(DRAWER_TITLES));

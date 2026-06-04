@@ -31,7 +31,7 @@ import { createClient } from "@/lib/supabaseClient";
 import { purgeAllBrowserAccountCaches, readAccountCacheValue, setActiveBrowserUserId, writeAccountCacheValue } from "@/lib/browserAccountCache";
 import { expectedUiSnapshotDate, getLastChannelSyncAt, getOverviewSnapshotDate, hasFreshLocalGeneratorSnapshot, markChannelsSynced, mergeChannelBlockIntoCachedSnapshots, mergeGeneratorChannelBlockIntoCachedKpis, syncGeneratorOpportunitiesFromStatsSummary, readCachedChannelBlocks, readCachedChannelSyncAt, readCachedGeneratorChannelSyncAt, readCachedOppTotal, readGeneratorCache, readInrStatsPeriodSyncAt, statsCubeSessionKey, statsSummarySessionKey, type StatsWarmPeriod, readUiCacheValue, writeUiCacheValue } from "./dashboard.client-cache";
 import { markDailyStatsRefreshBootstrapChecked, markServerCacheSyncChecked, runDailyStatsRefreshBootstrap, wasDailyStatsRefreshBootstrapCheckedRecently, wasServerCacheSyncCheckedRecently, type DailyStatsRefreshBootstrapResponse } from "@/lib/dailyStatsRefreshClient";
-import { hasActiveInrcySite } from "@/lib/inrcySite";
+import { buildBubbleAccessMap, createDefaultBubbleAccessMap, createDefaultBubbleAccessRows, isBubbleEnabled, type AppBubbleAccessMap, type AppBubbleAccessRow } from "@/lib/bubbleAccess";
 import { computeInertiaSnapshot } from "@/lib/loyalty/inertia";
 import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
 import { resolveProfileLogoUrl } from "@/lib/profileLogo";
@@ -53,9 +53,34 @@ const GENERATOR_POWER_CACHE_KEY = "inrcy_generator_power_percent_v1";
 const GENERATOR_ACTIVE_CACHE_KEY = "inrcy_generator_active_v1";
 const SITE_BUBBLE_PROGRESS_CACHE_KEY = "inrcy_site_bubble_progress_v1";
 const DASHBOARD_CHANNEL_STATE_CACHE_KEY = "inrcy_dashboard_channel_state_v1";
+const BUBBLE_ACCESS_CACHE_KEY = "inrcy_bubble_access_map_v1";
 
 type SiteBubbleProgress = { status: ModuleStatus; text: string };
 type SiteBubbleProgressCache = Partial<Record<"site_inrcy" | "site_web", SiteBubbleProgress>>;
+
+function readCachedBubbleAccessMap(): AppBubbleAccessMap {
+  try {
+    const raw = readUiCacheValue(BUBBLE_ACCESS_CACHE_KEY);
+    if (!raw) return createDefaultBubbleAccessMap();
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return createDefaultBubbleAccessMap();
+    const rows = Object.entries(parsed as Record<string, unknown>).map(([bubble_key, enabled]) => ({
+      bubble_key,
+      enabled: Boolean(enabled),
+    }));
+    return buildBubbleAccessMap(rows);
+  } catch {
+    return createDefaultBubbleAccessMap();
+  }
+}
+
+function writeCachedBubbleAccessMap(accessMap: AppBubbleAccessMap) {
+  try {
+    writeUiCacheValue(BUBBLE_ACCESS_CACHE_KEY, JSON.stringify(accessMap));
+  } catch {
+    // ignore browser storage failures
+  }
+}
 
 const EMPTY_INRBADGE_PROFILE: InrBadgeProfileSummary = {
   userId: "",
@@ -438,6 +463,9 @@ const patchChannelConnectionLocallyRef = useRef<(
   options?: { clearData?: boolean; clearError?: boolean },
 ) => void>(() => {});
 const triggerChannelRefreshRef = useRef<(channel: DashboardChannelKey) => Promise<void>>(async () => {});
+
+const [bubbleAccessMap, setBubbleAccessMap] = useState<AppBubbleAccessMap>(() => readCachedBubbleAccessMap());
+const canAccessSiteInrcy = isBubbleEnabled(bubbleAccessMap, "site_inrcy");
 
 const patchChannelConnectionLocallyProxy = useCallback((
   channel: DashboardChannelKey,
@@ -883,7 +911,7 @@ const setPanelError = useCallback((kind: "facebook" | "instagram" | "linkedin" |
     () =>
       computeInertiaSnapshot(
         {
-          site_inrcy: Boolean(hasActiveInrcySite(siteInrcyOwnership) && normalizeSiteUrl(siteInrcySavedUrl) && (siteInrcyGa4Connected || siteInrcyGscConnected)),
+          site_inrcy: Boolean(canAccessSiteInrcy && normalizeSiteUrl(siteInrcySavedUrl) && (siteInrcyGa4Connected || siteInrcyGscConnected)),
           site_web: Boolean(normalizeSiteUrl(siteWebSavedUrl) && (siteWebGa4Connected || siteWebGscConnected)),
           // IMPORTANT: on ne compte les réseaux sociaux que si le compte est réellement connecté (OAuth),
           // pas seulement si un lien est renseigné.
@@ -902,7 +930,7 @@ const setPanelError = useCallback((kind: "facebook" | "instagram" | "linkedin" |
       ),
     [
       normalizeSiteUrl,
-      siteInrcyOwnership,
+      canAccessSiteInrcy,
       siteInrcySavedUrl,
       siteInrcyGa4Connected,
       siteInrcyGscConnected,
@@ -1088,12 +1116,43 @@ const loadSiteInrcy = useCallback(async () => {
     return;
   }
 
-  const profileRes = await supabase
-    .from("profiles")
-    .select("inrcy_site_ownership,logo_url,logo_path,company_legal_name,first_name,last_name,phone,contact_email")
-    .eq("user_id", user.id)
-    .maybeSingle();
+  const [profileRes, bubbleAccessRes] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("inrcy_site_ownership,logo_url,logo_path,company_legal_name,first_name,last_name,phone,contact_email")
+      .eq("user_id", user.id)
+      .maybeSingle(),
+    supabase
+      .from("app_bubble_access")
+      .select("bubble_key,enabled")
+      .eq("user_id", user.id),
+  ]);
   if (requestSeq !== siteConfigRequestSeqRef.current) return;
+
+  const existingBubbleKeys = new Set(((bubbleAccessRes.data as AppBubbleAccessRow[] | null) ?? [])
+    .map((row) => row.bubble_key)
+    .filter((key): key is string => typeof key === "string"));
+  const missingDefaultRows = createDefaultBubbleAccessRows(user.id)
+    .filter((row) => !existingBubbleKeys.has(row.bubble_key));
+
+  let nextBubbleAccessRows = bubbleAccessRes.data as AppBubbleAccessRow[] | null;
+  if (missingDefaultRows.length > 0) {
+    await supabase
+      .from("app_bubble_access")
+      .upsert(missingDefaultRows, { onConflict: "user_id,bubble_key", ignoreDuplicates: true });
+
+    const refreshedBubbleAccessRes = await supabase
+      .from("app_bubble_access")
+      .select("bubble_key,enabled")
+      .eq("user_id", user.id);
+
+    nextBubbleAccessRows = refreshedBubbleAccessRes.data as AppBubbleAccessRow[] | null;
+  }
+
+  if (requestSeq !== siteConfigRequestSeqRef.current) return;
+  const nextBubbleAccessMap = buildBubbleAccessMap(nextBubbleAccessRows);
+  setBubbleAccessMap(nextBubbleAccessMap);
+  writeCachedBubbleAccessMap(nextBubbleAccessMap);
 
   const profile = profileRes.data as any | null;
   const ownership = (profile?.inrcy_site_ownership ?? "none") as Ownership;
@@ -1295,7 +1354,6 @@ useEffect(() => {
   loadSiteInrcy();
 }, [loadSiteInrcy]);
 
-const canAccessSiteInrcy = hasActiveInrcySite(siteInrcyOwnership);
 const savedSiteInrcyUrlMeta = normalizeSiteUrl(siteInrcySavedUrl);
 const savedSiteWebUrlMeta = normalizeSiteUrl(siteWebSavedUrl);
 const draftSiteInrcyUrlMeta = normalizeSiteUrl(siteInrcyUrl);
@@ -1312,7 +1370,7 @@ const canConnectSiteWebGoogle = hasSiteWebUrl;
 
 const siteInrcyProgressCount = (hasSiteInrcyUrl ? 1 : 0) + (hasSiteInrcyUrl && siteInrcyGa4Connected ? 1 : 0) + (hasSiteInrcyUrl && siteInrcyGscConnected ? 1 : 0);
 const siteWebProgressCount = (hasSiteWebUrl ? 1 : 0) + (hasSiteWebUrl && siteWebGa4Connected ? 1 : 0) + (hasSiteWebUrl && siteWebGscConnected ? 1 : 0);
-const siteInrcyAllGreen = hasActiveInrcySite(siteInrcyOwnership) && siteInrcyProgressCount === 3;
+const siteInrcyAllGreen = canAccessSiteInrcy && siteInrcyProgressCount === 3;
 const siteWebAllGreen = siteWebProgressCount === 3;
 const profileCompleted = !profileIncomplete;
 const activityCompleted = !activityIncomplete;
@@ -2503,7 +2561,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
   const computeSiteBubbleProgress = useCallback((kind: "site_inrcy" | "site_web"): SiteBubbleProgress => {
     const progress = kind === "site_inrcy" ? siteInrcyProgressCount : siteWebProgressCount;
     const hasUrl = kind === "site_inrcy" ? hasSiteInrcyUrl : hasSiteWebUrl;
-    const canUseSite = kind === "site_inrcy" ? hasActiveInrcySite(siteInrcyOwnership) : true;
+    const canUseSite = kind === "site_inrcy" ? canAccessSiteInrcy : true;
 
     if (kind === "site_inrcy" && !canUseSite) {
       return { status: "coming", text: "Aucun site" };
@@ -2513,7 +2571,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       status: hasUrl ? "connected" : "available",
       text: `${hasUrl ? "Connecté" : "A configurer"} ${progress}/3`,
     };
-  }, [hasSiteInrcyUrl, hasSiteWebUrl, siteInrcyOwnership, siteInrcyProgressCount, siteWebProgressCount]);
+  }, [canAccessSiteInrcy, hasSiteInrcyUrl, hasSiteWebUrl, siteInrcyProgressCount, siteWebProgressCount]);
 
   const siteBubbleProgressSnapshot = useMemo<SiteBubbleProgressCache>(() => ({
     site_inrcy: computeSiteBubbleProgress("site_inrcy"),
@@ -2632,6 +2690,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
   }, []);
 
   const fluxBubbleItems = useMemo(() => buildFluxBubbleItems({
+    bubbleAccessMap,
     canConfigureSite,
     canViewSite,
     channelBlocks,
@@ -2657,6 +2716,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     siteInrcySavedUrl,
     siteWebSavedUrl,
   }), [
+    bubbleAccessMap,
     canConfigureSite,
     canViewSite,
     channelBlocks,
@@ -2687,7 +2747,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     profileReady: inrBadgeProfileReady,
     channels: {
       siteInrcy: {
-        connected: Boolean(hasActiveInrcySite(siteInrcyOwnership) && normalizeSiteUrl(siteInrcySavedUrl)),
+        connected: Boolean(canAccessSiteInrcy && normalizeSiteUrl(siteInrcySavedUrl)),
         url: siteInrcySavedUrl,
       },
       siteWeb: {
@@ -2892,7 +2952,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       <DashboardBoosterModalLayer
         mode={dashboardBoosterModal}
         initialConnectedChannels={{
-          inrcy_site: Boolean(hasActiveInrcySite(siteInrcyOwnership) && normalizeSiteUrl(siteInrcySavedUrl) && (siteInrcyGa4Connected || siteInrcyGscConnected)),
+          inrcy_site: Boolean(canAccessSiteInrcy && normalizeSiteUrl(siteInrcySavedUrl) && (siteInrcyGa4Connected || siteInrcyGscConnected)),
           site_web: Boolean(normalizeSiteUrl(siteWebSavedUrl) && (siteWebGa4Connected || siteWebGscConnected)),
           gmb: Boolean(gmbAccountConnected && gmbConfigured && gmbConnectionStatus !== "needs_update"),
           facebook: Boolean(facebookAccountConnected && facebookPageConnected && facebookConnectionStatus !== "needs_update"),
