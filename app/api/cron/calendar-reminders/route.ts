@@ -53,6 +53,13 @@ function safeObj(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
+function isInactiveAppointmentRequest(metaInput: unknown) {
+  const meta = safeObj(metaInput);
+  const source = String(meta.source || "").toLowerCase();
+  const status = String(meta.status || "").toLowerCase();
+  return source === "inrbadge" && (status === "pending" || status === "rejected");
+}
+
 function asNumber(value: unknown, fallback: number) {
   const n = Number(value);
   return Number.isFinite(n) && n >= 0 ? n : fallback;
@@ -668,6 +675,7 @@ export async function GET(req: Request) {
 
   for (const row of data ?? []) {
     const meta = safeObj(row.meta);
+    if (isInactiveAppointmentRequest(meta)) continue;
     const reminders = safeObj(meta.reminders);
     const startAt = new Date(String(row.start_at));
     if (!Number.isFinite(startAt.getTime())) continue;

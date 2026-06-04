@@ -10,6 +10,7 @@ type RequestBody = {
   start?: string;
   end?: string;
   name?: string;
+  company?: string;
   email?: string;
   phone?: string;
   message?: string;
@@ -102,6 +103,11 @@ function escapeHtml(value: unknown) {
     .replace(/'/g, "&#39;");
 }
 
+function isRejectedAgendaEvent(row: unknown) {
+  const meta = safeObj((row as Record<string, unknown> | null)?.meta);
+  return String(meta.status || "").toLowerCase() === "rejected";
+}
+
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as RequestBody;
   const slug = clean(body.slug);
@@ -113,6 +119,7 @@ export async function POST(req: Request) {
   if (!Number.isFinite(start.getTime()) || !Number.isFinite(end.getTime()) || end <= start) return bad("Créneau invalide");
 
   const clientName = clean(body.name);
+  const clientCompany = clean(body.company);
   const clientEmail = clean(body.email).toLowerCase();
   const clientPhone = clean(body.phone);
   const message = clean(body.message);
@@ -154,33 +161,71 @@ export async function POST(req: Request) {
 
   const { data: conflicts, error: conflictsError } = await supabaseAdmin
     .from("agenda_events")
-    .select("id")
+    .select("id,meta")
     .eq("user_id", userId)
     .lt("start_at", end.toISOString())
     .gt("end_at", start.toISOString())
-    .limit(1);
+    .limit(20);
 
   if (conflictsError) return bad("Impossible de vérifier les disponibilités", 500);
-  if ((conflicts || []).length > 0) return bad("Ce créneau vient d'être réservé. Choisissez un autre horaire.");
+  if ((conflicts || []).some((item) => !isRejectedAgendaEvent(item))) return bad("Ce créneau vient d'être réservé. Choisissez un autre horaire.");
 
   const profile = profileRes.data as Record<string, unknown>;
   const company = clean(profile.company_legal_name) || "Votre entreprise";
   const proEmail = clean(profile.contact_email) || clean((await supabaseAdmin.auth.admin.getUserById(userId).catch(() => null))?.data?.user?.email);
   if (!proEmail) return bad("Email professionnel introuvable", 500);
 
+  const pendingMeta = {
+    kind: "agenda",
+    source: "inrbadge",
+    status: "pending",
+    contact: {
+      display_name: clientName,
+      first_name: clientName,
+      company_name: clientCompany || undefined,
+      email: clientEmail,
+      phone: clientPhone,
+      address: "",
+      category: clientCompany ? "professionnel" : "particulier",
+      contact_type: "prospect",
+    },
+    intervention: {
+      status: "à valider",
+    },
+    inrBadgeAppointmentRequest: {
+      slug,
+      clientName,
+      clientCompany,
+      clientEmail,
+      clientPhone,
+      message,
+      requestedAt: new Date().toISOString(),
+    },
+  };
+
+  const { data: pendingRequest, error: pendingInsertError } = await supabaseAdmin
+    .from("agenda_events")
+    .insert({
+      user_id: userId,
+      title: `RDV iNr'Badge - ${clientName}`,
+      description: message ? `Demande depuis iNr'Badge\n\n${message}` : "Demande depuis iNr'Badge",
+      location: null,
+      start_at: start.toISOString(),
+      end_at: end.toISOString(),
+      all_day: false,
+      meta: pendingMeta,
+    })
+    .select("id")
+    .single();
+
+  if (pendingInsertError || !pendingRequest?.id) {
+    console.error("[inrbadge-appointment-request] pending request insert failed", pendingInsertError);
+    return bad("Impossible d’enregistrer la demande de RDV", 500);
+  }
+
+  const requestId = String(pendingRequest.id);
   const baseUrl = getBaseUrl(req);
-  const query = new URLSearchParams({
-    action: "new",
-    rdvDate: start.toISOString().slice(0, 10),
-    rdvStart: fmtTime(start.toISOString()),
-    rdvEnd: fmtTime(end.toISOString()),
-    summary: `RDV iNr'Badge - ${clientName}`,
-    contactName: clientName,
-    contactEmail: clientEmail,
-    contactPhone: clientPhone,
-    notes: message ? `Demande depuis iNr'Badge\n\n${message}` : "Demande depuis iNr'Badge",
-  });
-  const acceptUrl = `${baseUrl}/dashboard/agenda?${query.toString()}`;
+  const acceptUrl = `${baseUrl}/dashboard/agenda?request=${encodeURIComponent(requestId)}`;
   const dateLabel = fmtDate(start.toISOString());
   const timeLabel = `${fmtTime(start.toISOString())} → ${fmtTime(end.toISOString())}`;
 
@@ -189,6 +234,7 @@ export async function POST(req: Request) {
     `Nouvelle demande de rendez-vous pour ${company}`,
     "",
     `Client : ${clientName}`,
+    clientCompany ? `Société : ${clientCompany}` : "",
     `Email : ${clientEmail}`,
     clientPhone ? `Téléphone : ${clientPhone}` : "",
     `Date : ${dateLabel}`,
@@ -208,6 +254,7 @@ export async function POST(req: Request) {
       <p style="margin:0 0 18px;line-height:1.6;">Un prospect a choisi un créneau depuis votre iNr'Badge. Le rendez-vous n'est pas encore enregistré : vous pouvez le valider dans iNr'Calendar.</p>
       <div style="background:#0d1630;border:1px solid rgba(148,163,184,.16);border-radius:20px;padding:18px;margin:18px 0;">
         <p><strong>Client :</strong> ${escapeHtml(clientName)}</p>
+        ${clientCompany ? `<p><strong>Société :</strong> ${escapeHtml(clientCompany)}</p>` : ""}
         <p><strong>Email :</strong> ${escapeHtml(clientEmail)}</p>
         ${clientPhone ? `<p><strong>Téléphone :</strong> ${escapeHtml(clientPhone)}</p>` : ""}
         <p><strong>Date :</strong> ${escapeHtml(dateLabel)}</p>
@@ -215,7 +262,7 @@ export async function POST(req: Request) {
         ${message ? `<p><strong>Message :</strong><br />${escapeHtml(message).replace(/\n/g, "<br />")}</p>` : ""}
       </div>
       <a href="${escapeHtml(acceptUrl)}" style="display:inline-block;background:#8b5cf6;color:#fff;text-decoration:none;font-weight:900;border-radius:999px;padding:13px 18px;">Valider dans iNrCalendar</a>
-      <p style="color:#97a6c5;font-size:12px;line-height:1.6;margin-top:18px;">Pour refuser, répondez simplement au client par mail.</p>
+      <p style="color:#97a6c5;font-size:12px;line-height:1.6;margin-top:18px;">Le créneau apparaîtra dans iNr’Calendar comme demande à valider.</p>
     </div>
   </div>
 </body></html>`;
@@ -234,14 +281,14 @@ export async function POST(req: Request) {
     title: "Nouvelle demande de RDV iNr'Badge",
     body: `${clientName} souhaite un rendez-vous le ${dateLabel} à ${fmtTime(start.toISOString())}.`,
     cta_label: "Valider dans l'agenda",
-    cta_url: `/dashboard/agenda?${query.toString()}`,
-    dedupe_key: `inrbadge_rdv:${userId}:${start.toISOString()}:${clientEmail}`,
-    meta: { source: "inrbadge", clientName, clientEmail, clientPhone, start: start.toISOString(), end: end.toISOString(), mailSent },
+    cta_url: `/dashboard/agenda?request=${encodeURIComponent(requestId)}`,
+    dedupe_key: `inrbadge_rdv:${requestId}`,
+    meta: { source: "inrbadge", requestId, clientName, clientCompany, clientEmail, clientPhone, start: start.toISOString(), end: end.toISOString(), mailSent },
   });
 
   if (notificationError) {
     console.warn("[inrbadge-appointment-request] notification insert failed", notificationError);
   }
 
-  return NextResponse.json({ ok: true, mailSent });
+  return NextResponse.json({ ok: true, mailSent, requestId });
 }

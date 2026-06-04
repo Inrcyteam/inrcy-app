@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useMemo, useState, type FormEvent } from "react";
 import type { InrBadgeAppointmentSettings } from "@/lib/inrBadgeSettings";
 import styles from "../badge.module.css";
@@ -36,10 +37,6 @@ function formatDayLabel(date: Date) {
   return new Intl.DateTimeFormat("fr-FR", { weekday: "short", day: "2-digit", month: "short" }).format(date);
 }
 
-function formatLongDate(dateKeyValue: string) {
-  return new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(new Date(`${dateKeyValue}T12:00:00`));
-}
-
 function buildLocalDateTime(dateKeyValue: string, time: string) {
   return new Date(`${dateKeyValue}T${time}:00`);
 }
@@ -62,7 +59,7 @@ function overlaps(start: Date, end: Date, event: BusyEvent) {
   return start < eventEnd && end > eventStart;
 }
 
-export default function RdvBookingClient({ slug, company, displayName, logoUrl, settings, events }: Props) {
+export default function RdvBookingClient({ slug, company: _company, displayName: _displayName, logoUrl: _logoUrl, settings, events }: Props) {
   const [selectedDay, setSelectedDay] = useState("");
   const [selectedSlot, setSelectedSlot] = useState<{ start: string; end: string; label: string } | null>(null);
   const [name, setName] = useState("");
@@ -148,9 +145,10 @@ export default function RdvBookingClient({ slug, company, displayName, logoUrl, 
           start: selectedSlot.start,
           end: selectedSlot.end,
           name,
+          company: companyName,
           email,
           phone,
-          message: [companyName.trim() ? `Société : ${companyName.trim()}` : "", message.trim()].filter(Boolean).join("\n\n"),
+          message: message.trim(),
         }),
       });
       const json = await response.json().catch(() => ({}));
@@ -179,7 +177,7 @@ export default function RdvBookingClient({ slug, company, displayName, logoUrl, 
                 <a className={`${styles.previousPageButton} ${styles.iconActionButton}`} href={`/badge/${slug}`} aria-label="Retour à la fiche" title="Retour">←</a>
                 <button type="button" className={`${styles.closePageButton} ${styles.iconActionButton}`} onClick={handleClosePage} aria-label="Fermer" title="Fermer">×</button>
               </div>
-              <img className={styles.calendarHeroLogo} src="/inrcalendar-logo.png" alt="iNr'Calendar" />
+              <Image className={styles.calendarHeroLogo} src="/inrcalendar-logo.png" alt="iNr'Calendar" width={168} height={64} priority />
             </div>
             <p className={styles.calendarInlineInfo}>Réserver un rendez-vous</p>
           </div>

@@ -1,4 +1,7 @@
+/* eslint-disable @next/next/no-img-element */
+import Image from "next/image";
 import { headers } from "next/headers";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { extractInrBadgeUserIdFromSlug } from "@/lib/inrBadge";
@@ -12,6 +15,14 @@ import BadgeShareButton from "./BadgeShareButton";
 export const dynamic = "force-dynamic";
 
 const DEFAULT_INRBADGE_LOGO_SRC = "/icons/inrbadge-dashboard.png";
+
+function getBadgeManifestUrl(slug: string) {
+  return `/badge/${encodeURIComponent(slug)}/manifest.webmanifest`;
+}
+
+function getBadgeIconUrl(slug: string) {
+  return `/badge/${encodeURIComponent(slug)}/icon.png`;
+}
 
 function trim(value: unknown) {
   return String(value || "").trim();
@@ -142,7 +153,7 @@ function ActionLink({ href, label, detail, download, icon, iconSrc, tone = "neut
       download={download}
     >
       <span className={styles.actionIcon} aria-hidden="true">
-        {iconSrc ? <img className={styles.iconImage} src={iconSrc} alt="" /> : <span>{icon}</span>}
+        {iconSrc ? <Image className={styles.iconImage} src={iconSrc} alt="" width={28} height={28} unoptimized /> : <span>{icon}</span>}
       </span>
       <span className={styles.actionBody}>
         {compact ? (
@@ -158,6 +169,21 @@ function ActionLink({ href, label, detail, download, icon, iconSrc, tone = "neut
       {!compact ? <span className={styles.arrow}>›</span> : null}
     </a>
   );
+}
+
+export async function generateMetadata({ params }: { params: Promise<{ slug: string }> | { slug: string } }): Promise<Metadata> {
+  const resolvedParams = await params;
+  const slug = trim(resolvedParams.slug);
+  const iconUrl = getBadgeIconUrl(slug);
+  return {
+    title: "iNr'Badge",
+    manifest: getBadgeManifestUrl(slug),
+    icons: {
+      icon: iconUrl,
+      shortcut: iconUrl,
+      apple: iconUrl,
+    },
+  };
 }
 
 export default async function BadgePage({ params }: { params: Promise<{ slug: string }> | { slug: string } }) {
@@ -340,7 +366,10 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
               <BadgeShareButton publicUrl={publicUrl} company={company} vCardUri={vCardUri} vCardFilename={vCardFilename} />
               <div className={styles.headerIdentity}>
                 <div className={styles.logo} aria-hidden="true">
-                  {shareSettings.logo ? <img src={logo.logoUrl || DEFAULT_INRBADGE_LOGO_SRC} alt="" /> : <span>iNr</span>}
+                  {shareSettings.logo ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={logo.logoUrl || DEFAULT_INRBADGE_LOGO_SRC} alt="" />
+                  ) : <span>iNr</span>}
                 </div>
               </div>
             </div>

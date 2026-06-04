@@ -95,6 +95,9 @@ function comparableMeta(value: unknown) {
   const intervention = raw.intervention && typeof raw.intervention === "object" ? (raw.intervention as Record<string, unknown>) : {};
   const reminders = raw.reminders && typeof raw.reminders === "object" ? (raw.reminders as Record<string, unknown>) : {};
   return {
+    status: String(raw.status ?? "").trim(),
+    source: String(raw.source ?? "").trim(),
+    requestId: String(raw.requestId ?? "").trim(),
     kind: String(raw.kind ?? "intervention").trim(),
     contact: comparableContact(raw.contact),
     guests: comparableGuests(raw.guests),
@@ -138,6 +141,8 @@ export default function AgendaClient() {
   const searchParams = useSearchParams();
 
   const [events, setEvents] = useState<EventItem[]>([]);
+  const [appointmentRequests, setAppointmentRequests] = useState<EventItem[]>([]);
+  const [activeRequestIndex, setActiveRequestIndex] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -199,23 +204,23 @@ export default function AgendaClient() {
     if (!rdvOpen) return;
     const ok = await confirmInrcy({
       eyebrow: "Agenda",
-      title: "Fermer l’évènement ?",
-      message: "Vous avez un évènement en cours. Si vous fermez maintenant, les informations saisies seront perdues.",
+      title: rdvMode === "request" ? "Fermer la demande ?" : "Fermer l’évènement ?",
+      message: rdvMode === "request" ? "La demande restera à valider dans iNr’Calendar." : "Vous avez un évènement en cours. Si vous fermez maintenant, les informations saisies seront perdues.",
       confirmLabel: "Fermer sans enregistrer",
       cancelLabel: "Continuer l’édition",
       variant: "warning",
     });
     if (!ok) return;
     closeRdvModal();
-  }, [closeRdvModal, rdvOpen]);
+  }, [closeRdvModal, rdvMode, rdvOpen]);
 
   useUnsavedExitGuard({
     active: rdvOpen,
     shouldBlock: rdvOpen && !rdvSaving,
     onConfirmExit: closeRdvModal,
     eyebrow: "Agenda",
-    title: "Fermer l’évènement ?",
-    message: "Vous avez un évènement en cours. Si vous fermez maintenant, les informations saisies seront perdues.",
+    title: rdvMode === "request" ? "Fermer la demande ?" : "Fermer l’évènement ?",
+    message: rdvMode === "request" ? "La demande restera à valider dans iNr’Calendar." : "Vous avez un évènement en cours. Si vous fermez maintenant, les informations saisies seront perdues.",
     confirmLabel: "Fermer sans enregistrer",
     cancelLabel: "Continuer l’édition",
     variant: "warning",
@@ -484,6 +489,7 @@ export default function AgendaClient() {
   function openCreateRdv(date: Date) {
     setRdvMode("create");
     setRdvEventId("");
+    setActiveRequestIndex(0);
     setRdvKind("agenda");
     setRdvSummary("Rendez-vous");
     setRdvDate(toDateOnly(date));
@@ -510,6 +516,60 @@ export default function AgendaClient() {
     setRdvNewContactNotes("");
     setCrmAddFeedback("");
     setRdvError(null);
+    setRdvOpen(true);
+  }
+
+  function openAppointmentRequestAt(index: number) {
+    const safeIndex = Math.max(0, Math.min(index, normalizedAppointmentRequests.length - 1));
+    const request = normalizedAppointmentRequests[safeIndex];
+    if (!request) return;
+
+    const rawMeta = request.inrcy && typeof request.inrcy === "object" ? request.inrcy : {};
+    const contact = rawMeta?.contact && typeof rawMeta.contact === "object" ? rawMeta.contact : {};
+    const details = rawMeta?.inrBadgeAppointmentRequest && typeof rawMeta.inrBadgeAppointmentRequest === "object" ? rawMeta.inrBadgeAppointmentRequest : {};
+    const clientName = String((details as any)?.clientName || (contact as any)?.display_name || "").trim();
+    const clientCompany = String((details as any)?.clientCompany || (contact as any)?.company_name || "").trim();
+    const clientEmail = String((details as any)?.clientEmail || (contact as any)?.email || "").trim();
+    const clientPhone = String((details as any)?.clientPhone || (contact as any)?.phone || "").trim();
+    const message = String((details as any)?.message || request.description || "").replace(/^Demande depuis iNr'Badge\s*/i, "").trim();
+    const start = request.startDate ?? (request.start ? new Date(request.start) : null);
+    const end = request.endDate ?? (request.end ? new Date(request.end) : null);
+    const baseDate = start ?? selectedDate;
+
+    setRdvMode("request");
+    setRdvEventId(request.id);
+    setActiveRequestIndex(safeIndex);
+    setRdvKind("agenda");
+    setRdvSummary(`Rendez-vous - ${clientName || "iNr'Badge"}`);
+    setRdvDate(toDateOnly(baseDate));
+    setRdvStart(start ? `${String(start.getHours()).padStart(2, "0")}:${String(start.getMinutes()).padStart(2, "0")}` : "09:00");
+    setRdvEnd(end ? `${String(end.getHours()).padStart(2, "0")}:${String(end.getMinutes()).padStart(2, "0")}` : "10:00");
+    setRdvLocation("");
+    setRdvNotes(message);
+    setIntType("");
+    setIntStatus("confirmé");
+    setIntReference("");
+    setRdvExistingContact(null);
+    setRdvGuests([]);
+    setRdvContactId("");
+    setRdvNewContactName(buildCrmDisplayName(clientName, "", clientCompany));
+    setRdvNewContactEmail(clientEmail);
+    setRdvNewContactPhone(clientPhone);
+    setRdvNewContactAddress("");
+    setRdvNewContactCity("");
+    setRdvNewContactPostal("");
+    setRdvNewContactSiren("");
+    setRdvNewContactCategory(clientCompany ? "professionnel" : "particulier");
+    setRdvNewContactType("prospect");
+    setRdvNewContactImportant(false);
+    setRdvNewContactNotes("");
+    setCrmAddFeedback("");
+    setRdvError(null);
+    if (start) {
+      const day = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 0, 0, 0, 0);
+      setSelectedDate(day);
+      setCursorMonth(new Date(day.getFullYear(), day.getMonth(), 1));
+    }
     setRdvOpen(true);
   }
 
@@ -732,6 +792,8 @@ export default function AgendaClient() {
       const guests = buildGuestContacts();
       const coordsLocation = composeAddressLine(rdvNewContactAddress.trim(), rdvNewContactPostal.trim(), rdvNewContactCity.trim());
       const structuredLocation = (rdvLocation.trim() || coordsLocation).trim();
+      const activeRequest = rdvMode === "request" ? normalizedAppointmentRequests[activeRequestIndex] : null;
+      const activeRequestMeta = activeRequest?.inrcy && typeof activeRequest.inrcy === "object" ? activeRequest.inrcy : {};
 
       const payload: any = {
         summary: safeSummary,
@@ -741,6 +803,12 @@ export default function AgendaClient() {
         end: endIso,
         contact,
         inrcy: {
+          ...(rdvMode === "request" ? {
+            source: "inrbadge",
+            status: "confirmed",
+            requestId: rdvEventId,
+            inrBadgeAppointmentRequest: (activeRequestMeta as any)?.inrBadgeAppointmentRequest,
+          } : {}),
           kind: rdvKind,
           contact: contact ?? undefined,
           guests,
@@ -772,6 +840,22 @@ export default function AgendaClient() {
             !response.ok
               ? await getSimpleFrenchApiError(response, "Impossible de créer le rendez-vous.")
               : getSimpleFrenchErrorMessage(json?.error, "Impossible de créer le rendez-vous.")
+          );
+        }
+      } else if (rdvMode === "request") {
+        if (!rdvEventId) throw new Error("Demande de rendez-vous introuvable.");
+
+        const response = await fetch(`/api/calendar/events?id=${encodeURIComponent(rdvEventId)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const json = await response.json().catch(() => ({}));
+        if (!response.ok || !json.ok) {
+          throw new Error(
+            !response.ok
+              ? await getSimpleFrenchApiError(response, "Impossible de valider le rendez-vous.")
+              : getSimpleFrenchErrorMessage(json?.error, "Impossible de valider le rendez-vous.")
           );
         }
       } else {
@@ -820,9 +904,9 @@ export default function AgendaClient() {
 
       setRdvOpen(false);
       await loadEventsForMonth(cursorMonth);
-      setSuccess(rdvMode === "create" ? "Rendez-vous ajouté." : "Rendez-vous modifié.");
+      setSuccess(rdvMode === "create" ? "Rendez-vous ajouté." : rdvMode === "request" ? "Rendez-vous validé. Confirmation et rappels suivent le circuit iNr’Calendar." : "Rendez-vous modifié.");
     } catch (e: any) {
-      setRdvError(getSimpleFrenchErrorMessage(e, rdvMode === "create" ? "Impossible de créer le rendez-vous." : "Impossible de modifier le rendez-vous."));
+      setRdvError(getSimpleFrenchErrorMessage(e, rdvMode === "create" ? "Impossible de créer le rendez-vous." : rdvMode === "request" ? "Impossible de valider le rendez-vous." : "Impossible de modifier le rendez-vous."));
     } finally {
       setRdvSaving(false);
     }
@@ -848,6 +932,46 @@ export default function AgendaClient() {
       setSuccess("Rendez-vous supprimé.");
     } catch (e: any) {
       setRdvError(getSimpleFrenchErrorMessage(e, "Impossible de supprimer ce rendez-vous."));
+    } finally {
+      setRdvSaving(false);
+    }
+  }
+
+  async function rejectAppointmentRequest() {
+    if (!rdvEventId || rdvMode !== "request") return;
+    const confirmed = await confirmInrcy({
+      eyebrow: "iNr'Calendar",
+      title: "Refuser cette demande ?",
+      message: "Aucun rendez-vous ne sera créé dans l'agenda.",
+      confirmLabel: "Refuser",
+      cancelLabel: "Annuler",
+      variant: "danger",
+    });
+    if (!confirmed) return;
+
+    setRdvSaving(true);
+    setRdvError(null);
+    setSuccess(null);
+    try {
+      const response = await fetch(`/api/calendar/appointment-requests?id=${encodeURIComponent(rdvEventId)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "reject" }),
+      });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok || !json.ok) {
+        throw new Error(
+          !response.ok
+            ? await getSimpleFrenchApiError(response, "Impossible de refuser cette demande.")
+            : getSimpleFrenchErrorMessage(json?.error, "Impossible de refuser cette demande.")
+        );
+      }
+
+      setRdvOpen(false);
+      await loadEventsForMonth(cursorMonth);
+      setSuccess("Demande de rendez-vous refusée.");
+    } catch (e: any) {
+      setRdvError(getSimpleFrenchErrorMessage(e, "Impossible de refuser cette demande."));
     } finally {
       setRdvSaving(false);
     }
@@ -900,6 +1024,7 @@ export default function AgendaClient() {
       }
 
       setEvents(Array.isArray(json.events) ? json.events : []);
+      setAppointmentRequests(Array.isArray(json.appointmentRequests) ? json.appointmentRequests : []);
     } catch (e: any) {
       setError(getSimpleFrenchErrorMessage(e, "Impossible de charger l’agenda."));
     } finally {
@@ -951,6 +1076,29 @@ export default function AgendaClient() {
       return { ...event, allDay, startDate, endDate };
     });
   }, [events]);
+
+  const normalizedAppointmentRequests = useMemo<DayEvent[]>(() => {
+    return appointmentRequests.map((event) => {
+      const allDay = isDateOnly(event.start);
+      const startDate = event.start ? (allDay ? parseDateOnly(event.start) : new Date(event.start)) : null;
+      const endDate = event.end ? (isDateOnly(event.end) ? parseDateOnly(event.end) : new Date(event.end)) : null;
+      return { ...event, allDay, startDate, endDate };
+    });
+  }, [appointmentRequests]);
+
+  useEffect(() => {
+    const requestId = searchParams?.get("request") || "";
+    if (!requestId || !normalizedAppointmentRequests.length) return;
+    const index = normalizedAppointmentRequests.findIndex((request) => request.id === requestId);
+    if (index < 0) return;
+    openAppointmentRequestAt(index);
+    try {
+      const nextQuery = new URLSearchParams(searchParams?.toString() || "");
+      nextQuery.delete("request");
+      const suffix = nextQuery.toString();
+      router.replace(`/dashboard/agenda${suffix ? `?${suffix}` : ""}`);
+    } catch {}
+  }, [normalizedAppointmentRequests, router, searchParams]);
 
   const eventsByDay = useMemo(() => {
     const map = new Map<string, DayEvent[]>();
@@ -1042,6 +1190,8 @@ export default function AgendaClient() {
           setQuery={setQuery}
           showMobileSearch={showMobileSearch}
           setShowMobileSearch={setShowMobileSearch}
+          appointmentRequestsCount={normalizedAppointmentRequests.length}
+          onOpenAppointmentRequests={() => openAppointmentRequestAt(Math.min(activeRequestIndex, Math.max(0, normalizedAppointmentRequests.length - 1)))}
           onClose={() => router.push("/dashboard")}
         />
 
@@ -1113,6 +1263,11 @@ export default function AgendaClient() {
         onClose={requestCloseRdvModal}
         onDelete={deleteRdv}
         onSubmit={submitRdv}
+        requestIndex={activeRequestIndex}
+        requestCount={normalizedAppointmentRequests.length}
+        onPreviousRequest={() => openAppointmentRequestAt((activeRequestIndex - 1 + normalizedAppointmentRequests.length) % normalizedAppointmentRequests.length)}
+        onNextRequest={() => openAppointmentRequestAt((activeRequestIndex + 1) % normalizedAppointmentRequests.length)}
+        onRejectRequest={rejectAppointmentRequest}
         onAddContactToCrm={addContactToCrmFromCoords}
         onAddGuest={addGuest}
         onRemoveGuest={removeGuest}

@@ -36,7 +36,6 @@ export default function DashboardFluxBubble({ item, itemKey }: Props) {
       key={itemKey ?? item.key}
       className={`${styles.moduleCard} ${styles.moduleBubbleCard} ${styles[`accent_${item.accent}`]} ${isComingSoon ? styles.moduleBubbleCardComingSoon : ""}`}
       title={isComingSoon ? item.configureTitle || "Arrive bientôt" : undefined}
-      aria-disabled={isComingSoon}
     >
       <div className={styles.bubbleStack}>
         <div className={`${styles.bubbleLogo} ${item.key === "mails" ? styles.bubbleLogoMail : ""} ${item.key === "inrbadge" ? styles.bubbleLogoProfile : ""}`} aria-hidden>

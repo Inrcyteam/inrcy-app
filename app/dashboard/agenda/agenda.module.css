@@ -39,6 +39,65 @@
   min-width: 0;
 }
 
+.brandLogoButton{
+  position:relative;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:0;
+  border:0;
+  background:transparent;
+  color:inherit;
+  flex:0 0 auto;
+}
+
+.brandLogoButton:not(:disabled){
+  cursor:pointer;
+}
+
+.brandLogoButton:disabled{
+  cursor:default;
+}
+
+.brandRequestBadge,
+.requestBellBadge{
+  position:absolute;
+  min-width:20px;
+  height:20px;
+  padding:0 6px;
+  border-radius:999px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  background:linear-gradient(135deg, #ff4ba3, #8b5cf6);
+  color:#fff;
+  font-size:11px;
+  font-weight:950;
+  line-height:1;
+  box-shadow:0 8px 20px rgba(0,0,0,.35);
+  border:1px solid rgba(255,255,255,.38);
+}
+
+.brandRequestBadge{
+  top:4px;
+  right:4px;
+  display:none;
+}
+
+.requestBell{
+  position:relative;
+}
+
+.requestBell:disabled{
+  opacity:.42;
+  cursor:default;
+}
+
+.requestBellBadge{
+  top:-6px;
+  right:-6px;
+}
+
 .brandText{
   display:flex;
   flex-direction: column;
@@ -586,6 +645,33 @@
   display:flex;align-items:center;justify-content:space-between;gap:10px;
 }
 
+.requestModalTitleRow{
+  display:inline-flex;
+  align-items:center;
+  gap:10px;
+  font-weight:950;
+}
+
+.requestSwitchButton{
+  width:30px;
+  height:30px;
+  border-radius:10px;
+  border:1px solid rgba(255,255,255,.16);
+  background:rgba(255,255,255,.07);
+  color:#fff;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+  font-size:18px;
+  line-height:1;
+}
+
+.requestSwitchButton:disabled{
+  opacity:.35;
+  cursor:default;
+}
+
 .modalBody{padding:14px}
 
 .modalFooter{
@@ -744,6 +830,10 @@
     flex-direction: column;
     align-items: flex-start;
     gap: 6px;
+  }
+
+  .brandRequestBadge{
+    display:inline-flex;
   }
 
   .tagline{

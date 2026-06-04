@@ -131,6 +131,29 @@ function resetReminderDelivery(metaInput: unknown) {
   };
 }
 
+function isPendingAppointmentRequest(metaInput: unknown) {
+  const meta = safeObj(metaInput);
+  return String(meta.source || "").toLowerCase() === "inrbadge" && String(meta.status || "").toLowerCase() === "pending";
+}
+
+function isRejectedAppointmentRequest(metaInput: unknown) {
+  const meta = safeObj(metaInput);
+  return String(meta.source || "").toLowerCase() === "inrbadge" && String(meta.status || "").toLowerCase() === "rejected";
+}
+
+function mapAgendaRowToClientEvent(e: Record<string, unknown>) {
+  return {
+    id: e.id,
+    summary: e.title ?? "(Sans titre)",
+    start: e.all_day ? (e.start_at ? String(e.start_at).slice(0, 10) : null) : e.start_at,
+    end: e.all_day ? (e.end_at ? String(e.end_at).slice(0, 10) : null) : e.end_at,
+    location: e.location ?? null,
+    htmlLink: null,
+    description: e.description ?? null,
+    inrcy: e.meta ?? null,
+  };
+}
+
 function toComparableIso(value: unknown) {
   const time = Date.parse(String(value ?? ""));
   return Number.isFinite(time) ? new Date(time).toISOString() : "";
@@ -708,22 +731,30 @@ export async function GET(req: Request) {
 
   if (error) return jsonUserFacingError(error, { status: 500, extra: { ok: false } });
 
-  const events = (data ?? []).map((e: Record<string, unknown>) => ({
-    id: e.id,
-    summary: e.title ?? "(Sans titre)",
-    start: e.all_day ? (e.start_at ? String(e.start_at).slice(0, 10) : null) : e.start_at,
-    end: e.all_day ? (e.end_at ? String(e.end_at).slice(0, 10) : null) : e.end_at,
-    location: e.location ?? null,
-    htmlLink: null,
-    description: e.description ?? null,
-    inrcy: e.meta ?? null,
-  }));
+  const events = (data ?? [])
+    .filter((e: Record<string, unknown>) => !isPendingAppointmentRequest(e.meta) && !isRejectedAppointmentRequest(e.meta))
+    .map(mapAgendaRowToClientEvent);
+
+  const { data: pendingRequests, error: pendingRequestsError } = await supabase
+    .from("agenda_events")
+    .select("id,title,description,location,start_at,end_at,all_day,meta")
+    .eq("user_id", user.id)
+    .contains("meta", { source: "inrbadge", status: "pending" })
+    .order("start_at", { ascending: true })
+    .limit(100);
+
+  if (pendingRequestsError) {
+    console.warn("[calendar-events] appointment requests load failed", pendingRequestsError);
+  }
+
+  const appointmentRequests = (pendingRequests ?? []).map(mapAgendaRowToClientEvent);
 
   return NextResponse.json({
     ok: true,
     timeMin: timeMin.toISOString(),
     timeMax: timeMax.toISOString(),
     events,
+    appointmentRequests,
   });
 }
 
@@ -828,6 +859,9 @@ export async function PATCH(req: Request) {
   const nextDescription = body.description ?? current.description ?? null;
   const nextLocation = body.location ?? current.location ?? null;
   const nextMetaRaw = buildAgendaMeta(body.inrcy, current.meta, body.contact);
+  const currentWasPendingRequest = isPendingAppointmentRequest(current.meta);
+  const nextMetaStatus = String(safeObj(nextMetaRaw).status || "").toLowerCase();
+  const validatesPendingRequest = currentWasPendingRequest && nextMetaStatus === "confirmed";
 
   const scheduleChanged =
     toComparableIso(current.start_at) !== toComparableIso(startAt) ||
@@ -885,7 +919,7 @@ export async function PATCH(req: Request) {
         end_at: endAt,
       },
       meta: nextMeta,
-      mode: "updated",
+      mode: validatesPendingRequest ? "created" : "updated",
     }).catch(() => null);
   }
   return NextResponse.json({ ok: true });

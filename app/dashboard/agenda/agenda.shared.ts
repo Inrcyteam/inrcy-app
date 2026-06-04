@@ -1,6 +1,6 @@
 export type ContactCategory = "particulier" | "professionnel" | "collectivite_publique";
 export type ContactType = "prospect" | "client" | "fournisseur" | "partenaire" | "autre";
-export type RdvMode = "create" | "edit";
+export type RdvMode = "create" | "edit" | "request";
 export type RdvKind = "intervention" | "agenda";
 
 export type CrmContact = {

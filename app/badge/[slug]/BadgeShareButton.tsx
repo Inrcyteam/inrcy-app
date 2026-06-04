@@ -47,9 +47,6 @@ export default function BadgeShareButton({ publicUrl, company, vCardUri, vCardFi
     return () => window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
   }, []);
 
-  useEffect(() => {
-    if (!open) setHelperText("");
-  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -125,10 +122,20 @@ export default function BadgeShareButton({ publicUrl, company, vCardUri, vCardFi
     }, 120);
   }
 
+  function openSheet() {
+    setHelperText("");
+    setOpen(true);
+  }
+
+  function closeSheet() {
+    setOpen(false);
+    setHelperText("");
+  }
+
   return (
     <>
       <div className={styles.floatingActions}>
-        <button type="button" className={styles.shareButton} onClick={() => setOpen(true)} aria-label="Partager cette fiche" title="Partager">
+        <button type="button" className={styles.shareButton} onClick={openSheet} aria-label="Partager cette fiche" title="Partager">
           <span className={styles.shareGlyph} aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M15.5 8.5L8.5 12" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"/>
@@ -145,7 +152,7 @@ export default function BadgeShareButton({ publicUrl, company, vCardUri, vCardFi
       {open && typeof document !== "undefined"
         ? createPortal(
             <div className={styles.sheetLayer} aria-hidden={false}>
-              <button type="button" className={styles.sheetBackdrop} aria-label="Fermer" onClick={() => setOpen(false)} />
+              <button type="button" className={styles.sheetBackdrop} aria-label="Fermer" onClick={closeSheet} />
               <div className={styles.sheet} role="dialog" aria-modal="true" aria-label="Partager cette fiche">
                 <div className={styles.sheetHandle} />
                 <div className={styles.sheetHeader}>
@@ -153,7 +160,7 @@ export default function BadgeShareButton({ publicUrl, company, vCardUri, vCardFi
                     <strong>Fiche contact</strong>
                     <p>Partagez, copiez le lien ou enregistrez le contact.</p>
                   </div>
-                  <button type="button" className={styles.sheetClose} onClick={() => setOpen(false)} aria-label="Fermer">
+                  <button type="button" className={styles.sheetClose} onClick={closeSheet} aria-label="Fermer">
                     ×
                   </button>
                 </div>

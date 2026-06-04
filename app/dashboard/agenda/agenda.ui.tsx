@@ -224,21 +224,34 @@ type AgendaHeaderProps = {
   setQuery: React.Dispatch<React.SetStateAction<string>>;
   showMobileSearch: boolean;
   setShowMobileSearch: React.Dispatch<React.SetStateAction<boolean>>;
+  appointmentRequestsCount: number;
+  onOpenAppointmentRequests: () => void;
   onClose: () => void;
 };
 
-export function AgendaHeader({ helpOpen, setHelpOpen, settingsOpen, onOpenSettings, onCloseSettings, query, setQuery, showMobileSearch, setShowMobileSearch, onClose }: AgendaHeaderProps) {
+export function AgendaHeader({ helpOpen, setHelpOpen, settingsOpen, onOpenSettings, onCloseSettings, query, setQuery, showMobileSearch, setShowMobileSearch, appointmentRequestsCount, onOpenAppointmentRequests, onClose }: AgendaHeaderProps) {
+  const hasRequests = appointmentRequestsCount > 0;
   return (
     <>
       <div className={styles.header}>
         <div className={styles.brand}>
-          <Image
-            src="/inrcalendar-logo.png"
-            alt="Interventions iNrCy"
-            width={154}
-            height={64}
-            priority
-          />
+          <button
+            type="button"
+            className={styles.brandLogoButton}
+            onClick={hasRequests ? onOpenAppointmentRequests : undefined}
+            disabled={!hasRequests}
+            aria-label={hasRequests ? `${appointmentRequestsCount} demande(s) de rendez-vous à valider` : "iNr'Calendar"}
+            title={hasRequests ? `${appointmentRequestsCount} demande(s) de RDV à valider` : "iNr'Calendar"}
+          >
+            <Image
+              src="/inrcalendar-logo.png"
+              alt="Interventions iNrCy"
+              width={154}
+              height={64}
+              priority
+            />
+            {hasRequests ? <span className={styles.brandRequestBadge}>{appointmentRequestsCount}</span> : null}
+          </button>
 
           <div className={styles.brandText}>
             <div className={styles.brandRow}>
@@ -259,6 +272,17 @@ export function AgendaHeader({ helpOpen, setHelpOpen, settingsOpen, onOpenSettin
             />
 
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <button
+                type="button"
+                className={`${styles.btnGhost} ${styles.iconOnlyBtn} ${styles.requestBell}`}
+                onClick={onOpenAppointmentRequests}
+                disabled={!hasRequests}
+                aria-label={hasRequests ? `${appointmentRequestsCount} demande(s) de rendez-vous à valider` : "Aucune demande de rendez-vous"}
+                title={hasRequests ? `${appointmentRequestsCount} demande(s) de RDV à valider` : "Aucune demande"}
+              >
+                <span aria-hidden>🔔</span>
+                {hasRequests ? <span className={styles.requestBellBadge}>{appointmentRequestsCount}</span> : null}
+              </button>
               <ResponsiveActionButton
                 desktopLabel="Réglages"
                 mobileIcon="⚙️"
@@ -639,6 +663,11 @@ type AgendaEventModalProps = {
   onClose: () => void | Promise<void>;
   onDelete: () => void;
   onSubmit: () => void;
+  requestIndex: number;
+  requestCount: number;
+  onPreviousRequest: () => void;
+  onNextRequest: () => void;
+  onRejectRequest: () => void;
   onAddContactToCrm: () => void;
   onAddGuest: () => void;
   onRemoveGuest: (id: string) => void;
@@ -687,6 +716,8 @@ export function AgendaEventModal(props: AgendaEventModalProps) {
   }, []);
 
   if (!props.open) return null;
+  const isRequestMode = props.rdvMode === "request";
+  const canSwitchRequest = isRequestMode && props.requestCount > 1;
 
   const updateAndClear = <T,>(setter: (value: T) => void, value: T) => {
     setter(value);
@@ -713,8 +744,14 @@ export function AgendaEventModal(props: AgendaEventModalProps) {
       <div className={styles.modal}>
         <div className={styles.modalHeader}>
           <div style={{ fontWeight: 950 }}>
-            {props.rdvMode === "create" ? "Nouvel évènement" : "Modifier l’évènement"}
-            <p className="text-xs text-white/60 mt-1">Les rappels suivent les réglages iNr’Calendar et partent aussi aux invités renseignés.</p>
+            {isRequestMode ? (
+              <div className={styles.requestModalTitleRow}>
+                <button className={styles.requestSwitchButton} type="button" onClick={props.onPreviousRequest} disabled={!canSwitchRequest} aria-label="Demande précédente">‹</button>
+                <span>Demande {props.requestIndex + 1}/{Math.max(1, props.requestCount)}</span>
+                <button className={styles.requestSwitchButton} type="button" onClick={props.onNextRequest} disabled={!canSwitchRequest} aria-label="Demande suivante">›</button>
+              </div>
+            ) : props.rdvMode === "create" ? "Nouvel évènement" : "Modifier l’évènement"}
+            <p className="text-xs text-white/60 mt-1">{isRequestMode ? "Validez la demande pour créer le RDV et lancer le circuit normal iNr’Calendar." : "Les rappels suivent les réglages iNr’Calendar et partent aussi aux invités renseignés."}</p>
           </div>
           <button className={styles.btnGhost} onClick={() => void props.onClose()} aria-label="Fermer">
             ✕
@@ -963,11 +1000,16 @@ export function AgendaEventModal(props: AgendaEventModalProps) {
                 Supprimer
               </button>
             )}
+            {isRequestMode && (
+              <button className={`${styles.btnDanger} ${styles.modalFooterBtn}`} onClick={props.onRejectRequest} disabled={props.rdvSaving}>
+                Refuser
+              </button>
+            )}
             <button className={`${styles.btnGhost} ${styles.modalFooterBtn}`} onClick={() => void props.onClose()} disabled={props.rdvSaving}>
               Annuler
             </button>
             <button className={`${styles.btnPrimary} ${styles.modalFooterBtn}`} onClick={props.onSubmit} disabled={props.rdvSaving}>
-              {props.rdvSaving ? "Enregistrement…" : "Enregistrer"}
+              {props.rdvSaving ? "Enregistrement…" : isRequestMode ? "Valider le RDV" : "Enregistrer"}
             </button>
           </div>
         </div>

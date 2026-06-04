@@ -34,6 +34,31 @@ import {
   prepareTemplateSnapshot,
 } from "../../_documents/documentTemplateUtils";
 
+
+const IOS_AIRPRINT_COMPACT_CLASS = "inrcy-ios-airprint-compact";
+
+function isIOSAirPrintDevice(): boolean {
+  if (typeof navigator === "undefined") return false;
+
+  const userAgent = navigator.userAgent || "";
+  const platform = navigator.platform || "";
+  const maxTouchPoints = navigator.maxTouchPoints || 0;
+
+  return (
+    /iPad|iPhone|iPod/i.test(userAgent) ||
+    (platform === "MacIntel" && maxTouchPoints > 1)
+  );
+}
+
+function prepareIOSAirPrintCompactMode(): void {
+  if (typeof document === "undefined") return;
+  if (!isIOSAirPrintDevice()) return;
+
+  // Safari / AirPrint iOS imprime avec une zone utile plus petite qu'Android.
+  // On active donc un gabarit print compact uniquement pour iPhone/iPad.
+  document.documentElement.classList.add(IOS_AIRPRINT_COMPACT_CLASS);
+}
+
 type Profile = {
   user_id: string;
   company_legal_name?: string | null;
@@ -1463,6 +1488,7 @@ export default function NewDevisPage() {
 
   const print = async () => {
     setIsEditingProvider(false);
+    prepareIOSAirPrintCompactMode();
     await waitForDomUpdate();
     window.print();
   };
