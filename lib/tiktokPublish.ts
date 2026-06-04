@@ -163,6 +163,7 @@ export function getTiktokUserFacingError(error: unknown) {
   if (message.includes("scope_not_authorized")) return "TikTok n'a pas autorisé le scope nécessaire. Reconnecte TikTok avec toutes les autorisations.";
   if (message.includes("access_token_invalid")) return "Connexion TikTok expirée. Reconnecte TikTok dans Canaux.";
   if (message.includes("spam_risk") || message.includes("rate_limit") || message.includes("quota")) return "TikTok limite temporairement la publication. Réessaie plus tard.";
+  if (message.includes("picture_size_check_failed")) return "TikTok refuse la photo car ses dimensions ne respectent pas ses contraintes. iNrCy va servir une version photo TikTok optimisée ; réessaie avec le dernier correctif.";
   if (message.includes("photo") && message.includes("not")) return "TikTok n'a pas accepté cette publication photo. Vérifie le format des images et réessaie.";
   if (message.includes("publish_cancelled") || message.includes("user_cancelled")) return "TikTok a annulé la publication. Réessaie depuis iNrCy.";
   return String(error || "TikTok n'a pas accepté la publication.");

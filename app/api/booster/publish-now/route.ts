@@ -1928,7 +1928,7 @@ export async function POST(req: Request) {
           ).filter(Boolean).slice(0, 35);
           const tiktokImageUrls = tiktokImageStoragePaths.length
             ? tiktokImageStoragePaths
-                .map((path) => buildTiktokMediaProxyUrl(req.url, path))
+                .map((path) => buildTiktokMediaProxyUrl(req.url, path, undefined, { variant: "photo" }))
                 .filter(Boolean)
                 .slice(0, 35)
             : tiktokFallbackImageUrls;

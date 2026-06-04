@@ -2943,9 +2943,9 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
           facebook: Boolean(facebookAccountConnected && facebookPageConnected && facebookConnectionStatus !== "needs_update"),
           instagram: Boolean(instagramAccountConnected && instagramConnected && instagramConnectionStatus !== "needs_update"),
           linkedin: Boolean(linkedinAccountConnected && linkedinConnectionStatus !== "needs_update"),
-          // TikTok sera sélectionnable dans Booster dès que la publication réelle sera branchée.
-          // Pour l'instant, on garde la sélection désactivée malgré l'OAuth connecté.
-          tiktok: false,
+          // TikTok suit maintenant le même état hydraté que les autres canaux.
+          // Si l'OAuth réel est actif, la bulle Booster est allumée dès l'ouverture.
+          tiktok: Boolean(tiktokConnected),
         }}
         onClose={() => {
           setDashboardBoosterModal(null);

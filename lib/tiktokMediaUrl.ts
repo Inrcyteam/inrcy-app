@@ -4,6 +4,8 @@ import { createHmac, timingSafeEqual } from "crypto";
 
 const DEFAULT_TIKTOK_MEDIA_TTL_SECONDS = 60 * 60 * 6;
 
+export type TiktokMediaVariant = "raw" | "photo";
+
 function getSigningSecret() {
   return (
     process.env.TIKTOK_MEDIA_SIGNING_SECRET ||
@@ -22,10 +24,18 @@ function base64url(value: Buffer | string) {
     .replace(/=+$/g, "");
 }
 
-function signPayload(path: string, exp: number) {
+function normalizeVariant(input: unknown): TiktokMediaVariant {
+  return String(input || "").trim() === "photo" ? "photo" : "raw";
+}
+
+function signaturePayload(path: string, exp: number, variant: TiktokMediaVariant) {
+  return `${path}.${exp}.${variant}`;
+}
+
+function signPayload(path: string, exp: number, variant: TiktokMediaVariant = "raw") {
   const secret = getSigningSecret();
   if (!secret) throw new Error("Configuration média TikTok incomplète.");
-  return base64url(createHmac("sha256", secret).update(`${path}.${exp}`).digest());
+  return base64url(createHmac("sha256", secret).update(signaturePayload(path, exp, variant)).digest());
 }
 
 function safeOrigin(input: string | undefined) {
@@ -38,14 +48,15 @@ function safeOrigin(input: string | undefined) {
   }
 }
 
-export function verifyTiktokMediaSignature(path: string, exp: number, signature: string) {
+export function verifyTiktokMediaSignature(path: string, exp: number, signature: string, variantInput?: unknown) {
   const cleanPath = String(path || "").trim();
   const cleanSignature = String(signature || "").trim();
+  const variant = normalizeVariant(variantInput);
   if (!cleanPath || !cleanSignature || !Number.isFinite(exp)) return false;
   if (exp * 1000 < Date.now()) return false;
 
   try {
-    const expected = signPayload(cleanPath, exp);
+    const expected = signPayload(cleanPath, exp, variant);
     const a = Buffer.from(expected);
     const b = Buffer.from(cleanSignature);
     if (a.length !== b.length) return false;
@@ -70,6 +81,7 @@ export function buildTiktokMediaProxyUrl(
   requestUrl: string | undefined,
   storagePath: string,
   ttlSeconds = DEFAULT_TIKTOK_MEDIA_TTL_SECONDS,
+  options?: { variant?: TiktokMediaVariant },
 ) {
   const cleanPath = String(storagePath || "").trim();
   if (!cleanPath) return "";
@@ -77,11 +89,13 @@ export function buildTiktokMediaProxyUrl(
   const baseUrl = getAppBaseUrl(requestUrl);
   if (!baseUrl) return "";
 
+  const variant = normalizeVariant(options?.variant);
   const exp = Math.floor(Date.now() / 1000) + Math.max(300, ttlSeconds);
-  const sig = signPayload(cleanPath, exp);
+  const sig = signPayload(cleanPath, exp, variant);
   const url = new URL(`${baseUrl}/api/media/tiktok`);
   url.searchParams.set("path", cleanPath);
   url.searchParams.set("exp", String(exp));
   url.searchParams.set("sig", sig);
+  if (variant !== "raw") url.searchParams.set("variant", variant);
   return url.toString();
 }
