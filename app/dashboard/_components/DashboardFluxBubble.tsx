@@ -79,8 +79,8 @@ export default function DashboardFluxBubble({ item, itemKey }: Props) {
             <a
               href={item.canViewSpecial ? item.specialViewHref : "#"}
               className={`${styles.actionBtn} ${styles.actionView}`}
-              target={item.canViewSpecial ? "_blank" : undefined}
-              rel="noreferrer"
+              target={item.canViewSpecial && /^https?:\/\//.test(item.specialViewHref) ? "_blank" : undefined}
+              rel={item.canViewSpecial && /^https?:\/\//.test(item.specialViewHref) ? "noreferrer" : undefined}
               aria-disabled={!item.canViewSpecial}
               style={{ opacity: !item.canViewSpecial ? 0.5 : 1, pointerEvents: !item.canViewSpecial ? "none" : "auto" }}
             >
