@@ -1834,6 +1834,20 @@
     word-break: normal !important;
   }
 
+  .editorPage {
+    display: block !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+    color: #111 !important;
+    overflow: visible !important;
+    box-shadow: none !important;
+    filter: none !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
   .container {
     display: block !important;
     width: 100% !important;
@@ -1874,8 +1888,11 @@
     width: 100% !important;
     margin: 0 !important;
     padding: 0 !important;
+    background: #fff !important;
     line-height: 0 !important;
     font-size: 0 !important;
+    box-shadow: none !important;
+    filter: none !important;
   }
 
   .documentPrintPage {
@@ -2129,8 +2146,27 @@
   }
 
 
-  /* iPhone Safari : reproduit automatiquement le rendu qui sort proprement à 70 %.
-     Android et desktop ne passent jamais par ce mode. */
+  /* iPhone Safari : on conserve le rendu volontaire à 70 %,
+     mais on isole le PDF du fond dashboard et du cadre fixed Safari. */
+  :global(html[data-inrcy-print="ios-safari"]) .editorPage,
+  :global(html[data-inrcy-print="ios-safari"]) .container,
+  :global(html[data-inrcy-print="ios-safari"]) .preview,
+  :global(html[data-inrcy-print="ios-safari"]) .documentPrintPages {
+    background: #fff !important;
+    box-shadow: none !important;
+    filter: none !important;
+    overflow: visible !important;
+  }
+
+  :global(html[data-inrcy-print="ios-safari"]) .previewFrame::before {
+    content: none !important;
+    display: none !important;
+  }
+
+  :global(html[data-inrcy-print="ios-safari"]) .previewFrame .documentPrintPage {
+    border: 2px solid var(--doc-accent) !important;
+  }
+
   :global(html[data-inrcy-print="ios-safari"]) .documentPrintPage {
     zoom: 0.7 !important;
     transform-origin: top center !important;
