@@ -67,7 +67,7 @@ export default function CRMHeader({
     <header className={styles.header}>
       <div className={styles.titleBlock}>
         <div className={styles.titleWrap}>
-          <img src="/inrcrm-logo.png" alt="iNr’CRM" style={{ width: 154, height: 64, display: "block" }} />
+          <img src="/inrcrm-logo.png" alt="iNr’CRM" width={154} height={64} loading="eager" decoding="sync" fetchPriority="high" style={{ width: 154, height: 64, display: "block" }} />
           {!isResponsive ? <p className={styles.subInline}>La centrale de tous vos contacts</p> : null}
         </div>
         {isResponsive ? <p className={styles.mobileTagline}>La centrale de tous vos contacts</p> : null}

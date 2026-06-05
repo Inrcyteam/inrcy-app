@@ -45,7 +45,15 @@ export default function InrBadgePreviewModal({ profile, publicUrl, onClose, onCo
     >
       <div className={styles.inrBadgeModalCard}>
         <div className={styles.inrBadgeModalLogo} aria-hidden="true">
-          <img src={INRBADGE_ICON_SRC} alt="" />
+          <img
+            src={INRBADGE_ICON_SRC}
+            alt=""
+            width={96}
+            height={96}
+            loading="eager"
+            decoding="sync"
+            fetchPriority="high"
+          />
         </div>
 
         <div className={styles.inrBadgeModalIntro}>

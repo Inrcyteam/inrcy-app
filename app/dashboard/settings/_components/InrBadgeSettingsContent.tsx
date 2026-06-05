@@ -536,7 +536,16 @@ export default function InrBadgeSettingsContent({
       </div>
 
       <div style={heroCardStyle}>
-        <div style={heroIconStyle}><img src={INRBADGE_ICON_SRC} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", transform: "scale(1.04)", display: "block" }} /></div>
+        <div style={heroIconStyle}><img
+          src={INRBADGE_ICON_SRC}
+          alt=""
+          width={128}
+          height={128}
+          loading="eager"
+          decoding="sync"
+          fetchPriority="high"
+          style={{ width: "100%", height: "100%", objectFit: "cover", transform: "scale(1.04)", display: "block" }}
+        /></div>
         <div style={{ minWidth: 0 }}>
           <h2 style={heroTitleStyle}>{INRBADGE_HEADER_LINE}</h2>
           <p style={heroSubTextStyle}>Le QR reste permanent. Les informations partagées peuvent évoluer sans réimprimer vos supports.</p>

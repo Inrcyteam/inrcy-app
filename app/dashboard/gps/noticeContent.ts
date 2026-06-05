@@ -65,21 +65,20 @@ export const GPS_SECTIONS: GpsSection[] = [
     id: "canaux",
     title: "Les canaux",
     emoji: "🧩",
-    description: "Comprendre les 10 canaux : diffusion et entrée, avec iNr'Agent en copilote global.",
+    description: "Comprendre les 10 canaux de diffusion qui alimentent votre visibilité.",
     articles: [
       {
         id: "canaux-express",
         title: "Connecter les bonnes bulles",
-        keywords: ["canaux", "bulles", "connexion", "configurer", "connecter", "site inrcy", "site web", "google", "facebook", "instagram", "linkedin", "tiktok", "youtube", "shorts", "mails", "inrbadge", "agent", "statistiques", "publications"],
+        keywords: ["canaux", "bulles", "connexion", "configurer", "connecter", "site inrcy", "site web", "google", "facebook", "instagram", "linkedin", "tiktok", "youtube", "shorts", "mails", "inrbadge", "statistiques", "publications", "visibilité"],
         duration: "5 min",
         goal: "Visibilité reliée",
         intro:
-          "Les canaux iNrCy ont des rôles différents : les canaux de diffusion publient et rendent visible, iNr'Badge capte les contacts, YouTube Shorts étend la vidéo courte, et iNr'Agent prépare des actions à valider depuis le header.",
+          "Les canaux iNrCy sont vos leviers de diffusion. Ils rendent votre entreprise visible, diffusent vos contenus, partagent votre carte de visite digitale et alimentent le générateur en signaux utiles.",
         steps: [
           "Ouvrir **Les canaux**, choisir la bulle concernée, puis cliquer sur **Configurer**.",
-          "Connecter les canaux de diffusion : Site iNrCy, Site web, Google Business, Facebook, Instagram, LinkedIn, TikTok, YouTube Shorts ou Mails.",
-          "Configurer **iNr'Badge** comme canal d’entrée pour capter contacts et rendez-vous via QR Code.",
-          "Utiliser **iNr'Agent** depuis le header lorsqu’il doit préparer des publications, campagnes ou relances.",
+          "Connecter les canaux de diffusion : iNr'Badge, Mails, Site iNrCy, Site web, Google Business, Facebook, Instagram, LinkedIn, TikTok et YouTube Shorts.",
+          "Configurer chaque canal utile pour que le générateur puisse diffuser, analyser et exploiter les bons signaux.",
         ],
         checks: [
           "Le canal affiche bien Connecté ou Configuré.",
@@ -89,9 +88,47 @@ export const GPS_SECTIONS: GpsSection[] = [
         ],
         pitfalls: [
           "Commencer par les canaux les plus utiles : Google Business, Site iNrCy, Site web et Mails.",
-          "Tous les canaux ne font pas la même chose : diffusion, entrée ou action.",
+          "Tous les canaux ne diffusent pas de la même manière : certains publient, certains analysent, certains renvoient vers vos contacts ou vos rendez-vous.",
         ],
         links: [{ label: "Ouvrir les canaux", href: "/dashboard" }],
+      },
+    ],
+  },
+  {
+    id: "inragent",
+    title: "iNr'Agent",
+    emoji: "🤖",
+    description: "Votre assistant virtuel pour préparer, automatiser et programmer vos actions de communication.",
+    articles: [
+      {
+        id: "inragent-express",
+        title: "Utiliser votre assistant virtuel",
+        keywords: ["inragent", "agent", "assistant", "assistant virtuel", "automatiser", "programmer", "communication", "publication", "campagne", "relance", "actions"],
+        duration: "3 min",
+        goal: "Gagner du temps",
+        intro:
+          "iNr'Agent est votre assistant virtuel iNrCy. Il vous aide à préparer, automatiser et programmer vos actions de communication depuis un seul endroit.",
+        steps: [
+          "Ouvrir **iNr'Agent** depuis le header du dashboard.",
+          "Lui demander une action claire : préparer une publication, une campagne, une relance, une analyse ou une action commerciale.",
+          "Laisser iNr'Agent utiliser les outils iNrCy disponibles pour préparer une proposition adaptée.",
+          "Relire l’aperçu, puis **valider** ou **refuser** l’action avant qu’elle soit exécutée.",
+        ],
+        checks: [
+          "Votre activité, votre profil et votre Configuration IA sont bien renseignés.",
+          "Les canaux utiles sont connectés ou activés selon votre offre.",
+          "Rien n’est publié, envoyé ou modifié sans votre validation.",
+          "iNr'Agent peut être activé ou désactivé selon les accès de votre compte.",
+        ],
+        pitfalls: [
+          "iNr'Agent ne remplace pas votre décision : il prépare, propose et accélère.",
+          "Plus vos informations et vos canaux sont complets, plus ses propositions sont utiles.",
+          "Objectif : gagner du temps, garder une communication régulière et transformer vos idées en actions concrètes.",
+        ],
+        links: [
+          { label: "Ouvrir iNr'Agent", href: "/dashboard/agent" },
+          { label: "Configurer iNr'Agent", href: "/dashboard?panel=inr_agent" },
+        ],
       },
     ],
   },
@@ -118,7 +155,7 @@ export const GPS_SECTIONS: GpsSection[] = [
         checks: [
           "Mon activité, panier moyen et taux de transformation sont renseignés.",
           "Au moins un canal important est connecté ou configuré.",
-          "Les canaux de diffusion et iNr'Badge sont bien activés selon le forfait, et iNr'Agent reste accessible dans le header.",
+          "Les canaux de diffusion sont bien activés selon le forfait, et iNr'Agent est disponible dans le header quand l’accès est ouvert.",
           "Les données 7j / 30j ont eu le temps de remonter.",
           "Les Unités d’Inertie progressent avec les actions et peuvent servir dans la Boutique.",
         ],
@@ -151,7 +188,7 @@ export const GPS_SECTIONS: GpsSection[] = [
           "iNrStats traduit les données des canaux en lecture business simple : appels, clics, visites, formulaires, demandes, envois et signaux utiles.",
         steps: [
           "Connecter les canaux utiles pour laisser iNrCy récupérer les données disponibles.",
-          "Lire les résultats par canal : Google Business, sites, Facebook, Instagram, LinkedIn, TikTok ou Mails selon les connexions.",
+          "Lire les résultats par canal : Google Business, sites, Facebook, Instagram, LinkedIn, TikTok, YouTube Shorts ou Mails selon les connexions.",
           "Repérer ce qui fonctionne : appels, clics, itinéraires, visites, formulaires, interactions ou campagnes.",
           "Utiliser ensuite **Booster**, **Propulser**, **Fidéliser** ou **iNr'Agent** selon le levier recommandé.",
         ],
@@ -191,7 +228,7 @@ export const GPS_SECTIONS: GpsSection[] = [
         steps: [
           "Cliquer sur **Publier maintenant** pour ouvrir directement l’outil de publication.",
           "Préparer un contenu : chantier, nouveauté, conseil, photo, actualité ou preuve terrain.",
-          "Choisir les canaux utiles : sites, Google Business, Facebook, Instagram, LinkedIn, TikTok ou Mails.",
+          "Choisir les canaux utiles : sites, Google Business, Facebook, Instagram, LinkedIn, TikTok, YouTube Shorts ou Mails.",
           "Vérifier le texte, l’image, le ton et l’appel à l’action avant l’envoi.",
           "Pour une action commerciale guidée, passer ensuite par **Propulser**.",
         ],

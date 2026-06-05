@@ -182,10 +182,10 @@ export default function DashboardHelpModals({
               overflowWrap: "anywhere",
             }}
           >
-            Les canaux iNrCy représentent les différentes sources connectées à
-            votre générateur. Ils n’ont pas tous le même rôle : certains
-            diffusent votre communication, d’autres captent des contacts ou
-            préparent des actions à valider.
+            Les canaux iNrCy représentent vos différents leviers de diffusion :
+            ils rendent votre entreprise visible, partagent vos contenus,
+            diffusent votre carte de visite digitale et alimentent votre
+            générateur en signaux utiles.
           </p>
 
           <div style={{ display: "grid", gap: 20, maxWidth: "100%", minWidth: 0 }}>
@@ -203,7 +203,7 @@ export default function DashboardHelpModals({
               <div
                 style={{ fontWeight: 800, color: "#66d9ff", marginBottom: 6 }}
               >
-                📡 Canaux de diffusion
+                📡 Tous vos canaux de diffusion
               </div>
               <p
                 style={{
@@ -213,8 +213,9 @@ export default function DashboardHelpModals({
                   fontSize: 14,
                 }}
               >
-                Ils publient, diffusent ou analysent votre visibilité sur vos
-                supports publics et vos audiences.
+                Ils diffusent votre présence, vos publications, vos campagnes,
+                votre carte de visite digitale ou vos contenus courts sur les
+                supports utiles à votre activité.
               </p>
               <div
                 style={{
@@ -224,6 +225,12 @@ export default function DashboardHelpModals({
                 }}
               >
                 {[
+                  {
+                    icon: "🪪",
+                    name: "iNr'Badge",
+                    color: "#b7ff8a",
+                    text: "Diffuse votre carte de visite digitale en QR Code. Il donne accès à vos coordonnées, vos liens, vos demandes de contact et vos prises de rendez-vous.",
+                  },
                   {
                     icon: "🌐",
                     name: "Site iNrCy",
@@ -264,7 +271,13 @@ export default function DashboardHelpModals({
                     icon: "🎵",
                     name: "TikTok",
                     color: "#ff8bbd",
-                    text: "Prépare la diffusion de contenus courts et vidéos pour renforcer votre visibilité quand le canal est activé.",
+                    text: "Diffuse vos contenus courts et vidéos pour renforcer votre visibilité quand le canal est activé.",
+                  },
+                  {
+                    icon: "▶️",
+                    name: "YouTube Shorts",
+                    color: "#ff6b6b",
+                    text: "Diffuse vos vidéos courtes sur YouTube Shorts pour donner plus de portée à vos contenus rapides, démonstrations et actualités terrain.",
                   },
                   {
                     icon: "✉️",
@@ -293,59 +306,6 @@ export default function DashboardHelpModals({
               </div>
             </section>
 
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(min(220px, 100%), 1fr))",
-                gap: 16,
-              }}
-            >
-              <section
-                style={{
-                  borderRadius: 16,
-                  padding: 16,
-                  minWidth: 0,
-                  boxSizing: "border-box",
-                  background: "rgba(76,255,168,0.07)",
-                  border: "1px solid rgba(125,247,196,0.14)",
-                }}
-              >
-                <div
-                  style={{ fontWeight: 800, color: "#b7ff8a", marginBottom: 6 }}
-                >
-                  🪪 Canal d’entrée — iNr'Badge
-                </div>
-                <div style={{ opacity: 0.96, lineHeight: 1.62, fontSize: 14 }}>
-                  Votre carte de visite digitale en QR Code. Elle capte les
-                  contacts, demandes et rendez-vous puis alimente les outils
-                  liés comme iNr'Calendar et le CRM.
-                </div>
-              </section>
-
-              <section
-                style={{
-                  borderRadius: 16,
-                  padding: 16,
-                  minWidth: 0,
-                  boxSizing: "border-box",
-                  background: "rgba(167,72,255,0.08)",
-                  border: "1px solid rgba(199,164,255,0.16)",
-                }}
-              >
-                <div
-                  style={{ fontWeight: 800, color: "#c7a4ff", marginBottom: 6 }}
-                >
-                  🤖 Canal d’action — iNr'Agent
-                </div>
-                <div style={{ opacity: 0.96, lineHeight: 1.62, fontSize: 14 }}>
-                  Prépare des publications, campagnes ou actions à valider. Il
-                  ne remplace pas les autres canaux : il les pilote pour aider
-                  le pro à agir régulièrement.
-                </div>
-              </section>
-            </div>
-          </div>
-
           <div
             style={{
               marginTop: 22,
@@ -360,10 +320,11 @@ export default function DashboardHelpModals({
               opacity: 0.95,
             }}
           >
-            Plus vos canaux sont actifs, connectés et alimentés par Booster,
-            Propulser, Fidéliser ou iNr'Agent, plus le générateur augmente sa
+            Plus vos canaux de diffusion sont actifs, connectés et alimentés
+            par Booster, Propulser ou Fidéliser, plus le générateur augmente sa
             capacité à attirer, analyser et convertir de nouveaux contacts.
           </div>
+        </div>
         </div>
       </HelpModal>
 

@@ -39,7 +39,16 @@ export default function DashboardFluxBubble({ item, itemKey }: Props) {
     >
       <div className={styles.bubbleStack}>
         <div className={`${styles.bubbleLogo} ${item.key === "mails" ? styles.bubbleLogoMail : ""} ${item.key === "inrbadge" ? styles.bubbleLogoProfile : ""} ${item.key === "inr_agent" ? styles.bubbleLogoAgent : ""} ${item.key === "youtube_shorts" ? styles.bubbleLogoYoutube : ""}`} aria-hidden>
-          <img className={styles.bubbleLogoImg} src={item.logoSrc} alt={item.logoAlt} />
+          <img
+            className={styles.bubbleLogoImg}
+            src={item.logoSrc}
+            alt={item.logoAlt}
+            width={96}
+            height={96}
+            loading="eager"
+            decoding="sync"
+            fetchPriority="high"
+          />
         </div>
 
         <div className={styles.bubbleTitleRow}>

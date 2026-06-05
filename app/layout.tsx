@@ -41,14 +41,6 @@ export default function RootLayout({
       <head>
         {/* 🔒 Empêche Google Translate */}
         <meta name="google" content="notranslate" />
-        <link rel="preload" href="/icons/inrcy.png" as="image" />
-        <link rel="preload" href="/icons/site-web.jpg" as="image" />
-        <link rel="preload" href="/icons/google.jpg" as="image" />
-        <link rel="preload" href="/icons/facebook.png" as="image" />
-        <link rel="preload" href="/icons/instagram.jpg" as="image" />
-        <link rel="preload" href="/icons/linkedin.png" as="image" />
-        <link rel="preload" href="/icons/tiktok.png" as="image" />
-        <link rel="preload" href="/icons/youtube-shorts.png" as="image" />
       </head>
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}

@@ -177,7 +177,7 @@ export default function AgentClient() {
         <header className={styles.topbar}>
           <div className={styles.brandBlock}>
             <span className={styles.logoRing} aria-hidden>
-              <img src="/icons/inr-agent.png" alt="" className={styles.logoImage} />
+              <img src="/icons/inr-agent.png" alt="" width={96} height={96} loading="eager" decoding="sync" fetchPriority="high" className={styles.logoImage} />
             </span>
             <div>
               <p className={styles.eyebrow}>Centre de pilotage</p>
@@ -222,7 +222,7 @@ export default function AgentClient() {
           <div className={styles.orbitPanel} aria-label="Outils pilotés par iNr'Agent">
             <div className={styles.orbitHalo} aria-hidden />
             <div className={styles.orbitCore}>
-              <img src="/icons/inr-agent.png" alt="" className={styles.orbitLogo} />
+              <img src="/icons/inr-agent.png" alt="" width={70} height={70} loading="eager" decoding="sync" fetchPriority="high" className={styles.orbitLogo} />
               <span>iNr'Agent</span>
             </div>
             {orbitNodes.map((node, index) => (

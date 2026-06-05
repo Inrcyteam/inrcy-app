@@ -235,13 +235,10 @@ export function AgendaHeader({ helpOpen, setHelpOpen, settingsOpen, onOpenSettin
     <>
       <div className={styles.header}>
         <div className={styles.brand}>
-          <button
-            type="button"
+          <div
             className={styles.brandLogoButton}
-            onClick={hasRequests ? onOpenAppointmentRequests : undefined}
-            disabled={!hasRequests}
-            aria-label={hasRequests ? `${appointmentRequestsCount} demande(s) de rendez-vous à valider` : "iNr'Calendar"}
-            title={hasRequests ? `${appointmentRequestsCount} demande(s) de RDV à valider` : "iNr'Calendar"}
+            aria-label="iNr'Calendar"
+            title="iNr'Calendar"
           >
             <Image
               src="/inrcalendar-logo.png"
@@ -250,8 +247,7 @@ export function AgendaHeader({ helpOpen, setHelpOpen, settingsOpen, onOpenSettin
               height={64}
               priority
             />
-            {hasRequests ? <span className={styles.brandRequestBadge}>{appointmentRequestsCount}</span> : null}
-          </button>
+          </div>
 
           <div className={styles.brandText}>
             <div className={styles.brandRow}>
@@ -274,13 +270,13 @@ export function AgendaHeader({ helpOpen, setHelpOpen, settingsOpen, onOpenSettin
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <button
                 type="button"
-                className={`${styles.btnGhost} ${styles.iconOnlyBtn} ${styles.requestBell}`}
+                className={`${styles.btnGhost} ${styles.iconOnlyBtn} ${styles.requestAgendaBtn}`}
                 onClick={onOpenAppointmentRequests}
                 disabled={!hasRequests}
                 aria-label={hasRequests ? `${appointmentRequestsCount} demande(s) de rendez-vous à valider` : "Aucune demande de rendez-vous"}
                 title={hasRequests ? `${appointmentRequestsCount} demande(s) de RDV à valider` : "Aucune demande"}
               >
-                <span aria-hidden>🔔</span>
+                <span className={styles.requestAgendaIcon} aria-hidden>📅</span>
                 {hasRequests ? <span className={styles.requestBellBadge}>{appointmentRequestsCount}</span> : null}
               </button>
               <ResponsiveActionButton
@@ -307,12 +303,25 @@ export function AgendaHeader({ helpOpen, setHelpOpen, settingsOpen, onOpenSettin
             </button>
 
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <ResponsiveActionButton
-                desktopLabel="Réglages"
-                mobileIcon="⚙️"
-                onClick={onOpenSettings}
-                title="Réglages iNr’Calendar"
-              />
+              {hasRequests ? (
+                <button
+                  type="button"
+                  className={`${styles.btnGhost} ${styles.iconOnlyBtn} ${styles.requestAgendaBtn} ${styles.requestAgendaBtnActive}`}
+                  onClick={onOpenAppointmentRequests}
+                  aria-label={`${appointmentRequestsCount} demande(s) de rendez-vous à valider`}
+                  title={`${appointmentRequestsCount} demande(s) de RDV à valider`}
+                >
+                  <span className={styles.requestAgendaIcon} aria-hidden>📅</span>
+                  <span className={styles.requestBellBadge}>{appointmentRequestsCount}</span>
+                </button>
+              ) : (
+                <ResponsiveActionButton
+                  desktopLabel="Réglages"
+                  mobileIcon="⚙️"
+                  onClick={onOpenSettings}
+                  title="Réglages iNr’Calendar"
+                />
+              )}
               <ResponsiveActionButton desktopLabel="Fermer" mobileIcon="✕" onClick={onClose} />
             </div>
           </div>

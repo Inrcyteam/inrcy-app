@@ -155,7 +155,16 @@ export default function DashboardChannelsSection({
     >
       <div className={styles.desktopSideBubbleStack}>
         <div className={`${styles.bubbleLogo} ${item.key === "mails" ? styles.bubbleLogoMail : ""} ${item.key === "inrbadge" ? styles.bubbleLogoProfile : ""} ${item.key === "youtube_shorts" ? styles.bubbleLogoYoutube : ""}`}>
-          <img className={styles.bubbleLogoImg} src={item.logoSrc} alt={item.logoAlt} />
+          <img
+            className={styles.bubbleLogoImg}
+            src={item.logoSrc}
+            alt={item.logoAlt}
+            width={96}
+            height={96}
+            loading="eager"
+            decoding="sync"
+            fetchPriority="high"
+          />
         </div>
 
         <div className={styles.desktopSideBubbleTitle}>{item.name}</div>

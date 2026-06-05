@@ -98,7 +98,16 @@ export default function DashboardTopbar({
   return (
     <header className={styles.topbar}>
       <div className={styles.brand}>
-        <img className={styles.logoImg} src="/logo-inrcy.png" alt="iNrCy" />
+        <img
+          className={styles.logoImg}
+          src="/logo-inrcy.png"
+          alt="iNrCy"
+          width={112}
+          height={42}
+          loading="eager"
+          decoding="sync"
+          fetchPriority="high"
+        />
         <div className={styles.brandText}>
           <div className={styles.brandTag}>Générateur de business</div>
         </div>
@@ -143,6 +152,11 @@ export default function DashboardTopbar({
               className={styles.agentTopbarIcon}
               src="/icons/inr-agent-header.png"
               alt=""
+              width={29}
+              height={29}
+              loading="eager"
+              decoding="sync"
+              fetchPriority="high"
               aria-hidden
             />
           </span>
@@ -221,6 +235,11 @@ export default function DashboardTopbar({
               className={styles.mobileHeaderAgentIcon}
               src="/icons/inr-agent-header.png"
               alt=""
+              width={29}
+              height={29}
+              loading="eager"
+              decoding="sync"
+              fetchPriority="high"
               aria-hidden
             />
           </span>

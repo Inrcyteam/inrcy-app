@@ -1413,7 +1413,8 @@ useEffect(() => {
               height={64}
               className={styles.headerLogo}
               loading="eager"
-              decoding="async"
+              decoding="sync"
+              fetchPriority="high"
             />
             <div className={`${styles.tagline} ${styles.taglineDesktop}`}>Vos données analysées en mode business.</div>
           </div>
