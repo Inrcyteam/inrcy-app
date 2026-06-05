@@ -1,6 +1,6 @@
 import { sanitizeBoosterSiteText, stripSiteTextFormatting } from "@/lib/boosterFormatting";
 
-export type BoosterChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin" | "tiktok";
+export type BoosterChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin" | "tiktok" | "youtube_shorts";
 export type BoosterCtaMode = "none" | "website" | "call" | "message" | "custom";
 
 export type BoosterPostLike = {
@@ -114,7 +114,7 @@ export function buildCtaTextForChannel(channel: BoosterChannelKey, post: Partial
     case "call":
       return phone ? `Appelez-nous : ${phone}` : "";
     case "message":
-      return channel === "instagram" || channel === "tiktok" ? "Écrivez-nous en message privé." : "Envoyez-nous un message privé.";
+      return channel === "instagram" || channel === "tiktok" || channel === "youtube_shorts" ? "Écrivez-nous en commentaire ou message privé." : "Envoyez-nous un message privé.";
     case "custom": {
       const customUrl = ensureUrl(String(post?.ctaUrl || ""));
       if (customUrl) return `${label || "En savoir plus"} : ${customUrl}`;

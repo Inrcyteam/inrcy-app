@@ -36,6 +36,7 @@ const CHANNEL_ICON_SRC: Record<ChannelKey, string> = {
   instagram: "/icons/instagram.jpg",
   linkedin: "/icons/linkedin.png",
   tiktok: "/icons/tiktok.png",
+  youtube_shorts: "/icons/youtube-shorts.png",
 };
 
 function LinkIcon() {
@@ -89,7 +90,7 @@ export default function PublishChannelSelector({
           gridTemplateColumns: isMobile
             ? "repeat(2, minmax(0, 1fr))"
             : `repeat(${channelKeys.length}, minmax(0, 1fr))`,
-          gap: isMobile ? 8 : 7,
+          gap: isMobile ? 8 : 6,
           alignItems: "stretch",
         }}
       >
@@ -343,9 +344,9 @@ export default function PublishChannelSelector({
                 decoding="sync"
                 fetchPriority="high"
                 style={{
-                  width: key === "site_web" ? 29 : 31,
-                  height: key === "site_web" ? 29 : 31,
-                  borderRadius: key === "site_web" ? 10 : 999,
+                  width: key === "site_web" ? 27 : 29,
+                  height: key === "site_web" ? 27 : 29,
+                  borderRadius: key === "site_web" ? 9 : 999,
                   objectFit: "cover",
                   opacity: isConnected ? 1 : 0.48,
                   filter: isConnected ? undefined : "grayscale(0.7)",

@@ -27,6 +27,8 @@ type BuildFluxBubbleItemsArgs = {
   mailAccountsConnectedCount: number;
   tiktokConnected: boolean;
   tiktokUrl: string | null | undefined;
+  youtubeShortsConnected: boolean;
+  youtubeShortsUrl: string | null | undefined;
   openPanel: (panel: any) => void;
   savedSiteWebUrlMeta: unknown;
   setHelpSiteInrcyOpen: (open: boolean) => void;
@@ -56,6 +58,8 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
     mailAccountsConnectedCount,
     tiktokConnected,
     tiktokUrl,
+    youtubeShortsConnected,
+    youtubeShortsUrl,
     openPanel,
     savedSiteWebUrlMeta,
     setHelpSiteInrcyOpen,
@@ -103,6 +107,7 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
               : { status: "available" as ModuleStatus, text: "A connecter" };
           }
           if (m.key === "tiktok") return tiktokConnected ? { status: "connected" as ModuleStatus, text: "Connecté" } : { status: "available" as ModuleStatus, text: "A connecter" };
+          if (m.key === "youtube_shorts") return youtubeShortsConnected ? { status: "connected" as ModuleStatus, text: "Connecté" } : { status: "available" as ModuleStatus, text: "A connecter" };
           if (m.key === "inr_agent") return { status: "connected" as ModuleStatus, text: "Connecté" };
           return { status: m.status, text: statusLabel(m.status) };
         })();
@@ -121,8 +126,8 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
                 ? (blockDrivenViewHref || normalizeExternalHref(facebookUrl) || "#")
                 : m.key === "tiktok"
                   ? (blockDrivenViewHref || normalizeExternalHref(tiktokUrl) || "#")
-                  : m.key === "inr_agent"
-                    ? "/dashboard/agent"
+                  : m.key === "youtube_shorts"
+                    ? (normalizeExternalHref(youtubeShortsUrl) || "#")
                     : undefined;
 
     const specialViewLabel = m.key === "inrbadge"
@@ -135,8 +140,8 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
             ? "Voir la page"
             : ["instagram", "linkedin", "facebook", "tiktok"].includes(m.key)
               ? "Voir le compte"
-              : m.key === "inr_agent"
-                ? "Ouvrir iNr'Agent"
+              : m.key === "youtube_shorts"
+                ? "Voir la chaîne"
                 : undefined;
 
     const canViewSpecial = m.key === "inrbadge"
@@ -155,8 +160,8 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
                 ? Boolean(blockDrivenViewHref || facebookUrl)
                 : m.key === "tiktok"
                   ? Boolean(blockDrivenViewHref || tiktokUrl)
-                  : m.key === "inr_agent"
-                    ? true
+                  : m.key === "youtube_shorts"
+                    ? Boolean(youtubeShortsUrl)
                     : undefined;
 
     const onConfigure = () => {
@@ -168,6 +173,10 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
       }
       if (m.key === "tiktok") {
         openPanel("tiktok");
+        return;
+      }
+      if (m.key === "youtube_shorts") {
+        openPanel("youtube_shorts");
         return;
       }
       if (m.key === "inr_agent") {

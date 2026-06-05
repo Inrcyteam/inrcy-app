@@ -38,7 +38,7 @@ export default function DashboardFluxBubble({ item, itemKey }: Props) {
       title={isComingSoon ? item.configureTitle || "Option désactivée" : undefined}
     >
       <div className={styles.bubbleStack}>
-        <div className={`${styles.bubbleLogo} ${item.key === "mails" ? styles.bubbleLogoMail : ""} ${item.key === "inrbadge" ? styles.bubbleLogoProfile : ""} ${item.key === "inr_agent" ? styles.bubbleLogoAgent : ""}`} aria-hidden>
+        <div className={`${styles.bubbleLogo} ${item.key === "mails" ? styles.bubbleLogoMail : ""} ${item.key === "inrbadge" ? styles.bubbleLogoProfile : ""} ${item.key === "inr_agent" ? styles.bubbleLogoAgent : ""} ${item.key === "youtube_shorts" ? styles.bubbleLogoYoutube : ""}`} aria-hidden>
           <img className={styles.bubbleLogoImg} src={item.logoSrc} alt={item.logoAlt} />
         </div>
 
@@ -89,7 +89,7 @@ export default function DashboardFluxBubble({ item, itemKey }: Props) {
           ) : item.viewAction ? (
             <DashboardActionButton action={item.viewAction} />
           ) : (
-            <button className={`${styles.actionBtn} ${styles.actionView}`} type="button">
+            <button className={`${styles.actionBtn} ${styles.actionView}`} type="button" disabled>
               Voir
             </button>
           )}

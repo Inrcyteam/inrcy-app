@@ -17,6 +17,7 @@ export async function GET() {
         instagram: states.instagram.connected && !states.instagram.requiresUpdate,
         linkedin: states.linkedin.connected && !states.linkedin.requiresUpdate,
         tiktok: states.tiktok.connected && !states.tiktok.requiresUpdate,
+        youtube_shorts: states.youtube_shorts.connected && !states.youtube_shorts.requiresUpdate,
       },
       channelDetails: {
         inrcy_site: {
@@ -57,6 +58,11 @@ export async function GET() {
           type: "account",
           label: states.tiktok.username || states.tiktok.profile_url,
           href: states.tiktok.profile_url,
+        },
+        youtube_shorts: {
+          type: "channel",
+          label: states.youtube_shorts.channel_name || states.youtube_shorts.channel_url,
+          href: states.youtube_shorts.channel_url,
         },
       },
     });

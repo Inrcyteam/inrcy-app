@@ -22,6 +22,7 @@ type DashboardPanelName =
   | "gmb"
   | "facebook"
   | "tiktok"
+  | "youtube_shorts"
   | "inr_agent"
   | "legal"
   | "rgpd"
@@ -153,7 +154,7 @@ export default function DashboardChannelsSection({
       aria-hidden
     >
       <div className={styles.desktopSideBubbleStack}>
-        <div className={`${styles.bubbleLogo} ${item.key === "mails" ? styles.bubbleLogoMail : ""} ${item.key === "inrbadge" ? styles.bubbleLogoProfile : ""}`}>
+        <div className={`${styles.bubbleLogo} ${item.key === "mails" ? styles.bubbleLogoMail : ""} ${item.key === "inrbadge" ? styles.bubbleLogoProfile : ""} ${item.key === "youtube_shorts" ? styles.bubbleLogoYoutube : ""}`}>
           <img className={styles.bubbleLogoImg} src={item.logoSrc} alt={item.logoAlt} />
         </div>
 

@@ -65,21 +65,21 @@ export const GPS_SECTIONS: GpsSection[] = [
     id: "canaux",
     title: "Les canaux",
     emoji: "🧩",
-    description: "Comprendre les 10 canaux : diffusion, entrée et action.",
+    description: "Comprendre les 10 canaux : diffusion et entrée, avec iNr'Agent en copilote global.",
     articles: [
       {
         id: "canaux-express",
         title: "Connecter les bonnes bulles",
-        keywords: ["canaux", "bulles", "connexion", "configurer", "connecter", "site inrcy", "site web", "google", "facebook", "instagram", "linkedin", "tiktok", "mails", "inrbadge", "agent", "statistiques", "publications"],
+        keywords: ["canaux", "bulles", "connexion", "configurer", "connecter", "site inrcy", "site web", "google", "facebook", "instagram", "linkedin", "tiktok", "youtube", "shorts", "mails", "inrbadge", "agent", "statistiques", "publications"],
         duration: "5 min",
         goal: "Visibilité reliée",
         intro:
-          "Les canaux iNrCy ont des rôles différents : les canaux de diffusion publient et rendent visible, iNr'Badge capte les contacts, et iNr'Agent prépare des actions à valider.",
+          "Les canaux iNrCy ont des rôles différents : les canaux de diffusion publient et rendent visible, iNr'Badge capte les contacts, YouTube Shorts étend la vidéo courte, et iNr'Agent prépare des actions à valider depuis le header.",
         steps: [
           "Ouvrir **Les canaux**, choisir la bulle concernée, puis cliquer sur **Configurer**.",
-          "Connecter les canaux de diffusion : Site iNrCy, Site web, Google Business, Facebook, Instagram, LinkedIn, TikTok ou Mails.",
+          "Connecter les canaux de diffusion : Site iNrCy, Site web, Google Business, Facebook, Instagram, LinkedIn, TikTok, YouTube Shorts ou Mails.",
           "Configurer **iNr'Badge** comme canal d’entrée pour capter contacts et rendez-vous via QR Code.",
-          "Activer **iNr'Agent** comme canal d’action lorsqu’il doit préparer des publications, campagnes ou relances.",
+          "Utiliser **iNr'Agent** depuis le header lorsqu’il doit préparer des publications, campagnes ou relances.",
         ],
         checks: [
           "Le canal affiche bien Connecté ou Configuré.",
@@ -118,7 +118,7 @@ export const GPS_SECTIONS: GpsSection[] = [
         checks: [
           "Mon activité, panier moyen et taux de transformation sont renseignés.",
           "Au moins un canal important est connecté ou configuré.",
-          "Les canaux de diffusion, iNr'Badge et iNr'Agent sont bien activés selon le forfait.",
+          "Les canaux de diffusion et iNr'Badge sont bien activés selon le forfait, et iNr'Agent reste accessible dans le header.",
           "Les données 7j / 30j ont eu le temps de remonter.",
           "Les Unités d’Inertie progressent avec les actions et peuvent servir dans la Boutique.",
         ],

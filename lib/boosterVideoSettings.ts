@@ -5,7 +5,8 @@ export type BoosterVideoChannelKey =
   | "facebook"
   | "instagram"
   | "linkedin"
-  | "tiktok";
+  | "tiktok"
+  | "youtube_shorts";
 
 export type VideoFormat = "original" | "9_16" | "1_1" | "16_9";
 export type VideoAdaptationMode = "safe_blur" | "cover_crop";
@@ -46,6 +47,7 @@ export const VIDEO_RECOMMENDED_FORMAT_BY_CHANNEL: Record<BoosterVideoChannelKey,
   instagram: "16_9",
   linkedin: "16_9",
   tiktok: "9_16",
+  youtube_shorts: "9_16",
 };
 
 export const VIDEO_FORMAT_OPTIONS_BY_CHANNEL: Record<BoosterVideoChannelKey, VideoFormat[]> = {
@@ -56,10 +58,11 @@ export const VIDEO_FORMAT_OPTIONS_BY_CHANNEL: Record<BoosterVideoChannelKey, Vid
   instagram: ["9_16", "1_1", "16_9", "original"],
   linkedin: ["1_1", "16_9", "9_16", "original"],
   tiktok: ["9_16", "1_1", "16_9", "original"],
+  youtube_shorts: ["9_16", "1_1", "16_9", "original"],
 };
 
 export function isBoosterVideoChannelKey(value: unknown): value is BoosterVideoChannelKey {
-  return ["inrcy_site", "site_web", "gmb", "facebook", "instagram", "linkedin", "tiktok"].includes(String(value || ""));
+  return ["inrcy_site", "site_web", "gmb", "facebook", "instagram", "linkedin", "tiktok", "youtube_shorts"].includes(String(value || ""));
 }
 
 export function normalizeVideoFormat(channel: BoosterVideoChannelKey, value: unknown): VideoFormat {

@@ -150,7 +150,7 @@ export default function BoosterVideoFormatManager({
   const isApplied = Boolean(preparedVariant?.publicUrl || preparedVariant?.url);
   const isHorizontalSource = videoSourceMetadata?.orientation === "horizontal";
   const isVerticalDestination = currentFormat === "9_16";
-  const isTikTokHorizontalRecommended = channel === "tiktok" && isHorizontalSource && smartRecommendedFormat === "16_9";
+  const isTikTokHorizontalRecommended = (channel === "tiktok" || channel === "youtube_shorts") && isHorizontalSource && smartRecommendedFormat === "16_9";
   const frameWidth = getVideoFrameWidth({ format: currentFormat, metadata: videoSourceMetadata, isMobile });
   const usesSafeFramePreview = !isApplied && adaptationMode === "safe_blur" && currentFormat !== "original";
   const targetRatio = VIDEO_FORMAT_ASPECT_RATIOS[currentFormat] || "16 / 9";

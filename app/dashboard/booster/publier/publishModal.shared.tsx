@@ -15,7 +15,8 @@ export type ChannelKey =
   | "facebook"
   | "instagram"
   | "linkedin"
-  | "tiktok";
+  | "tiktok"
+  | "youtube_shorts";
 export type DisplayKey = ChannelKey;
 export type ThemeKey =
   | ""
@@ -211,6 +212,7 @@ export const DISPLAY_LABELS: Record<DisplayKey, string> = {
   instagram: "Instagram",
   linkedin: "LinkedIn",
   tiktok: "TikTok",
+  youtube_shorts: "YouTube Shorts",
 };
 
 export const CHANNEL_LABELS: Record<ChannelKey, string> = {
@@ -221,6 +223,7 @@ export const CHANNEL_LABELS: Record<ChannelKey, string> = {
   instagram: "Instagram",
   linkedin: "LinkedIn",
   tiktok: "TikTok",
+  youtube_shorts: "YouTube Shorts",
 };
 
 export const CHANNEL_PRESETS: Record<ChannelKey, RenderPreset> = {
@@ -261,6 +264,12 @@ export const CHANNEL_PRESETS: Record<ChannelKey, RenderPreset> = {
     defaultBlurBackground: false,
   },
   tiktok: {
+    width: 1080,
+    height: 1920,
+    defaultFit: "cover",
+    defaultBlurBackground: false,
+  },
+  youtube_shorts: {
     width: 1080,
     height: 1920,
     defaultFit: "cover",
@@ -432,6 +441,19 @@ export const CHANNEL_TEXT_GUIDELINES: Record<
       return [body, hashtags].filter(Boolean).join("\n").length;
     },
   },
+  youtube_shorts: {
+    title: 90,
+    content: 2200,
+    cta: 120,
+    hashtags: 8,
+    totalLabel: "Légende YouTube Shorts finale",
+    totalMax: 2200,
+    totalValue: (post) => {
+      const body = [post.title, post.content, post.cta].filter(Boolean).join("\n");
+      const hashtags = (post.hashtags || []).map((tag) => `#${String(tag || "").replace(/^#+/, "").trim()}`).filter(Boolean).join(" ");
+      return [body, hashtags].filter(Boolean).join("\n").length;
+    },
+  },
 };
 
 export const CTA_MODE_OPTIONS: Record<
@@ -480,6 +502,13 @@ export const CTA_MODE_OPTIONS: Record<
     { value: "custom", label: "Lien personnalisé" },
   ],
   tiktok: [
+    { value: "none", label: "Aucun bouton" },
+    { value: "website", label: "Voir le site" },
+    { value: "call", label: "Appeler" },
+    { value: "message", label: "Envoyer un message" },
+    { value: "custom", label: "Lien personnalisé" },
+  ],
+  youtube_shorts: [
     { value: "none", label: "Aucun bouton" },
     { value: "website", label: "Voir le site" },
     { value: "call", label: "Appeler" },

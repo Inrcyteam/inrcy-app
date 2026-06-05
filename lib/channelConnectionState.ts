@@ -108,6 +108,16 @@ export type ChannelStates = {
     username: string | null;
     profile_url: string | null;
   };
+  youtube_shorts: {
+    accountConnected: boolean;
+    connected: boolean;
+    expired: boolean;
+    requiresUpdate: boolean;
+    connection_status: ConnectionDisplayStatus;
+    resource_id: string | null;
+    channel_name: string | null;
+    channel_url: string | null;
+  };
 };
 
 function isExpired(expiresAt: unknown, skewSeconds = 60) {
@@ -276,6 +286,11 @@ export async function getChannelConnectionStates(
   const tiktokUsername = tiktokConnected ? (asString(tkMeta.username) || asString(tk.resource_label) || tiktokSettings.username || null) : null;
   const tiktokProfileUrl = tiktokConnected ? (asString(tkMeta.profile_url) || tiktokSettings.profileUrl || null) : null;
 
+  const youtubeShortsSettings = asRecord(settings.youtube_shorts);
+  const youtubeShortsUrl = (asString(youtubeShortsSettings.channelUrl) || asString(youtubeShortsSettings.url) || "").trim();
+  const youtubeShortsName = (asString(youtubeShortsSettings.channelName) || asString(youtubeShortsSettings.name) || "").trim();
+  const youtubeShortsConnected = Boolean(youtubeShortsSettings.connected && youtubeShortsUrl);
+
   const mailRows = rows.filter((row) => row.category === "mail");
   const mailConnectedCount = Math.max(0, Math.min(4, mailRows.length));
   const mailsConnected = mailConnectedCount > 0;
@@ -379,6 +394,16 @@ export async function getChannelConnectionStates(
       resource_id: tiktokConnected ? (asString(tk.resource_id) || tiktokUsername) : null,
       username: tiktokConnected ? tiktokUsername : null,
       profile_url: tiktokConnected ? tiktokProfileUrl : null,
+    },
+    youtube_shorts: {
+      accountConnected: youtubeShortsConnected,
+      connected: youtubeShortsConnected,
+      expired: false,
+      requiresUpdate: false,
+      connection_status: youtubeShortsConnected ? "connected" : "disconnected",
+      resource_id: youtubeShortsUrl || youtubeShortsName || null,
+      channel_name: youtubeShortsConnected ? (youtubeShortsName || youtubeShortsUrl || null) : null,
+      channel_url: youtubeShortsConnected ? youtubeShortsUrl : null,
     },
   };
 }

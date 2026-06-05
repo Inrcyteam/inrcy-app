@@ -20,6 +20,7 @@ import LinkedinPanelBlock from "./LinkedinPanelBlock";
 import GmbPanelBlock from "./GmbPanelBlock";
 import FacebookPanelBlock from "./FacebookPanelBlock";
 import TiktokPanelBlock from "./TiktokPanelBlock";
+import YoutubeShortsSettingsContent from "../settings/_components/YoutubeShortsSettingsContent";
 import InrBadgeSettingsContent from "../settings/_components/InrBadgeSettingsContent";
 import InrAgentSettingsContent from "../settings/_components/InrAgentSettingsContent";
 
@@ -40,6 +41,7 @@ type DashboardPanelName =
   | "gmb"
   | "facebook"
   | "tiktok"
+  | "youtube_shorts"
   | "inr_agent"
   | "legal"
   | "rgpd"
@@ -151,6 +153,7 @@ export default function DashboardSettingsDrawerContent({
       {panel === "notifications" && <NotificationsSettingsContent />}
       {panel === "documents" && <DocumentsSettingsContent />}
       {panel === "inr_agent" && <InrAgentSettingsContent />}
+      {panel === "youtube_shorts" && <YoutubeShortsSettingsContent />}
 
       <SiteInrcyPanelBlock panel={panel} panelProps={siteInrcyPanelProps} />
       <SiteWebPanelBlock panel={panel} panelProps={siteWebPanelProps} />

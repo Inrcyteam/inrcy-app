@@ -69,6 +69,7 @@ type SourcesStatus = {
   instagram: { connected: boolean; metrics: unknown | null };
   linkedin: { connected: boolean; metrics: unknown | null };
   tiktok: { connected: boolean; metrics: unknown | null };
+  youtube_shorts: { connected: boolean; metrics: unknown | null };
 };
 
 type LiveSourcesSnapshot = {
@@ -79,6 +80,7 @@ type LiveSourcesSnapshot = {
   instagram: { connected: boolean; metrics: unknown | null };
   linkedin: { connected: boolean; metrics: unknown | null };
   tiktok: { connected: boolean; metrics: unknown | null };
+  youtube_shorts: { connected: boolean; metrics: unknown | null };
 };
 
 type OverviewCubeKey =
@@ -88,7 +90,8 @@ type OverviewCubeKey =
   | "facebook"
   | "instagram"
   | "linkedin"
-  | "tiktok";
+  | "tiktok"
+  | "youtube_shorts";
 
 function isStatsActiveConnection(state: {
   connected: boolean;
@@ -144,6 +147,7 @@ function resolveRequestedCube(
   if (normalized === "instagram") return "instagram";
   if (normalized === "linkedin") return "linkedin";
   if (normalized === "tiktok") return "tiktok";
+  if (normalized === "youtube_shorts") return "youtube_shorts";
   if (normalized === "gmb") return "gmb";
   if (normalized.includes("site_inrcy")) return "site_inrcy";
   if (normalized.includes("site_web")) return "site_web";
@@ -855,6 +859,10 @@ export async function buildStatsOverview(args: {
       },
       tiktok: {
         connected: isStatsActiveConnection(states.tiktok),
+        metrics: null,
+      },
+      youtube_shorts: {
+        connected: isStatsActiveConnection(states.youtube_shorts),
         metrics: null,
       },
     } satisfies LiveSourcesSnapshot;
@@ -1651,6 +1659,7 @@ export async function buildStatsOverview(args: {
     instagram: { connected: false, metrics: null },
     linkedin: { connected: false, metrics: null },
     tiktok: { connected: false, metrics: null },
+    youtube_shorts: { connected: false, metrics: null },
   };
 
   const channelStates = await channelStatesPromise;
@@ -1660,6 +1669,8 @@ export async function buildStatsOverview(args: {
     ga4: channelStates.site_inrcy.ga4,
     gsc: channelStates.site_inrcy.gsc,
   };
+  sourcesStatus.youtube_shorts.connected = isStatsActiveConnection(channelStates.youtube_shorts);
+
   sourcesStatus.site_web.connected = {
     ga4: channelStates.site_web.ga4,
     gsc: channelStates.site_web.gsc,
@@ -2416,6 +2427,10 @@ export async function buildStatsOverview(args: {
         tiktok: {
           label: channelStates.tiktok.username || null,
           url: channelStates.tiktok.profile_url || null,
+        },
+        youtube_shorts: {
+          label: channelStates.youtube_shorts.channel_name || null,
+          url: channelStates.youtube_shorts.channel_url || null,
         },
       },
       totals: {

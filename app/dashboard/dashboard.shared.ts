@@ -69,6 +69,7 @@ export function getBubbleViewHrefFromBlock(
     channel === "instagram" ||
     channel === "linkedin" ||
     channel === "tiktok" ||
+    channel === "youtube_shorts" ||
     channel === "site_inrcy" ||
     channel === "site_web"
   ) {
@@ -103,6 +104,7 @@ export function getChannelsFromSettingsDiff(previousSettings: unknown, nextSetti
     ["instagram", "instagram"],
     ["linkedin", "linkedin"],
     ["tiktok", "tiktok"],
+    ["youtube_shorts", "youtube_shorts"],
   ];
 
   for (const [channel, key] of map) {
@@ -158,7 +160,8 @@ export function inferChannelsFromRealtimePayload(payload: any): DashboardChannel
       source === "facebook" ||
       source === "instagram" ||
       source === "linkedin" ||
-      source === "tiktok"
+      source === "tiktok" ||
+      source === "youtube_shorts"
     ) {
       impacted.add(source);
       continue;
@@ -167,6 +170,7 @@ export function inferChannelsFromRealtimePayload(payload: any): DashboardChannel
     if (provider === "facebook") impacted.add("facebook");
     if (provider === "linkedin") impacted.add("linkedin");
     if (provider === "tiktok") impacted.add("tiktok");
+    if (provider === "youtube_shorts") impacted.add("youtube_shorts");
     if (provider === "google" && source === "gmb") impacted.add("gmb");
   }
 
@@ -177,7 +181,7 @@ export function inferChannelsFromSearchParams(
   linked: string | null,
   targetPanel: string | null,
 ): DashboardChannelKey[] {
-  if (linked === "gmb" || linked === "facebook" || linked === "instagram" || linked === "linkedin" || linked === "tiktok") {
+  if (linked === "gmb" || linked === "facebook" || linked === "instagram" || linked === "linkedin" || linked === "tiktok" || linked === "youtube_shorts") {
     return [linked];
   }
 
@@ -192,7 +196,8 @@ export function inferChannelsFromSearchParams(
     targetPanel === "facebook" ||
     targetPanel === "instagram" ||
     targetPanel === "linkedin" ||
-    targetPanel === "tiktok"
+    targetPanel === "tiktok" ||
+    targetPanel === "youtube_shorts"
   ) {
     return [targetPanel];
   }

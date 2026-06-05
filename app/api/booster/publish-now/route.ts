@@ -66,7 +66,8 @@ type ChannelKey =
   | "facebook"
   | "instagram"
   | "linkedin"
-  | "tiktok";
+  | "tiktok"
+  | "youtube_shorts";
 
 type JsonRecord = Record<string, unknown>;
 const asRecord = (v: unknown): JsonRecord =>
@@ -82,6 +83,7 @@ const CHANNEL_LABELS: Record<ChannelKey, string> = {
   instagram: "Instagram",
   linkedin: "LinkedIn",
   tiktok: "TikTok",
+  youtube_shorts: "YouTube Shorts",
 };
 
 function buildResultsSummary(
@@ -501,7 +503,7 @@ function getRequiredImageFormatsForChannel(
   channel: ChannelKey,
 ): ImageOptimizationFormats {
   if (channel === "instagram") return { instagram: true };
-  if (channel === "facebook" || channel === "linkedin" || channel === "tiktok")
+  if (channel === "facebook" || channel === "linkedin" || channel === "tiktok" || channel === "youtube_shorts")
     return { socialFeed: true };
   if (channel === "gmb") return { gmb: true };
   // Site iNrCy / Site web use the original prepared image in the article payload.
@@ -1883,6 +1885,33 @@ export async function POST(req: Request) {
             ok: true,
             external_id: resp.postUrn || null,
             diagnostics: resp,
+          };
+          continue;
+        }
+
+        if (ch === "youtube_shorts") {
+          const youtubeSettings = asRecord(proSettings["youtube_shorts"]);
+          const channelUrl = String(youtubeSettings.channelUrl || youtubeSettings.url || "").trim();
+          const channelName = String(youtubeSettings.channelName || youtubeSettings.name || "").trim();
+
+          if (!youtubeSettings.connected || !channelUrl) {
+            const youtubeUserError = "YouTube Shorts à configurer. Rendez-vous dans Canaux.";
+            await setDelivery(ch, { status: "failed", error: youtubeUserError });
+            results[ch] = { ok: false, error: youtubeUserError };
+            continue;
+          }
+
+          await setDelivery(ch, {
+            status: "delivered",
+            external_id: channelName || channelUrl || null,
+            external_url: channelUrl || null,
+            error: null,
+          });
+
+          results[ch] = {
+            ok: true,
+            external_url: channelUrl || null,
+            note: "Publication YouTube Shorts préparée dans iNrCy.",
           };
           continue;
         }

@@ -99,6 +99,7 @@ const allowedChannels: BoosterChannels[] = [
   "instagram",
   "linkedin",
   "tiktok",
+  "youtube_shorts",
 ];
 const allowedThemes: BoosterTheme[] = [
   "",
@@ -331,7 +332,7 @@ En résumé : les images ne pilotent pas le sujet, elles l'affinent.`;
 function cleanHashtags(channel: BoosterChannels, input: unknown) {
   if (channel === "gmb" || siteChannels.has(channel)) return [];
 
-  const limit = channel === "instagram" || channel === "tiktok" ? 8 : channel === "linkedin" ? 3 : 2;
+  const limit = channel === "instagram" || channel === "tiktok" || channel === "youtube_shorts" ? 8 : channel === "linkedin" ? 3 : 2;
   return Array.isArray(input)
     ? input
         .map((h) =>

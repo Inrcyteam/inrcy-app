@@ -11,7 +11,8 @@ export type BoosterChannels =
   | "facebook"
   | "instagram"
   | "linkedin"
-  | "tiktok";
+  | "tiktok"
+  | "youtube_shorts";
 
 export type BoosterTheme =
   | ""
@@ -51,6 +52,7 @@ const CHANNEL_LABELS: Record<BoosterChannels, string> = {
   instagram: "Instagram",
   linkedin: "LinkedIn",
   tiktok: "TikTok",
+  youtube_shorts: "YouTube Shorts",
 };
 
 const THEME_LABELS: Record<BoosterTheme, string> = {
@@ -115,6 +117,8 @@ const CHANNEL_EDITORIAL_PLAYBOOKS: Record<BoosterChannels, string> = {
     "Objectif : renforcer l'expertise et la crédibilité professionnelle. Ton posé, utile, structuré et humain. Montrer une méthode, un point de vigilance, une valeur métier ou une réflexion professionnelle. Éviter le ton trop commercial, les emojis excessifs et les accroches de vente directe.",
   tiktok:
     "Objectif : capter vite l'attention avec une accroche courte, naturelle et dynamique. Texte pensé pour accompagner une vidéo ou des photos : concret, vivant, local, avec 3 à 6 hashtags utiles. Éviter le ton institutionnel ou LinkedIn.",
+  youtube_shorts:
+    "Objectif : préparer un Short YouTube vertical, utile et dynamique. Accroche immédiate, message court, local et clair. Donner envie de regarder, commenter, s'abonner ou contacter, sans ton institutionnel.",
 };
 
 function formatChannelPlaybooks(channels: BoosterChannels[]) {
@@ -369,7 +373,7 @@ Tu dois répondre en JSON strict, avec exactement cette structure :
   }
 }
 
-Clés de canaux autorisées : inrcy_site, site_web, gmb, facebook, instagram, linkedin, tiktok.
+Clés de canaux autorisées : inrcy_site, site_web, gmb, facebook, instagram, linkedin, tiktok, youtube_shorts.
 
 Règles JSON :
 - Ne renvoyer que les canaux explicitement demandés dans la requête utilisateur.

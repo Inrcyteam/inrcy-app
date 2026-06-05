@@ -36,7 +36,6 @@ export default function UserMenu(props: {
 }) {
   const {
     userEmail,
-    userFirstLetter,
     profileIncomplete,
     activityIncomplete,
     userMenuOpen,
@@ -60,10 +59,16 @@ export default function UserMenu(props: {
   useEffect(() => {
     const onPointerDown = (event: MouseEvent) => {
       const target = event.target as Node | null;
-      if (profileTooltipWrapRef.current && !profileTooltipWrapRef.current.contains(target)) {
+      if (
+        profileTooltipWrapRef.current &&
+        !profileTooltipWrapRef.current.contains(target)
+      ) {
         setProfileTooltipOpen(false);
       }
-      if (activityTooltipWrapRef.current && !activityTooltipWrapRef.current.contains(target)) {
+      if (
+        activityTooltipWrapRef.current &&
+        !activityTooltipWrapRef.current.contains(target)
+      ) {
         setActivityTooltipOpen(false);
       }
     };
@@ -80,11 +85,12 @@ export default function UserMenu(props: {
         aria-haspopup="menu"
         aria-expanded={userMenuOpen}
         onClick={() => setUserMenuOpen((v) => !v)}
-        title={userEmail ?? "Utilisateur"}
+        title={userEmail ?? "Menu utilisateur"}
       >
         <span className={styles.userBubble} aria-hidden>
-          {userFirstLetter}
+          <span className={styles.userMenuHamburgerIcon} />
         </span>
+        <span className={styles.userMenuLabel}>Menu</span>
       </button>
 
       {profileIncomplete && (
@@ -154,18 +160,99 @@ export default function UserMenu(props: {
       )}
 
       {userMenuOpen && (
-        <div className={styles.userMenuPanel} role="menu" aria-label="Menu utilisateur">
-          <button type="button" className={styles.userMenuItem} role="menuitem" onClick={() => closeAndOpen("compte")}>Compte iNrCytizen</button>
-          <button type="button" className={styles.userMenuItem} role="menuitem" onClick={() => closeAndOpen("profil")}>Mon profil</button>
-          <button type="button" className={styles.userMenuItem} role="menuitem" onClick={() => closeAndOpen("activite")}>Mon activité</button>
-          <button type="button" className={styles.userMenuItem} role="menuitem" onClick={() => closeAndOpen("ia")}>Configuration IA</button>
-          <button type="button" className={styles.userMenuItem} role="menuitem" onClick={() => closeAndOpen("notifications")}>Notifications</button>
-          <button type="button" className={styles.userMenuItem} role="menuitem" onClick={() => closeAndOpen("abonnement")}>Mon abonnement</button>
-          <button type="button" className={styles.userMenuItem} role="menuitem" onClick={() => closeAndOpen("inertie")}>Mon inertie</button>
-          <button type="button" className={styles.userMenuItem} role="menuitem" onClick={() => closeAndOpen("boutique")}>Boutique</button>
-          <button type="button" className={styles.userMenuItem} role="menuitem" onClick={() => closeAndOpen("parrainage")}>Parrainer avec iNrCy</button>
-          <button type="button" className={styles.userMenuItem} role="menuitem" onClick={() => closeAndOpen("legal")}>Informations légales</button>
-          <button type="button" className={styles.userMenuItem} role="menuitem" onClick={() => closeAndOpen("rgpd")}>Mes données (RGPD)</button>
+        <div
+          className={styles.userMenuPanel}
+          role="menu"
+          aria-label="Menu utilisateur"
+        >
+          <button
+            type="button"
+            className={styles.userMenuItem}
+            role="menuitem"
+            onClick={() => closeAndOpen("compte")}
+          >
+            Compte iNrCytizen
+          </button>
+          <button
+            type="button"
+            className={styles.userMenuItem}
+            role="menuitem"
+            onClick={() => closeAndOpen("profil")}
+          >
+            Mon profil
+          </button>
+          <button
+            type="button"
+            className={styles.userMenuItem}
+            role="menuitem"
+            onClick={() => closeAndOpen("activite")}
+          >
+            Mon activité
+          </button>
+          <button
+            type="button"
+            className={styles.userMenuItem}
+            role="menuitem"
+            onClick={() => closeAndOpen("ia")}
+          >
+            Configuration IA
+          </button>
+          <button
+            type="button"
+            className={styles.userMenuItem}
+            role="menuitem"
+            onClick={() => closeAndOpen("notifications")}
+          >
+            Notifications
+          </button>
+          <button
+            type="button"
+            className={styles.userMenuItem}
+            role="menuitem"
+            onClick={() => closeAndOpen("abonnement")}
+          >
+            Mon abonnement
+          </button>
+          <button
+            type="button"
+            className={styles.userMenuItem}
+            role="menuitem"
+            onClick={() => closeAndOpen("inertie")}
+          >
+            Mon inertie
+          </button>
+          <button
+            type="button"
+            className={styles.userMenuItem}
+            role="menuitem"
+            onClick={() => closeAndOpen("boutique")}
+          >
+            Boutique
+          </button>
+          <button
+            type="button"
+            className={styles.userMenuItem}
+            role="menuitem"
+            onClick={() => closeAndOpen("parrainage")}
+          >
+            Parrainer avec iNrCy
+          </button>
+          <button
+            type="button"
+            className={styles.userMenuItem}
+            role="menuitem"
+            onClick={() => closeAndOpen("legal")}
+          >
+            Informations légales
+          </button>
+          <button
+            type="button"
+            className={styles.userMenuItem}
+            role="menuitem"
+            onClick={() => closeAndOpen("rgpd")}
+          >
+            Mes données (RGPD)
+          </button>
 
           <div className={styles.userMenuDivider} />
 

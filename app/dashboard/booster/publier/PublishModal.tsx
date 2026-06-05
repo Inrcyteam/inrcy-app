@@ -102,6 +102,7 @@ const EMPTY_CHANNEL_DETAILS: Record<ChannelKey, ChannelConnectionDetail> = {
   instagram: { type: "account", label: null, href: null },
   linkedin: { type: "profile", label: null, href: null },
   tiktok: { type: "account", label: null, href: null },
+  youtube_shorts: { type: "channel", label: null, href: null },
 };
 
 const CHANNEL_KEYS: ChannelKey[] = [
@@ -112,6 +113,7 @@ const CHANNEL_KEYS: ChannelKey[] = [
   "instagram",
   "linkedin",
   "tiktok",
+  "youtube_shorts",
 ];
 
 function isChannelKey(value: unknown): value is ChannelKey {
@@ -528,6 +530,7 @@ export default function PublishModal({
     instagram: !!initialConnectedChannels?.instagram,
     linkedin: !!initialConnectedChannels?.linkedin,
     tiktok: !!initialConnectedChannels?.tiktok,
+    youtube_shorts: !!initialConnectedChannels?.youtube_shorts,
   });
 
   const [channels, setChannels] = useState<Record<ChannelKey, boolean>>(() =>
@@ -551,6 +554,7 @@ export default function PublishModal({
   );
   const preferredCtaDefaultsAppliedRef = useRef(false);
   const didAutoSelectConnectedTikTokRef = useRef(false);
+  const didAutoSelectConnectedYoutubeShortsRef = useRef(false);
 
   const clearGenerationTimers = () => {
     generationTimersRef.current.forEach((timerId) =>
@@ -622,6 +626,7 @@ export default function PublishModal({
                   instagram: !!nextConnected.instagram,
                   linkedin: !!nextConnected.linkedin,
                   tiktok: !!nextConnected.tiktok,
+                  youtube_shorts: !!nextConnected.youtube_shorts,
                 } as Record<ChannelKey, boolean>),
           );
           if (!didInitChannels) setDidInitChannels(true);
@@ -645,6 +650,7 @@ export default function PublishModal({
       instagram: !!initialConnectedChannels.instagram,
       linkedin: !!initialConnectedChannels.linkedin,
       tiktok: !!initialConnectedChannels.tiktok,
+      youtube_shorts: !!initialConnectedChannels.youtube_shorts,
     };
     setConnected(nextConnected);
     setChannels(nextConnected);
@@ -662,6 +668,18 @@ export default function PublishModal({
       prev.tiktok ? prev : ({ ...prev, tiktok: true } as Record<ChannelKey, boolean>),
     );
   }, [connected.tiktok]);
+
+  useEffect(() => {
+    if (!connected.youtube_shorts) {
+      didAutoSelectConnectedYoutubeShortsRef.current = false;
+      return;
+    }
+    if (didAutoSelectConnectedYoutubeShortsRef.current) return;
+    didAutoSelectConnectedYoutubeShortsRef.current = true;
+    setChannels((prev) =>
+      prev.youtube_shorts ? prev : ({ ...prev, youtube_shorts: true } as Record<ChannelKey, boolean>),
+    );
+  }, [connected.youtube_shorts]);
 
   useEffect(() => {
     if (!channelInfoOpen) return;
@@ -1105,6 +1123,7 @@ export default function PublishModal({
     if (channels.instagram && connected.instagram) out.add("instagram");
     if (channels.linkedin && connected.linkedin) out.add("linkedin");
     if (channels.tiktok && connected.tiktok) out.add("tiktok");
+    if (channels.youtube_shorts && connected.youtube_shorts) out.add("youtube_shorts");
     return Array.from(out);
   }, [channels, connected]);
 

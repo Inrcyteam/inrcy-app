@@ -137,6 +137,7 @@ export default function usePublishImageController({
       adapterChannels.push("instagram");
     if (selectedChannels.includes("linkedin")) adapterChannels.push("linkedin");
     if (selectedChannels.includes("tiktok")) adapterChannels.push("tiktok");
+    if (selectedChannels.includes("youtube_shorts")) adapterChannels.push("youtube_shorts");
     return adapterChannels;
   }, [selectedChannels]);
 

@@ -275,6 +275,8 @@ export default function DashboardClient() {
   const [dashboardBoosterModal, setDashboardBoosterModal] = useState<null | "publish" | "stats">(null);
   const [siteConnectionsReady, setSiteConnectionsReady] = useState(false);
   const [mailAccountsConnectedCount, setMailAccountsConnectedCount] = useState(() => readCachedMailAccountsConnectedCount() ?? 0);
+  const [youtubeShortsConnected, setYoutubeShortsConnected] = useState(false);
+  const [youtubeShortsUrl, setYoutubeShortsUrl] = useState("");
   const [inrBadgeProfile, setInrBadgeProfile] = useState<InrBadgeProfileSummary>(() => readCachedInrBadgeProfile());
   const [cachedInrBadgeProfileReady, setCachedInrBadgeProfileReady] = useState<boolean | null>(() => readCachedInrBadgeProfileReady());
   const [inrBadgeModalOpen, setInrBadgeModalOpen] = useState(false);
@@ -466,6 +468,7 @@ const triggerChannelRefreshRef = useRef<(channel: DashboardChannelKey) => Promis
 
 const [bubbleAccessMap, setBubbleAccessMap] = useState<AppBubbleAccessMap>(() => readCachedBubbleAccessMap());
 const canAccessSiteInrcy = isBubbleEnabled(bubbleAccessMap, "site_inrcy");
+const canAccessInrAgent = isBubbleEnabled(bubbleAccessMap, "inr_agent");
 
 const patchChannelConnectionLocallyProxy = useCallback((
   channel: DashboardChannelKey,
@@ -849,6 +852,8 @@ const applyDashboardChannelState = useCallback((state: Record<string, any> | nul
   if (typeof state.facebookAccountEmail === "string") setFacebookAccountEmail(state.facebookAccountEmail);
   if (typeof state.fbSelectedPageId === "string") setFbSelectedPageId(state.fbSelectedPageId);
   if (typeof state.fbSelectedPageName === "string") setFbSelectedPageName(state.fbSelectedPageName);
+  if (typeof state.youtubeShortsConnected === "boolean") setYoutubeShortsConnected(state.youtubeShortsConnected);
+  if (typeof state.youtubeShortsUrl === "string") setYoutubeShortsUrl(state.youtubeShortsUrl);
 
   if (typeof state.siteInrcyGa4Connected === "boolean") setSiteInrcyGa4Connected(state.siteInrcyGa4Connected);
   if (typeof state.siteInrcyGscConnected === "boolean") setSiteInrcyGscConnected(state.siteInrcyGscConnected);
@@ -884,7 +889,25 @@ const applyDashboardChannelState = useCallback((state: Record<string, any> | nul
   setSiteWebActusLimit, setSiteWebActusTheme, setSiteWebGa4Connected, setSiteWebGa4MeasurementId,
   setSiteWebGa4PropertyId, setSiteWebGscConnected, setSiteWebGscProperty, setSiteWebSavedUrl,
   setSiteWebSettingsError, setSiteWebSettingsText, setSiteWebUrl, setMailAccountsConnectedCount,
+  setYoutubeShortsConnected, setYoutubeShortsUrl,
 ]);
+
+useEffect(() => {
+  const handleYoutubeShortsUpdate = (event: Event) => {
+    const detail = (event as CustomEvent)?.detail ?? {};
+    const connected = Boolean(detail.connected);
+    const channelUrl = typeof detail.channelUrl === "string" ? detail.channelUrl : "";
+    setYoutubeShortsConnected(connected);
+    setYoutubeShortsUrl(channelUrl);
+    mergeCachedDashboardChannelState({
+      youtubeShortsConnected: connected,
+      youtubeShortsUrl: channelUrl,
+    });
+  };
+
+  window.addEventListener("inrcy:youtube-shorts-settings-updated", handleYoutubeShortsUpdate);
+  return () => window.removeEventListener("inrcy:youtube-shorts-settings-updated", handleYoutubeShortsUpdate);
+}, []);
 
 useBrowserLayoutEffect(() => {
   const cached = readCachedDashboardChannelState();
@@ -1204,6 +1227,8 @@ const loadSiteInrcy = useCallback(async () => {
   const liObj = ((proSettingsObj as any)?.linkedin ?? {}) as any;
   const gmbObj = ((proSettingsObj as any)?.gmb ?? {}) as any;
   const fbObj = ((proSettingsObj as any)?.facebook ?? {}) as any;
+  const ytObj = ((proSettingsObj as any)?.youtube_shorts ?? {}) as any;
+  const youtubeShortsUrlValue = String(ytObj?.channelUrl ?? ytObj?.url ?? "");
 
   const nextState = {
     siteInrcyOwnership: ownership,
@@ -1255,6 +1280,8 @@ const loadSiteInrcy = useCallback(async () => {
     facebookAccountEmail: fbObj?.userEmail ?? "",
     fbSelectedPageId: fbObj?.pageId ?? "",
     fbSelectedPageName: fbObj?.pageName ?? "",
+    youtubeShortsConnected: Boolean(ytObj?.connected),
+    youtubeShortsUrl: youtubeShortsUrlValue,
     siteInrcyGa4Connected: !!(ga4MeasurementIdValue || ga4PropertyIdValue),
     siteInrcyGscConnected: !!gscPropertyValue,
     siteWebGa4Connected: !!((siteWebObj as any)?.ga4?.measurement_id || (siteWebObj as any)?.ga4?.property_id),
@@ -2620,6 +2647,8 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       tiktokUsername,
       tiktokProfileUrl,
       tiktokPreferredMedia,
+      youtubeShortsConnected,
+      youtubeShortsUrl,
       gmbUrl,
       gmbAccountConnected,
       gmbConfigured,
@@ -2693,6 +2722,8 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     mailAccountsConnectedCount,
     tiktokConnected,
     tiktokUrl: tiktokProfileUrl,
+    youtubeShortsConnected,
+    youtubeShortsUrl,
     openPanel,
     savedSiteWebUrlMeta,
     setHelpSiteInrcyOpen,
@@ -2719,6 +2750,8 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     mailAccountsConnectedCount,
     tiktokConnected,
     tiktokProfileUrl,
+    youtubeShortsConnected,
+    youtubeShortsUrl,
     openPanel,
     savedSiteWebUrlMeta,
     siteInrcySavedUrl,
@@ -2784,6 +2817,8 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     mailAccountsConnectedCount,
     tiktokConnected,
     tiktokProfileUrl,
+    youtubeShortsConnected,
+    youtubeShortsUrl,
     openPanel,
   ]);
 
@@ -2892,6 +2927,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
           }
         }}
         openPanel={openPanel}
+        inrAgentEnabled={canAccessInrAgent}
         userEmail={userEmail}
         userFirstLetter={userFirstLetter}
         profileIncomplete={profileIncomplete}

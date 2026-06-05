@@ -170,6 +170,10 @@ export function SummaryBar({
           <span>TikTok</span>
           <b>{summaryDisplayReady ? `+${fmtInt(centralByCube.tiktok)}` : "—"}</b>
         </button>
+        <button type="button" className={styles.summaryItem} onClick={() => onScrollTo("youtube_shorts")}>
+          <span>YouTube Shorts</span>
+          <b>{summaryDisplayReady ? `+${fmtInt(centralByCube.youtube_shorts)}` : "—"}</b>
+        </button>
       </div>
       <div className={styles.summaryActionsWrap}>
         <button
@@ -233,6 +237,8 @@ function getForcedCubeContextLabel(key: CubeModel["key"]) {
       return "Boîtes d’envoi";
     case "tiktok":
       return "Compte TikTok";
+    case "youtube_shorts":
+      return "Chaîne YouTube";
     default:
       return "Canal associé";
   }

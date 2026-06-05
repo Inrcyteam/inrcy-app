@@ -17,6 +17,7 @@ export default function NotificationMenu(props: {
   deleteNotification: (id: string) => void | Promise<void>;
   onNavigate: (ctaUrl: string) => void;
   mobile?: boolean;
+  label?: string;
 }) {
   const {
     notificationMenuOpen,
@@ -32,13 +33,14 @@ export default function NotificationMenu(props: {
     deleteNotification,
     onNavigate,
     mobile = false,
+    label,
   } = props;
 
   return (
     <>
       <button
         type="button"
-        className={`${styles.notificationBellBtn} ${mobile ? styles.notificationBellBtnMobile : ""}`.trim()}
+        className={`${styles.notificationBellBtn} ${label ? styles.notificationBellBtnWithLabel : ""} ${mobile ? styles.notificationBellBtnMobile : ""}`.trim()}
         aria-label="Ouvrir les notifications"
         aria-expanded={notificationMenuOpen}
         onClick={() => {
@@ -48,7 +50,10 @@ export default function NotificationMenu(props: {
           }
         }}
       >
-        <span className={styles.notificationBellIcon} aria-hidden>🔔</span>
+        <span className={styles.notificationBellIcon} aria-hidden>
+          🔔
+        </span>
+        {label && <span className={styles.notificationBellLabel}>{label}</span>}
         {unreadNotificationsCount > 0 && (
           <span className={styles.notificationBellCount} aria-hidden>
             {Math.min(99, unreadNotificationsCount)}
@@ -57,17 +62,38 @@ export default function NotificationMenu(props: {
       </button>
 
       {notificationMenuOpen && (
-        <div className={`${styles.notificationPanel} ${mobile ? styles.notificationPanelMobile : ""}`.trim()} role="dialog" aria-label="Notifications">
+        <div
+          className={`${styles.notificationPanel} ${mobile ? styles.notificationPanelMobile : ""}`.trim()}
+          role="dialog"
+          aria-label="Notifications"
+        >
           <div className={styles.notificationPanelHeader}>
             <div>
-              <div className={styles.notificationPanelTitle}>Actions à mener</div>
-              <div className={styles.notificationPanelSub}>Votre cockpit vous relance au bon moment.</div>
+              <div className={styles.notificationPanelTitle}>
+                Actions à mener
+              </div>
+              <div className={styles.notificationPanelSub}>
+                Votre cockpit vous relance au bon moment.
+              </div>
             </div>
             <div className={styles.notificationPanelHeaderActions}>
-              <button type="button" className={styles.notificationGhostBtn} onClick={() => { setNotificationMenuOpen(false); openPanel(); }}>
+              <button
+                type="button"
+                className={styles.notificationGhostBtn}
+                onClick={() => {
+                  setNotificationMenuOpen(false);
+                  openPanel();
+                }}
+              >
                 Réglages
               </button>
-              <button type="button" className={styles.notificationGhostBtn} onClick={() => { void markAllNotificationsRead(); }}>
+              <button
+                type="button"
+                className={styles.notificationGhostBtn}
+                onClick={() => {
+                  void markAllNotificationsRead();
+                }}
+              >
                 Tout lire
               </button>
             </div>
@@ -75,28 +101,48 @@ export default function NotificationMenu(props: {
 
           <div className={styles.notificationList}>
             {notificationsLoading && notifications.length === 0 ? (
-              <div className={styles.notificationEmpty}>Chargement des notifications…</div>
+              <div className={styles.notificationEmpty}>
+                Chargement des notifications…
+              </div>
             ) : notificationsError ? (
-              <div className={styles.notificationEmpty}>{notificationsError}</div>
+              <div className={styles.notificationEmpty}>
+                {notificationsError}
+              </div>
             ) : notifications.length === 0 ? (
-              <div className={styles.notificationEmpty}>Votre cloche est vide pour l’instant. Les prochaines relances business arriveront ici.</div>
+              <div className={styles.notificationEmpty}>
+                Votre cloche est vide pour l’instant. Les prochaines relances
+                business arriveront ici.
+              </div>
             ) : (
               notifications.slice(0, 6).map((item) => (
                 <div key={item.id} className={styles.notificationCard}>
                   <div className={styles.notificationMetaRow}>
-                    <span className={`${styles.notificationCategory} ${styles[`notificationCategory_${item.category}`]}`}>{item.categoryLabel}</span>
-                    <span className={styles.notificationDate}>{item.relativeDate}</span>
+                    <span
+                      className={`${styles.notificationCategory} ${styles[`notificationCategory_${item.category}`]}`}
+                    >
+                      {item.categoryLabel}
+                    </span>
+                    <span className={styles.notificationDate}>
+                      {item.relativeDate}
+                    </span>
                   </div>
                   <div className={styles.notificationTitleRow}>
                     <div className={styles.notificationTitle}>{item.title}</div>
                     <div className={styles.notificationTitleActions}>
-                      {item.unread && <span className={styles.notificationUnreadDot} aria-hidden />}
+                      {item.unread && (
+                        <span
+                          className={styles.notificationUnreadDot}
+                          aria-hidden
+                        />
+                      )}
                       <button
                         type="button"
                         className={styles.notificationDeleteBtn}
                         aria-label="Supprimer la notification"
                         title="Supprimer la notification"
-                        onClick={() => { void deleteNotification(item.id); }}
+                        onClick={() => {
+                          void deleteNotification(item.id);
+                        }}
                       >
                         🗑️
                       </button>
@@ -122,7 +168,9 @@ export default function NotificationMenu(props: {
                       <button
                         type="button"
                         className={styles.notificationGhostBtn}
-                        onClick={() => { void markNotificationRead(item.id); }}
+                        onClick={() => {
+                          void markNotificationRead(item.id);
+                        }}
                       >
                         Marquer comme lu
                       </button>

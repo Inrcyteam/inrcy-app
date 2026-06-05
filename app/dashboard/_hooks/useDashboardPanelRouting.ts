@@ -20,6 +20,7 @@ export type DashboardPanelName =
   | "gmb"
   | "facebook"
   | "tiktok"
+  | "youtube_shorts"
   | "inr_agent"
   | "legal"
   | "rgpd"
