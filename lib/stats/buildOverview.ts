@@ -1748,11 +1748,24 @@ export async function buildStatsOverview(args: {
         });
       } catch (e) {
         console.error("[TIKTOK_STATS_REAL_ERROR]", e);
+        const rawMessage = e instanceof Error ? e.message : String(e || "");
+        const lowerMessage = rawMessage.toLowerCase();
+        const needsReconnect =
+          lowerMessage.includes("scope") ||
+          lowerMessage.includes("permission") ||
+          lowerMessage.includes("autorisation") ||
+          lowerMessage.includes("unauthorized") ||
+          lowerMessage.includes("forbidden") ||
+          lowerMessage.includes("access token") ||
+          lowerMessage.includes("reconnect") ||
+          lowerMessage.includes("reconnecte");
         sourcesStatus.tiktok.metrics = {
           error: getSimpleFrenchErrorMessage(
             e,
             "Impossible de récupérer les statistiques TikTok pour le moment.",
           ),
+          raw_error: rawMessage || null,
+          needs_reconnect: needsReconnect,
         };
       }
     } else {

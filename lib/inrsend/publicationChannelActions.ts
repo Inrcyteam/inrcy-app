@@ -12,13 +12,14 @@ import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { buildBoosterGmbSummary, buildBoosterInstagramCaption, buildBoosterMessage, getBoosterGmbCallToAction } from "@/lib/boosterCta";
 import { log } from "@/lib/observability/logger";
 import { getLinkedInAccessToken } from "@/lib/linkedinOAuth";
-import { normalizeTiktokSettings } from "@/lib/tiktokMockSettings";
 import { buildVideoSettingsByChannel, normalizeChannelVideoSettings } from "@/lib/boosterVideoSettings";
 import { INSTAGRAM_RECONNECT_USER_MESSAGE, isInstagramAuthorizationLikeMessage } from "@/lib/userFacingErrors";
 import { getPublishChannelUserMessage, logPublishChannelFailure } from "@/lib/channelPublishDiagnostics";
 
 const FACEBOOK_GRAPH_VERSION = "v20.0";
 const LINKEDIN_VERSION = "202603";
+const TIKTOK_INRSEND_EXTERNAL_ACTION_MESSAGE =
+  "TikTok ne permet pas la modification ou la suppression réelle depuis iNrCy. Ouvrez TikTok pour gérer cette publication.";
 
 export type ChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin" | "tiktok";
 type JsonRecord = Record<string, unknown>;
@@ -1450,42 +1451,7 @@ async function replaceChannelDelivery(params: {
   }
 
   if (channel === "tiktok") {
-    const tiktokSettings = normalizeTiktokSettings(proSettings.tiktok);
-    if (!tiktokSettings.connected || !tiktokSettings.accountConnected) {
-      const tiktokUserError = "TikTok à connecter. Rendez-vous dans Canaux.";
-      logPublishChannelFailure({
-        route: "inrsend_publication_channel_action",
-        channel: "tiktok",
-        userId,
-        publicationId: publicationId || null,
-        stage: "precheck",
-        error: "not_connected",
-        userMessage: tiktokUserError,
-      });
-      throw new Error(tiktokUserError);
-    }
-
-    const externalId = `mock_tiktok_${randomUUID()}`;
-    return {
-      externalId,
-      status: "delivered",
-      error: null,
-      tiktokMeta: {
-        mock: true,
-        tiktok_media_type: isVideoPublication ? "video" : "photos",
-        media_type: isVideoPublication ? "video" : "photos",
-        username: tiktokSettings.username,
-        profile_url: tiktokSettings.profileUrl || null,
-        diagnostics: {
-          provider: "tiktok",
-          mode: "mock",
-          publish_id: externalId,
-          mediaType: isVideoPublication ? "video" : "photos",
-          defaults: tiktokSettings.defaults,
-          message: "Modification TikTok simulée en local.",
-        },
-      },
-    };
+    throw new Error(TIKTOK_INRSEND_EXTERNAL_ACTION_MESSAGE);
   }
 
   throw new Error("Canal non supporté.");
@@ -1499,6 +1465,10 @@ async function removeChannelDelivery(params: {
   eventPayload?: JsonRecord | null;
 }) {
   const { userId, publicationId, channel, previousExternalId } = params;
+
+  if (channel === "tiktok") {
+    throw new Error(TIKTOK_INRSEND_EXTERNAL_ACTION_MESSAGE);
+  }
 
   if (channel === "inrcy_site" || channel === "site_web") {
     if (previousExternalId) {
@@ -1551,11 +1521,6 @@ async function removeChannelDelivery(params: {
     const token = auth.accessToken || "";
     if (!token) throw new Error(auth.error || "Votre compte LinkedIn n’est pas encore correctement relié.");
     if (previousExternalId) await deleteLinkedInPost(previousExternalId, token);
-    return;
-  }
-
-  if (channel === "tiktok") {
-    // Étape locale : aucune suppression API réelle, on marque simplement le canal comme supprimé côté iNrSend.
     return;
   }
 
@@ -1730,6 +1695,10 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
       const publicationId = String(params.publicationId || "").trim();
       if (!publicationId) return jsonUserFacingError("Paramètres invalides.", { status: 400, code: "invalid_input" });
 
+      if (channel === "tiktok") {
+        return jsonUserFacingError(TIKTOK_INRSEND_EXTERNAL_ACTION_MESSAGE, { status: 409, code: "tiktok_external_action_required" });
+      }
+
       const body = (await req.json().catch(() => null)) as JsonRecord | null;
       if (!body) return jsonUserFacingError("Bad payload", { status: 400, code: "invalid_payload" });
 
@@ -1855,6 +1824,10 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
       const params = await context.params;
       const publicationId = String(params.publicationId || "").trim();
       if (!publicationId) return jsonUserFacingError("Paramètres invalides.", { status: 400, code: "invalid_input" });
+
+      if (channel === "tiktok") {
+        return jsonUserFacingError(TIKTOK_INRSEND_EXTERNAL_ACTION_MESSAGE, { status: 409, code: "tiktok_external_action_required" });
+      }
 
       const ctx = await loadPublicationContext(user.id, publicationId);
       if (!ctx) return jsonUserFacingError("Publication introuvable.", { status: 404, code: "publication_not_found" });

@@ -840,7 +840,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                         if (typeof window !== "undefined") window.open(tiktokPublicationHref || "https://www.tiktok.com", "_blank", "noopener,noreferrer");
                                       }}
                                       disabled={detailsActionBusy}
-                                      title="Ouvrir TikTok pour modifier ou supprimer la publication"
+                                      title="Ouvrir TikTok pour gérer la publication"
                                     >
                                       Ouvrir TikTok
                                     </button>
@@ -937,7 +937,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                 fontSize: 13,
                               }}
                             >
-                              <b>TikTok :</b> la modification ou la suppression réelle se fait directement dans TikTok.
+                              <b>TikTok :</b> iNrSend garde l’historique et l’ouverture du post. La modification ou suppression réelle se fait dans TikTok ; supprimer l’historique ne supprime pas le post TikTok.
                             </div>
                           ) : null}
 

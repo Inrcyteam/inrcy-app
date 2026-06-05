@@ -1376,6 +1376,16 @@ function recommendAction(cubeKey: CubeKey, ov: Overview, qualityScore: number): 
     };
   }
 
+  if (cubeKey === "tiktok" && isTikTokStatsPermissionError(ov?.sources?.tiktok?.metrics)) {
+    return {
+      key: "connect",
+      title: "Reconnecter TikTok",
+      detail: "TikTok est connecté, mais les autorisations statistiques sont incomplètes. Reconnectez le canal pour autoriser les stats.",
+      href: "/dashboard?panel=tiktok",
+      pill: "Connexion",
+    };
+  }
+
   if (cubeKey === "youtube_shorts" && !ov?.sources?.youtube_shorts?.connected) {
     return {
       key: "connect",
@@ -1458,6 +1468,36 @@ export function buildInsights(cubeKey: CubeKey, ov: Overview, qualityScore: numb
       "Réessayez demain pour actualiser les statistiques détaillées.",
       "En attendant, publiez régulièrement pour entretenir votre visibilité professionnelle.",
     ];
+  }
+
+  if (cubeKey === "tiktok") {
+    const connected = Boolean(ov?.sources?.tiktok?.connected);
+    const metrics = ov?.sources?.tiktok?.metrics;
+    const metricError = readMetricError(metrics);
+    if (!connected) {
+      return ["Canal TikTok non connecté.", "Connectez TikTok pour publier photos et vidéos depuis Booster."];
+    }
+    if (isTikTokStatsPermissionError(metrics)) {
+      return [
+        "Compte TikTok connecté, mais autorisations statistiques incomplètes.",
+        "Reconnectez TikTok depuis Canaux pour autoriser la lecture des statistiques.",
+        "La publication reste disponible depuis Booster pendant la mise à jour.",
+      ];
+    }
+    if (metricError) {
+      return [
+        "Compte TikTok connecté.",
+        "Les statistiques TikTok sont momentanément indisponibles, mais le canal reste prêt pour publier.",
+        "Réactualisez iNrStats après vos prochaines publications publiques.",
+      ];
+    }
+    if (!hasTikTokStatsSignal(metrics)) {
+      return [
+        "Compte TikTok connecté.",
+        "Les premières statistiques seront enrichies dès que TikTok remontera des données publiques.",
+        "Publiez une photo ou une vidéo depuis Booster pour activer le suivi.",
+      ];
+    }
   }
 
   if (decision) {
@@ -1553,6 +1593,81 @@ function formatSecondsToLabel(value: number) {
 function metricKeyExists(metrics: any, keys: string[]) {
   const totals = safeObj(safeObj(metrics).totals);
   return keys.some((key) => Object.prototype.hasOwnProperty.call(totals, key));
+}
+
+function readMetricError(metrics: any) {
+  const error = safeObj(metrics).error;
+  return typeof error === "string" ? error.trim() : "";
+}
+
+function isTikTokStatsPermissionError(metrics: any) {
+  const m = safeObj(metrics);
+  const raw = safeObj(m.raw);
+  const videoList = safeObj(raw.videoList);
+  const nestedVideoListError = typeof videoList.error === "string" ? videoList.error : "";
+  if (m.needs_reconnect === true) return true;
+  const text = `${readMetricError(metrics)} ${typeof m.raw_error === "string" ? m.raw_error : ""} ${nestedVideoListError}`.toLowerCase();
+  return Boolean(text.trim()) && (
+    text.includes("scope") ||
+    text.includes("permission") ||
+    text.includes("autorisation") ||
+    text.includes("unauthorized") ||
+    text.includes("forbidden") ||
+    text.includes("access token") ||
+    text.includes("reconnect") ||
+    text.includes("reconnecte")
+  );
+}
+
+function hasTikTokStatsSignal(metrics: any) {
+  const m = safeObj(metrics);
+  const totals = safeObj(m.totals);
+  if (!Object.keys(totals).length) return false;
+  return [
+    "followers",
+    "following",
+    "likes",
+    "likes_total",
+    "video_count",
+    "videos_public",
+    "postsPublished",
+    "video_views",
+    "views",
+    "engagements",
+    "likes_period",
+    "comments",
+    "shares",
+  ].some((key) => safeNum(totals[key]) > 0 || Object.prototype.hasOwnProperty.call(totals, key));
+}
+
+function tikTokMetricItems(metrics: any, kind: "visibility" | "actions"): CubeMetricItem[] {
+  const totals = safeObj(safeObj(metrics).totals);
+  const videoViews = safeNum(totals.video_views) || safeNum(totals.views);
+  const followers = safeNum(totals.followers);
+  const likesTotal = safeNum(totals.likes_total);
+  const videoCount = safeNum(totals.video_count) || safeNum(totals.videos_public);
+  const likes = safeNum(totals.likes) || safeNum(totals.likes_period);
+  const comments = safeNum(totals.comments);
+  const shares = safeNum(totals.shares);
+  const saves = safeNum(totals.saves);
+  const posts = safeNum(totals.postsPublished);
+  const interactions = safeNum(totals.engagements) || likes + comments + shares + saves;
+
+  if (kind === "visibility") {
+    return [
+      { label: "Vues vidéo", value: fmtInt(videoViews) },
+      { label: "Abonnés", value: fmtInt(followers) },
+      { label: "J’aime reçus", value: fmtInt(likesTotal) },
+      { label: "Vidéos profil", value: fmtInt(videoCount) },
+    ];
+  }
+
+  return [
+    { label: "Interactions", value: fmtInt(interactions), subValue: `${fmtInt(posts)} post${posts > 1 ? "s" : ""} analysé${posts > 1 ? "s" : ""}` },
+    { label: "J’aime", value: fmtInt(likes) },
+    { label: "Commentaires", value: fmtInt(comments) },
+    { label: "Partages", value: fmtInt(shares) },
+  ];
 }
 
 function sumMetricValues(metrics: any, keys: string[]) {
@@ -1651,12 +1766,7 @@ function buildVisibilityStats(cubeKey: CubeKey, ov: Overview): CubeMetricItem[] 
 
   if (cubeKey === "tiktok") {
     if (!ov?.sources?.tiktok?.connected) return [];
-    const m = ov?.sources?.tiktok?.metrics;
-    pushNumberMetric(items, "Vues vidéo", safeNum(m?.totals?.video_views) || safeNum(m?.totals?.views), { available: metricKeyExists(m, ["video_views", "views"]) });
-    pushNumberMetric(items, "Abonnés", safeNum(m?.totals?.followers), { available: metricKeyExists(m, ["followers"]) });
-    pushNumberMetric(items, "J’aime reçus", safeNum(m?.totals?.likes_total), { available: metricKeyExists(m, ["likes_total"]) });
-    pushNumberMetric(items, "Vidéos profil", safeNum(m?.totals?.video_count), { available: metricKeyExists(m, ["video_count"]) });
-    return firstFour(items);
+    return tikTokMetricItems(ov?.sources?.tiktok?.metrics, "visibility");
   }
 
   if (cubeKey === "youtube_shorts") {
@@ -1767,14 +1877,7 @@ function buildActionStats(cubeKey: CubeKey, ov: Overview): CubeMetricItem[] {
 
   if (cubeKey === "tiktok") {
     if (!ov?.sources?.tiktok?.connected) return [];
-    const m = ov?.sources?.tiktok?.metrics;
-    const interactions = sumMetricValues(m, ["engagements", "likes", "comments", "shares", "saves"]);
-    pushNumberMetric(items, "Interactions", interactions, { available: metricKeyExists(m, ["engagements", "likes", "comments", "shares", "saves"]) });
-    pushNumberMetric(items, "J’aime", safeNum(m?.totals?.likes), { available: metricKeyExists(m, ["likes"]) });
-    pushNumberMetric(items, "Commentaires", safeNum(m?.totals?.comments), { available: metricKeyExists(m, ["comments"]) });
-    pushNumberMetric(items, "Partages", safeNum(m?.totals?.shares), { available: metricKeyExists(m, ["shares"]) });
-    pushNumberMetric(items, "Posts", safeNum(m?.totals?.postsPublished), { available: metricKeyExists(m, ["postsPublished"]) });
-    return firstFour(items);
+    return tikTokMetricItems(ov?.sources?.tiktok?.metrics, "actions");
   }
 
   if (cubeKey === "youtube_shorts") {
@@ -1951,9 +2054,15 @@ export function buildCubeModel(
     provenanceHint:
       key === "linkedin" && (linkedInPartial || provenance.every((entry) => safeNum(entry.value) <= 0))
         ? "Données non exploitables actuellement."
-        : key === "gmb" && provenance.length === 1 && provenance[0]?.label === "Visibilité locale"
-          ? "La répartition Maps / Search n’est pas remontée par Google sur cette période."
-          : undefined,
+        : key === "tiktok" && ov?.sources?.tiktok?.connected && isTikTokStatsPermissionError(ov?.sources?.tiktok?.metrics)
+          ? "Autorisations statistiques TikTok incomplètes : reconnectez le canal."
+          : key === "tiktok" && ov?.sources?.tiktok?.connected && readMetricError(ov?.sources?.tiktok?.metrics)
+            ? "Statistiques TikTok momentanément indisponibles."
+            : key === "tiktok" && ov?.sources?.tiktok?.connected && !hasTikTokStatsSignal(ov?.sources?.tiktok?.metrics)
+              ? "Compte connecté : données en attente de remontée par TikTok."
+              : key === "gmb" && provenance.length === 1 && provenance[0]?.label === "Visibilité locale"
+                ? "La répartition Maps / Search n’est pas remontée par Google sur cette période."
+                : undefined,
     visibilityStats: buildVisibilityStats(key, ov),
     actionStats: buildActionStats(key, ov),
     qualityScore: q.score,
