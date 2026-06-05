@@ -5560,3 +5560,1339 @@
     min-height: 42px !important;
   }
 }
+
+/* iNrStats — bloc activité iNrCy propre : bande compacte avant Lecture business, sans scroll desktop */
+.inrcyActivityBlock {
+  min-height: 0;
+  padding: 8px 10px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  background:
+    linear-gradient(135deg, rgba(56, 189, 248, 0.08), rgba(157, 78, 255, 0.11)),
+    rgba(255, 255, 255, 0.045);
+}
+
+.inrcyActivityTitle {
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.inrcyActivityItems {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.inrcyActivityItem {
+  min-width: 0;
+  min-height: 34px;
+  display: grid;
+  grid-template-columns: minmax(76px, 1fr) repeat(3, auto auto);
+  align-items: center;
+  gap: 3px;
+  padding: 5px 7px;
+  border-radius: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.085);
+  background: rgba(0, 0, 0, 0.13);
+}
+
+.inrcyActivityItem > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 10.5px;
+  line-height: 1;
+  font-weight: 950;
+  text-transform: uppercase;
+  letter-spacing: 0.005em;
+}
+
+.inrcyActivityItem b {
+  color: rgba(239, 246, 255, 0.98);
+  font-size: 15px;
+  line-height: 1;
+  font-weight: 950;
+  letter-spacing: -0.02em;
+  text-align: right;
+}
+
+.inrcyActivityItem small {
+  color: rgba(255, 255, 255, 0.46);
+  font-size: 8px;
+  line-height: 1;
+  font-weight: 950;
+  text-transform: uppercase;
+}
+
+@media (min-width: 901px) {
+  .page {
+    height: 100dvh !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .statsWorkspace {
+    height: calc(100dvh - 132px) !important;
+    min-height: 0 !important;
+    max-height: calc(100dvh - 132px) !important;
+    align-items: stretch !important;
+    overflow: hidden !important;
+  }
+
+  .statsPanel,
+  .channelStatsPanel {
+    min-height: 0 !important;
+    height: 100% !important;
+    max-height: 100% !important;
+    overflow: hidden !important;
+  }
+
+  .channelStatsPanel {
+    display: flex !important;
+    flex-direction: column !important;
+    padding: 12px !important;
+  }
+
+  .channelStatsPanel .channelStatsHeader {
+    flex: 0 0 auto !important;
+    padding: 4px 4px 12px !important;
+  }
+
+  .channelStatsPanel .cube {
+    flex: 1 1 auto !important;
+    max-height: calc(100% - 0px) !important;
+    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: column !important;
+    margin-top: 0 !important;
+  }
+
+  .channelStatsPanel .cubeTopCompact {
+    flex: 0 0 auto !important;
+    padding: 10px 12px !important;
+  }
+
+  .channelStatsPanel .cubeBody {
+    flex: 0 0 auto !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    display: grid !important;
+    grid-template-rows: auto auto auto auto !important;
+    gap: 8px !important;
+    padding: 8px 10px 10px !important;
+  }
+
+  .channelStatsPanel .detailTopRow,
+  .channelStatsPanel .blockRow {
+    gap: 8px !important;
+    align-items: stretch !important;
+  }
+
+  .channelStatsPanel .block {
+    min-height: 0 !important;
+    overflow: hidden !important;
+    padding: 9px 10px !important;
+    border-radius: 14px !important;
+  }
+
+  .channelStatsPanel .blockTitle {
+    margin-bottom: 7px !important;
+    font-size: 11px !important;
+    line-height: 1 !important;
+  }
+
+  .channelStatsPanel .metricMiniGrid {
+    gap: 6px !important;
+  }
+
+  .channelStatsPanel .metricMiniCard {
+    min-height: 38px !important;
+    padding: 6px 8px !important;
+    border-radius: 11px !important;
+  }
+
+  .channelStatsPanel .metricMiniCard span {
+    font-size: 9.5px !important;
+    line-height: 1 !important;
+  }
+
+  .channelStatsPanel .metricMiniCard b {
+    margin-top: 3px !important;
+    font-size: 15.5px !important;
+    line-height: 1 !important;
+  }
+
+  .channelStatsPanel .metricMiniCard small {
+    margin-top: 1px !important;
+    font-size: 8.5px !important;
+    line-height: 1 !important;
+  }
+
+  .channelStatsPanel .provenanceCompactBlock .donutWrap {
+    grid-template-columns: 88px minmax(0, 1fr) !important;
+    gap: 9px !important;
+  }
+
+  .channelStatsPanel .provenanceCompactBlock .donut {
+    width: 88px !important;
+    height: 88px !important;
+  }
+
+  .channelStatsPanel .provenanceCompactBlock .donutHole {
+    width: 52px !important;
+    height: 52px !important;
+  }
+
+  .channelStatsPanel .provenanceCompactBlock .legend {
+    gap: 3px !important;
+  }
+
+  .channelStatsPanel .provenanceCompactBlock .legendRow {
+    grid-template-columns: 9px minmax(0, 1fr) 32px !important;
+    gap: 6px !important;
+    font-size: 10.5px !important;
+    line-height: 1.05 !important;
+  }
+
+  .channelStatsPanel .provenanceHint {
+    margin-top: 4px !important;
+    font-size: 10.5px !important;
+    line-height: 1.2 !important;
+  }
+
+  .channelStatsPanel .qualityRow {
+    min-height: 0 !important;
+    gap: 9px !important;
+    align-items: center !important;
+  }
+
+  .channelStatsPanel .qualityRow .ring {
+    width: 62px !important;
+    height: 62px !important;
+  }
+
+  .channelStatsPanel .qualityRow .ringInner {
+    width: 46px !important;
+    height: 46px !important;
+  }
+
+  .channelStatsPanel .qualityRow .ringValue {
+    font-size: 16px !important;
+  }
+
+  .channelStatsPanel .qualityRow .ringSub {
+    font-size: 9px !important;
+  }
+
+  .channelStatsPanel .qualityLabel {
+    font-size: 15px !important;
+    line-height: 1.05 !important;
+  }
+
+  .channelStatsPanel .qualitySub {
+    margin-top: 1px !important;
+    font-size: 10.5px !important;
+    line-height: 1.05 !important;
+  }
+
+  .channelStatsPanel .lectureBusinessActionBlock,
+  .channelStatsPanel .cubeBody > .block:last-child {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    align-items: center !important;
+    gap: 10px !important;
+    padding: 10px !important;
+    min-height: 84px !important;
+  }
+
+  .channelStatsPanel .lectureBusinessContent {
+    min-width: 0 !important;
+  }
+
+  .channelStatsPanel .bullets {
+    gap: 4px !important;
+    font-size: 11.3px !important;
+    line-height: 1.18 !important;
+  }
+
+  .channelStatsPanel .bullets li {
+    display: -webkit-box !important;
+    -webkit-line-clamp: 2 !important;
+    -webkit-box-orient: vertical !important;
+    overflow: hidden !important;
+  }
+
+  .channelStatsPanel .channelInlineActionStack {
+    gap: 8px !important;
+  }
+
+  .channelStatsPanel .channelInlineActionStack .channelInlineAction {
+    min-height: 42px !important;
+    padding: 8px 12px !important;
+  }
+
+  .channelStatsPanel .channelInlineActionStack .channelInlineGoButton {
+    width: 62px !important;
+    min-width: 62px !important;
+    height: 40px !important;
+  }
+}
+
+@media (min-width: 901px) and (max-height: 820px) {
+  .statsWorkspace {
+    height: calc(100dvh - 118px) !important;
+    max-height: calc(100dvh - 118px) !important;
+    margin-top: 14px !important;
+  }
+
+  .channelStatsPanel .channelStatsHeader {
+    padding-bottom: 8px !important;
+  }
+
+  .channelStatsPanel .cubeTopCompact {
+    padding: 8px 10px !important;
+  }
+
+  .channelStatsPanel .cubeBody {
+    gap: 6px !important;
+    padding: 7px 9px 9px !important;
+  }
+
+  .channelStatsPanel .provenanceCompactBlock .donut {
+    width: 76px !important;
+    height: 76px !important;
+  }
+
+  .channelStatsPanel .provenanceCompactBlock .donutHole {
+    width: 46px !important;
+    height: 46px !important;
+  }
+
+  .inrcyActivityBlock {
+    padding: 6px 8px !important;
+    gap: 8px !important;
+  }
+
+  .inrcyActivityItem {
+    min-height: 30px !important;
+    padding: 4px 6px !important;
+  }
+
+  .inrcyActivityItem b {
+    font-size: 13.5px !important;
+  }
+
+  .channelStatsPanel .lectureBusinessActionBlock,
+  .channelStatsPanel .cubeBody > .block:last-child {
+    min-height: 76px !important;
+    padding: 8px 9px !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .inrcyActivityBlock {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .inrcyActivityItems {
+    grid-template-columns: 1fr;
+  }
+
+  .inrcyActivityItem {
+    grid-template-columns: minmax(0, 1fr) repeat(3, auto auto);
+  }
+}
+
+@media (min-width: 901px) {
+  .channelStatsPanel .inrcyActivityBlock {
+    padding: 7px 9px !important;
+    min-height: 44px !important;
+  }
+}
+
+@media (min-width: 901px) and (max-height: 820px) {
+  .channelStatsPanel .inrcyActivityBlock {
+    padding: 6px 8px !important;
+    min-height: 38px !important;
+  }
+}
+
+/* iNrStats — finition plein cadre : le détail canal utilise toute la hauteur disponible, sans scroll ni zone morte. */
+@media (min-width: 901px) {
+  .channelStatsPanel .cube {
+    height: 100% !important;
+    min-height: 0 !important;
+    flex: 1 1 auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+  }
+
+  .channelStatsPanel .cubeBody {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    height: auto !important;
+    overflow: hidden !important;
+    display: grid !important;
+    grid-template-rows: minmax(0, 1.18fr) minmax(0, 0.94fr) minmax(86px, 0.58fr) !important;
+    gap: 8px !important;
+    align-content: stretch !important;
+    padding: 8px 10px 10px !important;
+  }
+
+  .channelStatsPanel .cubeBodyWithInrcyActivity {
+    grid-template-rows: minmax(0, 1.16fr) minmax(0, 0.92fr) minmax(40px, auto) minmax(84px, 0.56fr) !important;
+  }
+
+  .channelStatsPanel .detailTopRow,
+  .channelStatsPanel .blockRow {
+    min-height: 0 !important;
+    height: 100% !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+
+  .channelStatsPanel .detailTopRow > .block,
+  .channelStatsPanel .blockRow > .block,
+  .channelStatsPanel .cubeBody > .block {
+    min-height: 0 !important;
+    height: 100% !important;
+    overflow: hidden !important;
+  }
+
+  .channelStatsPanel .metricOverviewBlock,
+  .channelStatsPanel .provenanceCompactBlock,
+  .channelStatsPanel .blockRow > .block {
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  .channelStatsPanel .metricOverviewBlock .metricMiniGrid {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    align-content: stretch !important;
+  }
+
+  .channelStatsPanel .provenanceCompactBlock .donutWrap,
+  .channelStatsPanel .qualityRow {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    align-items: center !important;
+  }
+
+  .channelStatsPanel .lectureBusinessActionBlock,
+  .channelStatsPanel .cubeBody > .block:last-child {
+    min-height: 0 !important;
+    height: 100% !important;
+    align-self: stretch !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    align-items: center !important;
+    gap: 10px !important;
+    padding: 10px !important;
+  }
+
+  .channelStatsPanel .lectureBusinessContent {
+    min-width: 0 !important;
+    align-self: center !important;
+  }
+
+  .channelStatsPanel .channelInlineActionStack {
+    min-width: 0 !important;
+    align-self: center !important;
+  }
+}
+
+@media (min-width: 901px) and (max-height: 820px) {
+  .channelStatsPanel .cubeBody {
+    grid-template-rows: minmax(0, 1.12fr) minmax(0, 0.88fr) minmax(74px, 0.50fr) !important;
+    gap: 6px !important;
+    padding: 7px 9px 9px !important;
+  }
+
+  .channelStatsPanel .cubeBodyWithInrcyActivity {
+    grid-template-rows: minmax(0, 1.08fr) minmax(0, 0.84fr) minmax(36px, auto) minmax(70px, 0.46fr) !important;
+  }
+}
+
+/* iNrStats — correction finale : grille premium sans scroll, bloc iNrCy lisible et blocs internes cohérents. */
+@media (min-width: 901px) {
+  .channelStatsPanel .cube {
+    height: 100% !important;
+    min-height: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+  }
+
+  .channelStatsPanel .cubeBody {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    height: auto !important;
+    overflow: hidden !important;
+    display: grid !important;
+    gap: 8px !important;
+    padding: 8px 10px 10px !important;
+    align-content: stretch !important;
+  }
+
+  .channelStatsPanel .cubeBody:not(.cubeBodyWithInrcyActivity) {
+    grid-template-rows: minmax(154px, 1fr) minmax(118px, 0.78fr) minmax(84px, 0.52fr) !important;
+  }
+
+  .channelStatsPanel .cubeBodyWithInrcyActivity {
+    grid-template-rows: minmax(152px, 1fr) minmax(112px, 0.72fr) 76px minmax(78px, 0.48fr) !important;
+  }
+
+  .channelStatsPanel .detailTopRow,
+  .channelStatsPanel .blockRow {
+    min-height: 0 !important;
+    height: 100% !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+
+  .channelStatsPanel .detailTopRow > .block,
+  .channelStatsPanel .blockRow > .block,
+  .channelStatsPanel .cubeBody > .block {
+    min-height: 0 !important;
+    height: 100% !important;
+    overflow: hidden !important;
+    padding: 9px 10px !important;
+  }
+
+  .channelStatsPanel .blockTitle {
+    margin-bottom: 7px !important;
+    font-size: 11px !important;
+    line-height: 1.05 !important;
+  }
+
+  .channelStatsPanel .metricOverviewBlock,
+  .channelStatsPanel .provenanceCompactBlock,
+  .channelStatsPanel .blockRow > .block {
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  .channelStatsPanel .metricMiniGrid {
+    flex: 0 0 auto !important;
+    min-height: 0 !important;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    grid-auto-rows: minmax(42px, auto) !important;
+    align-content: start !important;
+    gap: 7px !important;
+  }
+
+  .channelStatsPanel .metricMiniCard {
+    min-height: 42px !important;
+    padding: 7px 9px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+  }
+
+  .channelStatsPanel .metricMiniCard span {
+    font-size: 10px !important;
+    line-height: 1.05 !important;
+  }
+
+  .channelStatsPanel .metricMiniCard b {
+    margin-top: 3px !important;
+    font-size: 17px !important;
+    line-height: 1.02 !important;
+  }
+
+  .channelStatsPanel .metricMiniCard small {
+    margin-top: 2px !important;
+    font-size: 9.5px !important;
+    line-height: 1.05 !important;
+  }
+
+  .channelStatsPanel .provenanceCompactBlock .donutWrap,
+  .channelStatsPanel .qualityRow {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    align-items: center !important;
+  }
+
+  .channelStatsPanel .qualityRow {
+    gap: 10px !important;
+  }
+
+  .channelStatsPanel .qualityRow .ring {
+    width: 72px !important;
+    height: 72px !important;
+  }
+
+  .channelStatsPanel .qualityLabel {
+    font-size: 16px !important;
+    line-height: 1.05 !important;
+  }
+
+  .channelStatsPanel .qualitySub {
+    margin-top: 2px !important;
+    font-size: 10.5px !important;
+    line-height: 1.1 !important;
+  }
+
+  .channelStatsPanel .inrcyActivityBlock {
+    min-height: 76px !important;
+    height: 100% !important;
+    padding: 9px 10px !important;
+    display: grid !important;
+    grid-template-columns: 116px minmax(0, 1fr) !important;
+    align-items: stretch !important;
+    gap: 9px !important;
+    overflow: hidden !important;
+  }
+
+  .channelStatsPanel .inrcyActivityTitle {
+    display: flex !important;
+    align-items: center !important;
+    white-space: normal !important;
+    line-height: 1.12 !important;
+    font-size: 11px !important;
+  }
+
+  .channelStatsPanel .inrcyActivityItems {
+    min-height: 0 !important;
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    align-items: stretch !important;
+    gap: 8px !important;
+  }
+
+  .channelStatsPanel .inrcyActivityItem {
+    height: 100% !important;
+    min-height: 0 !important;
+    padding: 7px 8px !important;
+    display: grid !important;
+    grid-template-columns: minmax(72px, 1fr) repeat(3, minmax(34px, auto)) !important;
+    grid-template-rows: 1fr 1fr !important;
+    align-items: center !important;
+    column-gap: 7px !important;
+    row-gap: 1px !important;
+  }
+
+  .channelStatsPanel .inrcyActivityItem > span {
+    grid-column: 1 !important;
+    grid-row: 1 / 3 !important;
+    align-self: center !important;
+    font-size: 10px !important;
+    line-height: 1.1 !important;
+  }
+
+  .channelStatsPanel .inrcyActivityItem b {
+    align-self: end !important;
+    justify-self: center !important;
+    font-size: 16px !important;
+    line-height: 1 !important;
+  }
+
+  .channelStatsPanel .inrcyActivityItem small {
+    align-self: start !important;
+    justify-self: center !important;
+    font-size: 8px !important;
+    line-height: 1 !important;
+  }
+
+  .channelStatsPanel .inrcyActivityItem b:nth-of-type(1) { grid-column: 2 !important; grid-row: 1 !important; }
+  .channelStatsPanel .inrcyActivityItem b:nth-of-type(2) { grid-column: 3 !important; grid-row: 1 !important; }
+  .channelStatsPanel .inrcyActivityItem b:nth-of-type(3) { grid-column: 4 !important; grid-row: 1 !important; }
+  .channelStatsPanel .inrcyActivityItem small:nth-of-type(1) { grid-column: 2 !important; grid-row: 2 !important; }
+  .channelStatsPanel .inrcyActivityItem small:nth-of-type(2) { grid-column: 3 !important; grid-row: 2 !important; }
+  .channelStatsPanel .inrcyActivityItem small:nth-of-type(3) { grid-column: 4 !important; grid-row: 2 !important; }
+
+  .channelStatsPanel .lectureBusinessActionBlock,
+  .channelStatsPanel .cubeBody > .block:last-child {
+    min-height: 0 !important;
+    height: 100% !important;
+    padding: 9px 10px !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    align-items: center !important;
+    gap: 10px !important;
+  }
+
+  .channelStatsPanel .lectureBusinessContent {
+    min-width: 0 !important;
+  }
+
+  .channelStatsPanel .bullets {
+    gap: 3px !important;
+    font-size: 11px !important;
+    line-height: 1.18 !important;
+  }
+
+  .channelStatsPanel .bullets li {
+    display: -webkit-box !important;
+    -webkit-line-clamp: 2 !important;
+    -webkit-box-orient: vertical !important;
+    overflow: hidden !important;
+  }
+
+  .channelStatsPanel .channelInlineActionStack {
+    min-width: 440px !important;
+    width: auto !important;
+    max-width: 100% !important;
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    align-items: center !important;
+    gap: 8px !important;
+    margin: 0 !important;
+  }
+
+  .channelStatsPanel .channelInlineActionStack .channelInlineAction {
+    min-height: 42px !important;
+    padding: 8px 12px !important;
+    border-radius: 18px !important;
+  }
+
+  .channelStatsPanel .channelInlineActionStack .channelInlineGoButton {
+    width: 62px !important;
+    min-width: 62px !important;
+    height: 40px !important;
+  }
+}
+
+@media (min-width: 901px) and (max-height: 820px) {
+  .channelStatsPanel .cubeBodyWithInrcyActivity {
+    grid-template-rows: minmax(142px, 1fr) minmax(104px, 0.70fr) 68px minmax(70px, 0.46fr) !important;
+    gap: 6px !important;
+    padding: 7px 9px 9px !important;
+  }
+
+  .channelStatsPanel .inrcyActivityBlock {
+    min-height: 68px !important;
+    padding: 7px 8px !important;
+  }
+
+  .channelStatsPanel .inrcyActivityItem {
+    padding: 6px 7px !important;
+  }
+
+  .channelStatsPanel .inrcyActivityItem b {
+    font-size: 14px !important;
+  }
+
+  .channelStatsPanel .lectureBusinessActionBlock,
+  .channelStatsPanel .cubeBody > .block:last-child {
+    padding: 8px 9px !important;
+  }
+}
+
+/* iNrStats — finition équilibre sans scroll : bloc iNrCy plus lisible + métriques unitaires compactes. */
+@media (min-width: 901px) {
+  .channelStatsPanel,
+  .channelStatsPanel .cube,
+  .channelStatsPanel .cubeBody {
+    overflow: hidden !important;
+  }
+
+  .channelStatsPanel .cubeBodyWithInrcyActivity {
+    grid-template-rows: minmax(132px, 0.92fr) minmax(92px, 0.58fr) 94px minmax(66px, 0.38fr) !important;
+    gap: 8px !important;
+    align-content: stretch !important;
+  }
+
+  .channelStatsPanel .detailTopRow,
+  .channelStatsPanel .blockRow {
+    min-height: 0 !important;
+    height: 100% !important;
+    gap: 8px !important;
+  }
+
+  .channelStatsPanel .block {
+    text-align: left !important;
+  }
+
+  .channelStatsPanel .blockTitle {
+    text-align: left !important;
+  }
+
+  .channelStatsPanel .metricOverviewBlock .metricMiniGrid {
+    flex: 0 0 auto !important;
+  }
+
+  .channelStatsPanel .metricMiniGrid {
+    width: 100% !important;
+    min-height: 0 !important;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    grid-auto-rows: 44px !important;
+    align-content: start !important;
+    align-items: start !important;
+    gap: 7px !important;
+  }
+
+  .channelStatsPanel .metricMiniGridSingle {
+    grid-template-columns: minmax(0, 188px) !important;
+  }
+
+  .channelStatsPanel .metricMiniGridTwo {
+    grid-template-columns: repeat(2, minmax(0, 188px)) !important;
+  }
+
+  .channelStatsPanel .metricMiniCard {
+    width: 100% !important;
+    height: 44px !important;
+    min-height: 44px !important;
+    max-height: 44px !important;
+    align-self: start !important;
+    justify-self: stretch !important;
+    padding: 7px 9px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    justify-content: center !important;
+    text-align: left !important;
+    place-items: unset !important;
+    align-content: initial !important;
+  }
+
+  .channelStatsPanel .metricMiniCard span,
+  .channelStatsPanel .metricMiniCard b,
+  .channelStatsPanel .metricMiniCard small {
+    text-align: left !important;
+  }
+
+  .channelStatsPanel .metricMiniCard span {
+    font-size: 9.8px !important;
+    line-height: 1.02 !important;
+  }
+
+  .channelStatsPanel .metricMiniCard b {
+    margin-top: 3px !important;
+    font-size: 16.5px !important;
+    line-height: 1 !important;
+  }
+
+  .channelStatsPanel .provenanceCompactBlock .donutWrap,
+  .channelStatsPanel .qualityRow {
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    align-items: center !important;
+  }
+
+  .channelStatsPanel .inrcyActivityBlock {
+    min-height: 94px !important;
+    height: 94px !important;
+    padding: 10px 11px !important;
+    grid-template-columns: 104px minmax(0, 1fr) !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+
+  .channelStatsPanel .inrcyActivityTitle {
+    display: flex !important;
+    align-items: center !important;
+    font-size: 11px !important;
+    line-height: 1.15 !important;
+    white-space: normal !important;
+  }
+
+  .channelStatsPanel .inrcyActivityItems {
+    height: 100% !important;
+    min-height: 0 !important;
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    align-items: stretch !important;
+    gap: 9px !important;
+  }
+
+  .channelStatsPanel .inrcyActivityItem {
+    height: 100% !important;
+    min-height: 0 !important;
+    padding: 8px 9px !important;
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+    grid-template-rows: auto 1fr auto !important;
+    align-items: center !important;
+    column-gap: 6px !important;
+    row-gap: 2px !important;
+  }
+
+  .channelStatsPanel .inrcyActivityItem > span {
+    grid-column: 1 / 4 !important;
+    grid-row: 1 !important;
+    align-self: start !important;
+    justify-self: stretch !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    font-size: 10px !important;
+    line-height: 1.05 !important;
+    text-align: left !important;
+  }
+
+  .channelStatsPanel .inrcyActivityItem b {
+    align-self: end !important;
+    justify-self: center !important;
+    font-size: 19px !important;
+    line-height: 1 !important;
+  }
+
+  .channelStatsPanel .inrcyActivityItem small {
+    align-self: start !important;
+    justify-self: center !important;
+    font-size: 8.5px !important;
+    line-height: 1 !important;
+  }
+
+  .channelStatsPanel .inrcyActivityItem b:nth-of-type(1) { grid-column: 1 !important; grid-row: 2 !important; }
+  .channelStatsPanel .inrcyActivityItem b:nth-of-type(2) { grid-column: 2 !important; grid-row: 2 !important; }
+  .channelStatsPanel .inrcyActivityItem b:nth-of-type(3) { grid-column: 3 !important; grid-row: 2 !important; }
+  .channelStatsPanel .inrcyActivityItem small:nth-of-type(1) { grid-column: 1 !important; grid-row: 3 !important; }
+  .channelStatsPanel .inrcyActivityItem small:nth-of-type(2) { grid-column: 2 !important; grid-row: 3 !important; }
+  .channelStatsPanel .inrcyActivityItem small:nth-of-type(3) { grid-column: 3 !important; grid-row: 3 !important; }
+
+  .channelStatsPanel .lectureBusinessActionBlock,
+  .channelStatsPanel .cubeBody > .block:last-child {
+    min-height: 66px !important;
+    height: 100% !important;
+    padding: 9px 10px !important;
+  }
+}
+
+@media (min-width: 901px) and (max-height: 820px) {
+  .channelStatsPanel .cubeBodyWithInrcyActivity {
+    grid-template-rows: minmax(122px, 0.86fr) minmax(84px, 0.54fr) 84px minmax(62px, 0.36fr) !important;
+    gap: 6px !important;
+  }
+
+  .channelStatsPanel .metricMiniGrid {
+    grid-auto-rows: 40px !important;
+    gap: 6px !important;
+  }
+
+  .channelStatsPanel .metricMiniCard {
+    height: 40px !important;
+    min-height: 40px !important;
+    max-height: 40px !important;
+    padding: 6px 8px !important;
+  }
+
+  .channelStatsPanel .metricMiniCard b {
+    font-size: 15px !important;
+  }
+
+  .channelStatsPanel .inrcyActivityBlock {
+    min-height: 84px !important;
+    height: 84px !important;
+    padding: 8px 9px !important;
+    grid-template-columns: 96px minmax(0, 1fr) !important;
+  }
+
+  .channelStatsPanel .inrcyActivityItem {
+    padding: 7px 8px !important;
+  }
+
+  .channelStatsPanel .inrcyActivityItem b {
+    font-size: 16px !important;
+  }
+
+  .channelStatsPanel .inrcyActivityItem small {
+    font-size: 8px !important;
+  }
+}
+
+/* iNrStats — retouche finale: les 2 lignes stats ont la même hauteur, l'espace gagné respire sur iNrCy + Lecture business. */
+@media (min-width: 901px) {
+  .channelStatsPanel .cubeBodyWithInrcyActivity {
+    grid-template-rows: minmax(108px, 0.72fr) minmax(108px, 0.72fr) minmax(108px, 0.52fr) minmax(82px, 0.42fr) !important;
+    gap: 8px !important;
+  }
+
+  .channelStatsPanel .detailTopRow,
+  .channelStatsPanel .blockRow {
+    min-height: 0 !important;
+    height: 100% !important;
+  }
+
+  .channelStatsPanel .detailTopRow > .block,
+  .channelStatsPanel .blockRow > .block {
+    height: 100% !important;
+    min-height: 0 !important;
+  }
+
+  .channelStatsPanel .inrcyActivityBlock {
+    height: 100% !important;
+    min-height: 108px !important;
+    padding: 12px 12px !important;
+    grid-template-columns: 112px minmax(0, 1fr) !important;
+    gap: 12px !important;
+  }
+
+  .channelStatsPanel .inrcyActivityTitle {
+    font-size: 11.5px !important;
+    line-height: 1.18 !important;
+  }
+
+  .channelStatsPanel .inrcyActivityItem {
+    padding: 10px 10px !important;
+    row-gap: 3px !important;
+  }
+
+  .channelStatsPanel .inrcyActivityItem b {
+    font-size: 20px !important;
+  }
+
+  .channelStatsPanel .inrcyActivityItem small {
+    font-size: 8.8px !important;
+  }
+
+  .channelStatsPanel .lectureBusinessActionBlock,
+  .channelStatsPanel .cubeBody > .block:last-child {
+    min-height: 82px !important;
+    height: 100% !important;
+    padding: 10px 12px !important;
+  }
+}
+
+@media (min-width: 901px) and (max-height: 820px) {
+  .channelStatsPanel .cubeBodyWithInrcyActivity {
+    grid-template-rows: minmax(98px, 0.70fr) minmax(98px, 0.70fr) minmax(96px, 0.50fr) minmax(72px, 0.40fr) !important;
+    gap: 6px !important;
+  }
+
+  .channelStatsPanel .inrcyActivityBlock {
+    min-height: 96px !important;
+    padding: 9px 10px !important;
+    grid-template-columns: 104px minmax(0, 1fr) !important;
+    gap: 9px !important;
+  }
+
+  .channelStatsPanel .inrcyActivityItem {
+    padding: 8px 8px !important;
+  }
+
+  .channelStatsPanel .inrcyActivityItem b {
+    font-size: 17px !important;
+  }
+
+  .channelStatsPanel .lectureBusinessActionBlock,
+  .channelStatsPanel .cubeBody > .block:last-child {
+    min-height: 72px !important;
+    padding: 8px 10px !important;
+  }
+}
+
+/* iNrStats — finition CTA/lecture business : rangées hautes plus compactes, lecture business plus forte. */
+@media (min-width: 901px) {
+  .channelStatsPanel .cubeBodyWithInrcyActivity {
+    grid-template-rows: minmax(94px, 0.58fr) minmax(94px, 0.58fr) minmax(100px, 0.62fr) minmax(118px, 0.92fr) !important;
+    gap: 8px !important;
+  }
+
+  .channelStatsPanel .detailTopRow,
+  .channelStatsPanel .blockRow {
+    gap: 8px !important;
+  }
+
+  .channelStatsPanel .metricMiniGrid {
+    grid-auto-rows: 40px !important;
+    gap: 6px !important;
+  }
+
+  .channelStatsPanel .metricMiniGridSingle {
+    grid-template-columns: minmax(0, 172px) !important;
+  }
+
+  .channelStatsPanel .metricMiniGridTwo {
+    grid-template-columns: repeat(2, minmax(0, 172px)) !important;
+  }
+
+  .channelStatsPanel .metricMiniCard {
+    height: 40px !important;
+    min-height: 40px !important;
+    max-height: 40px !important;
+    padding: 6px 8px !important;
+  }
+
+  .channelStatsPanel .metricMiniCard b {
+    font-size: 15px !important;
+  }
+
+  .channelStatsPanel .provenanceCompactBlock .donutWrap {
+    grid-template-columns: 80px minmax(0, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  .channelStatsPanel .provenanceCompactBlock .donut {
+    width: 80px !important;
+    height: 80px !important;
+  }
+
+  .channelStatsPanel .provenanceCompactBlock .donutHole {
+    width: 48px !important;
+    height: 48px !important;
+  }
+
+  .channelStatsPanel .qualityRow .ring {
+    width: 58px !important;
+    height: 58px !important;
+  }
+
+  .channelStatsPanel .qualityRow .ringInner {
+    width: 42px !important;
+    height: 42px !important;
+  }
+
+  .channelStatsPanel .qualityLabel {
+    font-size: 14px !important;
+  }
+
+  .channelStatsPanel .qualitySub {
+    font-size: 10px !important;
+  }
+
+  .channelStatsPanel .inrcyActivityBlock {
+    min-height: 100px !important;
+    height: 100% !important;
+    padding: 10px 11px !important;
+    grid-template-columns: 110px minmax(0, 1fr) !important;
+  }
+
+  .channelStatsPanel .inrcyActivityItem {
+    padding: 9px 9px !important;
+  }
+
+  .channelStatsPanel .inrcyActivityItem b {
+    font-size: 18px !important;
+  }
+
+  .channelStatsPanel .lectureBusinessActionBlock,
+  .channelStatsPanel .cubeBody > .block:last-child {
+    grid-template-columns: minmax(0, 1.75fr) auto auto auto !important;
+    align-items: stretch !important;
+    min-height: 118px !important;
+    height: 100% !important;
+    padding: 10px 12px !important;
+    gap: 10px !important;
+  }
+
+  .channelStatsPanel .lectureBusinessContent {
+    min-width: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    justify-content: center !important;
+  }
+
+  .channelStatsPanel .lectureBusinessContent .blockTitle {
+    margin-bottom: 7px !important;
+  }
+
+  .channelStatsPanel .bullets {
+    gap: 6px !important;
+    font-size: 12px !important;
+    line-height: 1.25 !important;
+  }
+
+  .channelStatsPanel .bullets li {
+    -webkit-line-clamp: 3 !important;
+  }
+
+  .lectureBusinessToolCol,
+  .lectureBusinessEffortCol {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 0;
+  }
+
+  .lectureBusinessToolCol {
+    min-width: 122px;
+  }
+
+  .lectureBusinessEffortCol {
+    min-width: 148px;
+  }
+
+  .lectureBusinessToolCol .actionPill,
+  .lectureBusinessEffortCol .effort,
+  .lectureBusinessEffortPlaceholder {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 42px;
+    padding: 0 14px;
+    border-radius: 18px;
+    white-space: nowrap;
+  }
+
+  .lectureBusinessEffortPlaceholder {
+    border: 1px solid rgba(255,255,255,0.10);
+    background: rgba(255,255,255,0.06);
+    color: rgba(255,255,255,0.78);
+    font-size: 11px;
+    font-weight: 800;
+  }
+
+  .lectureBusinessGoButton {
+    width: 64px !important;
+    min-width: 64px !important;
+    height: 46px !important;
+    align-self: center !important;
+  }
+}
+
+@media (min-width: 901px) and (max-height: 820px) {
+  .channelStatsPanel .cubeBodyWithInrcyActivity {
+    grid-template-rows: minmax(86px, 0.56fr) minmax(86px, 0.56fr) minmax(92px, 0.60fr) minmax(102px, 0.88fr) !important;
+    gap: 6px !important;
+  }
+
+  .channelStatsPanel .metricMiniGrid {
+    grid-auto-rows: 38px !important;
+  }
+
+  .channelStatsPanel .metricMiniCard {
+    height: 38px !important;
+    min-height: 38px !important;
+    max-height: 38px !important;
+  }
+
+  .channelStatsPanel .provenanceCompactBlock .donut {
+    width: 72px !important;
+    height: 72px !important;
+  }
+
+  .channelStatsPanel .provenanceCompactBlock .donutHole {
+    width: 42px !important;
+    height: 42px !important;
+  }
+
+  .channelStatsPanel .inrcyActivityBlock {
+    min-height: 92px !important;
+    padding: 8px 9px !important;
+  }
+
+  .channelStatsPanel .lectureBusinessActionBlock,
+  .channelStatsPanel .cubeBody > .block:last-child {
+    min-height: 102px !important;
+    padding: 8px 10px !important;
+  }
+
+  .lectureBusinessToolCol { min-width: 112px; }
+  .lectureBusinessEffortCol { min-width: 136px; }
+  .lectureBusinessGoButton {
+    width: 60px !important;
+    min-width: 60px !important;
+    height: 42px !important;
+  }
+}
+
+/* iNrStats — micro-finition finale : 2 premières rangées un peu plus respirantes, Lecture business plus lisible. */
+@media (min-width: 901px) {
+  .channelStatsPanel .cubeBodyWithInrcyActivity {
+    grid-template-rows: minmax(98px, 0.64fr) minmax(98px, 0.64fr) minmax(96px, 0.56fr) minmax(112px, 0.86fr) !important;
+  }
+
+  .channelStatsPanel .lectureBusinessActionBlock,
+  .channelStatsPanel .cubeBody > .block:last-child {
+    min-height: 112px !important;
+    padding: 11px 12px !important;
+    gap: 12px !important;
+  }
+
+  .channelStatsPanel .lectureBusinessContent .blockTitle {
+    margin-bottom: 9px !important;
+  }
+
+  .channelStatsPanel .bullets {
+    gap: 7px !important;
+    font-size: 12.8px !important;
+    line-height: 1.36 !important;
+  }
+
+  .channelStatsPanel .bullets li {
+    -webkit-line-clamp: 3 !important;
+  }
+}
+
+@media (min-width: 901px) and (max-height: 820px) {
+  .channelStatsPanel .cubeBodyWithInrcyActivity {
+    grid-template-rows: minmax(90px, 0.60fr) minmax(90px, 0.60fr) minmax(88px, 0.54fr) minmax(96px, 0.82fr) !important;
+  }
+
+  .channelStatsPanel .lectureBusinessActionBlock,
+  .channelStatsPanel .cubeBody > .block:last-child {
+    min-height: 96px !important;
+    padding: 9px 10px !important;
+    gap: 10px !important;
+  }
+
+  .channelStatsPanel .lectureBusinessContent .blockTitle {
+    margin-bottom: 8px !important;
+  }
+
+  .channelStatsPanel .bullets {
+    gap: 6px !important;
+    font-size: 12.2px !important;
+    line-height: 1.32 !important;
+  }
+}
+
+/* iNrStats — ultime équilibrage : un peu moins de hauteur pour Lecture business, un peu plus pour les 2 premières rangées. */
+@media (min-width: 901px) {
+  .channelStatsPanel .cubeBodyWithInrcyActivity {
+    grid-template-rows: minmax(102px, 0.68fr) minmax(102px, 0.68fr) minmax(94px, 0.52fr) minmax(102px, 0.78fr) !important;
+  }
+
+  .channelStatsPanel .lectureBusinessActionBlock,
+  .channelStatsPanel .cubeBody > .block:last-child {
+    min-height: 102px !important;
+    padding: 10px 12px !important;
+    gap: 10px !important;
+  }
+}
+
+@media (min-width: 901px) and (max-height: 820px) {
+  .channelStatsPanel .cubeBodyWithInrcyActivity {
+    grid-template-rows: minmax(94px, 0.64fr) minmax(94px, 0.64fr) minmax(86px, 0.50fr) minmax(92px, 0.74fr) !important;
+  }
+
+  .channelStatsPanel .lectureBusinessActionBlock,
+  .channelStatsPanel .cubeBody > .block:last-child {
+    min-height: 92px !important;
+    padding: 8px 10px !important;
+    gap: 9px !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .lectureBusinessActionBlock {
+    justify-items: center !important;
+    gap: 10px !important;
+  }
+
+  .lectureBusinessToolCol,
+  .lectureBusinessEffortCol {
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  .lectureBusinessGoButton,
+  .actionBtn.lectureBusinessGoButton {
+    justify-self: center !important;
+    align-self: center !important;
+    margin-inline: auto !important;
+    display: inline-flex !important;
+  }
+}

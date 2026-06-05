@@ -71,8 +71,11 @@ function MiniMetricGrid({ items }: { items: Array<{ label: string; value: string
     return <div className={styles.metricEmpty}>Données non exploitables pour le moment.</div>;
   }
 
+  const densityClass =
+    items.length === 1 ? styles.metricMiniGridSingle : items.length === 2 ? styles.metricMiniGridTwo : "";
+
   return (
-    <div className={styles.metricMiniGrid}>
+    <div className={`${styles.metricMiniGrid} ${densityClass}`}>
       {items.map((item) => (
         <div key={item.label} className={styles.metricMiniCard}>
           <span>{item.label}</span>
@@ -84,6 +87,50 @@ function MiniMetricGrid({ items }: { items: Array<{ label: string; value: string
   );
 }
 
+
+
+function InrcyActivityBlock({ model }: { model: CubeModel }) {
+  const stats = model.inrcyActivityStats;
+  if (!stats) return null;
+
+  const title = model.key === "inrbadge" ? "Activité iNrBadge" : "Envoyé via iNrCy";
+  const items = model.key === "mails"
+    ? [
+        { label: "Campagnes", data: stats.publications },
+        { label: "Mails simples", data: stats.photos },
+        { label: "Destinataires", data: stats.videos },
+      ]
+    : model.key === "inrbadge"
+      ? [
+          { label: "Vues fiche", data: stats.publications },
+          { label: "Scans QR", data: stats.photos },
+          { label: "Actions", data: stats.videos },
+        ]
+      : [
+          { label: "Publications", data: stats.publications },
+          { label: "Photos", data: stats.photos },
+          { label: "Vidéos", data: stats.videos },
+        ];
+
+  return (
+    <div className={`${styles.block} ${styles.inrcyActivityBlock}`}>
+      <div className={styles.inrcyActivityTitle}>{title}</div>
+      <div className={styles.inrcyActivityItems}>
+        {items.map((item) => (
+          <div key={item.label} className={styles.inrcyActivityItem}>
+            <span>{item.label}</span>
+            <b>{fmtInt(item.data.week)}</b>
+            <small>7j</small>
+            <b>{fmtInt(item.data.month)}</b>
+            <small>30j</small>
+            <b>{fmtInt(item.data.total)}</b>
+            <small>Total</small>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function PlugIcon() {
   return (
@@ -399,7 +446,7 @@ export function Cube({
       ) : null}
 
       {detailsOpen ? (
-        <div className={styles.cubeBody}>
+        <div className={`${styles.cubeBody} ${model.inrcyActivityStats ? styles.cubeBodyWithInrcyActivity : ""}`}>
           <div className={styles.detailTopRow}>
             <div className={`${styles.block} ${styles.metricOverviewBlock}`}>
               <div className={styles.blockTitle}>{model.key === "mails" ? "Activité mail" : "Visibilité du canal"}</div>
@@ -431,6 +478,8 @@ export function Cube({
             </div>
           </div>
 
+          <InrcyActivityBlock model={model} />
+
           <div className={`${styles.block} ${hideDetailsToggle ? styles.lectureBusinessActionBlock : ""}`}>
             <div className={styles.lectureBusinessContent}>
               <div className={styles.blockTitle}>Lecture business</div>
@@ -442,19 +491,21 @@ export function Cube({
             </div>
 
             {hideDetailsToggle ? (
-              <div className={styles.channelInlineActionStack}>
-                <div className={styles.channelInlineAction}>
-                  <div className={styles.channelInlineActionLabel}>Action recommandée</div>
-                  <div className={styles.channelInlineActionTop}>
-                    <span className={`${styles.actionPill} ${styles[`action_${pillKey}`]}`}>{pill}</span>
-                    {action.effort ? (
-                      <span className={`${styles.effort} ${styles[`effort_${action.effort.level}`]}`}>{action.effort.label}</span>
-                    ) : null}
-                  </div>
+              <>
+                <div className={styles.lectureBusinessToolCol}>
+                  <span className={`${styles.actionPill} ${styles[`action_${pillKey}`]}`}>{pill}</span>
+                </div>
+
+                <div className={styles.lectureBusinessEffortCol}>
+                  {action.effort ? (
+                    <span className={`${styles.effort} ${styles[`effort_${action.effort.level}`]}`}>{action.effort.label}</span>
+                  ) : (
+                    <span className={styles.lectureBusinessEffortPlaceholder}>Prêt à lancer</span>
+                  )}
                 </div>
 
                 <button
-                  className={`${styles.actionBtn} ${styles.channelInlineGoButton} ${connectionOk ? styles.actionBtnOn : styles.actionBtnOff}`}
+                  className={`${styles.actionBtn} ${styles.lectureBusinessGoButton} ${connectionOk ? styles.actionBtnOn : styles.actionBtnOff}`}
                   onClick={() => (action.href ? onNavigate(action.href) : undefined)}
                   disabled={model.loading || !action.href}
                   aria-disabled={model.loading || !action.href}
@@ -462,7 +513,7 @@ export function Cube({
                   <span className={styles.actionBtnDesktop}>{connectionOk ? "GO ⚡" : <>GO <PlugIcon /></>}</span>
                   <span className={styles.actionBtnMobile}>{connectionOk ? "GO ⚡" : <>GO <PlugIcon /></>}</span>
                 </button>
-              </div>
+              </>
             ) : null}
           </div>
         </div>

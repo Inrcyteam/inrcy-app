@@ -280,6 +280,205 @@ function shouldCacheLinkedInMetrics(metrics: unknown) {
   );
 }
 
+
+type InrcyWindowCount = {
+  week: number;
+  month: number;
+  total: number;
+};
+
+type InrcyChannelActivityStats = {
+  publications: InrcyWindowCount;
+  photoPosts: InrcyWindowCount;
+  photos: InrcyWindowCount;
+  videos: InrcyWindowCount;
+  latestAt: string | null;
+};
+
+type InrcyActivityStatsByChannel = Partial<Record<OverviewCubeKey, InrcyChannelActivityStats>>;
+
+type TiktokLocalPublicationStats = {
+  posts: number;
+  videoPosts: number;
+  photoPosts: number;
+  photos: number;
+  latestAt: string | null;
+};
+
+const INRCY_PUBLISHABLE_CHANNELS: OverviewCubeKey[] = [
+  "site_inrcy",
+  "site_web",
+  "gmb",
+  "facebook",
+  "instagram",
+  "linkedin",
+  "tiktok",
+  "youtube_shorts",
+];
+
+function emptyWindowCount(): InrcyWindowCount {
+  return { week: 0, month: 0, total: 0 };
+}
+
+function emptyInrcyChannelActivityStats(): InrcyChannelActivityStats {
+  return {
+    publications: emptyWindowCount(),
+    photoPosts: emptyWindowCount(),
+    photos: emptyWindowCount(),
+    videos: emptyWindowCount(),
+    latestAt: null,
+  };
+}
+
+function emptyInrcyActivityStatsByChannel(): InrcyActivityStatsByChannel {
+  return Object.fromEntries(
+    INRCY_PUBLISHABLE_CHANNELS.map((channel) => [channel, emptyInrcyChannelActivityStats()]),
+  ) as InrcyActivityStatsByChannel;
+}
+
+
+function normalizePayloadChannels(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => String(entry || "").trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function payloadSucceededForChannel(payload: Record<string, unknown>, channel: OverviewCubeKey) {
+  const summary = asRecord(payload["summary"]);
+  const successChannels = normalizePayloadChannels(summary["successChannels"]);
+  if (successChannels.includes(channel)) return true;
+
+  const results = asRecord(payload["results"]);
+  const channelResult = asRecord(results[channel]);
+  if (Object.keys(channelResult).length) return channelResult["ok"] !== false;
+
+  const channels = normalizePayloadChannels(payload["channels"]);
+  return channels.includes(channel);
+}
+
+function inferPayloadMediaKindForChannel(
+  payload: Record<string, unknown>,
+  channel: OverviewCubeKey,
+): "video" | "photos" | "none" | "unknown" {
+  const results = asRecord(payload["results"]);
+  const channelResult = asRecord(results[channel]);
+  const diagnostics = asRecord(channelResult["diagnostics"]);
+  const modeByChannel = asRecord(payload["mediaModeByChannel"]);
+  const postByChannel = asRecord(payload["postByChannel"]);
+  const channelPost = asRecord(postByChannel[channel]);
+  const candidates = [
+    channelResult["tiktok_media_type"],
+    channelResult["media_type"],
+    channelResult["mediaType"],
+    diagnostics["mediaType"],
+    modeByChannel[channel],
+    channelPost["mediaMode"],
+    payload["mediaType"],
+  ];
+
+  for (const candidate of candidates) {
+    const value = String(candidate || "").trim().toLowerCase();
+    if (!value) continue;
+    if (value === "none") return "none";
+    if (value.includes("video")) return "video";
+    if (value.includes("photo") || value.includes("image") || value.includes("images")) return "photos";
+  }
+
+  return "unknown";
+}
+
+function inferPhotoCountForChannel(payload: Record<string, unknown>, channel: OverviewCubeKey) {
+  const results = asRecord(payload["results"]);
+  const channelResult = asRecord(results[channel]);
+  const diagnostics = asRecord(channelResult["diagnostics"]);
+  const postByChannel = asRecord(payload["postByChannel"]);
+  const channelPost = asRecord(postByChannel[channel]);
+
+  const explicitCount = Number(
+    channelResult["media_count"] ??
+      channelResult["mediaCount"] ??
+      channelResult["photo_count"] ??
+      channelResult["photoCount"],
+  );
+  if (Number.isFinite(explicitCount) && explicitCount > 0) return Math.round(explicitCount);
+
+  const diagnosticUrls = diagnostics["mediaUrls"];
+  if (Array.isArray(diagnosticUrls) && diagnosticUrls.length > 0) return diagnosticUrls.length;
+
+  const channelCandidates = [
+    channelPost["images"],
+    channelPost["attachments"],
+    channelPost["publishableUrls"],
+    channelPost["instagramPublishableUrls"],
+    channelPost["socialFeedPublishableUrls"],
+    channelPost["siteCardPublishableUrls"],
+    channelPost["gmbPublishableUrls"],
+  ];
+  for (const candidate of channelCandidates) {
+    if (Array.isArray(candidate) && candidate.length > 0) return candidate.length;
+  }
+
+  const payloadCandidates = [
+    payload["images"],
+    payload["publishableUrls"],
+    payload["instagramPublishableUrls"],
+    payload["socialFeedPublishableUrls"],
+    payload["siteCardPublishableUrls"],
+    payload["gmbPublishableUrls"],
+  ];
+  for (const candidate of payloadCandidates) {
+    if (Array.isArray(candidate) && candidate.length > 0) return candidate.length;
+  }
+
+  return 1;
+}
+
+function incrementWindowCount(
+  counter: InrcyWindowCount,
+  createdAtMs: number,
+  nowMs: number,
+  amount = 1,
+) {
+  const deltaMs = Number.isFinite(createdAtMs) ? nowMs - createdAtMs : Number.POSITIVE_INFINITY;
+  const weekMs = 7 * 24 * 60 * 60 * 1000;
+  const monthMs = 30 * 24 * 60 * 60 * 1000;
+  counter.total += amount;
+  if (deltaMs >= 0 && deltaMs <= weekMs) counter.week += amount;
+  if (deltaMs >= 0 && deltaMs <= monthMs) counter.month += amount;
+}
+
+function mergeTiktokLocalPublicationStats(
+  metrics: unknown,
+  local: TiktokLocalPublicationStats,
+) {
+  const current = asRecord(metrics);
+  const totals = asRecord(current["totals"]);
+  const raw = asRecord(current["raw"]);
+
+  return {
+    ...current,
+    totals: {
+      ...totals,
+      inrcy_posts: local.posts,
+      inrcy_video_posts: local.videoPosts,
+      inrcy_photo_posts: local.photoPosts,
+      inrcy_photos: local.photos,
+      postsPublishedLocal: local.posts,
+    },
+    raw: {
+      ...raw,
+      inrcyLocalPublications: {
+        posts: local.posts,
+        videoPosts: local.videoPosts,
+        photoPosts: local.photoPosts,
+        photos: local.photos,
+        latestAt: local.latestAt,
+      },
+    },
+  };
+}
+
 function cubeHasUsableData(
   payload: Record<string, unknown>,
   cube: OverviewCubeKey,
@@ -478,6 +677,10 @@ async function stabilizeOverviewPayload(args: {
       ...asRecord(payload["identities"]),
     },
     sources: mergePreservedSources(candidate["sources"], payload["sources"]),
+    inrcyActivity: {
+      ...asRecord(candidate["inrcyActivity"]),
+      ...asRecord(payload["inrcyActivity"]),
+    },
     business: {
       ...asRecord(candidate["business"]),
       ...asRecord(payload["business"]),
@@ -537,6 +740,7 @@ export type OverviewPayload = {
   }>;
   business: { sectorCategory: string | null; profession: string | null };
   sources: SourcesStatus;
+  inrcyActivity: InrcyActivityStatsByChannel;
   note: string;
   meta: {
     generatedAt: string;
@@ -571,6 +775,60 @@ export async function buildStatsOverview(args: {
     fresh,
     snapshotDate: args.snapshotDate,
   });
+  async function loadInrcyPublishedActivityStats(): Promise<InrcyActivityStatsByChannel> {
+    const statsByChannel = emptyInrcyActivityStatsByChannel();
+    const nowMs = Date.now();
+
+    try {
+      const { data, error } = await supabase
+        .from("app_events")
+        .select("payload,created_at,module,type")
+        .eq("user_id", userId)
+        .in("module", ["booster", "propulser", "fideliser"])
+        .in("type", ["publish", "valorize"])
+        .order("created_at", { ascending: false })
+        .limit(5000);
+
+      if (error || !Array.isArray(data)) return statsByChannel;
+
+      for (const row of data) {
+        const payload = asRecord(asRecord(row)["payload"]);
+        const createdAt = String(asRecord(row)["created_at"] || "").trim();
+        const createdAtMs = createdAt ? new Date(createdAt).getTime() : NaN;
+
+        for (const channel of INRCY_PUBLISHABLE_CHANNELS) {
+          if (!payloadSucceededForChannel(payload, channel)) continue;
+          const stats = statsByChannel[channel] || emptyInrcyChannelActivityStats();
+          statsByChannel[channel] = stats;
+
+          incrementWindowCount(stats.publications, createdAtMs, nowMs);
+          if (createdAt && (!stats.latestAt || createdAt > stats.latestAt)) stats.latestAt = createdAt;
+
+          const kind = inferPayloadMediaKindForChannel(payload, channel);
+          if (kind === "video") {
+            incrementWindowCount(stats.videos, createdAtMs, nowMs);
+          } else if (kind === "photos") {
+            incrementWindowCount(stats.photoPosts, createdAtMs, nowMs);
+            incrementWindowCount(stats.photos, createdAtMs, nowMs, inferPhotoCountForChannel(payload, channel));
+          }
+        }
+      }
+
+      return statsByChannel;
+    } catch {
+      return statsByChannel;
+    }
+  }
+
+  const inrcyPublishedActivityStats = await loadInrcyPublishedActivityStats();
+  const tiktokActivity = inrcyPublishedActivityStats.tiktok;
+  const tiktokLocalPublicationStats: TiktokLocalPublicationStats = {
+    posts: tiktokActivity?.publications.month || 0,
+    videoPosts: tiktokActivity?.videos.month || 0,
+    photoPosts: tiktokActivity?.photoPosts.month || 0,
+    photos: tiktokActivity?.photos.month || 0,
+    latestAt: tiktokActivity?.latestAt || null,
+  };
 
   // Lazy-import server helpers inside the request scope to avoid Next.js request-scope errors.
   const {
@@ -946,6 +1204,28 @@ export async function buildStatsOverview(args: {
     keyParts.push(`inrcyTrackingEnabled:${inrcyTrackingEnabled ? "1" : "0"}`);
     keyParts.push(
       `business:sector=${decodedBusinessSector.sectorCategory}:profession=${decodedBusinessSector.profession}`,
+    );
+    keyParts.push("statsVersion:inrcyPublishedActivityV1");
+    keyParts.push(
+      `inrcyActivity:${INRCY_PUBLISHABLE_CHANNELS.map((channel) => {
+        const stats = inrcyPublishedActivityStats[channel];
+        return [
+          channel,
+          stats?.publications.week || 0,
+          stats?.publications.month || 0,
+          stats?.publications.total || 0,
+          stats?.photoPosts.week || 0,
+          stats?.photoPosts.month || 0,
+          stats?.photoPosts.total || 0,
+          stats?.photos.week || 0,
+          stats?.photos.month || 0,
+          stats?.photos.total || 0,
+          stats?.videos.week || 0,
+          stats?.videos.month || 0,
+          stats?.videos.total || 0,
+          stats?.latestAt || "none",
+        ].join(":");
+      }).join("|")}`,
     );
 
     return keyParts.join("|") || "none";
@@ -1741,11 +2021,15 @@ export async function buildStatsOverview(args: {
           throw new Error("Connexion TikTok expirée. Reconnecte TikTok dans Canaux.");
         }
 
-        sourcesStatus.tiktok.metrics = await fetchTiktokAnalyticsSnapshot({
+        const remoteTiktokMetrics = await fetchTiktokAnalyticsSnapshot({
           accessToken,
           start: dateWindow.start,
           end: dateWindow.end,
         });
+        sourcesStatus.tiktok.metrics = mergeTiktokLocalPublicationStats(
+          remoteTiktokMetrics,
+          tiktokLocalPublicationStats,
+        );
       } catch (e) {
         console.error("[TIKTOK_STATS_REAL_ERROR]", e);
         const rawMessage = e instanceof Error ? e.message : String(e || "");
@@ -1759,17 +2043,22 @@ export async function buildStatsOverview(args: {
           lowerMessage.includes("access token") ||
           lowerMessage.includes("reconnect") ||
           lowerMessage.includes("reconnecte");
-        sourcesStatus.tiktok.metrics = {
-          error: getSimpleFrenchErrorMessage(
-            e,
-            "Impossible de récupérer les statistiques TikTok pour le moment.",
-          ),
-          raw_error: rawMessage || null,
-          needs_reconnect: needsReconnect,
-        };
+        sourcesStatus.tiktok.metrics = mergeTiktokLocalPublicationStats(
+          {
+            error: getSimpleFrenchErrorMessage(
+              e,
+              "Impossible de récupérer les statistiques TikTok pour le moment.",
+            ),
+            raw_error: rawMessage || null,
+            needs_reconnect: needsReconnect,
+          },
+          tiktokLocalPublicationStats,
+        );
       }
     } else {
-      sourcesStatus.tiktok.metrics = null;
+      sourcesStatus.tiktok.metrics = tiktokLocalPublicationStats.posts > 0
+        ? mergeTiktokLocalPublicationStats({}, tiktokLocalPublicationStats)
+        : null;
     }
   } catch {}
 
@@ -2464,6 +2753,7 @@ export async function buildStatsOverview(args: {
         profession: decodedBusinessSector.profession || null,
       },
       sources: sourcesStatus,
+      inrcyActivity: inrcyPublishedActivityStats,
       note: "Sources connectées: site iNrCy (GA4/GSC), site web (GA4/GSC), GMB, Facebook, Instagram, LinkedIn, TikTok.",
       meta: {
         generatedAt,

@@ -31,6 +31,7 @@ export type Overview = {
     youtube_shorts?: { connected: boolean; metrics?: any | null };
     mails?: { connected: boolean; metrics?: any | null };
   };
+  inrcyActivity?: Partial<Record<CubeKey, InrcyActivityStats>>;
   identities?: Partial<Record<CubeKey, { label?: string | null; url?: string | null }>>;
   meta?: { generatedAt?: string; snapshotDate?: string | null; live?: boolean };
 };
@@ -118,6 +119,18 @@ export type CubeMetricItem = {
   subValue?: string;
 };
 
+export type InrcyActivityCount = {
+  week: number;
+  month: number;
+  total: number;
+};
+
+export type InrcyActivityStats = {
+  publications: InrcyActivityCount;
+  photos: InrcyActivityCount;
+  videos: InrcyActivityCount;
+};
+
 export type CubeModel = {
   inrcyOwnership?: "none" | "sold" | "rented";
   key: CubeKey;
@@ -142,6 +155,7 @@ export type CubeModel = {
   provenanceHint?: string;
   visibilityStats: CubeMetricItem[];
   actionStats: CubeMetricItem[];
+  inrcyActivityStats?: InrcyActivityStats | null;
   qualityScore: number;
   qualityLabel: string;
   qualityTone: "low" | "ok" | "solid" | "excellent";
@@ -1631,6 +1645,11 @@ function hasTikTokStatsSignal(metrics: any) {
     "video_count",
     "videos_public",
     "postsPublished",
+    "postsPublishedLocal",
+    "inrcy_posts",
+    "inrcy_video_posts",
+    "inrcy_photo_posts",
+    "inrcy_photos",
     "video_views",
     "views",
     "engagements",
@@ -1640,17 +1659,49 @@ function hasTikTokStatsSignal(metrics: any) {
   ].some((key) => safeNum(totals[key]) > 0 || Object.prototype.hasOwnProperty.call(totals, key));
 }
 
+
+const INRCY_ACTIVITY_CUBE_KEYS = new Set<CubeKey>(["site_inrcy", "site_web", "gmb", "facebook", "instagram", "linkedin", "tiktok", "youtube_shorts"]);
+
+function normalizeInrcyActivityCount(value: any): InrcyActivityCount {
+  return {
+    week: Math.max(0, Math.round(safeNum(value?.week))),
+    month: Math.max(0, Math.round(safeNum(value?.month))),
+    total: Math.max(0, Math.round(safeNum(value?.total))),
+  };
+}
+
+function emptyInrcyActivityStats(): InrcyActivityStats {
+  const empty = { week: 0, month: 0, total: 0 };
+  return {
+    publications: { ...empty },
+    photos: { ...empty },
+    videos: { ...empty },
+  };
+}
+
+function buildInrcyActivityStats(cubeKey: CubeKey, ov: Overview): InrcyActivityStats | null {
+  if (!INRCY_ACTIVITY_CUBE_KEYS.has(cubeKey)) return null;
+  const raw = (ov as any)?.inrcyActivity?.[cubeKey];
+  if (!raw || typeof raw !== "object") return emptyInrcyActivityStats();
+  return {
+    publications: normalizeInrcyActivityCount((raw as any).publications),
+    photos: normalizeInrcyActivityCount((raw as any).photos),
+    videos: normalizeInrcyActivityCount((raw as any).videos),
+  };
+}
+
 function tikTokMetricItems(metrics: any, kind: "visibility" | "actions"): CubeMetricItem[] {
   const totals = safeObj(safeObj(metrics).totals);
   const videoViews = safeNum(totals.video_views) || safeNum(totals.views);
   const followers = safeNum(totals.followers);
   const likesTotal = safeNum(totals.likes_total);
   const videoCount = safeNum(totals.video_count) || safeNum(totals.videos_public);
+  const inrcyPosts = safeNum(totals.inrcy_posts) || safeNum(totals.postsPublishedLocal);
   const likes = safeNum(totals.likes) || safeNum(totals.likes_period);
   const comments = safeNum(totals.comments);
   const shares = safeNum(totals.shares);
   const saves = safeNum(totals.saves);
-  const posts = safeNum(totals.postsPublished);
+  const posts = Math.max(safeNum(totals.postsPublished), inrcyPosts, videoCount);
   const interactions = safeNum(totals.engagements) || likes + comments + shares + saves;
 
   if (kind === "visibility") {
@@ -1663,7 +1714,7 @@ function tikTokMetricItems(metrics: any, kind: "visibility" | "actions"): CubeMe
   }
 
   return [
-    { label: "Interactions", value: fmtInt(interactions), subValue: `${fmtInt(posts)} post${posts > 1 ? "s" : ""} analysé${posts > 1 ? "s" : ""}` },
+    { label: "Interactions", value: fmtInt(interactions), subValue: `${fmtInt(posts)} post${posts > 1 ? "s" : ""} suivi${posts > 1 ? "s" : ""}` },
     { label: "J’aime", value: fmtInt(likes) },
     { label: "Commentaires", value: fmtInt(comments) },
     { label: "Partages", value: fmtInt(shares) },
@@ -2065,6 +2116,7 @@ export function buildCubeModel(
                 : undefined,
     visibilityStats: buildVisibilityStats(key, ov),
     actionStats: buildActionStats(key, ov),
+    inrcyActivityStats: buildInrcyActivityStats(key, ov),
     qualityScore: q.score,
     qualityLabel: q.label,
     qualityTone: q.tone,

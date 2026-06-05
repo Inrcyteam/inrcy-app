@@ -358,6 +358,11 @@ function buildMailCubeModel(stats: MailStatsSnapshot, period: Period): CubeModel
           { label: "Devis 30j", value: fmtInt(stats.devis30), subValue: `${fmtInt(stats.devisTotal)} au total` },
         ]
       : [],
+    inrcyActivityStats: {
+      publications: { week: 0, month: Math.max(0, stats.campagnes30), total: Math.max(0, stats.campagnesTotal) },
+      photos: { week: 0, month: Math.max(0, stats.mailsSimples30), total: Math.max(0, stats.mailsSimples30) },
+      videos: { week: 0, month: Math.max(0, stats.destinataires30), total: Math.max(0, stats.destinatairesTotal) },
+    },
     qualityScore,
     qualityLabel,
     qualityTone,
@@ -408,6 +413,11 @@ function buildInrBadgeCubeModel(period: Period): CubeModel {
       { label: "Contacts", value: "Bientôt" },
       { label: "RDV", value: "Bientôt" },
     ],
+    inrcyActivityStats: {
+      publications: { week: 0, month: 0, total: 0 },
+      photos: { week: 0, month: 0, total: 0 },
+      videos: { week: 0, month: 0, total: 0 },
+    },
     qualityScore: 76,
     qualityLabel: "Actif",
     qualityTone: "solid",
