@@ -10,6 +10,9 @@ import {
   BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL,
   BOOSTER_MAX_VIDEO_MB_LABEL,
   CHANNEL_PRESETS,
+  channelSupportsImages,
+  channelSupportsTextOnly,
+  getUnavailableMediaModeMessage,
   getBackgroundMode,
   getOptimizedTransform,
   type ChannelImageEditorState,
@@ -163,9 +166,28 @@ export default function PublishImagesPanel({
   const pickImagesDisabled = imagesLimitReached;
   const pickVideoDisabled = hasVideoMedia;
   const cameraDisabled = !isMobile || imagesLimitReached;
-  const activeMode: ChannelMediaMode =
-    channelMediaModes[activeImageChannel] ||
-    (hasVideoMedia ? "video" : hasImages ? "images" : "none");
+  const getModeForChannel = (channel: ChannelKey): ChannelMediaMode => {
+    const explicit = channelMediaModes[channel];
+
+    if (channel === "youtube_shorts") return hasVideoMedia ? "video" : "none";
+
+    if (channel === "tiktok") {
+      if (explicit === "video" && hasVideoMedia) return "video";
+      if (explicit === "images" && hasImages) return "images";
+      if (hasImages) return "images";
+      if (hasVideoMedia) return "video";
+      return "none";
+    }
+
+    if (explicit === "video" && hasVideoMedia) return "video";
+    if (explicit === "images" && hasImages && channelSupportsImages(channel)) return "images";
+    if (explicit === "none" && channelSupportsTextOnly(channel)) return "none";
+    if (hasImages && channelSupportsImages(channel)) return "images";
+    if (hasVideoMedia) return "video";
+    return "none";
+  };
+
+  const activeMode: ChannelMediaMode = getModeForChannel(activeImageChannel);
   const getPreparationTone = (state?: PublishVideoVariantPreparationState) => {
     if (state?.status === "ready") return { icon: "✅", color: "#bbf7d0", border: "rgba(34,197,94,0.28)", background: "rgba(34,197,94,0.10)" };
     if (state?.status === "preparing") return { icon: "⏳", color: "#bfdbfe", border: "rgba(96,165,250,0.30)", background: "rgba(59,130,246,0.12)" };
@@ -173,15 +195,21 @@ export default function PublishImagesPanel({
     return { icon: "⚙️", color: "rgba(226,232,240,0.76)", border: "rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.055)" };
   };
 
-  const getModeForChannel = (channel: ChannelKey): ChannelMediaMode =>
-    channelMediaModes[channel] ||
-    (hasVideoMedia ? "video" : hasImages ? "images" : "none");
-
   const getMediaCountForChannel = (channel: ChannelKey) => {
     const mode = getModeForChannel(channel);
     if (mode === "video") return hasVideoMedia ? 1 : 0;
-    if (mode === "images") return channelImageEditors[channel]?.imageKeys?.length || 0;
+    if (mode === "images" && channelSupportsImages(channel)) {
+      return channelImageEditors[channel]?.imageKeys?.length || 0;
+    }
     return 0;
+  };
+
+  const getMediaToneForChannel = (channel: ChannelKey): "ready" | "warning" | "blocked" => {
+    const mode = getModeForChannel(channel);
+    const count = getMediaCountForChannel(channel);
+    if (channel === "youtube_shorts") return hasVideoMedia ? "ready" : "blocked";
+    if (channel === "tiktok") return count > 0 ? "ready" : "blocked";
+    return count > 0 ? "ready" : "warning";
   };
 
   const getMediaIconForChannel = (channel: ChannelKey) => {
@@ -191,11 +219,15 @@ export default function PublishImagesPanel({
 
   const mediaModeButton = (mode: ChannelMediaMode, label: string, disabled = false) => {
     const active = activeMode === mode;
+    const unsupportedMessage = getUnavailableMediaModeMessage(activeImageChannel, mode);
+    const unavailable = Boolean(unsupportedMessage);
+    const effectiveDisabled = disabled || unavailable;
     return (
       <button
         type="button"
-        disabled={disabled}
-        onClick={() => !disabled && setChannelMediaMode(activeImageChannel, mode)}
+        disabled={effectiveDisabled}
+        title={unsupportedMessage || undefined}
+        onClick={() => !effectiveDisabled && setChannelMediaMode(activeImageChannel, mode)}
         style={{
           border: active
             ? "2px solid rgba(76,195,255,0.88)"
@@ -210,8 +242,8 @@ export default function PublishImagesPanel({
           padding: isMobile ? "0 8px" : "0 14px",
           fontSize: isMobile ? 11 : 12,
           fontWeight: 900,
-          cursor: disabled ? "not-allowed" : "pointer",
-          opacity: disabled ? 0.45 : 1,
+          cursor: effectiveDisabled ? "not-allowed" : "pointer",
+          opacity: effectiveDisabled ? 0.45 : 1,
           whiteSpace: "nowrap",
           flex: isMobile ? "1 1 0" : "0 0 auto",
           minWidth: 0,
@@ -370,7 +402,9 @@ export default function PublishImagesPanel({
             {selectedChannels.map((channel, index) => {
               const count = getMediaCountForChannel(channel);
               const mediaIcon = getMediaIconForChannel(channel);
-              const toneReady = count > 0;
+              const tone = getMediaToneForChannel(channel);
+              const toneReady = tone === "ready";
+              const toneBlocked = tone === "blocked";
               const isActive = activeImageChannel === channel;
               const isLastOddMobileItem =
                 isMobile &&
@@ -394,18 +428,26 @@ export default function PublishImagesPanel({
                     border: isActive
                       ? toneReady
                         ? "2px solid rgba(74,222,128,0.90)"
-                        : "2px solid rgba(250,204,21,0.92)"
+                        : toneBlocked
+                          ? "2px solid rgba(248,113,113,0.92)"
+                          : "2px solid rgba(250,204,21,0.92)"
                       : toneReady
                         ? "1px solid rgba(34,197,94,0.34)"
-                        : "1px solid rgba(251,191,36,0.36)",
+                        : toneBlocked
+                          ? "1px solid rgba(248,113,113,0.42)"
+                          : "1px solid rgba(251,191,36,0.36)",
                     background: toneReady
                       ? "rgba(34,197,94,0.10)"
-                      : "rgba(251,191,36,0.10)",
-                    color: toneReady ? "#bbf7d0" : "#fde68a",
+                      : toneBlocked
+                        ? "rgba(248,113,113,0.10)"
+                        : "rgba(251,191,36,0.10)",
+                    color: toneReady ? "#bbf7d0" : toneBlocked ? "#fecaca" : "#fde68a",
                     boxShadow: isActive
                       ? toneReady
                         ? "0 0 0 1px rgba(74,222,128,0.28) inset, 0 0 0 1px rgba(74,222,128,0.22), 0 0 18px rgba(74,222,128,0.22)"
-                        : "0 0 0 1px rgba(250,204,21,0.28) inset, 0 0 0 1px rgba(250,204,21,0.22), 0 0 18px rgba(250,204,21,0.18)"
+                        : toneBlocked
+                          ? "0 0 0 1px rgba(248,113,113,0.28) inset, 0 0 0 1px rgba(248,113,113,0.22), 0 0 18px rgba(248,113,113,0.18)"
+                          : "0 0 0 1px rgba(250,204,21,0.28) inset, 0 0 0 1px rgba(250,204,21,0.22), 0 0 18px rgba(250,204,21,0.18)"
                       : undefined,
                     fontSize: isMobile ? 12 : 13,
                     fontWeight: 900,
@@ -485,8 +527,8 @@ export default function PublishImagesPanel({
             }}
           >
             {mediaModeButton("video", "Vidéo", !hasVideoMedia)}
-            {mediaModeButton("images", "Photos", !hasImages)}
-            {mediaModeButton("none", "Aucun")}
+            {mediaModeButton("images", "Photos", !hasImages || !channelSupportsImages(activeImageChannel))}
+            {mediaModeButton("none", "Aucun", !channelSupportsTextOnly(activeImageChannel))}
           </div>
 
           {activeMode === "none" ? (
@@ -501,7 +543,10 @@ export default function PublishImagesPanel({
                 fontWeight: 800,
               }}
             >
-              Ce canal publiera uniquement le texte.
+              {!channelSupportsTextOnly(activeImageChannel)
+                ? getUnavailableMediaModeMessage(activeImageChannel, "none") ||
+                  "Ce canal nécessite un média."
+                : "Ce canal publiera uniquement le texte."}
             </div>
           ) : activeMode === "video" ? (
             <PublishVideoAdapterPanel
@@ -525,8 +570,11 @@ export default function PublishImagesPanel({
             />
           ) : !images.length ? (
             <div style={{ fontSize: 13, opacity: 0.75 }}>
-              Ajoutez une ou plusieurs images, ou choisissez Vidéo / Aucun média
-              pour ce canal.
+              {activeImageChannel === "youtube_shorts"
+                ? "Ajoutez une vidéo pour publier sur YouTube."
+                : activeImageChannel === "tiktok"
+                  ? "Ajoutez une photo ou une vidéo pour publier sur TikTok."
+                  : "Ajoutez une ou plusieurs images, ou choisissez Vidéo / Aucun média pour ce canal."}
             </div>
           ) : (
             <>

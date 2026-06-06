@@ -306,6 +306,32 @@ export type {
 export type PublicationMediaType = "images" | "video";
 export type ChannelMediaMode = "video" | "images" | "none";
 
+export function channelSupportsImages(channel: ChannelKey) {
+  return channel !== "youtube_shorts";
+}
+
+export function channelSupportsTextOnly(channel: ChannelKey) {
+  return channel !== "youtube_shorts" && channel !== "tiktok";
+}
+
+export function channelRequiresMedia(channel: ChannelKey) {
+  return channel === "youtube_shorts" || channel === "tiktok" || channel === "instagram";
+}
+
+export function getUnavailableMediaModeMessage(
+  channel: ChannelKey,
+  mode: ChannelMediaMode,
+) {
+  if (channel === "youtube_shorts") {
+    if (mode === "images") return "YouTube nécessite une vidéo. Les photos seules ne peuvent pas être publiées sur YouTube.";
+    if (mode === "none") return "YouTube nécessite une vidéo.";
+  }
+  if (channel === "tiktok" && mode === "none") {
+    return "TikTok nécessite au moins une photo ou une vidéo.";
+  }
+  return "";
+}
+
 export const BOOSTER_MAX_IMAGE_COUNT = 5;
 export const BOOSTER_MAX_MEDIA_BYTES = 40 * 1024 * 1024;
 export const BOOSTER_MAX_MEDIA_MB_LABEL = "40 Mo";
@@ -1918,21 +1944,25 @@ export function syncChannelImageEditors(params: {
       imageKeys.includes(key),
     );
     const autoSelectedNewKeys =
-      channel === "gmb"
+      channel === "gmb" || !channelSupportsImages(channel)
         ? []
         : imageKeys.filter((key) => !nextImageKeys.includes(key));
-    const mergedKeys = (
-      nextImageKeys.length
-        ? [...nextImageKeys, ...autoSelectedNewKeys]
-        : channel === "gmb"
-          ? []
-          : [...imageKeys]
-    ).filter((key, index, arr) => arr.indexOf(key) === index);
+    const mergedKeys = !channelSupportsImages(channel)
+      ? []
+      : (
+          nextImageKeys.length
+            ? [...nextImageKeys, ...autoSelectedNewKeys]
+            : channel === "gmb"
+              ? []
+              : [...imageKeys]
+        ).filter((key, index, arr) => arr.indexOf(key) === index);
     const transforms: Record<string, ImageTransform> = {};
-    for (const key of imageKeys) {
-      transforms[key] = prevState?.transforms?.[key]
-        ? { ...prevState.transforms[key] }
-        : getOptimizedTransform(channel, imageMetaByKey[key]);
+    if (channelSupportsImages(channel)) {
+      for (const key of imageKeys) {
+        transforms[key] = prevState?.transforms?.[key]
+          ? { ...prevState.transforms[key] }
+          : getOptimizedTransform(channel, imageMetaByKey[key]);
+      }
     }
     next[channel] = { imageKeys: mergedKeys, transforms };
   }

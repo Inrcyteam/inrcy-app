@@ -19,6 +19,7 @@ import {
   CHANNEL_LABELS,
   CHANNEL_PRESETS,
   buildBoosterUploadPath,
+  channelSupportsImages,
   clamp,
   computePreviewLayout,
   getBackgroundFill,
@@ -402,9 +403,11 @@ export default function usePublishImageController({
       setChannelMediaModes((prev) => {
         const next: Partial<Record<ChannelKey, ChannelMediaMode>> = { ...prev };
         if (targetChannel) {
-          next[targetChannel] = "images";
+          if (channelSupportsImages(targetChannel)) next[targetChannel] = "images";
         } else {
-          for (const channel of selectedChannels) next[channel] = "images";
+          for (const channel of selectedChannels) {
+            next[channel] = channelSupportsImages(channel) ? "images" : "none";
+          }
         }
         return next;
       });
@@ -418,6 +421,7 @@ export default function usePublishImageController({
           selectedChannels,
           imageMetaByKey: { ...imageMetaByKey, ...nextMetaMap },
         });
+        if (!channelSupportsImages(targetChannel)) return next;
         const current = next[targetChannel] || {
           imageKeys: [],
           transforms: {},
@@ -523,8 +527,9 @@ export default function usePublishImageController({
           imageKeys.includes(key),
         );
         acc[channel] = {
-          imageKeys:
-            channel === "gmb"
+          imageKeys: !channelSupportsImages(channel)
+            ? []
+            : channel === "gmb"
               ? imageKeysForChannel.slice(0, 1)
               : imageKeysForChannel,
           transforms: Object.fromEntries(
@@ -1037,6 +1042,7 @@ export default function usePublishImageController({
     };
 
     const totalRenders = selectedChannels.reduce((sum, channel) => {
+      if (!channelSupportsImages(channel)) return sum;
       const editor = getEditorForPublish(channel);
       const keys =
         channel === "gmb" ? editor.imageKeys.slice(0, 1) : editor.imageKeys;
@@ -1045,6 +1051,11 @@ export default function usePublishImageController({
     let doneRenders = 0;
 
     for (const channel of selectedChannels) {
+      if (!channelSupportsImages(channel)) {
+        channelImages[channel] = [];
+        channelSettings[channel] = { imageKeys: [], transforms: {} };
+        continue;
+      }
       const editor = getEditorForPublish(channel);
       const renderList: ImagePayload[] = [];
       const imageKeysToRender =
@@ -1082,6 +1093,7 @@ export default function usePublishImageController({
   };
 
   const getPublishImageKeysForChannel = (channel: ChannelKey) => {
+    if (!channelSupportsImages(channel)) return [];
     const keys = channelImageEditors[channel]?.imageKeys || [];
     return channel === "gmb" ? keys.slice(0, 1) : keys;
   };

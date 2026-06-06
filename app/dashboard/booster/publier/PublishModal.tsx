@@ -29,6 +29,8 @@ import {
   buildPreferredCtaPatch,
   buildBoosterVideoGenerationContext,
   buildVideoSettingsByChannel,
+  channelSupportsImages,
+  channelSupportsTextOnly,
   clampPercent,
   getChannelDefaultCtaLabel,
   getChannelPublicationRequirements,
@@ -959,15 +961,31 @@ export default function PublishModal({
 
   const resolveChannelMediaMode = (channel: ChannelKey): ChannelMediaMode => {
     const explicit = channelMediaModes[channel];
-    if (explicit === "video" && (videoFile || videoPreviewUrl)) return "video";
-    if (explicit === "images" && images.length > 0) return "images";
-    if (explicit === "none") return "none";
-    if (videoFile || videoPreviewUrl) return "video";
-    if (images.length > 0) return "images";
+    const hasVideo = Boolean(videoFile || videoPreviewUrl);
+    const hasImages = images.length > 0;
+
+    if (channel === "youtube_shorts") return hasVideo ? "video" : "none";
+
+    if (channel === "tiktok") {
+      if (explicit === "video" && hasVideo) return "video";
+      if (explicit === "images" && hasImages) return "images";
+      if (hasImages) return "images";
+      if (hasVideo) return "video";
+      return "none";
+    }
+
+    if (explicit === "video" && hasVideo) return "video";
+    if (explicit === "images" && hasImages && channelSupportsImages(channel))
+      return "images";
+    if (explicit === "none" && channelSupportsTextOnly(channel)) return "none";
+    if (hasImages && channelSupportsImages(channel)) return "images";
+    if (hasVideo) return "video";
     return "none";
   };
 
   const setChannelMediaMode = (channel: ChannelKey, mode: ChannelMediaMode) => {
+    if (mode === "images" && !channelSupportsImages(channel)) return;
+    if (mode === "none" && !channelSupportsTextOnly(channel)) return;
     setChannelMediaModes((prev) => ({ ...prev, [channel]: mode }));
     clearVideoVariantPreparationForChannel(channel);
     clearPreparedVideoVariantsForChannel(channel);
@@ -1142,17 +1160,29 @@ export default function PublishModal({
       let changed = false;
       for (const channel of selectedChannels) {
         const current = next[channel];
+        const hasVideo = Boolean(videoFile || videoPreviewUrl);
+        const hasImages = images.length > 0;
         const valid =
-          current === "none" ||
-          (current === "video" && Boolean(videoFile || videoPreviewUrl)) ||
-          (current === "images" && images.length > 0);
+          (current === "none" && channelSupportsTextOnly(channel)) ||
+          (current === "video" && hasVideo) ||
+          (current === "images" && hasImages && channelSupportsImages(channel));
         if (!valid) {
           next[channel] =
-            videoFile || videoPreviewUrl
-              ? "video"
-              : images.length > 0
-                ? "images"
-                : "none";
+            channel === "youtube_shorts"
+              ? hasVideo
+                ? "video"
+                : "none"
+              : channel === "tiktok"
+                ? hasImages
+                  ? "images"
+                  : hasVideo
+                    ? "video"
+                    : "none"
+                : hasImages && channelSupportsImages(channel)
+                  ? "images"
+                  : hasVideo
+                    ? "video"
+                    : "none";
           changed = true;
         }
       }
@@ -2076,7 +2106,35 @@ export default function PublishModal({
     setUseImagesForAI(true);
     setChannelMediaModes((prev) => {
       const next: Partial<Record<ChannelKey, ChannelMediaMode>> = { ...prev };
-      for (const channel of selectedChannels) next[channel] = "video";
+      const hadImagesBeforeVideo = images.length > 0;
+      for (const channel of selectedChannels) {
+        const current = next[channel];
+        const channelHasImages =
+          channelSupportsImages(channel) &&
+          (channelImageEditors[channel]?.imageKeys?.length || 0) > 0;
+
+        if (channel === "youtube_shorts") {
+          next[channel] = "video";
+          continue;
+        }
+
+        if (hadImagesBeforeVideo && current === "images" && channelHasImages) {
+          next[channel] = "images";
+          continue;
+        }
+
+        if (hadImagesBeforeVideo && channelHasImages) {
+          next[channel] = "images";
+          continue;
+        }
+
+        if (hadImagesBeforeVideo && current === "none" && channelSupportsTextOnly(channel)) {
+          next[channel] = "none";
+          continue;
+        }
+
+        next[channel] = "video";
+      }
       return next;
     });
   };
@@ -3075,8 +3133,9 @@ export default function PublishModal({
     return {
       key: channel,
       label: getImageAdapterLabel(channel),
-      tone:
-        hasText && hasMedia
+      tone: reviewItem?.blockers?.length
+        ? ("blocked" as const)
+        : hasText && hasMedia
           ? ("ready" as const)
           : hasText || hasMedia
             ? ("warning" as const)
