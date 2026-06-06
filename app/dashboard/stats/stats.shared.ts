@@ -1403,8 +1403,8 @@ function recommendAction(cubeKey: CubeKey, ov: Overview, qualityScore: number): 
   if (cubeKey === "youtube_shorts" && !ov?.sources?.youtube_shorts?.connected) {
     return {
       key: "connect",
-      title: "Configurer YouTube Shorts",
-      detail: "Pour activer votre canal vidéo courte.",
+      title: "Configurer YouTube",
+      detail: "Pour activer votre canal vidéo.",
       href: "/dashboard?panel=youtube_shorts",
       pill: "Connexion",
     };
@@ -1556,9 +1556,9 @@ export function buildInsights(cubeKey: CubeKey, ov: Overview, qualityScore: numb
 
   if (cubeKey === "youtube_shorts") {
     if (!ov?.sources?.youtube_shorts?.connected) {
-      return ["Canal YouTube Shorts non connecté.", "Configurez votre chaîne pour préparer vos publications vidéo courte."];
+      return ["Canal YouTube non connecté.", "Configurez votre chaîne pour préparer vos publications vidéo."];
     }
-    return ["YouTube Shorts est connecté.", "Publiez régulièrement des vidéos courtes pour développer votre audience."];
+    return ["YouTube est connecté.", "Publiez régulièrement des vidéos courtes ou longues pour développer votre audience."];
   }
 
   if (cubeKey === "gmb") {
@@ -1826,7 +1826,7 @@ function buildVisibilityStats(cubeKey: CubeKey, ov: Overview): CubeMetricItem[] 
     pushNumberMetric(items, "Vues vidéo", safeNum(m?.totals?.video_views) || safeNum(m?.totals?.views), { available: metricKeyExists(m, ["video_views", "views"]) });
     pushNumberMetric(items, "Abonnés", safeNum(m?.totals?.subscribers) || safeNum(m?.totals?.followers), { available: metricKeyExists(m, ["subscribers", "followers"]) });
     pushNumberMetric(items, "J’aime reçus", safeNum(m?.totals?.likes_total) || safeNum(m?.totals?.likes), { available: metricKeyExists(m, ["likes_total", "likes"]) });
-    pushNumberMetric(items, "Shorts", safeNum(m?.totals?.video_count) || safeNum(m?.totals?.shorts_count), { available: metricKeyExists(m, ["video_count", "shorts_count"]) });
+    pushNumberMetric(items, "Vidéos", safeNum(m?.totals?.video_count) || safeNum(m?.totals?.shorts_count), { available: metricKeyExists(m, ["video_count", "shorts_count"]) });
     return firstFour(items);
   }
 
@@ -1939,7 +1939,7 @@ function buildActionStats(cubeKey: CubeKey, ov: Overview): CubeMetricItem[] {
     pushNumberMetric(items, "J’aime", safeNum(m?.totals?.likes), { available: metricKeyExists(m, ["likes"]) });
     pushNumberMetric(items, "Commentaires", safeNum(m?.totals?.comments), { available: metricKeyExists(m, ["comments"]) });
     pushNumberMetric(items, "Partages", safeNum(m?.totals?.shares), { available: metricKeyExists(m, ["shares"]) });
-    pushNumberMetric(items, "Shorts", safeNum(m?.totals?.postsPublished) || safeNum(m?.totals?.video_count), { available: metricKeyExists(m, ["postsPublished", "video_count"]) });
+    pushNumberMetric(items, "Vidéos", safeNum(m?.totals?.postsPublished) || safeNum(m?.totals?.video_count), { available: metricKeyExists(m, ["postsPublished", "video_count"]) });
     return firstFour(items);
   }
 
@@ -2188,8 +2188,8 @@ export function buildSummaryActionItems({
     },
     youtube_shorts: {
       label: "Utiliser Booster",
-      kicker: "Activez vos Shorts",
-      motive: "YouTube Shorts transforme vos vidéos courtes en visibilité durable depuis le même flux iNrCy.",
+      kicker: "Activez vos vidéos YouTube",
+      motive: "YouTube transforme vos vidéos courtes ou longues en visibilité durable depuis le même flux iNrCy.",
       badge: "Booster",
     },
     site_web: {
@@ -2250,9 +2250,9 @@ export function buildSummaryActionItems({
       badge: "Connexion",
     },
     youtube_shorts: {
-      label: "Configurer YouTube Shorts",
-      kicker: "Préparez le canal vidéo courte",
-      motive: "Ajoutez votre chaîne YouTube pour intégrer Shorts à vos canaux de diffusion iNrCy.",
+      label: "Configurer YouTube",
+      kicker: "Préparez le canal vidéo",
+      motive: "Ajoutez votre chaîne YouTube pour publier vos vidéos depuis iNrCy.",
       badge: "Connexion",
     },
     site_web: {

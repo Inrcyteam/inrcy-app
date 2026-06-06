@@ -275,9 +275,9 @@ export default function DashboardHelpModals({
                   },
                   {
                     icon: "▶️",
-                    name: "YouTube Shorts",
+                    name: "YouTube",
                     color: "#ff6b6b",
-                    text: "Diffuse vos vidéos courtes sur YouTube Shorts pour donner plus de portée à vos contenus rapides, démonstrations et actualités terrain.",
+                    text: "Diffuse vos vidéos courtes ou longues sur YouTube pour donner plus de portée à vos contenus rapides, démonstrations et actualités terrain.",
                   },
                   {
                     icon: "✉️",

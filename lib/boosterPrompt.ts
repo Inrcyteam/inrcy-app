@@ -52,7 +52,7 @@ const CHANNEL_LABELS: Record<BoosterChannels, string> = {
   instagram: "Instagram",
   linkedin: "LinkedIn",
   tiktok: "TikTok",
-  youtube_shorts: "YouTube Shorts",
+  youtube_shorts: "YouTube",
 };
 
 const THEME_LABELS: Record<BoosterTheme, string> = {
@@ -118,7 +118,7 @@ const CHANNEL_EDITORIAL_PLAYBOOKS: Record<BoosterChannels, string> = {
   tiktok:
     "Objectif : capter vite l'attention avec une accroche courte, naturelle et dynamique. Texte pensé pour accompagner une vidéo ou des photos : concret, vivant, local, avec 3 à 6 hashtags utiles. Éviter le ton institutionnel ou LinkedIn.",
   youtube_shorts:
-    "Objectif : préparer un Short YouTube vertical, utile et dynamique. Accroche immédiate, message court, local et clair. Donner envie de regarder, commenter, s'abonner ou contacter, sans ton institutionnel.",
+    "Objectif : préparer une vidéo YouTube utile et claire. Si la vidéo est courte et verticale/carrée, elle pourra partir en Short ; sinon elle sera une vidéo classique. Accroche immédiate, message local, titre propre et description lisible.",
 };
 
 function formatChannelPlaybooks(channels: BoosterChannels[]) {

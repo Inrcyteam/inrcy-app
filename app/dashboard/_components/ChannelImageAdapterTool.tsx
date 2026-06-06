@@ -927,45 +927,49 @@ function InstagramPreviewCard({
   );
 }
 
-function FeedPreviewCard({ mode, channel, title, content, cta, hashtags = [], images, video, onOpen }: { mode: "desktop" | "mobile"; channel: "facebook" | "linkedin" | "tiktok"; title: string; content: string; cta: string; hashtags?: string[]; images: PreviewImage[]; video?: PreviewVideo | null; onOpen: (index: number) => void }) {
+function FeedPreviewCard({ mode, channel, title, content, cta, hashtags = [], images, video, onOpen }: { mode: "desktop" | "mobile"; channel: "facebook" | "linkedin" | "tiktok" | "youtube_shorts"; title: string; content: string; cta: string; hashtags?: string[]; images: PreviewImage[]; video?: PreviewVideo | null; onOpen: (index: number) => void }) {
   const isMobile = mode === "mobile";
   const isLinkedin = channel === "linkedin";
   const isTiktok = channel === "tiktok";
+  const isYoutubeShorts = channel === "youtube_shorts";
   const normalizedVideoAspect = String(video?.aspectRatio || "").replace(/\s+/g, "");
   const isVerticalVideo = normalizedVideoAspect === "9/16";
   const isSquareVideo = normalizedVideoAspect === "1/1";
-  const label = isTiktok ? "TikTok" : isLinkedin ? "LinkedIn" : "Facebook";
-  const maxWidth = isTiktok
+  const videoDuration = Number(video?.duration || 0);
+  const isLikelyYoutubeShort = isYoutubeShorts && (isVerticalVideo || isSquareVideo) && (!Number.isFinite(videoDuration) || videoDuration <= 0 || videoDuration <= 180);
+  const isShortVideoChannel = isTiktok || isLikelyYoutubeShort;
+  const label = isYoutubeShorts ? "YouTube" : isTiktok ? "TikTok" : isLinkedin ? "LinkedIn" : "Facebook";
+  const maxWidth = isShortVideoChannel
     ? (isMobile ? 230 : 260)
     : isVerticalVideo
       ? (isMobile ? 292 : 340)
       : isSquareVideo
         ? (isMobile ? 330 : 500)
         : (isMobile ? 350 : 620);
-  const avatarSize = isTiktok ? (isMobile ? 28 : 34) : (isMobile ? 34 : 40);
+  const avatarSize = isShortVideoChannel ? (isMobile ? 28 : 34) : (isMobile ? 34 : 40);
   return (
     <article style={{ width: "100%", maxWidth, margin: "0 auto", borderRadius: isMobile ? 24 : 22, background: "#ffffff", color: "#111827", overflow: "hidden", border: "1px solid rgba(255,255,255,0.10)", boxShadow: "0 16px 45px rgba(0,0,0,0.22)", minWidth: 0 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: isTiktok ? 8 : 10, padding: isTiktok ? (isMobile ? "9px 10px 6px" : "10px 12px 7px") : (isMobile ? "12px 12px 8px" : "14px 16px 10px") }}>
+      <div style={{ display: "flex", alignItems: "center", gap: isShortVideoChannel ? 8 : 10, padding: isShortVideoChannel ? (isMobile ? "9px 10px 6px" : "10px 12px 7px") : (isMobile ? "12px 12px 8px" : "14px 16px 10px") }}>
         <div style={{ width: avatarSize, height: avatarSize, borderRadius: 999, background: "#e5e7eb", flexShrink: 0 }} />
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: isTiktok ? (isMobile ? 11.5 : 12.5) : (isMobile ? 13 : 14), fontWeight: 900 }}>{isLinkedin ? "Votre entreprise · 1er" : isTiktok ? "@votreentreprise" : "Votre entreprise"}</div>
-          <div style={{ fontSize: isTiktok ? 10.5 : 12, color: "#6b7280" }}>{label}</div>
+          <div style={{ fontSize: isShortVideoChannel ? (isMobile ? 11.5 : 12.5) : (isMobile ? 13 : 14), fontWeight: 900 }}>{isLinkedin ? "Votre entreprise · 1er" : isTiktok ? "@votreentreprise" : isYoutubeShorts ? "Votre chaîne" : "Votre entreprise"}</div>
+          <div style={{ fontSize: isShortVideoChannel ? 10.5 : 12, color: "#6b7280" }}>{label}</div>
         </div>
       </div>
-      <div style={{ display: "grid", gap: isTiktok ? 8 : 12, padding: isTiktok ? (isMobile ? "0 10px 10px" : "0 12px 12px") : (isMobile ? "0 12px 12px" : "0 16px 14px") }}>
-        <div style={{ fontSize: isTiktok ? (isMobile ? 11.5 : 12.5) : (isMobile ? 13 : 14), lineHeight: isTiktok ? 1.45 : 1.55, whiteSpace: "pre-wrap", color: "#111827" }}>
-          <div style={{ fontWeight: 900, marginBottom: isTiktok ? 5 : 8 }}>{title}</div>
-          <div style={{ display: "-webkit-box", WebkitLineClamp: isTiktok ? (isMobile ? 3 : 4) : (isMobile ? 5 : 7), WebkitBoxOrient: "vertical", overflow: "hidden" }}>{content}</div>
-          {cta ? <div style={{ marginTop: isTiktok ? 6 : 10, fontWeight: 800, color: isTiktok ? "#111827" : isLinkedin ? "#0a66c2" : "#1877f2" }}>{cta}</div> : null}
-          {hashtags.length ? <div style={{ marginTop: isTiktok ? 5 : 8, fontWeight: 800, color: isTiktok ? "#111827" : isLinkedin ? "#0a66c2" : "#1877f2" }}>{hashtags.map((tag) => `#${tag}`).join(" ")}</div> : null}
+      <div style={{ display: "grid", gap: isShortVideoChannel ? 8 : 12, padding: isShortVideoChannel ? (isMobile ? "0 10px 10px" : "0 12px 12px") : (isMobile ? "0 12px 12px" : "0 16px 14px") }}>
+        <div style={{ fontSize: isShortVideoChannel ? (isMobile ? 11.5 : 12.5) : (isMobile ? 13 : 14), lineHeight: isShortVideoChannel ? 1.45 : 1.55, whiteSpace: "pre-wrap", color: "#111827" }}>
+          <div style={{ fontWeight: 900, marginBottom: isShortVideoChannel ? 5 : 8 }}>{title}</div>
+          <div style={{ display: "-webkit-box", WebkitLineClamp: isShortVideoChannel ? (isMobile ? 3 : 4) : (isMobile ? 5 : 7), WebkitBoxOrient: "vertical", overflow: "hidden" }}>{content}</div>
+          {cta ? <div style={{ marginTop: isShortVideoChannel ? 6 : 10, fontWeight: 800, color: isShortVideoChannel ? "#111827" : isLinkedin ? "#0a66c2" : "#1877f2" }}>{cta}</div> : null}
+          {hashtags.length ? <div style={{ marginTop: isShortVideoChannel ? 5 : 8, fontWeight: 800, color: isShortVideoChannel ? "#111827" : isLinkedin ? "#0a66c2" : "#1877f2" }}>{hashtags.map((tag) => `#${tag}`).join(" ")}</div> : null}
         </div>
-        {video?.previewUrl ? <div style={{ borderRadius: isTiktok ? 14 : 18, overflow: "hidden", background: isTiktok ? "#000" : undefined }}><VideoPreviewFrame video={video} aspectRatio={isTiktok ? (video.aspectRatio || "9 / 16") : (video.aspectRatio || "1 / 1")} badge={`Vidéo ${label}`} /></div> : <StackedImageGridPreview images={images} aspectRatio={isTiktok ? "9 / 16" : "1 / 1"} fallbackMode={isTiktok ? "black" : "color"} onOpen={onOpen} />}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: isTiktok ? 7 : 10, paddingTop: 4, borderTop: "1px solid #e5e7eb", color: "#6b7280", fontSize: isTiktok ? 10.5 : 12, flexWrap: "wrap" }}>
+        {video?.previewUrl ? <div style={{ borderRadius: isTiktok ? 14 : 18, overflow: "hidden", background: isShortVideoChannel ? "#000" : undefined }}><VideoPreviewFrame video={video} aspectRatio={isShortVideoChannel ? (video.aspectRatio || "9 / 16") : (video.aspectRatio || "1 / 1")} badge={`Vidéo ${label}`} /></div> : <StackedImageGridPreview images={images} aspectRatio={isShortVideoChannel ? "9 / 16" : "1 / 1"} fallbackMode={isShortVideoChannel ? "black" : "color"} onOpen={onOpen} />}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: isShortVideoChannel ? 7 : 10, paddingTop: 4, borderTop: "1px solid #e5e7eb", color: "#6b7280", fontSize: isShortVideoChannel ? 10.5 : 12, flexWrap: "wrap" }}>
           <div>{video?.previewUrl ? "1 vidéo" : images.length > 1 ? `${images.length} photos • cliquez pour ouvrir` : "1 photo • cliquez pour ouvrir"}</div>
           <div style={{ display: "flex", gap: 12 }}>
             <span>J’aime</span>
             <span>Commenter</span>
-            <span>{isTiktok ? "Partager" : isLinkedin ? "Republier" : "Partager"}</span>
+            <span>{isLinkedin ? "Republier" : "Partager"}</span>
           </div>
         </div>
       </div>
@@ -979,6 +983,8 @@ export function ChannelPublicationPreview({ preview }: { preview: PublicationPre
   const isInstagram = key === "instagram";
   const isLinkedin = key === "linkedin";
   const isTiktok = key === "tiktok";
+  const normalizedKey = key.replace(/[\s-]+/g, "_");
+  const isYoutubeShorts = normalizedKey === "youtube_shorts" || normalizedKey === "youtube" || normalizedKey === "youtube_short";
   const isGmb = key === "gmb" || key === "google_business" || key === "google_business_profile";
   const rawTitleValue = isSite ? String(preview.title || "").trim() : cleanText(preview.title);
   const rawContentValue = isSite ? String(preview.content || "").trim() : cleanText(preview.content);
@@ -988,7 +994,7 @@ export function ChannelPublicationPreview({ preview }: { preview: PublicationPre
   const content = contentValue || "Le contenu apparaîtra ici.";
   const cta = isSite ? cleanText(preview.cta) : cleanNetworkText(preview.cta);
   const hashtags = (preview.hashtags || []).map((tag) => String(tag || "").replace(/^#+/, "").trim()).filter(Boolean).slice(0, 8);
-  const fallbackPreset = isSite ? { width: 1440, height: 900 } : isTiktok ? { width: 1080, height: 1920 } : isInstagram ? { width: 1080, height: 1350 } : isGmb ? { width: 1200, height: 900 } : { width: 1200, height: 1200 };
+  const fallbackPreset = isSite ? { width: 1440, height: 900 } : (isTiktok || isYoutubeShorts) ? { width: 1080, height: 1920 } : isInstagram ? { width: 1080, height: 1350 } : isGmb ? { width: 1200, height: 900 } : { width: 1200, height: 1200 };
   const rawImages = (preview.images || []).filter((item) => item?.previewUrl);
   const image = preview.image ? { ...preview.image, preset: preview.image.preset || fallbackPreset } : null;
   const images = (rawImages.length ? rawImages : image ? [image] : []).map((item) => ({ ...item, preset: item.preset || fallbackPreset }));
@@ -1056,6 +1062,20 @@ export function ChannelPublicationPreview({ preview }: { preview: PublicationPre
     );
   }
 
+  if (isYoutubeShorts) {
+    return (
+      <>
+        <PreviewBlockShell eyebrow={preview.formatLabel || "format YouTube"} title={preview.channelLabel} note={hasVideo ? "YouTube : aperçu de la vidéo publiée. Si elle est courte et verticale/carrée, YouTube la classe en Short." : "YouTube : ce canal attend une vidéo."}>
+          <DevicePreviewSwitcher
+            desktop={<FeedPreviewCard mode="desktop" channel="youtube_shorts" title={title} content={content} cta={cta} hashtags={hashtags} images={images} video={video} onOpen={openLightbox} />}
+            mobile={<FeedPreviewCard mode="mobile" channel="youtube_shorts" title={title} content={content} cta={cta} hashtags={hashtags} images={images} video={video} onOpen={openLightbox} />}
+          />
+        </PreviewBlockShell>
+        {!hasVideo ? <PublicationPreviewLightbox open={lightboxIndex !== null} images={images} initialIndex={lightboxIndex || 0} aspectRatio="9 / 16" fallbackMode="black" onClose={closeLightbox} /> : null}
+      </>
+    );
+  }
+
   const networkLabel = isLinkedin ? "LinkedIn" : "Facebook";
   const feedChannel = isLinkedin ? "linkedin" : "facebook";
   return (
@@ -1066,7 +1086,7 @@ export function ChannelPublicationPreview({ preview }: { preview: PublicationPre
           mobile={<FeedPreviewCard mode="mobile" channel={feedChannel} title={title} content={content} cta={cta} hashtags={hashtags} images={images} video={video} onOpen={openLightbox} />}
         />
       </PreviewBlockShell>
-      {!hasVideo ? <PublicationPreviewLightbox open={lightboxIndex !== null} images={images} initialIndex={lightboxIndex || 0} aspectRatio={isTiktok ? "9 / 16" : "1 / 1"} fallbackMode={isTiktok ? "black" : "color"} onClose={closeLightbox} /> : null}
+      {!hasVideo ? <PublicationPreviewLightbox open={lightboxIndex !== null} images={images} initialIndex={lightboxIndex || 0} aspectRatio="1 / 1" fallbackMode="color" onClose={closeLightbox} /> : null}
     </>
   );
 }

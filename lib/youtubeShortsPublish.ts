@@ -12,6 +12,7 @@ export type YoutubeShortsUploadInput = {
   madeForKids?: boolean;
   mimeType?: string | null;
   tags?: string[] | null;
+  publicationType?: "short" | "video" | null;
 };
 
 export type YoutubeShortsUploadResult = {
@@ -27,6 +28,7 @@ export type YoutubeShortsUploadResult = {
   status?: number;
   processingStatus?: string | null;
   uploadStatus?: string | null;
+  publicationType?: "short" | "video" | null;
 };
 
 function sanitizeTitle(input: string) {
@@ -59,10 +61,10 @@ function youtubeErrorMessage(data: unknown, fallback: string) {
     return "Quota YouTube atteint. Réessayez plus tard ou vérifiez le quota API Google.";
   }
   if (/insufficient|permission|forbidden|scope|accessnotconfigured|not authorized|unauthorized/.test(raw)) {
-    return "Autorisation YouTube insuffisante. Déconnectez puis reconnectez YouTube Shorts.";
+    return "Autorisation YouTube insuffisante. Déconnectez puis reconnectez YouTube.";
   }
   if (/invalid credentials|auth|token|expired|invalid_grant/.test(raw)) {
-    return "Connexion YouTube expirée. Déconnectez puis reconnectez YouTube Shorts.";
+    return "Connexion YouTube expirée. Déconnectez puis reconnectez YouTube.";
   }
   if (/invalidtitle|title|metadata/.test(raw)) {
     return "Titre ou métadonnées YouTube invalides.";
@@ -104,7 +106,7 @@ export async function uploadYoutubeShort(input: YoutubeShortsUploadInput): Promi
   const accessToken = String(input.accessToken || "").trim();
   const videoUrl = String(input.videoUrl || "").trim();
   if (!accessToken) return { ok: false, error: "Connexion YouTube expirée." };
-  if (!videoUrl) return { ok: false, error: "Vidéo YouTube Shorts introuvable." };
+  if (!videoUrl) return { ok: false, error: "Vidéo YouTube introuvable." };
 
   try {
     const blob = await fetchVideoBlob(videoUrl);
@@ -188,12 +190,13 @@ export async function uploadYoutubeShort(input: YoutubeShortsUploadInput): Promi
       privacyStatus: asString(status.privacyStatus) || input.privacyStatus,
       uploadStatus: asString(status.uploadStatus) || null,
       processingStatus: asString(processingDetails.processingStatus) || null,
+      publicationType: input.publicationType === "short" ? "short" : "video",
       raw: data,
     };
   } catch (e) {
     return {
       ok: false,
-      error: e instanceof Error ? e.message : "Publication YouTube Shorts impossible.",
+      error: e instanceof Error ? e.message : "Publication YouTube impossible.",
       raw: { requestId: randomUUID() },
     };
   }

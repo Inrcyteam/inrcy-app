@@ -9,7 +9,7 @@ export const MODULE_ICONS: Record<string, { src: string; alt: string }> = {
   linkedin: { src: "/icons/linkedin.png", alt: "LinkedIn" },
   mails: { src: "/icons/mails-inrcy-dashboard-v2.png", alt: "Mails iNrCy" },
   tiktok: { src: "/icons/tiktok.png", alt: "TikTok" },
-  youtube_shorts: { src: "/icons/youtube-shorts.png", alt: "YouTube Shorts" },
+  youtube_shorts: { src: "/icons/youtube-shorts.png", alt: "YouTube" },
   inr_agent: { src: "/icons/inr-agent.png", alt: "iNr'Agent" },
   inrbadge: { src: "/icons/inrbadge-dashboard.png", alt: "iNr'Badge" },
 };
@@ -178,8 +178,8 @@ export const fluxModules: Module[] = [
   },
   {
     key: "youtube_shorts",
-    name: "YouTube Shorts",
-    description: "Diffuse en vidéo courte ▶️",
+    name: "YouTube",
+    description: "Diffuse en vidéo ▶️",
     status: "available",
     accent: "pink",
     actions: [
@@ -218,7 +218,7 @@ export const DRAWER_TITLES = {
   gmb: "Configuration — Google Business",
   facebook: "Configuration — Facebook",
   tiktok: "Configuration — TikTok",
-  youtube_shorts: "Configuration — YouTube Shorts",
+  youtube_shorts: "Configuration — YouTube",
   inr_agent: "Configuration — iNr'Agent",
   inertie: "Mon inertie",
   boutique: "Boutique",

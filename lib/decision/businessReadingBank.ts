@@ -75,10 +75,10 @@ const CHANNEL_COPY: Record<ChannelKey, {
     templateAngle: "réactiver les contacts attirés par vos contenus visuels",
   },
   youtube_shorts: {
-    name: "YouTube Shorts",
-    angle: "visibilité vidéo courte",
-    boosterAngle: "publier un Short utile, local et dynamique pour créer de l’attention",
-    templateAngle: "réactiver les contacts attirés par vos vidéos courtes",
+    name: "YouTube",
+    angle: "visibilité vidéo YouTube",
+    boosterAngle: "publier une vidéo YouTube utile, locale et dynamique pour créer de l’attention",
+    templateAngle: "réactiver les contacts attirés par vos vidéos YouTube",
   },
 };
 

@@ -108,11 +108,17 @@ function InrcyActivityBlock({ model }: { model: CubeModel }) {
           { label: "Scans QR", data: stats.photos },
           { label: "Actions", data: stats.videos },
         ]
-      : [
-          { label: "Publications", data: stats.publications },
-          { label: "Photos", data: stats.photos },
-          { label: "Vidéos", data: stats.videos },
-        ];
+      : model.key === "youtube_shorts"
+        ? [
+            { label: "Publications", data: stats.publications },
+            { label: "Vidéos Shorts", data: stats.videos },
+            { label: "Vidéos longues", data: stats.photos },
+          ]
+        : [
+            { label: "Publications", data: stats.publications },
+            { label: "Photos", data: stats.photos },
+            { label: "Vidéos", data: stats.videos },
+          ];
 
   return (
     <div className={`${styles.block} ${styles.inrcyActivityBlock}`}>
@@ -220,7 +226,7 @@ export function SummaryBar({
           <b>{summaryDisplayReady ? `+${fmtInt(centralByCube.tiktok)}` : "—"}</b>
         </button>
         <button type="button" className={styles.summaryItem} onClick={() => onScrollTo("youtube_shorts")}>
-          <span>YouTube Shorts</span>
+          <span>YouTube</span>
           <b>{summaryDisplayReady ? `+${fmtInt(centralByCube.youtube_shorts)}` : "—"}</b>
         </button>
       </div>

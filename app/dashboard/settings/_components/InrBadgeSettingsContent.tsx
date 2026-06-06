@@ -497,7 +497,7 @@ export default function InrBadgeSettingsContent({
     { key: "instagram", label: "Instagram", connected: canShareChannel(channels.instagram), helper: "Disponible si Instagram est connecté avec un lien enregistré." },
     { key: "linkedin", label: "LinkedIn", connected: canShareChannel(channels.linkedin), helper: "Disponible si LinkedIn est connecté avec un lien enregistré." },
     { key: "tiktok", label: "TikTok", connected: canShareChannel(channels.tiktok), helper: "Disponible si TikTok est connecté avec un lien enregistré." },
-    { key: "youtubeShorts", label: "YouTube Shorts", connected: canShareChannel(channels.youtubeShorts || { connected: false }), helper: "Disponible si YouTube Shorts est configuré avec un lien enregistré." },
+    { key: "youtubeShorts", label: "YouTube", connected: canShareChannel(channels.youtubeShorts || { connected: false }), helper: "Disponible si YouTube est configuré avec un lien enregistré." },
   ];
 
   const mailSelectOptions = [

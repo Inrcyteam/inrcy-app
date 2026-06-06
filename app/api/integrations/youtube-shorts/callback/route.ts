@@ -67,7 +67,7 @@ export async function GET(request: Request) {
       finalUrl.searchParams.set("linked", "youtube_shorts");
       finalUrl.searchParams.set("ok", "0");
       finalUrl.searchParams.set("error", error);
-      if (message) finalUrl.searchParams.set("message", getSimpleFrenchErrorMessage(message, "La connexion YouTube Shorts n'a pas pu être finalisée.").slice(0, 200));
+      if (message) finalUrl.searchParams.set("message", getSimpleFrenchErrorMessage(message, "La connexion YouTube n'a pas pu être finalisée.").slice(0, 200));
       return clearStateCookie(NextResponse.redirect(finalUrl));
     };
 
@@ -89,7 +89,7 @@ export async function GET(request: Request) {
     const supabase = await createSupabaseServer();
     const { data: authData, error: authErr } = await supabase.auth.getUser();
     const user = authData?.user;
-    if (authErr || !user) return fail("not_authenticated", "Tu dois être connecté à iNrCy pour connecter YouTube Shorts.");
+    if (authErr || !user) return fail("not_authenticated", "Tu dois être connecté à iNrCy pour connecter YouTube.");
 
     const rlUser = await enforceRateLimit({
       name: "oauth_youtube_shorts_cb",
@@ -232,7 +232,7 @@ export async function GET(request: Request) {
     finalUrl.searchParams.set("linked", "youtube_shorts");
     finalUrl.searchParams.set("ok", "0");
     finalUrl.searchParams.set("error", "oauth_callback_failed");
-    const message = getSimpleFrenchErrorMessage(error, "La connexion YouTube Shorts n'a pas pu être finalisée.").slice(0, 200);
+    const message = getSimpleFrenchErrorMessage(error, "La connexion YouTube n'a pas pu être finalisée.").slice(0, 200);
     if (message) finalUrl.searchParams.set("message", message);
     return NextResponse.redirect(finalUrl);
   }

@@ -310,6 +310,7 @@ type TiktokLocalPublicationStats = {
 type YoutubeShortsLocalPublicationStats = {
   posts: number;
   videoPosts: number;
+  longVideoPosts: number;
   latestAt: string | null;
 };
 
@@ -394,6 +395,43 @@ function inferPayloadMediaKindForChannel(
   }
 
   return "unknown";
+}
+
+function inferYoutubeVideoPublicationKind(payload: Record<string, unknown>): "short" | "long" {
+  const results = asRecord(payload["results"]);
+  const channelResult = asRecord(results["youtube_shorts"]);
+  const diagnostics = asRecord(channelResult["diagnostics"]);
+  const videoByChannel = asRecord(payload["videoByChannel"]);
+  const youtubeVideo = asRecord(videoByChannel["youtube_shorts"]);
+  const videoSettingsByChannel = asRecord(payload["videoSettingsByChannel"]);
+  const youtubeSettings = asRecord(videoSettingsByChannel["youtube_shorts"]);
+
+  const explicitType = String(
+    channelResult["youtube_publication_type"] ||
+      channelResult["youtubePublicationType"] ||
+      diagnostics["publicationType"] ||
+      diagnostics["youtube_publication_type"] ||
+      "",
+  ).trim().toLowerCase();
+  if (explicitType === "short" || explicitType === "shorts") return "short";
+  if (explicitType === "video" || explicitType === "long" || explicitType === "classic") return "long";
+
+  const duration = Number(
+    channelResult["youtube_duration_seconds"] ??
+      youtubeVideo["duration"] ??
+      asRecord(payload["video"])["duration"] ??
+      0,
+  );
+  const format = String(
+    channelResult["youtube_format"] ||
+      youtubeSettings["format"] ||
+      asRecord(asRecord(youtubeVideo["transformedVariant"]).target)["format"] ||
+      "",
+  ).trim();
+
+  if (Number.isFinite(duration) && duration > 180) return "long";
+  if (format === "16_9") return "long";
+  return "short";
 }
 
 function inferPhotoCountForChannel(payload: Record<string, unknown>, channel: OverviewCubeKey) {
@@ -814,7 +852,11 @@ export async function buildStatsOverview(args: {
 
           const kind = inferPayloadMediaKindForChannel(payload, channel);
           if (kind === "video") {
-            incrementWindowCount(stats.videos, createdAtMs, nowMs);
+            if (channel === "youtube_shorts" && inferYoutubeVideoPublicationKind(payload) === "long") {
+              incrementWindowCount(stats.photos, createdAtMs, nowMs);
+            } else {
+              incrementWindowCount(stats.videos, createdAtMs, nowMs);
+            }
           } else if (kind === "photos") {
             incrementWindowCount(stats.photoPosts, createdAtMs, nowMs);
             incrementWindowCount(stats.photos, createdAtMs, nowMs, inferPhotoCountForChannel(payload, channel));
@@ -841,6 +883,7 @@ export async function buildStatsOverview(args: {
   const youtubeShortsLocalPublicationStats: YoutubeShortsLocalPublicationStats = {
     posts: youtubeShortsActivity?.publications.month || 0,
     videoPosts: youtubeShortsActivity?.videos.month || 0,
+    longVideoPosts: youtubeShortsActivity?.photos.month || 0,
     latestAt: youtubeShortsActivity?.latestAt || null,
   };
 
@@ -1970,7 +2013,7 @@ export async function buildStatsOverview(args: {
     gsc: channelStates.site_web.gsc,
   };
 
-  // YouTube Shorts: YouTube Analytics API + Data API channel stats + publications iNrCy locales.
+  // YouTube: YouTube Analytics API + Data API channel stats + publications iNrCy locales.
   try {
     const youtubeRow = bestIntegrationAny(
       "youtube",
@@ -2024,7 +2067,7 @@ export async function buildStatsOverview(args: {
         }
 
         if (!accessToken) {
-          throw new Error("Connexion YouTube Shorts expirée. Reconnecte YouTube dans Canaux.");
+          throw new Error("Connexion YouTube expirée. Reconnecte YouTube dans Canaux.");
         }
 
         const meta = asRecord(youtubeRow["meta"]);
@@ -2061,7 +2104,7 @@ export async function buildStatsOverview(args: {
           {
             error: getSimpleFrenchErrorMessage(
               e,
-              "Impossible de récupérer les statistiques YouTube Shorts pour le moment.",
+              "Impossible de récupérer les statistiques YouTube pour le moment.",
             ),
             raw_error: rawMessage || null,
             needs_reconnect: needsReconnect,

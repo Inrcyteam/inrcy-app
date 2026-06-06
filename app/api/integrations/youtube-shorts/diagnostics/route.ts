@@ -120,7 +120,7 @@ export async function GET() {
         analytics: false,
         upload_scope: false,
       },
-      message: "YouTube Shorts n'est pas connecté.",
+      message: "YouTube n'est pas connecté.",
     });
   }
 
@@ -149,8 +149,8 @@ export async function GET() {
       analytics,
       stats: channel?.stats || null,
       message: ready
-        ? "YouTube Shorts est prêt : connexion, chaîne, scopes et analytics OK."
-        : "YouTube Shorts est connecté, mais un contrôle reste à corriger avant publication complète.",
+        ? "YouTube est prêt : connexion, chaîne, scopes et analytics OK."
+        : "YouTube est connecté, mais un contrôle reste à corriger avant publication complète.",
     });
   } catch (err) {
     return NextResponse.json({
@@ -163,7 +163,7 @@ export async function GET() {
         analytics: false,
         upload_scope: !missing.includes("https://www.googleapis.com/auth/youtube.upload"),
       },
-      message: err instanceof Error ? err.message : "Diagnostic YouTube Shorts impossible.",
+      message: err instanceof Error ? err.message : "Diagnostic YouTube impossible.",
     });
   }
 }

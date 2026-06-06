@@ -212,7 +212,7 @@ export const DISPLAY_LABELS: Record<DisplayKey, string> = {
   instagram: "Instagram",
   linkedin: "LinkedIn",
   tiktok: "TikTok",
-  youtube_shorts: "YouTube Shorts",
+  youtube_shorts: "YouTube",
 };
 
 export const CHANNEL_LABELS: Record<ChannelKey, string> = {
@@ -223,7 +223,7 @@ export const CHANNEL_LABELS: Record<ChannelKey, string> = {
   instagram: "Instagram",
   linkedin: "LinkedIn",
   tiktok: "TikTok",
-  youtube_shorts: "YouTube Shorts",
+  youtube_shorts: "YouTube",
 };
 
 export const CHANNEL_PRESETS: Record<ChannelKey, RenderPreset> = {
@@ -315,8 +315,6 @@ export const BOOSTER_MAX_VIDEO_COUNT = 1;
 export const BOOSTER_MAX_VIDEO_BYTES = BOOSTER_MAX_MEDIA_BYTES;
 export const BOOSTER_MAX_VIDEO_MB_LABEL = BOOSTER_MAX_MEDIA_MB_LABEL;
 export const BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL = "3 min conseillées";
-export const YOUTUBE_SHORTS_MAX_VIDEO_DURATION_SECONDS = 180;
-
 export type ChannelPublicationRequirementInput = {
   channel: ChannelKey;
   connected?: boolean;
@@ -375,18 +373,10 @@ export function getChannelPublicationRequirements({
 
     if (channel === "youtube_shorts") {
       if (!hasVideo) {
-        blockers.push("YouTube Shorts nécessite une vidéo.");
-      } else if (
-        typeof videoDurationSeconds === "number" &&
-        Number.isFinite(videoDurationSeconds) &&
-        videoDurationSeconds > YOUTUBE_SHORTS_MAX_VIDEO_DURATION_SECONDS
-      ) {
-        blockers.push(
-          "Vidéo supérieure à 3 minutes, impossible de publier sur YouTube Shorts.",
-        );
+        blockers.push("YouTube nécessite une vidéo.");
       } else if (videoDurationSeconds == null) {
         warnings.push(
-          "Durée YouTube Shorts non vérifiée : YouTube pourra refuser si la vidéo dépasse 3 minutes.",
+          "Durée YouTube non vérifiée : iNrCy publiera quand même la vidéo, YouTube décidera ensuite du rendu Short ou classique.",
         );
       }
     }
@@ -419,7 +409,7 @@ export function getChannelPublicationRequirements({
       } else if (channel === "tiktok") {
         blockers.push("TikTok nécessite au moins 1 photo ou 1 vidéo.");
       } else if (channel === "youtube_shorts") {
-        blockers.push("YouTube Shorts nécessite une vidéo.");
+        blockers.push("YouTube nécessite une vidéo.");
       } else if (channel === "gmb") {
         warnings.push("Google Business sera publié sans photo.");
       } else {
@@ -434,7 +424,7 @@ export function getChannelPublicationRequirements({
     }
 
     if (channel === "youtube_shorts" && hasImage) {
-      blockers.push("YouTube Shorts ne publie pas les photos : ajoutez une vidéo.");
+      blockers.push("YouTube ne publie pas les photos : ajoutez une vidéo.");
     }
   } else {
     if (channel === "instagram") {
@@ -442,7 +432,7 @@ export function getChannelPublicationRequirements({
     } else if (channel === "tiktok") {
       blockers.push("TikTok nécessite une vidéo ou au moins 1 photo.");
     } else if (channel === "youtube_shorts") {
-      blockers.push("YouTube Shorts nécessite une vidéo.");
+      blockers.push("YouTube nécessite une vidéo.");
     }
   }
 
@@ -593,7 +583,7 @@ export const CHANNEL_TEXT_GUIDELINES: Record<
     content: 2200,
     cta: 120,
     hashtags: 8,
-    totalLabel: "Légende YouTube Shorts finale",
+    totalLabel: "Légende YouTube finale",
     totalMax: 2200,
     totalValue: (post) => {
       const body = [post.title, post.content, post.cta].filter(Boolean).join("\n");

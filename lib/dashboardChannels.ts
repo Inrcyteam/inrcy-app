@@ -19,7 +19,7 @@ export const DASHBOARD_CHANNEL_LABELS: Record<DashboardChannelKey, string> = {
   instagram: 'Instagram',
   linkedin: 'LinkedIn',
   tiktok: 'TikTok',
-  youtube_shorts: 'YouTube Shorts',
+  youtube_shorts: 'YouTube',
 };
 
 export function isDashboardChannelKey(value: unknown): value is DashboardChannelKey {

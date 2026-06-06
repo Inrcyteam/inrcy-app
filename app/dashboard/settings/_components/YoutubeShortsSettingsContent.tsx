@@ -195,7 +195,7 @@ export default function YoutubeShortsSettingsContent() {
       emitDashboardUpdate(nextSettings);
     } catch (err) {
       console.warn("[youtube-shorts-settings] status failed", err);
-      setError("Chargement de la connexion YouTube Shorts impossible.");
+      setError("Chargement de la connexion YouTube impossible.");
     } finally {
       setLoading(false);
     }
@@ -209,8 +209,8 @@ export default function YoutubeShortsSettingsContent() {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("linked") !== "youtube_shorts") return;
-    if (params.get("ok") === "1") setNotice("Chaîne YouTube Shorts connectée.");
-    if (params.get("ok") === "0") setError(params.get("message") || "Connexion YouTube Shorts impossible.");
+    if (params.get("ok") === "1") setNotice("Chaîne YouTube connectée.");
+    if (params.get("ok") === "0") setError(params.get("message") || "Connexion YouTube impossible.");
   }, []);
 
   const saveSettings = useCallback(async (nextPatch?: Partial<YoutubeShortsSettings>) => {
@@ -245,10 +245,10 @@ export default function YoutubeShortsSettingsContent() {
 
       setSettings(nextSettings);
       emitDashboardUpdate(nextSettings);
-      setNotice("Réglages YouTube Shorts enregistrés.");
+      setNotice("Réglages YouTube enregistrés.");
     } catch (err) {
       console.warn("[youtube-shorts-settings] save failed", err);
-      setError("Enregistrement des réglages YouTube Shorts impossible.");
+      setError("Enregistrement des réglages YouTube impossible.");
     } finally {
       setSaving(false);
     }
@@ -271,10 +271,10 @@ export default function YoutubeShortsSettingsContent() {
       const nextSettings = normalizeSettings(json?.youtube_shorts);
       setSettings(nextSettings);
       emitDashboardUpdate(nextSettings);
-      setNotice("Chaîne YouTube Shorts déconnectée.");
+      setNotice("Chaîne YouTube déconnectée.");
     } catch (err) {
       console.warn("[youtube-shorts-settings] disconnect failed", err);
-      setError("Déconnexion YouTube Shorts impossible.");
+      setError("Déconnexion YouTube impossible.");
     } finally {
       setSaving(false);
     }
@@ -301,13 +301,13 @@ export default function YoutubeShortsSettingsContent() {
         `Analytics ${checks.analytics ? "OK" : "KO"}`,
         `Upload ${checks.upload_scope ? "OK" : "KO"}`,
       ].join(" · ");
-      const msg = String(json?.message || "Diagnostic YouTube Shorts terminé.");
+      const msg = String(json?.message || "Diagnostic YouTube terminé.");
       const finalMessage = missing > 0 ? `${msg} Scopes manquants : ${missing}. ${details}` : `${msg} ${details}`;
       setDiagnostic(finalMessage);
-      if (json?.ready) setNotice("Diagnostic YouTube Shorts validé.");
+      if (json?.ready) setNotice("Diagnostic YouTube validé.");
     } catch (err) {
       console.warn("[youtube-shorts-settings] diagnostics failed", err);
-      setError("Test de connexion YouTube Shorts impossible.");
+      setError("Test de connexion YouTube impossible.");
     } finally {
       setTesting(false);
     }
@@ -318,8 +318,8 @@ export default function YoutubeShortsSettingsContent() {
   return (
     <div style={{ display: "grid", gap: 14 }}>
       <div style={{ display: "grid", gap: 4 }}>
-        <p className={styles.blockSub} style={{ margin: 0 }}>Canal vidéo courte</p>
-        <h2 style={{ margin: 0, fontSize: 22, color: "white" }}>Configuration YouTube Shorts</h2>
+        <p className={styles.blockSub} style={{ margin: 0 }}>Canal vidéo</p>
+        <h2 style={{ margin: 0, fontSize: 22, color: "white" }}>Configuration YouTube</h2>
         <p className={styles.blockSub} style={{ margin: 0 }}>
           Connectez la chaîne YouTube du professionnel. Les préférences ci-dessous serviront ensuite à la publication depuis Booster.
         </p>
@@ -327,7 +327,7 @@ export default function YoutubeShortsSettingsContent() {
 
       {loading ? (
         <div style={{ border: "1px solid rgba(125,211,252,0.18)", background: "rgba(14,165,233,0.08)", borderRadius: 12, padding: "10px 12px", color: "rgba(224,242,254,0.96)", fontSize: 13 }}>
-          Chargement de la connexion YouTube Shorts...
+          Chargement de la connexion YouTube...
         </div>
       ) : null}
 
@@ -403,7 +403,7 @@ export default function YoutubeShortsSettingsContent() {
 
       <div style={cardStyle}>
         <div className={styles.blockHeaderRow}>
-          <div className={styles.blockTitle}>Réglages YouTube Shorts par défaut</div>
+          <div className={styles.blockTitle}>Réglages YouTube par défaut</div>
         </div>
         <div className={styles.blockSub}>
           Ces préférences seront utilisées au moment de publier une vidéo depuis Booster.
@@ -413,7 +413,7 @@ export default function YoutubeShortsSettingsContent() {
           <label style={{ display: "grid", gap: 6 }}>
             <span className={styles.blockSub} style={{ opacity: 0.92 }}>Format prioritaire</span>
             <select value={settings.preferredFormat} onChange={(event) => patchSettings({ preferredFormat: event.target.value as YoutubeShortsSettings["preferredFormat"] })} style={selectStyle}>
-              <option value="shorts">Shorts vertical</option>
+              <option value="shorts">Vidéo courte verticale</option>
               <option value="video">Vidéo classique</option>
             </select>
           </label>

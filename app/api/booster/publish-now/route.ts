@@ -85,7 +85,7 @@ const CHANNEL_LABELS: Record<ChannelKey, string> = {
   instagram: "Instagram",
   linkedin: "LinkedIn",
   tiktok: "TikTok",
-  youtube_shorts: "YouTube Shorts",
+  youtube_shorts: "YouTube",
 };
 
 function buildResultsSummary(
@@ -1941,21 +1941,14 @@ export async function POST(req: Request) {
           const channelUrl = String(youtubeMeta.channel_url || youtubeSettings.channelUrl || youtubeSettings.url || "").trim();
 
           if (!youtubeActive || !youtubeAccessToken) {
-            const youtubeUserError = "YouTube Shorts à connecter. Rendez-vous dans Canaux.";
+            const youtubeUserError = "YouTube à connecter. Rendez-vous dans Canaux.";
             await setDelivery(ch, { status: "failed", error: youtubeUserError });
             results[ch] = { ok: false, error: youtubeUserError };
             continue;
           }
 
           if (mediaModeByChannel[ch] !== "video" || !channelVideo) {
-            const youtubeUserError = "YouTube Shorts nécessite une vidéo.";
-            await setDelivery(ch, { status: "failed", error: youtubeUserError });
-            results[ch] = { ok: false, error: youtubeUserError };
-            continue;
-          }
-
-          if (channelVideo.duration && channelVideo.duration > 180) {
-            const youtubeUserError = "YouTube Shorts accepte les vidéos jusqu'à 3 minutes.";
+            const youtubeUserError = "YouTube nécessite une vidéo.";
             await setDelivery(ch, { status: "failed", error: youtubeUserError });
             results[ch] = { ok: false, error: youtubeUserError };
             continue;
@@ -1965,28 +1958,34 @@ export async function POST(req: Request) {
           const visibilityRaw = String(youtubeDefaults.defaultVisibility || "public");
           const privacyStatus = (["public", "unlisted", "private"].includes(visibilityRaw) ? visibilityRaw : "public") as "public" | "unlisted" | "private";
           const madeForKids = Boolean(youtubeDefaults.madeForKids);
+          const youtubeVideoSettings = videoSettingsByChannel[ch] || null;
+          const youtubeFormat = String((youtubeVideoSettings as any)?.format || asRecord(asRecord(channelVideo.transformedVariant).target).format || "original");
+          const youtubeDuration = Number(channelVideo.duration || 0);
+          const youtubeCanBeShort = Number.isFinite(youtubeDuration) && youtubeDuration > 0 && youtubeDuration <= 180 && (youtubeFormat === "9_16" || youtubeFormat === "1_1");
+          const youtubePublicationType = youtubeCanBeShort ? "short" : "video";
           const hashtags = Array.isArray(channelPost.hashtags) ? channelPost.hashtags : [];
           const normalizedTags = hashtags.map((tag) => normalizeHashtag(String(tag))).filter(Boolean).slice(0, 8);
           const autoHashtags = youtubeDefaults.autoHashtags !== false;
-          const shortsTags = autoHashtags ? Array.from(new Set(["Shorts", "iNrCy", ...normalizedTags])) : normalizedTags;
-          const description = [
-            canonMessage,
-            shortsTags.length ? shortsTags.map((tag) => `#${tag}`).join(" ") : "#Shorts",
-          ].filter(Boolean).join("\n\n");
+          const youtubeTags = autoHashtags
+            ? Array.from(new Set([...(youtubePublicationType === "short" ? ["Shorts"] : []), "iNrCy", ...normalizedTags]))
+            : normalizedTags;
+          const tagLine = youtubeTags.length ? youtubeTags.map((tag) => `#${tag}`).join(" ") : "";
+          const description = [canonMessage, tagLine].filter(Boolean).join("\n\n");
 
           const upload = await uploadYoutubeShort({
             accessToken: youtubeAccessToken,
             videoUrl: channelVideo.publicUrl || channelVideo.url || "",
-            title: channelPost.title || post.title || "Short iNrCy",
+            title: channelPost.title || post.title || (youtubePublicationType === "short" ? "Short iNrCy" : "Vidéo iNrCy"),
             description,
             privacyStatus,
             madeForKids,
             mimeType: channelVideo.type,
-            tags: shortsTags,
+            tags: youtubeTags,
+            publicationType: youtubePublicationType,
           });
 
           if (!upload.ok) {
-            const youtubeUserError = getPublishChannelUserMessage("youtube_shorts", upload.error || "youtube_upload_failed", "Publication YouTube Shorts impossible.");
+            const youtubeUserError = getPublishChannelUserMessage("youtube_shorts", upload.error || "youtube_upload_failed", "Publication YouTube impossible.");
             logPublishChannelFailure({
               route: "booster_publish_now",
               channel: "youtube_shorts",
@@ -2002,21 +2001,31 @@ export async function POST(req: Request) {
             continue;
           }
 
+          const youtubeExternalUrl = youtubePublicationType === "short"
+            ? upload.shortsUrl || upload.videoUrl || null
+            : upload.videoUrl || upload.shortsUrl || null;
+
           await setDelivery(ch, {
             status: "delivered",
             external_id: upload.videoId || null,
-            external_url: upload.shortsUrl || upload.videoUrl || null,
+            external_url: youtubeExternalUrl,
             error: null,
           });
 
           results[ch] = {
             ok: true,
             external_id: upload.videoId || null,
-            external_url: upload.shortsUrl || upload.videoUrl || null,
+            external_url: youtubeExternalUrl,
+            video_url: upload.videoUrl || null,
+            shorts_url: upload.shortsUrl || null,
             channel_url: channelUrl || null,
             privacy_status: upload.privacyStatus || privacyStatus,
             processing_status: upload.processingStatus || null,
             upload_status: upload.uploadStatus || null,
+            media_type: "video",
+            youtube_publication_type: youtubePublicationType,
+            youtube_format: youtubeFormat,
+            youtube_duration_seconds: youtubeDuration || channelVideo.duration || null,
             diagnostics: upload,
           };
           continue;

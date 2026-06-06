@@ -5375,7 +5375,7 @@
   }
 }
 
-/* ✅ iNrStats — YouTube Shorts : 10 lignes dans le cadre central sans scroll à 100% */
+/* ✅ iNrStats — YouTube : 10 lignes dans le cadre central sans scroll à 100% */
 @media (min-width: 901px) {
   .statsWorkspace {
     align-items: stretch !important;

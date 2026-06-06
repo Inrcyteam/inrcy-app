@@ -5,6 +5,7 @@ import { asRecord, asString } from "@/lib/tsSafe";
 export type YoutubeShortsLocalPublicationStats = {
   posts: number;
   videoPosts: number;
+  longVideoPosts?: number;
   latestAt: string | null;
 };
 
@@ -81,6 +82,8 @@ export function mergeYoutubeShortsLocalPublicationStats(metrics: unknown, local:
       ...totals,
       inrcy_posts: local.posts,
       inrcy_video_posts: local.videoPosts,
+      inrcy_short_video_posts: local.videoPosts,
+      inrcy_long_video_posts: local.longVideoPosts || 0,
       postsPublished: num(totals.postsPublished) || local.posts,
       postsPublishedLocal: local.posts,
     },
@@ -89,6 +92,8 @@ export function mergeYoutubeShortsLocalPublicationStats(metrics: unknown, local:
       inrcyLocalPublications: {
         posts: local.posts,
         videoPosts: local.videoPosts,
+        shortVideoPosts: local.videoPosts,
+        longVideoPosts: local.longVideoPosts || 0,
         latestAt: local.latestAt,
       },
     },

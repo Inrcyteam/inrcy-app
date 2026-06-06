@@ -362,7 +362,7 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
     shareSettings.instagram && publicChannelCanShare.instagram ? { href: instagramUrl, label: "Instagram", iconSrc: instagramIcon.src, tone: "instagram" as ActionTone, trackingAction: "instagram" } : null,
     shareSettings.facebook && publicChannelCanShare.facebook ? { href: facebookUrl, label: "Facebook", iconSrc: facebookIcon.src, tone: "facebook" as ActionTone, trackingAction: "facebook" } : null,
     shareSettings.tiktok && publicChannelCanShare.tiktok ? { href: tiktokUrl, label: "TikTok", iconSrc: tiktokIcon.src, tone: "tiktok" as ActionTone, trackingAction: "tiktok" } : null,
-    shareSettings.youtubeShorts && publicChannelCanShare.youtubeShorts ? { href: youtubeShortsUrl, label: "YouTube Shorts", iconSrc: youtubeShortsIcon.src, tone: "youtube" as ActionTone, trackingAction: "youtube_shorts" } : null,
+    shareSettings.youtubeShorts && publicChannelCanShare.youtubeShorts ? { href: youtubeShortsUrl, label: "YouTube", iconSrc: youtubeShortsIcon.src, tone: "youtube" as ActionTone, trackingAction: "youtube_shorts" } : null,
   ].filter(Boolean) as ActionLinkProps[];
 
   const appointmentAction = shareSettings.appointment

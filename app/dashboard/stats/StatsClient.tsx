@@ -1467,7 +1467,7 @@ useEffect(() => {
     buildCubeModel("instagram", "Instagram", "Visibilité de marque", period, dataByCube.instagram, centralByCube),
     buildCubeModel("linkedin", "LinkedIn", "Visibilité professionnelle", period, dataByCube.linkedin, centralByCube),
     buildCubeModel("tiktok", "TikTok", "Photos & vidéos courtes", period, dataByCube.tiktok, centralByCube),
-    buildCubeModel("youtube_shorts", "YouTube Shorts", "Vidéos courtes", period, dataByCube.youtube_shorts, centralByCube),
+    buildCubeModel("youtube_shorts", "YouTube", "Vidéos courtes & longues", period, dataByCube.youtube_shorts, centralByCube),
   ]), [centralByCube, dataByCube, inrBadgeStats, mailStats, period]);
 
   const computedEstimatedByCube = useMemo<Record<CubeKey, number>>(() => {

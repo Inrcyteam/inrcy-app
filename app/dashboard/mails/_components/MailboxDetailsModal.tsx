@@ -213,17 +213,26 @@ function getTiktokPublicationUrl(result: any) {
 }
 
 function getYoutubeShortsPublicationUrl(result: any) {
+  const publicationType = String(
+    result?.youtube_publication_type ||
+      result?.youtubePublicationType ||
+      getNestedString(result, ["diagnostics", "publicationType"]) ||
+      "",
+  ).toLowerCase();
+  const idToUrl = (id: string) => publicationType === "video"
+    ? `https://www.youtube.com/watch?v=${id}`
+    : `https://www.youtube.com/shorts/${id}`;
   const direct = firstStringDeep(
     result?.external_url,
-    result?.shorts_url,
-    result?.video_url,
+    publicationType === "video" ? result?.video_url : result?.shorts_url,
+    publicationType === "video" ? getNestedString(result, ["diagnostics", "videoUrl"]) : getNestedString(result, ["diagnostics", "shortsUrl"]),
     result?.post_url,
-    getNestedString(result, ["diagnostics", "shortsUrl"]),
-    getNestedString(result, ["diagnostics", "videoUrl"]),
+    publicationType === "video" ? result?.shorts_url : result?.video_url,
+    publicationType === "video" ? getNestedString(result, ["diagnostics", "shortsUrl"]) : getNestedString(result, ["diagnostics", "videoUrl"]),
     getNestedString(result, ["diagnostics", "raw", "id"]),
   );
   if (direct) {
-    if (/^[A-Za-z0-9_-]{8,}$/.test(direct) && !direct.startsWith("http")) return `https://www.youtube.com/shorts/${direct}`;
+    if (/^[A-Za-z0-9_-]{8,}$/.test(direct) && !direct.startsWith("http")) return idToUrl(direct);
     return direct;
   }
 
@@ -234,7 +243,7 @@ function getYoutubeShortsPublicationUrl(result: any) {
     getNestedString(result, ["diagnostics", "videoId"]),
     getNestedString(result, ["diagnostics", "raw", "id"]),
   );
-  return videoId ? `https://www.youtube.com/shorts/${videoId}` : "https://www.youtube.com";
+  return videoId ? idToUrl(videoId) : "https://www.youtube.com";
 }
 
 export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
@@ -355,7 +364,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
 
   const publicationDisplayKey = React.useMemo<DisplayKey>(() => {
     const key = String(activePublicationEditChannelKey || "");
-    if (["inrcy_site", "site_web", "gmb", "facebook", "instagram", "linkedin", "tiktok"].includes(key)) {
+    if (["inrcy_site", "site_web", "gmb", "facebook", "instagram", "linkedin", "tiktok", "youtube_shorts"].includes(key)) {
       return key as DisplayKey;
     }
     return "facebook";
@@ -880,9 +889,9 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                         if (typeof window !== "undefined") window.open(youtubeShortsPublicationHref || "https://www.youtube.com", "_blank", "noopener,noreferrer");
                                       }}
                                       disabled={detailsActionBusy}
-                                      title="Ouvrir le Short publié sur YouTube"
+                                      title="Ouvrir la vidéo publiée sur YouTube"
                                     >
-                                      Voir le Short
+                                      Voir la vidéo
                                     </button>
                                   ) : isDraftItem ? (
                                     <button
@@ -993,7 +1002,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                 fontSize: 13,
                               }}
                             >
-                              <b>YouTube Shorts :</b> iNrSend garde le statut et le lien du Short publié. Pour l’instant, la modification ou suppression réelle se fait dans YouTube Studio ; supprimer l’historique ne supprime pas la vidéo YouTube.
+                              <b>YouTube :</b> iNrSend garde le statut et le lien de la vidéo publiée. Pour l’instant, la modification ou suppression réelle se fait dans YouTube Studio ; supprimer l’historique ne supprime pas la vidéo YouTube.
                             </div>
                           ) : null}
 

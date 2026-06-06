@@ -77,7 +77,7 @@ export const GPS_SECTIONS: GpsSection[] = [
           "Les canaux iNrCy sont vos leviers de diffusion. Ils rendent votre entreprise visible, diffusent vos contenus, partagent votre carte de visite digitale et alimentent le générateur en signaux utiles.",
         steps: [
           "Ouvrir **Les canaux**, choisir la bulle concernée, puis cliquer sur **Configurer**.",
-          "Connecter les canaux de diffusion : iNr'Badge, Mails, Site iNrCy, Site web, Google Business, Facebook, Instagram, LinkedIn, TikTok et YouTube Shorts.",
+          "Connecter les canaux de diffusion : iNr'Badge, Mails, Site iNrCy, Site web, Google Business, Facebook, Instagram, LinkedIn, TikTok et YouTube.",
           "Configurer chaque canal utile pour que le générateur puisse diffuser, analyser et exploiter les bons signaux.",
         ],
         checks: [
@@ -188,7 +188,7 @@ export const GPS_SECTIONS: GpsSection[] = [
           "iNrStats traduit les données des canaux en lecture business simple : appels, clics, visites, formulaires, demandes, envois et signaux utiles.",
         steps: [
           "Connecter les canaux utiles pour laisser iNrCy récupérer les données disponibles.",
-          "Lire les résultats par canal : Google Business, sites, Facebook, Instagram, LinkedIn, TikTok, YouTube Shorts ou Mails selon les connexions.",
+          "Lire les résultats par canal : Google Business, sites, Facebook, Instagram, LinkedIn, TikTok, YouTube ou Mails selon les connexions.",
           "Repérer ce qui fonctionne : appels, clics, itinéraires, visites, formulaires, interactions ou campagnes.",
           "Utiliser ensuite **Booster**, **Propulser**, **Fidéliser** ou **iNr'Agent** selon le levier recommandé.",
         ],
@@ -228,7 +228,7 @@ export const GPS_SECTIONS: GpsSection[] = [
         steps: [
           "Cliquer sur **Publier maintenant** pour ouvrir directement l’outil de publication.",
           "Préparer un contenu : chantier, nouveauté, conseil, photo, actualité ou preuve terrain.",
-          "Choisir les canaux utiles : sites, Google Business, Facebook, Instagram, LinkedIn, TikTok, YouTube Shorts ou Mails.",
+          "Choisir les canaux utiles : sites, Google Business, Facebook, Instagram, LinkedIn, TikTok, YouTube ou Mails.",
           "Vérifier le texte, l’image, le ton et l’appel à l’action avant l’envoi.",
           "Pour une action commerciale guidée, passer ensuite par **Propulser**.",
         ],
