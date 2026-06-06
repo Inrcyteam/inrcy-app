@@ -36,6 +36,79 @@ function isBlockedSubscriptionStatus(value: unknown): boolean {
   return BLOCKED_SUBSCRIPTION_STATUSES.has(normalizeSubscriptionStatus(value));
 }
 
+const SENSITIVE_API_PREFIXES = [
+  "/api/account",
+  "/api/agent",
+  "/api/billing",
+  "/api/booster",
+  "/api/bubble-access",
+  "/api/calendar",
+  "/api/crm",
+  "/api/dashboard",
+  "/api/documents",
+  "/api/factures",
+  "/api/fideliser",
+  "/api/generator",
+  "/api/inbox",
+  "/api/inrbadge/settings",
+  "/api/inrsend",
+  "/api/inrstats",
+  "/api/integrations",
+  "/api/loyalty",
+  "/api/media",
+  "/api/metrics",
+  "/api/notifications",
+  "/api/profile",
+  "/api/propulser",
+  "/api/referrals",
+  "/api/stats",
+  "/api/templates",
+] as const;
+
+const API_BLOCK_BYPASS_PREFIXES = [
+  "/api/auth/",
+  "/api/billing/checkout",
+  "/api/boutique/order",
+  "/api/cron/",
+  "/api/csp-report",
+  "/api/health",
+  "/api/inrbadge/appointment-request",
+  "/api/inrbadge/lead",
+  "/api/inrsend/unsubscribe",
+  "/api/inrsend/webhooks/",
+  "/api/public/",
+  "/api/security/google/risc",
+  "/api/stripe/webhook",
+  "/api/widgets/",
+] as const;
+
+function pathMatches(pathname: string, candidate: string): boolean {
+  const normalizedCandidate = candidate.endsWith("/") ? candidate.slice(0, -1) : candidate;
+  return pathname === normalizedCandidate || pathname.startsWith(`${normalizedCandidate}/`);
+}
+
+function isApiBlockBypassPath(pathname: string): boolean {
+  return API_BLOCK_BYPASS_PREFIXES.some((candidate) => pathMatches(pathname, candidate));
+}
+
+function isSensitiveApiPath(pathname: string): boolean {
+  if (!pathname.startsWith("/api/") || isApiBlockBypassPath(pathname)) return false;
+  return SENSITIVE_API_PREFIXES.some((candidate) => pathMatches(pathname, candidate));
+}
+
+function blockedAccountApiResponse(status: unknown): NextResponse {
+  return NextResponse.json(
+    {
+      error: "ACCOUNT_BLOCKED",
+      code: "ACCOUNT_BLOCKED",
+      status: normalizeSubscriptionStatus(status),
+      redirectTo: "/compte-bloque",
+      message: "Compte bloqué : contactez iNrCy pour réactiver votre générateur.",
+    },
+    { status: 403 }
+  );
+}
+
 function getIp(req: NextRequest): string {
   // Vercel provides req.ip, but keep fallbacks for local/dev/proxies.
   const direct = (req as unknown as { ip?: string }).ip;
@@ -490,13 +563,15 @@ export async function proxy(req: NextRequest) {
     return res;
   };
 
-  // Skip callback routes (already protected at route-level)
-  if (isOauthCallback(pathname)) {
-    const res = NextResponse.next({ request: { headers: requestHeaders } });
-    return applyResponseHeaders(res);
-  }
-
   const userId = getUserId(req);
+  let subscriptionStatus: string | null | undefined;
+
+  const getCurrentSubscriptionStatus = async () => {
+    if (!userId) return null;
+    if (subscriptionStatus !== undefined) return subscriptionStatus;
+    subscriptionStatus = await getSubscriptionGateStatus(userId);
+    return subscriptionStatus;
+  };
 
   const isDashboardPath = pathname === "/dashboard" || pathname.startsWith("/dashboard/");
 
@@ -517,9 +592,9 @@ export async function proxy(req: NextRequest) {
     }
 
     if (userId) {
-      const subscriptionStatus = await getSubscriptionGateStatus(userId);
+      const currentSubscriptionStatus = await getCurrentSubscriptionStatus();
 
-      if (isBlockedSubscriptionStatus(subscriptionStatus)) {
+      if (isBlockedSubscriptionStatus(currentSubscriptionStatus)) {
         const url = req.nextUrl.clone();
         url.pathname = "/compte-bloque";
         url.search = "";
@@ -530,6 +605,20 @@ export async function proxy(req: NextRequest) {
   }
 
   if (!pathname.startsWith("/api/")) {
+    const res = NextResponse.next({ request: { headers: requestHeaders } });
+    return applyResponseHeaders(res);
+  }
+
+  if (req.method.toUpperCase() !== "OPTIONS" && userId && isSensitiveApiPath(pathname)) {
+    const currentSubscriptionStatus = await getCurrentSubscriptionStatus();
+
+    if (isBlockedSubscriptionStatus(currentSubscriptionStatus)) {
+      return applyResponseHeaders(blockedAccountApiResponse(currentSubscriptionStatus));
+    }
+  }
+
+  // OAuth callbacks bypass rate limiting, but not the blocked-account guard above.
+  if (isOauthCallback(pathname)) {
     const res = NextResponse.next({ request: { headers: requestHeaders } });
     return applyResponseHeaders(res);
   }

@@ -89,7 +89,7 @@ function copyForStatus(rawStatus: unknown): BlockedCopy {
       message:
         "Votre abonnement présente un retard de paiement. Contactez iNrCy pour régulariser la situation et réactiver votre générateur.",
       statusLabel: "Paiement en retard",
-      accessLabel: "Accès limité",
+      accessLabel: "Accès bloqué",
       dataLabel: "Données conservées",
     };
   }
