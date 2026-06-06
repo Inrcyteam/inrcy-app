@@ -174,6 +174,8 @@ export default function YoutubeShortsSettingsContent() {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [diagnostic, setDiagnostic] = useState<string | null>(null);
+  const [testing, setTesting] = useState(false);
 
   const patchSettings = useCallback((patch: Partial<YoutubeShortsSettings>) => {
     setSettings((current) => ({ ...current, ...patch }));
@@ -278,6 +280,39 @@ export default function YoutubeShortsSettingsContent() {
     }
   }, []);
 
+
+
+  const testYoutube = useCallback(async () => {
+    setTesting(true);
+    setDiagnostic(null);
+    setNotice(null);
+    setError(null);
+
+    try {
+      const res = await fetch("/api/integrations/youtube-shorts/diagnostics", { cache: "no-store" });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json?.ok === false) throw new Error(String(json?.error || "diagnostics_failed"));
+
+      const checks = asRecord(json?.checks);
+      const missing = Array.isArray(json?.missing_scopes) ? json.missing_scopes.length : 0;
+      const details = [
+        `OAuth ${checks.oauth ? "OK" : "KO"}`,
+        `Chaîne ${checks.channel ? "OK" : "KO"}`,
+        `Analytics ${checks.analytics ? "OK" : "KO"}`,
+        `Upload ${checks.upload_scope ? "OK" : "KO"}`,
+      ].join(" · ");
+      const msg = String(json?.message || "Diagnostic YouTube Shorts terminé.");
+      const finalMessage = missing > 0 ? `${msg} Scopes manquants : ${missing}. ${details}` : `${msg} ${details}`;
+      setDiagnostic(finalMessage);
+      if (json?.ready) setNotice("Diagnostic YouTube Shorts validé.");
+    } catch (err) {
+      console.warn("[youtube-shorts-settings] diagnostics failed", err);
+      setError("Test de connexion YouTube Shorts impossible.");
+    } finally {
+      setTesting(false);
+    }
+  }, []);
+
   const connected = Boolean(settings.connected);
 
   return (
@@ -347,6 +382,12 @@ export default function YoutubeShortsSettingsContent() {
               Actualiser
             </button>
 
+            {connected ? (
+              <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={() => void testYoutube()} disabled={saving || loading || testing}>
+                {testing ? "Test..." : "Tester la connexion"}
+              </button>
+            ) : null}
+
             <a
               href={settings.channelUrl || "#"}
               target="_blank"
@@ -402,6 +443,7 @@ export default function YoutubeShortsSettingsContent() {
         </div>
       </div>
 
+      {diagnostic ? <StatusMessage variant="success">{diagnostic}</StatusMessage> : null}
       {notice ? <StatusMessage variant="success">{notice}</StatusMessage> : null}
       {error ? <StatusMessage variant="error">{error}</StatusMessage> : null}
     </div>

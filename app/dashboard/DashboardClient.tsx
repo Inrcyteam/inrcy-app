@@ -2989,6 +2989,9 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
           // TikTok suit maintenant le même état hydraté que les autres canaux.
           // Si l'OAuth réel est actif, la bulle Booster est allumée dès l'ouverture.
           tiktok: Boolean(tiktokConnected),
+          // YouTube Shorts suit aussi l'état Dashboard déjà hydraté.
+          // Ça évite que l'icône arrive après les autres dans Booster / Publier.
+          youtube_shorts: Boolean(youtubeShortsConnected),
         }}
         onClose={() => {
           setDashboardBoosterModal(null);

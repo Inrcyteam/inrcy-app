@@ -1968,7 +1968,7 @@ export async function POST(req: Request) {
           const hashtags = Array.isArray(channelPost.hashtags) ? channelPost.hashtags : [];
           const normalizedTags = hashtags.map((tag) => normalizeHashtag(String(tag))).filter(Boolean).slice(0, 8);
           const autoHashtags = youtubeDefaults.autoHashtags !== false;
-          const shortsTags = autoHashtags ? Array.from(new Set(["Shorts", ...normalizedTags])) : normalizedTags;
+          const shortsTags = autoHashtags ? Array.from(new Set(["Shorts", "iNrCy", ...normalizedTags])) : normalizedTags;
           const description = [
             canonMessage,
             shortsTags.length ? shortsTags.map((tag) => `#${tag}`).join(" ") : "#Shorts",
@@ -1982,6 +1982,7 @@ export async function POST(req: Request) {
             privacyStatus,
             madeForKids,
             mimeType: channelVideo.type,
+            tags: shortsTags,
           });
 
           if (!upload.ok) {
@@ -2014,6 +2015,8 @@ export async function POST(req: Request) {
             external_url: upload.shortsUrl || upload.videoUrl || null,
             channel_url: channelUrl || null,
             privacy_status: upload.privacyStatus || privacyStatus,
+            processing_status: upload.processingStatus || null,
+            upload_status: upload.uploadStatus || null,
             diagnostics: upload,
           };
           continue;

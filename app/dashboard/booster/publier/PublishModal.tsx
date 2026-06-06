@@ -739,6 +739,7 @@ export default function PublishModal({
         "instagram",
         "linkedin",
         "tiktok",
+        "youtube_shorts",
       ];
       for (const key of keys) {
         const current = sanitizePostForEditor(key, prev[key]);
@@ -889,6 +890,7 @@ export default function PublishModal({
       "instagram",
       "linkedin",
       "tiktok",
+      "youtube_shorts",
     ];
     return ordered.filter((key) => channels[key] && connected[key]);
   }, [channels, connected]);

@@ -11,6 +11,7 @@ export type YoutubeShortsUploadInput = {
   privacyStatus: "public" | "unlisted" | "private";
   madeForKids?: boolean;
   mimeType?: string | null;
+  tags?: string[] | null;
 };
 
 export type YoutubeShortsUploadResult = {
@@ -22,7 +23,10 @@ export type YoutubeShortsUploadResult = {
   privacyStatus?: string | null;
   raw?: unknown;
   error?: string;
+  reason?: string | null;
   status?: number;
+  processingStatus?: string | null;
+  uploadStatus?: string | null;
 };
 
 function sanitizeTitle(input: string) {
@@ -34,13 +38,53 @@ function sanitizeDescription(input: string) {
   return String(input || "").trim().slice(0, 4800);
 }
 
+function getYoutubeErrorReason(data: unknown) {
+  const rec = asRecord(data);
+  const err = asRecord(rec.error);
+  const errors = Array.isArray(err.errors) ? err.errors : [];
+  const first = asRecord(errors[0]);
+  return asString(first.reason) || asString(err.status) || null;
+}
+
 function youtubeErrorMessage(data: unknown, fallback: string) {
   const rec = asRecord(data);
   const err = asRecord(rec.error);
   const message = asString(err.message);
   const errors = Array.isArray(err.errors) ? err.errors : [];
   const first = asRecord(errors[0]);
+  const reason = getYoutubeErrorReason(data);
+  const raw = `${reason || ""} ${message || ""} ${asString(first.message) || ""}`.toLowerCase();
+
+  if (/quota|dailylimit|uploadlimit|ratelimit|rate limit|exceeded/.test(raw)) {
+    return "Quota YouTube atteint. Réessayez plus tard ou vérifiez le quota API Google.";
+  }
+  if (/insufficient|permission|forbidden|scope|accessnotconfigured|not authorized|unauthorized/.test(raw)) {
+    return "Autorisation YouTube insuffisante. Déconnectez puis reconnectez YouTube Shorts.";
+  }
+  if (/invalid credentials|auth|token|expired|invalid_grant/.test(raw)) {
+    return "Connexion YouTube expirée. Déconnectez puis reconnectez YouTube Shorts.";
+  }
+  if (/invalidtitle|title|metadata/.test(raw)) {
+    return "Titre ou métadonnées YouTube invalides.";
+  }
+  if (/invaliddescription|description/.test(raw)) {
+    return "Description YouTube invalide.";
+  }
+  if (/media|video|upload|unsupported|invalid/.test(raw)) {
+    return "Vidéo refusée par YouTube. Vérifiez le format, la durée et le poids du fichier.";
+  }
+
   return message || asString(first.message) || asString(first.reason) || fallback;
+}
+
+function sanitizeTags(input: unknown) {
+  const items = Array.isArray(input) ? input : [];
+  return Array.from(new Set(
+    items
+      .map((tag) => String(tag || "").replace(/^#/, "").trim())
+      .filter(Boolean)
+      .map((tag) => tag.slice(0, 30)),
+  )).slice(0, 12);
 }
 
 async function fetchVideoBlob(videoUrl: string) {
@@ -52,6 +96,7 @@ async function fetchVideoBlob(videoUrl: string) {
   if (!res.ok) throw new Error(`Vidéo iNrCy inaccessible pour YouTube (${res.status}).`);
   const blob = await res.blob();
   if (!blob.size) throw new Error("Vidéo iNrCy vide ou introuvable.");
+  if (blob.size > 512 * 1024 * 1024) throw new Error("Vidéo trop lourde pour l'upload YouTube depuis iNrCy.");
   return blob;
 }
 
@@ -69,6 +114,7 @@ export async function uploadYoutubeShort(input: YoutubeShortsUploadInput): Promi
         title: sanitizeTitle(input.title),
         description: sanitizeDescription(input.description),
         categoryId: "22",
+        tags: sanitizeTags(input.tags),
       },
       status: {
         privacyStatus: input.privacyStatus,
@@ -78,7 +124,7 @@ export async function uploadYoutubeShort(input: YoutubeShortsUploadInput): Promi
 
     const initUrl = `https://www.googleapis.com/upload/youtube/v3/videos?${new URLSearchParams({
       uploadType: "resumable",
-      part: "snippet,status",
+      part: "snippet,status,processingDetails",
     }).toString()}`;
 
     const initRes = await fetch(initUrl, {
@@ -95,7 +141,13 @@ export async function uploadYoutubeShort(input: YoutubeShortsUploadInput): Promi
 
     if (!initRes.ok) {
       const data = await initRes.json().catch(() => ({}));
-      return { ok: false, status: initRes.status, error: youtubeErrorMessage(data, "YouTube a refusé la préparation de l'upload."), raw: data };
+      return {
+        ok: false,
+        status: initRes.status,
+        reason: getYoutubeErrorReason(data),
+        error: youtubeErrorMessage(data, "YouTube a refusé la préparation de l'upload."),
+        raw: data,
+      };
     }
 
     const location = initRes.headers.get("location") || "";
@@ -114,17 +166,28 @@ export async function uploadYoutubeShort(input: YoutubeShortsUploadInput): Promi
 
     const data = await uploadRes.json().catch(() => ({}));
     if (!uploadRes.ok) {
-      return { ok: false, status: uploadRes.status, error: youtubeErrorMessage(data, "YouTube a refusé la vidéo."), raw: data };
+      return {
+        ok: false,
+        status: uploadRes.status,
+        reason: getYoutubeErrorReason(data),
+        error: youtubeErrorMessage(data, "YouTube a refusé la vidéo."),
+        raw: data,
+      };
     }
 
-    const videoId = asString(asRecord(data).id) || null;
+    const dataRec = asRecord(data);
+    const videoId = asString(dataRec.id) || null;
+    const status = asRecord(dataRec.status);
+    const processingDetails = asRecord(dataRec.processingDetails);
     return {
       ok: true,
       videoId,
       videoUrl: videoId ? `https://www.youtube.com/watch?v=${encodeURIComponent(videoId)}` : null,
       shortsUrl: videoId ? `https://www.youtube.com/shorts/${encodeURIComponent(videoId)}` : null,
-      title: asString(asRecord(asRecord(data).snippet).title) || metadata.snippet.title,
-      privacyStatus: asString(asRecord(asRecord(data).status).privacyStatus) || input.privacyStatus,
+      title: asString(asRecord(dataRec.snippet).title) || metadata.snippet.title,
+      privacyStatus: asString(status.privacyStatus) || input.privacyStatus,
+      uploadStatus: asString(status.uploadStatus) || null,
+      processingStatus: asString(processingDetails.processingStatus) || null,
       raw: data,
     };
   } catch (e) {

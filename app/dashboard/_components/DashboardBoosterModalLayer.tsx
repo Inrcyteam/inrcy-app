@@ -36,7 +36,7 @@ export default function DashboardBoosterModalLayer({
 }: {
   mode: DashboardBoosterModalMode;
   onClose: () => void;
-  initialConnectedChannels?: Partial<Record<"inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin" | "tiktok", boolean>>;
+  initialConnectedChannels?: Partial<Record<"inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin" | "tiktok" | "youtube_shorts", boolean>>;
 }) {
   const router = useRouter();
   const [publishSuccessOpen, setPublishSuccessOpen] = useState(false);
