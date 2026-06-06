@@ -13,6 +13,7 @@ import { confirmInrcy } from "@/lib/inrcyDialog";
 import {
   editableHtmlToSiteText,
   stripSiteTextFormatting,
+  stripSiteTextFormattingForEditor,
 } from "@/lib/boosterFormatting";
 import stylesDash from "../../dashboard.module.css";
 import { ChannelImageAdapterModal } from "@/app/dashboard/_components/ChannelImageAdapterTool";
@@ -176,11 +177,11 @@ function sanitizePatchForEditor(
   const next: Partial<ChannelPost> = { ...patch };
   if (!isSiteDisplayKey(channel)) {
     if (typeof next.title === "string")
-      next.title = stripSiteTextFormatting(next.title);
+      next.title = stripSiteTextFormattingForEditor(next.title);
     if (typeof next.content === "string")
-      next.content = stripSiteTextFormatting(next.content);
+      next.content = stripSiteTextFormattingForEditor(next.content);
     if (typeof next.cta === "string")
-      next.cta = stripSiteTextFormatting(next.cta);
+      next.cta = stripSiteTextFormattingForEditor(next.cta);
   }
   if (next.ctaUrl !== undefined) next.ctaUrl = String(next.ctaUrl || "");
   if (next.ctaPhone !== undefined) next.ctaPhone = String(next.ctaPhone || "");
@@ -1632,6 +1633,19 @@ export default function PublishModal({
   const toggle = (key: ChannelKey) => {
     if (!connected[key]) return;
     setChannels((s) => ({ ...s, [key]: !s[key] }));
+  };
+
+  const setAllChannelsSelected = (selected: boolean) => {
+    setChannels((prev) =>
+      CHANNEL_KEYS.reduce(
+        (acc, key) => ({
+          ...acc,
+          [key]: connected[key] ? selected : false,
+        }),
+        { ...prev } as Record<ChannelKey, boolean>,
+      ),
+    );
+    setChannelInfoOpen(null);
   };
 
   const getChannelDetailInfo = (key: ChannelKey) => {
@@ -3138,6 +3152,7 @@ export default function PublishModal({
         channelInfoOpen={channelInfoOpen}
         setChannelInfoOpen={setChannelInfoOpen}
         toggle={toggle}
+        setAllChannelsSelected={setAllChannelsSelected}
         getChannelDetailInfo={getChannelDetailInfo}
       />
 

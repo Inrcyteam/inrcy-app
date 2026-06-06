@@ -25,6 +25,7 @@ type PublishChannelSelectorProps = {
   channelInfoOpen: ChannelKey | null;
   setChannelInfoOpen: Dispatch<SetStateAction<ChannelKey | null>>;
   toggle: (key: ChannelKey) => void;
+  setAllChannelsSelected: (selected: boolean) => void;
   getChannelDetailInfo: (key: ChannelKey) => ChannelDetailInfo | null;
 };
 
@@ -69,17 +70,83 @@ export default function PublishChannelSelector({
   channelInfoOpen,
   setChannelInfoOpen,
   toggle,
+  setAllChannelsSelected,
   getChannelDetailInfo,
 }: PublishChannelSelectorProps) {
   const channelKeys = Object.keys(CHANNEL_LABELS) as ChannelKey[];
+  const connectedChannelKeys = channelKeys.filter((key) => connected[key]);
+  const selectedConnectedCount = connectedChannelKeys.filter((key) => channels[key]).length;
+  const hasConnectedChannels = connectedChannelKeys.length > 0;
+  const allConnectedSelected = hasConnectedChannels && selectedConnectedCount === connectedChannelKeys.length;
+  const bulkLabel = allConnectedSelected ? "Tout désélectionner" : "Tout sélectionner";
 
   return (
     <div
       className={styles.blockCard}
       style={{ minWidth: 0, maxWidth: "100%", boxSizing: "border-box" }}
     >
-      <div className={styles.blockTitle} style={{ marginBottom: 8 }}>
-        Canaux
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 10,
+          marginBottom: 8,
+        }}
+      >
+        <div className={styles.blockTitle}>Canaux</div>
+        <button
+          type="button"
+          aria-label={bulkLabel}
+          title={bulkLabel}
+          disabled={!hasConnectedChannels}
+          onClick={() => setAllChannelsSelected(!allConnectedSelected)}
+          style={{
+            minWidth: isMobile ? 34 : undefined,
+            width: isMobile ? 34 : undefined,
+            height: isMobile ? 34 : 32,
+            padding: isMobile ? 0 : "0 13px",
+            borderRadius: isMobile ? 11 : 999,
+            border: allConnectedSelected
+              ? "1px solid rgba(251,191,36,0.65)"
+              : "1px solid rgba(74,222,128,0.55)",
+            background: allConnectedSelected
+              ? "rgba(251,191,36,0.10)"
+              : "rgba(34,197,94,0.10)",
+            color: allConnectedSelected ? "#fde68a" : "#bbf7d0",
+            fontSize: 12.5,
+            fontWeight: 900,
+            lineHeight: 1,
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 7,
+            whiteSpace: "nowrap",
+            cursor: hasConnectedChannels ? "pointer" : "not-allowed",
+            opacity: hasConnectedChannels ? 1 : 0.45,
+          }}
+        >
+          {isMobile ? (
+            <span
+              aria-hidden="true"
+              style={{
+                width: 15,
+                height: 15,
+                borderRadius: 4,
+                border: "2px solid currentColor",
+                display: "inline-grid",
+                placeItems: "center",
+                fontSize: 10,
+                fontWeight: 950,
+                lineHeight: 1,
+              }}
+            >
+              {allConnectedSelected ? "✓" : ""}
+            </span>
+          ) : (
+            bulkLabel
+          )}
+        </button>
       </div>
       <div className={styles.subtitle} style={{ marginBottom: isMobile ? 10 : 8 }}>
         iNrCy publie une version adaptée sur chaque canal sélectionné.

@@ -171,7 +171,7 @@ export function renderBoosterSiteContentHtml(input: unknown) {
     .join("");
 }
 
-export function stripSiteTextFormatting(input: unknown) {
+export function stripSiteTextFormattingForEditor(input: unknown) {
   return decodeBasicHtmlEntities(String(input ?? ""))
     .replace(new RegExp(`<\\/?\\s*(${ALLOWED_INLINE_TAGS})[^>]*>`, "gi"), "")
     .replace(new RegExp(`&lt;\\/?\\s*(${ALLOWED_INLINE_TAGS})[^&]*?&gt;`, "gi"), "")
@@ -182,6 +182,9 @@ export function stripSiteTextFormatting(input: unknown) {
     .replace(/\*{1,3}/g, "")
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\n[ \t]+/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
+    .replace(/\n{3,}/g, "\n\n");
+}
+
+export function stripSiteTextFormatting(input: unknown) {
+  return stripSiteTextFormattingForEditor(input).trim();
 }
