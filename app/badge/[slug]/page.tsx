@@ -20,6 +20,7 @@ import inrCalendarLogo from "@/public/inrcalendar-logo.png";
 import styles from "./badge.module.css";
 import BadgeShareButton from "./BadgeShareButton";
 import BadgeLeadButton from "./BadgeLeadButton";
+import BadgeAnalyticsClient from "./BadgeAnalyticsClient";
 
 export const dynamic = "force-dynamic";
 
@@ -144,9 +145,11 @@ type ActionLinkProps = {
   tone?: ActionTone;
   compact?: boolean;
   iconOnly?: boolean;
+  trackingAction?: string;
+  trackingTarget?: string;
 };
 
-function ActionLink({ href, label, detail, download, icon, iconSrc, tone = "neutral", compact = false, iconOnly = false }: ActionLinkProps) {
+function ActionLink({ href, label, detail, download, icon, iconSrc, tone = "neutral", compact = false, iconOnly = false, trackingAction, trackingTarget }: ActionLinkProps) {
   const className = [
     styles.action,
     iconOnly ? styles.actionIconOnly : compact ? styles.actionCompact : styles.actionWide,
@@ -163,6 +166,8 @@ function ActionLink({ href, label, detail, download, icon, iconSrc, tone = "neut
       download={download}
       aria-label={iconOnly ? label : undefined}
       title={iconOnly ? label : undefined}
+      data-inrbadge-action={trackingAction}
+      data-inrbadge-target={trackingTarget || href}
     >
       <span className={styles.actionIcon} aria-hidden="true">
         {iconSrc ? <img className={styles.iconImage} src={iconSrc} alt="" width={28} height={28} loading="eager" decoding="async" fetchPriority={tone === "appointment" ? "high" : undefined} /> : <span>{icon}</span>}
@@ -344,24 +349,24 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
   const vCardFilename = `${safeFilename(company || displayName)}.vcf`;
 
   const primaryActions = [
-    shareSettings.phone && phone && phoneHref(phone) ? { href: phoneHref(phone), label: "Appeler", icon: "☎", tone: "phone" as ActionTone } : null,
-    shareSettings.email && badgeEmail ? { href: createMailto(badgeEmail), label: "Mail", icon: "✉", tone: "mail" as ActionTone } : null,
-    shareSettings.saveContact ? { href: vCardUri, label: "Enregistrer", download: vCardFilename, icon: "👤", tone: "contact" as ActionTone } : null,
+    shareSettings.phone && phone && phoneHref(phone) ? { href: phoneHref(phone), label: "Appeler", icon: "☎", tone: "phone" as ActionTone, trackingAction: "phone" } : null,
+    shareSettings.email && badgeEmail ? { href: createMailto(badgeEmail), label: "Mail", icon: "✉", tone: "mail" as ActionTone, trackingAction: "mail" } : null,
+    shareSettings.saveContact ? { href: vCardUri, label: "Enregistrer", download: vCardFilename, icon: "👤", tone: "contact" as ActionTone, trackingAction: "save_contact" } : null,
   ].filter(Boolean) as ActionLinkProps[];
 
   const channelActions = [
-    shareSettings.siteInrcy && publicChannelCanShare.siteInrcy ? { href: siteInrcyUrl, label: "Site iNrCy", iconSrc: inrcyIcon.src, tone: "site" as ActionTone } : null,
-    shareSettings.siteWeb && publicChannelCanShare.siteWeb ? { href: siteWebUrl, label: "Site web", iconSrc: siteWebIcon.src, tone: "site" as ActionTone } : null,
-    shareSettings.googleBusiness && publicChannelCanShare.googleBusiness ? { href: gmbUrl, label: "Google Business", iconSrc: googleBusinessIcon.src, tone: "google" as ActionTone } : null,
-    shareSettings.linkedin && publicChannelCanShare.linkedin ? { href: linkedinUrl, label: "LinkedIn", iconSrc: linkedinIcon.src, tone: "linkedin" as ActionTone } : null,
-    shareSettings.instagram && publicChannelCanShare.instagram ? { href: instagramUrl, label: "Instagram", iconSrc: instagramIcon.src, tone: "instagram" as ActionTone } : null,
-    shareSettings.facebook && publicChannelCanShare.facebook ? { href: facebookUrl, label: "Facebook", iconSrc: facebookIcon.src, tone: "facebook" as ActionTone } : null,
-    shareSettings.tiktok && publicChannelCanShare.tiktok ? { href: tiktokUrl, label: "TikTok", iconSrc: tiktokIcon.src, tone: "tiktok" as ActionTone } : null,
-    shareSettings.youtubeShorts && publicChannelCanShare.youtubeShorts ? { href: youtubeShortsUrl, label: "YouTube Shorts", iconSrc: youtubeShortsIcon.src, tone: "youtube" as ActionTone } : null,
+    shareSettings.siteInrcy && publicChannelCanShare.siteInrcy ? { href: siteInrcyUrl, label: "Site iNrCy", iconSrc: inrcyIcon.src, tone: "site" as ActionTone, trackingAction: "site_inrcy" } : null,
+    shareSettings.siteWeb && publicChannelCanShare.siteWeb ? { href: siteWebUrl, label: "Site web", iconSrc: siteWebIcon.src, tone: "site" as ActionTone, trackingAction: "site_web" } : null,
+    shareSettings.googleBusiness && publicChannelCanShare.googleBusiness ? { href: gmbUrl, label: "Google Business", iconSrc: googleBusinessIcon.src, tone: "google" as ActionTone, trackingAction: "google_business" } : null,
+    shareSettings.linkedin && publicChannelCanShare.linkedin ? { href: linkedinUrl, label: "LinkedIn", iconSrc: linkedinIcon.src, tone: "linkedin" as ActionTone, trackingAction: "linkedin" } : null,
+    shareSettings.instagram && publicChannelCanShare.instagram ? { href: instagramUrl, label: "Instagram", iconSrc: instagramIcon.src, tone: "instagram" as ActionTone, trackingAction: "instagram" } : null,
+    shareSettings.facebook && publicChannelCanShare.facebook ? { href: facebookUrl, label: "Facebook", iconSrc: facebookIcon.src, tone: "facebook" as ActionTone, trackingAction: "facebook" } : null,
+    shareSettings.tiktok && publicChannelCanShare.tiktok ? { href: tiktokUrl, label: "TikTok", iconSrc: tiktokIcon.src, tone: "tiktok" as ActionTone, trackingAction: "tiktok" } : null,
+    shareSettings.youtubeShorts && publicChannelCanShare.youtubeShorts ? { href: youtubeShortsUrl, label: "YouTube Shorts", iconSrc: youtubeShortsIcon.src, tone: "youtube" as ActionTone, trackingAction: "youtube_shorts" } : null,
   ].filter(Boolean) as ActionLinkProps[];
 
   const appointmentAction = shareSettings.appointment
-    ? { href: `/badge/${slug}/rdv`, label: "Prendre RDV", iconSrc: inrCalendarLogo.src, tone: "appointment" as ActionTone }
+    ? { href: `/badge/${slug}/rdv`, label: "Prendre RDV", iconSrc: inrCalendarLogo.src, tone: "appointment" as ActionTone, trackingAction: "appointment" }
     : null;
 
   const channelRowSize =
@@ -385,6 +390,7 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
 
   return (
     <main className={styles.page}>
+      <BadgeAnalyticsClient slug={slug} />
       {iconPreloads.map((src) => <link key={src} rel="preload" as="image" href={src} />)}
       <section className={styles.shell}>
         <div className={styles.card}>

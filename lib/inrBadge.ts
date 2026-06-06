@@ -74,3 +74,15 @@ export function getInrBadgeBaseUrl() {
 export function createInrBadgePublicUrl(profile: InrBadgeProfileSummary) {
   return `${getInrBadgeBaseUrl()}/badge/${createInrBadgeSlug(profile)}`;
 }
+export function createInrBadgeQrTrackingUrl(publicUrl: string) {
+  const raw = String(publicUrl || "").trim();
+  if (!raw) return "";
+  try {
+    const url = new URL(raw);
+    url.searchParams.set("src", "qr");
+    return url.toString();
+  } catch {
+    const separator = raw.includes("?") ? "&" : "?";
+    return `${raw}${separator}src=qr`;
+  }
+}

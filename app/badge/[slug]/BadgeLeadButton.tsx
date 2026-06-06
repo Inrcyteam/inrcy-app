@@ -99,7 +99,7 @@ export default function BadgeLeadButton({ slug, company }: Props) {
   return (
     <>
       <div className={styles.leadWrap}>
-        <button type="button" className={styles.leadButton} onClick={() => setOpen(true)}>
+        <button type="button" className={styles.leadButton} onClick={() => setOpen(true)} data-inrbadge-action="lead_form" data-inrbadge-target="lead_form">
           <span className={styles.leadButtonIcon} aria-hidden="true">✦</span>
           <span>Transmettre mes coordonnées</span>
           <span className={styles.leadButtonArrow} aria-hidden="true">›</span>

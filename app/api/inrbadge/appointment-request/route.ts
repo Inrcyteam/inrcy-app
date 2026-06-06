@@ -5,6 +5,7 @@ import { normalizeInrBadgeShareSettings, resolveInrBadgeAppointmentSettings } fr
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendTxMail } from "@/lib/txMailer";
 import { upsertCrmContactWithoutDuplicate } from "@/lib/crmContactDedupe";
+import { recordInrBadgeEvent } from "@/lib/inrBadgeAnalytics";
 
 type RequestBody = {
   slug?: string;
@@ -304,6 +305,16 @@ export async function POST(req: Request) {
       console.error("[inrbadge-appointment-request] mail failed", error);
     });
   }
+
+  await recordInrBadgeEvent(supabaseAdmin, {
+    userId,
+    slug,
+    eventType: "appointment_request",
+    actionKey: "appointment",
+    source: "badge",
+    referrer: req.headers.get("referer") || "",
+    metadata: { requestId, crmContactId: crmResult?.id || null, start: start.toISOString(), end: end.toISOString() },
+  });
 
   const { error: notificationError } = await supabaseAdmin.from("notifications").insert({
     user_id: userId,

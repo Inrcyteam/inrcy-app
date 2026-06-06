@@ -4,6 +4,7 @@ import { extractInrBadgeUserIdFromSlug } from "@/lib/inrBadge";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendTxMail } from "@/lib/txMailer";
 import { upsertCrmContactWithoutDuplicate } from "@/lib/crmContactDedupe";
+import { recordInrBadgeEvent } from "@/lib/inrBadgeAnalytics";
 
 function cleanString(value: unknown, max = 240) {
   return String(value || "").trim().replace(/\s+/g, " ").slice(0, max);
@@ -196,6 +197,17 @@ export async function POST(req: Request) {
   }
 
   const displayName = [firstName, lastName].filter(Boolean).join(" ") || companyName || email || phone || "Nouveau contact";
+
+  await recordInrBadgeEvent(supabaseAdmin, {
+    userId,
+    slug,
+    eventType: "lead_submit",
+    actionKey: "lead_form",
+    source: body?.source || "badge",
+    referrer: req.headers.get("referer") || "",
+    visitorId: body?.visitorId,
+    metadata: { contactId: crmResult.id || null, created: Boolean(crmResult.created) },
+  });
 
   if (crmResult.created) {
     const { error: notificationError } = await supabaseAdmin.from("notifications").insert({

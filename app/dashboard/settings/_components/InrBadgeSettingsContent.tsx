@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { createInrBadgeQrMatrix } from "@/lib/inrBadgeQr";
-import type { InrBadgeProfileSummary } from "@/lib/inrBadge";
+import { createInrBadgeQrTrackingUrl, type InrBadgeProfileSummary } from "@/lib/inrBadge";
 import {
   DEFAULT_INRBADGE_APPOINTMENT_SETTINGS,
   DEFAULT_INRBADGE_SHARE_SETTINGS,
@@ -479,14 +479,14 @@ export default function InrBadgeSettingsContent({
   const downloadPdf = () => {
     if (!publicUrl) return;
     setDownloadMenuOpen(false);
-    const blob = createPdfBlob(publicUrl, profile);
+    const blob = createPdfBlob(createInrBadgeQrTrackingUrl(publicUrl), profile);
     downloadBlob(blob, `${safeFilename(company)}-inrbadge.pdf`);
   };
 
   const downloadPng = () => {
     if (!publicUrl) return;
     setDownloadMenuOpen(false);
-    void downloadQrPng(publicUrl, profile);
+    void downloadQrPng(createInrBadgeQrTrackingUrl(publicUrl), profile);
   };
 
   const channelItems: Array<{ key: ShareKey; label: string; connected: boolean; helper: string }> = [

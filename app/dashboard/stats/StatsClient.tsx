@@ -116,6 +116,74 @@ const EMPTY_MAIL_STATS: MailStatsSnapshot = {
   destinatairesTotal: 0,
 };
 
+type InrBadgePeriodStats = {
+  week: number;
+  month: number;
+  total: number;
+};
+
+type InrBadgeStatsSnapshot = {
+  loading: boolean;
+  error?: string;
+  syncedAt?: number;
+  views: InrBadgePeriodStats;
+  qrScans: InrBadgePeriodStats;
+  actions: InrBadgePeriodStats;
+  leads: InrBadgePeriodStats;
+  appointments: InrBadgePeriodStats;
+  capturedLeads: CapturedLeads;
+  actionsByKey: Record<string, InrBadgePeriodStats>;
+  qualityScore: number;
+  opportunity30: number;
+};
+
+const ZERO_INRBADGE_PERIOD: InrBadgePeriodStats = { week: 0, month: 0, total: 0 };
+
+const EMPTY_INRBADGE_STATS: InrBadgeStatsSnapshot = {
+  loading: true,
+  views: ZERO_INRBADGE_PERIOD,
+  qrScans: ZERO_INRBADGE_PERIOD,
+  actions: ZERO_INRBADGE_PERIOD,
+  leads: ZERO_INRBADGE_PERIOD,
+  appointments: ZERO_INRBADGE_PERIOD,
+  capturedLeads: { week: 0, month: 0 },
+  actionsByKey: {},
+  qualityScore: 52,
+  opportunity30: 4,
+};
+
+function normalizeInrBadgePeriodStats(value: unknown): InrBadgePeriodStats {
+  const raw = value && typeof value === "object" ? value as Partial<InrBadgePeriodStats> : {};
+  return {
+    week: Math.max(0, Math.round(safeNum(raw.week))),
+    month: Math.max(0, Math.round(safeNum(raw.month))),
+    total: Math.max(0, Math.round(safeNum(raw.total, safeNum(raw.month)))),
+  };
+}
+
+function normalizeInrBadgeStatsSnapshot(value: unknown, syncedAt?: number): InrBadgeStatsSnapshot {
+  const raw = value && typeof value === "object" ? value as Partial<InrBadgeStatsSnapshot> : {};
+  const actionsByKeyRaw = raw.actionsByKey && typeof raw.actionsByKey === "object" ? raw.actionsByKey as Record<string, unknown> : {};
+  const actionsByKey = Object.fromEntries(
+    Object.entries(actionsByKeyRaw).map(([key, stats]) => [key, normalizeInrBadgePeriodStats(stats)])
+  ) as Record<string, InrBadgePeriodStats>;
+
+  return {
+    loading: false,
+    error: typeof raw.error === "string" ? raw.error : undefined,
+    syncedAt: Number.isFinite(Number(syncedAt ?? raw.syncedAt)) ? Number(syncedAt ?? raw.syncedAt) : Date.now(),
+    views: normalizeInrBadgePeriodStats(raw.views),
+    qrScans: normalizeInrBadgePeriodStats(raw.qrScans),
+    actions: normalizeInrBadgePeriodStats(raw.actions),
+    leads: normalizeInrBadgePeriodStats(raw.leads),
+    appointments: normalizeInrBadgePeriodStats(raw.appointments),
+    capturedLeads: normalizeCapturedLeads(raw.capturedLeads),
+    actionsByKey,
+    qualityScore: Math.max(0, Math.min(100, Math.round(safeNum(raw.qualityScore, 52)))),
+    opportunity30: Math.max(0, Math.round(safeNum(raw.opportunity30, 4))),
+  };
+}
+
 const MAIL_STATS_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const DASHBOARD_CHANNEL_STATE_CACHE_KEY = "inrcy_dashboard_channel_state_v1";
 
@@ -379,51 +447,72 @@ function buildMailCubeModel(stats: MailStatsSnapshot, period: Period): CubeModel
     action: recommendedAction,
   };
 }
-function buildInrBadgeCubeModel(period: Period): CubeModel {
+function buildInrBadgeCubeModel(period: Period, stats: InrBadgeStatsSnapshot): CubeModel {
+  const action = (key: string) => normalizeInrBadgePeriodStats(stats.actionsByKey?.[key]);
+  const views = normalizeInrBadgePeriodStats(stats.views);
+  const qrScans = normalizeInrBadgePeriodStats(stats.qrScans);
+  const actions = normalizeInrBadgePeriodStats(stats.actions);
+  const leads = normalizeInrBadgePeriodStats(stats.leads);
+  const appointments = normalizeInrBadgePeriodStats(stats.appointments);
+  const capturedLeads = normalizeCapturedLeads(stats.capturedLeads);
+  const qualityScore = Math.max(0, Math.min(100, Math.round(safeNum(stats.qualityScore, 52))));
+  const qualityLabel = qualityScore >= 82 ? "Très actif" : qualityScore >= 68 ? "Actif" : qualityScore >= 55 ? "À booster" : "À lancer";
+  const qualityTone: CubeModel["qualityTone"] = qualityScore >= 82 ? "excellent" : qualityScore >= 68 ? "solid" : qualityScore >= 55 ? "ok" : "low";
+  const opportunity30 = Math.max(0, Math.round(safeNum(stats.opportunity30)));
+  const hasActivity = views.month > 0 || qrScans.month > 0 || actions.month > 0 || capturedLeads.month > 0;
+
   return {
     key: "inrbadge",
     title: "iNr’Badge",
     subtitle: "Hub de conversion",
-    accountLabel: "Connecté",
+    accountLabel: stats.loading ? "Analyse..." : "Connecté",
     period,
-    loading: false,
-    error: undefined,
+    loading: stats.loading,
+    error: stats.error,
     connections: { main: true },
     provenance: [
-      { label: "Vues fiche", value: 0, colorVar: "--cSocial" },
-      { label: "Scans QR", value: 0, colorVar: "--cDirect" },
-      { label: "Actions", value: 0, colorVar: "--cGoogle" },
+      { label: "Vues fiche", value: views.month, colorVar: "--cSocial" },
+      { label: "Scans QR", value: qrScans.month, colorVar: "--cDirect" },
+      { label: "Actions", value: actions.month, colorVar: "--cGoogle" },
     ],
-    provenanceHint: "Le détail des vues, scans et clics sera branché dans la prochaine étape de tracking iNr’Badge.",
-    opportunity30: 0,
-    opportunityLabel: "Hub actif",
-    capturedLeads: { week: 0, month: 0 },
-    capturedLeadsHint: "iNr’Badge mesure surtout les actions utiles vers vos canaux et vos CTA.",
+    provenanceHint: hasActivity
+      ? "Répartition réelle des vues, scans QR et clics iNr’Badge sur 30 jours."
+      : "Les statistiques réelles démarrent dès les prochaines visites de la fiche publique.",
+    opportunity30,
+    opportunityLabel: opportunity30 >= 18 ? "Fort potentiel" : opportunity30 >= 8 ? "Potentiel réel" : "Hub actif",
+    capturedLeads,
+    capturedLeadsHint: "Coordonnées transmises + demandes de RDV issues de votre iNr’Badge.",
     visibilityStats: [
       { label: "Fiche publique", value: "Active" },
-      { label: "QR code", value: "Actif" },
-      { label: "Canaux affichés", value: "Actifs" },
-      { label: "CTA rapides", value: "Actifs" },
+      { label: "Vues 30j", value: fmtInt(views.month), subValue: `${fmtInt(views.total)} au total` },
+      { label: "Scans QR 30j", value: fmtInt(qrScans.month), subValue: `${fmtInt(qrScans.total)} au total` },
+      { label: "CTA rapides", value: "Trackés" },
     ],
     actionStats: [
-      { label: "Appeler", value: "Disponible" },
-      { label: "Mail", value: "Disponible" },
-      { label: "Enregistrer", value: "Disponible" },
-      { label: "Prise RDV", value: "Configurable" },
+      { label: "Appels 30j", value: fmtInt(action("phone").month), subValue: `${fmtInt(action("phone").total)} au total` },
+      { label: "Mails 30j", value: fmtInt(action("mail").month), subValue: `${fmtInt(action("mail").total)} au total` },
+      { label: "Contacts 30j", value: fmtInt(leads.month), subValue: `${fmtInt(leads.total)} au total` },
+      { label: "RDV 30j", value: fmtInt(appointments.month), subValue: `${fmtInt(appointments.total)} au total` },
     ],
     inrcyActivityStats: {
-      publications: { week: 0, month: 0, total: 0 },
-      photos: { week: 0, month: 0, total: 0 },
-      videos: { week: 0, month: 0, total: 0 },
+      publications: views,
+      photos: qrScans,
+      videos: actions,
     },
-    qualityScore: 76,
-    qualityLabel: "Actif",
-    qualityTone: "solid",
-    insights: [
-      "iNr’Badge centralise la fiche publique, les actions rapides et l’accès à tous vos canaux.",
-      "Le suivi détaillé des scans QR, vues et clics sera ajouté dans une prochaine passe.",
-      "Utilisez le badge comme porte d’entrée premium vers votre écosystème iNrCy.",
-    ],
+    qualityScore,
+    qualityLabel,
+    qualityTone,
+    insights: hasActivity
+      ? [
+          `${fmtInt(views.month)} vues de fiche sur 30 jours, dont ${fmtInt(views.week)} sur 7 jours.`,
+          `${fmtInt(qrScans.month)} scans QR et ${fmtInt(actions.month)} actions utiles sur 30 jours.`,
+          `${fmtInt(capturedLeads.month)} demandes captées via coordonnées ou prise de RDV sur 30 jours.`,
+        ]
+      : [
+          "Le tracking réel iNr’Badge est actif.",
+          "Les prochaines ouvertures, scans QR, clics, contacts et demandes de RDV remonteront ici.",
+          "Diffusez le QR Code avec la version téléchargée depuis Configuration pour mesurer les scans.",
+        ],
     action: {
       key: "booster_promotion",
       title: "Partager votre badge",
@@ -470,6 +559,7 @@ export default function StatsClient() {
   const [statsMenuOpen, setStatsMenuOpen] = useState(false);
   const [dailyBootReady, setDailyBootReady] = useState(false);
   const [mailStats, setMailStats] = useState<MailStatsSnapshot>(() => buildInitialMailStatsSnapshot(period));
+  const [inrBadgeStats, setInrBadgeStats] = useState<InrBadgeStatsSnapshot>(EMPTY_INRBADGE_STATS);
 
   const scrollTo = (key: CubeKey) => {
     setActiveStatsPanel(key);
@@ -923,6 +1013,23 @@ export default function StatsClient() {
     }
   }, [applyBootstrapPayload, syncFromServerCacheIfNeeded]);
 
+  const refreshInrBadgeStats = useCallback(async () => {
+    setInrBadgeStats((prev) => ({ ...prev, loading: true, error: undefined }));
+    try {
+      const res = await fetch("/api/inrstats/inrbadge", { cache: "no-store", credentials: "include" });
+      if (!res.ok) throw new Error(await getSimpleFrenchApiError(res));
+      const json = await res.json().catch(() => ({}));
+      const syncedAt = Number.isFinite(Number(json?.syncedAt)) ? Number(json.syncedAt) : Date.now();
+      setInrBadgeStats(normalizeInrBadgeStatsSnapshot({ ...json, loading: false }, syncedAt));
+    } catch (error) {
+      setInrBadgeStats((prev) => ({
+        ...prev,
+        loading: false,
+        error: getSimpleFrenchErrorMessage(error, "Impossible de charger les données iNrBadge pour le moment."),
+      }));
+    }
+  }, []);
+
   const refreshMailStats = useCallback(async () => {
     setMailStats((prev) => ({ ...prev, loading: true, error: undefined }));
     try {
@@ -956,6 +1063,15 @@ export default function StatsClient() {
       window.removeEventListener("inrsend:mail-accounts-updated", handler);
     };
   }, [refreshMailStats, refreshNonce]);
+
+  useEffect(() => {
+    void refreshInrBadgeStats();
+    const handler = () => void refreshInrBadgeStats();
+    window.addEventListener("focus", handler);
+    return () => {
+      window.removeEventListener("focus", handler);
+    };
+  }, [refreshInrBadgeStats, refreshNonce]);
 
 
   const hydrateFromSessionCache = useCallback((targetPeriod: Period) => {
@@ -1331,17 +1447,18 @@ useEffect(() => {
 
 
   const mailOpportunity30 = useMemo(() => buildMailOpportunity30(mailStats), [mailStats]);
+  const inrBadgeOpportunity30 = useMemo(() => Math.max(0, Math.round(safeNum(inrBadgeStats.opportunity30))), [inrBadgeStats.opportunity30]);
 
   const centralByCube = useMemo<Record<CubeKey, number>>(() => ({
     ...summaryOpp.byCube,
-    inrbadge: 0,
+    inrbadge: inrBadgeOpportunity30,
     mails: mailOpportunity30,
-  }), [mailOpportunity30, summaryOpp.byCube]);
+  }), [inrBadgeOpportunity30, mailOpportunity30, summaryOpp.byCube]);
 
-  const centralPotential30 = Math.max(0, safeNum(summaryOpp.total) + mailOpportunity30);
+  const centralPotential30 = Math.max(0, safeNum(summaryOpp.total) + mailOpportunity30 + inrBadgeOpportunity30);
 
   const models: CubeModel[] = useMemo(() => ([
-    buildInrBadgeCubeModel(period),
+    buildInrBadgeCubeModel(period, inrBadgeStats),
     buildMailCubeModel(mailStats, period),
     buildCubeModel("site_inrcy", "Site iNrCy", "Optimisé pour convertir", period, dataByCube.site_inrcy, centralByCube),
     buildCubeModel("site_web", "Site Web", "Votre image", period, dataByCube.site_web, centralByCube),
@@ -1351,7 +1468,7 @@ useEffect(() => {
     buildCubeModel("linkedin", "LinkedIn", "Visibilité professionnelle", period, dataByCube.linkedin, centralByCube),
     buildCubeModel("tiktok", "TikTok", "Photos & vidéos courtes", period, dataByCube.tiktok, centralByCube),
     buildCubeModel("youtube_shorts", "YouTube Shorts", "Vidéos courtes", period, dataByCube.youtube_shorts, centralByCube),
-  ]), [centralByCube, dataByCube, mailStats, period]);
+  ]), [centralByCube, dataByCube, inrBadgeStats, mailStats, period]);
 
   const computedEstimatedByCube = useMemo<Record<CubeKey, number>>(() => {
     const rate = Math.max(0, safeNum(summaryProfile.lead_conversion_rate)) / 100;
@@ -1359,7 +1476,7 @@ useEffect(() => {
     const estimate = (opportunities: number) => Math.round(Math.max(0, safeNum(opportunities)) * rate * basket);
 
     return {
-      inrbadge: 0,
+      inrbadge: estimate(centralByCube.inrbadge),
       site_inrcy: estimate(centralByCube.site_inrcy),
       site_web: estimate(centralByCube.site_web),
       gmb: estimate(centralByCube.gmb),

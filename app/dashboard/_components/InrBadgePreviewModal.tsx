@@ -2,7 +2,7 @@
 
 import WorkflowBaseModal from "./WorkflowBaseModal";
 import InrBadgeQrCode from "./InrBadgeQrCode";
-import type { InrBadgeProfileSummary } from "@/lib/inrBadge";
+import { createInrBadgeQrTrackingUrl, type InrBadgeProfileSummary } from "@/lib/inrBadge";
 import styles from "../dashboard.module.css";
 
 const INRBADGE_HEADER_LINE = "iNr'Badge";
@@ -22,6 +22,7 @@ function getDisplayName(profile: InrBadgeProfileSummary) {
 export default function InrBadgePreviewModal({ profile, publicUrl, onClose, onConfigure }: Props) {
   const displayName = getDisplayName(profile);
   const company = profile.companyLegalName.trim() || "Votre entreprise";
+  const qrUrl = createInrBadgeQrTrackingUrl(publicUrl);
 
   return (
     <WorkflowBaseModal
@@ -63,7 +64,7 @@ export default function InrBadgePreviewModal({ profile, publicUrl, onClose, onCo
 
         <div className={styles.inrBadgeQrRealWrap}>
           {publicUrl ? (
-            <InrBadgeQrCode value={publicUrl} label={`QR Code iNr'Badge ${company}`} />
+            <InrBadgeQrCode value={qrUrl} label={`QR Code iNr'Badge ${company}`} />
           ) : (
             <div className={styles.inrBadgeQrUnavailable} role="img" aria-label="QR Code indisponible">
               QR indisponible
