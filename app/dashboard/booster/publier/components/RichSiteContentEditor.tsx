@@ -68,6 +68,7 @@ export default function RichSiteContentEditor({
       aria-multiline="true"
       onInput={sync}
       onBlur={sync}
+      onKeyDown={(event) => event.stopPropagation()}
       onPaste={(event) => {
         if (event.cancelable) event.preventDefault();
         const text = event.clipboardData.getData("text/plain");

@@ -1,5 +1,5 @@
 import { useLayoutEffect } from "react";
-import type { Dispatch, MutableRefObject, SetStateAction } from "react";
+import type { Dispatch, KeyboardEvent, MutableRefObject, SetStateAction } from "react";
 import { stripSiteTextFormatting } from "@/lib/boosterFormatting";
 import {
   BOOSTER_PREFERRED_CTA_OPTIONS,
@@ -79,6 +79,13 @@ export default function PublishContentEditorPanel({
     if (!element) return;
     element.style.height = "auto";
     element.style.height = `${element.scrollHeight}px`;
+  };
+
+  const keepEditorTypingInsideField = (event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    // Les bulles/carrousels du dashboard utilisent Espace/Entrée comme raccourcis clavier.
+    // Quand on édite un titre ou un contenu, on bloque seulement la propagation
+    // pour éviter qu'un parent intercepte la touche Espace, sans empêcher la saisie.
+    event.stopPropagation();
   };
 
   useLayoutEffect(() => {
@@ -194,6 +201,7 @@ export default function PublishContentEditorPanel({
                 {isMobile ? (
                   <textarea
                     value={getDisplayPost(activeCard).title}
+                    onKeyDown={keepEditorTypingInsideField}
                     onChange={(e) => updatePost(activeCard, { title: e.target.value })}
                     style={{
                       ...inputStyle,
@@ -211,6 +219,7 @@ export default function PublishContentEditorPanel({
                 ) : (
                   <input
                     value={getDisplayPost(activeCard).title}
+                    onKeyDown={keepEditorTypingInsideField}
                     onChange={(e) => updatePost(activeCard, { title: e.target.value })}
                     style={inputStyle}
                     placeholder="Titre"
@@ -316,6 +325,7 @@ export default function PublishContentEditorPanel({
                       autoResizeContentTextArea(element);
                     }}
                     value={getDisplayPost(activeCard).content}
+                    onKeyDown={keepEditorTypingInsideField}
                     onChange={(e) => {
                       updatePost(activeCard, { content: e.target.value });
                       autoResizeContentTextArea(e.currentTarget);
