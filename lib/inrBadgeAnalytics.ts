@@ -187,11 +187,20 @@ export async function recordInrBadgeEvent(supabase: SupabaseLike, input: {
 
   try {
     if (dailyVisitKey) {
-      const { error } = await supabase
-        .from("inrbadge_events")
-        .upsert(payload, { onConflict: "daily_visit_key", ignoreDuplicates: true });
-      if (error) throw error;
-      return { ok: true, deduped: true };
+      // Important : Supabase/PostgREST ne gère pas toujours bien un upsert
+      // sur un index unique partiel. On insère donc directement et on ignore
+      // uniquement les doublons journaliers. Sans ça, les vues et scans QR
+      // échouent silencieusement alors que les clics actions remontent bien.
+      const { error } = await supabase.from("inrbadge_events").insert(payload);
+      if (error) {
+        const dbError = error as { code?: string; message?: string };
+        const message = String(dbError.message || "").toLowerCase();
+        if (dbError.code === "23505" || message.includes("duplicate key")) {
+          return { ok: true, deduped: true };
+        }
+        throw error;
+      }
+      return { ok: true, deduped: false };
     }
 
     const { error } = await supabase.from("inrbadge_events").insert(payload);
