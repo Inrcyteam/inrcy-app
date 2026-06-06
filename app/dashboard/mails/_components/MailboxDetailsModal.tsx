@@ -212,6 +212,31 @@ function getTiktokPublicationUrl(result: any) {
   return cleanUsername ? `https://www.tiktok.com/@${cleanUsername}` : "https://www.tiktok.com";
 }
 
+function getYoutubeShortsPublicationUrl(result: any) {
+  const direct = firstStringDeep(
+    result?.external_url,
+    result?.shorts_url,
+    result?.video_url,
+    result?.post_url,
+    getNestedString(result, ["diagnostics", "shortsUrl"]),
+    getNestedString(result, ["diagnostics", "videoUrl"]),
+    getNestedString(result, ["diagnostics", "raw", "id"]),
+  );
+  if (direct) {
+    if (/^[A-Za-z0-9_-]{8,}$/.test(direct) && !direct.startsWith("http")) return `https://www.youtube.com/shorts/${direct}`;
+    return direct;
+  }
+
+  const videoId = firstStringDeep(
+    result?.external_id,
+    result?.videoId,
+    result?.video_id,
+    getNestedString(result, ["diagnostics", "videoId"]),
+    getNestedString(result, ["diagnostics", "raw", "id"]),
+  );
+  return videoId ? `https://www.youtube.com/shorts/${videoId}` : "https://www.youtube.com";
+}
+
 export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
   const {
     open,
@@ -511,7 +536,10 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                   const activePublicationFailed = isFailedChannelResult(activePublicationResult);
                   const activePublicationFailureMessage = getFailedChannelMessage(activePublicationResult);
                   const isTiktokPublicationEntry = activePublicationEntry?.key === "tiktok";
+                  const isYoutubeShortsPublicationEntry = activePublicationEntry?.key === "youtube_shorts";
+                  const isExternalVideoPublicationEntry = isTiktokPublicationEntry || isYoutubeShortsPublicationEntry;
                   const tiktokPublicationHref = isTiktokPublicationEntry ? getTiktokPublicationUrl(activePublicationResult) : "";
+                  const youtubeShortsPublicationHref = isYoutubeShortsPublicationEntry ? getYoutubeShortsPublicationUrl(activePublicationResult) : "";
                   const activeParts = activePublicationEntry?.parts || defaultParts;
                   const sourceDocAttachments = detailsItem.source === "send_items"
                     ? extractAttachmentsFromPayload(detailsSourceDocPayload)
@@ -844,6 +872,18 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                     >
                                       Ouvrir TikTok
                                     </button>
+                                  ) : isYoutubeShortsPublicationEntry && !isDraftItem ? (
+                                    <button
+                                      type="button"
+                                      className={styles.btnPrimary}
+                                      onClick={() => {
+                                        if (typeof window !== "undefined") window.open(youtubeShortsPublicationHref || "https://www.youtube.com", "_blank", "noopener,noreferrer");
+                                      }}
+                                      disabled={detailsActionBusy}
+                                      title="Ouvrir le Short publié sur YouTube"
+                                    >
+                                      Voir le Short
+                                    </button>
                                   ) : isDraftItem ? (
                                     <button
                                       type="button"
@@ -872,7 +912,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                       Modifier
                                     </button>
                                   )}
-                                  {!isDraftItem && !isTiktokPublicationEntry ? (
+                                  {!isDraftItem && !isExternalVideoPublicationEntry ? (
                                     <button
                                       type="button"
                                       className={styles.btnDangerSmall}
@@ -938,6 +978,22 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                               }}
                             >
                               <b>TikTok :</b> iNrSend garde l’historique et l’ouverture du post. La modification ou suppression réelle se fait dans TikTok ; supprimer l’historique ne supprime pas le post TikTok.
+                            </div>
+                          ) : null}
+
+                          {isYoutubeShortsPublicationEntry && !isDraftItem && !detailsEditMode ? (
+                            <div
+                              style={{
+                                marginTop: 12,
+                                padding: "10px 12px",
+                                borderRadius: 14,
+                                border: "1px solid rgba(56,189,248,0.24)",
+                                background: "rgba(56,189,248,0.08)",
+                                color: "rgba(225,245,255,0.92)",
+                                fontSize: 13,
+                              }}
+                            >
+                              <b>YouTube Shorts :</b> iNrSend garde le statut et le lien du Short publié. Pour l’instant, la modification ou suppression réelle se fait dans YouTube Studio ; supprimer l’historique ne supprime pas la vidéo YouTube.
                             </div>
                           ) : null}
 

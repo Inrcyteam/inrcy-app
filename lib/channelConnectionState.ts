@@ -3,6 +3,7 @@ import { getConnectionDisplayStatus, type ConnectionDisplayStatus } from "@/lib/
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { hasActiveInrcySite } from "@/lib/inrcySite";
 import { normalizeTiktokSettings } from "@/lib/tiktokMockSettings";
+import { applyYoutubeShortsIntegrationState } from "@/lib/youtubeShortsOAuth";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -286,10 +287,13 @@ export async function getChannelConnectionStates(
   const tiktokUsername = tiktokConnected ? (asString(tkMeta.username) || asString(tk.resource_label) || tiktokSettings.username || null) : null;
   const tiktokProfileUrl = tiktokConnected ? (asString(tkMeta.profile_url) || tiktokSettings.profileUrl || null) : null;
 
-  const youtubeShortsSettings = asRecord(settings.youtube_shorts);
-  const youtubeShortsUrl = (asString(youtubeShortsSettings.channelUrl) || asString(youtubeShortsSettings.url) || "").trim();
-  const youtubeShortsName = (asString(youtubeShortsSettings.channelName) || asString(youtubeShortsSettings.name) || "").trim();
-  const youtubeShortsConnected = Boolean(youtubeShortsSettings.connected && youtubeShortsUrl);
+  const yt = latestIntegration(rows, "youtube", "youtube_shorts", "youtube_shorts");
+  const ytMeta = asRecord(yt.meta);
+  const youtubeShorts = applyYoutubeShortsIntegrationState(settings.youtube_shorts, yt);
+  const youtubeShortsHasRefreshToken = hasTruthyString(yt.refresh_token_enc);
+  const youtubeShortsExpired = isExpired(yt.expires_at) && !youtubeShortsHasRefreshToken;
+  const youtubeShortsConnectionStatus = getConnectionDisplayStatus(youtubeShorts.connected, "channel:youtube_shorts", ytMeta);
+  const youtubeShortsRequiresUpdate = youtubeShortsConnectionStatus === "needs_update";
 
   const mailRows = rows.filter((row) => row.category === "mail");
   const mailConnectedCount = Math.max(0, Math.min(4, mailRows.length));
@@ -396,14 +400,14 @@ export async function getChannelConnectionStates(
       profile_url: tiktokConnected ? tiktokProfileUrl : null,
     },
     youtube_shorts: {
-      accountConnected: youtubeShortsConnected,
-      connected: youtubeShortsConnected,
-      expired: false,
-      requiresUpdate: false,
-      connection_status: youtubeShortsConnected ? "connected" : "disconnected",
-      resource_id: youtubeShortsUrl || youtubeShortsName || null,
-      channel_name: youtubeShortsConnected ? (youtubeShortsName || youtubeShortsUrl || null) : null,
-      channel_url: youtubeShortsConnected ? youtubeShortsUrl : null,
+      accountConnected: youtubeShorts.connected,
+      connected: youtubeShorts.connected,
+      expired: youtubeShortsExpired,
+      requiresUpdate: youtubeShortsRequiresUpdate,
+      connection_status: youtubeShortsConnectionStatus,
+      resource_id: youtubeShorts.connected ? (youtubeShorts.channelId || youtubeShorts.channelHandle || youtubeShorts.channelUrl || null) : null,
+      channel_name: youtubeShorts.connected ? (youtubeShorts.channelName || youtubeShorts.channelHandle || youtubeShorts.channelUrl || null) : null,
+      channel_url: youtubeShorts.connected ? (youtubeShorts.channelUrl || null) : null,
     },
   };
 }

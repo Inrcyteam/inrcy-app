@@ -127,7 +127,7 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
                 : m.key === "tiktok"
                   ? (blockDrivenViewHref || normalizeExternalHref(tiktokUrl) || "#")
                   : m.key === "youtube_shorts"
-                    ? (normalizeExternalHref(youtubeShortsUrl) || "#")
+                    ? (blockDrivenViewHref || normalizeExternalHref(youtubeShortsUrl) || "#")
                     : undefined;
 
     const specialViewLabel = m.key === "inrbadge"
@@ -161,7 +161,7 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
                 : m.key === "tiktok"
                   ? Boolean(blockDrivenViewHref || tiktokUrl)
                   : m.key === "youtube_shorts"
-                    ? Boolean(youtubeShortsUrl)
+                    ? Boolean(blockDrivenViewHref || youtubeShortsUrl)
                     : undefined;
 
     const onConfigure = () => {

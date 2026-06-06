@@ -1339,6 +1339,9 @@ const loadSiteInrcy = useCallback(async () => {
         nextState.linkedinUrl = String(states.linkedin.profile_url);
       }
       if ((states?.linkedin as any)?.organization_name) nextState.linkedinSelectedOrganizationName = String((states.linkedin as any).organization_name);
+
+      nextState.youtubeShortsConnected = Boolean(states?.youtube_shorts?.connected && !states?.youtube_shorts?.requiresUpdate);
+      nextState.youtubeShortsUrl = String(states?.youtube_shorts?.channel_url || "");
     } else {
       const [inrcyGa4, inrcyGsc, webGa4, webGsc] = await Promise.all([
         fetchGoogleConnected("site_inrcy", "ga4"),

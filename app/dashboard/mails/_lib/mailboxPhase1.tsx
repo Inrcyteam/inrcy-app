@@ -1050,6 +1050,8 @@ export function formatChannelLabel(channel: string): string {
       return "LinkedIn";
     case "tiktok":
       return "TikTok";
+    case "youtube_shorts":
+      return "YouTube Shorts";
     default:
       return normalized || "canal";
   }

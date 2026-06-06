@@ -11,6 +11,8 @@ import { buildSnapshotWindow } from "@/lib/stats/snapshotWindow";
 import { getLinkedInAccessToken } from "@/lib/linkedinOAuth";
 import { refreshTiktokAccessToken } from "@/lib/tiktokOAuth";
 import { fetchTiktokAnalyticsSnapshot } from "@/lib/tiktokAnalytics";
+import { refreshYoutubeShortsAccessToken } from "@/lib/youtubeShortsOAuth";
+import { fetchYoutubeShortsAnalyticsSnapshot, mergeYoutubeShortsLocalPublicationStats } from "@/lib/youtubeShortsAnalytics";
 
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v)
@@ -302,6 +304,12 @@ type TiktokLocalPublicationStats = {
   videoPosts: number;
   photoPosts: number;
   photos: number;
+  latestAt: string | null;
+};
+
+type YoutubeShortsLocalPublicationStats = {
+  posts: number;
+  videoPosts: number;
   latestAt: string | null;
 };
 
@@ -828,6 +836,12 @@ export async function buildStatsOverview(args: {
     photoPosts: tiktokActivity?.photoPosts.month || 0,
     photos: tiktokActivity?.photos.month || 0,
     latestAt: tiktokActivity?.latestAt || null,
+  };
+  const youtubeShortsActivity = inrcyPublishedActivityStats.youtube_shorts;
+  const youtubeShortsLocalPublicationStats: YoutubeShortsLocalPublicationStats = {
+    posts: youtubeShortsActivity?.publications.month || 0,
+    videoPosts: youtubeShortsActivity?.videos.month || 0,
+    latestAt: youtubeShortsActivity?.latestAt || null,
   };
 
   // Lazy-import server helpers inside the request scope to avoid Next.js request-scope errors.
@@ -1955,6 +1969,113 @@ export async function buildStatsOverview(args: {
     ga4: channelStates.site_web.ga4,
     gsc: channelStates.site_web.gsc,
   };
+
+  // YouTube Shorts: YouTube Analytics API + Data API channel stats + publications iNrCy locales.
+  try {
+    const youtubeRow = bestIntegrationAny(
+      "youtube",
+      "youtube_shorts",
+      "youtube_shorts",
+      (row) => Boolean(row["access_token_enc"] || row["refresh_token_enc"]),
+    );
+    const youtubeStatus = String(youtubeRow["status"] || "");
+    const youtubeHasAuth = Boolean(youtubeRow["access_token_enc"] || youtubeRow["refresh_token_enc"]);
+    const youtubeExpiredWithoutRefresh = isExpired(youtubeRow["expires_at"]) && !youtubeRow["refresh_token_enc"];
+    sourcesStatus.youtube_shorts.connected = Boolean(
+      (youtubeStatus === "connected" || youtubeStatus === "account_connected") &&
+        youtubeRow["resource_id"] &&
+        youtubeHasAuth &&
+        !youtubeExpiredWithoutRefresh,
+    );
+
+    const includeYoutubeShorts = includeAll || includeSet.has("youtube_shorts");
+    if (!includeYoutubeShorts) {
+      sourcesStatus.youtube_shorts.metrics = null;
+    } else if (sourcesStatus.youtube_shorts.connected) {
+      try {
+        let accessToken = tryDecryptToken(String(youtubeRow["access_token_enc"] || "")) || "";
+        const refreshToken = tryDecryptToken(String(youtubeRow["refresh_token_enc"] || "")) || "";
+
+        if ((!accessToken || isExpired(youtubeRow["expires_at"])) && refreshToken) {
+          const refreshed = await refreshYoutubeShortsAccessToken(refreshToken);
+          const nextAccessToken = String(refreshed["access_token"] || "").trim();
+          const expiresIn = Number(refreshed["expires_in"] || 0);
+          const expiresAt = Number.isFinite(expiresIn) && expiresIn > 0
+            ? new Date(Date.now() + expiresIn * 1000).toISOString()
+            : null;
+          if (nextAccessToken) {
+            await supabase
+              .from("integrations")
+              .update({
+                access_token_enc: encryptToken(nextAccessToken),
+                expires_at: expiresAt || youtubeRow["expires_at"] || null,
+                meta: {
+                  ...asRecord(youtubeRow["meta"]),
+                  youtube_token_refreshed_at: new Date().toISOString(),
+                },
+                updated_at: new Date().toISOString(),
+              })
+              .eq("user_id", userId)
+              .eq("provider", "youtube")
+              .eq("source", "youtube_shorts")
+              .eq("product", "youtube_shorts");
+            accessToken = nextAccessToken;
+          }
+        }
+
+        if (!accessToken) {
+          throw new Error("Connexion YouTube Shorts expirée. Reconnecte YouTube dans Canaux.");
+        }
+
+        const meta = asRecord(youtubeRow["meta"]);
+        const metaStats = asRecord(meta["stats"]);
+        const remoteYoutubeMetrics = await fetchYoutubeShortsAnalyticsSnapshot({
+          accessToken,
+          start: dateWindow.start,
+          end: dateWindow.end,
+          channelStats: {
+            subscriberCount: Number(metaStats["subscriberCount"] ?? 0),
+            videoCount: Number(metaStats["videoCount"] ?? 0),
+            viewCount: Number(metaStats["viewCount"] ?? 0),
+          },
+        });
+        sourcesStatus.youtube_shorts.metrics = mergeYoutubeShortsLocalPublicationStats(
+          remoteYoutubeMetrics,
+          youtubeShortsLocalPublicationStats,
+        );
+      } catch (e) {
+        console.error("[YOUTUBE_SHORTS_STATS_REAL_ERROR]", e);
+        const rawMessage = e instanceof Error ? e.message : String(e || "");
+        const lowerMessage = rawMessage.toLowerCase();
+        const needsReconnect =
+          lowerMessage.includes("scope") ||
+          lowerMessage.includes("permission") ||
+          lowerMessage.includes("autorisation") ||
+          lowerMessage.includes("unauthorized") ||
+          lowerMessage.includes("forbidden") ||
+          lowerMessage.includes("access token") ||
+          lowerMessage.includes("invalid_grant") ||
+          lowerMessage.includes("reconnect") ||
+          lowerMessage.includes("reconnecte");
+        sourcesStatus.youtube_shorts.metrics = mergeYoutubeShortsLocalPublicationStats(
+          {
+            error: getSimpleFrenchErrorMessage(
+              e,
+              "Impossible de récupérer les statistiques YouTube Shorts pour le moment.",
+            ),
+            raw_error: rawMessage || null,
+            needs_reconnect: needsReconnect,
+          },
+          youtubeShortsLocalPublicationStats,
+        );
+      }
+    } else {
+      sourcesStatus.youtube_shorts.metrics = youtubeShortsLocalPublicationStats.posts > 0
+        ? mergeYoutubeShortsLocalPublicationStats({}, youtubeShortsLocalPublicationStats)
+        : null;
+    }
+  } catch {}
+
   // TikTok: Display API / User Info + video.list.
   // Données réelles : profil (followers/likes/vidéos) + vidéos publiques publiées sur la période.
   try {

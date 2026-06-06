@@ -10,7 +10,8 @@ export type ConnectionKind =
   | "channel:facebook"
   | "channel:instagram"
   | "channel:linkedin"
-  | "channel:tiktok";
+  | "channel:tiktok"
+  | "channel:youtube_shorts";
 
 /**
  * Version centrale des autorisations/contrats par connexion.
@@ -30,6 +31,7 @@ export const CONNECTION_REQUIRED_VERSIONS: Record<ConnectionKind, number> = {
   "channel:instagram": 1,
   "channel:linkedin": 1,
   "channel:tiktok": 1,
+  "channel:youtube_shorts": 1,
 };
 
 export function getRequiredConnectionVersion(kind: ConnectionKind): number {

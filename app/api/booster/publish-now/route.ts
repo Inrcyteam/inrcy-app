@@ -52,6 +52,8 @@ import { isTiktokIntegrationActive } from "@/lib/tiktokRouteStorage";
 import { buildTiktokMediaProxyUrl } from "@/lib/tiktokMediaUrl";
 import { refreshTiktokAccessToken } from "@/lib/tiktokOAuth";
 import { tiktokDirectPostPhotos, tiktokDirectPostVideo } from "@/lib/tiktokPublish";
+import { isYoutubeShortsIntegrationActive, refreshYoutubeShortsAccessToken } from "@/lib/youtubeShortsOAuth";
+import { uploadYoutubeShort } from "@/lib/youtubeShortsPublish";
 import { buildVideoSettingsByChannel } from "@/lib/boosterVideoSettings";
 import { getVariantForChannel, type BoosterVideoTransformedVariant } from "@/lib/boosterVideoTransforms";
 import {
@@ -1221,7 +1223,7 @@ export async function POST(req: Request) {
     // 4) Publish now
     const results: Record<string, unknown> = {};
 
-    const [fbRow, gmbRow, igRow, liRow, tiktokRow] = await Promise.all([
+    const [fbRow, gmbRow, igRow, liRow, tiktokRow, youtubeRow] = await Promise.all([
       getLatestIntegrationRow(
         userId,
         "facebook",
@@ -1256,6 +1258,13 @@ export async function POST(req: Request) {
         "tiktok",
         "tiktok",
         "status,resource_id,resource_label,display_name,access_token_enc,refresh_token_enc,scopes,meta,expires_at",
+      ),
+      getLatestIntegrationRow(
+        userId,
+        "youtube",
+        "youtube_shorts",
+        "youtube_shorts",
+        "status,resource_id,resource_label,display_name,email_address,access_token_enc,refresh_token_enc,scopes,meta,expires_at",
       ),
     ]);
 
@@ -1379,6 +1388,41 @@ export async function POST(req: Request) {
         accessToken = nextAccessToken;
       }
 
+      return accessToken;
+    }
+
+    async function getYoutubeShortsAccessToken(rowLike: unknown) {
+      const row = asRecord(rowLike);
+      let accessToken = tryDecryptToken(String(row.access_token_enc || "")) || "";
+      const refreshToken = tryDecryptToken(String(row.refresh_token_enc || "")) || "";
+
+      if (accessToken && !isExpired(row.expires_at, 120)) return accessToken;
+      if (!refreshToken) return accessToken;
+
+      const refreshed = await refreshYoutubeShortsAccessToken(refreshToken);
+      const nextAccessToken = String(refreshed.access_token || "").trim();
+      if (!nextAccessToken) return accessToken;
+      const expiresIn = Number(refreshed.expires_in || 0);
+      const expiresAt = Number.isFinite(expiresIn) && expiresIn > 0
+        ? new Date(Date.now() + expiresIn * 1000).toISOString()
+        : row.expires_at || null;
+      const nextMeta = {
+        ...asRecord(row.meta),
+        youtube_token_refreshed_at: new Date().toISOString(),
+      };
+
+      await supabaseAdmin
+        .from("integrations")
+        .update({
+          access_token_enc: encryptToken(nextAccessToken),
+          expires_at: expiresAt,
+          meta: nextMeta,
+        })
+        .eq("user_id", userId)
+        .eq("provider", "youtube")
+        .eq("source", "youtube_shorts")
+        .eq("product", "youtube_shorts");
+      accessToken = nextAccessToken;
       return accessToken;
     }
 
@@ -1891,27 +1935,86 @@ export async function POST(req: Request) {
 
         if (ch === "youtube_shorts") {
           const youtubeSettings = asRecord(proSettings["youtube_shorts"]);
-          const channelUrl = String(youtubeSettings.channelUrl || youtubeSettings.url || "").trim();
-          const channelName = String(youtubeSettings.channelName || youtubeSettings.name || "").trim();
+          const youtubeActive = isYoutubeShortsIntegrationActive(youtubeRow);
+          const youtubeAccessToken = youtubeActive ? await getYoutubeShortsAccessToken(youtubeRow) : "";
+          const youtubeMeta = asRecord(asRecord(youtubeRow).meta);
+          const channelUrl = String(youtubeMeta.channel_url || youtubeSettings.channelUrl || youtubeSettings.url || "").trim();
 
-          if (!youtubeSettings.connected || !channelUrl) {
-            const youtubeUserError = "YouTube Shorts à configurer. Rendez-vous dans Canaux.";
+          if (!youtubeActive || !youtubeAccessToken) {
+            const youtubeUserError = "YouTube Shorts à connecter. Rendez-vous dans Canaux.";
             await setDelivery(ch, { status: "failed", error: youtubeUserError });
             results[ch] = { ok: false, error: youtubeUserError };
             continue;
           }
 
+          if (mediaModeByChannel[ch] !== "video" || !channelVideo) {
+            const youtubeUserError = "YouTube Shorts nécessite une vidéo.";
+            await setDelivery(ch, { status: "failed", error: youtubeUserError });
+            results[ch] = { ok: false, error: youtubeUserError };
+            continue;
+          }
+
+          if (channelVideo.duration && channelVideo.duration > 180) {
+            const youtubeUserError = "YouTube Shorts accepte les vidéos jusqu'à 3 minutes.";
+            await setDelivery(ch, { status: "failed", error: youtubeUserError });
+            results[ch] = { ok: false, error: youtubeUserError };
+            continue;
+          }
+
+          const youtubeDefaults = asRecord(youtubeSettings.defaults);
+          const visibilityRaw = String(youtubeDefaults.defaultVisibility || "public");
+          const privacyStatus = (["public", "unlisted", "private"].includes(visibilityRaw) ? visibilityRaw : "public") as "public" | "unlisted" | "private";
+          const madeForKids = Boolean(youtubeDefaults.madeForKids);
+          const hashtags = Array.isArray(channelPost.hashtags) ? channelPost.hashtags : [];
+          const normalizedTags = hashtags.map((tag) => normalizeHashtag(String(tag))).filter(Boolean).slice(0, 8);
+          const autoHashtags = youtubeDefaults.autoHashtags !== false;
+          const shortsTags = autoHashtags ? Array.from(new Set(["Shorts", ...normalizedTags])) : normalizedTags;
+          const description = [
+            canonMessage,
+            shortsTags.length ? shortsTags.map((tag) => `#${tag}`).join(" ") : "#Shorts",
+          ].filter(Boolean).join("\n\n");
+
+          const upload = await uploadYoutubeShort({
+            accessToken: youtubeAccessToken,
+            videoUrl: channelVideo.publicUrl || channelVideo.url || "",
+            title: channelPost.title || post.title || "Short iNrCy",
+            description,
+            privacyStatus,
+            madeForKids,
+            mimeType: channelVideo.type,
+          });
+
+          if (!upload.ok) {
+            const youtubeUserError = getPublishChannelUserMessage("youtube_shorts", upload.error || "youtube_upload_failed", "Publication YouTube Shorts impossible.");
+            logPublishChannelFailure({
+              route: "booster_publish_now",
+              channel: "youtube_shorts",
+              userId,
+              publicationId,
+              stage: "publish",
+              error: upload.error,
+              userMessage: youtubeUserError,
+              diagnostics: upload,
+            });
+            await setDelivery(ch, { status: "failed", error: youtubeUserError });
+            results[ch] = { ok: false, error: youtubeUserError, diagnostics: upload };
+            continue;
+          }
+
           await setDelivery(ch, {
             status: "delivered",
-            external_id: channelName || channelUrl || null,
-            external_url: channelUrl || null,
+            external_id: upload.videoId || null,
+            external_url: upload.shortsUrl || upload.videoUrl || null,
             error: null,
           });
 
           results[ch] = {
             ok: true,
-            external_url: channelUrl || null,
-            note: "Publication YouTube Shorts préparée dans iNrCy.",
+            external_id: upload.videoId || null,
+            external_url: upload.shortsUrl || upload.videoUrl || null,
+            channel_url: channelUrl || null,
+            privacy_status: upload.privacyStatus || privacyStatus,
+            diagnostics: upload,
           };
           continue;
         }
