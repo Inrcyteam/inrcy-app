@@ -79,8 +79,10 @@ function MiniMetricGrid({ items }: { items: Array<{ label: string; value: string
       {items.map((item) => (
         <div key={item.label} className={styles.metricMiniCard}>
           <span>{item.label}</span>
-          <b>{item.value}</b>
-          {item.subValue ? <small>{item.subValue}</small> : null}
+          <div className={styles.metricMiniValueRow}>
+            <b>{item.value}</b>
+            {item.subValue ? <small>{item.subValue}</small> : null}
+          </div>
         </div>
       ))}
     </div>
@@ -449,12 +451,12 @@ export function Cube({
         <div className={`${styles.cubeBody} ${model.inrcyActivityStats ? styles.cubeBodyWithInrcyActivity : ""}`}>
           <div className={styles.detailTopRow}>
             <div className={`${styles.block} ${styles.metricOverviewBlock}`}>
-              <div className={styles.blockTitle}>{model.key === "mails" ? "Activité mail" : "Visibilité du canal"}</div>
+              <div className={styles.blockTitle}>{model.key === "mails" ? "Activité mail" : model.key === "inrbadge" ? "Configuration badge" : "Visibilité du canal"}</div>
               <MiniMetricGrid items={model.visibilityStats} />
             </div>
 
             <div className={`${styles.block} ${styles.provenanceCompactBlock}`}>
-              <div className={styles.blockTitle}>{model.key === "mails" ? "Répartition des actions mail" : "Provenance"}</div>
+              <div className={styles.blockTitle}>{model.key === "mails" ? "Répartition des actions mail" : model.key === "inrbadge" ? "Suivi iNrBadge" : "Provenance"}</div>
               <Donut segments={model.provenance} />
               {model.provenanceHint ? <div className={styles.provenanceHint}>{model.provenanceHint}</div> : null}
             </div>
@@ -473,7 +475,7 @@ export function Cube({
             </div>
 
             <div className={`${styles.block} ${styles.metricOverviewBlock}`}>
-              <div className={styles.blockTitle}>{model.key === "mails" ? "Automatiques & business" : "Actions utiles"}</div>
+              <div className={styles.blockTitle}>{model.key === "mails" ? "Automatiques & business" : model.key === "inrbadge" ? "Actions rapides" : "Actions utiles"}</div>
               <MiniMetricGrid items={model.actionStats} />
             </div>
           </div>

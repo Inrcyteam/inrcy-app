@@ -46,6 +46,7 @@ type SubData = {
     | "incomplete"
     | "incomplete_expired"
     | "trialing"
+    | "trial_expired"
     | "active"
     | "past_due"
     | "unpaid"
@@ -139,6 +140,7 @@ function addDays(date: Date, days: number) {
 function statusLabel(raw: string) {
   // Tolérance aux anciennes valeurs / fautes de frappe en base.
   if (raw === "trialing" || raw === "trailing" || raw === "essai") return "ESSAI";
+  if (raw === "trial_expired" || raw === "trial-expired") return "ESSAI TERMINÉ";
   if (raw === "active") return "ACTIF";
   if (raw === "past_due" || raw === "unpaid") return "IMPAYÉ";
   if (raw === "paused") return "SUSPENDU";

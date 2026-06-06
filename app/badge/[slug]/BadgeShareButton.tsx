@@ -7,8 +7,6 @@ import styles from "./badge.module.css";
 type Props = {
   publicUrl: string;
   company: string;
-  vCardUri: string;
-  vCardFilename: string;
 };
 
 type BeforeInstallPromptEvent = Event & {
@@ -31,7 +29,7 @@ function detectPlatform() {
   return { ios, android, safari };
 }
 
-export default function BadgeShareButton({ publicUrl, company, vCardUri, vCardFilename }: Props) {
+export default function BadgeShareButton({ publicUrl, company }: Props) {
   const [open, setOpen] = useState(false);
   const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(null);
   const [helperText, setHelperText] = useState("");
@@ -104,14 +102,6 @@ export default function BadgeShareButton({ publicUrl, company, vCardUri, vCardFi
     setHelperText("Sur Android : ouvrez le menu du navigateur puis choisissez “Ajouter à l’écran d’accueil” ou “Installer l’application”.");
   }
 
-  function handleSaveContact() {
-    const link = document.createElement("a");
-    link.href = vCardUri;
-    link.download = vCardFilename;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-  }
 
   function handleClosePage() {
     window.close();
@@ -158,7 +148,7 @@ export default function BadgeShareButton({ publicUrl, company, vCardUri, vCardFi
                 <div className={styles.sheetHeader}>
                   <div>
                     <strong>Fiche contact</strong>
-                    <p>Partagez, copiez le lien ou enregistrez le contact.</p>
+                    <p>Partagez cette fiche, copiez son lien ou ajoutez-la à votre écran d’accueil.</p>
                   </div>
                   <button type="button" className={styles.sheetClose} onClick={closeSheet} aria-label="Fermer">
                     ×
@@ -197,14 +187,6 @@ export default function BadgeShareButton({ publicUrl, company, vCardUri, vCardFi
                     <span>
                       Ajouter à l&apos;écran d&apos;accueil
                       <small>iPhone / Android</small>
-                    </span>
-                  </button>
-
-                  <button type="button" className={styles.sheetAction} onClick={handleSaveContact}>
-                    <span className={`${styles.sheetActionIcon} ${styles.contactTone}`}>👤</span>
-                    <span>
-                      Enregistrer le contact
-                      <small>Ajouter la fiche dans le téléphone</small>
                     </span>
                   </button>
                 </div>

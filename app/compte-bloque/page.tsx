@@ -1,0 +1,264 @@
+import Image from "next/image";
+import { redirect } from "next/navigation";
+
+import styles from "./compte-bloque.module.css";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { createSupabaseServer } from "@/lib/supabaseServer";
+
+export const dynamic = "force-dynamic";
+
+type SubscriptionRow = {
+  status?: string | null;
+  plan?: string | null;
+  trial_end_at?: string | null;
+  end_date?: string | null;
+  updated_at?: string | null;
+};
+
+type BlockedCopy = {
+  eyebrow: string;
+  title: string;
+  badge: string;
+  message: string;
+  statusLabel: string;
+  accessLabel: string;
+  dataLabel: string;
+};
+
+const BLOCKED_STATUSES = new Set([
+  "trial_expired",
+  "trial-expired",
+  "paused",
+  "past_due",
+  "unpaid",
+  "canceled",
+  "cancelled",
+  "incomplete",
+  "incomplete_expired",
+]);
+
+function normalizeStatus(value: unknown) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function formatDate(value?: string | null) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  return new Intl.DateTimeFormat("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(date);
+}
+
+function copyForStatus(rawStatus: unknown): BlockedCopy {
+  const status = normalizeStatus(rawStatus);
+
+  if (status === "trial_expired" || status === "trial-expired") {
+    return {
+      eyebrow: "Période gratuite terminée",
+      title: "Compte bloqué",
+      badge: "Essai 30 jours terminé",
+      message:
+        "Votre période gratuite de 30 jours est terminée. Votre générateur iNrCy est temporairement bloqué. Contactez iNrCy pour le réactiver.",
+      statusLabel: "Essai terminé",
+      accessLabel: "Dashboard bloqué",
+      dataLabel: "Données conservées",
+    };
+  }
+
+  if (status === "paused") {
+    return {
+      eyebrow: "Suspension temporaire",
+      title: "Compte en pause",
+      badge: "Accès suspendu",
+      message:
+        "Votre générateur iNrCy est actuellement suspendu. Vos données restent conservées et l’accès pourra être réactivé par iNrCy.",
+      statusLabel: "Suspendu",
+      accessLabel: "Accès temporairement bloqué",
+      dataLabel: "Données conservées",
+    };
+  }
+
+  if (status === "past_due") {
+    return {
+      eyebrow: "Paiement en retard",
+      title: "Régularisation nécessaire",
+      badge: "Paiement en retard",
+      message:
+        "Votre abonnement présente un retard de paiement. Contactez iNrCy pour régulariser la situation et réactiver votre générateur.",
+      statusLabel: "Paiement en retard",
+      accessLabel: "Accès limité",
+      dataLabel: "Données conservées",
+    };
+  }
+
+  if (status === "unpaid") {
+    return {
+      eyebrow: "Paiement non réglé",
+      title: "Compte bloqué",
+      badge: "Paiement requis",
+      message:
+        "Le paiement de votre abonnement n’a pas pu être validé. Votre générateur est bloqué jusqu’à régularisation.",
+      statusLabel: "Impayé",
+      accessLabel: "Dashboard bloqué",
+      dataLabel: "Données conservées",
+    };
+  }
+
+  if (status === "canceled" || status === "cancelled") {
+    return {
+      eyebrow: "Abonnement résilié",
+      title: "Compte résilié",
+      badge: "Abonnement arrêté",
+      message:
+        "Votre abonnement iNrCy a été résilié. Contactez iNrCy si vous souhaitez réactiver votre générateur.",
+      statusLabel: "Résilié",
+      accessLabel: "Accès bloqué",
+      dataLabel: "Données conservées temporairement",
+    };
+  }
+
+  if (status === "incomplete_expired") {
+    return {
+      eyebrow: "Activation expirée",
+      title: "Activation non finalisée",
+      badge: "Activation expirée",
+      message:
+        "L’activation de votre abonnement n’a pas été finalisée dans les délais. Contactez iNrCy pour relancer votre générateur.",
+      statusLabel: "Activation expirée",
+      accessLabel: "Accès bloqué",
+      dataLabel: "Données conservées",
+    };
+  }
+
+  if (status === "incomplete") {
+    return {
+      eyebrow: "Activation en attente",
+      title: "Activation non finalisée",
+      badge: "Activation en attente",
+      message:
+        "Votre abonnement n’est pas encore totalement activé. Contactez iNrCy si le blocage persiste.",
+      statusLabel: "En attente",
+      accessLabel: "Accès bloqué",
+      dataLabel: "Données conservées",
+    };
+  }
+
+  return {
+    eyebrow: "Accès suspendu",
+    title: "Compte bloqué",
+    badge: "Vérification nécessaire",
+    message:
+      "Votre générateur iNrCy est temporairement bloqué. Contactez iNrCy pour vérifier votre situation et réactiver l’accès.",
+    statusLabel: "Bloqué",
+    accessLabel: "Dashboard bloqué",
+    dataLabel: "Données conservées",
+  };
+}
+
+async function signOut() {
+  "use server";
+
+  const supabase = await createSupabaseServer();
+  await supabase.auth.signOut();
+  redirect("/login");
+}
+
+export default async function BlockedAccountPage() {
+  const supabase = await createSupabaseServer();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login");
+  }
+
+  const { data } = await supabaseAdmin
+    .from("subscriptions")
+    .select("status, plan, trial_end_at, end_date, updated_at")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  const subscription = data as SubscriptionRow | null;
+  const status = normalizeStatus(subscription?.status);
+
+  if (!BLOCKED_STATUSES.has(status)) {
+    redirect("/dashboard");
+  }
+
+  const copy = copyForStatus(status);
+  const importantDate = formatDate(subscription?.trial_end_at) || formatDate(subscription?.end_date);
+  const contactHref = `mailto:contact@inrcy.com?subject=${encodeURIComponent("Réactivation de mon générateur iNrCy")}`;
+
+  return (
+    <main className={styles.page}>
+      <div className={styles.bgGlow} />
+
+      <section className={styles.shell}>
+        <div className={styles.card}>
+          <div className={styles.header}>
+            <Image src="/logo-inrcy.png" alt="iNrCy" width={56} height={56} priority className={styles.logo} />
+
+            <div className={styles.brandBlock}>
+              <div className={styles.brandSub}>{copy.eyebrow}</div>
+            </div>
+          </div>
+
+          <div className={styles.badge}>
+            <span className={styles.badgeDot} />
+            {copy.badge}
+          </div>
+
+          <div className={styles.content}>
+            <div className={styles.main}>
+              <h1 className={styles.title}>{copy.title}</h1>
+
+              <p className={styles.text}>{copy.message}</p>
+
+              <p className={styles.reassurance}>Vos données ne sont pas supprimées.</p>
+
+              <div className={styles.actions}>
+                <a href={contactHref} className={styles.primaryBtn}>
+                  Contacter iNrCy
+                </a>
+
+                <form action={signOut}>
+                  <button type="submit" className={styles.secondaryBtn}>
+                    Se déconnecter
+                  </button>
+                </form>
+              </div>
+            </div>
+
+            <aside className={styles.infoCard}>
+              <div className={styles.infoRow}>
+                <span className={styles.infoLabel}>Statut</span>
+                <span className={styles.infoValue}>{copy.statusLabel}</span>
+              </div>
+
+              <div className={styles.infoRow}>
+                <span className={styles.infoLabel}>Accès</span>
+                <span className={styles.infoValue}>{copy.accessLabel}</span>
+              </div>
+
+              <div className={styles.infoRow}>
+                <span className={styles.infoLabel}>Données</span>
+                <span className={styles.infoValue}>{copy.dataLabel}</span>
+              </div>
+
+              {importantDate ? (
+                <div className={styles.infoRow}>
+                  <span className={styles.infoLabel}>Date concernée</span>
+                  <span className={styles.infoValue}>{importantDate}</span>
+                </div>
+              ) : null}
+            </aside>
+          </div>
+        </div>
+      </section>
+    </main>
+  );
+}

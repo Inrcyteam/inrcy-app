@@ -3,7 +3,6 @@ import type { Metadata } from "next";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { extractInrBadgeUserIdFromSlug } from "@/lib/inrBadge";
 import { normalizeInrBadgeShareSettings, resolveInrBadgeAppointmentSettings } from "@/lib/inrBadgeSettings";
-import { resolveProfileLogoUrl } from "@/lib/profileLogo";
 import RdvBookingClient from "./RdvBookingClient";
 
 export const dynamic = "force-dynamic";
@@ -53,7 +52,7 @@ export default async function InrBadgeRdvPage({ params }: { params: Promise<{ sl
   const [profileRes, toolsRes] = await Promise.all([
     supabaseAdmin
       .from("profiles")
-      .select("user_id,logo_url,logo_path,company_legal_name,first_name,last_name,contact_email,phone")
+      .select("user_id")
       .eq("user_id", userId)
       .maybeSingle(),
     supabaseAdmin
@@ -70,12 +69,6 @@ export default async function InrBadgeRdvPage({ params }: { params: Promise<{ sl
   const appointmentSettings = resolveInrBadgeAppointmentSettings(rootSettings);
   if (!shareSettings.appointment) notFound();
 
-  const profile = profileRes.data as Record<string, unknown>;
-  const logo = await resolveProfileLogoUrl(supabaseAdmin, {
-    logo_path: trim(profile.logo_path) || null,
-    logo_url: trim(profile.logo_url) || null,
-  });
-
   const now = new Date();
   const rangeEnd = new Date(now.getTime() + (appointmentSettings.daysAhead + 2) * 24 * 60 * 60 * 1000);
   const { data: events } = await supabaseAdmin
@@ -87,16 +80,9 @@ export default async function InrBadgeRdvPage({ params }: { params: Promise<{ sl
     .order("start_at", { ascending: true })
     .limit(500);
 
-  const firstName = trim(profile.first_name);
-  const lastName = trim(profile.last_name);
-  const displayName = [firstName, lastName].filter(Boolean).join(" ");
-
   return (
     <RdvBookingClient
       slug={slug}
-      company={trim(profile.company_legal_name) || "Entreprise iNrCy"}
-      displayName={displayName}
-      logoUrl={logo.logoUrl || ""}
       settings={appointmentSettings}
       events={(events || []).filter((event: Record<string, unknown>) => !isRejectedAgendaEvent(event)).map((event: Record<string, unknown>) => ({
         id: String(event.id || ""),

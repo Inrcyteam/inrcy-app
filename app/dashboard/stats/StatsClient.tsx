@@ -347,8 +347,6 @@ function buildMailCubeModel(stats: MailStatsSnapshot, period: Period): CubeModel
       ? [
           { label: "Boîtes", value: `${fmtInt(stats.connectedCount)}/${fmtInt(stats.maxAccounts)}` },
           { label: "Contacts email", value: fmtInt(contactsEmail) },
-          { label: "Campagnes 30j", value: fmtInt(stats.campagnes30), subValue: `${fmtInt(stats.campagnesTotal)} au total` },
-          { label: "Destinataires 30j", value: fmtInt(stats.destinataires30), subValue: `${fmtInt(stats.destinatairesTotal)} au total` },
         ]
       : [],
     actionStats: connected
@@ -402,16 +400,16 @@ function buildInrBadgeCubeModel(period: Period): CubeModel {
     capturedLeads: { week: 0, month: 0 },
     capturedLeadsHint: "iNr’Badge mesure surtout les actions utiles vers vos canaux et vos CTA.",
     visibilityStats: [
-      { label: "Vues fiche", value: "Bientôt" },
-      { label: "Scans QR", value: "Bientôt" },
-      { label: "Canaux", value: "Actifs" },
+      { label: "Fiche publique", value: "Active" },
+      { label: "QR code", value: "Actif" },
+      { label: "Canaux affichés", value: "Actifs" },
       { label: "CTA rapides", value: "Actifs" },
     ],
     actionStats: [
-      { label: "Appels", value: "Bientôt" },
-      { label: "Mails", value: "Bientôt" },
-      { label: "Contacts", value: "Bientôt" },
-      { label: "RDV", value: "Bientôt" },
+      { label: "Appeler", value: "Disponible" },
+      { label: "Mail", value: "Disponible" },
+      { label: "Enregistrer", value: "Disponible" },
+      { label: "Prise RDV", value: "Configurable" },
     ],
     inrcyActivityStats: {
       publications: { week: 0, month: 0, total: 0 },

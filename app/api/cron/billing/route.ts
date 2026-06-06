@@ -18,6 +18,17 @@ function ymd(d: Date) {
 type StripeSubscriptionSummary = { status?: string | null };
 type StripeSubscriptionListResponse = { data?: StripeSubscriptionSummary[] };
 
+const OPEN_TRIAL_STATUSES = new Set(["trialing", "trailing", "essai", "incomplete", "incomplete_expired", ""]);
+
+function normalizeStatus(value: unknown) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function shouldExpireTrialStatus(value: unknown) {
+  const status = normalizeStatus(value);
+  return OPEN_TRIAL_STATUSES.has(status);
+}
+
 type TrialRow = {
   user_id: string;
   contact_email: string | null;
@@ -29,6 +40,7 @@ type TrialRow = {
   stripe_customer_id?: string | null;
   stripe_price_id?: string | null;
   scheduled_plan?: string | null;
+  status?: string | null;
   last_trial_reminder_day: number | null;
 };
 
@@ -225,17 +237,18 @@ export async function GET(req: Request) {
   const { data: maybeExpired, error: eErr } = await supabaseAdmin
     .from("subscriptions")
     .select(
-      "user_id, contact_email, trial_end_at, stripe_subscription_id, stripe_customer_id, scheduled_plan, stripe_price_id, plan"
+      "user_id, contact_email, trial_end_at, stripe_subscription_id, stripe_customer_id, scheduled_plan, stripe_price_id, plan, status"
     )
     .eq("plan", "Trial")
     .is("stripe_subscription_id", null);
 
   if (eErr) return NextResponse.json({ error: "Impossible de vérifier les comptes d'essai expirés pour le moment." }, { status: 500 });
 
-  const deleteAfterDays = Number(optionalEnv("INRCY_TRIAL_DELETE_AFTER_DAYS", "1"));
-  let deletedTrialAccounts = 0;
+  let expiredTrialAccounts = 0;
 
   for (const s of (maybeExpired || []) as TrialRow[]) {
+    if (!shouldExpireTrialStatus(s.status)) continue;
+
     const profile = profileEmails.get(s.user_id);
     const accountEmail =
       profile?.admin_email?.trim() ||
@@ -244,41 +257,40 @@ export async function GET(req: Request) {
       null;
 
     const end = s.trial_end_at ? new Date(s.trial_end_at) : null;
-    if (!end) continue;
-
-    const deleteAfter = new Date(end);
-    deleteAfter.setDate(deleteAfter.getDate() + (Number.isFinite(deleteAfterDays) ? deleteAfterDays : 1));
-    if (now < deleteAfter) continue;
+    if (!end || !Number.isFinite(end.getTime())) continue;
+    if (now < end) continue;
 
     if (s.stripe_customer_id) {
       const hasAnySub = await stripeCustomerHasAnySubscription(s.stripe_customer_id);
       if (hasAnySub) continue;
-    } else {
-      const graceDays = Number(optionalEnv("INRCY_TRIAL_DELETE_GRACE_DAYS", "2"));
-      if ((s.scheduled_plan || s.stripe_price_id) && Number.isFinite(graceDays) && graceDays > 0) {
-        const graceUntil = new Date(deleteAfter);
-        graceUntil.setDate(graceUntil.getDate() + graceDays);
-        if (now < graceUntil) continue;
-      }
     }
 
-    const deletion = await deleteUserAccountEverywhere(s.user_id);
-    if (!deletion.ok) continue;
+    const { error: expireError } = await supabaseAdmin
+      .from("subscriptions")
+      .update({
+        status: "trial_expired",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", s.user_id)
+      .eq("plan", "Trial");
+
+    if (expireError) continue;
 
     await sendAdminSubscriptionAlertForUser({
-      type: "trial_account_deleted",
+      type: "trial_account_expired",
       source: "cron.billing.trial-expiry",
       userId: s.user_id,
       accountEmail,
       plan: s.plan,
+      status: "trial_expired",
       trialEndAt: s.trial_end_at,
       stripeCustomerId: s.stripe_customer_id ?? null,
       stripePriceId: s.stripe_price_id ?? null,
       scheduledPlan: s.scheduled_plan ?? null,
-      note: `Compte supprimé automatiquement après fin d'essai. Mode suppression: ${deletion.mode}.`,
+      note: "Essai terminé sans abonnement : le compte est bloqué, mais les données sont conservées.",
     }).catch(() => null);
 
-    deletedTrialAccounts++;
+    expiredTrialAccounts++;
   }
 
   const annualReminderOffsets = [30, 7, 1] as const;
@@ -435,7 +447,8 @@ export async function GET(req: Request) {
     sent,
     sent_annual_renewal_reminders: sentAnnualRenewalReminders,
     repaired_trial_dates: repairedTrialDates,
-    deleted_trial_accounts: deletedTrialAccounts,
+    expired_trial_accounts: expiredTrialAccounts,
+    deleted_trial_accounts: 0,
     deleted_cancelled_accounts: deletedCancelledAccounts,
     expired_annual_accesses: expiredAnnualAccesses,
   });

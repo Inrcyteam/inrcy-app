@@ -1,5 +1,4 @@
 /* eslint-disable @next/next/no-img-element */
-import Image from "next/image";
 import { headers } from "next/headers";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
@@ -7,14 +6,24 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { extractInrBadgeUserIdFromSlug } from "@/lib/inrBadge";
 import { normalizeInrBadgeShareSettings } from "@/lib/inrBadgeSettings";
 import { getChannelConnectionStates } from "@/lib/channelConnectionState";
-import { resolveProfileLogoUrl } from "@/lib/profileLogo";
-import { decodeBusinessSector } from "@/lib/activitySectors";
+import inrBadgeIcon from "@/public/icons/inrbadge-dashboard.png";
+import inrcyIcon from "@/public/icons/inrcy.png";
+import siteWebIcon from "@/public/icons/site-web.jpg";
+import googleBusinessIcon from "@/public/icons/google.jpg";
+import linkedinIcon from "@/public/icons/linkedin.png";
+import instagramIcon from "@/public/icons/instagram.jpg";
+import facebookIcon from "@/public/icons/facebook.png";
+import tiktokIcon from "@/public/icons/tiktok.png";
+import youtubeShortsIcon from "@/public/icons/youtube-shorts.png";
+import inrCalendarLogo from "@/public/inrcalendar-logo.png";
+
 import styles from "./badge.module.css";
 import BadgeShareButton from "./BadgeShareButton";
+import BadgeLeadButton from "./BadgeLeadButton";
 
 export const dynamic = "force-dynamic";
 
-const DEFAULT_INRBADGE_LOGO_SRC = "/icons/inrbadge-dashboard.png";
+const DEFAULT_INRBADGE_LOGO_SRC = inrBadgeIcon.src;
 
 function getBadgeManifestUrl(slug: string) {
   return `/badge/${encodeURIComponent(slug)}/manifest.webmanifest`;
@@ -123,7 +132,7 @@ async function getBadgeBaseUrl() {
   ).replace(/\/+$/, "");
 }
 
-type ActionTone = "phone" | "mail" | "contact" | "site" | "google" | "linkedin" | "instagram" | "facebook" | "tiktok" | "neutral" | "appointment";
+type ActionTone = "phone" | "mail" | "contact" | "site" | "google" | "linkedin" | "instagram" | "facebook" | "tiktok" | "youtube" | "neutral" | "appointment";
 
 type ActionLinkProps = {
   href: string;
@@ -134,14 +143,15 @@ type ActionLinkProps = {
   iconSrc?: string;
   tone?: ActionTone;
   compact?: boolean;
+  iconOnly?: boolean;
 };
 
-function ActionLink({ href, label, detail, download, icon, iconSrc, tone = "neutral", compact = false }: ActionLinkProps) {
+function ActionLink({ href, label, detail, download, icon, iconSrc, tone = "neutral", compact = false, iconOnly = false }: ActionLinkProps) {
   const className = [
     styles.action,
-    compact ? styles.actionCompact : styles.actionWide,
+    iconOnly ? styles.actionIconOnly : compact ? styles.actionCompact : styles.actionWide,
     styles[`tone_${tone}`],
-    detail ? styles.actionWithDetail : styles.actionWithoutDetail,
+    detail && !iconOnly ? styles.actionWithDetail : styles.actionWithoutDetail,
   ].filter(Boolean).join(" ");
 
   return (
@@ -151,22 +161,28 @@ function ActionLink({ href, label, detail, download, icon, iconSrc, tone = "neut
       target={download ? undefined : href.startsWith("http") ? "_blank" : undefined}
       rel={href.startsWith("http") ? "noreferrer" : undefined}
       download={download}
+      aria-label={iconOnly ? label : undefined}
+      title={iconOnly ? label : undefined}
     >
       <span className={styles.actionIcon} aria-hidden="true">
-        {iconSrc ? <Image className={styles.iconImage} src={iconSrc} alt="" width={28} height={28} unoptimized /> : <span>{icon}</span>}
+        {iconSrc ? <img className={styles.iconImage} src={iconSrc} alt="" width={28} height={28} loading="eager" decoding="async" fetchPriority={tone === "appointment" ? "high" : undefined} /> : <span>{icon}</span>}
       </span>
-      <span className={styles.actionBody}>
-        {compact ? (
-          <span className={styles.compactLabelRow}>
+      {iconOnly ? (
+        <span className={styles.srOnly}>{label}</span>
+      ) : (
+        <span className={styles.actionBody}>
+          {compact ? (
+            <span className={styles.compactLabelRow}>
+              <strong>{label}</strong>
+              <span className={styles.arrowInline}>›</span>
+            </span>
+          ) : (
             <strong>{label}</strong>
-            <span className={styles.arrowInline}>›</span>
-          </span>
-        ) : (
-          <strong>{label}</strong>
-        )}
-        {detail ? <small>{detail}</small> : null}
-      </span>
-      {!compact ? <span className={styles.arrow}>›</span> : null}
+          )}
+          {detail ? <small>{detail}</small> : null}
+        </span>
+      )}
+      {!compact && !iconOnly ? <span className={styles.arrow}>›</span> : null}
     </a>
   );
 }
@@ -200,8 +216,9 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
       .maybeSingle(),
     supabaseAdmin
       .from("business_profiles")
-      .select("sector,business_description,activity_description,services,services_text,intervention_zones,intervention_zones_text,opening_days,opening_hours,strengths,strengths_text")
+      .select("business_description,activity_description,services,services_text,intervention_zones,intervention_zones_text,opening_days,opening_hours,strengths,strengths_text")
       .eq("user_id", userId)
+      .limit(1)
       .maybeSingle(),
     supabaseAdmin
       .from("pro_tools_configs")
@@ -225,17 +242,11 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
   const business = (businessRes.data ?? {}) as Record<string, unknown>;
   const toolSettings = safeObj((toolsRes.data as { settings?: unknown } | null)?.settings);
   const shareSettings = normalizeInrBadgeShareSettings(toolSettings.inrBadgeShareSettings);
-  const decodedSector = decodeBusinessSector(trim(business.sector));
   const channelStates = await getChannelConnectionStates(supabaseAdmin, userId, {
     profile,
     inrcySiteConfig: siteInrcyRes.data,
     proToolsConfig: toolsRes.data,
     integrations: Array.isArray(integrationsRes.data) ? integrationsRes.data : [],
-  });
-
-  const logo = await resolveProfileLogoUrl(supabaseAdmin, {
-    logo_path: trim(profile.logo_path) || null,
-    logo_url: trim(profile.logo_url) || null,
   });
 
   const firstName = trim(profile.first_name);
@@ -261,6 +272,7 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
   const instagramSettings = safeObj(toolSettings.instagram);
   const linkedinSettings = safeObj(toolSettings.linkedin);
   const tiktokSettings = safeObj(toolSettings.tiktok);
+  const youtubeShortsSettings = safeObj(toolSettings.youtube_shorts);
 
   const siteInrcyUrl = normalizeUrl(channelStates.site_inrcy.url || (siteInrcyRes.data as { site_url?: string | null } | null)?.site_url);
   const siteWebUrl = normalizeUrl(channelStates.site_web.url || siteWebSettings.url);
@@ -282,6 +294,7 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
   );
   const linkedinUrl = normalizeUrl(channelStates.linkedin.organization_url || channelStates.linkedin.profile_url || linkedinSettings.orgUrl || linkedinSettings.profileUrl || linkedinSettings.url);
   const tiktokUrl = normalizeUrl(channelStates.tiktok.profile_url || tiktokSettings.url);
+  const youtubeShortsUrl = normalizeUrl(channelStates.youtube_shorts.channel_url || youtubeShortsSettings.channelUrl || youtubeShortsSettings.url);
   const primaryWebsite = siteWebUrl || siteInrcyUrl;
 
   const publicChannelCanShare = {
@@ -292,6 +305,7 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
     instagram: Boolean(channelStates.instagram.connected && instagramUrl),
     linkedin: Boolean(channelStates.linkedin.connected && linkedinUrl),
     tiktok: Boolean(channelStates.tiktok.connected && tiktokUrl),
+    youtubeShorts: Boolean(channelStates.youtube_shorts.connected && youtubeShortsUrl),
   };
   const selectedMailAccountId = trim(toolSettings.inrBadgeMailAccountId);
   let selectedMailAccountEmail = "";
@@ -336,26 +350,42 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
   ].filter(Boolean) as ActionLinkProps[];
 
   const channelActions = [
-    shareSettings.siteInrcy && publicChannelCanShare.siteInrcy ? { href: siteInrcyUrl, label: "Site iNrCy", iconSrc: "/icons/inrcy.png", tone: "site" as ActionTone } : null,
-    shareSettings.siteWeb && publicChannelCanShare.siteWeb ? { href: siteWebUrl, label: "Site web", iconSrc: "/icons/site-web.jpg", tone: "site" as ActionTone } : null,
-    shareSettings.googleBusiness && publicChannelCanShare.googleBusiness ? { href: gmbUrl, label: "Google Business", iconSrc: "/icons/google.jpg", tone: "google" as ActionTone } : null,
-    shareSettings.linkedin && publicChannelCanShare.linkedin ? { href: linkedinUrl, label: "LinkedIn", iconSrc: "/icons/linkedin.png", tone: "linkedin" as ActionTone } : null,
-    shareSettings.instagram && publicChannelCanShare.instagram ? { href: instagramUrl, label: "Instagram", iconSrc: "/icons/instagram.jpg", tone: "instagram" as ActionTone } : null,
-    shareSettings.facebook && publicChannelCanShare.facebook ? { href: facebookUrl, label: "Facebook", iconSrc: "/icons/facebook.png", tone: "facebook" as ActionTone } : null,
-    shareSettings.tiktok && publicChannelCanShare.tiktok ? { href: tiktokUrl, label: "TikTok", iconSrc: "/icons/tiktok.png", tone: "tiktok" as ActionTone } : null,
+    shareSettings.siteInrcy && publicChannelCanShare.siteInrcy ? { href: siteInrcyUrl, label: "Site iNrCy", iconSrc: inrcyIcon.src, tone: "site" as ActionTone } : null,
+    shareSettings.siteWeb && publicChannelCanShare.siteWeb ? { href: siteWebUrl, label: "Site web", iconSrc: siteWebIcon.src, tone: "site" as ActionTone } : null,
+    shareSettings.googleBusiness && publicChannelCanShare.googleBusiness ? { href: gmbUrl, label: "Google Business", iconSrc: googleBusinessIcon.src, tone: "google" as ActionTone } : null,
+    shareSettings.linkedin && publicChannelCanShare.linkedin ? { href: linkedinUrl, label: "LinkedIn", iconSrc: linkedinIcon.src, tone: "linkedin" as ActionTone } : null,
+    shareSettings.instagram && publicChannelCanShare.instagram ? { href: instagramUrl, label: "Instagram", iconSrc: instagramIcon.src, tone: "instagram" as ActionTone } : null,
+    shareSettings.facebook && publicChannelCanShare.facebook ? { href: facebookUrl, label: "Facebook", iconSrc: facebookIcon.src, tone: "facebook" as ActionTone } : null,
+    shareSettings.tiktok && publicChannelCanShare.tiktok ? { href: tiktokUrl, label: "TikTok", iconSrc: tiktokIcon.src, tone: "tiktok" as ActionTone } : null,
+    shareSettings.youtubeShorts && publicChannelCanShare.youtubeShorts ? { href: youtubeShortsUrl, label: "YouTube Shorts", iconSrc: youtubeShortsIcon.src, tone: "youtube" as ActionTone } : null,
   ].filter(Boolean) as ActionLinkProps[];
 
   const appointmentAction = shareSettings.appointment
-    ? { href: `/badge/${slug}/rdv`, label: "Prendre RDV", iconSrc: "/inrcalendar-logo.png", tone: "appointment" as ActionTone }
+    ? { href: `/badge/${slug}/rdv`, label: "Prendre RDV", iconSrc: inrCalendarLogo.src, tone: "appointment" as ActionTone }
     : null;
+
+  const channelRowSize =
+    channelActions.length >= 8 ? 4
+    : channelActions.length === 7 ? 4
+    : channelActions.length >= 5 ? 3
+    : channelActions.length === 4 ? 2
+    : Math.max(1, channelActions.length);
 
   const headerInfoLine = [
     shareSettings.company ? company : "",
     shareSettings.name ? displayName : "",
   ].filter(Boolean).join(" / ");
+  const hasCustomLogo = Boolean(trim(profile.logo_path) || trim(profile.logo_url));
+  const headerLogoSrc = hasCustomLogo ? getBadgeIconUrl(slug) : DEFAULT_INRBADGE_LOGO_SRC;
+  const iconPreloads = Array.from(new Set([
+    headerLogoSrc,
+    inrCalendarLogo.src,
+    ...channelActions.map((action) => action.iconSrc).filter((src): src is string => Boolean(src)),
+  ]));
 
   return (
     <main className={styles.page}>
+      {iconPreloads.map((src) => <link key={src} rel="preload" as="image" href={src} />)}
       <section className={styles.shell}>
         <div className={styles.card}>
           <div className={styles.cardGlowA} />
@@ -363,12 +393,12 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
 
           <div className={styles.headerRow}>
             <div className={styles.headerTopBar}>
-              <BadgeShareButton publicUrl={publicUrl} company={company} vCardUri={vCardUri} vCardFilename={vCardFilename} />
+              <BadgeShareButton publicUrl={publicUrl} company={company} />
               <div className={styles.headerIdentity}>
                 <div className={styles.logo} aria-hidden="true">
                   {shareSettings.logo ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={logo.logoUrl || DEFAULT_INRBADGE_LOGO_SRC} alt="" />
+                    <img src={headerLogoSrc} alt="" loading="eager" decoding="sync" fetchPriority="high" />
                   ) : <span>iNr</span>}
                 </div>
               </div>
@@ -377,7 +407,6 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
             {headerInfoLine ? <p className={styles.headerInfoLine}>{headerInfoLine}</p> : null}
           </div>
 
-          {decodedSector.profession ? <p className={styles.job}>{decodedSector.profession}</p> : null}
           {description ? <p className={styles.description}>{description}</p> : null}
 
           {primaryActions.length > 0 ? (
@@ -388,15 +417,17 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
             </div>
           ) : null}
 
+          <BadgeLeadButton slug={slug} company={company} />
+
           {channelActions.length > 0 ? (
             <section className={styles.section}>
               <div className={styles.sectionHeader}>
                 <span className={styles.sectionMark} />
                 <h2>Mes canaux</h2>
               </div>
-              <div className={styles.channelsGrid} data-count={channelActions.length}>
+              <div className={styles.channelsGrid} data-count={channelActions.length} style={{ ["--channels-columns" as any]: channelRowSize }}>
                 {channelActions.map((action) => (
-                  <ActionLink key={`${action.label}-${action.href}`} {...action} />
+                  <ActionLink key={`${action.label}-${action.href}`} {...action} iconOnly />
                 ))}
               </div>
             </section>

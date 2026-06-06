@@ -2795,6 +2795,10 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         connected: Boolean(tiktokConnected),
         url: tiktokProfileUrl,
       },
+      youtubeShorts: {
+        connected: Boolean(youtubeShortsConnected && youtubeShortsUrl),
+        url: youtubeShortsUrl,
+      },
     },
     onOpenProfile: () => openPanel("profil"),
     onOpenActivity: () => openPanel("activite"),

@@ -3747,6 +3747,27 @@
   letter-spacing: -0.02em;
 }
 
+.metricMiniValueRow {
+  width: 100%;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.metricMiniValueRow b {
+  margin-top: 0;
+  flex: 0 0 auto;
+}
+
+.metricMiniValueRow small {
+  margin-top: 0;
+  margin-left: auto;
+  flex: 0 0 auto;
+  text-align: right;
+  white-space: nowrap;
+}
+
 @media (max-width: 480px) {
   .metricMiniGrid {
     gap: 8px;
@@ -4861,6 +4882,10 @@
   font-size: 10.5px;
   font-weight: 800;
   line-height: 1.05;
+}
+
+.metricMiniValueRow small {
+  margin-top: 0;
 }
 
 @media (min-width: 901px) {
@@ -6381,6 +6406,27 @@
     margin-top: 3px !important;
     font-size: 16.5px !important;
     line-height: 1 !important;
+  }
+
+  .channelStatsPanel .metricMiniValueRow {
+    width: 100% !important;
+    margin-top: 3px !important;
+    display: flex !important;
+    align-items: baseline !important;
+    justify-content: space-between !important;
+    gap: 6px !important;
+  }
+
+  .channelStatsPanel .metricMiniValueRow b,
+  .channelStatsPanel .metricMiniValueRow small {
+    margin-top: 0 !important;
+  }
+
+  .channelStatsPanel .metricMiniValueRow small {
+    font-size: 9.8px !important;
+    line-height: 1 !important;
+    text-align: right !important;
+    white-space: nowrap !important;
   }
 
   .channelStatsPanel .provenanceCompactBlock .donutWrap,

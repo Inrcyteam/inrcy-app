@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import inrCalendarLogo from "@/public/inrcalendar-logo.png";
 import { useMemo, useState, type FormEvent } from "react";
 import type { InrBadgeAppointmentSettings } from "@/lib/inrBadgeSettings";
 import styles from "../badge.module.css";
@@ -9,9 +10,6 @@ type BusyEvent = { id: string; start: string; end: string };
 
 type Props = {
   slug: string;
-  company: string;
-  displayName: string;
-  logoUrl: string;
   settings: InrBadgeAppointmentSettings;
   events: BusyEvent[];
 };
@@ -59,7 +57,7 @@ function overlaps(start: Date, end: Date, event: BusyEvent) {
   return start < eventEnd && end > eventStart;
 }
 
-export default function RdvBookingClient({ slug, company: _company, displayName: _displayName, logoUrl: _logoUrl, settings, events }: Props) {
+export default function RdvBookingClient({ slug, settings, events }: Props) {
   const [selectedDay, setSelectedDay] = useState("");
   const [selectedSlot, setSelectedSlot] = useState<{ start: string; end: string; label: string } | null>(null);
   const [name, setName] = useState("");
@@ -177,7 +175,7 @@ export default function RdvBookingClient({ slug, company: _company, displayName:
                 <a className={`${styles.previousPageButton} ${styles.iconActionButton}`} href={`/badge/${slug}`} aria-label="Retour à la fiche" title="Retour">←</a>
                 <button type="button" className={`${styles.closePageButton} ${styles.iconActionButton}`} onClick={handleClosePage} aria-label="Fermer" title="Fermer">×</button>
               </div>
-              <Image className={styles.calendarHeroLogo} src="/inrcalendar-logo.png" alt="iNr'Calendar" width={168} height={64} priority />
+              <Image className={styles.calendarHeroLogo} src={inrCalendarLogo} alt="iNr'Calendar" width={168} height={64} priority />
             </div>
             <p className={styles.calendarInlineInfo}>Réserver un rendez-vous</p>
           </div>

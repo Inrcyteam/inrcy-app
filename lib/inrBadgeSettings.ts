@@ -13,6 +13,7 @@ export type InrBadgeShareKey =
   | "linkedin"
   | "mails"
   | "tiktok"
+  | "youtubeShorts"
   | "appointment"
   | "quote";
 
@@ -50,6 +51,7 @@ export const DEFAULT_INRBADGE_SHARE_SETTINGS: InrBadgeShareSettings = {
   linkedin: true,
   mails: true,
   tiktok: false,
+  youtubeShorts: true,
   appointment: true,
   quote: false,
 };

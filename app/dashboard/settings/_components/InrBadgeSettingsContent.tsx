@@ -27,6 +27,7 @@ type InrBadgeSettingsChannels = {
   linkedin: InrBadgeChannelStatus;
   mails: InrBadgeChannelStatus;
   tiktok: InrBadgeChannelStatus;
+  youtubeShorts?: InrBadgeChannelStatus;
 };
 
 type MailAccountOption = {
@@ -45,7 +46,6 @@ type Props = {
   profileReady: boolean;
   channels: InrBadgeSettingsChannels;
   onOpenProfile: () => void;
-  onOpenActivity: () => void;
   onOpenCalendarSettings: () => void;
 };
 
@@ -289,20 +289,27 @@ function FieldToggle({
   helper?: string;
   onChange: (checked: boolean) => void;
 }) {
+  const active = Boolean(checked) && !disabled;
+
   return (
-    <label style={{ ...toggleRowStyle, opacity: disabled ? 0.55 : 1 }}>
-      <span style={{ minWidth: 0 }}>
+    <button
+      type="button"
+      style={{ ...toggleRowStyle, opacity: disabled ? 0.55 : 1, cursor: disabled ? "not-allowed" : "pointer" }}
+      aria-pressed={active}
+      disabled={disabled}
+      onClick={() => {
+        if (disabled) return;
+        onChange(!active);
+      }}
+    >
+      <span style={{ minWidth: 0, textAlign: "left" }}>
         <strong style={toggleTitleStyle}>{label}</strong>
         {helper ? <small style={toggleHelperStyle}>{helper}</small> : null}
       </span>
-      <input
-        type="checkbox"
-        checked={checked && !disabled}
-        disabled={disabled}
-        onChange={(event) => onChange(event.target.checked)}
-        style={{ width: 18, height: 18, accentColor: "#8b5cf6" }}
-      />
-    </label>
+      <span aria-hidden="true" style={active ? toggleCheckActiveStyle : toggleCheckStyle}>
+        {active ? "✓" : ""}
+      </span>
+    </button>
   );
 }
 
@@ -342,7 +349,6 @@ export default function InrBadgeSettingsContent({
   profileReady,
   channels,
   onOpenProfile,
-  onOpenActivity,
   onOpenCalendarSettings,
 }: Props) {
   const storageKey = useMemo(() => getStorageKey(profile, publicUrl), [profile, publicUrl]);
@@ -419,7 +425,7 @@ export default function InrBadgeSettingsContent({
   }, [downloadMenuOpen]);
 
   const updateSetting = (key: ShareKey, value: boolean) => {
-    const next = { ...settings, [key]: value };
+    const next = normalizeInrBadgeShareSettings({ ...settings, [key]: value });
     setSettings(next);
     saveBadgeSettings(storageKey, next, appointmentSettings, selectedMailAccountId);
     void persistBadgeSettings(next, appointmentSettings, selectedMailAccountId);
@@ -490,7 +496,8 @@ export default function InrBadgeSettingsContent({
     { key: "facebook", label: "Facebook", connected: canShareChannel(channels.facebook), helper: "Disponible si la page Facebook est connectée avec un lien enregistré." },
     { key: "instagram", label: "Instagram", connected: canShareChannel(channels.instagram), helper: "Disponible si Instagram est connecté avec un lien enregistré." },
     { key: "linkedin", label: "LinkedIn", connected: canShareChannel(channels.linkedin), helper: "Disponible si LinkedIn est connecté avec un lien enregistré." },
-    { key: "tiktok", label: "TikTok", connected: false, helper: "Arrive bientôt." },
+    { key: "tiktok", label: "TikTok", connected: canShareChannel(channels.tiktok), helper: "Disponible si TikTok est connecté avec un lien enregistré." },
+    { key: "youtubeShorts", label: "YouTube Shorts", connected: canShareChannel(channels.youtubeShorts || { connected: false }), helper: "Disponible si YouTube Shorts est configuré avec un lien enregistré." },
   ];
 
   const mailSelectOptions = [
@@ -591,17 +598,17 @@ export default function InrBadgeSettingsContent({
       <div style={cardStyle}>
         <h3 style={sectionTitleStyle}>Informations partagées</h3>
         <div style={twoColumnsGridStyle}>
-          <FieldToggle label="Logo" checked={settings.logo} helper={profile.logoUrl ? "Affiché en haut du badge." : "Logo iNr’Badge utilisé par défaut."} onChange={(value) => updateSetting("logo", value)} />
-          <FieldToggle label="Nom du professionnel" checked={settings.name} onChange={(value) => updateSetting("name", value)} />
-          <FieldToggle label="Entreprise" checked={settings.company} onChange={(value) => updateSetting("company", value)} />
+          <FieldToggle label="Logo" checked={Boolean(settings.logo)} helper={profile.logoUrl ? "Affiché en haut du badge." : "Logo iNr’Badge utilisé par défaut."} onChange={(value) => updateSetting("logo", value)} />
+          <FieldToggle label="Nom du professionnel" checked={Boolean(settings.name)} onChange={(value) => updateSetting("name", value)} />
+          <FieldToggle label="Entreprise" checked={Boolean(settings.company)} onChange={(value) => updateSetting("company", value)} />
         </div>
       </div>
 
       <div style={cardStyle}>
         <h3 style={sectionTitleStyle}>Actions rapides</h3>
         <div style={twoColumnsGridStyle}>
-          <FieldToggle label="Téléphone" checked={settings.phone} disabled={!phone} helper={!phone ? "À compléter dans Mon profil." : undefined} onChange={(value) => updateSetting("phone", value)} />
-          <FieldToggle label="Enregistrer le contact" checked={settings.saveContact} helper="Prépare la fiche contact vCard pour l'étape publique." onChange={(value) => updateSetting("saveContact", value)} />
+          <FieldToggle label="Téléphone" checked={Boolean(settings.phone)} disabled={!phone} helper={!phone ? "À compléter dans Mon profil." : undefined} onChange={(value) => updateSetting("phone", value)} />
+          <FieldToggle label="Enregistrer le contact" checked={Boolean(settings.saveContact)} helper="Prépare la fiche contact vCard pour l'étape publique." onChange={(value) => updateSetting("saveContact", value)} />
 
           <div style={fullWidthGridItemStyle}>
             <div style={{ ...mailActionCardStyle, opacity: canShowMailButton ? 1 : 0.55 }}>
@@ -612,7 +619,7 @@ export default function InrBadgeSettingsContent({
                 </span>
                 <input
                   type="checkbox"
-                  checked={settings.email && canShowMailButton}
+                  checked={Boolean(settings.email) && canShowMailButton}
                   disabled={!canShowMailButton}
                   onChange={(event) => updateSetting("email", event.target.checked)}
                   style={{ width: 18, height: 18, accentColor: "#8b5cf6", flex: "0 0 auto" }}
@@ -642,7 +649,7 @@ export default function InrBadgeSettingsContent({
             <FieldToggle
               key={item.key}
               label={item.label}
-              checked={settings[item.key]}
+              checked={Boolean(settings[item.key])}
               disabled={!item.connected}
               helper={item.connected ? "Activé sur votre badge si coché." : item.helper}
               onChange={(value) => updateSetting(item.key, value)}
@@ -655,7 +662,7 @@ export default function InrBadgeSettingsContent({
         <h3 style={sectionTitleStyle}>Prise de RDV</h3>
         <div style={appointmentActionRowStyle}>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <FieldToggle label="Afficher Prendre RDV" checked={settings.appointment} helper="Ajoute le bouton sur la fiche publique." onChange={(value) => updateSetting("appointment", value)} />
+            <FieldToggle label="Afficher Prendre RDV" checked={Boolean(settings.appointment)} helper="Ajoute le bouton sur la fiche publique." onChange={(value) => updateSetting("appointment", value)} />
           </div>
           <button
             type="button"
@@ -821,6 +828,7 @@ const warningCardStyle: CSSProperties = {
 };
 
 const toggleRowStyle: CSSProperties = {
+  width: "100%",
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
@@ -830,6 +838,28 @@ const toggleRowStyle: CSSProperties = {
   borderRadius: 14,
   padding: "10px 12px",
   color: "#fff",
+  font: "inherit",
+};
+
+const toggleCheckStyle: CSSProperties = {
+  width: 18,
+  height: 18,
+  flex: "0 0 auto",
+  display: "grid",
+  placeItems: "center",
+  borderRadius: 4,
+  border: "1px solid rgba(255,255,255,0.30)",
+  background: "rgba(255,255,255,0.08)",
+  color: "#fff",
+  fontSize: 13,
+  fontWeight: 950,
+  lineHeight: 1,
+};
+
+const toggleCheckActiveStyle: CSSProperties = {
+  ...toggleCheckStyle,
+  border: "1px solid rgba(139,92,246,0.95)",
+  background: "#8b5cf6",
 };
 
 const selectRowStyle: CSSProperties = {

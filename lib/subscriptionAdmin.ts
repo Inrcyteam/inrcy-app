@@ -12,6 +12,7 @@ type AdminAlertType =
   | "cancellation_reversed"
   | "subscription_deleted"
   | "trial_account_deleted"
+  | "trial_account_expired"
   | "cancelled_account_deleted";
 
 type AdminAlertInput = {
@@ -64,6 +65,8 @@ function labelForType(type: AdminAlertType) {
       return "Abonnement Stripe terminé";
     case "trial_account_deleted":
       return "Compte supprimé après fin d'essai";
+    case "trial_account_expired":
+      return "Compte bloqué après fin d'essai";
     case "cancelled_account_deleted":
       return "Compte supprimé après fin de préavis";
     default:

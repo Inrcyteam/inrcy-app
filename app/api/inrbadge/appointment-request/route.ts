@@ -4,6 +4,7 @@ import { extractInrBadgeUserIdFromSlug } from "@/lib/inrBadge";
 import { normalizeInrBadgeShareSettings, resolveInrBadgeAppointmentSettings } from "@/lib/inrBadgeSettings";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendTxMail } from "@/lib/txMailer";
+import { upsertCrmContactWithoutDuplicate } from "@/lib/crmContactDedupe";
 
 type RequestBody = {
   slug?: string;
@@ -175,13 +176,42 @@ export async function POST(req: Request) {
   const proEmail = clean(profile.contact_email) || clean((await supabaseAdmin.auth.admin.getUserById(userId).catch(() => null))?.data?.user?.email);
   if (!proEmail) return bad("Email professionnel introuvable", 500);
 
+  const appointmentNotes = [
+    "Source : iNrCalendar",
+    "Canal : prise de RDV iNr'Badge",
+    `Créneau demandé : ${start.toISOString()} → ${end.toISOString()}`,
+    message ? `Message : ${message}` : "",
+  ].filter(Boolean).join("\n");
+
+  let crmResult;
+  try {
+    crmResult = await upsertCrmContactWithoutDuplicate(supabaseAdmin, {
+      userId,
+      firstName: "",
+      lastName: clientName,
+      companyName: clientCompany,
+      email: clientEmail,
+      phone: clientPhone,
+      notes: appointmentNotes,
+      category: clientCompany ? "professionnel" : "particulier",
+      contactType: "prospect",
+      important: false,
+      source: "inrcalendar",
+    });
+  } catch (crmError) {
+    console.error("[inrbadge-appointment-request] crm upsert failed", crmError);
+    return bad("Impossible d’enregistrer la demande de RDV", 500);
+  }
+
   const pendingMeta = {
     kind: "agenda",
     source: "inrbadge",
     status: "pending",
     contact: {
+      crm_contact_id: crmResult?.id || undefined,
       display_name: clientName,
-      first_name: clientName,
+      first_name: "",
+      last_name: clientName,
       company_name: clientCompany || undefined,
       email: clientEmail,
       phone: clientPhone,
@@ -194,6 +224,7 @@ export async function POST(req: Request) {
     },
     inrBadgeAppointmentRequest: {
       slug,
+      crmContactId: crmResult?.id || undefined,
       clientName,
       clientCompany,
       clientEmail,
