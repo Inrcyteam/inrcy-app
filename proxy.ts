@@ -12,6 +12,30 @@ type MaintenanceRow = {
   updated_at?: string | null;
 };
 
+type SubscriptionGateRow = {
+  status?: string | null;
+};
+
+const BLOCKED_SUBSCRIPTION_STATUSES = new Set([
+  "trial_expired",
+  "trial-expired",
+  "paused",
+  "past_due",
+  "unpaid",
+  "canceled",
+  "cancelled",
+  "incomplete",
+  "incomplete_expired",
+]);
+
+function normalizeSubscriptionStatus(value: unknown): string {
+  return String(value || "").trim().toLowerCase();
+}
+
+function isBlockedSubscriptionStatus(value: unknown): boolean {
+  return BLOCKED_SUBSCRIPTION_STATUSES.has(normalizeSubscriptionStatus(value));
+}
+
 function getIp(req: NextRequest): string {
   // Vercel provides req.ip, but keep fallbacks for local/dev/proxies.
   const direct = (req as unknown as { ip?: string }).ip;
@@ -235,6 +259,30 @@ function getSupabaseHeaders(): HeadersInit | null {
     Authorization: `Bearer ${token}`,
     "Content-Type": "application/json",
   };
+}
+
+async function getSubscriptionGateStatus(userId: string): Promise<string | null> {
+  try {
+    const headers = getSupabaseHeaders();
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    if (!headers || !supabaseUrl) return null;
+
+    const url = new URL(`${supabaseUrl}/rest/v1/subscriptions`);
+    url.searchParams.set("select", "status");
+    url.searchParams.set("user_id", `eq.${userId}`);
+    url.searchParams.set("limit", "1");
+
+    const res = await fetch(url.toString(), {
+      headers,
+      cache: "no-store",
+    });
+
+    if (!res.ok) return null;
+    const rows = (await res.json()) as SubscriptionGateRow[];
+    return rows[0]?.status ?? null;
+  } catch {
+    return null;
+  }
 }
 
 async function getMaintenanceRow(): Promise<MaintenanceRow | null> {
@@ -462,6 +510,18 @@ export async function proxy(req: NextRequest) {
       if (!admin) {
         const url = req.nextUrl.clone();
         url.pathname = "/maintenance";
+        url.search = "";
+        const out = NextResponse.redirect(url, 307);
+        return applyResponseHeaders(out);
+      }
+    }
+
+    if (userId) {
+      const subscriptionStatus = await getSubscriptionGateStatus(userId);
+
+      if (isBlockedSubscriptionStatus(subscriptionStatus)) {
+        const url = req.nextUrl.clone();
+        url.pathname = "/compte-bloque";
         url.search = "";
         const out = NextResponse.redirect(url, 307);
         return applyResponseHeaders(out);
