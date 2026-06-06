@@ -75,7 +75,6 @@ export default function PublishChannelSelector({
   isMobile,
   connected,
   channels,
-  channelReadiness = {},
   channelInfoOpen,
   setChannelInfoOpen,
   toggle,
@@ -88,14 +87,6 @@ export default function PublishChannelSelector({
   const hasConnectedChannels = connectedChannelKeys.length > 0;
   const allConnectedSelected = hasConnectedChannels && selectedConnectedCount === connectedChannelKeys.length;
   const bulkLabel = allConnectedSelected ? "Tout désélectionner" : "Tout sélectionner";
-  const selectedBlockingMessages = channelKeys
-    .filter((key) => channels[key] && connected[key] && channelReadiness[key]?.tone === "blocked")
-    .flatMap((key) => {
-      const readiness = channelReadiness[key];
-      if (!readiness) return [];
-      const message = readiness.blockers[0] || readiness.message;
-      return message ? [`${CHANNEL_LABELS[key]} : ${message}`] : [];
-    });
 
   return (
     <div
@@ -179,15 +170,6 @@ export default function PublishChannelSelector({
           const info = getChannelDetailInfo(key);
           const isConnected = connected[key];
           const isSelected = channels[key] && isConnected;
-          const readiness = channelReadiness[key];
-          const isBlocked = isSelected && readiness?.tone === "blocked";
-          const isWarning = isSelected && readiness?.tone === "warning";
-          const statusMessage = isBlocked || isWarning
-            ? readiness?.message || readiness?.blockers?.[0] || readiness?.warnings?.[0] || ""
-            : "";
-          const statusTitle = statusMessage
-            ? `${CHANNEL_LABELS[key]} — ${statusMessage}`
-            : info?.fullLabel || `${CHANNEL_LABELS[key]} ${isConnected ? "connecté" : "non connecté"}`;
           const isInfoVisible = channelInfoOpen === key && !!info;
           const isLastOddMobileItem = isMobile && index === channelKeys.length - 1 && channelKeys.length % 2 === 1;
 
@@ -200,7 +182,6 @@ export default function PublishChannelSelector({
                 tabIndex={isConnected ? 0 : -1}
                 aria-disabled={!isConnected}
                 aria-pressed={isSelected}
-                title={statusTitle}
                 onKeyDown={(event) => {
                   if (!isConnected) return;
                   if (event.key === "Enter" || event.key === " ") {
@@ -215,27 +196,15 @@ export default function PublishChannelSelector({
                   padding: "8px 8px",
                   position: "relative",
                   overflow: "visible",
-                  border: isBlocked
-                    ? "1px solid rgba(248,113,113,0.72)"
-                    : isWarning
-                      ? "1px solid rgba(251,191,36,0.52)"
-                      : isSelected
-                        ? "1px solid rgba(56,189,248,0.82)"
-                        : "1px solid rgba(255,255,255,0.12)",
-                  boxShadow: isBlocked
-                    ? "0 0 0 1px rgba(248,113,113,0.22) inset, 0 10px 24px rgba(248,113,113,0.10)"
-                    : isWarning
-                      ? "0 0 0 1px rgba(251,191,36,0.18) inset, 0 10px 24px rgba(251,191,36,0.08)"
-                      : isSelected
-                        ? "0 0 0 1px rgba(56,189,248,0.26) inset, 0 10px 24px rgba(14,165,233,0.12)"
-                        : "none",
-                  background: isBlocked
-                    ? "linear-gradient(135deg, rgba(127,29,29,0.30), rgba(69,10,10,0.20))"
-                    : isWarning
-                      ? "linear-gradient(135deg, rgba(120,53,15,0.22), rgba(69,26,3,0.14))"
-                      : isSelected
-                        ? "linear-gradient(135deg, rgba(56,189,248,0.22), rgba(14,116,144,0.20))"
-                        : "rgba(255,255,255,0.04)",
+                  border: isSelected
+                    ? "1px solid rgba(56,189,248,0.82)"
+                    : "1px solid rgba(255,255,255,0.12)",
+                  boxShadow: isSelected
+                    ? "0 0 0 1px rgba(56,189,248,0.26) inset, 0 10px 24px rgba(14,165,233,0.12)"
+                    : "none",
+                  background: isSelected
+                    ? "linear-gradient(135deg, rgba(56,189,248,0.22), rgba(14,116,144,0.20))"
+                    : "rgba(255,255,255,0.04)",
                   cursor: isConnected ? "pointer" : "not-allowed",
                   display: "flex",
                   alignItems: "center",
@@ -315,28 +284,6 @@ export default function PublishChannelSelector({
                 >
                   <LinkIcon />
                 </button>
-                {isBlocked || isWarning ? (
-                  <span
-                    aria-hidden="true"
-                    style={{
-                      position: "absolute",
-                      top: -5,
-                      left: -5,
-                      width: 19,
-                      height: 19,
-                      borderRadius: 999,
-                      display: "inline-grid",
-                      placeItems: "center",
-                      background: isBlocked ? "#ef4444" : "#f59e0b",
-                      color: "#fff",
-                      fontSize: 12,
-                      fontWeight: 950,
-                      boxShadow: "0 10px 18px rgba(0,0,0,0.25)",
-                    }}
-                  >
-                    !
-                  </span>
-                ) : null}
                 {isInfoVisible && info ? (
                   <div
                     onPointerDown={(event) => event.stopPropagation()}
@@ -382,7 +329,7 @@ export default function PublishChannelSelector({
               tabIndex={isConnected ? 0 : -1}
               aria-disabled={!isConnected}
               aria-pressed={isSelected}
-              title={statusTitle}
+              title={info?.fullLabel || `${CHANNEL_LABELS[key]} ${isConnected ? "connecté" : "non connecté"}`}
               onMouseEnter={() => {
                 if (info) setChannelInfoOpen(key);
               }}
@@ -410,23 +357,15 @@ export default function PublishChannelSelector({
                 position: "relative",
                 overflow: "visible",
                 borderRadius: 16,
-                border: isBlocked
-                  ? "2px solid rgba(248,113,113,0.82)"
-                  : isWarning
-                    ? "2px solid rgba(251,191,36,0.62)"
-                    : isSelected
-                      ? "2px solid rgba(76,195,255,0.88)"
-                      : "1px solid rgba(255,255,255,0.10)",
-                boxShadow: isBlocked
-                  ? "0 0 0 1px rgba(248,113,113,0.22) inset, 0 0 18px rgba(248,113,113,0.16), 0 10px 24px rgba(8,18,34,0.16)"
-                  : isSelected
-                    ? "0 0 0 1px rgba(76,195,255,0.28) inset, 0 0 18px rgba(76,195,255,0.18), 0 10px 24px rgba(8,18,34,0.16)"
-                    : "none",
-                background: isBlocked
-                  ? "linear-gradient(135deg, rgba(127,29,29,0.30), rgba(69,10,10,0.18))"
-                  : isSelected
-                    ? "linear-gradient(135deg, rgba(76,195,255,0.16), rgba(34,211,238,0.08))"
-                    : "rgba(255,255,255,0.03)",
+                border: isSelected
+                  ? "2px solid rgba(76,195,255,0.88)"
+                  : "1px solid rgba(255,255,255,0.10)",
+                boxShadow: isSelected
+                  ? "0 0 0 1px rgba(76,195,255,0.28) inset, 0 0 18px rgba(76,195,255,0.18), 0 10px 24px rgba(8,18,34,0.16)"
+                  : "none",
+                background: isSelected
+                  ? "linear-gradient(135deg, rgba(76,195,255,0.16), rgba(34,211,238,0.08))"
+                  : "rgba(255,255,255,0.03)",
                 cursor: isConnected ? "pointer" : "not-allowed",
                 display: "grid",
                 placeItems: "center",
@@ -441,20 +380,10 @@ export default function PublishChannelSelector({
                   width: 9,
                   height: 9,
                   borderRadius: 999,
-                  background: isBlocked
-                    ? "#ef4444"
-                    : isWarning
-                      ? "#f59e0b"
-                      : isConnected
-                        ? "#43d17d"
-                        : "#ff6b7d",
-                  boxShadow: isBlocked
-                    ? "0 0 12px rgba(248,113,113,0.42)"
-                    : isWarning
-                      ? "0 0 12px rgba(245,158,11,0.38)"
-                      : isConnected
-                        ? "0 0 12px rgba(67,209,125,0.45)"
-                        : "0 0 12px rgba(255,107,125,0.25)",
+                  background: isConnected ? "#43d17d" : "#ff6b7d",
+                  boxShadow: isConnected
+                    ? "0 0 12px rgba(67,209,125,0.45)"
+                    : "0 0 12px rgba(255,107,125,0.25)",
                 }}
               />
               {isSelected ? (
@@ -469,18 +398,14 @@ export default function PublishChannelSelector({
                     borderRadius: 999,
                     display: "inline-grid",
                     placeItems: "center",
-                    background: isBlocked
-                      ? "rgba(239,68,68,0.95)"
-                      : isWarning
-                        ? "rgba(245,158,11,0.95)"
-                        : "rgba(76,195,255,0.92)",
-                    color: isWarning ? "#111827" : isBlocked ? "#fff" : "#07111f",
+                    background: "rgba(76,195,255,0.92)",
+                    color: "#07111f",
                     fontSize: 12,
                     fontWeight: 950,
                     lineHeight: 1,
                   }}
                 >
-                  {isBlocked || isWarning ? "!" : "✓"}
+                  ✓
                 </span>
               ) : null}
               <img
@@ -542,27 +467,6 @@ export default function PublishChannelSelector({
           );
         })}
       </div>
-      {selectedBlockingMessages.length ? (
-        <div
-          style={{
-            marginTop: 10,
-            display: "grid",
-            gap: 6,
-            borderRadius: 14,
-            padding: "9px 11px",
-            background: "rgba(248,113,113,0.10)",
-            border: "1px solid rgba(248,113,113,0.24)",
-            color: "#fecaca",
-            fontSize: 12.5,
-            fontWeight: 750,
-            lineHeight: 1.35,
-          }}
-        >
-          {selectedBlockingMessages.map((message) => (
-            <div key={message}>⛔ {message}</div>
-          ))}
-        </div>
-      ) : null}
     </div>
   );
 }
