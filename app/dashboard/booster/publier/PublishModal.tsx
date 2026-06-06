@@ -31,6 +31,7 @@ import {
   buildVideoSettingsByChannel,
   clampPercent,
   getChannelDefaultCtaLabel,
+  getChannelPublicationRequirements,
   getDefaultCtaModeForChannel,
   normalizeBoosterPreferredCta,
   getPublicationMediaLabel,
@@ -2396,16 +2397,35 @@ export default function PublishModal({
       return;
     }
 
+    const reviewItems = buildFinalReviewItems(preparedPostsByChannel);
+    const publishableChannels = reviewItems
+      .filter((item) => item.blockers.length === 0)
+      .map((item) => item.channel);
+    const skippedChannels = reviewItems
+      .filter((item) => item.blockers.length > 0)
+      .map((item) => ({
+        channel: item.channel,
+        label: item.label,
+        blockers: item.blockers,
+      }));
+
+    if (!publishableChannels.length) {
+      setPublishError(
+        "Aucun canal publiable. Corrigez les canaux rouges avant de publier.",
+      );
+      return;
+    }
+
     const publishMediaModeByChannel = Object.fromEntries(
-      selectedChannels.map((channel) => [
+      publishableChannels.map((channel) => [
         channel,
         resolveChannelMediaMode(channel),
       ]),
     ) as Partial<Record<ChannelKey, ChannelMediaMode>>;
-    const hasAnyVideoPublish = selectedChannels.some(
+    const hasAnyVideoPublish = publishableChannels.some(
       (channel) => publishMediaModeByChannel[channel] === "video",
     );
-    const hasAnyImagePublish = selectedChannels.some(
+    const hasAnyImagePublish = publishableChannels.some(
       (channel) => publishMediaModeByChannel[channel] === "images",
     );
 
@@ -2416,7 +2436,7 @@ export default function PublishModal({
       return;
     }
 
-    const missingContentChannels = selectedChannels.filter(
+    const missingContentChannels = publishableChannels.filter(
       (ch) => !String(preparedPostsByChannel[ch]?.content || "").trim(),
     );
     if (missingContentChannels.length && !options?.skipEmptyContentWarnings) {
@@ -2430,7 +2450,7 @@ export default function PublishModal({
     const gmbImages = channelImageEditors.gmb?.imageKeys || [];
     if (
       publishMediaModeByChannel.gmb === "images" &&
-      selectedChannels.includes("gmb") &&
+      publishableChannels.includes("gmb") &&
       !gmbImages.length &&
       !options?.skipGmbNoImageWarning
     ) {
@@ -2446,7 +2466,7 @@ export default function PublishModal({
     setPendingPublishPosts(null);
     setPostsByChannel(preparedPostsByChannel);
 
-    if (selectedChannels.includes("instagram")) {
+    if (publishableChannels.includes("instagram")) {
       const instagramMode = publishMediaModeByChannel.instagram || "none";
       const instagramImages = channelImageEditors.instagram?.imageKeys || [];
       if (instagramMode === "none") {
@@ -2521,7 +2541,7 @@ export default function PublishModal({
       const uploadedChannelImages = {} as ChannelImagePayload;
       const uploadTargets = !hasAnyImagePublish
         ? 0
-        : selectedChannels.reduce(
+        : publishableChannels.reduce(
             (sum, channel) =>
               sum +
               (channelImages[channel] || []).filter((image) => !!image?.dataUrl)
@@ -2530,7 +2550,7 @@ export default function PublishModal({
           );
       let uploadedCount = 0;
       if (hasAnyImagePublish) {
-        for (const channel of selectedChannels) {
+        for (const channel of publishableChannels) {
           if (publishMediaModeByChannel[channel] !== "images") continue;
           const uploadedImages = await uploadPreparedImages(
             channelImages[channel] || [],
@@ -2593,7 +2613,7 @@ export default function PublishModal({
         }
         publicationVideo = await preparePublicationVideoVariants(
           publicationVideo,
-          selectedChannels,
+          publishableChannels,
           publishMediaModeByChannel,
         );
       }
@@ -2605,7 +2625,7 @@ export default function PublishModal({
         window.clearInterval(publishPulseTimerRef.current);
 
       const publishStartedAt = Date.now();
-      const publishChannels = [...selectedChannels];
+      const publishChannels = [...publishableChannels];
       const estimatedPublishMs = Math.max(
         9000,
         5500 +
@@ -2653,8 +2673,11 @@ export default function PublishModal({
         video: publicationVideo,
         idea: idea.trim(),
         theme,
-        channels: selectedChannels,
-        postByChannel: preparedPostsByChannel,
+        channels: publishableChannels,
+        postByChannel: filterPostsForSelectedChannels(
+          preparedPostsByChannel,
+          publishableChannels,
+        ),
         // Avoid sending the same images twice (base images + channel images),
         // which can make the JSON body too large and trigger HTTP 413.
         // The API now rebuilds the fallback/base image set from channel images.
@@ -2672,12 +2695,12 @@ export default function PublishModal({
       await sleep(220);
       onUnsavedChange?.(false);
       const channelLinks = Object.fromEntries(
-        selectedChannels.map((channel) => [
+        publishableChannels.map((channel) => [
           channel,
           normalizeExternalHref(channelDetails[channel]?.href),
         ]),
       );
-      onPublishSuccess?.({ ...result, channelLinks });
+      onPublishSuccess?.({ ...result, channelLinks, skippedChannels });
       onClose();
     } catch (e) {
       if (publishPulseTimerRef.current) {
@@ -2927,74 +2950,34 @@ export default function PublishModal({
 
   const buildFinalReviewItems = (
     preparedPostsByChannel: Partial<Record<ChannelKey, ChannelPost>>,
+    channelsToReview: ChannelKey[] = selectedChannels,
   ) => {
-    return selectedChannels.map((channel) => {
+    return channelsToReview.map((channel) => {
       const post = getReviewPostForChannel(channel, preparedPostsByChannel);
       const rawImageKeys = channelImageEditors[channel]?.imageKeys || [];
       const imageKeysToPublish = getPublishImageKeysForChannel(channel);
-      const warnings: string[] = [];
-      const blockers: string[] = [];
       const hasTitle = !!String(post?.title || "").trim();
       const hasContent = !!String(post?.content || "").trim();
       const hasText = hasTitle || hasContent;
       const hasImage = imageKeysToPublish.length > 0;
       const mode = resolveChannelMediaMode(channel);
       const hasVideo = mode === "video" && !!videoFile;
-      const hasMedia =
-        mode === "video" ? hasVideo : mode === "images" ? hasImage : false;
-
-      if (!hasContent) warnings.push("Contenu vide");
-      if (!hasTitle) warnings.push("Titre vide");
-      if (mode === "video") {
-        if (!hasVideo) blockers.push("Ajoutez une vidéo.");
-        if (channel === "tiktok")
-          warnings.push(
-            "TikTok publiera la vidéo sur le compte connecté après validation finale.",
-          );
-        if (channel === "gmb")
-          warnings.push(
-            "Google peut refuser certaines vidéos. Si c’est le cas, iNrCy publiera le texte sans vidéo.",
-          );
-        if (channel === "linkedin") {
-          const linkedInVideoType = String(videoFile?.type || "").toLowerCase();
-          const linkedInVideoName = String(videoFile?.name || "").toLowerCase();
-          if (
-            videoFile &&
-            !linkedInVideoType.includes("mp4") &&
-            !linkedInVideoName.endsWith(".mp4")
-          ) {
-            blockers.push("LinkedIn nécessite une vidéo MP4.");
-          } else {
-            warnings.push(
-              "LinkedIn finalise la vidéo avant publication. L’envoi peut prendre quelques secondes.",
-            );
-          }
-        }
-      } else if (mode === "images") {
-        if (!hasImage) {
-          if (channel === "instagram")
-            blockers.push("Instagram nécessite au moins 1 image.");
-          else if (channel === "tiktok")
-            blockers.push("TikTok nécessite au moins 1 photo ou 1 vidéo.");
-          else if (channel === "gmb")
-            warnings.push("Google Business sera publié sans photo.");
-          else warnings.push("Aucune image sélectionnée.");
-        }
-        if (channel === "tiktok" && hasImage)
-          warnings.push(
-            "TikTok publiera les photos sur le compte connecté après validation finale.",
-          );
-      } else if (channel === "instagram") {
-        blockers.push("Instagram nécessite une vidéo ou au moins 1 image.");
-      } else if (channel === "tiktok") {
-        blockers.push("TikTok nécessite une vidéo ou au moins 1 photo.");
-      }
-      if (!hasText && !hasMedia) {
-        blockers.push("Ajoutez au moins du texte ou un média.");
-      }
-      if (mode === "images" && channel === "gmb" && rawImageKeys.length > 1) {
-        warnings.push("Google Business publiera uniquement la première photo.");
-      }
+      const requirements = getChannelPublicationRequirements({
+        channel,
+        connected: connected[channel],
+        mediaMode: mode,
+        hasVideo,
+        videoDurationSeconds:
+          videoDurationSeconds ?? videoSourceMetadata?.duration ?? null,
+        videoFileType: videoFile?.type || null,
+        videoFileName: videoFile?.name || null,
+        hasImage,
+        imageCount: imageKeysToPublish.length,
+        rawImageCount: rawImageKeys.length,
+        hasText,
+        hasTitle,
+        hasContent,
+      });
 
       return {
         channel,
@@ -3007,8 +2990,9 @@ export default function PublishModal({
               ? getPublicationMediaLabel("images", imageKeysToPublish.length)
               : "Texte seul",
         imageCount: imageKeysToPublish.length,
-        warnings,
-        blockers,
+        warnings: requirements.warnings,
+        blockers: requirements.blockers,
+        publishable: requirements.blockers.length === 0,
         hasContent,
         hasTitle,
         hasText,
@@ -3022,6 +3006,9 @@ export default function PublishModal({
     : [];
   const finalReviewBlockers = finalReviewItems.flatMap((item) => item.blockers);
   const hasFinalReviewBlockers = finalReviewBlockers.length > 0;
+  const finalReviewPublishableCount = finalReviewItems.filter(
+    (item) => item.blockers.length === 0,
+  ).length;
   const finalReviewSiteNotice =
     resolveChannelMediaMode("inrcy_site") === "images" &&
     resolveChannelMediaMode("site_web") === "images" &&
@@ -3033,6 +3020,31 @@ export default function PublishModal({
 
   const publishReadinessItems = buildFinalReviewItems(
     buildPreparedPostsByChannel(),
+  );
+  const channelReadiness = publishReadinessItems.reduce(
+    (acc, item) => {
+      const selectorBlockers = item.blockers.filter(
+        (blocker) => blocker !== "Ajoutez au moins du texte ou un média.",
+      );
+      acc[item.channel] = {
+        tone: selectorBlockers.length ? ("blocked" as const) : ("ready" as const),
+        message: selectorBlockers[0] || "Prêt à publier",
+        blockers: selectorBlockers,
+        warnings: item.warnings,
+      };
+      return acc;
+    },
+    {} as Partial<
+      Record<
+        ChannelKey,
+        {
+          tone: "ready" | "warning" | "blocked";
+          message: string;
+          blockers: string[];
+          warnings: string[];
+        }
+      >
+    >,
   );
   const imageAdapterTabs = imageAdapterChannels.map((channel) => {
     const reviewItem = publishReadinessItems.find(
@@ -3087,7 +3099,7 @@ export default function PublishModal({
     const preparedPostsByChannel =
       finalReviewPosts || buildPreparedPostsByChannel();
     const items = buildFinalReviewItems(preparedPostsByChannel);
-    if (items.some((item) => item.blockers.length)) return;
+    if (!items.some((item) => item.blockers.length === 0)) return;
     setFinalReviewOpen(false);
     setFinalReviewPosts(null);
     await runPublish({
@@ -3117,6 +3129,7 @@ export default function PublishModal({
         items={finalReviewItems}
         showSiteNotice={finalReviewSiteNotice}
         hasBlockers={hasFinalReviewBlockers}
+        publishableCount={finalReviewPublishableCount}
         isMobile={isMobile}
         saving={saving}
         onClose={closeFinalReview}
@@ -3149,6 +3162,7 @@ export default function PublishModal({
         isMobile={isMobile}
         connected={connected}
         channels={channels}
+        channelReadiness={channelReadiness}
         channelInfoOpen={channelInfoOpen}
         setChannelInfoOpen={setChannelInfoOpen}
         toggle={toggle}

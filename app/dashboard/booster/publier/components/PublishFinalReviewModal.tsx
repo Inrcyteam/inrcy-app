@@ -8,6 +8,7 @@ export type PublishFinalReviewItem = {
   imageCount: number;
   warnings: string[];
   blockers: string[];
+  publishable?: boolean;
   hasContent: boolean;
   hasTitle: boolean;
   hasText: boolean;
@@ -22,6 +23,7 @@ type PublishFinalReviewModalProps = {
   items: PublishFinalReviewItem[];
   showSiteNotice: boolean;
   hasBlockers: boolean;
+  publishableCount: number;
   isMobile: boolean;
   saving: boolean;
   onClose: () => void;
@@ -34,6 +36,7 @@ export default function PublishFinalReviewModal({
   items,
   showSiteNotice,
   hasBlockers,
+  publishableCount,
   isMobile,
   saving,
   onClose,
@@ -264,7 +267,7 @@ export default function PublishFinalReviewModal({
               lineHeight: 1.5,
             }}
           >
-            Corrigez les points bloquants avant de publier.
+            Les canaux rouges seront ignorés. Corrigez-les ou publiez uniquement les canaux prêts.
           </div>
         ) : null}
 
@@ -291,12 +294,14 @@ export default function PublishFinalReviewModal({
             type="button"
             className={styles.primaryBtn}
             onClick={onConfirm}
-            disabled={hasBlockers || saving}
-            style={{ opacity: hasBlockers || saving ? 0.58 : 1 }}
+            disabled={!publishableCount || saving}
+            style={{ opacity: !publishableCount || saving ? 0.58 : 1 }}
           >
             {saving
               ? "Publication en cours..."
-              : "Confirmer la publication"}
+              : hasBlockers
+                ? `Publier les ${publishableCount} canal(aux) prêts`
+                : "Confirmer la publication"}
           </button>
         </div>
       </div>

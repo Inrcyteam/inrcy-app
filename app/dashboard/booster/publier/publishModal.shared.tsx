@@ -315,6 +315,153 @@ export const BOOSTER_MAX_VIDEO_COUNT = 1;
 export const BOOSTER_MAX_VIDEO_BYTES = BOOSTER_MAX_MEDIA_BYTES;
 export const BOOSTER_MAX_VIDEO_MB_LABEL = BOOSTER_MAX_MEDIA_MB_LABEL;
 export const BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL = "3 min conseillées";
+export const YOUTUBE_SHORTS_MAX_VIDEO_DURATION_SECONDS = 180;
+
+export type ChannelPublicationRequirementInput = {
+  channel: ChannelKey;
+  connected?: boolean;
+  mediaMode: ChannelMediaMode;
+  hasVideo: boolean;
+  videoDurationSeconds?: number | null;
+  videoFileType?: string | null;
+  videoFileName?: string | null;
+  hasImage: boolean;
+  imageCount: number;
+  rawImageCount?: number;
+  hasText: boolean;
+  hasTitle: boolean;
+  hasContent: boolean;
+};
+
+export type ChannelPublicationRequirements = {
+  warnings: string[];
+  blockers: string[];
+};
+
+function isMp4VideoFile(type?: string | null, name?: string | null) {
+  const normalizedType = String(type || "").toLowerCase();
+  const normalizedName = String(name || "").toLowerCase();
+  return normalizedType.includes("mp4") || normalizedName.endsWith(".mp4");
+}
+
+export function getChannelPublicationRequirements({
+  channel,
+  connected = true,
+  mediaMode,
+  hasVideo,
+  videoDurationSeconds,
+  videoFileType,
+  videoFileName,
+  hasImage,
+  imageCount,
+  rawImageCount = imageCount,
+  hasText,
+  hasTitle,
+  hasContent,
+}: ChannelPublicationRequirementInput): ChannelPublicationRequirements {
+  const warnings: string[] = [];
+  const blockers: string[] = [];
+
+  if (!connected) {
+    blockers.push("Canal non connecté.");
+    return { warnings, blockers };
+  }
+
+  if (!hasContent) warnings.push("Contenu vide");
+  if (!hasTitle) warnings.push("Titre vide");
+
+  if (mediaMode === "video") {
+    if (!hasVideo) blockers.push("Ajoutez une vidéo.");
+
+    if (channel === "youtube_shorts") {
+      if (!hasVideo) {
+        blockers.push("YouTube Shorts nécessite une vidéo.");
+      } else if (
+        typeof videoDurationSeconds === "number" &&
+        Number.isFinite(videoDurationSeconds) &&
+        videoDurationSeconds > YOUTUBE_SHORTS_MAX_VIDEO_DURATION_SECONDS
+      ) {
+        blockers.push(
+          "Vidéo supérieure à 3 minutes, impossible de publier sur YouTube Shorts.",
+        );
+      } else if (videoDurationSeconds == null) {
+        warnings.push(
+          "Durée YouTube Shorts non vérifiée : YouTube pourra refuser si la vidéo dépasse 3 minutes.",
+        );
+      }
+    }
+
+    if (channel === "tiktok") {
+      warnings.push(
+        "TikTok publiera la vidéo sur le compte connecté après validation finale.",
+      );
+    }
+
+    if (channel === "gmb") {
+      warnings.push(
+        "Google peut refuser certaines vidéos. Si c’est le cas, iNrCy publiera le texte sans vidéo.",
+      );
+    }
+
+    if (channel === "linkedin") {
+      if (hasVideo && !isMp4VideoFile(videoFileType, videoFileName)) {
+        blockers.push("LinkedIn nécessite une vidéo MP4.");
+      } else if (hasVideo) {
+        warnings.push(
+          "LinkedIn finalise la vidéo avant publication. L’envoi peut prendre quelques secondes.",
+        );
+      }
+    }
+  } else if (mediaMode === "images") {
+    if (!hasImage) {
+      if (channel === "instagram") {
+        blockers.push("Instagram nécessite au moins 1 image.");
+      } else if (channel === "tiktok") {
+        blockers.push("TikTok nécessite au moins 1 photo ou 1 vidéo.");
+      } else if (channel === "youtube_shorts") {
+        blockers.push("YouTube Shorts nécessite une vidéo.");
+      } else if (channel === "gmb") {
+        warnings.push("Google Business sera publié sans photo.");
+      } else {
+        warnings.push("Aucune image sélectionnée.");
+      }
+    }
+
+    if (channel === "tiktok" && hasImage) {
+      warnings.push(
+        "TikTok publiera les photos sur le compte connecté après validation finale.",
+      );
+    }
+
+    if (channel === "youtube_shorts" && hasImage) {
+      blockers.push("YouTube Shorts ne publie pas les photos : ajoutez une vidéo.");
+    }
+  } else {
+    if (channel === "instagram") {
+      blockers.push("Instagram nécessite une vidéo ou au moins 1 image.");
+    } else if (channel === "tiktok") {
+      blockers.push("TikTok nécessite une vidéo ou au moins 1 photo.");
+    } else if (channel === "youtube_shorts") {
+      blockers.push("YouTube Shorts nécessite une vidéo.");
+    }
+  }
+
+  const hasMedia =
+    mediaMode === "video" ? hasVideo : mediaMode === "images" ? hasImage : false;
+  if (!hasText && !hasMedia) {
+    blockers.push("Ajoutez au moins du texte ou un média.");
+  }
+
+  if (mediaMode === "images" && channel === "gmb" && rawImageCount > 1) {
+    warnings.push("Google Business publiera uniquement la première photo.");
+  }
+
+  return {
+    warnings: Array.from(new Set(warnings)),
+    blockers: Array.from(new Set(blockers)),
+  };
+}
+
 
 export const BOOSTER_ALLOWED_VIDEO_MIME_TYPES = [
   "video/mp4",
