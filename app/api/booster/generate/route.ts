@@ -389,7 +389,7 @@ function hasRequiredContent(
   if (!post) return false;
   if (!post.title.trim() || !post.content.trim() || !post.cta.trim())
     return false;
-  const minContentLength = siteChannels.has(channel) ? 120 : 40;
+  const minContentLength = CHANNEL_MIN_CONTENT_LENGTH[channel] ?? 80;
   return post.content.trim().length >= minContentLength;
 }
 
@@ -494,23 +494,41 @@ function getCreativityTemperature(business: JsonRecord | null) {
   return 0.78;
 }
 
+const CHANNEL_OUTPUT_TOKEN_BUDGET: Record<BoosterChannels, number> = {
+  inrcy_site: 1500,
+  site_web: 1850,
+  gmb: 900,
+  facebook: 1000,
+  instagram: 850,
+  linkedin: 1350,
+  tiktok: 650,
+  youtube_shorts: 1500,
+};
+
+const CHANNEL_MIN_CONTENT_LENGTH: Record<BoosterChannels, number> = {
+  inrcy_site: 650,
+  site_web: 800,
+  gmb: 280,
+  facebook: 300,
+  instagram: 220,
+  linkedin: 450,
+  tiktok: 120,
+  youtube_shorts: 280,
+};
+
 function computeMaxOutputTokens(channels: BoosterChannels[]) {
   const uniqueChannels = Array.from(new Set(channels));
-  const siteCount = uniqueChannels.filter((channel) =>
-    siteChannels.has(channel),
-  ).length;
-  const socialCount = uniqueChannels.length - siteCount;
 
-  // Les contenus site sont beaucoup plus longs. Depuis que Site iNrCy et Site web
-  // sont séparés, le budget doit suivre les canaux réellement demandés, sans
-  // rogner la qualité quand un seul site est sélectionné.
-  let budget = 900;
-  budget += siteCount * 1300;
-  budget += socialCount * 520;
-  if (siteCount >= 2) budget += 650;
-  if (uniqueChannels.includes("gmb")) budget += 120;
+  // Budget qualitatif par lot IA.
+  // Objectif : 8 canaux peuvent être demandés, mais chaque lot doit garder assez
+  // de marge pour respecter les longueurs mini/maxi par canal sans rogner les
+  // contenus SEO, LinkedIn ou YouTube.
+  const budget = uniqueChannels.reduce(
+    (sum, channel) => sum + CHANNEL_OUTPUT_TOKEN_BUDGET[channel],
+    650,
+  );
 
-  return Math.min(5200, Math.max(1400, budget));
+  return Math.min(5600, Math.max(2200, budget));
 }
 
 function buildGenerationBatches(channels: BoosterChannels[]) {
@@ -804,6 +822,7 @@ const handler = async (req: Request) => {
 - Ne fais pas une présentation générale de l'activité si le pro a demandé un sujet précis.
 - Le contexte Mon activité, l'historique et l'angle éditorial servent uniquement à contextualiser, jamais à changer de sujet.
 - Pour chaque canal, title, content et cta doivent être non vides.
+- Le content doit respecter la longueur minimale qualitative du canal : Site iNrCy >= 900 caractères visés, Site web >= 1100, Google Business >= 450, Facebook >= 500, Instagram >= 350, LinkedIn >= 700, TikTok >= 180, YouTube >= 500.
 - Pour un canal site, le content doit être complet, naturel et utile, jamais vide ni résumé en une ligne.
 - Si Site iNrCy et Site web sont présents dans ce lot, ils doivent rester deux variantes distinctes et non deux copies.`,
         ]

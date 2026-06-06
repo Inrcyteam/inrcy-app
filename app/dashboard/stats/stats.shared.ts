@@ -1823,10 +1823,10 @@ function buildVisibilityStats(cubeKey: CubeKey, ov: Overview): CubeMetricItem[] 
   if (cubeKey === "youtube_shorts") {
     if (!ov?.sources?.youtube_shorts?.connected) return [];
     const m = ov?.sources?.youtube_shorts?.metrics;
-    pushNumberMetric(items, "Vues vidéo", safeNum(m?.totals?.video_views) || safeNum(m?.totals?.views), { available: metricKeyExists(m, ["video_views", "views"]) });
-    pushNumberMetric(items, "Abonnés", safeNum(m?.totals?.subscribers) || safeNum(m?.totals?.followers), { available: metricKeyExists(m, ["subscribers", "followers"]) });
-    pushNumberMetric(items, "J’aime reçus", safeNum(m?.totals?.likes_total) || safeNum(m?.totals?.likes), { available: metricKeyExists(m, ["likes_total", "likes"]) });
-    pushNumberMetric(items, "Vidéos", safeNum(m?.totals?.video_count) || safeNum(m?.totals?.shorts_count), { available: metricKeyExists(m, ["video_count", "shorts_count"]) });
+    pushNumberMetric(items, "Vues vidéo", safeNum(m?.totals?.video_views) || safeNum(m?.totals?.views), { available: metricKeyExists(m, ["video_views", "views"]), keepZero: true });
+    pushNumberMetric(items, "Vues chaîne", safeNum(m?.totals?.channel_views_total), { available: metricKeyExists(m, ["channel_views_total"]), keepZero: true });
+    pushNumberMetric(items, "Abonnés", safeNum(m?.totals?.subscribers) || safeNum(m?.totals?.followers), { available: metricKeyExists(m, ["subscribers", "followers"]), keepZero: true });
+    pushNumberMetric(items, "Vidéos chaîne", safeNum(m?.totals?.video_count) || safeNum(m?.totals?.shorts_count), { available: metricKeyExists(m, ["video_count", "shorts_count"]), keepZero: true });
     return firstFour(items);
   }
 

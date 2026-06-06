@@ -104,26 +104,93 @@ const HIDDEN_ANGLE_INSTRUCTIONS: Record<BoosterHiddenAngle, string> = {
 
 const CHANNEL_EDITORIAL_PLAYBOOKS: Record<BoosterChannels, string> = {
   inrcy_site:
-    "Objectif : produire une actualité utile pour le site iNrCy. Priorité au SEO local naturel, à la clarté et à la conversion douce. Accroche informative, paragraphes lisibles, mots-clés intégrés sans bourrage, 2 à 5 expressions importantes en gras Markdown uniquement dans le contenu.",
+    "Objectif : produire une actualité utile pour le site iNrCy. Priorité au SEO local naturel, à la clarté et à la conversion douce. Contenu riche, paragraphes lisibles, mots-clés intégrés sans bourrage, 2 à 5 expressions importantes en gras Markdown uniquement dans le contenu.",
   site_web:
-    "Objectif : produire un contenu publiable sur le site web du pro. Priorité au référencement local durable, à la crédibilité métier et à la lecture fluide. Mettre en avant le métier, la ville, les prestations cohérentes avec l'intention et les zones, sans transformer le texte en liste de mots-clés.",
+    "Objectif : produire un contenu durable pour le site web du pro. Priorité au référencement local, à la crédibilité métier et à la lecture fluide. Le contenu doit être plus riche que les réseaux sociaux, avec métier, ville, prestations et zones intégrés naturellement.",
   gmb:
-    "Objectif : informer localement sur Google Business. Texte factuel, concret, rassurant et très sobre. Une information utile dès le début, pas de ton promotionnel agressif, pas d'emoji, pas de hashtag, pas de téléphone, pas d'email, pas d'URL, pas de remise, pas de promesse invérifiable.",
+    "Objectif : informer localement sur Google Business. Texte factuel, concret, rassurant et sobre. Une information utile dès le début, pas de ton promotionnel agressif, pas d'emoji, pas de hashtag, pas de téléphone, pas d'email, pas d'URL, pas de remise, pas de promesse invérifiable.",
   facebook:
-    "Objectif : créer de la proximité et donner envie d'interagir. Ton humain, accessible, local, conversationnel. On peut parler du quotidien, d'une intervention, d'un conseil ou d'un besoin client typique, sans inventer de faux témoignage. CTA naturel, pas trop vendeur.",
+    "Objectif : créer de la proximité et donner envie d'interagir. Ton humain, accessible, local, conversationnel. Parler du quotidien, d'une intervention, d'un conseil ou d'un besoin client typique, sans inventer de faux témoignage. CTA naturel, pas trop vendeur.",
   instagram:
-    "Objectif : donner une impression visuelle et vivante. Texte plus direct, spontané, chaleureux, avec des phrases courtes et du relief. Faire sentir l'ambiance, le geste, le résultat ou le moment. Hashtags utiles et ciblés. Ne pas écrire 'lien en bio' sauf si l'information est fournie.",
+    "Objectif : donner une impression visuelle et vivante. Texte direct, spontané, chaleureux, avec des phrases courtes et du relief. Faire sentir l'ambiance, le geste, le résultat ou le moment. Hashtags utiles et ciblés. Ne pas écrire 'lien en bio' sauf si l'information est fournie.",
   linkedin:
     "Objectif : renforcer l'expertise et la crédibilité professionnelle. Ton posé, utile, structuré et humain. Montrer une méthode, un point de vigilance, une valeur métier ou une réflexion professionnelle. Éviter le ton trop commercial, les emojis excessifs et les accroches de vente directe.",
   tiktok:
     "Objectif : capter vite l'attention avec une accroche courte, naturelle et dynamique. Texte pensé pour accompagner une vidéo ou des photos : concret, vivant, local, avec 3 à 6 hashtags utiles. Éviter le ton institutionnel ou LinkedIn.",
   youtube_shorts:
-    "Objectif : préparer une vidéo YouTube utile et claire. Si la vidéo est courte et verticale/carrée, elle pourra partir en Short ; sinon elle sera une vidéo classique. Accroche immédiate, message local, titre propre et description lisible.",
+    "Objectif : préparer une publication YouTube claire, utile et recherchable. Le canal affiché est YouTube : iNrCy publiera automatiquement en Short si la vidéo est courte et adaptée, sinon en vidéo classique. Produire un titre propre, une description utile, un CTA et des mots-clés cohérents.",
+};
+
+type ChannelEditorialSpec = {
+  title: string;
+  contentMin: number;
+  contentMax: number;
+  goal: string;
+};
+
+const CHANNEL_EDITORIAL_SPECS: Record<BoosterChannels, ChannelEditorialSpec> = {
+  inrcy_site: {
+    title: "45 à 70 caractères",
+    contentMin: 900,
+    contentMax: 1500,
+    goal: "SEO local + conversion douce",
+  },
+  site_web: {
+    title: "45 à 70 caractères",
+    contentMin: 1100,
+    contentMax: 1800,
+    goal: "SEO durable, contenu plus riche",
+  },
+  gmb: {
+    title: "40 à 70 caractères",
+    contentMin: 450,
+    contentMax: 800,
+    goal: "Information locale claire et action rapide",
+  },
+  facebook: {
+    title: "40 à 80 caractères",
+    contentMin: 500,
+    contentMax: 900,
+    goal: "Proximité, humain, interaction",
+  },
+  instagram: {
+    title: "35 à 70 caractères",
+    contentMin: 350,
+    contentMax: 700,
+    goal: "Visuel, vivant, hashtags ciblés",
+  },
+  linkedin: {
+    title: "45 à 90 caractères",
+    contentMin: 700,
+    contentMax: 1200,
+    goal: "Expertise, crédibilité, recul métier",
+  },
+  tiktok: {
+    title: "30 à 70 caractères",
+    contentMin: 180,
+    contentMax: 450,
+    goal: "Accroche courte, dynamique, vidéo/photo",
+  },
+  youtube_shorts: {
+    title: "45 à 90 caractères",
+    contentMin: 500,
+    contentMax: 1200,
+    goal: "Description YouTube utile, mots-clés, CTA",
+  },
 };
 
 function formatChannelPlaybooks(channels: BoosterChannels[]) {
   return Array.from(new Set(channels))
     .map((channel) => `- ${CHANNEL_LABELS[channel]} : ${CHANNEL_EDITORIAL_PLAYBOOKS[channel]}`)
+    .join("\n");
+}
+
+function formatChannelEditorialSpecs(channels: BoosterChannels[]) {
+  return Array.from(new Set(channels))
+    .map((channel) => {
+      const spec = CHANNEL_EDITORIAL_SPECS[channel];
+      return `- ${CHANNEL_LABELS[channel]} : titre ${spec.title} ; contenu ${spec.contentMin} à ${spec.contentMax} caractères ; objectif : ${spec.goal}.`;
+    })
     .join("\n");
 }
 
@@ -315,18 +382,21 @@ Important :
 - Ne pas produire un plan trop mécanique ni des paragraphes qui se ressemblent d'une génération à l'autre.
 - Préférer une écriture incarnée : phrases simples, détails concrets, rythme naturel, sans surjouer.
 
-Règles par canal :
-- Site iNrCy / Site web : texte SEO local de 180 à 320 mots, sans rallonger inutilement. Intégrer naturellement le métier principal, la ville, 2 à 4 prestations, 1 à 3 zones d'intervention et des variantes de mots-clés proches. Remplacer les phrases vagues par des phrases utiles au référencement. Pour le contenu uniquement, mettre en gras 2 à 5 expressions clés maximum avec le format Markdown **expression** (métier + ville, prestation, zone). Ne jamais mettre une phrase entière en gras et ne jamais faire de liste brute de mots-clés. Le style doit rester humain et lisible, pas une page SEO artificielle.
-- Si Site iNrCy et Site web sont demandés ensemble : garder la même intention commerciale, mais produire deux variantes distinctes. Varier le titre, l'accroche, l'ordre des prestations, quelques formulations, et quand les données existent, répartir naturellement les villes/zones/prestations renseignées. Ne jamais inventer de ville, zone ou prestation absente du profil ou de Mon activité.
-- Google Business : texte local, utile, simple, environ 80 à 140 mots, strictement conforme aux règles Google Business Profile. Commencer par une information concrète, rester factuel, pas d'emoji, pas de hashtag, pas de téléphone, pas d'email, pas d'URL, pas de réduction ni de promesse agressive.
-- Facebook : texte engageant, clair, proche du quotidien et de la vie locale, environ 80 à 160 mots. Le ton doit donner l'impression d'un vrai pro qui parle à sa communauté, pas d'une publicité générique.
-- Instagram : texte visuel, direct, spontané et vivant, environ 70 à 140 mots. Donner une impression d'image, d'ambiance, de geste métier ou de résultat. Hashtags utiles, ciblés, jamais une liste générique.
-- LinkedIn : texte plus professionnel, crédible, utile et structuré, environ 100 à 220 mots. Mettre en avant expertise, méthode, recul métier ou conseil pro. Éviter le ton vendeur, les slogans et les emojis excessifs.
-- Facebook / Instagram / LinkedIn / Google Business : ne jamais utiliser de Markdown ni de balises HTML de formatage. Ces canaux doivent rester en texte brut.
+Règles par canal et longueurs de qualité :
+- Site iNrCy : titre 45 à 70 caractères ; contenu 900 à 1500 caractères. Texte SEO local naturel, vitrine/conversion, concret et rassurant. Intégrer le métier principal, la ville, 2 à 4 prestations, 1 à 3 zones d'intervention et des variantes de mots-clés proches sans bourrage. Dans le contenu uniquement, mettre en gras 2 à 5 expressions clés maximum avec le format Markdown **expression**.
+- Site web : titre 45 à 70 caractères ; contenu 1100 à 1800 caractères. Variante plus durable et plus riche pour le référencement naturel. Ne pas copier Site iNrCy : varier l'accroche, l'ordre des idées, les prestations mises en avant et les formulations.
+- Google Business : titre 40 à 70 caractères ; contenu 450 à 800 caractères. Texte local, utile, simple et strictement conforme Google Business Profile. Commencer par une information concrète, rester factuel, pas d'emoji, pas de hashtag, pas de téléphone, pas d'email, pas d'URL, pas de réduction ni de promesse agressive.
+- Facebook : titre 40 à 80 caractères ; contenu 500 à 900 caractères. Texte engageant, clair, humain, proche du quotidien et de la vie locale. Donner l'impression d'un vrai pro qui parle à sa communauté, pas d'une publicité générique.
+- Instagram : titre 35 à 70 caractères ; contenu 350 à 700 caractères. Texte visuel, direct, spontané et vivant. Faire sentir l'image, l'ambiance, le geste métier ou le résultat. Hashtags utiles, ciblés, jamais une liste générique.
+- LinkedIn : titre 45 à 90 caractères ; contenu 700 à 1200 caractères. Texte professionnel, crédible, utile et structuré. Mettre en avant expertise, méthode, recul métier ou conseil pro. Éviter le ton vendeur, les slogans et les emojis excessifs.
+- TikTok : titre 30 à 70 caractères ; contenu 180 à 450 caractères. Accroche courte, dynamique et naturelle. Texte pensé pour accompagner une vidéo ou des photos, avec 3 à 6 hashtags utiles.
+- YouTube : titre 45 à 90 caractères ; contenu 500 à 1200 caractères. Description utile, claire et recherchable. Inclure naturellement le sujet, le métier, la ville ou la zone si fournis, un CTA et quelques mots-clés. Si le contexte vidéo indique clairement une vidéo longue, viser plutôt 700 à 1500 caractères ; si elle est très courte, rester plus direct.
+- Si Site iNrCy et Site web sont demandés ensemble : garder la même intention commerciale, mais produire deux variantes distinctes. Ne jamais inventer de ville, zone ou prestation absente du profil ou de Mon activité.
+- Facebook / Instagram / LinkedIn / Google Business / TikTok / YouTube : ne jamais utiliser de Markdown ni de balises HTML de formatage. Ces canaux doivent rester en texte brut.
 
 Aération et retours à la ligne :
 - Aérer naturellement les contenus avec des paragraphes courts quand le canal s'y prête.
-- Facebook, Instagram, LinkedIn et Google Business : viser 2 à 4 courts paragraphes maximum, selon la longueur du texte.
+- Facebook, Instagram, LinkedIn, TikTok, YouTube et Google Business : viser 2 à 4 courts paragraphes maximum, selon la longueur du texte.
 - Site iNrCy / Site web : structurer en paragraphes lisibles, sans créer de liste froide ni de découpage excessif.
 - Ne pas ajouter de retours à la ligne excessifs, de lignes isolées inutiles ou d'effet "post LinkedIn influenceur".
 - Ne jamais rendre un gros bloc de texte compact quand le contenu dépasse quelques phrases.
@@ -351,7 +421,9 @@ Règles d'emojis par style et par canal :
   - Sobre : 0 emoji.
   - Équilibré : 0 à 1 emoji maximum.
   - Dynamique : 1 à 2 emojis maximum.
-- Les emojis doivent rester utiles, naturels et lisibles. Jamais de surcharge artificielle. Le style dynamique peut être plus expressif sur Facebook et Instagram, mais doit rester propre.
+- TikTok : 1 à 4 emojis maximum si cela reste naturel et lisible.
+- YouTube : 0 à 2 emojis maximum, uniquement si cela sert la lecture de la description.
+- Les emojis doivent rester utiles, naturels et lisibles. Jamais de surcharge artificielle. Le style dynamique peut être plus expressif sur Facebook, Instagram et TikTok, mais doit rester propre.
 
 Contraintes :
 - Français uniquement.
@@ -381,9 +453,9 @@ Règles JSON :
 - Pour chaque canal demandé, title, content et cta doivent être non vides.
 - Pour Google Business, le CTA doit rester neutre et non promotionnel.
 - hashtags = tableau de 0 à 8 mots-clés sans #.
-- Les hashtags sont utiles pour Instagram et TikTok : pour les autres canaux, renvoie de préférence [].
+- Les hashtags sont utiles pour Instagram, TikTok et YouTube : pour les autres canaux, renvoie de préférence [].
 - Si un canal n'est pas demandé, ne pas l'ajouter.
-- Le title doit rester court (idéalement < 80 caractères) et ne doit jamais contenir de Markdown ni de balises HTML.
+- Le title doit rester court et respecter la fourchette du canal (maximum 90 caractères) ; il ne doit jamais contenir de Markdown ni de balises HTML.
 - Le CTA doit être court et actionnable, sans Markdown ni balises HTML.
 - Ne jamais écrire de balise HTML dans les contenus. Pour le gras des contenus site uniquement, utiliser **texte**.`;
 }
@@ -471,6 +543,7 @@ export function boosterUserPrompt(args: {
   const hiddenAngleInstruction = HIDDEN_ANGLE_INSTRUCTIONS[hiddenAngle];
   const recentPublicationMemory = formatRecentPublications(args.recentPublications);
   const channelPlaybooks = formatChannelPlaybooks(args.channels);
+  const channelEditorialSpecs = formatChannelEditorialSpecs(args.channels);
 
   const businessIdentity = compactLines([
     optionalLine("Entreprise", company, 100),
@@ -529,6 +602,9 @@ Canaux à générer : ${args.channels.map((c) => CHANNEL_LABELS[c]).join(", ")}
 Guides éditoriaux précis par canal demandé :
 ${channelPlaybooks}
 
+Longueurs minimales et maximales à respecter par canal demandé :
+${channelEditorialSpecs}
+
 Identité entreprise disponible :
 ${businessIdentity || "- Aucune information d'identité complète renseignée."}
 
@@ -566,14 +642,16 @@ Consignes supplémentaires :
 - Si les forces sont renseignées, les transformer en bénéfices concrets sans en faire une liste froide.
 - Si les zones sont renseignées, citer 1 à 3 zones naturellement selon le canal, jamais sous forme de bourrage local.
 - Si les prestations sont renseignées, choisir les plus cohérentes avec l'intention du pro au lieu de toutes les citer.
-- Site iNrCy / Site web : version SEO locale, naturelle et concrète. Garder une longueur proche de la version actuelle : ne pas allonger le contenu, densifier plutôt les phrases existantes. Intégrer naturellement le métier exact, la ville, les prestations cochées, les zones d'intervention et leurs variantes sémantiques. Dans le content uniquement, ajoute 2 à 5 mises en gras maximum avec le format Markdown **...** sur des expressions importantes, jamais sur une phrase complète. Quand c'est pertinent, intégrer naturellement le téléphone ou l'email de contact. Cette version est obligatoire si le canal site est demandé : ne jamais laisser title/content/cta vides.
-- Si les deux canaux site sont demandés, ne copie pas le même texte : Site iNrCy peut être plus vitrine/conversion, Site web un peu plus SEO durable. Les deux doivent rester cohérents avec la même activité et utiliser uniquement les villes, zones et prestations réellement renseignées.
-- Instagram : plus direct, plus visuel, plus spontané et plus émotionnel, mais pas expédié en quelques lignes. Donner assez de matière pour que le message existe vraiment.
-- LinkedIn : ton plus professionnel, plus crédible, plus expertise et plus humain que Facebook. Éviter le ton vendeur ou trop commercial.
+- Site iNrCy / Site web : versions SEO locales, naturelles et concrètes. Respecter les fourchettes de longueur demandées : ne pas résumer en quelques lignes. Intégrer naturellement le métier exact, la ville, les prestations cohérentes, les zones d'intervention et leurs variantes sémantiques. Dans le content uniquement, ajoute 2 à 5 mises en gras maximum avec le format Markdown **...** sur des expressions importantes, jamais sur une phrase complète. Quand c'est pertinent, intégrer naturellement le téléphone ou l'email de contact. Ces versions sont obligatoires si les canaux site sont demandés : ne jamais laisser title/content/cta vides.
+- Si les deux canaux site sont demandés, ne copie pas le même texte : Site iNrCy doit être plus vitrine/conversion, Site web plus SEO durable et plus riche. Les deux doivent rester cohérents avec la même activité et utiliser uniquement les villes, zones et prestations réellement renseignées.
 - Google Business : ton local, utile, concret et strictement informatif. Ne jamais rappeler le téléphone, l'email, un lien, un hashtag ou une promesse commerciale agressive.
 - Facebook : ton engageant, humain et accessible. Le texte peut sembler plus spontané et proche du quotidien. Le téléphone ou l'email peuvent être utilisés ponctuellement si cela aide à contacter l'entreprise.
+- Instagram : plus direct, plus visuel, plus spontané et plus émotionnel, mais pas expédié en quelques lignes. Donner assez de matière pour que le message existe vraiment.
+- LinkedIn : ton plus professionnel, plus crédible, plus expertise et plus humain que Facebook. Éviter le ton vendeur ou trop commercial.
+- TikTok : rester court mais utile. Accroche immédiate, vocabulaire simple, rythme vivant, hashtags ciblés. Ne pas produire un texte institutionnel.
+- YouTube : produire un titre propre et une description utile. Le canal reste YouTube : ne pas écrire comme si le pro avait choisi seulement Shorts. La description doit être recherchable, claire et orientée action, avec hashtags adaptés si utiles.
 - Respecter le niveau d'emojis configuré, tout en gardant 0 emoji sur Site iNrCy / Site web et une grande sobriété sur Google Business.
-- Respecter la longueur favorite configurée sans casser les minimums utiles par canal.
+- Respecter la longueur favorite configurée sans casser les minimums utiles par canal. Les fourchettes mini/maxi ci-dessus priment sur la tentation de faire trop court quand plusieurs canaux sont demandés.
 - Respecter le tutoiement/vouvoiement configuré. En mode automatique, privilégier le vouvoiement pour LinkedIn, Google Business et les métiers sérieux/réglementés.
 - Respecter la voix de l'entreprise configurée : "Je" = parler au nom d'une personne seule, "Nous" = parler au nom de l'entreprise/l'équipe, "Neutre" = éviter autant que possible je et nous, "Automatique" = choisir naturellement selon le profil et le contexte. Ne pas mélanger je et nous dans un même contenu sauf nécessité grammaticale.
 - Respecter le CTA préféré lorsque le canal le permet, sauf Google Business qui doit rester neutre.

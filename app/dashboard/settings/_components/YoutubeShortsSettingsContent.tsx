@@ -33,6 +33,43 @@ const selectStyle = {
   background: "rgba(15,23,42,0.95)",
 } as const;
 
+const switchRowStyle = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+  gap: 10,
+  alignItems: "stretch",
+} as const;
+
+function PreferenceToggle({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <label
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 10,
+        border: "1px solid rgba(255,255,255,0.12)",
+        background: "rgba(15,23,42,0.45)",
+        borderRadius: 12,
+        padding: "10px 12px",
+        color: "rgba(255,255,255,0.92)",
+        fontSize: 14,
+      }}
+    >
+      <span>{label}</span>
+      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
+    </label>
+  );
+}
+
 type YoutubeShortsSettings = {
   connected: boolean;
   accountConnected: boolean;
@@ -163,20 +200,12 @@ function emitDashboardUpdate(settings: YoutubeShortsSettings) {
   }));
 }
 
-function formatCompact(value: number | null) {
-  if (value == null) return "—";
-  return new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 }).format(value);
-}
-
 export default function YoutubeShortsSettingsContent() {
   const [settings, setSettings] = useState<YoutubeShortsSettings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [diagnostic, setDiagnostic] = useState<string | null>(null);
-  const [testing, setTesting] = useState(false);
-
   const patchSettings = useCallback((patch: Partial<YoutubeShortsSettings>) => {
     setSettings((current) => ({ ...current, ...patch }));
   }, []);
@@ -282,47 +311,29 @@ export default function YoutubeShortsSettingsContent() {
 
 
 
-  const testYoutube = useCallback(async () => {
-    setTesting(true);
-    setDiagnostic(null);
-    setNotice(null);
-    setError(null);
-
-    try {
-      const res = await fetch("/api/integrations/youtube-shorts/diagnostics", { cache: "no-store" });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok || json?.ok === false) throw new Error(String(json?.error || "diagnostics_failed"));
-
-      const checks = asRecord(json?.checks);
-      const missing = Array.isArray(json?.missing_scopes) ? json.missing_scopes.length : 0;
-      const details = [
-        `OAuth ${checks.oauth ? "OK" : "KO"}`,
-        `Chaîne ${checks.channel ? "OK" : "KO"}`,
-        `Analytics ${checks.analytics ? "OK" : "KO"}`,
-        `Upload ${checks.upload_scope ? "OK" : "KO"}`,
-      ].join(" · ");
-      const msg = String(json?.message || "Diagnostic YouTube terminé.");
-      const finalMessage = missing > 0 ? `${msg} Scopes manquants : ${missing}. ${details}` : `${msg} ${details}`;
-      setDiagnostic(finalMessage);
-      if (json?.ready) setNotice("Diagnostic YouTube validé.");
-    } catch (err) {
-      console.warn("[youtube-shorts-settings] diagnostics failed", err);
-      setError("Test de connexion YouTube impossible.");
-    } finally {
-      setTesting(false);
-    }
-  }, []);
-
   const connected = Boolean(settings.connected);
+  const statusLabel = connected ? "Connecté" : "À connecter";
+  const statusColor = connected ? "rgba(34,197,94,0.95)" : "rgba(148,163,184,0.9)";
 
   return (
     <div style={{ display: "grid", gap: 14 }}>
-      <div style={{ display: "grid", gap: 4 }}>
-        <p className={styles.blockSub} style={{ margin: 0 }}>Canal vidéo</p>
-        <h2 style={{ margin: 0, fontSize: 22, color: "white" }}>Configuration YouTube</h2>
-        <p className={styles.blockSub} style={{ margin: 0 }}>
-          Connectez la chaîne YouTube du professionnel. Les préférences ci-dessous serviront ensuite à la publication depuis Booster.
-        </p>
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+        <span
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+            border: "1px solid rgba(255,255,255,0.12)",
+            background: "rgba(15,23,42,0.65)",
+            padding: "8px 10px",
+            borderRadius: 999,
+            color: "rgba(255,255,255,0.92)",
+            fontSize: 13,
+          }}
+        >
+          <span aria-hidden style={{ width: 8, height: 8, borderRadius: 999, background: statusColor }} />
+          Statut : <strong>{statusLabel}</strong>
+        </span>
       </div>
 
       {loading ? (
@@ -333,61 +344,65 @@ export default function YoutubeShortsSettingsContent() {
 
       <div style={cardStyle}>
         <div className={styles.blockHeaderRow}>
-          <div className={styles.blockTitle}>Connexion YouTube</div>
+          <div className={styles.blockTitle}>Compte YouTube</div>
           <ConnectionPill connected={connected} />
         </div>
         <div className={styles.blockSub}>
-          Connexion OAuth réelle : compte Google, chaîne YouTube, jetons sécurisés et lien public de chaîne.
+          Le professionnel autorise iNrCy à publier ses vidéos sur sa chaîne YouTube depuis Booster.
+        </div>
+
+        <input
+          value={connected ? (settings.channelName || settings.channelHandle || "Chaîne YouTube connectée") : ""}
+          readOnly
+          placeholder={connected ? "Chaîne YouTube connectée" : "Aucune chaîne connectée"}
+          style={{ ...inputStyle, opacity: connected ? 1 : 0.8 }}
+        />
+
+        {connected ? (
+          <div style={{ color: "rgba(226,232,240,0.86)", fontSize: 12 }}>
+            Compte utilisé : <strong>{settings.accountEmail || "Compte Google connecté"}</strong>
+          </div>
+        ) : null}
+
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          {!connected ? (
+            <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={connectYoutube} disabled={saving || loading}>
+              {saving ? "Connexion..." : "Connecter YouTube"}
+            </button>
+          ) : (
+            <>
+              <button type="button" className={`${styles.actionBtn} ${styles.secondaryBtn}`} onClick={connectYoutube} disabled={saving || loading}>
+                Reconnecter YouTube
+              </button>
+              <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={() => void disconnectYoutube()} disabled={saving || loading}>
+                {saving ? "Déconnexion..." : "Déconnecter"}
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+
+      <div style={cardStyle}>
+        <div className={styles.blockHeaderRow}>
+          <div className={styles.blockTitle}>Lien de la chaîne</div>
+          <ConnectionPill connected={Boolean(connected && settings.channelUrl?.trim())} />
+        </div>
+        <div className={styles.blockSub}>
+          Lien public utilisé pour le bouton <strong>Voir la chaîne</strong> dans la bulle du dashboard.
         </div>
 
         <div style={{ display: "grid", gap: 10 }}>
-          <label style={{ display: "grid", gap: 6 }}>
-            <span className={styles.blockSub} style={{ opacity: 0.92 }}>Chaîne connectée</span>
-            <input
-              value={settings.channelName || settings.channelHandle || "Aucune chaîne connectée"}
-              readOnly
-              style={{ ...inputStyle, opacity: connected ? 1 : 0.72 }}
-            />
-          </label>
-
-          <label style={{ display: "grid", gap: 6 }}>
-            <span className={styles.blockSub} style={{ opacity: 0.92 }}>Lien public de la chaîne</span>
-            <input
-              value={settings.channelUrl}
-              readOnly
-              placeholder="https://www.youtube.com/@monentreprise"
-              style={{ ...inputStyle, opacity: connected ? 1 : 0.72 }}
-            />
-          </label>
-
-          {connected ? (
-            <div style={{ display: "grid", gap: 6, color: "rgba(226,232,240,0.86)", fontSize: 12 }}>
-              <span>Compte : <strong>{settings.accountEmail || "Compte Google connecté"}</strong></span>
-              <span>Abonnés : <strong>{formatCompact(settings.stats.subscriberCount)}</strong> · Vidéos : <strong>{formatCompact(settings.stats.videoCount)}</strong> · Vues chaîne : <strong>{formatCompact(settings.stats.viewCount)}</strong></span>
-            </div>
-          ) : null}
+          <input
+            value={settings.channelUrl}
+            onChange={(event) => patchSettings({ channelUrl: event.target.value })}
+            placeholder="https://www.youtube.com/@monentreprise"
+            style={inputStyle}
+          />
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            {!connected ? (
-              <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={connectYoutube} disabled={saving || loading}>
-                Connecter YouTube
-              </button>
-            ) : (
-              <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={() => void disconnectYoutube()} disabled={saving || loading}>
-                {saving ? "Déconnexion..." : "Déconnecter YouTube"}
-              </button>
-            )}
-
-            <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={() => void loadSettings()} disabled={saving || loading}>
-              Actualiser
+            <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={() => void saveSettings()} disabled={saving || loading}>
+              {saving ? "Enregistrement..." : "Enregistrer"}
             </button>
-
-            {connected ? (
-              <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={() => void testYoutube()} disabled={saving || loading || testing}>
-                {testing ? "Test..." : "Tester la connexion"}
-              </button>
-            ) : null}
-
             <a
               href={settings.channelUrl || "#"}
               target="_blank"
@@ -406,18 +421,24 @@ export default function YoutubeShortsSettingsContent() {
           <div className={styles.blockTitle}>Réglages YouTube par défaut</div>
         </div>
         <div className={styles.blockSub}>
-          Ces préférences seront utilisées au moment de publier une vidéo depuis Booster.
+          Ces préférences serviront dans Booster pour préparer la publication YouTube avant validation finale.
+        </div>
+
+        <div
+          style={{
+            border: "1px solid rgba(56,189,248,0.22)",
+            background: "rgba(14,165,233,0.08)",
+            borderRadius: 12,
+            padding: "10px 12px",
+            color: "rgba(224,242,254,0.96)",
+            fontSize: 13,
+            lineHeight: 1.45,
+          }}
+        >
+          iNrCy publie automatiquement en <strong>Short</strong> si la vidéo est courte et adaptée, sinon en <strong>vidéo YouTube classique</strong>.
         </div>
 
         <div style={{ display: "grid", gap: 10 }}>
-          <label style={{ display: "grid", gap: 6 }}>
-            <span className={styles.blockSub} style={{ opacity: 0.92 }}>Format prioritaire</span>
-            <select value={settings.preferredFormat} onChange={(event) => patchSettings({ preferredFormat: event.target.value as YoutubeShortsSettings["preferredFormat"] })} style={selectStyle}>
-              <option value="shorts">Vidéo courte verticale</option>
-              <option value="video">Vidéo classique</option>
-            </select>
-          </label>
-
           <label style={{ display: "grid", gap: 6 }}>
             <span className={styles.blockSub} style={{ opacity: 0.92 }}>Visibilité par défaut</span>
             <select value={settings.defaultVisibility} onChange={(event) => patchSettings({ defaultVisibility: event.target.value as YoutubeShortsSettings["defaultVisibility"] })} style={selectStyle}>
@@ -427,23 +448,19 @@ export default function YoutubeShortsSettingsContent() {
             </select>
           </label>
 
-          <label style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", border: "1px solid rgba(255,255,255,0.12)", background: "rgba(15,23,42,0.45)", borderRadius: 12, padding: "10px 12px", color: "rgba(255,255,255,0.92)", fontSize: 14 }}>
-            <span>Hashtags automatiques</span>
-            <input type="checkbox" checked={settings.autoHashtags} onChange={(event) => patchSettings({ autoHashtags: event.target.checked })} />
-          </label>
+          <div style={switchRowStyle}>
+            <PreferenceToggle label="Hashtags automatiques" checked={settings.autoHashtags} onChange={(autoHashtags) => patchSettings({ autoHashtags })} />
+            <PreferenceToggle label="Contenu destiné aux enfants" checked={settings.madeForKids} onChange={(madeForKids) => patchSettings({ madeForKids })} />
+          </div>
 
-          <label style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center", border: "1px solid rgba(255,255,255,0.12)", background: "rgba(15,23,42,0.45)", borderRadius: 12, padding: "10px 12px", color: "rgba(255,255,255,0.92)", fontSize: 14 }}>
-            <span>Contenu destiné aux enfants</span>
-            <input type="checkbox" checked={settings.madeForKids} onChange={(event) => patchSettings({ madeForKids: event.target.checked })} />
-          </label>
-
-          <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={() => void saveSettings()} disabled={saving || loading}>
-            {saving ? "Enregistrement..." : "Enregistrer les réglages"}
-          </button>
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={() => void saveSettings()} disabled={saving || loading}>
+              {saving ? "Enregistrement..." : "Enregistrer mes réglages"}
+            </button>
+          </div>
         </div>
       </div>
 
-      {diagnostic ? <StatusMessage variant="success">{diagnostic}</StatusMessage> : null}
       {notice ? <StatusMessage variant="success">{notice}</StatusMessage> : null}
       {error ? <StatusMessage variant="error">{error}</StatusMessage> : null}
     </div>

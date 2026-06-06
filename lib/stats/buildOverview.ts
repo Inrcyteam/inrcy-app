@@ -11,7 +11,7 @@ import { buildSnapshotWindow } from "@/lib/stats/snapshotWindow";
 import { getLinkedInAccessToken } from "@/lib/linkedinOAuth";
 import { refreshTiktokAccessToken } from "@/lib/tiktokOAuth";
 import { fetchTiktokAnalyticsSnapshot } from "@/lib/tiktokAnalytics";
-import { refreshYoutubeShortsAccessToken } from "@/lib/youtubeShortsOAuth";
+import { fetchYoutubeMineChannel, refreshYoutubeShortsAccessToken } from "@/lib/youtubeShortsOAuth";
 import { fetchYoutubeShortsAnalyticsSnapshot, mergeYoutubeShortsLocalPublicationStats } from "@/lib/youtubeShortsAnalytics";
 
 function asRecord(v: unknown): Record<string, unknown> {
@@ -2035,6 +2035,14 @@ export async function buildStatsOverview(args: {
     if (!includeYoutubeShorts) {
       sourcesStatus.youtube_shorts.metrics = null;
     } else if (sourcesStatus.youtube_shorts.connected) {
+      const meta = asRecord(youtubeRow["meta"]);
+      const metaStats = asRecord(meta["stats"]);
+      let youtubeChannelStats = {
+        subscriberCount: Number(metaStats["subscriberCount"] ?? 0),
+        videoCount: Number(metaStats["videoCount"] ?? 0),
+        viewCount: Number(metaStats["viewCount"] ?? 0),
+      };
+
       try {
         let accessToken = tryDecryptToken(String(youtubeRow["access_token_enc"] || "")) || "";
         const refreshToken = tryDecryptToken(String(youtubeRow["refresh_token_enc"] || "")) || "";
@@ -2070,24 +2078,27 @@ export async function buildStatsOverview(args: {
           throw new Error("Connexion YouTube expirée. Reconnecte YouTube dans Canaux.");
         }
 
-        const meta = asRecord(youtubeRow["meta"]);
-        const metaStats = asRecord(meta["stats"]);
+        const liveChannel = await fetchYoutubeMineChannel(accessToken).catch(() => null);
+        if (liveChannel?.stats) {
+          youtubeChannelStats = {
+            subscriberCount: Number(liveChannel.stats.subscriberCount ?? youtubeChannelStats.subscriberCount ?? 0),
+            videoCount: Number(liveChannel.stats.videoCount ?? youtubeChannelStats.videoCount ?? 0),
+            viewCount: Number(liveChannel.stats.viewCount ?? youtubeChannelStats.viewCount ?? 0),
+          };
+        }
+
         const remoteYoutubeMetrics = await fetchYoutubeShortsAnalyticsSnapshot({
           accessToken,
           start: dateWindow.start,
           end: dateWindow.end,
-          channelStats: {
-            subscriberCount: Number(metaStats["subscriberCount"] ?? 0),
-            videoCount: Number(metaStats["videoCount"] ?? 0),
-            viewCount: Number(metaStats["viewCount"] ?? 0),
-          },
+          channelStats: youtubeChannelStats,
         });
         sourcesStatus.youtube_shorts.metrics = mergeYoutubeShortsLocalPublicationStats(
           remoteYoutubeMetrics,
           youtubeShortsLocalPublicationStats,
         );
       } catch (e) {
-        console.error("[YOUTUBE_SHORTS_STATS_REAL_ERROR]", e);
+        console.error("[YOUTUBE_STATS_REAL_ERROR]", e);
         const rawMessage = e instanceof Error ? e.message : String(e || "");
         const lowerMessage = rawMessage.toLowerCase();
         const needsReconnect =
@@ -2102,6 +2113,12 @@ export async function buildStatsOverview(args: {
           lowerMessage.includes("reconnecte");
         sourcesStatus.youtube_shorts.metrics = mergeYoutubeShortsLocalPublicationStats(
           {
+            totals: {
+              subscribers: youtubeChannelStats.subscriberCount || 0,
+              followers: youtubeChannelStats.subscriberCount || 0,
+              video_count: youtubeChannelStats.videoCount || 0,
+              channel_views_total: youtubeChannelStats.viewCount || 0,
+            },
             error: getSimpleFrenchErrorMessage(
               e,
               "Impossible de récupérer les statistiques YouTube pour le moment.",
