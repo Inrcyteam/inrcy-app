@@ -124,7 +124,7 @@ export async function uploadYoutubeShort(input: YoutubeShortsUploadInput): Promi
 
     const initUrl = `https://www.googleapis.com/upload/youtube/v3/videos?${new URLSearchParams({
       uploadType: "resumable",
-      part: "snippet,status,processingDetails",
+      part: "snippet,status",
     }).toString()}`;
 
     const initRes = await fetch(initUrl, {
