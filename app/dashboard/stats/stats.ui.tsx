@@ -1,26 +1,45 @@
-import React, { useMemo, useState } from "react";
+import React, { useState } from "react";
 import styles from "./stats.module.css";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { fmtInt, type CubeModel } from "./stats.shared";
 
 function Donut({ segments }: { segments: Array<{ label: string; value: number; colorVar: string }> }) {
-  const total = segments.reduce((s, x) => s + Math.max(0, x.value), 0);
-  const bg = useMemo(() => {
-    if (total <= 0) return "conic-gradient(rgba(255,255,255,.10) 0deg 360deg)";
-    let cur = 0;
-    const visibleSegments = segments.filter((s) => s.value > 0);
-    const parts = visibleSegments.map((s, index) => {
-      const a0 = (cur / total) * 360;
-      cur += s.value;
-      const a1 = index === visibleSegments.length - 1 ? 360 : (cur / total) * 360;
-      return `var(${s.colorVar}) ${a0.toFixed(2)}deg ${a1.toFixed(2)}deg`;
-    });
-    return `conic-gradient(${parts.join(", ")})`;
-  }, [segments, total]);
+  const total = segments.reduce((sum, segment) => sum + Math.max(0, segment.value), 0);
+  const visibleSegments = segments.filter((segment) => segment.value > 0);
+  const radius = 40;
+  const circumference = 2 * Math.PI * radius;
+  const seamOverlap = 0.35;
+  let offset = 0;
 
   return (
     <div className={styles.donutWrap}>
-      <div className={styles.donut} style={{ background: bg }} aria-hidden>
+      <div className={styles.donut} aria-hidden>
+        <svg className={styles.donutSvg} viewBox="0 0 100 100" focusable="false">
+          <circle className={styles.donutTrack} cx="50" cy="50" r={radius} />
+          {total > 0
+            ? visibleSegments.map((segment, index) => {
+                const rawLength = index === visibleSegments.length - 1 ? circumference - offset : (segment.value / total) * circumference;
+                const dashLength = Math.max(0, Math.min(circumference, rawLength + seamOverlap));
+                const strokeDashoffset = -offset;
+                offset += rawLength;
+
+                return (
+                  <circle
+                    key={`${segment.label}-${index}`}
+                    className={styles.donutArc}
+                    cx="50"
+                    cy="50"
+                    r={radius}
+                    style={{
+                      stroke: `var(${segment.colorVar})`,
+                      strokeDasharray: `${dashLength} ${circumference}`,
+                      strokeDashoffset,
+                    }}
+                  />
+                );
+              })
+            : null}
+        </svg>
         <div className={styles.donutHole} />
       </div>
       <div className={styles.legend}>
