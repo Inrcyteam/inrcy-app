@@ -9,6 +9,7 @@ export type PublishFinalReviewItem = {
   warnings: string[];
   blockers: string[];
   publishable?: boolean;
+  tiktokParametersValidated?: boolean;
   hasContent: boolean;
   hasTitle: boolean;
   hasText: boolean;
@@ -236,7 +237,12 @@ export default function PublishFinalReviewModal({
                 >
                   {!hasMessages ? (
                     <span style={{ color: "#bbf7d0" }}>
-                      Prêt à publier.
+                      {item.tiktokParametersValidated ? "Prêt · Paramètres validés" : "Prêt à publier."}
+                    </span>
+                  ) : null}
+                  {item.tiktokParametersValidated && !item.blockers.length ? (
+                    <span style={{ color: "#bbf7d0" }}>
+                      ✅ Paramètres TikTok validés.
                     </span>
                   ) : null}
                   {item.warnings.map((warning) => (

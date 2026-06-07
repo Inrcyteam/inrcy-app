@@ -139,8 +139,8 @@ function InrcyActivityBlock({ model }: { model: CubeModel }) {
       : model.key === "youtube_shorts"
         ? [
             { label: "Publications", data: stats.publications },
-            { label: "Vidéos Shorts", data: stats.videos },
-            { label: "Vidéos longues", data: stats.photos },
+            { label: "Vidéos courtes", data: stats.videos },
+            { label: "Vidéos classiques", data: stats.photos },
           ]
         : [
             { label: "Publications", data: stats.publications },

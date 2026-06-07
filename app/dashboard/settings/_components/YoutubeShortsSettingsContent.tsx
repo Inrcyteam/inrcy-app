@@ -435,7 +435,7 @@ export default function YoutubeShortsSettingsContent() {
             lineHeight: 1.45,
           }}
         >
-          iNrCy publie automatiquement en <strong>Short</strong> si la vidéo est courte et adaptée, sinon en <strong>vidéo YouTube classique</strong>.
+          iNrCy publie vos vidéos sur <strong>YouTube</strong>. Si la vidéo est courte et adaptée, YouTube peut l’afficher au format court ; sinon elle reste une vidéo classique.
         </div>
 
         <div style={{ display: "grid", gap: 10 }}>

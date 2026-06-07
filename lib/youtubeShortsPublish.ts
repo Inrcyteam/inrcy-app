@@ -33,7 +33,7 @@ export type YoutubeShortsUploadResult = {
 
 function sanitizeTitle(input: string) {
   const title = String(input || "").replace(/\s+/g, " ").trim();
-  return (title || "Short iNrCy").slice(0, 95);
+  return (title || "Vidéo iNrCy").slice(0, 95);
 }
 
 function sanitizeDescription(input: string) {

@@ -51,7 +51,7 @@ import { normalizeTiktokSettings } from "@/lib/tiktokMockSettings";
 import { isTiktokIntegrationActive } from "@/lib/tiktokRouteStorage";
 import { buildTiktokMediaProxyUrl } from "@/lib/tiktokMediaUrl";
 import { refreshTiktokAccessToken } from "@/lib/tiktokOAuth";
-import { tiktokDirectPostPhotos, tiktokDirectPostVideo } from "@/lib/tiktokPublish";
+import { tiktokDirectPostPhotos, tiktokDirectPostVideo, type TiktokPublicationSettings } from "@/lib/tiktokPublish";
 import { isYoutubeShortsIntegrationActive, refreshYoutubeShortsAccessToken } from "@/lib/youtubeShortsOAuth";
 import { uploadYoutubeShort } from "@/lib/youtubeShortsPublish";
 import { buildVideoSettingsByChannel } from "@/lib/boosterVideoSettings";
@@ -192,6 +192,22 @@ function normalizeChannelMediaMode(
   return value === "video" || value === "images" || value === "none"
     ? value
     : fallback;
+}
+
+function normalizeTiktokPublicationSettings(value: unknown): TiktokPublicationSettings | null {
+  const raw = asRecord(value);
+  const privacyLevel = String(raw.privacyLevel || "").trim();
+  if (!privacyLevel) return null;
+  return {
+    privacyLevel,
+    allowComments: raw.allowComments === true,
+    allowDuo: raw.allowDuo === true,
+    allowStitch: raw.allowStitch === true,
+    commercialContent: raw.commercialContent === "self" || raw.commercialContent === "branded" ? raw.commercialContent : "none",
+    aiContent: raw.aiContent === true,
+    photoAutoMusic: raw.photoAutoMusic === true,
+    musicUsageConfirmed: raw.musicUsageConfirmed === true,
+  };
 }
 
 type EditableImageAttachment = {
@@ -937,6 +953,7 @@ export async function POST(req: Request) {
       videoFormatByChannel: body.videoFormatByChannel,
       videoAdaptationModeByChannel: body.videoAdaptationModeByChannel,
     });
+    const tiktokPublicationSettings = normalizeTiktokPublicationSettings(body.tiktokPublicationSettings);
     const hasAnyImageChannel = selected.some(
       (channel) => mediaModeByChannel[channel] === "images",
     );
@@ -1967,7 +1984,7 @@ export async function POST(req: Request) {
           const normalizedTags = hashtags.map((tag) => normalizeHashtag(String(tag))).filter(Boolean).slice(0, 8);
           const autoHashtags = youtubeDefaults.autoHashtags !== false;
           const youtubeTags = autoHashtags
-            ? Array.from(new Set([...(youtubePublicationType === "short" ? ["Shorts"] : []), "iNrCy", ...normalizedTags]))
+            ? Array.from(new Set(["iNrCy", ...normalizedTags]))
             : normalizedTags;
           const tagLine = youtubeTags.length ? youtubeTags.map((tag) => `#${tag}`).join(" ") : "";
           const description = [canonMessage, tagLine].filter(Boolean).join("\n\n");
@@ -1975,7 +1992,7 @@ export async function POST(req: Request) {
           const upload = await uploadYoutubeShort({
             accessToken: youtubeAccessToken,
             videoUrl: channelVideo.publicUrl || channelVideo.url || "",
-            title: channelPost.title || post.title || (youtubePublicationType === "short" ? "Short iNrCy" : "Vidéo iNrCy"),
+            title: channelPost.title || post.title || "Vidéo iNrCy",
             description,
             privacyStatus,
             madeForKids,
@@ -2112,20 +2129,28 @@ export async function POST(req: Request) {
             continue;
           }
 
+          if (!tiktokPublicationSettings?.privacyLevel || !tiktokPublicationSettings.musicUsageConfirmed) {
+            const tiktokUserError = "Validez les paramètres TikTok avant publication.";
+            await setDelivery(ch, { status: "failed", error: tiktokUserError });
+            results[ch] = { ok: false, error: tiktokUserError };
+            continue;
+          }
+
           const tiktokTitle = canonMessage || channelPost.content || channelPost.title || "Publication iNrCy";
           const tiktokResult = isVideo
             ? await tiktokDirectPostVideo({
                 accessToken: tiktokAccessToken,
                 videoUrl,
                 title: tiktokTitle,
-                defaults: tiktokSettings.defaults,
+                publicationSettings: tiktokPublicationSettings as TiktokPublicationSettings,
+                videoDurationSeconds: channelVideo?.duration || null,
               })
             : await tiktokDirectPostPhotos({
                 accessToken: tiktokAccessToken,
                 imageUrls: tiktokImageUrls,
                 title: channelPost.title || "Publication iNrCy",
                 description: tiktokTitle,
-                defaults: tiktokSettings.defaults,
+                publicationSettings: tiktokPublicationSettings as TiktokPublicationSettings,
               });
 
           if (!tiktokResult.ok) {
@@ -2167,7 +2192,7 @@ export async function POST(req: Request) {
               mediaType: isVideo ? "video" : "photos",
               privacyLevel: tiktokResult.privacyLevel || null,
               mediaUrls: isVideo ? [videoUrl] : tiktokImageUrls,
-              defaults: tiktokSettings.defaults,
+              publicationSettings: tiktokPublicationSettings,
               status: tiktokResult.status || null,
               share_url: tiktokResult.shareUrl || null,
               raw: tiktokResult.raw,

@@ -118,7 +118,7 @@ const CHANNEL_EDITORIAL_PLAYBOOKS: Record<BoosterChannels, string> = {
   tiktok:
     "Objectif : capter vite l'attention avec une accroche courte, naturelle et dynamique. Texte pensé pour accompagner une vidéo ou des photos : concret, vivant, local, avec 3 à 6 hashtags utiles. Éviter le ton institutionnel ou LinkedIn.",
   youtube_shorts:
-    "Objectif : préparer une publication YouTube claire, utile et recherchable. Le canal affiché est YouTube : iNrCy publiera automatiquement en Short si la vidéo est courte et adaptée, sinon en vidéo classique. Produire un titre propre, une description utile, un CTA et des mots-clés cohérents.",
+    "Objectif : préparer une publication YouTube claire, utile et recherchable. Le canal affiché est YouTube : iNrCy publie la vidéo sur YouTube ; si elle est courte et adaptée, YouTube peut l’afficher au format court, sinon elle reste une vidéo classique. Produire un titre propre, une description utile, un CTA et des mots-clés cohérents.",
 };
 
 type ChannelEditorialSpec = {

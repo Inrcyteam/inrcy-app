@@ -77,6 +77,7 @@ import { pillBtn, pillBtnActive } from "./publishModal.styles";
 import PublishAiConfigurationDrawer from "./components/PublishAiConfigurationDrawer";
 import PublishChannelSelector from "./components/PublishChannelSelector";
 import PublishFinalReviewModal from "./components/PublishFinalReviewModal";
+import TiktokPublicationSettingsModal, { type TiktokPublicationSettings } from "./components/TiktokPublicationSettingsModal";
 import PublishFooterActions from "./components/PublishFooterActions";
 import PublishIntentPanel from "./components/PublishIntentPanel";
 import PublishContentEditorPanel from "./components/PublishContentEditorPanel";
@@ -479,6 +480,8 @@ export default function PublishModal({
   const [finalReviewPosts, setFinalReviewPosts] = useState<Partial<
     Record<ChannelKey, ChannelPost>
   > | null>(null);
+  const [tiktokSettingsOpen, setTiktokSettingsOpen] = useState(false);
+  const [tiktokPublicationSettings, setTiktokPublicationSettings] = useState<TiktokPublicationSettings | null>(null);
   const [pendingPublishPosts, setPendingPublishPosts] = useState<Partial<
     Record<ChannelKey, ChannelPost>
   > | null>(null);
@@ -2438,6 +2441,7 @@ export default function PublishModal({
     skipEmptyContentWarnings?: boolean;
     skipGmbNoImageWarning?: boolean;
     preparedPostsByChannel?: Partial<Record<ChannelKey, ChannelPost>>;
+    tiktokPublicationSettings?: TiktokPublicationSettings | null;
   }) => {
     if (saving || draftSaving) return;
     const preparedPostsByChannel =
@@ -2742,6 +2746,9 @@ export default function PublishModal({
         images: [],
         imagesByChannel: uploadedChannelImages,
         imageSettingsByChannel: channelSettings,
+        tiktokPublicationSettings: publishableChannels.includes("tiktok")
+          ? options?.tiktokPublicationSettings || tiktokPublicationSettings
+          : null,
       });
 
       if (publishPulseTimerRef.current) {
@@ -2958,6 +2965,15 @@ export default function PublishModal({
     setPostsByChannel(preparedPostsByChannel);
     setPendingPublishPosts(preparedPostsByChannel);
     setFinalReviewPosts(preparedPostsByChannel);
+
+    const reviewItems = buildFinalReviewItems(preparedPostsByChannel);
+    const tiktokReviewItem = reviewItems.find((item) => item.channel === "tiktok");
+    setTiktokPublicationSettings(null);
+    if (tiktokReviewItem && tiktokReviewItem.blockers.length === 0) {
+      setTiktokSettingsOpen(true);
+      return;
+    }
+
     setFinalReviewOpen(true);
   };
 
@@ -3051,6 +3067,7 @@ export default function PublishModal({
         warnings: requirements.warnings,
         blockers: requirements.blockers,
         publishable: requirements.blockers.length === 0,
+        tiktokParametersValidated: channel === "tiktok" && Boolean(tiktokPublicationSettings),
         hasContent,
         hasTitle,
         hasText,
@@ -3145,6 +3162,18 @@ export default function PublishModal({
 
   const closeFinalReview = () => {
     setFinalReviewOpen(false);
+    setTiktokPublicationSettings(null);
+  };
+
+  const closeTiktokSettingsModal = () => {
+    setTiktokSettingsOpen(false);
+    setTiktokPublicationSettings(null);
+  };
+
+  const validateTiktokSettingsModal = (settings: TiktokPublicationSettings) => {
+    setTiktokPublicationSettings(settings);
+    setTiktokSettingsOpen(false);
+    setFinalReviewOpen(true);
   };
 
   const aiDrawerHeight = isMobile
@@ -3158,13 +3187,23 @@ export default function PublishModal({
     const preparedPostsByChannel =
       finalReviewPosts || buildPreparedPostsByChannel();
     const items = buildFinalReviewItems(preparedPostsByChannel);
-    if (!items.some((item) => item.blockers.length === 0)) return;
+    const publishableItems = items.filter((item) => item.blockers.length === 0);
+    if (!publishableItems.length) return;
+    const tiktokWillPublish = publishableItems.some((item) => item.channel === "tiktok");
+    if (tiktokWillPublish && !tiktokPublicationSettings) {
+      setFinalReviewOpen(false);
+      setTiktokSettingsOpen(true);
+      return;
+    }
+    const validatedTiktokSettings = tiktokPublicationSettings;
     setFinalReviewOpen(false);
     setFinalReviewPosts(null);
+    setTiktokPublicationSettings(null);
     await runPublish({
       skipEmptyContentWarnings: true,
       skipGmbNoImageWarning: true,
       preparedPostsByChannel,
+      tiktokPublicationSettings: validatedTiktokSettings,
     });
   };
 
@@ -3180,6 +3219,16 @@ export default function PublishModal({
         isMobile={isMobile}
         drawerHeight={aiDrawerHeight}
         onClose={() => setAiConfigurationOpen(false)}
+      />
+
+      <TiktokPublicationSettingsModal
+        open={tiktokSettingsOpen}
+        styles={styles}
+        isMobile={isMobile}
+        mediaType={resolveChannelMediaMode("tiktok") === "video" ? "video" : "images"}
+        videoDurationSeconds={videoDurationSeconds ?? videoSourceMetadata?.duration ?? null}
+        onCancel={closeTiktokSettingsModal}
+        onValidate={validateTiktokSettingsModal}
       />
 
       <PublishFinalReviewModal

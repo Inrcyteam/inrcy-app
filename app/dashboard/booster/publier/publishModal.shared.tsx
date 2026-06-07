@@ -402,14 +402,14 @@ export function getChannelPublicationRequirements({
         blockers.push("YouTube nécessite une vidéo.");
       } else if (videoDurationSeconds == null) {
         warnings.push(
-          "Durée YouTube non vérifiée : iNrCy publiera quand même la vidéo, YouTube décidera ensuite du rendu Short ou classique.",
+          "Durée YouTube non vérifiée : iNrCy publiera quand même la vidéo, YouTube décidera ensuite du format court ou classique.",
         );
       }
     }
 
     if (channel === "tiktok") {
       warnings.push(
-        "TikTok publiera la vidéo sur le compte connecté après validation finale.",
+        "TikTok publiera la vidéo sur le compte connecté avec les paramètres validés.",
       );
     }
 
@@ -445,7 +445,7 @@ export function getChannelPublicationRequirements({
 
     if (channel === "tiktok" && hasImage) {
       warnings.push(
-        "TikTok publiera les photos sur le compte connecté après validation finale.",
+        "TikTok publiera les photos sur le compte connecté avec les paramètres validés.",
       );
     }
 

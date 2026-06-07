@@ -486,7 +486,7 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
             <section className={styles.section}>
               <div className={styles.sectionHeader}>
                 <span className={styles.sectionMark} />
-                <h2>Mes canaux</h2>
+                <h2>Retrouvez-nous</h2>
               </div>
               <div className={styles.channelsGrid} data-count={channelActions.length}>
                 {channelRows.map((row, rowIndex) => (

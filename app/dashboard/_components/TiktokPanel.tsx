@@ -25,48 +25,6 @@ const inputStyle = {
   outline: "none",
 } as const;
 
-const selectStyle = {
-  ...inputStyle,
-  background: "rgba(15,23,42,0.95)",
-} as const;
-
-const switchRowStyle = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-  gap: 10,
-  alignItems: "stretch",
-} as const;
-
-function PreferenceToggle({
-  label,
-  checked,
-  onChange,
-}: {
-  label: string;
-  checked: boolean;
-  onChange: (next: boolean) => void;
-}) {
-  return (
-    <label
-      style={{
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "space-between",
-        gap: 10,
-        border: "1px solid rgba(255,255,255,0.12)",
-        background: "rgba(15,23,42,0.45)",
-        borderRadius: 12,
-        padding: "10px 12px",
-        color: "rgba(255,255,255,0.92)",
-        fontSize: 14,
-      }}
-    >
-      <span>{label}</span>
-      <input type="checkbox" checked={checked} onChange={(event) => onChange(event.target.checked)} />
-    </label>
-  );
-}
-
 export default function TiktokPanel(props: any) {
   const {
     tiktokConnected,
@@ -75,27 +33,10 @@ export default function TiktokPanel(props: any) {
     setTiktokProfileUrl,
     tiktokProfileUrlNotice,
     tiktokProfileUrlError,
-    tiktokSettingsNotice,
-    tiktokSettingsError,
     tiktokLoading,
     connectTiktokMock,
     disconnectTiktokMock,
     saveTiktokProfileUrl,
-    tiktokPreferredMedia,
-    setTiktokPreferredMedia,
-    tiktokAllowComments,
-    setTiktokAllowComments,
-    tiktokAllowDuo,
-    setTiktokAllowDuo,
-    tiktokAllowStitch,
-    setTiktokAllowStitch,
-    tiktokPhotoAutoMusic,
-    setTiktokPhotoAutoMusic,
-    tiktokCommercialContent,
-    setTiktokCommercialContent,
-    tiktokAiContent,
-    setTiktokAiContent,
-    saveTiktokDefaults,
   } = props;
 
   const statusLabel = tiktokConnected ? "Connecté" : "À connecter";
@@ -195,47 +136,11 @@ export default function TiktokPanel(props: any) {
 
       <div style={cardStyle}>
         <div className={styles.blockHeaderRow}>
-          <div className={styles.blockTitle}>Réglages TikTok par défaut</div>
+          <div className={styles.blockTitle}>Publication TikTok</div>
         </div>
         <div className={styles.blockSub}>
-          Ces préférences serviront dans Booster pour préparer la publication TikTok photo et vidéo avant validation finale.
+          Les paramètres sensibles TikTok ne sont pas enregistrés ici. À chaque publication depuis Booster, iNrCy demandera la visibilité, les interactions et les déclarations nécessaires avant l’envoi.
         </div>
-
-        <div style={{ display: "grid", gap: 10 }}>
-          <label style={{ display: "grid", gap: 6 }}>
-            <span className={styles.blockSub} style={{ opacity: 0.92 }}>Format prioritaire si photos + vidéo</span>
-            <select value={tiktokPreferredMedia} onChange={(event) => setTiktokPreferredMedia(event.target.value)} style={selectStyle}>
-              <option value="video">Vidéo</option>
-              <option value="photos">Photos</option>
-            </select>
-          </label>
-
-          <div style={switchRowStyle}>
-            <PreferenceToggle label="Commentaires autorisés" checked={tiktokAllowComments} onChange={setTiktokAllowComments} />
-            <PreferenceToggle label="Duo autorisé" checked={tiktokAllowDuo} onChange={setTiktokAllowDuo} />
-            <PreferenceToggle label="Stitch autorisé" checked={tiktokAllowStitch} onChange={setTiktokAllowStitch} />
-            <PreferenceToggle label="Musique auto sur les photos" checked={tiktokPhotoAutoMusic} onChange={setTiktokPhotoAutoMusic} />
-            <PreferenceToggle label="Contenu généré par IA" checked={tiktokAiContent} onChange={setTiktokAiContent} />
-          </div>
-
-          <label style={{ display: "grid", gap: 6 }}>
-            <span className={styles.blockSub} style={{ opacity: 0.92 }}>Contenu commercial</span>
-            <select value={tiktokCommercialContent} onChange={(event) => setTiktokCommercialContent(event.target.value)} style={selectStyle}>
-              <option value="none">Aucun</option>
-              <option value="self">Ma propre activité / ma marque</option>
-              <option value="branded">Partenariat rémunéré</option>
-            </select>
-          </label>
-
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={() => void saveTiktokDefaults?.()} disabled={tiktokLoading}>
-              {tiktokLoading ? "Enregistrement..." : "Enregistrer mes réglages"}
-            </button>
-          </div>
-        </div>
-
-        {tiktokSettingsNotice ? <StatusMessage variant="success">{tiktokSettingsNotice}</StatusMessage> : null}
-        {tiktokSettingsError ? <StatusMessage variant="error">{tiktokSettingsError}</StatusMessage> : null}
       </div>
     </div>
   );

@@ -2,7 +2,7 @@ import "server-only";
 
 import { asRecord, asString } from "@/lib/tsSafe";
 import { fetchTiktokCreatorInfo } from "@/lib/tiktokOAuth";
-import type { TiktokCommercialContent, TiktokDefaultSettings } from "@/lib/tiktokMockSettings";
+import type { TiktokCommercialContent } from "@/lib/tiktokMockSettings";
 
 export type TiktokPublishStatus = {
   ok: boolean;
@@ -24,6 +24,17 @@ export type TiktokPublishResult = {
   privacyLevel?: string;
   status?: TiktokPublishStatus | null;
   shareUrl?: string | null;
+};
+
+export type TiktokPublicationSettings = {
+  privacyLevel: string;
+  allowComments: boolean;
+  allowDuo: boolean;
+  allowStitch: boolean;
+  commercialContent?: TiktokCommercialContent;
+  aiContent?: boolean;
+  photoAutoMusic?: boolean;
+  musicUsageConfirmed?: boolean;
 };
 
 type TiktokPostInfo = {
@@ -58,13 +69,44 @@ function normalizePrivacyOptions(value: unknown): string[] {
   return value.map((entry) => (asString(entry) || "").trim()).filter(Boolean);
 }
 
-function pickPrivacyLevel(creatorInfo: Record<string, unknown>) {
+function validatePublicationSettings({
+  settings,
+  creatorInfo,
+  isPhoto,
+  videoDurationSeconds,
+}: {
+  settings: TiktokPublicationSettings | null | undefined;
+  creatorInfo: Record<string, unknown>;
+  isPhoto: boolean;
+  videoDurationSeconds?: number | null;
+}) {
+  if (!settings || !(asString(settings.privacyLevel) || "").trim()) {
+    throw new Error("Validez les paramètres TikTok avant publication.");
+  }
+  if (!settings.musicUsageConfirmed) {
+    throw new Error("Confirmez la Music Usage Confirmation de TikTok avant publication.");
+  }
+
   const options = normalizePrivacyOptions(creatorInfo.privacy_level_options);
-  if (options.includes("SELF_ONLY")) return "SELF_ONLY";
-  if (options.includes("MUTUAL_FOLLOW_FRIENDS")) return "MUTUAL_FOLLOW_FRIENDS";
-  if (options.includes("FOLLOWER_OF_CREATOR")) return "FOLLOWER_OF_CREATOR";
-  if (options.includes("PUBLIC_TO_EVERYONE")) return "PUBLIC_TO_EVERYONE";
-  return "SELF_ONLY";
+  if (options.length && !options.includes(settings.privacyLevel)) {
+    throw new Error("TikTok refuse ce niveau de confidentialité pour ce compte.");
+  }
+
+  if (settings.allowComments && creatorInfo.comment_disabled === true) {
+    throw new Error("Les commentaires sont désactivés côté TikTok pour ce compte.");
+  }
+  if (!isPhoto && settings.allowDuo && creatorInfo.duet_disabled === true) {
+    throw new Error("Le Duo est désactivé côté TikTok pour ce compte.");
+  }
+  if (!isPhoto && settings.allowStitch && creatorInfo.stitch_disabled === true) {
+    throw new Error("Le Stitch est désactivé côté TikTok pour ce compte.");
+  }
+
+  const maxVideoDuration = Number(creatorInfo.max_video_post_duration_sec || 0);
+  const actualDuration = Number(videoDurationSeconds || 0);
+  if (!isPhoto && Number.isFinite(maxVideoDuration) && maxVideoDuration > 0 && Number.isFinite(actualDuration) && actualDuration > maxVideoDuration) {
+    throw new Error("Cette vidéo dépasse la durée maximale autorisée par TikTok pour ce compte.");
+  }
 }
 
 function commercialToggles(value: TiktokCommercialContent | undefined) {
@@ -76,32 +118,35 @@ function commercialToggles(value: TiktokCommercialContent | undefined) {
 function buildPostInfo({
   title,
   description,
-  defaults,
+  publicationSettings,
   creatorInfo,
   isPhoto,
+  videoDurationSeconds,
 }: {
   title: string;
   description?: string;
-  defaults: TiktokDefaultSettings;
+  publicationSettings: TiktokPublicationSettings;
   creatorInfo: Record<string, unknown>;
   isPhoto: boolean;
+  videoDurationSeconds?: number | null;
 }): TiktokPostInfo {
-  const toggles = commercialToggles(defaults.commercialContent);
+  validatePublicationSettings({ settings: publicationSettings, creatorInfo, isPhoto, videoDurationSeconds });
+  const toggles = commercialToggles(publicationSettings.commercialContent);
   const postInfo: TiktokPostInfo = {
-    privacy_level: pickPrivacyLevel(creatorInfo),
-    disable_comment: !defaults.allowComments,
+    privacy_level: publicationSettings.privacyLevel,
+    disable_comment: !publicationSettings.allowComments,
     ...toggles,
   };
 
   if (isPhoto) {
     postInfo.title = truncateUtf16(title, 90);
     postInfo.description = truncateUtf16(description || title, 4000);
-    postInfo.auto_add_music = Boolean(defaults.photoAutoMusic);
+    postInfo.auto_add_music = Boolean(publicationSettings.photoAutoMusic);
   } else {
     postInfo.title = truncateUtf16(title, 2200);
-    postInfo.disable_duet = !defaults.allowDuo;
-    postInfo.disable_stitch = !defaults.allowStitch;
-    postInfo.is_aigc = Boolean(defaults.aiContent);
+    postInfo.disable_duet = !publicationSettings.allowDuo;
+    postInfo.disable_stitch = !publicationSettings.allowStitch;
+    postInfo.is_aigc = Boolean(publicationSettings.aiContent);
   }
 
   return postInfo;
@@ -252,15 +297,17 @@ export async function tiktokDirectPostVideo({
   accessToken,
   videoUrl,
   title,
-  defaults,
+  publicationSettings,
+  videoDurationSeconds,
 }: {
   accessToken: string;
   videoUrl: string;
   title: string;
-  defaults: TiktokDefaultSettings;
+  publicationSettings: TiktokPublicationSettings;
+  videoDurationSeconds?: number | null;
 }): Promise<TiktokPublishResult> {
   const creatorInfo = await fetchTiktokCreatorInfo(accessToken);
-  const postInfo = buildPostInfo({ title, defaults, creatorInfo, isPhoto: false });
+  const postInfo = buildPostInfo({ title, publicationSettings, creatorInfo, isPhoto: false, videoDurationSeconds });
 
   const response = await postTikTokJson(accessToken, "https://open.tiktokapis.com/v2/post/publish/video/init/", {
     post_info: postInfo,
@@ -295,16 +342,16 @@ export async function tiktokDirectPostPhotos({
   imageUrls,
   title,
   description,
-  defaults,
+  publicationSettings,
 }: {
   accessToken: string;
   imageUrls: string[];
   title: string;
   description: string;
-  defaults: TiktokDefaultSettings;
+  publicationSettings: TiktokPublicationSettings;
 }): Promise<TiktokPublishResult> {
   const creatorInfo = await fetchTiktokCreatorInfo(accessToken);
-  const postInfo = buildPostInfo({ title, description, defaults, creatorInfo, isPhoto: true });
+  const postInfo = buildPostInfo({ title, description, publicationSettings, creatorInfo, isPhoto: true });
 
   const response = await postTikTokJson(accessToken, "https://open.tiktokapis.com/v2/post/publish/content/init/", {
     media_type: "PHOTO",

@@ -1065,7 +1065,7 @@ export function ChannelPublicationPreview({ preview }: { preview: PublicationPre
   if (isYoutubeShorts) {
     return (
       <>
-        <PreviewBlockShell eyebrow={preview.formatLabel || "format YouTube"} title={preview.channelLabel} note={hasVideo ? "YouTube : aperçu de la vidéo publiée. Si elle est courte et verticale/carrée, YouTube la classe en Short." : "YouTube : ce canal attend une vidéo."}>
+        <PreviewBlockShell eyebrow={preview.formatLabel || "format YouTube"} title={preview.channelLabel} note={hasVideo ? "YouTube : aperçu de la vidéo publiée. Si elle est courte et verticale/carrée, YouTube peut l’afficher au format court." : "YouTube : ce canal attend une vidéo."}>
           <DevicePreviewSwitcher
             desktop={<FeedPreviewCard mode="desktop" channel="youtube_shorts" title={title} content={content} cta={cta} hashtags={hashtags} images={images} video={video} onOpen={openLightbox} />}
             mobile={<FeedPreviewCard mode="mobile" channel="youtube_shorts" title={title} content={content} cta={cta} hashtags={hashtags} images={images} video={video} onOpen={openLightbox} />}
