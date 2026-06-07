@@ -70,7 +70,7 @@ async function getAdminRefreshToken(): Promise<string | null> {
   const { data, error } = await q.order("updated_at", { ascending: false }).limit(1);
   if (error) return null;
   const token = String((data as any[])?.[0]?.refresh_token_enc || "").trim();
-  return token ? token : null;
+  return token ? tryDecryptToken(token) : null;
 }
 
 function normStatus(s: any) {

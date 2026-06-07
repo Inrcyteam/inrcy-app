@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { revokeGoogleTokensBestEffort } from "@/lib/googleOAuthRevoke";
-type RevokeRow = { id?: string | null; access_token_enc?: string | null; refresh_token_enc?: string | null };
+import { revokeGoogleTokensBestEffort, shouldRevokeGoogleTokensForDisconnect } from "@/lib/googleOAuthRevoke";
+type RevokeRow = { id?: string | null; access_token_enc?: string | null; refresh_token_enc?: string | null; provider_account_id?: string | null; email_address?: string | null; account_email?: string | null };
 /**
  * Déconnecte un compte Gmail (supprime la ligne integrations).
  * Le front passe { accountId }.
@@ -19,19 +19,30 @@ const body = await req.json().catch(() => ({}));
 
   const { data: rowToRevoke } = await supabaseAdmin
     .from("integrations")
-    .select("id,access_token_enc,refresh_token_enc")
+    .select("id,access_token_enc,refresh_token_enc,provider_account_id,email_address,account_email")
     .eq("id", accountId)
     .eq("user_id", userId)
     .eq("provider", "gmail")
     .eq("category", "mail")
     .maybeSingle();
 
-  await revokeGoogleTokensBestEffort({
-    integrationId: String((rowToRevoke as RevokeRow | null)?.id || ""),
-    accessTokenEnc: (rowToRevoke as RevokeRow | null)?.access_token_enc || null,
-    refreshTokenEnc: (rowToRevoke as RevokeRow | null)?.refresh_token_enc || null,
-    context: "gmail_disconnect",
-  });
+  const revokeRow = rowToRevoke as RevokeRow | null;
+  const canRevokeGoogleAuth = revokeRow
+    ? await shouldRevokeGoogleTokensForDisconnect({
+        userId,
+        rows: [revokeRow],
+        context: "gmail_disconnect",
+      })
+    : false;
+
+  if (canRevokeGoogleAuth && revokeRow) {
+    await revokeGoogleTokensBestEffort({
+      integrationId: String(revokeRow.id || ""),
+      accessTokenEnc: revokeRow.access_token_enc || null,
+      refreshTokenEnc: revokeRow.refresh_token_enc || null,
+      context: "gmail_disconnect",
+    });
+  }
 
   const { error } = await supabase
     .from("integrations")

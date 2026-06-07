@@ -1,17 +1,17 @@
 import { NextResponse } from "next/server";
 
-import { getYoutubeShortsOAuthScope, getYoutubeShortsRedirectUri } from "@/lib/youtubeShortsOAuth";
+import { getYoutubeShortsOAuthClientId, getYoutubeShortsOAuthScope, getYoutubeShortsRedirectUri } from "@/lib/youtubeShortsOAuth";
 import { makeOAuthState, safeInternalPath } from "@/lib/security";
 
 export async function GET(request: Request) {
-  const clientId = process.env.GOOGLE_CLIENT_ID;
+  const clientId = getYoutubeShortsOAuthClientId();
   const redirectUri = getYoutubeShortsRedirectUri(request.url);
 
   if (!clientId) {
     return NextResponse.json({
       ok: false,
       error: "Configuration Google incomplète côté serveur.",
-      hint: `Ajoute GOOGLE_CLIENT_ID et configure cette URI de redirection dans Google Cloud : ${redirectUri}`,
+      hint: `Ajoute YOUTUBE_CLIENT_ID/YOUTUBE_CLIENT_SECRET ou GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET, puis configure cette URI de redirection dans Google Cloud : ${redirectUri}`,
     }, { status: 500 });
   }
 

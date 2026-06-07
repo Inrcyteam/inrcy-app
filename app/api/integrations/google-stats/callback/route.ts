@@ -352,7 +352,9 @@ async function upsertGoogleIntegration(opts: {
     .eq("product", product)
     .maybeSingle();
 
-  const refreshTokenToStore = tokenData.refresh_token ?? asString(asRecord(existing)["refresh_token_enc"]) ?? null;
+  const refreshTokenToStore = tokenData.refresh_token
+    ? _encryptToken(tokenData.refresh_token)
+    : asString(asRecord(existing)["refresh_token_enc"]) ?? null;
 
   const expiresAt =
     tokenData.expires_in != null
@@ -370,7 +372,7 @@ async function upsertGoogleIntegration(opts: {
     display_name: userInfo.name ?? null,
     provider_account_id: userInfo.id ?? null,
     scopes: tokenData.scope ?? null,
-    access_token_enc: tokenData.access_token ?? null,
+    access_token_enc: tokenData.access_token ? _encryptToken(tokenData.access_token) : null,
     refresh_token_enc: refreshTokenToStore,
     expires_at: expiresAt,
     meta: { picture: userInfo.picture ?? null },

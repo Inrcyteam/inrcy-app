@@ -11,6 +11,8 @@ import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { withCurrentConnectionVersion } from "@/lib/connectionVersions";
 import {
   fetchYoutubeMineChannel,
+  getYoutubeShortsOAuthClientId,
+  getYoutubeShortsOAuthClientSecret,
   getYoutubeShortsOAuthScope,
   getYoutubeShortsRedirectUri,
   readYoutubeShortsSettings,
@@ -79,8 +81,8 @@ export async function GET(request: Request) {
       return fail(oauthError || "missing_code", oauthErrorDescription || "La connexion YouTube a été annulée ou incomplète.");
     }
 
-    const clientId = process.env.GOOGLE_CLIENT_ID;
-    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    const clientId = getYoutubeShortsOAuthClientId();
+    const clientSecret = getYoutubeShortsOAuthClientSecret();
     const redirectUri = getYoutubeShortsRedirectUri(request.url);
     if (!clientId || !clientSecret) {
       return fail("oauth_config_missing", "Configuration Google incomplète côté serveur.");

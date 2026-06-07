@@ -3,17 +3,8 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { clearAllToolCaches } from "@/lib/statsCache";
-import { tryDecryptToken } from "@/lib/oauthCrypto";
-import { readYoutubeShortsSettings, saveYoutubeShortsSettings } from "@/lib/youtubeShortsOAuth";
-
-async function revokeGoogleToken(token: string) {
-  await fetch("https://oauth2.googleapis.com/revoke", {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ token }).toString(),
-    cache: "no-store",
-  }).catch(() => null);
-}
+import { revokeGoogleTokensBestEffort, shouldRevokeGoogleTokensForDisconnect } from "@/lib/googleOAuthRevoke";
+import { isYoutubeUsingDedicatedOAuthClient, readYoutubeShortsSettings, saveYoutubeShortsSettings } from "@/lib/youtubeShortsOAuth";
 
 export async function POST() {
   const { supabase, user, errorResponse } = await requireUser();
@@ -21,17 +12,29 @@ export async function POST() {
 
   const { data: integration } = await supabaseAdmin
     .from("integrations")
-    .select("access_token_enc,refresh_token_enc")
+    .select("id,provider_account_id,email_address,access_token_enc,refresh_token_enc")
     .eq("user_id", user.id)
     .eq("provider", "youtube")
     .eq("source", "youtube_shorts")
     .eq("product", "youtube_shorts")
     .maybeSingle();
 
-  const refreshToken = tryDecryptToken(integration?.refresh_token_enc);
-  const accessToken = tryDecryptToken(integration?.access_token_enc);
-  const tokenToRevoke = refreshToken || accessToken;
-  if (tokenToRevoke) await revokeGoogleToken(tokenToRevoke);
+  const canRevokeGoogleAuth = isYoutubeUsingDedicatedOAuthClient()
+    ? true
+    : await shouldRevokeGoogleTokensForDisconnect({
+        userId: user.id,
+        rows: integration ? [integration] : [],
+        context: "youtube_disconnect",
+      });
+
+  if (canRevokeGoogleAuth && integration) {
+    await revokeGoogleTokensBestEffort({
+      integrationId: String(integration.id || ""),
+      accessTokenEnc: integration.access_token_enc || null,
+      refreshTokenEnc: integration.refresh_token_enc || null,
+      context: "youtube_disconnect",
+    });
+  }
 
   await supabaseAdmin
     .from("integrations")

@@ -64,8 +64,10 @@ function isActiveGoogleIntegrationStatus(value: string | null | undefined): bool
 
 type GoogleRevokeSafetyRow = {
   id?: string | null;
+  provider?: string | null;
   provider_account_id?: string | null;
   email_address?: string | null;
+  account_email?: string | null;
   status?: string | null;
   source?: string | null;
   product?: string | null;
@@ -79,7 +81,7 @@ export async function shouldRevokeGoogleTokensForDisconnect(opts: {
   const targetRows = Array.isArray(opts.rows) ? opts.rows : [];
   const targetIds = uniqueNonEmpty(targetRows.map((row) => row?.id || null));
   const targetProviderAccountIds = uniqueNonEmpty(targetRows.map((row) => row?.provider_account_id || null));
-  const targetEmails = uniqueNonEmpty(targetRows.map((row) => normalizeGoogleIdentity(row?.email_address || null)));
+  const targetEmails = uniqueNonEmpty(targetRows.map((row) => normalizeGoogleIdentity(row?.email_address || row?.account_email || null)));
 
   // Safety first: if we cannot reliably identify the Google account, never revoke here.
   // Manual disconnection should only affect the selected bubble, not sibling Google products.
@@ -95,9 +97,9 @@ export async function shouldRevokeGoogleTokensForDisconnect(opts: {
   try {
     const { data, error } = await supabaseAdmin
       .from("integrations")
-      .select("id,provider_account_id,email_address,status,source,product")
+      .select("id,provider,provider_account_id,email_address,account_email,status,source,product")
       .eq("user_id", opts.userId)
-      .eq("provider", "google");
+      .in("provider", ["google", "gmail", "youtube"]);
 
     if (error) {
       log.warn("google_oauth_revoke_safety_query_failed", {
@@ -116,7 +118,7 @@ export async function shouldRevokeGoogleTokensForDisconnect(opts: {
       if (!isActiveGoogleIntegrationStatus(row?.status || null)) return false;
 
       const providerAccountId = String(row?.provider_account_id || "").trim();
-      const emailAddress = normalizeGoogleIdentity(row?.email_address || null);
+      const emailAddress = normalizeGoogleIdentity(row?.email_address || row?.account_email || null);
 
       return (providerAccountId && targetProviderAccountIds.includes(providerAccountId)) || (emailAddress && targetEmails.includes(emailAddress));
     });
@@ -128,6 +130,7 @@ export async function shouldRevokeGoogleTokensForDisconnect(opts: {
         user_id: opts.userId,
         blockers: otherActiveRows.map((row) => ({
           id: row.id || null,
+          provider: row.provider || null,
           source: row.source || null,
           product: row.product || null,
           status: row.status || null,

@@ -173,7 +173,7 @@ export async function GET(req: Request) {
     const existingRefresh = asString(existingRec["refresh_token_enc"]);
     const existingId = asString(existingRec["id"]);
 
-    const refreshTokenToStore = tokenData.refresh_token ?? existingRefresh ?? null;
+    const refreshTokenToStore = tokenData.refresh_token ? _encryptToken(tokenData.refresh_token) : existingRefresh ?? null;
 
     const expiresAt =
       tokenData.expires_in != null
@@ -191,7 +191,7 @@ export async function GET(req: Request) {
       display_name: userInfo.name ?? null,
       provider_account_id: userInfo.id ?? null,
       scopes: tokenData.scope ?? null,
-      access_token_enc: tokenData.access_token ?? null,
+      access_token_enc: tokenData.access_token ? _encryptToken(tokenData.access_token) : null,
       refresh_token_enc: refreshTokenToStore,
       expires_at: expiresAt,
       meta: withCurrentConnectionVersion("channel:gmb", { picture: userInfo.picture ?? null }),

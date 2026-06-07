@@ -8,14 +8,13 @@ function Donut({ segments }: { segments: Array<{ label: string; value: number; c
   const bg = useMemo(() => {
     if (total <= 0) return "conic-gradient(rgba(255,255,255,.10) 0deg 360deg)";
     let cur = 0;
-    const parts = segments
-      .filter((s) => s.value > 0)
-      .map((s) => {
-        const a0 = (cur / total) * 360;
-        cur += s.value;
-        const a1 = (cur / total) * 360;
-        return `var(${s.colorVar}) ${a0.toFixed(2)}deg ${a1.toFixed(2)}deg`;
-      });
+    const visibleSegments = segments.filter((s) => s.value > 0);
+    const parts = visibleSegments.map((s, index) => {
+      const a0 = (cur / total) * 360;
+      cur += s.value;
+      const a1 = index === visibleSegments.length - 1 ? 360 : (cur / total) * 360;
+      return `var(${s.colorVar}) ${a0.toFixed(2)}deg ${a1.toFixed(2)}deg`;
+    });
     return `conic-gradient(${parts.join(", ")})`;
   }, [segments, total]);
 

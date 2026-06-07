@@ -97,6 +97,38 @@ function normalizeHandle(value: unknown) {
   return raw.startsWith("@") ? raw : `@${raw.replace(/^@+/, "")}`;
 }
 
+
+export function getYoutubeShortsOAuthClientId() {
+  return (
+    process.env.YOUTUBE_CLIENT_ID ||
+    process.env.YOUTUBE_SHORTS_CLIENT_ID ||
+    process.env.GOOGLE_YOUTUBE_CLIENT_ID ||
+    process.env.GOOGLE_YOUTUBE_SHORTS_CLIENT_ID ||
+    process.env.GOOGLE_CLIENT_ID ||
+    ""
+  );
+}
+
+export function getYoutubeShortsOAuthClientSecret() {
+  return (
+    process.env.YOUTUBE_CLIENT_SECRET ||
+    process.env.YOUTUBE_SHORTS_CLIENT_SECRET ||
+    process.env.GOOGLE_YOUTUBE_CLIENT_SECRET ||
+    process.env.GOOGLE_YOUTUBE_SHORTS_CLIENT_SECRET ||
+    process.env.GOOGLE_CLIENT_SECRET ||
+    ""
+  );
+}
+
+export function isYoutubeUsingDedicatedOAuthClient() {
+  return Boolean(
+    process.env.YOUTUBE_CLIENT_ID ||
+    process.env.YOUTUBE_SHORTS_CLIENT_ID ||
+    process.env.GOOGLE_YOUTUBE_CLIENT_ID ||
+    process.env.GOOGLE_YOUTUBE_SHORTS_CLIENT_ID
+  );
+}
+
 export function getYoutubeShortsOAuthScope() {
   const raw = process.env.YOUTUBE_SHORTS_SCOPES || process.env.GOOGLE_YOUTUBE_SHORTS_SCOPES;
   if (!raw || !raw.trim()) return YOUTUBE_SHORTS_DEFAULT_SCOPES.join(" ");
@@ -352,8 +384,8 @@ export async function fetchYoutubeMineChannel(accessToken: string) {
 }
 
 export async function refreshYoutubeShortsAccessToken(refreshToken: string) {
-  const clientId = process.env.GOOGLE_CLIENT_ID || process.env.YOUTUBE_SHORTS_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET || process.env.YOUTUBE_SHORTS_CLIENT_SECRET;
+  const clientId = getYoutubeShortsOAuthClientId();
+  const clientSecret = getYoutubeShortsOAuthClientSecret();
   if (!clientId || !clientSecret) throw new Error("Configuration Google OAuth incomplète.");
 
   const res = await fetch("https://oauth2.googleapis.com/token", {
