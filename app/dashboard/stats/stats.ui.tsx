@@ -56,6 +56,34 @@ function StatusPill({ ok, label }: { ok: boolean; label: string }) {
   return <span className={`${styles.pill} ${ok ? styles.pillOn : styles.pillOff}`}>{label}</span>;
 }
 
+function normalizeMobileIdentityLabel(label: string) {
+  return label
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[’']/g, "'")
+    .replace(/\s+/g, " ")
+    .replace(/[.!…]+$/g, "");
+}
+
+function getMobileChannelAccountLabel(model: CubeModel, connectionPending: boolean) {
+  const label = String(model.accountLabel || "").trim();
+  if (!label) return undefined;
+
+  const normalizedLabel = normalizeMobileIdentityLabel(label);
+  const statusLabel = normalizeMobileIdentityLabel(connectionPending ? "Vérification" : model.connections.main ? "Connecté" : "Déconnecté");
+
+  // En version mobile, le badge de statut est déjà affiché juste dessous.
+  // On masque uniquement les libellés techniques purs pour éviter "Connecté" en doublon,
+  // tout en gardant les vraies identités de canal : URL, page Facebook, compte, boîte 1/4, etc.
+  if (normalizedLabel === statusLabel || ["connecte", "deconnecte", "analyse", "verification", "verification en cours"].includes(normalizedLabel)) {
+    return undefined;
+  }
+
+  return label;
+}
+
 function actionPillClassKey(label: string) {
   return String(label || "")
     .toLowerCase()
@@ -324,6 +352,7 @@ export function Cube({
     ? !!model.connections.ga4 || !!model.connections.gsc
     : !!model.connections.main));
   const headerTitle = hideDetailsToggle ? getForcedCubeContextLabel(model.key) : model.title;
+  const mobileChannelAccountLabel = getMobileChannelAccountLabel(model, connectionPending);
 
   return (
     <section className={`${styles.cube} ${styles[`cube_${model.key}`] ?? ""} ${connectionOk ? styles.cubeOn : styles.cubeOff}`} aria-label={model.title}>
@@ -381,8 +410,8 @@ export function Cube({
           <h2 className={styles.mobileChannelTitle}>{model.title}</h2>
           <p className={styles.mobileChannelSub}>{model.subtitle}</p>
 
-          {model.accountLabel ? (
-            <div className={styles.mobileChannelLink}>{model.accountLabel}</div>
+          {mobileChannelAccountLabel ? (
+            <div className={styles.mobileChannelLink}>{mobileChannelAccountLabel}</div>
           ) : null}
 
           <div className={styles.mobileChannelPills}>

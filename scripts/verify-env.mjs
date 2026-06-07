@@ -25,11 +25,10 @@ const required = [
 
   // Internal / ops
   "HEALTHCHECK_TOKEN",
-  "VERCEL_CRON_SECRET",
-  "ADMIN_SECRET",
 
-  // Widgets
+  // Widgets / encrypted credentials
   "INRCY_WIDGETS_SIGNING_SECRET",
+  "INRCY_CREDENTIALS_SECRET",
 
   // SMTP / transactional email
   "TX_SMTP_HOST",
@@ -40,13 +39,36 @@ const required = [
   // Stripe
   "STRIPE_SECRET_KEY",
   "STRIPE_WEBHOOK_SECRET",
+  "NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY",
   "STRIPE_PRICE_STARTER_ID",
+  "STRIPE_PRICE_YEARLY",
   "STRIPE_PRICE_ACCEL_ID",
   "STRIPE_PRICE_ACCEL_YEARLY_ID",
 ];
 
+/** @type {{ label: string; keys: string[] }[]} */
+const requiredGroups = [
+  {
+    label: "Cron secret",
+    keys: ["VERCEL_CRON_SECRET", "CRON_SECRET"],
+  },
+];
+
 /** @type {string[]} */
 const optionalButRecommended = [
+  // Admin-only routes / onboarding helpers
+  "ADMIN_SECRET",
+  "SUPABASE_NEW_USER_WEBHOOK_SECRET",
+  "INRCY_NEW_USER_ALERT_EMAIL",
+  "INRCY_TRIAL_SIGNUP_SECRET",
+
+  // SMTP identity
+  "TX_MAIL_FROM",
+
+  // Legacy / additional Stripe plans
+  "STRIPE_PRICE_SPEED_ID",
+  "STRIPE_PRICE_FULL_ID",
+
   // Observability
   "SENTRY_AUTH_TOKEN",
   "SENTRY_DSN",
@@ -75,21 +97,43 @@ const optionalButRecommended = [
   "MICROSOFT_REDIRECT_URI",
 ];
 
+function hasValue(key) {
+  return Boolean(process.env[key] && String(process.env[key]).trim() !== "");
+}
+
 function check(list, label) {
-  const missing = list.filter((k) => !process.env[k] || String(process.env[k]).trim() === "");
+  const missing = list.filter((key) => !hasValue(key));
   if (missing.length) {
     console.warn(`\n[env] Missing ${label}:`);
-    for (const k of missing) console.warn(`  - ${k}`);
+    for (const key of missing) console.warn(`  - ${key}`);
   } else {
     console.log(`\n[env] OK: ${label}`);
   }
   return missing;
 }
 
+function checkGroups(groups) {
+  const missing = [];
+  for (const group of groups) {
+    if (group.keys.some(hasValue)) continue;
+    missing.push(`${group.label} (${group.keys.join(" or ")})`);
+  }
+
+  if (missing.length) {
+    console.warn("\n[env] Missing required variable groups:");
+    for (const group of missing) console.warn(`  - ${group}`);
+  } else {
+    console.log("\n[env] OK: required variable groups");
+  }
+
+  return missing;
+}
+
 const missingRequired = check(required, "required variables");
+const missingRequiredGroups = checkGroups(requiredGroups);
 check(optionalButRecommended, "optional (recommended) variables");
 
-if (missingRequired.length && strict) {
+if ((missingRequired.length || missingRequiredGroups.length) && strict) {
   console.error("\n[env] STRICT=1 → failing due to missing required variables.");
   process.exit(1);
 }

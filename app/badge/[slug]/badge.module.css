@@ -1888,3 +1888,847 @@
     grid-template-columns: 1fr;
   }
 }
+
+
+/* === iNrBadge featured primary actions: glass neon cards === */
+.featuredPrimaryAction {
+  position: relative;
+  min-height: 138px;
+  border-radius: 24px;
+  padding: 14px 10px 12px;
+  gap: 12px;
+  border-width: 1px;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+    0 18px 34px rgba(2, 6, 23, 0.28);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+}
+
+.featuredPrimaryAction::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.10), rgba(255,255,255,0.02) 34%, rgba(255,255,255,0.02) 100%);
+  pointer-events: none;
+}
+
+.featuredPrimaryAction::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 24px;
+  pointer-events: none;
+  box-shadow: inset 0 0 24px rgba(255,255,255,0.05), 0 0 22px transparent;
+}
+
+.featuredPrimaryAction .actionBody {
+  width: 100%;
+  display: grid;
+  place-items: center;
+}
+
+.featuredPrimaryAction .compactLabelRow {
+  gap: 4px;
+}
+
+.featuredPrimaryAction .actionBody strong {
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: -0.01em;
+  text-shadow: 0 2px 12px rgba(2, 6, 23, 0.28);
+}
+
+.featuredPrimaryAction .arrowInline {
+  font-size: 14px;
+  color: rgba(255,255,255,0.82);
+}
+
+.featuredPrimaryIcon {
+  width: 74px;
+  height: 74px;
+  border-radius: 22px;
+  background: radial-gradient(circle at 30% 20%, rgba(255,255,255,0.14), rgba(255,255,255,0.03) 30%, rgba(255,255,255,0) 56%);
+  box-shadow: none;
+}
+
+.featuredPrimaryIcon svg {
+  width: 48px;
+  height: 48px;
+  display: block;
+  filter: drop-shadow(0 0 12px currentColor);
+}
+
+.tone_phone.featuredPrimaryAction {
+  background: linear-gradient(180deg, rgba(95, 44, 124, 0.34), rgba(61, 27, 86, 0.58));
+  border-color: rgba(255, 137, 214, 0.42);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 0 0 1px rgba(255, 150, 227, 0.07),
+    0 18px 34px rgba(2, 6, 23, 0.26),
+    0 0 24px rgba(255, 105, 180, 0.20);
+}
+
+.tone_phone.featuredPrimaryAction::after {
+  box-shadow: inset 0 0 24px rgba(255, 186, 234, 0.06), 0 0 24px rgba(255, 105, 180, 0.18);
+}
+
+.tone_phone .featuredPrimaryIcon {
+  color: #ff78d2;
+}
+
+.tone_mail.featuredPrimaryAction {
+  background: linear-gradient(180deg, rgba(31, 87, 170, 0.34), rgba(24, 58, 118, 0.58));
+  border-color: rgba(120, 198, 255, 0.44);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.17),
+    inset 0 0 0 1px rgba(126, 198, 255, 0.07),
+    0 18px 34px rgba(2,6,23,0.26),
+    0 0 24px rgba(59, 130, 246, 0.18);
+}
+
+.tone_mail.featuredPrimaryAction::after {
+  box-shadow: inset 0 0 24px rgba(186, 229, 255, 0.06), 0 0 24px rgba(56, 189, 248, 0.16);
+}
+
+.tone_mail .featuredPrimaryIcon {
+  color: #75bcff;
+}
+
+.tone_contact.featuredPrimaryAction {
+  background: linear-gradient(180deg, rgba(20, 117, 101, 0.34), rgba(16, 86, 78, 0.58));
+  border-color: rgba(108, 255, 210, 0.40);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.17),
+    inset 0 0 0 1px rgba(104, 245, 197, 0.07),
+    0 18px 34px rgba(2,6,23,0.26),
+    0 0 24px rgba(16, 185, 129, 0.18);
+}
+
+.tone_contact.featuredPrimaryAction::after {
+  box-shadow: inset 0 0 24px rgba(198, 255, 238, 0.06), 0 0 24px rgba(45, 212, 191, 0.15);
+}
+
+.tone_contact .featuredPrimaryIcon {
+  color: #5cf0c9;
+}
+
+@media (max-width: 420px) {
+  .featuredPrimaryAction {
+    min-height: 126px;
+    padding: 12px 8px 10px;
+    border-radius: 22px;
+    gap: 10px;
+  }
+
+  .featuredPrimaryAction::before {
+    border-radius: 20px;
+  }
+
+  .featuredPrimaryAction::after {
+    border-radius: 22px;
+  }
+
+  .featuredPrimaryIcon {
+    width: 64px;
+    height: 64px;
+    border-radius: 20px;
+  }
+
+  .featuredPrimaryIcon svg {
+    width: 42px;
+    height: 42px;
+  }
+
+  .featuredPrimaryAction .actionBody strong {
+    font-size: 11.5px;
+  }
+
+  .featuredPrimaryAction .arrowInline {
+    font-size: 13px;
+  }
+}
+
+
+/* === iNrBadge custom PNG action icons === */
+.featuredPrimaryIcon .iconImage {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  padding: 0;
+  transform: scale(1.24);
+  filter: drop-shadow(0 0 12px currentColor) drop-shadow(0 0 18px rgba(255,255,255,0.12));
+}
+
+.tone_phone .featuredPrimaryIcon .iconImage {
+  transform: scale(1.22);
+}
+
+.tone_mail .featuredPrimaryIcon .iconImage {
+  transform: scale(1.18);
+}
+
+.tone_contact .featuredPrimaryIcon .iconImage {
+  transform: scale(1.2);
+}
+
+@media (max-width: 420px) {
+  .featuredPrimaryIcon .iconImage {
+    transform: scale(1.22);
+  }
+
+  .tone_phone .featuredPrimaryIcon .iconImage {
+    transform: scale(1.2);
+  }
+
+  .tone_mail .featuredPrimaryIcon .iconImage {
+    transform: scale(1.16);
+  }
+
+  .tone_contact .featuredPrimaryIcon .iconImage {
+    transform: scale(1.18);
+  }
+}
+
+/* === iNrBadge PNG action icons: direct in glass cards, no inner bubble === */
+.featuredPrimaryAction .featuredPrimaryIcon {
+  width: 86px;
+  height: 72px;
+  border-radius: 0;
+  background: transparent !important;
+  box-shadow: none !important;
+  overflow: visible;
+  color: inherit;
+}
+
+.featuredPrimaryAction .featuredPrimaryIcon::before,
+.featuredPrimaryAction .featuredPrimaryIcon::after {
+  display: none !important;
+}
+
+.featuredPrimaryAction .featuredPrimaryIcon .iconImage {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  padding: 0;
+  transform: none;
+  filter: drop-shadow(0 0 12px rgba(255,255,255,0.14));
+}
+
+.tone_phone.featuredPrimaryAction .featuredPrimaryIcon .iconImage {
+  transform: scale(1.08);
+}
+
+.tone_mail.featuredPrimaryAction .featuredPrimaryIcon .iconImage {
+  transform: scale(1.04);
+}
+
+.tone_contact.featuredPrimaryAction .featuredPrimaryIcon .iconImage {
+  transform: scale(1.06);
+}
+
+@media (max-width: 420px) {
+  .featuredPrimaryAction .featuredPrimaryIcon {
+    width: 78px;
+    height: 66px;
+    border-radius: 0;
+  }
+
+  .tone_phone.featuredPrimaryAction .featuredPrimaryIcon .iconImage,
+  .tone_mail.featuredPrimaryAction .featuredPrimaryIcon .iconImage,
+  .tone_contact.featuredPrimaryAction .featuredPrimaryIcon .iconImage {
+    transform: scale(1.02);
+  }
+}
+
+/* === iNrBadge action cards: stronger color identity + icons -15% === */
+.tone_phone.featuredPrimaryAction {
+  background:
+    radial-gradient(circle at 28% 12%, rgba(255, 120, 224, 0.30), transparent 34%),
+    linear-gradient(180deg, rgba(128, 44, 126, 0.54), rgba(74, 24, 88, 0.72));
+  border-color: rgba(255, 125, 218, 0.64);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.20),
+    inset 0 0 0 1px rgba(255, 133, 224, 0.12),
+    0 18px 34px rgba(2, 6, 23, 0.26),
+    0 0 30px rgba(255, 92, 190, 0.28);
+}
+
+.tone_phone.featuredPrimaryAction::after {
+  box-shadow: inset 0 0 30px rgba(255, 167, 232, 0.10), 0 0 28px rgba(255, 92, 190, 0.24);
+}
+
+.tone_mail.featuredPrimaryAction {
+  background:
+    radial-gradient(circle at 28% 12%, rgba(91, 201, 255, 0.30), transparent 34%),
+    linear-gradient(180deg, rgba(32, 106, 197, 0.56), rgba(22, 65, 139, 0.74));
+  border-color: rgba(108, 200, 255, 0.66);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.20),
+    inset 0 0 0 1px rgba(120, 205, 255, 0.12),
+    0 18px 34px rgba(2, 6, 23, 0.26),
+    0 0 30px rgba(56, 189, 248, 0.26);
+}
+
+.tone_mail.featuredPrimaryAction::after {
+  box-shadow: inset 0 0 30px rgba(174, 227, 255, 0.10), 0 0 28px rgba(56, 189, 248, 0.22);
+}
+
+.tone_contact.featuredPrimaryAction {
+  background:
+    radial-gradient(circle at 28% 12%, rgba(71, 255, 201, 0.28), transparent 34%),
+    linear-gradient(180deg, rgba(22, 139, 112, 0.56), rgba(16, 92, 83, 0.74));
+  border-color: rgba(91, 255, 207, 0.62);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.20),
+    inset 0 0 0 1px rgba(104, 245, 197, 0.12),
+    0 18px 34px rgba(2, 6, 23, 0.26),
+    0 0 30px rgba(20, 184, 166, 0.25);
+}
+
+.tone_contact.featuredPrimaryAction::after {
+  box-shadow: inset 0 0 30px rgba(196, 255, 238, 0.10), 0 0 28px rgba(45, 212, 191, 0.21);
+}
+
+.featuredPrimaryAction .featuredPrimaryIcon {
+  width: 73px;
+  height: 61px;
+}
+
+.tone_phone.featuredPrimaryAction .featuredPrimaryIcon .iconImage,
+.tone_mail.featuredPrimaryAction .featuredPrimaryIcon .iconImage,
+.tone_contact.featuredPrimaryAction .featuredPrimaryIcon .iconImage {
+  transform: none;
+}
+
+@media (max-width: 420px) {
+  .featuredPrimaryAction .featuredPrimaryIcon {
+    width: 66px;
+    height: 56px;
+  }
+
+  .tone_phone.featuredPrimaryAction .featuredPrimaryIcon .iconImage,
+  .tone_mail.featuredPrimaryAction .featuredPrimaryIcon .iconImage,
+  .tone_contact.featuredPrimaryAction .featuredPrimaryIcon .iconImage {
+    transform: none;
+  }
+}
+
+
+/* === iNrBadge final polish: naked primary actions + balanced channel rows === */
+.featuredPrimaryAction {
+  min-height: 104px;
+  padding: 6px 4px 4px;
+  gap: 6px;
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.featuredPrimaryAction::before,
+.featuredPrimaryAction::after {
+  display: none !important;
+}
+
+.featuredPrimaryAction:hover {
+  transform: translateY(-1px);
+  background: radial-gradient(circle at 50% 36%, rgba(255, 255, 255, 0.045), transparent 58%) !important;
+  box-shadow: none !important;
+}
+
+.featuredPrimaryAction .featuredPrimaryIcon {
+  width: 62px;
+  height: 54px;
+  border-radius: 0;
+  background: transparent !important;
+  box-shadow: none !important;
+  overflow: visible;
+}
+
+.featuredPrimaryAction .featuredPrimaryIcon .iconImage {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  transform: none !important;
+  filter: drop-shadow(0 0 10px rgba(255,255,255,0.12));
+}
+
+.featuredPrimaryAction .actionBody strong {
+  font-size: 12px;
+  font-weight: 900;
+  text-shadow: 0 2px 10px rgba(2, 6, 23, 0.45);
+}
+
+.channelsGrid {
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  justify-items: center;
+  gap: 10px;
+}
+
+.channelsRow {
+  width: 100%;
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: center;
+  gap: 10px;
+}
+
+.channelsRow > .actionIconOnly {
+  flex: 0 0 84px;
+  width: 84px;
+  max-width: 84px;
+}
+
+@media (max-width: 420px) {
+  .featuredPrimaryAction {
+    min-height: 98px;
+    padding: 5px 2px 4px;
+    gap: 5px;
+  }
+
+  .featuredPrimaryAction .featuredPrimaryIcon {
+    width: 56px;
+    height: 49px;
+  }
+
+  .featuredPrimaryAction .actionBody strong {
+    font-size: 11.5px;
+  }
+
+  .channelsGrid {
+    gap: 8px;
+  }
+
+  .channelsRow {
+    gap: 8px;
+  }
+
+  .channelsRow > .actionIconOnly {
+    flex-basis: 78px;
+    width: 78px;
+    max-width: 78px;
+  }
+}
+
+/* === iNrBadge final polish: naked channel logos + premium top identity ring === */
+.logo {
+  border: 1px solid rgba(255, 255, 255, 0.42) !important;
+  box-shadow:
+    0 0 0 3px rgba(255, 255, 255, 0.055),
+    0 0 24px rgba(56, 189, 248, 0.20),
+    0 10px 24px rgba(2, 6, 23, 0.24) !important;
+}
+
+.channelsRow > .actionIconOnly {
+  min-height: 66px;
+  height: 66px;
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  overflow: visible;
+}
+
+.channelsRow > .actionIconOnly::before,
+.channelsRow > .actionIconOnly::after {
+  display: none !important;
+}
+
+.channelsRow > .actionIconOnly:hover {
+  background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.055), transparent 62%) !important;
+  box-shadow: none !important;
+}
+
+.channelsRow > .actionIconOnly .actionIcon {
+  width: 58px;
+  height: 58px;
+  background: transparent !important;
+  box-shadow: none !important;
+  overflow: visible;
+}
+
+.channelsRow > .actionIconOnly .iconImage {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.20));
+}
+
+@media (max-width: 420px) {
+  .channelsRow > .actionIconOnly {
+    min-height: 62px;
+    height: 62px;
+  }
+
+  .channelsRow > .actionIconOnly .actionIcon {
+    width: 54px;
+    height: 54px;
+  }
+}
+
+
+/* === iNrBadge final polish v2: premium channel bubbles + signature top logo ring === */
+.logo {
+  position: relative;
+  padding: 4px !important;
+  box-sizing: border-box;
+  border: 1.5px solid transparent !important;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,0.98), rgba(242,246,255,0.96)) padding-box,
+    linear-gradient(135deg, rgba(61,225,255,0.96) 0%, rgba(106,92,255,0.94) 52%, rgba(255,111,210,0.95) 100%) border-box !important;
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.06),
+    0 0 0 5px rgba(80, 182, 255, 0.06),
+    0 0 28px rgba(72, 193, 255, 0.18),
+    0 14px 28px rgba(2, 6, 23, 0.28) !important;
+  overflow: visible !important;
+}
+
+.logo::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: 999px;
+  pointer-events: none;
+  background: linear-gradient(135deg, rgba(255,255,255,0.24), rgba(255,255,255,0.02) 38%, rgba(255,255,255,0.04) 62%, rgba(255,255,255,0.18));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  padding: 1px;
+  opacity: 0.8;
+}
+
+.logo img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover;
+  border-radius: 999px;
+  display: block;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.28);
+}
+
+.logo span {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.98), rgba(242,246,255,0.96));
+}
+
+.channelsRow > .actionIconOnly {
+  min-height: 78px;
+  height: 78px;
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  overflow: visible;
+}
+
+.channelsRow > .actionIconOnly::before,
+.channelsRow > .actionIconOnly::after {
+  display: none !important;
+}
+
+.channelsRow > .actionIconOnly:hover {
+  transform: translateY(-1px);
+  background: transparent !important;
+}
+
+.channelsRow > .actionIconOnly .actionIcon {
+  width: 62px;
+  height: 62px;
+  border-radius: 999px;
+  padding: 4px;
+  box-sizing: border-box;
+  display: grid;
+  place-items: center;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,0.99), rgba(242,246,255,0.97)) padding-box,
+    linear-gradient(135deg, rgba(88,205,255,0.85), rgba(127,102,255,0.82), rgba(255,118,211,0.82)) border-box !important;
+  border: 1px solid transparent;
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.04),
+    0 10px 20px rgba(2, 6, 23, 0.18),
+    0 0 18px rgba(83, 196, 255, 0.12) !important;
+  overflow: hidden;
+}
+
+.channelsRow > .actionIconOnly .iconImage {
+  width: 76%;
+  height: 76%;
+  object-fit: contain;
+  display: block;
+  filter: none;
+}
+
+.channelsRow > .actionIconOnly:hover .actionIcon {
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.05),
+    0 12px 24px rgba(2, 6, 23, 0.22),
+    0 0 20px rgba(83, 196, 255, 0.16) !important;
+}
+
+@media (max-width: 420px) {
+  .logo {
+    padding: 3px !important;
+  }
+
+  .channelsRow > .actionIconOnly {
+    min-height: 72px;
+    height: 72px;
+  }
+
+  .channelsRow > .actionIconOnly .actionIcon {
+    width: 58px;
+    height: 58px;
+    padding: 4px;
+  }
+
+  .channelsRow > .actionIconOnly .iconImage {
+    width: 74%;
+    height: 74%;
+  }
+}
+
+
+/* === iNrBadge channel logo zoom tuning === */
+.channelsRow > .actionIconOnly .actionIcon {
+  padding: 3px;
+}
+
+.channelsRow > .actionIconOnly .iconImage {
+  width: 82%;
+  height: 82%;
+  object-fit: contain;
+}
+
+/* Round social / website logos should fill the bubble much more */
+.channelsRow > .tone_site.actionIconOnly .iconImage,
+.channelsRow > .tone_linkedin.actionIconOnly .iconImage,
+.channelsRow > .tone_instagram.actionIconOnly .iconImage,
+.channelsRow > .tone_facebook.actionIconOnly .iconImage,
+.channelsRow > .tone_tiktok.actionIconOnly .iconImage {
+  width: 100%;
+  height: 100%;
+  transform: scale(1.18);
+  transform-origin: center;
+}
+
+/* iNrCy site logo can take a bit less than fully edge-to-edge */
+.channelsRow > .tone_site.actionIconOnly[title="Site iNrCy"] .iconImage,
+.channelsRow > .tone_site.actionIconOnly[aria-label="Site iNrCy"] .iconImage {
+  width: 94%;
+  height: 94%;
+  transform: scale(1.06);
+}
+
+/* Google Business remains slightly more contained */
+.channelsRow > .tone_google.actionIconOnly .iconImage {
+  width: 92%;
+  height: 92%;
+  transform: scale(1.04);
+}
+
+/* YouTube: keep a clear red ring/border */
+.channelsRow > .tone_youtube.actionIconOnly .actionIcon {
+  padding: 4px;
+  background:
+    linear-gradient(135deg, rgba(255,255,255,0.995), rgba(249,250,251,0.99)) padding-box,
+    linear-gradient(135deg, rgba(255,120,120,0.95), rgba(255,32,32,0.98) 55%, rgba(215,0,0,1) 100%) border-box !important;
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.04),
+    0 10px 20px rgba(2, 6, 23, 0.18),
+    0 0 18px rgba(255, 59, 59, 0.18) !important;
+}
+
+.channelsRow > .tone_youtube.actionIconOnly .iconImage {
+  width: 100%;
+  height: 100%;
+  transform: scale(1.08);
+  transform-origin: center;
+}
+
+@media (max-width: 420px) {
+  .channelsRow > .actionIconOnly .actionIcon {
+    padding: 3px;
+  }
+
+  .channelsRow > .actionIconOnly .iconImage {
+    width: 80%;
+    height: 80%;
+  }
+
+  .channelsRow > .tone_site.actionIconOnly .iconImage,
+  .channelsRow > .tone_linkedin.actionIconOnly .iconImage,
+  .channelsRow > .tone_instagram.actionIconOnly .iconImage,
+  .channelsRow > .tone_facebook.actionIconOnly .iconImage,
+  .channelsRow > .tone_tiktok.actionIconOnly .iconImage,
+  .channelsRow > .tone_youtube.actionIconOnly .iconImage {
+    width: 100%;
+    height: 100%;
+  }
+
+  .channelsRow > .tone_google.actionIconOnly .iconImage {
+    width: 90%;
+    height: 90%;
+  }
+
+  .channelsRow > .tone_site.actionIconOnly[title="Site iNrCy"] .iconImage,
+  .channelsRow > .tone_site.actionIconOnly[aria-label="Site iNrCy"] .iconImage {
+    width: 92%;
+    height: 92%;
+  }
+}
+
+
+/* === Final polish: bigger top logo + premium glass RDV band === */
+.logo img {
+  transform: scale(1.1);
+  transform-origin: center;
+}
+
+.logo span {
+  transform: scale(1.08);
+}
+
+.ctaWrap .tone_appointment {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 18% 20%, rgba(255,255,255,0.18), transparent 22%),
+    linear-gradient(135deg, rgba(106, 49, 160, 0.62), rgba(88, 37, 141, 0.74) 46%, rgba(123, 70, 190, 0.70) 100%) !important;
+  border: 1px solid rgba(225, 180, 255, 0.28) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.18),
+    inset 0 -8px 20px rgba(44, 18, 74, 0.16),
+    0 16px 30px rgba(76, 29, 149, 0.18),
+    0 0 24px rgba(168, 85, 247, 0.10) !important;
+  backdrop-filter: blur(14px) saturate(145%);
+  -webkit-backdrop-filter: blur(14px) saturate(145%);
+}
+
+.ctaWrap .tone_appointment::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(255,255,255,0.14), rgba(255,255,255,0.04) 32%, rgba(255,255,255,0.02) 66%, rgba(255,255,255,0.06));
+  opacity: 0.9;
+}
+
+.ctaWrap .tone_appointment::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 14px;
+  width: 40%;
+  height: 54%;
+  border-radius: 999px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.22), rgba(255,255,255,0));
+  filter: blur(10px);
+  pointer-events: none;
+}
+
+.ctaWrap .tone_appointment .actionIcon,
+.ctaWrap .tone_appointment .actionBody,
+.ctaWrap .tone_appointment .arrow {
+  position: relative;
+  z-index: 1;
+}
+
+.ctaWrap .tone_appointment .actionBody strong {
+  text-shadow: 0 2px 12px rgba(32, 12, 58, 0.30);
+}
+
+.ctaWrap .tone_appointment .arrow {
+  color: rgba(255,255,255,0.92);
+  text-shadow: 0 2px 10px rgba(32, 12, 58, 0.28);
+}
+
+@media (max-width: 420px) {
+  .logo img {
+    transform: scale(1.08);
+  }
+
+  .logo span {
+    transform: scale(1.05);
+  }
+
+  .ctaWrap .tone_appointment {
+    box-shadow:
+      inset 0 1px 0 rgba(255,255,255,0.18),
+      inset 0 -8px 20px rgba(44, 18, 74, 0.16),
+      0 14px 24px rgba(76, 29, 149, 0.16),
+      0 0 20px rgba(168, 85, 247, 0.08) !important;
+  }
+}
+
+/* === Fix RDV CTA alignment after glass polish === */
+.ctaWrap .tone_appointment {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 10px !important;
+}
+
+.ctaWrap .tone_appointment .actionIcon {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 138px;
+  width: 138px;
+  min-width: 138px;
+  height: 44px;
+  margin-right: 0;
+}
+
+.ctaWrap .tone_appointment .actionBody {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding-right: 30px !important;
+  text-align: right;
+}
+
+.ctaWrap .tone_appointment .arrow {
+  position: absolute !important;
+  z-index: 2;
+  right: 14px !important;
+  top: 50% !important;
+  bottom: auto !important;
+  transform: translateY(-50%) !important;
+  line-height: 1 !important;
+  display: block !important;
+}
+
+@media (max-width: 420px) {
+  .ctaWrap .tone_appointment .actionIcon {
+    flex-basis: 126px;
+    width: 126px;
+    min-width: 126px;
+    height: 42px;
+  }
+
+  .ctaWrap .tone_appointment .actionBody {
+    padding-right: 28px !important;
+  }
+
+  .ctaWrap .tone_appointment .arrow {
+    right: 13px !important;
+  }
+}

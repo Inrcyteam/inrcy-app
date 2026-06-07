@@ -149,12 +149,49 @@ type ActionLinkProps = {
   trackingTarget?: string;
 };
 
+function FutureActionGlyph({ tone }: { tone: ActionTone }) {
+  const stroke = tone === "phone" ? "#ff78d2" : tone === "mail" ? "#75bcff" : "#5cf0c9";
+
+  if (tone === "phone") {
+    return (
+      <svg viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+        <path d="M21 12c1.7 0 3.2 1 4 2.6l3.1 6.8c.7 1.5.3 3.3-.9 4.4l-3.5 3.1c4.5 7.3 10.8 13.2 18.2 17.3l3-3.5c1.1-1.2 2.9-1.6 4.4-1l7 3c1.7.8 2.8 2.4 2.8 4.2v6c0 2.3-1.8 4.1-4.1 4.1h-1.5C29.5 59 5 34.5 5 5.4V3.9C5 1.6 6.8-.2 9.1-.2h11.9Z" fill="none" stroke={stroke} strokeWidth="4.25" strokeLinecap="round" strokeLinejoin="round"/>
+      </svg>
+    );
+  }
+
+  if (tone === "mail") {
+    return (
+      <svg viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+        <rect x="10" y="16" width="44" height="32" rx="9" fill="none" stroke={stroke} strokeWidth="4"/>
+        <path d="m14 22 18 15 18-15" fill="none" stroke={stroke} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"/>
+        <path d="m15 43 12-12M49 43 37 31" fill="none" stroke={stroke} strokeWidth="4" strokeLinecap="round"/>
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 64 64" aria-hidden="true" focusable="false">
+      <circle cx="29" cy="20" r="9" fill="none" stroke={stroke} strokeWidth="4"/>
+      <path d="M14 47c0-8.3 6.7-15 15-15s15 6.7 15 15" fill="none" stroke={stroke} strokeWidth="4" strokeLinecap="round"/>
+      <path d="M49 25v18M40 34h18" fill="none" stroke={stroke} strokeWidth="4.25" strokeLinecap="round"/>
+    </svg>
+  );
+}
+
 function ActionLink({ href, label, detail, download, icon, iconSrc, tone = "neutral", compact = false, iconOnly = false, trackingAction, trackingTarget }: ActionLinkProps) {
+  const isFeaturedPrimary = compact && (tone === "phone" || tone === "mail" || tone === "contact");
   const className = [
     styles.action,
     iconOnly ? styles.actionIconOnly : compact ? styles.actionCompact : styles.actionWide,
     styles[`tone_${tone}`],
     detail && !iconOnly ? styles.actionWithDetail : styles.actionWithoutDetail,
+    isFeaturedPrimary ? styles.featuredPrimaryAction : "",
+  ].filter(Boolean).join(" ");
+
+  const iconClassName = [
+    styles.actionIcon,
+    isFeaturedPrimary ? styles.featuredPrimaryIcon : "",
   ].filter(Boolean).join(" ");
 
   return (
@@ -169,8 +206,14 @@ function ActionLink({ href, label, detail, download, icon, iconSrc, tone = "neut
       data-inrbadge-action={trackingAction}
       data-inrbadge-target={trackingTarget || href}
     >
-      <span className={styles.actionIcon} aria-hidden="true">
-        {iconSrc ? <img className={styles.iconImage} src={iconSrc} alt="" width={28} height={28} loading="eager" decoding="async" fetchPriority={tone === "appointment" ? "high" : undefined} /> : <span>{icon}</span>}
+      <span className={iconClassName} aria-hidden="true">
+        {iconSrc ? (
+          <img className={styles.iconImage} src={iconSrc} alt="" width={28} height={28} loading="eager" decoding="async" fetchPriority={tone === "appointment" ? "high" : undefined} />
+        ) : isFeaturedPrimary ? (
+          <FutureActionGlyph tone={tone} />
+        ) : (
+          <span>{icon}</span>
+        )}
       </span>
       {iconOnly ? (
         <span className={styles.srOnly}>{label}</span>
@@ -190,6 +233,24 @@ function ActionLink({ href, label, detail, download, icon, iconSrc, tone = "neut
       {!compact && !iconOnly ? <span className={styles.arrow}>›</span> : null}
     </a>
   );
+}
+
+function getBalancedChannelRows(actions: ActionLinkProps[]) {
+  const rowSizes =
+    actions.length <= 4 ? [actions.length]
+    : actions.length === 5 ? [3, 2]
+    : actions.length === 6 ? [3, 3]
+    : actions.length === 7 ? [4, 3]
+    : [4, 4];
+
+  let cursor = 0;
+  return rowSizes
+    .map((size) => {
+      const row = actions.slice(cursor, cursor + size);
+      cursor += size;
+      return row;
+    })
+    .filter((row) => row.length > 0);
 }
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> | { slug: string } }): Promise<Metadata> {
@@ -349,9 +410,9 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
   const vCardFilename = `${safeFilename(company || displayName)}.vcf`;
 
   const primaryActions = [
-    shareSettings.phone && phone && phoneHref(phone) ? { href: phoneHref(phone), label: "Appeler", icon: "☎", tone: "phone" as ActionTone, trackingAction: "phone" } : null,
-    shareSettings.email && badgeEmail ? { href: createMailto(badgeEmail), label: "Mail", icon: "✉", tone: "mail" as ActionTone, trackingAction: "mail" } : null,
-    shareSettings.saveContact ? { href: vCardUri, label: "Enregistrer", download: vCardFilename, icon: "👤", tone: "contact" as ActionTone, trackingAction: "save_contact" } : null,
+    shareSettings.phone && phone && phoneHref(phone) ? { href: phoneHref(phone), label: "Appeler", iconSrc: "/icons/inrbadge-action-tel.png", tone: "phone" as ActionTone, trackingAction: "phone" } : null,
+    shareSettings.email && badgeEmail ? { href: createMailto(badgeEmail), label: "Mail", iconSrc: "/icons/inrbadge-action-mail.png", tone: "mail" as ActionTone, trackingAction: "mail" } : null,
+    shareSettings.saveContact ? { href: vCardUri, label: "Enregistrer", download: vCardFilename, iconSrc: "/icons/inrbadge-action-save.png", tone: "contact" as ActionTone, trackingAction: "save_contact" } : null,
   ].filter(Boolean) as ActionLinkProps[];
 
   const channelActions = [
@@ -369,12 +430,7 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
     ? { href: `/badge/${slug}/rdv`, label: "Prendre RDV", iconSrc: inrCalendarLogo.src, tone: "appointment" as ActionTone, trackingAction: "appointment" }
     : null;
 
-  const channelRowSize =
-    channelActions.length >= 8 ? 4
-    : channelActions.length === 7 ? 4
-    : channelActions.length >= 5 ? 3
-    : channelActions.length === 4 ? 2
-    : Math.max(1, channelActions.length);
+  const channelRows = getBalancedChannelRows(channelActions);
 
   const headerInfoLine = [
     shareSettings.company ? company : "",
@@ -385,6 +441,7 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
   const iconPreloads = Array.from(new Set([
     headerLogoSrc,
     inrCalendarLogo.src,
+    ...primaryActions.map((action) => action.iconSrc).filter((src): src is string => Boolean(src)),
     ...channelActions.map((action) => action.iconSrc).filter((src): src is string => Boolean(src)),
   ]));
 
@@ -431,9 +488,13 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
                 <span className={styles.sectionMark} />
                 <h2>Mes canaux</h2>
               </div>
-              <div className={styles.channelsGrid} data-count={channelActions.length} style={{ ["--channels-columns" as any]: channelRowSize }}>
-                {channelActions.map((action) => (
-                  <ActionLink key={`${action.label}-${action.href}`} {...action} iconOnly />
+              <div className={styles.channelsGrid} data-count={channelActions.length}>
+                {channelRows.map((row, rowIndex) => (
+                  <div className={styles.channelsRow} key={`channel-row-${rowIndex}`}>
+                    {row.map((action) => (
+                      <ActionLink key={`${action.label}-${action.href}`} {...action} iconOnly />
+                    ))}
+                  </div>
                 ))}
               </div>
             </section>
