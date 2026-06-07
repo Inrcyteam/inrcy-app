@@ -54,9 +54,11 @@ function planFromPriceId(priceId: string | null) {
   const accel = optionalEnv("STRIPE_PRICE_ACCEL_ID");
   const speed = optionalEnv("STRIPE_PRICE_SPEED_ID") || optionalEnv("STRIPE_PRICE_FULL_ID");
   const yearly = optionalEnv("STRIPE_PRICE_YEARLY");
+  const accelYearly = optionalEnv("STRIPE_PRICE_ACCEL_YEARLY_ID");
   if (starter && priceId === starter) return "Starter";
   if (yearly && priceId === yearly) return "Starter";
   if (accel && priceId === accel) return "Accel";
+  if (accelYearly && priceId === accelYearly) return "Accel";
   if (speed && priceId === speed) return "Speed";
   return null;
 }
@@ -64,9 +66,25 @@ function planFromPriceId(priceId: string | null) {
 function monthlyPriceFromPlan(plan: string | null): number | null {
   if (!plan) return null;
   if (plan === "Starter") return 69;
-  if (plan === "Accel") return 99;
+  if (plan === "Accel") return 149;
   if (plan === "Speed") return 359;
   return null;
+}
+
+function annualPriceFromPlan(plan: string | null): number | null {
+  if (!plan) return null;
+  if (plan === "Starter") return 690;
+  if (plan === "Accel") return 1490;
+  return null;
+}
+
+function storedPriceFromStripePriceId(priceId: string | null, plan: string | null, billingCycle: string | null): number | null {
+  const starterYearly = optionalEnv("STRIPE_PRICE_YEARLY");
+  const accelYearly = optionalEnv("STRIPE_PRICE_ACCEL_YEARLY_ID");
+  if (starterYearly && priceId === starterYearly) return 690;
+  if (accelYearly && priceId === accelYearly) return 1490;
+  if (billingCycle === "yearly") return annualPriceFromPlan(plan);
+  return monthlyPriceFromPlan(plan);
 }
 
 async function getSubscriptionRow(userId?: string | null, customerId?: string | null) {
@@ -183,10 +201,8 @@ export async function POST(req: Request) {
       const trialEndAt = sub?.trial_end ? new Date(Number(sub.trial_end) * 1000).toISOString() : null;
       const trialStartAt = sub?.trial_start ? new Date(Number(sub.trial_start) * 1000).toISOString() : null;
       const inrcyPlan = planFromPriceId(priceId);
-      const yearlyPriceId = optionalEnv("STRIPE_PRICE_YEARLY");
       const billingCycleFromMetadata = typeof metadata?.billing_cycle === "string" ? metadata.billing_cycle : null;
-      const isYearlySubscription = billingCycleFromMetadata === "yearly" || (!!yearlyPriceId && priceId === yearlyPriceId);
-      const monthlyPrice = isYearlySubscription ? 690 : monthlyPriceFromPlan(inrcyPlan);
+      const monthlyPrice = storedPriceFromStripePriceId(priceId, inrcyPlan, billingCycleFromMetadata);
       const shouldKeepTrialPlan = stripeStatus === "trialing";
       const cancellationTimestamp = cancelAtPeriodEnd
         ? new Date().toISOString()

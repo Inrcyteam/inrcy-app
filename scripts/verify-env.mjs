@@ -42,6 +42,7 @@ const required = [
   "STRIPE_WEBHOOK_SECRET",
   "STRIPE_PRICE_STARTER_ID",
   "STRIPE_PRICE_ACCEL_ID",
+  "STRIPE_PRICE_ACCEL_YEARLY_ID",
 ];
 
 /** @type {string[]} */

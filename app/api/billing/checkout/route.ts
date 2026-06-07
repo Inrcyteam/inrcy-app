@@ -17,6 +17,7 @@ type SubscriptionRow = {
   trial_start_at?: string | null;
   trial_end_at?: string | null;
   contact_email?: string | null;
+  founder_offer_enabled?: boolean | null;
 };
 
 type ProfileRow = {
@@ -34,6 +35,11 @@ function hasStripeConfig() {
   );
 }
 
+function normalizeWantedPlan(plan: string) {
+  if (plan === "Starter" || plan === "Accel") return plan;
+  return null;
+}
+
 export async function POST(req: Request) {
   try {
     if (!hasStripeConfig()) {
@@ -48,7 +54,8 @@ export async function POST(req: Request) {
 
     const userId = user.id;
     const body: unknown = await req.json().catch(() => ({}));
-    const wantedPlan = String((body as { plan?: unknown } | null | undefined)?.plan || "Starter");
+    const wantedPlanRaw = String((body as { plan?: unknown } | null | undefined)?.plan || "Accel");
+    const wantedPlan = normalizeWantedPlan(wantedPlanRaw);
     const billingCycleRaw = String(
       (body as { billingCycle?: unknown; billing?: unknown } | null | undefined)?.billingCycle ||
         (body as { billing?: unknown } | null | undefined)?.billing ||
@@ -56,6 +63,10 @@ export async function POST(req: Request) {
     );
     const billingCycle: BillingCycle = billingCycleRaw === "yearly" ? "yearly" : "monthly";
     const trialDays = getTrialDays();
+
+    if (!wantedPlan) {
+      return NextResponse.json({ error: "L’offre sélectionnée est invalide." }, { status: 400 });
+    }
 
     const monthlyPriceIdByPlan: Record<string, string | undefined> = {
       Starter: requireEnv("STRIPE_PRICE_STARTER_ID"),
@@ -65,6 +76,7 @@ export async function POST(req: Request) {
 
     const yearlyPriceIdByPlan: Record<string, string | undefined> = {
       Starter: process.env.STRIPE_PRICE_YEARLY,
+      Accel: process.env.STRIPE_PRICE_ACCEL_YEARLY_ID,
     };
 
     const priceId = billingCycle === "yearly" ? yearlyPriceIdByPlan[wantedPlan] : monthlyPriceIdByPlan[wantedPlan];
@@ -75,7 +87,7 @@ export async function POST(req: Request) {
     const [{ data: sub, error: subErr }, { data: profile, error: profileErr }] = await Promise.all([
       supabase
         .from("subscriptions")
-        .select("stripe_customer_id, stripe_subscription_id, status, plan, start_date, trial_start_at, trial_end_at, contact_email")
+        .select("stripe_customer_id, stripe_subscription_id, status, plan, start_date, trial_start_at, trial_end_at, contact_email, founder_offer_enabled")
         .eq("user_id", userId)
         .maybeSingle(),
       supabase
@@ -91,6 +103,13 @@ export async function POST(req: Request) {
     const row = sub as SubscriptionRow | null | undefined;
     const profileRow = profile as ProfileRow | null | undefined;
     const appUrl = getAppUrl(req) || requireEnv("NEXT_PUBLIC_APP_URL");
+
+    if (wantedPlan === "Starter" && !row?.founder_offer_enabled) {
+      return NextResponse.json(
+        { error: "L’offre Partenaire Fondateur n’est pas disponible pour ce compte." },
+        { status: 403 }
+      );
+    }
 
     let trialStartAt = row?.trial_start_at ?? undefined;
     let trialEndAt = row?.trial_end_at ?? undefined;

@@ -294,10 +294,10 @@ export async function GET(req: Request) {
   }
 
   const annualReminderOffsets = [30, 7, 1] as const;
-  const yearlyPriceId = optionalEnv("STRIPE_PRICE_YEARLY", "");
+  const annualPriceIds = [optionalEnv("STRIPE_PRICE_YEARLY", ""), optionalEnv("STRIPE_PRICE_ACCEL_YEARLY_ID", "")].filter(Boolean);
   let sentAnnualRenewalReminders = 0;
 
-  if (yearlyPriceId) {
+  if (annualPriceIds.length > 0) {
     const { data: annualSubscriptions, error: annualReminderErr } = await supabaseAdmin
       .from("subscriptions")
       .select(
@@ -305,7 +305,7 @@ export async function GET(req: Request) {
       )
       .neq("plan", "Trial")
       .eq("status", "active")
-      .eq("stripe_price_id", yearlyPriceId)
+      .in("stripe_price_id", annualPriceIds)
       .not("stripe_subscription_id", "is", null)
       .not("next_renewal_date", "is", null);
 
