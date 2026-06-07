@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import type { DashboardChannelKey } from "@/lib/dashboardChannels";
+import type { InrstatsChannelBlock } from "@/lib/inrstats/channelBlocks";
+
 import {
   normalizeTiktokCommercialContent,
   normalizeTiktokDefaults,
@@ -13,6 +16,12 @@ import {
 
 type UseTiktokChannelArgs = {
   panel: string | null;
+  patchChannelConnectionLocally?: (
+    channel: DashboardChannelKey,
+    patch: Partial<InrstatsChannelBlock["connection"]>,
+    options?: { clearData?: boolean; clearError?: boolean },
+  ) => void;
+  triggerChannelRefresh?: (channel: DashboardChannelKey) => Promise<void>;
 };
 
 async function readJson(res: Response) {
@@ -23,7 +32,7 @@ async function readJson(res: Response) {
   return json;
 }
 
-export function useTiktokChannel({ panel }: UseTiktokChannelArgs) {
+export function useTiktokChannel({ panel, patchChannelConnectionLocally, triggerChannelRefresh }: UseTiktokChannelArgs) {
   const [tiktokConnected, setTiktokConnected] = useState(false);
   const [tiktokUsername, setTiktokUsername] = useState("");
   const [tiktokProfileUrl, setTiktokProfileUrl] = useState("");
@@ -53,14 +62,17 @@ export function useTiktokChannel({ panel }: UseTiktokChannelArgs) {
     setTiktokSettingsError(null);
   }, []);
 
-  const applyTiktok = useCallback((payload: unknown) => {
+  const applyTiktok = useCallback((payload: unknown, options?: { refresh?: boolean }) => {
     const tiktok = normalizeTiktokSettings(payload);
     const defaults = normalizeTiktokDefaults(tiktok.defaults);
 
     const connected = Boolean(tiktok.connected);
+    const username = connected ? (tiktok.username || "") : "";
+    const profileUrl = connected ? (tiktok.profileUrl || "") : "";
+
     setTiktokConnected(connected);
-    setTiktokUsername(connected ? (tiktok.username || "") : "");
-    setTiktokProfileUrl(connected ? (tiktok.profileUrl || "") : "");
+    setTiktokUsername(username);
+    setTiktokProfileUrl(profileUrl);
     setTiktokPreferredMediaState(defaults.preferredMedia);
     setTiktokAllowComments(defaults.allowComments);
     setTiktokAllowDuo(defaults.allowDuo);
@@ -68,7 +80,32 @@ export function useTiktokChannel({ panel }: UseTiktokChannelArgs) {
     setTiktokPhotoAutoMusic(defaults.photoAutoMusic);
     setTiktokCommercialContentState(defaults.commercialContent);
     setTiktokAiContent(defaults.aiContent);
-  }, []);
+
+    patchChannelConnectionLocally?.("tiktok", {
+      connected,
+      accountConnected: connected,
+      configured: connected,
+      statsConnected: connected,
+      expired: false,
+      requiresUpdate: false,
+      connectionStatus: connected ? "connected" : "disconnected",
+      resourceId: connected ? (username || profileUrl || null) : null,
+      resourceLabel: connected ? (username || null) : null,
+      resourceUrl: connected ? (profileUrl || null) : null,
+    }, { clearData: !connected, clearError: true });
+
+    if (options?.refresh !== false) {
+      void triggerChannelRefresh?.("tiktok").catch((error) => {
+        console.warn("[tiktok] channel refresh failed", error);
+      });
+    }
+
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("inrcy:tiktok-settings-updated", {
+        detail: { connected, username, profileUrl },
+      }));
+    }
+  }, [patchChannelConnectionLocally, triggerChannelRefresh]);
 
   const loadTiktokStatus = useCallback(async () => {
     setTiktokLoading(true);

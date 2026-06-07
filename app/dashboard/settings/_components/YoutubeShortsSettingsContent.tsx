@@ -193,9 +193,10 @@ function emitDashboardUpdate(settings: YoutubeShortsSettings) {
   window.dispatchEvent(new CustomEvent("inrcy:youtube-shorts-settings-updated", {
     detail: {
       connected: settings.connected,
-      channelUrl: settings.channelUrl,
-      channelHandle: settings.channelHandle,
-      channelName: settings.channelName,
+      channelUrl: settings.connected ? settings.channelUrl : "",
+      channelHandle: settings.connected ? settings.channelHandle : "",
+      channelName: settings.connected ? settings.channelName : "",
+      channelId: settings.connected ? settings.channelId : "",
     },
   }));
 }

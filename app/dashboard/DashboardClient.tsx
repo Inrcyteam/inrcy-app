@@ -791,7 +791,11 @@ const {
   tiktokAiContent,
   setTiktokAiContent,
   saveTiktokDefaults,
-} = useTiktokChannel({ panel });
+} = useTiktokChannel({
+  panel,
+  patchChannelConnectionLocally: patchChannelConnectionLocallyProxy,
+  triggerChannelRefresh: triggerChannelRefreshProxy,
+});
 
 const { profileIncomplete, activityIncomplete, profileCheckReady, checkProfile, checkActivity } = useDashboardCompletionChecks();
 
@@ -897,11 +901,32 @@ useEffect(() => {
     const detail = (event as CustomEvent)?.detail ?? {};
     const connected = Boolean(detail.connected);
     const channelUrl = typeof detail.channelUrl === "string" ? detail.channelUrl : "";
+    const channelHandle = typeof detail.channelHandle === "string" ? detail.channelHandle : "";
+    const channelName = typeof detail.channelName === "string" ? detail.channelName : "";
+    const channelId = typeof detail.channelId === "string" ? detail.channelId : "";
+
     setYoutubeShortsConnected(connected);
     setYoutubeShortsUrl(channelUrl);
     mergeCachedDashboardChannelState({
       youtubeShortsConnected: connected,
       youtubeShortsUrl: channelUrl,
+    });
+
+    patchChannelConnectionLocallyRef.current("youtube_shorts", {
+      connected,
+      accountConnected: connected,
+      configured: connected,
+      statsConnected: connected,
+      expired: false,
+      requiresUpdate: false,
+      connectionStatus: connected ? "connected" : "disconnected",
+      resourceId: connected ? (channelId || channelHandle || channelUrl || null) : null,
+      resourceLabel: connected ? (channelName || channelHandle || channelUrl || null) : null,
+      resourceUrl: connected ? (channelUrl || null) : null,
+    }, { clearData: !connected, clearError: true });
+
+    void triggerChannelRefreshRef.current("youtube_shorts").catch((error) => {
+      console.warn("[youtube-shorts] channel refresh failed", error);
     });
   };
 

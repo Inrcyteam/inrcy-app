@@ -2732,3 +2732,19 @@
     right: 13px !important;
   }
 }
+
+/* === iNrBadge micro-polish: Google Business logo slightly larger === */
+.channelsRow > .tone_google.actionIconOnly .iconImage {
+  width: 100%;
+  height: 100%;
+  transform: scale(1.12);
+  transform-origin: center;
+}
+
+@media (max-width: 420px) {
+  .channelsRow > .tone_google.actionIconOnly .iconImage {
+    width: 100%;
+    height: 100%;
+    transform: scale(1.1);
+  }
+}
