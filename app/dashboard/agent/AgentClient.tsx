@@ -7,7 +7,7 @@ import styles from "./agent.module.css";
 
 type AutomationKey = "publish" | "grow" | "loyalty" | "stats";
 
-type ChannelKey = "gmb" | "facebook" | "instagram" | "linkedin" | "mails";
+type ChannelKey = "siteInrcy" | "siteWeb" | "gmb" | "facebook" | "instagram" | "linkedin" | "tiktok" | "youtube" | "mails";
 
 type Automation = {
   key: AutomationKey;
@@ -29,13 +29,50 @@ type AutomationConfig = {
   source: string;
 };
 
+type AutomationSettingsOptions = {
+  frequency: string[];
+  validation: string[];
+};
+
 const ROBOT_SRC = "/agent/inr-agent-robot-cutout.png";
 const channelOptions: Record<ChannelKey, { name: string; src: string }> = {
+  siteInrcy: { name: "Site iNrCy", src: "/icons/inrcy.png" },
+  siteWeb: { name: "Site Web", src: "/icons/site-web.jpg" },
   gmb: { name: "Google Business", src: "/icons/google.jpg" },
   facebook: { name: "Facebook", src: "/icons/facebook.png" },
   instagram: { name: "Instagram", src: "/icons/instagram.jpg" },
   linkedin: { name: "LinkedIn", src: "/icons/linkedin.png" },
+  tiktok: { name: "TikTok", src: "/icons/tiktok.png" },
+  youtube: { name: "YouTube", src: "/icons/youtube-shorts.png" },
   mails: { name: "Mails", src: "/icons/mails-inrcy-dashboard-v2.png" },
+};
+
+const weekDays = ["Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi", "Dimanche"];
+
+const hourOptions = [
+  "06:00", "06:30", "07:00", "07:30", "08:00", "08:30", "09:00", "09:30",
+  "10:00", "10:30", "11:00", "11:30", "12:00", "12:30", "13:00", "13:30",
+  "14:00", "14:30", "15:00", "15:30", "16:00", "16:30", "17:00", "17:30",
+  "18:00", "18:30", "19:00", "19:30", "20:00", "20:30", "21:00",
+];
+
+const settingsOptions: Record<AutomationKey, AutomationSettingsOptions> = {
+  publish: {
+    frequency: ["1 fois par semaine", "2 fois par semaine", "3 fois par semaine", "1 fois par mois"],
+    validation: ["Validation obligatoire avant publication", "Préparer en brouillon", "Notification avant validation"],
+  },
+  grow: {
+    frequency: ["1 fois par semaine", "2 fois par mois", "1 fois par mois", "Campagne ponctuelle"],
+    validation: ["Validation obligatoire avant envoi", "Préparer en brouillon", "Notification avant validation"],
+  },
+  loyalty: {
+    frequency: ["1 fois par semaine", "2 fois par mois", "1 fois par mois", "Chaque trimestre"],
+    validation: ["Validation obligatoire avant envoi", "Préparer en brouillon", "Notification avant validation"],
+  },
+  stats: {
+    frequency: ["Chaque semaine", "Tous les 15 jours", "Chaque mois", "Chaque trimestre"],
+    validation: ["Lecture du bilan obligatoire", "Bilan automatique", "Bilan + recommandation à valider"],
+  },
 };
 
 const automations: Automation[] = [
@@ -45,22 +82,22 @@ const automations: Automation[] = [
     iconLabel: "Visibilité",
     settingsTitle: "Réglages — Publier régulièrement",
     availableThemes: ["Conseils", "Réalisations", "Offres", "Actualités"],
-    availableChannels: ["gmb", "facebook", "instagram", "linkedin"],
+    availableChannels: ["siteInrcy", "siteWeb", "gmb", "facebook", "instagram", "linkedin", "tiktok", "youtube"],
   },
   {
     key: "grow",
     title: "Développer l’activité",
     iconLabel: "Acquisition",
     settingsTitle: "Réglages — Développer l’activité",
-    availableThemes: ["Offres", "Demandes", "Avis", "Prestations"],
-    availableChannels: ["mails", "gmb", "facebook", "instagram"],
+    availableThemes: ["Valoriser", "Récolter", "Offrir"],
+    availableChannels: ["mails"],
   },
   {
     key: "loyalty",
     title: "Fidéliser les contacts",
     iconLabel: "Relation",
     settingsTitle: "Réglages — Fidéliser les contacts",
-    availableThemes: ["Informer", "Suivre", "Enquêter", "Conseiller"],
+    availableThemes: ["Informer", "Enquêter", "Suivre"],
     availableChannels: ["mails"],
   },
   {
@@ -68,7 +105,7 @@ const automations: Automation[] = [
     title: "Analyser mes statistiques",
     iconLabel: "Pilotage",
     settingsTitle: "Réglages — Analyser mes statistiques",
-    availableThemes: ["Bilan", "Opportunités", "Canaux", "Recommandations"],
+    availableThemes: ["Vue globale", "iNrBadge", "Mails", "Site iNrCy", "Site Web", "Google Business", "Facebook", "Instagram", "LinkedIn", "TikTok", "YouTube"],
     availableChannels: [],
   },
 ];
@@ -79,20 +116,20 @@ const defaultConfigs: Record<AutomationKey, AutomationConfig> = {
     frequency: "1 fois par semaine",
     day: "Lundi",
     time: "09:00",
-    channels: ["gmb", "facebook", "instagram", "linkedin"],
+    channels: ["siteInrcy", "siteWeb", "gmb", "facebook", "instagram", "linkedin"],
     themes: ["Conseils", "Réalisations", "Offres"],
-    validation: "Obligatoire avant publication",
-    source: "Contenus déjà publiés",
+    validation: "Validation obligatoire avant publication",
+    source: "Contenus déjà publiés + canaux Booster / Publier connectés",
   },
   grow: {
     enabled: false,
     frequency: "2 fois par mois",
     day: "Mercredi",
     time: "10:00",
-    channels: ["mails", "gmb", "facebook"],
-    themes: ["Offres", "Demandes", "Avis"],
-    validation: "Obligatoire avant envoi",
-    source: "Publications + historique Propulser",
+    channels: ["mails"],
+    themes: ["Valoriser", "Récolter", "Offrir"],
+    validation: "Validation obligatoire avant envoi",
+    source: "Publications déjà faites + rubriques Propulser",
   },
   loyalty: {
     enabled: false,
@@ -100,9 +137,9 @@ const defaultConfigs: Record<AutomationKey, AutomationConfig> = {
     day: "Vendredi",
     time: "09:30",
     channels: ["mails"],
-    themes: ["Informer", "Suivre", "Conseiller"],
-    validation: "Obligatoire avant envoi",
-    source: "Publications + historique Fidéliser",
+    themes: ["Informer", "Enquêter", "Suivre"],
+    validation: "Validation obligatoire avant envoi",
+    source: "Publications déjà faites + rubriques Fidéliser",
   },
   stats: {
     enabled: false,
@@ -110,9 +147,9 @@ const defaultConfigs: Record<AutomationKey, AutomationConfig> = {
     day: "Lundi",
     time: "08:30",
     channels: [],
-    themes: ["Bilan", "Opportunités", "Recommandations"],
-    validation: "Lecture avant action",
-    source: "iNrStats",
+    themes: ["Vue globale", "Google Business", "Facebook", "Instagram", "LinkedIn"],
+    validation: "Lecture du bilan obligatoire",
+    source: "Rubriques iNrStats connectées",
   },
 };
 
@@ -211,6 +248,7 @@ export default function AgentClient() {
   const [settingsKey, setSettingsKey] = useState<AutomationKey | null>(null);
   const [configs, setConfigs] = useState<Record<AutomationKey, AutomationConfig>>(defaultConfigs);
   const [notice, setNotice] = useState<string | null>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   const selected = useMemo(
     () => automations.find((automation) => automation.key === selectedKey) ?? automations[0],
@@ -259,13 +297,13 @@ export default function AgentClient() {
           </div>
 
           <div className={styles.moduleHeaderActions}>
-            <HelpButton onClick={() => showNotice("iNr’Agent prépare vos actions, vous validez avant exécution.")} title="Aide iNr’Agent" />
+            <HelpButton onClick={() => setHelpOpen(true)} title="Aide iNr’Agent" />
             <button
               type="button"
               className={styles.headerSettingsButton}
               onClick={() => setSettingsKey(selectedKey)}
             >
-              Réglages de iNr’Agent
+              Réglages
             </button>
             <button type="button" className={styles.headerCloseButton} onClick={() => router.push("/dashboard")}>
               Fermer
@@ -412,6 +450,34 @@ export default function AgentClient() {
         </footer>
       </section>
 
+
+      {helpOpen && (
+        <div className={styles.modalBackdrop} role="presentation" onClick={() => setHelpOpen(false)}>
+          <section
+            className={`${styles.settingsModal} ${styles.helpModal}`}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Aide iNr’Agent"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button type="button" className={styles.modalClose} onClick={() => setHelpOpen(false)} aria-label="Fermer">×</button>
+            <p className={styles.modalEyebrow}>Helper</p>
+            <h2>Qu’est-ce qu’iNr’Agent&nbsp;?</h2>
+            <div className={styles.helpContent}>
+              <p>iNr’Agent est votre programmateur d’automatisations. Il ne publie rien tout seul sans validation&nbsp;: il prépare les prochaines actions, affiche un aperçu, puis vous gardez la main avec Valider ou Refuser.</p>
+              <ul>
+                <li><strong>Publier régulièrement</strong> prépare des publications avec Booster / Publier sur vos canaux connectés.</li>
+                <li><strong>Développer l’activité</strong> prépare des campagnes Propulser par mail, basées sur vos contenus déjà publiés.</li>
+                <li><strong>Fidéliser les contacts</strong> prépare des campagnes Fidéliser par mail pour garder le lien.</li>
+                <li><strong>Analyser mes statistiques</strong> prépare un bilan iNrStats et des recommandations simples.</li>
+              </ul>
+              <p>Les roues de réglages permettent de choisir la fréquence, le jour, l’horaire, les rubriques et le mode de validation de chaque automatisation.</p>
+            </div>
+            <button type="button" className={styles.modalAction} onClick={() => setHelpOpen(false)}>Compris</button>
+          </section>
+        </div>
+      )}
+
       {settingsAutomation && settingsConfig && (
         <div className={styles.modalBackdrop} role="presentation" onClick={() => setSettingsKey(null)}>
           <section
@@ -444,10 +510,9 @@ export default function AgentClient() {
                   value={settingsConfig.frequency}
                   onChange={(event) => updateConfig(settingsAutomation.key, { frequency: event.target.value })}
                 >
-                  <option>1 fois par semaine</option>
-                  <option>2 fois par mois</option>
-                  <option>1 fois par mois</option>
-                  <option>Chaque semaine</option>
+                  {settingsOptions[settingsAutomation.key].frequency.map((frequency) => (
+                    <option key={frequency}>{frequency}</option>
+                  ))}
                 </select>
               </label>
               <label>
@@ -456,30 +521,35 @@ export default function AgentClient() {
                   value={settingsConfig.day}
                   onChange={(event) => updateConfig(settingsAutomation.key, { day: event.target.value })}
                 >
-                  <option>Lundi</option>
-                  <option>Mardi</option>
-                  <option>Mercredi</option>
-                  <option>Jeudi</option>
-                  <option>Vendredi</option>
+                  {weekDays.map((day) => <option key={day}>{day}</option>)}
                 </select>
               </label>
               <label>
-                <span>Heure</span>
-                <input
-                  type="time"
+                <span>Horaire</span>
+                <select
                   value={settingsConfig.time}
                   onChange={(event) => updateConfig(settingsAutomation.key, { time: event.target.value })}
-                />
+                >
+                  {hourOptions.map((hour) => <option key={hour}>{hour}</option>)}
+                </select>
               </label>
               <label>
                 <span>Validation</span>
-                <input value={settingsConfig.validation} readOnly />
+                <select
+                  value={settingsConfig.validation}
+                  onChange={(event) => updateConfig(settingsAutomation.key, { validation: event.target.value })}
+                >
+                  {settingsOptions[settingsAutomation.key].validation.map((validation) => (
+                    <option key={validation}>{validation}</option>
+                  ))}
+                </select>
               </label>
             </div>
 
             {settingsAutomation.availableChannels.length > 0 && (
               <div className={styles.modalSection}>
-                <span>Canaux</span>
+                <span>{settingsAutomation.key === "publish" ? "Canaux Booster / Publier" : "Canal"}</span>
+                <small className={styles.modalHint}>{settingsAutomation.key === "publish" ? "iNrBadge et Mails sont exclus de Publier." : "Propulser et Fidéliser utilisent uniquement Mails."}</small>
                 <div className={styles.choiceGrid}>
                   {settingsAutomation.availableChannels.map((channelKey) => {
                     const channel = channelOptions[channelKey];
@@ -501,7 +571,7 @@ export default function AgentClient() {
             )}
 
             <div className={styles.modalSection}>
-              <span>Thèmes</span>
+              <span>{settingsAutomation.key === "stats" ? "Rubriques iNrStats" : settingsAutomation.key === "grow" ? "Rubriques Propulser" : settingsAutomation.key === "loyalty" ? "Rubriques Fidéliser" : "Thèmes"}</span>
               <div className={styles.choiceGrid}>
                 {settingsAutomation.availableThemes.map((theme) => {
                   const checked = settingsConfig.themes.includes(theme);

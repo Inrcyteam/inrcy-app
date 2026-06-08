@@ -1116,3 +1116,209 @@
     min-height: 62px;
   }
 }
+
+/* Ajustements V2 — iNrAgent automatisations */
+.headerSettingsButton {
+  min-width: 116px;
+}
+
+.automationCard {
+  min-height: clamp(86px, 9.2vh, 112px);
+  border-radius: 20px;
+}
+
+.automationSelect {
+  gap: clamp(12px, 1.15vw, 18px);
+  padding: clamp(14px, 1.35vw, 21px);
+}
+
+.cardIcon {
+  width: clamp(50px, 4.2vw, 68px);
+  height: clamp(50px, 4.2vw, 68px);
+}
+
+.cardTitle {
+  font-size: clamp(17px, 1.42vw, 24px);
+  line-height: 1.18;
+}
+
+.settingsButton {
+  top: 13px;
+  right: 13px;
+}
+
+.robotHalo {
+  isolation: isolate;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 50% 52%, rgba(251, 146, 60, 0.12), transparent 26%),
+    radial-gradient(circle at 47% 48%, rgba(56, 189, 248, 0.20), transparent 39%),
+    radial-gradient(circle at 54% 54%, rgba(168, 85, 247, 0.16), transparent 56%),
+    linear-gradient(145deg, rgba(8, 23, 54, 0.34), rgba(6, 16, 38, 0.12));
+}
+
+.robotHalo::before,
+.robotHalo::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  left: 50%;
+  top: 50%;
+  border-radius: 999px;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+
+.robotHalo::before {
+  width: min(310px, 82%);
+  aspect-ratio: 1;
+  border: 2px solid rgba(56, 189, 248, 0.46);
+  box-shadow:
+    0 0 28px rgba(56, 189, 248, 0.42),
+    inset 0 0 30px rgba(56, 189, 248, 0.18),
+    0 0 70px rgba(168, 85, 247, 0.15);
+}
+
+.robotHalo::after {
+  width: min(380px, 102%);
+  aspect-ratio: 1;
+  border: 1px solid rgba(251, 146, 60, 0.28);
+  box-shadow:
+    0 0 44px rgba(251, 146, 60, 0.22),
+    inset 0 0 40px rgba(217, 70, 239, 0.12);
+  background:
+    conic-gradient(from 18deg, transparent 0 16%, rgba(251, 146, 60, 0.42) 18% 23%, transparent 25% 57%, rgba(168, 85, 247, 0.38) 59% 64%, transparent 66% 100%);
+  opacity: 0.9;
+  mask: radial-gradient(circle, transparent 62%, #000 64% 65%, transparent 68%);
+  -webkit-mask: radial-gradient(circle, transparent 62%, #000 64% 65%, transparent 68%);
+}
+
+.robotHalo img {
+  z-index: 2;
+  filter:
+    drop-shadow(0 26px 36px rgba(0, 0, 0, 0.38))
+    drop-shadow(0 0 24px rgba(96, 165, 250, 0.36))
+    drop-shadow(0 0 34px rgba(168, 85, 247, 0.18));
+}
+
+.starOne,
+.starTwo,
+.starThree {
+  z-index: 1;
+  background: rgba(147, 197, 253, 0.95);
+  box-shadow:
+    0 0 14px rgba(96, 165, 250, 0.95),
+    36px 56px 0 rgba(168, 85, 247, 0.78),
+    -54px 84px 0 rgba(59, 130, 246, 0.75),
+    84px -34px 0 rgba(251, 146, 60, 0.68),
+    -96px -10px 0 rgba(125, 211, 252, 0.72),
+    120px 78px 0 rgba(217, 70, 239, 0.58),
+    -18px -92px 0 rgba(255, 255, 255, 0.62);
+}
+
+.previewCard {
+  padding: clamp(17px, 1.65vw, 26px);
+}
+
+.previewCard h2 {
+  margin-bottom: clamp(10px, 1vw, 15px);
+  font-size: clamp(19px, 1.52vw, 25px);
+  letter-spacing: -0.035em;
+}
+
+.emptyPreview {
+  min-height: clamp(270px, 40vh, 470px);
+}
+
+.channelIcons {
+  gap: 9px;
+  flex-wrap: wrap;
+}
+
+.channelIcons img,
+.choiceGrid button img {
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.96);
+  object-fit: contain;
+  padding: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  box-shadow: 0 0 18px rgba(96, 165, 250, 0.18), 0 9px 20px rgba(0, 0, 0, 0.26);
+}
+
+.channelIcons img {
+  width: 34px;
+  height: 34px;
+}
+
+.choiceGrid button img {
+  width: 26px;
+  height: 26px;
+}
+
+.modalHint {
+  margin-top: -3px;
+  color: rgba(191, 219, 254, 0.68);
+  font-size: 12px;
+  line-height: 1.35;
+  font-weight: 650;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.helpModal {
+  width: min(760px, 100%);
+}
+
+.helpContent {
+  display: grid;
+  gap: 14px;
+  color: rgba(237, 244, 255, 0.8);
+  font-size: 15px;
+  line-height: 1.6;
+}
+
+.helpContent p,
+.helpContent ul {
+  margin: 0;
+}
+
+.helpContent ul {
+  display: grid;
+  gap: 10px;
+  padding-left: 20px;
+}
+
+.helpContent strong {
+  color: #ffffff;
+}
+
+.modalGrid select {
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, rgba(226, 242, 255, 0.86) 50%),
+    linear-gradient(135deg, rgba(226, 242, 255, 0.86) 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) 50%,
+    calc(100% - 13px) 50%;
+  background-size: 5px 5px, 5px 5px;
+  background-repeat: no-repeat;
+  padding-right: 32px;
+}
+
+@media (max-height: 850px) and (min-width: 1181px) {
+  .automationCard {
+    min-height: 88px;
+  }
+
+  .automationSelect {
+    padding: 14px 18px;
+  }
+
+  .previewCard h2 {
+    font-size: 22px;
+  }
+
+  .emptyPreview {
+    min-height: 265px;
+  }
+}
