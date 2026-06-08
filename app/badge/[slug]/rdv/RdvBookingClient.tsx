@@ -3,7 +3,7 @@
 import Image from "next/image";
 import inrCalendarLogo from "@/public/inrcalendar-logo.png";
 import { useMemo, useState, type FormEvent } from "react";
-import type { InrBadgeAppointmentSettings } from "@/lib/inrBadgeSettings";
+import { getInrBadgeAppointmentDaySlots, type InrBadgeAppointmentSettings } from "@/lib/inrBadgeSettings";
 import styles from "../badge.module.css";
 
 type BusyEvent = { id: string; start: string; end: string };
@@ -40,16 +40,6 @@ function buildLocalDateTime(dateKeyValue: string, time: string) {
 }
 
 
-function getSettingsForDate(settings: InrBadgeAppointmentSettings, dateKeyValue: string) {
-  const weekday = new Date(`${dateKeyValue}T12:00:00`).getDay();
-  return settings.dailySlots[String(weekday)] || {
-    enabled: settings.weekdays.includes(weekday),
-    startTime: settings.startTime,
-    endTime: settings.endTime,
-    durationMinutes: settings.durationMinutes,
-  };
-}
-
 function overlaps(start: Date, end: Date, event: BusyEvent) {
   const eventStart = new Date(event.start);
   const eventEnd = new Date(event.end);
@@ -76,8 +66,8 @@ export default function RdvBookingClient({ slug, settings, events }: Props) {
       const date = new Date(now);
       date.setDate(now.getDate() + offset);
       const weekday = date.getDay();
-      const daySettings = settings.dailySlots[String(weekday)];
-      if (daySettings ? !daySettings.enabled : !settings.weekdays.includes(weekday)) continue;
+      const daySlots = getInrBadgeAppointmentDaySlots(settings, weekday);
+      if (!daySlots.length) continue;
       items.push({ key: dateKey(date), label: formatDayLabel(date) });
     }
     return items;
@@ -87,22 +77,25 @@ export default function RdvBookingClient({ slug, settings, events }: Props) {
 
   const slots = useMemo(() => {
     if (!activeDay) return [];
-    const daySettings = getSettingsForDate(settings, activeDay);
-    if (!daySettings.enabled) return [];
-    const startMinutes = minutesFromTime(daySettings.startTime);
-    const endMinutes = minutesFromTime(daySettings.endTime);
-    const duration = daySettings.durationMinutes;
+    const weekday = new Date(`${activeDay}T12:00:00`).getDay();
+    const daySlots = getInrBadgeAppointmentDaySlots(settings, weekday);
     const minDate = new Date(Date.now() + settings.minNoticeHours * 60 * 60 * 1000);
     const output: Array<{ start: string; end: string; label: string }> = [];
 
-    for (let cursor = startMinutes; cursor + duration <= endMinutes; cursor += duration) {
-      const startTime = timeFromMinutes(cursor);
-      const endTime = timeFromMinutes(cursor + duration);
-      const start = buildLocalDateTime(activeDay, startTime);
-      const end = buildLocalDateTime(activeDay, endTime);
-      if (start < minDate) continue;
-      if (events.some((event) => overlaps(start, end, event))) continue;
-      output.push({ start: start.toISOString(), end: end.toISOString(), label: startTime });
+    for (const slot of daySlots) {
+      const startMinutes = minutesFromTime(slot.startTime);
+      const endMinutes = minutesFromTime(slot.endTime);
+      const duration = slot.durationMinutes;
+
+      for (let cursor = startMinutes; cursor + duration <= endMinutes; cursor += duration) {
+        const startTime = timeFromMinutes(cursor);
+        const endTime = timeFromMinutes(cursor + duration);
+        const start = buildLocalDateTime(activeDay, startTime);
+        const end = buildLocalDateTime(activeDay, endTime);
+        if (start < minDate) continue;
+        if (events.some((event) => overlaps(start, end, event))) continue;
+        output.push({ start: start.toISOString(), end: end.toISOString(), label: startTime });
+      }
     }
 
     return output;

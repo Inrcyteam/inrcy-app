@@ -6,6 +6,7 @@ import {
   normalizeInrBadgeAppointmentSettings,
   type InrBadgeAppointmentDaySettings,
   type InrBadgeAppointmentSettings,
+  type InrBadgeAppointmentSlot,
 } from "@/lib/inrBadgeSettings";
 import { getSimpleFrenchApiError, getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { providerLabel, type MailAccountOption } from "../../agenda/agenda.shared";
@@ -103,6 +104,32 @@ function getDaySettings(settings: InrBadgeAppointmentSettings, key: string): Inr
   return settings.dailySlots[key] || DEFAULT_INRBADGE_APPOINTMENT_SETTINGS.dailySlots[key] || DEFAULT_INRBADGE_APPOINTMENT_SETTINGS.dailySlots["1"];
 }
 
+function getDaySlots(daySettings: InrBadgeAppointmentDaySettings): InrBadgeAppointmentSlot[] {
+  return Array.isArray(daySettings.slots) && daySettings.slots.length
+    ? daySettings.slots
+    : [{ startTime: daySettings.startTime, endTime: daySettings.endTime, durationMinutes: daySettings.durationMinutes }];
+}
+
+function parseMinutes(value: string) {
+  const [rawHour, rawMinute] = value.split(":");
+  const hour = Number(rawHour);
+  const minute = Number(rawMinute);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) return null;
+  return hour * 60 + minute;
+}
+
+function formatMinutes(value: number) {
+  const safeValue = Math.max(0, Math.min(23 * 60 + 59, Math.round(value)));
+  return `${String(Math.floor(safeValue / 60)).padStart(2, "0")}:${String(safeValue % 60).padStart(2, "0")}`;
+}
+
+function ensureSlotEndAfterStart(slot: InrBadgeAppointmentSlot): InrBadgeAppointmentSlot {
+  const startMinutes = parseMinutes(slot.startTime);
+  const endMinutes = parseMinutes(slot.endTime);
+  if (startMinutes === null || endMinutes === null || endMinutes > startMinutes) return slot;
+  return { ...slot, endTime: formatMinutes(startMinutes + Math.max(60, slot.durationMinutes || 60)) };
+}
+
 function SelectField({
   label,
   value,
@@ -153,19 +180,6 @@ const globalGridStyle: React.CSSProperties = {
   gap: 10,
 };
 
-const dayTableHeaderStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "minmax(138px, 1.4fr) minmax(84px, 0.9fr) minmax(84px, 0.9fr) minmax(118px, 1.1fr)",
-  gap: 8,
-  alignItems: "center",
-  padding: "0 12px",
-  color: "rgba(255,255,255,0.60)",
-  fontSize: 11.5,
-  fontWeight: 900,
-  textTransform: "uppercase",
-  letterSpacing: "0.04em",
-};
-
 const dayCardStyle: React.CSSProperties = {
   borderRadius: 16,
   border: "1px solid rgba(255,255,255,0.12)",
@@ -176,24 +190,83 @@ const dayCardStyle: React.CSSProperties = {
   minWidth: 0,
 };
 
-const dayRowStyle: React.CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "minmax(138px, 1.4fr) minmax(84px, 0.9fr) minmax(84px, 0.9fr) minmax(118px, 1.1fr)",
-  gap: 8,
-  alignItems: "center",
-  minWidth: 0,
-  borderRadius: 14,
-  border: "1px solid rgba(255,255,255,0.10)",
-  background: "rgba(255,255,255,0.04)",
-  padding: 10,
-};
-
 const compactSelectStyle: React.CSSProperties = {
   ...fieldStyle,
   padding: "9px 10px",
   borderRadius: 10,
   fontSize: 13,
 };
+
+const slotDayBlockStyle: React.CSSProperties = {
+  borderRadius: 14,
+  border: "1px solid rgba(255,255,255,0.10)",
+  background: "rgba(255,255,255,0.04)",
+  padding: 10,
+  display: "grid",
+  gap: 10,
+  minWidth: 0,
+};
+
+const slotDayHeaderStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 10,
+  minWidth: 0,
+};
+
+const slotStackStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 7,
+  minWidth: 0,
+};
+
+const slotRowStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(54px, 0.7fr) minmax(86px, 1fr) minmax(86px, 1fr) minmax(118px, 1.1fr) minmax(34px, auto)",
+  gap: 8,
+  alignItems: "center",
+  minWidth: 0,
+};
+
+const slotHeaderStyle: React.CSSProperties = {
+  ...slotRowStyle,
+  color: "rgba(255,255,255,0.54)",
+  fontSize: 10.5,
+  fontWeight: 900,
+  textTransform: "uppercase",
+  letterSpacing: "0.04em",
+  padding: "0 2px",
+};
+
+const slotIndexStyle: React.CSSProperties = {
+  color: "rgba(255,255,255,0.66)",
+  fontSize: 11.5,
+  fontWeight: 900,
+};
+
+const addSlotButtonStyle: React.CSSProperties = {
+  border: "1px solid rgba(139,92,246,0.34)",
+  background: "rgba(139,92,246,0.14)",
+  color: "rgba(255,255,255,0.92)",
+  borderRadius: 999,
+  padding: "8px 10px",
+  fontSize: 12,
+  fontWeight: 900,
+  cursor: "pointer",
+  whiteSpace: "nowrap",
+};
+
+const removeSlotButtonStyle: React.CSSProperties = {
+  border: "1px solid rgba(255,255,255,0.12)",
+  background: "rgba(255,255,255,0.06)",
+  color: "rgba(255,255,255,0.72)",
+  borderRadius: 10,
+  width: 34,
+  height: 34,
+  cursor: "pointer",
+};
+
 
 const dayNameStyle: React.CSSProperties = {
   color: "rgba(255,255,255,0.94)",
@@ -325,20 +398,69 @@ export default function AgendaSettingsContent() {
     void saveSettings({ appointmentSettings: nextSettings });
   }
 
-  function updateDaySettings(dayKey: string, patch: Partial<InrBadgeAppointmentDaySettings>) {
-    const currentDaySettings = getDaySettings(appointmentSettings, dayKey);
+  function saveDaySettings(dayKey: string, daySettings: InrBadgeAppointmentDaySettings) {
     const nextSettings = normalizeInrBadgeAppointmentSettings({
       ...appointmentSettings,
       dailySlots: {
         ...appointmentSettings.dailySlots,
-        [dayKey]: {
-          ...currentDaySettings,
-          ...patch,
-        },
+        [dayKey]: daySettings,
       },
     });
     setAppointmentSettings(nextSettings);
     void saveSettings({ appointmentSettings: nextSettings });
+  }
+
+  function updateDaySettings(dayKey: string, patch: Partial<InrBadgeAppointmentDaySettings>) {
+    const currentDaySettings = getDaySettings(appointmentSettings, dayKey);
+    saveDaySettings(dayKey, {
+      ...currentDaySettings,
+      ...patch,
+    });
+  }
+
+  function updateDaySlot(dayKey: string, slotIndex: number, patch: Partial<InrBadgeAppointmentSlot>) {
+    const currentDaySettings = getDaySettings(appointmentSettings, dayKey);
+    const slots = getDaySlots(currentDaySettings).map((slot, index) =>
+      index === slotIndex ? ensureSlotEndAfterStart({ ...slot, ...patch }) : slot
+    );
+    saveDaySettings(dayKey, {
+      ...currentDaySettings,
+      ...slots[0],
+      slots,
+    });
+  }
+
+  function addDaySlot(dayKey: string) {
+    const currentDaySettings = getDaySettings(appointmentSettings, dayKey);
+    const slots = getDaySlots(currentDaySettings);
+    if (slots.length >= 3) return;
+
+    const lastSlot = slots[slots.length - 1] || { startTime: "09:00", endTime: "12:00", durationMinutes: 60 };
+    const duration = lastSlot.durationMinutes || 60;
+    const lastEndMinutes = parseMinutes(lastSlot.endTime) ?? 12 * 60;
+    const startTime = formatMinutes(Math.min(lastEndMinutes + 60, 22 * 60));
+    const endTime = formatMinutes(Math.min((parseMinutes(startTime) ?? lastEndMinutes) + Math.max(60, duration), 23 * 60));
+    const nextSlot = ensureSlotEndAfterStart({ startTime, endTime, durationMinutes: duration });
+    const nextSlots = [...slots, nextSlot].slice(0, 3);
+
+    saveDaySettings(dayKey, {
+      ...currentDaySettings,
+      enabled: true,
+      ...nextSlots[0],
+      slots: nextSlots,
+    });
+  }
+
+  function removeDaySlot(dayKey: string, slotIndex: number) {
+    const currentDaySettings = getDaySettings(appointmentSettings, dayKey);
+    const slots = getDaySlots(currentDaySettings);
+    if (slotIndex <= 0 || slots.length <= 1) return;
+    const nextSlots = slots.filter((_, index) => index !== slotIndex);
+    saveDaySettings(dayKey, {
+      ...currentDaySettings,
+      ...nextSlots[0],
+      slots: nextSlots,
+    });
   }
 
   return (
@@ -360,9 +482,14 @@ export default function AgendaSettingsContent() {
             box-sizing: border-box !important;
           }
 
-          .agendaSettings_dayHeader,
-          .agendaSettings_dayRow {
-            grid-template-columns: minmax(66px, 0.95fr) minmax(48px, 0.72fr) minmax(48px, 0.72fr) minmax(54px, 0.78fr) !important;
+          .agendaSettings_dayBlock {
+            padding: 8px !important;
+            gap: 8px !important;
+          }
+
+          .agendaSettings_slotHeader,
+          .agendaSettings_slotRow {
+            grid-template-columns: minmax(42px, 0.65fr) minmax(54px, 0.82fr) minmax(54px, 0.82fr) minmax(62px, 0.9fr) minmax(28px, auto) !important;
             gap: 5px !important;
             width: 100% !important;
             max-width: 100% !important;
@@ -370,15 +497,9 @@ export default function AgendaSettingsContent() {
             box-sizing: border-box !important;
           }
 
-          .agendaSettings_dayHeader {
-            padding: 0 6px !important;
-            font-size: 9px !important;
-            letter-spacing: 0.025em !important;
-          }
-
-          .agendaSettings_dayRow {
-            padding: 7px !important;
-            border-radius: 12px !important;
+          .agendaSettings_slotHeader {
+            font-size: 8.5px !important;
+            letter-spacing: 0.02em !important;
           }
 
           .agendaSettings_daySelect {
@@ -393,13 +514,13 @@ export default function AgendaSettingsContent() {
         }
 
         @media (max-width: 380px) {
-          .agendaSettings_dayHeader,
-          .agendaSettings_dayRow {
-            grid-template-columns: minmax(58px, 0.9fr) minmax(44px, 0.7fr) minmax(44px, 0.7fr) minmax(50px, 0.75fr) !important;
+          .agendaSettings_slotHeader,
+          .agendaSettings_slotRow {
+            grid-template-columns: minmax(36px, 0.58fr) minmax(46px, 0.74fr) minmax(46px, 0.74fr) minmax(54px, 0.82fr) minmax(26px, auto) !important;
             gap: 4px !important;
           }
 
-          .agendaSettings_dayRow {
+          .agendaSettings_dayBlock {
             padding: 6px !important;
           }
 
@@ -515,66 +636,100 @@ export default function AgendaSettingsContent() {
         </div>
 
         <div className="agendaSettings_daysCard" style={dayCardStyle}>
-          <div className="agendaSettings_dayHeader" style={dayTableHeaderStyle}>
-            <span>Jour</span>
-            <span>Début</span>
-            <span>Fin</span>
-            <span>Durée</span>
-          </div>
-
           {WEEKDAY_ITEMS.map((day) => {
             const daySettings = getDaySettings(appointmentSettings, day.key);
+            const slots = getDaySlots(daySettings).slice(0, 3);
+            const canAddSlot = daySettings.enabled && slots.length < 3 && !loading;
+
             return (
-              <div key={day.key} className="agendaSettings_dayRow" style={{ ...dayRowStyle, opacity: daySettings.enabled ? 1 : 0.62 }}>
-                <div style={dayMetaStackStyle}>
-                  <span style={dayNameStyle}>{day.label}</span>
-                  <label style={dayToggleInlineStyle}>
-                    <input
-                      type="checkbox"
-                      checked={daySettings.enabled}
-                      disabled={loading}
-                      onChange={(e) => updateDaySettings(day.key, { enabled: e.target.checked })}
-                      style={{ width: 16, height: 16, accentColor: "#8b5cf6" }}
-                    />
-                    <span>{daySettings.enabled ? "Ouvert" : "Fermé"}</span>
-                  </label>
+              <div key={day.key} className="agendaSettings_dayBlock" style={{ ...slotDayBlockStyle, opacity: daySettings.enabled ? 1 : 0.62 }}>
+                <div style={slotDayHeaderStyle}>
+                  <div style={dayMetaStackStyle}>
+                    <span style={dayNameStyle}>{day.label}</span>
+                    <label style={dayToggleInlineStyle}>
+                      <input
+                        type="checkbox"
+                        checked={daySettings.enabled}
+                        disabled={loading}
+                        onChange={(e) => updateDaySettings(day.key, { enabled: e.target.checked })}
+                        style={{ width: 16, height: 16, accentColor: "#8b5cf6" }}
+                      />
+                      <span>{daySettings.enabled ? "Ouvert" : "Fermé"}</span>
+                    </label>
+                  </div>
+
+                  <button
+                    type="button"
+                    style={{ ...addSlotButtonStyle, opacity: canAddSlot ? 1 : 0.5, cursor: canAddSlot ? "pointer" : "not-allowed" }}
+                    disabled={!canAddSlot}
+                    onClick={() => addDaySlot(day.key)}
+                  >
+                    + Ajouter un créneau
+                  </button>
                 </div>
 
-                <select
-                  className="agendaSettings_select agendaSettings_daySelect"
-                  style={compactSelectStyle}
-                  value={daySettings.startTime}
-                  disabled={!daySettings.enabled || loading}
-                  onChange={(e) => updateDaySettings(day.key, { startTime: e.target.value })}
-                >
-                  {TIME_OPTIONS.map((value) => (
-                    <option key={value} value={value}>{value}</option>
-                  ))}
-                </select>
+                <div style={slotStackStyle}>
+                  <div className="agendaSettings_slotHeader" style={slotHeaderStyle}>
+                    <span>Créneau</span>
+                    <span>Début</span>
+                    <span>Fin</span>
+                    <span>Durée</span>
+                    <span />
+                  </div>
 
-                <select
-                  className="agendaSettings_select agendaSettings_daySelect"
-                  style={compactSelectStyle}
-                  value={daySettings.endTime}
-                  disabled={!daySettings.enabled || loading}
-                  onChange={(e) => updateDaySettings(day.key, { endTime: e.target.value })}
-                >
-                  {TIME_OPTIONS.map((value) => (
-                    <option key={value} value={value}>{value}</option>
-                  ))}
-                </select>
+                  {slots.map((slot, slotIndex) => (
+                    <div key={`${day.key}-${slotIndex}`} className="agendaSettings_slotRow" style={slotRowStyle}>
+                      <span style={slotIndexStyle}>#{slotIndex + 1}</span>
 
-                <select
-                  className="agendaSettings_select agendaSettings_daySelect"
-                  style={compactSelectStyle}
-                  value={String(daySettings.durationMinutes)}
-                  disabled={!daySettings.enabled || loading}
-                  onChange={(e) => updateDaySettings(day.key, { durationMinutes: Number(e.target.value) })}
-                >
-                  {DURATION_OPTIONS.map((value) => (
-                    <option key={value} value={String(value)}>{value} min</option>
+                      <select
+                        className="agendaSettings_select agendaSettings_daySelect"
+                        style={compactSelectStyle}
+                        value={slot.startTime}
+                        disabled={!daySettings.enabled || loading}
+                        onChange={(e) => updateDaySlot(day.key, slotIndex, { startTime: e.target.value })}
+                      >
+                        {TIME_OPTIONS.map((value) => (
+                          <option key={value} value={value}>{value}</option>
+                        ))}
+                      </select>
+
+                      <select
+                        className="agendaSettings_select agendaSettings_daySelect"
+                        style={compactSelectStyle}
+                        value={slot.endTime}
+                        disabled={!daySettings.enabled || loading}
+                        onChange={(e) => updateDaySlot(day.key, slotIndex, { endTime: e.target.value })}
+                      >
+                        {TIME_OPTIONS.map((value) => (
+                          <option key={value} value={value}>{value}</option>
+                        ))}
+                      </select>
+
+                      <select
+                        className="agendaSettings_select agendaSettings_daySelect"
+                        style={compactSelectStyle}
+                        value={String(slot.durationMinutes)}
+                        disabled={!daySettings.enabled || loading}
+                        onChange={(e) => updateDaySlot(day.key, slotIndex, { durationMinutes: Number(e.target.value) })}
+                      >
+                        {DURATION_OPTIONS.map((value) => (
+                          <option key={value} value={String(value)}>{value} min</option>
+                        ))}
+                      </select>
+
+                      <button
+                        type="button"
+                        style={{ ...removeSlotButtonStyle, visibility: slotIndex > 0 ? "visible" : "hidden" }}
+                        disabled={slotIndex === 0 || loading}
+                        onClick={() => removeDaySlot(day.key, slotIndex)}
+                        aria-label="Supprimer le créneau"
+                        title="Supprimer le créneau"
+                      >
+                        ×
+                      </button>
+                    </div>
                   ))}
-                </select>
+                </div>
               </div>
             );
           })}

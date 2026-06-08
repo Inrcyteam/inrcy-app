@@ -52,6 +52,30 @@ function normalizeCompareValue(value: unknown): unknown {
   return value ?? null;
 }
 
+
+function parseTimeToMinutesLocal(value: string) {
+  const match = /^(\d{2}):(\d{2})$/.exec(value);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 24 || minute < 0 || minute > 59) return null;
+  if (hour === 24 && minute !== 0) return null;
+  return hour * 60 + minute;
+}
+
+function timeFromMinutesLocal(value: number) {
+  const safeValue = Math.max(0, Math.min(24 * 60, Math.round(value)));
+  const hour = Math.floor(safeValue / 60);
+  const minute = safeValue % 60;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+function addMinutesToTime(value: string, minutes: number) {
+  const base = parseTimeToMinutesLocal(value);
+  if (base === null) return "10:00";
+  return timeFromMinutesLocal(base + minutes);
+}
+
 function stableCompareString(value: unknown) {
   return JSON.stringify(normalizeCompareValue(value));
 }
@@ -231,10 +255,22 @@ export default function AgendaClient() {
     () => (quarterHourOptions.includes(rdvStart) ? quarterHourOptions : [rdvStart, ...quarterHourOptions.filter((value) => value !== rdvStart)]),
     [quarterHourOptions, rdvStart]
   );
-  const endTimeOptions = useMemo(
-    () => (quarterHourOptions.includes(rdvEnd) ? quarterHourOptions : [rdvEnd, ...quarterHourOptions.filter((value) => value !== rdvEnd)]),
-    [quarterHourOptions, rdvEnd]
-  );
+  const endTimeOptions = useMemo(() => {
+    const minimumEnd = parseTimeToMinutesLocal(addMinutesToTime(rdvStart, 60)) ?? 600;
+    const options = [...quarterHourOptions, "24:00"].filter((value) => (parseTimeToMinutesLocal(value) ?? 0) >= minimumEnd);
+    return options;
+  }, [quarterHourOptions, rdvStart]);
+
+  const setRdvStartAndSyncEnd = useCallback((value: string) => {
+    const nextMinimumEnd = addMinutesToTime(value, 60);
+    const nextMinimumEndMinutes = parseTimeToMinutesLocal(nextMinimumEnd);
+    setRdvStart(value);
+    setRdvEnd((previousEnd) => {
+      const previousEndMinutes = parseTimeToMinutesLocal(previousEnd);
+      if (previousEndMinutes === null || nextMinimumEndMinutes === null || previousEndMinutes < nextMinimumEndMinutes) return nextMinimumEnd;
+      return previousEnd;
+    });
+  }, []);
 
   useEffect(() => {
     if (!rdvContactId) return;
@@ -464,7 +500,10 @@ export default function AgendaClient() {
     openCreateRdv(selectedDate);
 
     if (/^\d{4}-\d{2}-\d{2}$/.test(rdvDateParam)) setRdvDate(rdvDateParam);
-    if (/^\d{2}:\d{2}$/.test(rdvStartParam)) setRdvStart(rdvStartParam);
+    if (/^\d{2}:\d{2}$/.test(rdvStartParam)) {
+      setRdvStart(rdvStartParam);
+      if (!/^\d{2}:\d{2}$/.test(rdvEndParam)) setRdvEnd(addMinutesToTime(rdvStartParam, 60));
+    }
     if (/^\d{2}:\d{2}$/.test(rdvEndParam)) setRdvEnd(rdvEndParam);
     if (summaryParam) setRdvSummary(summaryParam);
     if (notesParam) setRdvNotes(notesParam);
@@ -1277,7 +1316,7 @@ export default function AgendaClient() {
         setRdvKind={setRdvKind}
         setRdvSummary={setRdvSummary}
         setRdvDate={setRdvDate}
-        setRdvStart={setRdvStart}
+        setRdvStart={setRdvStartAndSyncEnd}
         setRdvEnd={setRdvEnd}
         setRdvLocation={setRdvLocation}
         setRdvNotes={setRdvNotes}

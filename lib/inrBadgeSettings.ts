@@ -19,11 +19,15 @@ export type InrBadgeShareKey =
 
 export type InrBadgeShareSettings = Record<InrBadgeShareKey, boolean>;
 
-export type InrBadgeAppointmentDaySettings = {
-  enabled: boolean;
+export type InrBadgeAppointmentSlot = {
   startTime: string;
   endTime: string;
   durationMinutes: number;
+};
+
+export type InrBadgeAppointmentDaySettings = InrBadgeAppointmentSlot & {
+  enabled: boolean;
+  slots: InrBadgeAppointmentSlot[];
 };
 
 export type InrBadgeAppointmentSettings = {
@@ -56,21 +60,26 @@ export const DEFAULT_INRBADGE_SHARE_SETTINGS: InrBadgeShareSettings = {
   quote: false,
 };
 
-export const DEFAULT_INRBADGE_DAY_SETTINGS: InrBadgeAppointmentDaySettings = {
-  enabled: true,
+const DEFAULT_INRBADGE_SLOT: InrBadgeAppointmentSlot = {
   startTime: "09:00",
   endTime: "18:00",
   durationMinutes: 30,
 };
 
+export const DEFAULT_INRBADGE_DAY_SETTINGS: InrBadgeAppointmentDaySettings = {
+  enabled: true,
+  ...DEFAULT_INRBADGE_SLOT,
+  slots: [{ ...DEFAULT_INRBADGE_SLOT }],
+};
+
 const DEFAULT_INRBADGE_DAILY_SLOTS: Record<string, InrBadgeAppointmentDaySettings> = {
-  "0": { ...DEFAULT_INRBADGE_DAY_SETTINGS, enabled: false },
-  "1": { ...DEFAULT_INRBADGE_DAY_SETTINGS, enabled: true },
-  "2": { ...DEFAULT_INRBADGE_DAY_SETTINGS, enabled: true },
-  "3": { ...DEFAULT_INRBADGE_DAY_SETTINGS, enabled: true },
-  "4": { ...DEFAULT_INRBADGE_DAY_SETTINGS, enabled: true },
-  "5": { ...DEFAULT_INRBADGE_DAY_SETTINGS, enabled: true },
-  "6": { ...DEFAULT_INRBADGE_DAY_SETTINGS, enabled: false },
+  "0": { ...DEFAULT_INRBADGE_DAY_SETTINGS, enabled: false, slots: [{ ...DEFAULT_INRBADGE_SLOT }] },
+  "1": { ...DEFAULT_INRBADGE_DAY_SETTINGS, enabled: true, slots: [{ ...DEFAULT_INRBADGE_SLOT }] },
+  "2": { ...DEFAULT_INRBADGE_DAY_SETTINGS, enabled: true, slots: [{ ...DEFAULT_INRBADGE_SLOT }] },
+  "3": { ...DEFAULT_INRBADGE_DAY_SETTINGS, enabled: true, slots: [{ ...DEFAULT_INRBADGE_SLOT }] },
+  "4": { ...DEFAULT_INRBADGE_DAY_SETTINGS, enabled: true, slots: [{ ...DEFAULT_INRBADGE_SLOT }] },
+  "5": { ...DEFAULT_INRBADGE_DAY_SETTINGS, enabled: true, slots: [{ ...DEFAULT_INRBADGE_SLOT }] },
+  "6": { ...DEFAULT_INRBADGE_DAY_SETTINGS, enabled: false, slots: [{ ...DEFAULT_INRBADGE_SLOT }] },
 };
 
 export const DEFAULT_INRBADGE_APPOINTMENT_SETTINGS: InrBadgeAppointmentSettings = {
@@ -85,6 +94,7 @@ export const DEFAULT_INRBADGE_APPOINTMENT_SETTINGS: InrBadgeAppointmentSettings 
 
 const SHARE_KEYS = Object.keys(DEFAULT_INRBADGE_SHARE_SETTINGS) as InrBadgeShareKey[];
 const WEEKDAY_KEYS = ["0", "1", "2", "3", "4", "5", "6"] as const;
+const MAX_APPOINTMENT_SLOTS_PER_DAY = 3;
 
 function asPlainObject(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
@@ -120,24 +130,66 @@ function normalizeWeekdays(value: unknown, fallback: number[]) {
   return weekdays.length ? weekdays : fallback;
 }
 
+function fallbackSlotFromDay(fallback: InrBadgeAppointmentDaySettings): InrBadgeAppointmentSlot {
+  const firstSlot = Array.isArray(fallback.slots) && fallback.slots[0] ? fallback.slots[0] : null;
+  return {
+    startTime: firstSlot?.startTime || fallback.startTime || DEFAULT_INRBADGE_SLOT.startTime,
+    endTime: firstSlot?.endTime || fallback.endTime || DEFAULT_INRBADGE_SLOT.endTime,
+    durationMinutes: firstSlot?.durationMinutes || fallback.durationMinutes || DEFAULT_INRBADGE_SLOT.durationMinutes,
+  };
+}
+
+function normalizeSlot(value: unknown, fallback: InrBadgeAppointmentSlot): InrBadgeAppointmentSlot | null {
+  const raw = asPlainObject(value);
+  const startTime = normalizeTime(raw.startTime, fallback.startTime);
+  const endTime = normalizeTime(raw.endTime, fallback.endTime);
+  const durationMinutes = clampNumber(raw.durationMinutes, fallback.durationMinutes, 15, 180);
+  const startMinutes = parseTimeToMinutes(startTime);
+  const endMinutes = parseTimeToMinutes(endTime);
+
+  if (startMinutes === null || endMinutes === null || endMinutes <= startMinutes) return null;
+  if (durationMinutes > endMinutes - startMinutes) return null;
+
+  return { startTime, endTime, durationMinutes };
+}
+
+function normalizeSlots(value: unknown, fallback: InrBadgeAppointmentDaySettings): InrBadgeAppointmentSlot[] {
+  const raw = asPlainObject(value);
+  const fallbackSlot = fallbackSlotFromDay(fallback);
+  const rawSlots = Array.isArray(raw.slots) && raw.slots.length
+    ? raw.slots
+    : [{ startTime: raw.startTime, endTime: raw.endTime, durationMinutes: raw.durationMinutes }];
+
+  const normalized = rawSlots
+    .slice(0, MAX_APPOINTMENT_SLOTS_PER_DAY)
+    .map((slot) => normalizeSlot(slot, fallbackSlot))
+    .filter((slot): slot is InrBadgeAppointmentSlot => Boolean(slot))
+    .sort((a, b) => (parseTimeToMinutes(a.startTime) ?? 0) - (parseTimeToMinutes(b.startTime) ?? 0));
+
+  const withoutOverlap: InrBadgeAppointmentSlot[] = [];
+  for (const slot of normalized) {
+    const startMinutes = parseTimeToMinutes(slot.startTime) ?? 0;
+    const previousEndMinutes = withoutOverlap.length
+      ? parseTimeToMinutes(withoutOverlap[withoutOverlap.length - 1].endTime) ?? 0
+      : null;
+    if (previousEndMinutes !== null && startMinutes < previousEndMinutes) continue;
+    withoutOverlap.push(slot);
+  }
+
+  return withoutOverlap.length ? withoutOverlap : [{ ...fallbackSlot }];
+}
+
 function normalizeDaySettings(value: unknown, fallback: InrBadgeAppointmentDaySettings): InrBadgeAppointmentDaySettings {
   const raw = asPlainObject(value);
-  let startTime = normalizeTime(raw.startTime, fallback.startTime);
-  let endTime = normalizeTime(raw.endTime, fallback.endTime);
-  const durationMinutes = clampNumber(raw.durationMinutes, fallback.durationMinutes, 15, 180);
-  const startMinutes = parseTimeToMinutes(startTime) ?? parseTimeToMinutes(fallback.startTime) ?? 540;
-  const endMinutes = parseTimeToMinutes(endTime) ?? parseTimeToMinutes(fallback.endTime) ?? 1080;
-
-  if (endMinutes <= startMinutes) {
-    startTime = fallback.startTime;
-    endTime = fallback.endTime;
-  }
+  const slots = normalizeSlots(value, fallback);
+  const firstSlot = slots[0] || fallbackSlotFromDay(fallback);
 
   return {
     enabled: typeof raw.enabled === "boolean" ? raw.enabled : fallback.enabled,
-    startTime,
-    endTime,
-    durationMinutes,
+    startTime: firstSlot.startTime,
+    endTime: firstSlot.endTime,
+    durationMinutes: firstSlot.durationMinutes,
+    slots,
   };
 }
 
@@ -155,11 +207,15 @@ function buildDailySlotsFromLegacy(raw: Record<string, unknown>, defaultSettings
 
   return WEEKDAY_KEYS.reduce((acc, key) => {
     const day = Number(key);
-    acc[key] = {
-      enabled: legacyWeekdays.includes(day),
+    const slot = {
       startTime: legacyStartTime,
       endTime: legacyEndTime,
       durationMinutes: legacyDuration,
+    };
+    acc[key] = {
+      enabled: legacyWeekdays.includes(day),
+      ...slot,
+      slots: [{ ...slot }],
     };
     return acc;
   }, {} as Record<string, InrBadgeAppointmentDaySettings>);
@@ -167,6 +223,19 @@ function buildDailySlotsFromLegacy(raw: Record<string, unknown>, defaultSettings
 
 function getFirstEnabledDay(dailySlots: Record<string, InrBadgeAppointmentDaySettings>) {
   return WEEKDAY_KEYS.map((key) => dailySlots[key]).find((day) => day?.enabled) || dailySlots["1"] || DEFAULT_INRBADGE_DAY_SETTINGS;
+}
+
+export function getInrBadgeAppointmentDaySlots(settings: InrBadgeAppointmentSettings, weekday: number): InrBadgeAppointmentSlot[] {
+  const daySettings = settings.dailySlots[String(weekday)] || {
+    enabled: settings.weekdays.includes(weekday),
+    startTime: settings.startTime,
+    endTime: settings.endTime,
+    durationMinutes: settings.durationMinutes,
+    slots: [{ startTime: settings.startTime, endTime: settings.endTime, durationMinutes: settings.durationMinutes }],
+  };
+
+  if (!daySettings.enabled) return [];
+  return normalizeSlots(daySettings, daySettings).slice(0, MAX_APPOINTMENT_SLOTS_PER_DAY);
 }
 
 export function normalizeInrBadgeShareSettings(value: unknown): InrBadgeShareSettings {

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { optionalEnv } from "@/lib/env";
 import { extractInrBadgeUserIdFromSlug } from "@/lib/inrBadge";
-import { normalizeInrBadgeShareSettings, resolveInrBadgeAppointmentSettings } from "@/lib/inrBadgeSettings";
+import { getInrBadgeAppointmentDaySlots, normalizeInrBadgeShareSettings, resolveInrBadgeAppointmentSettings } from "@/lib/inrBadgeSettings";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendTxMail } from "@/lib/txMailer";
 import { upsertCrmContactWithoutDuplicate } from "@/lib/crmContactDedupe";
@@ -72,15 +72,6 @@ function timeInParisParts(date: Date) {
   return { minutes: hour * 60 + minute, weekday: weekdayMap[weekdayLabel.slice(0, 3)] ?? date.getDay() };
 }
 
-
-function getAppointmentDaySettings(settings: ReturnType<typeof resolveInrBadgeAppointmentSettings>, weekday: number) {
-  return settings.dailySlots[String(weekday)] || {
-    enabled: settings.weekdays.includes(weekday),
-    startTime: settings.startTime,
-    endTime: settings.endTime,
-    durationMinutes: settings.durationMinutes,
-  };
-}
 
 function getBaseUrl(req: Request) {
   return String(
@@ -153,13 +144,21 @@ export async function POST(req: Request) {
   if (start < minDate) return bad("Ce créneau n'est plus disponible");
 
   const paris = timeInParisParts(start);
-  const daySettings = getAppointmentDaySettings(appointmentSettings, paris.weekday);
-  const startMinutes = parseMinutes(daySettings.startTime);
-  const endMinutes = parseMinutes(daySettings.endTime);
-  if (!daySettings.enabled) return bad("Ce jour n'est pas ouvert à la réservation");
-  if (durationMinutes !== daySettings.durationMinutes) return bad("Durée du créneau invalide");
-  if (paris.minutes < startMinutes || paris.minutes + durationMinutes > endMinutes) return bad("Ce créneau n'est pas dans les horaires proposés");
-  if ((paris.minutes - startMinutes) % daySettings.durationMinutes !== 0) return bad("Ce créneau n'est pas proposé");
+  const daySlots = getInrBadgeAppointmentDaySlots(appointmentSettings, paris.weekday);
+  if (!daySlots.length) return bad("Ce jour n'est pas ouvert à la réservation");
+
+  const matchingSlot = daySlots.find((slot) => {
+    const startMinutes = parseMinutes(slot.startTime);
+    const endMinutes = parseMinutes(slot.endTime);
+    return (
+      durationMinutes === slot.durationMinutes &&
+      paris.minutes >= startMinutes &&
+      paris.minutes + durationMinutes <= endMinutes &&
+      (paris.minutes - startMinutes) % slot.durationMinutes === 0
+    );
+  });
+
+  if (!matchingSlot) return bad("Ce créneau n'est pas proposé");
 
   const { data: conflicts, error: conflictsError } = await supabaseAdmin
     .from("agenda_events")
