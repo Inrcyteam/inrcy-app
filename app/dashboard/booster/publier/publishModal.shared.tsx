@@ -1795,7 +1795,7 @@ export async function renderChannelImage(params: {
       ? "color"
       : requestedBackgroundMode;
     const backgroundColor = googleBusinessSafeBackground
-      ? transform.backgroundColor || "#e8f6ff"
+      ? "#ffffff"
       : transform.backgroundColor;
     if (backgroundMode !== "transparent") {
       ctx.fillStyle = getBackgroundFill(

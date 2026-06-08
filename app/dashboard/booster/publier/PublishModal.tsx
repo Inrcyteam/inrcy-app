@@ -3443,7 +3443,7 @@ export default function PublishModal({
             ? resetActiveChannelImages
             : undefined
         }
-        isolationNote={`Ce réglage concerne uniquement ${getImageAdapterLabel(activeImageChannel)}. Les autres canaux restent indépendants.`}
+        isolationNote={`Ce réglage concerne uniquement ${getImageAdapterLabel(activeImageChannel)}. Les autres canaux restent indépendants.${activeImageChannel === "gmb" ? " Fond transparent = export sur fond blanc pour un rendu propre sur Google Business." : ""}`}
         onApplyToSelectedChannels={
           activeImageChannel === "inrcy_site" ||
           activeImageChannel === "site_web"
@@ -3455,7 +3455,7 @@ export default function PublishModal({
           updateChannelTransform(
             activeImageChannel,
             activeEditorImageKey,
-            mode === "transparent" && activeImageChannel !== "gmb"
+            mode === "transparent"
               ? {
                   backgroundMode: "transparent",
                   blurBackground: false,
