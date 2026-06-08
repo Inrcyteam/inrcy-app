@@ -1,10 +1,12 @@
 export const ACTIVITY_SECTOR_OPTIONS = [
   { value: 'animalier', label: 'Animalier' },
+  { value: 'assurance', label: 'Assurance' },
   { value: 'automobile', label: 'Automobile' },
   { value: 'beaute_bien_etre', label: 'Beauté / Bien-être' },
   { value: 'artisan_btp', label: 'BTP' },
   { value: 'commerce_boutique', label: 'Commerce / Boutique' },
   { value: 'communication', label: 'Communication' },
+  { value: 'education_enfance', label: 'Éducation / Enfance' },
   { value: 'evenementiel', label: 'Événementiel' },
   { value: 'exterieur_jardin', label: 'Extérieur / Jardin' },
   { value: 'finance', label: 'Finance' },
@@ -13,12 +15,14 @@ export const ACTIVITY_SECTOR_OPTIONS = [
   { value: 'immobilier', label: 'Immobilier' },
   { value: 'industrie', label: 'Industrie' },
   { value: 'juridique', label: 'Juridique' },
+  { value: 'loisirs_sport', label: 'Loisirs / Sport' },
   { value: 'medecine_douce', label: 'Médecine douce' },
   { value: 'sante', label: 'Santé' },
   { value: 'securite', label: 'Sécurité' },
   { value: 'services_entreprises', label: 'Services aux entreprises' },
   { value: 'services_particuliers', label: 'Services aux particuliers' },
   { value: 'transport', label: 'Transport' },
+  { value: 'tourisme', label: 'Tourisme' },
   { value: 'autre', label: 'Autre' },
 ] as const;
 
@@ -46,7 +50,11 @@ export function inferSectorCategoryFromProfession(input?: string | null): Activi
 
   if (/(paysag|piscin|jardin|élag|elag|clôture|cloture|portail|arrosage|espace vert|espaces verts|terrassement paysager)/.test(value)) return 'exterieur_jardin';
   if (/(métallurgie|metallurgie|scierie|usinage|chaudronnerie|plasturgie|fabrication industrielle|maintenance industrielle|mécanique industrielle|mecanique industrielle|soudure industrielle|traitement de surface|industrie|industriel)/.test(value)) return 'industrie';
-  if (/(plomb|chauffag|électric|electric|maçon|macon|couvreur|menuis|carrel|peintre|charpent|construction|clim|serrur|bât|bat|travaux|renov|rénov|terrassement|façade|facade|isolation)/.test(value)) return 'artisan_btp';
+  if (/(plomb|chauffag|électric|electric|maçon|macon|couvreur|menuis|carrel|peintre|charpent|construction|clim|serrur|bât|bat|travaux|renov|rénov|terrassement|façade|facade|isolation|plaquiste|placo|cuisiniste|cuisine sur mesure|agenceur|agencement|poseur de sols|poseur sols|parquet|étancheur|etancheur|étanchéité|etancheite)/.test(value)) return 'artisan_btp';
+  if (/(assur|mutuelle|prévoyance|prevoyance|courtier en assurance|courtier assurance|agent général d’assurance|agent general d'assurance|agent general assurance|cabinet d’assurance|cabinet d'assurance|sinistre|responsabilité civile pro|responsabilite civile pro|rc pro)/.test(value)) return 'assurance';
+  if (/(crèche|creche|micro-crèche|micro creche|soutien scolaire|cours particuliers|aide aux devoirs|école privée|ecole privee|coach scolaire|centre de loisirs|accueil de loisirs|périscolaire|periscolaire|projet pédagogique|projet pedagogique)/.test(value)) return 'education_enfance';
+  if (/(salle de sport|club de sport|club sportif|escape game|parc de loisirs|base nautique|activité nautique|activite nautique|activités nautiques|activites nautiques|paddle|kayak|voile|professeur de danse|cours de danse|professeur de yoga|cours de yoga|loisirs|billetterie loisirs)/.test(value)) return 'loisirs_sport';
+  if (/(camping|mobil-home|mobil home|location saisonnière|location saisonniere|guide touristique|visite guidée|visite guidee|excursion|office de tourisme|activité touristique|activite touristique|séjour touristique|sejour touristique|tourisme)/.test(value)) return 'tourisme';
   if (/(garage|auto|carross|pneu|moto|contrôle technique|controle technique|vidange|pare-brise|pare brise|location de véhicules|location de vehicules)/.test(value)) return 'automobile';
   if (/(boutique|magasin|fleur|boulang|pâtiss|patiss|épicer|epicer|librair|opticien|bijout|caviste|meuble|commerce|concept store|friperie)/.test(value)) return 'commerce_boutique';
   if (/(restaurant|hôtel|hotel|bar|brasserie|snack|traiteur|café|cafe|bistr|pizzeria|chambre d'hôtes|chambre d'hotes)/.test(value)) return 'hotel_restaurant';
@@ -55,6 +63,7 @@ export function inferSectorCategoryFromProfession(input?: string | null): Activi
   if (/(naturopath|sophrolog|réflexolog|reflexolog|hypnos|magnét|magnet|énergét|energet|shiatsu|ayurv|reiki)/.test(value)) return 'medecine_douce';
   if (/(immobili|diagnostiqueur|promoteur|courtier|syndic|gestion locative|transaction|mandat)/.test(value)) return 'immobilier';
   if (/(ménage|menage|garde d'enfants|aide à domicile|aide a domicile|jardinage|dépannage|depannage|conciergerie|aide ménag|livraison)/.test(value)) return 'services_particuliers';
+  if (/(créateur de site|createur de site|création de site|creation de site|site internet|site web|webmaster|imprimeur|imprimerie|enseigniste|enseigne lumineuse|signalétique|signaletique|vitrophanie|photographe professionnel|photographe pro|photo entreprise|portrait professionnel)/.test(value)) return 'communication';
   if (/(consult|agence|marketing|formation|informat|b2b|expert-comptable|comptable|rh|recrutement|secrétariat|secretariat|cabinet de conseil)/.test(value)) return 'services_entreprises';
   if (/(communication|community manager|social media|attaché de presse|attache de presse|branding|studio créa|studio crea|graphiste|seo|sea|marketing digital|content manager)/.test(value)) return 'communication';
   if (/(juridique|avocat|notaire|juriste|huissier|commissaire de justice|cabinet juridique|droit)/.test(value)) return 'juridique';

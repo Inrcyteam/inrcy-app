@@ -1,6 +1,7 @@
 import { ACTIVITY_SECTOR_OPTIONS } from '@/lib/activitySectors';
 import type { TemplateDef } from '@/lib/messageTemplates';
 import { createSectorTemplates, type SectorTemplateDefinition } from './shared';
+import { assuranceTemplates, buildAssuranceJobTemplates } from './assurance';
 import { artisan_btpTemplates, buildArtisanBtpJobTemplates } from './artisan_btp';
 import { automobileTemplates, buildAutomobileJobTemplates } from './automobile';
 import { commerce_boutiqueTemplates, buildCommerceBoutiqueJobTemplates } from './commerce_boutique';
@@ -13,17 +14,21 @@ import { immobilierTemplates, buildImmobilierJobTemplates } from './immobilier';
 import { services_particuliersTemplates, buildServicesParticuliersJobTemplates } from './services_particuliers';
 import { services_entreprisesTemplates, buildServicesEntreprisesJobTemplates } from './services_entreprises';
 import { communicationTemplates, buildCommunicationJobTemplates } from './communication';
+import { education_enfanceTemplates, buildEducationEnfanceJobTemplates } from './education_enfance';
 import { industrieTemplates, buildIndustrieJobTemplates } from './industrie';
 import { juridiqueTemplates, buildJuridiqueJobTemplates } from './juridique';
+import { loisirs_sportTemplates, buildLoisirsSportJobTemplates } from './loisirs_sport';
 import { exterieur_jardinTemplates, buildExterieurJardinJobTemplates } from './exterieur_jardin';
 import { financeTemplates, buildFinanceJobTemplates } from './finance';
 import { evenementielTemplates, buildEvenementielJobTemplates } from './evenementiel';
 import { animalierTemplates, buildAnimalierJobTemplates } from './animalier';
 import { transportTemplates, buildTransportJobTemplates } from './transport';
+import { tourismeTemplates, buildTourismeJobTemplates } from './tourisme';
 import { hygiene_habitatTemplates, buildHygieneHabitatJobTemplates } from './hygiene_habitat';
 import { autreTemplates, buildAutreJobTemplates } from './autre';
 
 export const SECTOR_TEMPLATE_DEFINITIONS: Record<string, SectorTemplateDefinition> = {
+  assurance: assuranceTemplates,
   artisan_btp: artisan_btpTemplates,
   automobile: automobileTemplates,
   commerce_boutique: commerce_boutiqueTemplates,
@@ -37,12 +42,15 @@ export const SECTOR_TEMPLATE_DEFINITIONS: Record<string, SectorTemplateDefinitio
   services_particuliers: services_particuliersTemplates,
   services_entreprises: services_entreprisesTemplates,
   communication: communicationTemplates,
+  education_enfance: education_enfanceTemplates,
   juridique: juridiqueTemplates,
+  loisirs_sport: loisirs_sportTemplates,
   finance: financeTemplates,
   evenementiel: evenementielTemplates,
   exterieur_jardin: exterieur_jardinTemplates,
   animalier: animalierTemplates,
   transport: transportTemplates,
+  tourisme: tourismeTemplates,
   hygiene_habitat: hygiene_habitatTemplates,
   autre: autreTemplates,
 };
@@ -53,6 +61,9 @@ export function buildSectorTemplates(): TemplateDef[] {
     const definition = SECTOR_TEMPLATE_DEFINITIONS[option.value];
     if (definition) out.push(...createSectorTemplates(definition));
     switch (option.value) {
+      case 'assurance':
+        out.push(...buildAssuranceJobTemplates());
+        break;
       case 'artisan_btp':
         out.push(...buildArtisanBtpJobTemplates());
         break;
@@ -89,11 +100,17 @@ export function buildSectorTemplates(): TemplateDef[] {
       case 'communication':
         out.push(...buildCommunicationJobTemplates());
         break;
+      case 'education_enfance':
+        out.push(...buildEducationEnfanceJobTemplates());
+        break;
       case 'industrie':
         out.push(...buildIndustrieJobTemplates());
         break;
       case 'juridique':
         out.push(...buildJuridiqueJobTemplates());
+        break;
+      case 'loisirs_sport':
+        out.push(...buildLoisirsSportJobTemplates());
         break;
       case 'exterieur_jardin':
         out.push(...buildExterieurJardinJobTemplates());
@@ -109,6 +126,9 @@ export function buildSectorTemplates(): TemplateDef[] {
         break;
       case 'transport':
         out.push(...buildTransportJobTemplates());
+        break;
+      case 'tourisme':
+        out.push(...buildTourismeJobTemplates());
         break;
       case 'hygiene_habitat':
         out.push(...buildHygieneHabitatJobTemplates());

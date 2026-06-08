@@ -23,6 +23,16 @@ export const ACTIVITY_CATALOG: Record<ActivitySectorCategory, SectorCatalog> = {
       veterinaire: { label: 'Vétérinaire', services: ['Consultation', 'Vaccination', 'Bilan santé', 'Urgence', 'Conseils prévention', 'Chirurgie', 'Suivi animal', 'Informations cabinet'] },
     },
   },
+  assurance: {
+    label: 'Assurance',
+    jobs: {
+      assureur: { label: 'Assureur', services: ['Assurance auto', 'Assurance habitation', 'Mutuelle santé', 'Prévoyance', 'Assurance emprunteur', 'Assurance professionnelle', 'Responsabilité civile pro', 'Accompagnement sinistre'] },
+      agent_general_assurance: { label: 'Agent général d’assurance', services: ['Assurance auto', 'Assurance habitation', 'Mutuelle santé', 'Prévoyance', 'Assurance emprunteur', 'Assurance professionnelle', 'Responsabilité civile pro', 'Accompagnement sinistre'] },
+      courtier_assurance: { label: 'Courtier en assurance', services: ['Comparaison de contrats', 'Assurance emprunteur', 'Assurance auto', 'Assurance habitation', 'Mutuelle santé', 'Prévoyance', 'Assurance professionnelle', 'Accompagnement sinistre'] },
+      conseiller_assurances: { label: 'Conseiller en assurances', services: ['Bilan assurance', 'Assurance auto', 'Assurance habitation', 'Mutuelle santé', 'Prévoyance', 'Assurance emprunteur', 'Assurance professionnelle', 'Suivi de contrat'] },
+      cabinet_assurance: { label: 'Cabinet d’assurance', services: ['Assurance auto', 'Assurance habitation', 'Mutuelle santé', 'Prévoyance', 'Assurance emprunteur', 'Assurance professionnelle', 'Responsabilité civile pro', 'Accompagnement sinistre'] },
+    },
+  },
   automobile: {
     label: 'Automobile',
     jobs: {
@@ -75,6 +85,11 @@ export const ACTIVITY_CATALOG: Record<ActivitySectorCategory, SectorCatalog> = {
       renovation: { label: 'Rénovation', services: ['Rénovation intérieure', 'Rénovation complète', 'Second œuvre', 'Aménagement logement', 'Coordination artisans', 'Modernisation habitat', 'Suivi chantier', 'Devis rénovation'] },
       serrurerie: { label: 'Serrurerie', services: ['Ouverture porte', 'Remplacement serrure', 'Blindage porte', 'Dépannage urgence', 'Sécurisation accès', 'Cylindre haute sécurité', 'Rideau métallique', 'Devis serrurerie'] },
       terrassement: { label: 'Terrassement', services: ['Terrassement terrain', 'Préparation chantier', 'Fondations', 'Tranchées réseaux', 'Nivellement', 'Assainissement extérieur', 'Accès chantier', 'Devis terrassement'] },
+      etancheur: { label: 'Étancheur', services: ['Étanchéité toiture terrasse', 'Recherche infiltration', 'Réparation membrane', 'Isolation toiture plate', 'Entretien toiture', 'Diagnostic étanchéité', 'Travaux après pluie', 'Devis étanchéité'] },
+      poseur_sols: { label: 'Poseur de sols', services: ['Pose parquet', 'Sol PVC', 'Stratifié', 'Moquette', 'Préparation support', 'Ragréage', 'Rénovation sol', 'Devis sol'] },
+      agenceur: { label: 'Agenceur', services: ['Agencement intérieur', 'Mobilier sur mesure', 'Optimisation espace', 'Dressing', 'Bureau / commerce', 'Conception 3D', 'Pose', 'Devis aménagement'] },
+      cuisiniste: { label: 'Cuisiniste', services: ['Conception cuisine', 'Pose cuisine', 'Meubles sur mesure', 'Plan de travail', 'Rénovation cuisine', 'Conseil agencement', 'Showroom', 'Devis cuisine'] },
+      plaquiste: { label: 'Plaquiste', services: ['Pose placo', 'Cloisons', 'Faux plafonds', 'Isolation intérieure', 'Bandes / joints', 'Aménagement combles', 'Doublage murs', 'Devis placo'] },
     },
   },
   commerce_boutique: {
@@ -100,6 +115,20 @@ export const ACTIVITY_CATALOG: Record<ActivitySectorCategory, SectorCatalog> = {
       community_manager: { label: 'Community manager', services: ['Calendrier éditorial', 'Gestion réseaux sociaux', 'Création de contenus', 'Animation de communauté', 'Réponses messages', 'Reporting', 'Stratégie Instagram / Facebook', 'Shooting / reels'] },
       graphiste: { label: 'Graphiste / Studio créatif', services: ['Logo', 'Charte graphique', 'Flyers', 'Brochures', 'Visuels réseaux sociaux', 'Cartes de visite', 'Supports publicitaires', 'Habillage de marque'] },
       redacteur_web: { label: 'Rédacteur web / Copywriter', services: ['Pages site web', 'Articles SEO', 'Emails marketing', 'Fiches service', 'Storytelling', 'Optimisation conversion', 'Réécriture', 'Calendrier éditorial'] },
+      photographe_pro: { label: 'Photographe professionnel', services: ['Portrait professionnel', 'Photo entreprise', 'Reportage métier', 'Produits / catalogue', 'Photos réseaux sociaux', 'Shooting équipe', 'Retouche', 'Livraison galerie'] },
+      enseigniste: { label: 'Enseigniste', services: ['Enseigne lumineuse', 'Signalétique', 'Vitrophanie', 'Panneaux', 'Marquage véhicule', 'Pose enseigne', 'Habillage façade', 'Devis signalétique'] },
+      imprimeur: { label: 'Imprimeur', services: ['Flyers', 'Cartes de visite', 'Brochures', 'Affiches', 'Supports print', 'Impression grand format', 'Finitions', 'Devis impression'] },
+      createur_sites_internet: { label: 'Créateur de sites internet', services: ['Site vitrine', 'Refonte site', 'Landing page', 'Référencement local', 'Maintenance site', 'Hébergement', 'Optimisation mobile', 'Accompagnement contenu'] },
+    },
+  },
+  education_enfance: {
+    label: 'Éducation / Enfance',
+    jobs: {
+      creche: { label: 'Crèche', services: ['Accueil enfants', 'Garde régulière', 'Adaptation', 'Activités d’éveil', 'Repas / sieste', 'Communication parents', 'Inscription', 'Visite structure'] },
+      soutien_scolaire: { label: 'Soutien scolaire', services: ['Aide aux devoirs', 'Remise à niveau', 'Préparation examens', 'Cours particuliers', 'Méthodologie', 'Français', 'Mathématiques', 'Suivi parents'] },
+      ecole_privee: { label: 'École privée', services: ['Inscription', 'Portes ouvertes', 'Projet pédagogique', 'Suivi élèves', 'Activités périscolaires', 'Restauration', 'Vie scolaire', 'Rendez-vous famille'] },
+      coach_scolaire: { label: 'Coach scolaire', services: ['Méthodologie', 'Motivation', 'Organisation travail', 'Orientation', 'Préparation examens', 'Gestion stress', 'Suivi personnalisé', 'Rendez-vous bilan'] },
+      centre_loisirs: { label: 'Centre de loisirs', services: ['Accueil vacances', 'Mercredis', 'Activités créatives', 'Sorties', 'Sports / jeux', 'Inscription', 'Planning activités', 'Communication parents'] },
     },
   },
 
@@ -200,6 +229,17 @@ export const ACTIVITY_CATALOG: Record<ActivitySectorCategory, SectorCatalog> = {
       notaire: { label: 'Notaire', services: ['Rendez-vous étude', 'Achat immobilier', 'Succession', 'Donation', 'Contrat de mariage', 'Création société', 'Conseil patrimonial', 'Signature acte'] },
     },
   },
+  loisirs_sport: {
+    label: 'Loisirs / Sport',
+    jobs: {
+      salle_sport: { label: 'Salle de sport', services: ['Abonnement', 'Cours collectifs', 'Coaching', 'Plateau musculation', 'Cardio', 'Bilan forme', 'Offre découverte', 'Planning séances'] },
+      club_sport: { label: 'Club de sport', services: ['Inscription club', 'Entraînement', 'Compétitions', 'Stages', 'École jeunes', 'Événements club', 'Planning séances', 'Licence sportive'] },
+      escape_game: { label: 'Escape game', services: ['Réservation partie', 'Team building', 'Anniversaire', 'Scénario immersif', 'Groupe amis', 'Entreprise', 'Bon cadeau', 'Privatisation'] },
+      parc_loisirs: { label: 'Parc de loisirs', services: ['Billetterie', 'Attractions', 'Anniversaire', 'Groupes', 'Scolaires', 'Restauration', 'Événements', 'Offre famille'] },
+      activites_nautiques: { label: 'Activités nautiques', services: ['Location matériel', 'Cours encadrés', 'Sortie mer', 'Paddle', 'Kayak', 'Voile', 'Stage', 'Réservation'] },
+      professeur_danse_yoga: { label: 'Professeur de danse / yoga', services: ['Cours individuel', 'Cours collectif', 'Stage', 'Initiation', 'Danse', 'Yoga', 'Bien-être', 'Planning cours'] },
+    },
+  },
 
   medecine_douce: {
     label: 'Médecine douce',
@@ -263,6 +303,17 @@ export const ACTIVITY_CATALOG: Record<ActivitySectorCategory, SectorCatalog> = {
       garde_enfants: { label: 'Garde d’enfants', services: ['Garde régulière', 'Sortie école', 'Aide devoirs', 'Garde ponctuelle', 'Mercredi / vacances', 'Accompagnement activités', 'Baby-sitting soirée', 'Rencontre préalable'] },
       jardinage: { label: 'Jardinage', services: ['Tonte', 'Taille haies', 'Désherbage', 'Entretien saisonnier', 'Remise en état', 'Petits aménagements', 'Évacuation déchets verts', 'Contrat entretien'] },
       menage: { label: 'Ménage / Entretien', services: ['Ménage régulier', 'Grand nettoyage', 'Fin de chantier', 'Vitres', 'Repassage', 'Nettoyage locatif', 'Intervention ponctuelle', 'Formule abonnement'] },
+    },
+  },
+
+  tourisme: {
+    label: 'Tourisme',
+    jobs: {
+      camping: { label: 'Camping', services: ['Emplacements', 'Mobil-homes', 'Réservation séjour', 'Activités', 'Piscine / loisirs', 'Services vacanciers', 'Offre famille', 'Disponibilités'] },
+      location_saisonniere: { label: 'Location saisonnière', services: ['Location courte durée', 'Week-end', 'Séjour vacances', 'Accueil voyageurs', 'Ménage / linge', 'Disponibilités', 'Réservation', 'Conciergerie'] },
+      guide_touristique: { label: 'Guide touristique', services: ['Visite guidée', 'Circuit privé', 'Visite groupe', 'Patrimoine local', 'Balade découverte', 'Excursion', 'Réservation', 'Conseil séjour'] },
+      excursions: { label: 'Excursions', services: ['Sortie journée', 'Circuit local', 'Activité groupe', 'Transport', 'Réservation', 'Programme sur mesure', 'Découverte région', 'Offre famille'] },
+      activite_touristique: { label: 'Office / activité touristique', services: ['Billetterie', 'Réservation activité', 'Groupes', 'Familles', 'Découverte locale', 'Saison touristique', 'Offre spéciale', 'Informations pratiques'] },
     },
   },
 

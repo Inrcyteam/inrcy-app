@@ -1,5 +1,10 @@
 import { artisan_btpTemplates } from './common';
 import { createJobTemplates } from '../shared';
+import { etancheurJobTemplates } from './etancheur';
+import { poseur_solsJobTemplates } from './poseur_sols';
+import { agenceurJobTemplates } from './agenceur';
+import { cuisinisteJobTemplates } from './cuisiniste';
+import { plaquisteJobTemplates } from './plaquiste';
 import { carreleurJobTemplates } from './carreleur';
 import { charpenteJobTemplates } from './charpente';
 import { chauffagisteJobTemplates } from './chauffagiste';
@@ -18,5 +23,5 @@ import { terrassementJobTemplates } from './terrassement';
 export { artisan_btpTemplates };
 
 export function buildArtisanBtpJobTemplates() {
-  return [carreleurJobTemplates, charpenteJobTemplates, chauffagisteJobTemplates, constructionJobTemplates, couvreurJobTemplates, electricienJobTemplates, facadeJobTemplates, maconJobTemplates, menuisierJobTemplates, peintreJobTemplates, plombierJobTemplates, renovationJobTemplates, serrurerieJobTemplates, terrassementJobTemplates].flatMap((definition) => createJobTemplates(definition));
+  return [carreleurJobTemplates, charpenteJobTemplates, chauffagisteJobTemplates, constructionJobTemplates, couvreurJobTemplates, electricienJobTemplates, facadeJobTemplates, maconJobTemplates, menuisierJobTemplates, peintreJobTemplates, plombierJobTemplates, renovationJobTemplates, serrurerieJobTemplates, terrassementJobTemplates, plaquisteJobTemplates, cuisinisteJobTemplates, agenceurJobTemplates, poseur_solsJobTemplates, etancheurJobTemplates].flatMap((definition) => createJobTemplates(definition));
 }

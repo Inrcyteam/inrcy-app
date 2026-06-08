@@ -27,7 +27,7 @@ export type VariantSeed = {
 export type SectorTemplateDefinition = {
   sector: ActivitySectorCategory;
   pack: SectorPack;
-  extraTemplates?: Partial<Record<Extract<TemplateAction, 'valoriser' | 'offres' | 'informations' | 'suivis' | 'enquetes'>, TemplateDef[]>>;
+  extraTemplates?: Partial<Record<Extract<TemplateAction, 'valoriser' | 'avis' | 'offres' | 'informations' | 'suivis' | 'enquetes'>, TemplateDef[]>>;
 };
 
 export type JobTemplateDefinition = {
@@ -35,7 +35,7 @@ export type JobTemplateDefinition = {
   professionKey: string;
   professionLabel: string;
   pack: SectorPack;
-  extraTemplates?: Partial<Record<Extract<TemplateAction, 'valoriser' | 'offres' | 'informations' | 'suivis' | 'enquetes'>, TemplateDef[]>>;
+  extraTemplates?: Partial<Record<Extract<TemplateAction, 'valoriser' | 'avis' | 'offres' | 'informations' | 'suivis' | 'enquetes'>, TemplateDef[]>>;
 };
 
 const boosterValoriserSeeds: VariantSeed[] = [
@@ -160,6 +160,63 @@ const boosterValoriserSeeds: VariantSeed[] = [
       'Zone : {{zones}}\n\n' +
       'Contact : {{cta_url}}',
     ctaLabel: '{{cta_label}}',
+  },
+];
+
+
+const boosterAvisSeeds: VariantSeed[] = [
+  {
+    slug: 'apres_prestation',
+    title: 'Demande d’avis après prestation',
+    subject: 'Votre avis compte pour {{nom_entreprise}}',
+    body: (pack) =>
+      'Bonjour,\n\n' +
+      `Merci encore pour votre confiance. Dans notre univers ${pack.label.toLowerCase()}, les retours clients sont essentiels pour rassurer les prochaines personnes qui nous découvrent.\n\n` +
+      'Si vous avez 1 minute, votre avis nous aiderait beaucoup.\n\n' +
+      '🧩 Prestation / sujet : {{services}}\n' +
+      '📍 Zone : {{zones}}\n\n' +
+      '👉 Laisser un avis : {{avis_url}}\n\n' +
+      'Merci beaucoup,\n{{prenom}} — {{nom_entreprise}}',
+    ctaLabel: 'Laisser un avis',
+  },
+  {
+    slug: 'experience_client',
+    title: 'Retour d’expérience client',
+    subject: 'Comment s’est passée votre expérience ?',
+    body: (pack) =>
+      'Bonjour,\n\n' +
+      `Nous espérons que votre expérience avec {{nom_entreprise}} a été positive. Notre objectif reste simple : ${pack.signature}.\n\n` +
+      'Votre retour nous aide à progresser et à mieux accompagner nos prochains clients.\n\n' +
+      '👉 Vous pouvez laisser un avis ici : {{avis_url}}\n\n' +
+      'Vous pouvez aussi répondre directement à ce mail si vous préférez.\n\n' +
+      'Bien à vous,\n{{nom_entreprise}}',
+    ctaLabel: 'Partager mon retour',
+  },
+  {
+    slug: 'preuve_locale',
+    title: 'Avis pour renforcer la confiance locale',
+    subject: 'Votre avis aide {{nom_entreprise}} localement',
+    body: (pack) =>
+      'Bonjour,\n\n' +
+      `Votre avis peut aider d’autres personnes proches de {{zones}} à choisir un professionnel de confiance pour ${pack.localHook}.\n\n` +
+      'Quelques mots suffisent : ce que vous avez apprécié, le service rendu, ou la qualité de l’échange.\n\n' +
+      '👉 Laisser un avis : {{avis_url}}\n\n' +
+      'Merci pour votre aide,\n{{prenom}} — {{nom_entreprise}}',
+    ctaLabel: 'Laisser un avis',
+  },
+  {
+    slug: 'recommandation',
+    title: 'Avis + recommandation',
+    subject: 'Une recommandation pour {{nom_entreprise}} ?',
+    body: (pack) =>
+      'Bonjour,\n\n' +
+      `Si notre accompagnement vous a été utile, votre recommandation peut faire la différence auprès de ${pack.audience}.\n\n` +
+      'Vous pouvez nous aider de deux façons simples :\n' +
+      '• laisser un avis en ligne\n' +
+      '• parler de {{nom_entreprise}} à une personne qui pourrait avoir besoin de {{services}}\n\n' +
+      '👉 Lien avis : {{avis_url}}\n\n' +
+      'Merci pour votre confiance,\n{{nom_entreprise}}',
+    ctaLabel: 'Recommander',
   },
 ];
 
@@ -679,11 +736,11 @@ const fideliserEnquetesSeeds: VariantSeed[] = [
 function buildTemplatesForAction(
   sector: ActivitySectorCategory,
   pack: SectorPack,
-  action: Extract<TemplateAction, 'valoriser' | 'offres' | 'informations' | 'suivis' | 'enquetes'>,
+  action: Extract<TemplateAction, 'valoriser' | 'avis' | 'offres' | 'informations' | 'suivis' | 'enquetes'>,
   seeds: VariantSeed[],
   professionKey?: string
 ): TemplateDef[] {
-  const moduleName = action === 'valoriser' || action === 'offres' ? 'booster' : 'fideliser';
+  const moduleName = action === 'valoriser' || action === 'avis' || action === 'offres' ? 'booster' : 'fideliser';
   return seeds.map((seed) => ({
     key: `${moduleName}_${action}_${sector}${professionKey ? `_${professionKey}` : ''}_${seed.slug}`,
     module: moduleName,
@@ -704,6 +761,8 @@ export function createSectorTemplates(definition: SectorTemplateDefinition): Tem
   return [
     ...buildTemplatesForAction(sector, pack, 'valoriser', boosterValoriserSeeds),
     ...(extraTemplates?.valoriser ?? []),
+    ...buildTemplatesForAction(sector, pack, 'avis', boosterAvisSeeds),
+    ...(extraTemplates?.avis ?? []),
     ...buildTemplatesForAction(sector, pack, 'offres', boosterOffresSeeds),
     ...(extraTemplates?.offres ?? []),
     ...buildTemplatesForAction(sector, pack, 'informations', fideliserInformationsSeeds),
@@ -720,6 +779,8 @@ export function createJobTemplates(definition: JobTemplateDefinition): TemplateD
   return [
     ...buildTemplatesForAction(sector, pack, 'valoriser', boosterValoriserSeeds, professionKey),
     ...(extraTemplates?.valoriser ?? []),
+    ...buildTemplatesForAction(sector, pack, 'avis', boosterAvisSeeds, professionKey),
+    ...(extraTemplates?.avis ?? []),
     ...buildTemplatesForAction(sector, pack, 'offres', boosterOffresSeeds, professionKey),
     ...(extraTemplates?.offres ?? []),
     ...buildTemplatesForAction(sector, pack, 'informations', fideliserInformationsSeeds, professionKey),
