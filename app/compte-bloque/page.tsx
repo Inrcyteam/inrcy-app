@@ -59,9 +59,9 @@ function copyForStatus(rawStatus: unknown): BlockedCopy {
     return {
       eyebrow: "Période gratuite terminée",
       title: "Compte bloqué",
-      badge: "Essai 30 jours terminé",
+      badge: "Essai 21 jours terminé",
       message:
-        "Votre période gratuite de 30 jours est terminée. Votre générateur iNrCy est temporairement bloqué. Contactez iNrCy pour le réactiver.",
+        "Votre période gratuite de 21 jours est terminée. Votre générateur iNrCy est temporairement bloqué. Contactez iNrCy pour le réactiver.",
       statusLabel: "Essai terminé",
       accessLabel: "Dashboard bloqué",
       dataLabel: "Données conservées",

@@ -3,10 +3,10 @@ import "server-only";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { optionalEnv } from "@/lib/env";
 
-export const TRIAL_REMINDER_OFFSETS = [10, 7, 3, 1] as const;
+export const TRIAL_REMINDER_OFFSETS = [7, 3, 1] as const;
 
 export function getTrialDays() {
-  return Math.max(1, Number(optionalEnv("INRCY_TRIAL_DAYS", "30")) || 30);
+  return Math.max(1, Number(optionalEnv("INRCY_TRIAL_DAYS", "21")) || 21);
 }
 
 export function computeTrialWindowFromNow(trialDays = getTrialDays()) {

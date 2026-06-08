@@ -33,7 +33,7 @@ function planShortLabel(plan: unknown) {
   if (normalized === "Starter") return "Partenaire Fondateur";
   if (normalized === "Accel") return "Accélération";
   if (normalized === "Speed") return "Pleine vitesse";
-  return "Essai 30j";
+  return "Essai 21j";
 }
 
 type Props = {
@@ -157,7 +157,7 @@ function planLabel(plan: SubData["plan"]) {
   if (normalized === "Starter") return "Offre Partenaire Fondateur";
   if (normalized === "Accel") return "Pack Accélération";
   if (normalized === "Speed") return "Pack Pleine vitesse";
-  return "Essai 30j";
+  return "Essai 21j";
 }
 
 const CHECKOUT_OFFERS: Record<CheckoutPlan, {
@@ -331,7 +331,7 @@ useEffect(() => {
     const lastAnniv = now < start ? start : lastMonthlyAnniversary(start, now);
     const renewal = sub.next_renewal_date ? parseYMD(sub.next_renewal_date) : addMonthsSafe(lastAnniv, 1);
     const endEst = addMonthsSafe(lastAnniv, 2);
-    const trialEnd = sub.trial_end_at ? new Date(sub.trial_end_at) : addDays(start, 30);
+    const trialEnd = sub.trial_end_at ? new Date(sub.trial_end_at) : addDays(start, 21);
     const trialEndsWithinStripeMinimum = trialEnd.getTime() <= now.getTime() + 2 * 24 * 60 * 60 * 1000;
 
     const cancelEnd = sub.end_date ? parseYMD(sub.end_date) : null;
@@ -646,7 +646,7 @@ useEffect(() => {
               ? "✅ Abonnement annuel confirmé. Votre renouvellement est prévu chaque année."
               : computed?.trialEndsWithinStripeMinimum
                 ? "✅ Inscription confirmée. Votre abonnement démarre maintenant."
-                : "✅ Inscription confirmée. Votre abonnement démarrera à la fin de votre période d'essai de 30 jours."}
+                : "✅ Inscription confirmée. Votre abonnement démarrera à la fin de votre période d'essai de 21 jours."}
           </p>
         ) : checkoutState === "cancel" ? (
           <p style={{ margin: "8px 0 0", opacity: 0.9, lineHeight: 1.5 }}>
@@ -657,7 +657,7 @@ useEffect(() => {
         {computed?.planNormalized === "Trial" ? (
           <>
             <p style={{ margin: "8px 0 0", opacity: 0.85, lineHeight: 1.5 }}>
-              Vous êtes en période d’essai 30 jours.
+              Vous êtes en période d’essai 21 jours.
             </p>
 
             {computed?.hasStripeSub ? (
@@ -668,7 +668,7 @@ useEffect(() => {
                       ? "✅ Abonnement annuel confirmé. Votre renouvellement est prévu chaque année."
                       : computed?.trialEndsWithinStripeMinimum
                         ? "✅ Inscription confirmée. Votre abonnement démarre maintenant."
-                        : "✅ Inscription confirmée. Votre abonnement démarrera à la fin de votre période d'essai de 30 jours."}
+                        : "✅ Inscription confirmée. Votre abonnement démarrera à la fin de votre période d'essai de 21 jours."}
                   </p>
                 ) : null}
 

@@ -1,5 +1,5 @@
 -- iNrCy — fin d'essai sans abonnement
--- Objectif : ne plus supprimer le compte à J+30, mais le passer en trial_expired.
+-- Objectif : ne plus supprimer le compte à la fin de l'essai, mais le passer en trial_expired.
 
 -- ÉTAPE 1 — à exécuter seule si la colonne subscriptions.status est bien de type enum.
 ALTER TYPE public.stripe_subscription_status
@@ -19,5 +19,5 @@ WHERE plan = 'Trial'
   )
   AND (
     (trial_end_at IS NOT NULL AND trial_end_at <= now())
-    OR (trial_end_at IS NULL AND start_date IS NOT NULL AND (start_date::date + interval '30 days') <= now())
+    OR (trial_end_at IS NULL AND start_date IS NOT NULL AND (start_date::date + interval '21 days') <= now())
   );
