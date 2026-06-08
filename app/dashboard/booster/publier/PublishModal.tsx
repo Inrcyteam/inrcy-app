@@ -3455,7 +3455,7 @@ export default function PublishModal({
           updateChannelTransform(
             activeImageChannel,
             activeEditorImageKey,
-            mode === "transparent"
+            mode === "transparent" && activeImageChannel !== "gmb"
               ? {
                   backgroundMode: "transparent",
                   blurBackground: false,

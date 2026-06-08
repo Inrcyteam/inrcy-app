@@ -1070,6 +1070,7 @@ export default function usePublishImageController({
             file,
             transform,
             preset: CHANNEL_PRESETS[channel],
+            channel,
           }),
         );
         doneRenders += 1;

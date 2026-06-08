@@ -241,7 +241,7 @@ export const CHANNEL_PRESETS: Record<ChannelKey, RenderPreset> = {
   },
   gmb: {
     width: 1200,
-    height: 900,
+    height: 675,
     defaultFit: "contain",
     defaultBlurBackground: false,
   },
@@ -1660,6 +1660,9 @@ async function loadImageElementFromBlob(blob: Blob): Promise<HTMLImageElement> {
 async function compressImageBlobForUpload(blob: Blob): Promise<Blob> {
   if (typeof window === "undefined" || typeof document === "undefined") return blob;
   if (!String(blob.type || "").startsWith("image/")) return blob;
+  // Les PNG générés par l'adaptateur peuvent contenir de la transparence.
+  // Ne jamais les convertir en JPEG, sinon les zones transparentes deviennent noires.
+  if (/^image\/png$/i.test(blob.type || "")) return blob;
   if (/image\/(gif|svg\+xml|heic|heif|avif)/i.test(blob.type || "")) return blob;
 
   const img = await loadImageElementFromBlob(blob);
@@ -1751,8 +1754,9 @@ export async function renderChannelImage(params: {
   file: File;
   transform: ImageTransform;
   preset: RenderPreset;
+  channel?: ChannelKey;
 }): Promise<ImagePayload> {
-  const { file, transform, preset } = params;
+  const { file, transform, preset, channel } = params;
   const objectUrl = URL.createObjectURL(file);
   try {
     const img = await loadHtmlImage(objectUrl);
@@ -1784,11 +1788,19 @@ export async function renderChannelImage(params: {
 
     ctx.clearRect(0, 0, cw, ch);
 
-    const backgroundMode = getBackgroundMode(transform);
+    const requestedBackgroundMode = getBackgroundMode(transform);
+    const googleBusinessSafeBackground =
+      channel === "gmb" && requestedBackgroundMode === "transparent";
+    const backgroundMode = googleBusinessSafeBackground
+      ? "color"
+      : requestedBackgroundMode;
+    const backgroundColor = googleBusinessSafeBackground
+      ? transform.backgroundColor || "#e8f6ff"
+      : transform.backgroundColor;
     if (backgroundMode !== "transparent") {
       ctx.fillStyle = getBackgroundFill(
         backgroundMode,
-        transform.backgroundColor,
+        backgroundColor,
       );
       ctx.fillRect(0, 0, cw, ch);
     }

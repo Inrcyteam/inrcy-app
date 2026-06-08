@@ -176,6 +176,32 @@ async function canGoogleFetchImageUrl(url: string): Promise<boolean> {
   return false;
 }
 
+function errorMessage(error: unknown, fallback = ""): string {
+  if (error instanceof Error) return error.message || fallback;
+  if (typeof error === "string") return error || fallback;
+  const record = asRecord(error);
+  return String(record.message || record.error || record.error_description || fallback || "");
+}
+
+function isGoogleBusinessImageError(error: unknown): boolean {
+  const message = errorMessage(error).toLowerCase();
+  return [
+    "image",
+    "images",
+    "photo",
+    "media",
+    "sourceurl",
+    "source url",
+    "url",
+    "fetch",
+    "download",
+    "content-type",
+    "content type",
+    "invalid media",
+    "mediaitem",
+  ].some((needle) => message.includes(needle));
+}
+
 async function getGoogleBusinessPublishableUrl(path: string): Promise<string | null> {
   const publicUrl = String(supabaseAdmin.storage.from("booster").getPublicUrl(path)?.data?.publicUrl || "").trim();
   if (publicUrl && await canGoogleFetchImageUrl(publicUrl)) return publicUrl;
@@ -1025,7 +1051,9 @@ async function replaceChannelDelivery(params: {
   const socialFeedImageUrls = resolvedImageSet.socialFeedPublishableUrls.length ? resolvedImageSet.socialFeedPublishableUrls : images;
   const instagramImageUrls = resolvedImageSet.instagramPublishableUrls.length ? resolvedImageSet.instagramPublishableUrls : images;
   const siteCardImageUrls = resolvedImageSet.siteCardPublishableUrls.length ? resolvedImageSet.siteCardPublishableUrls : socialFeedImageUrls;
-  const gmbImageUrls = resolvedImageSet.gmbPublishableUrls.length ? resolvedImageSet.gmbPublishableUrls : socialFeedImageUrls;
+  const gmbImageUrls = (resolvedImageSet.gmbPublishableUrls.length ? resolvedImageSet.gmbPublishableUrls : socialFeedImageUrls)
+    .filter(Boolean)
+    .slice(0, 1);
 
   const [profileRes, inrcyCfgRes, proCfgRes] = await Promise.all([
     supabaseAdmin.from("profiles").select("phone").eq("user_id", userId).maybeSingle(),
@@ -1402,31 +1430,71 @@ async function replaceChannelDelivery(params: {
       if (previousExternalId) await deleteGmbPost(previousExternalId, token.accessToken);
       let gmbWarning: { code: string; message: string } | null = null;
       let resp: unknown;
+      const gmbSummary = buildBoosterGmbSummary(nextPost);
+      const gmbCallToAction = getBoosterGmbCallToAction(nextPost, { websiteUrl, phone });
+      const gmbVideoUrls = isVideoPublication && videoUrl ? [videoUrl] : [];
+      const hasMedia = Boolean(gmbImageUrls.length || gmbVideoUrls.length);
+
+      const publishGmb = (options?: { withoutMedia?: boolean; withoutCta?: boolean }) =>
+        gmbCreateLocalPost({
+          accessToken: token.accessToken,
+          accountName,
+          locationName,
+          summary: gmbSummary,
+          imageUrls: !options?.withoutMedia && !isVideoPublication && gmbImageUrls.length ? gmbImageUrls : undefined,
+          videoUrls: !options?.withoutMedia && isVideoPublication && gmbVideoUrls.length ? gmbVideoUrls : undefined,
+          languageCode: "fr-FR",
+          callToAction: !options?.withoutCta && gmbCallToAction ? gmbCallToAction : undefined,
+        });
+
       try {
-        resp = await gmbCreateLocalPost({
-          accessToken: token.accessToken,
-          accountName,
-          locationName,
-          summary: buildBoosterGmbSummary(nextPost),
-          imageUrls: isVideoPublication ? undefined : gmbImageUrls,
-          videoUrls: isVideoPublication && videoUrl ? [videoUrl] : undefined,
-          languageCode: "fr-FR",
-          callToAction: getBoosterGmbCallToAction(nextPost, { websiteUrl, phone }) || undefined,
-        });
-      } catch (mediaError) {
-        if (!isVideoPublication) throw mediaError;
-        resp = await gmbCreateLocalPost({
-          accessToken: token.accessToken,
-          accountName,
-          locationName,
-          summary: buildBoosterGmbSummary(nextPost),
-          languageCode: "fr-FR",
-          callToAction: getBoosterGmbCallToAction(nextPost, { websiteUrl, phone }) || undefined,
-        });
-        gmbWarning = {
-          code: "published_without_video",
-          message: "Google Business a publié le texte, mais la vidéo n'a pas pu être jointe cette fois-ci.",
-        };
+        resp = await publishGmb();
+      } catch (gmbFirstError: unknown) {
+        const retryWarnings: Array<{ code: string; message: string; publish: () => Promise<unknown> }> = [];
+
+        if (hasMedia) {
+          retryWarnings.push({
+            code: isVideoPublication ? "published_without_video" : (isGoogleBusinessImageError(gmbFirstError) ? "published_without_image" : "published_after_retry_without_image"),
+            message: isVideoPublication
+              ? "Google Business a publié le texte, mais la vidéo n'a pas pu être jointe cette fois-ci."
+              : isGoogleBusinessImageError(gmbFirstError)
+                ? "Google Business a publié le texte, mais n'a pas pu récupérer l'image."
+                : "Google Business a publié le texte après une reprise automatique. L'image n'a pas pu être jointe cette fois-ci.",
+            publish: () => publishGmb({ withoutMedia: true }),
+          });
+        }
+
+        if (gmbCallToAction) {
+          retryWarnings.push({
+            code: "published_without_cta",
+            message: "Google Business a publié le texte sans bouton CTA.",
+            publish: () => publishGmb({ withoutCta: true }),
+          });
+        }
+
+        if (hasMedia && gmbCallToAction) {
+          retryWarnings.push({
+            code: "published_without_media_and_cta",
+            message: isVideoPublication
+              ? "Google Business a publié le texte, sans vidéo ni bouton CTA."
+              : "Google Business a publié le texte, sans image ni bouton CTA.",
+            publish: () => publishGmb({ withoutMedia: true, withoutCta: true }),
+          });
+        }
+
+        let lastRetryError: unknown = gmbFirstError;
+        for (const retry of retryWarnings) {
+          try {
+            resp = await retry.publish();
+            gmbWarning = { code: retry.code, message: retry.message };
+            lastRetryError = null;
+            break;
+          } catch (retryError: unknown) {
+            lastRetryError = retryError;
+          }
+        }
+
+        if (lastRetryError) throw lastRetryError;
       }
       return {
         externalId: String(asRecord(resp).name ?? "") || null,
