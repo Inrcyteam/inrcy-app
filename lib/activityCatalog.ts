@@ -23,6 +23,64 @@ export const ACTIVITY_CATALOG: Record<ActivitySectorCategory, SectorCatalog> = {
       veterinaire: { label: 'Vétérinaire', services: ['Consultation', 'Vaccination', 'Bilan santé', 'Urgence', 'Conseils prévention', 'Chirurgie', 'Suivi animal', 'Informations cabinet'] },
     },
   },
+  agriculture_producteurs: {
+    label: 'Agriculture / Producteurs locaux',
+    jobs: {
+      ferme_producteur_local: { label: 'Ferme / producteur local', services: ['Vente directe', 'Produits de saison', 'Panier local', 'Visite ferme', 'Marchés locaux', 'Commande groupée', 'Retrait ferme', 'Offre découverte'] },
+      maraicher: { label: 'Maraîcher', services: ['Légumes de saison', 'Paniers légumes', 'Vente à la ferme', 'Marché local', 'Commande semaine', 'Production locale', 'Conseils conservation', 'Offre saisonnière'] },
+      apiculteur: { label: 'Apiculteur', services: ['Miel local', 'Produits de la ruche', 'Vente directe', 'Coffret cadeau', 'Marchés locaux', 'Visite découverte', 'Commande entreprise', 'Offre saisonnière'] },
+      pepinieriste: { label: 'Pépiniériste', services: ['Plants', 'Arbres / arbustes', 'Conseil plantation', 'Aménagement jardin', 'Commande saisonnière', 'Vente locale', 'Livraison végétaux', 'Devis plantation'] },
+      viticulteur_domaine: { label: 'Viticulteur / domaine', services: ['Dégustation', 'Vente directe', 'Visite domaine', 'Commande vin', 'Coffret cadeau', 'Événement domaine', 'Offre entreprise', 'Expédition'] },
+    },
+  },
+  architecture_design: {
+    label: 'Architecture / Design intérieur',
+    jobs: {
+      architecte: { label: 'Architecte', services: ['Conception projet', 'Permis de construire', 'Plans', 'Suivi chantier', 'Extension', 'Rénovation', 'Maison neuve', 'Étude faisabilité'] },
+      architecte_interieur: { label: 'Architecte d’intérieur', services: ['Aménagement intérieur', 'Plans 3D', 'Optimisation espaces', 'Rénovation intérieure', 'Choix matériaux', 'Suivi travaux', 'Conseil déco', 'Projet sur mesure'] },
+      decorateur_interieur: { label: 'Décorateur d’intérieur', services: ['Conseil déco', 'Planche ambiance', 'Shopping list', 'Home staging', 'Choix couleurs', 'Mobilier', 'Visite conseil', 'Projet pièce par pièce'] },
+      maitre_oeuvre: { label: 'Maître d’œuvre', services: ['Coordination travaux', 'Suivi chantier', 'Planning artisans', 'Budget travaux', 'Rénovation', 'Extension', 'Réception chantier', 'Devis projet'] },
+      bureau_etudes_batiment: { label: 'Bureau d’études bâtiment', services: ['Étude structure', 'Étude thermique', 'Plans techniques', 'Note de calcul', 'Diagnostic bâtiment', 'Accompagnement chantier', 'Conseil technique', 'Dossier projet'] },
+    },
+  },
+  bois_foret: {
+    label: 'Bois & Forêt',
+    jobs: {
+      bois_chauffage: { label: 'Bois de chauffage', services: ['Stères bois', 'Bûches sèches', 'Livraison bois', 'Bois compressé', 'Granulés', 'Commande hiver', 'Conseil stockage', 'Devis livraison'] },
+      exploitant_forestier: { label: 'Exploitant forestier', services: ['Achat bois sur pied', 'Exploitation parcelle', 'Coupe forestière', 'Débardage', 'Gestion forestière', 'Estimation bois', 'Travaux mécanisés', 'Devis exploitation'] },
+      travaux_forestiers: { label: 'Travaux forestiers', services: ['Abattage forestier', 'Débroussaillage', 'Débardage', 'Broyage', 'Entretien parcelle', 'Ouverture chemin', 'Nettoyage coupe', 'Devis travaux'] },
+      scierie: { label: 'Scierie', services: ['Sciage bois', 'Bois de construction', 'Débit sur mesure', 'Bois d’aménagement', 'Séchage bois', 'Conseil essence', 'Commande professionnelle', 'Devis bois'] },
+      negoce_bois: { label: 'Négoce de bois', services: ['Vente bois', 'Bois construction', 'Bois extérieur', 'Panneaux bois', 'Commande pro', 'Livraison', 'Conseil essence', 'Devis négoce'] },
+    },
+  },
+  energie_habitat: {
+    label: 'Énergie / Équipements habitat',
+    jobs: {
+      installateur_panneaux_solaires: { label: 'Installateur panneaux solaires', services: ['Étude solaire', 'Installation panneaux', 'Autoconsommation', 'Batterie', 'Raccordement', 'Suivi production', 'Entretien', 'Devis solaire'] },
+      pompe_chaleur: { label: 'Pompe à chaleur', services: ['Installation PAC', 'Remplacement chauffage', 'Entretien PAC', 'Dépannage', 'Étude économies', 'Air/eau', 'Air/air', 'Devis chauffage'] },
+      domotique: { label: 'Domotique', services: ['Maison connectée', 'Automatisation', 'Éclairage connecté', 'Volets connectés', 'Sécurité connectée', 'Pilotage chauffage', 'Installation box', 'Devis domotique'] },
+      poele_cheminee: { label: 'Poêle / cheminée', services: ['Pose poêle', 'Insert cheminée', 'Conduit fumée', 'Conseil chauffage bois', 'Entretien', 'Remplacement appareil', 'Sécurité installation', 'Devis pose'] },
+      bornes_recharge: { label: 'Bornes de recharge', services: ['Installation borne', 'Recharge véhicule électrique', 'Étude puissance', 'Copropriété', 'Entreprise', 'Maintenance borne', 'Aide démarches', 'Devis IRVE'] },
+    },
+  },
+  funeraire: {
+    label: 'Funéraire',
+    jobs: {
+      pompes_funebres: { label: 'Pompes funèbres', services: ['Organisation obsèques', 'Contrat obsèques', 'Transport défunt', 'Cérémonie', 'Démarches administratives', 'Articles funéraires', 'Accompagnement famille', 'Devis obsèques'] },
+      marbrerie_funeraire: { label: 'Marbrerie funéraire', services: ['Monument funéraire', 'Gravure', 'Entretien sépulture', 'Rénovation monument', 'Plaque funéraire', 'Pose caveau', 'Devis marbrerie', 'Conseil famille'] },
+      fleurissement_sepulture: { label: 'Fleurissement sépulture', services: ['Fleurissement tombe', 'Entretien régulier', 'Composition florale', 'Toussaint', 'Nettoyage sépulture', 'Abonnement entretien', 'Photo suivi', 'Commande à distance'] },
+    },
+  },
+  metiers_art: {
+    label: 'Métiers d’art / Artisanat spécialisé',
+    jobs: {
+      ebeniste: { label: 'Ébéniste', services: ['Meuble sur mesure', 'Restauration meuble', 'Agencement bois', 'Vernis / finition', 'Conseil essence', 'Création unique', 'Réparation bois', 'Devis atelier'] },
+      ferronnier_art: { label: 'Ferronnier d’art', services: ['Portail fer forgé', 'Garde-corps', 'Escalier métal', 'Création sur mesure', 'Restauration', 'Mobilier métal', 'Décoration fer', 'Devis ferronnerie'] },
+      ceramiste: { label: 'Céramiste', services: ['Pièce artisanale', 'Atelier découverte', 'Commande personnalisée', 'Vaisselle', 'Décoration', 'Cadeau artisanal', 'Petite série', 'Vente atelier'] },
+      couturier_retouches: { label: 'Couturier / retouches', services: ['Retouches vêtements', 'Ourlet', 'Ajustement', 'Réparation textile', 'Création sur mesure', 'Robe / costume', 'Conseil essayage', 'Devis couture'] },
+      tapissier_decorateur: { label: 'Tapissier décorateur', services: ['Réfection fauteuil', 'Tissus ameublement', 'Rideaux sur mesure', 'Coussins', 'Conseil déco', 'Restauration siège', 'Garnissage', 'Devis tapisserie'] },
+    },
+  },
   assurance: {
     label: 'Assurance',
     jobs: {
@@ -214,7 +272,6 @@ export const ACTIVITY_CATALOG: Record<ActivitySectorCategory, SectorCatalog> = {
       mecanique_industrielle: { label: 'Mécanique industrielle', services: ['Mécanique de précision', 'Réparation mécanique', 'Assemblage mécanique', 'Contrôle dimensionnel', 'Pièces techniques', 'Maintenance mécanique', 'Montage', 'Devis mécanique'] },
       metallurgie: { label: 'Métallurgie', services: ['Transformation métal', 'Découpe', 'Pliage', 'Assemblage', 'Traitement métal', 'Fabrication sur plan', 'Contrôle qualité', 'Devis métallurgie'] },
       plasturgie: { label: 'Plasturgie', services: ['Fabrication plastique', 'Injection plastique', 'Pièces techniques', 'Prototype', 'Assemblage plastique', 'Contrôle qualité', 'Petite série', 'Devis plasturgie'] },
-      scierie: { label: 'Scierie', services: ['Sciage bois', 'Bois de construction', 'Débit sur mesure', 'Bois d’aménagement', 'Séchage bois', 'Conseil essence', 'Commande professionnelle', 'Devis bois'] },
       soudure_industrielle: { label: 'Soudure industrielle', services: ['Soudure TIG', 'Soudure MIG/MAG', 'Réparation soudure', 'Assemblage métal', 'Intervention sur site', 'Contrôle soudure', 'Fabrication pièce', 'Devis soudure'] },
       traitement_surface: { label: 'Traitement de surface', services: ['Traitement anticorrosion', 'Sablage', 'Peinture industrielle', 'Métallisation', 'Préparation surface', 'Protection pièces', 'Contrôle finition', 'Devis traitement'] },
       usinage: { label: 'Usinage', services: ['Usinage CNC', 'Fraisage', 'Tournage', 'Pièce sur plan', 'Petite série', 'Prototype', 'Contrôle précision', 'Devis usinage'] },

@@ -1,6 +1,12 @@
 import { ACTIVITY_SECTOR_OPTIONS } from '@/lib/activitySectors';
 import type { TemplateDef } from '@/lib/messageTemplates';
 import { createSectorTemplates, type SectorTemplateDefinition } from './shared';
+import { agriculture_producteursTemplates, buildAgricultureProducteursJobTemplates } from './agriculture_producteurs';
+import { architecture_designTemplates, buildArchitectureDesignJobTemplates } from './architecture_design';
+import { bois_foretTemplates, buildBoisForetJobTemplates } from './bois_foret';
+import { energie_habitatTemplates, buildEnergieHabitatJobTemplates } from './energie_habitat';
+import { funeraireTemplates, buildFuneraireJobTemplates } from './funeraire';
+import { metiers_artTemplates, buildMetiersArtJobTemplates } from './metiers_art';
 import { assuranceTemplates, buildAssuranceJobTemplates } from './assurance';
 import { artisan_btpTemplates, buildArtisanBtpJobTemplates } from './artisan_btp';
 import { automobileTemplates, buildAutomobileJobTemplates } from './automobile';
@@ -28,6 +34,12 @@ import { hygiene_habitatTemplates, buildHygieneHabitatJobTemplates } from './hyg
 import { autreTemplates, buildAutreJobTemplates } from './autre';
 
 export const SECTOR_TEMPLATE_DEFINITIONS: Record<string, SectorTemplateDefinition> = {
+  agriculture_producteurs: agriculture_producteursTemplates,
+  architecture_design: architecture_designTemplates,
+  bois_foret: bois_foretTemplates,
+  energie_habitat: energie_habitatTemplates,
+  funeraire: funeraireTemplates,
+  metiers_art: metiers_artTemplates,
   assurance: assuranceTemplates,
   artisan_btp: artisan_btpTemplates,
   automobile: automobileTemplates,
@@ -61,6 +73,24 @@ export function buildSectorTemplates(): TemplateDef[] {
     const definition = SECTOR_TEMPLATE_DEFINITIONS[option.value];
     if (definition) out.push(...createSectorTemplates(definition));
     switch (option.value) {
+      case 'agriculture_producteurs':
+        out.push(...buildAgricultureProducteursJobTemplates());
+        break;
+      case 'architecture_design':
+        out.push(...buildArchitectureDesignJobTemplates());
+        break;
+      case 'bois_foret':
+        out.push(...buildBoisForetJobTemplates());
+        break;
+      case 'energie_habitat':
+        out.push(...buildEnergieHabitatJobTemplates());
+        break;
+      case 'funeraire':
+        out.push(...buildFuneraireJobTemplates());
+        break;
+      case 'metiers_art':
+        out.push(...buildMetiersArtJobTemplates());
+        break;
       case 'assurance':
         out.push(...buildAssuranceJobTemplates());
         break;

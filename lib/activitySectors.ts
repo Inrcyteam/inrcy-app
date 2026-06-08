@@ -1,5 +1,11 @@
 export const ACTIVITY_SECTOR_OPTIONS = [
   { value: 'animalier', label: 'Animalier' },
+  { value: 'agriculture_producteurs', label: 'Agriculture / Producteurs locaux' },
+  { value: 'architecture_design', label: 'Architecture / Design intérieur' },
+  { value: 'bois_foret', label: 'Bois & Forêt' },
+  { value: 'energie_habitat', label: 'Énergie / Équipements habitat' },
+  { value: 'funeraire', label: 'Funéraire' },
+  { value: 'metiers_art', label: 'Métiers d’art / Artisanat spécialisé' },
   { value: 'assurance', label: 'Assurance' },
   { value: 'automobile', label: 'Automobile' },
   { value: 'beaute_bien_etre', label: 'Beauté / Bien-être' },
@@ -48,8 +54,14 @@ export function inferSectorCategoryFromProfession(input?: string | null): Activi
   const value = String(input || '').toLowerCase();
   if (!value) return DEFAULT_ACTIVITY_SECTOR;
 
+  if (/(bois de chauffage|bûche|buche|stère|stere|granulé|granule|exploitant forestier|exploitation forestière|exploitation forestiere|travaux forestiers|débardage|debardage|scierie|négoce de bois|negoce de bois|bois sur pied|coupe forestière|coupe forestiere)/.test(value)) return 'bois_foret';
+  if (/(architecte d’intérieur|architecte d'interieur|architecte interieur|architecte|décorateur d’intérieur|decorateur d'interieur|decorateur interieur|déco intérieur|deco interieur|maître d’œuvre|maitre d'oeuvre|maitre oeuvre|bureau d’études bâtiment|bureau d'etudes batiment|bureau etudes batiment|design intérieur|design interieur)/.test(value)) return 'architecture_design';
+  if (/(agricult|producteur local|ferme|vente directe|maraîcher|maraicher|apiculteur|miel|pépiniériste|pepinieriste|viticulteur|domaine viticole|vigneron|produits locaux|panier local)/.test(value)) return 'agriculture_producteurs';
+  if (/(panneaux solaires|solaire|photovoltaïque|photovoltaique|pompe à chaleur|pompe a chaleur|\bpac\b|domotique|maison connectée|maison connectee|poêle|poele|cheminée|cheminee|insert|borne de recharge|bornes de recharge|irve|véhicule électrique|vehicule electrique)/.test(value)) return 'energie_habitat';
+  if (/(pompes funèbres|pompes funebres|funéraire|funeraire|obsèques|obseques|marbrerie funéraire|marbrerie funeraire|sépulture|sepulture|fleurissement sépulture|fleurissement sepulture|contrat obsèques|contrat obseques)/.test(value)) return 'funeraire';
+  if (/(ébéniste|ebeniste|ferronnier d’art|ferronnier d'art|ferronnerie d’art|ferronnerie d'art|céramiste|ceramiste|couturier|couture|retouches|tapissier décorateur|tapissier decorateur|artisanat d’art|artisanat d'art|métiers d’art|metiers d'art)/.test(value)) return 'metiers_art';
   if (/(paysag|piscin|jardin|élag|elag|clôture|cloture|portail|arrosage|espace vert|espaces verts|terrassement paysager)/.test(value)) return 'exterieur_jardin';
-  if (/(métallurgie|metallurgie|scierie|usinage|chaudronnerie|plasturgie|fabrication industrielle|maintenance industrielle|mécanique industrielle|mecanique industrielle|soudure industrielle|traitement de surface|industrie|industriel)/.test(value)) return 'industrie';
+  if (/(métallurgie|metallurgie|usinage|chaudronnerie|plasturgie|fabrication industrielle|maintenance industrielle|mécanique industrielle|mecanique industrielle|soudure industrielle|traitement de surface|industrie|industriel)/.test(value)) return 'industrie';
   if (/(plomb|chauffag|électric|electric|maçon|macon|couvreur|menuis|carrel|peintre|charpent|construction|clim|serrur|bât|bat|travaux|renov|rénov|terrassement|façade|facade|isolation|plaquiste|placo|cuisiniste|cuisine sur mesure|agenceur|agencement|poseur de sols|poseur sols|parquet|étancheur|etancheur|étanchéité|etancheite)/.test(value)) return 'artisan_btp';
   if (/(assur|mutuelle|prévoyance|prevoyance|courtier en assurance|courtier assurance|agent général d’assurance|agent general d'assurance|agent general assurance|cabinet d’assurance|cabinet d'assurance|sinistre|responsabilité civile pro|responsabilite civile pro|rc pro)/.test(value)) return 'assurance';
   if (/(crèche|creche|micro-crèche|micro creche|soutien scolaire|cours particuliers|aide aux devoirs|école privée|ecole privee|coach scolaire|centre de loisirs|accueil de loisirs|périscolaire|periscolaire|projet pédagogique|projet pedagogique)/.test(value)) return 'education_enfance';
