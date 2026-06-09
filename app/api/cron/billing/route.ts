@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { optionalEnv } from "@/lib/env";
 import { sendTxMail } from "@/lib/txMailer";
-import { buildAnnualRenewalReminderEmail, buildTrialReminderEmail } from "@/lib/txTemplates";
+import { buildAnnualRenewalReminderEmail, buildTrialReminderEmail, buildTrialScheduledSubscriptionReminderEmail } from "@/lib/txTemplates";
 import { getAppUrl, stripeGet } from "@/lib/stripeRest";
 import { deleteUserAccountEverywhere } from "@/lib/deleteUserAccount";
 import { sendAdminSubscriptionAlertForUser } from "@/lib/subscriptionAdmin";
@@ -213,13 +213,26 @@ export async function GET(req: Request) {
       null;
     if (!to) continue;
 
-    const subject = daysUntilEnd === 1 ? "iNrCy — Votre essai se termine demain" : "iNrCy — Votre essai se termine bientôt";
+    const hasScheduledStripeSubscription = Boolean(s.stripe_subscription_id?.trim());
+    const subject = hasScheduledStripeSubscription
+      ? daysUntilEnd === 1
+        ? "iNrCy — Votre abonnement démarre demain"
+        : "iNrCy — Votre abonnement démarre bientôt"
+      : daysUntilEnd === 1
+        ? "iNrCy — Votre essai se termine demain"
+        : "iNrCy — Votre essai se termine bientôt";
     const ctaUrl = `${getAppUrl(req)}/dashboard?panel=abonnement`;
-    const { html, text } = buildTrialReminderEmail({
-      endDateFr: frDate(end),
-      ctaUrl,
-      daysBeforeEnd: daysUntilEnd,
-    });
+    const { html, text } = hasScheduledStripeSubscription
+      ? buildTrialScheduledSubscriptionReminderEmail({
+          endDateFr: frDate(end),
+          ctaUrl,
+          daysBeforeEnd: daysUntilEnd,
+        })
+      : buildTrialReminderEmail({
+          endDateFr: frDate(end),
+          ctaUrl,
+          daysBeforeEnd: daysUntilEnd,
+        });
 
     await sendTxMail({ to, subject, text, html, attachments: await getInrcyBrandInlineAttachments() });
     await supabaseAdmin

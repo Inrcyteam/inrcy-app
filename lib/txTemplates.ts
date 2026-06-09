@@ -8,6 +8,12 @@ type TrialReminderInput = {
   daysBeforeEnd: number;
 };
 
+type TrialScheduledSubscriptionReminderInput = {
+  endDateFr: string;
+  ctaUrl: string;
+  daysBeforeEnd: number;
+};
+
 type AnnualRenewalReminderInput = {
   renewalDateFr: string;
   ctaUrl: string;
@@ -136,6 +142,46 @@ export function buildTrialReminderEmail(input: TrialReminderInput) {
   const text = daysBeforeEnd <= 1
     ? `Bonjour,\n\nVotre essai iNrCy se termine demain (${endDateFr}).\n\nPour continuer sans coupure, connectez-vous et cliquez sur “S’abonner” aujourd’hui.\n\n${ctaUrl}\n\nÀ très vite !`
     : `Bonjour,\n\nVotre essai iNrCy se termine le ${endDateFr} (J-${daysBeforeEnd}).\n\nPour continuer après l’essai, connectez-vous et cliquez sur “S’abonner”.\n\n${ctaUrl}\n\nÀ très vite !`;
+
+  return { html, text };
+}
+
+export function buildTrialScheduledSubscriptionReminderEmail(input: TrialScheduledSubscriptionReminderInput) {
+  const { endDateFr, ctaUrl, daysBeforeEnd } = input;
+
+  const safeEndDateFr = escapeHtml(endDateFr);
+  const safeCtaUrl = escapeHtml(ctaUrl);
+  const title = daysBeforeEnd <= 1 ? "Votre abonnement démarre demain" : "Votre abonnement démarre bientôt";
+  const subtitle = "Votre abonnement iNrCy est déjà programmé : vous n’avez aucune action à faire.";
+  const body1 = daysBeforeEnd <= 1
+    ? `Votre essai iNrCy se termine <strong>demain</strong> (${safeEndDateFr}).`
+    : `Votre essai iNrCy se termine le <strong>${safeEndDateFr}</strong> (J-${daysBeforeEnd}).`;
+  const body2 = "Votre abonnement est déjà enregistré et démarrera automatiquement à la fin de l’essai.";
+  const body3 = "Vous n’avez pas besoin de cliquer sur “S’abonner” : tout est déjà prêt pour continuer sans coupure.";
+
+  const html = buildShell({
+    title,
+    subtitle,
+    children: `
+      <tr>
+        <td style="padding:0 24px 0 24px;font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
+          <p style="margin:14px 0 0 0;font-size:14px;line-height:1.65;color:#0f172a;">Bonjour,</p>
+          <p style="margin:12px 0 0 0;font-size:14px;line-height:1.65;color:#0f172a;">${body1}</p>
+          <p style="margin:12px 0 0 0;font-size:14px;line-height:1.65;color:#0f172a;">${body2}</p>
+          <p style="margin:12px 0 0 0;font-size:14px;line-height:1.65;color:#0f172a;">${body3}</p>
+          ${buildEmailButton(ctaUrl, "Voir mon abonnement")}
+          <p style="margin:0;font-size:12px;color:#64748b;line-height:1.6;">
+            Si le bouton ne fonctionne pas, copiez/collez ce lien dans votre navigateur :
+            <br />
+            <a href="${safeCtaUrl}" style="color:#0ea5e9;text-decoration:underline;word-break:break-all;">${safeCtaUrl}</a>
+          </p>
+        </td>
+      </tr>`,
+  });
+
+  const text = daysBeforeEnd <= 1
+    ? `Bonjour,\n\nVotre essai iNrCy se termine demain (${endDateFr}).\n\nVotre abonnement est déjà enregistré et démarrera automatiquement à la fin de l’essai.\n\nVous n’avez pas besoin de cliquer sur “S’abonner” : tout est déjà prêt pour continuer sans coupure.\n\n${ctaUrl}\n\nÀ très vite !`
+    : `Bonjour,\n\nVotre essai iNrCy se termine le ${endDateFr} (J-${daysBeforeEnd}).\n\nVotre abonnement est déjà enregistré et démarrera automatiquement à la fin de l’essai.\n\nVous n’avez pas besoin de cliquer sur “S’abonner” : tout est déjà prêt pour continuer sans coupure.\n\n${ctaUrl}\n\nÀ très vite !`;
 
   return { html, text };
 }
