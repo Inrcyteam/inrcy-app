@@ -131,6 +131,9 @@ export default function AdminOrdersClient() {
           </div>
 
           <div className={styles.headerActions}>
+            <Link className={styles.back} href="/dashboard/admin/image-bank">
+              Banque d’images
+            </Link>
             <Link className={styles.back} href="/dashboard">
               Retour
             </Link>
