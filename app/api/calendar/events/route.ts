@@ -681,6 +681,7 @@ async function sendAgendaConfirmationEmails(args: {
             text: mail.text,
             html: mail.html,
             includeAutoSignature: false,
+            preserveHtml: true,
           });
           sent = true;
         } catch (integrationError) {

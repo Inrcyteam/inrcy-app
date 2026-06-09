@@ -297,6 +297,7 @@ async function sendAppointmentRejectionEmail(args: { userId: string; row: Appoin
         text: mail.text,
         html: mail.html,
         includeAutoSignature: false,
+        preserveHtml: true,
       });
       sent = true;
     } catch (integrationError) {

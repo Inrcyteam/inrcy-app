@@ -354,6 +354,9 @@ export async function sendMailFromIntegration(params: {
   text?: string;
   html?: string;
   includeAutoSignature?: boolean;
+  // À réserver aux templates transactionnels internes déjà échappés (ex: iNrCalendar).
+  // Les mails rédigés par l’utilisateur restent nettoyés par sanitizeRichMailHtml.
+  preserveHtml?: boolean;
   unsubscribeUrl?: string;
   attachments?: SendMailBinaryAttachment[];
 }) {
@@ -383,7 +386,9 @@ export async function sendMailFromIntegration(params: {
 
   const includeAutoSignature = params.includeAutoSignature !== false;
   const baseText = includeAutoSignature ? stripTemplateSignatureBlock(params.text || "") : params.text || "";
-  const baseHtml = sanitizeRichMailHtml(params.html || "") || textToSimpleHtml(baseText);
+  const rawHtml = params.html || "";
+  const cleanedHtml = params.preserveHtml ? rawHtml : sanitizeRichMailHtml(rawHtml);
+  const baseHtml = cleanedHtml.trim() ? cleanedHtml : textToSimpleHtml(baseText);
   const attachments = Array.isArray(params.attachments) ? params.attachments : [];
 
   let finalText = baseText;

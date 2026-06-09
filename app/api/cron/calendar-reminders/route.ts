@@ -744,6 +744,7 @@ export async function GET(req: Request) {
                 text: mail.text,
                 html: mail.html,
                 includeAutoSignature: false,
+                preserveHtml: true,
                 attachments: reminderInlineAttachments,
               });
               sent = true;
