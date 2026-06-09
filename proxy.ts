@@ -490,6 +490,22 @@ function pickLimit(pathname: string, method: string): LimitPlan {
     };
   }
 
+  if (pathname.startsWith("/api/network/supabase-proxy")) {
+    return isWrite
+      ? {
+          tokens: Number(process.env.RL_NETWORK_COMPAT_WRITE_PER_MIN || 240),
+          windowSeconds: 60,
+          name: "network-compat-write",
+          failClosed: false,
+        }
+      : {
+          tokens: Number(process.env.RL_NETWORK_COMPAT_READ_PER_MIN || 900),
+          windowSeconds: 60,
+          name: "network-compat-read",
+          failClosed: false,
+        };
+  }
+
   // Public-ish widget token issuance should be tight per IP.
   if (pathname === "/api/widgets/issue-token") {
     return {

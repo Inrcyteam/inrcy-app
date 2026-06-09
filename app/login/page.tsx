@@ -22,6 +22,111 @@ type WanderDot = {
 
 type CSSVars = React.CSSProperties & Record<`--${string}`, string>;
 
+type LoginDiagnosticReason = "network" | "technical";
+
+type LoginErrorInfo = {
+  message: string;
+  diagnosticReason: LoginDiagnosticReason | null;
+};
+
+function normalizeLoginError(input: unknown): string {
+  if (typeof input === "string") return input.trim();
+  if (input instanceof Error) return String(input.message || "").trim();
+  if (input && typeof input === "object") {
+    const maybe = input as { message?: unknown; error?: unknown; statusText?: unknown; name?: unknown; status?: unknown };
+    const parts = [maybe.message, maybe.error, maybe.statusText, maybe.name, maybe.status]
+      .filter((value) => value !== null && value !== undefined)
+      .map(String)
+      .join(" ");
+    return parts.trim();
+  }
+  return "";
+}
+
+function loginErrorMatches(message: string, needles: string[]) {
+  return needles.some((needle) => message.includes(needle));
+}
+
+function buildLoginErrorInfo(
+  input: unknown,
+  fallback = "La connexion a échoué. Veuillez réessayer."
+): LoginErrorInfo {
+  const raw = normalizeLoginError(input);
+  const message = raw.toLowerCase();
+
+  if (loginErrorMatches(message, ["email not confirmed"])) {
+    return {
+      message: "Adresse e-mail non confirmée. Vérifiez votre boîte mail ou demandez un nouveau lien.",
+      diagnosticReason: null,
+    };
+  }
+
+  if (loginErrorMatches(message, ["invalid login credentials", "invalid credentials"])) {
+    return {
+      message: "Adresse e-mail ou mot de passe incorrect.",
+      diagnosticReason: null,
+    };
+  }
+
+  if (loginErrorMatches(message, ["otp_expired", "email link is invalid", "expired link", "over_email_send_rate_limit", "email rate limit exceeded"])) {
+    return {
+      message: "Le lien n'est plus valide ou l'envoi est temporairement limité. Merci de réessayer dans quelques minutes.",
+      diagnosticReason: null,
+    };
+  }
+
+  if (
+    loginErrorMatches(message, [
+      "failed to fetch",
+      "networkerror",
+      "network request failed",
+      "load failed",
+      "fetch failed",
+      "econnreset",
+      "econnrefused",
+      "enotfound",
+      "socket hang up",
+      "timeout",
+      "timed out",
+      "aborterror",
+    ])
+  ) {
+    return {
+      message:
+        "Impossible de contacter le serveur iNrCy. Votre réseau ou votre navigateur bloque peut-être l'accès.",
+      diagnosticReason: "network",
+    };
+  }
+
+  const status = typeof input === "object" && input ? Number((input as { status?: unknown }).status) : NaN;
+  if (
+    (Number.isFinite(status) && status >= 500) ||
+    loginErrorMatches(message, [
+      "auth_client_unavailable",
+      "500",
+      "502",
+      "503",
+      "504",
+      "server error",
+      "internal server error",
+      "service unavailable",
+    ])
+  ) {
+    return {
+      message: "Une erreur technique empêche la connexion. Merci de réessayer dans quelques minutes.",
+      diagnosticReason: "technical",
+    };
+  }
+
+  const friendly = getSimpleFrenchErrorMessage(input, fallback);
+  const shouldDiagnoseUnknown = !raw || friendly === fallback || friendly.includes("momentanément indisponible");
+
+  return {
+    message: friendly,
+    diagnosticReason: shouldDiagnoseUnknown ? "technical" : null,
+  };
+}
+
 function rand(min: number, max: number) {
   return Math.random() * (max - min) + min;
 }
@@ -41,6 +146,7 @@ export default function LoginPage() {
   const [checkingSession, setCheckingSession] = useState(true);
   const [redirectingToDashboard, setRedirectingToDashboard] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [diagnosticReason, setDiagnosticReason] = useState<LoginDiagnosticReason | null>(null);
 
   // ✅ ajout : message info (succès reset password)
   const [info, setInfo] = useState<string | null>(null);
@@ -244,22 +350,50 @@ useEffect(() => {
     setDots(newDots);
   }, []);
 
-  // ✅ ajout : reset password
-  async function onForgotPassword() {
-  setError(null);
-  setInfo(null);
+  const diagnosticUrl = useMemo(() => {
+    if (!diagnosticReason) return "/diagnostic?from=login";
+    const params = new URLSearchParams({
+      from: "login",
+      reason: diagnosticReason,
+    });
+    return `/diagnostic?${params.toString()}`;
+  }, [diagnosticReason]);
 
-  if (!email) {
-    setError("Veuillez d’abord saisir votre adresse email.");
-    return;
+  function clearMessages() {
+    setError(null);
+    setInfo(null);
+    setDiagnosticReason(null);
   }
 
-  setLoading(true);
+  function showPlainError(message: string) {
+    setError(message);
+    setDiagnosticReason(null);
+  }
+
+  function showLoginError(input: unknown, fallback?: string) {
+    const next = buildLoginErrorInfo(input, fallback);
+    setError(next.message);
+    setDiagnosticReason(next.diagnosticReason);
+  }
+
+  // ✅ ajout : reset password
+  async function onForgotPassword() {
+    clearMessages();
+
+    if (!email) {
+      showPlainError("Veuillez d’abord saisir votre adresse email.");
+      return;
+    }
+
+    setLoading(true);
 
   try {
     const supabase = supabaseRef.current;
     if (!supabase) {
-      setError("Le service d’authentification est momentanément indisponible. Veuillez recharger la page.");
+      showLoginError(
+        new Error("auth_client_unavailable"),
+        "Le service d’authentification est momentanément indisponible. Veuillez recharger la page."
+      );
       return;
     }
 
@@ -269,13 +403,14 @@ useEffect(() => {
     });
 
     if (error) {
-      setError(getSimpleFrenchErrorMessage(error));
+      showLoginError(error);
       return;
     }
 
+    setDiagnosticReason(null);
     setInfo("Email envoyé. Veuillez vérifier votre boîte mail, y compris vos courriers indésirables.");
   } catch (err: unknown) {
-    setError(getSimpleFrenchErrorMessage(err, "L’email n’a pas pu être envoyé pour le moment."));
+    showLoginError(err, "L’email n’a pas pu être envoyé pour le moment.");
   } finally {
     setLoading(false);
   }
@@ -284,14 +419,16 @@ useEffect(() => {
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    setError(null);
-    setInfo(null); // ✅ ajout : on nettoie le message info quand on tente une connexion
+    clearMessages(); // ✅ ajout : on nettoie les messages quand on tente une connexion
     setLoading(true);
 
     try {
       const supabase = supabaseRef.current;
       if (!supabase) {
-        setError("Le service d’authentification est momentanément indisponible. Veuillez recharger la page.");
+        showLoginError(
+          new Error("auth_client_unavailable"),
+          "Le service d’authentification est momentanément indisponible. Veuillez recharger la page."
+        );
         return;
       }
 
@@ -301,7 +438,7 @@ useEffect(() => {
       });
 
       if (error) {
-        setError(getSimpleFrenchErrorMessage(error));
+        showLoginError(error);
         return;
       }
 
@@ -315,7 +452,10 @@ useEffect(() => {
       }
 
       if (!session) {
-        setError("La connexion a abouti, mais la session n’a pas pu être finalisée. Veuillez réessayer.");
+        setError(
+          "Connexion validée, mais la session n’a pas pu être conservée. Votre navigateur bloque peut-être les cookies ou le stockage."
+        );
+        setDiagnosticReason("technical");
         return;
       }
 
@@ -329,7 +469,7 @@ useEffect(() => {
       // pouvait laisser l'utilisateur sur /login et faire échouer l'attente de /dashboard.
       window.location.replace("/dashboard");
     } catch (err: unknown) {
-      setError(getSimpleFrenchErrorMessage(err, "La connexion a échoué. Veuillez réessayer."));
+      showLoginError(err, "La connexion a échoué. Veuillez réessayer.");
     } finally {
       setLoading(false);
     }
@@ -488,7 +628,21 @@ useEffect(() => {
 
             {error ? (
               <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                {error}
+                <div>{error}</div>
+                {diagnosticReason ? (
+                  <div className="mt-2 rounded-lg border border-red-200/70 bg-white/70 p-2 text-xs text-red-700">
+                    <div className="font-semibold">Un blocage réseau ou navigateur est possible.</div>
+                    <a
+                      className="mt-2 inline-flex items-center justify-center rounded-full bg-slate-900 px-3 py-2 text-xs font-bold text-white no-underline shadow-sm hover:bg-slate-800"
+                      href={diagnosticUrl}
+                    >
+                      Diagnostiquer l’erreur
+                    </a>
+                    <div className="mt-1 text-[11px] leading-snug text-red-600/80">
+                      Le diagnostic n’envoie jamais le mot de passe. Il teste uniquement le réseau, les cookies et les accès techniques.
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
