@@ -1,14 +1,12 @@
 import { NextResponse } from "next/server";
-import { getMyRole } from "@/lib/roles";
+import { requireAdminApi } from "@/lib/adminSecurity";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
 
 export async function GET() {
-  const { isStaff } = await getMyRole();
-  if (!isStaff) {
-    return NextResponse.json({ error: "Accès admin requis." }, { status: 403 });
-  }
+  const admin = await requireAdminApi();
+  if (!admin.ok) return admin.response;
 
   const { data, error } = await supabaseAdmin
     .from("inrcy_image_bank_categories")

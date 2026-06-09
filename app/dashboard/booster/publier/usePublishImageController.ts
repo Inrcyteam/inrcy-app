@@ -656,7 +656,7 @@ export default function usePublishImageController({
     const backgroundColor =
       current.backgroundColor ||
       (channel === "inrcy_site" || channel === "site_web" || channel === "gmb"
-        ? "#e8f6ff"
+        ? "#ffffff"
         : "#ffffff");
     updateChannelTransform(channel, imageKey, {
       fit: "contain",

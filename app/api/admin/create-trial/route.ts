@@ -1,23 +1,28 @@
 import { NextResponse } from "next/server";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { requireEnv } from "@/lib/env";
 import { sendAdminSubscriptionAlertForUser } from "@/lib/subscriptionAdmin";
 import { ensureNotificationPreferences, seedOnboardingNotifications } from "@/lib/notifications";
 import { ensureTrialSubscription } from "@/lib/trialSubscription";
 import { ensureProfileRow } from "@/lib/ensureProfileRow";
+import { requireAdminApi } from "@/lib/adminSecurity";
 
 export const runtime = "nodejs";
 
 /**
  * Admin endpoint to create a trial user + subscription row.
- * Protect with ADMIN_SECRET.
+ * V1: admin connecté obligatoire. ADMIN_SECRET reste accepté uniquement comme secours technique serveur.
  */
 export async function POST(req: Request) {
   try {
-    const secret = requireEnv("ADMIN_SECRET");
+    const secret = process.env.ADMIN_SECRET;
     const got = req.headers.get("x-admin-secret") || "";
-    if (got !== secret) return NextResponse.json({ error: "Accès non autorisé." }, { status: 401 });
+    const hasValidSecret = Boolean(secret && got === secret);
+
+    if (!hasValidSecret) {
+      const admin = await requireAdminApi();
+      if (!admin.ok) return admin.response;
+    }
 
     const body = await req.json().catch(() => ({}));
     const email = String(body?.email || "").trim().toLowerCase();

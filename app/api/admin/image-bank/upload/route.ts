@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import sharp from "sharp";
-import { getMyRole } from "@/lib/roles";
+import { requireAdminApi } from "@/lib/adminSecurity";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
@@ -58,10 +58,8 @@ async function getCategory(categoryId: string): Promise<ImageBankCategory | null
 }
 
 export async function POST(request: NextRequest) {
-  const { isStaff } = await getMyRole();
-  if (!isStaff) {
-    return NextResponse.json({ error: "Accès admin requis." }, { status: 403 });
-  }
+  const admin = await requireAdminApi();
+  if (!admin.ok) return admin.response;
 
   const form = await request.formData();
   const categoryId = cleanText(form.get("category_id"));

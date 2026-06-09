@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import nodemailer from "nodemailer";
+import { requireSecretHeader } from "@/lib/adminSecurity";
 
 export const runtime = "nodejs";
 
@@ -40,15 +41,8 @@ function getDisplayName(record: SupabaseAuthWebhookPayload["record"]) {
 
 export async function POST(req: NextRequest) {
   try {
-    const expectedSecret = process.env.SUPABASE_NEW_USER_WEBHOOK_SECRET;
-    const receivedSecret = req.headers.get("x-inrcy-webhook-secret");
-
-    if (!expectedSecret || receivedSecret !== expectedSecret) {
-      return NextResponse.json(
-        { ok: false, error: "Unauthorized" },
-        { status: 401 }
-      );
-    }
+    const secret = requireSecretHeader(req, "x-inrcy-webhook-secret", process.env.SUPABASE_NEW_USER_WEBHOOK_SECRET);
+    if (!secret.ok) return secret.response;
 
     const payload = (await req.json()) as SupabaseAuthWebhookPayload;
     const record = payload.record;

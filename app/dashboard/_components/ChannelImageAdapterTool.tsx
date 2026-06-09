@@ -151,8 +151,8 @@ function legacyColorFromMode(mode: BackgroundMode, backgroundColor?: string) {
     case "black": return "#0d1320";
     case "gray": return "#d6dae2";
     case "sand": return "#efe4d3";
-    case "brand": return "#e8f6ff";
-    default: return "#e8f6ff";
+    case "brand": return "#ffffff";
+    default: return "#ffffff";
   }
 }
 

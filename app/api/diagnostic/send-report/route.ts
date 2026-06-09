@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { sendTxMail } from "@/lib/txMailer";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -131,6 +132,43 @@ function buildHtml(payload: {
     </div>`;
 }
 
+async function persistDiagnosticReport(payload: {
+  clientName: string;
+  company: string;
+  phone: string;
+  message: string;
+  summary: string;
+  url: string;
+  userAgent: string;
+  source: string;
+  reason: string;
+  automatic: boolean;
+  report: string;
+}) {
+  try {
+    const { error } = await supabaseAdmin.from("inrcy_diagnostic_reports").insert({
+      status: "open",
+      source: payload.source || null,
+      reason: payload.reason || null,
+      automatic: payload.automatic,
+      client_name: payload.clientName || null,
+      company: payload.company || null,
+      phone: payload.phone || null,
+      message: payload.message || null,
+      summary: payload.summary || null,
+      url: payload.url || null,
+      user_agent: payload.userAgent || null,
+      report: payload.report,
+    });
+
+    if (error) {
+      console.warn("[diagnostic/send-report] database persist skipped", error.message);
+    }
+  } catch (error) {
+    console.warn("[diagnostic/send-report] database persist unavailable", error instanceof Error ? error.message : String(error));
+  }
+}
+
 export async function POST(req: NextRequest) {
   let body: DiagnosticReportBody;
 
@@ -157,6 +195,8 @@ export async function POST(req: NextRequest) {
   }
 
   const payload = { clientName, company, phone, message, summary, url, userAgent, source, reason, automatic, report };
+
+  await persistDiagnosticReport(payload);
 
   try {
     await sendTxMail({

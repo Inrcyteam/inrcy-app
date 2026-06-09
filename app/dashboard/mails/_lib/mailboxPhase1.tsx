@@ -478,7 +478,7 @@ export function buildPublicationDefaultTransform(channel: string): PublicationIm
     offsetY: 0,
     blurBackground: preset.defaultBlurBackground,
     backgroundMode: preset.defaultBlurBackground ? "blur" : "black",
-    backgroundColor: "#e8f6ff",
+    backgroundColor: "#ffffff",
   };
 }
 
@@ -501,8 +501,8 @@ export function getPublicationBackgroundFill(mode: PublicationImageBackgroundMod
     case "white": return "#ffffff";
     case "gray": return "#d6dae2";
     case "sand": return "#efe4d3";
-    case "brand": return "#e8f6ff";
-    case "color": return "#e8f6ff";
+    case "brand": return "#ffffff";
+    case "color": return "#ffffff";
     default: return "#0d1320";
   }
 }

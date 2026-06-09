@@ -3,9 +3,9 @@ import AdminOrdersClient from "./AdminOrdersClient";
 import { getMyRole } from "@/lib/roles";
 
 export default async function AdminOrdersPage() {
-  const { isStaff } = await getMyRole();
+  const { isAdmin } = await getMyRole();
 
-  if (!isStaff) {
+  if (!isAdmin) {
     redirect("/dashboard");
   }
 

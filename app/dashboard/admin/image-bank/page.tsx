@@ -3,9 +3,9 @@ import { getMyRole } from "@/lib/roles";
 import ImageBankAdminClient from "./ImageBankAdminClient";
 
 export default async function ImageBankAdminPage() {
-  const { isStaff } = await getMyRole();
+  const { isAdmin } = await getMyRole();
 
-  if (!isStaff) {
+  if (!isAdmin) {
     redirect("/dashboard");
   }
 

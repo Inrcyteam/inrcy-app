@@ -201,7 +201,7 @@ export const DEFAULT_TRANSFORM: ImageTransform = {
   offsetY: 0,
   blurBackground: false,
   backgroundMode: "color",
-  backgroundColor: "#e8f6ff",
+  backgroundColor: "#ffffff",
 };
 
 export const DISPLAY_LABELS: Record<DisplayKey, string> = {
@@ -1307,9 +1307,9 @@ export function getBackgroundFill(
     case "sand":
       return "#efe4d3";
     case "brand":
-      return "#e8f6ff";
+      return "#ffffff";
     case "color":
-      return "#e8f6ff";
+      return "#ffffff";
     default:
       return "#0d1320";
   }
@@ -1849,7 +1849,7 @@ export function getOptimizedTransform(
 
   if (channel === "inrcy_site" || channel === "site_web" || channel === "gmb") {
     return withBackgroundMode(
-      { ...base, fit: "contain", zoom: 1, backgroundColor: "#e8f6ff" },
+      { ...base, fit: "contain", zoom: 1, backgroundColor: "#ffffff" },
       "color",
     );
   }

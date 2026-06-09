@@ -3471,7 +3471,7 @@ export default function PublishModal({
                     (activeImageChannel === "inrcy_site" ||
                     activeImageChannel === "site_web" ||
                     activeImageChannel === "gmb"
-                      ? "#e8f6ff"
+                      ? "#ffffff"
                       : "#ffffff"),
                   blurBackground: false,
                   fit: "contain",

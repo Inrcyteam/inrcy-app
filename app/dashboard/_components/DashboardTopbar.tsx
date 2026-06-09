@@ -52,6 +52,7 @@ type DashboardTopbarProps = {
   onNavigateCta: (ctaUrl: string) => void;
   openPanel: (panel: DashboardPanelName) => void;
   inrAgentEnabled: boolean;
+  isAdmin?: boolean;
   userEmail: string | null;
   userFirstLetter: string;
   profileIncomplete: boolean;
@@ -82,6 +83,7 @@ export default function DashboardTopbar({
   onNavigateCta,
   openPanel,
   inrAgentEnabled,
+  isAdmin = false,
   userEmail,
   userFirstLetter,
   profileIncomplete,
@@ -114,6 +116,19 @@ export default function DashboardTopbar({
       </div>
 
       <div className={styles.topbarActions}>
+        {isAdmin && (
+          <button
+            type="button"
+            className={`${styles.ghostBtn} ${styles.adminTopbarBtn}`}
+            onClick={() => onNavigateCta("/dashboard/admin")}
+            aria-label="Ouvrir l’administration iNrCy"
+            title="Administration iNrCy"
+          >
+            <span className={styles.adminTopbarIcon} aria-hidden="true">⚙️</span>
+            Admin
+          </button>
+        )}
+
         <div
           className={styles.notificationWrap}
           ref={desktopNotificationMenuRef}
@@ -195,6 +210,18 @@ export default function DashboardTopbar({
       </div>
 
       <div className={styles.mobileTopbarActions}>
+        {isAdmin && (
+          <button
+            type="button"
+            className={`${styles.mobileHeaderIconBtn} ${styles.mobileHeaderAdminBtn}`}
+            aria-label="Ouvrir l’administration iNrCy"
+            title="Administration iNrCy"
+            onClick={() => onNavigateCta("/dashboard/admin")}
+          >
+            <span aria-hidden="true">⚙️</span>
+          </button>
+        )}
+
         <div className={styles.mobileBellWrap}>
           <div
             className={styles.notificationWrap}
@@ -434,6 +461,20 @@ export default function DashboardTopbar({
               >
                 Mes données (RGPD)
               </button>
+
+              {isAdmin && (
+                <button
+                  className={styles.mobileMenuItem}
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOpen(false);
+                    onNavigateCta("/dashboard/admin");
+                  }}
+                >
+                  ⚙️ Administration iNrCy
+                </button>
+              )}
 
               <div className={styles.mobileMenuDivider} />
 

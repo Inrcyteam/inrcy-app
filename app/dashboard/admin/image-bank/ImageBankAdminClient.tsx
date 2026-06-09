@@ -27,10 +27,24 @@ type ImageBankRow = {
   height: number | null;
   size_bytes: number | null;
   source: string | null;
+  source_url: string | null;
   license_ref: string | null;
+  is_active: boolean | null;
+  usage_count: number | null;
   created_at: string;
   signed_url: string | null;
 };
+
+type ActiveFilter = "active" | "inactive" | "all";
+
+type EditDraft = {
+  title: string;
+  tags: string;
+  source: string;
+  source_url: string;
+  license_ref: string;
+};
+
 
 function formatBytes(bytes: number | null | undefined) {
   if (!bytes) return "—";
@@ -56,12 +70,27 @@ function groupBySector(categories: ImageBankCategory[]) {
   return Array.from(map.values());
 }
 
+function tagsToText(tags: string[] | null | undefined) {
+  return Array.isArray(tags) ? tags.join(", ") : "";
+}
+
+function cleanEditableTags(value: string) {
+  return value
+    .split(",")
+    .map((tag) => tag.trim().toLowerCase())
+    .filter(Boolean)
+    .slice(0, 20);
+}
+
 export default function ImageBankAdminClient() {
   const [categories, setCategories] = useState<ImageBankCategory[]>([]);
   const [images, setImages] = useState<ImageBankRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [imagesLoading, setImagesLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [fileInputKey, setFileInputKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
 
@@ -74,6 +103,11 @@ export default function ImageBankAdminClient() {
   const [sourceUrl, setSourceUrl] = useState("");
   const [licenseRef, setLicenseRef] = useState("");
 
+  const [activeFilter, setActiveFilter] = useState<ActiveFilter>("active");
+  const [sourceFilter, setSourceFilter] = useState("all");
+  const [search, setSearch] = useState("");
+  const [editDrafts, setEditDrafts] = useState<Record<string, EditDraft>>({});
+
   const sectors = useMemo(() => groupBySector(categories), [categories]);
   const selectedSectorJobs = useMemo(() => {
     if (!sectorSlug) return [];
@@ -84,6 +118,20 @@ export default function ImageBankAdminClient() {
     () => categories.find((category) => category.id === categoryId) ?? null,
     [categories, categoryId]
   );
+
+  const selectedSector = useMemo(
+    () => sectors.find((sector) => sector.sector_slug === sectorSlug) ?? null,
+    [sectors, sectorSlug]
+  );
+
+  const currentImagesStats = useMemo(() => {
+    const active = images.filter((image) => image.is_active !== false).length;
+    return {
+      active,
+      inactive: images.length - active,
+      totalBytes: images.reduce((sum, image) => sum + (image.size_bytes || 0), 0),
+    };
+  }, [images]);
 
   const loadCategories = useCallback(async () => {
     setError(null);
@@ -111,17 +159,37 @@ export default function ImageBankAdminClient() {
     try {
       const params = new URLSearchParams();
       if (nextCategoryId) params.set("category_id", nextCategoryId);
-      params.set("limit", "80");
+      params.set("limit", "120");
+      params.set("active", activeFilter);
+      if (sourceFilter !== "all") params.set("source", sourceFilter);
+      if (search.trim()) params.set("q", search.trim());
+
       const response = await fetch(`/api/admin/image-bank/images?${params.toString()}`, { cache: "no-store" });
       const json = await response.json();
       if (!response.ok) throw new Error(json?.error || "Impossible de charger les images.");
-      setImages((json.images ?? []) as ImageBankRow[]);
+      const nextImages = (json.images ?? []) as ImageBankRow[];
+      setImages(nextImages);
+      setEditDrafts((prev) => {
+        const next = { ...prev };
+        for (const image of nextImages) {
+          if (!next[image.id]) {
+            next[image.id] = {
+              title: image.title || "",
+              tags: tagsToText(image.tags),
+              source: image.source || "freepik",
+              source_url: image.source_url || "",
+              license_ref: image.license_ref || "",
+            };
+          }
+        }
+        return next;
+      });
     } catch (e: any) {
       setError(e?.message || "Impossible de charger les images.");
     } finally {
       setImagesLoading(false);
     }
-  }, [categoryId]);
+  }, [activeFilter, categoryId, search, sourceFilter]);
 
   useEffect(() => {
     loadCategories();
@@ -171,6 +239,7 @@ export default function ImageBankAdminClient() {
 
       setSuccess(`${json.uploaded ?? 0} image(s) importée(s). ${json.failed ? `${json.failed} échec(s).` : ""}`.trim());
       setFiles(null);
+      setFileInputKey((value) => value + 1);
       setTitle("");
       await loadImages(categoryId);
     } catch (e: any) {
@@ -180,41 +249,141 @@ export default function ImageBankAdminClient() {
     }
   }
 
+  async function patchImage(id: string, payload: Record<string, unknown>, successMessage: string) {
+    setSavingId(id);
+    setError(null);
+    setSuccess(null);
+    try {
+      const response = await fetch("/api/admin/image-bank/images", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id, ...payload }),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json?.error || "Mise à jour impossible.");
+      setSuccess(successMessage);
+      await loadImages(categoryId);
+    } catch (e: any) {
+      setError(e?.message || "Mise à jour impossible.");
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  async function saveImageMetadata(image: ImageBankRow) {
+    const draft = editDrafts[image.id];
+    if (!draft) return;
+    await patchImage(
+      image.id,
+      {
+        title: draft.title,
+        tags: cleanEditableTags(draft.tags),
+        source: draft.source,
+        source_url: draft.source_url,
+        license_ref: draft.license_ref,
+      },
+      "Métadonnées mises à jour."
+    );
+    setEditingId(null);
+  }
+
+  async function deleteImage(image: ImageBankRow) {
+    const ok = window.confirm("Supprimer définitivement cette image de la banque iNrCy ?");
+    if (!ok) return;
+
+    setSavingId(image.id);
+    setError(null);
+    setSuccess(null);
+    try {
+      const response = await fetch(`/api/admin/image-bank/images?id=${encodeURIComponent(image.id)}`, {
+        method: "DELETE",
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json?.error || "Suppression impossible.");
+      setSuccess("Image supprimée définitivement.");
+      await loadImages(categoryId);
+    } catch (e: any) {
+      setError(e?.message || "Suppression impossible.");
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  async function copyPath(path: string) {
+    try {
+      await navigator.clipboard.writeText(path);
+      setSuccess("Chemin copié.");
+    } catch {
+      setError("Impossible de copier le chemin.");
+    }
+  }
+
+  function updateDraft(id: string, field: keyof EditDraft, value: string) {
+    setEditDrafts((prev) => {
+      const current: EditDraft = prev[id] ?? {
+        title: "",
+        tags: "",
+        source: "freepik",
+        source_url: "",
+        license_ref: "",
+      };
+
+      return {
+        ...prev,
+        [id]: {
+          ...current,
+          [field]: value,
+        },
+      };
+    });
+  }
+
   return (
     <div className={styles.page}>
       <div className={styles.wrap}>
-        <header className={styles.header}>
-          <div>
+        <section className={styles.heroCard}>
+          <div className={styles.heroContent}>
             <div className={styles.kicker}>Dashboard admin</div>
             <h1 className={styles.title}>Banque d’images iNrCy</h1>
             <p className={styles.subtitle}>
-              Import privé vers Supabase Storage. Les pros ne voient jamais la banque brute.
+              Gestion de la banque d’images privée.
             </p>
           </div>
 
           <div className={styles.headerActions}>
-            <Link href="/dashboard/admin/commandes" className={styles.secondaryButton}>
+            <Link href="/dashboard/admin/commandes" className={styles.ghostButton}>
               Commandes
             </Link>
-            <Link href="/dashboard" className={styles.secondaryButton}>
-              Retour
+            <button type="button" className={styles.ghostButton} onClick={() => loadImages(categoryId)} disabled={imagesLoading}>
+              {imagesLoading ? "Chargement…" : "Rafraîchir"}
+            </button>
+            <Link href="/dashboard/admin" className={styles.closeButton}>
+              Fermer
             </Link>
           </div>
-        </header>
+        </section>
 
-        <section className={styles.explainGrid}>
-          <div className={styles.explainCard}>
-            <strong>1. Tu choisis un métier</strong>
-            <span>Les 206 métiers viennent de ton catalogue iNrCy.</span>
-          </div>
-          <div className={styles.explainCard}>
-            <strong>2. Tu glisses tes images</strong>
-            <span>L’app optimise en WebP et range dans le bon dossier Storage.</span>
-          </div>
-          <div className={styles.explainCard}>
-            <strong>3. iNr’Agent pourra piocher</strong>
-            <span>Plus tard, il utilisera ces visuels pour préparer les publications.</span>
-          </div>
+        <section className={styles.metricsGrid}>
+          <article className={styles.metricCard}>
+            <span className={styles.metricLabel}>Secteurs</span>
+            <strong className={styles.metricValue}>{sectors.length}</strong>
+            <small className={styles.metricSub}>Catalogue iNrCy</small>
+          </article>
+          <article className={styles.metricCard}>
+            <span className={styles.metricLabel}>Métiers</span>
+            <strong className={styles.metricValue}>{categories.length}</strong>
+            <small className={styles.metricSub}>Prêts à être alimentés</small>
+          </article>
+          <article className={styles.metricCard}>
+            <span className={styles.metricLabel}>Images actives</span>
+            <strong className={styles.metricValue}>{currentImagesStats.active}</strong>
+            <small className={styles.metricSub}>{currentImagesStats.inactive} inactive(s)</small>
+          </article>
+          <article className={styles.metricCard}>
+            <span className={styles.metricLabel}>Poids affiché</span>
+            <strong className={styles.metricValueSmall}>{formatBytes(currentImagesStats.totalBytes)}</strong>
+            <small className={styles.metricSub}>{images.length} image(s) chargée(s)</small>
+          </article>
         </section>
 
         {error ? <div className={styles.error}>{error}</div> : null}
@@ -224,7 +393,7 @@ export default function ImageBankAdminClient() {
           <form className={styles.card} onSubmit={onSubmit}>
             <div className={styles.cardHeader}>
               <h2>Importer des images</h2>
-              <p>Les fichiers partent dans le bucket privé <code>inrcy-image-bank</code>.</p>
+              
             </div>
 
             {loading ? (
@@ -232,7 +401,7 @@ export default function ImageBankAdminClient() {
             ) : (
               <>
                 <label className={styles.label}>
-                  Secteur d’activité
+                  <span>Secteur d’activité</span>
                   <select className={styles.select} value={sectorSlug} onChange={(event) => onSectorChange(event.target.value)}>
                     {sectors.map((sector) => (
                       <option key={sector.sector_slug} value={sector.sector_slug}>
@@ -243,7 +412,7 @@ export default function ImageBankAdminClient() {
                 </label>
 
                 <label className={styles.label}>
-                  Métier
+                  <span>Métier</span>
                   <select className={styles.select} value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
                     {selectedSectorJobs.map((category) => (
                       <option key={category.id} value={category.id}>
@@ -261,19 +430,21 @@ export default function ImageBankAdminClient() {
             </div>
 
             <label className={styles.label}>
-              Images à importer
+              <span>Images à importer</span>
               <input
+                key={fileInputKey}
                 className={styles.fileInput}
                 type="file"
                 accept="image/jpeg,image/png,image/webp"
                 multiple
                 onChange={(event) => setFiles(event.target.files)}
               />
+              <small className={styles.helper}>{files?.length ? `${files.length} fichier(s) sélectionné(s)` : "JPEG, PNG ou WebP · import multiple autorisé"}</small>
             </label>
 
             <div className={styles.twoCols}>
               <label className={styles.label}>
-                Tags
+                <span>Tags</span>
                 <input
                   className={styles.input}
                   value={tags}
@@ -283,7 +454,7 @@ export default function ImageBankAdminClient() {
               </label>
 
               <label className={styles.label}>
-                Source
+                <span>Source</span>
                 <select className={styles.select} value={source} onChange={(event) => setSource(event.target.value)}>
                   <option value="freepik">Freepik / Magnific</option>
                   <option value="inrcy">iNrCy</option>
@@ -294,7 +465,7 @@ export default function ImageBankAdminClient() {
             </div>
 
             <label className={styles.label}>
-              Titre optionnel
+              <span>Titre optionnel</span>
               <input
                 className={styles.input}
                 value={title}
@@ -304,7 +475,7 @@ export default function ImageBankAdminClient() {
             </label>
 
             <label className={styles.label}>
-              Référence licence / fichier licence
+              <span>Référence licence / fichier licence</span>
               <input
                 className={styles.input}
                 value={licenseRef}
@@ -314,7 +485,7 @@ export default function ImageBankAdminClient() {
             </label>
 
             <label className={styles.label}>
-              URL source optionnelle
+              <span>URL source optionnelle</span>
               <input
                 className={styles.input}
                 value={sourceUrl}
@@ -331,28 +502,155 @@ export default function ImageBankAdminClient() {
           <section className={styles.card}>
             <div className={styles.cardHeader}>
               <h2>Images du métier sélectionné</h2>
-              <p>{imagesLoading ? "Chargement…" : `${images.length} image(s) affichée(s)`}</p>
+              <p>{selectedCategory ? `${selectedCategory.job_label} · ${selectedSector?.sector_label || ""}` : "Aucun métier sélectionné"}</p>
+            </div>
+
+            <div className={styles.filtersBar}>
+              <label className={styles.compactLabel}>
+                Statut
+                <select className={styles.compactSelect} value={activeFilter} onChange={(event) => setActiveFilter(event.target.value as ActiveFilter)}>
+                  <option value="active">Actives</option>
+                  <option value="inactive">Inactives</option>
+                  <option value="all">Toutes</option>
+                </select>
+              </label>
+
+              <label className={styles.compactLabel}>
+                Source
+                <select className={styles.compactSelect} value={sourceFilter} onChange={(event) => setSourceFilter(event.target.value)}>
+                  <option value="all">Toutes</option>
+                  <option value="freepik">Freepik / Magnific</option>
+                  <option value="inrcy">iNrCy</option>
+                  <option value="client">Client</option>
+                  <option value="autre">Autre</option>
+                </select>
+              </label>
+
+              <label className={styles.searchLabel}>
+                Recherche
+                <input
+                  className={styles.compactInput}
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="titre, chemin, licence…"
+                />
+              </label>
+
+              <button type="button" className={styles.smallButton} onClick={() => loadImages(categoryId)} disabled={imagesLoading}>
+                Appliquer
+              </button>
+            </div>
+
+            <div className={styles.galleryHeader}>
+              <span className={styles.galleryChip}>{imagesLoading ? "Chargement…" : `${images.length} image(s)`}</span>
+              <span className={styles.galleryChipSecondary}>{selectedCategory?.storage_prefix || "—"}</span>
             </div>
 
             {images.length === 0 ? (
-              <div className={styles.empty}>Aucune image pour ce métier pour l’instant.</div>
+              <div className={styles.empty}>Aucune image pour ce métier avec ces filtres.</div>
             ) : (
               <div className={styles.imageGrid}>
-                {images.map((image) => (
-                  <article key={image.id} className={styles.imageCard}>
-                    <div className={styles.thumbWrap}>
-                      {image.signed_url ? <img src={image.signed_url} alt={image.title || image.storage_path} /> : <span>Aperçu indisponible</span>}
-                    </div>
-                    <div className={styles.imageInfo}>
-                      <strong>{image.title || image.job || "Image"}</strong>
-                      <span>{image.storage_path}</span>
-                      <small>
-                        {image.orientation || "—"} · {image.width || "—"}×{image.height || "—"} · {formatBytes(image.size_bytes)}
-                      </small>
-                      <small>{formatDate(image.created_at)}</small>
-                    </div>
-                  </article>
-                ))}
+                {images.map((image) => {
+                  const draft = editDrafts[image.id];
+                  const isEditing = editingId === image.id;
+                  const isSaving = savingId === image.id;
+
+                  return (
+                    <article key={image.id} className={`${styles.imageCard} ${image.is_active === false ? styles.imageCardInactive : ""}`}>
+                      <div className={styles.thumbWrap}>
+                        {image.signed_url ? <img src={image.signed_url} alt={image.title || image.storage_path} /> : <span>Aperçu indisponible</span>}
+                        <span className={image.is_active === false ? styles.inactivePill : styles.activePill}>
+                          {image.is_active === false ? "Inactive" : "Active"}
+                        </span>
+                      </div>
+
+                      <div className={styles.imageInfo}>
+                        {isEditing ? (
+                          <div className={styles.editBlock}>
+                            <input
+                              className={styles.miniInput}
+                              value={draft?.title ?? ""}
+                              onChange={(event) => updateDraft(image.id, "title", event.target.value)}
+                              placeholder="Titre"
+                            />
+                            <input
+                              className={styles.miniInput}
+                              value={draft?.tags ?? ""}
+                              onChange={(event) => updateDraft(image.id, "tags", event.target.value)}
+                              placeholder="tags, séparés, par virgule"
+                            />
+                            <select
+                              className={styles.miniInput}
+                              value={draft?.source ?? "freepik"}
+                              onChange={(event) => updateDraft(image.id, "source", event.target.value)}
+                            >
+                              <option value="freepik">Freepik / Magnific</option>
+                              <option value="inrcy">iNrCy</option>
+                              <option value="client">Client</option>
+                              <option value="autre">Autre</option>
+                            </select>
+                            <input
+                              className={styles.miniInput}
+                              value={draft?.license_ref ?? ""}
+                              onChange={(event) => updateDraft(image.id, "license_ref", event.target.value)}
+                              placeholder="Référence licence"
+                            />
+                            <input
+                              className={styles.miniInput}
+                              value={draft?.source_url ?? ""}
+                              onChange={(event) => updateDraft(image.id, "source_url", event.target.value)}
+                              placeholder="URL source"
+                            />
+                          </div>
+                        ) : (
+                          <>
+                            <strong>{image.title || image.job || "Image"}</strong>
+                            <span>{image.storage_path}</span>
+                            <small>{tagsToText(image.tags) || "Aucun tag"}</small>
+                            <small>
+                              {image.orientation || "—"} · {image.width || "—"}×{image.height || "—"} · {formatBytes(image.size_bytes)}
+                            </small>
+                            <small>{image.source || "—"} · {image.license_ref || "licence non renseignée"}</small>
+                            <small>{formatDate(image.created_at)} · utilisée {image.usage_count || 0} fois</small>
+                          </>
+                        )}
+
+                        <div className={styles.imageActions}>
+                          {isEditing ? (
+                            <>
+                              <button type="button" className={styles.smallButton} disabled={isSaving} onClick={() => saveImageMetadata(image)}>
+                                {isSaving ? "..." : "Enregistrer"}
+                              </button>
+                              <button type="button" className={styles.smallGhostButton} disabled={isSaving} onClick={() => setEditingId(null)}>
+                                Annuler
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button type="button" className={styles.smallButton} onClick={() => setEditingId(image.id)}>
+                                Modifier
+                              </button>
+                              <button
+                                type="button"
+                                className={styles.smallGhostButton}
+                                disabled={isSaving}
+                                onClick={() => patchImage(image.id, { is_active: image.is_active === false }, image.is_active === false ? "Image réactivée." : "Image désactivée.")}
+                              >
+                                {image.is_active === false ? "Activer" : "Désactiver"}
+                              </button>
+                              <button type="button" className={styles.smallGhostButton} onClick={() => copyPath(image.storage_path)}>
+                                Copier
+                              </button>
+                              <button type="button" className={styles.dangerButton} disabled={isSaving} onClick={() => deleteImage(image)}>
+                                Supprimer
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
               </div>
             )}
           </section>

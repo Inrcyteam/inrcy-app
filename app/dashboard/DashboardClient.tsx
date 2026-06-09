@@ -264,7 +264,11 @@ function mergeCachedDashboardChannelState(patch: Record<string, any>) {
   }
 }
 
-export default function DashboardClient() {
+type DashboardClientProps = {
+  isAdmin?: boolean;
+};
+
+export default function DashboardClient({ isAdmin = false }: DashboardClientProps) {
   const [helpGeneratorOpen, setHelpGeneratorOpen] = useState(false);
   const [helpCanauxOpen, setHelpCanauxOpen] = useState(false);
   const [helpSiteInrcyOpen, setHelpSiteInrcyOpen] = useState(false);
@@ -2960,6 +2964,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         }}
         openPanel={openPanel}
         inrAgentEnabled={canAccessInrAgent}
+        isAdmin={isAdmin}
         userEmail={userEmail}
         userFirstLetter={userFirstLetter}
         profileIncomplete={profileIncomplete}
