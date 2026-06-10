@@ -32,6 +32,7 @@ export default function RichMailEditor({
 }: RichMailEditorProps) {
   const editorRef = useRef<HTMLDivElement | null>(null);
   const lastHtmlRef = useRef("");
+  const lastTouchYRef = useRef<number | null>(null);
   const [isEmpty, setIsEmpty] = useState(() => !String(text || "").trim());
 
   useEffect(() => {
@@ -71,6 +72,57 @@ export default function RichMailEditor({
       // Les navigateurs anciens peuvent ignorer la commande.
     }
     emitChange();
+  };
+
+  const passScrollToParent = (deltaY: number) => {
+    const node = editorRef.current;
+    const scrollParent = findScrollableParent(node);
+    if (!scrollParent) return false;
+    scrollParent.scrollTop += deltaY;
+    return true;
+  };
+
+  const shouldPassScrollToParent = (deltaY: number) => {
+    const node = editorRef.current;
+    if (!node) return false;
+    const hasInternalScroll = node.scrollHeight > node.clientHeight + 1;
+    if (!hasInternalScroll) return true;
+
+    const isScrollingUp = deltaY < 0;
+    const isScrollingDown = deltaY > 0;
+    const atTop = node.scrollTop <= 0;
+    const atBottom = node.scrollTop + node.clientHeight >= node.scrollHeight - 1;
+
+    return (isScrollingUp && atTop) || (isScrollingDown && atBottom);
+  };
+
+  const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+    const deltaY = event.deltaY;
+    if (!deltaY || !shouldPassScrollToParent(deltaY)) return;
+    if (!passScrollToParent(deltaY)) return;
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  const handleTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+    lastTouchYRef.current = event.touches[0]?.clientY ?? null;
+  };
+
+  const handleTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
+    const previousY = lastTouchYRef.current;
+    const currentY = event.touches[0]?.clientY ?? null;
+    if (previousY === null || currentY === null) return;
+
+    const deltaY = previousY - currentY;
+    lastTouchYRef.current = currentY;
+    if (!deltaY || !shouldPassScrollToParent(deltaY)) return;
+    if (!passScrollToParent(deltaY)) return;
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  const handleTouchEnd = () => {
+    lastTouchYRef.current = null;
   };
 
   const fillAvailable = minHeight === 0 || minHeight === "0" || minHeight === "0px";
@@ -159,6 +211,11 @@ export default function RichMailEditor({
             document.execCommand("insertText", false, pasted);
             emitChange();
           }}
+          onWheel={handleWheel}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onTouchCancel={handleTouchEnd}
           style={{
             ...editorStyle,
             width: "100%",
@@ -169,7 +226,7 @@ export default function RichMailEditor({
             overflowY: "auto",
             overflowX: "hidden",
             WebkitOverflowScrolling: "touch",
-            overscrollBehavior: "contain",
+            overscrollBehavior: "auto",
             scrollbarGutter: "stable",
             scrollPaddingTop: 12,
             scrollPaddingBottom: 24,
@@ -185,6 +242,22 @@ export default function RichMailEditor({
       </div>
     </div>
   );
+}
+
+function findScrollableParent(node: HTMLElement | null): HTMLElement | null {
+  let parent = node?.parentElement ?? null;
+
+  while (parent) {
+    const style = window.getComputedStyle(parent);
+    const canScrollY = /(auto|scroll|overlay)/.test(style.overflowY);
+    if (canScrollY && parent.scrollHeight > parent.clientHeight + 1) {
+      return parent;
+    }
+    parent = parent.parentElement;
+  }
+
+  const scrollingElement = document.scrollingElement;
+  return scrollingElement instanceof HTMLElement ? scrollingElement : null;
 }
 
 const toolbarButtonStyle: CSSProperties = {
