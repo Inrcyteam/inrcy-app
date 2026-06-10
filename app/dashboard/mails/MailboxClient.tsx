@@ -1,5 +1,6 @@
 "use client";
 
+import { readWorkflowMailPrefillAttachments } from "@/app/dashboard/_lib/workflowMailPrefillAttachments";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import styles from "./mails.module.css";
@@ -1270,6 +1271,11 @@ export default function MailboxClient() {
     return mailAccounts.find((a) => a.id === selectedAccountId) || null;
   }, [mailAccounts, selectedAccountId]);
 
+  const workflowFinalizerKind = useMemo<"propulser" | "fideliser" | null>(() => {
+    const raw = String(searchParams?.get("finalizer") || searchParams?.get("workflow_finalizer") || "").toLowerCase();
+    return raw === "propulser" || raw === "fideliser" ? raw : null;
+  }, [searchParams]);
+
   const composeRecipientList = useMemo(() => normalizeEmails(to), [to]);
   const isBulkCampaignCompose = composeRecipientList.length > 1;
   const bulkCampaignNotice = useMemo(() => {
@@ -1556,6 +1562,8 @@ export default function MailboxClient() {
     const preSubjectRaw = searchParams?.get("prefill_subject") || "";
     const preTextRaw = searchParams?.get("prefill_text") || "";
     const preHtmlRaw = searchParams?.get("prefill_html") || "";
+    const preAttachmentsRaw = searchParams?.get("prefill_attachments") || "";
+    const preAttachmentsKey = searchParams?.get("prefill_attachments_key") || "";
     const templateKey = searchParams?.get("template_key") || "";
     const open = (searchParams?.get("compose") || "").toLowerCase();
     if (templateKey) setComposeTemplateKey(templateKey);
@@ -1587,11 +1595,15 @@ export default function MailboxClient() {
     }
 
     // Only prefill when something is provided
-    if (!preSubjectRaw && !preTextRaw && !preHtmlRaw && !templateKey) return;
+    if (!preSubjectRaw && !preTextRaw && !preHtmlRaw && !preAttachmentsRaw && !preAttachmentsKey && !templateKey) return;
 
     const preSubject = safeDecode(preSubjectRaw);
     const preText = safeDecode(preTextRaw);
     const preHtml = safeDecode(preHtmlRaw);
+    const preAttachmentsFromStorage = readWorkflowMailPrefillAttachments(safeDecode(preAttachmentsKey));
+    const preAttachments = preAttachmentsFromStorage.length
+      ? preAttachmentsFromStorage
+      : normalizeCampaignAttachments(safeDecode(preAttachmentsRaw));
 
     const run = async () => {
       // If we have a template key, ask the server to render placeholders + compute links.
@@ -1632,6 +1644,8 @@ export default function MailboxClient() {
       }
 
       setComposeType("mail");
+      setFiles([]);
+      setComposeAttachments(preAttachments);
       // Open compose by default (compose=1), but also open when not specified (better UX)
       if (open !== "0" && open !== "false") setComposeOpen(true);
     };
@@ -2971,7 +2985,10 @@ async function deleteDraftPermanently(id: string) {
 
         <MailboxComposeModal
           open={composeOpen}
-          onClose={() => setComposeOpen(false)}
+          onClose={() => {
+            setComposeOpen(false);
+            if (workflowFinalizerKind) router.push(`/dashboard/${workflowFinalizerKind}`);
+          }}
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenAiConfiguration={() => setAiConfigurationOpen(true)}
           draftId={draftId}
@@ -3029,6 +3046,7 @@ async function deleteDraftPermanently(id: string) {
           sendBusy={sendBusy}
           toast={toast}
           setToast={setToast}
+          workflowFinalizerKind={workflowFinalizerKind}
         />
       </div>
     </div>

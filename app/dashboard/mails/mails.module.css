@@ -4688,6 +4688,16 @@
   max-width: 100%;
 }
 
+
+.composeSubjectFinalizerRow {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr);
+  align-items: start;
+  gap: 12px;
+  min-width: 0;
+  max-width: 100%;
+}
+
 .composeSubjectInputStack {
   display: grid;
   gap: 8px;

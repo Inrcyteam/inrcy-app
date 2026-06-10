@@ -7,6 +7,9 @@ import RichMailEditor from "@/app/dashboard/_components/RichMailEditor";
 import TemplateSubjectInlineEditor from "@/app/dashboard/_components/TemplateSubjectInlineEditor";
 import { extractTemplatePlaceholders, textToRichMailHtml } from "@/lib/mailRichText";
 import { confirmInrcy } from "@/lib/inrcyDialog";
+import TemplateAttachmentPicker from "@/app/dashboard/_components/TemplateAttachmentPicker";
+import type { ComposeAttachmentRef } from "@/app/dashboard/mails/_lib/mailboxPhase1";
+import { storeWorkflowMailPrefillAttachments } from "@/app/dashboard/_lib/workflowMailPrefillAttachments";
 
 export default function SuivreModal({
   styles,
@@ -48,6 +51,7 @@ export default function SuivreModal({
   const [bodyHtml, setBodyHtml] = useState("");
   const [aiGenerating, setAiGenerating] = useState(false);
   const [aiError, setAiError] = useState("");
+  const [attachments, setAttachments] = useState<ComposeAttachmentRef[]>([]);
 
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -102,6 +106,7 @@ export default function SuivreModal({
           template_category: selected.category,
           subject,
           body,
+          attachments,
         }),
       });
       const j = await r.json().catch(() => ({}));
@@ -140,7 +145,13 @@ export default function SuivreModal({
     q.set("prefill_subject", subject);
     q.set("prefill_text", body);
     q.set("prefill_html", bodyHtml || textToRichMailHtml(body));
+    if (attachments.length > 0) {
+      const attachmentStorageKey = storeWorkflowMailPrefillAttachments(attachments, "fideliser-suivre");
+      if (attachmentStorageKey) q.set("prefill_attachments_key", attachmentStorageKey);
+      else q.set("prefill_attachments", JSON.stringify(attachments));
+    }
     q.set("compose", "1");
+    q.set("finalizer", "fideliser");
 
     // Track only after a real send (handled by iNr'Send).
     q.set("track_kind", "fideliser");
@@ -179,8 +190,8 @@ export default function SuivreModal({
               aria-label="Choisir un modèle"
               style={{
                 width: '100%',
-                flex: isMobile ? '1 1 100%' : '0 1 620px',
-                maxWidth: isMobile ? '100%' : 620,
+                flex: isMobile ? '1 1 100%' : '0 1 500px',
+                maxWidth: isMobile ? '100%' : 500,
                 minWidth: 0,
                 borderRadius: 16,
                 padding: '14px 16px',
@@ -201,6 +212,13 @@ export default function SuivreModal({
                 </option>
               ))}
             </select>
+            <TemplateAttachmentPicker
+              styles={styles}
+              attachments={attachments}
+              setAttachments={setAttachments}
+              isMobile={isMobile}
+              inputIdPrefix="suivre-template-attachments"
+            />
             <button
               type="button"
               className={`${styles.secondaryBtn} ${styles.aiGenerateBtn}`}

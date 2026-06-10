@@ -8,6 +8,9 @@ import { stripTemplateSignatureBlock } from "@/lib/mailTemplateCleanup";
 import { getJobLabel } from "@/lib/activityCatalog";
 import { decodeBusinessSector, getActivitySectorLabel } from "@/lib/activitySectors";
 import { buildAiWritingProfilePromptSection, buildAiWritingProfileRules } from "@/lib/aiWritingProfile";
+import { parseMailAttachmentRefs } from "@/lib/mailAttachmentRefs";
+import { buildMailAttachmentAiPromptSection } from "@/lib/aiAttachmentContext";
+import { computeMailAiCredits, consumeAiCredits, isAdminUserForAi } from "@/lib/aiUsageQuota";
 
 export const maxDuration = 60;
 
@@ -54,21 +57,34 @@ export async function POST(req: Request) {
     const currentBody = stripTemplateSignatureBlock(clean(body["body"], 4000));
     const writingTypeKey = normalizeMailWritingType(body["writingType"] ?? body["mailType"]);
     const writingTypeLabel = MAIL_WRITING_TYPE_LABELS[writingTypeKey] || MAIL_WRITING_TYPE_LABELS.auto;
+    const attachmentRefs = parseMailAttachmentRefs(body["attachments"]);
 
     if (!subject.trim()) {
       return NextResponse.json({ error: "Renseignez d’abord un objet pour générer votre mail avec iNrCy." }, { status: 400 });
     }
 
-    const rateLimited = await enforceRateLimit({
-      name: "mail_ai",
-      identifier: user.id,
-      limit: 60,
-      window: "1 d",
-      failClosed: false,
-    });
-    if (rateLimited) return rateLimited;
-
     const userId = user.id;
+    const isAdmin = await isAdminUserForAi(supabase, userId);
+
+    if (!isAdmin) {
+      const rateLimited = await enforceRateLimit({
+        name: "mail_ai",
+        identifier: userId,
+        limit: 60,
+        window: "1 d",
+        failClosed: false,
+      });
+      if (rateLimited) return rateLimited;
+
+      const quotaLimited = await consumeAiCredits({
+        supabase,
+        userId,
+        action: "mail",
+        credits: computeMailAiCredits(attachmentRefs),
+      });
+      if (quotaLimited) return quotaLimited;
+    }
+
     const [profileRes, businessRes] = await Promise.all([
       supabase.from("profiles").select("*").eq("user_id", userId).maybeSingle(),
       supabase.from("business_profiles").select("*").eq("user_id", userId).maybeSingle(),
@@ -89,6 +105,13 @@ export async function POST(req: Request) {
 
     const aiConfig = buildAiWritingProfilePromptSection(business);
     const aiRules = buildAiWritingProfileRules();
+    const attachmentContext = await buildMailAttachmentAiPromptSection(supabase, attachmentRefs, {
+      userId,
+      maxFiles: 4,
+      maxFileBytes: 8 * 1024 * 1024,
+      maxTotalChars: 6500,
+      maxCharsPerFile: 2200,
+    });
 
     const system = `Tu es le rédacteur IA d'iNrCy pour des emails professionnels français.
 Réponds uniquement en JSON valide : {"body_text":"..."}.
@@ -101,6 +124,8 @@ Règles strictes :
 - Garder un email naturel, utile, humain, clair et adapté à l'entreprise.
 - Respecter la Configuration IA du professionnel.
 - Si un message existe déjà, tu peux t'en inspirer sans le copier.
+- Si des pièces jointes sont fournies, utiliser leurs informations uniquement si elles améliorent le message, sans les recopier mot pour mot.
+- Ne jamais inventer le contenu d'une pièce jointe non lisible : dans ce cas, tenir compte seulement de son nom et de son type.
 - Éviter les mots ou formes qui font spam : MAJUSCULES, promesses exagérées, urgence forcée, trop de points d'exclamation.
 - Ne pas ajouter de markdown lourd ni de HTML. Texte brut uniquement.
 ${aiRules}`;
@@ -122,16 +147,20 @@ Forces : ${strengths.length ? strengths.join(", ") : "Non précisées"}
 Configuration IA :
 ${aiConfig || "- Non précisée"}
 
+Contexte des pièces jointes, si présent :
+${attachmentContext || "Aucune pièce jointe exploitable."}
+
 Message actuel, si présent :
 ${currentBody || "Aucun"}
 
 Rédige uniquement le corps du mail, avec une salutation, un message clair et une fin simple. L'objet doit rester inchangé.
-Si le type d’écriture est précisé, adapte l'intention du message à ce type sans devenir artificiel.`;
+Si le type d’écriture est précisé, adapte l'intention du message à ce type sans devenir artificiel.
+Si des pièces jointes existent, les mentionner seulement quand cela aide le destinataire à comprendre le mail.`;
 
     const generated = await openaiGenerateJSON<GeneratedMail>({
       system,
       input,
-      maxOutputTokens: 900,
+      maxOutputTokens: 1100,
       temperature: 0.78,
     });
 

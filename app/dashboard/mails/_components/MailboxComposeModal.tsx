@@ -70,6 +70,7 @@ type MailboxComposeModalProps = {
   sendBusy: boolean;
   toast: string | null;
   setToast: React.Dispatch<React.SetStateAction<string | null>>;
+  workflowFinalizerKind?: "propulser" | "fideliser" | null;
 };
 
 
@@ -148,6 +149,7 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
     sendBusy,
     toast,
     setToast,
+    workflowFinalizerKind = null,
   } = props;
 
   const hasComposeWork = React.useMemo(() => {
@@ -218,6 +220,10 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
     return count;
   }, [crmCategory, crmContactType, crmDepartment, crmImportantOnly]);
 
+  const isWorkflowFinalizer = workflowFinalizerKind === "propulser" || workflowFinalizerKind === "fideliser";
+  const workflowFinalizerLabel = workflowFinalizerKind === "propulser" ? "Propulser" : workflowFinalizerKind === "fideliser" ? "Fidéliser" : "";
+  const workflowFinalizerIcon = workflowFinalizerKind === "propulser" ? "🚀" : workflowFinalizerKind === "fideliser" ? "💌" : "✉️";
+
   const requestSend = React.useCallback(async () => {
     const placeholders = extractTemplatePlaceholders(`${subject}\n${text}`);
     if (placeholders.length > 0) {
@@ -269,7 +275,18 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
       const response = await fetch("/api/mails/generate-ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subject: mailSubject, body: text, writingType: mailWritingType }),
+        body: JSON.stringify({
+          subject: mailSubject,
+          body: text,
+          writingType: mailWritingType,
+          attachments: composeAttachments.map((attachment) => ({
+            bucket: String(attachment.bucket || "").trim(),
+            path: String(attachment.path || "").trim(),
+            name: String(attachment.name || attachment.path?.split?.("/").pop?.() || "piece-jointe").trim(),
+            type: attachment.type || null,
+            size: attachment.size ?? null,
+          })).filter((attachment) => attachment.bucket && attachment.path),
+        }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(String(payload?.error || "La génération IA a échoué."));
@@ -277,13 +294,13 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
       if (!nextText) throw new Error("iNrCy n’a pas retourné de message exploitable.");
       setText(nextText);
       setHtml(textToRichMailHtml(nextText));
-      setToast("Message généré avec iNrCy.");
+      setToast(composeAttachments.length > 0 ? "Message généré avec iNrCy en tenant compte des pièces jointes." : "Message généré avec iNrCy.");
     } catch (error) {
       setAiError(error instanceof Error ? error.message : "La génération IA a échoué.");
     } finally {
       setAiGenerating(false);
     }
-  }, [mailWritingType, setHtml, setText, setToast, subject, text]);
+  }, [composeAttachments, mailWritingType, setHtml, setText, setToast, subject, text]);
 
   if (!open) return null;
 
@@ -337,13 +354,17 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
               <div className={`${styles.modalHeader} ${styles.composeModalHeader}`}>
                 <div className={styles.composeHeaderTitleWrap}>
                   <div className={styles.composeTitleRow}>
-                    <div className={styles.composeTitleIcon}>✉️</div>
+                    <div className={styles.composeTitleIcon}>{workflowFinalizerIcon}</div>
                     <div className={styles.composeTitleText}>
-                      {draftId ? "Éditer le brouillon" : "Nouveau message"}
+                      {isWorkflowFinalizer ? `Finaliser l’envoi ${workflowFinalizerLabel}` : draftId ? "Éditer le brouillon" : "Nouveau message"}
                     </div>
-                    <span className={`${styles.badge} ${styles.composeTypeBadge}`}>Mail</span>
+                    <span className={`${styles.badge} ${styles.composeTypeBadge}`}>{isWorkflowFinalizer ? workflowFinalizerLabel : "Mail"}</span>
                   </div>
-                  <div className={styles.composeSubtitle}>Préparez un message clair, choisissez vos contacts CRM et envoyez depuis votre boîte connectée.</div>
+                  <div className={styles.composeSubtitle}>
+                    {isWorkflowFinalizer
+                      ? `Vérifiez les destinataires, l’objet et le message préparé depuis ${workflowFinalizerLabel}, puis envoyez depuis votre boîte connectée.`
+                      : "Préparez un message clair, choisissez vos contacts CRM et envoyez depuis votre boîte connectée."}
+                  </div>
                 </div>
 
                 <div className={styles.composeHeaderActions}>
@@ -357,15 +378,17 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                   >
                     {attachBusy ? "…" : "💾"}
                   </button>
-                  <button
-                    className={`${styles.btnGhost} ${styles.composeHeaderIconBtn} ${styles.aiHeaderBtn}`}
-                    onClick={onOpenAiConfiguration}
-                    type="button"
-                    aria-label="Configuration IA"
-                    title="Configuration IA"
-                  >
-                    IA
-                  </button>
+                  {!isWorkflowFinalizer ? (
+                    <button
+                      className={`${styles.btnGhost} ${styles.composeHeaderIconBtn} ${styles.aiHeaderBtn}`}
+                      onClick={onOpenAiConfiguration}
+                      type="button"
+                      aria-label="Configuration IA"
+                      title="Configuration IA"
+                    >
+                      IA
+                    </button>
+                  ) : null}
                   <button
                     className={`${styles.btnGhost} ${styles.composeHeaderIconBtn}`}
                     onClick={onOpenSettings}
@@ -685,16 +708,23 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
 
                   <section className={`${styles.composeSection} ${styles.composeSubjectSection}`}>
                     <div className={`${styles.composeSectionHeader} ${styles.composeSubjectHeader}`}>
-                      <div className={styles.composeSubjectHeaderGrid}>
-                        <div className={styles.composeSubjectHeaderMain}>
+                      {isWorkflowFinalizer ? (
+                        <div>
                           <div className={styles.composeSectionTitle}><span className={styles.composeSectionIcon}>🏷️</span>Objet</div>
-                          <div className={styles.composeSectionHint}>Titre visible dans la boîte mail du destinataire.</div>
+                          <div className={styles.composeSectionHint}>Objet préparé depuis {workflowFinalizerLabel}. Vous pouvez le relire ou l’ajuster avant l’envoi.</div>
                         </div>
-                        <div className={styles.composeWritingTypeLabel}>Typologie</div>
-                        <div aria-hidden="true" />
-                      </div>
+                      ) : (
+                        <div className={styles.composeSubjectHeaderGrid}>
+                          <div className={styles.composeSubjectHeaderMain}>
+                            <div className={styles.composeSectionTitle}><span className={styles.composeSectionIcon}>🏷️</span>Objet</div>
+                            <div className={styles.composeSectionHint}>Titre visible dans la boîte mail du destinataire.</div>
+                          </div>
+                          <div className={styles.composeWritingTypeLabel}>Typologie</div>
+                          <div aria-hidden="true" />
+                        </div>
+                      )}
                     </div>
-                    <div className={styles.composeSubjectInlineAiRow}>
+                    <div className={isWorkflowFinalizer ? styles.composeSubjectFinalizerRow : styles.composeSubjectInlineAiRow}>
                       <div className={styles.composeSubjectInputStack}>
                         {isMobileViewport ? (
                           <TemplateSubjectInlineEditor
@@ -715,32 +745,36 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                           <span className={styles.composeWarning}>Le message partira avec “(sans objet)” si vous laissez ce champ vide.</span>
                         ) : null}
                       </div>
-                      <div className={styles.composeWritingTypeStack}>
-                        <select
-                          aria-label="Typologie du mail"
-                          className={styles.composeWritingTypeSelect}
-                          value={mailWritingType}
-                          onChange={(e) => setMailWritingType(e.target.value as MailWritingType)}
-                        >
-                          {MAIL_WRITING_TYPE_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className={styles.composeSubjectAiInline}>
-                        <button
-                          type="button"
-                          className={`${styles.btnGhost} ${styles.aiGenerateBtn}`}
-                          onClick={() => void generateMailWithAi()}
-                          disabled={aiGenerating || !subject.trim()}
-                          title={!subject.trim() ? "Renseignez d’abord un objet pour générer votre mail." : "Générer le message avec iNrCy"}
-                        >
-                          {aiGenerating ? "Génération…" : "✨ Générer avec iNrCy"}
-                        </button>
-                        {aiError ? <span className={styles.composeAiError}>{aiError}</span> : null}
-                      </div>
+                      {!isWorkflowFinalizer ? (
+                        <>
+                          <div className={styles.composeWritingTypeStack}>
+                            <select
+                              aria-label="Typologie du mail"
+                              className={styles.composeWritingTypeSelect}
+                              value={mailWritingType}
+                              onChange={(e) => setMailWritingType(e.target.value as MailWritingType)}
+                            >
+                              {MAIL_WRITING_TYPE_OPTIONS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                          <div className={styles.composeSubjectAiInline}>
+                            <button
+                              type="button"
+                              className={`${styles.btnGhost} ${styles.aiGenerateBtn}`}
+                              onClick={() => void generateMailWithAi()}
+                              disabled={aiGenerating || attachBusy || !subject.trim()}
+                              title={!subject.trim() ? "Renseignez d’abord un objet pour générer votre mail." : attachBusy ? "Patientez pendant la préparation de la pièce jointe." : composeAttachments.length > 0 ? "Générer le message avec iNrCy en tenant compte des pièces jointes" : "Générer le message avec iNrCy"}
+                            >
+                              {aiGenerating ? "Génération…" : "✨ Générer avec iNrCy"}
+                            </button>
+                            {aiError ? <span className={styles.composeAiError}>{aiError}</span> : null}
+                          </div>
+                        </>
+                      ) : null}
                     </div>
                   </section>
 
@@ -756,7 +790,7 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                       toolbarTitle={
                         <div>
                           <div className={styles.composeSectionTitle}><span className={styles.composeSectionIcon}>✍️</span>Message</div>
-                          <div className={styles.composeSectionHint}>Ajoutez la touche finale avant l’envoi.</div>
+                          <div className={styles.composeSectionHint}>{isWorkflowFinalizer ? `Message préparé depuis ${workflowFinalizerLabel}. Relisez et ajustez si besoin avant l’envoi.` : "Ajoutez la touche finale avant l’envoi."}</div>
                         </div>
                       }
                       compactToolbar

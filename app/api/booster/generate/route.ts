@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { requireUser } from "@/lib/requireUser";
 import { enforceRateLimit } from "@/lib/rateLimit";
+import { computeBoosterAiCredits, consumeAiCredits, isAdminUserForAi } from "@/lib/aiUsageQuota";
 import { openaiGenerateJSON } from "@/lib/openaiClient";
 import { withApi } from "@/lib/observability/withApi";
 import {
@@ -685,13 +686,17 @@ const handler = async (req: Request) => {
     if (errorResponse) return errorResponse;
     const userId = user.id;
 
-    const rl = await enforceRateLimit({
-      name: "booster_generate",
-      identifier: userId,
-      limit: 10,
-      window: "1 m",
-    });
-    if (rl) return rl;
+    const isAdmin = await isAdminUserForAi(supabase, userId);
+
+    if (!isAdmin) {
+      const rl = await enforceRateLimit({
+        name: "booster_generate",
+        identifier: userId,
+        limit: 10,
+        window: "1 m",
+      });
+      if (rl) return rl;
+    }
 
     const body = (await req.json().catch(() => ({}))) as Payload;
     const idea = (body?.idea || "").trim();
@@ -727,6 +732,16 @@ const handler = async (req: Request) => {
     const videoForAI = sanitizeVideoForAI({ ...body, mediaType });
     const mediaGenerationInstructions =
       buildVideoGenerationInstructions(videoForAI);
+
+    if (!isAdmin) {
+      const quotaLimited = await consumeAiCredits({
+        supabase,
+        userId,
+        action: "booster",
+        credits: computeBoosterAiCredits({ mediaType, imagesForAI, videoForAI }),
+      });
+      if (quotaLimited) return quotaLimited;
+    }
 
     const { data: profile } = await supabase
       .from("profiles")

@@ -7,6 +7,9 @@ import RichMailEditor from "@/app/dashboard/_components/RichMailEditor";
 import TemplateSubjectInlineEditor from "@/app/dashboard/_components/TemplateSubjectInlineEditor";
 import { extractTemplatePlaceholders, textToRichMailHtml } from "@/lib/mailRichText";
 import { confirmInrcy } from "@/lib/inrcyDialog";
+import TemplateAttachmentPicker from "@/app/dashboard/_components/TemplateAttachmentPicker";
+import type { ComposeAttachmentRef } from "@/app/dashboard/mails/_lib/mailboxPhase1";
+import { storeWorkflowMailPrefillAttachments } from "@/app/dashboard/_lib/workflowMailPrefillAttachments";
 
 export default function RecolterModal({
   styles,
@@ -48,6 +51,7 @@ export default function RecolterModal({
   const [bodyHtml, setBodyHtml] = useState("");
   const [aiGenerating, setAiGenerating] = useState(false);
   const [aiError, setAiError] = useState("");
+  const [attachments, setAttachments] = useState<ComposeAttachmentRef[]>([]);
 
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -101,6 +105,7 @@ export default function RecolterModal({
           template_category: selected.category,
           subject,
           body,
+          attachments,
         }),
       });
       const j = await r.json().catch(() => ({}));
@@ -138,7 +143,13 @@ export default function RecolterModal({
     q.set("prefill_subject", subject);
     q.set("prefill_text", body);
     q.set("prefill_html", bodyHtml || textToRichMailHtml(body));
+    if (attachments.length > 0) {
+      const attachmentStorageKey = storeWorkflowMailPrefillAttachments(attachments, "propulser-recolter");
+      if (attachmentStorageKey) q.set("prefill_attachments_key", attachmentStorageKey);
+      else q.set("prefill_attachments", JSON.stringify(attachments));
+    }
     q.set("compose", "1");
+    q.set("finalizer", "propulser");
 
     q.set("track_kind", "propulser");
     q.set("track_type", "review_mail");
@@ -198,6 +209,13 @@ export default function RecolterModal({
                 </option>
               ))}
             </select>
+            <TemplateAttachmentPicker
+              styles={styles}
+              attachments={attachments}
+              setAttachments={setAttachments}
+              isMobile={isMobile}
+              inputIdPrefix="recolter-template-attachments"
+            />
             <button
               type="button"
               className={`${styles.secondaryBtn} ${styles.aiGenerateBtn}`}

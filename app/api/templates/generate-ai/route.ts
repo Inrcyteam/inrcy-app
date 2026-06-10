@@ -10,6 +10,9 @@ import { stripTemplateSignatureBlock } from "@/lib/mailTemplateCleanup";
 import { getJobLabel } from "@/lib/activityCatalog";
 import { decodeBusinessSector, getActivitySectorLabel } from "@/lib/activitySectors";
 import { buildAiWritingProfilePromptSection, buildAiWritingProfileRules } from "@/lib/aiWritingProfile";
+import { parseMailAttachmentRefs } from "@/lib/mailAttachmentRefs";
+import { buildMailAttachmentAiPromptSection } from "@/lib/aiAttachmentContext";
+import { computeTemplateAiCredits, consumeAiCredits, isAdminUserForAi } from "@/lib/aiUsageQuota";
 
 export const maxDuration = 60;
 
@@ -41,21 +44,34 @@ export async function POST(req: Request) {
     const templateCategory = clean(body["template_category"], 140);
     const currentSubject = clean(body["subject"], 220);
     const currentBody = clean(body["body"], 6000);
+    const attachmentRefs = parseMailAttachmentRefs(body["attachments"]);
 
     if (!currentSubject && !currentBody) {
       return NextResponse.json({ error: "Aucun modèle à reformuler." }, { status: 400 });
     }
 
-    const rateLimited = await enforceRateLimit({
-      name: "template_ai",
-      identifier: user.id,
-      limit: 40,
-      window: "1 d",
-      failClosed: false,
-    });
-    if (rateLimited) return rateLimited;
-
     const userId = user.id;
+    const isAdmin = await isAdminUserForAi(supabase, userId);
+
+    if (!isAdmin) {
+      const rateLimited = await enforceRateLimit({
+        name: "template_ai",
+        identifier: userId,
+        limit: 40,
+        window: "1 d",
+        failClosed: false,
+      });
+      if (rateLimited) return rateLimited;
+
+      const quotaLimited = await consumeAiCredits({
+        supabase,
+        userId,
+        action: "template",
+        credits: computeTemplateAiCredits(attachmentRefs),
+      });
+      if (quotaLimited) return quotaLimited;
+    }
+
     const [profileRes, businessRes, inrcyCfgRes, proCfgRes, integrationsRes] = await Promise.all([
       supabase.from("profiles").select("*").eq("user_id", userId).maybeSingle(),
       supabase.from("business_profiles").select("*").eq("user_id", userId).maybeSingle(),
@@ -111,6 +127,7 @@ export async function POST(req: Request) {
 
     const aiConfig = buildAiWritingProfilePromptSection(business);
     const aiRules = buildAiWritingProfileRules();
+    const attachmentContext = await buildMailAttachmentAiPromptSection(supabase, attachmentRefs, { userId });
 
     const system = `Tu es le rédacteur IA d'iNrCy pour des emails professionnels français. Tu réécris des modèles Propulser/Fidéliser.
 Réponds uniquement en JSON valide : {"subject":"...","body_text":"..."}.
@@ -118,6 +135,8 @@ Objectif : produire un email original, naturel, utile, moins générique, sans c
 Règles strictes :
 - Ne jamais inventer d'avis, de prix, de délai, de certification, de promotion ou de résultat.
 - Conserver les liens, URL, mentions de lien avis, coordonnées et informations importantes déjà présentes.
+- Si une pièce jointe est fournie, s’appuyer sur son contenu lisible pour rendre l’email plus précis.
+- Ne jamais inventer le contenu d’une pièce jointe : si le texte n’est pas lisible, utiliser seulement le nom/type du fichier et rester prudent.
 - Ne pas copier mot pour mot le modèle : reformuler vraiment l'objet et le message.
 - Ne pas changer la finalité : avis, recommandation, offre, information, suivi ou enquête selon le modèle.
 - Garder un email prêt à envoyer : salutation, message clair, CTA, formule de fin.
@@ -141,13 +160,15 @@ Forces : ${strengths.length ? strengths.join(", ") : "Non précisées"}
 Configuration IA :
 ${aiConfig || "- Non précisée"}
 
+${attachmentContext ? `Contexte des pièces jointes :\n${attachmentContext}\n` : "Aucune pièce jointe à analyser."}
+
 Objet actuel du modèle :
 ${renderedSubject}
 
 Message actuel du modèle :
 ${renderedBody}
 
-Réécris un nouvel objet et un nouveau message, plus personnalisé et plus naturel, en respectant la même mission.`;
+Réécris un nouvel objet et un nouveau message, plus personnalisé et plus naturel, en respectant la même mission. Si une pièce jointe utile est présente, exploite ses informations pour rendre le mail plus concret sans la recopier.`;
 
     const generated = await openaiGenerateJSON<GeneratedTemplateMail>({
       system,
