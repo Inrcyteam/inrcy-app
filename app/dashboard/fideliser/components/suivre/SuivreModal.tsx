@@ -46,6 +46,8 @@ export default function SuivreModal({
 
   const [body, setBody] = useState("");
   const [bodyHtml, setBodyHtml] = useState("");
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [aiError, setAiError] = useState("");
 
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -82,6 +84,40 @@ export default function SuivreModal({
       } catch {}
     })();
   }, [selected?.key]);
+
+
+  const generateAiTemplateContent = async () => {
+    if (!selected || aiGenerating) return;
+    setAiError("");
+    setAiGenerating(true);
+    try {
+      const r = await fetch("/api/templates/generate-ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          module: "fideliser",
+          mission: "Suivre",
+          template_key: selected.key,
+          template_title: selected.title,
+          template_category: selected.category,
+          subject,
+          body,
+        }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(String(j?.error || "La génération IA a échoué."));
+      if (j?.subject) setSubject(String(j.subject));
+      if (j?.body_text) {
+        const nextBody = String(j.body_text);
+        setBody(nextBody);
+        setBodyHtml(textToRichMailHtml(nextBody));
+      }
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : "La génération IA a échoué.");
+    } finally {
+      setAiGenerating(false);
+    }
+  };
 
   const onNext = async () => {
     const placeholders = extractTemplatePlaceholders(`${subject}\n${body}`);
@@ -136,32 +172,46 @@ export default function SuivreModal({
           <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: '0.04em', color: 'rgba(255,255,255,0.64)', marginBottom: 8, textTransform: 'uppercase', display: isMobile ? 'none' : 'block' }}>
             Modèle dédié
           </div>
-          <select
-            value={selectedKey}
-            onChange={(e) => setSelectedKey(e.target.value)}
-            aria-label="Choisir un modèle"
-            style={{
-              width: '100%',
-              borderRadius: 16,
-              padding: '14px 16px',
-              background: 'linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.06) 100%)',
-              color: '#ffffff',
-              border: '1px solid rgba(255,255,255,0.16)',
-              outline: 'none',
-              fontSize: 15,
-              fontWeight: 700,
-              boxShadow: '0 14px 28px rgba(0,0,0,0.18)',
-              boxSizing: 'border-box',
-              display: 'block',
-              maxWidth: '100%',
-            }}
-          >
-            {categories.map((tpl, index) => (
-              <option key={tpl.category} value={tpl.key} style={{ color: '#111111' }}>
-                {index + 1}. {tpl.title}
-              </option>
-            ))}
-          </select>
+          <div style={{ display: "flex", alignItems: "stretch", gap: 10, flexWrap: isMobile ? "wrap" : "nowrap" }}>
+            <select
+              value={selectedKey}
+              onChange={(e) => setSelectedKey(e.target.value)}
+              aria-label="Choisir un modèle"
+              style={{
+                width: '100%',
+                flex: isMobile ? '1 1 100%' : '0 1 620px',
+                maxWidth: isMobile ? '100%' : 620,
+                minWidth: 0,
+                borderRadius: 16,
+                padding: '14px 16px',
+                background: 'linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.06) 100%)',
+                color: '#ffffff',
+                border: '1px solid rgba(255,255,255,0.16)',
+                outline: 'none',
+                fontSize: 15,
+                fontWeight: 700,
+                boxShadow: '0 14px 28px rgba(0,0,0,0.18)',
+                boxSizing: 'border-box',
+                display: 'block',
+              }}
+            >
+              {categories.map((tpl, index) => (
+                <option key={tpl.category} value={tpl.key} style={{ color: '#111111' }}>
+                  {index + 1}. {tpl.title}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className={`${styles.secondaryBtn} ${styles.aiGenerateBtn}`}
+              onClick={generateAiTemplateContent}
+              disabled={aiGenerating || !selected}
+              style={{ minHeight: 46, padding: "10px 16px", fontWeight: 900, borderRadius: 999, opacity: aiGenerating ? 0.7 : 1, flex: isMobile ? "1 1 100%" : "0 0 auto", whiteSpace: "nowrap" }}
+            >
+              {aiGenerating ? "Génération…" : "✨ Générer avec iNrCy"}
+            </button>
+          </div>
+          {aiError ? <div style={{ marginTop: 8, width: "100%", color: "#fecaca", fontSize: 13, fontWeight: 700 }}>{aiError}</div> : null}
         </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 10, flex: 1, minHeight: 0, overflow: "hidden" }}>

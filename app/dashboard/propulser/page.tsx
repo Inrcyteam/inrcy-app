@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import styles from "../../dashboard/dashboard.module.css";
 import b from "../booster/booster.module.css";
 import BaseModal from "../_components/WorkflowBaseModal";
@@ -15,6 +15,7 @@ import { getGoalCopy } from "@/lib/weeklyGoals";
 import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
 import { confirmInrcy } from "@/lib/inrcyDialog";
 import { useUnsavedExitGuard } from "../_hooks/useUnsavedExitGuard";
+import PublishAiConfigurationDrawer from "../booster/publier/components/PublishAiConfigurationDrawer";
 
 type ActiveModal = null | "valorize" | "reviews" | "promo";
 
@@ -29,12 +30,22 @@ const PROPULSER_GOAL = 1;
 
 export default function PropulserPage() {
   const [helpOpen, setHelpOpen] = useState(false);
+  const [aiConfigurationOpen, setAiConfigurationOpen] = useState(false);
+  const [isMobileHeader, setIsMobileHeader] = useState(false);
   const [active, setActive] = useState<ActiveModal>(null);
   const [metrics, setMetrics] = useState<any>(null);
   const [weeklySummary, setWeeklySummary] = useState<WeeklySummary | null>(null);
   const [metricsLoadedOnce, setMetricsLoadedOnce] = useState(false);
 
   const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 768px)");
+    const update = () => setIsMobileHeader(mq.matches);
+    update();
+    mq.addEventListener?.("change", update);
+    return () => mq.removeEventListener?.("change", update);
+  }, []);
 
   const closeActiveModal = useCallback(() => {
     setActive(null);
@@ -219,6 +230,14 @@ export default function PropulserPage() {
 
   return (
     <main className={`${styles.page} ${b.page}`}>
+
+      <PublishAiConfigurationDrawer
+        open={aiConfigurationOpen}
+        isMobile={isMobileHeader}
+        drawerHeight="100dvh"
+        onClose={() => setAiConfigurationOpen(false)}
+      />
+
       <div style={{ filter: active ? "blur(10px)" : "none", opacity: active ? 0.55 : 1, transition: "filter 180ms ease, opacity 180ms ease", pointerEvents: active ? "none" : "auto" }} aria-hidden={active ? true : undefined}>
         <div className={b.container}>
           <header className={b.headerRow}>
@@ -227,6 +246,7 @@ export default function PropulserPage() {
             <div className={b.closeWrap}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <HelpButton onClick={() => setHelpOpen(true)} title="Aide Propulser" />
+                <button type="button" className={`${styles.secondaryBtn} ${styles.aiHeaderBtn}`} onClick={() => setAiConfigurationOpen(true)} aria-label="Configuration IA" title="Configuration IA">IA</button>
                 <ResponsiveActionButton desktopLabel="Fidéliser" mobileIcon="F" href="/dashboard/fideliser" ariaLabel="Aller vers Fidéliser" title="Fidéliser" className={b.headerBtnFideliser} />
                 <ResponsiveActionButton desktopLabel="iNr'Send" mobileIcon="✉️" href="/dashboard/mails?folder=propulsions" ariaLabel="Aller vers iNr'Send / Propulsions" title="Ouvrir iNr'Send" className={b.headerBtnInrSend} />
                 <ResponsiveActionButton desktopLabel="Fermer" mobileIcon="✕" href="/dashboard" />
@@ -314,7 +334,7 @@ export default function PropulserPage() {
 
 
       {active && (
-        <BaseModal title={active === "valorize" ? "Valoriser" : active === "reviews" ? "Récolter" : "Offrir"} moduleLabel="Module Propulser" onClose={requestCloseActiveModal} headerHidden={false}>
+        <BaseModal title={active === "valorize" ? "Valoriser" : active === "reviews" ? "Récolter" : "Offrir"} moduleLabel="Module Propulser" onClose={requestCloseActiveModal} headerHidden={false} headerActions={<button type="button" className={`${styles.secondaryBtn} ${styles.aiHeaderBtn}`} onClick={() => setAiConfigurationOpen(true)} aria-label="Configuration IA" title="Configuration IA">IA</button>}>
           {active === "valorize" && <ValoriserModal styles={styles} onClose={requestCloseActiveModal} onDone={closeActiveModal} />}
           {active === "reviews" && <RecolterModal styles={styles} onClose={requestCloseActiveModal} onDone={closeActiveModal} />}
           {active === "promo" && <OffrirModal styles={styles} onClose={requestCloseActiveModal} onDone={closeActiveModal} />}
@@ -379,3 +399,19 @@ function TipPanel({ styles, title, lines }: any) {
     </div>
   );
 }
+
+
+const aiHeaderButtonStyle: CSSProperties = {
+  width: 38,
+  minWidth: 38,
+  minHeight: 36,
+  padding: 0,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 2,
+  borderRadius: 999,
+  fontSize: 13,
+  fontWeight: 900,
+  lineHeight: 1,
+};

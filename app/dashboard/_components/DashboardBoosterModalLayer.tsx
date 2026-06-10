@@ -357,6 +357,16 @@ export default function DashboardBoosterModalLayer({
                 title="Aide publication et iNr'Send"
                 size={32}
               />
+
+              <button
+                type="button"
+                className={`${styles.secondaryBtn} ${styles.aiHeaderBtn}`}
+                onClick={() => window.dispatchEvent(new CustomEvent("inrcy:open-ai-configuration"))}
+                title="Configuration IA"
+                aria-label="Configuration IA"
+              >
+                IA
+              </button>
               <button
                 type="button"
                 className={styles.secondaryBtn}

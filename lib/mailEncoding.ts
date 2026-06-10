@@ -60,3 +60,7 @@ function normalizeSubjectTypography(value: string) {
 export function normalizeMailSubject(value: string) {
   return normalizeSubjectTypography(repairCommonMojibake(String(value || ""))).trim();
 }
+
+export function normalizeMailSubjectDraft(value: string) {
+  return normalizeSubjectTypography(repairCommonMojibake(String(value || "")));
+}

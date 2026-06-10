@@ -3,6 +3,7 @@ import {
   decodeBusinessSector,
   getActivitySectorLabel,
 } from "@/lib/activitySectors";
+import { buildAiWritingProfilePromptSection, buildAiWritingProfileRules } from "@/lib/aiWritingProfile";
 
 export type BoosterChannels =
   | "inrcy_site"
@@ -501,39 +502,8 @@ export function boosterUserPrompt(args: {
   const strengths = cleanList(business.strengths || business.strengths_text, 6);
   const services = cleanList(business.services || business.services_text, 10);
   const activityDescription = cleanText(getActivityDescription(business), 420);
-  const tone = labelFromMap(business.tone, TONE_LABELS, "Professionnel");
-  const preferredCta = labelFromMap(
-    business.preferred_cta,
-    CTA_LABELS,
-    "Demander un devis",
-  );
-  const communicationStyle = labelFromMap(
-    business.communication_style,
-    COMMUNICATION_STYLE_LABELS,
-    "Local et humain",
-  );
-  const emojiLevel = labelFromMap(
-    business.emoji_level,
-    EMOJI_LEVEL_LABELS,
-    "Emojis légers",
-  );
-  const length = labelFromMap(business.ai_length, LENGTH_LABELS, "Moyen");
-  const addressMode = labelFromMap(
-    business.address_mode,
-    ADDRESS_MODE_LABELS,
-    "Vouvoiement",
-  );
-  const aiVoice = labelFromMap(
-    business.ai_voice,
-    AI_VOICE_LABELS,
-    "Automatique selon le contexte",
-  );
-  const creativity = labelFromMap(
-    business.ai_creativity,
-    CREATIVITY_LABELS,
-    "Équilibré",
-  );
-  const aiCustomInstructions = cleanText(business.ai_custom_instructions, 500);
+  const aiWritingProfile = buildAiWritingProfilePromptSection(business);
+  const aiWritingProfileRules = buildAiWritingProfileRules();
   const customerTypes = labelsFromArray(
     business.customer_typologies,
     CUSTOMER_TYPE_LABELS,
@@ -567,17 +537,7 @@ export function boosterUserPrompt(args: {
       : "",
   ]);
 
-  const aiConfiguration = compactLines([
-    `- Ton principal : ${tone}`,
-    `- Style de communication : ${communicationStyle}`,
-    `- Niveau d'emojis : ${emojiLevel}`,
-    `- Longueur favorite : ${length}`,
-    `- Tutoiement / vouvoiement : ${addressMode}`,
-    `- Voix de l'entreprise : ${aiVoice}`,
-    `- Créativité IA : ${creativity}`,
-    `- CTA préféré : ${preferredCta}`,
-    optionalLine("Consignes à respecter / à éviter", aiCustomInstructions, 500),
-  ]);
+  const aiConfiguration = aiWritingProfile || "- Non précisée";
 
   const siteSeoHints = compactLines([
     profession ? `- Mot-clé métier prioritaire : ${profession}` : "",
@@ -617,6 +577,9 @@ ${siteSeoHints || "- Aucune référence SEO locale précise renseignée."}
 Configuration IA enregistrée :
 ${aiConfiguration}
 
+Règles de signature IA :
+${aiWritingProfileRules}
+
 Angle éditorial invisible choisi par iNrCy :
 - Type : ${hiddenAngleLabel}
 - Consigne : ${hiddenAngleInstruction}
@@ -636,7 +599,8 @@ Consignes supplémentaires :
 - Ne jamais considérer une ancienne publication comme une information actuelle certaine si elle contredit l'intention du jour.
 - Le style demandé doit changer visiblement le ton, les accroches, le rythme des phrases et la présence d'emojis. Ne fais pas seulement une variation légère.
 - La configuration IA enregistrée prime sur le style historique sobre/équilibré/dynamique si les deux donnent des signaux différents.
-- Respecter les consignes personnalisées à respecter / à éviter si elles sont renseignées, sans jamais annuler les règles de conformité, les règles Google Business ou les contraintes de vérité.
+- L’exemple de contenu aimé sert uniquement d’inspiration stylistique : ne jamais le copier, reprendre ses détails ou paraphraser de trop près.
+- Respecter les consignes “À éviter absolument” si elles sont renseignées, sans jamais annuler les règles de conformité, les règles Google Business ou les contraintes de vérité.
 - Si la typologie client est renseignée : particuliers = rassurant/simple/proximité ; professionnels = efficacité/expertise/réactivité ; collectivités = sérieux/fiabilité/conformité.
 - Si les horaires sont renseignés, les utiliser seulement si cela apporte une information utile. Ne pas les répéter partout.
 - Si les forces sont renseignées, les transformer en bénéfices concrets sans en faire une liste froide.
@@ -652,8 +616,8 @@ Consignes supplémentaires :
 - YouTube : produire un titre propre et une description utile. Le canal reste YouTube : ne pas écrire comme si le pro avait choisi seulement Shorts. La description doit être recherchable, claire et orientée action, avec hashtags adaptés si utiles.
 - Respecter le niveau d'emojis configuré, tout en gardant 0 emoji sur Site iNrCy / Site web et une grande sobriété sur Google Business.
 - Respecter la longueur favorite configurée sans casser les minimums utiles par canal. Les fourchettes mini/maxi ci-dessus priment sur la tentation de faire trop court quand plusieurs canaux sont demandés.
-- Respecter le tutoiement/vouvoiement configuré. En mode automatique, privilégier le vouvoiement pour LinkedIn, Google Business et les métiers sérieux/réglementés.
-- Respecter la voix de l'entreprise configurée : "Je" = parler au nom d'une personne seule, "Nous" = parler au nom de l'entreprise/l'équipe, "Neutre" = éviter autant que possible je et nous, "Automatique" = choisir naturellement selon le profil et le contexte. Ne pas mélanger je et nous dans un même contenu sauf nécessité grammaticale.
+- Respecter le tutoiement/vouvoiement configuré, sans mélanger les deux.
+- Respecter le pronom configuré : “Je”, “Nous”, “Vous” ou “Neutre”. “Vous” signifie que le texte s’adresse directement au lecteur, avec la relation configurée.
 - Respecter le CTA préféré lorsque le canal le permet, sauf Google Business qui doit rester neutre.
 - Aérer le contenu avec des retours à la ligne naturels : 2 à 4 courts paragraphes maximum pour les réseaux sociaux et Google Business, davantage seulement pour les contenus site si nécessaire.
 - Ne pas abuser des retours à la ligne : éviter les phrases isolées artificielles, les sauts de ligne après chaque phrase et les contenus éclatés.

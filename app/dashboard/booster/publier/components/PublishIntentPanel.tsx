@@ -740,20 +740,7 @@ export default function PublishIntentPanel({
         }}
       >
         <div className={styles.blockTitle}>Votre intention</div>
-        <button
-          type="button"
-          className={styles.secondaryBtn}
-          onClick={onOpenAiConfiguration}
-          style={{
-            minHeight: 34,
-            padding: "7px 12px",
-            fontSize: 12,
-            fontWeight: 900,
-            whiteSpace: "nowrap",
-          }}
-        >
-          ⚙️ Configuration IA
-        </button>
+
       </div>
       <div
         className={styles.subtitle}
@@ -1236,7 +1223,7 @@ export default function PublishIntentPanel({
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button
               type="button"
-              className={styles.primaryBtn}
+              className={`${styles.primaryBtn} ${styles.aiGenerateBtn}`}
               onClick={onGenerate}
               disabled={generationDisabled}
             >
@@ -1244,7 +1231,7 @@ export default function PublishIntentPanel({
                 ? "Génération en cours..."
                 : voiceState !== "idle"
                   ? "Vocal en cours..."
-                  : "Générer avec iNrCy"}
+                  : "✨ Générer avec iNrCy"}
             </button>
             <button
               type="button"

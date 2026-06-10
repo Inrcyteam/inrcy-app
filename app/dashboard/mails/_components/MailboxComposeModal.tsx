@@ -1,12 +1,12 @@
 import React from "react";
 import styles from "../mails.module.css";
-import { normalizeMailSubject } from "@/lib/mailEncoding";
+import { normalizeMailSubject, normalizeMailSubjectDraft } from "@/lib/mailEncoding";
 import { pill } from "../_lib/mailboxPhase1";
 import { normalizeEmails } from "../_lib/mailboxPhase25";
 import { inputStyle, textareaStyle } from "./mailboxInlineStyles";
 import RichMailEditor from "@/app/dashboard/_components/RichMailEditor";
 import { confirmInrcy } from "@/lib/inrcyDialog";
-import { extractTemplatePlaceholders } from "@/lib/mailRichText";
+import { extractTemplatePlaceholders, textToRichMailHtml } from "@/lib/mailRichText";
 import { useUnsavedExitGuard } from "@/app/dashboard/_hooks/useUnsavedExitGuard";
 import TemplateSubjectInlineEditor from "@/app/dashboard/_components/TemplateSubjectInlineEditor";
 
@@ -14,6 +14,7 @@ type MailboxComposeModalProps = {
   open: boolean;
   onClose: () => void;
   onOpenSettings: () => void;
+  onOpenAiConfiguration: () => void;
   draftId: string | null;
   currentComposeSnapshot: string;
   lastSavedComposeSnapshot: string | null;
@@ -76,6 +77,7 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
     open,
     onClose,
     onOpenSettings,
+    onOpenAiConfiguration,
     draftId,
     currentComposeSnapshot,
     lastSavedComposeSnapshot,
@@ -233,6 +235,40 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
     return () => media.removeListener(sync);
   }, []);
 
+  const [aiGenerating, setAiGenerating] = React.useState(false);
+  const [aiError, setAiError] = React.useState<string | null>(null);
+
+  const generateMailWithAi = React.useCallback(async () => {
+    const mailSubject = normalizeMailSubject(subject).trim();
+    if (!mailSubject) {
+      setAiError("Renseignez d’abord un objet pour générer votre mail avec iNrCy.");
+      return;
+    }
+
+    setAiGenerating(true);
+    setAiError(null);
+    setToast(null);
+
+    try {
+      const response = await fetch("/api/mails/generate-ai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subject: mailSubject, body: text }),
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(String(payload?.error || "La génération IA a échoué."));
+      const nextText = String(payload?.body_text || "").trim();
+      if (!nextText) throw new Error("iNrCy n’a pas retourné de message exploitable.");
+      setText(nextText);
+      setHtml(textToRichMailHtml(nextText));
+      setToast("Message généré avec iNrCy.");
+    } catch (error) {
+      setAiError(error instanceof Error ? error.message : "La génération IA a échoué.");
+    } finally {
+      setAiGenerating(false);
+    }
+  }, [setHtml, setText, setToast, subject, text]);
+
   if (!open) return null;
 
   const composeInputStyle: React.CSSProperties = {
@@ -304,6 +340,15 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                     disabled={sendBusy || attachBusy}
                   >
                     {attachBusy ? "…" : "💾"}
+                  </button>
+                  <button
+                    className={`${styles.btnGhost} ${styles.composeHeaderIconBtn} ${styles.aiHeaderBtn}`}
+                    onClick={onOpenAiConfiguration}
+                    type="button"
+                    aria-label="Configuration IA"
+                    title="Configuration IA"
+                  >
+                    IA
                   </button>
                   <button
                     className={`${styles.btnGhost} ${styles.composeHeaderIconBtn}`}
@@ -622,25 +667,50 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                   </div>
                   </section>
 
-                  <section className={styles.composeSection}>
+                  <section className={`${styles.composeSection} ${styles.composeSubjectSection}`}>
                     <div className={styles.composeSectionHeader}>
                       <div>
                         <div className={styles.composeSectionTitle}><span className={styles.composeSectionIcon}>🏷️</span>Objet</div>
                         <div className={styles.composeSectionHint}>Titre visible dans la boîte mail du destinataire.</div>
                       </div>
                     </div>
-                    {isMobileViewport ? (
-                      <TemplateSubjectInlineEditor
-                        value={subject}
-                        onChange={(next) => setSubject(normalizeMailSubject(next))}
-                        placeholder="Objet"
-                      />
-                    ) : (
-                      <input value={subject} onChange={(e) => setSubject(normalizeMailSubject(e.target.value))} placeholder="Objet" style={composeInputStyle} />
-                    )}
-                    {!subject.trim() ? (
-                      <span className={styles.composeWarning}>Le message partira avec “(sans objet)” si vous laissez ce champ vide.</span>
-                    ) : null}
+                    <div className={styles.composeSubjectInlineAiRow}>
+                      <div className={styles.composeSubjectInputStack}>
+                        {isMobileViewport ? (
+                          <TemplateSubjectInlineEditor
+                            value={subject}
+                            onChange={(next) => setSubject(normalizeMailSubjectDraft(next))}
+                            placeholder="Ex : Relance devis, présentation de nos services..."
+                          />
+                        ) : (
+                          <input
+                            value={subject}
+                            onChange={(e) => setSubject(normalizeMailSubjectDraft(e.target.value))}
+                            onBlur={(e) => setSubject(normalizeMailSubject(e.target.value))}
+                            placeholder="Ex : Relance devis, présentation de nos services..."
+                            style={composeInputStyle}
+                          />
+                        )}
+                        {!subject.trim() ? (
+                          <span className={styles.composeWarning}>Le message partira avec “(sans objet)” si vous laissez ce champ vide.</span>
+                        ) : null}
+                      </div>
+                      <div className={styles.composeSubjectAiInline}>
+                        <button
+                          type="button"
+                          className={`${styles.btnGhost} ${styles.aiGenerateBtn}`}
+                          onClick={() => void generateMailWithAi()}
+                          disabled={aiGenerating || !subject.trim()}
+                          title={!subject.trim() ? "Renseignez d’abord un objet pour générer votre mail." : "Générer le message avec iNrCy"}
+                        >
+                          {aiGenerating ? "Génération…" : "✨ Générer avec iNrCy"}
+                        </button>
+                        {!subject.trim() ? (
+                          <span className={styles.composeAiHint}>Renseignez un objet pour activer la génération.</span>
+                        ) : null}
+                        {aiError ? <span className={styles.composeAiError}>{aiError}</span> : null}
+                      </div>
+                    </div>
                   </section>
 
                   <section className={`${styles.composeSection} ${styles.composeMessageSection}`}>

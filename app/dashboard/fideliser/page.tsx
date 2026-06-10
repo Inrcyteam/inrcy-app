@@ -1,7 +1,7 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import styles from "../../dashboard/dashboard.module.css";
 import b from "./fideliser.module.css";
 import BaseModal from "./components/BaseModal";
@@ -15,6 +15,7 @@ import { WEEKLY_GOALS, getGoalCopy } from "@/lib/weeklyGoals";
 import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
 import { confirmInrcy } from "@/lib/inrcyDialog";
 import { useUnsavedExitGuard } from "../_hooks/useUnsavedExitGuard";
+import PublishAiConfigurationDrawer from "../booster/publier/components/PublishAiConfigurationDrawer";
 
 type ActiveModal = null | "inform" | "thanks" | "satisfaction";
 
@@ -27,11 +28,21 @@ type WeeklySummary = {
 
 export default function FideliserPage() {
   const [helpOpen, setHelpOpen] = useState(false);
+  const [aiConfigurationOpen, setAiConfigurationOpen] = useState(false);
+  const [isMobileHeader, setIsMobileHeader] = useState(false);
   const [active, setActive] = useState<ActiveModal>(null);
   const [metrics, setMetrics] = useState<any>(null);
   const [weeklySummary, setWeeklySummary] = useState<WeeklySummary | null>(null);
   const [metricsLoadedOnce, setMetricsLoadedOnce] = useState(false);
   const searchParams = useSearchParams();
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 768px)");
+    const update = () => setIsMobileHeader(mq.matches);
+    update();
+    mq.addEventListener?.("change", update);
+    return () => mq.removeEventListener?.("change", update);
+  }, []);
 
   const closeActiveModal = useCallback(() => setActive(null), []);
 
@@ -260,12 +271,20 @@ export default function FideliserPage() {
 
   return (
     <main className={`${styles.page} ${b.page}`}>
+
+      <PublishAiConfigurationDrawer
+        open={aiConfigurationOpen}
+        isMobile={isMobileHeader}
+        drawerHeight="100dvh"
+        onClose={() => setAiConfigurationOpen(false)}
+      />
+
       <div style={{ filter: active ? "blur(10px)" : "none", opacity: active ? 0.55 : 1, transition: "filter 180ms ease, opacity 180ms ease", pointerEvents: active ? "none" : "auto" }} aria-hidden={active ? true : undefined}>
         <div className={b.container}>
           <header className={b.headerRow}>
             <div className={b.titleLine}><span aria-hidden className={b.titleIcon}>💌</span><div className={styles.title}>Fidéliser</div></div>
             <div className={b.tagline}>Faites revenir vos clients. <strong>3 actions</strong>, maintenant.</div>
-            <div className={b.closeWrap}><div style={{ display: "flex", alignItems: "center", gap: 10 }}><HelpButton onClick={() => setHelpOpen(true)} title="Aide Fidéliser" /><ResponsiveActionButton desktopLabel="Propulser" mobileIcon="P" href="/dashboard/propulser" ariaLabel="Aller vers Propulser" title="Propulser" className={b.headerBtnBooster} /><ResponsiveActionButton desktopLabel="iNr'Send" mobileIcon="✉️" href="/dashboard/mails?folder=fidelisations" ariaLabel="Aller vers iNr'Send / Fidélisations" title="Ouvrir iNr'Send" className={b.headerBtnInrSend} /><ResponsiveActionButton desktopLabel="Fermer" mobileIcon="✕" href="/dashboard" /></div></div>
+            <div className={b.closeWrap}><div style={{ display: "flex", alignItems: "center", gap: 10 }}><HelpButton onClick={() => setHelpOpen(true)} title="Aide Fidéliser" /><button type="button" className={`${styles.secondaryBtn} ${styles.aiHeaderBtn}`} onClick={() => setAiConfigurationOpen(true)} aria-label="Configuration IA" title="Configuration IA">IA</button><ResponsiveActionButton desktopLabel="Propulser" mobileIcon="P" href="/dashboard/propulser" ariaLabel="Aller vers Propulser" title="Propulser" className={b.headerBtnBooster} /><ResponsiveActionButton desktopLabel="iNr'Send" mobileIcon="✉️" href="/dashboard/mails?folder=fidelisations" ariaLabel="Aller vers iNr'Send / Fidélisations" title="Ouvrir iNr'Send" className={b.headerBtnInrSend} /><ResponsiveActionButton desktopLabel="Fermer" mobileIcon="✕" href="/dashboard" /></div></div>
           </header>
 
           <HelpModal open={helpOpen} title="Fidéliser" onClose={() => setHelpOpen(false)}>
@@ -350,7 +369,7 @@ export default function FideliserPage() {
       </div>
 
       {active && (
-        <BaseModal title={active === "inform" ? "Informer" : active === "thanks" ? "Suivre" : "Enquêter"} moduleLabel="Module Fidéliser" onClose={requestCloseActiveModal}>
+        <BaseModal title={active === "inform" ? "Informer" : active === "thanks" ? "Suivre" : "Enquêter"} moduleLabel="Module Fidéliser" onClose={requestCloseActiveModal} headerActions={<button type="button" className={`${styles.secondaryBtn} ${styles.aiHeaderBtn}`} onClick={() => setAiConfigurationOpen(true)} aria-label="Configuration IA" title="Configuration IA">IA</button>}>
           {active === "inform" && <InformerModal styles={styles} onClose={requestCloseActiveModal} onDone={closeActiveModal} />}
           {active === "thanks" && <SuivreModal styles={styles} onClose={requestCloseActiveModal} onDone={closeActiveModal} />}
           {active === "satisfaction" && <EnqueterModal styles={styles} onClose={requestCloseActiveModal} onDone={closeActiveModal} />}
@@ -415,3 +434,19 @@ function TipPanel({ styles, title, lines }: any) {
     </div>
   );
 }
+
+
+const aiHeaderButtonStyle: CSSProperties = {
+  width: 38,
+  minWidth: 38,
+  minHeight: 36,
+  padding: 0,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 2,
+  borderRadius: 999,
+  fontSize: 13,
+  fontWeight: 900,
+  lineHeight: 1,
+};

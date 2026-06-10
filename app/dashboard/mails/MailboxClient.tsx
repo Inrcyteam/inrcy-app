@@ -10,6 +10,7 @@ import { buildVideoTransformSignature } from "@/lib/boosterVideoTransforms";
 import { confirmInrcy } from "@/lib/inrcyDialog";
 import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
 import MailboxHeader from "./_components/MailboxHeader";
+import PublishAiConfigurationDrawer from "../booster/publier/components/PublishAiConfigurationDrawer";
 import MobileFoldersMenu from "./_components/MobileFoldersMenu";
 import FolderTabs from "./_components/FolderTabs";
 import MailboxToolbar from "./_components/MailboxToolbar";
@@ -240,6 +241,17 @@ export default function MailboxClient() {
 
   const [mobileFoldersOpen, setMobileFoldersOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [aiConfigurationOpen, setAiConfigurationOpen] = useState(false);
+  const [isMobileHeader, setIsMobileHeader] = useState(false);
+
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 768px)");
+    const update = () => setIsMobileHeader(mq.matches);
+    update();
+    mq.addEventListener?.("change", update);
+    return () => mq.removeEventListener?.("change", update);
+  }, []);
 
   const [folder, setFolder] = useState<Folder>("publications");
   const [boxView, setBoxView] = useState<BoxView>("sent");
@@ -2784,6 +2796,12 @@ async function deleteDraftPermanently(id: string) {
 
   return (
     <div className={styles.page}>
+      <PublishAiConfigurationDrawer
+        open={aiConfigurationOpen}
+        isMobile={isMobileHeader}
+        drawerHeight="100dvh"
+        onClose={() => setAiConfigurationOpen(false)}
+      />
       <div className={styles.wrap}>
         <MailboxHeader
           helpOpen={helpOpen}
@@ -2792,6 +2810,7 @@ async function deleteDraftPermanently(id: string) {
           onCloseHelp={() => setHelpOpen(false)}
           onOpenFolders={() => setMobileFoldersOpen(true)}
           onOpenSettings={() => setSettingsOpen(true)}
+          onOpenAiConfiguration={() => setAiConfigurationOpen(true)}
           onCloseSettings={() => {
             setSettingsOpen(false);
             void loadSignature(selectedAccountId || undefined);
@@ -2954,6 +2973,7 @@ async function deleteDraftPermanently(id: string) {
           open={composeOpen}
           onClose={() => setComposeOpen(false)}
           onOpenSettings={() => setSettingsOpen(true)}
+          onOpenAiConfiguration={() => setAiConfigurationOpen(true)}
           draftId={draftId}
           currentComposeSnapshot={currentComposeSnapshot}
           lastSavedComposeSnapshot={lastSavedComposeSnapshot}

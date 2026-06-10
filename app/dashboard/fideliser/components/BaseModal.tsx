@@ -7,11 +7,13 @@ export default function BaseModal({
   title,
   moduleLabel,
   onClose,
+  headerActions,
   children,
 }: {
   title: string;
   moduleLabel?: string;
   onClose: () => void | Promise<void>;
+  headerActions?: React.ReactNode;
   children: React.ReactNode;
 }) {
   useEffect(() => {
@@ -116,8 +118,9 @@ export default function BaseModal({
               <span style={pillStyle}>{title}</span>
             </div>
 
-            {/* Right close */}
-            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            {/* Right actions */}
+            <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8 }}>
+              {headerActions}
               <button
                 type="button"
                 className={styles.ghostBtn}

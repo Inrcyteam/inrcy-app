@@ -3183,6 +3183,12 @@ export default function PublishModal({
     : "100%";
   const publicationImagesPanelVisible = true;
 
+  useEffect(() => {
+    const openAiConfiguration = () => setAiConfigurationOpen(true);
+    window.addEventListener("inrcy:open-ai-configuration", openAiConfiguration);
+    return () => window.removeEventListener("inrcy:open-ai-configuration", openAiConfiguration);
+  }, []);
+
   const confirmFinalReview = async () => {
     const preparedPostsByChannel =
       finalReviewPosts || buildPreparedPostsByChannel();

@@ -170,6 +170,71 @@
 
 .btnPrimary:hover { transform: translateY(-1px); opacity: 0.95; }
 
+
+.aiHeaderBtn {
+  width: 38px;
+  min-width: 38px;
+  min-height: 36px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border: 1px solid rgba(250,204,21,0.40);
+  background:
+    radial-gradient(circle at 28% 22%, rgba(255,255,255,0.32), transparent 26%),
+    linear-gradient(135deg, rgba(250,204,21,0.26), rgba(251,146,60,0.15), rgba(167,139,250,0.11));
+  color: #fde68a;
+  font-size: 13px;
+  font-weight: 950;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  text-shadow: 0 0 14px rgba(250,204,21,0.50);
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,0.06) inset,
+    0 14px 34px rgba(0,0,0,0.30),
+    0 0 22px rgba(250,204,21,0.16);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.aiHeaderBtn:hover {
+  border-color: rgba(250,204,21,0.62);
+  background:
+    radial-gradient(circle at 28% 22%, rgba(255,255,255,0.40), transparent 28%),
+    linear-gradient(135deg, rgba(250,204,21,0.34), rgba(251,146,60,0.20), rgba(167,139,250,0.14));
+}
+
+.aiGenerateBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(250,204,21,0.32);
+  background:
+    radial-gradient(circle at 18% 18%, rgba(255,255,255,0.18), transparent 28%),
+    linear-gradient(135deg, rgba(250,204,21,0.18), rgba(56,189,248,0.14), rgba(167,139,250,0.12));
+  color: rgba(255,255,255,0.96);
+  font-weight: 900;
+  box-shadow:
+    0 12px 30px rgba(0,0,0,0.24),
+    0 0 18px rgba(250,204,21,0.10);
+}
+
+.aiGenerateBtn:hover {
+  border-color: rgba(250,204,21,0.50);
+  background:
+    radial-gradient(circle at 18% 18%, rgba(255,255,255,0.23), transparent 28%),
+    linear-gradient(135deg, rgba(250,204,21,0.24), rgba(56,189,248,0.17), rgba(167,139,250,0.15));
+}
+
+.aiGenerateBtn:disabled {
+  opacity: 0.52;
+  cursor: not-allowed;
+  transform: none;
+}
+
 /* Attachment button */
 .hiddenFileInput {
   position: absolute;
@@ -4582,5 +4647,78 @@
     height: 21px;
     padding: 0 6px;
     font-size: 10.5px;
+  }
+}
+
+.composeSubjectSection {
+  min-width: 0;
+}
+
+.composeSubjectInlineAiRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  align-items: start;
+  gap: 14px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.composeSubjectInputStack {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.composeSubjectAiInline {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: flex-start;
+  gap: 7px;
+  min-width: 230px;
+  padding-top: 0;
+}
+
+.composeSubjectAiInline .aiGenerateBtn {
+  min-height: 46px;
+  padding-left: 16px;
+  padding-right: 16px;
+  white-space: nowrap;
+}
+
+.composeAiHint {
+  font-size: 12px;
+  color: rgba(255,255,255,0.58);
+  font-weight: 700;
+  line-height: 1.35;
+  text-align: right;
+}
+
+.composeAiError {
+  font-size: 12px;
+  color: #fecaca;
+  font-weight: 800;
+  line-height: 1.35;
+  text-align: right;
+}
+
+@media (max-width: 900px) {
+  .composeSubjectInlineAiRow {
+    grid-template-columns: 1fr;
+  }
+
+  .composeSubjectAiInline {
+    align-items: stretch;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .composeSubjectAiInline .aiGenerateBtn {
+    width: 100%;
+  }
+
+  .composeAiHint,
+  .composeAiError {
+    text-align: left;
   }
 }
