@@ -2824,7 +2824,6 @@ async function deleteDraftPermanently(id: string) {
           onCloseHelp={() => setHelpOpen(false)}
           onOpenFolders={() => setMobileFoldersOpen(true)}
           onOpenSettings={() => setSettingsOpen(true)}
-          onOpenAiConfiguration={() => setAiConfigurationOpen(true)}
           onCloseSettings={() => {
             setSettingsOpen(false);
             void loadSignature(selectedAccountId || undefined);

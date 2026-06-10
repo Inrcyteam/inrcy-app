@@ -16,7 +16,6 @@ type Props = {
   onOpenFolders: () => void;
   onOpenSettings: () => void;
   onCloseSettings: () => void;
-  onOpenAiConfiguration: () => void;
 };
 
 export default function MailboxHeader({
@@ -27,7 +26,6 @@ export default function MailboxHeader({
   onOpenFolders,
   onOpenSettings,
   onCloseSettings,
-  onOpenAiConfiguration,
 }: Props) {
   return (
     <>
@@ -63,16 +61,6 @@ export default function MailboxHeader({
           >
             <span aria-hidden>☰</span>
             <span className={styles.srOnly}>Dossiers</span>
-          </button>
-
-          <button
-            type="button"
-            className={`${styles.btnGhost} ${styles.aiHeaderBtn}`}
-            onClick={onOpenAiConfiguration}
-            aria-label="Configuration IA"
-            title="Configuration IA"
-          >
-            IA
           </button>
 
           <ResponsiveActionButton

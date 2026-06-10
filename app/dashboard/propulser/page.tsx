@@ -246,7 +246,6 @@ export default function PropulserPage() {
             <div className={b.closeWrap}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                 <HelpButton onClick={() => setHelpOpen(true)} title="Aide Propulser" />
-                <button type="button" className={`${styles.secondaryBtn} ${styles.aiHeaderBtn}`} onClick={() => setAiConfigurationOpen(true)} aria-label="Configuration IA" title="Configuration IA">IA</button>
                 <ResponsiveActionButton desktopLabel="Fidéliser" mobileIcon="F" href="/dashboard/fideliser" ariaLabel="Aller vers Fidéliser" title="Fidéliser" className={b.headerBtnFideliser} />
                 <ResponsiveActionButton desktopLabel="iNr'Send" mobileIcon="✉️" href="/dashboard/mails?folder=propulsions" ariaLabel="Aller vers iNr'Send / Propulsions" title="Ouvrir iNr'Send" className={b.headerBtnInrSend} />
                 <ResponsiveActionButton desktopLabel="Fermer" mobileIcon="✕" href="/dashboard" />
