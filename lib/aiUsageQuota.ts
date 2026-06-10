@@ -18,9 +18,9 @@ type ConsumeAiCreditsArgs = {
 };
 
 const AI_QUOTA_LIMITS = {
-  day: 30,
-  week: 150,
-  month: 450,
+  day: 60,
+  week: 200,
+  month: 500,
 } as const;
 
 const AI_QUOTA_PERIODS = {

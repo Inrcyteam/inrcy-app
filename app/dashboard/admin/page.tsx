@@ -54,6 +54,17 @@ const tools = [
   },
 ];
 
+const upcomingTools = Array.from({ length: 6 }, (_, index) => ({
+  href: "#",
+  icon: "＋",
+  title: `Emplacement ${index + 1}`,
+  description: "Nouvel outil admin à brancher prochainement.",
+  status: "Bientôt",
+  ready: false,
+}));
+
+const adminTools = [...tools, ...upcomingTools];
+
 export default async function AdminHomePage() {
   const { isAdmin } = await getMyRole();
   if (!isAdmin) redirect("/dashboard");
@@ -70,7 +81,10 @@ export default async function AdminHomePage() {
             </p>
           </div>
           <div className={styles.heroActions}>
-            <Link className={styles.closeButton} href="/dashboard">Fermer</Link>
+            <Link className={`${styles.closeButton} ${styles.closeIconButton}`} href="/dashboard" aria-label="Fermer">
+              <span className={styles.actionIcon} aria-hidden="true">×</span>
+              <span className={styles.actionLabel}>Fermer</span>
+            </Link>
           </div>
         </section>
 
@@ -78,21 +92,25 @@ export default async function AdminHomePage() {
           <article className={styles.statCard}><div className={styles.statContent}><span className={styles.statLabel}>Outils</span><strong className={styles.statValue}>6</strong><small className={styles.statSub}>pages</small></div></article>
           <article className={styles.statCard}><div className={styles.statContent}><span className={styles.statLabel}>Accès</span><strong className={styles.statValue}>Admin</strong><small className={styles.statSub}>uniquement</small></div></article>
           <article className={styles.statCard}><div className={styles.statContent}><span className={styles.statLabel}>Actifs</span><strong className={styles.statValue}>6</strong><small className={styles.statSub}>branchés</small></div></article>
-          <article className={styles.statCard}><div className={styles.statContent}><span className={styles.statLabel}>À venir</span><strong className={styles.statValue}>0</strong><small className={styles.statSub}>—</small></div></article>
+          <article className={styles.statCard}><div className={styles.statContent}><span className={styles.statLabel}>À venir</span><strong className={styles.statValue}>6</strong><small className={styles.statSub}>emplacements</small></div></article>
         </section>
 
         <section className={styles.toolsGrid} aria-label="Outils admin">
-          {tools.map((tool) => (
-            <article key={tool.href} className={styles.card}>
+          {adminTools.map((tool, index) => (
+            <article key={`${tool.href}-${index}`} className={`${styles.card} ${!tool.ready ? styles.cardSoon : ""}`}>
               <div className={styles.cardContent}>
                 <div className={styles.cardTop}>
                   <span className={styles.iconBubble} aria-hidden="true">{tool.icon}</span>
-                  <span className={`${styles.statusChip} ${tool.status !== "Prévu" ? styles.statusChipReady : styles.statusChipSoon}`}>{tool.status}</span>
+                  <span className={`${styles.statusChip} ${tool.ready ? styles.statusChipReady : styles.statusChipSoon}`}>{tool.status}</span>
                 </div>
                 <h2>{tool.title}</h2>
                 <p>{tool.description}</p>
                 <div className={styles.cardFooter}>
-                  <Link className={styles.cardLink} href={tool.href}>Ouvrir</Link>
+                  {tool.ready ? (
+                    <Link className={styles.cardLink} href={tool.href}>Ouvrir</Link>
+                  ) : (
+                    <span className={`${styles.cardLink} ${styles.cardLinkDisabled}`}>Bientôt</span>
+                  )}
                 </div>
               </div>
             </article>

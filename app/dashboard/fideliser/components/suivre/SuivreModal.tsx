@@ -212,22 +212,18 @@ export default function SuivreModal({
                 </option>
               ))}
             </select>
-            <TemplateAttachmentPicker
-              styles={styles}
-              attachments={attachments}
-              setAttachments={setAttachments}
-              isMobile={isMobile}
-              inputIdPrefix="suivre-template-attachments"
-            />
-            <button
-              type="button"
-              className={`${styles.secondaryBtn} ${styles.aiGenerateBtn}`}
-              onClick={generateAiTemplateContent}
-              disabled={aiGenerating || !selected}
-              style={{ minHeight: 46, padding: "10px 16px", fontWeight: 900, borderRadius: 999, opacity: aiGenerating ? 0.7 : 1, flex: isMobile ? "1 1 100%" : "0 0 auto", whiteSpace: "nowrap" }}
-            >
-              {aiGenerating ? "Génération…" : "✨ Générer avec iNrCy"}
-            </button>
+            <div style={{ flex: isMobile ? "1 1 100%" : "0 0 auto", display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", gap: isMobile ? 5 : 10, minWidth: isMobile ? 0 : 430, maxWidth: isMobile ? "100%" : 540 }}>
+              <button
+                type="button"
+                className={`${styles.secondaryBtn} ${styles.aiGenerateBtn}`}
+                onClick={generateAiTemplateContent}
+                disabled={aiGenerating || !selected}
+                style={{ minHeight: 46, padding: "10px 16px", fontWeight: 900, borderRadius: 999, opacity: aiGenerating ? 0.7 : 1, whiteSpace: "nowrap", width: isMobile ? "100%" : undefined }}
+              >
+                {aiGenerating ? "Génération…" : "✨ Générer avec iNrCy"}
+              </button>
+              <span style={{ ...aiHintStyle, whiteSpace: isMobile ? "nowrap" : "normal", maxWidth: isMobile ? "100%" : 250 }}>La pièce jointe aide l’IA à personnaliser le message.</span>
+            </div>
           </div>
           {aiError ? <div style={{ marginTop: 8, width: "100%", color: "#fecaca", fontSize: 13, fontWeight: 700 }}>{aiError}</div> : null}
         </div>
@@ -273,12 +269,22 @@ export default function SuivreModal({
           </div>
 
           <div style={footerStyle}>
-            <button type="button" onClick={() => void onClose()} className={styles.secondaryBtn}>
-              Annuler
-            </button>
-            <button type="button" onClick={onNext} className={styles.primaryBtn}>
-              Suivant
-            </button>
+            <TemplateAttachmentPicker
+              styles={styles}
+              attachments={attachments}
+              setAttachments={setAttachments}
+              isMobile={isMobile}
+              inputIdPrefix="suivre-template-attachments"
+              variant="footer"
+            />
+            <div style={footerActionsStyle}>
+              <button type="button" onClick={() => void onClose()} className={styles.secondaryBtn}>
+                Annuler
+              </button>
+              <button type="button" onClick={onNext} className={styles.primaryBtn}>
+                Suivant
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -334,10 +340,20 @@ const messageTextareaStyle: CSSProperties = {
   display: "block",
 };
 
+const aiHintStyle: CSSProperties = {
+  color: "rgba(255,255,255,0.58)",
+  fontSize: 11,
+  fontWeight: 750,
+  lineHeight: 1.25,
+  maxWidth: 220,
+};
+
 const footerStyle: CSSProperties = {
   display: "flex",
-  justifyContent: "flex-end",
-  gap: 10,
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 8,
+  flexWrap: "nowrap",
   marginTop: "auto",
   paddingTop: 8,
   paddingBottom: "max(2px, env(safe-area-inset-bottom))",
@@ -345,4 +361,12 @@ const footerStyle: CSSProperties = {
   bottom: 0,
   zIndex: 1,
   background: "transparent",
+};
+
+const footerActionsStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "flex-end",
+  gap: 10,
+  marginLeft: "auto",
 };

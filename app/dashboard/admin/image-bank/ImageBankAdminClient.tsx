@@ -351,14 +351,13 @@ export default function ImageBankAdminClient() {
           </div>
 
           <div className={styles.headerActions}>
-            <Link href="/dashboard/admin/commandes" className={styles.ghostButton}>
-              Commandes
-            </Link>
-            <button type="button" className={styles.ghostButton} onClick={() => loadImages(categoryId)} disabled={imagesLoading}>
-              {imagesLoading ? "Chargement…" : "Rafraîchir"}
+            <button type="button" className={`${styles.ghostButton} ${styles.refreshButton}`} onClick={() => loadImages(categoryId)} disabled={imagesLoading} aria-label="Rafraîchir">
+              <span className={styles.actionIcon} aria-hidden="true">↻</span>
+              <span className={styles.actionLabel}>{imagesLoading ? "Chargement…" : "Rafraîchir"}</span>
             </button>
-            <Link href="/dashboard/admin" className={styles.closeButton}>
-              Fermer
+            <Link href="/dashboard/admin" className={`${styles.closeButton} ${styles.closeIconButton}`} aria-label="Fermer">
+              <span className={styles.actionIcon} aria-hidden="true">×</span>
+              <span className={styles.actionLabel}>Fermer</span>
             </Link>
           </div>
         </section>

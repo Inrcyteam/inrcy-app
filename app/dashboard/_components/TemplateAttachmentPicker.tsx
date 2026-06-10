@@ -13,6 +13,7 @@ type TemplateAttachmentPickerProps = {
   setAttachments: React.Dispatch<React.SetStateAction<ComposeAttachmentRef[]>>;
   isMobile?: boolean;
   inputIdPrefix: string;
+  variant?: "inline" | "footer";
 };
 
 export default function TemplateAttachmentPicker({
@@ -21,6 +22,7 @@ export default function TemplateAttachmentPicker({
   setAttachments,
   isMobile = false,
   inputIdPrefix,
+  variant = "inline",
 }: TemplateAttachmentPickerProps) {
   const generatedId = React.useId().replace(/:/g, "");
   const inputId = `${inputIdPrefix}-${generatedId}`;
@@ -74,8 +76,11 @@ export default function TemplateAttachmentPicker({
     }
   };
 
+  const isFooter = variant === "footer";
+  const mobileFooter = isFooter && isMobile;
+
   return (
-    <div style={{ flex: isMobile ? "1 1 100%" : "0 0 auto", minWidth: 0 }}>
+    <div style={isFooter ? footerRootStyle(isMobile) : { flex: isMobile ? "1 1 100%" : "0 0 auto", minWidth: 0 }}>
       <input id={inputId} type="file" multiple onChange={handleFiles} style={{ display: "none" }} />
       <label
         htmlFor={inputId}
@@ -85,16 +90,30 @@ export default function TemplateAttachmentPicker({
           ...attachButtonStyle,
           opacity: busy ? 0.72 : 1,
           cursor: busy ? "wait" : "pointer",
-          width: isMobile ? "100%" : undefined,
+          width: isMobile && !isFooter ? "100%" : undefined,
+          minHeight: mobileFooter ? 40 : 46,
+          padding: mobileFooter ? "9px 12px" : "10px 16px",
         }}
       >
         <span aria-hidden>📎</span>
-        <span>{busy ? "Préparation…" : attachments.length > 0 ? `${attachments.length} fichier${attachments.length > 1 ? "s" : ""}` : "Joindre"}</span>
+        <span>{busy ? "Préparation…" : isFooter ? "Joindre" : attachments.length > 0 ? `${attachments.length} fichier${attachments.length > 1 ? "s" : ""}` : "Joindre"}</span>
       </label>
 
       {attachments.length > 0 ? (
-        <div style={chipsWrapStyle} aria-label="Pièces jointes du modèle">
-          {attachments.map((attachment, index) => (
+        <div style={isFooter ? footerChipsWrapStyle(isMobile) : chipsWrapStyle} aria-label="Pièces jointes du modèle">
+          {mobileFooter ? (
+            <span style={{ ...chipStyle, maxWidth: 92 }} title={attachments.map((attachment) => attachment.name).join(", ")}>
+              <span style={chipNameStyle}>{attachments.length} fichier{attachments.length > 1 ? "s" : ""}</span>
+              <button
+                type="button"
+                onClick={() => setAttachments([])}
+                aria-label="Retirer les pièces jointes"
+                style={chipRemoveStyle}
+              >
+                ×
+              </button>
+            </span>
+          ) : attachments.map((attachment, index) => (
             <span key={`${attachment.bucket}:${attachment.path}:${index}`} style={chipStyle} title={attachment.name}>
               <span style={chipNameStyle}>{attachment.name}</span>
               <button
@@ -114,6 +133,15 @@ export default function TemplateAttachmentPicker({
     </div>
   );
 }
+
+const footerRootStyle = (isMobile: boolean): CSSProperties => ({
+  flex: isMobile ? "0 1 auto" : "1 1 auto",
+  minWidth: 0,
+  display: "flex",
+  alignItems: "center",
+  gap: isMobile ? 6 : 8,
+  flexWrap: isMobile ? "nowrap" : "wrap",
+});
 
 const attachButtonStyle: CSSProperties = {
   minHeight: 46,
@@ -136,6 +164,14 @@ const chipsWrapStyle: CSSProperties = {
   marginTop: 7,
   maxWidth: 260,
 };
+
+const footerChipsWrapStyle = (isMobile: boolean): CSSProperties => ({
+  display: "flex",
+  flexWrap: isMobile ? "nowrap" : "wrap",
+  gap: 6,
+  minWidth: 0,
+  maxWidth: isMobile ? 98 : "min(520px, 100%)",
+});
 
 const chipStyle: CSSProperties = {
   display: "inline-flex",

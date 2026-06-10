@@ -78,8 +78,14 @@ export default function AdminSettingsClient() {
           </div>
 
           <div className={styles.headerActions}>
-            <button type="button" className={styles.ghostButton} onClick={() => load(true)} disabled={refreshing}>{refreshing ? "Rafraîchissement…" : "Rafraîchir"}</button>
-            <Link href="/dashboard/admin" className={styles.closeButton}>Fermer</Link>
+            <button type="button" className={`${styles.ghostButton} ${styles.refreshButton}`} onClick={() => load(true)} disabled={refreshing} aria-label="Rafraîchir">
+              <span className={styles.actionIcon} aria-hidden="true">↻</span>
+              <span className={styles.actionLabel}>{refreshing ? "Rafraîchissement…" : "Rafraîchir"}</span>
+            </button>
+            <Link href="/dashboard/admin" className={`${styles.closeButton} ${styles.closeIconButton}`} aria-label="Fermer">
+              <span className={styles.actionIcon} aria-hidden="true">×</span>
+              <span className={styles.actionLabel}>Fermer</span>
+            </Link>
           </div>
         </section>
 

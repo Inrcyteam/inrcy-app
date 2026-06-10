@@ -23,7 +23,10 @@ export default function AdminToolPlaceholder({ kicker, title, description, icon,
             ) : null}
           </div>
           <div className={styles.heroActions}>
-            <Link className={styles.closeButton} href="/dashboard/admin">Fermer</Link>
+            <Link className={`${styles.closeButton} ${styles.closeIconButton}`} href="/dashboard/admin" aria-label="Fermer">
+              <span className={styles.actionIcon} aria-hidden="true">×</span>
+              <span className={styles.actionLabel}>Fermer</span>
+            </Link>
           </div>
         </section>
 

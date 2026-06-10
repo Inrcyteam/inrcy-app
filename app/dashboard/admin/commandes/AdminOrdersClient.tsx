@@ -160,14 +160,13 @@ export default function AdminOrdersClient() {
           </div>
 
           <div className={styles.headerActions}>
-            <Link className={styles.ghostButton} href="/dashboard/admin/image-bank">
-              Banque d’images
-            </Link>
-            <button type="button" onClick={() => load(true)} className={styles.ghostButton} disabled={refreshing}>
-              {refreshing ? "Rafraîchissement…" : "Rafraîchir"}
+            <button type="button" onClick={() => load(true)} className={`${styles.ghostButton} ${styles.refreshButton}`} disabled={refreshing} aria-label="Rafraîchir">
+              <span className={styles.actionIcon} aria-hidden="true">↻</span>
+              <span className={styles.actionLabel}>{refreshing ? "Rafraîchissement…" : "Rafraîchir"}</span>
             </button>
-            <Link className={styles.closeButton} href="/dashboard/admin">
-              Fermer
+            <Link className={`${styles.closeButton} ${styles.closeIconButton}`} href="/dashboard/admin" aria-label="Fermer">
+              <span className={styles.actionIcon} aria-hidden="true">×</span>
+              <span className={styles.actionLabel}>Fermer</span>
             </Link>
           </div>
         </section>
