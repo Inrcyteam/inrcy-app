@@ -4654,11 +4654,36 @@
   min-width: 0;
 }
 
+.composeSubjectHeader {
+  display: block;
+}
+
+.composeSubjectHeaderGrid {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) 210px 230px;
+  align-items: end;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+}
+
+.composeSubjectHeaderMain {
+  min-width: 0;
+}
+
+.composeWritingTypeLabel {
+  font-size: 12px;
+  line-height: 1.25;
+  color: rgba(255,255,255,0.58);
+  font-weight: 800;
+  padding-bottom: 1px;
+}
+
 .composeSubjectInlineAiRow {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) max-content;
+  grid-template-columns: minmax(220px, 1fr) 210px 230px;
   align-items: start;
-  gap: 14px;
+  gap: 12px;
   min-width: 0;
   max-width: 100%;
 }
@@ -4667,6 +4692,39 @@
   display: grid;
   gap: 8px;
   min-width: 0;
+}
+
+
+.composeWritingTypeStack {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.composeWritingTypeSelect {
+  min-height: 46px;
+  width: 100%;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: linear-gradient(135deg, rgba(255,255,255,0.12), rgba(255,255,255,0.045)), rgba(9,13,28,0.72);
+  color: rgba(255,255,255,0.94);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.07), 0 12px 28px rgba(0,0,0,0.18);
+  padding: 0 38px 0 14px;
+  font-size: 14px;
+  font-weight: 900;
+  outline: none;
+  cursor: pointer;
+}
+
+.composeWritingTypeSelect:focus {
+  border-color: rgba(255, 214, 102, 0.78);
+  background: linear-gradient(135deg, rgba(255,255,255,0.16), rgba(255,255,255,0.07)), rgba(15,19,34,0.84);
+  box-shadow: 0 0 0 3px rgba(255, 214, 102, 0.16), inset 0 1px 0 rgba(255,255,255,0.08), 0 14px 34px rgba(0,0,0,0.24);
+}
+
+.composeWritingTypeSelect option {
+  background: #ffffff;
+  color: #111827;
 }
 
 .composeSubjectAiInline {
@@ -4703,10 +4761,16 @@
 }
 
 @media (max-width: 900px) {
+  .composeSubjectHeaderGrid,
   .composeSubjectInlineAiRow {
     grid-template-columns: 1fr;
   }
 
+  .composeWritingTypeLabel {
+    display: none;
+  }
+
+  .composeWritingTypeStack,
   .composeSubjectAiInline {
     align-items: stretch;
     min-width: 0;

@@ -105,15 +105,15 @@ const HIDDEN_ANGLE_INSTRUCTIONS: Record<BoosterHiddenAngle, string> = {
 
 const CHANNEL_EDITORIAL_PLAYBOOKS: Record<BoosterChannels, string> = {
   inrcy_site:
-    "Objectif : produire une actualité utile pour le site iNrCy. Priorité au SEO local naturel, à la clarté et à la conversion douce. Contenu riche, paragraphes lisibles, mots-clés intégrés sans bourrage, 2 à 5 expressions importantes en gras Markdown uniquement dans le contenu.",
+    "Objectif : produire une actualité utile pour le site iNrCy. Priorité au SEO local naturel, à la clarté et à la conversion douce. Contenu riche, paragraphes lisibles, mots-clés intégrés sans bourrage, 2 à 5 expressions importantes en gras Markdown uniquement dans le contenu. Liste SEO propre possible si elle améliore la lecture, jamais systématique.",
   site_web:
-    "Objectif : produire un contenu durable pour le site web du pro. Priorité au référencement local, à la crédibilité métier et à la lecture fluide. Le contenu doit être plus riche que les réseaux sociaux, avec métier, ville, prestations et zones intégrés naturellement.",
+    "Objectif : produire un contenu durable pour le site web du pro. Priorité au référencement local, à la crédibilité métier et à la lecture fluide. Le contenu doit être plus riche que les réseaux sociaux, avec métier, ville, prestations et zones intégrés naturellement. Liste SEO propre possible si elle améliore la lecture, jamais systématique.",
   gmb:
-    "Objectif : informer localement sur Google Business. Texte factuel, concret, rassurant et sobre. Une information utile dès le début, pas de ton promotionnel agressif, pas d'emoji, pas de hashtag, pas de téléphone, pas d'email, pas d'URL, pas de remise, pas de promesse invérifiable.",
+    "Objectif : informer localement sur Google Business. Texte factuel, concret, rassurant et sobre. Une information utile dès le début, pas de ton promotionnel agressif, pas de hashtag, pas de téléphone, pas d'email, pas d'URL, pas de remise, pas de promesse invérifiable. Emoji très sobre possible uniquement si la Configuration IA le demande fortement. Liste courte possible si elle clarifie le message, jamais systématique.",
   facebook:
-    "Objectif : créer de la proximité et donner envie d'interagir. Ton humain, accessible, local, conversationnel. Parler du quotidien, d'une intervention, d'un conseil ou d'un besoin client typique, sans inventer de faux témoignage. CTA naturel, pas trop vendeur.",
+    "Objectif : créer de la proximité et donner envie d'interagir. Ton humain, accessible, local, conversationnel. Parler du quotidien, d'une intervention, d'un conseil ou d'un besoin client typique, sans inventer de faux témoignage. CTA naturel, pas trop vendeur. Mini-liste possible si elle rend le post plus vivant ou lisible, jamais systématique.",
   instagram:
-    "Objectif : donner une impression visuelle et vivante. Texte direct, spontané, chaleureux, avec des phrases courtes et du relief. Faire sentir l'ambiance, le geste, le résultat ou le moment. Hashtags utiles et ciblés. Ne pas écrire 'lien en bio' sauf si l'information est fournie.",
+    "Objectif : donner une impression visuelle et vivante. Texte direct, spontané, chaleureux, avec des phrases courtes et du relief. Faire sentir l'ambiance, le geste, le résultat ou le moment. Mini-liste visuelle possible si elle sert le contenu, jamais systématique. Hashtags utiles et ciblés. Ne pas écrire 'lien en bio' sauf si l'information est fournie.",
   linkedin:
     "Objectif : renforcer l'expertise et la crédibilité professionnelle. Ton posé, utile, structuré et humain. Montrer une méthode, un point de vigilance, une valeur métier ou une réflexion professionnelle. Éviter le ton trop commercial, les emojis excessifs et les accroches de vente directe.",
   tiktok:
@@ -384,21 +384,27 @@ Important :
 - Préférer une écriture incarnée : phrases simples, détails concrets, rythme naturel, sans surjouer.
 
 Règles par canal et longueurs de qualité :
-- Site iNrCy : titre 45 à 70 caractères ; contenu 900 à 1500 caractères. Texte SEO local naturel, vitrine/conversion, concret et rassurant. Intégrer le métier principal, la ville, 2 à 4 prestations, 1 à 3 zones d'intervention et des variantes de mots-clés proches sans bourrage. Dans le contenu uniquement, mettre en gras 2 à 5 expressions clés maximum avec le format Markdown **expression**.
-- Site web : titre 45 à 70 caractères ; contenu 1100 à 1800 caractères. Variante plus durable et plus riche pour le référencement naturel. Ne pas copier Site iNrCy : varier l'accroche, l'ordre des idées, les prestations mises en avant et les formulations.
-- Google Business : titre 40 à 70 caractères ; contenu 450 à 800 caractères. Texte local, utile, simple et strictement conforme Google Business Profile. Commencer par une information concrète, rester factuel, pas d'emoji, pas de hashtag, pas de téléphone, pas d'email, pas d'URL, pas de réduction ni de promesse agressive.
-- Facebook : titre 40 à 80 caractères ; contenu 500 à 900 caractères. Texte engageant, clair, humain, proche du quotidien et de la vie locale. Donner l'impression d'un vrai pro qui parle à sa communauté, pas d'une publicité générique.
-- Instagram : titre 35 à 70 caractères ; contenu 350 à 700 caractères. Texte visuel, direct, spontané et vivant. Faire sentir l'image, l'ambiance, le geste métier ou le résultat. Hashtags utiles, ciblés, jamais une liste générique.
-- LinkedIn : titre 45 à 90 caractères ; contenu 700 à 1200 caractères. Texte professionnel, crédible, utile et structuré. Mettre en avant expertise, méthode, recul métier ou conseil pro. Éviter le ton vendeur, les slogans et les emojis excessifs.
-- TikTok : titre 30 à 70 caractères ; contenu 180 à 450 caractères. Accroche courte, dynamique et naturelle. Texte pensé pour accompagner une vidéo ou des photos, avec 3 à 6 hashtags utiles.
-- YouTube : titre 45 à 90 caractères ; contenu 500 à 1200 caractères. Description utile, claire et recherchable. Inclure naturellement le sujet, le métier, la ville ou la zone si fournis, un CTA et quelques mots-clés. Si le contexte vidéo indique clairement une vidéo longue, viser plutôt 700 à 1500 caractères ; si elle est très courte, rester plus direct.
+- Site iNrCy : titre 45 à 70 caractères ; contenu 900 à 1500 caractères. Texte SEO local naturel, vitrine/conversion, concret et rassurant. Intégrer le métier principal, la ville, 2 à 4 prestations, 1 à 3 zones d'intervention et des variantes de mots-clés proches sans bourrage. Dans le contenu uniquement, mettre en gras 2 à 5 expressions clés maximum avec le format Markdown **expression**. Liste structurée possible uniquement si elle rend les prestations, étapes, bénéfices, zones ou FAQ plus lisibles.
+- Site web : titre 45 à 70 caractères ; contenu 1100 à 1800 caractères. Variante plus durable et plus riche pour le référencement naturel. Ne pas copier Site iNrCy : varier l'accroche, l'ordre des idées, les prestations mises en avant et les formulations. Liste structurée possible uniquement si elle améliore la clarté, le SEO ou la conversion.
+- Google Business : titre 40 à 70 caractères ; contenu 450 à 800 caractères. Texte local, utile, simple et strictement conforme Google Business Profile. Commencer par une information concrète, rester factuel, pas de hashtag, pas de téléphone, pas d'email, pas d'URL, pas de réduction ni de promesse agressive. Liste très courte possible uniquement si elle clarifie 2 à 3 prestations ou bénéfices.
+- Facebook : titre 40 à 80 caractères ; contenu 500 à 900 caractères. Texte engageant, clair, humain, proche du quotidien et de la vie locale. Donner l'impression d'un vrai pro qui parle à sa communauté, pas d'une publicité générique. Mini-liste possible si elle rend le post plus vivant ou plus lisible.
+- Instagram : titre 35 à 70 caractères ; contenu 350 à 700 caractères. Texte visuel, direct, spontané et vivant. Faire sentir l'image, l'ambiance, le geste métier ou le résultat. Hashtags utiles, ciblés, jamais une liste générique. Mini-liste visuelle possible si elle sert l'impact du post.
+- LinkedIn : titre 45 à 90 caractères ; contenu 700 à 1200 caractères. Texte professionnel, crédible, utile et structuré. Mettre en avant expertise, méthode, recul métier ou conseil pro. Éviter le ton vendeur, les slogans et les emojis excessifs. Liste sobre possible si elle présente une méthode, des points clés ou un retour d'expérience.
+- TikTok : titre 30 à 70 caractères ; contenu 180 à 450 caractères. Accroche courte, dynamique et naturelle. Texte pensé pour accompagner une vidéo ou des photos, avec 3 à 6 hashtags utiles. Liste très courte possible, 3 points maximum.
+- YouTube : titre 45 à 90 caractères ; contenu 500 à 1200 caractères. Description utile, claire et recherchable. Inclure naturellement le sujet, le métier, la ville ou la zone si fournis, un CTA et quelques mots-clés. Si le contexte vidéo indique clairement une vidéo longue, viser plutôt 700 à 1500 caractères ; si elle est très courte, rester plus direct. Liste possible dans la description si elle clarifie ce que l'on voit, les étapes ou les bénéfices.
 - Si Site iNrCy et Site web sont demandés ensemble : garder la même intention commerciale, mais produire deux variantes distinctes. Ne jamais inventer de ville, zone ou prestation absente du profil ou de Mon activité.
 - Facebook / Instagram / LinkedIn / Google Business / TikTok / YouTube : ne jamais utiliser de Markdown ni de balises HTML de formatage. Ces canaux doivent rester en texte brut.
 
-Aération et retours à la ligne :
+Aération, paragraphes et listes :
 - Aérer naturellement les contenus avec des paragraphes courts quand le canal s'y prête.
-- Facebook, Instagram, LinkedIn, TikTok, YouTube et Google Business : viser 2 à 4 courts paragraphes maximum, selon la longueur du texte.
-- Site iNrCy / Site web : structurer en paragraphes lisibles, sans créer de liste froide ni de découpage excessif.
+- Les listes sont autorisées, mais elles ne doivent jamais devenir automatiques : alterner naturellement entre texte fluide, paragraphes courts et liste courte selon le sujet.
+- Utiliser une liste uniquement si elle améliore la clarté, la lisibilité, le SEO, l'impact commercial ou la compréhension des prestations.
+- Site iNrCy / Site web : listes SEO propres possibles, sans emoji, pour prestations, étapes, avantages, zones, problèmes résolus ou FAQ courte. Ne pas créer de liste froide si un texte fluide est meilleur.
+- Facebook / Instagram : mini-listes possibles avec emojis si le niveau d'emojis le permet, surtout pour prestations réalisées, étapes, bénéfices, conseils, avant/après ou points forts. Ne pas utiliser une liste à chaque génération.
+- LinkedIn : listes sobres possibles, sans effet influenceur, pour méthode, points clés, résultats ou apprentissages.
+- Google Business : liste très courte seulement si utile, sans surcharge.
+- TikTok / YouTube : liste courte possible uniquement si elle aide la lecture.
+- Facebook, Instagram, LinkedIn, TikTok, YouTube et Google Business : viser 2 à 4 courts paragraphes maximum, selon la longueur du texte, sauf si une liste courte est plus claire.
 - Ne pas ajouter de retours à la ligne excessifs, de lignes isolées inutiles ou d'effet "post LinkedIn influenceur".
 - Ne jamais rendre un gros bloc de texte compact quand le contenu dépasse quelques phrases.
 
@@ -407,24 +413,32 @@ Différences de styles à respecter impérativement :
 - Style ÉQUILIBRÉ : ton pro, humain, chaleureux et engageant. Accroche plus vivante mais naturelle. Phrases fluides avec un peu plus de relief. Le texte doit être plus chaleureux que le style sobre, sans devenir trop commercial. Emojis modérés.
 - Style DYNAMIQUE : ton nettement plus énergique, vivant, accrocheur et entraînant. Accroche forte dès le début. Phrases plus courtes, plus rythmées, plus incarnées. Le texte doit être clairement plus punchy que les deux autres styles, tout en restant professionnel. Emojis plus présents quand le canal le permet, surtout sur Facebook et Instagram.
 
-Règles d'emojis par style et par canal :
-- Site iNrCy / Site web : 0 emoji, quel que soit le style.
-- Google Business : 0 emoji de préférence. À la rigueur 0 à 1 emoji uniquement en style équilibré ou dynamique si cela reste très naturel, non promotionnel et parfaitement compatible avec Google Business Profile.
+Règles d'emojis par Configuration IA et par canal :
+- La valeur "Emojis" de la Configuration IA est prioritaire sur l'ancien style sobre/équilibré/dynamique, dans les limites de chaque canal.
+- Si la Configuration IA indique "Aucun" : 0 emoji sur tous les canaux, sauf si le pro en demande explicitement dans son intention.
+- Site iNrCy / Site web : 0 emoji, quel que soit le niveau configuré.
+- Google Business : 0 emoji par défaut ; 1 emoji maximum uniquement si la Configuration IA indique "Beaucoup" et si cela reste très naturel, informatif, non promotionnel et compatible Google Business Profile.
 - Facebook :
-  - Sobre : 0 à 1 emoji maximum.
-  - Équilibré : 1 à 3 emojis maximum.
-  - Dynamique : 3 à 5 emojis maximum.
+  - Aucun : 0 emoji.
+  - Léger : 1 à 2 emojis.
+  - Beaucoup : 3 à 5 emojis obligatoires si le sujet s'y prête naturellement.
 - Instagram :
-  - Sobre : 0 à 2 emojis maximum.
-  - Équilibré : 2 à 5 emojis maximum.
-  - Dynamique : 4 à 8 emojis maximum.
+  - Aucun : 0 emoji.
+  - Léger : 2 à 3 emojis.
+  - Beaucoup : 4 à 8 emojis obligatoires si le sujet s'y prête naturellement.
 - LinkedIn :
-  - Sobre : 0 emoji.
-  - Équilibré : 0 à 1 emoji maximum.
-  - Dynamique : 1 à 2 emojis maximum.
-- TikTok : 1 à 4 emojis maximum si cela reste naturel et lisible.
-- YouTube : 0 à 2 emojis maximum, uniquement si cela sert la lecture de la description.
-- Les emojis doivent rester utiles, naturels et lisibles. Jamais de surcharge artificielle. Le style dynamique peut être plus expressif sur Facebook, Instagram et TikTok, mais doit rester propre.
+  - Aucun : 0 emoji.
+  - Léger : 0 à 1 emoji.
+  - Beaucoup : 1 à 2 emojis maximum, uniquement si cela reste professionnel.
+- TikTok :
+  - Aucun : 0 emoji.
+  - Léger : 1 à 2 emojis.
+  - Beaucoup : 3 à 5 emojis si le sujet s'y prête.
+- YouTube :
+  - Aucun : 0 emoji.
+  - Léger : 0 à 1 emoji.
+  - Beaucoup : 1 à 2 emojis maximum, uniquement si cela sert la lecture de la description.
+- Les emojis doivent rester utiles, naturels et lisibles. Ne jamais surcharger artificiellement. Si "Beaucoup" est configuré pour Facebook, Instagram ou TikTok, la présence d'emojis doit se voir réellement, sans casser le sérieux de l'entreprise.
 
 Contraintes :
 - Français uniquement.
@@ -614,11 +628,16 @@ Consignes supplémentaires :
 - LinkedIn : ton plus professionnel, plus crédible, plus expertise et plus humain que Facebook. Éviter le ton vendeur ou trop commercial.
 - TikTok : rester court mais utile. Accroche immédiate, vocabulaire simple, rythme vivant, hashtags ciblés. Ne pas produire un texte institutionnel.
 - YouTube : produire un titre propre et une description utile. Le canal reste YouTube : ne pas écrire comme si le pro avait choisi seulement Shorts. La description doit être recherchable, claire et orientée action, avec hashtags adaptés si utiles.
-- Respecter le niveau d'emojis configuré, tout en gardant 0 emoji sur Site iNrCy / Site web et une grande sobriété sur Google Business.
+- Respecter le niveau d'emojis configuré selon les règles par canal : 0 emoji sur Site iNrCy / Site web ; très sobre sur Google Business ; présence visible si "Beaucoup" est configuré pour Facebook, Instagram ou TikTok.
+- Quand les emojis sont autorisés et demandés, les utiliser dans le contenu de manière naturelle, notamment dans l'accroche ou une mini-liste, au lieu de les ignorer.
 - Respecter la longueur favorite configurée sans casser les minimums utiles par canal. Les fourchettes mini/maxi ci-dessus priment sur la tentation de faire trop court quand plusieurs canaux sont demandés.
 - Respecter le tutoiement/vouvoiement configuré, sans mélanger les deux.
 - Respecter le pronom configuré : “Je”, “Nous”, “Vous” ou “Neutre”. “Vous” signifie que le texte s’adresse directement au lecteur, avec la relation configurée.
 - Respecter le CTA préféré lorsque le canal le permet, sauf Google Business qui doit rester neutre.
+- Varier la structure : ne pas utiliser de liste à chaque génération. Une liste est possible uniquement si elle améliore la clarté, la lisibilité, le SEO ou l'impact commercial.
+- Pour Site iNrCy / Site web : liste SEO propre possible sans emoji pour prestations, étapes, avantages, zones ou FAQ courte.
+- Pour Facebook / Instagram : mini-liste possible avec emojis si le niveau configuré le permet, mais pas automatique.
+- Pour LinkedIn : liste sobre possible si elle renforce l'expertise. Pour Google Business / TikTok / YouTube : liste courte uniquement si elle aide vraiment.
 - Aérer le contenu avec des retours à la ligne naturels : 2 à 4 courts paragraphes maximum pour les réseaux sociaux et Google Business, davantage seulement pour les contenus site si nécessaire.
 - Ne pas abuser des retours à la ligne : éviter les phrases isolées artificielles, les sauts de ligne après chaque phrase et les contenus éclatés.
 - Pour Site iNrCy / Site web uniquement : renforcer le référencement naturel en répétant naturellement le couple métier + ville et les prestations principales, sans dépasser la longueur demandée et sans enchaîner des mots-clés artificiels.

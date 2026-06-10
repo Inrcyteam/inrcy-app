@@ -72,6 +72,21 @@ type MailboxComposeModalProps = {
   setToast: React.Dispatch<React.SetStateAction<string | null>>;
 };
 
+
+const MAIL_WRITING_TYPE_OPTIONS = [
+  { value: "auto", label: "Automatique" },
+  { value: "presentation", label: "Présentation" },
+  { value: "prospection", label: "Prospection" },
+  { value: "relance", label: "Relance" },
+  { value: "thanks", label: "Remerciement" },
+  { value: "info", label: "Information" },
+  { value: "offer", label: "Offre commerciale" },
+  { value: "reply", label: "Réponse client" },
+  { value: "meeting", label: "Invitation / RDV" },
+] as const;
+
+type MailWritingType = (typeof MAIL_WRITING_TYPE_OPTIONS)[number]["value"];
+
 export default function MailboxComposeModal(props: MailboxComposeModalProps) {
   const {
     open,
@@ -237,6 +252,7 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
 
   const [aiGenerating, setAiGenerating] = React.useState(false);
   const [aiError, setAiError] = React.useState<string | null>(null);
+  const [mailWritingType, setMailWritingType] = React.useState<MailWritingType>("auto");
 
   const generateMailWithAi = React.useCallback(async () => {
     const mailSubject = normalizeMailSubject(subject).trim();
@@ -253,7 +269,7 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
       const response = await fetch("/api/mails/generate-ai", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ subject: mailSubject, body: text }),
+        body: JSON.stringify({ subject: mailSubject, body: text, writingType: mailWritingType }),
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(String(payload?.error || "La génération IA a échoué."));
@@ -267,7 +283,7 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
     } finally {
       setAiGenerating(false);
     }
-  }, [setHtml, setText, setToast, subject, text]);
+  }, [mailWritingType, setHtml, setText, setToast, subject, text]);
 
   if (!open) return null;
 
@@ -668,10 +684,14 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                   </section>
 
                   <section className={`${styles.composeSection} ${styles.composeSubjectSection}`}>
-                    <div className={styles.composeSectionHeader}>
-                      <div>
-                        <div className={styles.composeSectionTitle}><span className={styles.composeSectionIcon}>🏷️</span>Objet</div>
-                        <div className={styles.composeSectionHint}>Titre visible dans la boîte mail du destinataire.</div>
+                    <div className={`${styles.composeSectionHeader} ${styles.composeSubjectHeader}`}>
+                      <div className={styles.composeSubjectHeaderGrid}>
+                        <div className={styles.composeSubjectHeaderMain}>
+                          <div className={styles.composeSectionTitle}><span className={styles.composeSectionIcon}>🏷️</span>Objet</div>
+                          <div className={styles.composeSectionHint}>Titre visible dans la boîte mail du destinataire.</div>
+                        </div>
+                        <div className={styles.composeWritingTypeLabel}>Typologie</div>
+                        <div aria-hidden="true" />
                       </div>
                     </div>
                     <div className={styles.composeSubjectInlineAiRow}>
@@ -695,6 +715,20 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                           <span className={styles.composeWarning}>Le message partira avec “(sans objet)” si vous laissez ce champ vide.</span>
                         ) : null}
                       </div>
+                      <div className={styles.composeWritingTypeStack}>
+                        <select
+                          aria-label="Typologie du mail"
+                          className={styles.composeWritingTypeSelect}
+                          value={mailWritingType}
+                          onChange={(e) => setMailWritingType(e.target.value as MailWritingType)}
+                        >
+                          {MAIL_WRITING_TYPE_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
                       <div className={styles.composeSubjectAiInline}>
                         <button
                           type="button"
@@ -705,9 +739,6 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                         >
                           {aiGenerating ? "Génération…" : "✨ Générer avec iNrCy"}
                         </button>
-                        {!subject.trim() ? (
-                          <span className={styles.composeAiHint}>Renseignez un objet pour activer la génération.</span>
-                        ) : null}
                         {aiError ? <span className={styles.composeAiError}>{aiError}</span> : null}
                       </div>
                     </div>

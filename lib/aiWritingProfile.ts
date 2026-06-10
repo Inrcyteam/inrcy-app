@@ -142,6 +142,10 @@ export function buildAiWritingProfileRules() {
     "- Respecter le pronom utilisé : Je = une personne parle ; Nous = l'entreprise/l'équipe parle ; Vous = le texte s'adresse principalement au lecteur ; Neutre = éviter je/nous/vous autant que possible.",
     "- Respecter la relation avec le lecteur : vouvoiement ou tutoiement. Ne pas mélanger les deux.",
     "- Respecter le niveau commercial : discret = conseil naturel ; équilibré = bénéfice + CTA doux ; direct = CTA plus clair sans agressivité.",
+    "- Respecter le niveau d'emojis demandé : Aucun = 0 ; Léger = présence sobre ; Beaucoup = présence visible uniquement quand le canal ou le format le permet.",
+    "- Varier la structure des contenus : ne pas utiliser de liste à chaque génération. Utiliser une liste uniquement si elle améliore la clarté, la lisibilité, le SEO, l'impact commercial ou la compréhension des prestations.",
+    "- Adapter les listes au support : sites = listes propres sans emoji ; réseaux sociaux = mini-listes possibles plus visuelles ; LinkedIn et mails = listes sobres ; emails = liste courte seulement si elle rend l'offre ou les étapes plus claires.",
+    "- Pour les emails Propulser/Fidéliser/Mails : rester lisible, humain et prêt à envoyer ; les emojis restent rares même si Beaucoup est configuré, 1 à 2 maximum si cela sert vraiment le ton.",
     "- Respecter l'angle préféré dès que c'est cohérent avec le sujet, sans forcer ni inventer.",
     "- Respecter les éléments à éviter absolument, sauf si cela contredit une obligation de vérité, de conformité ou de sécurité.",
   ].join("\n");

@@ -15,6 +15,24 @@ type GeneratedMail = {
   body_text?: unknown;
 };
 
+
+const MAIL_WRITING_TYPE_LABELS: Record<string, string> = {
+  auto: "Automatique",
+  presentation: "Présentation",
+  prospection: "Prospection",
+  relance: "Relance",
+  thanks: "Remerciement",
+  info: "Information",
+  offer: "Offre commerciale",
+  reply: "Réponse client",
+  meeting: "Invitation / RDV",
+};
+
+function normalizeMailWritingType(value: unknown) {
+  const key = String(value ?? "auto").trim();
+  return MAIL_WRITING_TYPE_LABELS[key] ? key : "auto";
+}
+
 const clean = (value: unknown, max = 600) => String(value ?? "").trim().slice(0, max);
 
 function listFrom(value: unknown, max = 8) {
@@ -34,6 +52,8 @@ export async function POST(req: Request) {
     const body = asRecord(await req.json().catch(() => ({})) as unknown);
     const subject = normalizeMailSubject(clean(body["subject"], 220));
     const currentBody = stripTemplateSignatureBlock(clean(body["body"], 4000));
+    const writingTypeKey = normalizeMailWritingType(body["writingType"] ?? body["mailType"]);
+    const writingTypeLabel = MAIL_WRITING_TYPE_LABELS[writingTypeKey] || MAIL_WRITING_TYPE_LABELS.auto;
 
     if (!subject.trim()) {
       return NextResponse.json({ error: "Renseignez d’abord un objet pour générer votre mail avec iNrCy." }, { status: 400 });
@@ -75,16 +95,20 @@ Réponds uniquement en JSON valide : {"body_text":"..."}.
 Objectif : rédiger le corps d'un mail prêt à envoyer à partir de l'objet fourni.
 Règles strictes :
 - Ne modifie pas l'objet : il sert uniquement de sujet.
+- Respecter le type d’écriture demandé. Si le type est "Automatique", déduire l'intention depuis l'objet.
 - Ne jamais inventer d'avis, de prix, de délai, de certification, de promotion ou de résultat.
 - Ne pas inclure de signature complète : l'application ajoute déjà la signature automatique.
 - Garder un email naturel, utile, humain, clair et adapté à l'entreprise.
 - Respecter la Configuration IA du professionnel.
 - Si un message existe déjà, tu peux t'en inspirer sans le copier.
+- Éviter les mots ou formes qui font spam : MAJUSCULES, promesses exagérées, urgence forcée, trop de points d'exclamation.
 - Ne pas ajouter de markdown lourd ni de HTML. Texte brut uniquement.
 ${aiRules}`;
 
     const input = `Objet du mail :
 ${subject}
+
+Type d’écriture demandé : ${writingTypeLabel}
 
 Entreprise : ${company || "Non précisée"}
 Ville : ${city || "Non précisée"}
@@ -101,7 +125,8 @@ ${aiConfig || "- Non précisée"}
 Message actuel, si présent :
 ${currentBody || "Aucun"}
 
-Rédige uniquement le corps du mail, avec une salutation, un message clair et une fin simple. L'objet doit rester inchangé.`;
+Rédige uniquement le corps du mail, avec une salutation, un message clair et une fin simple. L'objet doit rester inchangé.
+Si le type d’écriture est précisé, adapte l'intention du message à ce type sans devenir artificiel.`;
 
     const generated = await openaiGenerateJSON<GeneratedMail>({
       system,
