@@ -136,7 +136,7 @@ function decodePdfHex(hexRaw: string) {
   const hasUtf16Marker = bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff;
   const hasManyNulls = bytes.slice(0, Math.min(bytes.length, 24)).some((b, index) => index % 2 === 0 && b === 0);
   if (hasUtf16Marker || hasManyNulls) {
-    let start = hasUtf16Marker ? 2 : 0;
+    const start = hasUtf16Marker ? 2 : 0;
     let out = "";
     for (let i = start; i + 1 < bytes.length; i += 2) {
       out += String.fromCharCode((bytes[i] << 8) + bytes[i + 1]);

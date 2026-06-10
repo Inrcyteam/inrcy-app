@@ -38,7 +38,7 @@ export async function POST(req: Request) {
     if (errorResponse) return errorResponse;
 
     const body = asRecord(await req.json().catch(() => ({})) as unknown);
-    const module = clean(body["module"], 40) || "propulser";
+    const templateModule = clean(body["module"], 40) || "propulser";
     const mission = clean(body["mission"], 80) || "Email client";
     const templateTitle = clean(body["template_title"], 140);
     const templateCategory = clean(body["template_category"], 140);
@@ -143,7 +143,7 @@ Règles strictes :
 - Ne pas ajouter de markdown lourd ni de HTML. Texte brut uniquement.
 ${aiRules}`;
 
-    const input = `Module : ${module}
+    const input = `Module : ${templateModule}
 Mission : ${mission}
 Modèle choisi : ${templateTitle || "Non précisé"}
 Catégorie : ${templateCategory || "Non précisé"}
