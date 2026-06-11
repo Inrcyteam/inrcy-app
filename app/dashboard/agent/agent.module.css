@@ -491,6 +491,7 @@
 }
 
 .robotSteps strong {
+  padding-left: 12px;
   color: rgba(255, 255, 255, 0.92);
   font-size: clamp(14px, 1.05vw, 18px);
   font-weight: 520;
@@ -2393,7 +2394,7 @@
 }
 
 .channelScroller button[data-channel="gmb"] img {
-  transform: scale(1.32);
+  transform: scale(1.18);
 }
 
 .channelScroller button[data-channel="facebook"] img {
@@ -3355,3 +3356,11 @@
   }
 }
 
+
+
+/* Ajustement léger — décaler les phrases et dézoomer Google Business */
+@media (max-width: 760px) {
+  .robotSteps strong {
+    padding-left: 10px;
+  }
+}
