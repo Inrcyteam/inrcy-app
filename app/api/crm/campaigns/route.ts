@@ -54,6 +54,27 @@ function normalizeCampaignFolder(input: unknown, fallback: CampaignFolder): Camp
   return ALLOWED_FOLDERS.has(value) ? value : fallback;
 }
 
+function normalizeCampaignMetadata(input: unknown): Record<string, unknown> {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return {};
+  const raw = input as Record<string, unknown>;
+  const source = String(raw.source || "").trim();
+  if (source !== "inr_agent") return {};
+  return {
+    source: "inr_agent",
+    label: String(raw.label || "iNr'Agent"),
+    agentActionId: String(raw.agentActionId || "").trim() || null,
+    automationKey: String(raw.automationKey || "").trim() || null,
+    targetTool: String(raw.targetTool || "").trim() || null,
+    actionType: String(raw.actionType || "").trim() || null,
+    theme: String(raw.theme || "").trim() || null,
+  };
+}
+
+function isMissingMetadataColumnError(error: { code?: string; message?: string } | null | undefined) {
+  const message = String(error?.message || "").toLowerCase();
+  return error?.code === "42703" && message.includes("metadata");
+}
+
 function getMaxCampaignRecipients() {
   const raw = Number(process.env.CRM_CAMPAIGN_MAX_RECIPIENTS || "1000");
   return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 1000;
@@ -141,6 +162,7 @@ export async function POST(req: Request) {
   const trackType = String(body.trackType || "").trim();
   const templateKey = String(body.templateKey || "").trim();
   const attachments = Array.isArray(body.attachments) ? body.attachments : [];
+  const metadata = normalizeCampaignMetadata(body.metadata);
   const normalizedRecipients = normalizeCampaignRecipients(body.recipients);
   const recipientStats = parseCampaignRecipientStats(body.recipients);
 
@@ -225,38 +247,56 @@ export async function POST(req: Request) {
   const initialStatus = dispatchState.state === "paused" ? "paused" : "queued";
   const initialLastError = dispatchState.state === "ready" ? null : dispatchState.reason;
 
-  const { data: campaign, error: campaignError } = await supabase
+  const campaignInsertPayload: Record<string, unknown> = {
+    user_id: user.id,
+    integration_id: accountId,
+    provider: account.provider,
+    type,
+    subject,
+    body_text: text,
+    body_html: html || null,
+    attachments,
+    metadata,
+    status: initialStatus,
+    total_count: recipients.length,
+    queued_count: recipients.length,
+    sent_count: 0,
+    failed_count: 0,
+    source_doc_save_id: sourceDocSaveId || null,
+    source_doc_type: sourceDocType || null,
+    source_doc_number: sourceDocNumber || null,
+    folder,
+    track_kind: trackKind,
+    track_type: trackType || null,
+    template_key: templateKey || null,
+    started_at: null,
+    finished_at: null,
+    last_error: initialLastError,
+    created_at: now,
+    updated_at: now,
+    last_activity_at: now,
+  };
+
+  let { data: campaign, error: campaignError } = await supabase
     .from("mail_campaigns")
-    .insert({
-      user_id: user.id,
-      integration_id: accountId,
-      provider: account.provider,
-      type,
-      subject,
-      body_text: text,
-      body_html: html || null,
-      attachments,
-      status: initialStatus,
-      total_count: recipients.length,
-      queued_count: recipients.length,
-      sent_count: 0,
-      failed_count: 0,
-      source_doc_save_id: sourceDocSaveId || null,
-      source_doc_type: sourceDocType || null,
-      source_doc_number: sourceDocNumber || null,
-      folder,
-      track_kind: trackKind,
-      track_type: trackType || null,
-      template_key: templateKey || null,
-      started_at: null,
-      finished_at: null,
-      last_error: initialLastError,
-      created_at: now,
-      updated_at: now,
-      last_activity_at: now,
-    })
+    .insert(campaignInsertPayload)
     .select("id,status")
     .single();
+
+  if (campaignError && isMissingMetadataColumnError(campaignError)) {
+    // Sécurité déploiement : si le SQL étape 9 n'a pas encore été lancé,
+    // les campagnes manuelles continuent de fonctionner. L'icône iNr'Agent
+    // apparaîtra pour les campagnes dès que la colonne metadata existera.
+    const legacyCampaignInsertPayload = { ...campaignInsertPayload };
+    delete legacyCampaignInsertPayload.metadata;
+    const legacyInsert = await supabase
+      .from("mail_campaigns")
+      .insert(legacyCampaignInsertPayload)
+      .select("id,status")
+      .single();
+    campaign = legacyInsert.data;
+    campaignError = legacyInsert.error;
+  }
 
   if (campaignError || !campaign?.id) {
     return NextResponse.json({ error: campaignError?.message || "Création de campagne impossible." }, { status: 500 });
@@ -274,6 +314,7 @@ export async function POST(req: Request) {
       source_doc_save_id: sourceDocSaveId || null,
       source_doc_type: sourceDocType || null,
       source_doc_number: sourceDocNumber || null,
+      ...(metadata.source === "inr_agent" ? { origin: metadata } : {}),
     },
   });
 

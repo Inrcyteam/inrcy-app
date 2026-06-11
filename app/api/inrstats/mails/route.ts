@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { isAuthorizedCronRequest, getCronUserIdFromRequest } from "@/lib/cronAuth";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import {
   getActionFromLegacyFolder,
   getActionFromTrack,
@@ -131,15 +133,18 @@ function isSentBusinessDocument(row: Record<string, unknown>, type: "facture" | 
   return status === "sent" && cleanString(row.type).toLowerCase() === type;
 }
 
-export async function GET() {
-  const supabase = await createSupabaseServer();
+export async function GET(req: Request) {
+  const cronUserId = isAuthorizedCronRequest(req) ? getCronUserIdFromRequest(req) : "";
+  const supabase = cronUserId ? supabaseAdmin : await createSupabaseServer();
+  let userId = cronUserId;
 
-  const { data: userData, error: userError } = await supabase.auth.getUser();
-  if (userError || !userData?.user) {
-    return jsonUserFacingError("Non authentifié.", { status: 401 });
+  if (!userId) {
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+    if (userError || !userData?.user) {
+      return jsonUserFacingError("Non authentifié.", { status: 401 });
+    }
+    userId = userData.user.id;
   }
-
-  const userId = userData.user.id;
   const now = Date.now();
   const cutoffTime = now - 30 * 24 * 60 * 60 * 1000;
   const cutoffIso = new Date(cutoffTime).toISOString();

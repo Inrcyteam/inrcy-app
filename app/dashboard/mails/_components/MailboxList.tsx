@@ -244,6 +244,7 @@ export default function MailboxList(props: Props) {
               const showWorkflowAction = isGroupedActionFolder(folder);
               const workflowActionLabel = workflowActionLabelForItem(it);
               const isVideoPublication = folder === "publications" && it.source === "app_events" && isPublicationVideoItem(it);
+              const isInrAgentOrigin = it.originSource === "inr_agent";
 
               return (
                 <div
@@ -302,6 +303,15 @@ export default function MailboxList(props: Props) {
                     </div>
 
                     <div className={styles.rowActions}>
+                      {isInrAgentOrigin ? (
+                        <span
+                          className={styles.inrAgentOriginIcon}
+                          title="Action générée par iNr'Agent"
+                          aria-label="Action générée par iNr'Agent"
+                        >
+                          <img src="/icons/inr-agent.png" alt="" aria-hidden="true" />
+                        </span>
+                      ) : null}
                       <button
                         type="button"
                         className={`${styles.iconBtnSmall} ${styles.iconBtnSmallGhost} ${styles.detailsBtn}`}

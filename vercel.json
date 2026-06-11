@@ -25,6 +25,10 @@
       "schedule": "*/1 * * * *"
     },
     {
+      "path": "/api/cron/inr-agent",
+      "schedule": "*/15 * * * *"
+    },
+    {
       "path": "/api/cron/inrsend-retention",
       "schedule": "30 3 * * *"
     }

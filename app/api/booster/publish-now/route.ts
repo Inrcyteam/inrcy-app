@@ -1027,6 +1027,17 @@ export async function POST(req: Request) {
     const eventModule = isValorisation ? "propulser" : "booster";
     const eventType = isValorisation ? "valorize" : "publish";
     const workflowAction = isValorisation ? "valoriser" : "publier";
+    const originSource = String(body.source || body.origin?.source || "").trim();
+    const origin = originSource === "inr_agent"
+      ? {
+          source: "inr_agent",
+          label: "iNr'Agent",
+          agentActionId: String(body.inrAgentActionId || body.origin?.agentActionId || "").trim() || null,
+          automationKey: String(body.automationKey || body.origin?.automationKey || "publish").trim() || "publish",
+          workflowTool: eventModule,
+          workflowAction,
+        }
+      : null;
     const hadAnyImageInput =
       hasAnyImageChannel &&
       (images.length > 0 ||
@@ -2492,6 +2503,7 @@ export async function POST(req: Request) {
       payload: {
         workflowTool: eventModule,
         workflowAction,
+        ...(origin ? { origin, source: origin.source } : {}),
         mediaType,
         mediaModeByChannel,
         videoSettingsByChannel,

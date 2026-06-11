@@ -4796,3 +4796,67 @@
     text-align: left;
   }
 }
+
+/* Étape 9 — marquage discret des actions issues d'iNr'Agent dans iNr'Send */
+.inrAgentOriginIcon {
+  width: 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 28px;
+  border-radius: 999px;
+  border: 1px solid rgba(129, 140, 248, 0.42);
+  background: radial-gradient(circle at 35% 25%, rgba(56, 189, 248, 0.28), rgba(124, 58, 237, 0.22) 54%, rgba(15, 23, 42, 0.72));
+  color: rgba(255,255,255,0.96);
+  font-size: 14px;
+  line-height: 1;
+  box-shadow: 0 0 18px rgba(99, 102, 241, 0.20), inset 0 1px 0 rgba(255,255,255,0.12);
+}
+
+.inrAgentOriginIcon img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
+  display: block;
+  filter: drop-shadow(0 0 8px rgba(125, 211, 252, 0.28));
+}
+
+.rowActions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.itemDateCell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.listHeaderCellRight {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding-right: 0;
+}
+
+.date {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 86px;
+  text-align: center;
+}
+
+@media (max-width: 640px) {
+  .inrAgentOriginIcon {
+    width: 26px;
+    height: 26px;
+    flex-basis: 26px;
+    font-size: 13px;
+  }
+}

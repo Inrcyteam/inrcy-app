@@ -1,0 +1,647 @@
+import { NextResponse } from "next/server";
+import { POST as publishNowBooster } from "@/app/api/booster/publish-now/route";
+import { POST as createCrmCampaign } from "@/app/api/crm/campaigns/route";
+import { requireUser } from "@/lib/requireUser";
+import { enforceRateLimit } from "@/lib/rateLimit";
+import { rowToInrAgentAction } from "@/lib/inrAgentActions";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+
+export const maxDuration = 180;
+export const runtime = "nodejs";
+
+type JsonRecord = Record<string, unknown>;
+type BoosterChannel =
+  | "inrcy_site"
+  | "site_web"
+  | "gmb"
+  | "facebook"
+  | "instagram"
+  | "linkedin"
+  | "tiktok"
+  | "youtube_shorts";
+
+type BoosterPost = {
+  title: string;
+  content: string;
+  cta: string;
+  hashtags: string[];
+};
+
+const ACTION_SELECT =
+  "id, automation_key, action_type, target_tool, title, summary, preview_text, target_channels, target_themes, recipients, image_assets, payload, validation_required, execution_policy, status, scheduled_for, prepared_at, validated_at, refused_at, completed_at, last_error, created_at, updated_at";
+
+const executableStatuses = new Set([
+  "prepared",
+  "pending_validation",
+  "pending",
+  "draft",
+  "validated",
+  "failed",
+]);
+
+const allowedBoosterChannels = new Set<BoosterChannel>([
+  "inrcy_site",
+  "site_web",
+  "gmb",
+  "facebook",
+  "instagram",
+  "linkedin",
+  "tiktok",
+  "youtube_shorts",
+]);
+
+const agentToBoosterChannel: Record<string, BoosterChannel> = {
+  site_inrcy: "inrcy_site",
+  siteInrcy: "inrcy_site",
+  site_web: "site_web",
+  siteWeb: "site_web",
+  gmb: "gmb",
+  google_business: "gmb",
+  facebook: "facebook",
+  instagram: "instagram",
+  linkedin: "linkedin",
+  tiktok: "tiktok",
+  youtube: "youtube_shorts",
+  youtube_shorts: "youtube_shorts",
+};
+
+function asRecord(value: unknown): JsonRecord | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as JsonRecord)
+    : null;
+}
+
+function cleanText(value: unknown, maxLength = 5000) {
+  return String(value ?? "")
+    .replace(/\r\n/g, "\n")
+    .trim()
+    .slice(0, maxLength);
+}
+
+function cleanHashtags(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((tag) =>
+      String(tag || "")
+        .trim()
+        .replace(/^#+/, "")
+        .replace(/[^\p{L}\p{N}_]/gu, "")
+        .slice(0, 40),
+    )
+    .filter(Boolean)
+    .slice(0, 20);
+}
+
+function normalizePost(raw: unknown, fallback?: BoosterPost): BoosterPost {
+  const record = asRecord(raw) || {};
+  const title = cleanText(record.title ?? fallback?.title ?? "", 140);
+  const content = cleanText(record.content ?? record.text ?? record.caption ?? fallback?.content ?? "", 6000);
+  const cta = cleanText(record.cta ?? fallback?.cta ?? "", 220);
+  const hashtags = cleanHashtags(record.hashtags).length
+    ? cleanHashtags(record.hashtags)
+    : fallback?.hashtags || [];
+
+  return {
+    title,
+    content,
+    cta,
+    hashtags,
+  };
+}
+
+function normalizeBoosterChannels(input: unknown): BoosterChannel[] {
+  const raw = Array.isArray(input) ? input : [];
+  return Array.from(
+    new Set(
+      raw
+        .map((channel) => {
+          const value = String(channel || "").trim();
+          return agentToBoosterChannel[value] || value;
+        })
+        .filter((channel): channel is BoosterChannel =>
+          allowedBoosterChannels.has(channel as BoosterChannel),
+        ),
+    ),
+  );
+}
+
+function getFirstPost(postByChannel: Record<string, BoosterPost>, channels: BoosterChannel[]) {
+  const preferred: BoosterChannel[] = [
+    "facebook",
+    "instagram",
+    "gmb",
+    "linkedin",
+    "inrcy_site",
+    "site_web",
+    "tiktok",
+    "youtube_shorts",
+  ];
+  const ordered = [...preferred, ...channels];
+  return ordered
+    .map((channel) => postByChannel[channel])
+    .find((post) => post?.title || post?.content) || {
+    title: "Publication iNr’Agent",
+    content: "",
+    cta: "",
+    hashtags: [],
+  };
+}
+
+function mimeFromPath(path: string) {
+  const lower = path.toLowerCase();
+  if (lower.endsWith(".png")) return "image/png";
+  if (lower.endsWith(".webp")) return "image/webp";
+  if (lower.endsWith(".gif")) return "image/gif";
+  return "image/jpeg";
+}
+
+async function buildImagePayloadFromAgentAction(payload: JsonRecord, actionId: string) {
+  const image = asRecord(payload.imageAsset) || asRecord(payload.image) || null;
+  if (!image) return null;
+
+  const bucket = cleanText(image.bucket || "inrcy-image-bank", 120) || "inrcy-image-bank";
+  const storagePath = cleanText(
+    image.storagePath || image.storage_path || image.path || "",
+    800,
+  );
+  const title = cleanText(image.title || image.name || "image-iNrAgent", 120);
+
+  if (storagePath) {
+    const download = await supabaseAdmin.storage.from(bucket).download(storagePath);
+    if (download.error || !download.data) {
+      throw new Error(
+        download.error?.message || "Impossible de préparer l’image iNr’Agent.",
+      );
+    }
+
+    const buffer = Buffer.from(await download.data.arrayBuffer());
+    const mime = download.data.type || mimeFromPath(storagePath);
+    const extension = mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : "jpg";
+
+    return {
+      name: `${title || "image-iNrAgent"}.${extension}`,
+      type: mime,
+      dataUrl: `data:${mime};base64,${buffer.toString("base64")}`,
+      originalName: title || `image-iNrAgent-${actionId}`,
+      originalType: mime,
+      imageKey: cleanText(image.id || actionId, 120),
+      imageMeta: {
+        source: "inrcy_image_bank",
+        bucket,
+        storagePath,
+        title,
+      },
+    };
+  }
+
+  const publicUrl = cleanText(image.url || image.publicUrl || image.src || "", 2000);
+  if (!publicUrl) return null;
+
+  return {
+    name: `${title || "image-iNrAgent"}.jpg`,
+    type: "image/jpeg",
+    publicUrl,
+    originalPublicUrl: publicUrl,
+    originalName: title || `image-iNrAgent-${actionId}`,
+    originalType: "image/jpeg",
+    imageKey: cleanText(image.id || actionId, 120),
+    imageMeta: {
+      source: "inrcy_image_bank",
+      title,
+    },
+  };
+}
+
+async function updateActionRow(
+  actionId: string,
+  userId: string,
+  patch: Record<string, unknown>,
+) {
+  const { data, error } = await supabaseAdmin
+    .from("inr_agent_actions")
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq("id", actionId)
+    .eq("user_id", userId)
+    .select(ACTION_SELECT)
+    .single();
+
+  if (error) throw error;
+  return rowToInrAgentAction(data as any);
+}
+
+function getPublishError(payload: JsonRecord | null, fallback: string) {
+  return cleanText(
+    payload?.error ||
+      asRecord(payload?.summary)?.error ||
+      payload?.message ||
+      fallback,
+    600,
+  );
+}
+
+
+type CampaignRecipient = {
+  contact_id?: string | null;
+  display_name?: string | null;
+  email: string;
+};
+
+function normalizeCampaignRecipients(input: unknown): CampaignRecipient[] {
+  const raw = Array.isArray(input) ? input : [];
+  const seen = new Set<string>();
+  const recipients: CampaignRecipient[] = [];
+
+  for (const item of raw) {
+    const record = asRecord(item);
+    const email = cleanText(record?.email || item, 260).toLowerCase();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(email) || seen.has(email)) {
+      continue;
+    }
+    seen.add(email);
+    recipients.push({
+      contact_id: cleanText(record?.contact_id || record?.contactId || "", 140) || null,
+      display_name: cleanText(record?.display_name || record?.displayName || record?.name || "", 220) || null,
+      email,
+    });
+  }
+
+  return recipients;
+}
+
+function isCampaignAgentAction(action: ReturnType<typeof rowToInrAgentAction>) {
+  return (
+    (action.automationKey === "grow" || action.automationKey === "loyalty") &&
+    (action.targetTool === "propulser" || action.targetTool === "fideliser" || action.targetTool === "mails") &&
+    (action.actionType === "campaign" || action.actionType === "loyalty" || action.actionType === "mailing")
+  );
+}
+
+async function executeCampaignAction(args: {
+  action: ReturnType<typeof rowToInrAgentAction>;
+  actionId: string;
+  userId: string;
+}) {
+  const { action, actionId, userId } = args;
+  const payload = action.payload || {};
+  const accountId = cleanText(payload.accountId || payload.mailAccountId || "", 140);
+  const subject = cleanText(payload.campaignSubject || payload.subject, 220);
+  const text = cleanText(payload.campaignBody || payload.bodyText || payload.text, 6000);
+  const html = cleanText(payload.bodyHtml || payload.html, 9000);
+  const recipients = normalizeCampaignRecipients(payload.recipients || action.recipients);
+  const folder = cleanText(payload.folder, 80) || (action.automationKey === "loyalty" ? "fidelisations" : "propulsions");
+  const trackKind = cleanText(payload.trackKind, 80) || (action.automationKey === "loyalty" ? "fideliser" : "propulser");
+  const trackType = cleanText(payload.trackType, 80);
+  const templateKey = cleanText(payload.templateKey, 180);
+
+  if (!accountId) {
+    return NextResponse.json({ error: "Boîte d’envoi manquante pour cette campagne." }, { status: 400 });
+  }
+  if (!subject || !text) {
+    return NextResponse.json({ error: "La campagne préparée est incomplète." }, { status: 400 });
+  }
+  if (!recipients.length) {
+    return NextResponse.json({ error: "Aucun destinataire CRM valide pour cette campagne." }, { status: 400 });
+  }
+
+  const now = new Date().toISOString();
+  await updateActionRow(actionId, userId, {
+    status: "executing",
+    validated_at: action.validatedAt || now,
+    refused_at: null,
+    last_error: null,
+  });
+
+  const campaignBody = {
+    accountId,
+    type: "mail",
+    subject,
+    text,
+    html,
+    recipients,
+    folder,
+    trackKind,
+    trackType,
+    templateKey,
+    attachments: [],
+    metadata: {
+      source: "inr_agent",
+      label: "iNr'Agent",
+      agentActionId: actionId,
+      automationKey: action.automationKey,
+      targetTool: action.targetTool,
+      actionType: action.actionType,
+      theme: trackType || null,
+    },
+  };
+
+  try {
+    const response = await createCrmCampaign(
+      new Request("http://inrcy.local/api/crm/campaigns", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(campaignBody),
+      }),
+    );
+    const campaignPayload = (await response.json().catch(() => null)) as JsonRecord | null;
+
+    if (!response.ok || campaignPayload?.success === false) {
+      const errorMessage = cleanText(
+        campaignPayload?.error || "La campagne mail n’a pas pu être exécutée.",
+        700,
+      );
+      const failedAction = await updateActionRow(actionId, userId, {
+        status: "failed",
+        last_error: errorMessage,
+        payload: {
+          ...payload,
+          execution: {
+            ok: false,
+            executedAt: new Date().toISOString(),
+            campaignBody,
+            campaignResult: campaignPayload,
+          },
+        },
+      });
+
+      return NextResponse.json(
+        { action: failedAction, campaignResult: campaignPayload, error: errorMessage },
+        { status: response.ok ? 400 : response.status },
+      );
+    }
+
+    const completedAt = new Date().toISOString();
+    const completedAction = await updateActionRow(actionId, userId, {
+      status: "completed",
+      completed_at: completedAt,
+      validated_at: action.validatedAt || now,
+      refused_at: null,
+      last_error: null,
+      payload: {
+        ...payload,
+        execution: {
+          ok: true,
+          executedAt: completedAt,
+          campaignId: campaignPayload?.campaignId || null,
+          campaignStatus: campaignPayload?.campaignStatus || null,
+          queued: campaignPayload?.queued || recipients.length,
+          campaignResult: campaignPayload,
+        },
+      },
+    });
+
+    if (action.automationKey) {
+      await supabaseAdmin
+        .from("inr_agent_automation_settings")
+        .update({ last_executed_at: completedAt, updated_at: completedAt })
+        .eq("user_id", userId)
+        .eq("automation_key", action.automationKey);
+    }
+
+    return NextResponse.json({
+      action: completedAction,
+      campaignResult: campaignPayload,
+      executed: true,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Exécution de campagne iNr’Agent impossible.";
+    const failedAction = await updateActionRow(actionId, userId, {
+      status: "failed",
+      last_error: message,
+      payload: {
+        ...payload,
+        execution: {
+          ok: false,
+          executedAt: new Date().toISOString(),
+          error: message,
+          campaignBody,
+        },
+      },
+    });
+
+    return NextResponse.json({ action: failedAction, error: message }, { status: 500 });
+  }
+}
+
+export async function POST(request: Request) {
+  const { user, errorResponse } = await requireUser();
+  if (errorResponse) return errorResponse;
+
+  const userId = user.id;
+  const rl = await enforceRateLimit({
+    name: "inr_agent_execute_action",
+    identifier: userId,
+    limit: 10,
+    window: "1 m",
+  });
+  if (rl) return rl;
+
+  const body = (await request.json().catch(() => null)) as { actionId?: unknown } | null;
+  const actionId = cleanText(body?.actionId, 120);
+  if (!actionId) {
+    return NextResponse.json({ error: "Action iNr’Agent introuvable." }, { status: 400 });
+  }
+
+  const { data: actionRow, error: readError } = await supabaseAdmin
+    .from("inr_agent_actions")
+    .select(ACTION_SELECT)
+    .eq("id", actionId)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (readError) {
+    return NextResponse.json(
+      { error: "Lecture de l’action iNr’Agent impossible.", detail: readError.message },
+      { status: 500 },
+    );
+  }
+
+  if (!actionRow) {
+    return NextResponse.json({ error: "Action iNr’Agent introuvable." }, { status: 404 });
+  }
+
+  const action = rowToInrAgentAction(actionRow as any);
+  if (action.status === "completed") {
+    return NextResponse.json({ action, alreadyCompleted: true });
+  }
+
+  if (action.status === "executing") {
+    return NextResponse.json(
+      { error: "Cette action est déjà en cours d’exécution." },
+      { status: 409 },
+    );
+  }
+
+  if (!executableStatuses.has(action.status)) {
+    return NextResponse.json(
+      { error: "Cette action ne peut pas être exécutée dans son état actuel." },
+      { status: 400 },
+    );
+  }
+
+  if (isCampaignAgentAction(action)) {
+    return executeCampaignAction({ action, actionId, userId });
+  }
+
+  if (
+    action.automationKey !== "publish" ||
+    action.targetTool !== "booster" ||
+    action.actionType !== "publication"
+  ) {
+    return NextResponse.json(
+      { error: "L’exécution de cette action n’est pas encore branchée." },
+      { status: 400 },
+    );
+  }
+
+  const payload = action.payload || {};
+  const selectedChannels = normalizeBoosterChannels(
+    payload.selectedChannels || payload.channels || action.targetChannels,
+  );
+  const publishChannels = selectedChannels.filter(
+    (channel) => channel !== "youtube_shorts",
+  );
+  const publishChannelSet = new Set<BoosterChannel>(publishChannels);
+
+  if (!publishChannels.length) {
+    return NextResponse.json(
+      {
+        error:
+          "Aucun canal compatible avec une publication image/texte n’est disponible. YouTube Shorts nécessite une vidéo.",
+      },
+      { status: 400 },
+    );
+  }
+
+  const rawPostByChannel = asRecord(payload.postByChannel) || {};
+  const normalizedPostByChannel = Object.fromEntries(
+    publishChannels.map((channel) => [
+      channel,
+      normalizePost(rawPostByChannel[channel]),
+    ]),
+  ) as Record<string, BoosterPost>;
+  const firstPost = getFirstPost(normalizedPostByChannel, publishChannels);
+
+  if (!firstPost.title || !firstPost.content) {
+    return NextResponse.json(
+      { error: "Le contenu préparé par iNr’Agent est incomplet." },
+      { status: 400 },
+    );
+  }
+
+  const now = new Date().toISOString();
+  await updateActionRow(actionId, userId, {
+    status: "executing",
+    validated_at: action.validatedAt || now,
+    refused_at: null,
+    last_error: null,
+  });
+
+  try {
+    const imagePayload = await buildImagePayloadFromAgentAction(payload, actionId);
+    const mediaModeByChannel = Object.fromEntries(
+      publishChannels.map((channel) => [channel, "images"]),
+    );
+    const publishBody = {
+      channels: publishChannels,
+      post: firstPost,
+      postByChannel: normalizedPostByChannel,
+      idea: cleanText(payload.idea || action.summary, 500),
+      mediaType: "images",
+      mediaModeByChannel,
+      images: imagePayload ? [imagePayload] : [],
+      workflowTool: "booster",
+      workflowAction: "publier",
+      source: "inr_agent",
+      inrAgentActionId: actionId,
+    };
+
+    const publishResponse = await publishNowBooster(
+      new Request("http://inrcy.local/api/booster/publish-now", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(publishBody),
+      }),
+    );
+    const publishPayload = (await publishResponse.json().catch(() => null)) as JsonRecord | null;
+
+    if (!publishResponse.ok || publishPayload?.ok === false) {
+      const errorMessage = getPublishError(
+        publishPayload,
+        "La publication Booster n’a pas pu être exécutée.",
+      );
+      const failedAction = await updateActionRow(actionId, userId, {
+        status: "failed",
+        last_error: errorMessage,
+        payload: {
+          ...payload,
+          execution: {
+            ok: false,
+            executedAt: new Date().toISOString(),
+            skippedChannels: selectedChannels.filter(
+              (channel) => !publishChannelSet.has(channel),
+            ),
+            publishResult: publishPayload,
+          },
+        },
+      });
+
+      return NextResponse.json(
+        { action: failedAction, publishResult: publishPayload, error: errorMessage },
+        { status: publishResponse.ok ? 400 : publishResponse.status },
+      );
+    }
+
+    const completedAt = new Date().toISOString();
+    const completedAction = await updateActionRow(actionId, userId, {
+      status: "completed",
+      completed_at: completedAt,
+      validated_at: action.validatedAt || now,
+      refused_at: null,
+      last_error: null,
+      payload: {
+        ...payload,
+        execution: {
+          ok: true,
+          executedAt: completedAt,
+          skippedChannels: selectedChannels.filter(
+            (channel) => !publishChannelSet.has(channel),
+          ),
+          publicationId: publishPayload?.publication_id || null,
+          summary: publishPayload?.summary || null,
+          results: publishPayload?.results || null,
+        },
+      },
+    });
+
+    await supabaseAdmin
+      .from("inr_agent_automation_settings")
+      .update({ last_executed_at: completedAt, updated_at: completedAt })
+      .eq("user_id", userId)
+      .eq("automation_key", "publish");
+
+    return NextResponse.json({
+      action: completedAction,
+      publishResult: publishPayload,
+      executed: true,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Exécution iNr’Agent impossible.";
+    const failedAction = await updateActionRow(actionId, userId, {
+      status: "failed",
+      last_error: message,
+      payload: {
+        ...payload,
+        execution: {
+          ok: false,
+          executedAt: new Date().toISOString(),
+          error: message,
+        },
+      },
+    });
+
+    return NextResponse.json(
+      { action: failedAction, error: message },
+      { status: 500 },
+    );
+  }
+}

@@ -56,6 +56,10 @@ type OutboxItem = {
   from?: string | null;
   channels?: string[];
   attachments?: { name: string; type?: string | null; size?: number | null; url?: string | null; downloadUrl?: string | null; role?: string | null; storagePath?: string | null; duration?: number | null; thumbnailUrl?: string | null }[];
+  /** Origine de l'action quand elle vient d'un moteur automatisé comme iNr'Agent. */
+  originSource?: "manual" | "inr_agent" | null;
+  originLabel?: string | null;
+  originIcon?: string | null;
   raw?: any;
   reopenHref?: string | null;
 };
@@ -512,6 +516,26 @@ function campaignCounts(raw: any) {
   };
 }
 
+function extractOriginMeta(raw: any): { originSource?: "manual" | "inr_agent" | null; originLabel?: string | null; originIcon?: string | null } {
+  const payload = raw?.payload && typeof raw.payload === "object" ? raw.payload : null;
+  const metadata = raw?.metadata && typeof raw.metadata === "object" ? raw.metadata : null;
+  const origin =
+    payload?.origin && typeof payload.origin === "object"
+      ? payload.origin
+      : metadata?.origin && typeof metadata.origin === "object"
+        ? metadata.origin
+        : metadata || payload || {};
+  const source = String(origin?.source || payload?.source || metadata?.source || "").trim();
+  if (source !== "inr_agent") {
+    return { originSource: source === "manual" ? "manual" : null, originLabel: null, originIcon: null };
+  }
+  return {
+    originSource: "inr_agent",
+    originLabel: String(origin?.label || metadata?.label || "iNr'Agent"),
+    originIcon: "🤖",
+  };
+}
+
 function formatCampaignProgress(raw: any) {
   const counts = campaignCounts(raw);
   const bits = [`${counts.sent}/${counts.total || counts.sent} envoyés`];
@@ -630,6 +654,7 @@ function mapCampaignItems(rows: any[]): OutboxItem[] {
       detailText: x.body_text,
       subject: x.subject,
       attachments: extractAttachmentsFromPayload(x),
+      ...extractOriginMeta(x),
       raw: x,
       reopenHref: x.source_doc_save_id && x.source_doc_type
         ? `/dashboard/${x.source_doc_type === "facture" ? "factures" : "devis"}/new?saveId=${encodeURIComponent(x.source_doc_save_id)}`
@@ -698,6 +723,7 @@ function mapEventItems(rows: any[]): OutboxItem[] {
         detailText: extracted.text,
         channels: extractedChannels,
         attachments: extractAttachmentsFromPayload(payload),
+        ...extractOriginMeta(e),
         raw: e,
         reopenHref: isDraft && folder === "publications"
           ? `/dashboard?action=publish&draftId=${encodeURIComponent(String(e.id || ""))}`
@@ -754,7 +780,7 @@ async function computeFolderCounts(
     : fetchAllRows<any>(async (from, to) => {
         let builder: any = supabase
           .from("mail_campaigns")
-          .select("id, integration_id, provider, type, folder, track_kind, track_type, template_key, subject, body_text, body_html, attachments, status, total_count, queued_count, processing_count, sent_count, failed_count, source_doc_save_id, source_doc_type, source_doc_number, last_error, started_at, finished_at, created_at, updated_at")
+          .select("*")
           .eq("user_id", userId)
           .order("created_at", { ascending: false });
 
@@ -885,7 +911,7 @@ export async function GET(req: Request) {
         tasks.push((async () => {
           let builder: any = supabase
             .from("mail_campaigns")
-            .select("id, integration_id, provider, type, folder, track_kind, track_type, template_key, subject, body_text, body_html, attachments, status, total_count, queued_count, processing_count, sent_count, failed_count, source_doc_save_id, source_doc_type, source_doc_number, last_error, started_at, finished_at, created_at, updated_at")
+            .select("*")
             .eq("user_id", userData.user.id)
             .order("created_at", { ascending: false });
 

@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { jsonUserFacingError } from '@/lib/apiUserFacingErrors';
 import { createSupabaseServer } from '@/lib/supabaseServer';
+import { isAuthorizedCronRequest, getCronUserIdFromRequest } from '@/lib/cronAuth';
+import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { getChannelConnectionStates } from '@/lib/channelConnectionState';
 import { buildStatsConnectionSignature } from '@/lib/stats/connectionSignature';
 import { applyLinkedInFallbackToStatsRecords, readLastGoodLinkedInGeneratorBlock } from '@/lib/linkedinStatsFallback';
@@ -45,13 +47,19 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Configuration serveur incomplète.' }, { status: 500 });
     }
 
-    const supabase = await createSupabaseServer();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
+    const cronUserId = isAuthorizedCronRequest(req) ? getCronUserIdFromRequest(req) : '';
+    const supabase = cronUserId ? supabaseAdmin : await createSupabaseServer();
+    let userId = cronUserId;
 
-    if (!user) {
-      return NextResponse.json({ error: 'Non authentifié.' }, { status: 401 });
+    if (!userId) {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) {
+        return NextResponse.json({ error: 'Non authentifié.' }, { status: 401 });
+      }
+      userId = user.id;
     }
 
     const { searchParams, origin } = new URL(req.url);
@@ -66,7 +74,7 @@ export async function GET(req: Request) {
       getHeaders: () => (cookie ? { cookie } : undefined),
       bypassCache: fresh,
       supabase,
-      userId: user.id,
+      userId,
       snapshotDate,
     });
 
@@ -81,7 +89,7 @@ export async function GET(req: Request) {
             getHeaders: () => (cookie ? { cookie } : undefined),
             bypassCache: fresh,
             supabase,
-            userId: user.id,
+            userId,
             snapshotDate,
           }),
       period === 30
@@ -92,7 +100,7 @@ export async function GET(req: Request) {
             getHeaders: () => (cookie ? { cookie } : undefined),
             bypassCache: fresh,
             supabase,
-            userId: user.id,
+            userId,
             snapshotDate,
           }),
     ]);
@@ -105,12 +113,12 @@ export async function GET(req: Request) {
     const { data: profileRow } = await supabase
       .from('profiles')
       .select('lead_conversion_rate, avg_basket')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .maybeSingle();
 
     const [channelStates, connectionSignature] = await Promise.all([
-      getChannelConnectionStates(supabase, user.id),
-      buildStatsConnectionSignature(supabase, user.id),
+      getChannelConnectionStates(supabase, userId),
+      buildStatsConnectionSignature(supabase, userId),
     ]);
 
     const leadConversionRate = Number(profileRow?.lead_conversion_rate ?? 0);
@@ -122,7 +130,7 @@ export async function GET(req: Request) {
 
     const linkedInFallback = await readLastGoodLinkedInGeneratorBlock({
       supabase,
-      userId: user.id,
+      userId,
       connectionSignature,
     });
     const linkedInPreserved = applyLinkedInFallbackToStatsRecords({
@@ -146,6 +154,9 @@ export async function GET(req: Request) {
       preservedChannels: linkedInPreserved ? { linkedin: true } : undefined,
     });
 
+    const overviewList = Object.values(overviews) as Array<{ meta?: { snapshotDate?: string | null; live?: boolean | null } }>;
+    const overviewWithMeta = overviewList.find((overview) => overview?.meta);
+
     const payload: BulkResponse = {
       period,
       overviews,
@@ -160,8 +171,8 @@ export async function GET(req: Request) {
       meta: {
         source: 'api/stats/dashboard-bulk',
         generatedAt: new Date().toISOString(),
-        snapshotDate: Object.values(overviews).find((overview) => overview?.meta)?.meta?.snapshotDate ?? snapshotDate ?? null,
-        live: Boolean(Object.values(overviews).find((overview) => overview?.meta)?.meta?.live ?? fresh),
+        snapshotDate: overviewWithMeta?.meta?.snapshotDate ?? snapshotDate ?? null,
+        live: Boolean(overviewWithMeta?.meta?.live ?? fresh),
       },
     };
 
