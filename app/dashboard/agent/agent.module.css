@@ -3285,3 +3285,69 @@
     transform: translateY(64px);
   }
 }
+
+/* Étape 41 — correction : effet de coupe plus léger, surtout en responsive */
+@media (min-width: 1181px) {
+  .robotHalo {
+    min-height: 388px;
+  }
+
+  .robotHalo img {
+    width: min(394px, 95%);
+    max-height: 114%;
+    transform: translateY(24px);
+  }
+}
+
+@media (max-width: 1180px) and (min-width: 761px) {
+  .robotHalo {
+    min-height: 300px;
+  }
+
+  .robotHalo img {
+    width: min(342px, 90%);
+    max-height: 118%;
+    transform: translateY(30px);
+  }
+}
+
+@media (max-width: 760px) {
+  .robotHalo {
+    min-height: 348px;
+    padding: 14px 8px 2px;
+  }
+
+  .robotHalo img {
+    width: min(320px, 86vw);
+    max-height: 120%;
+    transform: translateY(36px);
+  }
+}
+
+/* Étape 42 — responsive : descendre encore légèrement le robot */
+@media (max-width: 760px) {
+  .robotHalo {
+    min-height: 348px;
+    padding: 14px 8px 2px;
+  }
+
+  .robotHalo img {
+    width: min(320px, 86vw);
+    max-height: 120%;
+    transform: translateY(46px);
+  }
+}
+
+/* Étape 43 — responsive : montrer davantage le bas du robot */
+@media (max-width: 760px) {
+  .robotHalo {
+    min-height: 372px;
+    padding: 14px 8px 4px;
+  }
+
+  .robotHalo img {
+    width: min(312px, 84vw);
+    max-height: 116%;
+    transform: translateY(18px);
+  }
+}
