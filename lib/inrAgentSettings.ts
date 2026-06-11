@@ -90,7 +90,7 @@ const DEFAULT_AUTOMATIONS: Record<InrAgentAutomationKey, InrAgentAutomationSetti
     dayOfWeek: 1,
     time: "09:00",
     validationMode: "validation_required",
-    allowedChannels: ["site_inrcy", "site_web", "gmb", "facebook", "instagram", "linkedin"],
+    allowedChannels: ["site_inrcy", "site_web", "gmb", "facebook", "instagram", "linkedin", "tiktok", "youtube"],
     allowedThemes: ["conseils", "realisations", "offres", "actualites"],
     useImageBank: true,
     imageRequired: true,
@@ -167,7 +167,7 @@ export const INR_AGENT_DEFAULT_SETTINGS: InrAgentSettings = {
   mode: "validation_required",
   goal: "visibility",
   allowedActions: ["publication", "mailing", "review_request", "loyalty"],
-  allowedChannels: ["site_inrcy", "site_web", "gmb", "facebook", "instagram", "linkedin", "mails"],
+  allowedChannels: ["site_inrcy", "site_web", "gmb", "facebook", "instagram", "linkedin", "tiktok", "youtube", "mails"],
   useMediaLibrary: true,
   allowAiImages: false,
 };

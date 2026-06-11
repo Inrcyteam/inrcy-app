@@ -116,7 +116,7 @@ type AgentActionsResponse = {
   error?: string;
 };
 
-const ROBOT_SRC = "/agent/inr-agent-robot-cutout.png";
+const ROBOT_SRC = "/agent/inr-agent-robot-cutout.webp";
 const channelOptions: Record<ChannelKey, { name: string; src: string }> = {
   siteInrcy: { name: "Site iNrCy", src: "/icons/inrcy.png" },
   siteWeb: { name: "Site Web", src: "/icons/site-web.jpg" },
@@ -128,6 +128,46 @@ const channelOptions: Record<ChannelKey, { name: string; src: string }> = {
   youtube: { name: "YouTube", src: "/icons/youtube-shorts.png" },
   mails: { name: "Mails", src: "/icons/mails-inrcy-dashboard-v2.png" },
 };
+
+
+
+const channelOrder: ChannelKey[] = [
+  "siteInrcy",
+  "siteWeb",
+  "gmb",
+  "facebook",
+  "instagram",
+  "linkedin",
+  "tiktok",
+  "youtube",
+  "mails",
+];
+
+const channelOrderRank = Object.fromEntries(
+  channelOrder.map((channel, index) => [channel, index]),
+) as Record<ChannelKey, number>;
+
+function orderChannels(
+  channels: ChannelKey[],
+  allowedChannels?: readonly ChannelKey[],
+): ChannelKey[] {
+  const allowed = allowedChannels ? new Set<ChannelKey>(allowedChannels) : null;
+  return Array.from(
+    new Set(channels.filter((channel) => !allowed || allowed.has(channel))),
+  ).sort(
+    (a, b) =>
+      (channelOrderRank[a] ?? Number.MAX_SAFE_INTEGER) -
+      (channelOrderRank[b] ?? Number.MAX_SAFE_INTEGER),
+  );
+}
+
+function toggleChannelItem(
+  items: ChannelKey[],
+  item: ChannelKey,
+  allowedChannels: readonly ChannelKey[],
+) {
+  return orderChannels(toggleItem(items, item), allowedChannels);
+}
 
 const apiChannelToUi: Record<string, ChannelKey> = {
   site_inrcy: "siteInrcy",
@@ -352,6 +392,8 @@ const defaultConfigs: Record<AutomationKey, AutomationConfig> = {
       "facebook",
       "instagram",
       "linkedin",
+      "tiktok",
+      "youtube",
     ],
     themes: ["Conseils", "Réalisations", "Offres"],
     validation: "Validation obligatoire avant publication",
@@ -494,13 +536,16 @@ function settingsToConfigs(
         ),
         day: apiToDay[source.dayOfWeek] ?? defaults.day,
         time: source.time || defaults.time,
-        channels: source.allowedChannels
-          .map((channel) => apiToChannel[channel])
-          .filter(
-            (channel): channel is ChannelKey =>
-              Boolean(channel) &&
-              automation.availableChannels.includes(channel),
-          ),
+        channels: orderChannels(
+          source.allowedChannels
+            .map((channel) => apiToChannel[channel])
+            .filter(
+              (channel): channel is ChannelKey =>
+                Boolean(channel) &&
+                automation.availableChannels.includes(channel),
+            ),
+          automation.availableChannels,
+        ),
         themes: source.allowedThemes
           .map((theme) => apiToTheme[theme])
           .filter(
@@ -541,7 +586,10 @@ function configToAutomationSettings(
       config.validation,
       existing.validationMode,
     ),
-    allowedChannels: config.channels.map((channel) => channelToApi[channel]),
+    allowedChannels: orderChannels(
+      config.channels,
+      automations.find((automation) => automation.key === key)?.availableChannels,
+    ).map((channel) => channelToApi[channel]),
     allowedThemes: config.themes
       .map((theme) => themeToApi[theme])
       .filter((theme): theme is InrAgentTheme => Boolean(theme)),
@@ -934,6 +982,7 @@ export default function AgentClient() {
     Record<string, ChannelKey>
   >({});
 
+
   useEffect(() => {
     let alive = true;
 
@@ -1066,20 +1115,26 @@ export default function AgentClient() {
     ? extractImageAsset(selectedPreparedAction)
     : null;
   const preparedImageUrl = imageAssetUrl(preparedImage);
+  const selectedConfigChannels = useMemo(
+    () => orderChannels(selectedConfig.channels, selected.availableChannels),
+    [selected.availableChannels, selectedConfig.channels],
+  );
   const preparedChannels = useMemo(
     () =>
       selectedPreparedAction
-        ? channelsForAction(selectedPreparedAction, selectedConfig.channels)
-        : selectedConfig.channels,
-    [selectedPreparedAction, selectedConfig.channels],
+        ? orderChannels(
+            channelsForAction(selectedPreparedAction, selectedConfigChannels),
+            selected.availableChannels,
+          )
+        : [],
+    [selected.availableChannels, selectedPreparedAction, selectedConfigChannels],
   );
   const preparedChannelsKey = preparedChannels.join("|");
-  const displayChannels =
-    preparedChannels.length > 0
-      ? preparedChannels
-      : selectedConfig.channels.length > 0
-        ? selectedConfig.channels
-        : selected.availableChannels;
+  const displayChannels = hasPreparedAction
+    ? preparedChannels
+    : loadState === "loading"
+      ? []
+      : selectedConfigChannels;
   const activePreviewChannel = selectedPreparedAction
     ? preparedChannels.includes(
         selectedChannelByAction[selectedPreparedAction.id] as ChannelKey,
@@ -1508,7 +1563,15 @@ export default function AgentClient() {
               <span className={styles.starSeven} />
               <span className={styles.starEight} />
               <span className={styles.starNine} />
-              <img src={ROBOT_SRC} alt="" />
+              <img
+                src={ROBOT_SRC}
+                alt=""
+                width={824}
+                height={900}
+                loading="eager"
+                decoding="sync"
+                fetchPriority="high"
+              />
             </div>
 
             <ol className={styles.robotSteps}>
@@ -1543,6 +1606,8 @@ export default function AgentClient() {
                       <img
                         src={preparedImageUrl}
                         alt={imageAssetAlt(preparedImage)}
+                        loading="eager"
+                        decoding="sync"
                       />
                     </div>
                   ) : (
@@ -1705,11 +1770,7 @@ export default function AgentClient() {
                           aria-label={`Afficher l’aperçu ${channel.name}`}
                           title={channel.name}
                         >
-                          <img
-                            src={channel.src}
-                            alt=""
-                            aria-hidden
-                          />
+                          <img src={channel.src} alt="" loading="eager" decoding="sync" aria-hidden />
                         </button>
                       );
                     })
@@ -1822,13 +1883,6 @@ export default function AgentClient() {
                 iNr’Agent quand elles viennent de l’automatisation.
               </p>
             </div>
-            <button
-              type="button"
-              className={styles.modalAction}
-              onClick={() => setHelpOpen(false)}
-            >
-              Compris
-            </button>
           </section>
         </div>
       )}
@@ -1973,14 +2027,15 @@ export default function AgentClient() {
                         className={checked ? styles.choiceActive : ""}
                         onClick={() =>
                           updateConfig(settingsAutomation.key, {
-                            channels: toggleItem(
+                            channels: toggleChannelItem(
                               settingsConfig.channels,
                               channelKey,
+                              settingsAutomation.availableChannels,
                             ),
                           })
                         }
                       >
-                        <img src={channel.src} alt="" />
+                        <img src={channel.src} alt="" loading="eager" decoding="async" />
                         {channel.name}
                       </button>
                     );

@@ -3059,3 +3059,167 @@
     font-size: 20px;
   }
 }
+
+/* Étape 34 — correctifs iNrAgent responsive + logique canaux */
+.settingsModal,
+.settingsModal:not(.helpModal) {
+  max-height: calc(100svh - 32px);
+  overflow-y: auto !important;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+.helpModal {
+  max-height: calc(100svh - 32px);
+}
+
+@media (max-width: 760px) {
+  .moduleHeader {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: "title actions";
+    align-items: start !important;
+    gap: 10px 12px;
+    min-height: 0;
+  }
+
+  .moduleTitleBlock {
+    grid-area: title;
+    min-width: 0;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .moduleLogo {
+    width: 48px;
+    height: 48px;
+    flex: 0 0 48px;
+  }
+
+  .moduleTitleText {
+    padding-top: 3px;
+    gap: 3px;
+  }
+
+  .moduleTitleText h1 {
+    font-size: 25px;
+    line-height: 0.98;
+    white-space: nowrap;
+  }
+
+  .moduleTitleText p {
+    max-width: 230px;
+    white-space: normal;
+    font-size: 11px;
+    line-height: 1.18;
+  }
+
+  .moduleHeaderActions {
+    grid-area: actions;
+    width: auto !important;
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-end !important;
+    gap: 8px;
+    flex-wrap: nowrap !important;
+  }
+
+  .headerSyncPill,
+  .headerWarningPill {
+    display: none;
+  }
+
+  .headerCloseButton {
+    min-height: 36px;
+    padding: 0 14px;
+    font-size: 13px;
+  }
+
+  .previewMeta {
+    padding: 12px;
+  }
+
+  .channelsItem {
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+    padding: 12px;
+  }
+
+  .channelScroller {
+    width: auto;
+    max-width: 196px;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    align-items: center;
+    gap: 10px 12px;
+    margin: 0 auto;
+    padding: 0;
+    overflow: visible !important;
+    scrollbar-width: none;
+  }
+
+  .channelScroller::-webkit-scrollbar {
+    display: none;
+  }
+
+  .channelScroller button {
+    width: 40px;
+    height: 40px;
+    min-height: 40px;
+    flex: 0 0 40px;
+    display: inline-grid;
+    place-items: center;
+    padding: 0;
+    border-radius: 999px;
+    overflow: hidden;
+    background:
+      radial-gradient(circle at 26% 22%, rgba(255, 255, 255, 0.12), transparent 38%),
+      linear-gradient(180deg, rgba(19, 34, 72, 0.92), rgba(8, 18, 42, 0.96));
+    border: 1px solid rgba(148, 163, 255, 0.24);
+    box-shadow: 0 0 14px rgba(96, 165, 250, 0.14), 0 8px 16px rgba(0, 0, 0, 0.22);
+  }
+
+  .channelScroller img {
+    width: 100%;
+    height: 100%;
+  }
+
+  .modalBackdrop {
+    place-items: start center;
+    overflow-y: auto;
+    padding: 14px;
+  }
+
+  .settingsModal,
+  .settingsModal:not(.helpModal),
+  .helpModal {
+    width: min(100%, 430px);
+    max-height: calc(100svh - 28px);
+  }
+}
+
+/* Support visuel commun à toutes les icônes de canaux. */
+.channelScroller button {
+  background:
+    radial-gradient(circle at 26% 22%, rgba(255, 255, 255, 0.12), transparent 38%),
+    linear-gradient(180deg, rgba(19, 34, 72, 0.92), rgba(8, 18, 42, 0.96));
+  border: 1px solid rgba(148, 163, 255, 0.24);
+  box-shadow: 0 0 14px rgba(96, 165, 250, 0.14), 0 8px 16px rgba(0, 0, 0, 0.22);
+}
+
+.channelScroller img {
+  display: block;
+}
+
+.channelScroller button:hover:not(:disabled),
+.channelScroller .channelPillActive {
+  transform: translateY(-1px) scale(1.03);
+  border-color: rgba(125, 211, 252, 0.72);
+  background:
+    radial-gradient(circle at 28% 22%, rgba(255, 255, 255, 0.18), transparent 38%),
+    linear-gradient(135deg, rgba(37, 99, 235, 0.48), rgba(124, 58, 237, 0.38));
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.16), 0 0 18px rgba(34, 211, 238, 0.28), 0 8px 16px rgba(0, 0, 0, 0.24);
+}

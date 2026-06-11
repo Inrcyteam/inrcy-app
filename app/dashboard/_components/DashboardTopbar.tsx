@@ -1,6 +1,7 @@
 "use client";
 
-import type { Dispatch, RefObject, SetStateAction } from "react";
+import { useEffect, type Dispatch, type RefObject, type SetStateAction } from "react";
+import { useRouter } from "next/navigation";
 
 import styles from "../dashboard.module.css";
 import NotificationMenu from "./NotificationMenu";
@@ -33,6 +34,38 @@ type DashboardPanelName =
   | "notifications"
   | "parrainage"
   | "documents";
+
+
+const INR_AGENT_ROUTE = "/dashboard/agent";
+const INR_AGENT_PRELOAD_ASSETS = [
+  "/agent/inr-agent-robot-cutout.webp",
+  "/icons/inr-agent-header.png",
+  "/icons/inrcy.png",
+  "/icons/site-web.jpg",
+  "/icons/google.jpg",
+  "/icons/facebook.png",
+  "/icons/instagram.jpg",
+  "/icons/linkedin.png",
+  "/icons/tiktok.png",
+  "/icons/youtube-shorts.png",
+  "/icons/mails-inrcy-dashboard-v2.png",
+];
+
+const preloadedInrAgentAssets = new Set<string>();
+
+function preloadInrAgentImages() {
+  if (typeof window === "undefined") return;
+
+  for (const src of INR_AGENT_PRELOAD_ASSETS) {
+    if (preloadedInrAgentAssets.has(src)) continue;
+
+    const image = new window.Image();
+    image.decoding = "async";
+    image.loading = "eager";
+    image.src = src;
+    preloadedInrAgentAssets.add(src);
+  }
+}
 
 type DashboardTopbarProps = {
   desktopNotificationMenuRef: RefObject<HTMLDivElement | null>;
@@ -95,7 +128,22 @@ export default function DashboardTopbar({
   menuOpen,
   setMenuOpen,
 }: DashboardTopbarProps) {
+  const router = useRouter();
   const agentTitle = inrAgentEnabled ? "Ouvrir iNr'Agent" : "iNr'Agent est désactivé dans les accès du compte";
+
+  useEffect(() => {
+    if (!inrAgentEnabled) return;
+
+    router.prefetch(INR_AGENT_ROUTE);
+    preloadInrAgentImages();
+  }, [inrAgentEnabled, router]);
+
+  const warmInrAgent = () => {
+    if (!inrAgentEnabled) return;
+
+    router.prefetch(INR_AGENT_ROUTE);
+    preloadInrAgentImages();
+  };
 
   return (
     <header className={styles.topbar}>
@@ -153,9 +201,12 @@ export default function DashboardTopbar({
         <button
           type="button"
           className={`${styles.ghostBtn} ${styles.agentTopbarBtn} ${!inrAgentEnabled ? styles.agentTopbarBtnDisabled : ""}`}
+          onPointerEnter={warmInrAgent}
+          onFocus={warmInrAgent}
           onClick={() => {
             if (!inrAgentEnabled) return;
-            onNavigateCta("/dashboard/agent");
+            warmInrAgent();
+            onNavigateCta(INR_AGENT_ROUTE);
           }}
           aria-label={agentTitle}
           title={agentTitle}
@@ -252,9 +303,12 @@ export default function DashboardTopbar({
           title={agentTitle}
           disabled={!inrAgentEnabled}
           aria-disabled={!inrAgentEnabled}
+          onPointerEnter={warmInrAgent}
+          onFocus={warmInrAgent}
           onClick={() => {
             if (!inrAgentEnabled) return;
-            onNavigateCta("/dashboard/agent");
+            warmInrAgent();
+            onNavigateCta(INR_AGENT_ROUTE);
           }}
         >
           <span className={styles.mobileHeaderAgentIconSlot} aria-hidden>

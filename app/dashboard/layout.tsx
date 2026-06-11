@@ -23,6 +23,7 @@ const DASHBOARD_CRITICAL_IMAGE_PRELOADS = [
   "/icons/linkedin.png",
   "/icons/tiktok.png",
   "/icons/youtube-shorts.png",
+  "/agent/inr-agent-robot-cutout.webp",
   "/icons/inr-agent-header.png",
   "/icons/inr-agent.png",
   "/inrcalendar-logo.png",
