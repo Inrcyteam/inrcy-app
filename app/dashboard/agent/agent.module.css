@@ -3242,3 +3242,46 @@
     transform: translateY(0);
   }
 }
+
+/* Étape 40 — le cadre coupe visuellement le robot */
+@media (min-width: 1181px) {
+  .robotHalo {
+    min-height: 380px;
+  }
+
+  .robotHalo img {
+    width: min(400px, 96%);
+    max-height: 116%;
+    transform: translateY(32px);
+  }
+}
+
+@media (max-width: 1180px) and (min-width: 761px) {
+  .robotHalo {
+    min-height: 290px;
+  }
+
+  .robotHalo img {
+    width: min(350px, 92%);
+    max-height: 120%;
+    transform: translateY(42px);
+  }
+}
+
+@media (max-width: 760px) {
+  .robotCard {
+    grid-template-rows: auto auto;
+    align-items: stretch;
+  }
+
+  .robotHalo {
+    min-height: 325px;
+    padding: 12px 8px 0;
+  }
+
+  .robotHalo img {
+    width: min(345px, 92vw);
+    max-height: 126%;
+    transform: translateY(64px);
+  }
+}
