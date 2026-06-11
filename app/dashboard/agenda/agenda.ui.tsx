@@ -664,6 +664,8 @@ type AgendaEventModalProps = {
   rdvNewContactImportant: boolean;
   rdvNewContactNotes: string;
   rdvGuests: GuestContactForm[];
+  rdvRemindersEnabled: boolean;
+  rdvRemindersAvailable: boolean;
   crmAddFeedback: string;
   contacts: CrmContact[];
   contactsLoading: boolean;
@@ -705,6 +707,7 @@ type AgendaEventModalProps = {
   setRdvNewContactType: (value: ContactType) => void;
   setRdvNewContactImportant: (value: boolean) => void;
   setRdvNewContactNotes: (value: string) => void;
+  setRdvRemindersEnabled: (value: boolean) => void;
 };
 
 export function AgendaEventModal(props: AgendaEventModalProps) {
@@ -1003,23 +1006,35 @@ export function AgendaEventModal(props: AgendaEventModalProps) {
         </div>
 
         <div className={styles.modalFooter}>
-          <div className={styles.modalFooterActions}>
-            {props.rdvMode === "edit" && (
-              <button className={`${styles.btnDanger} ${styles.modalFooterBtn}`} onClick={props.onDelete} disabled={props.rdvSaving}>
-                Supprimer
+          <div className={styles.modalFooterInner}>
+            <label className={`${styles.reminderToggle} ${!props.rdvRemindersAvailable ? styles.reminderToggleDisabled : ""}`} title={props.rdvRemindersAvailable ? "Désactiver les rappels uniquement pour ce RDV." : "Aucun créneau de rappel n’est activé dans les réglages."}>
+              <input
+                type="checkbox"
+                checked={props.rdvRemindersAvailable && props.rdvRemindersEnabled}
+                disabled={!props.rdvRemindersAvailable || props.rdvSaving}
+                onChange={(event) => props.setRdvRemindersEnabled(event.target.checked)}
+              />
+              <span>Rappels activés</span>
+            </label>
+
+            <div className={styles.modalFooterActions}>
+              {props.rdvMode === "edit" && (
+                <button className={`${styles.btnDanger} ${styles.modalFooterBtn}`} onClick={props.onDelete} disabled={props.rdvSaving}>
+                  Supprimer
+                </button>
+              )}
+              {isRequestMode && (
+                <button className={`${styles.btnDanger} ${styles.modalFooterBtn}`} onClick={props.onRejectRequest} disabled={props.rdvSaving}>
+                  Refuser
+                </button>
+              )}
+              <button className={`${styles.btnGhost} ${styles.modalFooterBtn}`} onClick={() => void props.onClose()} disabled={props.rdvSaving}>
+                Annuler
               </button>
-            )}
-            {isRequestMode && (
-              <button className={`${styles.btnDanger} ${styles.modalFooterBtn}`} onClick={props.onRejectRequest} disabled={props.rdvSaving}>
-                Refuser
+              <button className={`${styles.btnPrimary} ${styles.modalFooterBtn}`} onClick={props.onSubmit} disabled={props.rdvSaving}>
+                {props.rdvSaving ? "Enregistrement…" : isRequestMode ? "Valider le RDV" : "Enregistrer"}
               </button>
-            )}
-            <button className={`${styles.btnGhost} ${styles.modalFooterBtn}`} onClick={() => void props.onClose()} disabled={props.rdvSaving}>
-              Annuler
-            </button>
-            <button className={`${styles.btnPrimary} ${styles.modalFooterBtn}`} onClick={props.onSubmit} disabled={props.rdvSaving}>
-              {props.rdvSaving ? "Enregistrement…" : isRequestMode ? "Valider le RDV" : "Enregistrer"}
-            </button>
+            </div>
           </div>
         </div>
       </div>

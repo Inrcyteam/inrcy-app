@@ -49,6 +49,7 @@ function bad(msg: string, status = 400) {
 }
 
 type ReminderMeta = {
+  enabled?: boolean;
   inAppMinutesBefore?: number;
   emailMinutesBefore?: number;
   mailAccountId?: string | null;
@@ -223,7 +224,11 @@ function buildAgendaMeta(input: unknown, previous?: unknown, rootContact?: unkno
   const nextMailAccountId = typeof nextReminders.mailAccountId === "string" ? nextReminders.mailAccountId.trim() : nextReminders.mailAccountId === null ? null : undefined;
   const prevMailAccountId = typeof prevReminders.mailAccountId === "string" ? prevReminders.mailAccountId.trim() : prevReminders.mailAccountId === null ? null : undefined;
 
+  const nextRemindersEnabled = typeof nextReminders.enabled === "boolean" ? nextReminders.enabled : undefined;
+  const prevRemindersEnabled = typeof prevReminders.enabled === "boolean" ? prevReminders.enabled : undefined;
+
   const reminders: ReminderMeta = {
+    enabled: nextRemindersEnabled !== undefined ? nextRemindersEnabled : prevRemindersEnabled !== undefined ? prevRemindersEnabled : true,
     inAppMinutesBefore: Number(nextReminders.inAppMinutesBefore ?? prevReminders.inAppMinutesBefore ?? 120),
     emailMinutesBefore: Number(nextReminders.emailMinutesBefore ?? prevReminders.emailMinutesBefore ?? 1440),
     mailAccountId: nextMailAccountId !== undefined ? (nextMailAccountId || null) : (prevMailAccountId || null),
@@ -251,7 +256,7 @@ function buildAgendaMeta(input: unknown, previous?: unknown, rootContact?: unkno
 
 const AGENDA_TIMEZONE = "Europe/Paris";
 
-async function createAgendaConfirmationNotification(userId: string, title: string, startAt: string) {
+async function createAgendaConfirmationNotification(userId: string, title: string, startAt: string, remindersEnabled = true) {
   const when = new Date(startAt);
   const whenLabel = Number.isFinite(when.getTime())
     ? new Intl.DateTimeFormat("fr-FR", {
@@ -266,7 +271,9 @@ async function createAgendaConfirmationNotification(userId: string, title: strin
     category: "information",
     kind: "agenda_event_saved",
     title: "Rendez-vous enregistré dans iNrCalendar",
-    body: `“${title || "Rendez-vous"}” est bien positionné pour le ${whenLabel}. Un rappel in-app sera envoyé automatiquement avant l’échéance et les rappels email suivront les réglages iNr’Calendar pour le pro, le contact lié et les invités renseignés.`,
+    body: remindersEnabled
+      ? `“${title || "Rendez-vous"}” est bien positionné pour le ${whenLabel}. Les rappels suivront les réglages iNr’Calendar pour le pro, le contact lié et les invités renseignés.`
+      : `“${title || "Rendez-vous"}” est bien positionné pour le ${whenLabel}. Les rappels sont désactivés pour ce rendez-vous.`,
     cta_label: "Ouvrir l’agenda",
     cta_url: "/dashboard/agenda",
     dedupe_key: `agenda_saved:${userId}:${title}:${startAt}`,
@@ -803,7 +810,7 @@ export async function POST(req: Request) {
     .single();
 
   if (error) return jsonUserFacingError(error, { status: 500, extra: { ok: false } });
-  await createAgendaConfirmationNotification(user.id, String(body.summary ?? "(Sans titre)"), startAt).catch(() => null);
+  await createAgendaConfirmationNotification(user.id, String(body.summary ?? "(Sans titre)"), startAt, safeObj(meta.reminders).enabled !== false).catch(() => null);
   await sendAgendaConfirmationEmails({
     userId: user.id,
     row: {
@@ -908,7 +915,7 @@ export async function PATCH(req: Request) {
   const { error } = await supabase.from("agenda_events").update(patch).eq("id", id).eq("user_id", user.id);
 
   if (error) return jsonUserFacingError(error, { status: 500, extra: { ok: false } });
-  await createAgendaConfirmationNotification(user.id, String(nextTitle), startAt).catch(() => null);
+  await createAgendaConfirmationNotification(user.id, String(nextTitle), startAt, safeObj(nextMeta.reminders).enabled !== false).catch(() => null);
   if (eventChanged) {
     await sendAgendaConfirmationEmails({
       userId: user.id,

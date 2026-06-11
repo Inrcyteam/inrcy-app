@@ -378,16 +378,19 @@
 .robotCard {
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
-  padding: clamp(18px, 1.7vw, 26px);
+  gap: 0;
+  padding: clamp(18px, 1.7vw, 26px) clamp(18px, 1.7vw, 26px) 0;
 }
 
 .robotHalo {
   position: relative;
   min-height: 0;
-  display: grid;
-  place-items: center;
-  border-radius: 22px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  border-radius: 22px 22px 0 0;
   overflow: hidden;
+  padding: 0;
   background:
     radial-gradient(circle at 48% 46%, rgba(56, 189, 248, 0.18), transparent 38%),
     radial-gradient(circle at 50% 52%, rgba(168, 85, 247, 0.13), transparent 55%);
@@ -416,12 +419,13 @@
 .robotHalo img {
   position: relative;
   z-index: 2;
+  display: block;
   width: min(390px, 94%);
   max-height: 108%;
   height: auto;
   object-fit: contain;
   object-position: center bottom;
-  transform: translateY(24px);
+  transform: translateY(0);
   filter: drop-shadow(0 26px 36px rgba(0, 0, 0, 0.36)) drop-shadow(0 0 24px rgba(96, 165, 250, 0.26));
 }
 
@@ -444,8 +448,8 @@
 .robotSteps {
   position: relative;
   z-index: 2;
-  margin: clamp(12px, 1.2vw, 18px) 0 0;
-  padding: 0 0 0 34px;
+  margin: 0;
+  padding: clamp(14px, 1.2vw, 18px) 0 clamp(18px, 1.5vw, 24px) 34px;
   list-style: none;
   display: grid;
   gap: clamp(12px, 1.45vw, 21px);
@@ -1151,10 +1155,12 @@
     grid-template-columns: minmax(230px, 0.72fr) minmax(0, 1fr);
     gap: 20px;
     align-items: center;
+    padding-bottom: clamp(18px, 1.7vw, 26px);
   }
 
   .robotHalo {
     min-height: 260px;
+    padding: 0;
   }
 
   .robotSteps {
@@ -1197,6 +1203,9 @@
 
   .robotCard {
     grid-template-columns: 1fr;
+    grid-template-rows: auto auto;
+    gap: 0;
+    padding-bottom: 0;
   }
 
   .previewMeta,
@@ -3224,130 +3233,125 @@
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.16), 0 0 18px rgba(34, 211, 238, 0.28), 0 8px 16px rgba(0, 0, 0, 0.24);
 }
 
-/* Étape 39 — responsive : afficher entièrement l’image du robot */
-@media (max-width: 760px) {
-  .robotCard {
-    grid-template-rows: auto auto;
-    align-items: stretch;
-  }
+/* Étapes 39 à 44 nettoyées — robot posé sur le bloc noir */
 
-  .robotHalo {
-    min-height: 420px;
-    padding: 16px 10px 10px;
-  }
-
-  .robotHalo img {
-    width: min(320px, 84vw);
-    max-height: none;
-    transform: translateY(0);
-  }
+/* Étape 45 — canaux : rendu plus premium sans toucher aux logos ni à la taille des bulles */
+.channelScroller button {
+  position: relative;
+  isolation: isolate;
+  border: 1px solid rgba(173, 197, 255, 0.34);
+  background:
+    radial-gradient(circle at 28% 20%, rgba(255, 255, 255, 0.2), transparent 34%),
+    radial-gradient(circle at 76% 78%, rgba(34, 211, 238, 0.12), transparent 34%),
+    linear-gradient(180deg, rgba(17, 29, 64, 0.98), rgba(7, 16, 39, 0.98));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    inset 0 -8px 16px rgba(5, 10, 24, 0.2),
+    0 10px 18px rgba(0, 0, 0, 0.26),
+    0 0 0 1px rgba(255, 255, 255, 0.04),
+    0 0 18px rgba(88, 160, 255, 0.14);
 }
 
-/* Étape 40 — le cadre coupe visuellement le robot */
+.channelScroller button::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.02) 38%, rgba(255, 255, 255, 0) 60%);
+  opacity: 0.9;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.channelScroller button::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+    inset 0 0 18px rgba(125, 211, 252, 0.08);
+  z-index: 2;
+  pointer-events: none;
+}
+
+.channelScroller button img {
+  position: relative;
+  z-index: 1;
+}
+
+.channelScroller button:hover:not(:disabled),
+.channelScroller .channelPillActive {
+  border-color: rgba(133, 216, 255, 0.82);
+  background:
+    radial-gradient(circle at 28% 20%, rgba(255, 255, 255, 0.24), transparent 34%),
+    radial-gradient(circle at 76% 78%, rgba(167, 139, 250, 0.18), transparent 34%),
+    linear-gradient(180deg, rgba(25, 42, 88, 0.98), rgba(10, 19, 46, 0.98));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 -10px 18px rgba(8, 14, 34, 0.22),
+    0 12px 20px rgba(0, 0, 0, 0.28),
+    0 0 0 1px rgba(255, 255, 255, 0.05),
+    0 0 0 2px rgba(56, 189, 248, 0.16),
+    0 0 24px rgba(56, 189, 248, 0.24),
+    0 0 34px rgba(167, 139, 250, 0.14);
+}
+
+.channelScroller button:disabled {
+  opacity: 0.92;
+}
+
+/* Correction finale — supprime la bande bleue sous le robot */
+/* Ajustement suivant — remonte légèrement le robot pour montrer entièrement le coude gauche */
 @media (min-width: 1181px) {
   .robotHalo {
-    min-height: 380px;
-  }
-
-  .robotHalo img {
-    width: min(400px, 96%);
-    max-height: 116%;
-    transform: translateY(32px);
-  }
-}
-
-@media (max-width: 1180px) and (min-width: 761px) {
-  .robotHalo {
-    min-height: 290px;
-  }
-
-  .robotHalo img {
-    width: min(350px, 92%);
-    max-height: 120%;
-    transform: translateY(42px);
-  }
-}
-
-@media (max-width: 760px) {
-  .robotCard {
-    grid-template-rows: auto auto;
-    align-items: stretch;
-  }
-
-  .robotHalo {
-    min-height: 325px;
-    padding: 12px 8px 0;
-  }
-
-  .robotHalo img {
-    width: min(345px, 92vw);
-    max-height: 126%;
-    transform: translateY(64px);
-  }
-}
-
-/* Étape 41 — correction : effet de coupe plus léger, surtout en responsive */
-@media (min-width: 1181px) {
-  .robotHalo {
-    min-height: 388px;
+    min-height: 392px;
+    padding: 0;
   }
 
   .robotHalo img {
     width: min(394px, 95%);
     max-height: 114%;
-    transform: translateY(24px);
+    transform: translateY(0);
   }
 }
 
 @media (max-width: 1180px) and (min-width: 761px) {
   .robotHalo {
-    min-height: 300px;
+    min-height: 304px;
+    padding: 0;
   }
 
   .robotHalo img {
     width: min(342px, 90%);
     max-height: 118%;
-    transform: translateY(30px);
+    transform: translateY(0);
   }
 }
 
 @media (max-width: 760px) {
-  .robotHalo {
-    min-height: 348px;
-    padding: 14px 8px 2px;
+  .robotCard {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto auto;
+    gap: 0;
+    padding-bottom: 0;
   }
 
-  .robotHalo img {
-    width: min(320px, 86vw);
-    max-height: 120%;
-    transform: translateY(36px);
-  }
-}
-
-/* Étape 42 — responsive : descendre encore légèrement le robot */
-@media (max-width: 760px) {
-  .robotHalo {
-    min-height: 348px;
-    padding: 14px 8px 2px;
-  }
-
-  .robotHalo img {
-    width: min(320px, 86vw);
-    max-height: 120%;
-    transform: translateY(46px);
-  }
-}
-
-/* Étape 43 — responsive : montrer davantage le bas du robot */
-@media (max-width: 760px) {
   .robotHalo {
     min-height: 372px;
-    padding: 14px 8px 4px;
+    padding: 0;
+    align-items: flex-end;
+    border-radius: 22px 22px 0 0;
   }
 
   .robotHalo img {
     width: min(312px, 84vw);
     max-height: 116%;
-    transform: translateY(18px);
+    transform: translateY(0);
+  }
+
+  .robotSteps {
+    margin-top: 0;
   }
 }
+

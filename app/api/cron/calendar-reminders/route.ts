@@ -677,6 +677,7 @@ export async function GET(req: Request) {
     const meta = safeObj(row.meta);
     if (isInactiveAppointmentRequest(meta)) continue;
     const reminders = safeObj(meta.reminders);
+    if (reminders.enabled === false) continue;
     const startAt = new Date(String(row.start_at));
     if (!Number.isFinite(startAt.getTime())) continue;
     const minutesUntil = Math.round((startAt.getTime() - now.getTime()) / 60000);

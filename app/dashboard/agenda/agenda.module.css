@@ -693,6 +693,46 @@
   border-top:1px solid rgba(255,255,255,0.12);
 }
 
+.modalFooterInner{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  flex-wrap:wrap;
+}
+
+.reminderToggle{
+  display:inline-flex;
+  align-items:center;
+  gap:9px;
+  min-height:42px;
+  padding:9px 12px;
+  border-radius:14px;
+  border:1px solid rgba(255,255,255,0.14);
+  background:rgba(255,255,255,0.055);
+  color:rgba(255,255,255,0.92);
+  font-size:13px;
+  font-weight:850;
+  cursor:pointer;
+  user-select:none;
+}
+
+.reminderToggle input{
+  width:16px;
+  height:16px;
+  accent-color:#f5f7ff;
+  cursor:pointer;
+}
+
+.reminderToggleDisabled{
+  opacity:.45;
+  cursor:not-allowed;
+}
+
+.reminderToggleDisabled input{
+  cursor:not-allowed;
+}
+
 .modalFooterActions{
   display:flex;
   align-items:center;
@@ -949,6 +989,17 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
 
 @media (max-width: 640px){
+  .modalFooterInner{
+    display:grid;
+    grid-template-columns:1fr;
+    width:100%;
+  }
+
+  .reminderToggle{
+    width:100%;
+    justify-content:center;
+  }
+
   .modalFooterActions{
     display:grid;
     grid-template-columns: 1fr;

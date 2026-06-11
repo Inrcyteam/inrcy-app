@@ -127,6 +127,7 @@ function comparableMeta(value: unknown) {
     guests: comparableGuests(raw.guests),
     reminders: {
       mailAccountId: String(reminders.mailAccountId ?? reminders.mail_account_id ?? "").trim(),
+      enabled: reminders.enabled === false ? false : true,
     },
     intervention: {
       status: String(intervention.status ?? "").trim(),
@@ -218,6 +219,13 @@ export default function AgendaClient() {
   const [agendaMailLoading, setAgendaMailLoading] = useState(false);
   const [agendaMailSaving, setAgendaMailSaving] = useState(false);
   const [agendaMailError, setAgendaMailError] = useState<string | null>(null);
+  const [agendaReminderOffsetsMinutes, setAgendaReminderOffsetsMinutes] = useState<number[]>([1440, 120]);
+  const [rdvRemindersEnabled, setRdvRemindersEnabled] = useState(true);
+  const rdvRemindersAvailable = agendaReminderOffsetsMinutes.length > 0;
+
+  useEffect(() => {
+    if (!rdvRemindersAvailable) setRdvRemindersEnabled(false);
+  }, [rdvRemindersAvailable]);
 
   const closeRdvModal = useCallback(() => {
     setRdvOpen(false);
@@ -302,6 +310,7 @@ export default function AgendaClient() {
       const json = await response.json().catch(() => ({}));
       setMailAccounts(Array.isArray((json as any)?.accounts) ? (json as any).accounts : []);
       setAgendaMailAccountId(String((json as any)?.selectedMailAccountId || ""));
+      setAgendaReminderOffsetsMinutes(Array.isArray((json as any)?.reminderOffsetsMinutes) ? (json as any).reminderOffsetsMinutes.map((item: unknown) => Number(item)).filter((item: number) => Number.isFinite(item)) : []);
     } catch (e: any) {
       setAgendaMailError(getSimpleFrenchErrorMessage(e, "Impossible de charger la boîte d’envoi agenda."));
     } finally {
@@ -554,6 +563,7 @@ export default function AgendaClient() {
     setRdvNewContactImportant(false);
     setRdvNewContactNotes("");
     setCrmAddFeedback("");
+    setRdvRemindersEnabled(rdvRemindersAvailable);
     setRdvError(null);
     setRdvOpen(true);
   }
@@ -603,6 +613,7 @@ export default function AgendaClient() {
     setRdvNewContactImportant(false);
     setRdvNewContactNotes("");
     setCrmAddFeedback("");
+    setRdvRemindersEnabled(rdvRemindersAvailable);
     setRdvError(null);
     if (start) {
       const day = new Date(start.getFullYear(), start.getMonth(), start.getDate(), 0, 0, 0, 0);
@@ -617,6 +628,8 @@ export default function AgendaClient() {
     setRdvEventId(event.id);
 
     const rawMeta = (event?.inrcy && typeof event.inrcy === "object") ? event.inrcy : {};
+    const rawReminders = (rawMeta as any)?.reminders && typeof (rawMeta as any).reminders === "object" ? (rawMeta as any).reminders : {};
+    setRdvRemindersEnabled(rdvRemindersAvailable && rawReminders.enabled !== false);
     const kind = rawMeta?.kind === "agenda" ? "agenda" : "intervention";
     const meta = rawMeta?.intervention ?? null;
     const address = (meta as any)?.address;
@@ -853,6 +866,7 @@ export default function AgendaClient() {
           guests,
           reminders: {
             mailAccountId: agendaMailAccountId || undefined,
+            enabled: rdvRemindersAvailable ? rdvRemindersEnabled : false,
           },
           intervention: {
             status: intStatus.trim() || undefined,
@@ -1294,6 +1308,8 @@ export default function AgendaClient() {
         rdvNewContactImportant={rdvNewContactImportant}
         rdvNewContactNotes={rdvNewContactNotes}
         rdvGuests={rdvGuests}
+        rdvRemindersEnabled={rdvRemindersEnabled}
+        rdvRemindersAvailable={rdvRemindersAvailable}
         crmAddFeedback={crmAddFeedback}
         contacts={contacts}
         contactsLoading={contactsLoading}
@@ -1335,6 +1351,7 @@ export default function AgendaClient() {
         setRdvNewContactType={setRdvNewContactType}
         setRdvNewContactImportant={setRdvNewContactImportant}
         setRdvNewContactNotes={setRdvNewContactNotes}
+        setRdvRemindersEnabled={setRdvRemindersEnabled}
       />
     </div>
   );
