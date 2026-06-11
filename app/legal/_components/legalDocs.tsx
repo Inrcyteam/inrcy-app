@@ -20,7 +20,7 @@ export const legalDocs: Record<
   confidentialite: {
     key: "confidentialite",
     title: "Politique de confidentialité",
-    subtitle: "Informations RGPD sur les traitements de données effectués via iNrCy.",
+    subtitle: "Version du 11/06/2026",
     Content: ConfidentialiteContent,
   },
   "mentions-legales": {
@@ -32,7 +32,7 @@ export const legalDocs: Record<
   cga: {
     key: "cga",
     title: "CGA et Conditions d’utilisation",
-    subtitle: "Version du 02/06/2026",
+    subtitle: "Version du 11/06/2026",
     Content: CgaContent,
   },
 };

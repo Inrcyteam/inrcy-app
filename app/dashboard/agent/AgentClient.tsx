@@ -1437,13 +1437,6 @@ export default function AgentClient() {
             />
             <button
               type="button"
-              className={styles.headerSettingsButton}
-              onClick={() => setSettingsKey(selectedKey)}
-            >
-              Réglages
-            </button>
-            <button
-              type="button"
               className={styles.headerCloseButton}
               onClick={() => router.push("/dashboard")}
             >

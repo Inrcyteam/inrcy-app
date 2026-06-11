@@ -9,7 +9,7 @@ export default function ConfidentialitePage() {
   return (
     <LegalPageShell
       title="Politique de confidentialité"
-      subtitle="Informations RGPD sur les traitements de données effectués via iNrCy."
+      subtitle="Version du 11/06/2026"
     >
       {/* Le contenu complet est partagé avec l'app pour éviter les divergences. */}
       <ConfidentialiteContent />

@@ -2740,3 +2740,242 @@
   }
 }
 
+
+/* Étape 24 — réglages par bloc uniquement + modales compactes sans scroll */
+.moduleHeaderActions .headerSettingsButton {
+  display: none !important;
+}
+
+.settingsModal:not(.helpModal) {
+  width: min(780px, calc(100vw - 40px));
+  max-height: calc(100svh - 40px);
+  overflow: hidden;
+  border-radius: 24px;
+  padding: clamp(16px, 1.55vw, 22px);
+  background:
+    radial-gradient(circle at 16% 0%, rgba(59, 130, 246, 0.24), transparent 34%),
+    radial-gradient(circle at 90% 10%, rgba(168, 85, 247, 0.16), transparent 30%),
+    linear-gradient(135deg, rgba(12, 26, 58, 0.98), rgba(5, 14, 34, 0.98));
+}
+
+.settingsModal:not(.helpModal) .modalEyebrow {
+  margin-bottom: 5px;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+}
+
+.settingsModal:not(.helpModal) h2 {
+  margin: 0 48px 14px 0;
+  font-size: clamp(24px, 2.35vw, 30px);
+  line-height: 1.04;
+}
+
+.settingsModal:not(.helpModal) .modalClose {
+  top: 13px;
+  right: 13px;
+  width: 34px;
+  height: 34px;
+  font-size: 23px;
+  background:
+    radial-gradient(circle at 32% 25%, rgba(255, 255, 255, 0.16), transparent 42%),
+    rgba(255, 255, 255, 0.06);
+}
+
+.settingsModal:not(.helpModal) .switchLine {
+  min-height: 62px;
+  margin-bottom: 10px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 96% 50%, rgba(34, 197, 94, 0.12), transparent 26%),
+    rgba(255, 255, 255, 0.055);
+}
+
+.settingsModal:not(.helpModal) .switchLine strong {
+  font-size: 16px;
+}
+
+.settingsModal:not(.helpModal) .switchLine small {
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.settingsModal:not(.helpModal) .switchLine input[type="checkbox"] {
+  position: relative;
+  flex: 0 0 auto;
+  width: 58px;
+  height: 32px;
+  appearance: none;
+  border-radius: 999px;
+  cursor: pointer;
+  background:
+    linear-gradient(135deg, rgba(15, 23, 42, 0.94), rgba(30, 41, 59, 0.8));
+  border: 1px solid rgba(148, 163, 255, 0.28);
+  box-shadow:
+    inset 0 0 12px rgba(0, 0, 0, 0.24),
+    0 0 18px rgba(59, 130, 246, 0.12);
+  transition: background 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.settingsModal:not(.helpModal) .switchLine input[type="checkbox"]::before {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 34% 28%, rgba(255, 255, 255, 0.96), rgba(226, 242, 255, 0.78) 42%, rgba(148, 163, 184, 0.94) 100%);
+  box-shadow:
+    0 5px 14px rgba(0, 0, 0, 0.28),
+    inset 0 0 8px rgba(255, 255, 255, 0.24);
+  transition: transform 0.18s ease, background 0.18s ease;
+}
+
+.settingsModal:not(.helpModal) .switchLine input[type="checkbox"]:checked {
+  background:
+    radial-gradient(circle at 78% 50%, rgba(255, 255, 255, 0.2), transparent 34%),
+    linear-gradient(135deg, rgba(34, 197, 94, 0.9), rgba(14, 165, 233, 0.78));
+  border-color: rgba(134, 239, 172, 0.62);
+  box-shadow:
+    inset 0 0 14px rgba(255, 255, 255, 0.12),
+    0 0 22px rgba(34, 197, 94, 0.28);
+}
+
+.settingsModal:not(.helpModal) .switchLine input[type="checkbox"]:checked::before {
+  transform: translateX(26px);
+  background:
+    radial-gradient(circle at 34% 28%, rgba(255, 255, 255, 1), rgba(220, 252, 231, 0.94) 42%, rgba(74, 222, 128, 0.94) 100%);
+}
+
+.settingsModal:not(.helpModal) .modalGrid {
+  gap: 10px;
+}
+
+.settingsModal:not(.helpModal) .modalGrid label,
+.settingsModal:not(.helpModal) .modalSection {
+  gap: 6px;
+  border-radius: 15px;
+  padding: 11px 12px;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(96, 165, 250, 0.08), transparent 34%),
+    rgba(255, 255, 255, 0.052);
+}
+
+.settingsModal:not(.helpModal) .modalGrid label > span,
+.settingsModal:not(.helpModal) .modalSection > span {
+  font-size: 11px;
+  letter-spacing: 0.11em;
+}
+
+.settingsModal:not(.helpModal) .modalGrid select,
+.settingsModal:not(.helpModal) .modalGrid input {
+  min-height: 36px;
+  border-radius: 11px;
+  font-size: 14px;
+}
+
+.settingsModal:not(.helpModal) .modalSection {
+  margin-top: 10px;
+}
+
+.settingsModal:not(.helpModal) .modalHint {
+  margin-top: -2px;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+.settingsModal:not(.helpModal) .choiceGrid {
+  gap: 7px;
+}
+
+.settingsModal:not(.helpModal) .choiceGrid button {
+  min-height: 32px;
+  padding: 0 10px;
+  gap: 7px;
+  font-size: 13px;
+  font-weight: 760;
+  border-color: rgba(148, 163, 255, 0.22);
+  background:
+    radial-gradient(circle at 24% 18%, rgba(255, 255, 255, 0.13), transparent 36%),
+    rgba(37, 99, 235, 0.12);
+}
+
+.settingsModal:not(.helpModal) .choiceGrid button img {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  padding: 2px;
+}
+
+.settingsModal:not(.helpModal) .choiceGrid .choiceActive {
+  border-color: rgba(125, 211, 252, 0.62);
+  background:
+    radial-gradient(circle at 28% 22%, rgba(255, 255, 255, 0.16), transparent 38%),
+    linear-gradient(135deg, rgba(37, 99, 235, 0.48), rgba(124, 58, 237, 0.38));
+  box-shadow: 0 0 16px rgba(59, 130, 246, 0.16);
+}
+
+.settingsModal:not(.helpModal) .modalNote {
+  margin: 12px 0 0;
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.settingsModal:not(.helpModal) .modalAction {
+  min-height: 48px;
+  margin-top: 12px;
+  border-radius: 17px;
+  font-size: 22px;
+  font-weight: 900;
+}
+
+@media (max-height: 780px) and (min-width: 820px) {
+  .settingsModal:not(.helpModal) {
+    width: min(820px, calc(100vw - 36px));
+    padding: 14px 18px;
+  }
+
+  .settingsModal:not(.helpModal) h2 {
+    margin-bottom: 10px;
+    font-size: 25px;
+  }
+
+  .settingsModal:not(.helpModal) .switchLine {
+    min-height: 54px;
+    margin-bottom: 8px;
+    padding: 9px 12px;
+  }
+
+  .settingsModal:not(.helpModal) .modalGrid label,
+  .settingsModal:not(.helpModal) .modalSection {
+    padding: 9px 11px;
+  }
+
+  .settingsModal:not(.helpModal) .modalGrid select,
+  .settingsModal:not(.helpModal) .modalGrid input {
+    min-height: 34px;
+  }
+
+  .settingsModal:not(.helpModal) .choiceGrid button {
+    min-height: 30px;
+    font-size: 12px;
+  }
+
+  .settingsModal:not(.helpModal) .choiceGrid button img {
+    width: 20px;
+    height: 20px;
+  }
+
+  .settingsModal:not(.helpModal) .modalNote {
+    margin-top: 9px;
+    font-size: 12px;
+  }
+
+  .settingsModal:not(.helpModal) .modalAction {
+    min-height: 44px;
+    margin-top: 9px;
+    font-size: 20px;
+  }
+}

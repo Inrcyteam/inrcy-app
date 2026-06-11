@@ -9,7 +9,7 @@ export default function CgaPage() {
   return (
     <LegalPageShell
       title="CGA et Conditions d’utilisation"
-      subtitle="Version du 02/06/2026"
+      subtitle="Version du 11/06/2026"
     >
       <CgaContent />
     </LegalPageShell>
