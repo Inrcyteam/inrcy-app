@@ -3223,3 +3223,22 @@
     linear-gradient(135deg, rgba(37, 99, 235, 0.48), rgba(124, 58, 237, 0.38));
   box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.16), 0 0 18px rgba(34, 211, 238, 0.28), 0 8px 16px rgba(0, 0, 0, 0.24);
 }
+
+/* Étape 39 — responsive : afficher entièrement l’image du robot */
+@media (max-width: 760px) {
+  .robotCard {
+    grid-template-rows: auto auto;
+    align-items: stretch;
+  }
+
+  .robotHalo {
+    min-height: 420px;
+    padding: 16px 10px 10px;
+  }
+
+  .robotHalo img {
+    width: min(320px, 84vw);
+    max-height: none;
+    transform: translateY(0);
+  }
+}
