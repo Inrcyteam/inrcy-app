@@ -681,8 +681,7 @@ function CalendarMetaIcon() {
 function ValidateActionIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden>
-      <circle cx="12" cy="12" r="9" />
-      <path d="m8.2 12.2 2.5 2.6 5.2-5.4" />
+      <path d="m6.8 12.4 3.2 3.2 7.2-7.4" />
     </svg>
   );
 }
@@ -690,9 +689,8 @@ function ValidateActionIcon() {
 function RefuseActionIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden>
-      <circle cx="12" cy="12" r="9" />
-      <path d="m9 9 6 6" />
-      <path d="m15 9-6 6" />
+      <path d="m8 8 8 8" />
+      <path d="m16 8-8 8" />
     </svg>
   );
 }
@@ -1694,6 +1692,7 @@ export default function AgentClient() {
                         <button
                           type="button"
                           key={channelKey}
+                          data-channel={channelKey}
                           className={activeChannel ? styles.channelPillActive : ""}
                           onClick={() => {
                             if (!selectedPreparedAction) return;
@@ -1956,11 +1955,11 @@ export default function AgentClient() {
                     ? "Canaux Booster / Publier"
                     : "Canal"}
                 </span>
-                <small className={styles.modalHint}>
-                  {settingsAutomation.key === "publish"
-                    ? "iNrBadge et Mails sont exclus de Publier."
-                    : "Propulser et Fidéliser utilisent uniquement Mails."}
-                </small>
+                {settingsAutomation.key !== "publish" && (
+                  <small className={styles.modalHint}>
+                    Propulser et Fidéliser utilisent uniquement Mails.
+                  </small>
+                )}
                 <div className={styles.choiceGrid}>
                   {settingsAutomation.availableChannels.map((channelKey) => {
                     const channel = channelOptions[channelKey];
@@ -1970,6 +1969,7 @@ export default function AgentClient() {
                       <button
                         type="button"
                         key={channelKey}
+                        data-channel={channelKey}
                         className={checked ? styles.choiceActive : ""}
                         onClick={() =>
                           updateConfig(settingsAutomation.key, {
