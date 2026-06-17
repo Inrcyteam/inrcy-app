@@ -214,6 +214,15 @@ export function getEventWhenLabel(event: DayEvent) {
   return `${formatTime(event.startDate)}${event.endDate ? ` → ${formatTime(event.endDate)}` : ""}`;
 }
 
+export function getInrcyStatus(event: EventItem | DayEvent | null | undefined) {
+  const meta = event?.inrcy && typeof event.inrcy === "object" ? event.inrcy : {};
+  return String((meta as any)?.status ?? "").trim().toLowerCase();
+}
+
+export function isDraftEvent(event: EventItem | DayEvent | null | undefined) {
+  return getInrcyStatus(event) === "draft";
+}
+
 export function getEventAccentClass(accent: ReturnType<typeof accentFor>, styles: Record<string, string>) {
   return accent === "cyan"
     ? styles.accentCyan

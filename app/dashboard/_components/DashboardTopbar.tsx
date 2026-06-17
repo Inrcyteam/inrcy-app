@@ -515,21 +515,6 @@ export default function DashboardTopbar({
               >
                 Mes données (RGPD)
               </button>
-
-              {isAdmin && (
-                <button
-                  className={styles.mobileMenuItem}
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    onNavigateCta("/dashboard/admin");
-                  }}
-                >
-                  ⚙️ Administration iNrCy
-                </button>
-              )}
-
               <div className={styles.mobileMenuDivider} />
 
               <button

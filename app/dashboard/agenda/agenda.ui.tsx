@@ -14,6 +14,7 @@ import {
   formatTime,
   getContactOptionLabel,
   getEventAccentClass,
+  isDraftEvent,
   getEventWhenLabel,
   keyOf,
   type ContactCategory,
@@ -467,14 +468,16 @@ export function AgendaCalendarCard({
 
                 <div className={styles.chips}>
                   {show.map((ev) => {
-                    const accentClass = getEventAccentClass(accentFor(ev.id), styles);
+                    const draft = isDraftEvent(ev);
+                    const accentClass = draft ? styles.accentDraft : getEventAccentClass(accentFor(ev.id), styles);
                     const time = !ev.allDay && ev.startDate ? formatTime(ev.startDate) : "";
-                    const label = ev.allDay ? ev.summary : `${time} — ${ev.summary}`;
+                    const baseLabel = ev.allDay ? ev.summary : `${time} — ${ev.summary}`;
+                    const label = draft ? `Brouillon · ${baseLabel}` : baseLabel;
 
                     return (
                       <div
                         key={`${k}-${ev.id}`}
-                        className={`${styles.chip} ${ev.allDay ? styles.chipAllDay : ""} ${accentClass}`}
+                        className={`${styles.chip} ${ev.allDay ? styles.chipAllDay : ""} ${draft ? styles.chipDraft : ""} ${accentClass}`}
                         title={label}
                       >
                         {label}
@@ -515,12 +518,13 @@ function AgendaEventRow({
   onClick: () => void;
   onDelete?: () => void;
 }) {
-  const accentClass = getEventAccentClass(accentFor(event.id), styles);
+  const draft = isDraftEvent(event);
+  const accentClass = draft ? styles.accentDraft : getEventAccentClass(accentFor(event.id), styles);
 
   return (
     <div
       key={event.id}
-      className={`${styles.eventRow} ${accentClass}`}
+      className={`${styles.eventRow} ${draft ? styles.eventRowDraft : ""} ${accentClass}`}
       role="button"
       tabIndex={0}
       onClick={onClick}
@@ -529,7 +533,7 @@ function AgendaEventRow({
       }}
     >
       <div className={styles.eventMain}>
-        <div className={styles.eventTitle}>{event.summary || "Sans titre"}</div>
+        <div className={styles.eventTitle}>{draft ? "Brouillon · " : ""}{event.summary || "Sans titre"}</div>
         <div className={styles.eventMeta}>{meta}</div>
       </div>
 
@@ -639,6 +643,7 @@ export function AgendaSidebar({
 type AgendaEventModalProps = {
   open: boolean;
   rdvMode: RdvMode;
+  rdvIsDraft: boolean;
   rdvError: string | null;
   rdvSaving: boolean;
   rdvSummary: string;
@@ -674,6 +679,7 @@ type AgendaEventModalProps = {
   onClose: () => void | Promise<void>;
   onDelete: () => void;
   onSubmit: () => void;
+  onSaveDraft: () => void;
   requestIndex: number;
   requestCount: number;
   onPreviousRequest: () => void;
@@ -762,12 +768,25 @@ export function AgendaEventModal(props: AgendaEventModalProps) {
                 <span>Demande {props.requestIndex + 1}/{Math.max(1, props.requestCount)}</span>
                 <button className={styles.requestSwitchButton} type="button" onClick={props.onNextRequest} disabled={!canSwitchRequest} aria-label="Demande suivante">›</button>
               </div>
-            ) : props.rdvMode === "create" ? "Nouvel évènement" : "Modifier l’évènement"}
-            <p className="text-xs text-white/60 mt-1">{isRequestMode ? "Validez la demande pour créer le RDV et lancer le circuit normal iNr’Calendar." : "Les rappels suivent les réglages iNr’Calendar et partent aussi aux invités renseignés."}</p>
+            ) : props.rdvMode === "create" ? "Nouvel évènement" : props.rdvIsDraft ? "Modifier le brouillon" : "Modifier l’évènement"}
+            <p className="text-xs text-white/60 mt-1">{isRequestMode ? "Validez la demande pour créer le RDV et lancer le circuit normal iNr’Calendar." : props.rdvIsDraft ? "Confirmez le brouillon quand le rendez-vous est prêt. Aucun mail ne part tant qu’il reste en brouillon." : "Les rappels suivent les réglages iNr’Calendar et partent aussi aux invités renseignés."}</p>
           </div>
-          <button className={styles.btnGhost} onClick={() => void props.onClose()} aria-label="Fermer">
-            ✕
-          </button>
+          <div className={styles.modalHeaderActions}>
+            {!isRequestMode && (
+              <button
+                className={`${styles.btnGhost} ${styles.modalDraftButton}`}
+                onClick={props.onSaveDraft}
+                disabled={props.rdvSaving}
+                aria-label="Enregistrer en brouillon"
+                title="Enregistrer en brouillon"
+              >
+                💾
+              </button>
+            )}
+            <button className={styles.btnGhost} onClick={() => void props.onClose()} aria-label="Fermer">
+              ✕
+            </button>
+          </div>
         </div>
 
         <div className={styles.modalBody}>
@@ -1032,7 +1051,7 @@ export function AgendaEventModal(props: AgendaEventModalProps) {
                 Annuler
               </button>
               <button className={`${styles.btnPrimary} ${styles.modalFooterBtn}`} onClick={props.onSubmit} disabled={props.rdvSaving}>
-                {props.rdvSaving ? "Enregistrement…" : isRequestMode ? "Valider le RDV" : "Enregistrer"}
+                {props.rdvSaving ? "Enregistrement…" : isRequestMode ? "Valider le RDV" : props.rdvIsDraft ? "Confirmer" : "Enregistrer"}
               </button>
             </div>
           </div>

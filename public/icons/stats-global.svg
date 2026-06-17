@@ -1,0 +1,28 @@
+<svg width="96" height="96" viewBox="0 0 96 96" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <radialGradient id="bg" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(31 22) rotate(55) scale(86)">
+      <stop stop-color="#7DD3FC"/>
+      <stop offset="0.48" stop-color="#3B82F6"/>
+      <stop offset="1" stop-color="#7C3AED"/>
+    </radialGradient>
+    <linearGradient id="line" x1="22" y1="66" x2="76" y2="30" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#E0F2FE"/>
+      <stop offset="0.52" stop-color="#67E8F9"/>
+      <stop offset="1" stop-color="#F0ABFC"/>
+    </linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge>
+        <feMergeNode in="blur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  <rect x="5" y="5" width="86" height="86" rx="28" fill="#07162F"/>
+  <rect x="7" y="7" width="82" height="82" rx="26" fill="url(#bg)" opacity="0.95"/>
+  <circle cx="48" cy="48" r="28" stroke="white" stroke-opacity="0.78" stroke-width="4"/>
+  <path d="M20 48H76" stroke="white" stroke-opacity="0.45" stroke-width="3" stroke-linecap="round"/>
+  <path d="M48 20C57 29 61.5 38.5 61.5 48C61.5 57.5 57 67 48 76C39 67 34.5 57.5 34.5 48C34.5 38.5 39 29 48 20Z" stroke="white" stroke-opacity="0.58" stroke-width="3"/>
+  <path d="M25 64L38 53L49 58L68 34" stroke="url(#line)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+  <circle cx="68" cy="34" r="5" fill="#F0ABFC" filter="url(#glow)"/>
+</svg>

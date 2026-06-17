@@ -39,6 +39,7 @@ type ChannelKey =
 type Automation = {
   key: AutomationKey;
   title: string;
+  shortTitle: string;
   iconLabel: string;
   settingsTitle: string;
   availableThemes: string[];
@@ -127,6 +128,20 @@ const channelOptions: Record<ChannelKey, { name: string; src: string }> = {
   tiktok: { name: "TikTok", src: "/icons/tiktok.png" },
   youtube: { name: "YouTube", src: "/icons/youtube-shorts.png" },
   mails: { name: "Mails", src: "/icons/mails-inrcy-dashboard-v2.png" },
+};
+
+const statsRubriqueOptions: Record<string, { name: string; src: string; channelKey?: ChannelKey }> = {
+  "Vue globale": { name: "Vue globale", src: "/icons/stats-global.svg" },
+  iNrBadge: { name: "iNrBadge", src: "/icons/inrbadge-dashboard.png" },
+  Mails: { name: "Mails", src: "/icons/mails-inrcy-dashboard-v2.png", channelKey: "mails" },
+  "Site iNrCy": { name: "Site iNrCy", src: "/icons/inrcy.png", channelKey: "siteInrcy" },
+  "Site Web": { name: "Site Web", src: "/icons/site-web.jpg", channelKey: "siteWeb" },
+  "Google Business": { name: "Google Business", src: "/icons/google.jpg", channelKey: "gmb" },
+  Facebook: { name: "Facebook", src: "/icons/facebook.png", channelKey: "facebook" },
+  Instagram: { name: "Instagram", src: "/icons/instagram.jpg", channelKey: "instagram" },
+  LinkedIn: { name: "LinkedIn", src: "/icons/linkedin.png", channelKey: "linkedin" },
+  TikTok: { name: "TikTok", src: "/icons/tiktok.png", channelKey: "tiktok" },
+  YouTube: { name: "YouTube", src: "/icons/youtube-shorts.png", channelKey: "youtube" },
 };
 
 
@@ -327,6 +342,7 @@ const automations: Automation[] = [
   {
     key: "publish",
     title: "Publier régulièrement",
+    shortTitle: "Publier",
     iconLabel: "Visibilité",
     settingsTitle: "Réglages — Publier régulièrement",
     availableThemes: ["Conseils", "Réalisations", "Offres", "Actualités"],
@@ -344,6 +360,7 @@ const automations: Automation[] = [
   {
     key: "grow",
     title: "Développer l’activité",
+    shortTitle: "Développer",
     iconLabel: "Acquisition",
     settingsTitle: "Réglages — Développer l’activité",
     availableThemes: ["Valoriser", "Récolter", "Offrir"],
@@ -352,6 +369,7 @@ const automations: Automation[] = [
   {
     key: "loyalty",
     title: "Fidéliser les contacts",
+    shortTitle: "Fidéliser",
     iconLabel: "Relation",
     settingsTitle: "Réglages — Fidéliser les contacts",
     availableThemes: ["Informer", "Enquêter", "Suivre"],
@@ -360,6 +378,7 @@ const automations: Automation[] = [
   {
     key: "stats",
     title: "Analyser mes statistiques",
+    shortTitle: "Stats",
     iconLabel: "Pilotage",
     settingsTitle: "Réglages — Analyser mes statistiques",
     availableThemes: [
@@ -378,6 +397,29 @@ const automations: Automation[] = [
     availableChannels: [],
   },
 ];
+
+const robotStepsByAutomation: Record<AutomationKey, [string, string, string]> = {
+  publish: [
+    "J’analyse votre activité",
+    "Je prépare une publication",
+    "Vous validez avant publication",
+  ],
+  grow: [
+    "J’identifie une opportunité",
+    "Je prépare une campagne Propulser",
+    "Vous validez avant envoi",
+  ],
+  loyalty: [
+    "J’analyse vos contacts",
+    "Je prépare une campagne Fidéliser",
+    "Vous validez avant envoi",
+  ],
+  stats: [
+    "J’analyse vos statistiques",
+    "Je prépare le bilan PDF",
+    "Je vous envoie le rapport",
+  ],
+};
 
 const defaultConfigs: Record<AutomationKey, AutomationConfig> = {
   publish: {
@@ -1109,6 +1151,7 @@ export default function AgentClient() {
   );
 
   const selectedConfig = configs[selected.key];
+  const selectedRobotSteps = robotStepsByAutomation[selected.key];
   const settingsConfig = settingsKey ? configs[settingsKey] : null;
   const hasPreparedAction = Boolean(selectedPreparedAction);
   const preparedImage = selectedPreparedAction
@@ -1135,6 +1178,9 @@ export default function AgentClient() {
     : loadState === "loading"
       ? []
       : selectedConfigChannels;
+  const selectedStatsRubriques = selected.key === "stats" && loadState !== "loading"
+    ? selectedConfig.themes.filter((theme) => Boolean(statsRubriqueOptions[theme]))
+    : [];
   const activePreviewChannel = selectedPreparedAction
     ? preparedChannels.includes(
         selectedChannelByAction[selectedPreparedAction.id] as ChannelKey,
@@ -1471,9 +1517,11 @@ export default function AgentClient() {
             />
             <div className={styles.moduleTitleText}>
               <h1>iNr’Agent</h1>
-              <p>Programmateur d’automatisations connecté à vos outils.</p>
+              <p className={styles.moduleSubtitleDesktop}>Programmateur d’automatisations connecté à vos outils.</p>
             </div>
           </div>
+
+          <p className={styles.moduleSubtitleMobile}>Programmateur d’automatisations connecté à vos outils.</p>
 
           <div className={styles.moduleHeaderActions}>
             {loadState === "loading" && (
@@ -1521,7 +1569,10 @@ export default function AgentClient() {
                   <span className={styles.cardIcon} aria-hidden>
                     <AutomationIcon type={automation.key} />
                   </span>
-                  <span className={styles.cardTitle}>{automation.title}</span>
+                  <span className={styles.cardTitle}>
+                    <span className={styles.cardTitleFull}>{automation.title}</span>
+                    <span className={styles.cardTitleShort}>{automation.shortTitle}</span>
+                  </span>
                   {pendingActionsByAutomation[automation.key] > 0 && (
                     <span className={styles.cardPendingCount}>
                       {pendingActionsByAutomation[automation.key]} à valider
@@ -1575,18 +1626,12 @@ export default function AgentClient() {
             </div>
 
             <ol className={styles.robotSteps}>
-              <li>
-                <span>1</span>
-                <strong>J’analyse vos contenus publiés</strong>
-              </li>
-              <li>
-                <span>2</span>
-                <strong>Je prépare la prochaine action</strong>
-              </li>
-              <li>
-                <span>3</span>
-                <strong>Vous validez avant exécution</strong>
-              </li>
+              {selectedRobotSteps.map((step, index) => (
+                <li key={`${selected.key}-step-${index + 1}`}>
+                  <span>{index + 1}</span>
+                  <strong>{step}</strong>
+                </li>
+              ))}
             </ol>
           </aside>
 
@@ -1747,9 +1792,32 @@ export default function AgentClient() {
 
             <div className={styles.previewMeta}>
               <div className={`${styles.metaItem} ${styles.channelsItem}`}>
-                <small>Canaux&nbsp;:</small>
+                <small>{selected.key === "stats" ? "Sources :" : "Canaux :"}</small>
                 <div className={styles.channelScroller}>
-                  {displayChannels.length > 0 ? (
+                  {selected.key === "stats" && selectedStatsRubriques.length > 0 ? (
+                    selectedStatsRubriques.map((theme) => {
+                      const rubrique = statsRubriqueOptions[theme];
+                      return (
+                        <button
+                          type="button"
+                          key={theme}
+                          data-channel={
+                            rubrique.channelKey ||
+                            (theme === "Vue globale"
+                              ? "stats-global"
+                              : theme === "iNrBadge"
+                                ? "inrbadge"
+                                : "stats")
+                          }
+                          disabled
+                          aria-label={rubrique.name}
+                          title={rubrique.name}
+                        >
+                          <img src={rubrique.src} alt="" loading="eager" decoding="sync" aria-hidden />
+                        </button>
+                      );
+                    })
+                  ) : displayChannels.length > 0 ? (
                     displayChannels.map((channelKey) => {
                       const channel = channelOptions[channelKey];
                       const activeChannel = channelKey === activePreviewChannel;

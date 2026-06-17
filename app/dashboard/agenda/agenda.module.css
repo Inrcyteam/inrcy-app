@@ -1210,3 +1210,35 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   color:rgba(255,255,255,.64);
   font-size:13px;
 }
+
+/* Correctif 156b — brouillons iNrCalendar */
+.accentDraft {
+  border-color: rgba(168, 85, 247, 0.46) !important;
+  box-shadow: 0 0 0 1px rgba(168, 85, 247, 0.32) inset, 0 0 20px rgba(168, 85, 247, 0.12);
+}
+
+.chipDraft,
+.eventRowDraft {
+  background: linear-gradient(135deg, rgba(76, 29, 149, 0.32), rgba(30, 41, 59, 0.58));
+}
+
+.modalHeaderActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.modalDraftButton {
+  min-width: 42px;
+  height: 42px;
+  padding: 0 12px;
+  font-size: 18px;
+  border-color: rgba(168, 85, 247, 0.28);
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.16), rgba(168, 85, 247, 0.22));
+}
+
+.modalDraftButton:disabled {
+  opacity: 0.55;
+  cursor: default;
+}

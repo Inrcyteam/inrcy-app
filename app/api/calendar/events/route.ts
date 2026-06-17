@@ -142,6 +142,12 @@ function isRejectedAppointmentRequest(metaInput: unknown) {
   return String(meta.source || "").toLowerCase() === "inrbadge" && String(meta.status || "").toLowerCase() === "rejected";
 }
 
+function isDraftAgendaEvent(metaInput: unknown) {
+  const meta = safeObj(metaInput);
+  return String(meta.status || "").toLowerCase() === "draft";
+}
+
+
 function mapAgendaRowToClientEvent(e: Record<string, unknown>) {
   return {
     id: e.id,
@@ -810,19 +816,21 @@ export async function POST(req: Request) {
     .single();
 
   if (error) return jsonUserFacingError(error, { status: 500, extra: { ok: false } });
-  await createAgendaConfirmationNotification(user.id, String(body.summary ?? "(Sans titre)"), startAt, safeObj(meta.reminders).enabled !== false).catch(() => null);
-  await sendAgendaConfirmationEmails({
-    userId: user.id,
-    row: {
-      title: String(body.summary ?? "(Sans titre)"),
-      description: body.description ?? null,
-      location: body.location ?? null,
-      start_at: startAt,
-      end_at: endAt,
-    },
-    meta,
-    mode: "created",
-  }).catch(() => null);
+  if (!isDraftAgendaEvent(meta)) {
+    await createAgendaConfirmationNotification(user.id, String(body.summary ?? "(Sans titre)"), startAt, safeObj(meta.reminders).enabled !== false).catch(() => null);
+    await sendAgendaConfirmationEmails({
+      userId: user.id,
+      row: {
+        title: String(body.summary ?? "(Sans titre)"),
+        description: body.description ?? null,
+        location: body.location ?? null,
+        start_at: startAt,
+        end_at: endAt,
+      },
+      meta,
+      mode: "created",
+    }).catch(() => null);
+  }
   return NextResponse.json({ ok: true, id: data?.id });
 }
 
@@ -915,20 +923,22 @@ export async function PATCH(req: Request) {
   const { error } = await supabase.from("agenda_events").update(patch).eq("id", id).eq("user_id", user.id);
 
   if (error) return jsonUserFacingError(error, { status: 500, extra: { ok: false } });
-  await createAgendaConfirmationNotification(user.id, String(nextTitle), startAt, safeObj(nextMeta.reminders).enabled !== false).catch(() => null);
-  if (eventChanged) {
-    await sendAgendaConfirmationEmails({
-      userId: user.id,
-      row: {
-        title: String(nextTitle),
-        description: typeof nextDescription === "string" ? nextDescription : null,
-        location: typeof nextLocation === "string" ? nextLocation : null,
-        start_at: startAt,
-        end_at: endAt,
-      },
-      meta: nextMeta,
-      mode: validatesPendingRequest ? "created" : "updated",
-    }).catch(() => null);
+  if (!isDraftAgendaEvent(nextMeta)) {
+    await createAgendaConfirmationNotification(user.id, String(nextTitle), startAt, safeObj(nextMeta.reminders).enabled !== false).catch(() => null);
+    if (eventChanged) {
+      await sendAgendaConfirmationEmails({
+        userId: user.id,
+        row: {
+          title: String(nextTitle),
+          description: typeof nextDescription === "string" ? nextDescription : null,
+          location: typeof nextLocation === "string" ? nextLocation : null,
+          start_at: startAt,
+          end_at: endAt,
+        },
+        meta: nextMeta,
+        mode: validatesPendingRequest ? "created" : "updated",
+      }).catch(() => null);
+    }
   }
   return NextResponse.json({ ok: true });
 }

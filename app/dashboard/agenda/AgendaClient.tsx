@@ -14,6 +14,7 @@ import {
   composeAddressLine,
   endOfMonth,
   getContactOptionLabel,
+  isDraftEvent,
   endOfWeekSunday,
   isDateOnly,
   keyOf,
@@ -822,64 +823,110 @@ export default function AgendaClient() {
     }
   }
 
+  async function buildRdvPayload(targetStatus: "draft" | "confirmed" | null) {
+    const safeSummary = rdvSummary.trim() || "Évènement";
+    const safeDate = /^\d{4}-\d{2}-\d{2}$/.test(rdvDate) ? rdvDate : keyOf(selectedDate);
+    const safeStart = /^\d{2}:\d{2}$/.test(rdvStart) ? rdvStart : "09:00";
+    const safeEnd = /^\d{2}:\d{2}$/.test(rdvEnd) ? rdvEnd : "10:00";
+
+    const startIso = buildIso(safeDate, safeStart);
+    let endIso = buildIso(safeDate, safeEnd);
+    if (Date.parse(endIso) <= Date.parse(startIso)) {
+      const date = new Date(Date.parse(startIso));
+      date.setMinutes(date.getMinutes() + 60);
+      endIso = date.toISOString();
+    }
+
+    const contact = (await ensureContact()) ?? (rdvMode === "edit" ? rdvExistingContact : null);
+    const guests = buildGuestContacts();
+    const coordsLocation = composeAddressLine(rdvNewContactAddress.trim(), rdvNewContactPostal.trim(), rdvNewContactCity.trim());
+    const structuredLocation = (rdvLocation.trim() || coordsLocation).trim();
+    const activeRequest = rdvMode === "request" ? normalizedAppointmentRequests[activeRequestIndex] : null;
+    const activeRequestMeta = activeRequest?.inrcy && typeof activeRequest.inrcy === "object" ? activeRequest.inrcy : {};
+    const isDraft = targetStatus === "draft";
+
+    return {
+      summary: safeSummary,
+      location: structuredLocation || null,
+      description: rdvNotes.trim(),
+      start: startIso,
+      end: endIso,
+      contact,
+      inrcy: {
+        ...(rdvMode === "request" ? {
+          source: "inrbadge",
+          requestId: rdvEventId,
+          inrBadgeAppointmentRequest: (activeRequestMeta as any)?.inrBadgeAppointmentRequest,
+        } : {}),
+        ...(targetStatus ? { status: targetStatus } : {}),
+        kind: rdvKind,
+        contact: contact ?? undefined,
+        guests,
+        reminders: {
+          mailAccountId: isDraft ? undefined : agendaMailAccountId || undefined,
+          enabled: isDraft ? false : rdvRemindersAvailable ? rdvRemindersEnabled : false,
+        },
+        intervention: {
+          status: intStatus.trim() || undefined,
+          address: rdvLocation.trim()
+            ? { street: rdvLocation.trim() || undefined }
+            : {
+                street: rdvNewContactAddress.trim() || undefined,
+                city: rdvNewContactCity.trim() || undefined,
+                postal_code: rdvNewContactPostal.trim() || undefined,
+              },
+        },
+      },
+    };
+  }
+
+  async function saveRdvDraft() {
+    if (rdvMode === "request") return;
+    setRdvSaving(true);
+    setRdvError(null);
+    setSuccess(null);
+    try {
+      const payload = await buildRdvPayload("draft");
+      const response = rdvMode === "edit" && rdvEventId
+        ? await fetch(`/api/calendar/events?id=${encodeURIComponent(rdvEventId)}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          })
+        : await fetch("/api/calendar/events", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok || !json.ok) {
+        throw new Error(
+          !response.ok
+            ? await getSimpleFrenchApiError(response, "Impossible d’enregistrer le brouillon.")
+            : getSimpleFrenchErrorMessage(json?.error, "Impossible d’enregistrer le brouillon.")
+        );
+      }
+      setRdvOpen(false);
+      await loadEventsForMonth(cursorMonth);
+      setSuccess("Brouillon enregistré.");
+    } catch (e: any) {
+      setRdvError(getSimpleFrenchErrorMessage(e, "Impossible d’enregistrer le brouillon."));
+    } finally {
+      setRdvSaving(false);
+    }
+  }
+
   async function submitRdv() {
     setRdvSaving(true);
     setRdvError(null);
     setSuccess(null);
     try {
-      const safeSummary = rdvSummary.trim() || "Évènement";
-      const safeDate = /^\d{4}-\d{2}-\d{2}$/.test(rdvDate) ? rdvDate : keyOf(selectedDate);
-      const safeStart = /^\d{2}:\d{2}$/.test(rdvStart) ? rdvStart : "09:00";
-      const safeEnd = /^\d{2}:\d{2}$/.test(rdvEnd) ? rdvEnd : "10:00";
-
-      const startIso = buildIso(safeDate, safeStart);
-      let endIso = buildIso(safeDate, safeEnd);
-      if (Date.parse(endIso) <= Date.parse(startIso)) {
-        const date = new Date(Date.parse(startIso));
-        date.setMinutes(date.getMinutes() + 60);
-        endIso = date.toISOString();
-      }
-
-      const contact = (await ensureContact()) ?? (rdvMode === "edit" ? rdvExistingContact : null);
-      const guests = buildGuestContacts();
-      const coordsLocation = composeAddressLine(rdvNewContactAddress.trim(), rdvNewContactPostal.trim(), rdvNewContactCity.trim());
-      const structuredLocation = (rdvLocation.trim() || coordsLocation).trim();
-      const activeRequest = rdvMode === "request" ? normalizedAppointmentRequests[activeRequestIndex] : null;
-      const activeRequestMeta = activeRequest?.inrcy && typeof activeRequest.inrcy === "object" ? activeRequest.inrcy : {};
-
-      const payload: any = {
-        summary: safeSummary,
-        location: structuredLocation || null,
-        description: rdvNotes.trim(),
-        start: startIso,
-        end: endIso,
-        contact,
-        inrcy: {
-          ...(rdvMode === "request" ? {
-            source: "inrbadge",
-            status: "confirmed",
-            requestId: rdvEventId,
-            inrBadgeAppointmentRequest: (activeRequestMeta as any)?.inrBadgeAppointmentRequest,
-          } : {}),
-          kind: rdvKind,
-          contact: contact ?? undefined,
-          guests,
-          reminders: {
-            mailAccountId: agendaMailAccountId || undefined,
-            enabled: rdvRemindersAvailable ? rdvRemindersEnabled : false,
-          },
-          intervention: {
-            status: intStatus.trim() || undefined,
-            address: rdvLocation.trim()
-              ? { street: rdvLocation.trim() || undefined }
-              : {
-                  street: rdvNewContactAddress.trim() || undefined,
-                  city: rdvNewContactCity.trim() || undefined,
-                  postal_code: rdvNewContactPostal.trim() || undefined,
-                },
-          },
-        },
-      };
+      const currentBeforeSubmit = rdvMode === "edit" ? normalized.find((event) => event.id === rdvEventId) : null;
+      const payload: any = await buildRdvPayload(
+        rdvMode === "edit" && currentBeforeSubmit && !isDraftEvent(currentBeforeSubmit)
+          ? null
+          : "confirmed",
+      );
 
       if (rdvMode === "create") {
         const response = await fetch("/api/calendar/events", {
@@ -921,11 +968,14 @@ export default function AgendaClient() {
           return;
         }
 
+        const draftToConfirm = Boolean(currentBeforeSubmit && isDraftEvent(currentBeforeSubmit));
         const confirmed = await confirmInrcy({
           eyebrow: "Agenda",
-          title: "Confirmer la modification",
-          message: "Ce rendez-vous va être mis à jour. Les mails de mise à jour seront envoyés selon vos réglages. Voulez-vous continuer ?",
-          confirmLabel: "Confirmer la modification",
+          title: draftToConfirm ? "Confirmer le brouillon" : "Confirmer la modification",
+          message: draftToConfirm
+            ? "Ce brouillon va devenir un vrai rendez-vous. Les confirmations et rappels suivront vos réglages. Voulez-vous continuer ?"
+            : "Ce rendez-vous va être mis à jour. Les mails de mise à jour seront envoyés selon vos réglages. Voulez-vous continuer ?",
+          confirmLabel: draftToConfirm ? "Confirmer le RDV" : "Confirmer la modification",
           cancelLabel: "Annuler",
           variant: "warning",
         });
@@ -955,9 +1005,10 @@ export default function AgendaClient() {
         }
       }
 
+      const confirmedDraft = Boolean(currentBeforeSubmit && isDraftEvent(currentBeforeSubmit));
       setRdvOpen(false);
       await loadEventsForMonth(cursorMonth);
-      setSuccess(rdvMode === "create" ? "Rendez-vous ajouté." : rdvMode === "request" ? "Rendez-vous validé. Confirmation et rappels suivent le circuit iNr’Calendar." : "Rendez-vous modifié.");
+      setSuccess(rdvMode === "create" ? "Rendez-vous ajouté." : rdvMode === "request" ? "Rendez-vous validé. Confirmation et rappels suivent le circuit iNr’Calendar." : confirmedDraft ? "Brouillon confirmé." : "Rendez-vous modifié.");
     } catch (e: any) {
       setRdvError(getSimpleFrenchErrorMessage(e, rdvMode === "create" ? "Impossible de créer le rendez-vous." : rdvMode === "request" ? "Impossible de valider le rendez-vous." : "Impossible de modifier le rendez-vous."));
     } finally {
@@ -1230,6 +1281,9 @@ export default function AgendaClient() {
     setShowMobileSearch(false);
   };
 
+  const rdvCurrentEvent = rdvMode === "edit" ? normalized.find((event) => event.id === rdvEventId) : null;
+  const rdvIsDraft = isDraftEvent(rdvCurrentEvent);
+
   return (
     <div className={styles.page}>
       <div className={styles.wrap}>
@@ -1283,6 +1337,7 @@ export default function AgendaClient() {
       <AgendaEventModal
         open={rdvOpen}
         rdvMode={rdvMode}
+        rdvIsDraft={rdvIsDraft}
         rdvError={rdvError}
         rdvSaving={rdvSaving}
         rdvSummary={rdvSummary}
@@ -1318,6 +1373,7 @@ export default function AgendaClient() {
         onClose={requestCloseRdvModal}
         onDelete={deleteRdv}
         onSubmit={submitRdv}
+        onSaveDraft={saveRdvDraft}
         requestIndex={activeRequestIndex}
         requestCount={normalizedAppointmentRequests.length}
         onPreviousRequest={() => openAppointmentRequestAt((activeRequestIndex - 1 + normalizedAppointmentRequests.length) % normalizedAppointmentRequests.length)}

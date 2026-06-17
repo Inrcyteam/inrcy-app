@@ -70,6 +70,15 @@
   white-space: nowrap;
 }
 
+.moduleSubtitleMobile {
+  display: none;
+  margin: 0;
+  color: rgba(226, 242, 255, 0.68);
+  font-size: clamp(12px, 0.95vw, 14px);
+  line-height: 1.25;
+  font-weight: 620;
+}
+
 .moduleHeaderActions {
   flex: 0 0 auto;
   display: flex;
@@ -3362,5 +3371,551 @@
 @media (max-width: 760px) {
   .robotSteps strong {
     padding-left: 10px;
+  }
+}
+
+
+/* Ajustement final responsive iNrAgent — header lisible + 4 rubriques visibles */
+@media (max-width: 760px) {
+  .agentCanvas {
+    gap: 10px;
+  }
+
+  .moduleHeader {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "title actions"
+      "subtitle subtitle";
+    align-items: center !important;
+    gap: 5px 10px;
+  }
+
+  .moduleTitleBlock {
+    grid-area: title;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .moduleLogo {
+    width: 42px;
+    height: 42px;
+    flex: 0 0 42px;
+  }
+
+  .moduleTitleText {
+    padding-top: 0;
+  }
+
+  .moduleTitleText h1 {
+    font-size: 25px;
+    line-height: 1;
+  }
+
+  .moduleSubtitleDesktop {
+    display: none !important;
+  }
+
+  .moduleSubtitleMobile {
+    grid-area: subtitle;
+    display: block;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: rgba(226, 242, 255, 0.72);
+    font-size: 11px;
+    line-height: 1.2;
+    font-weight: 650;
+  }
+
+  .moduleHeaderActions {
+    grid-area: actions;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    gap: 7px;
+  }
+
+  .headerCloseButton {
+    width: 38px;
+    min-width: 38px;
+    height: 38px;
+    min-height: 38px;
+    padding: 0;
+    font-size: 0;
+    border-radius: 999px;
+  }
+
+  .headerCloseButton::before {
+    content: "×";
+    font-size: 22px;
+    line-height: 1;
+    font-weight: 850;
+  }
+
+  .automationGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px;
+  }
+
+  .automationCard {
+    min-height: 72px;
+    border-radius: 18px;
+  }
+
+  .automationSelect {
+    min-height: 72px;
+    gap: 9px;
+    padding: 10px 44px 10px 11px;
+  }
+
+  .cardIcon {
+    width: 38px;
+    height: 38px;
+  }
+
+  .cardIcon svg {
+    width: 21px;
+    height: 21px;
+  }
+
+  .cardTitle {
+    max-width: 100%;
+    font-size: 14px;
+    line-height: 1.12;
+    letter-spacing: -0.025em;
+  }
+
+  .settingsButton {
+    top: 17px;
+    right: 10px;
+    width: 30px;
+    height: 30px;
+  }
+
+  .settingsButton svg {
+    width: 22px;
+    height: 22px;
+  }
+
+  .cardStatus {
+    right: 12px;
+    bottom: 10px;
+  }
+}
+
+/* Correctif 156b — canaux sur une seule ligne + responsive iNrAgent allégé */
+.cardTitleShort {
+  display: none;
+}
+
+.previewMeta .channelScroller {
+  max-width: none !important;
+  overflow: visible !important;
+  scrollbar-width: none;
+  flex-wrap: nowrap !important;
+  gap: clamp(5px, 0.65vw, 8px) !important;
+}
+
+.previewMeta .channelScroller::-webkit-scrollbar {
+  display: none;
+}
+
+.previewMeta .channelScroller button {
+  width: clamp(31px, 2.35vw, 38px) !important;
+  height: clamp(31px, 2.35vw, 38px) !important;
+  min-height: clamp(31px, 2.35vw, 38px) !important;
+  flex: 0 0 clamp(31px, 2.35vw, 38px) !important;
+  padding: 0 !important;
+}
+
+.previewMeta .channelScroller img {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+@media (max-width: 760px) {
+  .automationGrid {
+    gap: 7px !important;
+  }
+
+  .automationCard {
+    min-height: 58px !important;
+    border-radius: 16px !important;
+  }
+
+  .automationSelect {
+    min-height: 58px !important;
+    padding: 8px 36px 8px 9px !important;
+    gap: 8px !important;
+  }
+
+  .cardIcon {
+    width: 31px !important;
+    height: 31px !important;
+    border-radius: 12px !important;
+  }
+
+  .cardIcon svg {
+    width: 17px !important;
+    height: 17px !important;
+  }
+
+  .cardTitle {
+    font-size: 13px !important;
+    line-height: 1.05 !important;
+    letter-spacing: -0.02em !important;
+  }
+
+  .cardTitleFull {
+    display: none;
+  }
+
+  .cardTitleShort {
+    display: inline;
+  }
+
+  .settingsButton {
+    top: 14px !important;
+    right: 8px !important;
+    width: 27px !important;
+    height: 27px !important;
+    opacity: 0.92;
+  }
+
+  .settingsButton svg {
+    width: 18px !important;
+    height: 18px !important;
+  }
+
+  .cardStatus {
+    width: 5px !important;
+    height: 5px !important;
+    right: 9px !important;
+    bottom: 8px !important;
+  }
+
+  .previewMeta .channelsItem small {
+    display: none !important;
+  }
+
+  .previewMeta .channelScroller {
+    width: 100% !important;
+    justify-content: center !important;
+    gap: 4px !important;
+  }
+
+  .previewMeta .channelScroller button {
+    width: 28px !important;
+    height: 28px !important;
+    min-height: 28px !important;
+    flex-basis: 28px !important;
+  }
+}
+
+/* Correctif 156c — ligne canaux/sources + cartes responsive propres */
+.previewMeta .channelsItem {
+  min-width: 0;
+}
+
+.previewMeta .channelsItem small {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.previewMeta .channelScroller {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  flex-wrap: nowrap !important;
+  justify-content: flex-start !important;
+  gap: 5px !important;
+  overflow: visible !important;
+}
+
+.previewMeta .channelScroller button {
+  width: 30px !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  flex: 0 0 30px !important;
+}
+
+.previewMeta .channelScroller button[data-channel="stats"] img {
+  object-fit: contain !important;
+  transform: scale(1) !important;
+  padding: 3px !important;
+}
+
+.previewMeta .channelScroller button[data-channel="siteInrcy"] img {
+  transform: scale(0.86) !important;
+}
+
+.previewMeta .channelScroller button[data-channel="gmb"] img {
+  transform: scale(1.08) !important;
+}
+
+.previewMeta .channelScroller button[data-channel="linkedin"] img {
+  transform: scale(1.06) !important;
+}
+
+@media (min-width: 1181px) {
+  .previewMeta {
+    grid-template-columns: minmax(0, 1fr) minmax(78px, 0.12fr) minmax(270px, 0.34fr) !important;
+  }
+
+  .previewMeta .channelScroller button {
+    width: 28px !important;
+    height: 28px !important;
+    min-height: 28px !important;
+    flex-basis: 28px !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .automationCard {
+    min-height: 60px !important;
+  }
+
+  .automationSelect {
+    min-height: 60px !important;
+    display: grid !important;
+    grid-template-columns: 31px minmax(0, 1fr) !important;
+    align-items: center !important;
+    padding: 8px 70px 8px 10px !important;
+    gap: 9px !important;
+  }
+
+  .cardIcon {
+    justify-self: center !important;
+  }
+
+  .cardTitle {
+    display: flex !important;
+    align-items: center !important;
+    min-width: 0 !important;
+    text-align: left !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .cardPendingCount {
+    display: none !important;
+  }
+
+  .cardStatus {
+    top: 50% !important;
+    right: 43px !important;
+    bottom: auto !important;
+    width: 6px !important;
+    height: 6px !important;
+    transform: translateY(-50%) !important;
+  }
+
+  .settingsButton {
+    top: 50% !important;
+    right: 8px !important;
+    transform: translateY(-50%) !important;
+  }
+
+  .previewMeta .channelScroller button {
+    width: 25px !important;
+    height: 25px !important;
+    min-height: 25px !important;
+    flex-basis: 25px !important;
+  }
+}
+
+/* Correctif 156d — canaux adaptatifs + responsive 2x2 lisible */
+@media (min-width: 1181px) {
+  .previewMeta {
+    grid-template-columns: minmax(0, 1fr) 150px 280px !important;
+    gap: 20px !important;
+    padding: 10px 16px !important;
+  }
+
+  .previewMeta .channelsItem {
+    min-width: 0 !important;
+    padding-right: 10px !important;
+  }
+
+  .previewMeta .channelScroller {
+    width: 100% !important;
+    min-width: 0 !important;
+    display: flex !important;
+    flex-wrap: nowrap !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: clamp(3px, 0.42vw, 6px) !important;
+    overflow: visible !important;
+  }
+
+  .previewMeta .channelScroller button {
+    width: 28px !important;
+    height: 28px !important;
+    min-width: 22px !important;
+    min-height: 22px !important;
+    flex: 0 1 28px !important;
+  }
+
+  .previewMeta .dateItem {
+    width: 150px !important;
+    min-width: 150px !important;
+    justify-content: center !important;
+    padding: 0 !important;
+    border-left: 1px solid rgba(148, 163, 255, 0.14) !important;
+    border-right: 1px solid rgba(148, 163, 255, 0.14) !important;
+  }
+
+  .previewMeta .previewActions {
+    width: 280px !important;
+    min-width: 280px !important;
+    padding-left: 0 !important;
+    border-left: 0 !important;
+  }
+}
+
+.previewMeta .channelScroller button[data-channel="inrbadge"] img {
+  transform: scale(1.18) !important;
+  object-fit: cover !important;
+  padding: 0 !important;
+}
+
+.previewMeta .channelScroller button[data-channel="stats-global"] img {
+  transform: scale(1.22) !important;
+  object-fit: cover !important;
+  padding: 0 !important;
+}
+
+@media (max-width: 760px) {
+  .automationGrid {
+    gap: 8px !important;
+  }
+
+  .automationCard {
+    min-height: 56px !important;
+  }
+
+  .automationSelect {
+    min-height: 56px !important;
+    grid-template-columns: 28px minmax(0, 1fr) !important;
+    gap: 7px !important;
+    padding: 7px 42px 7px 8px !important;
+  }
+
+  .cardIcon {
+    width: 28px !important;
+    height: 28px !important;
+    border-radius: 11px !important;
+  }
+
+  .cardIcon svg {
+    width: 16px !important;
+    height: 16px !important;
+  }
+
+  .cardTitle {
+    min-width: 0 !important;
+    max-width: none !important;
+    font-size: 12.5px !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+  }
+
+  .settingsButton {
+    right: 7px !important;
+    width: 26px !important;
+    height: 26px !important;
+  }
+
+  .settingsButton svg {
+    width: 17px !important;
+    height: 17px !important;
+  }
+
+  .cardStatus {
+    right: 35px !important;
+    width: 5px !important;
+    height: 5px !important;
+  }
+}
+
+/* Correctif 156e — footer iNrAgent : date desktop à gauche + sources mobile sur 2 lignes */
+@media (min-width: 1181px) {
+  .previewMeta {
+    grid-template-columns: clamp(390px, 31vw, 500px) 120px minmax(280px, 1fr) !important;
+    gap: 14px !important;
+    align-items: center !important;
+  }
+
+  .previewMeta .channelsItem {
+    width: 100% !important;
+    min-width: 0 !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    gap: 8px !important;
+    padding-right: 6px !important;
+  }
+
+  .previewMeta .channelScroller {
+    flex: 1 1 auto !important;
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: 100% !important;
+    gap: 4px !important;
+    flex-wrap: nowrap !important;
+    justify-content: flex-start !important;
+    overflow: visible !important;
+  }
+
+  .previewMeta .channelScroller button {
+    width: 26px !important;
+    height: 26px !important;
+    min-width: 22px !important;
+    min-height: 22px !important;
+    flex: 0 1 26px !important;
+  }
+
+  .previewMeta .dateItem {
+    width: 120px !important;
+    min-width: 120px !important;
+    justify-content: center !important;
+    padding: 0 !important;
+  }
+
+  .previewMeta .previewActions {
+    width: 280px !important;
+    min-width: 280px !important;
+    justify-self: end !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .previewMeta .channelsItem {
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 12px 10px 10px !important;
+  }
+
+  .previewMeta .channelScroller {
+    width: 100% !important;
+    max-width: 190px !important;
+    margin: 0 auto !important;
+    display: flex !important;
+    flex-wrap: wrap !important;
+    justify-content: center !important;
+    align-items: center !important;
+    gap: 6px 5px !important;
+    overflow: visible !important;
+  }
+
+  .previewMeta .channelScroller button {
+    width: 26px !important;
+    height: 26px !important;
+    min-width: 26px !important;
+    min-height: 26px !important;
+    flex: 0 0 26px !important;
   }
 }

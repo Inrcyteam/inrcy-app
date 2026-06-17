@@ -12,10 +12,10 @@ const SUB_SELECT =
   "user_id,contact_email,plan,scheduled_plan,status,monthly_price_eur,start_date,trial_start_at,trial_end_at,next_renewal_date,cancel_requested_at,end_date,stripe_customer_id,stripe_subscription_id,stripe_price_id,founder_offer_enabled,updated_at";
 
 const PROFILE_SELECT_WITH_ROLE =
-  "user_id,admin_email,contact_email,first_name,last_name,company_legal_name,phone,role,updated_at";
+  "user_id,admin_email,contact_email,first_name,last_name,company_legal_name,phone,role,last_active_at,updated_at";
 
 const PROFILE_SELECT_FALLBACK =
-  "user_id,admin_email,contact_email,first_name,last_name,company_legal_name,phone,updated_at";
+  "user_id,admin_email,contact_email,first_name,last_name,company_legal_name,phone,last_active_at,updated_at";
 
 const ALLOWED_ROLES = new Set(["user", "admin"]);
 const ALLOWED_SUBSCRIPTION_STATUSES = new Set([
@@ -146,6 +146,7 @@ export async function GET(request: NextRequest) {
         email,
         created_at: user.created_at ?? null,
         last_sign_in_at: user.last_sign_in_at ?? null,
+        last_active_at: profile?.last_active_at ?? null,
         email_confirmed_at: user.email_confirmed_at ?? null,
         role,
         is_hard_admin: ADMIN_USER_IDS.includes(user.id as any),

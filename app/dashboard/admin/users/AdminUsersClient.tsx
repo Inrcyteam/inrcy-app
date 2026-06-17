@@ -23,6 +23,7 @@ type AdminUserRow = {
   email: string | null;
   created_at: string | null;
   last_sign_in_at: string | null;
+  last_active_at: string | null;
   email_confirmed_at: string | null;
   role: string | null;
   is_hard_admin: boolean;
@@ -34,6 +35,7 @@ type AdminUserRow = {
     company_legal_name?: string | null;
     phone?: string | null;
     role?: string | null;
+    last_active_at?: string | null;
     updated_at?: string | null;
   } | null;
   subscription: {
@@ -324,7 +326,7 @@ export default function AdminUsersClient() {
 
                       <div className={styles.dateStack}>
                         <span>Créé le {formatDate(user.created_at)}</span>
-                        <small>Dernière connexion : {formatDate(user.last_sign_in_at)}</small>
+                        <small>Dernière connexion : {formatDateTime(user.last_active_at)}</small>
                       </div>
 
                       <div className={styles.quickActions}>
