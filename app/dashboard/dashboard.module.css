@@ -8362,3 +8362,106 @@
     height: 29px !important;
   }
 }
+
+/* ✅ Hotfix Android Chrome / Samsung Internet : bulles carrousel parfaitement rondes
+   Certains WebView Android écrasent les flex-items avec width/height + clamp.
+   On verrouille donc largeur, hauteur, base flex et ratio sur chaque breakpoint. */
+.carouselIconBtn,
+.carouselArrow {
+  box-sizing: border-box !important;
+  aspect-ratio: 1 / 1 !important;
+  flex-grow: 0 !important;
+  flex-shrink: 0 !important;
+  border-radius: 9999px !important;
+}
+
+.carouselIconBtn {
+  flex-basis: 25px !important;
+  max-width: 25px !important;
+  min-height: 25px !important;
+  max-height: 25px !important;
+}
+
+.carouselArrow {
+  flex-basis: 34px !important;
+  max-width: 34px !important;
+  min-height: 34px !important;
+  max-height: 34px !important;
+}
+
+.carouselIconImg {
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  max-width: 100% !important;
+  max-height: 100% !important;
+  object-fit: contain !important;
+  border-radius: 9999px !important;
+}
+
+@media (max-width: 560px) {
+  .carouselIconBtn {
+    width: 25px !important;
+    height: 25px !important;
+    min-width: 25px !important;
+    max-width: 25px !important;
+    min-height: 25px !important;
+    max-height: 25px !important;
+    flex: 0 0 25px !important;
+  }
+
+  .carouselArrow {
+    width: 31px !important;
+    height: 31px !important;
+    min-width: 31px !important;
+    max-width: 31px !important;
+    min-height: 31px !important;
+    max-height: 31px !important;
+    flex: 0 0 31px !important;
+  }
+}
+
+@media (max-width: 420px) {
+  .carouselIconBtn {
+    width: 24px !important;
+    height: 24px !important;
+    min-width: 24px !important;
+    max-width: 24px !important;
+    min-height: 24px !important;
+    max-height: 24px !important;
+    flex: 0 0 24px !important;
+  }
+
+  .carouselArrow {
+    width: 30px !important;
+    height: 30px !important;
+    min-width: 30px !important;
+    max-width: 30px !important;
+    min-height: 30px !important;
+    max-height: 30px !important;
+    flex: 0 0 30px !important;
+  }
+}
+
+@media (max-width: 340px) {
+  .carouselIconBtn {
+    width: 21px !important;
+    height: 21px !important;
+    min-width: 21px !important;
+    max-width: 21px !important;
+    min-height: 21px !important;
+    max-height: 21px !important;
+    flex: 0 0 21px !important;
+  }
+
+  .carouselArrow {
+    width: 27px !important;
+    height: 27px !important;
+    min-width: 27px !important;
+    max-width: 27px !important;
+    min-height: 27px !important;
+    max-height: 27px !important;
+    flex: 0 0 27px !important;
+  }
+}
