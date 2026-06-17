@@ -23,7 +23,13 @@ export function useDashboardMenus(userEmail: string | null) {
       typeof window !== "undefined" &&
       ("ontouchstart" in window || navigator.maxTouchPoints > 0);
 
+    const nav = navigator as Navigator & { userAgentData?: { platform?: string } };
+    const isAndroid =
+      typeof window !== "undefined" &&
+      /Android/i.test(`${nav.userAgent || ""} ${nav.userAgentData?.platform || ""} ${nav.platform || ""}`);
+
     document.documentElement.classList.toggle("isTouch", isTouch);
+    document.documentElement.classList.toggle("isAndroid", isAndroid);
   }, []);
 
   useEffect(() => {

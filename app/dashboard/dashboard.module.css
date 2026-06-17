@@ -8032,6 +8032,13 @@
   }
 }
 
+/* Android uniquement : petit écran, on remonte légèrement le contenu sans toucher iPhone */
+@media (max-width: 560px) {
+  :global(html.isAndroid) .mobileCarousel .moduleBubbleCard .bubbleStack {
+    transform: translateY(-4px) !important;
+  }
+}
+
 /* iPhone uniquement : on conserve la largeur validée et le contenu légèrement descendu */
 @supports (-webkit-touch-callout: none) {
   @media (any-hover: none) and (any-pointer: coarse) and (max-width: 560px) {
@@ -8463,5 +8470,172 @@
     min-height: 27px !important;
     max-height: 27px !important;
     flex: 0 0 27px !important;
+  }
+}
+
+/* ✅ V2 Android / petits écrans : rail icônes sans compression flex
+   Le V1 verrouillait les boutons, mais le parent pouvait encore les écraser sur Chrome Android.
+   Ici on sort le rail de la logique flex compressible et on force des dimensions logiques + physiques. */
+@media (max-width: 560px) {
+  .carouselNav {
+    --dash-channel-icon-size: 23px;
+    --dash-channel-icon-gap: 3px;
+    --dash-channel-arrow-size: 30px;
+
+    display: grid !important;
+    grid-template-columns: var(--dash-channel-arrow-size) max-content var(--dash-channel-arrow-size) !important;
+    align-items: center !important;
+    justify-content: center !important;
+    column-gap: 6px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    overflow: visible !important;
+  }
+
+  .carouselIconRail {
+    display: grid !important;
+    grid-auto-flow: column !important;
+    grid-auto-columns: var(--dash-channel-icon-size) !important;
+    align-items: center !important;
+    justify-content: center !important;
+    justify-items: center !important;
+    gap: var(--dash-channel-icon-gap) !important;
+
+    width: max-content !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    flex: none !important;
+    flex-basis: auto !important;
+    flex-grow: 0 !important;
+    flex-shrink: 0 !important;
+    overflow: visible !important;
+  }
+
+  .carouselIconBtn {
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    box-sizing: border-box !important;
+    display: inline-grid !important;
+    place-items: center !important;
+
+    width: var(--dash-channel-icon-size) !important;
+    height: var(--dash-channel-icon-size) !important;
+    min-width: var(--dash-channel-icon-size) !important;
+    min-height: var(--dash-channel-icon-size) !important;
+    max-width: var(--dash-channel-icon-size) !important;
+    max-height: var(--dash-channel-icon-size) !important;
+    inline-size: var(--dash-channel-icon-size) !important;
+    block-size: var(--dash-channel-icon-size) !important;
+    min-inline-size: var(--dash-channel-icon-size) !important;
+    min-block-size: var(--dash-channel-icon-size) !important;
+    max-inline-size: var(--dash-channel-icon-size) !important;
+    max-block-size: var(--dash-channel-icon-size) !important;
+
+    flex: none !important;
+    flex-basis: auto !important;
+    aspect-ratio: 1 / 1 !important;
+    padding: 3px !important;
+    border-radius: 9999px !important;
+    overflow: visible !important;
+    line-height: 0 !important;
+    font-size: 0 !important;
+  }
+
+  .carouselArrow {
+    appearance: none !important;
+    -webkit-appearance: none !important;
+    box-sizing: border-box !important;
+    display: inline-grid !important;
+    place-items: center !important;
+
+    width: var(--dash-channel-arrow-size) !important;
+    height: var(--dash-channel-arrow-size) !important;
+    min-width: var(--dash-channel-arrow-size) !important;
+    min-height: var(--dash-channel-arrow-size) !important;
+    max-width: var(--dash-channel-arrow-size) !important;
+    max-height: var(--dash-channel-arrow-size) !important;
+    inline-size: var(--dash-channel-arrow-size) !important;
+    block-size: var(--dash-channel-arrow-size) !important;
+    min-inline-size: var(--dash-channel-arrow-size) !important;
+    min-block-size: var(--dash-channel-arrow-size) !important;
+    max-inline-size: var(--dash-channel-arrow-size) !important;
+    max-block-size: var(--dash-channel-arrow-size) !important;
+
+    flex: none !important;
+    flex-basis: auto !important;
+    aspect-ratio: 1 / 1 !important;
+    border-radius: 9999px !important;
+    line-height: 1 !important;
+  }
+
+  .carouselIconImg {
+    box-sizing: border-box !important;
+    display: block !important;
+    width: 100% !important;
+    height: 100% !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    inline-size: 100% !important;
+    block-size: 100% !important;
+    aspect-ratio: 1 / 1 !important;
+    object-fit: contain !important;
+    object-position: center center !important;
+    border-radius: 9999px !important;
+    transform: translateZ(0) !important;
+  }
+
+  .moduleBubbleCard .bubbleLogo {
+    box-sizing: border-box !important;
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+    min-height: 34px !important;
+    max-width: 34px !important;
+    max-height: 34px !important;
+    inline-size: 34px !important;
+    block-size: 34px !important;
+    min-inline-size: 34px !important;
+    min-block-size: 34px !important;
+    max-inline-size: 34px !important;
+    max-block-size: 34px !important;
+    flex: none !important;
+    aspect-ratio: 1 / 1 !important;
+    border-radius: 9999px !important;
+    overflow: hidden !important;
+  }
+
+  .moduleBubbleCard .bubbleLogoImg {
+    display: block !important;
+    width: 100% !important;
+    height: 100% !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    inline-size: 100% !important;
+    block-size: 100% !important;
+    aspect-ratio: 1 / 1 !important;
+    object-fit: contain !important;
+    object-position: center center !important;
+    transform: translateZ(0) !important;
+  }
+}
+
+@media (max-width: 380px) {
+  .carouselNav {
+    --dash-channel-icon-size: 21px;
+    --dash-channel-icon-gap: 2px;
+    --dash-channel-arrow-size: 29px;
+    column-gap: 5px !important;
+  }
+}
+
+@media (max-width: 340px) {
+  .carouselNav {
+    --dash-channel-icon-size: 20px;
+    --dash-channel-icon-gap: 2px;
+    --dash-channel-arrow-size: 27px;
+    column-gap: 4px !important;
   }
 }

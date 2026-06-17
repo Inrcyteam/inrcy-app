@@ -736,14 +736,14 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                     Créer la facture
                                   </button>
                                 ) : null}
-                                {canDeleteHistoryItem(detailsItem) ? (
+                                {isDraftItem && canDeleteHistoryItem(detailsItem) ? (
                                   <button
                                     type="button"
                                     className={isDraftItem ? styles.btnDangerSmall : styles.btnGhost}
                                     onClick={() => void deleteHistoryEntry(detailsItem)}
                                     disabled={deletingHistorySelection || deletingHistoryItemId === detailsItem.id}
                                   >
-                                    {deletingHistoryItemId === detailsItem.id ? "Suppression…" : isDraftItem ? "Supprimer le brouillon" : `Supprimer de l’historique ${folderLabel(detailsItem.folder)}`}
+                                    {deletingHistoryItemId === detailsItem.id ? "Suppression…" : "Supprimer le brouillon"}
                                   </button>
                                 ) : null}
                               </div>
@@ -817,14 +817,14 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                     Réouvrir dans l’outil
                                   </button>
                                 ) : null}
-                                {canDeleteHistoryItem(detailsItem) ? (
+                                {isDraftItem && canDeleteHistoryItem(detailsItem) ? (
                                   <button
                                     type="button"
                                     className={isDraftItem ? styles.btnDangerSmall : styles.btnGhost}
                                     onClick={() => void deleteHistoryEntry(detailsItem)}
                                     disabled={deletingHistorySelection || deletingHistoryItemId === detailsItem.id}
                                   >
-                                    {deletingHistoryItemId === detailsItem.id ? "Suppression…" : isDraftItem ? "Supprimer le brouillon" : `Supprimer de l’historique ${folderLabel(detailsItem.folder)}`}
+                                    {deletingHistoryItemId === detailsItem.id ? "Suppression…" : "Supprimer le brouillon"}
                                   </button>
                                 ) : null}
                               </div>
@@ -917,6 +917,8 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                       className={styles.btnGhost}
                                       onClick={() => { setPublicationEditDirty(false); setDetailsEditMode(true); setDetailsActionError(null); setDetailsActionSuccess(null); }}
                                       disabled={detailsActionBusy}
+                                      title="Modifier la publication"
+                                      aria-label="Modifier la publication"
                                     >
                                       Modifier
                                     </button>
@@ -927,22 +929,24 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                       className={styles.btnDangerSmall}
                                       onClick={deleteChannelPublication}
                                       disabled={detailsActionBusy}
+                                      title="Supprimer la publication"
+                                      aria-label="Supprimer la publication"
                                     >
                                       {detailsActionBusy && !detailsEditMode ? "Suppression…" : "Supprimer"}
                                     </button>
                                   ) : null}
-                                  {canDeleteHistoryItem(detailsItem) ? (
+                                  {isDraftItem && canDeleteHistoryItem(detailsItem) ? (
                                     <button
                                       type="button"
                                       className={isDraftItem ? styles.btnDangerSmall : styles.btnGhost}
                                       onClick={() => void deleteHistoryEntry(detailsItem)}
                                       disabled={deletingHistorySelection || deletingHistoryItemId === detailsItem.id || detailsActionBusy}
                                     >
-                                      {deletingHistoryItemId === detailsItem.id ? "Suppression…" : isDraftItem ? "Supprimer le brouillon" : `Supprimer de l’historique ${folderLabel(detailsItem.folder)}`}
+                                      {deletingHistoryItemId === detailsItem.id ? "Suppression…" : "Supprimer le brouillon"}
                                     </button>
                                   ) : null}
                                 </div>
-                              ) : isDraftItem || canDeleteHistoryItem(detailsItem) ? (
+                              ) : isDraftItem ? (
                                 <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginLeft: "auto" }}>
                                   {isDraftItem ? (
                                     <button
@@ -953,14 +957,14 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                       Reprendre l’édition
                                     </button>
                                   ) : null}
-                                  {canDeleteHistoryItem(detailsItem) ? (
+                                  {isDraftItem && canDeleteHistoryItem(detailsItem) ? (
                                     <button
                                       type="button"
                                       className={isDraftItem ? styles.btnDangerSmall : styles.btnGhost}
                                       onClick={() => void deleteHistoryEntry(detailsItem)}
                                       disabled={deletingHistorySelection || deletingHistoryItemId === detailsItem.id}
                                     >
-                                      {deletingHistoryItemId === detailsItem.id ? "Suppression…" : isDraftItem ? "Supprimer le brouillon" : `Supprimer de l’historique ${folderLabel(detailsItem.folder)}`}
+                                      {deletingHistoryItemId === detailsItem.id ? "Suppression…" : "Supprimer le brouillon"}
                                     </button>
                                   ) : null}
                                 </div>
@@ -986,7 +990,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                 fontSize: 13,
                               }}
                             >
-                              <b>TikTok :</b> iNrSend garde l’historique et l’ouverture du post. La modification ou suppression réelle se fait dans TikTok ; supprimer l’historique ne supprime pas le post TikTok.
+                              <b>TikTok :</b> iNrSend garde l’historique et l’ouverture du post. La modification ou suppression réelle se fait dans TikTok ; retirer l’entrée depuis le tableau iNrSend ne supprime pas le post TikTok.
                             </div>
                           ) : null}
 
@@ -1002,7 +1006,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                 fontSize: 13,
                               }}
                             >
-                              <b>YouTube :</b> iNrSend garde le statut et le lien de la vidéo publiée. Pour l’instant, la modification ou suppression réelle se fait dans YouTube Studio ; supprimer l’historique ne supprime pas la vidéo YouTube.
+                              <b>YouTube :</b> iNrSend garde le statut et le lien de la vidéo publiée. Pour l’instant, la modification ou suppression réelle se fait dans YouTube Studio ; retirer l’entrée depuis le tableau iNrSend ne supprime pas la vidéo YouTube.
                             </div>
                           ) : null}
 
