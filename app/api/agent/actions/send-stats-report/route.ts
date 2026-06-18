@@ -118,15 +118,41 @@ const channelLabels: Record<string, string> = {
   youtube_shorts: "YouTube Shorts",
 };
 
+const REPORTS_BUCKET = "inr-agent-reports";
+const MAX_STORED_REPORTS = 5;
+
+
 function asRecord(value: unknown): JsonRecord {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as JsonRecord)
     : {};
 }
 
+function textFromUnknown(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (["string", "number", "boolean"].includes(typeof value)) return String(value);
+  if (Array.isArray(value)) return value.map((item) => textFromUnknown(item)).filter(Boolean).join("\n");
+  if (typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const preferredKeys = ["globalSummary", "summary", "text", "message", "content", "body", "label", "title", "value"];
+    for (const key of preferredKeys) {
+      const candidate = textFromUnknown(record[key]);
+      if (candidate) return candidate;
+    }
+    return Object.values(record)
+      .map((item) => textFromUnknown(item))
+      .filter(Boolean)
+      .join(" · ");
+  }
+  return "";
+}
+
 function cleanText(value: unknown, maxLength = 1000) {
-  return String(value ?? "")
+  return textFromUnknown(value)
     .replace(/\r\n/g, "\n")
+    .replace(/[\u2013\u2014]/g, "-")
+    .replace(/[\u202f\u00a0]/g, " ")
+    .replace(/\s+\n/g, "\n")
     .trim()
     .slice(0, maxLength);
 }
@@ -142,15 +168,24 @@ function safeNumber(value: unknown, fallback = 0) {
 }
 
 function formatNumber(value: number) {
-  return new Intl.NumberFormat("fr-FR").format(Math.max(0, Math.round(value)));
+  return Math.max(0, Math.round(value))
+    .toString()
+    .replace(/\B(?=(\d{3})+(?!\d))/g, " ");
 }
 
 function formatCurrency(value: number) {
-  return new Intl.NumberFormat("fr-FR", {
-    style: "currency",
-    currency: "EUR",
-    maximumFractionDigits: 0,
-  }).format(Math.max(0, Math.round(value)));
+  return `${Math.max(0, Math.round(value))} EUR`;
+}
+
+function fallbackReportSummary(report: StatsReportData) {
+  return `Sur les ${report.periodDays} derniers jours, iNrAgent a analysé ${report.channels.length} canaux : ${formatNumber(report.totals.opportunities)} opportunités estimées, ${formatNumber(report.totals.capturedLeadsMonth)} demandes captées et ${formatCurrency(report.totals.estimatedValue)} de CA potentiel.`;
+}
+
+function cleanNarrativeText(value: unknown, fallback: string, maxLength = 900) {
+  const text = cleanText(value, maxLength);
+  const hasLetters = /[A-Za-zÀ-ÖØ-öø-ÿ]/.test(text);
+  const hasEnoughWords = text.split(/\s+/).filter(Boolean).length >= 6;
+  return hasLetters && hasEnoughWords ? text : fallback;
 }
 
 function formatDateFr(value: string) {
@@ -439,180 +474,516 @@ async function buildReportData(args: {
   };
 }
 
+
+type Rgb = [number, number, number];
+
+const PDF = {
+  width: 210,
+  height: 297,
+  margin: 14,
+  dark: [5, 10, 30] as Rgb,
+  navy: [8, 21, 49] as Rgb,
+  slate: [15, 23, 42] as Rgb,
+  muted: [100, 116, 139] as Rgb,
+  light: [241, 245, 249] as Rgb,
+  white: [255, 255, 255] as Rgb,
+  blue: [59, 130, 246] as Rgb,
+  cyan: [34, 211, 238] as Rgb,
+  purple: [139, 92, 246] as Rgb,
+  pink: [236, 72, 153] as Rgb,
+  green: [34, 197, 94] as Rgb,
+  orange: [249, 115, 22] as Rgb,
+  red: [239, 68, 68] as Rgb,
+};
+
+function setFill(doc: jsPDF, color: Rgb) {
+  doc.setFillColor(color[0], color[1], color[2]);
+}
+
+function setDraw(doc: jsPDF, color: Rgb) {
+  doc.setDrawColor(color[0], color[1], color[2]);
+}
+
+function setText(doc: jsPDF, color: Rgb) {
+  doc.setTextColor(color[0], color[1], color[2]);
+}
+
 function splitText(doc: jsPDF, text: unknown, width: number): string[] {
   return doc.splitTextToSize(cleanText(text, 4000) || "-", width) as string[];
 }
 
-function addPageHeader(doc: jsPDF, title: string, pageNumber: number) {
-  doc.setFillColor(8, 20, 48);
-  doc.rect(0, 0, 210, 18, "F");
-  doc.setTextColor(255, 255, 255);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(12);
-  doc.text(title, 14, 11.5);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
-  doc.text(`Page ${pageNumber}`, 190, 11.5, { align: "right" });
-  doc.setTextColor(15, 23, 42);
+function truncateText(value: unknown, maxLength = 80) {
+  const text = cleanText(value, maxLength + 20);
+  return text.length > maxLength ? `${text.slice(0, maxLength - 1).trim()}...` : text;
 }
 
-function addWrappedText(doc: jsPDF, text: unknown, x: number, y: number, width: number, lineHeight = 5) {
+function percentage(value: number, total: number) {
+  if (!total || total <= 0) return "0%";
+  return `${Math.round((value / total) * 100)}%`;
+}
+
+function addSoftBackground(doc: jsPDF, pageTitle?: string, pageNumber?: number) {
+  setFill(doc, [247, 250, 255]);
+  doc.rect(0, 0, PDF.width, PDF.height, "F");
+  setFill(doc, [234, 242, 255]);
+  doc.circle(184, 12, 38, "F");
+  setFill(doc, [246, 235, 255]);
+  doc.circle(18, 278, 44, "F");
+
+  if (pageTitle) {
+    setFill(doc, PDF.dark);
+    doc.rect(0, 0, PDF.width, 20, "F");
+    setFill(doc, PDF.blue);
+    doc.roundedRect(14, 6, 5, 5, 1.5, 1.5, "F");
+    setText(doc, PDF.white);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(12);
+    doc.text(pageTitle, 23, 11.2);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(8.5);
+    doc.text("Bilan iNrStats", 164, 11.2);
+    if (pageNumber) doc.text(`Page ${pageNumber}`, 194, 11.2, { align: "right" });
+  }
+}
+
+function addFooter(doc: jsPDF, pageNumber: number) {
+  setDraw(doc, [226, 232, 240]);
+  doc.setLineWidth(0.2);
+  doc.line(14, 282, 196, 282);
+  setText(doc, [100, 116, 139]);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.text("Rapport automatique généré par iNrAgent", 14, 288);
+  doc.text(`Page ${pageNumber}`, 196, 288, { align: "right" });
+}
+
+function addBrandMark(doc: jsPDF, x: number, y: number, dark = false) {
+  setFill(doc, dark ? PDF.white : PDF.dark);
+  doc.roundedRect(x, y, 13, 13, 4, 4, "F");
+  setFill(doc, dark ? PDF.purple : PDF.blue);
+  doc.roundedRect(x + 2.1, y + 8, 2, 3, 0.6, 0.6, "F");
+  setFill(doc, dark ? PDF.cyan : PDF.purple);
+  doc.roundedRect(x + 5.5, y + 5, 2, 6, 0.6, 0.6, "F");
+  setFill(doc, dark ? PDF.pink : PDF.cyan);
+  doc.roundedRect(x + 8.9, y + 2, 2, 9, 0.6, 0.6, "F");
+  setText(doc, dark ? PDF.white : PDF.dark);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(16);
+  doc.text("iNrCy", x + 17, y + 10.2);
+}
+
+function drawGlassCard(
+  doc: jsPDF,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  options: { fill?: Rgb; border?: Rgb; radius?: number; accent?: Rgb } = {},
+) {
+  setFill(doc, options.fill || PDF.white);
+  setDraw(doc, options.border || [226, 232, 240]);
+  doc.setLineWidth(0.25);
+  doc.roundedRect(x, y, w, h, options.radius ?? 5, options.radius ?? 5, "FD");
+  setDraw(doc, [255, 255, 255]);
+  doc.setLineWidth(0.2);
+  doc.line(x + 3, y + 1.4, x + w - 3, y + 1.4);
+  if (options.accent) {
+    setFill(doc, options.accent);
+    doc.roundedRect(x, y, 2.6, h, options.radius ?? 5, options.radius ?? 5, "F");
+  }
+}
+
+function drawSectionTitle(doc: jsPDF, title: string, subtitle: string, x: number, y: number, accent: Rgb = PDF.blue) {
+  setFill(doc, accent);
+  doc.roundedRect(x, y - 5, 4, 4, 1.2, 1.2, "F");
+  setText(doc, PDF.slate);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(16);
+  doc.text(title, x + 8, y);
+  if (subtitle) {
+    setText(doc, PDF.muted);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(9.2);
+    doc.text(subtitle, x + 8, y + 6);
+  }
+}
+
+function drawKpiCard(doc: jsPDF, label: string, value: string, x: number, y: number, w: number, h: number, accent: Rgb) {
+  drawGlassCard(doc, x, y, w, h, { fill: [255, 255, 255], border: [219, 234, 254], radius: 5, accent });
+  setFill(doc, accent);
+  doc.circle(x + 9, y + 9, 3.2, "F");
+  setText(doc, PDF.muted);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7.4);
+  doc.text(label.toUpperCase(), x + 5, y + 19);
+  setText(doc, PDF.slate);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(value.length > 10 ? 13 : 16);
+  doc.text(value, x + 5, y + 30, { maxWidth: w - 10 });
+}
+
+function drawDarkKpiCard(doc: jsPDF, label: string, value: string, x: number, y: number, w: number, h: number, accent: Rgb) {
+  drawGlassCard(doc, x, y, w, h, { fill: [12, 28, 64], border: [38, 66, 116], radius: 6, accent });
+  setText(doc, [191, 219, 254]);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7.4);
+  doc.text(label.toUpperCase(), x + 5, y + 8);
+  setText(doc, PDF.white);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(value.length > 9 ? 13 : 18);
+  doc.text(value, x + 5, y + 22, { maxWidth: w - 10 });
+}
+
+function normalizeInsightList(items: unknown, fallback: string[]): string[] {
+  if (!Array.isArray(items)) return fallback;
+  const cleaned = items.map((item) => cleanText(item, 240)).filter(Boolean);
+  return cleaned.length ? cleaned.slice(0, 5) : fallback;
+}
+
+function addBulletList(doc: jsPDF, items: unknown, x: number, y: number, width: number, color: Rgb = [30, 41, 59]) {
+  const list = Array.isArray(items) ? items.map((item) => cleanText(item, 240)).filter(Boolean) : [];
+  let cursor = y;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9.4);
+  setText(doc, color);
+  for (const item of list.slice(0, 5)) {
+    const lines = splitText(doc, `- ${item}`, width);
+    doc.text(lines, x, cursor);
+    cursor += Math.max(6.4, lines.length * 4.6 + 2.4);
+  }
+  return cursor;
+}
+
+function addWrappedText(doc: jsPDF, text: unknown, x: number, y: number, width: number, lineHeight = 4.8) {
   const lines = splitText(doc, text, width);
   doc.text(lines, x, y);
   return y + lines.length * lineHeight;
 }
 
-function drawMetricBox(doc: jsPDF, label: string, value: string, x: number, y: number, w: number, h = 24) {
-  doc.setDrawColor(222, 231, 244);
-  doc.setFillColor(248, 250, 252);
-  doc.roundedRect(x, y, w, h, 3, 3, "FD");
-  doc.setTextColor(100, 116, 139);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
-  doc.text(label, x + 4, y + 7);
-  doc.setTextColor(15, 23, 42);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(14);
-  doc.text(value, x + 4, y + 17);
+function getChannelHealth(channel: ChannelReportLine) {
+  if (!channel.connected) return { label: "À connecter", color: PDF.red, score: 0 };
+  if (!channel.statsConnected || channel.error) return { label: "À vérifier", color: PDF.orange, score: 30 };
+  if (channel.capturedMonth > 20) return { label: "Très actif", color: PDF.green, score: 92 };
+  if (channel.capturedMonth > 0) return { label: "Actif", color: PDF.blue, score: 68 };
+  if (channel.opportunities > 0) return { label: "À convertir", color: PDF.purple, score: 48 };
+  return { label: "À nourrir", color: PDF.orange, score: 38 };
 }
 
-function addBulletList(doc: jsPDF, items: unknown, x: number, y: number, width: number) {
-  const list = Array.isArray(items) ? items : [];
-  let cursor = y;
+function drawStatusBadge(doc: jsPDF, label: string, x: number, y: number, color: Rgb) {
+  setFill(doc, [241, 245, 249]);
+  setDraw(doc, [226, 232, 240]);
+  doc.roundedRect(x, y, 34, 8, 4, 4, "FD");
+  setFill(doc, color);
+  doc.circle(x + 4.5, y + 4, 1.4, "F");
+  setText(doc, PDF.slate);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(6.4);
+  doc.text(label.toUpperCase(), x + 7.5, y + 5.5, { maxWidth: 24 });
+}
+
+function drawInsightCard(doc: jsPDF, title: string, items: string[], x: number, y: number, w: number, h: number, accent: Rgb) {
+  drawGlassCard(doc, x, y, w, h, { fill: PDF.white, border: [226, 232, 240], radius: 6, accent });
+  setText(doc, PDF.slate);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(13);
+  doc.text(title, x + 7, y + 12);
+  addBulletList(doc, items, x + 7, y + 23, w - 14, [51, 65, 85]);
+}
+
+function drawChannelCard(doc: jsPDF, channel: ChannelReportLine, note: string, x: number, y: number, w: number, h: number) {
+  const health = getChannelHealth(channel);
+  drawGlassCard(doc, x, y, w, h, { fill: PDF.white, border: [226, 232, 240], radius: 6, accent: health.color });
+  setText(doc, PDF.slate);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(11.2);
+  doc.text(channel.label, x + 7, y + 10, { maxWidth: w - 48 });
+  drawStatusBadge(doc, health.label, x + w - 42, y + 5, health.color);
+
+  const metricY = y + 22;
+  const colW = (w - 15) / 3;
+  const metrics = [
+    ["Opp.", formatNumber(channel.opportunities)],
+    ["Demandes", formatNumber(channel.capturedMonth)],
+    ["CA", formatCurrency(channel.estimatedValue)],
+  ];
+  metrics.forEach(([label, value], index) => {
+    const mx = x + 7 + index * colW;
+    setText(doc, PDF.muted);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(6.8);
+    doc.text(label.toUpperCase(), mx, metricY);
+    setText(doc, PDF.slate);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(value.length > 8 ? 8.6 : 10.5);
+    doc.text(value, mx, metricY + 7, { maxWidth: colW - 2 });
+  });
+
+  setDraw(doc, [226, 232, 240]);
+  doc.line(x + 7, y + 36, x + w - 7, y + 36);
+  setText(doc, [71, 85, 105]);
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(9.5);
-  doc.setTextColor(30, 41, 59);
-  for (const item of list.slice(0, 6)) {
-    const text = splitText(doc, `• ${cleanText(item, 220)}`, width);
-    doc.text(text, x, cursor);
-    cursor += Math.max(6, text.length * 4.8 + 2);
-  }
-  return cursor;
+  doc.setFontSize(8.2);
+  const lines = splitText(doc, note || channel.recommendation, w - 14).slice(0, 2);
+  doc.text(lines, x + 7, y + 43);
+}
+
+function drawMailBadgeMetric(doc: jsPDF, label: string, value: string, x: number, y: number, w: number, accent: Rgb) {
+  drawGlassCard(doc, x, y, w, 28, { fill: PDF.white, border: [226, 232, 240], radius: 5 });
+  setFill(doc, accent);
+  doc.roundedRect(x + 5, y + 7, 4, 14, 1.2, 1.2, "F");
+  setText(doc, PDF.muted);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(7);
+  doc.text(label.toUpperCase(), x + 13, y + 10);
+  setText(doc, PDF.slate);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(13);
+  doc.text(value, x + 13, y + 21, { maxWidth: w - 17 });
 }
 
 function createStatsPdf(report: StatsReportData, insights: StatsAiInsights) {
   const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
   let page = 1;
 
-  doc.setFillColor(5, 10, 30);
-  doc.rect(0, 0, 210, 297, "F");
-  doc.setTextColor(255, 255, 255);
+  const summary = cleanNarrativeText(
+    insights.globalSummary,
+    fallbackReportSummary(report),
+    900,
+  );
+  const strengths = normalizeInsightList(insights.strengths, [
+    `${report.totals.statsConnectedChannels} canal${report.totals.statsConnectedChannels > 1 ? "aux" : ""} dispose${report.totals.statsConnectedChannels > 1 ? "nt" : ""} de statistiques actives.`,
+    `${formatNumber(report.totals.capturedLeadsMonth)} demande${report.totals.capturedLeadsMonth > 1 ? "s" : ""} captée${report.totals.capturedLeadsMonth > 1 ? "s" : ""} sur 30 jours.`,
+  ]);
+  const weaknesses = normalizeInsightList(insights.weaknesses, [
+    "Les canaux sans demandes captées doivent être retravaillés avec des appels à l'action plus directs.",
+    "Les campagnes mails peuvent être intensifiées pour relancer les contacts CRM.",
+  ]);
+  const recommendations = normalizeInsightList(insights.recommendations, [
+    "Publier un contenu orienté conversion sur les canaux connectés cette semaine.",
+    "Relancer les contacts CRM avec une campagne courte et ciblée.",
+    "Suivre les canaux sans demandes pour identifier les freins.",
+  ]);
+  const channelNotes = asRecord(insights.channelNotes);
+  const bestChannels = [...report.channels]
+    .filter((channel) => channel.statsConnected)
+    .sort((a, b) => b.capturedMonth + b.opportunities - (a.capturedMonth + a.opportunities))
+    .slice(0, 3);
+
+  // Page 1 - cover
+  setFill(doc, PDF.dark);
+  doc.rect(0, 0, PDF.width, PDF.height, "F");
+  setFill(doc, [12, 35, 81]);
+  doc.circle(172, 30, 58, "F");
+  setFill(doc, [58, 27, 93]);
+  doc.circle(16, 262, 70, "F");
+  setFill(doc, [8, 28, 65]);
+  doc.roundedRect(14, 16, 182, 54, 8, 8, "F");
+  setDraw(doc, [56, 86, 148]);
+  doc.roundedRect(14, 16, 182, 54, 8, 8, "S");
+  addBrandMark(doc, 22, 26, true);
+  setText(doc, [191, 219, 254]);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(28);
-  doc.text("Bilan iNrStats", 18, 42);
-  doc.setFontSize(16);
-  doc.text(report.companyName || "Votre activité", 18, 55);
+  doc.setFontSize(8.6);
+  doc.text("RAPPORT AUTOMATIQUE INRAGENT", 22, 55);
+  setText(doc, PDF.white);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(30);
+  doc.text("Bilan iNrStats", 18, 96);
+  doc.setFontSize(15);
+  doc.text(truncateText(report.companyName || "Votre activité", 64), 18, 109);
+  setText(doc, [203, 213, 225]);
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(11);
-  doc.text(`Période analysée : ${report.periodDays} derniers jours`, 18, 68);
-  doc.text(`Généré le ${formatDateFr(report.generatedAt)}`, 18, 76);
-  doc.setDrawColor(96, 165, 250);
-  doc.setLineWidth(0.8);
-  doc.line(18, 88, 192, 88);
-  doc.setFontSize(13);
-  const summaryLines = splitText(doc, insights.globalSummary || "Synthèse indisponible.", 170);
-  doc.text(summaryLines, 18, 104);
+  doc.setFontSize(10.5);
+  doc.text(`Période analysée : ${report.periodDays} derniers jours`, 18, 121);
+  doc.text(`Généré le ${formatDateFr(report.generatedAt)}`, 18, 128);
 
+  drawGlassCard(doc, 18, 140, 174, 42, { fill: [10, 30, 68], border: [49, 80, 137], radius: 7 });
+  setText(doc, [147, 197, 253]);
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(12);
-  doc.text("Indicateurs clés", 18, 145);
-  drawMetricBox(doc, "Canaux connectés", `${report.totals.connectedChannels}/${report.channels.length}`, 18, 154, 39);
-  drawMetricBox(doc, "Stats actives", `${report.totals.statsConnectedChannels}`, 62, 154, 35);
-  drawMetricBox(doc, "Opportunités", formatNumber(report.totals.opportunities), 102, 154, 39);
-  drawMetricBox(doc, "Demandes 30j", formatNumber(report.totals.capturedLeadsMonth), 146, 154, 40);
-  drawMetricBox(doc, "CA potentiel", formatCurrency(report.totals.estimatedValue), 18, 184, 55);
-  if (report.mail) drawMetricBox(doc, "Destinataires mails 30j", formatNumber(report.mail.destinataires30), 78, 184, 54);
-  if (report.badge) drawMetricBox(doc, "Score iNrBadge", `${report.badge.qualityScore}/100`, 137, 184, 49);
+  doc.setFontSize(9);
+  doc.text("SYNTHÈSE", 26, 153);
+  setText(doc, PDF.white);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10);
+  doc.text(splitText(doc, summary, 158).slice(0, 4), 26, 164);
 
+  const darkKpis = [
+    ["Canaux", `${report.totals.connectedChannels}/${report.channels.length}`, PDF.cyan],
+    ["Stats actives", `${report.totals.statsConnectedChannels}`, PDF.green],
+    ["Opportunités", formatNumber(report.totals.opportunities), PDF.purple],
+    ["Demandes 30j", formatNumber(report.totals.capturedLeadsMonth), PDF.pink],
+    ["CA potentiel", formatCurrency(report.totals.estimatedValue), PDF.blue],
+    ["iNrBadge", report.badge ? `${report.badge.qualityScore}/100` : "-", PDF.orange],
+  ] as [string, string, Rgb][];
+  darkKpis.forEach(([label, value, accent], index) => {
+    const col = index % 3;
+    const row = Math.floor(index / 3);
+    drawDarkKpiCard(doc, label, value, 18 + col * 60, 198 + row * 34, 54, 27, accent);
+  });
+  setText(doc, [148, 163, 184]);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8.2);
+  doc.text("Ce bilan est généré automatiquement à partir des données disponibles dans iNrStats.", 18, 276);
+
+  // Page 2 - executive summary
   doc.addPage();
   page += 1;
-  addPageHeader(doc, "Analyse globale", page);
-  let y = 32;
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(15);
-  doc.text("Points forts", 14, y);
-  y = addBulletList(doc, insights.strengths, 16, y + 10, 176) + 8;
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(15);
-  doc.text("Points à surveiller", 14, y);
-  y = addBulletList(doc, insights.weaknesses, 16, y + 10, 176) + 8;
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(15);
-  doc.text("Plan d’action recommandé", 14, y);
-  addBulletList(doc, insights.recommendations, 16, y + 10, 176);
+  addSoftBackground(doc, "Synthèse dirigeant", page);
+  drawSectionTitle(doc, "Ce qu'il faut retenir", "Vue claire des performances et priorités d'action.", 14, 34, PDF.purple);
+  drawGlassCard(doc, 14, 48, 182, 42, { fill: PDF.white, border: [219, 234, 254], radius: 7, accent: PDF.blue });
+  setText(doc, PDF.slate);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(10.2);
+  doc.text(splitText(doc, summary, 164).slice(0, 5), 24, 62);
 
-  doc.addPage();
-  page += 1;
-  addPageHeader(doc, "Analyse par canal", page);
-  y = 31;
-  for (const channel of report.channels) {
-    if (y > 247) {
-      doc.addPage();
-      page += 1;
-      addPageHeader(doc, "Analyse par canal", page);
-      y = 31;
-    }
+  drawInsightCard(doc, "Points forts", strengths, 14, 104, 56, 86, PDF.green);
+  drawInsightCard(doc, "À surveiller", weaknesses, 77, 104, 56, 86, PDF.orange);
+  drawInsightCard(doc, "Actions", recommendations, 140, 104, 56, 86, PDF.purple);
 
-    doc.setDrawColor(226, 232, 240);
-    doc.setFillColor(255, 255, 255);
-    doc.roundedRect(12, y - 6, 186, 30, 3, 3, "FD");
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(11);
-    doc.setTextColor(15, 23, 42);
-    doc.text(channel.label, 17, y);
-    doc.setFont("helvetica", "normal");
-    doc.setFontSize(8);
-    doc.setTextColor(71, 85, 105);
-    doc.text(channel.statusLabel, 17, y + 6);
-    doc.text(`Opportunités : ${formatNumber(channel.opportunities)}`, 76, y);
-    doc.text(`Demandes 30j : ${formatNumber(channel.capturedMonth)}`, 76, y + 6);
-    doc.text(`CA potentiel : ${formatCurrency(channel.estimatedValue)}`, 76, y + 12);
-    const channelNote = cleanText(asRecord(insights.channelNotes)[channel.key], 260) || channel.recommendation;
-    addWrappedText(doc, channelNote, 17, y + 17, 168, 4.2);
-    y += 38;
-  }
-
-  doc.addPage();
-  page += 1;
-  addPageHeader(doc, "Mails et iNrBadge", page);
-  y = 33;
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(15);
-  doc.text("Mails / Propulser / Fidéliser", 14, y);
-  y += 12;
-  if (report.mail) {
-    drawMetricBox(doc, "Boîtes connectées", `${report.mail.connectedCount}/${report.mail.maxAccounts}`, 14, y, 40);
-    drawMetricBox(doc, "Contacts email CRM", formatNumber(report.mail.contactsEmail), 59, y, 43);
-    drawMetricBox(doc, "Campagnes 30j", formatNumber(report.mail.campagnes30), 107, y, 38);
-    drawMetricBox(doc, "Destinataires 30j", formatNumber(report.mail.destinataires30), 150, y, 45);
-    y += 34;
+  drawSectionTitle(doc, "Priorités iNrAgent", "Les canaux à suivre en premier dans les prochains jours.", 14, 212, PDF.cyan);
+  let priorityY = 225;
+  if (bestChannels.length) {
+    bestChannels.forEach((channel, index) => {
+      const health = getChannelHealth(channel);
+      drawGlassCard(doc, 14 + index * 61, priorityY, 56, 34, { fill: PDF.white, border: [226, 232, 240], radius: 5, accent: health.color });
+      setText(doc, PDF.slate);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(9.2);
+      doc.text(channel.label, 19 + index * 61, priorityY + 9, { maxWidth: 46 });
+      setText(doc, PDF.muted);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(7.6);
+      doc.text(`${formatNumber(channel.capturedMonth)} demandes · ${formatNumber(channel.opportunities)} opp.`, 19 + index * 61, priorityY + 19, { maxWidth: 46 });
+      setText(doc, health.color);
+      doc.setFont("helvetica", "bold");
+      doc.text(health.label, 19 + index * 61, priorityY + 28, { maxWidth: 46 });
+    });
+  } else {
+    setText(doc, PDF.muted);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
-    doc.text(`Propulser : ${formatNumber(report.mail.propulsions30)} · Fidéliser : ${formatNumber(report.mail.fidelisations30)} · Mails simples : ${formatNumber(report.mail.mailsSimples30)}`, 14, y);
-    y += 8;
-    doc.text(`Rappels agenda : ${formatNumber(report.mail.agendaReminders30)} · Factures envoyées : ${formatNumber(report.mail.factures30)} · Devis envoyés : ${formatNumber(report.mail.devis30)}`, 14, y);
-  } else {
+    doc.text("Aucun canal prioritaire disponible pour le moment.", 14, priorityY + 10);
+  }
+  addFooter(doc, page);
+
+  // Page 3 - channels
+  doc.addPage();
+  page += 1;
+  addSoftBackground(doc, "Analyse par canal", page);
+  drawSectionTitle(doc, "Performance des canaux", "Demandes, opportunités et recommandations par source.", 14, 34, PDF.blue);
+  const channelW = 87;
+  const channelH = 50;
+  let channelIndex = 0;
+  for (const channel of report.channels) {
+    if (channelIndex > 0 && channelIndex % 8 === 0) {
+      addFooter(doc, page);
+      doc.addPage();
+      page += 1;
+      addSoftBackground(doc, "Analyse par canal", page);
+      drawSectionTitle(doc, "Performance des canaux", "Suite des canaux analysés.", 14, 34, PDF.blue);
+    }
+    const local = channelIndex % 8;
+    const col = local % 2;
+    const row = Math.floor(local / 2);
+    const x = 14 + col * 95;
+    const y = 50 + row * 55;
+    const note = cleanText(channelNotes[channel.key], 260) || channel.recommendation;
+    drawChannelCard(doc, channel, note, x, y, channelW, channelH);
+    channelIndex += 1;
+  }
+  addFooter(doc, page);
+
+  // Page 4 - mails and badge
+  doc.addPage();
+  page += 1;
+  addSoftBackground(doc, "Mails et iNrBadge", page);
+  drawSectionTitle(doc, "Mails / Propulser / Fidéliser", "Activité de contact et campagnes sur 30 jours.", 14, 34, PDF.pink);
+  if (report.mail) {
+    drawMailBadgeMetric(doc, "Boîtes", `${report.mail.connectedCount}/${report.mail.maxAccounts}`, 14, 50, 42, PDF.green);
+    drawMailBadgeMetric(doc, "Contacts email", formatNumber(report.mail.contactsEmail), 61, 50, 42, PDF.blue);
+    drawMailBadgeMetric(doc, "Campagnes 30j", formatNumber(report.mail.campagnes30), 108, 50, 42, PDF.purple);
+    drawMailBadgeMetric(doc, "Destinataires", formatNumber(report.mail.destinataires30), 155, 50, 42, PDF.pink);
+    drawGlassCard(doc, 14, 88, 182, 40, { fill: PDF.white, border: [226, 232, 240], radius: 7, accent: PDF.pink });
+    setText(doc, PDF.slate);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(11);
+    doc.text("Répartition des envois", 23, 102);
+    setText(doc, [51, 65, 85]);
     doc.setFont("helvetica", "normal");
-    doc.text("Statistiques mails indisponibles au moment du bilan.", 14, y);
+    doc.setFontSize(9.4);
+    doc.text(`Propulser : ${formatNumber(report.mail.propulsions30)}   Fidéliser : ${formatNumber(report.mail.fidelisations30)}   Mails simples : ${formatNumber(report.mail.mailsSimples30)}`, 23, 114);
+    doc.text(`Rappels agenda : ${formatNumber(report.mail.agendaReminders30)}   Factures : ${formatNumber(report.mail.factures30)}   Devis : ${formatNumber(report.mail.devis30)}`, 23, 122);
+  } else {
+    setText(doc, PDF.muted);
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.text("Statistiques mails indisponibles au moment du bilan.", 14, 52);
   }
 
-  y += 26;
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(15);
-  doc.text("iNrBadge", 14, y);
-  y += 12;
+  drawSectionTitle(doc, "iNrBadge", "Utilisation de la carte de visite numérique et conversion.", 14, 153, PDF.cyan);
   if (report.badge) {
-    drawMetricBox(doc, "Vues 30j", formatNumber(report.badge.views30), 14, y, 36);
-    drawMetricBox(doc, "Scans QR 30j", formatNumber(report.badge.qrScans30), 55, y, 38);
-    drawMetricBox(doc, "Actions 30j", formatNumber(report.badge.actions30), 98, y, 38);
-    drawMetricBox(doc, "Demandes 30j", formatNumber(report.badge.capturedLeads30), 141, y, 42);
-    y += 34;
-    drawMetricBox(doc, "Score qualité", `${report.badge.qualityScore}/100`, 14, y, 42);
-    drawMetricBox(doc, "Opportunités iNrBadge", formatNumber(report.badge.opportunity30), 61, y, 52);
+    drawMailBadgeMetric(doc, "Vues 30j", formatNumber(report.badge.views30), 14, 169, 42, PDF.blue);
+    drawMailBadgeMetric(doc, "Scans QR", formatNumber(report.badge.qrScans30), 61, 169, 42, PDF.purple);
+    drawMailBadgeMetric(doc, "Actions", formatNumber(report.badge.actions30), 108, 169, 42, PDF.pink);
+    drawMailBadgeMetric(doc, "Demandes", formatNumber(report.badge.capturedLeads30), 155, 169, 42, PDF.green);
+    drawGlassCard(doc, 14, 207, 88, 42, { fill: PDF.white, border: [226, 232, 240], radius: 7, accent: PDF.cyan });
+    setText(doc, PDF.muted);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.text("SCORE QUALITÉ", 23, 221);
+    setText(doc, PDF.slate);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(22);
+    doc.text(`${report.badge.qualityScore}/100`, 23, 238);
+    drawGlassCard(doc, 108, 207, 88, 42, { fill: PDF.white, border: [226, 232, 240], radius: 7, accent: PDF.green });
+    setText(doc, PDF.muted);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(8);
+    doc.text("TAUX ACTIONS / VUES", 117, 221);
+    setText(doc, PDF.slate);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(22);
+    doc.text(percentage(report.badge.actions30, report.badge.views30), 117, 238);
   } else {
+    setText(doc, PDF.muted);
     doc.setFont("helvetica", "normal");
-    doc.text("Statistiques iNrBadge indisponibles au moment du bilan.", 14, y);
+    doc.setFontSize(10);
+    doc.text("Statistiques iNrBadge indisponibles au moment du bilan.", 14, 171);
   }
+  addFooter(doc, page);
+
+  // Page 5 - action plan
+  doc.addPage();
+  page += 1;
+  addSoftBackground(doc, "Plan d'action", page);
+  drawSectionTitle(doc, "Recommandations concrètes", "Une feuille de route simple pour transformer les statistiques en actions.", 14, 34, PDF.purple);
+  const actionCards = recommendations.slice(0, 5);
+  let actionY = 54;
+  actionCards.forEach((item, index) => {
+    const accent = [PDF.blue, PDF.purple, PDF.green, PDF.orange, PDF.pink][index % 5];
+    drawGlassCard(doc, 18, actionY, 174, 33, { fill: PDF.white, border: [226, 232, 240], radius: 7, accent });
+    setFill(doc, accent);
+    doc.circle(30, actionY + 16, 7, "F");
+    setText(doc, PDF.white);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10);
+    doc.text(String(index + 1), 30, actionY + 19.5, { align: "center" });
+    setText(doc, PDF.slate);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(10.5);
+    doc.text(splitText(doc, item, 138).slice(0, 2), 44, actionY + 14);
+    actionY += 41;
+  });
+  drawGlassCard(doc, 18, 236, 174, 26, { fill: [239, 246, 255], border: [191, 219, 254], radius: 7, accent: PDF.blue });
+  setText(doc, PDF.slate);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(10.5);
+  doc.text("À retenir", 26, 248);
+  setText(doc, [51, 65, 85]);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.text("Ce rapport doit servir à décider les prochaines publications, campagnes et relances.", 52, 248, { maxWidth: 132 });
+  addFooter(doc, page);
 
   const buffer = Buffer.from(doc.output("arraybuffer") as ArrayBuffer);
   return buffer;
@@ -622,14 +993,19 @@ function buildStatsEmail(args: { report: StatsReportData; insights: StatsAiInsig
   const company = cleanText(args.report.companyName || "votre activité", 120);
   const safeCompany = escapeHtml(company);
   const safeProName = escapeHtml(args.report.proName);
-  const safeSummary = escapeHtml(args.insights.globalSummary);
+  const summary = cleanNarrativeText(
+    args.insights.globalSummary,
+    fallbackReportSummary(args.report),
+    900,
+  );
+  const safeSummary = escapeHtml(summary);
   const safeFilename = escapeHtml(args.filename);
   const text = [
     `Bonjour${args.report.proName ? ` ${args.report.proName}` : ""},`,
     "",
     `Votre bilan iNrStats est disponible en pièce jointe : ${args.filename}.`,
     "",
-    cleanText(args.insights.globalSummary, 900),
+    summary,
     "",
     `Canaux connectés : ${args.report.totals.connectedChannels}/${args.report.channels.length}`,
     `Opportunités estimées : ${formatNumber(args.report.totals.opportunities)}`,
@@ -678,6 +1054,206 @@ function buildStatsEmail(args: { report: StatsReportData; insights: StatsAiInsig
 </html>`;
 
   return { subject: `Votre bilan iNrStats - ${company}`, text, html };
+}
+
+
+
+type StoredReportDocument = {
+  bucket: string;
+  storagePath: string;
+  filename: string;
+  mimeType: string;
+  bytes: number;
+  createdAt: string;
+};
+
+function extractStoredReportDocument(value: unknown): StoredReportDocument | null {
+  const record = asRecord(value);
+  const bucket = cleanText(record.bucket, 120);
+  const storagePath = cleanText(record.storagePath || record.storage_path || record.path, 260);
+  const filename = cleanText(record.filename, 180);
+  const mimeType = cleanText(record.mimeType || record.mime_type, 120) || "application/pdf";
+  const bytes = Math.max(0, Math.round(safeNumber(record.bytes)));
+  const createdAt = cleanText(record.createdAt || record.created_at, 80);
+  if (!bucket || !storagePath || !filename) return null;
+  return { bucket, storagePath, filename, mimeType, bytes, createdAt };
+}
+
+async function ensureReportsBucket(bucket: string) {
+  const exists = await supabaseAdmin.storage.getBucket(bucket).catch(() => null);
+  if (exists?.data) return;
+  await supabaseAdmin.storage.createBucket(bucket, {
+    public: false,
+    fileSizeLimit: 8 * 1024 * 1024,
+    allowedMimeTypes: ["application/pdf"],
+  }).catch(() => null);
+}
+
+async function uploadStoredReport(args: { userId: string; now: string; filename: string; pdfBuffer: Buffer }) {
+  const date = new Date(args.now);
+  const yyyy = String(date.getUTCFullYear());
+  const mm = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(date.getUTCDate()).padStart(2, "0");
+  const hh = String(date.getUTCHours()).padStart(2, "0");
+  const min = String(date.getUTCMinutes()).padStart(2, "0");
+  const ss = String(date.getUTCSeconds()).padStart(2, "0");
+  const storagePath = `${args.userId}/stats/${yyyy}/${mm}/${dd}/bilan-inrstats-${yyyy}${mm}${dd}-${hh}${min}${ss}.pdf`;
+
+  await ensureReportsBucket(REPORTS_BUCKET);
+  const upload = await supabaseAdmin.storage.from(REPORTS_BUCKET).upload(storagePath, args.pdfBuffer, {
+    contentType: "application/pdf",
+    cacheControl: "3600",
+    upsert: true,
+  });
+  if (upload.error) throw upload.error;
+
+  return {
+    bucket: REPORTS_BUCKET,
+    storagePath,
+    filename: args.filename,
+    mimeType: "application/pdf",
+    bytes: args.pdfBuffer.byteLength,
+    createdAt: args.now,
+  } satisfies StoredReportDocument;
+}
+
+function normalizeActionPayload(value: unknown) {
+  return asRecord(value);
+}
+
+function normalizeActionRow(value: unknown) {
+  return asRecord(value);
+}
+
+function normalizeTimestampForSort(...values: unknown[]) {
+  for (const value of values) {
+    const text = cleanText(value, 80);
+    if (text) return text;
+  }
+  return "";
+}
+
+function reportRunModeFromPayload(payload: JsonRecord) {
+  const mode = cleanText(payload.runMode || payload.reportRunMode || payload.executionMode, 40).toLowerCase();
+  return mode === "manual" ? "manual" : "automatic";
+}
+
+async function pruneStoredReports(userId: string) {
+  const { data, error } = await supabaseAdmin
+    .from("inr_agent_actions")
+    .select("id, payload, completed_at, created_at")
+    .eq("user_id", userId)
+    .eq("automation_key", "stats")
+    .eq("action_type", "stats_report")
+    .eq("status", "completed")
+    .order("completed_at", { ascending: false, nullsFirst: false })
+    .order("created_at", { ascending: false })
+    .limit(40);
+
+  if (error || !Array.isArray(data)) return;
+
+  const withReport = data
+    .map((row) => {
+      const payload = normalizeActionPayload((row as Record<string, unknown>).payload);
+      const reportDocument = extractStoredReportDocument(payload.reportDocument);
+      return {
+        id: String((row as Record<string, unknown>).id || ""),
+        payload,
+        reportDocument,
+        runMode: reportRunModeFromPayload(payload),
+        sortAt: normalizeTimestampForSort((row as Record<string, unknown>).completed_at, (row as Record<string, unknown>).created_at),
+      };
+    })
+    .filter((row) => row.id && row.reportDocument)
+    .sort((a, b) => String(b.sortAt).localeCompare(String(a.sortAt)));
+
+  const automaticReports = withReport.filter((row) => row.runMode !== "manual");
+  const manualReports = withReport.filter((row) => row.runMode === "manual");
+
+  const toPrune = [
+    ...automaticReports.slice(MAX_STORED_REPORTS),
+    ...manualReports.slice(1),
+  ];
+
+  if (!toPrune.length) return;
+
+  const grouped = new Map<string, string[]>();
+  for (const row of toPrune) {
+    const doc = row.reportDocument;
+    if (!doc) continue;
+    const existing = grouped.get(doc.bucket) || [];
+    existing.push(doc.storagePath);
+    grouped.set(doc.bucket, existing);
+  }
+
+  for (const [bucket, paths] of grouped.entries()) {
+    if (paths.length) {
+      await supabaseAdmin.storage.from(bucket).remove(paths).catch(() => null);
+    }
+  }
+
+  await Promise.all(
+    toPrune.map((row) => {
+      const nextPayload = {
+        ...row.payload,
+        reportDocument: null,
+        reportDocumentPrunedAt: new Date().toISOString(),
+      };
+      return supabaseAdmin
+        .from("inr_agent_actions")
+        .update({ payload: nextPayload, updated_at: new Date().toISOString() })
+        .eq("id", row.id)
+        .eq("user_id", userId);
+    }),
+  );
+}
+
+function normalizeFrequency(value: unknown): InrAgentAutomationSettings["frequency"] {
+  const frequency = String(value || "weekly") as InrAgentAutomationSettings["frequency"];
+  return ["weekly", "twice_weekly", "biweekly", "monthly", "quarterly", "one_off"].includes(frequency)
+    ? frequency
+    : "weekly";
+}
+
+function normalizeTimeLabel(value: unknown) {
+  const text = String(value || "09:00").trim();
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(text) ? text : "09:00";
+}
+
+function normalizeDayOfWeek(value: unknown) {
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 && n <= 6 ? Math.round(n) : 1;
+}
+
+function computeNextScheduledRun(automation: InrAgentAutomationSettings, after: Date) {
+  const frequency = normalizeFrequency(automation.frequency);
+  if (frequency === "one_off") return null;
+
+  const scheduleTime = normalizeTimeLabel(automation.time);
+  const [hours, minutes] = scheduleTime.split(":").map((item) => Number(item));
+  const scheduleDays = frequency === "twice_weekly"
+    ? Array.from(new Set([normalizeDayOfWeek(automation.dayOfWeek), (normalizeDayOfWeek(automation.dayOfWeek) + 3) % 7]))
+    : [normalizeDayOfWeek(automation.dayOfWeek)];
+
+  const isFirstOfMonth = (date: Date, dayOfWeek: number) => date.getDay() === dayOfWeek && date.getDate() <= 7;
+  const isThirdOfMonth = (date: Date, dayOfWeek: number) => date.getDay() === dayOfWeek && date.getDate() >= 15 && date.getDate() <= 21;
+  const isScheduledDate = (date: Date) => {
+    if (frequency === "twice_weekly") return scheduleDays.includes(date.getDay());
+    if (frequency === "biweekly") return isFirstOfMonth(date, scheduleDays[0]) || isThirdOfMonth(date, scheduleDays[0]);
+    if (frequency === "monthly") return isFirstOfMonth(date, scheduleDays[0]);
+    if (frequency === "quarterly") return [0, 3, 6, 9].includes(date.getMonth()) && isFirstOfMonth(date, scheduleDays[0]);
+    return date.getDay() === scheduleDays[0];
+  };
+
+  for (let offset = 0; offset <= 120; offset += 1) {
+    const candidate = new Date(after.getTime());
+    candidate.setSeconds(0, 0);
+    candidate.setDate(candidate.getDate() + offset);
+    candidate.setHours(hours, minutes, 0, 0);
+    if (candidate.getTime() <= after.getTime()) continue;
+    if (isScheduledDate(candidate)) return candidate.toISOString();
+  }
+  return null;
 }
 
 export async function POST(request: Request) {
@@ -738,15 +1314,39 @@ export async function POST(request: Request) {
     totals: buildTotals(stats.channels),
   };
 
-  const insights = await generateAiInsights(report);
+  const rawInsights = await generateAiInsights(report);
+  const reportSummary = cleanNarrativeText(
+    rawInsights.globalSummary,
+    fallbackReportSummary(report),
+    1200,
+  );
+  const insights: StatsAiInsights = {
+    ...rawInsights,
+    globalSummary: reportSummary,
+  };
   const pdfBuffer = createStatsPdf(report, insights);
   const dateKey = now.slice(0, 10);
   const filename = `bilan-inrstats-${dateKey}.pdf`;
   const mail = buildStatsEmail({ report, insights, filename });
 
+  let storedReportDocument: StoredReportDocument | null = null;
+  try {
+    storedReportDocument = await uploadStoredReport({
+      userId,
+      now,
+      filename,
+      pdfBuffer,
+    });
+  } catch (error) {
+    console.warn("[inr-agent-stats-report] report storage failed", error);
+  }
+
+  const runMode = isCron ? "automatic" : "manual";
+
   const actionPayload = {
     version: 1,
     source: "inr_agent_stats_report",
+    runMode,
     generatedAt: now,
     periodDays: report.periodDays,
     report,
@@ -756,6 +1356,7 @@ export async function POST(request: Request) {
       mimeType: "application/pdf",
       bytes: pdfBuffer.byteLength,
     },
+    reportDocument: storedReportDocument,
     delivery: {
       to: recipientEmail,
       subject: mail.subject,
@@ -773,9 +1374,9 @@ export async function POST(request: Request) {
         automation_key: "stats",
         action_type: "stats_report",
         target_tool: "inrstats",
-        title: "Bilan iNrStats envoyé",
-        summary: `Bilan PDF envoyé à ${recipientEmail}`,
-        preview_text: cleanText(insights.globalSummary, 1200),
+        title: isCron ? "Bilan iNrStats automatique envoyé" : "Bilan iNrStats manuel envoyé",
+        summary: isCron ? `Bilan automatique envoyé à ${recipientEmail}` : `Bilan manuel envoyé à ${recipientEmail}`,
+        preview_text: reportSummary,
         target_channels: [],
         target_themes: automation.allowedThemes,
         recipients: [{ email: recipientEmail, type: "pro" }],
@@ -787,7 +1388,7 @@ export async function POST(request: Request) {
         scheduled_for: null,
         prepared_at: now,
         validated_at: now,
-        metadata: { preparedManually: !isCron, preparedByCron: isCron, automationFrequency: automation.frequency },
+        metadata: { preparedManually: !isCron, preparedByCron: isCron, runMode, automationFrequency: automation.frequency, reportStored: Boolean(storedReportDocument) },
         created_at: now,
         updated_at: now,
       })
@@ -867,11 +1468,22 @@ export async function POST(request: Request) {
     if (data) action = rowToInrAgentAction(data as any);
   }
 
-  await supabaseAdmin
-    .from("inr_agent_automation_settings")
-    .update({ last_prepared_at: now, last_executed_at: completedAt, updated_at: completedAt })
-    .eq("user_id", userId)
-    .eq("automation_key", "stats");
+  if (isCron) {
+    await supabaseAdmin
+      .from("inr_agent_automation_settings")
+      .update({ last_prepared_at: now, last_executed_at: completedAt, updated_at: completedAt })
+      .eq("user_id", userId)
+      .eq("automation_key", "stats");
+  } else {
+    const nextRunAt = automation.nextRunAt || computeNextScheduledRun(automation, new Date(completedAt));
+    await supabaseAdmin
+      .from("inr_agent_automation_settings")
+      .update({ last_prepared_at: now, next_run_at: nextRunAt, updated_at: completedAt })
+      .eq("user_id", userId)
+      .eq("automation_key", "stats");
+  }
+
+  await pruneStoredReports(userId);
 
   return NextResponse.json({
     action,

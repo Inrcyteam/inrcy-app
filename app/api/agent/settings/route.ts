@@ -8,6 +8,7 @@ import {
   sanitizeInrAgentSettings,
   type InrAgentAutomationKey,
   type InrAgentAutomationSettings,
+  type InrAgentFrequency,
   type InrAgentSettings,
 } from "@/lib/inrAgentSettings";
 
@@ -43,6 +44,129 @@ const AUTOMATION_SELECT = "automation_key, enabled, frequency, day_of_week, time
 function isMissingSchemaError(error: { code?: string; message?: string } | null | undefined) {
   const message = String(error?.message || "").toLowerCase();
   return error?.code === "42P01" || error?.code === "42703" || error?.code === "PGRST205" || message.includes("inr_agent_settings") || message.includes("inr_agent_automation_settings");
+}
+
+function normalizeTime(value: unknown) {
+  const text = String(value || "09:00").trim();
+  return /^([01]\d|2[0-3]):[0-5]\d$/.test(text) ? text : "09:00";
+}
+
+function normalizeDay(value: unknown) {
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 && n <= 6 ? Math.round(n) : 1;
+}
+
+function normalizeFrequency(value: unknown): InrAgentFrequency {
+  const text = String(value || "weekly") as InrAgentFrequency;
+  return ["weekly", "twice_weekly", "biweekly", "monthly", "quarterly", "one_off"].includes(text) ? text : "weekly";
+}
+
+function getLocalParts(date: Date, timeZone = "Europe/Paris") {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    weekday: "short",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const map = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  const weekdayMap: Record<string, number> = { Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 };
+  return {
+    year: Number(map.year),
+    month: Number(map.month),
+    day: Number(map.day),
+    hour: Number(map.hour),
+    minute: Number(map.minute),
+    second: Number(map.second),
+    weekday: weekdayMap[map.weekday] ?? 1,
+  };
+}
+
+function getTimeZoneOffsetMs(date: Date, timeZone: string) {
+  const parts = getLocalParts(date, timeZone);
+  const asUtc = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, parts.second);
+  return asUtc - date.getTime();
+}
+
+function zonedTimeToUtc(parts: { year: number; month: number; day: number; hour: number; minute: number }, timeZone: string) {
+  let utc = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, 0);
+  for (let index = 0; index < 3; index += 1) {
+    const offset = getTimeZoneOffsetMs(new Date(utc), timeZone);
+    utc = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute, 0) - offset;
+  }
+  return new Date(utc);
+}
+
+function addLocalDays(base: ReturnType<typeof getLocalParts>, days: number) {
+  const d = new Date(Date.UTC(base.year, base.month - 1, base.day + days, 12, 0, 0));
+  return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1, day: d.getUTCDate() };
+}
+
+function scheduledWeekdays(frequency: InrAgentFrequency, dayOfWeek: number) {
+  if (frequency === "twice_weekly") return Array.from(new Set([dayOfWeek, (dayOfWeek + 3) % 7]));
+  return [dayOfWeek];
+}
+
+function isFirstScheduledWeekdayOfMonth(local: ReturnType<typeof getLocalParts>, dayOfWeek: number) {
+  return local.weekday === dayOfWeek && local.day <= 7;
+}
+
+function isThirdScheduledWeekdayOfMonth(local: ReturnType<typeof getLocalParts>, dayOfWeek: number) {
+  return local.weekday === dayOfWeek && local.day >= 15 && local.day <= 21;
+}
+
+function isScheduledDate(local: ReturnType<typeof getLocalParts>, frequency: InrAgentFrequency, dayOfWeek: number) {
+  if (frequency === "twice_weekly") return scheduledWeekdays(frequency, dayOfWeek).includes(local.weekday);
+  if (frequency === "biweekly") return isFirstScheduledWeekdayOfMonth(local, dayOfWeek) || isThirdScheduledWeekdayOfMonth(local, dayOfWeek);
+  if (frequency === "monthly") return isFirstScheduledWeekdayOfMonth(local, dayOfWeek);
+  if (frequency === "quarterly") return [1, 4, 7, 10].includes(local.month) && isFirstScheduledWeekdayOfMonth(local, dayOfWeek);
+  return local.weekday === dayOfWeek;
+}
+
+function timeParts(time: string) {
+  const [hourRaw, minuteRaw] = normalizeTime(time).split(":");
+  return { hour: Number(hourRaw), minute: Number(minuteRaw) };
+}
+
+function computeNextRunAt(automation: InrAgentAutomationSettings, after: Date, timeZone: string) {
+  const frequency = normalizeFrequency(automation.frequency);
+  if (!automation.enabled || frequency === "one_off") return null;
+
+  const start = getLocalParts(new Date(after.getTime() + 60 * 1000), timeZone);
+  const dayOfWeek = normalizeDay(automation.dayOfWeek);
+  const schedule = timeParts(automation.time || "09:00");
+
+  for (let offset = 0; offset <= 110; offset += 1) {
+    const localDate = addLocalDays(start, offset);
+    const candidateUtc = zonedTimeToUtc({ ...localDate, ...schedule }, timeZone);
+    if (candidateUtc.getTime() <= after.getTime()) continue;
+    const candidateLocal = getLocalParts(candidateUtc, timeZone);
+    if (isScheduledDate(candidateLocal, frequency, dayOfWeek)) return candidateUtc.toISOString();
+  }
+
+  return null;
+}
+
+function scheduleSignature(row: Pick<DbAgentAutomationSettingsRow, "enabled" | "frequency" | "day_of_week" | "time"> | null | undefined) {
+  return [
+    row?.enabled ? "1" : "0",
+    normalizeFrequency(row?.frequency),
+    String(normalizeDay(row?.day_of_week)),
+    normalizeTime(row?.time),
+  ].join("|");
+}
+
+function automationSignature(automation: InrAgentAutomationSettings) {
+  return [
+    automation.enabled ? "1" : "0",
+    normalizeFrequency(automation.frequency),
+    String(normalizeDay(automation.dayOfWeek)),
+    normalizeTime(automation.time),
+  ].join("|");
 }
 
 function rowToAutomation(row: DbAgentAutomationSettingsRow | null | undefined): Partial<InrAgentAutomationSettings> {
@@ -160,7 +284,36 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Enregistrement de la configuration globale iNr'Agent impossible" }, { status: 500 });
   }
 
-  const automationPayloads = INR_AGENT_AUTOMATION_KEYS.map((key: InrAgentAutomationKey) => automationSettingsToDbRow(user.id, key, settings.automations[key]));
+  const { data: existingAutomationData, error: existingAutomationError } = await supabaseAdmin
+    .from("inr_agent_automation_settings")
+    .select(AUTOMATION_SELECT)
+    .eq("user_id", user.id);
+
+  if (existingAutomationError && !isMissingSchemaError(existingAutomationError)) {
+    console.warn("[inr-agent-settings] existing automations read failed", existingAutomationError);
+  }
+
+  const existingRows = Array.isArray(existingAutomationData)
+    ? (existingAutomationData as DbAgentAutomationSettingsRow[])
+    : [];
+  const existingByKey = new Map(existingRows.map((row) => [row.automation_key, row]));
+  const nowDate = new Date(now);
+
+  const automationPayloads = INR_AGENT_AUTOMATION_KEYS.map((key: InrAgentAutomationKey) => {
+    const automation = settings.automations[key];
+    const existing = existingByKey.get(key);
+    const row = automationSettingsToDbRow(user.id, key, automation);
+    const scheduleChanged = scheduleSignature(existing) !== automationSignature(automation);
+    const nextRunAt = scheduleChanged || !automation.nextRunAt
+      ? computeNextRunAt(automation, nowDate, settings.timezone || "Europe/Paris")
+      : automation.nextRunAt;
+
+    return {
+      ...row,
+      next_run_at: automation.enabled ? nextRunAt : null,
+    };
+  });
+
   const { error: automationError } = await supabaseAdmin
     .from("inr_agent_automation_settings")
     .upsert(automationPayloads, { onConflict: "user_id,automation_key" });

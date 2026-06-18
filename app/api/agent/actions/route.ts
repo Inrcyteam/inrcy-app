@@ -29,6 +29,33 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function withFreshReportDocument(payload: Record<string, unknown>) {
+  const reportRecord = asRecord(payload.reportDocument);
+  if (!reportRecord) return payload;
+
+  const storagePath = String(
+    reportRecord.storagePath || reportRecord.storage_path || reportRecord.path || "",
+  ).trim();
+  const bucket = String(reportRecord.bucket || "inr-agent-reports").trim();
+  if (!storagePath || !bucket) return payload;
+
+  return supabaseAdmin.storage
+    .from(bucket)
+    .createSignedUrl(storagePath, 60 * 60)
+    .then(({ data }) => ({
+      ...payload,
+      reportDocument: {
+        ...reportRecord,
+        bucket,
+        storagePath,
+        downloadUrl:
+          data?.signedUrl ||
+          String(reportRecord.downloadUrl || reportRecord.url || "").trim(),
+      },
+    }))
+    .catch(() => payload);
+}
+
 async function refreshImageAssetUrls(assets: unknown[]) {
   return Promise.all(
     assets.map(async (asset) => {
@@ -61,13 +88,14 @@ async function refreshImageAssetUrls(assets: unknown[]) {
 
 async function refreshActionImageUrls(action: ReturnType<typeof rowToInrAgentAction>) {
   const imageAssets = await refreshImageAssetUrls(action.imageAssets);
-  const payload = { ...action.payload };
+  let payload = { ...action.payload };
   const imageRecord = asRecord(payload.image || payload.imageAsset);
   if (imageRecord) {
     const [freshImage] = await refreshImageAssetUrls([imageRecord]);
     payload.image = freshImage;
     payload.imageAsset = freshImage;
   }
+  payload = await withFreshReportDocument(payload);
   return { ...action, imageAssets, payload };
 }
 

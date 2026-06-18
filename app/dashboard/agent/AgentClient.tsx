@@ -72,6 +72,7 @@ type SaveState = "idle" | "saving" | "saved" | "error";
 type ActionsLoadState = "idle" | "loading" | "ready" | "error";
 type ActionMutationState = "idle" | "saving";
 type PrepareActionState = "idle" | "saving";
+type StatsProgressState = { label: string; percent: number } | null;
 
 type AgentImageAsset = {
   url?: string;
@@ -101,7 +102,28 @@ type AgentPreparedAction = {
   status: InrAgentActionStatus;
   scheduledFor: string | null;
   preparedAt: string | null;
+  completedAt?: string | null;
   createdAt: string | null;
+};
+
+type AgentReportDocument = {
+  bucket?: string;
+  storagePath?: string;
+  filename?: string;
+  mimeType?: string;
+  bytes?: number;
+  createdAt?: string;
+  downloadUrl?: string;
+};
+
+type AgentStatsReport = {
+  id: string;
+  title: string;
+  summary: string;
+  createdAt: string | null;
+  completedAt?: string | null;
+  document: AgentReportDocument;
+  runMode: "automatic" | "manual";
 };
 
 type AgentChannelPreview = {
@@ -329,11 +351,7 @@ const settingsOptions: Record<AutomationKey, AutomationSettingsOptions> = {
       { value: "quarterly", label: "Chaque trimestre" },
     ],
     validation: [
-      { value: "automatic_report", label: "Bilan automatique" },
-      {
-        value: "notify_before_validation",
-        label: "Bilan + recommandation à valider",
-      },
+      { value: "automatic_report", label: "Bilan automatique sans validation" },
     ],
   },
 };
@@ -785,6 +803,51 @@ function RefuseActionIcon() {
   );
 }
 
+function DownloadActionIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden>
+      <path d="M12 4v10" />
+      <path d="m8 11 4 4 4-4" />
+      <path d="M5 19h14" />
+    </svg>
+  );
+}
+
+
+function SparkSettingsIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden>
+      <path d="M12 3v4" />
+      <path d="M12 17v4" />
+      <path d="M3 12h4" />
+      <path d="M17 12h4" />
+      <path d="m5.6 5.6 2.8 2.8" />
+      <path d="m15.6 15.6 2.8 2.8" />
+      <path d="m18.4 5.6-2.8 2.8" />
+      <path d="m8.4 15.6-2.8 2.8" />
+      <circle cx="12" cy="12" r="3.5" />
+    </svg>
+  );
+}
+
+function SendPlaneIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden>
+      <path d="M21 3 10 14" />
+      <path d="m21 3-7 18-4-7-7-4 18-7Z" />
+    </svg>
+  );
+}
+
+function ShieldLineIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden>
+      <path d="M12 3 5.5 5.8v5.8c0 4.1 2.7 7.8 6.5 9.4 3.8-1.6 6.5-5.3 6.5-9.4V5.8L12 3Z" />
+      <path d="m9.4 11.9 1.9 1.9 3.4-3.7" />
+    </svg>
+  );
+}
+
 function toggleItem<T extends string>(items: T[], item: T) {
   return items.includes(item)
     ? items.filter((current) => current !== item)
@@ -998,6 +1061,177 @@ function formatActionDate(
   }).format(date);
 }
 
+
+function extractReportDocument(action: AgentPreparedAction): AgentReportDocument | null {
+  const payload = action.payload || {};
+  const report = asRecord(payload.reportDocument);
+  if (!report) return null;
+
+  const storagePath = firstSafeString(
+    report.storagePath,
+    report.storage_path,
+    report.path,
+  );
+  const downloadUrl = firstSafeString(
+    report.downloadUrl,
+    report.url,
+    report.signedUrl,
+  );
+
+  if (!storagePath && !downloadUrl) return null;
+
+  return {
+    bucket: firstSafeString(report.bucket),
+    storagePath,
+    filename: firstSafeString(report.filename) || "bilan-inrstats.pdf",
+    mimeType: firstSafeString(report.mimeType, report.mime_type) || "application/pdf",
+    bytes: Number(report.bytes || 0) || 0,
+    createdAt: firstSafeString(report.createdAt, report.created_at) || action.createdAt || undefined,
+    downloadUrl,
+  };
+}
+
+function reportRunMode(action: AgentPreparedAction): "automatic" | "manual" {
+  const payload = action.payload || {};
+  const mode = firstSafeString(
+    payload.runMode,
+    payload.reportRunMode,
+    payload.executionMode,
+  ).toLowerCase();
+  return mode === "manual" ? "manual" : "automatic";
+}
+
+function statsReportsFromActions(
+  actions: AgentPreparedAction[],
+  options: { automaticOnly?: boolean; limit?: number } = {},
+): AgentStatsReport[] {
+  const limit = options.limit ?? 5;
+
+  return actions
+    .filter((action) => {
+      if (action.actionType !== "stats_report" || action.status !== "completed") return false;
+      if (options.automaticOnly && reportRunMode(action) === "manual") return false;
+      return true;
+    })
+    .map((action): AgentStatsReport | null => {
+      const document = extractReportDocument(action);
+      if (!document) return null;
+      return {
+        id: action.id,
+        title: action.title,
+        summary: action.summary,
+        createdAt: action.createdAt,
+        completedAt: action.completedAt ?? null,
+        document,
+        runMode: reportRunMode(action),
+      } satisfies AgentStatsReport;
+    })
+    .filter((report): report is AgentStatsReport => Boolean(report))
+    .slice(0, limit);
+}
+
+function statsProgressLabel(percent: number) {
+  if (percent >= 100) return "Bilan envoyé";
+  if (percent >= 80) return "Finalisation + envoi mail";
+  if (percent >= 70) return "Stockage du bilan";
+  if (percent >= 45) return "Création du PDF";
+  if (percent >= 20) return "Analyse iNrAgent";
+  return "Stats";
+}
+
+function formatStatsProgress(progress: StatsProgressState) {
+  if (!progress) return "";
+  const spacer = progress.percent >= 100 ? " · " : "… ";
+  return `${progress.label}${spacer}${progress.percent}%`;
+}
+
+function wait(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function formatDateTimeLabel(value: string | null | undefined, fallback = "—") {
+  if (!value) return fallback;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return fallback;
+  return new Intl.DateTimeFormat("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function formatMiniDateLabel(value: string | null | undefined) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat("fr-FR", {
+    day: "2-digit",
+    month: "2-digit",
+  }).format(date);
+}
+
+function formatReportDateLabel(value: string | null | undefined) {
+  if (!value) return { date: "—", time: "" };
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return { date: "—", time: "" };
+  return {
+    date: new Intl.DateTimeFormat("fr-FR", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }).format(date),
+    time: new Intl.DateTimeFormat("fr-FR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(date),
+  };
+}
+
+function computeNextOccurrence(config: AutomationConfig): string | null {
+  if (!config.enabled) return null;
+
+  const weekdayMap: Record<string, number> = {
+    Dimanche: 0,
+    Lundi: 1,
+    Mardi: 2,
+    Mercredi: 3,
+    Jeudi: 4,
+    Vendredi: 5,
+    Samedi: 6,
+  };
+  const targetDay = weekdayMap[config.day] ?? 1;
+  const [hour, minute] = config.time.split(":").map((value) => Number(value || 0));
+  const now = new Date();
+  const isFirstWeekday = (date: Date) => date.getDay() === targetDay && date.getDate() <= 7;
+  const isThirdWeekday = (date: Date) => date.getDay() === targetDay && date.getDate() >= 15 && date.getDate() <= 21;
+  const candidateDays = config.frequency === "2 fois par semaine" ? [targetDay, (targetDay + 3) % 7] : [targetDay];
+
+  for (let offset = 0; offset <= 120; offset += 1) {
+    const candidate = new Date(now.getTime());
+    candidate.setSeconds(0, 0);
+    candidate.setDate(candidate.getDate() + offset);
+    candidate.setHours(hour, minute, 0, 0);
+    if (candidate.getTime() <= now.getTime()) continue;
+
+    const ok =
+      config.frequency === "2 fois par semaine"
+        ? candidateDays.includes(candidate.getDay())
+        : config.frequency === "Tous les 15 jours" || config.frequency === "2 fois par mois"
+          ? isFirstWeekday(candidate) || isThirdWeekday(candidate)
+          : config.frequency === "Chaque mois" || config.frequency === "1 fois par mois"
+            ? isFirstWeekday(candidate)
+            : config.frequency === "Chaque trimestre"
+              ? [0, 3, 6, 9].includes(candidate.getMonth()) && isFirstWeekday(candidate)
+              : candidate.getDay() === targetDay;
+
+    if (ok) return candidate.toISOString();
+  }
+
+  return null;
+}
+
 export default function AgentClient() {
   const router = useRouter();
   const [selectedKey, setSelectedKey] = useState<AutomationKey>("publish");
@@ -1020,6 +1254,7 @@ export default function AgentClient() {
     useState<ActionMutationState>("idle");
   const [prepareActionState, setPrepareActionState] =
     useState<PrepareActionState>("idle");
+  const [statsProgress, setStatsProgress] = useState<StatsProgressState>(null);
   const [selectedChannelByAction, setSelectedChannelByAction] = useState<
     Record<string, ChannelKey>
   >({});
@@ -1073,33 +1308,28 @@ export default function AgentClient() {
       alive = false;
     };
   }, []);
-  useEffect(() => {
-    let alive = true;
+  async function refreshActions(silent = false) {
+    if (!silent) setActionsLoadState("loading");
 
-    async function loadActions() {
-      setActionsLoadState("loading");
+    try {
+      const response = await fetch("/api/agent/actions", {
+        method: "GET",
+        cache: "no-store",
+      });
+      const payload = (await response
+        .json()
+        .catch(() => null)) as AgentActionsResponse | null;
 
-      try {
-        const response = await fetch("/api/agent/actions", {
-          method: "GET",
-          cache: "no-store",
-        });
-        const payload = (await response
-          .json()
-          .catch(() => null)) as AgentActionsResponse | null;
+      if (!response.ok) {
+        throw new Error(payload?.error || "Actions iNr’Agent indisponibles.");
+      }
 
-        if (!alive) return;
-
-        if (!response.ok) {
-          throw new Error(payload?.error || "Actions iNr’Agent indisponibles.");
-        }
-
-        setActions(Array.isArray(payload?.actions) ? payload.actions : []);
-        if (payload?.tableMissing) setTableMissing(true);
-        setActionsLoadState("ready");
-      } catch (error) {
-        if (!alive) return;
-        setActionsLoadState("error");
+      setActions(Array.isArray(payload?.actions) ? payload.actions : []);
+      if (payload?.tableMissing) setTableMissing(true);
+      setActionsLoadState("ready");
+    } catch (error) {
+      setActionsLoadState("error");
+      if (!silent) {
         showNotice(
           error instanceof Error
             ? error.message
@@ -1107,12 +1337,10 @@ export default function AgentClient() {
         );
       }
     }
+  }
 
-    loadActions();
-
-    return () => {
-      alive = false;
-    };
+  useEffect(() => {
+    refreshActions();
   }, []);
 
   const pendingActionsByAutomation = useMemo(() => {
@@ -1198,6 +1426,34 @@ export default function AgentClient() {
     preparedChannelPreview?.body || selectedPreparedAction?.summary || "",
   );
   const preparedRecipientsCount = recipientsCountForAction(selectedPreparedAction);
+  const selectedAutomationSettings = agentSettings.automations[selected.key];
+  const statsReports = useMemo(
+    () => statsReportsFromActions(actions, { automaticOnly: true, limit: 5 }),
+    [actions],
+  );
+  const latestStatsReport = useMemo(
+    () => statsReportsFromActions(actions, { limit: 1 })[0] ?? null,
+    [actions],
+  );
+  const statsLastReportLabel = latestStatsReport
+    ? formatDateTimeLabel(
+        latestStatsReport.document.createdAt || latestStatsReport.completedAt || latestStatsReport.createdAt,
+      )
+    : "Aucun";
+  const statsNextRunLabel = formatDateTimeLabel(
+    selectedAutomationSettings?.nextRunAt ||
+      (selected.key === "stats" ? computeNextOccurrence(selectedConfig) : null),
+    "Programmation inactive",
+  );
+  const statsAutomationLabel = selectedConfig.enabled ? "Activée" : "Désactivée";
+  const statsFrequencyLabel = selectedConfig.frequency || "Chaque semaine";
+  const statsStoredCountLabel = `${statsReports.length}/5`;
+  const footerDateLabel =
+    selected.key === "stats"
+      ? statsNextRunLabel
+      : hasPreparedAction && selectedPreparedAction
+        ? formatActionDate(selectedPreparedAction.scheduledFor, selectedConfig)
+        : "—";
 
   useEffect(() => {
     if (!selectedPreparedAction || preparedChannels.length === 0) return;
@@ -1358,9 +1614,30 @@ export default function AgentClient() {
     if (prepareActionState === "saving") return;
 
     setPrepareActionState("saving");
+    setStatsProgress({ label: "Stats", percent: 3 });
     setNotice(null);
 
+    let progressTimer: number | null = null;
+
     try {
+      progressTimer = window.setInterval(() => {
+        setStatsProgress((current) => {
+          const currentPercent = current?.percent ?? 3;
+          if (currentPercent >= 98) return current;
+
+          const increment =
+            currentPercent < 20 ? 4 :
+            currentPercent < 45 ? 3 :
+            currentPercent < 70 ? 2 :
+            1;
+          const nextPercent = Math.min(98, currentPercent + increment);
+          return {
+            label: statsProgressLabel(nextPercent),
+            percent: nextPercent,
+          };
+        });
+      }, 420);
+
       const response = await fetch("/api/agent/actions/send-stats-report", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1382,26 +1659,34 @@ export default function AgentClient() {
         );
       }
 
-      if (payload.action) {
-        const completedAction = payload.action;
-        setActions((current) => [
-          completedAction,
-          ...current.filter((action) => action.id !== completedAction.id),
-        ]);
+      if (progressTimer) {
+        window.clearInterval(progressTimer);
+        progressTimer = null;
       }
+      setStatsProgress({ label: "Bilan envoyé", percent: 100 });
 
+      await refreshActions(true);
       setSelectedKey("stats");
       showNotice(
         `Bilan iNrStats PDF envoyé${payload.recipientEmail ? ` à ${payload.recipientEmail}` : ""}.`,
       );
+      await wait(800);
     } catch (error) {
+      if (progressTimer) {
+        window.clearInterval(progressTimer);
+        progressTimer = null;
+      }
+      setStatsProgress({ label: "Erreur", percent: 100 });
       showNotice(
         error instanceof Error
           ? error.message
           : "Génération ou envoi du bilan iNrStats impossible.",
       );
+      await wait(900);
     } finally {
+      if (progressTimer) window.clearInterval(progressTimer);
       setPrepareActionState("idle");
+      setStatsProgress(null);
     }
   }
 
@@ -1641,7 +1926,119 @@ export default function AgentClient() {
               aria-label="Aperçu de l’action préparée"
             >
               <div className={styles.previewBody}>
-              {hasPreparedAction && selectedPreparedAction ? (
+              {selected.key === "stats" ? (
+                <div className={styles.statsPreview}>
+                  <div className={styles.statsHeadCard}>
+                    <span className={styles.statsHeadIcon} aria-hidden>
+                      <AutomationIcon type="stats" />
+                    </span>
+                    <div className={styles.statsHeadCopy}>
+                      <h3>Votre bilan iNrStats</h3>
+                      <p className={styles.statsLead}>
+                        iNrAgent analyse vos données et vous envoie un bilan PDF automatiquement.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className={styles.statsTopGrid}>
+                    <article className={`${styles.statsMiniCard} ${styles.statsMiniCardGreen}`}>
+                      <span className={styles.statsMiniIcon} aria-hidden><SparkSettingsIcon /></span>
+                      <small>Automatisation</small>
+                      <strong>{statsAutomationLabel}</strong>
+                    </article>
+                    <article className={`${styles.statsMiniCard} ${styles.statsMiniCardBlue}`}>
+                      <span className={styles.statsMiniIcon} aria-hidden><CalendarMetaIcon /></span>
+                      <small>Fréquence</small>
+                      <strong>{statsFrequencyLabel}</strong>
+                    </article>
+                    <article className={`${styles.statsMiniCard} ${styles.statsMiniCardViolet}`}>
+                      <span className={styles.statsMiniIcon} aria-hidden><CalendarMetaIcon /></span>
+                      <small>Prochain bilan</small>
+                      <strong>{statsNextRunLabel}</strong>
+                    </article>
+                    <article className={`${styles.statsMiniCard} ${styles.statsMiniCardSky}`}>
+                      <span className={styles.statsMiniIcon} aria-hidden><SendPlaneIcon /></span>
+                      <small>Dernier bilan</small>
+                      <strong>{statsLastReportLabel}</strong>
+                    </article>
+                    <article className={`${styles.statsMiniCard} ${styles.statsMiniCardPink}`}>
+                      <span className={styles.statsMiniIcon} aria-hidden><ShieldLineIcon /></span>
+                      <small>Bilans conservés</small>
+                      <strong>{statsStoredCountLabel}</strong>
+                    </article>
+                  </div>
+
+                  <div className={styles.statsActionRow}>
+                    <button
+                      type="button"
+                      className={styles.prepareButton}
+                      onClick={sendStatsReport}
+                      disabled={
+                        prepareActionState === "saving" ||
+                        actionsLoadState === "loading" ||
+                        loadState === "loading"
+                      }
+                    >
+                      <span aria-hidden><SendPlaneIcon /></span>
+                      {prepareActionState === "saving" && statsProgress
+                        ? formatStatsProgress(statsProgress)
+                        : "Générer et envoyer maintenant"}
+                    </button>
+                    {latestStatsReport?.document.downloadUrl ? (
+                      <a
+                        href={latestStatsReport.document.downloadUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className={styles.statsPrimaryLink}
+                      >
+                        <span aria-hidden><DownloadActionIcon /></span>
+                        Télécharger le dernier bilan
+                      </a>
+                    ) : (
+                      <button type="button" className={styles.statsSecondaryButton} disabled>
+                        <span aria-hidden><DownloadActionIcon /></span>
+                        Télécharger le dernier bilan
+                      </button>
+                    )}
+                  </div>
+
+                  <div className={styles.statsHistorySection}>
+                    <div className={styles.statsHistoryHeader}>
+                      <h4>5 derniers bilans auto</h4>
+                    </div>
+                    <div className={styles.statsHistoryRow}>
+                      {Array.from({ length: 5 }).map((_, index) => {
+                        const report = statsReports[index];
+                        return report ? (
+                          <a
+                            key={report.id}
+                            href={report.document.downloadUrl || "#"}
+                            target="_blank"
+                            rel="noreferrer"
+                            className={styles.statsHistoryItem}
+                            aria-label={`Télécharger le bilan du ${formatMiniDateLabel(report.document.createdAt || report.completedAt || report.createdAt)}`}
+                          >
+                            <span className={styles.statsHistoryIcon} aria-hidden>
+                              <DownloadActionIcon />
+                            </span>
+                            <span className={styles.statsHistoryDate}>
+                              <strong>{formatReportDateLabel(report.document.createdAt || report.completedAt || report.createdAt).date}</strong>
+                              <small>{formatReportDateLabel(report.document.createdAt || report.completedAt || report.createdAt).time}</small>
+                            </span>
+                          </a>
+                        ) : (
+                          <div key={`stats-empty-${index}`} className={`${styles.statsHistoryItem} ${styles.statsHistoryItemEmpty}`}>
+                            <span className={styles.statsHistoryIcon} aria-hidden>
+                              <DownloadActionIcon />
+                            </span>
+                            <span className={styles.statsHistoryDate}>—</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              ) : hasPreparedAction && selectedPreparedAction ? (
                 <div
                   key={`${selectedPreparedAction.id}-${activePreviewChannel || "global"}`}
                   className={styles.preparedPreview}
@@ -1770,27 +2167,11 @@ export default function AgentClient() {
                           : "Préparer une campagne Fidéliser"}
                     </button>
                   )}
-                  {selected.key === "stats" && (
-                    <button
-                      type="button"
-                      className={styles.prepareButton}
-                      onClick={sendStatsReport}
-                      disabled={
-                        prepareActionState === "saving" ||
-                        actionsLoadState === "loading" ||
-                        loadState === "loading"
-                      }
-                    >
-                      {prepareActionState === "saving"
-                        ? "Génération du PDF..."
-                        : "Générer et envoyer le bilan PDF"}
-                    </button>
-                  )}
                 </div>
               )}
             </div>
 
-            <div className={styles.previewMeta}>
+            <div className={`${styles.previewMeta} ${selected.key === "stats" ? styles.previewMetaStats : ""}`}>
               <div className={`${styles.metaItem} ${styles.channelsItem}`}>
                 <small>{selected.key === "stats" ? "Sources :" : "Canaux :"}</small>
                 <div className={styles.channelScroller}>
@@ -1849,42 +2230,41 @@ export default function AgentClient() {
               </div>
               <div
                 className={`${styles.metaItem} ${styles.dateItem}`}
-                title="Date programmée"
+                title={selected.key === "stats" ? "Prochain bilan automatique" : "Date programmée"}
               >
                 <span className={styles.metaIcon} aria-hidden>
                   <CalendarMetaIcon />
                 </span>
                 <span>
-                  <strong>
-                    {hasPreparedAction && selectedPreparedAction
-                      ? formatActionDate(
-                          selectedPreparedAction.scheduledFor,
-                          selectedConfig,
-                        )
-                      : "—"}
-                  </strong>
+                  <strong>{footerDateLabel}</strong>
                 </span>
               </div>
-              <div className={styles.previewActions}>
-                <button
-                  type="button"
-                  className={styles.validateButton}
-                  disabled={!hasPreparedAction || actionMutationState === "saving"}
-                  onClick={() => updateActionStatus("validated")}
-                >
-                  <span aria-hidden><ValidateActionIcon /></span>
-                  {actionMutationState === "saving" ? "Traitement..." : "Valider"}
-                </button>
-                <button
-                  type="button"
-                  className={styles.refuseButton}
-                  disabled={!hasPreparedAction || actionMutationState === "saving"}
-                  onClick={() => updateActionStatus("refused")}
-                >
-                  <span aria-hidden><RefuseActionIcon /></span>
-                  {actionMutationState === "saving" ? "Traitement..." : "Refuser"}
-                </button>
-              </div>
+              {selected.key === "stats" ? (
+                <div className={styles.statsFooterNote}>
+                  <small>Validation non requise</small>
+                </div>
+              ) : (
+                <div className={styles.previewActions}>
+                  <button
+                    type="button"
+                    className={styles.validateButton}
+                    disabled={!hasPreparedAction || actionMutationState === "saving"}
+                    onClick={() => updateActionStatus("validated")}
+                  >
+                    <span aria-hidden><ValidateActionIcon /></span>
+                    {actionMutationState === "saving" ? "Traitement..." : "Valider"}
+                  </button>
+                  <button
+                    type="button"
+                    className={styles.refuseButton}
+                    disabled={!hasPreparedAction || actionMutationState === "saving"}
+                    onClick={() => updateActionStatus("refused")}
+                  >
+                    <span aria-hidden><RefuseActionIcon /></span>
+                    {actionMutationState === "saving" ? "Traitement..." : "Refuser"}
+                  </button>
+                </div>
+              )}
             </div>
 
             </section>
