@@ -49,6 +49,7 @@ import type { ConnectionDisplayStatus } from "@/lib/connectionVersions";
 const useBrowserLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 const FORCED_SERVER_CACHE_CHECK_DEDUP_MS = 30_000;
 const AUTO_DAILY_REFRESH_DEDUP_MS = 5 * 60_000;
+const CHANNEL_REFRESH_DEDUP_MS = 30_000;
 const GENERATOR_POWER_CACHE_KEY = "inrcy_generator_power_percent_v1";
 const GENERATOR_ACTIVE_CACHE_KEY = "inrcy_generator_active_v1";
 const SITE_BUBBLE_PROGRESS_CACHE_KEY = "inrcy_site_bubble_progress_v1";
@@ -57,6 +58,9 @@ const BUBBLE_ACCESS_CACHE_KEY = "inrcy_bubble_access_map_v1";
 
 type SiteBubbleProgress = { status: ModuleStatus; text: string };
 type SiteBubbleProgressCache = Partial<Record<"site_inrcy" | "site_web", SiteBubbleProgress>>;
+type ChannelRefreshOptions = { force?: boolean; dedupeMs?: number };
+type ChannelStatsRefreshResult = { preferredBlock: InrstatsChannelBlock | null; syncAt: number };
+type GeneratorChannelRefreshResult = { block: unknown | null; syncAt: number };
 
 function readCachedBubbleAccessMap(): AppBubbleAccessMap {
   try {
@@ -1673,6 +1677,10 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
   const lastGeneratorRefreshAtRef = useRef(0);
   const lastServerCacheCheckAtRef = useRef(0);
   const serverCacheCheckPromiseRef = useRef<Promise<void> | null>(null);
+  const inFlightStatsChannelRefreshesRef = useRef<Partial<Record<DashboardChannelKey, Promise<ChannelStatsRefreshResult>>>>({});
+  const lastStatsChannelRefreshAtRef = useRef<Partial<Record<DashboardChannelKey, number>>>({});
+  const inFlightGeneratorChannelRefreshesRef = useRef<Partial<Record<DashboardChannelKey, Promise<GeneratorChannelRefreshResult>>>>({});
+  const lastGeneratorChannelRefreshAtRef = useRef<Partial<Record<DashboardChannelKey, number>>>({});
 
   const clearScheduledGeneratorRefreshes = useCallback(() => {
     refreshTimersRef.current.forEach((timerId) => window.clearTimeout(timerId));
@@ -1771,29 +1779,56 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
   })), [updateChannelBlockLocally]);
   patchChannelConnectionLocallyRef.current = patchChannelConnectionLocally;
 
-  const refreshChannelBlocksFromApi = useCallback(async (channel: DashboardChannelKey, fallbackSyncAt?: number) => {
-    const res = await fetch("/api/stats/channel-refresh", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ channel }),
-      cache: "no-store",
-      credentials: "include",
-    });
+  const refreshChannelBlocksFromApi = useCallback(async (channel: DashboardChannelKey, fallbackSyncAt?: number, options?: ChannelRefreshOptions) => {
+    const inFlight = inFlightStatsChannelRefreshesRef.current[channel];
+    if (inFlight) return inFlight;
 
-    if (!res.ok) {
-      throw new Error(`Channel refresh failed: ${res.status}`);
+    const now = Date.now();
+    const dedupeMs = Number.isFinite(Number(options?.dedupeMs)) ? Number(options?.dedupeMs) : CHANNEL_REFRESH_DEDUP_MS;
+    const lastRefreshAt = Number(lastStatsChannelRefreshAtRef.current[channel] ?? 0);
+
+    if (!options?.force && lastRefreshAt > 0 && now - lastRefreshAt < dedupeMs) {
+      return { preferredBlock: null, syncAt: lastRefreshAt };
     }
 
-    const json = await res.json().catch(() => null) as {
-      periods?: Partial<Record<string, { block?: InrstatsChannelBlock; overview?: unknown; syncedAt?: number; snapshotDate?: string | null }>>;
-    } | null;
+    const job = (async (): Promise<ChannelStatsRefreshResult> => {
+      lastStatsChannelRefreshAtRef.current[channel] = Date.now();
 
-    return applyChannelRefreshPayload(channel, json, fallbackSyncAt);
+      const res = await fetch("/api/stats/channel-refresh", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ channel }),
+        cache: "no-store",
+        credentials: "include",
+      });
+
+      if (!res.ok) {
+        throw new Error(`Channel refresh failed: ${res.status}`);
+      }
+
+      const json = await res.json().catch(() => null) as {
+        periods?: Partial<Record<string, { block?: InrstatsChannelBlock; overview?: unknown; syncedAt?: number; snapshotDate?: string | null }>>;
+      } | null;
+
+      const applied = applyChannelRefreshPayload(channel, json, fallbackSyncAt);
+      lastStatsChannelRefreshAtRef.current[channel] = Number.isFinite(Number(applied.syncAt)) ? Number(applied.syncAt) : Date.now();
+      return applied;
+    })();
+
+    inFlightStatsChannelRefreshesRef.current[channel] = job;
+
+    try {
+      return await job;
+    } finally {
+      if (inFlightStatsChannelRefreshesRef.current[channel] === job) {
+        delete inFlightStatsChannelRefreshesRef.current[channel];
+      }
+    }
   }, [applyChannelRefreshPayload]);
 
-  const refreshAllChannelBlocksFromApi = useCallback(async (fallbackSyncAt?: number) => {
+  const refreshAllChannelBlocksFromApi = useCallback(async (fallbackSyncAt?: number, options?: ChannelRefreshOptions) => {
     for (const channel of DASHBOARD_CHANNEL_KEYS) {
-      await refreshChannelBlocksFromApi(channel, fallbackSyncAt);
+      await refreshChannelBlocksFromApi(channel, fallbackSyncAt, options);
     }
   }, [refreshChannelBlocksFromApi]);
 
@@ -1858,49 +1893,76 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     return { block, syncAt };
   }, [applyGeneratorCacheToState, notifyGeneratorRefresh]);
 
-  const refreshGeneratorChannelFromApi = useCallback(async (channel: DashboardChannelKey, fallbackSyncAt?: number) => {
-    const res = await fetch("/api/metrics/channel-refresh", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ channel }),
-      cache: "no-store",
-      credentials: "include",
-    });
+  const refreshGeneratorChannelFromApi = useCallback(async (channel: DashboardChannelKey, fallbackSyncAt?: number, options?: ChannelRefreshOptions) => {
+    const inFlight = inFlightGeneratorChannelRefreshesRef.current[channel];
+    if (inFlight) return inFlight;
 
-    if (!res.ok) {
-      throw new Error(`Generator channel refresh failed: ${res.status}`);
+    const now = Date.now();
+    const dedupeMs = Number.isFinite(Number(options?.dedupeMs)) ? Number(options?.dedupeMs) : CHANNEL_REFRESH_DEDUP_MS;
+    const lastRefreshAt = Number(lastGeneratorChannelRefreshAtRef.current[channel] ?? 0);
+
+    if (!options?.force && lastRefreshAt > 0 && now - lastRefreshAt < dedupeMs) {
+      return { block: null, syncAt: lastRefreshAt };
     }
 
-    const json = await res.json().catch(() => null) as {
-      syncAt?: number;
-      generator?: {
-        block?: {
-          channel?: DashboardChannelKey;
-          leads?: { today?: number; week?: number; month?: number };
-          opportunities?: { month?: number };
-          estimatedValue?: number;
-          syncAt?: number | null;
-          snapshotDate?: string | null;
-          live?: boolean;
-          error?: string | null;
-        };
-        details?: { profile?: unknown };
-        meta?: { snapshotDate?: string | null; live?: boolean };
-      };
-    } | null;
+    const job = (async (): Promise<GeneratorChannelRefreshResult> => {
+      lastGeneratorChannelRefreshAtRef.current[channel] = Date.now();
 
-    return applyGeneratorChannelRefreshPayload(channel, json, fallbackSyncAt);
+      const res = await fetch("/api/metrics/channel-refresh", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ channel }),
+        cache: "no-store",
+        credentials: "include",
+      });
+
+      if (!res.ok) {
+        throw new Error(`Generator channel refresh failed: ${res.status}`);
+      }
+
+      const json = await res.json().catch(() => null) as {
+        syncAt?: number;
+        generator?: {
+          block?: {
+            channel?: DashboardChannelKey;
+            leads?: { today?: number; week?: number; month?: number };
+            opportunities?: { month?: number };
+            estimatedValue?: number;
+            syncAt?: number | null;
+            snapshotDate?: string | null;
+            live?: boolean;
+            error?: string | null;
+          };
+          details?: { profile?: unknown };
+          meta?: { snapshotDate?: string | null; live?: boolean };
+        };
+      } | null;
+
+      const applied = applyGeneratorChannelRefreshPayload(channel, json, fallbackSyncAt);
+      lastGeneratorChannelRefreshAtRef.current[channel] = Number.isFinite(Number(applied.syncAt)) ? Number(applied.syncAt) : Date.now();
+      return applied;
+    })();
+
+    inFlightGeneratorChannelRefreshesRef.current[channel] = job;
+
+    try {
+      return await job;
+    } finally {
+      if (inFlightGeneratorChannelRefreshesRef.current[channel] === job) {
+        delete inFlightGeneratorChannelRefreshesRef.current[channel];
+      }
+    }
   }, [applyGeneratorChannelRefreshPayload]);
 
-  const refreshGeneratorChannelsFromApi = useCallback(async (channelsInput: readonly DashboardChannelKey[], fallbackSyncAt?: number) => {
+  const refreshGeneratorChannelsFromApi = useCallback(async (channelsInput: readonly DashboardChannelKey[], fallbackSyncAt?: number, options?: ChannelRefreshOptions) => {
     const channels = Array.from(new Set(channelsInput.filter((channel): channel is DashboardChannelKey => typeof channel === "string" && channel.length > 0)));
     for (const channel of channels) {
-      await refreshGeneratorChannelFromApi(channel, fallbackSyncAt);
+      await refreshGeneratorChannelFromApi(channel, fallbackSyncAt, options);
     }
   }, [refreshGeneratorChannelFromApi]);
 
-  const refreshAllGeneratorChannelsFromApi = useCallback(async (fallbackSyncAt?: number) => {
-    await refreshGeneratorChannelsFromApi(DASHBOARD_CHANNEL_KEYS, fallbackSyncAt);
+  const refreshAllGeneratorChannelsFromApi = useCallback(async (fallbackSyncAt?: number, options?: ChannelRefreshOptions) => {
+    await refreshGeneratorChannelsFromApi(DASHBOARD_CHANNEL_KEYS, fallbackSyncAt, options);
   }, [refreshGeneratorChannelsFromApi]);
 
   const applyBootstrapRefresh = useCallback((bootstrap: DailyStatsRefreshBootstrapResponse) => {
@@ -2096,8 +2158,8 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       lastGeneratorRefreshAtRef.current = syncAt;
       await Promise.allSettled([
         loadSiteInrcy(),
-        refreshAllGeneratorChannelsFromApi(syncAt),
-        refreshAllChannelBlocksFromApi(syncAt),
+        refreshAllGeneratorChannelsFromApi(syncAt, { force: true }),
+        refreshAllChannelBlocksFromApi(syncAt, { force: true }),
       ]);
       notifyStatsRefresh(syncAt, DASHBOARD_CHANNEL_KEYS);
     };
@@ -2107,11 +2169,31 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
   }, [clearScheduledGeneratorRefreshes, loadSiteInrcy, notifyStatsRefresh, refreshAllChannelBlocksFromApi, refreshAllGeneratorChannelsFromApi]);
 
   const fallbackToServerSyncThenGlobal = useCallback(async () => {
+    const beforeGeneratorSyncAt = Number(readGeneratorCache()?.syncedAt ?? 0);
+    const beforeStatsSyncAt = Math.max(
+      Number(readInrStatsPeriodSyncAt(7) ?? 0),
+      Number(readInrStatsPeriodSyncAt(30) ?? 0),
+      Number(getLastChannelSyncAt() ?? 0),
+    );
+
     try {
       await syncFromServerCacheIfNeeded(true);
     } catch {
-      await triggerGeneratorRefresh();
+      // Le cache serveur est la voie douce. Le refresh complet ne sert qu'en vrai secours.
     }
+
+    const afterGeneratorSyncAt = Number(readGeneratorCache()?.syncedAt ?? 0);
+    const afterStatsSyncAt = Math.max(
+      Number(readInrStatsPeriodSyncAt(7) ?? 0),
+      Number(readInrStatsPeriodSyncAt(30) ?? 0),
+      Number(getLastChannelSyncAt() ?? 0),
+    );
+
+    if (afterGeneratorSyncAt > beforeGeneratorSyncAt || afterStatsSyncAt > beforeStatsSyncAt) {
+      return;
+    }
+
+    await triggerGeneratorRefresh();
   }, [syncFromServerCacheIfNeeded, triggerGeneratorRefresh]);
   latestFallbackToServerSyncThenGlobalRef.current = fallbackToServerSyncThenGlobal;
 
@@ -2124,8 +2206,8 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
 
       const results = await Promise.allSettled([
         channel === "site_inrcy" ? loadSiteInrcy() : Promise.resolve(),
-        refreshGeneratorChannelFromApi(channel, syncAt),
-        refreshChannelBlocksFromApi(channel, syncAt),
+        refreshGeneratorChannelFromApi(channel, syncAt, { force: true }),
+        refreshChannelBlocksFromApi(channel, syncAt, { force: true }),
       ]);
 
       const rejected = results.find((result) => result.status === "rejected") as PromiseRejectedResult | undefined;
@@ -2159,8 +2241,8 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
 
       const results = await Promise.allSettled([
         channels.includes("site_inrcy") ? loadSiteInrcy() : Promise.resolve(),
-        refreshGeneratorChannelsFromApi(channels, syncAt),
-        ...channels.map((channel) => refreshChannelBlocksFromApi(channel, syncAt)),
+        refreshGeneratorChannelsFromApi(channels, syncAt, { force: true }),
+        ...channels.map((channel) => refreshChannelBlocksFromApi(channel, syncAt, { force: true })),
       ]);
 
       const rejected = results.find((result) => result.status === "rejected") as PromiseRejectedResult | undefined;
@@ -2509,21 +2591,35 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
   useEffect(() => {
     if (!dailyBootReady || initialGeneratorRefreshDoneRef.current) return;
     initialGeneratorRefreshDoneRef.current = true;
-    const cached = readGeneratorCache();
-    const lastChannelSyncAt = getLastChannelSyncAt();
-    if (cached?.payload?.leads && cached.syncedAt >= lastChannelSyncAt && cached.snapshotDate === expectedUiSnapshotDate()) {
+
+    const hasFreshDashboardCache = () => {
+      const cached = readGeneratorCache();
+      const lastChannelSyncAt = getLastChannelSyncAt();
+      return Boolean(cached?.payload?.leads && cached.syncedAt >= lastChannelSyncAt && cached.snapshotDate === expectedUiSnapshotDate());
+    };
+
+    if (hasFreshDashboardCache()) {
       return;
     }
-    void Promise.allSettled([
-      refreshAllGeneratorChannelsFromApi(),
-      refreshAllChannelBlocksFromApi(),
-    ]).then((results) => {
-      const failed = results.some((result) => result.status === "rejected");
-      if (!failed) return;
-      void syncFromServerCacheIfNeeded(true).catch(() => {
+
+    void syncFromServerCacheIfNeeded(true)
+      .then(() => {
+        if (hasFreshDashboardCache()) {
+          return;
+        }
+
+        return Promise.allSettled([
+          refreshAllGeneratorChannelsFromApi(undefined, { force: false }),
+          refreshAllChannelBlocksFromApi(undefined, { force: false }),
+        ]).then((results) => {
+          const failed = results.some((result) => result.status === "rejected");
+          if (!failed) return;
+          void refreshKpis();
+        });
+      })
+      .catch(() => {
         void refreshKpis();
       });
-    });
   }, [dailyBootReady, refreshAllChannelBlocksFromApi, refreshAllGeneratorChannelsFromApi, refreshKpis, syncFromServerCacheIfNeeded]);
 
   useEffect(() => {
