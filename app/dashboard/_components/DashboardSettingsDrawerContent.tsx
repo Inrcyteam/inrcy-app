@@ -2,6 +2,7 @@ import ContactContent from "../settings/_components/ContactContent";
 import AccountContent from "../settings/_components/AccountContent";
 import ProfilContent from "../settings/_components/ProfilContent";
 import ActivityContent from "../settings/_components/ActivityContent";
+import GeneralPreferencesContent from "../settings/_components/GeneralPreferencesContent";
 import AiConfigurationContent from "../settings/_components/AiConfigurationContent";
 import AbonnementContent from "../settings/_components/AbonnementContent";
 import LegalContent from "../settings/_components/LegalContent";
@@ -27,6 +28,7 @@ import InrAgentSettingsContent from "../settings/_components/InrAgentSettingsCon
 type DashboardPanelName =
   | "contact"
   | "profil"
+  | "preferences"
   | "inrbadge"
   | "compte"
   | "activite"
@@ -113,6 +115,7 @@ export default function DashboardSettingsDrawerContent({
       {panel === "contact" && <ContactContent mode="drawer" />}
       {panel === "compte" && <AccountContent mode="drawer" />}
       {panel === "profil" && <ProfilContent mode="drawer" onProfileSaved={checkProfile} onProfileReset={checkProfile} onCloseDrawer={onCloseDrawer} />}
+      {panel === "preferences" && <GeneralPreferencesContent mode="drawer" />}
       {panel === "inrbadge" && <InrBadgeSettingsContent {...inrBadgeSettingsProps} />}
       {panel === "activite" && <ActivityContent mode="drawer" onActivitySaved={checkActivity} onActivityReset={checkActivity} onCloseDrawer={onCloseDrawer} />}
       {panel === "ia" && <AiConfigurationContent mode="drawer" />}

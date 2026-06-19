@@ -203,6 +203,7 @@ export const DRAWER_TITLES = {
   contact: "Nous contacter",
   compte: "Compte iNrCytizen",
   profil: "Mon profil",
+  preferences: "Préférences générales",
   inrbadge: "Réglages iNr'Badge",
   activite: "Mon activité",
   ia: "Configuration IA",

@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 export type DashboardPanelName =
   | "contact"
   | "profil"
+  | "preferences"
   | "inrbadge"
   | "compte"
   | "activite"

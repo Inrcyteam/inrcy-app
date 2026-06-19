@@ -6,6 +6,15 @@ import { sendTxMail } from "@/lib/txMailer";
 import { optionalEnv } from "@/lib/env";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { sendMailFromIntegration } from "@/lib/inrsend/sendMailFromIntegration";
+import {
+  buildClientExchangePreferences,
+  DEFAULT_CLIENT_EXCHANGE_PREFERENCES,
+  formatClientDateOnly,
+  formatClientDateTime,
+  formatClientTimeOnly,
+  getCalendarClientTexts,
+  type ClientExchangePreferences,
+} from "@/lib/clientCommunication";
 
 export const runtime = "nodejs";
 
@@ -315,6 +324,18 @@ function getCalendarReminderSettingsFromSettings(settings: unknown): CalendarRem
   };
 }
 
+async function getClientExchangePreferences(userId: string): Promise<ClientExchangePreferences> {
+  const { data } = await supabaseAdmin
+    .from("business_profiles")
+    .select("client_language, timezone, date_format, currency, updated_at")
+    .eq("user_id", userId)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return buildClientExchangePreferences(data);
+}
+
 function buildRecipients(...groups: Array<RecipientInfo | RecipientInfo[] | null>) {
   const unique = new Map<string, RecipientInfo>();
   for (const group of groups) {
@@ -434,12 +455,14 @@ function ctaButton(label: string, href: string, variant: "primary" | "secondary"
     </a>`;
 }
 
-function buildReminderMail(row: ReminderRow, meta: Record<string, unknown>, offsetMinutes: number, recipient: RecipientInfo, proRecipient: RecipientInfo | null) {
-  const reminderLabel = offsetLabel(offsetMinutes);
-  const eventTitle = cleanString(row.title) || "Rendez-vous";
+function buildReminderMail(row: ReminderRow, meta: Record<string, unknown>, offsetMinutes: number, recipient: RecipientInfo, proRecipient: RecipientInfo | null, clientPreferences: ClientExchangePreferences = DEFAULT_CLIENT_EXCHANGE_PREFERENCES) {
+  const isProRecipient = recipient.kind === "pro";
+  const texts = getCalendarClientTexts(clientPreferences.clientLanguage);
+  const reminderLabel = isProRecipient ? offsetLabel(offsetMinutes) : texts.reminder.offsetLabel(offsetMinutes);
+  const eventTitle = cleanString(row.title) || (isProRecipient ? "Rendez-vous" : texts.generic.appointment);
   const contact = getContactDetails(meta);
-  const companyName = cleanString(proRecipient?.companyName) || "iNrCy";
-  const proName = buildDisplayName({ firstName: proRecipient?.firstName, companyName: proRecipient?.companyName, fallback: "Votre professionnel" });
+  const companyName = cleanString(proRecipient?.companyName) || (isProRecipient ? "iNrCy" : texts.generic.professional);
+  const proName = buildDisplayName({ firstName: proRecipient?.firstName, companyName: proRecipient?.companyName, fallback: isProRecipient ? "Votre professionnel" : texts.generic.professional });
   const clientName = buildDisplayName({
     firstName: contact.firstName,
     lastName: contact.lastName,
@@ -447,14 +470,14 @@ function buildReminderMail(row: ReminderRow, meta: Record<string, unknown>, offs
     companyName: contact.companyName,
     fallback: "Client",
   });
-  const greetingName = recipient.kind === "pro"
+  const greetingName = isProRecipient
     ? buildDisplayName({ firstName: recipient.firstName, displayName: recipient.displayName, companyName: recipient.companyName, fallback: "" })
     : buildDisplayName({ firstName: recipient.firstName, lastName: recipient.lastName, displayName: recipient.displayName, companyName: recipient.companyName, fallback: "" });
-  const greeting = greetingName && greetingName !== "-" ? `Bonjour ${greetingName},` : "Bonjour,";
-  const dateLabel = fmtDateOnly(row.start_at);
-  const startTime = fmtTimeOnly(row.start_at);
-  const endTime = fmtTimeOnly(row.end_at);
-  const formattedDateTime = fmtDate(String(row.start_at || ""));
+  const greeting = isProRecipient ? (greetingName && greetingName !== "-" ? `Bonjour ${greetingName},` : "Bonjour,") : texts.generic.greeting(greetingName && greetingName !== "-" ? greetingName : "");
+  const dateLabel = isProRecipient ? fmtDateOnly(row.start_at) : formatClientDateOnly(row.start_at, clientPreferences);
+  const startTime = isProRecipient ? fmtTimeOnly(row.start_at) : formatClientTimeOnly(row.start_at, clientPreferences);
+  const endTime = isProRecipient ? fmtTimeOnly(row.end_at) : formatClientTimeOnly(row.end_at, clientPreferences);
+  const formattedDateTime = isProRecipient ? fmtDate(String(row.start_at || "")) : formatClientDateTime(row.start_at, clientPreferences);
   const address = buildAddress({ location: row.location, address: contact.address, city: contact.city, postalCode: contact.postalCode });
   const notes = cleanString(row.description) || cleanString(contact.notes);
   const phonePro = cleanString(proRecipient?.phone);
@@ -462,24 +485,24 @@ function buildReminderMail(row: ReminderRow, meta: Record<string, unknown>, offs
   const emailClient = cleanString(contact.email);
   const mapsUrl = buildMapsUrl(address);
 
-  const subjectBase = recipient.kind === "pro"
+  const subjectBase = isProRecipient
     ? `Rappel pro iNr'Calendar ${reminderLabel} - ${clientName}`
-    : `Rappel de votre rendez-vous ${reminderLabel} - ${eventTitle}`;
+    : texts.reminder.subject(reminderLabel, eventTitle);
   const subject = subjectSafe(subjectBase) || "Rappel iNr'Calendar";
 
-  const intro = recipient.kind === "pro"
+  const intro = isProRecipient
     ? `Voici le rappel de votre rendez-vous prévu le ${formattedDateTime}.`
-    : `Nous vous confirmons votre rendez-vous prévu le ${formattedDateTime} avec ${companyName}.`;
+    : texts.reminder.intro(formattedDateTime, companyName);
 
-  const preheader = recipient.kind === "pro"
+  const preheader = isProRecipient
     ? `${clientName} · ${dateLabel} · ${startTime}${endTime !== "-" ? ` - ${endTime}` : ""}`
     : `${companyName} · ${dateLabel} · ${startTime}${endTime !== "-" ? ` - ${endTime}` : ""}`;
 
-  const title = recipient.kind === "pro" ? "Rendez-vous à venir" : "Votre rendez-vous approche";
-  const badgeLabel = `RAPPEL ${reminderLabel.toUpperCase()}`;
-  const sectionTitle = recipient.kind === "pro" ? "Vue terrain" : "Votre confirmation";
+  const title = isProRecipient ? "Rendez-vous à venir" : texts.reminder.title;
+  const badgeLabel = `${isProRecipient ? "RAPPEL" : texts.reminder.badgePrefix} ${reminderLabel.toUpperCase()}`;
+  const sectionTitle = isProRecipient ? "Vue terrain" : texts.reminder.sectionTitle;
 
-  const rowsMain = recipient.kind === "pro"
+  const rowsMain = isProRecipient
     ? [
         infoRow("Client", clientName),
         infoRow("Date", dateLabel),
@@ -488,41 +511,41 @@ function buildReminderMail(row: ReminderRow, meta: Record<string, unknown>, offs
         infoRow("Intitulé", eventTitle),
       ].join("")
     : [
-        infoRow("Date", dateLabel),
-        infoRow("Horaire", `${startTime}${endTime !== "-" ? ` → ${endTime}` : ""}`),
-        address ? infoRow("Adresse", address) : "",
-        infoRow("Intervenant", companyName),
-        phonePro ? infoRow("Téléphone", phonePro) : "",
+        infoRow(texts.labels.date, dateLabel),
+        infoRow(texts.labels.time, `${startTime}${endTime !== "-" ? ` → ${endTime}` : ""}`),
+        address ? infoRow(texts.labels.address, address) : "",
+        infoRow(texts.labels.provider, companyName),
+        phonePro ? infoRow(texts.labels.phone, phonePro) : "",
       ].join("");
 
-  const rowsSecondary = recipient.kind === "pro"
+  const rowsSecondary = isProRecipient
     ? [
         emailClient ? infoRow("Email client", emailClient) : "",
         phoneClient ? infoRow("Téléphone client", phoneClient) : "",
         notes ? infoRow("Notes / précisions", notes) : "",
       ].join("")
     : [
-        infoRow("Motif du rendez-vous", eventTitle),
-        notes ? infoRow("Informations utiles", notes) : infoRow("Informations utiles", "Merci de prévoir quelques minutes d’avance si nécessaire. En cas d’imprévu, contactez directement votre interlocuteur."),
+        infoRow(texts.labels.appointmentReason, eventTitle),
+        notes ? infoRow(texts.labels.usefulInfo, notes) : infoRow(texts.labels.usefulInfo, texts.reminder.defaultUsefulInfo),
       ].join("");
 
-  const buttons = recipient.kind === "pro"
+  const buttons = isProRecipient
     ? [
         emailClient ? ctaButton("Contacter le client", `mailto:${emailClient}`) : "",
         phoneClient ? ctaButton("Appeler le client", `tel:${phoneClient}`, "secondary") : "",
         mapsUrl ? ctaButton("Ouvrir l’adresse", mapsUrl, "secondary") : "",
       ].join("")
     : [
-        phonePro ? ctaButton(`Contacter ${proName}`, `tel:${phonePro}`) : "",
-        mapsUrl ? ctaButton("Ouvrir l’adresse", mapsUrl, "secondary") : "",
+        phonePro ? ctaButton(texts.reminder.contactPro(proName), `tel:${phonePro}`) : "",
+        mapsUrl ? ctaButton(texts.reminder.openAddress, mapsUrl, "secondary") : "",
       ].join("");
 
-  const footerText = recipient.kind === "pro"
+  const footerText = isProRecipient
     ? "Rappel automatique envoyé par iNr'Calendar, produit iNrCy. Retrouvez vos rendez-vous dans votre agenda."
-    : "Ce rappel vous est envoyé automatiquement par iNr'Calendar, un service iNrCy.";
+    : texts.reminder.footer;
 
   const html = `<!doctype html>
-<html lang="fr" xmlns="http://www.w3.org/1999/xhtml">
+<html lang="${isProRecipient ? "fr" : texts.htmlLang}" xmlns="http://www.w3.org/1999/xhtml">
   <head>
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -598,7 +621,7 @@ function buildReminderMail(row: ReminderRow, meta: Record<string, unknown>, offs
                       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#101b38" style="width:100%;border-collapse:separate;border-spacing:0;background:#101b38;background-color:#101b38;border:1px solid rgba(148,163,184,.12);border-radius:22px;overflow:hidden;">
                         <tr>
                           <td style="padding:20px 22px 10px 22px;">
-                            <div style="font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.3;color:#ffffff;font-weight:800;">${recipient.kind === "pro" ? "Coordonnées & détails" : "Bon à savoir"}</div>
+                            <div style="font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.3;color:#ffffff;font-weight:800;">${isProRecipient ? "Coordonnées & détails" : texts.reminder.secondaryTitle}</div>
                             <div style="height:14px;line-height:14px;font-size:0;">&nbsp;</div>
                             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:collapse;">
                               ${rowsSecondary}
@@ -611,7 +634,7 @@ function buildReminderMail(row: ReminderRow, meta: Record<string, unknown>, offs
                   <tr>
                     <td class="email-pad" style="padding:0 24px 16px 24px;background:#071736;background-color:#071736;">
                       ${buttons || ""}
-                      ${recipient.kind === "pro" ? ctaButton("Ouvrir iNr'Calendar", AGENDA_DASHBOARD_URL, "secondary") : ""}
+                      ${isProRecipient ? ctaButton("Ouvrir iNr'Calendar", AGENDA_DASHBOARD_URL, "secondary") : ""}
                     </td>
                   </tr>
                   <tr>
@@ -635,15 +658,15 @@ function buildReminderMail(row: ReminderRow, meta: Record<string, unknown>, offs
     title,
     intro,
     "",
-    recipient.kind === "pro" ? `Client : ${clientName}` : `Intervenant : ${companyName}`,
-    `Date : ${dateLabel}`,
-    `Horaire : ${startTime}${endTime !== "-" ? ` -> ${endTime}` : ""}`,
-    address ? `Adresse : ${address}` : "",
-    `Intitulé : ${eventTitle}`,
-    recipient.kind === "pro" && emailClient ? `Email client : ${emailClient}` : "",
-    recipient.kind === "pro" && phoneClient ? `Téléphone client : ${phoneClient}` : "",
-    recipient.kind === "contact" && phonePro ? `Téléphone : ${phonePro}` : "",
-    notes ? `Informations : ${notes}` : "",
+    isProRecipient ? `Client : ${clientName}` : `${texts.labels.provider} : ${companyName}`,
+    `${isProRecipient ? "Date" : texts.labels.date} : ${dateLabel}`,
+    `${isProRecipient ? "Horaire" : texts.labels.time} : ${startTime}${endTime !== "-" ? ` -> ${endTime}` : ""}`,
+    address ? `${isProRecipient ? "Adresse" : texts.labels.address} : ${address}` : "",
+    `${isProRecipient ? "Intitulé" : texts.labels.appointmentReason} : ${eventTitle}`,
+    isProRecipient && emailClient ? `Email client : ${emailClient}` : "",
+    isProRecipient && phoneClient ? `Téléphone client : ${phoneClient}` : "",
+    !isProRecipient && phonePro ? `${texts.labels.phone} : ${phonePro}` : "",
+    notes ? `${isProRecipient ? "Informations" : texts.labels.usefulInfo} : ${notes}` : "",
     "",
     footerText,
   ].filter(Boolean).join("\n");
@@ -672,6 +695,7 @@ export async function GET(req: Request) {
   let inAppSent = 0;
   let emailSent = 0;
   const userSettingsCache = new Map<string, CalendarReminderSettings>();
+  const userClientPreferencesCache = new Map<string, ClientExchangePreferences>();
 
   for (const row of data ?? []) {
     const meta = safeObj(row.meta);
@@ -722,6 +746,12 @@ export async function GET(req: Request) {
       userSettingsCache.set(String(row.user_id), userSettings);
     }
 
+    let clientPreferences = userClientPreferencesCache.get(String(row.user_id));
+    if (!clientPreferences) {
+      clientPreferences = await getClientExchangePreferences(String(row.user_id));
+      userClientPreferencesCache.set(String(row.user_id), clientPreferences);
+    }
+
     const selectedMailAccountId = userSettings.selectedMailAccountId || getReminderMailAccountId(meta);
 
     for (const offsetMinutes of userSettings.reminderOffsetsMinutes) {
@@ -731,7 +761,7 @@ export async function GET(req: Request) {
         const alreadySentAt = getRecipientSentAt(nextReminders, recipient, offsetMinutes);
         if (alreadySentAt) continue;
 
-        const mail = buildReminderMail(row, meta, offsetMinutes, recipient, proRecipient);
+        const mail = buildReminderMail(row, meta, offsetMinutes, recipient, proRecipient, clientPreferences);
         try {
           let sent = false;
 

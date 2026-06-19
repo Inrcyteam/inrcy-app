@@ -5,6 +5,14 @@ import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { optionalEnv } from "@/lib/env";
 import { sendTxMail } from "@/lib/txMailer";
 import { sendMailFromIntegration } from "@/lib/inrsend/sendMailFromIntegration";
+import {
+  buildClientExchangePreferences,
+  DEFAULT_CLIENT_EXCHANGE_PREFERENCES,
+  formatClientDateOnly,
+  formatClientTimeOnly,
+  getCalendarClientTexts,
+  type ClientExchangePreferences,
+} from "@/lib/clientCommunication";
 
 /**
  * Agenda iNrCy NATIF (sans Google Calendar)
@@ -369,6 +377,18 @@ async function getProMailDetails(userId: string): Promise<ProMailDetails> {
   };
 }
 
+async function getClientExchangePreferences(userId: string): Promise<ClientExchangePreferences> {
+  const { data } = await supabaseAdmin
+    .from("business_profiles")
+    .select("client_language, timezone, date_format, currency, updated_at")
+    .eq("user_id", userId)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return buildClientExchangePreferences(data);
+}
+
 function escapeHtml(value: unknown) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -511,11 +531,15 @@ function buildConfirmationMail(args: {
   recipient: ConfirmationRecipient;
   pro: ProMailDetails;
   mode: "created" | "updated";
+  clientPreferences?: ClientExchangePreferences;
 }) {
   const { row, meta, recipient, pro, mode } = args;
   const contact = getContactDetailsFromMeta(meta);
-  const eventTitle = cleanString(row.title) || "Rendez-vous";
-  const companyName = cleanString(pro.companyName) || "Votre professionnel";
+  const isProRecipient = recipient.kind === "pro";
+  const clientPreferences = args.clientPreferences || DEFAULT_CLIENT_EXCHANGE_PREFERENCES;
+  const clientTexts = getCalendarClientTexts(clientPreferences.clientLanguage);
+  const eventTitle = cleanString(row.title) || (isProRecipient ? "Rendez-vous" : clientTexts.generic.appointment);
+  const companyName = cleanString(pro.companyName) || (isProRecipient ? "Votre professionnel" : clientTexts.generic.professional);
   const proName = buildDisplayName({ firstName: pro.firstName, companyName: pro.companyName, fallback: companyName });
   const recipientName = buildDisplayName({
     firstName: recipient.firstName,
@@ -524,16 +548,15 @@ function buildConfirmationMail(args: {
     companyName: recipient.companyName,
     fallback: "",
   });
-  const greeting = recipientName ? `Bonjour ${recipientName},` : "Bonjour,";
-  const dateLabel = fmtDateOnly(row.start_at);
-  const startTime = fmtTimeOnly(row.start_at);
-  const endTime = fmtTimeOnly(row.end_at);
+  const greeting = isProRecipient ? (recipientName ? `Bonjour ${recipientName},` : "Bonjour,") : clientTexts.generic.greeting(recipientName);
+  const dateLabel = isProRecipient ? fmtDateOnly(row.start_at) : formatClientDateOnly(row.start_at, clientPreferences);
+  const startTime = isProRecipient ? fmtTimeOnly(row.start_at) : formatClientTimeOnly(row.start_at, clientPreferences);
+  const endTime = isProRecipient ? fmtTimeOnly(row.end_at) : formatClientTimeOnly(row.end_at, clientPreferences);
   const phonePro = cleanString(pro.phone);
   const address = cleanString(row.location)
     || [cleanString(contact.address), [cleanString(contact.postalCode), cleanString(contact.city)].filter(Boolean).join(" ").trim()].filter(Boolean).join(", ");
   const notes = cleanString(row.description);
 
-  const isProRecipient = recipient.kind === "pro";
   const clientName = buildDisplayName({
     firstName: contact.firstName,
     lastName: contact.lastName,
@@ -549,24 +572,24 @@ function buildConfirmationMail(args: {
       ? `Mise à jour RDV iNr'Calendar - ${clientName}`
       : `Nouveau rendez-vous enregistré - ${clientName}`
     : mode === "updated"
-      ? `Mise à jour de votre rendez-vous - ${eventTitle}`
-      : `Confirmation de votre rendez-vous - ${eventTitle}`;
-  const subject = subjectSafe(subjectBase) || "Confirmation de rendez-vous";
+      ? clientTexts.confirmation.subjectUpdated(eventTitle)
+      : clientTexts.confirmation.subjectCreated(eventTitle);
+  const subject = subjectSafe(subjectBase) || (isProRecipient ? "Confirmation de rendez-vous" : clientTexts.confirmation.subjectCreated(eventTitle));
 
   const title = isProRecipient
     ? mode === "updated"
       ? "Rendez-vous mis à jour"
       : "Nouveau rendez-vous enregistré"
     : mode === "updated"
-      ? "Votre rendez-vous a été mis à jour"
-      : "Votre rendez-vous est confirmé";
+      ? clientTexts.confirmation.titleUpdated
+      : clientTexts.confirmation.titleCreated;
   const intro = isProRecipient
     ? mode === "updated"
       ? "Le rendez-vous a été mis à jour dans votre agenda."
       : "Le rendez-vous est bien enregistré dans votre agenda."
     : mode === "updated"
-      ? `Votre rendez-vous avec ${companyName} a été modifié.`
-      : `Votre rendez-vous avec ${companyName} est bien enregistré.`;
+      ? clientTexts.confirmation.introUpdated(companyName)
+      : clientTexts.confirmation.introCreated(companyName);
 
   const rows = isProRecipient
     ? [
@@ -580,13 +603,13 @@ function buildConfirmationMail(args: {
         notes ? ["Notes / précisions", notes] : null,
       ].filter(Boolean) as string[][]
     : [
-        ["Date", dateLabel],
-        ["Horaire", `${startTime}${endTime !== "-" ? ` → ${endTime}` : ""}`],
-        ["Motif", eventTitle],
-        address ? ["Lieu", address] : null,
-        ["Interlocuteur", proName],
-        phonePro ? ["Téléphone", phonePro] : null,
-        notes ? ["Informations utiles", notes] : null,
+        [clientTexts.labels.date, dateLabel],
+        [clientTexts.labels.time, `${startTime}${endTime !== "-" ? ` → ${endTime}` : ""}`],
+        [clientTexts.labels.reason, eventTitle],
+        address ? [clientTexts.labels.location, address] : null,
+        [clientTexts.labels.professional, proName],
+        phonePro ? [clientTexts.labels.phone, phonePro] : null,
+        notes ? [clientTexts.labels.usefulInfo, notes] : null,
       ].filter(Boolean) as string[][];
 
   const htmlRows = rows.map(([label, value]) => `
@@ -598,8 +621,18 @@ function buildConfirmationMail(args: {
       </td>
     </tr>`).join("");
 
+  const statusLabel = isProRecipient
+    ? mode === "updated"
+      ? "RDV MIS À JOUR"
+      : "RDV CONFIRMÉ"
+    : mode === "updated"
+      ? clientTexts.confirmation.statusUpdated
+      : clientTexts.confirmation.statusCreated;
+  const detailsTitle = isProRecipient ? "Détails du rendez-vous" : clientTexts.confirmation.detailsTitle;
+  const footerText = isProRecipient ? "Mail automatique envoyé par iNr’Calendar." : clientTexts.generic.automaticMail;
+
   const html = `<!doctype html>
-<html lang="fr">
+<html lang="${isProRecipient ? "fr" : clientTexts.htmlLang}">
   <head>
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -615,7 +648,7 @@ function buildConfirmationMail(args: {
                 <div style="padding:24px 24px 18px 24px;">
                   <div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:800;letter-spacing:.04em;color:#93c5fd;">iNr’Calendar</div>
                   <div style="height:18px;line-height:18px;font-size:0;">&nbsp;</div>
-                  <div style="display:inline-block;padding:8px 12px;border-radius:999px;background:#20345f;color:#dbeafe;font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:700;">${mode === "updated" ? "RDV MIS À JOUR" : "RDV CONFIRMÉ"}</div>
+                  <div style="display:inline-block;padding:8px 12px;border-radius:999px;background:#20345f;color:#dbeafe;font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:700;">${escapeHtml(statusLabel)}</div>
                   <div style="height:16px;line-height:16px;font-size:0;">&nbsp;</div>
                   <div style="font-family:Arial,Helvetica,sans-serif;font-size:30px;line-height:1.15;color:#ffffff;font-weight:900;">${escapeHtml(title)}</div>
                   <div style="height:10px;line-height:10px;font-size:0;">&nbsp;</div>
@@ -625,7 +658,7 @@ function buildConfirmationMail(args: {
                   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#0d1630" style="width:100%;border-radius:22px;background:#0d1630;border:1px solid rgba(148,163,184,.14);">
                     <tr>
                       <td style="padding:22px 22px 8px 22px;">
-                        <div style="font-family:Arial,Helvetica,sans-serif;font-size:18px;color:#ffffff;font-weight:800;">Détails du rendez-vous</div>
+                        <div style="font-family:Arial,Helvetica,sans-serif;font-size:18px;color:#ffffff;font-weight:800;">${escapeHtml(detailsTitle)}</div>
                         <div style="height:14px;line-height:14px;font-size:0;">&nbsp;</div>
                         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">${htmlRows}</table>
                       </td>
@@ -633,7 +666,7 @@ function buildConfirmationMail(args: {
                   </table>
                 </div>
                 <div style="padding:0 24px 24px 24px;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.75;color:#97a6c5;">
-                  Mail automatique envoyé par iNr’Calendar.
+                  ${escapeHtml(footerText)}
                 </div>
               </td>
             </tr>
@@ -652,7 +685,7 @@ function buildConfirmationMail(args: {
     "",
     ...rows.map(([label, value]) => `${label} : ${value}`),
     "",
-    "Mail automatique envoyé par iNr’Calendar.",
+    footerText,
   ].join("\n");
 
   return { subject, text, html };
@@ -668,6 +701,7 @@ async function sendAgendaConfirmationEmails(args: {
   if (!settings.sendConfirmationOnSave) return;
 
   const pro = await getProMailDetails(args.userId);
+  const clientPreferences = await getClientExchangePreferences(args.userId);
   const recipients = addProToConfirmationRecipients(getConfirmationRecipients(args.meta), pro);
   if (!recipients.length) return;
   const selectedMailAccountId = settings.selectedMailAccountId || getSelectedMailAccountIdFromMeta(args.meta);
@@ -679,7 +713,7 @@ async function sendAgendaConfirmationEmails(args: {
   );
 
   for (const recipient of recipients) {
-    const mail = buildConfirmationMail({ row: args.row, meta: args.meta, recipient, pro, mode: args.mode });
+    const mail = buildConfirmationMail({ row: args.row, meta: args.meta, recipient, pro, mode: args.mode, clientPreferences });
 
     try {
       let sent = false;

@@ -5,6 +5,8 @@ import { getInrBadgeTexts, normalizeInrBadgeLanguage } from "@/lib/inrBadgeLangu
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 function trim(value: unknown) {
   return String(value || "").trim();
@@ -27,7 +29,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ slug: string }>
   let name = "iNr'Badge";
   let language = normalizeInrBadgeLanguage(null);
   if (userId) {
-    const [{ data }, toolsRes] = await Promise.all([
+    const [{ data }, toolsRes, businessRes] = await Promise.all([
       supabaseAdmin
         .from("profiles")
         .select("company_legal_name,first_name,last_name")
@@ -38,10 +40,18 @@ export async function GET(req: Request, ctx: { params: Promise<{ slug: string }>
         .select("settings")
         .eq("user_id", userId)
         .maybeSingle(),
+      supabaseAdmin
+        .from("business_profiles")
+        .select("client_language")
+        .eq("user_id", userId)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
     ]);
     const profile = data as Record<string, unknown> | null;
     const rootSettings = safeObj((toolsRes.data as { settings?: unknown } | null)?.settings);
-    language = normalizeInrBadgeLanguage(rootSettings.inrBadgeLanguage);
+    const business = (businessRes.data ?? {}) as Record<string, unknown>;
+    language = normalizeInrBadgeLanguage(business.client_language || rootSettings.inrBadgeLanguage);
     const company = trim(profile?.company_legal_name);
     const displayName = [trim(profile?.first_name), trim(profile?.last_name)].filter(Boolean).join(" ");
     name = company || displayName || name;

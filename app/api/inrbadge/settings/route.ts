@@ -7,7 +7,6 @@ import {
   sanitizeInrBadgeAppointmentSettingsPayload,
   sanitizeInrBadgeShareSettingsPayload,
 } from "@/lib/inrBadgeSettings";
-import { normalizeInrBadgeLanguage } from "@/lib/inrBadgeLanguage";
 
 function safeObj(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
@@ -31,7 +30,6 @@ export async function GET() {
     settings: normalizeInrBadgeShareSettings(rootSettings.inrBadgeShareSettings),
     appointmentSettings: resolveInrBadgeAppointmentSettings(rootSettings),
     selectedMailAccountId: typeof rootSettings.inrBadgeMailAccountId === "string" ? rootSettings.inrBadgeMailAccountId : "",
-    badgeLanguage: normalizeInrBadgeLanguage(rootSettings.inrBadgeLanguage),
   });
 }
 
@@ -54,7 +52,6 @@ export async function PATCH(req: Request) {
   const hasShareSettings = Object.prototype.hasOwnProperty.call(input, "settings");
   const hasAppointmentSettings = Object.prototype.hasOwnProperty.call(input, "appointmentSettings");
   const hasSelectedMailAccountId = Object.prototype.hasOwnProperty.call(input, "selectedMailAccountId");
-  const hasBadgeLanguage = Object.prototype.hasOwnProperty.call(input, "badgeLanguage");
   const nextShareSettings = hasShareSettings
     ? sanitizeInrBadgeShareSettingsPayload(input.settings)
     : normalizeInrBadgeShareSettings(currentSettings.inrBadgeShareSettings);
@@ -62,9 +59,6 @@ export async function PATCH(req: Request) {
     ? sanitizeInrBadgeAppointmentSettingsPayload(input.appointmentSettings)
     : resolveInrBadgeAppointmentSettings(currentSettings);
 
-  const nextBadgeLanguage = hasBadgeLanguage
-    ? normalizeInrBadgeLanguage(input.badgeLanguage)
-    : normalizeInrBadgeLanguage(currentSettings.inrBadgeLanguage);
 
   const currentInrCalendar = safeObj(currentSettings.inrcalendar);
   const nextSelectedMailAccountId = hasSelectedMailAccountId
@@ -78,7 +72,6 @@ export async function PATCH(req: Request) {
     inrBadgeShareSettings: nextShareSettings,
     inrBadgeAppointmentSettings: nextAppointmentSettings,
     inrBadgeMailAccountId: nextSelectedMailAccountId,
-    inrBadgeLanguage: nextBadgeLanguage,
     inrcalendar: {
       ...currentInrCalendar,
       appointment_settings: nextAppointmentSettings,
@@ -91,5 +84,5 @@ export async function PATCH(req: Request) {
 
   if (error) return jsonUserFacingError(error, { status: 500 });
 
-  return NextResponse.json({ ok: true, settings: nextShareSettings, appointmentSettings: nextAppointmentSettings, selectedMailAccountId: nextSelectedMailAccountId, badgeLanguage: nextBadgeLanguage });
+  return NextResponse.json({ ok: true, settings: nextShareSettings, appointmentSettings: nextAppointmentSettings, selectedMailAccountId: nextSelectedMailAccountId });
 }

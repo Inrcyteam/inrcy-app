@@ -24,6 +24,8 @@ import BadgeLeadButton from "./BadgeLeadButton";
 import BadgeAnalyticsClient from "./BadgeAnalyticsClient";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 const DEFAULT_INRBADGE_LOGO_SRC = inrBadgeIcon.src;
 
@@ -275,7 +277,7 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
   const userId = extractInrBadgeUserIdFromSlug(slug);
   if (!userId) notFound();
 
-  const [profileRes, businessRes, toolsRes, siteInrcyRes, integrationsRes] = await Promise.all([
+  const [profileRes, businessRes, badgeLanguageRes, toolsRes, siteInrcyRes, integrationsRes] = await Promise.all([
     supabaseAdmin
       .from("profiles")
       .select("user_id,inrcy_site_ownership,logo_url,logo_path,company_legal_name,first_name,last_name,phone,contact_email,hq_address,hq_zip,hq_city,hq_country")
@@ -285,6 +287,14 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
       .from("business_profiles")
       .select("business_description,activity_description,services,services_text,intervention_zones,intervention_zones_text,opening_days,opening_hours,strengths,strengths_text")
       .eq("user_id", userId)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
+    supabaseAdmin
+      .from("business_profiles")
+      .select("client_language,updated_at")
+      .eq("user_id", userId)
+      .order("updated_at", { ascending: false })
       .limit(1)
       .maybeSingle(),
     supabaseAdmin
@@ -307,9 +317,13 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
 
   const profile = profileRes.data as Record<string, unknown>;
   const business = (businessRes.data ?? {}) as Record<string, unknown>;
+  const badgeLanguageRow = (badgeLanguageRes.data ?? {}) as Record<string, unknown>;
   const toolSettings = safeObj((toolsRes.data as { settings?: unknown } | null)?.settings);
   const shareSettings = normalizeInrBadgeShareSettings(toolSettings.inrBadgeShareSettings);
-  const badgeLanguage = normalizeInrBadgeLanguage(toolSettings.inrBadgeLanguage);
+  // La langue publique du badge vient des Préférences générales.
+  // Elle est lue dans une requête séparée pour éviter qu'un souci sur les champs métier
+  // ne fasse retomber l'écran principal du badge sur l'ancien réglage inrBadgeLanguage.
+  const badgeLanguage = normalizeInrBadgeLanguage(badgeLanguageRow.client_language || toolSettings.inrBadgeLanguage);
   const badgeText = getInrBadgeTexts(badgeLanguage);
   const channelStates = await getChannelConnectionStates(supabaseAdmin, userId, {
     profile,
@@ -463,7 +477,6 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
               <div className={styles.headerIdentity}>
                 <div className={styles.logo} aria-hidden="true">
                   {shareSettings.logo ? (
-                    // eslint-disable-next-line @next/next/no-img-element
                     <img src={headerLogoSrc} alt="" loading="eager" decoding="sync" fetchPriority="high" />
                   ) : <span>iNr</span>}
                 </div>
@@ -483,7 +496,7 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
             </div>
           ) : null}
 
-          <BadgeLeadButton slug={slug} company={company} language={badgeLanguage} />
+          <BadgeLeadButton slug={slug} language={badgeLanguage} />
 
           {channelActions.length > 0 ? (
             <section className={styles.section}>

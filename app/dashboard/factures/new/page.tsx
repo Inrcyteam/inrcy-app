@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabaseClient";
 import { resolveProfileLogoUrl } from "@/lib/profileLogo";
@@ -24,7 +24,6 @@ import {
   calcLineHT,
   calcTotalsWithDiscount,
   DiscountKind,
-  formatEuro,
   generateNumber,
   uid,
 } from "../../_documents/docUtils";
@@ -34,6 +33,18 @@ import {
   prepareTemplateSnapshot,
 } from "../../_documents/documentTemplateUtils";
 import { printWithIosSafariScale } from "../../_documents/printUtils";
+import {
+  DEFAULT_CLIENT_EXCHANGE_PREFERENCES,
+  buildClientExchangePreferences,
+  buildDocumentMailTexts,
+  formatClientCurrency,
+  formatClientDateOnly,
+  getDocumentClientTexts,
+  getDocumentOperationCategoryLabel,
+  getDocumentPaymentLabel,
+  getDocumentStatusLabel,
+  type ClientExchangePreferences,
+} from "@/lib/clientCommunication";
 
 
 
@@ -337,10 +348,24 @@ export default function NewFacturePage() {
   const previewRef = useRef<HTMLDivElement | null>(null);
 
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [clientExchangePreferences, setClientExchangePreferences] = useState<ClientExchangePreferences>(DEFAULT_CLIENT_EXCHANGE_PREFERENCES);
   const [isEditingProvider, setIsEditingProvider] = useState(false);
   const [providerOverride, setProviderOverride] = useState<Partial<Profile>>({});
   const vatDispense = !!profile?.vat_dispense;
   const providerData = { ...(profile || {}), ...(providerOverride || {}) } as Profile;
+
+  const documentClientTexts = useMemo(
+    () => getDocumentClientTexts(clientExchangePreferences.clientLanguage),
+    [clientExchangePreferences.clientLanguage],
+  );
+  const formatDocumentDate = useCallback(
+    (iso: string | null | undefined) => formatClientDateOnly(iso, clientExchangePreferences),
+    [clientExchangePreferences],
+  );
+  const formatDocumentMoney = useCallback(
+    (value: number) => formatClientCurrency(value, clientExchangePreferences),
+    [clientExchangePreferences],
+  );
 
   // Orientation: gérée globalement via <OrientationGuard />
 
@@ -806,6 +831,16 @@ export default function NewFacturePage() {
         )
         .eq("user_id", user.id)
         .single();
+
+      const { data: businessProfile } = await supabase
+        .from("business_profiles")
+        .select("client_language, timezone, date_format, currency, updated_at")
+        .eq("user_id", user.id)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      setClientExchangePreferences(buildClientExchangePreferences(businessProfile));
 
       const resolvedLogo = await resolveProfileLogoUrl(supabase, {
         logo_path: data?.logo_path ?? null,
@@ -2092,21 +2127,26 @@ export default function NewFacturePage() {
     params.set("docSaveId", docSaveId);
     params.set("docType", "facture");
     params.set("docNumber", officialNumber || safeName.replace(/\.pdf$/i, ""));
+    const mailTexts = buildDocumentMailTexts(
+      "facture",
+      clientExchangePreferences,
+      clientName,
+      officialNumber || safeName.replace(/\.pdf$/i, ""),
+    );
+    params.set("subject", mailTexts.subject);
+    params.set("text", mailTexts.text);
     router.push(`/dashboard/mails?${params.toString()}`);
   };
 
-  const paymentLabel =
-    PAYMENT_METHODS.find((m) => m.key === paymentMethod)?.label ?? "—";
-  const operationCategoryLabel =
-    OPERATION_CATEGORY_OPTIONS.find(
-      (option) => option.key === operationCategory,
-    )?.label ?? "—";
+  const paymentLabel = getDocumentPaymentLabel(clientExchangePreferences.clientLanguage, paymentMethod);
+  const operationCategoryLabel = getDocumentOperationCategoryLabel(clientExchangePreferences.clientLanguage, operationCategory);
+  const documentStatusLabel = getDocumentStatusLabel(clientExchangePreferences.clientLanguage, status);
   const documentTitle =
     documentKind === "deposit"
-      ? "FACTURE D’ACOMPTE"
+      ? documentClientTexts.titles.depositInvoice
       : documentKind === "credit_note"
-        ? "AVOIR"
-        : "FACTURE";
+        ? documentClientTexts.titles.creditNote
+        : documentClientTexts.titles.invoice;
 
   const documentDesign = documentsSettings.common.design;
   const previewClassName = [
@@ -3423,32 +3463,32 @@ export default function NewFacturePage() {
               <div className={styles.title}>{documentTitle}</div>
               <div>{number || "—"}</div>
               <div style={{ marginTop: 6, color: "#444" }}>
-                Date :{" "}
+                {documentClientTexts.labels.date} :{" "}
                 {invoiceDate
-                  ? new Date(invoiceDate).toLocaleDateString("fr-FR")
+                  ? formatDocumentDate(invoiceDate)
                   : "—"}
                 {dueDate ? (
                   <>
                     {" "}
-                    · Échéance : {new Date(dueDate).toLocaleDateString("fr-FR")}
+                    · {documentClientTexts.labels.dueDate} : {formatDocumentDate(dueDate)}
                   </>
                 ) : null}
               </div>
               {serviceDateMode === "single" && serviceDate ? (
                 <div style={{ marginTop: 4, color: "#444" }}>
-                  Prestation / livraison :{" "}
-                  {new Date(serviceDate).toLocaleDateString("fr-FR")}
+                  {documentClientTexts.labels.serviceDelivery} :{" "}
+                  {formatDocumentDate(serviceDate)}
                 </div>
               ) : null}
               {serviceDateMode === "period" &&
               (servicePeriodStart || servicePeriodEnd) ? (
                 <div style={{ marginTop: 4, color: "#444" }}>
-                  Période :{" "}
+                  {documentClientTexts.labels.period} :{" "}
                   {servicePeriodStart
-                    ? new Date(servicePeriodStart).toLocaleDateString("fr-FR")
+                    ? formatDocumentDate(servicePeriodStart)
                     : "—"}
                   {servicePeriodEnd
-                    ? ` → ${new Date(servicePeriodEnd).toLocaleDateString("fr-FR")}`
+                    ? ` → ${formatDocumentDate(servicePeriodEnd)}`
                     : ""}
                 </div>
               ) : null}
@@ -3466,7 +3506,7 @@ export default function NewFacturePage() {
 
           <div className={styles.previewParties}>
             <div className={styles.previewPartyCard}>
-              <div className={styles.previewPartyTitle}>Prestataire</div>
+              <div className={styles.previewPartyTitle}>{documentClientTexts.labels.provider}</div>
               <div className={styles.noPrint} style={{ display: "flex", gap: 8, marginBottom: 8, marginTop: 4 }}>
                 <button type="button" onClick={() => setIsEditingProvider((prev) => !prev)} style={{ fontSize: 12, padding: "4px 8px", borderRadius: 8, border: "1px solid #cbb4ff" }}>✏️ Modifier</button>
                 <button type="button" onClick={() => setProviderOverride({})} style={{ fontSize: 12, padding: "4px 8px", borderRadius: 8, border: "1px solid #cbb4ff" }}>↩ Réinitialiser</button>
@@ -3488,24 +3528,24 @@ export default function NewFacturePage() {
                   </div>
                 ) : (
                   <>
-                    {providerData?.phone ? (<><div>Tél : {providerData.phone}</div></>) : null}
+                    {providerData?.phone ? (<><div>{documentClientTexts.labels.phone} : {providerData.phone}</div></>) : null}
                     {providerData?.contact_email ? (<><div>Email : {providerData.contact_email}</div></>) : null}
                     {providerData?.siren ? (<><div>SIREN : {providerData.siren}</div></>) : null}
-                    {providerData?.vat_number ? (<><div>TVA : {providerData.vat_number}</div></>) : null}
+                    {providerData?.vat_number ? (<><div>{documentClientTexts.labels.vat} : {providerData.vat_number}</div></>) : null}
                   </>
                 )}
               </div>
             </div>
 
             <div className={styles.previewPartyCard}>
-              <div className={styles.previewPartyTitle}>Client</div>
+              <div className={styles.previewPartyTitle}>{documentClientTexts.labels.client}</div>
               <div style={{ fontWeight: 600 }}>{clientName || "—"}</div>
               {clientSiren ? <div>SIREN : {clientSiren}</div> : null}
-              {clientVatNumber ? <div>TVA : {clientVatNumber}</div> : null}
+              {clientVatNumber ? <div>{documentClientTexts.labels.vat} : {clientVatNumber}</div> : null}
               <div>{billingFullAddress}</div>
               {!sameAddresses && deliveryAddress ? (
                 <div style={{ marginTop: 6 }}>
-                  <strong>Adresse de livraison :</strong> {deliveryFullAddress}
+                  <strong>{documentClientTexts.labels.deliveryAddress} :</strong> {deliveryFullAddress}
                 </div>
               ) : null}
               <div style={{ fontSize: 13, color: "#444", marginTop: 6 }}>
@@ -3517,11 +3557,11 @@ export default function NewFacturePage() {
           <table className={styles.table}>
             <thead>
               <tr>
-                <th>Désignation</th>
-                <th style={{ width: 70 }}>Qté</th>
-                <th style={{ width: 120 }}>PU HT</th>
-                <th style={{ width: 90 }}>TVA</th>
-                <th style={{ width: 120, textAlign: "right" }}>Total HT</th>
+                <th>{documentClientTexts.labels.designation}</th>
+                <th style={{ width: 70 }}>{documentClientTexts.labels.quantity}</th>
+                <th style={{ width: 120 }}>{documentClientTexts.labels.unitPriceHT}</th>
+                <th style={{ width: 90 }}>{documentClientTexts.labels.totalVAT}</th>
+                <th style={{ width: 120, textAlign: "right" }}>{documentClientTexts.labels.totalHT}</th>
                 <th
                   className={styles.printHiddenCell}
                   style={{ width: 0 }}
@@ -3586,7 +3626,7 @@ export default function NewFacturePage() {
                       }}
                     />
                     <span className={styles.printOnly}>
-                      {formatEuro(l.unitPrice)}
+                      {formatDocumentMoney(l.unitPrice)}
                     </span>
                   </td>
                   <td>
@@ -3620,7 +3660,7 @@ export default function NewFacturePage() {
                       fontVariantNumeric: "tabular-nums",
                     }}
                   >
-                    {formatEuro(calcLineHT(l))}
+                    {formatDocumentMoney(calcLineHT(l))}
                   </td>
                   <td
                     className={styles.printHiddenCell}
@@ -3679,54 +3719,54 @@ export default function NewFacturePage() {
             >
             <div style={{ fontSize: 12, color: "#444", lineHeight: 1.4 }}>
               <div style={{ marginBottom: 8 }}>
-                <strong>Paiement :</strong> {paymentLabel}
+                <strong>{documentClientTexts.labels.payment} :</strong> {paymentLabel}
                 {paymentDetails ? <> — {paymentDetails}</> : null}
               </div>
               {operationCategory ? (
                 <div style={{ marginBottom: 6 }}>
-                  <strong>Catégorie :</strong> {operationCategoryLabel}
+                  <strong>{documentClientTexts.labels.category} :</strong> {operationCategoryLabel}
                 </div>
               ) : null}
               {serviceDateMode === "single" && serviceDate ? (
                 <div style={{ marginBottom: 6 }}>
-                  <strong>Date de prestation / livraison :</strong>{" "}
-                  {new Date(serviceDate).toLocaleDateString("fr-FR")}
+                  <strong>{documentClientTexts.labels.serviceDateDelivery} :</strong>{" "}
+                  {formatDocumentDate(serviceDate)}
                 </div>
               ) : null}
               {serviceDateMode === "period" &&
               (servicePeriodStart || servicePeriodEnd) ? (
                 <div style={{ marginBottom: 6 }}>
-                  <strong>Période de prestation :</strong>{" "}
+                  <strong>{documentClientTexts.labels.servicePeriod} :</strong>{" "}
                   {servicePeriodStart
-                    ? new Date(servicePeriodStart).toLocaleDateString("fr-FR")
+                    ? formatDocumentDate(servicePeriodStart)
                     : "—"}
                   {servicePeriodEnd
-                    ? ` → ${new Date(servicePeriodEnd).toLocaleDateString("fr-FR")}`
+                    ? ` → ${formatDocumentDate(servicePeriodEnd)}`
                     : ""}
                 </div>
               ) : null}
               {purchaseOrderReference ? (
                 <div style={{ marginBottom: 6 }}>
-                  <strong>Référence commande / PO :</strong>{" "}
+                  <strong>{documentClientTexts.labels.purchaseOrderReference} :</strong>{" "}
                   {purchaseOrderReference}
                 </div>
               ) : null}
               {depositKind && depositValue ? (
                 <div style={{ marginBottom: 6 }}>
-                  <strong>Acompte :</strong>{" "}
+                  <strong>{documentClientTexts.labels.deposit} :</strong>{" "}
                   {depositKind === "amount"
-                    ? `${depositValue} €`
+                    ? formatDocumentMoney(Number(depositValue) || 0)
                     : `${depositValue} %`}
                 </div>
               ) : null}
               {vatOnDebits ? (
                 <div style={{ marginBottom: 6 }}>
-                  <strong>TVA sur les débits</strong>
+                  <strong>{documentClientTexts.labels.vatOnDebits}</strong>
                 </div>
               ) : null}
               {lateFeeRate ? (
                 <div style={{ marginBottom: 6 }}>
-                  <strong>Pénalités de retard :</strong> {lateFeeRate} %
+                  <strong>{documentClientTexts.labels.lateFees} :</strong> {lateFeeRate} %
                 </div>
               ) : null}
               {fixedRecoveryFee40 ? (
@@ -3737,7 +3777,7 @@ export default function NewFacturePage() {
               ) : null}
               {vatDispense ? (
                 <div>
-                  <strong>TVA non applicable</strong> — Article 293 B du CGI.
+                  <strong>{documentClientTexts.labels.vatNotApplicable}</strong> — Article 293 B du CGI.
                 </div>
               ) : null}
               {notes ? <div style={{ marginTop: 8 }}>{notes}</div> : null}
@@ -3828,8 +3868,8 @@ export default function NewFacturePage() {
                   marginBottom: 6,
                 }}
               >
-                <span>Total HT</span>
-                <strong>{formatEuro(totals.totalHT)}</strong>
+                <span>{documentClientTexts.labels.totalHT}</span>
+                <strong>{formatDocumentMoney(totals.totalHT)}</strong>
               </div>
               <div
                 style={{
@@ -3838,8 +3878,8 @@ export default function NewFacturePage() {
                   marginBottom: 6,
                 }}
               >
-                <span>TVA</span>
-                <strong>{formatEuro(totals.totalTVA)}</strong>
+                <span>{documentClientTexts.labels.totalVAT}</span>
+                <strong>{formatDocumentMoney(totals.totalTVA)}</strong>
               </div>
               <div
                 className={styles.previewTotalsMain}
@@ -3850,8 +3890,8 @@ export default function NewFacturePage() {
                   fontSize: 18,
                 }}
               >
-                <span>Total TTC</span>
-                <strong>{formatEuro(totals.totalTTC)}</strong>
+                <span>{documentClientTexts.labels.totalTTC}</span>
+                <strong>{formatDocumentMoney(totals.totalTTC)}</strong>
               </div>
               {totals.discountTTC > 0 ? (
                 <div
@@ -3861,8 +3901,8 @@ export default function NewFacturePage() {
                     marginTop: 8,
                   }}
                 >
-                  <span>Remise</span>
-                  <strong>- {formatEuro(totals.discountTTC)}</strong>
+                  <span>{documentClientTexts.labels.discount}</span>
+                  <strong>- {formatDocumentMoney(totals.discountTTC)}</strong>
                 </div>
               ) : null}
               {discountDetails && totals.discountTTC > 0 ? (
@@ -3880,12 +3920,12 @@ export default function NewFacturePage() {
                     fontSize: 18,
                   }}
                 >
-                  <span>Total à payer</span>
-                  <strong>{formatEuro(totals.totalDue)}</strong>
+                  <span>{documentClientTexts.labels.totalDue}</span>
+                  <strong>{formatDocumentMoney(totals.totalDue)}</strong>
                 </div>
               ) : null}
               <div style={{ marginTop: 10, fontSize: 12, color: "#444" }}>
-                <strong>Statut :</strong> {status}
+                <strong>{documentClientTexts.labels.status} :</strong> {documentStatusLabel}
               </div>
             </div>
             </div>
@@ -3904,18 +3944,18 @@ export default function NewFacturePage() {
                         <div className={styles.title}>{documentTitle}</div>
                         <div>{number || "—"}</div>
                         <div style={{ marginTop: 6, color: "#444" }}>
-                          Date : {invoiceDate ? new Date(invoiceDate).toLocaleDateString("fr-FR") : "—"}
-                          {dueDate ? <> · Échéance : {new Date(dueDate).toLocaleDateString("fr-FR")}</> : null}
+                          {documentClientTexts.labels.date} : {invoiceDate ? formatDocumentDate(invoiceDate) : "—"}
+                          {dueDate ? <> · {documentClientTexts.labels.dueDate} : {formatDocumentDate(dueDate)}</> : null}
                         </div>
                         {serviceDateMode === "single" && serviceDate ? (
                           <div style={{ marginTop: 4, color: "#444" }}>
-                            Prestation / livraison : {new Date(serviceDate).toLocaleDateString("fr-FR")}
+                            {documentClientTexts.labels.serviceDelivery} : {formatDocumentDate(serviceDate)}
                           </div>
                         ) : null}
                         {serviceDateMode === "period" && (servicePeriodStart || servicePeriodEnd) ? (
                           <div style={{ marginTop: 4, color: "#444" }}>
-                            Période : {servicePeriodStart ? new Date(servicePeriodStart).toLocaleDateString("fr-FR") : "—"}
-                            {servicePeriodEnd ? ` → ${new Date(servicePeriodEnd).toLocaleDateString("fr-FR")}` : ""}
+                            {documentClientTexts.labels.period} : {servicePeriodStart ? formatDocumentDate(servicePeriodStart) : "—"}
+                            {servicePeriodEnd ? ` → ${formatDocumentDate(servicePeriodEnd)}` : ""}
                           </div>
                         ) : null}
                       </div>
@@ -3928,44 +3968,44 @@ export default function NewFacturePage() {
 
                     <div className={styles.previewParties}>
                       <div className={styles.previewPartyCard}>
-                        <div className={styles.previewPartyTitle}>Prestataire</div>
+                        <div className={styles.previewPartyTitle}>{documentClientTexts.labels.provider}</div>
                         <div style={{ fontWeight: 600 }}>{providerData.company_legal_name ?? "—"}</div>
                         <div>{providerData.hq_address ?? ""}</div>
                         <div>{providerData.hq_zip ?? ""} {providerData.hq_city ?? ""}</div>
                         <div style={{ marginTop: 6, fontSize: 13, color: "#444" }}>
-                          {providerData?.phone ? <div>Tél : {providerData.phone}</div> : null}
+                          {providerData?.phone ? <div>{documentClientTexts.labels.phone} : {providerData.phone}</div> : null}
                           {providerData?.contact_email ? <div>Email : {providerData.contact_email}</div> : null}
                           {providerData?.siren ? <div>SIREN : {providerData.siren}</div> : null}
-                          {providerData?.vat_number ? <div>TVA : {providerData.vat_number}</div> : null}
+                          {providerData?.vat_number ? <div>{documentClientTexts.labels.vat} : {providerData.vat_number}</div> : null}
                         </div>
                       </div>
 
                       <div className={styles.previewPartyCard}>
-                        <div className={styles.previewPartyTitle}>Client</div>
+                        <div className={styles.previewPartyTitle}>{documentClientTexts.labels.client}</div>
                         <div style={{ fontWeight: 600 }}>{clientName || "—"}</div>
                         {clientSiren ? <div>SIREN : {clientSiren}</div> : null}
-                        {clientVatNumber ? <div>TVA : {clientVatNumber}</div> : null}
+                        {clientVatNumber ? <div>{documentClientTexts.labels.vat} : {clientVatNumber}</div> : null}
                         <div>{billingFullAddress}</div>
                         {!sameAddresses && deliveryAddress ? (
-                          <div style={{ marginTop: 6 }}><strong>Adresse de livraison :</strong> {deliveryFullAddress}</div>
+                          <div style={{ marginTop: 6 }}><strong>{documentClientTexts.labels.deliveryAddress} :</strong> {deliveryFullAddress}</div>
                         ) : null}
                         <div style={{ fontSize: 13, color: "#444", marginTop: 6 }}>{clientEmail || ""}</div>
                       </div>
                     </div>
                   </>
                 ) : page.lines.length ? (
-                  <div className={styles.documentPrintContinuation}>Suite des prestations</div>
+                  <div className={styles.documentPrintContinuation}>{documentClientTexts.labels.continuation}</div>
                 ) : null}
 
                 {page.lines.length ? (
                   <table className={styles.table}>
                     <thead>
                       <tr>
-                        <th>Désignation</th>
-                        <th style={{ width: 70 }}>Qté</th>
-                        <th style={{ width: 120 }}>PU HT</th>
-                        <th style={{ width: 90 }}>TVA</th>
-                        <th style={{ width: 120, textAlign: "right" }}>Total HT</th>
+                        <th>{documentClientTexts.labels.designation}</th>
+                        <th style={{ width: 70 }}>{documentClientTexts.labels.quantity}</th>
+                        <th style={{ width: 120 }}>{documentClientTexts.labels.unitPriceHT}</th>
+                        <th style={{ width: 90 }}>{documentClientTexts.labels.totalVAT}</th>
+                        <th style={{ width: 120, textAlign: "right" }}>{documentClientTexts.labels.totalHT}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -3973,9 +4013,9 @@ export default function NewFacturePage() {
                         <tr key={`${pageIndex}-${l.id}`}>
                           <td>{l.label || "—"}</td>
                           <td>{l.qty}</td>
-                          <td>{formatEuro(l.unitPrice)}</td>
+                          <td>{formatDocumentMoney(l.unitPrice)}</td>
                           <td>{vatDispense ? 0 : l.vatRate}%</td>
-                          <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{formatEuro(calcLineHT(l))}</td>
+                          <td style={{ textAlign: "right", fontVariantNumeric: "tabular-nums" }}>{formatDocumentMoney(calcLineHT(l))}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -3986,27 +4026,27 @@ export default function NewFacturePage() {
                   <div className={styles.documentPrintFooter}>
                     <div className={styles.previewBottomGrid}>
                       <div style={{ fontSize: 12, color: "#444", lineHeight: 1.4 }}>
-                        <div style={{ marginBottom: 8 }}><strong>Paiement :</strong> {paymentLabel}{paymentDetails ? <> — {paymentDetails}</> : null}</div>
-                        {operationCategory ? <div style={{ marginBottom: 6 }}><strong>Catégorie :</strong> {operationCategoryLabel}</div> : null}
-                        {serviceDateMode === "single" && serviceDate ? <div style={{ marginBottom: 6 }}><strong>Date de prestation / livraison :</strong> {new Date(serviceDate).toLocaleDateString("fr-FR")}</div> : null}
-                        {serviceDateMode === "period" && (servicePeriodStart || servicePeriodEnd) ? <div style={{ marginBottom: 6 }}><strong>Période de prestation :</strong> {servicePeriodStart ? new Date(servicePeriodStart).toLocaleDateString("fr-FR") : "—"}{servicePeriodEnd ? ` → ${new Date(servicePeriodEnd).toLocaleDateString("fr-FR")}` : ""}</div> : null}
-                        {purchaseOrderReference ? <div style={{ marginBottom: 6 }}><strong>Référence commande / PO :</strong> {purchaseOrderReference}</div> : null}
-                        {depositKind && depositValue ? <div style={{ marginBottom: 6 }}><strong>Acompte :</strong> {depositKind === "amount" ? `${depositValue} €` : `${depositValue} %`}</div> : null}
-                        {vatOnDebits ? <div style={{ marginBottom: 6 }}><strong>TVA sur les débits</strong></div> : null}
-                        {lateFeeRate ? <div style={{ marginBottom: 6 }}><strong>Pénalités de retard :</strong> {lateFeeRate} %</div> : null}
-                        {fixedRecoveryFee40 ? <div style={{ marginBottom: 6 }}>Indemnité forfaitaire de 40 € pour frais de recouvrement en cas de retard de paiement.</div> : null}
-                        {vatDispense ? <div><strong>TVA non applicable</strong> — Article 293 B du CGI.</div> : null}
+                        <div style={{ marginBottom: 8 }}><strong>{documentClientTexts.labels.payment} :</strong> {paymentLabel}{paymentDetails ? <> — {paymentDetails}</> : null}</div>
+                        {operationCategory ? <div style={{ marginBottom: 6 }}><strong>{documentClientTexts.labels.category} :</strong> {operationCategoryLabel}</div> : null}
+                        {serviceDateMode === "single" && serviceDate ? <div style={{ marginBottom: 6 }}><strong>{documentClientTexts.labels.serviceDateDelivery} :</strong> {formatDocumentDate(serviceDate)}</div> : null}
+                        {serviceDateMode === "period" && (servicePeriodStart || servicePeriodEnd) ? <div style={{ marginBottom: 6 }}><strong>{documentClientTexts.labels.servicePeriod} :</strong> {servicePeriodStart ? formatDocumentDate(servicePeriodStart) : "—"}{servicePeriodEnd ? ` → ${formatDocumentDate(servicePeriodEnd)}` : ""}</div> : null}
+                        {purchaseOrderReference ? <div style={{ marginBottom: 6 }}><strong>{documentClientTexts.labels.purchaseOrderReference} :</strong> {purchaseOrderReference}</div> : null}
+                        {depositKind && depositValue ? <div style={{ marginBottom: 6 }}><strong>{documentClientTexts.labels.deposit} :</strong> {depositKind === "amount" ? formatDocumentMoney(Number(depositValue) || 0) : `${depositValue} %`}</div> : null}
+                        {vatOnDebits ? <div style={{ marginBottom: 6 }}><strong>{documentClientTexts.labels.vatOnDebits}</strong></div> : null}
+                        {lateFeeRate ? <div style={{ marginBottom: 6 }}><strong>{documentClientTexts.labels.lateFees} :</strong> {lateFeeRate} %</div> : null}
+                        {fixedRecoveryFee40 ? <div style={{ marginBottom: 6 }}>{documentClientTexts.labels.recoveryFee40}</div> : null}
+                        {vatDispense ? <div><strong>{documentClientTexts.labels.vatNotApplicable}</strong> — Article 293 B du CGI.</div> : null}
                         {notes ? <div style={{ marginTop: 8 }}>{notes}</div> : null}
                         {invoiceMention ? <div style={{ marginTop: 8 }}>{invoiceMention}</div> : null}
                       </div>
                       <div className={styles.previewTotalsBox}>
-                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><span>Total HT</span><strong>{formatEuro(totals.totalHT)}</strong></div>
-                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><span>TVA</span><strong>{formatEuro(totals.totalTVA)}</strong></div>
-                        <div className={styles.previewTotalsMain} style={{ display: "flex", justifyContent: "space-between", marginTop: 10, fontSize: 18 }}><span>Total TTC</span><strong>{formatEuro(totals.totalTTC)}</strong></div>
-                        {totals.discountTTC > 0 ? <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}><span>Remise</span><strong>- {formatEuro(totals.discountTTC)}</strong></div> : null}
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><span>{documentClientTexts.labels.totalHT}</span><strong>{formatDocumentMoney(totals.totalHT)}</strong></div>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}><span>{documentClientTexts.labels.totalVAT}</span><strong>{formatDocumentMoney(totals.totalTVA)}</strong></div>
+                        <div className={styles.previewTotalsMain} style={{ display: "flex", justifyContent: "space-between", marginTop: 10, fontSize: 18 }}><span>{documentClientTexts.labels.totalTTC}</span><strong>{formatDocumentMoney(totals.totalTTC)}</strong></div>
+                        {totals.discountTTC > 0 ? <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8 }}><span>{documentClientTexts.labels.discount}</span><strong>- {formatDocumentMoney(totals.discountTTC)}</strong></div> : null}
                         {discountDetails && totals.discountTTC > 0 ? <div style={{ fontSize: 12, color: "#444", marginTop: 4 }}>{discountDetails}</div> : null}
-                        {totals.discountTTC > 0 ? <div className={styles.previewTotalsMain} style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 18 }}><span>Total à payer</span><strong>{formatEuro(totals.totalDue)}</strong></div> : null}
-                        <div style={{ marginTop: 10, fontSize: 12, color: "#444" }}><strong>Statut :</strong> {status}</div>
+                        {totals.discountTTC > 0 ? <div className={styles.previewTotalsMain} style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 18 }}><span>{documentClientTexts.labels.totalDue}</span><strong>{formatDocumentMoney(totals.totalDue)}</strong></div> : null}
+                        <div style={{ marginTop: 10, fontSize: 12, color: "#444" }}><strong>{documentClientTexts.labels.status} :</strong> {documentStatusLabel}</div>
                       </div>
                     </div>
                   </div>

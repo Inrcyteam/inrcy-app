@@ -7,7 +7,6 @@ import { getInrBadgeTexts, normalizeInrBadgeLanguage, type InrBadgeLanguageCode 
 
 type Props = {
   slug: string;
-  company: string;
   language?: InrBadgeLanguageCode;
 };
 
@@ -33,7 +32,7 @@ function trim(value: string) {
   return value.trim();
 }
 
-export default function BadgeLeadButton({ slug, company, language }: Props) {
+export default function BadgeLeadButton({ slug, language }: Props) {
   const badgeText = getInrBadgeTexts(normalizeInrBadgeLanguage(language));
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<FormState>(initialForm);

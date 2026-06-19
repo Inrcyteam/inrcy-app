@@ -5,6 +5,13 @@ import { optionalEnv } from "@/lib/env";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendTxMail } from "@/lib/txMailer";
 import { sendMailFromIntegration } from "@/lib/inrsend/sendMailFromIntegration";
+import {
+  buildClientExchangePreferences,
+  formatClientDateOnly,
+  formatClientTimeOnly,
+  getCalendarClientTexts,
+  type ClientExchangePreferences,
+} from "@/lib/clientCommunication";
 
 const AGENDA_TIMEZONE = "Europe/Paris";
 
@@ -168,10 +175,23 @@ async function getProMailDetails(userId: string): Promise<ProMailDetails> {
   };
 }
 
-function buildRejectionMail(args: { row: AppointmentRequestRow; meta: unknown; pro: ProMailDetails }) {
-  const { row, meta, pro } = args;
+async function getClientExchangePreferences(userId: string): Promise<ClientExchangePreferences> {
+  const { data } = await supabaseAdmin
+    .from("business_profiles")
+    .select("client_language, timezone, date_format, currency, updated_at")
+    .eq("user_id", userId)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  return buildClientExchangePreferences(data);
+}
+
+function buildRejectionMail(args: { row: AppointmentRequestRow; meta: unknown; pro: ProMailDetails; clientPreferences: ClientExchangePreferences }) {
+  const { row, meta, pro, clientPreferences } = args;
+  const texts = getCalendarClientTexts(clientPreferences.clientLanguage);
   const contact = getContactDetailsFromMeta(meta);
-  const companyName = cleanString(pro.companyName) || "Votre professionnel";
+  const companyName = cleanString(pro.companyName) || texts.generic.professional;
   const proName = buildDisplayName({ firstName: pro.firstName, companyName: pro.companyName, fallback: companyName });
   const recipientName = buildDisplayName({
     firstName: contact.firstName,
@@ -180,28 +200,28 @@ function buildRejectionMail(args: { row: AppointmentRequestRow; meta: unknown; p
     companyName: contact.companyName,
     fallback: "",
   });
-  const greeting = recipientName ? `Bonjour ${recipientName},` : "Bonjour,";
-  const dateLabel = fmtDateOnly(row.start_at);
-  const startTime = fmtTimeOnly(row.start_at);
-  const endTime = fmtTimeOnly(row.end_at);
-  const eventTitle = cleanString(row.title).replace(/^RDV iNr'Badge\s*-\s*/i, "") || "rendez-vous";
+  const greeting = texts.generic.greeting(recipientName);
+  const dateLabel = formatClientDateOnly(row.start_at, clientPreferences);
+  const startTime = formatClientTimeOnly(row.start_at, clientPreferences);
+  const endTime = formatClientTimeOnly(row.end_at, clientPreferences);
+  const eventTitle = cleanString(row.title).replace(/^RDV iNr'Badge\s*-\s*/i, "") || texts.generic.appointment;
   const phonePro = cleanString(pro.phone);
   const proEmail = cleanString(pro.email);
   const notes = cleanString(contact.notes || row.description);
 
-  const subject = subjectSafe(`Votre demande de rendez-vous n'a pas pu être confirmée - ${companyName}`) || "Demande de rendez-vous non confirmée";
+  const subject = subjectSafe(texts.rejection.subject(companyName)) || texts.rejection.subject(companyName);
   const rows = [
-    ["Date demandée", dateLabel],
-    ["Horaire demandé", `${startTime}${endTime !== "-" ? ` → ${endTime}` : ""}`],
-    ["Motif", eventTitle],
-    notes ? ["Votre message", notes.replace(/^Demande depuis iNr'Badge\s*/i, "").trim()] : null,
-    ["Professionnel", proName],
-    phonePro ? ["Téléphone", phonePro] : null,
-    proEmail ? ["Email", proEmail] : null,
+    [texts.labels.requestedDate, dateLabel],
+    [texts.labels.requestedTime, `${startTime}${endTime !== "-" ? ` → ${endTime}` : ""}`],
+    [texts.labels.reason, eventTitle],
+    notes ? [texts.labels.yourMessage, notes.replace(/^Demande depuis iNr'Badge\s*/i, "").trim()] : null,
+    [texts.labels.professional, proName],
+    phonePro ? [texts.labels.phone, phonePro] : null,
+    proEmail ? [texts.labels.email, proEmail] : null,
   ].filter(Boolean) as string[][];
 
-  const intro = `Votre demande de rendez-vous avec ${companyName} n'a pas pu être confirmée sur ce créneau.`;
-  const action = "Vous pouvez choisir un autre créneau depuis l’iNr’Badge ou contacter directement le professionnel.";
+  const intro = texts.rejection.intro(companyName);
+  const action = texts.rejection.action;
   const htmlRows = rows.map(([label, value]) => `
     <tr>
       <td style="padding:0 0 14px 0;">
@@ -212,7 +232,7 @@ function buildRejectionMail(args: { row: AppointmentRequestRow; meta: unknown; p
     </tr>`).join("");
 
   const html = `<!doctype html>
-<html lang="fr">
+<html lang="${texts.htmlLang}">
   <head>
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -228,9 +248,9 @@ function buildRejectionMail(args: { row: AppointmentRequestRow; meta: unknown; p
                 <div style="padding:24px 24px 18px 24px;">
                   <div style="font-family:Arial,Helvetica,sans-serif;font-size:13px;font-weight:800;letter-spacing:.04em;color:#93c5fd;">iNr’Calendar</div>
                   <div style="height:18px;line-height:18px;font-size:0;">&nbsp;</div>
-                  <div style="display:inline-block;padding:8px 12px;border-radius:999px;background:#3a1b3f;color:#fce7f3;font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:700;">DEMANDE NON CONFIRMÉE</div>
+                  <div style="display:inline-block;padding:8px 12px;border-radius:999px;background:#3a1b3f;color:#fce7f3;font-family:Arial,Helvetica,sans-serif;font-size:12px;font-weight:700;">${escapeHtml(texts.rejection.status)}</div>
                   <div style="height:16px;line-height:16px;font-size:0;">&nbsp;</div>
-                  <div style="font-family:Arial,Helvetica,sans-serif;font-size:30px;line-height:1.15;color:#ffffff;font-weight:900;">Votre demande n’a pas pu être confirmée</div>
+                  <div style="font-family:Arial,Helvetica,sans-serif;font-size:30px;line-height:1.15;color:#ffffff;font-weight:900;">${escapeHtml(texts.rejection.title)}</div>
                   <div style="height:10px;line-height:10px;font-size:0;">&nbsp;</div>
                   <div style="font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.75;color:#eef4ff;">${escapeHtml(greeting)}<br />${escapeHtml(intro)}<br />${escapeHtml(action)}</div>
                 </div>
@@ -238,7 +258,7 @@ function buildRejectionMail(args: { row: AppointmentRequestRow; meta: unknown; p
                   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#0d1630" style="width:100%;border-radius:22px;background:#0d1630;border:1px solid rgba(148,163,184,.14);">
                     <tr>
                       <td style="padding:22px 22px 8px 22px;">
-                        <div style="font-family:Arial,Helvetica,sans-serif;font-size:18px;color:#ffffff;font-weight:800;">Détails de la demande</div>
+                        <div style="font-family:Arial,Helvetica,sans-serif;font-size:18px;color:#ffffff;font-weight:800;">${escapeHtml(texts.rejection.detailsTitle)}</div>
                         <div style="height:14px;line-height:14px;font-size:0;">&nbsp;</div>
                         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">${htmlRows}</table>
                       </td>
@@ -246,7 +266,7 @@ function buildRejectionMail(args: { row: AppointmentRequestRow; meta: unknown; p
                   </table>
                 </div>
                 <div style="padding:0 24px 24px 24px;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.75;color:#97a6c5;">
-                  Mail automatique envoyé par iNr’Calendar.
+                  ${escapeHtml(texts.generic.automaticMail)}
                 </div>
               </td>
             </tr>
@@ -260,13 +280,13 @@ function buildRejectionMail(args: { row: AppointmentRequestRow; meta: unknown; p
   const text = [
     greeting,
     "",
-    "Votre demande n'a pas pu être confirmée",
+    texts.rejection.textTitle,
     intro,
     action,
     "",
     ...rows.map(([label, value]) => `${label} : ${value}`),
     "",
-    "Mail automatique envoyé par iNr’Calendar.",
+    texts.generic.automaticMail,
   ].join("\n");
 
   return { to: contact.email, subject, text, html };
@@ -274,7 +294,8 @@ function buildRejectionMail(args: { row: AppointmentRequestRow; meta: unknown; p
 
 async function sendAppointmentRejectionEmail(args: { userId: string; row: AppointmentRequestRow; meta: unknown }) {
   const pro = await getProMailDetails(args.userId);
-  const mail = buildRejectionMail({ row: args.row, meta: args.meta, pro });
+  const clientPreferences = await getClientExchangePreferences(args.userId);
+  const mail = buildRejectionMail({ row: args.row, meta: args.meta, pro, clientPreferences });
   if (!mail.to) return false;
 
   const selectedMailAccountId = (await getCalendarSelectedMailAccountId(args.userId)) || getSelectedMailAccountIdFromMeta(args.meta);

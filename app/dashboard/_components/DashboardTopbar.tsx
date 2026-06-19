@@ -11,6 +11,7 @@ import type { NotificationItem } from "../dashboard.types";
 type DashboardPanelName =
   | "contact"
   | "profil"
+  | "preferences"
   | "inrbadge"
   | "compte"
   | "activite"
@@ -430,6 +431,19 @@ export default function DashboardTopbar({
                 }}
               >
                 Mon activité
+              </button>
+
+
+              <button
+                className={styles.mobileMenuItem}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  openPanel("preferences");
+                }}
+              >
+                Préférences générales
               </button>
 
               <button

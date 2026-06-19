@@ -7,6 +7,8 @@ import { getInrBadgeTexts, normalizeInrBadgeLanguage } from "@/lib/inrBadgeLangu
 import RdvBookingClient from "./RdvBookingClient";
 
 export const dynamic = "force-dynamic";
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 function getBadgeManifestUrl(slug: string) {
   return `/badge/${encodeURIComponent(slug)}/manifest.webmanifest`;
@@ -37,13 +39,23 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   let title = "Prendre RDV - iNr'Badge";
 
   if (userId) {
-    const { data } = await supabaseAdmin
-      .from("pro_tools_configs")
-      .select("settings")
-      .eq("user_id", userId)
-      .maybeSingle();
-    const rootSettings = safeObj((data as { settings?: unknown } | null)?.settings);
-    title = getInrBadgeTexts(normalizeInrBadgeLanguage(rootSettings.inrBadgeLanguage)).rdvMetaTitle;
+    const [businessRes, toolsRes] = await Promise.all([
+      supabaseAdmin
+        .from("business_profiles")
+        .select("client_language")
+        .eq("user_id", userId)
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabaseAdmin
+        .from("pro_tools_configs")
+        .select("settings")
+        .eq("user_id", userId)
+        .maybeSingle(),
+    ]);
+    const business = (businessRes.data ?? {}) as Record<string, unknown>;
+    const rootSettings = safeObj((toolsRes.data as { settings?: unknown } | null)?.settings);
+    title = getInrBadgeTexts(normalizeInrBadgeLanguage(business.client_language || rootSettings.inrBadgeLanguage)).rdvMetaTitle;
   }
 
   return {
@@ -63,7 +75,7 @@ export default async function InrBadgeRdvPage({ params }: { params: Promise<{ sl
   const userId = extractInrBadgeUserIdFromSlug(slug);
   if (!userId) notFound();
 
-  const [profileRes, toolsRes] = await Promise.all([
+  const [profileRes, toolsRes, businessRes] = await Promise.all([
     supabaseAdmin
       .from("profiles")
       .select("user_id")
@@ -74,6 +86,13 @@ export default async function InrBadgeRdvPage({ params }: { params: Promise<{ sl
       .select("settings")
       .eq("user_id", userId)
       .maybeSingle(),
+    supabaseAdmin
+      .from("business_profiles")
+      .select("client_language")
+      .eq("user_id", userId)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle(),
   ]);
 
   if (profileRes.error || !profileRes.data) notFound();
@@ -81,7 +100,8 @@ export default async function InrBadgeRdvPage({ params }: { params: Promise<{ sl
   const rootSettings = safeObj((toolsRes.data as { settings?: unknown } | null)?.settings);
   const shareSettings = normalizeInrBadgeShareSettings(rootSettings.inrBadgeShareSettings);
   const appointmentSettings = resolveInrBadgeAppointmentSettings(rootSettings);
-  const badgeLanguage = normalizeInrBadgeLanguage(rootSettings.inrBadgeLanguage);
+  const business = (businessRes.data ?? {}) as Record<string, unknown>;
+  const badgeLanguage = normalizeInrBadgeLanguage(business.client_language || rootSettings.inrBadgeLanguage);
   if (!shareSettings.appointment) notFound();
 
   const now = new Date();

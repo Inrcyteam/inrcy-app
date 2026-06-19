@@ -6,6 +6,7 @@ import styles from "../dashboard.module.css";
 type OpenPanelName =
   | "contact"
   | "profil"
+  | "preferences"
   | "compte"
   | "activite"
   | "ia"
@@ -188,6 +189,14 @@ export default function UserMenu(props: {
             onClick={() => closeAndOpen("activite")}
           >
             Mon activité
+          </button>
+          <button
+            type="button"
+            className={styles.userMenuItem}
+            role="menuitem"
+            onClick={() => closeAndOpen("preferences")}
+          >
+            Préférences générales
           </button>
           <button
             type="button"
