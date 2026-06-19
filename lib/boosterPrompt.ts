@@ -3,7 +3,11 @@ import {
   decodeBusinessSector,
   getActivitySectorLabel,
 } from "@/lib/activitySectors";
-import { buildAiWritingProfilePromptSection, buildAiWritingProfileRules } from "@/lib/aiWritingProfile";
+import {
+  buildAiLanguageInstruction,
+  buildAiWritingProfilePromptSection,
+  buildAiWritingProfileRules,
+} from "@/lib/aiWritingProfile";
 
 export type BoosterChannels =
   | "inrcy_site"
@@ -441,7 +445,7 @@ Règles d'emojis par Configuration IA et par canal :
 - Les emojis doivent rester utiles, naturels et lisibles. Ne jamais surcharger artificiellement. Si "Beaucoup" est configuré pour Facebook, Instagram ou TikTok, la présence d'emojis doit se voir réellement, sans casser le sérieux de l'entreprise.
 
 Contraintes :
-- Français uniquement.
+- Respecter strictement la langue de sortie indiquée dans la requête utilisateur / Configuration IA. Si aucune langue n'est indiquée, écrire en français.
 - Ton pro, humain, local, simple et crédible.
 - Les textes doivent rester naturels et conversationnels.
 - Pas de jargon marketing inutile.
@@ -518,6 +522,7 @@ export function boosterUserPrompt(args: {
   const activityDescription = cleanText(getActivityDescription(business), 420);
   const aiWritingProfile = buildAiWritingProfilePromptSection(business);
   const aiWritingProfileRules = buildAiWritingProfileRules();
+  const aiLanguageInstruction = buildAiLanguageInstruction(business);
   const customerTypes = labelsFromArray(
     business.customer_typologies,
     CUSTOMER_TYPE_LABELS,
@@ -591,6 +596,9 @@ ${siteSeoHints || "- Aucune référence SEO locale précise renseignée."}
 Configuration IA enregistrée :
 ${aiConfiguration}
 
+Instruction de langue prioritaire :
+${aiLanguageInstruction}
+
 Règles de signature IA :
 ${aiWritingProfileRules}
 
@@ -633,6 +641,7 @@ Consignes supplémentaires :
 - Respecter la longueur favorite configurée sans casser les minimums utiles par canal. Les fourchettes mini/maxi ci-dessus priment sur la tentation de faire trop court quand plusieurs canaux sont demandés.
 - Respecter le tutoiement/vouvoiement configuré, sans mélanger les deux.
 - Respecter le pronom configuré : “Je”, “Nous”, “Vous” ou “Neutre”. “Vous” signifie que le texte s’adresse directement au lecteur, avec la relation configurée.
+- Respecter la langue de génération configurée pour tous les champs générés : title, content, cta et hashtags si des hashtags textuels sont générés. La langue de l'intention libre ne doit jamais prendre le dessus sur cette langue de sortie.
 - Respecter le CTA préféré lorsque le canal le permet, sauf Google Business qui doit rester neutre.
 - Varier la structure : ne pas utiliser de liste à chaque génération. Une liste est possible uniquement si elle améliore la clarté, la lisibilité, le SEO ou l'impact commercial.
 - Pour Site iNrCy / Site web : liste SEO propre possible sans emoji pour prestations, étapes, avantages, zones ou FAQ courte.

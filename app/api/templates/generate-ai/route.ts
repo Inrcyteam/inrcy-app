@@ -9,7 +9,7 @@ import { normalizeMailSubject } from "@/lib/mailEncoding";
 import { stripTemplateSignatureBlock } from "@/lib/mailTemplateCleanup";
 import { getJobLabel } from "@/lib/activityCatalog";
 import { decodeBusinessSector, getActivitySectorLabel } from "@/lib/activitySectors";
-import { buildAiWritingProfilePromptSection, buildAiWritingProfileRules } from "@/lib/aiWritingProfile";
+import { buildAiLanguageInstruction, buildAiWritingProfilePromptSection, buildAiWritingProfileRules } from "@/lib/aiWritingProfile";
 import { parseMailAttachmentRefs } from "@/lib/mailAttachmentRefs";
 import { buildMailAttachmentAiPromptSection } from "@/lib/aiAttachmentContext";
 import { computeTemplateAiCredits, consumeAiCredits, isAdminUserForAi } from "@/lib/aiUsageQuota";
@@ -127,9 +127,10 @@ export async function POST(req: Request) {
 
     const aiConfig = buildAiWritingProfilePromptSection(business);
     const aiRules = buildAiWritingProfileRules();
+    const aiLanguageInstruction = buildAiLanguageInstruction(business);
     const attachmentContext = await buildMailAttachmentAiPromptSection(supabase, attachmentRefs, { userId });
 
-    const system = `Tu es le rédacteur IA d'iNrCy pour des emails professionnels français. Tu réécris des modèles Propulser/Fidéliser.
+    const system = `Tu es le rédacteur IA d'iNrCy pour des emails professionnels. Tu réécris des modèles Propulser/Fidéliser.
 Réponds uniquement en JSON valide : {"subject":"...","body_text":"..."}.
 Objectif : produire un email original, naturel, utile, moins générique, sans changer la mission du modèle.
 Règles strictes :
@@ -138,9 +139,11 @@ Règles strictes :
 - Si une pièce jointe est fournie, s’appuyer sur son contenu lisible pour rendre l’email plus précis.
 - Ne jamais inventer le contenu d’une pièce jointe : si le texte n’est pas lisible, utiliser seulement le nom/type du fichier et rester prudent.
 - Ne pas copier mot pour mot le modèle : reformuler vraiment l'objet et le message.
+- Respecter strictement l'instruction de langue prioritaire : la langue du modèle, de la demande ou des pièces jointes ne doit pas changer la langue finale demandée.
 - Ne pas changer la finalité : avis, recommandation, offre, information, suivi ou enquête selon le modèle.
 - Garder un email prêt à envoyer : salutation, message clair, CTA, formule de fin.
 - Ne pas ajouter de markdown lourd ni de HTML. Texte brut uniquement.
+${aiLanguageInstruction}
 ${aiRules}`;
 
     const input = `Module : ${templateModule}
@@ -159,6 +162,9 @@ Forces : ${strengths.length ? strengths.join(", ") : "Non précisées"}
 
 Configuration IA :
 ${aiConfig || "- Non précisée"}
+
+Instruction de langue prioritaire :
+${aiLanguageInstruction}
 
 ${attachmentContext ? `Contexte des pièces jointes :\n${attachmentContext}\n` : "Aucune pièce jointe à analyser."}
 

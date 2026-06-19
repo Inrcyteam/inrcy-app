@@ -83,8 +83,8 @@ async function transcribeMedia(file: File, options?: { source?: "audio" | "video
   formData.append(
     "prompt",
     options?.source === "video"
-      ? "Audio extrait d’une vidéo fournie par un professionnel français pour préparer une publication iNrCy. Transcrire uniquement les paroles utiles. Conserver les noms propres, villes, métiers, prestations et informations commerciales."
-      : "Vocal court dicté par un professionnel français pour préparer une publication iNrCy. Conserver les noms propres, villes, métiers, prestations et informations commerciales.",
+      ? "Audio extrait d’une vidéo fournie par un professionnel pour préparer une publication iNrCy. Transcrire uniquement les paroles utiles. Conserver les noms propres, villes, métiers, prestations et informations commerciales."
+      : "Vocal court dicté par un professionnel pour préparer une publication iNrCy. Conserver les noms propres, villes, métiers, prestations et informations commerciales.",
   );
 
   const response = await fetchWithRetry("https://api.openai.com/v1/audio/transcriptions", {
@@ -114,8 +114,9 @@ async function correctTranscript(rawTranscript: string) {
     const result = await openaiGenerateJSON<CorrectionResponse>({
       model: process.env.OPENAI_TRANSCRIPT_CLEANUP_MODEL || process.env.OPENAI_MODEL || "gpt-4o-mini",
       system:
-        "Tu corriges une transcription en français pour une publication professionnelle. Réponds uniquement en JSON avec la clé text.",
+        "Tu corriges une transcription dans sa langue d'origine pour une publication professionnelle. Réponds uniquement en JSON avec la clé text.",
       input: `Corrige uniquement les fautes d'orthographe, la ponctuation, les accords et les majuscules du texte ci-dessous.
+Ne traduis pas le texte : conserve sa langue d'origine.
 Ne change pas le sens, n'invente rien, ne rajoute aucune information, ne transforme pas en publication complète.
 Garde un texte naturel, clair et exploitable comme contexte IA.
 

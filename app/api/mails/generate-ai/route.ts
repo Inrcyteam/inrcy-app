@@ -7,7 +7,7 @@ import { normalizeMailSubject } from "@/lib/mailEncoding";
 import { stripTemplateSignatureBlock } from "@/lib/mailTemplateCleanup";
 import { getJobLabel } from "@/lib/activityCatalog";
 import { decodeBusinessSector, getActivitySectorLabel } from "@/lib/activitySectors";
-import { buildAiWritingProfilePromptSection, buildAiWritingProfileRules } from "@/lib/aiWritingProfile";
+import { buildAiLanguageInstruction, buildAiWritingProfilePromptSection, buildAiWritingProfileRules } from "@/lib/aiWritingProfile";
 import { parseMailAttachmentRefs } from "@/lib/mailAttachmentRefs";
 import { buildMailAttachmentAiPromptSection } from "@/lib/aiAttachmentContext";
 import { computeMailAiCredits, consumeAiCredits, isAdminUserForAi } from "@/lib/aiUsageQuota";
@@ -105,6 +105,7 @@ export async function POST(req: Request) {
 
     const aiConfig = buildAiWritingProfilePromptSection(business);
     const aiRules = buildAiWritingProfileRules();
+    const aiLanguageInstruction = buildAiLanguageInstruction(business);
     const attachmentContext = await buildMailAttachmentAiPromptSection(supabase, attachmentRefs, {
       userId,
       maxFiles: 4,
@@ -113,7 +114,7 @@ export async function POST(req: Request) {
       maxCharsPerFile: 2200,
     });
 
-    const system = `Tu es le rédacteur IA d'iNrCy pour des emails professionnels français.
+    const system = `Tu es le rédacteur IA d'iNrCy pour des emails professionnels.
 Réponds uniquement en JSON valide : {"body_text":"..."}.
 Objectif : rédiger le corps d'un mail prêt à envoyer à partir de l'objet fourni.
 Règles strictes :
@@ -122,12 +123,14 @@ Règles strictes :
 - Ne jamais inventer d'avis, de prix, de délai, de certification, de promotion ou de résultat.
 - Ne pas inclure de signature complète : l'application ajoute déjà la signature automatique.
 - Garder un email naturel, utile, humain, clair et adapté à l'entreprise.
-- Respecter la Configuration IA du professionnel.
+- Respecter la Configuration IA du professionnel, dont la langue de génération.
+- Respecter strictement l'instruction de langue prioritaire : la langue de l'objet, du message actuel ou des pièces jointes ne doit pas changer la langue finale demandée.
 - Si un message existe déjà, tu peux t'en inspirer sans le copier.
 - Si des pièces jointes sont fournies, utiliser leurs informations uniquement si elles améliorent le message, sans les recopier mot pour mot.
 - Ne jamais inventer le contenu d'une pièce jointe non lisible : dans ce cas, tenir compte seulement de son nom et de son type.
 - Éviter les mots ou formes qui font spam : MAJUSCULES, promesses exagérées, urgence forcée, trop de points d'exclamation.
 - Ne pas ajouter de markdown lourd ni de HTML. Texte brut uniquement.
+${aiLanguageInstruction}
 ${aiRules}`;
 
     const input = `Objet du mail :
@@ -146,6 +149,9 @@ Forces : ${strengths.length ? strengths.join(", ") : "Non précisées"}
 
 Configuration IA :
 ${aiConfig || "- Non précisée"}
+
+Instruction de langue prioritaire :
+${aiLanguageInstruction}
 
 Contexte des pièces jointes, si présent :
 ${attachmentContext || "Aucune pièce jointe exploitable."}

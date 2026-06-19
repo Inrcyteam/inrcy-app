@@ -23,6 +23,7 @@ type AiConfigForm = {
   mainGoal: "visibility" | "contacts" | "reassure" | "offer";
   preferredAngle: "local" | "quality" | "price" | "speed" | "trust";
   preferredCta: BoosterPreferredCta;
+  language: "fr" | "en" | "es" | "it" | "de" | "nl" | "pt";
   likedExample: string;
   forbiddenStyle: string;
 };
@@ -42,6 +43,7 @@ const initialForm: AiConfigForm = {
   mainGoal: "contacts",
   preferredAngle: "trust",
   preferredCta: "devis",
+  language: "fr",
   likedExample: "",
   forbiddenStyle: "",
 };
@@ -121,6 +123,17 @@ const normalizePreferredAngle = (value: unknown): AiConfigForm["preferredAngle"]
   if (["price", "prix"].includes(raw)) return "price";
   if (["speed", "rapidite"].includes(raw)) return "speed";
   return "trust";
+};
+
+const normalizeLanguage = (value: unknown): AiConfigForm["language"] => {
+  const raw = String(value || "").trim().toLowerCase();
+  if (["en", "english", "anglais"].includes(raw)) return "en";
+  if (["es", "spanish", "espagnol"].includes(raw)) return "es";
+  if (["it", "italian", "italien"].includes(raw)) return "it";
+  if (["de", "german", "allemand"].includes(raw)) return "de";
+  if (["nl", "dutch", "neerlandais", "néerlandais"].includes(raw)) return "nl";
+  if (["pt", "portuguese", "portugais"].includes(raw)) return "pt";
+  return "fr";
 };
 
 export default function AiConfigurationContent({ mode = "drawer" }: Props) {
@@ -229,6 +242,7 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
             mainGoal: normalizeMainGoal(data?.ai_main_goal),
             preferredAngle: normalizePreferredAngle(data?.ai_preferred_angle),
             preferredCta: normalizeBoosterPreferredCta(data?.preferred_cta || initialForm.preferredCta),
+            language: normalizeLanguage(data?.ai_language),
             likedExample: String(data?.ai_liked_example || initialForm.likedExample).slice(0, 1200),
             forbiddenStyle: String(data?.ai_custom_instructions || initialForm.forbiddenStyle).slice(0, 700),
           };
@@ -246,6 +260,7 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
           mainGoal: normalizeMainGoal(local.mainGoal),
           preferredAngle: normalizePreferredAngle(local.preferredAngle),
           preferredCta: normalizeBoosterPreferredCta(local.preferredCta || initialForm.preferredCta),
+          language: normalizeLanguage(local.language),
           likedExample: String(local.likedExample || "").slice(0, 1200),
           forbiddenStyle: String(local.forbiddenStyle ?? local.customInstructions ?? "").slice(0, 700),
         };
@@ -296,6 +311,7 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
             ai_commercial_level: form.commercialLevel,
             ai_main_goal: form.mainGoal,
             ai_preferred_angle: form.preferredAngle,
+            ai_language: form.language,
             ai_liked_example: form.likedExample.trim(),
             ai_custom_instructions: form.forbiddenStyle.trim(),
             updated_at: new Date().toISOString(),
@@ -308,7 +324,7 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
       setSaved(true);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
-      if (/ai_commercial_level|ai_main_goal|ai_preferred_angle|ai_liked_example/i.test(message)) {
+      if (/ai_commercial_level|ai_main_goal|ai_preferred_angle|ai_liked_example|ai_language/i.test(message)) {
         setError("Il faut d’abord exécuter le SQL de mise à jour Configuration IA dans Supabase.");
       } else {
         setError(getSimpleFrenchErrorMessage(e, "Impossible d’enregistrer la configuration IA."));
@@ -401,6 +417,19 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
                     <option value="none" style={selectOption}>Aucun</option>
                     <option value="light" style={selectOption}>Léger</option>
                     <option value="dynamic" style={selectOption}>Beaucoup</option>
+                  </select>
+                </label>
+
+                <label style={label}>
+                  <span style={labelTitle}>Langue du contenu généré</span>
+                  <select style={input} value={form.language} onChange={(e) => set("language", e.target.value as AiConfigForm["language"])}>
+                    <option value="fr" style={selectOption}>Français</option>
+                    <option value="en" style={selectOption}>English</option>
+                    <option value="es" style={selectOption}>Español</option>
+                    <option value="it" style={selectOption}>Italiano</option>
+                    <option value="de" style={selectOption}>Deutsch</option>
+                    <option value="nl" style={selectOption}>Nederlands</option>
+                    <option value="pt" style={selectOption}>Português</option>
                   </select>
                 </label>
               </div>

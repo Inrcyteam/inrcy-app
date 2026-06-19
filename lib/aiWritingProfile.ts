@@ -111,6 +111,45 @@ const CTA_LABELS: Record<string, string> = {
   custom: "Lien personnalisé",
 };
 
+const AI_LANGUAGE_LABELS: Record<string, string> = {
+  fr: "français",
+  en: "anglais",
+  es: "espagnol",
+  it: "italien",
+  de: "allemand",
+  nl: "néerlandais",
+  pt: "portugais",
+};
+
+export function normalizeAiLanguage(value: unknown) {
+  const raw = clean(value, 80).toLowerCase();
+  if (["fr", "french", "francais", "français"].includes(raw)) return "fr";
+  if (["en", "english", "anglais"].includes(raw)) return "en";
+  if (["es", "spanish", "espagnol"].includes(raw)) return "es";
+  if (["it", "italian", "italien"].includes(raw)) return "it";
+  if (["de", "german", "allemand"].includes(raw)) return "de";
+  if (["nl", "dutch", "neerlandais", "néerlandais"].includes(raw)) return "nl";
+  if (["pt", "portuguese", "portugais"].includes(raw)) return "pt";
+  return "fr";
+}
+
+export function getAiLanguageLabel(source: unknown) {
+  const business = asRecord(source);
+  return AI_LANGUAGE_LABELS[normalizeAiLanguage(business["ai_language"])] || AI_LANGUAGE_LABELS.fr;
+}
+
+export function buildAiLanguageInstruction(source: unknown) {
+  const language = getAiLanguageLabel(source);
+
+  return [
+    `Langue de sortie obligatoire : ${language}.`,
+    `La demande utilisateur, les pièces jointes, l'historique ou le modèle de départ peuvent être écrits dans n'importe quelle langue. Comprends leur intention, mais rédige exclusivement le contenu final en ${language}.`,
+    "N'utilise pas une autre langue dans les textes générés, même si la demande utilisateur est écrite dans une autre langue.",
+    "Les noms propres, noms d'entreprise, marques, adresses, URLs, hashtags, références techniques et extraits exacts fournis peuvent rester dans leur forme d'origine quand c'est nécessaire.",
+    "Les clés JSON attendues par l'application doivent rester inchangées.",
+  ].join("\n");
+}
+
 export function buildAiWritingProfilePromptSection(source: unknown) {
   const business = asRecord(source);
   const forbiddenStyle = clean(business["ai_custom_instructions"], 700);
@@ -128,6 +167,7 @@ export function buildAiWritingProfilePromptSection(source: unknown) {
     `- Objectif principal : ${labelFromMap(business["ai_main_goal"], MAIN_GOAL_LABELS, "Obtenir des contacts")}`,
     `- Angle préféré : ${labelFromMap(business["ai_preferred_angle"], PREFERRED_ANGLE_LABELS, "Confiance")}`,
     `- Bouton préféré : ${labelFromMap(business["preferred_cta"], CTA_LABELS, "Demander un devis")}`,
+    `- Langue de génération : ${getAiLanguageLabel(business)}`,
     likedExample ? `- Exemple de contenu aimé : ${likedExample}` : "",
     forbiddenStyle ? `- À éviter absolument : ${forbiddenStyle}` : "",
   ].filter(Boolean);
@@ -137,7 +177,7 @@ export function buildAiWritingProfilePromptSection(source: unknown) {
 
 export function buildAiWritingProfileRules() {
   return [
-    "- Appliquer fortement la Configuration IA : le ton, le style, le niveau commercial et la forme de rédaction doivent se sentir dans le texte final.",
+    "- Appliquer fortement la Configuration IA : le ton, le style, le niveau commercial, la langue de génération et la forme de rédaction doivent se sentir dans le texte final.",
     "- Si un exemple de contenu aimé est fourni, s'inspirer du rythme, de la structure et du style, mais ne jamais le copier, le paraphraser trop près ou reprendre ses détails non fournis.",
     "- Respecter le pronom utilisé : Je = une personne parle ; Nous = l'entreprise/l'équipe parle ; Vous = le texte s'adresse principalement au lecteur ; Neutre = éviter je/nous/vous autant que possible.",
     "- Respecter la relation avec le lecteur : vouvoiement ou tutoiement. Ne pas mélanger les deux.",

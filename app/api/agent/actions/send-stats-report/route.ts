@@ -13,6 +13,7 @@ import {
   type InrAgentTheme,
 } from "@/lib/inrAgentSettings";
 import { rowToInrAgentAction } from "@/lib/inrAgentActions";
+import { buildAiLanguageInstruction } from "@/lib/aiWritingProfile";
 
 export const runtime = "nodejs";
 export const maxDuration = 180;
@@ -404,7 +405,7 @@ function fallbackInsights(report: StatsReportData): StatsAiInsights {
   };
 }
 
-async function generateAiInsights(report: StatsReportData): Promise<StatsAiInsights> {
+async function generateAiInsights(report: StatsReportData, aiLanguageInstruction: string): Promise<StatsAiInsights> {
   if (!process.env.OPENAI_API_KEY) return fallbackInsights(report);
 
   try {
@@ -428,8 +429,9 @@ async function generateAiInsights(report: StatsReportData): Promise<StatsAiInsig
       maxOutputTokens: 1300,
       temperature: 0.25,
       system:
-        "Tu es iNr’Agent. Tu rédiges des bilans statistiques courts, utiles et honnêtes pour des professionnels. Tu ne dois jamais inventer des chiffres. Réponds uniquement en JSON.",
-      input: `Analyse ces statistiques iNrCy et retourne un JSON avec les clés globalSummary, strengths, weaknesses, recommendations, channelNotes. Les tableaux doivent contenir 2 à 5 phrases courtes. channelNotes est un objet {cléCanal: phrase courte}. Données : ${JSON.stringify(compact)}`,
+        `Tu es iNr’Agent. Tu rédiges des bilans statistiques courts, utiles et honnêtes pour des professionnels. Tu ne dois jamais inventer des chiffres. Réponds uniquement en JSON.
+${aiLanguageInstruction}`,
+      input: `Analyse ces statistiques iNrCy et retourne un JSON avec les clés globalSummary, strengths, weaknesses, recommendations, channelNotes. Les tableaux doivent contenir 2 à 5 phrases courtes. channelNotes est un objet {cléCanal: phrase courte}. Respecte strictement la langue de sortie obligatoire indiquée. Données : ${JSON.stringify(compact)}`,
     });
 
     return {
@@ -1275,15 +1277,22 @@ export async function POST(request: Request) {
   const cookie = request.headers.get("cookie") || "";
   const now = new Date().toISOString();
 
-  const [profileResult] = await Promise.all([
+  const [profileResult, businessResult] = await Promise.all([
     supabaseAdmin
       .from("profiles")
       .select("admin_email, contact_email, first_name, last_name, company_legal_name")
       .eq("user_id", userId)
       .maybeSingle(),
+    supabaseAdmin
+      .from("business_profiles")
+      .select("ai_language")
+      .eq("user_id", userId)
+      .maybeSingle(),
   ]);
 
   const profile = asRecord(profileResult.data);
+  const business = asRecord(businessResult.data);
+  const aiLanguageInstruction = buildAiLanguageInstruction(business);
   const recipientEmail = cleanEmail(profile.contact_email) || cleanEmail(profile.admin_email) || cleanEmail((user as { email?: string | null }).email);
   if (!recipientEmail) {
     return NextResponse.json(
@@ -1314,7 +1323,7 @@ export async function POST(request: Request) {
     totals: buildTotals(stats.channels),
   };
 
-  const rawInsights = await generateAiInsights(report);
+  const rawInsights = await generateAiInsights(report, aiLanguageInstruction);
   const reportSummary = cleanNarrativeText(
     rawInsights.globalSummary,
     fallbackReportSummary(report),
