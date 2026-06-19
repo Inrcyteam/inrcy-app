@@ -12,6 +12,7 @@ import {
   type InrBadgeShareKey,
   type InrBadgeShareSettings,
 } from "@/lib/inrBadgeSettings";
+import { INRBADGE_LANGUAGE_OPTIONS, normalizeInrBadgeLanguage, type InrBadgeLanguageCode } from "@/lib/inrBadgeLanguage";
 
 type InrBadgeChannelStatus = {
   connected: boolean;
@@ -108,6 +109,15 @@ function loadAppointmentSettings(storageKey: string): AppointmentSettings {
   }
 }
 
+function loadBadgeLanguage(storageKey: string): InrBadgeLanguageCode {
+  if (typeof window === "undefined") return "fr";
+  try {
+    return normalizeInrBadgeLanguage(window.localStorage.getItem(`${storageKey}:badgeLanguage`));
+  } catch {
+    return "fr";
+  }
+}
+
 function loadSelectedMailAccountId(storageKey: string) {
   if (typeof window === "undefined") return "";
   try {
@@ -117,22 +127,25 @@ function loadSelectedMailAccountId(storageKey: string) {
   }
 }
 
-function saveBadgeSettings(storageKey: string, settings: ShareSettings, appointmentSettings: AppointmentSettings, selectedMailAccountId = "") {
+function saveBadgeSettings(storageKey: string, settings: ShareSettings, appointmentSettings: AppointmentSettings, selectedMailAccountId = "", badgeLanguage: InrBadgeLanguageCode = "fr") {
   try {
     window.localStorage.setItem(storageKey, JSON.stringify(settings));
     window.localStorage.setItem(`${storageKey}:rdv`, JSON.stringify(appointmentSettings));
     window.localStorage.setItem(`${storageKey}:mailAccountId`, selectedMailAccountId);
+    window.localStorage.setItem(`${storageKey}:badgeLanguage`, badgeLanguage);
   } catch {
     // stockage navigateur indisponible : on garde l'état en mémoire
   }
 }
 
-async function persistBadgeSettings(settings: ShareSettings, _appointmentSettings?: AppointmentSettings, selectedMailAccountId?: string) {
+async function persistBadgeSettings(settings: ShareSettings, selectedMailAccountId?: string, badgeLanguage?: InrBadgeLanguageCode) {
   try {
+    const body: { settings: ShareSettings; selectedMailAccountId?: string; badgeLanguage?: InrBadgeLanguageCode } = { settings, selectedMailAccountId };
+    if (badgeLanguage) body.badgeLanguage = badgeLanguage;
     await fetch("/api/inrbadge/settings", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ settings, selectedMailAccountId }),
+      body: JSON.stringify(body),
     });
   } catch {
     // Le localStorage garde une copie instantanée si le réseau est indisponible.
@@ -355,6 +368,7 @@ export default function InrBadgeSettingsContent({
   const [settings, setSettings] = useState<ShareSettings>(() => loadShareSettings(storageKey));
   const [appointmentSettings, setAppointmentSettings] = useState<AppointmentSettings>(() => loadAppointmentSettings(storageKey));
   const [selectedMailAccountId, setSelectedMailAccountId] = useState<string>(() => loadSelectedMailAccountId(storageKey));
+  const [badgeLanguage, setBadgeLanguage] = useState<InrBadgeLanguageCode>(() => loadBadgeLanguage(storageKey));
   const [mailAccounts, setMailAccounts] = useState<MailAccountOption[]>([]);
   const [notice, setNotice] = useState<string | null>(null);
   const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
@@ -365,9 +379,11 @@ export default function InrBadgeSettingsContent({
     const localSettings = loadShareSettings(storageKey);
     const localAppointmentSettings = loadAppointmentSettings(storageKey);
     const localSelectedMailAccountId = loadSelectedMailAccountId(storageKey);
+    const localBadgeLanguage = loadBadgeLanguage(storageKey);
     setSettings(localSettings);
     setAppointmentSettings(localAppointmentSettings);
     setSelectedMailAccountId(localSelectedMailAccountId);
+    setBadgeLanguage(localBadgeLanguage);
 
     const loadServerSettings = async () => {
       try {
@@ -375,7 +391,7 @@ export default function InrBadgeSettingsContent({
           fetch("/api/inrbadge/settings", { cache: "no-store" }),
           fetch("/api/integrations/status", { cache: "no-store" }),
         ]);
-        const json = await settingsRes.json().catch(() => null) as { settings?: unknown; appointmentSettings?: unknown; selectedMailAccountId?: unknown } | null;
+        const json = await settingsRes.json().catch(() => null) as { settings?: unknown; appointmentSettings?: unknown; selectedMailAccountId?: unknown; badgeLanguage?: unknown } | null;
         const accountsJson = await accountsRes.json().catch(() => null) as { mailAccounts?: unknown } | null;
         if (cancelled) return;
 
@@ -390,10 +406,12 @@ export default function InrBadgeSettingsContent({
         const serverSettings = normalizeInrBadgeShareSettings(json?.settings);
         const serverAppointmentSettings = normalizeInrBadgeAppointmentSettings(json?.appointmentSettings);
         const serverSelectedMailAccountId = trim(json?.selectedMailAccountId);
+        const serverBadgeLanguage = normalizeInrBadgeLanguage(json?.badgeLanguage);
         setSettings(serverSettings);
         setAppointmentSettings(serverAppointmentSettings);
         setSelectedMailAccountId(serverSelectedMailAccountId);
-        saveBadgeSettings(storageKey, serverSettings, serverAppointmentSettings, serverSelectedMailAccountId);
+        setBadgeLanguage(serverBadgeLanguage);
+        saveBadgeSettings(storageKey, serverSettings, serverAppointmentSettings, serverSelectedMailAccountId, serverBadgeLanguage);
       } catch {
         // On garde les réglages locaux en secours.
       }
@@ -427,8 +445,8 @@ export default function InrBadgeSettingsContent({
   const updateSetting = (key: ShareKey, value: boolean) => {
     const next = normalizeInrBadgeShareSettings({ ...settings, [key]: value });
     setSettings(next);
-    saveBadgeSettings(storageKey, next, appointmentSettings, selectedMailAccountId);
-    void persistBadgeSettings(next, appointmentSettings, selectedMailAccountId);
+    saveBadgeSettings(storageKey, next, appointmentSettings, selectedMailAccountId, badgeLanguage);
+    void persistBadgeSettings(next, selectedMailAccountId, badgeLanguage);
     setNotice("Réglages iNr'Badge enregistrés.");
     window.setTimeout(() => setNotice(null), 1800);
   };
@@ -436,9 +454,18 @@ export default function InrBadgeSettingsContent({
   const updateAppointmentSettings = (patch: Partial<AppointmentSettings>) => {
     const next = normalizeInrBadgeAppointmentSettings({ ...appointmentSettings, ...patch });
     setAppointmentSettings(next);
-    saveBadgeSettings(storageKey, settings, next, selectedMailAccountId);
-    void persistBadgeSettings(settings, next, selectedMailAccountId);
+    saveBadgeSettings(storageKey, settings, next, selectedMailAccountId, badgeLanguage);
+    void persistBadgeSettings(settings, selectedMailAccountId, badgeLanguage);
     setNotice("Réglages de prise de RDV enregistrés.");
+    window.setTimeout(() => setNotice(null), 1800);
+  };
+
+  const updateBadgeLanguage = (value: string) => {
+    const nextLanguage = normalizeInrBadgeLanguage(value);
+    setBadgeLanguage(nextLanguage);
+    saveBadgeSettings(storageKey, settings, appointmentSettings, selectedMailAccountId, nextLanguage);
+    void persistBadgeSettings(settings, selectedMailAccountId, nextLanguage);
+    setNotice("Langue de l’iNrBadge enregistrée.");
     window.setTimeout(() => setNotice(null), 1800);
   };
 
@@ -524,16 +551,16 @@ export default function InrBadgeSettingsContent({
   const updateSelectedMailAccount = (value: string) => {
     const nextId = trim(value);
     setSelectedMailAccountId(nextId);
-    saveBadgeSettings(storageKey, settings, appointmentSettings, nextId);
-    void persistBadgeSettings(settings, appointmentSettings, nextId);
+    saveBadgeSettings(storageKey, settings, appointmentSettings, nextId, badgeLanguage);
+    void persistBadgeSettings(settings, nextId, badgeLanguage);
   };
 
   useEffect(() => {
     if (email || !fallbackMailAccountId || selectedMailAccountExists) return;
     setSelectedMailAccountId(fallbackMailAccountId);
-    saveBadgeSettings(storageKey, settings, appointmentSettings, fallbackMailAccountId);
-    void persistBadgeSettings(settings, appointmentSettings, fallbackMailAccountId);
-  }, [appointmentSettings, email, fallbackMailAccountId, selectedMailAccountExists, settings, storageKey]);
+    saveBadgeSettings(storageKey, settings, appointmentSettings, fallbackMailAccountId, badgeLanguage);
+    void persistBadgeSettings(settings, fallbackMailAccountId, badgeLanguage);
+  }, [appointmentSettings, badgeLanguage, email, fallbackMailAccountId, selectedMailAccountExists, settings, storageKey]);
 
   return (
     <div style={{ display: "grid", gap: 14 }}>
@@ -593,6 +620,17 @@ export default function InrBadgeSettingsContent({
             ) : null}
           </div>
         </div>
+      </div>
+
+      <div style={cardStyle}>
+        <h3 style={sectionTitleStyle}>Affichage public</h3>
+        <FieldSelect
+          label="Langue du badge"
+          value={badgeLanguage}
+          options={INRBADGE_LANGUAGE_OPTIONS.map((option) => ({ value: option.value, label: option.label }))}
+          helper="Traduit la fiche publique, le formulaire de coordonnées et la prise de RDV."
+          onChange={updateBadgeLanguage}
+        />
       </div>
 
       <div style={cardStyle}>

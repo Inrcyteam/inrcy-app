@@ -653,7 +653,7 @@ async function generateVersions(args: {
   hiddenAngle?: BoosterHiddenAngle;
   imagesForAI?: BoosterAiImage[];
 }) {
-  const system = boosterSystemPrompt();
+  const system = boosterSystemPrompt(args.business);
   const baseInput = boosterUserPrompt({
     idea: args.idea,
     theme: args.theme,
@@ -755,6 +755,8 @@ const handler = async (req: Request) => {
         .from("business_profiles")
         .select("*")
         .eq("user_id", userId)
+        .order("updated_at", { ascending: false })
+        .limit(1)
         .maybeSingle();
       business = data && typeof data === "object" ? (data as JsonRecord) : null;
     } catch {

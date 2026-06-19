@@ -57,6 +57,8 @@ export type BoosterPreferredCta =
   | "message"
   | "custom";
 
+export type BoosterAiLanguage = "fr" | "en" | "es" | "it" | "de" | "nl" | "pt";
+
 export type BoosterCtaDefaults = {
   preferredWebsiteUrl: string;
   preferredWebsiteLabel: string;
@@ -64,6 +66,7 @@ export type BoosterCtaDefaults = {
   inrcySiteUrl: string;
   phone: string;
   preferredCta: BoosterPreferredCta;
+  aiLanguage?: BoosterAiLanguage;
 };
 
 export const BOOSTER_PREFERRED_CTA_OPTIONS: Array<{
@@ -78,6 +81,81 @@ export const BOOSTER_PREFERRED_CTA_OPTIONS: Array<{
   { value: "custom", label: "Lien personnalisé" },
 ];
 
+
+const BOOSTER_AI_LANGUAGE_VALUES: BoosterAiLanguage[] = ["fr", "en", "es", "it", "de", "nl", "pt"];
+
+const CTA_LABELS_BY_LANGUAGE: Record<BoosterAiLanguage, Record<BoosterPreferredCta, string>> = {
+  fr: {
+    none: "",
+    site: "Voir le site",
+    devis: "Demander un devis",
+    appeler: "Appeler",
+    message: "Envoyer un message",
+    custom: "",
+  },
+  en: {
+    none: "",
+    site: "Visit website",
+    devis: "Request a quote",
+    appeler: "Call",
+    message: "Send a message",
+    custom: "",
+  },
+  es: {
+    none: "",
+    site: "Ver sitio web",
+    devis: "Solicitar presupuesto",
+    appeler: "Llamar",
+    message: "Enviar mensaje",
+    custom: "",
+  },
+  it: {
+    none: "",
+    site: "Visita il sito",
+    devis: "Richiedi un preventivo",
+    appeler: "Chiama",
+    message: "Invia un messaggio",
+    custom: "",
+  },
+  de: {
+    none: "",
+    site: "Website ansehen",
+    devis: "Angebot anfordern",
+    appeler: "Anrufen",
+    message: "Nachricht senden",
+    custom: "",
+  },
+  nl: {
+    none: "",
+    site: "Website bekijken",
+    devis: "Offerte aanvragen",
+    appeler: "Bellen",
+    message: "Bericht sturen",
+    custom: "",
+  },
+  pt: {
+    none: "",
+    site: "Ver site",
+    devis: "Pedir orçamento",
+    appeler: "Ligar",
+    message: "Enviar mensagem",
+    custom: "",
+  },
+};
+
+export function normalizeBoosterAiLanguage(value: unknown): BoosterAiLanguage {
+  const raw = String(value || "").trim().toLowerCase();
+  if (BOOSTER_AI_LANGUAGE_VALUES.includes(raw as BoosterAiLanguage)) return raw as BoosterAiLanguage;
+  if (["french", "francais", "français"].includes(raw)) return "fr";
+  if (["english", "anglais"].includes(raw)) return "en";
+  if (["spanish", "espagnol"].includes(raw)) return "es";
+  if (["italian", "italien"].includes(raw)) return "it";
+  if (["german", "allemand"].includes(raw)) return "de";
+  if (["dutch", "neerlandais", "néerlandais"].includes(raw)) return "nl";
+  if (["portuguese", "portugais"].includes(raw)) return "pt";
+  return "fr";
+}
+
 const BOOSTER_PREFERRED_CTA_VALUES = BOOSTER_PREFERRED_CTA_OPTIONS.map(
   (option) => option.value,
 ) as BoosterPreferredCta[];
@@ -91,6 +169,36 @@ const AUTO_CTA_LABELS = [
   "Appelez-nous",
   "Lien du site",
   "En savoir plus",
+  "Visit website",
+  "Request a quote",
+  "Call",
+  "Send a message",
+  "Learn more",
+  "Ver sitio web",
+  "Solicitar presupuesto",
+  "Llamar",
+  "Enviar mensaje",
+  "Más información",
+  "Visita il sito",
+  "Richiedi un preventivo",
+  "Chiama",
+  "Invia un messaggio",
+  "Scopri di più",
+  "Website ansehen",
+  "Angebot anfordern",
+  "Anrufen",
+  "Nachricht senden",
+  "Mehr erfahren",
+  "Website bekijken",
+  "Offerte aanvragen",
+  "Bellen",
+  "Bericht sturen",
+  "Meer informatie",
+  "Ver site",
+  "Pedir orçamento",
+  "Ligar",
+  "Enviar mensagem",
+  "Saiba mais",
 ];
 
 export function normalizeBoosterPreferredCta(
@@ -721,12 +829,12 @@ export function getChannelDefaultCtaLabel(
   return "";
 }
 
-export function getCtaLabelForPreferredChoice(choice: BoosterPreferredCta) {
-  if (choice === "site") return "Voir le site";
-  if (choice === "devis") return "Demander un devis";
-  if (choice === "appeler") return "Appeler";
-  if (choice === "message") return "Envoyer un message";
-  return "";
+export function getCtaLabelForPreferredChoice(
+  choice: BoosterPreferredCta,
+  language: unknown = "fr",
+) {
+  const aiLanguage = normalizeBoosterAiLanguage(language);
+  return CTA_LABELS_BY_LANGUAGE[aiLanguage]?.[choice] || CTA_LABELS_BY_LANGUAGE.fr[choice] || "";
 }
 
 export function isSiteDisplayKey(channel: DisplayKey) {
@@ -792,8 +900,10 @@ export function buildPreferredCtaPatch(
   choice: BoosterPreferredCta,
   post: ChannelPost,
   defaults: BoosterCtaDefaults | null,
+  language: unknown = defaults?.aiLanguage || "fr",
 ): Partial<ChannelPost> {
   const preferred = normalizeBoosterPreferredCta(choice);
+  const aiLanguage = normalizeBoosterAiLanguage(language);
 
   if (preferred === "none") {
     return { ctaMode: "none", cta: "", ctaUrl: "", ctaPhone: "" };
@@ -803,7 +913,7 @@ export function buildPreferredCtaPatch(
     const channelWebsiteUrl = getWebsiteUrlForChannel(channel, defaults);
     return {
       ctaMode: "website",
-      cta: getCtaLabelForPreferredChoice(preferred),
+      cta: getCtaLabelForPreferredChoice(preferred, aiLanguage),
       ctaUrl: channelWebsiteUrl || "",
       ctaPhone: "",
     };
@@ -812,7 +922,7 @@ export function buildPreferredCtaPatch(
   if (preferred === "appeler") {
     return {
       ctaMode: "call",
-      cta: getCtaLabelForPreferredChoice(preferred),
+      cta: getCtaLabelForPreferredChoice(preferred, aiLanguage),
       ctaPhone: defaults?.phone || String(post.ctaPhone || ""),
       ctaUrl: "",
     };
@@ -825,7 +935,7 @@ export function buildPreferredCtaPatch(
     if (supportsPrivateMessage) {
       return {
         ctaMode: "message",
-        cta: getCtaLabelForPreferredChoice(preferred),
+        cta: getCtaLabelForPreferredChoice(preferred, aiLanguage),
         ctaUrl: "",
         ctaPhone: "",
       };
@@ -834,7 +944,7 @@ export function buildPreferredCtaPatch(
     return channelWebsiteUrl
       ? {
           ctaMode: "website",
-          cta: getCtaLabelForPreferredChoice("site"),
+          cta: getCtaLabelForPreferredChoice("site", aiLanguage),
           ctaUrl: channelWebsiteUrl,
           ctaPhone: "",
         }
@@ -854,8 +964,10 @@ export function buildAutoPrefillPatch(
   mode: BoosterCtaMode,
   post: ChannelPost,
   defaults: BoosterCtaDefaults | null,
+  language: unknown = defaults?.aiLanguage || "fr",
 ): Partial<ChannelPost> {
   const patch: Partial<ChannelPost> = { ctaMode: mode };
+  const aiLanguage = normalizeBoosterAiLanguage(language);
   if (!defaults) return patch;
 
   if (mode === "website") {
@@ -864,7 +976,7 @@ export function buildAutoPrefillPatch(
       : getPreferredCtaChoiceFromPost(channel, post);
     const channelWebsiteUrl = getWebsiteUrlForChannel(channel, defaults);
     if (!String(post.cta || "").trim())
-      patch.cta = getCtaLabelForPreferredChoice(preferred as BoosterPreferredCta) ||
+      patch.cta = getCtaLabelForPreferredChoice(preferred as BoosterPreferredCta, aiLanguage) ||
         getChannelDefaultCtaLabel(channel, mode);
     if (!String(post.ctaUrl || "").trim() && channelWebsiteUrl)
       patch.ctaUrl = channelWebsiteUrl;
@@ -872,14 +984,14 @@ export function buildAutoPrefillPatch(
 
   if (mode === "call") {
     if (!String(post.cta || "").trim())
-      patch.cta = getCtaLabelForPreferredChoice("appeler");
+      patch.cta = getCtaLabelForPreferredChoice("appeler", aiLanguage);
     if (!String(post.ctaPhone || "").trim() && defaults.phone)
       patch.ctaPhone = defaults.phone;
   }
 
   if (mode === "message") {
     if (!String(post.cta || "").trim())
-      patch.cta = getCtaLabelForPreferredChoice("message");
+      patch.cta = getCtaLabelForPreferredChoice("message", aiLanguage);
   }
 
   return patch;

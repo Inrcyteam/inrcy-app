@@ -46,6 +46,7 @@ import {
   fileToBoosterAiImagePayload,
   isBoosterVideoFile,
   isSiteDisplayKey,
+  normalizeBoosterAiLanguage,
   normalizePost,
   normalizePublicationMediaType,
   normalizeVideoAdaptationMode,
@@ -700,6 +701,23 @@ export default function PublishModal({
   }, [channelInfoOpen]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleAiConfigurationUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ aiLanguage?: unknown; preferredCta?: unknown }>).detail || {};
+      setCtaDefaults((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          preferredCta: normalizeBoosterPreferredCta(detail.preferredCta || current.preferredCta),
+          aiLanguage: normalizeBoosterAiLanguage(detail.aiLanguage || current.aiLanguage),
+        };
+      });
+    };
+    window.addEventListener("inrcy:ai-configuration-updated", handleAiConfigurationUpdated);
+    return () => window.removeEventListener("inrcy:ai-configuration-updated", handleAiConfigurationUpdated);
+  }, []);
+
+  useEffect(() => {
     let alive = true;
     (async () => {
       try {
@@ -718,6 +736,7 @@ export default function PublishModal({
           inrcySiteUrl: String(json?.inrcySiteUrl || "").trim(),
           phone: String(json?.phone || "").trim(),
           preferredCta: normalizeBoosterPreferredCta(json?.preferredCta),
+          aiLanguage: normalizeBoosterAiLanguage(json?.aiLanguage),
         });
       } catch {
         // ignore
@@ -773,8 +792,8 @@ export default function PublishModal({
           continue;
 
         const patch = shouldSetPreferredMode
-          ? buildPreferredCtaPatch(key, preferredChoice, current, ctaDefaults)
-          : buildAutoPrefillPatch(key, mode, current, ctaDefaults);
+          ? buildPreferredCtaPatch(key, preferredChoice, current, ctaDefaults, ctaDefaults.aiLanguage)
+          : buildAutoPrefillPatch(key, mode, current, ctaDefaults, ctaDefaults.aiLanguage);
         const hasMeaningfulPatch = Object.entries(patch).some(
           ([patchKey, patchValue]) => {
             if (patchKey === "ctaMode")
@@ -2418,6 +2437,7 @@ export default function PublishModal({
       choice,
       current,
       ctaDefaults,
+      ctaDefaults?.aiLanguage,
     );
     updatePost(displayKey, patch);
   };

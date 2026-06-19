@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { extractInrBadgeUserIdFromSlug } from "@/lib/inrBadge";
 import { normalizeInrBadgeShareSettings, resolveInrBadgeAppointmentSettings } from "@/lib/inrBadgeSettings";
+import { getInrBadgeTexts, normalizeInrBadgeLanguage } from "@/lib/inrBadgeLanguage";
 import RdvBookingClient from "./RdvBookingClient";
 
 export const dynamic = "force-dynamic";
@@ -32,8 +33,21 @@ export async function generateMetadata({ params }: { params: Promise<{ slug: str
   const resolvedParams = await params;
   const slug = trim(resolvedParams.slug);
   const iconUrl = getBadgeIconUrl(slug);
+  const userId = extractInrBadgeUserIdFromSlug(slug);
+  let title = "Prendre RDV - iNr'Badge";
+
+  if (userId) {
+    const { data } = await supabaseAdmin
+      .from("pro_tools_configs")
+      .select("settings")
+      .eq("user_id", userId)
+      .maybeSingle();
+    const rootSettings = safeObj((data as { settings?: unknown } | null)?.settings);
+    title = getInrBadgeTexts(normalizeInrBadgeLanguage(rootSettings.inrBadgeLanguage)).rdvMetaTitle;
+  }
+
   return {
-    title: "Prendre RDV - iNr'Badge",
+    title,
     manifest: getBadgeManifestUrl(slug),
     icons: {
       icon: iconUrl,
@@ -67,6 +81,7 @@ export default async function InrBadgeRdvPage({ params }: { params: Promise<{ sl
   const rootSettings = safeObj((toolsRes.data as { settings?: unknown } | null)?.settings);
   const shareSettings = normalizeInrBadgeShareSettings(rootSettings.inrBadgeShareSettings);
   const appointmentSettings = resolveInrBadgeAppointmentSettings(rootSettings);
+  const badgeLanguage = normalizeInrBadgeLanguage(rootSettings.inrBadgeLanguage);
   if (!shareSettings.appointment) notFound();
 
   const now = new Date();
@@ -84,6 +99,7 @@ export default async function InrBadgeRdvPage({ params }: { params: Promise<{ sl
     <RdvBookingClient
       slug={slug}
       settings={appointmentSettings}
+      language={badgeLanguage}
       events={(events || []).filter((event: Record<string, unknown>) => !isRejectedAgendaEvent(event)).map((event: Record<string, unknown>) => ({
         id: String(event.id || ""),
         start: String(event.start_at || ""),

@@ -3,10 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import styles from "./badge.module.css";
+import { getInrBadgeTexts, normalizeInrBadgeLanguage, type InrBadgeLanguageCode } from "@/lib/inrBadgeLanguage";
 
 type Props = {
   publicUrl: string;
   company: string;
+  language?: InrBadgeLanguageCode;
 };
 
 type BeforeInstallPromptEvent = Event & {
@@ -29,7 +31,8 @@ function detectPlatform() {
   return { ios, android, safari };
 }
 
-export default function BadgeShareButton({ publicUrl, company }: Props) {
+export default function BadgeShareButton({ publicUrl, company, language }: Props) {
+  const badgeText = getInrBadgeTexts(normalizeInrBadgeLanguage(language));
   const [open, setOpen] = useState(false);
   const [installPromptEvent, setInstallPromptEvent] = useState<BeforeInstallPromptEvent | null>(null);
   const [helperText, setHelperText] = useState("");
@@ -58,10 +61,10 @@ export default function BadgeShareButton({ publicUrl, company }: Props) {
   async function handleNativeShare() {
     try {
       if (navigator.share) {
-        await navigator.share({ title: company || "iNr'Badge", text: `Découvrez ${company || "cette entreprise"} sur iNr'Badge`, url: publicUrl });
+        await navigator.share({ title: company || "iNr'Badge", text: `${badgeText.shareTextPrefix} ${company || "iNr'Badge"} · iNr'Badge`, url: publicUrl });
       } else {
         await navigator.clipboard.writeText(publicUrl);
-        setHelperText("Lien copié. Vous pouvez maintenant le partager où vous voulez.");
+        setHelperText(badgeText.linkCopied);
       }
     } catch {
       // utilisateur a annulé ou navigateur indisponible
@@ -71,15 +74,15 @@ export default function BadgeShareButton({ publicUrl, company }: Props) {
   async function handleCopyLink() {
     try {
       await navigator.clipboard.writeText(publicUrl);
-      setHelperText("Lien copié dans le presse-papiers.");
+      setHelperText(badgeText.linkCopiedClipboard);
     } catch {
-      setHelperText("Impossible de copier automatiquement. Vous pouvez sélectionner l'URL et la copier manuellement.");
+      setHelperText(badgeText.copyUnavailable);
     }
   }
 
   async function handleInstall() {
     if (isStandaloneMode()) {
-      setHelperText("Cette fiche est déjà disponible sur l'écran d'accueil de ce téléphone.");
+      setHelperText(badgeText.alreadyInstalled);
       return;
     }
 
@@ -87,19 +90,19 @@ export default function BadgeShareButton({ publicUrl, company }: Props) {
       try {
         await installPromptEvent.prompt();
         await installPromptEvent.userChoice;
-        setHelperText("Demande d'ajout à l'écran d'accueil envoyée.");
+        setHelperText(badgeText.installRequested);
       } catch {
-        setHelperText("L'ajout à l'écran d'accueil n'a pas pu être lancé.");
+        setHelperText(badgeText.installFailed);
       }
       return;
     }
 
     if (platform.ios && platform.safari) {
-      setHelperText("Sur iPhone : appuyez sur Partager dans Safari, puis choisissez “Sur l’écran d’accueil”.");
+      setHelperText(badgeText.iosInstallHelp);
       return;
     }
 
-    setHelperText("Sur Android : ouvrez le menu du navigateur puis choisissez “Ajouter à l’écran d’accueil” ou “Installer l’application”.");
+    setHelperText(badgeText.androidInstallHelp);
   }
 
 
@@ -125,7 +128,7 @@ export default function BadgeShareButton({ publicUrl, company }: Props) {
   return (
     <>
       <div className={styles.floatingActions}>
-        <button type="button" className={styles.shareButton} onClick={openSheet} aria-label="Partager cette fiche" title="Partager">
+        <button type="button" className={styles.shareButton} onClick={openSheet} aria-label={badgeText.shareAria} title={badgeText.shareTitle}>
           <span className={styles.shareGlyph} aria-hidden="true">
             <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path d="M15.5 8.5L8.5 12" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"/>
@@ -136,21 +139,21 @@ export default function BadgeShareButton({ publicUrl, company }: Props) {
             </svg>
           </span>
         </button>
-        <button type="button" className={`${styles.closePageButton} ${styles.iconActionButton}`} onClick={handleClosePage} aria-label="Fermer" title="Fermer">×</button>
+        <button type="button" className={`${styles.closePageButton} ${styles.iconActionButton}`} onClick={handleClosePage} aria-label={badgeText.close} title={badgeText.close}>×</button>
       </div>
 
       {open && typeof document !== "undefined"
         ? createPortal(
             <div className={styles.sheetLayer} aria-hidden={false}>
-              <button type="button" className={styles.sheetBackdrop} aria-label="Fermer" onClick={closeSheet} />
-              <div className={styles.sheet} role="dialog" aria-modal="true" aria-label="Partager cette fiche">
+              <button type="button" className={styles.sheetBackdrop} aria-label={badgeText.close} onClick={closeSheet} />
+              <div className={styles.sheet} role="dialog" aria-modal="true" aria-label={badgeText.shareAria}>
                 <div className={styles.sheetHandle} />
                 <div className={styles.sheetHeader}>
                   <div>
-                    <strong>Fiche contact</strong>
-                    <p>Partagez cette fiche, copiez son lien ou ajoutez-la à votre écran d’accueil.</p>
+                    <strong>{badgeText.shareSheetTitle}</strong>
+                    <p>{badgeText.shareSheetDescription}</p>
                   </div>
-                  <button type="button" className={styles.sheetClose} onClick={closeSheet} aria-label="Fermer">
+                  <button type="button" className={styles.sheetClose} onClick={closeSheet} aria-label={badgeText.close}>
                     ×
                   </button>
                 </div>
@@ -169,24 +172,24 @@ export default function BadgeShareButton({ publicUrl, company }: Props) {
                       </span>
                     </span>
                     <span>
-                      Partager
-                      <small>WhatsApp, SMS, mail…</small>
+                      {badgeText.shareNative}
+                      <small>{badgeText.shareNativeHelper}</small>
                     </span>
                   </button>
 
                   <button type="button" className={styles.sheetAction} onClick={handleCopyLink}>
                     <span className={`${styles.sheetActionIcon} ${styles.copyTone}`}>⧉</span>
                     <span>
-                      Copier le lien
-                      <small>Conserver la fiche pour plus tard</small>
+                      {badgeText.copyLink}
+                      <small>{badgeText.copyLinkHelper}</small>
                     </span>
                   </button>
 
                   <button type="button" className={styles.sheetAction} onClick={handleInstall}>
                     <span className={`${styles.sheetActionIcon} ${styles.installTone}`}>＋</span>
                     <span>
-                      Ajouter à l&apos;écran d&apos;accueil
-                      <small>iPhone / Android</small>
+                      {badgeText.install}
+                      <small>{badgeText.installHelper}</small>
                     </span>
                   </button>
                 </div>

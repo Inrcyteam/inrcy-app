@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { extractInrBadgeUserIdFromSlug } from "@/lib/inrBadge";
 import { normalizeInrBadgeShareSettings } from "@/lib/inrBadgeSettings";
+import { getInrBadgeTexts, normalizeInrBadgeLanguage } from "@/lib/inrBadgeLanguage";
 import { getChannelConnectionStates } from "@/lib/channelConnectionState";
 import inrBadgeIcon from "@/public/icons/inrbadge-dashboard.png";
 import inrcyIcon from "@/public/icons/inrcy.png";
@@ -308,6 +309,8 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
   const business = (businessRes.data ?? {}) as Record<string, unknown>;
   const toolSettings = safeObj((toolsRes.data as { settings?: unknown } | null)?.settings);
   const shareSettings = normalizeInrBadgeShareSettings(toolSettings.inrBadgeShareSettings);
+  const badgeLanguage = normalizeInrBadgeLanguage(toolSettings.inrBadgeLanguage);
+  const badgeText = getInrBadgeTexts(badgeLanguage);
   const channelStates = await getChannelConnectionStates(supabaseAdmin, userId, {
     profile,
     inrcySiteConfig: siteInrcyRes.data,
@@ -410,9 +413,9 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
   const vCardFilename = `${safeFilename(company || displayName)}.vcf`;
 
   const primaryActions = [
-    shareSettings.phone && phone && phoneHref(phone) ? { href: phoneHref(phone), label: "Appeler", iconSrc: "/icons/inrbadge-action-tel.png", tone: "phone" as ActionTone, trackingAction: "phone" } : null,
-    shareSettings.email && badgeEmail ? { href: createMailto(badgeEmail), label: "Mail", iconSrc: "/icons/inrbadge-action-mail.png", tone: "mail" as ActionTone, trackingAction: "mail" } : null,
-    shareSettings.saveContact ? { href: vCardUri, label: "Enregistrer", download: vCardFilename, iconSrc: "/icons/inrbadge-action-save.png", tone: "contact" as ActionTone, trackingAction: "save_contact" } : null,
+    shareSettings.phone && phone && phoneHref(phone) ? { href: phoneHref(phone), label: badgeText.call, iconSrc: "/icons/inrbadge-action-tel.png", tone: "phone" as ActionTone, trackingAction: "phone" } : null,
+    shareSettings.email && badgeEmail ? { href: createMailto(badgeEmail), label: badgeText.mail, iconSrc: "/icons/inrbadge-action-mail.png", tone: "mail" as ActionTone, trackingAction: "mail" } : null,
+    shareSettings.saveContact ? { href: vCardUri, label: badgeText.saveContact, download: vCardFilename, iconSrc: "/icons/inrbadge-action-save.png", tone: "contact" as ActionTone, trackingAction: "save_contact" } : null,
   ].filter(Boolean) as ActionLinkProps[];
 
   const channelActions = [
@@ -427,7 +430,7 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
   ].filter(Boolean) as ActionLinkProps[];
 
   const appointmentAction = shareSettings.appointment
-    ? { href: `/badge/${slug}/rdv`, label: "Prendre RDV", iconSrc: inrCalendarLogo.src, tone: "appointment" as ActionTone, trackingAction: "appointment" }
+    ? { href: `/badge/${slug}/rdv`, label: badgeText.appointment, iconSrc: inrCalendarLogo.src, tone: "appointment" as ActionTone, trackingAction: "appointment" }
     : null;
 
   const channelRows = getBalancedChannelRows(channelActions);
@@ -456,7 +459,7 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
 
           <div className={styles.headerRow}>
             <div className={styles.headerTopBar}>
-              <BadgeShareButton publicUrl={publicUrl} company={company} />
+              <BadgeShareButton publicUrl={publicUrl} company={company} language={badgeLanguage} />
               <div className={styles.headerIdentity}>
                 <div className={styles.logo} aria-hidden="true">
                   {shareSettings.logo ? (
@@ -480,13 +483,13 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
             </div>
           ) : null}
 
-          <BadgeLeadButton slug={slug} company={company} />
+          <BadgeLeadButton slug={slug} company={company} language={badgeLanguage} />
 
           {channelActions.length > 0 ? (
             <section className={styles.section}>
               <div className={styles.sectionHeader}>
                 <span className={styles.sectionMark} />
-                <h2>Retrouvez-nous</h2>
+                <h2>{badgeText.findUs}</h2>
               </div>
               <div className={styles.channelsGrid} data-count={channelActions.length}>
                 {channelRows.map((row, rowIndex) => (
@@ -510,13 +513,13 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
             <div className={styles.infoGrid}>
               {(openingDays || openingHours) ? (
                 <div className={styles.infoItem}>
-                  <strong>Horaires</strong>
+                  <strong>{badgeText.openingHours}</strong>
                   {[openingDays, openingHours].filter(Boolean).join(" · ")}
                 </div>
               ) : null}
               {zones.length > 0 ? (
                 <div className={styles.infoItem}>
-                  <strong>Zones d’intervention</strong>
+                  <strong>{badgeText.interventionZones}</strong>
                   {zones.slice(0, 8).join(", ")}
                 </div>
               ) : null}
@@ -533,7 +536,7 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
         <div className={styles.footer}>
           <span>iNr&apos;Badge</span>
           <span className={styles.footerDot}>·</span>
-          <span>Propulsé par <strong>iNrCy</strong></span>
+          <span>{badgeText.poweredBy} <strong>iNrCy</strong></span>
         </div>
       </section>
     </main>

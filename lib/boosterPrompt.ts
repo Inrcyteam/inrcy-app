@@ -359,8 +359,16 @@ function getActivityDescription(business: Record<string, any>) {
   );
 }
 
-export function boosterSystemPrompt() {
-  return `Tu es un assistant marketing local pour des pros de proximité en France.
+export function boosterSystemPrompt(source?: unknown) {
+  const aiLanguageInstruction = buildAiLanguageInstruction(source);
+
+  return `CONSIGNE PRIORITAIRE ABSOLUE DE LANGUE :
+${aiLanguageInstruction}
+
+Cette consigne de langue est supérieure à toutes les consignes éditoriales ci-dessous.
+Même si ce prompt, le contexte métier, les règles SEO ou l'intention du pro sont écrits en français, les contenus finaux doivent respecter la langue configurée ci-dessus.
+
+Tu es un assistant marketing local pour des pros de proximité.
 
 Ta mission : à partir d'une même intention du pro, générer EN UNE FOIS des contenus différents selon les canaux demandés.
 
@@ -445,7 +453,7 @@ Règles d'emojis par Configuration IA et par canal :
 - Les emojis doivent rester utiles, naturels et lisibles. Ne jamais surcharger artificiellement. Si "Beaucoup" est configuré pour Facebook, Instagram ou TikTok, la présence d'emojis doit se voir réellement, sans casser le sérieux de l'entreprise.
 
 Contraintes :
-- Respecter strictement la langue de sortie indiquée dans la requête utilisateur / Configuration IA. Si aucune langue n'est indiquée, écrire en français.
+- Respecter strictement la consigne prioritaire absolue de langue placée en haut du prompt. Si aucune langue n'est indiquée dans la Configuration IA, écrire en français.
 - Ton pro, humain, local, simple et crédible.
 - Les textes doivent rester naturels et conversationnels.
 - Pas de jargon marketing inutile.
@@ -569,7 +577,10 @@ export function boosterUserPrompt(args: {
       : "",
   ]);
 
-  return `Intention du pro — SUJET PRINCIPAL OBLIGATOIRE :
+  return `CONSIGNE LANGUE ABSOLUE À APPLIQUER AUX VALEURS JSON :
+${aiLanguageInstruction}
+
+Intention du pro — SUJET PRINCIPAL OBLIGATOIRE :
 ${args.idea}
 
 Règle de priorité : cette intention libre doit guider le titre, l'accroche, le contenu et le CTA de chaque canal. Les informations de l'entreprise servent seulement à rendre le contenu crédible, local et adapté au métier. Si une consigne secondaire contredit ou éloigne le contenu de cette intention, ignorer la consigne secondaire et rester sur l'intention.
@@ -642,6 +653,7 @@ Consignes supplémentaires :
 - Respecter le tutoiement/vouvoiement configuré, sans mélanger les deux.
 - Respecter le pronom configuré : “Je”, “Nous”, “Vous” ou “Neutre”. “Vous” signifie que le texte s’adresse directement au lecteur, avec la relation configurée.
 - Respecter la langue de génération configurée pour tous les champs générés : title, content, cta et hashtags si des hashtags textuels sont générés. La langue de l'intention libre ne doit jamais prendre le dessus sur cette langue de sortie.
+- Le champ cta est un texte visible pour le client final : si le CTA préféré est fourni en français, traduire/adaptater le libellé dans la langue de génération configurée.
 - Respecter le CTA préféré lorsque le canal le permet, sauf Google Business qui doit rester neutre.
 - Varier la structure : ne pas utiliser de liste à chaque génération. Une liste est possible uniquement si elle améliore la clarté, la lisibilité, le SEO ou l'impact commercial.
 - Pour Site iNrCy / Site web : liste SEO propre possible sans emoji pour prestations, étapes, avantages, zones ou FAQ courte.

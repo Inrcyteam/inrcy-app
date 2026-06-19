@@ -406,7 +406,7 @@ export async function POST(request: Request) {
 
   const [profileRes, businessRes, mailAccount] = await Promise.all([
     supabase.from("profiles").select("*").eq("user_id", userId).maybeSingle(),
-    supabase.from("business_profiles").select("*").eq("user_id", userId).maybeSingle(),
+    supabase.from("business_profiles").select("*").eq("user_id", userId).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
     fetchMailAccount(userId),
   ]);
 

@@ -60,9 +60,9 @@ function phoneToTelUrl(input: string) {
 export function inferLegacyCtaMode(text: string): BoosterCtaMode {
   const value = collapseWhitespace(text).toLowerCase();
   if (!value) return "none";
-  if (/(^|\b)(message|mp|dm|priv[ée])/.test(value)) return "message";
-  if (/(^|\b)(appel|appelez|t[ée]l|t[ée]l[ée]phone|joindre)/.test(value)) return "call";
-  if (/(https?:\/\/|www\.|site|en savoir plus|d[ée]couvrir|voir|devis)/.test(value)) return "website";
+  if (/(^|\b)(message|mp|dm|priv[ée]|mensaje|nachricht|bericht|messaggio)/.test(value)) return "message";
+  if (/(^|\b)(appel|appelez|t[ée]l|t[ée]l[ée]phone|joindre|call|llamar|chiama|anrufen|bellen|ligar)/.test(value)) return "call";
+  if (/(https?:\/\/|www\.|site|website|sitio|sito|webseite|orçamento|orcamento|offerte|quote|presupuesto|preventivo|angebot|en savoir plus|learn more|m[aá]s informaci[oó]n|scopri|mehr erfahren|meer informatie|saiba mais|d[ée]couvrir|voir|ver |devis)/.test(value)) return "website";
   return "custom";
 }
 
@@ -112,9 +112,9 @@ export function buildCtaTextForChannel(channel: BoosterChannelKey, post: Partial
       if (!websiteUrl) return label && label !== "En savoir plus" ? label : "";
       return `${label || "En savoir plus"} : ${websiteUrl}`;
     case "call":
-      return phone ? `Appelez-nous : ${phone}` : "";
+      return phone ? `${label || "Appelez-nous"} : ${phone}` : label;
     case "message":
-      return channel === "instagram" || channel === "tiktok" || channel === "youtube_shorts" ? "Écrivez-nous en commentaire ou message privé." : "Envoyez-nous un message privé.";
+      return label || (channel === "instagram" || channel === "tiktok" || channel === "youtube_shorts" ? "Écrivez-nous en commentaire ou message privé." : "Envoyez-nous un message privé.");
     case "custom": {
       const customUrl = ensureUrl(String(post?.ctaUrl || ""));
       if (customUrl) return `${label || "En savoir plus"} : ${customUrl}`;

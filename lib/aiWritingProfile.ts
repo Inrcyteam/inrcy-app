@@ -142,10 +142,13 @@ export function buildAiLanguageInstruction(source: unknown) {
   const language = getAiLanguageLabel(source);
 
   return [
-    `Langue de sortie obligatoire : ${language}.`,
-    `La demande utilisateur, les pièces jointes, l'historique ou le modèle de départ peuvent être écrits dans n'importe quelle langue. Comprends leur intention, mais rédige exclusivement le contenu final en ${language}.`,
-    "N'utilise pas une autre langue dans les textes générés, même si la demande utilisateur est écrite dans une autre langue.",
-    "Les noms propres, noms d'entreprise, marques, adresses, URLs, hashtags, références techniques et extraits exacts fournis peuvent rester dans leur forme d'origine quand c'est nécessaire.",
+    `LANGUE FINALE OBLIGATOIRE DES CONTENUS : ${language}.`,
+    `Toutes les valeurs textuelles générées pour l'utilisateur final doivent être rédigées exclusivement en ${language}.`,
+    `La demande utilisateur, les pièces jointes, l'historique, le modèle de départ, les consignes techniques ou le contexte métier peuvent être écrits dans n'importe quelle langue : comprends leur intention, puis produis le contenu final en ${language}.`,
+    `Le fait que les instructions de l'application soient rédigées en français ne doit jamais entraîner une sortie en français si la langue configurée est ${language}.`,
+    "N'utilise pas une autre langue dans title, content, cta, subject ou body_text, sauf pour les éléments qui doivent rester tels quels.",
+    `Le champ cta correspond au texte visible du bouton ou de l'appel à l'action : traduis ou adapte aussi ce texte en ${language}, même si le bouton préféré de l'interface est écrit en français.`,
+    "Les noms propres, noms d'entreprise, marques, adresses, URLs, numéros de téléphone, emails, hashtags de marque, références techniques et extraits exacts fournis peuvent rester dans leur forme d'origine quand c'est nécessaire.",
     "Les clés JSON attendues par l'application doivent rester inchangées.",
   ].join("\n");
 }

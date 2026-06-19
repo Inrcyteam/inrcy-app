@@ -20,6 +20,7 @@ import {
   getWebsiteSourceLabelForChannel,
   getWebsiteUrlForChannel,
   isSiteDisplayKey,
+  normalizeBoosterAiLanguage,
   normalizeBoosterPreferredCta,
   VIDEO_ADAPTATION_MODE_LABELS,
   type BoosterCtaDefaults,
@@ -396,6 +397,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
           inrcySiteUrl: String(json?.inrcySiteUrl || "").trim(),
           phone: String(json?.phone || "").trim(),
           preferredCta: normalizeBoosterPreferredCta(json?.preferredCta),
+          aiLanguage: normalizeBoosterAiLanguage(json?.aiLanguage),
         });
       } catch {
         // CTA defaults are helpful but not required to edit a publication.
@@ -428,7 +430,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
       ctaPhone: publicationEditForm.ctaPhone || "",
       hashtags: [],
     } as ChannelPost;
-    const patch = buildPreferredCtaPatch(publicationDisplayKey, choice, current, publicationCtaDefaults);
+    const patch = buildPreferredCtaPatch(publicationDisplayKey, choice, current, publicationCtaDefaults, publicationCtaDefaults?.aiLanguage);
     updatePublicationEdit({
       ctaMode: String(patch.ctaMode || current.ctaMode || "none"),
       ...(typeof patch.cta === "string" ? { cta: patch.cta } : {}),

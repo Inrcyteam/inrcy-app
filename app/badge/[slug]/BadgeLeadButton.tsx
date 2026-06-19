@@ -3,10 +3,12 @@
 import { FormEvent, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import styles from "./badge.module.css";
+import { getInrBadgeTexts, normalizeInrBadgeLanguage, type InrBadgeLanguageCode } from "@/lib/inrBadgeLanguage";
 
 type Props = {
   slug: string;
   company: string;
+  language?: InrBadgeLanguageCode;
 };
 
 type FormState = {
@@ -31,7 +33,8 @@ function trim(value: string) {
   return value.trim();
 }
 
-export default function BadgeLeadButton({ slug, company }: Props) {
+export default function BadgeLeadButton({ slug, company, language }: Props) {
+  const badgeText = getInrBadgeTexts(normalizeInrBadgeLanguage(language));
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<FormState>(initialForm);
   const [submitting, setSubmitting] = useState(false);
@@ -68,12 +71,12 @@ export default function BadgeLeadButton({ slug, company }: Props) {
 
     const hasIdentity = [form.displayName, form.email, form.phone].some((value) => trim(value));
     if (!hasIdentity) {
-      setError("Renseignez au moins un nom, un mail ou un téléphone.");
+      setError(badgeText.leadIdentityError);
       return;
     }
 
     if (!form.consent) {
-      setError("La validation est nécessaire pour transmettre vos coordonnées.");
+      setError(badgeText.leadConsentError);
       return;
     }
 
@@ -86,11 +89,11 @@ export default function BadgeLeadButton({ slug, company }: Props) {
       });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok || !payload?.ok) {
-        throw new Error(typeof payload?.error === "string" ? payload.error : "Impossible de transmettre vos coordonnées.");
+        throw new Error(badgeText.leadGenericError);
       }
       setSent(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Impossible de transmettre vos coordonnées.");
+      setError(err instanceof Error ? err.message : badgeText.leadGenericError);
     } finally {
       setSubmitting(false);
     }
@@ -101,7 +104,7 @@ export default function BadgeLeadButton({ slug, company }: Props) {
       <div className={styles.leadWrap}>
         <button type="button" className={styles.leadButton} onClick={() => setOpen(true)} data-inrbadge-action="lead_form" data-inrbadge-target="lead_form">
           <span className={styles.leadButtonIcon} aria-hidden="true">✦</span>
-          <span>Transmettre mes coordonnées</span>
+          <span>{badgeText.sendDetails}</span>
           <span className={styles.leadButtonArrow} aria-hidden="true">›</span>
         </button>
       </div>
@@ -109,55 +112,55 @@ export default function BadgeLeadButton({ slug, company }: Props) {
       {open && typeof document !== "undefined"
         ? createPortal(
             <div className={styles.sheetLayer} aria-hidden={false}>
-              <button type="button" className={styles.sheetBackdrop} aria-label="Fermer" onClick={closeSheet} />
-              <div className={`${styles.sheet} ${styles.leadSheet}`} role="dialog" aria-modal="true" aria-label="Transmettre mes coordonnées">
+              <button type="button" className={styles.sheetBackdrop} aria-label={badgeText.close} onClick={closeSheet} />
+              <div className={`${styles.sheet} ${styles.leadSheet}`} role="dialog" aria-modal="true" aria-label={badgeText.leadDialogTitle}>
                 <div className={styles.sheetHeader}>
                   <div>
-                    <strong>Transmettre mes coordonnées</strong>
+                    <strong>{badgeText.leadDialogTitle}</strong>
                   </div>
-                  <button type="button" className={styles.sheetClose} onClick={closeSheet} aria-label="Fermer">×</button>
+                  <button type="button" className={styles.sheetClose} onClick={closeSheet} aria-label={badgeText.close}>×</button>
                 </div>
 
                 {sent ? (
                   <div className={styles.leadSuccess}>
                     <div className={styles.leadSuccessIcon}>✓</div>
-                    <strong>C’est envoyé.</strong>
-                    <p>Le professionnel a bien reçu vos coordonnées.</p>
-                    <button type="button" className={styles.leadSubmitButton} onClick={closeSheet}>Fermer</button>
+                    <strong>{badgeText.leadSentTitle}</strong>
+                    <p>{badgeText.leadSentText}</p>
+                    <button type="button" className={styles.leadSubmitButton} onClick={closeSheet}>{badgeText.close}</button>
                   </div>
                 ) : (
                   <form className={styles.leadForm} onSubmit={submit}>
                     <input className={styles.leadHoneypot} tabIndex={-1} autoComplete="off" value={form.website} onChange={(e) => update("website", e.target.value)} aria-hidden="true" />
                     <label>
-                      Nom Prénom / Raison sociale
+                      {badgeText.leadNameLabel}
                       <input
                         value={form.displayName}
                         onChange={(e) => update("displayName", e.target.value)}
                         autoComplete="name"
-                        placeholder="Dupont Marie / SAS Exemple"
+                        placeholder={badgeText.leadNamePlaceholder}
                       />
                     </label>
                     <div className={styles.leadFormGrid}>
                       <label>
-                        Téléphone
+                        {badgeText.phoneLabel}
                         <input value={form.phone} onChange={(e) => update("phone", e.target.value)} autoComplete="tel" inputMode="tel" />
                       </label>
                       <label>
-                        Email
+                        {badgeText.emailLabel}
                         <input value={form.email} onChange={(e) => update("email", e.target.value)} autoComplete="email" inputMode="email" />
                       </label>
                     </div>
                     <label>
-                      Message / demande
-                      <textarea value={form.message} onChange={(e) => update("message", e.target.value)} rows={3} placeholder="Votre demande, besoin ou créneau préféré…" />
+                      {badgeText.leadMessageLabel}
+                      <textarea value={form.message} onChange={(e) => update("message", e.target.value)} rows={3} placeholder={badgeText.leadMessagePlaceholder} />
                     </label>
                     <label className={styles.leadConsent}>
                       <input type="checkbox" checked={form.consent} onChange={(e) => update("consent", e.target.checked)} />
-                      <span>J’accepte que mes coordonnées soient transmises à ce professionnel.</span>
+                      <span>{badgeText.leadConsent}</span>
                     </label>
                     {error ? <div className={styles.leadError}>{error}</div> : null}
                     <button type="submit" className={styles.leadSubmitButton} disabled={submitting}>
-                      {submitting ? "Transmission…" : "Envoyer mes coordonnées"}
+                      {submitting ? badgeText.leadSubmitting : badgeText.leadSubmit}
                     </button>
                   </form>
                 )}

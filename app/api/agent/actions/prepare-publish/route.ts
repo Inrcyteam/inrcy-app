@@ -345,7 +345,7 @@ async function generateBoosterPosts(args: {
   recentPublications: BoosterRecentPublication[];
 }) {
   const out = await openaiGenerateJSON<BoosterGenResponse>({
-    system: boosterSystemPrompt(),
+    system: boosterSystemPrompt(args.business),
     input: boosterUserPrompt({
       idea: args.idea,
       theme: args.theme,
@@ -599,6 +599,8 @@ export async function POST(request: Request) {
       .from("business_profiles")
       .select("*")
       .eq("user_id", userId)
+      .order("updated_at", { ascending: false })
+      .limit(1)
       .maybeSingle();
     business = data && typeof data === "object" ? (data as JsonRecord) : null;
   } catch {

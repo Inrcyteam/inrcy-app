@@ -225,7 +225,7 @@ export default function InformerModal({
               >
                 {aiGenerating ? "Génération…" : "✨ Générer avec iNrCy"}
               </button>
-              <span style={{ ...aiHintStyle, whiteSpace: isMobile ? "nowrap" : "normal", maxWidth: isMobile ? "100%" : 250 }}>La pièce jointe aide l’IA à personnaliser le message.</span>
+              <span style={{ ...aiHintStyle, whiteSpace: isMobile ? "nowrap" : "normal", maxWidth: isMobile ? "100%" : 250 }}>Générez pour adapter la langue IA. La pièce jointe aide aussi.</span>
             </div>
           </div>
           {aiError ? <div style={{ marginTop: 8, width: "100%", color: "#fecaca", fontSize: 13, fontWeight: 700 }}>{aiError}</div> : null}

@@ -1,12 +1,17 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { extractInrBadgeUserIdFromSlug } from "@/lib/inrBadge";
+import { getInrBadgeTexts, normalizeInrBadgeLanguage } from "@/lib/inrBadgeLanguage";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 function trim(value: unknown) {
   return String(value || "").trim();
+}
+
+function safeObj(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
 function getOrigin(req: Request) {
@@ -20,18 +25,29 @@ export async function GET(req: Request, ctx: { params: Promise<{ slug: string }>
   const userId = extractInrBadgeUserIdFromSlug(slug);
 
   let name = "iNr'Badge";
+  let language = normalizeInrBadgeLanguage(null);
   if (userId) {
-    const { data } = await supabaseAdmin
-      .from("profiles")
-      .select("company_legal_name,first_name,last_name")
-      .eq("user_id", userId)
-      .maybeSingle();
+    const [{ data }, toolsRes] = await Promise.all([
+      supabaseAdmin
+        .from("profiles")
+        .select("company_legal_name,first_name,last_name")
+        .eq("user_id", userId)
+        .maybeSingle(),
+      supabaseAdmin
+        .from("pro_tools_configs")
+        .select("settings")
+        .eq("user_id", userId)
+        .maybeSingle(),
+    ]);
     const profile = data as Record<string, unknown> | null;
+    const rootSettings = safeObj((toolsRes.data as { settings?: unknown } | null)?.settings);
+    language = normalizeInrBadgeLanguage(rootSettings.inrBadgeLanguage);
     const company = trim(profile?.company_legal_name);
     const displayName = [trim(profile?.first_name), trim(profile?.last_name)].filter(Boolean).join(" ");
     name = company || displayName || name;
   }
 
+  const badgeText = getInrBadgeTexts(language);
   const origin = getOrigin(req);
   const encodedSlug = encodeURIComponent(slug);
   const iconUrl = `${origin}/badge/${encodedSlug}/icon.png`;
@@ -41,7 +57,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ slug: string }>
     {
       name,
       short_name: name.length > 12 ? name.slice(0, 12) : name,
-      description: "Fiche iNr'Badge",
+      description: badgeText.shareSheetTitle,
       start_url: startUrl,
       scope: `${origin}/badge/${encodedSlug}`,
       display: "standalone",

@@ -74,7 +74,7 @@ export async function POST(req: Request) {
 
     const [profileRes, businessRes, inrcyCfgRes, proCfgRes, integrationsRes] = await Promise.all([
       supabase.from("profiles").select("*").eq("user_id", userId).maybeSingle(),
-      supabase.from("business_profiles").select("*").eq("user_id", userId).maybeSingle(),
+      supabase.from("business_profiles").select("*").eq("user_id", userId).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
       supabase.from("inrcy_site_configs").select("site_url").eq("user_id", userId).maybeSingle(),
       supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle(),
       supabase

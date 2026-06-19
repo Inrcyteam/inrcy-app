@@ -1287,6 +1287,8 @@ export async function POST(request: Request) {
       .from("business_profiles")
       .select("ai_language")
       .eq("user_id", userId)
+      .order("updated_at", { ascending: false })
+      .limit(1)
       .maybeSingle(),
   ]);
 

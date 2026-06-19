@@ -4,6 +4,7 @@ import Image from "next/image";
 import inrCalendarLogo from "@/public/inrcalendar-logo.png";
 import { useMemo, useState, type FormEvent } from "react";
 import { getInrBadgeAppointmentDaySlots, type InrBadgeAppointmentSettings } from "@/lib/inrBadgeSettings";
+import { getInrBadgeLocale, getInrBadgeTexts, normalizeInrBadgeLanguage, type InrBadgeLanguageCode } from "@/lib/inrBadgeLanguage";
 import styles from "../badge.module.css";
 
 type BusyEvent = { id: string; start: string; end: string };
@@ -12,6 +13,7 @@ type Props = {
   slug: string;
   settings: InrBadgeAppointmentSettings;
   events: BusyEvent[];
+  language?: InrBadgeLanguageCode;
 };
 
 function pad(value: number) {
@@ -31,8 +33,8 @@ function timeFromMinutes(value: number) {
   return `${pad(Math.floor(value / 60))}:${pad(value % 60)}`;
 }
 
-function formatDayLabel(date: Date) {
-  return new Intl.DateTimeFormat("fr-FR", { weekday: "short", day: "2-digit", month: "short" }).format(date);
+function formatDayLabel(date: Date, language: InrBadgeLanguageCode) {
+  return new Intl.DateTimeFormat(getInrBadgeLocale(language), { weekday: "short", day: "2-digit", month: "short" }).format(date);
 }
 
 function buildLocalDateTime(dateKeyValue: string, time: string) {
@@ -47,7 +49,9 @@ function overlaps(start: Date, end: Date, event: BusyEvent) {
   return start < eventEnd && end > eventStart;
 }
 
-export default function RdvBookingClient({ slug, settings, events }: Props) {
+export default function RdvBookingClient({ slug, settings, events, language }: Props) {
+  const badgeLanguage = normalizeInrBadgeLanguage(language);
+  const badgeText = getInrBadgeTexts(badgeLanguage);
   const [selectedDay, setSelectedDay] = useState("");
   const [selectedSlot, setSelectedSlot] = useState<{ start: string; end: string; label: string } | null>(null);
   const [name, setName] = useState("");
@@ -68,10 +72,10 @@ export default function RdvBookingClient({ slug, settings, events }: Props) {
       const weekday = date.getDay();
       const daySlots = getInrBadgeAppointmentDaySlots(settings, weekday);
       if (!daySlots.length) continue;
-      items.push({ key: dateKey(date), label: formatDayLabel(date) });
+      items.push({ key: dateKey(date), label: formatDayLabel(date, badgeLanguage) });
     }
     return items;
-  }, [settings]);
+  }, [settings, badgeLanguage]);
 
   const activeDay = selectedDay || days[0]?.key || "";
 
@@ -118,11 +122,11 @@ export default function RdvBookingClient({ slug, settings, events }: Props) {
     setFeedback(null);
 
     if (!selectedSlot) {
-      setError("Choisissez un créneau.");
+      setError(badgeText.rdvChooseSlotError);
       return;
     }
     if (!name.trim() || !email.trim()) {
-      setError("Nom et email sont obligatoires.");
+      setError(badgeText.rdvRequiredError);
       return;
     }
 
@@ -143,8 +147,8 @@ export default function RdvBookingClient({ slug, settings, events }: Props) {
         }),
       });
       const json = await response.json().catch(() => ({}));
-      if (!response.ok || !json.ok) throw new Error(String(json.error || "Impossible d'envoyer la demande."));
-      setFeedback("Demande envoyée. Le professionnel va confirmer ou proposer un autre créneau.");
+      if (!response.ok || !json.ok) throw new Error(badgeText.rdvGenericError);
+      setFeedback(badgeText.rdvSuccess);
       setSelectedSlot(null);
       setName("");
       setCompanyName("");
@@ -152,7 +156,7 @@ export default function RdvBookingClient({ slug, settings, events }: Props) {
       setPhone("");
       setMessage("");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Impossible d'envoyer la demande.");
+      setError(err instanceof Error ? err.message : badgeText.rdvGenericError);
     } finally {
       setSubmitting(false);
     }
@@ -165,23 +169,23 @@ export default function RdvBookingClient({ slug, settings, events }: Props) {
           <div className={styles.calendarHeader}>
             <div className={styles.calendarTopBar}>
               <div className={styles.rdvTopActions}>
-                <a className={`${styles.previousPageButton} ${styles.iconActionButton}`} href={`/badge/${slug}`} aria-label="Retour à la fiche" title="Retour">←</a>
-                <button type="button" className={`${styles.closePageButton} ${styles.iconActionButton}`} onClick={handleClosePage} aria-label="Fermer" title="Fermer">×</button>
+                <a className={`${styles.previousPageButton} ${styles.iconActionButton}`} href={`/badge/${slug}`} aria-label={badgeText.rdvBack} title={badgeText.rdvBack}>←</a>
+                <button type="button" className={`${styles.closePageButton} ${styles.iconActionButton}`} onClick={handleClosePage} aria-label={badgeText.close} title={badgeText.close}>×</button>
               </div>
               <Image className={styles.calendarHeroLogo} src={inrCalendarLogo} alt="iNr'Calendar" width={168} height={64} priority />
             </div>
-            <p className={styles.calendarInlineInfo}>Réserver un rendez-vous</p>
+            <p className={styles.calendarInlineInfo}>{badgeText.rdvTitle}</p>
           </div>
 
           <section className={styles.section}>
             <div className={styles.sectionHeader}>
               <span className={styles.sectionMark} />
-              <h2>Choisir un créneau</h2>
+              <h2>{badgeText.rdvChooseSlot}</h2>
             </div>
 
             <div className={styles.rdvSelectGrid}>
               <label>
-                Date
+                {badgeText.rdvDate}
                 <select
                   value={activeDay}
                   onChange={(event) => {
@@ -196,7 +200,7 @@ export default function RdvBookingClient({ slug, settings, events }: Props) {
               </label>
 
               <label>
-                Horaire
+                {badgeText.rdvTime}
                 <select
                   value={slotValue}
                   onChange={(event) => {
@@ -205,7 +209,7 @@ export default function RdvBookingClient({ slug, settings, events }: Props) {
                   }}
                   disabled={!slots.length}
                 >
-                  <option value="">{slots.length ? "Choisir un horaire" : "Aucun créneau"}</option>
+                  <option value="">{slots.length ? badgeText.rdvChooseTime : badgeText.rdvNoSlot}</option>
                   {slots.map((slot) => (
                     <option key={slot.start} value={slot.start}>{slot.label}</option>
                   ))}
@@ -213,48 +217,48 @@ export default function RdvBookingClient({ slug, settings, events }: Props) {
               </label>
             </div>
 
-            {!slots.length ? <p className={styles.emptySlots}>Aucun créneau disponible sur cette journée.</p> : null}
+            {!slots.length ? <p className={styles.emptySlots}>{badgeText.rdvNoSlotDay}</p> : null}
           </section>
 
           <form className={styles.rdvForm} onSubmit={submitRequest}>
             <div className={styles.rdvFieldGrid}>
               <label>
-                Nom / prénom *
-                <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Votre nom" />
+                {badgeText.rdvNameLabel}
+                <input value={name} onChange={(event) => setName(event.target.value)} placeholder={badgeText.rdvNamePlaceholder} />
               </label>
               <label>
-                Société
-                <input value={companyName} onChange={(event) => setCompanyName(event.target.value)} placeholder="Votre société" />
+                {badgeText.rdvCompanyLabel}
+                <input value={companyName} onChange={(event) => setCompanyName(event.target.value)} placeholder={badgeText.rdvCompanyPlaceholder} />
               </label>
             </div>
 
             <div className={styles.rdvFieldGrid}>
               <label>
-                Mail *
-                <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="votre@email.fr" />
+                {badgeText.rdvMailLabel}
+                <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder={badgeText.rdvEmailPlaceholder} />
               </label>
               <label>
-                Téléphone
-                <input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="06..." />
+                {badgeText.rdvPhoneLabel}
+                <input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder={badgeText.rdvPhonePlaceholder} />
               </label>
             </div>
 
             <label>
-              Message / motif
-              <textarea value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Expliquez rapidement votre besoin" rows={3} />
+              {badgeText.rdvMessageLabel}
+              <textarea value={message} onChange={(event) => setMessage(event.target.value)} placeholder={badgeText.rdvMessagePlaceholder} rows={3} />
             </label>
 
             {error ? <div className={styles.rdvError}>{error}</div> : null}
             {feedback ? <div className={styles.rdvSuccess}>{feedback}</div> : null}
 
             <button type="submit" className={styles.rdvSubmit} disabled={submitting || !selectedSlot}>
-              {submitting ? "Envoi..." : "Envoyer la demande"}
+              {submitting ? badgeText.rdvSubmitting : badgeText.rdvSubmit}
             </button>
-            <p className={styles.rdvNote}>Le rendez-vous sera enregistré dans iNr&apos;Calendar uniquement après validation du professionnel.</p>
+            <p className={styles.rdvNote}>{badgeText.rdvNote}</p>
           </form>
         </div>
 
-        <div className={styles.footer}>Propulsé par <strong>iNrCy</strong></div>
+        <div className={styles.footer}>{badgeText.poweredBy} <strong>iNrCy</strong></div>
       </section>
     </main>
   );

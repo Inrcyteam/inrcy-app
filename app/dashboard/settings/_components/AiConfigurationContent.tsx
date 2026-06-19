@@ -321,6 +321,15 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
         if (upErr) throw new Error(upErr.message);
       }
 
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new CustomEvent("inrcy:ai-configuration-updated", {
+          detail: {
+            aiLanguage: form.language,
+            preferredCta: form.preferredCta,
+          },
+        }));
+      }
+
       setSaved(true);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);

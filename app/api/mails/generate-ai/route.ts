@@ -87,7 +87,7 @@ export async function POST(req: Request) {
 
     const [profileRes, businessRes] = await Promise.all([
       supabase.from("profiles").select("*").eq("user_id", userId).maybeSingle(),
-      supabase.from("business_profiles").select("*").eq("user_id", userId).maybeSingle(),
+      supabase.from("business_profiles").select("*").eq("user_id", userId).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
     ]);
 
     const profile = asRecord(profileRes.data);
