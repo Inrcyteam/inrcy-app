@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import HelpButton from "../_components/HelpButton";
+import PublishAiConfigurationDrawer from "../booster/publier/components/PublishAiConfigurationDrawer";
 import {
   INR_AGENT_DEFAULT_SETTINGS,
   sanitizeInrAgentSettings,
@@ -493,7 +494,7 @@ const defaultConfigs: Record<AutomationKey, AutomationConfig> = {
       "LinkedIn",
     ],
     validation: "Bilan automatique",
-    source: "Rubriques iNrStats connectées",
+    source: "Rubriques iNr’Stats connectées",
   },
 };
 
@@ -704,6 +705,13 @@ function configsToSettings(
     allowedChannels: automationsByKey.publish.allowedChannels,
     useMediaLibrary: automationsByKey.publish.useImageBank,
   });
+}
+
+function inrSendFolderForAutomation(key: AutomationKey) {
+  if (key === "grow") return "propulsions";
+  if (key === "loyalty") return "fidelisations";
+  if (key === "stats") return "stats";
+  return "publications";
 }
 
 function AutomationIcon({ type }: { type: AutomationKey }) {
@@ -1135,7 +1143,7 @@ function statsProgressLabel(percent: number) {
   if (percent >= 80) return "Finalisation + envoi mail";
   if (percent >= 70) return "Stockage du bilan";
   if (percent >= 45) return "Création du PDF";
-  if (percent >= 20) return "Analyse iNrAgent";
+  if (percent >= 20) return "Analyse iNr’Agent";
   return "Stats";
 }
 
@@ -1247,6 +1255,8 @@ export default function AgentClient() {
   const [tableMissing, setTableMissing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [aiConfigurationOpen, setAiConfigurationOpen] = useState(false);
+  const [isMobileHeader, setIsMobileHeader] = useState(false);
   const [actions, setActions] = useState<AgentPreparedAction[]>([]);
   const [actionsLoadState, setActionsLoadState] =
     useState<ActionsLoadState>("loading");
@@ -1259,6 +1269,15 @@ export default function AgentClient() {
     Record<string, ChannelKey>
   >({});
 
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(max-width: 768px)");
+    const update = () => setIsMobileHeader(mq.matches);
+    update();
+    mq.addEventListener?.("change", update);
+    return () => mq.removeEventListener?.("change", update);
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -1655,7 +1674,7 @@ export default function AgentClient() {
         throw new Error(
           payload?.error ||
             payload?.detail ||
-            "Génération ou envoi du bilan iNrStats impossible.",
+            "Génération ou envoi du bilan iNr’Stats impossible.",
         );
       }
 
@@ -1668,7 +1687,7 @@ export default function AgentClient() {
       await refreshActions(true);
       setSelectedKey("stats");
       showNotice(
-        `Bilan iNrStats PDF envoyé${payload.recipientEmail ? ` à ${payload.recipientEmail}` : ""}.`,
+        `Bilan iNr’Stats PDF envoyé${payload.recipientEmail ? ` à ${payload.recipientEmail}` : ""}.`,
       );
       await wait(800);
     } catch (error) {
@@ -1680,7 +1699,7 @@ export default function AgentClient() {
       showNotice(
         error instanceof Error
           ? error.message
-          : "Génération ou envoi du bilan iNrStats impossible.",
+          : "Génération ou envoi du bilan iNr’Stats impossible.",
       );
       await wait(900);
     } finally {
@@ -1785,9 +1804,15 @@ export default function AgentClient() {
 
   return (
     <main className={styles.agentPage}>
+      <PublishAiConfigurationDrawer
+        open={aiConfigurationOpen}
+        isMobile={isMobileHeader}
+        drawerHeight="100dvh"
+        onClose={() => setAiConfigurationOpen(false)}
+      />
       <section
         className={styles.agentCanvas}
-        aria-label="iNrAgent - automatisations"
+        aria-label="iNr’Agent - automatisations"
       >
         <header className={styles.moduleHeader}>
           <div className={styles.moduleTitleBlock}>
@@ -1820,11 +1845,41 @@ export default function AgentClient() {
             <HelpButton
               onClick={() => setHelpOpen(true)}
               title="Aide iNr’Agent"
+              size={34}
             />
+            <button
+              type="button"
+              className={styles.headerAiButton}
+              onClick={() => setAiConfigurationOpen(true)}
+              aria-label="Configuration IA"
+              title="Configurer le style des contenus générés"
+            >
+              IA
+            </button>
+            <button
+              type="button"
+              className={styles.headerInrSendButton}
+              onClick={() => router.push(`/dashboard/mails?folder=${inrSendFolderForAutomation(selected.key)}`)}
+              aria-label="Ouvrir iNr'Send"
+              title="Voir l’historique des actions réalisées"
+            >
+              <span className={styles.headerInrSendLabel}>iNr'Send</span>
+              <img
+                className={styles.headerInrSendLogo}
+                src="/inrsend-logo-seul.png"
+                alt=""
+                aria-hidden
+                width={34}
+                height={34}
+                loading="eager"
+                decoding="sync"
+              />
+            </button>
             <button
               type="button"
               className={styles.headerCloseButton}
               onClick={() => router.push("/dashboard")}
+              title="Retour au tableau de bord"
             >
               Fermer
             </button>
@@ -1833,7 +1888,7 @@ export default function AgentClient() {
 
         <nav
           className={styles.automationGrid}
-          aria-label="Automatisations iNrAgent"
+          aria-label="Automatisations iNr’Agent"
         >
           {automations.map((automation) => {
             const selectedCard = automation.key === selectedKey;
@@ -1887,7 +1942,7 @@ export default function AgentClient() {
         <div className={styles.mainGrid}>
           <aside
             className={styles.robotCard}
-            aria-label="Fonctionnement iNrAgent"
+            aria-label="Fonctionnement iNr’Agent"
           >
             <div className={styles.robotHalo} aria-hidden>
               <span className={styles.starOne} />
@@ -1933,9 +1988,9 @@ export default function AgentClient() {
                       <AutomationIcon type="stats" />
                     </span>
                     <div className={styles.statsHeadCopy}>
-                      <h3>Votre bilan iNrStats</h3>
+                      <h3>Votre bilan iNr’Stats</h3>
                       <p className={styles.statsLead}>
-                        iNrAgent analyse vos données et vous envoie un bilan PDF automatiquement.
+                        iNr’Agent analyse vos données et vous envoie un bilan PDF automatiquement.
                       </p>
                     </div>
                   </div>
@@ -1972,17 +2027,11 @@ export default function AgentClient() {
                     <button
                       type="button"
                       className={styles.prepareButton}
-                      onClick={sendStatsReport}
-                      disabled={
-                        prepareActionState === "saving" ||
-                        actionsLoadState === "loading" ||
-                        loadState === "loading"
-                      }
+                      onClick={() => router.push("/dashboard/stats")}
+                      title="Consulter les statistiques et générer un bilan manuel"
                     >
-                      <span aria-hidden><SendPlaneIcon /></span>
-                      {prepareActionState === "saving" && statsProgress
-                        ? formatStatsProgress(statsProgress)
-                        : "Générer et envoyer maintenant"}
+                      <span aria-hidden><AutomationIcon type="stats" /></span>
+                      iNr’Stats
                     </button>
                     {latestStatsReport?.document.downloadUrl ? (
                       <a
@@ -2319,7 +2368,7 @@ export default function AgentClient() {
                 </li>
                 <li>
                   <strong>Analyser mes statistiques</strong> génère un bilan
-                  iNrStats PDF multi-pages et l’envoie automatiquement au pro
+                  iNr’Stats PDF multi-pages et l’envoie automatiquement au pro
                   selon les réglages.
                 </li>
               </ul>
@@ -2495,7 +2544,7 @@ export default function AgentClient() {
             <div className={styles.modalSection}>
               <span>
                 {settingsAutomation.key === "stats"
-                  ? "Rubriques iNrStats"
+                  ? "Rubriques iNr’Stats"
                   : settingsAutomation.key === "grow"
                     ? "Rubriques Propulser"
                     : settingsAutomation.key === "loyalty"

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getInrSendRetentionCutoffIso, getOldestAutoRetentionCutoffIso, isInrSendItemRetained } from "@/lib/inrsendRetention";
 import { fetchInrSendHistoryFiles } from "@/lib/inrsend/historyFiles";
 import {
@@ -26,7 +27,7 @@ type Status = "draft" | "sent" | "error" | "queued" | "processing" | "paused" | 
 
 type OutboxItem = {
   id: string;
-  source: "send_items" | "app_events" | "mail_campaigns";
+  source: "send_items" | "app_events" | "mail_campaigns" | "inr_agent_actions";
   module?: "booster" | "propulser" | "fideliser";
   /**
    * Dossier historique réel ou dossier groupé.
@@ -94,6 +95,32 @@ type SendItemRow = {
   updated_at: string;
 };
 
+type InrAgentActionRow = {
+  id: string;
+  automation_key: string | null;
+  action_type: string | null;
+  target_tool: string | null;
+  title: string | null;
+  summary: string | null;
+  preview_text: string | null;
+  recipients: unknown[] | null;
+  payload: Record<string, unknown> | null;
+  status: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string | null;
+  last_error: string | null;
+};
+
+type StoredReportDocument = {
+  bucket: string;
+  storagePath: string;
+  filename: string;
+  mimeType: string;
+  bytes: number;
+  createdAt: string;
+};
+
 const MAILBOX_PAGE_SIZE = 20;
 const SOURCE_BATCH_SIZE = 60;
 const MAX_ITERATIONS = 5000;
@@ -116,6 +143,76 @@ function parsePositiveInt(value: string | null, fallback: number, max: number) {
 
 function cleanString(value: string | null) {
   return String(value || "").trim();
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function extractStoredReportDocument(value: unknown): StoredReportDocument | null {
+  const record = asRecord(value);
+  const bucket = cleanString(String(record.bucket || "inr-agent-reports"));
+  const storagePath = cleanString(String(record.storagePath || record.storage_path || record.path || ""));
+  const filename = cleanString(String(record.filename || "bilan-inrstats.pdf"));
+  const mimeType = cleanString(String(record.mimeType || record.mime_type || "application/pdf"));
+  const bytes = Math.max(0, Math.round(Number(record.bytes || 0) || 0));
+  const createdAt = cleanString(String(record.createdAt || record.created_at || ""));
+  if (!bucket || !storagePath || !filename) return null;
+  return { bucket, storagePath, filename, mimeType, bytes, createdAt };
+}
+
+async function withStatsReportSignedUrls(items: OutboxItem[]): Promise<OutboxItem[]> {
+  const statsItems = items.filter((item) => item.source === "inr_agent_actions");
+  if (!statsItems.length) return items;
+
+  await Promise.all(statsItems.map(async (item) => {
+    const attachment = item.attachments?.[0];
+    const rawPayload = asRecord((item.raw as InrAgentActionRow | undefined)?.payload);
+    const document = extractStoredReportDocument(rawPayload.reportDocument);
+    const storagePath = document?.storagePath || attachment?.storagePath || "";
+    const bucket = document?.bucket || "inr-agent-reports";
+    if (!storagePath) return;
+
+    try {
+      const { data } = await supabaseAdmin.storage
+        .from(bucket)
+        .createSignedUrl(storagePath, 60 * 60);
+      const signedUrl = data?.signedUrl || "";
+      if (!signedUrl) return;
+      item.attachments = (item.attachments || []).map((current) => (
+        current.storagePath === storagePath
+          ? { ...current, url: signedUrl, downloadUrl: signedUrl }
+          : current
+      ));
+      const documentPayload = asRecord(rawPayload.reportDocument);
+      item.raw = {
+        ...(item.raw as Record<string, unknown>),
+        payload: {
+          ...rawPayload,
+          reportDocument: {
+            ...documentPayload,
+            downloadUrl: signedUrl,
+          },
+        },
+      };
+    } catch {
+      // Le bilan reste visible même si l'URL temporaire ne peut pas être générée.
+    }
+  }));
+
+  return items;
+}
+
+function isMissingAgentActionsError(error: { code?: string; message?: string } | null | undefined) {
+  const message = String(error?.message || "").toLowerCase();
+  return (
+    error?.code === "42P01" ||
+    error?.code === "42703" ||
+    error?.code === "PGRST205" ||
+    message.includes("inr_agent_actions")
+  );
 }
 
 function safeDecode(v: string): string {
@@ -531,7 +628,7 @@ function extractOriginMeta(raw: any): { originSource?: "manual" | "inr_agent" | 
   }
   return {
     originSource: "inr_agent",
-    originLabel: String(origin?.label || metadata?.label || "iNr'Agent"),
+    originLabel: String(origin?.label || metadata?.label || "iNr’Agent"),
     originIcon: "🤖",
   };
 }
@@ -551,15 +648,15 @@ function matchesQuery(item: OutboxItem, query: string) {
   return hay.includes(query);
 }
 
-function shouldQuerySendItems(_folder: Folder) {
+function shouldQuerySendItems(folder: Folder) {
   // Les brouillons iNrSend peuvent désormais être classés dans toutes les catégories
   // (Factures, Devis, Publications, Propulsions, Fidélisations). On filtre ensuite
   // côté JS pour rester compatible avec les anciennes lignes sans colonne folder.
-  return true;
+  return folder !== "stats";
 }
 
-function shouldQueryCampaigns(view: BoxView) {
-  return view !== "drafts";
+function shouldQueryCampaigns(folder: Folder, view: BoxView) {
+  return folder !== "stats" && view !== "drafts";
 }
 
 function shouldQueryEvents(folder: Folder, view: BoxView) {
@@ -572,6 +669,10 @@ function shouldQueryEvents(folder: Folder, view: BoxView) {
     || folder === "suivis"
     || folder === "enquetes"
     || folder === "fidelisations";
+}
+
+function shouldQueryAgentStatsReports(folder: Folder, view: BoxView) {
+  return view !== "drafts" && folder === "stats";
 }
 
 function mapSendItems(rows: SendItemRow[]): OutboxItem[] {
@@ -732,6 +833,63 @@ function mapEventItems(rows: any[]): OutboxItem[] {
     });
 }
 
+function mapAgentStatsReports(rows: InrAgentActionRow[]): OutboxItem[] {
+  return rows.map<OutboxItem>((row) => {
+    const payload = asRecord(row.payload);
+    const document = extractStoredReportDocument(payload.reportDocument);
+    const delivery = asRecord(payload.delivery);
+    const report = asRecord(payload.report);
+    const generatedAt = cleanString(String(payload.generatedAt || document?.createdAt || row.completed_at || row.created_at));
+    const recipient = safeS(delivery.to || (Array.isArray(row.recipients) ? (row.recipients[0] as any)?.email : ""), "Professionnel");
+    const statusValue = String(row.status || "completed").toLowerCase();
+    const status: Status = statusValue === "failed"
+      ? "failed"
+      : statusValue === "executing" || statusValue === "pending" || statusValue === "scheduled"
+        ? "processing"
+        : "sent";
+    const runMode = cleanString(String(payload.runMode || "manual")).toLowerCase();
+    const generatedAutomatically = runMode === "automatic";
+    const title = safeS(row.title, generatedAutomatically ? "Bilan iNr’Stats automatique envoyé" : "Bilan iNr’Stats manuel envoyé");
+    const periodDays = Math.round(Number(report.periodDays || payload.periodDays || 30) || 30);
+    const fallbackPreview = periodDays > 0
+      ? `Bilan statistique sur ${periodDays} jours.`
+      : "Bilan statistique iNr’Stats.";
+    const attachments = document
+      ? [{
+          name: document.filename,
+          type: document.mimeType,
+          size: document.bytes,
+          url: null,
+          downloadUrl: null,
+          role: "generated_document",
+          storagePath: document.storagePath,
+        }]
+      : [];
+
+    return {
+      id: String(row.id || ""),
+      source: "inr_agent_actions",
+      folder: "stats",
+      provider: "iNr’Stats",
+      status,
+      created_at: generatedAt || row.created_at,
+      sent_at: row.completed_at || cleanString(String(delivery.sentAt || "")) || null,
+      error: row.last_error,
+      title,
+      target: recipient,
+      preview: safeS(row.preview_text || row.summary, fallbackPreview).slice(0, 180),
+      detailText: safeS(row.preview_text || row.summary, fallbackPreview),
+      subject: safeS(delivery.subject, title),
+      to: recipient,
+      attachments,
+      originSource: generatedAutomatically ? "inr_agent" : null,
+      originLabel: generatedAutomatically ? "iNr’Agent" : null,
+      originIcon: generatedAutomatically ? "🤖" : null,
+      raw: row,
+    };
+  });
+}
+
 async function fetchAllRows<T>(
   build: (from: number, to: number) => Promise<{ data: T[] | null; error: any }>,
   batchSize = 500,
@@ -806,12 +964,29 @@ async function computeFolderCounts(
     return builder.range(from, to);
   });
 
-  const [sendRows, campaignRows, eventRows] = await Promise.all([sendItemsPromise, campaignsPromise, eventsPromise]);
+  const statsReportsPromise = boxView === "drafts"
+    ? Promise.resolve([] as InrAgentActionRow[])
+    : fetchAllRows<InrAgentActionRow>(async (from, to) => {
+        const { data, error } = await supabaseAdmin
+          .from("inr_agent_actions")
+          .select("id, automation_key, action_type, target_tool, title, summary, preview_text, recipients, payload, status, completed_at, created_at, updated_at, last_error")
+          .eq("user_id", userId)
+          .eq("automation_key", "stats")
+          .eq("action_type", "stats_report")
+          .order("completed_at", { ascending: false, nullsFirst: false })
+          .order("created_at", { ascending: false })
+          .range(from, to);
+        if (error && isMissingAgentActionsError(error)) return { data: [], error: null };
+        return { data: data as InrAgentActionRow[] | null, error };
+      });
+
+  const [sendRows, campaignRows, eventRows, statsReportRows] = await Promise.all([sendItemsPromise, campaignsPromise, eventsPromise, statsReportsPromise]);
 
   const allItems = [
     ...mapSendItems(sendRows),
     ...mapCampaignItems(campaignRows),
     ...mapEventItems(eventRows),
+    ...mapAgentStatsReports(statsReportRows),
   ];
 
   for (const item of allItems) {
@@ -849,8 +1024,9 @@ export async function GET(req: Request) {
 
     const sourceState = {
       send_items: { offset: 0, exhausted: !shouldQuerySendItems(folder) },
-      mail_campaigns: { offset: 0, exhausted: !shouldQueryCampaigns(boxView) },
+      mail_campaigns: { offset: 0, exhausted: !shouldQueryCampaigns(folder, boxView) },
       app_events: { offset: 0, exhausted: !shouldQueryEvents(folder, boxView) },
+      inr_agent_actions: { offset: 0, exhausted: !shouldQueryAgentStatsReports(folder, boxView) },
     };
 
     const pushItems = (items: OutboxItem[]) => {
@@ -873,7 +1049,7 @@ export async function GET(req: Request) {
 
     for (let iteration = 0; iteration < MAX_ITERATIONS; iteration += 1) {
       if (filtered.length >= targetVisibleCount) break;
-      if (sourceState.send_items.exhausted && sourceState.mail_campaigns.exhausted && sourceState.app_events.exhausted) break;
+      if (sourceState.send_items.exhausted && sourceState.mail_campaigns.exhausted && sourceState.app_events.exhausted && sourceState.inr_agent_actions.exhausted) break;
 
       const tasks: Promise<void>[] = [];
 
@@ -966,6 +1142,33 @@ export async function GET(req: Request) {
         })());
       }
 
+      if (!sourceState.inr_agent_actions.exhausted) {
+        tasks.push((async () => {
+          const from = sourceState.inr_agent_actions.offset;
+          const to = from + SOURCE_BATCH_SIZE - 1;
+          const { data, error } = await supabaseAdmin
+            .from("inr_agent_actions")
+            .select("id, automation_key, action_type, target_tool, title, summary, preview_text, recipients, payload, status, completed_at, created_at, updated_at, last_error")
+            .eq("user_id", userData.user.id)
+            .eq("automation_key", "stats")
+            .eq("action_type", "stats_report")
+            .order("completed_at", { ascending: false, nullsFirst: false })
+            .order("created_at", { ascending: false })
+            .range(from, to);
+          if (error) {
+            if (isMissingAgentActionsError(error)) {
+              sourceState.inr_agent_actions.exhausted = true;
+              return;
+            }
+            throw error;
+          }
+          const rows = (data || []) as InrAgentActionRow[];
+          sourceState.inr_agent_actions.offset += rows.length;
+          if (rows.length < SOURCE_BATCH_SIZE) sourceState.inr_agent_actions.exhausted = true;
+          pushItems(mapAgentStatsReports(rows));
+        })());
+      }
+
       await Promise.all(tasks);
       filtered = buildFiltered();
     }
@@ -975,7 +1178,7 @@ export async function GET(req: Request) {
     const start = (page - 1) * pageSize;
     const end = start + pageSize;
     const items = filtered.slice(start, end);
-    const allSourcesExhausted = sourceState.send_items.exhausted && sourceState.mail_campaigns.exhausted && sourceState.app_events.exhausted;
+    const allSourcesExhausted = sourceState.send_items.exhausted && sourceState.mail_campaigns.exhausted && sourceState.app_events.exhausted && sourceState.inr_agent_actions.exhausted;
     const total = allSourcesExhausted ? filtered.length : null;
     const hasMore = total != null ? end < total : filtered.length > end || !allSourcesExhausted;
     const historyFiles = await fetchInrSendHistoryFiles(
@@ -1009,6 +1212,8 @@ export async function GET(req: Request) {
         item.attachments = mergeAttachments(item.attachments || [], extra);
       }
     }
+
+    await withStatsReportSignedUrls(items);
 
     const [folderCounts, draftFolderCounts] = await Promise.all([
       computeFolderCounts(supabase, userData.user.id, "sent", filterAccountId, query),

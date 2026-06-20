@@ -179,7 +179,7 @@ function formatCurrency(value: number) {
 }
 
 function fallbackReportSummary(report: StatsReportData) {
-  return `Sur les ${report.periodDays} derniers jours, iNrAgent a analysé ${report.channels.length} canaux : ${formatNumber(report.totals.opportunities)} opportunités estimées, ${formatNumber(report.totals.capturedLeadsMonth)} demandes captées et ${formatCurrency(report.totals.estimatedValue)} de CA potentiel.`;
+  return `Sur les ${report.periodDays} derniers jours, iNr’Stats a analysé ${report.channels.length} canaux : ${formatNumber(report.totals.opportunities)} opportunités estimées, ${formatNumber(report.totals.capturedLeadsMonth)} demandes captées et ${formatCurrency(report.totals.estimatedValue)} de CA potentiel.`;
 }
 
 function cleanNarrativeText(value: unknown, fallback: string, maxLength = 900) {
@@ -524,7 +524,7 @@ function percentage(value: number, total: number) {
   return `${Math.round((value / total) * 100)}%`;
 }
 
-function addSoftBackground(doc: jsPDF, pageTitle?: string, pageNumber?: number) {
+function addSoftBackground(doc: jsPDF, pageTitle?: string, pageNumber?: number, reportLabel = "Bilan iNr’Stats") {
   setFill(doc, [247, 250, 255]);
   doc.rect(0, 0, PDF.width, PDF.height, "F");
   setFill(doc, [234, 242, 255]);
@@ -543,19 +543,19 @@ function addSoftBackground(doc: jsPDF, pageTitle?: string, pageNumber?: number) 
     doc.text(pageTitle, 23, 11.2);
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8.5);
-    doc.text("Bilan iNrStats", 164, 11.2);
+    doc.text(reportLabel, 164, 11.2);
     if (pageNumber) doc.text(`Page ${pageNumber}`, 194, 11.2, { align: "right" });
   }
 }
 
-function addFooter(doc: jsPDF, pageNumber: number) {
+function addFooter(doc: jsPDF, pageNumber: number, footerLabel = "Bilan généré depuis iNr’Stats") {
   setDraw(doc, [226, 232, 240]);
   doc.setLineWidth(0.2);
   doc.line(14, 282, 196, 282);
   setText(doc, [100, 116, 139]);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
-  doc.text("Rapport automatique généré par iNrAgent", 14, 288);
+  doc.text(footerLabel, 14, 288);
   doc.text(`Page ${pageNumber}`, 196, 288, { align: "right" });
 }
 
@@ -743,9 +743,12 @@ function drawMailBadgeMetric(doc: jsPDF, label: string, value: string, x: number
   doc.text(value, x + 13, y + 21, { maxWidth: w - 17 });
 }
 
-function createStatsPdf(report: StatsReportData, insights: StatsAiInsights) {
+function createStatsPdf(report: StatsReportData, insights: StatsAiInsights, options: { automatic: boolean }) {
   const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
   let page = 1;
+  const reportLabel = "Bilan iNr’Stats";
+  const reportModeLabel = options.automatic ? "RAPPORT AUTOMATIQUE INR’AGENT" : "BILAN MANUEL INR’STATS";
+  const footerLabel = options.automatic ? "Rapport automatique généré par iNr’Agent" : "Bilan manuel généré depuis iNr’Stats";
 
   const summary = cleanNarrativeText(
     insights.globalSummary,
@@ -786,11 +789,11 @@ function createStatsPdf(report: StatsReportData, insights: StatsAiInsights) {
   setText(doc, [191, 219, 254]);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(8.6);
-  doc.text("RAPPORT AUTOMATIQUE INRAGENT", 22, 55);
+  doc.text(reportModeLabel, 22, 55);
   setText(doc, PDF.white);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(30);
-  doc.text("Bilan iNrStats", 18, 96);
+  doc.text(reportLabel, 18, 96);
   doc.setFontSize(15);
   doc.text(truncateText(report.companyName || "Votre activité", 64), 18, 109);
   setText(doc, [203, 213, 225]);
@@ -825,12 +828,12 @@ function createStatsPdf(report: StatsReportData, insights: StatsAiInsights) {
   setText(doc, [148, 163, 184]);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8.2);
-  doc.text("Ce bilan est généré automatiquement à partir des données disponibles dans iNrStats.", 18, 276);
+  doc.text(options.automatic ? "Ce bilan est généré automatiquement à partir des données disponibles dans iNr’Stats." : "Ce bilan manuel est généré à partir des données disponibles dans iNr’Stats.", 18, 276);
 
   // Page 2 - executive summary
   doc.addPage();
   page += 1;
-  addSoftBackground(doc, "Synthèse dirigeant", page);
+  addSoftBackground(doc, "Synthèse dirigeant", page, reportLabel);
   drawSectionTitle(doc, "Ce qu'il faut retenir", "Vue claire des performances et priorités d'action.", 14, 34, PDF.purple);
   drawGlassCard(doc, 14, 48, 182, 42, { fill: PDF.white, border: [219, 234, 254], radius: 7, accent: PDF.blue });
   setText(doc, PDF.slate);
@@ -842,8 +845,8 @@ function createStatsPdf(report: StatsReportData, insights: StatsAiInsights) {
   drawInsightCard(doc, "À surveiller", weaknesses, 77, 104, 56, 86, PDF.orange);
   drawInsightCard(doc, "Actions", recommendations, 140, 104, 56, 86, PDF.purple);
 
-  drawSectionTitle(doc, "Priorités iNrAgent", "Les canaux à suivre en premier dans les prochains jours.", 14, 212, PDF.cyan);
-  let priorityY = 225;
+  drawSectionTitle(doc, options.automatic ? "Priorités iNr’Agent" : "Priorités recommandées", "Les canaux à suivre en premier dans les prochains jours.", 14, 212, PDF.cyan);
+  const priorityY = 225;
   if (bestChannels.length) {
     bestChannels.forEach((channel, index) => {
       const health = getChannelHealth(channel);
@@ -866,22 +869,22 @@ function createStatsPdf(report: StatsReportData, insights: StatsAiInsights) {
     doc.setFontSize(10);
     doc.text("Aucun canal prioritaire disponible pour le moment.", 14, priorityY + 10);
   }
-  addFooter(doc, page);
+  addFooter(doc, page, footerLabel);
 
   // Page 3 - channels
   doc.addPage();
   page += 1;
-  addSoftBackground(doc, "Analyse par canal", page);
+  addSoftBackground(doc, "Analyse par canal", page, reportLabel);
   drawSectionTitle(doc, "Performance des canaux", "Demandes, opportunités et recommandations par source.", 14, 34, PDF.blue);
   const channelW = 87;
   const channelH = 50;
   let channelIndex = 0;
   for (const channel of report.channels) {
     if (channelIndex > 0 && channelIndex % 8 === 0) {
-      addFooter(doc, page);
+      addFooter(doc, page, footerLabel);
       doc.addPage();
       page += 1;
-      addSoftBackground(doc, "Analyse par canal", page);
+      addSoftBackground(doc, "Analyse par canal", page, reportLabel);
       drawSectionTitle(doc, "Performance des canaux", "Suite des canaux analysés.", 14, 34, PDF.blue);
     }
     const local = channelIndex % 8;
@@ -893,12 +896,12 @@ function createStatsPdf(report: StatsReportData, insights: StatsAiInsights) {
     drawChannelCard(doc, channel, note, x, y, channelW, channelH);
     channelIndex += 1;
   }
-  addFooter(doc, page);
+  addFooter(doc, page, footerLabel);
 
   // Page 4 - mails and badge
   doc.addPage();
   page += 1;
-  addSoftBackground(doc, "Mails et iNrBadge", page);
+  addSoftBackground(doc, "Mails et iNrBadge", page, reportLabel);
   drawSectionTitle(doc, "Mails / Propulser / Fidéliser", "Activité de contact et campagnes sur 30 jours.", 14, 34, PDF.pink);
   if (report.mail) {
     drawMailBadgeMetric(doc, "Boîtes", `${report.mail.connectedCount}/${report.mail.maxAccounts}`, 14, 50, 42, PDF.green);
@@ -952,12 +955,12 @@ function createStatsPdf(report: StatsReportData, insights: StatsAiInsights) {
     doc.setFontSize(10);
     doc.text("Statistiques iNrBadge indisponibles au moment du bilan.", 14, 171);
   }
-  addFooter(doc, page);
+  addFooter(doc, page, footerLabel);
 
   // Page 5 - action plan
   doc.addPage();
   page += 1;
-  addSoftBackground(doc, "Plan d'action", page);
+  addSoftBackground(doc, "Plan d'action", page, reportLabel);
   drawSectionTitle(doc, "Recommandations concrètes", "Une feuille de route simple pour transformer les statistiques en actions.", 14, 34, PDF.purple);
   const actionCards = recommendations.slice(0, 5);
   let actionY = 54;
@@ -985,13 +988,13 @@ function createStatsPdf(report: StatsReportData, insights: StatsAiInsights) {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(9);
   doc.text("Ce rapport doit servir à décider les prochaines publications, campagnes et relances.", 52, 248, { maxWidth: 132 });
-  addFooter(doc, page);
+  addFooter(doc, page, footerLabel);
 
   const buffer = Buffer.from(doc.output("arraybuffer") as ArrayBuffer);
   return buffer;
 }
 
-function buildStatsEmail(args: { report: StatsReportData; insights: StatsAiInsights; filename: string }) {
+function buildStatsEmail(args: { report: StatsReportData; insights: StatsAiInsights; filename: string; automatic: boolean }) {
   const company = cleanText(args.report.companyName || "votre activité", 120);
   const safeCompany = escapeHtml(company);
   const safeProName = escapeHtml(args.report.proName);
@@ -1002,10 +1005,12 @@ function buildStatsEmail(args: { report: StatsReportData; insights: StatsAiInsig
   );
   const safeSummary = escapeHtml(summary);
   const safeFilename = escapeHtml(args.filename);
+  const sourceSentence = args.automatic ? "Mail automatique envoyé par iNr’Agent." : "Bilan manuel généré depuis iNr’Stats.";
+  const subtitle = args.automatic ? `Analyse automatique iNr’Agent pour ${safeCompany}` : `Bilan manuel iNr’Stats pour ${safeCompany}`;
   const text = [
     `Bonjour${args.report.proName ? ` ${args.report.proName}` : ""},`,
     "",
-    `Votre bilan iNrStats est disponible en pièce jointe : ${args.filename}.`,
+    `Votre bilan iNr’Stats est disponible en pièce jointe : ${args.filename}.`,
     "",
     summary,
     "",
@@ -1013,7 +1018,7 @@ function buildStatsEmail(args: { report: StatsReportData; insights: StatsAiInsig
     `Opportunités estimées : ${formatNumber(args.report.totals.opportunities)}`,
     `Demandes captées sur 30 jours : ${formatNumber(args.report.totals.capturedLeadsMonth)}`,
     "",
-    "Mail automatique envoyé par iNr’Agent.",
+    sourceSentence,
   ].join("\n");
 
   const html = `<!doctype html>
@@ -1025,12 +1030,12 @@ function buildStatsEmail(args: { report: StatsReportData; insights: StatsAiInsig
         <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#ffffff" style="max-width:640px;background:#ffffff;border-radius:16px;box-shadow:0 10px 30px rgba(15,23,42,.08);overflow:hidden;">
           <tr><td style="padding:24px 24px 8px 24px;">
             <img src="cid:inrcy-logo@inrcy" alt="iNrCy" width="108" height="41" style="display:block;width:108px;max-width:100%;height:auto;border:0;" />
-            <h1 style="margin:18px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:800;color:#0f172a;line-height:1.25;">Votre bilan iNrStats est prêt</h1>
-            <p style="margin:8px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#64748b;line-height:1.5;">Analyse automatique iNr’Agent pour ${safeCompany}</p>
+            <h1 style="margin:18px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:22px;font-weight:800;color:#0f172a;line-height:1.25;">Votre bilan iNr’Stats est prêt</h1>
+            <p style="margin:8px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#64748b;line-height:1.5;">${subtitle}</p>
           </td></tr>
           <tr><td style="padding:8px 24px 6px 24px;font-family:Arial,Helvetica,sans-serif;color:#0f172a;">
             <p style="margin:12px 0 0 0;font-size:14px;line-height:1.65;">Bonjour${safeProName ? ` ${safeProName}` : ""},</p>
-            <p style="margin:12px 0 0 0;font-size:14px;line-height:1.65;">Votre bilan iNrStats est disponible en pièce jointe. Il analyse vos canaux, vos demandes captées, vos opportunités et vos actions mails.</p>
+            <p style="margin:12px 0 0 0;font-size:14px;line-height:1.65;">Votre bilan iNr’Stats est disponible en pièce jointe. Il analyse vos canaux, vos demandes captées, vos opportunités et vos actions mails.</p>
             <div style="margin:18px 0;padding:16px;border-radius:14px;background:#f8fafc;border:1px solid #e2e8f0;">
               <p style="margin:0;font-size:14px;line-height:1.65;color:#334155;">${safeSummary}</p>
             </div>
@@ -1049,13 +1054,13 @@ function buildStatsEmail(args: { report: StatsReportData; insights: StatsAiInsig
             <img src="cid:inrcy-signature@inrcy" alt="iNrCy — Service client" width="512" style="width:100%;max-width:512px;height:auto;display:block;border:0;" />
           </td></tr>
         </table>
-        <p style="margin:14px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#94a3b8;text-align:center;">Mail automatique envoyé par iNr’Agent.</p>
+        <p style="margin:14px 0 0 0;font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#94a3b8;text-align:center;">${sourceSentence}</p>
       </td></tr>
     </table>
   </body>
 </html>`;
 
-  return { subject: `Votre bilan iNrStats - ${company}`, text, html };
+  return { subject: `Votre bilan iNr’Stats - ${company}`, text, html };
 }
 
 
@@ -1262,7 +1267,7 @@ export async function POST(request: Request) {
   const context = await resolveInrAgentActionRequest(request);
   if (context.errorResponse) return context.errorResponse;
 
-  const { user, userId, isCron } = context;
+  const { user, userId, isCron, body } = context;
   const rl = await enforceRateLimit({
     name: "inr_agent_stats_report",
     identifier: userId,
@@ -1271,6 +1276,8 @@ export async function POST(request: Request) {
   });
   if (rl) return rl;
 
+  const manualOrigin = String(body?.origin || body?.source || "").trim().toLowerCase();
+  const triggeredFromInrStats = !isCron && manualOrigin === "inrstats";
   const automation = await loadStatsAutomationSettings(userId);
 
   const { origin } = new URL(request.url);
@@ -1335,10 +1342,10 @@ export async function POST(request: Request) {
     ...rawInsights,
     globalSummary: reportSummary,
   };
-  const pdfBuffer = createStatsPdf(report, insights);
+  const pdfBuffer = createStatsPdf(report, insights, { automatic: isCron });
   const dateKey = now.slice(0, 10);
   const filename = `bilan-inrstats-${dateKey}.pdf`;
-  const mail = buildStatsEmail({ report, insights, filename });
+  const mail = buildStatsEmail({ report, insights, filename, automatic: isCron });
 
   let storedReportDocument: StoredReportDocument | null = null;
   try {
@@ -1356,7 +1363,7 @@ export async function POST(request: Request) {
 
   const actionPayload = {
     version: 1,
-    source: "inr_agent_stats_report",
+    source: isCron ? "inr_agent_stats_report" : triggeredFromInrStats ? "inrstats_manual_report" : "manual_stats_report",
     runMode,
     generatedAt: now,
     periodDays: report.periodDays,
@@ -1385,7 +1392,7 @@ export async function POST(request: Request) {
         automation_key: "stats",
         action_type: "stats_report",
         target_tool: "inrstats",
-        title: isCron ? "Bilan iNrStats automatique envoyé" : "Bilan iNrStats manuel envoyé",
+        title: isCron ? "Bilan iNr’Stats automatique envoyé" : "Bilan iNr’Stats manuel envoyé",
         summary: isCron ? `Bilan automatique envoyé à ${recipientEmail}` : `Bilan manuel envoyé à ${recipientEmail}`,
         preview_text: reportSummary,
         target_channels: [],
@@ -1399,7 +1406,7 @@ export async function POST(request: Request) {
         scheduled_for: null,
         prepared_at: now,
         validated_at: now,
-        metadata: { preparedManually: !isCron, preparedByCron: isCron, runMode, automationFrequency: automation.frequency, reportStored: Boolean(storedReportDocument) },
+        metadata: { preparedManually: !isCron, preparedByCron: isCron, triggeredFromInrStats, runMode, automationFrequency: automation.frequency, reportStored: Boolean(storedReportDocument) },
         created_at: now,
         updated_at: now,
       })
@@ -1494,7 +1501,8 @@ export async function POST(request: Request) {
       .eq("automation_key", "stats");
   }
 
-  await pruneStoredReports(userId);
+  // Les bilans iNr’Stats sont maintenant historisés dans iNr’Send :
+  // on conserve les PDF complets au lieu de limiter le stockage aux 5 derniers.
 
   return NextResponse.json({
     action,

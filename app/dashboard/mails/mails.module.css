@@ -4293,11 +4293,11 @@
   }
 }
 
-/* Étape 4 ter — iNr'Send : 6 bulles propres, mêmes largeurs, sans scroll horizontal */
+/* iNr'Send : bulles propres, mêmes largeurs, sans scroll horizontal */
 @media (min-width: 821px){
   .folderTabs{
     display:grid;
-    grid-template-columns: repeat(6, minmax(0, 1fr));
+    grid-template-columns: repeat(7, minmax(0, 1fr));
     gap:10px;
     width:100%;
     padding:12px 12px 0;
@@ -4325,11 +4325,11 @@
   }
 }
 
-/* Étape 4 quater — iNr'Send : 6 bulles larges et premium, sans scroll horizontal */
+/* iNr'Send : bulles larges et premium, sans scroll horizontal */
 @media (min-width: 821px){
   .folderTabs{
     display:grid;
-    grid-template-columns:repeat(6, minmax(0, 1fr));
+    grid-template-columns:repeat(7, minmax(0, 1fr));
     gap:6px;
     padding:12px 12px 0;
     overflow:hidden;

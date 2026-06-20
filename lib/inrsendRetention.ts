@@ -9,7 +9,8 @@ export type InrSendFolder =
   | "suivis"
   | "enquetes"
   | "propulsions"
-  | "fidelisations";
+  | "fidelisations"
+  | "stats";
 
 export const INRSEND_RETENTION_MONTHS: Record<InrSendFolder, number | null> = {
   mails: 12,
@@ -27,6 +28,8 @@ export const INRSEND_RETENTION_MONTHS: Record<InrSendFolder, number | null> = {
   // Fidélisations regroupe Informer / Suivre / Enquêter.
   // 12 mois pour rester aligné avec Propulsions.
   fidelisations: 12,
+  // Bilans iNrAgent / iNrStats : historique complet côté iNrSend, sans limite automatique.
+  stats: null,
 };
 
 const AUTO_RETENTION_FOLDERS = (Object.keys(INRSEND_RETENTION_MONTHS) as InrSendFolder[]).filter(

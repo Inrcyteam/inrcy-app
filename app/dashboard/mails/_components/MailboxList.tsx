@@ -84,6 +84,7 @@ function isWorkflowLabel(value: string, label: string) {
 
 function rowHeaderLabels(folder: Folder) {
   if (folder === "publications") return { title: "Publication", meta: "Canaux" };
+  if (folder === "stats") return { title: "Bilan", meta: "Destinataire" };
   if (isGroupedActionFolder(folder)) return { title: "Objet", meta: "Cible" };
   if (folder === "factures") return { title: "Facture", meta: "Statut / destinataire" };
   if (folder === "devis") return { title: "Devis", meta: "Statut / destinataire" };
@@ -139,6 +140,10 @@ function getRowMetaText(opts: { item: OutboxItem; folder: Folder; accountLabel: 
   if (folder === "publications") return midLabel || "Canal non renseigné";
 
   if (folder === "factures" || folder === "devis") {
+    return [simpleStatusLabel(item), item.target].filter(Boolean).join(" · ") || simpleStatusLabel(item);
+  }
+
+  if (folder === "stats") {
     return [simpleStatusLabel(item), item.target].filter(Boolean).join(" · ") || simpleStatusLabel(item);
   }
 
@@ -306,8 +311,8 @@ export default function MailboxList(props: Props) {
                       {isInrAgentOrigin ? (
                         <span
                           className={styles.inrAgentOriginIcon}
-                          title="Action générée par iNr'Agent"
-                          aria-label="Action générée par iNr'Agent"
+                          title="Action générée automatiquement par iNr’Agent"
+                          aria-label="Action générée automatiquement par iNr’Agent"
                         >
                           <img src="/icons/inr-agent.png" alt="" aria-hidden="true" />
                         </span>

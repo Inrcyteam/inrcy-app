@@ -574,7 +574,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                     ? campaignAttachments
                     : detailsItem.source === "app_events"
                     ? [...(activeParts.attachments || []), ...publicationDraftAttachments]
-                    : [];
+                    : [...(detailsItem.attachments || [])];
                   const dedupedAttachments = attachmentCandidates.filter((att, idx, arr) => {
                     const key = `${att.url || ""}|${att.name || ""}`;
                     return arr.findIndex((x) => `${x.url || ""}|${x.name || ""}` === key) === idx;

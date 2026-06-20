@@ -554,3 +554,62 @@
   border-color:rgba(46,229,157,.66)!important;
   box-shadow:0 0 0 1px rgba(46,229,157,.12),0 16px 36px rgba(46,229,157,.25),inset 0 1px 0 rgba(255,255,255,.15)!important;
 }
+
+
+/* iNr'Send header shortcut : desktop texte, responsive logo seul */
+.inrSendHeaderShortcut{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:10px;
+  padding:10px 14px;
+  border-radius:999px;
+  color:rgba(255,255,255,.92);
+  text-decoration:none;
+  line-height:1;
+  font-size:14px;
+  font-weight:850;
+  letter-spacing:.2px;
+  cursor:pointer;
+  user-select:none;
+}
+.inrSendHeaderText{display:inline;position:relative;z-index:2;}
+.inrSendHeaderLogo{display:none;}
+
+@media (max-width:700px){
+  .inrSendHeaderShortcut.headerBtnInrSend{
+    width:34px!important;
+    min-width:34px!important;
+    max-width:34px!important;
+    height:34px!important;
+    min-height:34px!important;
+    max-height:34px!important;
+    padding:0!important;
+    margin:0!important;
+    border:0!important;
+    background:transparent!important;
+    box-shadow:none!important;
+    backdrop-filter:none!important;
+    -webkit-backdrop-filter:none!important;
+    overflow:visible!important;
+    color:transparent!important;
+    text-shadow:none!important;
+    gap:0!important;
+  }
+  .inrSendHeaderShortcut.headerBtnInrSend::before,
+  .inrSendHeaderShortcut.headerBtnInrSend::after{
+    display:none!important;
+    content:none!important;
+  }
+  .inrSendHeaderText{
+    display:none!important;
+  }
+  .inrSendHeaderLogo{
+    display:block!important;
+    width:34px!important;
+    height:34px!important;
+    object-fit:contain!important;
+    filter:drop-shadow(0 0 10px rgba(96,165,250,.34))!important;
+  }
+}
+

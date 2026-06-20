@@ -1333,6 +1333,8 @@ export default function MailboxClient() {
       case "suivis":
       case "enquetes":
         return { label: "💌 Fidéliser", href: "/dashboard/fideliser" };
+      case "stats":
+        return { label: "iNr'Stats", href: "/dashboard/stats" };
 
       default:
         return { label: "Ouvrir l’outil", href: null as string | null };
@@ -1436,6 +1438,9 @@ export default function MailboxClient() {
       publications: "publications",
       propulsions: "propulsions",
       fidelisations: "fidelisations",
+      stats: "stats",
+      bilans: "stats",
+      inrstats: "stats",
       recoltes: "propulsions",
       offres: "propulsions",
       informations: "fidelisations",

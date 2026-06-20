@@ -99,6 +99,20 @@
   gap: 10px;
 }
 
+
+.reportNotice {
+  align-self: flex-end;
+  max-width: min(560px, 100%);
+  padding: 9px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(125, 211, 252, 0.28);
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.18), rgba(168, 85, 247, 0.18));
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 12px;
+  font-weight: 850;
+  box-shadow: 0 14px 32px rgba(0,0,0,0.22);
+}
+
 /* Summary bar (CRM-like) */
 .summaryBar {
   margin: 14px 0 26px;

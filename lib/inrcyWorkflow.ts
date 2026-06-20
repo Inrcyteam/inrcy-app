@@ -35,7 +35,8 @@ export type InrcyGroupedHistoryFolder =
   | "devis"
   | "publications"
   | "propulsions"
-  | "fidelisations";
+  | "fidelisations"
+  | "stats";
 
 export type InrcyTrackKind = "booster" | "propulser" | "fideliser";
 export type InrcyTrackType =
@@ -177,6 +178,7 @@ export const INRSEND_GROUPED_FOLDERS = [
   "publications",
   "propulsions",
   "fidelisations",
+  "stats",
 ] as const satisfies readonly InrcyGroupedHistoryFolder[];
 
 export const INRSEND_LEGACY_FOLDERS = [

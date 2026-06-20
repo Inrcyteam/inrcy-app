@@ -528,6 +528,8 @@ export default function StatsClient() {
   const router = useRouter();
   const [helpOpen, setHelpOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isGeneratingReport, setIsGeneratingReport] = useState(false);
+  const [reportNotice, setReportNotice] = useState<string | null>(null);
   const [lastRefreshAt, setLastRefreshAt] = useState<number | null>(null);
 
 
@@ -1521,6 +1523,48 @@ useEffect(() => {
     else router.push(href);
   };
 
+  async function generateStatsReportNow() {
+    if (isGeneratingReport) return;
+
+    setIsGeneratingReport(true);
+    setReportNotice("Génération du bilan en cours…");
+
+    try {
+      const response = await fetch("/api/agent/actions/send-stats-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ origin: "inrstats" }),
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        sent?: boolean;
+        recipientEmail?: string;
+        error?: string;
+        detail?: string;
+      } | null;
+
+      if (!response.ok || !payload?.sent) {
+        throw new Error(
+          payload?.error ||
+            payload?.detail ||
+            "Génération ou envoi du bilan iNr’Stats impossible.",
+        );
+      }
+
+      setReportNotice(
+        `Bilan généré et envoyé${payload.recipientEmail ? ` à ${payload.recipientEmail}` : ""}.`,
+      );
+      setTimeout(() => setReportNotice(null), 4500);
+    } catch (error) {
+      setReportNotice(
+        error instanceof Error
+          ? error.message
+          : "Génération ou envoi du bilan iNr’Stats impossible.",
+      );
+    } finally {
+      setIsGeneratingReport(false);
+    }
+  }
+
   const selectStatsPanel = (panel: StatsPanelKey) => {
     setActiveStatsPanel(panel);
     setStatsMenuOpen(false);
@@ -1533,7 +1577,7 @@ useEffect(() => {
           <div className={styles.brand}>
             <img
               src="/inrstats-logo.png"
-              alt="iNrStats"
+              alt="iNr’Stats"
               width={154}
               height={64}
               className={styles.headerLogo}
@@ -1551,25 +1595,39 @@ useEffect(() => {
                 type="button"
                 className={styles.statsMobileNavButton}
                 onClick={() => setStatsMenuOpen(true)}
-                aria-label="Ouvrir les canaux iNrStats"
+                aria-label="Ouvrir les canaux iNr’Stats"
                 title="Canaux"
               >
                 ☰
               </button>
+              <ResponsiveActionButton
+                desktopLabel={isGeneratingReport ? "Génération…" : "Générer un bilan"}
+                mobileIcon="📄"
+                onClick={() => {
+                  void generateStatsReportNow();
+                }}
+                ariaLabel="Générer un bilan iNr’Stats manuel"
+                title="Créer et envoyer un bilan manuel maintenant"
+              />
               <ResponsiveActionButton
                 desktopLabel={isRefreshing ? "Actualisation…" : "Actualiser"}
                 mobileIcon="↻"
                 onClick={() => {
                   void handleSharedStatsRefresh();
                 }}
-                ariaLabel="Actualiser les données iNrStats"
-                title={lastRefreshAt ? `Dernière actualisation : ${new Date(lastRefreshAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}` : "Actualiser les données iNrStats"}
+                ariaLabel="Actualiser les données iNr’Stats"
+                title={lastRefreshAt ? `Dernière actualisation : ${new Date(lastRefreshAt).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}` : "Mettre à jour les statistiques"}
               />
-              <ResponsiveActionButton desktopLabel="Fermer" mobileIcon="✕" onClick={() => router.push("/dashboard")} />
+              <ResponsiveActionButton desktopLabel="Fermer" mobileIcon="✕" onClick={() => router.push("/dashboard")} title="Retour au tableau de bord" />
             </div>
           </div>
         </div>
         <div className={`${styles.tagline} ${styles.taglineMobile}`}>Vos données analysées en mode business.</div>
+        {reportNotice ? (
+          <div className={styles.reportNotice} role="status">
+            {reportNotice}
+          </div>
+        ) : null}
       </div>
 
       <HelpModal open={helpOpen} title="iNr’Stats" onClose={() => setHelpOpen(false)}>
@@ -1585,7 +1643,7 @@ useEffect(() => {
 
       {statsMenuOpen ? (
         <div className={styles.statsMobileDrawerOverlay} role="presentation" onClick={() => setStatsMenuOpen(false)}>
-          <aside className={styles.statsMobileDrawer} aria-label="Choisir une vue iNrStats" onClick={(event) => event.stopPropagation()}>
+          <aside className={styles.statsMobileDrawer} aria-label="Choisir une vue iNr’Stats" onClick={(event) => event.stopPropagation()}>
             <div className={styles.statsMobileDrawerHead}>
               <strong>Canaux</strong>
               <button type="button" onClick={() => setStatsMenuOpen(false)} aria-label="Fermer le menu des canaux">×</button>
@@ -1633,7 +1691,7 @@ useEffect(() => {
       ) : null}
 
       <div className={styles.statsWorkspace}>
-        <aside className={styles.statsRail} aria-label="Canaux iNrStats">
+        <aside className={styles.statsRail} aria-label="Canaux iNr’Stats">
           <button
             type="button"
             className={`${styles.statsRailItem} ${styles.statsRailItemGlobal} ${connectedChannelsCount > 0 ? styles.statsRailItemConnected : styles.statsRailItemOff} ${activeStatsPanel === "all" ? styles.statsRailItemActive : ""}`}
@@ -1673,7 +1731,7 @@ useEffect(() => {
 
         <main className={styles.statsPanel}>
           {activeStatsPanel === "all" ? (
-            <section className={styles.allStatsPanel} aria-label="Vue globale iNrStats">
+            <section className={styles.allStatsPanel} aria-label="Vue globale iNr’Stats">
               <div className={styles.allStatsHero}>
                 <div>
                   <div className={styles.allStatsEyebrow}>Vue globale</div>

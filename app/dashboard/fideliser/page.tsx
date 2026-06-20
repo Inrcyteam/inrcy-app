@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
 import styles from "../../dashboard/dashboard.module.css";
@@ -284,7 +285,10 @@ export default function FideliserPage() {
           <header className={b.headerRow}>
             <div className={b.titleLine}><span aria-hidden className={b.titleIcon}>💌</span><div className={styles.title}>Fidéliser</div></div>
             <div className={b.tagline}>Faites revenir vos clients. <strong>3 actions</strong>, maintenant.</div>
-            <div className={b.closeWrap}><div style={{ display: "flex", alignItems: "center", gap: 10 }}><HelpButton onClick={() => setHelpOpen(true)} title="Aide Fidéliser" /><ResponsiveActionButton desktopLabel="Propulser" mobileIcon="P" href="/dashboard/propulser" ariaLabel="Aller vers Propulser" title="Propulser" className={b.headerBtnBooster} /><ResponsiveActionButton desktopLabel="iNr'Send" mobileIcon="✉️" href="/dashboard/mails?folder=fidelisations" ariaLabel="Aller vers iNr'Send / Fidélisations" title="Ouvrir iNr'Send" className={b.headerBtnInrSend} /><ResponsiveActionButton desktopLabel="Fermer" mobileIcon="✕" href="/dashboard" /></div></div>
+            <div className={b.closeWrap}><div style={{ display: "flex", alignItems: "center", gap: 10 }}><HelpButton onClick={() => setHelpOpen(true)} title="Aide Fidéliser" /><ResponsiveActionButton desktopLabel="Propulser" mobileIcon="P" href="/dashboard/propulser" ariaLabel="Aller vers Propulser" title="Propulser" className={b.headerBtnBooster} /><Link href="/dashboard/mails?folder=fidelisations" aria-label="Aller vers iNr'Send / Fidélisations" title="Ouvrir iNr'Send" className={`${b.inrSendHeaderShortcut} ${b.headerBtnInrSend}`}>
+                    <span className={b.inrSendHeaderText}>iNr'Send</span>
+                    <img className={b.inrSendHeaderLogo} src="/inrsend-logo-seul.png" alt="" aria-hidden />
+                  </Link><ResponsiveActionButton desktopLabel="Fermer" mobileIcon="✕" href="/dashboard" /></div></div>
           </header>
 
           <HelpModal open={helpOpen} title="Fidéliser" onClose={() => setHelpOpen(false)}>

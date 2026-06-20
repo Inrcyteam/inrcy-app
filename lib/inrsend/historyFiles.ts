@@ -2,7 +2,7 @@ import "server-only";
 
 import type { MailAttachmentRef } from "@/lib/mailAttachmentRefs";
 
-export type InrSendHistorySource = "send_items" | "mail_campaigns" | "app_events";
+export type InrSendHistorySource = "send_items" | "mail_campaigns" | "app_events" | "inr_agent_actions";
 export type InrSendFileRole = "attachment" | "invoice_pdf" | "quote_pdf" | "publication_media" | "generated_document";
 
 export type InrSendHistoryFileRef = MailAttachmentRef & {

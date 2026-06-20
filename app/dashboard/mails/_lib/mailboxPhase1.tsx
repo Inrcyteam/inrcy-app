@@ -85,7 +85,8 @@ export type Folder =
   | "suivis"
   | "enquetes"
   | "propulsions"
-  | "fidelisations";
+  | "fidelisations"
+  | "stats";
 
 // Onglets affichés dans iNr'Send : navigation simplifiée, sans scroll horizontal.
 export const ALL_FOLDERS: Folder[] = [
@@ -95,6 +96,7 @@ export const ALL_FOLDERS: Folder[] = [
   "mails",
   "factures",
   "devis",
+  "stats",
 ];
 
 export const LEGACY_ACTION_FOLDERS: Folder[] = [
@@ -125,6 +127,7 @@ export function emptyFolderCounts(): FolderCounts {
     enquetes: 0,
     propulsions: 0,
     fidelisations: 0,
+    stats: 0,
   };
 }
 
@@ -310,7 +313,7 @@ export type SendItem = {
 
 export type OutboxItem = {
   id: string;
-  source: "send_items" | "app_events" | "mail_campaigns";
+  source: "send_items" | "app_events" | "mail_campaigns" | "inr_agent_actions";
   module?: "booster" | "propulser" | "fideliser";
   folder: Folder;
   groupedFolder?: Folder | null;
@@ -1358,6 +1361,12 @@ export function folderTheme(f: Folder): React.CSSProperties {
       glow: "rgba(34,197,94,0.22)",
       border: "rgba(34,197,94,0.36)",
     },
+    stats: {
+      start: "rgba(125,92,255,0.30)",
+      end: "rgba(56,189,248,0.22)",
+      glow: "rgba(125,92,255,0.26)",
+      border: "rgba(167,139,250,0.42)",
+    },
   };
 
   const theme = themes[f];
@@ -1408,6 +1417,8 @@ export function historyEmptyState(folder: Folder, view: BoxView, query: string):
       return "Aucune propulsion pour le moment.";
     case "fidelisations":
       return "Aucune fidélisation pour le moment.";
+    case "stats":
+      return "Aucun bilan statistique pour le moment.";
     case "factures":
       return "Aucune facture envoyée pour le moment.";
     case "devis":
@@ -1441,6 +1452,8 @@ export function folderLabel(f: Folder) {
       return "Enquêtes";
     case "fidelisations":
       return "Fidélisations";
+    case "stats":
+      return "Stats";
   }
 }
 
@@ -1579,6 +1592,9 @@ export function formatOutboxStatusLabel(item: OutboxItem) {
 
   if (item.status === "draft") return "Brouillon";
   if (item.status === "error" || item.status === "failed") return "En échec";
+  if (item.source === "inr_agent_actions") {
+    return item.sent_at ? `Bilan envoyé • ${new Date(item.sent_at).toLocaleString()}` : `Bilan généré • ${new Date(item.created_at).toLocaleString()}`;
+  }
   return item.sent_at ? `Envoyé • ${new Date(item.sent_at).toLocaleString()}` : `Historique • ${new Date(item.created_at).toLocaleString()}`;
 }
 
