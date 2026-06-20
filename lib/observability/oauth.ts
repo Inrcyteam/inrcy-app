@@ -58,6 +58,9 @@ function isUserResolvableOAuthException(message: string): boolean {
     'user_denied',
     'invalid_state',
     'state invalid',
+    'authorization code has been used',
+    'code has been used',
+    'code was already used',
   ].some((needle) => raw.includes(needle));
 }
 

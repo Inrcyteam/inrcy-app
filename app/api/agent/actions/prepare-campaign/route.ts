@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { POST as generateTemplateAi } from "@/app/api/templates/generate-ai/route";
 import { getTemplates, type TemplateAction } from "@/lib/messageTemplates";
 import { textToRichMailHtml } from "@/lib/mailRichText";
 import { normalizeMailSubject } from "@/lib/mailEncoding";
@@ -18,6 +17,7 @@ import {
   type InrAgentValidationMode,
 } from "@/lib/inrAgentSettings";
 import { rowToInrAgentAction } from "@/lib/inrAgentActions";
+import { generateTemplateAiContent, TemplateAiGenerationError } from "@/lib/templateAiGeneration";
 
 export const maxDuration = 120;
 export const runtime = "nodejs";
@@ -301,6 +301,8 @@ function pickTemplate(args: {
 }
 
 async function generateCampaignContent(args: {
+  supabase: any;
+  userId: string;
   templateModule: string;
   mission: string;
   templateKey: string;
@@ -309,34 +311,25 @@ async function generateCampaignContent(args: {
   subject: string;
   body: string;
 }) {
-  const response = await generateTemplateAi(
-    new Request("http://inrcy.local/api/templates/generate-ai", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        module: args.templateModule,
-        mission: args.mission,
-        template_key: args.templateKey,
-        template_title: args.templateTitle,
-        template_category: args.templateCategory,
-        subject: args.subject,
-        body: args.body,
-        attachments: [],
-      }),
-    }),
-  );
-
-  const payload = (await response.json().catch(() => null)) as JsonRecord | null;
-  if (!response.ok) {
-    throw new Error(
-      cleanText(payload?.error, 400) || "La génération IA de la campagne a échoué.",
-    );
-  }
+  const payload = await generateTemplateAiContent({
+    supabase: args.supabase,
+    userId: args.userId,
+    input: {
+      module: args.templateModule,
+      mission: args.mission,
+      template_key: args.templateKey,
+      template_title: args.templateTitle,
+      template_category: args.templateCategory,
+      subject: args.subject,
+      body: args.body,
+      attachments: [],
+    },
+  });
 
   return {
-    subject: normalizeMailSubject(cleanText(payload?.subject, 220) || args.subject),
+    subject: normalizeMailSubject(cleanText(payload.subject, 220) || args.subject),
     bodyText: stripTemplateSignatureBlock(
-      cleanText(payload?.body_text, 6000) || args.body,
+      cleanText(payload.body_text, 6000) || args.body,
     ),
   };
 }
@@ -459,15 +452,32 @@ export async function POST(request: Request) {
     );
   }
 
-  const generated = await generateCampaignContent({
-    templateModule: themeConfig.templateModule,
-    mission: themeConfig.label,
-    templateKey: template.key,
-    templateTitle: template.title,
-    templateCategory: template.category,
-    subject: template.subject,
-    body: template.body,
-  });
+  let generated: Awaited<ReturnType<typeof generateCampaignContent>>;
+  try {
+    generated = await generateCampaignContent({
+      supabase,
+      userId,
+      templateModule: themeConfig.templateModule,
+      mission: themeConfig.label,
+      templateKey: template.key,
+      templateTitle: template.title,
+      templateCategory: template.category,
+      subject: template.subject,
+      body: template.body,
+    });
+  } catch (error) {
+    if (error instanceof TemplateAiGenerationError) {
+      return NextResponse.json(
+        { error: error.message, ...(error.code ? { code: error.code } : {}) },
+        { status: error.status, headers: error.headers },
+      );
+    }
+    console.error("agent/prepare-campaign generate", error);
+    return NextResponse.json(
+      { error: "La génération IA de la campagne a échoué." },
+      { status: 500 },
+    );
+  }
 
   const now = new Date().toISOString();
   const bodyHtml = textToRichMailHtml(generated.bodyText);

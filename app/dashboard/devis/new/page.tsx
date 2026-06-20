@@ -42,7 +42,6 @@ import {
   getDocumentClientTexts,
   getDocumentOperationCategoryLabel,
   getDocumentPaymentLabel,
-  getDocumentStatusLabel,
   type ClientExchangePreferences,
 } from "@/lib/clientCommunication";
 
@@ -1804,8 +1803,6 @@ export default function NewDevisPage() {
     () => getDocumentOperationCategoryLabel(clientExchangePreferences.clientLanguage, operationCategory),
     [clientExchangePreferences.clientLanguage, operationCategory],
   );
-  const documentStatusLabel = getDocumentStatusLabel(clientExchangePreferences.clientLanguage, status);
-
   const documentDesign = documentsSettings.common.design;
   const previewClassName = [
     styles.preview,

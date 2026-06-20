@@ -47,6 +47,15 @@ async function fetchJson<T>(url: string): Promise<T> {
   return data as T;
 }
 
+function isReusedAuthorizationCodeError(error: unknown) {
+  const message = String(error instanceof Error ? error.message : error || "").toLowerCase();
+  return (
+    message.includes("authorization code has been used") ||
+    message.includes("code has been used") ||
+    message.includes("code was already used")
+  );
+}
+
 export async function GET(req: Request) {
   try {
     const urlObj = new URL(req.url);
@@ -154,7 +163,19 @@ export async function GET(req: Request) {
       code,
     }).toString()}`;
 
-    const tokenData = await fetchJson<TokenResponse>(tokenUrl);
+    let tokenData: TokenResponse;
+    try {
+      tokenData = await fetchJson<TokenResponse>(tokenUrl);
+    } catch (error) {
+      if (isReusedAuthorizationCodeError(error)) {
+        return fail(
+          "facebook_code_already_used",
+          "La connexion Facebook a déjà été traitée. Si le compte est connecté, tu peux fermer cette fenêtre ou revenir au tableau de bord.",
+        );
+      }
+      throw error;
+    }
+
     const userAccessToken = tokenData.access_token;
     if (!userAccessToken) {
       return fail("missing_access_token", "La connexion Facebook a échoué. Merci de réessayer.");
