@@ -9,7 +9,7 @@ export default function ConfidentialitePage() {
   return (
     <LegalPageShell
       title="Politique de confidentialité"
-      subtitle="Version du 11/06/2026"
+      subtitle="Dernière mise à jour : 11/06/2026"
     >
       {/* Le contenu complet est partagé avec l'app pour éviter les divergences. */}
       <ConfidentialiteContent />

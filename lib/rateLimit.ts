@@ -73,7 +73,7 @@ export async function enforceRateLimit(config: RateLimitConfig): Promise<NextRes
 
     if (res.success) return null;
 
-    const retryAfterSec = Math.max(1, Math.ceil(res.reset / 1000));
+    const retryAfterSec = Math.max(1, Math.ceil((res.reset - Date.now()) / 1000));
     return NextResponse.json(
       {
         error: "Trop de tentatives en peu de temps. Merci de réessayer dans quelques instants.",

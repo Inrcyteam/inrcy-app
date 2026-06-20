@@ -20,7 +20,7 @@ type SignupPayload = {
   companyName: string;
   phone: string;
   consent: boolean;
-  website: string;
+  honeypot: string;
   source: string;
 };
 
@@ -258,7 +258,18 @@ function normalizePayload(body: LooseRecord): SignupPayload {
     ]),
     phone: lookupValue(flat, ["phone", "telephone", "téléphone", "tel", "mobile", "portable"]),
     consent,
-    website: lookupValue(flat, ["website", "site_web", "company_website", "url", "honeypot"]),
+    // Honeypot anti-spam uniquement.
+    // Compat: l'ancien formulaire Elementor utilisait `website` comme champ caché.
+    // Ne pas ajouter ici `site_web`, `company_website` ou `url` : ce sont des vrais champs possibles.
+    honeypot: lookupValue(flat, [
+      "honeypot",
+      "website_hp",
+      "company_website_hp",
+      "inrcy_honeypot",
+      "inrcy_hp",
+      "hp",
+      "website",
+    ]),
     source: lookupValue(flat, ["source", "form_name", "form-id"]) || optionalEnv("INRCY_MARKETING_SOURCE", "wordpress-elementor"),
   };
 }
@@ -295,7 +306,7 @@ export async function POST(req: Request) {
     });
     if (limited) return limited;
 
-    if (payload.website) {
+    if (payload.honeypot) {
       return jsonResponse({ ok: true });
     }
 

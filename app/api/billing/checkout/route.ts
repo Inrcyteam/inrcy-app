@@ -220,10 +220,21 @@ export async function POST(req: Request) {
     if (shouldKeepTrialEnd) {
       sessionParams.set("subscription_data[trial_end]", String(trialEndUnix));
     }
+
+    // TVA / Stripe Tax : le tarif Stripe est configuré TTC, mais Checkout doit aussi
+    // activer le calcul automatique des taxes pour que les abonnements et factures
+    // créés depuis l'application affichent bien HT + TVA + total TTC.
+    sessionParams.set("automatic_tax[enabled]", "true");
+    sessionParams.set("billing_address_collection", "required");
+    sessionParams.set("tax_id_collection[enabled]", "true");
+    sessionParams.set("customer_update[address]", "auto");
+    sessionParams.set("customer_update[name]", "auto");
     sessionParams.set("payment_method_collection", "always");
 
     const session = await stripePost("/checkout/sessions", sessionParams, {
-      idempotencyKey: `checkout-session-${userId}-${priceId}-${billingCycle}-${shouldKeepTrialEnd ? trialEndUnix : "start-now"}`,
+      // Versionnée pour éviter de récupérer une ancienne session Stripe sans TVA
+      // via l'idempotency cache après le déploiement du correctif.
+      idempotencyKey: `checkout-session-tax-v2-${userId}-${priceId}-${billingCycle}-${shouldKeepTrialEnd ? trialEndUnix : "start-now"}`,
     });
 
     await supabaseAdmin

@@ -263,13 +263,20 @@ function collectJwtCandidates(value: string): string[] {
   return [...candidates];
 }
 
-function getUserId(req: NextRequest): string | null {
+function getJwtCandidates(req: NextRequest): string[] {
+  const candidates = new Set<string>();
+
+  const pushCandidate = (candidate: unknown) => {
+    if (typeof candidate !== "string") return;
+    const cleaned = candidate.trim();
+    if (!cleaned || !tryGetUserIdFromJwt(cleaned)) return;
+    candidates.add(cleaned);
+  };
+
   // 1) Authorization header (best for API calls)
   const auth = req.headers.get("authorization") || "";
   if (auth.toLowerCase().startsWith("bearer ")) {
-    const jwt = auth.slice(7).trim();
-    const sub = tryGetUserIdFromJwt(jwt);
-    if (sub) return sub;
+    pushCandidate(auth.slice(7).trim());
   }
 
   // 2) Common direct cookies
@@ -282,8 +289,7 @@ function getUserId(req: NextRequest): string | null {
     const value = req.cookies.get(name)?.value;
     if (!value) continue;
     for (const candidate of collectJwtCandidates(value)) {
-      const sub = tryGetUserIdFromJwt(candidate);
-      if (sub) return sub;
+      pushCandidate(candidate);
     }
   }
 
@@ -312,9 +318,53 @@ function getUserId(req: NextRequest): string | null {
       .join("");
 
     for (const candidate of collectJwtCandidates(combined)) {
-      const sub = tryGetUserIdFromJwt(candidate);
-      if (sub) return sub;
+      pushCandidate(candidate);
     }
+  }
+
+  return [...candidates];
+}
+
+type SupabaseAuthUser = {
+  id?: string | null;
+};
+
+function isJwtExpired(jwt: string): boolean {
+  const payload = tryGetJwtPayload(jwt);
+  if (typeof payload?.exp !== "number") return false;
+  return payload.exp * 1000 <= Date.now();
+}
+
+async function verifySupabaseJwt(jwt: string): Promise<string | null> {
+  const payloadSub = tryGetUserIdFromJwt(jwt);
+  if (!payloadSub || isJwtExpired(jwt)) return null;
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  if (!supabaseUrl || !anonKey) return null;
+
+  try {
+    const res = await fetch(`${supabaseUrl}/auth/v1/user`, {
+      headers: {
+        apikey: anonKey,
+        Authorization: `Bearer ${jwt}`,
+      },
+      cache: "no-store",
+    });
+
+    if (!res.ok) return null;
+
+    const user = (await res.json()) as SupabaseAuthUser;
+    return user.id === payloadSub ? user.id : null;
+  } catch {
+    return null;
+  }
+}
+
+async function getUserId(req: NextRequest): Promise<string | null> {
+  for (const jwt of getJwtCandidates(req)) {
+    const verifiedUserId = await verifySupabaseJwt(jwt);
+    if (verifiedUserId) return verifiedUserId;
   }
 
   return null;
@@ -563,13 +613,20 @@ export async function proxy(req: NextRequest) {
     return res;
   };
 
-  const userId = getUserId(req);
+  let userId: string | null | undefined;
   let subscriptionStatus: string | null | undefined;
 
+  const getCurrentUserId = async () => {
+    if (userId !== undefined) return userId;
+    userId = await getUserId(req);
+    return userId;
+  };
+
   const getCurrentSubscriptionStatus = async () => {
-    if (!userId) return null;
+    const currentUserId = await getCurrentUserId();
+    if (!currentUserId) return null;
     if (subscriptionStatus !== undefined) return subscriptionStatus;
-    subscriptionStatus = await getSubscriptionGateStatus(userId);
+    subscriptionStatus = await getSubscriptionGateStatus(currentUserId);
     return subscriptionStatus;
   };
 
@@ -580,7 +637,8 @@ export async function proxy(req: NextRequest) {
     const maintenanceEnabled = Boolean(maintenance?.maintenance_mode);
 
     if (maintenanceEnabled) {
-      const admin = userId ? await isAdminUser(userId) : false;
+      const currentUserId = await getCurrentUserId();
+      const admin = currentUserId ? await isAdminUser(currentUserId) : false;
 
       if (!admin) {
         const url = req.nextUrl.clone();
@@ -591,7 +649,7 @@ export async function proxy(req: NextRequest) {
       }
     }
 
-    if (userId) {
+    if (await getCurrentUserId()) {
       const currentSubscriptionStatus = await getCurrentSubscriptionStatus();
 
       if (isBlockedSubscriptionStatus(currentSubscriptionStatus)) {
@@ -609,8 +667,11 @@ export async function proxy(req: NextRequest) {
     return applyResponseHeaders(res);
   }
 
-  if (req.method.toUpperCase() !== "OPTIONS" && userId && isSensitiveApiPath(pathname)) {
-    const currentSubscriptionStatus = await getCurrentSubscriptionStatus();
+  const isSensitiveApi = isSensitiveApiPath(pathname);
+
+  if (req.method.toUpperCase() !== "OPTIONS" && isSensitiveApi) {
+    const currentUserId = await getCurrentUserId();
+    const currentSubscriptionStatus = currentUserId ? await getCurrentSubscriptionStatus() : null;
 
     if (isBlockedSubscriptionStatus(currentSubscriptionStatus)) {
       return applyResponseHeaders(blockedAccountApiResponse(currentSubscriptionStatus));
@@ -625,7 +686,8 @@ export async function proxy(req: NextRequest) {
 
   const ip = getIp(req);
   const lim = pickLimit(pathname, req.method);
-  const identifier = userId ? `u:${userId}` : `ip:${ip}`;
+  const currentUserId = userId ?? null;
+  const identifier = currentUserId ? `u:${currentUserId}` : `ip:${ip}`;
 
   // Optional: quota enforcement (per-day). Only enabled for specific endpoints.
   if (lim.dailyQuota && lim.dailyQuota > 0) {

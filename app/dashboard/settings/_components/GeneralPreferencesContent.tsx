@@ -59,6 +59,34 @@ const normalizeCurrency = (value: unknown): Currency => {
   return "EUR";
 };
 
+const hasPreferenceValue = (value: unknown): boolean => String(value ?? "").trim().length > 0;
+
+const normalizePartialPreferences = (source: Record<string, unknown> | null | undefined): Partial<PreferencesForm> => {
+  if (!source) return {};
+
+  const preferences: Partial<PreferencesForm> = {};
+
+  if (hasPreferenceValue(source.clientLanguage)) {
+    preferences.clientLanguage = normalizeClientLanguage(source.clientLanguage);
+  }
+  if (hasPreferenceValue(source.client_language)) {
+    preferences.clientLanguage = normalizeClientLanguage(source.client_language);
+  }
+  if (hasPreferenceValue(source.timezone)) {
+    preferences.timezone = normalizeTimezone(source.timezone);
+  }
+  if (hasPreferenceValue(source.dateFormat)) {
+    preferences.dateFormat = normalizeDateFormat(source.dateFormat);
+  }
+  if (hasPreferenceValue(source.date_format)) {
+    preferences.dateFormat = normalizeDateFormat(source.date_format);
+  }
+  if (hasPreferenceValue(source.currency)) {
+    preferences.currency = normalizeCurrency(source.currency);
+  }
+
+  return preferences;
+};
 
 export default function GeneralPreferencesContent({ mode = "drawer" }: Props) {
   const [form, setForm] = useState<PreferencesForm>(initialForm);
@@ -144,9 +172,10 @@ export default function GeneralPreferencesContent({ mode = "drawer" }: Props) {
       setLoading(true);
       setError("");
       try {
-        let local: Partial<PreferencesForm> = {};
+        let local: Record<string, unknown> = {};
         try {
-          local = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}") || {};
+          const parsed = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+          local = parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
         } catch {}
 
         const supabase = createClient();
@@ -164,20 +193,10 @@ export default function GeneralPreferencesContent({ mode = "drawer" }: Props) {
             .limit(1)
             .maybeSingle();
           if (dbErr) throw new Error(dbErr.message);
-          dbPreferences = {
-            clientLanguage: normalizeClientLanguage(data?.client_language),
-            timezone: normalizeTimezone(data?.timezone),
-            dateFormat: normalizeDateFormat(data?.date_format),
-            currency: normalizeCurrency(data?.currency),
-          };
+          dbPreferences = normalizePartialPreferences(data);
         }
 
-        const migratedLocal: Partial<PreferencesForm> = {
-          clientLanguage: normalizeClientLanguage(local.clientLanguage),
-          timezone: normalizeTimezone(local.timezone),
-          dateFormat: normalizeDateFormat(local.dateFormat),
-          currency: normalizeCurrency(local.currency),
-        };
+        const migratedLocal = normalizePartialPreferences(local);
 
         setForm({ ...initialForm, ...migratedLocal, ...dbPreferences });
       } catch (e) {
