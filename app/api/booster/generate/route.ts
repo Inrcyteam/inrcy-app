@@ -517,6 +517,255 @@ const CHANNEL_MIN_CONTENT_LENGTH: Record<BoosterChannels, number> = {
   youtube_shorts: 280,
 };
 
+const CHANNEL_LABELS: Record<BoosterChannels, string> = {
+  inrcy_site: "Site iNrCy",
+  site_web: "Site web",
+  gmb: "Google Business",
+  facebook: "Facebook",
+  instagram: "Instagram",
+  linkedin: "LinkedIn",
+  tiktok: "TikTok",
+  youtube_shorts: "YouTube",
+};
+
+const CHANNEL_BATCH_SIZE = 6;
+
+function cleanFallbackText(value: unknown, maxLength = 220) {
+  return String(value ?? "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
+function cleanFallbackList(value: unknown, maxItems = 5, maxItemLength = 70) {
+  const rawItems = Array.isArray(value)
+    ? value
+    : String(value ?? "")
+        .split(/[,;\n]/)
+        .map((item) => item.trim());
+
+  return Array.from(
+    new Set(
+      rawItems
+        .map((item) => cleanFallbackText(item, maxItemLength))
+        .filter(Boolean),
+    ),
+  ).slice(0, maxItems);
+}
+
+function getFallbackBusinessContext(
+  profile: JsonRecord | null,
+  business: JsonRecord | null,
+) {
+  const company = cleanFallbackText(
+    profile?.company_legal_name || profile?.companyLegalName || "",
+    90,
+  );
+  const city = cleanFallbackText(profile?.hq_city || profile?.hqCity || "", 70);
+  const profession = cleanFallbackText(
+    business?.profession_label || business?.profession || business?.job || "",
+    90,
+  );
+  const activity = cleanFallbackText(
+    business?.business_description ||
+      business?.activity_description ||
+      business?.company_description ||
+      business?.description ||
+      "",
+    260,
+  );
+  const services = cleanFallbackList(
+    business?.services || business?.services_text,
+    5,
+  );
+  const zones = cleanFallbackList(
+    business?.intervention_zones || business?.intervention_zones_text,
+    4,
+  );
+  const preferredCta = cleanFallbackText(business?.preferred_cta || "", 60);
+
+  return { company, city, profession, activity, services, zones, preferredCta };
+}
+
+function fallbackTitle(channel: BoosterChannels, idea: string) {
+  const base = cleanFallbackText(idea, 58) || "Nouvelle actualité";
+  if (channel === "tiktok") return base.slice(0, 70);
+  if (channel === "youtube_shorts") return `${base} en vidéo`.slice(0, 90);
+  if (siteChannels.has(channel)) return `${base} : l’essentiel`.slice(0, 90);
+  return base.slice(0, 90);
+}
+
+function fallbackCta(channel: BoosterChannels, preferredCta: string) {
+  if (channel === "gmb") return "Voir les informations";
+  const preferredCtaLabels: Record<string, string> = {
+    site: "Voir le site",
+    devis: "Demander un devis",
+    appeler: "Appeler",
+    message: "Envoyer un message",
+    custom: "En savoir plus",
+  };
+  if (preferredCta && preferredCta !== "none") {
+    return preferredCtaLabels[preferredCta] || preferredCta;
+  }
+  if (channel === "youtube_shorts") return "Découvrez la suite";
+  if (channel === "tiktok" || channel === "instagram") return "Écrivez-nous";
+  return "Contactez-nous";
+}
+
+function fallbackHashtags(channel: BoosterChannels, context: ReturnType<typeof getFallbackBusinessContext>) {
+  if (!["instagram", "tiktok", "youtube_shorts"].includes(channel)) return [];
+  const raw = [
+    context.profession,
+    context.city,
+    context.company,
+    ...context.services.slice(0, 3),
+  ];
+  return Array.from(
+    new Set(
+      raw
+        .map((item) =>
+          normalizeIdeaToken(item)
+            .replace(/[^a-z0-9]/g, "")
+            .slice(0, 28),
+        )
+        .filter((item) => item.length >= 3),
+    ),
+  ).slice(0, channel === "youtube_shorts" ? 5 : 6);
+}
+
+function ensureMinimumContentLength(channel: BoosterChannels, content: string) {
+  const minLength = CHANNEL_MIN_CONTENT_LENGTH[channel] ?? 160;
+  let out = content.trim();
+  const safetyParagraphs = [
+    "L’objectif est de transmettre un message clair, facile à comprendre et directement utile pour les personnes qui découvrent cette actualité.",
+    "Le contenu peut ensuite être ajusté avec vos mots, vos visuels et les informations précises que vous souhaitez mettre en avant.",
+    "Une communication efficace reste simple : un sujet lisible, une information concrète et un appel à l’action naturel.",
+  ];
+  let index = 0;
+
+  while (out.length < minLength && index < safetyParagraphs.length) {
+    out = `${out}\n\n${safetyParagraphs[index]}`.trim();
+    index += 1;
+  }
+
+  return out;
+}
+
+function buildFallbackPost(args: {
+  channel: BoosterChannels;
+  idea: string;
+  profile: JsonRecord | null;
+  business: JsonRecord | null;
+  mediaType: "images" | "video";
+}): ChannelPost {
+  const { channel, idea, profile, business, mediaType } = args;
+  const context = getFallbackBusinessContext(profile, business);
+  const title = fallbackTitle(channel, idea);
+  const cta = fallbackCta(channel, context.preferredCta);
+  const subject = cleanFallbackText(idea, 180) || "cette actualité";
+  const companyLabel = context.company || "l’entreprise";
+  const cityLabel = context.city ? ` à ${context.city}` : "";
+  const professionLabel = context.profession ? ` dans votre activité de ${context.profession}` : "";
+  const servicesLabel = context.services.length
+    ? ` Les prestations à mettre en avant peuvent notamment concerner : ${context.services.slice(0, 4).join(", ")}.`
+    : "";
+  const zonesLabel = context.zones.length
+    ? ` Les zones concernées peuvent être citées naturellement : ${context.zones.slice(0, 3).join(", ")}.`
+    : "";
+  const mediaLabel = mediaType === "video" ? "la vidéo" : "le visuel";
+
+  let content = "";
+
+  if (siteChannels.has(channel)) {
+    const siteIntro = channel === "inrcy_site"
+      ? `**${subject}** : une actualité à présenter clairement pour ${companyLabel}${cityLabel}.`
+      : `Pour travailler un contenu durable autour de **${subject}**, ${companyLabel}${cityLabel} peut s’appuyer sur un message simple, concret et utile.`;
+
+    content = [
+      siteIntro,
+      `Le but est de donner rapidement les bonnes informations au lecteur : ce qui est proposé, pourquoi c’est utile et comment passer à l’action.${professionLabel ? ` Cette communication s’inscrit${professionLabel}.` : ""}`,
+      context.activity
+        ? `Contexte de l’entreprise : ${context.activity}`
+        : `Cette publication permet de renforcer la visibilité locale tout en gardant un ton professionnel, lisible et rassurant.`,
+      `${servicesLabel}${zonesLabel}`.trim(),
+      `Un bon contenu autour de ${subject} doit rester compréhensible en quelques secondes : une accroche nette, un message cohérent, ${mediaLabel} comme support et un appel à l’action sans surcharge.`,
+      `L’objectif est de créer une publication exploitable sur le site, utile pour les visiteurs et cohérente avec l’image de ${companyLabel}.`,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+  } else if (channel === "gmb") {
+    content = [
+      `${companyLabel}${cityLabel} partage une information autour de ${subject}.`,
+      `L’idée est de présenter un message clair, local et facile à comprendre, avec les informations essentielles pour les personnes qui recherchent une solution sérieuse.${servicesLabel}`,
+      `Cette actualité peut être consultée pour mieux comprendre l’offre, le contexte et les prochaines étapes possibles.`,
+    ].join("\n\n");
+  } else if (channel === "linkedin") {
+    content = [
+      `${subject} est un bon support pour expliquer une démarche, une offre ou une nouveauté avec sérieux.`,
+      `Pour ${companyLabel}${cityLabel}, l’enjeu est de garder un message professionnel : une accroche lisible, des informations concrètes et une présentation cohérente avec l’activité.${professionLabel ? ` Cela renforce aussi la crédibilité${professionLabel}.` : ""}`,
+      `Un contenu efficace ne cherche pas à tout dire. Il met en avant l’essentiel, donne du contexte et facilite la prise de contact quand le besoin est réel.${servicesLabel}`,
+    ].join("\n\n");
+  } else if (channel === "facebook") {
+    content = [
+      `${subject} : voici une actualité que ${companyLabel}${cityLabel} peut partager avec sa communauté.`,
+      `Le message doit rester simple, humain et direct : expliquer ce qui est proposé, montrer l’intérêt pour le client et donner envie d’en savoir plus sans en faire trop.${servicesLabel}`,
+      `Avec ${mediaLabel}, la publication devient plus concrète et plus facile à comprendre au premier coup d’œil.`,
+    ].join("\n\n");
+  } else if (channel === "instagram") {
+    content = [
+      `${subject} ✨`,
+      `Un message clair, un visuel propre et une idée facile à comprendre : c’est souvent ce qui fait la différence.`,
+      `${companyLabel}${cityLabel} peut utiliser cette publication pour présenter l’essentiel, mettre en avant son univers et inviter les personnes intéressées à passer à l’action.${servicesLabel}`,
+    ].join("\n\n");
+  } else if (channel === "tiktok") {
+    content = [
+      `${subject} : un format court, clair et direct.`,
+      `Avec ${mediaLabel}, l’idée est de capter l’attention rapidement, montrer l’essentiel et donner envie d’en savoir plus sur ${companyLabel}${cityLabel}.`,
+    ].join("\n\n");
+  } else {
+    content = [
+      `${subject} : une description YouTube claire pour présenter le sujet et donner du contexte.`,
+      `${companyLabel}${cityLabel} peut utiliser cette publication pour expliquer l’objectif, mettre en avant les points importants et orienter les personnes intéressées vers la suite.${servicesLabel}`,
+      `La description doit rester recherchable, naturelle et utile, sans surcharger le message.`,
+    ].join("\n\n");
+  }
+
+  return normalizePost(channel, {
+    title,
+    content: ensureMinimumContentLength(channel, content),
+    cta,
+    hashtags: fallbackHashtags(channel, context),
+  });
+}
+
+function ensureCompleteGeneratedVersions(args: {
+  channels: BoosterChannels[];
+  versions: Partial<Record<BoosterChannels, ChannelPost>>;
+  idea: string;
+  profile: JsonRecord | null;
+  business: JsonRecord | null;
+  mediaType: "images" | "video";
+}) {
+  const recoveredChannels: BoosterChannels[] = [];
+
+  for (const channel of args.channels) {
+    const current = args.versions[channel];
+    const needsFallback = !hasRequiredContent(channel, current);
+    if (!needsFallback) continue;
+
+    args.versions[channel] = buildFallbackPost({
+      channel,
+      idea: args.idea,
+      profile: args.profile,
+      business: args.business,
+      mediaType: args.mediaType,
+    });
+    recoveredChannels.push(channel);
+  }
+
+  return recoveredChannels;
+}
+
 function computeMaxOutputTokens(channels: BoosterChannels[]) {
   const uniqueChannels = Array.from(new Set(channels));
 
@@ -560,8 +809,8 @@ Ne copie-colle jamais le même texte. Varie titre, accroche, ordre des idées et
 
   // Les réseaux sont gardés dans un second lot pour éviter qu'une réponse trop
   // longue coupe le JSON quand deux contenus site existent.
-  for (let index = 0; index < socials.length; index += 3) {
-    batches.push({ channels: socials.slice(index, index + 3) });
+  for (let index = 0; index < socials.length; index += CHANNEL_BATCH_SIZE) {
+    batches.push({ channels: socials.slice(index, index + CHANNEL_BATCH_SIZE) });
   }
 
   return batches;
@@ -583,23 +832,29 @@ async function generateVersionsForChannels(args: {
   const batches = buildGenerationBatches(args.channels);
 
   for (const batch of batches) {
-    const out = await generateVersions({
-      ...args,
-      channels: batch.channels,
-      extraInstructions: [batch.extraInstructions, args.extraInstructions]
-        .filter(Boolean)
-        .join("\n\n"),
-    });
+    try {
+      const out = await generateVersions({
+        ...args,
+        channels: batch.channels,
+        extraInstructions: [batch.extraInstructions, args.extraInstructions]
+          .filter(Boolean)
+          .join("\n\n"),
+      });
 
-    const rawVersions =
-      out?.versions && typeof out.versions === "object"
-        ? (out.versions as Partial<
-            Record<BoosterChannels, Partial<ChannelPost>>
-          >)
-        : {};
+      const rawVersions =
+        out?.versions && typeof out.versions === "object"
+          ? (out.versions as Partial<
+              Record<BoosterChannels, Partial<ChannelPost>>
+            >)
+          : {};
 
-    for (const channel of batch.channels) {
-      if (rawVersions[channel]) versions[channel] = rawVersions[channel];
+      for (const channel of batch.channels) {
+        if (rawVersions[channel]) versions[channel] = rawVersions[channel];
+      }
+    } catch {
+      // Une erreur OpenAI sur un lot ne doit plus bloquer toute la génération.
+      // Les canaux manquants seront récupérés par le filet de sécurité local.
+      continue;
     }
   }
 
@@ -677,6 +932,8 @@ async function generateVersions(args: {
     images: args.imagesForAI,
     maxOutputTokens: computeMaxOutputTokens(args.channels),
     temperature: getCreativityTemperature(args.business),
+    timeoutMs: 24_000,
+    retries: 0,
   });
 }
 
@@ -813,7 +1070,7 @@ const handler = async (req: Request) => {
       new Set([...missingChannels, ...offTopicChannels]),
     );
 
-    if (retryChannels.length) {
+    if (retryChannels.length && retryChannels.length <= 2) {
       const retryOut = await generateVersionsForChannels({
         idea,
         theme,
@@ -865,38 +1122,36 @@ const handler = async (req: Request) => {
       }
     }
 
-    const stillMissingChannels = channels.filter(
-      (ch) => !hasRequiredContent(ch, safeVersions[ch]),
-    );
     const stillOffTopicChannels = channels.filter(
       (ch) =>
         hasRequiredContent(ch, safeVersions[ch]) &&
         !isPostAnchoredToIdea(ideaKeywords, safeVersions[ch]),
     );
-    if (stillOffTopicChannels.length) {
-      return NextResponse.json(
-        {
-          error:
-            "La génération IA n'a pas assez respecté le sujet demandé. Merci de relancer la génération ou de préciser un peu plus la phrase libre.",
-        },
-        { status: 502 },
-      );
+    for (const channel of stillOffTopicChannels) {
+      safeVersions[channel] = buildFallbackPost({
+        channel,
+        idea,
+        profile: (profile ?? null) as JsonRecord | null,
+        business,
+        mediaType,
+      });
     }
 
-    if (stillMissingChannels.length) {
-      return NextResponse.json(
-        {
-          error: stillMissingChannels.some((channel) =>
-            siteChannels.has(channel),
-          )
-            ? "La génération IA n'a pas produit un contenu site exploitable. Merci de relancer la génération."
-            : "La génération IA est incomplète. Merci de relancer la génération.",
-        },
-        { status: 502 },
-      );
-    }
+    const recoveredChannels = ensureCompleteGeneratedVersions({
+      channels,
+      versions: safeVersions,
+      idea,
+      profile: (profile ?? null) as JsonRecord | null,
+      business,
+      mediaType,
+    });
 
-    return NextResponse.json({ versions: safeVersions });
+    return NextResponse.json({
+      versions: safeVersions,
+      recoveredChannels: Array.from(
+        new Set([...stillOffTopicChannels, ...recoveredChannels]),
+      ),
+    });
   } catch (e: unknown) {
     return jsonUserFacingError(e, {
       status: 502,

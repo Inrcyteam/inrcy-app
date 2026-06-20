@@ -1148,32 +1148,112 @@ export type BoosterAiVideoFramePayload = BoosterAiImagePayload & {
   timeSeconds: number;
 };
 
+const BOOSTER_AI_IMAGE_MAX_SIDE = 1280;
+const BOOSTER_AI_IMAGE_JPEG_QUALITY = 0.76;
+const BOOSTER_AI_DIRECT_DATA_URL_MAX_LENGTH = 3_500_000;
+const BOOSTER_AI_DIRECT_DATA_URL_RE =
+  /^data:image\/(?:jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$/;
+
+function normalizeDirectAiImageType(value: unknown) {
+  const type = String(value || "")
+    .toLowerCase()
+    .trim();
+  if (type === "image/jpg") return "image/jpeg";
+  if (type === "image/jpeg" || type === "image/png" || type === "image/webp")
+    return type;
+  return "";
+}
+
+function drawBoosterAiImagePayload(params: {
+  file: File;
+  source: CanvasImageSource;
+  sourceWidth: number;
+  sourceHeight: number;
+}): BoosterAiImagePayload {
+  const sourceW = params.sourceWidth || 1;
+  const sourceH = params.sourceHeight || 1;
+  const scale = Math.min(
+    1,
+    BOOSTER_AI_IMAGE_MAX_SIDE / Math.max(sourceW, sourceH),
+  );
+  const width = Math.max(1, Math.round(sourceW * scale));
+  const height = Math.max(1, Math.round(sourceH * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas indisponible.");
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, width, height);
+  ctx.drawImage(params.source, 0, 0, width, height);
+
+  return {
+    name: params.file.name || "image",
+    type: "image/jpeg",
+    dataUrl: canvas.toDataURL(
+      "image/jpeg",
+      BOOSTER_AI_IMAGE_JPEG_QUALITY,
+    ),
+  };
+}
+
+async function fileToDirectBoosterAiImagePayload(
+  file: File,
+): Promise<BoosterAiImagePayload | null> {
+  const type = normalizeDirectAiImageType(file.type);
+  if (!type) return null;
+
+  const dataUrl = await fileToDataUrl(file).catch(() => "");
+  if (
+    !dataUrl ||
+    dataUrl.length > BOOSTER_AI_DIRECT_DATA_URL_MAX_LENGTH ||
+    !BOOSTER_AI_DIRECT_DATA_URL_RE.test(dataUrl)
+  ) {
+    return null;
+  }
+
+  return {
+    name: file.name || "image",
+    type,
+    dataUrl,
+  };
+}
+
 export async function fileToBoosterAiImagePayload(
   file: File,
 ): Promise<BoosterAiImagePayload> {
+  if (typeof createImageBitmap === "function") {
+    try {
+      const bitmap = await createImageBitmap(file);
+      try {
+        return drawBoosterAiImagePayload({
+          file,
+          source: bitmap,
+          sourceWidth: bitmap.width,
+          sourceHeight: bitmap.height,
+        });
+      } finally {
+        bitmap.close();
+      }
+    } catch {
+      // Fallback ci-dessous : certains mobiles refusent createImageBitmap
+      // selon le format ou la provenance de l'image.
+    }
+  }
+
   const objectUrl = URL.createObjectURL(file);
   try {
     const img = await loadHtmlImage(objectUrl);
-    const sourceW = img.naturalWidth || img.width || 1;
-    const sourceH = img.naturalHeight || img.height || 1;
-    const maxSide = 1280;
-    const scale = Math.min(1, maxSide / Math.max(sourceW, sourceH));
-    const width = Math.max(1, Math.round(sourceW * scale));
-    const height = Math.max(1, Math.round(sourceH * scale));
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("Canvas indisponible.");
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, width, height);
-    ctx.drawImage(img, 0, 0, width, height);
-
-    return {
-      name: file.name || "image",
-      type: "image/jpeg",
-      dataUrl: canvas.toDataURL("image/jpeg", 0.76),
-    };
+    return drawBoosterAiImagePayload({
+      file,
+      source: img,
+      sourceWidth: img.naturalWidth || img.width || 1,
+      sourceHeight: img.naturalHeight || img.height || 1,
+    });
+  } catch (error) {
+    const directPayload = await fileToDirectBoosterAiImagePayload(file);
+    if (directPayload) return directPayload;
+    throw error instanceof Error ? error : new Error("Image illisible.");
   } finally {
     URL.revokeObjectURL(objectUrl);
   }

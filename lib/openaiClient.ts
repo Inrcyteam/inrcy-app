@@ -13,6 +13,8 @@ export async function openaiGenerateJSON<T extends OpenAIResponseJSON>(opts: {
   images?: Array<{ dataUrl: string; detail?: "low" | "high" | "auto" }>;
   maxOutputTokens?: number;
   temperature?: number;
+  retries?: number;
+  timeoutMs?: number;
 }): Promise<T> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("Missing OPENAI_API_KEY");
@@ -57,8 +59,8 @@ export async function openaiGenerateJSON<T extends OpenAIResponseJSON>(opts: {
         { role: "user", content: userContent },
       ],
     }),
-    retries: 2,
-    timeoutMs: 30_000,
+    retries: opts.retries ?? 2,
+    timeoutMs: opts.timeoutMs ?? 30_000,
   });
 
   if (!res.ok) {

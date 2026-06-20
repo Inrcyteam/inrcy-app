@@ -1844,11 +1844,14 @@ export default function PublishModal({
 
     let didGenerate = false;
     try {
-      const imagesForAI = shouldUseImagesForAI
-        ? await Promise.all(
+      const imagePreparationResults = shouldUseImagesForAI
+        ? await Promise.allSettled(
             images.map((file) => fileToBoosterAiImagePayload(file)),
           )
         : [];
+      const imagesForAI = imagePreparationResults.flatMap((result) =>
+        result.status === "fulfilled" ? [result.value] : [],
+      );
       let videoFramesForAI: Awaited<
         ReturnType<typeof extractVideoFramesForAI>
       > = [];
@@ -1927,7 +1930,7 @@ export default function PublishModal({
           style: contentStyle,
           channels: selectedForGeneration,
           mediaType: hasVideoForGeneration ? "video" : "images",
-          useImagesForAI: shouldUseImagesForAI,
+          useImagesForAI: imagesForAI.length > 0,
           imageCount: imagesForAI.length,
           imagesForAI,
           videoForAI:

@@ -1978,8 +1978,11 @@ export default function NewDevisPage() {
               <div
                 style={{
                   width: "min(720px, 100%)",
+                  maxWidth: "calc(100vw - 32px)",
+                  boxSizing: "border-box",
                   maxHeight: "min(86vh, 860px)",
                   overflowY: "auto",
+                  overflowX: "hidden",
                   overscrollBehavior: "contain",
                   WebkitOverflowScrolling: "touch",
                   background: "#0b1220",
@@ -2015,6 +2018,7 @@ export default function NewDevisPage() {
                 <div
                   style={{
                     display: "flex",
+                    flexWrap: "wrap",
                     gap: 8,
                     padding: "10px 14px",
                     background: "#0b1220",
@@ -2057,6 +2061,8 @@ export default function NewDevisPage() {
                     <div
                       style={{
                         padding: 14,
+                        minWidth: 0,
+                        overflowX: "hidden",
                         display: "grid",
                         gap: 8,
                         maxHeight: drafts.length > 10 ? "62vh" : undefined,
@@ -2072,7 +2078,12 @@ export default function NewDevisPage() {
                             key={d.id}
                             style={{
                               display: "flex",
-                              alignItems: "center",
+                              minWidth: 0,
+                              width: "100%",
+                              boxSizing: "border-box",
+                              overflow: "hidden",
+                              flexWrap: "wrap",
+                              alignItems: "flex-start",
                               justifyContent: "space-between",
                               gap: 10,
                               padding: "10px 12px",
@@ -2080,13 +2091,14 @@ export default function NewDevisPage() {
                               borderRadius: 12,
                             }}
                           >
-                            <div style={{ minWidth: 0 }}>
+                            <div style={{ minWidth: 0, flex: "1 1 260px", maxWidth: "100%" }}>
                               <div
                                 style={{
                                   fontWeight: 650,
-                                  whiteSpace: "nowrap",
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
+                                  lineHeight: 1.25,
+                                  whiteSpace: "normal",
+                                  overflowWrap: "anywhere",
+                                  wordBreak: "break-word",
                                 }}
                               >
                                 {label}
@@ -2101,6 +2113,8 @@ export default function NewDevisPage() {
                             <div
                               style={{
                                 display: "flex",
+                                flex: "0 1 auto",
+                                maxWidth: "100%",
                                 gap: 8,
                                 flexWrap: "wrap",
                                 justifyContent: "flex-end",
@@ -2157,7 +2171,12 @@ export default function NewDevisPage() {
                           key={d.id}
                           style={{
                             display: "flex",
-                            alignItems: "center",
+                            minWidth: 0,
+                            width: "100%",
+                            boxSizing: "border-box",
+                            overflow: "hidden",
+                            flexWrap: "wrap",
+                            alignItems: "flex-start",
                             justifyContent: "space-between",
                             gap: 10,
                             padding: "10px 12px",
@@ -2165,13 +2184,14 @@ export default function NewDevisPage() {
                             borderRadius: 12,
                           }}
                         >
-                          <div style={{ minWidth: 0 }}>
+                          <div style={{ minWidth: 0, flex: "1 1 260px", maxWidth: "100%" }}>
                             <div
                               style={{
                                 fontWeight: 650,
-                                whiteSpace: "nowrap",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
+                                lineHeight: 1.25,
+                                whiteSpace: "normal",
+                                overflowWrap: "anywhere",
+                                wordBreak: "break-word",
                               }}
                             >
                               {label}
@@ -2184,6 +2204,8 @@ export default function NewDevisPage() {
                           <div
                             style={{
                               display: "flex",
+                              flex: "0 1 auto",
+                              maxWidth: "100%",
                               gap: 8,
                               flexWrap: "wrap",
                               justifyContent: "flex-end",
