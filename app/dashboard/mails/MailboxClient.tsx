@@ -158,6 +158,14 @@ type PublicationEditVideoState = {
   removed?: boolean;
 };
 
+
+type CampaignDistributionNotice = {
+  queuedCount: number;
+  batchSize: number;
+  deferredReason: string;
+  extras: string[];
+};
+
 function normalizeBoosterChannelKeyForVideo(value: string): BoosterChannelKey {
   const channel = normalizeChannelKey(value);
   return (channel || "inrcy_site") as BoosterChannelKey;
@@ -390,6 +398,7 @@ export default function MailboxClient() {
   const [composeTemplateKey, setComposeTemplateKey] = useState<string>("");
   const [sendBusy, setSendBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  const [campaignDistributionNotice, setCampaignDistributionNotice] = useState<CampaignDistributionNotice | null>(null);
   const [signaturePreview, setSignaturePreview] = useState("Cordialement,");
   const [signatureEnabled, setSignatureEnabled] = useState(true);
   const [signatureImageUrl, setSignatureImageUrl] = useState("");
@@ -2106,20 +2115,24 @@ async function deleteDraftPermanently(id: string) {
         const ignoredInvalid = Math.max(0, Number(data?.ignoredInvalid ?? 0));
         const blockedOptOut = Math.max(0, Number(data?.blockedOptOut ?? 0));
         const blockedBlacklist = Math.max(0, Number(data?.blockedBlacklist ?? 0));
+        const blockedHardBounce = Math.max(0, Number(data?.blockedHardBounce ?? 0));
+        const blockedComplaint = Math.max(0, Number(data?.blockedComplaint ?? 0));
         const extras: string[] = [];
         if (blockedDuplicates > 0) extras.push(`${blockedDuplicates} doublon${blockedDuplicates > 1 ? "s" : ""} bloqué${blockedDuplicates > 1 ? "s" : ""}`);
         if (ignoredInvalid > 0) extras.push(`${ignoredInvalid} destinataire${ignoredInvalid > 1 ? "s" : ""} ignoré${ignoredInvalid > 1 ? "s" : ""}`);
         if (blockedOptOut > 0) extras.push(`${blockedOptOut} désinscription${blockedOptOut > 1 ? "s" : ""}`);
         if (blockedBlacklist > 0) extras.push(`${blockedBlacklist} blacklist`);
-        const deliveryState = String(data?.campaignStatus || "").toLowerCase();
+        if (blockedHardBounce > 0) extras.push(`${blockedHardBounce} rebond${blockedHardBounce > 1 ? "s" : ""} dur${blockedHardBounce > 1 ? "s" : ""}`);
+        if (blockedComplaint > 0) extras.push(`${blockedComplaint} plainte${blockedComplaint > 1 ? "s" : ""}`);
         const deferredReason = String(data?.deferredReason || "").trim();
         const batchSize = Math.max(1, Number(data?.batchSize || 50));
-        const baseMessage = deliveryState === "paused"
-          ? `Campagne mise en pause : ${queuedCount} email${queuedCount > 1 ? "s" : ""} sont enregistrés et repartiront automatiquement.`
-          : deliveryState === "queued"
-            ? `Campagne mise en file d’attente : ${queuedCount} email${queuedCount > 1 ? "s" : ""} sont enregistrés.`
-            : `Campagne lancée : ${queuedCount} email${queuedCount > 1 ? "s" : ""} vont partir individuellement par vagues de ${batchSize}.`;
-        setToast(`${baseMessage}${deferredReason ? ` ${deferredReason}` : ""}${extras.length ? ` (${extras.join(", ")})` : ""}`);
+        setToast(null);
+        setCampaignDistributionNotice({
+          queuedCount,
+          batchSize,
+          deferredReason,
+          extras,
+        });
         setComposeOpen(false);
         resetCompose();
         await loadHistory();
@@ -3047,6 +3060,38 @@ async function deleteDraftPermanently(id: string) {
           setToast={setToast}
           workflowFinalizerKind={workflowFinalizerKind}
         />
+
+        {campaignDistributionNotice ? (
+          <div
+            className={styles.campaignDistributionOverlay}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="campaign-distribution-title"
+            onMouseDown={() => setCampaignDistributionNotice(null)}
+          >
+            <div className={styles.campaignDistributionCard} onMouseDown={(event) => event.stopPropagation()}>
+              <div className={styles.campaignDistributionIcon} aria-hidden="true">✓</div>
+              <h2 id="campaign-distribution-title" className={styles.campaignDistributionTitle}>
+                Campagne validée : en cours de distribution
+              </h2>
+              <p className={styles.campaignDistributionText}>
+                {campaignDistributionNotice.queuedCount} email{campaignDistributionNotice.queuedCount > 1 ? "s" : ""} vont partir automatiquement par vagues de {campaignDistributionNotice.batchSize} maximum.
+              </p>
+              <p className={styles.campaignDistributionSubText}>
+                Vous pouvez fermer cette fenêtre : le suivi reste disponible dans iNrSend.
+              </p>
+              {campaignDistributionNotice.deferredReason ? (
+                <p className={styles.campaignDistributionNote}>{campaignDistributionNotice.deferredReason}</p>
+              ) : null}
+              {campaignDistributionNotice.extras.length ? (
+                <p className={styles.campaignDistributionNote}>{campaignDistributionNotice.extras.join(" · ")}</p>
+              ) : null}
+              <button type="button" className={styles.btnPrimary} onClick={() => setCampaignDistributionNotice(null)}>
+                Fermer
+              </button>
+            </div>
+          </div>
+        ) : null}
       </div>
     </div>
   );

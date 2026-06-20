@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { evaluateCampaignDispatchState, getMailCampaignDeliveryConfig, processPendingMailCampaigns } from "@/lib/crmCampaigns";
+import { evaluateCampaignDispatchState, getMailCampaignDeliveryConfig } from "@/lib/crmCampaigns";
 import { requireUser } from "@/lib/requireUser";
 import { normalizeCampaignRecipients } from "@/lib/crmRecipients";
 import { fetchSuppressedEmailsByUser } from "@/lib/mailSuppression";
@@ -335,15 +335,11 @@ export async function POST(req: Request) {
     }
   }
 
-  let immediate: unknown = null;
-  if (dispatchState.state === "ready") {
-    immediate = await processPendingMailCampaigns({ campaignIds: [campaign.id], maxCampaigns: 1 });
-  }
-
   return NextResponse.json({
     success: true,
     campaignId: campaign.id,
-    campaignStatus: dispatchState.state === "ready" ? "processing" : initialStatus,
+    campaignStatus: initialStatus,
+    distributionState: dispatchState.state,
     deferredReason: dispatchState.reason,
     queued: recipients.length,
     blockedDuplicates: recipientStats.duplicateCount,
@@ -356,6 +352,6 @@ export async function POST(req: Request) {
     hourlyLimit: deliveryConfig.hourlyLimit,
     dailyLimit: deliveryConfig.dailyLimit,
     activeLimit: deliveryConfig.maxActivePerIntegration,
-    immediate,
+    queuedForBackgroundDispatch: true,
   });
 }

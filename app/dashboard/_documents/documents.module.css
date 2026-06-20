@@ -2395,3 +2395,71 @@
 .pdfExportStaging .previewFrame .documentPrintPage {
   border: 2px solid var(--doc-accent) !important;
 }
+
+/* Export PDF mail : verrouillage léger des colonnes et des retours à la ligne.
+   Le bouton Imprimer/PDF navigateur n'est pas modifié. */
+.pdfExportStaging .previewPartyCard,
+.pdfExportStaging .previewPartyCard * {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  overflow-wrap: anywhere !important;
+  word-break: normal !important;
+}
+
+.pdfExportStaging .table th,
+.pdfExportStaging .table td {
+  box-sizing: border-box !important;
+  word-break: normal !important;
+}
+
+.pdfExportStaging .table th:nth-child(1),
+.pdfExportStaging .table td:nth-child(1) {
+  width: auto !important;
+  text-align: left !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere !important;
+}
+
+.pdfExportStaging .table th:nth-child(2),
+.pdfExportStaging .table td:nth-child(2) {
+  width: 52px !important;
+  text-align: center !important;
+  white-space: nowrap !important;
+  font-variant-numeric: tabular-nums !important;
+}
+
+.pdfExportStaging .table th:nth-child(3),
+.pdfExportStaging .table td:nth-child(3) {
+  width: 94px !important;
+  text-align: center !important;
+  white-space: nowrap !important;
+  font-variant-numeric: tabular-nums !important;
+}
+
+.pdfExportStaging .table th:nth-child(4),
+.pdfExportStaging .table td:nth-child(4) {
+  width: 68px !important;
+  text-align: center !important;
+  white-space: nowrap !important;
+  font-variant-numeric: tabular-nums !important;
+}
+
+.pdfExportStaging .table th:nth-child(5),
+.pdfExportStaging .table td:nth-child(5) {
+  width: 94px !important;
+  text-align: right !important;
+  white-space: nowrap !important;
+  font-variant-numeric: tabular-nums !important;
+}
+
+.pdfExportStaging .previewBottomGrid,
+.pdfExportStaging .previewSignatureGrid {
+  min-width: 0 !important;
+}
+
+.pdfExportStaging .previewBottomGrid > *,
+.pdfExportStaging .previewSignatureGrid > * {
+  min-width: 0 !important;
+  overflow-wrap: anywhere !important;
+}

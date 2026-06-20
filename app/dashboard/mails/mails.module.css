@@ -4860,3 +4860,86 @@
     font-size: 13px;
   }
 }
+
+/* Confirmation post-lancement campagne : évite de laisser le pro bloqué sur "Envoi…". */
+.campaignDistributionOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10020;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(2, 6, 23, 0.68);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.campaignDistributionCard {
+  width: min(520px, 100%);
+  border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background:
+    radial-gradient(circle at 18% 0%, rgba(52, 211, 153, 0.18), transparent 34%),
+    linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(7, 10, 25, 0.98));
+  color: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.46);
+  padding: 24px;
+  text-align: center;
+}
+
+.campaignDistributionIcon {
+  width: 54px;
+  height: 54px;
+  margin: 0 auto 14px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(74, 222, 128, 0.42);
+  background: rgba(34, 197, 94, 0.14);
+  color: #86efac;
+  font-size: 26px;
+  font-weight: 950;
+  box-shadow: 0 0 32px rgba(34, 197, 94, 0.18);
+}
+
+.campaignDistributionTitle {
+  margin: 0;
+  font-size: clamp(20px, 4vw, 26px);
+  line-height: 1.12;
+  letter-spacing: -0.03em;
+  color: #fff;
+}
+
+.campaignDistributionText {
+  margin: 14px 0 0;
+  font-size: 15px;
+  font-weight: 850;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.campaignDistributionSubText {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.campaignDistributionNote {
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.campaignDistributionCard .btnPrimary {
+  margin-top: 18px;
+  min-width: 150px;
+  justify-content: center;
+}
