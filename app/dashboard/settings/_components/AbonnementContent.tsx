@@ -63,12 +63,13 @@ type SubData = {
   // cancellation (synced by Stripe webhooks)
   cancel_requested_at?: string | null;
   end_date?: string | null; // YYYY-MM-DD
+  stripe_customer_id?: string | null;
   stripe_subscription_id?: string | null;
   stripe_price_id?: string | null;
   founder_offer_enabled?: boolean | null;
 };
 const SUB_SELECT =
-  "plan,scheduled_plan,status,monthly_price_eur,start_date,trial_start_at,trial_end_at,next_renewal_date,cancel_requested_at,end_date,stripe_subscription_id,stripe_price_id,founder_offer_enabled";
+  "plan,scheduled_plan,status,monthly_price_eur,start_date,trial_start_at,trial_end_at,next_renewal_date,cancel_requested_at,end_date,stripe_customer_id,stripe_subscription_id,stripe_price_id,founder_offer_enabled";
 
 
 function frDate(d: Date) {
@@ -203,6 +204,7 @@ export default function AbonnementContent({ mode: _mode = "page", onOpenContact 
   const [sub, setSub] = useState<SubData | null>(null);
   const [err, setErr] = useState("");
   const [billingBusy, setBillingBusy] = useState(false);
+  const [portalBusy, setPortalBusy] = useState(false);
   const [billingMsg, setBillingMsg] = useState<string>("");
   const [showBillingChoices, setShowBillingChoices] = useState(false);
   const [selectedCheckoutPlan, setSelectedCheckoutPlan] = useState<CheckoutPlan>("Accel");
@@ -481,6 +483,26 @@ useEffect(() => {
     }
   };
 
+
+  const openBillingPortal = async () => {
+    try {
+      setBillingMsg("");
+      setPortalBusy(true);
+      const res = await fetch("/api/billing/portal", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) throw new Error(await getSimpleFrenchApiError(res, "Le portail de facturation n’a pas pu être ouvert pour le moment."));
+      const json = await res.json().catch(() => ({}));
+      if (!json?.url) throw new Error("Le portail de facturation n’a pas pu être ouvert pour le moment.");
+      window.location.href = json.url;
+    } catch (e: unknown) {
+      setBillingMsg(getSimpleFrenchErrorMessage(e, "Le portail de facturation n’a pas pu être ouvert pour le moment."));
+      setPortalBusy(false);
+    }
+  };
+
   const doCancel = async () => {
     const ok = await confirmInrcy({
       title: "Confirmer la résiliation ?",
@@ -639,6 +661,29 @@ useEffect(() => {
 
       <div style={card}>
         <h2 style={{ margin: 0, fontSize: 16 }}>Modifier / Résilier</h2>
+
+        {sub.stripe_customer_id ? (
+          <div
+            style={{
+              marginTop: 10,
+              marginBottom: 12,
+              border: "1px solid rgba(0, 200, 255, 0.18)",
+              background: "rgba(0, 200, 255, 0.07)",
+              borderRadius: 14,
+              padding: "12px",
+              display: "grid",
+              gap: 10,
+            }}
+          >
+            <div style={{ fontWeight: 900 }}>Informations de facturation</div>
+            <p style={{ margin: 0, opacity: 0.84, lineHeight: 1.45, fontSize: 13 }}>
+              Mettez à jour votre adresse, votre TVA, vos factures et votre moyen de paiement depuis le portail sécurisé Stripe.
+            </p>
+            <button type="button" onClick={openBillingPortal} style={ghostBtn} disabled={portalBusy || billingBusy}>
+              {portalBusy ? "Ouverture…" : "Mettre à jour mes informations de facturation"}
+            </button>
+          </div>
+        ) : null}
 
         {checkoutState === "success" ? (
           <p style={{ margin: "8px 0 0", opacity: 0.9, lineHeight: 1.5 }}>
