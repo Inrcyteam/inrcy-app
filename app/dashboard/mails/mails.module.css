@@ -4943,3 +4943,12 @@
   min-width: 150px;
   justify-content: center;
 }
+
+
+/* iNr'Send responsive : la date est déjà affichée dans la ligne méta mobile.
+   On masque la colonne Date mobile pour éviter la date affichée une deuxième fois en dernière ligne. */
+@media (max-width: 640px) {
+  .itemDateCell {
+    display: none !important;
+  }
+}

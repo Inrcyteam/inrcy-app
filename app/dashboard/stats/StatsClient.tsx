@@ -1590,7 +1590,7 @@ useEffect(() => {
 
           <div className={styles.headerActions}>
             <div className={styles.headerCloseControls}>
-              <HelpButton onClick={() => setHelpOpen(true)} title="Aide iNr’Stats" />
+              <HelpButton onClick={() => setHelpOpen(true)} title="Aide iNr’Stats" size={34} />
               <button
                 type="button"
                 className={styles.statsMobileNavButton}
@@ -1600,15 +1600,6 @@ useEffect(() => {
               >
                 ☰
               </button>
-              <ResponsiveActionButton
-                desktopLabel={isGeneratingReport ? "Génération…" : "Générer un bilan"}
-                mobileIcon="📄"
-                onClick={() => {
-                  void generateStatsReportNow();
-                }}
-                ariaLabel="Générer un bilan iNr’Stats manuel"
-                title="Créer et envoyer un bilan manuel maintenant"
-              />
               <ResponsiveActionButton
                 desktopLabel={isRefreshing ? "Actualisation…" : "Actualiser"}
                 mobileIcon="↻"
@@ -1739,6 +1730,18 @@ useEffect(() => {
                   <p className={styles.allStatsText}>
                     Synthèse par canal : opportunités activables, CA potentiel et outil recommandé.
                   </p>
+                  <button
+                    type="button"
+                    className={styles.allStatsReportButton}
+                    onClick={() => {
+                      void generateStatsReportNow();
+                    }}
+                    disabled={isGeneratingReport}
+                    aria-label="Générer un bilan iNr’Stats manuel"
+                    title="Créer et envoyer un bilan manuel maintenant"
+                  >
+                    {isGeneratingReport ? "Génération du bilan…" : "Générer un bilan"}
+                  </button>
                 </div>
 
                 <div className={styles.allStatsKpis}>
