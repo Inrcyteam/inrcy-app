@@ -174,10 +174,10 @@ export const INR_AGENT_DEFAULT_SETTINGS: InrAgentSettings = {
 
 export const INR_AGENT_LABELS = {
   automations: {
-    publish: "Publier régulièrement",
-    grow: "Développer l’activité",
-    loyalty: "Fidéliser les contacts",
-    stats: "Analyser mes statistiques",
+    publish: "Publier",
+    grow: "Propulser",
+    loyalty: "Fidéliser",
+    stats: "Statistiques",
   } satisfies Record<InrAgentAutomationKey, string>,
   frequencies: {
     weekly: "1 fois / semaine",

@@ -56,6 +56,7 @@ type AutomationConfig = {
   themes: string[];
   validation: string;
   source: string;
+  signatureAutomatic: boolean;
 };
 
 type SelectOption<T extends string> = {
@@ -121,6 +122,7 @@ type AgentStatsReport = {
   id: string;
   title: string;
   summary: string;
+  recommendations: string[];
   createdAt: string | null;
   completedAt?: string | null;
   document: AgentReportDocument;
@@ -132,6 +134,24 @@ type AgentChannelPreview = {
   body: string;
   cta: string;
   hashtags: string[];
+};
+
+type CampaignAttachmentPreview = {
+  name: string;
+  type: string;
+  size: string;
+  url: string;
+};
+
+type CampaignMailPreview = {
+  subject: string;
+  body: string;
+  paragraphs: string[];
+  mission: string;
+  recipientsCount: number;
+  mailAccountLabel: string;
+  mailAccountProvider: string;
+  attachment: CampaignAttachmentPreview | null;
 };
 
 type AgentActionsResponse = {
@@ -360,10 +380,10 @@ const settingsOptions: Record<AutomationKey, AutomationSettingsOptions> = {
 const automations: Automation[] = [
   {
     key: "publish",
-    title: "Publier régulièrement",
+    title: "Publier",
     shortTitle: "Publier",
     iconLabel: "Visibilité",
-    settingsTitle: "Réglages — Publier régulièrement",
+    settingsTitle: "Réglages — Publier",
     availableThemes: ["Conseils", "Réalisations", "Offres", "Actualités"],
     availableChannels: [
       "siteInrcy",
@@ -378,28 +398,28 @@ const automations: Automation[] = [
   },
   {
     key: "grow",
-    title: "Développer l’activité",
-    shortTitle: "Développer",
+    title: "Propulser",
+    shortTitle: "Propulser",
     iconLabel: "Acquisition",
-    settingsTitle: "Réglages — Développer l’activité",
+    settingsTitle: "Réglages — Propulser",
     availableThemes: ["Valoriser", "Récolter", "Offrir"],
     availableChannels: ["mails"],
   },
   {
     key: "loyalty",
-    title: "Fidéliser les contacts",
+    title: "Fidéliser",
     shortTitle: "Fidéliser",
     iconLabel: "Relation",
-    settingsTitle: "Réglages — Fidéliser les contacts",
+    settingsTitle: "Réglages — Fidéliser",
     availableThemes: ["Informer", "Enquêter", "Suivre"],
     availableChannels: ["mails"],
   },
   {
     key: "stats",
-    title: "Analyser mes statistiques",
+    title: "Statistiques",
     shortTitle: "Stats",
     iconLabel: "Pilotage",
-    settingsTitle: "Réglages — Analyser mes statistiques",
+    settingsTitle: "Réglages — Statistiques",
     availableThemes: [
       "Vue globale",
       "iNrBadge",
@@ -459,6 +479,7 @@ const defaultConfigs: Record<AutomationKey, AutomationConfig> = {
     themes: ["Conseils", "Réalisations", "Offres"],
     validation: "Validation obligatoire avant publication",
     source: "Contenus déjà publiés + canaux Booster / Publier connectés",
+    signatureAutomatic: true,
   },
   grow: {
     enabled: false,
@@ -469,6 +490,7 @@ const defaultConfigs: Record<AutomationKey, AutomationConfig> = {
     themes: ["Valoriser", "Récolter", "Offrir"],
     validation: "Validation obligatoire avant envoi",
     source: "Publications déjà faites + rubriques Propulser",
+    signatureAutomatic: true,
   },
   loyalty: {
     enabled: false,
@@ -479,6 +501,7 @@ const defaultConfigs: Record<AutomationKey, AutomationConfig> = {
     themes: ["Informer", "Enquêter", "Suivre"],
     validation: "Validation obligatoire avant envoi",
     source: "Publications déjà faites + rubriques Fidéliser",
+    signatureAutomatic: true,
   },
   stats: {
     enabled: false,
@@ -495,6 +518,7 @@ const defaultConfigs: Record<AutomationKey, AutomationConfig> = {
     ],
     validation: "Bilan automatique",
     source: "Rubriques iNr’Stats connectées",
+    signatureAutomatic: true,
   },
 };
 
@@ -618,6 +642,10 @@ function settingsToConfigs(
           source.validationMode,
           defaults.validation,
         ),
+        signatureAutomatic:
+          typeof source.metadata?.signatureAutomatic === "boolean"
+            ? source.metadata.signatureAutomatic
+            : true,
       };
 
       return [automation.key, config];
@@ -664,6 +692,10 @@ function configToAutomationSettings(
         : key === "stats"
           ? "stats_snapshot"
           : "templates",
+    metadata:
+      key === "grow" || key === "loyalty"
+        ? { ...existing.metadata, signatureAutomatic: config.signatureAutomatic }
+        : existing.metadata,
   };
 }
 
@@ -712,6 +744,31 @@ function inrSendFolderForAutomation(key: AutomationKey) {
   if (key === "loyalty") return "fidelisations";
   if (key === "stats") return "stats";
   return "publications";
+}
+
+type HeaderToolLink = {
+  label: string;
+  compactLabel: string;
+  href: string;
+  logoSrc?: string;
+};
+
+function headerToolLinkForAutomation(key: AutomationKey): HeaderToolLink {
+  if (key === "grow") {
+    return { label: "Propulser", compactLabel: "P", href: "/dashboard/propulser" };
+  }
+  if (key === "loyalty") {
+    return { label: "Fidéliser", compactLabel: "F", href: "/dashboard/fideliser" };
+  }
+  if (key === "stats") {
+    return {
+      label: "iNr’Stats",
+      compactLabel: "S",
+      href: "/dashboard/stats",
+      logoSrc: "/inrstats-logo-seul.png",
+    };
+  }
+  return { label: "Booster", compactLabel: "B", href: "/dashboard/booster/publier" };
 }
 
 function AutomationIcon({ type }: { type: AutomationKey }) {
@@ -1023,6 +1080,88 @@ function previewParagraphs(text: string): string[] {
     .slice(0, 3);
 }
 
+function mailParagraphs(text: string): string[] {
+  return text
+    .replace(/\r\n/g, "\n")
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
+    .slice(0, 8);
+}
+
+function isCampaignAutomationKey(key: AutomationKey): key is Extract<AutomationKey, "grow" | "loyalty"> {
+  return key === "grow" || key === "loyalty";
+}
+
+function isCampaignPreparedAction(action: AgentPreparedAction | null): action is AgentPreparedAction {
+  return Boolean(
+    action &&
+      isCampaignAutomationKey(action.automationKey as AutomationKey) &&
+      (action.targetTool === "propulser" || action.targetTool === "fideliser" || action.targetTool === "mails"),
+  );
+}
+
+function formatAttachmentSize(value: unknown): string {
+  const bytes = Number(value || 0);
+  if (!Number.isFinite(bytes) || bytes <= 0) return "";
+  if (bytes < 1024) return `${Math.round(bytes)} o`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} Ko`;
+  return `${(bytes / 1024 / 1024).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} Mo`;
+}
+
+function extractCampaignAttachment(payload: Record<string, unknown>): CampaignAttachmentPreview | null {
+  const rawAttachments = Array.isArray(payload.attachments)
+    ? payload.attachments
+    : Array.isArray(payload.files)
+      ? payload.files
+      : [];
+  const raw = rawAttachments[0] || payload.attachment || payload.file || null;
+  const record = typeof raw === "string" ? { name: raw, url: raw } : asRecord(raw);
+  if (!record) return null;
+
+  const name = firstSafeString(
+    record.name,
+    record.filename,
+    record.fileName,
+    record.title,
+    "Pièce jointe",
+  );
+  const url = firstSafeString(record.url, record.downloadUrl, record.publicUrl, record.href);
+  const type = firstSafeString(record.mimeType, record.mime_type, record.type, "Document");
+  const size = formatAttachmentSize(record.size || record.bytes || record.sizeBytes || record.size_bytes);
+
+  return { name, type, size, url };
+}
+
+function extractCampaignMailPreview(action: AgentPreparedAction | null): CampaignMailPreview | null {
+  if (!isCampaignPreparedAction(action)) return null;
+  const payload = action.payload || {};
+  const mailAccount = asRecord(payload.mailAccount);
+  const subject = firstSafeString(payload.campaignSubject, payload.subject, action.title);
+  const body = firstSafeString(payload.campaignBody, payload.bodyText, payload.text, action.previewText, action.summary);
+  const mission = firstSafeString(payload.mission, targetThemesLabel(action), action.automationKey === "loyalty" ? "Fidéliser" : "Propulser");
+  const accountLabel = firstSafeString(
+    mailAccount?.label,
+    mailAccount?.email,
+    mailAccount?.provider,
+    payload.mailAccountLabel,
+    payload.accountLabel,
+    "Boîte mail connectée",
+  );
+  const accountProvider = firstSafeString(mailAccount?.provider, payload.mailProvider, "Mails");
+
+  return {
+    subject,
+    body,
+    paragraphs: mailParagraphs(body),
+    mission,
+    recipientsCount: recipientsCountForAction(action),
+    mailAccountLabel: accountLabel,
+    mailAccountProvider: accountProvider,
+    attachment: extractCampaignAttachment(payload),
+  };
+}
+
 function channelsForAction(
   action: AgentPreparedAction,
   fallback: ChannelKey[],
@@ -1109,6 +1248,19 @@ function reportRunMode(action: AgentPreparedAction): "automatic" | "manual" {
   return mode === "manual" ? "manual" : "automatic";
 }
 
+function extractStatsReportRecommendations(action: AgentPreparedAction): string[] {
+  const payload = action.payload || {};
+  const insights = asRecord(payload.insights) || asRecord(payload.reportInsights) || asRecord(payload.aiInsights);
+  const rawRecommendations = insights?.recommendations;
+  if (!Array.isArray(rawRecommendations)) return [];
+
+  return rawRecommendations
+    .map((item) => firstSafeString(item))
+    .filter(Boolean)
+    .slice(0, 5);
+}
+
+
 function statsReportsFromActions(
   actions: AgentPreparedAction[],
   options: { automaticOnly?: boolean; limit?: number } = {},
@@ -1128,6 +1280,7 @@ function statsReportsFromActions(
         id: action.id,
         title: action.title,
         summary: action.summary,
+        recommendations: extractStatsReportRecommendations(action),
         createdAt: action.createdAt,
         completedAt: action.completedAt ?? null,
         document,
@@ -1268,6 +1421,11 @@ export default function AgentClient() {
   const [selectedChannelByAction, setSelectedChannelByAction] = useState<
     Record<string, ChannelKey>
   >({});
+  const [campaignEditOpen, setCampaignEditOpen] = useState(false);
+  const [mailTextEditOpen, setMailTextEditOpen] = useState(false);
+  const [attachmentPreviewOpen, setAttachmentPreviewOpen] = useState(false);
+  const [campaignTextDraft, setCampaignTextDraft] = useState({ subject: "", body: "" });
+  const [campaignSaveState, setCampaignSaveState] = useState<"idle" | "saving">("idle");
 
 
   useEffect(() => {
@@ -1397,6 +1555,11 @@ export default function AgentClient() {
     [settingsKey],
   );
 
+  const selectedHeaderTool = useMemo(
+    () => headerToolLinkForAutomation(selected.key),
+    [selected.key],
+  );
+
   const selectedConfig = configs[selected.key];
   const selectedRobotSteps = robotStepsByAutomation[selected.key];
   const settingsConfig = settingsKey ? configs[settingsKey] : null;
@@ -1445,6 +1608,24 @@ export default function AgentClient() {
     preparedChannelPreview?.body || selectedPreparedAction?.summary || "",
   );
   const preparedRecipientsCount = recipientsCountForAction(selectedPreparedAction);
+  const isCampaignView = isCampaignAutomationKey(selected.key);
+  const campaignMailPreview = isCampaignView
+    ? extractCampaignMailPreview(selectedPreparedAction)
+    : null;
+  const hasCampaignPreview = Boolean(isCampaignView && selectedPreparedAction && campaignMailPreview);
+  const campaignPlaceholderPreview: CampaignMailPreview | null = isCampaignView
+    ? {
+        subject: "—",
+        body: "—",
+        paragraphs: ["—"],
+        mission: "—",
+        recipientsCount: 0,
+        mailAccountLabel: "—",
+        mailAccountProvider: "Mails",
+        attachment: null,
+      }
+    : null;
+  const campaignDisplayPreview = campaignMailPreview ?? campaignPlaceholderPreview;
   const selectedAutomationSettings = agentSettings.automations[selected.key];
   const statsReports = useMemo(
     () => statsReportsFromActions(actions, { automaticOnly: true, limit: 5 }),
@@ -1454,6 +1635,8 @@ export default function AgentClient() {
     () => statsReportsFromActions(actions, { limit: 1 })[0] ?? null,
     [actions],
   );
+  const latestAutomaticStatsReport = statsReports[0] ?? null;
+  const latestStatsRecommendations = latestAutomaticStatsReport?.recommendations ?? [];
   const statsLastReportLabel = latestStatsReport
     ? formatDateTimeLabel(
         latestStatsReport.document.createdAt || latestStatsReport.completedAt || latestStatsReport.createdAt,
@@ -1489,6 +1672,63 @@ export default function AgentClient() {
   function showNotice(message: string) {
     setNotice(message);
     window.setTimeout(() => setNotice(null), 2600);
+  }
+
+  function openMailTextEditor() {
+    const preview = extractCampaignMailPreview(selectedPreparedAction);
+    if (!preview) return;
+    setCampaignTextDraft({ subject: preview.subject, body: preview.body });
+    setCampaignEditOpen(false);
+    setMailTextEditOpen(true);
+  }
+
+  async function saveCampaignText() {
+    if (!selectedPreparedAction || campaignSaveState === "saving") return;
+    const subject = campaignTextDraft.subject.trim();
+    const body = campaignTextDraft.body.trim();
+    if (!subject || !body) {
+      showNotice("L’objet et le corps du mail sont obligatoires.");
+      return;
+    }
+
+    setCampaignSaveState("saving");
+    setNotice(null);
+
+    try {
+      const response = await fetch("/api/agent/actions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actionId: selectedPreparedAction.id,
+          editType: "campaign_text",
+          subject,
+          bodyText: body,
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        action?: AgentPreparedAction;
+        error?: string;
+      } | null;
+
+      if (!response.ok || !payload?.action) {
+        throw new Error(payload?.error || "Modification du mail impossible.");
+      }
+
+      const updatedAction = payload.action;
+      setActions((current) =>
+        current.map((action) =>
+          action.id === updatedAction.id ? updatedAction : action,
+        ),
+      );
+      setMailTextEditOpen(false);
+      showNotice("Texte de la campagne mis à jour.");
+    } catch (error) {
+      showNotice(
+        error instanceof Error ? error.message : "Modification du mail impossible.",
+      );
+    } finally {
+      setCampaignSaveState("idle");
+    }
   }
 
   function updateConfig(key: AutomationKey, patch: Partial<AutomationConfig>) {
@@ -1845,7 +2085,7 @@ export default function AgentClient() {
             <HelpButton
               onClick={() => setHelpOpen(true)}
               title="Aide iNr’Agent"
-              size={34}
+              size={isMobileHeader ? 32 : 34}
             />
             <button
               type="button"
@@ -1855,6 +2095,33 @@ export default function AgentClient() {
               title="Configurer le style des contenus générés"
             >
               IA
+            </button>
+            <button
+              type="button"
+              className={styles.headerToolButton}
+              data-automation={selected.key}
+              onClick={() => router.push(selectedHeaderTool.href)}
+              aria-label={`Ouvrir ${selectedHeaderTool.label}`}
+              title={`Ouvrir ${selectedHeaderTool.label}`}
+            >
+              {selectedHeaderTool.logoSrc ? (
+                <img
+                  className={styles.headerToolLogo}
+                  src={selectedHeaderTool.logoSrc}
+                  alt=""
+                  aria-hidden
+                  width={34}
+                  height={34}
+                  loading="eager"
+                  decoding="sync"
+                  onError={(event) => {
+                    event.currentTarget.src = "/inrstats-logo.png";
+                  }}
+                />
+              ) : (
+                <span className={styles.headerToolLetter} aria-hidden>{selectedHeaderTool.compactLabel}</span>
+              )}
+              <span className={styles.headerToolLabel}>{selectedHeaderTool.label}</span>
             </button>
             <button
               type="button"
@@ -1977,7 +2244,7 @@ export default function AgentClient() {
 
           <div className={styles.workColumn}>
             <section
-              className={styles.previewCard}
+              className={`${styles.previewCard} ${selected.key === "stats" || isCampaignView ? styles.previewCardNoFrame : ""}`}
               aria-label="Aperçu de l’action préparée"
             >
               <div className={styles.previewBody}>
@@ -1997,59 +2264,66 @@ export default function AgentClient() {
 
                   <div className={styles.statsTopGrid}>
                     <article className={`${styles.statsMiniCard} ${styles.statsMiniCardGreen}`}>
-                      <span className={styles.statsMiniIcon} aria-hidden><SparkSettingsIcon /></span>
-                      <small>Automatisation</small>
+                      <div className={styles.statsMiniHead}>
+                        <span className={styles.statsMiniIcon} aria-hidden><SparkSettingsIcon /></span>
+                        <small>Automatisation</small>
+                      </div>
                       <strong>{statsAutomationLabel}</strong>
                     </article>
                     <article className={`${styles.statsMiniCard} ${styles.statsMiniCardBlue}`}>
-                      <span className={styles.statsMiniIcon} aria-hidden><CalendarMetaIcon /></span>
-                      <small>Fréquence</small>
+                      <div className={styles.statsMiniHead}>
+                        <span className={styles.statsMiniIcon} aria-hidden><CalendarMetaIcon /></span>
+                        <small>Fréquence</small>
+                      </div>
                       <strong>{statsFrequencyLabel}</strong>
                     </article>
                     <article className={`${styles.statsMiniCard} ${styles.statsMiniCardViolet}`}>
-                      <span className={styles.statsMiniIcon} aria-hidden><CalendarMetaIcon /></span>
-                      <small>Prochain bilan</small>
+                      <div className={styles.statsMiniHead}>
+                        <span className={styles.statsMiniIcon} aria-hidden><CalendarMetaIcon /></span>
+                        <small>Prochain bilan</small>
+                      </div>
                       <strong>{statsNextRunLabel}</strong>
                     </article>
                     <article className={`${styles.statsMiniCard} ${styles.statsMiniCardSky}`}>
-                      <span className={styles.statsMiniIcon} aria-hidden><SendPlaneIcon /></span>
-                      <small>Dernier bilan</small>
+                      <div className={styles.statsMiniHead}>
+                        <span className={styles.statsMiniIcon} aria-hidden><SendPlaneIcon /></span>
+                        <small>Dernier bilan</small>
+                      </div>
                       <strong>{statsLastReportLabel}</strong>
                     </article>
                     <article className={`${styles.statsMiniCard} ${styles.statsMiniCardPink}`}>
-                      <span className={styles.statsMiniIcon} aria-hidden><ShieldLineIcon /></span>
-                      <small>Bilans conservés</small>
+                      <div className={styles.statsMiniHead}>
+                        <span className={styles.statsMiniIcon} aria-hidden><ShieldLineIcon /></span>
+                        <small>Bilans conservés</small>
+                      </div>
                       <strong>{statsStoredCountLabel}</strong>
                     </article>
                   </div>
 
-                  <div className={styles.statsActionRow}>
-                    <button
-                      type="button"
-                      className={styles.prepareButton}
-                      onClick={() => router.push("/dashboard/stats")}
-                      title="Consulter les statistiques et générer un bilan manuel"
-                    >
-                      <span aria-hidden><AutomationIcon type="stats" /></span>
-                      iNr’Stats
-                    </button>
-                    {latestStatsReport?.document.downloadUrl ? (
-                      <a
-                        href={latestStatsReport.document.downloadUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        className={styles.statsPrimaryLink}
-                      >
-                        <span aria-hidden><DownloadActionIcon /></span>
-                        Télécharger le dernier bilan
-                      </a>
+                  <section className={styles.statsInsightCard} aria-label="Dernières recommandations iNrAgent">
+                    <div className={styles.statsInsightHeader}>
+                      <span className={styles.statsInsightIcon} aria-hidden>
+                        <SparkSettingsIcon />
+                      </span>
+                      <div className={styles.statsInsightCopy}>
+                        <strong>Dernières recommandations iNr’Agent</strong>
+                      </div>
+                    </div>
+                    {latestStatsRecommendations.length > 0 ? (
+                      <ol className={styles.statsRecommendationList}>
+                        {latestStatsRecommendations.map((recommendation, index) => (
+                          <li key={`stats-recommendation-${index}`}>
+                            <span>{index + 1}</span>
+                            <p>{recommendation}</p>
+                          </li>
+                        ))}
+                      </ol>
                     ) : (
-                      <button type="button" className={styles.statsSecondaryButton} disabled>
-                        <span aria-hidden><DownloadActionIcon /></span>
-                        Télécharger le dernier bilan
-                      </button>
+                      <p className={styles.statsRecommendationEmpty}>
+                        Le prochain bilan automatique affichera ici les recommandations de la dernière page du PDF.
+                      </p>
                     )}
-                  </div>
+                  </section>
 
                   <div className={styles.statsHistorySection}>
                     <div className={styles.statsHistoryHeader}>
@@ -2086,6 +2360,95 @@ export default function AgentClient() {
                       })}
                     </div>
                   </div>
+                </div>
+              ) : isCampaignView && campaignDisplayPreview ? (
+                <div
+                  key={`${selectedPreparedAction?.id || selected.key}-campaign`}
+                  className={`${styles.campaignPreview} ${!hasCampaignPreview ? styles.campaignPreviewEmpty : ""}`}
+                >
+                  <div className={styles.campaignInfoGrid}>
+                    <article className={`${styles.campaignInfoCard} ${styles.campaignInfoTheme}`}>
+                      <span className={styles.campaignInfoIcon} aria-hidden>
+                        <AutomationIcon type={selected.key} />
+                      </span>
+                      <span>
+                        <small>Rubrique</small>
+                        <strong>{campaignDisplayPreview.mission}</strong>
+                      </span>
+                    </article>
+                    <article className={`${styles.campaignInfoCard} ${styles.campaignInfoRecipients}`}>
+                      <span className={styles.campaignInfoIcon} aria-hidden>
+                        <SparkSettingsIcon />
+                      </span>
+                      <span>
+                        <small>Destinataires</small>
+                        <strong>
+                          {hasCampaignPreview
+                            ? `${campaignDisplayPreview.recipientsCount} contact${campaignDisplayPreview.recipientsCount > 1 ? "s" : ""}`
+                            : "—"}
+                        </strong>
+                      </span>
+                    </article>
+                    <article className={`${styles.campaignInfoCard} ${styles.campaignInfoMail}`}>
+                      <span className={styles.campaignInfoIcon} aria-hidden>
+                        <SendPlaneIcon />
+                      </span>
+                      <span>
+                        <small>Boîte d’envoi</small>
+                        <strong>{campaignDisplayPreview.mailAccountLabel}</strong>
+                      </span>
+                    </article>
+                    <button
+                      type="button"
+                      className={`${styles.campaignInfoCard} ${styles.campaignInfoAttachment}`}
+                      onClick={() => setAttachmentPreviewOpen(true)}
+                      disabled={!hasCampaignPreview}
+                      title={hasCampaignPreview ? "Voir la pièce jointe" : "Aucune campagne préparée"}
+                    >
+                      <span className={styles.campaignInfoIcon} aria-hidden>
+                        <ImageMetaIcon />
+                      </span>
+                      <span>
+                        <small>Pièce jointe</small>
+                        <strong>
+                          {hasCampaignPreview
+                            ? campaignDisplayPreview.attachment?.name || "Aucune"
+                            : "—"}
+                        </strong>
+                      </span>
+                      <span className={styles.campaignInfoEye} aria-hidden>👁</span>
+                    </button>
+                  </div>
+
+                  <article className={styles.campaignMailCard}>
+                    <button
+                      type="button"
+                      className={styles.campaignMailEditButton}
+                      onClick={openMailTextEditor}
+                      disabled={!hasCampaignPreview}
+                      title={hasCampaignPreview ? "Modifier le texte du mail" : "Préparez d’abord une campagne"}
+                    >
+                      ✎
+                    </button>
+                    <div className={styles.campaignMailSubject}>
+                      <span>Objet :</span>
+                      <strong>{campaignDisplayPreview.subject}</strong>
+                    </div>
+                    <div className={styles.campaignMailContent}>
+                      {campaignDisplayPreview.paragraphs.map((paragraph, index) => (
+                        <p key={`${selectedPreparedAction?.id || selected.key}-mail-paragraph-${index}`}>{paragraph}</p>
+                      ))}
+                      {!hasCampaignPreview && (
+                        <div className={styles.campaignEmptyHint}>
+                          <span>
+                            {actionsLoadState === "loading"
+                              ? "Recherche des actions préparées..."
+                              : "Aucune campagne automatique préparée pour le moment."}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </article>
                 </div>
               ) : hasPreparedAction && selectedPreparedAction ? (
                 <div
@@ -2198,31 +2561,13 @@ export default function AgentClient() {
                         : "Préparer une publication"}
                     </button>
                   )}
-                  {(selected.key === "grow" || selected.key === "loyalty") && (
-                    <button
-                      type="button"
-                      className={styles.prepareButton}
-                      onClick={() => prepareCampaignAction(selected.key === "grow" ? "grow" : "loyalty")}
-                      disabled={
-                        prepareActionState === "saving" ||
-                        actionsLoadState === "loading" ||
-                        loadState === "loading"
-                      }
-                    >
-                      {prepareActionState === "saving"
-                        ? "Préparation en cours..."
-                        : selected.key === "grow"
-                          ? "Préparer une campagne Propulser"
-                          : "Préparer une campagne Fidéliser"}
-                    </button>
-                  )}
                 </div>
               )}
             </div>
 
-            <div className={`${styles.previewMeta} ${selected.key === "stats" ? styles.previewMetaStats : ""}`}>
+            <div className={`${styles.previewMeta} ${selected.key === "stats" ? styles.previewMetaStats : ""} ${isCampaignView ? styles.previewMetaCampaign : ""}`}>
               <div className={`${styles.metaItem} ${styles.channelsItem}`}>
-                <small>{selected.key === "stats" ? "Sources :" : "Canaux :"}</small>
+                <small>{selected.key === "stats" ? "Sources :" : isCampaignView ? "Canal" : "Canaux :"}</small>
                 <div className={styles.channelScroller}>
                   {selected.key === "stats" && selectedStatsRubriques.length > 0 ? (
                     selectedStatsRubriques.map((theme) => {
@@ -2247,6 +2592,10 @@ export default function AgentClient() {
                         </button>
                       );
                     })
+                  ) : isCampaignView ? (
+                    <span className={styles.campaignMailPill} title="Mails" aria-label="Canal Mails">
+                      <img src={channelOptions.mails.src} alt="" loading="eager" decoding="sync" aria-hidden />
+                    </span>
                   ) : displayChannels.length > 0 ? (
                     displayChannels.map((channelKey) => {
                       const channel = channelOptions[channelKey];
@@ -2293,26 +2642,39 @@ export default function AgentClient() {
                   <small>Validation non requise</small>
                 </div>
               ) : (
-                <div className={styles.previewActions}>
-                  <button
-                    type="button"
-                    className={styles.validateButton}
-                    disabled={!hasPreparedAction || actionMutationState === "saving"}
-                    onClick={() => updateActionStatus("validated")}
-                  >
-                    <span aria-hidden><ValidateActionIcon /></span>
-                    {actionMutationState === "saving" ? "Traitement..." : "Valider"}
-                  </button>
-                  <button
-                    type="button"
-                    className={styles.refuseButton}
-                    disabled={!hasPreparedAction || actionMutationState === "saving"}
-                    onClick={() => updateActionStatus("refused")}
-                  >
-                    <span aria-hidden><RefuseActionIcon /></span>
-                    {actionMutationState === "saving" ? "Traitement..." : "Refuser"}
-                  </button>
-                </div>
+                <>
+                  {isCampaignView && (
+                    <button
+                      type="button"
+                      className={styles.modifyCampaignButton}
+                      disabled={!hasPreparedAction || actionMutationState === "saving"}
+                      onClick={() => setCampaignEditOpen(true)}
+                    >
+                      <span aria-hidden>✎</span>
+                      Modifier
+                    </button>
+                  )}
+                  <div className={styles.previewActions}>
+                    <button
+                      type="button"
+                      className={styles.validateButton}
+                      disabled={!hasPreparedAction || actionMutationState === "saving"}
+                      onClick={() => updateActionStatus("validated")}
+                    >
+                      <span aria-hidden><ValidateActionIcon /></span>
+                      {actionMutationState === "saving" ? "Traitement..." : "Valider"}
+                    </button>
+                    <button
+                      type="button"
+                      className={styles.refuseButton}
+                      disabled={!hasPreparedAction || actionMutationState === "saving"}
+                      onClick={() => updateActionStatus("refused")}
+                    >
+                      <span aria-hidden><RefuseActionIcon /></span>
+                      {actionMutationState === "saving" ? "Traitement..." : "Refuser"}
+                    </button>
+                  </div>
+                </>
               )}
             </div>
 
@@ -2320,6 +2682,143 @@ export default function AgentClient() {
           </div>
         </div>
       </section>
+
+      {campaignEditOpen && campaignMailPreview && (
+        <div
+          className={styles.modalBackdrop}
+          role="presentation"
+          onClick={() => setCampaignEditOpen(false)}
+        >
+          <section
+            className={`${styles.settingsModal} ${styles.campaignEditModal}`}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Modifier la campagne"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className={styles.modalClose}
+              onClick={() => setCampaignEditOpen(false)}
+              aria-label="Fermer"
+            >
+              ×
+            </button>
+            <p className={styles.modalEyebrow}>Campagne iNr’Agent</p>
+            <h2>Modifier la campagne</h2>
+            <div className={styles.campaignEditGrid}>
+              <button type="button" onClick={openMailTextEditor}>
+                <strong>Texte du mail</strong>
+                <small>Modifier l’objet et le corps du message.</small>
+              </button>
+              <button type="button" onClick={() => setAttachmentPreviewOpen(true)}>
+                <strong>Pièce jointe</strong>
+                <small>{campaignMailPreview.attachment?.name || "Aucune pièce jointe sélectionnée."}</small>
+              </button>
+              <button type="button" onClick={() => router.push("/dashboard/crm")}>
+                <strong>Destinataires CRM</strong>
+                <small>{campaignMailPreview.recipientsCount} contact{campaignMailPreview.recipientsCount > 1 ? "s" : ""} prévu{campaignMailPreview.recipientsCount > 1 ? "s" : ""}.</small>
+              </button>
+              <button type="button" onClick={() => router.push("/dashboard/mails")}>
+                <strong>Boîte d’envoi</strong>
+                <small>{campaignMailPreview.mailAccountLabel}</small>
+              </button>
+            </div>
+            <p className={styles.campaignEditHint}>
+              Les changements de texte sont enregistrés directement dans l’action préparée.
+              Les destinataires, la boîte mail et les pièces jointes restent reliés aux outils iNrCy correspondants.
+            </p>
+          </section>
+        </div>
+      )}
+
+      {mailTextEditOpen && campaignMailPreview && (
+        <div
+          className={styles.modalBackdrop}
+          role="presentation"
+          onClick={() => setMailTextEditOpen(false)}
+        >
+          <section
+            className={`${styles.settingsModal} ${styles.mailTextModal}`}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Modifier le texte du mail"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className={styles.modalClose}
+              onClick={() => setMailTextEditOpen(false)}
+              aria-label="Fermer"
+            >
+              ×
+            </button>
+            <p className={styles.modalEyebrow}>Aperçu du mail</p>
+            <h2>Modifier le texte</h2>
+            <label className={styles.mailTextField}>
+              <span>Objet</span>
+              <input
+                value={campaignTextDraft.subject}
+                onChange={(event) => setCampaignTextDraft((current) => ({ ...current, subject: event.target.value }))}
+                maxLength={220}
+              />
+            </label>
+            <label className={styles.mailTextField}>
+              <span>Corps du mail</span>
+              <textarea
+                value={campaignTextDraft.body}
+                onChange={(event) => setCampaignTextDraft((current) => ({ ...current, body: event.target.value }))}
+                rows={10}
+                maxLength={6000}
+              />
+            </label>
+            <div className={styles.modalActions}>
+              <button type="button" onClick={() => setMailTextEditOpen(false)}>Annuler</button>
+              <button type="button" onClick={saveCampaignText} disabled={campaignSaveState === "saving"}>
+                {campaignSaveState === "saving" ? "Enregistrement..." : "Enregistrer"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {attachmentPreviewOpen && campaignMailPreview && (
+        <div
+          className={styles.modalBackdrop}
+          role="presentation"
+          onClick={() => setAttachmentPreviewOpen(false)}
+        >
+          <section
+            className={`${styles.settingsModal} ${styles.attachmentModal}`}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Pièce jointe"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className={styles.modalClose}
+              onClick={() => setAttachmentPreviewOpen(false)}
+              aria-label="Fermer"
+            >
+              ×
+            </button>
+            <p className={styles.modalEyebrow}>Pièce jointe</p>
+            <h2>{campaignMailPreview.attachment?.name || "Aucune pièce jointe"}</h2>
+            {campaignMailPreview.attachment ? (
+              <div className={styles.attachmentPreviewBox}>
+                <span aria-hidden>📎</span>
+                <p>{campaignMailPreview.attachment.type}{campaignMailPreview.attachment.size ? ` · ${campaignMailPreview.attachment.size}` : ""}</p>
+                {campaignMailPreview.attachment.url ? (
+                  <a href={campaignMailPreview.attachment.url} target="_blank" rel="noreferrer">Ouvrir le document</a>
+                ) : null}
+              </div>
+            ) : (
+              <p className={styles.campaignEditHint}>Aucune pièce jointe n’est prévue pour cette campagne.</p>
+            )}
+          </section>
+        </div>
+      )}
 
       {helpOpen && (
         <div
@@ -2353,21 +2852,21 @@ export default function AgentClient() {
               </p>
               <ul>
                 <li>
-                  <strong>Publier régulièrement</strong> prépare des
+                  <strong>Publier</strong> prépare des
                   publications avec Booster / Publier sur vos canaux connectés.
                   L’aperçu se consulte canal par canal grâce au sélecteur situé
                   sous la zone de prévisualisation.
                 </li>
                 <li>
-                  <strong>Développer l’activité</strong> prépare des campagnes
+                  <strong>Propulser</strong> prépare des campagnes
                   Propulser par mail, basées sur vos contenus et templates.
                 </li>
                 <li>
-                  <strong>Fidéliser les contacts</strong> prépare des campagnes
+                  <strong>Fidéliser</strong> prépare des campagnes
                   Fidéliser par mail pour garder le lien avec le CRM.
                 </li>
                 <li>
-                  <strong>Analyser mes statistiques</strong> génère un bilan
+                  <strong>Statistiques</strong> génère un bilan
                   iNr’Stats PDF multi-pages et l’envoie automatiquement au pro
                   selon les réglages.
                 </li>
@@ -2499,78 +2998,137 @@ export default function AgentClient() {
               </label>
             </div>
 
-            {settingsAutomation.availableChannels.length > 0 && (
-              <div className={styles.modalSection}>
-                <span>
-                  {settingsAutomation.key === "publish"
-                    ? "Canaux Booster / Publier"
-                    : "Canal"}
-                </span>
-                {settingsAutomation.key !== "publish" && (
-                  <small className={styles.modalHint}>
-                    Propulser et Fidéliser utilisent uniquement Mails.
-                  </small>
-                )}
-                <div className={styles.choiceGrid}>
-                  {settingsAutomation.availableChannels.map((channelKey) => {
-                    const channel = channelOptions[channelKey];
-                    const checked =
-                      settingsConfig.channels.includes(channelKey);
-                    return (
-                      <button
-                        type="button"
-                        key={channelKey}
-                        data-channel={channelKey}
-                        className={checked ? styles.choiceActive : ""}
-                        onClick={() =>
-                          updateConfig(settingsAutomation.key, {
-                            channels: toggleChannelItem(
-                              settingsConfig.channels,
-                              channelKey,
-                              settingsAutomation.availableChannels,
-                            ),
-                          })
-                        }
-                      >
-                        <img src={channel.src} alt="" loading="eager" decoding="async" />
-                        {channel.name}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+            {isCampaignAutomationKey(settingsAutomation.key) ? (
+              <>
+                <div className={styles.campaignSettingsPair}>
+                  <div className={styles.modalSection}>
+                    <span>Canal</span>
+                    <div className={styles.choiceGrid}>
+                      {settingsAutomation.availableChannels.map((channelKey) => {
+                        const channel = channelOptions[channelKey];
+                        const checked = settingsConfig.channels.includes(channelKey);
+                        return (
+                          <button
+                            type="button"
+                            key={channelKey}
+                            data-channel={channelKey}
+                            className={checked ? styles.choiceActive : ""}
+                            onClick={() =>
+                              updateConfig(settingsAutomation.key, {
+                                channels: toggleChannelItem(
+                                  settingsConfig.channels,
+                                  channelKey,
+                                  settingsAutomation.availableChannels,
+                                ),
+                              })
+                            }
+                          >
+                            <img src={channel.src} alt="" loading="eager" decoding="async" />
+                            {channel.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
 
-            <div className={styles.modalSection}>
-              <span>
-                {settingsAutomation.key === "stats"
-                  ? "Rubriques iNr’Stats"
-                  : settingsAutomation.key === "grow"
-                    ? "Rubriques Propulser"
-                    : settingsAutomation.key === "loyalty"
-                      ? "Rubriques Fidéliser"
-                      : "Thèmes"}
-              </span>
-              <div className={styles.choiceGrid}>
-                {settingsAutomation.availableThemes.map((theme) => {
-                  const checked = settingsConfig.themes.includes(theme);
-                  return (
-                    <button
-                      type="button"
-                      key={theme}
-                      className={checked ? styles.choiceActive : ""}
-                      onClick={() =>
-                        updateConfig(settingsAutomation.key, {
-                          themes: toggleItem(settingsConfig.themes, theme),
-                        })
-                      }
-                    >
-                      {theme}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+                  <div className={styles.modalSection}>
+                    <span>{settingsAutomation.key === "grow" ? "Rubriques Propulser" : "Rubriques Fidéliser"}</span>
+                    <div className={styles.choiceGrid}>
+                      {settingsAutomation.availableThemes.map((theme) => {
+                        const checked = settingsConfig.themes.includes(theme);
+                        return (
+                          <button
+                            type="button"
+                            key={theme}
+                            className={checked ? styles.choiceActive : ""}
+                            onClick={() =>
+                              updateConfig(settingsAutomation.key, {
+                                themes: toggleItem(settingsConfig.themes, theme),
+                              })
+                            }
+                          >
+                            {theme}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                <label className={styles.signatureSwitchLine}>
+                  <span>
+                    <strong>Signature automatique</strong>
+                    <small>Activée par défaut pour ajouter la signature configurée au moment de l’envoi.</small>
+                  </span>
+                  <input
+                    type="checkbox"
+                    checked={settingsConfig.signatureAutomatic}
+                    onChange={(event) =>
+                      updateConfig(settingsAutomation.key, {
+                        signatureAutomatic: event.target.checked,
+                      })
+                    }
+                  />
+                </label>
+              </>
+            ) : (
+              <>
+                {settingsAutomation.availableChannels.length > 0 && (
+                  <div className={styles.modalSection}>
+                    <span>{settingsAutomation.key === "publish" ? "Canaux Booster / Publier" : "Canal"}</span>
+                    <div className={styles.choiceGrid}>
+                      {settingsAutomation.availableChannels.map((channelKey) => {
+                        const channel = channelOptions[channelKey];
+                        const checked = settingsConfig.channels.includes(channelKey);
+                        return (
+                          <button
+                            type="button"
+                            key={channelKey}
+                            data-channel={channelKey}
+                            className={checked ? styles.choiceActive : ""}
+                            onClick={() =>
+                              updateConfig(settingsAutomation.key, {
+                                channels: toggleChannelItem(
+                                  settingsConfig.channels,
+                                  channelKey,
+                                  settingsAutomation.availableChannels,
+                                ),
+                              })
+                            }
+                          >
+                            <img src={channel.src} alt="" loading="eager" decoding="async" />
+                            {channel.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <div className={styles.modalSection}>
+                  <span>{settingsAutomation.key === "stats" ? "Rubriques iNr’Stats" : "Thèmes"}</span>
+                  <div className={styles.choiceGrid}>
+                    {settingsAutomation.availableThemes.map((theme) => {
+                      const checked = settingsConfig.themes.includes(theme);
+                      return (
+                        <button
+                          type="button"
+                          key={theme}
+                          className={checked ? styles.choiceActive : ""}
+                          onClick={() =>
+                            updateConfig(settingsAutomation.key, {
+                              themes: toggleItem(settingsConfig.themes, theme),
+                            })
+                          }
+                        >
+                          {theme}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            )}
 
             <p className={styles.modalNote}>
               Source des idées : {settingsConfig.source}

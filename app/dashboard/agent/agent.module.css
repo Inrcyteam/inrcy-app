@@ -5089,3 +5089,1906 @@
   }
 }
 
+
+/* ===== iNrAgent Propulser / Fidéliser : aperçu campagne sans container global ===== */
+.previewCardNoFrame {
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  overflow: visible;
+}
+
+.previewCardNoFrame .previewBody {
+  min-height: 0;
+}
+
+.campaignPreview {
+  min-height: 0;
+  width: 100%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: clamp(14px, 1.6vw, 22px);
+  animation: previewSlideIn 0.22s ease both;
+}
+
+.campaignInfoGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: clamp(12px, 1.2vw, 18px);
+}
+
+.campaignInfoCard {
+  min-width: 0;
+  min-height: clamp(74px, 8vh, 92px);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: 20px;
+  color: #ffffff;
+  text-align: left;
+  text-decoration: none;
+  background:
+    radial-gradient(circle at 16% 20%, rgba(255, 255, 255, 0.08), transparent 30%),
+    linear-gradient(135deg, rgba(16, 34, 76, 0.78), rgba(10, 24, 56, 0.58));
+  border: 1px solid rgba(148, 163, 255, 0.18);
+  box-shadow: inset 0 0 30px rgba(255, 255, 255, 0.026), 0 12px 28px rgba(0, 0, 0, 0.16);
+}
+
+button.campaignInfoCard {
+  cursor: pointer;
+  font: inherit;
+  position: relative;
+  transition: transform 0.16s ease, border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+button.campaignInfoCard:hover {
+  transform: translateY(-1px);
+  border-color: rgba(125, 211, 252, 0.42);
+  box-shadow: inset 0 0 30px rgba(255, 255, 255, 0.035), 0 0 24px rgba(59, 130, 246, 0.16), 0 14px 30px rgba(0, 0, 0, 0.18);
+}
+
+.campaignInfoIcon {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  display: grid;
+  place-items: center;
+  border-radius: 15px;
+  color: #ffffff;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.7), rgba(124, 58, 237, 0.62));
+  border: 1px solid rgba(226, 242, 255, 0.12);
+  box-shadow: inset 0 0 18px rgba(255, 255, 255, 0.08), 0 0 22px rgba(59, 130, 246, 0.2);
+}
+
+.campaignInfoIcon svg {
+  width: 28px;
+  height: 28px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2.1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.campaignInfoTheme .campaignInfoIcon {
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.84), rgba(192, 38, 211, 0.56));
+}
+
+.campaignInfoRecipients .campaignInfoIcon {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.88), rgba(14, 165, 233, 0.5));
+}
+
+.campaignInfoMail .campaignInfoIcon {
+  background: linear-gradient(135deg, rgba(8, 145, 178, 0.86), rgba(37, 99, 235, 0.46));
+}
+
+.campaignInfoAttachment .campaignInfoIcon {
+  background: linear-gradient(135deg, rgba(234, 88, 12, 0.82), rgba(124, 58, 237, 0.38));
+}
+
+.campaignInfoCard small {
+  display: block;
+  margin: 0 0 4px;
+  color: rgba(226, 242, 255, 0.72);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.campaignInfoCard strong {
+  display: block;
+  min-width: 0;
+  color: #ffffff;
+  font-size: clamp(14px, 1vw, 17px);
+  line-height: 1.2;
+  font-weight: 850;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.campaignInfoEye {
+  margin-left: auto;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(148, 163, 255, 0.12);
+  border: 1px solid rgba(196, 181, 253, 0.16);
+  font-size: 15px;
+}
+
+.campaignMailCard {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: clamp(12px, 1.2vw, 18px);
+  padding: clamp(18px, 1.8vw, 26px);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(59, 130, 246, 0.11), transparent 42%),
+    linear-gradient(135deg, rgba(8, 24, 56, 0.72), rgba(6, 18, 43, 0.52));
+  border: 1px solid rgba(148, 163, 255, 0.18);
+  box-shadow: inset 0 0 42px rgba(255, 255, 255, 0.022), 0 16px 38px rgba(0, 0, 0, 0.14);
+  overflow: hidden;
+}
+
+.campaignMailHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.campaignMailTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  color: #ffffff;
+  font-size: clamp(18px, 1.35vw, 24px);
+  font-weight: 850;
+  letter-spacing: -0.03em;
+}
+
+.campaignMailIcon {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  color: #dbeafe;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.84), rgba(124, 58, 237, 0.62));
+  border: 1px solid rgba(196, 181, 253, 0.18);
+  box-shadow: 0 0 18px rgba(59, 130, 246, 0.22);
+}
+
+.campaignMailEditButton {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  color: rgba(226, 242, 255, 0.94);
+  font-size: 21px;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(148, 163, 255, 0.2);
+  transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+}
+
+.campaignMailEditButton:hover {
+  transform: translateY(-1px);
+  border-color: rgba(125, 211, 252, 0.42);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.campaignMailSubject {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(148, 163, 255, 0.16);
+  color: rgba(226, 242, 255, 0.88);
+  font-size: clamp(14px, 1vw, 16px);
+}
+
+.campaignMailSubject span {
+  color: #8b5cf6;
+  font-weight: 900;
+}
+
+.campaignMailSubject strong {
+  color: #ffffff;
+  font-weight: 850;
+}
+
+.campaignMailContent {
+  min-height: 0;
+  overflow: auto;
+  padding-right: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(125, 211, 252, 0.34) transparent;
+}
+
+.campaignMailContent p {
+  margin: 0 0 clamp(10px, 1.05vw, 16px);
+  max-width: 980px;
+  color: rgba(237, 244, 255, 0.88);
+  font-size: clamp(15px, 1.08vw, 18px);
+  line-height: 1.55;
+  font-weight: 470;
+}
+
+.campaignSignatureLine {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(148, 163, 255, 0.15);
+  color: rgba(237, 244, 255, 0.88);
+  font-size: clamp(14px, 1vw, 16px);
+}
+
+.campaignSignatureLine strong {
+  font-weight: 720;
+}
+
+.campaignSignatureLine small {
+  color: rgba(226, 242, 255, 0.62);
+  cursor: help;
+}
+
+.previewMetaCampaign {
+  min-height: clamp(56px, 6.2vh, 70px);
+  grid-template-columns: minmax(120px, 0.13fr) minmax(260px, 1fr) minmax(150px, 0.2fr) minmax(300px, 0.38fr);
+  gap: clamp(12px, 1.4vw, 20px);
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+.previewMetaCampaign .metaItem {
+  min-height: clamp(56px, 6.2vh, 70px);
+  padding: 10px 16px;
+  border-radius: 18px;
+  background: rgba(7, 20, 48, 0.58);
+  border: 1px solid rgba(148, 163, 255, 0.18);
+  box-shadow: inset 0 0 24px rgba(255, 255, 255, 0.022);
+}
+
+.previewMetaCampaign .channelsItem {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  padding-right: 16px;
+}
+
+.previewMetaCampaign .channelsItem small {
+  margin: 0 8px 0 0;
+  font-size: 12px;
+  color: rgba(226, 242, 255, 0.74);
+}
+
+.previewMetaCampaign .channelScroller {
+  width: auto;
+  flex: 0 0 auto;
+  overflow: visible;
+  padding: 0;
+}
+
+.campaignMailPill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.campaignMailPill img {
+  width: 27px !important;
+  height: 27px !important;
+  flex: 0 0 27px;
+  border-radius: 7px !important;
+  transform: none !important;
+  object-fit: contain !important;
+  background: transparent !important;
+  border: 0 !important;
+  padding: 0 !important;
+}
+
+.previewMetaCampaign .dateItem {
+  justify-content: flex-start;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.previewMetaCampaign .dateItem strong {
+  font-size: clamp(15px, 1.05vw, 18px);
+  font-weight: 760;
+}
+
+.modifyCampaignButton {
+  min-height: clamp(56px, 6.2vh, 70px);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  border-radius: 18px;
+  padding: 0 18px;
+  color: rgba(255, 255, 255, 0.94);
+  font-size: clamp(15px, 1.05vw, 18px);
+  font-weight: 900;
+  letter-spacing: -0.02em;
+  cursor: pointer;
+  background: rgba(7, 20, 48, 0.58);
+  border: 1px solid rgba(148, 163, 255, 0.18);
+  box-shadow: inset 0 0 24px rgba(255, 255, 255, 0.022);
+  transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+}
+
+.modifyCampaignButton:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(125, 211, 252, 0.42);
+  background: rgba(17, 34, 74, 0.72);
+}
+
+.modifyCampaignButton:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.previewMetaCampaign .previewActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+}
+
+.previewMetaCampaign .previewActions .validateButton,
+.previewMetaCampaign .previewActions .refuseButton {
+  min-height: clamp(56px, 6.2vh, 70px);
+  font-size: clamp(15px, 1.1vw, 20px);
+}
+
+.campaignEditModal,
+.mailTextModal,
+.attachmentModal {
+  max-width: min(760px, calc(100vw - 28px));
+}
+
+.campaignEditGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.campaignEditGrid button {
+  min-height: 110px;
+  display: grid;
+  align-content: center;
+  gap: 8px;
+  padding: 18px;
+  border-radius: 18px;
+  color: #ffffff;
+  text-align: left;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(148, 163, 255, 0.16);
+}
+
+.campaignEditGrid button:hover {
+  border-color: rgba(125, 211, 252, 0.38);
+  background: rgba(255, 255, 255, 0.075);
+}
+
+.campaignEditGrid strong {
+  font-size: 17px;
+}
+
+.campaignEditGrid small,
+.campaignEditHint {
+  color: rgba(226, 242, 255, 0.72);
+  line-height: 1.5;
+}
+
+.campaignEditHint {
+  margin: 16px 0 0;
+  font-size: 13px;
+}
+
+.mailTextField {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.mailTextField span {
+  color: rgba(226, 242, 255, 0.8);
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.mailTextField input,
+.mailTextField textarea {
+  width: 100%;
+  border-radius: 16px;
+  padding: 13px 14px;
+  color: #ffffff;
+  font: inherit;
+  background: rgba(8, 19, 45, 0.82);
+  border: 1px solid rgba(148, 163, 255, 0.2);
+  outline: none;
+}
+
+.mailTextField textarea {
+  min-height: 260px;
+  resize: vertical;
+  line-height: 1.55;
+}
+
+.mailTextField input:focus,
+.mailTextField textarea:focus {
+  border-color: rgba(125, 211, 252, 0.52);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
+.attachmentPreviewBox {
+  display: grid;
+  justify-items: center;
+  gap: 12px;
+  margin-top: 18px;
+  padding: 28px;
+  border-radius: 20px;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(148, 163, 255, 0.16);
+}
+
+.attachmentPreviewBox span {
+  font-size: 42px;
+}
+
+.attachmentPreviewBox p {
+  margin: 0;
+  color: rgba(226, 242, 255, 0.78);
+}
+
+.attachmentPreviewBox a {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0 18px;
+  color: #ffffff;
+  text-decoration: none;
+  font-weight: 850;
+  background: linear-gradient(135deg, #1d4ed8, #7c3aed 58%, #d946ef);
+  border: 1px solid rgba(125, 211, 252, 0.32);
+}
+
+@media (max-width: 1180px) {
+  .previewCardNoFrame {
+    overflow: visible;
+  }
+
+  .campaignInfoGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .previewMetaCampaign {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .previewMetaCampaign .previewActions {
+    grid-column: span 2;
+  }
+}
+
+@media (max-width: 760px) {
+  .campaignInfoGrid,
+  .campaignEditGrid,
+  .previewMetaCampaign {
+    grid-template-columns: 1fr;
+  }
+
+  .campaignInfoCard {
+    min-height: 68px;
+  }
+
+  .campaignMailCard {
+    padding: 16px;
+  }
+
+  .campaignMailSubject {
+    display: grid;
+    gap: 6px;
+  }
+
+  .previewMetaCampaign .previewActions {
+    grid-column: auto;
+  }
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.modalActions button {
+  min-height: 44px;
+  border-radius: 999px;
+  padding: 0 18px;
+  color: #ffffff;
+  font-weight: 850;
+  cursor: pointer;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid rgba(148, 163, 255, 0.18);
+}
+
+.modalActions button:last-child {
+  background: linear-gradient(135deg, #1d4ed8, #7c3aed 58%, #d946ef);
+  border-color: rgba(125, 211, 252, 0.34);
+}
+
+.modalActions button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+/* Campagnes iNrAgent : même structure visuelle quand aucune campagne n'est encore préparée */
+.campaignPreviewEmpty .campaignInfoCard,
+.campaignPreviewEmpty .campaignMailCard {
+  opacity: 0.94;
+}
+
+button.campaignInfoCard:disabled {
+  cursor: default;
+  opacity: 0.88;
+}
+
+button.campaignInfoCard:disabled:hover {
+  transform: none;
+  border-color: rgba(148, 163, 255, 0.18);
+  box-shadow: inset 0 0 30px rgba(255, 255, 255, 0.026), 0 12px 28px rgba(0, 0, 0, 0.16);
+}
+
+.campaignMailEditButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.campaignMailEditButton:disabled:hover {
+  transform: none;
+  border-color: rgba(148, 163, 255, 0.2);
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.campaignEmptyHint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin-top: clamp(12px, 1.2vw, 18px);
+  color: rgba(226, 242, 255, 0.72);
+  font-size: clamp(14px, 1vw, 16px);
+}
+
+.campaignEmptyHint .prepareButton {
+  min-height: 42px;
+  padding: 0 20px;
+  font-size: 14px;
+  box-shadow: 0 12px 26px rgba(124, 58, 237, 0.22);
+}
+
+/* Correctif iNrAgent campagnes — bandeau bas compact sur une seule ligne */
+.previewMetaCampaign {
+  display: grid !important;
+  width: 100% !important;
+  min-height: clamp(54px, 5.8vh, 64px) !important;
+  grid-template-columns: minmax(78px, 100px) minmax(250px, 1fr) minmax(150px, 175px) minmax(300px, 360px) !important;
+  align-items: center !important;
+  gap: clamp(10px, 1vw, 16px) !important;
+  padding: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.previewMetaCampaign .metaItem,
+.previewMetaCampaign .modifyCampaignButton {
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: clamp(54px, 5.8vh, 64px) !important;
+  height: clamp(54px, 5.8vh, 64px) !important;
+  padding: 8px 14px !important;
+  border-radius: 18px !important;
+  background: rgba(7, 20, 48, 0.58) !important;
+  border: 1px solid rgba(148, 163, 255, 0.18) !important;
+  box-shadow: inset 0 0 24px rgba(255, 255, 255, 0.022) !important;
+}
+
+.previewMetaCampaign .channelsItem {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: 0 0 auto !important;
+  gap: 8px !important;
+  padding: 8px 10px !important;
+}
+
+.previewMetaCampaign .channelsItem small {
+  display: inline-flex !important;
+  margin: 0 !important;
+  font-size: 11px !important;
+  line-height: 1 !important;
+  color: rgba(226, 242, 255, 0.72) !important;
+}
+
+.previewMetaCampaign .channelScroller {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: 0 0 auto !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  overflow: visible !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  gap: 0 !important;
+}
+
+.previewMetaCampaign .campaignMailPill {
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px !important;
+  flex: 0 0 32px !important;
+  display: inline-grid !important;
+  place-items: center !important;
+  gap: 0 !important;
+  padding: 0 !important;
+  border-radius: 999px !important;
+  overflow: hidden !important;
+}
+
+.previewMetaCampaign .campaignMailPill strong {
+  display: none !important;
+}
+
+.previewMetaCampaign .campaignMailPill img,
+.previewMetaCampaign .channelScroller .campaignMailPill img {
+  display: block !important;
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px !important;
+  min-height: 32px !important;
+  max-width: 32px !important;
+  max-height: 32px !important;
+  flex: 0 0 32px !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 999px !important;
+  object-fit: cover !important;
+  transform: none !important;
+  background: transparent !important;
+  box-shadow: 0 0 14px rgba(96, 165, 250, 0.14) !important;
+}
+
+.previewMetaCampaign .dateItem {
+  display: inline-flex !important;
+  justify-content: flex-start !important;
+  white-space: nowrap !important;
+}
+
+.previewMetaCampaign .dateItem strong {
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+  font-size: clamp(14px, 1vw, 17px) !important;
+}
+
+.previewMetaCampaign .modifyCampaignButton {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 10px !important;
+  font-size: clamp(14px, 1vw, 17px) !important;
+  cursor: pointer !important;
+}
+
+.previewMetaCampaign .previewActions {
+  display: grid !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+  align-items: center !important;
+  gap: clamp(10px, 1vw, 14px) !important;
+}
+
+.previewMetaCampaign .previewActions .validateButton,
+.previewMetaCampaign .previewActions .refuseButton {
+  width: 100% !important;
+  min-width: 0 !important;
+  min-height: clamp(54px, 5.8vh, 64px) !important;
+  height: clamp(54px, 5.8vh, 64px) !important;
+  padding: 0 14px !important;
+  font-size: clamp(14px, 1.05vw, 18px) !important;
+  white-space: nowrap !important;
+}
+
+@media (max-width: 1180px) {
+  .previewMetaCampaign {
+    grid-template-columns: minmax(74px, 95px) minmax(210px, 1fr) minmax(135px, 165px) minmax(260px, 330px) !important;
+    gap: 10px !important;
+    overflow-x: auto !important;
+    padding-bottom: 2px !important;
+  }
+
+  .previewMetaCampaign .previewActions {
+    grid-column: auto !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .previewMetaCampaign {
+    grid-template-columns: 1fr !important;
+    overflow-x: visible !important;
+  }
+
+  .previewMetaCampaign .channelsItem,
+  .previewMetaCampaign .dateItem,
+  .previewMetaCampaign .modifyCampaignButton,
+  .previewMetaCampaign .previewActions .validateButton,
+  .previewMetaCampaign .previewActions .refuseButton {
+    min-height: 52px !important;
+    height: 52px !important;
+  }
+}
+
+
+/* Ajustements Propulser / Fidéliser — aperçu plus compact + bouton manuel dans le bandeau */
+.campaignPreview {
+  grid-template-rows: auto auto !important;
+  align-content: start !important;
+  gap: clamp(12px, 1.25vw, 18px) !important;
+}
+
+.campaignMailCard {
+  min-height: clamp(230px, 30vh, 345px) !important;
+  grid-template-rows: auto auto minmax(0, 1fr) !important;
+  gap: clamp(10px, 1vw, 14px) !important;
+  padding: clamp(16px, 1.45vw, 22px) !important;
+}
+
+.campaignMailContent p {
+  margin-bottom: clamp(8px, 0.85vw, 12px) !important;
+  font-size: clamp(14px, 1vw, 16px) !important;
+  line-height: 1.48 !important;
+}
+
+.campaignSignatureLine {
+  display: none !important;
+}
+
+.campaignEmptyHint {
+  margin-top: clamp(8px, 0.8vw, 12px) !important;
+}
+
+.previewMetaCampaign {
+  grid-template-columns: minmax(128px, 160px) minmax(195px, 0.72fr) minmax(132px, 158px) minmax(252px, 0.68fr) minmax(220px, 0.58fr) !important;
+  gap: clamp(9px, 0.8vw, 12px) !important;
+}
+
+.previewMetaCampaign .metaItem,
+.previewMetaCampaign .modifyCampaignButton,
+.previewMetaCampaign .manualCampaignButton {
+  min-height: clamp(54px, 5.8vh, 64px) !important;
+  height: clamp(54px, 5.8vh, 64px) !important;
+}
+
+.manualCampaignButton {
+  width: 100%;
+  min-width: 0;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 3px;
+  padding: 8px 16px;
+  border-radius: 18px;
+  color: rgba(255, 255, 255, 0.94);
+  text-align: left;
+  cursor: pointer;
+  background:
+    radial-gradient(circle at 14% 20%, rgba(125, 211, 252, 0.12), transparent 34%),
+    linear-gradient(135deg, rgba(8, 24, 56, 0.72), rgba(88, 28, 135, 0.34));
+  border: 1px solid rgba(148, 163, 255, 0.24);
+  box-shadow: inset 0 0 24px rgba(255, 255, 255, 0.026);
+  transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+}
+
+.manualCampaignButton:hover {
+  transform: translateY(-1px);
+  border-color: rgba(125, 211, 252, 0.46);
+  background:
+    radial-gradient(circle at 14% 20%, rgba(125, 211, 252, 0.18), transparent 34%),
+    linear-gradient(135deg, rgba(16, 38, 85, 0.78), rgba(109, 40, 217, 0.42));
+}
+
+.manualCampaignButton strong {
+  display: block;
+  font-size: clamp(14px, 1vw, 17px);
+  line-height: 1.05;
+  font-weight: 900;
+}
+
+.manualCampaignButton small {
+  display: block;
+  max-width: 100%;
+  color: rgba(226, 242, 255, 0.72);
+  font-size: clamp(10px, 0.78vw, 12px);
+  line-height: 1.12;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.campaignSettingsPair {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.35fr);
+  gap: 12px;
+}
+
+.signatureSwitchLine {
+  min-height: 74px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-top: 12px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(148, 163, 255, 0.16);
+}
+
+.signatureSwitchLine strong,
+.signatureSwitchLine small {
+  display: block;
+}
+
+.signatureSwitchLine strong {
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.signatureSwitchLine small {
+  margin-top: 4px;
+  color: rgba(226, 242, 255, 0.72);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.signatureSwitchLine input {
+  width: 52px;
+  height: 30px;
+  flex: 0 0 52px;
+  accent-color: #22c55e;
+}
+
+@media (max-width: 1180px) {
+  .previewMetaCampaign {
+    grid-template-columns: minmax(118px, 150px) minmax(180px, 0.72fr) minmax(125px, 150px) minmax(232px, 0.68fr) minmax(205px, 0.58fr) !important;
+    overflow-x: auto !important;
+  }
+
+  .campaignSettingsPair {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .campaignMailCard {
+    min-height: 240px !important;
+  }
+
+  .previewMetaCampaign {
+    grid-template-columns: 1fr !important;
+  }
+
+  .manualCampaignButton {
+    align-items: center;
+    text-align: center;
+  }
+
+  .manualCampaignButton small {
+    white-space: normal;
+  }
+}
+
+/* Correctif iNrAgent campagnes — rendu final Propulser / Fidéliser */
+.campaignPreview {
+  height: 100% !important;
+  min-height: 0 !important;
+  grid-template-rows: auto minmax(0, 1fr) !important;
+  align-content: stretch !important;
+}
+
+.campaignMailCard {
+  position: relative !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  grid-template-rows: auto minmax(0, 1fr) !important;
+  align-content: stretch !important;
+}
+
+.campaignMailHeader,
+.campaignMailTitle,
+.campaignMailIcon {
+  display: none !important;
+}
+
+.campaignMailEditButton {
+  position: absolute !important;
+  top: clamp(14px, 1.2vw, 18px) !important;
+  right: clamp(14px, 1.2vw, 18px) !important;
+  z-index: 2 !important;
+}
+
+.campaignMailSubject {
+  padding-right: 56px !important;
+}
+
+.previewMetaCampaign {
+  grid-template-columns: minmax(145px, 185px) minmax(205px, 0.92fr) minmax(132px, 160px) minmax(260px, 0.78fr) !important;
+}
+
+@media (max-width: 1180px) {
+  .previewMetaCampaign {
+    grid-template-columns: minmax(130px, 170px) minmax(185px, 0.9fr) minmax(125px, 150px) minmax(240px, 0.78fr) !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .campaignPreview {
+    height: auto !important;
+  }
+
+  .campaignMailCard {
+    min-height: 220px !important;
+  }
+
+  .previewMetaCampaign {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Correctif header iNrAgent — raccourci outil actif + iNr'Send toujours accessible */
+.headerToolButton {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 999px;
+  padding: 0 16px;
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 14px;
+  font-weight: 850;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  text-decoration: none;
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.24), rgba(124, 58, 237, 0.24));
+  border: 1px solid rgba(125, 211, 252, 0.26);
+  box-shadow: inset 0 0 18px rgba(255, 255, 255, 0.035), 0 12px 28px rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(12px);
+  transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
+}
+
+.headerToolButton:hover {
+  transform: translateY(-1px);
+  border-color: rgba(226, 242, 255, 0.34);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.headerToolLetter,
+.headerToolLogo {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+}
+
+.headerToolLetter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 950;
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255,255,255,0.32), transparent 28%),
+    linear-gradient(135deg, rgba(56, 189, 248, 0.78), rgba(168, 85, 247, 0.78));
+  border: 1px solid rgba(226, 242, 255, 0.24);
+  box-shadow: 0 0 14px rgba(96, 165, 250, 0.24);
+}
+
+.headerToolLogo {
+  display: block;
+  object-fit: contain;
+  filter: drop-shadow(0 0 10px rgba(96, 165, 250, 0.34));
+}
+
+.headerToolLabel {
+  display: inline;
+  white-space: nowrap;
+}
+
+/* iNrStats : plus de gros boutons centraux, l'espace revient aux blocs utiles */
+.statsPreview {
+  grid-template-rows: auto auto minmax(0, 1fr) !important;
+}
+
+.statsActionRow {
+  display: none !important;
+}
+
+.statsHistorySection {
+  align-self: stretch;
+}
+
+@media (max-width: 760px) {
+  .moduleHeader {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    gap: 4px 6px !important;
+  }
+
+  .moduleTitleBlock {
+    gap: 6px !important;
+  }
+
+  .moduleLogo {
+    width: 34px !important;
+    height: 34px !important;
+    flex: 0 0 34px !important;
+  }
+
+  .moduleTitleText h1 {
+    font-size: 20px !important;
+    line-height: 1 !important;
+    letter-spacing: -0.045em !important;
+  }
+
+  .moduleSubtitleMobile {
+    font-size: 10px !important;
+  }
+
+  .moduleHeaderActions {
+    gap: 5px !important;
+  }
+
+  .headerAiButton,
+  .headerToolButton,
+  .headerInrSendButton,
+  .headerCloseButton {
+    width: 32px !important;
+    min-width: 32px !important;
+    max-width: 32px !important;
+    height: 32px !important;
+    min-height: 32px !important;
+    max-height: 32px !important;
+    padding: 0 !important;
+  }
+
+  .headerToolButton {
+    gap: 0 !important;
+    border-radius: 999px !important;
+  }
+
+  .headerToolLabel {
+    display: none !important;
+  }
+
+  .headerToolLetter,
+  .headerToolLogo {
+    width: 32px !important;
+    height: 32px !important;
+    flex: 0 0 32px !important;
+  }
+
+  .headerToolLetter {
+    font-size: 13px !important;
+  }
+
+  .headerInrSendLogo {
+    width: 32px !important;
+    height: 32px !important;
+  }
+
+  .headerCloseButton::before {
+    font-size: 19px !important;
+  }
+}
+
+/* ===== Correctifs iNrAgent 21/06 : header coloré + stats utiles ===== */
+.headerToolButton[data-automation="publish"] {
+  background:
+    radial-gradient(circle at 26% 20%, rgba(255,255,255,0.18), transparent 30%),
+    linear-gradient(135deg, rgba(124, 58, 237, 0.42), rgba(91, 33, 182, 0.34));
+  border-color: rgba(196, 181, 253, 0.42);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.12),
+    0 12px 28px rgba(0,0,0,0.20),
+    0 0 22px rgba(124,58,237,0.20);
+}
+
+.headerToolButton[data-automation="grow"] {
+  background:
+    radial-gradient(circle at 26% 20%, rgba(255,255,255,0.18), transparent 30%),
+    linear-gradient(135deg, rgba(14, 165, 233, 0.46), rgba(37, 99, 235, 0.30));
+  border-color: rgba(125, 211, 252, 0.44);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.12),
+    0 12px 28px rgba(0,0,0,0.20),
+    0 0 22px rgba(14,165,233,0.20);
+}
+
+.headerToolButton[data-automation="loyalty"] {
+  background:
+    radial-gradient(circle at 26% 20%, rgba(255,255,255,0.18), transparent 30%),
+    linear-gradient(135deg, rgba(236, 72, 153, 0.44), rgba(168, 85, 247, 0.28));
+  border-color: rgba(244, 114, 182, 0.42);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.12),
+    0 12px 28px rgba(0,0,0,0.20),
+    0 0 22px rgba(236,72,153,0.18);
+}
+
+.headerToolButton[data-automation="stats"] {
+  background:
+    radial-gradient(circle at 26% 20%, rgba(255,255,255,0.18), transparent 30%),
+    linear-gradient(135deg, rgba(59, 130, 246, 0.38), rgba(124, 58, 237, 0.34));
+  border-color: rgba(147, 197, 253, 0.42);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.12),
+    0 12px 28px rgba(0,0,0,0.20),
+    0 0 22px rgba(59,130,246,0.18);
+}
+
+.headerToolButton[data-automation="publish"] .headerToolLetter {
+  background: linear-gradient(135deg, rgba(139,92,246,0.96), rgba(192,132,252,0.78));
+  box-shadow: 0 0 16px rgba(139,92,246,0.42);
+}
+
+.headerToolButton[data-automation="grow"] .headerToolLetter {
+  background: linear-gradient(135deg, rgba(6,182,212,0.96), rgba(37,99,235,0.78));
+  box-shadow: 0 0 16px rgba(14,165,233,0.42);
+}
+
+.headerToolButton[data-automation="loyalty"] .headerToolLetter {
+  background: linear-gradient(135deg, rgba(236,72,153,0.96), rgba(168,85,247,0.78));
+  box-shadow: 0 0 16px rgba(236,72,153,0.38);
+}
+
+.headerToolButton[data-automation="stats"] .headerToolLetter,
+.headerToolButton[data-automation="stats"] .headerToolLogo {
+  filter: drop-shadow(0 0 12px rgba(96,165,250,0.42)) drop-shadow(0 0 16px rgba(168,85,247,0.20));
+}
+
+.headerToolButton[data-automation]:hover {
+  border-color: rgba(255,255,255,0.42);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.16),
+    0 14px 30px rgba(0,0,0,0.22),
+    0 0 28px rgba(168,85,247,0.16);
+}
+
+.statsPreview {
+  grid-template-rows: auto auto auto auto !important;
+  align-content: start !important;
+  gap: 14px !important;
+}
+
+.statsHeadCard {
+  min-height: 96px !important;
+  padding: 16px 20px !important;
+}
+
+.statsMiniCard {
+  min-height: 116px !important;
+  padding: 14px 16px !important;
+}
+
+.statsInsightCard {
+  min-height: 84px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  background:
+    radial-gradient(circle at 10% 0%, rgba(56, 189, 248, 0.10), transparent 36%),
+    linear-gradient(135deg, rgba(10, 28, 64, 0.72), rgba(8, 20, 50, 0.54));
+  border: 1px solid rgba(147, 197, 253, 0.13);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.07),
+    0 12px 28px rgba(2, 8, 23, 0.14);
+  backdrop-filter: blur(14px);
+}
+
+.statsInsightIcon {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 13px;
+  color: #7dd3fc;
+  background: rgba(56, 189, 248, 0.12);
+  border: 1px solid rgba(125, 211, 252, 0.18);
+  box-shadow: 0 0 18px rgba(56, 189, 248, 0.12);
+}
+
+.statsInsightIcon svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.statsInsightCopy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.statsInsightCopy small {
+  color: rgba(125, 211, 252, 0.78);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.statsInsightCopy strong {
+  color: #ffffff;
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: -0.02em;
+}
+
+.statsInsightCopy p {
+  margin: 0;
+  max-width: 980px;
+  color: rgba(226, 242, 255, 0.74);
+  font-size: 13px;
+  line-height: 1.35;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.statsHistorySection {
+  align-self: start !important;
+  min-height: 0 !important;
+  padding: 12px 14px !important;
+  gap: 10px !important;
+}
+
+.statsHistoryHeader h4 {
+  font-size: 16px !important;
+}
+
+.statsHistoryItem {
+  min-height: 50px !important;
+  border-radius: 15px !important;
+}
+
+.statsHistoryIcon {
+  width: 27px !important;
+  height: 27px !important;
+}
+
+.statsHistoryDate strong {
+  font-size: 12px !important;
+}
+
+.statsHistoryDate small {
+  font-size: 10px !important;
+}
+
+@media (max-height: 850px) and (min-width: 1181px) {
+  .statsHeadCard {
+    min-height: 88px !important;
+  }
+
+  .statsMiniCard {
+    min-height: 104px !important;
+  }
+
+  .statsInsightCard {
+    min-height: 76px;
+    padding-top: 12px;
+    padding-bottom: 12px;
+  }
+
+  .statsHistoryItem {
+    min-height: 46px !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .cardStatus,
+  .cardPendingCount + .cardStatus {
+    right: 6px !important;
+    bottom: 6px !important;
+    width: 5px !important;
+    height: 5px !important;
+    z-index: 5 !important;
+  }
+
+  .cardPendingCount {
+    display: none !important;
+  }
+
+  .automationSelect {
+    padding-right: 40px !important;
+  }
+
+  .statsPreview {
+    gap: 12px !important;
+  }
+
+  .statsHeadCard {
+    min-height: 84px !important;
+    padding: 14px !important;
+  }
+
+  .statsMiniCard {
+    min-height: 94px !important;
+    padding: 12px !important;
+  }
+
+  .statsInsightCard {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    min-height: 0;
+  }
+
+  .statsInsightIcon {
+    width: 34px;
+    height: 34px;
+  }
+
+  .statsHistoryRow {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+/* ===== Correctif final Stats 21/06 : responsive + recommandations du dernier bilan ===== */
+@media (max-width: 760px) {
+  .cardStatus,
+  .cardPendingCount + .cardStatus {
+    right: 9px !important;
+    bottom: 8px !important;
+    width: 5px !important;
+    height: 5px !important;
+  }
+}
+
+.previewCardNoFrame .previewBody {
+  height: 100%;
+}
+
+.statsPreview {
+  height: 100% !important;
+  min-height: 0 !important;
+  display: grid !important;
+  grid-template-rows: auto auto minmax(0, 1fr) auto !important;
+  align-content: stretch !important;
+  gap: clamp(12px, 1.25vw, 16px) !important;
+}
+
+.statsHeadCard {
+  min-height: clamp(100px, 12vh, 124px) !important;
+}
+
+.statsMiniCard {
+  min-height: clamp(118px, 13vh, 140px) !important;
+}
+
+.statsInsightCard {
+  min-height: 0 !important;
+  height: 100% !important;
+  align-self: stretch !important;
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  grid-template-rows: auto minmax(0, 1fr) !important;
+  align-items: stretch !important;
+  gap: clamp(10px, 1vw, 14px) !important;
+  padding: clamp(14px, 1.25vw, 18px) !important;
+}
+
+.statsInsightHeader {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.statsRecommendationList {
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  align-content: stretch;
+  gap: clamp(8px, 0.9vw, 12px);
+}
+
+.statsRecommendationList li {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  padding: clamp(10px, 0.95vw, 14px) clamp(12px, 1vw, 16px);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(147, 197, 253, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.statsRecommendationList li span {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 950;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.92), rgba(168, 85, 247, 0.86));
+  box-shadow: 0 0 18px rgba(96, 165, 250, 0.22);
+}
+
+.statsRecommendationList li p {
+  margin: 0;
+  color: rgba(241, 247, 255, 0.88);
+  font-size: clamp(13px, 0.92vw, 15px);
+  line-height: 1.35;
+  font-weight: 650;
+}
+
+.statsRecommendationEmpty {
+  margin: 0;
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  color: rgba(226, 242, 255, 0.7);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.statsHistorySection {
+  align-self: end !important;
+  min-height: 0 !important;
+  padding: 12px 14px !important;
+}
+
+.statsHistoryItem {
+  min-height: 46px !important;
+}
+
+@media (max-height: 850px) and (min-width: 1181px) {
+  .statsHeadCard {
+    min-height: 92px !important;
+  }
+
+  .statsMiniCard {
+    min-height: 106px !important;
+  }
+
+  .statsRecommendationList {
+    gap: 8px;
+  }
+
+  .statsRecommendationList li {
+    padding-top: 9px;
+    padding-bottom: 9px;
+  }
+}
+
+@media (max-width: 760px) {
+  .statsPreview {
+    height: auto !important;
+    grid-template-rows: none !important;
+  }
+
+  .statsHeadCard,
+  .statsMiniCard {
+    min-height: 0 !important;
+  }
+
+  .statsInsightCard {
+    height: auto !important;
+  }
+
+  .statsRecommendationList li {
+    grid-template-columns: 28px minmax(0, 1fr);
+    gap: 9px;
+    padding: 10px;
+  }
+
+  .statsRecommendationList li span {
+    width: 24px;
+    height: 24px;
+    font-size: 11px;
+  }
+}
+
+/* ===== Correctif final 21/06 — responsive tuiles + stats recommandations propres ===== */
+@media (max-width: 760px) {
+  .automationCard .cardStatus,
+  .automationCard .cardPendingCount + .cardStatus {
+    top: 50% !important;
+    right: 38px !important;
+    bottom: auto !important;
+    width: 6px !important;
+    height: 6px !important;
+    transform: translateY(-50%) !important;
+    z-index: 6 !important;
+  }
+
+  .automationCard .settingsButton {
+    top: 50% !important;
+    right: 7px !important;
+    transform: translateY(-50%) !important;
+  }
+
+  .automationCard .automationSelect {
+    padding-right: 54px !important;
+  }
+}
+
+.statsPreview {
+  height: 100% !important;
+  min-height: 0 !important;
+  display: grid !important;
+  grid-template-rows: auto auto minmax(170px, 1fr) auto !important;
+  align-content: stretch !important;
+  gap: clamp(12px, 1.1vw, 15px) !important;
+  overflow: hidden !important;
+}
+
+.statsTopGrid {
+  display: grid !important;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+  gap: clamp(10px, 1vw, 14px) !important;
+}
+
+.statsMiniCard {
+  min-height: clamp(92px, 10vh, 110px) !important;
+  padding: clamp(12px, 1vw, 15px) !important;
+  display: grid !important;
+  grid-template-rows: auto minmax(0, auto) !important;
+  align-content: center !important;
+  gap: 10px !important;
+}
+
+.statsMiniHead {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+}
+
+.statsMiniHead .statsMiniIcon,
+.statsMiniCard .statsMiniIcon {
+  width: 28px !important;
+  height: 28px !important;
+  min-width: 28px !important;
+  margin: 0 !important;
+  border-radius: 10px !important;
+}
+
+.statsMiniHead .statsMiniIcon svg,
+.statsMiniCard .statsMiniIcon svg {
+  width: 15px !important;
+  height: 15px !important;
+}
+
+.statsMiniHead small {
+  min-width: 0;
+  font-size: 10px !important;
+  line-height: 1.05 !important;
+  letter-spacing: 0.07em !important;
+  text-transform: uppercase;
+}
+
+.statsMiniCard > strong {
+  display: block;
+  padding-left: 1px;
+  font-size: clamp(16px, 1.05vw, 19px) !important;
+  line-height: 1.16 !important;
+  letter-spacing: -0.035em !important;
+}
+
+.statsMiniCard:nth-child(3) > strong,
+.statsMiniCard:nth-child(4) > strong {
+  font-size: clamp(14px, 0.95vw, 17px) !important;
+}
+
+.statsInsightCard {
+  min-height: 0 !important;
+  height: 100% !important;
+  align-self: stretch !important;
+  overflow: hidden !important;
+  display: grid !important;
+  grid-template-columns: 1fr !important;
+  grid-template-rows: auto minmax(0, 1fr) !important;
+  align-items: stretch !important;
+  gap: clamp(8px, 0.8vw, 12px) !important;
+  padding: clamp(12px, 1vw, 16px) !important;
+}
+
+.statsInsightHeader {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+  min-width: 0 !important;
+}
+
+.statsInsightIcon {
+  width: 36px !important;
+  height: 36px !important;
+  min-width: 36px !important;
+  border-radius: 12px !important;
+}
+
+.statsInsightIcon svg {
+  width: 18px !important;
+  height: 18px !important;
+}
+
+.statsInsightCopy {
+  min-width: 0 !important;
+}
+
+.statsInsightCopy strong {
+  display: block !important;
+  color: #ffffff !important;
+  font-size: clamp(15px, 1vw, 18px) !important;
+  line-height: 1.12 !important;
+  font-weight: 900 !important;
+  letter-spacing: -0.025em !important;
+}
+
+.statsInsightCopy small {
+  display: none !important;
+}
+
+.statsRecommendationList {
+  min-height: 0 !important;
+  overflow: hidden !important;
+  align-content: center !important;
+  gap: clamp(6px, 0.55vw, 8px) !important;
+}
+
+.statsRecommendationList li {
+  min-height: 32px !important;
+  grid-template-columns: 28px minmax(0, 1fr) !important;
+  gap: 10px !important;
+  align-items: center !important;
+  padding: 6px 11px !important;
+  border-radius: 999px !important;
+}
+
+.statsRecommendationList li span {
+  width: 24px !important;
+  height: 24px !important;
+  font-size: 11px !important;
+}
+
+.statsRecommendationList li p {
+  font-size: clamp(12px, 0.82vw, 14px) !important;
+  line-height: 1.18 !important;
+  font-weight: 700 !important;
+  display: -webkit-box !important;
+  -webkit-line-clamp: 2 !important;
+  -webkit-box-orient: vertical !important;
+  overflow: hidden !important;
+}
+
+.statsHistorySection {
+  position: relative !important;
+  z-index: 1 !important;
+  align-self: end !important;
+  min-height: 0 !important;
+  padding: 11px 14px !important;
+  gap: 9px !important;
+}
+
+.statsHistoryHeader h4 {
+  font-size: 15px !important;
+  line-height: 1.1 !important;
+}
+
+.statsHistoryRow {
+  gap: 10px !important;
+}
+
+.statsHistoryItem {
+  min-height: 44px !important;
+  padding: 0 10px !important;
+}
+
+@media (max-height: 850px) and (min-width: 1181px) {
+  .statsHeadCard {
+    min-height: 88px !important;
+    padding-top: 13px !important;
+    padding-bottom: 13px !important;
+  }
+
+  .statsMiniCard {
+    min-height: 88px !important;
+  }
+
+  .statsRecommendationList li {
+    min-height: 29px !important;
+    padding-top: 5px !important;
+    padding-bottom: 5px !important;
+  }
+
+  .statsHistoryItem {
+    min-height: 40px !important;
+  }
+}
+
+@media (max-width: 1180px) {
+  .statsTopGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .statsPreview {
+    overflow: visible !important;
+    grid-template-rows: auto auto auto auto !important;
+  }
+
+  .statsInsightCard {
+    height: auto !important;
+  }
+}
+
+/* ===== Correctif 21/06 — pastilles tuiles + recommandations Stats aérées ===== */
+.automationCard .cardStatus,
+.automationCard .cardPendingCount + .cardStatus {
+  top: 50% !important;
+  right: 58px !important;
+  bottom: auto !important;
+  width: 7px !important;
+  height: 7px !important;
+  transform: translateY(-50%) !important;
+  z-index: 6 !important;
+}
+
+.automationCard .settingsButton {
+  top: 50% !important;
+  right: 16px !important;
+  transform: translateY(-50%) !important;
+}
+
+.automationCard .settingsButton:hover {
+  transform: translateY(-50%) rotate(25deg) scale(1.04) !important;
+}
+
+.statsInsightCard {
+  gap: 6px !important;
+  padding: 10px 14px !important;
+  grid-template-rows: auto minmax(0, 1fr) !important;
+}
+
+.statsInsightHeader {
+  min-height: 32px !important;
+  gap: 10px !important;
+}
+
+.statsInsightIcon {
+  width: 32px !important;
+  height: 32px !important;
+  min-width: 32px !important;
+  border-radius: 11px !important;
+}
+
+.statsInsightIcon svg {
+  width: 16px !important;
+  height: 16px !important;
+}
+
+.statsInsightCopy strong {
+  font-size: clamp(15px, 0.96vw, 17px) !important;
+  line-height: 1.05 !important;
+}
+
+.statsRecommendationList {
+  gap: 4px !important;
+  align-content: center !important;
+}
+
+.statsRecommendationList li {
+  min-height: 24px !important;
+  grid-template-columns: 28px minmax(0, 1fr) !important;
+  gap: 10px !important;
+  padding: 2px 2px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.statsRecommendationList li span {
+  width: 23px !important;
+  height: 23px !important;
+  font-size: 11px !important;
+  box-shadow: 0 0 14px rgba(96, 165, 250, 0.18) !important;
+}
+
+.statsRecommendationList li p {
+  font-size: clamp(12px, 0.8vw, 14px) !important;
+  line-height: 1.14 !important;
+  font-weight: 720 !important;
+}
+
+@media (max-width: 760px) {
+  .automationCard .cardStatus,
+  .automationCard .cardPendingCount + .cardStatus {
+    top: 50% !important;
+    right: 38px !important;
+    bottom: auto !important;
+    width: 6px !important;
+    height: 6px !important;
+    transform: translateY(-50%) !important;
+  }
+
+  .automationCard .settingsButton {
+    top: 50% !important;
+    right: 7px !important;
+    transform: translateY(-50%) !important;
+  }
+
+  .automationCard .settingsButton:hover {
+    transform: translateY(-50%) rotate(25deg) scale(1.04) !important;
+  }
+
+  .statsInsightCard {
+    padding: 10px 12px !important;
+    gap: 6px !important;
+  }
+
+  .statsInsightHeader {
+    min-height: 30px !important;
+  }
+
+  .statsRecommendationList {
+    gap: 5px !important;
+  }
+
+  .statsRecommendationList li {
+    grid-template-columns: 26px minmax(0, 1fr) !important;
+    padding: 2px 0 !important;
+  }
+}

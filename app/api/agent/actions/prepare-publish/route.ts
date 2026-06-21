@@ -560,7 +560,7 @@ export async function POST(request: Request) {
   const automation = await loadPublishAutomationSettings(userId);
   if (!automation.enabled) {
     return NextResponse.json(
-      { error: "L’automatisation Publier régulièrement est désactivée." },
+      { error: "L’automatisation Publier est désactivée." },
       { status: 400 },
     );
   }

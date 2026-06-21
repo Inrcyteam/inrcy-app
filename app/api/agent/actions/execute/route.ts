@@ -331,6 +331,7 @@ async function executeCampaignAction(args: {
       targetTool: action.targetTool,
       actionType: action.actionType,
       theme: trackType || null,
+      signatureAutomatic: payload.signatureAutomatic !== false,
     },
   };
 

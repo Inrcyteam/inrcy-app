@@ -6,6 +6,8 @@ import {
 } from "@/lib/inrAgentActions";
 import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { normalizeMailSubject } from "@/lib/mailEncoding";
+import { textToRichMailHtml } from "@/lib/mailRichText";
 
 function isMissingTableError(
   error: { code?: string; message?: string } | null | undefined,
@@ -27,6 +29,13 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
+}
+
+function cleanText(value: unknown, maxLength = 6000) {
+  return String(value ?? "")
+    .replace(/\r\n/g, "\n")
+    .trim()
+    .slice(0, maxLength);
 }
 
 function withFreshReportDocument(payload: Record<string, unknown>) {
@@ -147,13 +156,105 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Requête invalide" }, { status: 400 });
   }
 
+  const requestBody = body as {
+    actionId?: unknown;
+    status?: unknown;
+    editType?: unknown;
+    subject?: unknown;
+    bodyText?: unknown;
+  } | null;
   const actionId =
-    typeof (body as { actionId?: unknown } | null)?.actionId === "string"
-      ? (body as { actionId: string }).actionId
+    typeof requestBody?.actionId === "string"
+      ? requestBody.actionId
       : "";
-  const status = sanitizeInrAgentActionStatus(
-    (body as { status?: unknown } | null)?.status,
-  );
+  const status = sanitizeInrAgentActionStatus(requestBody?.status);
+  const editType = cleanText(requestBody?.editType, 80);
+
+  if (editType === "campaign_text") {
+    if (!actionId) {
+      return NextResponse.json(
+        { error: "Action invalide" },
+        { status: 400 },
+      );
+    }
+
+    const subject = normalizeMailSubject(cleanText(requestBody?.subject, 220));
+    const bodyText = cleanText(requestBody?.bodyText, 6000);
+
+    if (!subject || !bodyText) {
+      return NextResponse.json(
+        { error: "L’objet et le corps du mail sont obligatoires." },
+        { status: 400 },
+      );
+    }
+
+    const { data: currentRow, error: readError } = await supabaseAdmin
+      .from("inr_agent_actions")
+      .select(ACTION_SELECT)
+      .eq("id", actionId)
+      .eq("user_id", user.id)
+      .single();
+
+    if (readError || !currentRow) {
+      if (isMissingTableError(readError)) {
+        return NextResponse.json(
+          { error: "La table inr_agent_actions doit être créée dans Supabase.", tableMissing: true },
+          { status: 500 },
+        );
+      }
+      return NextResponse.json(
+        { error: "Action iNr’Agent introuvable." },
+        { status: 404 },
+      );
+    }
+
+    const currentAction = rowToInrAgentAction(currentRow as any);
+    const currentPayload = currentAction.payload || {};
+    const bodyHtml = textToRichMailHtml(bodyText);
+    const nextPayload = {
+      ...currentPayload,
+      subject,
+      campaignSubject: subject,
+      bodyText,
+      campaignBody: bodyText,
+      bodyHtml,
+    };
+    const nextPreviewText = [
+      `Objet : ${subject}`,
+      bodyText,
+      `Destinataires proposés : ${Array.isArray(currentAction.recipients) ? currentAction.recipients.length : 0} contact${Array.isArray(currentAction.recipients) && currentAction.recipients.length > 1 ? "s" : ""} CRM`,
+    ].join("\n\n");
+
+    const now = new Date().toISOString();
+    const { data, error } = await supabaseAdmin
+      .from("inr_agent_actions")
+      .update({
+        payload: nextPayload,
+        preview_text: nextPreviewText,
+        updated_at: now,
+      })
+      .eq("id", actionId)
+      .eq("user_id", user.id)
+      .select(ACTION_SELECT)
+      .single();
+
+    if (error) {
+      if (isMissingTableError(error)) {
+        return NextResponse.json(
+          { error: "La table inr_agent_actions doit être créée dans Supabase.", tableMissing: true },
+          { status: 500 },
+        );
+      }
+      console.warn("[inr-agent-actions] campaign text update failed", error);
+      return NextResponse.json(
+        { error: "Modification du mail impossible." },
+        { status: 500 },
+      );
+    }
+
+    const action = await refreshActionImageUrls(rowToInrAgentAction(data));
+    return NextResponse.json({ action, saved: true });
+  }
 
   if (
     !actionId ||

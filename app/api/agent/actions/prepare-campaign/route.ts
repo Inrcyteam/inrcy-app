@@ -382,7 +382,7 @@ export async function POST(request: Request) {
       {
         error:
           automationKey === "grow"
-            ? "L’automatisation Développer l’activité est désactivée."
+            ? "L’automatisation Propulser est désactivée."
             : "L’automatisation Fidéliser les contacts est désactivée.",
       },
       { status: 400 },
@@ -489,6 +489,8 @@ export async function POST(request: Request) {
     recipients,
     accountLabel: mailAccount.label,
   });
+  const signatureAutomatic = automation.metadata?.signatureAutomatic !== false;
+
   const payload = {
     version: 1,
     source: "inr_agent_campaign_preparer",
@@ -516,6 +518,7 @@ export async function POST(request: Request) {
     trackKind: campaignThemeMap[automationKey].trackKind,
     trackType: themeConfig.trackType,
     templateKey: template.key,
+    signatureAutomatic,
     accountId: mailAccount.id,
     mailAccount: mailAccount,
     recipientScope: scope,
@@ -556,6 +559,7 @@ export async function POST(request: Request) {
         preparedByCron: isCron,
         templateKey: template.key,
         recipientCount: recipients.length,
+        signatureAutomatic,
       },
       created_at: now,
       updated_at: now,
