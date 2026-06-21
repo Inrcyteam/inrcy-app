@@ -143,21 +143,21 @@ export default function BaseModal({
                   ? "minmax(0, auto) minmax(0, 1fr) minmax(0, auto)"
                   : "minmax(0, auto) minmax(0, 1fr) minmax(0, auto)",
                 alignItems: "center",
-                gap: 12,
+                gap: isMobileHeader ? 5 : 12,
               }}
             >
               {/* Left badge */}
               <div style={{ minWidth: 0 }}>
                 {titleMovesLeft ? (
-                  <span style={pillStyle}>{title}</span>
+                  <span style={isMobileHeader ? compactPillStyle : pillStyle}>{title}</span>
                 ) : showModuleLabel ? (
-                  <span style={pillStyle}>{moduleLabel}</span>
+                  <span style={isMobileHeader ? compactPillStyle : pillStyle}>{moduleLabel}</span>
                 ) : null}
               </div>
 
               {/* Center title */}
               <div style={{ textAlign: titleMovesLeft ? "left" : "center", minWidth: 0 }}>
-                {!titleMovesLeft ? <span style={pillStyle}>{title}</span> : null}
+                {!titleMovesLeft ? <span style={isMobileHeader ? compactPillStyle : pillStyle}>{title}</span> : null}
               </div>
 
               {/* Right actions */}
@@ -166,7 +166,7 @@ export default function BaseModal({
                   display: "flex",
                   justifyContent: "flex-end",
                   alignItems: "center",
-                  gap: 8,
+                  gap: isMobileHeader ? 5 : 8,
                   minWidth: 0,
                   flexWrap: "nowrap",
                 }}
@@ -189,7 +189,7 @@ export default function BaseModal({
                   type="button"
                   className={[styles.ghostBtn, styles.modalCloseButton].join(" ")}
                   onClick={() => void onClose()}
-                  style={closeBtnStyle}
+                  style={isMobileHeader ? compactCloseBtnStyle : closeBtnStyle}
                   aria-label="Fermer"
                   title="Fermer"
                 >
@@ -260,8 +260,28 @@ const pillStyle: React.CSSProperties = {
   maxWidth: "100%",
 };
 
+
+const compactPillStyle: React.CSSProperties = {
+  ...pillStyle,
+  gap: 5,
+  padding: "6px 9px",
+  fontSize: 11,
+  fontWeight: 700,
+  whiteSpace: "nowrap",
+};
+
 const closeBtnStyle: React.CSSProperties = {
   // garde le look "bulle" même si ghostBtn change
   borderRadius: 999,
   padding: "7px 12px",
+};
+
+const compactCloseBtnStyle: React.CSSProperties = {
+  ...closeBtnStyle,
+  width: 32,
+  minWidth: 32,
+  minHeight: 32,
+  padding: 0,
+  display: "inline-grid",
+  placeItems: "center",
 };

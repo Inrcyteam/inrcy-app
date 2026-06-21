@@ -21,7 +21,8 @@ const WORKFLOW_ATTACHMENT_PREFIX = "propulser-valoriser";
 export default function ValoriserModal({ styles, onClose, onDone = onClose, saveDraftActionRef, onDraftStatusChange }: { styles: typeof stylesDash; onClose: () => void | Promise<void>; onDone?: () => void | Promise<void>; saveDraftActionRef?: MutableRefObject<(() => Promise<void>) | null>; onDraftStatusChange?: (message: string) => void }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const restoredWorkflowKeyRef = useRef("");
+  const restoreKey = searchParams?.get("restore_key") || "";
+  const restoredWorkflowKeyRef = useRef(restoreKey);
   const { sectorCategory, profession } = useBusinessTemplateContext();
   const templates = useMemo(() => getTemplates("valoriser", undefined, sectorCategory, profession), [sectorCategory, profession]);
   const categories = useMemo(() => {
@@ -71,6 +72,7 @@ export default function ValoriserModal({ styles, onClose, onDone = onClose, save
     setBody(txt);
     setBodyHtml(textToRichMailHtml(txt));
 
+    let cancelled = false;
     (async () => {
       try {
         const r = await fetch("/api/templates/render", {
@@ -79,6 +81,7 @@ export default function ValoriserModal({ styles, onClose, onDone = onClose, save
           body: JSON.stringify({ subject_override: subj, body_override: txt }),
         });
         const j = await r.json().catch(() => ({}));
+        if (cancelled || restoredWorkflowKeyRef.current) return;
         if (j?.subject) setSubject(String(j.subject));
         if (j?.body_text) {
           const renderedBody = String(j.body_text);
@@ -87,15 +90,23 @@ export default function ValoriserModal({ styles, onClose, onDone = onClose, save
         }
       } catch {}
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [selected?.key]);
 
 
-  const restoreKey = searchParams?.get("restore_key") || "";
 
   useEffect(() => {
-    if (!restoreKey) return;
+    if (!restoreKey) {
+      restoredWorkflowKeyRef.current = "";
+      return;
+    }
     const restored = readWorkflowCampaignState(restoreKey);
-    if (!restored || restored.kind !== WORKFLOW_KIND || restored.action !== WORKFLOW_ACTION) return;
+    if (!restored || restored.kind !== WORKFLOW_KIND || restored.action !== WORKFLOW_ACTION) {
+      restoredWorkflowKeyRef.current = "";
+      return;
+    }
     restoredWorkflowKeyRef.current = restoreKey;
     if (restored.templateKey) setSelectedKey(String(restored.templateKey));
     setSubject(restored.subject || "");

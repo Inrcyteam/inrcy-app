@@ -33,7 +33,8 @@ export default function InformerModal({
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const restoredWorkflowKeyRef = useRef("");
+  const restoreKey = searchParams?.get("restore_key") || "";
+  const restoredWorkflowKeyRef = useRef(restoreKey);
   const { sectorCategory, profession } = useBusinessTemplateContext();
 
   const templates = useMemo(() => getTemplates("informations", undefined, sectorCategory, profession), [sectorCategory, profession]);
@@ -88,6 +89,7 @@ export default function InformerModal({
     setBodyHtml(textToRichMailHtml(txt));
 
     // Auto-remplissage (profil / activité / liens connectés)
+    let cancelled = false;
     (async () => {
       try {
         const r = await fetch("/api/templates/render", {
@@ -96,6 +98,7 @@ export default function InformerModal({
           body: JSON.stringify({ subject_override: subj, body_override: txt }),
         });
         const j = await r.json().catch(() => ({}));
+        if (cancelled || restoredWorkflowKeyRef.current) return;
         if (j?.subject) setSubject(String(j.subject));
         if (j?.body_text) {
           const renderedBody = String(j.body_text);
@@ -106,15 +109,23 @@ export default function InformerModal({
         // ignore
       }
     })();
+    return () => {
+      cancelled = true;
+    };
   }, [selected?.key]);
 
 
-  const restoreKey = searchParams?.get("restore_key") || "";
 
   useEffect(() => {
-    if (!restoreKey) return;
+    if (!restoreKey) {
+      restoredWorkflowKeyRef.current = "";
+      return;
+    }
     const restored = readWorkflowCampaignState(restoreKey);
-    if (!restored || restored.kind !== WORKFLOW_KIND || restored.action !== WORKFLOW_ACTION) return;
+    if (!restored || restored.kind !== WORKFLOW_KIND || restored.action !== WORKFLOW_ACTION) {
+      restoredWorkflowKeyRef.current = "";
+      return;
+    }
     restoredWorkflowKeyRef.current = restoreKey;
     if (restored.templateKey) setSelectedKey(String(restored.templateKey));
     setSubject(restored.subject || "");
