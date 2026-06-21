@@ -1740,7 +1740,7 @@ useEffect(() => {
                     aria-label="Générer un bilan iNr’Stats manuel"
                     title="Créer et envoyer un bilan manuel maintenant"
                   >
-                    {isGeneratingReport ? "Génération du bilan…" : "Générer un bilan"}
+                    {isGeneratingReport ? "Génération du bilan…" : "🧾 Générer un bilan"}
                   </button>
                 </div>
 
