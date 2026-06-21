@@ -100,7 +100,7 @@ export default function RichMailEditor({
     const deltaY = event.deltaY;
     if (!deltaY || !shouldPassScrollToParent(deltaY)) return;
     if (!passScrollToParent(deltaY)) return;
-    event.preventDefault();
+    if (event.cancelable) event.preventDefault();
     event.stopPropagation();
   };
 
@@ -117,7 +117,7 @@ export default function RichMailEditor({
     lastTouchYRef.current = currentY;
     if (!deltaY || !shouldPassScrollToParent(deltaY)) return;
     if (!passScrollToParent(deltaY)) return;
-    event.preventDefault();
+    if (event.cancelable) event.preventDefault();
     event.stopPropagation();
   };
 

@@ -843,9 +843,9 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
 
               <div className={`${styles.modalFooter} ${styles.composeModalFooter}`}>
                 <div className={styles.composeAttachmentDock}>
-                  <label htmlFor={fileInputId} className={styles.btnAttach} aria-disabled={attachBusy}>
+                  <label htmlFor={fileInputId} className={styles.btnAttach} aria-disabled={attachBusy} title="Joindre un fichier">
                     <span aria-hidden>📎</span>
-                    <span>Joindre</span>
+                    <span className={styles.composeAttachLabel}>Joindre</span>
                   </label>
                   <span className={styles.composeAttachmentStatus}>
                     {composeAttachments.length > 0 ? `${composeAttachments.length} fichier${composeAttachments.length > 1 ? "s" : ""}` : attachBusy ? "Préparation…" : "Aucun fichier"}
@@ -872,13 +872,15 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                 <div className={styles.composeFooterActions}>
                   {isWorkflowFinalizer && onWorkflowPrevious ? (
                     <button
-                      className={styles.btnGhost}
+                      className={`${styles.btnGhost} ${styles.composePreviousBtn}`}
                       onClick={() => void onWorkflowPrevious()}
                       type="button"
                       disabled={sendBusy || attachBusy}
-                      style={{ borderRadius: 16, padding: "12px 16px", fontWeight: 900 }}
+                      title="Revenir à l’étape précédente"
+                      aria-label="Revenir à l’étape précédente"
                     >
-                      Précédent
+                      <span className={styles.composePreviousMobileIcon} aria-hidden>←</span>
+                      <span className={styles.composePreviousDesktopText}>Précédent</span>
                     </button>
                   ) : null}
                   <button className={`${styles.btnPrimary} ${styles.composeSendBtn}`} onClick={() => void requestSend()} type="button" disabled={sendBusy || attachBusy}>
