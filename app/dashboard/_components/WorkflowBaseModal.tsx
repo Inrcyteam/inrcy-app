@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import styles from "../dashboard.module.css";
 
 export default function BaseModal({
@@ -11,6 +11,8 @@ export default function BaseModal({
   headerStatus,
   headerStatusMobileHidden = false,
   headerActions,
+  titleOnLeftOnMobile = false,
+  hideModuleLabelOnMobile = false,
   compact = false,
   maxWidth,
   children,
@@ -22,11 +24,27 @@ export default function BaseModal({
   headerStatus?: React.ReactNode;
   headerStatusMobileHidden?: boolean;
   headerActions?: React.ReactNode;
+  titleOnLeftOnMobile?: boolean;
+  hideModuleLabelOnMobile?: boolean;
   compact?: boolean;
   maxWidth?: number | string;
   children: React.ReactNode;
 }) {
   const resolvedMaxWidth = typeof maxWidth === "number" ? `${maxWidth}px` : maxWidth;
+  const [isMobileHeader, setIsMobileHeader] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const media = window.matchMedia("(max-width: 768px)");
+    const sync = () => setIsMobileHeader(media.matches);
+    sync();
+    media.addEventListener?.("change", sync);
+    return () => media.removeEventListener?.("change", sync);
+  }, []);
+
+  const titleMovesLeft = titleOnLeftOnMobile && isMobileHeader;
+  const showModuleLabel = Boolean(moduleLabel) && !(hideModuleLabelOnMobile && isMobileHeader);
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") void onClose();
@@ -121,21 +139,25 @@ export default function BaseModal({
                 width: "100%",
                 minWidth: 0,
                 display: "grid",
-                gridTemplateColumns: "minmax(0, auto) minmax(0, 1fr) minmax(0, auto)",
+                gridTemplateColumns: titleMovesLeft
+                  ? "minmax(0, auto) minmax(0, 1fr) minmax(0, auto)"
+                  : "minmax(0, auto) minmax(0, 1fr) minmax(0, auto)",
                 alignItems: "center",
                 gap: 12,
               }}
             >
               {/* Left badge */}
               <div style={{ minWidth: 0 }}>
-                {moduleLabel ? (
+                {titleMovesLeft ? (
+                  <span style={pillStyle}>{title}</span>
+                ) : showModuleLabel ? (
                   <span style={pillStyle}>{moduleLabel}</span>
                 ) : null}
               </div>
 
               {/* Center title */}
-              <div style={{ textAlign: "center" }}>
-                <span style={pillStyle}>{title}</span>
+              <div style={{ textAlign: titleMovesLeft ? "left" : "center", minWidth: 0 }}>
+                {!titleMovesLeft ? <span style={pillStyle}>{title}</span> : null}
               </div>
 
               {/* Right actions */}

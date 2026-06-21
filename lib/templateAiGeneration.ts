@@ -230,15 +230,29 @@ ${renderedBody}
 
 Réécris un nouvel objet et un nouveau message, plus personnalisé et plus naturel, en respectant la même mission. Si une pièce jointe utile est présente, exploite ses informations pour rendre le mail plus concret sans la recopier.`;
 
-  const generated = await openaiGenerateJSON<GeneratedTemplateMail>({
+  const generateOnce = (extraInstruction = "") => openaiGenerateJSON<GeneratedTemplateMail>({
     system,
-    input,
-    maxOutputTokens: 1100,
+    input: [input, extraInstruction].filter(Boolean).join("\n\n"),
+    maxOutputTokens: 1300,
     temperature: 0.82,
+    retries: 1,
   });
 
-  const subject = normalizeMailSubject(clean(generated.subject, 220) || renderedSubject);
-  const bodyText = stripTemplateSignatureBlock(clean(generated.body_text, 6000) || renderedBody);
+  let generated = await generateOnce();
+  let generatedSubject = normalizeMailSubject(clean(generated.subject, 220));
+  let generatedBody = stripTemplateSignatureBlock(clean(generated.body_text, 6000));
 
-  return { subject, body_text: bodyText };
+  if (!generatedSubject || generatedBody.length < 80) {
+    generated = await generateOnce(
+      `REPRISE OBLIGATOIRE : la réponse précédente était vide ou incomplète. Retourne uniquement un JSON complet avec subject et body_text. Ne réutilise pas le modèle français par défaut. Respecte strictement la langue finale demandée ci-dessus.`,
+    );
+    generatedSubject = normalizeMailSubject(clean(generated.subject, 220));
+    generatedBody = stripTemplateSignatureBlock(clean(generated.body_text, 6000));
+  }
+
+  if (!generatedSubject || generatedBody.length < 80) {
+    throw new TemplateAiGenerationError("La génération IA n’a pas produit un email complet. Merci de réessayer.", { status: 502 });
+  }
+
+  return { subject: generatedSubject, body_text: generatedBody };
 }

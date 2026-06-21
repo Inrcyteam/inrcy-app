@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import styles from "../../dashboard/dashboard.module.css";
 import b from "./fideliser.module.css";
 import BaseModal from "./components/BaseModal";
@@ -32,6 +32,9 @@ export default function FideliserPage() {
   const [aiConfigurationOpen, setAiConfigurationOpen] = useState(false);
   const [isMobileHeader, setIsMobileHeader] = useState(false);
   const [active, setActive] = useState<ActiveModal>(null);
+  const workflowDraftActionRef = useRef<(() => Promise<void>) | null>(null);
+  const [workflowDraftSaving, setWorkflowDraftSaving] = useState(false);
+  const [workflowDraftMessage, setWorkflowDraftMessage] = useState("");
   const [metrics, setMetrics] = useState<any>(null);
   const [weeklySummary, setWeeklySummary] = useState<WeeklySummary | null>(null);
   const [metricsLoadedOnce, setMetricsLoadedOnce] = useState(false);
@@ -270,6 +273,21 @@ export default function FideliserPage() {
     };
   }, [metrics, weeklySummary]);
 
+  const saveWorkflowDraftFromHeader = useCallback(async () => {
+    if (!workflowDraftActionRef.current || workflowDraftSaving) return;
+    setWorkflowDraftSaving(true);
+    setWorkflowDraftMessage("");
+    try {
+      await workflowDraftActionRef.current();
+    } finally {
+      setWorkflowDraftSaving(false);
+    }
+  }, [workflowDraftSaving]);
+
+  useEffect(() => {
+    if (!active) setWorkflowDraftMessage("");
+  }, [active]);
+
   return (
     <main className={`${styles.page} ${b.page}`}>
 
@@ -373,10 +391,24 @@ export default function FideliserPage() {
       </div>
 
       {active && (
-        <BaseModal title={active === "inform" ? "Informer" : active === "thanks" ? "Suivre" : "Enquêter"} moduleLabel="Module Fidéliser" onClose={requestCloseActiveModal} headerActions={<button type="button" className={`${styles.secondaryBtn} ${styles.aiHeaderBtn}`} onClick={() => setAiConfigurationOpen(true)} aria-label="Configuration IA" title="Configuration IA">IA</button>}>
-          {active === "inform" && <InformerModal styles={styles} onClose={requestCloseActiveModal} onDone={closeActiveModal} />}
-          {active === "thanks" && <SuivreModal styles={styles} onClose={requestCloseActiveModal} onDone={closeActiveModal} />}
-          {active === "satisfaction" && <EnqueterModal styles={styles} onClose={requestCloseActiveModal} onDone={closeActiveModal} />}
+        <BaseModal
+          title={active === "inform" ? "Informer" : active === "thanks" ? "Suivre" : "Enquêter"}
+          moduleLabel="Module Fidéliser"
+          onClose={requestCloseActiveModal}
+          headerStatus={workflowDraftMessage ? <span style={{ fontSize: 12, fontWeight: 800 }}>{workflowDraftMessage}</span> : null}
+          headerStatusMobileHidden
+          headerActions={
+            <>
+              <button type="button" className={`${styles.secondaryBtn} ${styles.aiHeaderBtn}`} onClick={() => setAiConfigurationOpen(true)} aria-label="Configuration IA" title="Configuration IA">IA</button>
+              <button type="button" className={styles.secondaryBtn} onClick={() => void saveWorkflowDraftFromHeader()} disabled={workflowDraftSaving} title="Enregistrer le brouillon" aria-label="Enregistrer le brouillon" style={{ width: 38, minWidth: 38, minHeight: 36, padding: 0, display: "inline-grid", placeItems: "center", fontSize: 18, borderRadius: 999, opacity: workflowDraftSaving ? 0.64 : 1, cursor: workflowDraftSaving ? "wait" : "pointer" }}>
+                {workflowDraftSaving ? "…" : "💾"}
+              </button>
+            </>
+          }
+        >
+          {active === "inform" && <InformerModal styles={styles} onClose={requestCloseActiveModal} onDone={closeActiveModal} saveDraftActionRef={workflowDraftActionRef} onDraftStatusChange={setWorkflowDraftMessage} />}
+          {active === "thanks" && <SuivreModal styles={styles} onClose={requestCloseActiveModal} onDone={closeActiveModal} saveDraftActionRef={workflowDraftActionRef} onDraftStatusChange={setWorkflowDraftMessage} />}
+          {active === "satisfaction" && <EnqueterModal styles={styles} onClose={requestCloseActiveModal} onDone={closeActiveModal} saveDraftActionRef={workflowDraftActionRef} onDraftStatusChange={setWorkflowDraftMessage} />}
         </BaseModal>
       )}
     </main>

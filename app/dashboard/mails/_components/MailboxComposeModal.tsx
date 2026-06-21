@@ -71,6 +71,7 @@ type MailboxComposeModalProps = {
   toast: string | null;
   setToast: React.Dispatch<React.SetStateAction<string | null>>;
   workflowFinalizerKind?: "propulser" | "fideliser" | null;
+  onWorkflowPrevious?: () => void | Promise<void>;
 };
 
 
@@ -150,6 +151,7 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
     toast,
     setToast,
     workflowFinalizerKind = null,
+    onWorkflowPrevious,
   } = props;
 
   const hasComposeWork = React.useMemo(() => {
@@ -868,6 +870,17 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                 </div>
 
                 <div className={styles.composeFooterActions}>
+                  {isWorkflowFinalizer && onWorkflowPrevious ? (
+                    <button
+                      className={styles.btnGhost}
+                      onClick={() => void onWorkflowPrevious()}
+                      type="button"
+                      disabled={sendBusy || attachBusy}
+                      style={{ borderRadius: 16, padding: "12px 16px", fontWeight: 900 }}
+                    >
+                      Précédent
+                    </button>
+                  ) : null}
                   <button className={`${styles.btnPrimary} ${styles.composeSendBtn}`} onClick={() => void requestSend()} type="button" disabled={sendBusy || attachBusy}>
                     {attachBusy ? "Préparation…" : sendBusy ? "Envoi…" : "Envoyer"}
                   </button>

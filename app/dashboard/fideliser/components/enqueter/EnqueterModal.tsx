@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MutableRefObject } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import stylesDash from "../../../dashboard.module.css";
 import { getTemplates, type TemplateDef } from "@/lib/messageTemplates";
 import { useBusinessTemplateContext } from "@/app/dashboard/_hooks/useBusinessTemplateContext";
@@ -10,17 +10,30 @@ import { confirmInrcy } from "@/lib/inrcyDialog";
 import TemplateAttachmentPicker from "@/app/dashboard/_components/TemplateAttachmentPicker";
 import type { ComposeAttachmentRef } from "@/app/dashboard/mails/_lib/mailboxPhase1";
 import { storeWorkflowMailPrefillAttachments } from "@/app/dashboard/_lib/workflowMailPrefillAttachments";
+import { readWorkflowCampaignState, saveWorkflowCampaignDraft, saveWorkflowCampaignState } from "@/app/dashboard/_lib/workflowCampaignState";
+
+const WORKFLOW_KIND = "fideliser" as const;
+const WORKFLOW_ACTION = "satisfaction";
+const WORKFLOW_FOLDER = "enquetes";
+const WORKFLOW_TRACK_TYPE = "satisfaction_mail";
+const WORKFLOW_ATTACHMENT_PREFIX = "fideliser-enqueter";
 
 export default function EnqueterModal({
   styles,
   onClose,
   onDone = onClose,
+  saveDraftActionRef,
+  onDraftStatusChange,
 }: {
   styles: typeof stylesDash;
   onClose: () => void | Promise<void>;
   onDone?: () => void | Promise<void>;
+  saveDraftActionRef?: MutableRefObject<(() => Promise<void>) | null>;
+  onDraftStatusChange?: (message: string) => void;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const restoredWorkflowKeyRef = useRef("");
   const { sectorCategory, profession } = useBusinessTemplateContext();
 
   const templates = useMemo(() => getTemplates("enquetes", undefined, sectorCategory, profession), [sectorCategory, profession]);
@@ -40,6 +53,7 @@ export default function EnqueterModal({
 
   const [subject, setSubject] = useState("");
   useEffect(() => {
+    if (restoredWorkflowKeyRef.current) return;
     if (!categories.length) {
       setSelectedKey("");
       return;
@@ -52,6 +66,7 @@ export default function EnqueterModal({
   const [aiGenerating, setAiGenerating] = useState(false);
   const [aiError, setAiError] = useState("");
   const [attachments, setAttachments] = useState<ComposeAttachmentRef[]>([]);
+  const [workflowDraftId, setWorkflowDraftId] = useState<string | null>(null);
 
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
@@ -65,6 +80,7 @@ export default function EnqueterModal({
 
   useEffect(() => {
     if (!selected) return;
+    if (restoredWorkflowKeyRef.current) return;
     const subj = selected.subject;
     const txt = selected.body;
     setSubject(subj);
@@ -89,6 +105,21 @@ export default function EnqueterModal({
     })();
   }, [selected?.key]);
 
+
+  const restoreKey = searchParams?.get("restore_key") || "";
+
+  useEffect(() => {
+    if (!restoreKey) return;
+    const restored = readWorkflowCampaignState(restoreKey);
+    if (!restored || restored.kind !== WORKFLOW_KIND || restored.action !== WORKFLOW_ACTION) return;
+    restoredWorkflowKeyRef.current = restoreKey;
+    if (restored.templateKey) setSelectedKey(String(restored.templateKey));
+    setSubject(restored.subject || "");
+    setBody(restored.bodyText || "");
+    setBodyHtml(restored.bodyHtml || textToRichMailHtml(restored.bodyText || ""));
+    setAttachments(restored.attachments || []);
+    setWorkflowDraftId(restored.draftId || null);
+  }, [restoreKey]);
 
   const generateAiTemplateContent = async () => {
     if (!selected || aiGenerating) return;
@@ -124,6 +155,52 @@ export default function EnqueterModal({
     }
   };
 
+  const buildCurrentWorkflowState = useCallback((draftId: string | null = workflowDraftId) => ({
+    kind: WORKFLOW_KIND,
+    action: WORKFLOW_ACTION,
+    folder: WORKFLOW_FOLDER,
+    trackKind: WORKFLOW_KIND,
+    trackType: WORKFLOW_TRACK_TYPE,
+    templateKey: selected?.key || selectedKey || null,
+    templateCategory: selected?.category || null,
+    subject,
+    bodyText: body,
+    bodyHtml: bodyHtml || textToRichMailHtml(body),
+    attachments,
+    draftId,
+  }), [attachments, body, bodyHtml, selected?.category, selected?.key, selectedKey, subject, workflowDraftId]);
+
+  const saveCurrentWorkflowDraft = useCallback(async () => {
+    try {
+      const state = buildCurrentWorkflowState();
+      const result = await saveWorkflowCampaignDraft({
+        draftId: state.draftId || null,
+        kind: state.kind,
+        folder: state.folder,
+        trackType: state.trackType,
+        templateKey: state.templateKey,
+        subject: state.subject,
+        bodyText: state.bodyText,
+        bodyHtml: state.bodyHtml,
+        attachments: state.attachments,
+      });
+      const nextDraftId = result.draftId || state.draftId || null;
+      setWorkflowDraftId(nextDraftId);
+      saveWorkflowCampaignState(buildCurrentWorkflowState(nextDraftId), restoreKey || undefined);
+      onDraftStatusChange?.("Brouillon enregistré ✅");
+    } catch (error) {
+      onDraftStatusChange?.(error instanceof Error ? error.message : "Impossible d’enregistrer le brouillon.");
+    }
+  }, [buildCurrentWorkflowState, onDraftStatusChange, restoreKey]);
+
+  useEffect(() => {
+    if (!saveDraftActionRef) return;
+    saveDraftActionRef.current = saveCurrentWorkflowDraft;
+    return () => {
+      if (saveDraftActionRef.current === saveCurrentWorkflowDraft) saveDraftActionRef.current = null;
+    };
+  }, [saveDraftActionRef, saveCurrentWorkflowDraft]);
+
   const onNext = async () => {
     const placeholders = extractTemplatePlaceholders(`${subject}\n${body}`);
     if (placeholders.length > 0) {
@@ -146,12 +223,16 @@ export default function EnqueterModal({
     q.set("prefill_text", body);
     q.set("prefill_html", bodyHtml || textToRichMailHtml(body));
     if (attachments.length > 0) {
-      const attachmentStorageKey = storeWorkflowMailPrefillAttachments(attachments, "fideliser-enqueter");
+      const attachmentStorageKey = storeWorkflowMailPrefillAttachments(attachments, WORKFLOW_ATTACHMENT_PREFIX);
       if (attachmentStorageKey) q.set("prefill_attachments_key", attachmentStorageKey);
       else q.set("prefill_attachments", JSON.stringify(attachments));
     }
     q.set("compose", "1");
     q.set("finalizer", "fideliser");
+    const workflowReturnKey = saveWorkflowCampaignState(buildCurrentWorkflowState(), restoreKey || undefined);
+    q.set("workflow_kind", WORKFLOW_KIND);
+    q.set("workflow_action", WORKFLOW_ACTION);
+    q.set("workflow_return_key", workflowReturnKey);
 
     // IMPORTANT: iNr'Send must only count items that are actually sent.
     // We pass a tracking intent to the composer; it will log the event ONLY after a successful send.
@@ -187,7 +268,7 @@ export default function EnqueterModal({
           <div style={{ display: "flex", alignItems: "stretch", gap: 10, flexWrap: isMobile ? "wrap" : "nowrap" }}>
             <select
               value={selectedKey}
-              onChange={(e) => setSelectedKey(e.target.value)}
+              onChange={(e) => { restoredWorkflowKeyRef.current = ""; setSelectedKey(e.target.value); }}
               aria-label="Choisir un modèle"
               style={{
                 width: '100%',

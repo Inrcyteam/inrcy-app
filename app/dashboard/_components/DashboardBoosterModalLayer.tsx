@@ -327,6 +327,8 @@ export default function DashboardBoosterModalLayer({
         <BaseModal
           title="Publier"
           moduleLabel="Module Booster"
+          titleOnLeftOnMobile
+          hideModuleLabelOnMobile
           onClose={requestClosePublishModal}
           headerHidden={publishEditorOverlayOpen}
           headerStatus={

@@ -16,6 +16,7 @@ import {
   type BoosterRecentPublication,
 } from "@/lib/boosterPrompt";
 import { sanitizeGmbGeneratedPost } from "@/lib/googleBusinessCompliance";
+import { normalizeAiLanguage } from "@/lib/aiWritingProfile";
 import {
   sanitizeBoosterSiteText,
   stripSiteTextFormatting,
@@ -528,7 +529,7 @@ const CHANNEL_LABELS: Record<BoosterChannels, string> = {
   youtube_shorts: "YouTube",
 };
 
-const CHANNEL_BATCH_SIZE = 6;
+const CHANNEL_BATCH_SIZE = 3;
 
 function cleanFallbackText(value: unknown, maxLength = 220) {
   return String(value ?? "")
@@ -745,6 +746,7 @@ function ensureCompleteGeneratedVersions(args: {
   profile: JsonRecord | null;
   business: JsonRecord | null;
   mediaType: "images" | "video";
+  allowLocalFallback: boolean;
 }) {
   const recoveredChannels: BoosterChannels[] = [];
 
@@ -752,6 +754,8 @@ function ensureCompleteGeneratedVersions(args: {
     const current = args.versions[channel];
     const needsFallback = !hasRequiredContent(channel, current);
     if (!needsFallback) continue;
+
+    if (!args.allowLocalFallback) continue;
 
     args.versions[channel] = buildFallbackPost({
       channel,
@@ -807,8 +811,8 @@ Ne copie-colle jamais le même texte. Varie titre, accroche, ordre des idées et
     });
   }
 
-  // Les réseaux sont gardés dans un second lot pour éviter qu'une réponse trop
-  // longue coupe le JSON quand deux contenus site existent.
+  // Les réseaux sont gardés dans des petits lots pour éviter qu'une réponse trop
+  // longue coupe le JSON et force un fallback partiel.
   for (let index = 0; index < socials.length; index += CHANNEL_BATCH_SIZE) {
     batches.push({ channels: socials.slice(index, index + CHANNEL_BATCH_SIZE) });
   }
@@ -853,8 +857,29 @@ async function generateVersionsForChannels(args: {
       }
     } catch {
       // Une erreur OpenAI sur un lot ne doit plus bloquer toute la génération.
-      // Les canaux manquants seront récupérés par le filet de sécurité local.
-      continue;
+      // On retente canal par canal avant tout filet de sécurité pour éviter les contenus partiels.
+      for (const channel of batch.channels) {
+        try {
+          const singleOut = await generateVersions({
+            ...args,
+            channels: [channel],
+            extraInstructions: [
+              batch.extraInstructions,
+              args.extraInstructions,
+              `REPRISE CANAL UNIQUE : génère uniquement ${CHANNEL_LABELS[channel]}. Respecte strictement la langue IA configurée et retourne un JSON complet pour ce canal.`,
+            ]
+              .filter(Boolean)
+              .join("\n\n"),
+          });
+          const singleVersions =
+            singleOut?.versions && typeof singleOut.versions === "object"
+              ? (singleOut.versions as Partial<Record<BoosterChannels, Partial<ChannelPost>>>)
+              : {};
+          if (singleVersions[channel]) versions[channel] = singleVersions[channel];
+        } catch {
+          continue;
+        }
+      }
     }
   }
 
@@ -933,7 +958,7 @@ async function generateVersions(args: {
     maxOutputTokens: computeMaxOutputTokens(args.channels),
     temperature: getCreativityTemperature(args.business),
     timeoutMs: 24_000,
-    retries: 0,
+    retries: 1,
   });
 }
 
@@ -1027,6 +1052,9 @@ const handler = async (req: Request) => {
     const hiddenAngle = pickBoosterHiddenAngle();
     const ideaKeywords = extractIdeaKeywords(idea);
 
+    const aiLanguage = normalizeAiLanguage((business as JsonRecord | null)?.ai_language);
+    const allowLocalFallback = aiLanguage === "fr";
+
     const out = await generateVersionsForChannels({
       idea,
       theme,
@@ -1070,7 +1098,7 @@ const handler = async (req: Request) => {
       new Set([...missingChannels, ...offTopicChannels]),
     );
 
-    if (retryChannels.length && retryChannels.length <= 2) {
+    if (retryChannels.length) {
       const retryOut = await generateVersionsForChannels({
         idea,
         theme,
@@ -1098,7 +1126,8 @@ const handler = async (req: Request) => {
 - Pour chaque canal, title, content et cta doivent être non vides.
 - Le content doit respecter la longueur minimale qualitative du canal : Site iNrCy >= 900 caractères visés, Site web >= 1100, Google Business >= 450, Facebook >= 500, Instagram >= 350, LinkedIn >= 700, TikTok >= 180, YouTube >= 500.
 - Pour un canal site, le content doit être complet, naturel et utile, jamais vide ni résumé en une ligne.
-- Si Site iNrCy et Site web sont présents dans ce lot, ils doivent rester deux variantes distinctes et non deux copies.`,
+- Si Site iNrCy et Site web sont présents dans ce lot, ils doivent rester deux variantes distinctes et non deux copies.
+- Respecte strictement la langue IA configurée : aucun champ ne doit revenir en français si la langue demandée est différente.`,
         ]
           .filter(Boolean)
           .join("\n\n"),
@@ -1127,14 +1156,16 @@ const handler = async (req: Request) => {
         hasRequiredContent(ch, safeVersions[ch]) &&
         !isPostAnchoredToIdea(ideaKeywords, safeVersions[ch]),
     );
-    for (const channel of stillOffTopicChannels) {
-      safeVersions[channel] = buildFallbackPost({
-        channel,
-        idea,
-        profile: (profile ?? null) as JsonRecord | null,
-        business,
-        mediaType,
-      });
+    if (allowLocalFallback) {
+      for (const channel of stillOffTopicChannels) {
+        safeVersions[channel] = buildFallbackPost({
+          channel,
+          idea,
+          profile: (profile ?? null) as JsonRecord | null,
+          business,
+          mediaType,
+        });
+      }
     }
 
     const recoveredChannels = ensureCompleteGeneratedVersions({
@@ -1144,7 +1175,17 @@ const handler = async (req: Request) => {
       profile: (profile ?? null) as JsonRecord | null,
       business,
       mediaType,
+      allowLocalFallback,
     });
+
+    if (!allowLocalFallback) {
+      const incompleteChannels = channels.filter((ch) => !hasRequiredContent(ch, safeVersions[ch]));
+      if (incompleteChannels.length) {
+        throw new Error(
+          `Génération incomplète pour ${incompleteChannels.map((ch) => CHANNEL_LABELS[ch]).join(", ")}.`,
+        );
+      }
+    }
 
     return NextResponse.json({
       versions: safeVersions,

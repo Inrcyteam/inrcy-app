@@ -8,12 +8,16 @@ export default function BaseModal({
   moduleLabel,
   onClose,
   headerActions,
+  headerStatus,
+  headerStatusMobileHidden = false,
   children,
 }: {
   title: string;
   moduleLabel?: string;
   onClose: () => void | Promise<void>;
   headerActions?: React.ReactNode;
+  headerStatus?: React.ReactNode;
+  headerStatusMobileHidden?: boolean;
   children: React.ReactNode;
 }) {
   useEffect(() => {
@@ -120,6 +124,11 @@ export default function BaseModal({
 
             {/* Right actions */}
             <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 8 }}>
+              {headerStatus ? (
+                <div className={styles.modalHeaderStatusDesktop} style={{ minWidth: 0, maxWidth: "min(360px, 42vw)", display: "flex", justifyContent: "flex-end" }}>
+                  {headerStatus}
+                </div>
+              ) : null}
               {headerActions}
               <button
                 type="button"
@@ -131,6 +140,9 @@ export default function BaseModal({
               </button>
             </div>
           </div>
+          {headerStatus && !headerStatusMobileHidden ? (
+            <div className={styles.modalHeaderStatusMobile}>{headerStatus}</div>
+          ) : null}
         </div>
 
         {/* Content scroll */}
@@ -167,6 +179,9 @@ export default function BaseModal({
           >
             {children}
           </div>
+          {headerStatus && !headerStatusMobileHidden ? (
+            <div className={styles.modalHeaderStatusMobile}>{headerStatus}</div>
+          ) : null}
         </div>
       </div>
     </div>

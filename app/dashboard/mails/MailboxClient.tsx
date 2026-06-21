@@ -1,6 +1,7 @@
 "use client";
 
 import { readWorkflowMailPrefillAttachments } from "@/app/dashboard/_lib/workflowMailPrefillAttachments";
+import { saveWorkflowCampaignState } from "@/app/dashboard/_lib/workflowCampaignState";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import styles from "./mails.module.css";
@@ -1284,6 +1285,9 @@ export default function MailboxClient() {
     const raw = String(searchParams?.get("finalizer") || searchParams?.get("workflow_finalizer") || "").toLowerCase();
     return raw === "propulser" || raw === "fideliser" ? raw : null;
   }, [searchParams]);
+
+  const workflowReturnAction = useMemo(() => String(searchParams?.get("workflow_action") || "").trim(), [searchParams]);
+  const workflowReturnKey = useMemo(() => String(searchParams?.get("workflow_return_key") || "").trim(), [searchParams]);
 
   const composeRecipientList = useMemo(() => normalizeEmails(to), [to]);
   const isBulkCampaignCompose = composeRecipientList.length > 1;
@@ -2826,6 +2830,29 @@ async function deleteDraftPermanently(id: string) {
     void openItem(item);
   }
 
+  const handleWorkflowPrevious = useCallback(async () => {
+    if (!workflowFinalizerKind || !workflowReturnAction) return;
+    const nextKey = workflowReturnKey || `${workflowFinalizerKind}_${workflowReturnAction}_${Date.now()}`;
+    const trackType = pendingTrack?.type || String(searchParams?.get("track_type") || "");
+    const trackPayload = (pendingTrack?.payload || {}) as Record<string, any>;
+    saveWorkflowCampaignState({
+      kind: workflowFinalizerKind,
+      action: workflowReturnAction,
+      folder,
+      trackKind: workflowFinalizerKind,
+      trackType,
+      templateKey: composeTemplateKey || String(searchParams?.get("template_key") || "") || null,
+      templateCategory: trackPayload.template_category || null,
+      subject,
+      bodyText: text,
+      bodyHtml: html || textToRichMailHtml(text),
+      attachments: composeAttachments,
+      draftId: draftId || null,
+    }, nextKey);
+    setComposeOpen(false);
+    router.push(`/dashboard/${workflowFinalizerKind}?action=${encodeURIComponent(workflowReturnAction)}&restore_key=${encodeURIComponent(nextKey)}`);
+  }, [composeAttachments, composeTemplateKey, draftId, folder, html, pendingTrack, router, searchParams, subject, text, workflowFinalizerKind, workflowReturnAction, workflowReturnKey]);
+
   return (
     <div className={styles.page}>
       <PublishAiConfigurationDrawer
@@ -3064,6 +3091,7 @@ async function deleteDraftPermanently(id: string) {
           toast={toast}
           setToast={setToast}
           workflowFinalizerKind={workflowFinalizerKind}
+          onWorkflowPrevious={workflowFinalizerKind && workflowReturnAction ? handleWorkflowPrevious : undefined}
         />
 
         {campaignDistributionNotice ? (
