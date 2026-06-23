@@ -980,6 +980,7 @@ const setPanelError = useCallback((kind: "facebook" | "instagram" | "linkedin" |
           linkedin: Boolean(linkedinAccountConnected && linkedinConnectionStatus !== "needs_update"),
           // TikTok est compté uniquement quand la vraie connexion OAuth est active.
           tiktok: Boolean(tiktokConnected),
+          youtube_shorts: Boolean(youtubeShortsConnected),
         },
         { maxMultiplier: 7 }
       ),
@@ -1003,6 +1004,7 @@ const setPanelError = useCallback((kind: "facebook" | "instagram" | "linkedin" |
       linkedinAccountConnected,
       linkedinConnectionStatus,
       tiktokConnected,
+      youtubeShortsConnected,
       gmbConnectionStatus,
     ]
   );
@@ -1424,18 +1426,20 @@ const activityCompleted = !activityIncomplete;
 const sitePowerLinkConnected = hasSiteInrcyUrl || hasSiteWebUrl;
 const sitePowerGa4Connected = (hasSiteInrcyUrl && siteInrcyGa4Connected) || (hasSiteWebUrl && siteWebGa4Connected);
 const sitePowerGscConnected = (hasSiteInrcyUrl && siteInrcyGscConnected) || (hasSiteWebUrl && siteWebGscConnected);
+const videoPowerConnected = Boolean(tiktokConnected || youtubeShortsConnected);
 
 const generatorPowerSteps = [
   { key: "profile", label: "Compléter mon profil", shortLabel: "Profil", weight: 10, completed: profileCompleted },
   { key: "activity", label: "Compléter mon activité", shortLabel: "Activité", weight: 10, completed: activityCompleted },
-  { key: "site_link", label: "Connecter un site internet", shortLabel: "Site internet", weight: 12, completed: sitePowerLinkConnected },
+  { key: "site_link", label: "Connecter un site internet", shortLabel: "Site internet", weight: 10, completed: sitePowerLinkConnected },
   { key: "site_ga4", label: "Brancher GA4", shortLabel: "GA4", weight: 5, completed: sitePowerGa4Connected },
   { key: "site_gsc", label: "Brancher GSC", shortLabel: "GSC", weight: 5, completed: sitePowerGscConnected },
-  { key: "gmb", label: "Connecter Google Business", shortLabel: "Google Business", weight: 22, completed: gmbConnected && gmbConnectionStatus !== "needs_update" },
-  { key: "facebook", label: "Connecter Facebook", shortLabel: "Facebook", weight: 11, completed: facebookPageConnected && facebookConnectionStatus !== "needs_update" },
-  { key: "instagram", label: "Connecter Instagram", shortLabel: "Instagram", weight: 11, completed: instagramConnected && instagramConnectionStatus !== "needs_update" },
-  { key: "linkedin", label: "Connecter LinkedIn", shortLabel: "LinkedIn", weight: 8, completed: linkedinConnected && linkedinConnectionStatus !== "needs_update" },
-  { key: "mails", label: "Connecter Mails", shortLabel: "Mails", weight: 6, completed: mailAccountsConnectedCount > 0 },
+  { key: "gmb", label: "Connecter Google Business", shortLabel: "Google Business", weight: 20, completed: gmbConnected && gmbConnectionStatus !== "needs_update" },
+  { key: "facebook", label: "Connecter Facebook", shortLabel: "Facebook", weight: 10, completed: facebookPageConnected && facebookConnectionStatus !== "needs_update" },
+  { key: "instagram", label: "Connecter Instagram", shortLabel: "Instagram", weight: 10, completed: instagramConnected && instagramConnectionStatus !== "needs_update" },
+  { key: "linkedin", label: "Connecter LinkedIn", shortLabel: "LinkedIn", weight: 7, completed: linkedinConnected && linkedinConnectionStatus !== "needs_update" },
+  { key: "mails", label: "Connecter Mails", shortLabel: "Mails", weight: 5, completed: mailAccountsConnectedCount > 0 },
+  { key: "video", label: "Connecter TikTok ou YouTube", shortLabel: "TikTok / YouTube", weight: 8, completed: videoPowerConnected },
 ] as const;
 
 const computedGeneratorPower = generatorPowerSteps.reduce((sum, step) => sum + (step.completed ? step.weight : 0), 0);
@@ -2679,6 +2683,8 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     facebookPageConnected ||
     instagramConnected ||
     linkedinConnected ||
+    tiktokConnected ||
+    youtubeShortsConnected ||
     mailAccountsConnectedCount > 0
   );
   const generatorIsActive = !siteConnectionsReady && displayedGeneratorIsActive !== null
@@ -3207,4 +3213,3 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     </main>
   );
 }
-

@@ -88,7 +88,7 @@ async function getTurboMultiplier(supabase: TurboSupabaseLike, userId: string) {
       .from("integrations")
       .select("provider,status,resource_id,source,product")
       .eq("user_id", userId)
-      .in("provider", ["google", "facebook", "instagram", "linkedin"]),
+      .in("provider", ["google", "facebook", "instagram", "linkedin", "tiktok", "youtube"]),
   ]);
 
   const profile = (profileRes.data ?? {}) as TurboProfileRow;
@@ -116,7 +116,8 @@ async function getTurboMultiplier(supabase: TurboSupabaseLike, userId: string) {
     facebook: rows.some((r) => r.provider === "facebook" && r.status === "connected" && !!r.resource_id),
     instagram: rows.some((r) => r.provider === "instagram" && r.status === "connected" && !!r.resource_id),
     linkedin: rows.some((r) => r.provider === "linkedin" && r.status === "connected"),
-    tiktok: false,
+    tiktok: rows.some((r) => r.provider === "tiktok" && r.status === "connected"),
+    youtube_shorts: rows.some((r) => r.provider === "youtube" && r.status === "connected" && r.source === "youtube_shorts" && r.product === "youtube_shorts"),
   };
 
   return computeInertiaSnapshot(channels, { maxMultiplier: 7 }).multiplier;

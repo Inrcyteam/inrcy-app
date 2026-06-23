@@ -6,12 +6,13 @@ export type InertiaChannels = {
   instagram: boolean;
   linkedin: boolean;
   tiktok: boolean;
+  youtube_shorts: boolean;
 };
 
 export type InertiaSnapshot = {
-  /** total connected channels (0..7) */
+  /** total connected channels (0..8) */
   connectedCount: number;
-  /** total available channels (always 7 for now) */
+  /** total available channels (always 8 for now) */
   totalChannels: number;
   /** additive bonus sum (connected channels only) */
   bonus: number;
@@ -23,7 +24,7 @@ export type InertiaSnapshot = {
   breakdown: Array<{ key: keyof InertiaChannels; label: string; bonus: number; connected: boolean }>;
 };
 
-const TOTAL_CHANNELS = 7;
+const TOTAL_CHANNELS = 8;
 
 /**
  * Barème — 2026-03
@@ -35,6 +36,7 @@ const BONUS: Record<keyof InertiaChannels, number> = {
   instagram: 0.5,
   linkedin: 0.5,
   tiktok: 0.5,
+  youtube_shorts: 0.5,
   gmb: 1,
   site_web: 1,
   site_inrcy: 2.5,
@@ -48,6 +50,7 @@ const LABELS: Record<keyof InertiaChannels, string> = {
   instagram: "Instagram",
   linkedin: "LinkedIn",
   tiktok: "TikTok",
+  youtube_shorts: "YouTube",
 };
 
 export function computeInertiaSnapshot(

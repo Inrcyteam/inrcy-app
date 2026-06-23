@@ -30,7 +30,7 @@ export const CONNECTION_REQUIRED_VERSIONS: Record<ConnectionKind, number> = {
   "channel:facebook": 1,
   "channel:instagram": 1,
   "channel:linkedin": 1,
-  "channel:tiktok": 1,
+  "channel:tiktok": 2,
   "channel:youtube_shorts": 1,
 };
 
