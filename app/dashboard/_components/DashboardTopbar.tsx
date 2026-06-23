@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, type Dispatch, type RefObject, type SetStateAction } from "react";
+import { useCallback, useEffect, useState, type Dispatch, type RefObject, type SetStateAction } from "react";
 import { useRouter } from "next/navigation";
 
 import styles from "../dashboard.module.css";
@@ -130,7 +130,37 @@ export default function DashboardTopbar({
   setMenuOpen,
 }: DashboardTopbarProps) {
   const router = useRouter();
-  const agentTitle = inrAgentEnabled ? "Ouvrir iNr'Agent" : "iNr'Agent est désactivé dans les accès du compte";
+  const [pendingInrAgentCount, setPendingInrAgentCount] = useState(0);
+
+  const refreshPendingInrAgentCount = useCallback(async () => {
+    if (!inrAgentEnabled) {
+      setPendingInrAgentCount(0);
+      return;
+    }
+
+    try {
+      const response = await fetch("/api/agent/actions/pending-count", {
+        credentials: "include",
+        cache: "no-store",
+      });
+      if (!response.ok) return;
+
+      const payload = await response.json().catch(() => null) as { count?: unknown } | null;
+      const nextCount = Number(payload?.count ?? 0);
+      setPendingInrAgentCount(
+        Number.isFinite(nextCount) && nextCount > 0 ? Math.round(nextCount) : 0,
+      );
+    } catch {
+      // Le badge ne doit jamais bloquer le dashboard.
+    }
+  }, [inrAgentEnabled]);
+
+  const pendingInrAgentLabel = pendingInrAgentCount > 99 ? "99+" : String(pendingInrAgentCount);
+  const agentTitle = inrAgentEnabled
+    ? pendingInrAgentCount > 0
+      ? `Ouvrir iNr'Agent — ${pendingInrAgentLabel} action${pendingInrAgentCount > 1 ? "s" : ""} à valider`
+      : "Ouvrir iNr'Agent"
+    : "iNr'Agent est désactivé dans les accès du compte";
 
   useEffect(() => {
     if (!inrAgentEnabled) return;
@@ -138,6 +168,34 @@ export default function DashboardTopbar({
     router.prefetch(INR_AGENT_ROUTE);
     preloadInrAgentImages();
   }, [inrAgentEnabled, router]);
+
+  useEffect(() => {
+    refreshPendingInrAgentCount();
+
+    if (!inrAgentEnabled || typeof window === "undefined") return;
+
+    const handleVisible = () => {
+      if (document.visibilityState === "visible") {
+        void refreshPendingInrAgentCount();
+      }
+    };
+    const handleFocus = () => void refreshPendingInrAgentCount();
+    const handleAgentActionsChanged = () => void refreshPendingInrAgentCount();
+    const interval = window.setInterval(() => {
+      void refreshPendingInrAgentCount();
+    }, 60_000);
+
+    window.addEventListener("focus", handleFocus);
+    window.addEventListener("inrcy:agent-actions-changed", handleAgentActionsChanged);
+    document.addEventListener("visibilitychange", handleVisible);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", handleFocus);
+      window.removeEventListener("inrcy:agent-actions-changed", handleAgentActionsChanged);
+      document.removeEventListener("visibilitychange", handleVisible);
+    };
+  }, [inrAgentEnabled, refreshPendingInrAgentCount]);
 
   const warmInrAgent = () => {
     if (!inrAgentEnabled) return;
@@ -228,6 +286,11 @@ export default function DashboardTopbar({
             />
           </span>
           iNr'Agent
+          {pendingInrAgentCount > 0 && (
+            <span className={styles.agentTopbarBadge} aria-hidden="true">
+              {pendingInrAgentLabel}
+            </span>
+          )}
         </button>
 
         <button
@@ -325,6 +388,11 @@ export default function DashboardTopbar({
               aria-hidden
             />
           </span>
+          {pendingInrAgentCount > 0 && (
+            <span className={styles.mobileHeaderAgentBadge} aria-hidden="true">
+              {pendingInrAgentLabel}
+            </span>
+          )}
         </button>
 
         <button

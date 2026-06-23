@@ -7,6 +7,7 @@ export const runtime = "nodejs";
 
 const AUTOMATION_KEYS: InrAgentAutomationKey[] = ["publish", "grow", "loyalty", "stats"];
 const OPEN_ACTION_STATUSES = ["prepared", "pending_validation", "pending", "draft", "scheduled", "validated", "executing"];
+const CAMPAIGN_BLOCKING_ACTION_STATUSES = ["scheduled", "validated", "executing"];
 const AUTOMATION_SELECT = "user_id, automation_key, enabled, frequency, day_of_week, time, next_run_at, last_prepared_at, last_executed_at, metadata";
 
 type AutomationRow = {
@@ -191,12 +192,15 @@ function dedupeSince(row: AutomationRow, now: Date) {
 
 async function hasOpenPreparedAction(row: AutomationRow, now: Date) {
   if (row.automation_key === "stats") return false;
+  const statuses = row.automation_key === "grow" || row.automation_key === "loyalty"
+    ? CAMPAIGN_BLOCKING_ACTION_STATUSES
+    : OPEN_ACTION_STATUSES;
   const { data, error } = await supabaseAdmin
     .from("inr_agent_actions")
     .select("id")
     .eq("user_id", row.user_id)
     .eq("automation_key", row.automation_key)
-    .in("status", OPEN_ACTION_STATUSES)
+    .in("status", statuses)
     .gte("created_at", dedupeSince(row, now))
     .limit(1);
 

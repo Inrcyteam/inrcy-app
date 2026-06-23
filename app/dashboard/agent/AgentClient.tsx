@@ -1424,8 +1424,10 @@ export default function AgentClient() {
   const [campaignEditOpen, setCampaignEditOpen] = useState(false);
   const [mailTextEditOpen, setMailTextEditOpen] = useState(false);
   const [attachmentPreviewOpen, setAttachmentPreviewOpen] = useState(false);
+  const [campaignDraftConfirmOpen, setCampaignDraftConfirmOpen] = useState(false);
   const [campaignTextDraft, setCampaignTextDraft] = useState({ subject: "", body: "" });
   const [campaignSaveState, setCampaignSaveState] = useState<"idle" | "saving">("idle");
+  const [campaignDraftSaveState, setCampaignDraftSaveState] = useState<"idle" | "saving">("idle");
 
 
   useEffect(() => {
@@ -1728,6 +1730,51 @@ export default function AgentClient() {
       );
     } finally {
       setCampaignSaveState("idle");
+    }
+  }
+
+
+  async function saveCampaignAsDraft() {
+    if (!selectedPreparedAction || campaignDraftSaveState === "saving") return;
+
+    setCampaignDraftSaveState("saving");
+    setNotice(null);
+
+    try {
+      const response = await fetch("/api/agent/actions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actionId: selectedPreparedAction.id,
+          editType: "save_campaign_draft",
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        action?: AgentPreparedAction;
+        draftId?: string | null;
+        error?: string;
+      } | null;
+
+      if (!response.ok || !payload?.action) {
+        throw new Error(payload?.error || "Enregistrement du brouillon impossible.");
+      }
+
+      const updatedAction = payload.action;
+      setActions((current) =>
+        current.map((action) =>
+          action.id === updatedAction.id ? updatedAction : action,
+        ),
+      );
+      setCampaignDraftConfirmOpen(false);
+      showNotice("Campagne enregistrée en brouillon dans iNrSend.");
+    } catch (error) {
+      showNotice(
+        error instanceof Error
+          ? error.message
+          : "Enregistrement du brouillon impossible.",
+      );
+    } finally {
+      setCampaignDraftSaveState("idle");
     }
   }
 
@@ -2646,6 +2693,17 @@ export default function AgentClient() {
                   {isCampaignView && (
                     <button
                       type="button"
+                      className={styles.saveCampaignDraftButton}
+                      disabled={!hasPreparedAction || actionMutationState === "saving" || campaignDraftSaveState === "saving"}
+                      onClick={() => setCampaignDraftConfirmOpen(true)}
+                    >
+                      <span aria-hidden>💾</span>
+                      Enregistrer
+                    </button>
+                  )}
+                  {isCampaignView && (
+                    <button
+                      type="button"
                       className={styles.modifyCampaignButton}
                       disabled={!hasPreparedAction || actionMutationState === "saving"}
                       onClick={() => setCampaignEditOpen(true)}
@@ -2682,6 +2740,68 @@ export default function AgentClient() {
           </div>
         </div>
       </section>
+
+      {campaignDraftConfirmOpen && campaignMailPreview && (
+        <div
+          className={styles.modalBackdrop}
+          role="presentation"
+          onClick={() => {
+            if (campaignDraftSaveState !== "saving") setCampaignDraftConfirmOpen(false);
+          }}
+        >
+          <section
+            className={`${styles.settingsModal} ${styles.campaignDraftModal}`}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Enregistrer la campagne en brouillon"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className={styles.modalClose}
+              onClick={() => setCampaignDraftConfirmOpen(false)}
+              aria-label="Fermer"
+              disabled={campaignDraftSaveState === "saving"}
+            >
+              ×
+            </button>
+            <p className={styles.modalEyebrow}>Brouillon iNrSend</p>
+            <h2>Enregistrer cette campagne ?</h2>
+            <div className={styles.campaignDraftNotice}>
+              <span aria-hidden>💾</span>
+              <div>
+                <strong>La campagne va être enregistrée en brouillon dans iNrSend.</strong>
+                <p>
+                  Vous pourrez la retrouver plus tard, puis la rééditer directement dans
+                  {selected.key === "loyalty" ? " Fidéliser" : " Propulser"}. Elle ne sera pas envoyée maintenant.
+                </p>
+              </div>
+            </div>
+            <div className={styles.campaignDraftSummary}>
+              <small>Objet</small>
+              <strong>{campaignMailPreview.subject || "—"}</strong>
+              <small>Destinataires prévus</small>
+              <strong>{campaignMailPreview.recipientsCount} contact{campaignMailPreview.recipientsCount > 1 ? "s" : ""}</strong>
+            </div>
+            <div className={styles.modalActions}>
+              <button
+                type="button"
+                onClick={() => setCampaignDraftConfirmOpen(false)}
+                disabled={campaignDraftSaveState === "saving"}
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={saveCampaignAsDraft}
+                disabled={campaignDraftSaveState === "saving"}
+              >
+                {campaignDraftSaveState === "saving" ? "Enregistrement..." : "Enregistrer en brouillon"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
 
       {campaignEditOpen && campaignMailPreview && (
         <div

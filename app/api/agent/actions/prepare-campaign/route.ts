@@ -18,6 +18,10 @@ import {
 } from "@/lib/inrAgentSettings";
 import { rowToInrAgentAction } from "@/lib/inrAgentActions";
 import { generateTemplateAiContent, TemplateAiGenerationError } from "@/lib/templateAiGeneration";
+import { buildInrAgentCampaignValidationEmail } from "@/lib/inrAgentCampaignValidationEmail";
+import { getInrcyBrandInlineAttachments } from "@/lib/txEmailAssets";
+import { sendTxMail } from "@/lib/txMailer";
+import { optionalEnv } from "@/lib/env";
 
 export const maxDuration = 120;
 export const runtime = "nodejs";
@@ -355,11 +359,329 @@ function buildSummary(args: {
   return `${toolLabel} · ${args.mission} préparé depuis le modèle “${args.templateTitle}” avec ${args.recipients.length} destinataire${args.recipients.length > 1 ? "s" : ""} CRM via ${args.accountLabel}.`;
 }
 
+function getAppOrigin() {
+  return optionalEnv(
+    "NEXT_PUBLIC_APP_URL",
+    optionalEnv("NEXT_PUBLIC_SITE_URL", "https://app.inrcy.com"),
+  ).replace(/\/$/, "");
+}
+
+function hasTransactionalSmtpConfig() {
+  return Boolean(
+    optionalEnv("TX_SMTP_HOST") &&
+      optionalEnv("TX_SMTP_PORT") &&
+      optionalEnv("TX_SMTP_USER") &&
+      optionalEnv("TX_SMTP_PASS"),
+  );
+}
+
+function getProfileContactEmail(profile: JsonRecord | null, fallback?: string | null) {
+  return (
+    cleanEmail(profile?.contact_email) ||
+    cleanEmail(profile?.admin_email) ||
+    cleanEmail(profile?.email) ||
+    cleanEmail(fallback)
+  );
+}
+
+async function getNotificationPreferences(userId: string) {
+  const { data, error } = await supabaseAdmin
+    .from("notification_preferences")
+    .select("in_app_enabled,email_enabled,action_enabled")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) {
+    console.warn("agent/prepare-campaign notification preferences", error);
+    return { inAppEnabled: true, emailEnabled: true, actionEnabled: true };
+  }
+
+  const row = asRecord(data);
+  return {
+    inAppEnabled: row?.in_app_enabled !== false,
+    emailEnabled: row?.email_enabled !== false,
+    actionEnabled: row?.action_enabled !== false,
+  };
+}
+
+type CampaignPreparedNotificationResult = {
+  emailSent: boolean;
+  emailSkippedReason: string | null;
+};
+
+async function notifyCampaignPrepared(args: {
+  userId: string;
+  userEmail?: string | null;
+  actionId: string;
+  automationKey: CampaignAutomationKey;
+  missionLabel: string;
+  campaignSubject: string;
+  campaignBody: string;
+  recipientsCount: number;
+  accountLabel: string;
+  profile: JsonRecord | null;
+  movedDraftsCount: number;
+  now: string;
+}): Promise<CampaignPreparedNotificationResult> {
+  const preferences = await getNotificationPreferences(args.userId);
+  const automationLabel = args.automationKey === "loyalty" ? "Fidéliser" : "Propulser";
+  const actionUrl = `${getAppOrigin()}/dashboard/agent?action=${encodeURIComponent(args.actionId)}&automation=${encodeURIComponent(args.automationKey)}`;
+
+  let emailSent = false;
+  let emailSkippedReason: string | null = null;
+  if (!preferences.emailEnabled || !preferences.actionEnabled) {
+    emailSkippedReason = "notification_preferences_disabled";
+  } else if (!hasTransactionalSmtpConfig()) {
+    emailSkippedReason = "tx_smtp_not_configured";
+  } else {
+    const to = getProfileContactEmail(args.profile, args.userEmail);
+    if (!to) {
+      emailSkippedReason = "missing_pro_email";
+    } else {
+      try {
+        const mail = buildInrAgentCampaignValidationEmail({
+          firstName: cleanText(args.profile?.first_name, 80),
+          companyName: cleanText(
+            args.profile?.company_legal_name || args.profile?.company_name,
+            160,
+          ),
+          automationLabel,
+          missionLabel: args.missionLabel,
+          campaignSubject: args.campaignSubject,
+          campaignBody: args.campaignBody,
+          recipientCount: args.recipientsCount,
+          accountLabel: args.accountLabel,
+          ctaUrl: actionUrl,
+          movedPreviousDrafts: args.movedDraftsCount,
+        });
+        await sendTxMail({
+          to,
+          subject: mail.subject,
+          text: mail.text,
+          html: mail.html,
+          attachments: await getInrcyBrandInlineAttachments(),
+        });
+        emailSent = true;
+      } catch (error) {
+        emailSkippedReason = "send_failed";
+        console.warn("agent/prepare-campaign validation email", error);
+      }
+    }
+  }
+
+  return { emailSent, emailSkippedReason };
+}
+
+const DRAFTABLE_CAMPAIGN_ACTION_STATUSES = [
+  "prepared",
+  "pending_validation",
+  "pending",
+  "draft",
+];
+
+function isMissingDraftMetadataColumn(error: { code?: string; message?: string; details?: string; hint?: string } | null | undefined) {
+  const msg = String(error?.message || error?.details || error?.hint || "").toLowerCase();
+  return (
+    error?.code === "PGRST204" ||
+    msg.includes("folder") ||
+    msg.includes("track_kind") ||
+    msg.includes("track_type") ||
+    msg.includes("template_key") ||
+    msg.includes("attachments")
+  );
+}
+
+function cleanDraftAttachment(item: unknown) {
+  const record = asRecord(item);
+  if (!record) return null;
+
+  const bucket = cleanText(record.bucket, 120);
+  const path = cleanText(record.path || record.storagePath || record.storage_path, 500);
+  if (!bucket || !path) return null;
+
+  return {
+    bucket,
+    path,
+    name: cleanText(record.name || record.filename || record.fileName, 240) || path.split("/").pop() || "piece-jointe",
+    type: cleanText(record.type || record.mimeType || record.mime_type, 140) || "application/octet-stream",
+    size: typeof record.size === "number" && Number.isFinite(record.size) ? record.size : null,
+  };
+}
+
+function cleanDraftAttachments(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value.map(cleanDraftAttachment).filter(Boolean).slice(0, 10);
+}
+
+function recipientsToEmails(value: unknown) {
+  const recipients = Array.isArray(value) ? value : [];
+  const seen = new Set<string>();
+  const emails: string[] = [];
+
+  for (const item of recipients) {
+    const record = asRecord(item);
+    const email = cleanEmail(record?.email || item);
+    if (!email || seen.has(email)) continue;
+    seen.add(email);
+    emails.push(email);
+  }
+
+  return emails;
+}
+
+function buildDraftPayloadFromAction(args: {
+  actionRow: JsonRecord;
+  userId: string;
+  automationKey: CampaignAutomationKey;
+}) {
+  const { actionRow, automationKey } = args;
+  const action = rowToInrAgentAction(actionRow as any);
+  const payload = action.payload || {};
+  const mailAccount = asRecord(payload.mailAccount) || {};
+  const recipients = recipientsToEmails(payload.recipients || action.recipients);
+  const subject = normalizeMailSubject(
+    cleanText(payload.campaignSubject || payload.subject || action.title, 220) ||
+      "(sans objet)",
+  );
+  const bodyText = cleanText(
+    payload.campaignBody || payload.bodyText || payload.text || action.previewText,
+    6000,
+  );
+  const bodyHtml = cleanText(payload.bodyHtml || payload.html, 10000) || textToRichMailHtml(bodyText);
+  const folder =
+    cleanText(payload.folder, 80) ||
+    (automationKey === "loyalty" ? "fidelisations" : "propulsions");
+  const trackKind =
+    cleanText(payload.trackKind, 80) ||
+    (automationKey === "loyalty" ? "fideliser" : "propulser");
+  const trackType = cleanText(payload.trackType || payload.theme || action.targetThemes[0], 80);
+  const templateKey = cleanText(payload.templateKey, 160);
+  const accountId = cleanText(payload.accountId || payload.mailAccountId || mailAccount.id, 120);
+  const provider = cleanText(mailAccount.provider || payload.provider || payload.mailProvider, 80);
+
+  const draftPayload = {
+    user_id: args.userId,
+    integration_id: accountId || null,
+    type: "mail",
+    status: "draft",
+    to_emails: recipients.join("; "),
+    subject,
+    body_text: bodyText || null,
+    body_html: bodyHtml || null,
+    provider: provider || null,
+    source_doc_save_id: null,
+    source_doc_type: null,
+    source_doc_number: null,
+    folder,
+    track_kind: trackKind,
+    track_type: trackType || null,
+    template_key: templateKey || null,
+    attachments: cleanDraftAttachments(payload.attachments),
+  };
+
+  const legacyPayload = {
+    user_id: draftPayload.user_id,
+    integration_id: draftPayload.integration_id,
+    type: draftPayload.type,
+    status: draftPayload.status,
+    to_emails: draftPayload.to_emails,
+    subject: draftPayload.subject,
+    body_text: draftPayload.body_text,
+    body_html: draftPayload.body_html,
+    provider: draftPayload.provider,
+    source_doc_save_id: draftPayload.source_doc_save_id,
+    source_doc_type: draftPayload.source_doc_type,
+    source_doc_number: draftPayload.source_doc_number,
+  };
+
+  return { action, payload, draftPayload, legacyPayload };
+}
+
+async function movePendingCampaignActionsToInrSendDrafts(args: {
+  userId: string;
+  automationKey: CampaignAutomationKey;
+  now: string;
+}) {
+  const { data, error } = await supabaseAdmin
+    .from("inr_agent_actions")
+    .select(ACTION_SELECT)
+    .eq("user_id", args.userId)
+    .eq("automation_key", args.automationKey)
+    .in("status", DRAFTABLE_CAMPAIGN_ACTION_STATUSES)
+    .order("created_at", { ascending: true })
+    .limit(20);
+
+  if (error) {
+    throw new Error(error.message || "Lecture des campagnes iNr’Agent en attente impossible.");
+  }
+
+  const rows = Array.isArray(data) ? data : [];
+  const movedDrafts: Array<{ actionId: string; draftId: string | null }> = [];
+
+  for (const row of rows) {
+    const { action, payload, draftPayload, legacyPayload } = buildDraftPayloadFromAction({
+      actionRow: row as JsonRecord,
+      userId: args.userId,
+      automationKey: args.automationKey,
+    });
+
+    let { data: draft, error: draftError } = await supabaseAdmin
+      .from("send_items")
+      .insert(draftPayload as any)
+      .select("id")
+      .single();
+
+    if (draftError && isMissingDraftMetadataColumn(draftError)) {
+      const legacyInsert = await supabaseAdmin
+        .from("send_items")
+        .insert(legacyPayload)
+        .select("id")
+        .single();
+      draft = legacyInsert.data;
+      draftError = legacyInsert.error;
+    }
+
+    if (draftError) {
+      throw new Error(draftError.message || "Impossible de conserver l’ancienne campagne en brouillon iNrSend.");
+    }
+
+    const draftId = cleanText((draft as JsonRecord | null)?.id, 120) || null;
+    const { error: updateError } = await supabaseAdmin
+      .from("inr_agent_actions")
+      .update({
+        status: "cancelled",
+        completed_at: args.now,
+        last_error: null,
+        summary: `${action.summary} Ancienne proposition conservée en brouillon dans iNrSend.`,
+        payload: {
+          ...payload,
+          movedToInrSendDraft: {
+            ok: true,
+            draftId,
+            movedAt: args.now,
+            reason: "new_automatic_campaign_generation",
+          },
+        },
+        updated_at: args.now,
+      })
+      .eq("id", action.id)
+      .eq("user_id", args.userId);
+
+    if (updateError) {
+      throw new Error(updateError.message || "Impossible d’archiver l’ancienne action iNr’Agent.");
+    }
+
+    movedDrafts.push({ actionId: action.id, draftId });
+  }
+
+  return movedDrafts;
+}
+
 export async function POST(request: Request) {
   const context = await resolveInrAgentActionRequest(request);
   if (context.errorResponse) return context.errorResponse;
 
-  const { supabase, userId, isCron } = context;
+  const { supabase, user, userId, isCron } = context;
   const body = context.body as {
     automationKey?: unknown;
   } | null;
@@ -480,6 +802,26 @@ export async function POST(request: Request) {
   }
 
   const now = new Date().toISOString();
+  let movedDrafts: Array<{ actionId: string; draftId: string | null }> = [];
+  try {
+    movedDrafts = await movePendingCampaignActionsToInrSendDrafts({
+      userId,
+      automationKey,
+      now,
+    });
+  } catch (error) {
+    console.error("agent/prepare-campaign move pending draft", error);
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "Impossible de conserver l’ancienne campagne en brouillon iNrSend.",
+      },
+      { status: 500 },
+    );
+  }
+
   const bodyHtml = textToRichMailHtml(generated.bodyText);
   const title = `Campagne ${themeConfig.label} prête`;
   const summary = buildSummary({
@@ -560,6 +902,7 @@ export async function POST(request: Request) {
         templateKey: template.key,
         recipientCount: recipients.length,
         signatureAutomatic,
+        movedPreviousDrafts: movedDrafts.length,
       },
       created_at: now,
       updated_at: now,
@@ -583,8 +926,28 @@ export async function POST(request: Request) {
     .eq("user_id", userId)
     .eq("automation_key", automationKey);
 
+  const actionId = cleanText((inserted as JsonRecord | null)?.id, 120);
+  const notification = actionId
+    ? await notifyCampaignPrepared({
+        userId,
+        userEmail: user.email,
+        actionId,
+        automationKey,
+        missionLabel: themeConfig.label,
+        campaignSubject: generated.subject,
+        campaignBody: generated.bodyText,
+        recipientsCount: recipients.length,
+        accountLabel: mailAccount.label,
+        profile,
+        movedDraftsCount: movedDrafts.length,
+        now,
+      })
+    : { emailSent: false, emailSkippedReason: "missing_action_id" };
+
   return NextResponse.json({
     action: rowToInrAgentAction(inserted as any),
     prepared: true,
+    movedDrafts,
+    notification,
   });
 }

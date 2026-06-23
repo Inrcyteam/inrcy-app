@@ -720,6 +720,72 @@ export default function MailboxClient() {
       .filter(Boolean) as ComposeAttachmentRef[];
   }
 
+
+  function workflowDraftTargetFromSendItem(item: OutboxItem, raw: Record<string, any>) {
+    const trackKind = String(raw.track_kind || item.module || "").trim().toLowerCase();
+    const trackType = String(raw.track_type || "").trim().toLowerCase();
+    const folderName = String(raw.folder || item.folder || "").trim().toLowerCase();
+    const workflowAction = String((item as any).workflowAction || "").trim().toLowerCase();
+
+    const byTrackType: Record<string, { kind: "propulser" | "fideliser"; action: string; folder: string; trackType: string }> = {
+      valorize: { kind: "propulser", action: "valorize", folder: "propulsions", trackType: "valorize" },
+      review_mail: { kind: "propulser", action: "reviews", folder: "propulsions", trackType: "review_mail" },
+      promo_mail: { kind: "propulser", action: "promo", folder: "propulsions", trackType: "promo_mail" },
+      newsletter_mail: { kind: "fideliser", action: "inform", folder: "fidelisations", trackType: "newsletter_mail" },
+      thanks_mail: { kind: "fideliser", action: "thanks", folder: "fidelisations", trackType: "thanks_mail" },
+      satisfaction_mail: { kind: "fideliser", action: "satisfaction", folder: "fidelisations", trackType: "satisfaction_mail" },
+    };
+
+    const byWorkflowAction: Record<string, { kind: "propulser" | "fideliser"; action: string; folder: string; trackType: string }> = {
+      valoriser: byTrackType.valorize,
+      recolter: byTrackType.review_mail,
+      offrir: byTrackType.promo_mail,
+      informer: byTrackType.newsletter_mail,
+      suivre: byTrackType.thanks_mail,
+      enqueter: byTrackType.satisfaction_mail,
+    };
+
+    const byLegacyFolder: Record<string, { kind: "propulser" | "fideliser"; action: string; folder: string; trackType: string }> = {
+      recoltes: byTrackType.review_mail,
+      offres: byTrackType.promo_mail,
+      informations: byTrackType.newsletter_mail,
+      suivis: byTrackType.thanks_mail,
+      enquetes: byTrackType.satisfaction_mail,
+    };
+
+    if (byTrackType[trackType]) return byTrackType[trackType];
+    if (byWorkflowAction[workflowAction]) return byWorkflowAction[workflowAction];
+    if (byLegacyFolder[folderName]) return byLegacyFolder[folderName];
+    if (trackKind === "propulser" || folderName === "propulsions") return byTrackType.valorize;
+    if (trackKind === "fideliser" || folderName === "fidelisations") return byTrackType.newsletter_mail;
+    return null;
+  }
+
+  function openWorkflowCampaignDraft(item: OutboxItem, raw: Record<string, any>) {
+    const target = workflowDraftTargetFromSendItem(item, raw);
+    if (!target) return false;
+
+    const restoreKey = saveWorkflowCampaignState({
+      kind: target.kind,
+      action: target.action,
+      folder: target.folder,
+      trackKind: target.kind,
+      trackType: target.trackType,
+      templateKey: String(raw.template_key || "") || null,
+      templateCategory: null,
+      subject: normalizeMailSubject(String(raw.subject || item.subject || "")),
+      bodyText: String(raw.body_text || item.detailText || ""),
+      bodyHtml: String(raw.body_html || item.detailHtml || textToRichMailHtml(String(raw.body_text || item.detailText || ""))),
+      attachments: normalizeCampaignAttachments(raw.attachments),
+      draftId: item.id,
+    });
+
+    setDetailsOpen(false);
+    setComposeOpen(false);
+    router.push(`/dashboard/${target.kind}?action=${encodeURIComponent(target.action)}&restore_key=${encodeURIComponent(restoreKey)}`);
+    return true;
+  }
+
   async function loadAllCampaignRecipientsForCompose(campaignId: string): Promise<ComposeCrmRecipientHint[]> {
     const pageSize = 1000;
     let from = 0;
@@ -2786,10 +2852,11 @@ async function deleteDraftPermanently(id: string) {
   async function openItem(it: OutboxItem) {
     setSelectedId(it.id);
     if (it.source === "send_items" && it.status === "draft") {
-      setComposeOpen(true);
-      setDraftId(it.id);
       // raw = SendItem
       const raw = (it.raw || {}) as any;
+      if (openWorkflowCampaignDraft(it, raw)) return;
+      setComposeOpen(true);
+      setDraftId(it.id);
       const nextType = (raw.type === "facture" || raw.type === "devis" ? raw.type : "mail") as SendType;
       const nextTrack = raw.track_kind && raw.track_type
         ? ({ kind: raw.track_kind, type: raw.track_type, payload: {} } as PendingTrack)

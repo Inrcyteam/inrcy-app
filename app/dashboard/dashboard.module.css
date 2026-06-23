@@ -8639,3 +8639,50 @@
     column-gap: 4px !important;
   }
 }
+
+/* iNrAgent pending-actions badge — séparé de la cloche Notifications */
+.agentTopbarBtn,
+.mobileHeaderAgentBtn {
+  position: relative !important;
+}
+
+.agentTopbarBadge,
+.mobileHeaderAgentBadge {
+  position: absolute;
+  z-index: 3;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 950;
+  line-height: 1;
+  letter-spacing: -0.2px;
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255, 255, 255, 0.36), transparent 36%),
+    linear-gradient(135deg, rgba(244, 114, 182, 0.98), rgba(139, 92, 246, 0.98), rgba(56, 189, 248, 0.98));
+  box-shadow:
+    0 0 0 3px rgba(7, 14, 36, 0.92),
+    0 0 18px rgba(167, 139, 250, 0.62),
+    0 8px 22px rgba(0, 0, 0, 0.36);
+  pointer-events: none;
+}
+
+.agentTopbarBadge {
+  top: -8px;
+  right: -7px;
+}
+
+.mobileHeaderAgentBadge {
+  top: -7px;
+  right: -7px;
+  min-width: 19px;
+  height: 19px;
+  font-size: 10px;
+  padding: 0 5px;
+}
