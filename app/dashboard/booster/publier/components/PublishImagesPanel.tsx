@@ -6,6 +6,7 @@ import PublishVideoAdapterPanel, {
 } from "./PublishVideoAdapterPanel";
 import {
   BOOSTER_MAX_IMAGE_COUNT,
+  BOOSTER_IMAGE_ACCEPT,
   BOOSTER_MAX_MEDIA_MB_LABEL,
   BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL,
   BOOSTER_MAX_VIDEO_MB_LABEL,
@@ -286,7 +287,7 @@ export default function PublishImagesPanel({
       <input
         ref={gmbFileInputRef}
         type="file"
-        accept="image/*"
+        accept={BOOSTER_IMAGE_ACCEPT}
         multiple
         style={{ display: "none" }}
         onChange={(e) => {
@@ -375,7 +376,7 @@ export default function PublishImagesPanel({
         >
           {hasImages || hasVideoMedia
             ? `${images.length}/${BOOSTER_MAX_IMAGE_COUNT} image${images.length > 1 ? "s" : ""} · ${BOOSTER_MAX_MEDIA_MB_LABEL} max au total${hasVideoMedia ? ` · 1 vidéo · IA vidéo + audio · ${BOOSTER_MAX_VIDEO_MB_LABEL} max · ${BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL}` : ""}`
-            : `Aucun média ajouté · ${BOOSTER_MAX_IMAGE_COUNT} images max ou 1 vidéo · ${BOOSTER_MAX_MEDIA_MB_LABEL} max`}
+            : `Aucun média ajouté · ${BOOSTER_MAX_IMAGE_COUNT} images max (${BOOSTER_MAX_MEDIA_MB_LABEL} total) ou 1 vidéo (${BOOSTER_MAX_VIDEO_MB_LABEL} max)`}
         </div>
       </div>
       {imgError ? (

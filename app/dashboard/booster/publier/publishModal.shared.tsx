@@ -441,13 +441,16 @@ export function getUnavailableMediaModeMessage(
 }
 
 export const BOOSTER_MAX_IMAGE_COUNT = 5;
+export const BOOSTER_IMAGE_ACCEPT = "image/*,image/heic,image/heif,.heic,.heif";
 export const BOOSTER_MAX_MEDIA_BYTES = 40 * 1024 * 1024;
 export const BOOSTER_MAX_MEDIA_MB_LABEL = "40 Mo";
 export const BOOSTER_MAX_IMAGE_BYTES = BOOSTER_MAX_MEDIA_BYTES;
 export const BOOSTER_MAX_IMAGE_MB_LABEL = BOOSTER_MAX_MEDIA_MB_LABEL;
 export const BOOSTER_MAX_VIDEO_COUNT = 1;
-export const BOOSTER_MAX_VIDEO_BYTES = BOOSTER_MAX_MEDIA_BYTES;
-export const BOOSTER_MAX_VIDEO_MB_LABEL = BOOSTER_MAX_MEDIA_MB_LABEL;
+export const BOOSTER_MAX_VIDEO_BYTES = 100 * 1024 * 1024;
+export const BOOSTER_MAX_VIDEO_MB_LABEL = "100 Mo";
+export const BOOSTER_MAX_VIDEO_PUBLISH_BYTES = BOOSTER_MAX_MEDIA_BYTES;
+export const BOOSTER_MAX_VIDEO_PUBLISH_MB_LABEL = BOOSTER_MAX_MEDIA_MB_LABEL;
 export const BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL = "3 min conseillées";
 export type ChannelPublicationRequirementInput = {
   channel: ChannelKey;
@@ -600,8 +603,14 @@ export function normalizePublicationMediaType(
   return value === "video" ? "video" : "images";
 }
 
-export function isBoosterImageFile(file: Pick<File, "type">) {
-  return String(file?.type || "").startsWith("image/");
+export function isHeicOrHeifImageFile(file: Pick<File, "name" | "type">) {
+  const type = String(file?.type || "").toLowerCase().split(";")[0]?.trim() || "";
+  const extension = getUploadFileExtension(file as Pick<File, "name">);
+  return type === "image/heic" || type === "image/heif" || extension === "heic" || extension === "heif";
+}
+
+export function isBoosterImageFile(file: Pick<File, "name" | "type">) {
+  return String(file?.type || "").startsWith("image/") || isHeicOrHeifImageFile(file);
 }
 
 export function getUploadFileExtension(file: Pick<File, "name">): string {
@@ -610,15 +619,49 @@ export function getUploadFileExtension(file: Pick<File, "name">): string {
 }
 
 export function isUnsupportedBrowserImageFile(file: Pick<File, "name" | "type">): boolean {
-  const type = String(file?.type || "").toLowerCase().split(";")[0]?.trim() || "";
-  const extension = getUploadFileExtension(file as Pick<File, "name">);
-  return type === "image/heic" || type === "image/heif" || extension === "heic" || extension === "heif";
+  return isHeicOrHeifImageFile(file);
 }
 
 export function unsupportedBrowserImageMessage(file?: Pick<File, "name" | "type"> | null): string {
   const name = String(file?.name || "").trim();
   const prefix = name ? `L'image ${name} n'est pas lisible par le navigateur.` : "Cette image n'est pas lisible par le navigateur.";
   return `${prefix} Utilisez une image JPG, PNG ou WebP.`;
+}
+
+export async function convertHeicOrHeifImageFile(file: File): Promise<File> {
+  if (!isHeicOrHeifImageFile(file)) return file;
+
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const response = await fetch("/api/booster/convert-image", {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const json = await response.json().catch(() => ({}));
+    throw new Error(
+      String(
+        json?.error ||
+          "Impossible de convertir cette image HEIC. Utilisez une image JPG, PNG ou WebP.",
+      ),
+    );
+  }
+
+  const converted = await response.blob();
+  if (!converted.size || !String(converted.type || "").startsWith("image/")) {
+    throw new Error("Image HEIC convertie invalide.");
+  }
+
+  const convertedName =
+    response.headers.get("X-Inrcy-Filename") ||
+    withJpegExtension(file.name || "image-inrcy.heic");
+
+  return new File([converted], convertedName, {
+    type: converted.type || "image/jpeg",
+    lastModified: file.lastModified || Date.now(),
+  });
 }
 
 export function isBoosterVideoFile(file: Pick<File, "type" | "name">) {

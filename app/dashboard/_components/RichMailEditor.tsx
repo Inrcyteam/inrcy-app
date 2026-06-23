@@ -33,7 +33,34 @@ export default function RichMailEditor({
   const editorRef = useRef<HTMLDivElement | null>(null);
   const lastHtmlRef = useRef("");
   const lastTouchYRef = useRef<number | null>(null);
+  const savedSelectionRef = useRef<Range | null>(null);
+  const skipNextToolbarClickRef = useRef(false);
   const [isEmpty, setIsEmpty] = useState(() => !String(text || "").trim());
+
+  const saveSelection = () => {
+    const node = editorRef.current;
+    if (!node || typeof window === "undefined") return;
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount <= 0) return;
+    const range = selection.getRangeAt(0);
+    if (!node.contains(range.commonAncestorContainer)) return;
+    savedSelectionRef.current = range.cloneRange();
+  };
+
+  const restoreSelection = () => {
+    const node = editorRef.current;
+    const range = savedSelectionRef.current;
+    if (!node || !range || typeof window === "undefined") return;
+    try {
+      if (!node.contains(range.commonAncestorContainer)) return;
+      const selection = window.getSelection();
+      if (!selection) return;
+      selection.removeAllRanges();
+      selection.addRange(range);
+    } catch {
+      savedSelectionRef.current = null;
+    }
+  };
 
   useEffect(() => {
     const node = editorRef.current;
@@ -65,13 +92,41 @@ export default function RichMailEditor({
   const applyCommand = (command: "bold" | "italic" | "underline") => {
     const node = editorRef.current;
     if (!node) return;
-    node.focus();
+    focusEditableWithoutScroll(node);
+    restoreSelection();
     try {
       document.execCommand(command, false);
     } catch {
       // Les navigateurs anciens peuvent ignorer la commande.
     }
     emitChange();
+    saveSelection();
+  };
+
+  const keepEditorSelection = (event: React.MouseEvent<HTMLButtonElement>) => {
+    saveSelection();
+    if (event.cancelable) event.preventDefault();
+  };
+
+  const applyToolbarCommandFromTouch = (
+    event: React.TouchEvent<HTMLButtonElement>,
+    command: "bold" | "italic" | "underline",
+  ) => {
+    saveSelection();
+    if (event.cancelable) event.preventDefault();
+    skipNextToolbarClickRef.current = true;
+    applyCommand(command);
+    window.setTimeout(() => {
+      skipNextToolbarClickRef.current = false;
+    }, 500);
+  };
+
+  const applyToolbarCommandFromClick = (command: "bold" | "italic" | "underline") => {
+    if (skipNextToolbarClickRef.current) {
+      skipNextToolbarClickRef.current = false;
+      return;
+    }
+    applyCommand(command);
   };
 
   const passScrollToParent = (deltaY: number) => {
@@ -129,13 +184,13 @@ export default function RichMailEditor({
   const buttonStyle = compactToolbar ? compactToolbarButtonStyle : toolbarButtonStyle;
   const toolbar = (
     <div style={{ display: "flex", gap: compactToolbar ? 5 : 6, alignItems: "center", flex: "0 0 auto" }}>
-      <button type="button" onClick={() => applyCommand("bold")} aria-label="Gras" title="Gras" style={buttonStyle}>
+      <button type="button" onMouseDown={keepEditorSelection} onTouchStart={(event) => applyToolbarCommandFromTouch(event, "bold")} onClick={() => applyToolbarCommandFromClick("bold")} aria-label="Gras" title="Gras" style={buttonStyle}>
         <strong>B</strong>
       </button>
-      <button type="button" onClick={() => applyCommand("italic")} aria-label="Italique" title="Italique" style={buttonStyle}>
+      <button type="button" onMouseDown={keepEditorSelection} onTouchStart={(event) => applyToolbarCommandFromTouch(event, "italic")} onClick={() => applyToolbarCommandFromClick("italic")} aria-label="Italique" title="Italique" style={buttonStyle}>
         <em>I</em>
       </button>
-      <button type="button" onClick={() => applyCommand("underline")} aria-label="Souligné" title="Souligné" style={buttonStyle}>
+      <button type="button" onMouseDown={keepEditorSelection} onTouchStart={(event) => applyToolbarCommandFromTouch(event, "underline")} onClick={() => applyToolbarCommandFromClick("underline")} aria-label="Souligné" title="Souligné" style={buttonStyle}>
         <span style={{ textDecoration: "underline" }}>U</span>
       </button>
     </div>
@@ -203,13 +258,19 @@ export default function RichMailEditor({
           role="textbox"
           aria-multiline="true"
           className={className}
-          onInput={() => emitChange()}
+          onInput={() => {
+            emitChange();
+            saveSelection();
+          }}
           onBlur={() => emitChange(true)}
+          onKeyUp={saveSelection}
+          onMouseUp={saveSelection}
           onPaste={(event) => {
             event.preventDefault();
             const pasted = event.clipboardData.getData("text/plain") || "";
             document.execCommand("insertText", false, pasted);
             emitChange();
+            saveSelection();
           }}
           onWheel={handleWheel}
           onTouchStart={handleTouchStart}
@@ -242,6 +303,14 @@ export default function RichMailEditor({
       </div>
     </div>
   );
+}
+
+function focusEditableWithoutScroll(node: HTMLElement) {
+  try {
+    node.focus({ preventScroll: true });
+  } catch {
+    node.focus();
+  }
 }
 
 function findScrollableParent(node: HTMLElement | null): HTMLElement | null {

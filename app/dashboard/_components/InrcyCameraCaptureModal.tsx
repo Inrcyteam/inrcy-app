@@ -12,6 +12,11 @@ function buildPhotoFileName() {
 
 const DEFAULT_MAX_VIDEO_BYTES = 40 * 1024 * 1024;
 
+function formatMegabytes(bytes: number) {
+  const mb = Math.max(1, Math.round(Number(bytes || 0) / (1024 * 1024)));
+  return `${mb} Mo`;
+}
+
 type CameraMode = "photo" | "video";
 type RecordingState = "idle" | "recording" | "saving";
 
@@ -637,7 +642,7 @@ export default function InrcyCameraCaptureModal({
 
         if (oversized) {
           setRecordingState("idle");
-          setError("La vidéo dépasse 40 Mo. Faites une vidéo plus courte.");
+          setError(`La vidéo dépasse ${formatMegabytes(maxVideoBytes)}. Faites une vidéo plus courte.`);
           return;
         }
 
@@ -1213,7 +1218,7 @@ export default function InrcyCameraCaptureModal({
                 ? typeof maxVideoSeconds === "number" && maxVideoSeconds > 0
                   ? `REC ${formatRecordingSeconds(recordingSeconds)} / ${formatRecordingSeconds(maxVideoSeconds)}`
                   : `REC ${formatRecordingSeconds(recordingSeconds)}`
-                : "Vidéo avec son · 40 Mo max"}
+                : `Vidéo avec son · ${formatMegabytes(maxVideoBytes)} max`}
             </div>
           ) : null}
 

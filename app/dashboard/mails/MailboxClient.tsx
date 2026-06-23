@@ -128,6 +128,8 @@ import { normalizeMailSubject } from "@/lib/mailEncoding";
 import { stripTemplateSignatureBlock } from "@/lib/mailTemplateCleanup";
 import { normalizeRichMailHtmlForSend, textToRichMailHtml } from "@/lib/mailRichText";
 import {
+  BOOSTER_MAX_VIDEO_BYTES,
+  BOOSTER_MAX_VIDEO_MB_LABEL,
   uploadBoosterVideo,
   VIDEO_ADAPTATION_MODE_LABELS,
   getRecommendedVideoFormatForSource,
@@ -2344,8 +2346,8 @@ async function deleteDraftPermanently(id: string) {
       setDetailsActionError("Seuls les fichiers vidéo sont acceptés.");
       return;
     }
-    if (file.size > 40 * 1024 * 1024) {
-      setDetailsActionError("Vidéo trop lourde. Taille maximale : 40 Mo.");
+    if (file.size > BOOSTER_MAX_VIDEO_BYTES) {
+      setDetailsActionError(`Vidéo trop lourde. Taille maximale : ${BOOSTER_MAX_VIDEO_MB_LABEL}.`);
       return;
     }
     const previewUrl = URL.createObjectURL(file);
@@ -3129,4 +3131,3 @@ async function deleteDraftPermanently(id: string) {
     </div>
   );
 }
-

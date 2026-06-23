@@ -4,7 +4,8 @@ import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { enforceRateLimit } from "@/lib/rateLimit";
 
-const MAX_VIDEO_BYTES = 40 * 1024 * 1024;
+const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
+const MAX_VIDEO_MB_LABEL = "100 Mo";
 const DEFAULT_UPLOAD_FOLDER = "booster-videos";
 
 const MIME_EXTENSION: Record<string, string> = {
@@ -144,7 +145,7 @@ export async function POST(req: Request) {
     }
 
     if (size > MAX_VIDEO_BYTES) {
-      return NextResponse.json({ error: "Vidéo trop lourde. Taille maximale : 40 Mo." }, { status: 413 });
+      return NextResponse.json({ error: `Vidéo trop lourde. Taille maximale : ${MAX_VIDEO_MB_LABEL}.` }, { status: 413 });
     }
 
     if (!isAllowedVideoFile(name, type)) {

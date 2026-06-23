@@ -22,20 +22,19 @@ import {
   channelSupportsImages,
   clamp,
   computePreviewLayout,
+  convertHeicOrHeifImageFile,
   getBackgroundFill,
   getBackgroundMode,
   getDefaultTransform,
   getEffectiveTransformZoom,
   getOptimizedTransform,
   isBoosterImageFile,
-  isUnsupportedBrowserImageFile,
   makeImageKey,
   offsetFromDrawPosition,
   readImageMeta,
   renderChannelImage,
   syncChannelImageEditors,
   uploadPreparedImages,
-  unsupportedBrowserImageMessage,
   type ChannelImageEditorState,
   type ChannelImagePayload,
   type ChannelImageSettingsPayload,
@@ -317,9 +316,17 @@ export default function usePublishImageController({
       return;
     }
 
-    const unsupported = incoming.find(isUnsupportedBrowserImageFile);
-    if (unsupported) {
-      setImgError(unsupportedBrowserImageMessage(unsupported));
+    let browserReadyImages: File[];
+    try {
+      browserReadyImages = await Promise.all(
+        incoming.map((file) => convertHeicOrHeifImageFile(file)),
+      );
+    } catch (error) {
+      setImgError(
+        error instanceof Error
+          ? error.message
+          : "Impossible de convertir cette image HEIC. Utilisez une image JPG, PNG ou WebP.",
+      );
       return;
     }
 
@@ -328,7 +335,7 @@ export default function usePublishImageController({
     }
 
     const existingKeys = new Set(images.map((file) => makeImageKey(file)));
-    const deduped = incoming.filter(
+    const deduped = browserReadyImages.filter(
       (file) => !existingKeys.has(makeImageKey(file)),
     );
     const allowed = deduped.slice(
@@ -345,7 +352,7 @@ export default function usePublishImageController({
       return;
     }
 
-    if (incoming.length > allowed.length) {
+    if (browserReadyImages.length > allowed.length) {
       setImgError(
         images.length + allowed.length >= BOOSTER_MAX_IMAGE_COUNT
           ? `Maximum ${BOOSTER_MAX_IMAGE_COUNT} images.`

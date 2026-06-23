@@ -2451,7 +2451,11 @@ export default function PublishModal({
     const editor = siteContentEditorRef.current;
     if (!editor) return;
 
-    editor.focus();
+    try {
+      editor.focus({ preventScroll: true });
+    } catch {
+      editor.focus();
+    }
     const command =
       kind === "bold" ? "bold" : kind === "italic" ? "italic" : "underline";
     document.execCommand(command, false);

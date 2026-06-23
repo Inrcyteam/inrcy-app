@@ -20,7 +20,7 @@ Le moteur utilise FFmpeg avec :
 - audio AAC stéréo
 - `+faststart` pour lecture web plus rapide
 - CRF/bitrate/maxrate/bufsize adaptés au format
-- limite de sortie à 40 Mo par variante, cohérente avec la limite vidéo Booster
+- limite de sortie à 40 Mo par variante, même si la vidéo source Booster peut aller jusqu'à 100 Mo
 
 ## Profils
 

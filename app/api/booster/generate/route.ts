@@ -120,7 +120,7 @@ const AI_IMAGE_MAX_DATA_URL_LENGTH = 3_500_000;
 const AI_IMAGE_MAX_TOTAL_DATA_URL_LENGTH = 10_000_000;
 const AI_IMAGE_DATA_URL_RE =
   /^data:image\/(?:jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$/;
-const BOOSTER_MAX_VIDEO_BYTES = 40 * 1024 * 1024;
+const BOOSTER_MAX_VIDEO_BYTES = 100 * 1024 * 1024;
 const BOOSTER_VIDEO_MIME_TYPES = new Set([
   "video/mp4",
   "video/webm",

@@ -179,7 +179,10 @@ type PersistedVideoAttachment = {
   sourceVideo?: PersistedVideoAttachment | null;
 };
 
-const BOOSTER_MAX_VIDEO_BYTES = 40 * 1024 * 1024;
+const BOOSTER_MAX_VIDEO_SOURCE_BYTES = 100 * 1024 * 1024;
+const BOOSTER_MAX_VIDEO_SOURCE_MB_LABEL = "100 Mo";
+const BOOSTER_MAX_VIDEO_PUBLISH_BYTES = 40 * 1024 * 1024;
+const BOOSTER_MAX_VIDEO_PUBLISH_MB_LABEL = "40 Mo";
 
 function normalizePublicationMediaType(value: unknown): PublicationMediaType {
   return value === "video" ? "video" : "images";
@@ -355,10 +358,10 @@ async function normalizeVideoPayload(
     return { video: null, error: "Vidéo introuvable. Merci de la renvoyer." };
 
   const size = Number(raw["size"] || 0);
-  if (Number.isFinite(size) && size > BOOSTER_MAX_VIDEO_BYTES) {
+  if (Number.isFinite(size) && size > BOOSTER_MAX_VIDEO_SOURCE_BYTES) {
     return {
       video: null,
-      error: "Vidéo trop lourde. Taille maximale : 40 Mo.",
+      error: `Vidéo trop lourde. Taille maximale : ${BOOSTER_MAX_VIDEO_SOURCE_MB_LABEL}.`,
     };
   }
 
@@ -1198,6 +1201,19 @@ export async function POST(req: Request) {
     // 2) Persist publication
     const publicationId = randomUUID();
     const publicationVideoByChannel = buildPublicationVideoByChannel();
+    const oversizedPublicationVideo = Object.entries(publicationVideoByChannel).find(([, video]) => {
+      const size = Number((video as PersistedVideoAttachment | null)?.size || 0);
+      return Number.isFinite(size) && size > BOOSTER_MAX_VIDEO_PUBLISH_BYTES;
+    });
+    if (oversizedPublicationVideo) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `La vidéo source est acceptée, mais la version prête à publier dépasse encore ${BOOSTER_MAX_VIDEO_PUBLISH_MB_LABEL}. Préparez les formats vidéo avant de publier.`,
+        },
+        { status: 400 },
+      );
+    }
 
     const publicationInsert: JsonRecord = {
       id: publicationId,

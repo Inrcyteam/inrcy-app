@@ -414,7 +414,11 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
     const editor = publicationSiteContentEditorRef.current;
     if (!editor) return;
 
-    editor.focus();
+    try {
+      editor.focus({ preventScroll: true });
+    } catch {
+      editor.focus();
+    }
     const command = kind === "bold" ? "bold" : kind === "italic" ? "italic" : "underline";
     document.execCommand(command, false);
     updatePublicationEdit({ content: editableHtmlToSiteText(readSanitizedElementHtml(editor)) });
