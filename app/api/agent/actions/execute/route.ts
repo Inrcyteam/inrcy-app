@@ -268,6 +268,28 @@ function normalizeCampaignRecipients(input: unknown): CampaignRecipient[] {
   return recipients;
 }
 
+function normalizeCampaignAttachments(input: unknown) {
+  const raw = Array.isArray(input) ? input : [];
+  return raw
+    .map((item) => {
+      const record = asRecord(item);
+      if (!record) return null;
+      const bucket = cleanText(record.bucket, 120);
+      const path = cleanText(record.path || record.storagePath || record.storage_path, 500);
+      if (!bucket || !path) return null;
+      const size = Number(record.size ?? record.bytes ?? record.sizeBytes ?? record.size_bytes ?? 0);
+      return {
+        bucket,
+        path,
+        name: cleanText(record.name || record.filename || record.fileName, 240) || path.split("/").pop() || "piece-jointe",
+        type: cleanText(record.type || record.mimeType || record.mime_type, 140) || "application/octet-stream",
+        size: Number.isFinite(size) && size > 0 ? size : null,
+      };
+    })
+    .filter(Boolean)
+    .slice(0, 10);
+}
+
 function isCampaignAgentAction(action: ReturnType<typeof rowToInrAgentAction>) {
   return (
     (action.automationKey === "grow" || action.automationKey === "loyalty") &&
@@ -292,6 +314,7 @@ async function executeCampaignAction(args: {
   const trackKind = cleanText(payload.trackKind, 80) || (action.automationKey === "loyalty" ? "fideliser" : "propulser");
   const trackType = cleanText(payload.trackType, 80);
   const templateKey = cleanText(payload.templateKey, 180);
+  const attachments = normalizeCampaignAttachments(payload.attachments);
 
   if (!accountId) {
     return NextResponse.json({ error: "Boîte d’envoi manquante pour cette campagne." }, { status: 400 });
@@ -322,7 +345,7 @@ async function executeCampaignAction(args: {
     trackKind,
     trackType,
     templateKey,
-    attachments: [],
+    attachments,
     metadata: {
       source: "inr_agent",
       label: "iNr'Agent",

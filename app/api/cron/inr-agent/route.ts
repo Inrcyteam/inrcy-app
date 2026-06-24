@@ -9,6 +9,8 @@ const AUTOMATION_KEYS: InrAgentAutomationKey[] = ["publish", "grow", "loyalty", 
 const OPEN_ACTION_STATUSES = ["prepared", "pending_validation", "pending", "draft", "scheduled", "validated", "executing"];
 const CAMPAIGN_BLOCKING_ACTION_STATUSES = ["scheduled", "validated", "executing"];
 const AUTOMATION_SELECT = "user_id, automation_key, enabled, frequency, day_of_week, time, next_run_at, last_prepared_at, last_executed_at, metadata";
+const CRON_RETRY_DELAY_MS = 15 * 60 * 1000;
+const MAX_CRON_RETRIES_BEFORE_NEXT_SLOT = 4;
 
 type AutomationRow = {
   user_id: string;
@@ -31,6 +33,20 @@ type CronRunResult = {
   actionId?: string | null;
   nextRunAt?: string | null;
   error?: string;
+  errorDetail?: string;
+  httpStatus?: number | null;
+};
+
+type TriggerAutomationResult = {
+  ok: boolean;
+  payload: Record<string, unknown> | null;
+  error: string | null;
+  detail: string | null;
+  code: string | null;
+  status: number | null;
+  statusText: string | null;
+  endpoint: string;
+  retriable: boolean;
 };
 
 function isMissingSchemaError(error: { code?: string; message?: string } | null | undefined) {
@@ -214,11 +230,57 @@ function endpointForAutomation(key: InrAgentAutomationKey) {
   return "/api/agent/actions/prepare-campaign";
 }
 
-async function triggerAutomation(args: { origin: string; row: AutomationRow; timeoutMs: number }) {
+function safeJsonParse(text: string): Record<string, unknown> | null {
+  try {
+    return asRecord(JSON.parse(text));
+  } catch {
+    return null;
+  }
+}
+
+function trimDiagnosticText(value: unknown, maxLength = 1600) {
+  return String(value ?? "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
+function errorFromPayload(payload: Record<string, unknown> | null, fallback: string) {
+  return (
+    trimDiagnosticText(payload?.error, 500) ||
+    trimDiagnosticText(payload?.message, 500) ||
+    trimDiagnosticText(payload?.detail, 500) ||
+    fallback
+  );
+}
+
+function detailFromPayload(payload: Record<string, unknown> | null, responseText: string, fallback: string) {
+  const details = [
+    trimDiagnosticText(payload?.detail, 900),
+    trimDiagnosticText(payload?.code, 120),
+    trimDiagnosticText(payload?.hint, 400),
+  ].filter(Boolean);
+
+  if (details.length) return details.join(" · ");
+
+  const body = trimDiagnosticText(responseText, 900);
+  if (body && body !== fallback) return body;
+  return null;
+}
+
+function isRetriableTriggerFailure(status: number | null, error: string | null) {
+  const text = String(error || "").toLowerCase();
+  if (text.includes("aborted") || text.includes("timeout") || text.includes("fetch failed")) return true;
+  if (!status) return true;
+  return status === 408 || status === 409 || status === 425 || status === 429 || status >= 500;
+}
+
+async function triggerAutomation(args: { origin: string; row: AutomationRow; timeoutMs: number }): Promise<TriggerAutomationResult> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), args.timeoutMs);
+  const endpoint = endpointForAutomation(args.row.automation_key);
   try {
-    const url = `${args.origin}${endpointForAutomation(args.row.automation_key)}`;
+    const url = `${args.origin}${endpoint}`;
     const body: Record<string, unknown> = { cronUserId: args.row.user_id, triggeredBy: "inr_agent_cron" };
     if (args.row.automation_key === "grow" || args.row.automation_key === "loyalty") body.automationKey = args.row.automation_key;
 
@@ -229,14 +291,47 @@ async function triggerAutomation(args: { origin: string; row: AutomationRow; tim
       cache: "no-store",
       signal: controller.signal,
     });
-    const payload = await response.json().catch(() => null) as Record<string, unknown> | null;
+    const responseText = await response.text().catch(() => "");
+    const payload = safeJsonParse(responseText);
     if (!response.ok) {
-      const message = String(asRecord(payload).error || asRecord(payload).detail || response.statusText || "Action impossible");
-      return { ok: false, payload, error: message };
+      const error = errorFromPayload(payload, response.statusText || "Action impossible");
+      const detail = detailFromPayload(payload, responseText, error);
+      return {
+        ok: false,
+        payload,
+        error,
+        detail,
+        code: trimDiagnosticText(payload?.code, 160) || null,
+        status: response.status,
+        statusText: response.statusText || null,
+        endpoint,
+        retriable: isRetriableTriggerFailure(response.status, error),
+      };
     }
-    return { ok: true, payload, error: null };
+    return {
+      ok: true,
+      payload,
+      error: null,
+      detail: null,
+      code: null,
+      status: response.status,
+      statusText: response.statusText || null,
+      endpoint,
+      retriable: false,
+    };
   } catch (error) {
-    return { ok: false, payload: null, error: error instanceof Error ? error.message : "Action impossible" };
+    const message = error instanceof Error ? error.message : "Action impossible";
+    return {
+      ok: false,
+      payload: null,
+      error: message,
+      detail: error instanceof Error ? error.stack?.slice(0, 1600) || null : null,
+      code: error instanceof DOMException ? error.name : null,
+      status: null,
+      statusText: null,
+      endpoint,
+      retriable: isRetriableTriggerFailure(null, message),
+    };
   } finally {
     clearTimeout(timeout);
   }
@@ -250,6 +345,45 @@ async function updateAutomationAfterRun(row: AutomationRow, nextRunAt: string | 
     .update({ next_run_at: nextRunAt, metadata, updated_at: now })
     .eq("user_id", row.user_id)
     .eq("automation_key", row.automation_key);
+}
+
+function metadataNumber(row: AutomationRow, key: string) {
+  const value = asRecord(row.metadata)[key];
+  const n = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0;
+}
+
+function computeRetryRunAt(now: Date) {
+  return new Date(now.getTime() + CRON_RETRY_DELAY_MS).toISOString();
+}
+
+function buildFailureMetadata(args: {
+  row: AutomationRow;
+  triggered: TriggerAutomationResult;
+  now: Date;
+  nextRegularRunAt: string | null;
+}) {
+  const retryCount = metadataNumber(args.row, "lastCronRetryCount") + 1;
+  const shouldRetry = args.triggered.retriable && retryCount <= MAX_CRON_RETRIES_BEFORE_NEXT_SLOT;
+  const retryRunAt = shouldRetry ? computeRetryRunAt(args.now) : null;
+
+  return {
+    nextRunAt: retryRunAt || args.nextRegularRunAt,
+    metadata: {
+      lastCronStatus: "failed",
+      lastCronError: args.triggered.error || "Action impossible",
+      lastCronErrorDetail: args.triggered.detail,
+      lastCronErrorCode: args.triggered.code,
+      lastCronHttpStatus: args.triggered.status,
+      lastCronHttpStatusText: args.triggered.statusText,
+      lastCronEndpoint: args.triggered.endpoint,
+      lastCronRetriable: args.triggered.retriable,
+      lastCronRetryCount: retryCount,
+      lastCronNextRetryAt: retryRunAt,
+      lastCronNextRegularRunAt: args.nextRegularRunAt,
+      lastCronErrorAt: args.now.toISOString(),
+    },
+  };
 }
 
 function getActionId(payload: Record<string, unknown> | null) {
@@ -285,17 +419,63 @@ async function processAutomation(args: { row: AutomationRow; origin: string; now
 
   const triggered = await triggerAutomation({ origin: args.origin, row, timeoutMs: args.timeoutMs });
   if (!triggered.ok) {
-    await updateAutomationAfterRun(row, nextRunAt, {
-      lastCronStatus: "failed",
-      lastCronError: triggered.error,
-      lastCronErrorAt: now.toISOString(),
+    const failure = buildFailureMetadata({
+      row,
+      triggered,
+      now,
+      nextRegularRunAt: nextRunAt,
     });
-    return { userId: row.user_id, automationKey: row.automation_key, status: "failed", error: triggered.error || "Action impossible", nextRunAt };
+    await updateAutomationAfterRun(row, failure.nextRunAt, failure.metadata);
+    return {
+      userId: row.user_id,
+      automationKey: row.automation_key,
+      status: "failed",
+      error: triggered.error || "Action impossible",
+      errorDetail: triggered.detail || undefined,
+      httpStatus: triggered.status,
+      nextRunAt: failure.nextRunAt,
+    };
+  }
+
+  const actionId = getActionId(triggered.payload);
+  if (row.automation_key !== "stats" && !actionId) {
+    const syntheticFailure: TriggerAutomationResult = {
+      ...triggered,
+      ok: false,
+      error: "Action préparée introuvable dans la réponse iNr’Agent.",
+      detail: "La route de préparation a répondu sans identifiant d’action. Le cron retentera automatiquement avant de passer au prochain créneau.",
+      code: "missing_prepared_action_id",
+      retriable: true,
+    };
+    const failure = buildFailureMetadata({
+      row,
+      triggered: syntheticFailure,
+      now,
+      nextRegularRunAt: nextRunAt,
+    });
+    await updateAutomationAfterRun(row, failure.nextRunAt, failure.metadata);
+    return {
+      userId: row.user_id,
+      automationKey: row.automation_key,
+      status: "failed",
+      error: syntheticFailure.error || "Action impossible",
+      errorDetail: syntheticFailure.detail || undefined,
+      httpStatus: syntheticFailure.status,
+      nextRunAt: failure.nextRunAt,
+    };
   }
 
   await updateAutomationAfterRun(row, nextRunAt, {
     lastCronStatus: "success",
     lastCronError: null,
+    lastCronErrorDetail: null,
+    lastCronErrorCode: null,
+    lastCronHttpStatus: null,
+    lastCronEndpoint: triggered.endpoint,
+    lastCronRetriable: false,
+    lastCronRetryCount: 0,
+    lastCronNextRetryAt: null,
+    lastCronNextRegularRunAt: nextRunAt,
     lastCronSuccessAt: now.toISOString(),
   });
 
@@ -303,7 +483,7 @@ async function processAutomation(args: { row: AutomationRow; origin: string; now
     userId: row.user_id,
     automationKey: row.automation_key,
     status: row.automation_key === "stats" ? "sent" : "prepared",
-    actionId: getActionId(triggered.payload),
+    actionId,
     nextRunAt,
   };
 }

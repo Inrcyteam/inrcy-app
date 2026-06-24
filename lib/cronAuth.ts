@@ -47,7 +47,7 @@ export function buildInternalCronHeaders(userId: string) {
 }
 
 export function getAppOriginFromRequest(req: Request) {
-  const envOrigin = optionalEnv("NEXT_PUBLIC_SITE_URL", optionalEnv("NEXT_PUBLIC_APP_URL", "")).replace(/\/$/, "");
+  const envOrigin = optionalEnv("NEXT_PUBLIC_APP_URL", optionalEnv("NEXT_PUBLIC_SITE_URL", "")).replace(/\/$/, "");
   if (envOrigin) return envOrigin;
   const url = new URL(req.url);
   return `${url.protocol}//${url.host}`;

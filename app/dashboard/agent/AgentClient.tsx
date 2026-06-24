@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabaseClient";
+import { makeAttachmentPath } from "@/app/dashboard/mails/_lib/mailboxPhase25";
 import HelpButton from "../_components/HelpButton";
 import PublishAiConfigurationDrawer from "../booster/publier/components/PublishAiConfigurationDrawer";
 import {
@@ -137,10 +139,64 @@ type AgentChannelPreview = {
 };
 
 type CampaignAttachmentPreview = {
+  bucket?: string;
+  path?: string;
   name: string;
   type: string;
   size: string;
   url: string;
+};
+
+type CampaignAttachmentRef = {
+  bucket: string;
+  path: string;
+  name: string;
+  type?: string | null;
+  size?: number | null;
+};
+
+type CampaignRecipientPreview = {
+  contact_id?: string | null;
+  contactId?: string | null;
+  id?: string | null;
+  display_name?: string | null;
+  displayName?: string | null;
+  name?: string | null;
+  email: string;
+  phone?: string | null;
+  contact_type?: string | null;
+  contactType?: string | null;
+  category?: string | null;
+  company_name?: string | null;
+  companyName?: string | null;
+  city?: string | null;
+  postal_code?: string | null;
+  postalCode?: string | null;
+};
+
+type CrmContactForAgent = {
+  id: string;
+  first_name?: string | null;
+  last_name?: string | null;
+  company_name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  category?: string | null;
+  contact_type?: string | null;
+  postal_code?: string | null;
+  city?: string | null;
+};
+
+type AgentMailAccount = {
+  id: string;
+  provider?: string | null;
+  status?: string | null;
+  connection_status?: string | null;
+  requires_update?: boolean | null;
+  display_name?: string | null;
+  email_address?: string | null;
+  resource_label?: string | null;
+  label?: string | null;
 };
 
 type CampaignMailPreview = {
@@ -1130,7 +1186,117 @@ function extractCampaignAttachment(payload: Record<string, unknown>): CampaignAt
   const type = firstSafeString(record.mimeType, record.mime_type, record.type, "Document");
   const size = formatAttachmentSize(record.size || record.bytes || record.sizeBytes || record.size_bytes);
 
-  return { name, type, size, url };
+  return {
+    bucket: firstSafeString(record.bucket),
+    path: firstSafeString(record.path, record.storagePath, record.storage_path),
+    name,
+    type,
+    size,
+    url,
+  };
+}
+
+function normalizeCampaignAttachmentRefs(value: unknown): CampaignAttachmentRef[] {
+  if (!Array.isArray(value)) return [];
+  const refs: CampaignAttachmentRef[] = [];
+
+  for (const item of value) {
+    const record = asRecord(item);
+    if (!record) continue;
+    const bucket = firstSafeString(record.bucket);
+    const path = firstSafeString(record.path, record.storagePath, record.storage_path);
+    const name = firstSafeString(record.name, record.filename, record.fileName) || path.split("/").pop() || "piece-jointe";
+    if (!bucket || !path || !name) continue;
+    const size = Number(record.size ?? record.bytes ?? record.sizeBytes ?? record.size_bytes ?? 0);
+    refs.push({
+      bucket,
+      path,
+      name,
+      type: firstSafeString(record.type, record.mimeType, record.mime_type) || null,
+      size: Number.isFinite(size) && size > 0 ? size : null,
+    });
+  }
+
+  return refs.slice(0, 10);
+}
+
+function normalizeCampaignRecipients(value: unknown): CampaignRecipientPreview[] {
+  const raw = Array.isArray(value) ? value : [];
+  const seen = new Set<string>();
+  const recipients: CampaignRecipientPreview[] = [];
+
+  for (const item of raw) {
+    const record = asRecord(item);
+    const email = firstSafeString(record?.email, item).toLowerCase();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(email) || seen.has(email)) continue;
+    seen.add(email);
+    recipients.push({
+      contact_id: firstSafeString(record?.contact_id, record?.contactId, record?.id) || null,
+      display_name: firstSafeString(record?.display_name, record?.displayName, record?.name),
+      email,
+      phone: firstSafeString(record?.phone) || null,
+      contact_type: firstSafeString(record?.contact_type, record?.contactType) || null,
+      category: firstSafeString(record?.category) || null,
+      company_name: firstSafeString(record?.company_name, record?.companyName) || null,
+      city: firstSafeString(record?.city) || null,
+      postal_code: firstSafeString(record?.postal_code, record?.postalCode) || null,
+    });
+  }
+
+  return recipients;
+}
+
+function recipientsForAction(action: AgentPreparedAction | null): CampaignRecipientPreview[] {
+  if (!action) return [];
+  return normalizeCampaignRecipients(action.payload?.recipients || action.recipients);
+}
+
+function recipientDisplayName(recipient: CampaignRecipientPreview) {
+  return firstSafeString(
+    recipient.display_name,
+    recipient.displayName,
+    recipient.name,
+    recipient.company_name,
+    recipient.companyName,
+    recipient.email,
+  );
+}
+
+function contactDisplayName(contact: CrmContactForAgent) {
+  const person = [contact.first_name, contact.last_name]
+    .map((part) => firstSafeString(part))
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  if (person && contact.company_name) return `${person} · ${contact.company_name}`;
+  return person || firstSafeString(contact.company_name, contact.email, "Contact CRM");
+}
+
+function contactToCampaignRecipient(contact: CrmContactForAgent): CampaignRecipientPreview | null {
+  const email = firstSafeString(contact.email).toLowerCase();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(email)) return null;
+  return {
+    contact_id: contact.id,
+    display_name: contactDisplayName(contact),
+    email,
+    phone: firstSafeString(contact.phone) || null,
+    category: firstSafeString(contact.category) || null,
+    contact_type: firstSafeString(contact.contact_type) || null,
+    company_name: firstSafeString(contact.company_name) || null,
+    city: firstSafeString(contact.city) || null,
+    postal_code: firstSafeString(contact.postal_code) || null,
+  };
+}
+
+function mailAccountLabel(account: AgentMailAccount) {
+  return firstSafeString(
+    account.display_name,
+    account.email_address,
+    account.resource_label,
+    account.label,
+    account.provider,
+    "Boîte mail",
+  );
 }
 
 function extractCampaignMailPreview(action: AgentPreparedAction | null): CampaignMailPreview | null {
@@ -1417,6 +1583,7 @@ export default function AgentClient() {
     useState<ActionMutationState>("idle");
   const [prepareActionState, setPrepareActionState] =
     useState<PrepareActionState>("idle");
+  const [testNowKey, setTestNowKey] = useState<AutomationKey | null>(null);
   const [statsProgress, setStatsProgress] = useState<StatsProgressState>(null);
   const [selectedChannelByAction, setSelectedChannelByAction] = useState<
     Record<string, ChannelKey>
@@ -1428,6 +1595,20 @@ export default function AgentClient() {
   const [campaignTextDraft, setCampaignTextDraft] = useState({ subject: "", body: "" });
   const [campaignSaveState, setCampaignSaveState] = useState<"idle" | "saving">("idle");
   const [campaignDraftSaveState, setCampaignDraftSaveState] = useState<"idle" | "saving">("idle");
+  const [recipientsPreviewOpen, setRecipientsPreviewOpen] = useState(false);
+  const [recipientsEditOpen, setRecipientsEditOpen] = useState(false);
+  const [crmContacts, setCrmContacts] = useState<CrmContactForAgent[]>([]);
+  const [crmContactsLoading, setCrmContactsLoading] = useState(false);
+  const [crmRecipientSearch, setCrmRecipientSearch] = useState("");
+  const [selectedRecipientEmails, setSelectedRecipientEmails] = useState<string[]>([]);
+  const [newRecipientOpen, setNewRecipientOpen] = useState(false);
+  const [newRecipientDraft, setNewRecipientDraft] = useState({ name: "", email: "", phone: "" });
+  const [newRecipientState, setNewRecipientState] = useState<"idle" | "saving">("idle");
+  const [mailAccountEditOpen, setMailAccountEditOpen] = useState(false);
+  const [mailAccounts, setMailAccounts] = useState<AgentMailAccount[]>([]);
+  const [mailAccountsLoading, setMailAccountsLoading] = useState(false);
+  const [selectedMailAccountId, setSelectedMailAccountId] = useState("");
+  const [attachmentUploadState, setAttachmentUploadState] = useState<"idle" | "saving">("idle");
 
 
   useEffect(() => {
@@ -1628,6 +1809,27 @@ export default function AgentClient() {
       }
     : null;
   const campaignDisplayPreview = campaignMailPreview ?? campaignPlaceholderPreview;
+  const campaignRecipients = recipientsForAction(selectedPreparedAction);
+  const campaignAttachments = normalizeCampaignAttachmentRefs(selectedPreparedAction?.payload?.attachments);
+  const filteredCrmContacts = useMemo(() => {
+    const q = crmRecipientSearch.trim().toLowerCase();
+    const contactsWithEmail = crmContacts.filter((contact) => firstSafeString(contact.email));
+    if (!q) return contactsWithEmail;
+    return contactsWithEmail.filter((contact) =>
+      [
+        contactDisplayName(contact),
+        contact.email,
+        contact.phone,
+        contact.company_name,
+        contact.city,
+        contact.postal_code,
+        contact.contact_type,
+        contact.category,
+      ]
+        .map((value) => firstSafeString(value).toLowerCase())
+        .some((value) => value.includes(q)),
+    );
+  }, [crmContacts, crmRecipientSearch]);
   const selectedAutomationSettings = agentSettings.automations[selected.key];
   const statsReports = useMemo(
     () => statsReportsFromActions(actions, { automaticOnly: true, limit: 5 }),
@@ -1733,6 +1935,253 @@ export default function AgentClient() {
     }
   }
 
+  async function patchCampaignAction(body: Record<string, unknown>, fallbackError: string) {
+    if (!selectedPreparedAction) throw new Error("Action iNr’Agent introuvable.");
+    const response = await fetch("/api/agent/actions", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        actionId: selectedPreparedAction.id,
+        ...body,
+      }),
+    });
+    const payload = (await response.json().catch(() => null)) as {
+      action?: AgentPreparedAction;
+      error?: string;
+      detail?: string;
+    } | null;
+
+    if (!response.ok || !payload?.action) {
+      throw new Error(payload?.error || payload?.detail || fallbackError);
+    }
+
+    const updatedAction = payload.action;
+    setActions((current) =>
+      current.map((action) =>
+        action.id === updatedAction.id ? updatedAction : action,
+      ),
+    );
+    return updatedAction;
+  }
+
+  async function loadCrmContactsForAgent() {
+    setCrmContactsLoading(true);
+    try {
+      const response = await fetch("/api/crm/contacts?all=1&pageSize=500", { cache: "no-store" });
+      const payload = (await response.json().catch(() => null)) as { contacts?: CrmContactForAgent[]; error?: string } | null;
+      if (!response.ok) throw new Error(payload?.error || "Contacts CRM indisponibles.");
+      setCrmContacts(Array.isArray(payload?.contacts) ? payload.contacts : []);
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : "Contacts CRM indisponibles.");
+    } finally {
+      setCrmContactsLoading(false);
+    }
+  }
+
+  async function openRecipientsEditor() {
+    const currentRecipients = recipientsForAction(selectedPreparedAction);
+    setSelectedRecipientEmails(currentRecipients.map((recipient) => recipient.email.toLowerCase()));
+    setRecipientsPreviewOpen(false);
+    setCampaignEditOpen(false);
+    setRecipientsEditOpen(true);
+    setCrmRecipientSearch("");
+    await loadCrmContactsForAgent();
+  }
+
+  function toggleRecipientSelection(emailValue: string) {
+    const email = emailValue.trim().toLowerCase();
+    if (!email) return;
+    setSelectedRecipientEmails((current) =>
+      current.includes(email)
+        ? current.filter((item) => item !== email)
+        : [...current, email],
+    );
+  }
+
+  async function saveCampaignRecipients() {
+    if (!selectedPreparedAction || campaignSaveState === "saving") return;
+    const previousByEmail = new Map(campaignRecipients.map((recipient) => [recipient.email.toLowerCase(), recipient]));
+    const crmByEmail = new Map(
+      crmContacts
+        .map((contact) => contactToCampaignRecipient(contact))
+        .filter((recipient): recipient is CampaignRecipientPreview => Boolean(recipient))
+        .map((recipient) => [recipient.email.toLowerCase(), recipient]),
+    );
+    const recipients = selectedRecipientEmails
+      .map((email) => crmByEmail.get(email) || previousByEmail.get(email))
+      .filter((recipient): recipient is CampaignRecipientPreview => Boolean(recipient));
+
+    if (!recipients.length) {
+      showNotice("Sélectionne au moins un destinataire.");
+      return;
+    }
+
+    setCampaignSaveState("saving");
+    try {
+      await patchCampaignAction(
+        { editType: "campaign_recipients", recipients },
+        "Modification des destinataires impossible.",
+      );
+      setRecipientsEditOpen(false);
+      showNotice("Destinataires de la campagne mis à jour.");
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : "Modification des destinataires impossible.");
+    } finally {
+      setCampaignSaveState("idle");
+    }
+  }
+
+  async function addNewRecipientToCrm() {
+    if (newRecipientState === "saving") return;
+    const email = newRecipientDraft.email.trim().toLowerCase();
+    const name = newRecipientDraft.name.trim();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(email)) {
+      showNotice("Renseigne un email valide.");
+      return;
+    }
+
+    setNewRecipientState("saving");
+    try {
+      const response = await fetch("/api/crm/contacts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          display_name: name || email,
+          email,
+          phone: newRecipientDraft.phone.trim(),
+          category: "professionnel",
+          contact_type: selectedKey === "loyalty" ? "client" : "prospect",
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as { id?: string; error?: string } | null;
+      if (!response.ok) throw new Error(payload?.error || "Ajout du contact impossible.");
+      await loadCrmContactsForAgent();
+      setSelectedRecipientEmails((current) =>
+        current.includes(email) ? current : [...current, email],
+      );
+      setNewRecipientDraft({ name: "", email: "", phone: "" });
+      setNewRecipientOpen(false);
+      showNotice("Contact ajouté au CRM et sélectionné.");
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : "Ajout du contact impossible.");
+    } finally {
+      setNewRecipientState("idle");
+    }
+  }
+
+  async function loadMailAccountsForAgent() {
+    setMailAccountsLoading(true);
+    try {
+      const response = await fetch("/api/integrations/status", { cache: "no-store" });
+      const payload = (await response.json().catch(() => null)) as {
+        mailAccounts?: AgentMailAccount[];
+        accounts?: AgentMailAccount[];
+        error?: string;
+      } | null;
+      if (!response.ok) throw new Error(payload?.error || "Boîtes mail indisponibles.");
+      const accounts = Array.isArray(payload?.mailAccounts)
+        ? payload.mailAccounts
+        : Array.isArray(payload?.accounts)
+          ? payload.accounts.filter((account) => (account as any)?.category === "mail")
+          : [];
+      setMailAccounts(accounts);
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : "Boîtes mail indisponibles.");
+    } finally {
+      setMailAccountsLoading(false);
+    }
+  }
+
+  async function openMailAccountEditor() {
+    const current = asRecord(selectedPreparedAction?.payload?.mailAccount);
+    setSelectedMailAccountId(firstSafeString(selectedPreparedAction?.payload?.accountId, current?.id));
+    setCampaignEditOpen(false);
+    setMailAccountEditOpen(true);
+    await loadMailAccountsForAgent();
+  }
+
+  async function saveCampaignMailAccount() {
+    if (!selectedPreparedAction || campaignSaveState === "saving") return;
+    if (!selectedMailAccountId) {
+      showNotice("Sélectionne une boîte d’envoi.");
+      return;
+    }
+
+    setCampaignSaveState("saving");
+    try {
+      await patchCampaignAction(
+        { editType: "campaign_mail_account", accountId: selectedMailAccountId },
+        "Modification de la boîte d’envoi impossible.",
+      );
+      setMailAccountEditOpen(false);
+      showNotice("Boîte d’envoi mise à jour.");
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : "Modification de la boîte d’envoi impossible.");
+    } finally {
+      setCampaignSaveState("idle");
+    }
+  }
+
+  async function saveCampaignAttachments(attachments: CampaignAttachmentRef[]) {
+    await patchCampaignAction(
+      { editType: "campaign_attachments", attachments },
+      "Modification de la pièce jointe impossible.",
+    );
+  }
+
+  async function uploadCampaignAttachment(filesInput: FileList | null) {
+    if (!selectedPreparedAction || attachmentUploadState === "saving") return;
+    const files = Array.from(filesInput || []);
+    if (!files.length) return;
+
+    setAttachmentUploadState("saving");
+    try {
+      const supabase = createClient();
+      const { data: auth } = await supabase.auth.getUser();
+      const userId = auth?.user?.id || null;
+      const uploaded: CampaignAttachmentRef[] = [];
+
+      for (const file of files.slice(0, 10)) {
+        const path = makeAttachmentPath(file.name || "piece-jointe", userId);
+        const { error } = await supabase.storage.from("inrbox_attachments").upload(path, file, {
+          cacheControl: "3600",
+          upsert: false,
+          contentType: file.type || "application/octet-stream",
+        });
+        if (error) throw error;
+        uploaded.push({
+          bucket: "inrbox_attachments",
+          path,
+          name: file.name || "piece-jointe",
+          type: file.type || "application/octet-stream",
+          size: file.size || 0,
+        });
+      }
+
+      const current = normalizeCampaignAttachmentRefs(selectedPreparedAction.payload?.attachments);
+      await saveCampaignAttachments([...current, ...uploaded].slice(0, 10));
+      showNotice(uploaded.length > 1 ? "Pièces jointes ajoutées." : "Pièce jointe ajoutée.");
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : "Pièce jointe impossible à ajouter.");
+    } finally {
+      setAttachmentUploadState("idle");
+    }
+  }
+
+  async function removeCampaignAttachment(path: string) {
+    if (!selectedPreparedAction || attachmentUploadState === "saving") return;
+    setAttachmentUploadState("saving");
+    try {
+      const current = normalizeCampaignAttachmentRefs(selectedPreparedAction.payload?.attachments);
+      await saveCampaignAttachments(current.filter((attachment) => attachment.path !== path));
+      showNotice("Pièce jointe retirée.");
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : "Suppression de la pièce jointe impossible.");
+    } finally {
+      setAttachmentUploadState("idle");
+    }
+  }
+
 
   async function saveCampaignAsDraft() {
     if (!selectedPreparedAction || campaignDraftSaveState === "saving") return;
@@ -1787,7 +2236,8 @@ export default function AgentClient() {
     setNotice(null);
   }
 
-  async function saveSettings() {
+  async function persistSettings(options: { closeModal?: boolean; showSuccess?: boolean } = {}) {
+    const { closeModal = true, showSuccess = true } = options;
     const nextSettings = configsToSettings(agentSettings, configs);
     setSaveState("saving");
     setNotice(null);
@@ -1815,13 +2265,39 @@ export default function AgentClient() {
       setConfigs(settingsToConfigs(savedSettings));
       setTableMissing((current) => current || Boolean(payload?.tableMissing));
       setSaveState("saved");
-      setSettingsKey(null);
-      showNotice("Réglages iNr’Agent enregistrés.");
+      if (closeModal) setSettingsKey(null);
+      if (showSuccess) showNotice("Réglages iNr’Agent enregistrés.");
+      return true;
     } catch (error) {
       setSaveState("error");
       showNotice(
         error instanceof Error ? error.message : "Enregistrement impossible.",
       );
+      return false;
+    }
+  }
+
+  async function saveSettings() {
+    await persistSettings();
+  }
+
+  async function testAutomationNow(key: AutomationKey) {
+    if (testNowKey || prepareActionState === "saving" || saveState === "saving") return;
+    setTestNowKey(key);
+    try {
+      const saved = await persistSettings({ closeModal: false, showSuccess: false });
+      if (!saved) return;
+
+      if (key === "publish") {
+        await preparePublishAction();
+      } else if (key === "grow" || key === "loyalty") {
+        await prepareCampaignAction(key);
+      } else {
+        await sendStatsReport();
+      }
+      setSettingsKey(null);
+    } finally {
+      setTestNowKey(null);
     }
   }
 
@@ -2228,7 +2704,11 @@ export default function AgentClient() {
                     <span className={styles.cardTitleShort}>{automation.shortTitle}</span>
                   </span>
                   {pendingActionsByAutomation[automation.key] > 0 && (
-                    <span className={styles.cardPendingCount}>
+                    <span
+                      className={styles.cardPendingCount}
+                      data-count={pendingActionsByAutomation[automation.key]}
+                      aria-label={`${pendingActionsByAutomation[automation.key]} action à valider`}
+                    >
                       {pendingActionsByAutomation[automation.key]} à valider
                     </span>
                   )}
@@ -2423,7 +2903,13 @@ export default function AgentClient() {
                         <strong>{campaignDisplayPreview.mission}</strong>
                       </span>
                     </article>
-                    <article className={`${styles.campaignInfoCard} ${styles.campaignInfoRecipients}`}>
+                    <button
+                      type="button"
+                      className={`${styles.campaignInfoCard} ${styles.campaignInfoRecipients}`}
+                      onClick={() => setRecipientsPreviewOpen(true)}
+                      disabled={!hasCampaignPreview || campaignDisplayPreview.recipientsCount <= 0}
+                      title={hasCampaignPreview ? "Voir les destinataires" : "Aucune campagne préparée"}
+                    >
                       <span className={styles.campaignInfoIcon} aria-hidden>
                         <SparkSettingsIcon />
                       </span>
@@ -2435,7 +2921,8 @@ export default function AgentClient() {
                             : "—"}
                         </strong>
                       </span>
-                    </article>
+                      <span className={styles.campaignInfoEye} aria-hidden>👁</span>
+                    </button>
                     <article className={`${styles.campaignInfoCard} ${styles.campaignInfoMail}`}>
                       <span className={styles.campaignInfoIcon} aria-hidden>
                         <SendPlaneIcon />
@@ -2459,7 +2946,11 @@ export default function AgentClient() {
                         <small>Pièce jointe</small>
                         <strong>
                           {hasCampaignPreview
-                            ? campaignDisplayPreview.attachment?.name || "Aucune"
+                            ? campaignAttachments.length > 0
+                              ? campaignAttachments.length === 1
+                                ? campaignAttachments[0].name
+                                : `${campaignAttachments.length} fichiers`
+                              : "Aucune"
                             : "—"}
                         </strong>
                       </span>
@@ -2831,22 +3322,22 @@ export default function AgentClient() {
                 <strong>Texte du mail</strong>
                 <small>Modifier l’objet et le corps du message.</small>
               </button>
-              <button type="button" onClick={() => setAttachmentPreviewOpen(true)}>
+              <button type="button" onClick={() => { setCampaignEditOpen(false); setAttachmentPreviewOpen(true); }}>
                 <strong>Pièce jointe</strong>
-                <small>{campaignMailPreview.attachment?.name || "Aucune pièce jointe sélectionnée."}</small>
+                <small>{campaignAttachments.length > 0 ? `${campaignAttachments.length} fichier${campaignAttachments.length > 1 ? "s" : ""}` : "Ajouter ou remplacer un fichier."}</small>
               </button>
-              <button type="button" onClick={() => router.push("/dashboard/crm")}>
+              <button type="button" onClick={() => { setCampaignEditOpen(false); setRecipientsPreviewOpen(true); }}>
                 <strong>Destinataires CRM</strong>
-                <small>{campaignMailPreview.recipientsCount} contact{campaignMailPreview.recipientsCount > 1 ? "s" : ""} prévu{campaignMailPreview.recipientsCount > 1 ? "s" : ""}.</small>
+                <small>{campaignMailPreview.recipientsCount} contact{campaignMailPreview.recipientsCount > 1 ? "s" : ""} prévu{campaignMailPreview.recipientsCount > 1 ? "s" : ""}. Voir la liste.</small>
               </button>
-              <button type="button" onClick={() => router.push("/dashboard/mails")}>
+              <button type="button" onClick={openMailAccountEditor}>
                 <strong>Boîte d’envoi</strong>
-                <small>{campaignMailPreview.mailAccountLabel}</small>
+                <small>{campaignMailPreview.mailAccountLabel}. Modifier sans quitter iNr’Agent.</small>
               </button>
             </div>
             <p className={styles.campaignEditHint}>
-              Les changements de texte sont enregistrés directement dans l’action préparée.
-              Les destinataires, la boîte mail et les pièces jointes restent reliés aux outils iNrCy correspondants.
+              Toutes les corrections se font dans iNr’Agent : texte, destinataires, pièce jointe et boîte d’envoi.
+              Aucun outil externe ne s’ouvre pendant la validation.
             </p>
           </section>
         </div>
@@ -2902,6 +3393,211 @@ export default function AgentClient() {
         </div>
       )}
 
+      {recipientsPreviewOpen && campaignMailPreview && (
+        <div
+          className={styles.modalBackdrop}
+          role="presentation"
+          onClick={() => setRecipientsPreviewOpen(false)}
+        >
+          <section
+            className={`${styles.settingsModal} ${styles.agentListModal}`}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Destinataires prévus"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className={styles.modalClose}
+              onClick={() => setRecipientsPreviewOpen(false)}
+              aria-label="Fermer"
+            >
+              ×
+            </button>
+            <p className={styles.modalEyebrow}>Destinataires</p>
+            <h2>{campaignRecipients.length} contact{campaignRecipients.length > 1 ? "s" : ""} prévu{campaignRecipients.length > 1 ? "s" : ""}</h2>
+            <div className={styles.agentListScroll}>
+              {campaignRecipients.length > 0 ? (
+                campaignRecipients.map((recipient) => (
+                  <article key={recipient.email} className={styles.agentListRow}>
+                    <span className={styles.agentListAvatar} aria-hidden>
+                      {recipientDisplayName(recipient).slice(0, 1).toUpperCase() || "@"}
+                    </span>
+                    <span className={styles.agentListContent}>
+                      <strong>{recipientDisplayName(recipient)}</strong>
+                      <small>{recipient.email}{recipient.phone ? ` · ${recipient.phone}` : ""}</small>
+                    </span>
+                    <span className={styles.agentListTag}>{recipient.contact_type || recipient.category || "CRM"}</span>
+                  </article>
+                ))
+              ) : (
+                <p className={styles.campaignEditHint}>Aucun destinataire n’est prévu pour cette campagne.</p>
+              )}
+            </div>
+            <div className={styles.modalActions}>
+              <button type="button" onClick={() => setRecipientsPreviewOpen(false)}>Fermer</button>
+              <button type="button" onClick={openRecipientsEditor}>Modifier les destinataires</button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {recipientsEditOpen && campaignMailPreview && (
+        <div
+          className={styles.modalBackdrop}
+          role="presentation"
+          onClick={() => setRecipientsEditOpen(false)}
+        >
+          <section
+            className={`${styles.settingsModal} ${styles.agentListModal} ${styles.recipientsPickerModal}`}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Modifier les destinataires"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className={styles.modalClose}
+              onClick={() => setRecipientsEditOpen(false)}
+              aria-label="Fermer"
+            >
+              ×
+            </button>
+            <p className={styles.modalEyebrow}>CRM iNrAgent</p>
+            <h2>Choisir les destinataires</h2>
+            <div className={styles.agentPickerToolbar}>
+              <input
+                value={crmRecipientSearch}
+                onChange={(event) => setCrmRecipientSearch(event.target.value)}
+                placeholder="Rechercher un contact CRM..."
+              />
+              <button type="button" onClick={() => setNewRecipientOpen((current) => !current)}>
+                + Ajouter
+              </button>
+            </div>
+            {newRecipientOpen && (
+              <div className={styles.newRecipientBox}>
+                <input
+                  value={newRecipientDraft.name}
+                  onChange={(event) => setNewRecipientDraft((current) => ({ ...current, name: event.target.value }))}
+                  placeholder="Nom / société"
+                />
+                <input
+                  value={newRecipientDraft.email}
+                  onChange={(event) => setNewRecipientDraft((current) => ({ ...current, email: event.target.value }))}
+                  placeholder="email@exemple.fr"
+                />
+                <input
+                  value={newRecipientDraft.phone}
+                  onChange={(event) => setNewRecipientDraft((current) => ({ ...current, phone: event.target.value }))}
+                  placeholder="Téléphone"
+                />
+                <button type="button" onClick={addNewRecipientToCrm} disabled={newRecipientState === "saving"}>
+                  {newRecipientState === "saving" ? "Ajout..." : "Ajouter au CRM"}
+                </button>
+              </div>
+            )}
+            <div className={styles.agentListScroll}>
+              {crmContactsLoading ? (
+                <p className={styles.campaignEditHint}>Chargement des contacts CRM...</p>
+              ) : filteredCrmContacts.length > 0 ? (
+                filteredCrmContacts.map((contact) => {
+                  const recipient = contactToCampaignRecipient(contact);
+                  if (!recipient) return null;
+                  const checked = selectedRecipientEmails.includes(recipient.email.toLowerCase());
+                  return (
+                    <label key={contact.id} className={`${styles.agentListRow} ${styles.agentSelectableRow}`}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleRecipientSelection(recipient.email)}
+                      />
+                      <span className={styles.agentListAvatar} aria-hidden>
+                        {contactDisplayName(contact).slice(0, 1).toUpperCase() || "@"}
+                      </span>
+                      <span className={styles.agentListContent}>
+                        <strong>{contactDisplayName(contact)}</strong>
+                        <small>{recipient.email}{recipient.phone ? ` · ${recipient.phone}` : ""}</small>
+                      </span>
+                      <span className={styles.agentListTag}>{contact.contact_type || contact.category || "CRM"}</span>
+                    </label>
+                  );
+                })
+              ) : (
+                <p className={styles.campaignEditHint}>Aucun contact CRM avec email ne correspond à cette recherche.</p>
+              )}
+            </div>
+            <div className={styles.modalActions}>
+              <button type="button" onClick={() => setRecipientsEditOpen(false)} disabled={campaignSaveState === "saving"}>Annuler</button>
+              <button type="button" onClick={saveCampaignRecipients} disabled={campaignSaveState === "saving"}>
+                {campaignSaveState === "saving" ? "Enregistrement..." : `Valider ${selectedRecipientEmails.length} contact${selectedRecipientEmails.length > 1 ? "s" : ""}`}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {mailAccountEditOpen && campaignMailPreview && (
+        <div
+          className={styles.modalBackdrop}
+          role="presentation"
+          onClick={() => setMailAccountEditOpen(false)}
+        >
+          <section
+            className={`${styles.settingsModal} ${styles.agentListModal}`}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Modifier la boîte d’envoi"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className={styles.modalClose}
+              onClick={() => setMailAccountEditOpen(false)}
+              aria-label="Fermer"
+            >
+              ×
+            </button>
+            <p className={styles.modalEyebrow}>Boîte d’envoi</p>
+            <h2>Choisir la boîte mail</h2>
+            <div className={styles.agentListScroll}>
+              {mailAccountsLoading ? (
+                <p className={styles.campaignEditHint}>Chargement des boîtes connectées...</p>
+              ) : mailAccounts.length > 0 ? (
+                mailAccounts.map((account) => {
+                  const usable = account.status === "connected" && account.connection_status !== "needs_update" && !account.requires_update;
+                  return (
+                    <label key={account.id} className={`${styles.agentListRow} ${styles.agentSelectableRow} ${!usable ? styles.agentDisabledRow : ""}`}>
+                      <input
+                        type="radio"
+                        name="agent-mail-account"
+                        checked={selectedMailAccountId === account.id}
+                        disabled={!usable}
+                        onChange={() => setSelectedMailAccountId(account.id)}
+                      />
+                      <span className={styles.agentListAvatar} aria-hidden>✉</span>
+                      <span className={styles.agentListContent}>
+                        <strong>{mailAccountLabel(account)}</strong>
+                        <small>{account.provider || "mail"}{usable ? " · connectée" : " · à reconnecter"}</small>
+                      </span>
+                      <span className={styles.agentListTag}>{usable ? "OK" : "À corriger"}</span>
+                    </label>
+                  );
+                })
+              ) : (
+                <p className={styles.campaignEditHint}>Aucune boîte mail connectée. Connecte une boîte dans iNrSend avant validation.</p>
+              )}
+            </div>
+            <div className={styles.modalActions}>
+              <button type="button" onClick={() => setMailAccountEditOpen(false)} disabled={campaignSaveState === "saving"}>Annuler</button>
+              <button type="button" onClick={saveCampaignMailAccount} disabled={campaignSaveState === "saving" || !selectedMailAccountId}>
+                {campaignSaveState === "saving" ? "Enregistrement..." : "Utiliser cette boîte"}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
       {attachmentPreviewOpen && campaignMailPreview && (
         <div
           className={styles.modalBackdrop}
@@ -2924,14 +3620,40 @@ export default function AgentClient() {
               ×
             </button>
             <p className={styles.modalEyebrow}>Pièce jointe</p>
-            <h2>{campaignMailPreview.attachment?.name || "Aucune pièce jointe"}</h2>
-            {campaignMailPreview.attachment ? (
-              <div className={styles.attachmentPreviewBox}>
+            <h2>{campaignAttachments.length > 0 ? "Pièces jointes" : "Ajouter une pièce jointe"}</h2>
+            <div className={styles.attachmentUploadBox}>
+              <input
+                id="agent-campaign-attachment"
+                type="file"
+                multiple
+                onChange={(event) => {
+                  void uploadCampaignAttachment(event.currentTarget.files);
+                  event.currentTarget.value = "";
+                }}
+                disabled={attachmentUploadState === "saving"}
+              />
+              <label htmlFor="agent-campaign-attachment">
                 <span aria-hidden>📎</span>
-                <p>{campaignMailPreview.attachment.type}{campaignMailPreview.attachment.size ? ` · ${campaignMailPreview.attachment.size}` : ""}</p>
-                {campaignMailPreview.attachment.url ? (
-                  <a href={campaignMailPreview.attachment.url} target="_blank" rel="noreferrer">Ouvrir le document</a>
-                ) : null}
+                {attachmentUploadState === "saving" ? "Préparation..." : "Ajouter un fichier"}
+              </label>
+              <small>Les fichiers seront joints à la campagne au moment de la validation.</small>
+            </div>
+            {campaignAttachments.length > 0 ? (
+              <div className={styles.attachmentList}>
+                {campaignAttachments.map((attachment) => (
+                  <div key={`${attachment.bucket}-${attachment.path}`} className={styles.attachmentListRow}>
+                    <span aria-hidden>📄</span>
+                    <strong>{attachment.name}</strong>
+                    <small>{attachment.type || "Document"}{attachment.size ? ` · ${formatAttachmentSize(attachment.size)}` : ""}</small>
+                    <button
+                      type="button"
+                      onClick={() => removeCampaignAttachment(attachment.path)}
+                      disabled={attachmentUploadState === "saving"}
+                    >
+                      Supprimer
+                    </button>
+                  </div>
+                ))}
               </div>
             ) : (
               <p className={styles.campaignEditHint}>Aucune pièce jointe n’est prévue pour cette campagne.</p>
@@ -3253,16 +3975,37 @@ export default function AgentClient() {
             <p className={styles.modalNote}>
               Source des idées : {settingsConfig.source}
             </p>
-            <button
-              type="button"
-              className={styles.modalAction}
-              onClick={saveSettings}
-              disabled={saveState === "saving" || loadState === "loading"}
-            >
-              {saveState === "saving"
-                ? "Enregistrement..."
-                : "Enregistrer les réglages"}
-            </button>
+            <div className={styles.modalActionRow}>
+              <button
+                type="button"
+                className={styles.modalAction}
+                onClick={saveSettings}
+                disabled={saveState === "saving" || loadState === "loading" || Boolean(testNowKey)}
+              >
+                {saveState === "saving"
+                  ? "Enregistrement..."
+                  : "Enregistrer les réglages"}
+              </button>
+              <button
+                type="button"
+                className={`${styles.modalAction} ${styles.modalSecondaryAction}`}
+                onClick={() => testAutomationNow(settingsAutomation.key)}
+                disabled={
+                  saveState === "saving" ||
+                  loadState === "loading" ||
+                  prepareActionState === "saving" ||
+                  Boolean(testNowKey)
+                }
+              >
+                {testNowKey === settingsAutomation.key || prepareActionState === "saving"
+                  ? settingsAutomation.key === "stats"
+                    ? "Envoi test..."
+                    : "Préparation..."
+                  : settingsAutomation.key === "stats"
+                    ? "Envoyer un bilan test"
+                    : "Préparer maintenant"}
+              </button>
+            </div>
           </section>
         </div>
       )}

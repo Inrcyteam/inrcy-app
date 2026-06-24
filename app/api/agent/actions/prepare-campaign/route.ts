@@ -327,6 +327,7 @@ async function generateCampaignContent(args: {
       subject: args.subject,
       body: args.body,
       attachments: [],
+      automatic_campaign: true,
     },
   });
 

@@ -40,6 +40,7 @@ type DbAgentAutomationSettingsRow = {
 
 const GLOBAL_SELECT = "global_enabled, tone, timezone, metadata";
 const AUTOMATION_SELECT = "automation_key, enabled, frequency, day_of_week, time, validation_mode, allowed_channels, allowed_themes, use_image_bank, image_required, recipient_scope, source_strategy, last_prepared_at, last_executed_at, next_run_at, metadata";
+const SETTINGS_SCHEDULE_GRACE_MS = 20 * 60 * 1000;
 
 function isMissingSchemaError(error: { code?: string; message?: string } | null | undefined) {
   const message = String(error?.message || "").toLowerCase();
@@ -143,9 +144,16 @@ function computeNextRunAt(automation: InrAgentAutomationSettings, after: Date, t
   for (let offset = 0; offset <= 110; offset += 1) {
     const localDate = addLocalDays(start, offset);
     const candidateUtc = zonedTimeToUtc({ ...localDate, ...schedule }, timeZone);
-    if (candidateUtc.getTime() <= after.getTime()) continue;
     const candidateLocal = getLocalParts(candidateUtc, timeZone);
-    if (isScheduledDate(candidateLocal, frequency, dayOfWeek)) return candidateUtc.toISOString();
+    if (!isScheduledDate(candidateLocal, frequency, dayOfWeek)) continue;
+    if (candidateUtc.getTime() <= after.getTime()) {
+      const delay = after.getTime() - candidateUtc.getTime();
+      if (offset === 0 && delay <= SETTINGS_SCHEDULE_GRACE_MS) {
+        return new Date(after.getTime() - 60 * 1000).toISOString();
+      }
+      continue;
+    }
+    return candidateUtc.toISOString();
   }
 
   return null;
@@ -167,6 +175,24 @@ function automationSignature(automation: InrAgentAutomationSettings) {
     String(normalizeDay(automation.dayOfWeek)),
     normalizeTime(automation.time),
   ].join("|");
+}
+
+
+function shouldRecomputeNextRunAt(args: {
+  existing: DbAgentAutomationSettingsRow | undefined;
+  automation: InrAgentAutomationSettings;
+  scheduleChanged: boolean;
+}) {
+  if (!args.automation.enabled) return false;
+  if (args.scheduleChanged || !args.automation.nextRunAt) return true;
+
+  const metadata = args.existing?.metadata && typeof args.existing.metadata === "object" && !Array.isArray(args.existing.metadata)
+    ? args.existing.metadata
+    : {};
+  const lastStatus = typeof metadata.lastCronStatus === "string" ? metadata.lastCronStatus : "";
+  const nextRetry = typeof metadata.lastCronNextRetryAt === "string" ? metadata.lastCronNextRetryAt : "";
+
+  return lastStatus === "failed" && !nextRetry && !args.existing?.last_prepared_at;
 }
 
 function rowToAutomation(row: DbAgentAutomationSettingsRow | null | undefined): Partial<InrAgentAutomationSettings> {
@@ -304,14 +330,34 @@ export async function POST(request: Request) {
     const existing = existingByKey.get(key);
     const row = automationSettingsToDbRow(user.id, key, automation);
     const scheduleChanged = scheduleSignature(existing) !== automationSignature(automation);
-    const nextRunAt = scheduleChanged || !automation.nextRunAt
+    const recomputeNextRun = shouldRecomputeNextRunAt({ existing, automation, scheduleChanged });
+    const nextRunAt = recomputeNextRun
       ? computeNextRunAt(automation, nowDate, settings.timezone || "Europe/Paris")
       : automation.nextRunAt;
 
     return {
       ...row,
       next_run_at: automation.enabled ? nextRunAt : null,
+      metadata: {
+        ...row.metadata,
+        lastSettingsSavedAt: now,
+        lastSettingsRecomputedNextRunAt: recomputeNextRun,
+      },
     };
+  });
+
+  const savedSettings = sanitizeInrAgentSettings({
+    ...settings,
+    automations: Object.fromEntries(
+      automationPayloads.map((payload) => [
+        payload.automation_key,
+        {
+          ...settings.automations[payload.automation_key],
+          nextRunAt: payload.next_run_at,
+          metadata: payload.metadata,
+        },
+      ]),
+    ) as unknown as InrAgentSettings["automations"],
   });
 
   const { error: automationError } = await supabaseAdmin
@@ -326,5 +372,5 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Enregistrement des automatisations iNr'Agent impossible" }, { status: 500 });
   }
 
-  return NextResponse.json({ settings, saved: true, tableMissing: false });
+  return NextResponse.json({ settings: savedSettings, saved: true, tableMissing: false });
 }

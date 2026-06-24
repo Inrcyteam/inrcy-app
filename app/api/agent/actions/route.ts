@@ -51,7 +51,7 @@ function withFreshReportDocument(payload: Record<string, unknown>) {
   return supabaseAdmin.storage
     .from(bucket)
     .createSignedUrl(storagePath, 60 * 60)
-    .then(({ data }) => ({
+    .then(({ data }: { data: { signedUrl?: string } | null }) => ({
       ...payload,
       reportDocument: {
         ...reportRecord,
@@ -165,6 +165,148 @@ function recipientsToEmails(value: unknown) {
   }
 
   return emails;
+}
+
+type CampaignRecipientInput = {
+  contact_id: string | null;
+  display_name: string | null;
+  email: string;
+  phone?: string | null;
+  contact_type?: string | null;
+  category?: string | null;
+  company_name?: string | null;
+  city?: string | null;
+  postal_code?: string | null;
+};
+
+function normalizeCampaignRecipientInputs(value: unknown): CampaignRecipientInput[] {
+  const recipients = Array.isArray(value) ? value : [];
+  const seen = new Set<string>();
+  const out: CampaignRecipientInput[] = [];
+
+  for (const item of recipients) {
+    const record = asRecord(item);
+    const email = cleanEmail(record?.email || item);
+    if (!email || seen.has(email)) continue;
+    seen.add(email);
+    out.push({
+      contact_id: cleanText(record?.contact_id || record?.contactId || record?.id, 140) || null,
+      display_name:
+        cleanText(record?.display_name || record?.displayName || record?.name || record?.company_name || record?.companyName, 220) ||
+        null,
+      email,
+      phone: cleanText(record?.phone, 80) || null,
+      contact_type: cleanText(record?.contact_type || record?.contactType, 80) || null,
+      category: cleanText(record?.category, 80) || null,
+      company_name: cleanText(record?.company_name || record?.companyName, 180) || null,
+      city: cleanText(record?.city, 120) || null,
+      postal_code: cleanText(record?.postal_code || record?.postalCode, 20) || null,
+    });
+  }
+
+  return out.slice(0, 1000);
+}
+
+function isCampaignAction(action: ReturnType<typeof rowToInrAgentAction>) {
+  return (
+    (action.automationKey === "grow" || action.automationKey === "loyalty") &&
+    (action.targetTool === "propulser" || action.targetTool === "fideliser" || action.targetTool === "mails")
+  );
+}
+
+function buildCampaignPreviewText(subject: string, bodyText: string, recipients: CampaignRecipientInput[]) {
+  return [
+    `Objet : ${subject}`,
+    bodyText,
+    `Destinataires proposés : ${recipients.length} contact${recipients.length > 1 ? "s" : ""} CRM`,
+  ].join("\n\n");
+}
+
+async function readCampaignAction(actionId: string, userId: string) {
+  const { data: currentRow, error: readError } = await supabaseAdmin
+    .from("inr_agent_actions")
+    .select(ACTION_SELECT)
+    .eq("id", actionId)
+    .eq("user_id", userId)
+    .single();
+
+  if (readError || !currentRow) {
+    return {
+      action: null,
+      response: isMissingTableError(readError)
+        ? NextResponse.json(
+            { error: "La table inr_agent_actions doit être créée dans Supabase.", tableMissing: true },
+            { status: 500 },
+          )
+        : NextResponse.json({ error: "Action iNr’Agent introuvable." }, { status: 404 }),
+    };
+  }
+
+  const action = rowToInrAgentAction(currentRow as any);
+  if (!isCampaignAction(action)) {
+    return {
+      action: null,
+      response: NextResponse.json(
+        { error: "Cette modification est réservée aux campagnes Propulser/Fidéliser préparées par iNr’Agent." },
+        { status: 400 },
+      ),
+    };
+  }
+
+  return { action, response: null };
+}
+
+async function updateCampaignAction(args: {
+  actionId: string;
+  userId: string;
+  patch: Record<string, unknown>;
+}) {
+  const { data, error } = await supabaseAdmin
+    .from("inr_agent_actions")
+    .update({ ...args.patch, updated_at: new Date().toISOString(), last_error: null })
+    .eq("id", args.actionId)
+    .eq("user_id", args.userId)
+    .select(ACTION_SELECT)
+    .single();
+
+  if (error) {
+    if (isMissingTableError(error)) {
+      return {
+        response: NextResponse.json(
+          { error: "La table inr_agent_actions doit être créée dans Supabase.", tableMissing: true },
+          { status: 500 },
+        ),
+      };
+    }
+    return {
+      response: NextResponse.json(
+        { error: error.message || "Modification de l’action iNr’Agent impossible." },
+        { status: 500 },
+      ),
+    };
+  }
+
+  const action = await refreshActionImageUrls(rowToInrAgentAction(data));
+  return { action };
+}
+
+async function fetchConnectedMailAccount(userId: string, accountId: string) {
+  const { data, error } = await supabaseAdmin
+    .from("integrations")
+    .select("id,provider,resource_label,status,settings")
+    .eq("id", accountId)
+    .eq("user_id", userId)
+    .eq("category", "mail")
+    .eq("status", "connected")
+    .maybeSingle();
+
+  if (error || !data) return null;
+  const row = data as Record<string, unknown>;
+  return {
+    id: cleanText(row.id, 140),
+    provider: cleanText(row.provider, 80),
+    label: cleanText(row.resource_label || row.provider || "Boîte mail", 180),
+  };
 }
 
 function buildDraftPayloadFromAgentAction(args: {
@@ -405,6 +547,9 @@ export async function PATCH(request: Request) {
     editType?: unknown;
     subject?: unknown;
     bodyText?: unknown;
+    recipients?: unknown;
+    accountId?: unknown;
+    attachments?: unknown;
   } | null;
   const actionId =
     typeof requestBody?.actionId === "string"
@@ -432,6 +577,103 @@ export async function PATCH(request: Request) {
       draftId: result.draftId,
       savedAsDraft: true,
     });
+  }
+
+  if (editType === "campaign_recipients") {
+    if (!actionId) {
+      return NextResponse.json({ error: "Action invalide" }, { status: 400 });
+    }
+
+    const recipients = normalizeCampaignRecipientInputs(requestBody?.recipients);
+    if (!recipients.length) {
+      return NextResponse.json({ error: "Sélectionne au moins un destinataire valide." }, { status: 400 });
+    }
+
+    const { action, response } = await readCampaignAction(actionId, user.id);
+    if (response) return response;
+    if (!action) return NextResponse.json({ error: "Action iNr’Agent introuvable." }, { status: 404 });
+
+    const payload = action.payload || {};
+    const subject = cleanText(payload.campaignSubject || payload.subject || action.title, 220) || "(sans objet)";
+    const bodyText = cleanText(payload.campaignBody || payload.bodyText || payload.text || action.previewText, 6000);
+    const result = await updateCampaignAction({
+      actionId,
+      userId: user.id,
+      patch: {
+        recipients,
+        payload: {
+          ...payload,
+          recipients,
+          recipientCount: recipients.length,
+          recipientScope: "manual_selection",
+        },
+        preview_text: buildCampaignPreviewText(subject, bodyText, recipients),
+      },
+    });
+    if ("response" in result) return result.response;
+    return NextResponse.json({ action: result.action, saved: true });
+  }
+
+  if (editType === "campaign_mail_account") {
+    if (!actionId) {
+      return NextResponse.json({ error: "Action invalide" }, { status: 400 });
+    }
+
+    const accountId = cleanText(requestBody?.accountId, 140);
+    if (!accountId) {
+      return NextResponse.json({ error: "Boîte d’envoi invalide." }, { status: 400 });
+    }
+
+    const { action, response } = await readCampaignAction(actionId, user.id);
+    if (response) return response;
+    if (!action) return NextResponse.json({ error: "Action iNr’Agent introuvable." }, { status: 404 });
+
+    const mailAccount = await fetchConnectedMailAccount(user.id, accountId);
+    if (!mailAccount?.id) {
+      return NextResponse.json({ error: "La boîte d’envoi sélectionnée est introuvable ou non connectée." }, { status: 404 });
+    }
+
+    const payload = action.payload || {};
+    const result = await updateCampaignAction({
+      actionId,
+      userId: user.id,
+      patch: {
+        payload: {
+          ...payload,
+          accountId: mailAccount.id,
+          mailAccountId: mailAccount.id,
+          mailProvider: mailAccount.provider,
+          mailAccount,
+        },
+      },
+    });
+    if ("response" in result) return result.response;
+    return NextResponse.json({ action: result.action, saved: true });
+  }
+
+  if (editType === "campaign_attachments") {
+    if (!actionId) {
+      return NextResponse.json({ error: "Action invalide" }, { status: 400 });
+    }
+
+    const attachments = cleanDraftAttachments(requestBody?.attachments);
+    const { action, response } = await readCampaignAction(actionId, user.id);
+    if (response) return response;
+    if (!action) return NextResponse.json({ error: "Action iNr’Agent introuvable." }, { status: 404 });
+
+    const payload = action.payload || {};
+    const result = await updateCampaignAction({
+      actionId,
+      userId: user.id,
+      patch: {
+        payload: {
+          ...payload,
+          attachments,
+        },
+      },
+    });
+    if ("response" in result) return result.response;
+    return NextResponse.json({ action: result.action, saved: true });
   }
 
   if (editType === "campaign_text") {

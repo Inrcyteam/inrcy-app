@@ -50,6 +50,29 @@ export class TemplateAiGenerationError extends Error {
 
 const clean = (value: unknown, max = 600) => String(value ?? "").trim().slice(0, max);
 
+function normalizeGeneratedMailText(value: string, max = 6000) {
+  return String(value || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/[ \t]+\n/g, "\n")
+    .trim()
+    .slice(0, max);
+}
+
+const unfinishedMailPatterns = [
+  /\{\{[^}]+\}\}/i,
+  /\[[^\]]*(?:décrire|decrire|compléter|completer|ville|quartier|besoin|résultat|resultat|client|solution|secteur)[^\]]*\]/i,
+  /\b(?:à compléter|a completer|non précisé(?:e)?|non precise(?:e)?|exemple local|lieu\s*\/\s*secteur|ville ou quartier|besoin traité|besoin traite|résultat\s*\/\s*bénéfice|resultat\s*\/\s*benefice|décrire la situation|decrire la situation|décrire les actions|decrire les actions)\b/i,
+  /\b(?:exemple local|secteur|besoins?|solutions?|résultat|resultat)\s*:\s*(?:\[|à compléter|a completer|non précisé|non précise|non precise)/i,
+];
+
+function findUnfinishedMailFragment(subject: string, bodyText: string) {
+  const text = `${subject}\n${bodyText}`;
+  const match = unfinishedMailPatterns.find((pattern) => pattern.test(text));
+  return match ? match.source : "";
+}
+
 function listFrom(value: unknown, max = 8) {
   if (Array.isArray(value)) return value.map((v) => clean(v, 80)).filter(Boolean).slice(0, max);
   return clean(value, 600)
@@ -100,6 +123,7 @@ export async function generateTemplateAiContent(args: {
   const currentSubject = clean(body["subject"], 220);
   const currentBody = clean(body["body"], 6000);
   const attachmentRefs = parseMailAttachmentRefs(body["attachments"]);
+  const isAutomaticCampaign = body["automatic_campaign"] !== false;
 
   if (!currentSubject && !currentBody) {
     throw new TemplateAiGenerationError("Aucun modèle à reformuler.", { status: 400 });
@@ -197,6 +221,9 @@ Règles strictes :
 - Ne pas changer la finalité : avis, recommandation, offre, information, suivi ou enquête selon le modèle.
 - Garder un email prêt à envoyer : salutation, message clair, CTA, formule de fin.
 - Ne pas ajouter de markdown lourd ni de HTML. Texte brut uniquement.
+- Ne jamais laisser de texte à compléter : aucun crochet [..], aucune variable {{..}}, aucun “Exemple local”, aucun “Secteur :”, aucun “Besoin :”, aucun “Résultat :” repris du modèle.
+- Les modèles peuvent contenir des zones de travail. Tu dois les transformer en phrases complètes avec les informations disponibles, ou les supprimer proprement si l'information manque.
+- Pour une campagne automatique iNr’Agent, le mail doit être prêt à valider, jamais prêt à compléter par le professionnel.
 ${aiLanguageInstruction}
 ${aiRules}`;
 
@@ -228,7 +255,7 @@ ${renderedSubject}
 Message actuel du modèle :
 ${renderedBody}
 
-Réécris un nouvel objet et un nouveau message, plus personnalisé et plus naturel, en respectant la même mission. Si une pièce jointe utile est présente, exploite ses informations pour rendre le mail plus concret sans la recopier.`;
+Réécris un nouvel objet et un nouveau message, plus personnalisé et plus naturel, en respectant la même mission. Si une pièce jointe utile est présente, exploite ses informations pour rendre le mail plus concret sans la recopier. Utilise au maximum les informations Profil / Activité ci-dessus. Ne renvoie jamais un modèle à compléter : remplace les exemples, crochets et libellés techniques par un email finalisé.`;
 
   const generateOnce = (extraInstruction = "") => openaiGenerateJSON<GeneratedTemplateMail>({
     system,
@@ -239,19 +266,24 @@ Réécris un nouvel objet et un nouveau message, plus personnalisé et plus natu
   });
 
   let generated = await generateOnce();
-  let generatedSubject = normalizeMailSubject(clean(generated.subject, 220));
-  let generatedBody = stripTemplateSignatureBlock(clean(generated.body_text, 6000));
+  let generatedSubject = normalizeMailSubject(normalizeGeneratedMailText(String(generated.subject || ""), 220));
+  let generatedBody = stripTemplateSignatureBlock(normalizeGeneratedMailText(String(generated.body_text || ""), 6000));
+  let unfinishedFragment = isAutomaticCampaign ? findUnfinishedMailFragment(generatedSubject, generatedBody) : "";
 
-  if (!generatedSubject || generatedBody.length < 80) {
+  if (!generatedSubject || generatedBody.length < 80 || unfinishedFragment) {
     generated = await generateOnce(
-      `REPRISE OBLIGATOIRE : la réponse précédente était vide ou incomplète. Retourne uniquement un JSON complet avec subject et body_text. Ne réutilise pas le modèle français par défaut. Respecte strictement la langue finale demandée ci-dessus.`,
+      `REPRISE OBLIGATOIRE : la réponse précédente était vide, incomplète ou contenait encore un morceau de modèle à compléter (${unfinishedFragment || "contenu incomplet"}). Retourne uniquement un JSON complet avec subject et body_text. Aucun crochet, aucune variable, aucun libellé “Exemple local / Secteur / Besoin / Résultat”, aucun markdown **...**. Le mail doit être finalisé et prêt à envoyer sans intervention du professionnel. Respecte strictement la langue finale demandée ci-dessus.`,
     );
-    generatedSubject = normalizeMailSubject(clean(generated.subject, 220));
-    generatedBody = stripTemplateSignatureBlock(clean(generated.body_text, 6000));
+    generatedSubject = normalizeMailSubject(normalizeGeneratedMailText(String(generated.subject || ""), 220));
+    generatedBody = stripTemplateSignatureBlock(normalizeGeneratedMailText(String(generated.body_text || ""), 6000));
+    unfinishedFragment = isAutomaticCampaign ? findUnfinishedMailFragment(generatedSubject, generatedBody) : "";
   }
 
-  if (!generatedSubject || generatedBody.length < 80) {
-    throw new TemplateAiGenerationError("La génération IA n’a pas produit un email complet. Merci de réessayer.", { status: 502 });
+  if (!generatedSubject || generatedBody.length < 80 || unfinishedFragment) {
+    throw new TemplateAiGenerationError(
+      "La génération IA n’a pas produit un email automatique suffisamment finalisé. Merci de réessayer.",
+      { status: 502, code: "unfinished_automatic_campaign" },
+    );
   }
 
   return { subject: generatedSubject, body_text: generatedBody };
