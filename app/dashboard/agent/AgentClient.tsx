@@ -172,6 +172,7 @@ type CampaignRecipientPreview = {
   city?: string | null;
   postal_code?: string | null;
   postalCode?: string | null;
+  manual?: boolean | null;
 };
 
 type CrmContactForAgent = {
@@ -185,6 +186,7 @@ type CrmContactForAgent = {
   contact_type?: string | null;
   postal_code?: string | null;
   city?: string | null;
+  important?: boolean | null;
 };
 
 type AgentMailAccount = {
@@ -195,6 +197,8 @@ type AgentMailAccount = {
   requires_update?: boolean | null;
   display_name?: string | null;
   email_address?: string | null;
+  account_email?: string | null;
+  email?: string | null;
   resource_label?: string | null;
   label?: string | null;
 };
@@ -1240,6 +1244,7 @@ function normalizeCampaignRecipients(value: unknown): CampaignRecipientPreview[]
       company_name: firstSafeString(record?.company_name, record?.companyName) || null,
       city: firstSafeString(record?.city) || null,
       postal_code: firstSafeString(record?.postal_code, record?.postalCode) || null,
+      manual: Boolean(record?.manual),
     });
   }
 
@@ -1288,15 +1293,72 @@ function contactToCampaignRecipient(contact: CrmContactForAgent): CampaignRecipi
   };
 }
 
+function isValidEmail(value: string) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(value.trim());
+}
+
+function parseRecipientEmails(value: string) {
+  const seen = new Set<string>();
+  return value
+    .split(/[;,\s]+/g)
+    .map((item) => item.trim().toLowerCase())
+    .filter((email) => {
+      if (!email || !isValidEmail(email) || seen.has(email)) return false;
+      seen.add(email);
+      return true;
+    });
+}
+
+function sanitizeDepartmentFilter(value: string) {
+  return value.replace(/[^0-9abAB]/g, "").slice(0, 3).toUpperCase();
+}
+
+function contactDepartment(postalCode: string | null | undefined) {
+  const cleaned = sanitizeDepartmentFilter(firstSafeString(postalCode));
+  if (/^(97|98)\d/.test(cleaned)) return cleaned.slice(0, 3);
+  return cleaned.slice(0, 2);
+}
+
+function manualRecipientFromEmail(emailValue: string): CampaignRecipientPreview | null {
+  const email = emailValue.trim().toLowerCase();
+  if (!isValidEmail(email)) return null;
+  return {
+    contact_id: null,
+    display_name: email,
+    email,
+    contact_type: "manuel",
+    category: "manuel",
+    manual: true,
+  };
+}
+
+function mailAccountEmail(account: Partial<AgentMailAccount> | Record<string, unknown> | null | undefined) {
+  return firstSafeString(
+    account?.email_address,
+    account?.account_email,
+    account?.email,
+    account?.resource_label,
+    account?.label,
+  );
+}
+
 function mailAccountLabel(account: AgentMailAccount) {
   return firstSafeString(
-    account.display_name,
     account.email_address,
+    account.account_email,
+    account.email,
     account.resource_label,
     account.label,
+    account.display_name,
     account.provider,
     "Boîte mail",
   );
+}
+
+function mailAccountSecondaryLabel(account: Partial<AgentMailAccount> | Record<string, unknown> | null | undefined) {
+  const provider = firstSafeString(account?.provider, "mail");
+  const displayName = firstSafeString(account?.display_name);
+  return displayName ? `${provider} · ${displayName}` : provider;
 }
 
 function extractCampaignMailPreview(action: AgentPreparedAction | null): CampaignMailPreview | null {
@@ -1307,11 +1369,15 @@ function extractCampaignMailPreview(action: AgentPreparedAction | null): Campaig
   const body = firstSafeString(payload.campaignBody, payload.bodyText, payload.text, action.previewText, action.summary);
   const mission = firstSafeString(payload.mission, targetThemesLabel(action), action.automationKey === "loyalty" ? "Fidéliser" : "Propulser");
   const accountLabel = firstSafeString(
-    mailAccount?.label,
+    mailAccount?.email_address,
+    mailAccount?.account_email,
     mailAccount?.email,
-    mailAccount?.provider,
+    payload.mailAccountEmail,
+    payload.accountEmail,
+    mailAccount?.label,
     payload.mailAccountLabel,
     payload.accountLabel,
+    mailAccount?.provider,
     "Boîte mail connectée",
   );
   const accountProvider = firstSafeString(mailAccount?.provider, payload.mailProvider, "Mails");
@@ -1600,6 +1666,12 @@ export default function AgentClient() {
   const [crmContacts, setCrmContacts] = useState<CrmContactForAgent[]>([]);
   const [crmContactsLoading, setCrmContactsLoading] = useState(false);
   const [crmRecipientSearch, setCrmRecipientSearch] = useState("");
+  const [crmRecipientFiltersOpen, setCrmRecipientFiltersOpen] = useState(false);
+  const [crmRecipientCategory, setCrmRecipientCategory] = useState("all");
+  const [crmRecipientType, setCrmRecipientType] = useState("all");
+  const [crmRecipientDepartment, setCrmRecipientDepartment] = useState("");
+  const [crmRecipientImportantOnly, setCrmRecipientImportantOnly] = useState(false);
+  const [manualRecipientsInput, setManualRecipientsInput] = useState("");
   const [selectedRecipientEmails, setSelectedRecipientEmails] = useState<string[]>([]);
   const [newRecipientOpen, setNewRecipientOpen] = useState(false);
   const [newRecipientDraft, setNewRecipientDraft] = useState({ name: "", email: "", phone: "" });
@@ -1813,10 +1885,15 @@ export default function AgentClient() {
   const campaignAttachments = normalizeCampaignAttachmentRefs(selectedPreparedAction?.payload?.attachments);
   const filteredCrmContacts = useMemo(() => {
     const q = crmRecipientSearch.trim().toLowerCase();
-    const contactsWithEmail = crmContacts.filter((contact) => firstSafeString(contact.email));
-    if (!q) return contactsWithEmail;
-    return contactsWithEmail.filter((contact) =>
-      [
+    const department = sanitizeDepartmentFilter(crmRecipientDepartment);
+    return crmContacts.filter((contact) => {
+      if (!firstSafeString(contact.email)) return false;
+      if (crmRecipientImportantOnly && !contact.important) return false;
+      if (crmRecipientCategory !== "all" && firstSafeString(contact.category).toLowerCase() !== crmRecipientCategory) return false;
+      if (crmRecipientType !== "all" && firstSafeString(contact.contact_type).toLowerCase() !== crmRecipientType) return false;
+      if (department && !contactDepartment(contact.postal_code).startsWith(department)) return false;
+      if (!q) return true;
+      return [
         contactDisplayName(contact),
         contact.email,
         contact.phone,
@@ -1827,9 +1904,25 @@ export default function AgentClient() {
         contact.category,
       ]
         .map((value) => firstSafeString(value).toLowerCase())
-        .some((value) => value.includes(q)),
+        .some((value) => value.includes(q));
+    });
+  }, [crmContacts, crmRecipientCategory, crmRecipientDepartment, crmRecipientImportantOnly, crmRecipientSearch, crmRecipientType]);
+  const crmRecipientsByEmail = useMemo(() => {
+    return new Map(
+      crmContacts
+        .map((contact) => contactToCampaignRecipient(contact))
+        .filter((recipient): recipient is CampaignRecipientPreview => Boolean(recipient))
+        .map((recipient) => [recipient.email.toLowerCase(), recipient]),
     );
-  }, [crmContacts, crmRecipientSearch]);
+  }, [crmContacts]);
+  const manualSelectedRecipientEmails = useMemo(() => {
+    return selectedRecipientEmails.filter((email) => !crmRecipientsByEmail.has(email.toLowerCase()));
+  }, [crmRecipientsByEmail, selectedRecipientEmails]);
+  const activeCrmRecipientFiltersCount =
+    (crmRecipientCategory !== "all" ? 1 : 0) +
+    (crmRecipientType !== "all" ? 1 : 0) +
+    (crmRecipientDepartment.trim() ? 1 : 0) +
+    (crmRecipientImportantOnly ? 1 : 0);
   const selectedAutomationSettings = agentSettings.automations[selected.key];
   const statsReports = useMemo(
     () => statsReportsFromActions(actions, { automaticOnly: true, limit: 5 }),
@@ -1985,6 +2078,8 @@ export default function AgentClient() {
     setCampaignEditOpen(false);
     setRecipientsEditOpen(true);
     setCrmRecipientSearch("");
+    setManualRecipientsInput("");
+    setCrmRecipientFiltersOpen(false);
     await loadCrmContactsForAgent();
   }
 
@@ -1998,17 +2093,58 @@ export default function AgentClient() {
     );
   }
 
+  function addManualRecipientsFromInput() {
+    const emails = parseRecipientEmails(manualRecipientsInput);
+    if (!emails.length) {
+      showNotice("Ajoute au moins une adresse mail valide.");
+      return;
+    }
+    setSelectedRecipientEmails((current) => {
+      const next = new Set(current.map((email) => email.toLowerCase()));
+      for (const email of emails) next.add(email);
+      return Array.from(next);
+    });
+    setManualRecipientsInput("");
+    showNotice(`${emails.length} destinataire${emails.length > 1 ? "s" : ""} ajouté${emails.length > 1 ? "s" : ""}.`);
+  }
+
+  function selectAllFilteredCrmRecipients() {
+    const emails = filteredCrmContacts
+      .map((contact) => contactToCampaignRecipient(contact)?.email.toLowerCase())
+      .filter((email): email is string => Boolean(email));
+    setSelectedRecipientEmails((current) => {
+      const next = new Set(current.map((email) => email.toLowerCase()));
+      for (const email of emails) next.add(email);
+      return Array.from(next);
+    });
+  }
+
+  function clearFilteredCrmRecipients() {
+    const emailsToRemove = new Set(
+      filteredCrmContacts
+        .map((contact) => contactToCampaignRecipient(contact)?.email.toLowerCase())
+        .filter((email): email is string => Boolean(email)),
+    );
+    setSelectedRecipientEmails((current) => current.filter((email) => !emailsToRemove.has(email.toLowerCase())));
+  }
+
+  function removeSelectedRecipient(emailValue: string) {
+    const email = emailValue.trim().toLowerCase();
+    setSelectedRecipientEmails((current) => current.filter((item) => item.toLowerCase() !== email));
+  }
+
   async function saveCampaignRecipients() {
     if (!selectedPreparedAction || campaignSaveState === "saving") return;
     const previousByEmail = new Map(campaignRecipients.map((recipient) => [recipient.email.toLowerCase(), recipient]));
-    const crmByEmail = new Map(
-      crmContacts
-        .map((contact) => contactToCampaignRecipient(contact))
-        .filter((recipient): recipient is CampaignRecipientPreview => Boolean(recipient))
-        .map((recipient) => [recipient.email.toLowerCase(), recipient]),
+    const pendingManualEmails = parseRecipientEmails(manualRecipientsInput);
+    const emails = Array.from(
+      new Set([
+        ...selectedRecipientEmails.map((email) => email.toLowerCase()),
+        ...pendingManualEmails,
+      ]),
     );
-    const recipients = selectedRecipientEmails
-      .map((email) => crmByEmail.get(email) || previousByEmail.get(email))
+    const recipients = emails
+      .map((email) => crmRecipientsByEmail.get(email) || previousByEmail.get(email) || manualRecipientFromEmail(email))
       .filter((recipient): recipient is CampaignRecipientPreview => Boolean(recipient));
 
     if (!recipients.length) {
@@ -2023,6 +2159,7 @@ export default function AgentClient() {
         "Modification des destinataires impossible.",
       );
       setRecipientsEditOpen(false);
+      setManualRecipientsInput("");
       showNotice("Destinataires de la campagne mis à jour.");
     } catch (error) {
       showNotice(error instanceof Error ? error.message : "Modification des destinataires impossible.");
@@ -2923,7 +3060,13 @@ export default function AgentClient() {
                       </span>
                       <span className={styles.campaignInfoEye} aria-hidden>👁</span>
                     </button>
-                    <article className={`${styles.campaignInfoCard} ${styles.campaignInfoMail}`}>
+                    <button
+                      type="button"
+                      className={`${styles.campaignInfoCard} ${styles.campaignInfoMail}`}
+                      onClick={openMailAccountEditor}
+                      disabled={!hasCampaignPreview}
+                      title={hasCampaignPreview ? "Modifier la boîte d’envoi" : "Aucune campagne préparée"}
+                    >
                       <span className={styles.campaignInfoIcon} aria-hidden>
                         <SendPlaneIcon />
                       </span>
@@ -2931,7 +3074,8 @@ export default function AgentClient() {
                         <small>Boîte d’envoi</small>
                         <strong>{campaignDisplayPreview.mailAccountLabel}</strong>
                       </span>
-                    </article>
+                      <span className={styles.campaignInfoEye} aria-hidden>👁</span>
+                    </button>
                     <button
                       type="button"
                       className={`${styles.campaignInfoCard} ${styles.campaignInfoAttachment}`}
@@ -3465,16 +3609,108 @@ export default function AgentClient() {
             </button>
             <p className={styles.modalEyebrow}>CRM iNrAgent</p>
             <h2>Choisir les destinataires</h2>
+
+            <div className={styles.manualRecipientBox}>
+              <div>
+                <strong>Destinataires libres</strong>
+                <small>Saisissez une ou plusieurs adresses, séparées par un point-virgule.</small>
+              </div>
+              <div className={styles.manualRecipientRow}>
+                <input
+                  value={manualRecipientsInput}
+                  onChange={(event) => setManualRecipientsInput(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      addManualRecipientsFromInput();
+                    }
+                  }}
+                  placeholder="email@exemple.fr; autre@exemple.fr"
+                />
+                <button type="button" onClick={addManualRecipientsFromInput}>Ajouter</button>
+              </div>
+              {manualSelectedRecipientEmails.length > 0 && (
+                <div className={styles.manualRecipientChips}>
+                  {manualSelectedRecipientEmails.map((email) => (
+                    <button key={email} type="button" onClick={() => removeSelectedRecipient(email)} title="Retirer ce destinataire">
+                      {email} <span aria-hidden>×</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <div className={styles.agentPickerToolbar}>
               <input
                 value={crmRecipientSearch}
                 onChange={(event) => setCrmRecipientSearch(event.target.value)}
                 placeholder="Rechercher un contact CRM..."
               />
-              <button type="button" onClick={() => setNewRecipientOpen((current) => !current)}>
-                + Ajouter
+              <button
+                type="button"
+                className={activeCrmRecipientFiltersCount > 0 ? styles.agentToolbarActiveButton : undefined}
+                onClick={() => setCrmRecipientFiltersOpen((current) => !current)}
+              >
+                ⚙️ Filtres{activeCrmRecipientFiltersCount > 0 ? ` (${activeCrmRecipientFiltersCount})` : ""}
               </button>
+              <button type="button" onClick={selectAllFilteredCrmRecipients} disabled={crmContactsLoading || filteredCrmContacts.length === 0}>
+                Tout
+              </button>
+              <button type="button" onClick={clearFilteredCrmRecipients} disabled={crmContactsLoading || filteredCrmContacts.length === 0}>
+                Aucun
+              </button>
+              <button type="button" onClick={() => setNewRecipientOpen((current) => !current)}>
+                + Contact CRM
+              </button>
+              <span className={styles.agentToolbarCount}>
+                {filteredCrmContacts.length} contact{filteredCrmContacts.length > 1 ? "s" : ""}
+              </span>
             </div>
+
+            {crmRecipientFiltersOpen && (
+              <div className={styles.agentFiltersPanel}>
+                <label>
+                  <span>Catégorie</span>
+                  <select value={crmRecipientCategory} onChange={(event) => setCrmRecipientCategory(event.target.value)}>
+                    <option value="all">Toutes</option>
+                    <option value="particulier">Particuliers</option>
+                    <option value="professionnel">Professionnels</option>
+                    <option value="institution">Institutions</option>
+                    <option value="collectivite_publique">Collectivités</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Type</span>
+                  <select value={crmRecipientType} onChange={(event) => setCrmRecipientType(event.target.value)}>
+                    <option value="all">Tous</option>
+                    <option value="client">Clients</option>
+                    <option value="prospect">Prospects</option>
+                    <option value="fournisseur">Fournisseurs</option>
+                    <option value="partenaire">Partenaires</option>
+                    <option value="autre">Autres</option>
+                  </select>
+                </label>
+                <label>
+                  <span>Département</span>
+                  <input
+                    value={crmRecipientDepartment}
+                    onChange={(event) => setCrmRecipientDepartment(sanitizeDepartmentFilter(event.target.value))}
+                    placeholder="62"
+                    inputMode="text"
+                    maxLength={3}
+                  />
+                </label>
+                <button
+                  type="button"
+                  className={`${styles.agentImportantToggle} ${crmRecipientImportantOnly ? styles.agentImportantToggleActive : ""}`}
+                  onClick={() => setCrmRecipientImportantOnly((current) => !current)}
+                  aria-pressed={crmRecipientImportantOnly}
+                >
+                  <span aria-hidden>{crmRecipientImportantOnly ? "★" : "☆"}</span> Important uniquement
+                </button>
+              </div>
+            )}
+
             {newRecipientOpen && (
               <div className={styles.newRecipientBox}>
                 <input
@@ -3497,6 +3733,7 @@ export default function AgentClient() {
                 </button>
               </div>
             )}
+
             <div className={styles.agentListScroll}>
               {crmContactsLoading ? (
                 <p className={styles.campaignEditHint}>Chargement des contacts CRM...</p>
@@ -3506,7 +3743,7 @@ export default function AgentClient() {
                   if (!recipient) return null;
                   const checked = selectedRecipientEmails.includes(recipient.email.toLowerCase());
                   return (
-                    <label key={contact.id} className={`${styles.agentListRow} ${styles.agentSelectableRow}`}>
+                    <label key={contact.id} className={`${styles.agentListRow} ${styles.agentSelectableRow} ${checked ? styles.agentSelectedRow : ""}`}>
                       <input
                         type="checkbox"
                         checked={checked}
@@ -3516,7 +3753,7 @@ export default function AgentClient() {
                         {contactDisplayName(contact).slice(0, 1).toUpperCase() || "@"}
                       </span>
                       <span className={styles.agentListContent}>
-                        <strong>{contactDisplayName(contact)}</strong>
+                        <strong>{contactDisplayName(contact)}{contact.important ? <span className={styles.agentImportantMark}>★</span> : null}</strong>
                         <small>{recipient.email}{recipient.phone ? ` · ${recipient.phone}` : ""}</small>
                       </span>
                       <span className={styles.agentListTag}>{contact.contact_type || contact.category || "CRM"}</span>
@@ -3530,7 +3767,7 @@ export default function AgentClient() {
             <div className={styles.modalActions}>
               <button type="button" onClick={() => setRecipientsEditOpen(false)} disabled={campaignSaveState === "saving"}>Annuler</button>
               <button type="button" onClick={saveCampaignRecipients} disabled={campaignSaveState === "saving"}>
-                {campaignSaveState === "saving" ? "Enregistrement..." : `Valider ${selectedRecipientEmails.length} contact${selectedRecipientEmails.length > 1 ? "s" : ""}`}
+                {campaignSaveState === "saving" ? "Enregistrement..." : `Valider ${selectedRecipientEmails.length + parseRecipientEmails(manualRecipientsInput).filter((email) => !selectedRecipientEmails.includes(email)).length} contact${selectedRecipientEmails.length + parseRecipientEmails(manualRecipientsInput).filter((email) => !selectedRecipientEmails.includes(email)).length > 1 ? "s" : ""}`}
               </button>
             </div>
           </section>
@@ -3578,7 +3815,7 @@ export default function AgentClient() {
                       <span className={styles.agentListAvatar} aria-hidden>✉</span>
                       <span className={styles.agentListContent}>
                         <strong>{mailAccountLabel(account)}</strong>
-                        <small>{account.provider || "mail"}{usable ? " · connectée" : " · à reconnecter"}</small>
+                        <small>{mailAccountSecondaryLabel(account)}{usable ? " · connectée" : " · à reconnecter"}</small>
                       </span>
                       <span className={styles.agentListTag}>{usable ? "OK" : "À corriger"}</span>
                     </label>

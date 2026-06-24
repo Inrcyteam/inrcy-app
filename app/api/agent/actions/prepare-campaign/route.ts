@@ -270,7 +270,7 @@ async function fetchRecipients(args: {
 async function fetchMailAccount(userId: string) {
   const { data, error } = await supabaseAdmin
     .from("integrations")
-    .select("id,provider,resource_label,status,settings")
+    .select("id,provider,account_email,email_address,display_name,resource_label,status,settings")
     .eq("user_id", userId)
     .eq("category", "mail")
     .eq("status", "connected")
@@ -278,10 +278,17 @@ async function fetchMailAccount(userId: string) {
 
   if (error || !Array.isArray(data) || !data[0]?.id) return null;
   const row = data[0] as JsonRecord;
+  const settings = asRecord(row.settings) || {};
+  const accountEmail = cleanText(row.account_email || row.email_address || settings.email || settings.account_email, 180);
+  const displayName = cleanText(row.display_name || settings.display_name, 180);
   return {
     id: cleanText(row.id, 120),
     provider: cleanText(row.provider, 80),
-    label: cleanText(row.resource_label || row.provider || "Boîte mail", 180),
+    email_address: accountEmail || null,
+    account_email: accountEmail || null,
+    email: accountEmail || null,
+    display_name: displayName || null,
+    label: accountEmail || cleanText(row.resource_label || row.provider || "Boîte mail", 180),
   };
 }
 

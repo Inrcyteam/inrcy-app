@@ -7454,3 +7454,184 @@ button.campaignInfoRecipients:hover {
     grid-template-columns: 1fr;
   }
 }
+
+/* ===== iNrAgent — sélection destinataires complète Propulser/Fidéliser ===== */
+.manualRecipientBox {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 13px;
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 8% 0%, rgba(125, 211, 252, 0.08), transparent 34%),
+    rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(148, 163, 255, 0.15);
+}
+
+.manualRecipientBox strong {
+  display: block;
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.manualRecipientBox small {
+  display: block;
+  margin-top: 3px;
+  color: rgba(226, 242, 255, 0.68);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.manualRecipientRow {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+}
+
+.manualRecipientRow input,
+.agentFiltersPanel input,
+.agentFiltersPanel select {
+  width: 100%;
+  min-height: 42px;
+  border-radius: 999px;
+  padding: 0 14px;
+  color: #ffffff;
+  font: inherit;
+  background: rgba(8, 19, 45, 0.82);
+  border: 1px solid rgba(148, 163, 255, 0.2);
+  outline: none;
+}
+
+.manualRecipientRow button,
+.agentToolbarActiveButton,
+.agentImportantToggle {
+  min-height: 42px;
+  border-radius: 999px;
+  padding: 0 15px;
+  color: #ffffff;
+  font-weight: 850;
+  cursor: pointer;
+  background: linear-gradient(135deg, rgba(29, 78, 216, 0.9), rgba(124, 58, 237, 0.9));
+  border: 1px solid rgba(125, 211, 252, 0.28);
+}
+
+.manualRecipientChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.manualRecipientChips button {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border-radius: 999px;
+  padding: 0 10px;
+  color: rgba(236, 253, 255, 0.96);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+  background: rgba(56, 189, 248, 0.13);
+  border: 1px solid rgba(125, 211, 252, 0.25);
+}
+
+.manualRecipientChips span {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.recipientsPickerModal .agentPickerToolbar {
+  grid-template-columns: minmax(220px, 1fr) auto auto auto auto auto;
+  align-items: center;
+}
+
+.agentToolbarCount {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 10px;
+  border-radius: 999px;
+  color: rgba(226, 242, 255, 0.82);
+  font-size: 12px;
+  font-weight: 850;
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(148, 163, 255, 0.14);
+}
+
+.agentToolbarActiveButton {
+  box-shadow: 0 0 20px rgba(125, 211, 252, 0.18);
+}
+
+.agentFiltersPanel {
+  display: grid;
+  grid-template-columns: 1fr 1fr minmax(120px, 0.7fr) auto;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 12px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px solid rgba(148, 163, 255, 0.14);
+}
+
+.agentFiltersPanel label {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.agentFiltersPanel label span {
+  color: rgba(226, 242, 255, 0.72);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.agentImportantToggle {
+  align-self: end;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.agentImportantToggleActive {
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.24), rgba(124, 58, 237, 0.42));
+  border-color: rgba(250, 204, 21, 0.32);
+}
+
+.agentSelectedRow {
+  border-color: rgba(125, 211, 252, 0.38);
+  background: rgba(56, 189, 248, 0.09);
+}
+
+.agentImportantMark {
+  margin-left: 6px;
+  color: #fde047;
+  font-size: 13px;
+}
+
+.agentPickerToolbar button:disabled,
+.manualRecipientRow button:disabled,
+.newRecipientBox button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+@media (max-width: 760px) {
+  .manualRecipientRow,
+  .recipientsPickerModal .agentPickerToolbar,
+  .agentFiltersPanel {
+    grid-template-columns: 1fr;
+  }
+
+  .agentToolbarCount,
+  .agentImportantToggle {
+    justify-content: center;
+    width: 100%;
+  }
+}

@@ -36,6 +36,8 @@ export async function GET() {
         id: rr["id"],
         provider: rr["provider"],
         email_address: rr["account_email"],
+        account_email: rr["account_email"],
+        email: rr["account_email"],
         display_name: settings["display_name"] ?? null,
         status: rr["status"],
         connection_status: connectionStatus,
