@@ -14,26 +14,44 @@ type MaintenanceRow = {
 
 type SubscriptionGateRow = {
   status?: string | null;
+  trial_end_at?: string | null;
+  start_date?: string | null;
 };
 
-const BLOCKED_SUBSCRIPTION_STATUSES = new Set([
-  "trial_expired",
-  "trial-expired",
-  "paused",
-  "past_due",
-  "unpaid",
-  "canceled",
-  "cancelled",
-  "incomplete",
-  "incomplete_expired",
-]);
+const TRIAL_DURATION_DAYS = 21;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 function normalizeSubscriptionStatus(value: unknown): string {
   return String(value || "").trim().toLowerCase();
 }
 
-function isBlockedSubscriptionStatus(value: unknown): boolean {
-  return BLOCKED_SUBSCRIPTION_STATUSES.has(normalizeSubscriptionStatus(value));
+function parseDateMs(value?: string | null): number | null {
+  if (!value) return null;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : null;
+}
+
+function isTrialStillValid(subscription?: SubscriptionGateRow | null): boolean {
+  if (normalizeSubscriptionStatus(subscription?.status) !== "trialing") return false;
+
+  const trialEndMs = parseDateMs(subscription?.trial_end_at);
+  if (trialEndMs !== null) return trialEndMs > Date.now();
+
+  const startMs = parseDateMs(subscription?.start_date);
+  if (startMs !== null) return startMs + TRIAL_DURATION_DAYS * DAY_MS > Date.now();
+
+  return false;
+}
+
+function isAllowedSubscription(subscription?: SubscriptionGateRow | null): boolean {
+  const status = normalizeSubscriptionStatus(subscription?.status);
+  return status === "active" || isTrialStillValid(subscription);
+}
+
+function getEffectiveSubscriptionStatus(subscription?: SubscriptionGateRow | null): string {
+  const status = normalizeSubscriptionStatus(subscription?.status);
+  if (status === "trialing" && !isTrialStillValid(subscription)) return "trial_expired";
+  return status;
 }
 
 const SENSITIVE_API_PREFIXES = [
@@ -96,12 +114,12 @@ function isSensitiveApiPath(pathname: string): boolean {
   return SENSITIVE_API_PREFIXES.some((candidate) => pathMatches(pathname, candidate));
 }
 
-function blockedAccountApiResponse(status: unknown): NextResponse {
+function blockedAccountApiResponse(subscription?: SubscriptionGateRow | null): NextResponse {
   return NextResponse.json(
     {
       error: "ACCOUNT_BLOCKED",
       code: "ACCOUNT_BLOCKED",
-      status: normalizeSubscriptionStatus(status),
+      status: getEffectiveSubscriptionStatus(subscription),
       redirectTo: "/compte-bloque",
       message: "Compte bloqué : contactez iNrCy pour réactiver votre générateur.",
     },
@@ -384,14 +402,14 @@ function getSupabaseHeaders(): HeadersInit | null {
   };
 }
 
-async function getSubscriptionGateStatus(userId: string): Promise<string | null> {
+async function getSubscriptionGateRow(userId: string): Promise<SubscriptionGateRow | null> {
   try {
     const headers = getSupabaseHeaders();
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
     if (!headers || !supabaseUrl) return null;
 
     const url = new URL(`${supabaseUrl}/rest/v1/subscriptions`);
-    url.searchParams.set("select", "status");
+    url.searchParams.set("select", "status,trial_end_at,start_date");
     url.searchParams.set("user_id", `eq.${userId}`);
     url.searchParams.set("limit", "1");
 
@@ -402,7 +420,7 @@ async function getSubscriptionGateStatus(userId: string): Promise<string | null>
 
     if (!res.ok) return null;
     const rows = (await res.json()) as SubscriptionGateRow[];
-    return rows[0]?.status ?? null;
+    return rows[0] ?? null;
   } catch {
     return null;
   }
@@ -614,7 +632,7 @@ export async function proxy(req: NextRequest) {
   };
 
   let userId: string | null | undefined;
-  let subscriptionStatus: string | null | undefined;
+  let subscriptionGate: SubscriptionGateRow | null | undefined;
 
   const getCurrentUserId = async () => {
     if (userId !== undefined) return userId;
@@ -622,12 +640,12 @@ export async function proxy(req: NextRequest) {
     return userId;
   };
 
-  const getCurrentSubscriptionStatus = async () => {
+  const getCurrentSubscriptionGate = async () => {
     const currentUserId = await getCurrentUserId();
     if (!currentUserId) return null;
-    if (subscriptionStatus !== undefined) return subscriptionStatus;
-    subscriptionStatus = await getSubscriptionGateStatus(currentUserId);
-    return subscriptionStatus;
+    if (subscriptionGate !== undefined) return subscriptionGate;
+    subscriptionGate = await getSubscriptionGateRow(currentUserId);
+    return subscriptionGate;
   };
 
   const isDashboardPath = pathname === "/dashboard" || pathname.startsWith("/dashboard/");
@@ -650,9 +668,9 @@ export async function proxy(req: NextRequest) {
     }
 
     if (await getCurrentUserId()) {
-      const currentSubscriptionStatus = await getCurrentSubscriptionStatus();
+      const currentSubscriptionGate = await getCurrentSubscriptionGate();
 
-      if (isBlockedSubscriptionStatus(currentSubscriptionStatus)) {
+      if (!isAllowedSubscription(currentSubscriptionGate)) {
         const url = req.nextUrl.clone();
         url.pathname = "/compte-bloque";
         url.search = "";
@@ -671,10 +689,10 @@ export async function proxy(req: NextRequest) {
 
   if (req.method.toUpperCase() !== "OPTIONS" && isSensitiveApi) {
     const currentUserId = await getCurrentUserId();
-    const currentSubscriptionStatus = currentUserId ? await getCurrentSubscriptionStatus() : null;
+    const currentSubscriptionGate = currentUserId ? await getCurrentSubscriptionGate() : null;
 
-    if (isBlockedSubscriptionStatus(currentSubscriptionStatus)) {
-      return applyResponseHeaders(blockedAccountApiResponse(currentSubscriptionStatus));
+    if (currentUserId && !isAllowedSubscription(currentSubscriptionGate)) {
+      return applyResponseHeaders(blockedAccountApiResponse(currentSubscriptionGate));
     }
   }
 

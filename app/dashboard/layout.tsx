@@ -6,10 +6,48 @@ import { unstable_noStore as noStore } from "next/cache";
 import styles from "./dashboard.module.css";
 import { redirect } from "next/navigation";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getMaintenanceState, isAdminUser } from "@/lib/maintenance";
 import ProfileRealtimeBridge from "./_components/ProfileRealtimeBridge";
 import LastActiveTracker from "./_components/LastActiveTracker";
 import { ensureProfileRow } from "@/lib/ensureProfileRow";
+
+
+type SubscriptionGateRow = {
+  status?: string | null;
+  trial_end_at?: string | null;
+  start_date?: string | null;
+};
+
+const TRIAL_DURATION_DAYS = 21;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function normalizeSubscriptionStatus(value: unknown) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function parseDateMs(value?: string | null) {
+  if (!value) return null;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : null;
+}
+
+function isTrialStillValid(subscription?: SubscriptionGateRow | null) {
+  if (normalizeSubscriptionStatus(subscription?.status) !== "trialing") return false;
+
+  const trialEndMs = parseDateMs(subscription?.trial_end_at);
+  if (trialEndMs !== null) return trialEndMs > Date.now();
+
+  const startMs = parseDateMs(subscription?.start_date);
+  if (startMs !== null) return startMs + TRIAL_DURATION_DAYS * DAY_MS > Date.now();
+
+  return false;
+}
+
+function hasDashboardAccess(subscription?: SubscriptionGateRow | null) {
+  const status = normalizeSubscriptionStatus(subscription?.status);
+  return status === "active" || isTrialStillValid(subscription);
+}
 
 const DASHBOARD_CRITICAL_IMAGE_PRELOADS = [
   "/logo-inrcy.png",
@@ -51,6 +89,16 @@ export default async function DashboardLayout({
   }
 
   await ensureProfileRow(user).catch(() => null);
+
+  const { data: subscription } = await supabaseAdmin
+    .from("subscriptions")
+    .select("status, trial_end_at, start_date")
+    .eq("user_id", user.id)
+    .maybeSingle();
+
+  if (!hasDashboardAccess(subscription)) {
+    redirect("/compte-bloque");
+  }
 
   // Vérifie l'état maintenance
   const maintenance = await getMaintenanceState();

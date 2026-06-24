@@ -11,6 +11,7 @@ type SubscriptionRow = {
   status?: string | null;
   plan?: string | null;
   trial_end_at?: string | null;
+  start_date?: string | null;
   end_date?: string | null;
   updated_at?: string | null;
 };
@@ -25,20 +26,40 @@ type BlockedCopy = {
   dataLabel: string;
 };
 
-const BLOCKED_STATUSES = new Set([
-  "trial_expired",
-  "trial-expired",
-  "paused",
-  "past_due",
-  "unpaid",
-  "canceled",
-  "cancelled",
-  "incomplete",
-  "incomplete_expired",
-]);
+const TRIAL_DURATION_DAYS = 21;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 function normalizeStatus(value: unknown) {
   return String(value || "").trim().toLowerCase();
+}
+
+function parseDateMs(value?: string | null) {
+  if (!value) return null;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : null;
+}
+
+function isTrialStillValid(subscription?: SubscriptionRow | null) {
+  if (normalizeStatus(subscription?.status) !== "trialing") return false;
+
+  const trialEndMs = parseDateMs(subscription?.trial_end_at);
+  if (trialEndMs !== null) return trialEndMs > Date.now();
+
+  const startMs = parseDateMs(subscription?.start_date);
+  if (startMs !== null) return startMs + TRIAL_DURATION_DAYS * DAY_MS > Date.now();
+
+  return false;
+}
+
+function hasDashboardAccess(subscription?: SubscriptionRow | null) {
+  const status = normalizeStatus(subscription?.status);
+  return status === "active" || isTrialStillValid(subscription);
+}
+
+function getEffectiveStatus(subscription?: SubscriptionRow | null) {
+  const status = normalizeStatus(subscription?.status);
+  if (status === "trialing" && !isTrialStillValid(subscription)) return "trial_expired";
+  return status;
 }
 
 function formatDate(value?: string | null) {
@@ -178,14 +199,14 @@ export default async function BlockedAccountPage() {
 
   const { data } = await supabaseAdmin
     .from("subscriptions")
-    .select("status, plan, trial_end_at, end_date, updated_at")
+    .select("status, plan, trial_end_at, start_date, end_date, updated_at")
     .eq("user_id", user.id)
     .maybeSingle();
 
   const subscription = data as SubscriptionRow | null;
-  const status = normalizeStatus(subscription?.status);
+  const status = getEffectiveStatus(subscription);
 
-  if (!BLOCKED_STATUSES.has(status)) {
+  if (hasDashboardAccess(subscription)) {
     redirect("/dashboard");
   }
 
