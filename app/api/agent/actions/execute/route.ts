@@ -50,6 +50,18 @@ const allowedBoosterChannels = new Set<BoosterChannel>([
   "youtube_shorts",
 ]);
 
+function canPublishWithoutMedia(channel: BoosterChannel) {
+  return ["inrcy_site", "site_web", "gmb", "facebook", "linkedin"].includes(channel);
+}
+
+function isVideoOnlyChannel(channel: BoosterChannel) {
+  return channel === "youtube_shorts";
+}
+
+function isImageRequiredChannel(channel: BoosterChannel) {
+  return channel === "instagram" || channel === "tiktok";
+}
+
 const agentToBoosterChannel: Record<string, BoosterChannel> = {
   site_inrcy: "inrcy_site",
   siteInrcy: "inrcy_site",
@@ -106,6 +118,16 @@ function normalizePost(raw: unknown, fallback?: BoosterPost): BoosterPost {
     content,
     cta,
     hashtags,
+  };
+}
+
+function ensurePublishablePost(post: BoosterPost, fallbackText: string): BoosterPost {
+  const fallback = cleanText(fallbackText, 1000) || "Publication préparée par iNr’Agent.";
+  return {
+    title: post.title,
+    content: post.content || post.title || fallback,
+    cta: post.cta,
+    hashtags: post.hashtags,
   };
 }
 
@@ -521,36 +543,37 @@ export async function POST(request: Request) {
   const selectedChannels = normalizeBoosterChannels(
     payload.selectedChannels || payload.channels || action.targetChannels,
   );
-  const publishChannels = selectedChannels.filter(
-    (channel) => channel !== "youtube_shorts",
-  );
+  const imagePayload = await buildImagePayloadFromAgentAction(payload, actionId);
+  const hasImagePayload = Boolean(imagePayload);
+  const publishChannels = selectedChannels.filter((channel) => {
+    if (isVideoOnlyChannel(channel)) return false;
+    if (isImageRequiredChannel(channel)) return hasImagePayload;
+    return canPublishWithoutMedia(channel) || hasImagePayload;
+  });
   const publishChannelSet = new Set<BoosterChannel>(publishChannels);
 
   if (!publishChannels.length) {
     return NextResponse.json(
       {
         error:
-          "Aucun canal compatible avec une publication image/texte n’est disponible. YouTube Shorts nécessite une vidéo.",
+          "Aucun canal prêt à publier. Les canaux sélectionnés nécessitent un média ou une vidéo.",
       },
       { status: 400 },
     );
   }
 
   const rawPostByChannel = asRecord(payload.postByChannel) || {};
+  const fallbackText = cleanText(action.summary || payload.idea || action.title, 1000);
   const normalizedPostByChannel = Object.fromEntries(
     publishChannels.map((channel) => [
       channel,
-      normalizePost(rawPostByChannel[channel]),
+      ensurePublishablePost(normalizePost(rawPostByChannel[channel]), fallbackText),
     ]),
   ) as Record<string, BoosterPost>;
-  const firstPost = getFirstPost(normalizedPostByChannel, publishChannels);
-
-  if (!firstPost.title || !firstPost.content) {
-    return NextResponse.json(
-      { error: "Le contenu préparé par iNr’Agent est incomplet." },
-      { status: 400 },
-    );
-  }
+  const firstPost = ensurePublishablePost(
+    getFirstPost(normalizedPostByChannel, publishChannels),
+    fallbackText,
+  );
 
   const now = new Date().toISOString();
   await updateActionRow(actionId, userId, {
@@ -561,9 +584,8 @@ export async function POST(request: Request) {
   });
 
   try {
-    const imagePayload = await buildImagePayloadFromAgentAction(payload, actionId);
     const mediaModeByChannel = Object.fromEntries(
-      publishChannels.map((channel) => [channel, "images"]),
+      publishChannels.map((channel) => [channel, hasImagePayload ? "images" : "none"]),
     );
     const publishBody = {
       channels: publishChannels,

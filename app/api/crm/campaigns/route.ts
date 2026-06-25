@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { evaluateCampaignDispatchState, getMailCampaignDeliveryConfig } from "@/lib/crmCampaigns";
 import { requireUser } from "@/lib/requireUser";
+import { getCronUserIdFromRequest, isAuthorizedCronRequest } from "@/lib/cronAuth";
 import { normalizeCampaignRecipients } from "@/lib/crmRecipients";
 import { fetchSuppressedEmailsByUser } from "@/lib/mailSuppression";
 import { normalizeMailSubject } from "@/lib/mailEncoding";
@@ -10,6 +11,7 @@ import { inferInrSendFileRole, saveInrSendHistoryFiles } from "@/lib/inrsend/his
 import { parseMailAttachmentRefs } from "@/lib/mailAttachmentRefs";
 import { stripTemplateSignatureBlock } from "@/lib/mailTemplateCleanup";
 import { sanitizeRichMailHtml } from "@/lib/mailRichText";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
 
@@ -90,6 +92,21 @@ function chunkArray<T>(items: T[], size: number) {
 
 const SIMPLE_EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 
+async function resolveCampaignRequestUser(req: Request) {
+  const cronUserId = isAuthorizedCronRequest(req) ? getCronUserIdFromRequest(req) : "";
+  if (cronUserId) {
+    return {
+      supabase: supabaseAdmin as any,
+      user: { id: cronUserId },
+      errorResponse: null as NextResponse | null,
+      isCron: true,
+    };
+  }
+
+  const auth = await requireUser();
+  return { ...auth, isCron: false };
+}
+
 function parseCampaignRecipientStats(input: unknown) {
   const values = Array.isArray(input) ? input : [];
   let invalidCount = 0;
@@ -137,17 +154,19 @@ function parseCampaignRecipientStats(input: unknown) {
 }
 
 export async function POST(req: Request) {
-  const { supabase, user, errorResponse } = await requireUser();
+  const { supabase, user, errorResponse, isCron } = await resolveCampaignRequestUser(req);
   if (errorResponse) return errorResponse;
 
-  const rateLimited = await enforceRateLimit({
-    name: "crm_campaign_create",
-    identifier: user.id,
-    limit: 10,
-    window: "10 m",
-    failClosed: false,
-  });
-  if (rateLimited) return rateLimited;
+  if (!isCron) {
+    const rateLimited = await enforceRateLimit({
+      name: "crm_campaign_create",
+      identifier: user.id,
+      limit: 10,
+      window: "10 m",
+      failClosed: false,
+    });
+    if (rateLimited) return rateLimited;
+  }
 
   const body = await req.json().catch(() => ({}));
   const accountId = String(body.accountId || "").trim();

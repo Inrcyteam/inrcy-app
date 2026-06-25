@@ -25,6 +25,8 @@ type AutomationRow = {
   metadata: Record<string, unknown> | null;
 };
 
+type AutomationScheduleSlot = { dayOfWeek: number; time: string };
+
 type CronRunResult = {
   userId: string;
   automationKey: InrAgentAutomationKey;
@@ -128,6 +130,29 @@ function scheduledWeekdays(frequency: InrAgentFrequency, dayOfWeek: number) {
   return [dayOfWeek];
 }
 
+function normalizeScheduleSlots(row: AutomationRow, frequency: InrAgentFrequency): AutomationScheduleSlot[] {
+  const dayOfWeek = normalizeDay(row.day_of_week);
+  const time = normalizeTime(row.time || "09:00");
+  const fallback = [
+    { dayOfWeek, time },
+    { dayOfWeek: (dayOfWeek + 3) % 7, time },
+  ];
+  if (frequency !== "twice_weekly") return [fallback[0]];
+  const metadata = asRecord(row.metadata);
+  const rawSlots = Array.isArray(metadata.scheduleSlots) ? metadata.scheduleSlots : [];
+  const slots = rawSlots
+    .map((item) => {
+      const source = asRecord(item);
+      return {
+        dayOfWeek: normalizeDay(source.dayOfWeek),
+        time: normalizeTime(source.time),
+      };
+    })
+    .filter((slot, index, list) => list.findIndex((candidate) => candidate.dayOfWeek === slot.dayOfWeek && candidate.time === slot.time) === index)
+    .slice(0, 2);
+  return slots.length >= 2 ? slots : fallback;
+}
+
 function isFirstScheduledWeekdayOfMonth(local: ReturnType<typeof getLocalParts>, dayOfWeek: number) {
   return local.weekday === dayOfWeek && local.day <= 7;
 }
@@ -170,13 +195,14 @@ function isDue(row: AutomationRow, now: Date, timeZone: string) {
   if (frequency === "one_off" && referenceDate(row)) return false;
 
   const local = getLocalParts(now, timeZone);
-  const schedule = timeParts(row.time || "09:00");
   const minuteNow = local.hour * 60 + local.minute;
-  const minuteSchedule = schedule.hour * 60 + schedule.minute;
-  if (minuteNow < minuteSchedule) return false;
-
-  const day = normalizeDay(row.day_of_week);
-  if (!isScheduledDate(local, frequency, day)) return false;
+  const slots = normalizeScheduleSlots(row, frequency);
+  const matchingSlot = slots.some((slot) => {
+    const schedule = timeParts(slot.time);
+    const minuteSchedule = schedule.hour * 60 + schedule.minute;
+    return minuteNow >= minuteSchedule && isScheduledDate(local, frequency, slot.dayOfWeek);
+  });
+  if (!matchingSlot) return false;
 
   const ref = referenceDate(row);
   if (!ref) return true;
@@ -188,14 +214,20 @@ function computeNextRunAt(row: AutomationRow, after: Date, timeZone: string) {
   if (frequency === "one_off") return null;
 
   const start = getLocalParts(new Date(after.getTime() + 60 * 1000), timeZone);
-  const dayOfWeek = normalizeDay(row.day_of_week);
-  const schedule = timeParts(row.time || "09:00");
+  const slots = normalizeScheduleSlots(row, frequency);
   for (let offset = 0; offset <= 110; offset += 1) {
     const localDate = addLocalDays(start, offset);
-    const candidateUtc = zonedTimeToUtc({ ...localDate, ...schedule }, timeZone);
-    if (candidateUtc.getTime() <= after.getTime()) continue;
-    const candidateLocal = getLocalParts(candidateUtc, timeZone);
-    if (isScheduledDate(candidateLocal, frequency, dayOfWeek)) return candidateUtc.toISOString();
+    const candidates = slots
+      .map((slot) => {
+        const schedule = timeParts(slot.time);
+        const candidateUtc = zonedTimeToUtc({ ...localDate, ...schedule }, timeZone);
+        if (candidateUtc.getTime() <= after.getTime()) return null;
+        const candidateLocal = getLocalParts(candidateUtc, timeZone);
+        return isScheduledDate(candidateLocal, frequency, slot.dayOfWeek) ? candidateUtc : null;
+      })
+      .filter((candidate): candidate is Date => Boolean(candidate))
+      .sort((a, b) => a.getTime() - b.getTime());
+    if (candidates[0]) return candidates[0].toISOString();
   }
   return null;
 }

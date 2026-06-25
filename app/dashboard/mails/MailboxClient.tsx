@@ -400,6 +400,7 @@ export default function MailboxClient() {
   const [composeSourceDocNumber, setComposeSourceDocNumber] = useState<string>("");
   const [composeTemplateKey, setComposeTemplateKey] = useState<string>("");
   const [sendBusy, setSendBusy] = useState(false);
+  const [scheduleBusy, setScheduleBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [campaignDistributionNotice, setCampaignDistributionNotice] = useState<CampaignDistributionNotice | null>(null);
   const [signaturePreview, setSignaturePreview] = useState("Cordialement,");
@@ -1816,8 +1817,7 @@ export default function MailboxClient() {
 
   async function saveDraft() {
     if (attachBusy) {
-      setToast("Patientez : les pièces jointes sont encore en préparation.");
-      return;
+      throw new Error("Patientez : les pièces jointes sont encore en préparation.");
     }
     const { data: auth } = await supabase.auth.getUser();
     const userId = auth?.user?.id;
@@ -2090,6 +2090,121 @@ async function deleteDraftPermanently(id: string) {
       return folderFromTrack(pendingTrack.kind, pendingTrack.type, isBusinessMailFolder(folder) ? folder : "mails");
     }
     return isBusinessMailFolder(folder) ? folder : "mails";
+  }
+
+
+  async function scheduleMailWithAgent(scheduledAt: string) {
+    if (attachBusy) {
+      throw new Error("Patientez : les pièces jointes sont encore en préparation.");
+    }
+    const isWorkflowFinalizer = workflowFinalizerKind === "propulser" || workflowFinalizerKind === "fideliser";
+    if (!isWorkflowFinalizer && composeType !== "mail") {
+      throw new Error("La programmation est disponible pour les mails, les Propulsions et les Fidélisations.");
+    }
+    if (!selectedAccount) {
+      throw new Error("Veuillez connecter une boîte d’envoi dans les réglages.");
+    }
+    if (selectedAccount.connection_status === "needs_update" || selectedAccount.requires_update) {
+      throw new Error("Cette boîte d’envoi doit être actualisée avant de pouvoir programmer l’envoi.");
+    }
+
+    const scheduledDate = new Date(String(scheduledAt || ""));
+    if (!Number.isFinite(scheduledDate.getTime()) || scheduledDate.getTime() <= Date.now() + 30_000) {
+      throw new Error("Choisissez une date et une heure dans le futur.");
+    }
+
+    const recipientsList = normalizeEmails(to);
+    if (recipientsList.length === 0) {
+      throw new Error("Veuillez ajouter au moins un destinataire.");
+    }
+
+    const trackedCampaign = pendingTrack;
+    const campaignFolder = isWorkflowFinalizer && trackedCampaign?.kind && trackedCampaign?.type
+      ? folderFromTrack(trackedCampaign.kind, trackedCampaign.type, isBusinessMailFolder(folder) ? folder : "mails")
+      : isWorkflowFinalizer
+        ? getBulkCampaignFolder()
+        : "mails";
+    const templateKey = composeTemplateKey || searchParams?.get("template_key") || "";
+    const cleanSubject = normalizeMailSubject(subject.trim() || "(sans objet)");
+    const scheduleTargetTool = isWorkflowFinalizer ? workflowFinalizerKind : "mails";
+    const scheduleActionType = isWorkflowFinalizer ? "campaign" : "mailing";
+    const scheduleTypeLabel = workflowFinalizerKind === "propulser"
+      ? "Propulsion"
+      : workflowFinalizerKind === "fideliser"
+        ? "Fidélisation"
+        : "Mail";
+    const campaignPayload = {
+      accountId: selectedAccount.id,
+      accountEmail: selectedAccount.email_address || "",
+      accountProvider: selectedAccount.provider || "",
+      type: composeType,
+      folder: campaignFolder,
+      trackKind: trackedCampaign?.kind || workflowFinalizerKind,
+      trackType: trackedCampaign?.type || undefined,
+      templateKey: templateKey || undefined,
+      subject: cleanSubject,
+      text: text || "",
+      html: normalizeRichMailHtmlForSend(text, html),
+      recipients: recipientsList.map((email) => {
+        const lower = email.toLowerCase();
+        const hint = composeRecipientHintsByEmail.get(lower);
+        const crmContact = crmRecipientsByEmail.get(lower);
+        return {
+          email,
+          contact_id: hint?.contact_id || crmContact?.contact_id || null,
+          display_name: hint?.display_name || crmContact?.display_name || null,
+        };
+      }),
+      attachments: serializeComposeAttachments(),
+      sourceDocSaveId: composeSourceDocSaveId || undefined,
+      sourceDocType: composeSourceDocType || undefined,
+      sourceDocNumber: composeSourceDocNumber || undefined,
+    };
+
+    setScheduleBusy(true);
+    try {
+      const response = await fetch("/api/agent/scheduled-actions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          automationKey: null,
+          actionType: scheduleActionType,
+          targetTool: scheduleTargetTool,
+          source: "manual",
+          title: `${scheduleTypeLabel} — ${cleanSubject}`,
+          summary: `${recipientsList.length} destinataire${recipientsList.length > 1 ? "s" : ""} · ${selectedAccount.email_address || selectedAccount.provider || "boîte connectée"}`,
+          scheduledAt: scheduledDate.toISOString(),
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Paris",
+          channels: ["mails"],
+          payload: {
+            kind: "mail_campaign",
+            origin: isWorkflowFinalizer ? "inrsend_workflow_finalizer" : "inrsend_mail",
+            workflowFinalizerKind: isWorkflowFinalizer ? workflowFinalizerKind : null,
+            campaign: campaignPayload,
+          },
+        }),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(data?.error || "La campagne n’a pas pu être programmée pour le moment.");
+      }
+
+      if (draftId) {
+        await supabase
+          .from("send_items")
+          .delete()
+          .eq("id", draftId)
+          .eq("user_id", (await supabase.auth.getUser()).data?.user?.id || "")
+          .eq("status", "draft");
+      }
+      setToast(isWorkflowFinalizer ? "Campagne programmée dans iNr’Agent." : "Mail programmé dans iNr’Agent.");
+      setComposeOpen(false);
+      resetCompose();
+      await loadHistory();
+      updateFolder(campaignFolder);
+    } finally {
+      setScheduleBusy(false);
+    }
   }
 
   async function doSend() {
@@ -3156,7 +3271,9 @@ async function deleteDraftPermanently(id: string) {
           signatureImageWidth={signatureImageWidth}
           saveDraft={saveDraft}
           doSend={doSend}
+          scheduleWorkflowCampaign={composeType === "mail" || workflowFinalizerKind ? scheduleMailWithAgent : undefined}
           sendBusy={sendBusy}
+          scheduleBusy={scheduleBusy}
           toast={toast}
           setToast={setToast}
           workflowFinalizerKind={workflowFinalizerKind}

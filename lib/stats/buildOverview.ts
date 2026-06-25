@@ -33,6 +33,114 @@ function isLinkedInRateLimitMessage(message: unknown): boolean {
   );
 }
 
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error || "");
+}
+
+function isTiktokReconnectError(error: unknown): boolean {
+  const text = getErrorMessage(error).toLowerCase();
+  return Boolean(text.trim()) && (
+    text.includes("access token") ||
+    text.includes("invalid token") ||
+    text.includes("token is invalid") ||
+    text.includes("invalid or not found") ||
+    text.includes("invalid_grant") ||
+    text.includes("expired") ||
+    text.includes("unauthorized") ||
+    text.includes("forbidden") ||
+    text.includes("scope") ||
+    text.includes("permission") ||
+    text.includes("autorisation") ||
+    text.includes("reconnect") ||
+    text.includes("reconnecte") ||
+    text.includes("reconnecter")
+  );
+}
+
+function clearTiktokReconnectMeta(meta: Record<string, unknown>) {
+  const next = { ...meta };
+  delete next["needs_reconnect"];
+  delete next["tiktok_needs_reconnect"];
+  delete next["tiktok_stats_needs_reconnect_at"];
+  delete next["tiktok_token_invalid_at"];
+  delete next["tiktok_stats_last_error"];
+  return next;
+}
+
+async function flagTiktokStatsReconnectNeeded({
+  supabase,
+  userId,
+  tiktokRow,
+  rawMessage,
+}: {
+  supabase: SupabaseClient;
+  userId: string;
+  tiktokRow: Record<string, unknown>;
+  rawMessage: string;
+}) {
+  try {
+    const now = new Date().toISOString();
+    const nextMeta = {
+      ...asRecord(tiktokRow["meta"]),
+      needs_reconnect: true,
+      tiktok_needs_reconnect: true,
+      tiktok_stats_needs_reconnect_at: now,
+      tiktok_token_invalid_at: now,
+      tiktok_stats_last_error: rawMessage.slice(0, 500) || "Token TikTok invalide.",
+    };
+
+    await supabase
+      .from("integrations")
+      .update({
+        meta: nextMeta,
+        updated_at: now,
+      })
+      .eq("user_id", userId)
+      .eq("provider", "tiktok")
+      .eq("source", "tiktok")
+      .eq("product", "tiktok");
+  } catch {
+    // Ne jamais faire échouer iNrStats à cause d'un simple marquage de reconnexion.
+  }
+}
+
+async function clearTiktokStatsReconnectNeeded({
+  supabase,
+  userId,
+  tiktokRow,
+}: {
+  supabase: SupabaseClient;
+  userId: string;
+  tiktokRow: Record<string, unknown>;
+}) {
+  const currentMeta = asRecord(tiktokRow["meta"]);
+  if (
+    currentMeta["needs_reconnect"] !== true &&
+    currentMeta["tiktok_needs_reconnect"] !== true &&
+    !currentMeta["tiktok_stats_needs_reconnect_at"] &&
+    !currentMeta["tiktok_token_invalid_at"] &&
+    !currentMeta["tiktok_stats_last_error"]
+  ) {
+    return;
+  }
+
+  try {
+    await supabase
+      .from("integrations")
+      .update({
+        meta: clearTiktokReconnectMeta(currentMeta),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", userId)
+      .eq("provider", "tiktok")
+      .eq("source", "tiktok")
+      .eq("product", "tiktok");
+  } catch {
+    // Idem : les stats doivent rester disponibles même si le nettoyage méta échoue.
+  }
+}
+
 function isExpired(expiresAt: unknown): boolean {
   if (!expiresAt) return false; // unknown => don't block
   const d =
@@ -2172,13 +2280,13 @@ export async function buildStatsOverview(args: {
           const expiresAt = Number.isFinite(expiresIn) && expiresIn > 0
             ? new Date(Date.now() + expiresIn * 1000).toISOString()
             : null;
-          const nextMeta = {
+          const nextMeta = clearTiktokReconnectMeta({
             ...asRecord(tiktokRow["meta"]),
             refresh_expires_at: Number.isFinite(refreshExpiresIn) && refreshExpiresIn > 0
               ? new Date(Date.now() + refreshExpiresIn * 1000).toISOString()
               : asRecord(tiktokRow["meta"])["refresh_expires_at"] || null,
             tiktok_token_refreshed_at: new Date().toISOString(),
-          };
+          });
 
           if (nextAccessToken) {
             await supabase
@@ -2207,29 +2315,27 @@ export async function buildStatsOverview(args: {
           start: dateWindow.start,
           end: dateWindow.end,
         });
+        await clearTiktokStatsReconnectNeeded({ supabase, userId, tiktokRow });
         sourcesStatus.tiktok.metrics = mergeTiktokLocalPublicationStats(
           remoteTiktokMetrics,
           tiktokLocalPublicationStats,
         );
       } catch (e) {
-        console.error("[TIKTOK_STATS_REAL_ERROR]", e);
-        const rawMessage = e instanceof Error ? e.message : String(e || "");
-        const lowerMessage = rawMessage.toLowerCase();
-        const needsReconnect =
-          lowerMessage.includes("scope") ||
-          lowerMessage.includes("permission") ||
-          lowerMessage.includes("autorisation") ||
-          lowerMessage.includes("unauthorized") ||
-          lowerMessage.includes("forbidden") ||
-          lowerMessage.includes("access token") ||
-          lowerMessage.includes("reconnect") ||
-          lowerMessage.includes("reconnecte");
+        const rawMessage = getErrorMessage(e);
+        const needsReconnect = isTiktokReconnectError(e);
+
+        if (needsReconnect) {
+          await flagTiktokStatsReconnectNeeded({ supabase, userId, tiktokRow, rawMessage });
+        }
+
         sourcesStatus.tiktok.metrics = mergeTiktokLocalPublicationStats(
           {
-            error: getSimpleFrenchErrorMessage(
-              e,
-              "Impossible de récupérer les statistiques TikTok pour le moment.",
-            ),
+            error: needsReconnect
+              ? "TikTok doit être reconnecté pour récupérer les statistiques en direct."
+              : getSimpleFrenchErrorMessage(
+                e,
+                "Impossible de récupérer les statistiques TikTok pour le moment.",
+              ),
             raw_error: rawMessage || null,
             needs_reconnect: needsReconnect,
           },

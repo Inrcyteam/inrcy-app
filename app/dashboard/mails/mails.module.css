@@ -4999,3 +4999,178 @@
     display: none !important;
   }
 }
+
+/* iNrAgent scheduled campaign modal */
+.composeScheduleBtn {
+  border-radius: 16px;
+  padding: 12px 16px;
+  font-weight: 950;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 46px;
+  white-space: nowrap;
+}
+
+.scheduleOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10020;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(1, 6, 20, 0.62);
+  backdrop-filter: blur(8px);
+}
+
+.scheduleCard {
+  width: min(560px, calc(100vw - 30px));
+  border-radius: 24px;
+  border: 1px solid rgba(125, 211, 252, 0.22);
+  background: linear-gradient(135deg, rgba(14, 39, 78, 0.96), rgba(34, 23, 72, 0.96));
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.48);
+  padding: 18px;
+  color: rgba(255,255,255,0.94);
+}
+
+.scheduleHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.scheduleKicker {
+  color: #67e8f9;
+  font-size: 11px;
+  font-weight: 950;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.scheduleTitle {
+  margin: 0;
+  font-size: clamp(24px, 3vw, 32px);
+  line-height: 1.02;
+  letter-spacing: -0.04em;
+}
+
+.scheduleHint {
+  margin: 8px 0 0;
+  color: rgba(226, 232, 240, 0.78);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.scheduleCloseBtn {
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 999px;
+  background: rgba(255,255,255,0.10);
+  color: rgba(255,255,255,0.88);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.scheduleFields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.scheduleField {
+  display: grid;
+  gap: 7px;
+  color: rgba(226,232,240,0.82);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.scheduleField input {
+  width: 100%;
+  min-height: 46px;
+  border-radius: 15px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(7, 10, 24, 0.72);
+  color: rgba(255,255,255,0.94);
+  padding: 0 12px;
+  font-size: 15px;
+  font-weight: 750;
+  color-scheme: dark;
+}
+
+.scheduleSummary {
+  display: grid;
+  gap: 4px;
+  margin-top: 14px;
+  padding: 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,0.10);
+  background: rgba(3, 7, 18, 0.25);
+  color: rgba(226,232,240,0.80);
+  font-size: 13px;
+}
+
+.scheduleSummary strong {
+  color: rgba(255,255,255,0.94);
+}
+
+.scheduleError {
+  margin-top: 10px;
+  padding: 9px 11px;
+  border-radius: 13px;
+  border: 1px solid rgba(251,113,133,0.34);
+  background: rgba(127,29,29,0.18);
+  color: #fecdd3;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.scheduleFooter {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.scheduleFooter button {
+  min-height: 42px;
+  border-radius: 15px;
+  padding: 10px 16px;
+  font-weight: 950;
+}
+
+@media (max-width: 640px) {
+  .composeScheduleBtn {
+    min-width: 42px;
+    min-height: 42px;
+    height: 42px;
+    padding: 0 10px;
+    border-radius: 14px;
+    gap: 0;
+  }
+
+  .composeScheduleText {
+    display: none;
+  }
+
+  .scheduleCard {
+    padding: 15px;
+    border-radius: 20px;
+  }
+
+  .scheduleFields {
+    grid-template-columns: 1fr;
+  }
+
+  .scheduleFooter {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+}

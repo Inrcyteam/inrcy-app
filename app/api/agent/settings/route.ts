@@ -38,6 +38,8 @@ type DbAgentAutomationSettingsRow = {
   metadata?: Record<string, unknown> | null;
 };
 
+type AutomationScheduleSlot = { dayOfWeek: number; time: string };
+
 const GLOBAL_SELECT = "global_enabled, tone, timezone, metadata";
 const AUTOMATION_SELECT = "automation_key, enabled, frequency, day_of_week, time, validation_mode, allowed_channels, allowed_themes, use_image_bank, image_required, recipient_scope, source_strategy, last_prepared_at, last_executed_at, next_run_at, metadata";
 const SETTINGS_SCHEDULE_GRACE_MS = 20 * 60 * 1000;
@@ -112,6 +114,31 @@ function scheduledWeekdays(frequency: InrAgentFrequency, dayOfWeek: number) {
   return [dayOfWeek];
 }
 
+function normalizeScheduleSlots(
+  metadata: Record<string, unknown> | null | undefined,
+  frequency: InrAgentFrequency,
+  dayOfWeek: number,
+  time: string,
+): AutomationScheduleSlot[] {
+  const fallback = [
+    { dayOfWeek, time },
+    { dayOfWeek: (dayOfWeek + 3) % 7, time },
+  ];
+  if (frequency !== "twice_weekly") return [fallback[0]];
+  const rawSlots = Array.isArray(metadata?.scheduleSlots) ? metadata?.scheduleSlots : [];
+  const slots = rawSlots
+    .map((item) => {
+      const source = item && typeof item === "object" && !Array.isArray(item) ? item as Record<string, unknown> : {};
+      return {
+        dayOfWeek: normalizeDay(source.dayOfWeek),
+        time: normalizeTime(source.time),
+      };
+    })
+    .filter((slot, index, list) => list.findIndex((candidate) => candidate.dayOfWeek === slot.dayOfWeek && candidate.time === slot.time) === index)
+    .slice(0, 2);
+  return slots.length >= 2 ? slots : fallback;
+}
+
 function isFirstScheduledWeekdayOfMonth(local: ReturnType<typeof getLocalParts>, dayOfWeek: number) {
   return local.weekday === dayOfWeek && local.day <= 7;
 }
@@ -139,41 +166,59 @@ function computeNextRunAt(automation: InrAgentAutomationSettings, after: Date, t
 
   const start = getLocalParts(new Date(after.getTime() + 60 * 1000), timeZone);
   const dayOfWeek = normalizeDay(automation.dayOfWeek);
-  const schedule = timeParts(automation.time || "09:00");
+  const slots = normalizeScheduleSlots(automation.metadata, frequency, dayOfWeek, normalizeTime(automation.time || "09:00"));
 
   for (let offset = 0; offset <= 110; offset += 1) {
     const localDate = addLocalDays(start, offset);
-    const candidateUtc = zonedTimeToUtc({ ...localDate, ...schedule }, timeZone);
-    const candidateLocal = getLocalParts(candidateUtc, timeZone);
-    if (!isScheduledDate(candidateLocal, frequency, dayOfWeek)) continue;
-    if (candidateUtc.getTime() <= after.getTime()) {
-      const delay = after.getTime() - candidateUtc.getTime();
-      if (offset === 0 && delay <= SETTINGS_SCHEDULE_GRACE_MS) {
-        return new Date(after.getTime() - 60 * 1000).toISOString();
+    const candidates = slots
+      .map((slot) => {
+        const schedule = timeParts(slot.time);
+        const candidateUtc = zonedTimeToUtc({ ...localDate, ...schedule }, timeZone);
+        const candidateLocal = getLocalParts(candidateUtc, timeZone);
+        if (!isScheduledDate(candidateLocal, frequency, slot.dayOfWeek)) return null;
+        return candidateUtc;
+      })
+      .filter((candidate): candidate is Date => Boolean(candidate))
+      .sort((a, b) => a.getTime() - b.getTime());
+
+    for (const candidateUtc of candidates) {
+      if (candidateUtc.getTime() <= after.getTime()) {
+        const delay = after.getTime() - candidateUtc.getTime();
+        if (offset === 0 && delay <= SETTINGS_SCHEDULE_GRACE_MS) {
+          return new Date(after.getTime() - 60 * 1000).toISOString();
+        }
+        continue;
       }
-      continue;
+      return candidateUtc.toISOString();
     }
-    return candidateUtc.toISOString();
   }
 
   return null;
 }
 
-function scheduleSignature(row: Pick<DbAgentAutomationSettingsRow, "enabled" | "frequency" | "day_of_week" | "time"> | null | undefined) {
+function scheduleSignature(row: Pick<DbAgentAutomationSettingsRow, "enabled" | "frequency" | "day_of_week" | "time" | "metadata"> | null | undefined) {
+  const frequency = normalizeFrequency(row?.frequency);
+  const day = normalizeDay(row?.day_of_week);
+  const time = normalizeTime(row?.time);
   return [
     row?.enabled ? "1" : "0",
-    normalizeFrequency(row?.frequency),
-    String(normalizeDay(row?.day_of_week)),
-    normalizeTime(row?.time),
+    frequency,
+    String(day),
+    time,
+    JSON.stringify(normalizeScheduleSlots(row?.metadata, frequency, day, time)),
   ].join("|");
 }
 
 function automationSignature(automation: InrAgentAutomationSettings) {
+  const frequency = normalizeFrequency(automation.frequency);
+  const day = normalizeDay(automation.dayOfWeek);
+  const time = normalizeTime(automation.time);
   return [
     automation.enabled ? "1" : "0",
-    normalizeFrequency(automation.frequency),
-    String(normalizeDay(automation.dayOfWeek)),
-    normalizeTime(automation.time),
+    frequency,
+    String(day),
+    time,
+    JSON.stringify(normalizeScheduleSlots(automation.metadata, frequency, day, time)),
   ].join("|");
 }
 

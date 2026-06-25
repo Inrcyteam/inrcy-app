@@ -51,6 +51,42 @@ function linkifyEscapedUrls(escapedText: string): string {
   });
 }
 
+
+function normalizeRichInlineTagName(tag: string): "strong" | "em" | "u" {
+  const normalized = String(tag || "").toLowerCase();
+  if (normalized === "b" || normalized === "strong") return "strong";
+  if (normalized === "i" || normalized === "em") return "em";
+  return "u";
+}
+
+function restoreAllowedInlineTagsFromEscapedText(escaped: string): string {
+  let out = String(escaped || "");
+  const allowedPair = /&lt;\s*(strong|b|em|i|u)\s*&gt;([\s\S]*?)&lt;\s*\/\s*\1\s*&gt;/gi;
+
+  for (let i = 0; i < 10; i += 1) {
+    const before = out;
+    out = out.replace(allowedPair, (_match, rawTag, inner) => {
+      const tag = normalizeRichInlineTagName(rawTag);
+      return `<${tag}>${inner}</${tag}>`;
+    });
+    if (out === before) break;
+  }
+
+  return out
+    .replace(/&lt;\s*\/?\s*(strong|b|em|i|u)(?:\s+[^&]*?)?\s*\/?\s*&gt;/gi, "")
+    .replace(/&amp;lt;\s*\/?\s*(strong|b|em|i|u)(?:\s+[^&]*?)?\s*\/?\s*&amp;gt;/gi, "");
+}
+
+function applyMarkdownInlineFormattingToEscapedText(escaped: string): string {
+  return String(escaped || "")
+    .replace(/\*\*\*([^*\n]+?)\*\*\*/g, "<strong><em>$1</em></strong>")
+    .replace(/___([^_\n]+?)___/g, "<strong><em>$1</em></strong>")
+    .replace(/\*\*([^*\n]+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/__([^_\n]+?)__/g, "<strong>$1</strong>")
+    .replace(/(^|[^*])\*([^*\n]+?)\*/g, "$1<em>$2</em>")
+    .replace(/(^|[^_])_([^_\n]+?)_/g, "$1<em>$2</em>");
+}
+
 export function stripTemplatePlaceholderHighlights(html: string): string {
   return String(html || "").replace(
     /<span\b(?=[^>]*\bdata-inrcy-placeholder\s*=)[^>]*>([\s\S]*?)<\/span>/gi,
@@ -87,7 +123,9 @@ export function highlightTemplatePlaceholdersInHtml(html: string): string {
 
 export function textToRichMailHtml(text: string): string {
   const escaped = escapeRichMailHtml(String(text || "")).replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-  return linkifyEscapedUrls(escaped).replace(/\n/g, "<br/>");
+  const withAllowedTags = restoreAllowedInlineTagsFromEscapedText(escaped);
+  const withFormatting = applyMarkdownInlineFormattingToEscapedText(withAllowedTags);
+  return linkifyEscapedUrls(withFormatting).replace(/\n/g, "<br/>");
 }
 
 export function richMailHtmlToText(html: string): string {

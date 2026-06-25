@@ -14,6 +14,7 @@ type RichSiteContentEditorProps = {
   minHeight: number;
   editorRef: MutableRefObject<HTMLDivElement | null>;
   style: CSSProperties;
+  className?: string;
 };
 
 export default function RichSiteContentEditor({
@@ -22,6 +23,7 @@ export default function RichSiteContentEditor({
   minHeight,
   editorRef,
   style,
+  className,
 }: RichSiteContentEditorProps) {
   const localRef = useRef<HTMLDivElement | null>(null);
   const lastSyncedValueRef = useRef<string>("");
@@ -66,6 +68,7 @@ export default function RichSiteContentEditor({
       suppressContentEditableWarning
       role="textbox"
       aria-multiline="true"
+      className={className}
       onInput={sync}
       onBlur={sync}
       onKeyDown={(event) => event.stopPropagation()}

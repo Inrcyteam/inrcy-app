@@ -80,6 +80,7 @@ import PublishChannelSelector from "./components/PublishChannelSelector";
 import PublishFinalReviewModal from "./components/PublishFinalReviewModal";
 import TiktokPublicationSettingsModal, { type TiktokPublicationSettings } from "./components/TiktokPublicationSettingsModal";
 import PublishFooterActions from "./components/PublishFooterActions";
+import PublishScheduleModal, { type PublishScheduleSelection } from "./components/PublishScheduleModal";
 import PublishIntentPanel from "./components/PublishIntentPanel";
 import PublishContentEditorPanel from "./components/PublishContentEditorPanel";
 import PublishImagesPanel from "./components/PublishImagesPanel";
@@ -481,7 +482,18 @@ export default function PublishModal({
   const [finalReviewPosts, setFinalReviewPosts] = useState<Partial<
     Record<ChannelKey, ChannelPost>
   > | null>(null);
+  const [scheduleModalOpen, setScheduleModalOpen] = useState(false);
+  const [scheduleReviewPosts, setScheduleReviewPosts] = useState<Partial<
+    Record<ChannelKey, ChannelPost>
+  > | null>(null);
+  const [scheduleSaving, setScheduleSaving] = useState(false);
+  const [scheduleError, setScheduleError] = useState("");
+  const [pendingScheduleRequest, setPendingScheduleRequest] = useState<{
+    selections: PublishScheduleSelection[];
+    preparedPostsByChannel: Partial<Record<ChannelKey, ChannelPost>>;
+  } | null>(null);
   const [tiktokSettingsOpen, setTiktokSettingsOpen] = useState(false);
+  const [tiktokSettingsFlow, setTiktokSettingsFlow] = useState<"publish" | "schedule" | null>(null);
   const [tiktokPublicationSettings, setTiktokPublicationSettings] = useState<TiktokPublicationSettings | null>(null);
   const [pendingPublishPosts, setPendingPublishPosts] = useState<Partial<
     Record<ChannelKey, ChannelPost>
@@ -2972,8 +2984,324 @@ export default function PublishModal({
     };
   }, [saveDraftActionRef, onSavePublicationDraft]);
 
+
+  const openSchedulePublicationModal = () => {
+    if (saving || draftSaving || scheduleSaving) return;
+    const preparedPostsByChannel = buildPreparedPostsByChannel();
+    setPublishError("");
+    setScheduleError("");
+    setDraftMessage("");
+    setImgError("");
+    setTiktokPublicationSettings(null);
+
+    if (!selectedChannels.length) {
+      setPublishError("Sélectionnez au moins 1 canal à programmer.");
+      scrollToPublishArea("smooth");
+      return;
+    }
+
+    setPostsByChannel(preparedPostsByChannel);
+    setScheduleReviewPosts(preparedPostsByChannel);
+    setScheduleModalOpen(true);
+  };
+
+  const buildSingleChannelRecord = <T,>(
+    source: Partial<Record<ChannelKey, T>>,
+    channel: ChannelKey,
+  ): Partial<Record<ChannelKey, T>> => {
+    const value = source[channel];
+    return value ? { [channel]: value } as Partial<Record<ChannelKey, T>> : {};
+  };
+
+  const buildSingleChannelUnknownRecord = (
+    source: Partial<Record<ChannelKey, unknown>>,
+    channel: ChannelKey,
+  ): Partial<Record<ChannelKey, unknown>> => {
+    const value = source[channel];
+    return value !== undefined ? { [channel]: value } : {};
+  };
+
+  const performSchedulePublication = async (
+    selections: PublishScheduleSelection[],
+    preparedPostsByChannel: Partial<Record<ChannelKey, ChannelPost>>,
+    tiktokSettingsForSchedule: TiktokPublicationSettings | null,
+  ) => {
+    if (saving || draftSaving || scheduleSaving) return;
+
+    const channelsToSchedule = Array.from(
+      new Set(selections.map((selection) => selection.channel)),
+    ).filter((channel): channel is ChannelKey => selectedChannels.includes(channel));
+
+    if (!channelsToSchedule.length) {
+      setScheduleError("Sélectionnez au moins un canal à programmer.");
+      return;
+    }
+
+    const reviewItems = buildFinalReviewItems(preparedPostsByChannel, channelsToSchedule);
+    const blocked = reviewItems.filter((item) => item.blockers.length > 0);
+    if (blocked.length) {
+      setScheduleError(
+        `Certains canaux ne sont pas prêts : ${blocked
+          .map((item) => item.label)
+          .join(" / ")}.`,
+      );
+      return;
+    }
+
+    const publishMediaModeByChannel = Object.fromEntries(
+      channelsToSchedule.map((channel) => [channel, resolveChannelMediaMode(channel)]),
+    ) as Partial<Record<ChannelKey, ChannelMediaMode>>;
+    const hasAnyVideoPublish = channelsToSchedule.some(
+      (channel) => publishMediaModeByChannel[channel] === "video",
+    );
+    const hasAnyImagePublish = channelsToSchedule.some(
+      (channel) => publishMediaModeByChannel[channel] === "images",
+    );
+
+    if (hasAnyVideoPublish && !videoFile) {
+      setScheduleError("Ajoutez une vidéo avant de programmer ces canaux.");
+      return;
+    }
+
+    setScheduleSaving(true);
+    setScheduleModalOpen(false);
+    setPublishError("");
+    setScheduleError("");
+    setDraftMessage("");
+    setImgError("");
+    setPublishProgress(5);
+    setPublishProgressLabel("Préparation de la programmation...");
+    scrollToPublishArea("smooth");
+
+    try {
+      const emptyChannelImages = {} as ChannelImagePayload;
+      const emptyChannelSettings = {} as ChannelImageSettingsPayload;
+      const { channelImages, channelSettings } = !hasAnyImagePublish
+        ? {
+            channelImages: emptyChannelImages,
+            channelSettings: emptyChannelSettings,
+          }
+        : await buildChannelImagesPayload((current, total) => {
+            if (!total) {
+              setPublishProgress(20);
+              setPublishProgressLabel("Préparation des contenus...");
+              return;
+            }
+            const ratio = current / total;
+            setPublishProgress(clampPercent(8 + ratio * 22));
+            setPublishProgressLabel(
+              `Préparation des images ${clampPercent(ratio * 100)}%`,
+            );
+          });
+
+      const originalImageByKey: Record<string, ImagePayload> = !hasAnyImagePublish
+        ? {}
+        : await (async () => {
+            setPublishProgress(32);
+            setPublishProgressLabel("Upload des images originales...");
+            return await uploadOriginalImagesForPublication((current, total) => {
+              if (!total) return;
+              const ratio = current / total;
+              setPublishProgress(clampPercent(32 + ratio * 12));
+              setPublishProgressLabel(
+                `Upload des images originales ${clampPercent(ratio * 100)}%`,
+              );
+            });
+          })();
+
+      const uploadedChannelImages = {} as ChannelImagePayload;
+      if (hasAnyImagePublish) {
+        setPublishProgress(48);
+        setPublishProgressLabel("Upload des images adaptées...");
+        let uploadedCount = 0;
+        const uploadTargets = channelsToSchedule.reduce(
+          (sum, channel) =>
+            sum +
+            (channelImages[channel] || []).filter((image) => !!image?.dataUrl)
+              .length,
+          0,
+        );
+        for (const channel of channelsToSchedule) {
+          if (publishMediaModeByChannel[channel] !== "images") continue;
+          const uploadedImages = await uploadPreparedImages(
+            channelImages[channel] || [],
+            () => {
+              uploadedCount += 1;
+              const ratio = uploadTargets ? uploadedCount / uploadTargets : 1;
+              setPublishProgress(clampPercent(48 + ratio * 22));
+              setPublishProgressLabel(
+                `Upload des images adaptées ${clampPercent(ratio * 100)}%`,
+              );
+            },
+          );
+          const imageKeysForChannel = channelSettings[channel]?.imageKeys || [];
+          uploadedChannelImages[channel] = uploadedImages.map((image, index) => {
+            const imageKey = imageKeysForChannel[index] || "";
+            const original = imageKey ? originalImageByKey[imageKey] : undefined;
+            const originalUrl = String(
+              original?.publicUrl ||
+                original?.originalPublicUrl ||
+                original?.originalUrl ||
+                "",
+            ).trim();
+            return {
+              ...image,
+              renderedUrl: image.publicUrl || image.renderedUrl || "",
+              imageKey,
+              originalUrl,
+              originalPublicUrl: originalUrl,
+              originalStoragePath:
+                original?.storagePath || original?.originalStoragePath || "",
+              originalName: original?.name || image.name,
+              originalType: original?.type || image.type,
+              transform: imageKey
+                ? channelSettings[channel]?.transforms?.[imageKey]
+                : undefined,
+              imageMeta: imageKey ? imageMetaByKey[imageKey] : undefined,
+            };
+          });
+        }
+      }
+
+      let publicationVideo: any = null;
+      if (hasAnyVideoPublish) {
+        setPublishProgress(48);
+        setPublishProgressLabel("Upload de la vidéo...");
+        publicationVideo = await uploadPublicationVideoForPublish();
+        if (!publicationVideo?.publicUrl && !publicationVideo?.url) {
+          throw new Error("La vidéo n’a pas pu être préparée pour la programmation.");
+        }
+        publicationVideo = await preparePublicationVideoVariants(
+          publicationVideo,
+          channelsToSchedule,
+          publishMediaModeByChannel,
+        );
+      }
+
+      setPublishProgress(76);
+      setPublishProgressLabel("Enregistrement dans iNr’Agent...");
+
+      const selectionByChannel = new Map(
+        selections.map((selection) => [selection.channel, selection.scheduledAt]),
+      );
+
+      for (let index = 0; index < channelsToSchedule.length; index += 1) {
+        const channel = channelsToSchedule[index];
+        const scheduledAt = selectionByChannel.get(channel);
+        if (!scheduledAt) continue;
+        const label = CHANNEL_LABELS[channel] || channel;
+        const response = await fetch("/api/agent/scheduled-actions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            automationKey: "publish",
+            actionType: "publication",
+            targetTool: "booster",
+            source: "manual",
+            title: `Publication ${label}`,
+            summary: `Publication programmée sur ${label}`,
+            scheduledAt,
+            timezone: "Europe/Paris",
+            channels: [channel],
+            payload: {
+              origin: "booster",
+              kind: "manual_publish_schedule",
+              publishPayload: {
+                mediaType: publicationVideo ? "video" : "images",
+                mediaModeByChannel: buildSingleChannelUnknownRecord(
+                  publishMediaModeByChannel,
+                  channel,
+                ),
+                videoFormatByChannel: buildSingleChannelUnknownRecord(
+                  videoFormatByChannel,
+                  channel,
+                ),
+                videoAdaptationModeByChannel: buildSingleChannelUnknownRecord(
+                  videoAdaptationModeByChannel,
+                  channel,
+                ),
+                videoSettingsByChannel: buildSingleChannelUnknownRecord(
+                  videoSettingsByChannel as Partial<Record<ChannelKey, unknown>>,
+                  channel,
+                ),
+                video: publicationVideo,
+                idea: idea.trim(),
+                theme,
+                channels: [channel],
+                postByChannel: filterPostsForSelectedChannels(
+                  preparedPostsByChannel,
+                  [channel],
+                ),
+                images: [],
+                imagesByChannel: buildSingleChannelRecord(uploadedChannelImages, channel),
+                imageSettingsByChannel: buildSingleChannelRecord(channelSettings, channel),
+                tiktokPublicationSettings:
+                  channel === "tiktok" ? tiktokSettingsForSchedule : null,
+              },
+            },
+          }),
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok) {
+          throw new Error(
+            String(result?.error || "Programmation de la publication impossible."),
+          );
+        }
+        setPublishProgress(clampPercent(76 + ((index + 1) / channelsToSchedule.length) * 20));
+      }
+
+      setChannels((prev) => {
+        const next = { ...prev };
+        for (const channel of channelsToSchedule) next[channel] = false;
+        return next;
+      });
+      setPublishProgress(100);
+      setPublishProgressLabel("Publication confiée à iNr’Agent.");
+      setDraftMessage(
+        channelsToSchedule.length > 1
+          ? `${channelsToSchedule.length} publications programmées dans iNr’Agent.`
+          : "Publication programmée dans iNr’Agent.",
+      );
+      setScheduleReviewPosts(null);
+      setTiktokPublicationSettings(null);
+      setTiktokSettingsFlow(null);
+      setPendingScheduleRequest(null);
+    } catch (e) {
+      const message = getSimpleFrenchErrorMessage(
+        e,
+        "Programmation de la publication impossible.",
+      );
+      setScheduleError(message);
+      setPublishError(message);
+    } finally {
+      setScheduleSaving(false);
+    }
+  };
+
+  const confirmSchedulePublication = async (
+    selections: PublishScheduleSelection[],
+  ) => {
+    const preparedPostsByChannel = scheduleReviewPosts || buildPreparedPostsByChannel();
+    const tiktokWillSchedule = selections.some(
+      (selection) => selection.channel === "tiktok",
+    );
+    if (tiktokWillSchedule && !tiktokPublicationSettings) {
+      setPendingScheduleRequest({ selections, preparedPostsByChannel });
+      setTiktokSettingsFlow("schedule");
+      setScheduleModalOpen(false);
+      setTiktokSettingsOpen(true);
+      return;
+    }
+
+    await performSchedulePublication(
+      selections,
+      preparedPostsByChannel,
+      tiktokWillSchedule ? tiktokPublicationSettings : null,
+    );
+  };
+
   const onPublish = async () => {
-    if (saving || draftSaving) return;
+    if (saving || draftSaving || scheduleSaving) return;
     const preparedPostsByChannel = buildPreparedPostsByChannel();
     setPublishError("");
     setDraftMessage("");
@@ -2997,6 +3325,7 @@ export default function PublishModal({
     const tiktokReviewItem = reviewItems.find((item) => item.channel === "tiktok");
     setTiktokPublicationSettings(null);
     if (tiktokReviewItem && tiktokReviewItem.blockers.length === 0) {
+      setTiktokSettingsFlow("publish");
       setTiktokSettingsOpen(true);
       return;
     }
@@ -3106,6 +3435,9 @@ export default function PublishModal({
   const finalReviewItems = finalReviewOpen
     ? buildFinalReviewItems(finalReviewPosts || buildPreparedPostsByChannel())
     : [];
+  const scheduleModalItems = scheduleModalOpen
+    ? buildFinalReviewItems(scheduleReviewPosts || buildPreparedPostsByChannel())
+    : [];
   const finalReviewBlockers = finalReviewItems.flatMap((item) => item.blockers);
   const hasFinalReviewBlockers = finalReviewBlockers.length > 0;
   const finalReviewPublishableCount = finalReviewItems.filter(
@@ -3194,12 +3526,28 @@ export default function PublishModal({
 
   const closeTiktokSettingsModal = () => {
     setTiktokSettingsOpen(false);
+    setTiktokSettingsFlow(null);
+    setPendingScheduleRequest(null);
     setTiktokPublicationSettings(null);
   };
 
-  const validateTiktokSettingsModal = (settings: TiktokPublicationSettings) => {
+  const validateTiktokSettingsModal = async (settings: TiktokPublicationSettings) => {
     setTiktokPublicationSettings(settings);
     setTiktokSettingsOpen(false);
+
+    if (tiktokSettingsFlow === "schedule" && pendingScheduleRequest) {
+      const request = pendingScheduleRequest;
+      setPendingScheduleRequest(null);
+      setTiktokSettingsFlow(null);
+      await performSchedulePublication(
+        request.selections,
+        request.preparedPostsByChannel,
+        settings,
+      );
+      return;
+    }
+
+    setTiktokSettingsFlow(null);
     setFinalReviewOpen(true);
   };
 
@@ -3225,6 +3573,7 @@ export default function PublishModal({
     const tiktokWillPublish = publishableItems.some((item) => item.channel === "tiktok");
     if (tiktokWillPublish && !tiktokPublicationSettings) {
       setFinalReviewOpen(false);
+      setTiktokSettingsFlow("publish");
       setTiktokSettingsOpen(true);
       return;
     }
@@ -3275,6 +3624,20 @@ export default function PublishModal({
         saving={saving}
         onClose={closeFinalReview}
         onConfirm={confirmFinalReview}
+      />
+
+      <PublishScheduleModal
+        open={scheduleModalOpen}
+        styles={styles}
+        items={scheduleModalItems}
+        isMobile={isMobile}
+        saving={scheduleSaving}
+        error={scheduleError}
+        onClose={() => {
+          if (scheduleSaving) return;
+          setScheduleModalOpen(false);
+        }}
+        onConfirm={confirmSchedulePublication}
       />
 
       <PublishWarningModals
@@ -3553,11 +3916,13 @@ export default function PublishModal({
         styles={styles}
         publishAreaRef={publishAreaRef}
         saving={saving}
+        scheduling={scheduleSaving}
         draftSaving={draftSaving}
         publishProgress={publishProgress}
         publishProgressLabel={publishProgressLabel}
         publishError={publishError}
         onPublish={onPublish}
+        onSchedule={openSchedulePublicationModal}
       />
     </div>
   );

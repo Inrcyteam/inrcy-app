@@ -7,21 +7,11 @@ import {
   consumeAiCredits,
   isAdminUserForAi,
 } from "@/lib/aiUsageQuota";
-import { openaiGenerateJSON } from "@/lib/openaiClient";
 import {
-  boosterSystemPrompt,
-  boosterUserPrompt,
-  pickBoosterHiddenAngle,
   type BoosterChannels,
   type BoosterRecentPublication,
-  type BoosterStyle,
   type BoosterTheme,
 } from "@/lib/boosterPrompt";
-import { sanitizeGmbGeneratedPost } from "@/lib/googleBusinessCompliance";
-import {
-  sanitizeBoosterSiteText,
-  stripSiteTextFormatting,
-} from "@/lib/boosterFormatting";
 import { getChannelConnectionStates } from "@/lib/channelConnectionState";
 import { decodeBusinessSector } from "@/lib/activitySectors";
 import { getJobLabel } from "@/lib/activityCatalog";
@@ -33,6 +23,7 @@ import {
   type InrAgentValidationMode,
 } from "@/lib/inrAgentSettings";
 import { rowToInrAgentAction } from "@/lib/inrAgentActions";
+import { generateSharedBoosterPosts } from "@/lib/boosterPublishGeneration";
 
 export const maxDuration = 120;
 export const runtime = "nodejs";
@@ -44,10 +35,6 @@ type ChannelPost = {
   content: string;
   cta: string;
   hashtags: string[];
-};
-
-type BoosterGenResponse = {
-  versions?: Partial<Record<BoosterChannels, Partial<ChannelPost>>>;
 };
 
 type ImageBankAsset = {
@@ -139,9 +126,67 @@ const allowedBoosterChannels = new Set<BoosterChannels>([
   "instagram",
   "linkedin",
   "tiktok",
-  // YouTube Shorts nécessite une vidéo : iNr’Agent Publier V1 prépare uniquement image + texte.
-  // Le canal sera réactivé ici quand la préparation vidéo sera branchée.
+  "youtube_shorts",
 ]);
+
+const mediaRequiredChannels = new Set<BoosterChannels>([
+  "instagram",
+  "tiktok",
+  "youtube_shorts",
+]);
+
+function channelRequiresVideo(channel: BoosterChannels) {
+  return channel === "youtube_shorts";
+}
+
+function channelMediaReadiness(channel: BoosterChannels, image: ImageBankAsset | null) {
+  if (channelRequiresVideo(channel)) {
+    return {
+      ready: false,
+      publishable: false,
+      status: "blocked",
+      label: "Bloquant",
+      reason: "YouTube nécessite une vidéo.",
+      blockers: ["YouTube nécessite une vidéo."],
+      warnings: [] as string[],
+      canPublishTextOnly: false,
+    };
+  }
+
+  if (mediaRequiredChannels.has(channel) && !image) {
+    const reason =
+      channel === "instagram"
+        ? "Instagram nécessite au moins 1 image."
+        : "TikTok nécessite au moins 1 photo ou 1 vidéo.";
+    return {
+      ready: false,
+      publishable: false,
+      status: "blocked",
+      label: "Bloquant",
+      reason,
+      blockers: [reason],
+      warnings: [] as string[],
+      canPublishTextOnly: false,
+    };
+  }
+
+  const warnings = !image
+    ? channel === "gmb"
+      ? ["Google Business sera publié sans photo."]
+      : ["Aucune image sélectionnée."]
+    : [];
+
+  return {
+    ready: true,
+    publishable: true,
+    status: image ? "ready_with_image" : "ready_text_only",
+    label: "Prêt",
+    reason: image ? "Prêt à publier." : "Prêt à publier en texte seul.",
+    blockers: [] as string[],
+    warnings,
+    canPublishTextOnly: !image,
+  };
+}
 
 function rowToAutomationSettings(row: AutomationDbRow | null): InrAgentAutomationSettings {
   return sanitizeInrAgentAutomationSettings("publish", {
@@ -295,47 +340,6 @@ function cleanHashtags(channel: BoosterChannels, input: unknown) {
     : [];
 }
 
-function normalizePost(
-  channel: BoosterChannels,
-  raw: Partial<ChannelPost> | undefined,
-): ChannelPost {
-  if (channel === "gmb") {
-    const safe = sanitizeGmbGeneratedPost({
-      title: String(raw?.title || ""),
-      content: String(raw?.content || ""),
-      cta: String(raw?.cta || ""),
-      hashtags: [],
-    });
-    return {
-      title: safe.title,
-      content: safe.content.slice(0, 2000),
-      cta: safe.cta,
-      hashtags: [],
-    };
-  }
-
-  const siteChannel = siteChannels.has(channel);
-  const title = String(raw?.title || "").trim();
-  const content = String(raw?.content || "").trim();
-
-  return {
-    title: (siteChannel
-      ? sanitizeBoosterSiteText(title)
-      : stripSiteTextFormatting(title)
-    ).slice(0, 90),
-    content: (siteChannel
-      ? sanitizeBoosterSiteText(content)
-      : stripSiteTextFormatting(content)
-    ).slice(0, siteChannel ? 6000 : 2000),
-    cta: stripSiteTextFormatting(raw?.cta || "").slice(0, 180),
-    hashtags: cleanHashtags(channel, raw?.hashtags),
-  };
-}
-
-function hasUsefulContent(post: ChannelPost | undefined) {
-  return Boolean(post?.title?.trim() && post?.content?.trim() && post?.cta?.trim());
-}
-
 async function generateBoosterPosts(args: {
   idea: string;
   theme: BoosterTheme;
@@ -344,31 +348,23 @@ async function generateBoosterPosts(args: {
   business: JsonRecord | null;
   recentPublications: BoosterRecentPublication[];
 }) {
-  const out = await openaiGenerateJSON<BoosterGenResponse>({
-    system: boosterSystemPrompt(args.business),
-    input: boosterUserPrompt({
-      idea: args.idea,
-      theme: args.theme,
-      style: "equilibre" as BoosterStyle,
-      channels: args.channels,
-      profile: args.profile,
-      business: args.business,
-      hiddenAngle: pickBoosterHiddenAngle(),
-      recentPublications: args.recentPublications,
-    }),
-    maxOutputTokens: args.channels.some((channel) => siteChannels.has(channel)) ? 5600 : 3600,
-    temperature: 0.78,
+  const { versions, recoveredChannels } = await generateSharedBoosterPosts({
+    idea: args.idea,
+    theme: args.theme,
+    style: "equilibre",
+    channels: args.channels,
+    profile: args.profile,
+    business: args.business,
+    recentPublications: args.recentPublications,
+    mediaType: "images",
+    forceNonBlocking: true,
+    extraInstructions: `CONTEXTE iNrAgent : cette génération provient de l'automatisation Publier.
+Objectif : produire exactement la même logique éditoriale que Booster / Publier manuel, avec un contenu réellement adapté à chaque canal.
+Ne fournis jamais 8 variantes identiques. Varie nettement l'angle, la longueur, la structure et le ton selon les règles Booster de chaque canal.
+Le titre et le CTA doivent être renseignés quand c'est possible, mais le contenu reste prioritaire.`,
   });
 
-  const rawVersions =
-    out?.versions && typeof out.versions === "object" ? out.versions : {};
-  const versions: Partial<Record<BoosterChannels, ChannelPost>> = {};
-
-  for (const channel of args.channels) {
-    versions[channel] = normalizePost(channel, rawVersions[channel]);
-  }
-
-  return versions;
+  return { versions, recoveredChannels };
 }
 
 async function selectConnectedChannels(args: {
@@ -517,6 +513,10 @@ function getInitialStatus(validationMode: InrAgentValidationMode) {
   return validationMode === "draft_only" ? "draft" : "pending_validation";
 }
 
+function hasUsefulContent(post: ChannelPost | undefined) {
+  return Boolean(post?.title?.trim() || post?.content?.trim() || post?.cta?.trim());
+}
+
 function buildPreviewText(versions: Partial<Record<BoosterChannels, ChannelPost>>) {
   const preferredOrder: BoosterChannels[] = [
     "facebook",
@@ -537,7 +537,7 @@ function buildSummary(channels: BoosterChannels[], image: ImageBankAsset | null)
   const labels = channels
     .map((channel) => channelLabels[boosterToAgentChannel[channel]] || channel)
     .join(", ");
-  return `Publication préparée pour ${labels}.${image ? " Visuel iNrCy ajouté depuis la banque d’images." : " Aucun visuel disponible dans la banque d’images pour le moment."}`;
+  return `Publication préparée pour ${labels}.${image ? " Visuel iNrCy ajouté depuis la banque d’images." : " Aucun visuel disponible : les canaux compatibles seront préparés en texte seul."}`;
 }
 
 export async function POST(request: Request) {
@@ -615,17 +615,14 @@ export async function POST(request: Request) {
     ? await pickImageFromBank({ business, theme: agentTheme })
     : null;
 
-  if (automation.imageRequired && !image) {
-    return NextResponse.json(
-      {
-        error:
-          "Aucune image active n’est disponible dans la banque d’images iNrCy. Ajoute au moins une image ou désactive l’obligation d’image.",
-      },
-      { status: 400 },
-    );
-  }
+  // Même logique que Booster / Publier : l'absence d'image ne bloque jamais
+  // la préparation du texte. Les canaux compatibles restent prêts en texte seul,
+  // les canaux qui exigent un média sont marqués comme incomplets canal par canal.
+  const mediaReadinessByChannel = Object.fromEntries(
+    channels.map((channel) => [channel, channelMediaReadiness(channel, image)]),
+  );
 
-  const versions = await generateBoosterPosts({
+  const { versions, recoveredChannels } = await generateBoosterPosts({
     idea,
     theme: boosterTheme,
     channels,
@@ -633,17 +630,6 @@ export async function POST(request: Request) {
     business,
     recentPublications,
   });
-
-  const missingChannels = channels.filter((channel) => !hasUsefulContent(versions[channel]));
-  if (missingChannels.length) {
-    return NextResponse.json(
-      {
-        error:
-          "iNr’Agent n’a pas réussi à préparer un contenu complet pour tous les canaux. Relance la préparation.",
-      },
-      { status: 502 },
-    );
-  }
 
   const now = new Date().toISOString();
   const targetChannels = channels.map((channel) => boosterToAgentChannel[channel]);
@@ -660,6 +646,9 @@ export async function POST(request: Request) {
     targetChannels,
     image,
     imageAsset: image,
+    mediaReadinessByChannel,
+    mediaPolicy: "booster_publish_rules",
+    imageRequiredRequested: automation.imageRequired,
     executionTarget: "booster_publish",
   };
 
@@ -687,6 +676,7 @@ export async function POST(request: Request) {
         automationFrequency: automation.frequency,
         preparedManually: !isCron,
         preparedByCron: isCron,
+        fallbackAppliedChannels: recoveredChannels.map((channel) => boosterToAgentChannel[channel]),
       },
       created_at: now,
       updated_at: now,

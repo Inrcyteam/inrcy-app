@@ -222,6 +222,143 @@ function buildCampaignPreviewText(subject: string, bodyText: string, recipients:
   ].join("\n\n");
 }
 
+type PublishChannelKey =
+  | "inrcy_site"
+  | "site_web"
+  | "gmb"
+  | "facebook"
+  | "instagram"
+  | "linkedin"
+  | "tiktok"
+  | "youtube_shorts";
+
+const publishChannelAliases: Record<string, PublishChannelKey> = {
+  inrcy_site: "inrcy_site",
+  site_inrcy: "inrcy_site",
+  siteInrcy: "inrcy_site",
+  site_web: "site_web",
+  siteWeb: "site_web",
+  gmb: "gmb",
+  google_business: "gmb",
+  facebook: "facebook",
+  instagram: "instagram",
+  linkedin: "linkedin",
+  tiktok: "tiktok",
+  youtube: "youtube_shorts",
+  youtube_shorts: "youtube_shorts",
+};
+
+const publishChannelReadAliases: Record<PublishChannelKey, string[]> = {
+  inrcy_site: ["inrcy_site", "site_inrcy", "siteInrcy"],
+  site_web: ["site_web", "siteWeb"],
+  gmb: ["gmb", "google_business"],
+  facebook: ["facebook"],
+  instagram: ["instagram"],
+  linkedin: ["linkedin"],
+  tiktok: ["tiktok"],
+  youtube_shorts: ["youtube_shorts", "youtube"],
+};
+
+function cleanPublishChannel(value: unknown): PublishChannelKey | null {
+  const key = String(value ?? "").trim();
+  return publishChannelAliases[key] || null;
+}
+
+function cleanPublishHashtags(value: unknown) {
+  const raw = Array.isArray(value)
+    ? value
+    : String(value ?? "")
+        .split(/[\s,;]+/)
+        .map((item) => item.trim());
+
+  const seen = new Set<string>();
+  const hashtags: string[] = [];
+  for (const item of raw) {
+    const clean = String(item ?? "").trim().replace(/^#+/, "").replace(/\s+/g, "").slice(0, 40);
+    if (!clean || seen.has(clean.toLowerCase())) continue;
+    seen.add(clean.toLowerCase());
+    hashtags.push(clean);
+  }
+  return hashtags.slice(0, 8);
+}
+
+function isPublishAction(action: ReturnType<typeof rowToInrAgentAction>) {
+  return action.automationKey === "publish" && action.targetTool === "booster" && action.actionType === "publication";
+}
+
+function readPublishPost(postByChannel: Record<string, unknown>, channel: PublishChannelKey) {
+  for (const key of publishChannelReadAliases[channel]) {
+    const record = asRecord(postByChannel[key]);
+    if (record) return record;
+    const text = cleanText(postByChannel[key], 6000);
+    if (text) return { content: text };
+  }
+  return {};
+}
+
+function buildPublishPreviewTextFromPosts(postByChannel: Record<string, unknown>, fallback: string) {
+  const firstPost = Object.values(postByChannel)
+    .map((value) => {
+      const record = asRecord(value);
+      if (!record) return cleanText(value, 1200);
+      return cleanText(record.content || record.text || record.caption || record.body || record.message, 1200);
+    })
+    .find(Boolean);
+  return firstPost || fallback;
+}
+
+function publishChannelRequiresMedia(channel: PublishChannelKey) {
+  return channel === "instagram" || channel === "tiktok" || channel === "youtube_shorts";
+}
+
+function publishChannelRequiresVideo(channel: PublishChannelKey) {
+  return channel === "youtube_shorts";
+}
+
+function cleanPublishMedia(value: unknown) {
+  const record = asRecord(value);
+  if (!record) return null;
+
+  const url = cleanText(record.url || record.publicUrl || record.src || record.downloadUrl, 900);
+  const storagePath = cleanText(record.storagePath || record.storage_path || record.path, 700);
+  if (!url && !storagePath) return null;
+
+  const mimeType = cleanText(record.mimeType || record.mime_type || record.type, 160) || "application/octet-stream";
+  const rawKind = cleanText(record.kind || record.mediaKind, 24).toLowerCase();
+  const kind = rawKind === "video" || mimeType.startsWith("video/")
+    ? "video"
+    : rawKind === "file"
+      ? "file"
+      : "image";
+
+  return {
+    bucket: cleanText(record.bucket, 120) || "booster",
+    path: storagePath,
+    storagePath,
+    publicUrl: url,
+    url,
+    name: cleanText(record.name || record.filename || record.fileName, 240) || storagePath.split("/").pop() || "media",
+    type: mimeType,
+    mimeType,
+    size: typeof record.size === "number" && Number.isFinite(record.size) ? record.size : null,
+    kind,
+  };
+}
+
+function buildPublishMediaReadiness(channel: PublishChannelKey, media: ReturnType<typeof cleanPublishMedia>) {
+  if (!media) {
+    return publishChannelRequiresMedia(channel)
+      ? { status: "blocked", ready: false, blockers: ["Ce canal exige un média."] }
+      : { status: "ready", ready: true, blockers: [] };
+  }
+
+  if (publishChannelRequiresVideo(channel) && media.kind !== "video") {
+    return { status: "blocked", ready: false, blockers: ["Ce canal exige une vidéo."] };
+  }
+
+  return { status: "ready", ready: true, blockers: [] };
+}
+
 async function readCampaignAction(actionId: string, userId: string) {
   const { data: currentRow, error: readError } = await supabaseAdmin
     .from("inr_agent_actions")
@@ -557,6 +694,16 @@ export async function PATCH(request: Request) {
     recipients?: unknown;
     accountId?: unknown;
     attachments?: unknown;
+    channel?: unknown;
+    title?: unknown;
+    content?: unknown;
+    cta?: unknown;
+    ctaMode?: unknown;
+    ctaUrl?: unknown;
+    ctaPhone?: unknown;
+    hashtags?: unknown;
+    media?: unknown;
+    removeMedia?: unknown;
   } | null;
   const actionId =
     typeof requestBody?.actionId === "string"
@@ -584,6 +731,245 @@ export async function PATCH(request: Request) {
       draftId: result.draftId,
       savedAsDraft: true,
     });
+  }
+
+  if (editType === "publish_channel_text") {
+    if (!actionId) {
+      return NextResponse.json({ error: "Action invalide" }, { status: 400 });
+    }
+
+    const channel = cleanPublishChannel(requestBody?.channel);
+    if (!channel) {
+      return NextResponse.json({ error: "Canal de publication invalide." }, { status: 400 });
+    }
+
+    const title = cleanText(requestBody?.title, 180);
+    const content = cleanText(requestBody?.content, 6000);
+    const cta = cleanText(requestBody?.cta, 180);
+    const rawCtaMode = cleanText(requestBody?.ctaMode, 24);
+    const ctaMode = ["none", "website", "call", "message", "custom"].includes(rawCtaMode) ? rawCtaMode : "none";
+    const ctaUrl = cleanText(requestBody?.ctaUrl, 320);
+    const ctaPhone = cleanText(requestBody?.ctaPhone, 60);
+    const hashtags = cleanPublishHashtags(requestBody?.hashtags);
+
+    if (!content) {
+      return NextResponse.json({ error: "Le contenu de la publication est obligatoire." }, { status: 400 });
+    }
+
+    const { data: currentRow, error: readError } = await supabaseAdmin
+      .from("inr_agent_actions")
+      .select(ACTION_SELECT)
+      .eq("id", actionId)
+      .eq("user_id", user.id)
+      .single();
+
+    if (readError || !currentRow) {
+      if (isMissingTableError(readError)) {
+        return NextResponse.json(
+          { error: "La table inr_agent_actions doit être créée dans Supabase.", tableMissing: true },
+          { status: 500 },
+        );
+      }
+      return NextResponse.json({ error: "Action iNr’Agent introuvable." }, { status: 404 });
+    }
+
+    const currentAction = rowToInrAgentAction(currentRow as any);
+    if (!isPublishAction(currentAction)) {
+      return NextResponse.json(
+        { error: "Cette modification est réservée aux publications Booster préparées par iNr’Agent." },
+        { status: 400 },
+      );
+    }
+
+    const currentPayload = currentAction.payload || {};
+    const currentPostByChannel = asRecord(currentPayload.postByChannel) || {};
+    const currentPost = readPublishPost(currentPostByChannel, channel);
+    const nextPost = {
+      ...currentPost,
+      title,
+      subject: title,
+      content,
+      text: content,
+      body: content,
+      cta,
+      callToAction: cta,
+      ctaMode,
+      ctaUrl,
+      ctaPhone,
+      hashtags,
+      editedByUser: true,
+      editedAt: new Date().toISOString(),
+    };
+    const nextPostByChannel = {
+      ...currentPostByChannel,
+      [channel]: nextPost,
+    };
+    const nextPayload = {
+      ...currentPayload,
+      postByChannel: nextPostByChannel,
+      lastManualEdit: {
+        channel,
+        editedAt: nextPost.editedAt,
+        editType: "publish_channel_text",
+      },
+    };
+    const nextPreviewText = buildPublishPreviewTextFromPosts(
+      nextPostByChannel,
+      cleanText(currentAction.previewText || currentAction.summary || currentAction.title, 1200),
+    );
+
+    const { data, error } = await supabaseAdmin
+      .from("inr_agent_actions")
+      .update({
+        payload: nextPayload,
+        preview_text: nextPreviewText,
+        updated_at: new Date().toISOString(),
+        last_error: null,
+      })
+      .eq("id", actionId)
+      .eq("user_id", user.id)
+      .select(ACTION_SELECT)
+      .single();
+
+    if (error) {
+      if (isMissingTableError(error)) {
+        return NextResponse.json(
+          { error: "La table inr_agent_actions doit être créée dans Supabase.", tableMissing: true },
+          { status: 500 },
+        );
+      }
+      console.warn("[inr-agent-actions] publish text update failed", error);
+      return NextResponse.json({ error: "Modification de la publication impossible." }, { status: 500 });
+    }
+
+    const action = await refreshActionImageUrls(rowToInrAgentAction(data));
+    return NextResponse.json({ action, saved: true });
+  }
+
+  if (editType === "publish_channel_media") {
+    if (!actionId) {
+      return NextResponse.json({ error: "Action invalide" }, { status: 400 });
+    }
+
+    const channel = cleanPublishChannel(requestBody?.channel);
+    if (!channel) {
+      return NextResponse.json({ error: "Canal de publication invalide." }, { status: 400 });
+    }
+
+    const removeMedia = requestBody?.removeMedia === true;
+    const media = removeMedia ? null : cleanPublishMedia(requestBody?.media);
+    if (!removeMedia && !media) {
+      return NextResponse.json({ error: "Média invalide." }, { status: 400 });
+    }
+
+    const { data: currentRow, error: readError } = await supabaseAdmin
+      .from("inr_agent_actions")
+      .select(ACTION_SELECT)
+      .eq("id", actionId)
+      .eq("user_id", user.id)
+      .single();
+
+    if (readError || !currentRow) {
+      if (isMissingTableError(readError)) {
+        return NextResponse.json(
+          { error: "La table inr_agent_actions doit être créée dans Supabase.", tableMissing: true },
+          { status: 500 },
+        );
+      }
+      return NextResponse.json({ error: "Action iNr’Agent introuvable." }, { status: 404 });
+    }
+
+    const currentAction = rowToInrAgentAction(currentRow as any);
+    if (!isPublishAction(currentAction)) {
+      return NextResponse.json(
+        { error: "Cette modification est réservée aux publications Booster préparées par iNr’Agent." },
+        { status: 400 },
+      );
+    }
+
+    const currentPayload = currentAction.payload || {};
+    const currentPostByChannel = asRecord(currentPayload.postByChannel) || {};
+    const currentPost = readPublishPost(currentPostByChannel, channel);
+    const currentPostRecord = asRecord(currentPost) || {};
+    const editedAt = new Date().toISOString();
+    const nextPost = media
+      ? {
+          ...currentPostRecord,
+          media,
+          mediaAsset: media,
+          image: media.kind === "image" ? media : currentPostRecord.image || null,
+          imageAsset: media.kind === "image" ? media : currentPostRecord.imageAsset || null,
+          imageUrl: media.kind === "image" ? media.url : cleanText(currentPostRecord.imageUrl, 900),
+          video: media.kind === "video" ? media : currentPostRecord.video || null,
+          videoAsset: media.kind === "video" ? media : currentPostRecord.videoAsset || null,
+          mediaMode: media.kind === "video" ? "video" : media.kind === "image" ? "images" : "file",
+          editedByUser: true,
+          editedAt,
+        }
+      : {
+          ...currentPostRecord,
+          media: null,
+          mediaAsset: null,
+          image: null,
+          imageAsset: null,
+          imageUrl: "",
+          visual: null,
+          cover: null,
+          video: null,
+          videoAsset: null,
+          file: null,
+          attachment: null,
+          attachments: [],
+          mediaMode: "none",
+          editedByUser: true,
+          editedAt,
+        };
+
+    const nextPostByChannel = {
+      ...currentPostByChannel,
+      [channel]: nextPost,
+    };
+    const currentReadiness = asRecord(currentPayload.mediaReadinessByChannel) || {};
+    const nextReadiness = {
+      ...currentReadiness,
+      [channel]: buildPublishMediaReadiness(channel, media),
+    };
+    const nextPayload = {
+      ...currentPayload,
+      postByChannel: nextPostByChannel,
+      mediaReadinessByChannel: nextReadiness,
+      lastManualEdit: {
+        channel,
+        editedAt,
+        editType: "publish_channel_media",
+      },
+    };
+
+    const { data, error } = await supabaseAdmin
+      .from("inr_agent_actions")
+      .update({
+        payload: nextPayload,
+        updated_at: editedAt,
+        last_error: null,
+      })
+      .eq("id", actionId)
+      .eq("user_id", user.id)
+      .select(ACTION_SELECT)
+      .single();
+
+    if (error) {
+      if (isMissingTableError(error)) {
+        return NextResponse.json(
+          { error: "La table inr_agent_actions doit être créée dans Supabase.", tableMissing: true },
+          { status: 500 },
+        );
+      }
+      console.warn("[inr-agent-actions] publish media update failed", error);
+      return NextResponse.json({ error: "Modification du média impossible." }, { status: 500 });
+    }
+
+    const action = await refreshActionImageUrls(rowToInrAgentAction(data));
+    return NextResponse.json({ action, saved: true });
   }
 
   if (editType === "campaign_recipients") {

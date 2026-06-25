@@ -7635,3 +7635,3110 @@ button.campaignInfoRecipients:hover {
     width: 100%;
   }
 }
+
+/* ===== iNrAgent — nettoyage graphique sélection destinataires ===== */
+.campaignInfoCard > span:not(.campaignInfoIcon):not(.campaignInfoEye),
+.campaignInfoText {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.campaignInfoMailLabel {
+  max-width: 100%;
+  font-size: clamp(12px, 0.82vw, 14px) !important;
+  line-height: 1.15 !important;
+  letter-spacing: -0.01em;
+}
+
+.recipientsPickerModal {
+  width: min(860px, calc(100vw - 28px));
+  max-height: min(86dvh, 790px);
+  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
+}
+
+.recipientsPickerModal h2 {
+  margin-bottom: 10px;
+}
+
+.recipientsPickerModal .manualRecipientBox {
+  margin-top: 8px;
+  padding: 12px;
+  gap: 8px;
+}
+
+.recipientsPickerModal .manualRecipientBox strong {
+  font-size: 13px;
+}
+
+.recipientsPickerModal .manualRecipientBox small {
+  font-size: 11px;
+}
+
+.recipientsPickerModal .manualRecipientRow input,
+.recipientsPickerModal .manualRecipientRow button,
+.recipientsPickerModal .agentPickerToolbar input,
+.recipientsPickerModal .agentPickerToolbar button,
+.recipientsPickerModal .agentToolbarCount,
+.recipientsPickerModal .agentFiltersPanel input,
+.recipientsPickerModal .agentFiltersPanel select,
+.recipientsPickerModal .agentImportantToggle,
+.recipientsPickerModal .newRecipientBox input,
+.recipientsPickerModal .newRecipientBox button {
+  min-height: 36px;
+  height: 36px;
+  font-size: 12px;
+}
+
+.recipientsPickerModal .manualRecipientRow button,
+.recipientsPickerModal .agentPickerToolbar button,
+.recipientsPickerModal .newRecipientBox button {
+  padding: 0 12px;
+  font-weight: 850;
+}
+
+.recipientsPickerModal .agentPickerToolbar {
+  display: grid;
+  grid-template-columns: minmax(210px, 1fr) repeat(3, 104px) 86px;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.agentToolbarButton {
+  width: 104px;
+  justify-content: center;
+  white-space: nowrap;
+}
+
+.recipientsPickerModal .agentToolbarCount {
+  width: 86px;
+  padding: 0 8px;
+  font-size: 11px;
+  line-height: 1.05;
+  text-align: center;
+}
+
+.recipientsPickerModal .agentFiltersPanel {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(96px, 0.65fr) minmax(160px, auto);
+  align-items: end;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-radius: 16px;
+}
+
+.recipientsPickerModal .agentFiltersPanel label {
+  gap: 4px;
+}
+
+.recipientsPickerModal .agentFiltersPanel label span {
+  font-size: 10px;
+  line-height: 1;
+}
+
+.recipientsPickerModal .agentImportantToggle {
+  width: 100%;
+  padding: 0 10px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.recipientsPickerModal .newRecipientBox {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 132px;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 10px 12px;
+}
+
+.recipientsPickerModal .agentListScroll {
+  margin-top: 10px;
+  gap: 7px;
+  max-height: min(42dvh, 370px);
+}
+
+.agentRecipientRow {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+  padding: 10px 12px;
+  border-radius: 14px;
+}
+
+.agentSelectableRow.agentRecipientRow {
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+}
+
+.agentSelectableRow.agentRecipientRow input {
+  width: 16px;
+  height: 16px;
+}
+
+.agentRecipientRow .agentListContent {
+  min-width: 0;
+  gap: 2px;
+}
+
+.agentRecipientMain {
+  display: flex !important;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  max-width: 100%;
+  font-size: 13px !important;
+  line-height: 1.15;
+}
+
+.agentRecipientMain span,
+.agentRecipientMain em {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agentRecipientMain span {
+  flex: 0 1 auto;
+}
+
+.agentRecipientMain em {
+  flex: 1 1 auto;
+  color: rgba(226, 242, 255, 0.68);
+  font-style: normal;
+  font-weight: 720;
+}
+
+.agentRecipientRow .agentListContent small {
+  font-size: 11px;
+  line-height: 1.2;
+  color: rgba(226, 242, 255, 0.64);
+}
+
+.agentRecipientRow .agentImportantMark {
+  margin-left: 4px;
+  font-size: 11px;
+}
+
+@media (max-width: 760px) {
+  .campaignInfoMailLabel {
+    font-size: 12px !important;
+  }
+
+  .recipientsPickerModal {
+    width: min(430px, calc(100vw - 18px));
+    max-height: calc(100dvh - 18px);
+  }
+
+  .recipientsPickerModal .manualRecipientRow,
+  .recipientsPickerModal .agentPickerToolbar,
+  .recipientsPickerModal .agentFiltersPanel,
+  .recipientsPickerModal .newRecipientBox {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .recipientsPickerModal .manualRecipientRow input,
+  .recipientsPickerModal .agentPickerToolbar input {
+    grid-column: 1 / -1;
+  }
+
+  .recipientsPickerModal .agentToolbarCount,
+  .recipientsPickerModal .agentImportantToggle,
+  .recipientsPickerModal .newRecipientBox input,
+  .recipientsPickerModal .newRecipientBox button {
+    width: 100%;
+  }
+
+  .recipientsPickerModal .agentToolbarButton {
+    width: 100%;
+  }
+
+  .agentRecipientMain {
+    gap: 4px;
+    font-size: 12px !important;
+  }
+}
+
+/* Correctif iNrAgent — pastille "à valider" lisible en responsive */
+@media (max-width: 760px) {
+  .automationCard .automationSelect {
+    padding-right: 60px !important;
+  }
+
+  .automationCard .cardTitle {
+    min-width: 0 !important;
+    padding-right: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  .automationCard .cardPendingCount {
+    display: inline-grid !important;
+    place-items: center !important;
+    position: absolute !important;
+    top: 5px !important;
+    right: 36px !important;
+    bottom: auto !important;
+    width: auto !important;
+    min-width: 18px !important;
+    height: 18px !important;
+    min-height: 18px !important;
+    padding: 0 5px !important;
+    transform: none !important;
+    font-size: 0 !important;
+    line-height: 1 !important;
+    letter-spacing: 0 !important;
+    z-index: 9 !important;
+    pointer-events: none !important;
+  }
+
+  .automationCard .cardPendingCount::before {
+    content: attr(data-count);
+    font-size: 10px;
+    line-height: 1;
+    font-weight: 950;
+  }
+
+  .automationCard .cardStatus,
+  .automationCard .cardPendingCount + .cardStatus {
+    top: 50% !important;
+    right: 39px !important;
+    bottom: auto !important;
+    width: 6px !important;
+    height: 6px !important;
+    transform: translateY(-50%) !important;
+    z-index: 7 !important;
+  }
+
+  .automationCard .settingsButton {
+    top: 50% !important;
+    right: 7px !important;
+    width: 31px !important;
+    height: 31px !important;
+    transform: translateY(-50%) !important;
+    z-index: 8 !important;
+  }
+}
+
+@media (max-width: 380px) {
+  .automationCard .automationSelect {
+    padding-right: 56px !important;
+  }
+
+  .automationCard .cardPendingCount {
+    top: 4px !important;
+    right: 34px !important;
+    min-width: 17px !important;
+    height: 17px !important;
+    min-height: 17px !important;
+    padding: 0 4px !important;
+  }
+
+  .automationCard .cardPendingCount::before {
+    font-size: 9px;
+  }
+}
+
+/* Étape 2 — bulle Planning iNrAgent + listing des actions programmées */
+.headerScheduleButton {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 999px;
+  padding: 0 16px;
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 14px;
+  font-weight: 850;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  text-decoration: none;
+  background:
+    radial-gradient(circle at 28% 22%, rgba(255,255,255,0.24), transparent 26%),
+    linear-gradient(135deg, rgba(20, 184, 166, 0.25), rgba(59, 130, 246, 0.22), rgba(124, 58, 237, 0.24));
+  border: 1px solid rgba(125, 211, 252, 0.28);
+  box-shadow: inset 0 0 18px rgba(255, 255, 255, 0.035), 0 12px 28px rgba(0, 0, 0, 0.18);
+  backdrop-filter: blur(12px);
+  transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
+}
+
+.headerScheduleButton:hover {
+  transform: translateY(-1px);
+  border-color: rgba(226, 242, 255, 0.34);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.headerScheduleIcon {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #dff8ff;
+  filter: drop-shadow(0 0 10px rgba(34, 211, 238, 0.3));
+}
+
+.headerScheduleIcon svg {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.headerScheduleLabel {
+  white-space: nowrap;
+}
+
+.scheduleModal {
+  width: min(880px, calc(100vw - 28px));
+  max-height: min(86dvh, 780px);
+  display: grid;
+  grid-template-rows: auto auto auto minmax(0, 1fr);
+  overflow: hidden;
+}
+
+.scheduleSummaryGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.scheduleSummaryGrid div {
+  min-height: 74px;
+  display: grid;
+  align-content: center;
+  gap: 4px;
+  border-radius: 18px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(148, 163, 255, 0.15);
+  box-shadow: inset 0 0 26px rgba(255, 255, 255, 0.03);
+}
+
+.scheduleSummaryGrid strong {
+  color: #ffffff;
+  font-size: 25px;
+  line-height: 1;
+  font-weight: 950;
+}
+
+.scheduleSummaryGrid small {
+  color: rgba(226, 242, 255, 0.72);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.scheduleSections {
+  min-height: 0;
+  margin-top: 16px;
+  display: grid;
+  gap: 14px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.scheduleSection {
+  display: grid;
+  gap: 10px;
+}
+
+.scheduleSectionHeader {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 2px;
+}
+
+.scheduleSectionHeader strong {
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 920;
+}
+
+.scheduleSectionHeader span {
+  color: rgba(226, 242, 255, 0.55);
+  font-size: 12px;
+  font-weight: 720;
+  white-space: nowrap;
+}
+
+.scheduleRows {
+  display: grid;
+  gap: 8px;
+}
+
+.scheduleRow {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(148, 163, 255, 0.15);
+  box-shadow: inset 0 0 26px rgba(255, 255, 255, 0.03), 0 12px 26px rgba(0, 0, 0, 0.14);
+}
+
+.scheduleRow[data-status="pending"] {
+  border-color: rgba(96, 165, 250, 0.34);
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.14), rgba(124, 58, 237, 0.12));
+}
+
+.scheduleRow[data-status="running"] {
+  border-color: rgba(251, 191, 36, 0.34);
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.12), rgba(249, 115, 22, 0.08));
+}
+
+.scheduleRow[data-status="failed"] {
+  border-color: rgba(248, 113, 113, 0.38);
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.13), rgba(127, 29, 29, 0.08));
+}
+
+.scheduleRow[data-status="done"] {
+  border-color: rgba(52, 211, 153, 0.32);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.11), rgba(20, 184, 166, 0.07));
+}
+
+.scheduleRow[data-status="cancelled"] {
+  opacity: 0.78;
+}
+
+
+.scheduleRowMain,
+.scheduleRowMeta {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.scheduleRowMain strong,
+.scheduleRowMain small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scheduleRowMain strong {
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 900;
+}
+
+.scheduleRowMain small,
+.scheduleRowMeta small {
+  color: rgba(226, 242, 255, 0.66);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.scheduleRowMeta {
+  text-align: right;
+}
+
+.scheduleRowMeta strong {
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 860;
+  white-space: nowrap;
+}
+
+.scheduleStatus {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 0 10px;
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 880;
+  white-space: nowrap;
+  background: rgba(59, 130, 246, 0.2);
+  border: 1px solid rgba(125, 211, 252, 0.22);
+}
+
+.scheduleRow[data-status="running"] .scheduleStatus {
+  background: rgba(251, 191, 36, 0.18);
+  border-color: rgba(251, 191, 36, 0.3);
+}
+
+.scheduleRow[data-status="failed"] .scheduleStatus {
+  background: rgba(248, 113, 113, 0.17);
+  border-color: rgba(248, 113, 113, 0.34);
+}
+
+.scheduleRow[data-status="done"] .scheduleStatus {
+  background: rgba(52, 211, 153, 0.16);
+  border-color: rgba(52, 211, 153, 0.3);
+}
+
+.scheduleRow[data-status="cancelled"] .scheduleStatus {
+  background: rgba(148, 163, 184, 0.12);
+  border-color: rgba(148, 163, 184, 0.22);
+}
+
+
+.scheduleEmpty {
+  margin: 0;
+  padding: 13px 14px;
+  border-radius: 16px;
+  color: rgba(226, 242, 255, 0.68);
+  font-size: 13px;
+  font-weight: 680;
+  background: rgba(255, 255, 255, 0.045);
+  border: 1px dashed rgba(148, 163, 255, 0.18);
+}
+
+@media (max-width: 760px) {
+  .moduleTitleText h1 {
+    font-size: 18px !important;
+  }
+
+  .moduleSubtitleMobile,
+  .moduleSubtitleDesktop {
+    display: none !important;
+  }
+
+  .moduleHeaderActions {
+    gap: 4px !important;
+  }
+
+  .headerScheduleButton {
+    width: 32px !important;
+    min-width: 32px !important;
+    max-width: 32px !important;
+    height: 32px !important;
+    min-height: 32px !important;
+    max-height: 32px !important;
+    padding: 0 !important;
+    gap: 0 !important;
+  }
+
+  .headerScheduleLabel {
+    display: none !important;
+  }
+
+  .headerScheduleIcon,
+  .headerScheduleIcon svg {
+    width: 20px !important;
+    height: 20px !important;
+  }
+
+  .scheduleModal {
+    width: min(430px, calc(100vw - 20px));
+    max-height: calc(100dvh - 24px);
+  }
+
+  .scheduleSummaryGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+  }
+
+  .scheduleSummaryGrid div {
+    min-height: 58px;
+    padding: 9px;
+    border-radius: 15px;
+  }
+
+  .scheduleSummaryGrid strong {
+    font-size: 19px;
+  }
+
+  .scheduleSummaryGrid small {
+    font-size: 10px;
+    line-height: 1.15;
+  }
+
+  .scheduleSectionHeader {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .scheduleSectionHeader span {
+    font-size: 11px;
+    white-space: normal;
+  }
+
+  .scheduleRow {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 10px;
+    border-radius: 16px;
+  }
+
+  .scheduleStatus {
+    grid-column: 1 / -1;
+    justify-self: start;
+    min-height: 24px;
+    font-size: 10px;
+  }
+
+  .scheduleRowMain strong {
+    font-size: 13px;
+  }
+
+  .scheduleRowMain small,
+  .scheduleRowMeta small {
+    font-size: 11px;
+  }
+}
+
+/* Planning iNrAgent — listing chronologique compact */
+.scheduleModal {
+  grid-template-rows: auto auto auto minmax(0, 1fr) !important;
+}
+
+.scheduleSummaryLine {
+  margin-top: 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  width: fit-content;
+  max-width: 100%;
+  min-height: 42px;
+  padding: 8px 13px;
+  border-radius: 999px;
+  color: rgba(226, 242, 255, 0.78);
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(148, 163, 255, 0.16);
+}
+
+.scheduleSummaryLine strong {
+  color: #fff;
+  font-size: 21px;
+  line-height: 1;
+  font-weight: 950;
+}
+
+.scheduleSummaryLine span {
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 760;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scheduleTable {
+  min-height: 0;
+  display: grid;
+  gap: 7px;
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.scheduleTableHeader,
+.scheduleTableRow {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.45fr) 96px 62px 106px 108px 78px 86px;
+  align-items: center;
+  gap: 8px;
+}
+
+.scheduleTableHeader {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  padding: 7px 10px;
+  color: rgba(226, 242, 255, 0.56);
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  background: rgba(7, 16, 36, 0.94);
+  border: 1px solid rgba(148, 163, 255, 0.12);
+  border-radius: 14px;
+  backdrop-filter: blur(10px);
+}
+
+.scheduleTableRow {
+  min-width: 0;
+  padding: 10px;
+  border-radius: 16px;
+  color: rgba(255,255,255,0.88);
+  font-size: 12px;
+  font-weight: 760;
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(148, 163, 255, 0.15);
+  box-shadow: inset 0 0 22px rgba(255, 255, 255, 0.025), 0 10px 22px rgba(0,0,0,0.12);
+}
+
+.scheduleTableRow[data-status="running"] {
+  border-color: rgba(251, 191, 36, 0.34);
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.12), rgba(249, 115, 22, 0.08));
+}
+
+.scheduleTableRow[data-status="failed"] {
+  border-color: rgba(248, 113, 113, 0.38);
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.13), rgba(127, 29, 29, 0.08));
+}
+
+.scheduleTableRow[data-status="done"] {
+  border-color: rgba(52, 211, 153, 0.32);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.11), rgba(20, 184, 166, 0.07));
+}
+
+.scheduleTableRow[data-status="cancelled"] {
+  opacity: 0.76;
+}
+
+.scheduleActionCell {
+  min-width: 0;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 900;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scheduleMiniButton {
+  width: 100%;
+  min-height: 28px;
+  border: 1px solid rgba(125, 211, 252, 0.22);
+  border-radius: 999px;
+  color: #ffffff;
+  background: rgba(59, 130, 246, 0.18);
+  font-size: 11px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.scheduleMiniButton:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.scheduleMiniDanger {
+  border-color: rgba(248, 113, 113, 0.26);
+  background: rgba(248, 113, 113, 0.13);
+}
+
+.scheduleEditModal {
+  width: min(520px, calc(100vw - 28px));
+}
+
+@media (max-width: 760px) {
+  .scheduleModal {
+    width: min(430px, calc(100vw - 18px)) !important;
+    max-height: calc(100dvh - 18px) !important;
+    grid-template-rows: auto auto auto minmax(0, 1fr) !important;
+  }
+
+  .scheduleSummaryLine {
+    width: 100%;
+    min-height: 38px;
+    border-radius: 15px;
+  }
+
+  .scheduleSummaryLine span {
+    white-space: normal;
+    line-height: 1.2;
+  }
+
+  .scheduleTableHeader {
+    display: none;
+  }
+
+  .scheduleTableRow {
+    grid-template-columns: 1fr auto auto;
+    gap: 7px 9px;
+    padding: 10px;
+  }
+
+  .scheduleActionCell {
+    grid-column: 1 / -1;
+    font-size: 13px;
+  }
+
+  .scheduleTableRow > span:nth-child(2)::before { content: "Date : "; color: rgba(226,242,255,0.55); font-weight: 800; }
+  .scheduleTableRow > span:nth-child(3)::before { content: "Heure : "; color: rgba(226,242,255,0.55); font-weight: 800; }
+  .scheduleTableRow > span:nth-child(4)::before { content: "Type : "; color: rgba(226,242,255,0.55); font-weight: 800; }
+  .scheduleTableRow > span:nth-child(5)::before { content: "Canal : "; color: rgba(226,242,255,0.55); font-weight: 800; }
+
+  .scheduleTableRow > span:nth-child(2),
+  .scheduleTableRow > span:nth-child(3),
+  .scheduleTableRow > span:nth-child(4),
+  .scheduleTableRow > span:nth-child(5) {
+    grid-column: 1 / -1;
+    font-size: 11px;
+  }
+
+  .scheduleTableRow > span:nth-child(6),
+  .scheduleTableRow > span:nth-child(7) {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 380px) {
+  .moduleTitleText h1 {
+    font-size: 16px !important;
+  }
+
+  .moduleLogo {
+    width: 34px !important;
+    height: 34px !important;
+  }
+
+  .moduleTitleBlock {
+    gap: 6px !important;
+    min-width: 0 !important;
+  }
+
+  .moduleHeaderActions {
+    gap: 3px !important;
+  }
+
+  .headerAiButton,
+  .headerScheduleButton,
+  .headerToolButton,
+  .headerCloseButton {
+    width: 28px !important;
+    min-width: 28px !important;
+    max-width: 28px !important;
+    height: 28px !important;
+    min-height: 28px !important;
+    max-height: 28px !important;
+    padding: 0 !important;
+    font-size: 10px !important;
+  }
+
+  .headerScheduleIcon,
+  .headerScheduleIcon svg,
+  .headerToolLogo {
+    width: 18px !important;
+    height: 18px !important;
+  }
+
+  .headerToolLabel,
+  .headerScheduleLabel {
+    display: none !important;
+  }
+}
+
+.scheduleModal {
+  display: block !important;
+  overflow-y: auto !important;
+}
+
+.scheduleModal .scheduleSection {
+  margin-top: 14px;
+}
+
+/* Finition planning iNrAgent — listing simple sans scroll horizontal */
+.scheduleModal {
+  width: min(820px, calc(100vw - 28px)) !important;
+  max-height: min(86dvh, 760px) !important;
+  display: grid !important;
+  grid-template-rows: auto minmax(0, 1fr) !important;
+  gap: 16px !important;
+  overflow: hidden !important;
+}
+
+.scheduleModalHeader {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding-right: 2px;
+}
+
+.scheduleModalTitle {
+  min-width: 0;
+}
+
+.scheduleModalTitle h2 {
+  margin: 0;
+}
+
+.scheduleModalHeaderActions {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.scheduleSummaryPill {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  color: rgba(226, 242, 255, 0.78);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(125, 211, 252, 0.18);
+  box-shadow: inset 0 0 18px rgba(255, 255, 255, 0.035);
+  white-space: nowrap;
+}
+
+.scheduleSummaryPill strong {
+  color: #fff;
+  font-size: 20px;
+  line-height: 1;
+  font-weight: 950;
+}
+
+.scheduleSummaryPill span {
+  font-size: 12px;
+  font-weight: 820;
+}
+
+.scheduleCloseButton {
+  min-height: 38px;
+  border: 1px solid rgba(148, 163, 255, 0.2);
+  border-radius: 999px;
+  padding: 0 16px;
+  color: rgba(255,255,255,0.92);
+  background: rgba(255,255,255,0.07);
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.scheduleCloseButton:hover {
+  background: rgba(255,255,255,0.11);
+}
+
+.scheduleModal .scheduleSection {
+  min-height: 0;
+  margin-top: 0 !important;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 10px;
+  overflow: hidden;
+}
+
+.scheduleTable {
+  min-width: 0 !important;
+  width: 100% !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  padding-right: 4px;
+}
+
+.scheduleTableHeader,
+.scheduleTableRow {
+  min-width: 0 !important;
+  width: 100% !important;
+  grid-template-columns: minmax(118px, 1.35fr) 86px 56px 88px 98px 72px !important;
+  gap: 7px !important;
+}
+
+.scheduleTableHeader {
+  padding: 7px 9px !important;
+}
+
+.scheduleTableRow {
+  padding: 9px !important;
+}
+
+.scheduleTableRow > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scheduleActionsCell {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  overflow: visible !important;
+}
+
+.scheduleIconButton {
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  border: 1px solid rgba(125, 211, 252, 0.22);
+  border-radius: 999px;
+  color: #ffffff;
+  background: rgba(59, 130, 246, 0.18);
+  font-size: 14px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.scheduleIconButton:hover:not(:disabled) {
+  background: rgba(59, 130, 246, 0.28);
+  transform: translateY(-1px);
+}
+
+.scheduleIconButton:disabled {
+  opacity: 0.46;
+  cursor: not-allowed;
+}
+
+.scheduleIconDanger {
+  border-color: rgba(248, 113, 113, 0.28);
+  background: rgba(248, 113, 113, 0.14);
+}
+
+.scheduleIconDanger:hover:not(:disabled) {
+  background: rgba(248, 113, 113, 0.24);
+}
+
+.validationChoiceModal {
+  width: min(640px, calc(100vw - 28px));
+}
+
+.validationChoiceGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.validationChoiceCard {
+  min-height: 128px;
+  display: grid;
+  align-content: center;
+  gap: 7px;
+  text-align: left;
+  border: 1px solid rgba(148, 163, 255, 0.2);
+  border-radius: 22px;
+  padding: 16px;
+  color: #fff;
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.16), rgba(124, 58, 237, 0.12));
+  box-shadow: inset 0 0 26px rgba(255, 255, 255, 0.035);
+  cursor: pointer;
+}
+
+.validationChoiceCard:hover:not(:disabled) {
+  border-color: rgba(125, 211, 252, 0.34);
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.24), rgba(124, 58, 237, 0.18));
+}
+
+.validationChoiceCard:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.validationChoiceCard > span {
+  width: 36px;
+  height: 36px;
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,0.10);
+}
+
+.validationChoiceCard strong {
+  font-size: 16px;
+  font-weight: 930;
+}
+
+.validationChoiceCard small {
+  color: rgba(226,242,255,0.72);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+@media (max-width: 760px) {
+  .headerAiButton {
+    width: 32px !important;
+    min-width: 32px !important;
+    max-width: 32px !important;
+    height: 32px !important;
+    min-height: 32px !important;
+    max-height: 32px !important;
+    font-size: 11px !important;
+  }
+
+  .scheduleModal {
+    width: min(430px, calc(100vw - 18px)) !important;
+    max-height: calc(100dvh - 18px) !important;
+    gap: 12px !important;
+  }
+
+  .scheduleModalHeader {
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .scheduleModalHeaderActions {
+    gap: 6px;
+  }
+
+  .scheduleSummaryPill {
+    min-height: 32px;
+    padding: 5px 9px;
+  }
+
+  .scheduleSummaryPill strong {
+    font-size: 17px;
+  }
+
+  .scheduleSummaryPill span {
+    display: none;
+  }
+
+  .scheduleCloseButton {
+    min-height: 32px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+
+  .scheduleTableHeader {
+    display: none !important;
+  }
+
+  .scheduleTableRow {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    gap: 6px 10px !important;
+    padding: 10px !important;
+  }
+
+  .scheduleActionCell {
+    grid-column: 1 / 2 !important;
+    font-size: 13px !important;
+  }
+
+  .scheduleActionsCell {
+    grid-column: 2 / 3 !important;
+    grid-row: 1 / 3 !important;
+    align-self: center;
+  }
+
+  .scheduleTableRow > span:nth-child(2),
+  .scheduleTableRow > span:nth-child(3),
+  .scheduleTableRow > span:nth-child(4),
+  .scheduleTableRow > span:nth-child(5) {
+    grid-column: 1 / 2 !important;
+    font-size: 11px !important;
+    color: rgba(226,242,255,0.72);
+  }
+
+  .scheduleTableRow > span:nth-child(2)::before,
+  .scheduleTableRow > span:nth-child(3)::before,
+  .scheduleTableRow > span:nth-child(4)::before,
+  .scheduleTableRow > span:nth-child(5)::before {
+    content: none !important;
+  }
+
+  .scheduleTableRow > span:nth-child(2)::after {
+    content: " · ";
+  }
+
+  .validationChoiceGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .validationChoiceCard {
+    min-height: 104px;
+  }
+}
+
+@media (max-width: 420px) {
+  .moduleHeaderActions {
+    gap: 3px !important;
+  }
+
+  .headerAiButton,
+  .headerScheduleButton,
+  .headerToolButton,
+  .headerCloseButton {
+    width: 28px !important;
+    min-width: 28px !important;
+    max-width: 28px !important;
+    height: 28px !important;
+    min-height: 28px !important;
+    max-height: 28px !important;
+    padding: 0 !important;
+    font-size: 10px !important;
+  }
+}
+
+/* Planning iNrAgent — colonnes Date / Heure / Action / Type / Canal / Origine / Actions */
+.scheduleModal {
+  width: min(940px, calc(100vw - 28px)) !important;
+}
+
+.scheduleTableHeader,
+.scheduleTableRow {
+  grid-template-columns: 88px 58px minmax(120px, 1.25fr) 94px 118px 92px 72px !important;
+  gap: 7px !important;
+}
+
+.scheduleTableHeader > span,
+.scheduleTableRow > span {
+  min-width: 0;
+}
+
+.scheduleActionsCell {
+  justify-content: center !important;
+}
+
+@media (max-width: 760px) {
+  .scheduleModal {
+    width: min(430px, calc(100vw - 18px)) !important;
+  }
+
+  .scheduleTableRow {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    gap: 5px 10px !important;
+  }
+
+  .scheduleActionCell {
+    grid-column: 1 / 2 !important;
+    grid-row: 1 !important;
+    font-size: 13px !important;
+  }
+
+  .scheduleActionsCell {
+    grid-column: 2 / 3 !important;
+    grid-row: 1 / 4 !important;
+    align-self: center !important;
+  }
+
+  .scheduleTableRow > span:nth-child(1),
+  .scheduleTableRow > span:nth-child(2),
+  .scheduleTableRow > span:nth-child(4),
+  .scheduleTableRow > span:nth-child(5),
+  .scheduleTableRow > span:nth-child(6) {
+    grid-column: 1 / 2 !important;
+    font-size: 11px !important;
+    color: rgba(226,242,255,0.72) !important;
+  }
+
+  .scheduleTableRow > span:nth-child(1)::before { content: "Date : "; color: rgba(226,242,255,0.55); font-weight: 850; }
+  .scheduleTableRow > span:nth-child(2)::before { content: "Heure : "; color: rgba(226,242,255,0.55); font-weight: 850; }
+  .scheduleTableRow > span:nth-child(4)::before { content: "Type : "; color: rgba(226,242,255,0.55); font-weight: 850; }
+  .scheduleTableRow > span:nth-child(5)::before { content: "Canal : "; color: rgba(226,242,255,0.55); font-weight: 850; }
+  .scheduleTableRow > span:nth-child(6)::before { content: "Origine : "; color: rgba(226,242,255,0.55); font-weight: 850; }
+
+  .scheduleTableRow > span:nth-child(1)::after,
+  .scheduleTableRow > span:nth-child(2)::after {
+    content: none !important;
+  }
+}
+
+/* iNrAgent — aperçu Publier canal par canal */
+.publishPreview {
+  min-height: 0;
+  width: 100%;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: clamp(14px, 1.6vw, 22px);
+  animation: previewSlideIn 0.22s ease both;
+}
+
+.publishInfoGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: clamp(12px, 1.2vw, 18px);
+}
+
+.publishInfoChannel .campaignInfoIcon {
+  background: linear-gradient(135deg, rgba(79, 70, 229, 0.84), rgba(14, 165, 233, 0.54));
+}
+
+.publishInfoFormat .campaignInfoIcon {
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.82), rgba(124, 58, 237, 0.56));
+}
+
+.publishInfoAttachment .campaignInfoIcon {
+  background: linear-gradient(135deg, rgba(234, 88, 12, 0.82), rgba(124, 58, 237, 0.42));
+}
+
+.publishInfoStatus .campaignInfoIcon {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.72), rgba(37, 99, 235, 0.52));
+}
+
+.publishStatusReady {
+  color: #bbf7d0 !important;
+}
+
+.publishStatusWarning {
+  color: #fed7aa !important;
+}
+
+.publishStatusBlocked {
+  color: #fecaca !important;
+}
+
+.publishStatusNeutral {
+  color: rgba(237, 244, 255, 0.78) !important;
+}
+
+.publishPostCard {
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: clamp(14px, 1.4vw, 20px);
+  padding: clamp(18px, 1.8vw, 26px);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(59, 130, 246, 0.11), transparent 42%),
+    linear-gradient(135deg, rgba(8, 24, 56, 0.72), rgba(6, 18, 43, 0.52));
+  border: 1px solid rgba(148, 163, 255, 0.18);
+  box-shadow: inset 0 0 42px rgba(255, 255, 255, 0.022), 0 16px 38px rgba(0, 0, 0, 0.14);
+  overflow: hidden;
+}
+
+.publishPostHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(148, 163, 255, 0.15);
+}
+
+.publishPostHeader > div:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.publishPostHeader span {
+  color: rgba(125, 211, 252, 0.9);
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.publishPostHeader strong {
+  min-width: 0;
+  color: #ffffff;
+  font-size: clamp(19px, 1.45vw, 25px);
+  line-height: 1.12;
+  font-weight: 900;
+  letter-spacing: -0.04em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.publishPostBadges {
+  flex: 0 0 auto;
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.publishPostBadges span {
+  min-height: 28px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 0 10px;
+  color: rgba(236, 253, 255, 0.94);
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0;
+  text-transform: none;
+  background: rgba(14, 165, 233, 0.13);
+  border: 1px solid rgba(125, 211, 252, 0.2);
+}
+
+.publishPostLayout {
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(220px, 0.36fr) minmax(0, 1fr);
+  gap: clamp(16px, 1.7vw, 24px);
+  align-items: stretch;
+}
+
+.publishMediaPreview {
+  min-height: 0;
+  border-radius: 18px;
+  overflow: hidden;
+  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(96, 165, 250, 0.3);
+  box-shadow: 0 0 34px rgba(59, 130, 246, 0.14);
+}
+
+.publishMediaPreview img,
+.publishMediaPreview video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: clamp(230px, 34vh, 420px);
+  object-fit: cover;
+  background: rgba(2, 6, 23, 0.55);
+}
+
+.publishMediaFallback {
+  min-height: clamp(230px, 34vh, 420px);
+  height: 100%;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 10px;
+  padding: 22px;
+  text-align: center;
+  color: rgba(226, 242, 255, 0.78);
+  background:
+    radial-gradient(circle at 50% 0%, rgba(59, 130, 246, 0.13), transparent 44%),
+    rgba(7, 20, 48, 0.34);
+  border: 1px dashed rgba(148, 163, 255, 0.25);
+}
+
+.publishMediaFallbackWarning {
+  color: rgba(254, 215, 170, 0.96);
+  background:
+    radial-gradient(circle at 50% 0%, rgba(249, 115, 22, 0.15), transparent 44%),
+    rgba(48, 24, 7, 0.25);
+  border-color: rgba(251, 146, 60, 0.3);
+}
+
+.publishMediaFallback svg {
+  width: 42px;
+  height: 42px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.publishMediaFallback strong {
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.publishMediaFallback span {
+  max-width: 260px;
+  color: rgba(226, 242, 255, 0.72);
+  font-size: 12px;
+  line-height: 1.4;
+  font-weight: 700;
+}
+
+.publishPostText {
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 14px;
+}
+
+.publishPostContent {
+  min-height: 0;
+  overflow: auto;
+  padding-right: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(125, 211, 252, 0.34) transparent;
+}
+
+.publishPostContent p {
+  margin: 0 0 clamp(10px, 1.05vw, 16px);
+  color: rgba(237, 244, 255, 0.88);
+  font-size: clamp(15px, 1.08vw, 18px);
+  line-height: 1.55;
+  font-weight: 470;
+}
+
+
+.publishPreviewEmpty .publishPostCard {
+  min-height: 0;
+}
+
+.publishPreviewEmpty .publishMediaFallback {
+  opacity: 0.9;
+}
+
+.publishEmptyHint {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 12px;
+  padding: clamp(18px, 2vw, 28px);
+  text-align: center;
+  color: rgba(226, 242, 255, 0.78);
+  border-radius: 18px;
+  background: rgba(7, 20, 48, 0.24);
+  border: 1px dashed rgba(148, 163, 255, 0.2);
+}
+
+.publishEmptyHint strong {
+  color: #ffffff;
+  font-size: clamp(17px, 1.25vw, 22px);
+  line-height: 1.2;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+}
+
+.publishEmptyHint span {
+  max-width: 520px;
+  color: rgba(226, 242, 255, 0.72);
+  font-size: 13px;
+  line-height: 1.45;
+  font-weight: 700;
+}
+
+.publishEmptyHint .prepareButton {
+  margin-top: 6px;
+}
+
+@media (max-width: 1180px) {
+  .publishInfoGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .publishPostLayout {
+    grid-template-columns: 1fr;
+  }
+
+  .publishMediaPreview img,
+  .publishMediaPreview video,
+  .publishMediaFallback {
+    min-height: 220px;
+    max-height: 340px;
+  }
+}
+
+@media (max-width: 760px) {
+  .publishInfoGrid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .publishPostCard {
+    padding: 14px;
+    border-radius: 18px;
+  }
+
+  .publishPostHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .publishPostBadges {
+    justify-content: flex-start;
+  }
+
+  .publishMediaPreview img,
+  .publishMediaPreview video,
+  .publishMediaFallback {
+    min-height: 190px;
+    max-height: 260px;
+  }
+
+  .publishPostContent p {
+    font-size: 14px;
+  }
+}
+
+/* iNrAgent — aperçu Publier aligné Propulser/Fidéliser */
+.publishInfoGrid .campaignInfoCard strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.publishPostCard {
+  position: relative !important;
+  min-height: clamp(300px, 43vh, 520px) !important;
+  grid-template-rows: minmax(0, 1fr) !important;
+  padding: clamp(18px, 1.8vw, 26px) !important;
+}
+
+.publishEditButton {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 3;
+  width: 44px;
+  height: 44px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 14px;
+  color: #ffffff;
+  font-size: 17px;
+  font-weight: 950;
+  cursor: pointer;
+  background: rgba(30, 41, 96, 0.82);
+  border: 1px solid rgba(148, 163, 255, 0.22);
+  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.publishEditButton:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgba(125, 211, 252, 0.38);
+  box-shadow: 0 0 24px rgba(96, 165, 250, 0.2);
+}
+
+.publishEditButton:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.publishPostText {
+  height: 100%;
+  grid-template-rows: auto minmax(0, 1fr) auto !important;
+  gap: clamp(14px, 1.25vw, 18px) !important;
+  padding-right: 54px;
+}
+
+.publishTitleLine,
+.publishCtaLine {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(148, 163, 255, 0.14);
+}
+
+.publishCtaLine {
+  padding-top: 12px;
+  padding-bottom: 0;
+  border-top: 1px solid rgba(148, 163, 255, 0.14);
+  border-bottom: 0;
+}
+
+.publishTitleLine span,
+.publishCtaLine span {
+  flex: 0 0 auto;
+  color: rgba(168, 85, 247, 0.96);
+  font-size: 15px;
+  font-weight: 950;
+}
+
+.publishTitleLine strong,
+.publishCtaLine strong {
+  min-width: 0;
+  color: rgba(245, 250, 255, 0.94);
+  font-size: clamp(14px, 1.02vw, 17px);
+  line-height: 1.35;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.publishPostContent {
+  display: block;
+  padding: clamp(8px, 0.9vw, 12px) 8px clamp(8px, 0.9vw, 12px) 0;
+}
+
+.publishPostContent p:last-child {
+  margin-bottom: 0;
+}
+
+.publishEmptyHint {
+  min-height: 100%;
+}
+
+.channelScrollerWrap {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.channelScrollerWrap .channelScroller {
+  min-width: 0;
+}
+
+.channelScrollerWrapPublish {
+  width: 100%;
+}
+
+.channelNavArrow {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  color: rgba(226, 242, 255, 0.9);
+  font-size: 17px;
+  font-weight: 950;
+  line-height: 1;
+  background: rgba(59, 130, 246, 0.14);
+  border: 1px solid rgba(125, 211, 252, 0.2);
+}
+
+@media (max-width: 1180px) {
+  .publishPostText {
+    padding-right: 46px;
+  }
+}
+
+@media (max-width: 760px) {
+  .publishPostCard {
+    min-height: 340px !important;
+    padding: 14px !important;
+  }
+
+  .publishEditButton {
+    top: 12px;
+    right: 12px;
+    width: 38px;
+    height: 38px;
+    border-radius: 12px;
+  }
+
+  .publishPostText {
+    padding-right: 44px;
+  }
+
+  .publishTitleLine,
+  .publishCtaLine {
+    gap: 6px;
+  }
+
+  .publishTitleLine span,
+  .publishCtaLine span {
+    font-size: 13px;
+  }
+
+  .publishTitleLine strong,
+  .publishCtaLine strong {
+    font-size: 13px;
+  }
+
+  .channelNavArrow {
+    width: 18px;
+    height: 18px;
+    font-size: 15px;
+  }
+}
+
+/* iNrAgent — créneaux multiples + bandeau Publier sur une seule ligne */
+.scheduleSlotPair {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.previewMetaPublish {
+  min-height: clamp(56px, 6.2vh, 70px);
+  grid-template-columns: max-content minmax(180px, 220px) minmax(64px, 76px) minmax(64px, 76px) minmax(260px, 1fr) !important;
+  align-items: stretch;
+  justify-content: stretch;
+  gap: 12px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+}
+
+.previewMetaPublish .metaItem,
+.previewMetaPublish .saveCampaignDraftButton,
+.previewMetaPublish .modifyCampaignButton {
+  min-height: clamp(54px, 5.8vh, 64px) !important;
+  height: clamp(54px, 5.8vh, 64px) !important;
+  border-radius: 18px;
+}
+
+.previewMetaPublish .channelsItem {
+  flex-direction: row;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 10px 14px;
+}
+
+.previewMetaPublish .channelsItem small {
+  flex: 0 0 auto;
+  margin: 0 6px 0 0;
+  font-size: 12px;
+  color: rgba(226, 242, 255, 0.74);
+}
+
+.previewMetaPublish .channelScrollerWrapPublish {
+  width: fit-content;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.previewMetaPublish .channelScroller {
+  width: auto;
+  flex: 0 1 auto;
+  overflow-x: auto;
+  padding: 0;
+  max-width: min(44vw, 310px);
+}
+
+.previewMetaPublish .dateItem {
+  justify-content: flex-start;
+  min-width: 0;
+  white-space: nowrap;
+  padding: 10px 14px;
+}
+
+.previewMetaPublish .dateItem strong {
+  font-size: clamp(14px, 1vw, 17px);
+  font-weight: 800;
+}
+
+.previewMetaPublish .saveCampaignDraftButton,
+.previewMetaPublish .modifyCampaignButton {
+  width: 100%;
+  padding: 0;
+  gap: 0;
+  font-size: 0;
+  white-space: nowrap;
+}
+
+.previewMetaPublish .saveCampaignDraftButton span,
+.previewMetaPublish .modifyCampaignButton span {
+  font-size: 19px;
+}
+
+.previewMetaPublish .previewActions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  min-width: 0;
+}
+
+.previewMetaPublish .previewActions .validateButton,
+.previewMetaPublish .previewActions .refuseButton {
+  min-height: clamp(54px, 5.8vh, 64px);
+  height: clamp(54px, 5.8vh, 64px);
+  font-size: clamp(14px, 1vw, 18px);
+}
+
+.publishEmptyHint {
+  min-height: 100%;
+}
+
+@media (max-width: 1240px) {
+  .previewMetaPublish {
+    grid-template-columns: max-content minmax(158px, 190px) minmax(58px, 66px) minmax(58px, 66px) minmax(220px, 1fr) !important;
+    gap: 10px;
+  }
+
+  .previewMetaPublish .channelScroller {
+    max-width: min(40vw, 280px);
+  }
+
+  .previewMetaPublish .previewActions {
+    gap: 10px;
+  }
+}
+
+@media (max-width: 760px) {
+  .scheduleSlotPair {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .previewMetaPublish {
+    grid-template-columns: max-content minmax(56px, 72px) 40px 40px minmax(86px, 0.62fr) !important;
+    gap: 7px;
+    overflow: hidden !important;
+  }
+
+  .previewMetaPublish .channelScroller {
+    max-width: 126px;
+  }
+
+  .previewMetaPublish .metaItem,
+  .previewMetaPublish .saveCampaignDraftButton,
+  .previewMetaPublish .modifyCampaignButton,
+  .previewMetaPublish .previewActions .validateButton,
+  .previewMetaPublish .previewActions .refuseButton {
+    min-height: 46px !important;
+    height: 46px !important;
+    border-radius: 14px;
+  }
+
+  .previewMetaPublish .channelsItem {
+    padding: 7px 8px;
+    gap: 5px;
+  }
+
+  .previewMetaPublish .channelsItem small {
+    display: none;
+  }
+
+  .previewMetaPublish .channelScroller {
+    gap: 5px;
+  }
+
+  .previewMetaPublish .channelScroller button {
+    width: 26px !important;
+    height: 26px !important;
+    min-height: 26px !important;
+    flex-basis: 26px !important;
+  }
+
+  .previewMetaPublish .channelNavArrow {
+    width: 16px;
+    height: 16px;
+    font-size: 13px;
+  }
+
+  .previewMetaPublish .dateItem {
+    padding: 7px;
+    gap: 6px;
+  }
+
+  .previewMetaPublish .dateItem .metaIcon {
+    width: 28px;
+    height: 28px;
+    border-radius: 10px;
+  }
+
+  .previewMetaPublish .dateItem strong {
+    max-width: 30px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+  }
+
+  .previewMetaPublish .saveCampaignDraftButton span,
+  .previewMetaPublish .modifyCampaignButton span {
+    font-size: 17px;
+  }
+
+  .previewMetaPublish .previewActions {
+    gap: 6px;
+  }
+
+  .previewMetaPublish .previewActions .validateButton,
+  .previewMetaPublish .previewActions .refuseButton {
+    gap: 4px;
+    padding: 0 8px;
+    font-size: 0;
+  }
+
+  .previewMetaPublish .previewActions .validateButton span,
+  .previewMetaPublish .previewActions .refuseButton span {
+    margin: 0;
+  }
+}
+
+/* iNrAgent — préparation immédiate : pourcentage simple sans barre */
+.prepareProgressCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 12px 0 0;
+  padding: 12px 14px;
+  border: 1px solid rgba(125, 211, 252, 0.28);
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.12), rgba(139, 92, 246, 0.14));
+  box-shadow: inset 0 0 24px rgba(255, 255, 255, 0.035), 0 12px 26px rgba(0, 0, 0, 0.18);
+}
+
+.prepareProgressCard div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.prepareProgressCard strong {
+  color: #ffffff;
+  font-size: 0.94rem;
+  line-height: 1.1;
+}
+
+.prepareProgressCard span {
+  color: rgba(226, 232, 240, 0.78);
+  font-size: 0.78rem;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.prepareProgressCard b {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 62px;
+  height: 38px;
+  padding: 0 12px;
+  border-radius: 999px;
+  color: #ffffff;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.92), rgba(168, 85, 247, 0.92));
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 0 22px rgba(96, 165, 250, 0.22);
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+@media (max-width: 520px) {
+  .prepareProgressCard {
+    padding: 10px 12px;
+    border-radius: 16px;
+  }
+
+  .prepareProgressCard b {
+    min-width: 54px;
+    height: 34px;
+    padding: 0 10px;
+    font-size: 0.86rem;
+  }
+}
+
+.publishTextModal {
+  max-width: min(820px, calc(100vw - 28px));
+}
+
+.richTextToolbar {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.richTextToolbar button {
+  width: 38px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 11px;
+  color: #ffffff;
+  background: rgba(59, 130, 246, 0.2);
+  border: 1px solid rgba(125, 211, 252, 0.28);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 900;
+  transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease;
+}
+
+.richTextToolbar button:hover {
+  transform: translateY(-1px);
+  border-color: rgba(125, 211, 252, 0.58);
+  background: rgba(59, 130, 246, 0.32);
+}
+
+.underlineToolbarLabel {
+  text-decoration: underline;
+  font-weight: 950;
+}
+
+/* Étape 4 — iNrAgent : zoom maîtrisé, footer Publier stable, flèches cliquables */
+@media (min-width: 761px) {
+  .agentPage {
+    height: 100svh !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .agentCanvas {
+    height: 100% !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .mainGrid {
+    min-height: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .robotCard,
+  .workColumn,
+  .previewCard {
+    min-height: 0 !important;
+  }
+
+  .robotCard {
+    overflow: auto !important;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(125, 211, 252, 0.34) transparent;
+  }
+
+  .workColumn,
+  .previewCard {
+    overflow: hidden !important;
+  }
+
+  .previewBody {
+    min-height: 0 !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(125, 211, 252, 0.42) transparent;
+  }
+
+  .previewBody::-webkit-scrollbar,
+  .robotCard::-webkit-scrollbar {
+    width: 7px;
+  }
+
+  .previewBody::-webkit-scrollbar-thumb,
+  .robotCard::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: rgba(125, 211, 252, 0.36);
+  }
+}
+
+@media (min-width: 961px) {
+  .mainGrid {
+    grid-template-columns: minmax(260px, 420px) minmax(0, 1fr) !important;
+  }
+}
+
+@media (min-width: 761px) and (max-width: 960px) {
+  .mainGrid {
+    grid-template-columns: 1fr !important;
+    overflow: auto !important;
+    padding-right: 4px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(125, 211, 252, 0.34) transparent;
+  }
+
+  .workColumn,
+  .previewCard,
+  .previewBody {
+    overflow: visible !important;
+  }
+}
+
+.channelNavArrow {
+  appearance: none;
+  padding: 0;
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.16s ease, border-color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
+}
+
+.channelNavArrow:hover:not(:disabled) {
+  transform: translateY(-1px) scale(1.04);
+  border-color: rgba(125, 211, 252, 0.58);
+  background: rgba(59, 130, 246, 0.24);
+  box-shadow: 0 0 18px rgba(34, 211, 238, 0.18);
+}
+
+.channelNavArrow:focus-visible {
+  outline: 2px solid rgba(125, 211, 252, 0.84);
+  outline-offset: 2px;
+}
+
+.previewMetaPublish {
+  width: 100%;
+  min-width: 0;
+  display: grid !important;
+  grid-template-columns: minmax(260px, 1fr) minmax(172px, max-content) minmax(60px, 72px) minmax(60px, 72px) minmax(286px, max-content) !important;
+  align-items: center;
+  justify-content: stretch;
+  gap: clamp(8px, 0.78vw, 12px);
+  overflow: visible !important;
+}
+
+.previewMetaPublish .channelsItem {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.previewMetaPublish .channelScrollerWrapPublish {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.previewMetaPublish .channelScroller {
+  width: 100%;
+  max-width: none !important;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.previewMetaPublish .dateItem {
+  width: 100%;
+  min-width: 0;
+  justify-content: center;
+  padding: 8px 12px;
+  overflow: hidden;
+}
+
+.previewMetaPublish .dateItem span:last-child {
+  min-width: 0;
+}
+
+.previewMetaPublish .dateItem strong {
+  max-width: none !important;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: clamp(13px, 0.92vw, 17px);
+}
+
+.previewMetaPublish .saveCampaignDraftButton,
+.previewMetaPublish .modifyCampaignButton {
+  min-width: 0;
+  width: 100%;
+}
+
+.previewMetaPublish .previewActions {
+  min-width: 0;
+  padding-left: 0;
+  border-left: 0;
+}
+
+.previewMetaPublish .previewActions .validateButton,
+.previewMetaPublish .previewActions .refuseButton {
+  min-width: 0;
+  width: 100%;
+  white-space: nowrap;
+}
+
+.publishPreview,
+.publishPostCard,
+.publishPostText,
+.publishPostContent {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.publishPostContent,
+.publishPostContent p,
+.publishTitleLine strong,
+.publishCtaLine strong {
+  overflow-wrap: anywhere;
+}
+
+@media (min-width: 1181px) and (max-width: 1380px), (min-width: 761px) and (max-height: 760px) {
+  .previewMetaPublish {
+    grid-template-columns: minmax(228px, 1fr) minmax(154px, max-content) 58px 58px minmax(246px, max-content) !important;
+    gap: 8px;
+  }
+
+  .previewMetaPublish .metaItem,
+  .previewMetaPublish .saveCampaignDraftButton,
+  .previewMetaPublish .modifyCampaignButton,
+  .previewMetaPublish .previewActions .validateButton,
+  .previewMetaPublish .previewActions .refuseButton {
+    min-height: 50px !important;
+    height: 50px !important;
+    border-radius: 15px;
+  }
+
+  .previewMetaPublish .channelsItem {
+    padding: 8px 10px;
+  }
+
+  .previewMetaPublish .dateItem {
+    padding: 8px 10px;
+  }
+
+  .previewMetaPublish .dateItem .metaIcon {
+    width: 32px;
+    height: 32px;
+    border-radius: 11px;
+  }
+
+  .previewMetaPublish .dateItem strong {
+    font-size: 13px;
+  }
+
+  .previewMetaPublish .previewActions {
+    gap: 8px;
+  }
+
+  .previewMetaPublish .previewActions .validateButton,
+  .previewMetaPublish .previewActions .refuseButton {
+    gap: 7px;
+    padding: 0 10px;
+    font-size: 14px;
+  }
+
+  .previewMetaPublish .previewActions .validateButton span,
+  .previewMetaPublish .previewActions .refuseButton span {
+    width: 26px;
+    height: 26px;
+  }
+}
+
+@media (min-width: 761px) and (max-width: 1180px) {
+  .previewMetaPublish {
+    grid-template-columns: minmax(260px, 1fr) minmax(156px, max-content) 54px 54px minmax(238px, max-content) !important;
+    gap: 8px;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    padding-bottom: 5px;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(125, 211, 252, 0.36) transparent;
+  }
+
+  .previewMetaPublish .previewActions .validateButton,
+  .previewMetaPublish .previewActions .refuseButton {
+    font-size: 0;
+    padding: 0 12px;
+  }
+
+  .previewMetaPublish .previewActions .validateButton span,
+  .previewMetaPublish .previewActions .refuseButton span {
+    margin: 0;
+  }
+}
+
+@media (max-width: 760px) {
+  .previewMetaPublish {
+    grid-template-columns: 1fr 1fr 46px 46px !important;
+    grid-template-areas:
+      "channels channels channels channels"
+      "date date save edit"
+      "actions actions actions actions";
+    align-items: stretch;
+    gap: 8px;
+    overflow: visible !important;
+  }
+
+  .previewMetaPublish .channelsItem {
+    grid-area: channels;
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .previewMetaPublish .channelScrollerWrapPublish {
+    width: 100%;
+  }
+
+  .previewMetaPublish .channelScroller {
+    max-width: none !important;
+  }
+
+  .previewMetaPublish .dateItem {
+    grid-area: date;
+    width: 100%;
+    min-width: 0;
+    justify-content: flex-start;
+    padding: 7px 10px;
+  }
+
+  .previewMetaPublish .dateItem strong {
+    max-width: none !important;
+    font-size: 13px;
+  }
+
+  .previewMetaPublish .saveCampaignDraftButton {
+    grid-area: save;
+  }
+
+  .previewMetaPublish .modifyCampaignButton {
+    grid-area: edit;
+  }
+
+  .previewMetaPublish .previewActions {
+    grid-area: actions;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    width: 100%;
+  }
+
+  .previewMetaPublish .previewActions .validateButton,
+  .previewMetaPublish .previewActions .refuseButton {
+    min-height: 48px !important;
+    height: 48px !important;
+    gap: 6px;
+    padding: 0 10px;
+    font-size: 13px;
+  }
+}
+
+/* Police riche iNrAgent — le pro ne voit plus les marqueurs Markdown/HTML dans les modales */
+.richTextEditorSurface {
+  border-radius: 16px;
+  padding: 13px 14px;
+  color: #ffffff;
+  font: inherit;
+  line-height: 1.55;
+  background: rgba(8, 19, 45, 0.82);
+  border: 1px solid rgba(148, 163, 255, 0.2);
+  outline: none;
+  resize: vertical;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(125, 211, 252, 0.42) rgba(8, 19, 45, 0.38);
+}
+
+.richTextEditorSurface:focus {
+  border-color: rgba(125, 211, 252, 0.52);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
+.richTextEditorSurface::-webkit-scrollbar {
+  width: 8px;
+}
+
+.richTextEditorSurface::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(125, 211, 252, 0.38);
+}
+
+/* Correctif responsive iNrAgent — cartes lisibles + Fermer en bulle X sur mobile */
+.headerCloseLabel {
+  display: inline;
+}
+
+@media (max-width: 760px) {
+  .headerCloseButton {
+    position: relative !important;
+    display: inline-grid !important;
+    place-items: center !important;
+    width: 32px !important;
+    min-width: 32px !important;
+    max-width: 32px !important;
+    height: 32px !important;
+    min-height: 32px !important;
+    max-height: 32px !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    font-size: 0 !important;
+    line-height: 1 !important;
+    color: transparent !important;
+  }
+
+  .headerCloseLabel {
+    display: none !important;
+  }
+
+  .headerCloseButton::before {
+    content: "×" !important;
+    display: grid !important;
+    place-items: center !important;
+    width: 100% !important;
+    height: 100% !important;
+    color: rgba(255, 255, 255, 0.96) !important;
+    font-size: 20px !important;
+    line-height: 1 !important;
+    font-weight: 900 !important;
+    text-indent: 0 !important;
+  }
+
+  .automationGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .automationCard {
+    min-width: 0 !important;
+    min-height: 58px !important;
+    border-radius: 16px !important;
+  }
+
+  .automationCard .automationSelect {
+    grid-template-columns: 29px minmax(0, 1fr) !important;
+    gap: 6px !important;
+    min-height: 58px !important;
+    padding: 8px 38px 8px 9px !important;
+  }
+
+  .automationCard .cardIcon {
+    width: 29px !important;
+    height: 29px !important;
+    min-width: 29px !important;
+    border-radius: 12px !important;
+  }
+
+  .automationCard .cardIcon svg {
+    width: 16px !important;
+    height: 16px !important;
+  }
+
+  .automationCard .cardTitle {
+    min-width: 0 !important;
+    max-width: none !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: nowrap !important;
+    font-size: 12.4px !important;
+    line-height: 1.08 !important;
+    letter-spacing: -0.045em !important;
+  }
+
+  .automationCard .cardTitleFull {
+    display: none !important;
+  }
+
+  .automationCard .cardTitleShort {
+    display: inline !important;
+  }
+
+  .automationCard .settingsButton {
+    top: 50% !important;
+    right: 5px !important;
+    width: 28px !important;
+    height: 28px !important;
+    transform: translateY(-50%) !important;
+    z-index: 8 !important;
+  }
+
+  .automationCard .settingsButton svg {
+    width: 17px !important;
+    height: 17px !important;
+  }
+
+  .automationCard .cardPendingCount {
+    top: 4px !important;
+    right: 31px !important;
+    min-width: 17px !important;
+    height: 17px !important;
+    min-height: 17px !important;
+    padding: 0 4px !important;
+    z-index: 9 !important;
+  }
+
+  .automationCard .cardPendingCount::before {
+    font-size: 10px !important;
+  }
+
+  .automationCard .cardStatus,
+  .automationCard .cardPendingCount + .cardStatus {
+    top: 50% !important;
+    right: 34px !important;
+    bottom: auto !important;
+    width: 6px !important;
+    height: 6px !important;
+    transform: translateY(-50%) !important;
+    z-index: 7 !important;
+  }
+}
+
+@media (max-width: 380px) {
+  .headerCloseButton {
+    width: 28px !important;
+    min-width: 28px !important;
+    max-width: 28px !important;
+    height: 28px !important;
+    min-height: 28px !important;
+    max-height: 28px !important;
+    font-size: 0 !important;
+  }
+
+  .headerCloseButton::before {
+    font-size: 18px !important;
+  }
+
+  .automationGrid {
+    gap: 7px !important;
+  }
+
+  .automationCard .automationSelect {
+    grid-template-columns: 28px minmax(0, 1fr) !important;
+    gap: 5px !important;
+    padding: 8px 35px 8px 8px !important;
+  }
+
+  .automationCard .cardIcon {
+    width: 28px !important;
+    height: 28px !important;
+    min-width: 28px !important;
+  }
+
+  .automationCard .cardTitle {
+    font-size: 11.8px !important;
+    letter-spacing: -0.055em !important;
+  }
+
+  .automationCard .settingsButton {
+    right: 4px !important;
+    width: 26px !important;
+    height: 26px !important;
+  }
+
+  .automationCard .cardPendingCount {
+    right: 28px !important;
+  }
+
+  .automationCard .cardStatus,
+  .automationCard .cardPendingCount + .cardStatus {
+    right: 31px !important;
+  }
+}
+
+/* Étape 8 — iNrAgent Publier : date lisible, CTA Booster, responsive pleine largeur */
+.previewMetaPublish {
+  grid-template-columns: minmax(230px, 1fr) minmax(210px, 240px) 54px 54px minmax(270px, max-content) !important;
+  align-items: center !important;
+  overflow: visible !important;
+}
+
+.previewMetaPublish .dateItem {
+  min-width: 210px !important;
+  width: 100% !important;
+  justify-content: flex-start !important;
+  gap: 9px !important;
+  padding-inline: 10px 12px !important;
+}
+
+.previewMetaPublish .dateItem span:last-child {
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+}
+
+.previewMetaPublish .dateItem strong {
+  display: block !important;
+  max-width: none !important;
+  min-width: 0 !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: nowrap !important;
+  font-size: clamp(14px, 0.94vw, 17px) !important;
+}
+
+.previewMetaPublish .saveCampaignDraftButton,
+.previewMetaPublish .modifyCampaignButton {
+  width: 54px !important;
+  min-width: 54px !important;
+  max-width: 54px !important;
+  padding: 0 !important;
+  gap: 0 !important;
+  font-size: 0 !important;
+}
+
+.previewMetaPublish .saveCampaignDraftButton span,
+.previewMetaPublish .modifyCampaignButton span {
+  font-size: 20px !important;
+  line-height: 1 !important;
+  margin: 0 !important;
+}
+
+.previewMetaPublish .previewActions {
+  min-width: 270px !important;
+}
+
+.publishCtaEditor {
+  gap: 8px !important;
+}
+
+.publishCtaGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.12fr) minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.publishCtaGrid[data-mode="none"],
+.publishCtaGrid[data-mode="message"] {
+  grid-template-columns: minmax(0, 0.82fr);
+}
+
+.publishCtaGrid[data-mode="call"] {
+  grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.12fr);
+}
+
+.publishCtaGrid label {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+
+.publishCtaGrid label > span {
+  color: rgba(226, 242, 255, 0.72);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.publishCtaGrid select,
+.publishCtaGrid input {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  border-radius: 14px;
+  padding: 0 13px;
+  color: #ffffff;
+  background: rgba(8, 19, 45, 0.9);
+  border: 1px solid rgba(148, 163, 255, 0.2);
+  outline: none;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 760;
+}
+
+.publishCtaGrid select:focus,
+.publishCtaGrid input:focus {
+  border-color: rgba(125, 211, 252, 0.55);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
+}
+
+.publishCtaGrid option {
+  background: #07142d;
+  color: #ffffff;
+}
+
+.publishCtaQuickChoices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 1px;
+}
+
+.publishCtaQuickChoices button {
+  min-height: 26px;
+  border-radius: 999px;
+  padding: 0 10px;
+  color: rgba(255, 255, 255, 0.84);
+  font-size: 11px;
+  font-weight: 850;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  cursor: pointer;
+}
+
+.publishCtaQuickChoices .publishCtaQuickChoiceActive {
+  color: #ffffff;
+  background: rgba(76, 195, 255, 0.16);
+  border-color: rgba(76, 195, 255, 0.58);
+}
+
+.publishCtaHelp {
+  display: block;
+  color: rgba(226, 242, 255, 0.62) !important;
+  font-size: 11px !important;
+  line-height: 1.45;
+}
+
+.richTextEditorSurface {
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+@media (min-width: 1181px) and (max-width: 1380px), (min-width: 761px) and (max-height: 760px) {
+  .previewMetaPublish {
+    grid-template-columns: minmax(210px, 1fr) minmax(196px, 220px) 50px 50px minmax(248px, max-content) !important;
+    gap: 8px !important;
+  }
+
+  .previewMetaPublish .dateItem {
+    min-width: 196px !important;
+  }
+
+  .previewMetaPublish .saveCampaignDraftButton,
+  .previewMetaPublish .modifyCampaignButton {
+    width: 50px !important;
+    min-width: 50px !important;
+    max-width: 50px !important;
+  }
+
+  .previewMetaPublish .dateItem strong {
+    font-size: 13.5px !important;
+  }
+}
+
+@media (min-width: 761px) and (max-width: 1180px) {
+  .previewMetaPublish {
+    grid-template-columns: minmax(230px, 1fr) minmax(190px, 212px) 50px 50px minmax(228px, max-content) !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+  }
+
+  .previewMetaPublish .dateItem {
+    min-width: 190px !important;
+  }
+
+  .previewMetaPublish .saveCampaignDraftButton,
+  .previewMetaPublish .modifyCampaignButton {
+    width: 50px !important;
+    min-width: 50px !important;
+    max-width: 50px !important;
+  }
+
+  .previewMetaPublish .previewActions {
+    min-width: 228px !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .publishPostCard {
+    width: 100% !important;
+    padding: 13px !important;
+  }
+
+  .publishPostHeader {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) 38px !important;
+    gap: 10px !important;
+    align-items: start !important;
+  }
+
+  .publishPostHeader > div:first-child,
+  .publishPostText,
+  .publishPostContent,
+  .publishPostContent p {
+    width: 100% !important;
+    max-width: none !important;
+  }
+
+  .publishPostHeader strong,
+  .publishTitleLine strong {
+    white-space: normal !important;
+  }
+
+  .publishPostContent p {
+    font-size: 13.2px !important;
+    line-height: 1.48 !important;
+  }
+
+  .previewMetaPublish {
+    grid-template-columns: 1fr 1fr 46px 46px !important;
+    grid-template-areas:
+      "channels channels channels channels"
+      "date date save edit"
+      "actions actions actions actions" !important;
+  }
+
+  .previewMetaPublish .dateItem {
+    min-width: 0 !important;
+  }
+
+  .previewMetaPublish .dateItem strong {
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    font-size: 13px !important;
+  }
+
+  .previewMetaPublish .saveCampaignDraftButton,
+  .previewMetaPublish .modifyCampaignButton {
+    width: 46px !important;
+    min-width: 46px !important;
+    max-width: 46px !important;
+  }
+
+  .previewMetaPublish .previewActions {
+    min-width: 0 !important;
+  }
+
+  .publishCtaGrid,
+  .publishCtaGrid[data-mode="call"],
+  .publishCtaGrid[data-mode="none"],
+  .publishCtaGrid[data-mode="message"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  .publishTextModal {
+    max-width: min(96vw, 820px) !important;
+  }
+}
+
+/* Correctif iNrAgent — éviter les scrollbars horizontales fantômes dans l’aperçu */
+.previewCardNoFrame,
+.previewCardNoFrame .previewBody,
+.campaignPreview,
+.campaignInfoGrid,
+.campaignInfoCard,
+.campaignMailCard,
+.campaignMailContent,
+.campaignEmptyHint {
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+
+.previewCardNoFrame .previewBody {
+  overflow-x: hidden !important;
+}
+
+.campaignInfoCard > span,
+.campaignMailSubject,
+.campaignMailContent,
+.campaignEmptyHint {
+  min-width: 0 !important;
+  overflow-wrap: anywhere !important;
+}
+
+.campaignMailCard {
+  overflow-x: hidden !important;
+}
+
+@media (min-width: 1181px) {
+  .previewMetaCampaign {
+    overflow-x: visible !important;
+  }
+}
+
+@media (max-width: 1180px) and (min-width: 761px) {
+  .previewMetaCampaign {
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(125, 211, 252, 0.42) transparent;
+  }
+}
+
+/* iNrAgent Publier — libellés au survol des boutons icônes du bandeau desktop */
+@media (min-width: 761px) and (hover: hover) and (pointer: fine) {
+  .previewMetaPublish .saveCampaignDraftButton,
+  .previewMetaPublish .modifyCampaignButton {
+    position: relative !important;
+    overflow: visible !important;
+  }
+
+  .previewMetaPublish .saveCampaignDraftButton::after,
+  .previewMetaPublish .modifyCampaignButton::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 10px);
+    z-index: 30;
+    min-width: max-content;
+    max-width: 190px;
+    padding: 7px 10px;
+    border-radius: 999px;
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: 900;
+    letter-spacing: -0.01em;
+    line-height: 1;
+    white-space: nowrap;
+    background: rgba(8, 18, 44, 0.94);
+    border: 1px solid rgba(148, 163, 255, 0.26);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.26), 0 0 18px rgba(96, 165, 250, 0.18);
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(-50%, 6px) scale(0.98);
+    transition: opacity 0.14s ease, transform 0.14s ease;
+  }
+
+  .previewMetaPublish .saveCampaignDraftButton::before,
+  .previewMetaPublish .modifyCampaignButton::before {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 4px);
+    z-index: 31;
+    width: 9px;
+    height: 9px;
+    background: rgba(8, 18, 44, 0.94);
+    border-right: 1px solid rgba(148, 163, 255, 0.22);
+    border-bottom: 1px solid rgba(148, 163, 255, 0.22);
+    opacity: 0;
+    pointer-events: none;
+    transform: translate(-50%, 6px) rotate(45deg) scale(0.98);
+    transition: opacity 0.14s ease, transform 0.14s ease;
+  }
+
+  .previewMetaPublish .saveCampaignDraftButton:hover:not(:disabled)::after,
+  .previewMetaPublish .modifyCampaignButton:hover:not(:disabled)::after,
+  .previewMetaPublish .saveCampaignDraftButton:focus-visible:not(:disabled)::after,
+  .previewMetaPublish .modifyCampaignButton:focus-visible:not(:disabled)::after {
+    opacity: 1;
+    transform: translate(-50%, 0) scale(1);
+  }
+
+  .previewMetaPublish .saveCampaignDraftButton:hover:not(:disabled)::before,
+  .previewMetaPublish .modifyCampaignButton:hover:not(:disabled)::before,
+  .previewMetaPublish .saveCampaignDraftButton:focus-visible:not(:disabled)::before,
+  .previewMetaPublish .modifyCampaignButton:focus-visible:not(:disabled)::before {
+    opacity: 1;
+    transform: translate(-50%, 0) rotate(45deg) scale(1);
+  }
+}
+
+/* iNrAgent — blocs d'information stables : pas d'effet hover qui casse les bordures */
+button.campaignInfoCard:hover,
+button.campaignInfoCard:focus-visible {
+  transform: none !important;
+  border-color: rgba(148, 163, 255, 0.18) !important;
+  box-shadow: inset 0 0 30px rgba(255, 255, 255, 0.026), 0 12px 28px rgba(0, 0, 0, 0.16) !important;
+}
+
+button.campaignInfoCard:hover .campaignInfoEye,
+button.campaignInfoCard:focus-visible .campaignInfoEye {
+  border-color: rgba(125, 211, 252, 0.35);
+  background: rgba(59, 130, 246, 0.2);
+}
+
+/* iNrAgent — le crayon du bloc d'aperçu est supprimé, le contenu reprend toute la largeur */
+.publishPostText {
+  padding-right: 0 !important;
+}
+
+/* iNrAgent Publier — modale média depuis l'œil du bloc Média */
+.publishMediaModal {
+  max-width: min(92vw, 760px) !important;
+}
+
+.publishMediaCurrent {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.42fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: stretch;
+  margin: 14px 0 18px;
+  padding: 14px;
+  border-radius: 20px;
+  background: rgba(4, 12, 30, 0.34);
+  border: 1px solid rgba(148, 163, 255, 0.16);
+}
+
+.publishMediaCurrent img,
+.publishMediaCurrent video {
+  width: 100%;
+  min-height: 180px;
+  max-height: 260px;
+  display: block;
+  object-fit: cover;
+  border-radius: 16px;
+  background: rgba(2, 6, 23, 0.62);
+  border: 1px solid rgba(96, 165, 250, 0.18);
+}
+
+.publishMediaEmpty {
+  min-height: 180px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  padding: 18px;
+  text-align: center;
+  border-radius: 16px;
+  color: rgba(226, 242, 255, 0.8);
+  background: rgba(2, 6, 23, 0.42);
+  border: 1px dashed rgba(148, 163, 255, 0.22);
+}
+
+.publishMediaEmpty span {
+  font-size: 28px;
+}
+
+.publishMediaEmpty strong,
+.publishMediaCurrentText strong {
+  color: #ffffff;
+  font-weight: 900;
+}
+
+.publishMediaCurrentText {
+  min-width: 0;
+  display: grid;
+  align-content: center;
+  gap: 8px;
+}
+
+.publishMediaCurrentText small {
+  color: rgba(226, 242, 255, 0.72);
+  font-size: 13px;
+  line-height: 1.45;
+  font-weight: 650;
+}
+
+@media (max-width: 760px) {
+  .publishMediaCurrent {
+    grid-template-columns: 1fr;
+  }
+
+  .publishMediaCurrent img,
+  .publishMediaCurrent video,
+  .publishMediaEmpty {
+    min-height: 160px;
+    max-height: 220px;
+  }
+}

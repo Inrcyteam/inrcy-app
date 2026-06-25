@@ -282,7 +282,15 @@ export async function getChannelConnectionStates(
   // TikTok est connecté uniquement si une intégration OAuth réelle est active.
   // Les anciens réglages/mock ou un simple lien public ne doivent jamais rendre la bulle verte.
   const tiktokConnected = Boolean((tkStatus === "connected" || tkStatus === "account_connected") && tkHasReusableAuth && !tkExpired);
-  const tiktokConnectionStatus = getConnectionDisplayStatus(tiktokConnected, "channel:tiktok", tkMeta);
+  const tiktokNeedsReconnect = Boolean(
+    tkMeta["needs_reconnect"] === true ||
+      tkMeta["tiktok_needs_reconnect"] === true ||
+      asString(tkMeta["tiktok_stats_needs_reconnect_at"]) ||
+      asString(tkMeta["tiktok_token_invalid_at"]),
+  );
+  const tiktokConnectionStatus = tiktokNeedsReconnect && tiktokConnected
+    ? "needs_update"
+    : getConnectionDisplayStatus(tiktokConnected, "channel:tiktok", tkMeta);
   const tiktokRequiresUpdate = tiktokConnectionStatus === "needs_update";
   const tiktokUsername = tiktokConnected ? (asString(tkMeta.username) || asString(tk.resource_label) || tiktokSettings.username || null) : null;
   const tiktokProfileUrl = tiktokConnected ? (asString(tkMeta.profile_url) || tiktokSettings.profileUrl || null) : null;

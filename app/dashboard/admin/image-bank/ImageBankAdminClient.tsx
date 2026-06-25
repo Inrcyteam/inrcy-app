@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { createClient } from "@/lib/supabaseClient";
 import styles from "./imageBank.module.css";
 
 type ImageBankCategory = {
@@ -44,6 +45,83 @@ type EditDraft = {
   source_url: string;
   license_ref: string;
 };
+
+type UploadPrepareItem = {
+  client_id: string;
+  original_name: string;
+  storage_path: string;
+  token: string;
+  content_type: string;
+};
+
+type UploadFinalizeItem = {
+  client_id: string;
+  original_name: string;
+  storage_path: string;
+  mime_type: string;
+  size_bytes: number;
+  width: number | null;
+  height: number | null;
+};
+
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_IMAGE_MB_LABEL = "10 Mo";
+const UPLOAD_BATCH_SIZE = 10;
+const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+
+
+async function readApiJson(response: Response, fallbackMessage: string) {
+  const contentType = response.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    return await response.json().catch(() => ({ error: fallbackMessage }));
+  }
+
+  const text = await response.text().catch(() => "");
+  return { error: text.trim() || fallbackMessage };
+}
+
+function formatUploadName(file: File) {
+  return file.name || "image-inrcy";
+}
+
+function getClientFileId(file: File, index: number) {
+  return `${index}-${file.name}-${file.size}-${file.lastModified}`;
+}
+
+function chunkFiles<T>(items: T[], size: number) {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks;
+}
+
+function getImageDimensions(file: File): Promise<{ width: number | null; height: number | null }> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve({ width: image.naturalWidth || null, height: image.naturalHeight || null });
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve({ width: null, height: null });
+    };
+    image.src = url;
+  });
+}
+
+function validateUploadFiles(selectedFiles: File[]) {
+  for (const file of selectedFiles) {
+    if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
+      throw new Error(`${formatUploadName(file)} : format non autorisé. Utilise JPG, PNG ou WebP.`);
+    }
+    if (file.size > MAX_IMAGE_BYTES) {
+      throw new Error(`${formatUploadName(file)} : image trop lourde. Maximum ${MAX_IMAGE_MB_LABEL} par image.`);
+    }
+  }
+}
 
 
 function formatBytes(bytes: number | null | undefined) {
@@ -93,6 +171,7 @@ export default function ImageBankAdminClient() {
   const [fileInputKey, setFileInputKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<string | null>(null);
 
   const [sectorSlug, setSectorSlug] = useState("");
   const [categoryId, setCategoryId] = useState("");
@@ -138,7 +217,7 @@ export default function ImageBankAdminClient() {
     setLoading(true);
     try {
       const response = await fetch("/api/admin/image-bank/categories", { cache: "no-store" });
-      const json = await response.json();
+      const json = await readApiJson(response, "Impossible de charger les métiers.");
       if (!response.ok) throw new Error(json?.error || "Impossible de charger les métiers.");
       const nextCategories = (json.categories ?? []) as ImageBankCategory[];
       setCategories(nextCategories);
@@ -165,7 +244,7 @@ export default function ImageBankAdminClient() {
       if (search.trim()) params.set("q", search.trim());
 
       const response = await fetch(`/api/admin/image-bank/images?${params.toString()}`, { cache: "no-store" });
-      const json = await response.json();
+      const json = await readApiJson(response, "Impossible de charger les images.");
       if (!response.ok) throw new Error(json?.error || "Impossible de charger les images.");
       const nextImages = (json.images ?? []) as ImageBankRow[];
       setImages(nextImages);
@@ -209,6 +288,7 @@ export default function ImageBankAdminClient() {
     event.preventDefault();
     setError(null);
     setSuccess(null);
+    setUploadProgress(null);
 
     if (!categoryId) {
       setError("Choisis un métier.");
@@ -219,25 +299,115 @@ export default function ImageBankAdminClient() {
       return;
     }
 
+    const selectedFiles = Array.from(files);
+
     setUploading(true);
     try {
-      const formData = new FormData();
-      formData.set("category_id", categoryId);
-      formData.set("tags", tags);
-      formData.set("title", title);
-      formData.set("source", source);
-      formData.set("source_url", sourceUrl);
-      formData.set("license_ref", licenseRef);
-      Array.from(files).forEach((file) => formData.append("files", file));
+      validateUploadFiles(selectedFiles);
 
-      const response = await fetch("/api/admin/image-bank/upload", {
-        method: "POST",
-        body: formData,
-      });
-      const json = await response.json();
-      if (!response.ok) throw new Error(json?.error || "Import impossible.");
+      const supabase = createClient();
+      const batches = chunkFiles(selectedFiles, UPLOAD_BATCH_SIZE);
+      let uploaded = 0;
+      let failed = 0;
+      const failures: string[] = [];
 
-      setSuccess(`${json.uploaded ?? 0} image(s) importée(s). ${json.failed ? `${json.failed} échec(s).` : ""}`.trim());
+      for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
+        const batch = batches[batchIndex];
+        const batchNumber = batchIndex + 1;
+        const startIndex = batchIndex * UPLOAD_BATCH_SIZE;
+        setUploadProgress(`Préparation du lot ${batchNumber}/${batches.length}…`);
+
+        const prepareResponse = await fetch("/api/admin/image-bank/upload", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            mode: "prepare",
+            category_id: categoryId,
+            files: batch.map((file, localIndex) => ({
+              client_id: getClientFileId(file, startIndex + localIndex),
+              name: file.name,
+              type: file.type,
+              size: file.size,
+              last_modified: file.lastModified,
+            })),
+          }),
+        });
+        const prepareJson = await readApiJson(prepareResponse, "Préparation de l’import impossible.");
+        if (!prepareResponse.ok) throw new Error(prepareJson?.error || "Préparation de l’import impossible.");
+
+        const preparedItems = ((prepareJson?.items ?? []) as UploadPrepareItem[]).filter((item) => item?.token && item?.storage_path);
+        const preparedById = new Map(preparedItems.map((item) => [item.client_id, item]));
+        const finalizeItems: UploadFinalizeItem[] = [];
+
+        for (let localIndex = 0; localIndex < batch.length; localIndex += 1) {
+          const file = batch[localIndex];
+          const clientId = getClientFileId(file, startIndex + localIndex);
+          const prepared = preparedById.get(clientId);
+          if (!prepared) {
+            failed += 1;
+            failures.push(`${formatUploadName(file)} : préparation impossible.`);
+            continue;
+          }
+
+          try {
+            setUploadProgress(`Import du lot ${batchNumber}/${batches.length} · image ${localIndex + 1}/${batch.length}…`);
+            const dimensions = await getImageDimensions(file);
+            const { error: uploadError } = await supabase.storage
+              .from("inrcy-image-bank")
+              .uploadToSignedUrl(prepared.storage_path, prepared.token, file, {
+                contentType: prepared.content_type || file.type || "image/jpeg",
+              });
+
+            if (uploadError) throw uploadError;
+
+            finalizeItems.push({
+              client_id: clientId,
+              original_name: prepared.original_name || file.name,
+              storage_path: prepared.storage_path,
+              mime_type: prepared.content_type || file.type || "image/jpeg",
+              size_bytes: file.size,
+              width: dimensions.width,
+              height: dimensions.height,
+            });
+          } catch (uploadError: any) {
+            failed += 1;
+            failures.push(`${formatUploadName(file)} : ${uploadError?.message || "upload Supabase impossible."}`);
+          }
+        }
+
+        if (finalizeItems.length > 0) {
+          setUploadProgress(`Finalisation du lot ${batchNumber}/${batches.length}…`);
+          const finalizeResponse = await fetch("/api/admin/image-bank/upload", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              mode: "finalize",
+              category_id: categoryId,
+              tags,
+              title,
+              source,
+              source_url: sourceUrl,
+              license_ref: licenseRef,
+              uploads: finalizeItems,
+            }),
+          });
+          const finalizeJson = await readApiJson(finalizeResponse, "Finalisation de l’import impossible.");
+          if (!finalizeResponse.ok) throw new Error(finalizeJson?.error || "Finalisation de l’import impossible.");
+          uploaded += Number(finalizeJson?.uploaded || 0);
+          failed += Number(finalizeJson?.failed || 0);
+          const results = Array.isArray(finalizeJson?.results) ? finalizeJson.results : [];
+          for (const result of results) {
+            if (result && result.ok === false && result.original_name) {
+              failures.push(`${result.original_name} : ${result.error || "finalisation impossible."}`);
+            }
+          }
+        }
+      }
+
+      setSuccess(`${uploaded} image(s) importée(s). ${failed ? `${failed} échec(s).` : ""}`.trim());
+      if (failures.length > 0) {
+        setError(failures.slice(0, 4).join("\n"));
+      }
       setFiles(null);
       setFileInputKey((value) => value + 1);
       setTitle("");
@@ -245,6 +415,7 @@ export default function ImageBankAdminClient() {
     } catch (e: any) {
       setError(e?.message || "Import impossible.");
     } finally {
+      setUploadProgress(null);
       setUploading(false);
     }
   }
@@ -259,7 +430,7 @@ export default function ImageBankAdminClient() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id, ...payload }),
       });
-      const json = await response.json();
+      const json = await readApiJson(response, "Mise à jour impossible.");
       if (!response.ok) throw new Error(json?.error || "Mise à jour impossible.");
       setSuccess(successMessage);
       await loadImages(categoryId);
@@ -298,7 +469,7 @@ export default function ImageBankAdminClient() {
       const response = await fetch(`/api/admin/image-bank/images?id=${encodeURIComponent(image.id)}`, {
         method: "DELETE",
       });
-      const json = await response.json();
+      const json = await readApiJson(response, "Suppression impossible.");
       if (!response.ok) throw new Error(json?.error || "Suppression impossible.");
       setSuccess("Image supprimée définitivement.");
       await loadImages(categoryId);
@@ -439,7 +610,16 @@ export default function ImageBankAdminClient() {
                 onChange={(event) => setFiles(event.target.files)}
               />
               <small className={styles.helper}>{files?.length ? `${files.length} fichier(s) sélectionné(s)` : "JPEG, PNG ou WebP · import multiple autorisé"}</small>
+              <small className={styles.uploadRules}>
+                JPG, PNG ou WebP · {MAX_IMAGE_MB_LABEL} maximum par image · import par lots automatique.
+              </small>
             </label>
+
+            {uploadProgress ? (
+              <div className={styles.uploadProgressBox} aria-live="polite">
+                <span>{uploadProgress}</span>
+              </div>
+            ) : null}
 
             <div className={styles.twoCols}>
               <label className={styles.label}>

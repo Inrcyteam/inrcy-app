@@ -9,7 +9,6 @@ const PENDING_AGENT_ACTION_STATUSES = [
   "prepared",
   "pending_validation",
   "pending",
-  "draft",
 ];
 
 function isMissingTableError(
