@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { POST as publishNowBooster } from "@/app/api/booster/publish-now/route";
+import { buildVideoSettingsByChannel } from "@/lib/boosterVideoSettings";
 import { POST as createCrmCampaign } from "@/app/api/crm/campaigns/route";
 import { requireUser } from "@/lib/requireUser";
 import { enforceRateLimit } from "@/lib/rateLimit";
@@ -803,6 +804,13 @@ export async function POST(request: Request) {
     const mediaModeByChannel = Object.fromEntries(
       publishChannels.map((channel) => [channel, activeMediaMode]),
     );
+    const videoSettingsByChannel =
+      activeMediaMode === "video"
+        ? buildVideoSettingsByChannel({
+            channels: publishChannels as any,
+            sourceMetadata: (videoPayload as any)?.sourceMetadata || null,
+          })
+        : {};
     const publishBody = {
       channels: publishChannels,
       post: firstPost,
@@ -810,6 +818,7 @@ export async function POST(request: Request) {
       idea: cleanText(payload.idea || action.summary, 500),
       mediaType: activeMediaMode === "video" ? "video" : "images",
       mediaModeByChannel,
+      videoSettingsByChannel,
       images: imagePayload ? [imagePayload] : [],
       video: videoPayload,
       workflowTool: "booster",

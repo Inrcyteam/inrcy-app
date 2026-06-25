@@ -11940,3 +11940,184 @@ button.campaignInfoCard:focus-visible .campaignInfoEye {
     max-height: 280px;
   }
 }
+
+/* Étape 26 — iNrAgent média : adaptation automatique par canal */
+.publishMediaAdaptationBox {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(105, 239, 255, 0.2);
+  background:
+    radial-gradient(
+      circle at 0% 0%,
+      rgba(105, 239, 255, 0.12),
+      transparent 38%
+    ),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.055),
+      rgba(255, 255, 255, 0.03)
+    );
+  color: #eef6ff;
+}
+
+.publishMediaAdaptationBox > div {
+  display: grid;
+  gap: 4px;
+}
+
+.publishMediaAdaptationBox strong {
+  color: #69efff;
+  font-weight: 950;
+}
+
+.publishMediaAdaptationBox span,
+.publishMediaAdaptationBox small {
+  color: #b8c6e8;
+  font-size: 12px;
+  line-height: 1.42;
+  font-weight: 760;
+}
+
+/* Étape 29 — iNrAgent média : fenêtre plus courte + choix direct comme Booster */
+.publishMediaModal {
+  max-width: min(92vw, 720px) !important;
+  max-height: min(78dvh, 720px);
+  overflow: auto;
+}
+
+.publishMediaModal .publishMediaCurrent {
+  margin: 10px 0 12px;
+  padding: 12px;
+  grid-template-columns: minmax(150px, 0.35fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.publishMediaModal .publishMediaCurrent img,
+.publishMediaModal .publishMediaCurrent video,
+.publishMediaModal .publishMediaEmpty {
+  min-height: 130px;
+  max-height: 180px;
+}
+
+.publishMediaModal .attachmentUploadBox {
+  margin-top: 12px;
+  padding: 14px;
+  gap: 10px;
+}
+
+.publishMediaActionButtons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 9px;
+  width: 100%;
+}
+
+.publishMediaActionButtons label,
+.publishMediaActionButtons button {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 999px;
+  padding: 0 14px;
+  color: #ffffff;
+  font-weight: 900;
+  cursor: pointer;
+  background: linear-gradient(135deg, #1d4ed8, #7c3aed 58%, #d946ef);
+  border: 1px solid rgba(125, 211, 252, 0.34);
+  text-decoration: none;
+}
+
+.publishMediaActionButtons button {
+  appearance: none;
+  font: inherit;
+}
+
+.publishMediaActionButtons label:hover,
+.publishMediaActionButtons button:hover {
+  transform: translateY(-1px);
+}
+
+.publishMediaActionButtons button:disabled,
+.publishMediaActionButtons label[aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+@media (max-width: 640px) {
+  .publishMediaModal {
+    max-height: calc(100dvh - 28px);
+    width: calc(100vw - 18px);
+  }
+
+  .publishMediaModal .publishMediaCurrent {
+    grid-template-columns: 1fr;
+  }
+
+  .publishMediaActionButtons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .publishMediaActionButtons label,
+  .publishMediaActionButtons button {
+    min-height: 40px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+}
+
+/* Étape 29 — campagnes iNrAgent : Joindre + Médiathèque */
+.campaignAttachmentActionButtons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 9px;
+  width: 100%;
+}
+
+.campaignAttachmentActionButtons label,
+.campaignAttachmentActionButtons button {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 999px;
+  padding: 0 16px;
+  color: #ffffff;
+  font-weight: 900;
+  cursor: pointer;
+  background: linear-gradient(135deg, #1d4ed8, #7c3aed 58%, #d946ef);
+  border: 1px solid rgba(125, 211, 252, 0.34);
+  text-decoration: none;
+}
+
+.campaignAttachmentActionButtons button {
+  appearance: none;
+  font: inherit;
+}
+
+.campaignAttachmentActionButtons button:disabled {
+  opacity: 0.55;
+  cursor: wait;
+}
+
+@media (max-width: 640px) {
+  .campaignAttachmentActionButtons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .campaignAttachmentActionButtons label,
+  .campaignAttachmentActionButtons button {
+    min-height: 40px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+}

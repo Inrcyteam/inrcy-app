@@ -4,6 +4,10 @@ import React, { type CSSProperties } from "react";
 import { createClient } from "@/lib/supabaseClient";
 import type { ComposeAttachmentRef } from "@/app/dashboard/mails/_lib/mailboxPhase1";
 import { makeAttachmentPath } from "@/app/dashboard/mails/_lib/mailboxPhase25";
+import MediaLibraryPickerModal, {
+  mediaLibraryItemToAttachment,
+  type MediaLibraryPickerItem,
+} from "@/app/dashboard/_components/MediaLibraryPickerModal";
 
 const ATTACH_BUCKET = "inrbox_attachments";
 
@@ -28,6 +32,7 @@ export default function TemplateAttachmentPicker({
   const inputId = `${inputIdPrefix}-${generatedId}`;
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState("");
+  const [mediaLibraryOpen, setMediaLibraryOpen] = React.useState(false);
 
   const handleFiles = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const input = event.currentTarget;
@@ -44,11 +49,13 @@ export default function TemplateAttachmentPicker({
 
       for (const file of files) {
         const path = makeAttachmentPath(file.name || "piece-jointe", userId);
-        const { error: uploadError } = await supabase.storage.from(ATTACH_BUCKET).upload(path, file, {
-          cacheControl: "3600",
-          upsert: false,
-          contentType: file.type || "application/octet-stream",
-        });
+        const { error: uploadError } = await supabase.storage
+          .from(ATTACH_BUCKET)
+          .upload(path, file, {
+            cacheControl: "3600",
+            upsert: false,
+            contentType: file.type || "application/octet-stream",
+          });
         if (uploadError) throw uploadError;
         uploaded.push({
           bucket: ATTACH_BUCKET,
@@ -62,7 +69,10 @@ export default function TemplateAttachmentPicker({
       setAttachments((prev) => {
         const merged = [...prev];
         for (const item of uploaded) {
-          const exists = merged.some((current) => current.bucket === item.bucket && current.path === item.path);
+          const exists = merged.some(
+            (current) =>
+              current.bucket === item.bucket && current.path === item.path,
+          );
           if (!exists) merged.push(item);
         }
         return merged;
@@ -74,6 +84,21 @@ export default function TemplateAttachmentPicker({
       input.value = "";
       setBusy(false);
     }
+  };
+
+  const addMediaLibraryItems = (items: MediaLibraryPickerItem[]) => {
+    const nextAttachments = items.map(mediaLibraryItemToAttachment);
+    setAttachments((prev) => {
+      const merged = [...prev];
+      for (const item of nextAttachments) {
+        const exists = merged.some(
+          (current) =>
+            current.bucket === item.bucket && current.path === item.path,
+        );
+        if (!exists) merged.push(item);
+      }
+      return merged;
+    });
   };
 
   const isFooter = variant === "footer";
@@ -93,56 +118,136 @@ export default function TemplateAttachmentPicker({
         : "Joindre";
 
   return (
-    <div style={isFooter ? footerRootStyle(isMobile) : { flex: isMobile ? "0 0 auto" : "0 0 auto", minWidth: 0 }}>
-      <input id={inputId} type="file" multiple onChange={handleFiles} style={{ display: "none" }} />
-      <label
-        htmlFor={inputId}
-        className={styles.secondaryBtn}
-        aria-disabled={busy}
-        style={{
-          ...attachButtonStyle,
-          opacity: busy ? 0.72 : 1,
-          cursor: busy ? "wait" : "pointer",
-          width: mobileIconOnly ? 40 : isMobile && !isFooter ? "100%" : undefined,
-          minWidth: mobileIconOnly ? 40 : undefined,
-          height: mobileIconOnly ? 40 : undefined,
-          minHeight: mobileIconOnly ? 40 : mobileFooter ? 40 : 46,
-          padding: mobileIconOnly ? 0 : mobileFooter ? "9px 12px" : "10px 16px",
-          borderRadius: mobileIconOnly ? 999 : attachButtonStyle.borderRadius,
-          gap: mobileIconOnly ? 0 : attachButtonStyle.gap,
-        }}
+    <>
+      <MediaLibraryPickerModal
+        open={mediaLibraryOpen}
+        title="Joindre depuis la Médiathèque"
+        subtitle="Ajoutez une image ou une vidéo déjà stockée dans iNrCy."
+        accept="all"
+        multiple
+        maxSelection={10}
+        confirmLabel="Joindre"
+        onClose={() => setMediaLibraryOpen(false)}
+        onConfirm={(items) => addMediaLibraryItems(items)}
+      />
+      <div
+        style={
+          isFooter
+            ? footerRootStyle(isMobile)
+            : { flex: isMobile ? "0 0 auto" : "0 0 auto", minWidth: 0 }
+        }
       >
-        <span aria-hidden>📎</span>
-        <span style={mobileIconOnly ? visuallyHiddenStyle : undefined}>{buttonLabel}</span>
-      </label>
-
-      {mobileFooter ? (
-        <span
-          style={footerStatusTextStyle}
-          title={attachments.length > 0 ? attachments.map((attachment) => attachment.name).join(", ") : attachmentStatusLabel}
+        <input
+          id={inputId}
+          type="file"
+          multiple
+          onChange={handleFiles}
+          style={{ display: "none" }}
+        />
+        <label
+          htmlFor={inputId}
+          className={styles.secondaryBtn}
+          aria-disabled={busy}
+          style={{
+            ...attachButtonStyle,
+            opacity: busy ? 0.72 : 1,
+            cursor: busy ? "wait" : "pointer",
+            width: mobileIconOnly
+              ? 40
+              : isMobile && !isFooter
+                ? "100%"
+                : undefined,
+            minWidth: mobileIconOnly ? 40 : undefined,
+            height: mobileIconOnly ? 40 : undefined,
+            minHeight: mobileIconOnly ? 40 : mobileFooter ? 40 : 46,
+            padding: mobileIconOnly
+              ? 0
+              : mobileFooter
+                ? "9px 12px"
+                : "10px 16px",
+            borderRadius: mobileIconOnly ? 999 : attachButtonStyle.borderRadius,
+            gap: mobileIconOnly ? 0 : attachButtonStyle.gap,
+          }}
         >
-          {attachmentStatusLabel}
-        </span>
-      ) : attachments.length > 0 ? (
-        <div style={isFooter ? footerChipsWrapStyle(isMobile) : chipsWrapStyle} aria-label="Pièces jointes du modèle">
-          {attachments.map((attachment, index) => (
-            <span key={`${attachment.bucket}:${attachment.path}:${index}`} style={chipStyle} title={attachment.name}>
-              <span style={chipNameStyle}>{attachment.name}</span>
-              <button
-                type="button"
-                onClick={() => setAttachments((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}
-                aria-label={`Retirer ${attachment.name}`}
-                style={chipRemoveStyle}
-              >
-                ×
-              </button>
-            </span>
-          ))}
-        </div>
-      ) : null}
+          <span aria-hidden>📎</span>
+          <span style={mobileIconOnly ? visuallyHiddenStyle : undefined}>
+            {buttonLabel}
+          </span>
+        </label>
+        <button
+          type="button"
+          className={styles.secondaryBtn}
+          onClick={() => setMediaLibraryOpen(true)}
+          disabled={busy}
+          title="Joindre depuis la Médiathèque"
+          style={{
+            ...attachButtonStyle,
+            width: mobileIconOnly
+              ? 40
+              : isMobile && !isFooter
+                ? "100%"
+                : undefined,
+            minWidth: mobileIconOnly ? 40 : undefined,
+            height: mobileIconOnly ? 40 : undefined,
+            minHeight: mobileIconOnly ? 40 : mobileFooter ? 40 : 46,
+            padding: mobileIconOnly
+              ? 0
+              : mobileFooter
+                ? "9px 12px"
+                : "10px 16px",
+            borderRadius: mobileIconOnly ? 999 : attachButtonStyle.borderRadius,
+            gap: mobileIconOnly ? 0 : attachButtonStyle.gap,
+          }}
+        >
+          <span aria-hidden>🖼️</span>
+          <span style={mobileIconOnly ? visuallyHiddenStyle : undefined}>
+            Médiathèque
+          </span>
+        </button>
 
-      {error ? <div style={errorStyle}>{error}</div> : null}
-    </div>
+        {mobileFooter ? (
+          <span
+            style={footerStatusTextStyle}
+            title={
+              attachments.length > 0
+                ? attachments.map((attachment) => attachment.name).join(", ")
+                : attachmentStatusLabel
+            }
+          >
+            {attachmentStatusLabel}
+          </span>
+        ) : attachments.length > 0 ? (
+          <div
+            style={isFooter ? footerChipsWrapStyle(isMobile) : chipsWrapStyle}
+            aria-label="Pièces jointes du modèle"
+          >
+            {attachments.map((attachment, index) => (
+              <span
+                key={`${attachment.bucket}:${attachment.path}:${index}`}
+                style={chipStyle}
+                title={attachment.name}
+              >
+                <span style={chipNameStyle}>{attachment.name}</span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setAttachments((prev) =>
+                      prev.filter((_, itemIndex) => itemIndex !== index),
+                    )
+                  }
+                  aria-label={`Retirer ${attachment.name}`}
+                  style={chipRemoveStyle}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        ) : null}
+
+        {error ? <div style={errorStyle}>{error}</div> : null}
+      </div>
+    </>
   );
 }
 

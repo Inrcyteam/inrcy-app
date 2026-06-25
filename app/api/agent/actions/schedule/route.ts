@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { buildVideoSettingsByChannel } from "@/lib/boosterVideoSettings";
 import { requireUser } from "@/lib/requireUser";
 import { rowToInrAgentAction } from "@/lib/inrAgentActions";
 import {
@@ -573,6 +574,13 @@ async function buildScheduledPayload(
     const mediaModeByChannel = Object.fromEntries(
       publishChannels.map((channel) => [channel, activeMediaMode]),
     );
+    const videoSettingsByChannel =
+      activeMediaMode === "video"
+        ? buildVideoSettingsByChannel({
+            channels: publishChannels as any,
+            sourceMetadata: (videoPayload as any)?.sourceMetadata || null,
+          })
+        : {};
     return {
       actionType: "publication" as const,
       targetTool: "booster" as const,
@@ -587,6 +595,7 @@ async function buildScheduledPayload(
           idea: cleanText(payload.idea || action.summary, 500),
           mediaType: activeMediaMode === "video" ? "video" : "images",
           mediaModeByChannel,
+          videoSettingsByChannel,
           images: imagePayload ? [imagePayload] : [],
           video: videoPayload,
           workflowTool: "booster",
@@ -680,10 +689,15 @@ export async function POST(request: Request) {
             const postByChannel = asRecord(publishPayload.postByChannel) || {};
             const mediaModesByChannel =
               asRecord(publishPayload.mediaModeByChannel) || {};
+            const videoSettingsByChannel =
+              asRecord(publishPayload.videoSettingsByChannel) || {};
             const channelPost =
               postByChannel[channel] || publishPayload.post || {};
             const channelMediaMode =
               cleanText(mediaModesByChannel[channel], 20) || "none";
+            const channelVideoSettings = asRecord(
+              videoSettingsByChannel[channel],
+            );
             return scheduledActionToDbRow({
               ...baseScheduleArgs,
               title: baseScheduleArgs.title,
@@ -696,6 +710,9 @@ export async function POST(request: Request) {
                   post: channelPost,
                   postByChannel: { [channel]: channelPost },
                   mediaModeByChannel: { [channel]: channelMediaMode },
+                  videoSettingsByChannel: channelVideoSettings
+                    ? { [channel]: channelVideoSettings }
+                    : {},
                 },
               },
             });

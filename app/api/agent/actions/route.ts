@@ -609,6 +609,46 @@ function buildPublishMediaReadiness(
   };
 }
 
+function buildPublishMediaAdaptation(
+  channel: PublishChannelKey,
+  media: ReturnType<typeof cleanPublishMedia>,
+) {
+  const channelLabel = channel;
+  if (!media) {
+    return {
+      channel,
+      channelLabel,
+      mediaType: "none",
+      strategy: "text_only",
+      userEditable: false,
+      note: "Aucun média à adapter pour ce canal.",
+    };
+  }
+
+  if (media.kind === "video") {
+    return {
+      channel,
+      channelLabel,
+      mediaType: "video",
+      strategy: "booster_video_format",
+      userEditable: true,
+      note:
+        "iNrAgent garde la vidéo source et Booster prépare le format compatible au moment de publier.",
+    };
+  }
+
+  return {
+    channel,
+    channelLabel,
+    mediaType: "image",
+    strategy: "booster_image_adapter",
+    userEditable: true,
+    note:
+      "iNrAgent garde l’image source et Booster génère une version adaptée au canal sans modifier l’original.",
+  };
+}
+
+
 async function readCampaignAction(actionId: string, userId: string) {
   const { data: currentRow, error: readError } = await supabaseAdmin
     .from("inr_agent_actions")
@@ -1306,8 +1346,15 @@ export async function PATCH(request: Request) {
     const currentReadiness =
       asRecord(currentPayload.mediaReadinessByChannel) || {};
     const nextReadiness = { ...currentReadiness };
+    const currentAdaptation =
+      asRecord(currentPayload.mediaAdaptationByChannel) || {};
+    const nextAdaptation = { ...currentAdaptation };
     for (const targetChannel of targetChannels) {
       nextReadiness[targetChannel] = buildPublishMediaReadiness(
+        targetChannel,
+        media,
+      );
+      nextAdaptation[targetChannel] = buildPublishMediaAdaptation(
         targetChannel,
         media,
       );
@@ -1325,6 +1372,7 @@ export async function PATCH(request: Request) {
       postByChannel: nextPostByChannel,
       image_assets: media ? [media] : [],
       mediaReadinessByChannel: nextReadiness,
+      mediaAdaptationByChannel: nextAdaptation,
       lastManualEdit: {
         channel,
         appliedToChannels: targetChannels,

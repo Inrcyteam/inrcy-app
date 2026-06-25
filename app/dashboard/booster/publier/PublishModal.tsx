@@ -78,9 +78,13 @@ import { pillBtn, pillBtnActive } from "./publishModal.styles";
 import PublishAiConfigurationDrawer from "./components/PublishAiConfigurationDrawer";
 import PublishChannelSelector from "./components/PublishChannelSelector";
 import PublishFinalReviewModal from "./components/PublishFinalReviewModal";
-import TiktokPublicationSettingsModal, { type TiktokPublicationSettings } from "./components/TiktokPublicationSettingsModal";
+import TiktokPublicationSettingsModal, {
+  type TiktokPublicationSettings,
+} from "./components/TiktokPublicationSettingsModal";
 import PublishFooterActions from "./components/PublishFooterActions";
-import PublishScheduleModal, { type PublishScheduleSelection } from "./components/PublishScheduleModal";
+import PublishScheduleModal, {
+  type PublishScheduleSelection,
+} from "./components/PublishScheduleModal";
 import PublishIntentPanel from "./components/PublishIntentPanel";
 import PublishContentEditorPanel from "./components/PublishContentEditorPanel";
 import PublishImagesPanel from "./components/PublishImagesPanel";
@@ -94,6 +98,9 @@ import usePublishVideoController, {
 } from "./usePublishVideoController";
 
 import InrcyCameraCaptureModal from "@/app/dashboard/_components/InrcyCameraCaptureModal";
+import MediaLibraryPickerModal, {
+  type MediaLibraryPickerItem,
+} from "@/app/dashboard/_components/MediaLibraryPickerModal";
 
 type ChannelConnectionDetail = {
   type?: string | null;
@@ -493,8 +500,11 @@ export default function PublishModal({
     preparedPostsByChannel: Partial<Record<ChannelKey, ChannelPost>>;
   } | null>(null);
   const [tiktokSettingsOpen, setTiktokSettingsOpen] = useState(false);
-  const [tiktokSettingsFlow, setTiktokSettingsFlow] = useState<"publish" | "schedule" | null>(null);
-  const [tiktokPublicationSettings, setTiktokPublicationSettings] = useState<TiktokPublicationSettings | null>(null);
+  const [tiktokSettingsFlow, setTiktokSettingsFlow] = useState<
+    "publish" | "schedule" | null
+  >(null);
+  const [tiktokPublicationSettings, setTiktokPublicationSettings] =
+    useState<TiktokPublicationSettings | null>(null);
   const [pendingPublishPosts, setPendingPublishPosts] = useState<Partial<
     Record<ChannelKey, ChannelPost>
   > | null>(null);
@@ -505,6 +515,7 @@ export default function PublishModal({
   const [cameraCaptureOpen, setCameraCaptureOpen] = useState(false);
   const [cameraCaptureTargetChannel, setCameraCaptureTargetChannel] =
     useState<ChannelKey | null>(null);
+  const [mediaLibraryPickerOpen, setMediaLibraryPickerOpen] = useState(false);
   const [publicationMediaType, setPublicationMediaType] =
     useState<PublicationMediaType>("images");
   const [channelMediaModes, setChannelMediaModes] = useState<
@@ -685,7 +696,9 @@ export default function PublishModal({
     if (didAutoSelectConnectedTikTokRef.current) return;
     didAutoSelectConnectedTikTokRef.current = true;
     setChannels((prev) =>
-      prev.tiktok ? prev : ({ ...prev, tiktok: true } as Record<ChannelKey, boolean>),
+      prev.tiktok
+        ? prev
+        : ({ ...prev, tiktok: true } as Record<ChannelKey, boolean>),
     );
   }, [connected.tiktok]);
 
@@ -697,7 +710,9 @@ export default function PublishModal({
     if (didAutoSelectConnectedYoutubeShortsRef.current) return;
     didAutoSelectConnectedYoutubeShortsRef.current = true;
     setChannels((prev) =>
-      prev.youtube_shorts ? prev : ({ ...prev, youtube_shorts: true } as Record<ChannelKey, boolean>),
+      prev.youtube_shorts
+        ? prev
+        : ({ ...prev, youtube_shorts: true } as Record<ChannelKey, boolean>),
     );
   }, [connected.youtube_shorts]);
 
@@ -715,18 +730,31 @@ export default function PublishModal({
   useEffect(() => {
     if (typeof window === "undefined") return;
     const handleAiConfigurationUpdated = (event: Event) => {
-      const detail = (event as CustomEvent<{ aiLanguage?: unknown; preferredCta?: unknown }>).detail || {};
+      const detail =
+        (event as CustomEvent<{ aiLanguage?: unknown; preferredCta?: unknown }>)
+          .detail || {};
       setCtaDefaults((current) => {
         if (!current) return current;
         return {
           ...current,
-          preferredCta: normalizeBoosterPreferredCta(detail.preferredCta || current.preferredCta),
-          aiLanguage: normalizeBoosterAiLanguage(detail.aiLanguage || current.aiLanguage),
+          preferredCta: normalizeBoosterPreferredCta(
+            detail.preferredCta || current.preferredCta,
+          ),
+          aiLanguage: normalizeBoosterAiLanguage(
+            detail.aiLanguage || current.aiLanguage,
+          ),
         };
       });
     };
-    window.addEventListener("inrcy:ai-configuration-updated", handleAiConfigurationUpdated);
-    return () => window.removeEventListener("inrcy:ai-configuration-updated", handleAiConfigurationUpdated);
+    window.addEventListener(
+      "inrcy:ai-configuration-updated",
+      handleAiConfigurationUpdated,
+    );
+    return () =>
+      window.removeEventListener(
+        "inrcy:ai-configuration-updated",
+        handleAiConfigurationUpdated,
+      );
   }, []);
 
   useEffect(() => {
@@ -804,8 +832,20 @@ export default function PublishModal({
           continue;
 
         const patch = shouldSetPreferredMode
-          ? buildPreferredCtaPatch(key, preferredChoice, current, ctaDefaults, ctaDefaults.aiLanguage)
-          : buildAutoPrefillPatch(key, mode, current, ctaDefaults, ctaDefaults.aiLanguage);
+          ? buildPreferredCtaPatch(
+              key,
+              preferredChoice,
+              current,
+              ctaDefaults,
+              ctaDefaults.aiLanguage,
+            )
+          : buildAutoPrefillPatch(
+              key,
+              mode,
+              current,
+              ctaDefaults,
+              ctaDefaults.aiLanguage,
+            );
         const hasMeaningfulPatch = Object.entries(patch).some(
           ([patchKey, patchValue]) => {
             if (patchKey === "ctaMode")
@@ -1179,7 +1219,8 @@ export default function PublishModal({
     if (channels.instagram && connected.instagram) out.add("instagram");
     if (channels.linkedin && connected.linkedin) out.add("linkedin");
     if (channels.tiktok && connected.tiktok) out.add("tiktok");
-    if (channels.youtube_shorts && connected.youtube_shorts) out.add("youtube_shorts");
+    if (channels.youtube_shorts && connected.youtube_shorts)
+      out.add("youtube_shorts");
     return Array.from(out);
   }, [channels, connected]);
 
@@ -2165,7 +2206,11 @@ export default function PublishModal({
           continue;
         }
 
-        if (hadImagesBeforeVideo && current === "none" && channelSupportsTextOnly(channel)) {
+        if (
+          hadImagesBeforeVideo &&
+          current === "none" &&
+          channelSupportsTextOnly(channel)
+        ) {
           next[channel] = "none";
           continue;
         }
@@ -2179,6 +2224,69 @@ export default function PublishModal({
   const onVideoChange = async (files: FileList | null) => {
     const file = files?.[0] || null;
     await addVideoFile(file);
+  };
+
+  async function mediaLibraryItemToFile(item: MediaLibraryPickerItem) {
+    const url = String(item.signed_url || "").trim();
+    if (!url) {
+      throw new Error("Ce média n’a pas d’URL de lecture temporaire.");
+    }
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Impossible de lire ${item.title || item.storage_path}.`);
+    }
+    const blob = await response.blob();
+    const fallbackName =
+      item.storage_path.split("/").pop() ||
+      (item.media_type === "video" ? "video-inrcy.mp4" : "image-inrcy.jpg");
+    return new File([blob], item.title || fallbackName, {
+      type:
+        item.mime_type ||
+        blob.type ||
+        (item.media_type === "video" ? "video/mp4" : "image/jpeg"),
+      lastModified: Date.now(),
+    });
+  }
+
+  const addMediaLibrarySelection = async (items: MediaLibraryPickerItem[]) => {
+    if (!items.length) return;
+    setImgError("");
+    const videos = items.filter((item) => item.media_type === "video");
+    const imagesFromLibrary = items.filter(
+      (item) => item.media_type === "image",
+    );
+
+    if (videos.length && imagesFromLibrary.length) {
+      throw new Error(
+        "Choisissez soit des images, soit une vidéo depuis la Médiathèque.",
+      );
+    }
+
+    if (videos.length) {
+      if (videos.length > 1) {
+        throw new Error("Une seule vidéo peut être ajoutée à une publication.");
+      }
+      const file = await mediaLibraryItemToFile(videos[0]);
+      await addVideoFile(file);
+      return;
+    }
+
+    if (imagesFromLibrary.length) {
+      const remaining = BOOSTER_MAX_IMAGE_COUNT - images.length;
+      if (remaining <= 0) {
+        throw new Error(`${BOOSTER_MAX_IMAGE_COUNT} images maximum.`);
+      }
+      const selectedImages = imagesFromLibrary.slice(0, remaining);
+      const files = await Promise.all(
+        selectedImages.map((item) => mediaLibraryItemToFile(item)),
+      );
+      await addImageFiles(files);
+      if (imagesFromLibrary.length > selectedImages.length) {
+        setImgError(
+          `${selectedImages.length} image(s) ajoutée(s). Maximum ${BOOSTER_MAX_IMAGE_COUNT} images par publication.`,
+        );
+      }
+    }
   };
 
   const onTakePhotoClick = async (targetChannel?: ChannelKey) => {
@@ -2984,7 +3092,6 @@ export default function PublishModal({
     };
   }, [saveDraftActionRef, onSavePublicationDraft]);
 
-
   const openSchedulePublicationModal = () => {
     if (saving || draftSaving || scheduleSaving) return;
     const preparedPostsByChannel = buildPreparedPostsByChannel();
@@ -3010,7 +3117,9 @@ export default function PublishModal({
     channel: ChannelKey,
   ): Partial<Record<ChannelKey, T>> => {
     const value = source[channel];
-    return value ? { [channel]: value } as Partial<Record<ChannelKey, T>> : {};
+    return value
+      ? ({ [channel]: value } as Partial<Record<ChannelKey, T>>)
+      : {};
   };
 
   const buildSingleChannelUnknownRecord = (
@@ -3030,14 +3139,19 @@ export default function PublishModal({
 
     const channelsToSchedule = Array.from(
       new Set(selections.map((selection) => selection.channel)),
-    ).filter((channel): channel is ChannelKey => selectedChannels.includes(channel));
+    ).filter((channel): channel is ChannelKey =>
+      selectedChannels.includes(channel),
+    );
 
     if (!channelsToSchedule.length) {
       setScheduleError("Sélectionnez au moins un canal à programmer.");
       return;
     }
 
-    const reviewItems = buildFinalReviewItems(preparedPostsByChannel, channelsToSchedule);
+    const reviewItems = buildFinalReviewItems(
+      preparedPostsByChannel,
+      channelsToSchedule,
+    );
     const blocked = reviewItems.filter((item) => item.blockers.length > 0);
     if (blocked.length) {
       setScheduleError(
@@ -3049,7 +3163,10 @@ export default function PublishModal({
     }
 
     const publishMediaModeByChannel = Object.fromEntries(
-      channelsToSchedule.map((channel) => [channel, resolveChannelMediaMode(channel)]),
+      channelsToSchedule.map((channel) => [
+        channel,
+        resolveChannelMediaMode(channel),
+      ]),
     ) as Partial<Record<ChannelKey, ChannelMediaMode>>;
     const hasAnyVideoPublish = channelsToSchedule.some(
       (channel) => publishMediaModeByChannel[channel] === "video",
@@ -3094,20 +3211,23 @@ export default function PublishModal({
             );
           });
 
-      const originalImageByKey: Record<string, ImagePayload> = !hasAnyImagePublish
-        ? {}
-        : await (async () => {
-            setPublishProgress(32);
-            setPublishProgressLabel("Upload des images originales...");
-            return await uploadOriginalImagesForPublication((current, total) => {
-              if (!total) return;
-              const ratio = current / total;
-              setPublishProgress(clampPercent(32 + ratio * 12));
-              setPublishProgressLabel(
-                `Upload des images originales ${clampPercent(ratio * 100)}%`,
+      const originalImageByKey: Record<string, ImagePayload> =
+        !hasAnyImagePublish
+          ? {}
+          : await (async () => {
+              setPublishProgress(32);
+              setPublishProgressLabel("Upload des images originales...");
+              return await uploadOriginalImagesForPublication(
+                (current, total) => {
+                  if (!total) return;
+                  const ratio = current / total;
+                  setPublishProgress(clampPercent(32 + ratio * 12));
+                  setPublishProgressLabel(
+                    `Upload des images originales ${clampPercent(ratio * 100)}%`,
+                  );
+                },
               );
-            });
-          })();
+            })();
 
       const uploadedChannelImages = {} as ChannelImagePayload;
       if (hasAnyImagePublish) {
@@ -3135,31 +3255,35 @@ export default function PublishModal({
             },
           );
           const imageKeysForChannel = channelSettings[channel]?.imageKeys || [];
-          uploadedChannelImages[channel] = uploadedImages.map((image, index) => {
-            const imageKey = imageKeysForChannel[index] || "";
-            const original = imageKey ? originalImageByKey[imageKey] : undefined;
-            const originalUrl = String(
-              original?.publicUrl ||
-                original?.originalPublicUrl ||
-                original?.originalUrl ||
-                "",
-            ).trim();
-            return {
-              ...image,
-              renderedUrl: image.publicUrl || image.renderedUrl || "",
-              imageKey,
-              originalUrl,
-              originalPublicUrl: originalUrl,
-              originalStoragePath:
-                original?.storagePath || original?.originalStoragePath || "",
-              originalName: original?.name || image.name,
-              originalType: original?.type || image.type,
-              transform: imageKey
-                ? channelSettings[channel]?.transforms?.[imageKey]
-                : undefined,
-              imageMeta: imageKey ? imageMetaByKey[imageKey] : undefined,
-            };
-          });
+          uploadedChannelImages[channel] = uploadedImages.map(
+            (image, index) => {
+              const imageKey = imageKeysForChannel[index] || "";
+              const original = imageKey
+                ? originalImageByKey[imageKey]
+                : undefined;
+              const originalUrl = String(
+                original?.publicUrl ||
+                  original?.originalPublicUrl ||
+                  original?.originalUrl ||
+                  "",
+              ).trim();
+              return {
+                ...image,
+                renderedUrl: image.publicUrl || image.renderedUrl || "",
+                imageKey,
+                originalUrl,
+                originalPublicUrl: originalUrl,
+                originalStoragePath:
+                  original?.storagePath || original?.originalStoragePath || "",
+                originalName: original?.name || image.name,
+                originalType: original?.type || image.type,
+                transform: imageKey
+                  ? channelSettings[channel]?.transforms?.[imageKey]
+                  : undefined,
+                imageMeta: imageKey ? imageMetaByKey[imageKey] : undefined,
+              };
+            },
+          );
         }
       }
 
@@ -3169,7 +3293,9 @@ export default function PublishModal({
         setPublishProgressLabel("Upload de la vidéo...");
         publicationVideo = await uploadPublicationVideoForPublish();
         if (!publicationVideo?.publicUrl && !publicationVideo?.url) {
-          throw new Error("La vidéo n’a pas pu être préparée pour la programmation.");
+          throw new Error(
+            "La vidéo n’a pas pu être préparée pour la programmation.",
+          );
         }
         publicationVideo = await preparePublicationVideoVariants(
           publicationVideo,
@@ -3182,7 +3308,10 @@ export default function PublishModal({
       setPublishProgressLabel("Enregistrement dans iNr’Agent...");
 
       const selectionByChannel = new Map(
-        selections.map((selection) => [selection.channel, selection.scheduledAt]),
+        selections.map((selection) => [
+          selection.channel,
+          selection.scheduledAt,
+        ]),
       );
 
       for (let index = 0; index < channelsToSchedule.length; index += 1) {
@@ -3221,7 +3350,9 @@ export default function PublishModal({
                   channel,
                 ),
                 videoSettingsByChannel: buildSingleChannelUnknownRecord(
-                  videoSettingsByChannel as Partial<Record<ChannelKey, unknown>>,
+                  videoSettingsByChannel as Partial<
+                    Record<ChannelKey, unknown>
+                  >,
                   channel,
                 ),
                 video: publicationVideo,
@@ -3233,8 +3364,14 @@ export default function PublishModal({
                   [channel],
                 ),
                 images: [],
-                imagesByChannel: buildSingleChannelRecord(uploadedChannelImages, channel),
-                imageSettingsByChannel: buildSingleChannelRecord(channelSettings, channel),
+                imagesByChannel: buildSingleChannelRecord(
+                  uploadedChannelImages,
+                  channel,
+                ),
+                imageSettingsByChannel: buildSingleChannelRecord(
+                  channelSettings,
+                  channel,
+                ),
                 tiktokPublicationSettings:
                   channel === "tiktok" ? tiktokSettingsForSchedule : null,
               },
@@ -3244,10 +3381,14 @@ export default function PublishModal({
         const result = await response.json().catch(() => ({}));
         if (!response.ok) {
           throw new Error(
-            String(result?.error || "Programmation de la publication impossible."),
+            String(
+              result?.error || "Programmation de la publication impossible.",
+            ),
           );
         }
-        setPublishProgress(clampPercent(76 + ((index + 1) / channelsToSchedule.length) * 20));
+        setPublishProgress(
+          clampPercent(76 + ((index + 1) / channelsToSchedule.length) * 20),
+        );
       }
 
       setChannels((prev) => {
@@ -3281,7 +3422,8 @@ export default function PublishModal({
   const confirmSchedulePublication = async (
     selections: PublishScheduleSelection[],
   ) => {
-    const preparedPostsByChannel = scheduleReviewPosts || buildPreparedPostsByChannel();
+    const preparedPostsByChannel =
+      scheduleReviewPosts || buildPreparedPostsByChannel();
     const tiktokWillSchedule = selections.some(
       (selection) => selection.channel === "tiktok",
     );
@@ -3322,7 +3464,9 @@ export default function PublishModal({
     setFinalReviewPosts(preparedPostsByChannel);
 
     const reviewItems = buildFinalReviewItems(preparedPostsByChannel);
-    const tiktokReviewItem = reviewItems.find((item) => item.channel === "tiktok");
+    const tiktokReviewItem = reviewItems.find(
+      (item) => item.channel === "tiktok",
+    );
     setTiktokPublicationSettings(null);
     if (tiktokReviewItem && tiktokReviewItem.blockers.length === 0) {
       setTiktokSettingsFlow("publish");
@@ -3423,7 +3567,8 @@ export default function PublishModal({
         warnings: requirements.warnings,
         blockers: requirements.blockers,
         publishable: requirements.blockers.length === 0,
-        tiktokParametersValidated: channel === "tiktok" && Boolean(tiktokPublicationSettings),
+        tiktokParametersValidated:
+          channel === "tiktok" && Boolean(tiktokPublicationSettings),
         hasContent,
         hasTitle,
         hasText,
@@ -3436,7 +3581,9 @@ export default function PublishModal({
     ? buildFinalReviewItems(finalReviewPosts || buildPreparedPostsByChannel())
     : [];
   const scheduleModalItems = scheduleModalOpen
-    ? buildFinalReviewItems(scheduleReviewPosts || buildPreparedPostsByChannel())
+    ? buildFinalReviewItems(
+        scheduleReviewPosts || buildPreparedPostsByChannel(),
+      )
     : [];
   const finalReviewBlockers = finalReviewItems.flatMap((item) => item.blockers);
   const hasFinalReviewBlockers = finalReviewBlockers.length > 0;
@@ -3461,7 +3608,9 @@ export default function PublishModal({
         (blocker) => blocker !== "Ajoutez au moins du texte ou un média.",
       );
       acc[item.channel] = {
-        tone: selectorBlockers.length ? ("blocked" as const) : ("ready" as const),
+        tone: selectorBlockers.length
+          ? ("blocked" as const)
+          : ("ready" as const),
         message: selectorBlockers[0] || "Prêt à publier",
         blockers: selectorBlockers,
         warnings: item.warnings,
@@ -3531,7 +3680,9 @@ export default function PublishModal({
     setTiktokPublicationSettings(null);
   };
 
-  const validateTiktokSettingsModal = async (settings: TiktokPublicationSettings) => {
+  const validateTiktokSettingsModal = async (
+    settings: TiktokPublicationSettings,
+  ) => {
     setTiktokPublicationSettings(settings);
     setTiktokSettingsOpen(false);
 
@@ -3561,7 +3712,11 @@ export default function PublishModal({
   useEffect(() => {
     const openAiConfiguration = () => setAiConfigurationOpen(true);
     window.addEventListener("inrcy:open-ai-configuration", openAiConfiguration);
-    return () => window.removeEventListener("inrcy:open-ai-configuration", openAiConfiguration);
+    return () =>
+      window.removeEventListener(
+        "inrcy:open-ai-configuration",
+        openAiConfiguration,
+      );
   }, []);
 
   const confirmFinalReview = async () => {
@@ -3570,7 +3725,9 @@ export default function PublishModal({
     const items = buildFinalReviewItems(preparedPostsByChannel);
     const publishableItems = items.filter((item) => item.blockers.length === 0);
     if (!publishableItems.length) return;
-    const tiktokWillPublish = publishableItems.some((item) => item.channel === "tiktok");
+    const tiktokWillPublish = publishableItems.some(
+      (item) => item.channel === "tiktok",
+    );
     if (tiktokWillPublish && !tiktokPublicationSettings) {
       setFinalReviewOpen(false);
       setTiktokSettingsFlow("publish");
@@ -3607,8 +3764,12 @@ export default function PublishModal({
         open={tiktokSettingsOpen}
         styles={styles}
         isMobile={isMobile}
-        mediaType={resolveChannelMediaMode("tiktok") === "video" ? "video" : "images"}
-        videoDurationSeconds={videoDurationSeconds ?? videoSourceMetadata?.duration ?? null}
+        mediaType={
+          resolveChannelMediaMode("tiktok") === "video" ? "video" : "images"
+        }
+        videoDurationSeconds={
+          videoDurationSeconds ?? videoSourceMetadata?.duration ?? null
+        }
         onCancel={closeTiktokSettingsModal}
         onValidate={validateTiktokSettingsModal}
       />
@@ -3661,6 +3822,18 @@ export default function PublishModal({
         maxVideoBytes={BOOSTER_MAX_VIDEO_BYTES}
       />
 
+      <MediaLibraryPickerModal
+        open={mediaLibraryPickerOpen}
+        title="Ajouter depuis la Médiathèque"
+        subtitle="Choisissez une image ou une vidéo déjà stockée dans iNrCy."
+        accept="all"
+        multiple
+        maxSelection={BOOSTER_MAX_IMAGE_COUNT}
+        confirmLabel="Ajouter à la publication"
+        onClose={() => setMediaLibraryPickerOpen(false)}
+        onConfirm={(items) => addMediaLibrarySelection(items)}
+      />
+
       <PublishChannelSelector
         styles={styles}
         isMobile={isMobile}
@@ -3687,6 +3860,7 @@ export default function PublishModal({
         onPickImagesClick={onPickImagesClick}
         onPickVideoClick={onPickVideoClick}
         onTakePhotoClick={() => onTakePhotoClick()}
+        onOpenMediaLibrary={() => setMediaLibraryPickerOpen(true)}
         publicationMediaType={publicationMediaType}
         channelMediaModes={channelMediaModes}
         setChannelMediaMode={setChannelMediaMode}

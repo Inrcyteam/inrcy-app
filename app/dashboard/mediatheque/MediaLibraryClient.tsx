@@ -65,10 +65,6 @@ type UploadFinalizeItem = {
   duration_seconds: number | null;
 };
 
-type EditDraft = {
-  title: string;
-  tags: string;
-};
 
 const MAX_IMAGE_BYTES = INR_MEDIA_IMAGE_MAX_BYTES;
 const MAX_VIDEO_BYTES = INR_MEDIA_VIDEO_SOURCE_MAX_BYTES;
@@ -240,7 +236,6 @@ export default function MediaLibraryClient() {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
   const [fileInputKey, setFileInputKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -253,8 +248,8 @@ export default function MediaLibraryClient() {
   const [typeFilter, setTypeFilter] = useState<MediaTypeFilter>("all");
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>("active");
   const [search, setSearch] = useState("");
-  const [editDrafts, setEditDrafts] = useState<Record<string, EditDraft>>({});
   const [previewItem, setPreviewItem] = useState<MediaItem | null>(null);
+  const [helperOpen, setHelperOpen] = useState(false);
 
   const selectedFiles = files;
   const selectedStats = useMemo(() => {
@@ -295,18 +290,6 @@ export default function MediaLibraryClient() {
           total_bytes: 0,
         },
       );
-      setEditDrafts((prev) => {
-        const next = { ...prev };
-        for (const item of nextItems) {
-          if (!next[item.id]) {
-            next[item.id] = {
-              title: item.title || "",
-              tags: tagsToText(item.tags),
-            };
-          }
-        }
-        return next;
-      });
     } catch (e: any) {
       setError(e?.message || "Impossible de charger la médiathèque.");
     } finally {
@@ -558,46 +541,6 @@ export default function MediaLibraryClient() {
     }
   }
 
-  async function patchItem(
-    id: string,
-    payload: Record<string, unknown>,
-    successMessage: string,
-  ) {
-    setSavingId(id);
-    setError(null);
-    setSuccess(null);
-    try {
-      const response = await fetch("/api/media-library/items", {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id, ...payload }),
-      });
-      const json = await readApiJson(response, "Mise à jour impossible.");
-      if (!response.ok)
-        throw new Error(json?.error || "Mise à jour impossible.");
-      setSuccess(successMessage);
-      await loadItems();
-    } catch (e: any) {
-      setError(e?.message || "Mise à jour impossible.");
-    } finally {
-      setSavingId(null);
-    }
-  }
-
-  async function saveMetadata(item: MediaItem) {
-    const draft = editDrafts[item.id];
-    if (!draft) return;
-    await patchItem(
-      item.id,
-      {
-        title: draft.title,
-        tags: cleanEditableTags(draft.tags),
-      },
-      "Média mis à jour.",
-    );
-    setEditingId(null);
-  }
-
   async function deleteItem(item: MediaItem) {
     const ok = window.confirm(
       "Supprimer définitivement ce média de votre médiathèque ?",
@@ -623,17 +566,6 @@ export default function MediaLibraryClient() {
     }
   }
 
-  function updateDraft(id: string, field: keyof EditDraft, value: string) {
-    setEditDrafts((prev) => ({
-      ...prev,
-      [id]: {
-        title: prev[id]?.title ?? "",
-        tags: prev[id]?.tags ?? "",
-        [field]: value,
-      },
-    }));
-  }
-
   return (
     <div className={styles.page}>
       <div className={styles.wrap}>
@@ -642,15 +574,21 @@ export default function MediaLibraryClient() {
             🖼️
           </div>
           <div className={styles.heroContent}>
-            <div className={styles.kicker}>Médiathèque</div>
             <h1 className={styles.title}>Vos images et vidéos iNrCy</h1>
             <p className={styles.subtitle}>
-              Stockez vos réalisations, photos, logos et vidéos. iNrAgent pourra
-              privilégier ces médias avant la banque d’images iNrCy.
+              Médias privés pour vos publications et iNrAgent.
             </p>
           </div>
 
           <div className={styles.headerActions}>
+            <button
+              type="button"
+              className={styles.helperButton}
+              onClick={() => setHelperOpen(true)}
+              aria-label="Aide médiathèque"
+            >
+              ?
+            </button>
             <button
               type="button"
               className={styles.ghostButton}
@@ -690,9 +628,6 @@ export default function MediaLibraryClient() {
             <small className={styles.metricSub}>sur cette vue</small>
           </article>
         </section>
-
-        {error ? <div className={styles.error}>{error}</div> : null}
-        {success ? <div className={styles.success}>{success}</div> : null}
 
         <div className={styles.grid}>
           <form className={styles.card} onSubmit={onSubmit}>
@@ -830,6 +765,13 @@ export default function MediaLibraryClient() {
             >
               {uploading ? "Import en cours…" : "Importer dans ma médiathèque"}
             </button>
+
+            {(success || error) && (
+              <div className={styles.formFeedback} aria-live="polite">
+                {success ? <div className={styles.success}>{success}</div> : null}
+                {error ? <div className={styles.error}>{error}</div> : null}
+              </div>
+            )}
           </form>
 
           <section className={styles.libraryCard}>
@@ -903,28 +845,31 @@ export default function MediaLibraryClient() {
                 </span>
               </div>
             ) : (
-              <div className={styles.mediaGrid}>
-                {items.map((item) => {
-                  const draft = editDrafts[item.id] ?? {
-                    title: item.title || "",
-                    tags: tagsToText(item.tags),
-                  };
-                  const isEditing = editingId === item.id;
-                  return (
-                    <article
-                      key={item.id}
-                      className={`${styles.mediaCard} ${item.is_active === false ? styles.mediaCardDisabled : ""}`}
-                    >
+              <div className={styles.mediaList}>
+                <div className={styles.mediaListHead} aria-hidden="true">
+                  <span>Média</span>
+                  <span>Type</span>
+                  <span>Poids</span>
+                  <span>Format</span>
+                  <span>Date</span>
+                  <span></span>
+                </div>
+                {items.map((item) => (
+                  <article
+                    key={item.id}
+                    className={`${styles.mediaRow} ${item.is_active === false ? styles.mediaRowDisabled : ""}`}
+                  >
+                    <div className={styles.mediaRowFile}>
                       <button
                         type="button"
-                        className={styles.previewButton}
+                        className={styles.mediaRowPreview}
                         onClick={() => setPreviewItem(item)}
                         aria-label="Agrandir le média"
                       >
                         {item.media_type === "video" ? (
                           <video
                             src={item.signed_url || undefined}
-                            className={styles.mediaThumb}
+                            className={styles.mediaRowThumb}
                             muted
                             playsInline
                             preload="metadata"
@@ -933,128 +878,117 @@ export default function MediaLibraryClient() {
                           <img
                             src={item.signed_url}
                             alt={item.title || "Média"}
-                            className={styles.mediaThumb}
+                            className={styles.mediaRowThumb}
                             loading="lazy"
                           />
                         ) : (
-                          <div className={styles.noPreview}>
-                            Aperçu indisponible
-                          </div>
+                          <div className={styles.noPreview}>Aperçu indisponible</div>
                         )}
-                        <span className={styles.mediaTypeBadge}>
-                          {item.media_type === "video" ? "Vidéo" : "Image"}
-                        </span>
                       </button>
 
-                      <div className={styles.mediaBody}>
-                        {isEditing ? (
-                          <>
-                            <input
-                              className={styles.inlineInput}
-                              value={draft.title}
-                              onChange={(event) =>
-                                updateDraft(
-                                  item.id,
-                                  "title",
-                                  event.target.value,
-                                )
-                              }
-                              placeholder="Titre"
-                            />
-                            <input
-                              className={styles.inlineInput}
-                              value={draft.tags}
-                              onChange={(event) =>
-                                updateDraft(item.id, "tags", event.target.value)
-                              }
-                              placeholder="Tags séparés par virgules"
-                            />
-                          </>
-                        ) : (
-                          <>
-                            <h3>{item.title || "Média sans titre"}</h3>
-                            <p>{tagsToText(item.tags) || "Aucun tag"}</p>
-                          </>
-                        )}
-
-                        <div className={styles.metaRow}>
-                          <span>{formatBytes(item.size_bytes)}</span>
-                          <span>
-                            {item.media_type === "video"
-                              ? formatDuration(item.duration_seconds)
-                              : item.width && item.height
-                                ? `${item.width}×${item.height}`
-                                : "—"}
-                          </span>
-                          <span>{formatDate(item.created_at)}</span>
-                        </div>
-
-                        <div className={styles.cardActions}>
-                          {isEditing ? (
-                            <>
-                              <button
-                                type="button"
-                                className={styles.smallButton}
-                                onClick={() => saveMetadata(item)}
-                                disabled={savingId === item.id}
-                              >
-                                Enregistrer
-                              </button>
-                              <button
-                                type="button"
-                                className={styles.smallGhostButton}
-                                onClick={() => setEditingId(null)}
-                              >
-                                Annuler
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <button
-                                type="button"
-                                className={styles.smallButton}
-                                onClick={() => setEditingId(item.id)}
-                              >
-                                Modifier
-                              </button>
-                              <button
-                                type="button"
-                                className={styles.smallGhostButton}
-                                onClick={() =>
-                                  patchItem(
-                                    item.id,
-                                    { is_active: item.is_active === false },
-                                    item.is_active === false
-                                      ? "Média réactivé."
-                                      : "Média masqué.",
-                                  )
-                                }
-                                disabled={savingId === item.id}
-                              >
-                                {item.is_active === false
-                                  ? "Réactiver"
-                                  : "Masquer"}
-                              </button>
-                              <button
-                                type="button"
-                                className={styles.smallDangerButton}
-                                onClick={() => deleteItem(item)}
-                                disabled={savingId === item.id}
-                              >
-                                Supprimer
-                              </button>
-                            </>
-                          )}
-                        </div>
+                      <div className={styles.mediaRowMain}>
+                        <strong>{item.title || "Média sans titre"}</strong>
+                        <span>{tagsToText(item.tags) || "Aucun tag"}</span>
                       </div>
-                    </article>
-                  );
-                })}
+                    </div>
+
+                    <span className={styles.mediaRowPill}>
+                      {item.media_type === "video" ? "Vidéo" : "Image"}
+                    </span>
+                    <span className={styles.mediaRowMeta}>
+                      {formatBytes(item.size_bytes)}
+                    </span>
+                    <span className={styles.mediaRowMeta}>
+                      {item.media_type === "video"
+                        ? formatDuration(item.duration_seconds)
+                        : item.width && item.height
+                          ? `${item.width}×${item.height}`
+                          : "—"}
+                    </span>
+                    <span className={styles.mediaRowMeta}>
+                      {formatDate(item.created_at)}
+                    </span>
+
+                    <button
+                      type="button"
+                      className={styles.mediaRowDelete}
+                      onClick={() => deleteItem(item)}
+                      disabled={savingId === item.id}
+                    >
+                      Supprimer
+                    </button>
+                  </article>
+                ))}
               </div>
             )}
           </section>
         </div>
       </div>
+
+      {helperOpen ? (
+        <div
+          className={styles.helperOverlay}
+          role="presentation"
+          onClick={() => setHelperOpen(false)}
+        >
+          <div
+            className={styles.helperModal}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Aide médiathèque iNrCy"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className={styles.helperClose}
+              onClick={() => setHelperOpen(false)}
+              aria-label="Fermer l’aide"
+            >
+              ×
+            </button>
+            <div className={styles.helperModalTop}>
+              <div className={styles.helperModalIcon} aria-hidden="true">
+                🖼️
+              </div>
+              <div className={styles.helperModalIntro}>
+                <div className={styles.helperModalKicker}>Médiathèque iNrCy</div>
+                <h2>Comment utiliser vos médias ?</h2>
+                <p>
+                  Vos photos, logos et vidéos restent privés. iNrAgent les utilise en
+                  priorité pour préparer des publications plus authentiques.
+                </p>
+              </div>
+            </div>
+            <div className={styles.helperModalPills}>
+              <span>🔒 Privé</span>
+              <span>🖼️ Images {MAX_IMAGE_MB_LABEL}</span>
+              <span>🎬 Vidéos {MAX_VIDEO_MB_LABEL}</span>
+              <span>🤖 Priorité iNrAgent</span>
+            </div>
+            <div className={styles.helperModalGrid}>
+              <div className={styles.helperInfoCard}>
+                <strong>🔒 Médias privés</strong>
+                <span>Chaque fichier reste rattaché au compte du professionnel.</span>
+              </div>
+              <div className={styles.helperInfoCard}>
+                <strong>🖼️ Images</strong>
+                <span>JPG, PNG ou WebP · {MAX_IMAGE_MB_LABEL} maximum par image.</span>
+              </div>
+              <div className={styles.helperInfoCard}>
+                <strong>🎬 Vidéos</strong>
+                <span>MP4, WebM ou MOV · {MAX_VIDEO_MB_LABEL} maximum par vidéo.</span>
+              </div>
+              <div className={styles.helperInfoCard}>
+                <strong>🤖 iNrAgent</strong>
+                <span>iNrAgent privilégie cette médiathèque avant la banque d’images iNrCy.</span>
+              </div>
+            </div>
+            <div className={styles.helperModalFooter}>
+              Importez vos meilleurs visuels ici pour qu’iNrAgent privilégie vos vrais médias.
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {previewItem ? (
         <div

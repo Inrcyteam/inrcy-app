@@ -804,6 +804,9 @@ export async function POST(request: Request) {
   const mediaReadinessByChannel = Object.fromEntries(
     channels.map((channel) => [channel, channelMediaReadiness(channel, media)]),
   );
+  const mediaAdaptationByChannel = Object.fromEntries(
+    channels.map((channel) => [channel, channelMediaAdaptation(channel, media)]),
+  );
 
   const { versions, recoveredChannels } = await generateBoosterPosts({
     idea,
@@ -838,6 +841,7 @@ export async function POST(request: Request) {
     video,
     videoAsset: video,
     mediaReadinessByChannel,
+    mediaAdaptationByChannel,
     mediaPolicy: "booster_publish_rules",
     imageRequiredRequested: automation.imageRequired,
     executionTarget: "booster_publish",
@@ -928,3 +932,45 @@ export async function POST(request: Request) {
     prepared: true,
   });
 }
+function channelMediaAdaptation(
+  channel: BoosterChannels,
+  media: ImageBankAsset | null,
+) {
+  const mediaKind = media?.mediaType || media?.kind || "none";
+  const channelLabel = channelLabels[boosterToAgentChannel[channel]] || channel;
+
+  if (!media) {
+    return {
+      channel,
+      channelLabel,
+      mediaType: "none",
+      strategy: "text_only",
+      userEditable: false,
+      note: "Aucun média à adapter pour ce canal.",
+    };
+  }
+
+  if (mediaKind === "video") {
+    return {
+      channel,
+      channelLabel,
+      mediaType: "video",
+      strategy: "booster_video_format",
+      userEditable: true,
+      note:
+        "iNrAgent transmet la vidéo source à Booster. Le format vidéo sera préparé selon les règles du canal avant publication.",
+    };
+  }
+
+  return {
+    channel,
+    channelLabel,
+    mediaType: "image",
+    strategy: "booster_image_adapter",
+    userEditable: true,
+    note:
+      "iNrAgent transmet l’image source à Booster. Une version compatible avec le canal sera préparée sans modifier l’original.",
+  };
+}
+
+

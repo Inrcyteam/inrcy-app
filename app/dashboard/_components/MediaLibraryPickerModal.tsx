@@ -1,0 +1,740 @@
+"use client";
+
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+
+export type MediaLibraryPickerItem = {
+  id: string;
+  bucket_name: string | null;
+  storage_path: string;
+  media_type: "image" | "video";
+  mime_type: string | null;
+  size_bytes: number | null;
+  title: string | null;
+  tags: string[] | null;
+  width: number | null;
+  height: number | null;
+  duration_seconds: number | null;
+  created_at: string | null;
+  signed_url: string | null;
+};
+
+type MediaLibraryPickerModalProps = {
+  open: boolean;
+  title?: string;
+  subtitle?: string;
+  accept?: "all" | "image" | "video";
+  multiple?: boolean;
+  maxSelection?: number;
+  confirmLabel?: string;
+  selectedHint?: string;
+  onClose: () => void;
+  onConfirm: (items: MediaLibraryPickerItem[]) => void | Promise<void>;
+};
+
+function formatBytes(value: number | null | undefined) {
+  const bytes = Number(value || 0);
+  if (!Number.isFinite(bytes) || bytes <= 0) return "—";
+  if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} Ko`;
+  return `${(bytes / (1024 * 1024)).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} Mo`;
+}
+
+function formatDuration(seconds: number | null | undefined) {
+  const safe = Number(seconds || 0);
+  if (!Number.isFinite(safe) || safe <= 0) return "—";
+  const rounded = Math.round(safe);
+  const minutes = Math.floor(rounded / 60);
+  const remaining = rounded % 60;
+  return `${minutes}:${String(remaining).padStart(2, "0")}`;
+}
+
+function displayName(item: MediaLibraryPickerItem) {
+  return (
+    item.title ||
+    item.storage_path.split("/").pop() ||
+    (item.media_type === "video" ? "Vidéo iNrCy" : "Image iNrCy")
+  );
+}
+
+function dateLabel(value: string | null) {
+  if (!value) return "—";
+  try {
+    return new Intl.DateTimeFormat("fr-FR", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    }).format(new Date(value));
+  } catch {
+    return "—";
+  }
+}
+
+export function mediaLibraryItemToAttachment(item: MediaLibraryPickerItem) {
+  return {
+    bucket: item.bucket_name || "inrcy-pro-media",
+    path: item.storage_path,
+    name: displayName(item),
+    type:
+      item.mime_type ||
+      (item.media_type === "video" ? "video/mp4" : "image/jpeg"),
+    size: item.size_bytes || 0,
+  };
+}
+
+export default function MediaLibraryPickerModal({
+  open,
+  title = "Choisir depuis la Médiathèque",
+  subtitle = "Sélectionnez un média déjà importé dans iNrCy.",
+  accept = "all",
+  multiple = true,
+  maxSelection = 10,
+  confirmLabel = "Ajouter",
+  selectedHint,
+  onClose,
+  onConfirm,
+}: MediaLibraryPickerModalProps) {
+  const [items, setItems] = useState<MediaLibraryPickerItem[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [typeFilter, setTypeFilter] = useState<"all" | "image" | "video">(
+    accept === "all" ? "all" : accept,
+  );
+  const [query, setQuery] = useState("");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [compact, setCompact] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setTypeFilter(accept === "all" ? "all" : accept);
+    setQuery("");
+    setSelectedIds([]);
+    setError("");
+  }, [open, accept]);
+
+  useEffect(() => {
+    if (!open || typeof window === "undefined") return;
+    const updateCompact = () => setCompact(window.innerWidth <= 640);
+    updateCompact();
+    window.addEventListener("resize", updateCompact);
+    return () => window.removeEventListener("resize", updateCompact);
+  }, [open]);
+
+  const loadItems = useCallback(async () => {
+    if (!open) return;
+    setLoading(true);
+    setError("");
+    try {
+      const params = new URLSearchParams({
+        type: typeFilter,
+        active: "active",
+        limit: "120",
+      });
+      if (query.trim()) params.set("q", query.trim());
+      const response = await fetch(
+        `/api/media-library/items?${params.toString()}`,
+        {
+          cache: "no-store",
+        },
+      );
+      const json = await response.json().catch(() => null);
+      if (!response.ok || json?.ok === false) {
+        throw new Error(json?.error || "Médiathèque indisponible.");
+      }
+      const nextItems = Array.isArray(json?.items) ? json.items : [];
+      setItems(
+        nextItems.filter((item: MediaLibraryPickerItem) => {
+          if (accept !== "all" && item.media_type !== accept) return false;
+          return Boolean(item?.id && item?.storage_path);
+        }),
+      );
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "Médiathèque indisponible.",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [accept, open, query, typeFilter]);
+
+  useEffect(() => {
+    if (!open) return;
+    void loadItems();
+  }, [loadItems, open]);
+
+  const selectedItems = useMemo(() => {
+    const map = new Map(items.map((item) => [item.id, item]));
+    return selectedIds
+      .map((id) => map.get(id))
+      .filter(Boolean) as MediaLibraryPickerItem[];
+  }, [items, selectedIds]);
+
+  const toggleItem = (item: MediaLibraryPickerItem) => {
+    setError("");
+    setSelectedIds((current) => {
+      if (current.includes(item.id))
+        return current.filter((id) => id !== item.id);
+      if (!multiple) return [item.id];
+      if (current.length >= maxSelection) {
+        setError(
+          `Sélection limitée à ${maxSelection} fichier${maxSelection > 1 ? "s" : ""}.`,
+        );
+        return current;
+      }
+      return [...current, item.id];
+    });
+  };
+
+  const validate = async () => {
+    if (!selectedItems.length) {
+      setError("Sélectionnez au moins un média.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      await onConfirm(selectedItems);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Ajout impossible.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!open) return null;
+
+  const displayTitle = compact ? "Médiathèque" : title;
+  const displaySubtitle = compact ? "Ajouter un média" : subtitle;
+  const modalComputedStyle: React.CSSProperties = compact
+    ? {
+        ...modalStyle,
+        width: "calc(100vw - 16px)",
+        maxHeight: "calc(100dvh - 18px)",
+        padding: 14,
+        borderRadius: 24,
+        gap: 9,
+      }
+    : modalStyle;
+  const headerComputedStyle: React.CSSProperties = compact
+    ? {
+        ...headerStyle,
+        gridTemplateColumns: "44px minmax(0, 1fr) 40px",
+        gap: 10,
+        alignItems: "center",
+      }
+    : headerStyle;
+  const headerIconComputedStyle: React.CSSProperties = compact
+    ? {
+        ...headerIconStyle,
+        width: 44,
+        height: 44,
+        borderRadius: 16,
+        fontSize: 20,
+      }
+    : headerIconStyle;
+  const titleComputedStyle: React.CSSProperties = compact
+    ? {
+        ...titleStyle,
+        margin: 0,
+        fontSize: 22,
+        whiteSpace: "nowrap",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+      }
+    : titleStyle;
+  const subtitleComputedStyle: React.CSSProperties = compact
+    ? { ...subtitleStyle, margin: "3px 0 0", fontSize: 13, lineHeight: 1.25 }
+    : subtitleStyle;
+  const filtersComputedStyle: React.CSSProperties = compact
+    ? {
+        ...filtersStyle,
+        gridTemplateColumns: "1fr",
+        gap: 7,
+        padding: 10,
+        borderRadius: 16,
+      }
+    : filtersStyle;
+  const listComputedStyle: React.CSSProperties = compact
+    ? { ...listStyle, minHeight: 0, gap: 7 }
+    : listStyle;
+  const rowComputedStyle: React.CSSProperties = compact
+    ? {
+        ...rowStyle,
+        gridTemplateColumns: "58px minmax(0, 1fr) 64px 30px",
+        gap: 8,
+        padding: 8,
+        borderRadius: 15,
+      }
+    : rowStyle;
+  const thumbComputedStyle: React.CSSProperties = compact
+    ? { ...thumbStyle, width: 58, height: 42, borderRadius: 11 }
+    : thumbStyle;
+  const footerComputedStyle: React.CSSProperties = compact
+    ? {
+        ...footerStyle,
+        paddingTop: 2,
+        alignItems: "stretch",
+        flexDirection: "column",
+        gap: 8,
+      }
+    : footerStyle;
+  const footerActionsStyle: React.CSSProperties = compact
+    ? {
+        display: "grid",
+        gridTemplateColumns: "1fr 1fr",
+        gap: 8,
+        width: "100%",
+      }
+    : {
+        display: "flex",
+        gap: 8,
+        flexWrap: "wrap",
+        justifyContent: "flex-end",
+      };
+
+  return (
+    <div
+      style={{ ...overlayStyle, padding: compact ? 8 : overlayStyle.padding }}
+      role="dialog"
+      aria-modal="true"
+      onMouseDown={onClose}
+    >
+      <div
+        style={modalComputedStyle}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <div style={headerComputedStyle}>
+          <div style={headerIconComputedStyle} aria-hidden="true">
+            🖼️
+          </div>
+          <div style={{ minWidth: 0 }}>
+            {!compact ? <div style={kickerStyle}>Médiathèque iNrCy</div> : null}
+            <h2 style={titleComputedStyle}>{displayTitle}</h2>
+            <p style={subtitleComputedStyle}>{displaySubtitle}</p>
+          </div>
+          <button
+            type="button"
+            style={closeStyle}
+            onClick={onClose}
+            aria-label="Fermer"
+          >
+            ×
+          </button>
+        </div>
+
+        <div style={filtersComputedStyle}>
+          <label style={fieldStyle}>
+            <span>Type</span>
+            <select
+              value={typeFilter}
+              onChange={(event) =>
+                setTypeFilter(event.target.value as "all" | "image" | "video")
+              }
+              disabled={accept !== "all"}
+              style={inputStyle}
+            >
+              <option value="all">Tous</option>
+              <option value="image">Images</option>
+              <option value="video">Vidéos</option>
+            </select>
+          </label>
+          <label style={fieldStyle}>
+            <span>Recherche</span>
+            <input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="titre, tag, fichier..."
+              style={inputStyle}
+            />
+          </label>
+          <button
+            type="button"
+            style={ghostButtonStyle}
+            onClick={loadItems}
+            disabled={loading}
+          >
+            {loading ? "Chargement…" : "Appliquer"}
+          </button>
+        </div>
+
+        {error ? <div style={errorStyle}>{error}</div> : null}
+
+        <div style={listComputedStyle}>
+          {loading ? (
+            <div style={emptyStyle}>Chargement de votre Médiathèque…</div>
+          ) : items.length === 0 ? (
+            <div style={emptyStyle}>
+              Aucun média disponible avec ces filtres.
+            </div>
+          ) : (
+            items.map((item) => {
+              const selected = selectedIds.includes(item.id);
+              const tags =
+                Array.isArray(item.tags) && item.tags.length
+                  ? item.tags.join(", ")
+                  : "Aucun tag";
+              return (
+                <button
+                  type="button"
+                  key={item.id}
+                  onClick={() => toggleItem(item)}
+                  style={{
+                    ...rowComputedStyle,
+                    borderColor: selected
+                      ? "rgba(105,239,255,.65)"
+                      : "rgba(255,255,255,.08)",
+                    background: selected
+                      ? "linear-gradient(90deg, rgba(76,195,255,.16), rgba(155,81,255,.12))"
+                      : rowComputedStyle.background,
+                  }}
+                >
+                  <span style={thumbComputedStyle}>
+                    {item.media_type === "image" && item.signed_url ? (
+                      <img src={item.signed_url} alt="" style={thumbImgStyle} />
+                    ) : item.media_type === "video" && item.signed_url ? (
+                      <video
+                        src={item.signed_url}
+                        style={thumbImgStyle}
+                        muted
+                        playsInline
+                        preload="metadata"
+                      />
+                    ) : (
+                      <span aria-hidden>
+                        {item.media_type === "video" ? "🎬" : "🖼️"}
+                      </span>
+                    )}
+                  </span>
+                  <span style={nameBlockStyle}>
+                    <strong style={nameStyle}>{displayName(item)}</strong>
+                    <small style={tagStyle}>{tags}</small>
+                  </span>
+                  <span style={pillStyle}>
+                    {item.media_type === "video" ? "Vidéo" : "Image"}
+                  </span>
+                  {!compact ? (
+                    <>
+                      <span style={metaStyle}>
+                        {formatBytes(item.size_bytes)}
+                      </span>
+                      <span style={metaStyle}>
+                        {item.media_type === "video"
+                          ? formatDuration(item.duration_seconds)
+                          : item.width && item.height
+                            ? `${item.width}×${item.height}`
+                            : "—"}
+                      </span>
+                      <span style={metaStyle}>
+                        {dateLabel(item.created_at)}
+                      </span>
+                    </>
+                  ) : null}
+                  <span style={checkStyle}>{selected ? "✓" : ""}</span>
+                </button>
+              );
+            })
+          )}
+        </div>
+
+        <div style={footerComputedStyle}>
+          <span style={footerHintStyle}>
+            {selectedItems.length
+              ? `${selectedItems.length} média${selectedItems.length > 1 ? "s" : ""} sélectionné${selectedItems.length > 1 ? "s" : ""}`
+              : selectedHint || "Choisissez vos médias dans la liste."}
+          </span>
+          <div style={footerActionsStyle}>
+            <button
+              type="button"
+              style={cancelButtonStyle}
+              onClick={onClose}
+              disabled={busy}
+            >
+              Annuler
+            </button>
+            <button
+              type="button"
+              style={primaryButtonStyle}
+              onClick={validate}
+              disabled={busy || !selectedItems.length}
+            >
+              {busy ? "Ajout…" : confirmLabel}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const overlayStyle: React.CSSProperties = {
+  position: "fixed",
+  inset: 0,
+  zIndex: 10050,
+  display: "grid",
+  placeItems: "center",
+  padding: 16,
+  background: "rgba(2,7,22,.78)",
+  backdropFilter: "blur(18px)",
+};
+
+const modalStyle: React.CSSProperties = {
+  width: "min(920px, 94vw)",
+  maxHeight: "82dvh",
+  display: "grid",
+  gridTemplateRows: "auto auto auto minmax(0, 1fr) auto",
+  gap: 10,
+  borderRadius: 28,
+  padding: 18,
+  color: "#f7fbff",
+  background:
+    "radial-gradient(circle at top left, rgba(84,220,255,.16), transparent 28%), radial-gradient(circle at top right, rgba(189,78,255,.18), transparent 34%), linear-gradient(180deg, rgba(13,27,62,.98), rgba(5,12,30,.98))",
+  border: "1px solid rgba(142,161,255,.28)",
+  boxShadow:
+    "0 34px 110px rgba(0,0,0,.52), inset 0 1px 0 rgba(255,255,255,.06)",
+  minWidth: 0,
+};
+
+const headerStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "54px minmax(0,1fr) 42px",
+  alignItems: "start",
+  gap: 12,
+};
+
+const headerIconStyle: React.CSSProperties = {
+  width: 54,
+  height: 54,
+  display: "grid",
+  placeItems: "center",
+  borderRadius: 18,
+  background:
+    "linear-gradient(135deg, rgba(47,209,255,.28), rgba(188,74,255,.34))",
+  border: "1px solid rgba(255,255,255,.14)",
+};
+
+const kickerStyle: React.CSSProperties = {
+  color: "#69efff",
+  textTransform: "uppercase",
+  letterSpacing: ".14em",
+  fontSize: 11,
+  fontWeight: 950,
+};
+
+const titleStyle: React.CSSProperties = {
+  margin: "3px 0 0",
+  fontSize: 28,
+  lineHeight: 1,
+  letterSpacing: "-.04em",
+};
+
+const subtitleStyle: React.CSSProperties = {
+  margin: "6px 0 0",
+  color: "#b8c6e8",
+  fontWeight: 760,
+  lineHeight: 1.35,
+};
+
+const closeStyle: React.CSSProperties = {
+  width: 42,
+  height: 42,
+  borderRadius: 999,
+  border: "1px solid rgba(255,255,255,.14)",
+  background: "rgba(255,255,255,.10)",
+  color: "#fff",
+  fontSize: 25,
+  fontWeight: 900,
+  cursor: "pointer",
+};
+
+const filtersStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "150px minmax(0,1fr) 120px",
+  gap: 10,
+  padding: 12,
+  borderRadius: 18,
+  background: "rgba(2,9,28,.58)",
+  border: "1px solid rgba(255,255,255,.07)",
+};
+
+const fieldStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 5,
+  color: "#dbe7ff",
+  fontSize: 12,
+  fontWeight: 900,
+  minWidth: 0,
+};
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  minWidth: 0,
+  border: "1px solid rgba(139,161,255,.18)",
+  borderRadius: 14,
+  background: "rgba(2,8,24,.86)",
+  color: "#fff",
+  padding: "11px 12px",
+  outline: "none",
+  fontWeight: 850,
+};
+
+const ghostButtonStyle: React.CSSProperties = {
+  alignSelf: "end",
+  border: "1px solid rgba(255,255,255,.14)",
+  borderRadius: 999,
+  background:
+    "linear-gradient(135deg, rgba(47,209,255,.30), rgba(134,94,255,.34))",
+  color: "#fff",
+  fontWeight: 950,
+  padding: "11px 14px",
+  cursor: "pointer",
+};
+
+const errorStyle: React.CSSProperties = {
+  borderRadius: 14,
+  padding: "10px 12px",
+  background: "rgba(255,61,99,.12)",
+  border: "1px solid rgba(255,61,99,.28)",
+  color: "#ffd7e1",
+  fontWeight: 850,
+  whiteSpace: "pre-wrap",
+};
+
+const listStyle: React.CSSProperties = {
+  minHeight: 220,
+  overflow: "auto",
+  display: "grid",
+  alignContent: "start",
+  gap: 8,
+  paddingRight: 2,
+};
+
+const emptyStyle: React.CSSProperties = {
+  minHeight: 240,
+  display: "grid",
+  placeItems: "center",
+  textAlign: "center",
+  borderRadius: 18,
+  background: "rgba(255,255,255,.035)",
+  border: "1px dashed rgba(255,255,255,.12)",
+  color: "#aebce0",
+  fontWeight: 900,
+};
+
+const rowStyle: React.CSSProperties = {
+  width: "100%",
+  display: "grid",
+  gridTemplateColumns: "68px minmax(160px,1fr) 74px 76px 84px 100px 34px",
+  gap: 10,
+  alignItems: "center",
+  padding: 10,
+  borderRadius: 18,
+  border: "1px solid rgba(255,255,255,.08)",
+  background: "rgba(255,255,255,.035)",
+  color: "inherit",
+  textAlign: "left",
+  cursor: "pointer",
+};
+
+const thumbStyle: React.CSSProperties = {
+  width: 68,
+  height: 48,
+  borderRadius: 12,
+  overflow: "hidden",
+  display: "grid",
+  placeItems: "center",
+  background: "rgba(255,255,255,.08)",
+};
+
+const thumbImgStyle: React.CSSProperties = {
+  width: "100%",
+  height: "100%",
+  objectFit: "cover",
+  display: "block",
+};
+
+const nameBlockStyle: React.CSSProperties = {
+  minWidth: 0,
+  display: "grid",
+  gap: 4,
+};
+
+const nameStyle: React.CSSProperties = {
+  minWidth: 0,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  fontSize: 14,
+};
+
+const tagStyle: React.CSSProperties = {
+  color: "#aebce0",
+  minWidth: 0,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  fontWeight: 760,
+};
+
+const pillStyle: React.CSSProperties = {
+  justifySelf: "start",
+  borderRadius: 999,
+  padding: "6px 10px",
+  background: "rgba(76,195,255,.12)",
+  border: "1px solid rgba(76,195,255,.22)",
+  color: "#dff6ff",
+  fontSize: 12,
+  fontWeight: 950,
+};
+
+const metaStyle: React.CSSProperties = {
+  color: "#c7d4f0",
+  fontSize: 12,
+  fontWeight: 850,
+  whiteSpace: "nowrap",
+};
+
+const checkStyle: React.CSSProperties = {
+  width: 28,
+  height: 28,
+  display: "grid",
+  placeItems: "center",
+  borderRadius: 999,
+  background: "rgba(255,255,255,.08)",
+  color: "#69efff",
+  fontWeight: 950,
+};
+
+const footerStyle: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+  flexWrap: "wrap",
+  paddingTop: 4,
+};
+
+const footerHintStyle: React.CSSProperties = {
+  color: "#aebce0",
+  fontSize: 12,
+  fontWeight: 850,
+};
+
+const cancelButtonStyle: React.CSSProperties = {
+  border: "1px solid rgba(255,255,255,.13)",
+  borderRadius: 999,
+  background: "rgba(255,255,255,.08)",
+  color: "#fff",
+  fontWeight: 950,
+  padding: "11px 16px",
+  cursor: "pointer",
+};
+
+const primaryButtonStyle: React.CSSProperties = {
+  border: "1px solid rgba(255,255,255,.16)",
+  borderRadius: 999,
+  background: "linear-gradient(135deg, #3b82f6, #b92be8)",
+  color: "#fff",
+  fontWeight: 950,
+  padding: "11px 18px",
+  cursor: "pointer",
+};

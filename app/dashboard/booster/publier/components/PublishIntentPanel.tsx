@@ -217,6 +217,7 @@ type PublishIntentPanelProps = {
   onPickImagesClick: () => void;
   onPickVideoClick: () => void;
   onTakePhotoClick: () => void;
+  onOpenMediaLibrary: () => void;
   publicationMediaType: PublicationMediaType;
   channelMediaModes: Partial<Record<ChannelKey, ChannelMediaMode>>;
   setChannelMediaMode: (channel: ChannelKey, mode: ChannelMediaMode) => void;
@@ -252,6 +253,7 @@ export default function PublishIntentPanel({
   onPickImagesClick,
   onPickVideoClick,
   onTakePhotoClick,
+  onOpenMediaLibrary,
   publicationMediaType,
   channelMediaModes: _channelMediaModes,
   setChannelMediaMode: _setChannelMediaMode,
@@ -741,14 +743,14 @@ export default function PublishIntentPanel({
         }}
       >
         <div className={styles.blockTitle}>Votre intention</div>
-
       </div>
       <div
         className={styles.subtitle}
         style={{ marginBottom: 10, maxWidth: "none", whiteSpace: "normal" }}
       >
-        Décrivez votre idée. <strong>Ajoutez jusqu’à 5 images ou 1 vidéo</strong> pour préparer
-        votre publication.
+        Décrivez votre idée.{" "}
+        <strong>Ajoutez jusqu’à 5 images ou 1 vidéo</strong> pour préparer votre
+        publication.
       </div>
       <div style={{ display: "grid", gap: 10 }}>
         <div>
@@ -943,6 +945,21 @@ export default function PublishIntentPanel({
               }}
             >
               + Ajouter une vidéo
+            </button>
+            <button
+              type="button"
+              className={styles.secondaryBtn}
+              onClick={onOpenMediaLibrary}
+              title="Ajouter depuis la Médiathèque"
+              style={{
+                flex: "0 0 auto",
+                minHeight: isMobile ? 32 : 34,
+                padding: isMobile ? "6px 9px" : "7px 12px",
+                fontSize: isMobile ? 11 : 12,
+                whiteSpace: "nowrap",
+              }}
+            >
+              🖼️ Médiathèque
             </button>
             <span
               title={

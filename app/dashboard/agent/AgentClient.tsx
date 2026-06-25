@@ -23,6 +23,9 @@ import { makeAttachmentPath } from "@/app/dashboard/mails/_lib/mailboxPhase25";
 import HelpButton from "../_components/HelpButton";
 import PublishAiConfigurationDrawer from "../booster/publier/components/PublishAiConfigurationDrawer";
 import RichSiteContentEditor from "../booster/publier/components/RichSiteContentEditor";
+import MediaLibraryPickerModal, {
+  type MediaLibraryPickerItem,
+} from "../_components/MediaLibraryPickerModal";
 import {
   BOOSTER_PREFERRED_CTA_OPTIONS,
   buildPreferredCtaPatch,
@@ -203,6 +206,13 @@ type AgentPublishMediaPreview = {
   url: string;
   kind: "image" | "video" | "file" | "none";
   note: string;
+};
+
+type AgentMediaAdaptationPreview = {
+  strategy: string;
+  mediaType: "image" | "video" | "none" | "file";
+  note: string;
+  userEditable: boolean;
 };
 
 type AgentMediaLibraryItem = {
@@ -1946,6 +1956,72 @@ function extractPublishMediaPreview(
   };
 }
 
+function extractPublishMediaAdaptationPreview(
+  action: AgentPreparedAction | null,
+  channelKey: ChannelKey | null,
+): AgentMediaAdaptationPreview {
+  if (!action || !channelKey) {
+    return {
+      strategy: "none",
+      mediaType: "none",
+      note: "Aucune adaptation média à préparer.",
+      userEditable: false,
+    };
+  }
+
+  const adaptationByChannel = asRecord(
+    action.payload?.mediaAdaptationByChannel,
+  );
+  if (adaptationByChannel) {
+    for (const key of channelPayloadKeys[channelKey]) {
+      const record = asRecord(adaptationByChannel[key]);
+      if (record) {
+        const mediaTypeRaw = safeString(record.mediaType || record.media_type);
+        return {
+          strategy: safeString(record.strategy) || "booster_auto",
+          mediaType:
+            mediaTypeRaw === "video"
+              ? "video"
+              : mediaTypeRaw === "image"
+                ? "image"
+                : mediaTypeRaw === "file"
+                  ? "file"
+                  : "none",
+          note:
+            safeString(record.note) ||
+            "iNrAgent prépare automatiquement une version compatible avec le canal.",
+          userEditable: record.userEditable !== false,
+        };
+      }
+    }
+  }
+
+  const media = extractPublishMediaPreview(action, channelKey);
+  if (media.kind === "video") {
+    return {
+      strategy: "booster_video_format",
+      mediaType: "video",
+      note: "La vidéo source sera préparée par Booster selon les spécificités du canal avant publication.",
+      userEditable: true,
+    };
+  }
+  if (media.kind === "image") {
+    return {
+      strategy: "booster_image_adapter",
+      mediaType: "image",
+      note: "L’image source sera adaptée par Booster selon les dimensions du canal sans modifier l’original.",
+      userEditable: true,
+    };
+  }
+
+  return {
+    strategy: "text_only",
+    mediaType: "none",
+    note: "Aucun média à adapter pour ce canal.",
+    userEditable: false,
+  };
+}
+
 function publishContentKindLabel(args: {
   media: AgentPublishMediaPreview | null;
   hasText: boolean;
@@ -2918,7 +2994,11 @@ export default function AgentClient() {
   const [attachmentUploadState, setAttachmentUploadState] = useState<
     "idle" | "saving"
   >("idle");
+  const [campaignMediaLibraryPickerOpen, setCampaignMediaLibraryPickerOpen] =
+    useState(false);
   const [publishMediaPreviewOpen, setPublishMediaPreviewOpen] = useState(false);
+  const [publishMediaLibraryPickerOpen, setPublishMediaLibraryPickerOpen] =
+    useState(false);
   const [publishMediaUploadState, setPublishMediaUploadState] = useState<
     "idle" | "saving"
   >("idle");
@@ -3737,7 +3817,9 @@ export default function AgentClient() {
     return { error: text.trim() || fallbackMessage };
   }
 
-  function mediaPatchFromLibraryItem(item: AgentMediaLibraryItem) {
+  function mediaPatchFromLibraryItem(
+    item: AgentMediaLibraryItem | MediaLibraryPickerItem,
+  ) {
     return {
       id: item.id,
       bucket: item.bucket_name || "inrcy-pro-media",
@@ -3792,7 +3874,9 @@ export default function AgentClient() {
     }
   }
 
-  async function selectPublishMediaFromLibrary(item: AgentMediaLibraryItem) {
+  async function selectPublishMediaFromLibrary(
+    item: AgentMediaLibraryItem | MediaLibraryPickerItem,
+  ) {
     if (!item) return;
     if (activePreviewChannel === "youtube" && item.media_type !== "video") {
       showNotice("YouTube nécessite une vidéo.");
@@ -3823,7 +3907,6 @@ export default function AgentClient() {
       return;
     }
     setPublishMediaPreviewOpen(true);
-    void loadPublishMediaLibrary();
   }
 
   async function savePublishMediaPatch(media: Record<string, unknown> | null) {
@@ -4001,6 +4084,14 @@ export default function AgentClient() {
       setPublishMediaUploadState("idle");
     }
   }
+
+  const selectPublishMediaFromPicker = async (
+    items: MediaLibraryPickerItem[],
+  ) => {
+    const item = items[0];
+    if (!item) return;
+    await selectPublishMediaFromLibrary(item);
+  };
 
   async function removePublishMedia() {
     if (!selectedPreparedAction || publishMediaUploadState === "saving") return;
@@ -4536,6 +4627,46 @@ export default function AgentClient() {
         uploaded.length > 1
           ? "Pièces jointes ajoutées."
           : "Pièce jointe ajoutée.",
+      );
+    } catch (error) {
+      showNotice(
+        error instanceof Error
+          ? error.message
+          : "Pièce jointe impossible à ajouter.",
+      );
+    } finally {
+      setAttachmentUploadState("idle");
+    }
+  }
+
+  async function addCampaignAttachmentsFromMediaLibrary(
+    items: MediaLibraryPickerItem[],
+  ) {
+    if (!selectedPreparedAction || attachmentUploadState === "saving") return;
+    const picked = items.slice(0, 10).map((item) => ({
+      bucket: item.bucket_name || "inrcy-pro-media",
+      path: item.storage_path,
+      name:
+        item.title ||
+        item.storage_path.split("/").pop() ||
+        (item.media_type === "video" ? "Vidéo iNrCy" : "Image iNrCy"),
+      type:
+        item.mime_type ||
+        (item.media_type === "video" ? "video/mp4" : "image/jpeg"),
+      size: item.size_bytes || 0,
+    })) as CampaignAttachmentRef[];
+    if (!picked.length) return;
+
+    setAttachmentUploadState("saving");
+    try {
+      const current = normalizeCampaignAttachmentRefs(
+        selectedPreparedAction.payload?.attachments,
+      );
+      await saveCampaignAttachments([...current, ...picked].slice(0, 10));
+      showNotice(
+        picked.length > 1
+          ? "Pièces jointes ajoutées depuis la Médiathèque."
+          : "Pièce jointe ajoutée depuis la Médiathèque.",
       );
     } catch (error) {
       showNotice(
@@ -7407,17 +7538,42 @@ export default function AgentClient() {
                 }}
                 disabled={attachmentUploadState === "saving"}
               />
-              <label htmlFor="agent-campaign-attachment">
-                <span aria-hidden>📎</span>
-                {attachmentUploadState === "saving"
-                  ? "Préparation..."
-                  : "Ajouter un fichier"}
-              </label>
+              <div className={styles.campaignAttachmentActionButtons}>
+                <label htmlFor="agent-campaign-attachment">
+                  <span aria-hidden>📎</span>
+                  {attachmentUploadState === "saving"
+                    ? "Préparation..."
+                    : "Joindre"}
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setCampaignMediaLibraryPickerOpen(true)}
+                  disabled={attachmentUploadState === "saving"}
+                >
+                  <span aria-hidden>🖼️</span>
+                  Médiathèque
+                </button>
+              </div>
               <small>
                 Les fichiers seront joints à la campagne au moment de la
                 validation.
               </small>
             </div>
+
+            <MediaLibraryPickerModal
+              open={campaignMediaLibraryPickerOpen}
+              title="Joindre depuis la Médiathèque"
+              subtitle="Ajouter un média"
+              accept="all"
+              multiple
+              maxSelection={10}
+              confirmLabel="Joindre"
+              selectedHint="Choisissez les médias à joindre à la campagne."
+              onClose={() => setCampaignMediaLibraryPickerOpen(false)}
+              onConfirm={(items) =>
+                addCampaignAttachmentsFromMediaLibrary(items)
+              }
+            />
             {campaignAttachments.length > 0 ? (
               <div className={styles.attachmentList}>
                 {campaignAttachments.map((attachment) => (
@@ -7511,21 +7667,58 @@ export default function AgentClient() {
 
             <div className={styles.attachmentUploadBox}>
               <input
-                id="agent-publish-media"
+                id="agent-publish-media-image"
                 type="file"
-                accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime,video/x-m4v"
+                accept="image/jpeg,image/png,image/webp"
                 onChange={(event) => {
                   void uploadPublishMedia(event.currentTarget.files?.[0]);
                   event.currentTarget.value = "";
                 }}
                 disabled={publishMediaUploadState === "saving"}
               />
-              <label htmlFor="agent-publish-media">
-                <span aria-hidden>🖼️</span>
-                {publishMediaUploadState === "saving"
-                  ? "Préparation..."
-                  : "Ajouter / remplacer un média"}
-              </label>
+              <input
+                id="agent-publish-media-video"
+                type="file"
+                accept="video/mp4,video/webm,video/quicktime,video/x-m4v"
+                onChange={(event) => {
+                  void uploadPublishMedia(event.currentTarget.files?.[0]);
+                  event.currentTarget.value = "";
+                }}
+                disabled={publishMediaUploadState === "saving"}
+              />
+              <input
+                id="agent-publish-media-camera"
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={(event) => {
+                  void uploadPublishMedia(event.currentTarget.files?.[0]);
+                  event.currentTarget.value = "";
+                }}
+                disabled={publishMediaUploadState === "saving"}
+              />
+              <div className={styles.publishMediaActionButtons}>
+                <label htmlFor="agent-publish-media-image">
+                  <span aria-hidden>🖼️</span>
+                  Ajouter une image
+                </label>
+                <label htmlFor="agent-publish-media-video">
+                  <span aria-hidden>🎬</span>
+                  Ajouter une vidéo
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setPublishMediaLibraryPickerOpen(true)}
+                  disabled={publishMediaUploadState === "saving"}
+                >
+                  <span aria-hidden>🗂️</span>
+                  Médiathèque
+                </button>
+                <label htmlFor="agent-publish-media-camera">
+                  <span aria-hidden>📷</span>
+                  Prendre une photo
+                </label>
+              </div>
               <small>
                 Image jusqu’à {INR_MEDIA_IMAGE_MAX_MB_LABEL} ou vidéo jusqu’à{" "}
                 {INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL}. iNrAgent V1 utilise
@@ -7534,79 +7727,18 @@ export default function AgentClient() {
               </small>
             </div>
 
-            <div className={styles.publishMediaLibraryBlock}>
-              <div className={styles.publishMediaLibraryHeader}>
-                <strong>Médiathèque du pro</strong>
-                <button
-                  type="button"
-                  onClick={loadPublishMediaLibrary}
-                  disabled={
-                    publishMediaLibraryState === "loading" ||
-                    publishMediaUploadState === "saving"
-                  }
-                >
-                  {publishMediaLibraryState === "loading"
-                    ? "Chargement..."
-                    : "Rafraîchir"}
-                </button>
-              </div>
-              {publishMediaLibraryState === "error" ? (
-                <p className={styles.publishMediaLibraryEmpty}>
-                  Médiathèque indisponible pour le moment.
-                </p>
-              ) : publishMediaLibraryItems.length > 0 ? (
-                <div className={styles.publishMediaLibraryGrid}>
-                  {publishMediaLibraryItems.map((item) => {
-                    const isVideo = item.media_type === "video";
-                    const disabled =
-                      publishMediaUploadState === "saving" ||
-                      (activePreviewChannel === "youtube" && !isVideo);
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        className={styles.publishMediaLibraryItem}
-                        onClick={() => void selectPublishMediaFromLibrary(item)}
-                        disabled={disabled}
-                        title={
-                          disabled
-                            ? "YouTube nécessite une vidéo."
-                            : "Utiliser ce média"
-                        }
-                      >
-                        {item.signed_url ? (
-                          isVideo ? (
-                            <video src={item.signed_url} preload="metadata" />
-                          ) : (
-                            <img
-                              src={item.signed_url}
-                              alt={item.title || "Média"}
-                            />
-                          )
-                        ) : (
-                          <span aria-hidden>{isVideo ? "🎬" : "🖼️"}</span>
-                        )}
-                        <strong>
-                          {item.title ||
-                            item.storage_path.split("/").pop() ||
-                            "Média"}
-                        </strong>
-                        <small>
-                          {isVideo ? "Vidéo" : "Image"}
-                          {item.size_bytes
-                            ? ` · ${formatAttachmentSize(item.size_bytes)}`
-                            : ""}
-                        </small>
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className={styles.publishMediaLibraryEmpty}>
-                  Aucun média actif dans la Médiathèque du pro.
-                </p>
-              )}
-            </div>
+            <MediaLibraryPickerModal
+              open={publishMediaLibraryPickerOpen}
+              title="Ajouter depuis la Médiathèque"
+              subtitle="Ajouter un média"
+              accept={activePreviewChannel === "youtube" ? "video" : "all"}
+              multiple={false}
+              maxSelection={1}
+              confirmLabel="Utiliser ce média"
+              selectedHint="Choisissez un média pour iNrAgent."
+              onClose={() => setPublishMediaLibraryPickerOpen(false)}
+              onConfirm={(items) => selectPublishMediaFromPicker(items)}
+            />
 
             <div className={styles.modalActions}>
               <button
