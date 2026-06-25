@@ -320,6 +320,7 @@ export default function DashboardTopbar({
             setUserMenuOpen={setUserMenuOpen}
             openPanel={openPanel}
             handleLogout={handleLogout}
+            onNavigate={onNavigateCta}
           />
         </div>
       </div>
@@ -524,6 +525,18 @@ export default function DashboardTopbar({
                 }}
               >
                 Configuration IA
+              </button>
+
+              <button
+                className={styles.mobileMenuItem}
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setMenuOpen(false);
+                  onNavigateCta("/dashboard/mediatheque");
+                }}
+              >
+                Médiathèque
               </button>
 
               <button

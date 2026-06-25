@@ -48,6 +48,11 @@ type ImageBankAsset = {
   tags: string[];
   orientation: string;
   source: string;
+  mediaType?: "image" | "video";
+  kind?: "image" | "video";
+  mimeType?: string;
+  size?: number | null;
+  duration?: number | null;
 };
 
 type AutomationDbRow = {
@@ -69,17 +74,19 @@ type AutomationDbRow = {
 };
 
 const BUCKET = "inrcy-image-bank";
+const PRO_MEDIA_BUCKET = "inrcy-pro-media";
 
-const agentToBoosterChannel: Partial<Record<InrAgentChannel, BoosterChannels>> = {
-  site_inrcy: "inrcy_site",
-  site_web: "site_web",
-  gmb: "gmb",
-  facebook: "facebook",
-  instagram: "instagram",
-  linkedin: "linkedin",
-  tiktok: "tiktok",
-  youtube: "youtube_shorts",
-};
+const agentToBoosterChannel: Partial<Record<InrAgentChannel, BoosterChannels>> =
+  {
+    site_inrcy: "inrcy_site",
+    site_web: "site_web",
+    gmb: "gmb",
+    facebook: "facebook",
+    instagram: "instagram",
+    linkedin: "linkedin",
+    tiktok: "tiktok",
+    youtube: "youtube_shorts",
+  };
 
 const boosterToAgentChannel: Record<BoosterChannels, string> = {
   inrcy_site: "site_inrcy",
@@ -139,8 +146,13 @@ function channelRequiresVideo(channel: BoosterChannels) {
   return channel === "youtube_shorts";
 }
 
-function channelMediaReadiness(channel: BoosterChannels, image: ImageBankAsset | null) {
-  if (channelRequiresVideo(channel)) {
+function channelMediaReadiness(
+  channel: BoosterChannels,
+  media: ImageBankAsset | null,
+) {
+  const mediaKind = media?.mediaType || media?.kind || "image";
+
+  if (channelRequiresVideo(channel) && mediaKind !== "video") {
     return {
       ready: false,
       publishable: false,
@@ -153,10 +165,10 @@ function channelMediaReadiness(channel: BoosterChannels, image: ImageBankAsset |
     };
   }
 
-  if (mediaRequiredChannels.has(channel) && !image) {
+  if (mediaRequiredChannels.has(channel) && !media) {
     const reason =
       channel === "instagram"
-        ? "Instagram nécessite au moins 1 image."
+        ? "Instagram nécessite au moins 1 image ou 1 vidéo."
         : "TikTok nécessite au moins 1 photo ou 1 vidéo.";
     return {
       ready: false,
@@ -170,37 +182,52 @@ function channelMediaReadiness(channel: BoosterChannels, image: ImageBankAsset |
     };
   }
 
-  const warnings = !image
+  const warnings = !media
     ? channel === "gmb"
-      ? ["Google Business sera publié sans photo."]
-      : ["Aucune image sélectionnée."]
+      ? ["Google Business sera publié sans photo ni vidéo."]
+      : ["Aucun média sélectionné."]
     : [];
 
   return {
     ready: true,
     publishable: true,
-    status: image ? "ready_with_image" : "ready_text_only",
+    status: media
+      ? mediaKind === "video"
+        ? "ready_with_video"
+        : "ready_with_image"
+      : "ready_text_only",
     label: "Prêt",
-    reason: image ? "Prêt à publier." : "Prêt à publier en texte seul.",
+    reason: media
+      ? mediaKind === "video"
+        ? "Prêt à publier avec une vidéo."
+        : "Prêt à publier avec une image."
+      : "Prêt à publier en texte seul.",
     blockers: [] as string[],
     warnings,
-    canPublishTextOnly: !image,
+    canPublishTextOnly: !media,
   };
 }
 
-function rowToAutomationSettings(row: AutomationDbRow | null): InrAgentAutomationSettings {
+function rowToAutomationSettings(
+  row: AutomationDbRow | null,
+): InrAgentAutomationSettings {
   return sanitizeInrAgentAutomationSettings("publish", {
     enabled: row?.enabled ?? undefined,
     frequency: row?.frequency as InrAgentAutomationSettings["frequency"],
     dayOfWeek: row?.day_of_week ?? undefined,
     time: row?.time ?? undefined,
-    validationMode: row?.validation_mode as InrAgentAutomationSettings["validationMode"],
-    allowedChannels: row?.allowed_channels as InrAgentAutomationSettings["allowedChannels"],
-    allowedThemes: row?.allowed_themes as InrAgentAutomationSettings["allowedThemes"],
+    validationMode:
+      row?.validation_mode as InrAgentAutomationSettings["validationMode"],
+    allowedChannels:
+      row?.allowed_channels as InrAgentAutomationSettings["allowedChannels"],
+    allowedThemes:
+      row?.allowed_themes as InrAgentAutomationSettings["allowedThemes"],
     useImageBank: row?.use_image_bank ?? undefined,
     imageRequired: row?.image_required ?? undefined,
-    recipientScope: row?.recipient_scope as InrAgentAutomationSettings["recipientScope"],
-    sourceStrategy: row?.source_strategy as InrAgentAutomationSettings["sourceStrategy"],
+    recipientScope:
+      row?.recipient_scope as InrAgentAutomationSettings["recipientScope"],
+    sourceStrategy:
+      row?.source_strategy as InrAgentAutomationSettings["sourceStrategy"],
     lastPreparedAt: row?.last_prepared_at ?? null,
     lastExecutedAt: row?.last_executed_at ?? null,
     nextRunAt: row?.next_run_at ?? null,
@@ -255,22 +282,31 @@ async function fetchRecentPublicationMemory(
         idea: cleanRecentPublicationField(row?.idea, 140),
         created_at: cleanRecentPublicationField(row?.created_at, 40),
       }))
-      .filter((row: BoosterRecentPublication) => row.title || row.content || row.idea || row.cta);
+      .filter(
+        (row: BoosterRecentPublication) =>
+          row.title || row.content || row.idea || row.cta,
+      );
   } catch {
     return [];
   }
 }
 
 function chooseTheme(allowedThemes: InrAgentTheme[]): InrAgentTheme {
-  const publishThemes = allowedThemes.filter((theme) => Boolean(agentThemeToBoosterTheme[theme]));
+  const publishThemes = allowedThemes.filter((theme) =>
+    Boolean(agentThemeToBoosterTheme[theme]),
+  );
   if (!publishThemes.length) return "conseils";
-  return publishThemes[Math.floor(Math.random() * publishThemes.length)] ?? "conseils";
+  return (
+    publishThemes[Math.floor(Math.random() * publishThemes.length)] ??
+    "conseils"
+  );
 }
 
 function getBusinessProfession(business: JsonRecord | null) {
   const decoded = decodeBusinessSector(String(business?.sector || ""));
   const professionLabel =
-    getJobLabel(decoded.sectorCategory, decoded.profession) || decoded.profession;
+    getJobLabel(decoded.sectorCategory, decoded.profession) ||
+    decoded.profession;
   return {
     sector: decoded.sectorCategory,
     profession: decoded.profession,
@@ -288,7 +324,10 @@ function buildAgentIdea(args: {
     args.profile?.company_legal_name || args.profile?.companyLegalName || "",
     90,
   );
-  const city = cleanText(args.profile?.hq_city || args.profile?.hqCity || "", 80);
+  const city = cleanText(
+    args.profile?.hq_city || args.profile?.hqCity || "",
+    80,
+  );
   const services = cleanList(
     args.business?.services || args.business?.services_text,
     5,
@@ -300,9 +339,13 @@ function buildAgentIdea(args: {
     70,
   );
   const themeLabel = themeLabels[args.theme] || "Conseil";
-  const servicesText = services.length ? ` autour de ${services.join(", ")}` : "";
+  const servicesText = services.length
+    ? ` autour de ${services.join(", ")}`
+    : "";
   const cityText = city ? ` à ${city}` : "";
-  const zonesText = zones.length ? ` et ses environs (${zones.join(", ")})` : "";
+  const zonesText = zones.length
+    ? ` et ses environs (${zones.join(", ")})`
+    : "";
   const companyText = company ? ` pour ${company}` : "";
 
   if (args.theme === "realisations") {
@@ -323,7 +366,9 @@ function buildAgentIdea(args: {
 function cleanHashtags(channel: BoosterChannels, input: unknown) {
   if (channel === "gmb" || siteChannels.has(channel)) return [];
   const limit =
-    channel === "instagram" || channel === "tiktok" || channel === "youtube_shorts"
+    channel === "instagram" ||
+    channel === "tiktok" ||
+    channel === "youtube_shorts"
       ? 8
       : channel === "linkedin"
         ? 3
@@ -347,6 +392,7 @@ async function generateBoosterPosts(args: {
   profile: JsonRecord | null;
   business: JsonRecord | null;
   recentPublications: BoosterRecentPublication[];
+  mediaType?: "images" | "video";
 }) {
   const { versions, recoveredChannels } = await generateSharedBoosterPosts({
     idea: args.idea,
@@ -356,7 +402,7 @@ async function generateBoosterPosts(args: {
     profile: args.profile,
     business: args.business,
     recentPublications: args.recentPublications,
-    mediaType: "images",
+    mediaType: args.mediaType || "images",
     forceNonBlocking: true,
     extraInstructions: `CONTEXTE iNrAgent : cette génération provient de l'automatisation Publier.
 Objectif : produire exactement la même logique éditoriale que Booster / Publier manuel, avec un contenu réellement adapté à chaque canal.
@@ -396,7 +442,9 @@ async function selectConnectedChannels(args: {
       states.youtube_shorts.connected && !states.youtube_shorts.requiresUpdate,
   };
 
-  const uniqueChannels: BoosterChannels[] = Array.from(new Set<BoosterChannels>(allowedChannels));
+  const uniqueChannels: BoosterChannels[] = Array.from(
+    new Set<BoosterChannels>(allowedChannels),
+  );
   return uniqueChannels.filter((channel) => connected[channel]);
 }
 
@@ -413,11 +461,106 @@ async function loadPublishAutomationSettings(userId: string) {
   return rowToAutomationSettings((data as AutomationDbRow | null) ?? null);
 }
 
+async function pickMediaFromProLibrary(args: {
+  userId: string;
+  business: JsonRecord | null;
+  theme: InrAgentTheme;
+  preferredTypes: Array<"image" | "video">;
+}): Promise<ImageBankAsset | null> {
+  const { sector, profession, professionLabel } = getBusinessProfession(
+    args.business,
+  );
+  const tags = [args.theme, profession, professionLabel, sector]
+    .map((item) => cleanText(item, 80).toLowerCase())
+    .filter(Boolean);
+
+  async function sign(row: any): Promise<ImageBankAsset | null> {
+    if (!row?.storage_path) return null;
+    const bucket = cleanText(row.bucket_name, 80) || PRO_MEDIA_BUCKET;
+    const signed = await supabaseAdmin.storage
+      .from(bucket)
+      .createSignedUrl(String(row.storage_path), 60 * 60);
+    const mediaType = row.media_type === "video" ? "video" : "image";
+    const size = Number(row.size_bytes || 0);
+    const duration = Number(row.duration_seconds || 0);
+
+    return {
+      id: String(row.id || ""),
+      bucket,
+      storagePath: String(row.storage_path || ""),
+      url: signed.data?.signedUrl || "",
+      title: cleanText(row.title, 180),
+      sector: cleanText(sector, 80),
+      job: cleanText(profession, 80),
+      tags: Array.isArray(row.tags)
+        ? row.tags.map((tag: unknown) => cleanText(tag, 60)).filter(Boolean)
+        : [],
+      orientation: "",
+      source: "pro_media_library",
+      mediaType,
+      kind: mediaType,
+      mimeType:
+        cleanText(row.mime_type, 120) ||
+        (mediaType === "video" ? "video/mp4" : "image/jpeg"),
+      size: Number.isFinite(size) && size > 0 ? size : null,
+      duration: Number.isFinite(duration) && duration > 0 ? duration : null,
+    };
+  }
+
+  try {
+    const select =
+      "id,bucket_name,storage_path,media_type,mime_type,size_bytes,duration_seconds,title,tags,usage_count,created_at";
+    const preferredTypes = args.preferredTypes.length
+      ? args.preferredTypes
+      : ["image"];
+
+    for (const mediaType of preferredTypes) {
+      if (tags.length) {
+        const primary = tags[0].replaceAll(",", " ");
+        const { data } = await supabaseAdmin
+          .from("pro_media_library")
+          .select(select)
+          .eq("user_id", args.userId)
+          .eq("is_active", true)
+          .eq("media_type", mediaType)
+          .or(`title.ilike.%${primary}%,storage_path.ilike.%${primary}%`)
+          .order("usage_count", { ascending: true })
+          .order("created_at", { ascending: false })
+          .limit(10);
+
+        const rows = Array.isArray(data) ? data : [];
+        if (rows.length)
+          return sign(rows[Math.floor(Math.random() * rows.length)]);
+      }
+
+      const { data } = await supabaseAdmin
+        .from("pro_media_library")
+        .select(select)
+        .eq("user_id", args.userId)
+        .eq("is_active", true)
+        .eq("media_type", mediaType)
+        .order("usage_count", { ascending: true })
+        .order("created_at", { ascending: false })
+        .limit(16);
+
+      const rows = Array.isArray(data) ? data : [];
+      if (rows.length)
+        return sign(rows[Math.floor(Math.random() * rows.length)]);
+    }
+
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 async function pickImageFromBank(args: {
   business: JsonRecord | null;
   theme: InrAgentTheme;
 }): Promise<ImageBankAsset | null> {
-  const { sector, profession, professionLabel } = getBusinessProfession(args.business);
+  const { sector, profession, professionLabel } = getBusinessProfession(
+    args.business,
+  );
   const tags = [args.theme, profession, professionLabel, sector]
     .map((item) => cleanText(item, 80).toLowerCase())
     .filter(Boolean);
@@ -436,14 +579,22 @@ async function pickImageFromBank(args: {
       title: cleanText(row.title, 180),
       sector: cleanText(row.sector, 80),
       job: cleanText(row.job, 80),
-      tags: Array.isArray(row.tags) ? row.tags.map((tag: unknown) => cleanText(tag, 60)).filter(Boolean) : [],
+      tags: Array.isArray(row.tags)
+        ? row.tags.map((tag: unknown) => cleanText(tag, 60)).filter(Boolean)
+        : [],
       orientation: cleanText(row.orientation, 40),
       source: cleanText(row.source, 80),
+      mediaType: "image",
+      kind: "image",
+      mimeType: "image/jpeg",
+      size: null,
+      duration: null,
     };
   }
 
   try {
-    const select = "id,storage_path,title,sector,job,tags,orientation,source,usage_count,created_at";
+    const select =
+      "id,storage_path,title,sector,job,tags,orientation,source,usage_count,created_at";
 
     if (profession) {
       const { data } = await supabaseAdmin
@@ -456,7 +607,8 @@ async function pickImageFromBank(args: {
         .limit(8);
 
       const rows = Array.isArray(data) ? data : [];
-      if (rows.length) return sign(rows[Math.floor(Math.random() * rows.length)]);
+      if (rows.length)
+        return sign(rows[Math.floor(Math.random() * rows.length)]);
     }
 
     if (sector) {
@@ -470,7 +622,8 @@ async function pickImageFromBank(args: {
         .limit(12);
 
       const rows = Array.isArray(data) ? data : [];
-      if (rows.length) return sign(rows[Math.floor(Math.random() * rows.length)]);
+      if (rows.length)
+        return sign(rows[Math.floor(Math.random() * rows.length)]);
     }
 
     if (tags.length) {
@@ -485,7 +638,8 @@ async function pickImageFromBank(args: {
         .limit(8);
 
       const rows = Array.isArray(data) ? data : [];
-      if (rows.length) return sign(rows[Math.floor(Math.random() * rows.length)]);
+      if (rows.length)
+        return sign(rows[Math.floor(Math.random() * rows.length)]);
     }
 
     const { data } = await supabaseAdmin
@@ -514,10 +668,14 @@ function getInitialStatus(validationMode: InrAgentValidationMode) {
 }
 
 function hasUsefulContent(post: ChannelPost | undefined) {
-  return Boolean(post?.title?.trim() || post?.content?.trim() || post?.cta?.trim());
+  return Boolean(
+    post?.title?.trim() || post?.content?.trim() || post?.cta?.trim(),
+  );
 }
 
-function buildPreviewText(versions: Partial<Record<BoosterChannels, ChannelPost>>) {
+function buildPreviewText(
+  versions: Partial<Record<BoosterChannels, ChannelPost>>,
+) {
   const preferredOrder: BoosterChannels[] = [
     "facebook",
     "instagram",
@@ -528,16 +686,21 @@ function buildPreviewText(versions: Partial<Record<BoosterChannels, ChannelPost>
     "tiktok",
     "youtube_shorts",
   ];
-  const first = preferredOrder.map((channel) => versions[channel]).find(hasUsefulContent);
+  const first = preferredOrder
+    .map((channel) => versions[channel])
+    .find(hasUsefulContent);
   if (!first) return "";
   return [first.title, first.content, first.cta].filter(Boolean).join("\n\n");
 }
 
-function buildSummary(channels: BoosterChannels[], image: ImageBankAsset | null) {
+function buildSummary(
+  channels: BoosterChannels[],
+  media: ImageBankAsset | null,
+) {
   const labels = channels
     .map((channel) => channelLabels[boosterToAgentChannel[channel]] || channel)
     .join(", ");
-  return `Publication préparée pour ${labels}.${image ? " Visuel iNrCy ajouté depuis la banque d’images." : " Aucun visuel disponible : les canaux compatibles seront préparés en texte seul."}`;
+  return `Publication préparée pour ${labels}.${media ? (media.mediaType === "video" || media.kind === "video" ? " Vidéo ajoutée depuis la médiathèque du pro." : " Visuel ajouté depuis la médiathèque ou la banque d’images.") : " Aucun média disponible : les canaux compatibles seront préparés en texte seul."}`;
 }
 
 export async function POST(request: Request) {
@@ -565,7 +728,11 @@ export async function POST(request: Request) {
     );
   }
 
-  const channels = await selectConnectedChannels({ supabase, userId, automation });
+  const channels = await selectConnectedChannels({
+    supabase,
+    userId,
+    automation,
+  });
   if (!channels.length) {
     return NextResponse.json(
       {
@@ -591,7 +758,10 @@ export async function POST(request: Request) {
     .select("*")
     .eq("user_id", userId)
     .maybeSingle();
-  const profile = profileData && typeof profileData === "object" ? (profileData as JsonRecord) : null;
+  const profile =
+    profileData && typeof profileData === "object"
+      ? (profileData as JsonRecord)
+      : null;
 
   let business: JsonRecord | null = null;
   try {
@@ -610,16 +780,29 @@ export async function POST(request: Request) {
   const agentTheme = chooseTheme(automation.allowedThemes);
   const boosterTheme = agentThemeToBoosterTheme[agentTheme] || "conseil";
   const idea = buildAgentIdea({ business, profile, theme: agentTheme });
-  const recentPublications = await fetchRecentPublicationMemory(supabase, userId);
-  const image = automation.useImageBank
-    ? await pickImageFromBank({ business, theme: agentTheme })
+  const recentPublications = await fetchRecentPublicationMemory(
+    supabase,
+    userId,
+  );
+  const prefersVideo =
+    channels.includes("youtube_shorts") || channels.includes("tiktok");
+  const media = automation.useImageBank
+    ? (await pickMediaFromProLibrary({
+        userId,
+        business,
+        theme: agentTheme,
+        preferredTypes: prefersVideo ? ["video", "image"] : ["image", "video"],
+      })) || (await pickImageFromBank({ business, theme: agentTheme }))
     : null;
+  const mediaKind = media?.mediaType || media?.kind || "image";
+  const image = media && mediaKind === "image" ? media : null;
+  const video = media && mediaKind === "video" ? media : null;
 
-  // Même logique que Booster / Publier : l'absence d'image ne bloque jamais
+  // Même logique que Booster / Publier : l'absence de média ne bloque jamais
   // la préparation du texte. Les canaux compatibles restent prêts en texte seul,
   // les canaux qui exigent un média sont marqués comme incomplets canal par canal.
   const mediaReadinessByChannel = Object.fromEntries(
-    channels.map((channel) => [channel, channelMediaReadiness(channel, image)]),
+    channels.map((channel) => [channel, channelMediaReadiness(channel, media)]),
   );
 
   const { versions, recoveredChannels } = await generateBoosterPosts({
@@ -629,10 +812,13 @@ export async function POST(request: Request) {
     profile,
     business,
     recentPublications,
+    mediaType: mediaKind === "video" ? "video" : "images",
   });
 
   const now = new Date().toISOString();
-  const targetChannels = channels.map((channel) => boosterToAgentChannel[channel]);
+  const targetChannels = channels.map(
+    (channel) => boosterToAgentChannel[channel],
+  );
   const previewText = buildPreviewText(versions);
   const title = `Publication ${themeLabels[agentTheme] || "iNr’Agent"} prête`;
   const payload = {
@@ -644,8 +830,13 @@ export async function POST(request: Request) {
     postByChannel: versions,
     selectedChannels: channels,
     targetChannels,
+    media,
+    mediaAsset: media,
+    mediaType: media ? mediaKind : "none",
     image,
     imageAsset: image,
+    video,
+    videoAsset: video,
     mediaReadinessByChannel,
     mediaPolicy: "booster_publish_rules",
     imageRequiredRequested: automation.imageRequired,
@@ -660,12 +851,12 @@ export async function POST(request: Request) {
       action_type: "publication",
       target_tool: "booster",
       title,
-      summary: buildSummary(channels, image),
+      summary: buildSummary(channels, media),
       preview_text: previewText,
       target_channels: targetChannels,
       target_themes: [agentTheme],
       recipients: [],
-      image_assets: image ? [image] : [],
+      image_assets: media ? [media] : [],
       payload,
       validation_required: automation.validationMode !== "draft_only",
       execution_policy: getExecutionPolicy(automation.validationMode),
@@ -676,7 +867,9 @@ export async function POST(request: Request) {
         automationFrequency: automation.frequency,
         preparedManually: !isCron,
         preparedByCron: isCron,
-        fallbackAppliedChannels: recoveredChannels.map((channel) => boosterToAgentChannel[channel]),
+        fallbackAppliedChannels: recoveredChannels.map(
+          (channel) => boosterToAgentChannel[channel],
+        ),
       },
       created_at: now,
       updated_at: now,
@@ -702,18 +895,29 @@ export async function POST(request: Request) {
     .eq("user_id", userId)
     .eq("automation_key", "publish");
 
-  if (image?.id) {
+  if (media?.id) {
     try {
+      const imageTable =
+        media.source === "pro_media_library"
+          ? "pro_media_library"
+          : "inrcy_image_bank";
       const { data: usageRow } = await supabaseAdmin
-        .from("inrcy_image_bank")
+        .from(imageTable)
         .select("usage_count")
-        .eq("id", image.id)
+        .eq("id", media.id)
         .maybeSingle();
-      const nextUsageCount = Number((usageRow as { usage_count?: unknown } | null)?.usage_count || 0) + 1;
+      const nextUsageCount =
+        Number(
+          (usageRow as { usage_count?: unknown } | null)?.usage_count || 0,
+        ) + 1;
+      const usagePatch =
+        imageTable === "pro_media_library"
+          ? { usage_count: nextUsageCount, last_used_at: now, updated_at: now }
+          : { usage_count: nextUsageCount, updated_at: now };
       await supabaseAdmin
-        .from("inrcy_image_bank")
-        .update({ usage_count: nextUsageCount, updated_at: now })
-        .eq("id", image.id);
+        .from(imageTable)
+        .update(usagePatch)
+        .eq("id", media.id);
     } catch {
       // Non bloquant : la publication préparée reste valide même si le compteur image n'est pas mis à jour.
     }

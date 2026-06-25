@@ -1,9 +1,18 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
-import { getCronUserIdFromRequest, isAuthorizedCronRequest } from "@/lib/cronAuth";
+import {
+  getCronUserIdFromRequest,
+  isAuthorizedCronRequest,
+} from "@/lib/cronAuth";
 import { enforceRateLimit } from "@/lib/rateLimit";
 import { encryptToken, tryDecryptToken } from "@/lib/oauthCrypto";
 import { randomUUID } from "crypto";
+import {
+  INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
+  INR_MEDIA_VIDEO_PUBLISH_MAX_MB_LABEL,
+  INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
+  INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL,
+} from "@/lib/mediaRules";
 
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import {
@@ -52,11 +61,21 @@ import { normalizeTiktokSettings } from "@/lib/tiktokMockSettings";
 import { isTiktokIntegrationActive } from "@/lib/tiktokRouteStorage";
 import { buildTiktokMediaProxyUrl } from "@/lib/tiktokMediaUrl";
 import { refreshTiktokAccessToken } from "@/lib/tiktokOAuth";
-import { tiktokDirectPostPhotos, tiktokDirectPostVideo, type TiktokPublicationSettings } from "@/lib/tiktokPublish";
-import { isYoutubeShortsIntegrationActive, refreshYoutubeShortsAccessToken } from "@/lib/youtubeShortsOAuth";
+import {
+  tiktokDirectPostPhotos,
+  tiktokDirectPostVideo,
+  type TiktokPublicationSettings,
+} from "@/lib/tiktokPublish";
+import {
+  isYoutubeShortsIntegrationActive,
+  refreshYoutubeShortsAccessToken,
+} from "@/lib/youtubeShortsOAuth";
 import { uploadYoutubeShort } from "@/lib/youtubeShortsPublish";
 import { buildVideoSettingsByChannel } from "@/lib/boosterVideoSettings";
-import { getVariantForChannel, type BoosterVideoTransformedVariant } from "@/lib/boosterVideoTransforms";
+import {
+  getVariantForChannel,
+  type BoosterVideoTransformedVariant,
+} from "@/lib/boosterVideoTransforms";
 import {
   sanitizeBoosterSiteText,
   stripSiteTextFormatting,
@@ -173,6 +192,7 @@ type PersistedVideoAttachment = {
   url: string;
   publicUrl: string;
   storagePath: string | null;
+  bucket?: string | null;
   thumbnailUrl: string | null;
   thumbnailStoragePath: string | null;
   transformedVariants?: BoosterVideoTransformedVariant[];
@@ -180,10 +200,10 @@ type PersistedVideoAttachment = {
   sourceVideo?: PersistedVideoAttachment | null;
 };
 
-const BOOSTER_MAX_VIDEO_SOURCE_BYTES = 100 * 1024 * 1024;
-const BOOSTER_MAX_VIDEO_SOURCE_MB_LABEL = "100 Mo";
-const BOOSTER_MAX_VIDEO_PUBLISH_BYTES = 40 * 1024 * 1024;
-const BOOSTER_MAX_VIDEO_PUBLISH_MB_LABEL = "40 Mo";
+const BOOSTER_MAX_VIDEO_SOURCE_BYTES = INR_MEDIA_VIDEO_SOURCE_MAX_BYTES;
+const BOOSTER_MAX_VIDEO_SOURCE_MB_LABEL = INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL;
+const BOOSTER_MAX_VIDEO_PUBLISH_BYTES = INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES;
+const BOOSTER_MAX_VIDEO_PUBLISH_MB_LABEL = INR_MEDIA_VIDEO_PUBLISH_MAX_MB_LABEL;
 
 function normalizePublicationMediaType(value: unknown): PublicationMediaType {
   return value === "video" ? "video" : "images";
@@ -198,7 +218,9 @@ function normalizeChannelMediaMode(
     : fallback;
 }
 
-function normalizeTiktokPublicationSettings(value: unknown): TiktokPublicationSettings | null {
+function normalizeTiktokPublicationSettings(
+  value: unknown,
+): TiktokPublicationSettings | null {
   const raw = asRecord(value);
   const privacyLevel = String(raw.privacyLevel || "").trim();
   if (!privacyLevel) return null;
@@ -207,7 +229,10 @@ function normalizeTiktokPublicationSettings(value: unknown): TiktokPublicationSe
     allowComments: raw.allowComments === true,
     allowDuo: raw.allowDuo === true,
     allowStitch: raw.allowStitch === true,
-    commercialContent: raw.commercialContent === "self" || raw.commercialContent === "branded" ? raw.commercialContent : "none",
+    commercialContent:
+      raw.commercialContent === "self" || raw.commercialContent === "branded"
+        ? raw.commercialContent
+        : "none",
     aiContent: raw.aiContent === true,
     photoAutoMusic: raw.photoAutoMusic === true,
     musicUsageConfirmed: raw.musicUsageConfirmed === true,
@@ -327,12 +352,13 @@ function buildInstagramPublishTokenCandidates(
 
 async function buildUrlsFromStoragePath(
   path: string,
+  bucket = "booster",
 ): Promise<{ publicUrl: string | null; signedUrl: string | null }> {
   const publicUrl =
-    supabaseAdmin.storage.from("booster").getPublicUrl(path)?.data?.publicUrl ||
+    supabaseAdmin.storage.from(bucket).getPublicUrl(path)?.data?.publicUrl ||
     null;
   const signed = await supabaseAdmin.storage
-    .from("booster")
+    .from(bucket)
     .createSignedUrl(path, 60 * 60 * 24);
   return {
     publicUrl,
@@ -346,13 +372,22 @@ async function normalizeVideoPayload(
   const raw = asRecord(input);
   if (!Object.keys(raw).length) return { video: null };
 
-  const storagePath = String(raw["storagePath"] || "").trim();
+  const storagePath = String(
+    raw["storagePath"] || raw["storage_path"] || raw["path"] || "",
+  ).trim();
+  const bucket =
+    String(
+      raw["bucket"] || raw["bucketName"] || raw["bucket_name"] || "booster",
+    ).trim() || "booster";
   const directPublicUrl = String(raw["publicUrl"] || raw["url"] || "").trim();
   let publicUrl = directPublicUrl;
 
-  if (!publicUrl && storagePath) {
-    const urls = await buildUrlsFromStoragePath(storagePath);
-    publicUrl = urls.publicUrl || urls.signedUrl || "";
+  if (storagePath) {
+    const urls = await buildUrlsFromStoragePath(storagePath, bucket);
+    publicUrl =
+      bucket === "booster"
+        ? publicUrl || urls.publicUrl || urls.signedUrl || ""
+        : urls.signedUrl || publicUrl || urls.publicUrl || "";
   }
 
   if (!publicUrl)
@@ -370,12 +405,13 @@ async function normalizeVideoPayload(
   const duration =
     Number.isFinite(durationRaw) && durationRaw > 0 ? durationRaw : null;
   const transformedVariants = Array.isArray(raw["transformedVariants"])
-    ? (raw["transformedVariants"] as BoosterVideoTransformedVariant[]).filter((variant: any) =>
-        variant &&
-        typeof variant === "object" &&
-        typeof variant.publicUrl === "string" &&
-        typeof variant.storagePath === "string" &&
-        typeof variant.signature === "string",
+    ? (raw["transformedVariants"] as BoosterVideoTransformedVariant[]).filter(
+        (variant: any) =>
+          variant &&
+          typeof variant === "object" &&
+          typeof variant.publicUrl === "string" &&
+          typeof variant.storagePath === "string" &&
+          typeof variant.signature === "string",
       )
     : [];
 
@@ -388,6 +424,7 @@ async function normalizeVideoPayload(
       url: publicUrl,
       publicUrl,
       storagePath: storagePath || null,
+      bucket,
       thumbnailUrl:
         String(
           raw["thumbnailUrl"] || raw["video_thumbnail_url"] || "",
@@ -525,7 +562,12 @@ function getRequiredImageFormatsForChannel(
   channel: ChannelKey,
 ): ImageOptimizationFormats {
   if (channel === "instagram") return { instagram: true };
-  if (channel === "facebook" || channel === "linkedin" || channel === "tiktok" || channel === "youtube_shorts")
+  if (
+    channel === "facebook" ||
+    channel === "linkedin" ||
+    channel === "tiktok" ||
+    channel === "youtube_shorts"
+  )
     return { socialFeed: true };
   if (channel === "gmb") return { gmb: true };
   // Site iNrCy / Site web use the original prepared image in the article payload.
@@ -913,7 +955,9 @@ async function getLatestIntegrationRow(
 
 export async function POST(req: Request) {
   try {
-    const cronUserId = isAuthorizedCronRequest(req) ? getCronUserIdFromRequest(req) : "";
+    const cronUserId = isAuthorizedCronRequest(req)
+      ? getCronUserIdFromRequest(req)
+      : "";
     let userId = cronUserId;
 
     if (!userId) {
@@ -963,7 +1007,9 @@ export async function POST(req: Request) {
       videoFormatByChannel: body.videoFormatByChannel,
       videoAdaptationModeByChannel: body.videoAdaptationModeByChannel,
     });
-    const tiktokPublicationSettings = normalizeTiktokPublicationSettings(body.tiktokPublicationSettings);
+    const tiktokPublicationSettings = normalizeTiktokPublicationSettings(
+      body.tiktokPublicationSettings,
+    );
     const hasAnyImageChannel = selected.some(
       (channel) => mediaModeByChannel[channel] === "images",
     );
@@ -986,7 +1032,9 @@ export async function POST(req: Request) {
             video: null as PersistedVideoAttachment | null,
             error: undefined as string | undefined,
           };
-    const getPublicationVideoForChannel = (channel: ChannelKey): PersistedVideoAttachment | null => {
+    const getPublicationVideoForChannel = (
+      channel: ChannelKey,
+    ): PersistedVideoAttachment | null => {
       if (!publicationVideo) return null;
       const settings = videoSettingsByChannel[channel];
       if (!settings) return publicationVideo;
@@ -1006,14 +1054,20 @@ export async function POST(req: Request) {
         duration: variant.duration ?? publicationVideo.duration ?? null,
         url: variant.publicUrl,
         publicUrl: variant.publicUrl,
-        storagePath: variant.storagePath || publicationVideo.storagePath || null,
+        storagePath:
+          variant.storagePath || publicationVideo.storagePath || null,
         transformedVariant: variant,
-        sourceVideo: { ...publicationVideo, sourceVideo: null, transformedVariant: null },
+        sourceVideo: {
+          ...publicationVideo,
+          sourceVideo: null,
+          transformedVariant: null,
+        },
       };
     };
 
     const buildPublicationVideoByChannel = () => {
-      if (!publicationVideo) return {} as Partial<Record<ChannelKey, PersistedVideoAttachment>>;
+      if (!publicationVideo)
+        return {} as Partial<Record<ChannelKey, PersistedVideoAttachment>>;
       return Object.fromEntries(
         selected
           .filter((channel) => mediaModeByChannel[channel] === "video")
@@ -1037,17 +1091,26 @@ export async function POST(req: Request) {
     const eventModule = isValorisation ? "propulser" : "booster";
     const eventType = isValorisation ? "valorize" : "publish";
     const workflowAction = isValorisation ? "valoriser" : "publier";
-    const originSource = String(body.source || body.origin?.source || "").trim();
-    const origin = originSource === "inr_agent"
-      ? {
-          source: "inr_agent",
-          label: "iNr'Agent",
-          agentActionId: String(body.inrAgentActionId || body.origin?.agentActionId || "").trim() || null,
-          automationKey: String(body.automationKey || body.origin?.automationKey || "publish").trim() || "publish",
-          workflowTool: eventModule,
-          workflowAction,
-        }
-      : null;
+    const originSource = String(
+      body.source || body.origin?.source || "",
+    ).trim();
+    const origin =
+      originSource === "inr_agent"
+        ? {
+            source: "inr_agent",
+            label: "iNr'Agent",
+            agentActionId:
+              String(
+                body.inrAgentActionId || body.origin?.agentActionId || "",
+              ).trim() || null,
+            automationKey:
+              String(
+                body.automationKey || body.origin?.automationKey || "publish",
+              ).trim() || "publish",
+            workflowTool: eventModule,
+            workflowAction,
+          }
+        : null;
     const hadAnyImageInput =
       hasAnyImageChannel &&
       (images.length > 0 ||
@@ -1208,8 +1271,12 @@ export async function POST(req: Request) {
     // 2) Persist publication
     const publicationId = randomUUID();
     const publicationVideoByChannel = buildPublicationVideoByChannel();
-    const oversizedPublicationVideo = Object.entries(publicationVideoByChannel).find(([, video]) => {
-      const size = Number((video as PersistedVideoAttachment | null)?.size || 0);
+    const oversizedPublicationVideo = Object.entries(
+      publicationVideoByChannel,
+    ).find(([, video]) => {
+      const size = Number(
+        (video as PersistedVideoAttachment | null)?.size || 0,
+      );
       return Number.isFinite(size) && size > BOOSTER_MAX_VIDEO_PUBLISH_BYTES;
     });
     if (oversizedPublicationVideo) {
@@ -1243,7 +1310,10 @@ export async function POST(req: Request) {
       publicationInsert.video_size = publicationVideo.size;
       publicationInsert.video_duration_seconds = publicationVideo.duration;
       publicationInsert.video_thumbnail_url = publicationVideo.thumbnailUrl;
-      publicationInsert.media_metadata = { video: publicationVideo, videoByChannel: publicationVideoByChannel };
+      publicationInsert.media_metadata = {
+        video: publicationVideo,
+        videoByChannel: publicationVideoByChannel,
+      };
     }
 
     const { error: pubErr } = await supabaseAdmin
@@ -1274,50 +1344,51 @@ export async function POST(req: Request) {
     // 4) Publish now
     const results: Record<string, unknown> = {};
 
-    const [fbRow, gmbRow, igRow, liRow, tiktokRow, youtubeRow] = await Promise.all([
-      getLatestIntegrationRow(
-        userId,
-        "facebook",
-        "facebook",
-        "facebook",
-        "status,resource_id,access_token_enc,expires_at",
-      ),
-      getLatestIntegrationRow(
-        userId,
-        "google",
-        "gmb",
-        "gmb",
-        "status,resource_id,meta,expires_at",
-      ),
-      getLatestIntegrationRow(
-        userId,
-        "instagram",
-        "instagram",
-        "instagram",
-        "status,resource_id,access_token_enc,resource_label,meta,expires_at",
-      ),
-      getLatestIntegrationRow(
-        userId,
-        "linkedin",
-        "linkedin",
-        "linkedin",
-        "status,resource_id,access_token_enc,meta,expires_at",
-      ),
-      getLatestIntegrationRow(
-        userId,
-        "tiktok",
-        "tiktok",
-        "tiktok",
-        "status,resource_id,resource_label,display_name,access_token_enc,refresh_token_enc,scopes,meta,expires_at",
-      ),
-      getLatestIntegrationRow(
-        userId,
-        "youtube",
-        "youtube_shorts",
-        "youtube_shorts",
-        "status,resource_id,resource_label,display_name,email_address,access_token_enc,refresh_token_enc,scopes,meta,expires_at",
-      ),
-    ]);
+    const [fbRow, gmbRow, igRow, liRow, tiktokRow, youtubeRow] =
+      await Promise.all([
+        getLatestIntegrationRow(
+          userId,
+          "facebook",
+          "facebook",
+          "facebook",
+          "status,resource_id,access_token_enc,expires_at",
+        ),
+        getLatestIntegrationRow(
+          userId,
+          "google",
+          "gmb",
+          "gmb",
+          "status,resource_id,meta,expires_at",
+        ),
+        getLatestIntegrationRow(
+          userId,
+          "instagram",
+          "instagram",
+          "instagram",
+          "status,resource_id,access_token_enc,resource_label,meta,expires_at",
+        ),
+        getLatestIntegrationRow(
+          userId,
+          "linkedin",
+          "linkedin",
+          "linkedin",
+          "status,resource_id,access_token_enc,meta,expires_at",
+        ),
+        getLatestIntegrationRow(
+          userId,
+          "tiktok",
+          "tiktok",
+          "tiktok",
+          "status,resource_id,resource_label,display_name,access_token_enc,refresh_token_enc,scopes,meta,expires_at",
+        ),
+        getLatestIntegrationRow(
+          userId,
+          "youtube",
+          "youtube_shorts",
+          "youtube_shorts",
+          "status,resource_id,resource_label,display_name,email_address,access_token_enc,refresh_token_enc,scopes,meta,expires_at",
+        ),
+      ]);
 
     // Internal channel configuration (URLs)
     const [profileRes, inrcyCfgRes, proCfgRes] = await Promise.all([
@@ -1401,25 +1472,30 @@ export async function POST(req: Request) {
 
     async function getTiktokAccessToken(rowLike: unknown) {
       const row = asRecord(rowLike);
-      let accessToken = tryDecryptToken(String(row.access_token_enc || "")) || "";
-      const refreshToken = tryDecryptToken(String(row.refresh_token_enc || "")) || "";
+      let accessToken =
+        tryDecryptToken(String(row.access_token_enc || "")) || "";
+      const refreshToken =
+        tryDecryptToken(String(row.refresh_token_enc || "")) || "";
 
       if (accessToken && !isExpired(row.expires_at, 120)) return accessToken;
       if (!refreshToken) return accessToken;
 
       const refreshed = await refreshTiktokAccessToken(refreshToken);
       const nextAccessToken = String(refreshed.access_token || "").trim();
-      const nextRefreshToken = String(refreshed.refresh_token || "").trim() || refreshToken;
+      const nextRefreshToken =
+        String(refreshed.refresh_token || "").trim() || refreshToken;
       const expiresIn = Number(refreshed.expires_in || 0);
       const refreshExpiresIn = Number(refreshed.refresh_expires_in || 0);
-      const expiresAt = Number.isFinite(expiresIn) && expiresIn > 0
-        ? new Date(Date.now() + expiresIn * 1000).toISOString()
-        : null;
+      const expiresAt =
+        Number.isFinite(expiresIn) && expiresIn > 0
+          ? new Date(Date.now() + expiresIn * 1000).toISOString()
+          : null;
       const nextMeta = {
         ...asRecord(row.meta),
-        refresh_expires_at: Number.isFinite(refreshExpiresIn) && refreshExpiresIn > 0
-          ? new Date(Date.now() + refreshExpiresIn * 1000).toISOString()
-          : asRecord(row.meta).refresh_expires_at || null,
+        refresh_expires_at:
+          Number.isFinite(refreshExpiresIn) && refreshExpiresIn > 0
+            ? new Date(Date.now() + refreshExpiresIn * 1000).toISOString()
+            : asRecord(row.meta).refresh_expires_at || null,
         tiktok_token_refreshed_at: new Date().toISOString(),
       };
 
@@ -1428,7 +1504,9 @@ export async function POST(req: Request) {
           .from("integrations")
           .update({
             access_token_enc: encryptToken(nextAccessToken),
-            refresh_token_enc: nextRefreshToken ? encryptToken(nextRefreshToken) : row.refresh_token_enc || null,
+            refresh_token_enc: nextRefreshToken
+              ? encryptToken(nextRefreshToken)
+              : row.refresh_token_enc || null,
             expires_at: expiresAt || row.expires_at || null,
             meta: nextMeta,
           })
@@ -1444,8 +1522,10 @@ export async function POST(req: Request) {
 
     async function getYoutubeShortsAccessToken(rowLike: unknown) {
       const row = asRecord(rowLike);
-      let accessToken = tryDecryptToken(String(row.access_token_enc || "")) || "";
-      const refreshToken = tryDecryptToken(String(row.refresh_token_enc || "")) || "";
+      let accessToken =
+        tryDecryptToken(String(row.access_token_enc || "")) || "";
+      const refreshToken =
+        tryDecryptToken(String(row.refresh_token_enc || "")) || "";
 
       if (accessToken && !isExpired(row.expires_at, 120)) return accessToken;
       if (!refreshToken) return accessToken;
@@ -1454,9 +1534,10 @@ export async function POST(req: Request) {
       const nextAccessToken = String(refreshed.access_token || "").trim();
       if (!nextAccessToken) return accessToken;
       const expiresIn = Number(refreshed.expires_in || 0);
-      const expiresAt = Number.isFinite(expiresIn) && expiresIn > 0
-        ? new Date(Date.now() + expiresIn * 1000).toISOString()
-        : row.expires_at || null;
+      const expiresAt =
+        Number.isFinite(expiresIn) && expiresIn > 0
+          ? new Date(Date.now() + expiresIn * 1000).toISOString()
+          : row.expires_at || null;
       const nextMeta = {
         ...asRecord(row.meta),
         youtube_token_refreshed_at: new Date().toISOString(),
@@ -1484,7 +1565,10 @@ export async function POST(req: Request) {
           websiteUrl: siteWebUrl || inrcySiteUrl,
           phone: businessPhone,
         });
-        const channelVideo = mediaModeByChannel[ch] === "video" ? getPublicationVideoForChannel(ch) : null;
+        const channelVideo =
+          mediaModeByChannel[ch] === "video"
+            ? getPublicationVideoForChannel(ch)
+            : null;
 
         if (ch === "inrcy_site" || ch === "site_web") {
           // We treat "publication" as an "article/actu" for the site.
@@ -1987,41 +2071,79 @@ export async function POST(req: Request) {
         if (ch === "youtube_shorts") {
           const youtubeSettings = asRecord(proSettings["youtube_shorts"]);
           const youtubeActive = isYoutubeShortsIntegrationActive(youtubeRow);
-          const youtubeAccessToken = youtubeActive ? await getYoutubeShortsAccessToken(youtubeRow) : "";
+          const youtubeAccessToken = youtubeActive
+            ? await getYoutubeShortsAccessToken(youtubeRow)
+            : "";
           const youtubeMeta = asRecord(asRecord(youtubeRow).meta);
-          const channelUrl = String(youtubeMeta.channel_url || youtubeSettings.channelUrl || youtubeSettings.url || "").trim();
+          const channelUrl = String(
+            youtubeMeta.channel_url ||
+              youtubeSettings.channelUrl ||
+              youtubeSettings.url ||
+              "",
+          ).trim();
 
           if (!youtubeActive || !youtubeAccessToken) {
-            const youtubeUserError = "YouTube à connecter. Rendez-vous dans Canaux.";
-            await setDelivery(ch, { status: "failed", error: youtubeUserError });
+            const youtubeUserError =
+              "YouTube à connecter. Rendez-vous dans Canaux.";
+            await setDelivery(ch, {
+              status: "failed",
+              error: youtubeUserError,
+            });
             results[ch] = { ok: false, error: youtubeUserError };
             continue;
           }
 
           if (mediaModeByChannel[ch] !== "video" || !channelVideo) {
             const youtubeUserError = "YouTube nécessite une vidéo.";
-            await setDelivery(ch, { status: "failed", error: youtubeUserError });
+            await setDelivery(ch, {
+              status: "failed",
+              error: youtubeUserError,
+            });
             results[ch] = { ok: false, error: youtubeUserError };
             continue;
           }
 
           const youtubeDefaults = asRecord(youtubeSettings.defaults);
-          const visibilityRaw = String(youtubeDefaults.defaultVisibility || "public");
-          const privacyStatus = (["public", "unlisted", "private"].includes(visibilityRaw) ? visibilityRaw : "public") as "public" | "unlisted" | "private";
+          const visibilityRaw = String(
+            youtubeDefaults.defaultVisibility || "public",
+          );
+          const privacyStatus = (
+            ["public", "unlisted", "private"].includes(visibilityRaw)
+              ? visibilityRaw
+              : "public"
+          ) as "public" | "unlisted" | "private";
           const madeForKids = Boolean(youtubeDefaults.madeForKids);
           const youtubeVideoSettings = videoSettingsByChannel[ch] || null;
-          const youtubeFormat = String((youtubeVideoSettings as any)?.format || asRecord(asRecord(channelVideo.transformedVariant).target).format || "original");
+          const youtubeFormat = String(
+            (youtubeVideoSettings as any)?.format ||
+              asRecord(asRecord(channelVideo.transformedVariant).target)
+                .format ||
+              "original",
+          );
           const youtubeDuration = Number(channelVideo.duration || 0);
-          const youtubeCanBeShort = Number.isFinite(youtubeDuration) && youtubeDuration > 0 && youtubeDuration <= 180 && (youtubeFormat === "9_16" || youtubeFormat === "1_1");
+          const youtubeCanBeShort =
+            Number.isFinite(youtubeDuration) &&
+            youtubeDuration > 0 &&
+            youtubeDuration <= 180 &&
+            (youtubeFormat === "9_16" || youtubeFormat === "1_1");
           const youtubePublicationType = youtubeCanBeShort ? "short" : "video";
-          const hashtags = Array.isArray(channelPost.hashtags) ? channelPost.hashtags : [];
-          const normalizedTags = hashtags.map((tag) => normalizeHashtag(String(tag))).filter(Boolean).slice(0, 8);
+          const hashtags = Array.isArray(channelPost.hashtags)
+            ? channelPost.hashtags
+            : [];
+          const normalizedTags = hashtags
+            .map((tag) => normalizeHashtag(String(tag)))
+            .filter(Boolean)
+            .slice(0, 8);
           const autoHashtags = youtubeDefaults.autoHashtags !== false;
           const youtubeTags = autoHashtags
             ? Array.from(new Set(["iNrCy", ...normalizedTags]))
             : normalizedTags;
-          const tagLine = youtubeTags.length ? youtubeTags.map((tag) => `#${tag}`).join(" ") : "";
-          const description = [canonMessage, tagLine].filter(Boolean).join("\n\n");
+          const tagLine = youtubeTags.length
+            ? youtubeTags.map((tag) => `#${tag}`).join(" ")
+            : "";
+          const description = [canonMessage, tagLine]
+            .filter(Boolean)
+            .join("\n\n");
 
           const upload = await uploadYoutubeShort({
             accessToken: youtubeAccessToken,
@@ -2036,7 +2158,11 @@ export async function POST(req: Request) {
           });
 
           if (!upload.ok) {
-            const youtubeUserError = getPublishChannelUserMessage("youtube_shorts", upload.error || "youtube_upload_failed", "Publication YouTube impossible.");
+            const youtubeUserError = getPublishChannelUserMessage(
+              "youtube_shorts",
+              upload.error || "youtube_upload_failed",
+              "Publication YouTube impossible.",
+            );
             logPublishChannelFailure({
               route: "booster_publish_now",
               channel: "youtube_shorts",
@@ -2047,14 +2173,22 @@ export async function POST(req: Request) {
               userMessage: youtubeUserError,
               diagnostics: upload,
             });
-            await setDelivery(ch, { status: "failed", error: youtubeUserError });
-            results[ch] = { ok: false, error: youtubeUserError, diagnostics: upload };
+            await setDelivery(ch, {
+              status: "failed",
+              error: youtubeUserError,
+            });
+            results[ch] = {
+              ok: false,
+              error: youtubeUserError,
+              diagnostics: upload,
+            };
             continue;
           }
 
-          const youtubeExternalUrl = youtubePublicationType === "short"
-            ? upload.shortsUrl || upload.videoUrl || null
-            : upload.videoUrl || upload.shortsUrl || null;
+          const youtubeExternalUrl =
+            youtubePublicationType === "short"
+              ? upload.shortsUrl || upload.videoUrl || null
+              : upload.videoUrl || upload.shortsUrl || null;
 
           await setDelivery(ch, {
             status: "delivered",
@@ -2076,7 +2210,8 @@ export async function POST(req: Request) {
             media_type: "video",
             youtube_publication_type: youtubePublicationType,
             youtube_format: youtubeFormat,
-            youtube_duration_seconds: youtubeDuration || channelVideo.duration || null,
+            youtube_duration_seconds:
+              youtubeDuration || channelVideo.duration || null,
             diagnostics: upload,
           };
           continue;
@@ -2085,10 +2220,13 @@ export async function POST(req: Request) {
         if (ch === "tiktok") {
           const tiktokSettings = normalizeTiktokSettings(proSettings["tiktok"]);
           const activeTiktok = isTiktokIntegrationActive(tiktokRow);
-          const tiktokAccessToken = activeTiktok ? await getTiktokAccessToken(tiktokRow) : "";
+          const tiktokAccessToken = activeTiktok
+            ? await getTiktokAccessToken(tiktokRow)
+            : "";
 
           if (!activeTiktok || !tiktokAccessToken) {
-            const tiktokUserError = "TikTok à connecter. Rendez-vous dans Canaux.";
+            const tiktokUserError =
+              "TikTok à connecter. Rendez-vous dans Canaux.";
             logPublishChannelFailure({
               route: "booster_publish_now",
               channel: "tiktok",
@@ -2111,7 +2249,9 @@ export async function POST(req: Request) {
               : tiktokImageSet.publishableStoragePaths?.length
                 ? tiktokImageSet.publishableStoragePaths
                 : tiktokImageSet.storagePaths || []
-          ).filter(Boolean).slice(0, 35);
+          )
+            .filter(Boolean)
+            .slice(0, 35);
           const tiktokFallbackImageUrls = (
             tiktokImageSet.publishableUrls.length
               ? tiktokImageSet.publishableUrls
@@ -2120,63 +2260,85 @@ export async function POST(req: Request) {
                 : tiktokImageSet.images.length
                   ? tiktokImageSet.images
                   : externalImageUrls
-          ).filter(Boolean).slice(0, 35);
+          )
+            .filter(Boolean)
+            .slice(0, 35);
           const tiktokImageUrls = tiktokImageStoragePaths.length
             ? tiktokImageStoragePaths
-                .map((path) => buildTiktokMediaProxyUrl(req.url, path, undefined, { variant: "photo" }))
+                .map((path) =>
+                  buildTiktokMediaProxyUrl(req.url, path, undefined, {
+                    variant: "photo",
+                  }),
+                )
                 .filter(Boolean)
                 .slice(0, 35)
             : tiktokFallbackImageUrls;
 
           if (tiktokMode === "video" && !channelVideo) {
-            const tiktokUserError = "TikTok nécessite une vidéo pour ce format.";
+            const tiktokUserError =
+              "TikTok nécessite une vidéo pour ce format.";
             await setDelivery(ch, { status: "failed", error: tiktokUserError });
             results[ch] = { ok: false, error: tiktokUserError };
             continue;
           }
 
           if (tiktokMode === "images" && !tiktokImageUrls.length) {
-            const tiktokUserError = "TikTok nécessite au moins 1 photo ou 1 vidéo.";
+            const tiktokUserError =
+              "TikTok nécessite au moins 1 photo ou 1 vidéo.";
             await setDelivery(ch, { status: "failed", error: tiktokUserError });
             results[ch] = { ok: false, error: tiktokUserError };
             continue;
           }
 
           if (tiktokMode !== "video" && tiktokMode !== "images") {
-            const tiktokUserError = "TikTok nécessite une vidéo ou au moins 1 photo.";
+            const tiktokUserError =
+              "TikTok nécessite une vidéo ou au moins 1 photo.";
             await setDelivery(ch, { status: "failed", error: tiktokUserError });
             results[ch] = { ok: false, error: tiktokUserError };
             continue;
           }
 
           const isVideo = tiktokMode === "video";
-          const videoUrl = isVideo && channelVideo?.storagePath
-            ? buildTiktokMediaProxyUrl(req.url, channelVideo.storagePath)
-            : isVideo
-              ? String(channelVideo?.publicUrl || channelVideo?.url || "").trim()
-              : "";
+          const videoUrl =
+            isVideo && channelVideo?.storagePath
+              ? buildTiktokMediaProxyUrl(req.url, channelVideo.storagePath)
+              : isVideo
+                ? String(
+                    channelVideo?.publicUrl || channelVideo?.url || "",
+                  ).trim()
+                : "";
 
           if (isVideo && !videoUrl) {
-            const tiktokUserError = "TikTok ne trouve pas l'URL publique de la vidéo.";
+            const tiktokUserError =
+              "TikTok ne trouve pas l'URL publique de la vidéo.";
             await setDelivery(ch, { status: "failed", error: tiktokUserError });
             results[ch] = { ok: false, error: tiktokUserError };
             continue;
           }
 
-          if (!tiktokPublicationSettings?.privacyLevel || !tiktokPublicationSettings.musicUsageConfirmed) {
-            const tiktokUserError = "Validez les paramètres TikTok avant publication.";
+          if (
+            !tiktokPublicationSettings?.privacyLevel ||
+            !tiktokPublicationSettings.musicUsageConfirmed
+          ) {
+            const tiktokUserError =
+              "Validez les paramètres TikTok avant publication.";
             await setDelivery(ch, { status: "failed", error: tiktokUserError });
             results[ch] = { ok: false, error: tiktokUserError };
             continue;
           }
 
-          const tiktokTitle = canonMessage || channelPost.content || channelPost.title || "Publication iNrCy";
+          const tiktokTitle =
+            canonMessage ||
+            channelPost.content ||
+            channelPost.title ||
+            "Publication iNrCy";
           const tiktokResult = isVideo
             ? await tiktokDirectPostVideo({
                 accessToken: tiktokAccessToken,
                 videoUrl,
                 title: tiktokTitle,
-                publicationSettings: tiktokPublicationSettings as TiktokPublicationSettings,
+                publicationSettings:
+                  tiktokPublicationSettings as TiktokPublicationSettings,
                 videoDurationSeconds: channelVideo?.duration || null,
               })
             : await tiktokDirectPostPhotos({
@@ -2184,11 +2346,13 @@ export async function POST(req: Request) {
                 imageUrls: tiktokImageUrls,
                 title: channelPost.title || "Publication iNrCy",
                 description: tiktokTitle,
-                publicationSettings: tiktokPublicationSettings as TiktokPublicationSettings,
+                publicationSettings:
+                  tiktokPublicationSettings as TiktokPublicationSettings,
               });
 
           if (!tiktokResult.ok) {
-            const tiktokUserError = tiktokResult.error || "TikTok n'a pas accepté la publication.";
+            const tiktokUserError =
+              tiktokResult.error || "TikTok n'a pas accepté la publication.";
             logPublishChannelFailure({
               route: "booster_publish_now",
               channel: "tiktok",
@@ -2200,13 +2364,20 @@ export async function POST(req: Request) {
               diagnostics: tiktokResult,
             });
             await setDelivery(ch, { status: "failed", error: tiktokUserError });
-            results[ch] = { ok: false, error: tiktokUserError, diagnostics: tiktokResult };
+            results[ch] = {
+              ok: false,
+              error: tiktokUserError,
+              diagnostics: tiktokResult,
+            };
             continue;
           }
 
           await setDelivery(ch, { status: "delivered", error: null });
 
-          const tiktokOpenUrl = String(tiktokResult.shareUrl || tiktokSettings.profileUrl || "").trim() || null;
+          const tiktokOpenUrl =
+            String(
+              tiktokResult.shareUrl || tiktokSettings.profileUrl || "",
+            ).trim() || null;
 
           results[ch] = {
             ok: true,
@@ -2443,7 +2614,8 @@ export async function POST(req: Request) {
               mediaMode: "video",
               videoSettings: videoSettingsByChannel[channel] || null,
               videoFormat: videoSettingsByChannel[channel]?.format || null,
-              videoAdaptationMode: videoSettingsByChannel[channel]?.adaptationMode || null,
+              videoAdaptationMode:
+                videoSettingsByChannel[channel]?.adaptationMode || null,
             },
           ];
         }
@@ -2482,7 +2654,11 @@ export async function POST(req: Request) {
                 mediaMode: "images",
                 videoSettings: videoSettingsByChannel[channel] || null,
               }
-            : { ...(baseValue || {}), mediaMode: "images", videoSettings: videoSettingsByChannel[channel] || null },
+            : {
+                ...(baseValue || {}),
+                mediaMode: "images",
+                videoSettings: videoSettingsByChannel[channel] || null,
+              },
         ];
       }),
     );

@@ -1,6 +1,17 @@
 import type { CSSProperties } from "react";
 import type { BoosterVideoTransformedVariant } from "@/lib/boosterVideoTransforms";
 import {
+  INR_MEDIA_IMAGE_MAX_BYTES,
+  INR_MEDIA_IMAGE_MAX_MB_LABEL,
+  INR_MEDIA_PUBLICATION_IMAGES_TOTAL_MAX_BYTES,
+  INR_MEDIA_PUBLICATION_IMAGES_TOTAL_MAX_MB_LABEL,
+  INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT,
+  INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
+  INR_MEDIA_VIDEO_PUBLISH_MAX_MB_LABEL,
+  INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
+  INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL,
+} from "@/lib/mediaRules";
+import {
   buildBoosterGmbSummary,
   buildBoosterInstagramCaption,
   getCtaMode,
@@ -81,10 +92,20 @@ export const BOOSTER_PREFERRED_CTA_OPTIONS: Array<{
   { value: "custom", label: "Lien personnalisé" },
 ];
 
+const BOOSTER_AI_LANGUAGE_VALUES: BoosterAiLanguage[] = [
+  "fr",
+  "en",
+  "es",
+  "it",
+  "de",
+  "nl",
+  "pt",
+];
 
-const BOOSTER_AI_LANGUAGE_VALUES: BoosterAiLanguage[] = ["fr", "en", "es", "it", "de", "nl", "pt"];
-
-const CTA_LABELS_BY_LANGUAGE: Record<BoosterAiLanguage, Record<BoosterPreferredCta, string>> = {
+const CTA_LABELS_BY_LANGUAGE: Record<
+  BoosterAiLanguage,
+  Record<BoosterPreferredCta, string>
+> = {
   fr: {
     none: "",
     site: "Voir le site",
@@ -144,8 +165,11 @@ const CTA_LABELS_BY_LANGUAGE: Record<BoosterAiLanguage, Record<BoosterPreferredC
 };
 
 export function normalizeBoosterAiLanguage(value: unknown): BoosterAiLanguage {
-  const raw = String(value || "").trim().toLowerCase();
-  if (BOOSTER_AI_LANGUAGE_VALUES.includes(raw as BoosterAiLanguage)) return raw as BoosterAiLanguage;
+  const raw = String(value || "")
+    .trim()
+    .toLowerCase();
+  if (BOOSTER_AI_LANGUAGE_VALUES.includes(raw as BoosterAiLanguage))
+    return raw as BoosterAiLanguage;
   if (["french", "francais", "français"].includes(raw)) return "fr";
   if (["english", "anglais"].includes(raw)) return "en";
   if (["spanish", "espagnol"].includes(raw)) return "es";
@@ -217,7 +241,9 @@ export function getPreferredCtaOptionLabel(choice: BoosterPreferredCta) {
 }
 
 function isAutoCtaLabel(value: string) {
-  const normalized = String(value || "").trim().toLowerCase();
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
   return AUTO_CTA_LABELS.some(
     (label) => label.trim().toLowerCase() === normalized,
   );
@@ -234,10 +260,14 @@ export function getPreferredCtaChoiceFromPost(
   if (mode === "message") return "message";
   if (mode === "custom") return "custom";
   if (mode === "website") {
-    const label = String(normalized.cta || "").trim().toLowerCase();
+    const label = String(normalized.cta || "")
+      .trim()
+      .toLowerCase();
     if (label.includes("devis")) return "devis";
     if (label.includes("voir") || label.includes("site")) return "site";
-    return channel === "inrcy_site" || channel === "site_web" ? "devis" : "site";
+    return channel === "inrcy_site" || channel === "site_web"
+      ? "devis"
+      : "site";
   }
   return "devis";
 }
@@ -385,7 +415,6 @@ export const CHANNEL_PRESETS: Record<ChannelKey, RenderPreset> = {
   },
 };
 
-
 export {
   VIDEO_ADAPTATION_MODE_LABELS,
   VIDEO_FORMAT_ASPECT_RATIOS,
@@ -423,7 +452,11 @@ export function channelSupportsTextOnly(channel: ChannelKey) {
 }
 
 export function channelRequiresMedia(channel: ChannelKey) {
-  return channel === "youtube_shorts" || channel === "tiktok" || channel === "instagram";
+  return (
+    channel === "youtube_shorts" ||
+    channel === "tiktok" ||
+    channel === "instagram"
+  );
 }
 
 export function getUnavailableMediaModeMessage(
@@ -431,7 +464,8 @@ export function getUnavailableMediaModeMessage(
   mode: ChannelMediaMode,
 ) {
   if (channel === "youtube_shorts") {
-    if (mode === "images") return "YouTube nécessite une vidéo. Les photos seules ne peuvent pas être publiées sur YouTube.";
+    if (mode === "images")
+      return "YouTube nécessite une vidéo. Les photos seules ne peuvent pas être publiées sur YouTube.";
     if (mode === "none") return "YouTube nécessite une vidéo.";
   }
   if (channel === "tiktok" && mode === "none") {
@@ -440,17 +474,21 @@ export function getUnavailableMediaModeMessage(
   return "";
 }
 
-export const BOOSTER_MAX_IMAGE_COUNT = 5;
+export const BOOSTER_MAX_IMAGE_COUNT = INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT;
 export const BOOSTER_IMAGE_ACCEPT = "image/*,image/heic,image/heif,.heic,.heif";
-export const BOOSTER_MAX_MEDIA_BYTES = 40 * 1024 * 1024;
-export const BOOSTER_MAX_MEDIA_MB_LABEL = "40 Mo";
-export const BOOSTER_MAX_IMAGE_BYTES = BOOSTER_MAX_MEDIA_BYTES;
-export const BOOSTER_MAX_IMAGE_MB_LABEL = BOOSTER_MAX_MEDIA_MB_LABEL;
+export const BOOSTER_MAX_MEDIA_BYTES =
+  INR_MEDIA_PUBLICATION_IMAGES_TOTAL_MAX_BYTES;
+export const BOOSTER_MAX_MEDIA_MB_LABEL =
+  INR_MEDIA_PUBLICATION_IMAGES_TOTAL_MAX_MB_LABEL;
+export const BOOSTER_MAX_IMAGE_BYTES = INR_MEDIA_IMAGE_MAX_BYTES;
+export const BOOSTER_MAX_IMAGE_MB_LABEL = INR_MEDIA_IMAGE_MAX_MB_LABEL;
 export const BOOSTER_MAX_VIDEO_COUNT = 1;
-export const BOOSTER_MAX_VIDEO_BYTES = 100 * 1024 * 1024;
-export const BOOSTER_MAX_VIDEO_MB_LABEL = "100 Mo";
-export const BOOSTER_MAX_VIDEO_PUBLISH_BYTES = BOOSTER_MAX_MEDIA_BYTES;
-export const BOOSTER_MAX_VIDEO_PUBLISH_MB_LABEL = BOOSTER_MAX_MEDIA_MB_LABEL;
+export const BOOSTER_MAX_VIDEO_BYTES = INR_MEDIA_VIDEO_SOURCE_MAX_BYTES;
+export const BOOSTER_MAX_VIDEO_MB_LABEL = INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL;
+export const BOOSTER_MAX_VIDEO_PUBLISH_BYTES =
+  INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES;
+export const BOOSTER_MAX_VIDEO_PUBLISH_MB_LABEL =
+  INR_MEDIA_VIDEO_PUBLISH_MAX_MB_LABEL;
 export const BOOSTER_RECOMMENDED_VIDEO_DURATION_LABEL = "3 min conseillées";
 export type ChannelPublicationRequirementInput = {
   channel: ChannelKey;
@@ -574,7 +612,11 @@ export function getChannelPublicationRequirements({
   }
 
   const hasMedia =
-    mediaMode === "video" ? hasVideo : mediaMode === "images" ? hasImage : false;
+    mediaMode === "video"
+      ? hasVideo
+      : mediaMode === "images"
+        ? hasImage
+        : false;
   if (!hasText && !hasMedia) {
     blockers.push("Ajoutez au moins du texte ou un média.");
   }
@@ -588,7 +630,6 @@ export function getChannelPublicationRequirements({
     blockers: Array.from(new Set(blockers)),
   };
 }
-
 
 export const BOOSTER_ALLOWED_VIDEO_MIME_TYPES = [
   "video/mp4",
@@ -604,27 +645,47 @@ export function normalizePublicationMediaType(
 }
 
 export function isHeicOrHeifImageFile(file: Pick<File, "name" | "type">) {
-  const type = String(file?.type || "").toLowerCase().split(";")[0]?.trim() || "";
+  const type =
+    String(file?.type || "")
+      .toLowerCase()
+      .split(";")[0]
+      ?.trim() || "";
   const extension = getUploadFileExtension(file as Pick<File, "name">);
-  return type === "image/heic" || type === "image/heif" || extension === "heic" || extension === "heif";
+  return (
+    type === "image/heic" ||
+    type === "image/heif" ||
+    extension === "heic" ||
+    extension === "heif"
+  );
 }
 
 export function isBoosterImageFile(file: Pick<File, "name" | "type">) {
-  return String(file?.type || "").startsWith("image/") || isHeicOrHeifImageFile(file);
+  return (
+    String(file?.type || "").startsWith("image/") || isHeicOrHeifImageFile(file)
+  );
 }
 
 export function getUploadFileExtension(file: Pick<File, "name">): string {
-  const name = String(file?.name || "").toLowerCase().split("?")[0] || "";
+  const name =
+    String(file?.name || "")
+      .toLowerCase()
+      .split("?")[0] || "";
   return name.includes(".") ? name.split(".").pop() || "" : "";
 }
 
-export function isUnsupportedBrowserImageFile(file: Pick<File, "name" | "type">): boolean {
+export function isUnsupportedBrowserImageFile(
+  file: Pick<File, "name" | "type">,
+): boolean {
   return isHeicOrHeifImageFile(file);
 }
 
-export function unsupportedBrowserImageMessage(file?: Pick<File, "name" | "type"> | null): string {
+export function unsupportedBrowserImageMessage(
+  file?: Pick<File, "name" | "type"> | null,
+): string {
   const name = String(file?.name || "").trim();
-  const prefix = name ? `L'image ${name} n'est pas lisible par le navigateur.` : "Cette image n'est pas lisible par le navigateur.";
+  const prefix = name
+    ? `L'image ${name} n'est pas lisible par le navigateur.`
+    : "Cette image n'est pas lisible par le navigateur.";
   return `${prefix} Utilisez une image JPG, PNG ou WebP.`;
 }
 
@@ -750,8 +811,18 @@ export const CHANNEL_TEXT_GUIDELINES: Record<
     totalLabel: "Légende TikTok finale",
     totalMax: 2200,
     totalValue: (post) => {
-      const body = [post.title, post.content, post.cta].filter(Boolean).join("\n");
-      const hashtags = (post.hashtags || []).map((tag) => `#${String(tag || "").replace(/^#+/, "").trim()}`).filter(Boolean).join(" ");
+      const body = [post.title, post.content, post.cta]
+        .filter(Boolean)
+        .join("\n");
+      const hashtags = (post.hashtags || [])
+        .map(
+          (tag) =>
+            `#${String(tag || "")
+              .replace(/^#+/, "")
+              .trim()}`,
+        )
+        .filter(Boolean)
+        .join(" ");
       return [body, hashtags].filter(Boolean).join("\n").length;
     },
   },
@@ -763,8 +834,18 @@ export const CHANNEL_TEXT_GUIDELINES: Record<
     totalLabel: "Légende YouTube finale",
     totalMax: 2200,
     totalValue: (post) => {
-      const body = [post.title, post.content, post.cta].filter(Boolean).join("\n");
-      const hashtags = (post.hashtags || []).map((tag) => `#${String(tag || "").replace(/^#+/, "").trim()}`).filter(Boolean).join(" ");
+      const body = [post.title, post.content, post.cta]
+        .filter(Boolean)
+        .join("\n");
+      const hashtags = (post.hashtags || [])
+        .map(
+          (tag) =>
+            `#${String(tag || "")
+              .replace(/^#+/, "")
+              .trim()}`,
+        )
+        .filter(Boolean)
+        .join(" ");
       return [body, hashtags].filter(Boolean).join("\n").length;
     },
   },
@@ -832,8 +913,7 @@ export const CTA_MODE_OPTIONS: Record<
 };
 
 export function getCtaModeHelp(channel: DisplayKey, mode: BoosterCtaMode) {
-  if (mode === "none")
-    return "Aucun bouton ne sera ajouté à la fin du texte.";
+  if (mode === "none") return "Aucun bouton ne sera ajouté à la fin du texte.";
   if (mode === "website")
     return channel === "gmb"
       ? "Un vrai bouton Google Business sera utilisé quand une URL de site est disponible."
@@ -877,7 +957,11 @@ export function getCtaLabelForPreferredChoice(
   language: unknown = "fr",
 ) {
   const aiLanguage = normalizeBoosterAiLanguage(language);
-  return CTA_LABELS_BY_LANGUAGE[aiLanguage]?.[choice] || CTA_LABELS_BY_LANGUAGE.fr[choice] || "";
+  return (
+    CTA_LABELS_BY_LANGUAGE[aiLanguage]?.[choice] ||
+    CTA_LABELS_BY_LANGUAGE.fr[choice] ||
+    ""
+  );
 }
 
 export function isSiteDisplayKey(channel: DisplayKey) {
@@ -917,7 +1001,9 @@ export function getDefaultCtaModeForChannel(
   channel: DisplayKey,
   defaults: BoosterCtaDefaults | null,
 ): BoosterCtaMode {
-  const preferred = normalizeBoosterPreferredCta(defaults?.preferredCta || "devis");
+  const preferred = normalizeBoosterPreferredCta(
+    defaults?.preferredCta || "devis",
+  );
 
   if (preferred === "none") return "none";
   if (preferred === "custom") return "custom";
@@ -1019,8 +1105,11 @@ export function buildAutoPrefillPatch(
       : getPreferredCtaChoiceFromPost(channel, post);
     const channelWebsiteUrl = getWebsiteUrlForChannel(channel, defaults);
     if (!String(post.cta || "").trim())
-      patch.cta = getCtaLabelForPreferredChoice(preferred as BoosterPreferredCta, aiLanguage) ||
-        getChannelDefaultCtaLabel(channel, mode);
+      patch.cta =
+        getCtaLabelForPreferredChoice(
+          preferred as BoosterPreferredCta,
+          aiLanguage,
+        ) || getChannelDefaultCtaLabel(channel, mode);
     if (!String(post.ctaUrl || "").trim() && channelWebsiteUrl)
       patch.ctaUrl = channelWebsiteUrl;
   }
@@ -1233,10 +1322,7 @@ function drawBoosterAiImagePayload(params: {
   return {
     name: params.file.name || "image",
     type: "image/jpeg",
-    dataUrl: canvas.toDataURL(
-      "image/jpeg",
-      BOOSTER_AI_IMAGE_JPEG_QUALITY,
-    ),
+    dataUrl: canvas.toDataURL("image/jpeg", BOOSTER_AI_IMAGE_JPEG_QUALITY),
   };
 }
 
@@ -1616,7 +1702,10 @@ export function loadHtmlImage(src: string): Promise<HTMLImageElement> {
     const img = new Image();
     img.decoding = "async";
     img.onload = () => resolve(img);
-    img.onerror = () => reject(new Error("Image illisible. Utilisez une image JPG, PNG ou WebP."));
+    img.onerror = () =>
+      reject(
+        new Error("Image illisible. Utilisez une image JPG, PNG ou WebP."),
+      );
     img.src = src;
   });
 }
@@ -1777,7 +1866,11 @@ export function buildBoosterVideoGenerationContext(params: {
   };
 }
 
-export type BoosterVideoOrientation = "horizontal" | "vertical" | "square" | "unknown";
+export type BoosterVideoOrientation =
+  | "horizontal"
+  | "vertical"
+  | "square"
+  | "unknown";
 
 export type BoosterVideoSourceMetadata = {
   width: number | null;
@@ -1806,7 +1899,12 @@ export type VideoPayload = {
 
 export async function uploadBoosterVideo(
   file: File,
-  options?: { folder?: string; path?: string; duration?: number | null; sourceMetadata?: BoosterVideoSourceMetadata | null },
+  options?: {
+    folder?: string;
+    path?: string;
+    duration?: number | null;
+    sourceMetadata?: BoosterVideoSourceMetadata | null;
+  },
 ): Promise<VideoPayload> {
   const path =
     options?.path ||
@@ -1875,7 +1973,6 @@ export function sleep(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
-
 async function loadImageElementFromBlob(blob: Blob): Promise<HTMLImageElement> {
   const url = URL.createObjectURL(blob);
   try {
@@ -1893,12 +1990,14 @@ async function loadImageElementFromBlob(blob: Blob): Promise<HTMLImageElement> {
 }
 
 async function compressImageBlobForUpload(blob: Blob): Promise<Blob> {
-  if (typeof window === "undefined" || typeof document === "undefined") return blob;
+  if (typeof window === "undefined" || typeof document === "undefined")
+    return blob;
   if (!String(blob.type || "").startsWith("image/")) return blob;
   // Les PNG générés par l'adaptateur peuvent contenir de la transparence.
   // Ne jamais les convertir en JPEG, sinon les zones transparentes deviennent noires.
   if (/^image\/png$/i.test(blob.type || "")) return blob;
-  if (/image\/(gif|svg\+xml|heic|heif|avif)/i.test(blob.type || "")) return blob;
+  if (/image\/(gif|svg\+xml|heic|heif|avif)/i.test(blob.type || ""))
+    return blob;
 
   const img = await loadImageElementFromBlob(blob);
   const sourceWidth = Number(img.naturalWidth || img.width || 0);
@@ -1947,12 +2046,21 @@ export async function uploadPreparedImages(
 
     const blob = await dataUrlToBlob(image.dataUrl);
     const uploadBlob = await compressImageBlobForUpload(blob);
-    const uploadName = uploadBlob.type === "image/jpeg" ? withJpegExtension(image.name) : sanitizeUploadName(image.name);
+    const uploadName =
+      uploadBlob.type === "image/jpeg"
+        ? withJpegExtension(image.name)
+        : sanitizeUploadName(image.name);
     if (uploadBlob.size > BOOSTER_MAX_MEDIA_BYTES) {
-      throw new Error(`Image préparée trop lourde. Taille maximale : ${BOOSTER_MAX_MEDIA_MB_LABEL}.`);
+      throw new Error(
+        `Image préparée trop lourde. Taille maximale : ${BOOSTER_MAX_MEDIA_MB_LABEL}.`,
+      );
     }
     const file = new File([uploadBlob], uploadName, {
-      type: uploadBlob.type || image.type || blob.type || "application/octet-stream",
+      type:
+        uploadBlob.type ||
+        image.type ||
+        blob.type ||
+        "application/octet-stream",
     });
     const formData = new FormData();
     formData.append("file", file);
@@ -1972,7 +2080,11 @@ export async function uploadPreparedImages(
       ...image,
       dataUrl: undefined,
       name: image.name,
-      type: uploadBlob.type || image.type || blob.type || "application/octet-stream",
+      type:
+        uploadBlob.type ||
+        image.type ||
+        blob.type ||
+        "application/octet-stream",
       storagePath: String(json?.storagePath || ""),
       publicUrl: String(json?.publicUrl || ""),
     });
@@ -2033,10 +2145,7 @@ export async function renderChannelImage(params: {
       ? "#ffffff"
       : transform.backgroundColor;
     if (backgroundMode !== "transparent") {
-      ctx.fillStyle = getBackgroundFill(
-        backgroundMode,
-        backgroundColor,
-      );
+      ctx.fillStyle = getBackgroundFill(backgroundMode, backgroundColor);
       ctx.fillRect(0, 0, cw, ch);
     }
 
@@ -2196,12 +2305,11 @@ export function syncChannelImageEditors(params: {
         : imageKeys.filter((key) => !nextImageKeys.includes(key));
     const mergedKeys = !channelSupportsImages(channel)
       ? []
-      : (
-          nextImageKeys.length
-            ? [...nextImageKeys, ...autoSelectedNewKeys]
-            : channel === "gmb"
-              ? []
-              : [...imageKeys]
+      : (nextImageKeys.length
+          ? [...nextImageKeys, ...autoSelectedNewKeys]
+          : channel === "gmb"
+            ? []
+            : [...imageKeys]
         ).filter((key, index, arr) => arr.indexOf(key) === index);
     const transforms: Record<string, ImageTransform> = {};
     if (channelSupportsImages(channel)) {

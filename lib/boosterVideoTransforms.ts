@@ -7,6 +7,7 @@ import {
   type VideoAdaptationMode,
   type VideoFormat,
 } from "@/lib/boosterVideoSettings";
+import { INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES } from "@/lib/mediaRules";
 
 export type BoosterVideoTransformTarget = {
   format: VideoFormat;
@@ -42,19 +43,20 @@ export type BoosterVideoTransformVariantPlan = {
   signature: string;
 };
 
-export type BoosterVideoTransformedVariant = BoosterVideoTransformVariantPlan & {
-  storagePath: string;
-  publicUrl: string;
-  contentType: string;
-  size: number;
-  duration: number | null;
-  generatedAt: string;
-  quality?: BoosterVideoQualityProfile;
-  // Compatibilité avec les anciennes données / payloads côté UI.
-  url?: string | null;
-  name?: string | null;
-  type?: string | null;
-};
+export type BoosterVideoTransformedVariant =
+  BoosterVideoTransformVariantPlan & {
+    storagePath: string;
+    publicUrl: string;
+    contentType: string;
+    size: number;
+    duration: number | null;
+    generatedAt: string;
+    quality?: BoosterVideoQualityProfile;
+    // Compatibilité avec les anciennes données / payloads côté UI.
+    url?: string | null;
+    name?: string | null;
+    type?: string | null;
+  };
 
 export type BoosterVideoTransformSource = {
   storagePath?: string | null;
@@ -72,7 +74,10 @@ export type BoosterVideoTransformSource = {
   } | null;
 };
 
-export const VIDEO_TRANSFORM_TARGETS: Record<Exclude<VideoFormat, "original">, BoosterVideoTransformTarget> = {
+export const VIDEO_TRANSFORM_TARGETS: Record<
+  Exclude<VideoFormat, "original">,
+  BoosterVideoTransformTarget
+> = {
   "9_16": {
     format: "9_16",
     // Sortie volontairement plafonnée en 720p vertical : beaucoup plus rapide sur Vercel,
@@ -98,7 +103,10 @@ export const VIDEO_TRANSFORM_TARGETS: Record<Exclude<VideoFormat, "original">, B
   },
 };
 
-export const VIDEO_TRANSFORM_QUALITY_PROFILES: Record<VideoFormat, BoosterVideoQualityProfile> = {
+export const VIDEO_TRANSFORM_QUALITY_PROFILES: Record<
+  VideoFormat,
+  BoosterVideoQualityProfile
+> = {
   "9_16": {
     label: "Qualité verticale rapide",
     crf: 27,
@@ -106,7 +114,7 @@ export const VIDEO_TRANSFORM_QUALITY_PROFILES: Record<VideoFormat, BoosterVideoQ
     maxrate: "2400k",
     bufsize: "3600k",
     audioBitrate: "96k",
-    maxOutputBytes: 40 * 1024 * 1024,
+    maxOutputBytes: INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
   },
   "1_1": {
     label: "Qualité carrée rapide",
@@ -115,7 +123,7 @@ export const VIDEO_TRANSFORM_QUALITY_PROFILES: Record<VideoFormat, BoosterVideoQ
     maxrate: "2200k",
     bufsize: "3300k",
     audioBitrate: "96k",
-    maxOutputBytes: 40 * 1024 * 1024,
+    maxOutputBytes: INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
   },
   "16_9": {
     label: "Qualité horizontale rapide",
@@ -124,7 +132,7 @@ export const VIDEO_TRANSFORM_QUALITY_PROFILES: Record<VideoFormat, BoosterVideoQ
     maxrate: "3000k",
     bufsize: "4500k",
     audioBitrate: "96k",
-    maxOutputBytes: 40 * 1024 * 1024,
+    maxOutputBytes: INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
   },
   original: {
     label: "Original optimisé",
@@ -133,15 +141,22 @@ export const VIDEO_TRANSFORM_QUALITY_PROFILES: Record<VideoFormat, BoosterVideoQ
     maxrate: "3000k",
     bufsize: "4500k",
     audioBitrate: "96k",
-    maxOutputBytes: 40 * 1024 * 1024,
+    maxOutputBytes: INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
   },
 };
 
-export function getVideoTransformQualityProfile(format: VideoFormat): BoosterVideoQualityProfile {
-  return VIDEO_TRANSFORM_QUALITY_PROFILES[format] || VIDEO_TRANSFORM_QUALITY_PROFILES.original;
+export function getVideoTransformQualityProfile(
+  format: VideoFormat,
+): BoosterVideoQualityProfile {
+  return (
+    VIDEO_TRANSFORM_QUALITY_PROFILES[format] ||
+    VIDEO_TRANSFORM_QUALITY_PROFILES.original
+  );
 }
 
-export function getVideoTransformTarget(format: VideoFormat): BoosterVideoTransformTarget {
+export function getVideoTransformTarget(
+  format: VideoFormat,
+): BoosterVideoTransformTarget {
   if (format === "original") {
     return {
       format: "original",
@@ -155,17 +170,22 @@ export function getVideoTransformTarget(format: VideoFormat): BoosterVideoTransf
 }
 
 function sanitizeVariantKey(value: string) {
-  return String(value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-zA-Z0-9._-]+/g, "-")
-    .replace(/[-_]{2,}/g, "-")
-    .replace(/^[-_.]+|[-_.]+$/g, "")
-    .toLowerCase()
-    .slice(0, 90) || "variant";
+  return (
+    String(value || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9._-]+/g, "-")
+      .replace(/[-_]{2,}/g, "-")
+      .replace(/^[-_.]+|[-_.]+$/g, "")
+      .toLowerCase()
+      .slice(0, 90) || "variant"
+  );
 }
 
-export function buildVideoTransformSignature(format: VideoFormat, adaptationMode: VideoAdaptationMode) {
+export function buildVideoTransformSignature(
+  format: VideoFormat,
+  adaptationMode: VideoAdaptationMode,
+) {
   return `${format}:${adaptationMode}`;
 }
 
@@ -174,11 +194,25 @@ export function normalizeVideoTransformVariant(
   index: number,
 ): BoosterVideoTransformVariantPlan | null {
   const channel = isBoosterVideoChannelKey(raw.channel) ? raw.channel : null;
-  const channelDefaults = channel ? getDefaultChannelVideoSettings(channel) : { format: "original" as VideoFormat, adaptationMode: "safe_blur" as VideoAdaptationMode };
-  const format = channel ? normalizeVideoFormat(channel, raw.format || channelDefaults.format) : (raw.format || "original");
-  const adaptationMode = normalizeVideoAdaptationMode(raw.adaptationMode || channelDefaults.adaptationMode);
+  const channelDefaults = channel
+    ? getDefaultChannelVideoSettings(channel)
+    : {
+        format: "original" as VideoFormat,
+        adaptationMode: "safe_blur" as VideoAdaptationMode,
+      };
+  const format = channel
+    ? normalizeVideoFormat(channel, raw.format || channelDefaults.format)
+    : raw.format || "original";
+  const adaptationMode = normalizeVideoAdaptationMode(
+    raw.adaptationMode || channelDefaults.adaptationMode,
+  );
   const signature = buildVideoTransformSignature(format, adaptationMode);
-  const key = sanitizeVariantKey(raw.key || (channel ? `${channel}-${signature}` : `variant-${index + 1}-${signature}`));
+  const key = sanitizeVariantKey(
+    raw.key ||
+      (channel
+        ? `${channel}-${signature}`
+        : `variant-${index + 1}-${signature}`),
+  );
 
   return {
     key,
@@ -190,7 +224,9 @@ export function normalizeVideoTransformVariant(
   };
 }
 
-export function buildVideoTransformPlan(variants: readonly BoosterVideoTransformRequestVariant[]): BoosterVideoTransformVariantPlan[] {
+export function buildVideoTransformPlan(
+  variants: readonly BoosterVideoTransformRequestVariant[],
+): BoosterVideoTransformVariantPlan[] {
   const seen = new Set<string>();
   const plans: BoosterVideoTransformVariantPlan[] = [];
 
@@ -213,5 +249,10 @@ export function getVariantForChannel(
   adaptationMode: VideoAdaptationMode,
 ) {
   const signature = buildVideoTransformSignature(format, adaptationMode);
-  return (variants || []).find((variant) => variant.signature === signature || variant.channel === channel) || null;
+  return (
+    (variants || []).find(
+      (variant) =>
+        variant.signature === signature || variant.channel === channel,
+    ) || null
+  );
 }

@@ -128,6 +128,11 @@ import { normalizeMailSubject } from "@/lib/mailEncoding";
 import { stripTemplateSignatureBlock } from "@/lib/mailTemplateCleanup";
 import { normalizeRichMailHtmlForSend, textToRichMailHtml } from "@/lib/mailRichText";
 import {
+  BOOSTER_MAX_IMAGE_BYTES,
+  BOOSTER_MAX_IMAGE_COUNT,
+  BOOSTER_MAX_IMAGE_MB_LABEL,
+  BOOSTER_MAX_MEDIA_BYTES,
+  BOOSTER_MAX_MEDIA_MB_LABEL,
   BOOSTER_MAX_VIDEO_BYTES,
   BOOSTER_MAX_VIDEO_MB_LABEL,
   uploadBoosterVideo,
@@ -2480,9 +2485,18 @@ async function deleteDraftPermanently(id: string) {
       return;
     }
 
-    const tooBig = picked.find((file) => file.size > 8 * 1024 * 1024);
+    const tooBig = picked.find((file) => file.size > BOOSTER_MAX_IMAGE_BYTES);
     if (tooBig) {
-      setDetailsActionError("Une image dépasse 8 Mo.");
+      setDetailsActionError(`L'image ${tooBig.name || "sélectionnée"} dépasse ${BOOSTER_MAX_IMAGE_MB_LABEL}.`);
+      return;
+    }
+
+    const currentSelectedFileBytes = (publicationEditImagesByChannel[channel]?.assets || [])
+      .filter((asset) => asset.selected && asset.file)
+      .reduce((sum, asset) => sum + (asset.file?.size || 0), 0);
+    const nextPickedBytes = picked.reduce((sum, file) => sum + (file?.size || 0), 0);
+    if (currentSelectedFileBytes + nextPickedBytes > BOOSTER_MAX_MEDIA_BYTES) {
+      setDetailsActionError(`Les images dépassent ${BOOSTER_MAX_MEDIA_MB_LABEL} au total. Réduisez le nombre ou le poids des photos.`);
       return;
     }
 
@@ -2491,8 +2505,8 @@ async function deleteDraftPermanently(id: string) {
       for (const file of picked) {
         const key = makePublicationImageAssetKey("new", file.name, `${file.size}:${file.lastModified}`);
         if (merged.some((asset) => asset.key === key)) continue;
-        if (merged.length >= 5) {
-          setDetailsActionError("Maximum 5 images par publication.");
+        if (merged.length >= BOOSTER_MAX_IMAGE_COUNT) {
+          setDetailsActionError(`Maximum ${BOOSTER_MAX_IMAGE_COUNT} images par publication.`);
           break;
         }
         merged.push({

@@ -34,6 +34,7 @@ export default function UserMenu(props: {
   setUserMenuOpen: React.Dispatch<React.SetStateAction<boolean>>;
   openPanel: (name: OpenPanelName) => void;
   handleLogout: () => void | Promise<void>;
+  onNavigate?: (href: string) => void;
 }) {
   const {
     userEmail,
@@ -43,6 +44,7 @@ export default function UserMenu(props: {
     setUserMenuOpen,
     openPanel,
     handleLogout,
+    onNavigate,
   } = props;
 
   const [profileTooltipOpen, setProfileTooltipOpen] = useState(false);
@@ -55,6 +57,14 @@ export default function UserMenu(props: {
     setProfileTooltipOpen(false);
     setActivityTooltipOpen(false);
     openPanel(panel);
+  };
+
+  const closeAndNavigate = (href: string) => {
+    setUserMenuOpen(false);
+    setProfileTooltipOpen(false);
+    setActivityTooltipOpen(false);
+    if (onNavigate) onNavigate(href);
+    else if (typeof window !== "undefined") window.location.href = href;
   };
 
   useEffect(() => {
@@ -205,6 +215,14 @@ export default function UserMenu(props: {
             onClick={() => closeAndOpen("ia")}
           >
             Configuration IA
+          </button>
+          <button
+            type="button"
+            className={styles.userMenuItem}
+            role="menuitem"
+            onClick={() => closeAndNavigate("/dashboard/mediatheque")}
+          >
+            Médiathèque
           </button>
           <button
             type="button"

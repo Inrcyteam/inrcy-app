@@ -3,8 +3,9 @@ import { randomUUID } from "crypto";
 import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { enforceRateLimit } from "@/lib/rateLimit";
+import { INR_MEDIA_IMAGE_MAX_BYTES } from "@/lib/mediaRules";
 
-const MAX_IMAGE_BYTES = 40 * 1024 * 1024;
+const MAX_IMAGE_BYTES = INR_MEDIA_IMAGE_MAX_BYTES;
 const DEFAULT_UPLOAD_FOLDER = "booster-prepublish";
 
 const MIME_EXTENSION: Record<string, string> = {
@@ -18,7 +19,16 @@ const MIME_EXTENSION: Record<string, string> = {
   "image/heif": "heif",
 };
 
-const ALLOWED_IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "webp", "gif", "avif", "heic", "heif"]);
+const ALLOWED_IMAGE_EXTENSIONS = new Set([
+  "png",
+  "jpg",
+  "jpeg",
+  "webp",
+  "gif",
+  "avif",
+  "heic",
+  "heif",
+]);
 
 function isAllowedImageMime(type: string) {
   return /^image\/(png|jpe?g|webp|gif|avif|heic|heif)$/i.test(type || "");
@@ -46,20 +56,34 @@ function getSafeExtension(name: string, mimeType: string) {
   const mimeExtension = MIME_EXTENSION[String(mimeType || "").toLowerCase()];
   if (mimeExtension) return mimeExtension;
 
-  const rawName = String(name || "").split(/[\\/]/).pop() || "";
-  const ext = rawName.includes(".") ? rawName.split(".").pop()?.toLowerCase() || "" : "";
-  return ALLOWED_IMAGE_EXTENSIONS.has(ext) ? (ext === "jpeg" ? "jpg" : ext) : "jpg";
+  const rawName =
+    String(name || "")
+      .split(/[\\/]/)
+      .pop() || "";
+  const ext = rawName.includes(".")
+    ? rawName.split(".").pop()?.toLowerCase() || ""
+    : "";
+  return ALLOWED_IMAGE_EXTENSIONS.has(ext)
+    ? ext === "jpeg"
+      ? "jpg"
+      : ext
+    : "jpg";
 }
 
 function sanitizeFileName(name: string, mimeType: string) {
-  const rawName = String(name || "image").split(/[\\/]/).pop() || "image";
+  const rawName =
+    String(name || "image")
+      .split(/[\\/]/)
+      .pop() || "image";
   const withoutExtension = rawName.replace(/\.[^.]*$/, "");
   const base = normalizeSafeSegment(withoutExtension, "image");
   return `${base}.${getSafeExtension(rawName, mimeType)}`.toLowerCase();
 }
 
 function sanitizeStorageFolder(folder: string) {
-  return normalizeSafeSegment(folder, DEFAULT_UPLOAD_FOLDER).replace(/\./g, "-").toLowerCase();
+  return normalizeSafeSegment(folder, DEFAULT_UPLOAD_FOLDER)
+    .replace(/\./g, "-")
+    .toLowerCase();
 }
 
 function getRequestedFolder(path: string, userId: string) {
@@ -72,12 +96,18 @@ function getRequestedFolder(path: string, userId: string) {
     .split("/")
     .filter(Boolean);
 
-  if (cleanParts[0] === userId || cleanParts[0] === safeUserId) cleanParts.shift();
+  if (cleanParts[0] === userId || cleanParts[0] === safeUserId)
+    cleanParts.shift();
   const firstFolder = cleanParts.find((part) => part !== "." && part !== "..");
   return sanitizeStorageFolder(firstFolder || DEFAULT_UPLOAD_FOLDER);
 }
 
-function sanitizeStoragePath(path: string, fallbackName: string, userId: string, mimeType: string) {
+function sanitizeStoragePath(
+  path: string,
+  fallbackName: string,
+  userId: string,
+  mimeType: string,
+) {
   const safeUserId = sanitizeUserId(userId);
   const rawParts = String(path || "")
     .replace(/\\/g, "/")
@@ -90,26 +120,46 @@ function sanitizeStoragePath(path: string, fallbackName: string, userId: string,
   if (rawParts[0] === userId || rawParts[0] === safeUserId) rawParts.shift();
 
   const cleanParts = rawParts.filter((part) => part !== "." && part !== "..");
-  const rawFileName = cleanParts.length ? cleanParts[cleanParts.length - 1] : fallbackName;
+  const rawFileName = cleanParts.length
+    ? cleanParts[cleanParts.length - 1]
+    : fallbackName;
   const fileName = sanitizeFileName(rawFileName || fallbackName, mimeType);
-  const folders = cleanParts.slice(0, -1).map(sanitizeStorageFolder).filter(Boolean).slice(0, 4);
+  const folders = cleanParts
+    .slice(0, -1)
+    .map(sanitizeStorageFolder)
+    .filter(Boolean)
+    .slice(0, 4);
 
-  const relativePath = [...(folders.length ? folders : [DEFAULT_UPLOAD_FOLDER]), fileName].join("/");
+  const relativePath = [
+    ...(folders.length ? folders : [DEFAULT_UPLOAD_FOLDER]),
+    fileName,
+  ].join("/");
   return `${safeUserId}/${relativePath}`;
 }
 
-function buildFallbackStoragePath(userId: string, fallbackName: string, mimeType: string, requestedPath: string) {
+function buildFallbackStoragePath(
+  userId: string,
+  fallbackName: string,
+  mimeType: string,
+  requestedPath: string,
+) {
   const safeUserId = sanitizeUserId(userId);
   const folder = getRequestedFolder(requestedPath, userId);
   return `${safeUserId}/${folder}/${randomUUID()}-${sanitizeFileName(fallbackName, mimeType)}`;
 }
 
-async function uploadToBoosterStorage(storagePath: string, buffer: Buffer, contentType: string) {
-  return await supabaseAdmin.storage.from("booster").upload(storagePath, buffer, {
-    contentType: contentType || "application/octet-stream",
-    upsert: false,
-    cacheControl: "3600",
-  });
+async function uploadToBoosterStorage(
+  storagePath: string,
+  buffer: Buffer,
+  contentType: string,
+) {
+  return await supabaseAdmin.storage
+    .from("booster")
+    .upload(storagePath, buffer, {
+      contentType: contentType || "application/octet-stream",
+      upsert: false,
+      cacheControl: "3600",
+    });
 }
 
 export async function POST(req: Request) {
@@ -129,7 +179,11 @@ export async function POST(req: Request) {
     if (rateLimited) return rateLimited;
 
     const formData = await req.formData().catch(() => null);
-    if (!formData) return NextResponse.json({ error: "Données invalides." }, { status: 400 });
+    if (!formData)
+      return NextResponse.json(
+        { error: "Données invalides." },
+        { status: 400 },
+      );
 
     const file = formData.get("file");
     if (!(file instanceof File)) {
@@ -137,26 +191,50 @@ export async function POST(req: Request) {
     }
 
     if (!isAllowedImageMime(file.type)) {
-      return NextResponse.json({ error: "Format d’image non autorisé." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Format d’image non autorisé." },
+        { status: 400 },
+      );
     }
 
     if (file.size > MAX_IMAGE_BYTES) {
-      return NextResponse.json({ error: "Image trop lourde. Taille maximale : 40 Mo." }, { status: 413 });
+      return NextResponse.json(
+        { error: "Image trop lourde. Taille maximale : 40 Mo." },
+        { status: 413 },
+      );
     }
 
     const requestedPath = String(formData.get("path") || "");
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
-    let storagePath = sanitizeStoragePath(requestedPath, file.name || "image", user.id, file.type);
+    let storagePath = sanitizeStoragePath(
+      requestedPath,
+      file.name || "image",
+      user.id,
+      file.type,
+    );
 
-    let upload = await uploadToBoosterStorage(storagePath, buffer, file.type || "application/octet-stream");
+    let upload = await uploadToBoosterStorage(
+      storagePath,
+      buffer,
+      file.type || "application/octet-stream",
+    );
 
     // Sécurité anti-casse : si Supabase refuse encore une clé ou si elle existe déjà,
     // on retente avec un nom 100 % généré côté serveur.
     if (upload.error) {
-      const fallbackPath = buildFallbackStoragePath(user.id, file.name || "image", file.type, requestedPath);
+      const fallbackPath = buildFallbackStoragePath(
+        user.id,
+        file.name || "image",
+        file.type,
+        requestedPath,
+      );
       if (fallbackPath !== storagePath) {
-        const retry = await uploadToBoosterStorage(fallbackPath, buffer, file.type || "application/octet-stream");
+        const retry = await uploadToBoosterStorage(
+          fallbackPath,
+          buffer,
+          file.type || "application/octet-stream",
+        );
         if (!retry.error) {
           storagePath = fallbackPath;
           upload = retry;
@@ -165,10 +243,15 @@ export async function POST(req: Request) {
     }
 
     if (upload.error) {
-      return NextResponse.json({ error: upload.error.message || "Upload impossible." }, { status: 500 });
+      return NextResponse.json(
+        { error: upload.error.message || "Upload impossible." },
+        { status: 500 },
+      );
     }
 
-    const publicUrl = supabaseAdmin.storage.from("booster").getPublicUrl(storagePath)?.data?.publicUrl || null;
+    const publicUrl =
+      supabaseAdmin.storage.from("booster").getPublicUrl(storagePath)?.data
+        ?.publicUrl || null;
 
     return NextResponse.json({
       ok: true,
@@ -177,6 +260,9 @@ export async function POST(req: Request) {
     });
   } catch (e) {
     console.error("[Booster] upload-prepared failed", e);
-    return NextResponse.json({ error: "Impossible d'uploader l'image préparée." }, { status: 500 });
+    return NextResponse.json(
+      { error: "Impossible d'uploader l'image préparée." },
+      { status: 500 },
+    );
   }
 }

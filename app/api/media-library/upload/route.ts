@@ -1,0 +1,389 @@
+import { randomUUID } from "crypto";
+import { NextRequest, NextResponse } from "next/server";
+import { requireUser } from "@/lib/requireUser";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import {
+  INR_MEDIA_ALLOWED_IMAGE_MIME_TYPES,
+  INR_MEDIA_ALLOWED_VIDEO_MIME_TYPES,
+  INR_MEDIA_IMAGE_MAX_BYTES,
+  INR_MEDIA_IMAGE_MAX_MB_LABEL,
+  INR_MEDIA_UPLOAD_BATCH_SIZE,
+  INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
+  INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL,
+} from "@/lib/mediaRules";
+
+export const runtime = "nodejs";
+
+const BUCKET = "inrcy-pro-media";
+const MAX_FILES = INR_MEDIA_UPLOAD_BATCH_SIZE;
+const MAX_IMAGE_BYTES = INR_MEDIA_IMAGE_MAX_BYTES;
+const MAX_VIDEO_BYTES = INR_MEDIA_VIDEO_SOURCE_MAX_BYTES;
+const MAX_IMAGE_MB_LABEL = INR_MEDIA_IMAGE_MAX_MB_LABEL;
+const MAX_VIDEO_MB_LABEL = INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL;
+
+const ALLOWED_IMAGE_TYPES = new Set<string>(INR_MEDIA_ALLOWED_IMAGE_MIME_TYPES);
+const ALLOWED_VIDEO_TYPES = new Set<string>(INR_MEDIA_ALLOWED_VIDEO_MIME_TYPES);
+
+type PrepareFile = {
+  client_id?: unknown;
+  name?: unknown;
+  type?: unknown;
+  size?: unknown;
+};
+
+type FinalizeUpload = {
+  client_id?: unknown;
+  original_name?: unknown;
+  storage_path?: unknown;
+  mime_type?: unknown;
+  size_bytes?: unknown;
+  width?: unknown;
+  height?: unknown;
+  duration_seconds?: unknown;
+};
+
+function jsonError(message: string, status = 500, detail?: unknown) {
+  return NextResponse.json(
+    {
+      ok: false,
+      error: message,
+      ...(detail ? { detail: String(detail) } : {}),
+    },
+    { status },
+  );
+}
+
+function cleanText(raw: unknown, fallback = "", max = 500) {
+  return String(raw ?? fallback)
+    .trim()
+    .slice(0, max);
+}
+
+function cleanNumber(raw: unknown) {
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : 0;
+}
+
+function cleanNullableDimension(raw: unknown) {
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  return Math.round(value);
+}
+
+function cleanNullableDuration(raw: unknown) {
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0) return null;
+  return Math.round(value * 100) / 100;
+}
+
+function cleanTags(raw: unknown) {
+  if (Array.isArray(raw)) {
+    return raw
+      .map((tag) => cleanText(tag, "", 60).toLowerCase())
+      .filter(Boolean)
+      .slice(0, 30);
+  }
+
+  return String(raw ?? "")
+    .split(",")
+    .map((tag) => tag.trim().toLowerCase())
+    .filter(Boolean)
+    .slice(0, 30);
+}
+
+function mediaTypeFromMime(mime: string): "image" | "video" | null {
+  if (ALLOWED_IMAGE_TYPES.has(mime)) return "image";
+  if (ALLOWED_VIDEO_TYPES.has(mime)) return "video";
+  return null;
+}
+
+function extFromMime(mime: string) {
+  if (mime === "image/png") return "png";
+  if (mime === "image/webp") return "webp";
+  if (mime === "video/webm") return "webm";
+  if (mime === "video/quicktime") return "mov";
+  if (mime === "video/x-m4v") return "m4v";
+  if (mime === "video/mp4") return "mp4";
+  return "jpg";
+}
+
+function safeFileStem(name: string) {
+  const base = String(name || "media-inrcy")
+    .replace(/\.[a-z0-9]{2,5}$/i, "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 70);
+  return base || "media-inrcy";
+}
+
+function assertAllowedFile(name: string, mime: string, size: number) {
+  const type = mediaTypeFromMime(mime);
+  if (!type) {
+    throw new Error(
+      `${name || "Fichier"} : format non autorisé. Utilise JPG, PNG, WebP, MP4, WebM ou MOV.`,
+    );
+  }
+  if (!Number.isFinite(size) || size <= 0) {
+    throw new Error(`${name || "Fichier"} : taille invalide.`);
+  }
+  if (type === "image" && size > MAX_IMAGE_BYTES) {
+    throw new Error(
+      `${name || "Image"} : image trop lourde. Maximum ${MAX_IMAGE_MB_LABEL}.`,
+    );
+  }
+  if (type === "video" && size > MAX_VIDEO_BYTES) {
+    throw new Error(
+      `${name || "Vidéo"} : vidéo trop lourde. Maximum ${MAX_VIDEO_MB_LABEL}.`,
+    );
+  }
+}
+
+function buildStoragePath(
+  userId: string,
+  name: string,
+  mime: string,
+  index: number,
+) {
+  const type = mediaTypeFromMime(mime) || "image";
+  const extension = extFromMime(mime);
+  const safeIndex = String(index + 1).padStart(3, "0");
+  const unique = randomUUID().slice(0, 10);
+  const year = new Date().getFullYear();
+  return `users/${userId}/${type}/${year}/${Date.now()}-${safeIndex}-${unique}-${safeFileStem(name)}.${extension}`;
+}
+
+function isOwnedStoragePath(userId: string, storagePath: string) {
+  return storagePath.startsWith(`users/${userId}/`);
+}
+
+function tableMissingError(
+  error: { code?: string; message?: string } | null | undefined,
+) {
+  const message = String(error?.message || "").toLowerCase();
+  return (
+    error?.code === "42P01" ||
+    error?.code === "PGRST205" ||
+    message.includes("pro_media_library")
+  );
+}
+
+async function handlePrepareUpload(
+  userId: string,
+  body: Record<string, unknown>,
+) {
+  const files = Array.isArray(body.files) ? (body.files as PrepareFile[]) : [];
+  if (files.length === 0) return jsonError("Ajoute au moins un fichier.", 400);
+  if (files.length > MAX_FILES)
+    return jsonError(`Import limité à ${MAX_FILES} fichiers par lot.`, 400);
+
+  const items = [];
+  for (let index = 0; index < files.length; index += 1) {
+    const file = files[index];
+    const clientId = cleanText(file.client_id, `file-${index}`, 180);
+    const name = cleanText(file.name, `media-${index + 1}`, 180);
+    const mime = cleanText(file.type, "", 80);
+    const size = cleanNumber(file.size);
+
+    assertAllowedFile(name, mime, size);
+    const storagePath = buildStoragePath(userId, name, mime, index);
+    const signed = await supabaseAdmin.storage
+      .from(BUCKET)
+      .createSignedUploadUrl(storagePath);
+    if (signed.error || !signed.data?.token) {
+      throw new Error(
+        signed.error?.message || "Impossible de préparer l’upload Supabase.",
+      );
+    }
+
+    items.push({
+      client_id: clientId,
+      original_name: name,
+      bucket: BUCKET,
+      storage_path: storagePath,
+      token: signed.data.token,
+      signed_url: signed.data.signedUrl,
+      content_type: mime,
+      media_type: mediaTypeFromMime(mime),
+      max_image_bytes: MAX_IMAGE_BYTES,
+      max_video_bytes: MAX_VIDEO_BYTES,
+    });
+  }
+
+  return NextResponse.json({
+    ok: true,
+    bucket: BUCKET,
+    items,
+    max_files: MAX_FILES,
+    max_image_bytes: MAX_IMAGE_BYTES,
+    max_video_bytes: MAX_VIDEO_BYTES,
+  });
+}
+
+async function insertMediaRows(userId: string, body: Record<string, unknown>) {
+  const uploads = Array.isArray(body.uploads)
+    ? (body.uploads as FinalizeUpload[])
+    : [];
+  if (uploads.length === 0) return jsonError("Aucun média à finaliser.", 400);
+  if (uploads.length > MAX_FILES)
+    return jsonError(
+      `Finalisation limitée à ${MAX_FILES} fichiers par lot.`,
+      400,
+    );
+
+  const tags = cleanTags(body.tags);
+  const baseTitle = cleanText(body.title, "", 180);
+  const source = cleanText(body.source, "mediatheque", 80) || "mediatheque";
+  const results: Array<{
+    id?: string;
+    bucket_name?: string;
+    storage_path?: string;
+    original_name: string;
+    title?: string;
+    media_type?: "image" | "video";
+    mime_type?: string;
+    size_bytes?: number;
+    width?: number | null;
+    height?: number | null;
+    duration_seconds?: number | null;
+    signed_url?: string | null;
+    ok: boolean;
+    error?: string;
+  }> = [];
+
+  for (let index = 0; index < uploads.length; index += 1) {
+    const upload = uploads[index];
+    const originalName = cleanText(
+      upload.original_name,
+      `media-${index + 1}`,
+      180,
+    );
+    const storagePath = cleanText(upload.storage_path, "", 500);
+    const mimeType = cleanText(upload.mime_type, "", 80);
+    const sizeBytes = cleanNumber(upload.size_bytes);
+    const width = cleanNullableDimension(upload.width);
+    const height = cleanNullableDimension(upload.height);
+    const durationSeconds = cleanNullableDuration(upload.duration_seconds);
+
+    try {
+      assertAllowedFile(originalName, mimeType, sizeBytes);
+      if (!storagePath || !isOwnedStoragePath(userId, storagePath)) {
+        throw new Error("Chemin Storage invalide pour votre médiathèque.");
+      }
+
+      const mediaType = mediaTypeFromMime(mimeType);
+      if (!mediaType) throw new Error("Format non autorisé.");
+
+      const safeIndex = String(index + 1).padStart(3, "0");
+      const title =
+        baseTitle ||
+        originalName.replace(/\.[a-z0-9]{2,5}$/i, "") ||
+        `Média ${safeIndex}`;
+      const insert = await supabaseAdmin
+        .from("pro_media_library")
+        .insert({
+          user_id: userId,
+          bucket_name: BUCKET,
+          storage_path: storagePath,
+          media_type: mediaType,
+          mime_type: mimeType,
+          size_bytes: sizeBytes,
+          title,
+          tags,
+          source,
+          width,
+          height,
+          duration_seconds: durationSeconds,
+          is_active: true,
+        })
+        .select("id,storage_path")
+        .single();
+
+      if (insert.error) {
+        await supabaseAdmin.storage.from(BUCKET).remove([storagePath]);
+        if (tableMissingError(insert.error)) {
+          throw new Error(
+            "La table pro_media_library n’existe pas encore. Lance le SQL fourni dans Supabase.",
+          );
+        }
+        throw insert.error;
+      }
+
+      const signed = await supabaseAdmin.storage
+        .from(BUCKET)
+        .createSignedUrl(storagePath, 60 * 60)
+        .catch(() => null);
+
+      results.push({
+        ok: true,
+        id: insert.data?.id,
+        bucket_name: BUCKET,
+        storage_path: insert.data?.storage_path,
+        original_name: originalName,
+        title,
+        media_type: mediaType,
+        mime_type: mimeType,
+        size_bytes: sizeBytes,
+        width,
+        height,
+        duration_seconds: durationSeconds,
+        signed_url: signed?.data?.signedUrl || null,
+      });
+    } catch (error: any) {
+      if (storagePath && isOwnedStoragePath(userId, storagePath)) {
+        await supabaseAdmin.storage
+          .from(BUCKET)
+          .remove([storagePath])
+          .catch(() => null);
+      }
+
+      results.push({
+        ok: false,
+        original_name: originalName,
+        error: error?.message || "Finalisation impossible.",
+      });
+    }
+  }
+
+  return NextResponse.json({
+    ok: results.some((result) => result.ok),
+    uploaded: results.filter((result) => result.ok).length,
+    failed: results.filter((result) => !result.ok).length,
+    results,
+  });
+}
+
+async function handleFinalizeUpload(
+  userId: string,
+  body: Record<string, unknown>,
+) {
+  return insertMediaRows(userId, body);
+}
+
+export async function POST(request: NextRequest) {
+  const { user, errorResponse } = await requireUser();
+  if (errorResponse) return errorResponse;
+
+  try {
+    const body = (await request.json().catch(() => null)) as Record<
+      string,
+      unknown
+    > | null;
+    if (!body || typeof body !== "object")
+      return jsonError("Requête d’import invalide.", 400);
+
+    const mode = cleanText(body.mode, "", 40);
+    if (mode === "prepare") return await handlePrepareUpload(user.id, body);
+    if (mode === "finalize") return await handleFinalizeUpload(user.id, body);
+
+    return jsonError("Mode d’import inconnu.", 400);
+  } catch (error: any) {
+    return jsonError(
+      error?.message || "Import médiathèque impossible.",
+      500,
+      error?.detail || error?.code,
+    );
+  }
+}

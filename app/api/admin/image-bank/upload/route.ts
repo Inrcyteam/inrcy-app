@@ -3,14 +3,20 @@ import { NextRequest, NextResponse } from "next/server";
 import sharp from "sharp";
 import { requireAdminApi } from "@/lib/adminSecurity";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import {
+  INR_MEDIA_ALLOWED_IMAGE_MIME_TYPES,
+  INR_MEDIA_IMAGE_MAX_BYTES,
+  INR_MEDIA_IMAGE_MAX_MB_LABEL,
+  INR_MEDIA_UPLOAD_BATCH_SIZE,
+} from "@/lib/mediaRules";
 
 export const runtime = "nodejs";
 
 const BUCKET = "inrcy-image-bank";
-const MAX_FILES = 10;
-const MAX_FILE_BYTES = 10 * 1024 * 1024;
-const MAX_FILE_MB_LABEL = "10 Mo";
-const ALLOWED_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const MAX_FILES = INR_MEDIA_UPLOAD_BATCH_SIZE;
+const MAX_FILE_BYTES = INR_MEDIA_IMAGE_MAX_BYTES;
+const MAX_FILE_MB_LABEL = INR_MEDIA_IMAGE_MAX_MB_LABEL;
+const ALLOWED_TYPES = new Set<string>(INR_MEDIA_ALLOWED_IMAGE_MIME_TYPES);
 
 type ImageBankCategory = {
   id: string;
@@ -58,7 +64,9 @@ function cleanTags(raw: unknown) {
 }
 
 function cleanText(raw: unknown, fallback = "", max = 500) {
-  return String(raw ?? fallback).trim().slice(0, max);
+  return String(raw ?? fallback)
+    .trim()
+    .slice(0, max);
 }
 
 function cleanNumber(raw: unknown) {
@@ -100,25 +108,38 @@ function safeFileStem(name: string) {
 
 function assertAllowedFile(name: string, mime: string, size: number) {
   if (!ALLOWED_TYPES.has(mime)) {
-    throw new Error(`${name || "Image"} : format non autorisé. Utilise JPG, PNG ou WebP.`);
+    throw new Error(
+      `${name || "Image"} : format non autorisé. Utilise JPG, PNG ou WebP.`,
+    );
   }
   if (!Number.isFinite(size) || size <= 0) {
     throw new Error(`${name || "Image"} : taille invalide.`);
   }
   if (size > MAX_FILE_BYTES) {
-    throw new Error(`${name || "Image"} : image trop lourde. Maximum ${MAX_FILE_MB_LABEL}.`);
+    throw new Error(
+      `${name || "Image"} : image trop lourde. Maximum ${MAX_FILE_MB_LABEL}.`,
+    );
   }
 }
 
-function buildStoragePath(category: ImageBankCategory, name: string, mime: string, index: number) {
+function buildStoragePath(
+  category: ImageBankCategory,
+  name: string,
+  mime: string,
+  index: number,
+) {
   const extension = extFromMime(mime);
   const safeIndex = String(index + 1).padStart(3, "0");
   const unique = randomUUID().slice(0, 10);
-  const prefix = category.storage_prefix.endsWith("/") ? category.storage_prefix : `${category.storage_prefix}/`;
+  const prefix = category.storage_prefix.endsWith("/")
+    ? category.storage_prefix
+    : `${category.storage_prefix}/`;
   return `${prefix}${category.job_slug}-${Date.now()}-${safeIndex}-${unique}-${safeFileStem(name)}.${extension}`;
 }
 
-async function getCategory(categoryId: string): Promise<ImageBankCategory | null> {
+async function getCategory(
+  categoryId: string,
+): Promise<ImageBankCategory | null> {
   const { data, error } = await supabaseAdmin
     .from("inrcy_image_bank_categories")
     .select("id,sector_slug,sector_label,job_slug,job_label,storage_prefix")
@@ -158,9 +179,13 @@ async function handlePrepareUpload(body: Record<string, unknown>) {
 
     assertAllowedFile(name, mime, size);
     const storagePath = buildStoragePath(category, name, mime, index);
-    const signed = await supabaseAdmin.storage.from(BUCKET).createSignedUploadUrl(storagePath);
+    const signed = await supabaseAdmin.storage
+      .from(BUCKET)
+      .createSignedUploadUrl(storagePath);
     if (signed.error || !signed.data?.token) {
-      throw new Error(signed.error?.message || "Impossible de préparer l’upload Supabase.");
+      throw new Error(
+        signed.error?.message || "Impossible de préparer l’upload Supabase.",
+      );
     }
 
     items.push({
@@ -175,16 +200,29 @@ async function handlePrepareUpload(body: Record<string, unknown>) {
     });
   }
 
-  return NextResponse.json({ ok: true, bucket: BUCKET, items, max_file_bytes: MAX_FILE_BYTES });
+  return NextResponse.json({
+    ok: true,
+    bucket: BUCKET,
+    items,
+    max_file_bytes: MAX_FILE_BYTES,
+  });
 }
 
-async function insertImageRows(category: ImageBankCategory, body: Record<string, unknown>) {
-  const uploads = Array.isArray(body.uploads) ? (body.uploads as FinalizeUpload[]) : [];
+async function insertImageRows(
+  category: ImageBankCategory,
+  body: Record<string, unknown>,
+) {
+  const uploads = Array.isArray(body.uploads)
+    ? (body.uploads as FinalizeUpload[])
+    : [];
   if (uploads.length === 0) {
     return jsonError("Aucune image à finaliser.", 400);
   }
   if (uploads.length > MAX_FILES) {
-    return jsonError(`Finalisation limitée à ${MAX_FILES} images par lot.`, 400);
+    return jsonError(
+      `Finalisation limitée à ${MAX_FILES} images par lot.`,
+      400,
+    );
   }
 
   const tags = cleanTags(body.tags);
@@ -192,11 +230,21 @@ async function insertImageRows(category: ImageBankCategory, body: Record<string,
   const sourceUrl = cleanText(body.source_url, "", 600) || null;
   const licenseRef = cleanText(body.license_ref, "", 240) || null;
   const baseTitle = cleanText(body.title, "", 180);
-  const results: Array<{ id?: string; storage_path?: string; original_name: string; ok: boolean; error?: string }> = [];
+  const results: Array<{
+    id?: string;
+    storage_path?: string;
+    original_name: string;
+    ok: boolean;
+    error?: string;
+  }> = [];
 
   for (let index = 0; index < uploads.length; index += 1) {
     const upload = uploads[index];
-    const originalName = cleanText(upload.original_name, `image-${index + 1}`, 180);
+    const originalName = cleanText(
+      upload.original_name,
+      `image-${index + 1}`,
+      180,
+    );
     const storagePath = cleanText(upload.storage_path, "", 500);
     const mimeType = cleanText(upload.mime_type, "", 80);
     const sizeBytes = cleanNumber(upload.size_bytes);
@@ -270,7 +318,10 @@ async function handleFinalizeUpload(body: Record<string, unknown>) {
 }
 
 async function handleJsonUpload(request: NextRequest) {
-  const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+  const body = (await request.json().catch(() => null)) as Record<
+    string,
+    unknown
+  > | null;
   if (!body || typeof body !== "object") {
     return jsonError("Requête d’import invalide.", 400);
   }
@@ -287,7 +338,9 @@ async function handleMultipartUpload(request: NextRequest) {
   const categoryId = cleanText(form.get("category_id"), "", 80);
   const category = await requireCategory(categoryId);
 
-  const files = form.getAll("files").filter((value): value is File => value instanceof File);
+  const files = form
+    .getAll("files")
+    .filter((value): value is File => value instanceof File);
   if (files.length === 0) {
     return jsonError("Ajoute au moins une image.", 400);
   }
@@ -302,11 +355,18 @@ async function handleMultipartUpload(request: NextRequest) {
   const baseTitle = cleanText(form.get("title"), "", 180);
 
   const now = Date.now();
-  const results: Array<{ id?: string; storage_path?: string; original_name: string; ok: boolean; error?: string }> = [];
+  const results: Array<{
+    id?: string;
+    storage_path?: string;
+    original_name: string;
+    ok: boolean;
+    error?: string;
+  }> = [];
 
   for (let index = 0; index < files.length; index += 1) {
     const file = files[index];
-    const originalName = file.name || `image-${index + 1}.${extFromMime(file.type)}`;
+    const originalName =
+      file.name || `image-${index + 1}.${extFromMime(file.type)}`;
 
     try {
       assertAllowedFile(originalName, file.type, file.size);
@@ -314,7 +374,12 @@ async function handleMultipartUpload(request: NextRequest) {
       const inputBuffer = Buffer.from(await file.arrayBuffer());
       const optimized = await sharp(inputBuffer)
         .rotate()
-        .resize({ width: 1600, height: 1600, fit: "inside", withoutEnlargement: true })
+        .resize({
+          width: 1600,
+          height: 1600,
+          fit: "inside",
+          withoutEnlargement: true,
+        })
         .webp({ quality: 82 })
         .toBuffer();
 
@@ -323,13 +388,17 @@ async function handleMultipartUpload(request: NextRequest) {
       const height = meta.height ?? null;
       const orientation = orientationFromSize(width, height);
       const safeIndex = String(index + 1).padStart(3, "0");
-      const prefix = category.storage_prefix.endsWith("/") ? category.storage_prefix : `${category.storage_prefix}/`;
+      const prefix = category.storage_prefix.endsWith("/")
+        ? category.storage_prefix
+        : `${category.storage_prefix}/`;
       const storagePath = `${prefix}${category.job_slug}-${now}-${safeIndex}-${randomUUID().slice(0, 10)}.webp`;
 
-      const upload = await supabaseAdmin.storage.from(BUCKET).upload(storagePath, optimized, {
-        contentType: "image/webp",
-        upsert: false,
-      });
+      const upload = await supabaseAdmin.storage
+        .from(BUCKET)
+        .upload(storagePath, optimized, {
+          contentType: "image/webp",
+          upsert: false,
+        });
       if (upload.error) throw upload.error;
 
       const title = baseTitle || `${category.job_label} ${safeIndex}`;
@@ -397,7 +466,12 @@ export async function POST(request: NextRequest) {
     return await handleMultipartUpload(request);
   } catch (error: any) {
     const message = error?.message || "Import impossible.";
-    const status = /métier obligatoire|métier introuvable|ajoute au moins|format non autorisé|trop lourde|invalide|limité/i.test(message) ? 400 : 500;
+    const status =
+      /métier obligatoire|métier introuvable|ajoute au moins|format non autorisé|trop lourde|invalide|limité/i.test(
+        message,
+      )
+        ? 400
+        : 500;
     return jsonError(message, status);
   }
 }

@@ -3,9 +3,13 @@ import { randomUUID } from "crypto";
 import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { enforceRateLimit } from "@/lib/rateLimit";
+import {
+  INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
+  INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL,
+} from "@/lib/mediaRules";
 
-const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
-const MAX_VIDEO_MB_LABEL = "100 Mo";
+const MAX_VIDEO_BYTES = INR_MEDIA_VIDEO_SOURCE_MAX_BYTES;
+const MAX_VIDEO_MB_LABEL = INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL;
 const DEFAULT_UPLOAD_FOLDER = "booster-videos";
 
 const MIME_EXTENSION: Record<string, string> = {
@@ -18,7 +22,12 @@ const MIME_EXTENSION: Record<string, string> = {
 const ALLOWED_VIDEO_EXTENSIONS = new Set(["mp4", "mov", "webm", "m4v"]);
 
 function normalizeMime(type: string) {
-  return String(type || "").toLowerCase().split(";")[0]?.trim() || "";
+  return (
+    String(type || "")
+      .toLowerCase()
+      .split(";")[0]
+      ?.trim() || ""
+  );
 }
 
 function isAllowedVideoMime(type: string) {
@@ -27,8 +36,13 @@ function isAllowedVideoMime(type: string) {
 
 function isAllowedVideoFile(file: File) {
   if (isAllowedVideoMime(file.type)) return true;
-  const rawName = String(file.name || "").split(/[\\/]/).pop() || "";
-  const ext = rawName.includes(".") ? rawName.split(".").pop()?.toLowerCase() || "" : "";
+  const rawName =
+    String(file.name || "")
+      .split(/[\\/]/)
+      .pop() || "";
+  const ext = rawName.includes(".")
+    ? rawName.split(".").pop()?.toLowerCase() || ""
+    : "";
   return ALLOWED_VIDEO_EXTENSIONS.has(ext);
 }
 
@@ -54,31 +68,49 @@ function getSafeExtension(name: string, mimeType: string) {
   const mimeExtension = MIME_EXTENSION[normalizeMime(mimeType)];
   if (mimeExtension) return mimeExtension;
 
-  const rawName = String(name || "").split(/[\\/]/).pop() || "";
-  const ext = rawName.includes(".") ? rawName.split(".").pop()?.toLowerCase() || "" : "";
-  return ALLOWED_VIDEO_EXTENSIONS.has(ext) ? (ext === "m4v" ? "mp4" : ext) : "mp4";
+  const rawName =
+    String(name || "")
+      .split(/[\\/]/)
+      .pop() || "";
+  const ext = rawName.includes(".")
+    ? rawName.split(".").pop()?.toLowerCase() || ""
+    : "";
+  return ALLOWED_VIDEO_EXTENSIONS.has(ext)
+    ? ext === "m4v"
+      ? "mp4"
+      : ext
+    : "mp4";
 }
-
 
 function getSafeContentType(file: File) {
   const type = normalizeMime(String(file.type || ""));
   if (isAllowedVideoMime(type)) return type;
-  const rawName = String(file.name || "").split(/[\\/]/).pop() || "";
-  const ext = rawName.includes(".") ? rawName.split(".").pop()?.toLowerCase() || "" : "";
+  const rawName =
+    String(file.name || "")
+      .split(/[\\/]/)
+      .pop() || "";
+  const ext = rawName.includes(".")
+    ? rawName.split(".").pop()?.toLowerCase() || ""
+    : "";
   if (ext === "mov") return "video/quicktime";
   if (ext === "webm") return "video/webm";
   return "video/mp4";
 }
 
 function sanitizeFileName(name: string, mimeType: string) {
-  const rawName = String(name || "video-inrcy").split(/[\\/]/).pop() || "video-inrcy";
+  const rawName =
+    String(name || "video-inrcy")
+      .split(/[\\/]/)
+      .pop() || "video-inrcy";
   const withoutExtension = rawName.replace(/\.[^.]*$/, "");
   const base = normalizeSafeSegment(withoutExtension, "video-inrcy");
   return `${base}.${getSafeExtension(rawName, mimeType)}`.toLowerCase();
 }
 
 function sanitizeStorageFolder(folder: string) {
-  return normalizeSafeSegment(folder, DEFAULT_UPLOAD_FOLDER).replace(/\./g, "-").toLowerCase();
+  return normalizeSafeSegment(folder, DEFAULT_UPLOAD_FOLDER)
+    .replace(/\./g, "-")
+    .toLowerCase();
 }
 
 function getRequestedFolder(path: string, userId: string) {
@@ -91,12 +123,18 @@ function getRequestedFolder(path: string, userId: string) {
     .split("/")
     .filter(Boolean);
 
-  if (cleanParts[0] === userId || cleanParts[0] === safeUserId) cleanParts.shift();
+  if (cleanParts[0] === userId || cleanParts[0] === safeUserId)
+    cleanParts.shift();
   const firstFolder = cleanParts.find((part) => part !== "." && part !== "..");
   return sanitizeStorageFolder(firstFolder || DEFAULT_UPLOAD_FOLDER);
 }
 
-function sanitizeStoragePath(path: string, fallbackName: string, userId: string, mimeType: string) {
+function sanitizeStoragePath(
+  path: string,
+  fallbackName: string,
+  userId: string,
+  mimeType: string,
+) {
   const safeUserId = sanitizeUserId(userId);
   const rawParts = String(path || "")
     .replace(/\\/g, "/")
@@ -109,26 +147,46 @@ function sanitizeStoragePath(path: string, fallbackName: string, userId: string,
   if (rawParts[0] === userId || rawParts[0] === safeUserId) rawParts.shift();
 
   const cleanParts = rawParts.filter((part) => part !== "." && part !== "..");
-  const rawFileName = cleanParts.length ? cleanParts[cleanParts.length - 1] : fallbackName;
+  const rawFileName = cleanParts.length
+    ? cleanParts[cleanParts.length - 1]
+    : fallbackName;
   const fileName = sanitizeFileName(rawFileName || fallbackName, mimeType);
-  const folders = cleanParts.slice(0, -1).map(sanitizeStorageFolder).filter(Boolean).slice(0, 4);
+  const folders = cleanParts
+    .slice(0, -1)
+    .map(sanitizeStorageFolder)
+    .filter(Boolean)
+    .slice(0, 4);
 
-  const relativePath = [...(folders.length ? folders : [DEFAULT_UPLOAD_FOLDER]), fileName].join("/");
+  const relativePath = [
+    ...(folders.length ? folders : [DEFAULT_UPLOAD_FOLDER]),
+    fileName,
+  ].join("/");
   return `${safeUserId}/${relativePath}`;
 }
 
-function buildFallbackStoragePath(userId: string, fallbackName: string, mimeType: string, requestedPath: string) {
+function buildFallbackStoragePath(
+  userId: string,
+  fallbackName: string,
+  mimeType: string,
+  requestedPath: string,
+) {
   const safeUserId = sanitizeUserId(userId);
   const folder = getRequestedFolder(requestedPath, userId);
   return `${safeUserId}/${folder}/${randomUUID()}-${sanitizeFileName(fallbackName, mimeType)}`;
 }
 
-async function uploadToBoosterStorage(storagePath: string, buffer: Buffer, contentType: string) {
-  return await supabaseAdmin.storage.from("booster").upload(storagePath, buffer, {
-    contentType: contentType || "application/octet-stream",
-    upsert: false,
-    cacheControl: "3600",
-  });
+async function uploadToBoosterStorage(
+  storagePath: string,
+  buffer: Buffer,
+  contentType: string,
+) {
+  return await supabaseAdmin.storage
+    .from("booster")
+    .upload(storagePath, buffer, {
+      contentType: contentType || "application/octet-stream",
+      upsert: false,
+      cacheControl: "3600",
+    });
 }
 
 export async function POST(req: Request) {
@@ -149,7 +207,10 @@ export async function POST(req: Request) {
     const formData = await req.formData().catch(() => null);
     if (!formData) {
       return NextResponse.json(
-        { error: "Données invalides. Pour les vidéos, utilisez l’upload direct Supabase." },
+        {
+          error:
+            "Données invalides. Pour les vidéos, utilisez l’upload direct Supabase.",
+        },
         { status: 400 },
       );
     }
@@ -160,11 +221,22 @@ export async function POST(req: Request) {
     }
 
     if (!isAllowedVideoFile(file)) {
-      return NextResponse.json({ error: "Format vidéo non autorisé. Formats acceptés : MP4/M4V, MOV ou WebM." }, { status: 400 });
+      return NextResponse.json(
+        {
+          error:
+            "Format vidéo non autorisé. Formats acceptés : MP4/M4V, MOV ou WebM.",
+        },
+        { status: 400 },
+      );
     }
 
     if (file.size > MAX_VIDEO_BYTES) {
-      return NextResponse.json({ error: `Vidéo trop lourde. Taille maximale : ${MAX_VIDEO_MB_LABEL}.` }, { status: 413 });
+      return NextResponse.json(
+        {
+          error: `Vidéo trop lourde. Taille maximale : ${MAX_VIDEO_MB_LABEL}.`,
+        },
+        { status: 413 },
+      );
     }
 
     const duration = Number(formData.get("duration") || 0);
@@ -173,16 +245,30 @@ export async function POST(req: Request) {
     const contentType = getSafeContentType(file);
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
-    let storagePath = sanitizeStoragePath(requestedPath, file.name || "video-inrcy.mp4", user.id, contentType);
+    let storagePath = sanitizeStoragePath(
+      requestedPath,
+      file.name || "video-inrcy.mp4",
+      user.id,
+      contentType,
+    );
 
     let upload = await uploadToBoosterStorage(storagePath, buffer, contentType);
 
     // Sécurité anti-casse : si Supabase refuse encore une clé ou si elle existe déjà,
     // on retente avec un nom 100 % généré côté serveur.
     if (upload.error) {
-      const fallbackPath = buildFallbackStoragePath(user.id, file.name || "video-inrcy.mp4", contentType, requestedPath);
+      const fallbackPath = buildFallbackStoragePath(
+        user.id,
+        file.name || "video-inrcy.mp4",
+        contentType,
+        requestedPath,
+      );
       if (fallbackPath !== storagePath) {
-        const retry = await uploadToBoosterStorage(fallbackPath, buffer, contentType);
+        const retry = await uploadToBoosterStorage(
+          fallbackPath,
+          buffer,
+          contentType,
+        );
         if (!retry.error) {
           storagePath = fallbackPath;
           upload = retry;
@@ -191,10 +277,15 @@ export async function POST(req: Request) {
     }
 
     if (upload.error) {
-      return NextResponse.json({ error: upload.error.message || "Upload vidéo impossible." }, { status: 500 });
+      return NextResponse.json(
+        { error: upload.error.message || "Upload vidéo impossible." },
+        { status: 500 },
+      );
     }
 
-    const publicUrl = supabaseAdmin.storage.from("booster").getPublicUrl(storagePath)?.data?.publicUrl || null;
+    const publicUrl =
+      supabaseAdmin.storage.from("booster").getPublicUrl(storagePath)?.data
+        ?.publicUrl || null;
 
     return NextResponse.json({
       ok: true,
@@ -207,6 +298,9 @@ export async function POST(req: Request) {
     });
   } catch (e) {
     console.error("[Booster] upload-video failed", e);
-    return NextResponse.json({ error: "Impossible d'uploader la vidéo." }, { status: 500 });
+    return NextResponse.json(
+      { error: "Impossible d'uploader la vidéo." },
+      { status: 500 },
+    );
   }
 }

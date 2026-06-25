@@ -3,9 +3,13 @@ import { randomUUID } from "crypto";
 import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { enforceRateLimit } from "@/lib/rateLimit";
+import {
+  INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
+  INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL,
+} from "@/lib/mediaRules";
 
-const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
-const MAX_VIDEO_MB_LABEL = "100 Mo";
+const MAX_VIDEO_BYTES = INR_MEDIA_VIDEO_SOURCE_MAX_BYTES;
+const MAX_VIDEO_MB_LABEL = INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL;
 const DEFAULT_UPLOAD_FOLDER = "booster-videos";
 
 const MIME_EXTENSION: Record<string, string> = {
@@ -18,7 +22,12 @@ const MIME_EXTENSION: Record<string, string> = {
 const ALLOWED_VIDEO_EXTENSIONS = new Set(["mp4", "mov", "webm", "m4v"]);
 
 function normalizeMime(type: string) {
-  return String(type || "").toLowerCase().split(";")[0]?.trim() || "";
+  return (
+    String(type || "")
+      .toLowerCase()
+      .split(";")[0]
+      ?.trim() || ""
+  );
 }
 
 function isAllowedVideoMime(type: string) {
@@ -27,8 +36,13 @@ function isAllowedVideoMime(type: string) {
 
 function isAllowedVideoFile(name: string, type: string) {
   if (isAllowedVideoMime(type)) return true;
-  const rawName = String(name || "").split(/[\\/]/).pop() || "";
-  const ext = rawName.includes(".") ? rawName.split(".").pop()?.toLowerCase() || "" : "";
+  const rawName =
+    String(name || "")
+      .split(/[\\/]/)
+      .pop() || "";
+  const ext = rawName.includes(".")
+    ? rawName.split(".").pop()?.toLowerCase() || ""
+    : "";
   return ALLOWED_VIDEO_EXTENSIONS.has(ext);
 }
 
@@ -54,33 +68,57 @@ function getSafeExtension(name: string, mimeType: string) {
   const mimeExtension = MIME_EXTENSION[normalizeMime(mimeType)];
   if (mimeExtension) return mimeExtension;
 
-  const rawName = String(name || "").split(/[\\/]/).pop() || "";
-  const ext = rawName.includes(".") ? rawName.split(".").pop()?.toLowerCase() || "" : "";
-  return ALLOWED_VIDEO_EXTENSIONS.has(ext) ? (ext === "m4v" ? "mp4" : ext) : "mp4";
+  const rawName =
+    String(name || "")
+      .split(/[\\/]/)
+      .pop() || "";
+  const ext = rawName.includes(".")
+    ? rawName.split(".").pop()?.toLowerCase() || ""
+    : "";
+  return ALLOWED_VIDEO_EXTENSIONS.has(ext)
+    ? ext === "m4v"
+      ? "mp4"
+      : ext
+    : "mp4";
 }
 
 function getSafeContentType(name: string, type: string) {
   const mime = normalizeMime(type);
   if (isAllowedVideoMime(mime)) return mime;
-  const rawName = String(name || "").split(/[\\/]/).pop() || "";
-  const ext = rawName.includes(".") ? rawName.split(".").pop()?.toLowerCase() || "" : "";
+  const rawName =
+    String(name || "")
+      .split(/[\\/]/)
+      .pop() || "";
+  const ext = rawName.includes(".")
+    ? rawName.split(".").pop()?.toLowerCase() || ""
+    : "";
   if (ext === "mov") return "video/quicktime";
   if (ext === "webm") return "video/webm";
   return "video/mp4";
 }
 
 function sanitizeFileName(name: string, mimeType: string) {
-  const rawName = String(name || "video-inrcy").split(/[\\/]/).pop() || "video-inrcy";
+  const rawName =
+    String(name || "video-inrcy")
+      .split(/[\\/]/)
+      .pop() || "video-inrcy";
   const withoutExtension = rawName.replace(/\.[^.]*$/, "");
   const base = normalizeSafeSegment(withoutExtension, "video-inrcy");
   return `${base}.${getSafeExtension(rawName, mimeType)}`.toLowerCase();
 }
 
 function sanitizeStorageFolder(folder: string) {
-  return normalizeSafeSegment(folder, DEFAULT_UPLOAD_FOLDER).replace(/\./g, "-").toLowerCase();
+  return normalizeSafeSegment(folder, DEFAULT_UPLOAD_FOLDER)
+    .replace(/\./g, "-")
+    .toLowerCase();
 }
 
-function sanitizeStoragePath(path: string, fallbackName: string, userId: string, mimeType: string) {
+function sanitizeStoragePath(
+  path: string,
+  fallbackName: string,
+  userId: string,
+  mimeType: string,
+) {
   const safeUserId = sanitizeUserId(userId);
   const rawParts = String(path || "")
     .replace(/\\/g, "/")
@@ -93,15 +131,29 @@ function sanitizeStoragePath(path: string, fallbackName: string, userId: string,
   if (rawParts[0] === userId || rawParts[0] === safeUserId) rawParts.shift();
 
   const cleanParts = rawParts.filter((part) => part !== "." && part !== "..");
-  const rawFileName = cleanParts.length ? cleanParts[cleanParts.length - 1] : fallbackName;
+  const rawFileName = cleanParts.length
+    ? cleanParts[cleanParts.length - 1]
+    : fallbackName;
   const fileName = sanitizeFileName(rawFileName || fallbackName, mimeType);
-  const folders = cleanParts.slice(0, -1).map(sanitizeStorageFolder).filter(Boolean).slice(0, 4);
+  const folders = cleanParts
+    .slice(0, -1)
+    .map(sanitizeStorageFolder)
+    .filter(Boolean)
+    .slice(0, 4);
 
-  const relativePath = [...(folders.length ? folders : [DEFAULT_UPLOAD_FOLDER]), fileName].join("/");
+  const relativePath = [
+    ...(folders.length ? folders : [DEFAULT_UPLOAD_FOLDER]),
+    fileName,
+  ].join("/");
   return `${safeUserId}/${relativePath}`;
 }
 
-function buildFallbackStoragePath(userId: string, fallbackName: string, mimeType: string, requestedPath: string) {
+function buildFallbackStoragePath(
+  userId: string,
+  fallbackName: string,
+  mimeType: string,
+  requestedPath: string,
+) {
   const safeUserId = sanitizeUserId(userId);
   const firstFolder = String(requestedPath || "")
     .replace(/\\/g, "/")
@@ -113,7 +165,9 @@ function buildFallbackStoragePath(userId: string, fallbackName: string, mimeType
 }
 
 async function createSignedUpload(storagePath: string) {
-  return await supabaseAdmin.storage.from("booster").createSignedUploadUrl(storagePath);
+  return await supabaseAdmin.storage
+    .from("booster")
+    .createSignedUploadUrl(storagePath);
 }
 
 export async function POST(req: Request) {
@@ -132,7 +186,10 @@ export async function POST(req: Request) {
 
     const body = await req.json().catch(() => null);
     if (!body || typeof body !== "object") {
-      return NextResponse.json({ error: "Données vidéo invalides." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Données vidéo invalides." },
+        { status: 400 },
+      );
     }
 
     const name = String((body as any).name || "video-inrcy.mp4");
@@ -141,24 +198,48 @@ export async function POST(req: Request) {
     const requestedPath = String((body as any).path || "");
 
     if (!Number.isFinite(size) || size <= 0) {
-      return NextResponse.json({ error: "Taille vidéo invalide." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Taille vidéo invalide." },
+        { status: 400 },
+      );
     }
 
     if (size > MAX_VIDEO_BYTES) {
-      return NextResponse.json({ error: `Vidéo trop lourde. Taille maximale : ${MAX_VIDEO_MB_LABEL}.` }, { status: 413 });
+      return NextResponse.json(
+        {
+          error: `Vidéo trop lourde. Taille maximale : ${MAX_VIDEO_MB_LABEL}.`,
+        },
+        { status: 413 },
+      );
     }
 
     if (!isAllowedVideoFile(name, type)) {
-      return NextResponse.json({ error: "Format vidéo non autorisé. Formats acceptés : MP4/M4V, MOV ou WebM." }, { status: 400 });
+      return NextResponse.json(
+        {
+          error:
+            "Format vidéo non autorisé. Formats acceptés : MP4/M4V, MOV ou WebM.",
+        },
+        { status: 400 },
+      );
     }
 
     const contentType = getSafeContentType(name, type);
-    let storagePath = sanitizeStoragePath(requestedPath, name || "video-inrcy.mp4", user.id, contentType);
+    let storagePath = sanitizeStoragePath(
+      requestedPath,
+      name || "video-inrcy.mp4",
+      user.id,
+      contentType,
+    );
 
     let signed = await createSignedUpload(storagePath);
 
     if (signed.error) {
-      const fallbackPath = buildFallbackStoragePath(user.id, name || "video-inrcy.mp4", contentType, requestedPath);
+      const fallbackPath = buildFallbackStoragePath(
+        user.id,
+        name || "video-inrcy.mp4",
+        contentType,
+        requestedPath,
+      );
       if (fallbackPath !== storagePath) {
         const retry = await createSignedUpload(fallbackPath);
         if (!retry.error) {
@@ -170,12 +251,17 @@ export async function POST(req: Request) {
 
     if (signed.error || !signed.data?.token) {
       return NextResponse.json(
-        { error: signed.error?.message || "Impossible de préparer l’upload vidéo." },
+        {
+          error:
+            signed.error?.message || "Impossible de préparer l’upload vidéo.",
+        },
         { status: 500 },
       );
     }
 
-    const { data: publicData } = supabaseAdmin.storage.from("booster").getPublicUrl(storagePath);
+    const { data: publicData } = supabaseAdmin.storage
+      .from("booster")
+      .getPublicUrl(storagePath);
 
     return NextResponse.json({
       ok: true,
@@ -191,6 +277,9 @@ export async function POST(req: Request) {
     });
   } catch (e: any) {
     console.error("[Booster] video-upload-url failed", e);
-    return NextResponse.json({ error: e?.message || "Préparation upload vidéo impossible." }, { status: 500 });
+    return NextResponse.json(
+      { error: e?.message || "Préparation upload vidéo impossible." },
+      { status: 500 },
+    );
   }
 }

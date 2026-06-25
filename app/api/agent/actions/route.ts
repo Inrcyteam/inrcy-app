@@ -8,6 +8,10 @@ import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { normalizeMailSubject } from "@/lib/mailEncoding";
 import { textToRichMailHtml } from "@/lib/mailRichText";
+import {
+  INR_MEDIA_IMAGE_MAX_BYTES,
+  INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
+} from "@/lib/mediaRules";
 
 function isMissingTableError(
   error: { code?: string; message?: string } | null | undefined,
@@ -24,6 +28,8 @@ function isMissingTableError(
 const ACTION_SELECT =
   "id, automation_key, action_type, target_tool, title, summary, preview_text, target_channels, target_themes, recipients, image_assets, payload, validation_required, execution_policy, status, scheduled_for, prepared_at, validated_at, refused_at, completed_at, last_error, created_at, updated_at";
 const IMAGE_BANK_BUCKET = "inrcy-image-bank";
+const MAX_AGENT_IMAGE_BYTES = INR_MEDIA_IMAGE_MAX_BYTES;
+const MAX_AGENT_VIDEO_BYTES = INR_MEDIA_VIDEO_SOURCE_MAX_BYTES;
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -43,7 +49,10 @@ function withFreshReportDocument(payload: Record<string, unknown>) {
   if (!reportRecord) return payload;
 
   const storagePath = String(
-    reportRecord.storagePath || reportRecord.storage_path || reportRecord.path || "",
+    reportRecord.storagePath ||
+      reportRecord.storage_path ||
+      reportRecord.path ||
+      "",
   ).trim();
   const bucket = String(reportRecord.bucket || "inr-agent-reports").trim();
   if (!storagePath || !bucket) return payload;
@@ -68,7 +77,8 @@ function withFreshReportDocument(payload: Record<string, unknown>) {
 async function refreshImageAssetUrls(assets: unknown[]) {
   return Promise.all(
     assets.map(async (asset) => {
-      const record = typeof asset === "string" ? { url: asset } : asRecord(asset);
+      const record =
+        typeof asset === "string" ? { url: asset } : asRecord(asset);
       if (!record) return asset;
 
       const storagePath = String(
@@ -95,27 +105,141 @@ async function refreshImageAssetUrls(assets: unknown[]) {
   );
 }
 
-async function refreshActionImageUrls(action: ReturnType<typeof rowToInrAgentAction>) {
+function isMediaRecord(value: unknown) {
+  const record = asRecord(value);
+  if (!record) return false;
+  return Boolean(
+    record.storagePath ||
+    record.storage_path ||
+    record.path ||
+    record.url ||
+    record.publicUrl ||
+    record.src,
+  );
+}
+
+async function refreshPublishMediaUrl(media: unknown) {
+  const record = asRecord(media);
+  if (!record) return media;
+
+  const storagePath = String(
+    record.storagePath || record.storage_path || record.path || "",
+  ).trim();
+  const bucket = String(record.bucket || IMAGE_BANK_BUCKET).trim();
+  if (!storagePath || !bucket) return record;
+
+  try {
+    const signed = await supabaseAdmin.storage
+      .from(bucket)
+      .createSignedUrl(storagePath, 60 * 60);
+    const url =
+      signed.data?.signedUrl ||
+      String(record.url || record.publicUrl || "").trim();
+    return {
+      ...record,
+      bucket,
+      storagePath,
+      path: storagePath,
+      url,
+      publicUrl: url,
+    };
+  } catch {
+    return record;
+  }
+}
+
+async function refreshPostByChannelMediaUrls(postByChannel: unknown) {
+  const posts = asRecord(postByChannel);
+  if (!posts) return postByChannel;
+
+  const nextEntries = await Promise.all(
+    Object.entries(posts).map(async ([channel, value]) => {
+      const post = asRecord(value);
+      if (!post) return [channel, value] as const;
+      const nextPost = { ...post };
+      for (const key of [
+        "media",
+        "mediaAsset",
+        "image",
+        "imageAsset",
+        "video",
+        "videoAsset",
+        "file",
+        "attachment",
+      ] as const) {
+        if (isMediaRecord(nextPost[key]))
+          nextPost[key] = await refreshPublishMediaUrl(nextPost[key]);
+      }
+      return [channel, nextPost] as const;
+    }),
+  );
+
+  return Object.fromEntries(nextEntries);
+}
+
+async function refreshActionImageUrls(
+  action: ReturnType<typeof rowToInrAgentAction>,
+) {
   const imageAssets = await refreshImageAssetUrls(action.imageAssets);
   let payload = { ...action.payload };
-  const imageRecord = asRecord(payload.image || payload.imageAsset);
-  if (imageRecord) {
-    const [freshImage] = await refreshImageAssetUrls([imageRecord]);
-    payload.image = freshImage;
-    payload.imageAsset = freshImage;
+  const mediaRecord = asRecord(
+    payload.media ||
+      payload.mediaAsset ||
+      payload.image ||
+      payload.imageAsset ||
+      payload.video ||
+      payload.videoAsset,
+  );
+  if (mediaRecord) {
+    const freshMedia = await refreshPublishMediaUrl(mediaRecord);
+    const freshRecord = asRecord(freshMedia) || mediaRecord;
+    payload.media = freshRecord;
+    payload.mediaAsset = freshRecord;
+    const kind = String(
+      freshRecord.kind ||
+        freshRecord.mediaType ||
+        freshRecord.media_type ||
+        freshRecord.mimeType ||
+        freshRecord.type ||
+        "",
+    )
+      .toLowerCase()
+      .includes("video")
+      ? "video"
+      : "image";
+    if (kind === "video") {
+      payload.video = freshRecord;
+      payload.videoAsset = freshRecord;
+    } else {
+      payload.image = freshRecord;
+      payload.imageAsset = freshRecord;
+    }
+  }
+  if (payload.postByChannel) {
+    payload.postByChannel = await refreshPostByChannelMediaUrls(
+      payload.postByChannel,
+    );
   }
   payload = await withFreshReportDocument(payload);
   return { ...action, imageAssets, payload };
 }
 
-
 function cleanEmail(value: unknown) {
-  const email = String(value ?? "").trim().toLowerCase();
+  const email = String(value ?? "")
+    .trim()
+    .toLowerCase();
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(email) ? email : "";
 }
 
-function isMissingDraftMetadataColumn(error: { code?: string; message?: string; details?: string; hint?: string } | null | undefined) {
-  const msg = String(error?.message || error?.details || error?.hint || "").toLowerCase();
+function isMissingDraftMetadataColumn(
+  error:
+    | { code?: string; message?: string; details?: string; hint?: string }
+    | null
+    | undefined,
+) {
+  const msg = String(
+    error?.message || error?.details || error?.hint || "",
+  ).toLowerCase();
   return (
     error?.code === "PGRST204" ||
     msg.includes("folder") ||
@@ -131,7 +255,10 @@ function cleanDraftAttachment(item: unknown) {
   if (!record) return null;
 
   const bucket = cleanText(record.bucket, 120);
-  const path = cleanText(record.path || record.storagePath || record.storage_path, 500);
+  const path = cleanText(
+    record.path || record.storagePath || record.storage_path,
+    500,
+  );
   if (!bucket || !path) return null;
 
   return {
@@ -141,8 +268,13 @@ function cleanDraftAttachment(item: unknown) {
       cleanText(record.name || record.filename || record.fileName, 240) ||
       path.split("/").pop() ||
       "piece-jointe",
-    type: cleanText(record.type || record.mimeType || record.mime_type, 140) || "application/octet-stream",
-    size: typeof record.size === "number" && Number.isFinite(record.size) ? record.size : null,
+    type:
+      cleanText(record.type || record.mimeType || record.mime_type, 140) ||
+      "application/octet-stream",
+    size:
+      typeof record.size === "number" && Number.isFinite(record.size)
+        ? record.size
+        : null,
   };
 }
 
@@ -179,7 +311,9 @@ type CampaignRecipientInput = {
   postal_code?: string | null;
 };
 
-function normalizeCampaignRecipientInputs(value: unknown): CampaignRecipientInput[] {
+function normalizeCampaignRecipientInputs(
+  value: unknown,
+): CampaignRecipientInput[] {
   const recipients = Array.isArray(value) ? value : [];
   const seen = new Set<string>();
   const out: CampaignRecipientInput[] = [];
@@ -190,17 +324,28 @@ function normalizeCampaignRecipientInputs(value: unknown): CampaignRecipientInpu
     if (!email || seen.has(email)) continue;
     seen.add(email);
     out.push({
-      contact_id: cleanText(record?.contact_id || record?.contactId || record?.id, 140) || null,
-      display_name:
-        cleanText(record?.display_name || record?.displayName || record?.name || record?.company_name || record?.companyName, 220) ||
+      contact_id:
+        cleanText(record?.contact_id || record?.contactId || record?.id, 140) ||
         null,
+      display_name:
+        cleanText(
+          record?.display_name ||
+            record?.displayName ||
+            record?.name ||
+            record?.company_name ||
+            record?.companyName,
+          220,
+        ) || null,
       email,
       phone: cleanText(record?.phone, 80) || null,
-      contact_type: cleanText(record?.contact_type || record?.contactType, 80) || null,
+      contact_type:
+        cleanText(record?.contact_type || record?.contactType, 80) || null,
       category: cleanText(record?.category, 80) || null,
-      company_name: cleanText(record?.company_name || record?.companyName, 180) || null,
+      company_name:
+        cleanText(record?.company_name || record?.companyName, 180) || null,
       city: cleanText(record?.city, 120) || null,
-      postal_code: cleanText(record?.postal_code || record?.postalCode, 20) || null,
+      postal_code:
+        cleanText(record?.postal_code || record?.postalCode, 20) || null,
     });
   }
 
@@ -210,11 +355,17 @@ function normalizeCampaignRecipientInputs(value: unknown): CampaignRecipientInpu
 function isCampaignAction(action: ReturnType<typeof rowToInrAgentAction>) {
   return (
     (action.automationKey === "grow" || action.automationKey === "loyalty") &&
-    (action.targetTool === "propulser" || action.targetTool === "fideliser" || action.targetTool === "mails")
+    (action.targetTool === "propulser" ||
+      action.targetTool === "fideliser" ||
+      action.targetTool === "mails")
   );
 }
 
-function buildCampaignPreviewText(subject: string, bodyText: string, recipients: CampaignRecipientInput[]) {
+function buildCampaignPreviewText(
+  subject: string,
+  bodyText: string,
+  recipients: CampaignRecipientInput[],
+) {
   return [
     `Objet : ${subject}`,
     bodyText,
@@ -274,7 +425,11 @@ function cleanPublishHashtags(value: unknown) {
   const seen = new Set<string>();
   const hashtags: string[] = [];
   for (const item of raw) {
-    const clean = String(item ?? "").trim().replace(/^#+/, "").replace(/\s+/g, "").slice(0, 40);
+    const clean = String(item ?? "")
+      .trim()
+      .replace(/^#+/, "")
+      .replace(/\s+/g, "")
+      .slice(0, 40);
     if (!clean || seen.has(clean.toLowerCase())) continue;
     seen.add(clean.toLowerCase());
     hashtags.push(clean);
@@ -283,10 +438,17 @@ function cleanPublishHashtags(value: unknown) {
 }
 
 function isPublishAction(action: ReturnType<typeof rowToInrAgentAction>) {
-  return action.automationKey === "publish" && action.targetTool === "booster" && action.actionType === "publication";
+  return (
+    action.automationKey === "publish" &&
+    action.targetTool === "booster" &&
+    action.actionType === "publication"
+  );
 }
 
-function readPublishPost(postByChannel: Record<string, unknown>, channel: PublishChannelKey) {
+function readPublishPost(
+  postByChannel: Record<string, unknown>,
+  channel: PublishChannelKey,
+) {
   for (const key of publishChannelReadAliases[channel]) {
     const record = asRecord(postByChannel[key]);
     if (record) return record;
@@ -296,19 +458,33 @@ function readPublishPost(postByChannel: Record<string, unknown>, channel: Publis
   return {};
 }
 
-function buildPublishPreviewTextFromPosts(postByChannel: Record<string, unknown>, fallback: string) {
+function buildPublishPreviewTextFromPosts(
+  postByChannel: Record<string, unknown>,
+  fallback: string,
+) {
   const firstPost = Object.values(postByChannel)
     .map((value) => {
       const record = asRecord(value);
       if (!record) return cleanText(value, 1200);
-      return cleanText(record.content || record.text || record.caption || record.body || record.message, 1200);
+      return cleanText(
+        record.content ||
+          record.text ||
+          record.caption ||
+          record.body ||
+          record.message,
+        1200,
+      );
     })
     .find(Boolean);
   return firstPost || fallback;
 }
 
 function publishChannelRequiresMedia(channel: PublishChannelKey) {
-  return channel === "instagram" || channel === "tiktok" || channel === "youtube_shorts";
+  return (
+    channel === "instagram" ||
+    channel === "tiktok" ||
+    channel === "youtube_shorts"
+  );
 }
 
 function publishChannelRequiresVideo(channel: PublishChannelKey) {
@@ -319,44 +495,118 @@ function cleanPublishMedia(value: unknown) {
   const record = asRecord(value);
   if (!record) return null;
 
-  const url = cleanText(record.url || record.publicUrl || record.src || record.downloadUrl, 900);
-  const storagePath = cleanText(record.storagePath || record.storage_path || record.path, 700);
+  const url = cleanText(
+    record.url ||
+      record.publicUrl ||
+      record.src ||
+      record.downloadUrl ||
+      record.signed_url,
+    1200,
+  );
+  const storagePath = cleanText(
+    record.storagePath || record.storage_path || record.path,
+    900,
+  );
   if (!url && !storagePath) return null;
 
-  const mimeType = cleanText(record.mimeType || record.mime_type || record.type, 160) || "application/octet-stream";
-  const rawKind = cleanText(record.kind || record.mediaKind, 24).toLowerCase();
-  const kind = rawKind === "video" || mimeType.startsWith("video/")
-    ? "video"
-    : rawKind === "file"
-      ? "file"
-      : "image";
+  const mimeType =
+    cleanText(record.mimeType || record.mime_type || record.type, 160) ||
+    "application/octet-stream";
+  const rawKind = cleanText(
+    record.kind || record.mediaKind || record.mediaType || record.media_type,
+    24,
+  ).toLowerCase();
+  const kind =
+    rawKind === "video" || mimeType.startsWith("video/")
+      ? "video"
+      : rawKind === "image" || mimeType.startsWith("image/")
+        ? "image"
+        : null;
+  if (!kind) return null;
+
+  const size = Number(
+    record.size ?? record.sizeBytes ?? record.size_bytes ?? 0,
+  );
+
+  if (
+    kind === "image" &&
+    Number.isFinite(size) &&
+    size > MAX_AGENT_IMAGE_BYTES
+  ) {
+    return null;
+  }
+  if (
+    kind === "video" &&
+    Number.isFinite(size) &&
+    size > MAX_AGENT_VIDEO_BYTES
+  ) {
+    return null;
+  }
 
   return {
-    bucket: cleanText(record.bucket, 120) || "booster",
+    id: cleanText(record.id, 160) || null,
+    bucket:
+      cleanText(
+        record.bucket || record.bucketName || record.bucket_name,
+        120,
+      ) || "booster",
     path: storagePath,
     storagePath,
     publicUrl: url,
     url,
-    name: cleanText(record.name || record.filename || record.fileName, 240) || storagePath.split("/").pop() || "media",
+    name:
+      cleanText(
+        record.name || record.filename || record.fileName || record.title,
+        240,
+      ) ||
+      storagePath.split("/").pop() ||
+      "media",
+    title:
+      cleanText(record.title || record.name || record.filename, 240) ||
+      storagePath.split("/").pop() ||
+      "media",
     type: mimeType,
     mimeType,
-    size: typeof record.size === "number" && Number.isFinite(record.size) ? record.size : null,
+    size: Number.isFinite(size) && size > 0 ? size : null,
+    duration: Number(record.duration ?? record.duration_seconds ?? 0) || null,
     kind,
+    mediaType: kind,
+    source: cleanText(record.source, 120) || null,
   };
 }
 
-function buildPublishMediaReadiness(channel: PublishChannelKey, media: ReturnType<typeof cleanPublishMedia>) {
+function buildPublishMediaReadiness(
+  channel: PublishChannelKey,
+  media: ReturnType<typeof cleanPublishMedia>,
+) {
   if (!media) {
     return publishChannelRequiresMedia(channel)
-      ? { status: "blocked", ready: false, blockers: ["Ce canal exige un média."] }
+      ? {
+          status: "blocked",
+          ready: false,
+          blockers: ["Ce canal exige un média."],
+        }
       : { status: "ready", ready: true, blockers: [] };
   }
 
   if (publishChannelRequiresVideo(channel) && media.kind !== "video") {
-    return { status: "blocked", ready: false, blockers: ["Ce canal exige une vidéo."] };
+    return {
+      status: "blocked",
+      ready: false,
+      blockers: ["Ce canal exige une vidéo."],
+    };
   }
 
-  return { status: "ready", ready: true, blockers: [] };
+  return {
+    status: media.kind === "video" ? "ready_with_video" : "ready_with_image",
+    ready: true,
+    publishable: true,
+    blockers: [],
+    reason:
+      media.kind === "video"
+        ? "Vidéo prête pour ce canal."
+        : "Image prête pour ce canal.",
+  };
 }
 
 async function readCampaignAction(actionId: string, userId: string) {
@@ -372,10 +622,17 @@ async function readCampaignAction(actionId: string, userId: string) {
       action: null,
       response: isMissingTableError(readError)
         ? NextResponse.json(
-            { error: "La table inr_agent_actions doit être créée dans Supabase.", tableMissing: true },
+            {
+              error:
+                "La table inr_agent_actions doit être créée dans Supabase.",
+              tableMissing: true,
+            },
             { status: 500 },
           )
-        : NextResponse.json({ error: "Action iNr’Agent introuvable." }, { status: 404 }),
+        : NextResponse.json(
+            { error: "Action iNr’Agent introuvable." },
+            { status: 404 },
+          ),
     };
   }
 
@@ -384,7 +641,10 @@ async function readCampaignAction(actionId: string, userId: string) {
     return {
       action: null,
       response: NextResponse.json(
-        { error: "Cette modification est réservée aux campagnes Propulser/Fidéliser préparées par iNr’Agent." },
+        {
+          error:
+            "Cette modification est réservée aux campagnes Propulser/Fidéliser préparées par iNr’Agent.",
+        },
         { status: 400 },
       ),
     };
@@ -400,7 +660,11 @@ async function updateCampaignAction(args: {
 }) {
   const { data, error } = await supabaseAdmin
     .from("inr_agent_actions")
-    .update({ ...args.patch, updated_at: new Date().toISOString(), last_error: null })
+    .update({
+      ...args.patch,
+      updated_at: new Date().toISOString(),
+      last_error: null,
+    })
     .eq("id", args.actionId)
     .eq("user_id", args.userId)
     .select(ACTION_SELECT)
@@ -410,14 +674,20 @@ async function updateCampaignAction(args: {
     if (isMissingTableError(error)) {
       return {
         response: NextResponse.json(
-          { error: "La table inr_agent_actions doit être créée dans Supabase.", tableMissing: true },
+          {
+            error: "La table inr_agent_actions doit être créée dans Supabase.",
+            tableMissing: true,
+          },
           { status: 500 },
         ),
       };
     }
     return {
       response: NextResponse.json(
-        { error: error.message || "Modification de l’action iNr’Agent impossible." },
+        {
+          error:
+            error.message || "Modification de l’action iNr’Agent impossible.",
+        },
         { status: 500 },
       ),
     };
@@ -430,7 +700,9 @@ async function updateCampaignAction(args: {
 async function fetchConnectedMailAccount(userId: string, accountId: string) {
   const { data, error } = await supabaseAdmin
     .from("integrations")
-    .select("id,provider,account_email,email_address,display_name,resource_label,status,settings")
+    .select(
+      "id,provider,account_email,email_address,display_name,resource_label,status,settings",
+    )
     .eq("id", accountId)
     .eq("user_id", userId)
     .eq("category", "mail")
@@ -440,7 +712,13 @@ async function fetchConnectedMailAccount(userId: string, accountId: string) {
   if (error || !data) return null;
   const row = data as Record<string, unknown>;
   const settings = asRecord(row.settings) || {};
-  const accountEmail = cleanText(row.account_email || row.email_address || settings.email || settings.account_email, 180);
+  const accountEmail = cleanText(
+    row.account_email ||
+      row.email_address ||
+      settings.email ||
+      settings.account_email,
+    180,
+  );
   const displayName = cleanText(row.display_name || settings.display_name, 180);
   return {
     id: cleanText(row.id, 140),
@@ -449,7 +727,9 @@ async function fetchConnectedMailAccount(userId: string, accountId: string) {
     account_email: accountEmail || null,
     email: accountEmail || null,
     display_name: displayName || null,
-    label: accountEmail || cleanText(row.resource_label || row.provider || "Boîte mail", 180),
+    label:
+      accountEmail ||
+      cleanText(row.resource_label || row.provider || "Boîte mail", 180),
   };
 }
 
@@ -461,25 +741,44 @@ function buildDraftPayloadFromAgentAction(args: {
   const payload = action.payload || {};
   const mailAccount = asRecord(payload.mailAccount) || {};
   const automationKey = action.automationKey === "loyalty" ? "loyalty" : "grow";
-  const recipients = recipientsToEmails(payload.recipients || action.recipients);
+  const recipients = recipientsToEmails(
+    payload.recipients || action.recipients,
+  );
   const subject = normalizeMailSubject(
-    cleanText(payload.campaignSubject || payload.subject || action.title, 220) || "(sans objet)",
+    cleanText(
+      payload.campaignSubject || payload.subject || action.title,
+      220,
+    ) || "(sans objet)",
   );
   const bodyText = cleanText(
-    payload.campaignBody || payload.bodyText || payload.text || action.previewText,
+    payload.campaignBody ||
+      payload.bodyText ||
+      payload.text ||
+      action.previewText,
     6000,
   );
-  const bodyHtml = cleanText(payload.bodyHtml || payload.html, 10000) || textToRichMailHtml(bodyText);
+  const bodyHtml =
+    cleanText(payload.bodyHtml || payload.html, 10000) ||
+    textToRichMailHtml(bodyText);
   const folder =
     cleanText(payload.folder, 80) ||
     (automationKey === "loyalty" ? "fidelisations" : "propulsions");
   const trackKind =
     cleanText(payload.trackKind, 80) ||
     (automationKey === "loyalty" ? "fideliser" : "propulser");
-  const trackType = cleanText(payload.trackType || payload.theme || action.targetThemes[0], 80);
+  const trackType = cleanText(
+    payload.trackType || payload.theme || action.targetThemes[0],
+    80,
+  );
   const templateKey = cleanText(payload.templateKey, 160);
-  const accountId = cleanText(payload.accountId || payload.mailAccountId || mailAccount.id, 120);
-  const provider = cleanText(mailAccount.provider || payload.provider || payload.mailProvider, 80);
+  const accountId = cleanText(
+    payload.accountId || payload.mailAccountId || mailAccount.id,
+    120,
+  );
+  const provider = cleanText(
+    mailAccount.provider || payload.provider || payload.mailProvider,
+    80,
+  );
 
   const draftPayload = {
     user_id: args.userId,
@@ -534,7 +833,10 @@ async function saveCampaignActionAsInrSendDraft(args: {
     if (isMissingTableError(readError)) {
       return {
         response: NextResponse.json(
-          { error: "La table inr_agent_actions doit être créée dans Supabase.", tableMissing: true },
+          {
+            error: "La table inr_agent_actions doit être créée dans Supabase.",
+            tableMissing: true,
+          },
           { status: 500 },
         ),
       };
@@ -550,21 +852,27 @@ async function saveCampaignActionAsInrSendDraft(args: {
   const action = rowToInrAgentAction(currentRow as any);
   const isCampaignAction =
     (action.automationKey === "grow" || action.automationKey === "loyalty") &&
-    (action.targetTool === "propulser" || action.targetTool === "fideliser" || action.targetTool === "mails");
+    (action.targetTool === "propulser" ||
+      action.targetTool === "fideliser" ||
+      action.targetTool === "mails");
 
   if (!isCampaignAction) {
     return {
       response: NextResponse.json(
-        { error: "Seules les campagnes Propulser/Fidéliser peuvent être enregistrées en brouillon iNrSend." },
+        {
+          error:
+            "Seules les campagnes Propulser/Fidéliser peuvent être enregistrées en brouillon iNrSend.",
+        },
         { status: 400 },
       ),
     };
   }
 
-  const { payload, draftPayload, legacyPayload } = buildDraftPayloadFromAgentAction({
-    action,
-    userId: args.userId,
-  });
+  const { payload, draftPayload, legacyPayload } =
+    buildDraftPayloadFromAgentAction({
+      action,
+      userId: args.userId,
+    });
 
   let { data: draft, error: draftError } = await supabaseAdmin
     .from("send_items")
@@ -585,14 +893,19 @@ async function saveCampaignActionAsInrSendDraft(args: {
   if (draftError) {
     return {
       response: NextResponse.json(
-        { error: draftError.message || "Impossible d’enregistrer la campagne en brouillon iNrSend." },
+        {
+          error:
+            draftError.message ||
+            "Impossible d’enregistrer la campagne en brouillon iNrSend.",
+        },
         { status: 500 },
       ),
     };
   }
 
   const now = new Date().toISOString();
-  const draftId = cleanText((draft as Record<string, unknown> | null)?.id, 120) || null;
+  const draftId =
+    cleanText((draft as Record<string, unknown> | null)?.id, 120) || null;
   const { data, error } = await supabaseAdmin
     .from("inr_agent_actions")
     .update({
@@ -620,14 +933,21 @@ async function saveCampaignActionAsInrSendDraft(args: {
     if (isMissingTableError(error)) {
       return {
         response: NextResponse.json(
-          { error: "La table inr_agent_actions doit être créée dans Supabase.", tableMissing: true },
+          {
+            error: "La table inr_agent_actions doit être créée dans Supabase.",
+            tableMissing: true,
+          },
           { status: 500 },
         ),
       };
     }
     return {
       response: NextResponse.json(
-        { error: error.message || "Impossible de fermer l’action iNr’Agent après enregistrement du brouillon." },
+        {
+          error:
+            error.message ||
+            "Impossible de fermer l’action iNr’Agent après enregistrement du brouillon.",
+        },
         { status: 500 },
       ),
     };
@@ -706,18 +1026,13 @@ export async function PATCH(request: Request) {
     removeMedia?: unknown;
   } | null;
   const actionId =
-    typeof requestBody?.actionId === "string"
-      ? requestBody.actionId
-      : "";
+    typeof requestBody?.actionId === "string" ? requestBody.actionId : "";
   const status = sanitizeInrAgentActionStatus(requestBody?.status);
   const editType = cleanText(requestBody?.editType, 80);
 
   if (editType === "save_campaign_draft") {
     if (!actionId) {
-      return NextResponse.json(
-        { error: "Action invalide" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Action invalide" }, { status: 400 });
     }
 
     const result = await saveCampaignActionAsInrSendDraft({
@@ -740,20 +1055,30 @@ export async function PATCH(request: Request) {
 
     const channel = cleanPublishChannel(requestBody?.channel);
     if (!channel) {
-      return NextResponse.json({ error: "Canal de publication invalide." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Canal de publication invalide." },
+        { status: 400 },
+      );
     }
 
     const title = cleanText(requestBody?.title, 180);
     const content = cleanText(requestBody?.content, 6000);
     const cta = cleanText(requestBody?.cta, 180);
     const rawCtaMode = cleanText(requestBody?.ctaMode, 24);
-    const ctaMode = ["none", "website", "call", "message", "custom"].includes(rawCtaMode) ? rawCtaMode : "none";
+    const ctaMode = ["none", "website", "call", "message", "custom"].includes(
+      rawCtaMode,
+    )
+      ? rawCtaMode
+      : "none";
     const ctaUrl = cleanText(requestBody?.ctaUrl, 320);
     const ctaPhone = cleanText(requestBody?.ctaPhone, 60);
     const hashtags = cleanPublishHashtags(requestBody?.hashtags);
 
     if (!content) {
-      return NextResponse.json({ error: "Le contenu de la publication est obligatoire." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Le contenu de la publication est obligatoire." },
+        { status: 400 },
+      );
     }
 
     const { data: currentRow, error: readError } = await supabaseAdmin
@@ -766,17 +1091,26 @@ export async function PATCH(request: Request) {
     if (readError || !currentRow) {
       if (isMissingTableError(readError)) {
         return NextResponse.json(
-          { error: "La table inr_agent_actions doit être créée dans Supabase.", tableMissing: true },
+          {
+            error: "La table inr_agent_actions doit être créée dans Supabase.",
+            tableMissing: true,
+          },
           { status: 500 },
         );
       }
-      return NextResponse.json({ error: "Action iNr’Agent introuvable." }, { status: 404 });
+      return NextResponse.json(
+        { error: "Action iNr’Agent introuvable." },
+        { status: 404 },
+      );
     }
 
     const currentAction = rowToInrAgentAction(currentRow as any);
     if (!isPublishAction(currentAction)) {
       return NextResponse.json(
-        { error: "Cette modification est réservée aux publications Booster préparées par iNr’Agent." },
+        {
+          error:
+            "Cette modification est réservée aux publications Booster préparées par iNr’Agent.",
+        },
         { status: 400 },
       );
     }
@@ -815,7 +1149,12 @@ export async function PATCH(request: Request) {
     };
     const nextPreviewText = buildPublishPreviewTextFromPosts(
       nextPostByChannel,
-      cleanText(currentAction.previewText || currentAction.summary || currentAction.title, 1200),
+      cleanText(
+        currentAction.previewText ||
+          currentAction.summary ||
+          currentAction.title,
+        1200,
+      ),
     );
 
     const { data, error } = await supabaseAdmin
@@ -834,12 +1173,18 @@ export async function PATCH(request: Request) {
     if (error) {
       if (isMissingTableError(error)) {
         return NextResponse.json(
-          { error: "La table inr_agent_actions doit être créée dans Supabase.", tableMissing: true },
+          {
+            error: "La table inr_agent_actions doit être créée dans Supabase.",
+            tableMissing: true,
+          },
           { status: 500 },
         );
       }
       console.warn("[inr-agent-actions] publish text update failed", error);
-      return NextResponse.json({ error: "Modification de la publication impossible." }, { status: 500 });
+      return NextResponse.json(
+        { error: "Modification de la publication impossible." },
+        { status: 500 },
+      );
     }
 
     const action = await refreshActionImageUrls(rowToInrAgentAction(data));
@@ -853,7 +1198,10 @@ export async function PATCH(request: Request) {
 
     const channel = cleanPublishChannel(requestBody?.channel);
     if (!channel) {
-      return NextResponse.json({ error: "Canal de publication invalide." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Canal de publication invalide." },
+        { status: 400 },
+      );
     }
 
     const removeMedia = requestBody?.removeMedia === true;
@@ -872,74 +1220,114 @@ export async function PATCH(request: Request) {
     if (readError || !currentRow) {
       if (isMissingTableError(readError)) {
         return NextResponse.json(
-          { error: "La table inr_agent_actions doit être créée dans Supabase.", tableMissing: true },
+          {
+            error: "La table inr_agent_actions doit être créée dans Supabase.",
+            tableMissing: true,
+          },
           { status: 500 },
         );
       }
-      return NextResponse.json({ error: "Action iNr’Agent introuvable." }, { status: 404 });
+      return NextResponse.json(
+        { error: "Action iNr’Agent introuvable." },
+        { status: 404 },
+      );
     }
 
     const currentAction = rowToInrAgentAction(currentRow as any);
     if (!isPublishAction(currentAction)) {
       return NextResponse.json(
-        { error: "Cette modification est réservée aux publications Booster préparées par iNr’Agent." },
+        {
+          error:
+            "Cette modification est réservée aux publications Booster préparées par iNr’Agent.",
+        },
         { status: 400 },
       );
     }
 
     const currentPayload = currentAction.payload || {};
     const currentPostByChannel = asRecord(currentPayload.postByChannel) || {};
-    const currentPost = readPublishPost(currentPostByChannel, channel);
-    const currentPostRecord = asRecord(currentPost) || {};
     const editedAt = new Date().toISOString();
-    const nextPost = media
-      ? {
-          ...currentPostRecord,
-          media,
-          mediaAsset: media,
-          image: media.kind === "image" ? media : currentPostRecord.image || null,
-          imageAsset: media.kind === "image" ? media : currentPostRecord.imageAsset || null,
-          imageUrl: media.kind === "image" ? media.url : cleanText(currentPostRecord.imageUrl, 900),
-          video: media.kind === "video" ? media : currentPostRecord.video || null,
-          videoAsset: media.kind === "video" ? media : currentPostRecord.videoAsset || null,
-          mediaMode: media.kind === "video" ? "video" : media.kind === "image" ? "images" : "file",
-          editedByUser: true,
-          editedAt,
-        }
-      : {
-          ...currentPostRecord,
-          media: null,
-          mediaAsset: null,
-          image: null,
-          imageAsset: null,
-          imageUrl: "",
-          visual: null,
-          cover: null,
-          video: null,
-          videoAsset: null,
-          file: null,
-          attachment: null,
-          attachments: [],
-          mediaMode: "none",
-          editedByUser: true,
-          editedAt,
-        };
+    const selectedChannels = Array.isArray(currentPayload.selectedChannels)
+      ? currentPayload.selectedChannels
+          .map((item) => cleanPublishChannel(item))
+          .filter((item): item is PublishChannelKey => Boolean(item))
+      : [];
+    const targetChannels = selectedChannels.length
+      ? selectedChannels
+      : [channel];
 
-    const nextPostByChannel = {
-      ...currentPostByChannel,
-      [channel]: nextPost,
+    const buildNextPost = (rawPost: unknown) => {
+      const currentPostRecord = asRecord(rawPost) || {};
+      return media
+        ? {
+            ...currentPostRecord,
+            media,
+            mediaAsset: media,
+            image: media.kind === "image" ? media : null,
+            imageAsset: media.kind === "image" ? media : null,
+            imageUrl: media.kind === "image" ? media.url : "",
+            video: media.kind === "video" ? media : null,
+            videoAsset: media.kind === "video" ? media : null,
+            mediaMode:
+              media.kind === "video"
+                ? "video"
+                : media.kind === "image"
+                  ? "images"
+                  : "file",
+            editedByUser: true,
+            editedAt,
+          }
+        : {
+            ...currentPostRecord,
+            media: null,
+            mediaAsset: null,
+            image: null,
+            imageAsset: null,
+            imageUrl: "",
+            visual: null,
+            cover: null,
+            video: null,
+            videoAsset: null,
+            file: null,
+            attachment: null,
+            attachments: [],
+            mediaMode: "none",
+            editedByUser: true,
+            editedAt,
+          };
     };
-    const currentReadiness = asRecord(currentPayload.mediaReadinessByChannel) || {};
-    const nextReadiness = {
-      ...currentReadiness,
-      [channel]: buildPublishMediaReadiness(channel, media),
-    };
+
+    const nextPostByChannel = { ...currentPostByChannel };
+    for (const targetChannel of targetChannels) {
+      const currentPost = readPublishPost(currentPostByChannel, targetChannel);
+      nextPostByChannel[targetChannel] = buildNextPost(currentPost);
+    }
+
+    const currentReadiness =
+      asRecord(currentPayload.mediaReadinessByChannel) || {};
+    const nextReadiness = { ...currentReadiness };
+    for (const targetChannel of targetChannels) {
+      nextReadiness[targetChannel] = buildPublishMediaReadiness(
+        targetChannel,
+        media,
+      );
+    }
+
     const nextPayload = {
       ...currentPayload,
+      media,
+      mediaAsset: media,
+      mediaType: media ? media.kind : "none",
+      image: media?.kind === "image" ? media : null,
+      imageAsset: media?.kind === "image" ? media : null,
+      video: media?.kind === "video" ? media : null,
+      videoAsset: media?.kind === "video" ? media : null,
       postByChannel: nextPostByChannel,
+      image_assets: media ? [media] : [],
       mediaReadinessByChannel: nextReadiness,
       lastManualEdit: {
         channel,
+        appliedToChannels: targetChannels,
         editedAt,
         editType: "publish_channel_media",
       },
@@ -949,6 +1337,7 @@ export async function PATCH(request: Request) {
       .from("inr_agent_actions")
       .update({
         payload: nextPayload,
+        image_assets: media ? [media] : [],
         updated_at: editedAt,
         last_error: null,
       })
@@ -960,12 +1349,18 @@ export async function PATCH(request: Request) {
     if (error) {
       if (isMissingTableError(error)) {
         return NextResponse.json(
-          { error: "La table inr_agent_actions doit être créée dans Supabase.", tableMissing: true },
+          {
+            error: "La table inr_agent_actions doit être créée dans Supabase.",
+            tableMissing: true,
+          },
           { status: 500 },
         );
       }
       console.warn("[inr-agent-actions] publish media update failed", error);
-      return NextResponse.json({ error: "Modification du média impossible." }, { status: 500 });
+      return NextResponse.json(
+        { error: "Modification du média impossible." },
+        { status: 500 },
+      );
     }
 
     const action = await refreshActionImageUrls(rowToInrAgentAction(data));
@@ -977,18 +1372,37 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ error: "Action invalide" }, { status: 400 });
     }
 
-    const recipients = normalizeCampaignRecipientInputs(requestBody?.recipients);
+    const recipients = normalizeCampaignRecipientInputs(
+      requestBody?.recipients,
+    );
     if (!recipients.length) {
-      return NextResponse.json({ error: "Sélectionne au moins un destinataire valide." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Sélectionne au moins un destinataire valide." },
+        { status: 400 },
+      );
     }
 
     const { action, response } = await readCampaignAction(actionId, user.id);
     if (response) return response;
-    if (!action) return NextResponse.json({ error: "Action iNr’Agent introuvable." }, { status: 404 });
+    if (!action)
+      return NextResponse.json(
+        { error: "Action iNr’Agent introuvable." },
+        { status: 404 },
+      );
 
     const payload = action.payload || {};
-    const subject = cleanText(payload.campaignSubject || payload.subject || action.title, 220) || "(sans objet)";
-    const bodyText = cleanText(payload.campaignBody || payload.bodyText || payload.text || action.previewText, 6000);
+    const subject =
+      cleanText(
+        payload.campaignSubject || payload.subject || action.title,
+        220,
+      ) || "(sans objet)";
+    const bodyText = cleanText(
+      payload.campaignBody ||
+        payload.bodyText ||
+        payload.text ||
+        action.previewText,
+      6000,
+    );
     const result = await updateCampaignAction({
       actionId,
       userId: user.id,
@@ -1014,16 +1428,29 @@ export async function PATCH(request: Request) {
 
     const accountId = cleanText(requestBody?.accountId, 140);
     if (!accountId) {
-      return NextResponse.json({ error: "Boîte d’envoi invalide." }, { status: 400 });
+      return NextResponse.json(
+        { error: "Boîte d’envoi invalide." },
+        { status: 400 },
+      );
     }
 
     const { action, response } = await readCampaignAction(actionId, user.id);
     if (response) return response;
-    if (!action) return NextResponse.json({ error: "Action iNr’Agent introuvable." }, { status: 404 });
+    if (!action)
+      return NextResponse.json(
+        { error: "Action iNr’Agent introuvable." },
+        { status: 404 },
+      );
 
     const mailAccount = await fetchConnectedMailAccount(user.id, accountId);
     if (!mailAccount?.id) {
-      return NextResponse.json({ error: "La boîte d’envoi sélectionnée est introuvable ou non connectée." }, { status: 404 });
+      return NextResponse.json(
+        {
+          error:
+            "La boîte d’envoi sélectionnée est introuvable ou non connectée.",
+        },
+        { status: 404 },
+      );
     }
 
     const payload = action.payload || {};
@@ -1052,7 +1479,11 @@ export async function PATCH(request: Request) {
     const attachments = cleanDraftAttachments(requestBody?.attachments);
     const { action, response } = await readCampaignAction(actionId, user.id);
     if (response) return response;
-    if (!action) return NextResponse.json({ error: "Action iNr’Agent introuvable." }, { status: 404 });
+    if (!action)
+      return NextResponse.json(
+        { error: "Action iNr’Agent introuvable." },
+        { status: 404 },
+      );
 
     const payload = action.payload || {};
     const result = await updateCampaignAction({
@@ -1071,10 +1502,7 @@ export async function PATCH(request: Request) {
 
   if (editType === "campaign_text") {
     if (!actionId) {
-      return NextResponse.json(
-        { error: "Action invalide" },
-        { status: 400 },
-      );
+      return NextResponse.json({ error: "Action invalide" }, { status: 400 });
     }
 
     const subject = normalizeMailSubject(cleanText(requestBody?.subject, 220));
@@ -1097,7 +1525,10 @@ export async function PATCH(request: Request) {
     if (readError || !currentRow) {
       if (isMissingTableError(readError)) {
         return NextResponse.json(
-          { error: "La table inr_agent_actions doit être créée dans Supabase.", tableMissing: true },
+          {
+            error: "La table inr_agent_actions doit être créée dans Supabase.",
+            tableMissing: true,
+          },
           { status: 500 },
         );
       }
@@ -1140,7 +1571,10 @@ export async function PATCH(request: Request) {
     if (error) {
       if (isMissingTableError(error)) {
         return NextResponse.json(
-          { error: "La table inr_agent_actions doit être créée dans Supabase.", tableMissing: true },
+          {
+            error: "La table inr_agent_actions doit être créée dans Supabase.",
+            tableMissing: true,
+          },
           { status: 500 },
         );
       }

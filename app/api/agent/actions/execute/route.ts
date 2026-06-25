@@ -51,7 +51,9 @@ const allowedBoosterChannels = new Set<BoosterChannel>([
 ]);
 
 function canPublishWithoutMedia(channel: BoosterChannel) {
-  return ["inrcy_site", "site_web", "gmb", "facebook", "linkedin"].includes(channel);
+  return ["inrcy_site", "site_web", "gmb", "facebook", "linkedin"].includes(
+    channel,
+  );
 }
 
 function isVideoOnlyChannel(channel: BoosterChannel) {
@@ -107,7 +109,10 @@ function cleanHashtags(value: unknown) {
 function normalizePost(raw: unknown, fallback?: BoosterPost): BoosterPost {
   const record = asRecord(raw) || {};
   const title = cleanText(record.title ?? fallback?.title ?? "", 140);
-  const content = cleanText(record.content ?? record.text ?? record.caption ?? fallback?.content ?? "", 6000);
+  const content = cleanText(
+    record.content ?? record.text ?? record.caption ?? fallback?.content ?? "",
+    6000,
+  );
   const cta = cleanText(record.cta ?? fallback?.cta ?? "", 220);
   const hashtags = cleanHashtags(record.hashtags).length
     ? cleanHashtags(record.hashtags)
@@ -121,8 +126,12 @@ function normalizePost(raw: unknown, fallback?: BoosterPost): BoosterPost {
   };
 }
 
-function ensurePublishablePost(post: BoosterPost, fallbackText: string): BoosterPost {
-  const fallback = cleanText(fallbackText, 1000) || "Publication préparée par iNr’Agent.";
+function ensurePublishablePost(
+  post: BoosterPost,
+  fallbackText: string,
+): BoosterPost {
+  const fallback =
+    cleanText(fallbackText, 1000) || "Publication préparée par iNr’Agent.";
   return {
     title: post.title,
     content: post.content || post.title || fallback,
@@ -147,7 +156,10 @@ function normalizeBoosterChannels(input: unknown): BoosterChannel[] {
   );
 }
 
-function getFirstPost(postByChannel: Record<string, BoosterPost>, channels: BoosterChannel[]) {
+function getFirstPost(
+  postByChannel: Record<string, BoosterPost>,
+  channels: BoosterChannel[],
+) {
   const preferred: BoosterChannel[] = [
     "facebook",
     "instagram",
@@ -159,14 +171,16 @@ function getFirstPost(postByChannel: Record<string, BoosterPost>, channels: Boos
     "youtube_shorts",
   ];
   const ordered = [...preferred, ...channels];
-  return ordered
-    .map((channel) => postByChannel[channel])
-    .find((post) => post?.title || post?.content) || {
-    title: "Publication iNr’Agent",
-    content: "",
-    cta: "",
-    hashtags: [],
-  };
+  return (
+    ordered
+      .map((channel) => postByChannel[channel])
+      .find((post) => post?.title || post?.content) || {
+      title: "Publication iNr’Agent",
+      content: "",
+      cta: "",
+      hashtags: [],
+    }
+  );
 }
 
 function mimeFromPath(path: string) {
@@ -174,22 +188,81 @@ function mimeFromPath(path: string) {
   if (lower.endsWith(".png")) return "image/png";
   if (lower.endsWith(".webp")) return "image/webp";
   if (lower.endsWith(".gif")) return "image/gif";
+  if (lower.endsWith(".mp4") || lower.endsWith(".m4v")) return "video/mp4";
+  if (lower.endsWith(".webm")) return "video/webm";
+  if (lower.endsWith(".mov")) return "video/quicktime";
   return "image/jpeg";
 }
 
-async function buildImagePayloadFromAgentAction(payload: JsonRecord, actionId: string) {
-  const image = asRecord(payload.imageAsset) || asRecord(payload.image) || null;
-  if (!image) return null;
+function isVideoMedia(record: JsonRecord | null) {
+  const hint = cleanText(
+    record?.kind ||
+      record?.mediaType ||
+      record?.media_type ||
+      record?.mimeType ||
+      record?.mime_type ||
+      record?.type ||
+      record?.url ||
+      record?.storagePath ||
+      record?.storage_path ||
+      record?.path,
+    500,
+  ).toLowerCase();
+  return hint.includes("video") || /\.(mp4|mov|m4v|webm)(\?|#|$)/i.test(hint);
+}
 
-  const bucket = cleanText(image.bucket || "inrcy-image-bank", 120) || "inrcy-image-bank";
+function readMediaFromChannelPosts(payload: JsonRecord) {
+  const postByChannel = asRecord(payload.postByChannel);
+  if (!postByChannel) return null;
+  for (const rawPost of Object.values(postByChannel)) {
+    const post = asRecord(rawPost);
+    if (!post) continue;
+    for (const key of [
+      "media",
+      "mediaAsset",
+      "video",
+      "videoAsset",
+      "image",
+      "imageAsset",
+    ] as const) {
+      const media = asRecord(post[key]);
+      if (media) return media;
+    }
+  }
+  return null;
+}
+
+function getAgentMediaRecord(payload: JsonRecord) {
+  return (
+    asRecord(payload.mediaAsset) ||
+    asRecord(payload.media) ||
+    asRecord(payload.videoAsset) ||
+    asRecord(payload.video) ||
+    asRecord(payload.imageAsset) ||
+    asRecord(payload.image) ||
+    readMediaFromChannelPosts(payload)
+  );
+}
+
+async function buildImagePayloadFromAgentAction(
+  payload: JsonRecord,
+  actionId: string,
+) {
+  const media = getAgentMediaRecord(payload);
+  if (!media || isVideoMedia(media)) return null;
+
+  const bucket =
+    cleanText(media.bucket || "inrcy-image-bank", 120) || "inrcy-image-bank";
   const storagePath = cleanText(
-    image.storagePath || image.storage_path || image.path || "",
+    media.storagePath || media.storage_path || media.path || "",
     800,
   );
-  const title = cleanText(image.title || image.name || "image-iNrAgent", 120);
+  const title = cleanText(media.title || media.name || "image-iNrAgent", 120);
 
   if (storagePath) {
-    const download = await supabaseAdmin.storage.from(bucket).download(storagePath);
+    const download = await supabaseAdmin.storage
+      .from(bucket)
+      .download(storagePath);
     if (download.error || !download.data) {
       throw new Error(
         download.error?.message || "Impossible de préparer l’image iNr’Agent.",
@@ -197,8 +270,12 @@ async function buildImagePayloadFromAgentAction(payload: JsonRecord, actionId: s
     }
 
     const buffer = Buffer.from(await download.data.arrayBuffer());
-    const mime = download.data.type || mimeFromPath(storagePath);
-    const extension = mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : "jpg";
+    const mime =
+      download.data.type ||
+      cleanText(media.mimeType || media.mime_type || media.type, 120) ||
+      mimeFromPath(storagePath);
+    const extension =
+      mime === "image/png" ? "png" : mime === "image/webp" ? "webp" : "jpg";
 
     return {
       name: `${title || "image-iNrAgent"}.${extension}`,
@@ -206,9 +283,9 @@ async function buildImagePayloadFromAgentAction(payload: JsonRecord, actionId: s
       dataUrl: `data:${mime};base64,${buffer.toString("base64")}`,
       originalName: title || `image-iNrAgent-${actionId}`,
       originalType: mime,
-      imageKey: cleanText(image.id || actionId, 120),
+      imageKey: cleanText(media.id || actionId, 120),
       imageMeta: {
-        source: "inrcy_image_bank",
+        source: cleanText(media.source, 120) || "inr_agent",
         bucket,
         storagePath,
         title,
@@ -216,21 +293,73 @@ async function buildImagePayloadFromAgentAction(payload: JsonRecord, actionId: s
     };
   }
 
-  const publicUrl = cleanText(image.url || image.publicUrl || image.src || "", 2000);
+  const publicUrl = cleanText(
+    media.url || media.publicUrl || media.src || "",
+    2000,
+  );
   if (!publicUrl) return null;
 
   return {
     name: `${title || "image-iNrAgent"}.jpg`,
-    type: "image/jpeg",
+    type:
+      cleanText(media.mimeType || media.mime_type || media.type, 120) ||
+      "image/jpeg",
     publicUrl,
     originalPublicUrl: publicUrl,
     originalName: title || `image-iNrAgent-${actionId}`,
-    originalType: "image/jpeg",
-    imageKey: cleanText(image.id || actionId, 120),
-    imageMeta: {
-      source: "inrcy_image_bank",
-      title,
-    },
+    originalType:
+      cleanText(media.mimeType || media.mime_type || media.type, 120) ||
+      "image/jpeg",
+    imageKey: cleanText(media.id || actionId, 120),
+    imageMeta: { source: cleanText(media.source, 120) || "inr_agent", title },
+  };
+}
+
+async function buildVideoPayloadFromAgentAction(payload: JsonRecord) {
+  const media = getAgentMediaRecord(payload);
+  if (!media || !isVideoMedia(media)) return null;
+  const storagePath = cleanText(
+    media.storagePath || media.storage_path || media.path || "",
+    900,
+  );
+  const bucket =
+    cleanText(
+      media.bucket || media.bucketName || media.bucket_name || "booster",
+      120,
+    ) || "booster";
+  let publicUrl = cleanText(
+    media.url || media.publicUrl || media.src || "",
+    2000,
+  );
+  if (!publicUrl && storagePath) {
+    const signed = await supabaseAdmin.storage
+      .from(bucket)
+      .createSignedUrl(storagePath, 60 * 60 * 24)
+      .catch(() => null);
+    publicUrl = signed?.data?.signedUrl || "";
+  }
+  if (!publicUrl && !storagePath) return null;
+  return {
+    name:
+      cleanText(media.name || media.title || "video-iNrAgent.mp4", 180) ||
+      "video-iNrAgent.mp4",
+    type:
+      cleanText(media.mimeType || media.mime_type || media.type, 120) ||
+      mimeFromPath(storagePath) ||
+      "video/mp4",
+    size: Number(media.size || media.sizeBytes || media.size_bytes || 0) || 0,
+    duration: Number(media.duration || media.duration_seconds || 0) || null,
+    storagePath,
+    bucket,
+    publicUrl,
+    url: publicUrl,
+    thumbnailUrl:
+      cleanText(media.thumbnailUrl || media.thumbnail_url, 1200) || null,
+    thumbnailStoragePath:
+      cleanText(
+        media.thumbnailStoragePath || media.thumbnail_storage_path,
+        900,
+      ) || null,
   };
 }
 
@@ -261,7 +390,6 @@ function getPublishError(payload: JsonRecord | null, fallback: string) {
   );
 }
 
-
 type CampaignRecipient = {
   contact_id?: string | null;
   display_name?: string | null;
@@ -276,13 +404,22 @@ function normalizeCampaignRecipients(input: unknown): CampaignRecipient[] {
   for (const item of raw) {
     const record = asRecord(item);
     const email = cleanText(record?.email || item, 260).toLowerCase();
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(email) || seen.has(email)) {
+    if (
+      !email ||
+      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(email) ||
+      seen.has(email)
+    ) {
       continue;
     }
     seen.add(email);
     recipients.push({
-      contact_id: cleanText(record?.contact_id || record?.contactId || "", 140) || null,
-      display_name: cleanText(record?.display_name || record?.displayName || record?.name || "", 220) || null,
+      contact_id:
+        cleanText(record?.contact_id || record?.contactId || "", 140) || null,
+      display_name:
+        cleanText(
+          record?.display_name || record?.displayName || record?.name || "",
+          220,
+        ) || null,
       email,
     });
   }
@@ -297,14 +434,28 @@ function normalizeCampaignAttachments(input: unknown) {
       const record = asRecord(item);
       if (!record) return null;
       const bucket = cleanText(record.bucket, 120);
-      const path = cleanText(record.path || record.storagePath || record.storage_path, 500);
+      const path = cleanText(
+        record.path || record.storagePath || record.storage_path,
+        500,
+      );
       if (!bucket || !path) return null;
-      const size = Number(record.size ?? record.bytes ?? record.sizeBytes ?? record.size_bytes ?? 0);
+      const size = Number(
+        record.size ??
+          record.bytes ??
+          record.sizeBytes ??
+          record.size_bytes ??
+          0,
+      );
       return {
         bucket,
         path,
-        name: cleanText(record.name || record.filename || record.fileName, 240) || path.split("/").pop() || "piece-jointe",
-        type: cleanText(record.type || record.mimeType || record.mime_type, 140) || "application/octet-stream",
+        name:
+          cleanText(record.name || record.filename || record.fileName, 240) ||
+          path.split("/").pop() ||
+          "piece-jointe",
+        type:
+          cleanText(record.type || record.mimeType || record.mime_type, 140) ||
+          "application/octet-stream",
         size: Number.isFinite(size) && size > 0 ? size : null,
       };
     })
@@ -315,8 +466,12 @@ function normalizeCampaignAttachments(input: unknown) {
 function isCampaignAgentAction(action: ReturnType<typeof rowToInrAgentAction>) {
   return (
     (action.automationKey === "grow" || action.automationKey === "loyalty") &&
-    (action.targetTool === "propulser" || action.targetTool === "fideliser" || action.targetTool === "mails") &&
-    (action.actionType === "campaign" || action.actionType === "loyalty" || action.actionType === "mailing")
+    (action.targetTool === "propulser" ||
+      action.targetTool === "fideliser" ||
+      action.targetTool === "mails") &&
+    (action.actionType === "campaign" ||
+      action.actionType === "loyalty" ||
+      action.actionType === "mailing")
   );
 }
 
@@ -327,25 +482,46 @@ async function executeCampaignAction(args: {
 }) {
   const { action, actionId, userId } = args;
   const payload = action.payload || {};
-  const accountId = cleanText(payload.accountId || payload.mailAccountId || "", 140);
+  const accountId = cleanText(
+    payload.accountId || payload.mailAccountId || "",
+    140,
+  );
   const subject = cleanText(payload.campaignSubject || payload.subject, 220);
-  const text = cleanText(payload.campaignBody || payload.bodyText || payload.text, 6000);
+  const text = cleanText(
+    payload.campaignBody || payload.bodyText || payload.text,
+    6000,
+  );
   const html = cleanText(payload.bodyHtml || payload.html, 9000);
-  const recipients = normalizeCampaignRecipients(payload.recipients || action.recipients);
-  const folder = cleanText(payload.folder, 80) || (action.automationKey === "loyalty" ? "fidelisations" : "propulsions");
-  const trackKind = cleanText(payload.trackKind, 80) || (action.automationKey === "loyalty" ? "fideliser" : "propulser");
+  const recipients = normalizeCampaignRecipients(
+    payload.recipients || action.recipients,
+  );
+  const folder =
+    cleanText(payload.folder, 80) ||
+    (action.automationKey === "loyalty" ? "fidelisations" : "propulsions");
+  const trackKind =
+    cleanText(payload.trackKind, 80) ||
+    (action.automationKey === "loyalty" ? "fideliser" : "propulser");
   const trackType = cleanText(payload.trackType, 80);
   const templateKey = cleanText(payload.templateKey, 180);
   const attachments = normalizeCampaignAttachments(payload.attachments);
 
   if (!accountId) {
-    return NextResponse.json({ error: "Boîte d’envoi manquante pour cette campagne." }, { status: 400 });
+    return NextResponse.json(
+      { error: "Boîte d’envoi manquante pour cette campagne." },
+      { status: 400 },
+    );
   }
   if (!subject || !text) {
-    return NextResponse.json({ error: "La campagne préparée est incomplète." }, { status: 400 });
+    return NextResponse.json(
+      { error: "La campagne préparée est incomplète." },
+      { status: 400 },
+    );
   }
   if (!recipients.length) {
-    return NextResponse.json({ error: "Aucun destinataire CRM valide pour cette campagne." }, { status: 400 });
+    return NextResponse.json(
+      { error: "Aucun destinataire CRM valide pour cette campagne." },
+      { status: 400 },
+    );
   }
 
   const now = new Date().toISOString();
@@ -388,7 +564,9 @@ async function executeCampaignAction(args: {
         body: JSON.stringify(campaignBody),
       }),
     );
-    const campaignPayload = (await response.json().catch(() => null)) as JsonRecord | null;
+    const campaignPayload = (await response
+      .json()
+      .catch(() => null)) as JsonRecord | null;
 
     if (!response.ok || campaignPayload?.success === false) {
       const errorMessage = cleanText(
@@ -410,7 +588,11 @@ async function executeCampaignAction(args: {
       });
 
       return NextResponse.json(
-        { action: failedAction, campaignResult: campaignPayload, error: errorMessage },
+        {
+          action: failedAction,
+          campaignResult: campaignPayload,
+          error: errorMessage,
+        },
         { status: response.ok ? 400 : response.status },
       );
     }
@@ -449,7 +631,10 @@ async function executeCampaignAction(args: {
       executed: true,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Exécution de campagne iNr’Agent impossible.";
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Exécution de campagne iNr’Agent impossible.";
     const failedAction = await updateActionRow(actionId, userId, {
       status: "failed",
       last_error: message,
@@ -464,7 +649,10 @@ async function executeCampaignAction(args: {
       },
     });
 
-    return NextResponse.json({ action: failedAction, error: message }, { status: 500 });
+    return NextResponse.json(
+      { action: failedAction, error: message },
+      { status: 500 },
+    );
   }
 }
 
@@ -481,10 +669,15 @@ export async function POST(request: Request) {
   });
   if (rl) return rl;
 
-  const body = (await request.json().catch(() => null)) as { actionId?: unknown } | null;
+  const body = (await request.json().catch(() => null)) as {
+    actionId?: unknown;
+  } | null;
   const actionId = cleanText(body?.actionId, 120);
   if (!actionId) {
-    return NextResponse.json({ error: "Action iNr’Agent introuvable." }, { status: 400 });
+    return NextResponse.json(
+      { error: "Action iNr’Agent introuvable." },
+      { status: 400 },
+    );
   }
 
   const { data: actionRow, error: readError } = await supabaseAdmin
@@ -496,13 +689,19 @@ export async function POST(request: Request) {
 
   if (readError) {
     return NextResponse.json(
-      { error: "Lecture de l’action iNr’Agent impossible.", detail: readError.message },
+      {
+        error: "Lecture de l’action iNr’Agent impossible.",
+        detail: readError.message,
+      },
       { status: 500 },
     );
   }
 
   if (!actionRow) {
-    return NextResponse.json({ error: "Action iNr’Agent introuvable." }, { status: 404 });
+    return NextResponse.json(
+      { error: "Action iNr’Agent introuvable." },
+      { status: 404 },
+    );
   }
 
   const action = rowToInrAgentAction(actionRow as any);
@@ -543,9 +742,20 @@ export async function POST(request: Request) {
   const selectedChannels = normalizeBoosterChannels(
     payload.selectedChannels || payload.channels || action.targetChannels,
   );
-  const imagePayload = await buildImagePayloadFromAgentAction(payload, actionId);
+  const imagePayload = await buildImagePayloadFromAgentAction(
+    payload,
+    actionId,
+  );
+  const videoPayload = await buildVideoPayloadFromAgentAction(payload);
   const hasImagePayload = Boolean(imagePayload);
+  const hasVideoPayload = Boolean(videoPayload);
+  const activeMediaMode = hasVideoPayload
+    ? "video"
+    : hasImagePayload
+      ? "images"
+      : "none";
   const publishChannels = selectedChannels.filter((channel) => {
+    if (activeMediaMode === "video") return true;
     if (isVideoOnlyChannel(channel)) return false;
     if (isImageRequiredChannel(channel)) return hasImagePayload;
     return canPublishWithoutMedia(channel) || hasImagePayload;
@@ -563,11 +773,17 @@ export async function POST(request: Request) {
   }
 
   const rawPostByChannel = asRecord(payload.postByChannel) || {};
-  const fallbackText = cleanText(action.summary || payload.idea || action.title, 1000);
+  const fallbackText = cleanText(
+    action.summary || payload.idea || action.title,
+    1000,
+  );
   const normalizedPostByChannel = Object.fromEntries(
     publishChannels.map((channel) => [
       channel,
-      ensurePublishablePost(normalizePost(rawPostByChannel[channel]), fallbackText),
+      ensurePublishablePost(
+        normalizePost(rawPostByChannel[channel]),
+        fallbackText,
+      ),
     ]),
   ) as Record<string, BoosterPost>;
   const firstPost = ensurePublishablePost(
@@ -585,16 +801,17 @@ export async function POST(request: Request) {
 
   try {
     const mediaModeByChannel = Object.fromEntries(
-      publishChannels.map((channel) => [channel, hasImagePayload ? "images" : "none"]),
+      publishChannels.map((channel) => [channel, activeMediaMode]),
     );
     const publishBody = {
       channels: publishChannels,
       post: firstPost,
       postByChannel: normalizedPostByChannel,
       idea: cleanText(payload.idea || action.summary, 500),
-      mediaType: "images",
+      mediaType: activeMediaMode === "video" ? "video" : "images",
       mediaModeByChannel,
       images: imagePayload ? [imagePayload] : [],
+      video: videoPayload,
       workflowTool: "booster",
       workflowAction: "publier",
       source: "inr_agent",
@@ -608,7 +825,9 @@ export async function POST(request: Request) {
         body: JSON.stringify(publishBody),
       }),
     );
-    const publishPayload = (await publishResponse.json().catch(() => null)) as JsonRecord | null;
+    const publishPayload = (await publishResponse
+      .json()
+      .catch(() => null)) as JsonRecord | null;
 
     if (!publishResponse.ok || publishPayload?.ok === false) {
       const errorMessage = getPublishError(
@@ -632,7 +851,11 @@ export async function POST(request: Request) {
       });
 
       return NextResponse.json(
-        { action: failedAction, publishResult: publishPayload, error: errorMessage },
+        {
+          action: failedAction,
+          publishResult: publishPayload,
+          error: errorMessage,
+        },
         { status: publishResponse.ok ? 400 : publishResponse.status },
       );
     }
@@ -671,7 +894,10 @@ export async function POST(request: Request) {
       executed: true,
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Exécution iNr’Agent impossible.";
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Exécution iNr’Agent impossible.";
     const failedAction = await updateActionRow(actionId, userId, {
       status: "failed",
       last_error: message,

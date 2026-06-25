@@ -5,6 +5,7 @@ import { fetchWithRetry } from "@/lib/observability/fetch";
 import { withApi } from "@/lib/observability/withApi";
 import { enforceRateLimit } from "@/lib/rateLimit";
 import { requireUser } from "@/lib/requireUser";
+import { INR_MEDIA_ALLOWED_VIDEO_MIME_TYPES } from "@/lib/mediaRules";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -17,10 +18,17 @@ const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 const MAX_VIDEO_TRANSCRIBE_BYTES = 40 * 1024 * 1024;
 const MIN_AUDIO_BYTES = 900;
 const ALLOWED_AUDIO_PREFIXES = ["audio/"];
-const ALLOWED_VIDEO_MIME_TYPES = new Set(["video/mp4", "video/webm", "video/quicktime", "video/x-m4v"]);
+const ALLOWED_VIDEO_MIME_TYPES = new Set<string>(
+  INR_MEDIA_ALLOWED_VIDEO_MIME_TYPES,
+);
 
 function normalizeMime(type: string) {
-  return String(type || "").toLowerCase().split(";")[0]?.trim() || "";
+  return (
+    String(type || "")
+      .toLowerCase()
+      .split(";")[0]
+      ?.trim() || ""
+  );
 }
 
 function isAllowedAudioFile(file: File) {
@@ -33,12 +41,15 @@ function isAllowedVideoFile(file: File) {
   const type = normalizeMime(file.type || "");
   const name = String(file.name || "").toLowerCase();
   if (!type && /\.(mp4|mov|webm|m4v)$/i.test(name)) return true;
-  return ALLOWED_VIDEO_MIME_TYPES.has(type) || /\.(mp4|mov|webm|m4v)$/i.test(name);
+  return (
+    ALLOWED_VIDEO_MIME_TYPES.has(type) || /\.(mp4|mov|webm|m4v)$/i.test(name)
+  );
 }
 
 function sanitizeAudioFileName(name: string, type: string) {
   const clean = name.replace(/[^a-zA-Z0-9._-]/g, "").slice(0, 80);
-  if (clean && /\.(webm|m4a|mp4|mp3|mpeg|mpga|wav|ogg)$/i.test(clean)) return clean;
+  if (clean && /\.(webm|m4a|mp4|mp3|mpeg|mpga|wav|ogg)$/i.test(clean))
+    return clean;
   if (type.includes("mp4")) return "booster-vocal.m4a";
   if (type.includes("mpeg")) return "booster-vocal.mp3";
   if (type.includes("ogg")) return "booster-vocal.ogg";
@@ -65,7 +76,10 @@ function cleanTranscriptText(value: unknown, maxLength = 1400) {
     .trim();
 }
 
-async function transcribeMedia(file: File, options?: { source?: "audio" | "video" }) {
+async function transcribeMedia(
+  file: File,
+  options?: { source?: "audio" | "video" },
+) {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("Configuration OpenAI manquante.");
 
@@ -77,7 +91,10 @@ async function transcribeMedia(file: File, options?: { source?: "audio" | "video
       ? sanitizeVideoFileName(file.name || "", file.type || "")
       : sanitizeAudioFileName(file.name || "", file.type || ""),
   );
-  formData.append("model", process.env.OPENAI_TRANSCRIBE_MODEL || "gpt-4o-mini-transcribe");
+  formData.append(
+    "model",
+    process.env.OPENAI_TRANSCRIBE_MODEL || "gpt-4o-mini-transcribe",
+  );
   formData.append("language", "fr");
   formData.append("response_format", "json");
   formData.append(
@@ -87,19 +104,24 @@ async function transcribeMedia(file: File, options?: { source?: "audio" | "video
       : "Vocal court dicté par un professionnel pour préparer une publication iNrCy. Conserver les noms propres, villes, métiers, prestations et informations commerciales.",
   );
 
-  const response = await fetchWithRetry("https://api.openai.com/v1/audio/transcriptions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
+  const response = await fetchWithRetry(
+    "https://api.openai.com/v1/audio/transcriptions",
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: formData,
+      retries: 1,
+      timeoutMs: 45_000,
     },
-    body: formData,
-    retries: 1,
-    timeoutMs: 45_000,
-  });
+  );
 
   if (!response.ok) {
     const errorText = await response.text().catch(() => "");
-    throw new Error(`OpenAI transcription error (${response.status}): ${errorText || response.statusText}`);
+    throw new Error(
+      `OpenAI transcription error (${response.status}): ${errorText || response.statusText}`,
+    );
   }
 
   const json = (await response.json().catch(() => ({}))) as { text?: string };
@@ -112,7 +134,10 @@ async function correctTranscript(rawTranscript: string) {
 
   try {
     const result = await openaiGenerateJSON<CorrectionResponse>({
-      model: process.env.OPENAI_TRANSCRIPT_CLEANUP_MODEL || process.env.OPENAI_MODEL || "gpt-4o-mini",
+      model:
+        process.env.OPENAI_TRANSCRIPT_CLEANUP_MODEL ||
+        process.env.OPENAI_MODEL ||
+        "gpt-4o-mini",
       system:
         "Tu corriges une transcription dans sa langue d'origine pour une publication professionnelle. Réponds uniquement en JSON avec la clé text.",
       input: `Corrige uniquement les fautes d'orthographe, la ponctuation, les accords et les majuscules du texte ci-dessous.
@@ -149,85 +174,138 @@ const handler = async (request: Request) => {
     const audio = formData?.get("audio");
     const video = formData?.get("video");
     const textEntry = formData?.get("text");
-    const liveText = cleanTranscriptText(typeof textEntry === "string" ? textEntry : "");
+    const liveText = cleanTranscriptText(
+      typeof textEntry === "string" ? textEntry : "",
+    );
 
     if (liveText) {
       const correctedText = await correctTranscript(liveText);
       if (!correctedText) {
-        return jsonUserFacingError("Le vocal n’a pas pu être converti en texte.", {
-          status: 502,
-          code: "voice_text_cleanup_empty",
-        });
+        return jsonUserFacingError(
+          "Le vocal n’a pas pu être converti en texte.",
+          {
+            status: 502,
+            code: "voice_text_cleanup_empty",
+          },
+        );
       }
 
-      return NextResponse.json({ ok: true, text: correctedText, raw_text: liveText, source: "live_text" });
+      return NextResponse.json({
+        ok: true,
+        text: correctedText,
+        raw_text: liveText,
+        source: "live_text",
+      });
     }
 
     if (video instanceof File) {
       if (video.size < MIN_AUDIO_BYTES) {
-        return jsonUserFacingError("La vidéo est trop courte ou vide.", { status: 400, code: "video_too_short" });
-      }
-
-      if (video.size > MAX_VIDEO_TRANSCRIBE_BYTES) {
-        return jsonUserFacingError("La vidéo est trop lourde pour l’analyse audio. Taille maximale : 40 Mo.", {
-          status: 413,
-          code: "video_too_large",
+        return jsonUserFacingError("La vidéo est trop courte ou vide.", {
+          status: 400,
+          code: "video_too_short",
         });
       }
 
+      if (video.size > MAX_VIDEO_TRANSCRIBE_BYTES) {
+        return jsonUserFacingError(
+          "La vidéo est trop lourde pour l’analyse audio. Taille maximale : 40 Mo.",
+          {
+            status: 413,
+            code: "video_too_large",
+          },
+        );
+      }
+
       if (!isAllowedVideoFile(video)) {
-        return jsonUserFacingError("Format vidéo non supporté pour l’analyse audio. Formats acceptés : MP4/M4V, MOV ou WebM.", { status: 415, code: "video_unsupported" });
+        return jsonUserFacingError(
+          "Format vidéo non supporté pour l’analyse audio. Formats acceptés : MP4/M4V, MOV ou WebM.",
+          { status: 415, code: "video_unsupported" },
+        );
       }
 
       const transcript = await transcribeMedia(video, { source: "video" });
       if (!transcript) {
-        return jsonUserFacingError("Aucune parole exploitable n’a été détectée dans la vidéo.", { status: 422, code: "empty_video_transcript" });
+        return jsonUserFacingError(
+          "Aucune parole exploitable n’a été détectée dans la vidéo.",
+          { status: 422, code: "empty_video_transcript" },
+        );
       }
 
       const correctedText = await correctTranscript(transcript);
       if (!correctedText) {
-        return jsonUserFacingError("L’audio de la vidéo n’a pas pu être converti en texte.", {
-          status: 502,
-          code: "video_transcription_empty_after_cleanup",
-        });
+        return jsonUserFacingError(
+          "L’audio de la vidéo n’a pas pu être converti en texte.",
+          {
+            status: 502,
+            code: "video_transcription_empty_after_cleanup",
+          },
+        );
       }
 
-      return NextResponse.json({ ok: true, text: correctedText, raw_text: transcript, source: "video_audio" });
-    }
-
-    if (!(audio instanceof File)) {
-      return jsonUserFacingError("Fichier audio manquant.", { status: 400, code: "audio_missing" });
-    }
-
-    if (audio.size < MIN_AUDIO_BYTES) {
-      return jsonUserFacingError("Le vocal est trop court ou vide.", { status: 400, code: "audio_too_short" });
-    }
-
-    if (audio.size > MAX_AUDIO_BYTES) {
-      return jsonUserFacingError("Le vocal est trop lourd. Réessaie avec un message plus court.", {
-        status: 413,
-        code: "audio_too_large",
+      return NextResponse.json({
+        ok: true,
+        text: correctedText,
+        raw_text: transcript,
+        source: "video_audio",
       });
     }
 
+    if (!(audio instanceof File)) {
+      return jsonUserFacingError("Fichier audio manquant.", {
+        status: 400,
+        code: "audio_missing",
+      });
+    }
+
+    if (audio.size < MIN_AUDIO_BYTES) {
+      return jsonUserFacingError("Le vocal est trop court ou vide.", {
+        status: 400,
+        code: "audio_too_short",
+      });
+    }
+
+    if (audio.size > MAX_AUDIO_BYTES) {
+      return jsonUserFacingError(
+        "Le vocal est trop lourd. Réessaie avec un message plus court.",
+        {
+          status: 413,
+          code: "audio_too_large",
+        },
+      );
+    }
+
     if (!isAllowedAudioFile(audio)) {
-      return jsonUserFacingError("Format audio non supporté.", { status: 415, code: "audio_unsupported" });
+      return jsonUserFacingError("Format audio non supporté.", {
+        status: 415,
+        code: "audio_unsupported",
+      });
     }
 
     const transcript = await transcribeMedia(audio, { source: "audio" });
     if (!transcript) {
-      return jsonUserFacingError("Aucun texte n’a été détecté dans le vocal.", { status: 422, code: "empty_transcript" });
+      return jsonUserFacingError("Aucun texte n’a été détecté dans le vocal.", {
+        status: 422,
+        code: "empty_transcript",
+      });
     }
 
     const correctedText = await correctTranscript(transcript);
     if (!correctedText) {
-      return jsonUserFacingError("Le vocal n’a pas pu être converti en texte.", {
-        status: 502,
-        code: "transcription_empty_after_cleanup",
-      });
+      return jsonUserFacingError(
+        "Le vocal n’a pas pu être converti en texte.",
+        {
+          status: 502,
+          code: "transcription_empty_after_cleanup",
+        },
+      );
     }
 
-    return NextResponse.json({ ok: true, text: correctedText, raw_text: transcript, source: "audio" });
+    return NextResponse.json({
+      ok: true,
+      text: correctedText,
+      raw_text: transcript,
+      source: "audio",
+    });
   } catch (error) {
     return jsonUserFacingError(error, {
       status: 502,

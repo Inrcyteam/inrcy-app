@@ -1,8 +1,24 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabaseClient";
+import {
+  INR_MEDIA_ALLOWED_IMAGE_MIME_TYPES,
+  INR_MEDIA_ALLOWED_VIDEO_MIME_TYPES,
+  INR_MEDIA_AGENT_MAX_MEDIA_COUNT,
+  INR_MEDIA_IMAGE_MAX_BYTES,
+  INR_MEDIA_IMAGE_MAX_MB_LABEL,
+  INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
+  INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL,
+} from "@/lib/mediaRules";
 import { makeAttachmentPath } from "@/app/dashboard/mails/_lib/mailboxPhase25";
 import HelpButton from "../_components/HelpButton";
 import PublishAiConfigurationDrawer from "../booster/publier/components/PublishAiConfigurationDrawer";
@@ -56,6 +72,15 @@ type ChannelKey =
   | "tiktok"
   | "youtube"
   | "mails";
+
+const AGENT_MEDIA_MAX_IMAGE_BYTES = INR_MEDIA_IMAGE_MAX_BYTES;
+const AGENT_MEDIA_MAX_VIDEO_BYTES = INR_MEDIA_VIDEO_SOURCE_MAX_BYTES;
+const AGENT_MEDIA_ALLOWED_IMAGE_TYPES = new Set<string>(
+  INR_MEDIA_ALLOWED_IMAGE_MIME_TYPES,
+);
+const AGENT_MEDIA_ALLOWED_VIDEO_TYPES = new Set<string>(
+  INR_MEDIA_ALLOWED_VIDEO_MIME_TYPES,
+);
 
 type Automation = {
   key: AutomationKey;
@@ -178,6 +203,19 @@ type AgentPublishMediaPreview = {
   url: string;
   kind: "image" | "video" | "file" | "none";
   note: string;
+};
+
+type AgentMediaLibraryItem = {
+  id: string;
+  bucket_name: string | null;
+  storage_path: string;
+  media_type: "image" | "video";
+  mime_type: string | null;
+  size_bytes: number | null;
+  title: string | null;
+  tags: string[] | null;
+  duration_seconds: number | null;
+  signed_url: string | null;
 };
 
 type CampaignAttachmentPreview = {
@@ -319,21 +357,54 @@ const channelOptions: Record<ChannelKey, { name: string; src: string }> = {
   mails: { name: "Mails", src: "/icons/mails-inrcy-dashboard-v2.png" },
 };
 
-const statsRubriqueOptions: Record<string, { name: string; src: string; channelKey?: ChannelKey }> = {
+const statsRubriqueOptions: Record<
+  string,
+  { name: string; src: string; channelKey?: ChannelKey }
+> = {
   "Vue globale": { name: "Vue globale", src: "/icons/stats-global.svg" },
   iNrBadge: { name: "iNrBadge", src: "/icons/inrbadge-dashboard.png" },
-  Mails: { name: "Mails", src: "/icons/mails-inrcy-dashboard-v2.png", channelKey: "mails" },
-  "Site iNrCy": { name: "Site iNrCy", src: "/icons/inrcy.png", channelKey: "siteInrcy" },
-  "Site Web": { name: "Site Web", src: "/icons/site-web.jpg", channelKey: "siteWeb" },
-  "Google Business": { name: "Google Business", src: "/icons/google.jpg", channelKey: "gmb" },
-  Facebook: { name: "Facebook", src: "/icons/facebook.png", channelKey: "facebook" },
-  Instagram: { name: "Instagram", src: "/icons/instagram.jpg", channelKey: "instagram" },
-  LinkedIn: { name: "LinkedIn", src: "/icons/linkedin.png", channelKey: "linkedin" },
+  Mails: {
+    name: "Mails",
+    src: "/icons/mails-inrcy-dashboard-v2.png",
+    channelKey: "mails",
+  },
+  "Site iNrCy": {
+    name: "Site iNrCy",
+    src: "/icons/inrcy.png",
+    channelKey: "siteInrcy",
+  },
+  "Site Web": {
+    name: "Site Web",
+    src: "/icons/site-web.jpg",
+    channelKey: "siteWeb",
+  },
+  "Google Business": {
+    name: "Google Business",
+    src: "/icons/google.jpg",
+    channelKey: "gmb",
+  },
+  Facebook: {
+    name: "Facebook",
+    src: "/icons/facebook.png",
+    channelKey: "facebook",
+  },
+  Instagram: {
+    name: "Instagram",
+    src: "/icons/instagram.jpg",
+    channelKey: "instagram",
+  },
+  LinkedIn: {
+    name: "LinkedIn",
+    src: "/icons/linkedin.png",
+    channelKey: "linkedin",
+  },
   TikTok: { name: "TikTok", src: "/icons/tiktok.png", channelKey: "tiktok" },
-  YouTube: { name: "YouTube", src: "/icons/youtube-shorts.png", channelKey: "youtube" },
+  YouTube: {
+    name: "YouTube",
+    src: "/icons/youtube-shorts.png",
+    channelKey: "youtube",
+  },
 };
-
-
 
 const channelOrder: ChannelKey[] = [
   "siteInrcy",
@@ -402,7 +473,9 @@ const channelPayloadKeys: Record<ChannelKey, string[]> = {
   mails: ["mails", "mail"],
 };
 
-const agentChannelToBoosterDisplay: Partial<Record<ChannelKey, BoosterDisplayKey>> = {
+const agentChannelToBoosterDisplay: Partial<
+  Record<ChannelKey, BoosterDisplayKey>
+> = {
   siteInrcy: "inrcy_site",
   siteWeb: "site_web",
   gmb: "gmb",
@@ -413,22 +486,35 @@ const agentChannelToBoosterDisplay: Partial<Record<ChannelKey, BoosterDisplayKey
   youtube: "youtube_shorts",
 };
 
-function boosterDisplayKeyFromAgentChannel(channel: ChannelKey | "" | null | undefined): BoosterDisplayKey {
+function boosterDisplayKeyFromAgentChannel(
+  channel: ChannelKey | "" | null | undefined,
+): BoosterDisplayKey {
   return agentChannelToBoosterDisplay[channel as ChannelKey] || "inrcy_site";
 }
 
 function normalizeAgentCtaMode(value: unknown): BoosterCtaMode {
   const raw = String(value || "").trim();
-  if (["none", "website", "call", "message", "custom"].includes(raw)) return raw as BoosterCtaMode;
+  if (["none", "website", "call", "message", "custom"].includes(raw))
+    return raw as BoosterCtaMode;
   return "none";
 }
 
-function inferPreferredCtaChoiceFromLabel(label: string, fallback: BoosterPreferredCta = "devis"): BoosterPreferredCta {
+function inferPreferredCtaChoiceFromLabel(
+  label: string,
+  fallback: BoosterPreferredCta = "devis",
+): BoosterPreferredCta {
   const normalized = label.trim().toLowerCase();
   if (!normalized) return "none";
-  if (/(devis|quote|presupuesto|preventivo|offerte|angebot|orçamento)/i.test(normalized)) return "devis";
-  if (/(appeler|call|llamar|chiama|anrufen|bellen|ligar)/i.test(normalized)) return "appeler";
-  if (/(message|mensaje|messaggio|nachricht|bericht)/i.test(normalized)) return "message";
+  if (
+    /(devis|quote|presupuesto|preventivo|offerte|angebot|orçamento)/i.test(
+      normalized,
+    )
+  )
+    return "devis";
+  if (/(appeler|call|llamar|chiama|anrufen|bellen|ligar)/i.test(normalized))
+    return "appeler";
+  if (/(message|mensaje|messaggio|nachricht|bericht)/i.test(normalized))
+    return "message";
   if (/(site|website|web|sitio)/i.test(normalized)) return "site";
   return fallback;
 }
@@ -616,28 +702,29 @@ const automations: Automation[] = [
   },
 ];
 
-const robotStepsByAutomation: Record<AutomationKey, [string, string, string]> = {
-  publish: [
-    "J’analyse votre activité",
-    "Je prépare une publication",
-    "Vous validez avant publication",
-  ],
-  grow: [
-    "J’identifie une opportunité",
-    "Je prépare une campagne Propulser",
-    "Vous validez avant envoi",
-  ],
-  loyalty: [
-    "J’analyse vos contacts",
-    "Je prépare une campagne Fidéliser",
-    "Vous validez avant envoi",
-  ],
-  stats: [
-    "J’analyse vos statistiques",
-    "Je prépare le bilan PDF",
-    "Je vous envoie le rapport",
-  ],
-};
+const robotStepsByAutomation: Record<AutomationKey, [string, string, string]> =
+  {
+    publish: [
+      "J’analyse votre activité",
+      "Je prépare une publication",
+      "Vous validez avant publication",
+    ],
+    grow: [
+      "J’identifie une opportunité",
+      "Je prépare une campagne Propulser",
+      "Vous validez avant envoi",
+    ],
+    loyalty: [
+      "J’analyse vos contacts",
+      "Je prépare une campagne Fidéliser",
+      "Vous validez avant envoi",
+    ],
+    stats: [
+      "J’analyse vos statistiques",
+      "Je prépare le bilan PDF",
+      "Je vous envoie le rapport",
+    ],
+  };
 
 const defaultConfigs: Record<AutomationKey, AutomationConfig> = {
   publish: {
@@ -645,7 +732,10 @@ const defaultConfigs: Record<AutomationKey, AutomationConfig> = {
     frequency: "1 fois par semaine",
     day: "Lundi",
     time: "09:00",
-    scheduleSlots: [{ day: "Lundi", time: "09:00" }, { day: "Jeudi", time: "09:00" }],
+    scheduleSlots: [
+      { day: "Lundi", time: "09:00" },
+      { day: "Jeudi", time: "09:00" },
+    ],
     channels: [
       "siteInrcy",
       "siteWeb",
@@ -666,7 +756,10 @@ const defaultConfigs: Record<AutomationKey, AutomationConfig> = {
     frequency: "2 fois par mois",
     day: "Mercredi",
     time: "10:00",
-    scheduleSlots: [{ day: "Mercredi", time: "10:00" }, { day: "Samedi", time: "10:00" }],
+    scheduleSlots: [
+      { day: "Mercredi", time: "10:00" },
+      { day: "Samedi", time: "10:00" },
+    ],
     channels: ["mails"],
     themes: ["Valoriser", "Récolter", "Offrir"],
     validation: "Validation obligatoire avant envoi",
@@ -678,7 +771,10 @@ const defaultConfigs: Record<AutomationKey, AutomationConfig> = {
     frequency: "1 fois par mois",
     day: "Vendredi",
     time: "09:30",
-    scheduleSlots: [{ day: "Vendredi", time: "09:30" }, { day: "Lundi", time: "09:30" }],
+    scheduleSlots: [
+      { day: "Vendredi", time: "09:30" },
+      { day: "Lundi", time: "09:30" },
+    ],
     channels: ["mails"],
     themes: ["Informer", "Enquêter", "Suivre"],
     validation: "Validation obligatoire avant envoi",
@@ -690,7 +786,10 @@ const defaultConfigs: Record<AutomationKey, AutomationConfig> = {
     frequency: "Chaque semaine",
     day: "Lundi",
     time: "08:30",
-    scheduleSlots: [{ day: "Lundi", time: "08:30" }, { day: "Jeudi", time: "08:30" }],
+    scheduleSlots: [
+      { day: "Lundi", time: "08:30" },
+      { day: "Jeudi", time: "08:30" },
+    ],
     channels: [],
     themes: [
       "Vue globale",
@@ -774,14 +873,23 @@ function dayOffsetLabel(day: string, offset: number) {
   return apiToDay[(current + offset) % 7] ?? "Lundi";
 }
 
-function normalizeConfigScheduleSlots(config: Pick<AutomationConfig, "day" | "time" | "scheduleSlots">) {
-  const first = config.scheduleSlots?.[0] || { day: config.day, time: config.time };
+function normalizeConfigScheduleSlots(
+  config: Pick<AutomationConfig, "day" | "time" | "scheduleSlots">,
+) {
+  const first = config.scheduleSlots?.[0] || {
+    day: config.day,
+    time: config.time,
+  };
   const second = config.scheduleSlots?.[1] || {
     day: dayOffsetLabel(first.day || config.day, 3),
     time: first.time || config.time,
   };
   return [first, second].map((slot, index) => ({
-    day: weekDays.includes(slot.day) ? slot.day : index === 0 ? config.day : dayOffsetLabel(config.day, 3),
+    day: weekDays.includes(slot.day)
+      ? slot.day
+      : index === 0
+        ? config.day
+        : dayOffsetLabel(config.day, 3),
     time: hourOptions.includes(slot.time) ? slot.time : config.time,
   }));
 }
@@ -791,13 +899,19 @@ function scheduleSlotsFromMetadata(
   fallbackDay: string,
   fallbackTime: string,
 ) {
-  const rawSlots = Array.isArray(metadata?.scheduleSlots) ? metadata?.scheduleSlots : [];
+  const rawSlots = Array.isArray(metadata?.scheduleSlots)
+    ? metadata?.scheduleSlots
+    : [];
   const slots = rawSlots
     .map((item) => {
-      const source = item && typeof item === "object" && !Array.isArray(item) ? item as Record<string, unknown> : {};
-      const day = typeof source.day === "string"
-        ? source.day
-        : apiToDay[Number(source.dayOfWeek)] || "";
+      const source =
+        item && typeof item === "object" && !Array.isArray(item)
+          ? (item as Record<string, unknown>)
+          : {};
+      const day =
+        typeof source.day === "string"
+          ? source.day
+          : apiToDay[Number(source.dayOfWeek)] || "";
       const time = typeof source.time === "string" ? source.time : "";
       return {
         day: weekDays.includes(day) ? day : "",
@@ -809,10 +923,13 @@ function scheduleSlotsFromMetadata(
   return normalizeConfigScheduleSlots({
     day: slots[0]?.day || fallbackDay,
     time: slots[0]?.time || fallbackTime,
-    scheduleSlots: slots.length > 0 ? slots : [
-      { day: fallbackDay, time: fallbackTime },
-      { day: dayOffsetLabel(fallbackDay, 3), time: fallbackTime },
-    ],
+    scheduleSlots:
+      slots.length > 0
+        ? slots
+        : [
+            { day: fallbackDay, time: fallbackTime },
+            { day: dayOffsetLabel(fallbackDay, 3), time: fallbackTime },
+          ],
   });
 }
 
@@ -902,7 +1019,8 @@ function configToAutomationSettings(
     ...(key === "grow" || key === "loyalty"
       ? { signatureAutomatic: config.signatureAutomatic }
       : {}),
-    ...(optionValue(options.frequency, config.frequency, existing.frequency) === "twice_weekly"
+    ...(optionValue(options.frequency, config.frequency, existing.frequency) ===
+    "twice_weekly"
       ? {
           scheduleSlots: normalizedSlots.slice(0, 2).map((slot) => ({
             day: slot.day,
@@ -921,7 +1039,8 @@ function configToAutomationSettings(
       config.frequency,
       existing.frequency,
     ),
-    dayOfWeek: dayToApi[normalizedSlots[0]?.day || config.day] ?? existing.dayOfWeek,
+    dayOfWeek:
+      dayToApi[normalizedSlots[0]?.day || config.day] ?? existing.dayOfWeek,
     time: normalizedSlots[0]?.time || config.time,
     validationMode: optionValue(
       options.validation,
@@ -930,7 +1049,8 @@ function configToAutomationSettings(
     ),
     allowedChannels: orderChannels(
       config.channels,
-      automations.find((automation) => automation.key === key)?.availableChannels,
+      automations.find((automation) => automation.key === key)
+        ?.availableChannels,
     ).map((channel) => channelToApi[channel]),
     allowedThemes: config.themes
       .map((theme) => themeToApi[theme])
@@ -1005,10 +1125,18 @@ type HeaderToolLink = {
 
 function headerToolLinkForAutomation(key: AutomationKey): HeaderToolLink {
   if (key === "grow") {
-    return { label: "Propulser", compactLabel: "P", href: "/dashboard/propulser" };
+    return {
+      label: "Propulser",
+      compactLabel: "P",
+      href: "/dashboard/propulser",
+    };
   }
   if (key === "loyalty") {
-    return { label: "Fidéliser", compactLabel: "F", href: "/dashboard/fideliser" };
+    return {
+      label: "Fidéliser",
+      compactLabel: "F",
+      href: "/dashboard/fideliser",
+    };
   }
   if (key === "stats") {
     return {
@@ -1018,7 +1146,11 @@ function headerToolLinkForAutomation(key: AutomationKey): HeaderToolLink {
       logoSrc: "/inrstats-logo-seul.png",
     };
   }
-  return { label: "Booster", compactLabel: "B", href: "/dashboard?action=publish" };
+  return {
+    label: "Booster",
+    compactLabel: "B",
+    href: "/dashboard?action=publish",
+  };
 }
 
 function AutomationIcon({ type }: { type: AutomationKey }) {
@@ -1128,7 +1260,6 @@ function DownloadActionIcon() {
   );
 }
 
-
 function SparkSettingsIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden>
@@ -1187,7 +1318,11 @@ const AGENT_RICH_TEXT_EDITOR_STYLE: CSSProperties = {
   overflowY: "auto",
 };
 
-function findInlineHtmlClose(text: string, start: number, tag: "strong" | "em" | "u") {
+function findInlineHtmlClose(
+  text: string,
+  start: number,
+  tag: "strong" | "em" | "u",
+) {
   const closePattern =
     tag === "strong"
       ? /<\s*\/\s*(strong|b)\s*>/i
@@ -1226,7 +1361,12 @@ function renderRichInlineText(text: string, keyPrefix = "rich"): ReactNode[] {
     const htmlOpen = rest.match(/^<\s*(strong|b|em|i|u)\s*>/i);
     if (htmlOpen) {
       const normalizedTag = htmlOpen[1].toLowerCase();
-      const tag = normalizedTag === "strong" || normalizedTag === "b" ? "strong" : normalizedTag === "em" || normalizedTag === "i" ? "em" : "u";
+      const tag =
+        normalizedTag === "strong" || normalizedTag === "b"
+          ? "strong"
+          : normalizedTag === "em" || normalizedTag === "i"
+            ? "em"
+            : "u";
       const contentStart = index + htmlOpen[0].length;
       const close = findInlineHtmlClose(text, contentStart, tag);
       if (close && close.index > contentStart) {
@@ -1243,7 +1383,11 @@ function renderRichInlineText(text: string, keyPrefix = "rich"): ReactNode[] {
       if (end > index + 3) {
         const value = text.slice(index + 3, end);
         const key = `${keyPrefix}-bi-${index}`;
-        nodes.push(<strong key={key}><em>{renderRichInlineText(value, key)}</em></strong>);
+        nodes.push(
+          <strong key={key}>
+            <em>{renderRichInlineText(value, key)}</em>
+          </strong>,
+        );
         index = end + 3;
         continue;
       }
@@ -1254,7 +1398,11 @@ function renderRichInlineText(text: string, keyPrefix = "rich"): ReactNode[] {
       if (end > index + 3) {
         const value = text.slice(index + 3, end);
         const key = `${keyPrefix}-bi2-${index}`;
-        nodes.push(<strong key={key}><em>{renderRichInlineText(value, key)}</em></strong>);
+        nodes.push(
+          <strong key={key}>
+            <em>{renderRichInlineText(value, key)}</em>
+          </strong>,
+        );
         index = end + 3;
         continue;
       }
@@ -1264,7 +1412,11 @@ function renderRichInlineText(text: string, keyPrefix = "rich"): ReactNode[] {
       const end = text.indexOf("**", index + 2);
       if (end > index + 2) {
         const value = text.slice(index + 2, end);
-        nodes.push(<strong key={`${keyPrefix}-b-${index}`}>{renderRichInlineText(value, `${keyPrefix}-b-${index}`)}</strong>);
+        nodes.push(
+          <strong key={`${keyPrefix}-b-${index}`}>
+            {renderRichInlineText(value, `${keyPrefix}-b-${index}`)}
+          </strong>,
+        );
         index = end + 2;
         continue;
       }
@@ -1274,7 +1426,11 @@ function renderRichInlineText(text: string, keyPrefix = "rich"): ReactNode[] {
       const end = text.indexOf("__", index + 2);
       if (end > index + 2) {
         const value = text.slice(index + 2, end);
-        nodes.push(<strong key={`${keyPrefix}-b2-${index}`}>{renderRichInlineText(value, `${keyPrefix}-b2-${index}`)}</strong>);
+        nodes.push(
+          <strong key={`${keyPrefix}-b2-${index}`}>
+            {renderRichInlineText(value, `${keyPrefix}-b2-${index}`)}
+          </strong>,
+        );
         index = end + 2;
         continue;
       }
@@ -1284,7 +1440,11 @@ function renderRichInlineText(text: string, keyPrefix = "rich"): ReactNode[] {
       const end = text.indexOf("</u>", index + 3);
       if (end > index + 3) {
         const value = text.slice(index + 3, end);
-        nodes.push(<u key={`${keyPrefix}-u-${index}`}>{renderRichInlineText(value, `${keyPrefix}-u-${index}`)}</u>);
+        nodes.push(
+          <u key={`${keyPrefix}-u-${index}`}>
+            {renderRichInlineText(value, `${keyPrefix}-u-${index}`)}
+          </u>,
+        );
         index = end + 4;
         continue;
       }
@@ -1294,7 +1454,11 @@ function renderRichInlineText(text: string, keyPrefix = "rich"): ReactNode[] {
       const end = text.indexOf("*", index + 1);
       if (end > index + 1) {
         const value = text.slice(index + 1, end);
-        nodes.push(<em key={`${keyPrefix}-i-${index}`}>{renderRichInlineText(value, `${keyPrefix}-i-${index}`)}</em>);
+        nodes.push(
+          <em key={`${keyPrefix}-i-${index}`}>
+            {renderRichInlineText(value, `${keyPrefix}-i-${index}`)}
+          </em>,
+        );
         index = end + 1;
         continue;
       }
@@ -1304,7 +1468,11 @@ function renderRichInlineText(text: string, keyPrefix = "rich"): ReactNode[] {
       const end = text.indexOf("_", index + 1);
       if (end > index + 1) {
         const value = text.slice(index + 1, end);
-        nodes.push(<em key={`${keyPrefix}-i2-${index}`}>{renderRichInlineText(value, `${keyPrefix}-i2-${index}`)}</em>);
+        nodes.push(
+          <em key={`${keyPrefix}-i2-${index}`}>
+            {renderRichInlineText(value, `${keyPrefix}-i2-${index}`)}
+          </em>,
+        );
         index = end + 1;
         continue;
       }
@@ -1352,6 +1520,8 @@ function extractImageAsset(
 
   const payload = action.payload || {};
   const candidates = [
+    payload.video,
+    payload.videoAsset,
     payload.image,
     payload.imageAsset,
     payload.selectedImage,
@@ -1425,7 +1595,15 @@ function extractChannelPreview(
       if (typeof rawPost === "string") {
         const body = rawPost.trim();
         if (body) {
-          return { title: action.title, body, cta: "", ctaMode: "none", ctaUrl: "", ctaPhone: "", hashtags: [] };
+          return {
+            title: action.title,
+            body,
+            cta: "",
+            ctaMode: "none",
+            ctaUrl: "",
+            ctaPhone: "",
+            hashtags: [],
+          };
         }
       }
 
@@ -1442,8 +1620,20 @@ function extractChannelPreview(
       );
       const cta = firstSafeString(post.cta, post.callToAction);
       const ctaMode = normalizeAgentCtaMode(post.ctaMode || post.cta_mode);
-      const ctaUrl = firstSafeString(post.ctaUrl, post.cta_url, post.buttonUrl, post.url, post.link, post.href);
-      const ctaPhone = firstSafeString(post.ctaPhone, post.cta_phone, post.phone, post.phoneNumber);
+      const ctaUrl = firstSafeString(
+        post.ctaUrl,
+        post.cta_url,
+        post.buttonUrl,
+        post.url,
+        post.link,
+        post.href,
+      );
+      const ctaPhone = firstSafeString(
+        post.ctaPhone,
+        post.cta_phone,
+        post.phone,
+        post.phoneNumber,
+      );
       const hashtags = Array.isArray(post.hashtags)
         ? post.hashtags
             .map((hashtag) => safeString(hashtag))
@@ -1456,7 +1646,14 @@ function extractChannelPreview(
           title: title || action.title,
           body,
           cta,
-          ctaMode: ctaMode !== "none" || !cta ? ctaMode : ctaUrl ? "website" : ctaPhone ? "call" : "custom",
+          ctaMode:
+            ctaMode !== "none" || !cta
+              ? ctaMode
+              : ctaUrl
+                ? "website"
+                : ctaPhone
+                  ? "call"
+                  : "custom",
           ctaUrl,
           ctaPhone,
           hashtags,
@@ -1481,15 +1678,25 @@ function extractChannelPreview(
     action.summary,
   );
 
-  return { title, body, cta: "", ctaMode: "none", ctaUrl: "", ctaPhone: "", hashtags: [] };
+  return {
+    title,
+    body,
+    cta: "",
+    ctaMode: "none",
+    ctaUrl: "",
+    ctaPhone: "",
+    hashtags: [],
+  };
 }
 
-function isPublishPreparedAction(action: AgentPreparedAction | null): action is AgentPreparedAction {
+function isPublishPreparedAction(
+  action: AgentPreparedAction | null,
+): action is AgentPreparedAction {
   return Boolean(
     action &&
-      action.automationKey === "publish" &&
-      action.targetTool === "booster" &&
-      action.actionType === "publication",
+    action.automationKey === "publish" &&
+    action.targetTool === "booster" &&
+    action.actionType === "publication",
   );
 }
 
@@ -1506,22 +1713,33 @@ function filenameFromUrl(url: string): string {
   if (!url) return "Pièce jointe";
   const clean = url.split("?")[0]?.split("#")[0] || url;
   try {
-    return decodeURIComponent(clean.split("/").filter(Boolean).pop() || "Pièce jointe");
+    return decodeURIComponent(
+      clean.split("/").filter(Boolean).pop() || "Pièce jointe",
+    );
   } catch {
     return clean.split("/").filter(Boolean).pop() || "Pièce jointe";
   }
 }
 
-function mediaKindFromHints(type: string, url: string): "image" | "video" | "file" {
+function mediaKindFromHints(
+  type: string,
+  url: string,
+): "image" | "video" | "file" {
   const hint = `${type} ${url}`.toLowerCase();
-  if (/\.(mp4|mov|m4v|webm|avi)(\?|#|$)/i.test(url) || hint.includes("video/")) return "video";
-  if (/\.(png|jpe?g|webp|gif|avif)(\?|#|$)/i.test(url) || hint.includes("image/")) return "image";
+  if (/\.(mp4|mov|m4v|webm|avi)(\?|#|$)/i.test(url) || hint.includes("video/"))
+    return "video";
+  if (
+    /\.(png|jpe?g|webp|gif|avif)(\?|#|$)/i.test(url) ||
+    hint.includes("image/")
+  )
+    return "image";
   return "file";
 }
 
 function assetFromUnknown(value: unknown): AgentImageAsset | null {
   if (!value) return null;
-  if (typeof value === "string") return { url: value, name: filenameFromUrl(value) };
+  if (typeof value === "string")
+    return { url: value, name: filenameFromUrl(value) };
   const record = asRecord(value);
   if (!record) return null;
   return record as AgentImageAsset;
@@ -1532,7 +1750,10 @@ function firstAttachmentCandidate(value: unknown): unknown {
   return value || null;
 }
 
-function channelPostRecord(action: AgentPreparedAction, channelKey: ChannelKey | null): Record<string, unknown> | null {
+function channelPostRecord(
+  action: AgentPreparedAction,
+  channelKey: ChannelKey | null,
+): Record<string, unknown> | null {
   if (!channelKey) return null;
   const postByChannel = asRecord(action.payload?.postByChannel);
   if (!postByChannel) return null;
@@ -1545,7 +1766,10 @@ function channelPostRecord(action: AgentPreparedAction, channelKey: ChannelKey |
 
   return null;
 }
-function channelReadinessRecord(action: AgentPreparedAction | null, channelKey: ChannelKey | null): Record<string, unknown> | null {
+function channelReadinessRecord(
+  action: AgentPreparedAction | null,
+  channelKey: ChannelKey | null,
+): Record<string, unknown> | null {
   if (!action || !channelKey) return null;
   const readinessByChannel = asRecord(action.payload?.mediaReadinessByChannel);
   if (!readinessByChannel) return null;
@@ -1560,19 +1784,36 @@ function channelReadinessRecord(action: AgentPreparedAction | null, channelKey: 
 
 function channelReadinessIsBlocking(record: Record<string, unknown> | null) {
   if (!record) return false;
-  const blockers = Array.isArray(record.blockers) ? record.blockers.filter(Boolean) : [];
-  return blockers.length > 0 || record.status === "blocked" || record.ready === false || record.publishable === false;
+  const blockers = Array.isArray(record.blockers)
+    ? record.blockers.filter(Boolean)
+    : [];
+  return (
+    blockers.length > 0 ||
+    record.status === "blocked" ||
+    record.ready === false ||
+    record.publishable === false
+  );
 }
 
 function channelReadinessReason(record: Record<string, unknown> | null) {
   if (!record) return "";
-  const blockers = Array.isArray(record.blockers) ? record.blockers.filter(Boolean) : [];
-  return firstSafeString(blockers[0], record.reason, record.message, record.label);
+  const blockers = Array.isArray(record.blockers)
+    ? record.blockers.filter(Boolean)
+    : [];
+  return firstSafeString(
+    blockers[0],
+    record.reason,
+    record.message,
+    record.label,
+  );
 }
 
-
 function channelRequiresMedia(channelKey: ChannelKey | null): boolean {
-  return channelKey === "instagram" || channelKey === "tiktok" || channelKey === "youtube";
+  return (
+    channelKey === "instagram" ||
+    channelKey === "tiktok" ||
+    channelKey === "youtube"
+  );
 }
 
 function channelRequiresVideo(channelKey: ChannelKey | null): boolean {
@@ -1580,7 +1821,12 @@ function channelRequiresVideo(channelKey: ChannelKey | null): boolean {
 }
 
 function channelSupportsHashtags(channelKey: ChannelKey | null): boolean {
-  return Boolean(channelKey && ["facebook", "instagram", "linkedin", "tiktok", "youtube"].includes(channelKey));
+  return Boolean(
+    channelKey &&
+    ["facebook", "instagram", "linkedin", "tiktok", "youtube"].includes(
+      channelKey,
+    ),
+  );
 }
 
 function extractPublishMediaPreview(
@@ -1625,7 +1871,9 @@ function extractPublishMediaPreview(
     firstAttachmentCandidate(payload.files),
   ];
 
-  const asset = directCandidates.map(assetFromUnknown).find(Boolean) || extractImageAsset(action);
+  const asset =
+    directCandidates.map(assetFromUnknown).find(Boolean) ||
+    extractImageAsset(action);
   const url = imageAssetUrl(asset);
   const assetRecord = asRecord(asset);
   const type = firstSafeString(
@@ -1633,7 +1881,9 @@ function extractPublishMediaPreview(
     assetRecord?.mimeType,
     assetRecord?.mime_type,
   );
-  const name = firstSafeString(asset?.name, asset?.title, asset?.alt) || filenameFromUrl(url);
+  const name =
+    firstSafeString(asset?.name, asset?.title, asset?.alt) ||
+    filenameFromUrl(url);
   const kind = url ? mediaKindFromHints(type, url) : "none";
   const needsVideo = channelRequiresVideo(channelKey);
   const needsMedia = channelRequiresMedia(channelKey);
@@ -1644,8 +1894,15 @@ function extractPublishMediaPreview(
   if (url) {
     const invalidVideo = needsVideo && kind !== "video";
     return {
-      name: name || (kind === "video" ? "Vidéo" : kind === "image" ? "Image" : "Pièce jointe"),
-      typeLabel: kind === "video" ? "Vidéo" : kind === "image" ? "Image" : "Fichier",
+      name:
+        name ||
+        (kind === "video"
+          ? "Vidéo"
+          : kind === "image"
+            ? "Image"
+            : "Pièce jointe"),
+      typeLabel:
+        kind === "video" ? "Vidéo" : kind === "image" ? "Image" : "Fichier",
       statusLabel: invalidVideo || readinessBlocks ? "Bloquant" : "Prêt",
       statusTone: invalidVideo || readinessBlocks ? "blocked" : "ready",
       url,
@@ -1670,9 +1927,11 @@ function extractPublishMediaPreview(
       statusTone: "blocked",
       url: "",
       kind: "none",
-      note: readinessReason || (needsVideo
-        ? "YouTube nécessite une vidéo avant publication."
-        : "Ce canal nécessite un média avant publication."),
+      note:
+        readinessReason ||
+        (needsVideo
+          ? "YouTube nécessite une vidéo avant publication."
+          : "Ce canal nécessite un média avant publication."),
     };
   }
 
@@ -1687,7 +1946,6 @@ function extractPublishMediaPreview(
   };
 }
 
-
 function publishContentKindLabel(args: {
   media: AgentPublishMediaPreview | null;
   hasText: boolean;
@@ -1695,7 +1953,8 @@ function publishContentKindLabel(args: {
   const { media, hasText } = args;
   const kind = media?.kind || "none";
   if (kind === "video") return hasText ? "Texte + Vidéo" : "Vidéo seule";
-  if (kind === "image") return hasText ? "Texte + Photo(s)" : "Photo(s) seule(s)";
+  if (kind === "image")
+    return hasText ? "Texte + Photo(s)" : "Photo(s) seule(s)";
   if (kind === "file") return hasText ? "Texte + Média" : "Média seul";
   return hasText ? "Texte seul" : "—";
 }
@@ -1707,9 +1966,12 @@ function publishStatusLabel(args: {
 }): { label: string; tone: "ready" | "blocked" | "warning" | "neutral" } {
   const { action, media, hasText } = args;
   if (!action) return { label: "—", tone: "neutral" };
-  if (media?.statusTone === "blocked") return { label: "Bloquant", tone: "blocked" };
-  if (media?.statusTone === "warning") return { label: media.statusLabel || "À vérifier", tone: "warning" };
-  if (!hasText && media?.kind === "none") return { label: "Bloquant", tone: "blocked" };
+  if (media?.statusTone === "blocked")
+    return { label: "Bloquant", tone: "blocked" };
+  if (media?.statusTone === "warning")
+    return { label: media.statusLabel || "À vérifier", tone: "warning" };
+  if (!hasText && media?.kind === "none")
+    return { label: "Bloquant", tone: "blocked" };
   return { label: "Prêt", tone: "ready" };
 }
 
@@ -1768,15 +2030,21 @@ function mailParagraphs(text: string): string[] {
     .slice(0, 8);
 }
 
-function isCampaignAutomationKey(key: AutomationKey): key is Extract<AutomationKey, "grow" | "loyalty"> {
+function isCampaignAutomationKey(
+  key: AutomationKey,
+): key is Extract<AutomationKey, "grow" | "loyalty"> {
   return key === "grow" || key === "loyalty";
 }
 
-function isCampaignPreparedAction(action: AgentPreparedAction | null): action is AgentPreparedAction {
+function isCampaignPreparedAction(
+  action: AgentPreparedAction | null,
+): action is AgentPreparedAction {
   return Boolean(
     action &&
-      isCampaignAutomationKey(action.automationKey as AutomationKey) &&
-      (action.targetTool === "propulser" || action.targetTool === "fideliser" || action.targetTool === "mails"),
+    isCampaignAutomationKey(action.automationKey as AutomationKey) &&
+    (action.targetTool === "propulser" ||
+      action.targetTool === "fideliser" ||
+      action.targetTool === "mails"),
   );
 }
 
@@ -1788,14 +2056,17 @@ function formatAttachmentSize(value: unknown): string {
   return `${(bytes / 1024 / 1024).toFixed(bytes >= 10 * 1024 * 1024 ? 0 : 1)} Mo`;
 }
 
-function extractCampaignAttachment(payload: Record<string, unknown>): CampaignAttachmentPreview | null {
+function extractCampaignAttachment(
+  payload: Record<string, unknown>,
+): CampaignAttachmentPreview | null {
   const rawAttachments = Array.isArray(payload.attachments)
     ? payload.attachments
     : Array.isArray(payload.files)
       ? payload.files
       : [];
   const raw = rawAttachments[0] || payload.attachment || payload.file || null;
-  const record = typeof raw === "string" ? { name: raw, url: raw } : asRecord(raw);
+  const record =
+    typeof raw === "string" ? { name: raw, url: raw } : asRecord(raw);
   if (!record) return null;
 
   const name = firstSafeString(
@@ -1805,9 +2076,21 @@ function extractCampaignAttachment(payload: Record<string, unknown>): CampaignAt
     record.title,
     "Pièce jointe",
   );
-  const url = firstSafeString(record.url, record.downloadUrl, record.publicUrl, record.href);
-  const type = firstSafeString(record.mimeType, record.mime_type, record.type, "Document");
-  const size = formatAttachmentSize(record.size || record.bytes || record.sizeBytes || record.size_bytes);
+  const url = firstSafeString(
+    record.url,
+    record.downloadUrl,
+    record.publicUrl,
+    record.href,
+  );
+  const type = firstSafeString(
+    record.mimeType,
+    record.mime_type,
+    record.type,
+    "Document",
+  );
+  const size = formatAttachmentSize(
+    record.size || record.bytes || record.sizeBytes || record.size_bytes,
+  );
 
   return {
     bucket: firstSafeString(record.bucket),
@@ -1819,7 +2102,9 @@ function extractCampaignAttachment(payload: Record<string, unknown>): CampaignAt
   };
 }
 
-function normalizeCampaignAttachmentRefs(value: unknown): CampaignAttachmentRef[] {
+function normalizeCampaignAttachmentRefs(
+  value: unknown,
+): CampaignAttachmentRef[] {
   if (!Array.isArray(value)) return [];
   const refs: CampaignAttachmentRef[] = [];
 
@@ -1827,15 +2112,25 @@ function normalizeCampaignAttachmentRefs(value: unknown): CampaignAttachmentRef[
     const record = asRecord(item);
     if (!record) continue;
     const bucket = firstSafeString(record.bucket);
-    const path = firstSafeString(record.path, record.storagePath, record.storage_path);
-    const name = firstSafeString(record.name, record.filename, record.fileName) || path.split("/").pop() || "piece-jointe";
+    const path = firstSafeString(
+      record.path,
+      record.storagePath,
+      record.storage_path,
+    );
+    const name =
+      firstSafeString(record.name, record.filename, record.fileName) ||
+      path.split("/").pop() ||
+      "piece-jointe";
     if (!bucket || !path || !name) continue;
-    const size = Number(record.size ?? record.bytes ?? record.sizeBytes ?? record.size_bytes ?? 0);
+    const size = Number(
+      record.size ?? record.bytes ?? record.sizeBytes ?? record.size_bytes ?? 0,
+    );
     refs.push({
       bucket,
       path,
       name,
-      type: firstSafeString(record.type, record.mimeType, record.mime_type) || null,
+      type:
+        firstSafeString(record.type, record.mimeType, record.mime_type) || null,
       size: Number.isFinite(size) && size > 0 ? size : null,
     });
   }
@@ -1843,7 +2138,9 @@ function normalizeCampaignAttachmentRefs(value: unknown): CampaignAttachmentRef[
   return refs.slice(0, 10);
 }
 
-function normalizeCampaignRecipients(value: unknown): CampaignRecipientPreview[] {
+function normalizeCampaignRecipients(
+  value: unknown,
+): CampaignRecipientPreview[] {
   const raw = Array.isArray(value) ? value : [];
   const seen = new Set<string>();
   const recipients: CampaignRecipientPreview[] = [];
@@ -1851,18 +2148,28 @@ function normalizeCampaignRecipients(value: unknown): CampaignRecipientPreview[]
   for (const item of raw) {
     const record = asRecord(item);
     const email = firstSafeString(record?.email, item).toLowerCase();
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(email) || seen.has(email)) continue;
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(email) || seen.has(email))
+      continue;
     seen.add(email);
     recipients.push({
-      contact_id: firstSafeString(record?.contact_id, record?.contactId, record?.id) || null,
-      display_name: firstSafeString(record?.display_name, record?.displayName, record?.name),
+      contact_id:
+        firstSafeString(record?.contact_id, record?.contactId, record?.id) ||
+        null,
+      display_name: firstSafeString(
+        record?.display_name,
+        record?.displayName,
+        record?.name,
+      ),
       email,
       phone: firstSafeString(record?.phone) || null,
-      contact_type: firstSafeString(record?.contact_type, record?.contactType) || null,
+      contact_type:
+        firstSafeString(record?.contact_type, record?.contactType) || null,
       category: firstSafeString(record?.category) || null,
-      company_name: firstSafeString(record?.company_name, record?.companyName) || null,
+      company_name:
+        firstSafeString(record?.company_name, record?.companyName) || null,
       city: firstSafeString(record?.city) || null,
-      postal_code: firstSafeString(record?.postal_code, record?.postalCode) || null,
+      postal_code:
+        firstSafeString(record?.postal_code, record?.postalCode) || null,
       manual: Boolean(record?.manual),
     });
   }
@@ -1870,9 +2177,13 @@ function normalizeCampaignRecipients(value: unknown): CampaignRecipientPreview[]
   return recipients;
 }
 
-function recipientsForAction(action: AgentPreparedAction | null): CampaignRecipientPreview[] {
+function recipientsForAction(
+  action: AgentPreparedAction | null,
+): CampaignRecipientPreview[] {
   if (!action) return [];
-  return normalizeCampaignRecipients(action.payload?.recipients || action.recipients);
+  return normalizeCampaignRecipients(
+    action.payload?.recipients || action.recipients,
+  );
 }
 
 function recipientDisplayName(recipient: CampaignRecipientPreview) {
@@ -1892,11 +2203,17 @@ function contactDisplayName(contact: CrmContactForAgent) {
     .filter(Boolean)
     .join(" ")
     .trim();
-  if (person && contact.company_name) return `${person} · ${contact.company_name}`;
-  return person || firstSafeString(contact.company_name, contact.email, "Contact CRM");
+  if (person && contact.company_name)
+    return `${person} · ${contact.company_name}`;
+  return (
+    person ||
+    firstSafeString(contact.company_name, contact.email, "Contact CRM")
+  );
 }
 
-function contactToCampaignRecipient(contact: CrmContactForAgent): CampaignRecipientPreview | null {
+function contactToCampaignRecipient(
+  contact: CrmContactForAgent,
+): CampaignRecipientPreview | null {
   const email = firstSafeString(contact.email).toLowerCase();
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/i.test(email)) return null;
   return {
@@ -1929,7 +2246,10 @@ function parseRecipientEmails(value: string) {
 }
 
 function sanitizeDepartmentFilter(value: string) {
-  return value.replace(/[^0-9abAB]/g, "").slice(0, 3).toUpperCase();
+  return value
+    .replace(/[^0-9abAB]/g, "")
+    .slice(0, 3)
+    .toUpperCase();
 }
 
 function contactDepartment(postalCode: string | null | undefined) {
@@ -1966,7 +2286,9 @@ function recipientMetaLine(recipient: CampaignRecipientPreview) {
   return parts.join(" · ") || "Destinataire";
 }
 
-function manualRecipientFromEmail(emailValue: string): CampaignRecipientPreview | null {
+function manualRecipientFromEmail(
+  emailValue: string,
+): CampaignRecipientPreview | null {
   const email = emailValue.trim().toLowerCase();
   if (!isValidEmail(email)) return null;
   return {
@@ -1979,7 +2301,13 @@ function manualRecipientFromEmail(emailValue: string): CampaignRecipientPreview 
   };
 }
 
-function mailAccountEmail(account: Partial<AgentMailAccount> | Record<string, unknown> | null | undefined) {
+function mailAccountEmail(
+  account:
+    | Partial<AgentMailAccount>
+    | Record<string, unknown>
+    | null
+    | undefined,
+) {
   return firstSafeString(
     account?.email_address,
     account?.account_email,
@@ -2002,19 +2330,41 @@ function mailAccountLabel(account: AgentMailAccount) {
   );
 }
 
-function mailAccountSecondaryLabel(account: Partial<AgentMailAccount> | Record<string, unknown> | null | undefined) {
+function mailAccountSecondaryLabel(
+  account:
+    | Partial<AgentMailAccount>
+    | Record<string, unknown>
+    | null
+    | undefined,
+) {
   const provider = firstSafeString(account?.provider, "mail");
   const displayName = firstSafeString(account?.display_name);
   return displayName ? `${provider} · ${displayName}` : provider;
 }
 
-function extractCampaignMailPreview(action: AgentPreparedAction | null): CampaignMailPreview | null {
+function extractCampaignMailPreview(
+  action: AgentPreparedAction | null,
+): CampaignMailPreview | null {
   if (!isCampaignPreparedAction(action)) return null;
   const payload = action.payload || {};
   const mailAccount = asRecord(payload.mailAccount);
-  const subject = firstSafeString(payload.campaignSubject, payload.subject, action.title);
-  const body = firstSafeString(payload.campaignBody, payload.bodyText, payload.text, action.previewText, action.summary);
-  const mission = firstSafeString(payload.mission, targetThemesLabel(action), action.automationKey === "loyalty" ? "Fidéliser" : "Propulser");
+  const subject = firstSafeString(
+    payload.campaignSubject,
+    payload.subject,
+    action.title,
+  );
+  const body = firstSafeString(
+    payload.campaignBody,
+    payload.bodyText,
+    payload.text,
+    action.previewText,
+    action.summary,
+  );
+  const mission = firstSafeString(
+    payload.mission,
+    targetThemesLabel(action),
+    action.automationKey === "loyalty" ? "Fidéliser" : "Propulser",
+  );
   const accountLabel = firstSafeString(
     mailAccount?.email_address,
     mailAccount?.account_email,
@@ -2027,7 +2377,11 @@ function extractCampaignMailPreview(action: AgentPreparedAction | null): Campaig
     mailAccount?.provider,
     "Boîte mail connectée",
   );
-  const accountProvider = firstSafeString(mailAccount?.provider, payload.mailProvider, "Mails");
+  const accountProvider = firstSafeString(
+    mailAccount?.provider,
+    payload.mailProvider,
+    "Mails",
+  );
 
   return {
     subject,
@@ -2065,7 +2419,8 @@ function targetThemesLabel(action: AgentPreparedAction): string {
 function recipientsCountForAction(action: AgentPreparedAction | null): number {
   if (!action) return 0;
   const payloadCount = Number(action.payload?.recipientCount || 0);
-  if (Number.isFinite(payloadCount) && payloadCount > 0) return Math.round(payloadCount);
+  if (Number.isFinite(payloadCount) && payloadCount > 0)
+    return Math.round(payloadCount);
   return Array.isArray(action.recipients) ? action.recipients.length : 0;
 }
 
@@ -2079,13 +2434,19 @@ function formatActionDate(
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return fallbackLabel || "—";
 
-  const weekday = new Intl.DateTimeFormat("fr-FR", { weekday: "long" }).format(date);
-  const time = new Intl.DateTimeFormat("fr-FR", { hour: "2-digit", minute: "2-digit" }).format(date);
+  const weekday = new Intl.DateTimeFormat("fr-FR", { weekday: "long" }).format(
+    date,
+  );
+  const time = new Intl.DateTimeFormat("fr-FR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
   return `${weekday.charAt(0).toUpperCase()}${weekday.slice(1)} ${time}`;
 }
 
-
-function extractReportDocument(action: AgentPreparedAction): AgentReportDocument | null {
+function extractReportDocument(
+  action: AgentPreparedAction,
+): AgentReportDocument | null {
   const payload = action.payload || {};
   const report = asRecord(payload.reportDocument);
   if (!report) return null;
@@ -2107,9 +2468,13 @@ function extractReportDocument(action: AgentPreparedAction): AgentReportDocument
     bucket: firstSafeString(report.bucket),
     storagePath,
     filename: firstSafeString(report.filename) || "bilan-inrstats.pdf",
-    mimeType: firstSafeString(report.mimeType, report.mime_type) || "application/pdf",
+    mimeType:
+      firstSafeString(report.mimeType, report.mime_type) || "application/pdf",
     bytes: Number(report.bytes || 0) || 0,
-    createdAt: firstSafeString(report.createdAt, report.created_at) || action.createdAt || undefined,
+    createdAt:
+      firstSafeString(report.createdAt, report.created_at) ||
+      action.createdAt ||
+      undefined,
     downloadUrl,
   };
 }
@@ -2124,9 +2489,14 @@ function reportRunMode(action: AgentPreparedAction): "automatic" | "manual" {
   return mode === "manual" ? "manual" : "automatic";
 }
 
-function extractStatsReportRecommendations(action: AgentPreparedAction): string[] {
+function extractStatsReportRecommendations(
+  action: AgentPreparedAction,
+): string[] {
   const payload = action.payload || {};
-  const insights = asRecord(payload.insights) || asRecord(payload.reportInsights) || asRecord(payload.aiInsights);
+  const insights =
+    asRecord(payload.insights) ||
+    asRecord(payload.reportInsights) ||
+    asRecord(payload.aiInsights);
   const rawRecommendations = insights?.recommendations;
   if (!Array.isArray(rawRecommendations)) return [];
 
@@ -2136,7 +2506,6 @@ function extractStatsReportRecommendations(action: AgentPreparedAction): string[
     .slice(0, 5);
 }
 
-
 function statsReportsFromActions(
   actions: AgentPreparedAction[],
   options: { automaticOnly?: boolean; limit?: number } = {},
@@ -2145,8 +2514,10 @@ function statsReportsFromActions(
 
   return actions
     .filter((action) => {
-      if (action.actionType !== "stats_report" || action.status !== "completed") return false;
-      if (options.automaticOnly && reportRunMode(action) === "manual") return false;
+      if (action.actionType !== "stats_report" || action.status !== "completed")
+        return false;
+      if (options.automaticOnly && reportRunMode(action) === "manual")
+        return false;
       return true;
     })
     .map((action): AgentStatsReport | null => {
@@ -2182,10 +2553,16 @@ function formatStatsProgress(progress: StatsProgressState) {
   return `${progress.label}${spacer}${progress.percent}%`;
 }
 
-function prepareProgressLabel(key: Exclude<AutomationKey, "stats">, percent: number) {
+function prepareProgressLabel(
+  key: Exclude<AutomationKey, "stats">,
+  percent: number,
+) {
   if (percent >= 100) return "Publication prête";
   if (percent >= 86) return "Enregistrement dans iNr’Agent";
-  if (percent >= 66) return key === "publish" ? "Adaptation par canal" : "Préparation de la campagne";
+  if (percent >= 66)
+    return key === "publish"
+      ? "Adaptation par canal"
+      : "Préparation de la campagne";
   if (percent >= 38) return "Génération IA";
   if (percent >= 16) return "Analyse de l’activité";
   return "Initialisation";
@@ -2235,7 +2612,11 @@ function formatReportDateLabel(value: string | null | undefined) {
   };
 }
 
-function scheduleDateParts(value: string | null | undefined, fallbackDate = "—", fallbackTime = "—") {
+function scheduleDateParts(
+  value: string | null | undefined,
+  fallbackDate = "—",
+  fallbackTime = "—",
+) {
   const formatted = formatReportDateLabel(value);
   return {
     date: formatted.date === "—" ? fallbackDate : formatted.date,
@@ -2252,10 +2633,18 @@ function scheduledActionStatusLabel(status: AgentScheduledAction["status"]) {
 }
 
 function scheduledActionSortDate(action: AgentScheduledAction) {
-  return action.executedAt || action.updatedAt || action.scheduledAt || action.createdAt || "";
+  return (
+    action.executedAt ||
+    action.updatedAt ||
+    action.scheduledAt ||
+    action.createdAt ||
+    ""
+  );
 }
 
-function scheduleTypeLabelFromAutomation(key: AutomationKey | null | undefined) {
+function scheduleTypeLabelFromAutomation(
+  key: AutomationKey | null | undefined,
+) {
   if (key === "publish") return "Publication";
   if (key === "grow") return "Propulsion";
   if (key === "loyalty") return "Fidélisation";
@@ -2263,8 +2652,14 @@ function scheduleTypeLabelFromAutomation(key: AutomationKey | null | undefined) 
   return "Action";
 }
 
-function scheduleChannelLabelFromAutomation(key: AutomationKey | null | undefined, channel?: string | null) {
-  if (key === "publish") return channel ? channelOptions[channel as ChannelKey]?.name || channel : "Publication";
+function scheduleChannelLabelFromAutomation(
+  key: AutomationKey | null | undefined,
+  channel?: string | null,
+) {
+  if (key === "publish")
+    return channel
+      ? channelOptions[channel as ChannelKey]?.name || channel
+      : "Publication";
   if (key === "stats") return "Bilan";
   return "Mails";
 }
@@ -2272,14 +2667,40 @@ function scheduleChannelLabelFromAutomation(key: AutomationKey | null | undefine
 function scheduledActionTypeLabel(action: AgentScheduledAction) {
   const targetTool = String(action.targetTool || "").toLowerCase();
   const actionType = String(action.actionType || "").toLowerCase();
-  const kind = String((action.payload as Record<string, unknown> | undefined)?.kind || "").toLowerCase();
-  const workflow = String((action.payload as Record<string, unknown> | undefined)?.workflowFinalizerKind || "").toLowerCase();
+  const kind = String(
+    (action.payload as Record<string, unknown> | undefined)?.kind || "",
+  ).toLowerCase();
+  const workflow = String(
+    (action.payload as Record<string, unknown> | undefined)
+      ?.workflowFinalizerKind || "",
+  ).toLowerCase();
 
-  if (targetTool === "booster" || actionType === "publication" || kind === "manual_publish_schedule") return "Publication";
-  if (targetTool === "propulser" || workflow === "propulser" || action.automationKey === "grow") return "Propulsion";
-  if (targetTool === "fideliser" || workflow === "fideliser" || action.automationKey === "loyalty") return "Fidélisation";
-  if (targetTool === "mails" || actionType === "mailing" || kind === "mail_campaign") return "Mail";
-  if (action.automationKey) return scheduleTypeLabelFromAutomation(action.automationKey);
+  if (
+    targetTool === "booster" ||
+    actionType === "publication" ||
+    kind === "manual_publish_schedule"
+  )
+    return "Publication";
+  if (
+    targetTool === "propulser" ||
+    workflow === "propulser" ||
+    action.automationKey === "grow"
+  )
+    return "Propulsion";
+  if (
+    targetTool === "fideliser" ||
+    workflow === "fideliser" ||
+    action.automationKey === "loyalty"
+  )
+    return "Fidélisation";
+  if (
+    targetTool === "mails" ||
+    actionType === "mailing" ||
+    kind === "mail_campaign"
+  )
+    return "Mail";
+  if (action.automationKey)
+    return scheduleTypeLabelFromAutomation(action.automationKey);
   return "Action";
 }
 
@@ -2337,7 +2758,6 @@ function localInputsToIso(dateValue: string, timeValue: string) {
   return date.toISOString();
 }
 
-
 function computeNextOccurrence(config: AutomationConfig): string | null {
   if (!config.enabled) return null;
 
@@ -2350,18 +2770,23 @@ function computeNextOccurrence(config: AutomationConfig): string | null {
     Vendredi: 5,
     Samedi: 6,
   };
-  const normalizedSlots = config.frequency === "2 fois par semaine"
-    ? normalizeConfigScheduleSlots(config).slice(0, 2)
-    : [{ day: config.day, time: config.time }];
+  const normalizedSlots =
+    config.frequency === "2 fois par semaine"
+      ? normalizeConfigScheduleSlots(config).slice(0, 2)
+      : [{ day: config.day, time: config.time }];
   const now = new Date();
-  const isFirstWeekday = (date: Date, targetDay: number) => date.getDay() === targetDay && date.getDate() <= 7;
-  const isThirdWeekday = (date: Date, targetDay: number) => date.getDay() === targetDay && date.getDate() >= 15 && date.getDate() <= 21;
+  const isFirstWeekday = (date: Date, targetDay: number) =>
+    date.getDay() === targetDay && date.getDate() <= 7;
+  const isThirdWeekday = (date: Date, targetDay: number) =>
+    date.getDay() === targetDay && date.getDate() >= 15 && date.getDate() <= 21;
 
   for (let offset = 0; offset <= 120; offset += 1) {
     const candidates = normalizedSlots
       .map((slot) => {
         const targetDay = weekdayMap[slot.day] ?? 1;
-        const [hour, minute] = slot.time.split(":").map((value) => Number(value || 0));
+        const [hour, minute] = slot.time
+          .split(":")
+          .map((value) => Number(value || 0));
         const candidate = new Date(now.getTime());
         candidate.setSeconds(0, 0);
         candidate.setDate(candidate.getDate() + offset);
@@ -2370,12 +2795,16 @@ function computeNextOccurrence(config: AutomationConfig): string | null {
         const ok =
           config.frequency === "2 fois par semaine"
             ? candidate.getDay() === targetDay
-            : config.frequency === "Tous les 15 jours" || config.frequency === "2 fois par mois"
-              ? isFirstWeekday(candidate, targetDay) || isThirdWeekday(candidate, targetDay)
-              : config.frequency === "Chaque mois" || config.frequency === "1 fois par mois"
+            : config.frequency === "Tous les 15 jours" ||
+                config.frequency === "2 fois par mois"
+              ? isFirstWeekday(candidate, targetDay) ||
+                isThirdWeekday(candidate, targetDay)
+              : config.frequency === "Chaque mois" ||
+                  config.frequency === "1 fois par mois"
                 ? isFirstWeekday(candidate, targetDay)
                 : config.frequency === "Chaque trimestre"
-                  ? [0, 3, 6, 9].includes(candidate.getMonth()) && isFirstWeekday(candidate, targetDay)
+                  ? [0, 3, 6, 9].includes(candidate.getMonth()) &&
+                    isFirstWeekday(candidate, targetDay)
                   : candidate.getDay() === targetDay;
         return ok ? candidate : null;
       })
@@ -2405,42 +2834,59 @@ export default function AgentClient() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [aiConfigurationOpen, setAiConfigurationOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
-  const [scheduleEditAction, setScheduleEditAction] = useState<AgentScheduledAction | null>(null);
+  const [scheduleEditAction, setScheduleEditAction] =
+    useState<AgentScheduledAction | null>(null);
   const [scheduleEditDate, setScheduleEditDate] = useState("");
   const [scheduleEditTime, setScheduleEditTime] = useState("");
-  const [scheduleMutationState, setScheduleMutationState] = useState<"idle" | "saving">("idle");
+  const [scheduleMutationState, setScheduleMutationState] = useState<
+    "idle" | "saving"
+  >("idle");
   const [validationChoiceOpen, setValidationChoiceOpen] = useState(false);
   const [validationScheduleOpen, setValidationScheduleOpen] = useState(false);
   const [validationScheduleDate, setValidationScheduleDate] = useState("");
   const [validationScheduleTime, setValidationScheduleTime] = useState("");
-  const [validationScheduleState, setValidationScheduleState] = useState<"idle" | "saving">("idle");
+  const [validationScheduleState, setValidationScheduleState] = useState<
+    "idle" | "saving"
+  >("idle");
   const [isMobileHeader, setIsMobileHeader] = useState(false);
   const [actions, setActions] = useState<AgentPreparedAction[]>([]);
-  const [scheduledActions, setScheduledActions] = useState<AgentScheduledAction[]>([]);
-  const [scheduledActionsTableMissing, setScheduledActionsTableMissing] = useState(false);
+  const [scheduledActions, setScheduledActions] = useState<
+    AgentScheduledAction[]
+  >([]);
+  const [scheduledActionsTableMissing, setScheduledActionsTableMissing] =
+    useState(false);
   const [actionsLoadState, setActionsLoadState] =
     useState<ActionsLoadState>("loading");
   const [actionMutationState, setActionMutationState] =
     useState<ActionMutationState>("idle");
   const [prepareActionState, setPrepareActionState] =
     useState<PrepareActionState>("idle");
-  const [prepareProgress, setPrepareProgress] = useState<PrepareProgressState>(null);
+  const [prepareProgress, setPrepareProgress] =
+    useState<PrepareProgressState>(null);
   const [testNowKey, setTestNowKey] = useState<AutomationKey | null>(null);
-  const [prepareNowConfirm, setPrepareNowConfirm] = useState<PrepareNowConfirmState>(null);
+  const [prepareNowConfirm, setPrepareNowConfirm] =
+    useState<PrepareNowConfirmState>(null);
   const [statsProgress, setStatsProgress] = useState<StatsProgressState>(null);
   const [selectedChannelByAction, setSelectedChannelByAction] = useState<
     Record<string, ChannelKey>
   >({});
-  const [selectedChannelByAutomation, setSelectedChannelByAutomation] = useState<
-    Partial<Record<AutomationKey, ChannelKey>>
-  >({});
+  const [selectedChannelByAutomation, setSelectedChannelByAutomation] =
+    useState<Partial<Record<AutomationKey, ChannelKey>>>({});
   const [campaignEditOpen, setCampaignEditOpen] = useState(false);
   const [mailTextEditOpen, setMailTextEditOpen] = useState(false);
   const [attachmentPreviewOpen, setAttachmentPreviewOpen] = useState(false);
-  const [campaignDraftConfirmOpen, setCampaignDraftConfirmOpen] = useState(false);
-  const [campaignTextDraft, setCampaignTextDraft] = useState({ subject: "", body: "" });
-  const [campaignSaveState, setCampaignSaveState] = useState<"idle" | "saving">("idle");
-  const [campaignDraftSaveState, setCampaignDraftSaveState] = useState<"idle" | "saving">("idle");
+  const [campaignDraftConfirmOpen, setCampaignDraftConfirmOpen] =
+    useState(false);
+  const [campaignTextDraft, setCampaignTextDraft] = useState({
+    subject: "",
+    body: "",
+  });
+  const [campaignSaveState, setCampaignSaveState] = useState<"idle" | "saving">(
+    "idle",
+  );
+  const [campaignDraftSaveState, setCampaignDraftSaveState] = useState<
+    "idle" | "saving"
+  >("idle");
   const [recipientsPreviewOpen, setRecipientsPreviewOpen] = useState(false);
   const [recipientsEditOpen, setRecipientsEditOpen] = useState(false);
   const [crmContacts, setCrmContacts] = useState<CrmContactForAgent[]>([]);
@@ -2450,19 +2896,38 @@ export default function AgentClient() {
   const [crmRecipientCategory, setCrmRecipientCategory] = useState("all");
   const [crmRecipientType, setCrmRecipientType] = useState("all");
   const [crmRecipientDepartment, setCrmRecipientDepartment] = useState("");
-  const [crmRecipientImportantOnly, setCrmRecipientImportantOnly] = useState(false);
+  const [crmRecipientImportantOnly, setCrmRecipientImportantOnly] =
+    useState(false);
   const [manualRecipientsInput, setManualRecipientsInput] = useState("");
-  const [selectedRecipientEmails, setSelectedRecipientEmails] = useState<string[]>([]);
+  const [selectedRecipientEmails, setSelectedRecipientEmails] = useState<
+    string[]
+  >([]);
   const [newRecipientOpen, setNewRecipientOpen] = useState(false);
-  const [newRecipientDraft, setNewRecipientDraft] = useState({ name: "", email: "", phone: "" });
-  const [newRecipientState, setNewRecipientState] = useState<"idle" | "saving">("idle");
+  const [newRecipientDraft, setNewRecipientDraft] = useState({
+    name: "",
+    email: "",
+    phone: "",
+  });
+  const [newRecipientState, setNewRecipientState] = useState<"idle" | "saving">(
+    "idle",
+  );
   const [mailAccountEditOpen, setMailAccountEditOpen] = useState(false);
   const [mailAccounts, setMailAccounts] = useState<AgentMailAccount[]>([]);
   const [mailAccountsLoading, setMailAccountsLoading] = useState(false);
   const [selectedMailAccountId, setSelectedMailAccountId] = useState("");
-  const [attachmentUploadState, setAttachmentUploadState] = useState<"idle" | "saving">("idle");
+  const [attachmentUploadState, setAttachmentUploadState] = useState<
+    "idle" | "saving"
+  >("idle");
   const [publishMediaPreviewOpen, setPublishMediaPreviewOpen] = useState(false);
-  const [publishMediaUploadState, setPublishMediaUploadState] = useState<"idle" | "saving">("idle");
+  const [publishMediaUploadState, setPublishMediaUploadState] = useState<
+    "idle" | "saving"
+  >("idle");
+  const [publishMediaLibraryItems, setPublishMediaLibraryItems] = useState<
+    AgentMediaLibraryItem[]
+  >([]);
+  const [publishMediaLibraryState, setPublishMediaLibraryState] = useState<
+    "idle" | "loading" | "error"
+  >("idle");
   const [publishEditOpen, setPublishEditOpen] = useState(false);
   const [publishTextDraft, setPublishTextDraft] = useState({
     channel: "" as ChannelKey | "",
@@ -2474,11 +2939,13 @@ export default function AgentClient() {
     ctaPhone: "",
     hashtags: "",
   });
-  const [publishCtaDefaults, setPublishCtaDefaults] = useState<BoosterCtaDefaults | null>(null);
-  const [publishSaveState, setPublishSaveState] = useState<"idle" | "saving">("idle");
+  const [publishCtaDefaults, setPublishCtaDefaults] =
+    useState<BoosterCtaDefaults | null>(null);
+  const [publishSaveState, setPublishSaveState] = useState<"idle" | "saving">(
+    "idle",
+  );
   const publishBodyEditorRef = useRef<HTMLDivElement | null>(null);
   const campaignBodyEditorRef = useRef<HTMLDivElement | null>(null);
-
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -2494,13 +2961,19 @@ export default function AgentClient() {
 
     async function loadPublishCtaDefaults() {
       try {
-        const response = await fetch("/api/booster/cta-defaults", { cache: "no-store" });
+        const response = await fetch("/api/booster/cta-defaults", {
+          cache: "no-store",
+        });
         if (!response.ok) return;
         const payload = await response.json().catch(() => ({}));
         if (!alive) return;
         setPublishCtaDefaults({
-          preferredWebsiteUrl: String(payload?.preferredWebsiteUrl || "").trim(),
-          preferredWebsiteLabel: String(payload?.preferredWebsiteLabel || "").trim(),
+          preferredWebsiteUrl: String(
+            payload?.preferredWebsiteUrl || "",
+          ).trim(),
+          preferredWebsiteLabel: String(
+            payload?.preferredWebsiteLabel || "",
+          ).trim(),
           siteWebUrl: String(payload?.siteWebUrl || "").trim(),
           inrcySiteUrl: String(payload?.inrcySiteUrl || "").trim(),
           phone: String(payload?.phone || "").trim(),
@@ -2514,10 +2987,16 @@ export default function AgentClient() {
 
     loadPublishCtaDefaults();
     const handleAiConfigurationUpdated = () => loadPublishCtaDefaults();
-    window.addEventListener("inrcy:ai-configuration-updated", handleAiConfigurationUpdated);
+    window.addEventListener(
+      "inrcy:ai-configuration-updated",
+      handleAiConfigurationUpdated,
+    );
     return () => {
       alive = false;
-      window.removeEventListener("inrcy:ai-configuration-updated", handleAiConfigurationUpdated);
+      window.removeEventListener(
+        "inrcy:ai-configuration-updated",
+        handleAiConfigurationUpdated,
+      );
     };
   }, []);
 
@@ -2614,7 +3093,11 @@ export default function AgentClient() {
         throw new Error(payload?.error || "Actions programmées indisponibles.");
       }
 
-      setScheduledActions(Array.isArray(payload?.scheduledActions) ? payload.scheduledActions : []);
+      setScheduledActions(
+        Array.isArray(payload?.scheduledActions)
+          ? payload.scheduledActions
+          : [],
+      );
       setScheduledActionsTableMissing(Boolean(payload?.tableMissing));
     } catch (error) {
       if (!silent) {
@@ -2679,10 +3162,15 @@ export default function AgentClient() {
       const config = configs[automation.key];
       if (!config?.enabled) continue;
       const nextOccurrence = computeNextOccurrence(config);
-      const dateParts = scheduleDateParts(nextOccurrence, config.day || "—", config.time || "—");
-      const channels = automation.key === "publish"
-        ? orderChannels(config.channels, automation.availableChannels)
-        : ["mails"];
+      const dateParts = scheduleDateParts(
+        nextOccurrence,
+        config.day || "—",
+        config.time || "—",
+      );
+      const channels =
+        automation.key === "publish"
+          ? orderChannels(config.channels, automation.availableChannels)
+          : ["mails"];
 
       for (const channel of channels.length ? channels : ["mails"]) {
         rows.push({
@@ -2691,7 +3179,10 @@ export default function AgentClient() {
           date: dateParts.date,
           time: dateParts.time,
           typeLabel: scheduleTypeLabelFromAutomation(automation.key),
-          channelLabel: scheduleChannelLabelFromAutomation(automation.key, channel),
+          channelLabel: scheduleChannelLabelFromAutomation(
+            automation.key,
+            channel,
+          ),
           originLabel: "Automatique",
           status: "Automatique",
           statusKey: "scheduled",
@@ -2705,8 +3196,14 @@ export default function AgentClient() {
     }
 
     for (const action of scheduledActions) {
-      if (action.source !== "manual" || !["scheduled", "running", "failed"].includes(action.status)) continue;
-      const dateParts = scheduleDateParts(action.scheduledAt || action.createdAt);
+      if (
+        action.source !== "manual" ||
+        !["scheduled", "running", "failed"].includes(action.status)
+      )
+        continue;
+      const dateParts = scheduleDateParts(
+        action.scheduledAt || action.createdAt,
+      );
       rows.push({
         id: `manual-${action.id}`,
         action: action.title || "Action programmée",
@@ -2729,17 +3226,33 @@ export default function AgentClient() {
     return rows.sort((a, b) => {
       if (a.statusKey === "failed" && b.statusKey !== "failed") return -1;
       if (b.statusKey === "failed" && a.statusKey !== "failed") return 1;
-      return new Date(a.scheduledAtIso || 0).getTime() - new Date(b.scheduledAtIso || 0).getTime();
+      return (
+        new Date(a.scheduledAtIso || 0).getTime() -
+        new Date(b.scheduledAtIso || 0).getTime()
+      );
     });
   }, [configs, scheduledActions]);
 
   const manualHistoryItems = useMemo<ScheduleListItem[]>(() => {
     return scheduledActions
-      .filter((action) => action.source === "manual" && ["done", "cancelled"].includes(action.status))
-      .sort((a, b) => new Date(scheduledActionSortDate(b)).getTime() - new Date(scheduledActionSortDate(a)).getTime())
+      .filter(
+        (action) =>
+          action.source === "manual" &&
+          ["done", "cancelled"].includes(action.status),
+      )
+      .sort(
+        (a, b) =>
+          new Date(scheduledActionSortDate(b)).getTime() -
+          new Date(scheduledActionSortDate(a)).getTime(),
+      )
       .slice(0, 8)
       .map((action) => {
-        const dateParts = scheduleDateParts(action.executedAt || action.updatedAt || action.scheduledAt || action.createdAt);
+        const dateParts = scheduleDateParts(
+          action.executedAt ||
+            action.updatedAt ||
+            action.scheduledAt ||
+            action.createdAt,
+        );
         return {
           id: `history-${action.id}`,
           action: action.title || "Action programmée",
@@ -2752,7 +3265,11 @@ export default function AgentClient() {
           statusKey: action.status,
           automationKey: action.automationKey,
           scheduledActionId: action.id,
-          scheduledAtIso: action.executedAt || action.updatedAt || action.scheduledAt || action.createdAt,
+          scheduledAtIso:
+            action.executedAt ||
+            action.updatedAt ||
+            action.scheduledAt ||
+            action.createdAt,
           editable: false,
           removable: false,
           source: "manual",
@@ -2780,7 +3297,11 @@ export default function AgentClient() {
             selected.availableChannels,
           )
         : [],
-    [selected.availableChannels, selectedPreparedAction, selectedConfigChannels],
+    [
+      selected.availableChannels,
+      selectedPreparedAction,
+      selectedConfigChannels,
+    ],
   );
   const preparedChannelsKey = preparedChannels.join("|");
   const displayChannels = hasPreparedAction
@@ -2788,9 +3309,12 @@ export default function AgentClient() {
     : loadState === "loading"
       ? []
       : selectedConfigChannels;
-  const selectedStatsRubriques = selected.key === "stats" && loadState !== "loading"
-    ? selectedConfig.themes.filter((theme) => Boolean(statsRubriqueOptions[theme]))
-    : [];
+  const selectedStatsRubriques =
+    selected.key === "stats" && loadState !== "loading"
+      ? selectedConfig.themes.filter((theme) =>
+          Boolean(statsRubriqueOptions[theme]),
+        )
+      : [];
   const placeholderPreviewChannels = !selectedPreparedAction
     ? displayChannels.length > 0
       ? displayChannels
@@ -2802,10 +3326,12 @@ export default function AgentClient() {
         selectedChannelByAction[selectedPreparedAction.id] as ChannelKey,
       )
       ? selectedChannelByAction[selectedPreparedAction.id]
-      : preparedChannels[0] ?? null
-    : placeholderPreviewChannels.includes(selectedAutomationChannel as ChannelKey)
+      : (preparedChannels[0] ?? null)
+    : placeholderPreviewChannels.includes(
+          selectedAutomationChannel as ChannelKey,
+        )
       ? (selectedAutomationChannel as ChannelKey)
-      : placeholderPreviewChannels[0] ?? null;
+      : (placeholderPreviewChannels[0] ?? null);
   const activePreviewChannelLabel = activePreviewChannel
     ? channelOptions[activePreviewChannel]?.name
     : "Aperçu";
@@ -2820,40 +3346,56 @@ export default function AgentClient() {
     ? extractPublishMediaPreview(selectedPreparedAction, activePreviewChannel)
     : null;
   const publishParagraphs = isPublishView
-    ? publishPostParagraphs(preparedChannelPreview?.body || selectedPreparedAction?.summary || "")
+    ? publishPostParagraphs(
+        preparedChannelPreview?.body || selectedPreparedAction?.summary || "",
+      )
     : [];
   const publishHasText = Boolean(
     isPublishView &&
-      (
-        preparedChannelPreview?.title ||
-        preparedChannelPreview?.body ||
-        preparedChannelPreview?.cta ||
-        preparedChannelPreview?.hashtags.length ||
-        selectedPreparedAction?.summary
-      ),
+    (preparedChannelPreview?.title ||
+      preparedChannelPreview?.body ||
+      preparedChannelPreview?.cta ||
+      preparedChannelPreview?.hashtags.length ||
+      selectedPreparedAction?.summary),
   );
   const publishContentKind = isPublishView
-    ? publishContentKindLabel({ media: publishMediaPreview, hasText: publishHasText })
+    ? publishContentKindLabel({
+        media: publishMediaPreview,
+        hasText: publishHasText,
+      })
     : "—";
   const publishStatus = isPublishView
-    ? publishStatusLabel({ action: selectedPreparedAction, media: publishMediaPreview, hasText: publishHasText })
+    ? publishStatusLabel({
+        action: selectedPreparedAction,
+        media: publishMediaPreview,
+        hasText: publishHasText,
+      })
     : { label: "—", tone: "neutral" as const };
-  const publishStatusClass = publishStatus.tone === "blocked"
-    ? styles.publishStatusBlocked
-    : publishStatus.tone === "warning"
-      ? styles.publishStatusWarning
-      : publishStatus.tone === "ready"
-        ? styles.publishStatusReady
-        : styles.publishStatusNeutral;
+  const publishStatusClass =
+    publishStatus.tone === "blocked"
+      ? styles.publishStatusBlocked
+      : publishStatus.tone === "warning"
+        ? styles.publishStatusWarning
+        : publishStatus.tone === "ready"
+          ? styles.publishStatusReady
+          : styles.publishStatusNeutral;
   const publishCtaLine = isPublishView
-    ? extractPublishCtaLine(selectedPreparedAction, activePreviewChannel, preparedChannelPreview)
+    ? extractPublishCtaLine(
+        selectedPreparedAction,
+        activePreviewChannel,
+        preparedChannelPreview,
+      )
     : "—";
-  const preparedRecipientsCount = recipientsCountForAction(selectedPreparedAction);
+  const preparedRecipientsCount = recipientsCountForAction(
+    selectedPreparedAction,
+  );
   const isCampaignView = isCampaignAutomationKey(selected.key);
   const campaignMailPreview = isCampaignView
     ? extractCampaignMailPreview(selectedPreparedAction)
     : null;
-  const hasCampaignPreview = Boolean(isCampaignView && selectedPreparedAction && campaignMailPreview);
+  const hasCampaignPreview = Boolean(
+    isCampaignView && selectedPreparedAction && campaignMailPreview,
+  );
   const campaignPlaceholderPreview: CampaignMailPreview | null = isCampaignView
     ? {
         subject: "—",
@@ -2866,18 +3408,33 @@ export default function AgentClient() {
         attachment: null,
       }
     : null;
-  const campaignDisplayPreview = campaignMailPreview ?? campaignPlaceholderPreview;
+  const campaignDisplayPreview =
+    campaignMailPreview ?? campaignPlaceholderPreview;
   const campaignRecipients = recipientsForAction(selectedPreparedAction);
-  const campaignAttachments = normalizeCampaignAttachmentRefs(selectedPreparedAction?.payload?.attachments);
+  const campaignAttachments = normalizeCampaignAttachmentRefs(
+    selectedPreparedAction?.payload?.attachments,
+  );
   const filteredCrmContacts = useMemo(() => {
     const q = crmRecipientSearch.trim().toLowerCase();
     const department = sanitizeDepartmentFilter(crmRecipientDepartment);
     return crmContacts.filter((contact) => {
       if (!firstSafeString(contact.email)) return false;
       if (crmRecipientImportantOnly && !contact.important) return false;
-      if (crmRecipientCategory !== "all" && firstSafeString(contact.category).toLowerCase() !== crmRecipientCategory) return false;
-      if (crmRecipientType !== "all" && firstSafeString(contact.contact_type).toLowerCase() !== crmRecipientType) return false;
-      if (department && !contactDepartment(contact.postal_code).startsWith(department)) return false;
+      if (
+        crmRecipientCategory !== "all" &&
+        firstSafeString(contact.category).toLowerCase() !== crmRecipientCategory
+      )
+        return false;
+      if (
+        crmRecipientType !== "all" &&
+        firstSafeString(contact.contact_type).toLowerCase() !== crmRecipientType
+      )
+        return false;
+      if (
+        department &&
+        !contactDepartment(contact.postal_code).startsWith(department)
+      )
+        return false;
       if (!q) return true;
       return [
         contactDisplayName(contact),
@@ -2892,28 +3449,46 @@ export default function AgentClient() {
         .map((value) => firstSafeString(value).toLowerCase())
         .some((value) => value.includes(q));
     });
-  }, [crmContacts, crmRecipientCategory, crmRecipientDepartment, crmRecipientImportantOnly, crmRecipientSearch, crmRecipientType]);
+  }, [
+    crmContacts,
+    crmRecipientCategory,
+    crmRecipientDepartment,
+    crmRecipientImportantOnly,
+    crmRecipientSearch,
+    crmRecipientType,
+  ]);
   const crmRecipientsByEmail = useMemo(() => {
     return new Map(
       crmContacts
         .map((contact) => contactToCampaignRecipient(contact))
-        .filter((recipient): recipient is CampaignRecipientPreview => Boolean(recipient))
+        .filter((recipient): recipient is CampaignRecipientPreview =>
+          Boolean(recipient),
+        )
         .map((recipient) => [recipient.email.toLowerCase(), recipient]),
     );
   }, [crmContacts]);
   const manualSelectedRecipientEmails = useMemo(() => {
-    return selectedRecipientEmails.filter((email) => !crmRecipientsByEmail.has(email.toLowerCase()));
+    return selectedRecipientEmails.filter(
+      (email) => !crmRecipientsByEmail.has(email.toLowerCase()),
+    );
   }, [crmRecipientsByEmail, selectedRecipientEmails]);
   const filteredCrmRecipientEmails = useMemo(() => {
     return filteredCrmContacts
-      .map((contact) => contactToCampaignRecipient(contact)?.email.toLowerCase())
+      .map((contact) =>
+        contactToCampaignRecipient(contact)?.email.toLowerCase(),
+      )
       .filter((email): email is string => Boolean(email));
   }, [filteredCrmContacts]);
   const filteredCrmSelectedCount = useMemo(() => {
-    const selected = new Set(selectedRecipientEmails.map((email) => email.toLowerCase()));
-    return filteredCrmRecipientEmails.filter((email) => selected.has(email)).length;
+    const selected = new Set(
+      selectedRecipientEmails.map((email) => email.toLowerCase()),
+    );
+    return filteredCrmRecipientEmails.filter((email) => selected.has(email))
+      .length;
   }, [filteredCrmRecipientEmails, selectedRecipientEmails]);
-  const filteredCrmAllSelected = filteredCrmRecipientEmails.length > 0 && filteredCrmSelectedCount === filteredCrmRecipientEmails.length;
+  const filteredCrmAllSelected =
+    filteredCrmRecipientEmails.length > 0 &&
+    filteredCrmSelectedCount === filteredCrmRecipientEmails.length;
   const filteredCrmSelectionLabel = filteredCrmAllSelected ? "Aucun" : "Tout";
   const activeCrmRecipientFiltersCount =
     (crmRecipientCategory !== "all" ? 1 : 0) +
@@ -2930,10 +3505,13 @@ export default function AgentClient() {
     [actions],
   );
   const latestAutomaticStatsReport = statsReports[0] ?? null;
-  const latestStatsRecommendations = latestAutomaticStatsReport?.recommendations ?? [];
+  const latestStatsRecommendations =
+    latestAutomaticStatsReport?.recommendations ?? [];
   const statsLastReportLabel = latestStatsReport
     ? formatDateTimeLabel(
-        latestStatsReport.document.createdAt || latestStatsReport.completedAt || latestStatsReport.createdAt,
+        latestStatsReport.document.createdAt ||
+          latestStatsReport.completedAt ||
+          latestStatsReport.createdAt,
       )
     : "Aucun";
   const statsNextRunLabel = formatDateTimeLabel(
@@ -2941,7 +3519,9 @@ export default function AgentClient() {
       (selected.key === "stats" ? computeNextOccurrence(selectedConfig) : null),
     "Programmation inactive",
   );
-  const statsAutomationLabel = selectedConfig.enabled ? "Activée" : "Désactivée";
+  const statsAutomationLabel = selectedConfig.enabled
+    ? "Activée"
+    : "Désactivée";
   const statsFrequencyLabel = selectedConfig.frequency || "Chaque semaine";
   const statsStoredCountLabel = `${statsReports.length}/5`;
   const footerDateLabel =
@@ -2984,16 +3564,18 @@ export default function AgentClient() {
   }
 
   function movePreviewChannel(direction: -1 | 1) {
-    const channels = displayChannels.length > 0 ? displayChannels : placeholderPreviewChannels;
+    const channels =
+      displayChannels.length > 0 ? displayChannels : placeholderPreviewChannels;
     if (channels.length < 2) return;
 
     const currentIndex = activePreviewChannel
       ? channels.indexOf(activePreviewChannel)
       : -1;
     const fallbackIndex = direction > 0 ? 0 : channels.length - 1;
-    const nextIndex = currentIndex >= 0
-      ? (currentIndex + direction + channels.length) % channels.length
-      : fallbackIndex;
+    const nextIndex =
+      currentIndex >= 0
+        ? (currentIndex + direction + channels.length) % channels.length
+        : fallbackIndex;
 
     const nextChannel = channels[nextIndex];
     if (nextChannel) selectPreviewChannel(nextChannel);
@@ -3049,7 +3631,9 @@ export default function AgentClient() {
       showNotice("Texte de la campagne mis à jour.");
     } catch (error) {
       showNotice(
-        error instanceof Error ? error.message : "Modification du mail impossible.",
+        error instanceof Error
+          ? error.message
+          : "Modification du mail impossible.",
       );
     } finally {
       setCampaignSaveState("idle");
@@ -3057,17 +3641,31 @@ export default function AgentClient() {
   }
 
   function openPublishTextEditor() {
-    if (!selectedPreparedAction || !isPublishPreparedAction(selectedPreparedAction) || !activePreviewChannel) {
+    if (
+      !selectedPreparedAction ||
+      !isPublishPreparedAction(selectedPreparedAction) ||
+      !activePreviewChannel
+    ) {
       showNotice("Prépare d’abord une publication.");
       return;
     }
-    const preview = extractChannelPreview(selectedPreparedAction, activePreviewChannel);
+    const preview = extractChannelPreview(
+      selectedPreparedAction,
+      activePreviewChannel,
+    );
     const displayKey = boosterDisplayKeyFromAgentChannel(activePreviewChannel);
-    const fallbackChoice = normalizeBoosterPreferredCta(publishCtaDefaults?.preferredCta);
-    const inferredChoice = preview.ctaMode === "none" && preview.cta
-      ? inferPreferredCtaChoiceFromLabel(preview.cta, fallbackChoice)
-      : fallbackChoice;
-    const shouldPrefillCta = !preview.cta && !preview.ctaUrl && !preview.ctaPhone && publishCtaDefaults;
+    const fallbackChoice = normalizeBoosterPreferredCta(
+      publishCtaDefaults?.preferredCta,
+    );
+    const inferredChoice =
+      preview.ctaMode === "none" && preview.cta
+        ? inferPreferredCtaChoiceFromLabel(preview.cta, fallbackChoice)
+        : fallbackChoice;
+    const shouldPrefillCta =
+      !preview.cta &&
+      !preview.ctaUrl &&
+      !preview.ctaPhone &&
+      publishCtaDefaults;
     const basePost: BoosterChannelPost = {
       title: preview.title || "",
       content: preview.body || "",
@@ -3078,9 +3676,21 @@ export default function AgentClient() {
       hashtags: preview.hashtags,
     };
     const ctaPatch = shouldPrefillCta
-      ? buildPreferredCtaPatch(displayKey, fallbackChoice, basePost, publishCtaDefaults, publishCtaDefaults?.aiLanguage)
+      ? buildPreferredCtaPatch(
+          displayKey,
+          fallbackChoice,
+          basePost,
+          publishCtaDefaults,
+          publishCtaDefaults?.aiLanguage,
+        )
       : preview.ctaMode === "none" && preview.cta
-        ? buildPreferredCtaPatch(displayKey, inferredChoice, basePost, publishCtaDefaults, publishCtaDefaults?.aiLanguage)
+        ? buildPreferredCtaPatch(
+            displayKey,
+            inferredChoice,
+            basePost,
+            publishCtaDefaults,
+            publishCtaDefaults?.aiLanguage,
+          )
         : {};
     const hydratedPost = { ...basePost, ...ctaPatch };
     setPublishTextDraft({
@@ -3096,12 +3706,124 @@ export default function AgentClient() {
     setPublishEditOpen(true);
   }
 
+  function validateAgentPublishMediaFile(file: File) {
+    const isImage = AGENT_MEDIA_ALLOWED_IMAGE_TYPES.has(file.type);
+    const isVideo = AGENT_MEDIA_ALLOWED_VIDEO_TYPES.has(file.type);
+    if (!isImage && !isVideo) {
+      throw new Error(
+        "Format non autorisé. Utilise JPG, PNG, WebP, MP4, WebM ou MOV.",
+      );
+    }
+    if (isImage && file.size > AGENT_MEDIA_MAX_IMAGE_BYTES) {
+      throw new Error("Image trop lourde. Taille maximale : 40 Mo.");
+    }
+    if (isVideo && file.size > AGENT_MEDIA_MAX_VIDEO_BYTES) {
+      throw new Error("Vidéo trop lourde. Taille maximale : 100 Mo.");
+    }
+    if (activePreviewChannel === "youtube" && !isVideo) {
+      throw new Error(
+        "YouTube nécessite une vidéo. Choisis une vidéo depuis la Médiathèque ou importe une vidéo.",
+      );
+    }
+    return isVideo ? "video" : "image";
+  }
+
+  async function readAgentApiJson(response: Response, fallbackMessage: string) {
+    const contentType = response.headers.get("content-type") || "";
+    if (contentType.includes("application/json")) {
+      return await response.json().catch(() => ({ error: fallbackMessage }));
+    }
+    const text = await response.text().catch(() => "");
+    return { error: text.trim() || fallbackMessage };
+  }
+
+  function mediaPatchFromLibraryItem(item: AgentMediaLibraryItem) {
+    return {
+      id: item.id,
+      bucket: item.bucket_name || "inrcy-pro-media",
+      bucketName: item.bucket_name || "inrcy-pro-media",
+      path: item.storage_path,
+      storagePath: item.storage_path,
+      publicUrl: item.signed_url || "",
+      url: item.signed_url || "",
+      name:
+        item.title ||
+        item.storage_path.split("/").pop() ||
+        (item.media_type === "video" ? "Vidéo" : "Image"),
+      title: item.title || "",
+      type:
+        item.mime_type ||
+        (item.media_type === "video" ? "video/mp4" : "image/jpeg"),
+      mimeType:
+        item.mime_type ||
+        (item.media_type === "video" ? "video/mp4" : "image/jpeg"),
+      size: item.size_bytes || 0,
+      duration: item.duration_seconds || null,
+      kind: item.media_type,
+      mediaType: item.media_type,
+      source: "pro_media_library",
+    };
+  }
+
+  async function loadPublishMediaLibrary() {
+    setPublishMediaLibraryState("loading");
+    try {
+      const response = await fetch(
+        "/api/media-library/items?type=all&active=active&limit=24",
+        { cache: "no-store" },
+      );
+      const payload = await readAgentApiJson(
+        response,
+        "Médiathèque indisponible.",
+      );
+      if (!response.ok)
+        throw new Error(payload?.error || "Médiathèque indisponible.");
+      const items = Array.isArray(payload?.items) ? payload.items : [];
+      setPublishMediaLibraryItems(
+        items.filter(
+          (item: AgentMediaLibraryItem) =>
+            item?.storage_path && item?.media_type,
+        ),
+      );
+      setPublishMediaLibraryState("idle");
+    } catch (error) {
+      setPublishMediaLibraryItems([]);
+      setPublishMediaLibraryState("error");
+    }
+  }
+
+  async function selectPublishMediaFromLibrary(item: AgentMediaLibraryItem) {
+    if (!item) return;
+    if (activePreviewChannel === "youtube" && item.media_type !== "video") {
+      showNotice("YouTube nécessite une vidéo.");
+      return;
+    }
+    setPublishMediaUploadState("saving");
+    try {
+      await savePublishMediaPatch(mediaPatchFromLibraryItem(item));
+      showNotice("Média iNrAgent mis à jour.");
+    } catch (error) {
+      showNotice(
+        error instanceof Error
+          ? error.message
+          : "Modification du média impossible.",
+      );
+    } finally {
+      setPublishMediaUploadState("idle");
+    }
+  }
+
   function openPublishMediaEditor() {
-    if (!selectedPreparedAction || !isPublishPreparedAction(selectedPreparedAction) || !activePreviewChannel) {
+    if (
+      !selectedPreparedAction ||
+      !isPublishPreparedAction(selectedPreparedAction) ||
+      !activePreviewChannel
+    ) {
       showNotice("Prépare d’abord une publication.");
       return;
     }
     setPublishMediaPreviewOpen(true);
+    void loadPublishMediaLibrary();
   }
 
   async function savePublishMediaPatch(media: Record<string, unknown> | null) {
@@ -3136,9 +3858,19 @@ export default function AgentClient() {
   }
 
   async function uploadPublishMedia(file: File | null | undefined) {
-    if (!file || !selectedPreparedAction || !activePreviewChannel || publishMediaUploadState === "saving") return;
-    if (!/^image\//i.test(file.type || "")) {
-      showNotice("Pour l’instant, ajoute une image depuis iNr’Agent. Les vidéos restent gérées dans Booster.");
+    if (
+      !file ||
+      !selectedPreparedAction ||
+      !activePreviewChannel ||
+      publishMediaUploadState === "saving"
+    )
+      return;
+
+    let mediaKind: "image" | "video";
+    try {
+      mediaKind = validateAgentPublishMediaFile(file);
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : "Média invalide.");
       return;
     }
 
@@ -3146,39 +3878,125 @@ export default function AgentClient() {
     setNotice(null);
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("path", `inr-agent/${selectedPreparedAction.id}/${activePreviewChannel}/${file.name || "image"}`);
-
-      const uploadResponse = await fetch("/api/booster/upload-prepared", {
+      const clientId = `agent-${Date.now()}-${file.name}-${file.size}`;
+      const prepareResponse = await fetch("/api/media-library/upload", {
         method: "POST",
-        body: formData,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          mode: "prepare",
+          files: [
+            {
+              client_id: clientId,
+              name: file.name,
+              type: file.type,
+              size: file.size,
+              last_modified: file.lastModified,
+            },
+          ],
+        }),
       });
-      const uploadPayload = (await uploadResponse.json().catch(() => null)) as {
-        publicUrl?: string | null;
-        storagePath?: string | null;
-        error?: string;
-      } | null;
+      const preparePayload = await readAgentApiJson(
+        prepareResponse,
+        "Préparation du média impossible.",
+      );
+      if (!prepareResponse.ok)
+        throw new Error(
+          preparePayload?.error || "Préparation du média impossible.",
+        );
+      const prepared = Array.isArray(preparePayload?.items)
+        ? preparePayload.items[0]
+        : null;
+      if (!prepared?.token || !prepared?.storage_path)
+        throw new Error("Préparation du média impossible.");
 
-      if (!uploadResponse.ok || !uploadPayload?.publicUrl) {
-        throw new Error(uploadPayload?.error || "Upload du média impossible.");
+      const supabase = createClient();
+      const { error: uploadError } = await supabase.storage
+        .from(prepared.bucket || "inrcy-pro-media")
+        .uploadToSignedUrl(prepared.storage_path, prepared.token, file, {
+          contentType:
+            prepared.content_type || file.type || "application/octet-stream",
+        });
+      if (uploadError) throw uploadError;
+
+      const finalizeResponse = await fetch("/api/media-library/upload", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          mode: "finalize",
+          source: "inr_agent",
+          uploads: [
+            {
+              client_id: clientId,
+              original_name: prepared.original_name || file.name,
+              storage_path: prepared.storage_path,
+              mime_type:
+                prepared.content_type ||
+                file.type ||
+                "application/octet-stream",
+              size_bytes: file.size,
+              width: null,
+              height: null,
+              duration_seconds: null,
+            },
+          ],
+        }),
+      });
+      const finalizePayload = await readAgentApiJson(
+        finalizeResponse,
+        "Finalisation du média impossible.",
+      );
+      if (!finalizeResponse.ok || !finalizePayload?.ok) {
+        throw new Error(
+          finalizePayload?.error || "Finalisation du média impossible.",
+        );
       }
+      const result = Array.isArray(finalizePayload?.results)
+        ? finalizePayload.results.find((item: any) => item?.ok)
+        : null;
+      if (!result?.storage_path) throw new Error("Média finalisé introuvable.");
 
       await savePublishMediaPatch({
-        bucket: "booster",
-        path: uploadPayload.storagePath || "",
-        storagePath: uploadPayload.storagePath || "",
-        publicUrl: uploadPayload.publicUrl,
-        url: uploadPayload.publicUrl,
-        name: file.name || "Image",
-        type: file.type || "image/jpeg",
-        mimeType: file.type || "image/jpeg",
-        size: file.size || 0,
-        kind: "image",
+        id: result.id || null,
+        bucket: result.bucket_name || prepared.bucket || "inrcy-pro-media",
+        bucketName: result.bucket_name || prepared.bucket || "inrcy-pro-media",
+        path: result.storage_path,
+        storagePath: result.storage_path,
+        publicUrl: result.signed_url || "",
+        url: result.signed_url || "",
+        name:
+          result.title ||
+          prepared.original_name ||
+          file.name ||
+          (mediaKind === "video" ? "Vidéo" : "Image"),
+        title: result.title || prepared.original_name || file.name || "",
+        type:
+          result.mime_type ||
+          prepared.content_type ||
+          file.type ||
+          "application/octet-stream",
+        mimeType:
+          result.mime_type ||
+          prepared.content_type ||
+          file.type ||
+          "application/octet-stream",
+        size: result.size_bytes || file.size || 0,
+        duration: result.duration_seconds || null,
+        kind: result.media_type || mediaKind,
+        mediaType: result.media_type || mediaKind,
+        source: "pro_media_library",
       });
-      showNotice("Média de la publication mis à jour.");
+      await loadPublishMediaLibrary();
+      showNotice(
+        mediaKind === "video"
+          ? "Vidéo iNrAgent mise à jour."
+          : "Image iNrAgent mise à jour.",
+      );
     } catch (error) {
-      showNotice(error instanceof Error ? error.message : "Modification du média impossible.");
+      showNotice(
+        error instanceof Error
+          ? error.message
+          : "Modification du média impossible.",
+      );
     } finally {
       setPublishMediaUploadState("idle");
     }
@@ -3193,19 +4011,27 @@ export default function AgentClient() {
       await savePublishMediaPatch(null);
       showNotice("Média retiré de la publication.");
     } catch (error) {
-      showNotice(error instanceof Error ? error.message : "Suppression du média impossible.");
+      showNotice(
+        error instanceof Error
+          ? error.message
+          : "Suppression du média impossible.",
+      );
     } finally {
       setPublishMediaUploadState("idle");
     }
   }
 
   function syncCampaignBodyFromEditor(editor: HTMLDivElement) {
-    const nextBody = editableHtmlToSiteText(readSanitizedElementHtml(editor)).slice(0, 6000);
+    const nextBody = editableHtmlToSiteText(
+      readSanitizedElementHtml(editor),
+    ).slice(0, 6000);
     setCampaignTextDraft((current) => ({ ...current, body: nextBody }));
   }
 
   function syncPublishBodyFromEditor(editor: HTMLDivElement) {
-    const nextBody = editableHtmlToSiteText(readSanitizedElementHtml(editor)).slice(0, 6000);
+    const nextBody = editableHtmlToSiteText(
+      readSanitizedElementHtml(editor),
+    ).slice(0, 6000);
     setPublishTextDraft((current) => ({ ...current, body: nextBody }));
   }
 
@@ -3215,10 +4041,16 @@ export default function AgentClient() {
     if (!selection || selection.rangeCount === 0) return false;
     const anchor = selection.anchorNode;
     const focus = selection.focusNode;
-    return Boolean(anchor && focus && editor.contains(anchor) && editor.contains(focus));
+    return Boolean(
+      anchor && focus && editor.contains(anchor) && editor.contains(focus),
+    );
   }
 
-  function applyRichEditorFormat(editor: HTMLDivElement | null, kind: "bold" | "italic" | "underline", sync: (editor: HTMLDivElement) => void) {
+  function applyRichEditorFormat(
+    editor: HTMLDivElement | null,
+    kind: "bold" | "italic" | "underline",
+    sync: (editor: HTMLDivElement) => void,
+  ) {
     if (!editor || typeof document === "undefined") return;
     try {
       editor.focus({ preventScroll: true });
@@ -3226,9 +4058,16 @@ export default function AgentClient() {
       editor.focus();
     }
 
-    const command = kind === "bold" ? "bold" : kind === "italic" ? "italic" : "underline";
-    const selection = typeof window !== "undefined" ? window.getSelection() : null;
-    const hasSelection = Boolean(selection && selection.rangeCount > 0 && !selection.isCollapsed && selectionTargetsEditor(editor));
+    const command =
+      kind === "bold" ? "bold" : kind === "italic" ? "italic" : "underline";
+    const selection =
+      typeof window !== "undefined" ? window.getSelection() : null;
+    const hasSelection = Boolean(
+      selection &&
+      selection.rangeCount > 0 &&
+      !selection.isCollapsed &&
+      selectionTargetsEditor(editor),
+    );
 
     if (hasSelection) {
       document.execCommand(command, false);
@@ -3246,11 +4085,19 @@ export default function AgentClient() {
   }
 
   function applyCampaignTextFormat(kind: "bold" | "italic" | "underline") {
-    applyRichEditorFormat(campaignBodyEditorRef.current, kind, syncCampaignBodyFromEditor);
+    applyRichEditorFormat(
+      campaignBodyEditorRef.current,
+      kind,
+      syncCampaignBodyFromEditor,
+    );
   }
 
   function applyPublishTextFormat(kind: "bold" | "italic" | "underline") {
-    applyRichEditorFormat(publishBodyEditorRef.current, kind, syncPublishBodyFromEditor);
+    applyRichEditorFormat(
+      publishBodyEditorRef.current,
+      kind,
+      syncPublishBodyFromEditor,
+    );
   }
 
   function updatePublishCtaDraft(patch: Partial<typeof publishTextDraft>) {
@@ -3258,7 +4105,9 @@ export default function AgentClient() {
   }
 
   function applyPublishPreferredCta(choice: BoosterPreferredCta) {
-    const displayKey = boosterDisplayKeyFromAgentChannel(publishTextDraft.channel);
+    const displayKey = boosterDisplayKeyFromAgentChannel(
+      publishTextDraft.channel,
+    );
     const currentPost: BoosterChannelPost = {
       title: publishTextDraft.title,
       content: publishTextDraft.body,
@@ -3319,7 +4168,9 @@ export default function AgentClient() {
       } | null;
 
       if (!response.ok || !payload?.action) {
-        throw new Error(payload?.error || "Modification de la publication impossible.");
+        throw new Error(
+          payload?.error || "Modification de la publication impossible.",
+        );
       }
 
       const updatedAction = payload.action;
@@ -3331,14 +4182,22 @@ export default function AgentClient() {
       setPublishEditOpen(false);
       showNotice("Publication mise à jour.");
     } catch (error) {
-      showNotice(error instanceof Error ? error.message : "Modification de la publication impossible.");
+      showNotice(
+        error instanceof Error
+          ? error.message
+          : "Modification de la publication impossible.",
+      );
     } finally {
       setPublishSaveState("idle");
     }
   }
 
-  async function patchCampaignAction(body: Record<string, unknown>, fallbackError: string) {
-    if (!selectedPreparedAction) throw new Error("Action iNr’Agent introuvable.");
+  async function patchCampaignAction(
+    body: Record<string, unknown>,
+    fallbackError: string,
+  ) {
+    if (!selectedPreparedAction)
+      throw new Error("Action iNr’Agent introuvable.");
     const response = await fetch("/api/agent/actions", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -3369,12 +4228,20 @@ export default function AgentClient() {
   async function loadCrmContactsForAgent() {
     setCrmContactsLoading(true);
     try {
-      const response = await fetch("/api/crm/contacts?all=1&pageSize=500", { cache: "no-store" });
-      const payload = (await response.json().catch(() => null)) as { contacts?: CrmContactForAgent[]; error?: string } | null;
-      if (!response.ok) throw new Error(payload?.error || "Contacts CRM indisponibles.");
+      const response = await fetch("/api/crm/contacts?all=1&pageSize=500", {
+        cache: "no-store",
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        contacts?: CrmContactForAgent[];
+        error?: string;
+      } | null;
+      if (!response.ok)
+        throw new Error(payload?.error || "Contacts CRM indisponibles.");
       setCrmContacts(Array.isArray(payload?.contacts) ? payload.contacts : []);
     } catch (error) {
-      showNotice(error instanceof Error ? error.message : "Contacts CRM indisponibles.");
+      showNotice(
+        error instanceof Error ? error.message : "Contacts CRM indisponibles.",
+      );
     } finally {
       setCrmContactsLoading(false);
     }
@@ -3382,7 +4249,9 @@ export default function AgentClient() {
 
   async function openRecipientsEditor() {
     const currentRecipients = recipientsForAction(selectedPreparedAction);
-    setSelectedRecipientEmails(currentRecipients.map((recipient) => recipient.email.toLowerCase()));
+    setSelectedRecipientEmails(
+      currentRecipients.map((recipient) => recipient.email.toLowerCase()),
+    );
     setRecipientsPreviewOpen(false);
     setCampaignEditOpen(false);
     setRecipientsEditOpen(true);
@@ -3414,12 +4283,16 @@ export default function AgentClient() {
       return Array.from(next);
     });
     setManualRecipientsInput("");
-    showNotice(`${emails.length} destinataire${emails.length > 1 ? "s" : ""} ajouté${emails.length > 1 ? "s" : ""}.`);
+    showNotice(
+      `${emails.length} destinataire${emails.length > 1 ? "s" : ""} ajouté${emails.length > 1 ? "s" : ""}.`,
+    );
   }
 
   function selectAllFilteredCrmRecipients() {
     const emails = filteredCrmContacts
-      .map((contact) => contactToCampaignRecipient(contact)?.email.toLowerCase())
+      .map((contact) =>
+        contactToCampaignRecipient(contact)?.email.toLowerCase(),
+      )
       .filter((email): email is string => Boolean(email));
     setSelectedRecipientEmails((current) => {
       const next = new Set(current.map((email) => email.toLowerCase()));
@@ -3431,10 +4304,14 @@ export default function AgentClient() {
   function clearFilteredCrmRecipients() {
     const emailsToRemove = new Set(
       filteredCrmContacts
-        .map((contact) => contactToCampaignRecipient(contact)?.email.toLowerCase())
+        .map((contact) =>
+          contactToCampaignRecipient(contact)?.email.toLowerCase(),
+        )
         .filter((email): email is string => Boolean(email)),
     );
-    setSelectedRecipientEmails((current) => current.filter((email) => !emailsToRemove.has(email.toLowerCase())));
+    setSelectedRecipientEmails((current) =>
+      current.filter((email) => !emailsToRemove.has(email.toLowerCase())),
+    );
   }
 
   function toggleFilteredCrmRecipients() {
@@ -3447,12 +4324,19 @@ export default function AgentClient() {
 
   function removeSelectedRecipient(emailValue: string) {
     const email = emailValue.trim().toLowerCase();
-    setSelectedRecipientEmails((current) => current.filter((item) => item.toLowerCase() !== email));
+    setSelectedRecipientEmails((current) =>
+      current.filter((item) => item.toLowerCase() !== email),
+    );
   }
 
   async function saveCampaignRecipients() {
     if (!selectedPreparedAction || campaignSaveState === "saving") return;
-    const previousByEmail = new Map(campaignRecipients.map((recipient) => [recipient.email.toLowerCase(), recipient]));
+    const previousByEmail = new Map(
+      campaignRecipients.map((recipient) => [
+        recipient.email.toLowerCase(),
+        recipient,
+      ]),
+    );
     const pendingManualEmails = parseRecipientEmails(manualRecipientsInput);
     const emails = Array.from(
       new Set([
@@ -3461,8 +4345,15 @@ export default function AgentClient() {
       ]),
     );
     const recipients = emails
-      .map((email) => crmRecipientsByEmail.get(email) || previousByEmail.get(email) || manualRecipientFromEmail(email))
-      .filter((recipient): recipient is CampaignRecipientPreview => Boolean(recipient));
+      .map(
+        (email) =>
+          crmRecipientsByEmail.get(email) ||
+          previousByEmail.get(email) ||
+          manualRecipientFromEmail(email),
+      )
+      .filter((recipient): recipient is CampaignRecipientPreview =>
+        Boolean(recipient),
+      );
 
     if (!recipients.length) {
       showNotice("Sélectionne au moins un destinataire.");
@@ -3479,7 +4370,11 @@ export default function AgentClient() {
       setManualRecipientsInput("");
       showNotice("Destinataires de la campagne mis à jour.");
     } catch (error) {
-      showNotice(error instanceof Error ? error.message : "Modification des destinataires impossible.");
+      showNotice(
+        error instanceof Error
+          ? error.message
+          : "Modification des destinataires impossible.",
+      );
     } finally {
       setCampaignSaveState("idle");
     }
@@ -3507,8 +4402,12 @@ export default function AgentClient() {
           contact_type: selectedKey === "loyalty" ? "client" : "prospect",
         }),
       });
-      const payload = (await response.json().catch(() => null)) as { id?: string; error?: string } | null;
-      if (!response.ok) throw new Error(payload?.error || "Ajout du contact impossible.");
+      const payload = (await response.json().catch(() => null)) as {
+        id?: string;
+        error?: string;
+      } | null;
+      if (!response.ok)
+        throw new Error(payload?.error || "Ajout du contact impossible.");
       await loadCrmContactsForAgent();
       setSelectedRecipientEmails((current) =>
         current.includes(email) ? current : [...current, email],
@@ -3517,7 +4416,9 @@ export default function AgentClient() {
       setNewRecipientOpen(false);
       showNotice("Contact ajouté au CRM et sélectionné.");
     } catch (error) {
-      showNotice(error instanceof Error ? error.message : "Ajout du contact impossible.");
+      showNotice(
+        error instanceof Error ? error.message : "Ajout du contact impossible.",
+      );
     } finally {
       setNewRecipientState("idle");
     }
@@ -3526,21 +4427,28 @@ export default function AgentClient() {
   async function loadMailAccountsForAgent() {
     setMailAccountsLoading(true);
     try {
-      const response = await fetch("/api/integrations/status", { cache: "no-store" });
+      const response = await fetch("/api/integrations/status", {
+        cache: "no-store",
+      });
       const payload = (await response.json().catch(() => null)) as {
         mailAccounts?: AgentMailAccount[];
         accounts?: AgentMailAccount[];
         error?: string;
       } | null;
-      if (!response.ok) throw new Error(payload?.error || "Boîtes mail indisponibles.");
+      if (!response.ok)
+        throw new Error(payload?.error || "Boîtes mail indisponibles.");
       const accounts = Array.isArray(payload?.mailAccounts)
         ? payload.mailAccounts
         : Array.isArray(payload?.accounts)
-          ? payload.accounts.filter((account) => (account as any)?.category === "mail")
+          ? payload.accounts.filter(
+              (account) => (account as any)?.category === "mail",
+            )
           : [];
       setMailAccounts(accounts);
     } catch (error) {
-      showNotice(error instanceof Error ? error.message : "Boîtes mail indisponibles.");
+      showNotice(
+        error instanceof Error ? error.message : "Boîtes mail indisponibles.",
+      );
     } finally {
       setMailAccountsLoading(false);
     }
@@ -3548,7 +4456,9 @@ export default function AgentClient() {
 
   async function openMailAccountEditor() {
     const current = asRecord(selectedPreparedAction?.payload?.mailAccount);
-    setSelectedMailAccountId(firstSafeString(selectedPreparedAction?.payload?.accountId, current?.id));
+    setSelectedMailAccountId(
+      firstSafeString(selectedPreparedAction?.payload?.accountId, current?.id),
+    );
     setCampaignEditOpen(false);
     setMailAccountEditOpen(true);
     await loadMailAccountsForAgent();
@@ -3570,7 +4480,11 @@ export default function AgentClient() {
       setMailAccountEditOpen(false);
       showNotice("Boîte d’envoi mise à jour.");
     } catch (error) {
-      showNotice(error instanceof Error ? error.message : "Modification de la boîte d’envoi impossible.");
+      showNotice(
+        error instanceof Error
+          ? error.message
+          : "Modification de la boîte d’envoi impossible.",
+      );
     } finally {
       setCampaignSaveState("idle");
     }
@@ -3597,11 +4511,13 @@ export default function AgentClient() {
 
       for (const file of files.slice(0, 10)) {
         const path = makeAttachmentPath(file.name || "piece-jointe", userId);
-        const { error } = await supabase.storage.from("inrbox_attachments").upload(path, file, {
-          cacheControl: "3600",
-          upsert: false,
-          contentType: file.type || "application/octet-stream",
-        });
+        const { error } = await supabase.storage
+          .from("inrbox_attachments")
+          .upload(path, file, {
+            cacheControl: "3600",
+            upsert: false,
+            contentType: file.type || "application/octet-stream",
+          });
         if (error) throw error;
         uploaded.push({
           bucket: "inrbox_attachments",
@@ -3612,11 +4528,21 @@ export default function AgentClient() {
         });
       }
 
-      const current = normalizeCampaignAttachmentRefs(selectedPreparedAction.payload?.attachments);
+      const current = normalizeCampaignAttachmentRefs(
+        selectedPreparedAction.payload?.attachments,
+      );
       await saveCampaignAttachments([...current, ...uploaded].slice(0, 10));
-      showNotice(uploaded.length > 1 ? "Pièces jointes ajoutées." : "Pièce jointe ajoutée.");
+      showNotice(
+        uploaded.length > 1
+          ? "Pièces jointes ajoutées."
+          : "Pièce jointe ajoutée.",
+      );
     } catch (error) {
-      showNotice(error instanceof Error ? error.message : "Pièce jointe impossible à ajouter.");
+      showNotice(
+        error instanceof Error
+          ? error.message
+          : "Pièce jointe impossible à ajouter.",
+      );
     } finally {
       setAttachmentUploadState("idle");
     }
@@ -3626,16 +4552,23 @@ export default function AgentClient() {
     if (!selectedPreparedAction || attachmentUploadState === "saving") return;
     setAttachmentUploadState("saving");
     try {
-      const current = normalizeCampaignAttachmentRefs(selectedPreparedAction.payload?.attachments);
-      await saveCampaignAttachments(current.filter((attachment) => attachment.path !== path));
+      const current = normalizeCampaignAttachmentRefs(
+        selectedPreparedAction.payload?.attachments,
+      );
+      await saveCampaignAttachments(
+        current.filter((attachment) => attachment.path !== path),
+      );
       showNotice("Pièce jointe retirée.");
     } catch (error) {
-      showNotice(error instanceof Error ? error.message : "Suppression de la pièce jointe impossible.");
+      showNotice(
+        error instanceof Error
+          ? error.message
+          : "Suppression de la pièce jointe impossible.",
+      );
     } finally {
       setAttachmentUploadState("idle");
     }
   }
-
 
   async function saveCampaignAsDraft() {
     if (!selectedPreparedAction || campaignDraftSaveState === "saving") return;
@@ -3659,7 +4592,9 @@ export default function AgentClient() {
       } | null;
 
       if (!response.ok || !payload?.action) {
-        throw new Error(payload?.error || "Enregistrement du brouillon impossible.");
+        throw new Error(
+          payload?.error || "Enregistrement du brouillon impossible.",
+        );
       }
 
       const updatedAction = payload.action;
@@ -3731,7 +4666,9 @@ export default function AgentClient() {
     setNotice(null);
   }
 
-  async function persistSettings(options: { closeModal?: boolean; showSuccess?: boolean } = {}) {
+  async function persistSettings(
+    options: { closeModal?: boolean; showSuccess?: boolean } = {},
+  ) {
     const { closeModal = true, showSuccess = true } = options;
     const nextSettings = configsToSettings(agentSettings, configs);
     setSaveState("saving");
@@ -3777,7 +4714,8 @@ export default function AgentClient() {
   }
 
   async function runAutomationNow(key: AutomationKey) {
-    if (testNowKey || prepareActionState === "saving" || saveState === "saving") return;
+    if (testNowKey || prepareActionState === "saving" || saveState === "saving")
+      return;
 
     const progressKey = key === "stats" ? null : key;
     let progressTimer: number | null = null;
@@ -3792,12 +4730,16 @@ export default function AgentClient() {
       });
       progressTimer = window.setInterval(() => {
         setPrepareProgress((current) => {
-          if (!current || current.key !== progressKey || current.percent >= 97) return current;
+          if (!current || current.key !== progressKey || current.percent >= 97)
+            return current;
           const increment =
-            current.percent < 22 ? 7 :
-            current.percent < 52 ? 5 :
-            current.percent < 78 ? 3 :
-            1;
+            current.percent < 22
+              ? 7
+              : current.percent < 52
+                ? 5
+                : current.percent < 78
+                  ? 3
+                  : 1;
           const nextPercent = Math.min(97, current.percent + increment);
           return {
             key: progressKey,
@@ -3811,7 +4753,10 @@ export default function AgentClient() {
     let completed = false;
 
     try {
-      const saved = await persistSettings({ closeModal: false, showSuccess: false });
+      const saved = await persistSettings({
+        closeModal: false,
+        showSuccess: false,
+      });
       if (!saved) return;
 
       if (key === "publish") {
@@ -3837,16 +4782,22 @@ export default function AgentClient() {
             : current,
         );
         await wait(completed ? 520 : 850);
-        setPrepareProgress((current) => (current?.key === progressKey ? null : current));
+        setPrepareProgress((current) =>
+          current?.key === progressKey ? null : current,
+        );
       }
       setTestNowKey(null);
     }
   }
 
   function testAutomationNow(key: AutomationKey) {
-    if (testNowKey || prepareActionState === "saving" || saveState === "saving") return;
+    if (testNowKey || prepareActionState === "saving" || saveState === "saving")
+      return;
 
-    if ((key === "grow" || key === "loyalty") && pendingActionsByAutomation[key] > 0) {
+    if (
+      (key === "grow" || key === "loyalty") &&
+      pendingActionsByAutomation[key] > 0
+    ) {
       setPrepareNowConfirm({
         key,
         label: key === "grow" ? "Propulser" : "Fidéliser",
@@ -3910,7 +4861,9 @@ export default function AgentClient() {
     }
   }
 
-  async function prepareCampaignAction(key: Extract<AutomationKey, "grow" | "loyalty">) {
+  async function prepareCampaignAction(
+    key: Extract<AutomationKey, "grow" | "loyalty">,
+  ) {
     if (prepareActionState === "saving") return false;
 
     setPrepareActionState("saving");
@@ -3924,7 +4877,10 @@ export default function AgentClient() {
       });
       const payload = (await response.json().catch(() => null)) as {
         action?: AgentPreparedAction;
-        movedDrafts?: Array<{ actionId?: string | null; draftId?: string | null }>;
+        movedDrafts?: Array<{
+          actionId?: string | null;
+          draftId?: string | null;
+        }>;
         error?: string;
         detail?: string;
       } | null;
@@ -3949,7 +4905,10 @@ export default function AgentClient() {
           (action) =>
             action.id !== preparedAction.id &&
             !movedActionIds.has(action.id) &&
-            !(action.automationKey === key && pendingActionStatuses.has(action.status)),
+            !(
+              action.automationKey === key &&
+              pendingActionStatuses.has(action.status)
+            ),
         ),
       ]);
       void refreshActions(true);
@@ -3988,10 +4947,13 @@ export default function AgentClient() {
           if (currentPercent >= 98) return current;
 
           const increment =
-            currentPercent < 20 ? 4 :
-            currentPercent < 45 ? 3 :
-            currentPercent < 70 ? 2 :
-            1;
+            currentPercent < 20
+              ? 4
+              : currentPercent < 45
+                ? 3
+                : currentPercent < 70
+                  ? 2
+                  : 1;
           const nextPercent = Math.min(98, currentPercent + increment);
           return {
             label: statsProgressLabel(nextPercent),
@@ -4071,18 +5033,30 @@ export default function AgentClient() {
 
     setScheduleMutationState("saving");
     try {
-      const response = await fetch(`/api/agent/scheduled-actions/${scheduleEditAction.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scheduledAt: nextIso }),
-      });
-      const payload = await response.json().catch(() => null) as { error?: string } | null;
-      if (!response.ok) throw new Error(payload?.error || "Modification de l’action programmée impossible.");
+      const response = await fetch(
+        `/api/agent/scheduled-actions/${scheduleEditAction.id}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ scheduledAt: nextIso }),
+        },
+      );
+      const payload = (await response.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+      if (!response.ok)
+        throw new Error(
+          payload?.error || "Modification de l’action programmée impossible.",
+        );
       setScheduleEditAction(null);
       showNotice("Action programmée modifiée.");
       await refreshScheduledActions(true);
     } catch (error) {
-      showNotice(error instanceof Error ? error.message : "Modification de l’action programmée impossible.");
+      showNotice(
+        error instanceof Error
+          ? error.message
+          : "Modification de l’action programmée impossible.",
+      );
     } finally {
       setScheduleMutationState("idle");
     }
@@ -4095,22 +5069,37 @@ export default function AgentClient() {
 
     setScheduleMutationState("saving");
     try {
-      const response = await fetch(`/api/agent/scheduled-actions/${actionId}`, { method: "DELETE" });
-      const payload = await response.json().catch(() => null) as { error?: string } | null;
-      if (!response.ok) throw new Error(payload?.error || "Suppression de l’action programmée impossible.");
+      const response = await fetch(`/api/agent/scheduled-actions/${actionId}`, {
+        method: "DELETE",
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+      if (!response.ok)
+        throw new Error(
+          payload?.error || "Suppression de l’action programmée impossible.",
+        );
       showNotice("Action programmée supprimée.");
       await refreshScheduledActions(true);
     } catch (error) {
-      showNotice(error instanceof Error ? error.message : "Suppression de l’action programmée impossible.");
+      showNotice(
+        error instanceof Error
+          ? error.message
+          : "Suppression de l’action programmée impossible.",
+      );
     } finally {
       setScheduleMutationState("idle");
     }
   }
 
-  async function disableAutomationFromSchedule(key: AutomationKey | null | undefined) {
+  async function disableAutomationFromSchedule(
+    key: AutomationKey | null | undefined,
+  ) {
     if (!key || scheduleMutationState === "saving") return;
     const automation = automations.find((item) => item.key === key);
-    const ok = window.confirm(`Désactiver l’automatisation ${automation?.title || "iNrAgent"} ?`);
+    const ok = window.confirm(
+      `Désactiver l’automatisation ${automation?.title || "iNrAgent"} ?`,
+    );
     if (!ok) return;
 
     const nextConfigs = {
@@ -4125,14 +5114,22 @@ export default function AgentClient() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ settings: nextSettings }),
       });
-      const payload = await response.json().catch(() => null) as { settings?: Partial<InrAgentSettings>; error?: string } | null;
-      if (!response.ok) throw new Error(payload?.error || "Désactivation impossible.");
-      const savedSettings = sanitizeInrAgentSettings(payload?.settings ?? nextSettings);
+      const payload = (await response.json().catch(() => null)) as {
+        settings?: Partial<InrAgentSettings>;
+        error?: string;
+      } | null;
+      if (!response.ok)
+        throw new Error(payload?.error || "Désactivation impossible.");
+      const savedSettings = sanitizeInrAgentSettings(
+        payload?.settings ?? nextSettings,
+      );
       setAgentSettings(savedSettings);
       setConfigs(settingsToConfigs(savedSettings));
       showNotice("Automatisation désactivée.");
     } catch (error) {
-      showNotice(error instanceof Error ? error.message : "Désactivation impossible.");
+      showNotice(
+        error instanceof Error ? error.message : "Désactivation impossible.",
+      );
     } finally {
       setScheduleMutationState("idle");
     }
@@ -4157,10 +5154,21 @@ export default function AgentClient() {
     await disableAutomationFromSchedule(item.automationKey);
   }
 
-  function canSchedulePreparedAction(action: AgentPreparedAction | null | undefined) {
+  function canSchedulePreparedAction(
+    action: AgentPreparedAction | null | undefined,
+  ) {
     if (!action) return false;
-    if (action.automationKey === "publish" && action.targetTool === "booster" && action.actionType === "publication") return true;
-    if ((action.automationKey === "grow" || action.automationKey === "loyalty") && ["propulser", "fideliser", "mails"].includes(action.targetTool)) return true;
+    if (
+      action.automationKey === "publish" &&
+      action.targetTool === "booster" &&
+      action.actionType === "publication"
+    )
+      return true;
+    if (
+      (action.automationKey === "grow" || action.automationKey === "loyalty") &&
+      ["propulser", "fideliser", "mails"].includes(action.targetTool)
+    )
+      return true;
     return false;
   }
 
@@ -4175,7 +5183,10 @@ export default function AgentClient() {
 
   async function scheduleValidatedAction() {
     if (!selectedPreparedAction || validationScheduleState === "saving") return;
-    const nextIso = localInputsToIso(validationScheduleDate, validationScheduleTime);
+    const nextIso = localInputsToIso(
+      validationScheduleDate,
+      validationScheduleTime,
+    );
     if (!nextIso || new Date(nextIso).getTime() <= Date.now() + 30_000) {
       showNotice("Choisissez une date et une heure dans le futur.");
       return;
@@ -4193,7 +5204,7 @@ export default function AgentClient() {
           timezone: agentSettings.timezone || "Europe/Paris",
         }),
       });
-      const payload = await response.json().catch(() => null) as {
+      const payload = (await response.json().catch(() => null)) as {
         action?: AgentPreparedAction;
         scheduledAction?: AgentScheduledAction | null;
         scheduledActions?: AgentScheduledAction[];
@@ -4203,12 +5214,18 @@ export default function AgentClient() {
 
       if (!response.ok) {
         if (payload?.tableMissing) setScheduledActionsTableMissing(true);
-        throw new Error(payload?.error || "Programmation de l’action impossible.");
+        throw new Error(
+          payload?.error || "Programmation de l’action impossible.",
+        );
       }
 
       if (payload?.action) {
         const updatedAction = payload.action;
-        setActions((current) => current.map((action) => action.id === updatedAction.id ? updatedAction : action));
+        setActions((current) =>
+          current.map((action) =>
+            action.id === updatedAction.id ? updatedAction : action,
+          ),
+        );
       }
       const newScheduledActions = Array.isArray(payload?.scheduledActions)
         ? payload.scheduledActions
@@ -4228,7 +5245,11 @@ export default function AgentClient() {
       await refreshActions(true);
       await refreshScheduledActions(true);
     } catch (error) {
-      showNotice(error instanceof Error ? error.message : "Programmation de l’action impossible.");
+      showNotice(
+        error instanceof Error
+          ? error.message
+          : "Programmation de l’action impossible.",
+      );
     } finally {
       setValidationScheduleState("idle");
     }
@@ -4242,7 +5263,9 @@ export default function AgentClient() {
 
     try {
       const endpoint =
-        status === "validated" ? "/api/agent/actions/execute" : "/api/agent/actions";
+        status === "validated"
+          ? "/api/agent/actions/execute"
+          : "/api/agent/actions";
       const response = await fetch(endpoint, {
         method: status === "validated" ? "POST" : "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -4354,11 +5377,15 @@ export default function AgentClient() {
             />
             <div className={styles.moduleTitleText}>
               <h1>iNr’Agent</h1>
-              <p className={styles.moduleSubtitleDesktop}>Programmateur d’automatisations connecté à vos outils.</p>
+              <p className={styles.moduleSubtitleDesktop}>
+                Programmateur d’automatisations connecté à vos outils.
+              </p>
             </div>
           </div>
 
-          <p className={styles.moduleSubtitleMobile}>Programmateur d’automatisations connecté à vos outils.</p>
+          <p className={styles.moduleSubtitleMobile}>
+            Programmateur d’automatisations connecté à vos outils.
+          </p>
 
           <div className={styles.moduleHeaderActions}>
             {loadState === "loading" && (
@@ -4421,14 +5448,22 @@ export default function AgentClient() {
                   }}
                 />
               ) : (
-                <span className={styles.headerToolLetter} aria-hidden>{selectedHeaderTool.compactLabel}</span>
+                <span className={styles.headerToolLetter} aria-hidden>
+                  {selectedHeaderTool.compactLabel}
+                </span>
               )}
-              <span className={styles.headerToolLabel}>{selectedHeaderTool.label}</span>
+              <span className={styles.headerToolLabel}>
+                {selectedHeaderTool.label}
+              </span>
             </button>
             <button
               type="button"
               className={styles.headerInrSendButton}
-              onClick={() => router.push(`/dashboard/mails?folder=${inrSendFolderForAutomation(selected.key)}`)}
+              onClick={() =>
+                router.push(
+                  `/dashboard/mails?folder=${inrSendFolderForAutomation(selected.key)}`,
+                )
+              }
               aria-label="Ouvrir iNr'Send"
               title="Voir l’historique des actions réalisées"
             >
@@ -4480,8 +5515,12 @@ export default function AgentClient() {
                     <AutomationIcon type={automation.key} />
                   </span>
                   <span className={styles.cardTitle}>
-                    <span className={styles.cardTitleFull}>{automation.title}</span>
-                    <span className={styles.cardTitleShort}>{automation.shortTitle}</span>
+                    <span className={styles.cardTitleFull}>
+                      {automation.title}
+                    </span>
+                    <span className={styles.cardTitleShort}>
+                      {automation.shortTitle}
+                    </span>
                   </span>
                   {pendingActionsByAutomation[automation.key] > 0 && (
                     <span
@@ -4555,577 +5594,805 @@ export default function AgentClient() {
               aria-label="Aperçu de l’action préparée"
             >
               <div className={styles.previewBody}>
-              {selected.key === "stats" ? (
-                <div className={styles.statsPreview}>
-                  <div className={styles.statsHeadCard}>
-                    <span className={styles.statsHeadIcon} aria-hidden>
-                      <AutomationIcon type="stats" />
-                    </span>
-                    <div className={styles.statsHeadCopy}>
-                      <h3>Votre bilan iNr’Stats</h3>
-                      <p className={styles.statsLead}>
-                        iNr’Agent analyse vos données et vous envoie un bilan PDF automatiquement.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className={styles.statsTopGrid}>
-                    <article className={`${styles.statsMiniCard} ${styles.statsMiniCardGreen}`}>
-                      <div className={styles.statsMiniHead}>
-                        <span className={styles.statsMiniIcon} aria-hidden><SparkSettingsIcon /></span>
-                        <small>Automatisation</small>
-                      </div>
-                      <strong>{statsAutomationLabel}</strong>
-                    </article>
-                    <article className={`${styles.statsMiniCard} ${styles.statsMiniCardBlue}`}>
-                      <div className={styles.statsMiniHead}>
-                        <span className={styles.statsMiniIcon} aria-hidden><CalendarMetaIcon /></span>
-                        <small>Fréquence</small>
-                      </div>
-                      <strong>{statsFrequencyLabel}</strong>
-                    </article>
-                    <article className={`${styles.statsMiniCard} ${styles.statsMiniCardViolet}`}>
-                      <div className={styles.statsMiniHead}>
-                        <span className={styles.statsMiniIcon} aria-hidden><CalendarMetaIcon /></span>
-                        <small>Prochain bilan</small>
-                      </div>
-                      <strong>{statsNextRunLabel}</strong>
-                    </article>
-                    <article className={`${styles.statsMiniCard} ${styles.statsMiniCardSky}`}>
-                      <div className={styles.statsMiniHead}>
-                        <span className={styles.statsMiniIcon} aria-hidden><SendPlaneIcon /></span>
-                        <small>Dernier bilan</small>
-                      </div>
-                      <strong>{statsLastReportLabel}</strong>
-                    </article>
-                    <article className={`${styles.statsMiniCard} ${styles.statsMiniCardPink}`}>
-                      <div className={styles.statsMiniHead}>
-                        <span className={styles.statsMiniIcon} aria-hidden><ShieldLineIcon /></span>
-                        <small>Bilans conservés</small>
-                      </div>
-                      <strong>{statsStoredCountLabel}</strong>
-                    </article>
-                  </div>
-
-                  <section className={styles.statsInsightCard} aria-label="Dernières recommandations iNrAgent">
-                    <div className={styles.statsInsightHeader}>
-                      <span className={styles.statsInsightIcon} aria-hidden>
-                        <SparkSettingsIcon />
+                {selected.key === "stats" ? (
+                  <div className={styles.statsPreview}>
+                    <div className={styles.statsHeadCard}>
+                      <span className={styles.statsHeadIcon} aria-hidden>
+                        <AutomationIcon type="stats" />
                       </span>
-                      <div className={styles.statsInsightCopy}>
-                        <strong>Dernières recommandations iNr’Agent</strong>
-                      </div>
-                    </div>
-                    {latestStatsRecommendations.length > 0 ? (
-                      <ol className={styles.statsRecommendationList}>
-                        {latestStatsRecommendations.map((recommendation, index) => (
-                          <li key={`stats-recommendation-${index}`}>
-                            <span>{index + 1}</span>
-                            <p>{recommendation}</p>
-                          </li>
-                        ))}
-                      </ol>
-                    ) : (
-                      <p className={styles.statsRecommendationEmpty}>
-                        Le prochain bilan automatique affichera ici les recommandations de la dernière page du PDF.
-                      </p>
-                    )}
-                  </section>
-
-                  <div className={styles.statsHistorySection}>
-                    <div className={styles.statsHistoryHeader}>
-                      <h4>5 derniers bilans auto</h4>
-                    </div>
-                    <div className={styles.statsHistoryRow}>
-                      {Array.from({ length: 5 }).map((_, index) => {
-                        const report = statsReports[index];
-                        return report ? (
-                          <a
-                            key={report.id}
-                            href={report.document.downloadUrl || "#"}
-                            target="_blank"
-                            rel="noreferrer"
-                            className={styles.statsHistoryItem}
-                            aria-label={`Télécharger le bilan du ${formatMiniDateLabel(report.document.createdAt || report.completedAt || report.createdAt)}`}
-                          >
-                            <span className={styles.statsHistoryIcon} aria-hidden>
-                              <DownloadActionIcon />
-                            </span>
-                            <span className={styles.statsHistoryDate}>
-                              <strong>{formatReportDateLabel(report.document.createdAt || report.completedAt || report.createdAt).date}</strong>
-                              <small>{formatReportDateLabel(report.document.createdAt || report.completedAt || report.createdAt).time}</small>
-                            </span>
-                          </a>
-                        ) : (
-                          <div key={`stats-empty-${index}`} className={`${styles.statsHistoryItem} ${styles.statsHistoryItemEmpty}`}>
-                            <span className={styles.statsHistoryIcon} aria-hidden>
-                              <DownloadActionIcon />
-                            </span>
-                            <span className={styles.statsHistoryDate}>—</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              ) : isCampaignView && campaignDisplayPreview ? (
-                <div
-                  key={`${selectedPreparedAction?.id || selected.key}-campaign`}
-                  className={`${styles.campaignPreview} ${!hasCampaignPreview ? styles.campaignPreviewEmpty : ""}`}
-                >
-                  <div className={styles.campaignInfoGrid}>
-                    <article className={`${styles.campaignInfoCard} ${styles.campaignInfoTheme}`}>
-                      <span className={styles.campaignInfoIcon} aria-hidden>
-                        <AutomationIcon type={selected.key} />
-                      </span>
-                      <span>
-                        <small>Rubrique</small>
-                        <strong>{campaignDisplayPreview.mission}</strong>
-                      </span>
-                    </article>
-                    <button
-                      type="button"
-                      className={`${styles.campaignInfoCard} ${styles.campaignInfoRecipients}`}
-                      onClick={() => setRecipientsPreviewOpen(true)}
-                      disabled={!hasCampaignPreview || campaignDisplayPreview.recipientsCount <= 0}
-                      title={hasCampaignPreview ? "Voir les destinataires" : "Aucune campagne préparée"}
-                    >
-                      <span className={styles.campaignInfoIcon} aria-hidden>
-                        <SparkSettingsIcon />
-                      </span>
-                      <span>
-                        <small>Destinataires</small>
-                        <strong>
-                          {hasCampaignPreview
-                            ? `${campaignDisplayPreview.recipientsCount} contact${campaignDisplayPreview.recipientsCount > 1 ? "s" : ""}`
-                            : "—"}
-                        </strong>
-                      </span>
-                      <span className={styles.campaignInfoEye} aria-hidden>👁</span>
-                    </button>
-                    <button
-                      type="button"
-                      className={`${styles.campaignInfoCard} ${styles.campaignInfoMail}`}
-                      onClick={openMailAccountEditor}
-                      disabled={!hasCampaignPreview}
-                      title={hasCampaignPreview ? "Modifier la boîte d’envoi" : "Aucune campagne préparée"}
-                    >
-                      <span className={styles.campaignInfoIcon} aria-hidden>
-                        <SendPlaneIcon />
-                      </span>
-                      <span className={styles.campaignInfoText}>
-                        <small>Boîte d’envoi</small>
-                        <strong className={styles.campaignInfoMailLabel}>{campaignDisplayPreview.mailAccountLabel}</strong>
-                      </span>
-                      <span className={styles.campaignInfoEye} aria-hidden>👁</span>
-                    </button>
-                    <button
-                      type="button"
-                      className={`${styles.campaignInfoCard} ${styles.campaignInfoAttachment}`}
-                      onClick={() => setAttachmentPreviewOpen(true)}
-                      disabled={!hasCampaignPreview}
-                      title={hasCampaignPreview ? "Voir la pièce jointe" : "Aucune campagne préparée"}
-                    >
-                      <span className={styles.campaignInfoIcon} aria-hidden>
-                        <ImageMetaIcon />
-                      </span>
-                      <span>
-                        <small>Pièce jointe</small>
-                        <strong>
-                          {hasCampaignPreview
-                            ? campaignAttachments.length > 0
-                              ? campaignAttachments.length === 1
-                                ? campaignAttachments[0].name
-                                : `${campaignAttachments.length} fichiers`
-                              : "Aucune"
-                            : "—"}
-                        </strong>
-                      </span>
-                      <span className={styles.campaignInfoEye} aria-hidden>👁</span>
-                    </button>
-                  </div>
-
-                  <article className={styles.campaignMailCard}>
-                    <div className={styles.campaignMailSubject}>
-                      <span>Objet :</span>
-                      <strong>{campaignDisplayPreview.subject}</strong>
-                    </div>
-                    <div className={styles.campaignMailContent}>
-                      {campaignDisplayPreview.paragraphs.map((paragraph, index) => (
-                        <p key={`${selectedPreparedAction?.id || selected.key}-mail-paragraph-${index}`}>
-                          {renderRichInlineText(paragraph, `${selectedPreparedAction?.id || selected.key}-mail-paragraph-${index}`)}
+                      <div className={styles.statsHeadCopy}>
+                        <h3>Votre bilan iNr’Stats</h3>
+                        <p className={styles.statsLead}>
+                          iNr’Agent analyse vos données et vous envoie un bilan
+                          PDF automatiquement.
                         </p>
-                      ))}
-                      {!hasCampaignPreview && (
-                        <div className={styles.campaignEmptyHint}>
-                          <span>
-                            {actionsLoadState === "loading"
-                              ? "Recherche des actions préparées..."
-                              : "Aucune campagne automatique préparée pour le moment."}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-                  </article>
-                </div>
-              ) : isPublishView ? (
-                <div
-                  key={`${selectedPreparedAction?.id || selected.key}-${activePreviewChannel || "global"}-publish`}
-                  className={`${styles.publishPreview} ${!selectedPreparedAction ? styles.publishPreviewEmpty : ""}`}
-                >
-                  <div className={styles.publishInfoGrid}>
-                    <article className={`${styles.campaignInfoCard} ${styles.publishInfoChannel}`}>
-                      <span className={styles.campaignInfoIcon} aria-hidden>
-                        <AutomationIcon type="publish" />
-                      </span>
-                      <span>
-                        <small>Canal</small>
-                        <strong>{activePreviewChannelLabel}</strong>
-                      </span>
-                    </article>
-                    <button
-                      type="button"
-                      className={`${styles.campaignInfoCard} ${styles.publishInfoFormat}`}
-                      onClick={openPublishTextEditor}
-                      disabled={!selectedPreparedAction || actionMutationState === "saving"}
-                      title={selectedPreparedAction ? "Modifier le contenu" : "Aucune publication préparée"}
-                    >
-                      <span className={styles.campaignInfoIcon} aria-hidden>
-                        <ImageMetaIcon />
-                      </span>
-                      <span>
-                        <small>Contenu</small>
-                        <strong>{publishContentKind}</strong>
-                      </span>
-                      <span className={styles.campaignInfoEye} aria-hidden>👁</span>
-                    </button>
-                    <button
-                      type="button"
-                      className={`${styles.campaignInfoCard} ${styles.publishInfoAttachment}`}
-                      onClick={openPublishMediaEditor}
-                      disabled={!selectedPreparedAction || actionMutationState === "saving"}
-                      title={selectedPreparedAction ? "Gérer le média" : "Aucune publication préparée"}
-                    >
-                      <span className={styles.campaignInfoIcon} aria-hidden>
-                        <ImageMetaIcon />
-                      </span>
-                      <span>
-                        <small>Média</small>
-                        <strong>{publishMediaPreview?.name || "Aucun"}</strong>
-                      </span>
-                      <span className={styles.campaignInfoEye} aria-hidden>👁</span>
-                    </button>
-                    <article className={`${styles.campaignInfoCard} ${styles.publishInfoStatus}`}>
-                      <span className={styles.campaignInfoIcon} aria-hidden>
-                        <ShieldLineIcon />
-                      </span>
-                      <span>
-                        <small>Statut</small>
-                        <strong className={publishStatusClass}>{publishStatus.label}</strong>
-                      </span>
-                    </article>
-                  </div>
-
-                  <article className={styles.publishPostCard}>
-                    <div className={styles.publishPostText}>
-                      <div className={styles.publishTitleLine}>
-                        <span>Titre :</span>
-                        <strong>{preparedChannelPreview?.title || selectedPreparedAction?.title || "—"}</strong>
                       </div>
-                      <div className={styles.publishPostContent}>
-                        {publishParagraphs.length > 0 ? (
-                          publishParagraphs.map((paragraph, index) => (
-                            <p key={`${selectedPreparedAction?.id || selected.key}-${activePreviewChannel || "global"}-publish-paragraph-${index}`}>
-                              {renderRichInlineText(paragraph, `${selectedPreparedAction?.id || selected.key}-${activePreviewChannel || "global"}-publish-paragraph-${index}`)}
+                    </div>
+
+                    <div className={styles.statsTopGrid}>
+                      <article
+                        className={`${styles.statsMiniCard} ${styles.statsMiniCardGreen}`}
+                      >
+                        <div className={styles.statsMiniHead}>
+                          <span className={styles.statsMiniIcon} aria-hidden>
+                            <SparkSettingsIcon />
+                          </span>
+                          <small>Automatisation</small>
+                        </div>
+                        <strong>{statsAutomationLabel}</strong>
+                      </article>
+                      <article
+                        className={`${styles.statsMiniCard} ${styles.statsMiniCardBlue}`}
+                      >
+                        <div className={styles.statsMiniHead}>
+                          <span className={styles.statsMiniIcon} aria-hidden>
+                            <CalendarMetaIcon />
+                          </span>
+                          <small>Fréquence</small>
+                        </div>
+                        <strong>{statsFrequencyLabel}</strong>
+                      </article>
+                      <article
+                        className={`${styles.statsMiniCard} ${styles.statsMiniCardViolet}`}
+                      >
+                        <div className={styles.statsMiniHead}>
+                          <span className={styles.statsMiniIcon} aria-hidden>
+                            <CalendarMetaIcon />
+                          </span>
+                          <small>Prochain bilan</small>
+                        </div>
+                        <strong>{statsNextRunLabel}</strong>
+                      </article>
+                      <article
+                        className={`${styles.statsMiniCard} ${styles.statsMiniCardSky}`}
+                      >
+                        <div className={styles.statsMiniHead}>
+                          <span className={styles.statsMiniIcon} aria-hidden>
+                            <SendPlaneIcon />
+                          </span>
+                          <small>Dernier bilan</small>
+                        </div>
+                        <strong>{statsLastReportLabel}</strong>
+                      </article>
+                      <article
+                        className={`${styles.statsMiniCard} ${styles.statsMiniCardPink}`}
+                      >
+                        <div className={styles.statsMiniHead}>
+                          <span className={styles.statsMiniIcon} aria-hidden>
+                            <ShieldLineIcon />
+                          </span>
+                          <small>Bilans conservés</small>
+                        </div>
+                        <strong>{statsStoredCountLabel}</strong>
+                      </article>
+                    </div>
+
+                    <section
+                      className={styles.statsInsightCard}
+                      aria-label="Dernières recommandations iNrAgent"
+                    >
+                      <div className={styles.statsInsightHeader}>
+                        <span className={styles.statsInsightIcon} aria-hidden>
+                          <SparkSettingsIcon />
+                        </span>
+                        <div className={styles.statsInsightCopy}>
+                          <strong>Dernières recommandations iNr’Agent</strong>
+                        </div>
+                      </div>
+                      {latestStatsRecommendations.length > 0 ? (
+                        <ol className={styles.statsRecommendationList}>
+                          {latestStatsRecommendations.map(
+                            (recommendation, index) => (
+                              <li key={`stats-recommendation-${index}`}>
+                                <span>{index + 1}</span>
+                                <p>{recommendation}</p>
+                              </li>
+                            ),
+                          )}
+                        </ol>
+                      ) : (
+                        <p className={styles.statsRecommendationEmpty}>
+                          Le prochain bilan automatique affichera ici les
+                          recommandations de la dernière page du PDF.
+                        </p>
+                      )}
+                    </section>
+
+                    <div className={styles.statsHistorySection}>
+                      <div className={styles.statsHistoryHeader}>
+                        <h4>5 derniers bilans auto</h4>
+                      </div>
+                      <div className={styles.statsHistoryRow}>
+                        {Array.from({ length: 5 }).map((_, index) => {
+                          const report = statsReports[index];
+                          return report ? (
+                            <a
+                              key={report.id}
+                              href={report.document.downloadUrl || "#"}
+                              target="_blank"
+                              rel="noreferrer"
+                              className={styles.statsHistoryItem}
+                              aria-label={`Télécharger le bilan du ${formatMiniDateLabel(report.document.createdAt || report.completedAt || report.createdAt)}`}
+                            >
+                              <span
+                                className={styles.statsHistoryIcon}
+                                aria-hidden
+                              >
+                                <DownloadActionIcon />
+                              </span>
+                              <span className={styles.statsHistoryDate}>
+                                <strong>
+                                  {
+                                    formatReportDateLabel(
+                                      report.document.createdAt ||
+                                        report.completedAt ||
+                                        report.createdAt,
+                                    ).date
+                                  }
+                                </strong>
+                                <small>
+                                  {
+                                    formatReportDateLabel(
+                                      report.document.createdAt ||
+                                        report.completedAt ||
+                                        report.createdAt,
+                                    ).time
+                                  }
+                                </small>
+                              </span>
+                            </a>
+                          ) : (
+                            <div
+                              key={`stats-empty-${index}`}
+                              className={`${styles.statsHistoryItem} ${styles.statsHistoryItemEmpty}`}
+                            >
+                              <span
+                                className={styles.statsHistoryIcon}
+                                aria-hidden
+                              >
+                                <DownloadActionIcon />
+                              </span>
+                              <span className={styles.statsHistoryDate}>—</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                ) : isCampaignView && campaignDisplayPreview ? (
+                  <div
+                    key={`${selectedPreparedAction?.id || selected.key}-campaign`}
+                    className={`${styles.campaignPreview} ${!hasCampaignPreview ? styles.campaignPreviewEmpty : ""}`}
+                  >
+                    <div className={styles.campaignInfoGrid}>
+                      <article
+                        className={`${styles.campaignInfoCard} ${styles.campaignInfoTheme}`}
+                      >
+                        <span className={styles.campaignInfoIcon} aria-hidden>
+                          <AutomationIcon type={selected.key} />
+                        </span>
+                        <span>
+                          <small>Rubrique</small>
+                          <strong>{campaignDisplayPreview.mission}</strong>
+                        </span>
+                      </article>
+                      <button
+                        type="button"
+                        className={`${styles.campaignInfoCard} ${styles.campaignInfoRecipients}`}
+                        onClick={() => setRecipientsPreviewOpen(true)}
+                        disabled={
+                          !hasCampaignPreview ||
+                          campaignDisplayPreview.recipientsCount <= 0
+                        }
+                        title={
+                          hasCampaignPreview
+                            ? "Voir les destinataires"
+                            : "Aucune campagne préparée"
+                        }
+                      >
+                        <span className={styles.campaignInfoIcon} aria-hidden>
+                          <SparkSettingsIcon />
+                        </span>
+                        <span>
+                          <small>Destinataires</small>
+                          <strong>
+                            {hasCampaignPreview
+                              ? `${campaignDisplayPreview.recipientsCount} contact${campaignDisplayPreview.recipientsCount > 1 ? "s" : ""}`
+                              : "—"}
+                          </strong>
+                        </span>
+                        <span className={styles.campaignInfoEye} aria-hidden>
+                          👁
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        className={`${styles.campaignInfoCard} ${styles.campaignInfoMail}`}
+                        onClick={openMailAccountEditor}
+                        disabled={!hasCampaignPreview}
+                        title={
+                          hasCampaignPreview
+                            ? "Modifier la boîte d’envoi"
+                            : "Aucune campagne préparée"
+                        }
+                      >
+                        <span className={styles.campaignInfoIcon} aria-hidden>
+                          <SendPlaneIcon />
+                        </span>
+                        <span className={styles.campaignInfoText}>
+                          <small>Boîte d’envoi</small>
+                          <strong className={styles.campaignInfoMailLabel}>
+                            {campaignDisplayPreview.mailAccountLabel}
+                          </strong>
+                        </span>
+                        <span className={styles.campaignInfoEye} aria-hidden>
+                          👁
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        className={`${styles.campaignInfoCard} ${styles.campaignInfoAttachment}`}
+                        onClick={() => setAttachmentPreviewOpen(true)}
+                        disabled={!hasCampaignPreview}
+                        title={
+                          hasCampaignPreview
+                            ? "Voir la pièce jointe"
+                            : "Aucune campagne préparée"
+                        }
+                      >
+                        <span className={styles.campaignInfoIcon} aria-hidden>
+                          <ImageMetaIcon />
+                        </span>
+                        <span>
+                          <small>Pièce jointe</small>
+                          <strong>
+                            {hasCampaignPreview
+                              ? campaignAttachments.length > 0
+                                ? campaignAttachments.length === 1
+                                  ? campaignAttachments[0].name
+                                  : `${campaignAttachments.length} fichiers`
+                                : "Aucune"
+                              : "—"}
+                          </strong>
+                        </span>
+                        <span className={styles.campaignInfoEye} aria-hidden>
+                          👁
+                        </span>
+                      </button>
+                    </div>
+
+                    <article className={styles.campaignMailCard}>
+                      <div className={styles.campaignMailSubject}>
+                        <span>Objet :</span>
+                        <strong>{campaignDisplayPreview.subject}</strong>
+                      </div>
+                      <div className={styles.campaignMailContent}>
+                        {campaignDisplayPreview.paragraphs.map(
+                          (paragraph, index) => (
+                            <p
+                              key={`${selectedPreparedAction?.id || selected.key}-mail-paragraph-${index}`}
+                            >
+                              {renderRichInlineText(
+                                paragraph,
+                                `${selectedPreparedAction?.id || selected.key}-mail-paragraph-${index}`,
+                              )}
                             </p>
-                          ))
-                        ) : selectedPreparedAction ? (
-                          <p>{renderRichInlineText(selectedPreparedAction.summary, `${selectedPreparedAction.id}-publish-summary`)}</p>
-                        ) : (
-                          <div className={styles.publishEmptyHint}>
-                            <strong>Aucune publication automatique préparée pour le moment.</strong>
-                            <span>Le futur contenu du canal sélectionné s’affichera ici dès qu’iNr’Agent aura préparé une publication.</span>
+                          ),
+                        )}
+                        {!hasCampaignPreview && (
+                          <div className={styles.campaignEmptyHint}>
+                            <span>
+                              {actionsLoadState === "loading"
+                                ? "Recherche des actions préparées..."
+                                : "Aucune campagne automatique préparée pour le moment."}
+                            </span>
                           </div>
                         )}
-                        {preparedChannelPreview?.hashtags.length ? (
-                          <small className={styles.previewHashtags}>
-                            {preparedChannelPreview.hashtags
-                              .map((hashtag) => `#${hashtag.replace(/^#+/, "")}`)
-                              .join(" ")}
-                          </small>
-                        ) : null}
                       </div>
-                      <div className={styles.publishCtaLine}>
-                        <span>CTA :</span>
-                        <strong>{publishCtaLine}</strong>
+                    </article>
+                  </div>
+                ) : isPublishView ? (
+                  <div
+                    key={`${selectedPreparedAction?.id || selected.key}-${activePreviewChannel || "global"}-publish`}
+                    className={`${styles.publishPreview} ${!selectedPreparedAction ? styles.publishPreviewEmpty : ""}`}
+                  >
+                    <div className={styles.publishInfoGrid}>
+                      <article
+                        className={`${styles.campaignInfoCard} ${styles.publishInfoChannel}`}
+                      >
+                        <span className={styles.campaignInfoIcon} aria-hidden>
+                          <AutomationIcon type="publish" />
+                        </span>
+                        <span>
+                          <small>Canal</small>
+                          <strong>{activePreviewChannelLabel}</strong>
+                        </span>
+                      </article>
+                      <button
+                        type="button"
+                        className={`${styles.campaignInfoCard} ${styles.publishInfoFormat}`}
+                        onClick={openPublishTextEditor}
+                        disabled={
+                          !selectedPreparedAction ||
+                          actionMutationState === "saving"
+                        }
+                        title={
+                          selectedPreparedAction
+                            ? "Modifier le contenu"
+                            : "Aucune publication préparée"
+                        }
+                      >
+                        <span className={styles.campaignInfoIcon} aria-hidden>
+                          <ImageMetaIcon />
+                        </span>
+                        <span>
+                          <small>Contenu</small>
+                          <strong>{publishContentKind}</strong>
+                        </span>
+                        <span className={styles.campaignInfoEye} aria-hidden>
+                          👁
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        className={`${styles.campaignInfoCard} ${styles.publishInfoAttachment}`}
+                        onClick={openPublishMediaEditor}
+                        disabled={
+                          !selectedPreparedAction ||
+                          actionMutationState === "saving"
+                        }
+                        title={
+                          selectedPreparedAction
+                            ? "Gérer le média"
+                            : "Aucune publication préparée"
+                        }
+                      >
+                        <span className={styles.campaignInfoIcon} aria-hidden>
+                          <ImageMetaIcon />
+                        </span>
+                        <span>
+                          <small>Média</small>
+                          <strong>
+                            {publishMediaPreview?.name || "Aucun"}
+                          </strong>
+                        </span>
+                        <span className={styles.campaignInfoEye} aria-hidden>
+                          👁
+                        </span>
+                      </button>
+                      <article
+                        className={`${styles.campaignInfoCard} ${styles.publishInfoStatus}`}
+                      >
+                        <span className={styles.campaignInfoIcon} aria-hidden>
+                          <ShieldLineIcon />
+                        </span>
+                        <span>
+                          <small>Statut</small>
+                          <strong className={publishStatusClass}>
+                            {publishStatus.label}
+                          </strong>
+                        </span>
+                      </article>
+                    </div>
+
+                    <article className={styles.publishPostCard}>
+                      <div className={styles.publishPostText}>
+                        <div className={styles.publishTitleLine}>
+                          <span>Titre :</span>
+                          <strong>
+                            {preparedChannelPreview?.title ||
+                              selectedPreparedAction?.title ||
+                              "—"}
+                          </strong>
+                        </div>
+                        <div className={styles.publishPostContent}>
+                          {publishParagraphs.length > 0 ? (
+                            publishParagraphs.map((paragraph, index) => (
+                              <p
+                                key={`${selectedPreparedAction?.id || selected.key}-${activePreviewChannel || "global"}-publish-paragraph-${index}`}
+                              >
+                                {renderRichInlineText(
+                                  paragraph,
+                                  `${selectedPreparedAction?.id || selected.key}-${activePreviewChannel || "global"}-publish-paragraph-${index}`,
+                                )}
+                              </p>
+                            ))
+                          ) : selectedPreparedAction ? (
+                            <p>
+                              {renderRichInlineText(
+                                selectedPreparedAction.summary,
+                                `${selectedPreparedAction.id}-publish-summary`,
+                              )}
+                            </p>
+                          ) : (
+                            <div className={styles.publishEmptyHint}>
+                              <strong>
+                                Aucune publication automatique préparée pour le
+                                moment.
+                              </strong>
+                              <span>
+                                Le futur contenu du canal sélectionné
+                                s’affichera ici dès qu’iNr’Agent aura préparé
+                                une publication.
+                              </span>
+                            </div>
+                          )}
+                          {preparedChannelPreview?.hashtags.length ? (
+                            <small className={styles.previewHashtags}>
+                              {preparedChannelPreview.hashtags
+                                .map(
+                                  (hashtag) => `#${hashtag.replace(/^#+/, "")}`,
+                                )
+                                .join(" ")}
+                            </small>
+                          ) : null}
+                        </div>
+                        <div className={styles.publishCtaLine}>
+                          <span>CTA :</span>
+                          <strong>{publishCtaLine}</strong>
+                        </div>
                       </div>
-                    </div>
-                  </article>
-                </div>
-              ) : hasPreparedAction && selectedPreparedAction ? (
-                <div
-                  key={`${selectedPreparedAction.id}-${activePreviewChannel || "global"}`}
-                  className={styles.preparedPreview}
-                >
-                  {preparedImageUrl ? (
-                    <div className={styles.previewImageWrap}>
-                      <img
-                        src={preparedImageUrl}
-                        alt={imageAssetAlt(preparedImage)}
-                        loading="eager"
-                        decoding="sync"
-                      />
-                    </div>
-                  ) : (
-                    <div className={styles.previewImageFallback}>
-                      <ImageMetaIcon />
-                      <span>Aucune image obligatoire pour cette action</span>
-                    </div>
-                  )}
-                  <div className={styles.previewText}>
-                    <div className={styles.previewBadgeRow}>
-                      <span>Aperçu {activePreviewChannelLabel}</span>
-                      <span>
-                        {
-                          INR_AGENT_ACTION_LABELS[
-                            selectedPreparedAction.actionType
-                          ]
-                        }
-                      </span>
-                      <span>
-                        {
-                          INR_AGENT_TOOL_LABELS[
-                            selectedPreparedAction.targetTool
-                          ]
-                        }
-                      </span>
-                      <span>
-                        {INR_AGENT_STATUS_LABELS[selectedPreparedAction.status]}
-                      </span>
-                    </div>
-                    <h3>
-                      {preparedChannelPreview?.title || selectedPreparedAction.title}
-                    </h3>
-                    {preparedParagraphs.length > 0 ? (
-                      preparedParagraphs.map((paragraph, index) => (
-                        <p
-                          key={`${selectedPreparedAction.id}-${activePreviewChannel || "global"}-paragraph-${index}`}
-                        >
-                          {renderRichInlineText(paragraph, `${selectedPreparedAction.id}-${activePreviewChannel || "global"}-paragraph-${index}`)}
-                        </p>
-                      ))
+                    </article>
+                  </div>
+                ) : hasPreparedAction && selectedPreparedAction ? (
+                  <div
+                    key={`${selectedPreparedAction.id}-${activePreviewChannel || "global"}`}
+                    className={styles.preparedPreview}
+                  >
+                    {preparedImageUrl ? (
+                      <div className={styles.previewImageWrap}>
+                        <img
+                          src={preparedImageUrl}
+                          alt={imageAssetAlt(preparedImage)}
+                          loading="eager"
+                          decoding="sync"
+                        />
+                      </div>
                     ) : (
-                      <p>{renderRichInlineText(selectedPreparedAction.summary, `${selectedPreparedAction.id}-summary`)}</p>
+                      <div className={styles.previewImageFallback}>
+                        <ImageMetaIcon />
+                        <span>Aucune image obligatoire pour cette action</span>
+                      </div>
                     )}
-                    {preparedChannelPreview?.cta && (
-                      <small className={styles.previewCta}>
-                        Appel à l’action : {preparedChannelPreview.cta}
-                      </small>
-                    )}
-                    {preparedChannelPreview?.hashtags.length ? (
-                      <small className={styles.previewHashtags}>
-                        {preparedChannelPreview.hashtags
-                          .map((hashtag) => `#${hashtag.replace(/^#+/, "")}`)
-                          .join(" ")}
-                      </small>
-                    ) : null}
-                    {targetThemesLabel(selectedPreparedAction) && (
-                      <small className={styles.previewTheme}>
-                        Thème : {targetThemesLabel(selectedPreparedAction)}
-                      </small>
-                    )}
-                    {preparedRecipientsCount > 0 && (
-                      <small className={styles.previewRecipients}>
-                        Destinataires proposés : {preparedRecipientsCount} contact{preparedRecipientsCount > 1 ? "s" : ""} CRM
-                      </small>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <div className={styles.emptyPreview}>
-                  <span className={styles.emptyOrb} aria-hidden>
-                    <AutomationIcon type={selected.key} />
-                  </span>
-                  <h3>Aucune action préparée</h3>
-                  <p>
-                    Quand iNr’Agent aura préparé la prochaine action, l’aperçu
-                    s’affichera ici. Sélectionnez ensuite un canal en dessous
-                    pour contrôler le contenu prévu canal par canal.
-                  </p>
-                  <small>
-                    {actionsLoadState === "loading"
-                      ? "Recherche des actions préparées..."
-                      : `Automatisation sélectionnée : ${selected.title}`}
-                  </small>
-                </div>
-              )}
-            </div>
-
-            <div className={`${styles.previewMeta} ${selected.key === "stats" ? styles.previewMetaStats : ""} ${isCampaignView ? styles.previewMetaCampaign : ""} ${isPublishView ? styles.previewMetaPublish : ""}`}>
-              <div className={`${styles.metaItem} ${styles.channelsItem}`}>
-                <small>{selected.key === "stats" ? "Sources :" : isCampaignView ? "Canal" : "Canaux :"}</small>
-                <div className={`${styles.channelScrollerWrap} ${isPublishView ? styles.channelScrollerWrapPublish : ""}`}>
-                  {isPublishView && displayChannels.length > 1 && (
-                    <button
-                      type="button"
-                      className={styles.channelNavArrow}
-                      onClick={() => movePreviewChannel(-1)}
-                      aria-label="Afficher le canal précédent"
-                      title="Canal précédent"
-                    >
-                      ‹
-                    </button>
-                  )}
-                  <div className={styles.channelScroller}>
-                  {selected.key === "stats" && selectedStatsRubriques.length > 0 ? (
-                    selectedStatsRubriques.map((theme) => {
-                      const rubrique = statsRubriqueOptions[theme];
-                      return (
-                        <button
-                          type="button"
-                          key={theme}
-                          data-channel={
-                            rubrique.channelKey ||
-                            (theme === "Vue globale"
-                              ? "stats-global"
-                              : theme === "iNrBadge"
-                                ? "inrbadge"
-                                : "stats")
+                    <div className={styles.previewText}>
+                      <div className={styles.previewBadgeRow}>
+                        <span>Aperçu {activePreviewChannelLabel}</span>
+                        <span>
+                          {
+                            INR_AGENT_ACTION_LABELS[
+                              selectedPreparedAction.actionType
+                            ]
                           }
-                          disabled
-                          aria-label={rubrique.name}
-                          title={rubrique.name}
-                        >
-                          <img src={rubrique.src} alt="" loading="eager" decoding="sync" aria-hidden />
-                        </button>
-                      );
-                    })
-                  ) : isCampaignView ? (
-                    <span className={styles.campaignMailPill} title="Mails" aria-label="Canal Mails">
-                      <img src={channelOptions.mails.src} alt="" loading="eager" decoding="sync" aria-hidden />
+                        </span>
+                        <span>
+                          {
+                            INR_AGENT_TOOL_LABELS[
+                              selectedPreparedAction.targetTool
+                            ]
+                          }
+                        </span>
+                        <span>
+                          {
+                            INR_AGENT_STATUS_LABELS[
+                              selectedPreparedAction.status
+                            ]
+                          }
+                        </span>
+                      </div>
+                      <h3>
+                        {preparedChannelPreview?.title ||
+                          selectedPreparedAction.title}
+                      </h3>
+                      {preparedParagraphs.length > 0 ? (
+                        preparedParagraphs.map((paragraph, index) => (
+                          <p
+                            key={`${selectedPreparedAction.id}-${activePreviewChannel || "global"}-paragraph-${index}`}
+                          >
+                            {renderRichInlineText(
+                              paragraph,
+                              `${selectedPreparedAction.id}-${activePreviewChannel || "global"}-paragraph-${index}`,
+                            )}
+                          </p>
+                        ))
+                      ) : (
+                        <p>
+                          {renderRichInlineText(
+                            selectedPreparedAction.summary,
+                            `${selectedPreparedAction.id}-summary`,
+                          )}
+                        </p>
+                      )}
+                      {preparedChannelPreview?.cta && (
+                        <small className={styles.previewCta}>
+                          Appel à l’action : {preparedChannelPreview.cta}
+                        </small>
+                      )}
+                      {preparedChannelPreview?.hashtags.length ? (
+                        <small className={styles.previewHashtags}>
+                          {preparedChannelPreview.hashtags
+                            .map((hashtag) => `#${hashtag.replace(/^#+/, "")}`)
+                            .join(" ")}
+                        </small>
+                      ) : null}
+                      {targetThemesLabel(selectedPreparedAction) && (
+                        <small className={styles.previewTheme}>
+                          Thème : {targetThemesLabel(selectedPreparedAction)}
+                        </small>
+                      )}
+                      {preparedRecipientsCount > 0 && (
+                        <small className={styles.previewRecipients}>
+                          Destinataires proposés : {preparedRecipientsCount}{" "}
+                          contact{preparedRecipientsCount > 1 ? "s" : ""} CRM
+                        </small>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className={styles.emptyPreview}>
+                    <span className={styles.emptyOrb} aria-hidden>
+                      <AutomationIcon type={selected.key} />
                     </span>
-                  ) : displayChannels.length > 0 ? (
-                    displayChannels.map((channelKey) => {
-                      const channel = channelOptions[channelKey];
-                      const activeChannel = channelKey === activePreviewChannel;
-                      return (
-                        <button
-                          type="button"
-                          key={channelKey}
-                          data-channel={channelKey}
-                          className={activeChannel ? styles.channelPillActive : ""}
-                          onClick={() => selectPreviewChannel(channelKey)}
-                          aria-label={`Afficher l’aperçu ${channel.name}`}
-                          title={channel.name}
-                        >
-                          <img src={channel.src} alt="" loading="eager" decoding="sync" aria-hidden />
-                        </button>
-                      );
-                    })
-                  ) : (
-                    <strong>—</strong>
-                  )}
+                    <h3>Aucune action préparée</h3>
+                    <p>
+                      Quand iNr’Agent aura préparé la prochaine action, l’aperçu
+                      s’affichera ici. Sélectionnez ensuite un canal en dessous
+                      pour contrôler le contenu prévu canal par canal.
+                    </p>
+                    <small>
+                      {actionsLoadState === "loading"
+                        ? "Recherche des actions préparées..."
+                        : `Automatisation sélectionnée : ${selected.title}`}
+                    </small>
                   </div>
-                  {isPublishView && displayChannels.length > 1 && (
-                    <button
-                      type="button"
-                      className={styles.channelNavArrow}
-                      onClick={() => movePreviewChannel(1)}
-                      aria-label="Afficher le canal suivant"
-                      title="Canal suivant"
-                    >
-                      ›
-                    </button>
-                  )}
-                </div>
+                )}
               </div>
-              <div
-                className={`${styles.metaItem} ${styles.dateItem}`}
-                title={selected.key === "stats" ? "Prochain bilan automatique" : "Date programmée"}
-              >
-                <span className={styles.metaIcon} aria-hidden>
-                  <CalendarMetaIcon />
-                </span>
-                <span>
-                  <strong>{footerDateLabel}</strong>
-                </span>
-              </div>
-              {selected.key === "stats" ? (
-                <div className={styles.statsFooterNote}>
-                  <small>Validation non requise</small>
-                </div>
-              ) : (
-                <>
-                  {(isCampaignView || isPublishView) && (
-                    <button
-                      type="button"
-                      className={styles.saveCampaignDraftButton}
-                      aria-label={isPublishView ? "Enregistrer la publication en brouillon" : "Enregistrer la campagne en brouillon"}
-                      title={isPublishView ? "Enregistrer" : "Enregistrer la campagne"}
-                      data-tooltip={isPublishView ? "Enregistrer" : "Enregistrer la campagne"}
-                      disabled={!hasPreparedAction || actionMutationState === "saving" || campaignDraftSaveState === "saving"}
-                      onClick={() => {
-                        if (isCampaignView) {
-                          setCampaignDraftConfirmOpen(true);
-                          return;
-                        }
-                        showNotice("La sauvegarde en brouillon publication sera branchée dans l’étape brouillons Booster.");
-                      }}
-                    >
-                      <span aria-hidden>💾</span>
-                      Enregistrer
-                    </button>
-                  )}
-                  {(isCampaignView || isPublishView) && (
-                    <button
-                      type="button"
-                      className={styles.modifyCampaignButton}
-                      aria-label={isPublishView ? "Modifier la publication" : "Modifier la campagne"}
-                      title={isPublishView ? "Modifier" : "Modifier la campagne"}
-                      data-tooltip={isPublishView ? "Modifier" : "Modifier la campagne"}
-                      disabled={!hasPreparedAction || actionMutationState === "saving"}
-                      onClick={() => {
-                        if (isCampaignView) {
-                          setCampaignEditOpen(true);
-                          return;
-                        }
-                        openPublishTextEditor();
-                      }}
-                    >
-                      <span aria-hidden>✎</span>
-                      Modifier
-                    </button>
-                  )}
-                  <div className={styles.previewActions}>
-                    <button
-                      type="button"
-                      className={styles.validateButton}
-                      disabled={!hasPreparedAction || actionMutationState === "saving"}
-                      onClick={() => {
-                        if (canSchedulePreparedAction(selectedPreparedAction)) {
-                          setValidationChoiceOpen(true);
-                        } else {
-                          void updateActionStatus("validated");
-                        }
-                      }}
-                    >
-                      <span aria-hidden><ValidateActionIcon /></span>
-                      {actionMutationState === "saving" ? "Traitement..." : "Valider"}
-                    </button>
-                    <button
-                      type="button"
-                      className={styles.refuseButton}
-                      disabled={!hasPreparedAction || actionMutationState === "saving"}
-                      onClick={() => updateActionStatus("refused")}
-                    >
-                      <span aria-hidden><RefuseActionIcon /></span>
-                      {actionMutationState === "saving" ? "Traitement..." : "Refuser"}
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
 
+              <div
+                className={`${styles.previewMeta} ${selected.key === "stats" ? styles.previewMetaStats : ""} ${isCampaignView ? styles.previewMetaCampaign : ""} ${isPublishView ? styles.previewMetaPublish : ""}`}
+              >
+                <div className={`${styles.metaItem} ${styles.channelsItem}`}>
+                  <small>
+                    {selected.key === "stats"
+                      ? "Sources :"
+                      : isCampaignView
+                        ? "Canal"
+                        : "Canaux :"}
+                  </small>
+                  <div
+                    className={`${styles.channelScrollerWrap} ${isPublishView ? styles.channelScrollerWrapPublish : ""}`}
+                  >
+                    {isPublishView && displayChannels.length > 1 && (
+                      <button
+                        type="button"
+                        className={styles.channelNavArrow}
+                        onClick={() => movePreviewChannel(-1)}
+                        aria-label="Afficher le canal précédent"
+                        title="Canal précédent"
+                      >
+                        ‹
+                      </button>
+                    )}
+                    <div className={styles.channelScroller}>
+                      {selected.key === "stats" &&
+                      selectedStatsRubriques.length > 0 ? (
+                        selectedStatsRubriques.map((theme) => {
+                          const rubrique = statsRubriqueOptions[theme];
+                          return (
+                            <button
+                              type="button"
+                              key={theme}
+                              data-channel={
+                                rubrique.channelKey ||
+                                (theme === "Vue globale"
+                                  ? "stats-global"
+                                  : theme === "iNrBadge"
+                                    ? "inrbadge"
+                                    : "stats")
+                              }
+                              disabled
+                              aria-label={rubrique.name}
+                              title={rubrique.name}
+                            >
+                              <img
+                                src={rubrique.src}
+                                alt=""
+                                loading="eager"
+                                decoding="sync"
+                                aria-hidden
+                              />
+                            </button>
+                          );
+                        })
+                      ) : isCampaignView ? (
+                        <span
+                          className={styles.campaignMailPill}
+                          title="Mails"
+                          aria-label="Canal Mails"
+                        >
+                          <img
+                            src={channelOptions.mails.src}
+                            alt=""
+                            loading="eager"
+                            decoding="sync"
+                            aria-hidden
+                          />
+                        </span>
+                      ) : displayChannels.length > 0 ? (
+                        displayChannels.map((channelKey) => {
+                          const channel = channelOptions[channelKey];
+                          const activeChannel =
+                            channelKey === activePreviewChannel;
+                          return (
+                            <button
+                              type="button"
+                              key={channelKey}
+                              data-channel={channelKey}
+                              className={
+                                activeChannel ? styles.channelPillActive : ""
+                              }
+                              onClick={() => selectPreviewChannel(channelKey)}
+                              aria-label={`Afficher l’aperçu ${channel.name}`}
+                              title={channel.name}
+                            >
+                              <img
+                                src={channel.src}
+                                alt=""
+                                loading="eager"
+                                decoding="sync"
+                                aria-hidden
+                              />
+                            </button>
+                          );
+                        })
+                      ) : (
+                        <strong>—</strong>
+                      )}
+                    </div>
+                    {isPublishView && displayChannels.length > 1 && (
+                      <button
+                        type="button"
+                        className={styles.channelNavArrow}
+                        onClick={() => movePreviewChannel(1)}
+                        aria-label="Afficher le canal suivant"
+                        title="Canal suivant"
+                      >
+                        ›
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div
+                  className={`${styles.metaItem} ${styles.dateItem}`}
+                  title={
+                    selected.key === "stats"
+                      ? "Prochain bilan automatique"
+                      : "Date programmée"
+                  }
+                >
+                  <span className={styles.metaIcon} aria-hidden>
+                    <CalendarMetaIcon />
+                  </span>
+                  <span>
+                    <strong>{footerDateLabel}</strong>
+                  </span>
+                </div>
+                {selected.key === "stats" ? (
+                  <div className={styles.statsFooterNote}>
+                    <small>Validation non requise</small>
+                  </div>
+                ) : (
+                  <>
+                    {(isCampaignView || isPublishView) && (
+                      <button
+                        type="button"
+                        className={styles.saveCampaignDraftButton}
+                        aria-label={
+                          isPublishView
+                            ? "Enregistrer la publication en brouillon"
+                            : "Enregistrer la campagne en brouillon"
+                        }
+                        title={
+                          isPublishView
+                            ? "Enregistrer"
+                            : "Enregistrer la campagne"
+                        }
+                        data-tooltip={
+                          isPublishView
+                            ? "Enregistrer"
+                            : "Enregistrer la campagne"
+                        }
+                        disabled={
+                          !hasPreparedAction ||
+                          actionMutationState === "saving" ||
+                          campaignDraftSaveState === "saving"
+                        }
+                        onClick={() => {
+                          if (isCampaignView) {
+                            setCampaignDraftConfirmOpen(true);
+                            return;
+                          }
+                          showNotice(
+                            "La sauvegarde en brouillon publication sera branchée dans l’étape brouillons Booster.",
+                          );
+                        }}
+                      >
+                        <span aria-hidden>💾</span>
+                        Enregistrer
+                      </button>
+                    )}
+                    {(isCampaignView || isPublishView) && (
+                      <button
+                        type="button"
+                        className={styles.modifyCampaignButton}
+                        aria-label={
+                          isPublishView
+                            ? "Modifier la publication"
+                            : "Modifier la campagne"
+                        }
+                        title={
+                          isPublishView ? "Modifier" : "Modifier la campagne"
+                        }
+                        data-tooltip={
+                          isPublishView ? "Modifier" : "Modifier la campagne"
+                        }
+                        disabled={
+                          !hasPreparedAction || actionMutationState === "saving"
+                        }
+                        onClick={() => {
+                          if (isCampaignView) {
+                            setCampaignEditOpen(true);
+                            return;
+                          }
+                          openPublishTextEditor();
+                        }}
+                      >
+                        <span aria-hidden>✎</span>
+                        Modifier
+                      </button>
+                    )}
+                    <div className={styles.previewActions}>
+                      <button
+                        type="button"
+                        className={styles.validateButton}
+                        disabled={
+                          !hasPreparedAction || actionMutationState === "saving"
+                        }
+                        onClick={() => {
+                          if (
+                            canSchedulePreparedAction(selectedPreparedAction)
+                          ) {
+                            setValidationChoiceOpen(true);
+                          } else {
+                            void updateActionStatus("validated");
+                          }
+                        }}
+                      >
+                        <span aria-hidden>
+                          <ValidateActionIcon />
+                        </span>
+                        {actionMutationState === "saving"
+                          ? "Traitement..."
+                          : "Valider"}
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.refuseButton}
+                        disabled={
+                          !hasPreparedAction || actionMutationState === "saving"
+                        }
+                        onClick={() => updateActionStatus("refused")}
+                      >
+                        <span aria-hidden>
+                          <RefuseActionIcon />
+                        </span>
+                        {actionMutationState === "saving"
+                          ? "Traitement..."
+                          : "Refuser"}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
             </section>
           </div>
         </div>
@@ -5156,42 +6423,79 @@ export default function AgentClient() {
               ×
             </button>
             <p className={styles.modalEyebrow}>Publication iNr’Agent</p>
-            <h2>Modifier {publishTextDraft.channel ? channelOptions[publishTextDraft.channel]?.name : "le canal"}</h2>
+            <h2>
+              Modifier{" "}
+              {publishTextDraft.channel
+                ? channelOptions[publishTextDraft.channel]?.name
+                : "le canal"}
+            </h2>
             <label className={styles.mailTextField}>
               <span>Titre</span>
               <input
                 value={publishTextDraft.title}
-                onChange={(event) => setPublishTextDraft((current) => ({ ...current, title: event.target.value }))}
+                onChange={(event) =>
+                  setPublishTextDraft((current) => ({
+                    ...current,
+                    title: event.target.value,
+                  }))
+                }
                 maxLength={180}
                 placeholder="Titre de la publication"
               />
             </label>
             <label className={styles.mailTextField}>
               <span>Contenu</span>
-              <div className={styles.richTextToolbar} aria-label="Mise en forme du contenu">
-                <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => applyPublishTextFormat("bold")} title="Gras">
+              <div
+                className={styles.richTextToolbar}
+                aria-label="Mise en forme du contenu"
+              >
+                <button
+                  type="button"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => applyPublishTextFormat("bold")}
+                  title="Gras"
+                >
                   <strong>B</strong>
                 </button>
-                <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => applyPublishTextFormat("italic")} title="Italique">
+                <button
+                  type="button"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => applyPublishTextFormat("italic")}
+                  title="Italique"
+                >
                   <em>I</em>
                 </button>
-                <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => applyPublishTextFormat("underline")} title="Souligné">
+                <button
+                  type="button"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => applyPublishTextFormat("underline")}
+                  title="Souligné"
+                >
                   <span className={styles.underlineToolbarLabel}>U</span>
                 </button>
               </div>
               <RichSiteContentEditor
                 value={publishTextDraft.body}
-                onChange={(value) => setPublishTextDraft((current) => ({ ...current, body: value.slice(0, 6000) }))}
+                onChange={(value) =>
+                  setPublishTextDraft((current) => ({
+                    ...current,
+                    body: value.slice(0, 6000),
+                  }))
+                }
                 minHeight={260}
                 editorRef={publishBodyEditorRef}
                 className={styles.richTextEditorSurface}
                 style={AGENT_RICH_TEXT_EDITOR_STYLE}
               />
             </label>
-            <div className={`${styles.mailTextField} ${styles.publishCtaEditor}`}>
+            <div
+              className={`${styles.mailTextField} ${styles.publishCtaEditor}`}
+            >
               <span>CTA</span>
               {(() => {
-                const displayKey = boosterDisplayKeyFromAgentChannel(publishTextDraft.channel);
+                const displayKey = boosterDisplayKeyFromAgentChannel(
+                  publishTextDraft.channel,
+                );
                 const currentPost: BoosterChannelPost = {
                   title: publishTextDraft.title,
                   content: publishTextDraft.body,
@@ -5199,14 +6503,33 @@ export default function AgentClient() {
                   ctaMode: publishTextDraft.ctaMode,
                   ctaUrl: publishTextDraft.ctaUrl,
                   ctaPhone: publishTextDraft.ctaPhone,
-                  hashtags: publishTextDraft.hashtags.split(/[\s,;]+/).filter(Boolean),
+                  hashtags: publishTextDraft.hashtags
+                    .split(/[\s,;]+/)
+                    .filter(Boolean),
                 };
-                const ctaChoice = getPreferredCtaChoiceFromPost(displayKey, currentPost);
-                const activeWebsiteUrl = getWebsiteUrlForChannel(displayKey, publishCtaDefaults);
-                const activeWebsiteSourceLabel = getWebsiteSourceLabelForChannel(displayKey, publishCtaDefaults);
+                const ctaChoice = getPreferredCtaChoiceFromPost(
+                  displayKey,
+                  currentPost,
+                );
+                const activeWebsiteUrl = getWebsiteUrlForChannel(
+                  displayKey,
+                  publishCtaDefaults,
+                );
+                const activeWebsiteSourceLabel =
+                  getWebsiteSourceLabelForChannel(
+                    displayKey,
+                    publishCtaDefaults,
+                  );
                 const websiteChoices = [
-                  publishCtaDefaults?.inrcySiteUrl ? { label: "Site iNrCy", url: publishCtaDefaults.inrcySiteUrl } : null,
-                  publishCtaDefaults?.siteWebUrl ? { label: "Site web", url: publishCtaDefaults.siteWebUrl } : null,
+                  publishCtaDefaults?.inrcySiteUrl
+                    ? {
+                        label: "Site iNrCy",
+                        url: publishCtaDefaults.inrcySiteUrl,
+                      }
+                    : null,
+                  publishCtaDefaults?.siteWebUrl
+                    ? { label: "Site web", url: publishCtaDefaults.siteWebUrl }
+                    : null,
                 ].filter(Boolean) as Array<{ label: string; url: string }>;
                 const ctaMode = publishTextDraft.ctaMode || "none";
                 return (
@@ -5216,10 +6539,16 @@ export default function AgentClient() {
                         <span>Bouton</span>
                         <select
                           value={ctaChoice}
-                          onChange={(event) => applyPublishPreferredCta(event.target.value as BoosterPreferredCta)}
+                          onChange={(event) =>
+                            applyPublishPreferredCta(
+                              event.target.value as BoosterPreferredCta,
+                            )
+                          }
                         >
                           {BOOSTER_PREFERRED_CTA_OPTIONS.map((option) => (
-                            <option key={option.value} value={option.value}>{option.label}</option>
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
                           ))}
                         </select>
                       </label>
@@ -5229,7 +6558,11 @@ export default function AgentClient() {
                           <span>URL de destination</span>
                           <input
                             value={publishTextDraft.ctaUrl}
-                            onChange={(event) => updatePublishCtaDraft({ ctaUrl: event.target.value })}
+                            onChange={(event) =>
+                              updatePublishCtaDraft({
+                                ctaUrl: event.target.value,
+                              })
+                            }
                             maxLength={320}
                             placeholder={
                               activeWebsiteUrl
@@ -5239,20 +6572,29 @@ export default function AgentClient() {
                                   : "URL du site (optionnel)"
                             }
                           />
-                          {ctaMode === "website" && websiteChoices.length > 0 && (
-                            <div className={styles.publishCtaQuickChoices}>
-                              {websiteChoices.map((choice) => (
-                                <button
-                                  key={choice.label}
-                                  type="button"
-                                  onClick={() => updatePublishCtaDraft({ ctaUrl: choice.url })}
-                                  className={publishTextDraft.ctaUrl === choice.url ? styles.publishCtaQuickChoiceActive : ""}
-                                >
-                                  {choice.label}
-                                </button>
-                              ))}
-                            </div>
-                          )}
+                          {ctaMode === "website" &&
+                            websiteChoices.length > 0 && (
+                              <div className={styles.publishCtaQuickChoices}>
+                                {websiteChoices.map((choice) => (
+                                  <button
+                                    key={choice.label}
+                                    type="button"
+                                    onClick={() =>
+                                      updatePublishCtaDraft({
+                                        ctaUrl: choice.url,
+                                      })
+                                    }
+                                    className={
+                                      publishTextDraft.ctaUrl === choice.url
+                                        ? styles.publishCtaQuickChoiceActive
+                                        : ""
+                                    }
+                                  >
+                                    {choice.label}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
                         </label>
                       )}
 
@@ -5261,9 +6603,15 @@ export default function AgentClient() {
                           <span>Texte du bouton</span>
                           <input
                             value={publishTextDraft.cta}
-                            onChange={(event) => updatePublishCtaDraft({ cta: event.target.value })}
+                            onChange={(event) =>
+                              updatePublishCtaDraft({ cta: event.target.value })
+                            }
                             maxLength={180}
-                            placeholder={ctaMode === "custom" ? "Ex : En savoir plus" : "Ex : Demander un devis"}
+                            placeholder={
+                              ctaMode === "custom"
+                                ? "Ex : En savoir plus"
+                                : "Ex : Demander un devis"
+                            }
                           />
                         </label>
                       )}
@@ -5273,9 +6621,17 @@ export default function AgentClient() {
                           <span>Téléphone</span>
                           <input
                             value={publishTextDraft.ctaPhone}
-                            onChange={(event) => updatePublishCtaDraft({ ctaPhone: event.target.value })}
+                            onChange={(event) =>
+                              updatePublishCtaDraft({
+                                ctaPhone: event.target.value,
+                              })
+                            }
                             maxLength={40}
-                            placeholder={publishCtaDefaults?.phone ? "Téléphone prérempli depuis Mon profil" : "Téléphone"}
+                            placeholder={
+                              publishCtaDefaults?.phone
+                                ? "Téléphone prérempli depuis Mon profil"
+                                : "Téléphone"
+                            }
                           />
                         </label>
                       )}
@@ -5285,12 +6641,15 @@ export default function AgentClient() {
                     </small>
                     {ctaMode === "website" && activeWebsiteUrl && (
                       <small className={styles.publishCtaHelp}>
-                        Valeur par défaut disponible depuis {activeWebsiteSourceLabel.toLowerCase()} : {activeWebsiteUrl}
+                        Valeur par défaut disponible depuis{" "}
+                        {activeWebsiteSourceLabel.toLowerCase()} :{" "}
+                        {activeWebsiteUrl}
                       </small>
                     )}
                     {ctaMode === "call" && publishCtaDefaults?.phone && (
                       <small className={styles.publishCtaHelp}>
-                        Valeur par défaut disponible depuis Mon profil : {publishCtaDefaults.phone}
+                        Valeur par défaut disponible depuis Mon profil :{" "}
+                        {publishCtaDefaults.phone}
                       </small>
                     )}
                   </>
@@ -5302,19 +6661,37 @@ export default function AgentClient() {
                 <span>Hashtags</span>
                 <input
                   value={publishTextDraft.hashtags}
-                  onChange={(event) => setPublishTextDraft((current) => ({ ...current, hashtags: event.target.value }))}
+                  onChange={(event) =>
+                    setPublishTextDraft((current) => ({
+                      ...current,
+                      hashtags: event.target.value,
+                    }))
+                  }
                   maxLength={280}
                   placeholder="#communication #local"
                 />
               </label>
             )}
             <p className={styles.campaignEditHint}>
-              La modification s’applique uniquement au canal sélectionné dans iNr’Agent.
+              La modification s’applique uniquement au canal sélectionné dans
+              iNr’Agent.
             </p>
             <div className={styles.modalActions}>
-              <button type="button" onClick={() => setPublishEditOpen(false)} disabled={publishSaveState === "saving"}>Annuler</button>
-              <button type="button" onClick={savePublishText} disabled={publishSaveState === "saving"}>
-                {publishSaveState === "saving" ? "Enregistrement..." : "Enregistrer"}
+              <button
+                type="button"
+                onClick={() => setPublishEditOpen(false)}
+                disabled={publishSaveState === "saving"}
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={savePublishText}
+                disabled={publishSaveState === "saving"}
+              >
+                {publishSaveState === "saving"
+                  ? "Enregistrement..."
+                  : "Enregistrer"}
               </button>
             </div>
           </section>
@@ -5326,7 +6703,8 @@ export default function AgentClient() {
           className={styles.modalBackdrop}
           role="presentation"
           onClick={() => {
-            if (campaignDraftSaveState !== "saving") setCampaignDraftConfirmOpen(false);
+            if (campaignDraftSaveState !== "saving")
+              setCampaignDraftConfirmOpen(false);
           }}
         >
           <section
@@ -5350,10 +6728,14 @@ export default function AgentClient() {
             <div className={styles.campaignDraftNotice}>
               <span aria-hidden>💾</span>
               <div>
-                <strong>La campagne va être enregistrée en brouillon dans iNrSend.</strong>
+                <strong>
+                  La campagne va être enregistrée en brouillon dans iNrSend.
+                </strong>
                 <p>
-                  Vous pourrez la retrouver plus tard, puis la rééditer directement dans
-                  {selected.key === "loyalty" ? " Fidéliser" : " Propulser"}. Elle ne sera pas envoyée maintenant.
+                  Vous pourrez la retrouver plus tard, puis la rééditer
+                  directement dans
+                  {selected.key === "loyalty" ? " Fidéliser" : " Propulser"}.
+                  Elle ne sera pas envoyée maintenant.
                 </p>
               </div>
             </div>
@@ -5361,7 +6743,10 @@ export default function AgentClient() {
               <small>Objet</small>
               <strong>{campaignMailPreview.subject || "—"}</strong>
               <small>Destinataires prévus</small>
-              <strong>{campaignMailPreview.recipientsCount} contact{campaignMailPreview.recipientsCount > 1 ? "s" : ""}</strong>
+              <strong>
+                {campaignMailPreview.recipientsCount} contact
+                {campaignMailPreview.recipientsCount > 1 ? "s" : ""}
+              </strong>
             </div>
             <div className={styles.modalActions}>
               <button
@@ -5376,7 +6761,9 @@ export default function AgentClient() {
                 onClick={saveCampaignAsDraft}
                 disabled={campaignDraftSaveState === "saving"}
               >
-                {campaignDraftSaveState === "saving" ? "Enregistrement..." : "Enregistrer en brouillon"}
+                {campaignDraftSaveState === "saving"
+                  ? "Enregistrement..."
+                  : "Enregistrer en brouillon"}
               </button>
             </div>
           </section>
@@ -5411,13 +6798,34 @@ export default function AgentClient() {
                 <strong>Texte du mail</strong>
                 <small>Modifier l’objet et le corps du message.</small>
               </button>
-              <button type="button" onClick={() => { setCampaignEditOpen(false); setAttachmentPreviewOpen(true); }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setCampaignEditOpen(false);
+                  setAttachmentPreviewOpen(true);
+                }}
+              >
                 <strong>Pièce jointe</strong>
-                <small>{campaignAttachments.length > 0 ? `${campaignAttachments.length} fichier${campaignAttachments.length > 1 ? "s" : ""}` : "Ajouter ou remplacer un fichier."}</small>
+                <small>
+                  {campaignAttachments.length > 0
+                    ? `${campaignAttachments.length} fichier${campaignAttachments.length > 1 ? "s" : ""}`
+                    : "Ajouter ou remplacer un fichier."}
+                </small>
               </button>
-              <button type="button" onClick={() => { setCampaignEditOpen(false); setRecipientsPreviewOpen(true); }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setCampaignEditOpen(false);
+                  setRecipientsPreviewOpen(true);
+                }}
+              >
                 <strong>Destinataires CRM</strong>
-                <small>{campaignMailPreview.recipientsCount} contact{campaignMailPreview.recipientsCount > 1 ? "s" : ""} prévu{campaignMailPreview.recipientsCount > 1 ? "s" : ""}. Voir la liste.</small>
+                <small>
+                  {campaignMailPreview.recipientsCount} contact
+                  {campaignMailPreview.recipientsCount > 1 ? "s" : ""} prévu
+                  {campaignMailPreview.recipientsCount > 1 ? "s" : ""}. Voir la
+                  liste.
+                </small>
               </button>
               <button type="button" onClick={openMailAccountEditor}>
                 <strong>Boîte d’envoi</strong>
@@ -5455,26 +6863,54 @@ export default function AgentClient() {
               <span>Objet</span>
               <input
                 value={campaignTextDraft.subject}
-                onChange={(event) => setCampaignTextDraft((current) => ({ ...current, subject: event.target.value }))}
+                onChange={(event) =>
+                  setCampaignTextDraft((current) => ({
+                    ...current,
+                    subject: event.target.value,
+                  }))
+                }
                 maxLength={220}
               />
             </label>
             <label className={styles.mailTextField}>
               <span>Corps du mail</span>
-              <div className={styles.richTextToolbar} aria-label="Mise en forme du corps du mail">
-                <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => applyCampaignTextFormat("bold")} title="Gras">
+              <div
+                className={styles.richTextToolbar}
+                aria-label="Mise en forme du corps du mail"
+              >
+                <button
+                  type="button"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => applyCampaignTextFormat("bold")}
+                  title="Gras"
+                >
                   <strong>B</strong>
                 </button>
-                <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => applyCampaignTextFormat("italic")} title="Italique">
+                <button
+                  type="button"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => applyCampaignTextFormat("italic")}
+                  title="Italique"
+                >
                   <em>I</em>
                 </button>
-                <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={() => applyCampaignTextFormat("underline")} title="Souligné">
+                <button
+                  type="button"
+                  onMouseDown={(event) => event.preventDefault()}
+                  onClick={() => applyCampaignTextFormat("underline")}
+                  title="Souligné"
+                >
                   <span className={styles.underlineToolbarLabel}>U</span>
                 </button>
               </div>
               <RichSiteContentEditor
                 value={campaignTextDraft.body}
-                onChange={(value) => setCampaignTextDraft((current) => ({ ...current, body: value.slice(0, 6000) }))}
+                onChange={(value) =>
+                  setCampaignTextDraft((current) => ({
+                    ...current,
+                    body: value.slice(0, 6000),
+                  }))
+                }
                 minHeight={250}
                 editorRef={campaignBodyEditorRef}
                 className={styles.richTextEditorSurface}
@@ -5482,9 +6918,17 @@ export default function AgentClient() {
               />
             </label>
             <div className={styles.modalActions}>
-              <button type="button" onClick={() => setMailTextEditOpen(false)}>Annuler</button>
-              <button type="button" onClick={saveCampaignText} disabled={campaignSaveState === "saving"}>
-                {campaignSaveState === "saving" ? "Enregistrement..." : "Enregistrer"}
+              <button type="button" onClick={() => setMailTextEditOpen(false)}>
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={saveCampaignText}
+                disabled={campaignSaveState === "saving"}
+              >
+                {campaignSaveState === "saving"
+                  ? "Enregistrement..."
+                  : "Enregistrer"}
               </button>
             </div>
           </section>
@@ -5513,11 +6957,18 @@ export default function AgentClient() {
               ×
             </button>
             <p className={styles.modalEyebrow}>Destinataires</p>
-            <h2>{campaignRecipients.length} contact{campaignRecipients.length > 1 ? "s" : ""} prévu{campaignRecipients.length > 1 ? "s" : ""}</h2>
+            <h2>
+              {campaignRecipients.length} contact
+              {campaignRecipients.length > 1 ? "s" : ""} prévu
+              {campaignRecipients.length > 1 ? "s" : ""}
+            </h2>
             <div className={styles.agentListScroll}>
               {campaignRecipients.length > 0 ? (
                 campaignRecipients.map((recipient) => (
-                  <article key={recipient.email} className={`${styles.agentListRow} ${styles.agentRecipientRow}`}>
+                  <article
+                    key={recipient.email}
+                    className={`${styles.agentListRow} ${styles.agentRecipientRow}`}
+                  >
                     <span className={styles.agentListContent}>
                       <strong className={styles.agentRecipientMain}>
                         <span>{recipientDisplayName(recipient)}</span>
@@ -5528,12 +6979,21 @@ export default function AgentClient() {
                   </article>
                 ))
               ) : (
-                <p className={styles.campaignEditHint}>Aucun destinataire n’est prévu pour cette campagne.</p>
+                <p className={styles.campaignEditHint}>
+                  Aucun destinataire n’est prévu pour cette campagne.
+                </p>
               )}
             </div>
             <div className={styles.modalActions}>
-              <button type="button" onClick={() => setRecipientsPreviewOpen(false)}>Fermer</button>
-              <button type="button" onClick={openRecipientsEditor}>Modifier les destinataires</button>
+              <button
+                type="button"
+                onClick={() => setRecipientsPreviewOpen(false)}
+              >
+                Fermer
+              </button>
+              <button type="button" onClick={openRecipientsEditor}>
+                Modifier les destinataires
+              </button>
             </div>
           </section>
         </div>
@@ -5565,12 +7025,17 @@ export default function AgentClient() {
             <div className={styles.manualRecipientBox}>
               <div>
                 <strong>Destinataires libres</strong>
-                <small>Saisissez une ou plusieurs adresses, séparées par un point-virgule.</small>
+                <small>
+                  Saisissez une ou plusieurs adresses, séparées par un
+                  point-virgule.
+                </small>
               </div>
               <div className={styles.manualRecipientRow}>
                 <input
                   value={manualRecipientsInput}
-                  onChange={(event) => setManualRecipientsInput(event.target.value)}
+                  onChange={(event) =>
+                    setManualRecipientsInput(event.target.value)
+                  }
                   onKeyDown={(event) => {
                     if (event.key === "Enter") {
                       event.preventDefault();
@@ -5579,12 +7044,19 @@ export default function AgentClient() {
                   }}
                   placeholder="email@exemple.fr; autre@exemple.fr"
                 />
-                <button type="button" onClick={addManualRecipientsFromInput}>Ajouter</button>
+                <button type="button" onClick={addManualRecipientsFromInput}>
+                  Ajouter
+                </button>
               </div>
               {manualSelectedRecipientEmails.length > 0 && (
                 <div className={styles.manualRecipientChips}>
                   {manualSelectedRecipientEmails.map((email) => (
-                    <button key={email} type="button" onClick={() => removeSelectedRecipient(email)} title="Retirer ce destinataire">
+                    <button
+                      key={email}
+                      type="button"
+                      onClick={() => removeSelectedRecipient(email)}
+                      title="Retirer ce destinataire"
+                    >
                       {email} <span aria-hidden>×</span>
                     </button>
                   ))}
@@ -5601,16 +7073,27 @@ export default function AgentClient() {
               <button
                 type="button"
                 className={`${styles.agentToolbarButton} ${activeCrmRecipientFiltersCount > 0 ? styles.agentToolbarActiveButton : ""}`}
-                onClick={() => setCrmRecipientFiltersOpen((current) => !current)}
+                onClick={() =>
+                  setCrmRecipientFiltersOpen((current) => !current)
+                }
               >
-                Filtres{activeCrmRecipientFiltersCount > 0 ? ` (${activeCrmRecipientFiltersCount})` : ""}
+                Filtres
+                {activeCrmRecipientFiltersCount > 0
+                  ? ` (${activeCrmRecipientFiltersCount})`
+                  : ""}
               </button>
               <button
                 type="button"
                 className={styles.agentToolbarButton}
                 onClick={toggleFilteredCrmRecipients}
-                disabled={crmContactsLoading || filteredCrmContacts.length === 0}
-                title={filteredCrmAllSelected ? "Désélectionner les contacts filtrés" : "Sélectionner les contacts filtrés"}
+                disabled={
+                  crmContactsLoading || filteredCrmContacts.length === 0
+                }
+                title={
+                  filteredCrmAllSelected
+                    ? "Désélectionner les contacts filtrés"
+                    : "Sélectionner les contacts filtrés"
+                }
               >
                 {filteredCrmSelectionLabel}
               </button>
@@ -5622,7 +7105,8 @@ export default function AgentClient() {
                 + Contact
               </button>
               <span className={styles.agentToolbarCount}>
-                {filteredCrmContacts.length} contact{filteredCrmContacts.length > 1 ? "s" : ""}
+                {filteredCrmContacts.length} contact
+                {filteredCrmContacts.length > 1 ? "s" : ""}
               </span>
             </div>
 
@@ -5630,7 +7114,12 @@ export default function AgentClient() {
               <div className={styles.agentFiltersPanel}>
                 <label>
                   <span>Catégorie</span>
-                  <select value={crmRecipientCategory} onChange={(event) => setCrmRecipientCategory(event.target.value)}>
+                  <select
+                    value={crmRecipientCategory}
+                    onChange={(event) =>
+                      setCrmRecipientCategory(event.target.value)
+                    }
+                  >
                     <option value="all">Toutes</option>
                     <option value="particulier">Particuliers</option>
                     <option value="professionnel">Professionnels</option>
@@ -5640,7 +7129,12 @@ export default function AgentClient() {
                 </label>
                 <label>
                   <span>Type</span>
-                  <select value={crmRecipientType} onChange={(event) => setCrmRecipientType(event.target.value)}>
+                  <select
+                    value={crmRecipientType}
+                    onChange={(event) =>
+                      setCrmRecipientType(event.target.value)
+                    }
+                  >
                     <option value="all">Tous</option>
                     <option value="client">Clients</option>
                     <option value="prospect">Prospects</option>
@@ -5653,7 +7147,11 @@ export default function AgentClient() {
                   <span>Département</span>
                   <input
                     value={crmRecipientDepartment}
-                    onChange={(event) => setCrmRecipientDepartment(sanitizeDepartmentFilter(event.target.value))}
+                    onChange={(event) =>
+                      setCrmRecipientDepartment(
+                        sanitizeDepartmentFilter(event.target.value),
+                      )
+                    }
                     placeholder="62"
                     inputMode="text"
                     maxLength={3}
@@ -5662,10 +7160,15 @@ export default function AgentClient() {
                 <button
                   type="button"
                   className={`${styles.agentImportantToggle} ${crmRecipientImportantOnly ? styles.agentImportantToggleActive : ""}`}
-                  onClick={() => setCrmRecipientImportantOnly((current) => !current)}
+                  onClick={() =>
+                    setCrmRecipientImportantOnly((current) => !current)
+                  }
                   aria-pressed={crmRecipientImportantOnly}
                 >
-                  <span aria-hidden>{crmRecipientImportantOnly ? "★" : "☆"}</span> Important uniquement
+                  <span aria-hidden>
+                    {crmRecipientImportantOnly ? "★" : "☆"}
+                  </span>{" "}
+                  Important uniquement
                 </button>
               </div>
             )}
@@ -5674,38 +7177,70 @@ export default function AgentClient() {
               <div className={styles.newRecipientBox}>
                 <input
                   value={newRecipientDraft.name}
-                  onChange={(event) => setNewRecipientDraft((current) => ({ ...current, name: event.target.value }))}
+                  onChange={(event) =>
+                    setNewRecipientDraft((current) => ({
+                      ...current,
+                      name: event.target.value,
+                    }))
+                  }
                   placeholder="Nom / société"
                 />
                 <input
                   value={newRecipientDraft.email}
-                  onChange={(event) => setNewRecipientDraft((current) => ({ ...current, email: event.target.value }))}
+                  onChange={(event) =>
+                    setNewRecipientDraft((current) => ({
+                      ...current,
+                      email: event.target.value,
+                    }))
+                  }
                   placeholder="email@exemple.fr"
                 />
-                <button type="button" onClick={addNewRecipientToCrm} disabled={newRecipientState === "saving"}>
-                  {newRecipientState === "saving" ? "Ajout..." : "Ajouter au CRM"}
+                <button
+                  type="button"
+                  onClick={addNewRecipientToCrm}
+                  disabled={newRecipientState === "saving"}
+                >
+                  {newRecipientState === "saving"
+                    ? "Ajout..."
+                    : "Ajouter au CRM"}
                 </button>
               </div>
             )}
 
             <div className={styles.agentListScroll}>
               {crmContactsLoading ? (
-                <p className={styles.campaignEditHint}>Chargement des contacts CRM...</p>
+                <p className={styles.campaignEditHint}>
+                  Chargement des contacts CRM...
+                </p>
               ) : filteredCrmContacts.length > 0 ? (
                 filteredCrmContacts.map((contact) => {
                   const recipient = contactToCampaignRecipient(contact);
                   if (!recipient) return null;
-                  const checked = selectedRecipientEmails.includes(recipient.email.toLowerCase());
+                  const checked = selectedRecipientEmails.includes(
+                    recipient.email.toLowerCase(),
+                  );
                   return (
-                    <label key={contact.id} className={`${styles.agentListRow} ${styles.agentSelectableRow} ${styles.agentRecipientRow} ${checked ? styles.agentSelectedRow : ""}`}>
+                    <label
+                      key={contact.id}
+                      className={`${styles.agentListRow} ${styles.agentSelectableRow} ${styles.agentRecipientRow} ${checked ? styles.agentSelectedRow : ""}`}
+                    >
                       <input
                         type="checkbox"
                         checked={checked}
-                        onChange={() => toggleRecipientSelection(recipient.email)}
+                        onChange={() =>
+                          toggleRecipientSelection(recipient.email)
+                        }
                       />
                       <span className={styles.agentListContent}>
                         <strong className={styles.agentRecipientMain}>
-                          <span>{contactDisplayName(contact)}{contact.important ? <span className={styles.agentImportantMark}>★</span> : null}</span>
+                          <span>
+                            {contactDisplayName(contact)}
+                            {contact.important ? (
+                              <span className={styles.agentImportantMark}>
+                                ★
+                              </span>
+                            ) : null}
+                          </span>
                           <em>— {recipient.email}</em>
                         </strong>
                         <small>{contactMetaLine(contact)}</small>
@@ -5714,13 +7249,27 @@ export default function AgentClient() {
                   );
                 })
               ) : (
-                <p className={styles.campaignEditHint}>Aucun contact CRM avec email ne correspond à cette recherche.</p>
+                <p className={styles.campaignEditHint}>
+                  Aucun contact CRM avec email ne correspond à cette recherche.
+                </p>
               )}
             </div>
             <div className={styles.modalActions}>
-              <button type="button" onClick={() => setRecipientsEditOpen(false)} disabled={campaignSaveState === "saving"}>Annuler</button>
-              <button type="button" onClick={saveCampaignRecipients} disabled={campaignSaveState === "saving"}>
-                {campaignSaveState === "saving" ? "Enregistrement..." : `Valider ${selectedRecipientEmails.length + parseRecipientEmails(manualRecipientsInput).filter((email) => !selectedRecipientEmails.includes(email)).length} contact${selectedRecipientEmails.length + parseRecipientEmails(manualRecipientsInput).filter((email) => !selectedRecipientEmails.includes(email)).length > 1 ? "s" : ""}`}
+              <button
+                type="button"
+                onClick={() => setRecipientsEditOpen(false)}
+                disabled={campaignSaveState === "saving"}
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={saveCampaignRecipients}
+                disabled={campaignSaveState === "saving"}
+              >
+                {campaignSaveState === "saving"
+                  ? "Enregistrement..."
+                  : `Valider ${selectedRecipientEmails.length + parseRecipientEmails(manualRecipientsInput).filter((email) => !selectedRecipientEmails.includes(email)).length} contact${selectedRecipientEmails.length + parseRecipientEmails(manualRecipientsInput).filter((email) => !selectedRecipientEmails.includes(email)).length > 1 ? "s" : ""}`}
               </button>
             </div>
           </section>
@@ -5752,12 +7301,20 @@ export default function AgentClient() {
             <h2>Choisir la boîte mail</h2>
             <div className={styles.agentListScroll}>
               {mailAccountsLoading ? (
-                <p className={styles.campaignEditHint}>Chargement des boîtes connectées...</p>
+                <p className={styles.campaignEditHint}>
+                  Chargement des boîtes connectées...
+                </p>
               ) : mailAccounts.length > 0 ? (
                 mailAccounts.map((account) => {
-                  const usable = account.status === "connected" && account.connection_status !== "needs_update" && !account.requires_update;
+                  const usable =
+                    account.status === "connected" &&
+                    account.connection_status !== "needs_update" &&
+                    !account.requires_update;
                   return (
-                    <label key={account.id} className={`${styles.agentListRow} ${styles.agentSelectableRow} ${!usable ? styles.agentDisabledRow : ""}`}>
+                    <label
+                      key={account.id}
+                      className={`${styles.agentListRow} ${styles.agentSelectableRow} ${!usable ? styles.agentDisabledRow : ""}`}
+                    >
                       <input
                         type="radio"
                         name="agent-mail-account"
@@ -5765,23 +7322,47 @@ export default function AgentClient() {
                         disabled={!usable}
                         onChange={() => setSelectedMailAccountId(account.id)}
                       />
-                      <span className={styles.agentListAvatar} aria-hidden>✉</span>
+                      <span className={styles.agentListAvatar} aria-hidden>
+                        ✉
+                      </span>
                       <span className={styles.agentListContent}>
                         <strong>{mailAccountLabel(account)}</strong>
-                        <small>{mailAccountSecondaryLabel(account)}{usable ? " · connectée" : " · à reconnecter"}</small>
+                        <small>
+                          {mailAccountSecondaryLabel(account)}
+                          {usable ? " · connectée" : " · à reconnecter"}
+                        </small>
                       </span>
-                      <span className={styles.agentListTag}>{usable ? "OK" : "À corriger"}</span>
+                      <span className={styles.agentListTag}>
+                        {usable ? "OK" : "À corriger"}
+                      </span>
                     </label>
                   );
                 })
               ) : (
-                <p className={styles.campaignEditHint}>Aucune boîte mail connectée. Connecte une boîte dans iNrSend avant validation.</p>
+                <p className={styles.campaignEditHint}>
+                  Aucune boîte mail connectée. Connecte une boîte dans iNrSend
+                  avant validation.
+                </p>
               )}
             </div>
             <div className={styles.modalActions}>
-              <button type="button" onClick={() => setMailAccountEditOpen(false)} disabled={campaignSaveState === "saving"}>Annuler</button>
-              <button type="button" onClick={saveCampaignMailAccount} disabled={campaignSaveState === "saving" || !selectedMailAccountId}>
-                {campaignSaveState === "saving" ? "Enregistrement..." : "Utiliser cette boîte"}
+              <button
+                type="button"
+                onClick={() => setMailAccountEditOpen(false)}
+                disabled={campaignSaveState === "saving"}
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={saveCampaignMailAccount}
+                disabled={
+                  campaignSaveState === "saving" || !selectedMailAccountId
+                }
+              >
+                {campaignSaveState === "saving"
+                  ? "Enregistrement..."
+                  : "Utiliser cette boîte"}
               </button>
             </div>
           </section>
@@ -5810,7 +7391,11 @@ export default function AgentClient() {
               ×
             </button>
             <p className={styles.modalEyebrow}>Pièce jointe</p>
-            <h2>{campaignAttachments.length > 0 ? "Pièces jointes" : "Ajouter une pièce jointe"}</h2>
+            <h2>
+              {campaignAttachments.length > 0
+                ? "Pièces jointes"
+                : "Ajouter une pièce jointe"}
+            </h2>
             <div className={styles.attachmentUploadBox}>
               <input
                 id="agent-campaign-attachment"
@@ -5824,17 +7409,30 @@ export default function AgentClient() {
               />
               <label htmlFor="agent-campaign-attachment">
                 <span aria-hidden>📎</span>
-                {attachmentUploadState === "saving" ? "Préparation..." : "Ajouter un fichier"}
+                {attachmentUploadState === "saving"
+                  ? "Préparation..."
+                  : "Ajouter un fichier"}
               </label>
-              <small>Les fichiers seront joints à la campagne au moment de la validation.</small>
+              <small>
+                Les fichiers seront joints à la campagne au moment de la
+                validation.
+              </small>
             </div>
             {campaignAttachments.length > 0 ? (
               <div className={styles.attachmentList}>
                 {campaignAttachments.map((attachment) => (
-                  <div key={`${attachment.bucket}-${attachment.path}`} className={styles.attachmentListRow}>
+                  <div
+                    key={`${attachment.bucket}-${attachment.path}`}
+                    className={styles.attachmentListRow}
+                  >
                     <span aria-hidden>📄</span>
                     <strong>{attachment.name}</strong>
-                    <small>{attachment.type || "Document"}{attachment.size ? ` · ${formatAttachmentSize(attachment.size)}` : ""}</small>
+                    <small>
+                      {attachment.type || "Document"}
+                      {attachment.size
+                        ? ` · ${formatAttachmentSize(attachment.size)}`
+                        : ""}
+                    </small>
                     <button
                       type="button"
                       onClick={() => removeCampaignAttachment(attachment.path)}
@@ -5846,7 +7444,9 @@ export default function AgentClient() {
                 ))}
               </div>
             ) : (
-              <p className={styles.campaignEditHint}>Aucune pièce jointe n’est prévue pour cette campagne.</p>
+              <p className={styles.campaignEditHint}>
+                Aucune pièce jointe n’est prévue pour cette campagne.
+              </p>
             )}
           </section>
         </div>
@@ -5857,7 +7457,8 @@ export default function AgentClient() {
           className={styles.modalBackdrop}
           role="presentation"
           onClick={() => {
-            if (publishMediaUploadState !== "saving") setPublishMediaPreviewOpen(false);
+            if (publishMediaUploadState !== "saving")
+              setPublishMediaPreviewOpen(false);
           }}
         >
           <section
@@ -5882,9 +7483,16 @@ export default function AgentClient() {
             <div className={styles.publishMediaCurrent}>
               {publishMediaPreview?.url ? (
                 publishMediaPreview.kind === "video" ? (
-                  <video src={publishMediaPreview.url} controls preload="metadata" />
+                  <video
+                    src={publishMediaPreview.url}
+                    controls
+                    preload="metadata"
+                  />
                 ) : (
-                  <img src={publishMediaPreview.url} alt={publishMediaPreview.name || "Média de publication"} />
+                  <img
+                    src={publishMediaPreview.url}
+                    alt={publishMediaPreview.name || "Média de publication"}
+                  />
                 )
               ) : (
                 <div className={styles.publishMediaEmpty}>
@@ -5894,7 +7502,10 @@ export default function AgentClient() {
               )}
               <div className={styles.publishMediaCurrentText}>
                 <strong>{publishMediaPreview?.name || "Aucun média"}</strong>
-                <small>{publishMediaPreview?.note || "Ajoutez une image pour enrichir cette publication."}</small>
+                <small>
+                  {publishMediaPreview?.note ||
+                    "Ajoutez une image ou une vidéo depuis la Médiathèque."}
+                </small>
               </div>
             </div>
 
@@ -5902,7 +7513,7 @@ export default function AgentClient() {
               <input
                 id="agent-publish-media"
                 type="file"
-                accept="image/*"
+                accept="image/jpeg,image/png,image/webp,video/mp4,video/webm,video/quicktime,video/x-m4v"
                 onChange={(event) => {
                   void uploadPublishMedia(event.currentTarget.files?.[0]);
                   event.currentTarget.value = "";
@@ -5911,9 +7522,90 @@ export default function AgentClient() {
               />
               <label htmlFor="agent-publish-media">
                 <span aria-hidden>🖼️</span>
-                {publishMediaUploadState === "saving" ? "Préparation..." : "Ajouter / remplacer une image"}
+                {publishMediaUploadState === "saving"
+                  ? "Préparation..."
+                  : "Ajouter / remplacer un média"}
               </label>
-              <small>Le média sera appliqué uniquement au canal sélectionné dans iNr’Agent.</small>
+              <small>
+                Image jusqu’à {INR_MEDIA_IMAGE_MAX_MB_LABEL} ou vidéo jusqu’à{" "}
+                {INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL}. iNrAgent V1 utilise
+                {INR_MEDIA_AGENT_MAX_MEDIA_COUNT} média pour toute la
+                publication.
+              </small>
+            </div>
+
+            <div className={styles.publishMediaLibraryBlock}>
+              <div className={styles.publishMediaLibraryHeader}>
+                <strong>Médiathèque du pro</strong>
+                <button
+                  type="button"
+                  onClick={loadPublishMediaLibrary}
+                  disabled={
+                    publishMediaLibraryState === "loading" ||
+                    publishMediaUploadState === "saving"
+                  }
+                >
+                  {publishMediaLibraryState === "loading"
+                    ? "Chargement..."
+                    : "Rafraîchir"}
+                </button>
+              </div>
+              {publishMediaLibraryState === "error" ? (
+                <p className={styles.publishMediaLibraryEmpty}>
+                  Médiathèque indisponible pour le moment.
+                </p>
+              ) : publishMediaLibraryItems.length > 0 ? (
+                <div className={styles.publishMediaLibraryGrid}>
+                  {publishMediaLibraryItems.map((item) => {
+                    const isVideo = item.media_type === "video";
+                    const disabled =
+                      publishMediaUploadState === "saving" ||
+                      (activePreviewChannel === "youtube" && !isVideo);
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        className={styles.publishMediaLibraryItem}
+                        onClick={() => void selectPublishMediaFromLibrary(item)}
+                        disabled={disabled}
+                        title={
+                          disabled
+                            ? "YouTube nécessite une vidéo."
+                            : "Utiliser ce média"
+                        }
+                      >
+                        {item.signed_url ? (
+                          isVideo ? (
+                            <video src={item.signed_url} preload="metadata" />
+                          ) : (
+                            <img
+                              src={item.signed_url}
+                              alt={item.title || "Média"}
+                            />
+                          )
+                        ) : (
+                          <span aria-hidden>{isVideo ? "🎬" : "🖼️"}</span>
+                        )}
+                        <strong>
+                          {item.title ||
+                            item.storage_path.split("/").pop() ||
+                            "Média"}
+                        </strong>
+                        <small>
+                          {isVideo ? "Vidéo" : "Image"}
+                          {item.size_bytes
+                            ? ` · ${formatAttachmentSize(item.size_bytes)}`
+                            : ""}
+                        </small>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className={styles.publishMediaLibraryEmpty}>
+                  Aucun média actif dans la Médiathèque du pro.
+                </p>
+              )}
             </div>
 
             <div className={styles.modalActions}>
@@ -5927,7 +7619,10 @@ export default function AgentClient() {
               <button
                 type="button"
                 onClick={removePublishMedia}
-                disabled={publishMediaUploadState === "saving" || !publishMediaPreview?.url}
+                disabled={
+                  publishMediaUploadState === "saving" ||
+                  !publishMediaPreview?.url
+                }
               >
                 Supprimer le média
               </button>
@@ -5955,7 +7650,10 @@ export default function AgentClient() {
                 <h2>Actions programmées</h2>
               </div>
               <div className={styles.scheduleModalHeaderActions}>
-                <div className={styles.scheduleSummaryPill} aria-label={`${upcomingScheduleItems.length} actions à venir`}>
+                <div
+                  className={styles.scheduleSummaryPill}
+                  aria-label={`${upcomingScheduleItems.length} actions à venir`}
+                >
                   <strong>{upcomingScheduleItems.length}</strong>
                   <span>actions à venir</span>
                 </div>
@@ -5969,13 +7667,17 @@ export default function AgentClient() {
               </div>
             </div>
 
-            <section className={styles.scheduleSection}> 
+            <section className={styles.scheduleSection}>
               <div className={styles.scheduleSectionHeader}>
                 <strong>Actions à venir</strong>
                 <span>Ordre chronologique</span>
               </div>
               {upcomingScheduleItems.length > 0 ? (
-                <div className={styles.scheduleTable} role="table" aria-label="Actions programmées à venir">
+                <div
+                  className={styles.scheduleTable}
+                  role="table"
+                  aria-label="Actions programmées à venir"
+                >
                   <div className={styles.scheduleTableHeader} role="row">
                     <span>Date</span>
                     <span>Heure</span>
@@ -5986,10 +7688,20 @@ export default function AgentClient() {
                     <span>Actions</span>
                   </div>
                   {upcomingScheduleItems.map((item) => (
-                    <div key={item.id} className={styles.scheduleTableRow} data-status={item.statusKey} role="row">
+                    <div
+                      key={item.id}
+                      className={styles.scheduleTableRow}
+                      data-status={item.statusKey}
+                      role="row"
+                    >
                       <span>{item.date}</span>
                       <span>{item.time}</span>
-                      <span className={styles.scheduleActionCell} title={item.action}>{item.action}</span>
+                      <span
+                        className={styles.scheduleActionCell}
+                        title={item.action}
+                      >
+                        {item.action}
+                      </span>
                       <span>{item.typeLabel}</span>
                       <span>{item.channelLabel}</span>
                       <span>{item.originLabel}</span>
@@ -5998,7 +7710,9 @@ export default function AgentClient() {
                           type="button"
                           className={styles.scheduleIconButton}
                           onClick={() => void handleScheduleRowModify(item)}
-                          disabled={!item.editable || scheduleMutationState === "saving"}
+                          disabled={
+                            !item.editable || scheduleMutationState === "saving"
+                          }
                           aria-label="Modifier"
                           title="Modifier"
                         >
@@ -6008,7 +7722,10 @@ export default function AgentClient() {
                           type="button"
                           className={`${styles.scheduleIconButton} ${styles.scheduleIconDanger}`}
                           onClick={() => void handleScheduleRowDelete(item)}
-                          disabled={!item.removable || scheduleMutationState === "saving"}
+                          disabled={
+                            !item.removable ||
+                            scheduleMutationState === "saving"
+                          }
                           aria-label="Supprimer"
                           title="Supprimer"
                         >
@@ -6019,7 +7736,9 @@ export default function AgentClient() {
                   ))}
                 </div>
               ) : (
-                <p className={styles.scheduleEmpty}>Aucune action programmée à venir.</p>
+                <p className={styles.scheduleEmpty}>
+                  Aucune action programmée à venir.
+                </p>
               )}
             </section>
           </section>
@@ -6030,7 +7749,9 @@ export default function AgentClient() {
         <div
           className={styles.modalBackdrop}
           role="presentation"
-          onClick={() => scheduleMutationState !== "saving" && setScheduleEditAction(null)}
+          onClick={() =>
+            scheduleMutationState !== "saving" && setScheduleEditAction(null)
+          }
         >
           <section
             className={`${styles.settingsModal} ${styles.scheduleEditModal}`}
@@ -6050,21 +7771,44 @@ export default function AgentClient() {
             </button>
             <p className={styles.modalEyebrow}>Programmation</p>
             <h2>Modifier l’action</h2>
-            <p className={styles.modalHint}>Changez uniquement la date et l’heure. iNr’Agent exécutera l’action au nouveau créneau.</p>
+            <p className={styles.modalHint}>
+              Changez uniquement la date et l’heure. iNr’Agent exécutera
+              l’action au nouveau créneau.
+            </p>
             <div className={styles.modalGrid}>
               <label>
                 <span>Date</span>
-                <input type="date" value={scheduleEditDate} onChange={(event) => setScheduleEditDate(event.target.value)} />
+                <input
+                  type="date"
+                  value={scheduleEditDate}
+                  onChange={(event) => setScheduleEditDate(event.target.value)}
+                />
               </label>
               <label>
                 <span>Heure</span>
-                <input type="time" value={scheduleEditTime} onChange={(event) => setScheduleEditTime(event.target.value)} />
+                <input
+                  type="time"
+                  value={scheduleEditTime}
+                  onChange={(event) => setScheduleEditTime(event.target.value)}
+                />
               </label>
             </div>
             <div className={styles.modalAction}>
-              <button type="button" onClick={() => setScheduleEditAction(null)} disabled={scheduleMutationState === "saving"}>Annuler</button>
-              <button type="button" onClick={() => void confirmScheduleEdit()} disabled={scheduleMutationState === "saving"}>
-                {scheduleMutationState === "saving" ? "Enregistrement..." : "Enregistrer"}
+              <button
+                type="button"
+                onClick={() => setScheduleEditAction(null)}
+                disabled={scheduleMutationState === "saving"}
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={() => void confirmScheduleEdit()}
+                disabled={scheduleMutationState === "saving"}
+              >
+                {scheduleMutationState === "saving"
+                  ? "Enregistrement..."
+                  : "Enregistrer"}
               </button>
             </div>
           </section>
@@ -6075,7 +7819,9 @@ export default function AgentClient() {
         <div
           className={styles.modalBackdrop}
           role="presentation"
-          onClick={() => actionMutationState !== "saving" && setValidationChoiceOpen(false)}
+          onClick={() =>
+            actionMutationState !== "saving" && setValidationChoiceOpen(false)
+          }
         >
           <section
             className={`${styles.settingsModal} ${styles.validationChoiceModal}`}
@@ -6094,9 +7840,14 @@ export default function AgentClient() {
               ×
             </button>
             <p className={styles.modalEyebrow}>Validation</p>
-            <h2>{selectedPreparedAction.automationKey === "publish" ? "Publier cette action ?" : "Envoyer cette campagne ?"}</h2>
+            <h2>
+              {selectedPreparedAction.automationKey === "publish"
+                ? "Publier cette action ?"
+                : "Envoyer cette campagne ?"}
+            </h2>
             <p className={styles.modalHint}>
-              L’action est prête. Vous pouvez la lancer maintenant ou la programmer pour qu’iNr’Agent s’en occupe plus tard.
+              L’action est prête. Vous pouvez la lancer maintenant ou la
+              programmer pour qu’iNr’Agent s’en occupe plus tard.
             </p>
             <div className={styles.validationChoiceGrid}>
               <button
@@ -6106,7 +7857,11 @@ export default function AgentClient() {
                 disabled={actionMutationState === "saving"}
               >
                 <span aria-hidden>⚡</span>
-                <strong>{selectedPreparedAction.automationKey === "publish" ? "Publier maintenant" : "Envoyer maintenant"}</strong>
+                <strong>
+                  {selectedPreparedAction.automationKey === "publish"
+                    ? "Publier maintenant"
+                    : "Envoyer maintenant"}
+                </strong>
                 <small>iNr’Agent exécute l’action immédiatement.</small>
               </button>
               <button
@@ -6116,7 +7871,11 @@ export default function AgentClient() {
                 disabled={actionMutationState === "saving"}
               >
                 <span aria-hidden>🕒</span>
-                <strong>{selectedPreparedAction.automationKey === "publish" ? "Programmer la publication" : "Programmer l’envoi"}</strong>
+                <strong>
+                  {selectedPreparedAction.automationKey === "publish"
+                    ? "Programmer la publication"
+                    : "Programmer l’envoi"}
+                </strong>
                 <small>Choisissez une date et une heure d’exécution.</small>
               </button>
             </div>
@@ -6128,7 +7887,10 @@ export default function AgentClient() {
         <div
           className={styles.modalBackdrop}
           role="presentation"
-          onClick={() => validationScheduleState !== "saving" && setValidationScheduleOpen(false)}
+          onClick={() =>
+            validationScheduleState !== "saving" &&
+            setValidationScheduleOpen(false)
+          }
         >
           <section
             className={`${styles.settingsModal} ${styles.scheduleEditModal}`}
@@ -6147,22 +7909,53 @@ export default function AgentClient() {
               ×
             </button>
             <p className={styles.modalEyebrow}>Programmation</p>
-            <h2>{selectedPreparedAction.automationKey === "publish" ? "Programmer la publication" : "Programmer l’envoi"}</h2>
-            <p className={styles.modalHint}>iNr’Agent exécutera cette action automatiquement au créneau choisi.</p>
+            <h2>
+              {selectedPreparedAction.automationKey === "publish"
+                ? "Programmer la publication"
+                : "Programmer l’envoi"}
+            </h2>
+            <p className={styles.modalHint}>
+              iNr’Agent exécutera cette action automatiquement au créneau
+              choisi.
+            </p>
             <div className={styles.modalGrid}>
               <label>
                 <span>Date</span>
-                <input type="date" value={validationScheduleDate} onChange={(event) => setValidationScheduleDate(event.target.value)} />
+                <input
+                  type="date"
+                  value={validationScheduleDate}
+                  onChange={(event) =>
+                    setValidationScheduleDate(event.target.value)
+                  }
+                />
               </label>
               <label>
                 <span>Heure</span>
-                <input type="time" value={validationScheduleTime} onChange={(event) => setValidationScheduleTime(event.target.value)} />
+                <input
+                  type="time"
+                  value={validationScheduleTime}
+                  onChange={(event) =>
+                    setValidationScheduleTime(event.target.value)
+                  }
+                />
               </label>
             </div>
             <div className={styles.modalAction}>
-              <button type="button" onClick={() => setValidationScheduleOpen(false)} disabled={validationScheduleState === "saving"}>Annuler</button>
-              <button type="button" onClick={() => void scheduleValidatedAction()} disabled={validationScheduleState === "saving"}>
-                {validationScheduleState === "saving" ? "Programmation..." : "Confier à iNr’Agent"}
+              <button
+                type="button"
+                onClick={() => setValidationScheduleOpen(false)}
+                disabled={validationScheduleState === "saving"}
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={() => void scheduleValidatedAction()}
+                disabled={validationScheduleState === "saving"}
+              >
+                {validationScheduleState === "saving"
+                  ? "Programmation..."
+                  : "Confier à iNr’Agent"}
               </button>
             </div>
           </section>
@@ -6201,23 +7994,23 @@ export default function AgentClient() {
               </p>
               <ul>
                 <li>
-                  <strong>Publier</strong> prépare des
-                  publications avec Booster / Publier sur vos canaux connectés.
-                  L’aperçu se consulte canal par canal grâce au sélecteur situé
-                  sous la zone de prévisualisation.
+                  <strong>Publier</strong> prépare des publications avec Booster
+                  / Publier sur vos canaux connectés. L’aperçu se consulte canal
+                  par canal grâce au sélecteur situé sous la zone de
+                  prévisualisation.
                 </li>
                 <li>
-                  <strong>Propulser</strong> prépare des campagnes
-                  Propulser par mail, basées sur vos contenus et templates.
+                  <strong>Propulser</strong> prépare des campagnes Propulser par
+                  mail, basées sur vos contenus et templates.
                 </li>
                 <li>
-                  <strong>Fidéliser</strong> prépare des campagnes
-                  Fidéliser par mail pour garder le lien avec le CRM.
+                  <strong>Fidéliser</strong> prépare des campagnes Fidéliser par
+                  mail pour garder le lien avec le CRM.
                 </li>
                 <li>
-                  <strong>Statistiques</strong> génère un bilan
-                  iNr’Stats PDF multi-pages et l’envoie automatiquement au pro
-                  selon les réglages.
+                  <strong>Statistiques</strong> génère un bilan iNr’Stats PDF
+                  multi-pages et l’envoie automatiquement au pro selon les
+                  réglages.
                 </li>
               </ul>
               <p>
@@ -6282,7 +8075,10 @@ export default function AgentClient() {
                 <select
                   value={settingsConfig.frequency}
                   onChange={(event) =>
-                    updateConfigFrequency(settingsAutomation.key, event.target.value)
+                    updateConfigFrequency(
+                      settingsAutomation.key,
+                      event.target.value,
+                    )
                   }
                 >
                   {settingsOptions[settingsAutomation.key].frequency.map(
@@ -6295,40 +8091,53 @@ export default function AgentClient() {
                 </select>
               </label>
               {settingsConfig.frequency === "2 fois par semaine" ? (
-                normalizeConfigScheduleSlots(settingsConfig).slice(0, 2).map((slot, index) => (
-                  <div className={styles.scheduleSlotPair} key={`${settingsAutomation.key}-slot-${index}`}>
-                    <label>
-                      <span>Jour {index + 1}</span>
-                      <select
-                        value={slot.day}
-                        onChange={(event) =>
-                          updateConfigScheduleSlot(settingsAutomation.key, index, {
-                            day: event.target.value,
-                          })
-                        }
-                      >
-                        {weekDays.map((day) => (
-                          <option key={day}>{day}</option>
-                        ))}
-                      </select>
-                    </label>
-                    <label>
-                      <span>Horaire {index + 1}</span>
-                      <select
-                        value={slot.time}
-                        onChange={(event) =>
-                          updateConfigScheduleSlot(settingsAutomation.key, index, {
-                            time: event.target.value,
-                          })
-                        }
-                      >
-                        {hourOptions.map((hour) => (
-                          <option key={hour}>{hour}</option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-                ))
+                normalizeConfigScheduleSlots(settingsConfig)
+                  .slice(0, 2)
+                  .map((slot, index) => (
+                    <div
+                      className={styles.scheduleSlotPair}
+                      key={`${settingsAutomation.key}-slot-${index}`}
+                    >
+                      <label>
+                        <span>Jour {index + 1}</span>
+                        <select
+                          value={slot.day}
+                          onChange={(event) =>
+                            updateConfigScheduleSlot(
+                              settingsAutomation.key,
+                              index,
+                              {
+                                day: event.target.value,
+                              },
+                            )
+                          }
+                        >
+                          {weekDays.map((day) => (
+                            <option key={day}>{day}</option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        <span>Horaire {index + 1}</span>
+                        <select
+                          value={slot.time}
+                          onChange={(event) =>
+                            updateConfigScheduleSlot(
+                              settingsAutomation.key,
+                              index,
+                              {
+                                time: event.target.value,
+                              },
+                            )
+                          }
+                        >
+                          {hourOptions.map((hour) => (
+                            <option key={hour}>{hour}</option>
+                          ))}
+                        </select>
+                      </label>
+                    </div>
+                  ))
               ) : (
                 <>
                   <label>
@@ -6339,8 +8148,14 @@ export default function AgentClient() {
                         updateConfig(settingsAutomation.key, {
                           day: event.target.value,
                           scheduleSlots: [
-                            { day: event.target.value, time: settingsConfig.time },
-                            { day: dayOffsetLabel(event.target.value, 3), time: settingsConfig.time },
+                            {
+                              day: event.target.value,
+                              time: settingsConfig.time,
+                            },
+                            {
+                              day: dayOffsetLabel(event.target.value, 3),
+                              time: settingsConfig.time,
+                            },
                           ],
                         })
                       }
@@ -6358,8 +8173,14 @@ export default function AgentClient() {
                         updateConfig(settingsAutomation.key, {
                           time: event.target.value,
                           scheduleSlots: [
-                            { day: settingsConfig.day, time: event.target.value },
-                            { day: dayOffsetLabel(settingsConfig.day, 3), time: event.target.value },
+                            {
+                              day: settingsConfig.day,
+                              time: event.target.value,
+                            },
+                            {
+                              day: dayOffsetLabel(settingsConfig.day, 3),
+                              time: event.target.value,
+                            },
                           ],
                         })
                       }
@@ -6398,35 +8219,47 @@ export default function AgentClient() {
                   <div className={styles.modalSection}>
                     <span>Canal</span>
                     <div className={styles.choiceGrid}>
-                      {settingsAutomation.availableChannels.map((channelKey) => {
-                        const channel = channelOptions[channelKey];
-                        const checked = settingsConfig.channels.includes(channelKey);
-                        return (
-                          <button
-                            type="button"
-                            key={channelKey}
-                            data-channel={channelKey}
-                            className={checked ? styles.choiceActive : ""}
-                            onClick={() =>
-                              updateConfig(settingsAutomation.key, {
-                                channels: toggleChannelItem(
-                                  settingsConfig.channels,
-                                  channelKey,
-                                  settingsAutomation.availableChannels,
-                                ),
-                              })
-                            }
-                          >
-                            <img src={channel.src} alt="" loading="eager" decoding="async" />
-                            {channel.name}
-                          </button>
-                        );
-                      })}
+                      {settingsAutomation.availableChannels.map(
+                        (channelKey) => {
+                          const channel = channelOptions[channelKey];
+                          const checked =
+                            settingsConfig.channels.includes(channelKey);
+                          return (
+                            <button
+                              type="button"
+                              key={channelKey}
+                              data-channel={channelKey}
+                              className={checked ? styles.choiceActive : ""}
+                              onClick={() =>
+                                updateConfig(settingsAutomation.key, {
+                                  channels: toggleChannelItem(
+                                    settingsConfig.channels,
+                                    channelKey,
+                                    settingsAutomation.availableChannels,
+                                  ),
+                                })
+                              }
+                            >
+                              <img
+                                src={channel.src}
+                                alt=""
+                                loading="eager"
+                                decoding="async"
+                              />
+                              {channel.name}
+                            </button>
+                          );
+                        },
+                      )}
                     </div>
                   </div>
 
                   <div className={styles.modalSection}>
-                    <span>{settingsAutomation.key === "grow" ? "Rubriques Propulser" : "Rubriques Fidéliser"}</span>
+                    <span>
+                      {settingsAutomation.key === "grow"
+                        ? "Rubriques Propulser"
+                        : "Rubriques Fidéliser"}
+                    </span>
                     <div className={styles.choiceGrid}>
                       {settingsAutomation.availableThemes.map((theme) => {
                         const checked = settingsConfig.themes.includes(theme);
@@ -6437,7 +8270,10 @@ export default function AgentClient() {
                             className={checked ? styles.choiceActive : ""}
                             onClick={() =>
                               updateConfig(settingsAutomation.key, {
-                                themes: toggleItem(settingsConfig.themes, theme),
+                                themes: toggleItem(
+                                  settingsConfig.themes,
+                                  theme,
+                                ),
                               })
                             }
                           >
@@ -6452,7 +8288,10 @@ export default function AgentClient() {
                 <label className={styles.signatureSwitchLine}>
                   <span>
                     <strong>Signature automatique</strong>
-                    <small>Activée par défaut pour ajouter la signature configurée au moment de l’envoi.</small>
+                    <small>
+                      Activée par défaut pour ajouter la signature configurée au
+                      moment de l’envoi.
+                    </small>
                   </span>
                   <input
                     type="checkbox"
@@ -6469,38 +8308,54 @@ export default function AgentClient() {
               <>
                 {settingsAutomation.availableChannels.length > 0 && (
                   <div className={styles.modalSection}>
-                    <span>{settingsAutomation.key === "publish" ? "Canaux Booster / Publier" : "Canal"}</span>
+                    <span>
+                      {settingsAutomation.key === "publish"
+                        ? "Canaux Booster / Publier"
+                        : "Canal"}
+                    </span>
                     <div className={styles.choiceGrid}>
-                      {settingsAutomation.availableChannels.map((channelKey) => {
-                        const channel = channelOptions[channelKey];
-                        const checked = settingsConfig.channels.includes(channelKey);
-                        return (
-                          <button
-                            type="button"
-                            key={channelKey}
-                            data-channel={channelKey}
-                            className={checked ? styles.choiceActive : ""}
-                            onClick={() =>
-                              updateConfig(settingsAutomation.key, {
-                                channels: toggleChannelItem(
-                                  settingsConfig.channels,
-                                  channelKey,
-                                  settingsAutomation.availableChannels,
-                                ),
-                              })
-                            }
-                          >
-                            <img src={channel.src} alt="" loading="eager" decoding="async" />
-                            {channel.name}
-                          </button>
-                        );
-                      })}
+                      {settingsAutomation.availableChannels.map(
+                        (channelKey) => {
+                          const channel = channelOptions[channelKey];
+                          const checked =
+                            settingsConfig.channels.includes(channelKey);
+                          return (
+                            <button
+                              type="button"
+                              key={channelKey}
+                              data-channel={channelKey}
+                              className={checked ? styles.choiceActive : ""}
+                              onClick={() =>
+                                updateConfig(settingsAutomation.key, {
+                                  channels: toggleChannelItem(
+                                    settingsConfig.channels,
+                                    channelKey,
+                                    settingsAutomation.availableChannels,
+                                  ),
+                                })
+                              }
+                            >
+                              <img
+                                src={channel.src}
+                                alt=""
+                                loading="eager"
+                                decoding="async"
+                              />
+                              {channel.name}
+                            </button>
+                          );
+                        },
+                      )}
                     </div>
                   </div>
                 )}
 
                 <div className={styles.modalSection}>
-                  <span>{settingsAutomation.key === "stats" ? "Rubriques iNr’Stats" : "Thèmes"}</span>
+                  <span>
+                    {settingsAutomation.key === "stats"
+                      ? "Rubriques iNr’Stats"
+                      : "Thèmes"}
+                  </span>
                   <div className={styles.choiceGrid}>
                     {settingsAutomation.availableThemes.map((theme) => {
                       const checked = settingsConfig.themes.includes(theme);
@@ -6528,7 +8383,11 @@ export default function AgentClient() {
               Source des idées : {settingsConfig.source}
             </p>
             {prepareProgress?.key === settingsAutomation.key && (
-              <div className={styles.prepareProgressCard} role="status" aria-live="polite">
+              <div
+                className={styles.prepareProgressCard}
+                role="status"
+                aria-live="polite"
+              >
                 <div>
                   <strong>Préparation en cours</strong>
                   <span>{prepareProgress.label}</span>
@@ -6541,7 +8400,11 @@ export default function AgentClient() {
                 type="button"
                 className={styles.modalAction}
                 onClick={saveSettings}
-                disabled={saveState === "saving" || loadState === "loading" || Boolean(testNowKey)}
+                disabled={
+                  saveState === "saving" ||
+                  loadState === "loading" ||
+                  Boolean(testNowKey)
+                }
               >
                 {saveState === "saving"
                   ? "Enregistrement..."
@@ -6558,7 +8421,8 @@ export default function AgentClient() {
                   Boolean(testNowKey)
                 }
               >
-                {testNowKey === settingsAutomation.key || prepareActionState === "saving"
+                {testNowKey === settingsAutomation.key ||
+                prepareActionState === "saving"
                   ? settingsAutomation.key === "stats"
                     ? "Envoi du bilan..."
                     : prepareProgress?.key === settingsAutomation.key
@@ -6578,7 +8442,8 @@ export default function AgentClient() {
           className={styles.modalBackdrop}
           role="presentation"
           onClick={() => {
-            if (!testNowKey && prepareActionState !== "saving") setPrepareNowConfirm(null);
+            if (!testNowKey && prepareActionState !== "saving")
+              setPrepareNowConfirm(null);
           }}
         >
           <section
@@ -6602,9 +8467,14 @@ export default function AgentClient() {
             <div className={styles.campaignDraftNotice}>
               <span aria-hidden>⚠️</span>
               <div>
-                <strong>Une campagne {prepareNowConfirm.label} est déjà en attente de validation.</strong>
+                <strong>
+                  Une campagne {prepareNowConfirm.label} est déjà en attente de
+                  validation.
+                </strong>
                 <p>
-                  Si vous continuez, la campagne actuelle sera automatiquement enregistrée en brouillon dans iNrSend, puis une nouvelle campagne sera préparée à sa place dans iNrAgent.
+                  Si vous continuez, la campagne actuelle sera automatiquement
+                  enregistrée en brouillon dans iNrSend, puis une nouvelle
+                  campagne sera préparée à sa place dans iNrAgent.
                 </p>
               </div>
             </div>
@@ -6613,23 +8483,30 @@ export default function AgentClient() {
               <strong>{prepareNowConfirm.label}</strong>
               <small>Campagne en cours</small>
               <strong>
-                {prepareNowConfirm.pendingCount} campagne{prepareNowConfirm.pendingCount > 1 ? "s" : ""} à enregistrer en brouillon
+                {prepareNowConfirm.pendingCount} campagne
+                {prepareNowConfirm.pendingCount > 1 ? "s" : ""} à enregistrer en
+                brouillon
               </strong>
             </div>
             <div className={styles.modalActions}>
               <button
                 type="button"
                 onClick={() => setPrepareNowConfirm(null)}
-                disabled={Boolean(testNowKey) || prepareActionState === "saving"}
+                disabled={
+                  Boolean(testNowKey) || prepareActionState === "saving"
+                }
               >
                 Annuler
               </button>
               <button
                 type="button"
                 onClick={confirmPrepareNowReplacement}
-                disabled={Boolean(testNowKey) || prepareActionState === "saving"}
+                disabled={
+                  Boolean(testNowKey) || prepareActionState === "saving"
+                }
               >
-                {testNowKey === prepareNowConfirm.key || prepareActionState === "saving"
+                {testNowKey === prepareNowConfirm.key ||
+                prepareActionState === "saving"
                   ? prepareProgress?.key === prepareNowConfirm.key
                     ? "Préparation..."
                     : "Préparation..."
