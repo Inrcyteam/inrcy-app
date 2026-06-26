@@ -43,7 +43,7 @@ export async function GET(req: Request) {
     }
 
     const url = new URL(req.url);
-    const pageSize = Number(url.searchParams.get("pageSize") || 20);
+    const pageSize = Number(url.searchParams.get("pageSize") || 50);
     const pageToken = url.searchParams.get("pageToken");
     const requestedOrderBy = url.searchParams.get("orderBy") || "updateTime desc";
     const orderBy = ["updateTime desc", "rating desc"].includes(requestedOrderBy) ? requestedOrderBy : "updateTime desc";

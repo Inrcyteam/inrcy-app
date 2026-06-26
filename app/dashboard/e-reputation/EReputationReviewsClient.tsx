@@ -74,6 +74,8 @@ type ReviewsResponse = {
   reviews?: ApiReview[];
 };
 
+const REVIEWS_PAGE_SIZE = 50;
+
 function renderStars(rating: number) {
   return Array.from({ length: 5 }, (_, index) => (
     <span key={index} className={index < rating ? styles.starOn : styles.starOff} aria-hidden="true">
@@ -233,7 +235,9 @@ export default function EReputationReviewsClient({
 }: Props) {
   const [items, setItems] = useState<EReputationReviewItem[]>(reviews);
   const [filter, setFilter] = useState<"all" | "todo" | "answered">("all");
+  const [starFilter, setStarFilter] = useState<"all" | "5" | "4" | "3" | "2" | "1">("all");
   const [query, setQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
   const [selectedId, setSelectedId] = useState(reviews[0]?.id || "");
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [replyText, setReplyText] = useState(defaultReplyFor(reviews[0] || null));
@@ -249,6 +253,7 @@ export default function EReputationReviewsClient({
   useEffect(() => {
     setItems(reviews);
     setNextPageToken(initialNextPageToken || null);
+    setCurrentPage(1);
     setSelectedId((current) => (reviews.some((review) => review.id === current) ? current : reviews[0]?.id || ""));
   }, [reviews, initialNextPageToken]);
 
@@ -265,13 +270,56 @@ export default function EReputationReviewsClient({
     return items.filter((review) => {
       if (filter === "todo" && !isTodo(review)) return false;
       if (filter === "answered" && review.status !== "Répondu") return false;
+      if (starFilter !== "all" && review.rating !== Number(starFilter)) return false;
       if (!normalizedQuery) return true;
       return [review.name, review.comment, review.originalComment || "", review.translatedComment || "", review.reply || "", review.date, review.status]
         .join(" ")
         .toLowerCase()
         .includes(normalizedQuery);
     });
-  }, [filter, items, query]);
+  }, [filter, items, query, starFilter]);
+
+  const hasLocalFilter = filter !== "all" || starFilter !== "all" || query.trim().length > 0;
+  const totalPages = Math.max(
+    1,
+    Math.ceil((hasLocalFilter ? filteredReviews.length : Math.max(totalReviewCount, filteredReviews.length)) / REVIEWS_PAGE_SIZE)
+  );
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const pageStartIndex = (safeCurrentPage - 1) * REVIEWS_PAGE_SIZE;
+  const paginatedReviews = filteredReviews.slice(pageStartIndex, pageStartIndex + REVIEWS_PAGE_SIZE);
+  const firstDisplayedReview = paginatedReviews.length ? pageStartIndex + 1 : 0;
+  const lastDisplayedReview = paginatedReviews.length ? pageStartIndex + paginatedReviews.length : 0;
+  const footerTotalReviews = hasLocalFilter ? filteredReviews.length : Math.max(totalReviewCount, filteredReviews.length);
+
+  const paginationItems = useMemo(() => {
+    const pages: Array<number | "ellipsis"> = [];
+    if (totalPages <= 7) {
+      for (let page = 1; page <= totalPages; page += 1) pages.push(page);
+      return pages;
+    }
+
+    const current = safeCurrentPage;
+    const candidates = new Set([1, 2, totalPages - 1, totalPages, current - 1, current, current + 1]);
+    const ordered = Array.from(candidates)
+      .filter((page) => page >= 1 && page <= totalPages)
+      .sort((a, b) => a - b);
+
+    for (const page of ordered) {
+      const previous = pages[pages.length - 1];
+      if (typeof previous === "number" && page - previous > 1) pages.push("ellipsis");
+      pages.push(page);
+    }
+
+    return pages;
+  }, [safeCurrentPage, totalPages]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filter, query, starFilter]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) setCurrentPage(totalPages);
+  }, [currentPage, totalPages]);
 
   useEffect(() => {
     setReplyText(defaultReplyFor(selectedReview));
@@ -313,8 +361,8 @@ export default function EReputationReviewsClient({
     setDetailsOpen(true);
   }
 
-  async function fetchReviews({ pageToken, replace }: { pageToken?: string | null; replace?: boolean } = {}) {
-    const params = new URLSearchParams({ pageSize: "20" });
+  async function requestReviews(pageToken?: string | null) {
+    const params = new URLSearchParams({ pageSize: String(REVIEWS_PAGE_SIZE) });
     if (pageToken) params.set("pageToken", pageToken);
 
     const response = await fetch(`/api/e-reputation/google/reviews?${params.toString()}`, {
@@ -328,9 +376,16 @@ export default function EReputationReviewsClient({
       throw new Error(getErrorMessage(payload, "Impossible de charger les avis Google pour le moment."));
     }
 
-    const incoming = Array.isArray(payload.reviews) ? payload.reviews.map(toReviewItem) : [];
+    return {
+      incoming: Array.isArray(payload.reviews) ? payload.reviews.map(toReviewItem) : [],
+      nextToken: payload.nextPageToken || null,
+    };
+  }
+
+  async function fetchReviews({ pageToken, replace }: { pageToken?: string | null; replace?: boolean } = {}) {
+    const { incoming, nextToken } = await requestReviews(pageToken);
     setItems((current) => (replace ? incoming : mergeReviews(current, incoming)));
-    setNextPageToken(payload.nextPageToken || null);
+    setNextPageToken(nextToken);
     setSelectedId((current) => {
       if (!replace && current) return current;
       return incoming[0]?.id || "";
@@ -368,8 +423,45 @@ export default function EReputationReviewsClient({
         type: "success",
         text: count > 0 ? "Avis supplémentaires chargés." : "Aucun autre avis à afficher.",
       });
+      if (count > 0) setCurrentPage((page) => page + 1);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Impossible de charger les avis suivants.";
+      setListNotice({ type: "error", text: message });
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  async function goToPage(targetPage: number) {
+    if (!reviewsReady || busy) return;
+    const cleanTarget = Math.min(Math.max(targetPage, 1), totalPages);
+    const requiredCount = (cleanTarget - 1) * REVIEWS_PAGE_SIZE + 1;
+
+    if (hasLocalFilter || items.length >= requiredCount || !nextPageToken) {
+      setCurrentPage(cleanTarget);
+      return;
+    }
+
+    setLoadingMore(true);
+    setListNotice(null);
+
+    try {
+      let accumulated = items;
+      let token: string | null = nextPageToken;
+
+      while (accumulated.length < requiredCount && token) {
+        const payload = await requestReviews(token);
+        accumulated = mergeReviews(accumulated, payload.incoming);
+        token = payload.nextToken;
+        if (payload.incoming.length === 0) break;
+      }
+
+      setItems(accumulated);
+      setNextPageToken(token);
+      setCurrentPage(Math.min(cleanTarget, Math.max(1, Math.ceil(accumulated.length / REVIEWS_PAGE_SIZE))));
+      setListNotice({ type: "success", text: "Page d’avis chargée." });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Impossible de charger cette page d’avis.";
       setListNotice({ type: "error", text: message });
     } finally {
       setLoadingMore(false);
@@ -518,6 +610,14 @@ export default function EReputationReviewsClient({
             <option value="todo">À répondre</option>
             <option value="answered">Répondus</option>
           </select>
+          <select id="review-star-filter" className={styles.select} value={starFilter} onChange={(event) => setStarFilter(event.target.value as "all" | "5" | "4" | "3" | "2" | "1")}>
+            <option value="all">Toutes les notes</option>
+            <option value="5">5 étoiles</option>
+            <option value="4">4 étoiles</option>
+            <option value="3">3 étoiles</option>
+            <option value="2">2 étoiles</option>
+            <option value="1">1 étoile</option>
+          </select>
           <input
             className={styles.searchInput}
             value={query}
@@ -537,8 +637,16 @@ export default function EReputationReviewsClient({
             <span>Nombre : {totalReviewsLabel}</span>
             <span>Note {averageRatingLabel}</span>
           </div>
-          <button type="button" className={styles.btnGhostSmall} onClick={refreshReviews} disabled={!reviewsReady || busy}>
-            {refreshing ? "Actualisation..." : "Actualiser"}
+          <button
+            type="button"
+            className={`${styles.btnGhostSmall} ${styles.refreshButton}`}
+            onClick={refreshReviews}
+            disabled={!reviewsReady || busy}
+            aria-label={refreshing ? "Actualisation des avis" : "Actualiser les avis"}
+            title={refreshing ? "Actualisation..." : "Actualiser"}
+          >
+            <span className={styles.refreshIcon} aria-hidden="true">⟳</span>
+            <span className={styles.refreshText}>{refreshing ? "Actualisation..." : "Actualiser"}</span>
           </button>
         </div>
       </div>
@@ -575,8 +683,8 @@ export default function EReputationReviewsClient({
             </tr>
           </thead>
           <tbody>
-            {filteredReviews.length ? (
-              filteredReviews.map((review) => (
+            {paginatedReviews.length ? (
+              paginatedReviews.map((review) => (
                 <tr key={review.id} className={review.id === selectedId ? styles.activeRow : undefined}>
                   <td>
                     <button type="button" className={styles.reviewMainCell} onClick={() => openDetails(review)}>
@@ -624,13 +732,37 @@ export default function EReputationReviewsClient({
       </div>
 
       <div className={styles.footerBar}>
-        <span>Affichage {filteredReviews.length.toLocaleString("fr-FR")} avis · {loadedLabel} chargés</span>
-        {nextPageToken && reviewsReady ? (
-          <button type="button" className={styles.btnGhostSmall} onClick={loadMoreReviews} disabled={busy}>
-            {loadingMore ? "Chargement..." : "Voir plus d’avis"}
-          </button>
+        <span>
+          {paginatedReviews.length
+            ? `Affichage ${firstDisplayedReview.toLocaleString("fr-FR")}–${lastDisplayedReview.toLocaleString("fr-FR")} sur ${footerTotalReviews.toLocaleString("fr-FR")} avis`
+            : "Affichage 0 avis"} · {loadedLabel} chargés
+        </span>
+        {reviewsReady ? (
+          <div className={styles.paginationControls} aria-label="Pagination des avis">
+            <button type="button" className={styles.paginationArrow} onClick={() => goToPage(safeCurrentPage - 1)} disabled={busy || safeCurrentPage <= 1}>
+              ‹
+            </button>
+            {paginationItems.map((page, index) =>
+              page === "ellipsis" ? (
+                <span key={`ellipsis-${index}`} className={styles.paginationEllipsis}>…</span>
+              ) : (
+                <button
+                  key={page}
+                  type="button"
+                  className={page === safeCurrentPage ? styles.paginationActive : styles.paginationPage}
+                  onClick={() => goToPage(page)}
+                  disabled={busy || page === safeCurrentPage}
+                >
+                  {page}
+                </button>
+              )
+            )}
+            <button type="button" className={styles.paginationArrow} onClick={() => goToPage(safeCurrentPage + 1)} disabled={busy || safeCurrentPage >= totalPages || (!hasLocalFilter && !nextPageToken && items.length <= safeCurrentPage * REVIEWS_PAGE_SIZE)}>
+              ›
+            </button>
+          </div>
         ) : (
-          <span className={styles.footerHint}>{reviewsReady ? "Tous les avis chargés" : "Connexion Google requise"}</span>
+          <span className={styles.footerHint}>Connexion Google requise</span>
         )}
       </div>
 

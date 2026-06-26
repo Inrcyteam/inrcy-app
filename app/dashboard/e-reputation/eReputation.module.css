@@ -721,6 +721,11 @@
   display: block;
 }
 
+.currentReplyBox strong {
+  color: rgba(255, 255, 255, 0.94);
+  font-weight: 950;
+}
+
 .currentReplyBox span {
   margin-top: 6px;
   color: rgba(255, 255, 255, 0.7);
@@ -1926,5 +1931,230 @@
     margin: 12px 0 0 !important;
     font-size: 12px !important;
     line-height: 1.4 !important;
+  }
+}
+
+/* Pagination avis Google — 50 avis/page + navigation compacte */
+.paginationControls {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.paginationPage,
+.paginationActive,
+.paginationArrow,
+.paginationEllipsis {
+  min-width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.paginationPage,
+.paginationActive,
+.paginationArrow {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: rgba(255, 255, 255, 0.9);
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, opacity 0.15s ease;
+}
+
+.paginationPage,
+.paginationArrow {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.paginationActive {
+  border-color: rgba(56, 189, 248, 0.42);
+  background: linear-gradient(135deg, rgba(21, 132, 232, 0.78), rgba(177, 75, 255, 0.68));
+  color: #fff;
+  box-shadow: 0 10px 28px rgba(56, 189, 248, 0.14);
+}
+
+.paginationPage:hover,
+.paginationArrow:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 255, 255, 0.24);
+  background: rgba(255, 255, 255, 0.11);
+}
+
+.paginationPage:disabled,
+.paginationActive:disabled,
+.paginationArrow:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  transform: none;
+}
+
+.paginationEllipsis {
+  color: rgba(255, 255, 255, 0.48);
+}
+
+@media (max-width: 760px) {
+  .paginationControls {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .paginationPage,
+  .paginationActive,
+  .paginationArrow,
+  .paginationEllipsis {
+    min-width: 32px;
+    height: 32px;
+    font-size: 12px;
+  }
+}
+
+
+/* Step 18 — toolbar desktop sur une seule ligne + actualiser en roulette */
+@media (min-width: 761px) {
+  .toolbar {
+    flex-direction: row !important;
+    align-items: center !important;
+    flex-wrap: nowrap !important;
+    gap: 8px !important;
+    padding: 10px 12px 10px !important;
+  }
+
+  .toolbarLeft {
+    flex: 1 1 auto !important;
+    min-width: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    flex-wrap: nowrap !important;
+    gap: 8px !important;
+  }
+
+  .toolbarRight {
+    flex: 0 1 auto !important;
+    min-width: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    flex-wrap: nowrap !important;
+    gap: 8px !important;
+  }
+
+  .filterLabel {
+    flex: 0 0 auto !important;
+  }
+
+  .select {
+    flex: 0 0 148px !important;
+    width: 148px !important;
+    min-width: 0 !important;
+    min-height: 38px !important;
+    height: 38px !important;
+    padding: 0 10px !important;
+    border-radius: 13px !important;
+    font-size: 13px !important;
+  }
+
+  .searchInput {
+    flex: 1 1 200px !important;
+    width: auto !important;
+    min-width: 170px !important;
+    max-width: 250px !important;
+    min-height: 38px !important;
+    height: 38px !important;
+    padding: 0 13px !important;
+    border-radius: 13px !important;
+    font-size: 13px !important;
+  }
+
+  .reputationSummaryChip {
+    flex: 0 1 430px !important;
+    max-width: 430px !important;
+    min-width: 0 !important;
+    min-height: 38px !important;
+    height: 38px !important;
+    flex-wrap: nowrap !important;
+    justify-content: flex-start !important;
+    overflow: hidden !important;
+    padding: 7px 10px !important;
+    gap: 7px !important;
+  }
+
+  .reputationSummaryChip > span {
+    flex: 0 0 auto !important;
+    min-width: 0 !important;
+  }
+
+  .summaryLocation {
+    flex: 0 1 108px !important;
+    max-width: 108px !important;
+  }
+
+  .summaryStatus {
+    flex: 0 1 175px !important;
+    max-width: 175px !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+  }
+
+  .summaryStatusDesktop {
+    display: inline-block !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+  }
+
+  .summaryStatusMobile {
+    display: none !important;
+  }
+
+  .refreshButton {
+    width: 38px !important;
+    min-width: 38px !important;
+    height: 38px !important;
+    min-height: 38px !important;
+    padding: 0 !important;
+    border-radius: 999px !important;
+  }
+
+  .refreshIcon {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 18px !important;
+    line-height: 1 !important;
+  }
+
+  .refreshText {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    padding: 0 !important;
+    margin: -1px !important;
+    overflow: hidden !important;
+    clip: rect(0, 0, 0, 0) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .refreshIcon {
+    display: none !important;
+  }
+
+  .refreshText {
+    position: static !important;
+    width: auto !important;
+    height: auto !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    clip: auto !important;
+    white-space: normal !important;
   }
 }

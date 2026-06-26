@@ -113,7 +113,7 @@ async function loadGoogleReviews(): Promise<ReviewsLoadResult> {
     }
 
     const payload = await gmbListReviews(token.accessToken, target.accountName, target.locationName, {
-      pageSize: 20,
+      pageSize: 50,
       orderBy: "updateTime desc",
     });
 
