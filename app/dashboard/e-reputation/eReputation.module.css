@@ -2020,13 +2020,14 @@
   .toolbar {
     flex-direction: row !important;
     align-items: center !important;
+    justify-content: flex-start !important;
     flex-wrap: nowrap !important;
     gap: 8px !important;
     padding: 10px 12px 10px !important;
   }
 
   .toolbarLeft {
-    flex: 1 1 auto !important;
+    flex: 0 0 auto !important;
     min-width: 0 !important;
     display: flex !important;
     align-items: center !important;
@@ -2035,11 +2036,11 @@
   }
 
   .toolbarRight {
-    flex: 0 1 auto !important;
+    flex: 1 1 auto !important;
     min-width: 0 !important;
     display: flex !important;
     align-items: center !important;
-    justify-content: flex-end !important;
+    justify-content: flex-start !important;
     flex-wrap: nowrap !important;
     gap: 8px !important;
   }
@@ -2049,8 +2050,8 @@
   }
 
   .select {
-    flex: 0 0 148px !important;
-    width: 148px !important;
+    flex: 0 0 138px !important;
+    width: 138px !important;
     min-width: 0 !important;
     min-height: 38px !important;
     height: 38px !important;
@@ -2060,10 +2061,10 @@
   }
 
   .searchInput {
-    flex: 1 1 200px !important;
-    width: auto !important;
-    min-width: 170px !important;
-    max-width: 250px !important;
+    flex: 0 0 220px !important;
+    width: 220px !important;
+    min-width: 0 !important;
+    max-width: none !important;
     min-height: 38px !important;
     height: 38px !important;
     padding: 0 13px !important;
@@ -2072,15 +2073,15 @@
   }
 
   .reputationSummaryChip {
-    flex: 0 1 430px !important;
-    max-width: 430px !important;
+    flex: 1 1 auto !important;
+    max-width: none !important;
     min-width: 0 !important;
     min-height: 38px !important;
     height: 38px !important;
     flex-wrap: nowrap !important;
     justify-content: flex-start !important;
     overflow: hidden !important;
-    padding: 7px 10px !important;
+    padding: 7px 11px !important;
     gap: 7px !important;
   }
 
@@ -2090,22 +2091,23 @@
   }
 
   .summaryLocation {
-    flex: 0 1 108px !important;
-    max-width: 108px !important;
+    flex: 1 1 auto !important;
+    max-width: 220px !important;
+    min-width: 130px !important;
   }
 
   .summaryStatus {
-    flex: 0 1 175px !important;
-    max-width: 175px !important;
+    flex: 0 0 auto !important;
+    max-width: none !important;
     min-width: 0 !important;
-    overflow: hidden !important;
+    overflow: visible !important;
   }
 
   .summaryStatusDesktop {
     display: inline-block !important;
     min-width: 0 !important;
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
     white-space: nowrap !important;
   }
 
@@ -2114,6 +2116,7 @@
   }
 
   .refreshButton {
+    flex: 0 0 38px !important;
     width: 38px !important;
     min-width: 38px !important;
     height: 38px !important;

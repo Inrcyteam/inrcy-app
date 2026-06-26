@@ -351,7 +351,7 @@ export default function EReputationReviewsClient({
   const canDelete = Boolean(selectedReview?.live && selectedReview.reviewName && selectedReview.reply && !busy);
   const loadedLabel = totalReviewCount > 0 ? `${items.length.toLocaleString("fr-FR")} / ${totalReviewCount.toLocaleString("fr-FR")}` : items.length.toLocaleString("fr-FR");
   const totalReviewsLabel = (totalReviewCount > 0 ? totalReviewCount : stats.total).toLocaleString("fr-FR");
-  const summaryStatusLabel = reviewsReady ? "Avis Google chargés" : statusLabel;
+  const summaryStatusLabel = reviewsReady ? "Avis chargés" : statusLabel;
   const summaryStatusShortLabel = reviewsReady ? "Chargés" : statusLabel;
 
   function openDetails(review: EReputationReviewItem) {
@@ -627,15 +627,15 @@ export default function EReputationReviewsClient({
           />
         </div>
         <div className={styles.toolbarRight}>
-          <div className={`${styles.reputationSummaryChip} ${gmbReady ? styles.reputationSummaryReady : ""}`} aria-label={`${locationLabel} · ${summaryStatusLabel} · ${totalReviewsLabel} avis · Note ${averageRatingLabel}`}>
+          <div className={`${styles.reputationSummaryChip} ${gmbReady ? styles.reputationSummaryReady : ""}`} aria-label={`${locationLabel} · ${summaryStatusLabel} · Qté : ${totalReviewsLabel} · Note : ${averageRatingLabel}`}>
             <span className={styles.summaryLocation}>{locationLabel}</span>
             <span className={styles.summaryStatus}>
               <span className={styles.summaryDot} aria-hidden="true" />
               <span className={styles.summaryStatusDesktop}>{summaryStatusLabel}</span>
               <span className={styles.summaryStatusMobile}>{summaryStatusShortLabel}</span>
             </span>
-            <span>Nombre : {totalReviewsLabel}</span>
-            <span>Note {averageRatingLabel}</span>
+            <span>Qté : {totalReviewsLabel}</span>
+            <span>Note : {averageRatingLabel}</span>
           </div>
           <button
             type="button"
