@@ -360,111 +360,44 @@ function findOverSimilarChannels(channels: BoosterChannels[], versions: Partial<
   return Array.from(duplicateChannels);
 }
 
-const FRENCH_LEAK_PATTERNS = [
-  /\b(?:bonjour|bonsoir|chez|nous|vous|votre|vos|notre|nos|avec|pour|dans|sans|sur|afin|grâce|grace|découvrez|decouvrez|contactez|écrivez|ecrivez|demandez|demander|devis|conseil|utile|mieux|besoin|prestation|prestations|actualité|actualite|nouveauté|nouveaute|réalisation|realisation|communication digitale|identité visuelle|strategie de communication|stratégie de communication|campagne locale|en savoir plus|voir le site|voir les informations)\b/i,
-  /\b(?:un conseil|une actualité|une actualite|notre objectif|nous sommes|nous accompagnons|n'hésitez pas|n hesitez pas|à bientôt|a bientot|demander un devis|contactez-nous|contactez nous|écrivez-nous|ecrivez nous)\b/i,
+const CLEAR_FRENCH_PHRASE_PATTERNS = [
+  /\b(?:bonjour|bonsoir|merci|cordialement|à bientôt|a bientot)\b/i,
+  /\b(?:n['’ ]?hésitez pas|n hesitez pas|demander un devis|demandez votre devis|contactez[- ]?nous|contactez nous|écrivez[- ]?nous|ecrivez[- ]?nous|voir le site|voir les informations|en savoir plus|un conseil utile|une actualité|une actualite|notre objectif|nous sommes ravis|nous accompagnons|découvrez|decouvrez|profitez de)\b/i,
+  /\b(?:votre|vos|notre|nos)\s+(?:projet|besoin|actualité|actualite|activité|activite|devis|message|rendez[- ]?vous|service|solution)\b/i,
+  /\b(?:nous|vous)\s+(?:proposons|accompagnons|conseillons|attendons|invitons|aidons|sommes)\b/i,
 ];
 
-const FRENCH_LEAK_TOKENS = new Set([
-  "actualite",
-  "actualites",
+const CLEAR_FRENCH_TOKENS = new Set([
   "actualité",
   "actualités",
-  "ainsi",
-  "apaiser",
-  "apaisant",
-  "appel",
+  "aiderons",
+  "appelez",
   "besoin",
   "besoins",
-  "bienetre",
   "bienêtre",
-  "chacun",
-  "chacune",
-  "chaque",
-  "cherchent",
-  "clientele",
-  "clientèle",
-  "concret",
-  "concrete",
-  "concrète",
-  "conseil",
-  "conseils",
-  "contactez",
-  "corps",
-  "decouvrir",
-  "découvrir",
-  "decouvrez",
-  "découvrez",
-  "demander",
-  "demandez",
-  "detente",
-  "détente",
+  "bien-etre",
+  "cordialement",
   "devis",
-  "ecrivez",
+  "découvrez",
+  "demandez",
   "écrivez",
-  "envie",
-  "esprit",
-  "facile",
-  "horaires",
-  "ideal",
-  "ideale",
-  "idéale",
-  "idéal",
-  "information",
-  "informations",
-  "locale",
-  "locales",
-  "mieux",
-  "moment",
-  "nouveaute",
-  "nouveauté",
-  "offrez",
-  "personnalise",
-  "personnalisee",
-  "personnalisée",
-  "personnalisees",
-  "personnalisées",
-  "permet",
-  "permettent",
+  "ecrivez",
+  "n'hésitez",
+  "nhésitez",
   "prestation",
   "prestations",
-  "propose",
   "proposons",
-  "proximite",
-  "proximité",
-  "rassurant",
-  "rassurante",
-  "reconnecter",
-  "redécouvrez",
-  "redecouvrez",
-  "relacher",
-  "relâcher",
   "rendezvous",
   "rendez-vous",
-  "retrouver",
-  "savoir",
-  "seance",
-  "séance",
-  "seances",
-  "séances",
-  "serenite",
   "sérénité",
-  "service",
-  "services",
-  "soin",
-  "soins",
-  "solution",
-  "solutions",
-  "souple",
-  "souples",
-  "tension",
-  "tensions",
-  "traitement",
-  "traitements",
-  "utile",
-  "visibilite",
-  "visibilité",
+  "souhaitez",
+  "votre",
+  "voulez",
 ]);
+
+function normalizeLanguageDetectionToken(value: string) {
+  return normalizeIdeaToken(value).replace(/-/g, "");
+}
 
 function countRegexMatches(pattern: RegExp, text: string) {
   const flags = pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`;
@@ -472,30 +405,30 @@ function countRegexMatches(pattern: RegExp, text: string) {
   return Array.from(text.matchAll(globalPattern)).length;
 }
 
-function countFrenchTokenHints(text: string) {
+function countClearFrenchTokenHints(text: string) {
   const tokens = (text.match(/[A-Za-zÀ-ÖØ-öø-ÿ0-9'-]+/g) || [])
-    .map((token) => normalizeIdeaToken(token).replace(/-/g, ""))
+    .map(normalizeLanguageDetectionToken)
     .filter(Boolean);
-  return tokens.reduce((count, token) => count + (FRENCH_LEAK_TOKENS.has(token) ? 1 : 0), 0);
+  return tokens.reduce((count, token) => count + (CLEAR_FRENCH_TOKENS.has(token) ? 1 : 0), 0);
 }
 
-function countFrenchLeakMatches(value: unknown) {
+function countClearFrenchLeakMatches(value: unknown) {
   const text = String(value ?? "").trim();
   if (!text) return 0;
-  return FRENCH_LEAK_PATTERNS.reduce((count, pattern) => count + countRegexMatches(pattern, text), 0) + countFrenchTokenHints(text);
+  return CLEAR_FRENCH_PHRASE_PATTERNS.reduce((count, pattern) => count + countRegexMatches(pattern, text), 0) + countClearFrenchTokenHints(text);
 }
 
-function hasFrenchLeak(value: unknown, minMatches = 1) {
-  return countFrenchLeakMatches(value) >= minMatches;
+function hasClearFrenchLeak(value: unknown, minMatches = 1) {
+  return countClearFrenchLeakMatches(value) >= minMatches;
 }
 
 function hasLanguageMismatch(languageCode: string, post: ChannelPost | undefined) {
   if (languageCode === "fr" || !post) return false;
 
-  const titleLeak = hasFrenchLeak(post.title, 1);
-  const ctaLeak = hasFrenchLeak(post.cta, 1);
-  const contentLeak = hasFrenchLeak(post.content, 2);
-  const hashtagLeak = Array.isArray(post.hashtags) && post.hashtags.some((tag) => hasFrenchLeak(tag, 1));
+  const titleLeak = hasClearFrenchLeak(post.title, 1);
+  const ctaLeak = hasClearFrenchLeak(post.cta, 1);
+  const contentLeak = hasClearFrenchLeak(post.content, 2);
+  const hashtagLeak = Array.isArray(post.hashtags) && post.hashtags.some((tag) => hasClearFrenchLeak(tag, 1));
 
   return titleLeak || ctaLeak || contentLeak || hashtagLeak;
 }
@@ -577,6 +510,7 @@ async function generateVersions(args: {
       }),
       languageInstructions,
       imageInstructions,
+      `ANTI-DUPLICATION CANAUX : ne retourne jamais deux objets versions avec le même title ou le même content. Chaque canal doit être une vraie variante éditoriale : angle, accroche, ordre des idées, longueur et CTA différents. Les canaux demandés ne sont pas des copies adaptées seulement par le nom du canal.`,
       args.extraInstructions,
     ]
       .filter(Boolean)
@@ -798,6 +732,18 @@ function buildFallbackPost(args: {
   });
 }
 
+type LocalizedFallbackContext = {
+  company: string;
+  city: string;
+  channel: BoosterChannels;
+  mediaLabel: string;
+};
+
+type LocalizedChannelFallback = {
+  title: string;
+  content: (context: LocalizedFallbackContext) => string;
+};
+
 type LanguageFallbackCopy = {
   title: string;
   siteTitle: string;
@@ -807,23 +753,68 @@ type LanguageFallbackCopy = {
   quoteCta: string;
   siteCta: string;
   messageCta: string;
-  content: (context: { company: string; city: string; channel: BoosterChannels }) => string;
+  imageLabel: string;
+  videoLabel: string;
+  defaultContent: (context: LocalizedFallbackContext) => string;
+  fillers: string[];
+  channels: Record<BoosterChannels, LocalizedChannelFallback>;
 };
 
 const LANGUAGE_FALLBACK_COPY: Record<string, LanguageFallbackCopy> = {
   en: {
-    title: "Useful update for your local communication",
-    siteTitle: "Improve your local communication",
-    videoTitle: "Useful video for your communication",
+    title: "Useful update for local communication",
+    siteTitle: "Improve local communication",
+    videoTitle: "Useful video for communication",
     cta: "Contact us",
     gmbCta: "View information",
     quoteCta: "Request a quote",
     siteCta: "Visit the website",
     messageCta: "Send a message",
-    content: ({ company, city }) => `${company}${city} shares a useful update to communicate more clearly and strengthen local visibility. The goal is simple: present the right information, make the message easy to understand and help interested customers take the next step. This publication can be adapted with a visual, a video or a more specific offer when needed.`,
+    imageLabel: "visual",
+    videoLabel: "video",
+    defaultContent: ({ company, city }) => `${company}${city} shares a useful update to communicate clearly and support local visibility. The message remains simple, professional and easy to reuse on the selected channel.`,
+    fillers: [
+      "The message can be refined later with more precise details, images or a stronger call to action.",
+      "The goal is to keep the information understandable, credible and adapted to the people discovering the business.",
+      "This version remains ready to edit while preserving a clear angle for the selected channel.",
+    ],
+    channels: {
+      inrcy_site: {
+        title: "A clear update for the iNrCy site",
+        content: ({ company, city }) => `${company}${city} can present this update as a clear local news item. The content should help visitors quickly understand the service, the value of the business and the next step to take. This version is written for a showcase page: structured, reassuring and easy to reuse with a stronger local SEO angle if more details are added.`,
+      },
+      site_web: {
+        title: "Durable content for the website",
+        content: ({ company, city }) => `On the website, ${company}${city} needs a more durable version. The goal is to explain the subject in a useful way, strengthen credibility and give search engines a clear context. This text can later be completed with services, service areas and specific customer information without becoming a copy of the iNrCy site version.`,
+      },
+      gmb: {
+        title: "Clear local information",
+        content: ({ company, city }) => `${company}${city} shares practical local information for people who want to understand the offer quickly. On Google Business, the message must stay direct, factual and reassuring: what is available, why it can help and how to take the next step without unnecessary wording.`,
+      },
+      facebook: {
+        title: "A message for the local community",
+        content: ({ company, city, mediaLabel }) => `On Facebook, ${company}${city} can use a warmer and more conversational message. The idea is to speak to the local community, explain the update in simple words and make the publication feel approachable. With a ${mediaLabel}, the post becomes more concrete and easier to understand at first glance.`,
+      },
+      instagram: {
+        title: "A visual post to catch attention",
+        content: ({ company, city, mediaLabel }) => `On Instagram, the publication should feel more visual, short and lively. ${company}${city} can highlight the atmosphere, the care given to the service and the immediate benefit for people discovering the business. The ${mediaLabel} carries the first impression, while the text stays direct and easy to read.`,
+      },
+      linkedin: {
+        title: "A professional angle for LinkedIn",
+        content: ({ company, city }) => `On LinkedIn, ${company}${city} should keep a more professional angle. The publication can explain the method, the seriousness behind the service and the way the business creates value for its customers. The tone remains useful, measured and credible, without turning the message into a generic advertisement.`,
+      },
+      tiktok: {
+        title: "A direct idea for a short format",
+        content: ({ company, city, mediaLabel }) => `For TikTok, the message must be quick, clear and easy to understand. ${company}${city} can focus on one simple idea, supported by the ${mediaLabel}, to grab attention in a few seconds and encourage people to discover more without a long explanation.`,
+      },
+      youtube_shorts: {
+        title: "A useful description for YouTube",
+        content: ({ company, city }) => `On YouTube, ${company}${city} needs a description that gives context and remains searchable. The text should explain the subject, mention the value of the content and guide viewers toward the next step. This version is more descriptive than TikTok and more practical for people who find the video later.`,
+      },
+    },
   },
   es: {
-    title: "Una actualización útil para su comunicación local",
+    title: "Una actualización útil para la comunicación local",
     siteTitle: "Mejore su comunicación local",
     videoTitle: "Un vídeo útil para su comunicación",
     cta: "Contáctenos",
@@ -831,7 +822,48 @@ const LANGUAGE_FALLBACK_COPY: Record<string, LanguageFallbackCopy> = {
     quoteCta: "Solicitar un presupuesto",
     siteCta: "Visitar el sitio web",
     messageCta: "Enviar un mensaje",
-    content: ({ company, city }) => `${company}${city} comparte una actualización útil para comunicar de forma más clara y reforzar su visibilidad local. El objetivo es sencillo: presentar la información importante, facilitar la comprensión del mensaje y ayudar a los clientes interesados a dar el siguiente paso. Esta publicación puede completarse con una imagen, un vídeo o una oferta más específica si es necesario.`,
+    imageLabel: "visual",
+    videoLabel: "vídeo",
+    defaultContent: ({ company, city }) => `${company}${city} comparte una actualización útil para comunicar con claridad y reforzar su presencia local. El mensaje se mantiene sencillo, profesional y fácil de adaptar al canal seleccionado.`,
+    fillers: [
+      "Puede ajustarse después con detalles más precisos, imágenes o una llamada a la acción más directa.",
+      "El objetivo es que la información sea comprensible, creíble y útil para las personas que descubren el negocio.",
+      "Esta versión sigue siendo editable, pero conserva un ángulo claro para el canal seleccionado.",
+    ],
+    channels: {
+      inrcy_site: {
+        title: "Una noticia clara para el sitio iNrCy",
+        content: ({ company, city }) => `${company}${city} puede presentar esta actualización como una noticia local clara. El contenido debe ayudar al visitante a entender rápidamente el servicio, el valor del negocio y el siguiente paso posible. Esta versión está pensada para una página de presentación: estructurada, tranquilizadora y fácil de reforzar con un enfoque SEO local si se añaden más detalles.`,
+      },
+      site_web: {
+        title: "Contenido duradero para el sitio web",
+        content: ({ company, city }) => `En el sitio web, ${company}${city} necesita una versión más duradera. El objetivo es explicar el tema de forma útil, reforzar la credibilidad y dar a los buscadores un contexto claro. Este texto puede completarse después con servicios, zonas de intervención e información específica sin copiar la versión del sitio iNrCy.`,
+      },
+      gmb: {
+        title: "Información local clara y útil",
+        content: ({ company, city }) => `${company}${city} comparte una información local práctica para quienes quieren entender la oferta rápidamente. En Google Business, el mensaje debe ser directo, factual y tranquilizador: qué está disponible, por qué puede ayudar y cuál es el siguiente paso, sin frases innecesarias.`,
+      },
+      facebook: {
+        title: "Un mensaje cercano para la comunidad",
+        content: ({ company, city, mediaLabel }) => `En Facebook, ${company}${city} puede usar un tono más cercano y conversacional. La idea es hablar a la comunidad local, explicar la actualización con palabras simples y hacer que la publicación resulte accesible. Con un ${mediaLabel}, el mensaje se vuelve más concreto y fácil de entender al primer vistazo.`,
+      },
+      instagram: {
+        title: "Una publicación visual para captar la atención",
+        content: ({ company, city, mediaLabel }) => `En Instagram, la publicación debe sentirse más visual, breve y viva. ${company}${city} puede destacar la atmósfera, el cuidado del servicio y el beneficio inmediato para quienes descubren el negocio. El ${mediaLabel} transmite la primera impresión; el texto acompaña con frases directas y fáciles de leer.`,
+      },
+      linkedin: {
+        title: "Un enfoque profesional para LinkedIn",
+        content: ({ company, city }) => `En LinkedIn, ${company}${city} debe conservar un enfoque más profesional. La publicación puede explicar el método, la seriedad del servicio y la manera en que el negocio aporta valor a sus clientes. El tono sigue siendo útil, medido y creíble, sin convertirse en una publicidad genérica.`,
+      },
+      tiktok: {
+        title: "Una idea directa para un formato corto",
+        content: ({ company, city, mediaLabel }) => `Para TikTok, el mensaje debe ir rápido, claro y al grano. ${company}${city} puede centrarse en una sola idea, apoyada por el ${mediaLabel}, para captar la atención en pocos segundos y dar ganas de descubrir más sin una explicación larga.`,
+      },
+      youtube_shorts: {
+        title: "Una descripción útil para YouTube",
+        content: ({ company, city }) => `En YouTube, ${company}${city} necesita una descripción que aporte contexto y sea fácil de encontrar. El texto debe explicar el tema, mencionar el valor del contenido y guiar al espectador hacia el siguiente paso. Esta versión es más descriptiva que TikTok y más práctica para quienes encuentran el vídeo más tarde.`,
+      },
+    },
   },
   it: {
     title: "Un aggiornamento utile per la comunicazione locale",
@@ -842,40 +874,204 @@ const LANGUAGE_FALLBACK_COPY: Record<string, LanguageFallbackCopy> = {
     quoteCta: "Richiedi un preventivo",
     siteCta: "Visita il sito web",
     messageCta: "Invia un messaggio",
-    content: ({ company, city }) => `${company}${city} condivide un aggiornamento utile per comunicare in modo più chiaro e rafforzare la visibilità locale. L'obiettivo è semplice: presentare le informazioni importanti, rendere il messaggio facile da capire e aiutare i clienti interessati a fare il passo successivo. Questa pubblicazione può essere completata con un'immagine, un video o un'offerta più specifica se necessario.`,
+    imageLabel: "contenuto visivo",
+    videoLabel: "video",
+    defaultContent: ({ company, city }) => `${company}${city} condivide un aggiornamento utile per comunicare con chiarezza e rafforzare la presenza locale. Il messaggio resta semplice, professionale e facile da adattare al canale selezionato.`,
+    fillers: [
+      "Può essere adattato in seguito con dettagli più precisi, immagini o un invito all'azione più diretto.",
+      "L'obiettivo è mantenere le informazioni comprensibili, credibili e utili per chi scopre l'attività.",
+      "Questa versione resta modificabile, ma conserva un angolo chiaro per il canale scelto.",
+    ],
+    channels: {
+      inrcy_site: {
+        title: "Una notizia chiara per il sito iNrCy",
+        content: ({ company, city }) => `${company}${city} può presentare questo aggiornamento come una notizia locale chiara. Il contenuto deve aiutare il visitatore a capire rapidamente il servizio, il valore dell'attività e il passo successivo possibile. Questa versione è pensata per una pagina vetrina: strutturata, rassicurante e pronta per un approccio SEO locale più forte se vengono aggiunti altri dettagli.`,
+      },
+      site_web: {
+        title: "Contenuto duraturo per il sito web",
+        content: ({ company, city }) => `Sul sito web, ${company}${city} ha bisogno di una versione più duratura. L'obiettivo è spiegare il tema in modo utile, rafforzare la credibilità e dare ai motori di ricerca un contesto chiaro. Il testo può essere completato con servizi, zone e informazioni specifiche senza copiare la versione del sito iNrCy.`,
+      },
+      gmb: {
+        title: "Informazione locale chiara",
+        content: ({ company, city }) => `${company}${city} condivide un'informazione locale pratica per chi vuole capire rapidamente l'offerta. Su Google Business, il messaggio deve restare diretto, concreto e rassicurante: cosa è disponibile, perché può aiutare e qual è il passo successivo.`,
+      },
+      facebook: {
+        title: "Un messaggio vicino alla comunità",
+        content: ({ company, city, mediaLabel }) => `Su Facebook, ${company}${city} può usare un tono più vicino e conversazionale. L'idea è parlare alla comunità locale, spiegare l'aggiornamento con parole semplici e rendere la pubblicazione accessibile. Con un ${mediaLabel}, il messaggio diventa più concreto e immediato.`,
+      },
+      instagram: {
+        title: "Un post visivo per attirare l'attenzione",
+        content: ({ company, city, mediaLabel }) => `Su Instagram, la pubblicazione deve sembrare più visiva, breve e viva. ${company}${city} può valorizzare l'atmosfera, la cura del servizio e il beneficio immediato per chi scopre l'attività. Il ${mediaLabel} crea la prima impressione, mentre il testo resta diretto.`,
+      },
+      linkedin: {
+        title: "Un taglio professionale per LinkedIn",
+        content: ({ company, city }) => `Su LinkedIn, ${company}${city} deve mantenere un taglio più professionale. La pubblicazione può spiegare il metodo, la serietà del servizio e il modo in cui l'attività crea valore per i clienti. Il tono resta utile, misurato e credibile.`,
+      },
+      tiktok: {
+        title: "Un'idea diretta per un formato breve",
+        content: ({ company, city, mediaLabel }) => `Per TikTok, il messaggio deve essere rapido, chiaro e diretto. ${company}${city} può concentrarsi su una sola idea, sostenuta dal ${mediaLabel}, per catturare l'attenzione in pochi secondi e invitare a scoprire di più.`,
+      },
+      youtube_shorts: {
+        title: "Una descrizione utile per YouTube",
+        content: ({ company, city }) => `Su YouTube, ${company}${city} ha bisogno di una descrizione che dia contesto e resti ricercabile. Il testo deve spiegare il tema, indicare il valore del contenuto e guidare chi guarda verso il passo successivo.`,
+      },
+    },
   },
   de: {
-    title: "Ein nützliches Update für Ihre lokale Kommunikation",
+    title: "Ein nützliches Update für lokale Kommunikation",
     siteTitle: "Lokale Kommunikation verbessern",
-    videoTitle: "Ein hilfreiches Video für Ihre Kommunikation",
+    videoTitle: "Ein hilfreiches Video für die Kommunikation",
     cta: "Kontakt aufnehmen",
     gmbCta: "Informationen ansehen",
     quoteCta: "Angebot anfragen",
     siteCta: "Website besuchen",
     messageCta: "Nachricht senden",
-    content: ({ company, city }) => `${company}${city} teilt ein nützliches Update, um klarer zu kommunizieren und die lokale Sichtbarkeit zu stärken. Das Ziel ist einfach: wichtige Informationen verständlich präsentieren, die Botschaft klar machen und interessierten Kunden den nächsten Schritt erleichtern. Diese Veröffentlichung kann bei Bedarf mit einem Bild, einem Video oder einem konkreteren Angebot ergänzt werden.`,
+    imageLabel: "visuellen Inhalt",
+    videoLabel: "Video",
+    defaultContent: ({ company, city }) => `${company}${city} teilt ein nützliches Update, um klar zu kommunizieren und die lokale Präsenz zu stärken. Die Botschaft bleibt einfach, professionell und leicht an den ausgewählten Kanal anpassbar.`,
+    fillers: [
+      "Sie kann später mit genaueren Details, Bildern oder einem stärkeren Aufruf zum Handeln ergänzt werden.",
+      "Ziel ist es, die Informationen verständlich, glaubwürdig und hilfreich für neue Interessenten zu halten.",
+      "Diese Version bleibt bearbeitbar, behält aber einen klaren Blickwinkel für den gewählten Kanal.",
+    ],
+    channels: {
+      inrcy_site: {
+        title: "Ein klares Update für die iNrCy-Seite",
+        content: ({ company, city }) => `${company}${city} kann dieses Update als klare lokale Neuigkeit präsentieren. Der Inhalt hilft Besuchern, das Angebot, den Nutzen und den nächsten Schritt schnell zu verstehen. Diese Version ist für eine Schaufensterseite gedacht: strukturiert, vertrauensbildend und später gut für lokales SEO erweiterbar.`,
+      },
+      site_web: {
+        title: "Dauerhafter Inhalt für die Website",
+        content: ({ company, city }) => `Auf der Website braucht ${company}${city} eine dauerhaft nutzbare Version. Sie erklärt das Thema hilfreicher, stärkt die Glaubwürdigkeit und gibt Suchmaschinen einen klaren Kontext. Der Text kann später mit Leistungen, Einsatzgebieten und konkreten Informationen ergänzt werden, ohne die iNrCy-Seite zu kopieren.`,
+      },
+      gmb: {
+        title: "Klare lokale Information",
+        content: ({ company, city }) => `${company}${city} teilt eine praktische lokale Information für Menschen, die das Angebot schnell verstehen möchten. Bei Google Business muss die Botschaft direkt, sachlich und vertrauenswürdig bleiben: was verfügbar ist, warum es helfen kann und welcher nächste Schritt möglich ist.`,
+      },
+      facebook: {
+        title: "Eine Nachricht für die lokale Community",
+        content: ({ company, city, mediaLabel }) => `Auf Facebook kann ${company}${city} einen näheren und gesprächigeren Ton verwenden. Die Veröffentlichung spricht die lokale Community an, erklärt das Update in einfachen Worten und wirkt zugänglich. Mit einem ${mediaLabel} wird die Botschaft konkreter und schneller verständlich.`,
+      },
+      instagram: {
+        title: "Ein visueller Beitrag für mehr Aufmerksamkeit",
+        content: ({ company, city, mediaLabel }) => `Auf Instagram sollte die Veröffentlichung visueller, kürzer und lebendiger wirken. ${company}${city} kann Atmosphäre, Sorgfalt und den unmittelbaren Nutzen hervorheben. Der ${mediaLabel} erzeugt den ersten Eindruck, während der Text direkt und leicht lesbar bleibt.`,
+      },
+      linkedin: {
+        title: "Ein professioneller Blickwinkel für LinkedIn",
+        content: ({ company, city }) => `Auf LinkedIn sollte ${company}${city} einen professionelleren Blickwinkel behalten. Die Veröffentlichung kann Methode, Seriosität und den Wert für Kunden erklären. Der Ton bleibt hilfreich, maßvoll und glaubwürdig, ohne wie eine generische Werbung zu wirken.`,
+      },
+      tiktok: {
+        title: "Eine direkte Idee für ein kurzes Format",
+        content: ({ company, city, mediaLabel }) => `Für TikTok muss die Botschaft schnell, klar und direkt sein. ${company}${city} kann sich auf eine einfache Idee konzentrieren, unterstützt durch den ${mediaLabel}, um in wenigen Sekunden Aufmerksamkeit zu gewinnen und Lust auf mehr zu machen.`,
+      },
+      youtube_shorts: {
+        title: "Eine hilfreiche Beschreibung für YouTube",
+        content: ({ company, city }) => `Auf YouTube braucht ${company}${city} eine Beschreibung, die Kontext bietet und auffindbar bleibt. Der Text erklärt das Thema, nennt den Nutzen des Inhalts und führt Zuschauer zum nächsten Schritt.`,
+      },
+    },
   },
   nl: {
-    title: "Een nuttige update voor uw lokale communicatie",
-    siteTitle: "Verbeter uw lokale communicatie",
-    videoTitle: "Een nuttige video voor uw communicatie",
+    title: "Een nuttige update voor lokale communicatie",
+    siteTitle: "Verbeter lokale communicatie",
+    videoTitle: "Een nuttige video voor communicatie",
     cta: "Neem contact op",
     gmbCta: "Informatie bekijken",
     quoteCta: "Offerte aanvragen",
     siteCta: "Website bekijken",
     messageCta: "Bericht sturen",
-    content: ({ company, city }) => `${company}${city} deelt een nuttige update om duidelijker te communiceren en de lokale zichtbaarheid te versterken. Het doel is eenvoudig: belangrijke informatie begrijpelijk presenteren, de boodschap helder maken en geïnteresseerde klanten helpen de volgende stap te zetten. Deze publicatie kan indien nodig worden aangevuld met een afbeelding, video of specifiek aanbod.`,
+    imageLabel: "beeld",
+    videoLabel: "video",
+    defaultContent: ({ company, city }) => `${company}${city} deelt een nuttige update om helder te communiceren en de lokale zichtbaarheid te versterken. De boodschap blijft eenvoudig, professioneel en gemakkelijk aan te passen aan het gekozen kanaal.`,
+    fillers: [
+      "Ze kan later worden aangevuld met preciezere details, beelden of een sterkere oproep tot actie.",
+      "Het doel is om de informatie begrijpelijk, geloofwaardig en nuttig te houden voor mensen die het bedrijf ontdekken.",
+      "Deze versie blijft bewerkbaar, maar behoudt een duidelijke invalshoek voor het gekozen kanaal.",
+    ],
+    channels: {
+      inrcy_site: {
+        title: "Een duidelijke update voor de iNrCy-site",
+        content: ({ company, city }) => `${company}${city} kan deze update presenteren als een duidelijk lokaal nieuwsbericht. De inhoud helpt bezoekers snel te begrijpen wat er wordt aangeboden, wat de waarde is en welke volgende stap mogelijk is. Deze versie is bedoeld voor een etalagepagina: gestructureerd, geruststellend en later te versterken met lokale SEO.`,
+      },
+      site_web: {
+        title: "Duurzame inhoud voor de website",
+        content: ({ company, city }) => `Op de website heeft ${company}${city} een duurzamere versie nodig. Het doel is om het onderwerp nuttig uit te leggen, geloofwaardigheid te versterken en zoekmachines een duidelijke context te geven. De tekst kan later worden aangevuld met diensten, regio's en specifieke informatie zonder de iNrCy-site te kopiëren.`,
+      },
+      gmb: {
+        title: "Duidelijke lokale informatie",
+        content: ({ company, city }) => `${company}${city} deelt praktische lokale informatie voor mensen die het aanbod snel willen begrijpen. Op Google Business moet de boodschap direct, feitelijk en betrouwbaar blijven: wat beschikbaar is, waarom het kan helpen en welke volgende stap mogelijk is.`,
+      },
+      facebook: {
+        title: "Een bericht voor de lokale gemeenschap",
+        content: ({ company, city, mediaLabel }) => `Op Facebook kan ${company}${city} een warmere en meer toegankelijke toon gebruiken. Het bericht spreekt de lokale gemeenschap aan, legt de update eenvoudig uit en voelt menselijk. Met een ${mediaLabel} wordt de boodschap concreter en sneller te begrijpen.`,
+      },
+      instagram: {
+        title: "Een visuele post voor aandacht",
+        content: ({ company, city, mediaLabel }) => `Op Instagram moet de publicatie visueler, korter en levendiger aanvoelen. ${company}${city} kan sfeer, zorg en het directe voordeel benadrukken. Het ${mediaLabel} draagt de eerste indruk, terwijl de tekst direct en makkelijk leesbaar blijft.`,
+      },
+      linkedin: {
+        title: "Een professionele invalshoek voor LinkedIn",
+        content: ({ company, city }) => `Op LinkedIn moet ${company}${city} een professionelere invalshoek behouden. De publicatie kan methode, ernst en klantwaarde uitleggen. De toon blijft nuttig, evenwichtig en geloofwaardig, zonder generieke reclame te worden.`,
+      },
+      tiktok: {
+        title: "Een direct idee voor een kort formaat",
+        content: ({ company, city, mediaLabel }) => `Voor TikTok moet de boodschap snel, helder en direct zijn. ${company}${city} kan focussen op één eenvoudige idee, ondersteund door de ${mediaLabel}, om in enkele seconden aandacht te trekken en nieuwsgierig te maken.`,
+      },
+      youtube_shorts: {
+        title: "Een nuttige beschrijving voor YouTube",
+        content: ({ company, city }) => `Op YouTube heeft ${company}${city} een beschrijving nodig die context geeft en vindbaar blijft. De tekst legt het onderwerp uit, benoemt de waarde van de inhoud en begeleidt kijkers naar de volgende stap.`,
+      },
+    },
   },
   pt: {
-    title: "Uma atualização útil para a sua comunicação local",
-    siteTitle: "Melhore a sua comunicação local",
-    videoTitle: "Um vídeo útil para a sua comunicação",
+    title: "Uma atualização útil para a comunicação local",
+    siteTitle: "Melhore a comunicação local",
+    videoTitle: "Um vídeo útil para a comunicação",
     cta: "Contacte-nos",
     gmbCta: "Ver informações",
     quoteCta: "Solicitar orçamento",
     siteCta: "Visitar o site",
     messageCta: "Enviar mensagem",
-    content: ({ company, city }) => `${company}${city} partilha uma atualização útil para comunicar de forma mais clara e reforçar a visibilidade local. O objetivo é simples: apresentar as informações importantes, tornar a mensagem fácil de compreender e ajudar os clientes interessados a dar o próximo passo. Esta publicação pode ser completada com uma imagem, um vídeo ou uma oferta mais específica, se necessário.`,
+    imageLabel: "visual",
+    videoLabel: "vídeo",
+    defaultContent: ({ company, city }) => `${company}${city} partilha uma atualização útil para comunicar com clareza e reforçar a presença local. A mensagem mantém-se simples, profissional e fácil de adaptar ao canal selecionado.`,
+    fillers: [
+      "Pode ser ajustada depois com detalhes mais precisos, imagens ou uma chamada à ação mais direta.",
+      "O objetivo é manter a informação compreensível, credível e útil para quem descobre a empresa.",
+      "Esta versão continua editável, mas conserva um ângulo claro para o canal escolhido.",
+    ],
+    channels: {
+      inrcy_site: {
+        title: "Uma notícia clara para o site iNrCy",
+        content: ({ company, city }) => `${company}${city} pode apresentar esta atualização como uma notícia local clara. O conteúdo deve ajudar o visitante a compreender rapidamente o serviço, o valor da empresa e o próximo passo possível. Esta versão foi pensada para uma página de apresentação: estruturada, tranquilizadora e pronta para um reforço de SEO local se forem adicionados mais detalhes.`,
+      },
+      site_web: {
+        title: "Conteúdo duradouro para o site",
+        content: ({ company, city }) => `No site, ${company}${city} precisa de uma versão mais duradoura. O objetivo é explicar o tema de forma útil, reforçar a credibilidade e dar aos motores de pesquisa um contexto claro. O texto pode ser completado depois com serviços, zonas de atuação e informações específicas sem copiar a versão do site iNrCy.`,
+      },
+      gmb: {
+        title: "Informação local clara",
+        content: ({ company, city }) => `${company}${city} partilha uma informação local prática para quem quer compreender rapidamente a oferta. No Google Business, a mensagem deve manter-se direta, factual e tranquilizadora: o que está disponível, porque pode ajudar e qual é o próximo passo.`,
+      },
+      facebook: {
+        title: "Uma mensagem para a comunidade local",
+        content: ({ company, city, mediaLabel }) => `No Facebook, ${company}${city} pode usar um tom mais próximo e conversacional. A ideia é falar com a comunidade local, explicar a atualização com palavras simples e tornar a publicação acessível. Com um ${mediaLabel}, a mensagem fica mais concreta e fácil de entender à primeira vista.`,
+      },
+      instagram: {
+        title: "Uma publicação visual para captar atenção",
+        content: ({ company, city, mediaLabel }) => `No Instagram, a publicação deve parecer mais visual, breve e viva. ${company}${city} pode destacar a atmosfera, o cuidado do serviço e o benefício imediato para quem descobre a empresa. O ${mediaLabel} transmite a primeira impressão; o texto acompanha com frases diretas.`,
+      },
+      linkedin: {
+        title: "Um ângulo profissional para LinkedIn",
+        content: ({ company, city }) => `No LinkedIn, ${company}${city} deve manter um ângulo mais profissional. A publicação pode explicar o método, a seriedade do serviço e a forma como a empresa cria valor para os clientes. O tom continua útil, medido e credível, sem se transformar em publicidade genérica.`,
+      },
+      tiktok: {
+        title: "Uma ideia direta para formato curto",
+        content: ({ company, city, mediaLabel }) => `Para TikTok, a mensagem deve ser rápida, clara e direta. ${company}${city} pode concentrar-se numa única ideia, apoiada pelo ${mediaLabel}, para captar a atenção em poucos segundos e dar vontade de saber mais.`,
+      },
+      youtube_shorts: {
+        title: "Uma descrição útil para YouTube",
+        content: ({ company, city }) => `No YouTube, ${company}${city} precisa de uma descrição que dê contexto e continue pesquisável. O texto deve explicar o tema, mencionar o valor do conteúdo e orientar o espectador para o próximo passo.`,
+      },
+    },
   },
 };
 
@@ -893,21 +1089,12 @@ function ensureMinimumLocalizedContentLength(channel: BoosterChannels, content: 
   const minLength = CHANNEL_MIN_CONTENT_LENGTH[channel] ?? 160;
   let out = content.trim();
   const copy = LANGUAGE_FALLBACK_COPY[languageCode] || LANGUAGE_FALLBACK_COPY.en;
-  const fillers: Record<string, string[]> = {
-    en: ["The message remains clear, professional and easy to reuse on the selected channel.", "It can be refined later with more precise details, images or a stronger call to action."],
-    es: ["El mensaje se mantiene claro, profesional y fácil de reutilizar en el canal seleccionado.", "Puede ajustarse después con detalles más precisos, imágenes o una llamada a la acción más directa."],
-    it: ["Il messaggio resta chiaro, professionale e facile da riutilizzare sul canale selezionato.", "Può essere adattato in seguito con dettagli più precisi, immagini o un invito all'azione più diretto."],
-    de: ["Die Botschaft bleibt klar, professionell und leicht auf dem ausgewählten Kanal nutzbar.", "Sie kann später mit genaueren Details, Bildern oder einem stärkeren Aufruf zum Handeln ergänzt werden."],
-    nl: ["De boodschap blijft duidelijk, professioneel en gemakkelijk te gebruiken op het geselecteerde kanaal.", "Ze kan later worden aangevuld met preciezere details, beelden of een sterkere oproep tot actie."],
-    pt: ["A mensagem mantém-se clara, profissional e fácil de reutilizar no canal selecionado.", "Pode ser ajustada depois com detalhes mais precisos, imagens ou uma chamada à ação mais direta."],
-  };
-  const extra = fillers[languageCode] || fillers.en || [];
   let index = 0;
-  while (out.length < minLength && extra.length && index < 8) {
-    out = `${out}\n\n${extra[index % extra.length]}`.trim();
+  while (out.length < minLength && copy.fillers.length && index < 8) {
+    out = `${out}\n\n${copy.fillers[index % copy.fillers.length]}`.trim();
     index += 1;
   }
-  return out || copy.content({ company: "iNrCy", city: "", channel });
+  return out || copy.defaultContent({ company: "iNrCy", city: "", channel, mediaLabel: copy.imageLabel });
 }
 
 function buildLocalizedFallbackPost(args: {
@@ -921,18 +1108,82 @@ function buildLocalizedFallbackPost(args: {
   const copy = LANGUAGE_FALLBACK_COPY[args.languageCode] || LANGUAGE_FALLBACK_COPY.en;
   const company = context.company || "iNrCy";
   const city = context.city ? ` ${context.city}` : "";
-  const baseTitle = args.channel === "youtube_shorts" || args.mediaType === "video"
+  const mediaLabel = args.mediaType === "video" ? copy.videoLabel : copy.imageLabel;
+  const channelFallback = copy.channels[args.channel];
+  const fallbackContext = { company, city, channel: args.channel, mediaLabel };
+  const baseTitle = channelFallback?.title || (args.channel === "youtube_shorts" || args.mediaType === "video"
     ? copy.videoTitle
     : siteChannels.has(args.channel)
       ? copy.siteTitle
-      : copy.title;
+      : copy.title);
+  const content = channelFallback?.content(fallbackContext) || copy.defaultContent(fallbackContext);
 
   return normalizePost(args.channel, {
     title: baseTitle,
-    content: ensureMinimumLocalizedContentLength(args.channel, copy.content({ company, city, channel: args.channel }), args.languageCode),
+    content: ensureMinimumLocalizedContentLength(args.channel, content, args.languageCode),
     cta: getLocalizedFallbackCta(args.channel, args.languageCode, context.preferredCta),
     hashtags: [],
   });
+}
+
+function buildDistinctFallbackPost(args: {
+  channel: BoosterChannels;
+  idea: string;
+  profile: JsonRecord | null;
+  business: JsonRecord | null;
+  mediaType: "images" | "video";
+  languageCode: string;
+}) {
+  if (args.languageCode === "fr") {
+    return buildFallbackPost({
+      channel: args.channel,
+      idea: args.idea,
+      profile: args.profile,
+      business: args.business,
+      mediaType: args.mediaType,
+    });
+  }
+
+  return buildLocalizedFallbackPost({
+    channel: args.channel,
+    profile: args.profile,
+    business: args.business,
+    mediaType: args.mediaType,
+    languageCode: args.languageCode,
+  });
+}
+
+function ensureDistinctGeneratedVersions(args: {
+  channels: BoosterChannels[];
+  versions: Partial<Record<BoosterChannels, ChannelPost>>;
+  idea: string;
+  profile: JsonRecord | null;
+  business: JsonRecord | null;
+  mediaType: "images" | "video";
+  languageCode: string;
+  allowLocalFallback: boolean;
+}) {
+  const recoveredChannels = new Set<BoosterChannels>();
+  let duplicates = findOverSimilarChannels(args.channels, args.versions);
+
+  for (let attempt = 0; attempt < 2 && duplicates.length; attempt += 1) {
+    for (const channel of duplicates) {
+      if (args.languageCode !== "fr" || args.allowLocalFallback) {
+        args.versions[channel] = buildDistinctFallbackPost({
+          channel,
+          idea: args.idea,
+          profile: args.profile,
+          business: args.business,
+          mediaType: args.mediaType,
+          languageCode: args.languageCode,
+        });
+        recoveredChannels.add(channel);
+      }
+    }
+    duplicates = findOverSimilarChannels(args.channels, args.versions).filter((channel) => !recoveredChannels.has(channel));
+  }
+
+  return Array.from(recoveredChannels);
 }
 
 function ensureCompleteGeneratedVersions(args: {
@@ -1110,6 +1361,17 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
     languageCode,
   });
 
+  const deduplicatedChannels = ensureDistinctGeneratedVersions({
+    channels,
+    versions: safeVersions,
+    idea: args.idea,
+    profile: args.profile,
+    business: args.business,
+    mediaType,
+    languageCode,
+    allowLocalFallback: allowLocalFallback || Boolean(args.forceNonBlocking),
+  });
+
   if (!args.forceNonBlocking && !allowLocalFallback) {
     const incompleteChannels = channels.filter((channel) => !hasRequiredContent(channel, safeVersions[channel]) || hasLanguageMismatch(languageCode, safeVersions[channel]));
     if (incompleteChannels.length) {
@@ -1119,6 +1381,6 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
 
   return {
     versions: safeVersions,
-    recoveredChannels: Array.from(new Set([...stillOffTopicChannels, ...stillOverSimilarChannels, ...stillLanguageMismatchChannels, ...recoveredChannels])),
+    recoveredChannels: Array.from(new Set([...stillOffTopicChannels, ...stillOverSimilarChannels, ...stillLanguageMismatchChannels, ...recoveredChannels, ...deduplicatedChannels])),
   };
 }

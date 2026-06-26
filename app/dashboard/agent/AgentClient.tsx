@@ -1303,13 +1303,29 @@ function AutomationIcon({ type }: { type: AutomationKey }) {
 function AutomationSettingsIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden>
-      <circle cx="12" cy="12" r="7.5" />
-      <path d="M12 7.8V12l3 1.9" />
-      <path d="M5.2 4.8 3.8 3.4" />
-      <path d="M18.8 4.8l1.4-1.4" />
-      <path d="M7.2 20.4h9.6" />
-      <path d="M4 15.5h3" />
-      <path d="M17 15.5h3" />
+      <path
+        fill="currentColor"
+        stroke="none"
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.33-.02-.64-.06-.94l2.05-1.59c.18-.14.23-.39.11-.6l-2-3.46c-.12-.21-.37-.29-.59-.21l-2.42.97c-.5-.38-1.04-.7-1.63-.95l-.36-2.57a.5.5 0 0 0-.48-.41h-3a.5.5 0 0 0-.48.41l-.36 2.57c-.59.25-1.13.57-1.63.95L5.93 5.2c-.22-.08-.47 0-.59.21l-2 3.46c-.12.21-.07.46.11.6l2.05 1.59c-.04.3-.06.61-.06.94 0 .33.02.64.06.94l-2.05 1.59c-.18.14-.23.39-.11.6l2 3.46c.12.21.37.29.59.21l2.42-.97c.5.38 1.04.7 1.63.95l.36 2.57c.03.24.24.41.48.41h3c.24 0 .45-.17.48-.41l.36-2.57c.59-.25 1.13-.57 1.63-.95l2.42.97c.22.08.47 0 .59-.21l2-3.46c.12-.21.07-.46-.11-.6l-2.05-1.59ZM12 16.05a4.05 4.05 0 1 0 0-8.1 4.05 4.05 0 0 0 0 8.1Z"
+      />
+      <circle
+        cx="12"
+        cy="12"
+        r="4.95"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.25"
+      />
+      <circle
+        cx="12"
+        cy="12"
+        r="2.55"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.2"
+      />
     </svg>
   );
 }
@@ -3107,6 +3123,7 @@ export default function AgentClient() {
   const [selectedChannelByAutomation, setSelectedChannelByAutomation] =
     useState<Partial<Record<AutomationKey, ChannelKey>>>({});
   const [campaignEditOpen, setCampaignEditOpen] = useState(false);
+  const [publishEditChoiceOpen, setPublishEditChoiceOpen] = useState(false);
   const [mailTextEditOpen, setMailTextEditOpen] = useState(false);
   const [attachmentPreviewOpen, setAttachmentPreviewOpen] = useState(false);
   const [campaignDraftConfirmOpen, setCampaignDraftConfirmOpen] =
@@ -4046,6 +4063,7 @@ export default function AgentClient() {
       ctaPhone: String(hydratedPost.ctaPhone || ""),
       hashtags: preview.hashtags.join(" "),
     });
+    setPublishEditChoiceOpen(false);
     setPublishEditOpen(true);
   }
 
@@ -4236,6 +4254,7 @@ export default function AgentClient() {
       showNotice("Prépare d’abord une publication.");
       return;
     }
+    setPublishEditChoiceOpen(false);
     setPublishMediaPreviewOpen(true);
   }
 
@@ -7205,7 +7224,7 @@ export default function AgentClient() {
                             setCampaignEditOpen(true);
                             return;
                           }
-                          openPublishTextEditor();
+                          setPublishEditChoiceOpen(true);
                         }}
                       >
                         <span aria-hidden>✎</span>
@@ -7259,6 +7278,47 @@ export default function AgentClient() {
           </div>
         </div>
       </section>
+
+      {publishEditChoiceOpen && isPublishView && selectedPreparedAction && (
+        <div
+          className={styles.modalBackdrop}
+          role="presentation"
+          onClick={() => setPublishEditChoiceOpen(false)}
+        >
+          <section
+            className={`${styles.settingsModal} ${styles.campaignEditModal}`}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Modifier la publication"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className={styles.modalClose}
+              onClick={() => setPublishEditChoiceOpen(false)}
+              aria-label="Fermer"
+            >
+              ×
+            </button>
+            <p className={styles.modalEyebrow}>Publication iNr’Agent</p>
+            <h2>Modifier la publication</h2>
+            <div className={styles.campaignEditGrid}>
+              <button type="button" onClick={openPublishTextEditor}>
+                <strong>Contenu</strong>
+                <small>Modifier le titre, le texte, le CTA et les hashtags.</small>
+              </button>
+              <button type="button" onClick={openPublishMediaEditor}>
+                <strong>Média</strong>
+                <small>
+                  {publishMediaPreview?.name
+                    ? `Média actuel : ${publishMediaPreview.name}`
+                    : "Ajouter, remplacer ou adapter l’image / la vidéo."}
+                </small>
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
 
       {publishEditOpen && selectedPreparedAction && (
         <div

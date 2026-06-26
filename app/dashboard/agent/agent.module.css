@@ -455,12 +455,39 @@
   text-shadow: 0 0 18px rgba(196, 181, 253, 0.72);
   transition:
     transform 0.18s ease,
-    color 0.18s ease;
+    color 0.18s ease,
+    filter 0.18s ease;
 }
 
 .settingsButton:hover {
-  transform: rotate(25deg) scale(1.04);
+  transform: scale(1.04);
   color: #ffffff;
+  filter: brightness(1.08);
+}
+
+.settingsButton svg {
+  animation: agentSettingsGearSpin 10s linear infinite;
+  transform-origin: 50% 50%;
+  will-change: transform;
+}
+
+.settingsButton:hover svg {
+  animation-duration: 2.8s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settingsButton svg {
+    animation: none;
+  }
+}
+
+@keyframes agentSettingsGearSpin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .mainGrid {
@@ -7739,7 +7766,7 @@ button.campaignInfoCard:disabled:hover {
 }
 
 .automationCard .settingsButton:hover {
-  transform: translateY(-50%) rotate(25deg) scale(1.04) !important;
+  transform: translateY(-50%) scale(1.04) !important;
 }
 
 .statsInsightCard {
@@ -7817,7 +7844,7 @@ button.campaignInfoCard:disabled:hover {
   }
 
   .automationCard .settingsButton:hover {
-    transform: translateY(-50%) rotate(25deg) scale(1.04) !important;
+    transform: translateY(-50%) scale(1.04) !important;
   }
 
   .statsInsightCard {
@@ -12130,12 +12157,19 @@ button.campaignInfoCard:focus-visible .campaignInfoEye {
   overflow: auto;
 }
 
+.publishMediaModal .modalClose,
+.publishVideoAdapterModal .modalClose {
+  z-index: 5;
+}
+
+
 .publishMediaModalHeader {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
   margin: 0 0 14px;
+  padding-right: 58px;
 }
 
 .publishMediaModalHeader h2 {
@@ -12384,8 +12418,33 @@ button.campaignInfoCard:focus-visible .campaignInfoEye {
     align-items: flex-start;
   }
 
+  .publishMediaModalHeader {
+    padding-right: 48px;
+  }
+
+  .publishMediaStatusPill {
+    align-self: flex-start;
+    margin-top: 2px;
+  }
+
   .publishMediaHero {
     grid-template-columns: 1fr;
+    overflow: hidden;
+  }
+
+  .publishMediaVisual {
+    width: 100%;
+    max-width: 100%;
+    overflow: hidden;
+  }
+
+  .publishMediaVisual img,
+  .publishMediaVisual video {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: auto !important;
+    max-height: 220px;
+    object-fit: contain;
   }
 
   .publishMediaSourcePanel .publishMediaActionButtons {
@@ -12413,7 +12472,24 @@ button.campaignInfoCard:focus-visible .campaignInfoEye {
 @media (max-width: 760px) {
   .publishVideoAdapterModal {
     width: calc(100vw - 18px) !important;
+    max-width: calc(100vw - 18px) !important;
     max-height: calc(100dvh - 24px);
+    padding-inline: 14px;
+    overflow-x: hidden;
+  }
+
+  .publishVideoAdapterModal .publishMediaModalHeader {
+    padding-right: 48px;
+  }
+
+  .publishVideoAdapterModal > div,
+  .publishVideoAdapterModal video {
+    max-width: 100% !important;
+  }
+
+  .publishVideoAdapterModal video {
+    height: auto !important;
+    object-fit: contain;
   }
 }
 

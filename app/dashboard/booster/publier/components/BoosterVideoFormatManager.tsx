@@ -67,13 +67,13 @@ function getVideoFrameWidth(params: {
   const { format, metadata, isMobile } = params;
   const orientation = metadata?.orientation || "unknown";
 
-  if (format === "9_16") return isMobile ? "min(72vw, 220px)" : "210px";
-  if (format === "1_1") return isMobile ? "min(84vw, 280px)" : "270px";
-  if (format === "16_9") return isMobile ? "min(94vw, 380px)" : "360px";
+  if (format === "9_16") return isMobile ? "min(76%, 220px)" : "210px";
+  if (format === "1_1") return isMobile ? "min(100%, 280px)" : "270px";
+  if (format === "16_9") return isMobile ? "100%" : "360px";
 
-  if (orientation === "vertical") return isMobile ? "min(72vw, 220px)" : "210px";
-  if (orientation === "square") return isMobile ? "min(84vw, 280px)" : "270px";
-  return isMobile ? "min(94vw, 380px)" : "360px";
+  if (orientation === "vertical") return isMobile ? "min(76%, 220px)" : "210px";
+  if (orientation === "square") return isMobile ? "min(100%, 280px)" : "270px";
+  return isMobile ? "100%" : "360px";
 }
 
 function getPreparationTone(state?: BoosterVideoPreparationState | null) {

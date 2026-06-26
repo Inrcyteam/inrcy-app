@@ -161,26 +161,138 @@ function truncateText(value: unknown, max = 32) {
   return `${text.slice(0, Math.max(0, max - 1)).trimEnd()}…`;
 }
 
-function simplifyChannelDetail(value: unknown) {
-  const raw = String(value || "").trim();
-  if (!raw) return "";
-  try {
-    const withProtocol = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
-    const url = new URL(withProtocol);
-    const host = url.hostname.replace(/^www\./i, "");
-    const path = url.pathname.replace(/^\/+|\/+$/g, "");
-    if (/instagram\.com$/i.test(host) || /tiktok\.com$/i.test(host)) {
-      const first = path.split("/").filter(Boolean)[0] || "";
-      return first.startsWith("@") ? first : first ? `@${first}` : host;
+function decodeChannelDisplayText(value: unknown) {
+  let text = String(value || "").trim();
+  if (!text) return "";
+  text = text.replace(/\+/g, " ");
+  for (let i = 0; i < 2; i += 1) {
+    if (!/%[0-9a-f]{2}/i.test(text)) break;
+    try {
+      const decoded = decodeURIComponent(text);
+      if (decoded === text) break;
+      text = decoded;
+    } catch {
+      break;
     }
-    if (/facebook\.com$/i.test(host) || /linkedin\.com$/i.test(host)) {
-      const cleanPath = path.split("/").filter(Boolean).slice(-1)[0] || "";
-      return cleanPath ? `${host}/${cleanPath}` : host;
-    }
-    return path ? `${host}/${path}` : host;
-  } catch {
-    return raw;
   }
+  return text.replace(/\s+/g, " ").trim();
+}
+
+function titleCaseChannelDisplayName(value: string) {
+  const text = decodeChannelDisplayText(value)
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!text) return "";
+  if (/[A-ZÀ-ÖØ-Þ]/.test(text)) return text;
+  return text
+    .split(" ")
+    .map((part) =>
+      part ? `${part.charAt(0).toUpperCase()}${part.slice(1)}` : part,
+    )
+    .join(" ");
+}
+
+function normalizeChannelDisplayUrl(input: unknown) {
+  const raw = decodeChannelDisplayText(input);
+  if (!raw) return null;
+  const candidate = /^(https?:)?\/\//i.test(raw)
+    ? raw.startsWith("//")
+      ? `https:${raw}`
+      : raw
+    : /^www\./i.test(raw) || /^[a-z0-9.-]+\.[a-z]{2,}(?:[/:?#].*)?$/i.test(raw)
+      ? `https://${raw}`
+      : "";
+  if (!candidate) return null;
+  try {
+    return new URL(candidate);
+  } catch {
+    return null;
+  }
+}
+
+function firstChannelPathPart(url: URL, ignored: string[] = []) {
+  const ignoredSet = new Set(ignored.map((part) => part.toLowerCase()));
+  const parts = url.pathname
+    .split("/")
+    .map((part) => decodeChannelDisplayText(part))
+    .filter(Boolean)
+    .filter((part) => !ignoredSet.has(part.toLowerCase()));
+  return parts[parts.length - 1] || "";
+}
+
+function looksLikeTechnicalChannelLabel(value: string) {
+  const text = decodeChannelDisplayText(value).trim();
+  if (!text) return true;
+  if (/^urn:/i.test(text)) return true;
+  if (/^(accounts\/[^/]+\/)?locations\/\d+$/i.test(text)) return true;
+  if (/^\d{6,}$/.test(text)) return true;
+  if (/^[a-z]{1,8}_[a-z0-9_-]{18,}$/i.test(text)) return true;
+  return false;
+}
+
+function cleanChannelBusinessLabel(input: unknown) {
+  let text = decodeChannelDisplayText(input);
+  if (!text) return "";
+
+  const url = normalizeChannelDisplayUrl(text);
+  if (url) {
+    const host = url.hostname.replace(/^www\./i, "");
+    if (/google\./i.test(host)) {
+      text = decodeChannelDisplayText(
+        url.searchParams.get("query") ||
+          url.searchParams.get("q") ||
+          firstChannelPathPart(url),
+      );
+    } else if (/facebook\.com$/i.test(host)) {
+      text = firstChannelPathPart(url, ["pages", "profile.php", "people"]);
+    } else if (/linkedin\.com$/i.test(host)) {
+      text = firstChannelPathPart(url, ["company", "in", "showcase", "school"]);
+    } else if (/youtube\.com$/i.test(host) || /youtu\.be$/i.test(host)) {
+      text = firstChannelPathPart(url, ["channel", "c", "user"]);
+    } else {
+      const hostOnly = host;
+      const path = url.pathname.replace(/^\/+|\/+$/g, "");
+      return path ? `${hostOnly}/${decodeChannelDisplayText(path)}` : hostOnly;
+    }
+  }
+
+  text = decodeChannelDisplayText(text)
+    .replace(/^accounts\/[^/]+\/locations\//i, "")
+    .replace(/^locations\//i, "")
+    .replace(/^pages\//i, "")
+    .replace(/^company\//i, "")
+    .replace(/^in\//i, "")
+    .replace(/^@+/, "")
+    .trim();
+
+  if (looksLikeTechnicalChannelLabel(text)) return "";
+  if (/^https?:\/\//i.test(text)) return "";
+  if (/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(text)) return text.replace(/^www\./i, "");
+
+  return titleCaseChannelDisplayName(text);
+}
+
+function cleanChannelHandleLabel(input: unknown) {
+  let text = decodeChannelDisplayText(input);
+  if (!text) return "";
+  const url = normalizeChannelDisplayUrl(text);
+  if (url) text = firstChannelPathPart(url);
+  text = decodeChannelDisplayText(text)
+    .replace(/^@+/, "")
+    .replace(/^\/+|\/+$/g, "")
+    .trim();
+  if (!text || looksLikeTechnicalChannelLabel(text) || /\s/.test(text)) return "";
+  return `@${text}`;
+}
+
+function simplifyChannelDetail(key: ChannelKey, value: unknown) {
+  const raw = decodeChannelDisplayText(value);
+  if (!raw) return "";
+  if (key === "instagram" || key === "tiktok") {
+    return cleanChannelHandleLabel(raw) || cleanChannelBusinessLabel(raw);
+  }
+  return cleanChannelBusinessLabel(raw);
 }
 
 function sanitizePatchForEditor(
@@ -1756,8 +1868,8 @@ export default function PublishModal({
 
   const getChannelDetailInfo = (key: ChannelKey) => {
     const detail = channelDetails[key] || EMPTY_CHANNEL_DETAILS[key];
-    const rawLabel = String(detail?.label || "").trim();
-    const simplifiedLabel = simplifyChannelDetail(rawLabel);
+    const rawLabel = String(detail?.label || detail?.href || "").trim();
+    const simplifiedLabel = simplifyChannelDetail(key, rawLabel);
     if (!simplifiedLabel) return null;
     const desktopLabel = truncateText(simplifiedLabel, 34);
     const mobileLabel = truncateText(simplifiedLabel, 24);
