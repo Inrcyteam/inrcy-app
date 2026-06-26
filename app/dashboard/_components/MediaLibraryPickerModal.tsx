@@ -205,16 +205,25 @@ export default function MediaLibraryPickerModal({
 
   const displayTitle = compact ? "Médiathèque" : title;
   const displaySubtitle = compact ? "Ajouter un média" : subtitle;
+  const hasError = Boolean(error);
+  const modalGridTemplateRows = hasError
+    ? "auto auto auto minmax(0, 1fr) auto"
+    : "auto auto minmax(0, 1fr) auto";
   const modalComputedStyle: React.CSSProperties = compact
     ? {
         ...modalStyle,
-        width: "min(100%, calc(100vw - 16px))",
-        maxHeight: "calc(100dvh - 16px)",
-        padding: 12,
-        borderRadius: 24,
-        gap: 8,
+        width: "min(100%, calc(100vw - 12px))",
+        height: "calc(100svh - 12px)",
+        maxHeight: "calc(100svh - 12px)",
+        padding: 10,
+        borderRadius: 22,
+        gap: 7,
+        gridTemplateRows: modalGridTemplateRows,
       }
-    : modalStyle;
+    : {
+        ...modalStyle,
+        gridTemplateRows: modalGridTemplateRows,
+      };
   const headerComputedStyle: React.CSSProperties = compact
     ? {
         ...headerStyle,
@@ -236,14 +245,14 @@ export default function MediaLibraryPickerModal({
     ? {
         ...titleStyle,
         margin: 0,
-        fontSize: 22,
+        fontSize: 21,
         whiteSpace: "nowrap",
         overflow: "hidden",
         textOverflow: "ellipsis",
       }
     : titleStyle;
   const subtitleComputedStyle: React.CSSProperties = compact
-    ? { ...subtitleStyle, margin: "3px 0 0", fontSize: 13, lineHeight: 1.25 }
+    ? { ...subtitleStyle, margin: "2px 0 0", fontSize: 12, lineHeight: 1.15 }
     : subtitleStyle;
   const filtersComputedStyle: React.CSSProperties = compact
     ? {
@@ -258,38 +267,44 @@ export default function MediaLibraryPickerModal({
     ? {
         ...listStyle,
         minHeight: 0,
-        gap: 7,
-        paddingRight: 0,
-        paddingBottom: 4,
+        gap: 6,
+        paddingRight: 1,
+        paddingBottom: 2,
+        overscrollBehavior: "contain",
       }
     : listStyle;
   const rowComputedStyle: React.CSSProperties = compact
     ? {
         ...rowStyle,
-        gridTemplateColumns: "58px minmax(0, 1fr) auto 30px",
-        gap: 8,
-        padding: 8,
-        borderRadius: 15,
-        minHeight: 58,
+        gridTemplateColumns: "54px minmax(0, 1fr) auto 28px",
+        gap: 7,
+        padding: 7,
+        borderRadius: 14,
+        minHeight: 54,
       }
     : rowStyle;
   const thumbComputedStyle: React.CSSProperties = compact
-    ? { ...thumbStyle, width: 58, height: 42, borderRadius: 11 }
+    ? { ...thumbStyle, width: 54, height: 39, borderRadius: 10 }
     : thumbStyle;
   const footerComputedStyle: React.CSSProperties = compact
     ? {
         ...footerStyle,
-        paddingTop: 8,
+        minHeight: 60,
+        paddingTop: 7,
         alignItems: "stretch",
         flexDirection: "column",
-        gap: 8,
+        gap: 6,
         borderTop: "1px solid rgba(255,255,255,.08)",
       }
-    : footerStyle;
+    : {
+        ...footerStyle,
+        minHeight: 54,
+      };
   const footerActionsStyle: React.CSSProperties = compact
     ? {
         display: "grid",
         gridTemplateColumns: "1fr 1fr",
+        alignItems: "center",
         gap: 8,
         width: "100%",
       }
@@ -299,10 +314,122 @@ export default function MediaLibraryPickerModal({
         flexWrap: "wrap",
         justifyContent: "flex-end",
       };
+  const cancelButtonComputedStyle: React.CSSProperties = compact
+    ? {
+        ...cancelButtonStyle,
+        width: "100%",
+        minHeight: 42,
+        padding: "9px 10px",
+        borderRadius: 18,
+        fontSize: 13,
+        lineHeight: 1.05,
+      }
+    : cancelButtonStyle;
+  const primaryButtonComputedStyle: React.CSSProperties = compact
+    ? {
+        ...primaryButtonStyle,
+        width: "100%",
+        minHeight: 42,
+        padding: "9px 10px",
+        borderRadius: 18,
+        fontSize: 13,
+        lineHeight: 1.05,
+      }
+    : primaryButtonStyle;
+  const confirmButtonLabel = compact
+    ? busy
+      ? "Ajout…"
+      : selectedItems.length
+        ? `Ajouter (${selectedItems.length})`
+        : "Ajouter"
+    : busy
+      ? "Ajout…"
+      : confirmLabel;
+
+  const filtersNode = compact ? (
+    <div style={compactFiltersStyle}>
+      <label style={compactTypeRowStyle}>
+        <span style={compactInlineLabelStyle}>Type</span>
+        <select
+          value={typeFilter}
+          onChange={(event) =>
+            setTypeFilter(event.target.value as "all" | "image" | "video")
+          }
+          disabled={accept !== "all"}
+          style={compactInputStyle}
+        >
+          <option value="all">Tous</option>
+          <option value="image">Images</option>
+          <option value="video">Vidéos</option>
+        </select>
+      </label>
+      <div style={compactSearchRowStyle}>
+        <span style={compactSearchIconStyle} aria-hidden="true">
+          🔎
+        </span>
+        <input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="titre, tag, fichier..."
+          style={compactSearchInputStyle}
+          aria-label="Recherche"
+        />
+        <button
+          type="button"
+          style={compactApplyButtonStyle}
+          onClick={loadItems}
+          disabled={loading}
+          aria-label="Appliquer les filtres"
+        >
+          {loading ? "…" : "OK"}
+        </button>
+      </div>
+    </div>
+  ) : (
+    <div style={filtersComputedStyle}>
+      <label style={fieldStyle}>
+        <span>Type</span>
+        <select
+          value={typeFilter}
+          onChange={(event) =>
+            setTypeFilter(event.target.value as "all" | "image" | "video")
+          }
+          disabled={accept !== "all"}
+          style={inputStyle}
+        >
+          <option value="all">Tous</option>
+          <option value="image">Images</option>
+          <option value="video">Vidéos</option>
+        </select>
+      </label>
+      <label style={fieldStyle}>
+        <span>Recherche</span>
+        <input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="titre, tag, fichier..."
+          style={inputStyle}
+        />
+      </label>
+      <button
+        type="button"
+        style={ghostButtonStyle}
+        onClick={loadItems}
+        disabled={loading}
+      >
+        {loading ? "Chargement…" : "Appliquer"}
+      </button>
+    </div>
+  );
 
   return (
     <div
-      style={{ ...overlayStyle, padding: compact ? 8 : overlayStyle.padding }}
+      style={{
+        ...overlayStyle,
+        padding: compact ? 6 : overlayStyle.padding,
+        alignItems: compact ? "start" : "center",
+        justifyItems: "center",
+      }}
       role="dialog"
       aria-modal="true"
       onMouseDown={onClose}
@@ -330,40 +457,7 @@ export default function MediaLibraryPickerModal({
           </button>
         </div>
 
-        <div style={filtersComputedStyle}>
-          <label style={fieldStyle}>
-            <span>Type</span>
-            <select
-              value={typeFilter}
-              onChange={(event) =>
-                setTypeFilter(event.target.value as "all" | "image" | "video")
-              }
-              disabled={accept !== "all"}
-              style={inputStyle}
-            >
-              <option value="all">Tous</option>
-              <option value="image">Images</option>
-              <option value="video">Vidéos</option>
-            </select>
-          </label>
-          <label style={fieldStyle}>
-            <span>Recherche</span>
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="titre, tag, fichier..."
-              style={inputStyle}
-            />
-          </label>
-          <button
-            type="button"
-            style={ghostButtonStyle}
-            onClick={loadItems}
-            disabled={loading}
-          >
-            {loading ? "Chargement…" : "Appliquer"}
-          </button>
-        </div>
+        {filtersNode}
 
         {error ? <div style={errorStyle}>{error}</div> : null}
 
@@ -454,7 +548,7 @@ export default function MediaLibraryPickerModal({
             <button
               type="button"
               style={{
-                ...cancelButtonStyle,
+                ...cancelButtonComputedStyle,
                 opacity: busy ? 0.62 : 1,
                 cursor: busy ? "not-allowed" : "pointer",
               }}
@@ -466,14 +560,14 @@ export default function MediaLibraryPickerModal({
             <button
               type="button"
               style={{
-                ...primaryButtonStyle,
+                ...primaryButtonComputedStyle,
                 opacity: busy || !selectedItems.length ? 0.54 : 1,
                 cursor: busy || !selectedItems.length ? "not-allowed" : "pointer",
               }}
               onClick={validate}
               disabled={busy || !selectedItems.length}
             >
-              {busy ? "Ajout…" : confirmLabel}
+              {confirmButtonLabel}
             </button>
           </div>
         </div>
@@ -497,7 +591,8 @@ const overlayStyle: React.CSSProperties = {
 
 const modalStyle: React.CSSProperties = {
   width: "min(900px, calc(100vw - 32px))",
-  maxHeight: "calc(100dvh - 32px)",
+  height: "min(820px, calc(100svh - 32px))",
+  maxHeight: "calc(100svh - 32px)",
   display: "grid",
   gridTemplateRows: "auto auto auto minmax(0, 1fr) auto",
   gap: 10,
@@ -611,6 +706,71 @@ const ghostButtonStyle: React.CSSProperties = {
   fontWeight: 950,
   padding: "11px 14px",
   cursor: "pointer",
+};
+
+const compactFiltersStyle: React.CSSProperties = {
+  display: "grid",
+  gap: 7,
+  padding: 9,
+  borderRadius: 16,
+  background: "rgba(2,9,28,.58)",
+  border: "1px solid rgba(255,255,255,.07)",
+  boxSizing: "border-box",
+  minWidth: 0,
+};
+
+const compactTypeRowStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "52px minmax(0, 1fr)",
+  alignItems: "center",
+  gap: 8,
+  minWidth: 0,
+};
+
+const compactInlineLabelStyle: React.CSSProperties = {
+  color: "#dbe7ff",
+  fontSize: 12,
+  fontWeight: 950,
+};
+
+const compactInputStyle: React.CSSProperties = {
+  ...inputStyle,
+  height: 38,
+  padding: "8px 11px",
+  borderRadius: 13,
+};
+
+const compactSearchRowStyle: React.CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "34px minmax(0, 1fr) 52px",
+  alignItems: "center",
+  gap: 7,
+  minWidth: 0,
+};
+
+const compactSearchIconStyle: React.CSSProperties = {
+  height: 38,
+  display: "grid",
+  placeItems: "center",
+  borderRadius: 13,
+  background: "rgba(255,255,255,.06)",
+  border: "1px solid rgba(255,255,255,.08)",
+  fontSize: 15,
+};
+
+const compactSearchInputStyle: React.CSSProperties = {
+  ...inputStyle,
+  height: 38,
+  padding: "8px 11px",
+  borderRadius: 13,
+};
+
+const compactApplyButtonStyle: React.CSSProperties = {
+  ...ghostButtonStyle,
+  height: 38,
+  padding: "8px 10px",
+  borderRadius: 13,
+  fontSize: 13,
 };
 
 const errorStyle: React.CSSProperties = {
@@ -749,10 +909,10 @@ const footerStyle: React.CSSProperties = {
 
 const footerHintStyle: React.CSSProperties = {
   color: "#aebce0",
-  fontSize: 12,
+  fontSize: 11,
   fontWeight: 850,
   minWidth: 0,
-  lineHeight: 1.25,
+  lineHeight: 1.18,
 };
 
 const cancelButtonStyle: React.CSSProperties = {
