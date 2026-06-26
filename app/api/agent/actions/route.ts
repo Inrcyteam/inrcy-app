@@ -543,6 +543,13 @@ function cleanPublishMedia(value: unknown) {
     return null;
   }
 
+  const videoSettings = asRecord(record.videoSettings) || null;
+  const videoSettingsByChannel =
+    asRecord(record.videoSettingsByChannel) || null;
+  const transformedVariants = Array.isArray(record.transformedVariants)
+    ? record.transformedVariants.filter(Boolean).slice(0, 12)
+    : [];
+
   return {
     id: cleanText(record.id, 160) || null,
     bucket:
@@ -572,6 +579,18 @@ function cleanPublishMedia(value: unknown) {
     kind,
     mediaType: kind,
     source: cleanText(record.source, 120) || null,
+    ...(kind === "video" && videoSettings ? { videoSettings } : {}),
+    ...(kind === "video" && videoSettingsByChannel
+      ? { videoSettingsByChannel }
+      : {}),
+    ...(kind === "video"
+      ? {
+          videoFormat: cleanText(record.videoFormat, 40) || null,
+          videoAdaptationMode:
+            cleanText(record.videoAdaptationMode, 40) || null,
+          transformedVariants,
+        }
+      : {}),
   };
 }
 
@@ -632,8 +651,7 @@ function buildPublishMediaAdaptation(
       mediaType: "video",
       strategy: "booster_video_format",
       userEditable: true,
-      note:
-        "iNrAgent garde la vidéo source et Booster prépare le format compatible au moment de publier.",
+      note: "iNrAgent garde la vidéo source et Booster prépare le format compatible au moment de publier.",
     };
   }
 
@@ -643,11 +661,9 @@ function buildPublishMediaAdaptation(
     mediaType: "image",
     strategy: "booster_image_adapter",
     userEditable: true,
-    note:
-      "iNrAgent garde l’image source et Booster génère une version adaptée au canal sans modifier l’original.",
+    note: "iNrAgent garde l’image source et Booster génère une version adaptée au canal sans modifier l’original.",
   };
 }
-
 
 async function readCampaignAction(actionId: string, userId: string) {
   const { data: currentRow, error: readError } = await supabaseAdmin

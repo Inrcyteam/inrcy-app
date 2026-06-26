@@ -340,6 +340,11 @@ async function buildVideoPayloadFromAgentAction(payload: JsonRecord) {
     publicUrl = signed?.data?.signedUrl || "";
   }
   if (!publicUrl && !storagePath) return null;
+  const transformedVariants = Array.isArray(media.transformedVariants)
+    ? media.transformedVariants.filter(Boolean).slice(0, 12)
+    : [];
+  const videoSettingsByChannel = asRecord(media.videoSettingsByChannel) || null;
+
   return {
     name:
       cleanText(media.name || media.title || "video-iNrAgent.mp4", 180) ||
@@ -361,6 +366,8 @@ async function buildVideoPayloadFromAgentAction(payload: JsonRecord) {
         media.thumbnailStoragePath || media.thumbnail_storage_path,
         900,
       ) || null,
+    transformedVariants,
+    videoSettingsByChannel,
   };
 }
 
@@ -808,6 +815,9 @@ export async function POST(request: Request) {
       activeMediaMode === "video"
         ? buildVideoSettingsByChannel({
             channels: publishChannels as any,
+            videoSettingsByChannel:
+              (videoPayload as any)?.videoSettingsByChannel ||
+              payload.videoSettingsByChannel,
             sourceMetadata: (videoPayload as any)?.sourceMetadata || null,
           })
         : {};

@@ -142,34 +142,52 @@ export async function DELETE(request: NextRequest) {
   if (!admin.ok) return admin.response;
 
   const url = new URL(request.url);
-  const id = cleanText(url.searchParams.get("id"), 80);
-  if (!id) {
+  const body = await request.json().catch(() => ({}));
+  const requestedIds = [
+    cleanText(url.searchParams.get("id"), 80),
+    ...url.searchParams.getAll("ids").map((value) => cleanText(value, 80)),
+    ...(Array.isArray(body?.ids)
+      ? body.ids.map((value: unknown) => cleanText(value, 80))
+      : []),
+  ]
+    .filter(Boolean)
+    .filter((value, index, arr) => arr.indexOf(value) === index)
+    .slice(0, 200);
+
+  if (!requestedIds.length) {
     return NextResponse.json({ error: "Image obligatoire." }, { status: 400 });
   }
 
-  const { data: row, error: fetchError } = await supabaseAdmin
+  const { data: rows, error: fetchError } = await supabaseAdmin
     .from("inrcy_image_bank")
     .select("id,storage_path")
-    .eq("id", id)
-    .maybeSingle();
+    .in("id", requestedIds);
 
   if (fetchError) {
-    return NextResponse.json({ error: "Impossible de retrouver l’image.", detail: fetchError.message }, { status: 500 });
+    return NextResponse.json({ error: "Impossible de retrouver les images.", detail: fetchError.message }, { status: 500 });
   }
 
-  if (!row) {
+  const foundRows = Array.isArray(rows) ? rows : [];
+  if (!foundRows.length) {
     return NextResponse.json({ error: "Image introuvable." }, { status: 404 });
   }
 
-  const remove = await supabaseAdmin.storage.from(BUCKET).remove([row.storage_path]);
-  if (remove.error) {
-    return NextResponse.json({ error: "Impossible de supprimer le fichier Storage.", detail: remove.error.message }, { status: 500 });
+  const storagePaths = foundRows
+    .map((row: any) => cleanText(row.storage_path, 900))
+    .filter(Boolean);
+
+  if (storagePaths.length) {
+    const remove = await supabaseAdmin.storage.from(BUCKET).remove(storagePaths);
+    if (remove.error) {
+      return NextResponse.json({ error: "Impossible de supprimer les fichiers Storage.", detail: remove.error.message }, { status: 500 });
+    }
   }
 
-  const del = await supabaseAdmin.from("inrcy_image_bank").delete().eq("id", id);
+  const foundIds = foundRows.map((row: any) => cleanText(row.id, 80)).filter(Boolean);
+  const del = await supabaseAdmin.from("inrcy_image_bank").delete().in("id", foundIds);
   if (del.error) {
-    return NextResponse.json({ error: "Impossible de supprimer la ligne Supabase.", detail: del.error.message }, { status: 500 });
+    return NextResponse.json({ error: "Impossible de supprimer les lignes Supabase.", detail: del.error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, deleted: foundIds.length });
 }

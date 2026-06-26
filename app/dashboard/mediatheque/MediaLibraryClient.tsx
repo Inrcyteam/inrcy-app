@@ -250,6 +250,9 @@ export default function MediaLibraryClient() {
   const [search, setSearch] = useState("");
   const [previewItem, setPreviewItem] = useState<MediaItem | null>(null);
   const [helperOpen, setHelperOpen] = useState(false);
+  const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   const selectedFiles = files;
   const selectedStats = useMemo(() => {
@@ -258,6 +261,15 @@ export default function MediaLibraryClient() {
     const bytes = selectedFiles.reduce((sum, file) => sum + file.size, 0);
     return { images, videos, bytes };
   }, [selectedFiles]);
+
+  const selectedItems = useMemo(
+    () => items.filter((item) => selectedItemIds.has(item.id)),
+    [items, selectedItemIds],
+  );
+  const selectedItemCount = selectedItems.length;
+  const allVisibleItemsSelected =
+    items.length > 0 && items.every((item) => selectedItemIds.has(item.id));
+  const bulkDeleting = savingId === "__bulk__";
 
   const loadItems = useCallback(async () => {
     setLoading(true);
@@ -282,6 +294,10 @@ export default function MediaLibraryClient() {
 
       const nextItems = (json.items ?? []) as MediaItem[];
       setItems(nextItems);
+      setSelectedItemIds((prev) => {
+        const visibleIds = new Set(nextItems.map((item) => item.id));
+        return new Set(Array.from(prev).filter((id) => visibleIds.has(id)));
+      });
       setStats(
         json.stats ?? {
           total: nextItems.length,
@@ -541,6 +557,62 @@ export default function MediaLibraryClient() {
     }
   }
 
+  function toggleItemSelection(id: string) {
+    setSelectedItemIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAllVisibleItems() {
+    setSelectedItemIds((prev) => {
+      const next = new Set(prev);
+      if (allVisibleItemsSelected) {
+        for (const item of items) next.delete(item.id);
+      } else {
+        for (const item of items) next.add(item.id);
+      }
+      return next;
+    });
+  }
+
+  function clearItemSelection() {
+    setSelectedItemIds(new Set());
+  }
+
+  async function deleteSelectedItems() {
+    const ids = selectedItems.map((item) => item.id);
+    if (!ids.length) return;
+
+    const ok = window.confirm(
+      `Supprimer définitivement ${ids.length} média(s) de votre médiathèque ?`,
+    );
+    if (!ok) return;
+
+    setSavingId("__bulk__");
+    setError(null);
+    setSuccess(null);
+    try {
+      const response = await fetch("/api/media-library/items", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      const json = await readApiJson(response, "Suppression impossible.");
+      if (!response.ok)
+        throw new Error(json?.error || "Suppression impossible.");
+      setSuccess(`${Number(json?.deleted || ids.length)} média(s) supprimé(s).`);
+      clearItemSelection();
+      await loadItems();
+    } catch (e: any) {
+      setError(e?.message || "Suppression impossible.");
+    } finally {
+      setSavingId(null);
+    }
+  }
+
   async function deleteItem(item: MediaItem) {
     const ok = window.confirm(
       "Supprimer définitivement ce média de votre médiathèque ?",
@@ -558,6 +630,11 @@ export default function MediaLibraryClient() {
       if (!response.ok)
         throw new Error(json?.error || "Suppression impossible.");
       setSuccess("Média supprimé.");
+      setSelectedItemIds((prev) => {
+        const next = new Set(prev);
+        next.delete(item.id);
+        return next;
+      });
       await loadItems();
     } catch (e: any) {
       setError(e?.message || "Suppression impossible.");
@@ -832,6 +909,32 @@ export default function MediaLibraryClient() {
               </button>
             </div>
 
+            <div className={styles.bulkToolbar}>
+              <button
+                type="button"
+                className={styles.smallGhostButton}
+                onClick={toggleAllVisibleItems}
+                disabled={loading || items.length === 0 || bulkDeleting}
+              >
+                {allVisibleItemsSelected ? "Tout désélectionner" : "Tout sélectionner"}
+              </button>
+              {selectedItemCount > 0 ? (
+                <>
+                  <span className={styles.selectedCount}>
+                    {selectedItemCount} média(s) sélectionné(s)
+                  </span>
+                  <button
+                    type="button"
+                    className={styles.bulkDangerButton}
+                    onClick={deleteSelectedItems}
+                    disabled={bulkDeleting}
+                  >
+                    {bulkDeleting ? "Suppression…" : "Supprimer la sélection"}
+                  </button>
+                </>
+              ) : null}
+            </div>
+
             {loading ? (
               <div className={styles.emptyState}>
                 Chargement de votre médiathèque…
@@ -847,6 +950,7 @@ export default function MediaLibraryClient() {
             ) : (
               <div className={styles.mediaList}>
                 <div className={styles.mediaListHead} aria-hidden="true">
+                  <span></span>
                   <span>Média</span>
                   <span>Type</span>
                   <span>Poids</span>
@@ -854,11 +958,26 @@ export default function MediaLibraryClient() {
                   <span>Date</span>
                   <span></span>
                 </div>
-                {items.map((item) => (
+                {items.map((item) => {
+                  const isSelected = selectedItemIds.has(item.id);
+                  const isSaving = savingId === item.id;
+                  return (
                   <article
                     key={item.id}
-                    className={`${styles.mediaRow} ${item.is_active === false ? styles.mediaRowDisabled : ""}`}
+                    className={`${styles.mediaRow} ${isSelected ? styles.mediaRowSelected : ""} ${item.is_active === false ? styles.mediaRowDisabled : ""}`}
                   >
+                    <label
+                      className={styles.rowCheck}
+                      aria-label={`Sélectionner ${item.title || "ce média"}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleItemSelection(item.id)}
+                        disabled={isSaving || bulkDeleting}
+                      />
+                      <span aria-hidden="true" />
+                    </label>
                     <div className={styles.mediaRowFile}>
                       <button
                         type="button"
@@ -913,12 +1032,13 @@ export default function MediaLibraryClient() {
                       type="button"
                       className={styles.mediaRowDelete}
                       onClick={() => deleteItem(item)}
-                      disabled={savingId === item.id}
+                      disabled={isSaving || bulkDeleting}
                     >
                       Supprimer
                     </button>
                   </article>
-                ))}
+                  );
+                })}
               </div>
             )}
           </section>

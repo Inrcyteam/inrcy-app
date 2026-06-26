@@ -264,7 +264,9 @@ async function uploadPublicationImages(userId: string, newImages: ImagePayload[]
     if (!instagramUrl) throw new Error(`URL Instagram introuvable pour ${img?.name || "image"}.`);
     instagramPublishableUrls.push(instagramUrl);
 
-    const socialOptimized = await optimizeForSocialFeed(parsed.buffer);
+    const socialOptimized = await optimizeForSocialFeed(parsed.buffer, {
+      nativeFirst: true,
+    });
     const socialPath = `${userId}/social-feed/${randomUUID()}.${socialOptimized.extension}`;
     const socialUpload = await supabaseAdmin.storage.from("booster").upload(socialPath, socialOptimized.buffer, {
       contentType: socialOptimized.mime,

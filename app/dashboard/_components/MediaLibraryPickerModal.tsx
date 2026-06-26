@@ -208,11 +208,11 @@ export default function MediaLibraryPickerModal({
   const modalComputedStyle: React.CSSProperties = compact
     ? {
         ...modalStyle,
-        width: "calc(100vw - 16px)",
-        maxHeight: "calc(100dvh - 18px)",
-        padding: 14,
+        width: "min(100%, calc(100vw - 16px))",
+        maxHeight: "calc(100dvh - 16px)",
+        padding: 12,
         borderRadius: 24,
-        gap: 9,
+        gap: 8,
       }
     : modalStyle;
   const headerComputedStyle: React.CSSProperties = compact
@@ -255,15 +255,22 @@ export default function MediaLibraryPickerModal({
       }
     : filtersStyle;
   const listComputedStyle: React.CSSProperties = compact
-    ? { ...listStyle, minHeight: 0, gap: 7 }
+    ? {
+        ...listStyle,
+        minHeight: 0,
+        gap: 7,
+        paddingRight: 0,
+        paddingBottom: 4,
+      }
     : listStyle;
   const rowComputedStyle: React.CSSProperties = compact
     ? {
         ...rowStyle,
-        gridTemplateColumns: "58px minmax(0, 1fr) 64px 30px",
+        gridTemplateColumns: "58px minmax(0, 1fr) auto 30px",
         gap: 8,
         padding: 8,
         borderRadius: 15,
+        minHeight: 58,
       }
     : rowStyle;
   const thumbComputedStyle: React.CSSProperties = compact
@@ -272,10 +279,11 @@ export default function MediaLibraryPickerModal({
   const footerComputedStyle: React.CSSProperties = compact
     ? {
         ...footerStyle,
-        paddingTop: 2,
+        paddingTop: 8,
         alignItems: "stretch",
         flexDirection: "column",
         gap: 8,
+        borderTop: "1px solid rgba(255,255,255,.08)",
       }
     : footerStyle;
   const footerActionsStyle: React.CSSProperties = compact
@@ -445,7 +453,11 @@ export default function MediaLibraryPickerModal({
           <div style={footerActionsStyle}>
             <button
               type="button"
-              style={cancelButtonStyle}
+              style={{
+                ...cancelButtonStyle,
+                opacity: busy ? 0.62 : 1,
+                cursor: busy ? "not-allowed" : "pointer",
+              }}
               onClick={onClose}
               disabled={busy}
             >
@@ -453,7 +465,11 @@ export default function MediaLibraryPickerModal({
             </button>
             <button
               type="button"
-              style={primaryButtonStyle}
+              style={{
+                ...primaryButtonStyle,
+                opacity: busy || !selectedItems.length ? 0.54 : 1,
+                cursor: busy || !selectedItems.length ? "not-allowed" : "pointer",
+              }}
               onClick={validate}
               disabled={busy || !selectedItems.length}
             >
@@ -473,19 +489,23 @@ const overlayStyle: React.CSSProperties = {
   display: "grid",
   placeItems: "center",
   padding: 16,
+  boxSizing: "border-box",
+  overflow: "hidden",
   background: "rgba(2,7,22,.78)",
   backdropFilter: "blur(18px)",
 };
 
 const modalStyle: React.CSSProperties = {
-  width: "min(920px, 94vw)",
-  maxHeight: "82dvh",
+  width: "min(900px, calc(100vw - 32px))",
+  maxHeight: "calc(100dvh - 32px)",
   display: "grid",
   gridTemplateRows: "auto auto auto minmax(0, 1fr) auto",
   gap: 10,
   borderRadius: 28,
   padding: 18,
   color: "#f7fbff",
+  boxSizing: "border-box",
+  overflow: "hidden",
   background:
     "radial-gradient(circle at top left, rgba(84,220,255,.16), transparent 28%), radial-gradient(circle at top right, rgba(189,78,255,.18), transparent 34%), linear-gradient(180deg, rgba(13,27,62,.98), rgba(5,12,30,.98))",
   border: "1px solid rgba(142,161,255,.28)",
@@ -554,6 +574,8 @@ const filtersStyle: React.CSSProperties = {
   borderRadius: 18,
   background: "rgba(2,9,28,.58)",
   border: "1px solid rgba(255,255,255,.07)",
+  boxSizing: "border-box",
+  minWidth: 0,
 };
 
 const fieldStyle: React.CSSProperties = {
@@ -568,6 +590,7 @@ const fieldStyle: React.CSSProperties = {
 const inputStyle: React.CSSProperties = {
   width: "100%",
   minWidth: 0,
+  boxSizing: "border-box",
   border: "1px solid rgba(139,161,255,.18)",
   borderRadius: 14,
   background: "rgba(2,8,24,.86)",
@@ -579,6 +602,7 @@ const inputStyle: React.CSSProperties = {
 
 const ghostButtonStyle: React.CSSProperties = {
   alignSelf: "end",
+  minWidth: 0,
   border: "1px solid rgba(255,255,255,.14)",
   borderRadius: 999,
   background:
@@ -600,16 +624,18 @@ const errorStyle: React.CSSProperties = {
 };
 
 const listStyle: React.CSSProperties = {
-  minHeight: 220,
-  overflow: "auto",
+  minHeight: 0,
+  overflowY: "auto",
+  overflowX: "hidden",
   display: "grid",
   alignContent: "start",
   gap: 8,
-  paddingRight: 2,
+  paddingRight: 3,
+  boxSizing: "border-box",
 };
 
 const emptyStyle: React.CSSProperties = {
-  minHeight: 240,
+  minHeight: 180,
   display: "grid",
   placeItems: "center",
   textAlign: "center",
@@ -622,8 +648,10 @@ const emptyStyle: React.CSSProperties = {
 
 const rowStyle: React.CSSProperties = {
   width: "100%",
+  minWidth: 0,
+  boxSizing: "border-box",
   display: "grid",
-  gridTemplateColumns: "68px minmax(160px,1fr) 74px 76px 84px 100px 34px",
+  gridTemplateColumns: "68px minmax(0,1fr) 74px 72px 84px 94px 34px",
   gap: 10,
   alignItems: "center",
   padding: 10,
@@ -677,6 +705,7 @@ const tagStyle: React.CSSProperties = {
 
 const pillStyle: React.CSSProperties = {
   justifySelf: "start",
+  maxWidth: "100%",
   borderRadius: 999,
   padding: "6px 10px",
   background: "rgba(76,195,255,.12)",
@@ -710,16 +739,24 @@ const footerStyle: React.CSSProperties = {
   justifyContent: "space-between",
   gap: 12,
   flexWrap: "wrap",
-  paddingTop: 4,
+  flexShrink: 0,
+  paddingTop: 8,
+  background:
+    "linear-gradient(180deg, rgba(5,12,30,.30), rgba(5,12,30,.96))",
+  position: "relative",
+  zIndex: 2,
 };
 
 const footerHintStyle: React.CSSProperties = {
   color: "#aebce0",
   fontSize: 12,
   fontWeight: 850,
+  minWidth: 0,
+  lineHeight: 1.25,
 };
 
 const cancelButtonStyle: React.CSSProperties = {
+  boxSizing: "border-box",
   border: "1px solid rgba(255,255,255,.13)",
   borderRadius: 999,
   background: "rgba(255,255,255,.08)",
@@ -730,6 +767,7 @@ const cancelButtonStyle: React.CSSProperties = {
 };
 
 const primaryButtonStyle: React.CSSProperties = {
+  boxSizing: "border-box",
   border: "1px solid rgba(255,255,255,.16)",
   borderRadius: 999,
   background: "linear-gradient(135deg, #3b82f6, #b92be8)",

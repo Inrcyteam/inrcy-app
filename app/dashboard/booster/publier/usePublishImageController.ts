@@ -1017,6 +1017,51 @@ export default function usePublishImageController({
       reader.readAsDataURL(file);
     });
 
+  const areImageTransformsEquivalent = (
+    a: ImageTransform | undefined,
+    b: ImageTransform | undefined,
+  ) => {
+    if (!a || !b) return false;
+    const num = (value: unknown, fallback = 0) =>
+      Math.round((Number(value) || fallback) * 100) / 100;
+    return (
+      a.fit === b.fit &&
+      num(a.zoom, 1) === num(b.zoom, 1) &&
+      num(a.offsetX) === num(b.offsetX) &&
+      num(a.offsetY) === num(b.offsetY) &&
+      getBackgroundMode(a) === getBackgroundMode(b) &&
+      String(a.backgroundColor || "")
+        .trim()
+        .toLowerCase() ===
+        String(b.backgroundColor || "")
+          .trim()
+          .toLowerCase()
+    );
+  };
+
+  const shouldUseNativeFirstPayload = (
+    channel: ChannelKey,
+    imageKey: string,
+    transform: ImageTransform,
+  ) => {
+    if (
+      channel !== "instagram" &&
+      channel !== "gmb" &&
+      channel !== "facebook" &&
+      channel !== "linkedin"
+    )
+      return false;
+    const optimizedDefaultTransform = getOptimizedTransform(
+      channel,
+      imageMetaByKey[imageKey],
+    );
+    const baseDefaultTransform = getDefaultTransform(channel);
+    return (
+      areImageTransformsEquivalent(transform, optimizedDefaultTransform) ||
+      areImageTransformsEquivalent(transform, baseDefaultTransform)
+    );
+  };
+
   const uploadOriginalImagesForPublication = async (
     onProgress?: (current: number, total: number) => void,
   ): Promise<Record<string, ImagePayload>> => {
@@ -1073,12 +1118,14 @@ export default function usePublishImageController({
         const transform =
           editor.transforms[imageKey] || getDefaultTransform(channel);
         renderList.push(
-          await renderChannelImage({
-            file,
-            transform,
-            preset: CHANNEL_PRESETS[channel],
-            channel,
-          }),
+          shouldUseNativeFirstPayload(channel, imageKey, transform)
+            ? await fileToImagePayload(file)
+            : await renderChannelImage({
+                file,
+                transform,
+                preset: CHANNEL_PRESETS[channel],
+                channel,
+              }),
         );
         doneRenders += 1;
         onProgress?.(doneRenders, totalRenders);

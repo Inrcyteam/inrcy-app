@@ -1061,3 +1061,290 @@
 .error {
   white-space: pre-line;
 }
+
+/* Phase stockage — mur de cubes + suppression multiple */
+.galleryHeader{
+  display:flex !important;
+  align-items:center !important;
+  justify-content:space-between !important;
+  gap:10px !important;
+  flex-wrap:wrap !important;
+}
+
+.galleryHeaderInfo,
+.bulkToolbar{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex-wrap:wrap;
+}
+
+.bulkToolbar{
+  justify-content:flex-end;
+}
+
+.selectedCount{
+  display:inline-flex;
+  align-items:center;
+  min-height:30px;
+  padding:5px 9px;
+  border-radius:999px;
+  background:rgba(88,217,255,.10);
+  border:1px solid rgba(112,233,255,.18);
+  color:#dffaff;
+  font-size:10px;
+  font-weight:950;
+  white-space:nowrap;
+}
+
+.bulkDangerButton{
+  min-height:30px;
+  border-radius:999px;
+  padding:6px 10px;
+  color:#fff;
+  font-size:10px;
+  font-weight:950;
+  background:linear-gradient(135deg, rgba(255,118,67,.88), rgba(239,58,118,.88));
+  border:1px solid rgba(255,255,255,.16);
+  box-shadow:0 10px 22px rgba(239,58,118,.18);
+  cursor:pointer;
+}
+
+.bulkDangerButton:disabled{
+  opacity:.55;
+  cursor:not-allowed;
+  box-shadow:none;
+}
+
+.imageGrid{
+  display:grid !important;
+  grid-template-columns:repeat(auto-fill, minmax(82px, 1fr)) !important;
+  gap:10px !important;
+  align-items:start !important;
+  padding:2px 4px 8px 0 !important;
+}
+
+.imageCard{
+  position:relative !important;
+  min-height:0 !important;
+  aspect-ratio:1 / 1 !important;
+  overflow:hidden !important;
+  border-radius:16px !important;
+  padding:0 !important;
+  background:rgba(4,11,28,.84) !important;
+  border:1px solid rgba(134,160,255,.16) !important;
+  box-shadow:0 12px 28px rgba(0,0,0,.20) !important;
+}
+
+.imageCardSelected{
+  border-color:rgba(91,236,255,.72) !important;
+  box-shadow:0 0 0 2px rgba(91,236,255,.16), 0 16px 34px rgba(0,0,0,.28) !important;
+}
+
+.imageCardInactive{
+  opacity:.58 !important;
+}
+
+.thumbWrap{
+  position:absolute !important;
+  inset:0 !important;
+  width:100% !important;
+  height:100% !important;
+  aspect-ratio:1 / 1 !important;
+  border-radius:inherit !important;
+  overflow:hidden !important;
+  background:rgba(4,11,28,.88) !important;
+}
+
+.thumbWrap img{
+  width:100% !important;
+  height:100% !important;
+  object-fit:cover !important;
+  display:block !important;
+}
+
+.activePill,
+.inactivePill{
+  position:absolute !important;
+  left:6px !important;
+  bottom:6px !important;
+  z-index:3 !important;
+  padding:3px 6px !important;
+  border-radius:999px !important;
+  font-size:9px !important;
+  font-weight:950 !important;
+  line-height:1 !important;
+  backdrop-filter:blur(8px) !important;
+}
+
+.cubeCheck,
+.cubeDeleteButton{
+  position:absolute;
+  top:6px;
+  z-index:5;
+}
+
+.cubeCheck{
+  left:6px;
+  width:24px;
+  height:24px;
+  cursor:pointer;
+}
+
+.cubeCheck input{
+  position:absolute;
+  opacity:0;
+  pointer-events:none;
+}
+
+.cubeCheck span{
+  display:grid;
+  place-items:center;
+  width:24px;
+  height:24px;
+  border-radius:8px;
+  background:rgba(3,9,24,.72);
+  border:1px solid rgba(255,255,255,.22);
+  box-shadow:0 6px 14px rgba(0,0,0,.28);
+}
+
+.cubeCheck span::after{
+  content:"";
+  width:10px;
+  height:6px;
+  border-left:2px solid #fff;
+  border-bottom:2px solid #fff;
+  transform:rotate(-45deg) translate(1px,-1px);
+  opacity:0;
+}
+
+.cubeCheck input:checked + span{
+  background:linear-gradient(135deg, rgba(54,221,255,.92), rgba(76,108,255,.92));
+  border-color:rgba(255,255,255,.45);
+}
+
+.cubeCheck input:checked + span::after{
+  opacity:1;
+}
+
+.cubeDeleteButton{
+  right:6px;
+  width:24px;
+  height:24px;
+  border-radius:999px;
+  border:1px solid rgba(255,255,255,.22);
+  background:rgba(8,10,22,.72);
+  color:#fff;
+  font-size:18px;
+  font-weight:950;
+  line-height:18px;
+  display:grid;
+  place-items:center;
+  cursor:pointer;
+  box-shadow:0 6px 14px rgba(0,0,0,.28);
+}
+
+.cubeDeleteButton:hover{
+  background:rgba(255,64,103,.90);
+  border-color:rgba(255,255,255,.36);
+}
+
+.cubeDeleteButton:disabled,
+.cubeCheck input:disabled + span{
+  opacity:.48;
+  cursor:not-allowed;
+}
+
+.imageInfo{
+  position:absolute !important;
+  left:5px !important;
+  right:5px !important;
+  bottom:5px !important;
+  z-index:4 !important;
+  padding:6px !important;
+  border-radius:11px !important;
+  background:rgba(4,10,27,.78) !important;
+  border:1px solid rgba(255,255,255,.10) !important;
+  backdrop-filter:blur(10px) !important;
+  opacity:0 !important;
+  transform:translateY(6px) !important;
+  pointer-events:none !important;
+  transition:opacity .16s ease, transform .16s ease !important;
+}
+
+.imageCard:hover .imageInfo,
+.imageCard:focus-within .imageInfo,
+.imageCardEditing .imageInfo{
+  opacity:1 !important;
+  transform:translateY(0) !important;
+  pointer-events:auto !important;
+}
+
+.imageInfo strong,
+.imageInfo span,
+.imageInfo small{
+  overflow:hidden !important;
+  text-overflow:ellipsis !important;
+  white-space:nowrap !important;
+}
+
+.imageInfo span,
+.imageInfo small:nth-of-type(n+2){
+  display:none !important;
+}
+
+.imageActions{
+  margin-top:5px !important;
+  display:flex !important;
+  gap:4px !important;
+  flex-wrap:wrap !important;
+}
+
+.imageActions .smallButton,
+.imageActions .smallGhostButton,
+.imageActions .dangerButton{
+  min-height:24px !important;
+  padding:4px 6px !important;
+  font-size:9px !important;
+  border-radius:8px !important;
+}
+
+.imageCardEditing{
+  aspect-ratio:auto !important;
+  min-height:310px !important;
+  grid-column:span 3 !important;
+  overflow:visible !important;
+}
+
+.imageCardEditing .thumbWrap{
+  position:relative !important;
+  inset:auto !important;
+  height:110px !important;
+  border-radius:16px 16px 0 0 !important;
+}
+
+.imageCardEditing .imageInfo{
+  position:relative !important;
+  left:auto !important;
+  right:auto !important;
+  bottom:auto !important;
+  opacity:1 !important;
+  transform:none !important;
+  pointer-events:auto !important;
+  border-radius:0 0 16px 16px !important;
+}
+
+.imageCardEditing .imageInfo span,
+.imageCardEditing .imageInfo small{
+  display:block !important;
+}
+
+@media(max-width:1100px){
+  .imageGrid{grid-template-columns:repeat(auto-fill, minmax(76px, 1fr)) !important;}
+  .imageCardEditing{grid-column:1 / -1 !important;}
+}
+
+@media(max-width:640px){
+  .bulkToolbar{justify-content:flex-start;width:100%;}
+  .imageGrid{grid-template-columns:repeat(auto-fill, minmax(72px, 1fr)) !important;}
+}

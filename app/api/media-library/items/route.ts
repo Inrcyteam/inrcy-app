@@ -156,31 +156,61 @@ export async function DELETE(request: NextRequest) {
   if (errorResponse) return errorResponse;
 
   const url = new URL(request.url);
-  const id = cleanText(url.searchParams.get("id"), 80);
-  if (!id) return jsonError("Média obligatoire.", 400);
+  const body = await request.json().catch(() => ({}));
+  const requestedIds = [
+    cleanText(url.searchParams.get("id"), 80),
+    ...url.searchParams.getAll("ids").map((value) => cleanText(value, 80)),
+    ...(Array.isArray(body?.ids)
+      ? body.ids.map((value: unknown) => cleanText(value, 80))
+      : []),
+  ]
+    .filter(Boolean)
+    .filter((value, index, arr) => arr.indexOf(value) === index)
+    .slice(0, 200);
 
-  const { data: row, error: fetchError } = await supabaseAdmin
+  if (!requestedIds.length) return jsonError("Média obligatoire.", 400);
+
+  const { data: rows, error: fetchError } = await supabaseAdmin
     .from("pro_media_library")
     .select("id,bucket_name,storage_path")
-    .eq("id", id)
     .eq("user_id", user.id)
-    .maybeSingle();
+    .in("id", requestedIds);
 
   if (fetchError) {
     if (tableMissingError(fetchError)) return jsonError("La table pro_media_library n’existe pas encore.", 503, fetchError.message);
-    return jsonError("Impossible de retrouver le média.", 500, fetchError.message);
+    return jsonError("Impossible de retrouver les médias.", 500, fetchError.message);
   }
-  if (!row) return jsonError("Média introuvable.", 404);
 
-  const storagePath = String((row as any).storage_path || "");
-  if (!isOwnedStoragePath(user.id, storagePath)) return jsonError("Chemin Storage invalide.", 403);
+  const foundRows = Array.isArray(rows) ? rows : [];
+  if (!foundRows.length) return jsonError("Média introuvable.", 404);
 
-  const bucket = String((row as any).bucket_name || BUCKET);
-  const remove = await supabaseAdmin.storage.from(bucket).remove([storagePath]);
-  if (remove.error) return jsonError("Impossible de supprimer le fichier Storage.", 500, remove.error.message);
+  for (const row of foundRows as any[]) {
+    const storagePath = String(row.storage_path || "");
+    if (!isOwnedStoragePath(user.id, storagePath)) return jsonError("Chemin Storage invalide.", 403);
+  }
 
-  const del = await supabaseAdmin.from("pro_media_library").delete().eq("id", id).eq("user_id", user.id);
-  if (del.error) return jsonError("Impossible de supprimer la ligne Supabase.", 500, del.error.message);
+  const pathsByBucket = new Map<string, string[]>();
+  for (const row of foundRows as any[]) {
+    const bucket = String(row.bucket_name || BUCKET);
+    const storagePath = String(row.storage_path || "");
+    if (!storagePath) continue;
+    const paths = pathsByBucket.get(bucket) || [];
+    paths.push(storagePath);
+    pathsByBucket.set(bucket, paths);
+  }
 
-  return NextResponse.json({ ok: true });
+  for (const [bucket, paths] of pathsByBucket.entries()) {
+    const remove = await supabaseAdmin.storage.from(bucket).remove(paths);
+    if (remove.error) return jsonError("Impossible de supprimer les fichiers Storage.", 500, remove.error.message);
+  }
+
+  const foundIds = (foundRows as any[]).map((row) => String(row.id || "")).filter(Boolean);
+  const del = await supabaseAdmin
+    .from("pro_media_library")
+    .delete()
+    .eq("user_id", user.id)
+    .in("id", foundIds);
+  if (del.error) return jsonError("Impossible de supprimer les lignes Supabase.", 500, del.error.message);
+
+  return NextResponse.json({ ok: true, deleted: foundIds.length });
 }

@@ -5,6 +5,7 @@ import { editableHtmlToSiteText, renderBoosterSiteContentHtml, renderBoosterSite
 import styles from "../mails.module.css";
 import { ChannelImageAdapterCardsPanel, ChannelPublicationPreview } from "@/app/dashboard/_components/ChannelImageAdapterTool";
 import InrcyCameraCaptureModal from "@/app/dashboard/_components/InrcyCameraCaptureModal";
+import MediaLibraryPickerModal, { type MediaLibraryPickerItem } from "@/app/dashboard/_components/MediaLibraryPickerModal";
 import RichSiteContentEditor from "@/app/dashboard/booster/publier/components/RichSiteContentEditor";
 import BoosterVideoFormatManager, { type BoosterVideoPreparationState } from "@/app/dashboard/booster/publier/components/BoosterVideoFormatManager";
 import {
@@ -122,6 +123,7 @@ type MailboxDetailsModalProps = {
   movePublicationImage?: (channel: string, imageKey: string, direction: -1 | 1) => void;
   addPublicationFiles: (fileList: FileList | null) => void;
   addPublicationPhoto: (file: File) => void;
+  addPublicationMediaLibraryItems: (items: MediaLibraryPickerItem[]) => void | Promise<void>;
   publicationVideoInputId: string;
   activePublicationEditVideo: PublicationEditVideoState | null;
   addPublicationVideo: (fileList: FileList | null) => void;
@@ -288,6 +290,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
     movePublicationImage,
     addPublicationFiles,
     addPublicationPhoto,
+    addPublicationMediaLibraryItems,
     publicationVideoInputId,
     activePublicationEditVideo,
     addPublicationVideo,
@@ -307,6 +310,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
   const router = useRouter();
   const [publicationPreviewOpen, setPublicationPreviewOpen] = React.useState(false);
   const [publicationCameraOpen, setPublicationCameraOpen] = React.useState(false);
+  const [publicationMediaLibraryOpen, setPublicationMediaLibraryOpen] = React.useState(false);
   const [isMobileViewport, setIsMobileViewport] = React.useState(false);
   const detailsBodyRef = React.useRef<HTMLDivElement | null>(null);
   const detailsScrollSnapshotRef = React.useRef<number | null>(null);
@@ -350,9 +354,20 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
   }, []);
 
   const openPublicationCamera = React.useCallback(() => {
+    if (!isMobileViewport) return;
     preserveDetailsModalScroll();
     setPublicationCameraOpen(true);
+  }, [isMobileViewport, preserveDetailsModalScroll]);
+
+  const openPublicationMediaLibrary = React.useCallback(() => {
+    preserveDetailsModalScroll();
+    setPublicationMediaLibraryOpen(true);
   }, [preserveDetailsModalScroll]);
+
+  const closePublicationMediaLibrary = React.useCallback(() => {
+    setPublicationMediaLibraryOpen(false);
+    restoreDetailsModalScroll();
+  }, [restoreDetailsModalScroll]);
 
   const closePublicationCamera = React.useCallback(() => {
     setPublicationCameraOpen(false);
@@ -1430,7 +1445,55 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                               />
                             ) : null}
 
-                            {isVideoPublication ? (
+                            {detailsEditMode ? (
+                              <>
+                                <input
+                                  id={publicationEditFileInputId}
+                                  type="file"
+                                  accept="image/*"
+                                  multiple
+                                  className={styles.hiddenFileInput}
+                                  onChange={(e) => {
+                                    const input = e.currentTarget;
+                                    const files = input?.files ?? null;
+                                    if (files?.length) markPublicationEditDirty();
+                                    addPublicationFiles(files);
+                                    if (input) input.value = "";
+                                  }}
+                                />
+                                <input
+                                  id={publicationVideoInputId}
+                                  type="file"
+                                  accept="video/mp4,video/webm,video/quicktime,video/x-m4v,.mp4,.m4v,.mov,.webm"
+                                  className={styles.hiddenFileInput}
+                                  onChange={(e) => {
+                                    const input = e.currentTarget;
+                                    const files = input?.files ?? null;
+                                    if (files?.length) markPublicationEditDirty();
+                                    addPublicationVideo(files);
+                                    if (input) input.value = "";
+                                  }}
+                                />
+                                <MediaLibraryPickerModal
+                                  open={publicationMediaLibraryOpen}
+                                  title="Ajouter depuis la Médiathèque"
+                                  subtitle="Sélectionnez une image ou une vidéo pour remplacer le média de cette publication."
+                                  accept="all"
+                                  multiple
+                                  maxSelection={5}
+                                  confirmLabel="Utiliser la sélection"
+                                  selectedHint="Choisissez jusqu’à 5 images ou 1 vidéo."
+                                  onClose={closePublicationMediaLibrary}
+                                  onConfirm={async (items) => {
+                                    if (items.length) markPublicationEditDirty();
+                                    await addPublicationMediaLibraryItems(items);
+                                    restoreDetailsModalScroll();
+                                  }}
+                                />
+                              </>
+                            ) : null}
+
+                            {(detailsEditMode ? (activePublicationEditVideo?.removed ? false : Boolean(activePublicationEditVideo?.previewUrl) || isVideoPublication) : isVideoPublication) ? (
                               <section
                                 className={styles.detailSectionCard}
                                 style={{
@@ -1449,29 +1512,25 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                   </div>
                                 </div>
 
-                                <input
-                                  id={publicationVideoInputId}
-                                  type="file"
-                                  accept="video/mp4,video/webm,video/quicktime,video/x-m4v,.mp4,.m4v,.mov,.webm"
-                                  className={styles.hiddenFileInput}
-                                  onChange={(e) => {
-                                    const input = e.currentTarget;
-                                    const files = input?.files ?? null;
-                                    if (files?.length) markPublicationEditDirty();
-                                    addPublicationVideo(files);
-                                    if (input) input.value = "";
-                                  }}
-                                />
-
                                 <div style={{ display: "grid", gap: 12 }}>
                                   {detailsEditMode ? (
                                     <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                                      <label htmlFor={publicationEditFileInputId} className={styles.btnAttach}>
+                                        📎 Ajouter des images
+                                      </label>
                                       <button
                                         type="button"
                                         className={styles.btnAttach}
                                         onClick={() => document.getElementById(publicationVideoInputId)?.click()}
                                       >
                                         🎥 Ajouter / remplacer la vidéo
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className={styles.btnAttach}
+                                        onClick={openPublicationMediaLibrary}
+                                      >
+                                        🗂️ Médiathèque
                                       </button>
                                       <span style={{ fontSize: 12, color: "rgba(255,255,255,0.65)" }}>
                                         1 vidéo maximum pour {activePublicationEntry?.label || "ce canal"}.
@@ -1527,22 +1586,22 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                   <div className={styles.messageHeaderTitle}>Images de la publication</div>
                                 </div>
                                 <div style={{ display: "grid", gap: 12 }}>
-                                <input
-                                  id={publicationEditFileInputId}
-                                  type="file"
-                                  accept="image/*"
-                                  multiple
-                                  className={styles.hiddenFileInput}
-                                  onChange={(e) => {
-                                    const input = e.currentTarget;
-                                    const files = input?.files ?? null;
-                                    if (files?.length) markPublicationEditDirty();
-                                    addPublicationFiles(files);
-                                    if (input) input.value = "";
-                                  }}
-                                />
                                 <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                                   <label htmlFor={publicationEditFileInputId} className={styles.btnAttach}>📎 Ajouter des images</label>
+                                  <button
+                                    type="button"
+                                    className={styles.btnAttach}
+                                    onClick={() => document.getElementById(publicationVideoInputId)?.click()}
+                                  >
+                                    🎥 Ajouter une vidéo
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className={styles.btnAttach}
+                                    onClick={openPublicationMediaLibrary}
+                                  >
+                                    🗂️ Médiathèque
+                                  </button>
                                   <span
                                     title={
                                       isMobileViewport
@@ -1557,7 +1616,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                       type="button"
                                       className={styles.btnAttach}
                                       onClick={isMobileViewport ? openPublicationCamera : undefined}
-                                      disabled={isMobileViewport && activePublicationEditAssets.length >= 5}
+                                      disabled={!isMobileViewport || activePublicationEditAssets.length >= 5}
                                       aria-disabled={!isMobileViewport || activePublicationEditAssets.length >= 5}
                                       style={{
                                         opacity: !isMobileViewport || activePublicationEditAssets.length >= 5 ? 0.55 : 1,

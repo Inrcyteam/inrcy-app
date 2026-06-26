@@ -365,10 +365,124 @@ const FRENCH_LEAK_PATTERNS = [
   /\b(?:un conseil|une actualité|une actualite|notre objectif|nous sommes|nous accompagnons|n'hésitez pas|n hesitez pas|à bientôt|a bientot|demander un devis|contactez-nous|contactez nous|écrivez-nous|ecrivez nous)\b/i,
 ];
 
+const FRENCH_LEAK_TOKENS = new Set([
+  "actualite",
+  "actualites",
+  "actualité",
+  "actualités",
+  "ainsi",
+  "apaiser",
+  "apaisant",
+  "appel",
+  "besoin",
+  "besoins",
+  "bienetre",
+  "bienêtre",
+  "chacun",
+  "chacune",
+  "chaque",
+  "cherchent",
+  "clientele",
+  "clientèle",
+  "concret",
+  "concrete",
+  "concrète",
+  "conseil",
+  "conseils",
+  "contactez",
+  "corps",
+  "decouvrir",
+  "découvrir",
+  "decouvrez",
+  "découvrez",
+  "demander",
+  "demandez",
+  "detente",
+  "détente",
+  "devis",
+  "ecrivez",
+  "écrivez",
+  "envie",
+  "esprit",
+  "facile",
+  "horaires",
+  "ideal",
+  "ideale",
+  "idéale",
+  "idéal",
+  "information",
+  "informations",
+  "locale",
+  "locales",
+  "mieux",
+  "moment",
+  "nouveaute",
+  "nouveauté",
+  "offrez",
+  "personnalise",
+  "personnalisee",
+  "personnalisée",
+  "personnalisees",
+  "personnalisées",
+  "permet",
+  "permettent",
+  "prestation",
+  "prestations",
+  "propose",
+  "proposons",
+  "proximite",
+  "proximité",
+  "rassurant",
+  "rassurante",
+  "reconnecter",
+  "redécouvrez",
+  "redecouvrez",
+  "relacher",
+  "relâcher",
+  "rendezvous",
+  "rendez-vous",
+  "retrouver",
+  "savoir",
+  "seance",
+  "séance",
+  "seances",
+  "séances",
+  "serenite",
+  "sérénité",
+  "service",
+  "services",
+  "soin",
+  "soins",
+  "solution",
+  "solutions",
+  "souple",
+  "souples",
+  "tension",
+  "tensions",
+  "traitement",
+  "traitements",
+  "utile",
+  "visibilite",
+  "visibilité",
+]);
+
+function countRegexMatches(pattern: RegExp, text: string) {
+  const flags = pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`;
+  const globalPattern = new RegExp(pattern.source, flags);
+  return Array.from(text.matchAll(globalPattern)).length;
+}
+
+function countFrenchTokenHints(text: string) {
+  const tokens = (text.match(/[A-Za-zÀ-ÖØ-öø-ÿ0-9'-]+/g) || [])
+    .map((token) => normalizeIdeaToken(token).replace(/-/g, ""))
+    .filter(Boolean);
+  return tokens.reduce((count, token) => count + (FRENCH_LEAK_TOKENS.has(token) ? 1 : 0), 0);
+}
+
 function countFrenchLeakMatches(value: unknown) {
   const text = String(value ?? "").trim();
   if (!text) return 0;
-  return FRENCH_LEAK_PATTERNS.reduce((count, pattern) => count + (pattern.test(text) ? 1 : 0), 0);
+  return FRENCH_LEAK_PATTERNS.reduce((count, pattern) => count + countRegexMatches(pattern, text), 0) + countFrenchTokenHints(text);
 }
 
 function hasFrenchLeak(value: unknown, minMatches = 1) {

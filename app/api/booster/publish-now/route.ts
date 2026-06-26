@@ -552,6 +552,7 @@ async function resolveImageInput(
 type ImageOptimizationFormats = {
   instagram?: boolean;
   socialFeed?: boolean;
+  socialFeedNativeFirst?: boolean;
   siteCard?: boolean;
   gmb?: boolean;
 };
@@ -562,12 +563,9 @@ function getRequiredImageFormatsForChannel(
   channel: ChannelKey,
 ): ImageOptimizationFormats {
   if (channel === "instagram") return { instagram: true };
-  if (
-    channel === "facebook" ||
-    channel === "linkedin" ||
-    channel === "tiktok" ||
-    channel === "youtube_shorts"
-  )
+  if (channel === "facebook" || channel === "linkedin")
+    return { socialFeed: true, socialFeedNativeFirst: true };
+  if (channel === "tiktok" || channel === "youtube_shorts")
     return { socialFeed: true };
   if (channel === "gmb") return { gmb: true };
   // Site iNrCy / Site web use the original prepared image in the article payload.
@@ -582,6 +580,9 @@ function mergeImageFormats(
     (acc, formats) => ({
       instagram: Boolean(acc.instagram || formats.instagram),
       socialFeed: Boolean(acc.socialFeed || formats.socialFeed),
+      socialFeedNativeFirst: Boolean(
+        acc.socialFeedNativeFirst || formats.socialFeedNativeFirst,
+      ),
       siteCard: Boolean(acc.siteCard || formats.siteCard),
       gmb: Boolean(acc.gmb || formats.gmb),
     }),
@@ -783,7 +784,9 @@ async function uploadImageSet(
 
     if (formats.socialFeed) {
       try {
-        const optimized = await optimizeForSocialFeed(parsed.buffer);
+        const optimized = await optimizeForSocialFeed(parsed.buffer, {
+          nativeFirst: Boolean(formats.socialFeedNativeFirst),
+        });
         const socialPath = `${userId}/social-feed/${randomUUID()}.${optimized.extension}`;
         const socialUpload = await supabaseAdmin.storage
           .from("booster")

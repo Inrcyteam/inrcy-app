@@ -6,10 +6,15 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type PointerEvent as ReactPointerEvent,
   type ReactNode,
+  type WheelEvent as ReactWheelEvent,
 } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabaseClient";
+import { ChannelImageAdapterModal } from "@/app/dashboard/_components/ChannelImageAdapterTool";
+import { requestBoosterVideoTransforms } from "@/lib/boosterVideoTransformClient";
+import type { BoosterVideoTransformedVariant } from "@/lib/boosterVideoTransforms";
 import {
   INR_MEDIA_ALLOWED_IMAGE_MIME_TYPES,
   INR_MEDIA_ALLOWED_VIDEO_MIME_TYPES,
@@ -22,24 +27,45 @@ import {
 import { makeAttachmentPath } from "@/app/dashboard/mails/_lib/mailboxPhase25";
 import HelpButton from "../_components/HelpButton";
 import PublishAiConfigurationDrawer from "../booster/publier/components/PublishAiConfigurationDrawer";
+import BoosterVideoFormatManager, {
+  type BoosterVideoPreparationState,
+} from "../booster/publier/components/BoosterVideoFormatManager";
 import RichSiteContentEditor from "../booster/publier/components/RichSiteContentEditor";
 import MediaLibraryPickerModal, {
   type MediaLibraryPickerItem,
 } from "../_components/MediaLibraryPickerModal";
 import {
   BOOSTER_PREFERRED_CTA_OPTIONS,
+  CHANNEL_PRESETS,
   buildPreferredCtaPatch,
+  computePreviewLayout,
+  getBackgroundFill,
+  getBackgroundMode,
   getCtaModeHelp,
+  getDefaultTransform,
+  getEffectiveTransformZoom,
+  getOptimizedTransform,
   getPreferredCtaChoiceFromPost,
+  getVideoFormatLabel,
   getWebsiteSourceLabelForChannel,
   getWebsiteUrlForChannel,
   normalizeBoosterAiLanguage,
   normalizeBoosterPreferredCta,
+  normalizeVideoAdaptationMode,
+  normalizeVideoFormat,
+  readImageMeta,
+  renderChannelImage,
   type BoosterCtaDefaults,
   type BoosterCtaMode,
   type BoosterPreferredCta,
+  type BoosterVideoSourceMetadata,
+  type ChannelKey as BoosterChannelKey,
   type ChannelPost as BoosterChannelPost,
   type DisplayKey as BoosterDisplayKey,
+  type ImageMeta,
+  type ImageTransform,
+  type VideoAdaptationMode,
+  type VideoFormat,
 } from "../booster/publier/publishModal.shared";
 import {
   INR_AGENT_DEFAULT_SETTINGS,
@@ -500,6 +526,72 @@ function boosterDisplayKeyFromAgentChannel(
   channel: ChannelKey | "" | null | undefined,
 ): BoosterDisplayKey {
   return agentChannelToBoosterDisplay[channel as ChannelKey] || "inrcy_site";
+}
+
+function boosterChannelKeyFromAgentChannel(
+  channel: ChannelKey | "" | null | undefined,
+): BoosterChannelKey {
+  return boosterDisplayKeyFromAgentChannel(channel) as BoosterChannelKey;
+}
+
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+function dataUrlToFile(dataUrl: string, fileName: string): File {
+  const [header, body] = dataUrl.split(",");
+  const mime = /data:([^;]+);base64/i.exec(header || "")?.[1] || "image/jpeg";
+  const binary = atob(body || "");
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return new File([bytes], fileName, { type: mime });
+}
+
+function offsetFromDrawPosition(params: {
+  containerWidth: number;
+  containerHeight: number;
+  drawW: number;
+  drawH: number;
+  dx: number;
+  dy: number;
+}) {
+  const { containerWidth, containerHeight, drawW, drawH, dx, dy } = params;
+  const maxX = Math.abs(drawW - containerWidth) / 2;
+  const maxY = Math.abs(drawH - containerHeight) / 2;
+  return {
+    offsetX: maxX
+      ? clampNumber(
+          (((containerWidth - drawW) / 2 - dx) / maxX) * 100,
+          -100,
+          100,
+        )
+      : 0,
+    offsetY: maxY
+      ? clampNumber(
+          (((containerHeight - drawH) / 2 - dy) / maxY) * 100,
+          -100,
+          100,
+        )
+      : 0,
+  };
+}
+
+async function urlToFile(
+  url: string,
+  fileName: string,
+  fallbackType = "image/jpeg",
+) {
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error("Impossible de récupérer le média à adapter.");
+  }
+  const blob = await response.blob();
+  return new File([blob], fileName, {
+    type: blob.type || fallbackType,
+    lastModified: Date.now(),
+  });
 }
 
 function normalizeAgentCtaMode(value: unknown): BoosterCtaMode {
@@ -1956,6 +2048,70 @@ function extractPublishMediaPreview(
   };
 }
 
+function getPublishMediaRecord(
+  action: AgentPreparedAction | null,
+  channelKey: ChannelKey | null,
+): Record<string, unknown> | null {
+  if (!action) return null;
+  const payload = action.payload || {};
+  const post = channelPostRecord(action, channelKey);
+  const directCandidates = [
+    post?.media,
+    post?.mediaAsset,
+    post?.image,
+    post?.imageAsset,
+    post?.imageUrl,
+    post?.visual,
+    post?.cover,
+    post?.video,
+    post?.videoAsset,
+    post?.file,
+    post?.attachment,
+    firstAttachmentCandidate(post?.attachments),
+    payload.media,
+    payload.mediaAsset,
+    payload.image,
+    payload.imageAsset,
+    payload.video,
+    payload.videoAsset,
+    payload.selectedImage,
+    payload.visual,
+    payload.cover,
+    firstAttachmentCandidate(payload.attachments),
+    firstAttachmentCandidate(payload.files),
+  ];
+
+  for (const candidate of directCandidates) {
+    if (!candidate) continue;
+    if (typeof candidate === "string") {
+      return { url: candidate, name: filenameFromUrl(candidate) };
+    }
+    const record = asRecord(candidate);
+    if (record) return record;
+  }
+
+  const asset = action.imageAssets
+    .map((item) =>
+      typeof item === "string"
+        ? ({ url: item, name: filenameFromUrl(item) } as Record<
+            string,
+            unknown
+          >)
+        : asRecord(item),
+    )
+    .find(Boolean);
+  return asset || null;
+}
+
+function getMediaVideoSettingsRecord(
+  media: Record<string, unknown> | null,
+  channel: BoosterChannelKey,
+) {
+  const settingsByChannel = asRecord(media?.videoSettingsByChannel);
+  const direct = asRecord(settingsByChannel?.[channel]);
+  return direct || asRecord(media?.videoSettings) || null;
+}
+
 function extractPublishMediaAdaptationPreview(
   action: AgentPreparedAction | null,
   channelKey: ChannelKey | null,
@@ -3002,6 +3158,38 @@ export default function AgentClient() {
   const [publishMediaUploadState, setPublishMediaUploadState] = useState<
     "idle" | "saving"
   >("idle");
+  const [publishImageAdapterOpen, setPublishImageAdapterOpen] = useState(false);
+  const [publishImageAdapterFile, setPublishImageAdapterFile] =
+    useState<File | null>(null);
+  const [publishImageAdapterPreviewUrl, setPublishImageAdapterPreviewUrl] =
+    useState("");
+  const [publishImageAdapterMeta, setPublishImageAdapterMeta] =
+    useState<ImageMeta | null>(null);
+  const [publishImageAdapterTransform, setPublishImageAdapterTransform] =
+    useState<ImageTransform | null>(null);
+  const [publishImageAdapterSaving, setPublishImageAdapterSaving] =
+    useState(false);
+  const [publishImageAdapterDragging, setPublishImageAdapterDragging] =
+    useState(false);
+  const publishImageAdapterStageRef = useRef<HTMLDivElement | null>(null);
+  const [publishImageAdapterStageSize, setPublishImageAdapterStageSize] =
+    useState({ width: 0, height: 0 });
+  const publishImageAdapterDragRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startOffsetX: number;
+    startOffsetY: number;
+  } | null>(null);
+  const [publishVideoAdapterOpen, setPublishVideoAdapterOpen] = useState(false);
+  const [publishVideoFormat, setPublishVideoFormat] =
+    useState<VideoFormat>("original");
+  const [publishVideoAdaptationMode, setPublishVideoAdaptationMode] =
+    useState<VideoAdaptationMode>("safe_blur");
+  const [publishVideoPreparationState, setPublishVideoPreparationState] =
+    useState<BoosterVideoPreparationState | null>(null);
+  const [publishVideoAdapterSaving, setPublishVideoAdapterSaving] =
+    useState(false);
   const [publishMediaLibraryItems, setPublishMediaLibraryItems] = useState<
     AgentMediaLibraryItem[]
   >([]);
@@ -3035,6 +3223,31 @@ export default function AgentClient() {
     mq.addEventListener?.("change", update);
     return () => mq.removeEventListener?.("change", update);
   }, []);
+
+  useEffect(() => {
+    if (!publishImageAdapterOpen || !publishImageAdapterStageRef.current)
+      return;
+    const node = publishImageAdapterStageRef.current;
+    const update = () => {
+      const rect = node.getBoundingClientRect();
+      setPublishImageAdapterStageSize({
+        width: Math.max(1, rect.width),
+        height: Math.max(1, rect.height),
+      });
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [publishImageAdapterOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (publishImageAdapterPreviewUrl) {
+        URL.revokeObjectURL(publishImageAdapterPreviewUrl);
+      }
+    };
+  }, [publishImageAdapterPreviewUrl]);
 
   useEffect(() => {
     let alive = true;
@@ -3425,6 +3638,54 @@ export default function AgentClient() {
   const publishMediaPreview = isPublishView
     ? extractPublishMediaPreview(selectedPreparedAction, activePreviewChannel)
     : null;
+  const publishMediaAdaptationPreview = isPublishView
+    ? extractPublishMediaAdaptationPreview(
+        selectedPreparedAction,
+        activePreviewChannel,
+      )
+    : null;
+  const publishMediaRetouchLabel =
+    publishMediaPreview?.kind === "video"
+      ? "Adapter la vidéo"
+      : publishMediaPreview?.kind === "image"
+        ? "Adapter l’image"
+        : "Adapter le média";
+  const publishMediaRetouchIcon =
+    publishMediaPreview?.kind === "video"
+      ? "🎞️"
+      : publishMediaPreview?.kind === "image"
+        ? "🪄"
+        : "✨";
+  const publishBoosterChannel =
+    boosterChannelKeyFromAgentChannel(activePreviewChannel);
+  const publishImageAdapterPreset = CHANNEL_PRESETS[publishBoosterChannel];
+  const publishImageAdapterTransformSafe =
+    publishImageAdapterTransform || getDefaultTransform(publishBoosterChannel);
+  const publishImageAdapterEffectiveZoom = getEffectiveTransformZoom(
+    publishImageAdapterTransformSafe,
+  );
+  const publishImageAdapterBackgroundMode = getBackgroundMode(
+    publishImageAdapterTransformSafe,
+  );
+  const publishImageAdapterBackgroundColor = getBackgroundFill(
+    publishImageAdapterTransformSafe.backgroundMode ||
+      publishImageAdapterBackgroundMode,
+    publishImageAdapterTransformSafe.backgroundColor,
+  );
+  const publishImageAdapterAspectRatio = `${publishImageAdapterPreset.width} / ${publishImageAdapterPreset.height}`;
+  const publishImageAdapterPreviewLayout = computePreviewLayout({
+    containerWidth:
+      publishImageAdapterStageSize.width || publishImageAdapterPreset.width,
+    containerHeight:
+      publishImageAdapterStageSize.height || publishImageAdapterPreset.height,
+    imageWidth: publishImageAdapterMeta?.width || 0,
+    imageHeight: publishImageAdapterMeta?.height || 0,
+    transform: publishImageAdapterTransformSafe,
+  });
+  const currentPublishMediaRecord = getPublishMediaRecord(
+    selectedPreparedAction,
+    activePreviewChannel,
+  );
   const publishParagraphs = isPublishView
     ? publishPostParagraphs(
         preparedChannelPreview?.body || selectedPreparedAction?.summary || "",
@@ -3907,6 +4168,360 @@ export default function AgentClient() {
       return;
     }
     setPublishMediaPreviewOpen(true);
+  }
+
+  function updatePublishImageAdapterTransform(patch: Partial<ImageTransform>) {
+    setPublishImageAdapterTransform((current) => ({
+      ...(current || getDefaultTransform(publishBoosterChannel)),
+      ...patch,
+    }));
+  }
+
+  function closePublishImageAdapter() {
+    setPublishImageAdapterOpen(false);
+    setPublishImageAdapterFile(null);
+    setPublishImageAdapterMeta(null);
+    setPublishImageAdapterTransform(null);
+    setPublishImageAdapterStageSize({ width: 0, height: 0 });
+    setPublishImageAdapterDragging(false);
+    publishImageAdapterDragRef.current = null;
+    if (publishImageAdapterPreviewUrl) {
+      URL.revokeObjectURL(publishImageAdapterPreviewUrl);
+      setPublishImageAdapterPreviewUrl("");
+    }
+  }
+
+  async function openPublishImageAdapterTool() {
+    if (!publishMediaPreview?.url) {
+      showNotice("Ajoute d’abord une image à adapter.");
+      return;
+    }
+    try {
+      setPublishImageAdapterSaving(true);
+      const fileName =
+        publishMediaPreview.name?.replace(/\.[^.]+$/, "") || "image-inragent";
+      const sourceFile = await urlToFile(
+        publishMediaPreview.url,
+        `${fileName}.jpg`,
+        "image/jpeg",
+      );
+      const meta = await readImageMeta(sourceFile);
+      const transform = getOptimizedTransform(publishBoosterChannel, meta);
+      const previewUrl = URL.createObjectURL(sourceFile);
+      if (publishImageAdapterPreviewUrl) {
+        URL.revokeObjectURL(publishImageAdapterPreviewUrl);
+      }
+      setPublishImageAdapterFile(sourceFile);
+      setPublishImageAdapterMeta(meta);
+      setPublishImageAdapterTransform(transform);
+      setPublishImageAdapterPreviewUrl(previewUrl);
+      setPublishImageAdapterOpen(true);
+    } catch (error) {
+      showNotice(
+        error instanceof Error
+          ? error.message
+          : "Adaptation de l’image impossible.",
+      );
+    } finally {
+      setPublishImageAdapterSaving(false);
+    }
+  }
+
+  function getCurrentVideoSettings() {
+    const rawSettings = getMediaVideoSettingsRecord(
+      currentPublishMediaRecord,
+      publishBoosterChannel,
+    );
+    return {
+      format: normalizeVideoFormat(
+        publishBoosterChannel,
+        rawSettings?.format || currentPublishMediaRecord?.videoFormat,
+      ),
+      adaptationMode: normalizeVideoAdaptationMode(
+        rawSettings?.adaptationMode ||
+          currentPublishMediaRecord?.videoAdaptationMode,
+      ),
+    };
+  }
+
+  function openPublishVideoAdapterTool() {
+    if (!publishMediaPreview?.url) {
+      showNotice("Ajoute d’abord une vidéo à adapter.");
+      return;
+    }
+    const settings = getCurrentVideoSettings();
+    setPublishVideoFormat(settings.format);
+    setPublishVideoAdaptationMode(settings.adaptationMode);
+    setPublishVideoPreparationState(null);
+    setPublishVideoAdapterOpen(true);
+  }
+
+  function openPublishMediaAdapterPreview() {
+    if (!publishMediaPreview?.url) {
+      showNotice("Ajoute d’abord une image ou une vidéo à adapter.");
+      return;
+    }
+    if (publishMediaPreview.kind === "video") {
+      openPublishVideoAdapterTool();
+      return;
+    }
+    if (publishMediaPreview.kind === "image") {
+      void openPublishImageAdapterTool();
+      return;
+    }
+    showNotice("Ce média ne peut pas être adapté avec les outils Booster.");
+  }
+
+  function handlePublishImageAdapterWheel(
+    event: ReactWheelEvent<HTMLDivElement>,
+  ) {
+    if (event.cancelable) event.preventDefault();
+    const meta = publishImageAdapterMeta;
+    const node = publishImageAdapterStageRef.current;
+    if (!meta?.width || !meta?.height || !node) return;
+    const rect = node.getBoundingClientRect();
+    const pointerX = event.clientX - rect.left;
+    const pointerY = event.clientY - rect.top;
+    const maxZoom = publishImageAdapterTransformSafe.fit === "cover" ? 3 : 1;
+    const currentZoom = getEffectiveTransformZoom(
+      publishImageAdapterTransformSafe,
+    );
+    const nextZoom = clampNumber(
+      currentZoom + (event.deltaY < 0 ? 0.08 : -0.08),
+      0.4,
+      maxZoom,
+    );
+    const nextLayout = computePreviewLayout({
+      containerWidth: rect.width,
+      containerHeight: rect.height,
+      imageWidth: meta.width,
+      imageHeight: meta.height,
+      transform: { ...publishImageAdapterTransformSafe, zoom: nextZoom },
+    });
+    const currentDrawW =
+      publishImageAdapterPreviewLayout.drawW || nextLayout.drawW;
+    const currentDrawH =
+      publishImageAdapterPreviewLayout.drawH || nextLayout.drawH;
+    const ux = currentDrawW
+      ? (pointerX - publishImageAdapterPreviewLayout.dx) / currentDrawW
+      : 0.5;
+    const uy = currentDrawH
+      ? (pointerY - publishImageAdapterPreviewLayout.dy) / currentDrawH
+      : 0.5;
+    const nextDx = pointerX - ux * nextLayout.drawW;
+    const nextDy = pointerY - uy * nextLayout.drawH;
+    updatePublishImageAdapterTransform({
+      zoom: nextZoom,
+      ...offsetFromDrawPosition({
+        containerWidth: rect.width,
+        containerHeight: rect.height,
+        drawW: nextLayout.drawW,
+        drawH: nextLayout.drawH,
+        dx: nextDx,
+        dy: nextDy,
+      }),
+    });
+  }
+
+  function handlePublishImageAdapterPointerDown(
+    event: ReactPointerEvent<HTMLDivElement>,
+  ) {
+    publishImageAdapterDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      startOffsetX: publishImageAdapterTransformSafe.offsetX || 0,
+      startOffsetY: publishImageAdapterTransformSafe.offsetY || 0,
+    };
+    setPublishImageAdapterDragging(true);
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+  }
+
+  function handlePublishImageAdapterPointerMove(
+    event: ReactPointerEvent<HTMLDivElement>,
+  ) {
+    const drag = publishImageAdapterDragRef.current;
+    if (!drag || drag.pointerId !== event.pointerId) return;
+    const nextOffsetX = publishImageAdapterPreviewLayout.maxX
+      ? clampNumber(
+          drag.startOffsetX -
+            ((event.clientX - drag.startX) /
+              publishImageAdapterPreviewLayout.maxX) *
+              100,
+          -100,
+          100,
+        )
+      : 0;
+    const nextOffsetY = publishImageAdapterPreviewLayout.maxY
+      ? clampNumber(
+          drag.startOffsetY -
+            ((event.clientY - drag.startY) /
+              publishImageAdapterPreviewLayout.maxY) *
+              100,
+          -100,
+          100,
+        )
+      : 0;
+    updatePublishImageAdapterTransform({
+      offsetX: nextOffsetX,
+      offsetY: nextOffsetY,
+    });
+  }
+
+  function endPublishImageAdapterDrag(
+    event?: ReactPointerEvent<HTMLDivElement>,
+  ) {
+    if (
+      event &&
+      publishImageAdapterDragRef.current?.pointerId === event.pointerId
+    ) {
+      event.currentTarget.releasePointerCapture?.(event.pointerId);
+    }
+    publishImageAdapterDragRef.current = null;
+    setPublishImageAdapterDragging(false);
+  }
+
+  async function savePublishImageAdapter() {
+    if (!publishImageAdapterFile || !publishImageAdapterTransform) return;
+    setPublishImageAdapterSaving(true);
+    try {
+      const rendered = await renderChannelImage({
+        file: publishImageAdapterFile,
+        transform: publishImageAdapterTransform,
+        preset: publishImageAdapterPreset,
+        channel: publishBoosterChannel,
+      });
+      const safeName =
+        rendered.name ||
+        `${publishMediaPreview?.name?.replace(/\.[^.]+$/, "") || "image-inragent"}-adaptee.jpg`;
+      if (!rendered.dataUrl) {
+        throw new Error("Image adaptée introuvable.");
+      }
+      const renderedFile = dataUrlToFile(rendered.dataUrl, safeName);
+      await uploadPublishMedia(renderedFile);
+      closePublishImageAdapter();
+      showNotice("Image adaptée et enregistrée pour iNrAgent.");
+    } catch (error) {
+      showNotice(
+        error instanceof Error
+          ? error.message
+          : "Enregistrement de l’image adaptée impossible.",
+      );
+    } finally {
+      setPublishImageAdapterSaving(false);
+    }
+  }
+
+  async function savePublishVideoAdapter() {
+    if (!publishMediaPreview?.url || !currentPublishMediaRecord) return;
+    setPublishVideoAdapterSaving(true);
+    setPublishVideoPreparationState({
+      status: "preparing",
+      label: "Préparation vidéo en cours...",
+    });
+    try {
+      const nextSettings = {
+        format: publishVideoFormat,
+        adaptationMode: publishVideoAdaptationMode,
+      };
+      const existingVariants = Array.isArray(
+        currentPublishMediaRecord.transformedVariants,
+      )
+        ? (currentPublishMediaRecord.transformedVariants as BoosterVideoTransformedVariant[])
+        : [];
+      const response = await requestBoosterVideoTransforms({
+        source: {
+          storagePath: String(
+            currentPublishMediaRecord.storagePath ||
+              currentPublishMediaRecord.storage_path ||
+              currentPublishMediaRecord.path ||
+              "",
+          ),
+          publicUrl: publishMediaPreview.url,
+          url: publishMediaPreview.url,
+          name: publishMediaPreview.name,
+          type: String(
+            currentPublishMediaRecord.mimeType ||
+              currentPublishMediaRecord.mime_type ||
+              currentPublishMediaRecord.type ||
+              "video/mp4",
+          ),
+          size: Number(currentPublishMediaRecord.size || 0) || null,
+          duration:
+            Number(
+              currentPublishMediaRecord.duration ||
+                currentPublishMediaRecord.duration_seconds ||
+                0,
+            ) || null,
+        },
+        variants: [
+          {
+            channel: publishBoosterChannel,
+            format: publishVideoFormat,
+            adaptationMode: publishVideoAdaptationMode,
+          },
+        ],
+      });
+
+      const generatedVariants = Array.isArray(response.variants)
+        ? response.variants
+        : [];
+      const transformedVariants = [
+        ...existingVariants.filter(
+          (variant) =>
+            !generatedVariants.some(
+              (generated) => generated.signature === variant.signature,
+            ),
+        ),
+        ...generatedVariants,
+      ];
+      const videoSettingsByChannel = {
+        ...(asRecord(currentPublishMediaRecord.videoSettingsByChannel) || {}),
+        [publishBoosterChannel]: nextSettings,
+      };
+
+      await savePublishMediaPatch({
+        ...currentPublishMediaRecord,
+        videoSettings: nextSettings,
+        videoSettingsByChannel,
+        videoFormat: publishVideoFormat,
+        videoAdaptationMode: publishVideoAdaptationMode,
+        transformedVariants,
+      });
+
+      setPublishVideoPreparationState({
+        status: generatedVariants.length ? "ready" : "ready",
+        label: generatedVariants.length
+          ? "Format vidéo appliqué"
+          : "Vidéo originale conservée",
+        detail: `${getVideoFormatLabel(
+          publishBoosterChannel,
+          publishVideoFormat,
+        )} · ${publishVideoAdaptationMode === "cover_crop" ? "Recadrer plein écran" : "Cadre sobre sécurisé"}`,
+      });
+      if (response.errors?.length && !generatedVariants.length) {
+        showNotice(
+          response.errors[0]?.message ||
+            "Adaptation automatique indisponible : la vidéo originale sera conservée.",
+        );
+      } else {
+        showNotice("Réglage vidéo enregistré pour iNrAgent.");
+      }
+    } catch (error) {
+      setPublishVideoPreparationState({
+        status: "error",
+        label: "Adaptation vidéo impossible",
+        detail:
+          error instanceof Error
+            ? error.message
+            : "Réessaie ou conserve la vidéo originale.",
+      });
+      showNotice(
+        error instanceof Error ? error.message : "Adaptation vidéo impossible.",
+      );
+    } finally {
+      setPublishVideoAdapterSaving(false);
+    }
   }
 
   async function savePublishMediaPatch(media: Record<string, unknown> | null) {
@@ -7633,39 +8248,99 @@ export default function AgentClient() {
             >
               ×
             </button>
-            <p className={styles.modalEyebrow}>Média iNr’Agent</p>
-            <h2>Gérer le média {activePreviewChannelLabel}</h2>
+            <div className={styles.publishMediaModalHeader}>
+              <div>
+                <p className={styles.modalEyebrow}>Média iNr’Agent</p>
+                <h2>Gérer le média {activePreviewChannelLabel}</h2>
+                <span>
+                  Choisissez, remplacez ou préparez le média avant validation.
+                </span>
+              </div>
+              <div
+                className={`${styles.publishMediaStatusPill} ${
+                  publishMediaPreview?.statusTone === "blocked"
+                    ? styles.publishMediaStatusBlocked
+                    : publishMediaPreview?.statusTone === "warning"
+                      ? styles.publishMediaStatusWarning
+                      : publishMediaPreview?.statusTone === "ready"
+                        ? styles.publishMediaStatusReady
+                        : ""
+                }`}
+              >
+                {publishMediaPreview?.statusLabel || "—"}
+              </div>
+            </div>
 
-            <div className={styles.publishMediaCurrent}>
-              {publishMediaPreview?.url ? (
-                publishMediaPreview.kind === "video" ? (
-                  <video
-                    src={publishMediaPreview.url}
-                    controls
-                    preload="metadata"
-                  />
+            <div className={styles.publishMediaHero}>
+              <div className={styles.publishMediaVisual}>
+                {publishMediaPreview?.url ? (
+                  publishMediaPreview.kind === "video" ? (
+                    <video
+                      src={publishMediaPreview.url}
+                      controls
+                      preload="metadata"
+                    />
+                  ) : (
+                    <img
+                      src={publishMediaPreview.url}
+                      alt={publishMediaPreview.name || "Média de publication"}
+                    />
+                  )
                 ) : (
-                  <img
-                    src={publishMediaPreview.url}
-                    alt={publishMediaPreview.name || "Média de publication"}
-                  />
-                )
-              ) : (
-                <div className={styles.publishMediaEmpty}>
-                  <span aria-hidden>🖼️</span>
-                  <strong>Aucun média sélectionné</strong>
-                </div>
-              )}
+                  <div className={styles.publishMediaEmpty}>
+                    <span aria-hidden>🖼️</span>
+                    <strong>Aucun média sélectionné</strong>
+                  </div>
+                )}
+              </div>
               <div className={styles.publishMediaCurrentText}>
+                <span className={styles.publishMediaTypeChip}>
+                  {publishMediaPreview?.typeLabel || "Média"}
+                </span>
                 <strong>{publishMediaPreview?.name || "Aucun média"}</strong>
                 <small>
                   {publishMediaPreview?.note ||
                     "Ajoutez une image ou une vidéo depuis la Médiathèque."}
                 </small>
+                {publishMediaAdaptationPreview?.userEditable &&
+                publishMediaPreview?.url ? (
+                  <button
+                    type="button"
+                    className={styles.publishMediaRetouchButton}
+                    onClick={openPublishMediaAdapterPreview}
+                    disabled={publishMediaUploadState === "saving"}
+                  >
+                    <span aria-hidden>{publishMediaRetouchIcon}</span>
+                    {publishMediaRetouchLabel}
+                  </button>
+                ) : (
+                  <div className={styles.publishMediaRetouchHint}>
+                    <span aria-hidden>✨</span>
+                    Ajoutez un média pour pouvoir l’adapter.
+                  </div>
+                )}
               </div>
             </div>
 
-            <div className={styles.attachmentUploadBox}>
+            <div className={styles.publishMediaAdaptationBox}>
+              <div>
+                <strong>Adaptation du canal</strong>
+                <span>
+                  {publishMediaAdaptationPreview?.note ||
+                    "iNrAgent préparera le média selon les règles du canal."}
+                </span>
+              </div>
+              <small>
+                Étape 1 : le bouton est prêt dans l’interface. Le branchement
+                sur l’outil d’adaptation existant arrive à l’étape 2.
+              </small>
+            </div>
+
+            <div className={styles.publishMediaSourcePanel}>
+              <div className={styles.publishMediaSourceHeader}>
+                <strong>Ajouter ou remplacer</strong>
+                <span>1 média utilisé pour toute la publication iNrAgent.</span>
+              </div>
               <input
                 id="agent-publish-media-image"
                 type="file"
@@ -7695,16 +8370,18 @@ export default function AgentClient() {
                   void uploadPublishMedia(event.currentTarget.files?.[0]);
                   event.currentTarget.value = "";
                 }}
-                disabled={publishMediaUploadState === "saving"}
+                disabled={!isMobileHeader || publishMediaUploadState === "saving"}
               />
               <div className={styles.publishMediaActionButtons}>
                 <label htmlFor="agent-publish-media-image">
                   <span aria-hidden>🖼️</span>
-                  Ajouter une image
+                  <strong>Ajouter une image</strong>
+                  <small>JPG, PNG ou WebP</small>
                 </label>
                 <label htmlFor="agent-publish-media-video">
                   <span aria-hidden>🎬</span>
-                  Ajouter une vidéo
+                  <strong>Ajouter une vidéo</strong>
+                  <small>MP4, WebM ou MOV</small>
                 </label>
                 <button
                   type="button"
@@ -7712,18 +8389,25 @@ export default function AgentClient() {
                   disabled={publishMediaUploadState === "saving"}
                 >
                   <span aria-hidden>🗂️</span>
-                  Médiathèque
+                  <strong>Médiathèque</strong>
+                  <small>Choisir un média existant</small>
                 </button>
-                <label htmlFor="agent-publish-media-camera">
+                <label
+                  htmlFor={isMobileHeader ? "agent-publish-media-camera" : undefined}
+                  aria-disabled={!isMobileHeader || publishMediaUploadState === "saving"}
+                  title={isMobileHeader ? "Prendre une photo dans iNrCy" : "Disponible sur mobile"}
+                  onClick={(event) => {
+                    if (!isMobileHeader) event.preventDefault();
+                  }}
+                >
                   <span aria-hidden>📷</span>
-                  Prendre une photo
+                  <strong>Prendre une photo</strong>
+                  <small>{isMobileHeader ? "Depuis mobile" : "Disponible sur mobile"}</small>
                 </label>
               </div>
-              <small>
+              <small className={styles.publishMediaSourceNote}>
                 Image jusqu’à {INR_MEDIA_IMAGE_MAX_MB_LABEL} ou vidéo jusqu’à{" "}
-                {INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL}. iNrAgent V1 utilise
-                {INR_MEDIA_AGENT_MAX_MEDIA_COUNT} média pour toute la
-                publication.
+                {INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL}.
               </small>
             </div>
 
@@ -7757,6 +8441,211 @@ export default function AgentClient() {
                 }
               >
                 Supprimer le média
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      {publishImageAdapterOpen && (
+        <ChannelImageAdapterModal
+          open={publishImageAdapterOpen}
+          title={`Adapter le média ${activePreviewChannelLabel}`}
+          subtitle={`${activePreviewChannelLabel} • ${publishImageAdapterPreset.width}×${publishImageAdapterPreset.height}`}
+          aspectRatio={publishImageAdapterAspectRatio}
+          backgroundMode={publishImageAdapterBackgroundMode}
+          backgroundColor={publishImageAdapterBackgroundColor}
+          fitLabel={
+            publishImageAdapterTransformSafe.fit === "cover"
+              ? "Remplir"
+              : "Adapter"
+          }
+          zoomLabel={`zoom ${publishImageAdapterEffectiveZoom.toFixed(2)}×`}
+          previewSrc={publishImageAdapterPreviewUrl}
+          previewLayout={publishImageAdapterPreviewLayout}
+          isDragging={publishImageAdapterDragging}
+          onClose={closePublishImageAdapter}
+          onWheel={handlePublishImageAdapterWheel}
+          onPointerDown={handlePublishImageAdapterPointerDown}
+          onPointerMove={handlePublishImageAdapterPointerMove}
+          onPointerUp={endPublishImageAdapterDrag}
+          onPointerCancel={endPublishImageAdapterDrag}
+          onDoubleClick={() =>
+            updatePublishImageAdapterTransform({ offsetX: 0, offsetY: 0 })
+          }
+          previewRef={publishImageAdapterStageRef}
+          buttonClassName=""
+          primaryButtonClassName=""
+          onZoomOut={() =>
+            updatePublishImageAdapterTransform({
+              zoom: clampNumber(
+                publishImageAdapterEffectiveZoom - 0.08,
+                0.4,
+                publishImageAdapterTransformSafe.fit === "cover" ? 3 : 1,
+              ),
+            })
+          }
+          onZoomIn={() =>
+            updatePublishImageAdapterTransform({
+              zoom: clampNumber(
+                publishImageAdapterEffectiveZoom + 0.08,
+                0.4,
+                publishImageAdapterTransformSafe.fit === "cover" ? 3 : 1,
+              ),
+            })
+          }
+          onContain={() =>
+            updatePublishImageAdapterTransform({
+              fit: "contain",
+              zoom: 1,
+              offsetX: 0,
+              offsetY: 0,
+              backgroundMode: "color",
+              backgroundColor: "#ffffff",
+              blurBackground: false,
+            })
+          }
+          onCover={() =>
+            updatePublishImageAdapterTransform({
+              fit: "cover",
+              backgroundMode: "black",
+              blurBackground: false,
+            })
+          }
+          onReset={() => {
+            const nextTransform = getOptimizedTransform(
+              publishBoosterChannel,
+              publishImageAdapterMeta || undefined,
+            );
+            setPublishImageAdapterTransform(nextTransform);
+          }}
+          onSave={savePublishImageAdapter}
+          isolationNote="Ce réglage utilise l’outil Adapter image existant de Booster et remplacera le média iNrAgent par la version adaptée."
+          onBackgroundModeChange={(mode) =>
+            updatePublishImageAdapterTransform(
+              mode === "transparent"
+                ? {
+                    backgroundMode: "transparent",
+                    blurBackground: false,
+                    fit: "contain",
+                    zoom: 1,
+                    offsetX: 0,
+                    offsetY: 0,
+                  }
+                : {
+                    backgroundMode: "color",
+                    backgroundColor:
+                      publishImageAdapterTransformSafe.backgroundColor ||
+                      "#ffffff",
+                    blurBackground: false,
+                    fit: "contain",
+                    zoom: 1,
+                    offsetX: 0,
+                    offsetY: 0,
+                  },
+            )
+          }
+          onBackgroundColorChange={(color) =>
+            updatePublishImageAdapterTransform({
+              backgroundMode: "color",
+              backgroundColor: color,
+              blurBackground: false,
+              fit: "contain",
+              zoom: 1,
+              offsetX: 0,
+              offsetY: 0,
+            })
+          }
+          pillButtonStyle={{}}
+          pillButtonActiveStyle={{}}
+        />
+      )}
+
+      {publishVideoAdapterOpen && (
+        <div
+          className={styles.modalBackdrop}
+          role="presentation"
+          onClick={() => {
+            if (!publishVideoAdapterSaving) setPublishVideoAdapterOpen(false);
+          }}
+        >
+          <section
+            className={`${styles.settingsModal} ${styles.publishVideoAdapterModal}`}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Adapter la vidéo iNrAgent"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className={styles.modalClose}
+              onClick={() => setPublishVideoAdapterOpen(false)}
+              aria-label="Fermer"
+              disabled={publishVideoAdapterSaving}
+            >
+              ×
+            </button>
+            <div className={styles.publishMediaModalHeader}>
+              <div>
+                <p className={styles.modalEyebrow}>Adapter vidéo</p>
+                <h2>{activePreviewChannelLabel}</h2>
+                <span>
+                  Outil Booster existant : choisissez le format puis
+                  appliquez-le au média iNrAgent.
+                </span>
+              </div>
+            </div>
+            <BoosterVideoFormatManager
+              isMobile={isMobileHeader}
+              channel={publishBoosterChannel}
+              videoName={publishMediaPreview?.name || "Vidéo iNrAgent"}
+              videoDisplayUrl={publishMediaPreview?.url || ""}
+              videoSize={Number(currentPublishMediaRecord?.size || 0) || null}
+              videoDurationSeconds={
+                Number(
+                  currentPublishMediaRecord?.duration ||
+                    currentPublishMediaRecord?.duration_seconds ||
+                    0,
+                ) || null
+              }
+              videoSourceMetadata={
+                (asRecord(currentPublishMediaRecord?.sourceMetadata) ||
+                  null) as BoosterVideoSourceMetadata | null
+              }
+              currentFormat={publishVideoFormat}
+              adaptationMode={publishVideoAdaptationMode}
+              videoTransformedVariants={
+                Array.isArray(currentPublishMediaRecord?.transformedVariants)
+                  ? (currentPublishMediaRecord?.transformedVariants as BoosterVideoTransformedVariant[])
+                  : []
+              }
+              preparationState={publishVideoPreparationState}
+              preparing={publishVideoAdapterSaving}
+              onFormatChange={(format) => setPublishVideoFormat(format)}
+              onAdaptationModeChange={(mode) =>
+                setPublishVideoAdaptationMode(mode)
+              }
+              onApplyFormat={savePublishVideoAdapter}
+              showApplyAll={false}
+              buttonClassName={styles.agentToolbarButton}
+              compact
+            />
+            <div className={styles.modalActions}>
+              <button
+                type="button"
+                onClick={() => setPublishVideoAdapterOpen(false)}
+                disabled={publishVideoAdapterSaving}
+              >
+                Fermer
+              </button>
+              <button
+                type="button"
+                onClick={savePublishVideoAdapter}
+                disabled={
+                  publishVideoAdapterSaving || !publishMediaPreview?.url
+                }
+              >
+                Enregistrer l’adaptation
               </button>
             </div>
           </section>

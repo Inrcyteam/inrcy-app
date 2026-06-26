@@ -213,6 +213,9 @@ export default function ImageBankAdminClient() {
   const [sourceFilter, setSourceFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [editDrafts, setEditDrafts] = useState<Record<string, EditDraft>>({});
+  const [selectedImageIds, setSelectedImageIds] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   const sectors = useMemo(() => groupBySector(categories), [categories]);
   const selectedSectorJobs = useMemo(() => {
@@ -241,6 +244,15 @@ export default function ImageBankAdminClient() {
       ),
     };
   }, [images]);
+
+  const selectedImages = useMemo(
+    () => images.filter((image) => selectedImageIds.has(image.id)),
+    [images, selectedImageIds],
+  );
+  const selectedImageCount = selectedImages.length;
+  const allVisibleImagesSelected =
+    images.length > 0 && images.every((image) => selectedImageIds.has(image.id));
+  const bulkDeleting = savingId === "__bulk__";
 
   const loadCategories = useCallback(async () => {
     setError(null);
@@ -292,6 +304,10 @@ export default function ImageBankAdminClient() {
           throw new Error(json?.error || "Impossible de charger les images.");
         const nextImages = (json.images ?? []) as ImageBankRow[];
         setImages(nextImages);
+        setSelectedImageIds((prev) => {
+          const visibleIds = new Set(nextImages.map((image) => image.id));
+          return new Set(Array.from(prev).filter((id) => visibleIds.has(id)));
+        });
         setEditDrafts((prev) => {
           const next = { ...prev };
           for (const image of nextImages) {
@@ -543,6 +559,62 @@ export default function ImageBankAdminClient() {
     setEditingId(null);
   }
 
+  function toggleImageSelection(id: string) {
+    setSelectedImageIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAllVisibleImages() {
+    setSelectedImageIds((prev) => {
+      const next = new Set(prev);
+      if (allVisibleImagesSelected) {
+        for (const image of images) next.delete(image.id);
+      } else {
+        for (const image of images) next.add(image.id);
+      }
+      return next;
+    });
+  }
+
+  function clearImageSelection() {
+    setSelectedImageIds(new Set());
+  }
+
+  async function deleteSelectedImages() {
+    const ids = selectedImages.map((image) => image.id);
+    if (!ids.length) return;
+
+    const ok = window.confirm(
+      `Supprimer définitivement ${ids.length} image(s) de la banque iNrCy ?`,
+    );
+    if (!ok) return;
+
+    setSavingId("__bulk__");
+    setError(null);
+    setSuccess(null);
+    try {
+      const response = await fetch("/api/admin/image-bank/images", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      const json = await readApiJson(response, "Suppression impossible.");
+      if (!response.ok)
+        throw new Error(json?.error || "Suppression impossible.");
+      setSuccess(`${Number(json?.deleted || ids.length)} image(s) supprimée(s).`);
+      clearImageSelection();
+      await loadImages(categoryId);
+    } catch (e: any) {
+      setError(e?.message || "Suppression impossible.");
+    } finally {
+      setSavingId(null);
+    }
+  }
+
   async function deleteImage(image: ImageBankRow) {
     const ok = window.confirm(
       "Supprimer définitivement cette image de la banque iNrCy ?",
@@ -563,6 +635,11 @@ export default function ImageBankAdminClient() {
       if (!response.ok)
         throw new Error(json?.error || "Suppression impossible.");
       setSuccess("Image supprimée définitivement.");
+      setSelectedImageIds((prev) => {
+        const next = new Set(prev);
+        next.delete(image.id);
+        return next;
+      });
       await loadImages(categoryId);
     } catch (e: any) {
       setError(e?.message || "Suppression impossible.");
@@ -878,12 +955,40 @@ export default function ImageBankAdminClient() {
             </div>
 
             <div className={styles.galleryHeader}>
-              <span className={styles.galleryChip}>
-                {imagesLoading ? "Chargement…" : `${images.length} image(s)`}
-              </span>
-              <span className={styles.galleryChipSecondary}>
-                {selectedCategory?.storage_prefix || "—"}
-              </span>
+              <div className={styles.galleryHeaderInfo}>
+                <span className={styles.galleryChip}>
+                  {imagesLoading ? "Chargement…" : `${images.length} image(s)`}
+                </span>
+                <span className={styles.galleryChipSecondary}>
+                  {selectedCategory?.storage_prefix || "—"}
+                </span>
+              </div>
+
+              <div className={styles.bulkToolbar}>
+                <button
+                  type="button"
+                  className={styles.smallGhostButton}
+                  onClick={toggleAllVisibleImages}
+                  disabled={imagesLoading || images.length === 0 || bulkDeleting}
+                >
+                  {allVisibleImagesSelected ? "Tout désélectionner" : "Tout sélectionner"}
+                </button>
+                {selectedImageCount > 0 ? (
+                  <>
+                    <span className={styles.selectedCount}>
+                      {selectedImageCount} sélectionnée(s)
+                    </span>
+                    <button
+                      type="button"
+                      className={styles.bulkDangerButton}
+                      onClick={deleteSelectedImages}
+                      disabled={bulkDeleting}
+                    >
+                      {bulkDeleting ? "Suppression…" : "Supprimer la sélection"}
+                    </button>
+                  </>
+                ) : null}
+              </div>
             </div>
 
             {images.length === 0 ? (
@@ -896,13 +1001,38 @@ export default function ImageBankAdminClient() {
                   const draft = editDrafts[image.id];
                   const isEditing = editingId === image.id;
                   const isSaving = savingId === image.id;
+                  const isSelected = selectedImageIds.has(image.id);
+                  const cardTitle = `${image.title || image.job || "Image"} · ${image.storage_path}`;
 
                   return (
                     <article
                       key={image.id}
-                      className={`${styles.imageCard} ${image.is_active === false ? styles.imageCardInactive : ""}`}
+                      title={cardTitle}
+                      className={`${styles.imageCard} ${isSelected ? styles.imageCardSelected : ""} ${isEditing ? styles.imageCardEditing : ""} ${image.is_active === false ? styles.imageCardInactive : ""}`}
                     >
                       <div className={styles.thumbWrap}>
+                        <label
+                          className={styles.cubeCheck}
+                          aria-label={`Sélectionner ${image.title || image.storage_path}`}
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleImageSelection(image.id)}
+                            disabled={isSaving || bulkDeleting}
+                          />
+                          <span aria-hidden="true" />
+                        </label>
+                        <button
+                          type="button"
+                          className={styles.cubeDeleteButton}
+                          onClick={() => deleteImage(image)}
+                          disabled={isSaving || bulkDeleting}
+                          aria-label={`Supprimer ${image.title || image.storage_path}`}
+                        >
+                          ×
+                        </button>
                         {image.signed_url ? (
                           <img
                             src={image.signed_url}

@@ -19,6 +19,7 @@ import MailboxToolbar from "./_components/MailboxToolbar";
 import MailboxList from "./_components/MailboxList";
 import MailboxSearchPanel from "./_components/MailboxSearchPanel";
 import MailboxDetailsModal from "./_components/MailboxDetailsModal";
+import type { MediaLibraryPickerItem } from "@/app/dashboard/_components/MediaLibraryPickerModal";
 import MailboxPublicationImageAdapterModal from "./_components/MailboxPublicationImageAdapterModal";
 import MailboxComposeModal from "./_components/MailboxComposeModal";
 import {
@@ -2500,6 +2501,24 @@ async function deleteDraftPermanently(id: string) {
       return;
     }
 
+    setPublicationEditVideoByChannel((prev) => {
+      const videoChannel = normalizeBoosterChannelKeyForVideo(channel);
+      const previousVideoState = prev[videoChannel];
+      if (!previousVideoState) return prev;
+      return {
+        ...prev,
+        [videoChannel]: {
+          ...previousVideoState,
+          file: null,
+          previewUrl: "",
+          sourceVideo: null,
+          transformedVariants: [],
+          removed: true,
+          preparation: { status: "idle", label: "Images sélectionnées", detail: "La publication sera enregistrée en images." },
+        },
+      };
+    });
+
     updatePublicationChannelAssets(channel, (assets) => {
       const merged = [...assets];
       for (const file of picked) {
@@ -2531,6 +2550,179 @@ async function deleteDraftPermanently(id: string) {
 
   function addPublicationPhoto(file: File) {
     addPublicationPickedFiles([file]);
+  }
+
+  function getMediaLibraryDisplayName(item: MediaLibraryPickerItem) {
+    return (
+      item.title ||
+      item.storage_path.split("/").pop() ||
+      (item.media_type === "video" ? "video-inrcy.mp4" : "image-inrcy.jpg")
+    );
+  }
+
+  async function mediaLibraryItemToFile(item: MediaLibraryPickerItem): Promise<File> {
+    const sourceUrl = String(item.signed_url || "").trim();
+    if (!sourceUrl) throw new Error("Média indisponible dans la Médiathèque.");
+    const response = await fetch(sourceUrl);
+    if (!response.ok) throw new Error(`Impossible de charger le média (${response.status}).`);
+    const blob = await response.blob();
+    const type = item.mime_type || blob.type || (item.media_type === "video" ? "video/mp4" : "image/jpeg");
+    return new File([blob], getMediaLibraryDisplayName(item), {
+      type,
+      lastModified: Date.now(),
+    });
+  }
+
+  function buildMediaLibraryVideoMetadata(item: MediaLibraryPickerItem, file: File): BoosterVideoSourceMetadata {
+    const width = Number(item.width || 0) || null;
+    const height = Number(item.height || 0) || null;
+    const duration = Number(item.duration_seconds || 0) || null;
+    const ratio = width && height ? width / height : null;
+    const orientation = width && height ? (width > height ? "horizontal" : width < height ? "vertical" : "square") : "unknown";
+    return {
+      width,
+      height,
+      duration,
+      size: file.size || Number(item.size_bytes || 0) || 0,
+      type: file.type || item.mime_type || "video/mp4",
+      ratio,
+      ratioLabel: width && height ? `${width}:${height}` : "Ratio inconnu",
+      orientation,
+      orientationLabel: orientation === "horizontal" ? "Horizontale" : orientation === "vertical" ? "Verticale" : orientation === "square" ? "Carrée" : "Orientation inconnue",
+    };
+  }
+
+  async function addPublicationMediaLibraryItems(items: MediaLibraryPickerItem[]) {
+    const channel = normalizeChannelKey(activeDetailsChannelEntry?.key || "");
+    if (!channel) return;
+    const selectedItems = Array.isArray(items) ? items.filter(Boolean) : [];
+    if (!selectedItems.length) return;
+
+    const videos = selectedItems.filter((item) => item.media_type === "video");
+    const imageItems = selectedItems.filter((item) => item.media_type === "image");
+    if (videos.length && imageItems.length) {
+      const message = "Choisissez soit des images, soit une vidéo. Une publication ne mélange pas les deux médias.";
+      setDetailsActionError(message);
+      throw new Error(message);
+    }
+    if (videos.length > 1) {
+      const message = "Une seule vidéo peut être utilisée pour une publication.";
+      setDetailsActionError(message);
+      throw new Error(message);
+    }
+
+    if (videos.length) {
+      const item = videos[0];
+      const file = await mediaLibraryItemToFile(item);
+      if (file.size > BOOSTER_MAX_VIDEO_BYTES) {
+        const message = `Vidéo trop lourde. Taille maximale : ${BOOSTER_MAX_VIDEO_MB_LABEL}.`;
+        setDetailsActionError(message);
+        throw new Error(message);
+      }
+      const previewUrl = URL.createObjectURL(file);
+      const fallbackMeta = buildMediaLibraryVideoMetadata(item, file);
+      const sourceMetadata = fallbackMeta.width || fallbackMeta.height
+        ? fallbackMeta
+        : await readPublicationVideoMetadata(file, previewUrl);
+      const videoChannel = normalizeBoosterChannelKeyForVideo(channel);
+      const defaultFormat = getRecommendedVideoFormatForSource(videoChannel, sourceMetadata);
+      setDetailsActionError(null);
+      setPublicationEditVideoByChannel((prev) => ({
+        ...prev,
+        [videoChannel]: {
+          file,
+          previewUrl,
+          name: file.name || getMediaLibraryDisplayName(item),
+          type: file.type || item.mime_type || "video/mp4",
+          size: file.size || Number(item.size_bytes || 0) || 0,
+          duration: sourceMetadata.duration || Number(item.duration_seconds || 0) || null,
+          sourceMetadata,
+          sourceVideo: null,
+          transformedVariants: [],
+          format: defaultFormat,
+          adaptationMode: prev[videoChannel]?.adaptationMode || "safe_blur",
+          preparation: { status: "idle", label: "Vidéo ajoutée depuis la Médiathèque", detail: "Appliquez le format avant d’enregistrer." },
+          preparing: false,
+          removed: false,
+        },
+      }));
+      return;
+    }
+
+    if (imageItems.length) {
+      const files = await Promise.all(imageItems.map((item) => mediaLibraryItemToFile(item)));
+      const invalid = files.find((file) => !file.type.startsWith("image/"));
+      if (invalid) {
+        const message = "Seules les images sont acceptées pour ce canal.";
+        setDetailsActionError(message);
+        throw new Error(message);
+      }
+      const tooBig = files.find((file) => file.size > BOOSTER_MAX_IMAGE_BYTES);
+      if (tooBig) {
+        const message = `L'image ${tooBig.name || "sélectionnée"} dépasse ${BOOSTER_MAX_IMAGE_MB_LABEL}.`;
+        setDetailsActionError(message);
+        throw new Error(message);
+      }
+      const currentSelectedFileBytes = (publicationEditImagesByChannel[channel]?.assets || [])
+        .filter((asset) => asset.selected && asset.file)
+        .reduce((sum, asset) => sum + (asset.file?.size || 0), 0);
+      const nextPickedBytes = files.reduce((sum, file) => sum + (file?.size || 0), 0);
+      if (currentSelectedFileBytes + nextPickedBytes > BOOSTER_MAX_MEDIA_BYTES) {
+        const message = `Les images dépassent ${BOOSTER_MAX_MEDIA_MB_LABEL} au total. Réduisez le nombre ou le poids des photos.`;
+        setDetailsActionError(message);
+        throw new Error(message);
+      }
+
+      setPublicationEditVideoByChannel((prev) => {
+        const videoChannel = normalizeBoosterChannelKeyForVideo(channel);
+        const previousVideoState = prev[videoChannel];
+        if (!previousVideoState) return prev;
+        return {
+          ...prev,
+          [videoChannel]: {
+            ...previousVideoState,
+            file: null,
+            previewUrl: "",
+            sourceVideo: null,
+            transformedVariants: [],
+            removed: true,
+            preparation: { status: "idle", label: "Images sélectionnées", detail: "La publication sera enregistrée en images." },
+          },
+        };
+      });
+
+      updatePublicationChannelAssets(channel, (assets) => {
+        const merged = [...assets];
+        files.forEach((file, index) => {
+          const item = imageItems[index];
+          const key = makePublicationImageAssetKey("library", file.name, item.id || `${item.storage_path}:${file.size}`);
+          if (merged.some((asset) => asset.key === key)) return;
+          if (merged.length >= BOOSTER_MAX_IMAGE_COUNT) {
+            setDetailsActionError(`Maximum ${BOOSTER_MAX_IMAGE_COUNT} images par publication.`);
+            return;
+          }
+          const imageMeta = item.width && item.height
+            ? { width: item.width, height: item.height, ratio: item.width / item.height }
+            : null;
+          merged.push({
+            key,
+            name: file.name || getMediaLibraryDisplayName(item),
+            type: file.type || item.mime_type || "image/jpeg",
+            previewUrl: URL.createObjectURL(file),
+            sourceUrl: null,
+            originalUrl: item.signed_url || null,
+            originalName: getMediaLibraryDisplayName(item),
+            originalType: item.mime_type || file.type || "image/jpeg",
+            file,
+            selected: channel === "gmb" ? !merged.some((asset) => asset.selected) : true,
+            transform: buildPublicationDefaultTransform(channel),
+            imageMeta,
+          });
+        });
+        return merged;
+      });
+      setDetailsActionError(null);
+    }
   }
 
   async function addPublicationVideo(fileList: FileList | null) {
@@ -2779,7 +2971,7 @@ async function deleteDraftPermanently(id: string) {
 
       const normalizedChannel = normalizeChannelKey(channel);
       const editVideo = publicationEditVideoByChannel[normalizedChannel];
-      const isVideoEdit = Boolean(editVideo);
+      const isVideoEdit = Boolean(editVideo && !editVideo.removed && editVideo.previewUrl);
       let nextVideoPayload: any = null;
       let nextVideoSettings: any = null;
 
@@ -3198,6 +3390,7 @@ async function deleteDraftPermanently(id: string) {
           movePublicationImage={movePublicationImage}
           addPublicationFiles={addPublicationFiles}
           addPublicationPhoto={addPublicationPhoto}
+          addPublicationMediaLibraryItems={addPublicationMediaLibraryItems}
           saveChannelPublication={saveChannelPublication}
           deleteChannelPublication={deleteChannelPublication}
           retryCampaignFailedRecipients={retryCampaignFailedRecipients}

@@ -1992,3 +1992,155 @@ button:disabled{
   font-size:12.5px;
   line-height:1.35;
 }
+
+/* Phase stockage — sélection multiple médiathèque */
+.bulkToolbar{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  flex-wrap:wrap;
+  gap:9px;
+  margin:-8px 0 12px;
+  padding:10px 12px;
+  border-radius:18px;
+  background:rgba(3,10,28,.44);
+  border:1px solid rgba(255,255,255,.08);
+}
+
+.selectedCount{
+  display:inline-flex;
+  align-items:center;
+  min-height:34px;
+  padding:6px 10px;
+  border-radius:999px;
+  color:#dffaff;
+  background:rgba(88,217,255,.10);
+  border:1px solid rgba(112,233,255,.18);
+  font-size:12px;
+  font-weight:950;
+}
+
+.bulkDangerButton{
+  min-height:36px;
+  padding:8px 13px;
+  border-radius:999px;
+  color:#fff;
+  background:linear-gradient(135deg, rgba(255,118,67,.88), rgba(239,58,118,.88));
+  border:1px solid rgba(255,255,255,.16);
+  font-size:12px;
+  font-weight:950;
+  box-shadow:0 10px 22px rgba(239,58,118,.18);
+  cursor:pointer;
+}
+
+.bulkDangerButton:disabled{
+  opacity:.55;
+  cursor:not-allowed;
+  box-shadow:none;
+}
+
+.mediaListHead,
+.mediaRow{
+  grid-template-columns:34px minmax(250px, 1.8fr) 88px 82px 104px 108px 104px !important;
+}
+
+.mediaRowSelected{
+  border-color:rgba(91,236,255,.62) !important;
+  box-shadow:0 0 0 2px rgba(91,236,255,.12), 0 14px 32px rgba(0,0,0,.22) !important;
+}
+
+.rowCheck{
+  display:grid;
+  place-items:center;
+  width:28px;
+  height:28px;
+  cursor:pointer;
+  justify-self:center;
+}
+
+.rowCheck input{
+  position:absolute;
+  opacity:0;
+  pointer-events:none;
+}
+
+.rowCheck span{
+  display:grid;
+  place-items:center;
+  width:24px;
+  height:24px;
+  border-radius:8px;
+  background:rgba(3,9,24,.76);
+  border:1px solid rgba(255,255,255,.20);
+  box-shadow:0 6px 14px rgba(0,0,0,.22);
+}
+
+.rowCheck span::after{
+  content:"";
+  width:10px;
+  height:6px;
+  border-left:2px solid #fff;
+  border-bottom:2px solid #fff;
+  transform:rotate(-45deg) translate(1px,-1px);
+  opacity:0;
+}
+
+.rowCheck input:checked + span{
+  background:linear-gradient(135deg, rgba(54,221,255,.92), rgba(76,108,255,.92));
+  border-color:rgba(255,255,255,.46);
+}
+
+.rowCheck input:checked + span::after{
+  opacity:1;
+}
+
+.rowCheck input:disabled + span{
+  opacity:.5;
+  cursor:not-allowed;
+}
+
+@media (max-width:1180px){
+  .mediaRow{
+    grid-template-columns:34px 1fr auto !important;
+  }
+  .rowCheck{
+    grid-column:1;
+    grid-row:1;
+    align-self:start;
+  }
+  .mediaRowFile{
+    grid-column:2 / -1 !important;
+  }
+  .mediaRowPill,
+  .mediaRowMeta{
+    grid-column:2;
+  }
+  .mediaRowDelete{
+    grid-column:3 !important;
+    grid-row:2 / span 2 !important;
+  }
+}
+
+@media (max-width:620px){
+  .bulkToolbar{
+    margin:0 0 12px;
+    align-items:stretch;
+  }
+  .bulkToolbar .smallGhostButton,
+  .bulkToolbar .bulkDangerButton,
+  .bulkToolbar .selectedCount{
+    width:100%;
+    justify-content:center;
+  }
+  .mediaRow{
+    grid-template-columns:32px minmax(0,1fr) !important;
+  }
+  .mediaRowFile{
+    grid-column:2 !important;
+  }
+  .mediaRowPill,
+  .mediaRowMeta,
+  .mediaRowDelete{
+    grid-column:1 / -1 !important;
+  }
+}

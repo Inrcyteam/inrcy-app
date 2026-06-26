@@ -652,7 +652,7 @@ export default function PublishImagesPanel({
                               }
                             : undefined
                         }
-                        disabled={isMobile && images.length >= BOOSTER_MAX_IMAGE_COUNT}
+                        disabled={!isMobile || images.length >= BOOSTER_MAX_IMAGE_COUNT}
                         aria-disabled={!isMobile || images.length >= BOOSTER_MAX_IMAGE_COUNT}
                         style={{
                           opacity:
