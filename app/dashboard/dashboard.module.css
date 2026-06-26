@@ -8686,3 +8686,165 @@
   font-size: 10px;
   padding: 0 5px;
 }
+
+/* Étape Encaisser — modale Devis / Factures depuis la boîte de vitesse */
+.cashModalIntro {
+  margin: 0 0 16px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background:
+    radial-gradient(circle at 8% 0%, rgba(56, 189, 248, 0.14), transparent 38%),
+    rgba(255, 255, 255, 0.045);
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.cashModalIntro strong {
+  color: rgba(255, 255, 255, 0.96);
+  font-weight: 950;
+}
+
+.cashChoiceGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.cashChoiceCard {
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 24px;
+  min-height: 198px;
+  padding: 18px;
+  text-align: left;
+  color: rgba(255, 255, 255, 0.92);
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 10px;
+  background:
+    radial-gradient(circle at 16% 0%, rgba(255, 255, 255, 0.16), transparent 36%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.045));
+  box-shadow:
+    0 22px 56px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  transition:
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    background 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.cashChoiceCard::before {
+  content: "";
+  position: absolute;
+  inset: -40%;
+  border-radius: inherit;
+  opacity: 0.32;
+  filter: blur(34px);
+  pointer-events: none;
+}
+
+.cashChoiceCard:hover,
+.cashChoiceCard:focus-visible {
+  transform: translateY(-3px);
+  border-color: rgba(255, 255, 255, 0.28);
+  background:
+    radial-gradient(circle at 16% 0%, rgba(255, 255, 255, 0.19), transparent 38%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.06));
+  box-shadow:
+    0 28px 68px rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.11);
+  outline: none;
+}
+
+.cashChoiceInvoice::before {
+  background: radial-gradient(circle, rgba(251, 146, 60, 0.58), transparent 64%);
+}
+
+.cashChoiceQuote::before {
+  background: radial-gradient(circle, rgba(167, 139, 250, 0.58), transparent 64%);
+}
+
+.cashChoiceEyebrow,
+.cashChoiceTitle,
+.cashChoiceText,
+.cashChoiceCta {
+  position: relative;
+  z-index: 1;
+}
+
+.cashChoiceEyebrow {
+  width: fit-content;
+  border-radius: 999px;
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.cashChoiceTitle {
+  font-size: 21px;
+  font-weight: 950;
+  letter-spacing: -0.35px;
+  line-height: 1.08;
+}
+
+.cashChoiceText {
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.cashChoiceCta {
+  width: fit-content;
+  margin-top: auto;
+  border-radius: 999px;
+  padding: 8px 13px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.09);
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 13px;
+  font-weight: 950;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+@media (max-width: 700px), (any-hover: none) and (any-pointer: coarse) {
+  .cashChoiceGrid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .cashModalIntro {
+    font-size: 13px;
+    padding: 12px 13px;
+  }
+
+  .cashChoiceCard {
+    min-height: 168px;
+    padding: 16px;
+    border-radius: 20px;
+  }
+
+  .cashChoiceTitle {
+    font-size: 19px;
+  }
+}
+
+/* Page passerelle E-réputation — évite une route vide avant l'étape API */
+.pageShell {
+  min-height: 100dvh;
+  padding: max(24px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  background:
+    radial-gradient(circle at 15% 0%, rgba(56, 189, 248, 0.16), transparent 34%),
+    radial-gradient(circle at 85% 6%, rgba(168, 85, 247, 0.14), transparent 36%),
+    linear-gradient(180deg, #050817 0%, #070a16 48%, #050711 100%);
+  color: rgba(255, 255, 255, 0.92);
+}

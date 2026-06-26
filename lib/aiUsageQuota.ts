@@ -8,7 +8,7 @@ import { shouldBypassUpstashInCurrentEnv } from "@/lib/upstashMode";
 import { ADMIN_USER_IDS } from "@/lib/roles";
 import type { MailAttachmentRef } from "@/lib/mailAttachmentRefs";
 
-type AiQuotaAction = "booster" | "template" | "mail";
+type AiQuotaAction = "booster" | "template" | "mail" | "review_reply";
 
 type ConsumeAiCreditsArgs = {
   supabase: any;
@@ -167,4 +167,17 @@ export function computeBoosterAiCredits(args: {
   if (hasVideo) return 8;
   if (hasImages) return 6;
   return 4;
+}
+
+export function computeReviewReplyAiCredits(args: {
+  rating?: unknown;
+  comment?: unknown;
+  existingReply?: unknown;
+}) {
+  const commentLength = String(args.comment || "").trim().length;
+  const existingReplyLength = String(args.existingReply || "").trim().length;
+  const rating = Number(args.rating || 0);
+  if (commentLength > 1200 || existingReplyLength > 1200) return 2;
+  if (Number.isFinite(rating) && rating > 0 && rating <= 2) return 2;
+  return 1;
 }

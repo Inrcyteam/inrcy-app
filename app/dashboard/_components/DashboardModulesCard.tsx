@@ -1,5 +1,9 @@
+"use client";
+
+import { useState } from "react";
 import styles from "../dashboard.module.css";
 import { INRCY_WORKFLOW_TOOLS } from "@/lib/inrcyWorkflow";
+import BaseModal from "./WorkflowBaseModal";
 
 type DashboardPanelName =
   | "contact"
@@ -33,6 +37,8 @@ type DashboardModulesCardProps = {
 };
 
 export default function DashboardModulesCard({ goToModule, openPanel, onOpenStats, onOpenBoosterPublish, onOpenBoosterStats }: DashboardModulesCardProps) {
+  const [cashModalOpen, setCashModalOpen] = useState(false);
+
   const openStats = () => {
     if (onOpenStats) {
       onOpenStats();
@@ -41,6 +47,7 @@ export default function DashboardModulesCard({ goToModule, openPanel, onOpenStat
     goToModule("/dashboard/stats");
   };
   return (
+    <>
         <div className={styles.lowerRow}>
           <div className={styles.blockCard}>
             <div className={styles.blockHead}>
@@ -233,58 +240,70 @@ export default function DashboardModulesCard({ goToModule, openPanel, onOpenStat
 
               <div className={styles.gearGrid}>
                 <button
-    type="button"
-    className={`${styles.gearCapsule} ${styles.gear_cyan}`}
-    onClick={() => {
-      if (onOpenBoosterPublish) onOpenBoosterPublish();
-      else goToModule("/dashboard?action=publish");
-    }}
-  >
-    <span
-      className={`${styles.gearSettingsBtn} ${styles.gearStatsBtn}`}
-      role="button"
-      tabIndex={0}
-      title="Statistiques Booster"
-      aria-label="Statistiques Booster"
-      onClick={(event) => {
-        event.stopPropagation();
-        if (onOpenBoosterStats) onOpenBoosterStats();
-        else goToModule("/dashboard?stats=1");
-      }}
-      onKeyDown={(event) => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          event.stopPropagation();
-          if (onOpenBoosterStats) onOpenBoosterStats();
-        else goToModule("/dashboard?stats=1");
-        }
-      }}
-    >
-      <span className={styles.gearStatsIcon} aria-hidden="true" />
-    </span>
-    <div className={styles.gearInner}>
-      <div className={styles.gearTitle}>{INRCY_WORKFLOW_TOOLS.booster.label}</div>
-      <div className={styles.gearSub}>{INRCY_WORKFLOW_TOOLS.booster.dashboardSubtitle}</div>
-      <div className={styles.gearBtn}>{INRCY_WORKFLOW_TOOLS.booster.primaryCta}</div>
-    </div>
-  </button>
+                  type="button"
+                  className={`${styles.gearCapsule} ${styles.gear_cyan}`}
+                  onClick={() => {
+                    if (onOpenBoosterPublish) onOpenBoosterPublish();
+                    else goToModule("/dashboard?action=publish");
+                  }}
+                >
+                  <span
+                    className={`${styles.gearSettingsBtn} ${styles.gearStatsBtn}`}
+                    role="button"
+                    tabIndex={0}
+                    title="Statistiques Booster"
+                    aria-label="Statistiques Booster"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      if (onOpenBoosterStats) onOpenBoosterStats();
+                      else goToModule("/dashboard?stats=1");
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        if (onOpenBoosterStats) onOpenBoosterStats();
+                        else goToModule("/dashboard?stats=1");
+                      }
+                    }}
+                  >
+                    <span className={styles.gearStatsIcon} aria-hidden="true" />
+                  </span>
+                  <div className={styles.gearInner}>
+                    <div className={styles.gearTitle}>Publier</div>
+                    <div className={styles.gearSub}>{INRCY_WORKFLOW_TOOLS.booster.dashboardSubtitle}</div>
+                    <div className={styles.gearBtn}>Publier</div>
+                  </div>
+                </button>
 
                 <button
-    type="button"
-    className={`${styles.gearCapsule} ${styles.gear_purple}`}
-    onClick={() => goToModule("/dashboard/propulser")}
-  >
-    <div className={styles.gearInner}>
-      <div className={styles.gearTitle}>{INRCY_WORKFLOW_TOOLS.propulser.label}</div>
-      <div className={styles.gearSub}>Accélère votre activité</div>
-      <div className={styles.gearBtn}>Développer</div>
-    </div>
-  </button>
-
-                <button
+                  type="button"
                   className={`${styles.gearCapsule} ${styles.gear_purple}`}
+                  onClick={() => goToModule("/dashboard/propulser")}
+                >
+                  <div className={styles.gearInner}>
+                    <div className={styles.gearTitle}>{INRCY_WORKFLOW_TOOLS.propulser.label}</div>
+                    <div className={styles.gearSub}>Accélère votre activité</div>
+                    <div className={styles.gearBtn}>Développer</div>
+                  </div>
+                </button>
+
+                <button
                   type="button"
-                  onClick={() => goToModule("/dashboard/devis/new")}
+                  className={`${styles.gearCapsule} ${styles.gear_purple}`}
+                  onClick={() => goToModule("/dashboard/fideliser")}
+                >
+                  <div className={styles.gearInner}>
+                    <div className={styles.gearTitle}>{INRCY_WORKFLOW_TOOLS.fideliser.label}</div>
+                    <div className={styles.gearSub}>{INRCY_WORKFLOW_TOOLS.fideliser.dashboardSubtitle}</div>
+                    <div className={styles.gearBtn}>{INRCY_WORKFLOW_TOOLS.fideliser.primaryCta}</div>
+                  </div>
+                </button>
+
+                <button
+                  className={`${styles.gearCapsule} ${styles.gear_orange}`}
+                  type="button"
+                  onClick={() => setCashModalOpen(true)}
                 >
                   <span
                     className={styles.gearSettingsBtn}
@@ -307,60 +326,84 @@ export default function DashboardModulesCard({ goToModule, openPanel, onOpenStat
                     <span className={styles.gearSettingsIcon} aria-hidden="true" />
                   </span>
                   <div className={styles.gearInner}>
-                    <div className={styles.gearTitle}>Devis</div>
-                    <div className={styles.gearSub}>Déclenche des opportunités</div>
-                    <div className={styles.gearBtn}>Créer un devis</div>
+                    <div className={styles.gearTitle}>Encaisser</div>
+                    <div className={styles.gearSub}>Devis et factures</div>
+                    <div className={styles.gearBtn}>Encaisser</div>
                   </div>
                 </button>
 
                 <button
+                  type="button"
                   className={`${styles.gearCapsule} ${styles.gear_pink}`}
-                  type="button"
-                  onClick={() => goToModule("/dashboard/factures/new")}
+                  onClick={() => goToModule("/dashboard/e-reputation")}
                 >
-                  <span
-                    className={styles.gearSettingsBtn}
-                    role="button"
-                    tabIndex={0}
-                    title="Réglages par défaut"
-                    aria-label="Réglages par défaut Devis et Factures"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      openPanel("documents");
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        openPanel("documents");
-                      }
-                    }}
-                  >
-                    <span className={styles.gearSettingsIcon} aria-hidden="true" />
-                  </span>
                   <div className={styles.gearInner}>
-                    <div className={styles.gearTitle}>Facturer</div>
-                    <div className={styles.gearSub}>Transforme en CA</div>
-                    <div className={styles.gearBtn}>Créer une facture</div>
+                    <div className={styles.gearTitle}>E-réputation</div>
+                    <div className={styles.gearSub}>Pilotez vos avis Google</div>
+                    <div className={styles.gearBtn}>Gérer</div>
                   </div>
                 </button>
-
-                <button
-    type="button"
-    className={`${styles.gearCapsule} ${styles.gear_purple}`}
-    onClick={() => goToModule("/dashboard/fideliser")}
-  >
-    <div className={styles.gearInner}>
-      <div className={styles.gearTitle}>{INRCY_WORKFLOW_TOOLS.fideliser.label}</div>
-      <div className={styles.gearSub}>{INRCY_WORKFLOW_TOOLS.fideliser.dashboardSubtitle}</div>
-      <div className={styles.gearBtn}>{INRCY_WORKFLOW_TOOLS.fideliser.primaryCta}</div>
-    </div>
-  </button>
               </div>
               {/* --- END --- */}
             </div>
           </div>
         </div>
+
+        {cashModalOpen ? (
+          <BaseModal
+            title="Encaisser"
+            moduleLabel="Devis et factures"
+            compact
+            maxWidth={760}
+            onClose={() => setCashModalOpen(false)}
+            headerActions={
+              <button
+                type="button"
+                className={styles.ghostBtn}
+                onClick={() => openPanel("documents")}
+                title="Réglages par défaut Devis et Factures"
+              >
+                Réglages
+              </button>
+            }
+          >
+            <div className={styles.cashModalIntro}>
+              <strong>Encaisser</strong> regroupe vos devis et vos factures sans changer vos habitudes.
+              Choisissez simplement l’action à lancer.
+            </div>
+
+            <div className={styles.cashChoiceGrid}>
+              <button
+                type="button"
+                className={`${styles.cashChoiceCard} ${styles.cashChoiceInvoice}`}
+                onClick={() => {
+                  setCashModalOpen(false);
+                  goToModule("/dashboard/factures/new");
+                }}
+              >
+                <span className={styles.cashChoiceEyebrow}>Factures</span>
+                <span className={styles.cashChoiceTitle}>Créer une facture</span>
+                <span className={styles.cashChoiceText}>Facturer un client et suivre le paiement.</span>
+                <span className={styles.cashChoiceCta}>Facturer →</span>
+              </button>
+
+              <button
+                type="button"
+                className={`${styles.cashChoiceCard} ${styles.cashChoiceQuote}`}
+                onClick={() => {
+                  setCashModalOpen(false);
+                  goToModule("/dashboard/devis/new");
+                }}
+              >
+                <span className={styles.cashChoiceEyebrow}>Devis</span>
+                <span className={styles.cashChoiceTitle}>Créer un devis</span>
+                <span className={styles.cashChoiceText}>Chiffrer une demande et déclencher une opportunité.</span>
+                <span className={styles.cashChoiceCta}>Deviser →</span>
+              </button>
+            </div>
+          </BaseModal>
+        ) : null}
+    </>
 
   );
 }
