@@ -42,6 +42,219 @@ function isOwnedStoragePath(userId: string, storagePath: string) {
   return storagePath.startsWith(`users/${userId}/`);
 }
 
+type MediaDeleteUsage = {
+  mediaId: string;
+  source:
+    | "inr_agent_action"
+    | "inr_agent_scheduled_action"
+    | "publish_draft"
+    | "mail_campaign"
+    | "send_item_draft";
+  rowId: string;
+  title: string;
+  status?: string | null;
+  scheduledFor?: string | null;
+};
+
+function isMissingOptionalUsageTable(error: { code?: string; message?: string } | null | undefined, tableName: string) {
+  const message = String(error?.message || "").toLowerCase();
+  return (
+    error?.code === "42P01" ||
+    error?.code === "42703" ||
+    error?.code === "PGRST205" ||
+    message.includes(tableName.toLowerCase())
+  );
+}
+
+function stringifyForUsageSearch(value: unknown) {
+  try {
+    return JSON.stringify(value || "");
+  } catch {
+    return "";
+  }
+}
+
+function buildMediaUsageMarkers(rows: Array<{ id: string; storage_path?: string | null; bucket_name?: string | null }>) {
+  return rows.map((row) => {
+    const markers = [
+      row.id,
+      row.storage_path || "",
+      row.bucket_name && row.storage_path ? `${row.bucket_name}/${row.storage_path}` : "",
+    ]
+      .map((value) => String(value || "").trim())
+      .filter(Boolean);
+    return { mediaId: row.id, markers };
+  });
+}
+
+function findMatchingMediaIds(haystack: string, markersByMedia: ReturnType<typeof buildMediaUsageMarkers>) {
+  if (!haystack) return [];
+  return markersByMedia
+    .filter(({ markers }) => markers.some((marker) => haystack.includes(marker)))
+    .map(({ mediaId }) => mediaId);
+}
+
+async function findProtectedMediaUsages(
+  userId: string,
+  mediaRows: Array<{ id: string; storage_path?: string | null; bucket_name?: string | null }>,
+): Promise<MediaDeleteUsage[]> {
+  const markersByMedia = buildMediaUsageMarkers(mediaRows);
+  if (!markersByMedia.length) return [];
+
+  const usages: MediaDeleteUsage[] = [];
+
+  const { data: agentActions, error: agentError } = await supabaseAdmin
+    .from("inr_agent_actions")
+    .select("id,title,status,scheduled_for,payload,image_assets")
+    .eq("user_id", userId)
+    .in("status", [
+      "prepared",
+      "pending_validation",
+      "pending",
+      "draft",
+      "scheduled",
+      "validated",
+      "executing",
+    ])
+    .limit(500);
+
+  if (agentError && !isMissingOptionalUsageTable(agentError, "inr_agent_actions")) {
+    throw agentError;
+  }
+
+  for (const action of Array.isArray(agentActions) ? (agentActions as any[]) : []) {
+    const haystack = stringifyForUsageSearch([action.payload, action.image_assets]);
+    for (const mediaId of findMatchingMediaIds(haystack, markersByMedia)) {
+      usages.push({
+        mediaId,
+        source: "inr_agent_action",
+        rowId: String(action.id || ""),
+        title: cleanText(action.title || "Action iNrAgent", 160),
+        status: cleanText(action.status, 40) || null,
+        scheduledFor: cleanText(action.scheduled_for, 80) || null,
+      });
+    }
+  }
+
+  const { data: scheduledActions, error: scheduledError } = await supabaseAdmin
+    .from("inr_agent_scheduled_actions")
+    .select("id,title,status,scheduled_at,payload")
+    .eq("user_id", userId)
+    .in("status", ["scheduled", "running"])
+    .limit(500);
+
+  if (scheduledError && !isMissingOptionalUsageTable(scheduledError, "inr_agent_scheduled_actions")) {
+    throw scheduledError;
+  }
+
+  for (const action of Array.isArray(scheduledActions) ? (scheduledActions as any[]) : []) {
+    const haystack = stringifyForUsageSearch(action.payload);
+    for (const mediaId of findMatchingMediaIds(haystack, markersByMedia)) {
+      usages.push({
+        mediaId,
+        source: "inr_agent_scheduled_action",
+        rowId: String(action.id || ""),
+        title: cleanText(action.title || "Programmation iNrAgent", 160),
+        status: cleanText(action.status, 40) || null,
+        scheduledFor: cleanText(action.scheduled_at, 80) || null,
+      });
+    }
+  }
+
+  const { data: publishDrafts, error: draftError } = await supabaseAdmin
+    .from("app_events")
+    .select("id,type,module,payload,created_at")
+    .eq("user_id", userId)
+    .eq("module", "booster")
+    .eq("type", "publish_draft")
+    .limit(500);
+
+  if (draftError && !isMissingOptionalUsageTable(draftError, "app_events")) {
+    throw draftError;
+  }
+
+  for (const draft of Array.isArray(publishDrafts) ? (publishDrafts as any[]) : []) {
+    const haystack = stringifyForUsageSearch(draft.payload);
+    const draftPayload = draft.payload && typeof draft.payload === "object" ? (draft.payload as Record<string, unknown>) : {};
+    for (const mediaId of findMatchingMediaIds(haystack, markersByMedia)) {
+      usages.push({
+        mediaId,
+        source: "publish_draft",
+        rowId: String(draft.id || ""),
+        title: cleanText(draftPayload.title || draftPayload.preview || "Brouillon publication", 160),
+        status: "draft",
+        scheduledFor: cleanText(draft.created_at, 80) || null,
+      });
+    }
+  }
+
+  const { data: mailCampaigns, error: campaignError } = await supabaseAdmin
+    .from("mail_campaigns")
+    .select("id,subject,status,created_at,updated_at,attachments,body_text,body_html")
+    .eq("user_id", userId)
+    .in("status", ["queued", "processing"])
+    .limit(500);
+
+  if (campaignError && !isMissingOptionalUsageTable(campaignError, "mail_campaigns")) {
+    throw campaignError;
+  }
+
+  for (const campaign of Array.isArray(mailCampaigns) ? (mailCampaigns as any[]) : []) {
+    const haystack = stringifyForUsageSearch([
+      campaign.attachments,
+      campaign.body_text,
+      campaign.body_html,
+    ]);
+    for (const mediaId of findMatchingMediaIds(haystack, markersByMedia)) {
+      usages.push({
+        mediaId,
+        source: "mail_campaign",
+        rowId: String(campaign.id || ""),
+        title: cleanText(campaign.subject || "Campagne programmée", 160),
+        status: cleanText(campaign.status, 40) || null,
+        scheduledFor: cleanText(campaign.created_at || campaign.updated_at, 80) || null,
+      });
+    }
+  }
+
+  const { data: sendItemDrafts, error: sendItemError } = await supabaseAdmin
+    .from("send_items")
+    .select("id,subject,status,created_at,attachments,body_text,body_html")
+    .eq("user_id", userId)
+    .eq("status", "draft")
+    .limit(500);
+
+  if (sendItemError && !isMissingOptionalUsageTable(sendItemError, "send_items")) {
+    throw sendItemError;
+  }
+
+  for (const draft of Array.isArray(sendItemDrafts) ? (sendItemDrafts as any[]) : []) {
+    const haystack = stringifyForUsageSearch([
+      draft.attachments,
+      draft.body_text,
+      draft.body_html,
+    ]);
+    for (const mediaId of findMatchingMediaIds(haystack, markersByMedia)) {
+      usages.push({
+        mediaId,
+        source: "send_item_draft",
+        rowId: String(draft.id || ""),
+        title: cleanText(draft.subject || "Brouillon iNrSend", 160),
+        status: "draft",
+        scheduledFor: cleanText(draft.created_at, 80) || null,
+      });
+    }
+  }
+
+  const seen = new Set<string>();
+  return usages.filter((usage) => {
+    const key = `${usage.mediaId}:${usage.source}:${usage.rowId}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export async function GET(request: NextRequest) {
   const { user, errorResponse } = await requireUser();
   if (errorResponse) return errorResponse;
@@ -157,6 +370,8 @@ export async function DELETE(request: NextRequest) {
 
   const url = new URL(request.url);
   const body = await request.json().catch(() => ({}));
+  const forceDelete = url.searchParams.get("force") === "1" || Boolean(body?.force);
+
   const requestedIds = [
     cleanText(url.searchParams.get("id"), 80),
     ...url.searchParams.getAll("ids").map((value) => cleanText(value, 80)),
@@ -187,6 +402,40 @@ export async function DELETE(request: NextRequest) {
   for (const row of foundRows as any[]) {
     const storagePath = String(row.storage_path || "");
     if (!isOwnedStoragePath(user.id, storagePath)) return jsonError("Chemin Storage invalide.", 403);
+  }
+
+  if (!forceDelete) {
+    let usages: MediaDeleteUsage[] = [];
+    try {
+      usages = await findProtectedMediaUsages(
+        user.id,
+        (foundRows as any[]).map((row) => ({
+          id: String(row.id || ""),
+          bucket_name: String(row.bucket_name || BUCKET),
+          storage_path: String(row.storage_path || ""),
+        })),
+      );
+    } catch (usageError) {
+      return jsonError(
+        "Impossible de vérifier si ce média est utilisé par iNrAgent.",
+        500,
+        usageError instanceof Error ? usageError.message : usageError,
+      );
+    }
+
+    if (usages.length) {
+      return NextResponse.json(
+        {
+          ok: false,
+          requiresConfirmation: true,
+          error:
+            "Ce média est utilisé dans iNrAgent, une programmation, une campagne ou un brouillon. Confirmez la suppression pour continuer.",
+          usageCount: usages.length,
+          usages: usages.slice(0, 20),
+        },
+        { status: 409 },
+      );
+    }
   }
 
   const pathsByBucket = new Map<string, string[]>();

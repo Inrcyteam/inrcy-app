@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { extractSecurityEventToken, parseJwt, tokenMatchesIdentifier } from "../../lib/security/googleRiscTestables";
+import { extractSecurityEventToken, parseJwt, tokenMatchesIdentifier } from "../../lib/security/googleRiscTestables.ts";
 
 function b64urlJson(value: unknown): string {
   return Buffer.from(JSON.stringify(value), "utf8").toString("base64url");

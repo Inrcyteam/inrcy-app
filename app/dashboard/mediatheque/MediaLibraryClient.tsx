@@ -582,6 +582,61 @@ export default function MediaLibraryClient() {
     setSelectedItemIds(new Set());
   }
 
+  function getDeleteUsageLabel(source: unknown) {
+    if (source === "inr_agent_scheduled_action") return "Programmation iNrAgent";
+    if (source === "publish_draft") return "Brouillon Publier";
+    if (source === "mail_campaign") return "Campagne programmée";
+    if (source === "send_item_draft") return "Brouillon iNrSend";
+    return "Action iNrAgent";
+  }
+
+  function buildDeleteUsageConfirmMessage(payload: any, count: number) {
+    const usages = Array.isArray(payload?.usages) ? payload.usages : [];
+    const usageLines = usages
+      .slice(0, 6)
+      .map((usage: any) => {
+        const title = String(usage?.title || "Élément iNrCy").trim();
+        const label = getDeleteUsageLabel(usage?.source);
+        const scheduledFor = usage?.scheduledFor
+          ? ` · ${formatDate(String(usage.scheduledFor))}`
+          : "";
+        return `• ${label} : ${title}${scheduledFor}`;
+      })
+      .join("\n");
+    const hiddenCount = Math.max(0, Number(payload?.usageCount || usages.length || 0) - 6);
+    return [
+      `Attention : ${count > 1 ? "un ou plusieurs médias sélectionnés sont utilisés" : "ce média est utilisé"} dans iNrAgent, une programmation, une campagne ou un brouillon.`,
+      "",
+      usageLines,
+      hiddenCount ? `… et ${hiddenCount} autre(s) utilisation(s).` : "",
+      "",
+      "Si vous supprimez maintenant, ces actions, campagnes ou brouillons peuvent perdre leur média.",
+      "Confirmer quand même la suppression définitive ?",
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  async function requestMediaDelete(ids: string[], force = false): Promise<any> {
+    const response = await fetch("/api/media-library/items", {
+      method: "DELETE",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ids, force }),
+    });
+    const json = await readApiJson(response, "Suppression impossible.");
+    if (
+      response.status === 409 &&
+      json?.requiresConfirmation &&
+      !force
+    ) {
+      const ok = window.confirm(buildDeleteUsageConfirmMessage(json, ids.length));
+      if (!ok) return { ok: false, cancelled: true };
+      return await requestMediaDelete(ids, true);
+    }
+    if (!response.ok) throw new Error(json?.error || "Suppression impossible.");
+    return json;
+  }
+
   async function deleteSelectedItems() {
     const ids = selectedItems.map((item) => item.id);
     if (!ids.length) return;
@@ -595,14 +650,8 @@ export default function MediaLibraryClient() {
     setError(null);
     setSuccess(null);
     try {
-      const response = await fetch("/api/media-library/items", {
-        method: "DELETE",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ids }),
-      });
-      const json = await readApiJson(response, "Suppression impossible.");
-      if (!response.ok)
-        throw new Error(json?.error || "Suppression impossible.");
+      const json = await requestMediaDelete(ids);
+      if (json?.cancelled) return;
       setSuccess(`${Number(json?.deleted || ids.length)} média(s) supprimé(s).`);
       clearItemSelection();
       await loadItems();
@@ -622,13 +671,8 @@ export default function MediaLibraryClient() {
     setError(null);
     setSuccess(null);
     try {
-      const response = await fetch(
-        `/api/media-library/items?id=${encodeURIComponent(item.id)}`,
-        { method: "DELETE" },
-      );
-      const json = await readApiJson(response, "Suppression impossible.");
-      if (!response.ok)
-        throw new Error(json?.error || "Suppression impossible.");
+      const json = await requestMediaDelete([item.id]);
+      if (json?.cancelled) return;
       setSuccess("Média supprimé.");
       setSelectedItemIds((prev) => {
         const next = new Set(prev);

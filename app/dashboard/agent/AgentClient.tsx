@@ -250,6 +250,8 @@ type AgentMediaLibraryItem = {
   size_bytes: number | null;
   title: string | null;
   tags: string[] | null;
+  width: number | null;
+  height: number | null;
   duration_seconds: number | null;
   signed_url: string | null;
 };
@@ -4069,6 +4071,70 @@ export default function AgentClient() {
     return isVideo ? "video" : "image";
   }
 
+  function readAgentImageFileInfo(
+    file: File,
+  ): Promise<{ width: number | null; height: number | null }> {
+    return new Promise((resolve) => {
+      const objectUrl = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(objectUrl);
+        resolve({
+          width: img.naturalWidth || img.width || null,
+          height: img.naturalHeight || img.height || null,
+        });
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        resolve({ width: null, height: null });
+      };
+      img.src = objectUrl;
+    });
+  }
+
+  function readAgentVideoFileInfo(
+    file: File,
+  ): Promise<{
+    width: number | null;
+    height: number | null;
+    duration_seconds: number | null;
+  }> {
+    return new Promise((resolve) => {
+      const objectUrl = URL.createObjectURL(file);
+      const video = document.createElement("video");
+      video.preload = "metadata";
+      video.onloadedmetadata = () => {
+        URL.revokeObjectURL(objectUrl);
+        resolve({
+          width: video.videoWidth || null,
+          height: video.videoHeight || null,
+          duration_seconds:
+            Number.isFinite(video.duration) && video.duration > 0
+              ? Math.round(video.duration * 100) / 100
+              : null,
+        });
+      };
+      video.onerror = () => {
+        URL.revokeObjectURL(objectUrl);
+        resolve({ width: null, height: null, duration_seconds: null });
+      };
+      video.src = objectUrl;
+    });
+  }
+
+  async function readAgentMediaFileInfo(
+    file: File,
+    mediaKind: "image" | "video",
+  ): Promise<{
+    width: number | null;
+    height: number | null;
+    duration_seconds: number | null;
+  }> {
+    if (mediaKind === "video") return readAgentVideoFileInfo(file);
+    const dimensions = await readAgentImageFileInfo(file);
+    return { ...dimensions, duration_seconds: null };
+  }
+
   async function readAgentApiJson(response: Response, fallbackMessage: string) {
     const contentType = response.headers.get("content-type") || "";
     if (contentType.includes("application/json")) {
@@ -4101,7 +4167,10 @@ export default function AgentClient() {
         item.mime_type ||
         (item.media_type === "video" ? "video/mp4" : "image/jpeg"),
       size: item.size_bytes || 0,
+      width: item.width || null,
+      height: item.height || null,
       duration: item.duration_seconds || null,
+      duration_seconds: item.duration_seconds || null,
       kind: item.media_type,
       mediaType: item.media_type,
       source: "pro_media_library",
@@ -4607,6 +4676,8 @@ export default function AgentClient() {
       if (!prepared?.token || !prepared?.storage_path)
         throw new Error("Préparation du média impossible.");
 
+      const mediaInfo = await readAgentMediaFileInfo(file, mediaKind);
+
       const supabase = createClient();
       const { error: uploadError } = await supabase.storage
         .from(prepared.bucket || "inrcy-pro-media")
@@ -4632,9 +4703,9 @@ export default function AgentClient() {
                 file.type ||
                 "application/octet-stream",
               size_bytes: file.size,
-              width: null,
-              height: null,
-              duration_seconds: null,
+              width: mediaInfo.width,
+              height: mediaInfo.height,
+              duration_seconds: mediaInfo.duration_seconds,
             },
           ],
         }),
@@ -4678,7 +4749,11 @@ export default function AgentClient() {
           file.type ||
           "application/octet-stream",
         size: result.size_bytes || file.size || 0,
-        duration: result.duration_seconds || null,
+        width: result.width || mediaInfo.width || null,
+        height: result.height || mediaInfo.height || null,
+        duration: result.duration_seconds || mediaInfo.duration_seconds || null,
+        duration_seconds:
+          result.duration_seconds || mediaInfo.duration_seconds || null,
         kind: result.media_type || mediaKind,
         mediaType: result.media_type || mediaKind,
         source: "pro_media_library",
@@ -5351,6 +5426,53 @@ export default function AgentClient() {
       );
       setCampaignDraftConfirmOpen(false);
       showNotice("Campagne enregistrée en brouillon dans iNrSend.");
+    } catch (error) {
+      showNotice(
+        error instanceof Error
+          ? error.message
+          : "Enregistrement du brouillon impossible.",
+      );
+    } finally {
+      setCampaignDraftSaveState("idle");
+    }
+  }
+
+
+  async function savePublishAsDraft() {
+    if (!selectedPreparedAction || campaignDraftSaveState === "saving") return;
+
+    setCampaignDraftSaveState("saving");
+    setNotice(null);
+
+    try {
+      const response = await fetch("/api/agent/actions", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actionId: selectedPreparedAction.id,
+          editType: "save_publish_draft",
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        action?: AgentPreparedAction;
+        draftId?: string | null;
+        error?: string;
+      } | null;
+
+      if (!response.ok || !payload?.action) {
+        throw new Error(
+          payload?.error || "Enregistrement du brouillon impossible.",
+        );
+      }
+
+      const updatedAction = payload.action;
+      setActions((current) =>
+        current.map((action) =>
+          action.id === updatedAction.id ? updatedAction : action,
+        ),
+      );
+      setCampaignDraftConfirmOpen(false);
+      showNotice("Publication enregistrée en brouillon dans iNrSend.");
     } catch (error) {
       showNotice(
         error instanceof Error
@@ -7053,13 +7175,7 @@ export default function AgentClient() {
                           campaignDraftSaveState === "saving"
                         }
                         onClick={() => {
-                          if (isCampaignView) {
-                            setCampaignDraftConfirmOpen(true);
-                            return;
-                          }
-                          showNotice(
-                            "La sauvegarde en brouillon publication sera branchée dans l’étape brouillons Booster.",
-                          );
+                          setCampaignDraftConfirmOpen(true);
                         }}
                       >
                         <span aria-hidden>💾</span>
@@ -7444,7 +7560,7 @@ export default function AgentClient() {
         </div>
       )}
 
-      {campaignDraftConfirmOpen && campaignMailPreview && (
+      {campaignDraftConfirmOpen && (campaignMailPreview || isPublishView) && (
         <div
           className={styles.modalBackdrop}
           role="presentation"
@@ -7457,7 +7573,7 @@ export default function AgentClient() {
             className={`${styles.settingsModal} ${styles.campaignDraftModal}`}
             role="dialog"
             aria-modal="true"
-            aria-label="Enregistrer la campagne en brouillon"
+            aria-label={isPublishView ? "Enregistrer la publication en brouillon" : "Enregistrer la campagne en brouillon"}
             onClick={(event) => event.stopPropagation()}
           >
             <button
@@ -7470,29 +7586,45 @@ export default function AgentClient() {
               ×
             </button>
             <p className={styles.modalEyebrow}>Brouillon iNrSend</p>
-            <h2>Enregistrer cette campagne ?</h2>
+            <h2>{isPublishView ? "Enregistrer cette publication ?" : "Enregistrer cette campagne ?"}</h2>
             <div className={styles.campaignDraftNotice}>
               <span aria-hidden>💾</span>
               <div>
                 <strong>
-                  La campagne va être enregistrée en brouillon dans iNrSend.
+                  {isPublishView
+                    ? "La publication va être enregistrée en brouillon dans iNrSend."
+                    : "La campagne va être enregistrée en brouillon dans iNrSend."}
                 </strong>
                 <p>
-                  Vous pourrez la retrouver plus tard, puis la rééditer
-                  directement dans
-                  {selected.key === "loyalty" ? " Fidéliser" : " Propulser"}.
-                  Elle ne sera pas envoyée maintenant.
+                  {isPublishView
+                    ? "Vous pourrez la retrouver plus tard dans iNrSend, puis la réouvrir dans Publier pour la modifier ou la publier. Elle ne sera pas publiée maintenant."
+                    : `Vous pourrez la retrouver plus tard, puis la rééditer directement dans${selected.key === "loyalty" ? " Fidéliser" : " Propulser"}. Elle ne sera pas envoyée maintenant.`}
                 </p>
               </div>
             </div>
             <div className={styles.campaignDraftSummary}>
-              <small>Objet</small>
-              <strong>{campaignMailPreview.subject || "—"}</strong>
-              <small>Destinataires prévus</small>
-              <strong>
-                {campaignMailPreview.recipientsCount} contact
-                {campaignMailPreview.recipientsCount > 1 ? "s" : ""}
-              </strong>
+              {isPublishView ? (
+                <>
+                  <small>Canaux</small>
+                  <strong>
+                    {(displayChannels.length ? displayChannels : selectedConfigChannels)
+                      .map((channel) => channelOptions[channel]?.name || channel)
+                      .join(" / ") || "—"}
+                  </strong>
+                  <small>Contenu</small>
+                  <strong>{publishContentKind || "Publication"}</strong>
+                </>
+              ) : (
+                <>
+                  <small>Objet</small>
+                  <strong>{campaignMailPreview?.subject || "—"}</strong>
+                  <small>Destinataires prévus</small>
+                  <strong>
+                    {campaignMailPreview?.recipientsCount || 0} contact
+                    {(campaignMailPreview?.recipientsCount || 0) > 1 ? "s" : ""}
+                  </strong>
+                </>
+              )}
             </div>
             <div className={styles.modalActions}>
               <button
@@ -7504,7 +7636,7 @@ export default function AgentClient() {
               </button>
               <button
                 type="button"
-                onClick={saveCampaignAsDraft}
+                onClick={isPublishView ? savePublishAsDraft : saveCampaignAsDraft}
                 disabled={campaignDraftSaveState === "saving"}
               >
                 {campaignDraftSaveState === "saving"
@@ -8331,8 +8463,8 @@ export default function AgentClient() {
                 </span>
               </div>
               <small>
-                Étape 1 : le bouton est prêt dans l’interface. Le branchement
-                sur l’outil d’adaptation existant arrive à l’étape 2.
+                Utilisez l’outil d’adaptation iNrCy pour ajuster ce média au
+                canal sélectionné, sans recréer de nouveau système.
               </small>
             </div>
 

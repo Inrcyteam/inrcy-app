@@ -12,8 +12,20 @@ import { parseMailAttachmentRefs } from "@/lib/mailAttachmentRefs";
 import { stripTemplateSignatureBlock } from "@/lib/mailTemplateCleanup";
 import { sanitizeRichMailHtml } from "@/lib/mailRichText";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { findSimilarUpcomingScheduledCampaign } from "@/lib/scheduledCampaignDedupe";
+import {
+  acquireExecutionIdempotencyLock,
+  buildCompletedExecutionResponse,
+  buildRunningExecutionResponse,
+  cleanExecutionIdempotencyKey,
+  completeExecutionIdempotencyLock,
+  failExecutionIdempotencyLock,
+} from "@/lib/executionIdempotency";
 
 export const runtime = "nodejs";
+
+const CAMPAIGN_IDEMPOTENCY_SCOPE = "mail_campaign_create";
+const CAMPAIGN_IDEMPOTENCY_TTL_MS = 30 * 60 * 1000;
 
 type CampaignRecipientRow = {
   campaign_id: string;
@@ -56,19 +68,46 @@ function normalizeCampaignFolder(input: unknown, fallback: CampaignFolder): Camp
   return ALLOWED_FOLDERS.has(value) ? value : fallback;
 }
 
+const CAMPAIGN_ORIGIN_LABELS: Record<string, string> = {
+  inr_agent: "iNr'Agent",
+  inrsend_scheduled: "Mail programmé",
+  propulser_scheduled: "Propulser programmé",
+  fideliser_scheduled: "Fidéliser programmé",
+  booster_scheduled: "Booster programmé",
+  booster_manual: "Booster",
+  manual: "Manuel",
+};
+
+function cleanCampaignMetadataString(value: unknown, maxLength = 180) {
+  return String(value || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength);
+}
+
 function normalizeCampaignMetadata(input: unknown): Record<string, unknown> {
   if (!input || typeof input !== "object" || Array.isArray(input)) return {};
   const raw = input as Record<string, unknown>;
-  const source = String(raw.source || "").trim();
-  if (source !== "inr_agent") return {};
+  const source = cleanCampaignMetadataString(raw.source, 80);
+  if (!source || !CAMPAIGN_ORIGIN_LABELS[source]) return {};
   return {
-    source: "inr_agent",
-    label: String(raw.label || "iNr'Agent"),
-    agentActionId: String(raw.agentActionId || "").trim() || null,
-    automationKey: String(raw.automationKey || "").trim() || null,
-    targetTool: String(raw.targetTool || "").trim() || null,
-    actionType: String(raw.actionType || "").trim() || null,
-    theme: String(raw.theme || "").trim() || null,
+    source,
+    label:
+      cleanCampaignMetadataString(raw.label, 120) ||
+      CAMPAIGN_ORIGIN_LABELS[source],
+    agentActionId: cleanCampaignMetadataString(raw.agentActionId, 120) || null,
+    scheduledActionId:
+      cleanCampaignMetadataString(raw.scheduledActionId, 120) || null,
+    automationKey: cleanCampaignMetadataString(raw.automationKey, 80) || null,
+    targetTool: cleanCampaignMetadataString(raw.targetTool, 80) || null,
+    actionType: cleanCampaignMetadataString(raw.actionType, 80) || null,
+    workflowTool: cleanCampaignMetadataString(raw.workflowTool, 80) || null,
+    workflowAction: cleanCampaignMetadataString(raw.workflowAction, 80) || null,
+    theme: cleanCampaignMetadataString(raw.theme, 120) || null,
+    runMode: cleanCampaignMetadataString(raw.runMode, 80) || null,
+    idempotencyKey:
+      cleanCampaignMetadataString(raw.idempotencyKey || raw.idempotency_key, 180) ||
+      null,
   };
 }
 
@@ -151,6 +190,59 @@ function parseCampaignRecipientStats(input: unknown) {
   }
 
   return { duplicateCount, invalidCount };
+}
+
+function buildCampaignIdempotencyKey(args: {
+  body: any;
+  metadata: Record<string, unknown>;
+}) {
+  return cleanExecutionIdempotencyKey(
+    args.body.idempotencyKey ||
+      args.body.idempotency_key ||
+      args.metadata.idempotencyKey ||
+      args.metadata.idempotency_key,
+  );
+}
+
+function buildCampaignIdempotencyMetadata(args: {
+  accountId: string;
+  subject: string;
+  folder: CampaignFolder;
+  trackKind: string | null;
+  trackType: string;
+  recipientCount: number;
+  source: string | null;
+}) {
+  return {
+    workflow: "mail_campaign_create",
+    accountId: args.accountId,
+    subject: args.subject,
+    folder: args.folder,
+    trackKind: args.trackKind,
+    trackType: args.trackType || null,
+    recipientCount: args.recipientCount,
+    source: args.source || null,
+  };
+}
+
+function formatCampaignDuplicateScheduledAt(value?: string | null) {
+  const time = Date.parse(String(value || ""));
+  if (!Number.isFinite(time)) return "prochainement";
+  return new Intl.DateTimeFormat("fr-FR", {
+    dateStyle: "short",
+    timeStyle: "short",
+    timeZone: "Europe/Paris",
+  }).format(new Date(time));
+}
+
+function buildCampaignDuplicateMessage(
+  duplicate: Awaited<ReturnType<typeof findSimilarUpcomingScheduledCampaign>>,
+) {
+  const dateLabel = formatCampaignDuplicateScheduledAt(duplicate.existingScheduledAt);
+  const recipientLabel = duplicate.recipientCount
+    ? ` pour ${duplicate.recipientCount} destinataire${duplicate.recipientCount > 1 ? "s" : ""}`
+    : "";
+  return `Cette campagne semble déjà programmée${recipientLabel} pour ${dateLabel}. Pour éviter un double envoi, annulez la programmation existante ou modifiez le contenu avant d’envoyer maintenant.`;
 }
 
 export async function POST(req: Request) {
@@ -260,6 +352,96 @@ export async function POST(req: Request) {
       { status: 400 },
     );
   }
+  const campaignIdempotencyKey = buildCampaignIdempotencyKey({
+    body,
+    metadata,
+  });
+  const isScheduledCampaignExecution =
+    isCron ||
+    campaignIdempotencyKey.startsWith("scheduled_campaign:") ||
+    body.skipScheduledDuplicateCheck === true ||
+    body.allowDuplicateCampaignSend === true;
+
+  if (!isScheduledCampaignExecution) {
+    const duplicate = await findSimilarUpcomingScheduledCampaign({
+      supabase: supabaseAdmin,
+      userId: user.id,
+      payload: {
+        accountId,
+        type,
+        subject,
+        text,
+        html,
+        recipients,
+        folder,
+        trackKind,
+        trackType,
+        attachments,
+      },
+    });
+
+    if (duplicate.duplicate) {
+      const message = buildCampaignDuplicateMessage(duplicate);
+      return NextResponse.json(
+        {
+          ok: false,
+          success: false,
+          error: message,
+          user_message: message,
+          code: "scheduled_campaign_duplicate",
+          duplicate,
+        },
+        { status: 409 },
+      );
+    }
+  }
+
+  const campaignIdempotency = campaignIdempotencyKey
+    ? await acquireExecutionIdempotencyLock({
+        supabase: supabaseAdmin,
+        userId: user.id,
+        scope: CAMPAIGN_IDEMPOTENCY_SCOPE,
+        idempotencyKey: campaignIdempotencyKey,
+        ttlMs: CAMPAIGN_IDEMPOTENCY_TTL_MS,
+        metadata: buildCampaignIdempotencyMetadata({
+          accountId,
+          subject,
+          folder,
+          trackKind,
+          trackType,
+          recipientCount: recipients.length,
+          source: String(metadata.source || "").trim() || null,
+        }),
+      })
+    : { state: "acquired" as const, lock: null };
+
+  if (campaignIdempotency.state === "completed") {
+    return NextResponse.json(
+      buildCompletedExecutionResponse(campaignIdempotency.lock),
+    );
+  }
+
+  if (campaignIdempotency.state === "running") {
+    return NextResponse.json(
+      buildRunningExecutionResponse(campaignIdempotency.lock),
+      {
+        status: 425,
+        headers: { "Retry-After": "60" },
+      },
+    );
+  }
+
+  const campaignIdempotencyLockId = campaignIdempotency.lock?.id || null;
+  const campaignMetadata: Record<string, unknown> = {
+    ...metadata,
+    ...(campaignIdempotencyKey
+      ? {
+          idempotencyKey: campaignIdempotencyKey,
+          idempotencyScope: CAMPAIGN_IDEMPOTENCY_SCOPE,
+        }
+      : {}),
+  };
+
   const dispatchState = await evaluateCampaignDispatchState({ userId: user.id, integrationId: accountId });
   const deliveryConfig = getMailCampaignDeliveryConfig();
   const now = new Date().toISOString();
@@ -275,7 +457,7 @@ export async function POST(req: Request) {
     body_text: text,
     body_html: html || null,
     attachments,
-    metadata,
+    metadata: campaignMetadata,
     status: initialStatus,
     total_count: recipients.length,
     queued_count: recipients.length,
@@ -318,7 +500,15 @@ export async function POST(req: Request) {
   }
 
   if (campaignError || !campaign?.id) {
-    return NextResponse.json({ error: campaignError?.message || "Création de campagne impossible." }, { status: 500 });
+    const errorMessage = campaignError?.message || "Création de campagne impossible.";
+    await failExecutionIdempotencyLock({
+      supabase: supabaseAdmin,
+      lockId: campaignIdempotencyLockId,
+      error: errorMessage,
+      result: { success: false, error: errorMessage },
+      metadata: { stage: "campaign_insert" },
+    });
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 
   await saveInrSendHistoryFiles(supabase, {
@@ -333,7 +523,7 @@ export async function POST(req: Request) {
       source_doc_save_id: sourceDocSaveId || null,
       source_doc_type: sourceDocType || null,
       source_doc_number: sourceDocNumber || null,
-      ...(metadata.source === "inr_agent" ? { origin: metadata } : {}),
+      ...(campaignMetadata.source ? { origin: campaignMetadata } : {}),
     },
   });
 
@@ -350,11 +540,18 @@ export async function POST(req: Request) {
     const { error } = await supabase.from("mail_campaign_recipients").insert(chunk);
     if (error) {
       await supabase.from("mail_campaigns").delete().eq("id", campaign.id);
+      await failExecutionIdempotencyLock({
+        supabase: supabaseAdmin,
+        lockId: campaignIdempotencyLockId,
+        error: error.message,
+        result: { success: false, error: error.message, campaignId: campaign.id },
+        metadata: { stage: "recipients_insert" },
+      });
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
   }
 
-  return NextResponse.json({
+  const responsePayload = {
     success: true,
     campaignId: campaign.id,
     campaignStatus: initialStatus,
@@ -372,5 +569,20 @@ export async function POST(req: Request) {
     dailyLimit: deliveryConfig.dailyLimit,
     activeLimit: deliveryConfig.maxActivePerIntegration,
     queuedForBackgroundDispatch: true,
+    idempotencyKey: campaignIdempotencyKey || null,
+    idempotencyLockId: campaignIdempotencyLockId || null,
+  };
+
+  await completeExecutionIdempotencyLock({
+    supabase: supabaseAdmin,
+    lockId: campaignIdempotencyLockId,
+    result: responsePayload,
+    metadata: {
+      campaignId: campaign.id,
+      status: initialStatus,
+      recipientCount: recipients.length,
+    },
   });
+
+  return NextResponse.json(responsePayload);
 }

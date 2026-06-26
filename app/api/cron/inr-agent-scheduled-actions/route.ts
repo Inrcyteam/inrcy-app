@@ -41,8 +41,13 @@ type ExecutionResult = {
   detail?: string | null;
   retriable?: boolean;
   nextRetryAt?: string | null;
+  retryAfterSeconds?: number | null;
+  preserveAttemptCount?: boolean;
   campaignId?: string | null;
   publicationId?: string | null;
+  idempotencyKey?: string | null;
+  idempotencyState?: "completed" | "running" | "acquired" | "none" | null;
+  idempotent?: boolean;
 };
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -88,6 +93,227 @@ function errorFromPayload(payload: Record<string, unknown>, fallback: string) {
     trimDiagnosticText(payload.detail, 500) ||
     fallback
   );
+}
+
+function parseRetryAfterSeconds(value: unknown, fallback = 60) {
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && numeric > 0) {
+    return Math.min(15 * 60, Math.max(30, Math.round(numeric)));
+  }
+  return fallback;
+}
+
+function getScheduledPublicationIdempotencyKey(
+  row: ScheduledActionCronRow,
+  publishPayload: Record<string, unknown>,
+) {
+  return (
+    trimDiagnosticText(publishPayload.idempotencyKey, 180) ||
+    trimDiagnosticText(asRecord(publishPayload.origin).idempotencyKey, 180) ||
+    `scheduled_publication:${row.id}`
+  );
+}
+
+function getScheduledCampaignIdempotencyKey(
+  row: ScheduledActionCronRow,
+  campaignPayload: Record<string, unknown>,
+) {
+  return (
+    trimDiagnosticText(campaignPayload.idempotencyKey, 180) ||
+    trimDiagnosticText(asRecord(campaignPayload.metadata).idempotencyKey, 180) ||
+    `scheduled_campaign:${row.id}`
+  );
+}
+
+type CampaignOriginSource =
+  | "inr_agent"
+  | "inrsend_scheduled"
+  | "propulser_scheduled"
+  | "fideliser_scheduled"
+  | "manual";
+
+type CampaignOriginMeta = {
+  source: CampaignOriginSource;
+  label: string;
+  agentActionId?: string | null;
+  scheduledActionId?: string | null;
+  automationKey?: string | null;
+  targetTool?: string | null;
+  actionType?: string | null;
+  workflowTool?: string | null;
+  workflowAction?: string | null;
+  theme?: string | null;
+  runMode?: string | null;
+  idempotencyKey?: string | null;
+};
+
+function normalizeScheduledCampaignOrigin(
+  row: ScheduledActionCronRow,
+  campaign: Record<string, unknown>,
+): CampaignOriginMeta {
+  const scheduledPayload = asRecord(row.payload);
+  const existingMetadata = asRecord(campaign.metadata);
+  const originValue = scheduledPayload.origin;
+  const originRecord = asRecord(originValue);
+  const originText = trimDiagnosticText(
+    originRecord.source ||
+      (typeof originValue === "string" ? originValue : "") ||
+      existingMetadata.source ||
+      "",
+    120,
+  );
+  const targetTool = trimDiagnosticText(
+    existingMetadata.targetTool || row.target_tool || campaign.trackKind || "mails",
+    80,
+  );
+  const actionType = trimDiagnosticText(
+    existingMetadata.actionType || row.action_type || "campaign",
+    80,
+  );
+  const trackType = trimDiagnosticText(
+    existingMetadata.theme || campaign.trackType || campaign.templateKey || "",
+    120,
+  );
+  const workflowAction =
+    targetTool === "propulser"
+      ? "propulser"
+      : targetTool === "fideliser"
+        ? "fideliser"
+        : "mail";
+  const agentActionId =
+    trimDiagnosticText(existingMetadata.agentActionId, 120) ||
+    trimDiagnosticText(scheduledPayload.sourceActionId, 120) ||
+    null;
+  const isAgentCampaign =
+    originText === "inr_agent" ||
+    existingMetadata.source === "inr_agent" ||
+    Boolean(agentActionId) ||
+    Boolean(row.automation_key);
+
+  if (isAgentCampaign) {
+    return {
+      ...existingMetadata,
+      source: "inr_agent",
+      label:
+        trimDiagnosticText(existingMetadata.label, 120) ||
+        (row.source === "automatic" ? "iNr’Agent automatique" : "iNr’Agent programmé"),
+      agentActionId,
+      scheduledActionId: row.id,
+      automationKey:
+        trimDiagnosticText(existingMetadata.automationKey || row.automation_key || "", 80) ||
+        null,
+      targetTool,
+      actionType,
+      workflowTool: targetTool,
+      workflowAction,
+      theme: trackType || null,
+      runMode: "scheduled",
+      idempotencyKey:
+        trimDiagnosticText(existingMetadata.idempotencyKey, 180) || null,
+    };
+  }
+
+  const source: CampaignOriginSource =
+    targetTool === "propulser" ||
+    (originText === "inrsend_workflow_finalizer" && targetTool === "propulser")
+      ? "propulser_scheduled"
+      : targetTool === "fideliser" ||
+          (originText === "inrsend_workflow_finalizer" && targetTool === "fideliser")
+        ? "fideliser_scheduled"
+        : originText === "manual"
+          ? "manual"
+          : "inrsend_scheduled";
+  const defaultLabel =
+    source === "propulser_scheduled"
+      ? "Propulser programmé"
+      : source === "fideliser_scheduled"
+        ? "Fidéliser programmé"
+        : source === "manual"
+          ? "Envoi manuel"
+          : "Mail programmé";
+
+  return {
+    ...existingMetadata,
+    source,
+    label: trimDiagnosticText(existingMetadata.label, 120) || defaultLabel,
+    scheduledActionId: row.id,
+    automationKey:
+      trimDiagnosticText(existingMetadata.automationKey || row.automation_key || "", 80) ||
+      null,
+    targetTool,
+    actionType,
+    workflowTool: targetTool,
+    workflowAction,
+    theme: trackType || null,
+    runMode: "scheduled",
+    idempotencyKey:
+      trimDiagnosticText(existingMetadata.idempotencyKey, 180) || null,
+  };
+}
+
+type PublicationOriginMeta = {
+  source: "inr_agent" | "booster_scheduled" | "booster_manual" | "manual";
+  label: string;
+  agentActionId?: string | null;
+  scheduledActionId?: string | null;
+  automationKey?: string | null;
+  workflowTool?: string | null;
+  workflowAction?: string | null;
+};
+
+function normalizePublicationOrigin(row: ScheduledActionCronRow, publishPayload: Record<string, unknown>): PublicationOriginMeta {
+  const scheduledPayload = asRecord(row.payload);
+  const rawOrigin = asRecord(publishPayload.origin);
+  const rawScheduledOrigin = asRecord(scheduledPayload.origin);
+  const scheduleGrouping = asRecord(scheduledPayload.scheduleGrouping);
+  const rawSource = trimDiagnosticText(
+    publishPayload.source ||
+      rawOrigin.source ||
+      rawScheduledOrigin.source ||
+      scheduledPayload.origin ||
+      "",
+    80,
+  );
+  const createdFrom = trimDiagnosticText(scheduleGrouping.createdFrom, 120);
+
+  if (rawSource === "inr_agent") {
+    return {
+      source: "inr_agent",
+      label: trimDiagnosticText(rawOrigin.label || rawScheduledOrigin.label, 120) || "iNr'Agent",
+      agentActionId: trimDiagnosticText(
+        publishPayload.inrAgentActionId || rawOrigin.agentActionId || rawScheduledOrigin.agentActionId,
+        120,
+      ) || null,
+      scheduledActionId: row.id,
+      automationKey: trimDiagnosticText(rawOrigin.automationKey || row.automation_key || "publish", 80) || "publish",
+      workflowTool: "booster",
+      workflowAction: "publier",
+    };
+  }
+
+  if (
+    rawSource === "booster_scheduled" ||
+    rawSource === "booster" ||
+    createdFrom === "booster_publish_schedule"
+  ) {
+    return {
+      source: "booster_scheduled",
+      label: trimDiagnosticText(rawOrigin.label || rawScheduledOrigin.label, 120) || "Booster programmé",
+      scheduledActionId: row.id,
+      automationKey: trimDiagnosticText(row.automation_key || "publish", 80) || "publish",
+      workflowTool: "booster",
+      workflowAction: "publier",
+    };
+  }
+
+  return {
+    source: "manual",
+    label: trimDiagnosticText(rawOrigin.label || rawScheduledOrigin.label, 120) || "Programmation manuelle",
+    scheduledActionId: row.id,
+    automationKey: trimDiagnosticText(row.automation_key || "", 80) || null,
+    workflowTool: "booster",
+    workflowAction: "publier",
+  };
 }
 
 function mergeExecutionPayload(row: ScheduledActionCronRow, execution: Record<string, unknown>) {
@@ -208,17 +434,42 @@ async function markDone(row: ScheduledActionCronRow, execution: Record<string, u
   if (error) throw error;
 }
 
-async function markFailedOrRetry(row: ScheduledActionCronRow, args: { error: string; detail?: string | null; retriable: boolean; httpStatus?: number | null; payload?: Record<string, unknown> }) {
+async function markFailedOrRetry(row: ScheduledActionCronRow, args: {
+  error: string;
+  detail?: string | null;
+  retriable: boolean;
+  httpStatus?: number | null;
+  payload?: Record<string, unknown>;
+  retryAfterSeconds?: number | null;
+  preserveAttemptCount?: boolean;
+}) {
   const now = new Date();
   const attemptCount = Math.max(1, Number(row.attempt_count || 1));
-  const shouldRetry = args.retriable && attemptCount < MAX_EXECUTION_ATTEMPTS;
-  const nextRetryAt = shouldRetry ? new Date(now.getTime() + RETRY_DELAY_MS).toISOString() : null;
+  const retryDelayMs = Math.min(
+    30 * 60 * 1000,
+    Math.max(
+      30 * 1000,
+      Number(args.retryAfterSeconds || 0) > 0
+        ? Number(args.retryAfterSeconds) * 1000
+        : RETRY_DELAY_MS,
+    ),
+  );
+  const shouldRetry =
+    args.retriable &&
+    (args.preserveAttemptCount || attemptCount < MAX_EXECUTION_ATTEMPTS);
+  const nextRetryAt = shouldRetry
+    ? new Date(now.getTime() + retryDelayMs).toISOString()
+    : null;
   const status = shouldRetry ? "scheduled" : "failed";
+  const nextAttemptCount = args.preserveAttemptCount
+    ? Math.max(0, attemptCount - 1)
+    : attemptCount;
   const { error } = await supabaseAdmin
     .from("inr_agent_scheduled_actions")
     .update({
       status,
       scheduled_at: nextRetryAt || row.scheduled_at,
+      attempt_count: nextAttemptCount,
       last_error: args.error,
       payload: mergeExecutionPayload(row, {
         status,
@@ -226,8 +477,10 @@ async function markFailedOrRetry(row: ScheduledActionCronRow, args: { error: str
         detail: args.detail || null,
         httpStatus: args.httpStatus || null,
         retriable: args.retriable,
+        retryAfterSeconds: args.retryAfterSeconds || null,
+        preserveAttemptCount: args.preserveAttemptCount === true,
         nextRetryAt,
-        attemptCount,
+        attemptCount: nextAttemptCount,
         response: args.payload || null,
       }),
       updated_at: now.toISOString(),
@@ -272,17 +525,10 @@ async function executeMailCampaign(row: ScheduledActionCronRow, origin: string, 
     };
   }
 
-  const metadata = {
-    ...asRecord(campaign.metadata),
-    source: "inr_agent",
-    label: "iNr'Agent",
-    agentActionId: row.id,
-    automationKey: String(row.automation_key || ""),
-    targetTool: String(row.target_tool || "mails"),
-    actionType: String(row.action_type || "campaign"),
-  };
+  const metadata = normalizeScheduledCampaignOrigin(row, campaign);
 
   try {
+    const idempotencyKey = getScheduledCampaignIdempotencyKey(row, campaign);
     const { response, responseText, payload: responsePayload } = await postInternalJson({
       origin,
       userId: row.user_id,
@@ -290,9 +536,45 @@ async function executeMailCampaign(row: ScheduledActionCronRow, origin: string, 
       timeoutMs,
       body: {
         ...campaign,
-        metadata,
+        idempotencyKey,
+        metadata: {
+          ...metadata,
+          idempotencyKey,
+        },
       },
     });
+
+    const idempotent = responsePayload.idempotent === true;
+    const idempotencyPending = responsePayload.idempotencyPending === true;
+    const retryAfterSeconds = parseRetryAfterSeconds(
+      responsePayload.retryAfterSeconds || response.headers.get("Retry-After"),
+      60,
+    );
+
+    if (idempotencyPending || responsePayload.code === "execution_already_running") {
+      const error = errorFromPayload(
+        responsePayload,
+        "Campagne programmée déjà en cours de traitement.",
+      );
+      const detail =
+        trimDiagnosticText(responsePayload.detail, 900) ||
+        trimDiagnosticText(responseText, 900) ||
+        null;
+      return {
+        ok: false,
+        status: "failed",
+        scheduledActionId: row.id,
+        targetTool: String(row.target_tool || "mails"),
+        error,
+        detail,
+        retriable: true,
+        retryAfterSeconds,
+        preserveAttemptCount: true,
+        idempotencyKey,
+        idempotencyState: "running",
+        idempotent,
+      };
+    }
 
     if (!response.ok) {
       const error = errorFromPayload(responsePayload, response.statusText || "Création de campagne impossible.");
@@ -305,6 +587,10 @@ async function executeMailCampaign(row: ScheduledActionCronRow, origin: string, 
         error,
         detail,
         retriable: isRetriableHttpFailure(response.status, error),
+        retryAfterSeconds,
+        idempotencyKey,
+        idempotencyState: idempotent ? "completed" : "acquired",
+        idempotent,
       };
     }
 
@@ -318,6 +604,9 @@ async function executeMailCampaign(row: ScheduledActionCronRow, origin: string, 
         error: "Campagne créée mais identifiant introuvable.",
         detail: "La route /api/crm/campaigns n’a pas renvoyé campaignId.",
         retriable: true,
+        idempotencyKey,
+        idempotencyState: idempotent ? "completed" : "acquired",
+        idempotent,
       };
     }
 
@@ -333,6 +622,9 @@ async function executeMailCampaign(row: ScheduledActionCronRow, origin: string, 
       scheduledActionId: row.id,
       targetTool: String(row.target_tool || "mails"),
       campaignId,
+      idempotencyKey,
+      idempotencyState: idempotent ? "completed" : "acquired",
+      idempotent,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Campagne programmée impossible.";
@@ -364,6 +656,11 @@ async function executePublication(row: ScheduledActionCronRow, origin: string, t
   }
 
   try {
+    const publicationOrigin = normalizePublicationOrigin(row, publishPayload);
+    const idempotencyKey = getScheduledPublicationIdempotencyKey(
+      row,
+      publishPayload,
+    );
     const { response, responseText, payload: responsePayload } = await postInternalJson({
       origin,
       userId: row.user_id,
@@ -371,15 +668,47 @@ async function executePublication(row: ScheduledActionCronRow, origin: string, t
       timeoutMs,
       body: {
         ...publishPayload,
-        source: "inr_agent",
+        source: publicationOrigin.source,
+        idempotencyKey,
         origin: {
           ...asRecord(publishPayload.origin),
-          source: "inr_agent",
-          agentActionId: row.id,
-          automationKey: "publish",
+          ...publicationOrigin,
+          idempotencyKey,
         },
       },
     });
+
+    const idempotent = responsePayload.idempotent === true;
+    const idempotencyPending = responsePayload.idempotencyPending === true;
+    const retryAfterSeconds = parseRetryAfterSeconds(
+      responsePayload.retryAfterSeconds || response.headers.get("Retry-After"),
+      60,
+    );
+
+    if (idempotencyPending || responsePayload.code === "execution_already_running") {
+      const error = errorFromPayload(
+        responsePayload,
+        "Publication programmée déjà en cours de traitement.",
+      );
+      const detail =
+        trimDiagnosticText(responsePayload.detail, 900) ||
+        trimDiagnosticText(responseText, 900) ||
+        null;
+      return {
+        ok: false,
+        status: "failed",
+        scheduledActionId: row.id,
+        targetTool: String(row.target_tool || "booster"),
+        error,
+        detail,
+        retriable: true,
+        retryAfterSeconds,
+        preserveAttemptCount: true,
+        idempotencyKey,
+        idempotencyState: "running",
+        idempotent,
+      };
+    }
 
     const okFlag = responsePayload.ok !== false;
     if (!response.ok || !okFlag) {
@@ -393,6 +722,10 @@ async function executePublication(row: ScheduledActionCronRow, origin: string, t
         error,
         detail,
         retriable: response.ok ? false : isRetriableHttpFailure(response.status, error),
+        retryAfterSeconds: response.ok ? null : retryAfterSeconds,
+        idempotencyKey,
+        idempotencyState: idempotent ? "completed" : "acquired",
+        idempotent,
       };
     }
 
@@ -403,6 +736,9 @@ async function executePublication(row: ScheduledActionCronRow, origin: string, t
       scheduledActionId: row.id,
       targetTool: String(row.target_tool || "booster"),
       publicationId,
+      idempotencyKey,
+      idempotencyState: idempotent ? "completed" : "acquired",
+      idempotent,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : "Publication programmée impossible.";
@@ -518,6 +854,9 @@ async function processDueScheduledActions(args: { origin: string; maxRows: numbe
           targetTool: result.targetTool,
           campaignId: result.campaignId || null,
           publicationId: result.publicationId || null,
+          idempotencyKey: result.idempotencyKey || null,
+          idempotencyState: result.idempotencyState || null,
+          idempotent: result.idempotent === true,
         });
         await notifyScheduledActionOutcome(claimed, {
           outcome: "done",
@@ -529,6 +868,13 @@ async function processDueScheduledActions(args: { origin: string; maxRows: numbe
           error: result.error || "Action programmée impossible.",
           detail: result.detail || null,
           retriable: result.retriable === true,
+          retryAfterSeconds: result.retryAfterSeconds || null,
+          preserveAttemptCount: result.preserveAttemptCount === true,
+          payload: {
+            idempotencyKey: result.idempotencyKey || null,
+            idempotencyState: result.idempotencyState || null,
+            idempotent: result.idempotent === true,
+          },
         });
         result.status = failure.status === "scheduled" ? "retried" : "failed";
         result.nextRetryAt = failure.nextRetryAt;

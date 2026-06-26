@@ -8,10 +8,15 @@ import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { normalizeMailSubject } from "@/lib/mailEncoding";
 import { textToRichMailHtml } from "@/lib/mailRichText";
+import { buildVideoSettingsByChannel } from "@/lib/boosterVideoSettings";
+import { randomUUID } from "crypto";
 import {
   INR_MEDIA_IMAGE_MAX_BYTES,
   INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
 } from "@/lib/mediaRules";
+
+export const runtime = "nodejs";
+export const maxDuration = 90;
 
 function isMissingTableError(
   error: { code?: string; message?: string } | null | undefined,
@@ -575,7 +580,12 @@ function cleanPublishMedia(value: unknown) {
     type: mimeType,
     mimeType,
     size: Number.isFinite(size) && size > 0 ? size : null,
+    width: Number(record.width ?? 0) > 0 ? Math.round(Number(record.width)) : null,
+    height:
+      Number(record.height ?? 0) > 0 ? Math.round(Number(record.height)) : null,
     duration: Number(record.duration ?? record.duration_seconds ?? 0) || null,
+    duration_seconds:
+      Number(record.duration ?? record.duration_seconds ?? 0) || null,
     kind,
     mediaType: kind,
     source: cleanText(record.source, 120) || null,
@@ -662,6 +672,251 @@ function buildPublishMediaAdaptation(
     strategy: "booster_image_adapter",
     userEditable: true,
     note: "iNrAgent garde l’image source et Booster génère une version adaptée au canal sans modifier l’original.",
+  };
+}
+
+
+type PublishDraftMedia = ReturnType<typeof cleanPublishMedia>;
+
+function publishCanRunWithoutMedia(channel: PublishChannelKey) {
+  return ["inrcy_site", "site_web", "gmb", "facebook", "linkedin"].includes(
+    channel,
+  );
+}
+
+function normalizePublishChannels(input: unknown): PublishChannelKey[] {
+  const raw = Array.isArray(input) ? input : [];
+  return Array.from(
+    new Set(
+      raw
+        .map((item) => cleanPublishChannel(item))
+        .filter((item): item is PublishChannelKey => Boolean(item)),
+    ),
+  );
+}
+
+function cleanBoosterPost(value: unknown, fallbackText: string) {
+  const record = asRecord(value) || {};
+  const content = cleanText(
+    record.content || record.text || record.body || record.message,
+    6000,
+  );
+  const title = cleanText(record.title || record.subject, 180);
+  const cta = cleanText(record.cta || record.callToAction, 180);
+  const ctaModeRaw = cleanText(record.ctaMode, 24);
+  const ctaMode = ["none", "website", "call", "message", "custom"].includes(
+    ctaModeRaw,
+  )
+    ? ctaModeRaw
+    : "none";
+  const hashtags = cleanPublishHashtags(record.hashtags);
+  return {
+    ...record,
+    title,
+    subject: title,
+    content: content || title || cleanText(fallbackText, 1200),
+    text: content || title || cleanText(fallbackText, 1200),
+    body: content || title || cleanText(fallbackText, 1200),
+    cta,
+    callToAction: cta,
+    ctaMode,
+    ctaUrl: cleanText(record.ctaUrl, 320),
+    ctaPhone: cleanText(record.ctaPhone, 60),
+    hashtags,
+  };
+}
+
+function fileExtensionFromMimeOrPath(mimeType: string, storagePath: string) {
+  const mime = String(mimeType || "").toLowerCase();
+  if (mime.includes("png")) return "png";
+  if (mime.includes("webp")) return "webp";
+  if (mime.includes("gif")) return "gif";
+  if (mime.includes("quicktime")) return "mov";
+  if (mime.includes("webm")) return "webm";
+  if (mime.includes("mp4")) return "mp4";
+  const fromPath = String(storagePath || "")
+    .split(/[?#]/)[0]
+    .split(".")
+    .pop()
+    ?.toLowerCase();
+  if (
+    fromPath &&
+    /^[a-z0-9]{2,5}$/.test(fromPath) &&
+    !fromPath.includes("/")
+  ) {
+    if (fromPath === "jpeg") return "jpg";
+    if (fromPath === "m4v") return "mp4";
+    return fromPath;
+  }
+  return mime.startsWith("video/") ? "mp4" : "jpg";
+}
+
+async function readAgentMediaBuffer(media: NonNullable<PublishDraftMedia>) {
+  const bucket = cleanText(media.bucket || "inrcy-pro-media", 120);
+  const storagePath = cleanText(media.storagePath || media.path, 900);
+  if (bucket && storagePath) {
+    const downloaded = await supabaseAdmin.storage
+      .from(bucket)
+      .download(storagePath);
+    if (!downloaded.error && downloaded.data) {
+      return {
+        buffer: Buffer.from(await downloaded.data.arrayBuffer()),
+        mimeType:
+          downloaded.data.type ||
+          cleanText(media.mimeType || media.type, 140) ||
+          "application/octet-stream",
+        sourceBucket: bucket,
+        sourceStoragePath: storagePath,
+      };
+    }
+  }
+
+  const url = cleanText(media.url || media.publicUrl, 2000);
+  if (!url) throw new Error("Média iNrAgent indisponible.");
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error("Média iNrAgent indisponible.");
+  }
+  return {
+    buffer: Buffer.from(await response.arrayBuffer()),
+    mimeType:
+      response.headers.get("content-type") ||
+      cleanText(media.mimeType || media.type, 140) ||
+      "application/octet-stream",
+    sourceBucket: bucket || null,
+    sourceStoragePath: storagePath || null,
+  };
+}
+
+function safeDraftFileName(value: string, fallback: string) {
+  const raw = String(value || fallback || "media")
+    .split(/[\\/]/)
+    .pop() || fallback || "media";
+  const clean = raw
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/[-_]{2,}/g, "-")
+    .replace(/^[-_.]+|[-_.]+$/g, "")
+    .toLowerCase();
+  return clean || fallback || "media";
+}
+
+async function copyAgentMediaToBoosterDraft(args: {
+  userId: string;
+  media: NonNullable<PublishDraftMedia>;
+  folder: "booster-drafts";
+}) {
+  const { media } = args;
+  const read = await readAgentMediaBuffer(media);
+  const extension = fileExtensionFromMimeOrPath(
+    read.mimeType,
+    cleanText(media.storagePath || media.path, 900),
+  );
+  const baseName = safeDraftFileName(
+    cleanText(media.name || media.title, 180),
+    media.kind === "video" ? "video-inragent" : "image-inragent",
+  ).replace(/\.[^.]+$/, "");
+  const storagePath = `${args.userId}/${args.folder}/${randomUUID()}-${baseName}.${extension}`;
+  const { error: uploadError } = await supabaseAdmin.storage
+    .from("booster")
+    .upload(storagePath, read.buffer, {
+      contentType: read.mimeType,
+      upsert: false,
+      cacheControl: "3600",
+    });
+  if (uploadError) {
+    throw new Error(
+      uploadError.message || "Impossible de créer le brouillon média.",
+    );
+  }
+  const publicUrl = String(
+    supabaseAdmin.storage.from("booster").getPublicUrl(storagePath)?.data
+      ?.publicUrl || "",
+  ).trim();
+  if (!publicUrl) throw new Error("URL du brouillon média introuvable.");
+  return {
+    storagePath,
+    publicUrl,
+    mimeType: read.mimeType,
+    size: read.buffer.byteLength,
+    sourceBucket: read.sourceBucket,
+    sourceStoragePath: read.sourceStoragePath,
+  };
+}
+
+async function buildPublishDraftMediaPayload(args: {
+  userId: string;
+  actionId: string;
+  media: PublishDraftMedia;
+}) {
+  const { media } = args;
+  if (!media) return { imageDrafts: [] as Record<string, unknown>[], videoDraft: null as Record<string, unknown> | null };
+
+  const copied = await copyAgentMediaToBoosterDraft({
+    userId: args.userId,
+    media,
+    folder: "booster-drafts",
+  });
+
+  if (media.kind === "video") {
+    const transformedVariants = Array.isArray(media.transformedVariants)
+      ? media.transformedVariants.filter(Boolean).slice(0, 12)
+      : [];
+    const sourceMetadata = {
+      width: media.width || null,
+      height: media.height || null,
+      duration: media.duration_seconds || media.duration || null,
+      size: copied.size || media.size || 0,
+      type: copied.mimeType || media.mimeType || media.type || "video/mp4",
+      ratio:
+        media.width && media.height
+          ? Number(media.width) / Number(media.height)
+          : null,
+      ratioLabel: "",
+      orientation:
+        media.width && media.height
+          ? Number(media.width) > Number(media.height)
+            ? "horizontal"
+            : Number(media.width) < Number(media.height)
+              ? "vertical"
+              : "square"
+          : "unknown",
+      orientationLabel: "",
+    };
+    return {
+      imageDrafts: [] as Record<string, unknown>[],
+      videoDraft: {
+        name: media.name || media.title || `video-iNrAgent-${args.actionId}.mp4`,
+        type: copied.mimeType || media.mimeType || media.type || "video/mp4",
+        size: copied.size || media.size || 0,
+        lastModified: Date.now(),
+        duration: media.duration_seconds || media.duration || null,
+        sourceMetadata,
+        storagePath: copied.storagePath,
+        publicUrl: copied.publicUrl,
+        url: copied.publicUrl,
+        transformedVariants,
+      },
+    };
+  }
+
+  return {
+    imageDrafts: [
+      {
+        name: media.name || media.title || `image-iNrAgent-${args.actionId}.jpg`,
+        type: copied.mimeType || media.mimeType || media.type || "image/jpeg",
+        size: copied.size || media.size || 0,
+        lastModified: Date.now(),
+        storagePath: copied.storagePath,
+        publicUrl: copied.publicUrl,
+        url: copied.publicUrl,
+        originalPublicUrl: media.publicUrl || media.url || null,
+        originalStoragePath: media.storagePath || media.path || null,
+        imageKey: media.id || args.actionId,
+      },
+    ],
+    videoDraft: null as Record<string, unknown> | null,
   };
 }
 
@@ -872,6 +1127,273 @@ function buildDraftPayloadFromAgentAction(args: {
   };
 
   return { payload, draftPayload, legacyPayload };
+}
+
+
+async function savePublishActionAsBoosterDraft(args: {
+  actionId: string;
+  userId: string;
+}) {
+  const { data: currentRow, error: readError } = await supabaseAdmin
+    .from("inr_agent_actions")
+    .select(ACTION_SELECT)
+    .eq("id", args.actionId)
+    .eq("user_id", args.userId)
+    .single();
+
+  if (readError || !currentRow) {
+    if (isMissingTableError(readError)) {
+      return {
+        response: NextResponse.json(
+          {
+            error: "La table inr_agent_actions doit être créée dans Supabase.",
+            tableMissing: true,
+          },
+          { status: 500 },
+        ),
+      };
+    }
+    return {
+      response: NextResponse.json(
+        { error: "Action iNr’Agent introuvable." },
+        { status: 404 },
+      ),
+    };
+  }
+
+  const action = rowToInrAgentAction(currentRow as any);
+  if (!isPublishAction(action)) {
+    return {
+      response: NextResponse.json(
+        {
+          error:
+            "Seules les publications Booster peuvent être enregistrées en brouillon iNrSend.",
+        },
+        { status: 400 },
+      ),
+    };
+  }
+
+  const payload = action.payload || {};
+  const rawChannels = normalizePublishChannels(
+    payload.selectedChannels || payload.channels || action.targetChannels,
+  );
+  const media = cleanPublishMedia(
+    payload.media ||
+      payload.mediaAsset ||
+      payload.video ||
+      payload.videoAsset ||
+      payload.image ||
+      payload.imageAsset,
+  );
+  const activeMediaMode = media?.kind === "video" ? "video" : media?.kind === "image" ? "images" : "none";
+  const channels = rawChannels.filter((channel) => {
+    if (activeMediaMode === "video") return true;
+    if (publishChannelRequiresVideo(channel)) return false;
+    if (publishChannelRequiresMedia(channel)) return Boolean(media);
+    return publishCanRunWithoutMedia(channel) || Boolean(media);
+  });
+
+  if (!channels.length) {
+    return {
+      response: NextResponse.json(
+        {
+          error:
+            "Aucun canal prêt à enregistrer en brouillon. Les canaux sélectionnés nécessitent un média ou une vidéo.",
+        },
+        { status: 400 },
+      ),
+    };
+  }
+
+  const rawPostByChannel = asRecord(payload.postByChannel) || {};
+  const fallbackText = cleanText(
+    action.summary || payload.idea || action.title || "Publication préparée par iNr’Agent.",
+    1200,
+  );
+  const postByChannel = Object.fromEntries(
+    channels.map((channel) => [
+      channel,
+      cleanBoosterPost(readPublishPost(rawPostByChannel, channel), fallbackText),
+    ]),
+  );
+  const firstPost =
+    channels.map((channel) => asRecord(postByChannel[channel])).find((post) => cleanText(post?.content || post?.title, 1200)) ||
+    asRecord(Object.values(postByChannel)[0]) ||
+    {};
+  const firstTitle = cleanText(firstPost.title || firstPost.subject, 180);
+  const firstContent = cleanText(firstPost.content || firstPost.text || firstPost.body, 1200);
+  const channelMediaModes = Object.fromEntries(
+    channels.map((channel) => [channel, activeMediaMode]),
+  );
+
+  const { imageDrafts, videoDraft } = await buildPublishDraftMediaPayload({
+    userId: args.userId,
+    actionId: action.id,
+    media,
+  });
+
+  const videoSettingsSource =
+    media?.kind === "video"
+      ? asRecord(media.videoSettingsByChannel) ||
+        asRecord(payload.videoSettingsByChannel) ||
+        (asRecord(media.videoSettings)
+          ? Object.fromEntries(channels.map((channel) => [channel, media.videoSettings]))
+          : null)
+      : null;
+  const videoSettingsByChannel =
+    media?.kind === "video"
+      ? buildVideoSettingsByChannel({
+          channels: channels as any,
+          videoSettingsByChannel: videoSettingsSource,
+          sourceMetadata: asRecord(videoDraft?.sourceMetadata) || null,
+        })
+      : {};
+  const videoFormatByChannel = Object.fromEntries(
+    Object.entries(videoSettingsByChannel).map(([channel, settings]) => [
+      channel,
+      settings?.format || null,
+    ]),
+  );
+  const videoAdaptationModeByChannel = Object.fromEntries(
+    Object.entries(videoSettingsByChannel).map(([channel, settings]) => [
+      channel,
+      settings?.adaptationMode || null,
+    ]),
+  );
+  const channelLabels = channels
+    .map((channel) => channel)
+    .join(" / ");
+  const instagramPost = asRecord(postByChannel.instagram);
+  const instagramHashtagsInput = Array.isArray(instagramPost?.hashtags)
+    ? instagramPost.hashtags.map((tag) => `#${String(tag).replace(/^#+/, "")}`).join(" ")
+    : "";
+  const now = new Date().toISOString();
+  const draftPayload = {
+    status: "draft",
+    title: firstTitle || action.title || "Brouillon publication",
+    preview: firstContent || fallbackText || channelLabels,
+    content: firstContent || "",
+    idea: cleanText(payload.idea || action.summary, 1000),
+    theme: cleanText(payload.boosterTheme || payload.theme, 80) || "",
+    contentStyle: cleanText(payload.contentStyle, 40) || "equilibre",
+    channel: channelLabels,
+    channels,
+    postByChannel,
+    mediaType: media?.kind === "video" ? "video" : "images",
+    channelMediaModes,
+    mediaModeByChannel: channelMediaModes,
+    videoFormatByChannel,
+    videoAdaptationModeByChannel,
+    videoSettingsByChannel,
+    imageNames: imageDrafts.map((image) => ({
+      name: image.name,
+      type: image.type,
+      size: image.size,
+    })),
+    videoName: videoDraft
+      ? {
+          name: videoDraft.name,
+          type: videoDraft.type,
+          size: videoDraft.size,
+          duration: videoDraft.duration,
+        }
+      : null,
+    videoSourceMetadata: videoDraft?.sourceMetadata || null,
+    imageDrafts,
+    videoDraft,
+    useImagesForAI: true,
+    imageSettingsByChannel: asRecord(payload.imageSettingsByChannel) || {},
+    instagramHashtagsInput,
+    saved_at: now,
+    origin: {
+      source: "inr_agent",
+      label: "iNr’Agent",
+      icon: "🤖",
+      actionId: action.id,
+      automationKey: action.automationKey,
+    },
+    source: "inr_agent",
+    workflowTool: "booster",
+    workflowAction: "publier",
+    inrAgentActionId: action.id,
+  };
+
+  const { data: draft, error: draftError } = await supabaseAdmin
+    .from("app_events")
+    .insert({
+      user_id: args.userId,
+      module: "booster",
+      type: "publish_draft",
+      payload: draftPayload,
+    })
+    .select("id")
+    .single();
+
+  if (draftError) {
+    return {
+      response: NextResponse.json(
+        {
+          error:
+            draftError.message ||
+            "Impossible d’enregistrer la publication en brouillon iNrSend.",
+        },
+        { status: 500 },
+      ),
+    };
+  }
+
+  const draftId = cleanText((draft as Record<string, unknown> | null)?.id, 120) || null;
+  const { data, error } = await supabaseAdmin
+    .from("inr_agent_actions")
+    .update({
+      status: "cancelled",
+      completed_at: now,
+      last_error: null,
+      summary: `${action.summary} Publication conservée en brouillon dans iNrSend.`,
+      payload: {
+        ...payload,
+        movedToInrSendDraft: {
+          ok: true,
+          draftId,
+          movedAt: now,
+          reason: "user_saved_publish_from_inr_agent",
+          type: "publish_draft",
+        },
+      },
+      updated_at: now,
+    })
+    .eq("id", args.actionId)
+    .eq("user_id", args.userId)
+    .select(ACTION_SELECT)
+    .single();
+
+  if (error) {
+    if (isMissingTableError(error)) {
+      return {
+        response: NextResponse.json(
+          {
+            error: "La table inr_agent_actions doit être créée dans Supabase.",
+            tableMissing: true,
+          },
+          { status: 500 },
+        ),
+      };
+    }
+    return {
+      response: NextResponse.json(
+        {
+          error:
+            error.message ||
+            "Impossible de fermer l’action iNr’Agent après enregistrement du brouillon.",
+        },
+        { status: 500 },
+      ),
+    };
+  }
+
+  const updatedAction = await refreshActionImageUrls(rowToInrAgentAction(data));
+  return { action: updatedAction, draftId };
 }
 
 async function saveCampaignActionAsInrSendDraft(args: {
@@ -1086,15 +1608,21 @@ export async function PATCH(request: Request) {
   const status = sanitizeInrAgentActionStatus(requestBody?.status);
   const editType = cleanText(requestBody?.editType, 80);
 
-  if (editType === "save_campaign_draft") {
+  if (editType === "save_campaign_draft" || editType === "save_publish_draft") {
     if (!actionId) {
       return NextResponse.json({ error: "Action invalide" }, { status: 400 });
     }
 
-    const result = await saveCampaignActionAsInrSendDraft({
-      actionId,
-      userId: user.id,
-    });
+    const result =
+      editType === "save_publish_draft"
+        ? await savePublishActionAsBoosterDraft({
+            actionId,
+            userId: user.id,
+          })
+        : await saveCampaignActionAsInrSendDraft({
+            actionId,
+            userId: user.id,
+          });
 
     if ("response" in result) return result.response;
     return NextResponse.json({

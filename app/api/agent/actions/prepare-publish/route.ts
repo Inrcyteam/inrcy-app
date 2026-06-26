@@ -14,7 +14,12 @@ import {
 } from "@/lib/boosterPrompt";
 import { getChannelConnectionStates } from "@/lib/channelConnectionState";
 import { decodeBusinessSector } from "@/lib/activitySectors";
-import { getJobLabel } from "@/lib/activityCatalog";
+import {
+  findJobValueByLabel,
+  getJobLabel,
+  getJobsForSector,
+  isValidJobForSector,
+} from "@/lib/activityCatalog";
 import {
   sanitizeInrAgentAutomationSettings,
   type InrAgentAutomationSettings,
@@ -48,11 +53,38 @@ type ImageBankAsset = {
   tags: string[];
   orientation: string;
   source: string;
+  librarySource?: "pro_media_library" | "inrcy_image_bank";
+  matchLevel?: string;
   mediaType?: "image" | "video";
   kind?: "image" | "video";
   mimeType?: string;
   size?: number | null;
   duration?: number | null;
+};
+
+type RecentMediaUsage = {
+  cutoffIso: string;
+  rowsScanned: number;
+  proMediaIds: Set<string>;
+  imageBankIds: Set<string>;
+  storageKeys: Set<string>;
+};
+
+type MediaSelectionAttempt = {
+  source: "pro_media_library" | "inrcy_image_bank";
+  matchLevel: string;
+  mediaType: "image" | "video";
+  token?: string;
+  sector?: string;
+  job?: string;
+  totalCandidates: number;
+  excludedRecentlyUsed: number;
+  eligibleCandidates: number;
+  genericSectorCandidates?: number;
+  excludedNonGenericSectorCount?: number;
+  selected: boolean;
+  selectedCandidateId?: string;
+  selectedStoragePath?: string;
 };
 
 type AutomationDbRow = {
@@ -75,6 +107,9 @@ type AutomationDbRow = {
 
 const BUCKET = "inrcy-image-bank";
 const PRO_MEDIA_BUCKET = "inrcy-pro-media";
+const MEDIA_REUSE_EXCLUSION_DAYS = 60;
+const RECENT_MEDIA_MEMORY_LIMIT = 80;
+const IMAGE_BANK_DIVERSIFICATION_RATE = 0.3;
 
 const agentToBoosterChannel: Partial<Record<InrAgentChannel, BoosterChannels>> =
   {
@@ -256,6 +291,212 @@ function cleanList(value: unknown, maxItems = 8, maxItemLength = 80) {
   ).slice(0, maxItems);
 }
 
+function asRecord(value: unknown): JsonRecord {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as JsonRecord)
+    : {};
+}
+
+function normalizeMediaLibrarySource(record: JsonRecord) {
+  const raw = cleanText(
+    record.librarySource || record.library_source || record.source || "",
+    80,
+  );
+  const bucket = cleanText(record.bucket || record.bucket_name || "", 100);
+
+  if (raw === "pro_media_library" || bucket === PRO_MEDIA_BUCKET) {
+    return "pro_media_library" as const;
+  }
+  if (raw === "inrcy_image_bank" || bucket === BUCKET) {
+    return "inrcy_image_bank" as const;
+  }
+  return null;
+}
+
+function getMediaStoragePath(record: JsonRecord) {
+  return cleanText(
+    record.storagePath || record.storage_path || record.path || "",
+    300,
+  );
+}
+
+function getMediaSourceKey(
+  source: "pro_media_library" | "inrcy_image_bank" | null,
+  storagePath: string,
+) {
+  return source && storagePath ? `${source}:${storagePath}` : "";
+}
+
+function rememberMediaReference(usage: RecentMediaUsage, value: unknown) {
+  const record = asRecord(value);
+  if (!Object.keys(record).length) return;
+
+  const source = normalizeMediaLibrarySource(record);
+  const id = cleanText(record.id, 120);
+  const storagePath = getMediaStoragePath(record);
+  const storageKey = getMediaSourceKey(source, storagePath);
+
+  if (source === "pro_media_library" && id) usage.proMediaIds.add(id);
+  if (source === "inrcy_image_bank" && id) usage.imageBankIds.add(id);
+  if (storageKey) usage.storageKeys.add(storageKey);
+}
+
+function rememberMediaReferences(usage: RecentMediaUsage, value: unknown) {
+  if (Array.isArray(value)) {
+    for (const item of value) rememberMediaReference(usage, item);
+    return;
+  }
+
+  rememberMediaReference(usage, value);
+}
+
+function collectPayloadMediaUsage(usage: RecentMediaUsage, payload: unknown) {
+  const record = asRecord(payload);
+  if (!Object.keys(record).length) return;
+
+  for (const key of [
+    "media",
+    "mediaAsset",
+    "media_asset",
+    "image",
+    "imageAsset",
+    "image_asset",
+    "video",
+    "videoAsset",
+    "video_asset",
+    "selectedMedia",
+    "selected_media",
+  ]) {
+    rememberMediaReferences(usage, record[key]);
+  }
+}
+
+async function loadRecentMediaUsage(userId: string): Promise<RecentMediaUsage> {
+  const cutoff = new Date(
+    Date.now() - MEDIA_REUSE_EXCLUSION_DAYS * 24 * 60 * 60 * 1000,
+  ).toISOString();
+  const usage: RecentMediaUsage = {
+    cutoffIso: cutoff,
+    rowsScanned: 0,
+    proMediaIds: new Set<string>(),
+    imageBankIds: new Set<string>(),
+    storageKeys: new Set<string>(),
+  };
+
+  try {
+    const { data } = await supabaseAdmin
+      .from("inr_agent_actions")
+      .select("image_assets,payload,created_at,prepared_at")
+      .eq("user_id", userId)
+      .eq("automation_key", "publish")
+      .gte("created_at", cutoff)
+      .order("created_at", { ascending: false })
+      .limit(RECENT_MEDIA_MEMORY_LIMIT);
+
+    const rows = Array.isArray(data) ? data : [];
+    usage.rowsScanned = rows.length;
+    for (const row of rows) {
+      const record = asRecord(row);
+      rememberMediaReferences(usage, record.image_assets);
+      collectPayloadMediaUsage(usage, record.payload);
+    }
+  } catch {
+    // Non bloquant : si la mémoire récente est indisponible, la sélection média
+    // reste fonctionnelle avec les règles métier strictes de l'étape 1.
+  }
+
+  return usage;
+}
+
+function isRecentlyUsedMediaRow(
+  row: any,
+  source: "pro_media_library" | "inrcy_image_bank",
+  usage: RecentMediaUsage,
+) {
+  const id = cleanText(row?.id, 120);
+  const storagePath = cleanText(row?.storage_path, 300);
+  const storageKey = getMediaSourceKey(source, storagePath);
+
+  if (source === "pro_media_library" && id && usage.proMediaIds.has(id)) {
+    return true;
+  }
+  if (source === "inrcy_image_bank" && id && usage.imageBankIds.has(id)) {
+    return true;
+  }
+  return Boolean(storageKey && usage.storageKeys.has(storageKey));
+}
+
+function filterRecentlyUsedRows<
+  T extends { id?: unknown; storage_path?: unknown },
+>(
+  rows: T[],
+  source: "pro_media_library" | "inrcy_image_bank",
+  usage: RecentMediaUsage,
+) {
+  return rows.filter((row) => !isRecentlyUsedMediaRow(row, source, usage));
+}
+
+function pickRotatedCandidate<T>(rows: T[]) {
+  if (!rows.length) return null;
+  const pool = rows.slice(0, Math.min(rows.length, 6));
+  return pool[Math.floor(Math.random() * pool.length)] || rows[0] || null;
+}
+
+function recordMediaSelectionAttempt(
+  attempts: MediaSelectionAttempt[] | undefined,
+  params: {
+    source: "pro_media_library" | "inrcy_image_bank";
+    matchLevel: string;
+    mediaType: "image" | "video";
+    token?: string;
+    sector?: string;
+    job?: string;
+    rows: Array<{ id?: unknown; storage_path?: unknown }>;
+    eligibleRows: Array<{ id?: unknown; storage_path?: unknown }>;
+    genericSectorCandidates?: number;
+    excludedNonGenericSectorCount?: number;
+    selected: { id?: unknown; storage_path?: unknown } | null;
+  },
+) {
+  if (!attempts) return;
+  const totalCandidates = params.rows.length;
+  const eligibleCandidates = params.eligibleRows.length;
+  attempts.push({
+    source: params.source,
+    matchLevel: params.matchLevel,
+    mediaType: params.mediaType,
+    token: params.token ? cleanText(params.token, 80) : undefined,
+    sector: params.sector ? cleanText(params.sector, 80) : undefined,
+    job: params.job ? cleanText(params.job, 80) : undefined,
+    totalCandidates,
+    excludedRecentlyUsed: Math.max(
+      0,
+      (params.genericSectorCandidates ?? totalCandidates) - eligibleCandidates,
+    ),
+    eligibleCandidates,
+    genericSectorCandidates: params.genericSectorCandidates,
+    excludedNonGenericSectorCount: params.excludedNonGenericSectorCount,
+    selected: Boolean(params.selected),
+    selectedCandidateId: params.selected
+      ? cleanText(params.selected.id, 120)
+      : undefined,
+    selectedStoragePath: params.selected
+      ? cleanText(params.selected.storage_path, 300)
+      : undefined,
+  });
+}
+
+function getRecentMediaTrace(usage: RecentMediaUsage) {
+  return {
+    exclusionDays: MEDIA_REUSE_EXCLUSION_DAYS,
+    cutoffIso: usage.cutoffIso,
+    rowsScanned: usage.rowsScanned,
+    excludedProMediaCount: usage.proMediaIds.size,
+    excludedImageBankCount: usage.imageBankIds.size,
+    excludedStoragePathCount: usage.storageKeys.size,
+  };
+}
+
 function cleanRecentPublicationField(value: unknown, maxLength: number) {
   return cleanText(value, maxLength);
 }
@@ -302,15 +543,93 @@ function chooseTheme(allowedThemes: InrAgentTheme[]): InrAgentTheme {
   );
 }
 
+function normalizeCatalogText(value: unknown) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/œ/g, "oe")
+    .replace(/æ/g, "ae")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function normalizeCatalogSlug(value: unknown) {
+  return normalizeCatalogText(value).replace(/\s+/g, "_");
+}
+
+function resolveKnownJobValue(sector: string, rawJob: unknown) {
+  const candidate = cleanText(rawJob, 180);
+  if (!sector || sector === "autre" || !candidate) return "";
+  if (isValidJobForSector(sector, candidate)) return candidate;
+
+  const exactLabelMatch = findJobValueByLabel(sector, candidate);
+  if (exactLabelMatch) return exactLabelMatch;
+
+  const normalizedCandidate = normalizeCatalogText(candidate);
+  const slugCandidate = normalizeCatalogSlug(candidate);
+  const jobs = getJobsForSector(sector);
+
+  for (const job of jobs) {
+    if (
+      job.value === candidate ||
+      job.value === slugCandidate ||
+      normalizeCatalogText(job.value) === normalizedCandidate ||
+      normalizeCatalogText(job.label) === normalizedCandidate
+    ) {
+      return job.value;
+    }
+  }
+
+  for (const job of jobs) {
+    const normalizedLabel = normalizeCatalogText(job.label);
+    const normalizedValue = normalizeCatalogText(job.value);
+    if (
+      normalizedCandidate &&
+      (normalizedLabel.includes(normalizedCandidate) ||
+        normalizedCandidate.includes(normalizedLabel) ||
+        normalizedValue.includes(normalizedCandidate) ||
+        normalizedCandidate.includes(normalizedValue))
+    ) {
+      return job.value;
+    }
+  }
+
+  return "";
+}
+
 function getBusinessProfession(business: JsonRecord | null) {
   const decoded = decodeBusinessSector(String(business?.sector || ""));
+  const rawProfessionCandidates = [
+    decoded.profession,
+    business?.profession,
+    business?.profession_label,
+    business?.professionLabel,
+    business?.job,
+    business?.job_label,
+    business?.jobLabel,
+    business?.activity,
+    business?.activity_label,
+    business?.activityLabel,
+  ];
+
+  const profession =
+    rawProfessionCandidates
+      .map((candidate) =>
+        resolveKnownJobValue(decoded.sectorCategory, candidate),
+      )
+      .find(Boolean) || "";
+
   const professionLabel =
-    getJobLabel(decoded.sectorCategory, decoded.profession) ||
-    decoded.profession;
+    (profession ? getJobLabel(decoded.sectorCategory, profession) : "") ||
+    cleanText(decoded.profession, 180) ||
+    profession;
+
   return {
     sector: decoded.sectorCategory,
-    profession: decoded.profession,
+    profession,
     professionLabel,
+    rawProfession: cleanText(decoded.profession, 180),
   };
 }
 
@@ -466,15 +785,24 @@ async function pickMediaFromProLibrary(args: {
   business: JsonRecord | null;
   theme: InrAgentTheme;
   preferredTypes: Array<"image" | "video">;
+  recentMediaUsage: RecentMediaUsage;
+  attempts?: MediaSelectionAttempt[];
 }): Promise<ImageBankAsset | null> {
   const { sector, profession, professionLabel } = getBusinessProfession(
     args.business,
   );
-  const tags = [args.theme, profession, professionLabel, sector]
-    .map((item) => cleanText(item, 80).toLowerCase())
-    .filter(Boolean);
+  const searchTokens = Array.from(
+    new Set(
+      [profession, professionLabel, sector]
+        .map((item) => cleanText(item, 80))
+        .filter(Boolean),
+    ),
+  );
 
-  async function sign(row: any): Promise<ImageBankAsset | null> {
+  async function sign(
+    row: any,
+    matchLevel: "pro_library_business_match" | "pro_library_owned_fallback",
+  ): Promise<ImageBankAsset | null> {
     if (!row?.storage_path) return null;
     const bucket = cleanText(row.bucket_name, 80) || PRO_MEDIA_BUCKET;
     const signed = await supabaseAdmin.storage
@@ -497,6 +825,8 @@ async function pickMediaFromProLibrary(args: {
         : [],
       orientation: "",
       source: "pro_media_library",
+      librarySource: "pro_media_library",
+      matchLevel,
       mediaType,
       kind: mediaType,
       mimeType:
@@ -509,30 +839,49 @@ async function pickMediaFromProLibrary(args: {
 
   try {
     const select =
-      "id,bucket_name,storage_path,media_type,mime_type,size_bytes,duration_seconds,title,tags,usage_count,created_at";
+      "id,bucket_name,storage_path,media_type,mime_type,size_bytes,duration_seconds,title,tags,usage_count,last_used_at,created_at";
     const preferredTypes = args.preferredTypes.length
       ? args.preferredTypes
       : ["image"];
 
     for (const mediaType of preferredTypes) {
-      if (tags.length) {
-        const primary = tags[0].replaceAll(",", " ");
+      for (const token of searchTokens) {
+        const safeToken = token.replaceAll(",", " ");
         const { data } = await supabaseAdmin
           .from("pro_media_library")
           .select(select)
           .eq("user_id", args.userId)
           .eq("is_active", true)
           .eq("media_type", mediaType)
-          .or(`title.ilike.%${primary}%,storage_path.ilike.%${primary}%`)
+          .or(`title.ilike.%${safeToken}%,storage_path.ilike.%${safeToken}%`)
           .order("usage_count", { ascending: true })
           .order("created_at", { ascending: false })
-          .limit(10);
+          .limit(40);
 
-        const rows = Array.isArray(data) ? data : [];
-        if (rows.length)
-          return sign(rows[Math.floor(Math.random() * rows.length)]);
+        const originalRows = Array.isArray(data) ? data : [];
+        const rows = filterRecentlyUsedRows(
+          originalRows,
+          "pro_media_library",
+          args.recentMediaUsage,
+        );
+        const selected = pickRotatedCandidate(rows);
+        recordMediaSelectionAttempt(args.attempts, {
+          source: "pro_media_library",
+          matchLevel: "pro_library_business_match",
+          mediaType: mediaType as "image" | "video",
+          token,
+          sector,
+          job: profession,
+          rows: originalRows,
+          eligibleRows: rows,
+          selected,
+        });
+        if (selected) return sign(selected, "pro_library_business_match");
       }
 
+      // La médiathèque du pro reste prioritaire : même sans tag métier explicite,
+      // elle appartient au client. Le fallback global dangereux est interdit
+      // uniquement pour la banque d'images iNrCy.
       const { data } = await supabaseAdmin
         .from("pro_media_library")
         .select(select)
@@ -541,11 +890,26 @@ async function pickMediaFromProLibrary(args: {
         .eq("media_type", mediaType)
         .order("usage_count", { ascending: true })
         .order("created_at", { ascending: false })
-        .limit(16);
+        .limit(50);
 
-      const rows = Array.isArray(data) ? data : [];
-      if (rows.length)
-        return sign(rows[Math.floor(Math.random() * rows.length)]);
+      const originalRows = Array.isArray(data) ? data : [];
+      const rows = filterRecentlyUsedRows(
+        originalRows,
+        "pro_media_library",
+        args.recentMediaUsage,
+      );
+      const selected = pickRotatedCandidate(rows);
+      recordMediaSelectionAttempt(args.attempts, {
+        source: "pro_media_library",
+        matchLevel: "pro_library_owned_fallback",
+        mediaType: mediaType as "image" | "video",
+        sector,
+        job: profession,
+        rows: originalRows,
+        eligibleRows: rows,
+        selected,
+      });
+      if (selected) return sign(selected, "pro_library_owned_fallback");
     }
 
     return null;
@@ -554,18 +918,43 @@ async function pickMediaFromProLibrary(args: {
   }
 }
 
+function isGenericImageBankJob(row: any) {
+  const job = normalizeCatalogSlug(row?.job);
+  const tags = Array.isArray(row?.tags)
+    ? (row.tags as unknown[]).map((tag: unknown) => normalizeCatalogSlug(tag))
+    : [];
+  const genericMarkers = new Set([
+    "",
+    "all",
+    "tous",
+    "tous_metiers",
+    "tous_les_metiers",
+    "general",
+    "generique",
+    "generic",
+    "secteur",
+    "sector",
+    "autre",
+  ]);
+
+  return (
+    genericMarkers.has(job) ||
+    tags.some((tag) => genericMarkers.has(tag))
+  );
+}
+
 async function pickImageFromBank(args: {
   business: JsonRecord | null;
   theme: InrAgentTheme;
+  recentMediaUsage: RecentMediaUsage;
+  attempts?: MediaSelectionAttempt[];
 }): Promise<ImageBankAsset | null> {
-  const { sector, profession, professionLabel } = getBusinessProfession(
-    args.business,
-  );
-  const tags = [args.theme, profession, professionLabel, sector]
-    .map((item) => cleanText(item, 80).toLowerCase())
-    .filter(Boolean);
+  const { sector, profession } = getBusinessProfession(args.business);
 
-  async function sign(row: any): Promise<ImageBankAsset | null> {
+  async function sign(
+    row: any,
+    matchLevel: "image_bank_job_exact" | "image_bank_sector_generic",
+  ): Promise<ImageBankAsset | null> {
     if (!row?.storage_path) return null;
     const signed = await supabaseAdmin.storage
       .from(BUCKET)
@@ -584,6 +973,8 @@ async function pickImageFromBank(args: {
         : [],
       orientation: cleanText(row.orientation, 40),
       source: cleanText(row.source, 80),
+      librarySource: "inrcy_image_bank",
+      matchLevel,
       mediaType: "image",
       kind: "image",
       mimeType: "image/jpeg",
@@ -596,22 +987,41 @@ async function pickImageFromBank(args: {
     const select =
       "id,storage_path,title,sector,job,tags,orientation,source,usage_count,created_at";
 
-    if (profession) {
+    // Sécurité métier stricte : la banque iNrCy ne doit jamais fournir une image
+    // d'un autre métier au hasard. On accepte uniquement le métier exact. Le
+    // fallback secteur est réservé aux médias explicitement génériques.
+    if (sector && sector !== "autre" && profession) {
       const { data } = await supabaseAdmin
         .from("inrcy_image_bank")
         .select(select)
         .eq("is_active", true)
+        .eq("sector", sector)
         .eq("job", profession)
         .order("usage_count", { ascending: true })
         .order("created_at", { ascending: false })
-        .limit(8);
+        .limit(40);
 
-      const rows = Array.isArray(data) ? data : [];
-      if (rows.length)
-        return sign(rows[Math.floor(Math.random() * rows.length)]);
+      const originalRows = Array.isArray(data) ? data : [];
+      const rows = filterRecentlyUsedRows(
+        originalRows,
+        "inrcy_image_bank",
+        args.recentMediaUsage,
+      );
+      const selected = pickRotatedCandidate(rows);
+      recordMediaSelectionAttempt(args.attempts, {
+        source: "inrcy_image_bank",
+        matchLevel: "image_bank_job_exact",
+        mediaType: "image",
+        sector,
+        job: profession,
+        rows: originalRows,
+        eligibleRows: rows,
+        selected,
+      });
+      if (selected) return sign(selected, "image_bank_job_exact");
     }
 
-    if (sector) {
+    if (sector && sector !== "autre") {
       const { data } = await supabaseAdmin
         .from("inrcy_image_bank")
         .select(select)
@@ -619,43 +1029,169 @@ async function pickImageFromBank(args: {
         .eq("sector", sector)
         .order("usage_count", { ascending: true })
         .order("created_at", { ascending: false })
-        .limit(12);
+        .limit(50);
 
-      const rows = Array.isArray(data) ? data : [];
-      if (rows.length)
-        return sign(rows[Math.floor(Math.random() * rows.length)]);
+      const originalRows = Array.isArray(data) ? data : [];
+      const genericRows = originalRows.filter(isGenericImageBankJob);
+      const rows = filterRecentlyUsedRows(
+        genericRows,
+        "inrcy_image_bank",
+        args.recentMediaUsage,
+      );
+      const selected = pickRotatedCandidate(rows);
+      recordMediaSelectionAttempt(args.attempts, {
+        source: "inrcy_image_bank",
+        matchLevel: "image_bank_sector_generic",
+        mediaType: "image",
+        sector,
+        job: "generic",
+        rows: originalRows,
+        eligibleRows: rows,
+        genericSectorCandidates: genericRows.length,
+        excludedNonGenericSectorCount: Math.max(
+          0,
+          originalRows.length - genericRows.length,
+        ),
+        selected,
+      });
+      if (selected) return sign(selected, "image_bank_sector_generic");
     }
 
-    if (tags.length) {
-      const q = tags[0].replaceAll(",", " ");
-      const { data } = await supabaseAdmin
-        .from("inrcy_image_bank")
-        .select(select)
-        .eq("is_active", true)
-        .or(`title.ilike.%${q}%,job.ilike.%${q}%,sector.ilike.%${q}%`)
-        .order("usage_count", { ascending: true })
-        .order("created_at", { ascending: false })
-        .limit(8);
-
-      const rows = Array.isArray(data) ? data : [];
-      if (rows.length)
-        return sign(rows[Math.floor(Math.random() * rows.length)]);
-    }
-
-    const { data } = await supabaseAdmin
-      .from("inrcy_image_bank")
-      .select(select)
-      .eq("is_active", true)
-      .order("usage_count", { ascending: true })
-      .order("created_at", { ascending: false })
-      .limit(16);
-
-    const rows = Array.isArray(data) ? data : [];
-    if (!rows.length) return null;
-    return sign(rows[Math.floor(Math.random() * rows.length)]);
+    return null;
   } catch {
     return null;
   }
+}
+
+type MediaDiversificationTrace = {
+  policyVersion: string;
+  policy: string;
+  imageBankDiversificationRate: number;
+  sourceCandidates: {
+    proMediaLibrary: boolean;
+    imageBank: boolean;
+  };
+  proCandidateMatchLevel: string;
+  imageBankCandidateMatchLevel: string;
+  selectedByDiversification: boolean;
+  roll: number | null;
+  decisionReason: string;
+  attempts: MediaSelectionAttempt[];
+};
+
+function getCandidateSummary(media: ImageBankAsset | null) {
+  return media
+    ? {
+        id: media.id,
+        source: media.librarySource || media.source || "",
+        matchLevel: media.matchLevel || "",
+        mediaType: media.mediaType || media.kind || "image",
+        sector: media.sector || "",
+        job: media.job || "",
+      }
+    : null;
+}
+
+function buildMediaDiversificationTrace(params: {
+  proMedia: ImageBankAsset | null;
+  imageBankMedia: ImageBankAsset | null;
+  selected: ImageBankAsset | null;
+  roll: number | null;
+  decisionReason: string;
+  attempts?: MediaSelectionAttempt[];
+}): MediaDiversificationTrace {
+  const {
+    proMedia,
+    imageBankMedia,
+    selected,
+    roll,
+    decisionReason,
+    attempts = [],
+  } = params;
+  return {
+    policyVersion: "media_selection_v5_strict_generic_sector_trace",
+    policy:
+      "pro_library_first_with_30_percent_relevant_image_bank_diversification_strict_generic_sector_fallback",
+    imageBankDiversificationRate: IMAGE_BANK_DIVERSIFICATION_RATE,
+    sourceCandidates: {
+      proMediaLibrary: Boolean(proMedia),
+      imageBank: Boolean(imageBankMedia),
+    },
+    proCandidateMatchLevel: proMedia?.matchLevel || "none",
+    imageBankCandidateMatchLevel: imageBankMedia?.matchLevel || "none",
+    selectedByDiversification: Boolean(
+      selected &&
+        proMedia &&
+        imageBankMedia &&
+        selected.librarySource === "inrcy_image_bank",
+    ),
+    roll,
+    decisionReason,
+    attempts,
+  };
+}
+
+async function pickDiversifiedMedia(args: {
+  userId: string;
+  business: JsonRecord | null;
+  theme: InrAgentTheme;
+  preferredTypes: Array<"image" | "video">;
+  recentMediaUsage: RecentMediaUsage;
+}): Promise<{
+  media: ImageBankAsset | null;
+  diversificationTrace: MediaDiversificationTrace;
+  proCandidate: ReturnType<typeof getCandidateSummary>;
+  imageBankCandidate: ReturnType<typeof getCandidateSummary>;
+}> {
+  const attempts: MediaSelectionAttempt[] = [];
+  const proMedia = await pickMediaFromProLibrary({ ...args, attempts });
+  const imageBankMedia = await pickImageFromBank({
+    business: args.business,
+    theme: args.theme,
+    recentMediaUsage: args.recentMediaUsage,
+    attempts,
+  });
+
+  let selected: ImageBankAsset | null = null;
+  let roll: number | null = null;
+  let decisionReason = "no_relevant_media_available";
+
+  if (proMedia && !imageBankMedia) {
+    selected = proMedia;
+    decisionReason = "only_pro_media_library_candidate";
+  } else if (!proMedia && imageBankMedia) {
+    selected = imageBankMedia;
+    decisionReason = "only_relevant_image_bank_candidate";
+  } else if (proMedia && imageBankMedia) {
+    const proMediaType = proMedia.mediaType || proMedia.kind || "image";
+    if (proMediaType === "video" && args.preferredTypes[0] === "video") {
+      selected = proMedia;
+      decisionReason =
+        "video_first_publication_keeps_pro_library_video_candidate";
+    } else {
+      roll = Math.random();
+      selected =
+        roll < IMAGE_BANK_DIVERSIFICATION_RATE ? imageBankMedia : proMedia;
+      decisionReason =
+        selected === imageBankMedia
+          ? "diversification_roll_selected_relevant_image_bank"
+          : "diversification_roll_selected_pro_media_library";
+    }
+  }
+
+  return {
+    media: selected,
+    diversificationTrace: buildMediaDiversificationTrace({
+      proMedia,
+      imageBankMedia,
+      selected,
+      roll,
+      decisionReason,
+      attempts,
+    }),
+    proCandidate: getCandidateSummary(proMedia),
+    imageBankCandidate: getCandidateSummary(imageBankMedia),
+  };
 }
 
 function getExecutionPolicy(validationMode: InrAgentValidationMode) {
@@ -777,6 +1313,7 @@ export async function POST(request: Request) {
     business = null;
   }
 
+  const businessProfession = getBusinessProfession(business);
   const agentTheme = chooseTheme(automation.allowedThemes);
   const boosterTheme = agentThemeToBoosterTheme[agentTheme] || "conseil";
   const idea = buildAgentIdea({ business, profile, theme: agentTheme });
@@ -786,14 +1323,95 @@ export async function POST(request: Request) {
   );
   const prefersVideo =
     channels.includes("youtube_shorts") || channels.includes("tiktok");
-  const media = automation.useImageBank
-    ? (await pickMediaFromProLibrary({
+  const recentMediaUsage = await loadRecentMediaUsage(userId);
+  const diversifiedMediaSelection = automation.useImageBank
+    ? await pickDiversifiedMedia({
         userId,
         business,
         theme: agentTheme,
         preferredTypes: prefersVideo ? ["video", "image"] : ["image", "video"],
-      })) || (await pickImageFromBank({ business, theme: agentTheme }))
-    : null;
+        recentMediaUsage,
+      })
+    : {
+        media: null,
+        diversificationTrace: buildMediaDiversificationTrace({
+          proMedia: null,
+          imageBankMedia: null,
+          selected: null,
+          roll: null,
+          decisionReason: "image_bank_disabled_in_automation_settings",
+        }),
+        proCandidate: null,
+        imageBankCandidate: null,
+      };
+  const media = diversifiedMediaSelection.media;
+  const mediaSelectionTrace = {
+    policyVersion: "media_selection_v5_strict_generic_sector_trace",
+    triedSources: automation.useImageBank
+      ? ["pro_media_library", "inrcy_image_bank"]
+      : [],
+    sourcePolicy: {
+      proMediaLibrary: "owned_media_allowed_with_recent_reuse_exclusion",
+      imageBank: "job_exact_then_generic_sector_only",
+      imageBankGlobalFallbackAllowed: false,
+      imageBankDiversificationRate: IMAGE_BANK_DIVERSIFICATION_RATE,
+    },
+    classification: {
+      sector: businessProfession.sector,
+      profession: businessProfession.profession,
+      professionLabel: businessProfession.professionLabel,
+      rawProfession: businessProfession.rawProfession,
+      professionValidForSector: Boolean(
+        businessProfession.sector &&
+          businessProfession.profession &&
+          isValidJobForSector(
+            businessProfession.sector,
+            businessProfession.profession,
+          ),
+      ),
+    },
+    diversification: diversifiedMediaSelection.diversificationTrace,
+    proMediaLibraryCandidate: diversifiedMediaSelection.proCandidate,
+    imageBankCandidate: diversifiedMediaSelection.imageBankCandidate,
+    businessSector: businessProfession.sector,
+    businessProfession: businessProfession.profession,
+    businessProfessionLabel: businessProfession.professionLabel,
+    rawProfession: businessProfession.rawProfession,
+    selectedSource: media
+      ? media.librarySource ||
+        (media.source === "pro_media_library"
+          ? "pro_media_library"
+          : "inrcy_image_bank")
+      : "none",
+    selectedSector: media?.sector || "",
+    selectedJob: media?.job || "",
+    selectedMediaType: media?.mediaType || media?.kind || "none",
+    matchLevel: media?.matchLevel || "none",
+    unsafeGlobalImageBankFallbackAllowed: false,
+    recentMediaPolicy: getRecentMediaTrace(recentMediaUsage),
+    selectedWasRecentlyUsed: media
+      ? isRecentlyUsedMediaRow(
+          {
+            id: media.id,
+            storage_path: media.storagePath,
+          },
+          media.librarySource === "pro_media_library"
+            ? "pro_media_library"
+            : "inrcy_image_bank",
+          recentMediaUsage,
+        )
+      : false,
+    warnings: [
+      media?.librarySource === "pro_media_library" &&
+      media.matchLevel === "pro_library_owned_fallback"
+        ? "pro_library_owned_fallback_without_business_match"
+        : "",
+      media?.librarySource === "inrcy_image_bank" &&
+      media.matchLevel === "image_bank_sector_generic"
+        ? "image_bank_generic_sector_fallback_used"
+        : "",
+    ].filter(Boolean),
+  };
   const mediaKind = media?.mediaType || media?.kind || "image";
   const image = media && mediaKind === "image" ? media : null;
   const video = media && mediaKind === "video" ? media : null;
@@ -805,7 +1423,10 @@ export async function POST(request: Request) {
     channels.map((channel) => [channel, channelMediaReadiness(channel, media)]),
   );
   const mediaAdaptationByChannel = Object.fromEntries(
-    channels.map((channel) => [channel, channelMediaAdaptation(channel, media)]),
+    channels.map((channel) => [
+      channel,
+      channelMediaAdaptation(channel, media),
+    ]),
   );
 
   const { versions, recoveredChannels } = await generateBoosterPosts({
@@ -835,6 +1456,7 @@ export async function POST(request: Request) {
     targetChannels,
     media,
     mediaAsset: media,
+    mediaSelectionTrace,
     mediaType: media ? mediaKind : "none",
     image,
     imageAsset: image,
@@ -874,6 +1496,7 @@ export async function POST(request: Request) {
         fallbackAppliedChannels: recoveredChannels.map(
           (channel) => boosterToAgentChannel[channel],
         ),
+        mediaSelectionTrace,
       },
       created_at: now,
       updated_at: now,
@@ -957,8 +1580,7 @@ function channelMediaAdaptation(
       mediaType: "video",
       strategy: "booster_video_format",
       userEditable: true,
-      note:
-        "iNrAgent transmet la vidéo source à Booster. Le format vidéo sera préparé selon les règles du canal avant publication.",
+      note: "iNrAgent transmet la vidéo source à Booster. Le format vidéo sera préparé selon les règles du canal avant publication.",
     };
   }
 
@@ -968,9 +1590,6 @@ function channelMediaAdaptation(
     mediaType: "image",
     strategy: "booster_image_adapter",
     userEditable: true,
-    note:
-      "iNrAgent transmet l’image source à Booster. Une version compatible avec le canal sera préparée sans modifier l’original.",
+    note: "iNrAgent transmet l’image source à Booster. Une version compatible avec le canal sera préparée sans modifier l’original.",
   };
 }
-
-

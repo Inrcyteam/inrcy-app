@@ -7,6 +7,8 @@ import {
   scheduledActionToDbRow,
 } from "@/lib/inrAgentScheduledActions";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { findSimilarScheduledPublication } from "@/lib/scheduledPublicationDedupe";
+import { findSimilarScheduledCampaign } from "@/lib/scheduledCampaignDedupe";
 
 export const runtime = "nodejs";
 export const maxDuration = 90;
@@ -344,6 +346,24 @@ async function buildVideoPayloadFromAgentAction(payload: JsonRecord) {
     publicUrl = signed?.data?.signedUrl || "";
   }
   if (!publicUrl && !storagePath) return null;
+
+  const transformedVariants = Array.isArray(media.transformedVariants)
+    ? media.transformedVariants.filter(Boolean).slice(0, 12)
+    : [];
+  const videoSettings = asRecord(media.videoSettings) || null;
+  const videoSettingsByChannel =
+    asRecord(media.videoSettingsByChannel) ||
+    asRecord(payload.videoSettingsByChannel) ||
+    null;
+  const width = Number(media.width || media.videoWidth || 0) || null;
+  const height = Number(media.height || media.videoHeight || 0) || null;
+  const duration = Number(media.duration || media.duration_seconds || 0) || null;
+  const sourceMetadata = {
+    ...(width ? { width: Math.round(width) } : {}),
+    ...(height ? { height: Math.round(height) } : {}),
+    ...(duration ? { duration } : {}),
+  };
+
   return {
     name:
       cleanText(media.name || media.title || "video-iNrAgent.mp4", 180) ||
@@ -353,7 +373,7 @@ async function buildVideoPayloadFromAgentAction(payload: JsonRecord) {
       mimeFromPath(storagePath) ||
       "video/mp4",
     size: Number(media.size || media.sizeBytes || media.size_bytes || 0) || 0,
-    duration: Number(media.duration || media.duration_seconds || 0) || null,
+    duration,
     storagePath,
     bucket,
     publicUrl,
@@ -365,6 +385,12 @@ async function buildVideoPayloadFromAgentAction(payload: JsonRecord) {
         media.thumbnailStoragePath || media.thumbnail_storage_path,
         900,
       ) || null,
+    ...(Object.keys(sourceMetadata).length ? { sourceMetadata } : {}),
+    ...(videoSettings ? { videoSettings } : {}),
+    ...(videoSettingsByChannel ? { videoSettingsByChannel } : {}),
+    videoFormat: cleanText(media.videoFormat, 40) || null,
+    videoAdaptationMode: cleanText(media.videoAdaptationMode, 40) || null,
+    transformedVariants,
   };
 }
 
@@ -574,10 +600,22 @@ async function buildScheduledPayload(
     const mediaModeByChannel = Object.fromEntries(
       publishChannels.map((channel) => [channel, activeMediaMode]),
     );
+    const videoSettingsSource =
+      (videoPayload as any)?.videoSettingsByChannel ||
+      payload.videoSettingsByChannel ||
+      ((videoPayload as any)?.videoSettings
+        ? Object.fromEntries(
+            publishChannels.map((channel) => [
+              channel,
+              (videoPayload as any).videoSettings,
+            ]),
+          )
+        : null);
     const videoSettingsByChannel =
       activeMediaMode === "video"
         ? buildVideoSettingsByChannel({
             channels: publishChannels as any,
+            videoSettingsByChannel: videoSettingsSource,
             sourceMetadata: (videoPayload as any)?.sourceMetadata || null,
           })
         : {};
@@ -680,50 +718,74 @@ export async function POST(request: Request) {
       timezone,
     };
 
-    const rows =
-      scheduledPayload.actionType === "publication" &&
-      scheduledPayload.channels.length > 1
-        ? scheduledPayload.channels.map((channel) => {
-            const publishPayload =
-              asRecord(scheduledPayload.payload.publishPayload) || {};
-            const postByChannel = asRecord(publishPayload.postByChannel) || {};
-            const mediaModesByChannel =
-              asRecord(publishPayload.mediaModeByChannel) || {};
-            const videoSettingsByChannel =
-              asRecord(publishPayload.videoSettingsByChannel) || {};
-            const channelPost =
-              postByChannel[channel] || publishPayload.post || {};
-            const channelMediaMode =
-              cleanText(mediaModesByChannel[channel], 20) || "none";
-            const channelVideoSettings = asRecord(
-              videoSettingsByChannel[channel],
-            );
-            return scheduledActionToDbRow({
-              ...baseScheduleArgs,
-              title: baseScheduleArgs.title,
-              channels: [channel],
-              payload: {
+    const rows = [
+      scheduledActionToDbRow({
+        ...baseScheduleArgs,
+        title:
+          scheduledPayload.actionType === "publication" &&
+          scheduledPayload.channels.length > 1
+            ? `${baseScheduleArgs.title} · multicanal`
+            : baseScheduleArgs.title,
+        summary:
+          scheduledPayload.actionType === "publication" &&
+          scheduledPayload.channels.length > 1
+            ? `${baseScheduleArgs.summary} (${scheduledPayload.channels.length} canaux).`
+            : baseScheduleArgs.summary,
+        channels: scheduledPayload.channels,
+        payload:
+          scheduledPayload.actionType === "publication"
+            ? {
                 ...scheduledPayload.payload,
-                publishPayload: {
-                  ...publishPayload,
-                  channels: [channel],
-                  post: channelPost,
-                  postByChannel: { [channel]: channelPost },
-                  mediaModeByChannel: { [channel]: channelMediaMode },
-                  videoSettingsByChannel: channelVideoSettings
-                    ? { [channel]: channelVideoSettings }
-                    : {},
+                scheduleGrouping: {
+                  mode: "multichannel_single_action",
+                  channelCount: scheduledPayload.channels.length,
+                  createdFrom: "agent_action_schedule",
                 },
-              },
-            });
-          })
-        : [
-            scheduledActionToDbRow({
-              ...baseScheduleArgs,
-              channels: scheduledPayload.channels,
-              payload: scheduledPayload.payload,
-            }),
-          ];
+              }
+            : scheduledPayload.payload,
+      }),
+    ];
+
+    if (scheduledPayload.actionType === "publication") {
+      const duplicate = await findSimilarScheduledPublication({
+        supabase: supabaseAdmin,
+        userId: user.id,
+        scheduledAt,
+        channels: rows[0]?.channels || scheduledPayload.channels,
+        payload: rows[0]?.payload || scheduledPayload.payload,
+      });
+
+      if (duplicate.duplicate) {
+        return NextResponse.json(
+          {
+            error:
+              "Une publication similaire est déjà programmée sur ce créneau. Vérifiez la programmation existante avant d’en créer une nouvelle.",
+            duplicate,
+          },
+          { status: 409 },
+        );
+      }
+    }
+
+    if (scheduledPayload.actionType === "campaign") {
+      const duplicate = await findSimilarScheduledCampaign({
+        supabase: supabaseAdmin,
+        userId: user.id,
+        scheduledAt,
+        payload: rows[0]?.payload || scheduledPayload.payload,
+      });
+
+      if (duplicate.duplicate) {
+        return NextResponse.json(
+          {
+            error:
+              "Une campagne similaire est déjà programmée sur ce créneau. Vérifiez la programmation existante avant d’en créer une nouvelle.",
+            duplicate,
+          },
+          { status: 409 },
+        );
+      }
+    }
 
     const { data: scheduledRows, error: insertError } = await supabaseAdmin
       .from("inr_agent_scheduled_actions")

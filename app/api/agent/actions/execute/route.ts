@@ -540,6 +540,7 @@ async function executeCampaignAction(args: {
     last_error: null,
   });
 
+  const campaignIdempotencyKey = `inr_agent_action:${actionId}:campaign_now`;
   const campaignBody = {
     accountId,
     type: "mail",
@@ -552,6 +553,7 @@ async function executeCampaignAction(args: {
     trackType,
     templateKey,
     attachments,
+    idempotencyKey: campaignIdempotencyKey,
     metadata: {
       source: "inr_agent",
       label: "iNr'Agent",
@@ -561,6 +563,7 @@ async function executeCampaignAction(args: {
       actionType: action.actionType,
       theme: trackType || null,
       signatureAutomatic: payload.signatureAutomatic !== false,
+      idempotencyKey: campaignIdempotencyKey,
     },
   };
 
@@ -581,13 +584,17 @@ async function executeCampaignAction(args: {
         campaignPayload?.error || "La campagne mail n’a pas pu être exécutée.",
         700,
       );
+      const duplicateBlocked =
+        String(campaignPayload?.code || "") === "scheduled_campaign_duplicate";
       const failedAction = await updateActionRow(actionId, userId, {
-        status: "failed",
+        status: duplicateBlocked ? "pending_validation" : "failed",
+        validated_at: duplicateBlocked ? null : action.validatedAt || now,
         last_error: errorMessage,
         payload: {
           ...payload,
           execution: {
             ok: false,
+            blockedByDuplicate: duplicateBlocked,
             executedAt: new Date().toISOString(),
             campaignBody,
             campaignResult: campaignPayload,
@@ -600,6 +607,7 @@ async function executeCampaignAction(args: {
           action: failedAction,
           campaignResult: campaignPayload,
           error: errorMessage,
+          code: campaignPayload?.code || null,
         },
         { status: response.ok ? 400 : response.status },
       );
@@ -835,6 +843,15 @@ export async function POST(request: Request) {
       workflowAction: "publier",
       source: "inr_agent",
       inrAgentActionId: actionId,
+      idempotencyKey: `inr_agent_action:${actionId}:publish_now`,
+      origin: {
+        source: "inr_agent",
+        label: "iNr’Agent validé",
+        agentActionId: actionId,
+        workflowTool: "booster",
+        workflowAction: "publier",
+        runMode: "manual_validation",
+      },
     };
 
     const publishResponse = await publishNowBooster(
@@ -853,13 +870,17 @@ export async function POST(request: Request) {
         publishPayload,
         "La publication Booster n’a pas pu être exécutée.",
       );
+      const duplicateBlocked =
+        String(publishPayload?.code || "") === "scheduled_publication_duplicate";
       const failedAction = await updateActionRow(actionId, userId, {
-        status: "failed",
+        status: duplicateBlocked ? "pending_validation" : "failed",
+        validated_at: duplicateBlocked ? null : action.validatedAt || now,
         last_error: errorMessage,
         payload: {
           ...payload,
           execution: {
             ok: false,
+            blockedByDuplicate: duplicateBlocked,
             executedAt: new Date().toISOString(),
             skippedChannels: selectedChannels.filter(
               (channel) => !publishChannelSet.has(channel),
@@ -874,6 +895,7 @@ export async function POST(request: Request) {
           action: failedAction,
           publishResult: publishPayload,
           error: errorMessage,
+          code: publishPayload?.code || null,
         },
         { status: publishResponse.ok ? 400 : publishResponse.status },
       );

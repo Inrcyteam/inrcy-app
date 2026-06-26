@@ -12416,3 +12416,63 @@ button.campaignInfoCard:focus-visible .campaignInfoEye {
     max-height: calc(100dvh - 24px);
   }
 }
+
+/* iNrAgent — résumé Publier / Propulser / Fidéliser : infos plus lisibles sans changer la taille des cadres */
+.publishInfoGrid .campaignInfoCard,
+.campaignInfoGrid .campaignInfoCard {
+  overflow: hidden;
+}
+
+.publishInfoGrid .campaignInfoCard > span:not(.campaignInfoIcon):not(.campaignInfoEye),
+.campaignInfoGrid .campaignInfoCard > span:not(.campaignInfoIcon):not(.campaignInfoEye),
+.publishInfoGrid .campaignInfoText,
+.campaignInfoGrid .campaignInfoText {
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  gap: 2px !important;
+  overflow: hidden !important;
+}
+
+.publishInfoGrid .campaignInfoCard small,
+.campaignInfoGrid .campaignInfoCard small {
+  margin: 0 !important;
+  font-size: clamp(10px, 0.72vw, 12px) !important;
+  line-height: 1.05 !important;
+  font-weight: 780 !important;
+  letter-spacing: -0.01em !important;
+}
+
+.publishInfoGrid .campaignInfoCard strong,
+.campaignInfoGrid .campaignInfoCard strong,
+.publishInfoGrid .campaignInfoMailLabel,
+.campaignInfoGrid .campaignInfoMailLabel {
+  display: -webkit-box !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: normal !important;
+  -webkit-line-clamp: 2 !important;
+  -webkit-box-orient: vertical !important;
+  font-size: clamp(12px, 0.9vw, 15px) !important;
+  line-height: 1.08 !important;
+  font-weight: 900 !important;
+  letter-spacing: -0.025em !important;
+}
+
+.publishInfoGrid .campaignInfoEye,
+.campaignInfoGrid .campaignInfoEye {
+  flex: 0 0 auto !important;
+}
+
+@media (max-width: 1180px) {
+  .publishInfoGrid .campaignInfoCard strong,
+  .campaignInfoGrid .campaignInfoCard strong,
+  .publishInfoGrid .campaignInfoMailLabel,
+  .campaignInfoGrid .campaignInfoMailLabel {
+    font-size: 12px !important;
+    line-height: 1.05 !important;
+  }
+}

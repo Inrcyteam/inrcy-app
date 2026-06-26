@@ -58,7 +58,15 @@ type OutboxItem = {
   channels?: string[];
   attachments?: { name: string; type?: string | null; size?: number | null; url?: string | null; downloadUrl?: string | null; role?: string | null; storagePath?: string | null; duration?: number | null; thumbnailUrl?: string | null }[];
   /** Origine de l'action quand elle vient d'un moteur automatisé comme iNr'Agent. */
-  originSource?: "manual" | "inr_agent" | null;
+  originSource?:
+    | "manual"
+    | "inr_agent"
+    | "booster_scheduled"
+    | "booster_manual"
+    | "inrsend_scheduled"
+    | "propulser_scheduled"
+    | "fideliser_scheduled"
+    | null;
   originLabel?: string | null;
   originIcon?: string | null;
   raw?: any;
@@ -613,7 +621,32 @@ function campaignCounts(raw: any) {
   };
 }
 
-function extractOriginMeta(raw: any): { originSource?: "manual" | "inr_agent" | null; originLabel?: string | null; originIcon?: string | null } {
+type InrSendOriginSource =
+  | "manual"
+  | "inr_agent"
+  | "booster_scheduled"
+  | "booster_manual"
+  | "inrsend_scheduled"
+  | "propulser_scheduled"
+  | "fideliser_scheduled"
+  | null;
+
+const TECHNICAL_APP_EVENT_TYPES = new Set([
+  "publish_idempotency_lock",
+  "execution_idempotency_lock",
+  "idempotency_lock",
+]);
+
+function isTechnicalAppEvent(raw: any) {
+  return TECHNICAL_APP_EVENT_TYPES.has(String(raw?.type || ""));
+}
+
+function safeOriginLabel(value: unknown, fallback: string) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  return text || fallback;
+}
+
+function extractOriginMeta(raw: any): { originSource?: InrSendOriginSource; originLabel?: string | null; originIcon?: string | null } {
   const payload = raw?.payload && typeof raw.payload === "object" ? raw.payload : null;
   const metadata = raw?.metadata && typeof raw.metadata === "object" ? raw.metadata : null;
   const origin =
@@ -623,14 +656,90 @@ function extractOriginMeta(raw: any): { originSource?: "manual" | "inr_agent" | 
         ? metadata.origin
         : metadata || payload || {};
   const source = String(origin?.source || payload?.source || metadata?.source || "").trim();
-  if (source !== "inr_agent") {
-    return { originSource: source === "manual" ? "manual" : null, originLabel: null, originIcon: null };
+
+  if (source === "inr_agent") {
+    const hasScheduledAction = Boolean(origin?.scheduledActionId || metadata?.scheduledActionId);
+    const runMode = String(origin?.runMode || metadata?.runMode || "").trim();
+    const fallbackLabel = hasScheduledAction || runMode === "scheduled"
+      ? "iNr’Agent programmé"
+      : runMode === "manual_validation"
+        ? "iNr’Agent validé"
+        : "iNr’Agent";
+    return {
+      originSource: "inr_agent",
+      originLabel: safeOriginLabel(origin?.label || metadata?.label, fallbackLabel),
+      originIcon: "🤖",
+    };
   }
+
+  if (source === "booster_scheduled") {
+    return {
+      originSource: "booster_scheduled",
+      originLabel: safeOriginLabel(origin?.label || metadata?.label, "Booster programmé"),
+      originIcon: null,
+    };
+  }
+
+  if (source === "booster_manual") {
+    return {
+      originSource: "booster_manual",
+      originLabel: safeOriginLabel(origin?.label || metadata?.label, "Booster"),
+      originIcon: null,
+    };
+  }
+
+  if (source === "inrsend_scheduled") {
+    return {
+      originSource: "inrsend_scheduled",
+      originLabel: safeOriginLabel(origin?.label || metadata?.label, "Mail programmé"),
+      originIcon: null,
+    };
+  }
+
+  if (source === "propulser_scheduled") {
+    return {
+      originSource: "propulser_scheduled",
+      originLabel: safeOriginLabel(origin?.label || metadata?.label, "Propulser programmé"),
+      originIcon: null,
+    };
+  }
+
+  if (source === "fideliser_scheduled") {
+    return {
+      originSource: "fideliser_scheduled",
+      originLabel: safeOriginLabel(origin?.label || metadata?.label, "Fidéliser programmé"),
+      originIcon: null,
+    };
+  }
+
+  if (source === "manual") {
+    return {
+      originSource: "manual",
+      originLabel: safeOriginLabel(origin?.label || metadata?.label, "Manuel"),
+      originIcon: null,
+    };
+  }
+
   return {
-    originSource: "inr_agent",
-    originLabel: String(origin?.label || metadata?.label || "iNr’Agent"),
-    originIcon: "🤖",
+    originSource: null,
+    originLabel: null,
+    originIcon: null,
   };
+}
+
+function getPublicationTitleFromOrigin(
+  isDraft: boolean,
+  originMeta: ReturnType<typeof extractOriginMeta>,
+) {
+  if (isDraft) return "Brouillon publication";
+  if (originMeta.originSource === "booster_scheduled") return "Publication programmée";
+  if (originMeta.originSource === "inr_agent") {
+    const label = String(originMeta.originLabel || "");
+    return label.toLowerCase().includes("valid")
+      ? "Publication iNr’Agent validée"
+      : "Publication iNr’Agent";
+  }
+  return "Publication";
 }
 
 function formatCampaignProgress(raw: any) {
@@ -768,7 +877,9 @@ function mapEventItems(rows: any[]): OutboxItem[] {
   const supportedModules = new Set(["booster", "propulser", "fideliser"]);
 
   return rows
-    .filter((e) => supportedModules.has(String(e.module)))
+    .filter(
+      (e) => supportedModules.has(String(e.module)) && !isTechnicalAppEvent(e),
+    )
     .map<OutboxItem>((e: any) => {
       const eventModule = String(e.module || "") as "booster" | "propulser" | "fideliser";
       const t = String(e.type || "");
@@ -790,9 +901,10 @@ function mapEventItems(rows: any[]): OutboxItem[] {
         payload?.subject,
         payload?.post?.subject,
       );
+      const originMeta = extractOriginMeta(e);
 
       const title = folder === "publications"
-        ? (isDraft ? "Brouillon publication" : "Publication")
+        ? getPublicationTitleFromOrigin(isDraft, originMeta)
         : stripWorkflowPrefix(subTitle || safeS(payload?.preview || payload?.text || payload?.message || payload?.content, "Message"));
 
       const extractedChannels = extractChannelsFromPayload(payload);
@@ -824,7 +936,7 @@ function mapEventItems(rows: any[]): OutboxItem[] {
         detailText: extracted.text,
         channels: extractedChannels,
         attachments: extractAttachmentsFromPayload(payload),
-        ...extractOriginMeta(e),
+        ...originMeta,
         raw: e,
         reopenHref: isDraft && folder === "publications"
           ? `/dashboard?action=publish&draftId=${encodeURIComponent(String(e.id || ""))}`
@@ -1119,6 +1231,10 @@ export async function GET(req: Request) {
 
           if (boxView === "drafts") {
             builder = builder.eq("type", "publish_draft");
+          } else {
+            for (const technicalType of TECHNICAL_APP_EVENT_TYPES) {
+              builder = builder.neq("type", technicalType);
+            }
           }
 
           if (folder === "publications") {

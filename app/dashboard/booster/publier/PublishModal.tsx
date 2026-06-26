@@ -3112,23 +3112,25 @@ export default function PublishModal({
     setScheduleModalOpen(true);
   };
 
-  const buildSingleChannelRecord = <T,>(
+  const buildChannelRecord = <T,>(
     source: Partial<Record<ChannelKey, T>>,
-    channel: ChannelKey,
-  ): Partial<Record<ChannelKey, T>> => {
-    const value = source[channel];
-    return value
-      ? ({ [channel]: value } as Partial<Record<ChannelKey, T>>)
-      : {};
-  };
+    channels: ChannelKey[],
+  ): Partial<Record<ChannelKey, T>> =>
+    Object.fromEntries(
+      channels
+        .map((channel) => [channel, source[channel]] as const)
+        .filter((entry): entry is readonly [ChannelKey, T] => entry[1] !== undefined),
+    ) as Partial<Record<ChannelKey, T>>;
 
-  const buildSingleChannelUnknownRecord = (
+  const buildChannelUnknownRecord = (
     source: Partial<Record<ChannelKey, unknown>>,
-    channel: ChannelKey,
-  ): Partial<Record<ChannelKey, unknown>> => {
-    const value = source[channel];
-    return value !== undefined ? { [channel]: value } : {};
-  };
+    channels: ChannelKey[],
+  ): Partial<Record<ChannelKey, unknown>> =>
+    Object.fromEntries(
+      channels
+        .map((channel) => [channel, source[channel]] as const)
+        .filter((entry) => entry[1] !== undefined),
+    ) as Partial<Record<ChannelKey, unknown>>;
 
   const performSchedulePublication = async (
     selections: PublishScheduleSelection[],
@@ -3314,11 +3316,23 @@ export default function PublishModal({
         ]),
       );
 
-      for (let index = 0; index < channelsToSchedule.length; index += 1) {
-        const channel = channelsToSchedule[index];
-        const scheduledAt = selectionByChannel.get(channel);
-        if (!scheduledAt) continue;
-        const label = CHANNEL_LABELS[channel] || channel;
+      const scheduleGroups = Array.from(
+        channelsToSchedule.reduce((groups, channel) => {
+          const scheduledAt = selectionByChannel.get(channel);
+          if (!scheduledAt) return groups;
+          const existing = groups.get(scheduledAt) || [];
+          existing.push(channel);
+          groups.set(scheduledAt, existing);
+          return groups;
+        }, new Map<string, ChannelKey[]>()),
+      );
+
+      for (let index = 0; index < scheduleGroups.length; index += 1) {
+        const [scheduledAt, groupChannels] = scheduleGroups[index];
+        const labels = groupChannels
+          .map((channel) => CHANNEL_LABELS[channel] || channel)
+          .join(", ");
+        const isMultichannel = groupChannels.length > 1;
         const response = await fetch("/api/agent/scheduled-actions", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -3327,53 +3341,75 @@ export default function PublishModal({
             actionType: "publication",
             targetTool: "booster",
             source: "manual",
-            title: `Publication ${label}`,
-            summary: `Publication programmée sur ${label}`,
+            title: isMultichannel
+              ? `Publication multicanale (${groupChannels.length} canaux)`
+              : `Publication ${labels}`,
+            summary: isMultichannel
+              ? `Publication programmée sur ${labels}`
+              : `Publication programmée sur ${labels}`,
             scheduledAt,
             timezone: "Europe/Paris",
-            channels: [channel],
+            channels: groupChannels,
             payload: {
-              origin: "booster",
+              origin: {
+                source: "booster_scheduled",
+                label: "Booster programmé",
+                workflowTool: "booster",
+                workflowAction: "publier",
+              },
               kind: "manual_publish_schedule",
+              scheduleGrouping: {
+                mode: "multichannel_single_action",
+                channelCount: groupChannels.length,
+                createdFrom: "booster_publish_schedule",
+              },
               publishPayload: {
+                source: "booster_scheduled",
+                origin: {
+                  source: "booster_scheduled",
+                  label: "Booster programmé",
+                  workflowTool: "booster",
+                  workflowAction: "publier",
+                },
                 mediaType: publicationVideo ? "video" : "images",
-                mediaModeByChannel: buildSingleChannelUnknownRecord(
+                mediaModeByChannel: buildChannelUnknownRecord(
                   publishMediaModeByChannel,
-                  channel,
+                  groupChannels,
                 ),
-                videoFormatByChannel: buildSingleChannelUnknownRecord(
+                videoFormatByChannel: buildChannelUnknownRecord(
                   videoFormatByChannel,
-                  channel,
+                  groupChannels,
                 ),
-                videoAdaptationModeByChannel: buildSingleChannelUnknownRecord(
+                videoAdaptationModeByChannel: buildChannelUnknownRecord(
                   videoAdaptationModeByChannel,
-                  channel,
+                  groupChannels,
                 ),
-                videoSettingsByChannel: buildSingleChannelUnknownRecord(
+                videoSettingsByChannel: buildChannelUnknownRecord(
                   videoSettingsByChannel as Partial<
                     Record<ChannelKey, unknown>
                   >,
-                  channel,
+                  groupChannels,
                 ),
                 video: publicationVideo,
                 idea: idea.trim(),
                 theme,
-                channels: [channel],
+                channels: groupChannels,
                 postByChannel: filterPostsForSelectedChannels(
                   preparedPostsByChannel,
-                  [channel],
+                  groupChannels,
                 ),
                 images: [],
-                imagesByChannel: buildSingleChannelRecord(
+                imagesByChannel: buildChannelRecord(
                   uploadedChannelImages,
-                  channel,
+                  groupChannels,
                 ),
-                imageSettingsByChannel: buildSingleChannelRecord(
+                imageSettingsByChannel: buildChannelRecord(
                   channelSettings,
-                  channel,
+                  groupChannels,
                 ),
-                tiktokPublicationSettings:
-                  channel === "tiktok" ? tiktokSettingsForSchedule : null,
+                tiktokPublicationSettings: groupChannels.includes("tiktok")
+                  ? tiktokSettingsForSchedule
+                  : null,
               },
             },
           }),
@@ -3387,7 +3423,7 @@ export default function PublishModal({
           );
         }
         setPublishProgress(
-          clampPercent(76 + ((index + 1) / channelsToSchedule.length) * 20),
+          clampPercent(76 + ((index + 1) / scheduleGroups.length) * 20),
         );
       }
 
@@ -3400,7 +3436,7 @@ export default function PublishModal({
       setPublishProgressLabel("Publication confiée à iNr’Agent.");
       setDraftMessage(
         channelsToSchedule.length > 1
-          ? `${channelsToSchedule.length} publications programmées dans iNr’Agent.`
+          ? `Publication multicanale programmée dans iNr’Agent (${channelsToSchedule.length} canaux).`
           : "Publication programmée dans iNr’Agent.",
       );
       setScheduleReviewPosts(null);

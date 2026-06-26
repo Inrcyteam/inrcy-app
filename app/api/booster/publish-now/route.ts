@@ -38,6 +38,15 @@ import {
   optimizeForSiteCard,
   optimizeForSocialFeed,
 } from "@/lib/imageOptimizer";
+import { findSimilarUpcomingScheduledPublication } from "@/lib/scheduledPublicationDedupe";
+import {
+  acquireExecutionIdempotencyLock,
+  buildCompletedExecutionResponse,
+  buildRunningExecutionResponse,
+  cleanExecutionIdempotencyKey,
+  completeExecutionIdempotencyLock,
+  failExecutionIdempotencyLock,
+} from "@/lib/executionIdempotency";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import {
   GOOGLE_BUSINESS_RECONNECT_USER_MESSAGE,
@@ -107,6 +116,65 @@ const CHANNEL_LABELS: Record<ChannelKey, string> = {
   tiktok: "TikTok",
   youtube_shorts: "YouTube",
 };
+
+const IMMEDIATE_PUBLISH_DUPLICATE_LOOKAHEAD_MINUTES = 240;
+
+function formatDuplicateScheduledAt(value?: string | null) {
+  const time = Date.parse(String(value || ""));
+  if (!Number.isFinite(time)) return "prochainement";
+  return new Intl.DateTimeFormat("fr-FR", {
+    dateStyle: "short",
+    timeStyle: "short",
+    timeZone: "Europe/Paris",
+  }).format(new Date(time));
+}
+
+function buildImmediateDuplicateMessage(
+  duplicate: Awaited<ReturnType<typeof findSimilarUpcomingScheduledPublication>>,
+) {
+  const channels = (duplicate.overlappingChannels || [])
+    .map((channel) => CHANNEL_LABELS[channel as ChannelKey] || channel)
+    .filter(Boolean)
+    .join(", ");
+  const dateLabel = formatDuplicateScheduledAt(duplicate.existingScheduledAt);
+  return `Cette publication semble déjà programmée${channels ? ` sur ${channels}` : ""} pour ${dateLabel}. Pour éviter une double publication, annulez la programmation existante ou modifiez le contenu avant de publier maintenant.`;
+}
+
+const PUBLISH_IDEMPOTENCY_SCOPE = "booster_publish";
+const PUBLISH_IDEMPOTENCY_TTL_MS = 30 * 60 * 1000;
+
+function buildPublishIdempotencyKey(args: {
+  body: any;
+  origin: JsonRecord | null;
+}) {
+  const explicit = cleanExecutionIdempotencyKey(
+    args.body.idempotencyKey ||
+      args.body.idempotency_key ||
+      args.origin?.idempotencyKey ||
+      args.origin?.idempotency_key,
+  );
+  if (explicit) return explicit;
+
+  const scheduledActionId = cleanExecutionIdempotencyKey(
+    args.body.origin?.scheduledActionId || args.origin?.scheduledActionId,
+  );
+  if (scheduledActionId) return `scheduled_publication:${scheduledActionId}`;
+
+  return "";
+}
+
+function buildPublishIdempotencyMetadata(args: {
+  origin: JsonRecord | null;
+  channels: ChannelKey[];
+  source: string;
+}) {
+  return {
+    source: args.source || null,
+    origin: args.origin || null,
+    channels: args.channels,
+    workflow: "booster_publish",
+  };
+}
 
 function buildResultsSummary(
   results: Record<string, any>,
@@ -1097,23 +1165,130 @@ export async function POST(req: Request) {
     const originSource = String(
       body.source || body.origin?.source || "",
     ).trim();
-    const origin =
-      originSource === "inr_agent"
-        ? {
-            source: "inr_agent",
-            label: "iNr'Agent",
-            agentActionId:
-              String(
-                body.inrAgentActionId || body.origin?.agentActionId || "",
-              ).trim() || null,
-            automationKey:
-              String(
-                body.automationKey || body.origin?.automationKey || "publish",
-              ).trim() || "publish",
-            workflowTool: eventModule,
-            workflowAction,
-          }
-        : null;
+    const origin = (() => {
+      if (originSource === "inr_agent") {
+        return {
+          source: "inr_agent",
+          label: String(body.origin?.label || "iNr'Agent").trim() || "iNr'Agent",
+          agentActionId:
+            String(
+              body.inrAgentActionId || body.origin?.agentActionId || "",
+            ).trim() || null,
+          scheduledActionId:
+            String(body.origin?.scheduledActionId || "").trim() || null,
+          automationKey:
+            String(
+              body.automationKey || body.origin?.automationKey || "publish",
+            ).trim() || "publish",
+          workflowTool: eventModule,
+          workflowAction,
+        };
+      }
+      if (originSource === "booster_scheduled") {
+        return {
+          source: "booster_scheduled",
+          label:
+            String(body.origin?.label || "Booster programmé").trim() ||
+            "Booster programmé",
+          scheduledActionId:
+            String(body.origin?.scheduledActionId || "").trim() || null,
+          automationKey:
+            String(body.origin?.automationKey || "publish").trim() || "publish",
+          workflowTool: eventModule,
+          workflowAction,
+        };
+      }
+      if (originSource === "booster_manual" || originSource === "manual") {
+        return {
+          source: originSource,
+          label:
+            String(
+              body.origin?.label ||
+                (originSource === "booster_manual" ? "Booster" : "Manuel"),
+            ).trim() || "Booster",
+          workflowTool: eventModule,
+          workflowAction,
+        };
+      }
+      return null;
+    })();
+    const originRecord = asRecord(origin);
+    const scheduledActionId = String(
+      body.origin?.scheduledActionId || originRecord.scheduledActionId || "",
+    ).trim();
+    const isScheduledExecution =
+      Boolean(cronUserId) ||
+      origin?.source === "booster_scheduled" ||
+      Boolean(origin?.source === "inr_agent" && scheduledActionId);
+    const shouldCheckImmediateDuplicate =
+      eventType === "publish" &&
+      !isScheduledExecution &&
+      body.skipScheduledDuplicateCheck !== true &&
+      body.allowDuplicateImmediatePublish !== true;
+
+    if (shouldCheckImmediateDuplicate) {
+      const duplicate = await findSimilarUpcomingScheduledPublication({
+        supabase: supabaseAdmin,
+        userId,
+        channels: selected,
+        payload: {
+          ...body,
+          channels: selected,
+          post,
+          postByChannel,
+        },
+        lookaheadMinutes: IMMEDIATE_PUBLISH_DUPLICATE_LOOKAHEAD_MINUTES,
+      });
+
+      if (duplicate.duplicate) {
+        const duplicateMessage = buildImmediateDuplicateMessage(duplicate);
+        return NextResponse.json(
+          {
+            ok: false,
+            error: duplicateMessage,
+            user_message: duplicateMessage,
+            code: "scheduled_publication_duplicate",
+            duplicate,
+          },
+          { status: 409 },
+        );
+      }
+    }
+
+    const publishIdempotencyKey = buildPublishIdempotencyKey({ body, origin });
+    const publishIdempotency = publishIdempotencyKey
+      ? await acquireExecutionIdempotencyLock({
+          supabase: supabaseAdmin,
+          userId,
+          scope: PUBLISH_IDEMPOTENCY_SCOPE,
+          idempotencyKey: publishIdempotencyKey,
+          ttlMs: PUBLISH_IDEMPOTENCY_TTL_MS,
+          metadata: buildPublishIdempotencyMetadata({
+            origin,
+            channels: selected,
+            source: origin?.source || originSource || "",
+          }),
+        })
+      : { state: "acquired" as const, lock: null };
+
+    if (publishIdempotency.state === "completed") {
+      return NextResponse.json(
+        buildCompletedExecutionResponse(publishIdempotency.lock),
+      );
+    }
+
+    if (publishIdempotency.state === "running") {
+      return NextResponse.json(
+        buildRunningExecutionResponse(publishIdempotency.lock),
+        {
+          status: 425,
+          headers: { "Retry-After": "60" },
+        },
+      );
+    }
+
+    const publishIdempotencyLockId = publishIdempotency.lock?.id || null;
+
     const hadAnyImageInput =
       hasAnyImageChannel &&
       (images.length > 0 ||
@@ -1137,6 +1312,26 @@ export async function POST(req: Request) {
     if (!selected.length) {
       return NextResponse.json(
         { error: "Sélectionnez au moins 1 canal." },
+        { status: 400 },
+      );
+    }
+
+    const publicationId = randomUUID();
+    const publicationVideoByChannel = buildPublicationVideoByChannel();
+    const oversizedPublicationVideo = Object.entries(
+      publicationVideoByChannel,
+    ).find(([, video]) => {
+      const size = Number(
+        (video as PersistedVideoAttachment | null)?.size || 0,
+      );
+      return Number.isFinite(size) && size > BOOSTER_MAX_VIDEO_PUBLISH_BYTES;
+    });
+    if (oversizedPublicationVideo) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `La vidéo source est acceptée, mais la version prête à publier dépasse encore ${BOOSTER_MAX_VIDEO_PUBLISH_MB_LABEL}. Préparez les formats vidéo avant de publier.`,
+        },
         { status: 400 },
       );
     }
@@ -1261,6 +1456,13 @@ export async function POST(req: Request) {
       !publicationImageSet.siteCardPublishableUrls.length &&
       !publicationImageSet.gmbPublishableUrls.length
     ) {
+      await failExecutionIdempotencyLock({
+        supabase: supabaseAdmin,
+        lockId: publishIdempotencyLockId,
+        error: "Image upload failed",
+        result: { publicationId, uploadErrors },
+        metadata: { stage: "image_upload" },
+      });
       return NextResponse.json(
         {
           ok: false,
@@ -1272,26 +1474,6 @@ export async function POST(req: Request) {
       );
     }
     // 2) Persist publication
-    const publicationId = randomUUID();
-    const publicationVideoByChannel = buildPublicationVideoByChannel();
-    const oversizedPublicationVideo = Object.entries(
-      publicationVideoByChannel,
-    ).find(([, video]) => {
-      const size = Number(
-        (video as PersistedVideoAttachment | null)?.size || 0,
-      );
-      return Number.isFinite(size) && size > BOOSTER_MAX_VIDEO_PUBLISH_BYTES;
-    });
-    if (oversizedPublicationVideo) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: `La vidéo source est acceptée, mais la version prête à publier dépasse encore ${BOOSTER_MAX_VIDEO_PUBLISH_MB_LABEL}. Préparez les formats vidéo avant de publier.`,
-        },
-        { status: 400 },
-      );
-    }
-
     const publicationInsert: JsonRecord = {
       id: publicationId,
       user_id: userId,
@@ -1324,6 +1506,13 @@ export async function POST(req: Request) {
       .insert(publicationInsert);
 
     if (pubErr) {
+      await failExecutionIdempotencyLock({
+        supabase: supabaseAdmin,
+        lockId: publishIdempotencyLockId,
+        error: "Publication insert failed",
+        result: { publicationId, detail: pubErr.message || null },
+        metadata: { stage: "publication_insert" },
+      });
       return NextResponse.json(
         {
           error: "Impossible d'enregistrer la publication pour le moment.",
@@ -2671,6 +2860,13 @@ export async function POST(req: Request) {
     // Sécurité compteur/stats : on ne valide l'action Booster que si au moins un canal a réellement publié.
     // Ainsi, les compteurs, missions et UI ne montent pas quand tous les canaux échouent.
     if (summary.successCount <= 0) {
+      await failExecutionIdempotencyLock({
+        supabase: supabaseAdmin,
+        lockId: publishIdempotencyLockId,
+        error: "Aucun canal publié avec succès.",
+        result: { publicationId, summary },
+        metadata: { stage: "publish_results" },
+      });
       return NextResponse.json(
         {
           ok: false,
@@ -2725,12 +2921,14 @@ export async function POST(req: Request) {
         gmbPublishableUrls,
         uploadErrors,
         publication_id: publicationId,
+        idempotencyKey: publishIdempotencyKey || null,
+        idempotencyLockId: publishIdempotencyLockId || null,
         results,
         summary,
       },
     });
 
-    return NextResponse.json({
+    const responsePayload = {
       ok: true,
       publication_id: publicationId,
       mediaType,
@@ -2746,7 +2944,17 @@ export async function POST(req: Request) {
       uploadErrors,
       results,
       summary,
+      idempotencyKey: publishIdempotencyKey || null,
+    };
+
+    await completeExecutionIdempotencyLock({
+      supabase: supabaseAdmin,
+      lockId: publishIdempotencyLockId,
+      result: responsePayload,
+      metadata: { publicationId, summary },
     });
+
+    return NextResponse.json(responsePayload);
   } catch (e: unknown) {
     return jsonUserFacingError(e, {
       status: 500,

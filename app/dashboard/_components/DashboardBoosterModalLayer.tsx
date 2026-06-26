@@ -182,10 +182,28 @@ export default function DashboardBoosterModalLayer({
         const res = await fetch("/api/booster/publish-now", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
+          body: JSON.stringify({
+            ...payload,
+            source: payload.source || "booster_manual",
+            origin: {
+              ...(payload.origin || {}),
+              source: payload.source || payload.origin?.source || "booster_manual",
+              label: payload.origin?.label || "Booster",
+              workflowTool: payload.origin?.workflowTool || "booster",
+              workflowAction: payload.origin?.workflowAction || "publier",
+            },
+          }),
         });
         const json = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(await getSimpleFrenchApiError(res, "La publication a échoué."));
+        if (!res.ok) {
+          throw new Error(
+            String(
+              json?.user_message ||
+                json?.error ||
+                (await getSimpleFrenchApiError(res, "La publication a échoué.")),
+            ),
+          );
+        }
 
         const summary = json?.summary || null;
         const failed = Object.entries((json?.results || {}) as Record<string, any>).filter(([, value]) => value && value.ok === false);

@@ -311,8 +311,8 @@ export default function MailboxList(props: Props) {
                       {isInrAgentOrigin ? (
                         <span
                           className={styles.inrAgentOriginIcon}
-                          title="Action générée automatiquement par iNr’Agent"
-                          aria-label="Action générée automatiquement par iNr’Agent"
+                          title={it.originLabel || "Action générée par iNr’Agent"}
+                          aria-label={it.originLabel || "Action générée par iNr’Agent"}
                         >
                           <img src="/icons/inr-agent.png" alt="" aria-hidden="true" />
                         </span>

@@ -343,7 +343,15 @@ export type OutboxItem = {
   channels?: string[];
   attachments?: { name: string; type?: string | null; size?: number | null; url?: string | null; downloadUrl?: string | null; role?: string | null; storagePath?: string | null; duration?: number | null; thumbnailUrl?: string | null }[];
   /** Origine de l'action quand elle vient d'un moteur automatisé comme iNr'Agent. */
-  originSource?: "manual" | "inr_agent" | null;
+  originSource?:
+    | "manual"
+    | "inr_agent"
+    | "booster_scheduled"
+    | "booster_manual"
+    | "inrsend_scheduled"
+    | "propulser_scheduled"
+    | "fideliser_scheduled"
+    | null;
   originLabel?: string | null;
   originIcon?: string | null;
   raw?: any;

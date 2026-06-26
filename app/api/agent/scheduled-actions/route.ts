@@ -8,6 +8,8 @@ import { INR_AGENT_AUTOMATION_KEYS, type InrAgentAutomationKey } from "@/lib/inr
 import { INR_AGENT_ACTION_TYPES, INR_AGENT_TARGET_TOOLS, type InrAgentActionType, type InrAgentTargetTool } from "@/lib/inrAgentActions";
 import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { findSimilarScheduledPublication } from "@/lib/scheduledPublicationDedupe";
+import { findSimilarScheduledCampaign } from "@/lib/scheduledCampaignDedupe";
 
 export const runtime = "nodejs";
 
@@ -46,6 +48,20 @@ function sanitizeFutureDate(value: unknown) {
   const date = new Date(String(value || ""));
   if (!Number.isFinite(date.getTime())) return null;
   return date.toISOString();
+}
+
+function isCampaignSchedule(row: ReturnType<typeof scheduledActionToDbRow>) {
+  const payload = asRecord(row.payload) || {};
+  const kind = String(payload.kind || "").trim().toLowerCase();
+  return (
+    kind === "mail_campaign" ||
+    row.action_type === "campaign" ||
+    row.action_type === "mailing" ||
+    row.action_type === "loyalty" ||
+    row.target_tool === "mails" ||
+    row.target_tool === "propulser" ||
+    row.target_tool === "fideliser"
+  );
 }
 
 export async function GET() {
@@ -114,6 +130,47 @@ export async function POST(request: Request) {
     channels: sanitizeStringArray(record?.channels),
     payload: asRecord(record?.payload) || {},
   });
+
+  if (row.action_type === "publication" && row.target_tool === "booster") {
+    const duplicate = await findSimilarScheduledPublication({
+      supabase: supabaseAdmin,
+      userId: user.id,
+      scheduledAt,
+      channels: row.channels,
+      payload: row.payload,
+    });
+
+    if (duplicate.duplicate) {
+      return NextResponse.json(
+        {
+          error:
+            "Une publication similaire est déjà programmée sur ce créneau. Vérifiez iNrSend / Brouillons ou modifiez l'heure pour éviter une double publication.",
+          duplicate,
+        },
+        { status: 409 },
+      );
+    }
+  }
+
+  if (isCampaignSchedule(row)) {
+    const duplicate = await findSimilarScheduledCampaign({
+      supabase: supabaseAdmin,
+      userId: user.id,
+      scheduledAt,
+      payload: row.payload,
+    });
+
+    if (duplicate.duplicate) {
+      return NextResponse.json(
+        {
+          error:
+            "Une campagne similaire est déjà programmée sur ce créneau. Vérifiez iNrSend ou modifiez l’heure pour éviter un double envoi.",
+          duplicate,
+        },
+        { status: 409 },
+      );
+    }
+  }
 
   const { data, error } = await supabaseAdmin
     .from("inr_agent_scheduled_actions")

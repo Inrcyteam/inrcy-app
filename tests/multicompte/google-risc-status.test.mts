@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildGoogleRiscStatusFromRows, emptyGoogleRiscStatus } from "../../lib/security/googleRiscTestables";
+import { buildGoogleRiscStatusFromRows, emptyGoogleRiscStatus } from "../../lib/security/googleRiscTestables.ts";
 
 test("emptyGoogleRiscStatus retourne un état vierge", () => {
   assert.deepEqual(emptyGoogleRiscStatus(), {
