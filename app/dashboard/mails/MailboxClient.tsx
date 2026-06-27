@@ -545,6 +545,10 @@ export default function MailboxClient() {
   const [lastSavedComposeSnapshot, setLastSavedComposeSnapshot] = useState<
     string | null
   >(null);
+  const [scheduledMailEdit, setScheduledMailEdit] =
+    useState<ScheduledMailEditState | null>(null);
+  const scheduledMailEditLoadRef = useRef<string>("");
+  const [scheduledMailEditSaving, setScheduledMailEditSaving] = useState(false);
 
   // Attachments uploaded by Factures / Devis screens are stored here.
   const ATTACH_BUCKET = "inrbox_attachments";
@@ -559,6 +563,13 @@ export default function MailboxClient() {
   };
   const [pendingTrack, setPendingTrack] = useState<PendingTrack | null>(null);
   type CampaignReuseMode = "reuse" | "resend";
+
+  type ScheduledMailEditState = {
+    id: string;
+    scheduledAt: string | null;
+    title: string;
+    payload: Record<string, any>;
+  };
 
   // CRM selection (compose)
   type CrmContact = {
@@ -799,6 +810,159 @@ export default function MailboxClient() {
     setLastSavedComposeSnapshot(makeComposeSnapshot());
   }
 
+  function asScheduledRecord(value: unknown): Record<string, any> {
+    return value && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, any>)
+      : {};
+  }
+
+  function buildScheduledMailEditPayload(scheduledAt?: string | null) {
+    if (!scheduledMailEdit) return null;
+    if (!selectedAccount) {
+      throw new Error("Veuillez connecter une boîte d’envoi dans les réglages.");
+    }
+    const recipientsList = normalizeEmails(to);
+    if (recipientsList.length === 0) {
+      throw new Error("Veuillez ajouter au moins un destinataire.");
+    }
+
+    const existingPayload = asScheduledRecord(scheduledMailEdit.payload);
+    const existingCampaign = asScheduledRecord(existingPayload.campaign);
+    const cleanSubject = normalizeMailSubject(subject.trim() || "(sans objet)");
+    const campaignPayload = {
+      ...existingCampaign,
+      accountId: selectedAccount.id,
+      accountEmail: selectedAccount.email_address || "",
+      accountProvider: selectedAccount.provider || "",
+      type: composeType,
+      folder: "mails",
+      trackKind: undefined,
+      trackType: undefined,
+      templateKey: composeTemplateKey || undefined,
+      subject: cleanSubject,
+      text: text || "",
+      html: normalizeRichMailHtmlForSend(text, html),
+      recipients: recipientsList.map((email) => {
+        const lower = email.toLowerCase();
+        const hint = composeRecipientHintsByEmail.get(lower);
+        const crmContact = crmRecipientsByEmail.get(lower);
+        return {
+          email,
+          contact_id: hint?.contact_id || crmContact?.contact_id || null,
+          display_name: hint?.display_name || crmContact?.display_name || null,
+        };
+      }),
+      attachments: serializeComposeAttachments(),
+      sourceDocSaveId: composeSourceDocSaveId || undefined,
+      sourceDocType: composeSourceDocType || undefined,
+      sourceDocNumber: composeSourceDocNumber || undefined,
+    };
+
+    return {
+      automationKey: null,
+      actionType: "mailing",
+      targetTool: "mails",
+      title: `Mail — ${cleanSubject}`,
+      summary: `${recipientsList.length} destinataire${recipientsList.length > 1 ? "s" : ""} · ${selectedAccount.email_address || selectedAccount.provider || "boîte connectée"}`,
+      ...(scheduledAt ? { scheduledAt } : {}),
+      channels: ["mails"],
+      payload: {
+        ...existingPayload,
+        kind: "mail_campaign",
+        origin: "inrsend_mail",
+        workflowFinalizerKind: null,
+        campaign: campaignPayload,
+      },
+    };
+  }
+
+  async function patchScheduledMailEdit(
+    body: Record<string, unknown>,
+  ): Promise<ScheduledMailEditState> {
+    if (!scheduledMailEdit) {
+      throw new Error("Mail programmé introuvable.");
+    }
+    const response = await fetch(
+      `/api/agent/scheduled-actions/${scheduledMailEdit.id}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+    );
+    const data = (await response.json().catch(() => null)) as {
+      scheduledAction?: any;
+      error?: string;
+    } | null;
+    if (!response.ok || !data?.scheduledAction) {
+      throw new Error(
+        data?.error || "Enregistrement du mail programmé impossible.",
+      );
+    }
+    return {
+      id: String(data.scheduledAction.id),
+      scheduledAt: data.scheduledAction.scheduledAt || null,
+      title: String(data.scheduledAction.title || "Mail programmé"),
+      payload: asScheduledRecord(data.scheduledAction.payload),
+    };
+  }
+
+  async function saveScheduledMailEdit(scheduledAt?: string | null) {
+    const body = buildScheduledMailEditPayload(scheduledAt);
+    if (!body) return;
+    setScheduledMailEditSaving(true);
+    try {
+      const saved = await patchScheduledMailEdit(body);
+      setScheduledMailEdit(saved);
+      setLastSavedComposeSnapshot(makeComposeSnapshot());
+      setToast("Mail programmé enregistré.");
+      setComposeOpen(false);
+      setScheduledMailEdit(null);
+      scheduledMailEditLoadRef.current = "";
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Enregistrement du mail programmé impossible.";
+      setToast(message);
+    } finally {
+      setScheduledMailEditSaving(false);
+    }
+  }
+
+  async function sendScheduledMailEditNow() {
+    if (!scheduledMailEdit) return;
+    const body = buildScheduledMailEditPayload(null);
+    if (!body) return;
+    setScheduledMailEditSaving(true);
+    try {
+      await patchScheduledMailEdit(body);
+      const response = await fetch(
+        `/api/agent/scheduled-actions/${scheduledMailEdit.id}/execute`,
+        { method: "POST" },
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(
+          data?.error || "Envoi immédiat du mail programmé impossible.",
+        );
+      }
+      setToast("Mail lancé maintenant. La programmation future est retirée.");
+      setComposeOpen(false);
+      setScheduledMailEdit(null);
+      await loadHistory();
+      updateFolder("mails");
+    } catch (error) {
+      setToast(
+        error instanceof Error
+          ? error.message
+          : "Envoi immédiat du mail programmé impossible.",
+      );
+    } finally {
+      setScheduledMailEditSaving(false);
+    }
+  }
+
   function setComposeBody(nextText: string, nextHtml?: string | null) {
     const cleanText = stripTemplateSignatureBlock(String(nextText || ""));
     setText(cleanText);
@@ -819,6 +983,7 @@ export default function MailboxClient() {
     setComposeSourceDocNumber("");
     setComposeTemplateKey("");
     setPendingTrack(null);
+    setScheduledMailEdit(null);
     setTo("");
     setSubject("");
     setComposeBody(buildDefaultMailText({ kind: nextType }));
@@ -2384,6 +2549,139 @@ export default function MailboxClient() {
   }, [searchParams]);
 
   useEffect(() => {
+    const editId = String(searchParams?.get("scheduled_edit_id") || "").trim();
+    if (!editId || scheduledMailEditLoadRef.current === editId) return;
+    scheduledMailEditLoadRef.current = editId;
+
+    const run = async () => {
+      try {
+        const response = await fetch(`/api/agent/scheduled-actions/${editId}`, {
+          cache: "no-store",
+        });
+        const data = (await response.json().catch(() => null)) as {
+          scheduledAction?: any;
+          error?: string;
+        } | null;
+        if (!response.ok || !data?.scheduledAction) {
+          throw new Error(data?.error || "Mail programmé introuvable.");
+        }
+        const action = data.scheduledAction;
+        const payload = asScheduledRecord(action.payload);
+        const campaign = asScheduledRecord(payload.campaign);
+        const recipients = Array.isArray(campaign.recipients)
+          ? campaign.recipients
+          : Array.isArray(payload.recipients)
+            ? payload.recipients
+            : [];
+        const recipientEmails = recipients
+          .map((recipient: any) =>
+            typeof recipient === "string"
+              ? recipient
+              : String(recipient?.email || ""),
+          )
+          .map((email: string) => email.trim())
+          .filter(Boolean);
+        const recipientHints = recipients
+          .map((recipient: any) => {
+            if (!recipient || typeof recipient === "string") return null;
+            const email = String(recipient.email || "").trim();
+            if (!email) return null;
+            return {
+              email,
+              contact_id: recipient.contact_id || recipient.contactId || null,
+              display_name:
+                recipient.display_name || recipient.displayName || null,
+            };
+          })
+          .filter(Boolean) as ComposeCrmRecipientHint[];
+
+        const nextAccountId = String(
+          campaign.accountId || payload.accountId || "",
+        );
+        const nextSubject = normalizeMailSubject(
+          String(campaign.subject || payload.subject || action.title || "").trim() ||
+            "(sans objet)",
+        );
+        const nextText = String(
+          campaign.text || payload.campaignBody || payload.bodyText || "",
+        );
+        const nextHtml = normalizeRichMailHtmlForSend(
+          nextText,
+          String(campaign.html || payload.bodyHtml || payload.html || ""),
+        );
+        const nextAttachments = normalizeCampaignAttachments(
+          campaign.attachments || payload.attachments,
+        );
+        const nextTemplateKey = String(
+          campaign.templateKey || payload.templateKey || "",
+        );
+        const nextSourceDocSaveId = String(
+          campaign.sourceDocSaveId || payload.sourceDocSaveId || "",
+        );
+        const nextSourceDocType =
+          campaign.sourceDocType === "facture" || campaign.sourceDocType === "devis"
+            ? campaign.sourceDocType
+            : payload.sourceDocType === "facture" || payload.sourceDocType === "devis"
+              ? payload.sourceDocType
+              : "";
+        const nextSourceDocNumber = String(
+          campaign.sourceDocNumber || payload.sourceDocNumber || "",
+        );
+
+        setScheduledMailEdit({
+          id: editId,
+          scheduledAt: action.scheduledAt || null,
+          title: String(action.title || "Mail programmé"),
+          payload,
+        });
+        setDraftId(null);
+        setComposeType("mail");
+        setPendingTrack(null);
+        setSelectedAccountId(nextAccountId);
+        setTo(recipientEmails.join(", "));
+        setSubject(nextSubject);
+        setText(nextText);
+        setHtml(nextHtml);
+        setComposeAttachments(nextAttachments);
+        setComposeRecipientHints(recipientHints);
+        setComposeTemplateKey(nextTemplateKey);
+        setComposeSourceDocSaveId(nextSourceDocSaveId);
+        setComposeSourceDocType(nextSourceDocType);
+        setComposeSourceDocNumber(nextSourceDocNumber);
+        setFiles([]);
+        setCrmPickerOpen(false);
+        setLastSavedComposeSnapshot(
+          makeComposeSnapshot({
+            selectedAccountId: nextAccountId,
+            to: recipientEmails.join(", "),
+            subject: nextSubject,
+            text: nextText,
+            html: nextHtml,
+            composeType: "mail",
+            composeAttachments: nextAttachments,
+            composeSourceDocSaveId: nextSourceDocSaveId,
+            composeSourceDocType: nextSourceDocType,
+            composeSourceDocNumber: nextSourceDocNumber,
+            composeTemplateKey: nextTemplateKey,
+            pendingTrack: null,
+          }),
+        );
+        setComposeOpen(true);
+        setToast("Mail programmé ouvert en réédition.");
+        router.replace("/dashboard/mails?folder=mails", { scroll: false });
+      } catch (error) {
+        setToast(
+          error instanceof Error
+            ? error.message
+            : "Ouverture du mail programmé impossible.",
+        );
+      }
+    };
+
+    void run();
+  }, [searchParams]);
+
+  useEffect(() => {
     if (!composeOpen) return;
     setText((prev) => {
       const base = String(prev || "");
@@ -2933,6 +3231,16 @@ export default function MailboxClient() {
 
     setScheduleBusy(true);
     try {
+      if (scheduledMailEdit) {
+        const saved = await patchScheduledMailEdit(
+          buildScheduledMailEditPayload(scheduledDate.toISOString()) || {},
+        );
+        setScheduledMailEdit(saved);
+        setLastSavedComposeSnapshot(makeComposeSnapshot());
+        setToast("Mail programmé mis à jour.");
+        return;
+      }
+
       const response = await fetch("/api/agent/scheduled-actions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -4593,6 +4901,10 @@ export default function MailboxClient() {
           open={composeOpen}
           onClose={() => {
             setComposeOpen(false);
+            if (scheduledMailEdit) {
+              setScheduledMailEdit(null);
+              scheduledMailEditLoadRef.current = "";
+            }
             if (workflowFinalizerKind)
               router.push(`/dashboard/${workflowFinalizerKind}`);
           }}
@@ -4655,7 +4967,11 @@ export default function MailboxClient() {
           signatureImageUrl={signatureImageUrl}
           signatureImageWidth={signatureImageWidth}
           saveDraft={saveDraft}
-          doSend={doSend}
+          doSend={scheduledMailEdit ? sendScheduledMailEditNow : doSend}
+          scheduledEditMode={Boolean(scheduledMailEdit)}
+          scheduledEditSaving={scheduledMailEditSaving}
+          scheduledEditScheduledAt={scheduledMailEdit?.scheduledAt || null}
+          onSaveScheduledEdit={() => saveScheduledMailEdit()}
           scheduleWorkflowCampaign={
             composeType === "mail" || workflowFinalizerKind
               ? scheduleMailWithAgent
@@ -4663,7 +4979,12 @@ export default function MailboxClient() {
           }
           onScheduledSuccess={() => {
             setComposeOpen(false);
-            resetCompose();
+            if (scheduledMailEdit) {
+              setScheduledMailEdit(null);
+              scheduledMailEditLoadRef.current = "";
+            } else {
+              resetCompose();
+            }
             if (workflowFinalizerKind)
               router.push(`/dashboard/${workflowFinalizerKind}`);
           }}

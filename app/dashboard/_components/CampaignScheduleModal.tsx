@@ -13,6 +13,7 @@ export type CampaignScheduleModalProps = {
   confirmLabel?: string;
   savingLabel?: string;
   successMessage?: string;
+  initialScheduledAt?: string | null;
   onClose: () => void;
   onConfirm: (scheduledAt: string) => void | Promise<void>;
   onSuccess?: () => void | Promise<void>;
@@ -22,13 +23,20 @@ function pad2(value: number) {
   return String(value).padStart(2, "0");
 }
 
-function defaultDateTime() {
-  const date = new Date(Date.now() + 60 * 60 * 1000);
+function dateTimeFromIso(value?: string | null) {
+  const date = value ? new Date(value) : new Date(Date.now() + 60 * 60 * 1000);
+  if (!Number.isFinite(date.getTime())) {
+    return dateTimeFromIso(null);
+  }
   date.setSeconds(0, 0);
   return {
     date: `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`,
     time: `${pad2(date.getHours())}:${pad2(date.getMinutes())}`,
   };
+}
+
+function defaultDateTime() {
+  return dateTimeFromIso(null);
 }
 
 function localInputsToIso(date: string, time: string) {
@@ -96,6 +104,7 @@ export default function CampaignScheduleModal({
   confirmLabel = "Confier à iNr’Agent",
   savingLabel = "Programmation en cours…",
   successMessage = "Programmation réussie.",
+  initialScheduledAt,
   onClose,
   onConfirm,
   onSuccess,
@@ -110,13 +119,13 @@ export default function CampaignScheduleModal({
 
   useEffect(() => {
     if (!open) return;
-    const next = defaultDateTime();
+    const next = dateTimeFromIso(initialScheduledAt);
     setDate(next.date);
     setTime(next.time);
     setLocalError("");
     setSubmitting(false);
     setDoneMessage("");
-  }, [open]);
+  }, [open, initialScheduledAt]);
 
   if (!open) return null;
 

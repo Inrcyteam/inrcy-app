@@ -378,6 +378,19 @@ type AgentScheduledAction = {
   updatedAt: string | null;
 };
 
+type ScheduledActionEditSession = {
+  scheduledAction: AgentScheduledAction;
+  action: AgentPreparedAction;
+  previousSelectedKey: AutomationKey;
+  baselineSignature: string;
+  dirty: boolean;
+};
+
+type ScheduleOnlyEditState = {
+  action: AgentScheduledAction;
+  label: string;
+};
+
 type ScheduledActionsResponse = {
   scheduledActions?: AgentScheduledAction[];
   tableMissing?: boolean;
@@ -391,6 +404,7 @@ type ScheduleListItem = {
   time: string;
   typeLabel: string;
   channelLabel: string;
+  channelLabels: string[];
   originLabel: "Automatique" | "Programmé";
   status: string;
   statusKey?: string;
@@ -554,6 +568,68 @@ function boosterChannelKeyFromAgentChannel(
   channel: ChannelKey | "" | null | undefined,
 ): BoosterChannelKey {
   return boosterDisplayKeyFromAgentChannel(channel) as BoosterChannelKey;
+}
+
+function normalizeUiChannelKey(value: unknown): ChannelKey | null {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const mapped = apiChannelToUi[raw] || apiChannelToUi[raw.toLowerCase()];
+  if (mapped) return mapped;
+  return channelOptions[raw as ChannelKey] ? (raw as ChannelKey) : null;
+}
+
+function normalizeUiChannels(...inputs: unknown[]): ChannelKey[] {
+  const channels: ChannelKey[] = [];
+  for (const input of inputs) {
+    const values = Array.isArray(input) ? input : input ? [input] : [];
+    for (const value of values) {
+      const channel = normalizeUiChannelKey(value);
+      if (channel && !channels.includes(channel)) channels.push(channel);
+    }
+  }
+  return orderChannels(channels);
+}
+
+function channelPayloadLookupKeys(channel: ChannelKey | null): string[] {
+  if (!channel) return [];
+  const displayKey = boosterDisplayKeyFromAgentChannel(channel);
+  return Array.from(new Set([displayKey, channel, ...channelPayloadKeys[channel]]));
+}
+
+function recordValueForUiChannel(
+  record: Record<string, unknown>,
+  channel: ChannelKey | null,
+): unknown {
+  for (const key of channelPayloadLookupKeys(channel)) {
+    if (Object.prototype.hasOwnProperty.call(record, key)) return record[key];
+  }
+  return undefined;
+}
+
+function firstRecordValueForUiChannels(
+  record: Record<string, unknown>,
+  channels: ChannelKey[],
+): unknown {
+  for (const channel of channels) {
+    const value = recordValueForUiChannel(record, channel);
+    if (value !== undefined) return value;
+  }
+  return undefined;
+}
+
+function canonicalizeRecordForBoosterChannels(
+  input: unknown,
+  channels: BoosterChannelKey[],
+): Record<string, unknown> {
+  const record = asRecord(input);
+  if (!record) return {};
+  const output: Record<string, unknown> = {};
+  for (const channel of channels) {
+    const uiChannel = normalizeUiChannelKey(channel);
+    const value = recordValueForUiChannel(record, uiChannel);
+    if (value !== undefined) output[channel] = value;
+  }
+  return output;
 }
 
 function clampNumber(value: number, min: number, max: number) {
@@ -2567,7 +2643,9 @@ function recipientsForAction(
 ): CampaignRecipientPreview[] {
   if (!action) return [];
   return normalizeCampaignRecipients(
-    action.payload?.recipients || action.recipients,
+    action.payload?.recipients ||
+      asRecord(action.payload?.campaign)?.recipients ||
+      action.recipients,
   );
 }
 
@@ -2726,16 +2804,20 @@ function extractCampaignMailPreview(
 ): CampaignMailPreview | null {
   if (!isCampaignPreparedAction(action)) return null;
   const payload = action.payload || {};
-  const mailAccount = asRecord(payload.mailAccount);
+  const campaign = asRecord(payload.campaign) || {};
+  const mailAccount = asRecord(payload.mailAccount) || asRecord(campaign.mailAccount);
   const subject = firstSafeString(
+    campaign.subject,
     payload.campaignSubject,
     payload.subject,
     action.title,
   );
   const body = firstSafeString(
+    campaign.text,
     payload.campaignBody,
     payload.bodyText,
     payload.text,
+    campaign.html,
     action.previewText,
     action.summary,
   );
@@ -3083,6 +3165,37 @@ function scheduledActionTypeLabel(action: AgentScheduledAction) {
   return "Action";
 }
 
+function scheduledActionPayloadRecord(action: AgentScheduledAction) {
+  return asRecord(action.payload) || {};
+}
+
+function isScheduledSimpleMailAction(action: AgentScheduledAction) {
+  const payload = scheduledActionPayloadRecord(action);
+  const kind = String(payload.kind || "").toLowerCase();
+  const workflow = String(payload.workflowFinalizerKind || "").toLowerCase();
+  const targetTool = String(action.targetTool || "").toLowerCase();
+  const actionType = String(action.actionType || "").toLowerCase();
+
+  return (
+    (targetTool === "mails" || actionType === "mailing" || kind === "mail_campaign") &&
+    targetTool !== "propulser" &&
+    targetTool !== "fideliser" &&
+    workflow !== "propulser" &&
+    workflow !== "fideliser"
+  );
+}
+
+function isScheduledStatsAction(action: AgentScheduledAction) {
+  const targetTool = String(action.targetTool || "").toLowerCase();
+  const actionType = String(action.actionType || "").toLowerCase();
+  return (
+    action.automationKey === "stats" ||
+    targetTool === "stats" ||
+    actionType === "stats" ||
+    actionType === "statistics"
+  );
+}
+
 function channelDisplayName(channel: string | null | undefined) {
   const normalized = String(channel || "").trim();
   const mapped: Record<string, ChannelKey> = {
@@ -3106,71 +3219,635 @@ function channelDisplayName(channel: string | null | undefined) {
   return channelOptions[key]?.name || normalized || "—";
 }
 
-function scheduledActionChannelLabel(action: AgentScheduledAction) {
+function scheduledActionChannelLabels(action: AgentScheduledAction) {
   const typeLabel = scheduledActionTypeLabel(action);
   if (typeLabel === "Publication") {
-    const channel = action.channels[0];
-    return channel ? channelDisplayName(channel) : "Publication";
+    const labels = Array.from(
+      new Set(
+        action.channels
+          .map((channel) => channelDisplayName(channel))
+          .filter((label) => label && label !== "—"),
+      ),
+    );
+    return labels.length > 0 ? labels : ["Publication"];
   }
-  if (typeLabel === "Statistiques") return "Bilan";
-  return "Mails";
+  if (typeLabel === "Statistiques") return ["Bilan"];
+  return ["Mails"];
 }
 
-function isoToLocalDateInput(value: string | null | undefined) {
-  const date = new Date(String(value || ""));
-  if (!Number.isFinite(date.getTime())) return "";
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
+function scheduledActionChannelLabel(action: AgentScheduledAction) {
+  const labels = scheduledActionChannelLabels(action);
+  return labels[0] || "—";
 }
 
-function isoToLocalTimeInput(value: string | null | undefined) {
-  const date = new Date(String(value || ""));
-  if (!Number.isFinite(date.getTime())) return "";
-  return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
-}
 
-function localInputsToIso(dateValue: string, timeValue: string) {
-  const date = new Date(`${dateValue}T${timeValue || "00:00"}:00`);
-  if (!Number.isFinite(date.getTime())) return "";
-  return date.toISOString();
-}
-
-function openNativeDateTimePicker(input: HTMLInputElement | null) {
-  if (!input || input.disabled) return;
+function jsonClone<T>(value: T): T {
   try {
-    input.focus({ preventScroll: true });
+    return JSON.parse(JSON.stringify(value)) as T;
   } catch {
-    input.focus();
+    return value;
   }
-  const pickerInput = input as HTMLInputElement & { showPicker?: () => void };
-  if (typeof pickerInput.showPicker === "function") {
-    try {
-      pickerInput.showPicker();
-      return;
-    } catch {
-      // Safari et certains navigateurs peuvent refuser showPicker.
-    }
-  }
-  input.click();
 }
 
-function CalendarMiniIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <path d="M7 3v3M17 3v3M4.5 9.5h15M6.5 5h11A2.5 2.5 0 0 1 20 7.5v10A2.5 2.5 0 0 1 17.5 20h-11A2.5 2.5 0 0 1 4 17.5v-10A2.5 2.5 0 0 1 6.5 5Z" />
-      <path d="M8 13h.01M12 13h.01M16 13h.01M8 16.5h.01M12 16.5h.01" />
-    </svg>
+function preparedActionDirtySignature(action: AgentPreparedAction) {
+  return JSON.stringify({
+    title: action.title,
+    summary: action.summary,
+    previewText: action.previewText,
+    targetChannels: action.targetChannels,
+    targetThemes: action.targetThemes,
+    recipients: action.recipients,
+    imageAssets: action.imageAssets,
+    payload: action.payload,
+  });
+}
+
+function scheduledAutomationKey(action: AgentScheduledAction): AutomationKey {
+  if (action.automationKey && ["publish", "grow", "loyalty", "stats"].includes(action.automationKey)) {
+    return action.automationKey;
+  }
+  const payload = asRecord(action.payload) || {};
+  const campaign = asRecord(payload.campaign) || {};
+  const metadata = asRecord(campaign.metadata) || asRecord(payload.metadata) || {};
+  const metadataAutomationKey = String(metadata.automationKey || "");
+  if (["publish", "grow", "loyalty", "stats"].includes(metadataAutomationKey)) {
+    return metadataAutomationKey as AutomationKey;
+  }
+  const targetTool = String(action.targetTool || "").toLowerCase();
+  if (targetTool === "booster") return "publish";
+  if (targetTool === "fideliser") return "loyalty";
+  if (targetTool === "propulser" || targetTool === "mails") return "grow";
+  return "publish";
+}
+
+function scheduledActionToPreparedAction(
+  scheduledAction: AgentScheduledAction,
+): AgentPreparedAction | null {
+  const payload = asRecord(scheduledAction.payload) || {};
+  const kind = String(payload.kind || "").toLowerCase();
+  const automationKey = scheduledAutomationKey(scheduledAction);
+  const now = new Date().toISOString();
+  const typeLabel = scheduledActionTypeLabel(scheduledAction);
+
+  if (
+    typeLabel === "Publication" ||
+    kind === "manual_publish_schedule" ||
+    String(scheduledAction.targetTool || "").toLowerCase() === "booster"
+  ) {
+    const publishPayload = asRecord(payload.publishPayload) || payload;
+    const channels = normalizeUiChannels(
+      publishPayload.channels,
+      payload.selectedChannels,
+      payload.channels,
+      scheduledAction.channels,
+    );
+    const finalChannels = channels.length
+      ? channels
+      : normalizeUiChannels(scheduledAction.channels);
+    const boosterChannels = finalChannels.map(boosterChannelKeyFromAgentChannel);
+    const postByChannel =
+      asRecord(publishPayload.postByChannel) || asRecord(payload.postByChannel) || {};
+    const canonicalPostByChannel = canonicalizeRecordForBoosterChannels(
+      postByChannel,
+      boosterChannels,
+    );
+    const images = Array.isArray(publishPayload.images)
+      ? publishPayload.images.filter(Boolean)
+      : Array.isArray(payload.images)
+        ? payload.images.filter(Boolean)
+        : [];
+    const video = asRecord(publishPayload.video) || asRecord(payload.video) || null;
+    const firstChannelPost = asRecord(
+      firstRecordValueForUiChannels(postByChannel, finalChannels),
+    );
+    const mediaAsset =
+      video ||
+      (asRecord(images[0]) as Record<string, unknown> | null) ||
+      asRecord(firstChannelPost?.media) ||
+      asRecord(firstChannelPost?.mediaAsset) ||
+      asRecord(firstChannelPost?.image) ||
+      asRecord(firstChannelPost?.imageAsset) ||
+      null;
+    const mediaHint = String(
+      mediaAsset?.type || mediaAsset?.mimeType || mediaAsset?.kind || "",
+    ).toLowerCase();
+    const isVideo = Boolean(mediaAsset && mediaHint.includes("video"));
+    const firstPost = finalChannels
+      .map((channel) => recordValueForUiChannel(postByChannel, channel))
+      .map((value) => {
+        const record = asRecord(value);
+        return record
+          ? firstSafeString(record.content, record.text, record.caption, record.body, record.message)
+          : safeString(value);
+      })
+      .find(Boolean);
+    const actionPayload: Record<string, unknown> = {
+      ...payload,
+      ...publishPayload,
+      publishPayload: {
+        ...publishPayload,
+        channels: boosterChannels,
+        postByChannel: canonicalPostByChannel,
+      },
+      postByChannel: canonicalPostByChannel,
+      selectedChannels: finalChannels,
+      channels: finalChannels,
+      boosterChannels,
+      mediaAsset,
+      media: mediaAsset,
+      imageAsset: mediaAsset && !isVideo ? mediaAsset : images[0] || null,
+      image: mediaAsset && !isVideo ? mediaAsset : images[0] || null,
+      images,
+      videoAsset: video || (isVideo ? mediaAsset : null),
+      video: video || (isVideo ? mediaAsset : null),
+      sourceScheduledActionId: scheduledAction.id,
+      scheduledEditMode: true,
+    };
+
+    return {
+      id: `scheduled-${scheduledAction.id}`,
+      automationKey: "publish",
+      actionType: "publication",
+      targetTool: "booster",
+      title: scheduledAction.title || "Publication programmée",
+      summary:
+        firstPost ||
+        scheduledAction.summary ||
+        "Publication programmée avec iNr’Agent.",
+      previewText: firstPost || scheduledAction.summary || "",
+      targetChannels: finalChannels,
+      targetThemes: [],
+      recipients: [],
+      imageAssets: mediaAsset ? [mediaAsset] : video ? [video] : images,
+      payload: actionPayload,
+      validationRequired: true,
+      executionPolicy: "manual_validation",
+      status: "pending_validation",
+      scheduledFor: scheduledAction.scheduledAt,
+      preparedAt: scheduledAction.createdAt || now,
+      completedAt: null,
+      createdAt: scheduledAction.createdAt || now,
+    };
+  }
+
+  if (
+    typeLabel === "Propulsion" ||
+    typeLabel === "Fidélisation" ||
+    typeLabel === "Mail" ||
+    kind === "mail_campaign"
+  ) {
+    const campaign = asRecord(payload.campaign) || {};
+    const metadata = asRecord(campaign.metadata) || asRecord(payload.metadata) || {};
+    const recipients = Array.isArray(campaign.recipients)
+      ? campaign.recipients
+      : Array.isArray(payload.recipients)
+        ? payload.recipients
+        : [];
+    const attachments = Array.isArray(campaign.attachments)
+      ? campaign.attachments
+      : Array.isArray(payload.attachments)
+        ? payload.attachments
+        : [];
+    const subject = firstSafeString(
+      campaign.subject,
+      payload.campaignSubject,
+      payload.subject,
+      scheduledAction.title,
+    );
+    const text = firstSafeString(
+      campaign.text,
+      payload.campaignBody,
+      payload.bodyText,
+      payload.text,
+      campaign.html,
+      scheduledAction.summary,
+    );
+    const targetTool =
+      scheduledAction.targetTool === "fideliser"
+        ? "fideliser"
+        : scheduledAction.targetTool === "mails"
+          ? "mails"
+          : "propulser";
+    const finalAutomationKey =
+      automationKey === "loyalty" || targetTool === "fideliser" ? "loyalty" : "grow";
+    const actionPayload: Record<string, unknown> = {
+      ...payload,
+      campaign: {
+        ...campaign,
+        subject,
+        text,
+        recipients,
+        attachments,
+        metadata,
+      },
+      accountId: firstSafeString(campaign.accountId, payload.accountId),
+      campaignSubject: subject,
+      subject,
+      campaignBody: text,
+      bodyText: text,
+      bodyHtml: firstSafeString(campaign.html, payload.bodyHtml, payload.html),
+      recipients,
+      recipientCount: recipients.length,
+      folder: firstSafeString(campaign.folder, payload.folder),
+      trackKind: firstSafeString(campaign.trackKind, metadata.trackKind, payload.trackKind),
+      trackType: firstSafeString(campaign.trackType, metadata.trackType, payload.trackType),
+      templateKey: firstSafeString(campaign.templateKey, metadata.templateKey, payload.templateKey),
+      attachments,
+      signatureAutomatic: metadata.signatureAutomatic !== false,
+      sourceScheduledActionId: scheduledAction.id,
+      scheduledEditMode: true,
+    };
+
+    return {
+      id: `scheduled-${scheduledAction.id}`,
+      automationKey: finalAutomationKey,
+      actionType: "campaign",
+      targetTool,
+      title: subject || scheduledAction.title || "Campagne programmée",
+      summary: text || scheduledAction.summary || "Campagne programmée avec iNr’Agent.",
+      previewText: text || scheduledAction.summary || "",
+      targetChannels: ["mails"],
+      targetThemes: firstSafeString(actionPayload.trackType) ? [firstSafeString(actionPayload.trackType)] : [],
+      recipients,
+      imageAssets: [],
+      payload: actionPayload,
+      validationRequired: true,
+      executionPolicy: "manual_validation",
+      status: "pending_validation",
+      scheduledFor: scheduledAction.scheduledAt,
+      preparedAt: scheduledAction.createdAt || now,
+      completedAt: null,
+      createdAt: scheduledAction.createdAt || now,
+    };
+  }
+
+  return null;
+}
+
+function updateScheduledEditPublishText(
+  action: AgentPreparedAction,
+  channel: ChannelKey,
+  draft: {
+    title: string;
+    body: string;
+    cta: string;
+    ctaMode: BoosterCtaMode;
+    ctaUrl: string;
+    ctaPhone: string;
+    hashtags: string;
+  },
+): AgentPreparedAction {
+  const displayKey = boosterDisplayKeyFromAgentChannel(channel);
+  const payload = jsonClone(action.payload || {});
+  const postByChannel = {
+    ...(asRecord(payload.postByChannel) || {}),
+  };
+  const nextPost = {
+    ...(asRecord(postByChannel[displayKey]) || {}),
+    title: draft.title,
+    content: draft.body,
+    text: draft.body,
+    cta: draft.cta,
+    ctaMode: draft.ctaMode,
+    ctaUrl: draft.ctaUrl,
+    ctaPhone: draft.ctaPhone,
+    hashtags: draft.hashtags.split(/[\s,;]+/).filter(Boolean),
+  };
+  postByChannel[displayKey] = nextPost;
+  const nextPayload = { ...payload, postByChannel };
+  const firstPreview = firstSafeString(draft.body, action.previewText, action.summary);
+  return {
+    ...action,
+    summary: channel === apiChannelToUi[action.targetChannels[0] || ""] ? firstPreview : action.summary,
+    previewText: firstPreview,
+    payload: nextPayload,
+  };
+}
+
+function updateScheduledEditPublishMedia(
+  action: AgentPreparedAction,
+  channel: ChannelKey,
+  media: Record<string, unknown> | null,
+): AgentPreparedAction {
+  const displayKey = boosterDisplayKeyFromAgentChannel(channel);
+  const payload = jsonClone(action.payload || {});
+  const postByChannel = {
+    ...(asRecord(payload.postByChannel) || {}),
+  };
+  const currentPost = asRecord(postByChannel[displayKey]) || {};
+  postByChannel[displayKey] = media
+    ? { ...currentPost, media, mediaAsset: media, imageAsset: media, image: media, videoAsset: media, video: media }
+    : { ...currentPost, media: null, mediaAsset: null, imageAsset: null, image: null, videoAsset: null, video: null };
+  const images = media && !String(media.type || media.mimeType || media.kind || "").toLowerCase().includes("video")
+    ? [media]
+    : [];
+  const video = media && String(media.type || media.mimeType || media.kind || "").toLowerCase().includes("video")
+    ? media
+    : null;
+  return {
+    ...action,
+    imageAssets: media ? [media] : [],
+    payload: {
+      ...payload,
+      postByChannel,
+      media,
+      mediaAsset: media,
+      imageAsset: images[0] || null,
+      image: images[0] || null,
+      images,
+      videoAsset: video,
+      video,
+    },
+  };
+}
+
+function updateScheduledEditCampaign(
+  action: AgentPreparedAction,
+  patch: Record<string, unknown>,
+): AgentPreparedAction {
+  const payload = jsonClone(action.payload || {});
+  const campaign = {
+    ...(asRecord(payload.campaign) || {}),
+  };
+  const editType = String(patch.editType || "");
+
+  if (editType === "campaign_text") {
+    const subject = firstSafeString(patch.subject);
+    const bodyText = firstSafeString(patch.bodyText);
+    campaign.subject = subject;
+    campaign.text = bodyText;
+    payload.campaignSubject = subject;
+    payload.subject = subject;
+    payload.campaignBody = bodyText;
+    payload.bodyText = bodyText;
+  }
+
+  if (editType === "campaign_recipients" && Array.isArray(patch.recipients)) {
+    campaign.recipients = patch.recipients;
+    payload.recipients = patch.recipients;
+    payload.recipientCount = patch.recipients.length;
+  }
+
+  if (editType === "campaign_mail_account") {
+    const accountId = firstSafeString(patch.accountId);
+    campaign.accountId = accountId;
+    payload.accountId = accountId;
+  }
+
+  if (editType === "campaign_attachments" && Array.isArray(patch.attachments)) {
+    campaign.attachments = patch.attachments;
+    payload.attachments = patch.attachments;
+  }
+
+  payload.campaign = campaign;
+  return {
+    ...action,
+    title: firstSafeString(payload.campaignSubject, payload.subject, action.title),
+    summary: firstSafeString(payload.campaignBody, payload.bodyText, action.summary),
+    previewText: firstSafeString(payload.campaignBody, payload.bodyText, action.previewText),
+    recipients: Array.isArray(payload.recipients) ? payload.recipients : action.recipients,
+    payload,
+  };
+}
+
+function filterRecordForScheduledChannels(
+  input: unknown,
+  channels: BoosterChannelKey[],
+): Record<string, unknown> {
+  return canonicalizeRecordForBoosterChannels(input, channels);
+}
+
+
+function agentChannelsToBoosterChannels(channels: unknown): BoosterChannelKey[] {
+  if (!Array.isArray(channels)) return [];
+  return Array.from(
+    new Set(
+      channels
+        .map((channel) => {
+          const raw = String(channel || "").trim();
+          const uiChannel = apiChannelToUi[raw] || apiChannelToUi[raw.toLowerCase()] || raw;
+          return boosterChannelKeyFromAgentChannel(uiChannel as ChannelKey);
+        })
+        .filter(Boolean) as BoosterChannelKey[],
+    ),
   );
 }
 
-function ClockMiniIcon() {
+function scheduledEditUpdateFromAction(
+  action: AgentPreparedAction,
+  options: {
+    scheduledAt?: string | null;
+    channels?: BoosterChannelKey[];
+  } = {},
+): Record<string, unknown> {
+  const payload = jsonClone(action.payload || {});
+  const scheduledAt = options.scheduledAt || action.scheduledFor || null;
+
+  if (
+    action.automationKey === "publish" ||
+    action.targetTool === "booster" ||
+    action.actionType === "publication"
+  ) {
+    const publishPayload = asRecord(payload.publishPayload) || {};
+    const channels = options.channels?.length
+      ? options.channels
+      : agentChannelsToBoosterChannels(
+          payload.boosterChannels || payload.selectedChannels || payload.channels || action.targetChannels,
+        );
+    const uiChannels = channels
+      .map((channel) => normalizeUiChannelKey(channel))
+      .filter((channel): channel is ChannelKey => Boolean(channel));
+    const rawPostByChannel =
+      asRecord(payload.postByChannel) || asRecord(publishPayload.postByChannel) || {};
+    const canonicalPostByChannel = canonicalizeRecordForBoosterChannels(
+      rawPostByChannel,
+      channels,
+    );
+    const firstPost =
+      channels
+        .map((channel) => asRecord(canonicalPostByChannel[channel]))
+        .find((post) => post && (post.title || post.content || post.text)) ||
+      asRecord(publishPayload.post) ||
+      {};
+    const images = Array.isArray(payload.images)
+      ? payload.images
+      : Array.isArray(publishPayload.images)
+        ? publishPayload.images
+        : [];
+    const video = asRecord(payload.video) || asRecord(publishPayload.video) || null;
+    const nextPublishPayload = {
+      ...publishPayload,
+      channels,
+      post: firstPost,
+      postByChannel: canonicalPostByChannel,
+      idea: firstSafeString(payload.idea, publishPayload.idea, action.summary),
+      mediaType: firstSafeString(
+        payload.mediaType,
+        publishPayload.mediaType,
+        video ? "video" : "images",
+      ),
+      mediaModeByChannel: filterRecordForScheduledChannels(
+        payload.mediaModeByChannel || publishPayload.mediaModeByChannel,
+        channels,
+      ),
+      videoSettingsByChannel: filterRecordForScheduledChannels(
+        payload.videoSettingsByChannel || publishPayload.videoSettingsByChannel,
+        channels,
+      ),
+      videoFormatByChannel: filterRecordForScheduledChannels(
+        payload.videoFormatByChannel || publishPayload.videoFormatByChannel,
+        channels,
+      ),
+      videoAdaptationModeByChannel: filterRecordForScheduledChannels(
+        payload.videoAdaptationModeByChannel ||
+          publishPayload.videoAdaptationModeByChannel,
+        channels,
+      ),
+      imageSettingsByChannel: filterRecordForScheduledChannels(
+        payload.imageSettingsByChannel || publishPayload.imageSettingsByChannel,
+        channels,
+      ),
+      imagesByChannel: filterRecordForScheduledChannels(
+        payload.imagesByChannel || publishPayload.imagesByChannel,
+        channels,
+      ),
+      images,
+      video,
+      workflowTool: "booster",
+      workflowAction: "publier",
+      source: "inr_agent",
+      inrAgentActionId: firstSafeString(
+        payload.sourceActionId,
+        payload.inrAgentActionId,
+        action.id,
+      ),
+    };
+
+    return {
+      title: action.title || "Publication programmée",
+      summary: action.summary || action.previewText || "Publication programmée avec iNr’Agent.",
+      scheduledAt,
+      automationKey: "publish",
+      actionType: "publication",
+      targetTool: "booster",
+      channels,
+      payload: {
+        ...payload,
+        kind: "manual_publish_schedule",
+        publishPayload: nextPublishPayload,
+        channels,
+        selectedChannels: channels,
+        uiChannels,
+        scheduleGrouping: {
+          mode: channels.length > 1 ? "multichannel_single_action" : "single_channel",
+          channelCount: channels.length,
+          updatedFrom: "scheduled_edit",
+        },
+      },
+    };
+  }
+
+  const campaign = { ...(asRecord(payload.campaign) || {}) };
+  const recipients = Array.isArray(campaign.recipients)
+    ? campaign.recipients
+    : Array.isArray(payload.recipients)
+      ? payload.recipients
+      : action.recipients;
+  const attachments = Array.isArray(campaign.attachments)
+    ? campaign.attachments
+    : Array.isArray(payload.attachments)
+      ? payload.attachments
+      : [];
+  const subject = firstSafeString(campaign.subject, payload.campaignSubject, payload.subject, action.title);
+  const body = firstSafeString(campaign.text, payload.campaignBody, payload.bodyText, action.summary);
+  const targetTool =
+    action.targetTool === "fideliser"
+      ? "fideliser"
+      : action.targetTool === "mails"
+        ? "mails"
+        : "propulser";
+  const automationKey =
+    action.automationKey === "loyalty" || targetTool === "fideliser"
+      ? "loyalty"
+      : "grow";
+
+  const nextCampaign = {
+    ...campaign,
+    accountId: firstSafeString(campaign.accountId, payload.accountId),
+    type: "mail",
+    subject,
+    text: body,
+    html: firstSafeString(campaign.html, payload.bodyHtml, payload.html),
+    recipients,
+    folder: firstSafeString(campaign.folder, payload.folder),
+    trackKind: firstSafeString(campaign.trackKind, payload.trackKind),
+    trackType: firstSafeString(campaign.trackType, payload.trackType),
+    templateKey: firstSafeString(campaign.templateKey, payload.templateKey),
+    attachments,
+    metadata: {
+      ...(asRecord(campaign.metadata) || {}),
+      source: "inr_agent",
+      label: "iNr'Agent",
+      automationKey,
+      targetTool,
+      actionType: action.actionType,
+      signatureAutomatic: payload.signatureAutomatic !== false,
+      updatedFrom: "scheduled_edit",
+    },
+  };
+
+  return {
+    title: subject || action.title || "Campagne programmée",
+    summary: body || action.summary || "Campagne programmée avec iNr’Agent.",
+    scheduledAt,
+    automationKey,
+    actionType: "campaign",
+    targetTool,
+    channels: ["mails"],
+    payload: {
+      ...payload,
+      kind: "mail_campaign",
+      campaign: nextCampaign,
+      subject,
+      campaignSubject: subject,
+      bodyText: body,
+      campaignBody: body,
+      bodyHtml: nextCampaign.html,
+      recipients,
+      recipientCount: recipients.length,
+      attachments,
+      accountId: nextCampaign.accountId,
+      folder: nextCampaign.folder,
+      trackKind: nextCampaign.trackKind,
+      trackType: nextCampaign.trackType,
+      templateKey: nextCampaign.templateKey,
+    },
+  };
+}
+
+function ScheduleChannelCell({ labels }: { labels: string[] }) {
+  const cleanedLabels = labels.filter(Boolean);
+  const primaryLabel = cleanedLabels[0] || "—";
+  const extraLabels = cleanedLabels.slice(1);
+
+  if (extraLabels.length === 0) {
+    return <span className={styles.scheduleChannelSingle}>{primaryLabel}</span>;
+  }
+
   return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-      <path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z" />
-      <path d="M12 7.5V12l3 2" />
-    </svg>
+    <details className={styles.scheduleChannelDetails}>
+      <summary className={styles.scheduleChannelSummary}>
+        <span>{primaryLabel}</span>
+        <span className={styles.scheduleChannelChevron} aria-hidden="true">
+          ▾
+        </span>
+      </summary>
+      <div className={styles.scheduleChannelMenu}>
+        {cleanedLabels.map((label) => (
+          <span key={label}>{label}</span>
+        ))}
+      </div>
+    </details>
   );
 }
 
@@ -3254,12 +3931,11 @@ export default function AgentClient() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [aiConfigurationOpen, setAiConfigurationOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
-  const [scheduleEditAction, setScheduleEditAction] =
-    useState<AgentScheduledAction | null>(null);
-  const [scheduleEditDate, setScheduleEditDate] = useState("");
-  const [scheduleEditTime, setScheduleEditTime] = useState("");
-  const scheduleEditDateInputRef = useRef<HTMLInputElement | null>(null);
-  const scheduleEditTimeInputRef = useRef<HTMLInputElement | null>(null);
+  const [scheduledEditSession, setScheduledEditSession] =
+    useState<ScheduledActionEditSession | null>(null);
+  const [scheduleOnlyEdit, setScheduleOnlyEdit] =
+    useState<ScheduleOnlyEditState | null>(null);
+  const [scheduleOnlyEditError, setScheduleOnlyEditError] = useState<string | null>(null);
   const [scheduleMutationState, setScheduleMutationState] = useState<
     "idle" | "saving"
   >("idle");
@@ -3650,6 +4326,16 @@ export default function AgentClient() {
     refreshScheduledActions(true);
   }, []);
 
+  useEffect(() => {
+    if (!scheduledEditSession?.dirty) return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
+  }, [scheduledEditSession?.dirty]);
+
   const pendingActionsByAutomation = useMemo(() => {
     return actions.reduce<Record<AutomationKey, number>>(
       (acc, action) => {
@@ -3662,7 +4348,7 @@ export default function AgentClient() {
     );
   }, [actions]);
 
-  const selectedPreparedAction = useMemo(() => {
+  const selectedPreparedActionFromActions = useMemo(() => {
     return (
       actions.find(
         (action) =>
@@ -3671,6 +4357,10 @@ export default function AgentClient() {
       ) ?? null
     );
   }, [actions, selectedKey]);
+
+  const selectedPreparedAction =
+    scheduledEditSession?.action ?? selectedPreparedActionFromActions;
+  const scheduledEditDirty = Boolean(scheduledEditSession?.dirty);
 
   const selected = useMemo(
     () =>
@@ -3726,6 +4416,9 @@ export default function AgentClient() {
             automation.key,
             channel,
           ),
+          channelLabels: [
+            scheduleChannelLabelFromAutomation(automation.key, channel),
+          ],
           originLabel: "Automatique",
           status: "Automatique",
           statusKey: "scheduled",
@@ -3754,6 +4447,7 @@ export default function AgentClient() {
         time: dateParts.time,
         typeLabel: scheduledActionTypeLabel(action),
         channelLabel: scheduledActionChannelLabel(action),
+        channelLabels: scheduledActionChannelLabels(action),
         originLabel: "Programmé",
         status: scheduledActionStatusLabel(action.status),
         statusKey: action.status,
@@ -3803,6 +4497,7 @@ export default function AgentClient() {
           time: dateParts.time,
           typeLabel: scheduledActionTypeLabel(action),
           channelLabel: scheduledActionChannelLabel(action),
+          channelLabels: scheduledActionChannelLabels(action),
           originLabel: "Programmé",
           status: scheduledActionStatusLabel(action.status),
           statusKey: action.status,
@@ -4076,7 +4771,8 @@ export default function AgentClient() {
     campaignMailPreview ?? campaignPlaceholderPreview;
   const campaignRecipients = recipientsForAction(selectedPreparedAction);
   const campaignAttachments = normalizeCampaignAttachmentRefs(
-    selectedPreparedAction?.payload?.attachments,
+    selectedPreparedAction?.payload?.attachments ||
+      asRecord(selectedPreparedAction?.payload?.campaign)?.attachments,
   );
   const filteredCrmContacts = useMemo(() => {
     const q = crmRecipientSearch.trim().toLowerCase();
@@ -4266,33 +4962,20 @@ export default function AgentClient() {
     setNotice(null);
 
     try {
-      const response = await fetch("/api/agent/actions", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          actionId: selectedPreparedAction.id,
+      await patchCampaignAction(
+        {
           editType: "campaign_text",
           subject,
           bodyText: body,
-        }),
-      });
-      const payload = (await response.json().catch(() => null)) as {
-        action?: AgentPreparedAction;
-        error?: string;
-      } | null;
-
-      if (!response.ok || !payload?.action) {
-        throw new Error(payload?.error || "Modification du mail impossible.");
-      }
-
-      const updatedAction = payload.action;
-      setActions((current) =>
-        current.map((action) =>
-          action.id === updatedAction.id ? updatedAction : action,
-        ),
+        },
+        "Modification du mail impossible.",
       );
       setMailTextEditOpen(false);
-      showNotice("Texte de la campagne mis à jour.");
+      showNotice(
+        scheduledEditSession
+          ? "Texte modifié temporairement. Valider l’enregistrera sur l’action programmée."
+          : "Texte de la campagne mis à jour.",
+      );
     } catch (error) {
       showNotice(
         error instanceof Error
@@ -4917,6 +5600,13 @@ export default function AgentClient() {
   async function savePublishMediaPatch(media: Record<string, unknown> | null) {
     if (!selectedPreparedAction || !activePreviewChannel) return;
 
+    if (scheduledEditSession) {
+      updateScheduledEditAction((action) =>
+        updateScheduledEditPublishMedia(action, activePreviewChannel, media),
+      );
+      return;
+    }
+
     const response = await fetch("/api/agent/actions", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -5244,6 +5934,25 @@ export default function AgentClient() {
       return;
     }
 
+    if (scheduledEditSession) {
+      updateScheduledEditAction((action) =>
+        updateScheduledEditPublishText(action, channel, {
+          title: publishTextDraft.title.trim(),
+          body,
+          cta: publishTextDraft.cta.trim(),
+          ctaMode: publishTextDraft.ctaMode,
+          ctaUrl: publishTextDraft.ctaUrl.trim(),
+          ctaPhone: publishTextDraft.ctaPhone.trim(),
+          hashtags: publishTextDraft.hashtags,
+        }),
+      );
+      setPublishEditOpen(false);
+      showNotice(
+        "Texte modifié temporairement. Valider l’enregistrera sur l’action programmée.",
+      );
+      return;
+    }
+
     setPublishSaveState("saving");
     setNotice(null);
 
@@ -5300,6 +6009,16 @@ export default function AgentClient() {
   ) {
     if (!selectedPreparedAction)
       throw new Error("Action iNr’Agent introuvable.");
+
+    if (scheduledEditSession) {
+      const nextAction = updateScheduledEditCampaign(
+        scheduledEditSession.action,
+        body,
+      );
+      updateScheduledEditAction(() => nextAction);
+      return nextAction;
+    }
+
     const response = await fetch("/api/agent/actions", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
@@ -5714,6 +6433,11 @@ export default function AgentClient() {
 
   async function saveCampaignAsDraft() {
     if (!selectedPreparedAction || campaignDraftSaveState === "saving") return;
+    if (scheduledEditSession) {
+      showNotice("Action programmée en édition : validez d’abord les modifications de l’action programmée.");
+      setCampaignDraftConfirmOpen(false);
+      return;
+    }
 
     setCampaignDraftSaveState("saving");
     setNotice(null);
@@ -5760,6 +6484,11 @@ export default function AgentClient() {
 
   async function savePublishAsDraft() {
     if (!selectedPreparedAction || campaignDraftSaveState === "saving") return;
+    if (scheduledEditSession) {
+      showNotice("Action programmée en édition : validez d’abord les modifications de l’action programmée.");
+      setCampaignDraftConfirmOpen(false);
+      return;
+    }
 
     setCampaignDraftSaveState("saving");
     setNotice(null);
@@ -6218,51 +6947,298 @@ export default function AgentClient() {
     }
   }
 
-  function openScheduleEdit(actionId: string | null | undefined) {
-    if (!actionId) return;
-    const action = scheduledActions.find((item) => item.id === actionId);
-    if (!action) return;
-    setScheduleEditAction(action);
-    setScheduleEditDate(isoToLocalDateInput(action.scheduledAt));
-    setScheduleEditTime(isoToLocalTimeInput(action.scheduledAt));
+  function updateScheduledEditAction(
+    updater: (action: AgentPreparedAction) => AgentPreparedAction,
+  ) {
+    setScheduledEditSession((current) => {
+      if (!current) return current;
+      const nextAction = updater(current.action);
+      return {
+        ...current,
+        action: nextAction,
+        dirty:
+          preparedActionDirtySignature(nextAction) !==
+          current.baselineSignature,
+      };
+    });
   }
 
-  async function confirmScheduleEdit() {
-    if (!scheduleEditAction || scheduleMutationState === "saving") return;
-    const nextIso = localInputsToIso(scheduleEditDate, scheduleEditTime);
-    if (!nextIso || new Date(nextIso).getTime() <= Date.now() + 30_000) {
-      showNotice("Choisissez une date et une heure dans le futur.");
+  function exitScheduledEditSession(
+    options: { silent?: boolean; force?: boolean } = {},
+  ) {
+    const session = scheduledEditSession;
+    if (!session) return true;
+    if (session.dirty && !options.force) {
+      const ok = window.confirm("Continuer sans sauvegarder ?");
+      if (!ok) return false;
+    }
+    setScheduledEditSession(null);
+    setValidationChoiceOpen(false);
+    setValidationScheduleOpen(false);
+    setPublishEditChoiceOpen(false);
+    setPublishEditOpen(false);
+    setPublishMediaPreviewOpen(false);
+    setCampaignEditOpen(false);
+    setMailTextEditOpen(false);
+    setRecipientsPreviewOpen(false);
+    setRecipientsEditOpen(false);
+    setAttachmentPreviewOpen(false);
+    setMailAccountEditOpen(false);
+    setSelectedKey(session.previousSelectedKey);
+    if (!options.silent) {
+      showNotice("Édition annulée. L’action programmée n’a pas été modifiée.");
+    }
+    return true;
+  }
+
+  function openScheduledActionEditor(actionId: string | null | undefined) {
+    if (!actionId) return;
+    if (scheduledEditSession && !exitScheduledEditSession({ silent: true })) {
+      return;
+    }
+    const scheduledAction = scheduledActions.find((item) => item.id === actionId);
+    if (!scheduledAction) {
+      showNotice("Action programmée introuvable.");
+      return;
+    }
+    if (isScheduledSimpleMailAction(scheduledAction)) {
+      const params = new URLSearchParams({
+        folder: "mails",
+        scheduled_edit_id: scheduledAction.id,
+      });
+      router.push(`/dashboard/mails?${params.toString()}`);
       return;
     }
 
+    if (isScheduledStatsAction(scheduledAction)) {
+      setScheduleOpen(false);
+      setValidationChoiceOpen(false);
+      setValidationScheduleOpen(false);
+      setScheduleOnlyEditError(null);
+      setScheduleOnlyEdit({ action: scheduledAction, label: "Bilan iNr’Stats" });
+      return;
+    }
+
+    const action = scheduledActionToPreparedAction(scheduledAction);
+    if (!action) {
+      showNotice("Cette action programmée ne peut pas encore être ouverte.");
+      return;
+    }
+    const nextKey = (action.automationKey || scheduledAutomationKey(scheduledAction)) as AutomationKey;
+    setScheduleOpen(false);
+    setValidationChoiceOpen(false);
+    setValidationScheduleOpen(false);
+    setSelectedKey(nextKey);
+    setScheduledEditSession({
+      scheduledAction,
+      action,
+      previousSelectedKey: selectedKey,
+      baselineSignature: preparedActionDirtySignature(action),
+      dirty: false,
+    });
+    showNotice("Action programmée ouverte en édition temporaire.");
+  }
+
+  async function patchScheduledAction(
+    actionId: string,
+    body: Record<string, unknown>,
+  ) {
+    const response = await fetch(`/api/agent/scheduled-actions/${actionId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const payload = (await response.json().catch(() => null)) as {
+      scheduledAction?: AgentScheduledAction;
+      error?: string;
+      tableMissing?: boolean;
+    } | null;
+    if (!response.ok || !payload?.scheduledAction) {
+      if (payload?.tableMissing) setScheduledActionsTableMissing(true);
+      throw new Error(
+        payload?.error || "Modification de l’action programmée impossible.",
+      );
+    }
+    return payload.scheduledAction;
+  }
+
+  async function createExtraScheduledAction(body: Record<string, unknown>) {
+    const response = await fetch("/api/agent/scheduled-actions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        source: "manual",
+        timezone: agentSettings.timezone || "Europe/Paris",
+        ...body,
+      }),
+    });
+    const payload = (await response.json().catch(() => null)) as {
+      scheduledAction?: AgentScheduledAction;
+      error?: string;
+      tableMissing?: boolean;
+    } | null;
+    if (!response.ok || !payload?.scheduledAction) {
+      if (payload?.tableMissing) setScheduledActionsTableMissing(true);
+      throw new Error(
+        payload?.error || "Création de l’action programmée impossible.",
+      );
+    }
+    return payload.scheduledAction;
+  }
+
+  function applySavedScheduledEdit(
+    savedActions: AgentScheduledAction[],
+    options: { closeEdit?: boolean } = {},
+  ) {
+    if (savedActions.length) {
+      const savedIds = new Set(savedActions.map((action) => action.id));
+      setScheduledActions((current) => [
+        ...savedActions,
+        ...current.filter((action) => !savedIds.has(action.id)),
+      ]);
+    }
+    if (options.closeEdit !== false) {
+      exitScheduledEditSession({ silent: true, force: true });
+    } else if (savedActions[0]) {
+      setScheduledEditSession((current) =>
+        current
+          ? {
+              ...current,
+              scheduledAction: savedActions[0],
+              baselineSignature: preparedActionDirtySignature(current.action),
+              dirty: false,
+            }
+          : current,
+      );
+    }
+  }
+
+  async function saveScheduledEditAtCurrentDate() {
+    const session = scheduledEditSession;
+    if (!session) return null;
+    const update = scheduledEditUpdateFromAction(session.action, {
+      scheduledAt: session.scheduledAction.scheduledAt,
+    });
+    const saved = await patchScheduledAction(session.scheduledAction.id, update);
+    applySavedScheduledEdit([saved]);
+    await refreshScheduledActions(true);
+    showNotice("Action programmée mise à jour.");
+    return saved;
+  }
+
+  async function saveScheduledEditPublication(
+    selections: PublishScheduleSelection[],
+  ) {
+    const session = scheduledEditSession;
+    if (!session) return;
+    if (!selections.length) {
+      throw new Error("Sélectionnez au moins un canal à programmer.");
+    }
+
+    const grouped = Array.from(
+      selections.reduce<Map<string, BoosterChannelKey[]>>((groups, selection) => {
+        const channels = groups.get(selection.scheduledAt) || [];
+        if (!channels.includes(selection.channel)) channels.push(selection.channel);
+        groups.set(selection.scheduledAt, channels);
+        return groups;
+      }, new Map<string, BoosterChannelKey[]>()),
+    );
+    if (!grouped.length) {
+      throw new Error("Sélectionnez au moins un canal à programmer.");
+    }
+
+    const savedActions: AgentScheduledAction[] = [];
+    const [firstScheduledAt, firstChannels] = grouped[0] as [string, BoosterChannelKey[]];
+    savedActions.push(
+      await patchScheduledAction(
+        session.scheduledAction.id,
+        scheduledEditUpdateFromAction(session.action, {
+          scheduledAt: firstScheduledAt,
+          channels: firstChannels,
+        }),
+      ),
+    );
+
+    for (const [scheduledAt, channels] of grouped.slice(1)) {
+      savedActions.push(
+        await createExtraScheduledAction(
+          scheduledEditUpdateFromAction(session.action, { scheduledAt, channels }),
+        ),
+      );
+    }
+
+    applySavedScheduledEdit(savedActions, { closeEdit: false });
+    await refreshScheduledActions(true);
+  }
+
+  async function saveScheduledEditCampaign(scheduledAt: string) {
+    const session = scheduledEditSession;
+    if (!session) return;
+    const saved = await patchScheduledAction(
+      session.scheduledAction.id,
+      scheduledEditUpdateFromAction(session.action, { scheduledAt }),
+    );
+    applySavedScheduledEdit([saved], { closeEdit: false });
+    await refreshScheduledActions(true);
+  }
+
+  async function deleteScheduledEditAction() {
+    const session = scheduledEditSession;
+    if (!session || scheduleMutationState === "saving") return;
+    const ok = window.confirm(
+      "Ce contenu programmé sera supprimé. Continuer ?",
+    );
+    if (!ok) return;
+
     setScheduleMutationState("saving");
+    setNotice(null);
     try {
       const response = await fetch(
-        `/api/agent/scheduled-actions/${scheduleEditAction.id}`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ scheduledAt: nextIso }),
-        },
+        `/api/agent/scheduled-actions/${session.scheduledAction.id}`,
+        { method: "DELETE" },
       );
       const payload = (await response.json().catch(() => null)) as {
         error?: string;
       } | null;
-      if (!response.ok)
+      if (!response.ok) {
         throw new Error(
-          payload?.error || "Modification de l’action programmée impossible.",
+          payload?.error || "Suppression de l’action programmée impossible.",
         );
-      setScheduleEditAction(null);
-      showNotice("Action programmée modifiée.");
+      }
+      exitScheduledEditSession({ silent: true, force: true });
       await refreshScheduledActions(true);
+      showNotice("Action programmée supprimée.");
     } catch (error) {
       showNotice(
         error instanceof Error
           ? error.message
-          : "Modification de l’action programmée impossible.",
+          : "Suppression de l’action programmée impossible.",
       );
     } finally {
       setScheduleMutationState("idle");
+    }
+  }
+
+  async function saveScheduleOnlyEdit(scheduledAt: string) {
+    if (!scheduleOnlyEdit) return;
+    setScheduleOnlyEditError(null);
+    try {
+      const saved = await patchScheduledAction(scheduleOnlyEdit.action.id, {
+        scheduledAt,
+      });
+      setScheduledActions((current) =>
+        current.map((action) => (action.id === saved.id ? saved : action)),
+      );
+      setScheduleOnlyEdit(null);
+      await refreshScheduledActions(true);
+      showNotice("Programmation mise à jour.");
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Modification de la programmation impossible.";
+      setScheduleOnlyEditError(message);
+      throw new Error(message);
     }
   }
 
@@ -6341,10 +7317,11 @@ export default function AgentClient() {
 
   async function handleScheduleRowModify(item: ScheduleListItem) {
     if (item.source === "manual") {
-      openScheduleEdit(item.scheduledActionId);
+      openScheduledActionEditor(item.scheduledActionId);
       return;
     }
     if (item.automationKey) {
+      if (!exitScheduledEditSession({ silent: true })) return;
       setScheduleOpen(false);
       setSettingsKey(item.automationKey);
     }
@@ -6447,6 +7424,24 @@ export default function AgentClient() {
       return;
     }
 
+    if (scheduledEditSession) {
+      setValidationScheduleState("saving");
+      setNotice(null);
+      try {
+        await saveScheduledEditCampaign(scheduledAt);
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Modification de la campagne programmée impossible.";
+        showNotice(message);
+        throw new Error(message);
+      } finally {
+        setValidationScheduleState("idle");
+      }
+      return;
+    }
+
     setValidationScheduleState("saving");
     setNotice(null);
     try {
@@ -6478,6 +7473,25 @@ export default function AgentClient() {
     if (!selectedPreparedAction || validationScheduleState === "saving") return;
     if (!selections.length) {
       showNotice("Sélectionnez au moins un canal à programmer.");
+      return;
+    }
+
+    if (scheduledEditSession) {
+      setValidationScheduleState("saving");
+      setNotice(null);
+      try {
+        await saveScheduledEditPublication(selections);
+        setPendingImmediateAgentPublishAfterSchedule(null);
+      } catch (error) {
+        const message =
+          error instanceof Error
+            ? error.message
+            : "Modification de la publication programmée impossible.";
+        showNotice(message);
+        throw new Error(message);
+      } finally {
+        setValidationScheduleState("idle");
+      }
       return;
     }
 
@@ -6730,9 +7744,127 @@ export default function AgentClient() {
     }
   }
 
+  async function runScheduledEditNow() {
+    const session = scheduledEditSession;
+    if (!session || actionMutationState === "saving") return;
+
+    const actionToExecute = session.action;
+    const isPublishExecution =
+      actionToExecute.automationKey === "publish" &&
+      actionToExecute.targetTool === "booster" &&
+      actionToExecute.actionType === "publication";
+    const isCampaignExecution = !isPublishExecution;
+
+    setActionMutationState("saving");
+    setNotice(null);
+    setValidationChoiceOpen(false);
+    setValidationScheduleOpen(false);
+    setAgentCampaignLaunchNotice(null);
+    if (isPublishExecution) {
+      setAgentPublishSuccessSummary(null);
+      startAgentPublishProgress(actionToExecute);
+    }
+
+    try {
+      await patchScheduledAction(
+        session.scheduledAction.id,
+        scheduledEditUpdateFromAction(actionToExecute, {
+          scheduledAt: session.scheduledAction.scheduledAt,
+        }),
+      );
+
+      const response = await fetch(
+        `/api/agent/scheduled-actions/${session.scheduledAction.id}/execute`,
+        { method: "POST" },
+      );
+      const payload = (await response.json().catch(() => null)) as {
+        scheduledAction?: AgentScheduledAction;
+        publishResult?: Record<string, unknown> | null;
+        campaignResult?: Record<string, unknown> | null;
+        error?: string;
+      } | null;
+
+      if (!response.ok) {
+        const failedPublishSummary = asRecord(payload?.publishResult)?.summary;
+        if (isPublishExecution && failedPublishSummary) {
+          completeAgentPublishProgress("Échec");
+          await wait(220);
+          const channelLinks = await loadAgentPublishChannelLinks();
+          setAgentPublishExecutionProgress(null);
+          setAgentPublishSuccessSummary({
+            ...(asRecord(failedPublishSummary) || {}),
+            channelLinks,
+          });
+          return;
+        }
+        throw new Error(
+          payload?.error || "Lancement immédiat de l’action programmée impossible.",
+        );
+      }
+
+      if (payload?.scheduledAction) {
+        setScheduledActions((current) => [
+          payload.scheduledAction as AgentScheduledAction,
+          ...current.filter(
+            (action) => action.id !== payload.scheduledAction?.id,
+          ),
+        ]);
+      }
+
+      exitScheduledEditSession({ silent: true, force: true });
+      await refreshScheduledActions(true);
+      await refreshActions(true);
+
+      if (isPublishExecution) {
+        const publishSummary = asRecord(payload?.publishResult)?.summary;
+        completeAgentPublishProgress(
+          asRecord(publishSummary)?.allFailed ? "Échec" : "Publié",
+        );
+        await wait(220);
+        const channelLinks = await loadAgentPublishChannelLinks();
+        setAgentPublishExecutionProgress(null);
+        setAgentPublishSuccessSummary({
+          ...(asRecord(publishSummary) || {}),
+          channelLinks,
+        });
+        return;
+      }
+
+      if (isCampaignExecution) {
+        setAgentCampaignLaunchNotice(
+          buildAgentCampaignLaunchNotice({
+            campaignResult: asRecord(payload?.campaignResult),
+            action: actionToExecute,
+          }),
+        );
+      }
+    } catch (error) {
+      if (isPublishExecution) {
+        stopAgentPublishProgressTimer();
+        setAgentPublishExecutionProgress(null);
+      }
+      showNotice(
+        error instanceof Error
+          ? error.message
+          : "Lancement immédiat de l’action programmée impossible.",
+      );
+    } finally {
+      setActionMutationState("idle");
+    }
+  }
+
   async function updateActionStatus(status: "validated" | "refused") {
     const actionToExecute = selectedPreparedAction;
     if (!actionToExecute || actionMutationState === "saving") return;
+
+    if (scheduledEditSession) {
+      if (status === "refused") {
+        void deleteScheduledEditAction();
+        return;
+      }
+      setValidationChoiceOpen(true);
+      return;
+    }
 
     const isImmediatePublishExecution =
       status === "validated" &&
@@ -7036,7 +8168,10 @@ export default function AgentClient() {
               type="button"
               className={styles.headerToolButton}
               data-automation={selected.key}
-              onClick={() => router.push(selectedHeaderTool.href)}
+              onClick={() => {
+                if (!exitScheduledEditSession({ silent: true })) return;
+                router.push(selectedHeaderTool.href);
+              }}
               aria-label={`Ouvrir ${selectedHeaderTool.label}`}
               title={`Ouvrir ${selectedHeaderTool.label}`}
             >
@@ -7066,11 +8201,12 @@ export default function AgentClient() {
             <button
               type="button"
               className={styles.headerInrSendButton}
-              onClick={() =>
+              onClick={() => {
+                if (!exitScheduledEditSession({ silent: true })) return;
                 router.push(
                   `/dashboard/mails?folder=${inrSendFolderForAutomation(selected.key)}`,
-                )
-              }
+                );
+              }}
               aria-label="Ouvrir iNr'Send"
               title="Voir l’historique des actions réalisées"
             >
@@ -7089,7 +8225,10 @@ export default function AgentClient() {
             <button
               type="button"
               className={styles.headerCloseButton}
-              onClick={() => router.push("/dashboard")}
+              onClick={() => {
+                if (!exitScheduledEditSession({ silent: true })) return;
+                router.push("/dashboard");
+              }}
               aria-label="Retour au tableau de bord"
               title="Retour au tableau de bord"
             >
@@ -7097,6 +8236,27 @@ export default function AgentClient() {
             </button>
           </div>
         </header>
+
+        {scheduledEditSession && (
+          <section className={styles.scheduledEditBanner}>
+            <div>
+              <span className={styles.scheduledEditEyebrow}>Édition temporaire</span>
+              <strong>{scheduledEditSession.action.title}</strong>
+              <small>
+                Programmée le {scheduleDateParts(scheduledEditSession.scheduledAction.scheduledAt).date} à {scheduleDateParts(scheduledEditSession.scheduledAction.scheduledAt).time}.
+                {scheduledEditDirty
+                  ? " Modifications non sauvegardées."
+                  : " Aucune modification pour le moment."}
+              </small>
+            </div>
+            <button
+              type="button"
+              onClick={() => exitScheduledEditSession()}
+            >
+              Quitter l’édition
+            </button>
+          </section>
+        )}
 
         <nav
           className={styles.automationGrid}
@@ -7115,7 +8275,10 @@ export default function AgentClient() {
                 <button
                   type="button"
                   className={styles.automationSelect}
-                  onClick={() => setSelectedKey(automation.key)}
+                  onClick={() => {
+                    if (!exitScheduledEditSession({ silent: true })) return;
+                    setSelectedKey(automation.key);
+                  }}
                   aria-pressed={selectedCard}
                 >
                   <span className={styles.cardIcon} aria-hidden>
@@ -7148,7 +8311,10 @@ export default function AgentClient() {
                 <button
                   type="button"
                   className={styles.settingsButton}
-                  onClick={() => setSettingsKey(automation.key)}
+                  onClick={() => {
+                    if (!exitScheduledEditSession({ silent: true })) return;
+                    setSettingsKey(automation.key);
+                  }}
                   aria-label={`Programmer — ${automation.title}`}
                   title="Programmer cette automatisation"
                 >
@@ -7959,6 +9125,10 @@ export default function AgentClient() {
                           !hasPreparedAction || actionMutationState === "saving"
                         }
                         onClick={() => {
+                          if (scheduledEditSession) {
+                            void updateActionStatus("validated");
+                            return;
+                          }
                           if (
                             canSchedulePreparedAction(selectedPreparedAction)
                           ) {
@@ -9665,7 +10835,9 @@ export default function AgentClient() {
                         {item.action}
                       </span>
                       <span>{item.typeLabel}</span>
-                      <span>{item.channelLabel}</span>
+                      <span className={styles.scheduleChannelCell}>
+                        <ScheduleChannelCell labels={item.channelLabels} />
+                      </span>
                       <span>{item.originLabel}</span>
                       <span className={styles.scheduleActionsCell}>
                         <button
@@ -9675,8 +10847,8 @@ export default function AgentClient() {
                           disabled={
                             !item.editable || scheduleMutationState === "saving"
                           }
-                          aria-label="Modifier"
-                          title="Modifier"
+                          aria-label="Modifier le contenu"
+                          title="Modifier le contenu"
                         >
                           ✎
                         </button>
@@ -9707,135 +10879,7 @@ export default function AgentClient() {
         </div>
       )}
 
-      {scheduleEditAction && (
-        <div
-          className={styles.modalBackdrop}
-          role="presentation"
-          onClick={() =>
-            scheduleMutationState !== "saving" && setScheduleEditAction(null)
-          }
-        >
-          <section
-            className={`${styles.settingsModal} ${styles.scheduleEditModal}`}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Modifier l’action programmée"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <button
-              type="button"
-              className={styles.modalClose}
-              onClick={() => setScheduleEditAction(null)}
-              disabled={scheduleMutationState === "saving"}
-              aria-label="Fermer"
-            >
-              ×
-            </button>
-            <p className={styles.modalEyebrow}>Programmation</p>
-            <h2>Modifier l’action</h2>
-            <p className={styles.modalHint}>
-              Changez uniquement la date et l’heure. iNr’Agent exécutera
-              l’action au nouveau créneau.
-            </p>
-            <div className={styles.modalGrid}>
-              <label>
-                <span>Date</span>
-                <div
-                  className={styles.nativeDateTimeField}
-                  data-disabled={
-                    scheduleMutationState === "saving" ? "true" : "false"
-                  }
-                  onClick={() =>
-                    openNativeDateTimePicker(scheduleEditDateInputRef.current)
-                  }
-                >
-                  <input
-                    ref={scheduleEditDateInputRef}
-                    className={styles.nativeDateTimeInput}
-                    type="date"
-                    value={scheduleEditDate}
-                    disabled={scheduleMutationState === "saving"}
-                    onChange={(event) =>
-                      setScheduleEditDate(event.target.value)
-                    }
-                  />
-                  <button
-                    type="button"
-                    className={styles.nativeDateTimePickerButton}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      openNativeDateTimePicker(
-                        scheduleEditDateInputRef.current,
-                      );
-                    }}
-                    disabled={scheduleMutationState === "saving"}
-                    aria-label="Ouvrir le calendrier"
-                  >
-                    <CalendarMiniIcon />
-                  </button>
-                </div>
-              </label>
-              <label>
-                <span>Heure</span>
-                <div
-                  className={styles.nativeDateTimeField}
-                  data-disabled={
-                    scheduleMutationState === "saving" ? "true" : "false"
-                  }
-                  onClick={() =>
-                    openNativeDateTimePicker(scheduleEditTimeInputRef.current)
-                  }
-                >
-                  <input
-                    ref={scheduleEditTimeInputRef}
-                    className={styles.nativeDateTimeInput}
-                    type="time"
-                    value={scheduleEditTime}
-                    disabled={scheduleMutationState === "saving"}
-                    onChange={(event) =>
-                      setScheduleEditTime(event.target.value)
-                    }
-                  />
-                  <button
-                    type="button"
-                    className={styles.nativeDateTimePickerButton}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      openNativeDateTimePicker(
-                        scheduleEditTimeInputRef.current,
-                      );
-                    }}
-                    disabled={scheduleMutationState === "saving"}
-                    aria-label="Ouvrir le choix de l’heure"
-                  >
-                    <ClockMiniIcon />
-                  </button>
-                </div>
-              </label>
-            </div>
-            <div className={styles.modalActionButtonRow}>
-              <button
-                type="button"
-                className={styles.modalActionSecondaryButton}
-                onClick={() => setScheduleEditAction(null)}
-                disabled={scheduleMutationState === "saving"}
-              >
-                Annuler
-              </button>
-              <button
-                type="button"
-                className={styles.modalActionButton}
-                onClick={() => void confirmScheduleEdit()}
-                disabled={scheduleMutationState === "saving"}
-              >
-                {scheduleMutationState === "saving"
-                  ? "Enregistrement..."
-                  : "Enregistrer"}
-              </button>
-            </div>
-          </section>
-        </div>
-      )}
+
 
       {validationChoiceOpen && selectedPreparedAction && (
         <div
@@ -9863,28 +10907,41 @@ export default function AgentClient() {
             </button>
             <p className={styles.modalEyebrow}>Validation</p>
             <h2>
-              {selectedPreparedAction.automationKey === "publish"
-                ? "Publier cette action ?"
-                : "Envoyer cette campagne ?"}
+              {scheduledEditSession
+                ? "Que faire de cette action programmée ?"
+                : selectedPreparedAction.automationKey === "publish"
+                  ? "Publier cette action ?"
+                  : "Envoyer cette campagne ?"}
             </h2>
             <p className={styles.modalHint}>
-              L’action est prête. Vous pouvez la lancer maintenant ou la
-              programmer pour qu’iNr’Agent s’en occupe plus tard.
+              {scheduledEditSession
+                ? "Vous pouvez lancer maintenant ce contenu programmé ou enregistrer sa programmation avec les informations actuelles."
+                : "L’action est prête. Vous pouvez la lancer maintenant ou la programmer pour qu’iNr’Agent s’en occupe plus tard."}
             </p>
             <div className={styles.validationChoiceGrid}>
               <button
                 type="button"
                 className={styles.validationChoiceCard}
-                onClick={() => void updateActionStatus("validated")}
+                onClick={() =>
+                  scheduledEditSession
+                    ? void runScheduledEditNow()
+                    : void updateActionStatus("validated")
+                }
                 disabled={actionMutationState === "saving"}
               >
                 <span aria-hidden>⚡</span>
                 <strong>
-                  {selectedPreparedAction.automationKey === "publish"
-                    ? "Publier maintenant"
-                    : "Envoyer maintenant"}
+                  {scheduledEditSession
+                    ? "Lancer maintenant"
+                    : selectedPreparedAction.automationKey === "publish"
+                      ? "Publier maintenant"
+                      : "Envoyer maintenant"}
                 </strong>
-                <small>iNr’Agent exécute l’action immédiatement.</small>
+                <small>
+                  {scheduledEditSession
+                    ? "iNr’Agent exécute l’action immédiatement et retire la programmation future."
+                    : "iNr’Agent exécute l’action immédiatement."}
+                </small>
               </button>
               <button
                 type="button"
@@ -9894,11 +10951,13 @@ export default function AgentClient() {
               >
                 <span aria-hidden>🕒</span>
                 <strong>
-                  {selectedPreparedAction.automationKey === "publish"
-                    ? "Programmer la publication"
-                    : "Programmer l’envoi"}
+                  {scheduledEditSession
+                    ? "Programmer"
+                    : selectedPreparedAction.automationKey === "publish"
+                      ? "Programmer la publication"
+                      : "Programmer l’envoi"}
                 </strong>
-                <small>Choisissez une date et une heure d’exécution.</small>
+                <small>Les informations actuelles sont préremplies.</small>
               </button>
             </div>
           </section>
@@ -9916,7 +10975,18 @@ export default function AgentClient() {
             error=""
             successMessage="Programmation réussie."
             savingLabel="Envoi en cours…"
-            enableImmediateUnselectedWarning
+            enableImmediateUnselectedWarning={!scheduledEditSession}
+            initialSelections={
+              scheduledEditSession
+                ? preparedChannels.map((channel) => ({
+                    channel: boosterChannelKeyFromAgentChannel(channel),
+                    scheduledAt:
+                      scheduledEditSession.scheduledAction.scheduledAt ||
+                      selectedPreparedAction.scheduledFor ||
+                      new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+                  }))
+                : undefined
+            }
             onClose={() => {
               if (validationScheduleState === "saving") return;
               setValidationScheduleOpen(false);
@@ -9930,6 +11000,11 @@ export default function AgentClient() {
               setValidationScheduleOpen(false);
               setValidationChoiceOpen(false);
               setPendingImmediateAgentPublishAfterSchedule(null);
+              if (scheduledEditSession) {
+                exitScheduledEditSession({ silent: true, force: true });
+                showNotice("Action programmée mise à jour.");
+                return;
+              }
               if (immediatePublishRequest?.channels.length) {
                 void executeImmediateAgentPublicationAfterSchedule(
                   immediatePublishRequest,
@@ -9955,6 +11030,10 @@ export default function AgentClient() {
             error={null}
             successMessage="Programmation réussie."
             savingLabel="Programmation en cours…"
+            initialScheduledAt={
+              scheduledEditSession?.scheduledAction.scheduledAt ||
+              selectedPreparedAction.scheduledFor
+            }
             onClose={() => {
               if (validationScheduleState === "saving") return;
               setValidationScheduleOpen(false);
@@ -9963,9 +11042,47 @@ export default function AgentClient() {
             onSuccess={() => {
               setValidationScheduleOpen(false);
               setValidationChoiceOpen(false);
+              if (scheduledEditSession) {
+                exitScheduledEditSession({ silent: true, force: true });
+                showNotice("Campagne programmée mise à jour.");
+              }
             }}
           />
         )}
+
+      {scheduleOnlyEdit && (
+        <CampaignScheduleModal
+          open={Boolean(scheduleOnlyEdit)}
+          title="Modifier la programmation"
+          kicker="Programmation"
+          description="Modifiez uniquement la date et l’heure de cette action programmée."
+          recipientCount={0}
+          subject={scheduleOnlyEdit.label}
+          saving={scheduleMutationState === "saving"}
+          error={scheduleOnlyEditError}
+          confirmLabel="Enregistrer"
+          savingLabel="Enregistrement…"
+          successMessage="Programmation mise à jour."
+          initialScheduledAt={scheduleOnlyEdit.action.scheduledAt}
+          onClose={() => {
+            if (scheduleMutationState === "saving") return;
+            setScheduleOnlyEdit(null);
+            setScheduleOnlyEditError(null);
+          }}
+          onConfirm={async (scheduledAt) => {
+            setScheduleMutationState("saving");
+            try {
+              await saveScheduleOnlyEdit(scheduledAt);
+            } finally {
+              setScheduleMutationState("idle");
+            }
+          }}
+          onSuccess={() => {
+            setScheduleOnlyEdit(null);
+            setScheduleOnlyEditError(null);
+          }}
+        />
+      )}
 
       {helpOpen && (
         <div

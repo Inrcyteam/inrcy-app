@@ -82,6 +82,10 @@ type MailboxComposeModalProps = {
   signatureImageWidth: number;
   saveDraft: () => Promise<void>;
   doSend: () => Promise<void>;
+  scheduledEditMode?: boolean;
+  scheduledEditSaving?: boolean;
+  scheduledEditScheduledAt?: string | null;
+  onSaveScheduledEdit?: () => Promise<void> | void;
   scheduleWorkflowCampaign?: (scheduledAt: string) => Promise<void>;
   onScheduledSuccess?: () => void | Promise<void>;
   sendBusy: boolean;
@@ -164,6 +168,10 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
     signatureImageWidth,
     saveDraft,
     doSend,
+    scheduledEditMode = false,
+    scheduledEditSaving = false,
+    scheduledEditScheduledAt = null,
+    onSaveScheduledEdit,
     scheduleWorkflowCampaign,
     onScheduledSuccess,
     sendBusy,
@@ -199,25 +207,27 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
     }
 
     const confirmed = await confirmInrcy({
-      title: "Fermer le message ?",
-      message:
-        "Vous avez un message en cours. Voulez-vous vraiment fermer cette fenêtre sans l’envoyer ni sauvegarder le brouillon ?",
-      confirmLabel: "Fermer sans sauvegarder",
+      title: scheduledEditMode ? "Continuer sans sauvegarder ?" : "Fermer le message ?",
+      message: scheduledEditMode
+        ? "Les modifications du mail programmé seront perdues. Continuer ?"
+        : "Vous avez un message en cours. Voulez-vous vraiment fermer cette fenêtre sans l’envoyer ni sauvegarder le brouillon ?",
+      confirmLabel: scheduledEditMode ? "Continuer sans sauvegarder" : "Fermer sans sauvegarder",
       cancelLabel: "Continuer l’édition",
       variant: "warning",
     });
 
     if (confirmed) onClose();
-  }, [hasUnsavedComposeChanges, onClose]);
+  }, [hasUnsavedComposeChanges, onClose, scheduledEditMode]);
 
   useUnsavedExitGuard({
     active: open,
     shouldBlock: hasUnsavedComposeChanges,
     onConfirmExit: onClose,
-    title: "Fermer le message ?",
-    message:
-      "Vous avez un message en cours. Voulez-vous vraiment fermer cette fenêtre sans l’envoyer ni sauvegarder le brouillon ?",
-    confirmLabel: "Fermer sans sauvegarder",
+    title: scheduledEditMode ? "Continuer sans sauvegarder ?" : "Fermer le message ?",
+    message: scheduledEditMode
+      ? "Les modifications du mail programmé seront perdues. Continuer ?"
+      : "Vous avez un message en cours. Voulez-vous vraiment fermer cette fenêtre sans l’envoyer ni sauvegarder le brouillon ?",
+    confirmLabel: scheduledEditMode ? "Continuer sans sauvegarder" : "Fermer sans sauvegarder",
     cancelLabel: "Continuer l’édition",
     variant: "warning",
   });
@@ -487,34 +497,40 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                 {workflowFinalizerIcon}
               </div>
               <div className={styles.composeTitleText}>
-                {isWorkflowFinalizer
-                  ? `Finaliser l’envoi ${workflowFinalizerLabel}`
-                  : draftId
-                    ? "Éditer le brouillon"
-                    : "Nouveau message"}
+                {scheduledEditMode
+                  ? "Modifier le mail programmé"
+                  : isWorkflowFinalizer
+                    ? `Finaliser l’envoi ${workflowFinalizerLabel}`
+                    : draftId
+                      ? "Éditer le brouillon"
+                      : "Nouveau message"}
               </div>
               <span className={`${styles.badge} ${styles.composeTypeBadge}`}>
                 {isWorkflowFinalizer ? workflowFinalizerLabel : "Mail"}
               </span>
             </div>
             <div className={styles.composeSubtitle}>
-              {isWorkflowFinalizer
-                ? `Vérifiez les destinataires, l’objet et le message préparé depuis ${workflowFinalizerLabel}, puis envoyez depuis votre boîte connectée.`
-                : "Préparez un message clair, choisissez vos contacts CRM et envoyez depuis votre boîte connectée."}
+              {scheduledEditMode
+                ? "Modifiez ce mail programmé. Enregistrez pour conserver la date actuelle, programmez pour changer l’horaire ou envoyez maintenant."
+                : isWorkflowFinalizer
+                  ? `Vérifiez les destinataires, l’objet et le message préparé depuis ${workflowFinalizerLabel}, puis envoyez depuis votre boîte connectée.`
+                  : "Préparez un message clair, choisissez vos contacts CRM et envoyez depuis votre boîte connectée."}
             </div>
           </div>
 
           <div className={styles.composeHeaderActions}>
-            <button
-              className={`${styles.btnGhost} ${styles.composeHeaderIconBtn}`}
-              onClick={() => void saveDraft()}
-              type="button"
-              aria-label="Sauvegarder le brouillon"
-              title="Sauvegarder le brouillon"
-              disabled={sendBusy || attachBusy}
-            >
-              {attachBusy ? "…" : "💾"}
-            </button>
+            {!scheduledEditMode ? (
+              <button
+                className={`${styles.btnGhost} ${styles.composeHeaderIconBtn}`}
+                onClick={() => void saveDraft()}
+                type="button"
+                aria-label="Sauvegarder le brouillon"
+                title="Sauvegarder le brouillon"
+                disabled={sendBusy || attachBusy}
+              >
+                {attachBusy ? "…" : "💾"}
+              </button>
+            ) : null}
             {!isWorkflowFinalizer ? (
               <button
                 className={`${styles.btnGhost} ${styles.composeHeaderIconBtn} ${styles.aiHeaderBtn}`}
@@ -1232,6 +1248,19 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                 </span>
               </button>
             ) : null}
+            {scheduledEditMode && onSaveScheduledEdit ? (
+              <button
+                className={`${styles.btnGhost} ${styles.composeScheduledSaveBtn}`}
+                onClick={() => void onSaveScheduledEdit()}
+                type="button"
+                disabled={sendBusy || scheduleBusy || attachBusy || scheduledEditSaving}
+                title="Enregistrer les modifications sans changer la programmation"
+                aria-label="Enregistrer le mail programmé"
+              >
+                <span aria-hidden>💾</span>
+                <span className={styles.composeScheduledSaveText}>Enregistrer</span>
+              </button>
+            ) : null}
             {scheduleWorkflowCampaign ? (
               <button
                 className={`${styles.btnGhost} ${styles.composeScheduleBtn}`}
@@ -1245,12 +1274,17 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
               </button>
             ) : null}
             <button
-              className={`${styles.btnPrimary} ${styles.composeSendBtn}`}
+              className={`${styles.btnPrimary} ${styles.composeSendBtn} ${scheduledEditMode ? styles.composeSendBtnScheduledEdit : ""}`}
               onClick={() => void requestSend()}
               type="button"
-              disabled={sendBusy || scheduleBusy || attachBusy}
+              disabled={sendBusy || scheduleBusy || attachBusy || scheduledEditSaving}
+              title={scheduledEditMode ? "Envoyer maintenant" : "Envoyer"}
+              aria-label={scheduledEditMode ? "Envoyer maintenant" : "Envoyer"}
             >
-              {attachBusy ? "Préparation…" : sendBusy ? "Envoi…" : "Envoyer"}
+              <span className={styles.composeSendIcon} aria-hidden>➤</span>
+              <span className={styles.composeSendText}>
+                {attachBusy ? "Préparation…" : sendBusy || scheduledEditSaving ? "Envoi…" : "Envoyer"}
+              </span>
             </button>
           </div>
         </div>
@@ -1268,11 +1302,12 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
             normalizeEmails(to).length
           }
           subject={subject.trim() || "(sans objet)"}
-          saving={Boolean(scheduleBusy)}
+          saving={Boolean(scheduleBusy || scheduledEditSaving)}
           error={scheduleError}
           successMessage="Programmation réussie."
           savingLabel="Programmation en cours…"
-          onClose={() => !scheduleBusy && setScheduleModalOpen(false)}
+          initialScheduledAt={scheduledEditScheduledAt}
+          onClose={() => !scheduleBusy && !scheduledEditSaving && setScheduleModalOpen(false)}
           onConfirm={(scheduledAt) => confirmSchedule(scheduledAt)}
           onSuccess={async () => {
             setScheduleModalOpen(false);

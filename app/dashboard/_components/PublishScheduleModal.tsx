@@ -26,6 +26,7 @@ type PublishScheduleModalProps = {
   successMessage?: string;
   savingLabel?: string;
   enableImmediateUnselectedWarning?: boolean;
+  initialSelections?: PublishScheduleSelection[];
   onClose: () => void;
   onConfirm: (
     selections: PublishScheduleSelection[],
@@ -101,6 +102,7 @@ export default function PublishScheduleModal({
   successMessage = "Programmation réussie.",
   savingLabel = "Programmation en cours…",
   enableImmediateUnselectedWarning = false,
+  initialSelections,
   onClose,
   onConfirm,
   onSuccess,
@@ -129,13 +131,40 @@ export default function PublishScheduleModal({
 
   useEffect(() => {
     if (!open) return;
-    setSelected({});
-    setDateByChannel({});
-    setTimeByChannel({});
+    const nextSelected: Record<string, boolean> = {};
+    const nextDates: Record<string, string> = {};
+    const nextTimes: Record<string, string> = {};
+    const byChannel = new Map(
+      (initialSelections || []).map((selection) => [selection.channel, selection]),
+    );
+
+    if (initialSelections?.length) {
+      for (const item of items) {
+        const selection = byChannel.get(item.channel);
+        nextSelected[item.channel] = Boolean(selection);
+        if (selection?.scheduledAt) {
+          const date = new Date(selection.scheduledAt);
+          if (Number.isFinite(date.getTime())) {
+            nextDates[item.channel] = `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+            nextTimes[item.channel] = `${pad2(date.getHours())}:${pad2(date.getMinutes())}`;
+          }
+        }
+      }
+    }
+
+    setSelected(nextSelected);
+    setDateByChannel(nextDates);
+    setTimeByChannel(nextTimes);
     setLocalError("");
     setSubmitting(false);
     setDoneMessage("");
-  }, [open, items.map((item) => item.channel).join("|")]);
+  }, [
+    open,
+    items.map((item) => item.channel).join("|"),
+    (initialSelections || [])
+      .map((selection) => `${selection.channel}:${selection.scheduledAt}`)
+      .join("|"),
+  ]);
 
   if (!open) return null;
 
