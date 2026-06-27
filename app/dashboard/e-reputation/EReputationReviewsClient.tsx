@@ -925,27 +925,27 @@ export default function EReputationReviewsClient({
                     <button className={styles.btnPrimarySmall} type="button" disabled={!canPublish} onClick={publishReply}>
                       {publishing ? "Publication..." : selectedAlreadyAnswered ? "Modifier la réponse" : "Publier la réponse"}
                     </button>
-                    <div className={styles.modalDangerTools}>
-                      {canReport ? (
-                        <a
-                          className={styles.reportReviewButton}
-                          href={reportGoogleUrl || "#"}
-                          target="_blank"
-                          rel="noreferrer"
-                          aria-label={`Signaler l’avis de ${selectedReview.name} sur Google`}
-                        >
-                          <span aria-hidden="true">⚠</span>
-                          <span className={styles.reportReviewTooltip}>Signaler l’avis sur Google</span>
-                        </a>
-                      ) : null}
-                      {selectedAlreadyAnswered ? (
-                        <button className={styles.btnDangerSmall} type="button" disabled={!canDelete} onClick={deleteReply}>
-                          {deleting ? "Suppression..." : "Supprimer"}
-                        </button>
-                      ) : null}
-                    </div>
+                    {selectedAlreadyAnswered ? (
+                      <button className={styles.btnDangerSmall} type="button" disabled={!canDelete} onClick={deleteReply}>
+                        {deleting ? "Suppression..." : "Supprimer"}
+                      </button>
+                    ) : null}
                   </div>
-                  <p className={styles.secureText}>Vous validez chaque réponse avant publication sur Google.</p>
+                  <div className={styles.reportFooterLine}>
+                    <p className={styles.secureText}>Vous validez chaque réponse avant publication sur Google.</p>
+                    {canReport ? (
+                      <a
+                        className={styles.reportReviewButton}
+                        href={reportGoogleUrl || "#"}
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label={`Signaler l’avis de ${selectedReview.name} sur Google`}
+                      >
+                        <span aria-hidden="true">⚠</span>
+                        <span className={styles.reportReviewTooltip}>Signaler l’avis sur Google</span>
+                      </a>
+                    ) : null}
+                  </div>
                 </article>
               </div>
             </section>

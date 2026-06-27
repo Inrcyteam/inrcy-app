@@ -12,6 +12,7 @@ import { getConnectionDisplayStatus, mailConnectionKind } from "@/lib/connection
 import { stripTemplateSignatureBlock } from "@/lib/mailTemplateCleanup";
 import { sanitizeRichMailHtml } from "@/lib/mailRichText";
 import { appendUnsubscribeFooterToHtml, appendUnsubscribeFooterToText } from "@/lib/mailSuppression";
+import { createMailProviderSendError } from "@/lib/mailDeliveryErrors";
 
 export type SendMailBinaryAttachment = {
   filename: string;
@@ -185,7 +186,7 @@ async function sendViaGmail(
       await supabaseAdmin.from("integrations").update({ status: "expired" }).eq("id", accountId);
     }
     const data = await sendRes.text().catch(() => "");
-    throw new Error(`Envoi Gmail impossible (${sendRes.status}) ${data}`.trim());
+    throw createMailProviderSendError(data || `Envoi Gmail impossible (${sendRes.status})`, "gmail", sendRes.status);
   }
 
   const data = await sendRes.json().catch(() => ({}));
@@ -243,7 +244,7 @@ async function sendViaMicrosoft(
 
   if (!graphRes.ok) {
     const details = await graphRes.text().catch(() => "");
-    throw new Error(`Envoi Outlook impossible (${graphRes.status}) ${details}`.trim());
+    throw createMailProviderSendError(details || `Envoi Outlook impossible (${graphRes.status})`, "microsoft", graphRes.status);
   }
 
   return { provider: "microsoft" as const, providerMessageId: null, providerThreadId: null };
@@ -271,7 +272,7 @@ async function sendViaImap(
     secure: typeof imapSettings.secure === "boolean" ? Boolean(imapSettings.secure) : Number(imapSettings.port || 993) === 993,
   };
   if (!smtp.host || !smtp.port || !login || !password) {
-    throw new Error("Configuration SMTP IMAP incomplète.");
+    throw createMailProviderSendError("Configuration SMTP IMAP incomplète.", "imap");
   }
 
   const secure = typeof smtp.secure === "boolean" ? Boolean(smtp.secure) : Number(smtp.port) === 465;
@@ -286,20 +287,25 @@ async function sendViaImap(
 
   const fromName = String(imap.user || login);
   const from = `"${fromName}" <${login}>`;
-  const smtpResult = await transporter.sendMail({
-    from,
-    to,
-    subject,
-    text,
-    html,
-    attachments: attachments.map((attachment) => ({
-      filename: attachment.filename || "piece-jointe",
-      content: attachment.content,
-      contentType: attachment.mimeType || "application/octet-stream",
-      cid: attachment.inline ? attachment.cid : undefined,
-      contentDisposition: attachment.inline ? "inline" : "attachment",
-    })),
-  });
+  let smtpResult: any;
+  try {
+    smtpResult = await transporter.sendMail({
+      from,
+      to,
+      subject,
+      text,
+      html,
+      attachments: attachments.map((attachment) => ({
+        filename: attachment.filename || "piece-jointe",
+        content: attachment.content,
+        contentType: attachment.mimeType || "application/octet-stream",
+        cid: attachment.inline ? attachment.cid : undefined,
+        contentDisposition: attachment.inline ? "inline" : "attachment",
+      })),
+    });
+  } catch (error) {
+    throw createMailProviderSendError(error, "imap");
+  }
 
   try {
     const raw = await new Promise<Buffer>((resolve, reject) => {

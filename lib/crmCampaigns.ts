@@ -5,6 +5,7 @@ import { textToSimpleHtml } from "@/lib/inrsendSignature";
 import { sanitizeRichMailHtml } from "@/lib/mailRichText";
 import { normalizeMailSubject } from "@/lib/mailEncoding";
 import { awardWeeklyFeatureUseForCampaign } from "@/lib/loyalty/serverAward";
+import { normalizeMailDeliveryError } from "@/lib/mailDeliveryErrors";
 import { downloadMailAttachmentRefs, parseMailAttachmentRefs, type MailAttachmentRef } from "@/lib/mailAttachmentRefs";
 import { providerBatchLimit } from "@/lib/crmRecipients";
 import {
@@ -233,6 +234,29 @@ async function claimQueuedRecipients(campaignId: string, limit: number) {
 async function resolveCampaignAttachments(refs: MailAttachmentRef[]) {
   if (refs.length === 0) return [] as Array<{ filename: string; mimeType?: string; content: Buffer }>;
   return downloadMailAttachmentRefs(supabaseAdmin as any, refs);
+}
+
+async function markCampaignRecipientsFailedForAccountIssue(campaignId: string, userId: string, message: string) {
+  const now = new Date().toISOString();
+  const { data, error } = await supabaseAdmin
+    .from("mail_campaign_recipients")
+    .update({
+      status: "failed",
+      processing_started_at: null,
+      error: message,
+      last_error: message,
+      updated_at: now,
+      bounce_type: null,
+      suppression_reason: null,
+      next_attempt_at: null,
+    })
+    .eq("campaign_id", campaignId)
+    .eq("user_id", userId)
+    .in("status", ["queued", "processing"])
+    .select("id");
+
+  if (error) throw error;
+  return Array.isArray(data) ? data.length : 0;
 }
 
 async function markRecipientBlockedBySuppression(args: {
@@ -614,7 +638,10 @@ export async function processPendingMailCampaigns(opts?: {
       continue;
     }
 
-    for (const row of claimedRows) {
+    let stopCampaignForAccountError = false;
+    for (let rowIndex = 0; rowIndex < claimedRows.length; rowIndex += 1) {
+      const row = claimedRows[rowIndex];
+      if (!row) continue;
       const recipientId = asString(row.id) || "";
       const email = asString(row.email) || "";
       if (!recipientId || !email) continue;
@@ -673,7 +700,25 @@ export async function processPendingMailCampaigns(opts?: {
 
         summary.sent += 1;
       } catch (sendError) {
-        const message = sendError instanceof Error ? sendError.message : "Envoi impossible.";
+        const normalized = normalizeMailDeliveryError(sendError, provider);
+        const message = normalized.message;
+
+        if (normalized.accountLevel) {
+          const failedCount = await markCampaignRecipientsFailedForAccountIssue(campaignId, userId, message);
+          await supabaseAdmin
+            .from("mail_campaigns")
+            .update({
+              last_error: message,
+              updated_at: new Date().toISOString(),
+              last_activity_at: new Date().toISOString(),
+            })
+            .eq("id", campaignId);
+          summary.failed += failedCount;
+          summary.recipientsProcessed += failedCount;
+          stopCampaignForAccountError = true;
+          break;
+        }
+
         const classification = classifyMailFailure(message);
         if (classification.shouldSuppress && classification.suppressionReason) {
           await upsertSuppressionEntry({
@@ -693,12 +738,14 @@ export async function processPendingMailCampaigns(opts?: {
           .eq("id", campaignId);
         if (result === "failed") summary.failed += 1;
         else summary.retried += 1;
+        summary.recipientsProcessed += 1;
       }
-
-      summary.recipientsProcessed += 1;
     }
 
     const counters = await refreshCampaignCounters(campaignId);
+    if (stopCampaignForAccountError) {
+      busyIntegrationIds.add(integrationId);
+    }
     if (counters.sentCount > 0) {
       try {
         await awardWeeklyFeatureUseForCampaign({

@@ -35,6 +35,7 @@ import {
 } from "@/app/dashboard/booster/publier/publishModal.shared";
 import { darkOptionStyle, darkSelectStyle, lightFieldStyle, textAreaStyle } from "@/app/dashboard/booster/publier/publishModal.styles";
 import { confirmInrcy } from "@/lib/inrcyDialog";
+import { getUserFacingMailError } from "@/lib/mailDeliveryErrors";
 import {
   MAILBOX_RECIPIENTS_PAGE_SIZE,
   type CampaignRecipientsFilterId,
@@ -196,6 +197,12 @@ function getNestedString(record: any, path: string[]) {
   return typeof current === "string" ? current.trim() : "";
 }
 
+function formatVisibleMailError(value: unknown, provider?: unknown) {
+  const raw = typeof value === "string" ? value.trim() : String(value || "").trim();
+  if (!raw) return "";
+  return getUserFacingMailError(raw, typeof provider === "string" ? provider : undefined);
+}
+
 function getTiktokPublicationUrl(result: any) {
   const direct = firstStringDeep(
     result?.external_url,
@@ -314,6 +321,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
   const [isMobileViewport, setIsMobileViewport] = React.useState(false);
   const detailsBodyRef = React.useRef<HTMLDivElement | null>(null);
   const detailsScrollSnapshotRef = React.useRef<number | null>(null);
+  const detailsMailProvider = String(detailsItem?.provider || detailsItem?.payload?.provider || "").trim();
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;
@@ -995,7 +1003,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
 
                           {detailsActionError ? (
                             <div className={styles.detailsError}>
-                              <b>Action :</b> {detailsActionError}
+                              <b>Action :</b> {formatVisibleMailError(detailsActionError, detailsMailProvider) || detailsActionError}
                             </div>
                           ) : null}
 
@@ -1045,7 +1053,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
 
                           {detailsItem.error ? (
                             <div className={styles.detailsError}>
-                              <b>Détail :</b> {detailsItem.error}
+                              <b>Détail :</b> {detailsItem.source !== "app_events" ? formatVisibleMailError(detailsItem.error, detailsMailProvider) : detailsItem.error}
                             </div>
                           ) : null}
                         </section>
@@ -1805,7 +1813,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                       <span className={styles.attachmentMeta}>{statusLabel}</span>
                                       {attemptLabel ? <span className={styles.attachmentMeta}>{attemptLabel}</span> : null}
                                       {recipient.last_error || recipient.error ? (
-                                        <span className={styles.attachmentMeta} style={{ color: "#ffb0b0" }}>{recipient.last_error || recipient.error}</span>
+                                        <span className={styles.attachmentMeta} style={{ color: "#ffb0b0" }}>{formatVisibleMailError(recipient.last_error || recipient.error, detailsMailProvider)}</span>
                                       ) : null}
                                     </div>
                                   );

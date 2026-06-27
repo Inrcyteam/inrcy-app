@@ -10,6 +10,7 @@ import { stripTemplateSignatureBlock } from "@/lib/mailTemplateCleanup";
 import { sanitizeRichMailHtml } from "@/lib/mailRichText";
 import { inferInrSendFileRole, saveInrSendHistoryFiles } from "@/lib/inrsend/historyFiles";
 import { getConnectionDisplayStatus } from "@/lib/connectionVersions";
+import { normalizeMailDeliveryError } from "@/lib/mailDeliveryErrors";
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
@@ -358,9 +359,16 @@ const handler = async (req: Request) => {
     if (sendRes.status === 401 || sendRes.status === 403) {
       await supabase.from("integrations").update({ status: "expired" }).eq("id", account.id);
     }
+    const normalized = normalizeMailDeliveryError(sendData || `Envoi Gmail impossible (${sendRes.status})`, "gmail", sendRes.status);
     return NextResponse.json(
-      { error: "Envoi Gmail impossible pour le moment.", gmailStatus: sendRes.status, gmailError: sendData },
-      { status: 502 }
+      {
+        error: normalized.message,
+        user_message: normalized.message,
+        error_title: normalized.title,
+        error_action: normalized.action,
+        error_kind: normalized.kind,
+      },
+      { status: normalized.accountLevel ? 400 : 502 }
     );
   }
 

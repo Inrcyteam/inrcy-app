@@ -12,6 +12,7 @@ import { sanitizeRichMailHtml } from "@/lib/mailRichText";
 import { inferInrSendFileRole, saveInrSendHistoryFiles } from "@/lib/inrsend/historyFiles";
 import { getConnectionDisplayStatus } from "@/lib/connectionVersions";
 import { enforceRateLimit } from "@/lib/rateLimit";
+import { normalizeMailDeliveryError } from "@/lib/mailDeliveryErrors";
 
 // Microsoft Graph mail send requires Node.js runtime in most deployments.
 export const runtime = "nodejs";
@@ -206,7 +207,17 @@ const handler = async (req: Request) => {
 
     if (!graphRes.ok) {
       const details = await graphRes.text().catch(() => "");
-      return NextResponse.json({ error: "Envoi Outlook impossible pour le moment.", details }, { status: 500 });
+      const normalized = normalizeMailDeliveryError(details || `Envoi Outlook impossible (${graphRes.status})`, "microsoft", graphRes.status);
+      return NextResponse.json(
+        {
+          error: normalized.message,
+          user_message: normalized.message,
+          error_title: normalized.title,
+          error_action: normalized.action,
+          error_kind: normalized.kind,
+        },
+        { status: normalized.accountLevel ? 400 : 502 },
+      );
     }
 
     // --- iNr'Send history (Supabase) ---
@@ -254,9 +265,16 @@ const handler = async (req: Request) => {
 
     return NextResponse.json({ success: true });
   } catch (e: unknown) {
+    const normalized = normalizeMailDeliveryError(safeErrorMessage(e) || e || "Impossible d'envoyer le message pour le moment.", "microsoft", asHttpStatus(asRecord(e)["status"], 500));
     return NextResponse.json(
-      { error: safeErrorMessage(e) || "Impossible d'envoyer le message pour le moment." },
-      { status: asHttpStatus(asRecord(e)["status"], 500) }
+      {
+        error: normalized.message,
+        user_message: normalized.message,
+        error_title: normalized.title,
+        error_action: normalized.action,
+        error_kind: normalized.kind,
+      },
+      { status: normalized.accountLevel ? 400 : 500 }
     );
   }
 };

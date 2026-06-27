@@ -2269,3 +2269,63 @@
     display: none;
   }
 }
+
+/* E-réputation — signalement séparé des actions de réponse */
+.reportFooterLine {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.reportFooterLine .secureText {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+}
+
+.reportFooterLine .reportReviewButton {
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  border-radius: 11px;
+  opacity: 0.78;
+}
+
+.reportFooterLine .reportReviewButton:hover,
+.reportFooterLine .reportReviewButton:focus-visible {
+  opacity: 1;
+}
+
+.reportFooterLine .reportReviewButton > span:first-child {
+  font-size: 14px;
+}
+
+@media (max-width: 760px) {
+  .reportFooterLine {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 9px !important;
+    margin-top: 10px !important;
+  }
+
+  .reportFooterLine .reportReviewButton {
+    order: 1;
+    width: 100% !important;
+    height: 38px !important;
+    min-width: 0 !important;
+    opacity: 0.86;
+  }
+
+  .reportFooterLine .reportReviewButton::after {
+    content: "Signaler l’avis";
+  }
+
+  .reportFooterLine .secureText {
+    order: 2;
+    margin: 0 !important;
+  }
+}

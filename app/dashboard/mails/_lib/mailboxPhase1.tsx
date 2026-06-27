@@ -1,6 +1,7 @@
 import React from "react";
 import styles from "../mails.module.css";
 import type { MailCampaignRecipientInput } from "@/lib/crmRecipients";
+import { getUserFacingMailError } from "@/lib/mailDeliveryErrors";
 import {
   getDefaultChannelVideoSettings,
   isBoosterVideoChannelKey,
@@ -1591,7 +1592,7 @@ export function formatOutboxStatusLabel(item: OutboxItem) {
     const counts = campaignCounts(raw);
     if (status === "queued") return `En attente • ${formatCampaignProgress(raw)}`;
     if (status === "processing") return `Campagne en cours • ${formatCampaignProgress(raw)}`;
-    if (status === "paused") return raw?.last_error ? `Campagne en pause • ${raw.last_error}` : `Campagne en pause • ${formatCampaignProgress(raw)}`;
+    if (status === "paused") return raw?.last_error ? `Campagne en pause • ${getUserFacingMailError(raw.last_error, raw?.provider)}` : `Campagne en pause • ${formatCampaignProgress(raw)}`;
     if (status === "partial") return `Campagne partielle • ${formatCampaignProgress(raw)}`;
     if (status === "failed") return `Campagne en échec • ${counts.failed}/${counts.total || counts.failed} en échec`;
     if (status === "sent" || status === "completed") return item.sent_at ? `Campagne terminée • ${new Date(item.sent_at).toLocaleString()}` : `Campagne terminée • ${formatCampaignProgress(raw)}`;

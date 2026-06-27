@@ -2192,7 +2192,7 @@ async function deleteDraftPermanently(id: string) {
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(data?.error || "La campagne n’a pas pu être programmée pour le moment.");
+        throw new Error(data?.user_message || data?.error || "La campagne n’a pas pu être programmée pour le moment.");
       }
 
       if (draftId) {
@@ -2359,7 +2359,7 @@ async function deleteDraftPermanently(id: string) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setToast(data?.error || "Le message n’a pas pu être envoyé pour le moment.");
+        setToast(data?.user_message || data?.error || "Le message n’a pas pu être envoyé pour le moment.");
         return;
       }
 

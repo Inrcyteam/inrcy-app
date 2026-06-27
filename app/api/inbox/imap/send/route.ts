@@ -15,6 +15,7 @@ import { stripTemplateSignatureBlock } from "@/lib/mailTemplateCleanup";
 import { sanitizeRichMailHtml } from "@/lib/mailRichText";
 import { inferInrSendFileRole, saveInrSendHistoryFiles } from "@/lib/inrsend/historyFiles";
 import { enforceRateLimit } from "@/lib/rateLimit";
+import { normalizeMailDeliveryError } from "@/lib/mailDeliveryErrors";
 
 
 // IMAP + SMTP require Node.js runtime (Edge runtime can't open raw TCP sockets)
@@ -244,9 +245,16 @@ const handler = async (req: Request) => {
 
     return NextResponse.json({ success: true, id: info.messageId });
   } catch (e: unknown) {
+    const normalized = normalizeMailDeliveryError(safeErrorMessage(e) || e || "Impossible d'envoyer le message pour le moment.", "imap");
     return NextResponse.json(
-      { error: safeErrorMessage(e) || "Impossible d'envoyer le message pour le moment." },
-      { status: 500 }
+      {
+        error: normalized.message,
+        user_message: normalized.message,
+        error_title: normalized.title,
+        error_action: normalized.action,
+        error_kind: normalized.kind,
+      },
+      { status: normalized.accountLevel ? 400 : 500 }
     );
   }
 };
