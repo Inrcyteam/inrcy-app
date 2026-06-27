@@ -8535,6 +8535,7 @@ export default function AgentClient() {
                   aria-label={`Programmer — ${automation.title}`}
                   title="Programmer cette automatisation"
                 >
+                  <span className={styles.settingsButtonLabel}>Programmer</span>
                   <AutomationSettingsIcon />
                 </button>
               </article>

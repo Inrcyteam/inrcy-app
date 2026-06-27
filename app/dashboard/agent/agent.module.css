@@ -12978,3 +12978,189 @@ button.campaignInfoCard:focus-visible .campaignInfoEye {
 .modalActionButton[data-tone="warning"] {
   background: linear-gradient(135deg, #1d4ed8, #9333ea);
 }
+
+/* Correctif responsive iNrAgent — 4 automatisations en lignes explicites */
+.settingsButtonLabel {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .automationGrid {
+    grid-template-columns: 1fr !important;
+    gap: 8px !important;
+  }
+
+  .automationCard {
+    min-height: 58px !important;
+    border-radius: 18px !important;
+  }
+
+  .automationCard .automationSelect {
+    display: grid !important;
+    grid-template-columns: 36px minmax(0, 1fr) !important;
+    align-items: center !important;
+    gap: 10px !important;
+    min-height: 58px !important;
+    padding: 8px 192px 8px 11px !important;
+  }
+
+  .automationCard .cardIcon {
+    width: 36px !important;
+    height: 36px !important;
+    min-width: 36px !important;
+    border-radius: 13px !important;
+  }
+
+  .automationCard .cardIcon svg {
+    width: 19px !important;
+    height: 19px !important;
+  }
+
+  .automationCard .cardTitle {
+    max-width: none !important;
+    min-width: 0 !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    white-space: nowrap !important;
+    font-size: 17px !important;
+    line-height: 1.05 !important;
+    letter-spacing: -0.045em !important;
+  }
+
+  .automationCard .cardTitleFull {
+    display: none !important;
+  }
+
+  .automationCard .cardTitleShort {
+    display: inline !important;
+  }
+
+  .automationCard .cardPendingCount {
+    display: inline-grid !important;
+    place-items: center !important;
+    position: absolute !important;
+    top: 50% !important;
+    right: 145px !important;
+    bottom: auto !important;
+    width: auto !important;
+    min-width: 24px !important;
+    height: 24px !important;
+    min-height: 24px !important;
+    padding: 0 7px !important;
+    transform: translateY(-50%) !important;
+    font-size: 0 !important;
+    line-height: 1 !important;
+    letter-spacing: 0 !important;
+    border-radius: 999px !important;
+    z-index: 9 !important;
+    pointer-events: none !important;
+  }
+
+  .automationCard .cardPendingCount::before {
+    content: attr(data-count) !important;
+    font-size: 12px !important;
+    line-height: 1 !important;
+    font-weight: 950 !important;
+  }
+
+  .automationCard .settingsButton {
+    top: 50% !important;
+    right: 20px !important;
+    width: 116px !important;
+    height: 34px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    transform: translateY(-50%) !important;
+    border-radius: 999px !important;
+    color: rgba(255, 255, 255, 0.95) !important;
+    background: linear-gradient(135deg, rgba(59, 130, 246, 0.28), rgba(168, 85, 247, 0.22)) !important;
+    border: 1px solid rgba(147, 197, 253, 0.28) !important;
+    box-shadow:
+      inset 0 0 18px rgba(255, 255, 255, 0.035),
+      0 0 18px rgba(99, 102, 241, 0.2) !important;
+    z-index: 8 !important;
+  }
+
+  .automationCard .settingsButton:hover {
+    transform: translateY(-50%) scale(1.02) !important;
+  }
+
+  .automationCard .settingsButtonLabel {
+    display: inline !important;
+    font-size: 11px !important;
+    line-height: 1 !important;
+    font-weight: 900 !important;
+    letter-spacing: -0.02em !important;
+  }
+
+  .automationCard .settingsButton svg {
+    width: 16px !important;
+    height: 16px !important;
+    min-width: 16px !important;
+  }
+
+  .automationCard .cardStatus,
+  .automationCard .cardPendingCount + .cardStatus {
+    top: 50% !important;
+    right: 8px !important;
+    bottom: auto !important;
+    width: 7px !important;
+    height: 7px !important;
+    transform: translateY(-50%) !important;
+    z-index: 10 !important;
+  }
+}
+
+@media (max-width: 380px) {
+  .automationCard .automationSelect {
+    grid-template-columns: 34px minmax(0, 1fr) !important;
+    gap: 8px !important;
+    padding-right: 178px !important;
+  }
+
+  .automationCard .cardIcon {
+    width: 34px !important;
+    height: 34px !important;
+    min-width: 34px !important;
+  }
+
+  .automationCard .cardTitle {
+    font-size: 15.5px !important;
+  }
+
+  .automationCard .cardPendingCount {
+    right: 135px !important;
+    min-width: 22px !important;
+    height: 22px !important;
+    min-height: 22px !important;
+    padding: 0 6px !important;
+  }
+
+  .automationCard .cardPendingCount::before {
+    font-size: 11px !important;
+  }
+
+  .automationCard .settingsButton {
+    right: 19px !important;
+    width: 108px !important;
+    height: 32px !important;
+    gap: 5px !important;
+  }
+
+  .automationCard .settingsButtonLabel {
+    font-size: 10.4px !important;
+  }
+
+  .automationCard .settingsButton svg {
+    width: 15px !important;
+    height: 15px !important;
+    min-width: 15px !important;
+  }
+
+  .automationCard .cardStatus,
+  .automationCard .cardPendingCount + .cardStatus {
+    right: 8px !important;
+  }
+}
