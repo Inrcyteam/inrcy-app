@@ -8,9 +8,11 @@ import {
   sanitizeInrAgentSettings,
   type InrAgentAutomationKey,
   type InrAgentAutomationSettings,
+  type InrAgentChannel,
   type InrAgentFrequency,
   type InrAgentSettings,
 } from "@/lib/inrAgentSettings";
+import { getChannelConnectionStates } from "@/lib/channelConnectionState";
 
 type DbAgentGlobalSettingsRow = {
   global_enabled?: boolean | null;
@@ -260,6 +262,60 @@ function rowToAutomation(row: DbAgentAutomationSettingsRow | null | undefined): 
   };
 }
 
+function connectedInrAgentChannels(states: Awaited<ReturnType<typeof getChannelConnectionStates>>): Set<InrAgentChannel> {
+  const channels = new Set<InrAgentChannel>();
+  if (states.site_inrcy.connected) channels.add("site_inrcy");
+  if (states.site_web.connected) channels.add("site_web");
+  if (states.gmb.connected && !states.gmb.requiresUpdate) channels.add("gmb");
+  if (states.facebook.connected && !states.facebook.requiresUpdate) channels.add("facebook");
+  if (states.instagram.connected && !states.instagram.requiresUpdate) channels.add("instagram");
+  if (states.linkedin.connected && !states.linkedin.requiresUpdate) channels.add("linkedin");
+  if (states.tiktok.connected && !states.tiktok.requiresUpdate) channels.add("tiktok");
+  if (states.youtube_shorts.connected && !states.youtube_shorts.requiresUpdate) channels.add("youtube");
+  if (states.mails.connected && !states.mails.requiresUpdate) channels.add("mails");
+  return channels;
+}
+
+function filterSettingsByConnectedChannels(
+  settings: InrAgentSettings,
+  connectedChannels: Set<InrAgentChannel>,
+): InrAgentSettings {
+  const automations = { ...settings.automations };
+
+  for (const key of ["publish", "grow", "loyalty"] as const) {
+    const automation = automations[key];
+    const allowedChannels = automation.allowedChannels.filter((channel) =>
+      connectedChannels.has(channel),
+    );
+    automations[key] = {
+      ...automation,
+      allowedChannels,
+      enabled: allowedChannels.length > 0 ? automation.enabled : false,
+      nextRunAt: allowedChannels.length > 0 ? automation.nextRunAt : null,
+    };
+  }
+
+  const globalEnabled = Object.values(automations).some(
+    (automation) => automation.enabled,
+  );
+
+  return sanitizeInrAgentSettings({
+    ...settings,
+    globalEnabled,
+    enabled: globalEnabled,
+    automations,
+    allowedChannels: automations.publish.allowedChannels,
+  });
+}
+
+async function applyConnectedChannelFilter(settings: InrAgentSettings, userId: string) {
+  const states = await getChannelConnectionStates(supabaseAdmin, userId);
+  return filterSettingsByConnectedChannels(
+    settings,
+    connectedInrAgentChannels(states),
+  );
+}
+
 function rowsToSettings(globalRow: DbAgentGlobalSettingsRow | null | undefined, automationRows: DbAgentAutomationSettingsRow[]): InrAgentSettings {
   const automations = Object.fromEntries(
     INR_AGENT_AUTOMATION_KEYS.map((key) => {
@@ -307,8 +363,15 @@ export async function GET() {
     return NextResponse.json({ error: "Lecture des automatisations iNr'Agent impossible" }, { status: 500 });
   }
 
+  const settings = rowsToSettings(
+    globalData as DbAgentGlobalSettingsRow | null,
+    Array.isArray(automationData)
+      ? (automationData as DbAgentAutomationSettingsRow[])
+      : [],
+  );
+
   return NextResponse.json({
-    settings: rowsToSettings(globalData as DbAgentGlobalSettingsRow | null, Array.isArray(automationData) ? automationData as DbAgentAutomationSettingsRow[] : []),
+    settings: await applyConnectedChannelFilter(settings, user.id),
     tableMissing: false,
   });
 }
@@ -324,7 +387,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Requête invalide" }, { status: 400 });
   }
 
-  const settings = sanitizeInrAgentSettings((body as { settings?: Partial<InrAgentSettings> } | null)?.settings);
+  const settings = await applyConnectedChannelFilter(
+    sanitizeInrAgentSettings(
+      (body as { settings?: Partial<InrAgentSettings> } | null)?.settings,
+    ),
+    user.id,
+  );
   const now = new Date().toISOString();
 
   const globalPayload = {

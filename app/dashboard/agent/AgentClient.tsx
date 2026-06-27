@@ -26,6 +26,8 @@ import {
 } from "@/lib/mediaRules";
 import { makeAttachmentPath } from "@/app/dashboard/mails/_lib/mailboxPhase25";
 import HelpButton from "../_components/HelpButton";
+import PublishExecutionProgress from "../_components/PublishExecutionProgress";
+import PublishExecutionResultModal from "../_components/PublishExecutionResultModal";
 import PublishAiConfigurationDrawer from "../booster/publier/components/PublishAiConfigurationDrawer";
 import BoosterVideoFormatManager, {
   type BoosterVideoPreparationState,
@@ -88,6 +90,7 @@ import {
 import { editableHtmlToSiteText } from "@/lib/boosterFormatting";
 import { readSanitizedElementHtml } from "@/lib/sanitizeHtml";
 import styles from "./agent.module.css";
+import dashboardStyles from "../dashboard.module.css";
 
 type AutomationKey = "publish" | "grow" | "loyalty" | "stats";
 
@@ -159,6 +162,18 @@ type PrepareNowConfirmState = {
   key: Extract<AutomationKey, "grow" | "loyalty">;
   label: string;
   pendingCount: number;
+} | null;
+
+type AgentPublishExecutionProgressState = {
+  progress: number;
+  label: string;
+} | null;
+
+type AgentCampaignLaunchNotice = {
+  queued: number;
+  folder: "propulsions" | "fidelisations" | "mails";
+  title: string;
+  details: string;
 } | null;
 
 type AgentImageAsset = {
@@ -923,6 +938,113 @@ const channelToApi: Record<ChannelKey, InrAgentChannel> = {
 const apiToChannel = Object.fromEntries(
   Object.entries(channelToApi).map(([uiKey, apiKey]) => [apiKey, uiKey]),
 ) as Record<InrAgentChannel, ChannelKey>;
+
+const agentPublishChannelToBoosterChannel: Record<string, string> = {
+  siteInrcy: "inrcy_site",
+  site_inrcy: "inrcy_site",
+  siteWeb: "site_web",
+  site_web: "site_web",
+  gmb: "gmb",
+  google_business: "gmb",
+  facebook: "facebook",
+  instagram: "instagram",
+  linkedin: "linkedin",
+  tiktok: "tiktok",
+  youtube: "youtube_shorts",
+  youtube_shorts: "youtube_shorts",
+};
+
+function normalizeAgentExternalHref(input: unknown) {
+  const raw = String(input || "").trim();
+  if (!raw) return "";
+  if (/^(https?:)?\/\//i.test(raw)) return raw.startsWith("//") ? `https:${raw}` : raw;
+  if (/^www\./i.test(raw)) return `https://${raw}`;
+  if (/^[a-z0-9.-]+\.[a-z]{2,}(?:[/:?#].*)?$/i.test(raw)) return `https://${raw}`;
+  return raw;
+}
+
+type ConnectedChannelMap = Partial<Record<ChannelKey, boolean>>;
+
+function channelMapFromConnectionStates(payload: unknown): ConnectedChannelMap {
+  const states = asRecord(payload) || {};
+  const isUsable = (key: string) => {
+    const state = asRecord(states[key]) || {};
+    return Boolean(state.connected) && state.requiresUpdate !== true;
+  };
+
+  return {
+    siteInrcy: isUsable("site_inrcy"),
+    siteWeb: isUsable("site_web"),
+    gmb: isUsable("gmb"),
+    facebook: isUsable("facebook"),
+    instagram: isUsable("instagram"),
+    linkedin: isUsable("linkedin"),
+    tiktok: isUsable("tiktok"),
+    youtube: isUsable("youtube_shorts"),
+    mails: isUsable("mails"),
+  };
+}
+
+function connectedChannelsForAutomation(
+  automation: Automation,
+  connectedChannels: ConnectedChannelMap | null,
+): ChannelKey[] {
+  if (!connectedChannels) return automation.availableChannels;
+  return orderChannels(
+    automation.availableChannels.filter((channel) => Boolean(connectedChannels[channel])),
+    automation.availableChannels,
+  );
+}
+
+function connectedChannelMessage(automation: Automation | null) {
+  if (!automation || automation.availableChannels.length === 0) return "";
+  if (automation.key === "grow") {
+    return "Aucune boîte mail connectée. Connecte une boîte dans iNrSend avant de laisser iNr’Agent travailler dans Propulser.";
+  }
+  if (automation.key === "loyalty") {
+    return "Aucune boîte mail connectée. Connecte une boîte dans iNrSend avant de laisser iNr’Agent travailler dans Fidéliser.";
+  }
+  if (automation.key === "publish") {
+    return "Aucun canal de publication connecté. Connecte au moins un canal dans l’application avant de laisser iNr’Agent publier.";
+  }
+  return "Aucun canal connecté pour cette automatisation.";
+}
+
+function normalizeConfigsForConnectedChannels(
+  current: Record<AutomationKey, AutomationConfig>,
+  connectedChannels: ConnectedChannelMap,
+): Record<AutomationKey, AutomationConfig> {
+  let changed = false;
+  const next = { ...current };
+
+  for (const automation of automations) {
+    if (automation.key === "stats" || automation.availableChannels.length === 0) {
+      continue;
+    }
+
+    const currentConfig = current[automation.key];
+    const availableChannels = connectedChannelsForAutomation(
+      automation,
+      connectedChannels,
+    );
+    const channels = orderChannels(currentConfig.channels, availableChannels);
+    const enabled = availableChannels.length > 0 ? currentConfig.enabled : false;
+    const configChanged =
+      enabled !== currentConfig.enabled ||
+      channels.join("|") !== currentConfig.channels.join("|");
+
+    if (configChanged) {
+      changed = true;
+      next[automation.key] = {
+        ...currentConfig,
+        enabled,
+        channels,
+      };
+    }
+  }
+
+  return changed ? next : current;
+}
 
 const themeToApi: Record<string, InrAgentTheme> = {
   Conseils: "conseils",
@@ -3008,6 +3130,43 @@ function localInputsToIso(dateValue: string, timeValue: string) {
   return date.toISOString();
 }
 
+function openNativeDateTimePicker(input: HTMLInputElement | null) {
+  if (!input || input.disabled) return;
+  try {
+    input.focus({ preventScroll: true });
+  } catch {
+    input.focus();
+  }
+  const pickerInput = input as HTMLInputElement & { showPicker?: () => void };
+  if (typeof pickerInput.showPicker === "function") {
+    try {
+      pickerInput.showPicker();
+      return;
+    } catch {
+      // Safari et certains navigateurs peuvent refuser showPicker.
+    }
+  }
+  input.click();
+}
+
+function CalendarMiniIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M7 3v3M17 3v3M4.5 9.5h15M6.5 5h11A2.5 2.5 0 0 1 20 7.5v10A2.5 2.5 0 0 1 17.5 20h-11A2.5 2.5 0 0 1 4 17.5v-10A2.5 2.5 0 0 1 6.5 5Z" />
+      <path d="M8 13h.01M12 13h.01M16 13h.01M8 16.5h.01M12 16.5h.01" />
+    </svg>
+  );
+}
+
+function ClockMiniIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z" />
+      <path d="M12 7.5V12l3 2" />
+    </svg>
+  );
+}
+
 function computeNextOccurrence(config: AutomationConfig): string | null {
   if (!config.enabled) return null;
 
@@ -3077,6 +3236,10 @@ export default function AgentClient() {
   const [configs, setConfigs] = useState<
     Record<AutomationKey, AutomationConfig>
   >(() => settingsToConfigs(INR_AGENT_DEFAULT_SETTINGS));
+  const [agentConnectedChannels, setAgentConnectedChannels] =
+    useState<ConnectedChannelMap | null>(null);
+  const [connectedChannelsLoadState, setConnectedChannelsLoadState] =
+    useState<LoadState>("loading");
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [tableMissing, setTableMissing] = useState(false);
@@ -3088,6 +3251,10 @@ export default function AgentClient() {
     useState<AgentScheduledAction | null>(null);
   const [scheduleEditDate, setScheduleEditDate] = useState("");
   const [scheduleEditTime, setScheduleEditTime] = useState("");
+  const scheduleEditDateInputRef = useRef<HTMLInputElement | null>(null);
+  const scheduleEditTimeInputRef = useRef<HTMLInputElement | null>(null);
+  const validationScheduleDateInputRef = useRef<HTMLInputElement | null>(null);
+  const validationScheduleTimeInputRef = useRef<HTMLInputElement | null>(null);
   const [scheduleMutationState, setScheduleMutationState] = useState<
     "idle" | "saving"
   >("idle");
@@ -3109,6 +3276,13 @@ export default function AgentClient() {
     useState<ActionsLoadState>("loading");
   const [actionMutationState, setActionMutationState] =
     useState<ActionMutationState>("idle");
+  const [agentPublishExecutionProgress, setAgentPublishExecutionProgress] =
+    useState<AgentPublishExecutionProgressState>(null);
+  const [agentPublishSuccessSummary, setAgentPublishSuccessSummary] =
+    useState<any | null>(null);
+  const [agentCampaignLaunchNotice, setAgentCampaignLaunchNotice] =
+    useState<AgentCampaignLaunchNotice>(null);
+  const agentPublishProgressTimerRef = useRef<number | null>(null);
   const [prepareActionState, setPrepareActionState] =
     useState<PrepareActionState>("idle");
   const [prepareProgress, setPrepareProgress] =
@@ -3360,6 +3534,45 @@ export default function AgentClient() {
       alive = false;
     };
   }, []);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function loadConnectedChannels() {
+      setConnectedChannelsLoadState("loading");
+      try {
+        const response = await fetch("/api/integrations/channel-states", {
+          cache: "no-store",
+        });
+        const payload = await response.json().catch(() => null);
+        if (!alive) return;
+        if (!response.ok) {
+          throw new Error("Canaux connectés indisponibles.");
+        }
+
+        const nextConnectedChannels = channelMapFromConnectionStates(payload);
+        setAgentConnectedChannels(nextConnectedChannels);
+        setConnectedChannelsLoadState("ready");
+      } catch {
+        if (!alive) return;
+        setAgentConnectedChannels(null);
+        setConnectedChannelsLoadState("error");
+      }
+    }
+
+    loadConnectedChannels();
+
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!agentConnectedChannels || loadState === "loading") return;
+    setConfigs((current) =>
+      normalizeConfigsForConnectedChannels(current, agentConnectedChannels),
+    );
+  }, [agentConnectedChannels, loadState]);
   async function refreshActions(silent = false) {
     if (!silent) setActionsLoadState("loading");
 
@@ -3480,11 +3693,16 @@ export default function AgentClient() {
         config.time || "—",
       );
       const channels =
-        automation.key === "publish"
-          ? orderChannels(config.channels, automation.availableChannels)
-          : ["mails"];
+        automation.key === "stats"
+          ? (["mails"] as ChannelKey[])
+          : orderChannels(
+              config.channels,
+              connectedChannelsForAutomation(automation, agentConnectedChannels),
+            );
 
-      for (const channel of channels.length ? channels : ["mails"]) {
+      if (automation.key !== "stats" && channels.length === 0) continue;
+
+      for (const channel of channels) {
         rows.push({
           id: `automatic-${automation.key}-${channel}`,
           action: automation.title,
@@ -3543,7 +3761,7 @@ export default function AgentClient() {
         new Date(b.scheduledAtIso || 0).getTime()
       );
     });
-  }, [configs, scheduledActions]);
+  }, [agentConnectedChannels, configs, scheduledActions]);
 
   const manualHistoryItems = useMemo<ScheduleListItem[]>(() => {
     return scheduledActions
@@ -3590,27 +3808,48 @@ export default function AgentClient() {
   }, [scheduledActions]);
 
   const selectedConfig = configs[selected.key];
+  const selectedAvailableChannels = useMemo(
+    () => connectedChannelsForAutomation(selected, agentConnectedChannels),
+    [agentConnectedChannels, selected],
+  );
   const selectedRobotSteps = robotStepsByAutomation[selected.key];
   const settingsConfig = settingsKey ? configs[settingsKey] : null;
+  const settingsAvailableChannels = useMemo(
+    () =>
+      settingsAutomation
+        ? connectedChannelsForAutomation(settingsAutomation, agentConnectedChannels)
+        : [],
+    [agentConnectedChannels, settingsAutomation],
+  );
+  const settingsNoConnectedChannelBlock = Boolean(
+    settingsAutomation &&
+      settingsAutomation.key !== "stats" &&
+      settingsAutomation.availableChannels.length > 0 &&
+      connectedChannelsLoadState === "ready" &&
+      settingsAvailableChannels.length === 0,
+  );
+  const settingsConnectedChannelMessage = settingsNoConnectedChannelBlock
+    ? connectedChannelMessage(settingsAutomation)
+    : "";
   const hasPreparedAction = Boolean(selectedPreparedAction);
   const preparedImage = selectedPreparedAction
     ? extractImageAsset(selectedPreparedAction)
     : null;
   const preparedImageUrl = imageAssetUrl(preparedImage);
   const selectedConfigChannels = useMemo(
-    () => orderChannels(selectedConfig.channels, selected.availableChannels),
-    [selected.availableChannels, selectedConfig.channels],
+    () => orderChannels(selectedConfig.channels, selectedAvailableChannels),
+    [selectedAvailableChannels, selectedConfig.channels],
   );
   const preparedChannels = useMemo(
     () =>
       selectedPreparedAction
         ? orderChannels(
             channelsForAction(selectedPreparedAction, selectedConfigChannels),
-            selected.availableChannels,
+            selectedAvailableChannels,
           )
         : [],
     [
-      selected.availableChannels,
+      selectedAvailableChannels,
       selectedPreparedAction,
       selectedConfigChannels,
     ],
@@ -5557,7 +5796,11 @@ export default function AgentClient() {
     options: { closeModal?: boolean; showSuccess?: boolean } = {},
   ) {
     const { closeModal = true, showSuccess = true } = options;
-    const nextSettings = configsToSettings(agentSettings, configs);
+    const safeConfigs = agentConnectedChannels
+      ? normalizeConfigsForConnectedChannels(configs, agentConnectedChannels)
+      : configs;
+    const nextSettings = configsToSettings(agentSettings, safeConfigs);
+    setConfigs(safeConfigs);
     setSaveState("saving");
     setNotice(null);
 
@@ -5680,6 +5923,17 @@ export default function AgentClient() {
   function testAutomationNow(key: AutomationKey) {
     if (testNowKey || prepareActionState === "saving" || saveState === "saving")
       return;
+
+    const automation = automations.find((item) => item.key === key) ?? null;
+    if (
+      automation &&
+      key !== "stats" &&
+      connectedChannelsLoadState === "ready" &&
+      connectedChannelsForAutomation(automation, agentConnectedChannels).length === 0
+    ) {
+      showNotice(connectedChannelMessage(automation));
+      return;
+    }
 
     if (
       (key === "grow" || key === "loyalty") &&
@@ -6142,11 +6396,143 @@ export default function AgentClient() {
     }
   }
 
+  useEffect(() => {
+    return () => {
+      if (agentPublishProgressTimerRef.current) {
+        window.clearInterval(agentPublishProgressTimerRef.current);
+        agentPublishProgressTimerRef.current = null;
+      }
+    };
+  }, []);
+
+  function stopAgentPublishProgressTimer() {
+    if (agentPublishProgressTimerRef.current) {
+      window.clearInterval(agentPublishProgressTimerRef.current);
+      agentPublishProgressTimerRef.current = null;
+    }
+  }
+
+  function startAgentPublishProgress(action: AgentPreparedAction) {
+    stopAgentPublishProgressTimer();
+    const channels = Array.isArray(action.targetChannels)
+      ? action.targetChannels
+          .map((channel) => agentPublishChannelToBoosterChannel[String(channel || "").trim()] || String(channel || "").trim())
+          .filter(Boolean)
+      : [];
+    const selectedChannels = channels.length ? channels : ["publication"];
+    const startedAt = Date.now();
+    const estimatedMs = Math.max(8500, 4200 + selectedChannels.length * 5200);
+
+    setAgentPublishExecutionProgress({
+      progress: 6,
+      label: "Préparation de la publication iNr’Agent...",
+    });
+
+    agentPublishProgressTimerRef.current = window.setInterval(() => {
+      const ratio = Math.min(1, (Date.now() - startedAt) / estimatedMs);
+      const progress = Math.max(6, Math.min(96, Math.round(6 + ratio * 90)));
+      let label = "Préparation de la publication iNr’Agent...";
+      if (ratio >= 0.12 && ratio < 0.72) {
+        const channelRatio = Math.max(0, (ratio - 0.12) / 0.6);
+        const channelIndex = Math.min(
+          selectedChannels.length - 1,
+          Math.floor(channelRatio * selectedChannels.length),
+        );
+        const channel = selectedChannels[channelIndex];
+        const boosterChannel = agentPublishChannelToBoosterChannel[channel] || channel;
+        const labelName = channelDisplayName(boosterChannel || channel);
+        label = selectedChannels.length > 1
+          ? `Canal ${channelIndex + 1}/${selectedChannels.length} — publication sur ${labelName}...`
+          : `Publication sur ${labelName}...`;
+      } else if (ratio >= 0.72 && ratio < 0.88) {
+        label = "Récupération des retours canaux...";
+      } else if (ratio >= 0.88) {
+        label = "Finalisation dans iNr’Send...";
+      }
+      setAgentPublishExecutionProgress((current) =>
+        current ? { progress: Math.max(current.progress, progress), label } : current,
+      );
+    }, 450);
+  }
+
+  async function loadAgentPublishChannelLinks() {
+    try {
+      const response = await fetch("/api/booster/connected-channels", {
+        cache: "no-store",
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.channelDetails) return {};
+      const details = asRecord(payload.channelDetails) || {};
+      const links: Record<string, string> = {};
+      for (const [channel, value] of Object.entries(details)) {
+        const href = normalizeAgentExternalHref(asRecord(value)?.href);
+        if (href) links[channel] = href;
+      }
+      return links;
+    } catch {
+      return {};
+    }
+  }
+
+  function completeAgentPublishProgress(label: string) {
+    stopAgentPublishProgressTimer();
+    setAgentPublishExecutionProgress((current) =>
+      current ? { progress: 100, label } : current,
+    );
+  }
+
+  function buildAgentCampaignLaunchNotice(payload: {
+    campaignResult?: Record<string, unknown> | null;
+    action: AgentPreparedAction;
+  }): AgentCampaignLaunchNotice {
+    const campaignResult = payload.campaignResult || {};
+    const folderRaw = String(
+      campaignResult.folder || payload.action.payload?.folder || "",
+    ).trim();
+    const fallbackFolder = payload.action.automationKey === "loyalty" ? "fidelisations" : "propulsions";
+    const folder = (["propulsions", "fidelisations", "mails"].includes(folderRaw)
+      ? folderRaw
+      : fallbackFolder) as "propulsions" | "fidelisations" | "mails";
+    const queued = Math.max(
+      0,
+      Number(campaignResult.queued || payload.action.recipients?.length || 0),
+    );
+    return {
+      queued,
+      folder,
+      title: "Campagne lancée",
+      details: queued > 0
+        ? `${queued} email${queued > 1 ? "s" : ""} en file d’envoi. Le bilan final sera envoyé par mail au pro.`
+        : "La campagne a été confiée à iNr’Agent. Le bilan final sera envoyé par mail au pro.",
+    };
+  }
+
   async function updateActionStatus(status: "validated" | "refused") {
-    if (!selectedPreparedAction || actionMutationState === "saving") return;
+    const actionToExecute = selectedPreparedAction;
+    if (!actionToExecute || actionMutationState === "saving") return;
+
+    const isImmediatePublishExecution =
+      status === "validated" &&
+      actionToExecute.automationKey === "publish" &&
+      actionToExecute.targetTool === "booster" &&
+      actionToExecute.actionType === "publication";
+    const isImmediateCampaignExecution =
+      status === "validated" &&
+      (actionToExecute.automationKey === "grow" ||
+        actionToExecute.automationKey === "loyalty" ||
+        actionToExecute.targetTool === "mails" ||
+        actionToExecute.actionType === "mailing" ||
+        actionToExecute.actionType === "campaign");
 
     setActionMutationState("saving");
     setNotice(null);
+    setAgentCampaignLaunchNotice(null);
+    if (isImmediatePublishExecution) {
+      setValidationChoiceOpen(false);
+      setValidationScheduleOpen(false);
+      setAgentPublishSuccessSummary(null);
+      startAgentPublishProgress(actionToExecute);
+    }
 
     try {
       const endpoint =
@@ -6156,34 +6542,41 @@ export default function AgentClient() {
       const response = await fetch(endpoint, {
         method: status === "validated" ? "POST" : "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ actionId: selectedPreparedAction.id, status }),
+        body: JSON.stringify({ actionId: actionToExecute.id, status }),
       });
       const payload = (await response.json().catch(() => null)) as {
         action?: AgentPreparedAction;
         error?: string;
         tableMissing?: boolean;
         executed?: boolean;
-        publishResult?: {
-          summary?: {
-            successCount?: number;
-            failureCount?: number;
-          };
-        };
-        campaignResult?: {
-          queued?: number;
-          campaignStatus?: string;
-        };
+        publishResult?: Record<string, unknown> | null;
+        campaignResult?: Record<string, unknown> | null;
       } | null;
 
+      const applyReturnedAction = (nextAction: AgentPreparedAction) => {
+        setActions((current) =>
+          current.map((action) =>
+            action.id === nextAction.id ? nextAction : action,
+          ),
+        );
+      };
+
       if (!response.ok) {
-        if (payload?.action) {
-          const failedAction = payload.action;
-          setActions((current) =>
-            current.map((action) =>
-              action.id === failedAction.id ? failedAction : action,
-            ),
-          );
+        if (payload?.action) applyReturnedAction(payload.action);
+
+        const failedPublishSummary = asRecord(payload?.publishResult)?.summary;
+        if (isImmediatePublishExecution && failedPublishSummary) {
+          completeAgentPublishProgress("Échec");
+          await new Promise((resolve) => window.setTimeout(resolve, 220));
+          const channelLinks = await loadAgentPublishChannelLinks();
+          setAgentPublishExecutionProgress(null);
+          setAgentPublishSuccessSummary({
+            ...(asRecord(failedPublishSummary) || {}),
+            channelLinks,
+          });
+          return;
         }
+
         throw new Error(
           payload?.error || "Mise à jour de l’action impossible.",
         );
@@ -6191,18 +6584,11 @@ export default function AgentClient() {
 
       if (payload?.tableMissing) setTableMissing(true);
       if (payload?.action) {
-        const updatedAction = payload.action;
-        setActions((current) =>
-          current.map((action) =>
-            action.id === updatedAction.id ? updatedAction : action,
-          ),
-        );
+        applyReturnedAction(payload.action);
       } else {
         setActions((current) =>
           current.map((action) =>
-            action.id === selectedPreparedAction.id
-              ? { ...action, status }
-              : action,
+            action.id === actionToExecute.id ? { ...action, status } : action,
           ),
         );
       }
@@ -6210,25 +6596,41 @@ export default function AgentClient() {
       if (status === "validated") {
         setValidationChoiceOpen(false);
         setValidationScheduleOpen(false);
-        const campaignQueued = Number(payload?.campaignResult?.queued || 0);
-        if (campaignQueued > 0) {
-          showNotice(
-            `Campagne exécutée : ${campaignQueued} destinataire${campaignQueued > 1 ? "s" : ""} en file d’envoi.`,
+
+        if (isImmediatePublishExecution) {
+          const publishSummary = asRecord(payload?.publishResult)?.summary;
+          completeAgentPublishProgress(
+            asRecord(publishSummary)?.allFailed ? "Échec" : "Publié",
           );
-        } else {
-          const summary = payload?.publishResult?.summary;
-          const successCount = Number(summary?.successCount || 0);
-          const failureCount = Number(summary?.failureCount || 0);
-          showNotice(
-            successCount > 0
-              ? `Publication exécutée : ${successCount} canal${successCount > 1 ? "aux" : ""} publié${successCount > 1 ? "s" : ""}${failureCount > 0 ? `, ${failureCount} échec${failureCount > 1 ? "s" : ""}` : ""}.`
-              : "Action validée et exécutée par iNr’Agent.",
-          );
+          await new Promise((resolve) => window.setTimeout(resolve, 220));
+          const channelLinks = await loadAgentPublishChannelLinks();
+          setAgentPublishExecutionProgress(null);
+          setAgentPublishSuccessSummary({
+            ...(asRecord(publishSummary) || {}),
+            channelLinks,
+          });
+          return;
         }
+
+        if (isImmediateCampaignExecution && payload?.campaignResult) {
+          setAgentCampaignLaunchNotice(
+            buildAgentCampaignLaunchNotice({
+              campaignResult: payload.campaignResult,
+              action: payload.action || actionToExecute,
+            }),
+          );
+          return;
+        }
+
+        showNotice("Action validée et exécutée par iNr’Agent.");
       } else {
         showNotice("Action refusée. Rien ne sera exécuté.");
       }
     } catch (error) {
+      if (isImmediatePublishExecution) {
+        stopAgentPublishProgressTimer();
+        setAgentPublishExecutionProgress(null);
+      }
       showNotice(
         error instanceof Error
           ? error.message
@@ -6241,6 +6643,99 @@ export default function AgentClient() {
 
   return (
     <main className={styles.agentPage}>
+      {agentPublishExecutionProgress ? (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 130,
+            display: "grid",
+            placeItems: "center",
+            padding: 16,
+            background: "rgba(3, 8, 20, 0.52)",
+          }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Publication en cours"
+        >
+          <div
+            className={dashboardStyles.blockCard}
+            style={{
+              width: "min(520px, 100%)",
+              boxShadow: "0 30px 80px rgba(0,0,0,0.40)",
+              background:
+                "linear-gradient(180deg, rgba(12,18,32,0.98), rgba(10,14,24,0.98))",
+            }}
+          >
+            <PublishExecutionProgress
+              styles={dashboardStyles}
+              publishProgress={agentPublishExecutionProgress.progress}
+              publishProgressLabel={agentPublishExecutionProgress.label}
+            />
+          </div>
+        </div>
+      ) : null}
+
+      {agentPublishSuccessSummary ? (
+        <PublishExecutionResultModal
+          styles={dashboardStyles}
+          summary={agentPublishSuccessSummary}
+          onClose={() => setAgentPublishSuccessSummary(null)}
+          onOpenInrSend={() => {
+            setAgentPublishSuccessSummary(null);
+            router.push("/dashboard/mails?folder=publications");
+          }}
+        />
+      ) : null}
+
+      {agentCampaignLaunchNotice ? (
+        <div
+          className={styles.modalBackdrop}
+          role="presentation"
+          onClick={() => setAgentCampaignLaunchNotice(null)}
+        >
+          <section
+            className={`${styles.settingsModal} ${styles.validationChoiceModal}`}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Campagne lancée"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className={styles.modalClose}
+              onClick={() => setAgentCampaignLaunchNotice(null)}
+              aria-label="Fermer"
+            >
+              ×
+            </button>
+            <p className={styles.modalEyebrow}>iNr’Agent</p>
+            <h2>{agentCampaignLaunchNotice.title}</h2>
+            <p className={styles.modalHint}>{agentCampaignLaunchNotice.details}</p>
+            <div className={styles.modalActionButtonRow}>
+              <button
+                type="button"
+                className={styles.modalActionSecondaryButton}
+                onClick={() => setAgentCampaignLaunchNotice(null)}
+              >
+                Fermer
+              </button>
+              <button
+                type="button"
+                className={styles.modalActionButton}
+                onClick={() => {
+                  const folder = agentCampaignLaunchNotice.folder;
+                  setAgentCampaignLaunchNotice(null);
+                  router.push(`/dashboard/mails?folder=${folder}`);
+                }}
+              >
+                Voir dans iNr’Send
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
       <PublishAiConfigurationDrawer
         open={aiConfigurationOpen}
         isMobile={isMobileHeader}
@@ -8991,24 +9486,71 @@ export default function AgentClient() {
             <div className={styles.modalGrid}>
               <label>
                 <span>Date</span>
-                <input
-                  type="date"
-                  value={scheduleEditDate}
-                  onChange={(event) => setScheduleEditDate(event.target.value)}
-                />
+                <div
+                  className={styles.nativeDateTimeField}
+                  data-disabled={scheduleMutationState === "saving" ? "true" : "false"}
+                  onClick={() =>
+                    openNativeDateTimePicker(scheduleEditDateInputRef.current)
+                  }
+                >
+                  <input
+                    ref={scheduleEditDateInputRef}
+                    className={styles.nativeDateTimeInput}
+                    type="date"
+                    value={scheduleEditDate}
+                    disabled={scheduleMutationState === "saving"}
+                    onChange={(event) => setScheduleEditDate(event.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className={styles.nativeDateTimePickerButton}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openNativeDateTimePicker(scheduleEditDateInputRef.current);
+                    }}
+                    disabled={scheduleMutationState === "saving"}
+                    aria-label="Ouvrir le calendrier"
+                  >
+                    <CalendarMiniIcon />
+                  </button>
+                </div>
               </label>
               <label>
                 <span>Heure</span>
-                <input
-                  type="time"
-                  value={scheduleEditTime}
-                  onChange={(event) => setScheduleEditTime(event.target.value)}
-                />
+                <div
+                  className={styles.nativeDateTimeField}
+                  data-disabled={scheduleMutationState === "saving" ? "true" : "false"}
+                  onClick={() =>
+                    openNativeDateTimePicker(scheduleEditTimeInputRef.current)
+                  }
+                >
+                  <input
+                    ref={scheduleEditTimeInputRef}
+                    className={styles.nativeDateTimeInput}
+                    type="time"
+                    value={scheduleEditTime}
+                    disabled={scheduleMutationState === "saving"}
+                    onChange={(event) => setScheduleEditTime(event.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className={styles.nativeDateTimePickerButton}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openNativeDateTimePicker(scheduleEditTimeInputRef.current);
+                    }}
+                    disabled={scheduleMutationState === "saving"}
+                    aria-label="Ouvrir le choix de l’heure"
+                  >
+                    <ClockMiniIcon />
+                  </button>
+                </div>
               </label>
             </div>
-            <div className={styles.modalAction}>
+            <div className={styles.modalActionButtonRow}>
               <button
                 type="button"
+                className={styles.modalActionSecondaryButton}
                 onClick={() => setScheduleEditAction(null)}
                 disabled={scheduleMutationState === "saving"}
               >
@@ -9016,6 +9558,7 @@ export default function AgentClient() {
               </button>
               <button
                 type="button"
+                className={styles.modalActionButton}
                 onClick={() => void confirmScheduleEdit()}
                 disabled={scheduleMutationState === "saving"}
               >
@@ -9134,28 +9677,83 @@ export default function AgentClient() {
             <div className={styles.modalGrid}>
               <label>
                 <span>Date</span>
-                <input
-                  type="date"
-                  value={validationScheduleDate}
-                  onChange={(event) =>
-                    setValidationScheduleDate(event.target.value)
+                <div
+                  className={styles.nativeDateTimeField}
+                  data-disabled={validationScheduleState === "saving" ? "true" : "false"}
+                  onClick={() =>
+                    openNativeDateTimePicker(
+                      validationScheduleDateInputRef.current,
+                    )
                   }
-                />
+                >
+                  <input
+                    ref={validationScheduleDateInputRef}
+                    className={styles.nativeDateTimeInput}
+                    type="date"
+                    value={validationScheduleDate}
+                    disabled={validationScheduleState === "saving"}
+                    onChange={(event) =>
+                      setValidationScheduleDate(event.target.value)
+                    }
+                  />
+                  <button
+                    type="button"
+                    className={styles.nativeDateTimePickerButton}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openNativeDateTimePicker(
+                        validationScheduleDateInputRef.current,
+                      );
+                    }}
+                    disabled={validationScheduleState === "saving"}
+                    aria-label="Ouvrir le calendrier"
+                  >
+                    <CalendarMiniIcon />
+                  </button>
+                </div>
               </label>
               <label>
                 <span>Heure</span>
-                <input
-                  type="time"
-                  value={validationScheduleTime}
-                  onChange={(event) =>
-                    setValidationScheduleTime(event.target.value)
+                <div
+                  className={styles.nativeDateTimeField}
+                  data-disabled={validationScheduleState === "saving" ? "true" : "false"}
+                  onClick={() =>
+                    openNativeDateTimePicker(
+                      validationScheduleTimeInputRef.current,
+                    )
                   }
-                />
+                >
+                  <input
+                    ref={validationScheduleTimeInputRef}
+                    className={styles.nativeDateTimeInput}
+                    type="time"
+                    value={validationScheduleTime}
+                    disabled={validationScheduleState === "saving"}
+                    onChange={(event) =>
+                      setValidationScheduleTime(event.target.value)
+                    }
+                  />
+                  <button
+                    type="button"
+                    className={styles.nativeDateTimePickerButton}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openNativeDateTimePicker(
+                        validationScheduleTimeInputRef.current,
+                      );
+                    }}
+                    disabled={validationScheduleState === "saving"}
+                    aria-label="Ouvrir le choix de l’heure"
+                  >
+                    <ClockMiniIcon />
+                  </button>
+                </div>
               </label>
             </div>
-            <div className={styles.modalAction}>
+            <div className={styles.modalActionButtonRow}>
               <button
                 type="button"
+                className={styles.modalActionSecondaryButton}
                 onClick={() => setValidationScheduleOpen(false)}
                 disabled={validationScheduleState === "saving"}
               >
@@ -9163,6 +9761,7 @@ export default function AgentClient() {
               </button>
               <button
                 type="button"
+                className={styles.modalActionButton}
                 onClick={() => void scheduleValidatedAction()}
                 disabled={validationScheduleState === "saving"}
               >
@@ -9266,14 +9865,16 @@ export default function AgentClient() {
               <span>
                 <strong>Statut</strong>
                 <small>
-                  {settingsConfig.enabled
-                    ? "Le robot peut préparer cette action."
-                    : "Cette automatisation est en pause."}
+                  {settingsConnectedChannelMessage ||
+                    (settingsConfig.enabled
+                      ? "Le robot peut préparer cette action."
+                      : "Cette automatisation est en pause.")}
                 </small>
               </span>
               <input
                 type="checkbox"
                 checked={settingsConfig.enabled}
+                disabled={settingsNoConnectedChannelBlock}
                 onChange={(event) =>
                   updateConfig(settingsAutomation.key, {
                     enabled: event.target.checked,
@@ -9431,9 +10032,9 @@ export default function AgentClient() {
                 <div className={styles.campaignSettingsPair}>
                   <div className={styles.modalSection}>
                     <span>Canal</span>
-                    <div className={styles.choiceGrid}>
-                      {settingsAutomation.availableChannels.map(
-                        (channelKey) => {
+                    {settingsAvailableChannels.length > 0 ? (
+                      <div className={styles.choiceGrid}>
+                        {settingsAvailableChannels.map((channelKey) => {
                           const channel = channelOptions[channelKey];
                           const checked =
                             settingsConfig.channels.includes(channelKey);
@@ -9448,7 +10049,7 @@ export default function AgentClient() {
                                   channels: toggleChannelItem(
                                     settingsConfig.channels,
                                     channelKey,
-                                    settingsAutomation.availableChannels,
+                                    settingsAvailableChannels,
                                   ),
                                 })
                               }
@@ -9462,9 +10063,15 @@ export default function AgentClient() {
                               {channel.name}
                             </button>
                           );
-                        },
-                      )}
-                    </div>
+                        })}
+                      </div>
+                    ) : (
+                      <p className={styles.campaignEditHint}>
+                        {connectedChannelsLoadState === "loading"
+                          ? "Chargement des canaux connectés..."
+                          : connectedChannelMessage(settingsAutomation)}
+                      </p>
+                    )}
                   </div>
 
                   <div className={styles.modalSection}>
@@ -9526,9 +10133,9 @@ export default function AgentClient() {
                         ? "Canaux Booster / Publier"
                         : "Canal"}
                     </span>
-                    <div className={styles.choiceGrid}>
-                      {settingsAutomation.availableChannels.map(
-                        (channelKey) => {
+                    {settingsAvailableChannels.length > 0 ? (
+                      <div className={styles.choiceGrid}>
+                        {settingsAvailableChannels.map((channelKey) => {
                           const channel = channelOptions[channelKey];
                           const checked =
                             settingsConfig.channels.includes(channelKey);
@@ -9543,7 +10150,7 @@ export default function AgentClient() {
                                   channels: toggleChannelItem(
                                     settingsConfig.channels,
                                     channelKey,
-                                    settingsAutomation.availableChannels,
+                                    settingsAvailableChannels,
                                   ),
                                 })
                               }
@@ -9557,9 +10164,15 @@ export default function AgentClient() {
                               {channel.name}
                             </button>
                           );
-                        },
-                      )}
-                    </div>
+                        })}
+                      </div>
+                    ) : (
+                      <p className={styles.campaignEditHint}>
+                        {connectedChannelsLoadState === "loading"
+                          ? "Chargement des canaux connectés..."
+                          : connectedChannelMessage(settingsAutomation)}
+                      </p>
+                    )}
                   </div>
                 )}
 
@@ -9616,7 +10229,8 @@ export default function AgentClient() {
                 disabled={
                   saveState === "saving" ||
                   loadState === "loading" ||
-                  Boolean(testNowKey)
+                  Boolean(testNowKey) ||
+                  (settingsNoConnectedChannelBlock && settingsConfig.enabled)
                 }
               >
                 {saveState === "saving"
@@ -9631,7 +10245,8 @@ export default function AgentClient() {
                   saveState === "saving" ||
                   loadState === "loading" ||
                   prepareActionState === "saving" ||
-                  Boolean(testNowKey)
+                  Boolean(testNowKey) ||
+                  settingsNoConnectedChannelBlock
                 }
               >
                 {testNowKey === settingsAutomation.key ||

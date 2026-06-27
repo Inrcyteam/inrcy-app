@@ -1,5 +1,5 @@
 import { asRecord, asString } from "@/lib/tsSafe";
-import { getConnectionDisplayStatus, type ConnectionDisplayStatus } from "@/lib/connectionVersions";
+import { getConnectionDisplayStatus, mailConnectionKind, type ConnectionDisplayStatus } from "@/lib/connectionVersions";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { hasActiveInrcySite } from "@/lib/inrcySite";
 import { normalizeTiktokSettings } from "@/lib/tiktokMockSettings";
@@ -304,7 +304,18 @@ export async function getChannelConnectionStates(
   const youtubeShortsRequiresUpdate = youtubeShortsConnectionStatus === "needs_update";
 
   const mailRows = rows.filter((row) => row.category === "mail");
-  const mailConnectedCount = Math.max(0, Math.min(4, mailRows.length));
+  const connectedMailRows = mailRows.filter((row) => {
+    const status = (asString(row.status) || "").toLowerCase();
+    const isConnected = status === "connected";
+    const kind = mailConnectionKind(row.provider);
+    const connectionStatus = kind
+      ? getConnectionDisplayStatus(isConnected, kind, asRecord(row.settings))
+      : isConnected
+        ? "connected"
+        : "disconnected";
+    return isConnected && connectionStatus !== "needs_update";
+  });
+  const mailConnectedCount = Math.max(0, Math.min(4, connectedMailRows.length));
   const mailsConnected = mailConnectedCount > 0;
 
   const gmb = latestIntegration(rows, "google", "gmb", "gmb");

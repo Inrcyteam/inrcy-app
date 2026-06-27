@@ -1,5 +1,6 @@
 import type { MutableRefObject } from "react";
 import StatusMessage from "../../../_components/StatusMessage";
+import PublishExecutionProgress from "../../../_components/PublishExecutionProgress";
 
 type PublishModalStyles = Readonly<Record<string, string>>;
 
@@ -33,20 +34,12 @@ export default function PublishFooterActions({
     <div ref={publishAreaRef} className={styles.publishFooterRoot}>
       <div className={styles.publishFooterRow}>
         {busy ? (
-          <div className={styles.publishProgressBox}>
-            <div className={styles.publishProgressHeader}>
-              <strong className={styles.publishProgressTitle}>
-                {scheduling ? "Programmation en cours" : "Publication en cours"}
-              </strong>
-              <strong className={styles.publishProgressPercent}>{publishProgress}%</strong>
-            </div>
-            <span className={styles.publishProgressLabel}>
-              {publishProgressLabel || (scheduling ? "Programmation en cours..." : "Publication en cours...")}
-            </span>
-            <div className={styles.publishProgressTrack}>
-              <div style={{height:'100%',width:`${publishProgress}%`,borderRadius:999,background:'linear-gradient(90deg, rgba(76,195,255,0.92), rgba(99,102,241,0.95))',transition:'width 180ms ease'}} />
-            </div>
-          </div>
+          <PublishExecutionProgress
+            styles={styles}
+            scheduling={scheduling}
+            publishProgress={publishProgress}
+            publishProgressLabel={publishProgressLabel}
+          />
         ) : (
           <div style={{display:'flex',gap:10,flexWrap:'wrap',justifyContent:'flex-end',marginLeft:'auto'}}>
             <button

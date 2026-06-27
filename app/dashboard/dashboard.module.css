@@ -8848,3 +8848,77 @@
     linear-gradient(180deg, #050817 0%, #070a16 48%, #050711 100%);
   color: rgba(255, 255, 255, 0.92);
 }
+
+/* Booster Publier — correctif étape 1 : champs Programmer fiables Safari */
+.scheduleDateTimeField {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 42px;
+  cursor: pointer;
+}
+
+.scheduleDateTimeField[data-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+
+.scheduleDateTimeInput {
+  width: 100%;
+  min-height: 42px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: #ffffff;
+  color-scheme: dark;
+  padding: 10px 46px 10px 11px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.scheduleDateTimeInput:disabled {
+  cursor: not-allowed;
+}
+
+.scheduleDateTimeInput::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 1;
+  filter: invert(1) brightness(2);
+}
+
+.scheduleDateTimePickerButton {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  width: 32px;
+  height: 32px;
+  transform: translateY(-50%);
+  display: inline-grid;
+  place-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.075);
+  color: #ffffff;
+  cursor: pointer;
+}
+
+.scheduleDateTimePickerButton svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.9;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.scheduleDateTimePickerButton:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.13);
+  border-color: rgba(125, 211, 252, 0.42);
+}
+
+.scheduleDateTimePickerButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}

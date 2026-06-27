@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChannelKey } from "../publishModal.shared";
 import type { PublishFinalReviewItem } from "./PublishFinalReviewModal";
 
@@ -40,6 +40,43 @@ function toLocalIso(date: string, time: string) {
   return value.toISOString();
 }
 
+function openNativeDateTimePicker(input: HTMLInputElement | null) {
+  if (!input || input.disabled) return;
+  try {
+    input.focus({ preventScroll: true });
+  } catch {
+    input.focus();
+  }
+  const pickerInput = input as HTMLInputElement & { showPicker?: () => void };
+  if (typeof pickerInput.showPicker === "function") {
+    try {
+      pickerInput.showPicker();
+      return;
+    } catch {
+      // Safari et certains navigateurs peuvent refuser showPicker.
+    }
+  }
+  input.click();
+}
+
+function CalendarMiniIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M7 3v3M17 3v3M4.5 9.5h15M6.5 5h11A2.5 2.5 0 0 1 20 7.5v10A2.5 2.5 0 0 1 17.5 20h-11A2.5 2.5 0 0 1 4 17.5v-10A2.5 2.5 0 0 1 6.5 5Z" />
+      <path d="M8 13h.01M12 13h.01M16 13h.01M8 16.5h.01M12 16.5h.01" />
+    </svg>
+  );
+}
+
+function ClockMiniIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z" />
+      <path d="M12 7.5V12l3 2" />
+    </svg>
+  );
+}
+
 export default function PublishScheduleModal({
   open,
   styles,
@@ -59,6 +96,8 @@ export default function PublishScheduleModal({
   const [dateByChannel, setDateByChannel] = useState<Record<string, string>>({});
   const [timeByChannel, setTimeByChannel] = useState<Record<string, string>>({});
   const [localError, setLocalError] = useState("");
+  const dateInputRefs = useRef<Partial<Record<ChannelKey, HTMLInputElement | null>>>({});
+  const timeInputRefs = useRef<Partial<Record<ChannelKey, HTMLInputElement | null>>>({});
 
   useEffect(() => {
     if (!open) return;
@@ -183,40 +222,70 @@ export default function PublishScheduleModal({
                     </span>
                   </span>
                 </label>
-                <input
-                  type="date"
-                  value={getDate(item.channel)}
-                  disabled={disabled || !checked || saving}
-                  onChange={(event) =>
-                    setDateByChannel((current) => ({ ...current, [item.channel]: event.target.value }))
+                <div
+                  className={styles.scheduleDateTimeField}
+                  data-disabled={disabled || !checked || saving ? "true" : "false"}
+                  onClick={() =>
+                    openNativeDateTimePicker(dateInputRefs.current[item.channel] || null)
                   }
-                  style={{
-                    width: "100%",
-                    borderRadius: 12,
-                    border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(255,255,255,0.06)",
-                    color: "#fff",
-                    padding: "10px 11px",
-                    fontSize: 13,
-                  }}
-                />
-                <input
-                  type="time"
-                  value={getTime(item.channel)}
-                  disabled={disabled || !checked || saving}
-                  onChange={(event) =>
-                    setTimeByChannel((current) => ({ ...current, [item.channel]: event.target.value }))
+                >
+                  <input
+                    ref={(node) => {
+                      dateInputRefs.current[item.channel] = node;
+                    }}
+                    className={styles.scheduleDateTimeInput}
+                    type="date"
+                    value={getDate(item.channel)}
+                    disabled={disabled || !checked || saving}
+                    onChange={(event) =>
+                      setDateByChannel((current) => ({ ...current, [item.channel]: event.target.value }))
+                    }
+                  />
+                  <button
+                    type="button"
+                    className={styles.scheduleDateTimePickerButton}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openNativeDateTimePicker(dateInputRefs.current[item.channel] || null);
+                    }}
+                    disabled={disabled || !checked || saving}
+                    aria-label={`Ouvrir le calendrier pour ${item.label}`}
+                  >
+                    <CalendarMiniIcon />
+                  </button>
+                </div>
+                <div
+                  className={styles.scheduleDateTimeField}
+                  data-disabled={disabled || !checked || saving ? "true" : "false"}
+                  onClick={() =>
+                    openNativeDateTimePicker(timeInputRefs.current[item.channel] || null)
                   }
-                  style={{
-                    width: "100%",
-                    borderRadius: 12,
-                    border: "1px solid rgba(255,255,255,0.14)",
-                    background: "rgba(255,255,255,0.06)",
-                    color: "#fff",
-                    padding: "10px 11px",
-                    fontSize: 13,
-                  }}
-                />
+                >
+                  <input
+                    ref={(node) => {
+                      timeInputRefs.current[item.channel] = node;
+                    }}
+                    className={styles.scheduleDateTimeInput}
+                    type="time"
+                    value={getTime(item.channel)}
+                    disabled={disabled || !checked || saving}
+                    onChange={(event) =>
+                      setTimeByChannel((current) => ({ ...current, [item.channel]: event.target.value }))
+                    }
+                  />
+                  <button
+                    type="button"
+                    className={styles.scheduleDateTimePickerButton}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      openNativeDateTimePicker(timeInputRefs.current[item.channel] || null);
+                    }}
+                    disabled={disabled || !checked || saving}
+                    aria-label={`Ouvrir le choix de l’heure pour ${item.label}`}
+                  >
+                    <ClockMiniIcon />
+                  </button>
+                </div>
               </div>
             );
           })}

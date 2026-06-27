@@ -8,6 +8,7 @@ import { awardWeeklyFeatureUseForCampaign } from "@/lib/loyalty/serverAward";
 import { normalizeMailDeliveryError } from "@/lib/mailDeliveryErrors";
 import { downloadMailAttachmentRefs, parseMailAttachmentRefs, type MailAttachmentRef } from "@/lib/mailAttachmentRefs";
 import { providerBatchLimit } from "@/lib/crmRecipients";
+import { sendMailCampaignCompletionSummary } from "@/lib/mailCampaignCompletionEmail";
 import {
   buildRecipientUnsubscribeUrl,
   classifyMailFailure,
@@ -156,6 +157,16 @@ export async function refreshCampaignCounters(campaignId: string) {
   if (error) throw error;
 
   return { queuedCount, processingCount, sentCount, failedCount, status };
+}
+
+
+async function maybeSendCampaignCompletionSummary(campaignId: string, counters: Awaited<ReturnType<typeof refreshCampaignCounters>>) {
+  if (!campaignId || (counters.status !== "completed" && counters.status !== "partial" && counters.status !== "failed")) return;
+  try {
+    await sendMailCampaignCompletionSummary(campaignId, counters);
+  } catch (error) {
+    console.warn("[crmCampaigns] campaign completion email failed", { campaignId, error });
+  }
 }
 
 async function resetStaleProcessingRecipients(campaignId: string) {
@@ -588,6 +599,7 @@ export async function processPendingMailCampaigns(opts?: {
 
     if (claimedRows.length === 0) {
       const counters = await refreshCampaignCounters(campaignId);
+      await maybeSendCampaignCompletionSummary(campaignId, counters);
       if (counters.status === "processing" || counters.status === "queued" || counters.status === "paused") {
         busyIntegrationIds.add(integrationId);
       }
@@ -632,6 +644,7 @@ export async function processPendingMailCampaigns(opts?: {
         .update({ last_error: message, updated_at: now, last_activity_at: now })
         .eq("id", campaignId);
       const counters = await refreshCampaignCounters(campaignId);
+      await maybeSendCampaignCompletionSummary(campaignId, counters);
       if (counters.status === "processing" || counters.status === "queued" || counters.status === "paused") {
         busyIntegrationIds.add(integrationId);
       }
@@ -743,6 +756,7 @@ export async function processPendingMailCampaigns(opts?: {
     }
 
     const counters = await refreshCampaignCounters(campaignId);
+    await maybeSendCampaignCompletionSummary(campaignId, counters);
     if (stopCampaignForAccountError) {
       busyIntegrationIds.add(integrationId);
     }
