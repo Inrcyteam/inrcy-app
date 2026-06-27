@@ -19,6 +19,7 @@ import {
 } from "@/lib/mailRichText";
 import { useUnsavedExitGuard } from "@/app/dashboard/_hooks/useUnsavedExitGuard";
 import TemplateSubjectInlineEditor from "@/app/dashboard/_components/TemplateSubjectInlineEditor";
+import CampaignScheduleModal from "@/app/dashboard/_components/CampaignScheduleModal";
 
 type MailboxComposeModalProps = {
   open: boolean;
@@ -303,65 +304,30 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
     React.useState<MailWritingType>("auto");
 
   const [scheduleModalOpen, setScheduleModalOpen] = React.useState(false);
-  const [scheduleDate, setScheduleDate] = React.useState(() => {
-    const date = new Date();
-    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-  });
-  const [scheduleTime, setScheduleTime] = React.useState(() => {
-    const date = new Date(Date.now() + 60 * 60 * 1000);
-    return `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`;
-  });
   const [scheduleError, setScheduleError] = React.useState<string | null>(null);
 
   const openScheduleModal = React.useCallback(() => {
-    const date = new Date(Date.now() + 60 * 60 * 1000);
-    setScheduleDate(
-      `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`,
-    );
-    setScheduleTime(
-      `${String(date.getHours()).padStart(2, "0")}:${String(date.getMinutes()).padStart(2, "0")}`,
-    );
     setScheduleError(null);
     setScheduleModalOpen(true);
   }, []);
 
-  const confirmSchedule = React.useCallback(async () => {
-    if (!scheduleWorkflowCampaign) return;
-    const [year, month, day] = scheduleDate
-      .split("-")
-      .map((value) => Number(value));
-    const [hour, minute] = scheduleTime
-      .split(":")
-      .map((value) => Number(value));
-    const scheduled = new Date(
-      year,
-      (month || 1) - 1,
-      day || 1,
-      hour || 0,
-      minute || 0,
-      0,
-      0,
-    );
-    if (!Number.isFinite(scheduled.getTime())) {
-      setScheduleError("Choisissez une date et une heure valides.");
-      return;
-    }
-    if (scheduled.getTime() <= Date.now() + 30_000) {
-      setScheduleError("Choisissez un horaire dans le futur.");
-      return;
-    }
-    setScheduleError(null);
-    try {
-      await scheduleWorkflowCampaign(scheduled.toISOString());
-      setScheduleModalOpen(false);
-    } catch (error) {
-      setScheduleError(
-        error instanceof Error
-          ? error.message
-          : "Programmation impossible pour le moment.",
-      );
-    }
-  }, [scheduleDate, scheduleTime, scheduleWorkflowCampaign]);
+  const confirmSchedule = React.useCallback(
+    async (scheduledAt: string) => {
+      if (!scheduleWorkflowCampaign) return;
+      setScheduleError(null);
+      try {
+        await scheduleWorkflowCampaign(scheduledAt);
+        setScheduleModalOpen(false);
+      } catch (error) {
+        setScheduleError(
+          error instanceof Error
+            ? error.message
+            : "Programmation impossible pour le moment.",
+        );
+      }
+    },
+    [scheduleWorkflowCampaign],
+  );
 
   const generateMailWithAi = React.useCallback(async () => {
     const mailSubject = normalizeMailSubject(subject).trim();
@@ -1287,100 +1253,24 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
           </div>
         </div>
 
-        {scheduleModalOpen ? (
-          <div
-            className={styles.scheduleOverlay}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="schedule-campaign-title"
-            onMouseDown={() => !scheduleBusy && setScheduleModalOpen(false)}
-          >
-            <div
-              className={styles.scheduleCard}
-              onMouseDown={(event) => event.stopPropagation()}
-            >
-              <div className={styles.scheduleHeader}>
-                <div>
-                  <div className={styles.scheduleKicker}>
-                    Programmation iNr’Agent
-                  </div>
-                  <h3
-                    id="schedule-campaign-title"
-                    className={styles.scheduleTitle}
-                  >
-                    Programmer l’envoi
-                  </h3>
-                  <p className={styles.scheduleHint}>
-                    iNr’Agent enverra ce {scheduleLabel} automatiquement au
-                    moment choisi.
-                  </p>
-                </div>
-                <button
-                  className={styles.scheduleCloseBtn}
-                  type="button"
-                  onClick={() => setScheduleModalOpen(false)}
-                  disabled={scheduleBusy}
-                  aria-label="Fermer"
-                >
-                  ×
-                </button>
-              </div>
-              <div className={styles.scheduleFields}>
-                <label className={styles.scheduleField}>
-                  <span>Date</span>
-                  <input
-                    type="date"
-                    value={scheduleDate}
-                    onChange={(event) => setScheduleDate(event.target.value)}
-                  />
-                </label>
-                <label className={styles.scheduleField}>
-                  <span>Heure</span>
-                  <input
-                    type="time"
-                    value={scheduleTime}
-                    onChange={(event) => setScheduleTime(event.target.value)}
-                  />
-                </label>
-              </div>
-              {scheduleError ? (
-                <div className={styles.scheduleError}>{scheduleError}</div>
-              ) : null}
-              <div className={styles.scheduleSummary}>
-                <strong>
-                  {composeRecipientList.length ||
-                    selectedCrmCount ||
-                    normalizeEmails(to).length}{" "}
-                  destinataire
-                  {(composeRecipientList.length ||
-                    selectedCrmCount ||
-                    normalizeEmails(to).length) > 1
-                    ? "s"
-                    : ""}
-                </strong>
-                <span>Objet : {subject.trim() || "(sans objet)"}</span>
-              </div>
-              <div className={styles.scheduleFooter}>
-                <button
-                  className={styles.btnGhost}
-                  type="button"
-                  onClick={() => setScheduleModalOpen(false)}
-                  disabled={scheduleBusy}
-                >
-                  Annuler
-                </button>
-                <button
-                  className={styles.btnPrimary}
-                  type="button"
-                  onClick={() => void confirmSchedule()}
-                  disabled={scheduleBusy || attachBusy}
-                >
-                  {scheduleBusy ? "Programmation…" : "Confier à iNr’Agent"}
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : null}
+        <CampaignScheduleModal
+          open={scheduleModalOpen}
+          description={
+            scheduleLabel === "mail"
+              ? "iNr’Agent enverra ce mail automatiquement au moment choisi."
+              : `iNr’Agent enverra cette ${scheduleLabel} automatiquement au moment choisi.`
+          }
+          recipientCount={
+            composeRecipientList.length ||
+            selectedCrmCount ||
+            normalizeEmails(to).length
+          }
+          subject={subject.trim() || "(sans objet)"}
+          saving={Boolean(scheduleBusy)}
+          error={scheduleError}
+          onClose={() => !scheduleBusy && setScheduleModalOpen(false)}
+          onConfirm={(scheduledAt) => void confirmSchedule(scheduledAt)}
+        />
 
         {toast ? (
           <div className={styles.composeToast}>

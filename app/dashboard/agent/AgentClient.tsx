@@ -28,6 +28,11 @@ import { makeAttachmentPath } from "@/app/dashboard/mails/_lib/mailboxPhase25";
 import HelpButton from "../_components/HelpButton";
 import PublishExecutionProgress from "../_components/PublishExecutionProgress";
 import PublishExecutionResultModal from "../_components/PublishExecutionResultModal";
+import CampaignScheduleModal from "../_components/CampaignScheduleModal";
+import PublishScheduleModal, {
+  type PublishScheduleItem,
+  type PublishScheduleSelection,
+} from "../_components/PublishScheduleModal";
 import PublishAiConfigurationDrawer from "../booster/publier/components/PublishAiConfigurationDrawer";
 import BoosterVideoFormatManager, {
   type BoosterVideoPreparationState,
@@ -3253,15 +3258,11 @@ export default function AgentClient() {
   const [scheduleEditTime, setScheduleEditTime] = useState("");
   const scheduleEditDateInputRef = useRef<HTMLInputElement | null>(null);
   const scheduleEditTimeInputRef = useRef<HTMLInputElement | null>(null);
-  const validationScheduleDateInputRef = useRef<HTMLInputElement | null>(null);
-  const validationScheduleTimeInputRef = useRef<HTMLInputElement | null>(null);
   const [scheduleMutationState, setScheduleMutationState] = useState<
     "idle" | "saving"
   >("idle");
   const [validationChoiceOpen, setValidationChoiceOpen] = useState(false);
   const [validationScheduleOpen, setValidationScheduleOpen] = useState(false);
-  const [validationScheduleDate, setValidationScheduleDate] = useState("");
-  const [validationScheduleTime, setValidationScheduleTime] = useState("");
   const [validationScheduleState, setValidationScheduleState] = useState<
     "idle" | "saving"
   >("idle");
@@ -3978,6 +3979,56 @@ export default function AgentClient() {
         : publishStatus.tone === "ready"
           ? styles.publishStatusReady
           : styles.publishStatusNeutral;
+  const agentPublishScheduleItems = useMemo<PublishScheduleItem[]>(() => {
+    if (!selectedPreparedAction || !isPublishView) return [];
+    const seen = new Set<BoosterChannelKey>();
+    return preparedChannels
+      .map((channel) => {
+        const boosterChannel = boosterChannelKeyFromAgentChannel(channel);
+        if (seen.has(boosterChannel)) return null;
+        seen.add(boosterChannel);
+        const preview = extractChannelPreview(selectedPreparedAction, channel);
+        const media = extractPublishMediaPreview(selectedPreparedAction, channel);
+        const hasText = Boolean(
+          preview?.title ||
+            preview?.body ||
+            preview?.cta ||
+            preview?.hashtags.length ||
+            selectedPreparedAction.summary,
+        );
+        const blockers: string[] = [];
+        if (media.statusTone === "blocked" && media.statusLabel) {
+          blockers.push(media.statusLabel);
+        }
+        if (!hasText && media.kind === "none") {
+          blockers.push("Ajoutez au moins du texte ou un média.");
+        }
+        if (channel === "youtube" && media.kind !== "video") {
+          blockers.push("YouTube nécessite une vidéo.");
+        }
+        if (
+          channel === "instagram" &&
+          media.kind !== "image" &&
+          media.kind !== "video"
+        ) {
+          blockers.push("Instagram nécessite une vidéo ou au moins 1 image.");
+        }
+        if (
+          channel === "tiktok" &&
+          media.kind !== "image" &&
+          media.kind !== "video"
+        ) {
+          blockers.push("TikTok nécessite une vidéo ou au moins 1 photo.");
+        }
+        return {
+          channel: boosterChannel,
+          label: channelOptions[channel]?.name || channel,
+          mediaLabel: publishContentKindLabel({ media, hasText }),
+          blockers: Array.from(new Set(blockers)),
+        } satisfies PublishScheduleItem;
+      })
+      .filter((item): item is PublishScheduleItem => Boolean(item));
+  }, [isPublishView, preparedChannels, selectedPreparedAction]);
   const publishCtaLine = isPublishView
     ? extractPublishCtaLine(
         selectedPreparedAction,
@@ -6314,21 +6365,62 @@ export default function AgentClient() {
   }
 
   function openValidationScheduleModal() {
-    const fallback = new Date(Date.now() + 30 * 60 * 1000);
-    fallback.setSeconds(0, 0);
-    setValidationScheduleDate(isoToLocalDateInput(fallback.toISOString()));
-    setValidationScheduleTime(isoToLocalTimeInput(fallback.toISOString()));
     setValidationChoiceOpen(false);
     setValidationScheduleOpen(true);
   }
 
-  async function scheduleValidatedAction() {
+  async function persistScheduledPreparedAction(
+    body: Record<string, unknown>,
+    successMessage = "Action validée et programmée dans iNr’Agent.",
+  ) {
+    const response = await fetch("/api/agent/actions/schedule", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const payload = (await response.json().catch(() => null)) as {
+      action?: AgentPreparedAction;
+      scheduledAction?: AgentScheduledAction | null;
+      scheduledActions?: AgentScheduledAction[];
+      error?: string;
+      tableMissing?: boolean;
+    } | null;
+
+    if (!response.ok) {
+      if (payload?.tableMissing) setScheduledActionsTableMissing(true);
+      throw new Error(payload?.error || "Programmation de l’action impossible.");
+    }
+
+    if (payload?.action) {
+      const updatedAction = payload.action;
+      setActions((current) =>
+        current.map((action) =>
+          action.id === updatedAction.id ? updatedAction : action,
+        ),
+      );
+    }
+    const newScheduledActions = Array.isArray(payload?.scheduledActions)
+      ? payload.scheduledActions
+      : payload?.scheduledAction
+        ? [payload.scheduledAction]
+        : [];
+    if (newScheduledActions.length) {
+      const newIds = new Set(newScheduledActions.map((item) => item.id));
+      setScheduledActions((current) => [
+        ...newScheduledActions,
+        ...current.filter((item) => !newIds.has(item.id)),
+      ]);
+    }
+
+    setValidationScheduleOpen(false);
+    showNotice(successMessage);
+    await refreshActions(true);
+    await refreshScheduledActions(true);
+  }
+
+  async function scheduleValidatedCampaign(scheduledAt: string) {
     if (!selectedPreparedAction || validationScheduleState === "saving") return;
-    const nextIso = localInputsToIso(
-      validationScheduleDate,
-      validationScheduleTime,
-    );
-    if (!nextIso || new Date(nextIso).getTime() <= Date.now() + 30_000) {
+    if (!scheduledAt || new Date(scheduledAt).getTime() <= Date.now() + 30_000) {
       showNotice("Choisissez une date et une heure dans le futur.");
       return;
     }
@@ -6336,65 +6428,58 @@ export default function AgentClient() {
     setValidationScheduleState("saving");
     setNotice(null);
     try {
-      const response = await fetch("/api/agent/actions/schedule", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      await persistScheduledPreparedAction(
+        {
           actionId: selectedPreparedAction.id,
-          scheduledAt: nextIso,
+          scheduledAt,
           timezone: agentSettings.timezone || "Europe/Paris",
-        }),
-      });
-      const payload = (await response.json().catch(() => null)) as {
-        action?: AgentPreparedAction;
-        scheduledAction?: AgentScheduledAction | null;
-        scheduledActions?: AgentScheduledAction[];
-        error?: string;
-        tableMissing?: boolean;
-      } | null;
-
-      if (!response.ok) {
-        if (payload?.tableMissing) setScheduledActionsTableMissing(true);
-        throw new Error(
-          payload?.error || "Programmation de l’action impossible.",
-        );
-      }
-
-      if (payload?.action) {
-        const updatedAction = payload.action;
-        setActions((current) =>
-          current.map((action) =>
-            action.id === updatedAction.id ? updatedAction : action,
-          ),
-        );
-      }
-      const newScheduledActions = Array.isArray(payload?.scheduledActions)
-        ? payload.scheduledActions
-        : payload?.scheduledAction
-          ? [payload.scheduledAction]
-          : [];
-      if (newScheduledActions.length) {
-        const newIds = new Set(newScheduledActions.map((item) => item.id));
-        setScheduledActions((current) => [
-          ...newScheduledActions,
-          ...current.filter((item) => !newIds.has(item.id)),
-        ]);
-      }
-
-      setValidationScheduleOpen(false);
-      showNotice("Action validée et programmée dans iNr’Agent.");
-      await refreshActions(true);
-      await refreshScheduledActions(true);
+        },
+        "Campagne validée et programmée dans iNr’Agent.",
+      );
     } catch (error) {
       showNotice(
         error instanceof Error
           ? error.message
-          : "Programmation de l’action impossible.",
+          : "Programmation de la campagne impossible.",
       );
     } finally {
       setValidationScheduleState("idle");
     }
   }
+
+  async function scheduleValidatedPublication(
+    selections: PublishScheduleSelection[],
+  ) {
+    if (!selectedPreparedAction || validationScheduleState === "saving") return;
+    if (!selections.length) {
+      showNotice("Sélectionnez au moins un canal à programmer.");
+      return;
+    }
+
+    setValidationScheduleState("saving");
+    setNotice(null);
+    try {
+      await persistScheduledPreparedAction(
+        {
+          actionId: selectedPreparedAction.id,
+          scheduleSelections: selections,
+          timezone: agentSettings.timezone || "Europe/Paris",
+        },
+        selections.length > 1
+          ? `Publication validée et programmée dans iNr’Agent (${selections.length} canaux).`
+          : "Publication validée et programmée dans iNr’Agent.",
+      );
+    } catch (error) {
+      showNotice(
+        error instanceof Error
+          ? error.message
+          : "Programmation de la publication impossible.",
+      );
+    } finally {
+      setValidationScheduleState("idle");
+    }
+  }
+
 
   useEffect(() => {
     return () => {
@@ -9639,139 +9724,38 @@ export default function AgentClient() {
         </div>
       )}
 
-      {validationScheduleOpen && selectedPreparedAction && (
-        <div
-          className={styles.modalBackdrop}
-          role="presentation"
-          onClick={() =>
-            validationScheduleState !== "saving" &&
-            setValidationScheduleOpen(false)
-          }
-        >
-          <section
-            className={`${styles.settingsModal} ${styles.scheduleEditModal}`}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Programmer l’action iNr’Agent"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <button
-              type="button"
-              className={styles.modalClose}
-              onClick={() => setValidationScheduleOpen(false)}
-              disabled={validationScheduleState === "saving"}
-              aria-label="Fermer"
-            >
-              ×
-            </button>
-            <p className={styles.modalEyebrow}>Programmation</p>
-            <h2>
-              {selectedPreparedAction.automationKey === "publish"
-                ? "Programmer la publication"
-                : "Programmer l’envoi"}
-            </h2>
-            <p className={styles.modalHint}>
-              iNr’Agent exécutera cette action automatiquement au créneau
-              choisi.
-            </p>
-            <div className={styles.modalGrid}>
-              <label>
-                <span>Date</span>
-                <div
-                  className={styles.nativeDateTimeField}
-                  data-disabled={validationScheduleState === "saving" ? "true" : "false"}
-                  onClick={() =>
-                    openNativeDateTimePicker(
-                      validationScheduleDateInputRef.current,
-                    )
-                  }
-                >
-                  <input
-                    ref={validationScheduleDateInputRef}
-                    className={styles.nativeDateTimeInput}
-                    type="date"
-                    value={validationScheduleDate}
-                    disabled={validationScheduleState === "saving"}
-                    onChange={(event) =>
-                      setValidationScheduleDate(event.target.value)
-                    }
-                  />
-                  <button
-                    type="button"
-                    className={styles.nativeDateTimePickerButton}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      openNativeDateTimePicker(
-                        validationScheduleDateInputRef.current,
-                      );
-                    }}
-                    disabled={validationScheduleState === "saving"}
-                    aria-label="Ouvrir le calendrier"
-                  >
-                    <CalendarMiniIcon />
-                  </button>
-                </div>
-              </label>
-              <label>
-                <span>Heure</span>
-                <div
-                  className={styles.nativeDateTimeField}
-                  data-disabled={validationScheduleState === "saving" ? "true" : "false"}
-                  onClick={() =>
-                    openNativeDateTimePicker(
-                      validationScheduleTimeInputRef.current,
-                    )
-                  }
-                >
-                  <input
-                    ref={validationScheduleTimeInputRef}
-                    className={styles.nativeDateTimeInput}
-                    type="time"
-                    value={validationScheduleTime}
-                    disabled={validationScheduleState === "saving"}
-                    onChange={(event) =>
-                      setValidationScheduleTime(event.target.value)
-                    }
-                  />
-                  <button
-                    type="button"
-                    className={styles.nativeDateTimePickerButton}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      openNativeDateTimePicker(
-                        validationScheduleTimeInputRef.current,
-                      );
-                    }}
-                    disabled={validationScheduleState === "saving"}
-                    aria-label="Ouvrir le choix de l’heure"
-                  >
-                    <ClockMiniIcon />
-                  </button>
-                </div>
-              </label>
-            </div>
-            <div className={styles.modalActionButtonRow}>
-              <button
-                type="button"
-                className={styles.modalActionSecondaryButton}
-                onClick={() => setValidationScheduleOpen(false)}
-                disabled={validationScheduleState === "saving"}
-              >
-                Annuler
-              </button>
-              <button
-                type="button"
-                className={styles.modalActionButton}
-                onClick={() => void scheduleValidatedAction()}
-                disabled={validationScheduleState === "saving"}
-              >
-                {validationScheduleState === "saving"
-                  ? "Programmation..."
-                  : "Confier à iNr’Agent"}
-              </button>
-            </div>
-          </section>
-        </div>
+      {validationScheduleOpen && selectedPreparedAction?.automationKey === "publish" && (
+        <PublishScheduleModal
+          open={validationScheduleOpen}
+          styles={dashboardStyles}
+          items={agentPublishScheduleItems}
+          isMobile={isMobileHeader}
+          saving={validationScheduleState === "saving"}
+          error=""
+          onClose={() => {
+            if (validationScheduleState === "saving") return;
+            setValidationScheduleOpen(false);
+          }}
+          onConfirm={(selections) => void scheduleValidatedPublication(selections)}
+        />
+      )}
+
+      {validationScheduleOpen && selectedPreparedAction && selectedPreparedAction.automationKey !== "publish" && (
+        <CampaignScheduleModal
+          open={validationScheduleOpen}
+          description={`iNr’Agent enverra cette campagne ${
+            selectedPreparedAction.automationKey === "loyalty" ? "Fidéliser" : "Propulser"
+          } automatiquement au moment choisi.`}
+          recipientCount={preparedRecipientsCount}
+          subject={campaignDisplayPreview?.subject || "(sans objet)"}
+          saving={validationScheduleState === "saving"}
+          error={null}
+          onClose={() => {
+            if (validationScheduleState === "saving") return;
+            setValidationScheduleOpen(false);
+          }}
+          onConfirm={(scheduledAt) => void scheduleValidatedCampaign(scheduledAt)}
+        />
       )}
 
       {helpOpen && (

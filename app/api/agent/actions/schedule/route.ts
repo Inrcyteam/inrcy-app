@@ -96,6 +96,82 @@ function sanitizeFutureDate(value: unknown) {
   return date.toISOString();
 }
 
+type NormalizedScheduleSelection = {
+  channel: BoosterChannel;
+  scheduledAt: string;
+};
+
+function normalizeScheduleSelections(input: unknown): NormalizedScheduleSelection[] {
+  if (!Array.isArray(input)) return [];
+  const byKey = new Map<string, NormalizedScheduleSelection>();
+  for (const item of input) {
+    const record = asRecord(item);
+    if (!record) continue;
+    const channel = normalizeBoosterChannels([record.channel])[0];
+    const scheduledAt = sanitizeFutureDate(record.scheduledAt ?? record.scheduled_at);
+    if (!channel || !scheduledAt) continue;
+    byKey.set(`${channel}:${scheduledAt}`, { channel, scheduledAt });
+  }
+  return Array.from(byKey.values()).slice(0, 12);
+}
+
+function filterRecordByChannels(
+  input: unknown,
+  channels: BoosterChannel[],
+): Record<string, unknown> {
+  const record = asRecord(input);
+  if (!record) return {};
+  return Object.fromEntries(
+    channels
+      .filter((channel) => Object.prototype.hasOwnProperty.call(record, channel))
+      .map((channel) => [channel, record[channel]]),
+  );
+}
+
+function publicationPayloadForChannels(
+  payload: JsonRecord,
+  channels: BoosterChannel[],
+): JsonRecord {
+  const publishPayload = asRecord(payload.publishPayload) || {};
+  return {
+    ...payload,
+    scheduleGrouping: {
+      mode: "multichannel_single_action",
+      channelCount: channels.length,
+      createdFrom: "agent_action_schedule",
+    },
+    publishPayload: {
+      ...publishPayload,
+      channels,
+      postByChannel: filterRecordByChannels(publishPayload.postByChannel, channels),
+      mediaModeByChannel: filterRecordByChannels(
+        publishPayload.mediaModeByChannel,
+        channels,
+      ),
+      videoSettingsByChannel: filterRecordByChannels(
+        publishPayload.videoSettingsByChannel,
+        channels,
+      ),
+      videoFormatByChannel: filterRecordByChannels(
+        publishPayload.videoFormatByChannel,
+        channels,
+      ),
+      videoAdaptationModeByChannel: filterRecordByChannels(
+        publishPayload.videoAdaptationModeByChannel,
+        channels,
+      ),
+      imageSettingsByChannel: filterRecordByChannels(
+        publishPayload.imageSettingsByChannel,
+        channels,
+      ),
+      imagesByChannel: filterRecordByChannels(
+        publishPayload.imagesByChannel,
+        channels,
+      ),
+    },
+  };
+}
+
 function isMissingTableError(
   error: { code?: string; message?: string } | null | undefined,
 ) {
@@ -655,16 +731,18 @@ export async function POST(request: Request) {
   const body = (await request.json().catch(() => null)) as {
     actionId?: unknown;
     scheduledAt?: unknown;
+    scheduleSelections?: unknown;
     timezone?: unknown;
   } | null;
   const actionId = cleanText(body?.actionId, 120);
   const scheduledAt = sanitizeFutureDate(body?.scheduledAt);
+  const scheduleSelections = normalizeScheduleSelections(body?.scheduleSelections);
   if (!actionId)
     return NextResponse.json(
       { error: "Action iNr’Agent introuvable." },
       { status: 400 },
     );
-  if (!scheduledAt)
+  if (!scheduledAt && !scheduleSelections.length)
     return NextResponse.json(
       { error: "Choisissez une date et une heure dans le futur." },
       { status: 400 },
@@ -705,6 +783,13 @@ export async function POST(request: Request) {
   try {
     const scheduledPayload = await buildScheduledPayload(action);
     const timezone = cleanText(body?.timezone, 80) || "Europe/Paris";
+    if (scheduledPayload.actionType !== "publication" && !scheduledAt) {
+      return NextResponse.json(
+        { error: "Choisissez une date et une heure dans le futur." },
+        { status: 400 },
+      );
+    }
+
     const baseScheduleArgs = {
       userId: user.id,
       automationKey: action.automationKey,
@@ -714,76 +799,117 @@ export async function POST(request: Request) {
       title: action.title || "Action iNr’Agent programmée",
       summary:
         action.summary || "Action validée et programmée depuis iNr’Agent.",
-      scheduledAt,
       timezone,
     };
 
-    const rows = [
-      scheduledActionToDbRow({
-        ...baseScheduleArgs,
-        title:
-          scheduledPayload.actionType === "publication" &&
-          scheduledPayload.channels.length > 1
-            ? `${baseScheduleArgs.title} · multicanal`
-            : baseScheduleArgs.title,
-        summary:
-          scheduledPayload.actionType === "publication" &&
-          scheduledPayload.channels.length > 1
-            ? `${baseScheduleArgs.summary} (${scheduledPayload.channels.length} canaux).`
-            : baseScheduleArgs.summary,
-        channels: scheduledPayload.channels,
-        payload:
-          scheduledPayload.actionType === "publication"
-            ? {
-                ...scheduledPayload.payload,
-                scheduleGrouping: {
-                  mode: "multichannel_single_action",
-                  channelCount: scheduledPayload.channels.length,
-                  createdFrom: "agent_action_schedule",
-                },
-              }
-            : scheduledPayload.payload,
-      }),
-    ];
+    const rows: ReturnType<typeof scheduledActionToDbRow>[] = [];
+    const normalizedScheduleSelections: NormalizedScheduleSelection[] = [];
 
     if (scheduledPayload.actionType === "publication") {
-      const duplicate = await findSimilarScheduledPublication({
-        supabase: supabaseAdmin,
-        userId: user.id,
-        scheduledAt,
-        channels: rows[0]?.channels || scheduledPayload.channels,
-        payload: rows[0]?.payload || scheduledPayload.payload,
-      });
+      const allowedChannels = new Set(scheduledPayload.channels);
+      const requestedSelections = scheduleSelections.length
+        ? scheduleSelections.filter((selection) => allowedChannels.has(selection.channel))
+        : (scheduledAt
+            ? scheduledPayload.channels.map((channel) => ({ channel, scheduledAt }))
+            : []);
 
-      if (duplicate.duplicate) {
+      if (!requestedSelections.length) {
         return NextResponse.json(
           {
             error:
-              "Une publication similaire est déjà programmée sur ce créneau. Vérifiez la programmation existante avant d’en créer une nouvelle.",
-            duplicate,
+              "Aucun canal prêt à programmer. Vérifiez les canaux sélectionnés et leurs médias.",
           },
-          { status: 409 },
+          { status: 400 },
         );
       }
+
+      const groupedSelections = Array.from(
+        requestedSelections.reduce((groups, selection) => {
+          const existing = groups.get(selection.scheduledAt) || [];
+          if (!existing.includes(selection.channel)) existing.push(selection.channel);
+          groups.set(selection.scheduledAt, existing);
+          return groups;
+        }, new Map<string, BoosterChannel[]>()),
+      );
+
+      for (const [groupScheduledAt, groupChannels] of groupedSelections) {
+        normalizedScheduleSelections.push(
+          ...groupChannels.map((channel) => ({
+            channel,
+            scheduledAt: groupScheduledAt,
+          })),
+        );
+        rows.push(
+          scheduledActionToDbRow({
+            ...baseScheduleArgs,
+            scheduledAt: groupScheduledAt,
+            title:
+              groupChannels.length > 1
+                ? `${baseScheduleArgs.title} · multicanal`
+                : baseScheduleArgs.title,
+            summary:
+              groupChannels.length > 1
+                ? `${baseScheduleArgs.summary} (${groupChannels.length} canaux).`
+                : baseScheduleArgs.summary,
+            channels: groupChannels,
+            payload: publicationPayloadForChannels(
+              scheduledPayload.payload,
+              groupChannels,
+            ),
+          }),
+        );
+      }
+    } else {
+      rows.push(
+        scheduledActionToDbRow({
+          ...baseScheduleArgs,
+          scheduledAt: scheduledAt as string,
+          channels: scheduledPayload.channels,
+          payload: scheduledPayload.payload,
+        }),
+      );
     }
 
-    if (scheduledPayload.actionType === "campaign") {
-      const duplicate = await findSimilarScheduledCampaign({
-        supabase: supabaseAdmin,
-        userId: user.id,
-        scheduledAt,
-        payload: rows[0]?.payload || scheduledPayload.payload,
-      });
+    for (const row of rows) {
+      if (scheduledPayload.actionType === "publication") {
+        const duplicate = await findSimilarScheduledPublication({
+          supabase: supabaseAdmin,
+          userId: user.id,
+          scheduledAt: row.scheduled_at,
+          channels: row.channels || [],
+          payload: row.payload || {},
+        });
 
-      if (duplicate.duplicate) {
-        return NextResponse.json(
-          {
-            error:
-              "Une campagne similaire est déjà programmée sur ce créneau. Vérifiez la programmation existante avant d’en créer une nouvelle.",
-            duplicate,
-          },
-          { status: 409 },
-        );
+        if (duplicate.duplicate) {
+          return NextResponse.json(
+            {
+              error:
+                "Une publication similaire est déjà programmée sur ce créneau. Vérifiez la programmation existante avant d’en créer une nouvelle.",
+              duplicate,
+            },
+            { status: 409 },
+          );
+        }
+      }
+
+      if (scheduledPayload.actionType === "campaign") {
+        const duplicate = await findSimilarScheduledCampaign({
+          supabase: supabaseAdmin,
+          userId: user.id,
+          scheduledAt: row.scheduled_at,
+          payload: row.payload || {},
+        });
+
+        if (duplicate.duplicate) {
+          return NextResponse.json(
+            {
+              error:
+                "Une campagne similaire est déjà programmée sur ce créneau. Vérifiez la programmation existante avant d’en créer une nouvelle.",
+              duplicate,
+            },
+            { status: 409 },
+          );
+        }
       }
     }
 
@@ -821,11 +947,15 @@ export async function POST(request: Request) {
       );
     }
     const now = new Date().toISOString();
+    const scheduledFor = [...createdScheduledRows]
+      .map((row) => String(row.scheduled_at || ""))
+      .filter(Boolean)
+      .sort()[0] || scheduledAt || now;
     const { data: updatedActionRow, error: updateError } = await supabaseAdmin
       .from("inr_agent_actions")
       .update({
         status: "scheduled",
-        scheduled_for: scheduledAt,
+        scheduled_for: scheduledFor,
         validated_at: now,
         refused_at: null,
         last_error: null,
@@ -833,7 +963,11 @@ export async function POST(request: Request) {
           ...(action.payload || {}),
           scheduledExecution: {
             scheduledActionIds: createdScheduledRows.map((row) => row.id),
-            scheduledAt,
+            scheduledAt: scheduledFor,
+            scheduleSelections:
+              scheduledPayload.actionType === "publication"
+                ? normalizedScheduleSelections
+                : undefined,
             createdAt: now,
           },
         },
