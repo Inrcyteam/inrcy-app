@@ -7082,7 +7082,6 @@ export default function AgentClient() {
     }
 
     if (isScheduledStatsAction(scheduledAction)) {
-      setScheduleOpen(false);
       setValidationChoiceOpen(false);
       setValidationScheduleOpen(false);
       setScheduleOnlyEditError(null);
@@ -7490,7 +7489,6 @@ export default function AgentClient() {
     }
     if (item.automationKey) {
       const openScheduleEdit = () => {
-        setScheduleOpen(false);
         setAutomationScheduleEditError(null);
         setAutomationScheduleEdit({
           key: item.automationKey as AutomationKey,
