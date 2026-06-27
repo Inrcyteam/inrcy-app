@@ -14,6 +14,7 @@ export type CampaignScheduleModalProps = {
   savingLabel?: string;
   successMessage?: string;
   initialScheduledAt?: string | null;
+  showSummary?: boolean;
   onClose: () => void;
   onConfirm: (scheduledAt: string) => void | Promise<void>;
   onSuccess?: () => void | Promise<void>;
@@ -105,6 +106,7 @@ export default function CampaignScheduleModal({
   savingLabel = "Programmation en cours…",
   successMessage = "Programmation réussie.",
   initialScheduledAt,
+  showSummary = true,
   onClose,
   onConfirm,
   onSuccess,
@@ -261,12 +263,14 @@ export default function CampaignScheduleModal({
           <div className={styles.success}>{doneMessage}</div>
         ) : null}
 
-        <div className={styles.summary}>
-          <strong>
-            {recipientCount} destinataire{recipientCount > 1 ? "s" : ""}
-          </strong>
-          <span>Objet : {subject.trim() || "(sans objet)"}</span>
-        </div>
+        {showSummary ? (
+          <div className={styles.summary}>
+            <strong>
+              {recipientCount} destinataire{recipientCount > 1 ? "s" : ""}
+            </strong>
+            <span>Objet : {subject.trim() || "(sans objet)"}</span>
+          </div>
+        ) : null}
 
         <div className={styles.footer}>
           <button

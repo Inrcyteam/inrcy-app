@@ -12819,3 +12819,49 @@ button.campaignInfoCard:focus-visible .campaignInfoEye {
     width: 100%;
   }
 }
+
+/* Correctif 7E — pastille planning iNr’Stats compacte */
+.previewMetaStats .dateItem {
+  width: auto !important;
+  min-width: 0 !important;
+  padding: 8px 14px !important;
+  gap: 10px !important;
+  border: 1px solid rgba(196, 181, 253, 0.2) !important;
+  border-radius: 18px !important;
+  background: rgba(30, 41, 76, 0.64) !important;
+  box-shadow: inset 0 0 22px rgba(255, 255, 255, 0.025) !important;
+}
+
+.previewMetaStats .dateItem .metaIcon,
+.previewMetaStats .dateItem > .metaIcon {
+  width: 34px !important;
+  height: 34px !important;
+  border-radius: 13px !important;
+  flex: 0 0 34px !important;
+}
+
+.previewMetaStats .dateItem strong {
+  font-size: clamp(16px, 1.35vw, 22px) !important;
+  line-height: 1 !important;
+  letter-spacing: -0.035em !important;
+  white-space: nowrap !important;
+}
+
+.previewMetaStats .statsFooterNote {
+  min-width: 0 !important;
+}
+
+@media (min-width: 1181px) {
+  .previewMetaStats {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto auto !important;
+    align-items: center !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .previewMetaStats .dateItem {
+    justify-content: center !important;
+    width: 100% !important;
+  }
+}

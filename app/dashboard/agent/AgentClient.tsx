@@ -391,6 +391,12 @@ type ScheduleOnlyEditState = {
   label: string;
 };
 
+type AutomationScheduleEditState = {
+  key: AutomationKey;
+  label: string;
+  scheduledAtIso: string | null;
+};
+
 type ScheduledActionsResponse = {
   scheduledActions?: AgentScheduledAction[];
   tableMissing?: boolean;
@@ -3936,6 +3942,10 @@ export default function AgentClient() {
   const [scheduleOnlyEdit, setScheduleOnlyEdit] =
     useState<ScheduleOnlyEditState | null>(null);
   const [scheduleOnlyEditError, setScheduleOnlyEditError] = useState<string | null>(null);
+  const [automationScheduleEdit, setAutomationScheduleEdit] =
+    useState<AutomationScheduleEditState | null>(null);
+  const [automationScheduleEditError, setAutomationScheduleEditError] =
+    useState<string | null>(null);
   const [scheduleMutationState, setScheduleMutationState] = useState<
     "idle" | "saving"
   >("idle");
@@ -7219,6 +7229,83 @@ export default function AgentClient() {
     }
   }
 
+  function configPatchFromScheduledAt(
+    config: AutomationConfig,
+    scheduledAt: string,
+  ): Pick<AutomationConfig, "day" | "time" | "scheduleSlots"> {
+    const date = new Date(scheduledAt);
+    if (Number.isNaN(date.getTime())) {
+      throw new Error("Date de programmation invalide.");
+    }
+
+    const day = apiToDay[date.getDay()] || config.day || "Lundi";
+    const time = `${String(date.getHours()).padStart(2, "0")}:${String(
+      date.getMinutes(),
+    ).padStart(2, "0")}`;
+    const normalizedSlots = normalizeConfigScheduleSlots(config);
+    const scheduleSlots = [
+      { ...normalizedSlots[0], day, time },
+      normalizedSlots[1] || { day: dayOffsetLabel(day, 3), time },
+    ];
+
+    return { day, time, scheduleSlots };
+  }
+
+  async function saveAutomationScheduleEdit(scheduledAt: string) {
+    if (!automationScheduleEdit) return;
+    setAutomationScheduleEditError(null);
+
+    try {
+      const currentConfig = configs[automationScheduleEdit.key];
+      const patch = configPatchFromScheduledAt(currentConfig, scheduledAt);
+      const nextConfigs: Record<AutomationKey, AutomationConfig> = {
+        ...configs,
+        [automationScheduleEdit.key]: {
+          ...currentConfig,
+          ...patch,
+        },
+      };
+      const safeConfigs = agentConnectedChannels
+        ? normalizeConfigsForConnectedChannels(nextConfigs, agentConnectedChannels)
+        : nextConfigs;
+      const nextSettings = configsToSettings(agentSettings, safeConfigs);
+
+      const response = await fetch("/api/agent/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ settings: nextSettings }),
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        settings?: Partial<InrAgentSettings>;
+        error?: string;
+        tableMissing?: boolean;
+      } | null;
+
+      if (!response.ok) {
+        throw new Error(
+          payload?.error || "Modification de la programmation impossible.",
+        );
+      }
+
+      const savedSettings = sanitizeInrAgentSettings(
+        payload?.settings ?? nextSettings,
+      );
+      setAgentSettings(savedSettings);
+      setConfigs(settingsToConfigs(savedSettings));
+      setTableMissing((current) => current || Boolean(payload?.tableMissing));
+      setAutomationScheduleEdit(null);
+      await refreshScheduledActions(true);
+      showNotice("Programmation mise à jour.");
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Modification de la programmation impossible.";
+      setAutomationScheduleEditError(message);
+      throw new Error(message);
+    }
+  }
+
   async function saveScheduleOnlyEdit(scheduledAt: string) {
     if (!scheduleOnlyEdit) return;
     setScheduleOnlyEditError(null);
@@ -7323,7 +7410,12 @@ export default function AgentClient() {
     if (item.automationKey) {
       if (!exitScheduledEditSession({ silent: true })) return;
       setScheduleOpen(false);
-      setSettingsKey(item.automationKey);
+      setAutomationScheduleEditError(null);
+      setAutomationScheduleEdit({
+        key: item.automationKey,
+        label: item.action,
+        scheduledAtIso: item.scheduledAtIso || null,
+      });
     }
   }
 
@@ -10847,10 +10939,24 @@ export default function AgentClient() {
                           disabled={
                             !item.editable || scheduleMutationState === "saving"
                           }
-                          aria-label="Modifier le contenu"
-                          title="Modifier le contenu"
+                          aria-label={
+                            item.source === "automatic"
+                              ? "Modifier la programmation"
+                              : item.typeLabel === "Statistiques"
+                                ? "Modifier la programmation"
+                                : "Modifier le contenu"
+                          }
+                          title={
+                            item.source === "automatic"
+                              ? "Modifier la programmation"
+                              : item.typeLabel === "Statistiques"
+                                ? "Modifier la programmation"
+                                : "Modifier le contenu"
+                          }
                         >
-                          ✎
+                          {item.source === "automatic" || item.typeLabel === "Statistiques"
+                            ? "🕘"
+                            : "✎"}
                         </button>
                         <button
                           type="button"
@@ -11050,6 +11156,41 @@ export default function AgentClient() {
           />
         )}
 
+      {automationScheduleEdit && (
+        <CampaignScheduleModal
+          open={Boolean(automationScheduleEdit)}
+          title="Modifier la programmation"
+          kicker="Programmation"
+          description="Modifiez uniquement la date et l’heure de cette action automatique."
+          recipientCount={0}
+          subject={automationScheduleEdit.label}
+          showSummary={!["publish", "stats"].includes(automationScheduleEdit.key)}
+          saving={scheduleMutationState === "saving"}
+          error={automationScheduleEditError}
+          confirmLabel="Enregistrer"
+          savingLabel="Enregistrement…"
+          successMessage="Programmation mise à jour."
+          initialScheduledAt={automationScheduleEdit.scheduledAtIso}
+          onClose={() => {
+            if (scheduleMutationState === "saving") return;
+            setAutomationScheduleEdit(null);
+            setAutomationScheduleEditError(null);
+          }}
+          onConfirm={async (scheduledAt) => {
+            setScheduleMutationState("saving");
+            try {
+              await saveAutomationScheduleEdit(scheduledAt);
+            } finally {
+              setScheduleMutationState("idle");
+            }
+          }}
+          onSuccess={() => {
+            setAutomationScheduleEdit(null);
+            setAutomationScheduleEditError(null);
+          }}
+        />
+      )}
+
       {scheduleOnlyEdit && (
         <CampaignScheduleModal
           open={Boolean(scheduleOnlyEdit)}
@@ -11058,6 +11199,7 @@ export default function AgentClient() {
           description="Modifiez uniquement la date et l’heure de cette action programmée."
           recipientCount={0}
           subject={scheduleOnlyEdit.label}
+          showSummary={false}
           saving={scheduleMutationState === "saving"}
           error={scheduleOnlyEditError}
           confirmLabel="Enregistrer"
