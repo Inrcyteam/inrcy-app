@@ -687,8 +687,13 @@ export async function POST(request: Request) {
 
   const body = (await request.json().catch(() => null)) as {
     actionId?: unknown;
+    channels?: unknown;
+    preserveActionStatus?: unknown;
   } | null;
   const actionId = cleanText(body?.actionId, 120);
+  const requestedChannels = normalizeBoosterChannels(body?.channels);
+  const hasChannelOverride = requestedChannels.length > 0;
+  const preserveActionStatus = body?.preserveActionStatus === true;
   if (!actionId) {
     return NextResponse.json(
       { error: "Action iNr’Agent introuvable." },
@@ -732,7 +737,10 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!executableStatuses.has(action.status)) {
+  if (
+    !executableStatuses.has(action.status) &&
+    !(hasChannelOverride && action.status === "scheduled")
+  ) {
     return NextResponse.json(
       { error: "Cette action ne peut pas être exécutée dans son état actuel." },
       { status: 400 },
@@ -755,9 +763,11 @@ export async function POST(request: Request) {
   }
 
   const payload = action.payload || {};
-  const selectedChannels = normalizeBoosterChannels(
-    payload.selectedChannels || payload.channels || action.targetChannels,
-  );
+  const selectedChannels = hasChannelOverride
+    ? requestedChannels
+    : normalizeBoosterChannels(
+        payload.selectedChannels || payload.channels || action.targetChannels,
+      );
   const imagePayload = await buildImagePayloadFromAgentAction(
     payload,
     actionId,
@@ -843,7 +853,9 @@ export async function POST(request: Request) {
       workflowAction: "publier",
       source: "inr_agent",
       inrAgentActionId: actionId,
-      idempotencyKey: `inr_agent_action:${actionId}:publish_now`,
+      idempotencyKey: hasChannelOverride
+        ? `inr_agent_action:${actionId}:publish_now:${publishChannels.join(",")}`
+        : `inr_agent_action:${actionId}:publish_now`,
       origin: {
         source: "inr_agent",
         label: "iNr’Agent validé",
@@ -871,7 +883,8 @@ export async function POST(request: Request) {
         "La publication Booster n’a pas pu être exécutée.",
       );
       const duplicateBlocked =
-        String(publishPayload?.code || "") === "scheduled_publication_duplicate";
+        String(publishPayload?.code || "") ===
+        "scheduled_publication_duplicate";
       const failedAction = await updateActionRow(actionId, userId, {
         status: duplicateBlocked ? "pending_validation" : "failed",
         validated_at: duplicateBlocked ? null : action.validatedAt || now,
@@ -902,17 +915,17 @@ export async function POST(request: Request) {
     }
 
     const completedAt = new Date().toISOString();
-    const completedAction = await updateActionRow(actionId, userId, {
-      status: "completed",
-      completed_at: completedAt,
+    const completedPatch: Record<string, unknown> = {
+      status: preserveActionStatus ? action.status : "completed",
       validated_at: action.validatedAt || now,
       refused_at: null,
       last_error: null,
       payload: {
         ...payload,
-        execution: {
+        [preserveActionStatus ? "partialImmediateExecution" : "execution"]: {
           ok: true,
           executedAt: completedAt,
+          channels: publishChannels,
           skippedChannels: selectedChannels.filter(
             (channel) => !publishChannelSet.has(channel),
           ),
@@ -921,7 +934,15 @@ export async function POST(request: Request) {
           results: publishPayload?.results || null,
         },
       },
-    });
+    };
+    if (!preserveActionStatus) {
+      completedPatch.completed_at = completedAt;
+    }
+    const completedAction = await updateActionRow(
+      actionId,
+      userId,
+      completedPatch,
+    );
 
     await supabaseAdmin
       .from("inr_agent_automation_settings")
@@ -940,7 +961,7 @@ export async function POST(request: Request) {
         ? error.message
         : "Exécution iNr’Agent impossible.";
     const failedAction = await updateActionRow(actionId, userId, {
-      status: "failed",
+      status: preserveActionStatus ? action.status : "failed",
       last_error: message,
       payload: {
         ...payload,

@@ -2,7 +2,13 @@
 
 import { readWorkflowMailPrefillAttachments } from "@/app/dashboard/_lib/workflowMailPrefillAttachments";
 import { saveWorkflowCampaignState } from "@/app/dashboard/_lib/workflowCampaignState";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import styles from "./mails.module.css";
 import { createClient } from "@/lib/supabaseClient";
@@ -10,7 +16,10 @@ import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { requestBoosterVideoTransforms } from "@/lib/boosterVideoTransformClient";
 import { buildVideoTransformSignature } from "@/lib/boosterVideoTransforms";
 import { confirmInrcy } from "@/lib/inrcyDialog";
-import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
+import {
+  PROFILE_VERSION_EVENT,
+  type ProfileVersionChangeDetail,
+} from "@/lib/profileVersioning";
 import MailboxHeader from "./_components/MailboxHeader";
 import PublishAiConfigurationDrawer from "../booster/publier/components/PublishAiConfigurationDrawer";
 import MobileFoldersMenu from "./_components/MobileFoldersMenu";
@@ -127,7 +136,10 @@ import {
 } from "./_lib/mailboxPhase25";
 import { normalizeMailSubject } from "@/lib/mailEncoding";
 import { stripTemplateSignatureBlock } from "@/lib/mailTemplateCleanup";
-import { normalizeRichMailHtmlForSend, textToRichMailHtml } from "@/lib/mailRichText";
+import {
+  normalizeRichMailHtmlForSend,
+  textToRichMailHtml,
+} from "@/lib/mailRichText";
 import {
   BOOSTER_MAX_IMAGE_BYTES,
   BOOSTER_MAX_IMAGE_COUNT,
@@ -149,7 +161,6 @@ import {
   type VideoPayload,
 } from "../booster/publier/publishModal.shared";
 
-
 type PublicationEditVideoState = {
   file: File | null;
   previewUrl: string;
@@ -162,11 +173,14 @@ type PublicationEditVideoState = {
   transformedVariants: NonNullable<VideoPayload["transformedVariants"]>;
   format: VideoFormat;
   adaptationMode: VideoAdaptationMode;
-  preparation?: { status: "idle" | "preparing" | "ready" | "error"; label: string; detail?: string } | null;
+  preparation?: {
+    status: "idle" | "preparing" | "ready" | "error";
+    label: string;
+    detail?: string;
+  } | null;
   preparing?: boolean;
   removed?: boolean;
 };
-
 
 type CampaignDistributionNotice = {
   queuedCount: number;
@@ -188,17 +202,28 @@ function attachmentToVideoPayload(att: any): VideoPayload | null {
     type: String(att?.type || "video/mp4"),
     size: Number(att?.size || 0),
     lastModified: Date.now(),
-    duration: Number.isFinite(Number(att?.duration)) ? Number(att.duration) : null,
-    sourceMetadata: (att?.sourceMetadata || att?.source_metadata || null) as BoosterVideoSourceMetadata | null,
+    duration: Number.isFinite(Number(att?.duration))
+      ? Number(att.duration)
+      : null,
+    sourceMetadata: (att?.sourceMetadata ||
+      att?.source_metadata ||
+      null) as BoosterVideoSourceMetadata | null,
     storagePath: String(att?.storagePath || att?.storage_path || ""),
     publicUrl: url,
     url,
-    transformedVariants: Array.isArray(att?.transformedVariants) ? att.transformedVariants : [],
-    ...((att?.sourceVideo || att?.source_video) ? { sourceVideo: att.sourceVideo || att.source_video } : {}),
+    transformedVariants: Array.isArray(att?.transformedVariants)
+      ? att.transformedVariants
+      : [],
+    ...(att?.sourceVideo || att?.source_video
+      ? { sourceVideo: att.sourceVideo || att.source_video }
+      : {}),
   } as VideoPayload & { sourceVideo?: unknown };
 }
 
-function readPublicationVideoMetadata(file: File, previewUrl: string): Promise<BoosterVideoSourceMetadata> {
+function readPublicationVideoMetadata(
+  file: File,
+  previewUrl: string,
+): Promise<BoosterVideoSourceMetadata> {
   return new Promise((resolve) => {
     if (typeof document === "undefined") {
       resolve({
@@ -223,11 +248,27 @@ function readPublicationVideoMetadata(file: File, previewUrl: string): Promise<B
       const width = Number(video.videoWidth || 0) || null;
       const height = Number(video.videoHeight || 0) || null;
       const rawDuration = Number(video.duration || 0);
-      const duration = Number.isFinite(rawDuration) && rawDuration > 0 ? rawDuration : null;
+      const duration =
+        Number.isFinite(rawDuration) && rawDuration > 0 ? rawDuration : null;
       const ratio = width && height ? width / height : null;
-      const ratioLabel = width && height ? `${width}:${height}` : "Ratio inconnu";
-      const orientation = width && height ? (width > height ? "horizontal" : width < height ? "vertical" : "square") : "unknown";
-      const orientationLabel = orientation === "horizontal" ? "Horizontale" : orientation === "vertical" ? "Verticale" : orientation === "square" ? "Carrée" : "Orientation inconnue";
+      const ratioLabel =
+        width && height ? `${width}:${height}` : "Ratio inconnu";
+      const orientation =
+        width && height
+          ? width > height
+            ? "horizontal"
+            : width < height
+              ? "vertical"
+              : "square"
+          : "unknown";
+      const orientationLabel =
+        orientation === "horizontal"
+          ? "Horizontale"
+          : orientation === "vertical"
+            ? "Verticale"
+            : orientation === "square"
+              ? "Carrée"
+              : "Orientation inconnue";
       video.removeAttribute("src");
       video.load();
       resolve({
@@ -262,7 +303,6 @@ export default function MailboxClient() {
   const [aiConfigurationOpen, setAiConfigurationOpen] = useState(false);
   const [isMobileHeader, setIsMobileHeader] = useState(false);
 
-
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 768px)");
     const update = () => setIsMobileHeader(mq.matches);
@@ -280,52 +320,110 @@ export default function MailboxClient() {
   const [historyPage, setHistoryPage] = useState(1);
   const historyPageRef = useRef(1);
   const [historyHasMorePotential, setHistoryHasMorePotential] = useState(false);
-  const [historyTotalCount, setHistoryTotalCount] = useState<number | null>(null);
-  const [folderCounts, setFolderCounts] = useState<FolderCounts>(() => emptyFolderCounts());
-  const [draftFolderCounts, setDraftFolderCounts] = useState<FolderCounts>(() => emptyFolderCounts());
+  const [historyTotalCount, setHistoryTotalCount] = useState<number | null>(
+    null,
+  );
+  const [folderCounts, setFolderCounts] = useState<FolderCounts>(() =>
+    emptyFolderCounts(),
+  );
+  const [draftFolderCounts, setDraftFolderCounts] = useState<FolderCounts>(() =>
+    emptyFolderCounts(),
+  );
 
   // Détails : ouverture en double-clic dans une fenêtre au-dessus (modal)
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [detailsId, setDetailsId] = useState<string | null>(null);
-  const [detailsChannelKey, setDetailsChannelKey] = useState<string | null>(null);
+  const [detailsChannelKey, setDetailsChannelKey] = useState<string | null>(
+    null,
+  );
   const [detailsEditMode, setDetailsEditMode] = useState(false);
   const [detailsActionBusy, setDetailsActionBusy] = useState(false);
-  const [detailsActionError, setDetailsActionError] = useState<string | null>(null);
-  const [detailsActionSuccess, setDetailsActionSuccess] = useState<string | null>(null);
-  const [detailsSourceDocPayload, setDetailsSourceDocPayload] = useState<any | null>(null);
-  const [campaignRecipients, setCampaignRecipients] = useState<CampaignRecipientLog[]>([]);
-  const [campaignRecipientsLoading, setCampaignRecipientsLoading] = useState(false);
+  const [detailsActionError, setDetailsActionError] = useState<string | null>(
+    null,
+  );
+  const [detailsActionSuccess, setDetailsActionSuccess] = useState<
+    string | null
+  >(null);
+  const [detailsSourceDocPayload, setDetailsSourceDocPayload] = useState<
+    any | null
+  >(null);
+  const [campaignRecipients, setCampaignRecipients] = useState<
+    CampaignRecipientLog[]
+  >([]);
+  const [campaignRecipientsLoading, setCampaignRecipientsLoading] =
+    useState(false);
   const [campaignRecipientsPage, setCampaignRecipientsPage] = useState(1);
-  const [campaignRecipientsPageCount, setCampaignRecipientsPageCount] = useState(1);
+  const [campaignRecipientsPageCount, setCampaignRecipientsPageCount] =
+    useState(1);
   const [campaignRecipientsTotal, setCampaignRecipientsTotal] = useState(0);
-  const [campaignRecipientsFilter, setCampaignRecipientsFilter] = useState<CampaignRecipientsFilterId>("all");
-  const [campaignHealth, setCampaignHealth] = useState<CampaignHealthSummary | null>(null);
+  const [campaignRecipientsFilter, setCampaignRecipientsFilter] =
+    useState<CampaignRecipientsFilterId>("all");
+  const [campaignHealth, setCampaignHealth] =
+    useState<CampaignHealthSummary | null>(null);
   const [campaignHealthLoading, setCampaignHealthLoading] = useState(false);
-  const [campaignActionBusyId, setCampaignActionBusyId] = useState<string | null>(null);
-  const [publicationEditForm, setPublicationEditForm] = useState<PublicationEditForm>({ title: "", content: "", cta: "", ctaMode: "none", ctaUrl: "", ctaPhone: "", hashtags: "" });
-  const [publicationEditImagesByChannel, setPublicationEditImagesByChannel] = useState<Record<string, PublicationChannelImagesState>>({});
-  const [publicationEditVideoByChannel, setPublicationEditVideoByChannel] = useState<Record<string, PublicationEditVideoState>>({});
-  const [publicationImageAdapterChannelKey, setPublicationImageAdapterChannelKey] = useState<string | null>(null);
-  const [publicationImageAdapterImageKey, setPublicationImageAdapterImageKey] = useState<string | null>(null);
-  const publicationImageAdapterDragRef = useRef<{ channel: string; imageKey: string; startX: number; startY: number; startOffsetX: number; startOffsetY: number } | null>(null);
+  const [campaignActionBusyId, setCampaignActionBusyId] = useState<
+    string | null
+  >(null);
+  const [publicationEditForm, setPublicationEditForm] =
+    useState<PublicationEditForm>({
+      title: "",
+      content: "",
+      cta: "",
+      ctaMode: "none",
+      ctaUrl: "",
+      ctaPhone: "",
+      hashtags: "",
+    });
+  const [publicationEditImagesByChannel, setPublicationEditImagesByChannel] =
+    useState<Record<string, PublicationChannelImagesState>>({});
+  const [publicationEditVideoByChannel, setPublicationEditVideoByChannel] =
+    useState<Record<string, PublicationEditVideoState>>({});
+  const [
+    publicationImageAdapterChannelKey,
+    setPublicationImageAdapterChannelKey,
+  ] = useState<string | null>(null);
+  const [publicationImageAdapterImageKey, setPublicationImageAdapterImageKey] =
+    useState<string | null>(null);
+  const publicationImageAdapterDragRef = useRef<{
+    channel: string;
+    imageKey: string;
+    startX: number;
+    startY: number;
+    startOffsetX: number;
+    startOffsetY: number;
+  } | null>(null);
   const publicationImageAdapterReturnScrollTopRef = useRef<number | null>(null);
   const publicationImageAdapterStageRef = useRef<HTMLDivElement | null>(null);
-  const [publicationImageAdapterStageSize, setPublicationImageAdapterStageSize] = useState({ width: 0, height: 0 });
-  const [publicationImageAdapterImageMeta, setPublicationImageAdapterImageMeta] = useState<Record<string, { width: number; height: number }>>({});
-  const [isPublicationImageAdapterDragging, setIsPublicationImageAdapterDragging] = useState(false);
+  const [
+    publicationImageAdapterStageSize,
+    setPublicationImageAdapterStageSize,
+  ] = useState({ width: 0, height: 0 });
+  const [
+    publicationImageAdapterImageMeta,
+    setPublicationImageAdapterImageMeta,
+  ] = useState<Record<string, { width: number; height: number }>>({});
+  const [
+    isPublicationImageAdapterDragging,
+    setIsPublicationImageAdapterDragging,
+  ] = useState(false);
 
   const publicationImageAdapterChannelState = publicationImageAdapterChannelKey
-    ? publicationEditImagesByChannel[publicationImageAdapterChannelKey] || { assets: [] }
+    ? publicationEditImagesByChannel[publicationImageAdapterChannelKey] || {
+        assets: [],
+      }
     : null;
   const publicationImageAdapterAsset =
-    publicationImageAdapterChannelState?.assets.find((asset) => asset.key === publicationImageAdapterImageKey) || null;
+    publicationImageAdapterChannelState?.assets.find(
+      (asset) => asset.key === publicationImageAdapterImageKey,
+    ) || null;
 
   useEffect(() => {
     historyPageRef.current = historyPage;
   }, [historyPage]);
 
   useEffect(() => {
-    if (!detailsOpen || !detailsEditMode || !publicationImageAdapterAsset) return;
+    if (!detailsOpen || !detailsEditMode || !publicationImageAdapterAsset)
+      return;
     const key = publicationImageAdapterAsset.key;
     if (publicationImageAdapterImageMeta[key]) return;
     let cancelled = false;
@@ -344,14 +442,29 @@ export default function MailboxClient() {
     return () => {
       cancelled = true;
     };
-  }, [detailsOpen, detailsEditMode, publicationImageAdapterAsset?.key, publicationImageAdapterAsset?.previewUrl, publicationImageAdapterImageMeta]);
+  }, [
+    detailsOpen,
+    detailsEditMode,
+    publicationImageAdapterAsset?.key,
+    publicationImageAdapterAsset?.previewUrl,
+    publicationImageAdapterImageMeta,
+  ]);
 
   useEffect(() => {
-    if (!detailsOpen || !detailsEditMode || !publicationImageAdapterAsset || !publicationImageAdapterStageRef.current) return;
+    if (
+      !detailsOpen ||
+      !detailsEditMode ||
+      !publicationImageAdapterAsset ||
+      !publicationImageAdapterStageRef.current
+    )
+      return;
     const node = publicationImageAdapterStageRef.current;
     const updateSize = () => {
       const rect = node.getBoundingClientRect();
-      setPublicationImageAdapterStageSize({ width: rect.width, height: rect.height });
+      setPublicationImageAdapterStageSize({
+        width: rect.width,
+        height: rect.height,
+      });
     };
     updateSize();
     const observer = new ResizeObserver(updateSize);
@@ -398,27 +511,40 @@ export default function MailboxClient() {
   const [text, setText] = useState("");
   const [html, setHtml] = useState("");
   const [files, setFiles] = useState<File[]>([]);
-  const [composeAttachments, setComposeAttachments] = useState<ComposeAttachmentRef[]>([]);
-  const [composeRecipientHints, setComposeRecipientHints] = useState<ComposeCrmRecipientHint[]>([]);
+  const [composeAttachments, setComposeAttachments] = useState<
+    ComposeAttachmentRef[]
+  >([]);
+  const [composeRecipientHints, setComposeRecipientHints] = useState<
+    ComposeCrmRecipientHint[]
+  >([]);
   const [attachBusy, setAttachBusy] = useState(false);
-  const [composeSourceDocSaveId, setComposeSourceDocSaveId] = useState<string>("");
-  const [composeSourceDocType, setComposeSourceDocType] = useState<"devis" | "facture" | "">("");
-  const [composeSourceDocNumber, setComposeSourceDocNumber] = useState<string>("");
+  const [composeSourceDocSaveId, setComposeSourceDocSaveId] =
+    useState<string>("");
+  const [composeSourceDocType, setComposeSourceDocType] = useState<
+    "devis" | "facture" | ""
+  >("");
+  const [composeSourceDocNumber, setComposeSourceDocNumber] =
+    useState<string>("");
   const [composeTemplateKey, setComposeTemplateKey] = useState<string>("");
   const [sendBusy, setSendBusy] = useState(false);
   const [scheduleBusy, setScheduleBusy] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
-  const [campaignDistributionNotice, setCampaignDistributionNotice] = useState<CampaignDistributionNotice | null>(null);
+  const [campaignDistributionNotice, setCampaignDistributionNotice] =
+    useState<CampaignDistributionNotice | null>(null);
   const [signaturePreview, setSignaturePreview] = useState("Cordialement,");
   const [signatureEnabled, setSignatureEnabled] = useState(true);
   const [signatureImageUrl, setSignatureImageUrl] = useState("");
   const [signatureImageWidth, setSignatureImageWidth] = useState(400);
   const [deletingDraftId, setDeletingDraftId] = useState<string | null>(null);
-  const [deletingHistoryItemId, setDeletingHistoryItemId] = useState<string | null>(null);
-  const [deletingHistorySelection, setDeletingHistorySelection] = useState(false);
+  const [deletingHistoryItemId, setDeletingHistoryItemId] = useState<
+    string | null
+  >(null);
+  const [deletingHistorySelection, setDeletingHistorySelection] =
+    useState(false);
   const [selectedHistoryKeys, setSelectedHistoryKeys] = useState<string[]>([]);
-  const [lastSavedComposeSnapshot, setLastSavedComposeSnapshot] = useState<string | null>(null);
-
+  const [lastSavedComposeSnapshot, setLastSavedComposeSnapshot] = useState<
+    string | null
+  >(null);
 
   // Attachments uploaded by Factures / Devis screens are stored here.
   const ATTACH_BUCKET = "inrbox_attachments";
@@ -440,7 +566,8 @@ export default function MailboxClient() {
     full_name: string | null;
     email: string | null;
     category: "particulier" | "professionnel" | "collectivite_publique" | null;
-    contact_type: "client" | "prospect" | "fournisseur" | "partenaire" | "autre" | null;
+    contact_type:
+      "client" | "prospect" | "fournisseur" | "partenaire" | "autre" | null;
     postal_code: string | null;
     city: string | null;
     important: boolean;
@@ -453,8 +580,12 @@ export default function MailboxClient() {
   const crmSearchRef = useRef<HTMLInputElement | null>(null);
   const [crmError, setCrmError] = useState<string | null>(null);
   const [crmPickerOpen, setCrmPickerOpen] = useState(false);
-  const [crmCategory, setCrmCategory] = useState<"all" | CrmContact["category"]>("all");
-  const [crmContactType, setCrmContactType] = useState<"all" | CrmContact["contact_type"]>("all");
+  const [crmCategory, setCrmCategory] = useState<
+    "all" | CrmContact["category"]
+  >("all");
+  const [crmContactType, setCrmContactType] = useState<
+    "all" | CrmContact["contact_type"]
+  >("all");
   const [crmDepartment, setCrmDepartment] = useState("");
   const [crmImportantOnly, setCrmImportantOnly] = useState(false);
 
@@ -462,17 +593,15 @@ export default function MailboxClient() {
   const fileInputId = MAILBOX_FILE_INPUT_ID;
   const publicationEditFileInputId = PUBLICATION_EDIT_FILE_INPUT_ID;
 
-
-
-
   function toggleEmailInTo(email: string) {
     const list = normalizeEmails(to);
     const lower = email.toLowerCase();
     const exists = list.some((x) => x.toLowerCase() === lower);
-    const next = exists ? list.filter((x) => x.toLowerCase() !== lower) : [...list, email];
+    const next = exists
+      ? list.filter((x) => x.toLowerCase() !== lower)
+      : [...list, email];
     setTo(next.join(", "));
   }
-
 
   async function uploadComposeFiles(nextFiles: File[]) {
     if (!nextFiles.length) return [] as ComposeAttachmentRef[];
@@ -483,11 +612,13 @@ export default function MailboxClient() {
       const uploaded: ComposeAttachmentRef[] = [];
       for (const file of nextFiles) {
         const path = makeAttachmentPath(file.name || "piece-jointe", userId);
-        const { error } = await supabase.storage.from(ATTACH_BUCKET).upload(path, file, {
-          cacheControl: "3600",
-          upsert: false,
-          contentType: file.type || "application/octet-stream",
-        });
+        const { error } = await supabase.storage
+          .from(ATTACH_BUCKET)
+          .upload(path, file, {
+            cacheControl: "3600",
+            upsert: false,
+            contentType: file.type || "application/octet-stream",
+          });
         if (error) throw error;
         uploaded.push({
           bucket: ATTACH_BUCKET,
@@ -503,19 +634,21 @@ export default function MailboxClient() {
     }
   }
 
-
-  function serializeComposeAttachments(input: ComposeAttachmentRef[] = composeAttachments) {
+  function serializeComposeAttachments(
+    input: ComposeAttachmentRef[] = composeAttachments,
+  ) {
     return input
       .map((att) => ({
         bucket: String(att.bucket || "").trim(),
         path: String(att.path || "").trim(),
-        name: String(att.name || att.path?.split("/").pop() || "piece-jointe").trim(),
+        name: String(
+          att.name || att.path?.split("/").pop() || "piece-jointe",
+        ).trim(),
         type: att.type || null,
         size: att.size ?? null,
       }))
       .filter((att) => att.bucket && att.path && att.name);
   }
-
 
   function sanitizeCrmDepartmentFilter(value: string) {
     return String(value || "")
@@ -543,13 +676,26 @@ export default function MailboxClient() {
     return crmContacts.filter((c) => {
       if (crmImportantOnly && !c.important) return false;
       if (crmCategory !== "all" && c.category !== crmCategory) return false;
-      if (crmContactType !== "all" && c.contact_type !== crmContactType) return false;
-      if (department && !contactDepartment(c.postal_code).startsWith(department)) return false;
+      if (crmContactType !== "all" && c.contact_type !== crmContactType)
+        return false;
+      if (
+        department &&
+        !contactDepartment(c.postal_code).startsWith(department)
+      )
+        return false;
       if (!q) return true;
-      const hay = `${c.full_name || ""} ${c.email || ""} ${c.postal_code || ""} ${c.city || ""}`.toLowerCase();
+      const hay =
+        `${c.full_name || ""} ${c.email || ""} ${c.postal_code || ""} ${c.city || ""}`.toLowerCase();
       return hay.includes(q);
     });
-  }, [crmContacts, crmFilter, crmImportantOnly, crmCategory, crmContactType, crmDepartment]);
+  }, [
+    crmContacts,
+    crmFilter,
+    crmImportantOnly,
+    crmCategory,
+    crmContactType,
+    crmDepartment,
+  ]);
 
   const selectedToSet = useMemo(() => {
     return new Set(normalizeEmails(to).map((e) => e.toLowerCase()));
@@ -618,29 +764,36 @@ export default function MailboxClient() {
       text: source.text ?? text ?? "",
       html: source.html ?? html ?? "",
       composeType: source.composeType ?? composeType,
-      attachments: serializeComposeAttachments(source.composeAttachments ?? composeAttachments),
-      sourceDocSaveId: source.composeSourceDocSaveId ?? composeSourceDocSaveId ?? "",
+      attachments: serializeComposeAttachments(
+        source.composeAttachments ?? composeAttachments,
+      ),
+      sourceDocSaveId:
+        source.composeSourceDocSaveId ?? composeSourceDocSaveId ?? "",
       sourceDocType: source.composeSourceDocType ?? composeSourceDocType ?? "",
-      sourceDocNumber: source.composeSourceDocNumber ?? composeSourceDocNumber ?? "",
+      sourceDocNumber:
+        source.composeSourceDocNumber ?? composeSourceDocNumber ?? "",
       templateKey: source.composeTemplateKey ?? composeTemplateKey ?? "",
       pendingTrack: source.pendingTrack ?? pendingTrack ?? null,
     });
   }
 
-  const currentComposeSnapshot = useMemo(() => makeComposeSnapshot(), [
-    selectedAccountId,
-    to,
-    subject,
-    text,
-    html,
-    composeType,
-    composeAttachments,
-    composeSourceDocSaveId,
-    composeSourceDocType,
-    composeSourceDocNumber,
-    composeTemplateKey,
-    pendingTrack,
-  ]);
+  const currentComposeSnapshot = useMemo(
+    () => makeComposeSnapshot(),
+    [
+      selectedAccountId,
+      to,
+      subject,
+      text,
+      html,
+      composeType,
+      composeAttachments,
+      composeSourceDocSaveId,
+      composeSourceDocType,
+      composeSourceDocNumber,
+      composeTemplateKey,
+      pendingTrack,
+    ],
+  );
 
   function setComposeSavedSnapshotFromCurrent() {
     setLastSavedComposeSnapshot(makeComposeSnapshot());
@@ -649,7 +802,12 @@ export default function MailboxClient() {
   function setComposeBody(nextText: string, nextHtml?: string | null) {
     const cleanText = stripTemplateSignatureBlock(String(nextText || ""));
     setText(cleanText);
-    setHtml(normalizeRichMailHtmlForSend(cleanText, nextHtml || textToRichMailHtml(cleanText)));
+    setHtml(
+      normalizeRichMailHtmlForSend(
+        cleanText,
+        nextHtml || textToRichMailHtml(cleanText),
+      ),
+    );
   }
 
   function resetCompose(nextType: SendType = "mail") {
@@ -673,12 +831,27 @@ export default function MailboxClient() {
   function inferTrackFromCampaign(item: OutboxItem): PendingTrack | null {
     if (!item || item.source !== "mail_campaigns") return null;
     const raw = ((item as any).raw || {}) as Record<string, any>;
-    const rawKind = String(raw.track_kind || item.module || "").trim().toLowerCase();
-    const rawType = String(raw.track_type || "").trim().toLowerCase();
-    const folderName = String(item.folder || raw.folder || "").trim().toLowerCase();
+    const rawKind = String(raw.track_kind || item.module || "")
+      .trim()
+      .toLowerCase();
+    const rawType = String(raw.track_type || "")
+      .trim()
+      .toLowerCase();
+    const folderName = String(item.folder || raw.folder || "")
+      .trim()
+      .toLowerCase();
 
-    if ((rawKind === "booster" || rawKind === "propulser" || rawKind === "fideliser") && rawType) {
-      return { kind: rawKind as "booster" | "propulser" | "fideliser", type: rawType, payload: {} };
+    if (
+      (rawKind === "booster" ||
+        rawKind === "propulser" ||
+        rawKind === "fideliser") &&
+      rawType
+    ) {
+      return {
+        kind: rawKind as "booster" | "propulser" | "fideliser",
+        type: rawType,
+        payload: {},
+      };
     }
 
     if (rawType === "review_mail" || folderName === "recoltes") {
@@ -700,7 +873,9 @@ export default function MailboxClient() {
     return null;
   }
 
-  function normalizeCampaignAttachments(input: unknown): ComposeAttachmentRef[] {
+  function normalizeCampaignAttachments(
+    input: unknown,
+  ): ComposeAttachmentRef[] {
     let values: unknown = input;
     if (typeof values === "string") {
       try {
@@ -714,36 +889,103 @@ export default function MailboxClient() {
       .map((attachment: any) => {
         const bucket = String(attachment?.bucket || "").trim();
         const path = String(attachment?.path || "").trim();
-        const name = String(attachment?.name || attachment?.filename || attachment?.fileName || path.split("/").pop() || "").trim();
+        const name = String(
+          attachment?.name ||
+            attachment?.filename ||
+            attachment?.fileName ||
+            path.split("/").pop() ||
+            "",
+        ).trim();
         if (!bucket || !path || !name) return null;
         return {
           bucket,
           path,
           name,
-          type: attachment?.type || attachment?.mime_type || attachment?.mimeType || null,
-          size: attachment?.size == null ? null : Number(attachment.size) || null,
+          type:
+            attachment?.type ||
+            attachment?.mime_type ||
+            attachment?.mimeType ||
+            null,
+          size:
+            attachment?.size == null ? null : Number(attachment.size) || null,
         } satisfies ComposeAttachmentRef;
       })
       .filter(Boolean) as ComposeAttachmentRef[];
   }
 
+  function workflowDraftTargetFromSendItem(
+    item: OutboxItem,
+    raw: Record<string, any>,
+  ) {
+    const trackKind = String(raw.track_kind || item.module || "")
+      .trim()
+      .toLowerCase();
+    const trackType = String(raw.track_type || "")
+      .trim()
+      .toLowerCase();
+    const folderName = String(raw.folder || item.folder || "")
+      .trim()
+      .toLowerCase();
+    const workflowAction = String((item as any).workflowAction || "")
+      .trim()
+      .toLowerCase();
 
-  function workflowDraftTargetFromSendItem(item: OutboxItem, raw: Record<string, any>) {
-    const trackKind = String(raw.track_kind || item.module || "").trim().toLowerCase();
-    const trackType = String(raw.track_type || "").trim().toLowerCase();
-    const folderName = String(raw.folder || item.folder || "").trim().toLowerCase();
-    const workflowAction = String((item as any).workflowAction || "").trim().toLowerCase();
-
-    const byTrackType: Record<string, { kind: "propulser" | "fideliser"; action: string; folder: string; trackType: string }> = {
-      valorize: { kind: "propulser", action: "valorize", folder: "propulsions", trackType: "valorize" },
-      review_mail: { kind: "propulser", action: "reviews", folder: "propulsions", trackType: "review_mail" },
-      promo_mail: { kind: "propulser", action: "promo", folder: "propulsions", trackType: "promo_mail" },
-      newsletter_mail: { kind: "fideliser", action: "inform", folder: "fidelisations", trackType: "newsletter_mail" },
-      thanks_mail: { kind: "fideliser", action: "thanks", folder: "fidelisations", trackType: "thanks_mail" },
-      satisfaction_mail: { kind: "fideliser", action: "satisfaction", folder: "fidelisations", trackType: "satisfaction_mail" },
+    const byTrackType: Record<
+      string,
+      {
+        kind: "propulser" | "fideliser";
+        action: string;
+        folder: string;
+        trackType: string;
+      }
+    > = {
+      valorize: {
+        kind: "propulser",
+        action: "valorize",
+        folder: "propulsions",
+        trackType: "valorize",
+      },
+      review_mail: {
+        kind: "propulser",
+        action: "reviews",
+        folder: "propulsions",
+        trackType: "review_mail",
+      },
+      promo_mail: {
+        kind: "propulser",
+        action: "promo",
+        folder: "propulsions",
+        trackType: "promo_mail",
+      },
+      newsletter_mail: {
+        kind: "fideliser",
+        action: "inform",
+        folder: "fidelisations",
+        trackType: "newsletter_mail",
+      },
+      thanks_mail: {
+        kind: "fideliser",
+        action: "thanks",
+        folder: "fidelisations",
+        trackType: "thanks_mail",
+      },
+      satisfaction_mail: {
+        kind: "fideliser",
+        action: "satisfaction",
+        folder: "fidelisations",
+        trackType: "satisfaction_mail",
+      },
     };
 
-    const byWorkflowAction: Record<string, { kind: "propulser" | "fideliser"; action: string; folder: string; trackType: string }> = {
+    const byWorkflowAction: Record<
+      string,
+      {
+        kind: "propulser" | "fideliser";
+        action: string;
+        folder: string;
+        trackType: string;
+      }
+    > = {
       valoriser: byTrackType.valorize,
       recolter: byTrackType.review_mail,
       offrir: byTrackType.promo_mail,
@@ -752,7 +994,15 @@ export default function MailboxClient() {
       enqueter: byTrackType.satisfaction_mail,
     };
 
-    const byLegacyFolder: Record<string, { kind: "propulser" | "fideliser"; action: string; folder: string; trackType: string }> = {
+    const byLegacyFolder: Record<
+      string,
+      {
+        kind: "propulser" | "fideliser";
+        action: string;
+        folder: string;
+        trackType: string;
+      }
+    > = {
       recoltes: byTrackType.review_mail,
       offres: byTrackType.promo_mail,
       informations: byTrackType.newsletter_mail,
@@ -761,14 +1011,20 @@ export default function MailboxClient() {
     };
 
     if (byTrackType[trackType]) return byTrackType[trackType];
-    if (byWorkflowAction[workflowAction]) return byWorkflowAction[workflowAction];
+    if (byWorkflowAction[workflowAction])
+      return byWorkflowAction[workflowAction];
     if (byLegacyFolder[folderName]) return byLegacyFolder[folderName];
-    if (trackKind === "propulser" || folderName === "propulsions") return byTrackType.valorize;
-    if (trackKind === "fideliser" || folderName === "fidelisations") return byTrackType.newsletter_mail;
+    if (trackKind === "propulser" || folderName === "propulsions")
+      return byTrackType.valorize;
+    if (trackKind === "fideliser" || folderName === "fidelisations")
+      return byTrackType.newsletter_mail;
     return null;
   }
 
-  function openWorkflowCampaignDraft(item: OutboxItem, raw: Record<string, any>) {
+  function openWorkflowCampaignDraft(
+    item: OutboxItem,
+    raw: Record<string, any>,
+  ) {
     const target = workflowDraftTargetFromSendItem(item, raw);
     if (!target) return false;
 
@@ -782,18 +1038,26 @@ export default function MailboxClient() {
       templateCategory: null,
       subject: normalizeMailSubject(String(raw.subject || item.subject || "")),
       bodyText: String(raw.body_text || item.detailText || ""),
-      bodyHtml: String(raw.body_html || item.detailHtml || textToRichMailHtml(String(raw.body_text || item.detailText || ""))),
+      bodyHtml: String(
+        raw.body_html ||
+          item.detailHtml ||
+          textToRichMailHtml(String(raw.body_text || item.detailText || "")),
+      ),
       attachments: normalizeCampaignAttachments(raw.attachments),
       draftId: item.id,
     });
 
     setDetailsOpen(false);
     setComposeOpen(false);
-    router.push(`/dashboard/${target.kind}?action=${encodeURIComponent(target.action)}&restore_key=${encodeURIComponent(restoreKey)}`);
+    router.push(
+      `/dashboard/${target.kind}?action=${encodeURIComponent(target.action)}&restore_key=${encodeURIComponent(restoreKey)}`,
+    );
     return true;
   }
 
-  async function loadAllCampaignRecipientsForCompose(campaignId: string): Promise<ComposeCrmRecipientHint[]> {
+  async function loadAllCampaignRecipientsForCompose(
+    campaignId: string,
+  ): Promise<ComposeCrmRecipientHint[]> {
     const pageSize = 1000;
     let from = 0;
     const result: ComposeCrmRecipientHint[] = [];
@@ -828,7 +1092,10 @@ export default function MailboxClient() {
     return result;
   }
 
-  async function openCampaignComposeFromHistory(item: OutboxItem, mode: CampaignReuseMode) {
+  async function openCampaignComposeFromHistory(
+    item: OutboxItem,
+    mode: CampaignReuseMode,
+  ) {
     if (!item || item.source !== "mail_campaigns") return;
     if (campaignActionBusyId) return;
 
@@ -836,12 +1103,18 @@ export default function MailboxClient() {
     setCampaignActionBusyId(item.id);
 
     try {
-      const nextType: SendType = raw.type === "facture" || raw.type === "devis" ? raw.type : "mail";
+      const nextType: SendType =
+        raw.type === "facture" || raw.type === "devis" ? raw.type : "mail";
       const track = inferTrackFromCampaign(item);
-      const recipients = mode === "resend" ? await loadAllCampaignRecipientsForCompose(item.id) : [];
+      const recipients =
+        mode === "resend"
+          ? await loadAllCampaignRecipientsForCompose(item.id)
+          : [];
 
       if (mode === "resend" && recipients.length === 0) {
-        setToast("Impossible de retrouver les destinataires de cette campagne.");
+        setToast(
+          "Impossible de retrouver les destinataires de cette campagne.",
+        );
         return;
       }
 
@@ -849,13 +1122,28 @@ export default function MailboxClient() {
       setComposeType(nextType);
       setComposeTemplateKey(String(raw.template_key || ""));
       setComposeSourceDocSaveId(String(raw.source_doc_save_id || ""));
-      setComposeSourceDocType(raw.source_doc_type === "facture" || raw.source_doc_type === "devis" ? raw.source_doc_type : "");
+      setComposeSourceDocType(
+        raw.source_doc_type === "facture" || raw.source_doc_type === "devis"
+          ? raw.source_doc_type
+          : "",
+      );
       setComposeSourceDocNumber(String(raw.source_doc_number || ""));
-      setSubject(normalizeMailSubject(String(raw.subject || item.subject || "").trim() || "(sans objet)"));
-      setComposeBody(String(raw.body_text || item.detailText || ""), String(raw.body_html || ""));
+      setSubject(
+        normalizeMailSubject(
+          String(raw.subject || item.subject || "").trim() || "(sans objet)",
+        ),
+      );
+      setComposeBody(
+        String(raw.body_text || item.detailText || ""),
+        String(raw.body_html || ""),
+      );
       setFiles([]);
       setComposeAttachments(normalizeCampaignAttachments(raw.attachments));
-      setTo(mode === "resend" ? recipients.map((recipient) => recipient.email).join(", ") : "");
+      setTo(
+        mode === "resend"
+          ? recipients.map((recipient) => recipient.email).join(", ")
+          : "",
+      );
       setComposeRecipientHints(mode === "resend" ? recipients : []);
       setCrmPickerOpen(mode === "reuse");
 
@@ -863,19 +1151,27 @@ export default function MailboxClient() {
         setSelectedAccountId(String(raw.integration_id));
       }
 
-      setPendingTrack(track ? {
-        ...track,
-        payload: {
-          ...(track.payload || {}),
-          reused_from_campaign_id: item.id,
-          reuse_mode: mode,
-        },
-      } : null);
+      setPendingTrack(
+        track
+          ? {
+              ...track,
+              payload: {
+                ...(track.payload || {}),
+                reused_from_campaign_id: item.id,
+                reuse_mode: mode,
+              },
+            }
+          : null,
+      );
 
       lastAttachKeyRef.current = "";
       setDetailsOpen(false);
       setComposeOpen(true);
-      setToast(mode === "resend" ? "Campagne prête à renvoyer : vérifiez puis envoyez." : "Campagne prête à réutiliser : choisissez les nouveaux destinataires.");
+      setToast(
+        mode === "resend"
+          ? "Campagne prête à renvoyer : vérifiez puis envoyez."
+          : "Campagne prête à réutiliser : choisissez les nouveaux destinataires.",
+      );
     } catch (error) {
       console.error(error);
       setToast("Impossible de préparer cette campagne pour le moment.");
@@ -900,12 +1196,23 @@ export default function MailboxClient() {
 
     setMailAccounts(accounts as any);
 
-    const connected = accounts.filter((a) => a.status === "connected" && a.connection_status !== "needs_update" && !a.requires_update);
+    const connected = accounts.filter(
+      (a) =>
+        a.status === "connected" &&
+        a.connection_status !== "needs_update" &&
+        !a.requires_update,
+    );
     const defaultId = connected[0]?.id || "";
-    const usableAccountIds = new Set(connected.map((a) => String(a?.id || "")).filter(Boolean));
-    const accountIds = new Set(accounts.map((a) => String(a?.id || "")).filter(Boolean));
+    const usableAccountIds = new Set(
+      connected.map((a) => String(a?.id || "")).filter(Boolean),
+    );
+    const accountIds = new Set(
+      accounts.map((a) => String(a?.id || "")).filter(Boolean),
+    );
 
-    setSelectedAccountId((prev) => (prev && usableAccountIds.has(prev) ? prev : defaultId));
+    setSelectedAccountId((prev) =>
+      prev && usableAccountIds.has(prev) ? prev : defaultId,
+    );
     setFilterAccountId((prev) => (prev && accountIds.has(prev) ? prev : ""));
   }
 
@@ -913,7 +1220,9 @@ export default function MailboxClient() {
     try {
       const params = new URLSearchParams();
       if (accountId) params.set("accountId", accountId);
-      const url = params.toString() ? `/api/inrsend/signature?${params.toString()}` : "/api/inrsend/signature";
+      const url = params.toString()
+        ? `/api/inrsend/signature?${params.toString()}`
+        : "/api/inrsend/signature";
       const res = await fetch(url, { cache: "no-store" });
       const j = await res.json().catch(() => ({}));
       if (!res.ok) return;
@@ -926,58 +1235,83 @@ export default function MailboxClient() {
     }
   }
 
-  const loadHistory = useCallback(async (options?: { page?: number }) => {
-    const targetPage = Math.max(1, options?.page ?? historyPageRef.current ?? 1);
+  const loadHistory = useCallback(
+    async (options?: { page?: number }) => {
+      const targetPage = Math.max(
+        1,
+        options?.page ?? historyPageRef.current ?? 1,
+      );
 
-    setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      params.set("page", String(targetPage));
-      params.set("pageSize", String(MAILBOX_PAGE_SIZE));
-      params.set("folder", folder);
-      params.set("boxView", boxView);
-      if (filterAccountId) params.set("filterAccountId", filterAccountId);
-      const trimmedQuery = historyQuery.trim();
-      if (trimmedQuery) params.set("q", trimmedQuery);
+      setLoading(true);
+      try {
+        const params = new URLSearchParams();
+        params.set("page", String(targetPage));
+        params.set("pageSize", String(MAILBOX_PAGE_SIZE));
+        params.set("folder", folder);
+        params.set("boxView", boxView);
+        if (filterAccountId) params.set("filterAccountId", filterAccountId);
+        const trimmedQuery = historyQuery.trim();
+        if (trimmedQuery) params.set("q", trimmedQuery);
 
-      const response = await fetch(`/api/inrsend/history?${params.toString()}`, {
-        method: "GET",
-        cache: "no-store",
-      });
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) {
-        throw new Error(payload?.error || "Impossible de charger l’historique iNr’Send.");
+        const response = await fetch(
+          `/api/inrsend/history?${params.toString()}`,
+          {
+            method: "GET",
+            cache: "no-store",
+          },
+        );
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(
+            payload?.error || "Impossible de charger l’historique iNr’Send.",
+          );
+        }
+
+        const nextItems = Array.isArray(payload?.items)
+          ? (payload.items as OutboxItem[])
+          : [];
+        const nextTotal =
+          typeof payload?.total === "number"
+            ? Math.max(0, Number(payload.total))
+            : null;
+        const nextPage =
+          typeof payload?.page === "number"
+            ? Math.max(1, Number(payload.page))
+            : targetPage;
+        const nextCounts = normalizeFolderCounts(payload?.folderCounts);
+        const nextDraftCounts = normalizeFolderCounts(
+          payload?.draftFolderCounts,
+        );
+
+        setItems(nextItems);
+        setHistoryPage(nextPage);
+        setHistoryHasMorePotential(Boolean(payload?.hasMore));
+        setHistoryTotalCount(nextTotal);
+        setFolderCounts(nextCounts);
+        setDraftFolderCounts(nextDraftCounts);
+        setSelectedHistoryKeys([]);
+        setSelectedId((prev) =>
+          nextItems.some((item) => item.id === prev)
+            ? prev
+            : (nextItems[0]?.id ?? null),
+        );
+      } catch (error) {
+        console.error(error);
+        setItems([]);
+        setHistoryPage(targetPage);
+        setHistoryHasMorePotential(false);
+        setHistoryTotalCount(0);
+        setFolderCounts(emptyFolderCounts());
+        setDraftFolderCounts(emptyFolderCounts());
+        setSelectedHistoryKeys([]);
+        setSelectedId(null);
+      } finally {
+        setHistoryLoadedOnce(true);
+        setLoading(false);
       }
-
-      const nextItems = Array.isArray(payload?.items) ? (payload.items as OutboxItem[]) : [];
-      const nextTotal = typeof payload?.total === "number" ? Math.max(0, Number(payload.total)) : null;
-      const nextPage = typeof payload?.page === "number" ? Math.max(1, Number(payload.page)) : targetPage;
-      const nextCounts = normalizeFolderCounts(payload?.folderCounts);
-      const nextDraftCounts = normalizeFolderCounts(payload?.draftFolderCounts);
-
-      setItems(nextItems);
-      setHistoryPage(nextPage);
-      setHistoryHasMorePotential(Boolean(payload?.hasMore));
-      setHistoryTotalCount(nextTotal);
-      setFolderCounts(nextCounts);
-      setDraftFolderCounts(nextDraftCounts);
-      setSelectedHistoryKeys([]);
-      setSelectedId((prev) => (nextItems.some((item) => item.id === prev) ? prev : nextItems[0]?.id ?? null));
-    } catch (error) {
-      console.error(error);
-      setItems([]);
-      setHistoryPage(targetPage);
-      setHistoryHasMorePotential(false);
-      setHistoryTotalCount(0);
-      setFolderCounts(emptyFolderCounts());
-      setDraftFolderCounts(emptyFolderCounts());
-      setSelectedHistoryKeys([]);
-      setSelectedId(null);
-    } finally {
-      setHistoryLoadedOnce(true);
-      setLoading(false);
-    }
-  }, [boxView, filterAccountId, folder, historyQuery]);
+    },
+    [boxView, filterAccountId, folder, historyQuery],
+  );
 
   const filteredItems = items;
 
@@ -994,23 +1328,30 @@ export default function MailboxClient() {
     () => visibleItems.filter((item) => canBulkDeleteHistoryItem(item)),
     [visibleItems],
   );
-  const selectedHistoryKeySet = useMemo(() => new Set(selectedHistoryKeys), [selectedHistoryKeys]);
+  const selectedHistoryKeySet = useMemo(
+    () => new Set(selectedHistoryKeys),
+    [selectedHistoryKeys],
+  );
   const selectedBulkItems = useMemo(
-    () => visibleBulkDeletableItems.filter((item) => selectedHistoryKeySet.has(historySelectionKey(item))),
+    () =>
+      visibleBulkDeletableItems.filter((item) =>
+        selectedHistoryKeySet.has(historySelectionKey(item)),
+      ),
     [selectedHistoryKeySet, visibleBulkDeletableItems],
   );
   const selectedBulkCount = selectedBulkItems.length;
   const allVisibleBulkItemsSelected = useMemo(
     () =>
       visibleBulkDeletableItems.length > 0 &&
-      visibleBulkDeletableItems.every((item) => selectedHistoryKeySet.has(historySelectionKey(item))),
+      visibleBulkDeletableItems.every((item) =>
+        selectedHistoryKeySet.has(historySelectionKey(item)),
+      ),
     [selectedHistoryKeySet, visibleBulkDeletableItems],
   );
 
   const selected = useMemo(() => {
     return items.find((x) => x.id === selectedId) || null;
   }, [items, selectedId]);
-
 
   const detailsItem = useMemo(() => {
     if (!detailsId) return null;
@@ -1023,121 +1364,151 @@ export default function MailboxClient() {
     if (!id) return "";
     const acc = mailAccounts.find((a) => a.id === id);
     if (!acc) return "";
-    return (acc.display_name ? `${acc.display_name} — ` : "") + acc.email_address;
+    return (
+      (acc.display_name ? `${acc.display_name} — ` : "") + acc.email_address
+    );
   }, [detailsItem, mailAccounts]);
 
   const detailsPayload = useMemo(() => {
-    return detailsItem && detailsItem.source === "app_events" ? (((detailsItem as any)?.raw?.payload || null) as any) : null;
+    return detailsItem && detailsItem.source === "app_events"
+      ? (((detailsItem as any)?.raw?.payload || null) as any)
+      : null;
   }, [detailsItem]);
 
-  const loadCampaignRecipients = useCallback(async (campaignId: string, targetPage = campaignRecipientsPage, targetFilter = campaignRecipientsFilter) => {
-    if (!campaignId) {
-      setCampaignRecipients([]);
-      setCampaignRecipientsTotal(0);
-      setCampaignRecipientsPageCount(1);
-      return;
-    }
-    setCampaignRecipientsLoading(true);
-    try {
-      const safePage = Math.max(1, targetPage);
-      const from = (safePage - 1) * MAILBOX_RECIPIENTS_PAGE_SIZE;
-      const to = from + MAILBOX_RECIPIENTS_PAGE_SIZE - 1;
-      let query: any = supabase
-        .from("mail_campaign_recipients")
-        .select("id,email,display_name,status,error,last_error,attempt_count,max_attempts,next_attempt_at,sent_at,updated_at,suppression_reason,bounce_type,bounced_at,unsubscribed_at,delivery_status,delivery_event,delivery_last_event_at,delivered_at", { count: "exact" })
-        .eq("campaign_id", campaignId)
-        .order("created_at", { ascending: true });
-      query = applyCampaignRecipientsFilter(query, targetFilter);
-      const { data, error, count } = await query.range(from, to);
-      if (error) throw error;
-      const total = Math.max(0, Number(count || 0));
-      setCampaignRecipients(((data || []) as any[]).map((row: any) => ({
-        id: String(row.id || ""),
-        email: String(row.email || ""),
-        display_name: row.display_name || null,
-        status: String(row.status || "queued"),
-        error: row.error || null,
-        last_error: row.last_error || null,
-        attempt_count: row.attempt_count == null ? null : Number(row.attempt_count),
-        max_attempts: row.max_attempts == null ? null : Number(row.max_attempts),
-        next_attempt_at: row.next_attempt_at || null,
-        sent_at: row.sent_at || null,
-        updated_at: row.updated_at || null,
-        suppression_reason: row.suppression_reason || null,
-        bounce_type: row.bounce_type || null,
-        bounced_at: row.bounced_at || null,
-        unsubscribed_at: row.unsubscribed_at || null,
-        delivery_status: row.delivery_status || null,
-        delivery_event: row.delivery_event || null,
-        delivery_last_event_at: row.delivery_last_event_at || null,
-        delivered_at: row.delivered_at || null,
-      })));
-      setCampaignRecipientsTotal(total);
-      setCampaignRecipientsPageCount(Math.max(1, Math.ceil(total / MAILBOX_RECIPIENTS_PAGE_SIZE)));
-    } catch (error) {
-      console.error(error);
-      setCampaignRecipients([]);
-      setCampaignRecipientsTotal(0);
-      setCampaignRecipientsPageCount(1);
-    } finally {
-      setCampaignRecipientsLoading(false);
-    }
-  }, [campaignRecipientsFilter, campaignRecipientsPage, supabase]);
-
-
-  const loadCampaignHealth = useCallback(async (campaignId: string, raw?: any) => {
-    if (!campaignId) {
-      setCampaignHealth(null);
-      return;
-    }
-
-    const baseCounts = campaignCounts(raw || {});
-    setCampaignHealthLoading(true);
-    try {
-      const countRecipients = async (filter: CampaignRecipientsFilterId | "__blocked__") => {
+  const loadCampaignRecipients = useCallback(
+    async (
+      campaignId: string,
+      targetPage = campaignRecipientsPage,
+      targetFilter = campaignRecipientsFilter,
+    ) => {
+      if (!campaignId) {
+        setCampaignRecipients([]);
+        setCampaignRecipientsTotal(0);
+        setCampaignRecipientsPageCount(1);
+        return;
+      }
+      setCampaignRecipientsLoading(true);
+      try {
+        const safePage = Math.max(1, targetPage);
+        const from = (safePage - 1) * MAILBOX_RECIPIENTS_PAGE_SIZE;
+        const to = from + MAILBOX_RECIPIENTS_PAGE_SIZE - 1;
         let query: any = supabase
           .from("mail_campaign_recipients")
-          .select("id", { count: "exact", head: true })
-          .eq("campaign_id", campaignId);
-        if (filter === "__blocked__") {
-          query = query.eq("status", "failed").not("suppression_reason", "is", null);
-        } else {
-          query = applyCampaignRecipientsFilter(query, filter);
-        }
-        const { count, error } = await query;
+          .select(
+            "id,email,display_name,status,error,last_error,attempt_count,max_attempts,next_attempt_at,sent_at,updated_at,suppression_reason,bounce_type,bounced_at,unsubscribed_at,delivery_status,delivery_event,delivery_last_event_at,delivered_at",
+            { count: "exact" },
+          )
+          .eq("campaign_id", campaignId)
+          .order("created_at", { ascending: true });
+        query = applyCampaignRecipientsFilter(query, targetFilter);
+        const { data, error, count } = await query.range(from, to);
         if (error) throw error;
-        return Math.max(0, Number(count || 0));
-      };
+        const total = Math.max(0, Number(count || 0));
+        setCampaignRecipients(
+          ((data || []) as any[]).map((row: any) => ({
+            id: String(row.id || ""),
+            email: String(row.email || ""),
+            display_name: row.display_name || null,
+            status: String(row.status || "queued"),
+            error: row.error || null,
+            last_error: row.last_error || null,
+            attempt_count:
+              row.attempt_count == null ? null : Number(row.attempt_count),
+            max_attempts:
+              row.max_attempts == null ? null : Number(row.max_attempts),
+            next_attempt_at: row.next_attempt_at || null,
+            sent_at: row.sent_at || null,
+            updated_at: row.updated_at || null,
+            suppression_reason: row.suppression_reason || null,
+            bounce_type: row.bounce_type || null,
+            bounced_at: row.bounced_at || null,
+            unsubscribed_at: row.unsubscribed_at || null,
+            delivery_status: row.delivery_status || null,
+            delivery_event: row.delivery_event || null,
+            delivery_last_event_at: row.delivery_last_event_at || null,
+            delivered_at: row.delivered_at || null,
+          })),
+        );
+        setCampaignRecipientsTotal(total);
+        setCampaignRecipientsPageCount(
+          Math.max(1, Math.ceil(total / MAILBOX_RECIPIENTS_PAGE_SIZE)),
+        );
+      } catch (error) {
+        console.error(error);
+        setCampaignRecipients([]);
+        setCampaignRecipientsTotal(0);
+        setCampaignRecipientsPageCount(1);
+      } finally {
+        setCampaignRecipientsLoading(false);
+      }
+    },
+    [campaignRecipientsFilter, campaignRecipientsPage, supabase],
+  );
 
-      const [optOut, blacklist] = await Promise.all([
-        countRecipients("opt_out"),
-        countRecipients("blacklist"),
-      ]);
-      const blocked = optOut + blacklist;
+  const loadCampaignHealth = useCallback(
+    async (campaignId: string, raw?: any) => {
+      if (!campaignId) {
+        setCampaignHealth(null);
+        return;
+      }
 
-      setCampaignHealth({
-        ...baseCounts,
-        blocked,
-        opt_out: optOut,
-        blacklist,
-        retryable: Math.max(0, baseCounts.failed - blocked),
-      });
-    } catch (error) {
-      console.error(error);
-      setCampaignHealth({
-        ...baseCounts,
-        blocked: 0,
-        opt_out: 0,
-        blacklist: 0,
-        retryable: Math.max(0, baseCounts.failed),
-      });
-    } finally {
-      setCampaignHealthLoading(false);
-    }
-  }, [supabase]);
+      const baseCounts = campaignCounts(raw || {});
+      setCampaignHealthLoading(true);
+      try {
+        const countRecipients = async (
+          filter: CampaignRecipientsFilterId | "__blocked__",
+        ) => {
+          let query: any = supabase
+            .from("mail_campaign_recipients")
+            .select("id", { count: "exact", head: true })
+            .eq("campaign_id", campaignId);
+          if (filter === "__blocked__") {
+            query = query
+              .eq("status", "failed")
+              .not("suppression_reason", "is", null);
+          } else {
+            query = applyCampaignRecipientsFilter(query, filter);
+          }
+          const { count, error } = await query;
+          if (error) throw error;
+          return Math.max(0, Number(count || 0));
+        };
+
+        const [optOut, blacklist] = await Promise.all([
+          countRecipients("opt_out"),
+          countRecipients("blacklist"),
+        ]);
+        const blocked = optOut + blacklist;
+
+        setCampaignHealth({
+          ...baseCounts,
+          blocked,
+          opt_out: optOut,
+          blacklist,
+          retryable: Math.max(0, baseCounts.failed - blocked),
+        });
+      } catch (error) {
+        console.error(error);
+        setCampaignHealth({
+          ...baseCounts,
+          blocked: 0,
+          opt_out: 0,
+          blacklist: 0,
+          retryable: Math.max(0, baseCounts.failed),
+        });
+      } finally {
+        setCampaignHealthLoading(false);
+      }
+    },
+    [supabase],
+  );
 
   useEffect(() => {
-    if (!detailsOpen || !detailsItem || detailsItem.source !== "mail_campaigns") {
+    if (
+      !detailsOpen ||
+      !detailsItem ||
+      detailsItem.source !== "mail_campaigns"
+    ) {
       setCampaignHealth(null);
       setCampaignHealthLoading(false);
       return;
@@ -1146,18 +1517,36 @@ export default function MailboxClient() {
   }, [detailsOpen, detailsItem, loadCampaignHealth]);
 
   useEffect(() => {
-    if (!detailsOpen || !detailsItem || detailsItem.source !== "mail_campaigns") {
+    if (
+      !detailsOpen ||
+      !detailsItem ||
+      detailsItem.source !== "mail_campaigns"
+    ) {
       setCampaignRecipients([]);
       setCampaignRecipientsLoading(false);
       setCampaignRecipientsTotal(0);
       setCampaignRecipientsPageCount(1);
       return;
     }
-    void loadCampaignRecipients(detailsItem.id, campaignRecipientsPage, campaignRecipientsFilter);
-  }, [campaignRecipientsFilter, campaignRecipientsPage, detailsOpen, detailsItem, loadCampaignRecipients]);
+    void loadCampaignRecipients(
+      detailsItem.id,
+      campaignRecipientsPage,
+      campaignRecipientsFilter,
+    );
+  }, [
+    campaignRecipientsFilter,
+    campaignRecipientsPage,
+    detailsOpen,
+    detailsItem,
+    loadCampaignRecipients,
+  ]);
 
   useEffect(() => {
-    if (!detailsOpen || !detailsItem || detailsItem.source !== "mail_campaigns") {
+    if (
+      !detailsOpen ||
+      !detailsItem ||
+      detailsItem.source !== "mail_campaigns"
+    ) {
       setCampaignRecipientsPage(1);
       setCampaignRecipientsFilter("all");
       return;
@@ -1203,7 +1592,7 @@ export default function MailboxClient() {
         .maybeSingle();
 
       if (!cancelled) {
-        setDetailsSourceDocPayload(error ? null : (data?.payload || null));
+        setDetailsSourceDocPayload(error ? null : data?.payload || null);
       }
     };
 
@@ -1214,12 +1603,20 @@ export default function MailboxClient() {
   }, [detailsOpen, detailsItem, supabase]);
 
   const detailsChannelEntries = useMemo(() => {
-    if (!detailsItem || detailsItem.source !== "app_events") return [] as ChannelPublication[];
+    if (!detailsItem || detailsItem.source !== "app_events")
+      return [] as ChannelPublication[];
     const payload = detailsPayload;
     const channelPublications = extractChannelPublications(payload);
     if (channelPublications.length) return channelPublications;
     const defaultParts = extractPublicationParts(payload);
-    return orderChannelKeys((detailsItem.channels && detailsItem.channels.length ? detailsItem.channels : [detailsItem.target]).filter(Boolean).map((channel) => String(channel))).map((channel) => ({
+    return orderChannelKeys(
+      (detailsItem.channels && detailsItem.channels.length
+        ? detailsItem.channels
+        : [detailsItem.target]
+      )
+        .filter(Boolean)
+        .map((channel) => String(channel)),
+    ).map((channel) => ({
       key: channel,
       label: formatChannelLabel(channel),
       parts: defaultParts,
@@ -1228,28 +1625,52 @@ export default function MailboxClient() {
 
   const activeDetailsChannelEntry = useMemo(() => {
     if (!detailsChannelEntries.length) return null;
-    return detailsChannelEntries.find((entry) => entry.key === detailsChannelKey) || detailsChannelEntries[0] || null;
+    return (
+      detailsChannelEntries.find((entry) => entry.key === detailsChannelKey) ||
+      detailsChannelEntries[0] ||
+      null
+    );
   }, [detailsChannelEntries, detailsChannelKey]);
 
   const activeDetailsChannelResult = useMemo(() => {
     if (!detailsPayload || !activeDetailsChannelEntry) return null;
-    const results = detailsPayload?.results && typeof detailsPayload.results === "object" ? detailsPayload.results : {};
+    const results =
+      detailsPayload?.results && typeof detailsPayload.results === "object"
+        ? detailsPayload.results
+        : {};
     return (results as any)?.[activeDetailsChannelEntry.key] || null;
   }, [detailsPayload, activeDetailsChannelEntry]);
 
-  const activePublicationEditChannelKey = normalizeChannelKey(activeDetailsChannelEntry?.key || "");
-  const activePublicationEditPreset = useMemo(() => getPublicationChannelPreset(activePublicationEditChannelKey), [activePublicationEditChannelKey]);
-  const activePublicationEditAssets = publicationEditImagesByChannel[activePublicationEditChannelKey]?.assets || [];
-  const activePublicationEditVideo = publicationEditVideoByChannel[activePublicationEditChannelKey] || null;
+  const activePublicationEditChannelKey = normalizeChannelKey(
+    activeDetailsChannelEntry?.key || "",
+  );
+  const activePublicationEditPreset = useMemo(
+    () => getPublicationChannelPreset(activePublicationEditChannelKey),
+    [activePublicationEditChannelKey],
+  );
+  const activePublicationEditAssets =
+    publicationEditImagesByChannel[activePublicationEditChannelKey]?.assets ||
+    [];
+  const activePublicationEditVideo =
+    publicationEditVideoByChannel[activePublicationEditChannelKey] || null;
 
   useEffect(() => {
-    if (!detailsOpen || !detailsItem || detailsItem.source !== "app_events") return;
+    if (!detailsOpen || !detailsItem || detailsItem.source !== "app_events")
+      return;
     const parts = activeDetailsChannelEntry?.parts || {};
     setPublicationEditForm({
       title: parts.title || "",
       content: parts.content || "",
       cta: parts.cta || "",
-      ctaMode: parts.ctaMode || (parts.ctaUrl ? "website" : parts.ctaPhone ? "call" : parts.cta ? "custom" : "none"),
+      ctaMode:
+        parts.ctaMode ||
+        (parts.ctaUrl
+          ? "website"
+          : parts.ctaPhone
+            ? "call"
+            : parts.cta
+              ? "custom"
+              : "none"),
       ctaUrl: parts.ctaUrl || "",
       ctaPhone: parts.ctaPhone || "",
       hashtags: tagsToEditorString(parts.hashtags),
@@ -1260,23 +1681,55 @@ export default function MailboxClient() {
   }, [detailsOpen, detailsItem, activeDetailsChannelEntry?.key]);
 
   useEffect(() => {
-    if (!detailsOpen || !detailsItem || detailsItem.source !== "app_events") return;
+    if (!detailsOpen || !detailsItem || detailsItem.source !== "app_events")
+      return;
     const nextState: Record<string, PublicationChannelImagesState> = {};
     for (const entry of detailsChannelEntries) {
       const channel = normalizeChannelKey(entry.key);
       const defaultTransform = buildPublicationDefaultTransform(channel);
-      const assets = (Array.isArray(entry.parts.attachments) ? entry.parts.attachments : [])
-        .filter((att) => (att?.url || att?.originalUrl || att?.originalPublicUrl || att?.renderedUrl) && isImageAttachment({ ...att, url: att.url || att.originalUrl || att.originalPublicUrl || att.renderedUrl }))
+      const assets = (
+        Array.isArray(entry.parts.attachments) ? entry.parts.attachments : []
+      )
+        .filter(
+          (att) =>
+            (att?.url ||
+              att?.originalUrl ||
+              att?.originalPublicUrl ||
+              att?.renderedUrl) &&
+            isImageAttachment({
+              ...att,
+              url:
+                att.url ||
+                att.originalUrl ||
+                att.originalPublicUrl ||
+                att.renderedUrl,
+            }),
+        )
         .map((att, index) => {
-          const renderedUrl = String(att.renderedUrl || att.url || att.publicUrl || "").trim();
-          const originalUrl = String(att.originalUrl || att.originalPublicUrl || "").trim();
+          const renderedUrl = String(
+            att.renderedUrl || att.url || att.publicUrl || "",
+          ).trim();
+          const originalUrl = String(
+            att.originalUrl || att.originalPublicUrl || "",
+          ).trim();
           const previewUrl = originalUrl || renderedUrl;
-          const storedTransform = att.transform && typeof att.transform === "object" ? att.transform as Partial<PublicationImageTransform> : null;
-          const initialTransform = storedTransform ? { ...defaultTransform, ...storedTransform } : { ...defaultTransform };
+          const storedTransform =
+            att.transform && typeof att.transform === "object"
+              ? (att.transform as Partial<PublicationImageTransform>)
+              : null;
+          const initialTransform = storedTransform
+            ? { ...defaultTransform, ...storedTransform }
+            : { ...defaultTransform };
           return {
-            key: makePublicationImageAssetKey("existing", att.name || `image-${index + 1}`, `${index}:${previewUrl || renderedUrl}`),
+            key: makePublicationImageAssetKey(
+              "existing",
+              att.name || `image-${index + 1}`,
+              `${index}:${previewUrl || renderedUrl}`,
+            ),
             name: att.originalName || att.name || `Image ${index + 1}`,
-            type: String(att.originalType || att.type || "image/jpeg") || "image/jpeg",
+            type:
+              String(att.originalType || att.type || "image/jpeg") ||
+              "image/jpeg",
             previewUrl,
             sourceUrl: renderedUrl || previewUrl || null,
             originalUrl: originalUrl || null,
@@ -1299,44 +1752,85 @@ export default function MailboxClient() {
   }, [detailsOpen, detailsItem?.id, detailsChannelEntries]);
 
   useEffect(() => {
-    if (!detailsOpen || !detailsItem || detailsItem.source !== "app_events") return;
+    if (!detailsOpen || !detailsItem || detailsItem.source !== "app_events")
+      return;
     const nextState: Record<string, PublicationEditVideoState> = {};
     for (const entry of detailsChannelEntries) {
       const channel = normalizeBoosterChannelKeyForVideo(entry.key);
       const parts = (entry.parts || {}) as any;
-      const videoCandidate = parts.video || (Array.isArray(parts.attachments) ? parts.attachments.find((att: any) => isVideoAttachment(att)) : null);
+      const videoCandidate =
+        parts.video ||
+        (Array.isArray(parts.attachments)
+          ? parts.attachments.find((att: any) => isVideoAttachment(att))
+          : null);
       const finalVideo = attachmentToVideoPayload(videoCandidate);
       if (!finalVideo) continue;
       const settings = parts.videoSettings || {};
-      const sourceVideo = attachmentToVideoPayload(parts.sourceVideo) || finalVideo;
-      const sourceMetadata = sourceVideo.sourceMetadata || finalVideo.sourceMetadata || null;
-      const defaultFormat = getRecommendedVideoFormatForSource(channel, sourceMetadata);
-      const format = (settings.format || parts.videoFormat || defaultFormat) as VideoFormat;
-      const adaptationMode = (settings.adaptationMode || parts.videoAdaptationMode || "safe_blur") as VideoAdaptationMode;
+      const sourceVideo =
+        attachmentToVideoPayload(parts.sourceVideo) || finalVideo;
+      const sourceMetadata =
+        sourceVideo.sourceMetadata || finalVideo.sourceMetadata || null;
+      const defaultFormat = getRecommendedVideoFormatForSource(
+        channel,
+        sourceMetadata,
+      );
+      const format = (settings.format ||
+        parts.videoFormat ||
+        defaultFormat) as VideoFormat;
+      const adaptationMode = (settings.adaptationMode ||
+        parts.videoAdaptationMode ||
+        "safe_blur") as VideoAdaptationMode;
       const signature = buildVideoTransformSignature(format, adaptationMode);
-      const syntheticFinalVariant = finalVideo.publicUrl || finalVideo.url
-        ? {
-            key: `${channel}-${format}-${adaptationMode}-published`,
-            channel,
-            format,
-            adaptationMode,
-            signature,
-            publicUrl: finalVideo.publicUrl || finalVideo.url || "",
-            url: finalVideo.publicUrl || finalVideo.url || "",
-            storagePath: finalVideo.storagePath || "",
-            contentType: finalVideo.type || "video/mp4",
-            size: finalVideo.size || 0,
-            duration: finalVideo.duration || null,
-            target: { label: getVideoFormatLabel(channel, format, sourceMetadata) },
-          }
-        : null;
-      const storedVariants = Array.isArray(finalVideo.transformedVariants) ? finalVideo.transformedVariants : [];
+      const syntheticFinalVariant =
+        finalVideo.publicUrl || finalVideo.url
+          ? {
+              key: `${channel}-${format}-${adaptationMode}-published`,
+              channel,
+              format,
+              adaptationMode,
+              signature,
+              publicUrl: finalVideo.publicUrl || finalVideo.url || "",
+              url: finalVideo.publicUrl || finalVideo.url || "",
+              storagePath: finalVideo.storagePath || "",
+              contentType: finalVideo.type || "video/mp4",
+              size: finalVideo.size || 0,
+              duration: finalVideo.duration || null,
+              target: {
+                label: getVideoFormatLabel(channel, format, sourceMetadata),
+              },
+            }
+          : null;
+      const storedVariants = Array.isArray(finalVideo.transformedVariants)
+        ? finalVideo.transformedVariants
+        : [];
       const transformedVariants = [syntheticFinalVariant, ...storedVariants]
         .filter(Boolean)
-        .filter((variant: any, index, arr) => arr.findIndex((candidate: any) => String(candidate?.signature || candidate?.publicUrl || candidate?.url || "") === String(variant?.signature || variant?.publicUrl || variant?.url || "")) === index) as NonNullable<VideoPayload["transformedVariants"]>;
+        .filter(
+          (variant: any, index, arr) =>
+            arr.findIndex(
+              (candidate: any) =>
+                String(
+                  candidate?.signature ||
+                    candidate?.publicUrl ||
+                    candidate?.url ||
+                    "",
+                ) ===
+                String(
+                  variant?.signature ||
+                    variant?.publicUrl ||
+                    variant?.url ||
+                    "",
+                ),
+            ) === index,
+        ) as NonNullable<VideoPayload["transformedVariants"]>;
       nextState[channel] = {
         file: null,
-        previewUrl: sourceVideo.publicUrl || sourceVideo.url || finalVideo.publicUrl || finalVideo.url || "",
+        previewUrl:
+          sourceVideo.publicUrl ||
+          sourceVideo.url ||
+          finalVideo.publicUrl ||
+          finalVideo.url ||
+          "",
         name: sourceVideo.name || finalVideo.name || "video-inrcy.mp4",
         type: sourceVideo.type || finalVideo.type || "video/mp4",
         size: sourceVideo.size || finalVideo.size || 0,
@@ -1346,7 +1840,13 @@ export default function MailboxClient() {
         transformedVariants,
         format,
         adaptationMode,
-        preparation: finalVideo.publicUrl ? { status: "ready", label: "Format appliqué", detail: `${getVideoFormatLabel(channel, format, sourceMetadata)} · ${VIDEO_ADAPTATION_MODE_LABELS[adaptationMode]}` } : null,
+        preparation: finalVideo.publicUrl
+          ? {
+              status: "ready",
+              label: "Format appliqué",
+              detail: `${getVideoFormatLabel(channel, format, sourceMetadata)} · ${VIDEO_ADAPTATION_MODE_LABELS[adaptationMode]}`,
+            }
+          : null,
       };
     }
     setPublicationEditVideoByChannel(nextState);
@@ -1356,13 +1856,25 @@ export default function MailboxClient() {
     return mailAccounts.find((a) => a.id === selectedAccountId) || null;
   }, [mailAccounts, selectedAccountId]);
 
-  const workflowFinalizerKind = useMemo<"propulser" | "fideliser" | null>(() => {
-    const raw = String(searchParams?.get("finalizer") || searchParams?.get("workflow_finalizer") || "").toLowerCase();
+  const workflowFinalizerKind = useMemo<
+    "propulser" | "fideliser" | null
+  >(() => {
+    const raw = String(
+      searchParams?.get("finalizer") ||
+        searchParams?.get("workflow_finalizer") ||
+        "",
+    ).toLowerCase();
     return raw === "propulser" || raw === "fideliser" ? raw : null;
   }, [searchParams]);
 
-  const workflowReturnAction = useMemo(() => String(searchParams?.get("workflow_action") || "").trim(), [searchParams]);
-  const workflowReturnKey = useMemo(() => String(searchParams?.get("workflow_return_key") || "").trim(), [searchParams]);
+  const workflowReturnAction = useMemo(
+    () => String(searchParams?.get("workflow_action") || "").trim(),
+    [searchParams],
+  );
+  const workflowReturnKey = useMemo(
+    () => String(searchParams?.get("workflow_return_key") || "").trim(),
+    [searchParams],
+  );
 
   const composeRecipientList = useMemo(() => normalizeEmails(to), [to]);
   const isBulkCampaignCompose = composeRecipientList.length > 1;
@@ -1420,7 +1932,6 @@ export default function MailboxClient() {
     }
   }, [folder]);
 
-
   // initial
   useEffect(() => {
     void loadAccounts();
@@ -1440,8 +1951,15 @@ export default function MailboxClient() {
       void loadSignature(selectedAccountId || undefined);
     };
 
-    window.addEventListener("inrsend:signature-updated", handleSignatureUpdated);
-    return () => window.removeEventListener("inrsend:signature-updated", handleSignatureUpdated);
+    window.addEventListener(
+      "inrsend:signature-updated",
+      handleSignatureUpdated,
+    );
+    return () =>
+      window.removeEventListener(
+        "inrsend:signature-updated",
+        handleSignatureUpdated,
+      );
   }, [selectedAccountId]);
 
   // refresh des changements de filtres / recherche
@@ -1455,8 +1973,15 @@ export default function MailboxClient() {
       await loadHistory();
     };
 
-    window.addEventListener(MAIL_ACCOUNTS_UPDATED_EVENT, handleMailAccountsUpdated as EventListener);
-    return () => window.removeEventListener(MAIL_ACCOUNTS_UPDATED_EVENT, handleMailAccountsUpdated as EventListener);
+    window.addEventListener(
+      MAIL_ACCOUNTS_UPDATED_EVENT,
+      handleMailAccountsUpdated as EventListener,
+    );
+    return () =>
+      window.removeEventListener(
+        MAIL_ACCOUNTS_UPDATED_EVENT,
+        handleMailAccountsUpdated as EventListener,
+      );
   }, [loadHistory]);
 
   useEffect(() => {
@@ -1497,13 +2022,23 @@ export default function MailboxClient() {
   useEffect(() => {
     const handleProfileVersionChange = (event: Event) => {
       const detail = (event as CustomEvent<ProfileVersionChangeDetail>).detail;
-      if (!(detail?.field === "docs_version" || detail?.field === "publications_version")) return;
+      if (!(
+        detail?.field === "docs_version" ||
+        detail?.field === "publications_version"
+      ))
+        return;
       void loadHistory();
     };
 
-    window.addEventListener(PROFILE_VERSION_EVENT, handleProfileVersionChange as EventListener);
+    window.addEventListener(
+      PROFILE_VERSION_EVENT,
+      handleProfileVersionChange as EventListener,
+    );
     return () => {
-      window.removeEventListener(PROFILE_VERSION_EVENT, handleProfileVersionChange as EventListener);
+      window.removeEventListener(
+        PROFILE_VERSION_EVENT,
+        handleProfileVersionChange as EventListener,
+      );
     };
   }, [loadHistory]);
 
@@ -1539,18 +2074,32 @@ export default function MailboxClient() {
     if (!shouldOpen) return;
 
     let toParam = safeDecode(searchParams?.get("to") || "").trim();
-    const prefillStorage = (searchParams?.get("prefillStorage") || "").toLowerCase();
+    const prefillStorage = (
+      searchParams?.get("prefillStorage") || ""
+    ).toLowerCase();
     let sessionRecipientHints: ComposeCrmRecipientHint[] = [];
-    if (!toParam && prefillStorage === "session" && typeof window !== "undefined") {
+    if (
+      !toParam &&
+      prefillStorage === "session" &&
+      typeof window !== "undefined"
+    ) {
       try {
         const raw = window.sessionStorage.getItem("inrcy_pending_mail_compose");
         if (raw) {
-          const payload = JSON.parse(raw) as { to?: string[] | string; recipients?: unknown; createdAt?: number };
+          const payload = JSON.parse(raw) as {
+            to?: string[] | string;
+            recipients?: unknown;
+            createdAt?: number;
+          };
           const ageMs = Date.now() - Number(payload?.createdAt || 0);
-          const loaded = Array.isArray(payload?.to) ? payload.to.join(", ") : String(payload?.to || "");
+          const loaded = Array.isArray(payload?.to)
+            ? payload.to.join(", ")
+            : String(payload?.to || "");
           if (ageMs >= 0 && ageMs <= 10 * 60 * 1000) {
             if (loaded) toParam = loaded.trim();
-            sessionRecipientHints = normalizeComposeRecipientHints(payload?.recipients);
+            sessionRecipientHints = normalizeComposeRecipientHints(
+              payload?.recipients,
+            );
           }
         }
       } catch {
@@ -1564,56 +2113,112 @@ export default function MailboxClient() {
     const subjParam = safeDecode(searchParams?.get("subject") || "");
     const textParam = safeDecode(searchParams?.get("text") || "");
     const nameParam = safeDecode(
-      searchParams?.get("name") || searchParams?.get("clientName") || searchParams?.get("contactName") || ""
+      searchParams?.get("name") ||
+        searchParams?.get("clientName") ||
+        searchParams?.get("contactName") ||
+        "",
     ).trim();
-    const contactIdParam = safeDecode(searchParams?.get("contactId") || "").trim();
+    const contactIdParam = safeDecode(
+      searchParams?.get("contactId") || "",
+    ).trim();
     const attachKey = safeDecode(searchParams?.get("attachKey") || "").trim();
     const attachName = safeDecode(searchParams?.get("attachName") || "").trim();
 
     // Determine composer type (optional).
     // If not provided explicitly, we infer it from the attachment path.
-    const typeParam = (searchParams?.get("type") || searchParams?.get("sendType") || "").toLowerCase();
-    const sourceDocSaveIdParam = safeDecode(searchParams?.get("docSaveId") || searchParams?.get("sourceDocSaveId") || "").trim();
-    const sourceDocTypeParam = (safeDecode(searchParams?.get("docType") || searchParams?.get("sourceDocType") || "").trim().toLowerCase());
-    const sourceDocNumberParam = safeDecode(searchParams?.get("docNumber") || searchParams?.get("sourceDocNumber") || "").trim();
-    const templateKeyParam = safeDecode(searchParams?.get("template_key") || "").trim();
+    const typeParam = (
+      searchParams?.get("type") ||
+      searchParams?.get("sendType") ||
+      ""
+    ).toLowerCase();
+    const sourceDocSaveIdParam = safeDecode(
+      searchParams?.get("docSaveId") ||
+        searchParams?.get("sourceDocSaveId") ||
+        "",
+    ).trim();
+    const sourceDocTypeParam = safeDecode(
+      searchParams?.get("docType") || searchParams?.get("sourceDocType") || "",
+    )
+      .trim()
+      .toLowerCase();
+    const sourceDocNumberParam = safeDecode(
+      searchParams?.get("docNumber") ||
+        searchParams?.get("sourceDocNumber") ||
+        "",
+    ).trim();
+    const templateKeyParam = safeDecode(
+      searchParams?.get("template_key") || "",
+    ).trim();
     let nextType: SendType = "mail";
     if (typeParam === "facture") nextType = "facture";
     else if (typeParam === "devis") nextType = "devis";
-    else if (attachKey.includes("/factures/") || attachKey.includes("/facture/")) nextType = "facture";
+    else if (
+      attachKey.includes("/factures/") ||
+      attachKey.includes("/facture/")
+    )
+      nextType = "facture";
     else if (attachKey.includes("/devis/")) nextType = "devis";
     setComposeType(nextType);
     setComposeSourceDocSaveId(sourceDocSaveIdParam);
-    setComposeSourceDocType(sourceDocTypeParam === "facture" || sourceDocTypeParam === "devis" ? (sourceDocTypeParam as "facture" | "devis") : "");
-    setComposeSourceDocNumber(sourceDocNumberParam || (attachName || attachKey.split("/").pop() || "").replace(/\.pdf$/i, ""));
+    setComposeSourceDocType(
+      sourceDocTypeParam === "facture" || sourceDocTypeParam === "devis"
+        ? (sourceDocTypeParam as "facture" | "devis")
+        : "",
+    );
+    setComposeSourceDocNumber(
+      sourceDocNumberParam ||
+        (attachName || attachKey.split("/").pop() || "").replace(/\.pdf$/i, ""),
+    );
     if (templateKeyParam) setComposeTemplateKey(templateKeyParam);
 
     if (toParam) setTo(toParam);
     if (subjParam) setSubject(normalizeMailSubject(subjParam));
-    const htmlParam = safeDecode(searchParams?.get("html") || searchParams?.get("body_html") || "");
-    if (textParam || htmlParam) setComposeBody(textParam, htmlParam || undefined);
+    const htmlParam = safeDecode(
+      searchParams?.get("html") || searchParams?.get("body_html") || "",
+    );
+    if (textParam || htmlParam)
+      setComposeBody(textParam, htmlParam || undefined);
 
-    const urlRecipientHints = !sessionRecipientHints.length && toParam && contactIdParam
-      ? normalizeEmails(toParam).map((email, index) => ({
-          email,
-          contact_id: index === 0 ? contactIdParam : null,
-          display_name: index === 0 ? (nameParam || null) : null,
-        }))
-      : [];
-    setComposeRecipientHints(sessionRecipientHints.length ? sessionRecipientHints : urlRecipientHints);
+    const urlRecipientHints =
+      !sessionRecipientHints.length && toParam && contactIdParam
+        ? normalizeEmails(toParam).map((email, index) => ({
+            email,
+            contact_id: index === 0 ? contactIdParam : null,
+            display_name: index === 0 ? nameParam || null : null,
+          }))
+        : [];
+    setComposeRecipientHints(
+      sessionRecipientHints.length ? sessionRecipientHints : urlRecipientHints,
+    );
 
     // If the caller didn't provide a subject/body, we inject a friendly default template.
     // This keeps the connected tools consistent (CRM/Devis/Factures all go through iNr'SEND compose).
-    const docRef = (attachName || attachKey.split("/").pop() || "").replace(/\.pdf$/i, "");
+    const docRef = (attachName || attachKey.split("/").pop() || "").replace(
+      /\.pdf$/i,
+      "",
+    );
     if (!subjParam?.trim()) {
-      if (nextType === "facture") setSubject((prev) => (prev?.trim() ? prev : `Envoi de votre facture ${docRef || ""}`.trim()));
-      else if (nextType === "devis") setSubject((prev) => (prev?.trim() ? prev : `Envoi de votre devis ${docRef || ""}`.trim()));
-      else if (nameParam) setSubject((prev) => (prev?.trim() ? prev : `Message pour ${nameParam}`));
+      if (nextType === "facture")
+        setSubject((prev) =>
+          prev?.trim() ? prev : `Envoi de votre facture ${docRef || ""}`.trim(),
+        );
+      else if (nextType === "devis")
+        setSubject((prev) =>
+          prev?.trim() ? prev : `Envoi de votre devis ${docRef || ""}`.trim(),
+        );
+      else if (nameParam)
+        setSubject((prev) =>
+          prev?.trim() ? prev : `Message pour ${nameParam}`,
+        );
     }
     if (!textParam?.trim() && !htmlParam?.trim()) {
       setText((prev) => {
         if (prev?.trim()) return prev;
-        const fallback = buildDefaultMailText({ kind: nextType, name: nameParam, docRef });
+        const fallback = buildDefaultMailText({
+          kind: nextType,
+          name: nameParam,
+          docRef,
+        });
         setHtml(textToRichMailHtml(fallback));
         return fallback;
       });
@@ -1629,17 +2234,31 @@ export default function MailboxClient() {
       if (lastAttachKeyRef.current === attachKey) return;
       lastAttachKeyRef.current = attachKey;
 
-      const inferredName = attachName || attachKey.split("/").pop() || "document.pdf";
+      const inferredName =
+        attachName || attachKey.split("/").pop() || "document.pdf";
       setComposeAttachments((prev) => {
-        const already = prev.some((f) => f.bucket === ATTACH_BUCKET && f.path === attachKey);
+        const already = prev.some(
+          (f) => f.bucket === ATTACH_BUCKET && f.path === attachKey,
+        );
         if (already) return prev;
-        return [{ bucket: ATTACH_BUCKET, path: attachKey, name: inferredName, type: "application/pdf", size: null }, ...prev];
+        return [
+          {
+            bucket: ATTACH_BUCKET,
+            path: attachKey,
+            name: inferredName,
+            type: "application/pdf",
+            size: null,
+          },
+          ...prev,
+        ];
       });
 
       setSubject((prev) => {
         if (prev?.trim()) return prev;
-        if (nextType === "facture") return `Facture ${inferredName.replace(/\.pdf$/i, "")}`;
-        if (nextType === "devis") return `Devis ${inferredName.replace(/\.pdf$/i, "")}`;
+        if (nextType === "facture")
+          return `Facture ${inferredName.replace(/\.pdf$/i, "")}`;
+        if (nextType === "devis")
+          return `Devis ${inferredName.replace(/\.pdf$/i, "")}`;
         return prev;
       });
     };
@@ -1656,7 +2275,8 @@ export default function MailboxClient() {
     const preTextRaw = searchParams?.get("prefill_text") || "";
     const preHtmlRaw = searchParams?.get("prefill_html") || "";
     const preAttachmentsRaw = searchParams?.get("prefill_attachments") || "";
-    const preAttachmentsKey = searchParams?.get("prefill_attachments_key") || "";
+    const preAttachmentsKey =
+      searchParams?.get("prefill_attachments_key") || "";
     const templateKey = searchParams?.get("template_key") || "";
     const open = (searchParams?.get("compose") || "").toLowerCase();
     if (templateKey) setComposeTemplateKey(templateKey);
@@ -1666,10 +2286,17 @@ export default function MailboxClient() {
     const trackType = searchParams?.get("track_type") || "";
     const trackPayloadRaw = searchParams?.get("track_payload") || "";
 
-    if ((trackKind === "booster" || trackKind === "propulser" || trackKind === "fideliser") && trackType) {
+    if (
+      (trackKind === "booster" ||
+        trackKind === "propulser" ||
+        trackKind === "fideliser") &&
+      trackType
+    ) {
       let payload: Record<string, any> = {};
       try {
-        payload = trackPayloadRaw ? (JSON.parse(safeDecode(trackPayloadRaw)) as any) : {};
+        payload = trackPayloadRaw
+          ? (JSON.parse(safeDecode(trackPayloadRaw)) as any)
+          : {};
       } catch {
         payload = {};
       }
@@ -1688,12 +2315,22 @@ export default function MailboxClient() {
     }
 
     // Only prefill when something is provided
-    if (!preSubjectRaw && !preTextRaw && !preHtmlRaw && !preAttachmentsRaw && !preAttachmentsKey && !templateKey) return;
+    if (
+      !preSubjectRaw &&
+      !preTextRaw &&
+      !preHtmlRaw &&
+      !preAttachmentsRaw &&
+      !preAttachmentsKey &&
+      !templateKey
+    )
+      return;
 
     const preSubject = safeDecode(preSubjectRaw);
     const preText = safeDecode(preTextRaw);
     const preHtml = safeDecode(preHtmlRaw);
-    const preAttachmentsFromStorage = readWorkflowMailPrefillAttachments(safeDecode(preAttachmentsKey));
+    const preAttachmentsFromStorage = readWorkflowMailPrefillAttachments(
+      safeDecode(preAttachmentsKey),
+    );
     const preAttachments = preAttachmentsFromStorage.length
       ? preAttachmentsFromStorage
       : normalizeCampaignAttachments(safeDecode(preAttachmentsRaw));
@@ -1750,8 +2387,15 @@ export default function MailboxClient() {
     if (!composeOpen) return;
     setText((prev) => {
       const base = String(prev || "");
-      const next = base.trim() ? stripTemplateSignatureBlock(base) : buildDefaultMailText({ kind: composeType });
-      setHtml((currentHtml) => normalizeRichMailHtmlForSend(next, currentHtml || textToRichMailHtml(next)));
+      const next = base.trim()
+        ? stripTemplateSignatureBlock(base)
+        : buildDefaultMailText({ kind: composeType });
+      setHtml((currentHtml) =>
+        normalizeRichMailHtmlForSend(
+          next,
+          currentHtml || textToRichMailHtml(next),
+        ),
+      );
       return next;
     });
   }, [composeOpen, composeType, signatureEnabled, signaturePreview]);
@@ -1780,9 +2424,13 @@ export default function MailboxClient() {
       const json = (await res.json().catch(() => ({}))) as any;
       const rows = Array.isArray(json?.contacts) ? json.contacts : [];
       const mapped = rows.map((c: any) => {
-        const left = [c.first_name, c.last_name].filter(Boolean).join(" ").trim();
+        const left = [c.first_name, c.last_name]
+          .filter(Boolean)
+          .join(" ")
+          .trim();
         const company = (c.company_name || "").trim();
-        const full = company && left ? `${company} — ${left}` : company || left || null;
+        const full =
+          company && left ? `${company} — ${left}` : company || left || null;
         return {
           id: String(c.id),
           full_name: full,
@@ -1797,7 +2445,10 @@ export default function MailboxClient() {
       setCrmContacts(mapped);
     } catch (e: any) {
       console.error("CRM load error", e);
-      const msg = e?.name === "AbortError" ? "Le chargement a expiré. Veuillez réessayer." : "Impossible de charger les contacts.";
+      const msg =
+        e?.name === "AbortError"
+          ? "Le chargement a expiré. Veuillez réessayer."
+          : "Impossible de charger les contacts.";
       setCrmError(msg);
     } finally {
       clearTimeout(timeout);
@@ -1823,7 +2474,9 @@ export default function MailboxClient() {
 
   async function saveDraft() {
     if (attachBusy) {
-      throw new Error("Patientez : les pièces jointes sont encore en préparation.");
+      throw new Error(
+        "Patientez : les pièces jointes sont encore en préparation.",
+      );
     }
     const { data: auth } = await supabase.auth.getUser();
     const userId = auth?.user?.id;
@@ -1866,19 +2519,39 @@ export default function MailboxClient() {
     };
 
     const isMissingDraftMetadataColumn = (error: any) => {
-      const msg = String(error?.message || error?.details || error?.hint || "").toLowerCase();
-      return error?.code === "PGRST204" || msg.includes("folder") || msg.includes("track_kind") || msg.includes("track_type") || msg.includes("template_key") || msg.includes("attachments");
+      const msg = String(
+        error?.message || error?.details || error?.hint || "",
+      ).toLowerCase();
+      return (
+        error?.code === "PGRST204" ||
+        msg.includes("folder") ||
+        msg.includes("track_kind") ||
+        msg.includes("track_type") ||
+        msg.includes("template_key") ||
+        msg.includes("attachments")
+      );
     };
 
     if (draftId) {
       let usedLegacyFallback = false;
-      let { error } = await supabase.from("send_items").update(draftPayload as any).eq("id", draftId);
+      let { error } = await supabase
+        .from("send_items")
+        .update(draftPayload as any)
+        .eq("id", draftId);
       if (error && isMissingDraftMetadataColumn(error)) {
-        ({ error } = await supabase.from("send_items").update(legacyPayload).eq("id", draftId));
+        ({ error } = await supabase
+          .from("send_items")
+          .update(legacyPayload)
+          .eq("id", draftId));
         usedLegacyFallback = !error;
       }
       if (error) {
-        setToast(getSimpleFrenchErrorMessage(error, "Impossible d’enregistrer le brouillon."));
+        setToast(
+          getSimpleFrenchErrorMessage(
+            error,
+            "Impossible d’enregistrer le brouillon.",
+          ),
+        );
         return;
       }
       setToast(
@@ -1892,13 +2565,26 @@ export default function MailboxClient() {
     }
 
     let usedLegacyFallback = false;
-    let { data, error } = await supabase.from("send_items").insert(draftPayload as any).select("id").single();
+    let { data, error } = await supabase
+      .from("send_items")
+      .insert(draftPayload as any)
+      .select("id")
+      .single();
     if (error && isMissingDraftMetadataColumn(error)) {
-      ({ data, error } = await supabase.from("send_items").insert(legacyPayload).select("id").single());
+      ({ data, error } = await supabase
+        .from("send_items")
+        .insert(legacyPayload)
+        .select("id")
+        .single());
       usedLegacyFallback = !error;
     }
     if (error) {
-      setToast(getSimpleFrenchErrorMessage(error, "Impossible d’enregistrer le brouillon."));
+      setToast(
+        getSimpleFrenchErrorMessage(
+          error,
+          "Impossible d’enregistrer le brouillon.",
+        ),
+      );
       return;
     }
     if (data?.id) {
@@ -1910,59 +2596,62 @@ export default function MailboxClient() {
       );
       setComposeSavedSnapshotFromCurrent();
       await loadHistory();
-      if (!usedLegacyFallback && draftFolder !== folder) updateFolder(draftFolder);
+      if (!usedLegacyFallback && draftFolder !== folder)
+        updateFolder(draftFolder);
     }
   }
 
+  async function deleteDraftPermanently(id: string) {
+    try {
+      if (!id) return;
+      if (deletingDraftId) return;
 
-async function deleteDraftPermanently(id: string) {
-  try {
-    if (!id) return;
-    if (deletingDraftId) return;
+      const ok = await confirmInrcy({
+        title: "Supprimer le brouillon ?",
+        message: "Cette action supprimera définitivement ce brouillon.",
+        confirmLabel: "Supprimer",
+        variant: "danger",
+      });
+      if (!ok) return;
 
-    const ok = await confirmInrcy({
-      title: "Supprimer le brouillon ?",
-      message: "Cette action supprimera définitivement ce brouillon.",
-      confirmLabel: "Supprimer",
-      variant: "danger",
-    });
-    if (!ok) return;
+      setDeletingDraftId(id);
 
-    setDeletingDraftId(id);
+      const { data: auth } = await supabase.auth.getUser();
+      const userId = auth?.user?.id;
+      if (!userId) return;
 
-    const { data: auth } = await supabase.auth.getUser();
-    const userId = auth?.user?.id;
-    if (!userId) return;
+      const { error } = await supabase
+        .from("send_items")
+        .delete()
+        .eq("id", id)
+        .eq("user_id", userId)
+        .eq("status", "draft");
 
-    const { error } = await supabase
-      .from("send_items")
-      .delete()
-      .eq("id", id)
-      .eq("user_id", userId)
-      .eq("status", "draft");
+      if (error) {
+        setToast(
+          "Impossible de supprimer ce brouillon pour le moment. Merci de réessayer.",
+        );
+        return;
+      }
 
-    if (error) {
-      setToast("Impossible de supprimer ce brouillon pour le moment. Merci de réessayer.");
-      return;
+      // Optimistic UI
+      setItems((prev) => prev.filter((x) => x.id !== id));
+      setSelectedHistoryKeys((prev) =>
+        prev.filter((key) => key !== `send_items:${id}`),
+      );
+      if (selectedId === id) setSelectedId(null);
+      if (detailsId === id) {
+        setDetailsOpen(false);
+        setDetailsId(null);
+      }
+
+      setToast("Brouillon supprimé.");
+      // Reload to keep the list consistent
+      await loadHistory();
+    } finally {
+      setDeletingDraftId(null);
     }
-
-    // Optimistic UI
-    setItems((prev) => prev.filter((x) => x.id !== id));
-    setSelectedHistoryKeys((prev) => prev.filter((key) => key !== `send_items:${id}`));
-    if (selectedId === id) setSelectedId(null);
-    if (detailsId === id) {
-      setDetailsOpen(false);
-      setDetailsId(null);
-    }
-
-    setToast("Brouillon supprimé.");
-    // Reload to keep the list consistent
-    await loadHistory();
-  } finally {
-    setDeletingDraftId(null);
   }
-}
-
 
   function toggleHistorySelection(item: OutboxItem) {
     if (!canBulkDeleteHistoryItem(item)) return;
@@ -1976,8 +2665,11 @@ async function deleteDraftPermanently(id: string) {
   }
 
   function toggleSelectVisibleHistoryItems(force?: boolean) {
-    const shouldSelect = typeof force === "boolean" ? force : !allVisibleBulkItemsSelected;
-    const pageKeys = visibleBulkDeletableItems.map((item) => historySelectionKey(item));
+    const shouldSelect =
+      typeof force === "boolean" ? force : !allVisibleBulkItemsSelected;
+    const pageKeys = visibleBulkDeletableItems.map((item) =>
+      historySelectionKey(item),
+    );
     setSelectedHistoryKeys((prev) => {
       const next = new Set(prev);
       if (shouldSelect) pageKeys.forEach((key) => next.add(key));
@@ -1988,10 +2680,14 @@ async function deleteDraftPermanently(id: string) {
 
   async function deleteSelectedHistoryEntries() {
     try {
-      if (deletingHistorySelection || deletingHistoryItemId || deletingDraftId) return;
+      if (deletingHistorySelection || deletingHistoryItemId || deletingDraftId)
+        return;
       if (selectedBulkCount <= 0) return;
 
-      const label = selectedBulkCount > 1 ? `${selectedBulkCount} éléments sélectionnés` : "cet élément sélectionné";
+      const label =
+        selectedBulkCount > 1
+          ? `${selectedBulkCount} éléments sélectionnés`
+          : "cet élément sélectionné";
       const ok = await confirmInrcy({
         title: "Supprimer la sélection ?",
         message: `Cette action supprimera ${label} de l’historique.`,
@@ -2015,13 +2711,21 @@ async function deleteDraftPermanently(id: string) {
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
-        throw new Error(payload?.error || "Suppression impossible pour le moment.");
+        throw new Error(
+          payload?.error || "Suppression impossible pour le moment.",
+        );
       }
 
-      const removedKeys = new Set(entries.map((entry) => `${entry.source}:${entry.id}`));
+      const removedKeys = new Set(
+        entries.map((entry) => `${entry.source}:${entry.id}`),
+      );
       const selectedItemKey = selected ? historySelectionKey(selected) : null;
-      const detailsItemKey = detailsItem ? historySelectionKey(detailsItem) : null;
-      setItems((prev) => prev.filter((item) => !removedKeys.has(historySelectionKey(item))));
+      const detailsItemKey = detailsItem
+        ? historySelectionKey(detailsItem)
+        : null;
+      setItems((prev) =>
+        prev.filter((item) => !removedKeys.has(historySelectionKey(item))),
+      );
       setSelectedHistoryKeys([]);
       if (selectedItemKey && removedKeys.has(selectedItemKey)) {
         setSelectedId(null);
@@ -2031,11 +2735,21 @@ async function deleteDraftPermanently(id: string) {
         setDetailsId(null);
       }
 
-      const deletedCount = typeof payload?.deletedCount === "number" ? Math.max(0, Number(payload.deletedCount)) : selectedBulkCount;
-      setToast(deletedCount > 1 ? `${deletedCount} éléments supprimés.` : "Élément supprimé.");
+      const deletedCount =
+        typeof payload?.deletedCount === "number"
+          ? Math.max(0, Number(payload.deletedCount))
+          : selectedBulkCount;
+      setToast(
+        deletedCount > 1
+          ? `${deletedCount} éléments supprimés.`
+          : "Élément supprimé.",
+      );
       await loadHistory();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Suppression impossible pour le moment.";
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Suppression impossible pour le moment.";
       setToast(message);
     } finally {
       setDeletingHistorySelection(false);
@@ -2047,9 +2761,14 @@ async function deleteDraftPermanently(id: string) {
       if (!canDeleteHistoryItem(item)) return;
       if (deletingHistoryItemId || deletingHistorySelection) return;
 
-      const isDraftToDelete = String((item as any)?.status || (item as any)?.raw?.status || "").toLowerCase() === "draft";
+      const isDraftToDelete =
+        String(
+          (item as any)?.status || (item as any)?.raw?.status || "",
+        ).toLowerCase() === "draft";
       const ok = await confirmInrcy({
-        title: isDraftToDelete ? "Supprimer le brouillon ?" : "Supprimer l’élément ?",
+        title: isDraftToDelete
+          ? "Supprimer le brouillon ?"
+          : "Supprimer l’élément ?",
         message: isDraftToDelete
           ? "Ce brouillon sera définitivement supprimé."
           : `Cette action supprimera cet élément de l’historique ${folderLabel(item.folder)}.`,
@@ -2063,26 +2782,43 @@ async function deleteDraftPermanently(id: string) {
       const response = await fetch("/api/inrsend/history/delete", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: item.id, source: item.source, folder: item.folder }),
+        body: JSON.stringify({
+          id: item.id,
+          source: item.source,
+          folder: item.folder,
+        }),
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
-        throw new Error(payload?.error || "Suppression impossible pour le moment.");
+        throw new Error(
+          payload?.error || "Suppression impossible pour le moment.",
+        );
       }
 
       const removedKey = historySelectionKey(item);
-      setItems((prev) => prev.filter((x) => !(x.id === item.id && x.source === item.source)));
-      setSelectedHistoryKeys((prev) => prev.filter((key) => key !== removedKey));
+      setItems((prev) =>
+        prev.filter((x) => !(x.id === item.id && x.source === item.source)),
+      );
+      setSelectedHistoryKeys((prev) =>
+        prev.filter((key) => key !== removedKey),
+      );
       if (selectedId === item.id) setSelectedId(null);
       if (detailsId === item.id) {
         setDetailsOpen(false);
         setDetailsId(null);
       }
 
-      setToast(isDraftToDelete ? "Brouillon supprimé." : `Élément ${folderLabel(item.folder)} supprimé.`);
+      setToast(
+        isDraftToDelete
+          ? "Brouillon supprimé."
+          : `Élément ${folderLabel(item.folder)} supprimé.`,
+      );
       await loadHistory();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Suppression impossible pour le moment.";
+      const message =
+        error instanceof Error
+          ? error.message
+          : "Suppression impossible pour le moment.";
       setToast(message);
     } finally {
       setDeletingHistoryItemId(null);
@@ -2093,29 +2829,48 @@ async function deleteDraftPermanently(id: string) {
     if (composeType === "facture") return "factures";
     if (composeType === "devis") return "devis";
     if (pendingTrack?.kind && pendingTrack?.type) {
-      return folderFromTrack(pendingTrack.kind, pendingTrack.type, isBusinessMailFolder(folder) ? folder : "mails");
+      return folderFromTrack(
+        pendingTrack.kind,
+        pendingTrack.type,
+        isBusinessMailFolder(folder) ? folder : "mails",
+      );
     }
     return isBusinessMailFolder(folder) ? folder : "mails";
   }
 
-
   async function scheduleMailWithAgent(scheduledAt: string) {
     if (attachBusy) {
-      throw new Error("Patientez : les pièces jointes sont encore en préparation.");
+      throw new Error(
+        "Patientez : les pièces jointes sont encore en préparation.",
+      );
     }
-    const isWorkflowFinalizer = workflowFinalizerKind === "propulser" || workflowFinalizerKind === "fideliser";
+    const isWorkflowFinalizer =
+      workflowFinalizerKind === "propulser" ||
+      workflowFinalizerKind === "fideliser";
     if (!isWorkflowFinalizer && composeType !== "mail") {
-      throw new Error("La programmation est disponible pour les mails, les Propulsions et les Fidélisations.");
+      throw new Error(
+        "La programmation est disponible pour les mails, les Propulsions et les Fidélisations.",
+      );
     }
     if (!selectedAccount) {
-      throw new Error("Veuillez connecter une boîte d’envoi dans les réglages.");
+      throw new Error(
+        "Veuillez connecter une boîte d’envoi dans les réglages.",
+      );
     }
-    if (selectedAccount.connection_status === "needs_update" || selectedAccount.requires_update) {
-      throw new Error("Cette boîte d’envoi doit être actualisée avant de pouvoir programmer l’envoi.");
+    if (
+      selectedAccount.connection_status === "needs_update" ||
+      selectedAccount.requires_update
+    ) {
+      throw new Error(
+        "Cette boîte d’envoi doit être actualisée avant de pouvoir programmer l’envoi.",
+      );
     }
 
     const scheduledDate = new Date(String(scheduledAt || ""));
-    if (!Number.isFinite(scheduledDate.getTime()) || scheduledDate.getTime() <= Date.now() + 30_000) {
+    if (
+      !Number.isFinite(scheduledDate.getTime()) ||
+      scheduledDate.getTime() <= Date.now() + 30_000
+    ) {
       throw new Error("Choisissez une date et une heure dans le futur.");
     }
 
@@ -2125,20 +2880,29 @@ async function deleteDraftPermanently(id: string) {
     }
 
     const trackedCampaign = pendingTrack;
-    const campaignFolder = isWorkflowFinalizer && trackedCampaign?.kind && trackedCampaign?.type
-      ? folderFromTrack(trackedCampaign.kind, trackedCampaign.type, isBusinessMailFolder(folder) ? folder : "mails")
-      : isWorkflowFinalizer
-        ? getBulkCampaignFolder()
-        : "mails";
-    const templateKey = composeTemplateKey || searchParams?.get("template_key") || "";
+    const campaignFolder =
+      isWorkflowFinalizer && trackedCampaign?.kind && trackedCampaign?.type
+        ? folderFromTrack(
+            trackedCampaign.kind,
+            trackedCampaign.type,
+            isBusinessMailFolder(folder) ? folder : "mails",
+          )
+        : isWorkflowFinalizer
+          ? getBulkCampaignFolder()
+          : "mails";
+    const templateKey =
+      composeTemplateKey || searchParams?.get("template_key") || "";
     const cleanSubject = normalizeMailSubject(subject.trim() || "(sans objet)");
-    const scheduleTargetTool = isWorkflowFinalizer ? workflowFinalizerKind : "mails";
+    const scheduleTargetTool = isWorkflowFinalizer
+      ? workflowFinalizerKind
+      : "mails";
     const scheduleActionType = isWorkflowFinalizer ? "campaign" : "mailing";
-    const scheduleTypeLabel = workflowFinalizerKind === "propulser"
-      ? "Propulsion"
-      : workflowFinalizerKind === "fideliser"
-        ? "Fidélisation"
-        : "Mail";
+    const scheduleTypeLabel =
+      workflowFinalizerKind === "propulser"
+        ? "Propulsion"
+        : workflowFinalizerKind === "fideliser"
+          ? "Fidélisation"
+          : "Mail";
     const campaignPayload = {
       accountId: selectedAccount.id,
       accountEmail: selectedAccount.email_address || "",
@@ -2180,19 +2944,28 @@ async function deleteDraftPermanently(id: string) {
           title: `${scheduleTypeLabel} — ${cleanSubject}`,
           summary: `${recipientsList.length} destinataire${recipientsList.length > 1 ? "s" : ""} · ${selectedAccount.email_address || selectedAccount.provider || "boîte connectée"}`,
           scheduledAt: scheduledDate.toISOString(),
-          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Paris",
+          timezone:
+            Intl.DateTimeFormat().resolvedOptions().timeZone || "Europe/Paris",
           channels: ["mails"],
           payload: {
             kind: "mail_campaign",
-            origin: isWorkflowFinalizer ? "inrsend_workflow_finalizer" : "inrsend_mail",
-            workflowFinalizerKind: isWorkflowFinalizer ? workflowFinalizerKind : null,
+            origin: isWorkflowFinalizer
+              ? "inrsend_workflow_finalizer"
+              : "inrsend_mail",
+            workflowFinalizerKind: isWorkflowFinalizer
+              ? workflowFinalizerKind
+              : null,
             campaign: campaignPayload,
           },
         }),
       });
       const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error(data?.user_message || data?.error || "La campagne n’a pas pu être programmée pour le moment.");
+        throw new Error(
+          data?.user_message ||
+            data?.error ||
+            "La campagne n’a pas pu être programmée pour le moment.",
+        );
       }
 
       if (draftId) {
@@ -2203,9 +2976,11 @@ async function deleteDraftPermanently(id: string) {
           .eq("user_id", (await supabase.auth.getUser()).data?.user?.id || "")
           .eq("status", "draft");
       }
-      setToast(isWorkflowFinalizer ? "Campagne programmée dans iNr’Agent." : "Mail programmé dans iNr’Agent.");
-      setComposeOpen(false);
-      resetCompose();
+      setToast(
+        isWorkflowFinalizer
+          ? "Campagne programmée dans iNr’Agent."
+          : "Mail programmé dans iNr’Agent.",
+      );
       await loadHistory();
       updateFolder(campaignFolder);
     } finally {
@@ -2222,8 +2997,13 @@ async function deleteDraftPermanently(id: string) {
       setToast("Veuillez connecter une boîte d’envoi dans les réglages.");
       return;
     }
-    if (selectedAccount.connection_status === "needs_update" || selectedAccount.requires_update) {
-      setToast("Cette boîte d’envoi doit être actualisée avant de pouvoir envoyer.");
+    if (
+      selectedAccount.connection_status === "needs_update" ||
+      selectedAccount.requires_update
+    ) {
+      setToast(
+        "Cette boîte d’envoi doit être actualisée avant de pouvoir envoyer.",
+      );
       return;
     }
 
@@ -2238,10 +3018,13 @@ async function deleteDraftPermanently(id: string) {
     }
 
     const trackedCampaign = pendingTrack;
-    const shouldSendAsCampaign = recipientsList.length > 1 || trackedCampaign !== null;
+    const shouldSendAsCampaign =
+      recipientsList.length > 1 || trackedCampaign !== null;
 
     if (recipientsList.length > 1 && composeType !== "mail") {
-      setToast("L’envoi individuel en masse est disponible uniquement pour les mails classiques.");
+      setToast(
+        "L’envoi individuel en masse est disponible uniquement pour les mails classiques.",
+      );
       return;
     }
 
@@ -2258,10 +3041,16 @@ async function deleteDraftPermanently(id: string) {
     setSendBusy(true);
     try {
       if (shouldSendAsCampaign) {
-        const campaignFolder = trackedCampaign?.kind && trackedCampaign?.type
-          ? folderFromTrack(trackedCampaign.kind, trackedCampaign.type, isBusinessMailFolder(folder) ? folder : "mails")
-          : getBulkCampaignFolder();
-        const templateKey = composeTemplateKey || searchParams?.get("template_key") || "";
+        const campaignFolder =
+          trackedCampaign?.kind && trackedCampaign?.type
+            ? folderFromTrack(
+                trackedCampaign.kind,
+                trackedCampaign.type,
+                isBusinessMailFolder(folder) ? folder : "mails",
+              )
+            : getBulkCampaignFolder();
+        const templateKey =
+          composeTemplateKey || searchParams?.get("template_key") || "";
         const campaignPayload = {
           accountId: selectedAccount.id,
           type: composeType,
@@ -2279,7 +3068,8 @@ async function deleteDraftPermanently(id: string) {
             return {
               email,
               contact_id: hint?.contact_id || crmContact?.contact_id || null,
-              display_name: hint?.display_name || crmContact?.display_name || null,
+              display_name:
+                hint?.display_name || crmContact?.display_name || null,
             };
           }),
           attachments: serializeComposeAttachments(),
@@ -2295,7 +3085,10 @@ async function deleteDraftPermanently(id: string) {
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          setToast(data?.error || "La campagne mail n’a pas pu être lancée pour le moment.");
+          setToast(
+            data?.error ||
+              "La campagne mail n’a pas pu être lancée pour le moment.",
+          );
           return;
         }
 
@@ -2308,20 +3101,50 @@ async function deleteDraftPermanently(id: string) {
             .eq("status", "draft");
         }
         if (trackedCampaign) setPendingTrack(null);
-        const queuedCount = Math.max(0, Number(data?.queued ?? recipientsList.length));
-        const blockedDuplicates = Math.max(0, Number(data?.blockedDuplicates ?? 0));
+        const queuedCount = Math.max(
+          0,
+          Number(data?.queued ?? recipientsList.length),
+        );
+        const blockedDuplicates = Math.max(
+          0,
+          Number(data?.blockedDuplicates ?? 0),
+        );
         const ignoredInvalid = Math.max(0, Number(data?.ignoredInvalid ?? 0));
         const blockedOptOut = Math.max(0, Number(data?.blockedOptOut ?? 0));
-        const blockedBlacklist = Math.max(0, Number(data?.blockedBlacklist ?? 0));
-        const blockedHardBounce = Math.max(0, Number(data?.blockedHardBounce ?? 0));
-        const blockedComplaint = Math.max(0, Number(data?.blockedComplaint ?? 0));
+        const blockedBlacklist = Math.max(
+          0,
+          Number(data?.blockedBlacklist ?? 0),
+        );
+        const blockedHardBounce = Math.max(
+          0,
+          Number(data?.blockedHardBounce ?? 0),
+        );
+        const blockedComplaint = Math.max(
+          0,
+          Number(data?.blockedComplaint ?? 0),
+        );
         const extras: string[] = [];
-        if (blockedDuplicates > 0) extras.push(`${blockedDuplicates} doublon${blockedDuplicates > 1 ? "s" : ""} bloqué${blockedDuplicates > 1 ? "s" : ""}`);
-        if (ignoredInvalid > 0) extras.push(`${ignoredInvalid} destinataire${ignoredInvalid > 1 ? "s" : ""} ignoré${ignoredInvalid > 1 ? "s" : ""}`);
-        if (blockedOptOut > 0) extras.push(`${blockedOptOut} désinscription${blockedOptOut > 1 ? "s" : ""}`);
+        if (blockedDuplicates > 0)
+          extras.push(
+            `${blockedDuplicates} doublon${blockedDuplicates > 1 ? "s" : ""} bloqué${blockedDuplicates > 1 ? "s" : ""}`,
+          );
+        if (ignoredInvalid > 0)
+          extras.push(
+            `${ignoredInvalid} destinataire${ignoredInvalid > 1 ? "s" : ""} ignoré${ignoredInvalid > 1 ? "s" : ""}`,
+          );
+        if (blockedOptOut > 0)
+          extras.push(
+            `${blockedOptOut} désinscription${blockedOptOut > 1 ? "s" : ""}`,
+          );
         if (blockedBlacklist > 0) extras.push(`${blockedBlacklist} blacklist`);
-        if (blockedHardBounce > 0) extras.push(`${blockedHardBounce} rebond${blockedHardBounce > 1 ? "s" : ""} dur${blockedHardBounce > 1 ? "s" : ""}`);
-        if (blockedComplaint > 0) extras.push(`${blockedComplaint} plainte${blockedComplaint > 1 ? "s" : ""}`);
+        if (blockedHardBounce > 0)
+          extras.push(
+            `${blockedHardBounce} rebond${blockedHardBounce > 1 ? "s" : ""} dur${blockedHardBounce > 1 ? "s" : ""}`,
+          );
+        if (blockedComplaint > 0)
+          extras.push(
+            `${blockedComplaint} plainte${blockedComplaint > 1 ? "s" : ""}`,
+          );
         const deferredReason = String(data?.deferredReason || "").trim();
         const batchSize = Math.max(1, Number(data?.batchSize || 50));
         setToast(null);
@@ -2359,10 +3182,13 @@ async function deleteDraftPermanently(id: string) {
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setToast(data?.user_message || data?.error || "Le message n’a pas pu être envoyé pour le moment.");
+        setToast(
+          data?.user_message ||
+            data?.error ||
+            "Le message n’a pas pu être envoyé pour le moment.",
+        );
         return;
       }
-
 
       setToast("Message envoyé.");
       setComposeOpen(false);
@@ -2373,7 +3199,7 @@ async function deleteDraftPermanently(id: string) {
           ? "factures"
           : composeType === "devis"
             ? "devis"
-            : "mails"
+            : "mails",
       );
     } finally {
       setSendBusy(false);
@@ -2393,7 +3219,10 @@ async function deleteDraftPermanently(id: string) {
     setDetailsOpen(true);
   }
 
-  function updatePublicationChannelAssets(channel: string, updater: (assets: PublicationImageAsset[]) => PublicationImageAsset[]) {
+  function updatePublicationChannelAssets(
+    channel: string,
+    updater: (assets: PublicationImageAsset[]) => PublicationImageAsset[],
+  ) {
     const normalizedChannel = normalizeChannelKey(channel);
     setPublicationEditImagesByChannel((prev) => ({
       ...prev,
@@ -2410,27 +3239,54 @@ async function deleteDraftPermanently(id: string) {
         const target = assets.find((asset) => asset.key === imageKey);
         if (!target) return assets;
         if (target.selected) {
-          return assets.map((asset) => asset.key === imageKey ? { ...asset, selected: false } : asset);
+          return assets.map((asset) =>
+            asset.key === imageKey ? { ...asset, selected: false } : asset,
+          );
         }
-        return assets.map((asset) => ({ ...asset, selected: asset.key === imageKey }));
+        return assets.map((asset) => ({
+          ...asset,
+          selected: asset.key === imageKey,
+        }));
       }
-      return assets.map((asset) => asset.key === imageKey ? { ...asset, selected: !asset.selected } : asset);
+      return assets.map((asset) =>
+        asset.key === imageKey
+          ? { ...asset, selected: !asset.selected }
+          : asset,
+      );
     });
   }
 
-
   function resetPublicationImage(channel: string, imageKey: string) {
-    updatePublicationChannelAssets(channel, (assets) => assets.map((asset) => asset.key === imageKey ? { ...asset, transform: buildPublicationDefaultTransform(normalizeChannelKey(channel)) } : asset));
+    updatePublicationChannelAssets(channel, (assets) =>
+      assets.map((asset) =>
+        asset.key === imageKey
+          ? {
+              ...asset,
+              transform: buildPublicationDefaultTransform(
+                normalizeChannelKey(channel),
+              ),
+            }
+          : asset,
+      ),
+    );
   }
 
-  function movePublicationImage(channel: string, imageKey: string, direction: -1 | 1) {
+  function movePublicationImage(
+    channel: string,
+    imageKey: string,
+    direction: -1 | 1,
+  ) {
     updatePublicationChannelAssets(channel, (assets) => {
       const selectedAssets = assets.filter((asset) => asset.selected);
-      const selectedIndex = selectedAssets.findIndex((asset) => asset.key === imageKey);
+      const selectedIndex = selectedAssets.findIndex(
+        (asset) => asset.key === imageKey,
+      );
       const targetSelected = selectedAssets[selectedIndex + direction];
       if (!targetSelected) return assets;
       const sourceIndex = assets.findIndex((asset) => asset.key === imageKey);
-      const targetIndex = assets.findIndex((asset) => asset.key === targetSelected.key);
+      const targetIndex = assets.findIndex(
+        (asset) => asset.key === targetSelected.key,
+      );
       if (sourceIndex < 0 || targetIndex < 0) return assets;
       const next = assets.slice();
       const [moved] = next.splice(sourceIndex, 1);
@@ -2441,8 +3297,11 @@ async function deleteDraftPermanently(id: string) {
 
   function openPublicationImageAdapter(channel: string, imageKey: string) {
     if (typeof document !== "undefined") {
-      const detailsBody = document.querySelector<HTMLElement>("[data-inrsend-details-body='true']");
-      publicationImageAdapterReturnScrollTopRef.current = detailsBody?.scrollTop ?? null;
+      const detailsBody = document.querySelector<HTMLElement>(
+        "[data-inrsend-details-body='true']",
+      );
+      publicationImageAdapterReturnScrollTopRef.current =
+        detailsBody?.scrollTop ?? null;
       (document.activeElement as HTMLElement | null)?.blur?.();
     }
     setPublicationImageAdapterChannelKey(normalizeChannelKey(channel));
@@ -2451,7 +3310,8 @@ async function deleteDraftPermanently(id: string) {
   }
 
   function closePublicationImageAdapter() {
-    const scrollTopToRestore = publicationImageAdapterReturnScrollTopRef.current;
+    const scrollTopToRestore =
+      publicationImageAdapterReturnScrollTopRef.current;
     setPublicationImageAdapterChannelKey(null);
     setPublicationImageAdapterImageKey(null);
     publicationImageAdapterDragRef.current = null;
@@ -2459,7 +3319,9 @@ async function deleteDraftPermanently(id: string) {
 
     if (typeof window !== "undefined" && scrollTopToRestore !== null) {
       window.requestAnimationFrame(() => {
-        const detailsBody = document.querySelector<HTMLElement>("[data-inrsend-details-body='true']");
+        const detailsBody = document.querySelector<HTMLElement>(
+          "[data-inrsend-details-body='true']",
+        );
         if (detailsBody) detailsBody.scrollTop = scrollTopToRestore;
         publicationImageAdapterReturnScrollTopRef.current = null;
       });
@@ -2476,7 +3338,9 @@ async function deleteDraftPermanently(id: string) {
 
     const invalid = picked.find((file) => !file.type.startsWith("image/"));
     if (invalid) {
-      setDetailsActionError("Seules les images sont acceptées dans les pièces jointes d'une publication.");
+      setDetailsActionError(
+        "Seules les images sont acceptées dans les pièces jointes d'une publication.",
+      );
       return;
     }
 
@@ -2488,16 +3352,25 @@ async function deleteDraftPermanently(id: string) {
 
     const tooBig = picked.find((file) => file.size > BOOSTER_MAX_IMAGE_BYTES);
     if (tooBig) {
-      setDetailsActionError(`L'image ${tooBig.name || "sélectionnée"} dépasse ${BOOSTER_MAX_IMAGE_MB_LABEL}.`);
+      setDetailsActionError(
+        `L'image ${tooBig.name || "sélectionnée"} dépasse ${BOOSTER_MAX_IMAGE_MB_LABEL}.`,
+      );
       return;
     }
 
-    const currentSelectedFileBytes = (publicationEditImagesByChannel[channel]?.assets || [])
+    const currentSelectedFileBytes = (
+      publicationEditImagesByChannel[channel]?.assets || []
+    )
       .filter((asset) => asset.selected && asset.file)
       .reduce((sum, asset) => sum + (asset.file?.size || 0), 0);
-    const nextPickedBytes = picked.reduce((sum, file) => sum + (file?.size || 0), 0);
+    const nextPickedBytes = picked.reduce(
+      (sum, file) => sum + (file?.size || 0),
+      0,
+    );
     if (currentSelectedFileBytes + nextPickedBytes > BOOSTER_MAX_MEDIA_BYTES) {
-      setDetailsActionError(`Les images dépassent ${BOOSTER_MAX_MEDIA_MB_LABEL} au total. Réduisez le nombre ou le poids des photos.`);
+      setDetailsActionError(
+        `Les images dépassent ${BOOSTER_MAX_MEDIA_MB_LABEL} au total. Réduisez le nombre ou le poids des photos.`,
+      );
       return;
     }
 
@@ -2514,7 +3387,11 @@ async function deleteDraftPermanently(id: string) {
           sourceVideo: null,
           transformedVariants: [],
           removed: true,
-          preparation: { status: "idle", label: "Images sélectionnées", detail: "La publication sera enregistrée en images." },
+          preparation: {
+            status: "idle",
+            label: "Images sélectionnées",
+            detail: "La publication sera enregistrée en images.",
+          },
         },
       };
     });
@@ -2522,10 +3399,16 @@ async function deleteDraftPermanently(id: string) {
     updatePublicationChannelAssets(channel, (assets) => {
       const merged = [...assets];
       for (const file of picked) {
-        const key = makePublicationImageAssetKey("new", file.name, `${file.size}:${file.lastModified}`);
+        const key = makePublicationImageAssetKey(
+          "new",
+          file.name,
+          `${file.size}:${file.lastModified}`,
+        );
         if (merged.some((asset) => asset.key === key)) continue;
         if (merged.length >= BOOSTER_MAX_IMAGE_COUNT) {
-          setDetailsActionError(`Maximum ${BOOSTER_MAX_IMAGE_COUNT} images par publication.`);
+          setDetailsActionError(
+            `Maximum ${BOOSTER_MAX_IMAGE_COUNT} images par publication.`,
+          );
           break;
         }
         merged.push({
@@ -2535,7 +3418,8 @@ async function deleteDraftPermanently(id: string) {
           previewUrl: URL.createObjectURL(file),
           sourceUrl: null,
           file,
-          selected: channel === "gmb" ? !merged.some((asset) => asset.selected) : true,
+          selected:
+            channel === "gmb" ? !merged.some((asset) => asset.selected) : true,
           transform: buildPublicationDefaultTransform(channel),
         });
       }
@@ -2560,25 +3444,41 @@ async function deleteDraftPermanently(id: string) {
     );
   }
 
-  async function mediaLibraryItemToFile(item: MediaLibraryPickerItem): Promise<File> {
+  async function mediaLibraryItemToFile(
+    item: MediaLibraryPickerItem,
+  ): Promise<File> {
     const sourceUrl = String(item.signed_url || "").trim();
     if (!sourceUrl) throw new Error("Média indisponible dans la Médiathèque.");
     const response = await fetch(sourceUrl);
-    if (!response.ok) throw new Error(`Impossible de charger le média (${response.status}).`);
+    if (!response.ok)
+      throw new Error(`Impossible de charger le média (${response.status}).`);
     const blob = await response.blob();
-    const type = item.mime_type || blob.type || (item.media_type === "video" ? "video/mp4" : "image/jpeg");
+    const type =
+      item.mime_type ||
+      blob.type ||
+      (item.media_type === "video" ? "video/mp4" : "image/jpeg");
     return new File([blob], getMediaLibraryDisplayName(item), {
       type,
       lastModified: Date.now(),
     });
   }
 
-  function buildMediaLibraryVideoMetadata(item: MediaLibraryPickerItem, file: File): BoosterVideoSourceMetadata {
+  function buildMediaLibraryVideoMetadata(
+    item: MediaLibraryPickerItem,
+    file: File,
+  ): BoosterVideoSourceMetadata {
     const width = Number(item.width || 0) || null;
     const height = Number(item.height || 0) || null;
     const duration = Number(item.duration_seconds || 0) || null;
     const ratio = width && height ? width / height : null;
-    const orientation = width && height ? (width > height ? "horizontal" : width < height ? "vertical" : "square") : "unknown";
+    const orientation =
+      width && height
+        ? width > height
+          ? "horizontal"
+          : width < height
+            ? "vertical"
+            : "square"
+        : "unknown";
     return {
       width,
       height,
@@ -2588,25 +3488,38 @@ async function deleteDraftPermanently(id: string) {
       ratio,
       ratioLabel: width && height ? `${width}:${height}` : "Ratio inconnu",
       orientation,
-      orientationLabel: orientation === "horizontal" ? "Horizontale" : orientation === "vertical" ? "Verticale" : orientation === "square" ? "Carrée" : "Orientation inconnue",
+      orientationLabel:
+        orientation === "horizontal"
+          ? "Horizontale"
+          : orientation === "vertical"
+            ? "Verticale"
+            : orientation === "square"
+              ? "Carrée"
+              : "Orientation inconnue",
     };
   }
 
-  async function addPublicationMediaLibraryItems(items: MediaLibraryPickerItem[]) {
+  async function addPublicationMediaLibraryItems(
+    items: MediaLibraryPickerItem[],
+  ) {
     const channel = normalizeChannelKey(activeDetailsChannelEntry?.key || "");
     if (!channel) return;
     const selectedItems = Array.isArray(items) ? items.filter(Boolean) : [];
     if (!selectedItems.length) return;
 
     const videos = selectedItems.filter((item) => item.media_type === "video");
-    const imageItems = selectedItems.filter((item) => item.media_type === "image");
+    const imageItems = selectedItems.filter(
+      (item) => item.media_type === "image",
+    );
     if (videos.length && imageItems.length) {
-      const message = "Choisissez soit des images, soit une vidéo. Une publication ne mélange pas les deux médias.";
+      const message =
+        "Choisissez soit des images, soit une vidéo. Une publication ne mélange pas les deux médias.";
       setDetailsActionError(message);
       throw new Error(message);
     }
     if (videos.length > 1) {
-      const message = "Une seule vidéo peut être utilisée pour une publication.";
+      const message =
+        "Une seule vidéo peut être utilisée pour une publication.";
       setDetailsActionError(message);
       throw new Error(message);
     }
@@ -2621,11 +3534,15 @@ async function deleteDraftPermanently(id: string) {
       }
       const previewUrl = URL.createObjectURL(file);
       const fallbackMeta = buildMediaLibraryVideoMetadata(item, file);
-      const sourceMetadata = fallbackMeta.width || fallbackMeta.height
-        ? fallbackMeta
-        : await readPublicationVideoMetadata(file, previewUrl);
+      const sourceMetadata =
+        fallbackMeta.width || fallbackMeta.height
+          ? fallbackMeta
+          : await readPublicationVideoMetadata(file, previewUrl);
       const videoChannel = normalizeBoosterChannelKeyForVideo(channel);
-      const defaultFormat = getRecommendedVideoFormatForSource(videoChannel, sourceMetadata);
+      const defaultFormat = getRecommendedVideoFormatForSource(
+        videoChannel,
+        sourceMetadata,
+      );
       setDetailsActionError(null);
       setPublicationEditVideoByChannel((prev) => ({
         ...prev,
@@ -2635,13 +3552,20 @@ async function deleteDraftPermanently(id: string) {
           name: file.name || getMediaLibraryDisplayName(item),
           type: file.type || item.mime_type || "video/mp4",
           size: file.size || Number(item.size_bytes || 0) || 0,
-          duration: sourceMetadata.duration || Number(item.duration_seconds || 0) || null,
+          duration:
+            sourceMetadata.duration ||
+            Number(item.duration_seconds || 0) ||
+            null,
           sourceMetadata,
           sourceVideo: null,
           transformedVariants: [],
           format: defaultFormat,
           adaptationMode: prev[videoChannel]?.adaptationMode || "safe_blur",
-          preparation: { status: "idle", label: "Vidéo ajoutée depuis la Médiathèque", detail: "Appliquez le format avant d’enregistrer." },
+          preparation: {
+            status: "idle",
+            label: "Vidéo ajoutée depuis la Médiathèque",
+            detail: "Appliquez le format avant d’enregistrer.",
+          },
           preparing: false,
           removed: false,
         },
@@ -2650,7 +3574,9 @@ async function deleteDraftPermanently(id: string) {
     }
 
     if (imageItems.length) {
-      const files = await Promise.all(imageItems.map((item) => mediaLibraryItemToFile(item)));
+      const files = await Promise.all(
+        imageItems.map((item) => mediaLibraryItemToFile(item)),
+      );
       const invalid = files.find((file) => !file.type.startsWith("image/"));
       if (invalid) {
         const message = "Seules les images sont acceptées pour ce canal.";
@@ -2663,11 +3589,19 @@ async function deleteDraftPermanently(id: string) {
         setDetailsActionError(message);
         throw new Error(message);
       }
-      const currentSelectedFileBytes = (publicationEditImagesByChannel[channel]?.assets || [])
+      const currentSelectedFileBytes = (
+        publicationEditImagesByChannel[channel]?.assets || []
+      )
         .filter((asset) => asset.selected && asset.file)
         .reduce((sum, asset) => sum + (asset.file?.size || 0), 0);
-      const nextPickedBytes = files.reduce((sum, file) => sum + (file?.size || 0), 0);
-      if (currentSelectedFileBytes + nextPickedBytes > BOOSTER_MAX_MEDIA_BYTES) {
+      const nextPickedBytes = files.reduce(
+        (sum, file) => sum + (file?.size || 0),
+        0,
+      );
+      if (
+        currentSelectedFileBytes + nextPickedBytes >
+        BOOSTER_MAX_MEDIA_BYTES
+      ) {
         const message = `Les images dépassent ${BOOSTER_MAX_MEDIA_MB_LABEL} au total. Réduisez le nombre ou le poids des photos.`;
         setDetailsActionError(message);
         throw new Error(message);
@@ -2686,7 +3620,11 @@ async function deleteDraftPermanently(id: string) {
             sourceVideo: null,
             transformedVariants: [],
             removed: true,
-            preparation: { status: "idle", label: "Images sélectionnées", detail: "La publication sera enregistrée en images." },
+            preparation: {
+              status: "idle",
+              label: "Images sélectionnées",
+              detail: "La publication sera enregistrée en images.",
+            },
           },
         };
       });
@@ -2695,15 +3633,26 @@ async function deleteDraftPermanently(id: string) {
         const merged = [...assets];
         files.forEach((file, index) => {
           const item = imageItems[index];
-          const key = makePublicationImageAssetKey("library", file.name, item.id || `${item.storage_path}:${file.size}`);
+          const key = makePublicationImageAssetKey(
+            "library",
+            file.name,
+            item.id || `${item.storage_path}:${file.size}`,
+          );
           if (merged.some((asset) => asset.key === key)) return;
           if (merged.length >= BOOSTER_MAX_IMAGE_COUNT) {
-            setDetailsActionError(`Maximum ${BOOSTER_MAX_IMAGE_COUNT} images par publication.`);
+            setDetailsActionError(
+              `Maximum ${BOOSTER_MAX_IMAGE_COUNT} images par publication.`,
+            );
             return;
           }
-          const imageMeta = item.width && item.height
-            ? { width: item.width, height: item.height, ratio: item.width / item.height }
-            : null;
+          const imageMeta =
+            item.width && item.height
+              ? {
+                  width: item.width,
+                  height: item.height,
+                  ratio: item.width / item.height,
+                }
+              : null;
           merged.push({
             key,
             name: file.name || getMediaLibraryDisplayName(item),
@@ -2714,7 +3663,10 @@ async function deleteDraftPermanently(id: string) {
             originalName: getMediaLibraryDisplayName(item),
             originalType: item.mime_type || file.type || "image/jpeg",
             file,
-            selected: channel === "gmb" ? !merged.some((asset) => asset.selected) : true,
+            selected:
+              channel === "gmb"
+                ? !merged.some((asset) => asset.selected)
+                : true,
             transform: buildPublicationDefaultTransform(channel),
             imageMeta,
           });
@@ -2726,20 +3678,31 @@ async function deleteDraftPermanently(id: string) {
   }
 
   async function addPublicationVideo(fileList: FileList | null) {
-    const channel = normalizeBoosterChannelKeyForVideo(activeDetailsChannelEntry?.key || "");
+    const channel = normalizeBoosterChannelKeyForVideo(
+      activeDetailsChannelEntry?.key || "",
+    );
     if (!channel || !fileList?.length) return;
-    const file = Array.from(fileList).find((candidate) => candidate.type.startsWith("video/") || /\.(mp4|m4v|mov|webm)$/i.test(candidate.name || ""));
+    const file = Array.from(fileList).find(
+      (candidate) =>
+        candidate.type.startsWith("video/") ||
+        /\.(mp4|m4v|mov|webm)$/i.test(candidate.name || ""),
+    );
     if (!file) {
       setDetailsActionError("Seuls les fichiers vidéo sont acceptés.");
       return;
     }
     if (file.size > BOOSTER_MAX_VIDEO_BYTES) {
-      setDetailsActionError(`Vidéo trop lourde. Taille maximale : ${BOOSTER_MAX_VIDEO_MB_LABEL}.`);
+      setDetailsActionError(
+        `Vidéo trop lourde. Taille maximale : ${BOOSTER_MAX_VIDEO_MB_LABEL}.`,
+      );
       return;
     }
     const previewUrl = URL.createObjectURL(file);
     const sourceMetadata = await readPublicationVideoMetadata(file, previewUrl);
-    const defaultFormat = getRecommendedVideoFormatForSource(channel, sourceMetadata);
+    const defaultFormat = getRecommendedVideoFormatForSource(
+      channel,
+      sourceMetadata,
+    );
     setDetailsActionError(null);
     setPublicationEditVideoByChannel((prev) => ({
       ...prev,
@@ -2755,14 +3718,20 @@ async function deleteDraftPermanently(id: string) {
         transformedVariants: [],
         format: defaultFormat,
         adaptationMode: prev[channel]?.adaptationMode || "safe_blur",
-        preparation: { status: "idle", label: "Nouvelle vidéo ajoutée", detail: "Appliquez le format avant d’enregistrer." },
+        preparation: {
+          status: "idle",
+          label: "Nouvelle vidéo ajoutée",
+          detail: "Appliquez le format avant d’enregistrer.",
+        },
         removed: false,
       },
     }));
   }
 
   function removePublicationVideo(channelValue?: string) {
-    const channel = normalizeBoosterChannelKeyForVideo(channelValue || activeDetailsChannelEntry?.key || "");
+    const channel = normalizeBoosterChannelKeyForVideo(
+      channelValue || activeDetailsChannelEntry?.key || "",
+    );
     if (!channel) return;
     setPublicationEditVideoByChannel((prev) => {
       const previousVideoState = prev[channel];
@@ -2787,13 +3756,20 @@ async function deleteDraftPermanently(id: string) {
           sourceVideo: null,
           transformedVariants: [],
           removed: true,
-          preparation: { status: "error", label: "Vidéo supprimée", detail: "Ajoutez une nouvelle vidéo avant d’enregistrer." },
+          preparation: {
+            status: "error",
+            label: "Vidéo supprimée",
+            detail: "Ajoutez une nouvelle vidéo avant d’enregistrer.",
+          },
         },
       };
     });
   }
 
-  function setPublicationVideoFormatForChannel(channelValue: string, format: VideoFormat) {
+  function setPublicationVideoFormatForChannel(
+    channelValue: string,
+    format: VideoFormat,
+  ) {
     const channel = normalizeBoosterChannelKeyForVideo(channelValue);
     setPublicationEditVideoByChannel((prev) => {
       const current = prev[channel];
@@ -2803,15 +3779,23 @@ async function deleteDraftPermanently(id: string) {
         [channel]: {
           ...current,
           format,
-          preparation: current.preparation?.status === "ready"
-            ? { status: "idle", label: "Format modifié", detail: "Appliquez ce format avant d’enregistrer." }
-            : current.preparation,
+          preparation:
+            current.preparation?.status === "ready"
+              ? {
+                  status: "idle",
+                  label: "Format modifié",
+                  detail: "Appliquez ce format avant d’enregistrer.",
+                }
+              : current.preparation,
         },
       };
     });
   }
 
-  function setPublicationVideoAdaptationModeForChannel(channelValue: string, mode: VideoAdaptationMode) {
+  function setPublicationVideoAdaptationModeForChannel(
+    channelValue: string,
+    mode: VideoAdaptationMode,
+  ) {
     const channel = normalizeBoosterChannelKeyForVideo(channelValue);
     setPublicationEditVideoByChannel((prev) => {
       const current = prev[channel];
@@ -2821,17 +3805,27 @@ async function deleteDraftPermanently(id: string) {
         [channel]: {
           ...current,
           adaptationMode: mode,
-          preparation: current.preparation?.status === "ready"
-            ? { status: "idle", label: "Adaptation modifiée", detail: "Appliquez ce format avant d’enregistrer." }
-            : current.preparation,
+          preparation:
+            current.preparation?.status === "ready"
+              ? {
+                  status: "idle",
+                  label: "Adaptation modifiée",
+                  detail: "Appliquez ce format avant d’enregistrer.",
+                }
+              : current.preparation,
         },
       };
     });
   }
 
-  async function ensurePublicationEditVideoUploaded(channel: BoosterChannelKey, current: PublicationEditVideoState): Promise<VideoPayload> {
-    if (!current.file && current.sourceVideo?.publicUrl) return current.sourceVideo;
-    if (!current.file) throw new Error("Ajoutez une vidéo avant d’enregistrer.");
+  async function ensurePublicationEditVideoUploaded(
+    channel: BoosterChannelKey,
+    current: PublicationEditVideoState,
+  ): Promise<VideoPayload> {
+    if (!current.file && current.sourceVideo?.publicUrl)
+      return current.sourceVideo;
+    if (!current.file)
+      throw new Error("Ajoutez une vidéo avant d’enregistrer.");
     const uploaded = await uploadBoosterVideo(current.file, {
       folder: "booster-videos",
       duration: current.duration,
@@ -2844,7 +3838,11 @@ async function deleteDraftPermanently(id: string) {
         sourceVideo: uploaded,
         previewUrl: uploaded.publicUrl || uploaded.url || current.previewUrl,
         transformedVariants: [],
-        preparation: { status: "idle", label: "Vidéo ajoutée", detail: "Vous pouvez appliquer le format." },
+        preparation: {
+          status: "idle",
+          label: "Vidéo ajoutée",
+          detail: "Vous pouvez appliquer le format.",
+        },
       },
     }));
     return uploaded;
@@ -2858,17 +3856,26 @@ async function deleteDraftPermanently(id: string) {
       return;
     }
 
-    const format = current.format || getRecommendedVideoFormatForSource(channel, current.sourceMetadata);
+    const format =
+      current.format ||
+      getRecommendedVideoFormatForSource(channel, current.sourceMetadata);
     const adaptationMode = current.adaptationMode || "safe_blur";
     const signature = buildVideoTransformSignature(format, adaptationMode);
-    const existing = current.transformedVariants.find((variant: any) => variant.signature === signature || variant.channel === channel);
+    const existing = current.transformedVariants.find(
+      (variant: any) =>
+        variant.signature === signature || variant.channel === channel,
+    );
     if (existing?.publicUrl || existing?.url) {
       setPublicationEditVideoByChannel((prev) => ({
         ...prev,
         [channel]: {
           ...current,
           previewUrl: existing.publicUrl || existing.url || current.previewUrl,
-          preparation: { status: "ready", label: "Format appliqué", detail: `${getVideoFormatLabel(channel, format, current.sourceMetadata)} · ${VIDEO_ADAPTATION_MODE_LABELS[adaptationMode]}` },
+          preparation: {
+            status: "ready",
+            label: "Format appliqué",
+            detail: `${getVideoFormatLabel(channel, format, current.sourceMetadata)} · ${VIDEO_ADAPTATION_MODE_LABELS[adaptationMode]}`,
+          },
         },
       }));
       return;
@@ -2880,7 +3887,11 @@ async function deleteDraftPermanently(id: string) {
       [channel]: {
         ...current,
         preparing: true,
-        preparation: { status: "preparing", label: "Modification du format...", detail: `${getVideoFormatLabel(channel, format, current.sourceMetadata)} · ${VIDEO_ADAPTATION_MODE_LABELS[adaptationMode]}` },
+        preparation: {
+          status: "preparing",
+          label: "Modification du format...",
+          detail: `${getVideoFormatLabel(channel, format, current.sourceMetadata)} · ${VIDEO_ADAPTATION_MODE_LABELS[adaptationMode]}`,
+        },
       },
     }));
 
@@ -2897,13 +3908,25 @@ async function deleteDraftPermanently(id: string) {
           duration: base.duration,
           sourceMetadata: base.sourceMetadata || current.sourceMetadata,
         },
-        variants: [{ key: `${channel}-${format}-${adaptationMode}`, channel, format, adaptationMode }],
+        variants: [
+          {
+            key: `${channel}-${format}-${adaptationMode}`,
+            channel,
+            format,
+            adaptationMode,
+          },
+        ],
       });
       const variants = [
-        ...current.transformedVariants.filter((variant: any) => variant.signature !== signature),
+        ...current.transformedVariants.filter(
+          (variant: any) => variant.signature !== signature,
+        ),
         ...(Array.isArray(response.variants) ? response.variants : []),
       ];
-      const found = variants.find((variant: any) => variant.signature === signature || variant.channel === channel);
+      const found = variants.find(
+        (variant: any) =>
+          variant.signature === signature || variant.channel === channel,
+      );
       if (!found?.publicUrl && !found?.url) {
         setPublicationEditVideoByChannel((prev) => ({
           ...prev,
@@ -2914,10 +3937,17 @@ async function deleteDraftPermanently(id: string) {
             previewUrl: base.publicUrl || base.url || current.previewUrl,
             file: current.file,
             preparing: false,
-            preparation: { status: "ready", label: "Vidéo originale conservée", detail: "Adaptation automatique indisponible : la vidéo originale sera utilisée." },
+            preparation: {
+              status: "ready",
+              label: "Vidéo originale conservée",
+              detail:
+                "Adaptation automatique indisponible : la vidéo originale sera utilisée.",
+            },
           },
         }));
-        setDetailsActionError("Adaptation automatique indisponible : la vidéo originale sera utilisée.");
+        setDetailsActionError(
+          "Adaptation automatique indisponible : la vidéo originale sera utilisée.",
+        );
         return;
       }
       setPublicationEditVideoByChannel((prev) => ({
@@ -2929,18 +3959,27 @@ async function deleteDraftPermanently(id: string) {
           previewUrl: found.publicUrl || found.url || current.previewUrl,
           file: current.file,
           preparing: false,
-          preparation: { status: "ready", label: "Format appliqué", detail: `${getVideoFormatLabel(channel, format, current.sourceMetadata)} · ${VIDEO_ADAPTATION_MODE_LABELS[adaptationMode]}` },
+          preparation: {
+            status: "ready",
+            label: "Format appliqué",
+            detail: `${getVideoFormatLabel(channel, format, current.sourceMetadata)} · ${VIDEO_ADAPTATION_MODE_LABELS[adaptationMode]}`,
+          },
         },
       }));
     } catch (error: any) {
-      const fallbackDetail = "Adaptation automatique indisponible : la vidéo originale sera utilisée.";
+      const fallbackDetail =
+        "Adaptation automatique indisponible : la vidéo originale sera utilisée.";
       setDetailsActionError(fallbackDetail);
       setPublicationEditVideoByChannel((prev) => ({
         ...prev,
         [channel]: {
           ...(prev[channel] || current),
           preparing: false,
-          preparation: { status: "ready", label: "Vidéo originale conservée", detail: fallbackDetail },
+          preparation: {
+            status: "ready",
+            label: "Vidéo originale conservée",
+            detail: fallbackDetail,
+          },
         },
       }));
     }
@@ -2950,13 +3989,16 @@ async function deleteDraftPermanently(id: string) {
     new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => resolve(String(reader.result || ""));
-      reader.onerror = () => reject(reader.error ?? new Error("Impossible de lire ce fichier."));
+      reader.onerror = () =>
+        reject(reader.error ?? new Error("Impossible de lire ce fichier."));
       reader.readAsDataURL(file);
     });
 
   async function saveChannelPublication() {
     if (!detailsItem || detailsItem.source !== "app_events") return;
-    const publicationId = String((detailsPayload as any)?.publication_id || "").trim();
+    const publicationId = String(
+      (detailsPayload as any)?.publication_id || "",
+    ).trim();
     const channel = String(activeDetailsChannelEntry?.key || "").trim();
     if (!publicationId || !channel) return;
 
@@ -2971,45 +4013,70 @@ async function deleteDraftPermanently(id: string) {
 
       const normalizedChannel = normalizeChannelKey(channel);
       const editVideo = publicationEditVideoByChannel[normalizedChannel];
-      const isVideoEdit = Boolean(editVideo && !editVideo.removed && editVideo.previewUrl);
+      const isVideoEdit = Boolean(
+        editVideo && !editVideo.removed && editVideo.previewUrl,
+      );
       let nextVideoPayload: any = null;
       let nextVideoSettings: any = null;
 
       if (isVideoEdit) {
         if (!editVideo || editVideo.removed || !editVideo.previewUrl) {
-          throw new Error("Ajoutez une vidéo avant d’enregistrer cette publication.");
+          throw new Error(
+            "Ajoutez une vidéo avant d’enregistrer cette publication.",
+          );
         }
         const boosterChannel = normalizeBoosterChannelKeyForVideo(channel);
-        const baseVideo = await ensurePublicationEditVideoUploaded(boosterChannel, editVideo);
-        const format = editVideo.format || getRecommendedVideoFormatForSource(boosterChannel, editVideo.sourceMetadata);
+        const baseVideo = await ensurePublicationEditVideoUploaded(
+          boosterChannel,
+          editVideo,
+        );
+        const format =
+          editVideo.format ||
+          getRecommendedVideoFormatForSource(
+            boosterChannel,
+            editVideo.sourceMetadata,
+          );
         const adaptationMode = editVideo.adaptationMode || "safe_blur";
         const signature = buildVideoTransformSignature(format, adaptationMode);
-        let transformedVariants = Array.isArray(editVideo.transformedVariants) ? [...editVideo.transformedVariants] : [];
-        let finalVariant = transformedVariants.find((variant: any) => variant.signature === signature || variant.channel === boosterChannel);
+        let transformedVariants = Array.isArray(editVideo.transformedVariants)
+          ? [...editVideo.transformedVariants]
+          : [];
+        let finalVariant = transformedVariants.find(
+          (variant: any) =>
+            variant.signature === signature ||
+            variant.channel === boosterChannel,
+        );
         // Sécurité prod : l’enregistrement d’une publication ne doit pas lancer
         // une adaptation vidéo implicite. On utilise uniquement une variante déjà
         // générée via une action explicite du pro ; sinon on conserve l’original.
         if (!finalVariant?.publicUrl && !finalVariant?.url) {
-          transformedVariants = transformedVariants.filter((variant: any) => variant.signature !== signature);
+          transformedVariants = transformedVariants.filter(
+            (variant: any) => variant.signature !== signature,
+          );
           finalVariant = undefined;
         }
-        const finalVideo = finalVariant?.publicUrl || finalVariant?.url
-          ? {
-              ...baseVideo,
-              ...finalVariant,
-              name: finalVariant.name || baseVideo.name || editVideo.name,
-              type: finalVariant.contentType || finalVariant.type || baseVideo.type || editVideo.type,
-              publicUrl: finalVariant.publicUrl || finalVariant.url,
-              url: finalVariant.publicUrl || finalVariant.url,
-              storagePath: finalVariant.storagePath || baseVideo.storagePath,
-              sourceVideo: baseVideo,
-              transformedVariants,
-            }
-          : {
-              ...baseVideo,
-              sourceVideo: baseVideo,
-              transformedVariants,
-            };
+        const finalVideo =
+          finalVariant?.publicUrl || finalVariant?.url
+            ? {
+                ...baseVideo,
+                ...finalVariant,
+                name: finalVariant.name || baseVideo.name || editVideo.name,
+                type:
+                  finalVariant.contentType ||
+                  finalVariant.type ||
+                  baseVideo.type ||
+                  editVideo.type,
+                publicUrl: finalVariant.publicUrl || finalVariant.url,
+                url: finalVariant.publicUrl || finalVariant.url,
+                storagePath: finalVariant.storagePath || baseVideo.storagePath,
+                sourceVideo: baseVideo,
+                transformedVariants,
+              }
+            : {
+                ...baseVideo,
+                sourceVideo: baseVideo,
+                transformedVariants,
+              };
         nextVideoPayload = {
           ...finalVideo,
           videoSettings: { format, adaptationMode },
@@ -3019,14 +4086,21 @@ async function deleteDraftPermanently(id: string) {
         nextVideoSettings = { format, adaptationMode };
       }
 
-      const channelImages = publicationEditImagesByChannel[normalizedChannel]?.assets || [];
-      const selectedAssets = channelImages.filter((asset) => asset.selected).slice(0, 5);
+      const channelImages =
+        publicationEditImagesByChannel[normalizedChannel]?.assets || [];
+      const selectedAssets = channelImages
+        .filter((asset) => asset.selected)
+        .slice(0, 5);
       const retainedImages: string[] = [];
-      const newImages: Array<{ name: string; type: string; dataUrl: string }> = [];
+      const newImages: Array<{ name: string; type: string; dataUrl: string }> =
+        [];
 
       for (const asset of selectedAssets) {
         const transformChanged = asset.savedTransform
-          ? !arePublicationTransformsEquivalent(asset.transform, asset.savedTransform)
+          ? !arePublicationTransformsEquivalent(
+              asset.transform,
+              asset.savedTransform,
+            )
           : isPublicationTransformModified(asset.transform, channel);
         const canRetain = !!asset.sourceUrl && !asset.file && !transformChanged;
         if (canRetain) {
@@ -3034,7 +4108,10 @@ async function deleteDraftPermanently(id: string) {
           continue;
         }
 
-        if (asset.file && !isPublicationTransformModified(asset.transform, channel)) {
+        if (
+          asset.file &&
+          !isPublicationTransformModified(asset.transform, channel)
+        ) {
           newImages.push({
             name: asset.name,
             type: asset.type,
@@ -3042,7 +4119,10 @@ async function deleteDraftPermanently(id: string) {
             originalName: asset.originalName || asset.name,
             originalType: asset.originalType || asset.type,
             transform: asset.transform,
-            imageMeta: publicationImageAdapterImageMeta[asset.key] || asset.imageMeta || null,
+            imageMeta:
+              publicationImageAdapterImageMeta[asset.key] ||
+              asset.imageMeta ||
+              null,
           } as any);
           continue;
         }
@@ -3060,36 +4140,50 @@ async function deleteDraftPermanently(id: string) {
           originalName: asset.originalName || asset.name,
           originalType: asset.originalType || asset.type,
           transform: asset.transform,
-          imageMeta: publicationImageAdapterImageMeta[asset.key] || asset.imageMeta || null,
+          imageMeta:
+            publicationImageAdapterImageMeta[asset.key] ||
+            asset.imageMeta ||
+            null,
         } as any);
       }
 
-      const res = await fetch(`/api/inrsend/publications/${encodeURIComponent(publicationId)}/${encodeURIComponent(channelApiPath(channel))}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: publicationEditForm.title,
-          content: publicationEditForm.content,
-          cta: publicationEditForm.cta,
-          ctaMode: publicationEditForm.ctaMode,
-          ctaUrl: publicationEditForm.ctaUrl,
-          ctaPhone: publicationEditForm.ctaPhone,
-          hashtags,
-          externalId: (activeDetailsChannelResult as any)?.external_id || null,
-          mediaType: isVideoEdit ? "video" : "images",
-          video: nextVideoPayload,
-          videoSettings: nextVideoSettings,
-          retainedImages: isVideoEdit ? [] : retainedImages,
-          newImages: isVideoEdit ? [] : newImages,
-        }),
-      });
+      const res = await fetch(
+        `/api/inrsend/publications/${encodeURIComponent(publicationId)}/${encodeURIComponent(channelApiPath(channel))}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            title: publicationEditForm.title,
+            content: publicationEditForm.content,
+            cta: publicationEditForm.cta,
+            ctaMode: publicationEditForm.ctaMode,
+            ctaUrl: publicationEditForm.ctaUrl,
+            ctaPhone: publicationEditForm.ctaPhone,
+            hashtags,
+            externalId:
+              (activeDetailsChannelResult as any)?.external_id || null,
+            mediaType: isVideoEdit ? "video" : "images",
+            video: nextVideoPayload,
+            videoSettings: nextVideoSettings,
+            retainedImages: isVideoEdit ? [] : retainedImages,
+            newImages: isVideoEdit ? [] : newImages,
+          }),
+        },
+      );
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || "Modification impossible.");
-      setDetailsActionSuccess(`Publication ${formatChannelLabel(channel)} modifiée.`);
+      setDetailsActionSuccess(
+        `Publication ${formatChannelLabel(channel)} modifiée.`,
+      );
       setDetailsEditMode(false);
       await loadHistory();
     } catch (e: any) {
-      setDetailsActionError(getSimpleFrenchErrorMessage(e, "Impossible de modifier cette publication pour le moment."));
+      setDetailsActionError(
+        getSimpleFrenchErrorMessage(
+          e,
+          "Impossible de modifier cette publication pour le moment.",
+        ),
+      );
     } finally {
       setDetailsActionBusy(false);
     }
@@ -3097,10 +4191,13 @@ async function deleteDraftPermanently(id: string) {
 
   async function deleteChannelPublication() {
     if (!detailsItem || detailsItem.source !== "app_events") return;
-    const publicationId = String((detailsPayload as any)?.publication_id || "").trim();
+    const publicationId = String(
+      (detailsPayload as any)?.publication_id || "",
+    ).trim();
     const channel = String(activeDetailsChannelEntry?.key || "").trim();
     if (!publicationId || !channel) return;
-    const label = activeDetailsChannelEntry?.label || formatChannelLabel(channel);
+    const label =
+      activeDetailsChannelEntry?.label || formatChannelLabel(channel);
     const ok = await confirmInrcy({
       title: "Supprimer la publication ?",
       message: `Cette action supprimera la publication ${label}.`,
@@ -3113,11 +4210,17 @@ async function deleteDraftPermanently(id: string) {
     setDetailsActionError(null);
     setDetailsActionSuccess(null);
     try {
-      const res = await fetch(`/api/inrsend/publications/${encodeURIComponent(publicationId)}/${encodeURIComponent(channelApiPath(channel))}`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ externalId: (activeDetailsChannelResult as any)?.external_id || null }),
-      });
+      const res = await fetch(
+        `/api/inrsend/publications/${encodeURIComponent(publicationId)}/${encodeURIComponent(channelApiPath(channel))}`,
+        {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            externalId:
+              (activeDetailsChannelResult as any)?.external_id || null,
+          }),
+        },
+      );
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || "Suppression impossible.");
       setDetailsActionSuccess(`Publication ${label} supprimée.`);
@@ -3125,7 +4228,10 @@ async function deleteDraftPermanently(id: string) {
       await loadHistory();
       setDetailsChannelKey(channel);
     } catch (e: any) {
-      const baseMessage = getSimpleFrenchErrorMessage(e, "Impossible de supprimer cette publication pour le moment.");
+      const baseMessage = getSimpleFrenchErrorMessage(
+        e,
+        "Impossible de supprimer cette publication pour le moment.",
+      );
       setDetailsActionError(baseMessage);
     } finally {
       setDetailsActionBusy(false);
@@ -3136,10 +4242,13 @@ async function deleteDraftPermanently(id: string) {
     if (!campaignId) return;
     setCampaignActionBusyId(campaignId);
     try {
-      const res = await fetch(`/api/crm/campaigns/${encodeURIComponent(campaignId)}/retry`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
+      const res = await fetch(
+        `/api/crm/campaigns/${encodeURIComponent(campaignId)}/retry`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        },
+      );
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setToast(data?.error || "Relance impossible pour le moment.");
@@ -3152,12 +4261,15 @@ async function deleteDraftPermanently(id: string) {
       const baseRetryMessage = data?.retried
         ? `${data.retried} contact${data.retried > 1 ? "s" : ""} relancé${data.retried > 1 ? "s" : ""}.${blocked > 0 ? ` ${blocked} blocage${blocked > 1 ? "s" : ""} ignoré${blocked > 1 ? "s" : ""}.` : ""}`
         : "Échecs relancés.";
-      const stateMessage = deliveryState === "paused"
-        ? " Campagne mise en pause automatiquement."
-        : deliveryState === "queued"
-          ? " Campagne remise en file d’attente."
-          : ` Relance par vagues de ${batchSize}.`;
-      setToast(`${baseRetryMessage}${stateMessage}${deferredReason ? ` ${deferredReason}` : ""}`);
+      const stateMessage =
+        deliveryState === "paused"
+          ? " Campagne mise en pause automatiquement."
+          : deliveryState === "queued"
+            ? " Campagne remise en file d’attente."
+            : ` Relance par vagues de ${batchSize}.`;
+      setToast(
+        `${baseRetryMessage}${stateMessage}${deferredReason ? ` ${deferredReason}` : ""}`,
+      );
       await loadHistory();
       if (detailsOpen && detailsId === campaignId) {
         await Promise.all([
@@ -3178,15 +4290,26 @@ async function deleteDraftPermanently(id: string) {
       if (openWorkflowCampaignDraft(it, raw)) return;
       setComposeOpen(true);
       setDraftId(it.id);
-      const nextType = (raw.type === "facture" || raw.type === "devis" ? raw.type : "mail") as SendType;
-      const nextTrack = raw.track_kind && raw.track_type
-        ? ({ kind: raw.track_kind, type: raw.track_type, payload: {} } as PendingTrack)
-        : inferTrackFromCampaign(it);
+      const nextType = (
+        raw.type === "facture" || raw.type === "devis" ? raw.type : "mail"
+      ) as SendType;
+      const nextTrack =
+        raw.track_kind && raw.track_type
+          ? ({
+              kind: raw.track_kind,
+              type: raw.track_type,
+              payload: {},
+            } as PendingTrack)
+          : inferTrackFromCampaign(it);
       const nextAttachments = normalizeCampaignAttachments(raw.attachments);
       setComposeType(nextType);
       setComposeTemplateKey(String(raw.template_key || ""));
       setComposeSourceDocSaveId(String(raw.source_doc_save_id || ""));
-      setComposeSourceDocType(raw.source_doc_type === "facture" || raw.source_doc_type === "devis" ? raw.source_doc_type : "");
+      setComposeSourceDocType(
+        raw.source_doc_type === "facture" || raw.source_doc_type === "devis"
+          ? raw.source_doc_type
+          : "",
+      );
       setComposeSourceDocNumber(String(raw.source_doc_number || ""));
       setPendingTrack(nextTrack);
       setTo(raw.to_emails || "");
@@ -3194,22 +4317,31 @@ async function deleteDraftPermanently(id: string) {
       setComposeBody(raw.body_text || "", raw.body_html || "");
       setComposeAttachments(nextAttachments);
       setFiles([]);
-      setLastSavedComposeSnapshot(makeComposeSnapshot({
-        selectedAccountId: String(raw.integration_id || selectedAccountId || ""),
-        to: String(raw.to_emails || ""),
-        subject: normalizeMailSubject(raw.subject || ""),
-        text: String(raw.body_text || ""),
-        html: String(raw.body_html || ""),
-        composeType: nextType,
-        composeAttachments: nextAttachments,
-        composeSourceDocSaveId: String(raw.source_doc_save_id || ""),
-        composeSourceDocType: raw.source_doc_type === "facture" || raw.source_doc_type === "devis" ? raw.source_doc_type : "",
-        composeSourceDocNumber: String(raw.source_doc_number || ""),
-        composeTemplateKey: String(raw.template_key || ""),
-        pendingTrack: nextTrack,
-      }));
+      setLastSavedComposeSnapshot(
+        makeComposeSnapshot({
+          selectedAccountId: String(
+            raw.integration_id || selectedAccountId || "",
+          ),
+          to: String(raw.to_emails || ""),
+          subject: normalizeMailSubject(raw.subject || ""),
+          text: String(raw.body_text || ""),
+          html: String(raw.body_html || ""),
+          composeType: nextType,
+          composeAttachments: nextAttachments,
+          composeSourceDocSaveId: String(raw.source_doc_save_id || ""),
+          composeSourceDocType:
+            raw.source_doc_type === "facture" || raw.source_doc_type === "devis"
+              ? raw.source_doc_type
+              : "",
+          composeSourceDocNumber: String(raw.source_doc_number || ""),
+          composeTemplateKey: String(raw.template_key || ""),
+          pendingTrack: nextTrack,
+        }),
+      );
     } else if (it.source === "app_events" && it.status === "draft") {
-      const href = it.reopenHref || `/dashboard?action=publish&draftId=${encodeURIComponent(String(it.id || ""))}`;
+      const href =
+        it.reopenHref ||
+        `/dashboard?action=publish&draftId=${encodeURIComponent(String(it.id || ""))}`;
       setDetailsOpen(false);
       router.push(href);
     }
@@ -3222,26 +4354,51 @@ async function deleteDraftPermanently(id: string) {
 
   const handleWorkflowPrevious = useCallback(async () => {
     if (!workflowFinalizerKind || !workflowReturnAction) return;
-    const nextKey = workflowReturnKey || `${workflowFinalizerKind}_${workflowReturnAction}_${Date.now()}`;
-    const trackType = pendingTrack?.type || String(searchParams?.get("track_type") || "");
+    const nextKey =
+      workflowReturnKey ||
+      `${workflowFinalizerKind}_${workflowReturnAction}_${Date.now()}`;
+    const trackType =
+      pendingTrack?.type || String(searchParams?.get("track_type") || "");
     const trackPayload = (pendingTrack?.payload || {}) as Record<string, any>;
-    saveWorkflowCampaignState({
-      kind: workflowFinalizerKind,
-      action: workflowReturnAction,
-      folder,
-      trackKind: workflowFinalizerKind,
-      trackType,
-      templateKey: composeTemplateKey || String(searchParams?.get("template_key") || "") || null,
-      templateCategory: trackPayload.template_category || null,
-      subject,
-      bodyText: text,
-      bodyHtml: html || textToRichMailHtml(text),
-      attachments: composeAttachments,
-      draftId: draftId || null,
-    }, nextKey);
+    saveWorkflowCampaignState(
+      {
+        kind: workflowFinalizerKind,
+        action: workflowReturnAction,
+        folder,
+        trackKind: workflowFinalizerKind,
+        trackType,
+        templateKey:
+          composeTemplateKey ||
+          String(searchParams?.get("template_key") || "") ||
+          null,
+        templateCategory: trackPayload.template_category || null,
+        subject,
+        bodyText: text,
+        bodyHtml: html || textToRichMailHtml(text),
+        attachments: composeAttachments,
+        draftId: draftId || null,
+      },
+      nextKey,
+    );
     setComposeOpen(false);
-    router.push(`/dashboard/${workflowFinalizerKind}?action=${encodeURIComponent(workflowReturnAction)}&restore_key=${encodeURIComponent(nextKey)}`);
-  }, [composeAttachments, composeTemplateKey, draftId, folder, html, pendingTrack, router, searchParams, subject, text, workflowFinalizerKind, workflowReturnAction, workflowReturnKey]);
+    router.push(
+      `/dashboard/${workflowFinalizerKind}?action=${encodeURIComponent(workflowReturnAction)}&restore_key=${encodeURIComponent(nextKey)}`,
+    );
+  }, [
+    composeAttachments,
+    composeTemplateKey,
+    draftId,
+    folder,
+    html,
+    pendingTrack,
+    router,
+    searchParams,
+    subject,
+    text,
+    workflowFinalizerKind,
+    workflowReturnAction,
+    workflowReturnKey,
+  ]);
 
   return (
     <div className={styles.page}>
@@ -3276,7 +4433,12 @@ async function deleteDraftPermanently(id: string) {
 
         <div className={styles.grid}>
           <div className={`${styles.card} ${styles.listCard}`}>
-            <FolderTabs folder={folder} counts={counts} countsLoading={!historyLoadedOnce} onSelectFolder={updateFolder} />
+            <FolderTabs
+              folder={folder}
+              counts={counts}
+              countsLoading={!historyLoadedOnce}
+              onSelectFolder={updateFolder}
+            />
 
             <MailboxToolbar
               folder={folder}
@@ -3340,7 +4502,6 @@ async function deleteDraftPermanently(id: string) {
               historyQuery={historyQuery}
             />
           </div>
-
         </div>
 
         <MailboxDetailsModal
@@ -3381,9 +4542,15 @@ async function deleteDraftPermanently(id: string) {
           activePublicationEditVideo={activePublicationEditVideo}
           addPublicationVideo={addPublicationVideo}
           removePublicationVideo={removePublicationVideo}
-          setPublicationVideoFormatForChannel={setPublicationVideoFormatForChannel}
-          setPublicationVideoAdaptationModeForChannel={setPublicationVideoAdaptationModeForChannel}
-          applyPublicationVideoFormatForChannel={applyPublicationVideoFormatForChannel}
+          setPublicationVideoFormatForChannel={
+            setPublicationVideoFormatForChannel
+          }
+          setPublicationVideoAdaptationModeForChannel={
+            setPublicationVideoAdaptationModeForChannel
+          }
+          applyPublicationVideoFormatForChannel={
+            applyPublicationVideoFormatForChannel
+          }
           togglePublicationImage={togglePublicationImage}
           openPublicationImageAdapter={openPublicationImageAdapter}
           resetPublicationImage={resetPublicationImage}
@@ -3411,9 +4578,13 @@ async function deleteDraftPermanently(id: string) {
           publicationImageAdapterImageMeta={publicationImageAdapterImageMeta}
           isPublicationImageAdapterDragging={isPublicationImageAdapterDragging}
           publicationEditImagesByChannel={publicationEditImagesByChannel}
-          setPublicationImageAdapterImageKey={setPublicationImageAdapterImageKey}
+          setPublicationImageAdapterImageKey={
+            setPublicationImageAdapterImageKey
+          }
           publicationImageAdapterDragRef={publicationImageAdapterDragRef}
-          setIsPublicationImageAdapterDragging={setIsPublicationImageAdapterDragging}
+          setIsPublicationImageAdapterDragging={
+            setIsPublicationImageAdapterDragging
+          }
           updatePublicationChannelAssets={updatePublicationChannelAssets}
           closePublicationImageAdapter={closePublicationImageAdapter}
         />
@@ -3422,7 +4593,8 @@ async function deleteDraftPermanently(id: string) {
           open={composeOpen}
           onClose={() => {
             setComposeOpen(false);
-            if (workflowFinalizerKind) router.push(`/dashboard/${workflowFinalizerKind}`);
+            if (workflowFinalizerKind)
+              router.push(`/dashboard/${workflowFinalizerKind}`);
           }}
           onOpenSettings={() => setSettingsOpen(true)}
           onOpenAiConfiguration={() => setAiConfigurationOpen(true)}
@@ -3456,7 +4628,13 @@ async function deleteDraftPermanently(id: string) {
           crmContactType={crmContactType}
           setCrmContactType={setCrmContactType}
           crmDepartment={crmDepartment}
-          setCrmDepartment={(value) => setCrmDepartment(sanitizeCrmDepartmentFilter(typeof value === "function" ? value(crmDepartment) : value))}
+          setCrmDepartment={(value) =>
+            setCrmDepartment(
+              sanitizeCrmDepartmentFilter(
+                typeof value === "function" ? value(crmDepartment) : value,
+              ),
+            )
+          }
           crmImportantOnly={crmImportantOnly}
           setCrmImportantOnly={setCrmImportantOnly}
           selectedCrmCount={selectedCrmCount}
@@ -3478,13 +4656,27 @@ async function deleteDraftPermanently(id: string) {
           signatureImageWidth={signatureImageWidth}
           saveDraft={saveDraft}
           doSend={doSend}
-          scheduleWorkflowCampaign={composeType === "mail" || workflowFinalizerKind ? scheduleMailWithAgent : undefined}
+          scheduleWorkflowCampaign={
+            composeType === "mail" || workflowFinalizerKind
+              ? scheduleMailWithAgent
+              : undefined
+          }
+          onScheduledSuccess={() => {
+            setComposeOpen(false);
+            resetCompose();
+            if (workflowFinalizerKind)
+              router.push(`/dashboard/${workflowFinalizerKind}`);
+          }}
           sendBusy={sendBusy}
           scheduleBusy={scheduleBusy}
           toast={toast}
           setToast={setToast}
           workflowFinalizerKind={workflowFinalizerKind}
-          onWorkflowPrevious={workflowFinalizerKind && workflowReturnAction ? handleWorkflowPrevious : undefined}
+          onWorkflowPrevious={
+            workflowFinalizerKind && workflowReturnAction
+              ? handleWorkflowPrevious
+              : undefined
+          }
         />
 
         {campaignDistributionNotice ? (
@@ -3495,24 +4687,47 @@ async function deleteDraftPermanently(id: string) {
             aria-labelledby="campaign-distribution-title"
             onMouseDown={() => setCampaignDistributionNotice(null)}
           >
-            <div className={styles.campaignDistributionCard} onMouseDown={(event) => event.stopPropagation()}>
-              <div className={styles.campaignDistributionIcon} aria-hidden="true">✓</div>
-              <h2 id="campaign-distribution-title" className={styles.campaignDistributionTitle}>
+            <div
+              className={styles.campaignDistributionCard}
+              onMouseDown={(event) => event.stopPropagation()}
+            >
+              <div
+                className={styles.campaignDistributionIcon}
+                aria-hidden="true"
+              >
+                ✓
+              </div>
+              <h2
+                id="campaign-distribution-title"
+                className={styles.campaignDistributionTitle}
+              >
                 Campagne validée : en cours de distribution
               </h2>
               <p className={styles.campaignDistributionText}>
-                {campaignDistributionNotice.queuedCount} email{campaignDistributionNotice.queuedCount > 1 ? "s" : ""} vont partir automatiquement par vagues de {campaignDistributionNotice.batchSize} maximum.
+                {campaignDistributionNotice.queuedCount} email
+                {campaignDistributionNotice.queuedCount > 1 ? "s" : ""} vont
+                partir automatiquement par vagues de{" "}
+                {campaignDistributionNotice.batchSize} maximum.
               </p>
               <p className={styles.campaignDistributionSubText}>
-                Vous pouvez fermer cette fenêtre : le suivi reste disponible dans iNrSend.
+                Vous pouvez fermer cette fenêtre : le suivi reste disponible
+                dans iNrSend.
               </p>
               {campaignDistributionNotice.deferredReason ? (
-                <p className={styles.campaignDistributionNote}>{campaignDistributionNotice.deferredReason}</p>
+                <p className={styles.campaignDistributionNote}>
+                  {campaignDistributionNotice.deferredReason}
+                </p>
               ) : null}
               {campaignDistributionNotice.extras.length ? (
-                <p className={styles.campaignDistributionNote}>{campaignDistributionNotice.extras.join(" · ")}</p>
+                <p className={styles.campaignDistributionNote}>
+                  {campaignDistributionNotice.extras.join(" · ")}
+                </p>
               ) : null}
-              <button type="button" className={styles.btnPrimary} onClick={() => setCampaignDistributionNotice(null)}>
+              <button
+                type="button"
+                className={styles.btnPrimary}
+                onClick={() => setCampaignDistributionNotice(null)}
+              >
                 Fermer
               </button>
             </div>

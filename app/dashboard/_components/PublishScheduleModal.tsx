@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { confirmInrcy } from "@/lib/inrcyDialog";
 import type { ChannelKey } from "../booster/publier/publishModal.shared";
 
 export type PublishScheduleSelection = {
@@ -22,8 +23,15 @@ type PublishScheduleModalProps = {
   isMobile: boolean;
   saving: boolean;
   error: string;
+  successMessage?: string;
+  savingLabel?: string;
+  enableImmediateUnselectedWarning?: boolean;
   onClose: () => void;
-  onConfirm: (selections: PublishScheduleSelection[]) => void;
+  onConfirm: (
+    selections: PublishScheduleSelection[],
+    immediateChannels: ChannelKey[],
+  ) => void | Promise<void>;
+  onSuccess?: () => void | Promise<void>;
 };
 
 function pad2(value: number) {
@@ -90,8 +98,12 @@ export default function PublishScheduleModal({
   isMobile,
   saving,
   error,
+  successMessage = "Programmation réussie.",
+  savingLabel = "Programmation en cours…",
+  enableImmediateUnselectedWarning = false,
   onClose,
   onConfirm,
+  onSuccess,
 }: PublishScheduleModalProps) {
   const publishableItems = useMemo(
     () => items.filter((item) => !item.blockers.length),
@@ -99,11 +111,21 @@ export default function PublishScheduleModal({
   );
   const defaultDateTime = useMemo(() => getDefaultDateTime(), [open]);
   const [selected, setSelected] = useState<Record<string, boolean>>({});
-  const [dateByChannel, setDateByChannel] = useState<Record<string, string>>({});
-  const [timeByChannel, setTimeByChannel] = useState<Record<string, string>>({});
+  const [dateByChannel, setDateByChannel] = useState<Record<string, string>>(
+    {},
+  );
+  const [timeByChannel, setTimeByChannel] = useState<Record<string, string>>(
+    {},
+  );
   const [localError, setLocalError] = useState("");
-  const dateInputRefs = useRef<Partial<Record<ChannelKey, HTMLInputElement | null>>>({});
-  const timeInputRefs = useRef<Partial<Record<ChannelKey, HTMLInputElement | null>>>({});
+  const [submitting, setSubmitting] = useState(false);
+  const [doneMessage, setDoneMessage] = useState("");
+  const dateInputRefs = useRef<
+    Partial<Record<ChannelKey, HTMLInputElement | null>>
+  >({});
+  const timeInputRefs = useRef<
+    Partial<Record<ChannelKey, HTMLInputElement | null>>
+  >({});
 
   useEffect(() => {
     if (!open) return;
@@ -111,16 +133,22 @@ export default function PublishScheduleModal({
     setDateByChannel({});
     setTimeByChannel({});
     setLocalError("");
+    setSubmitting(false);
+    setDoneMessage("");
   }, [open, items.map((item) => item.channel).join("|")]);
 
   if (!open) return null;
 
   const isSelected = (channel: ChannelKey) =>
     selected[channel] !== undefined ? selected[channel] : true;
-  const getDate = (channel: ChannelKey) => dateByChannel[channel] || defaultDateTime.date;
-  const getTime = (channel: ChannelKey) => timeByChannel[channel] || defaultDateTime.time;
+  const getDate = (channel: ChannelKey) =>
+    dateByChannel[channel] || defaultDateTime.date;
+  const getTime = (channel: ChannelKey) =>
+    timeByChannel[channel] || defaultDateTime.time;
+  const busy = saving || submitting;
 
-  const submit = () => {
+  const submit = async () => {
+    if (busy || doneMessage) return;
     const selections = publishableItems
       .filter((item) => isSelected(item.channel))
       .map((item) => ({
@@ -143,8 +171,41 @@ export default function PublishScheduleModal({
       return;
     }
 
+    const immediateChannels = publishableItems
+      .filter((item) => !isSelected(item.channel))
+      .map((item) => item.channel);
+
+    if (enableImmediateUnselectedWarning && immediateChannels.length) {
+      const labels = publishableItems
+        .filter((item) => immediateChannels.includes(item.channel))
+        .map((item) => item.label)
+        .join(", ");
+      const confirmed = await confirmInrcy({
+        title: "Publier les autres canaux maintenant ?",
+        message: `Les canaux ${labels} partiront maintenant. Les canaux cochés seront confiés à iNr’Agent. Valider ?`,
+        confirmLabel: "Valider",
+        cancelLabel: "Revenir",
+        variant: "warning",
+      });
+      if (!confirmed) return;
+    }
+
     setLocalError("");
-    onConfirm(selections);
+    setSubmitting(true);
+    try {
+      await onConfirm(selections, immediateChannels);
+      setDoneMessage(successMessage);
+      window.setTimeout(() => {
+        void onSuccess?.();
+      }, 850);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (message) {
+        setLocalError(message);
+      }
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -177,17 +238,37 @@ export default function PublishScheduleModal({
           backdropFilter: "none",
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            gap: 12,
+            alignItems: "flex-start",
+          }}
+        >
           <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
             <div style={{ fontSize: 22 }}>🕒</div>
             <div className={styles.blockTitle} style={{ marginBottom: 0 }}>
               Programmer la publication
             </div>
-            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.72)", lineHeight: 1.45 }}>
-              Choisissez les canaux à confier à iNr’Agent. Ils seront retirés de la sélection après programmation pour pouvoir publier les autres maintenant.
+            <div
+              style={{
+                fontSize: 13,
+                color: "rgba(255,255,255,0.72)",
+                lineHeight: 1.45,
+              }}
+            >
+              Choisissez les canaux à confier à iNr’Agent. Ils seront retirés de
+              la sélection après programmation pour pouvoir publier les autres
+              maintenant.
             </div>
           </div>
-          <button type="button" className={styles.secondaryBtn} onClick={onClose} disabled={saving}>
+          <button
+            type="button"
+            className={styles.secondaryBtn}
+            onClick={onClose}
+            disabled={busy}
+          >
             Fermer
           </button>
         </div>
@@ -201,38 +282,69 @@ export default function PublishScheduleModal({
                 key={item.channel}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: isMobile ? "1fr" : "minmax(0,1fr) minmax(162px,170px) minmax(136px,145px)",
+                  gridTemplateColumns: isMobile
+                    ? "1fr"
+                    : "minmax(0,1fr) minmax(162px,170px) minmax(136px,145px)",
                   gap: 10,
                   alignItems: "center",
                   borderRadius: 16,
                   padding: 12,
-                  background: disabled ? "rgba(248,113,113,0.08)" : "rgba(255,255,255,0.045)",
-                  border: disabled ? "1px solid rgba(248,113,113,0.24)" : "1px solid rgba(255,255,255,0.08)",
+                  background: disabled
+                    ? "rgba(248,113,113,0.08)"
+                    : "rgba(255,255,255,0.045)",
+                  border: disabled
+                    ? "1px solid rgba(248,113,113,0.24)"
+                    : "1px solid rgba(255,255,255,0.08)",
                   opacity: disabled ? 0.78 : 1,
                 }}
               >
-                <label style={{ display: "flex", gap: 10, alignItems: "flex-start", minWidth: 0, cursor: disabled ? "not-allowed" : "pointer" }}>
+                <label
+                  style={{
+                    display: "flex",
+                    gap: 10,
+                    alignItems: "flex-start",
+                    minWidth: 0,
+                    cursor: disabled ? "not-allowed" : "pointer",
+                  }}
+                >
                   <input
                     type="checkbox"
                     checked={checked}
-                    disabled={disabled || saving}
+                    disabled={disabled || busy}
                     onChange={(event) =>
-                      setSelected((current) => ({ ...current, [item.channel]: event.target.checked }))
+                      setSelected((current) => ({
+                        ...current,
+                        [item.channel]: event.target.checked,
+                      }))
                     }
                     style={{ marginTop: 3 }}
                   />
                   <span style={{ display: "grid", gap: 4, minWidth: 0 }}>
-                    <strong style={{ color: "#fff", fontSize: 14 }}>{item.label}</strong>
-                    <span style={{ fontSize: 12, color: disabled ? "#fecaca" : "rgba(255,255,255,0.62)", lineHeight: 1.35 }}>
-                      {disabled ? item.blockers.join(" · ") : `${item.mediaLabel} · prêt à programmer`}
+                    <strong style={{ color: "#fff", fontSize: 14 }}>
+                      {item.label}
+                    </strong>
+                    <span
+                      style={{
+                        fontSize: 12,
+                        color: disabled ? "#fecaca" : "rgba(255,255,255,0.62)",
+                        lineHeight: 1.35,
+                      }}
+                    >
+                      {disabled
+                        ? item.blockers.join(" · ")
+                        : `${item.mediaLabel} · prêt à programmer`}
                     </span>
                   </span>
                 </label>
                 <div
                   className={styles.scheduleDateTimeField}
-                  data-disabled={disabled || !checked || saving ? "true" : "false"}
+                  data-disabled={
+                    disabled || !checked || busy ? "true" : "false"
+                  }
                   onClick={() =>
-                    openNativeDateTimePicker(dateInputRefs.current[item.channel] || null)
+                    openNativeDateTimePicker(
+                      dateInputRefs.current[item.channel] || null,
+                    )
                   }
                 >
                   <input
@@ -242,9 +354,12 @@ export default function PublishScheduleModal({
                     className={styles.scheduleDateTimeInput}
                     type="date"
                     value={getDate(item.channel)}
-                    disabled={disabled || !checked || saving}
+                    disabled={disabled || !checked || busy}
                     onChange={(event) =>
-                      setDateByChannel((current) => ({ ...current, [item.channel]: event.target.value }))
+                      setDateByChannel((current) => ({
+                        ...current,
+                        [item.channel]: event.target.value,
+                      }))
                     }
                   />
                   <button
@@ -252,9 +367,11 @@ export default function PublishScheduleModal({
                     className={styles.scheduleDateTimePickerButton}
                     onClick={(event) => {
                       event.stopPropagation();
-                      openNativeDateTimePicker(dateInputRefs.current[item.channel] || null);
+                      openNativeDateTimePicker(
+                        dateInputRefs.current[item.channel] || null,
+                      );
                     }}
-                    disabled={disabled || !checked || saving}
+                    disabled={disabled || !checked || busy}
                     aria-label={`Ouvrir le calendrier pour ${item.label}`}
                   >
                     <CalendarMiniIcon />
@@ -262,9 +379,13 @@ export default function PublishScheduleModal({
                 </div>
                 <div
                   className={styles.scheduleDateTimeField}
-                  data-disabled={disabled || !checked || saving ? "true" : "false"}
+                  data-disabled={
+                    disabled || !checked || busy ? "true" : "false"
+                  }
                   onClick={() =>
-                    openNativeDateTimePicker(timeInputRefs.current[item.channel] || null)
+                    openNativeDateTimePicker(
+                      timeInputRefs.current[item.channel] || null,
+                    )
                   }
                 >
                   <input
@@ -274,9 +395,12 @@ export default function PublishScheduleModal({
                     className={styles.scheduleDateTimeInput}
                     type="time"
                     value={getTime(item.channel)}
-                    disabled={disabled || !checked || saving}
+                    disabled={disabled || !checked || busy}
                     onChange={(event) =>
-                      setTimeByChannel((current) => ({ ...current, [item.channel]: event.target.value }))
+                      setTimeByChannel((current) => ({
+                        ...current,
+                        [item.channel]: event.target.value,
+                      }))
                     }
                   />
                   <button
@@ -284,9 +408,11 @@ export default function PublishScheduleModal({
                     className={styles.scheduleDateTimePickerButton}
                     onClick={(event) => {
                       event.stopPropagation();
-                      openNativeDateTimePicker(timeInputRefs.current[item.channel] || null);
+                      openNativeDateTimePicker(
+                        timeInputRefs.current[item.channel] || null,
+                      );
                     }}
-                    disabled={disabled || !checked || saving}
+                    disabled={disabled || !checked || busy}
                     aria-label={`Ouvrir le choix de l’heure pour ${item.label}`}
                   >
                     <ClockMiniIcon />
@@ -302,19 +428,50 @@ export default function PublishScheduleModal({
             {localError || error}
           </div>
         ) : null}
+        {doneMessage ? (
+          <div
+            style={{
+              color: "#bbf7d0",
+              fontSize: 13,
+              fontWeight: 800,
+              lineHeight: 1.45,
+            }}
+          >
+            {doneMessage}
+          </div>
+        ) : null}
 
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap", position: "sticky", bottom: -1, paddingTop: 4, background: "#111827" }}>
-          <button type="button" className={styles.secondaryBtn} onClick={onClose} disabled={saving}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            gap: 10,
+            flexWrap: "wrap",
+            position: "sticky",
+            bottom: -1,
+            paddingTop: 4,
+            background: "#111827",
+          }}
+        >
+          <button
+            type="button"
+            className={styles.secondaryBtn}
+            onClick={onClose}
+            disabled={busy}
+          >
             Annuler
           </button>
           <button
             type="button"
             className={styles.primaryBtn}
             onClick={submit}
-            disabled={saving || !publishableItems.length}
-            style={{ opacity: saving || !publishableItems.length ? 0.58 : 1 }}
+            disabled={busy || Boolean(doneMessage) || !publishableItems.length}
+            style={{
+              opacity:
+                busy || doneMessage || !publishableItems.length ? 0.58 : 1,
+            }}
           >
-            {saving ? "Programmation..." : "Confier à iNr’Agent"}
+            {busy ? savingLabel : "Confier à iNr’Agent"}
           </button>
         </div>
       </div>

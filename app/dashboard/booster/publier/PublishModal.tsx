@@ -108,6 +108,12 @@ type ChannelConnectionDetail = {
   href?: string | null;
 };
 
+type PendingImmediatePublishAfterSchedule = {
+  immediateChannels: ChannelKey[];
+  preparedPostsByChannel: Partial<Record<ChannelKey, ChannelPost>>;
+  tiktokSettingsForSchedule: TiktokPublicationSettings | null;
+};
+
 const EMPTY_CHANNEL_DETAILS: Record<ChannelKey, ChannelConnectionDetail> = {
   inrcy_site: { type: "url", label: null, href: null },
   site_web: { type: "url", label: null, href: null },
@@ -268,7 +274,8 @@ function cleanChannelBusinessLabel(input: unknown) {
 
   if (looksLikeTechnicalChannelLabel(text)) return "";
   if (/^https?:\/\//i.test(text)) return "";
-  if (/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(text)) return text.replace(/^www\./i, "");
+  if (/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(text))
+    return text.replace(/^www\./i, "");
 
   return titleCaseChannelDisplayName(text);
 }
@@ -282,7 +289,8 @@ function cleanChannelHandleLabel(input: unknown) {
     .replace(/^@+/, "")
     .replace(/^\/+|\/+$/g, "")
     .trim();
-  if (!text || looksLikeTechnicalChannelLabel(text) || /\s/.test(text)) return "";
+  if (!text || looksLikeTechnicalChannelLabel(text) || /\s/.test(text))
+    return "";
   return `@${text}`;
 }
 
@@ -609,8 +617,11 @@ export default function PublishModal({
   const [scheduleError, setScheduleError] = useState("");
   const [pendingScheduleRequest, setPendingScheduleRequest] = useState<{
     selections: PublishScheduleSelection[];
+    immediateChannels: ChannelKey[];
     preparedPostsByChannel: Partial<Record<ChannelKey, ChannelPost>>;
   } | null>(null);
+  const [pendingImmediatePublishAfterSchedule, setPendingImmediatePublishAfterSchedule] =
+    useState<PendingImmediatePublishAfterSchedule | null>(null);
   const [tiktokSettingsOpen, setTiktokSettingsOpen] = useState(false);
   const [tiktokSettingsFlow, setTiktokSettingsFlow] = useState<
     "publish" | "schedule" | null
@@ -2701,10 +2712,17 @@ export default function PublishModal({
     skipGmbNoImageWarning?: boolean;
     preparedPostsByChannel?: Partial<Record<ChannelKey, ChannelPost>>;
     tiktokPublicationSettings?: TiktokPublicationSettings | null;
+    channels?: ChannelKey[];
+    closeOnSuccess?: boolean;
+    suppressPublishSuccess?: boolean;
+    throwOnError?: boolean;
   }) => {
     if (saving || draftSaving) return;
     const preparedPostsByChannel =
       options?.preparedPostsByChannel || buildPreparedPostsByChannel();
+    const publishTargetChannels = Array.from(
+      new Set(options?.channels?.length ? options.channels : selectedChannels),
+    ).filter((channel): channel is ChannelKey => Boolean(channel));
 
     setPublishError("");
     setDraftMessage("");
@@ -2713,12 +2731,15 @@ export default function PublishModal({
     setPublishProgressLabel("");
     scrollToPublishArea("smooth");
 
-    if (!selectedChannels.length) {
+    if (!publishTargetChannels.length) {
       setPublishError("Sélectionnez au moins 1 canal.");
       return;
     }
 
-    const reviewItems = buildFinalReviewItems(preparedPostsByChannel);
+    const reviewItems = buildFinalReviewItems(
+      preparedPostsByChannel,
+      publishTargetChannels,
+    );
     const publishableChannels = reviewItems
       .filter((item) => item.blockers.length === 0)
       .map((item) => item.channel);
@@ -3024,8 +3045,12 @@ export default function PublishModal({
           normalizeExternalHref(channelDetails[channel]?.href),
         ]),
       );
-      onPublishSuccess?.({ ...result, channelLinks, skippedChannels });
-      onClose();
+      if (!options?.suppressPublishSuccess) {
+        onPublishSuccess?.({ ...result, channelLinks, skippedChannels });
+      }
+      if (options?.closeOnSuccess !== false) {
+        onClose();
+      }
     } catch (e) {
       if (publishPulseTimerRef.current) {
         window.clearInterval(publishPulseTimerRef.current);
@@ -3033,12 +3058,14 @@ export default function PublishModal({
       }
       setPublishProgress(0);
       setPublishProgressLabel("");
-      setPublishError(
-        getSimpleFrenchErrorMessage(
-          e,
-          "La publication n'a pas pu être envoyée. Merci de réessayer.",
-        ),
+      const message = getSimpleFrenchErrorMessage(
+        e,
+        "La publication n'a pas pu être envoyée. Merci de réessayer.",
       );
+      setPublishError(message);
+      if (options?.throwOnError) {
+        throw new Error(message);
+      }
     } finally {
       setSaving(false);
     }
@@ -3231,7 +3258,9 @@ export default function PublishModal({
     Object.fromEntries(
       channels
         .map((channel) => [channel, source[channel]] as const)
-        .filter((entry): entry is readonly [ChannelKey, T] => entry[1] !== undefined),
+        .filter(
+          (entry): entry is readonly [ChannelKey, T] => entry[1] !== undefined,
+        ),
     ) as Partial<Record<ChannelKey, T>>;
 
   const buildChannelUnknownRecord = (
@@ -3248,7 +3277,8 @@ export default function PublishModal({
     selections: PublishScheduleSelection[],
     preparedPostsByChannel: Partial<Record<ChannelKey, ChannelPost>>,
     tiktokSettingsForSchedule: TiktokPublicationSettings | null,
-  ) => {
+    immediateChannels: ChannelKey[] = [],
+  ): Promise<PendingImmediatePublishAfterSchedule | null | undefined> => {
     if (saving || draftSaving || scheduleSaving) return;
 
     const channelsToSchedule = Array.from(
@@ -3261,6 +3291,12 @@ export default function PublishModal({
       setScheduleError("Sélectionnez au moins un canal à programmer.");
       return;
     }
+
+    const immediateChannelsToPublish = Array.from(new Set(immediateChannels))
+      .filter((channel): channel is ChannelKey =>
+        selectedChannels.includes(channel),
+      )
+      .filter((channel) => !channelsToSchedule.includes(channel));
 
     const reviewItems = buildFinalReviewItems(
       preparedPostsByChannel,
@@ -3295,7 +3331,6 @@ export default function PublishModal({
     }
 
     setScheduleSaving(true);
-    setScheduleModalOpen(false);
     setPublishError("");
     setScheduleError("");
     setDraftMessage("");
@@ -3541,20 +3576,45 @@ export default function PublishModal({
 
       setChannels((prev) => {
         const next = { ...prev };
-        for (const channel of channelsToSchedule) next[channel] = false;
+        for (const channel of [
+          ...channelsToSchedule,
+          ...immediateChannelsToPublish,
+        ]) {
+          next[channel] = false;
+        }
         return next;
       });
       setPublishProgress(100);
-      setPublishProgressLabel("Publication confiée à iNr’Agent.");
+      setPublishProgressLabel(
+        immediateChannelsToPublish.length
+          ? "Programmation enregistrée, envoi des autres canaux..."
+          : "Publication confiée à iNr’Agent.",
+      );
       setDraftMessage(
         channelsToSchedule.length > 1
           ? `Publication multicanale programmée dans iNr’Agent (${channelsToSchedule.length} canaux).`
           : "Publication programmée dans iNr’Agent.",
       );
+
+      const immediatePublishRequest = immediateChannelsToPublish.length
+        ? {
+            immediateChannels: immediateChannelsToPublish,
+            preparedPostsByChannel,
+            tiktokSettingsForSchedule: immediateChannelsToPublish.includes(
+              "tiktok",
+            )
+              ? tiktokSettingsForSchedule
+              : null,
+          }
+        : null;
+      setPendingImmediatePublishAfterSchedule(immediatePublishRequest);
+
       setScheduleReviewPosts(null);
       setTiktokPublicationSettings(null);
       setTiktokSettingsFlow(null);
       setPendingScheduleRequest(null);
+      onUnsavedChange?.(false);
+      return immediatePublishRequest;
     } catch (e) {
       const message = getSimpleFrenchErrorMessage(
         e,
@@ -3562,31 +3622,59 @@ export default function PublishModal({
       );
       setScheduleError(message);
       setPublishError(message);
+      throw new Error(message);
     } finally {
       setScheduleSaving(false);
     }
   };
 
+  function publishImmediateChannelsAfterSchedule(
+    request: PendingImmediatePublishAfterSchedule,
+  ) {
+    if (!request.immediateChannels.length) return;
+    void runPublish({
+      skipEmptyContentWarnings: true,
+      skipGmbNoImageWarning: true,
+      preparedPostsByChannel: request.preparedPostsByChannel,
+      tiktokPublicationSettings: request.tiktokSettingsForSchedule,
+      channels: request.immediateChannels,
+      closeOnSuccess: false,
+      throwOnError: false,
+    });
+  }
+
   const confirmSchedulePublication = async (
     selections: PublishScheduleSelection[],
+    immediateChannels: ChannelKey[] = [],
   ) => {
     const preparedPostsByChannel =
       scheduleReviewPosts || buildPreparedPostsByChannel();
     const tiktokWillSchedule = selections.some(
       (selection) => selection.channel === "tiktok",
     );
-    if (tiktokWillSchedule && !tiktokPublicationSettings) {
-      setPendingScheduleRequest({ selections, preparedPostsByChannel });
+    const tiktokWillPublishNow = immediateChannels.includes("tiktok");
+    if (
+      (tiktokWillSchedule || tiktokWillPublishNow) &&
+      !tiktokPublicationSettings
+    ) {
+      setPendingScheduleRequest({
+        selections,
+        immediateChannels,
+        preparedPostsByChannel,
+      });
       setTiktokSettingsFlow("schedule");
       setScheduleModalOpen(false);
       setTiktokSettingsOpen(true);
-      return;
+      throw new Error("");
     }
 
     await performSchedulePublication(
       selections,
       preparedPostsByChannel,
-      tiktokWillSchedule ? tiktokPublicationSettings : null,
+      tiktokWillSchedule || tiktokWillPublishNow
+        ? tiktokPublicationSettings
+        : null,
+      immediateChannels,
     );
   };
 
@@ -3838,11 +3926,20 @@ export default function PublishModal({
       const request = pendingScheduleRequest;
       setPendingScheduleRequest(null);
       setTiktokSettingsFlow(null);
-      await performSchedulePublication(
+      setScheduleModalOpen(true);
+      const immediatePublishRequest = await performSchedulePublication(
         request.selections,
         request.preparedPostsByChannel,
         settings,
+        request.immediateChannels,
       );
+      setScheduleModalOpen(false);
+      if (immediatePublishRequest?.immediateChannels?.length) {
+        setPendingImmediatePublishAfterSchedule(null);
+        publishImmediateChannelsAfterSchedule(immediatePublishRequest);
+        return;
+      }
+      onClose();
       return;
     }
 
@@ -3946,7 +4043,20 @@ export default function PublishModal({
           if (scheduleSaving) return;
           setScheduleModalOpen(false);
         }}
+        successMessage="Programmation réussie."
+        savingLabel="Envoi en cours…"
+        enableImmediateUnselectedWarning
         onConfirm={confirmSchedulePublication}
+        onSuccess={() => {
+          const immediatePublishRequest = pendingImmediatePublishAfterSchedule;
+          setScheduleModalOpen(false);
+          setPendingImmediatePublishAfterSchedule(null);
+          if (immediatePublishRequest?.immediateChannels.length) {
+            publishImmediateChannelsAfterSchedule(immediatePublishRequest);
+            return;
+          }
+          onClose();
+        }}
       />
 
       <PublishWarningModals

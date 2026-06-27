@@ -962,9 +962,11 @@ const agentPublishChannelToBoosterChannel: Record<string, string> = {
 function normalizeAgentExternalHref(input: unknown) {
   const raw = String(input || "").trim();
   if (!raw) return "";
-  if (/^(https?:)?\/\//i.test(raw)) return raw.startsWith("//") ? `https:${raw}` : raw;
+  if (/^(https?:)?\/\//i.test(raw))
+    return raw.startsWith("//") ? `https:${raw}` : raw;
   if (/^www\./i.test(raw)) return `https://${raw}`;
-  if (/^[a-z0-9.-]+\.[a-z]{2,}(?:[/:?#].*)?$/i.test(raw)) return `https://${raw}`;
+  if (/^[a-z0-9.-]+\.[a-z]{2,}(?:[/:?#].*)?$/i.test(raw))
+    return `https://${raw}`;
   return raw;
 }
 
@@ -996,7 +998,9 @@ function connectedChannelsForAutomation(
 ): ChannelKey[] {
   if (!connectedChannels) return automation.availableChannels;
   return orderChannels(
-    automation.availableChannels.filter((channel) => Boolean(connectedChannels[channel])),
+    automation.availableChannels.filter((channel) =>
+      Boolean(connectedChannels[channel]),
+    ),
     automation.availableChannels,
   );
 }
@@ -1023,7 +1027,10 @@ function normalizeConfigsForConnectedChannels(
   const next = { ...current };
 
   for (const automation of automations) {
-    if (automation.key === "stats" || automation.availableChannels.length === 0) {
+    if (
+      automation.key === "stats" ||
+      automation.availableChannels.length === 0
+    ) {
       continue;
     }
 
@@ -1033,7 +1040,8 @@ function normalizeConfigsForConnectedChannels(
       connectedChannels,
     );
     const channels = orderChannels(currentConfig.channels, availableChannels);
-    const enabled = availableChannels.length > 0 ? currentConfig.enabled : false;
+    const enabled =
+      availableChannels.length > 0 ? currentConfig.enabled : false;
     const configChanged =
       enabled !== currentConfig.enabled ||
       channels.join("|") !== currentConfig.channels.join("|");
@@ -2680,10 +2688,7 @@ function manualRecipientFromEmail(
 
 function mailAccountEmail(
   account:
-    | Partial<AgentMailAccount>
-    | Record<string, unknown>
-    | null
-    | undefined,
+    Partial<AgentMailAccount> | Record<string, unknown> | null | undefined,
 ) {
   return firstSafeString(
     account?.email_address,
@@ -2709,10 +2714,7 @@ function mailAccountLabel(account: AgentMailAccount) {
 
 function mailAccountSecondaryLabel(
   account:
-    | Partial<AgentMailAccount>
-    | Record<string, unknown>
-    | null
-    | undefined,
+    Partial<AgentMailAccount> | Record<string, unknown> | null | undefined,
 ) {
   const provider = firstSafeString(account?.provider, "mail");
   const displayName = firstSafeString(account?.display_name);
@@ -3266,6 +3268,12 @@ export default function AgentClient() {
   const [validationScheduleState, setValidationScheduleState] = useState<
     "idle" | "saving"
   >("idle");
+  const [pendingImmediateAgentPublishAfterSchedule, setPendingImmediateAgentPublishAfterSchedule] =
+    useState<{
+      action: AgentPreparedAction;
+      actionId: string;
+      channels: BoosterChannelKey[];
+    } | null>(null);
   const [isMobileHeader, setIsMobileHeader] = useState(false);
   const [actions, setActions] = useState<AgentPreparedAction[]>([]);
   const [scheduledActions, setScheduledActions] = useState<
@@ -3279,8 +3287,9 @@ export default function AgentClient() {
     useState<ActionMutationState>("idle");
   const [agentPublishExecutionProgress, setAgentPublishExecutionProgress] =
     useState<AgentPublishExecutionProgressState>(null);
-  const [agentPublishSuccessSummary, setAgentPublishSuccessSummary] =
-    useState<any | null>(null);
+  const [agentPublishSuccessSummary, setAgentPublishSuccessSummary] = useState<
+    any | null
+  >(null);
   const [agentCampaignLaunchNotice, setAgentCampaignLaunchNotice] =
     useState<AgentCampaignLaunchNotice>(null);
   const agentPublishProgressTimerRef = useRef<number | null>(null);
@@ -3698,7 +3707,10 @@ export default function AgentClient() {
           ? (["mails"] as ChannelKey[])
           : orderChannels(
               config.channels,
-              connectedChannelsForAutomation(automation, agentConnectedChannels),
+              connectedChannelsForAutomation(
+                automation,
+                agentConnectedChannels,
+              ),
             );
 
       if (automation.key !== "stats" && channels.length === 0) continue;
@@ -3818,16 +3830,19 @@ export default function AgentClient() {
   const settingsAvailableChannels = useMemo(
     () =>
       settingsAutomation
-        ? connectedChannelsForAutomation(settingsAutomation, agentConnectedChannels)
+        ? connectedChannelsForAutomation(
+            settingsAutomation,
+            agentConnectedChannels,
+          )
         : [],
     [agentConnectedChannels, settingsAutomation],
   );
   const settingsNoConnectedChannelBlock = Boolean(
     settingsAutomation &&
-      settingsAutomation.key !== "stats" &&
-      settingsAutomation.availableChannels.length > 0 &&
-      connectedChannelsLoadState === "ready" &&
-      settingsAvailableChannels.length === 0,
+    settingsAutomation.key !== "stats" &&
+    settingsAutomation.availableChannels.length > 0 &&
+    connectedChannelsLoadState === "ready" &&
+    settingsAvailableChannels.length === 0,
   );
   const settingsConnectedChannelMessage = settingsNoConnectedChannelBlock
     ? connectedChannelMessage(settingsAutomation)
@@ -3849,11 +3864,7 @@ export default function AgentClient() {
             selectedAvailableChannels,
           )
         : [],
-    [
-      selectedAvailableChannels,
-      selectedPreparedAction,
-      selectedConfigChannels,
-    ],
+    [selectedAvailableChannels, selectedPreparedAction, selectedConfigChannels],
   );
   const preparedChannelsKey = preparedChannels.join("|");
   const displayChannels = hasPreparedAction
@@ -3988,13 +3999,16 @@ export default function AgentClient() {
         if (seen.has(boosterChannel)) return null;
         seen.add(boosterChannel);
         const preview = extractChannelPreview(selectedPreparedAction, channel);
-        const media = extractPublishMediaPreview(selectedPreparedAction, channel);
+        const media = extractPublishMediaPreview(
+          selectedPreparedAction,
+          channel,
+        );
         const hasText = Boolean(
           preview?.title ||
-            preview?.body ||
-            preview?.cta ||
-            preview?.hashtags.length ||
-            selectedPreparedAction.summary,
+          preview?.body ||
+          preview?.cta ||
+          preview?.hashtags.length ||
+          selectedPreparedAction.summary,
         );
         const blockers: string[] = [];
         if (media.statusTone === "blocked" && media.statusLabel) {
@@ -4400,9 +4414,7 @@ export default function AgentClient() {
     });
   }
 
-  function readAgentVideoFileInfo(
-    file: File,
-  ): Promise<{
+  function readAgentVideoFileInfo(file: File): Promise<{
     width: number | null;
     height: number | null;
     duration_seconds: number | null;
@@ -5746,7 +5758,6 @@ export default function AgentClient() {
     }
   }
 
-
   async function savePublishAsDraft() {
     if (!selectedPreparedAction || campaignDraftSaveState === "saving") return;
 
@@ -5980,7 +5991,8 @@ export default function AgentClient() {
       automation &&
       key !== "stats" &&
       connectedChannelsLoadState === "ready" &&
-      connectedChannelsForAutomation(automation, agentConnectedChannels).length === 0
+      connectedChannelsForAutomation(automation, agentConnectedChannels)
+        .length === 0
     ) {
       showNotice(connectedChannelMessage(automation));
       return;
@@ -6372,6 +6384,7 @@ export default function AgentClient() {
   async function persistScheduledPreparedAction(
     body: Record<string, unknown>,
     successMessage = "Action validée et programmée dans iNr’Agent.",
+    options: { closeSchedule?: boolean; showSuccessNotice?: boolean } = {},
   ) {
     const response = await fetch("/api/agent/actions/schedule", {
       method: "POST",
@@ -6388,7 +6401,9 @@ export default function AgentClient() {
 
     if (!response.ok) {
       if (payload?.tableMissing) setScheduledActionsTableMissing(true);
-      throw new Error(payload?.error || "Programmation de l’action impossible.");
+      throw new Error(
+        payload?.error || "Programmation de l’action impossible.",
+      );
     }
 
     if (payload?.action) {
@@ -6412,15 +6427,22 @@ export default function AgentClient() {
       ]);
     }
 
-    setValidationScheduleOpen(false);
-    showNotice(successMessage);
+    if (options.closeSchedule !== false) {
+      setValidationScheduleOpen(false);
+    }
+    if (options.showSuccessNotice !== false) {
+      showNotice(successMessage);
+    }
     await refreshActions(true);
     await refreshScheduledActions(true);
   }
 
   async function scheduleValidatedCampaign(scheduledAt: string) {
     if (!selectedPreparedAction || validationScheduleState === "saving") return;
-    if (!scheduledAt || new Date(scheduledAt).getTime() <= Date.now() + 30_000) {
+    if (
+      !scheduledAt ||
+      new Date(scheduledAt).getTime() <= Date.now() + 30_000
+    ) {
       showNotice("Choisissez une date et une heure dans le futur.");
       return;
     }
@@ -6435,13 +6457,15 @@ export default function AgentClient() {
           timezone: agentSettings.timezone || "Europe/Paris",
         },
         "Campagne validée et programmée dans iNr’Agent.",
+        { closeSchedule: false, showSuccessNotice: false },
       );
     } catch (error) {
-      showNotice(
+      const message =
         error instanceof Error
           ? error.message
-          : "Programmation de la campagne impossible.",
-      );
+          : "Programmation de la campagne impossible.";
+      showNotice(message);
+      throw new Error(message);
     } finally {
       setValidationScheduleState("idle");
     }
@@ -6449,6 +6473,7 @@ export default function AgentClient() {
 
   async function scheduleValidatedPublication(
     selections: PublishScheduleSelection[],
+    immediateChannels: BoosterChannelKey[] = [],
   ) {
     if (!selectedPreparedAction || validationScheduleState === "saving") return;
     if (!selections.length) {
@@ -6468,18 +6493,36 @@ export default function AgentClient() {
         selections.length > 1
           ? `Publication validée et programmée dans iNr’Agent (${selections.length} canaux).`
           : "Publication validée et programmée dans iNr’Agent.",
+        { closeSchedule: false, showSuccessNotice: false },
+      );
+
+      const immediateChannelsToPublish = Array.from(new Set(immediateChannels))
+        .filter((channel): channel is BoosterChannelKey => Boolean(channel))
+        .filter(
+          (channel) =>
+            !selections.some((selection) => selection.channel === channel),
+        );
+
+      setPendingImmediateAgentPublishAfterSchedule(
+        immediateChannelsToPublish.length
+          ? {
+              action: selectedPreparedAction,
+              actionId: selectedPreparedAction.id,
+              channels: immediateChannelsToPublish,
+            }
+          : null,
       );
     } catch (error) {
-      showNotice(
+      const message =
         error instanceof Error
           ? error.message
-          : "Programmation de la publication impossible.",
-      );
+          : "Programmation de la publication impossible.";
+      showNotice(message);
+      throw new Error(message);
     } finally {
       setValidationScheduleState("idle");
     }
   }
-
 
   useEffect(() => {
     return () => {
@@ -6501,7 +6544,12 @@ export default function AgentClient() {
     stopAgentPublishProgressTimer();
     const channels = Array.isArray(action.targetChannels)
       ? action.targetChannels
-          .map((channel) => agentPublishChannelToBoosterChannel[String(channel || "").trim()] || String(channel || "").trim())
+          .map(
+            (channel) =>
+              agentPublishChannelToBoosterChannel[
+                String(channel || "").trim()
+              ] || String(channel || "").trim(),
+          )
           .filter(Boolean)
       : [];
     const selectedChannels = channels.length ? channels : ["publication"];
@@ -6524,18 +6572,22 @@ export default function AgentClient() {
           Math.floor(channelRatio * selectedChannels.length),
         );
         const channel = selectedChannels[channelIndex];
-        const boosterChannel = agentPublishChannelToBoosterChannel[channel] || channel;
+        const boosterChannel =
+          agentPublishChannelToBoosterChannel[channel] || channel;
         const labelName = channelDisplayName(boosterChannel || channel);
-        label = selectedChannels.length > 1
-          ? `Canal ${channelIndex + 1}/${selectedChannels.length} — publication sur ${labelName}...`
-          : `Publication sur ${labelName}...`;
+        label =
+          selectedChannels.length > 1
+            ? `Canal ${channelIndex + 1}/${selectedChannels.length} — publication sur ${labelName}...`
+            : `Publication sur ${labelName}...`;
       } else if (ratio >= 0.72 && ratio < 0.88) {
         label = "Récupération des retours canaux...";
       } else if (ratio >= 0.88) {
         label = "Finalisation dans iNr’Send...";
       }
       setAgentPublishExecutionProgress((current) =>
-        current ? { progress: Math.max(current.progress, progress), label } : current,
+        current
+          ? { progress: Math.max(current.progress, progress), label }
+          : current,
       );
     }, 450);
   }
@@ -6574,10 +6626,15 @@ export default function AgentClient() {
     const folderRaw = String(
       campaignResult.folder || payload.action.payload?.folder || "",
     ).trim();
-    const fallbackFolder = payload.action.automationKey === "loyalty" ? "fidelisations" : "propulsions";
-    const folder = (["propulsions", "fidelisations", "mails"].includes(folderRaw)
-      ? folderRaw
-      : fallbackFolder) as "propulsions" | "fidelisations" | "mails";
+    const fallbackFolder =
+      payload.action.automationKey === "loyalty"
+        ? "fidelisations"
+        : "propulsions";
+    const folder = (
+      ["propulsions", "fidelisations", "mails"].includes(folderRaw)
+        ? folderRaw
+        : fallbackFolder
+    ) as "propulsions" | "fidelisations" | "mails";
     const queued = Math.max(
       0,
       Number(campaignResult.queued || payload.action.recipients?.length || 0),
@@ -6586,10 +6643,91 @@ export default function AgentClient() {
       queued,
       folder,
       title: "Campagne lancée",
-      details: queued > 0
-        ? `${queued} email${queued > 1 ? "s" : ""} en file d’envoi. Le bilan final sera envoyé par mail au pro.`
-        : "La campagne a été confiée à iNr’Agent. Le bilan final sera envoyé par mail au pro.",
+      details:
+        queued > 0
+          ? `${queued} email${queued > 1 ? "s" : ""} en file d’envoi. Le bilan final sera envoyé par mail au pro.`
+          : "La campagne a été confiée à iNr’Agent. Le bilan final sera envoyé par mail au pro.",
     };
+  }
+
+  async function executeImmediateAgentPublicationAfterSchedule(request: {
+    action: AgentPreparedAction;
+    actionId: string;
+    channels: BoosterChannelKey[];
+  }) {
+    if (!request.channels.length || actionMutationState === "saving") return;
+    setActionMutationState("saving");
+    setNotice(null);
+    setAgentCampaignLaunchNotice(null);
+    setAgentPublishSuccessSummary(null);
+    startAgentPublishProgress(request.action);
+
+    try {
+      const response = await fetch("/api/agent/actions/execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          actionId: request.actionId,
+          channels: request.channels,
+          preserveActionStatus: true,
+        }),
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        action?: AgentPreparedAction;
+        error?: string;
+        publishResult?: Record<string, unknown> | null;
+      } | null;
+
+      if (payload?.action) {
+        setActions((current) =>
+          current.map((action) =>
+            action.id === payload.action?.id ? payload.action : action,
+          ),
+        );
+      }
+
+      if (!response.ok) {
+        const failedPublishSummary = asRecord(payload?.publishResult)?.summary;
+        if (failedPublishSummary) {
+          completeAgentPublishProgress("Échec");
+          await new Promise((resolve) => window.setTimeout(resolve, 220));
+          const channelLinks = await loadAgentPublishChannelLinks();
+          setAgentPublishExecutionProgress(null);
+          setAgentPublishSuccessSummary({
+            ...(asRecord(failedPublishSummary) || {}),
+            channelLinks,
+          });
+          return;
+        }
+        throw new Error(
+          payload?.error ||
+            "Publication immédiate des autres canaux impossible.",
+        );
+      }
+
+      const publishSummary = asRecord(payload?.publishResult)?.summary;
+      completeAgentPublishProgress(
+        asRecord(publishSummary)?.allFailed ? "Échec" : "Publié",
+      );
+      await new Promise((resolve) => window.setTimeout(resolve, 220));
+      const channelLinks = await loadAgentPublishChannelLinks();
+      setAgentPublishExecutionProgress(null);
+      setAgentPublishSuccessSummary({
+        ...(asRecord(publishSummary) || {}),
+        channelLinks,
+      });
+      await refreshActions(true);
+    } catch (error) {
+      stopAgentPublishProgressTimer();
+      setAgentPublishExecutionProgress(null);
+      showNotice(
+        error instanceof Error
+          ? error.message
+          : "Publication immédiate des autres canaux impossible.",
+      );
+    } finally {
+      setActionMutationState("idle");
+    }
   }
 
   async function updateActionStatus(status: "validated" | "refused") {
@@ -6796,7 +6934,9 @@ export default function AgentClient() {
             </button>
             <p className={styles.modalEyebrow}>iNr’Agent</p>
             <h2>{agentCampaignLaunchNotice.title}</h2>
-            <p className={styles.modalHint}>{agentCampaignLaunchNotice.details}</p>
+            <p className={styles.modalHint}>
+              {agentCampaignLaunchNotice.details}
+            </p>
             <div className={styles.modalActionButtonRow}>
               <button
                 type="button"
@@ -7885,7 +8025,9 @@ export default function AgentClient() {
             <div className={styles.campaignEditGrid}>
               <button type="button" onClick={openPublishTextEditor}>
                 <strong>Contenu</strong>
-                <small>Modifier le titre, le texte, le CTA et les hashtags.</small>
+                <small>
+                  Modifier le titre, le texte, le CTA et les hashtags.
+                </small>
               </button>
               <button type="button" onClick={openPublishMediaEditor}>
                 <strong>Média</strong>
@@ -8213,7 +8355,11 @@ export default function AgentClient() {
             className={`${styles.settingsModal} ${styles.campaignDraftModal}`}
             role="dialog"
             aria-modal="true"
-            aria-label={isPublishView ? "Enregistrer la publication en brouillon" : "Enregistrer la campagne en brouillon"}
+            aria-label={
+              isPublishView
+                ? "Enregistrer la publication en brouillon"
+                : "Enregistrer la campagne en brouillon"
+            }
             onClick={(event) => event.stopPropagation()}
           >
             <button
@@ -8226,7 +8372,11 @@ export default function AgentClient() {
               ×
             </button>
             <p className={styles.modalEyebrow}>Brouillon iNrSend</p>
-            <h2>{isPublishView ? "Enregistrer cette publication ?" : "Enregistrer cette campagne ?"}</h2>
+            <h2>
+              {isPublishView
+                ? "Enregistrer cette publication ?"
+                : "Enregistrer cette campagne ?"}
+            </h2>
             <div className={styles.campaignDraftNotice}>
               <span aria-hidden>💾</span>
               <div>
@@ -8247,8 +8397,13 @@ export default function AgentClient() {
                 <>
                   <small>Canaux</small>
                   <strong>
-                    {(displayChannels.length ? displayChannels : selectedConfigChannels)
-                      .map((channel) => channelOptions[channel]?.name || channel)
+                    {(displayChannels.length
+                      ? displayChannels
+                      : selectedConfigChannels
+                    )
+                      .map(
+                        (channel) => channelOptions[channel]?.name || channel,
+                      )
                       .join(" / ") || "—"}
                   </strong>
                   <small>Contenu</small>
@@ -8276,7 +8431,9 @@ export default function AgentClient() {
               </button>
               <button
                 type="button"
-                onClick={isPublishView ? savePublishAsDraft : saveCampaignAsDraft}
+                onClick={
+                  isPublishView ? savePublishAsDraft : saveCampaignAsDraft
+                }
                 disabled={campaignDraftSaveState === "saving"}
               >
                 {campaignDraftSaveState === "saving"
@@ -9142,7 +9299,9 @@ export default function AgentClient() {
                   void uploadPublishMedia(event.currentTarget.files?.[0]);
                   event.currentTarget.value = "";
                 }}
-                disabled={!isMobileHeader || publishMediaUploadState === "saving"}
+                disabled={
+                  !isMobileHeader || publishMediaUploadState === "saving"
+                }
               />
               <div className={styles.publishMediaActionButtons}>
                 <label htmlFor="agent-publish-media-image">
@@ -9165,16 +9324,26 @@ export default function AgentClient() {
                   <small>Choisir un média existant</small>
                 </button>
                 <label
-                  htmlFor={isMobileHeader ? "agent-publish-media-camera" : undefined}
-                  aria-disabled={!isMobileHeader || publishMediaUploadState === "saving"}
-                  title={isMobileHeader ? "Prendre une photo dans iNrCy" : "Disponible sur mobile"}
+                  htmlFor={
+                    isMobileHeader ? "agent-publish-media-camera" : undefined
+                  }
+                  aria-disabled={
+                    !isMobileHeader || publishMediaUploadState === "saving"
+                  }
+                  title={
+                    isMobileHeader
+                      ? "Prendre une photo dans iNrCy"
+                      : "Disponible sur mobile"
+                  }
                   onClick={(event) => {
                     if (!isMobileHeader) event.preventDefault();
                   }}
                 >
                   <span aria-hidden>📷</span>
                   <strong>Prendre une photo</strong>
-                  <small>{isMobileHeader ? "Depuis mobile" : "Disponible sur mobile"}</small>
+                  <small>
+                    {isMobileHeader ? "Depuis mobile" : "Disponible sur mobile"}
+                  </small>
                 </label>
               </div>
               <small className={styles.publishMediaSourceNote}>
@@ -9573,7 +9742,9 @@ export default function AgentClient() {
                 <span>Date</span>
                 <div
                   className={styles.nativeDateTimeField}
-                  data-disabled={scheduleMutationState === "saving" ? "true" : "false"}
+                  data-disabled={
+                    scheduleMutationState === "saving" ? "true" : "false"
+                  }
                   onClick={() =>
                     openNativeDateTimePicker(scheduleEditDateInputRef.current)
                   }
@@ -9584,14 +9755,18 @@ export default function AgentClient() {
                     type="date"
                     value={scheduleEditDate}
                     disabled={scheduleMutationState === "saving"}
-                    onChange={(event) => setScheduleEditDate(event.target.value)}
+                    onChange={(event) =>
+                      setScheduleEditDate(event.target.value)
+                    }
                   />
                   <button
                     type="button"
                     className={styles.nativeDateTimePickerButton}
                     onClick={(event) => {
                       event.stopPropagation();
-                      openNativeDateTimePicker(scheduleEditDateInputRef.current);
+                      openNativeDateTimePicker(
+                        scheduleEditDateInputRef.current,
+                      );
                     }}
                     disabled={scheduleMutationState === "saving"}
                     aria-label="Ouvrir le calendrier"
@@ -9604,7 +9779,9 @@ export default function AgentClient() {
                 <span>Heure</span>
                 <div
                   className={styles.nativeDateTimeField}
-                  data-disabled={scheduleMutationState === "saving" ? "true" : "false"}
+                  data-disabled={
+                    scheduleMutationState === "saving" ? "true" : "false"
+                  }
                   onClick={() =>
                     openNativeDateTimePicker(scheduleEditTimeInputRef.current)
                   }
@@ -9615,14 +9792,18 @@ export default function AgentClient() {
                     type="time"
                     value={scheduleEditTime}
                     disabled={scheduleMutationState === "saving"}
-                    onChange={(event) => setScheduleEditTime(event.target.value)}
+                    onChange={(event) =>
+                      setScheduleEditTime(event.target.value)
+                    }
                   />
                   <button
                     type="button"
                     className={styles.nativeDateTimePickerButton}
                     onClick={(event) => {
                       event.stopPropagation();
-                      openNativeDateTimePicker(scheduleEditTimeInputRef.current);
+                      openNativeDateTimePicker(
+                        scheduleEditTimeInputRef.current,
+                      );
                     }}
                     disabled={scheduleMutationState === "saving"}
                     aria-label="Ouvrir le choix de l’heure"
@@ -9724,39 +9905,67 @@ export default function AgentClient() {
         </div>
       )}
 
-      {validationScheduleOpen && selectedPreparedAction?.automationKey === "publish" && (
-        <PublishScheduleModal
-          open={validationScheduleOpen}
-          styles={dashboardStyles}
-          items={agentPublishScheduleItems}
-          isMobile={isMobileHeader}
-          saving={validationScheduleState === "saving"}
-          error=""
-          onClose={() => {
-            if (validationScheduleState === "saving") return;
-            setValidationScheduleOpen(false);
-          }}
-          onConfirm={(selections) => void scheduleValidatedPublication(selections)}
-        />
-      )}
+      {validationScheduleOpen &&
+        selectedPreparedAction?.automationKey === "publish" && (
+          <PublishScheduleModal
+            open={validationScheduleOpen}
+            styles={dashboardStyles}
+            items={agentPublishScheduleItems}
+            isMobile={isMobileHeader}
+            saving={validationScheduleState === "saving"}
+            error=""
+            successMessage="Programmation réussie."
+            savingLabel="Envoi en cours…"
+            enableImmediateUnselectedWarning
+            onClose={() => {
+              if (validationScheduleState === "saving") return;
+              setValidationScheduleOpen(false);
+            }}
+            onConfirm={(selections, immediateChannels) =>
+              scheduleValidatedPublication(selections, immediateChannels)
+            }
+            onSuccess={() => {
+              const immediatePublishRequest =
+                pendingImmediateAgentPublishAfterSchedule;
+              setValidationScheduleOpen(false);
+              setValidationChoiceOpen(false);
+              setPendingImmediateAgentPublishAfterSchedule(null);
+              if (immediatePublishRequest?.channels.length) {
+                void executeImmediateAgentPublicationAfterSchedule(
+                  immediatePublishRequest,
+                );
+              }
+            }}
+          />
+        )}
 
-      {validationScheduleOpen && selectedPreparedAction && selectedPreparedAction.automationKey !== "publish" && (
-        <CampaignScheduleModal
-          open={validationScheduleOpen}
-          description={`iNr’Agent enverra cette campagne ${
-            selectedPreparedAction.automationKey === "loyalty" ? "Fidéliser" : "Propulser"
-          } automatiquement au moment choisi.`}
-          recipientCount={preparedRecipientsCount}
-          subject={campaignDisplayPreview?.subject || "(sans objet)"}
-          saving={validationScheduleState === "saving"}
-          error={null}
-          onClose={() => {
-            if (validationScheduleState === "saving") return;
-            setValidationScheduleOpen(false);
-          }}
-          onConfirm={(scheduledAt) => void scheduleValidatedCampaign(scheduledAt)}
-        />
-      )}
+      {validationScheduleOpen &&
+        selectedPreparedAction &&
+        selectedPreparedAction.automationKey !== "publish" && (
+          <CampaignScheduleModal
+            open={validationScheduleOpen}
+            description={`iNr’Agent enverra cette campagne ${
+              selectedPreparedAction.automationKey === "loyalty"
+                ? "Fidéliser"
+                : "Propulser"
+            } automatiquement au moment choisi.`}
+            recipientCount={preparedRecipientsCount}
+            subject={campaignDisplayPreview?.subject || "(sans objet)"}
+            saving={validationScheduleState === "saving"}
+            error={null}
+            successMessage="Programmation réussie."
+            savingLabel="Programmation en cours…"
+            onClose={() => {
+              if (validationScheduleState === "saving") return;
+              setValidationScheduleOpen(false);
+            }}
+            onConfirm={(scheduledAt) => scheduleValidatedCampaign(scheduledAt)}
+            onSuccess={() => {
+              setValidationScheduleOpen(false);
+              setValidationChoiceOpen(false);
+            }}
+          />
+        )}
 
       {helpOpen && (
         <div

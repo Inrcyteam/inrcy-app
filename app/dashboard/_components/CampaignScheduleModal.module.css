@@ -17,10 +17,14 @@
   gap: 16px;
   padding: 18px;
   border-radius: 22px;
-  border: 1px solid rgba(125, 211, 252, 0.20);
+  border: 1px solid rgba(125, 211, 252, 0.2);
   background:
     radial-gradient(circle at 8% 0%, rgba(76, 195, 255, 0.18), transparent 42%),
-    radial-gradient(circle at 95% 8%, rgba(168, 85, 247, 0.24), transparent 46%),
+    radial-gradient(
+      circle at 95% 8%,
+      rgba(168, 85, 247, 0.24),
+      transparent 46%
+    ),
     linear-gradient(135deg, rgba(18, 45, 95, 0.94), rgba(35, 26, 83, 0.96));
   box-shadow: 0 32px 90px rgba(0, 0, 0, 0.58);
   color: #fff;
@@ -63,7 +67,7 @@
   flex: 0 0 auto;
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.1);
   color: rgba(255, 255, 255, 0.9);
   font-size: 24px;
   font-weight: 900;
@@ -165,7 +169,7 @@
   gap: 6px;
   padding: 13px 14px;
   border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.10);
+  border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(10, 16, 48, 0.56);
   color: rgba(255, 255, 255, 0.76);
   font-size: 13px;
@@ -203,7 +207,7 @@
 
 .secondaryBtn {
   border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.1);
   color: #fff;
 }
 
@@ -233,4 +237,11 @@
     display: grid;
     grid-template-columns: 1fr;
   }
+}
+
+.success {
+  color: #bbf7d0;
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.45;
 }

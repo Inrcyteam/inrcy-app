@@ -83,6 +83,7 @@ type MailboxComposeModalProps = {
   saveDraft: () => Promise<void>;
   doSend: () => Promise<void>;
   scheduleWorkflowCampaign?: (scheduledAt: string) => Promise<void>;
+  onScheduledSuccess?: () => void | Promise<void>;
   sendBusy: boolean;
   scheduleBusy?: boolean;
   toast: string | null;
@@ -164,6 +165,7 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
     saveDraft,
     doSend,
     scheduleWorkflowCampaign,
+    onScheduledSuccess,
     sendBusy,
     scheduleBusy = false,
     toast,
@@ -317,13 +319,13 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
       setScheduleError(null);
       try {
         await scheduleWorkflowCampaign(scheduledAt);
-        setScheduleModalOpen(false);
       } catch (error) {
-        setScheduleError(
+        const message =
           error instanceof Error
             ? error.message
-            : "Programmation impossible pour le moment.",
-        );
+            : "Programmation impossible pour le moment.";
+        setScheduleError(message);
+        throw new Error(message);
       }
     },
     [scheduleWorkflowCampaign],
@@ -1268,8 +1270,14 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
           subject={subject.trim() || "(sans objet)"}
           saving={Boolean(scheduleBusy)}
           error={scheduleError}
+          successMessage="Programmation réussie."
+          savingLabel="Programmation en cours…"
           onClose={() => !scheduleBusy && setScheduleModalOpen(false)}
-          onConfirm={(scheduledAt) => void confirmSchedule(scheduledAt)}
+          onConfirm={(scheduledAt) => confirmSchedule(scheduledAt)}
+          onSuccess={async () => {
+            setScheduleModalOpen(false);
+            await onScheduledSuccess?.();
+          }}
         />
 
         {toast ? (

@@ -11,8 +11,11 @@ export type CampaignScheduleModalProps = {
   saving: boolean;
   error?: string | null;
   confirmLabel?: string;
+  savingLabel?: string;
+  successMessage?: string;
   onClose: () => void;
-  onConfirm: (scheduledAt: string) => void;
+  onConfirm: (scheduledAt: string) => void | Promise<void>;
+  onSuccess?: () => void | Promise<void>;
 };
 
 function pad2(value: number) {
@@ -91,12 +94,17 @@ export default function CampaignScheduleModal({
   saving,
   error,
   confirmLabel = "Confier à iNr’Agent",
+  savingLabel = "Programmation en cours…",
+  successMessage = "Programmation réussie.",
   onClose,
   onConfirm,
+  onSuccess,
 }: CampaignScheduleModalProps) {
   const [date, setDate] = useState(() => defaultDateTime().date);
   const [time, setTime] = useState(() => defaultDateTime().time);
   const [localError, setLocalError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [doneMessage, setDoneMessage] = useState("");
   const dateInputRef = useRef<HTMLInputElement | null>(null);
   const timeInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -106,11 +114,16 @@ export default function CampaignScheduleModal({
     setDate(next.date);
     setTime(next.time);
     setLocalError("");
+    setSubmitting(false);
+    setDoneMessage("");
   }, [open]);
 
   if (!open) return null;
 
-  const submit = () => {
+  const busy = saving || submitting;
+
+  const submit = async () => {
+    if (busy || doneMessage) return;
     const scheduledAt = localInputsToIso(date, time);
     if (!scheduledAt) {
       setLocalError("Choisissez une date et une heure valides.");
@@ -121,7 +134,21 @@ export default function CampaignScheduleModal({
       return;
     }
     setLocalError("");
-    onConfirm(scheduledAt);
+    setSubmitting(true);
+    try {
+      await onConfirm(scheduledAt);
+      setDoneMessage(successMessage);
+      window.setTimeout(() => {
+        void onSuccess?.();
+      }, 850);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (message) {
+        setLocalError(message);
+      }
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const displayedError = localError || error || "";
@@ -132,9 +159,12 @@ export default function CampaignScheduleModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="campaign-schedule-title"
-      onMouseDown={() => !saving && onClose()}
+      onMouseDown={() => !busy && onClose()}
     >
-      <div className={styles.card} onMouseDown={(event) => event.stopPropagation()}>
+      <div
+        className={styles.card}
+        onMouseDown={(event) => event.stopPropagation()}
+      >
         <div className={styles.header}>
           <div>
             <div className={styles.kicker}>{kicker}</div>
@@ -147,7 +177,7 @@ export default function CampaignScheduleModal({
             className={styles.closeBtn}
             type="button"
             onClick={onClose}
-            disabled={saving}
+            disabled={busy}
             aria-label="Fermer"
           >
             ×
@@ -159,7 +189,7 @@ export default function CampaignScheduleModal({
             <span>Date</span>
             <div
               className={styles.nativeField}
-              data-disabled={saving ? "true" : "false"}
+              data-disabled={busy ? "true" : "false"}
               onClick={() => openNativeDateTimePicker(dateInputRef.current)}
             >
               <input
@@ -167,7 +197,7 @@ export default function CampaignScheduleModal({
                 className={styles.nativeInput}
                 type="date"
                 value={date}
-                disabled={saving}
+                disabled={busy}
                 onChange={(event) => setDate(event.target.value)}
               />
               <button
@@ -177,7 +207,7 @@ export default function CampaignScheduleModal({
                   event.stopPropagation();
                   openNativeDateTimePicker(dateInputRef.current);
                 }}
-                disabled={saving}
+                disabled={busy}
                 aria-label="Ouvrir le calendrier"
               >
                 <CalendarMiniIcon />
@@ -188,7 +218,7 @@ export default function CampaignScheduleModal({
             <span>Heure</span>
             <div
               className={styles.nativeField}
-              data-disabled={saving ? "true" : "false"}
+              data-disabled={busy ? "true" : "false"}
               onClick={() => openNativeDateTimePicker(timeInputRef.current)}
             >
               <input
@@ -196,7 +226,7 @@ export default function CampaignScheduleModal({
                 className={styles.nativeInput}
                 type="time"
                 value={time}
-                disabled={saving}
+                disabled={busy}
                 onChange={(event) => setTime(event.target.value)}
               />
               <button
@@ -206,7 +236,7 @@ export default function CampaignScheduleModal({
                   event.stopPropagation();
                   openNativeDateTimePicker(timeInputRef.current);
                 }}
-                disabled={saving}
+                disabled={busy}
                 aria-label="Ouvrir le choix de l’heure"
               >
                 <ClockMiniIcon />
@@ -215,7 +245,12 @@ export default function CampaignScheduleModal({
           </label>
         </div>
 
-        {displayedError ? <div className={styles.error}>{displayedError}</div> : null}
+        {displayedError ? (
+          <div className={styles.error}>{displayedError}</div>
+        ) : null}
+        {doneMessage ? (
+          <div className={styles.success}>{doneMessage}</div>
+        ) : null}
 
         <div className={styles.summary}>
           <strong>
@@ -225,11 +260,21 @@ export default function CampaignScheduleModal({
         </div>
 
         <div className={styles.footer}>
-          <button className={styles.secondaryBtn} type="button" onClick={onClose} disabled={saving}>
+          <button
+            className={styles.secondaryBtn}
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+          >
             Annuler
           </button>
-          <button className={styles.primaryBtn} type="button" onClick={submit} disabled={saving}>
-            {saving ? "Programmation…" : confirmLabel}
+          <button
+            className={styles.primaryBtn}
+            type="button"
+            onClick={submit}
+            disabled={busy}
+          >
+            {busy ? savingLabel : confirmLabel}
           </button>
         </div>
       </div>
