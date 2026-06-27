@@ -215,7 +215,10 @@ export default async function EReputationPage() {
                 <span className={styles.tagline}>Tous vos avis Google, depuis une seule et même machine.</span>
               </div>
               <p className={styles.subline}>
-                Pilotez vos avis Google, préparez une réponse avec l’IA iNrCy, puis publiez-la après validation.
+                <span className={styles.sublineDesktop}>
+                  Pilotez vos avis Google, préparez une réponse avec l’IA iNrCy, puis publiez-la après validation.
+                </span>
+                <span className={styles.sublineMobile}>Répondez à vos avis Google avec iNrCy.</span>
               </p>
             </div>
           </div>
@@ -250,6 +253,7 @@ export default async function EReputationPage() {
           statusLabel={statusLabel}
           gmbReady={gmbReady}
           averageRatingLabel={reviewsData.ready ? formatAverageRating(reviewsData.averageRating) : "—"}
+          reportGoogleUrl={gmb?.url || null}
         />
       </div>
     </main>

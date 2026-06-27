@@ -28,6 +28,7 @@ type Props = {
   locationLabel?: string;
   statusLabel?: string;
   gmbReady?: boolean;
+  reportGoogleUrl?: string | null;
 };
 
 type ReplyResponse = {
@@ -84,10 +85,101 @@ function renderStars(rating: number) {
   ));
 }
 
+function stableHash(value: string) {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  }
+  return hash;
+}
+
+function pickVariant<T>(variants: T[], seed: number) {
+  if (!variants.length) {
+    throw new Error("Aucune variante disponible.");
+  }
+  return variants[Math.abs(seed) % variants.length];
+}
+
+function getReviewerFirstName(name: string) {
+  const firstName = String(name || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .split(" ")[0]
+    ?.replace(/[^A-Za-zÀ-ÿ'’-]/g, "")
+    .trim();
+
+  if (!firstName || firstName.length < 2) return "";
+  if (["client", "google", "user", "utilisateur"].includes(firstName.toLowerCase())) return "";
+  return firstName;
+}
+
+function reviewHasWrittenComment(review: EReputationReviewItem | null) {
+  const text = getReviewOriginalText(review);
+  return Boolean(text && !/avis sans commentaire écrit/i.test(text));
+}
+
+function joinWithOptionalSignature(text: string, seed: number) {
+  const signature = pickVariant(["", "", "", "\n— L’équipe"], seed + 17);
+  return `${text}${signature}`.trim();
+}
+
 function defaultReplyFor(review: EReputationReviewItem | null) {
   if (!review) return "";
   if (review.reply) return review.reply;
-  return "Merci beaucoup pour votre avis et votre confiance. Nous sommes ravis d’avoir pu vous accompagner. Au plaisir de vous revoir prochainement !";
+
+  const seed = stableHash([review.id, review.name, review.rating, getReviewOriginalText(review), review.date].join("|"));
+  const firstName = getReviewerFirstName(review.name);
+  const directName = firstName ? ` ${firstName}` : "";
+  const commaName = firstName ? `, ${firstName}` : "";
+  const withComment = reviewHasWrittenComment(review);
+
+  let variants: string[] = [];
+
+  if (review.rating >= 5) {
+    variants = withComment
+      ? [
+          `Merci${directName} pour votre retour si positif. Nous sommes ravis de voir que notre accompagnement a répondu à vos attentes. Au plaisir de vous revoir bientôt !`,
+          `Un grand merci${directName} pour votre confiance et pour votre avis. Toute l’équipe est heureuse d’avoir pu vous apporter satisfaction.`,
+          `Merci beaucoup${directName} pour ce très beau retour. Votre satisfaction est une vraie récompense pour notre équipe.`,
+          `Merci${directName} pour votre commentaire et votre excellente note. Nous sommes heureux d’avoir pu vous accompagner dans les meilleures conditions.`,
+        ]
+      : [
+          `Merci beaucoup${directName} pour votre excellente note. Nous sommes ravis de votre confiance et espérons vous revoir prochainement.`,
+          `Un grand merci${directName} pour vos 5 étoiles. Toute l’équipe vous remercie chaleureusement pour ce retour.`,
+          `Merci${directName} pour cette très belle note. Votre satisfaction nous fait très plaisir.`,
+          `Merci infiniment${directName} pour votre note. Nous sommes heureux d’avoir pu vous apporter une expérience positive.`,
+        ];
+  } else if (review.rating === 4) {
+    variants = withComment
+      ? [
+          `Merci${directName} pour votre retour et pour cette belle note. Nous sommes heureux d’avoir pu vous satisfaire et restons attentifs à toujours faire encore mieux.`,
+          `Merci beaucoup${directName} pour votre avis. Votre retour compte pour nous et nous motive à continuer dans cette direction.`,
+          `Merci${directName} pour votre confiance et pour votre commentaire. Nous sommes ravis de votre satisfaction et prenons aussi en compte chaque détail pour progresser.`,
+          `Un grand merci${directName} pour votre retour positif. Nous restons mobilisés pour vous offrir la meilleure expérience possible.`,
+        ]
+      : [
+          `Merci beaucoup${directName} pour votre note et votre confiance. Nous sommes ravis de voir que votre expérience a été positive.`,
+          `Merci${directName} pour cette belle note. Votre retour nous encourage à continuer avec le même sérieux.`,
+          `Un grand merci${directName} pour votre évaluation. Nous espérons avoir le plaisir de vous accompagner à nouveau.`,
+          `Merci${directName} pour votre retour. Toute l’équipe vous remercie pour cette belle note.`,
+        ];
+  } else if (review.rating === 3) {
+    variants = [
+      `Merci${directName} pour votre retour. Nous prenons bien en compte votre avis et restons à votre écoute si vous souhaitez nous préciser votre expérience.`,
+      `Merci${directName} d’avoir pris le temps de partager votre avis. Votre retour nous aide à continuer à progresser.`,
+      `Merci pour votre évaluation${commaName}. Nous restons disponibles si vous souhaitez échanger avec nous sur votre expérience.`,
+      `Merci${directName} pour votre avis. Nous sommes attentifs à vos retours et disponibles pour en discuter si besoin.`,
+    ];
+  } else {
+    variants = [
+      `Merci${directName} d’avoir pris le temps de partager votre ressenti. Nous sommes désolés que votre expérience n’ait pas été pleinement satisfaisante et restons disponibles pour échanger avec vous.`,
+      `Merci pour votre retour${commaName}. Nous prenons votre avis au sérieux et vous invitons à nous contacter afin que nous puissions mieux comprendre la situation.`,
+      `Merci${directName} pour votre message. Nous regrettons que votre expérience n’ait pas répondu à vos attentes et restons à votre écoute pour en discuter.`,
+      `Merci d’avoir partagé votre avis${commaName}. Nous restons disponibles pour échanger directement et mieux comprendre votre retour.`,
+    ];
+  }
+
+  return joinWithOptionalSignature(pickVariant(variants, seed), seed);
 }
 
 function getErrorMessage(payload: ReplyResponse | GenerateReplyResponse | ReviewsResponse | null, fallback: string) {
@@ -232,6 +324,7 @@ export default function EReputationReviewsClient({
   locationLabel = "Fiche Google Business",
   statusLabel = "Google Business",
   gmbReady = false,
+  reportGoogleUrl = null,
 }: Props) {
   const [items, setItems] = useState<EReputationReviewItem[]>(reviews);
   const [filter, setFilter] = useState<"all" | "todo" | "answered">("all");
@@ -349,6 +442,7 @@ export default function EReputationReviewsClient({
   const canGenerate = Boolean(selectedReview?.live && selectedReview.reviewName && !busy);
   const canPublish = Boolean(selectedReview?.live && selectedReview.reviewName && replyText.trim().length >= 2 && !busy);
   const canDelete = Boolean(selectedReview?.live && selectedReview.reviewName && selectedReview.reply && !busy);
+  const canReport = Boolean(selectedReview?.live && reportGoogleUrl);
   const loadedLabel = totalReviewCount > 0 ? `${items.length.toLocaleString("fr-FR")} / ${totalReviewCount.toLocaleString("fr-FR")}` : items.length.toLocaleString("fr-FR");
   const totalReviewsLabel = (totalReviewCount > 0 ? totalReviewCount : stats.total).toLocaleString("fr-FR");
   const summaryStatusLabel = reviewsReady ? "Avis chargés" : statusLabel;
@@ -831,11 +925,25 @@ export default function EReputationReviewsClient({
                     <button className={styles.btnPrimarySmall} type="button" disabled={!canPublish} onClick={publishReply}>
                       {publishing ? "Publication..." : selectedAlreadyAnswered ? "Modifier la réponse" : "Publier la réponse"}
                     </button>
-                    {selectedAlreadyAnswered ? (
-                      <button className={styles.btnDangerSmall} type="button" disabled={!canDelete} onClick={deleteReply}>
-                        {deleting ? "Suppression..." : "Supprimer"}
-                      </button>
-                    ) : null}
+                    <div className={styles.modalDangerTools}>
+                      {canReport ? (
+                        <a
+                          className={styles.reportReviewButton}
+                          href={reportGoogleUrl || "#"}
+                          target="_blank"
+                          rel="noreferrer"
+                          aria-label={`Signaler l’avis de ${selectedReview.name} sur Google`}
+                        >
+                          <span aria-hidden="true">⚠</span>
+                          <span className={styles.reportReviewTooltip}>Signaler l’avis sur Google</span>
+                        </a>
+                      ) : null}
+                      {selectedAlreadyAnswered ? (
+                        <button className={styles.btnDangerSmall} type="button" disabled={!canDelete} onClick={deleteReply}>
+                          {deleting ? "Suppression..." : "Supprimer"}
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                   <p className={styles.secureText}>Vous validez chaque réponse avant publication sur Google.</p>
                 </article>

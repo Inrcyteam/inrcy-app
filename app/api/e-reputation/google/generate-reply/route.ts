@@ -67,6 +67,32 @@ function listFrom(value: unknown, max = 8) {
     .slice(0, max);
 }
 
+function stableHash(value: string) {
+  let hash = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = (hash * 31 + value.charCodeAt(index)) >>> 0;
+  }
+  return hash;
+}
+
+function pickVariant<T>(variants: T[], seed: number) {
+  if (!variants.length) return null;
+  return variants[Math.abs(seed) % variants.length] || null;
+}
+
+function buildDisplaySignatureOptions(company: string, firstName: string, lastName: string) {
+  const compactLastName = lastName ? `${lastName.charAt(0).toUpperCase()}.` : "";
+  const options = [
+    firstName ? `— ${firstName}` : "",
+    firstName && compactLastName ? `— ${firstName} ${compactLastName}` : "",
+    company ? `— L’équipe ${company}` : "",
+    company ? `— ${company}` : "",
+    "— L’équipe",
+  ].map((value) => clean(value, 70)).filter(Boolean);
+
+  return Array.from(new Set(options)).slice(0, 5);
+}
+
 export async function POST(req: Request) {
   try {
     const { supabase, user, errorResponse } = await requireUser();
@@ -153,6 +179,8 @@ export async function POST(req: Request) {
     const profession = getJobLabel(decodedSector.sectorCategory, decodedSector.profession) || decodedSector.profession || "";
     const sectorLabel = getActivitySectorLabel(decodedSector.sectorCategory);
     const company = clean(profile["company_legal_name"] || profile["company_name"] || business["company_name"], 160);
+    const ownerFirstName = clean(profile["first_name"] || profile["firstname"] || profile["given_name"], 60);
+    const ownerLastName = clean(profile["last_name"] || profile["lastname"] || profile["family_name"], 80);
     const city = clean(profile["hq_city"] || profile["hqCity"], 80);
     const activityDescription = clean(business["activity_description"] || business["description"] || business["business_description"], 800);
     const services = listFrom(business["services"] || business["services_text"], 10);
@@ -160,6 +188,29 @@ export async function POST(req: Request) {
     const aiConfig = buildAiWritingProfilePromptSection(business);
     const aiRules = buildAiWritingProfileRules();
     const aiLanguageInstruction = buildAiLanguageInstruction(business);
+    const variationSeed = stableHash([reviewName, reviewerName, rating, reviewComment, company].join("|"));
+    const openingVariant = pickVariant([
+      "remercier avec chaleur et naturel, sans formule copiée-collée",
+      "mettre en avant la confiance accordée à l’entreprise",
+      "valoriser sobrement l’expérience vécue par le client",
+      "remercier de façon professionnelle avec une tournure différente des réponses habituelles",
+    ], variationSeed) || "remercier avec naturel";
+    const closingVariant = pickVariant([
+      "terminer par une phrase simple et positive",
+      "terminer par une ouverture au plaisir de revoir le client",
+      "terminer par une formule rassurante et élégante",
+      "terminer par une phrase courte qui valorise la relation client",
+    ], variationSeed + 7) || "terminer positivement";
+    const toneVariant = pickVariant([
+      "ton humain et fluide",
+      "ton professionnel et chaleureux",
+      "ton sobre, rassurant et personnalisé",
+      "ton naturel, sans langage robotique",
+    ], variationSeed + 13) || "ton humain";
+    const signatureOptions = buildDisplaySignatureOptions(company, ownerFirstName, ownerLastName);
+    const signatureInstruction = signatureOptions.length
+      ? `Tu peux ajouter une courte signature personnalisée seulement de temps en temps (environ une réponse sur trois maximum), par exemple : ${signatureOptions.join(" | ")}.`
+      : "Tu peux ajouter une courte signature de temps en temps (par exemple : — L’équipe), mais jamais systématiquement.";
 
     const system = `Tu es l'assistant IA d'iNrCy spécialisé dans les réponses aux avis Google Business.
 Réponds uniquement en JSON valide : {"reply_text":"..."}.
@@ -171,6 +222,10 @@ Règles strictes :
 - Si l'avis est négatif ou mitigé : rester calme, empathique, remercier, reconnaître le ressenti sans admettre une faute non établie, proposer un échange direct.
 - Si l'avis est positif : remercier naturellement, valoriser l'équipe/le service sans surjouer.
 - Si l'avis ne contient pas de commentaire écrit : produire une réponse simple adaptée à la note.
+- Adapter clairement le ton selon la note : 5★ chaleureux et valorisant ; 4★ positif avec nuance ; 3★ neutre et ouvert ; 1–2★ empathique, calme et orienté résolution.
+- Varier fortement les formulations d'un avis à l'autre : éviter les copier-coller et les ouvertures répétitives.
+- Éviter si possible les phrases trop vues comme « Merci beaucoup pour votre excellente note » ou « Nous sommes ravis de savoir que notre service vous satisfait » si une formulation plus naturelle peut être proposée.
+- Ajouter une courte signature personnalisée seulement de temps en temps, jamais systématiquement.
 - Pas de markdown, pas de HTML, pas de hashtag, pas de formule lourde.
 - Une réponse Google doit rester concise : 2 à 5 phrases maximum.
 - Respecter la Configuration IA du professionnel quand elle est compatible avec une réponse d'avis Google.
@@ -192,13 +247,19 @@ ${aiConfig || "- Non précisée"}
 Instruction de langue prioritaire :
 ${aiLanguageInstruction}
 
+Variation souhaitée pour cette réponse :
+- Angle d’ouverture : ${openingVariant}
+- Style attendu : ${toneVariant}
+- Clôture : ${closingVariant}
+- Signature : ${signatureInstruction}
+
 Avis Google à traiter :
 - Auteur : ${reviewerName}
 - Note : ${rating || "Non précisée"}/5
 - Commentaire : ${reviewComment || "Avis sans commentaire écrit."}
 ${existingReply ? `\nRéponse actuelle à améliorer/modifier :\n${existingReply}\n` : ""}
 
-Génère une seule réponse prête à publier, naturelle, rassurante et adaptée à la note. Ne recopie pas mot pour mot l'avis. Ne commence pas par le prénom si le nom semble incomplet ou anonymisé.`;
+Génère une seule réponse prête à publier, naturelle, rassurante et adaptée à la note. Ne recopie pas mot pour mot l'avis. Ne commence pas par le prénom si le nom semble incomplet ou anonymisé. Fais une réponse différente des formulations génériques habituelles lorsque c’est possible.`;
 
     const generated = await openaiGenerateJSON<GeneratedReviewReply>({
       system,

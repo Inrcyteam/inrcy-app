@@ -1116,6 +1116,7 @@
     white-space: normal;
     font-size: 12px;
     line-height: 1.25;
+    max-width: 27ch;
   }
 
   .actions {
@@ -2159,5 +2160,112 @@
     overflow: visible !important;
     clip: auto !important;
     white-space: normal !important;
+  }
+}
+
+
+.sublineDesktop {
+  display: inline;
+}
+
+.sublineMobile {
+  display: none;
+}
+
+.modalDangerTools {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.reportReviewButton {
+  position: relative;
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 209, 102, 0.24);
+  background: rgba(255, 209, 102, 0.08);
+  color: rgba(255, 234, 170, 0.95);
+  text-decoration: none;
+  transition: transform 140ms ease, background 140ms ease, border-color 140ms ease;
+}
+
+.reportReviewButton:hover,
+.reportReviewButton:focus-visible {
+  transform: translateY(-1px);
+  background: rgba(255, 209, 102, 0.14);
+  border-color: rgba(255, 209, 102, 0.38);
+}
+
+.reportReviewButton:focus-visible {
+  outline: 2px solid rgba(255, 209, 102, 0.24);
+  outline-offset: 2px;
+}
+
+.reportReviewButton > span:first-child {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.reportReviewTooltip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 8px);
+  transform: translateX(-50%) translateY(4px);
+  min-width: max-content;
+  padding: 7px 9px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(9, 13, 27, 0.96);
+  color: rgba(255, 255, 255, 0.86);
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.2;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.28);
+  transition: opacity 140ms ease, transform 140ms ease;
+}
+
+.reportReviewButton:hover .reportReviewTooltip,
+.reportReviewButton:focus-visible .reportReviewTooltip {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+@media (max-width: 760px) {
+  .sublineDesktop {
+    display: none;
+  }
+
+  .sublineMobile {
+    display: inline;
+  }
+
+  .modalDangerTools {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .reportReviewButton {
+    width: 100%;
+    min-width: 0;
+    gap: 8px;
+  }
+
+  .reportReviewButton::after {
+    content: "Signaler";
+    font-size: 12px;
+    font-weight: 900;
+    color: rgba(255, 255, 255, 0.88);
+  }
+
+  .reportReviewTooltip {
+    display: none;
   }
 }
