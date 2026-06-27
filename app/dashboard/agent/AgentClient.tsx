@@ -397,6 +397,16 @@ type AutomationScheduleEditState = {
   scheduledAtIso: string | null;
 };
 
+type AgentConfirmDialogState = {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  cancelLabel?: string;
+  tone?: "warning" | "danger";
+  onConfirm: () => void | Promise<void>;
+} | null;
+
+
 type ScheduledActionsResponse = {
   scheduledActions?: AgentScheduledAction[];
   tableMissing?: boolean;
@@ -1566,6 +1576,16 @@ function CalendarMetaIcon() {
       <path d="M4 10h16" />
       <path d="M9 14h.1" />
       <path d="M13 14h.1" />
+    </svg>
+  );
+}
+
+function PencilActionIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden>
+      <path d="M4.5 19.5 6 14l9.9-9.9a2.1 2.1 0 0 1 3 3L9 17l-4.5 2.5Z" />
+      <path d="m14.5 5.5 4 4" />
+      <path d="M12 19h7" />
     </svg>
   );
 }
@@ -3934,6 +3954,8 @@ export default function AgentClient() {
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [tableMissing, setTableMissing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [agentConfirmDialog, setAgentConfirmDialog] =
+    useState<AgentConfirmDialogState>(null);
   const [helpOpen, setHelpOpen] = useState(false);
   const [aiConfigurationOpen, setAiConfigurationOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
@@ -6973,38 +6995,77 @@ export default function AgentClient() {
     });
   }
 
+  function openAgentConfirmDialog(config: NonNullable<AgentConfirmDialogState>) {
+    setAgentConfirmDialog(config);
+  }
+
+  async function confirmAgentDialog() {
+    const dialog = agentConfirmDialog;
+    if (!dialog) return;
+    setAgentConfirmDialog(null);
+    await dialog.onConfirm();
+  }
+
   function exitScheduledEditSession(
-    options: { silent?: boolean; force?: boolean } = {},
+    options: { silent?: boolean; force?: boolean; onAfterExit?: () => void } = {},
   ) {
     const session = scheduledEditSession;
-    if (!session) return true;
-    if (session.dirty && !options.force) {
-      const ok = window.confirm("Continuer sans sauvegarder ?");
-      if (!ok) return false;
+    if (!session) {
+      options.onAfterExit?.();
+      return true;
     }
-    setScheduledEditSession(null);
-    setValidationChoiceOpen(false);
-    setValidationScheduleOpen(false);
-    setPublishEditChoiceOpen(false);
-    setPublishEditOpen(false);
-    setPublishMediaPreviewOpen(false);
-    setCampaignEditOpen(false);
-    setMailTextEditOpen(false);
-    setRecipientsPreviewOpen(false);
-    setRecipientsEditOpen(false);
-    setAttachmentPreviewOpen(false);
-    setMailAccountEditOpen(false);
-    setSelectedKey(session.previousSelectedKey);
-    if (!options.silent) {
-      showNotice("Édition annulée. L’action programmée n’a pas été modifiée.");
+
+    const restorePreviousState = () => {
+      setScheduledEditSession(null);
+      setValidationChoiceOpen(false);
+      setValidationScheduleOpen(false);
+      setPublishEditChoiceOpen(false);
+      setPublishEditOpen(false);
+      setPublishMediaPreviewOpen(false);
+      setCampaignEditOpen(false);
+      setMailTextEditOpen(false);
+      setRecipientsPreviewOpen(false);
+      setRecipientsEditOpen(false);
+      setAttachmentPreviewOpen(false);
+      setMailAccountEditOpen(false);
+      setSelectedKey(session.previousSelectedKey);
+      if (!options.silent) {
+        showNotice("Édition annulée. L’action programmée n’a pas été modifiée.");
+      }
+      options.onAfterExit?.();
+    };
+
+    if (!options.force) {
+      const hasChanges = session.dirty;
+      openAgentConfirmDialog({
+        title: hasChanges ? "Continuer sans sauvegarder ?" : "Quitter l’édition ?",
+        message: hasChanges
+          ? "Les modifications en cours seront perdues. L’action programmée restera inchangée."
+          : "Vous allez quitter l’édition temporaire. L’action programmée restera inchangée.",
+        confirmLabel: hasChanges ? "Continuer" : "Quitter",
+        cancelLabel: "Annuler",
+        tone: hasChanges ? "danger" : "warning",
+        onConfirm: restorePreviousState,
+      });
+      return false;
     }
+
+    restorePreviousState();
     return true;
   }
 
   function openScheduledActionEditor(actionId: string | null | undefined) {
     if (!actionId) return;
-    if (scheduledEditSession && !exitScheduledEditSession({ silent: true })) {
-      return;
+    if (scheduledEditSession) {
+      if (scheduledEditSession.scheduledAction.id === actionId) return;
+      if (
+        !exitScheduledEditSession({
+          silent: true,
+          onAfterExit: () => openScheduledActionEditor(actionId),
+        })
+      ) {
+        return;
+      }
     }
     const scheduledAction = scheduledActions.find((item) => item.id === actionId);
     if (!scheduledAction) {
@@ -7192,14 +7253,7 @@ export default function AgentClient() {
     await refreshScheduledActions(true);
   }
 
-  async function deleteScheduledEditAction() {
-    const session = scheduledEditSession;
-    if (!session || scheduleMutationState === "saving") return;
-    const ok = window.confirm(
-      "Ce contenu programmé sera supprimé. Continuer ?",
-    );
-    if (!ok) return;
-
+  async function performDeleteScheduledEditAction(session: ScheduledActionEditSession) {
     setScheduleMutationState("saving");
     setNotice(null);
     try {
@@ -7227,6 +7281,19 @@ export default function AgentClient() {
     } finally {
       setScheduleMutationState("idle");
     }
+  }
+
+  async function deleteScheduledEditAction() {
+    const session = scheduledEditSession;
+    if (!session || scheduleMutationState === "saving") return;
+    openAgentConfirmDialog({
+      title: "Supprimer ce contenu programmé ?",
+      message: "Ce contenu programmé sera supprimé définitivement. Continuer ?",
+      confirmLabel: "Supprimer",
+      cancelLabel: "Annuler",
+      tone: "danger",
+      onConfirm: () => performDeleteScheduledEditAction(session),
+    });
   }
 
   function configPatchFromScheduledAt(
@@ -7329,11 +7396,7 @@ export default function AgentClient() {
     }
   }
 
-  async function cancelScheduledAction(actionId: string | null | undefined) {
-    if (!actionId || scheduleMutationState === "saving") return;
-    const ok = window.confirm("Supprimer cette action programmée ?");
-    if (!ok) return;
-
+  async function performCancelScheduledAction(actionId: string) {
     setScheduleMutationState("saving");
     try {
       const response = await fetch(`/api/agent/scheduled-actions/${actionId}`, {
@@ -7359,16 +7422,19 @@ export default function AgentClient() {
     }
   }
 
-  async function disableAutomationFromSchedule(
-    key: AutomationKey | null | undefined,
-  ) {
-    if (!key || scheduleMutationState === "saving") return;
-    const automation = automations.find((item) => item.key === key);
-    const ok = window.confirm(
-      `Désactiver l’automatisation ${automation?.title || "iNrAgent"} ?`,
-    );
-    if (!ok) return;
+  async function cancelScheduledAction(actionId: string | null | undefined) {
+    if (!actionId || scheduleMutationState === "saving") return;
+    openAgentConfirmDialog({
+      title: "Supprimer cette action programmée ?",
+      message: "Cette action sera retirée du planning iNr’Agent.",
+      confirmLabel: "Supprimer",
+      cancelLabel: "Annuler",
+      tone: "danger",
+      onConfirm: () => performCancelScheduledAction(actionId),
+    });
+  }
 
+  async function performDisableAutomationFromSchedule(key: AutomationKey) {
     const nextConfigs = {
       ...configs,
       [key]: { ...configs[key], enabled: false },
@@ -7402,20 +7468,38 @@ export default function AgentClient() {
     }
   }
 
+  async function disableAutomationFromSchedule(
+    key: AutomationKey | null | undefined,
+  ) {
+    if (!key || scheduleMutationState === "saving") return;
+    const automation = automations.find((item) => item.key === key);
+    openAgentConfirmDialog({
+      title: `Désactiver l’automatisation ${automation?.title || "iNrAgent"} ?`,
+      message: "Les prochaines actions automatiques de cette rubrique seront retirées du planning.",
+      confirmLabel: "Désactiver",
+      cancelLabel: "Annuler",
+      tone: "danger",
+      onConfirm: () => performDisableAutomationFromSchedule(key),
+    });
+  }
+
   async function handleScheduleRowModify(item: ScheduleListItem) {
     if (item.source === "manual") {
       openScheduledActionEditor(item.scheduledActionId);
       return;
     }
     if (item.automationKey) {
-      if (!exitScheduledEditSession({ silent: true })) return;
-      setScheduleOpen(false);
-      setAutomationScheduleEditError(null);
-      setAutomationScheduleEdit({
-        key: item.automationKey,
-        label: item.action,
-        scheduledAtIso: item.scheduledAtIso || null,
-      });
+      const openScheduleEdit = () => {
+        setScheduleOpen(false);
+        setAutomationScheduleEditError(null);
+        setAutomationScheduleEdit({
+          key: item.automationKey as AutomationKey,
+          label: item.action,
+          scheduledAtIso: item.scheduledAtIso || null,
+        });
+      };
+      if (!exitScheduledEditSession({ silent: true, onAfterExit: openScheduleEdit })) return;
+      openScheduleEdit();
     }
   }
 
@@ -8185,6 +8269,51 @@ export default function AgentClient() {
         </div>
       ) : null}
 
+      {agentConfirmDialog ? (
+        <div
+          className={styles.modalBackdrop}
+          role="presentation"
+          onClick={() => setAgentConfirmDialog(null)}
+        >
+          <section
+            className={`${styles.settingsModal} ${styles.validationChoiceModal}`}
+            role="dialog"
+            aria-modal="true"
+            aria-label={agentConfirmDialog.title}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className={styles.modalClose}
+              onClick={() => setAgentConfirmDialog(null)}
+              aria-label="Fermer"
+            >
+              ×
+            </button>
+            <p className={styles.modalEyebrow}>Confirmation</p>
+            <h2>{agentConfirmDialog.title}</h2>
+            <p className={styles.modalHint}>{agentConfirmDialog.message}</p>
+            <div className={styles.modalActionButtonRow}>
+              <button
+                type="button"
+                className={styles.modalActionSecondaryButton}
+                onClick={() => setAgentConfirmDialog(null)}
+              >
+                {agentConfirmDialog.cancelLabel || "Annuler"}
+              </button>
+              <button
+                type="button"
+                className={styles.modalActionButton}
+                data-tone={agentConfirmDialog.tone || "warning"}
+                onClick={() => void confirmAgentDialog()}
+              >
+                {agentConfirmDialog.confirmLabel}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
       <PublishAiConfigurationDrawer
         open={aiConfigurationOpen}
         isMobile={isMobileHeader}
@@ -8228,14 +8357,22 @@ export default function AgentClient() {
               </span>
             )}
             <HelpButton
-              onClick={() => setHelpOpen(true)}
+              onClick={() => {
+                const openHelp = () => setHelpOpen(true);
+                if (!exitScheduledEditSession({ silent: true, onAfterExit: openHelp })) return;
+                openHelp();
+              }}
               title="Aide iNr’Agent"
               size={isMobileHeader ? 26 : 34}
             />
             <button
               type="button"
               className={styles.headerAiButton}
-              onClick={() => setAiConfigurationOpen(true)}
+              onClick={() => {
+                const openAiConfiguration = () => setAiConfigurationOpen(true);
+                if (!exitScheduledEditSession({ silent: true, onAfterExit: openAiConfiguration })) return;
+                openAiConfiguration();
+              }}
               aria-label="Configuration IA"
               title="Configurer le style des contenus générés"
             >
@@ -8245,8 +8382,12 @@ export default function AgentClient() {
               type="button"
               className={styles.headerScheduleButton}
               onClick={() => {
-                setScheduleOpen(true);
-                void refreshScheduledActions(true);
+                const openPlanning = () => {
+                  setScheduleOpen(true);
+                  void refreshScheduledActions(true);
+                };
+                if (!exitScheduledEditSession({ silent: true, onAfterExit: openPlanning })) return;
+                openPlanning();
               }}
               aria-label="Voir les actions programmées"
               title="Programmation"
@@ -8261,8 +8402,9 @@ export default function AgentClient() {
               className={styles.headerToolButton}
               data-automation={selected.key}
               onClick={() => {
-                if (!exitScheduledEditSession({ silent: true })) return;
-                router.push(selectedHeaderTool.href);
+                const openTool = () => router.push(selectedHeaderTool.href);
+                if (!exitScheduledEditSession({ silent: true, onAfterExit: openTool })) return;
+                openTool();
               }}
               aria-label={`Ouvrir ${selectedHeaderTool.label}`}
               title={`Ouvrir ${selectedHeaderTool.label}`}
@@ -8294,10 +8436,12 @@ export default function AgentClient() {
               type="button"
               className={styles.headerInrSendButton}
               onClick={() => {
-                if (!exitScheduledEditSession({ silent: true })) return;
-                router.push(
-                  `/dashboard/mails?folder=${inrSendFolderForAutomation(selected.key)}`,
-                );
+                const openInrSend = () =>
+                  router.push(
+                    `/dashboard/mails?folder=${inrSendFolderForAutomation(selected.key)}`,
+                  );
+                if (!exitScheduledEditSession({ silent: true, onAfterExit: openInrSend })) return;
+                openInrSend();
               }}
               aria-label="Ouvrir iNr'Send"
               title="Voir l’historique des actions réalisées"
@@ -8318,8 +8462,9 @@ export default function AgentClient() {
               type="button"
               className={styles.headerCloseButton}
               onClick={() => {
-                if (!exitScheduledEditSession({ silent: true })) return;
-                router.push("/dashboard");
+                const closeAgent = () => router.push("/dashboard");
+                if (!exitScheduledEditSession({ silent: true, onAfterExit: closeAgent })) return;
+                closeAgent();
               }}
               aria-label="Retour au tableau de bord"
               title="Retour au tableau de bord"
@@ -8329,26 +8474,6 @@ export default function AgentClient() {
           </div>
         </header>
 
-        {scheduledEditSession && (
-          <section className={styles.scheduledEditBanner}>
-            <div>
-              <span className={styles.scheduledEditEyebrow}>Édition temporaire</span>
-              <strong>{scheduledEditSession.action.title}</strong>
-              <small>
-                Programmée le {scheduleDateParts(scheduledEditSession.scheduledAction.scheduledAt).date} à {scheduleDateParts(scheduledEditSession.scheduledAction.scheduledAt).time}.
-                {scheduledEditDirty
-                  ? " Modifications non sauvegardées."
-                  : " Aucune modification pour le moment."}
-              </small>
-            </div>
-            <button
-              type="button"
-              onClick={() => exitScheduledEditSession()}
-            >
-              Quitter l’édition
-            </button>
-          </section>
-        )}
 
         <nav
           className={styles.automationGrid}
@@ -8368,8 +8493,9 @@ export default function AgentClient() {
                   type="button"
                   className={styles.automationSelect}
                   onClick={() => {
-                    if (!exitScheduledEditSession({ silent: true })) return;
-                    setSelectedKey(automation.key);
+                    const selectAutomation = () => setSelectedKey(automation.key);
+                    if (!exitScheduledEditSession({ silent: true, onAfterExit: selectAutomation })) return;
+                    selectAutomation();
                   }}
                   aria-pressed={selectedCard}
                 >
@@ -8404,8 +8530,9 @@ export default function AgentClient() {
                   type="button"
                   className={styles.settingsButton}
                   onClick={() => {
-                    if (!exitScheduledEditSession({ silent: true })) return;
-                    setSettingsKey(automation.key);
+                    const openSettings = () => setSettingsKey(automation.key);
+                    if (!exitScheduledEditSession({ silent: true, onAfterExit: openSettings })) return;
+                    openSettings();
                   }}
                   aria-label={`Programmer — ${automation.title}`}
                   title="Programmer cette automatisation"
@@ -8419,38 +8546,72 @@ export default function AgentClient() {
 
         <div className={styles.mainGrid}>
           <aside
-            className={styles.robotCard}
-            aria-label="Fonctionnement iNr’Agent"
+            className={`${styles.robotCard} ${scheduledEditSession ? styles.scheduledEditCard : ""}`}
+            aria-label={scheduledEditSession ? "Édition temporaire d’une action programmée" : "Fonctionnement iNr’Agent"}
           >
-            <div className={styles.robotHalo} aria-hidden>
-              <span className={styles.starOne} />
-              <span className={styles.starTwo} />
-              <span className={styles.starThree} />
-              <span className={styles.starFour} />
-              <span className={styles.starFive} />
-              <span className={styles.starSix} />
-              <span className={styles.starSeven} />
-              <span className={styles.starEight} />
-              <span className={styles.starNine} />
-              <img
-                src={ROBOT_SRC}
-                alt=""
-                width={824}
-                height={900}
-                loading="eager"
-                decoding="sync"
-                fetchPriority="high"
-              />
-            </div>
+            {scheduledEditSession ? (
+              <div className={styles.scheduledEditPanel}>
+                <div className={styles.scheduledEditPanelIcon} aria-hidden>
+                  <PencilActionIcon />
+                </div>
+                <span className={styles.scheduledEditEyebrow}>Édition temporaire</span>
+                <h3>Action programmée</h3>
+                <p>
+                  Vous modifiez une action déjà confiée à iNr’Agent. Rien n’est
+                  enregistré tant que vous ne validez pas.
+                </p>
+                <div
+                  className={`${styles.scheduledEditState} ${scheduledEditDirty ? styles.scheduledEditStateDirty : ""}`}
+                >
+                  {scheduledEditDirty
+                    ? "Modifications non sauvegardées"
+                    : "Aucune modification pour le moment"}
+                </div>
+                <small className={styles.scheduledEditHint}>
+                  <span>Valider = enregistrer</span>
+                  <span>Refuser = supprimer</span>
+                </small>
+                <button
+                  type="button"
+                  className={styles.scheduledEditQuitButton}
+                  onClick={() => exitScheduledEditSession()}
+                >
+                  Quitter l’édition
+                </button>
+              </div>
+            ) : (
+              <>
+                <div className={styles.robotHalo} aria-hidden>
+                  <span className={styles.starOne} />
+                  <span className={styles.starTwo} />
+                  <span className={styles.starThree} />
+                  <span className={styles.starFour} />
+                  <span className={styles.starFive} />
+                  <span className={styles.starSix} />
+                  <span className={styles.starSeven} />
+                  <span className={styles.starEight} />
+                  <span className={styles.starNine} />
+                  <img
+                    src={ROBOT_SRC}
+                    alt=""
+                    width={824}
+                    height={900}
+                    loading="eager"
+                    decoding="sync"
+                    fetchPriority="high"
+                  />
+                </div>
 
-            <ol className={styles.robotSteps}>
-              {selectedRobotSteps.map((step, index) => (
-                <li key={`${selected.key}-step-${index + 1}`}>
-                  <span>{index + 1}</span>
-                  <strong>{step}</strong>
-                </li>
-              ))}
-            </ol>
+                <ol className={styles.robotSteps}>
+                  {selectedRobotSteps.map((step, index) => (
+                    <li key={`${selected.key}-step-${index + 1}`}>
+                      <span>{index + 1}</span>
+                      <strong>{step}</strong>
+                    </li>
+                  ))}
+                </ol>
+              </>
+            )}
           </aside>
 
           <div className={styles.workColumn}>
