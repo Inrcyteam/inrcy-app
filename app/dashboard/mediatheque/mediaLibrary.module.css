@@ -2145,6 +2145,14 @@ button:disabled{
   }
 }
 
+.mediaRowActionRail{
+  display:none;
+}
+
+.mediaRowDetailsButton{
+  display:none;
+}
+
 /* Correctif 205 — médiathèque : header mobile + liste responsive propre */
 .titleMobile,
 .closeIcon{
@@ -2397,12 +2405,21 @@ button:disabled{
     text-align:center;
   }
 
-  .mediaList{
-    height:auto;
-    overflow:visible;
+  .libraryCard{
     display:grid;
+    grid-template-rows:auto auto auto minmax(280px, 52dvh);
+    overflow:hidden;
+  }
+
+  .mediaList{
+    height:clamp(280px, 52dvh, 430px);
+    min-height:0;
+    overflow:auto;
+    overscroll-behavior:contain;
+    display:grid;
+    grid-auto-rows:max-content;
     gap:8px;
-    padding-right:0;
+    padding-right:2px;
   }
 
   .mediaListHead{
@@ -2410,23 +2427,35 @@ button:disabled{
   }
 
   .mediaRow{
-    grid-template-columns:30px minmax(0, 1fr) !important;
+    position:relative;
+    grid-template-columns:1fr !important;
     gap:8px;
     padding:10px;
+    padding-right:52px;
     border-radius:18px;
+    cursor:pointer;
+    user-select:none;
+    -webkit-tap-highlight-color:transparent;
   }
 
+  .mediaRowSelected{
+    background:
+      linear-gradient(180deg, rgba(18,40,86,.96), rgba(10,24,56,.96)),
+      radial-gradient(circle at top left, rgba(80,219,255,.16), transparent 34%) !important;
+    border-color:rgba(106,237,255,.68) !important;
+    box-shadow:0 0 0 2px rgba(106,237,255,.16), 0 16px 34px rgba(0,0,0,.24) !important;
+  }
+
+
   .rowCheck{
-    grid-column:1;
-    grid-row:1;
-    align-self:start;
-    margin-top:8px;
+    display:none;
   }
 
   .mediaRowFile{
-    grid-column:2 !important;
+    grid-column:1 !important;
     grid-template-columns:62px minmax(0, 1fr);
     gap:10px;
+    padding-right:0;
   }
 
   .mediaRowPreview,
@@ -2437,6 +2466,10 @@ button:disabled{
     border-radius:13px;
   }
 
+  .mediaRowMain{
+    min-width:0;
+  }
+
   .mediaRowMain strong{
     font-size:13.5px;
   }
@@ -2445,8 +2478,79 @@ button:disabled{
     font-size:11.5px;
   }
 
+  .mediaRowActionRail{
+    position:absolute;
+    top:10px;
+    right:10px;
+    bottom:10px;
+    display:flex;
+    flex-direction:column;
+    justify-content:space-between;
+    align-items:center;
+    width:30px;
+    pointer-events:none;
+    z-index:2;
+  }
+
+  .mediaRowSelectionBadge{
+    width:24px;
+    height:24px;
+    display:grid;
+    place-items:center;
+    border-radius:999px;
+    color:#fff;
+    font-size:14px;
+    font-weight:950;
+    background:linear-gradient(135deg, rgba(54,221,255,.96), rgba(83,105,255,.96));
+    border:1px solid rgba(255,255,255,.42);
+    box-shadow:0 8px 18px rgba(0,0,0,.24);
+  }
+
+  .mediaRowDetailsButton{
+    display:grid;
+    place-items:center;
+    justify-self:end;
+    align-self:end;
+    width:30px;
+    height:30px;
+    min-height:30px;
+    padding:0;
+    border-radius:999px;
+    color:#f3fbff;
+    background:rgba(255,255,255,.085);
+    border:1px solid rgba(255,255,255,.16);
+    line-height:1;
+    cursor:pointer;
+    box-shadow:0 8px 18px rgba(0,0,0,.20), inset 0 1px 0 rgba(255,255,255,.08);
+    pointer-events:auto;
+    transition:transform .16s ease, background .16s ease, border-color .16s ease, box-shadow .16s ease;
+  }
+
+  .mediaRowDetailsButton[aria-expanded="true"]{
+    background:linear-gradient(135deg, rgba(57,196,255,.22), rgba(132,86,255,.30));
+    border-color:rgba(105,239,255,.34);
+    box-shadow:0 10px 20px rgba(0,0,0,.22), 0 0 0 1px rgba(105,239,255,.10);
+  }
+
+  .detailsChevron{
+    width:16px;
+    height:16px;
+    display:block;
+    transition:transform .18s ease;
+    filter:drop-shadow(0 1px 0 rgba(0,0,0,.18));
+  }
+
+  .mediaRowDetailsButton[aria-expanded="true"] .detailsChevron{
+    transform:rotate(180deg);
+  }
+
   .mediaRowPill,
   .mediaRowMeta{
+    display:none;
+  }
+
+  .mediaRowDetailsOpen .mediaRowPill,
+  .mediaRowDetailsOpen .mediaRowMeta{
     grid-column:1 / -1 !important;
     width:100%;
     display:flex;
@@ -2472,12 +2576,7 @@ button:disabled{
   }
 
   .mediaRowDelete{
-    grid-column:1 / -1 !important;
-    grid-row:auto !important;
-    width:100%;
-    justify-self:stretch;
-    text-align:center;
-    min-height:38px;
+    display:none;
   }
 }
 
@@ -2506,3 +2605,4 @@ button:disabled{
     flex-basis:36px;
   }
 }
+

@@ -8,6 +8,7 @@ import {
   useState,
   type DragEvent,
   type FormEvent,
+  type MouseEvent,
 } from "react";
 import { createClient } from "@/lib/supabaseClient";
 import {
@@ -251,6 +252,9 @@ export default function MediaLibraryClient() {
   const [previewItem, setPreviewItem] = useState<MediaItem | null>(null);
   const [helperOpen, setHelperOpen] = useState(false);
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [expandedItemIds, setExpandedItemIds] = useState<Set<string>>(
     () => new Set(),
   );
 
@@ -564,6 +568,29 @@ export default function MediaLibraryClient() {
       else next.add(id);
       return next;
     });
+  }
+
+  function toggleItemDetails(id: string) {
+    setExpandedItemIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function handleMobileRowSelection(
+    event: MouseEvent<HTMLElement>,
+    item: MediaItem,
+  ) {
+    if (savingId === item.id || bulkDeleting) return;
+    if (typeof window === "undefined") return;
+    if (!window.matchMedia("(max-width: 680px)").matches) return;
+
+    const target = event.target as HTMLElement | null;
+    if (target?.closest("button, a, input, label, select, textarea")) return;
+
+    toggleItemSelection(item.id);
   }
 
   function toggleAllVisibleItems() {
@@ -1011,11 +1038,13 @@ export default function MediaLibraryClient() {
                 </div>
                 {items.map((item) => {
                   const isSelected = selectedItemIds.has(item.id);
+                  const detailsOpen = expandedItemIds.has(item.id);
                   const isSaving = savingId === item.id;
                   return (
                   <article
                     key={item.id}
-                    className={`${styles.mediaRow} ${isSelected ? styles.mediaRowSelected : ""} ${item.is_active === false ? styles.mediaRowDisabled : ""}`}
+                    className={`${styles.mediaRow} ${isSelected ? styles.mediaRowSelected : ""} ${detailsOpen ? styles.mediaRowDetailsOpen : ""} ${item.is_active === false ? styles.mediaRowDisabled : ""}`}
+                    onClick={(event) => handleMobileRowSelection(event, item)}
                   >
                     <label
                       className={styles.rowCheck}
@@ -1033,7 +1062,10 @@ export default function MediaLibraryClient() {
                       <button
                         type="button"
                         className={styles.mediaRowPreview}
-                        onClick={() => setPreviewItem(item)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setPreviewItem(item);
+                        }}
                         aria-label="Agrandir le média"
                       >
                         {item.media_type === "video" ? (
@@ -1062,6 +1094,42 @@ export default function MediaLibraryClient() {
                       </div>
                     </div>
 
+                    <div className={styles.mediaRowActionRail}>
+                      {isSelected ? (
+                        <span
+                          className={styles.mediaRowSelectionBadge}
+                          aria-hidden="true"
+                        >
+                          ✓
+                        </span>
+                      ) : null}
+                      <button
+                        type="button"
+                        className={styles.mediaRowDetailsButton}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          toggleItemDetails(item.id);
+                        }}
+                        aria-label={detailsOpen ? "Masquer les détails" : "Afficher les détails"}
+                        aria-expanded={detailsOpen}
+                      >
+                        <svg
+                          aria-hidden="true"
+                          viewBox="0 0 20 20"
+                          className={styles.detailsChevron}
+                        >
+                          <path
+                            d="M5.25 7.5 10 12.25 14.75 7.5"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2.2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                      </button>
+                    </div>
+
                     <span className={styles.mediaRowPill} data-label="Type">
                       {item.media_type === "video" ? "Vidéo" : "Image"}
                     </span>
@@ -1082,7 +1150,10 @@ export default function MediaLibraryClient() {
                     <button
                       type="button"
                       className={styles.mediaRowDelete}
-                      onClick={() => deleteItem(item)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        deleteItem(item);
+                      }}
                       disabled={isSaving || bulkDeleting}
                     >
                       Supprimer
