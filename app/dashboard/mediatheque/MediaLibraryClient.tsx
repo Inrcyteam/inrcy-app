@@ -695,7 +695,10 @@ export default function MediaLibraryClient() {
             🖼️
           </div>
           <div className={styles.heroContent}>
-            <h1 className={styles.title}>Vos images et vidéos iNrCy</h1>
+            <h1 className={styles.title}>
+              <span className={styles.titleFull}>Vos images et vidéos iNrCy</span>
+              <span className={styles.titleMobile}>Médiathèque iNrCy</span>
+            </h1>
             <p className={styles.subtitle}>
               Médias privés pour vos publications et iNrAgent.
             </p>
@@ -715,12 +718,16 @@ export default function MediaLibraryClient() {
               className={styles.ghostButton}
               onClick={loadItems}
               disabled={loading}
+              aria-label={loading ? "Chargement de la médiathèque" : "Rafraîchir la médiathèque"}
             >
-              <span aria-hidden="true">↻</span>
-              {loading ? "Chargement…" : "Rafraîchir"}
+              <span className={styles.actionIcon} aria-hidden="true">↻</span>
+              <span className={styles.actionText}>
+                {loading ? "Chargement…" : "Rafraîchir"}
+              </span>
             </button>
-            <Link href="/dashboard" className={styles.closeButton}>
-              Fermer
+            <Link href="/dashboard" className={styles.closeButton} aria-label="Fermer la médiathèque">
+              <span className={styles.closeText}>Fermer</span>
+              <span className={styles.closeIcon} aria-hidden="true">×</span>
             </Link>
           </div>
         </section>
@@ -1055,20 +1062,20 @@ export default function MediaLibraryClient() {
                       </div>
                     </div>
 
-                    <span className={styles.mediaRowPill}>
+                    <span className={styles.mediaRowPill} data-label="Type">
                       {item.media_type === "video" ? "Vidéo" : "Image"}
                     </span>
-                    <span className={styles.mediaRowMeta}>
+                    <span className={styles.mediaRowMeta} data-label="Poids">
                       {formatBytes(item.size_bytes)}
                     </span>
-                    <span className={styles.mediaRowMeta}>
+                    <span className={styles.mediaRowMeta} data-label="Format">
                       {item.media_type === "video"
                         ? formatDuration(item.duration_seconds)
                         : item.width && item.height
                           ? `${item.width}×${item.height}`
                           : "—"}
                     </span>
-                    <span className={styles.mediaRowMeta}>
+                    <span className={styles.mediaRowMeta} data-label="Date">
                       {formatDate(item.created_at)}
                     </span>
 

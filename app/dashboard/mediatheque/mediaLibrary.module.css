@@ -2144,3 +2144,365 @@ button:disabled{
     grid-column:1 / -1 !important;
   }
 }
+
+/* Correctif 205 — médiathèque : header mobile + liste responsive propre */
+.titleMobile,
+.closeIcon{
+  display:none;
+}
+
+.actionIcon{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+}
+
+.actionText,
+.closeText{
+  display:inline-flex;
+  align-items:center;
+}
+
+.libraryCard{
+  grid-template-rows:auto auto auto minmax(0, 1fr);
+}
+
+.bulkToolbar{
+  margin:0 0 12px;
+  flex-shrink:0;
+}
+
+.mediaList{
+  min-height:0;
+}
+
+@media (max-width:1180px){
+  .libraryCard{
+    display:grid;
+    grid-template-rows:auto auto auto auto;
+    overflow:visible;
+  }
+}
+
+@media (max-width:680px){
+  .page{
+    padding:10px 8px 26px;
+    overflow:auto;
+  }
+
+  .wrap{
+    width:100%;
+    height:auto;
+    display:block;
+  }
+
+  .heroCard{
+    display:grid;
+    grid-template-columns:42px minmax(0, 1fr) auto;
+    grid-template-rows:auto auto;
+    align-items:center;
+    gap:8px 9px;
+    padding:12px;
+    border-radius:22px;
+    margin-bottom:10px;
+  }
+
+  .heroIcon{
+    grid-column:1;
+    grid-row:1;
+    width:42px;
+    height:42px;
+    border-radius:15px;
+    font-size:20px;
+  }
+
+  .heroContent{
+    display:contents;
+  }
+
+  .title{
+    grid-column:2;
+    grid-row:1;
+    min-width:0;
+    font-size:20px;
+    line-height:1.02;
+    letter-spacing:-.04em;
+    white-space:nowrap;
+    overflow:hidden;
+    text-overflow:ellipsis;
+  }
+
+  .titleFull{
+    display:none;
+  }
+
+  .titleMobile{
+    display:inline;
+  }
+
+  .subtitle{
+    grid-column:1 / -1;
+    grid-row:2;
+    margin:0;
+    max-width:none;
+    font-size:12px;
+    line-height:1.25;
+    white-space:normal;
+    color:#aebce0;
+  }
+
+  .headerActions{
+    grid-column:3;
+    grid-row:1;
+    display:flex;
+    align-items:center;
+    justify-content:flex-end;
+    gap:6px;
+    width:auto;
+    margin:0;
+  }
+
+  .helperButton,
+  .ghostButton,
+  .closeButton{
+    width:38px;
+    height:38px;
+    min-height:38px;
+    padding:0;
+    border-radius:999px;
+    flex:0 0 38px;
+  }
+
+  .ghostButton{
+    gap:0;
+  }
+
+  .actionText,
+  .closeText{
+    position:absolute;
+    width:1px;
+    height:1px;
+    padding:0;
+    margin:-1px;
+    overflow:hidden;
+    clip:rect(0, 0, 0, 0);
+    white-space:nowrap;
+    border:0;
+  }
+
+  .closeIcon{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    font-size:25px;
+    line-height:1;
+    transform:translateY(-1px);
+  }
+
+  .metricsGrid{
+    grid-template-columns:repeat(2, minmax(0, 1fr));
+    gap:8px;
+    margin-bottom:10px;
+  }
+
+  .metricCard{
+    min-height:68px;
+    padding:10px 12px;
+    border-radius:18px;
+  }
+
+  .metricValue{
+    font-size:28px;
+  }
+
+  .metricValueSmall{
+    font-size:20px;
+  }
+
+  .grid{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:10px;
+    height:auto;
+  }
+
+  .card,
+  .libraryCard{
+    width:100%;
+    height:auto;
+    min-height:0;
+    padding:14px;
+    border-radius:22px;
+    overflow:visible;
+  }
+
+  .card{
+    position:relative;
+    top:auto;
+  }
+
+  .cardHeader h2,
+  .libraryHeader h2{
+    font-size:21px;
+  }
+
+  .cardHeader p,
+  .libraryHeader p{
+    font-size:12px;
+  }
+
+  .dropZone{
+    padding:11px;
+  }
+
+  .fileInput{
+    font-size:12px;
+  }
+
+  .filters{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:9px;
+    margin:10px 0;
+    padding:10px;
+  }
+
+  .filters label{
+    min-width:0;
+  }
+
+  .searchLabel{
+    grid-column:1 / -1;
+  }
+
+  .applyButton{
+    grid-column:1 / -1;
+    width:100%;
+    min-height:42px;
+  }
+
+  .bulkToolbar{
+    display:grid;
+    grid-template-columns:1fr;
+    gap:8px;
+    padding:10px;
+    margin:0 0 10px;
+  }
+
+  .bulkToolbar .smallGhostButton,
+  .bulkToolbar .bulkDangerButton,
+  .bulkToolbar .selectedCount{
+    width:100%;
+    justify-content:center;
+    text-align:center;
+  }
+
+  .mediaList{
+    height:auto;
+    overflow:visible;
+    display:grid;
+    gap:8px;
+    padding-right:0;
+  }
+
+  .mediaListHead{
+    display:none;
+  }
+
+  .mediaRow{
+    grid-template-columns:30px minmax(0, 1fr) !important;
+    gap:8px;
+    padding:10px;
+    border-radius:18px;
+  }
+
+  .rowCheck{
+    grid-column:1;
+    grid-row:1;
+    align-self:start;
+    margin-top:8px;
+  }
+
+  .mediaRowFile{
+    grid-column:2 !important;
+    grid-template-columns:62px minmax(0, 1fr);
+    gap:10px;
+  }
+
+  .mediaRowPreview,
+  .mediaRowThumb,
+  .mediaRowPreview .noPreview{
+    width:62px;
+    height:48px;
+    border-radius:13px;
+  }
+
+  .mediaRowMain strong{
+    font-size:13.5px;
+  }
+
+  .mediaRowMain span{
+    font-size:11.5px;
+  }
+
+  .mediaRowPill,
+  .mediaRowMeta{
+    grid-column:1 / -1 !important;
+    width:100%;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:10px;
+    padding:8px 10px;
+    border-radius:13px;
+    background:rgba(255,255,255,.055);
+    border:1px solid rgba(255,255,255,.075);
+    font-size:12px;
+    color:#d9e6ff;
+  }
+
+  .mediaRowPill::before,
+  .mediaRowMeta::before{
+    content:attr(data-label);
+    color:#8295bf;
+    font-size:11px;
+    font-weight:950;
+    text-transform:uppercase;
+    letter-spacing:.08em;
+  }
+
+  .mediaRowDelete{
+    grid-column:1 / -1 !important;
+    grid-row:auto !important;
+    width:100%;
+    justify-self:stretch;
+    text-align:center;
+    min-height:38px;
+  }
+}
+
+@media (max-width:380px){
+  .heroCard{
+    grid-template-columns:40px minmax(0, 1fr) auto;
+    gap:7px;
+    padding:10px;
+  }
+
+  .heroIcon{
+    width:40px;
+    height:40px;
+  }
+
+  .title{
+    font-size:18px;
+  }
+
+  .helperButton,
+  .ghostButton,
+  .closeButton{
+    width:36px;
+    height:36px;
+    min-height:36px;
+    flex-basis:36px;
+  }
+}
