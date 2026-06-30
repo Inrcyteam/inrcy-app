@@ -23,7 +23,7 @@ export default function LegalDocumentsModal({
             <Content />
           </div>
           <p className={legalStyles.small} style={{ marginTop: 18 }}>
-            Dernière mise à jour : 11/06/2026
+            Dernière mise à jour : 30/06/2026
           </p>
         </div>
       </div>
