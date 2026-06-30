@@ -75,6 +75,7 @@ import { refreshTiktokAccessToken } from "@/lib/tiktokOAuth";
 import {
   tiktokDirectPostPhotos,
   tiktokDirectPostVideo,
+  tiktokDirectPostVideoFileUpload,
   type TiktokPublicationSettings,
 } from "@/lib/tiktokPublish";
 import {
@@ -1682,6 +1683,20 @@ export async function POST(req: Request) {
       }
     }
 
+    async function loadBoosterVideoForTikTok(storagePath: string) {
+      const cleanPath = String(storagePath || "").trim();
+      if (!cleanPath) return null;
+      const { data, error } = await supabaseAdmin.storage.from("booster").download(cleanPath);
+      if (error || !data) return null;
+      const buffer = Buffer.from(await data.arrayBuffer());
+      if (!buffer.length) return null;
+      return {
+        buffer,
+        contentType: data.type || "application/octet-stream",
+        size: buffer.length,
+      };
+    }
+
     async function getTiktokAccessToken(rowLike: unknown) {
       const row = asRecord(rowLike);
       let accessToken =
@@ -1989,7 +2004,10 @@ export async function POST(req: Request) {
             continue;
           }
 
-          await setDelivery(ch, { status: "delivered", error: null });
+          await setDelivery(ch, {
+            status: "delivered",
+            error: null,
+          });
 
           results[ch] = {
             ok: true,
@@ -2121,7 +2139,10 @@ export async function POST(req: Request) {
             continue;
           }
 
-          await setDelivery(ch, { status: "delivered", error: null });
+          await setDelivery(ch, {
+            status: "delivered",
+            error: null,
+          });
 
           results[ch] = {
             ok: true,
@@ -2277,7 +2298,10 @@ export async function POST(req: Request) {
             continue;
           }
 
-          await setDelivery(ch, { status: "delivered", error: null });
+          await setDelivery(ch, {
+            status: "delivered",
+            error: null,
+          });
 
           results[ch] = {
             ok: true,
@@ -2552,15 +2576,29 @@ export async function POST(req: Request) {
             channelPost.content ||
             channelPost.title ||
             "Publication iNrCy";
+          const tiktokVideoFile = isVideo && channelVideo?.storagePath
+            ? await loadBoosterVideoForTikTok(channelVideo.storagePath)
+            : null;
+
           const tiktokResult = isVideo
-            ? await tiktokDirectPostVideo({
-                accessToken: tiktokAccessToken,
-                videoUrl,
-                title: tiktokTitle,
-                publicationSettings:
-                  tiktokPublicationSettings as TiktokPublicationSettings,
-                videoDurationSeconds: channelVideo?.duration || null,
-              })
+            ? tiktokVideoFile
+              ? await tiktokDirectPostVideoFileUpload({
+                  accessToken: tiktokAccessToken,
+                  videoBuffer: tiktokVideoFile.buffer,
+                  contentType: tiktokVideoFile.contentType,
+                  title: tiktokTitle,
+                  publicationSettings:
+                    tiktokPublicationSettings as TiktokPublicationSettings,
+                  videoDurationSeconds: channelVideo?.duration || null,
+                })
+              : await tiktokDirectPostVideo({
+                  accessToken: tiktokAccessToken,
+                  videoUrl,
+                  title: tiktokTitle,
+                  publicationSettings:
+                    tiktokPublicationSettings as TiktokPublicationSettings,
+                  videoDurationSeconds: channelVideo?.duration || null,
+                })
             : await tiktokDirectPostPhotos({
                 accessToken: tiktokAccessToken,
                 imageUrls: tiktokImageUrls,
@@ -2592,7 +2630,10 @@ export async function POST(req: Request) {
             continue;
           }
 
-          await setDelivery(ch, { status: "delivered", error: null });
+          await setDelivery(ch, {
+            status: tiktokResult.status?.pending ? "processing" : "delivered",
+            error: null,
+          });
 
           const tiktokPendingMessage = tiktokResult.status?.pending
             ? "TikTok a accepté l'envoi. La publication peut apparaître dans quelques instants sur le compte connecté."
@@ -2619,6 +2660,7 @@ export async function POST(req: Request) {
             diagnostics: {
               provider: "tiktok",
               mode: "direct_post",
+              transfer: isVideo ? (tiktokVideoFile ? "FILE_UPLOAD" : "PULL_FROM_URL") : "PULL_FROM_URL",
               publish_id: tiktokResult.publishId || null,
               mediaType: isVideo ? "video" : "photos",
               privacyLevel: tiktokResult.privacyLevel || null,
@@ -2717,7 +2759,10 @@ export async function POST(req: Request) {
             link: normalizePublicHttpUrl(channelPost.ctaUrl) || normalizePublicHttpUrl(siteWebUrl) || normalizePublicHttpUrl(inrcySiteUrl),
           });
 
-          await setDelivery(ch, { status: "delivered", error: null });
+          await setDelivery(ch, {
+            status: "delivered",
+            error: null,
+          });
           results[ch] = {
             ok: true,
             external_id: pin.id || null,
@@ -2873,7 +2918,10 @@ export async function POST(req: Request) {
 
           const gmbRespRec = asRecord(gmbResp);
           const externalId = String(gmbRespRec["name"] ?? "");
-          await setDelivery(ch, { status: "delivered", error: null });
+          await setDelivery(ch, {
+            status: "delivered",
+            error: null,
+          });
           results[ch] = {
             ok: true,
             external_id: externalId || null,

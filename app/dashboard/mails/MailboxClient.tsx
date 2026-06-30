@@ -4873,6 +4873,7 @@ export default function MailboxClient() {
           deleteHistoryEntry={deleteHistoryEntry}
           loadCampaignRecipients={loadCampaignRecipients}
           loadCampaignHealth={loadCampaignHealth}
+          refreshHistory={loadHistory}
           resumeDraft={resumeDraftFromDetails}
         />
 

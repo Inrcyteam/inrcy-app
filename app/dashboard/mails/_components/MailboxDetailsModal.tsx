@@ -36,6 +36,7 @@ import {
 import { darkOptionStyle, darkSelectStyle, lightFieldStyle, textAreaStyle } from "@/app/dashboard/booster/publier/publishModal.styles";
 import { confirmInrcy } from "@/lib/inrcyDialog";
 import { getUserFacingMailError } from "@/lib/mailDeliveryErrors";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import {
   MAILBOX_RECIPIENTS_PAGE_SIZE,
   type CampaignRecipientsFilterId,
@@ -139,6 +140,7 @@ type MailboxDetailsModalProps = {
   deleteHistoryEntry: (item: any) => Promise<void>;
   loadCampaignRecipients: (campaignId: string, targetPage?: number, targetFilter?: CampaignRecipientsFilterId) => Promise<void>;
   loadCampaignHealth: (campaignId: string, raw?: any) => Promise<void>;
+  refreshHistory?: () => Promise<void>;
   resumeDraft: (item: any) => void;
 };
 
@@ -220,6 +222,46 @@ function getTiktokPublicationUrl(result: any) {
   const username = firstStringDeep(result?.username, getNestedString(result, ["diagnostics", "creatorInfo", "creator_username"]));
   const cleanUsername = username.replace(/^@+/, "").trim();
   return cleanUsername ? `https://www.tiktok.com/@${cleanUsername}` : "https://www.tiktok.com";
+}
+
+function getTiktokPublishId(result: any) {
+  return firstStringDeep(
+    result?.external_id,
+    result?.publish_id,
+    getNestedString(result, ["diagnostics", "publish_id"]),
+    getNestedString(result, ["diagnostics", "raw", "data", "publish_id"]),
+    getNestedString(result, ["diagnostics", "raw", "init", "data", "publish_id"]),
+  );
+}
+
+function getTiktokStatusMeta(result: any) {
+  const status = firstStringDeep(
+    result?.tiktok_status,
+    result?.status,
+    getNestedString(result, ["diagnostics", "status", "status"]),
+    getNestedString(result, ["diagnostics", "status", "raw", "data", "status"]),
+  ).toUpperCase();
+  const failed = result?.ok === false || ["FAILED", "PUBLISH_FAILED", "ERROR"].includes(status);
+  const complete = ["PUBLISH_COMPLETE", "DONE", "SUCCESS"].includes(status);
+  const pending = !failed && !complete && Boolean(result?.warning || status || getTiktokPublishId(result));
+  const label = failed
+    ? "Échec"
+    : complete
+      ? "Publié"
+      : status.includes("UPLOAD")
+        ? "Upload en cours"
+        : status.includes("DOWNLOAD")
+          ? "Récupération en cours"
+          : pending
+            ? "En traitement"
+            : "Statut inconnu";
+  const message = firstStringDeep(
+    result?.error,
+    result?.warning_message,
+    result?.tiktok_status_message,
+    getNestedString(result, ["diagnostics", "status", "failReason"]),
+  );
+  return { status, failed, complete, pending, label, message };
 }
 
 function getYoutubeShortsPublicationUrl(result: any) {
@@ -312,16 +354,50 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
     deleteHistoryEntry,
     loadCampaignRecipients,
     loadCampaignHealth,
+    refreshHistory,
     resumeDraft,
   } = props;
   const router = useRouter();
   const [publicationPreviewOpen, setPublicationPreviewOpen] = React.useState(false);
   const [publicationCameraOpen, setPublicationCameraOpen] = React.useState(false);
   const [publicationMediaLibraryOpen, setPublicationMediaLibraryOpen] = React.useState(false);
+  const [tiktokStatusChecking, setTiktokStatusChecking] = React.useState(false);
   const [isMobileViewport, setIsMobileViewport] = React.useState(false);
   const detailsBodyRef = React.useRef<HTMLDivElement | null>(null);
   const detailsScrollSnapshotRef = React.useRef<number | null>(null);
   const detailsMailProvider = String(detailsItem?.provider || detailsItem?.payload?.provider || "").trim();
+
+  async function checkTiktokPublicationStatus(publicationId: string) {
+    if (!publicationId || tiktokStatusChecking) return;
+    setTiktokStatusChecking(true);
+    setDetailsActionError(null);
+    setDetailsActionSuccess(null);
+    try {
+      const res = await fetch(`/api/inrsend/publications/${encodeURIComponent(publicationId)}/tiktok/status`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || "Vérification TikTok impossible.");
+      const statusLabel = String(json?.status_label || "Statut vérifié").trim();
+      const message = String(json?.message || "Statut TikTok mis à jour.").trim();
+      if (json?.ok === false) {
+        setDetailsActionError(`TikTok : ${statusLabel} — ${message}`);
+      } else {
+        setDetailsActionSuccess(`TikTok : ${statusLabel} — ${message}`);
+      }
+      await refreshHistory?.();
+    } catch (e: any) {
+      setDetailsActionError(
+        getSimpleFrenchErrorMessage(
+          e,
+          "Impossible de vérifier le statut TikTok pour le moment.",
+        ),
+      );
+    } finally {
+      setTiktokStatusChecking(false);
+    }
+  }
 
   React.useEffect(() => {
     if (typeof window === "undefined") return;
@@ -553,6 +629,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                   <div style={{ color: "rgba(255,255,255,0.65)" }}>Sélectionne un élément.</div>
                 ) : (() => {
                   const payload = detailsItem.source === "app_events" ? ((detailsItem as any)?.raw?.payload || null) : null;
+                  const publicationId = detailsItem.source === "app_events" ? String(payload?.publication_id || "").trim() : "";
                   const channelPublications = detailsItem.source === "app_events" ? extractChannelPublications(payload) : [];
                   const defaultParts = detailsItem.source === "app_events" ? extractPublicationParts(payload) : {};
                   const publicationChannelEntries = detailsItem.source === "app_events"
@@ -577,6 +654,8 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                   const isYoutubeShortsPublicationEntry = activePublicationEntry?.key === "youtube_shorts";
                   const isExternalVideoPublicationEntry = isTiktokPublicationEntry || isYoutubeShortsPublicationEntry;
                   const tiktokPublicationHref = isTiktokPublicationEntry ? getTiktokPublicationUrl(activePublicationResult) : "";
+                  const tiktokPublishId = isTiktokPublicationEntry ? getTiktokPublishId(activePublicationResult) : "";
+                  const tiktokStatusMeta = isTiktokPublicationEntry ? getTiktokStatusMeta(activePublicationResult) : null;
                   const youtubeShortsPublicationHref = isYoutubeShortsPublicationEntry ? getYoutubeShortsPublicationUrl(activePublicationResult) : "";
                   const activeParts = activePublicationEntry?.parts || defaultParts;
                   const sourceDocAttachments = detailsItem.source === "send_items"
@@ -899,17 +978,28 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                     </div>
                                   ) : null}
                                   {isTiktokPublicationEntry && !isDraftItem ? (
-                                    <button
-                                      type="button"
-                                      className={styles.btnPrimary}
-                                      onClick={() => {
-                                        if (typeof window !== "undefined") window.open(tiktokPublicationHref || "https://www.tiktok.com", "_blank", "noopener,noreferrer");
-                                      }}
-                                      disabled={detailsActionBusy}
-                                      title="Ouvrir TikTok pour gérer la publication"
-                                    >
-                                      Ouvrir TikTok
-                                    </button>
+                                    <>
+                                      <button
+                                        type="button"
+                                        className={styles.btnGhost}
+                                        onClick={() => void checkTiktokPublicationStatus(publicationId)}
+                                        disabled={detailsActionBusy || tiktokStatusChecking || !tiktokPublishId}
+                                        title={tiktokPublishId ? "Vérifier le statut réel auprès de TikTok" : "Identifiant TikTok introuvable"}
+                                      >
+                                        {tiktokStatusChecking ? "Vérification…" : "Vérifier le statut"}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className={styles.btnPrimary}
+                                        onClick={() => {
+                                          if (typeof window !== "undefined") window.open(tiktokPublicationHref || "https://www.tiktok.com", "_blank", "noopener,noreferrer");
+                                        }}
+                                        disabled={detailsActionBusy}
+                                        title="Ouvrir TikTok pour gérer la publication"
+                                      >
+                                        Ouvrir TikTok
+                                      </button>
+                                    </>
                                   ) : isYoutubeShortsPublicationEntry && !isDraftItem ? (
                                     <button
                                       type="button"
@@ -1013,13 +1103,33 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                 marginTop: 12,
                                 padding: "10px 12px",
                                 borderRadius: 14,
-                                border: "1px solid rgba(56,189,248,0.24)",
-                                background: "rgba(56,189,248,0.08)",
+                                border: tiktokStatusMeta?.failed
+                                  ? "1px solid rgba(248,113,113,0.35)"
+                                  : tiktokStatusMeta?.pending
+                                    ? "1px solid rgba(250,204,21,0.35)"
+                                    : "1px solid rgba(56,189,248,0.24)",
+                                background: tiktokStatusMeta?.failed
+                                  ? "rgba(127,29,29,0.22)"
+                                  : tiktokStatusMeta?.pending
+                                    ? "rgba(250,204,21,0.10)"
+                                    : "rgba(56,189,248,0.08)",
                                 color: "rgba(225,245,255,0.92)",
                                 fontSize: 13,
                               }}
                             >
-                              <b>TikTok :</b> iNrSend garde l’historique et l’ouverture du post. La modification ou suppression réelle se fait dans TikTok ; retirer l’entrée depuis le tableau iNrSend ne supprime pas le post TikTok.
+                              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                                <b>TikTok :</b>
+                                <span>Statut réel : <b>{tiktokStatusMeta?.label || "À vérifier"}</b></span>
+                                {tiktokPublishId ? (
+                                  <span style={{ opacity: 0.72 }}>ID suivi : {tiktokPublishId}</span>
+                                ) : null}
+                              </div>
+                              <div style={{ marginTop: 6, color: tiktokStatusMeta?.failed ? "#fecaca" : tiktokStatusMeta?.pending ? "#fde68a" : "rgba(225,245,255,0.88)" }}>
+                                {tiktokStatusMeta?.message ||
+                                  (tiktokStatusMeta?.pending
+                                    ? "TikTok traite encore la vidéo. Utilisez “Vérifier le statut” pour savoir si elle est publiée ou refusée."
+                                    : "iNrSend garde l’historique et le suivi TikTok. La modification ou suppression réelle se fait dans TikTok.")}
+                              </div>
                             </div>
                           ) : null}
 

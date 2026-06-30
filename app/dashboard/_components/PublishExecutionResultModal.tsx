@@ -34,6 +34,7 @@ export default function PublishExecutionResultModal({
   const successCount = Number(summary?.successCount || 0);
   const allFailed = Boolean(summary?.allFailed);
   const entries = Array.isArray(summary?.entries) ? summary.entries : [];
+  const pendingCount = entries.filter((entry) => entry.ok && entry.warning).length;
 
   return (
     <div
@@ -88,7 +89,9 @@ export default function PublishExecutionResultModal({
             ? "Publication échouée"
             : failureCount
               ? "Publication envoyée partiellement"
-              : "Publication envoyée avec succès"}
+              : pendingCount
+                ? "Envoi accepté, traitement en cours"
+                : "Publication envoyée avec succès"}
         </div>
         <div
           className={styles.subtitle}
@@ -98,7 +101,9 @@ export default function PublishExecutionResultModal({
             ? "Aucun canal n’a pu publier. Vérifiez le détail ci-dessous."
             : failureCount
               ? `Votre publication a été envoyée sur ${successCount} canal(aux). ${failureCount} canal(aux) n'ont pas pu publier.`
-              : "Votre actualité a bien été prise en compte. Elle est maintenant en cours de diffusion sur vos canaux sélectionnés."}
+              : pendingCount
+                ? "TikTok a accepté l’envoi. Le traitement final continue côté TikTok et le statut peut être vérifié dans iNrSend."
+                : "Votre actualité a bien été prise en compte. Elle est maintenant en cours de diffusion sur vos canaux sélectionnés."}
         </div>
         <StatusMessage
           variant={failureCount ? "error" : "success"}
@@ -108,7 +113,9 @@ export default function PublishExecutionResultModal({
             ? "Échec : vérifiez le détail ci-dessous."
             : failureCount
               ? "Succès partiel : vérifiez le détail ci-dessous."
-              : "C’est parfait, votre publication est lancée."}
+              : pendingCount
+                ? "Envoi accepté : vérifiez le statut TikTok dans iNrSend."
+                : "C’est parfait, votre publication est lancée."}
         </StatusMessage>
         {entries.length ? (
           <div style={{ marginTop: 14, display: "grid", gap: 8, textAlign: "left" }}>
