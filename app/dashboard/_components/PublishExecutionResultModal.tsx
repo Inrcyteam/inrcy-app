@@ -155,7 +155,7 @@ export default function PublishExecutionResultModal({
                         </a>
                       ) : null}
                       <span style={{ fontSize: 12, opacity: 0.75 }}>
-                        {entry.ok ? "Publié" : "Échec"}
+                        {entry.ok ? (entry.warning ? "En traitement" : "Publié") : "Échec"}
                       </span>
                     </span>
                   </div>

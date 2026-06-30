@@ -3,7 +3,7 @@ export const INR_AGENT_FREQUENCIES = ["weekly", "twice_weekly", "biweekly", "mon
 export const INR_AGENT_VALIDATION_MODES = ["validation_required", "draft_only", "notify_before_validation", "automatic_report"] as const;
 export const INR_AGENT_GOALS = ["visibility", "acquisition", "loyalty", "stats"] as const;
 export const INR_AGENT_TONES = ["professional", "friendly", "premium", "local", "dynamic"] as const;
-export const INR_AGENT_CHANNELS = ["site_inrcy", "site_web", "gmb", "facebook", "instagram", "linkedin", "tiktok", "youtube", "mails"] as const;
+export const INR_AGENT_CHANNELS = ["site_inrcy", "site_web", "gmb", "facebook", "instagram", "linkedin", "tiktok", "youtube", "pinterest", "mails"] as const;
 export const INR_AGENT_THEMES = [
   "conseils",
   "realisations",
@@ -26,6 +26,7 @@ export const INR_AGENT_THEMES = [
   "linkedin",
   "tiktok",
   "youtube",
+  "pinterest",
 ] as const;
 export const INR_AGENT_RECIPIENT_SCOPES = ["none", "all_crm", "clients", "prospects", "recent_contacts", "inactive_contacts", "manual_selection"] as const;
 export const INR_AGENT_SOURCE_STRATEGIES = ["published_history", "templates", "stats_snapshot", "mixed"] as const;
@@ -90,7 +91,7 @@ const DEFAULT_AUTOMATIONS: Record<InrAgentAutomationKey, InrAgentAutomationSetti
     dayOfWeek: 1,
     time: "09:00",
     validationMode: "validation_required",
-    allowedChannels: ["site_inrcy", "site_web", "gmb", "facebook", "instagram", "linkedin", "tiktok", "youtube"],
+    allowedChannels: ["site_inrcy", "site_web", "gmb", "facebook", "instagram", "linkedin", "tiktok", "youtube", "pinterest"],
     allowedThemes: ["conseils", "realisations", "offres", "actualites"],
     useImageBank: true,
     imageRequired: true,
@@ -142,7 +143,7 @@ const DEFAULT_AUTOMATIONS: Record<InrAgentAutomationKey, InrAgentAutomationSetti
     time: "08:30",
     validationMode: "automatic_report",
     allowedChannels: [],
-    allowedThemes: ["vue_globale", "site_inrcy", "site_web", "gmb", "facebook", "instagram", "linkedin", "tiktok", "youtube", "mails", "inrbadge"],
+    allowedThemes: ["vue_globale", "site_inrcy", "site_web", "gmb", "facebook", "instagram", "linkedin", "tiktok", "youtube", "pinterest", "mails", "inrbadge"],
     useImageBank: false,
     imageRequired: false,
     recipientScope: "none",
@@ -167,7 +168,7 @@ export const INR_AGENT_DEFAULT_SETTINGS: InrAgentSettings = {
   mode: "validation_required",
   goal: "visibility",
   allowedActions: ["publication", "mailing", "review_request", "loyalty"],
-  allowedChannels: ["site_inrcy", "site_web", "gmb", "facebook", "instagram", "linkedin", "tiktok", "youtube", "mails"],
+  allowedChannels: ["site_inrcy", "site_web", "gmb", "facebook", "instagram", "linkedin", "tiktok", "youtube", "pinterest", "mails"],
   useMediaLibrary: true,
   allowAiImages: false,
 };
@@ -226,7 +227,8 @@ export const INR_AGENT_LABELS = {
     instagram: "Instagram",
     linkedin: "LinkedIn",
     tiktok: "TikTok",
-    youtube: "YouTube Shorts",
+    youtube: "YouTube",
+    pinterest: "Pinterest",
     mails: "Mails",
   } satisfies Record<InrAgentChannel, string>,
   themes: {
@@ -250,7 +252,8 @@ export const INR_AGENT_LABELS = {
     instagram: "Instagram",
     linkedin: "LinkedIn",
     tiktok: "TikTok",
-    youtube: "YouTube Shorts",
+    youtube: "YouTube",
+    pinterest: "Pinterest",
   } satisfies Record<InrAgentTheme, string>,
   recipientScopes: {
     none: "Aucun destinataire",

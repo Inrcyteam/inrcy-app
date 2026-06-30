@@ -12,6 +12,8 @@ import inrcyIcon from "@/public/icons/inrcy.png";
 import siteWebIcon from "@/public/icons/site-web.jpg";
 import googleBusinessIcon from "@/public/icons/google.jpg";
 import linkedinIcon from "@/public/icons/linkedin.png";
+import pinterestIcon from "@/public/icons/Pinterest-logo.webp";
+import trustpilotIcon from "@/public/icons/trustpilot.png";
 import instagramIcon from "@/public/icons/instagram.jpg";
 import facebookIcon from "@/public/icons/facebook.png";
 import tiktokIcon from "@/public/icons/tiktok.png";
@@ -354,6 +356,8 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
   const facebookSettings = safeObj(toolSettings.facebook);
   const instagramSettings = safeObj(toolSettings.instagram);
   const linkedinSettings = safeObj(toolSettings.linkedin);
+  const pinterestSettings = safeObj(toolSettings.pinterest);
+  const trustpilotSettings = safeObj(toolSettings.trustpilot);
   const tiktokSettings = safeObj(toolSettings.tiktok);
   const youtubeShortsSettings = safeObj(toolSettings.youtube_shorts);
 
@@ -376,6 +380,8 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
     (instagramUsername ? `https://www.instagram.com/${instagramUsername}/` : ""),
   );
   const linkedinUrl = normalizeUrl(channelStates.linkedin.organization_url || channelStates.linkedin.profile_url || linkedinSettings.orgUrl || linkedinSettings.profileUrl || linkedinSettings.url);
+  const pinterestUrl = normalizeUrl(channelStates.pinterest.profile_url || pinterestSettings.profileUrl || pinterestSettings.url);
+  const trustpilotUrl = normalizeUrl(channelStates.trustpilot.profile_url || trustpilotSettings.profileUrl || trustpilotSettings.url);
   const tiktokUrl = normalizeUrl(channelStates.tiktok.profile_url || tiktokSettings.url);
   const youtubeShortsUrl = normalizeUrl(channelStates.youtube_shorts.channel_url || youtubeShortsSettings.channelUrl || youtubeShortsSettings.url);
   const primaryWebsite = siteWebUrl || siteInrcyUrl;
@@ -387,6 +393,8 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
     facebook: Boolean(channelStates.facebook.connected && facebookUrl),
     instagram: Boolean(channelStates.instagram.connected && instagramUrl),
     linkedin: Boolean(channelStates.linkedin.connected && linkedinUrl),
+    pinterest: Boolean(channelStates.pinterest.connected && pinterestUrl),
+    trustpilot: Boolean(channelStates.trustpilot.connected && trustpilotUrl),
     tiktok: Boolean(channelStates.tiktok.connected && tiktokUrl),
     youtubeShorts: Boolean(channelStates.youtube_shorts.connected && youtubeShortsUrl),
   };
@@ -437,6 +445,8 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
     shareSettings.siteWeb && publicChannelCanShare.siteWeb ? { href: siteWebUrl, label: "Site web", iconSrc: siteWebIcon.src, tone: "site" as ActionTone, trackingAction: "site_web" } : null,
     shareSettings.googleBusiness && publicChannelCanShare.googleBusiness ? { href: gmbUrl, label: "Google Business", iconSrc: googleBusinessIcon.src, tone: "google" as ActionTone, trackingAction: "google_business" } : null,
     shareSettings.linkedin && publicChannelCanShare.linkedin ? { href: linkedinUrl, label: "LinkedIn", iconSrc: linkedinIcon.src, tone: "linkedin" as ActionTone, trackingAction: "linkedin" } : null,
+    shareSettings.pinterest && publicChannelCanShare.pinterest ? { href: pinterestUrl, label: "Pinterest", iconSrc: pinterestIcon.src, tone: "neutral" as ActionTone, trackingAction: "pinterest" } : null,
+    shareSettings.trustpilot && publicChannelCanShare.trustpilot ? { href: trustpilotUrl, label: "Trustpilot", iconSrc: trustpilotIcon.src, tone: "neutral" as ActionTone, trackingAction: "trustpilot" } : null,
     shareSettings.instagram && publicChannelCanShare.instagram ? { href: instagramUrl, label: "Instagram", iconSrc: instagramIcon.src, tone: "instagram" as ActionTone, trackingAction: "instagram" } : null,
     shareSettings.facebook && publicChannelCanShare.facebook ? { href: facebookUrl, label: "Facebook", iconSrc: facebookIcon.src, tone: "facebook" as ActionTone, trackingAction: "facebook" } : null,
     shareSettings.tiktok && publicChannelCanShare.tiktok ? { href: tiktokUrl, label: "TikTok", iconSrc: tiktokIcon.src, tone: "tiktok" as ActionTone, trackingAction: "tiktok" } : null,

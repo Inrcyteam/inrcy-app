@@ -119,6 +119,29 @@ export type ChannelStates = {
     channel_name: string | null;
     channel_url: string | null;
   };
+  pinterest: {
+    accountConnected: boolean;
+    connected: boolean;
+    expired: boolean;
+    requiresUpdate: boolean;
+    connection_status: ConnectionDisplayStatus;
+    resource_id: string | null;
+    username: string | null;
+    profile_url: string | null;
+    default_board_id: string | null;
+    default_board_name: string | null;
+  };
+  trustpilot: {
+    accountConnected: boolean;
+    connected: boolean;
+    expired: boolean;
+    requiresUpdate: boolean;
+    connection_status: ConnectionDisplayStatus;
+    business_unit_id: string | null;
+    business_name: string | null;
+    profile_url: string | null;
+    review_invite_url: string | null;
+  };
 };
 
 function isExpired(expiresAt: unknown, skewSeconds = 60) {
@@ -318,6 +341,39 @@ export async function getChannelConnectionStates(
   const mailConnectedCount = Math.max(0, Math.min(4, connectedMailRows.length));
   const mailsConnected = mailConnectedCount > 0;
 
+  const pinterest = latestIntegration(rows, "pinterest", "pinterest", "pinterest");
+  const pinterestMeta = asRecord(pinterest.meta);
+  const pinterestSettings = asRecord(settings.pinterest);
+  const pinterestHasToken = hasTruthyString(pinterest.access_token_enc) || hasTruthyString(pinterest.refresh_token_enc);
+  const pinterestExpired = isExpired(pinterest.expires_at) && !hasTruthyString(pinterest.refresh_token_enc);
+  const pinterestStatus = asString(pinterest.status);
+  const pinterestOAuthConnected = Boolean((pinterestStatus === "connected" || pinterestStatus === "account_connected") && pinterestHasToken && !pinterestExpired);
+  const pinterestProfileUrl = asString(pinterestMeta.profile_url) || asString(pinterestSettings.profileUrl) || asString(pinterestSettings.url) || null;
+  const pinterestDefaultBoardId = asString(pinterestMeta.default_board_id) || asString(pinterestSettings.defaultBoardId) || asString(pinterestSettings.boardId) || null;
+  const pinterestDefaultBoardName = asString(pinterestMeta.default_board_name) || asString(pinterestSettings.defaultBoardName) || asString(pinterestSettings.boardName) || null;
+  const pinterestUsername = asString(pinterestMeta.username) || asString(pinterest.resource_label) || asString(pinterestSettings.username) || asString(pinterestSettings.accountName) || null;
+  const pinterestConnected = Boolean(pinterestOAuthConnected || pinterestSettings.connected || pinterestProfileUrl || pinterestDefaultBoardId);
+
+  const trustpilot = latestIntegration(rows, "trustpilot", "trustpilot", "trustpilot");
+  const trustpilotMeta = asRecord(trustpilot.meta);
+  const trustpilotSettings = asRecord(settings.trustpilot);
+  const trustpilotHasToken = hasTruthyString(trustpilot.access_token_enc) || hasTruthyString(trustpilot.refresh_token_enc);
+  const trustpilotHasRefreshToken = hasTruthyString(trustpilot.refresh_token_enc);
+  const trustpilotExpired = isExpired(trustpilot.expires_at) && !trustpilotHasRefreshToken;
+  const trustpilotStatus = asString(trustpilot.status);
+  const trustpilotOAuthConnected = Boolean((trustpilotStatus === "connected" || trustpilotStatus === "account_connected") && trustpilotHasToken && !trustpilotExpired);
+  const trustpilotProfileUrl =
+    asString(trustpilotMeta.profile_url) || asString(trustpilotSettings.profileUrl) || asString(trustpilotSettings.url) || null;
+  const trustpilotBusinessUnitId =
+    asString(trustpilot.resource_id) || asString(trustpilotMeta.business_unit_id) || asString(trustpilotSettings.businessUnitId) || asString(trustpilotSettings.business_unit_id) || null;
+  const trustpilotBusinessName =
+    asString(trustpilot.resource_label) || asString(trustpilotMeta.business_name) || asString(trustpilotSettings.businessName) || asString(trustpilotSettings.name) || null;
+  const trustpilotReviewInviteUrl =
+    asString(trustpilotMeta.review_invite_url) || asString(trustpilotSettings.reviewInviteUrl) || asString(trustpilotSettings.inviteUrl) || null;
+  const trustpilotConnected = Boolean(trustpilotOAuthConnected || trustpilotSettings.connected || trustpilotProfileUrl || trustpilotBusinessUnitId || trustpilotReviewInviteUrl);
+  const trustpilotConnectionStatus = getConnectionDisplayStatus(trustpilotConnected, "channel:trustpilot", trustpilotMeta);
+  const trustpilotRequiresUpdate = trustpilotConnectionStatus === "needs_update";
+
   const gmb = latestIntegration(rows, "google", "gmb", "gmb");
   const gmbSettings = asRecord(settings.gmb);
   const gmbMeta = asRecord(gmb.meta);
@@ -427,6 +483,29 @@ export async function getChannelConnectionStates(
       resource_id: youtubeShorts.connected ? (youtubeShorts.channelId || youtubeShorts.channelHandle || youtubeShorts.channelUrl || null) : null,
       channel_name: youtubeShorts.connected ? (youtubeShorts.channelName || youtubeShorts.channelHandle || youtubeShorts.channelUrl || null) : null,
       channel_url: youtubeShorts.connected ? (youtubeShorts.channelUrl || null) : null,
+    },
+    pinterest: {
+      accountConnected: pinterestConnected,
+      connected: pinterestConnected,
+      expired: pinterestExpired,
+      requiresUpdate: false,
+      connection_status: pinterestConnected ? "connected" : "disconnected",
+      resource_id: pinterestConnected ? (asString(pinterest.resource_id) || pinterestDefaultBoardId || pinterestUsername || pinterestProfileUrl || null) : null,
+      username: pinterestConnected ? pinterestUsername : null,
+      profile_url: pinterestConnected ? pinterestProfileUrl : null,
+      default_board_id: pinterestConnected ? pinterestDefaultBoardId : null,
+      default_board_name: pinterestConnected ? pinterestDefaultBoardName : null,
+    },
+    trustpilot: {
+      accountConnected: trustpilotOAuthConnected || trustpilotConnected,
+      connected: trustpilotConnected,
+      expired: trustpilotExpired,
+      requiresUpdate: trustpilotRequiresUpdate,
+      connection_status: trustpilotConnectionStatus,
+      business_unit_id: trustpilotConnected ? trustpilotBusinessUnitId : null,
+      business_name: trustpilotConnected ? trustpilotBusinessName : null,
+      profile_url: trustpilotConnected ? trustpilotProfileUrl : null,
+      review_invite_url: trustpilotConnected ? trustpilotReviewInviteUrl : null,
     },
   };
 }

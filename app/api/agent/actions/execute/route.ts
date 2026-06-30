@@ -19,7 +19,8 @@ type BoosterChannel =
   | "instagram"
   | "linkedin"
   | "tiktok"
-  | "youtube_shorts";
+  | "youtube_shorts"
+  | "pinterest";
 
 type BoosterPost = {
   title: string;
@@ -49,6 +50,7 @@ const allowedBoosterChannels = new Set<BoosterChannel>([
   "linkedin",
   "tiktok",
   "youtube_shorts",
+  "pinterest",
 ]);
 
 function canPublishWithoutMedia(channel: BoosterChannel) {
@@ -62,7 +64,7 @@ function isVideoOnlyChannel(channel: BoosterChannel) {
 }
 
 function isImageRequiredChannel(channel: BoosterChannel) {
-  return channel === "instagram" || channel === "tiktok";
+  return channel === "instagram" || channel === "tiktok" || channel === "pinterest";
 }
 
 const agentToBoosterChannel: Record<string, BoosterChannel> = {
@@ -78,6 +80,7 @@ const agentToBoosterChannel: Record<string, BoosterChannel> = {
   tiktok: "tiktok",
   youtube: "youtube_shorts",
   youtube_shorts: "youtube_shorts",
+  pinterest: "pinterest",
 };
 
 function asRecord(value: unknown): JsonRecord | null {
@@ -781,7 +784,7 @@ export async function POST(request: Request) {
       ? "images"
       : "none";
   const publishChannels = selectedChannels.filter((channel) => {
-    if (activeMediaMode === "video") return true;
+    if (activeMediaMode === "video") return channel !== "pinterest";
     if (isVideoOnlyChannel(channel)) return false;
     if (isImageRequiredChannel(channel)) return hasImagePayload;
     return canPublishWithoutMedia(channel) || hasImagePayload;

@@ -11,6 +11,8 @@ export type InrBadgeShareKey =
   | "facebook"
   | "instagram"
   | "linkedin"
+  | "pinterest"
+  | "trustpilot"
   | "mails"
   | "tiktok"
   | "youtubeShorts"
@@ -53,6 +55,8 @@ export const DEFAULT_INRBADGE_SHARE_SETTINGS: InrBadgeShareSettings = {
   facebook: true,
   instagram: true,
   linkedin: true,
+  pinterest: true,
+  trustpilot: true,
   mails: true,
   tiktok: false,
   youtubeShorts: true,

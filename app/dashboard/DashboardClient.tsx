@@ -285,6 +285,10 @@ export default function DashboardClient({ isAdmin = false }: DashboardClientProp
   const [mailAccountsConnectedCount, setMailAccountsConnectedCount] = useState(() => readCachedMailAccountsConnectedCount() ?? 0);
   const [youtubeShortsConnected, setYoutubeShortsConnected] = useState(false);
   const [youtubeShortsUrl, setYoutubeShortsUrl] = useState("");
+  const [pinterestConnected, setPinterestConnected] = useState(false);
+  const [pinterestUrl, setPinterestUrl] = useState("");
+  const [trustpilotConnected, setTrustpilotConnected] = useState(false);
+  const [trustpilotUrl, setTrustpilotUrl] = useState("");
   const [inrBadgeProfile, setInrBadgeProfile] = useState<InrBadgeProfileSummary>(() => readCachedInrBadgeProfile());
   const [cachedInrBadgeProfileReady, setCachedInrBadgeProfileReady] = useState<boolean | null>(() => readCachedInrBadgeProfileReady());
   const [inrBadgeModalOpen, setInrBadgeModalOpen] = useState(false);
@@ -477,6 +481,8 @@ const triggerChannelRefreshRef = useRef<(channel: DashboardChannelKey) => Promis
 const [bubbleAccessMap, setBubbleAccessMap] = useState<AppBubbleAccessMap>(() => readCachedBubbleAccessMap());
 const canAccessSiteInrcy = isBubbleEnabled(bubbleAccessMap, "site_inrcy");
 const canAccessInrAgent = isBubbleEnabled(bubbleAccessMap, "inr_agent");
+const canAccessPinterest = isBubbleEnabled(bubbleAccessMap, "pinterest");
+const canAccessTrustpilot = isBubbleEnabled(bubbleAccessMap, "trustpilot");
 
 const patchChannelConnectionLocallyProxy = useCallback((
   channel: DashboardChannelKey,
@@ -866,6 +872,10 @@ const applyDashboardChannelState = useCallback((state: Record<string, any> | nul
   if (typeof state.fbSelectedPageName === "string") setFbSelectedPageName(state.fbSelectedPageName);
   if (typeof state.youtubeShortsConnected === "boolean") setYoutubeShortsConnected(state.youtubeShortsConnected);
   if (typeof state.youtubeShortsUrl === "string") setYoutubeShortsUrl(state.youtubeShortsUrl);
+  if (typeof state.pinterestConnected === "boolean") setPinterestConnected(state.pinterestConnected);
+  if (typeof state.pinterestUrl === "string") setPinterestUrl(state.pinterestUrl);
+  if (typeof state.trustpilotConnected === "boolean") setTrustpilotConnected(state.trustpilotConnected);
+  if (typeof state.trustpilotUrl === "string") setTrustpilotUrl(state.trustpilotUrl);
 
   if (typeof state.siteInrcyGa4Connected === "boolean") setSiteInrcyGa4Connected(state.siteInrcyGa4Connected);
   if (typeof state.siteInrcyGscConnected === "boolean") setSiteInrcyGscConnected(state.siteInrcyGscConnected);
@@ -901,8 +911,35 @@ const applyDashboardChannelState = useCallback((state: Record<string, any> | nul
   setSiteWebActusLimit, setSiteWebActusTheme, setSiteWebGa4Connected, setSiteWebGa4MeasurementId,
   setSiteWebGa4PropertyId, setSiteWebGscConnected, setSiteWebGscProperty, setSiteWebSavedUrl,
   setSiteWebSettingsError, setSiteWebSettingsText, setSiteWebUrl, setMailAccountsConnectedCount,
-  setYoutubeShortsConnected, setYoutubeShortsUrl,
+  setYoutubeShortsConnected, setYoutubeShortsUrl, setPinterestConnected, setPinterestUrl, setTrustpilotConnected, setTrustpilotUrl,
 ]);
+
+useEffect(() => {
+  const handlePinterestUpdate = (event: Event) => {
+    const detail = (event as CustomEvent)?.detail ?? {};
+    const connected = Boolean(detail.connected);
+    const profileUrl = typeof detail.profileUrl === "string" ? detail.profileUrl : "";
+    setPinterestConnected(connected);
+    setPinterestUrl(profileUrl);
+    mergeCachedDashboardChannelState({ pinterestConnected: connected, pinterestUrl: profileUrl });
+  };
+
+  const handleTrustpilotUpdate = (event: Event) => {
+    const detail = (event as CustomEvent)?.detail ?? {};
+    const connected = Boolean(detail.connected);
+    const profileUrl = typeof detail.profileUrl === "string" ? detail.profileUrl : "";
+    setTrustpilotConnected(connected);
+    setTrustpilotUrl(profileUrl);
+    mergeCachedDashboardChannelState({ trustpilotConnected: connected, trustpilotUrl: profileUrl });
+  };
+
+  window.addEventListener("inrcy:pinterest-settings-updated", handlePinterestUpdate);
+  window.addEventListener("inrcy:trustpilot-settings-updated", handleTrustpilotUpdate);
+  return () => {
+    window.removeEventListener("inrcy:pinterest-settings-updated", handlePinterestUpdate);
+    window.removeEventListener("inrcy:trustpilot-settings-updated", handleTrustpilotUpdate);
+  };
+}, []);
 
 useEffect(() => {
   const handleYoutubeShortsUpdate = (event: Event) => {
@@ -1263,7 +1300,11 @@ const loadSiteInrcy = useCallback(async () => {
   const gmbObj = ((proSettingsObj as any)?.gmb ?? {}) as any;
   const fbObj = ((proSettingsObj as any)?.facebook ?? {}) as any;
   const ytObj = ((proSettingsObj as any)?.youtube_shorts ?? {}) as any;
+  const pinterestObj = ((proSettingsObj as any)?.pinterest ?? {}) as any;
+  const trustpilotObj = ((proSettingsObj as any)?.trustpilot ?? {}) as any;
   const youtubeShortsUrlValue = String(ytObj?.channelUrl ?? ytObj?.url ?? "");
+  const pinterestUrlValue = String(pinterestObj?.profileUrl ?? pinterestObj?.url ?? "");
+  const trustpilotUrlValue = String(trustpilotObj?.profileUrl ?? trustpilotObj?.url ?? "");
 
   const nextState = {
     siteInrcyOwnership: ownership,
@@ -1317,6 +1358,10 @@ const loadSiteInrcy = useCallback(async () => {
     fbSelectedPageName: fbObj?.pageName ?? "",
     youtubeShortsConnected: Boolean(ytObj?.connected),
     youtubeShortsUrl: youtubeShortsUrlValue,
+    pinterestConnected: Boolean(pinterestObj?.connected),
+    pinterestUrl: pinterestUrlValue,
+    trustpilotConnected: Boolean(trustpilotObj?.connected),
+    trustpilotUrl: trustpilotUrlValue,
     siteInrcyGa4Connected: !!(ga4MeasurementIdValue || ga4PropertyIdValue),
     siteInrcyGscConnected: !!gscPropertyValue,
     siteWebGa4Connected: !!((siteWebObj as any)?.ga4?.measurement_id || (siteWebObj as any)?.ga4?.property_id),
@@ -1377,6 +1422,12 @@ const loadSiteInrcy = useCallback(async () => {
 
       nextState.youtubeShortsConnected = Boolean(states?.youtube_shorts?.connected && !states?.youtube_shorts?.requiresUpdate);
       nextState.youtubeShortsUrl = String(states?.youtube_shorts?.channel_url || "");
+
+      nextState.pinterestConnected = Boolean(states?.pinterest?.connected && !states?.pinterest?.requiresUpdate);
+      nextState.pinterestUrl = String(states?.pinterest?.profile_url || pinterestUrlValue || "");
+
+      nextState.trustpilotConnected = Boolean(states?.trustpilot?.connected && !states?.trustpilot?.requiresUpdate);
+      nextState.trustpilotUrl = String(states?.trustpilot?.profile_url || trustpilotUrlValue || "");
     } else {
       const [inrcyGa4, inrcyGsc, webGa4, webGsc] = await Promise.all([
         fetchGoogleConnected("site_inrcy", "ga4"),
@@ -1427,6 +1478,9 @@ const sitePowerLinkConnected = hasSiteInrcyUrl || hasSiteWebUrl;
 const sitePowerGa4Connected = (hasSiteInrcyUrl && siteInrcyGa4Connected) || (hasSiteWebUrl && siteWebGa4Connected);
 const sitePowerGscConnected = (hasSiteInrcyUrl && siteInrcyGscConnected) || (hasSiteWebUrl && siteWebGscConnected);
 const videoPowerConnected = Boolean(tiktokConnected || youtubeShortsConnected);
+const proNetworkPowerConnected = Boolean(
+  (linkedinConnected && linkedinConnectionStatus !== "needs_update") || (canAccessPinterest && pinterestConnected)
+);
 
 const generatorPowerSteps = [
   { key: "profile", label: "Compléter mon profil", shortLabel: "Profil", weight: 10, completed: profileCompleted },
@@ -1437,7 +1491,7 @@ const generatorPowerSteps = [
   { key: "gmb", label: "Connecter Google Business", shortLabel: "Google Business", weight: 20, completed: gmbConnected && gmbConnectionStatus !== "needs_update" },
   { key: "facebook", label: "Connecter Facebook", shortLabel: "Facebook", weight: 10, completed: facebookPageConnected && facebookConnectionStatus !== "needs_update" },
   { key: "instagram", label: "Connecter Instagram", shortLabel: "Instagram", weight: 10, completed: instagramConnected && instagramConnectionStatus !== "needs_update" },
-  { key: "linkedin", label: "Connecter LinkedIn", shortLabel: "LinkedIn", weight: 7, completed: linkedinConnected && linkedinConnectionStatus !== "needs_update" },
+  { key: "pro_network", label: "Connecter LinkedIn ou Pinterest", shortLabel: "LinkedIn / Pinterest", weight: 7, completed: proNetworkPowerConnected },
   { key: "mails", label: "Connecter Mails", shortLabel: "Mails", weight: 5, completed: mailAccountsConnectedCount > 0 },
   { key: "video", label: "Connecter TikTok ou YouTube", shortLabel: "TikTok / YouTube", weight: 8, completed: videoPowerConnected },
 ] as const;
@@ -2683,6 +2737,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     facebookPageConnected ||
     instagramConnected ||
     linkedinConnected ||
+    (canAccessPinterest && pinterestConnected) ||
     tiktokConnected ||
     youtubeShortsConnected ||
     mailAccountsConnectedCount > 0
@@ -2783,6 +2838,10 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       tiktokPreferredMedia,
       youtubeShortsConnected,
       youtubeShortsUrl,
+      pinterestConnected,
+      pinterestUrl,
+      trustpilotConnected,
+      trustpilotUrl,
       gmbUrl,
       gmbAccountConnected,
       gmbConfigured,
@@ -2856,6 +2915,10 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     mailAccountsConnectedCount,
     tiktokConnected,
     tiktokUrl: tiktokProfileUrl,
+    pinterestConnected,
+    pinterestUrl,
+    trustpilotConnected,
+    trustpilotUrl,
     youtubeShortsConnected,
     youtubeShortsUrl,
     openPanel,
@@ -2866,6 +2929,8 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     siteWebSavedUrl,
   }), [
     bubbleAccessMap,
+    canAccessPinterest,
+    canAccessTrustpilot,
     canConfigureSite,
     canViewSite,
     channelBlocks,
@@ -2884,6 +2949,10 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     mailAccountsConnectedCount,
     tiktokConnected,
     tiktokProfileUrl,
+    pinterestConnected,
+    pinterestUrl,
+    trustpilotConnected,
+    trustpilotUrl,
     youtubeShortsConnected,
     youtubeShortsUrl,
     openPanel,
@@ -2921,6 +2990,14 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         connected: Boolean(linkedinConnected && linkedinUrl),
         url: linkedinUrl,
       },
+      pinterest: {
+        connected: Boolean(canAccessPinterest && pinterestConnected && pinterestUrl),
+        url: canAccessPinterest ? pinterestUrl : null,
+      },
+      trustpilot: {
+        connected: Boolean(canAccessTrustpilot && trustpilotConnected && trustpilotUrl),
+        url: canAccessTrustpilot ? trustpilotUrl : null,
+      },
       mails: {
         connected: mailAccountsConnectedCount > 0,
         url: null,
@@ -2940,6 +3017,8 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
   }), [
     inrBadgeProfile,
     inrBadgePublicUrl,
+    canAccessPinterest,
+    canAccessTrustpilot,
     inrBadgeProfileReady,
     siteInrcyOwnership,
     siteInrcySavedUrl,
@@ -2955,6 +3034,10 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     mailAccountsConnectedCount,
     tiktokConnected,
     tiktokProfileUrl,
+    pinterestConnected,
+    pinterestUrl,
+    trustpilotConnected,
+    trustpilotUrl,
     youtubeShortsConnected,
     youtubeShortsUrl,
     openPanel,
@@ -3124,6 +3207,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
           // YouTube suit aussi l'état Dashboard déjà hydraté.
           // Ça évite que l'icône arrive après les autres dans Booster / Publier.
           youtube_shorts: Boolean(youtubeShortsConnected),
+          pinterest: Boolean(canAccessPinterest && pinterestConnected),
         }}
         onClose={() => {
           setDashboardBoosterModal(null);
@@ -3187,6 +3271,8 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
           facebookPanelProps={facebookPanelProps}
           tiktokPanelProps={tiktokPanelProps}
           inrBadgeSettingsProps={inrBadgeSettingsProps}
+          pinterestAccessEnabled={canAccessPinterest}
+          trustpilotAccessEnabled={canAccessTrustpilot}
         />
       </SettingsDrawer>
 

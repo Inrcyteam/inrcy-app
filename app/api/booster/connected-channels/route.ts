@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
 import { getChannelConnectionStates } from "@/lib/channelConnectionState";
+import { getAppBubbleAccessMapForUser } from "@/lib/appBubbleAccessServer";
+import { isBubbleEnabled } from "@/lib/bubbleAccess";
 
 
 function decodeDisplayText(value: unknown) {
@@ -141,7 +143,11 @@ export async function GET() {
     const { supabase, user, errorResponse } = await requireUser();
     if (errorResponse) return errorResponse;
 
-    const states = await getChannelConnectionStates(supabase, user.id);
+    const [states, bubbleAccess] = await Promise.all([
+      getChannelConnectionStates(supabase, user.id),
+      getAppBubbleAccessMapForUser(supabase, user.id),
+    ]);
+    const pinterestEnabled = isBubbleEnabled(bubbleAccess, "pinterest");
     return NextResponse.json({
       channels: {
         inrcy_site: states.site_inrcy.connected,
@@ -152,6 +158,7 @@ export async function GET() {
         linkedin: states.linkedin.connected && !states.linkedin.requiresUpdate,
         tiktok: states.tiktok.connected && !states.tiktok.requiresUpdate,
         youtube_shorts: states.youtube_shorts.connected && !states.youtube_shorts.requiresUpdate,
+        pinterest: pinterestEnabled && states.pinterest.connected && !states.pinterest.requiresUpdate && Boolean(states.pinterest.default_board_id),
       },
       channelDetails: {
         inrcy_site: {
@@ -221,6 +228,15 @@ export async function GET() {
             cleanBusinessName,
           ),
           href: states.youtube_shorts.channel_url,
+        },
+        pinterest: {
+          type: "account",
+          label: firstCleanLabel(
+            [states.pinterest.username, states.pinterest.default_board_name, states.pinterest.profile_url],
+            "Compte Pinterest connecté",
+            cleanBusinessName,
+          ),
+          href: states.pinterest.profile_url,
         },
       },
     });

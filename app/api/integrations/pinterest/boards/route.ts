@@ -1,0 +1,28 @@
+import { NextResponse } from "next/server";
+
+import { bubbleAccessDisabledResponse, isAppBubbleEnabledForUser } from "@/lib/appBubbleAccessServer";
+import { createSupabaseServer } from "@/lib/supabaseServer";
+import { fetchPinterestBoards, getPinterestAccessToken } from "@/lib/pinterestOAuth";
+
+export async function GET(request: Request) {
+  try {
+    const supabase = await createSupabaseServer();
+    const { data: authData, error: authErr } = await supabase.auth.getUser();
+    const user = authData?.user;
+    if (authErr || !user) return NextResponse.json({ ok: false, error: "Non authentifié." }, { status: 401 });
+
+    if (!(await isAppBubbleEnabledForUser(supabase, user.id, "pinterest"))) {
+      return bubbleAccessDisabledResponse("Pinterest");
+    }
+
+    const accessToken = await getPinterestAccessToken(user.id, request.url);
+    if (!accessToken) {
+      return NextResponse.json({ ok: false, error: "Pinterest à connecter." }, { status: 401 });
+    }
+
+    const boards = await fetchPinterestBoards(accessToken);
+    return NextResponse.json({ ok: true, boards });
+  } catch {
+    return NextResponse.json({ ok: false, error: "Impossible de récupérer les tableaux Pinterest." }, { status: 400 });
+  }
+}

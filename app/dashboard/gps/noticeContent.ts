@@ -65,20 +65,20 @@ export const GPS_SECTIONS: GpsSection[] = [
     id: "canaux",
     title: "Les canaux",
     emoji: "🧩",
-    description: "Comprendre les 10 canaux de diffusion qui alimentent votre visibilité.",
+    description: "Comprendre les 12 canaux iNrCy qui alimentent votre visibilité, votre diffusion et votre e-réputation.",
     articles: [
       {
         id: "canaux-express",
         title: "Connecter les bonnes bulles",
-        keywords: ["canaux", "bulles", "connexion", "configurer", "connecter", "site inrcy", "site web", "google", "facebook", "instagram", "linkedin", "tiktok", "youtube", "shorts", "mails", "inrbadge", "statistiques", "publications", "visibilité"],
+        keywords: ["canaux", "bulles", "connexion", "configurer", "connecter", "site inrcy", "site web", "google", "facebook", "instagram", "linkedin", "tiktok", "youtube", "shorts", "pinterest", "trustpilot", "mails", "inrbadge", "statistiques", "publications", "visibilité", "ereputation"],
         duration: "5 min",
         goal: "Visibilité reliée",
         intro:
-          "Les canaux iNrCy sont vos leviers de diffusion. Ils rendent votre entreprise visible, diffusent vos contenus, partagent votre carte de visite digitale et alimentent le générateur en signaux utiles.",
+          "Les canaux iNrCy sont vos leviers de visibilité. Certains diffusent vos contenus, certains renforcent votre e-réputation, d’autres partagent votre carte de visite digitale ou alimentent le générateur et les statistiques.",
         steps: [
           "Ouvrir **Les canaux**, choisir la bulle concernée, puis cliquer sur **Configurer**.",
-          "Connecter les canaux de diffusion : iNr'Badge, Mails, Site iNrCy, Site web, Google Business, Facebook, Instagram, LinkedIn, TikTok et YouTube.",
-          "Configurer chaque canal utile pour que le générateur puisse diffuser, analyser et exploiter les bons signaux.",
+          "Connecter les canaux utiles : iNr'Badge, Mails, Site iNrCy, Site web, Google Business, Facebook, Instagram, LinkedIn, TikTok, YouTube, Pinterest et Trustpilot.",
+          "Configurer chaque canal utile pour que le générateur, iNrStats, Booster et E-réputation exploitent les bons signaux.",
         ],
         checks: [
           "Le canal affiche bien Connecté ou Configuré.",
@@ -88,7 +88,7 @@ export const GPS_SECTIONS: GpsSection[] = [
         ],
         pitfalls: [
           "Commencer par les canaux les plus utiles : Google Business, Site iNrCy, Site web et Mails.",
-          "Tous les canaux ne diffusent pas de la même manière : certains publient, certains analysent, certains renvoient vers vos contacts ou vos rendez-vous.",
+          "Tous les canaux n’ont pas le même rôle : certains publient, certains gèrent les avis, certains analysent, certains renvoient vers vos contacts ou vos rendez-vous.",
         ],
         links: [{ label: "Ouvrir les canaux", href: "/dashboard" }],
       },
@@ -110,8 +110,9 @@ export const GPS_SECTIONS: GpsSection[] = [
           "iNr'Agent est votre assistant virtuel iNrCy. Il vous aide à préparer, automatiser et programmer vos actions de communication depuis un seul endroit.",
         steps: [
           "Ouvrir **iNr'Agent** depuis le header du dashboard.",
-          "Lui demander une action claire : préparer une publication, une campagne, une relance, une analyse ou une action commerciale.",
-          "Laisser iNr'Agent utiliser les outils iNrCy disponibles pour préparer une proposition adaptée.",
+          "Choisir une action claire : **Publier**, **Propulser**, **Fidéliser** ou **Analyser mes statistiques**.",
+          "Pour **Publier**, connecter les canaux utiles de Booster / Publier, y compris Pinterest quand vous voulez diffuser aussi là-bas.",
+          "Laisser iNr'Agent utiliser les outils iNrCy disponibles pour préparer une proposition adaptée, puis relire l’aperçu.",
           "Relire l’aperçu, puis **valider** ou **refuser** l’action avant qu’elle soit exécutée.",
         ],
         checks: [
@@ -123,6 +124,7 @@ export const GPS_SECTIONS: GpsSection[] = [
         pitfalls: [
           "iNr'Agent ne remplace pas votre décision : il prépare, propose et accélère.",
           "Plus vos informations et vos canaux sont complets, plus ses propositions sont utiles.",
+          "Trustpilot se gère dans **E-réputation** : ce n’est pas un canal de publication iNr'Agent à ce stade.",
           "Objectif : gagner du temps, garder une communication régulière et transformer vos idées en actions concrètes.",
         ],
         links: [

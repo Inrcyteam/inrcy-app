@@ -5,11 +5,13 @@ export const MODULE_ICONS: Record<string, { src: string; alt: string }> = {
   site_web: { src: "/icons/site-web.jpg", alt: "Site web" },
   facebook: { src: "/icons/facebook.png", alt: "Facebook" },
   gmb: { src: "/icons/google.jpg", alt: "Google Business" },
+  trustpilot: { src: "/icons/trustpilot.png", alt: "Trustpilot" },
   instagram: { src: "/icons/instagram.jpg", alt: "Instagram" },
   linkedin: { src: "/icons/linkedin.png", alt: "LinkedIn" },
   mails: { src: "/icons/mails-inrcy-dashboard-v2.png", alt: "Mails iNrCy" },
   tiktok: { src: "/icons/tiktok.png", alt: "TikTok" },
   youtube_shorts: { src: "/icons/youtube-shorts.png", alt: "YouTube" },
+  pinterest: { src: "/icons/Pinterest-logo.webp", alt: "Pinterest" },
   inr_agent: { src: "/icons/inr-agent.png", alt: "iNr'Agent" },
   inrbadge: { src: "/icons/inrbadge-dashboard.png", alt: "iNr'Badge" },
 };
@@ -113,6 +115,22 @@ export const fluxModules: Module[] = [
     ],
   },
   {
+    key: "trustpilot",
+    name: "Trustpilot",
+    description: "Inspire confiance ⭐",
+    status: "available",
+    accent: "cyan",
+    actions: [
+      { key: "view", label: "Voir la page", variant: "view", href: "#" },
+      {
+        key: "connect",
+        label: "Configurer",
+        variant: "connect",
+        onClick: () => {},
+      },
+    ],
+  },
+  {
     key: "facebook",
     name: "Facebook",
     description: "Crée de la demande 📈",
@@ -197,6 +215,22 @@ export const fluxModules: Module[] = [
       },
     ],
   },
+  {
+    key: "pinterest",
+    name: "Pinterest",
+    description: "Inspire vos clients 📌",
+    status: "available",
+    accent: "pink",
+    actions: [
+      { key: "view", label: "Voir le compte", variant: "view", href: "#" },
+      {
+        key: "connect",
+        label: "Configurer",
+        variant: "connect",
+        onClick: () => {},
+      },
+    ],
+  },
 ];
 
 export const DRAWER_TITLES = {
@@ -217,9 +251,11 @@ export const DRAWER_TITLES = {
   instagram: "Configuration — Instagram",
   linkedin: "Configuration — LinkedIn",
   gmb: "Configuration — Google Business",
+  trustpilot: "Configuration — Trustpilot",
   facebook: "Configuration — Facebook",
   tiktok: "Configuration — TikTok",
   youtube_shorts: "Configuration — YouTube",
+  pinterest: "Configuration — Pinterest",
   inr_agent: "Configuration — iNr'Agent",
   inertie: "Mon inertie",
   boutique: "Boutique",

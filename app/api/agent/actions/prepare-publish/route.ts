@@ -13,6 +13,8 @@ import {
   type BoosterTheme,
 } from "@/lib/boosterPrompt";
 import { getChannelConnectionStates } from "@/lib/channelConnectionState";
+import { getAppBubbleAccessMapForUser } from "@/lib/appBubbleAccessServer";
+import { isBubbleEnabled } from "@/lib/bubbleAccess";
 import { decodeBusinessSector } from "@/lib/activitySectors";
 import {
   findJobValueByLabel,
@@ -121,6 +123,7 @@ const agentToBoosterChannel: Partial<Record<InrAgentChannel, BoosterChannels>> =
     linkedin: "linkedin",
     tiktok: "tiktok",
     youtube: "youtube_shorts",
+    pinterest: "pinterest",
   };
 
 const boosterToAgentChannel: Record<BoosterChannels, string> = {
@@ -132,6 +135,7 @@ const boosterToAgentChannel: Record<BoosterChannels, string> = {
   linkedin: "linkedin",
   tiktok: "tiktok",
   youtube_shorts: "youtube_shorts",
+  pinterest: "pinterest",
 };
 
 const agentThemeToBoosterTheme: Partial<Record<InrAgentTheme, BoosterTheme>> = {
@@ -156,7 +160,8 @@ const channelLabels: Record<string, string> = {
   instagram: "Instagram",
   linkedin: "LinkedIn",
   tiktok: "TikTok",
-  youtube_shorts: "YouTube Shorts",
+  youtube_shorts: "YouTube",
+  pinterest: "Pinterest",
 };
 
 const siteChannels = new Set<BoosterChannels>(["inrcy_site", "site_web"]);
@@ -169,12 +174,14 @@ const allowedBoosterChannels = new Set<BoosterChannels>([
   "linkedin",
   "tiktok",
   "youtube_shorts",
+  "pinterest",
 ]);
 
 const mediaRequiredChannels = new Set<BoosterChannels>([
   "instagram",
   "tiktok",
   "youtube_shorts",
+  "pinterest",
 ]);
 
 function channelRequiresVideo(channel: BoosterChannels) {
@@ -200,11 +207,26 @@ function channelMediaReadiness(
     };
   }
 
+  if (channel === "pinterest" && mediaKind === "video") {
+    return {
+      ready: false,
+      publishable: false,
+      status: "blocked",
+      label: "Bloquant",
+      reason: "Pinterest publie les images dans cette version.",
+      blockers: ["Pinterest publie les images dans cette version."],
+      warnings: [] as string[],
+      canPublishTextOnly: false,
+    };
+  }
+
   if (mediaRequiredChannels.has(channel) && !media) {
     const reason =
       channel === "instagram"
         ? "Instagram nécessite au moins 1 image ou 1 vidéo."
-        : "TikTok nécessite au moins 1 photo ou 1 vidéo.";
+        : channel === "pinterest"
+          ? "Pinterest nécessite au moins 1 image."
+          : "TikTok nécessite au moins 1 photo ou 1 vidéo.";
     return {
       ready: false,
       publishable: false,
@@ -689,9 +711,11 @@ function cleanHashtags(channel: BoosterChannels, input: unknown) {
     channel === "tiktok" ||
     channel === "youtube_shorts"
       ? 8
-      : channel === "linkedin"
-        ? 3
-        : 2;
+      : channel === "pinterest"
+        ? 6
+        : channel === "linkedin"
+          ? 3
+          : 2;
   return Array.isArray(input)
     ? input
         .map((h) =>
@@ -737,7 +761,10 @@ async function selectConnectedChannels(args: {
   userId: string;
   automation: InrAgentAutomationSettings;
 }): Promise<BoosterChannels[]> {
-  const states = await getChannelConnectionStates(args.supabase, args.userId);
+  const [states, bubbleAccess] = await Promise.all([
+    getChannelConnectionStates(args.supabase, args.userId),
+    getAppBubbleAccessMapForUser(args.supabase, args.userId),
+  ]);
 
   const isAllowedBoosterChannel = (
     channel: BoosterChannels | undefined,
@@ -759,6 +786,11 @@ async function selectConnectedChannels(args: {
     tiktok: states.tiktok.connected && !states.tiktok.requiresUpdate,
     youtube_shorts:
       states.youtube_shorts.connected && !states.youtube_shorts.requiresUpdate,
+    pinterest:
+      isBubbleEnabled(bubbleAccess, "pinterest") &&
+      states.pinterest.connected &&
+      !states.pinterest.requiresUpdate &&
+      Boolean(states.pinterest.default_board_id),
   };
 
   const uniqueChannels: BoosterChannels[] = Array.from(

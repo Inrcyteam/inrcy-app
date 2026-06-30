@@ -119,6 +119,7 @@ function getOverviewError(channel: DashboardChannelKey, overview: Overview | nul
     linkedin: ['linkedin'],
     tiktok: ['tiktok'],
     youtube_shorts: ['youtube_shorts'],
+    pinterest: ['pinterest'],
   };
 
   for (const sourceKey of sourceKeysByChannel[channel]) {
@@ -250,6 +251,21 @@ function mapChannelConnection(channel: DashboardChannelKey, states: ChannelState
         resourceId: state.resource_id,
         resourceLabel: state.channel_name || state.channel_url,
         resourceUrl: state.channel_url,
+      };
+    }
+    case 'pinterest': {
+      const state = states.pinterest;
+      return {
+        connected: state.connected,
+        accountConnected: state.accountConnected,
+        configured: Boolean(state.default_board_id || state.connected),
+        statsConnected: state.connected && !state.requiresUpdate,
+        expired: state.expired,
+        requiresUpdate: state.requiresUpdate,
+        connectionStatus: state.connection_status,
+        resourceId: state.default_board_id || state.resource_id,
+        resourceLabel: state.default_board_name || state.username,
+        resourceUrl: state.profile_url,
       };
     }
   }

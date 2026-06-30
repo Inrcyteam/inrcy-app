@@ -27,7 +27,8 @@ export type ChannelKey =
   | "instagram"
   | "linkedin"
   | "tiktok"
-  | "youtube_shorts";
+  | "youtube_shorts"
+  | "pinterest";
 export type DisplayKey = ChannelKey;
 export type ThemeKey =
   | ""
@@ -351,6 +352,7 @@ export const DISPLAY_LABELS: Record<DisplayKey, string> = {
   linkedin: "LinkedIn",
   tiktok: "TikTok",
   youtube_shorts: "YouTube",
+  pinterest: "Pinterest",
 };
 
 export const CHANNEL_LABELS: Record<ChannelKey, string> = {
@@ -362,6 +364,7 @@ export const CHANNEL_LABELS: Record<ChannelKey, string> = {
   linkedin: "LinkedIn",
   tiktok: "TikTok",
   youtube_shorts: "YouTube",
+  pinterest: "Pinterest",
 };
 
 export const CHANNEL_PRESETS: Record<ChannelKey, RenderPreset> = {
@@ -413,6 +416,12 @@ export const CHANNEL_PRESETS: Record<ChannelKey, RenderPreset> = {
     defaultFit: "cover",
     defaultBlurBackground: false,
   },
+  pinterest: {
+    width: 1000,
+    height: 1500,
+    defaultFit: "cover",
+    defaultBlurBackground: false,
+  },
 };
 
 export {
@@ -448,14 +457,15 @@ export function channelSupportsImages(channel: ChannelKey) {
 }
 
 export function channelSupportsTextOnly(channel: ChannelKey) {
-  return channel !== "youtube_shorts" && channel !== "tiktok";
+  return channel !== "youtube_shorts" && channel !== "tiktok" && channel !== "pinterest";
 }
 
 export function channelRequiresMedia(channel: ChannelKey) {
   return (
     channel === "youtube_shorts" ||
     channel === "tiktok" ||
-    channel === "instagram"
+    channel === "instagram" ||
+    channel === "pinterest"
   );
 }
 
@@ -470,6 +480,9 @@ export function getUnavailableMediaModeMessage(
   }
   if (channel === "tiktok" && mode === "none") {
     return "TikTok nécessite au moins une photo ou une vidéo.";
+  }
+  if (channel === "pinterest" && mode !== "images") {
+    return "Pinterest nécessite au moins 1 image pour créer une épingle.";
   }
   return "";
 }
@@ -562,6 +575,10 @@ export function getChannelPublicationRequirements({
       );
     }
 
+    if (channel === "pinterest") {
+      blockers.push("Pinterest publie les images dans cette version. Ajoutez au moins 1 image.");
+    }
+
     if (channel === "gmb") {
       warnings.push(
         "Google peut refuser certaines vidéos. Si c’est le cas, iNrCy publiera le texte sans vidéo.",
@@ -587,6 +604,8 @@ export function getChannelPublicationRequirements({
         blockers.push("YouTube nécessite une vidéo.");
       } else if (channel === "gmb") {
         warnings.push("Google Business sera publié sans photo.");
+      } else if (channel === "pinterest") {
+        blockers.push("Pinterest nécessite au moins 1 image.");
       } else {
         warnings.push("Aucune image sélectionnée.");
       }
@@ -596,6 +615,10 @@ export function getChannelPublicationRequirements({
       warnings.push(
         "TikTok publiera les photos sur le compte connecté avec les paramètres validés.",
       );
+    }
+
+    if (channel === "pinterest" && hasImage) {
+      warnings.push("Pinterest créera une épingle dans le tableau configuré.");
     }
 
     if (channel === "youtube_shorts" && hasImage) {
@@ -608,6 +631,8 @@ export function getChannelPublicationRequirements({
       blockers.push("TikTok nécessite une vidéo ou au moins 1 photo.");
     } else if (channel === "youtube_shorts") {
       blockers.push("YouTube nécessite une vidéo.");
+    } else if (channel === "pinterest") {
+      blockers.push("Pinterest nécessite au moins 1 image.");
     }
   }
 
@@ -849,6 +874,24 @@ export const CHANNEL_TEXT_GUIDELINES: Record<
       return [body, hashtags].filter(Boolean).join("\n").length;
     },
   },
+  pinterest: {
+    title: 90,
+    content: 500,
+    cta: 120,
+    hashtags: 8,
+    totalLabel: "Description Pinterest finale",
+    totalMax: 500,
+    totalValue: (post) => {
+      const body = [post.title, post.content, post.cta]
+        .filter(Boolean)
+        .join("\n");
+      const hashtags = (post.hashtags || [])
+        .map((tag) => `#${String(tag || "").replace(/^#+/, "").trim()}`)
+        .filter(Boolean)
+        .join(" ");
+      return [body, hashtags].filter(Boolean).join("\n").length;
+    },
+  },
 };
 
 export const CTA_MODE_OPTIONS: Record<
@@ -904,6 +947,13 @@ export const CTA_MODE_OPTIONS: Record<
     { value: "custom", label: "Lien personnalisé" },
   ],
   youtube_shorts: [
+    { value: "none", label: "Aucun bouton" },
+    { value: "website", label: "Voir le site" },
+    { value: "call", label: "Appeler" },
+    { value: "message", label: "Envoyer un message" },
+    { value: "custom", label: "Lien personnalisé" },
+  ],
+  pinterest: [
     { value: "none", label: "Aucun bouton" },
     { value: "website", label: "Voir le site" },
     { value: "call", label: "Appeler" },

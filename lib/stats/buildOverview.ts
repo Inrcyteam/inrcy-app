@@ -180,6 +180,7 @@ type SourcesStatus = {
   linkedin: { connected: boolean; metrics: unknown | null };
   tiktok: { connected: boolean; metrics: unknown | null };
   youtube_shorts: { connected: boolean; metrics: unknown | null };
+  pinterest: { connected: boolean; metrics: unknown | null };
 };
 
 type LiveSourcesSnapshot = {
@@ -191,6 +192,7 @@ type LiveSourcesSnapshot = {
   linkedin: { connected: boolean; metrics: unknown | null };
   tiktok: { connected: boolean; metrics: unknown | null };
   youtube_shorts: { connected: boolean; metrics: unknown | null };
+  pinterest: { connected: boolean; metrics: unknown | null };
 };
 
 type OverviewCubeKey =
@@ -201,7 +203,8 @@ type OverviewCubeKey =
   | "instagram"
   | "linkedin"
   | "tiktok"
-  | "youtube_shorts";
+  | "youtube_shorts"
+  | "pinterest";
 
 function isStatsActiveConnection(state: {
   connected: boolean;
@@ -258,6 +261,7 @@ function resolveRequestedCube(
   if (normalized === "linkedin") return "linkedin";
   if (normalized === "tiktok") return "tiktok";
   if (normalized === "youtube_shorts") return "youtube_shorts";
+  if (normalized === "pinterest") return "pinterest";
   if (normalized === "gmb") return "gmb";
   if (normalized.includes("site_inrcy")) return "site_inrcy";
   if (normalized.includes("site_web")) return "site_web";
@@ -415,6 +419,13 @@ type TiktokLocalPublicationStats = {
   latestAt: string | null;
 };
 
+type PinterestLocalPublicationStats = {
+  posts: number;
+  photoPosts: number;
+  photos: number;
+  latestAt: string | null;
+};
+
 type YoutubeShortsLocalPublicationStats = {
   posts: number;
   videoPosts: number;
@@ -431,6 +442,7 @@ const INRCY_PUBLISHABLE_CHANNELS: OverviewCubeKey[] = [
   "linkedin",
   "tiktok",
   "youtube_shorts",
+  "pinterest",
 ];
 
 function emptyWindowCount(): InrcyWindowCount {
@@ -625,6 +637,35 @@ function mergeTiktokLocalPublicationStats(
       inrcyLocalPublications: {
         posts: local.posts,
         videoPosts: local.videoPosts,
+        photoPosts: local.photoPosts,
+        photos: local.photos,
+        latestAt: local.latestAt,
+      },
+    },
+  };
+}
+
+function mergePinterestLocalPublicationStats(
+  metrics: unknown,
+  local: PinterestLocalPublicationStats,
+) {
+  const current = asRecord(metrics);
+  const totals = asRecord(current["totals"]);
+  const raw = asRecord(current["raw"]);
+
+  return {
+    ...current,
+    totals: {
+      ...totals,
+      inrcy_posts: local.posts,
+      inrcy_photo_posts: local.photoPosts,
+      inrcy_photos: local.photos,
+      postsPublishedLocal: local.posts,
+    },
+    raw: {
+      ...raw,
+      inrcyLocalPublications: {
+        posts: local.posts,
         photoPosts: local.photoPosts,
         photos: local.photos,
         latestAt: local.latestAt,
@@ -994,6 +1035,13 @@ export async function buildStatsOverview(args: {
     longVideoPosts: youtubeShortsActivity?.photos.month || 0,
     latestAt: youtubeShortsActivity?.latestAt || null,
   };
+  const pinterestActivity = inrcyPublishedActivityStats.pinterest;
+  const pinterestLocalPublicationStats: PinterestLocalPublicationStats = {
+    posts: pinterestActivity?.publications.month || 0,
+    photoPosts: pinterestActivity?.photoPosts.month || 0,
+    photos: pinterestActivity?.photos.month || 0,
+    latestAt: pinterestActivity?.latestAt || null,
+  };
 
   // Lazy-import server helpers inside the request scope to avoid Next.js request-scope errors.
   const {
@@ -1286,6 +1334,10 @@ export async function buildStatsOverview(args: {
       },
       youtube_shorts: {
         connected: isStatsActiveConnection(states.youtube_shorts),
+        metrics: null,
+      },
+      pinterest: {
+        connected: isStatsActiveConnection(states.pinterest),
         metrics: null,
       },
     } satisfies LiveSourcesSnapshot;
@@ -2105,6 +2157,7 @@ export async function buildStatsOverview(args: {
     linkedin: { connected: false, metrics: null },
     tiktok: { connected: false, metrics: null },
     youtube_shorts: { connected: false, metrics: null },
+    pinterest: { connected: false, metrics: null },
   };
 
   const channelStates = await channelStatesPromise;
@@ -2115,6 +2168,7 @@ export async function buildStatsOverview(args: {
     gsc: channelStates.site_inrcy.gsc,
   };
   sourcesStatus.youtube_shorts.connected = isStatsActiveConnection(channelStates.youtube_shorts);
+  sourcesStatus.pinterest.connected = isStatsActiveConnection(channelStates.pinterest);
 
   sourcesStatus.site_web.connected = {
     ga4: channelStates.site_web.ga4,
@@ -2346,6 +2400,19 @@ export async function buildStatsOverview(args: {
       sourcesStatus.tiktok.metrics = tiktokLocalPublicationStats.posts > 0
         ? mergeTiktokLocalPublicationStats({}, tiktokLocalPublicationStats)
         : null;
+    }
+  } catch {}
+
+  // Pinterest: premières stats locales iNrCy en attendant les analytics API Pinterest.
+  try {
+    sourcesStatus.pinterest.connected = isStatsActiveConnection(channelStates.pinterest);
+    const includePinterest = includeAll || includeSet.has("pinterest");
+    if (!includePinterest) {
+      sourcesStatus.pinterest.metrics = null;
+    } else if (sourcesStatus.pinterest.connected || pinterestLocalPublicationStats.posts > 0) {
+      sourcesStatus.pinterest.metrics = mergePinterestLocalPublicationStats({}, pinterestLocalPublicationStats);
+    } else {
+      sourcesStatus.pinterest.metrics = null;
     }
   } catch {}
 
@@ -3021,6 +3088,10 @@ export async function buildStatsOverview(args: {
           label: channelStates.youtube_shorts.channel_name || null,
           url: channelStates.youtube_shorts.channel_url || null,
         },
+        pinterest: {
+          label: channelStates.pinterest.default_board_name || channelStates.pinterest.username || null,
+          url: channelStates.pinterest.profile_url || null,
+        },
       },
       totals: {
         users: totalUsers,
@@ -3041,7 +3112,7 @@ export async function buildStatsOverview(args: {
       },
       sources: sourcesStatus,
       inrcyActivity: inrcyPublishedActivityStats,
-      note: "Sources connectées: site iNrCy (GA4/GSC), site web (GA4/GSC), GMB, Facebook, Instagram, LinkedIn, TikTok.",
+      note: "Sources connectées: site iNrCy (GA4/GSC), site web (GA4/GSC), GMB, Facebook, Instagram, LinkedIn, TikTok, YouTube, Pinterest.",
       meta: {
         generatedAt,
         snapshotDate: dateWindow.snapshotDate,

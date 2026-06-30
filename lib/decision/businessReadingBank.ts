@@ -80,6 +80,12 @@ const CHANNEL_COPY: Record<ChannelKey, {
     boosterAngle: "publier une vidéo YouTube utile, locale et dynamique pour créer de l’attention",
     templateAngle: "réactiver les contacts attirés par vos vidéos YouTube",
   },
+  pinterest: {
+    name: "Pinterest",
+    angle: "visibilité inspiration et découverte visuelle",
+    boosterAngle: "publier un visuel utile et inspirant pour créer de la découverte",
+    templateAngle: "réactiver les contacts attirés par vos contenus visuels",
+  },
 };
 
 const DEFAULT_CHANNEL = {

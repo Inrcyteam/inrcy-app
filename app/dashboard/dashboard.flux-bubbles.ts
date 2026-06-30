@@ -27,6 +27,10 @@ type BuildFluxBubbleItemsArgs = {
   mailAccountsConnectedCount: number;
   tiktokConnected: boolean;
   tiktokUrl: string | null | undefined;
+  pinterestConnected?: boolean;
+  pinterestUrl?: string | null | undefined;
+  trustpilotConnected?: boolean;
+  trustpilotUrl?: string | null | undefined;
   youtubeShortsConnected: boolean;
   youtubeShortsUrl: string | null | undefined;
   openPanel: (panel: any) => void;
@@ -58,6 +62,10 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
     mailAccountsConnectedCount,
     tiktokConnected,
     tiktokUrl,
+    pinterestConnected = false,
+    pinterestUrl,
+    trustpilotConnected = false,
+    trustpilotUrl,
     youtubeShortsConnected,
     youtubeShortsUrl,
     openPanel,
@@ -68,7 +76,7 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
     siteWebSavedUrl,
   } = args;
 
-  return fluxModules.map((m) => {
+  return fluxModules.flatMap((m) => {
     const bubbleKey = normalizeAppBubbleKey(m.key);
     const accessEnabled = bubbleKey ? isBubbleEnabled(bubbleAccessMap, bubbleKey) : true;
     const channelKey = m.key as DashboardChannelKey;
@@ -88,9 +96,7 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
               ? { ...viewActionRaw, href: normalizeExternalHref(blockDrivenViewHref || linkedinUrl) || "#" }
               : viewActionRaw;
 
-    const { status: bubbleStatus, text: bubbleStatusText } = !accessEnabled
-      ? { status: "coming" as ModuleStatus, text: "Désactivé" }
-      : (m.key === "site_inrcy")
+    const resolvedBubbleProgress = (m.key === "site_inrcy")
       ? getSiteBubbleProgress("site_inrcy")
       : (m.key === "site_web")
         ? getSiteBubbleProgress("site_web")
@@ -108,9 +114,15 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
           }
           if (m.key === "tiktok") return tiktokConnected ? { status: "connected" as ModuleStatus, text: "Connecté" } : { status: "available" as ModuleStatus, text: "A connecter" };
           if (m.key === "youtube_shorts") return youtubeShortsConnected ? { status: "connected" as ModuleStatus, text: "Connecté" } : { status: "available" as ModuleStatus, text: "A connecter" };
+          if (m.key === "pinterest") return pinterestConnected ? { status: "connected" as ModuleStatus, text: "Connecté" } : { status: "available" as ModuleStatus, text: "A connecter" };
+          if (m.key === "trustpilot") return trustpilotConnected ? { status: "connected" as ModuleStatus, text: "Connecté" } : { status: "available" as ModuleStatus, text: "A connecter" };
           if (m.key === "inr_agent") return { status: "connected" as ModuleStatus, text: "Connecté" };
           return { status: m.status, text: statusLabel(m.status) };
         })();
+
+    const { status: bubbleStatus, text: bubbleStatusText } = accessEnabled
+      ? resolvedBubbleProgress
+      : { status: "coming" as ModuleStatus, text: "Désactivé" };
 
     const specialViewHref = m.key === "site_inrcy"
       ? (blockDrivenViewHref || normalizeExternalHref(siteInrcySavedUrl) || "#")
@@ -128,7 +140,11 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
                   ? (blockDrivenViewHref || normalizeExternalHref(tiktokUrl) || "#")
                   : m.key === "youtube_shorts"
                     ? (blockDrivenViewHref || normalizeExternalHref(youtubeShortsUrl) || "#")
-                    : undefined;
+                    : m.key === "pinterest"
+                      ? (normalizeExternalHref(pinterestUrl) || "#")
+                      : m.key === "trustpilot"
+                        ? (normalizeExternalHref(trustpilotUrl) || "#")
+                        : undefined;
 
     const specialViewLabel = m.key === "inrbadge"
       ? "Voir mon badge"
@@ -142,7 +158,11 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
               ? "Voir le compte"
               : m.key === "youtube_shorts"
                 ? "Voir la chaîne"
-                : undefined;
+                : m.key === "pinterest"
+                  ? "Voir le compte"
+                  : m.key === "trustpilot"
+                    ? "Voir la page"
+                    : undefined;
 
     const canViewSpecial = m.key === "inrbadge"
       ? inrBadgeProfileReady
@@ -162,7 +182,11 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
                   ? Boolean(blockDrivenViewHref || tiktokUrl)
                   : m.key === "youtube_shorts"
                     ? Boolean(blockDrivenViewHref || youtubeShortsUrl)
-                    : undefined;
+                    : m.key === "pinterest"
+                      ? Boolean(pinterestUrl)
+                      : m.key === "trustpilot"
+                        ? Boolean(trustpilotUrl)
+                        : undefined;
 
     const onConfigure = () => {
       if (!accessEnabled) return;
@@ -177,6 +201,14 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
       }
       if (m.key === "youtube_shorts") {
         openPanel("youtube_shorts");
+        return;
+      }
+      if (m.key === "pinterest") {
+        openPanel("pinterest");
+        return;
+      }
+      if (m.key === "trustpilot") {
+        openPanel("trustpilot");
         return;
       }
       if (m.key === "inr_agent") {

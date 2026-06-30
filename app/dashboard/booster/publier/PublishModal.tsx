@@ -123,6 +123,7 @@ const EMPTY_CHANNEL_DETAILS: Record<ChannelKey, ChannelConnectionDetail> = {
   linkedin: { type: "profile", label: null, href: null },
   tiktok: { type: "account", label: null, href: null },
   youtube_shorts: { type: "channel", label: null, href: null },
+  pinterest: { type: "board", label: null, href: null },
 };
 
 const CHANNEL_KEYS: ChannelKey[] = [
@@ -134,6 +135,7 @@ const CHANNEL_KEYS: ChannelKey[] = [
   "linkedin",
   "tiktok",
   "youtube_shorts",
+  "pinterest",
 ];
 
 function isChannelKey(value: unknown): value is ChannelKey {
@@ -685,6 +687,7 @@ export default function PublishModal({
     linkedin: !!initialConnectedChannels?.linkedin,
     tiktok: !!initialConnectedChannels?.tiktok,
     youtube_shorts: !!initialConnectedChannels?.youtube_shorts,
+    pinterest: !!initialConnectedChannels?.pinterest,
   });
 
   const [channels, setChannels] = useState<Record<ChannelKey, boolean>>(() =>
@@ -781,6 +784,7 @@ export default function PublishModal({
                   linkedin: !!nextConnected.linkedin,
                   tiktok: !!nextConnected.tiktok,
                   youtube_shorts: !!nextConnected.youtube_shorts,
+                  pinterest: !!nextConnected.pinterest,
                 } as Record<ChannelKey, boolean>),
           );
           if (!didInitChannels) setDidInitChannels(true);
@@ -805,6 +809,7 @@ export default function PublishModal({
       linkedin: !!initialConnectedChannels.linkedin,
       tiktok: !!initialConnectedChannels.tiktok,
       youtube_shorts: !!initialConnectedChannels.youtube_shorts,
+      pinterest: !!initialConnectedChannels.pinterest,
     };
     setConnected(nextConnected);
     setChannels(nextConnected);
@@ -929,6 +934,7 @@ export default function PublishModal({
         "linkedin",
         "tiktok",
         "youtube_shorts",
+        "pinterest",
       ];
       for (const key of keys) {
         const current = sanitizePostForEditor(key, prev[key]);
@@ -1092,6 +1098,7 @@ export default function PublishModal({
       "linkedin",
       "tiktok",
       "youtube_shorts",
+      "pinterest",
     ];
     return ordered.filter((key) => channels[key] && connected[key]);
   }, [channels, connected]);
@@ -1162,6 +1169,7 @@ export default function PublishModal({
     const hasImages = images.length > 0;
 
     if (channel === "youtube_shorts") return hasVideo ? "video" : "none";
+    if (channel === "pinterest") return hasImages ? "images" : "none";
 
     if (channel === "tiktok") {
       if (explicit === "video" && hasVideo) return "video";
@@ -1344,6 +1352,7 @@ export default function PublishModal({
     if (channels.tiktok && connected.tiktok) out.add("tiktok");
     if (channels.youtube_shorts && connected.youtube_shorts)
       out.add("youtube_shorts");
+    if (channels.pinterest && connected.pinterest) out.add("pinterest");
     return Array.from(out);
   }, [channels, connected]);
 
@@ -2827,6 +2836,14 @@ export default function PublishModal({
       }
     }
 
+    if (publishableChannels.includes("pinterest")) {
+      const pinterestImages = channelImageEditors.pinterest?.imageKeys || [];
+      if (publishMediaModeByChannel.pinterest !== "images" || !pinterestImages.length) {
+        setImgError("Veuillez ajouter au moins 1 image pour publier sur Pinterest.");
+        return;
+      }
+    }
+
     const isVideoPublication = hasAnyVideoPublish;
     setSaving(true);
     setPublishProgress(5);
@@ -3991,6 +4008,36 @@ export default function PublishModal({
     });
   };
 
+  const tiktokSettingsMediaMode = resolveChannelMediaMode("tiktok");
+  const tiktokSettingsPreview =
+    tiktokSettingsMediaMode === "video"
+      ? getPublicationVideoPreviewForChannel("tiktok")
+      : tiktokSettingsMediaMode === "images"
+        ? getPublicationPreviewForChannel("tiktok")
+        : null;
+  const tiktokSettingsPreviewPost =
+    (finalReviewPosts || scheduleReviewPosts || pendingPublishPosts || buildPreparedPostsByChannel()).tiktok ||
+    null;
+  const tiktokSettingsPreviewTitle =
+    String(tiktokSettingsPreviewPost?.title || tiktokSettingsPreview?.title || "").trim();
+  const tiktokSettingsPreviewContent =
+    String(tiktokSettingsPreviewPost?.content || tiktokSettingsPreview?.content || "").trim();
+  const tiktokSettingsPreviewHashtags =
+    tiktokSettingsPreviewPost?.hashtags || tiktokSettingsPreview?.hashtags || [];
+  const tiktokSettingsPreviewAny = tiktokSettingsPreview as any;
+  const tiktokSettingsPreviewMediaUrl =
+    tiktokSettingsMediaMode === "video"
+      ? tiktokSettingsPreviewAny?.video?.previewUrl || null
+      : tiktokSettingsPreviewAny?.image?.previewUrl || null;
+  const tiktokSettingsPreviewMediaName =
+    tiktokSettingsMediaMode === "video"
+      ? tiktokSettingsPreviewAny?.video?.name || videoFile?.name || ""
+      : "";
+  const tiktokSettingsPreviewMediaCount =
+    tiktokSettingsMediaMode === "video"
+      ? 1
+      : tiktokSettingsPreviewAny?.imageCount || images.length || 0;
+
   return (
     <div ref={publishRootRef} style={{ display: "grid", gap: 12, minWidth: 0 }}>
       <PublishHelpModal
@@ -4009,12 +4056,16 @@ export default function PublishModal({
         open={tiktokSettingsOpen}
         styles={styles}
         isMobile={isMobile}
-        mediaType={
-          resolveChannelMediaMode("tiktok") === "video" ? "video" : "images"
-        }
+        mediaType={tiktokSettingsMediaMode === "video" ? "video" : "images"}
         videoDurationSeconds={
           videoDurationSeconds ?? videoSourceMetadata?.duration ?? null
         }
+        previewTitle={tiktokSettingsPreviewTitle}
+        previewContent={tiktokSettingsPreviewContent}
+        previewHashtags={tiktokSettingsPreviewHashtags}
+        previewMediaUrl={tiktokSettingsPreviewMediaUrl}
+        previewMediaName={tiktokSettingsPreviewMediaName}
+        previewMediaCount={tiktokSettingsPreviewMediaCount}
         onCancel={closeTiktokSettingsModal}
         onValidate={validateTiktokSettingsModal}
       />

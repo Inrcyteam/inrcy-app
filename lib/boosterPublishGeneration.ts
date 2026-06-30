@@ -42,6 +42,7 @@ const allowedChannels: BoosterChannels[] = [
   "linkedin",
   "tiktok",
   "youtube_shorts",
+  "pinterest",
 ];
 
 const siteChannels = new Set<BoosterChannels>(["inrcy_site", "site_web"]);
@@ -55,6 +56,7 @@ const CHANNEL_OUTPUT_TOKEN_BUDGET: Record<BoosterChannels, number> = {
   linkedin: 1350,
   tiktok: 650,
   youtube_shorts: 1500,
+  pinterest: 650,
 };
 
 const CHANNEL_MIN_CONTENT_LENGTH: Record<BoosterChannels, number> = {
@@ -66,6 +68,7 @@ const CHANNEL_MIN_CONTENT_LENGTH: Record<BoosterChannels, number> = {
   linkedin: 450,
   tiktok: 120,
   youtube_shorts: 280,
+  pinterest: 160,
 };
 
 const CHANNEL_LABELS: Record<BoosterChannels, string> = {
@@ -77,6 +80,7 @@ const CHANNEL_LABELS: Record<BoosterChannels, string> = {
   linkedin: "LinkedIn",
   tiktok: "TikTok",
   youtube_shorts: "YouTube",
+  pinterest: "Pinterest",
 };
 
 const CHANNEL_BATCH_SIZE = 3;
@@ -212,7 +216,7 @@ export type GenerateSharedBoosterPostsResult = {
 
 function cleanHashtags(channel: BoosterChannels, input: unknown) {
   if (channel === "gmb" || siteChannels.has(channel)) return [];
-  const limit = channel === "instagram" || channel === "tiktok" || channel === "youtube_shorts" ? 8 : channel === "linkedin" ? 3 : 2;
+  const limit = channel === "instagram" || channel === "tiktok" || channel === "youtube_shorts" || channel === "pinterest" ? 8 : channel === "linkedin" ? 3 : 2;
   return Array.isArray(input)
     ? input
         .map((h) => String(h || "").trim().replace(/^#+/, ""))
@@ -811,6 +815,10 @@ const LANGUAGE_FALLBACK_COPY: Record<string, LanguageFallbackCopy> = {
         title: "A useful description for YouTube",
         content: ({ company, city }) => `On YouTube, ${company}${city} needs a description that gives context and remains searchable. The text should explain the subject, mention the value of the content and guide viewers toward the next step. This version is more descriptive than TikTok and more practical for people who find the video later.`,
       },
+      pinterest: {
+        title: "An idea to save on Pinterest",
+        content: ({ company, city, mediaLabel }) => `On Pinterest, ${company}${city} can turn the ${mediaLabel} into a useful idea people may want to save. The description should be clear, searchable and focused on the concrete benefit, with a natural invitation to discover more.`,
+      },
     },
   },
   es: {
@@ -862,6 +870,10 @@ const LANGUAGE_FALLBACK_COPY: Record<string, LanguageFallbackCopy> = {
       youtube_shorts: {
         title: "Una descripción útil para YouTube",
         content: ({ company, city }) => `En YouTube, ${company}${city} necesita una descripción que aporte contexto y sea fácil de encontrar. El texto debe explicar el tema, mencionar el valor del contenido y guiar al espectador hacia el siguiente paso. Esta versión es más descriptiva que TikTok y más práctica para quienes encuentran el vídeo más tarde.`,
+      },
+      pinterest: {
+        title: "Una idea para guardar en Pinterest",
+        content: ({ company, city, mediaLabel }) => `En Pinterest, ${company}${city} puede convertir el ${mediaLabel} en una idea útil para guardar. La descripción debe ser clara, fácil de encontrar y centrada en el beneficio concreto, con una invitación natural a descubrir más.`,
       },
     },
   },
@@ -915,6 +927,10 @@ const LANGUAGE_FALLBACK_COPY: Record<string, LanguageFallbackCopy> = {
         title: "Una descrizione utile per YouTube",
         content: ({ company, city }) => `Su YouTube, ${company}${city} ha bisogno di una descrizione che dia contesto e resti ricercabile. Il testo deve spiegare il tema, indicare il valore del contenuto e guidare chi guarda verso il passo successivo.`,
       },
+      pinterest: {
+        title: "Un'idea da salvare su Pinterest",
+        content: ({ company, city, mediaLabel }) => `Su Pinterest, ${company}${city} può trasformare il ${mediaLabel} in un'idea utile da salvare. La descrizione deve essere chiara, ricercabile e centrata sul beneficio concreto, con un invito naturale a scoprire di più.`,
+      },
     },
   },
   de: {
@@ -966,6 +982,10 @@ const LANGUAGE_FALLBACK_COPY: Record<string, LanguageFallbackCopy> = {
       youtube_shorts: {
         title: "Eine hilfreiche Beschreibung für YouTube",
         content: ({ company, city }) => `Auf YouTube braucht ${company}${city} eine Beschreibung, die Kontext bietet und auffindbar bleibt. Der Text erklärt das Thema, nennt den Nutzen des Inhalts und führt Zuschauer zum nächsten Schritt.`,
+      },
+      pinterest: {
+        title: "Eine Idee zum Speichern auf Pinterest",
+        content: ({ company, city, mediaLabel }) => `Auf Pinterest kann ${company}${city} den ${mediaLabel} in eine nützliche Idee zum Speichern verwandeln. Die Beschreibung bleibt klar, auffindbar und auf den konkreten Nutzen fokussiert.`,
       },
     },
   },
@@ -1019,6 +1039,10 @@ const LANGUAGE_FALLBACK_COPY: Record<string, LanguageFallbackCopy> = {
         title: "Een nuttige beschrijving voor YouTube",
         content: ({ company, city }) => `Op YouTube heeft ${company}${city} een beschrijving nodig die context geeft en vindbaar blijft. De tekst legt het onderwerp uit, benoemt de waarde van de inhoud en begeleidt kijkers naar de volgende stap.`,
       },
+      pinterest: {
+        title: "Een idee om op Pinterest te bewaren",
+        content: ({ company, city, mediaLabel }) => `Op Pinterest kan ${company}${city} het ${mediaLabel} omzetten in een nuttig idee om te bewaren. De beschrijving blijft duidelijk, vindbaar en gericht op het concrete voordeel.`,
+      },
     },
   },
   pt: {
@@ -1071,6 +1095,10 @@ const LANGUAGE_FALLBACK_COPY: Record<string, LanguageFallbackCopy> = {
         title: "Uma descrição útil para YouTube",
         content: ({ company, city }) => `No YouTube, ${company}${city} precisa de uma descrição que dê contexto e continue pesquisável. O texto deve explicar o tema, mencionar o valor do conteúdo e orientar o espectador para o próximo passo.`,
       },
+      pinterest: {
+        title: "Uma ideia para guardar no Pinterest",
+        content: ({ company, city, mediaLabel }) => `No Pinterest, ${company}${city} pode transformar o ${mediaLabel} numa ideia útil para guardar. A descrição deve ser clara, pesquisável e centrada no benefício concreto.`,
+      },
     },
   },
 };
@@ -1081,7 +1109,7 @@ function getLocalizedFallbackCta(channel: BoosterChannels, languageCode: string,
   if (preferredCta === "devis") return copy.quoteCta;
   if (preferredCta === "site") return copy.siteCta;
   if (preferredCta === "message") return copy.messageCta;
-  if (channel === "tiktok" || channel === "instagram" || channel === "youtube_shorts") return copy.messageCta;
+  if (channel === "tiktok" || channel === "instagram" || channel === "youtube_shorts" || channel === "pinterest") return copy.messageCta;
   return copy.cta;
 }
 

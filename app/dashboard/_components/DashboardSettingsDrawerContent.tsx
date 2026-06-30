@@ -22,6 +22,8 @@ import GmbPanelBlock from "./GmbPanelBlock";
 import FacebookPanelBlock from "./FacebookPanelBlock";
 import TiktokPanelBlock from "./TiktokPanelBlock";
 import YoutubeShortsSettingsContent from "../settings/_components/YoutubeShortsSettingsContent";
+import PinterestSettingsContent from "../settings/_components/PinterestSettingsContent";
+import TrustpilotSettingsContent from "../settings/_components/TrustpilotSettingsContent";
 import InrBadgeSettingsContent from "../settings/_components/InrBadgeSettingsContent";
 import InrAgentSettingsContent from "../settings/_components/InrAgentSettingsContent";
 
@@ -41,9 +43,11 @@ type DashboardPanelName =
   | "instagram"
   | "linkedin"
   | "gmb"
+  | "trustpilot"
   | "facebook"
   | "tiktok"
   | "youtube_shorts"
+  | "pinterest"
   | "inr_agent"
   | "legal"
   | "rgpd"
@@ -80,6 +84,8 @@ type DashboardSettingsDrawerContentProps = {
   facebookPanelProps: any;
   tiktokPanelProps: any;
   inrBadgeSettingsProps: any;
+  pinterestAccessEnabled?: boolean;
+  trustpilotAccessEnabled?: boolean;
 };
 
 export default function DashboardSettingsDrawerContent({
@@ -109,6 +115,8 @@ export default function DashboardSettingsDrawerContent({
   facebookPanelProps,
   tiktokPanelProps,
   inrBadgeSettingsProps,
+  pinterestAccessEnabled = false,
+  trustpilotAccessEnabled = false,
 }: DashboardSettingsDrawerContentProps) {
   return (
     <>
@@ -157,6 +165,8 @@ export default function DashboardSettingsDrawerContent({
       {panel === "documents" && <DocumentsSettingsContent />}
       {panel === "inr_agent" && <InrAgentSettingsContent />}
       {panel === "youtube_shorts" && <YoutubeShortsSettingsContent />}
+      {panel === "pinterest" && pinterestAccessEnabled && <PinterestSettingsContent />}
+      {panel === "trustpilot" && trustpilotAccessEnabled && <TrustpilotSettingsContent />}
 
       <SiteInrcyPanelBlock panel={panel} panelProps={siteInrcyPanelProps} />
       <SiteWebPanelBlock panel={panel} panelProps={siteWebPanelProps} />

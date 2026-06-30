@@ -1,5 +1,5 @@
 export type TiktokPreferredMedia = "video" | "photos";
-export type TiktokCommercialContent = "none" | "self" | "branded";
+export type TiktokCommercialContent = "none" | "self" | "branded" | "both";
 
 export type TiktokDefaultSettings = {
   preferredMedia: TiktokPreferredMedia;
@@ -73,7 +73,7 @@ export function normalizeTiktokPreferredMedia(value: unknown): TiktokPreferredMe
 }
 
 export function normalizeTiktokCommercialContent(value: unknown): TiktokCommercialContent {
-  if (value === "self" || value === "branded") return value;
+  if (value === "self" || value === "branded" || value === "both") return value;
   return "none";
 }
 

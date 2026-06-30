@@ -98,6 +98,7 @@ export async function GET() {
   const normalized = {
     username: settingsResult.tiktok.username || asString(creatorInfo.creator_username) || asString(creatorInfo.username),
     displayName: settingsResult.tiktok.displayName || asString(creatorInfo.creator_nickname) || asString(creatorInfo.display_name),
+    avatarUrl: settingsResult.tiktok.avatarUrl || asString(creatorInfo.creator_avatar_url) || null,
     privacyLevelOptions: normalizePrivacyOptions(creatorInfo.privacy_level_options),
     commentDisabled: asBoolean(creatorInfo.comment_disabled),
     duetDisabled: asBoolean(creatorInfo.duet_disabled),

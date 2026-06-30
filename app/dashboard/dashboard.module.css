@@ -6445,11 +6445,10 @@
 
 .channelPillRail {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  row-gap: 8px;
-  flex-wrap: wrap;
   width: 100%;
   margin-top: 14px;
   padding: 0 8px;
@@ -6457,6 +6456,15 @@
   border: 0;
   background: transparent;
   box-shadow: none;
+}
+
+.channelPillRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  width: 100%;
 }
 
 .channelPill {
@@ -6951,22 +6959,25 @@
   pointer-events: auto;
 }
 
-/* Bulle désactivée par l'accès Supabase : seule l'action est verrouillée.
-   La bulle reste en couleur pour conserver l'effet premium du dashboard. */
+/* Bulle désactivée par l'accès Supabase : visible mais grisée, comme les autres accès verrouillés. */
 .moduleBubbleCardComingSoon {
-  opacity: 1;
-  filter: none;
+  opacity: 0.58;
+  filter: grayscale(0.9) saturate(0.55);
 }
 
 .moduleBubbleCardComingSoon:hover {
   transform: none;
 }
 
+.moduleBubbleCardComingSoon .moduleGlow {
+  opacity: 0.25;
+}
+
 .moduleBubbleCardComingSoon .bubbleActions .actionMain,
 .moduleBubbleCardComingSoon .bubbleActions .actionView {
   cursor: not-allowed;
   opacity: 0.55 !important;
-  filter: grayscale(0.55) saturate(0.65);
+  filter: grayscale(1) saturate(0.45);
 }
 
 /* ✅ Mails : même gabarit que les autres bulles du coverflow.
@@ -8921,4 +8932,30 @@
 .scheduleDateTimePickerButton:disabled {
   cursor: not-allowed;
   opacity: 0.55;
+}
+
+/* Étape 9 — Pinterest zoom + rangées de canaux plus équilibrées */
+.bubbleLogoPinterest .bubbleLogoImg {
+  object-fit: contain !important;
+  transform: scale(1.2) !important;
+}
+
+.desktopCoverflowCenter .bubbleLogoPinterest .bubbleLogoImg {
+  object-fit: contain !important;
+  transform: scale(1.2) !important;
+}
+
+.desktopSideBubbleCard .bubbleLogoPinterest .bubbleLogoImg {
+  object-fit: contain !important;
+  transform: scale(1.2) !important;
+}
+
+@media (max-width: 560px) {
+  .channelPillRail {
+    gap: 8px;
+  }
+
+  .channelPillRow {
+    gap: 8px;
+  }
 }

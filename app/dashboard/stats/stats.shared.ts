@@ -29,6 +29,7 @@ export type Overview = {
     linkedin: { connected: boolean; metrics?: any | null };
     tiktok: { connected: boolean; metrics?: any | null };
     youtube_shorts?: { connected: boolean; metrics?: any | null };
+    pinterest?: { connected: boolean; metrics?: any | null };
     mails?: { connected: boolean; metrics?: any | null };
   };
   inrcyActivity?: Partial<Record<CubeKey, InrcyActivityStats>>;
@@ -36,7 +37,7 @@ export type Overview = {
   meta?: { generatedAt?: string; snapshotDate?: string | null; live?: boolean };
 };
 
-export type CubeKey = "inrbadge" | "site_inrcy" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin" | "mails" | "tiktok" | "youtube_shorts";
+export type CubeKey = "inrbadge" | "site_inrcy" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin" | "mails" | "tiktok" | "youtube_shorts" | "pinterest";
 
 export type Period = 7 | 14 | 30 | 60;
 
@@ -205,7 +206,7 @@ export function removeUiCacheValue(key: string) {
   removeAccountCacheValue(key);
 }
 
-const CUBE_KEYS: CubeKey[] = ["inrbadge", "mails", "site_inrcy", "site_web", "gmb", "facebook", "instagram", "linkedin", "tiktok", "youtube_shorts"];
+const CUBE_KEYS: CubeKey[] = ["inrbadge", "mails", "site_inrcy", "site_web", "gmb", "facebook", "instagram", "linkedin", "tiktok", "youtube_shorts", "pinterest"];
 const REMOTE_STATS_CUBE_KEYS: CubeKey[] = CUBE_KEYS.filter((key) => key !== "mails" && key !== "inrbadge");
 
 export function hasCapturedLeadsBlocks(blocks: Partial<Record<CubeKey, InrstatsChannelBlock>> | undefined) {
@@ -324,6 +325,7 @@ export function emptyCubeState(): Record<CubeKey, CubeState> {
     mails: { ov: null, loading: false, capturedLeads: { week: 0, month: 0 } },
     tiktok: { ov: null, loading: true, capturedLeads: { week: 0, month: 0 } },
     youtube_shorts: { ov: null, loading: false, capturedLeads: { week: 0, month: 0 } },
+    pinterest: { ov: null, loading: false, capturedLeads: { week: 0, month: 0 } },
   };
 }
 
@@ -584,7 +586,7 @@ function computeOpportunityPerDaySocial(cubeKey: CubeKey, ov: Overview): number 
 
   if (!connected) return 0;
 
-  const coldStartBaseline = cubeKey === "instagram" ? 0.18 : cubeKey === "linkedin" ? 0 : (cubeKey === "tiktok" || cubeKey === "youtube_shorts") ? 0.18 : 0.2;
+  const coldStartBaseline = cubeKey === "instagram" ? 0.18 : cubeKey === "linkedin" ? 0 : (cubeKey === "tiktok" || cubeKey === "youtube_shorts" || cubeKey === "pinterest") ? 0.18 : 0.2;
   if (!m) return coldStartBaseline;
 
   const audienceTotal =
@@ -732,7 +734,7 @@ function computeOpportunityPerDaySocial(cubeKey: CubeKey, ov: Overview): number 
   const refs =
     cubeKey === "instagram"
       ? { imp: 2500, eng: 120, cta: 6, aud: 3000 }
-      : (cubeKey === "tiktok" || cubeKey === "youtube_shorts")
+      : (cubeKey === "tiktok" || cubeKey === "youtube_shorts" || cubeKey === "pinterest")
         ? { imp: 3200, eng: 160, cta: 5, aud: 2500 }
         : { imp: 3000, eng: 90, cta: 5, aud: 5000 };
 
@@ -782,7 +784,7 @@ export function computeOpportunity30(cubeKey: CubeKey, ov: Overview) {
     return Math.max(0, Math.round(base + contactsPotential + activityPotential));
   }
 
-  if (cubeKey === "facebook" || cubeKey === "instagram" || cubeKey === "linkedin" || cubeKey === "tiktok" || cubeKey === "youtube_shorts") {
+  if (cubeKey === "facebook" || cubeKey === "instagram" || cubeKey === "linkedin" || cubeKey === "tiktok" || cubeKey === "youtube_shorts" || cubeKey === "pinterest") {
     const perDay = computeOpportunityPerDaySocial(cubeKey, ov);
     return Math.max(0, Math.round(perDay * 30));
   }
@@ -986,7 +988,7 @@ export function computeQuality(cubeKey: CubeKey, ov: Overview) {
     return { score, ...qualityLabel(score) };
   }
 
-  if (cubeKey === "facebook" || cubeKey === "instagram" || cubeKey === "linkedin" || cubeKey === "tiktok" || cubeKey === "youtube_shorts") {
+  if (cubeKey === "facebook" || cubeKey === "instagram" || cubeKey === "linkedin" || cubeKey === "tiktok" || cubeKey === "youtube_shorts" || cubeKey === "pinterest") {
     return computeSocialQuality(cubeKey, ov);
   }
 
@@ -1015,7 +1017,7 @@ export function computeQuality(cubeKey: CubeKey, ov: Overview) {
   return { score, ...qualityLabel(score) };
 }
 
-function getSocialMetrics(cubeKey: "facebook" | "instagram" | "linkedin" | "tiktok" | "youtube_shorts", ov: Overview) {
+function getSocialMetrics(cubeKey: "facebook" | "instagram" | "linkedin" | "tiktok" | "youtube_shorts" | "pinterest", ov: Overview) {
   const m =
     cubeKey === "facebook"
       ? ov?.sources?.facebook?.metrics
@@ -1025,7 +1027,9 @@ function getSocialMetrics(cubeKey: "facebook" | "instagram" | "linkedin" | "tikt
           ? ov?.sources?.tiktok?.metrics
           : cubeKey === "youtube_shorts"
             ? ov?.sources?.youtube_shorts?.metrics
-            : ov?.sources?.linkedin?.metrics;
+            : cubeKey === "pinterest"
+              ? ov?.sources?.pinterest?.metrics
+              : ov?.sources?.linkedin?.metrics;
 
   const audience =
     cubeKey === "facebook"
@@ -1080,7 +1084,7 @@ function getSocialMetrics(cubeKey: "facebook" | "instagram" | "linkedin" | "tikt
   return { audience, engagement, conversions, visibility };
 }
 
-function computeSocialQuality(cubeKey: "facebook" | "instagram" | "linkedin" | "tiktok" | "youtube_shorts", ov: Overview) {
+function computeSocialQuality(cubeKey: "facebook" | "instagram" | "linkedin" | "tiktok" | "youtube_shorts" | "pinterest", ov: Overview) {
   const connected =
     cubeKey === "facebook"
       ? !!ov?.sources?.facebook?.connected
@@ -1090,14 +1094,16 @@ function computeSocialQuality(cubeKey: "facebook" | "instagram" | "linkedin" | "
           ? !!ov?.sources?.tiktok?.connected
           : cubeKey === "youtube_shorts"
             ? !!ov?.sources?.youtube_shorts?.connected
-            : !!ov?.sources?.linkedin?.connected;
+            : cubeKey === "pinterest"
+              ? !!ov?.sources?.pinterest?.connected
+              : !!ov?.sources?.linkedin?.connected;
   if (!connected) return { score: 0, ...qualityLabel(0) };
 
   const { audience, engagement, conversions, visibility } = getSocialMetrics(cubeKey, ov);
   const exposureBase =
-    cubeKey === "instagram" ? 2500 : cubeKey === "linkedin" ? 1200 : (cubeKey === "tiktok" || cubeKey === "youtube_shorts") ? 3200 : 3000;
+    cubeKey === "instagram" ? 2500 : cubeKey === "linkedin" ? 1200 : (cubeKey === "tiktok" || cubeKey === "youtube_shorts" || cubeKey === "pinterest") ? 3200 : 3000;
   const engagementBase =
-    cubeKey === "instagram" ? 120 : cubeKey === "linkedin" ? 45 : (cubeKey === "tiktok" || cubeKey === "youtube_shorts") ? 160 : 90;
+    cubeKey === "instagram" ? 120 : cubeKey === "linkedin" ? 45 : (cubeKey === "tiktok" || cubeKey === "youtube_shorts" || cubeKey === "pinterest") ? 160 : 90;
   const conversionBase =
     cubeKey === "instagram" ? 6 : cubeKey === "linkedin" ? 3 : 5;
 
@@ -1136,7 +1142,7 @@ function getDecisionInput(
     };
   }
 
-  if (cubeKey === "facebook" || cubeKey === "instagram" || cubeKey === "linkedin" || cubeKey === "tiktok" || cubeKey === "youtube_shorts") {
+  if (cubeKey === "facebook" || cubeKey === "instagram" || cubeKey === "linkedin" || cubeKey === "tiktok" || cubeKey === "youtube_shorts" || cubeKey === "pinterest") {
     const metrics = getSocialMetrics(cubeKey, ov);
     const connected =
       cubeKey === "facebook"
@@ -1147,7 +1153,9 @@ function getDecisionInput(
           ? !!ov?.sources?.tiktok?.connected
           : cubeKey === "youtube_shorts"
             ? !!ov?.sources?.youtube_shorts?.connected
-            : !!ov?.sources?.linkedin?.connected;
+            : cubeKey === "pinterest"
+              ? !!ov?.sources?.pinterest?.connected
+              : !!ov?.sources?.linkedin?.connected;
 
     return {
       channelType: "social" as const,
@@ -1410,6 +1418,16 @@ function recommendAction(cubeKey: CubeKey, ov: Overview, qualityScore: number): 
     };
   }
 
+  if (cubeKey === "pinterest" && !ov?.sources?.pinterest?.connected) {
+    return {
+      key: "connect",
+      title: "Connecter Pinterest",
+      detail: "Pour activer les épingles et la visibilité inspirationnelle.",
+      href: "/dashboard?panel=pinterest",
+      pill: "Connexion",
+    };
+  }
+
   const effortMap: Partial<Record<ActionKey, CubeModel["action"]["effort"] | undefined>> = {
     booster_publier: { level: "faible", label: "Effort faible • 5 min" },
     propulser_action: { level: "moyen", label: "Effort moyen • 10-15 min" },
@@ -1469,7 +1487,7 @@ function recommendAction(cubeKey: CubeKey, ov: Overview, qualityScore: number): 
     return propulserToolAction("Lancez une action Propulser : les avis et preuves de confiance sont le levier n°1 pour gagner des appels locaux.");
   }
 
-  const socialLabel = cubeKey === "linkedin" ? "votre audience pro" : (cubeKey === "tiktok" || cubeKey === "youtube_shorts") ? "votre audience vidéo" : "votre audience";
+  const socialLabel = cubeKey === "linkedin" ? "votre audience pro" : cubeKey === "pinterest" ? "votre audience inspiration" : (cubeKey === "tiktok" || cubeKey === "youtube_shorts") ? "votre audience vidéo" : "votre audience";
   return boosterToolAction(`1 publication simple/semaine suffit pour capter ${socialLabel}.`);
 }
 
@@ -1660,7 +1678,7 @@ function hasTikTokStatsSignal(metrics: any) {
 }
 
 
-const INRCY_ACTIVITY_CUBE_KEYS = new Set<CubeKey>(["site_inrcy", "site_web", "gmb", "facebook", "instagram", "linkedin", "tiktok", "youtube_shorts"]);
+const INRCY_ACTIVITY_CUBE_KEYS = new Set<CubeKey>(["site_inrcy", "site_web", "gmb", "facebook", "instagram", "linkedin", "tiktok", "youtube_shorts", "pinterest"]);
 
 function normalizeInrcyActivityCount(value: any): InrcyActivityCount {
   return {
@@ -2008,6 +2026,7 @@ export function buildCubeModel(
         linkedin: { connected: false },
         tiktok: { connected: false },
         youtube_shorts: { connected: false },
+        pinterest: { connected: false },
         mails: { connected: false },
       },
     } as Overview);
@@ -2035,7 +2054,9 @@ export function buildCubeModel(
                   ? { main: !!ov.sources?.tiktok?.connected }
                   : key === "youtube_shorts"
                     ? { main: !!ov.sources?.youtube_shorts?.connected }
-                    : { main: !!ov.sources?.linkedin?.connected };
+                    : key === "pinterest"
+                      ? { main: !!ov.sources?.pinterest?.connected }
+                      : { main: !!ov.sources?.linkedin?.connected };
 
   const provenance = buildProvenance(key, ov);
   const computedOpp30 = computeOpportunity30(key, ov);
@@ -2147,6 +2168,7 @@ export function buildSummaryActionItems({
     mails: !!models.find((m) => m.key === "mails")?.connections.main,
     tiktok: !!models.find((m) => m.key === "tiktok")?.connections.main,
     youtube_shorts: !!models.find((m) => m.key === "youtube_shorts")?.connections.main,
+    pinterest: !!models.find((m) => m.key === "pinterest")?.connections.main,
   };
 
   const connectedCopy: Record<CubeKey, { label: string; kicker: string; motive: string; badge: string }> = {
@@ -2190,6 +2212,12 @@ export function buildSummaryActionItems({
       label: "Utiliser Booster",
       kicker: "Activez vos vidéos YouTube",
       motive: "YouTube transforme vos vidéos courtes ou longues en visibilité durable depuis le même flux iNrCy.",
+      badge: "Booster",
+    },
+    pinterest: {
+      label: "Utiliser Booster",
+      kicker: "Activez votre visibilité inspiration",
+      motive: "Booster vous aide à publier des visuels Pinterest depuis le même flux de communication.",
       badge: "Booster",
     },
     site_web: {
@@ -2255,6 +2283,12 @@ export function buildSummaryActionItems({
       motive: "Ajoutez votre chaîne YouTube pour publier vos vidéos depuis iNrCy.",
       badge: "Connexion",
     },
+    pinterest: {
+      label: "Connecter Pinterest",
+      kicker: "Activez le canal inspiration",
+      motive: "Reliez Pinterest pour publier vos visuels et renforcer votre découverte par l’image.",
+      badge: "Connexion",
+    },
     site_web: {
       label: "Connecter votre site",
       kicker: "Mesurez enfin votre rendement web",
@@ -2286,6 +2320,7 @@ export function buildSummaryActionItems({
     { key: "mails" as CubeKey, opportunities: centralByCube.mails, revenue: computedEstimatedByCube.mails || summaryEstimatedByCube.mails },
     { key: "tiktok" as CubeKey, opportunities: centralByCube.tiktok, revenue: computedEstimatedByCube.tiktok || summaryEstimatedByCube.tiktok },
     { key: "youtube_shorts" as CubeKey, opportunities: centralByCube.youtube_shorts, revenue: computedEstimatedByCube.youtube_shorts || summaryEstimatedByCube.youtube_shorts },
+    { key: "pinterest" as CubeKey, opportunities: centralByCube.pinterest, revenue: computedEstimatedByCube.pinterest || summaryEstimatedByCube.pinterest },
   ].map((item) => ({
     ...item,
     ...(connectionStateByCube[item.key] ? connectedCopy[item.key] : disconnectedCopy[item.key]),

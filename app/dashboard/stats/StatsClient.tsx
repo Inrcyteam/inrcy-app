@@ -541,7 +541,7 @@ export default function StatsClient() {
   const [summaryOpp, setSummaryOpp] = useState<{ loading: boolean; total: number; byCube: Record<CubeKey, number> }>({
     loading: true,
     total: 0,
-    byCube: { inrbadge: 0, site_inrcy: 0, site_web: 0, gmb: 0, facebook: 0, instagram: 0, linkedin: 0, mails: 0, tiktok: 0, youtube_shorts: 0 },
+    byCube: { inrbadge: 0, site_inrcy: 0, site_web: 0, gmb: 0, facebook: 0, instagram: 0, linkedin: 0, mails: 0, tiktok: 0, youtube_shorts: 0, pinterest: 0 },
   });
   const [summaryProfile, setSummaryProfile] = useState<{ lead_conversion_rate: number; avg_basket: number }>({ lead_conversion_rate: 0, avg_basket: 0 });
   const [summaryEstimatedByCube, setSummaryEstimatedByCube] = useState<Record<CubeKey, number>>({
@@ -555,6 +555,7 @@ export default function StatsClient() {
     mails: 0,
     tiktok: 0,
     youtube_shorts: 0,
+    pinterest: 0,
   });
   const [, setSummaryHydrated] = useState(false);
   const [activeStatsPanel, setActiveStatsPanel] = useState<StatsPanelKey>("all");
@@ -626,6 +627,7 @@ export default function StatsClient() {
           mails: 0,
           tiktok: safeNum(byCubePartial.tiktok),
           youtube_shorts: safeNum(byCubePartial.youtube_shorts),
+          pinterest: safeNum(byCubePartial.pinterest),
         },
       });
       setSummaryProfile({
@@ -643,6 +645,7 @@ export default function StatsClient() {
         mails: 0,
         tiktok: safeNum(estimatedByCubePartial.tiktok),
         youtube_shorts: safeNum(estimatedByCubePartial.youtube_shorts),
+      pinterest: safeNum(estimatedByCubePartial.pinterest),
       });
     }
   }, [hydrateMailStatsFromCache, period]);
@@ -768,6 +771,7 @@ export default function StatsClient() {
             mails: 0,
             tiktok: safeNum(cachedSummary.byCube?.tiktok),
             youtube_shorts: safeNum(cachedSummary.byCube?.youtube_shorts),
+            pinterest: safeNum(cachedSummary.byCube?.pinterest),
           },
         });
         setSummaryProfile({
@@ -785,6 +789,7 @@ export default function StatsClient() {
           mails: 0,
           tiktok: safeNum(cachedSummary.estimatedByCube?.tiktok),
           youtube_shorts: safeNum(cachedSummary.estimatedByCube?.youtube_shorts),
+          pinterest: safeNum(cachedSummary.estimatedByCube?.pinterest),
         });
       }
 
@@ -799,6 +804,7 @@ export default function StatsClient() {
             linkedin: safeNum(cachedSummary.byCube?.linkedin),
             tiktok: safeNum(cachedSummary.byCube?.tiktok),
             youtube_shorts: safeNum(cachedSummary.byCube?.youtube_shorts),
+            pinterest: safeNum(cachedSummary.byCube?.pinterest),
           },
           estimatedByCube: {
             site_inrcy: safeNum(cachedSummary.estimatedByCube?.site_inrcy),
@@ -809,6 +815,7 @@ export default function StatsClient() {
             linkedin: safeNum(cachedSummary.estimatedByCube?.linkedin),
             tiktok: safeNum(cachedSummary.estimatedByCube?.tiktok),
             youtube_shorts: safeNum(cachedSummary.estimatedByCube?.youtube_shorts),
+          pinterest: safeNum(cachedSummary.estimatedByCube?.pinterest),
           },
           profile: cachedSummary.profile,
           syncedAt: periodSyncAt,
@@ -897,6 +904,7 @@ export default function StatsClient() {
             mails: 0,
             tiktok: safeNum(payload?.opportunities?.byCube?.tiktok),
             youtube_shorts: safeNum(payload?.opportunities?.byCube?.youtube_shorts),
+            pinterest: safeNum(payload?.opportunities?.byCube?.pinterest),
           },
         },
         profile: {
@@ -914,6 +922,7 @@ export default function StatsClient() {
           mails: 0,
           tiktok: safeNum(payload?.estimatedByCube?.tiktok),
           youtube_shorts: safeNum(payload?.estimatedByCube?.youtube_shorts),
+          pinterest: safeNum(payload?.estimatedByCube?.pinterest),
         },
         blocks: payload?.blocks,
         snapshotDate: payloadSnapshotDate ?? null,
@@ -1118,6 +1127,7 @@ export default function StatsClient() {
           mails: 0,
           tiktok: safeNum(byCubePartial.tiktok),
           youtube_shorts: safeNum(byCubePartial.youtube_shorts),
+          pinterest: safeNum(byCubePartial.pinterest),
       },
     });
     setSummaryProfile({
@@ -1135,6 +1145,7 @@ export default function StatsClient() {
         mails: 0,
         tiktok: safeNum(estimatedByCubePartial.tiktok),
         youtube_shorts: safeNum(estimatedByCubePartial.youtube_shorts),
+      pinterest: safeNum(estimatedByCubePartial.pinterest),
     });
     return true;
   }, [hydrateMailStatsFromCache]);
@@ -1168,6 +1179,7 @@ export default function StatsClient() {
           mails: 0,
           tiktok: safeNum(byCubePartial.tiktok),
           youtube_shorts: safeNum(byCubePartial.youtube_shorts),
+          pinterest: safeNum(byCubePartial.pinterest),
         } as Record<CubeKey, number>,
       },
       profile: {
@@ -1247,7 +1259,7 @@ export default function StatsClient() {
 useEffect(() => {
   if (!dailyBootReady) return;
   let cancelled = false;
-  const keys: CubeKey[] = ["site_inrcy", "site_web", "gmb", "facebook", "instagram", "linkedin", "tiktok", "youtube_shorts"];
+  const keys: CubeKey[] = ["site_inrcy", "site_web", "gmb", "facebook", "instagram", "linkedin", "tiktok", "youtube_shorts", "pinterest"];
 
   (async () => {
     // Fast path: cached data for this period
@@ -1302,6 +1314,7 @@ useEffect(() => {
           mails: 0,
           tiktok: safeNum(cachedSummary.byCube?.tiktok),
           youtube_shorts: safeNum(cachedSummary.byCube?.youtube_shorts),
+            pinterest: safeNum(cachedSummary.byCube?.pinterest),
         },
       });
       setSummaryProfile({
@@ -1319,6 +1332,7 @@ useEffect(() => {
         mails: 0,
         tiktok: safeNum(cachedSummary.estimatedByCube?.tiktok),
         youtube_shorts: safeNum(cachedSummary.estimatedByCube?.youtube_shorts),
+          pinterest: safeNum(cachedSummary.estimatedByCube?.pinterest),
       });
       return;
     }
@@ -1470,6 +1484,7 @@ useEffect(() => {
     buildCubeModel("linkedin", "LinkedIn", "Visibilité professionnelle", period, dataByCube.linkedin, centralByCube),
     buildCubeModel("tiktok", "TikTok", "Photos & vidéos courtes", period, dataByCube.tiktok, centralByCube),
     buildCubeModel("youtube_shorts", "YouTube", "Vidéos courtes & longues", period, dataByCube.youtube_shorts, centralByCube),
+    buildCubeModel("pinterest", "Pinterest", "Inspiration & idées", period, dataByCube.pinterest, centralByCube),
   ]), [centralByCube, dataByCube, inrBadgeStats, mailStats, period]);
 
   const computedEstimatedByCube = useMemo<Record<CubeKey, number>>(() => {
@@ -1488,6 +1503,7 @@ useEffect(() => {
       mails: estimate(centralByCube.mails),
       tiktok: estimate(centralByCube.tiktok),
       youtube_shorts: estimate(centralByCube.youtube_shorts),
+      pinterest: estimate(centralByCube.pinterest),
     };
   }, [centralByCube, summaryProfile.avg_basket, summaryProfile.lead_conversion_rate]);
 

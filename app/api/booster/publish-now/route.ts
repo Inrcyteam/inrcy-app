@@ -48,6 +48,8 @@ import {
   failExecutionIdempotencyLock,
 } from "@/lib/executionIdempotency";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
+import { getAppBubbleAccessMapForUser } from "@/lib/appBubbleAccessServer";
+import { isBubbleEnabled } from "@/lib/bubbleAccess";
 import {
   GOOGLE_BUSINESS_RECONNECT_USER_MESSAGE,
   INSTAGRAM_RECONNECT_USER_MESSAGE,
@@ -80,6 +82,8 @@ import {
   refreshYoutubeShortsAccessToken,
 } from "@/lib/youtubeShortsOAuth";
 import { uploadYoutubeShort } from "@/lib/youtubeShortsPublish";
+import { getPinterestAccessToken } from "@/lib/pinterestOAuth";
+import { createPinterestImagePin } from "@/lib/pinterestPublish";
 import { buildVideoSettingsByChannel } from "@/lib/boosterVideoSettings";
 import {
   getVariantForChannel,
@@ -98,7 +102,8 @@ type ChannelKey =
   | "instagram"
   | "linkedin"
   | "tiktok"
-  | "youtube_shorts";
+  | "youtube_shorts"
+  | "pinterest";
 
 type JsonRecord = Record<string, unknown>;
 const asRecord = (v: unknown): JsonRecord =>
@@ -115,6 +120,7 @@ const CHANNEL_LABELS: Record<ChannelKey, string> = {
   linkedin: "LinkedIn",
   tiktok: "TikTok",
   youtube_shorts: "YouTube",
+  pinterest: "Pinterest",
 };
 
 const IMMEDIATE_PUBLISH_DUPLICATE_LOOKAHEAD_MINUTES = 240;
@@ -291,16 +297,17 @@ function normalizeTiktokPublicationSettings(
 ): TiktokPublicationSettings | null {
   const raw = asRecord(value);
   const privacyLevel = String(raw.privacyLevel || "").trim();
-  if (!privacyLevel) return null;
+  const commercialContentRaw = String(raw.commercialContent || "").trim();
+  const commercialContent = ["none", "self", "branded", "both"].includes(commercialContentRaw)
+    ? commercialContentRaw
+    : "";
+  if (!privacyLevel || !commercialContent) return null;
   return {
     privacyLevel,
     allowComments: raw.allowComments === true,
     allowDuo: raw.allowDuo === true,
     allowStitch: raw.allowStitch === true,
-    commercialContent:
-      raw.commercialContent === "self" || raw.commercialContent === "branded"
-        ? raw.commercialContent
-        : "none",
+    commercialContent: commercialContent as TiktokPublicationSettings["commercialContent"],
     aiContent: raw.aiContent === true,
     photoAutoMusic: raw.photoAutoMusic === true,
     musicUsageConfirmed: raw.musicUsageConfirmed === true,
@@ -370,6 +377,11 @@ function normalizeHashtag(input: string): string {
     .replace(/^#+/, "")
     .replace(/[^\p{L}\p{N}_]/gu, "")
     .slice(0, 40);
+}
+
+function normalizePublicHttpUrl(input: unknown) {
+  const raw = String(input || "").trim();
+  return /^https?:\/\//i.test(raw) ? raw : "";
 }
 
 function isExpired(expiresAt: unknown, skewSeconds = 60) {
@@ -1060,6 +1072,7 @@ export async function POST(req: Request) {
     const idea = String(body.idea || "").trim();
     const mediaType = normalizePublicationMediaType(body.mediaType);
     const selected = Array.from(new Set(channels)).filter(Boolean);
+    const bubbleAccess = await getAppBubbleAccessMapForUser(supabaseAdmin as any, userId);
     const rawModeByChannel = (body.mediaModeByChannel || {}) as Record<
       string,
       unknown
@@ -1536,7 +1549,7 @@ export async function POST(req: Request) {
     // 4) Publish now
     const results: Record<string, unknown> = {};
 
-    const [fbRow, gmbRow, igRow, liRow, tiktokRow, youtubeRow] =
+    const [fbRow, gmbRow, igRow, liRow, tiktokRow, youtubeRow, pinterestRow] =
       await Promise.all([
         getLatestIntegrationRow(
           userId,
@@ -1579,6 +1592,13 @@ export async function POST(req: Request) {
           "youtube_shorts",
           "youtube_shorts",
           "status,resource_id,resource_label,display_name,email_address,access_token_enc,refresh_token_enc,scopes,meta,expires_at",
+        ),
+        getLatestIntegrationRow(
+          userId,
+          "pinterest",
+          "pinterest",
+          "pinterest",
+          "status,resource_id,resource_label,display_name,access_token_enc,refresh_token_enc,scopes,meta,expires_at",
         ),
       ]);
 
@@ -1752,6 +1772,13 @@ export async function POST(req: Request) {
 
     for (const ch of selected) {
       try {
+        if (ch === "pinterest" && !isBubbleEnabled(bubbleAccess, "pinterest")) {
+          const disabledMessage = "Pinterest est désactivé dans Bubble Access.";
+          await setDelivery(ch, { status: "failed", error: disabledMessage });
+          results[ch] = { ok: false, error: disabledMessage, code: "bubble_access_disabled" };
+          continue;
+        }
+
         const channelPost = getChannelPost(ch);
         const canonMessage = buildBoosterMessage(ch, channelPost, {
           websiteUrl: siteWebUrl || inrcySiteUrl,
@@ -2510,7 +2537,8 @@ export async function POST(req: Request) {
 
           if (
             !tiktokPublicationSettings?.privacyLevel ||
-            !tiktokPublicationSettings.musicUsageConfirmed
+            !tiktokPublicationSettings.musicUsageConfirmed ||
+            !["none", "self", "branded", "both"].includes(String(tiktokPublicationSettings.commercialContent || ""))
           ) {
             const tiktokUserError =
               "Validez les paramètres TikTok avant publication.";
@@ -2566,6 +2594,10 @@ export async function POST(req: Request) {
 
           await setDelivery(ch, { status: "delivered", error: null });
 
+          const tiktokPendingMessage = tiktokResult.status?.pending
+            ? "TikTok a accepté l'envoi. La publication peut apparaître dans quelques instants sur le compte connecté."
+            : null;
+
           const tiktokOpenUrl =
             String(
               tiktokResult.shareUrl || tiktokSettings.profileUrl || "",
@@ -2578,6 +2610,8 @@ export async function POST(req: Request) {
             share_url: tiktokResult.shareUrl || null,
             tiktok_status: tiktokResult.status?.status || "PUBLISH_COMPLETE",
             tiktok_media_type: isVideo ? "video" : "photos",
+            warning: Boolean(tiktokPendingMessage),
+            warning_message: tiktokPendingMessage,
             media_type: isVideo ? "video" : "photos",
             media_count: isVideo ? 1 : tiktokImageUrls.length,
             username: tiktokSettings.username,
@@ -2594,6 +2628,104 @@ export async function POST(req: Request) {
               share_url: tiktokResult.shareUrl || null,
               raw: tiktokResult.raw,
             },
+          };
+          continue;
+        }
+
+        if (ch === "pinterest") {
+          const pinterestSettings = asRecord(proSettings["pinterest"]);
+          const pinterestMeta = asRecord(asRecord(pinterestRow).meta);
+          const pinterestStatus = String(asRecord(pinterestRow).status || "");
+          const boardId = String(
+            pinterestSettings.defaultBoardId ||
+              pinterestSettings.boardId ||
+              pinterestMeta.default_board_id ||
+              "",
+          ).trim();
+          const boardName = String(
+            pinterestSettings.defaultBoardName ||
+              pinterestSettings.boardName ||
+              pinterestMeta.default_board_name ||
+              asRecord(pinterestRow).resource_label ||
+              "",
+          ).trim();
+          const pinterestAccessToken =
+            pinterestStatus === "connected" || pinterestStatus === "account_connected"
+              ? await getPinterestAccessToken(userId, req.url)
+              : "";
+
+          if (!pinterestAccessToken) {
+            const pinterestUserError = "Pinterest à connecter. Rendez-vous dans Canaux.";
+            await setDelivery(ch, { status: "failed", error: pinterestUserError });
+            results[ch] = { ok: false, error: pinterestUserError };
+            continue;
+          }
+
+          if (!boardId) {
+            const pinterestUserError = "Sélectionnez un tableau Pinterest dans la configuration.";
+            await setDelivery(ch, { status: "failed", error: pinterestUserError });
+            results[ch] = { ok: false, error: pinterestUserError };
+            continue;
+          }
+
+          if (mediaModeByChannel[ch] !== "images") {
+            const pinterestUserError = "Pinterest nécessite au moins 1 image.";
+            await setDelivery(ch, { status: "failed", error: pinterestUserError });
+            results[ch] = { ok: false, error: pinterestUserError };
+            continue;
+          }
+
+          const pinterestImageSet = getChannelImageSet(ch);
+          const pinterestImageUrls = (
+            pinterestImageSet.images.length
+              ? pinterestImageSet.images
+              : pinterestImageSet.publishableUrls.length
+                ? pinterestImageSet.publishableUrls
+                : pinterestImageSet.socialFeedPublishableUrls.length
+                  ? pinterestImageSet.socialFeedPublishableUrls
+                  : externalImageUrls
+          )
+            .filter(Boolean)
+            .slice(0, 1);
+
+          if (!pinterestImageUrls.length) {
+            const pinterestUserError = "Veuillez ajouter au moins 1 image pour publier sur Pinterest.";
+            await setDelivery(ch, { status: "failed", error: pinterestUserError });
+            results[ch] = { ok: false, error: pinterestUserError };
+            continue;
+          }
+
+          const pinterestTags = Array.isArray(channelPost.hashtags)
+            ? channelPost.hashtags
+                .map((tag) => normalizeHashtag(String(tag)))
+                .filter(Boolean)
+                .slice(0, 8)
+            : [];
+          const pinterestTagLine = pinterestTags.length
+            ? pinterestTags.map((tag) => `#${tag}`).join(" ")
+            : "";
+          const description = [canonMessage, pinterestTagLine]
+            .filter(Boolean)
+            .join("\n\n")
+            .slice(0, 500);
+          const pin = await createPinterestImagePin({
+            accessToken: pinterestAccessToken,
+            boardId,
+            title: channelPost.title || post.title || "Publication iNrCy",
+            description,
+            imageUrl: pinterestImageUrls[0],
+            link: normalizePublicHttpUrl(channelPost.ctaUrl) || normalizePublicHttpUrl(siteWebUrl) || normalizePublicHttpUrl(inrcySiteUrl),
+          });
+
+          await setDelivery(ch, { status: "delivered", error: null });
+          results[ch] = {
+            ok: true,
+            external_id: pin.id || null,
+            external_url: pin.url || null,
+            board_id: pin.board_id || boardId,
+            board_name: boardName || null,
+            media_type: "image",
+            diagnostics: pin,
           };
           continue;
         }

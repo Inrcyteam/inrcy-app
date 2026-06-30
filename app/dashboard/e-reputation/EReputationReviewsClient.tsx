@@ -4,8 +4,11 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import styles from "./eReputation.module.css";
 
+export type EReputationPlatformId = "google" | "trustpilot";
+
 export type EReputationReviewItem = {
   id: string;
+  platform?: EReputationPlatformId;
   reviewName: string | null;
   name: string;
   rating: number;
@@ -16,6 +19,30 @@ export type EReputationReviewItem = {
   translatedComment?: string | null;
   reply?: string | null;
   live?: boolean;
+  replyable?: boolean;
+  verified?: boolean;
+};
+
+export type EReputationReviewsPlatform = {
+  id: EReputationPlatformId;
+  label: string;
+  shortLabel: string;
+  iconSrc: string;
+  modalKicker: string;
+  replyLabel: string;
+  reviews: EReputationReviewItem[];
+  reviewsReady: boolean;
+  reviewsError: string | null;
+  initialNextPageToken?: string | null;
+  totalReviewCount?: number;
+  averageRatingLabel?: string;
+  locationLabel?: string;
+  statusLabel?: string;
+  connected?: boolean;
+  canReply?: boolean;
+  reportUrl?: string | null;
+  profileUrl?: string | null;
+  inviteUrl?: string | null;
 };
 
 type Props = {
@@ -29,6 +56,7 @@ type Props = {
   statusLabel?: string;
   gmbReady?: boolean;
   reportGoogleUrl?: string | null;
+  platforms?: EReputationReviewsPlatform[];
 };
 
 type ReplyResponse = {
@@ -40,7 +68,7 @@ type ReplyResponse = {
   reply?: {
     comment?: string;
     updateTime?: string | null;
-  };
+  } | null;
 };
 
 type GenerateReplyResponse = {
@@ -55,6 +83,8 @@ type ApiReview = {
   reviewId?: string | null;
   reviewerName?: string | null;
   starRating?: number | null;
+  rating?: number | null;
+  title?: string | null;
   comment?: string | null;
   originalComment?: string | null;
   translatedComment?: string | null;
@@ -65,6 +95,8 @@ type ApiReview = {
     comment?: string | null;
     updateTime?: string | null;
   } | null;
+  isVerified?: boolean | null;
+  replyable?: boolean | null;
 };
 
 type ReviewsResponse = {
@@ -94,9 +126,7 @@ function stableHash(value: string) {
 }
 
 function pickVariant<T>(variants: T[], seed: number) {
-  if (!variants.length) {
-    throw new Error("Aucune variante disponible.");
-  }
+  if (!variants.length) throw new Error("Aucune variante disponible.");
   return variants[Math.abs(seed) % variants.length];
 }
 
@@ -109,7 +139,7 @@ function getReviewerFirstName(name: string) {
     .trim();
 
   if (!firstName || firstName.length < 2) return "";
-  if (["client", "google", "user", "utilisateur"].includes(firstName.toLowerCase())) return "";
+  if (["client", "google", "trustpilot", "user", "utilisateur"].includes(firstName.toLowerCase())) return "";
   return firstName;
 }
 
@@ -132,7 +162,6 @@ function defaultReplyFor(review: EReputationReviewItem | null) {
   const directName = firstName ? ` ${firstName}` : "";
   const commaName = firstName ? `, ${firstName}` : "";
   const withComment = reviewHasWrittenComment(review);
-
   let variants: string[] = [];
 
   if (review.rating >= 5) {
@@ -193,11 +222,15 @@ function formatReviewDate(value: string | null | undefined) {
   return date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
-function toReviewItem(review: ApiReview): EReputationReviewItem {
-  const reviewName = String(review.name || "").trim() || null;
+function platformDefaultReviewer(platform: EReputationPlatformId) {
+  return platform === "trustpilot" ? "Client Trustpilot" : "Client Google";
+}
+
+function toReviewItem(review: ApiReview, platform: EReputationPlatformId): EReputationReviewItem {
+  const reviewName = String(review.name || review.reviewId || "").trim() || null;
   const reviewId = String(review.reviewId || reviewName || Math.random().toString(36).slice(2)).trim();
   const hasReply = review.replyStatus === "answered" || Boolean(review.reply?.comment);
-  const rating = Math.min(5, Math.max(0, Math.round(Number(review.starRating || 0)))) || 0;
+  const rating = Math.min(5, Math.max(0, Math.round(Number(review.starRating ?? review.rating ?? 0)))) || 0;
   const parsedComment = splitGoogleReviewText(review.comment);
   const originalComment = cleanGoogleReviewText(review.originalComment) || parsedComment.original;
   const translatedComment = cleanGoogleReviewText(review.translatedComment) || parsedComment.translated;
@@ -205,9 +238,10 @@ function toReviewItem(review: ApiReview): EReputationReviewItem {
   const cleanReply = cleanGoogleReviewText(review.reply?.comment);
 
   return {
-    id: reviewName || reviewId,
-    reviewName,
-    name: String(review.reviewerName || "Client Google").trim() || "Client Google",
+    id: `${platform}:${reviewName || reviewId}`,
+    platform,
+    reviewName: reviewName || reviewId,
+    name: String(review.reviewerName || platformDefaultReviewer(platform)).trim() || platformDefaultReviewer(platform),
     rating,
     date: formatReviewDate(review.updateTime || review.createTime),
     status: hasReply ? "Répondu" : rating > 0 && rating <= 3 ? "À traiter" : "À répondre",
@@ -216,6 +250,8 @@ function toReviewItem(review: ApiReview): EReputationReviewItem {
     translatedComment: translatedComment || null,
     reply: cleanReply || null,
     live: true,
+    replyable: review.replyable !== false,
+    verified: Boolean(review.isVerified),
   };
 }
 
@@ -248,7 +284,6 @@ function cleanGoogleReviewText(value: string | null | undefined) {
 function splitGoogleReviewText(value: string | null | undefined) {
   const text = compactReviewText(value);
   if (!text) return { original: "", translated: "" };
-
   const translatedMarker = /\(\s*(?:Translated by Google|Traduit par Google|Translation by Google|Traduction Google)\s*\)/i;
   const originalMarker = /\(\s*(?:Original|Texte original)\s*\)/i;
   const translatedMatch = translatedMarker.exec(text);
@@ -314,27 +349,61 @@ function ReviewTextBlock({ review }: { review: EReputationReviewItem }) {
   return <div className={styles.reviewLanguageText}>{renderMultilineText(original || "Avis sans commentaire écrit.")}</div>;
 }
 
-export default function EReputationReviewsClient({
-  reviews,
-  reviewsReady,
-  reviewsError,
-  initialNextPageToken = null,
-  totalReviewCount = 0,
-  averageRatingLabel = "—",
-  locationLabel = "Fiche Google Business",
-  statusLabel = "Google Business",
-  gmbReady = false,
-  reportGoogleUrl = null,
-}: Props) {
-  const [items, setItems] = useState<EReputationReviewItem[]>(reviews);
+function buildDefaultPlatform(props: Props): EReputationReviewsPlatform {
+  return {
+    id: "google",
+    label: "Google",
+    shortLabel: "Google",
+    iconSrc: "/icons/google.jpg",
+    modalKicker: "Avis Google",
+    replyLabel: "Réponse Google",
+    reviews: props.reviews.map((review) => ({ ...review, platform: "google" as const, replyable: review.replyable !== false })),
+    reviewsReady: props.reviewsReady,
+    reviewsError: props.reviewsError,
+    initialNextPageToken: props.initialNextPageToken || null,
+    totalReviewCount: props.totalReviewCount || 0,
+    averageRatingLabel: props.averageRatingLabel || "—",
+    locationLabel: props.locationLabel || "Fiche Google Business",
+    statusLabel: props.statusLabel || "Google Business",
+    connected: props.gmbReady,
+    canReply: props.gmbReady,
+    reportUrl: props.reportGoogleUrl || null,
+  };
+}
+
+function normalizePlatform(platform: EReputationReviewsPlatform): EReputationReviewsPlatform {
+  return {
+    ...platform,
+    reviews: platform.reviews.map((review) => ({ ...review, platform: platform.id, replyable: review.replyable !== false })),
+    initialNextPageToken: platform.initialNextPageToken || null,
+    totalReviewCount: platform.totalReviewCount || 0,
+    averageRatingLabel: platform.averageRatingLabel || "—",
+    locationLabel: platform.locationLabel || platform.label,
+    statusLabel: platform.statusLabel || platform.label,
+    connected: Boolean(platform.connected),
+    canReply: Boolean(platform.canReply),
+  };
+}
+
+function apiBaseFor(platform: EReputationPlatformId) {
+  return platform === "trustpilot" ? "/api/e-reputation/trustpilot" : "/api/e-reputation/google";
+}
+
+export default function EReputationReviewsClient(props: Props) {
+  const normalizedPlatforms = useMemo(() => {
+    const source = props.platforms?.length ? props.platforms : [buildDefaultPlatform(props)];
+    return source.map(normalizePlatform);
+  }, [props.platforms, props.reviews, props.reviewsReady, props.reviewsError, props.initialNextPageToken, props.totalReviewCount, props.averageRatingLabel, props.locationLabel, props.statusLabel, props.gmbReady, props.reportGoogleUrl]);
+
+  const [platformData, setPlatformData] = useState<EReputationReviewsPlatform[]>(normalizedPlatforms);
+  const [activePlatformId, setActivePlatformId] = useState<EReputationPlatformId>(normalizedPlatforms.find((platform) => platform.connected)?.id || normalizedPlatforms[0]?.id || "google");
   const [filter, setFilter] = useState<"all" | "todo" | "answered">("all");
   const [starFilter, setStarFilter] = useState<"all" | "5" | "4" | "3" | "2" | "1">("all");
   const [query, setQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
-  const [selectedId, setSelectedId] = useState(reviews[0]?.id || "");
+  const [selectedId, setSelectedId] = useState(normalizedPlatforms[0]?.reviews[0]?.id || "");
   const [detailsOpen, setDetailsOpen] = useState(false);
-  const [replyText, setReplyText] = useState(defaultReplyFor(reviews[0] || null));
-  const [nextPageToken, setNextPageToken] = useState<string | null>(initialNextPageToken || null);
+  const [replyText, setReplyText] = useState(defaultReplyFor(normalizedPlatforms[0]?.reviews[0] || null));
   const [publishing, setPublishing] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -344,11 +413,43 @@ export default function EReputationReviewsClient({
   const [listNotice, setListNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   useEffect(() => {
-    setItems(reviews);
-    setNextPageToken(initialNextPageToken || null);
+    setPlatformData(normalizedPlatforms);
+    setActivePlatformId((current) => normalizedPlatforms.some((platform) => platform.id === current) ? current : normalizedPlatforms.find((platform) => platform.connected)?.id || normalizedPlatforms[0]?.id || "google");
+  }, [normalizedPlatforms]);
+
+  const activePlatform = platformData.find((platform) => platform.id === activePlatformId) || platformData[0] || normalizePlatform(buildDefaultPlatform(props));
+  const items = activePlatform.reviews;
+  const nextPageToken = activePlatform.initialNextPageToken || null;
+  const reviewsReady = activePlatform.reviewsReady;
+  const reviewsError = activePlatform.reviewsError;
+  const platformApiBase = apiBaseFor(activePlatform.id);
+  const platformLabel = activePlatform.label;
+  const platformShortLabel = activePlatform.shortLabel || activePlatform.label;
+  const platformCanReply = Boolean(activePlatform.canReply);
+
+  function updateActivePlatform(updater: (platform: EReputationReviewsPlatform) => EReputationReviewsPlatform) {
+    setPlatformData((current) => current.map((platform) => platform.id === activePlatform.id ? updater(platform) : platform));
+  }
+
+  function setItems(next: EReputationReviewItem[] | ((current: EReputationReviewItem[]) => EReputationReviewItem[])) {
+    updateActivePlatform((platform) => ({
+      ...platform,
+      reviews: typeof next === "function" ? next(platform.reviews) : next,
+    }));
+  }
+
+  function setNextPageToken(next: string | null) {
+    updateActivePlatform((platform) => ({ ...platform, initialNextPageToken: next }));
+  }
+
+  useEffect(() => {
+    const first = activePlatform.reviews[0] || null;
     setCurrentPage(1);
-    setSelectedId((current) => (reviews.some((review) => review.id === current) ? current : reviews[0]?.id || ""));
-  }, [reviews, initialNextPageToken]);
+    setSelectedId((current) => (activePlatform.reviews.some((review) => review.id === current) ? current : first?.id || ""));
+    setReplyText(defaultReplyFor(first));
+    setNotice(null);
+    setListNotice(null);
+  }, [activePlatform.id]);
 
   const stats = useMemo(() => {
     const answered = items.filter((review) => review.status === "Répondu").length;
@@ -373,9 +474,10 @@ export default function EReputationReviewsClient({
   }, [filter, items, query, starFilter]);
 
   const hasLocalFilter = filter !== "all" || starFilter !== "all" || query.trim().length > 0;
+  const totalReviewCount = activePlatform.totalReviewCount || 0;
   const totalPages = Math.max(
     1,
-    Math.ceil((hasLocalFilter ? filteredReviews.length : Math.max(totalReviewCount, filteredReviews.length)) / REVIEWS_PAGE_SIZE)
+    Math.ceil((hasLocalFilter ? filteredReviews.length : Math.max(totalReviewCount, filteredReviews.length)) / REVIEWS_PAGE_SIZE),
   );
   const safeCurrentPage = Math.min(currentPage, totalPages);
   const pageStartIndex = (safeCurrentPage - 1) * REVIEWS_PAGE_SIZE;
@@ -390,25 +492,22 @@ export default function EReputationReviewsClient({
       for (let page = 1; page <= totalPages; page += 1) pages.push(page);
       return pages;
     }
-
     const current = safeCurrentPage;
     const candidates = new Set([1, 2, totalPages - 1, totalPages, current - 1, current, current + 1]);
     const ordered = Array.from(candidates)
       .filter((page) => page >= 1 && page <= totalPages)
       .sort((a, b) => a - b);
-
     for (const page of ordered) {
       const previous = pages[pages.length - 1];
       if (typeof previous === "number" && page - previous > 1) pages.push("ellipsis");
       pages.push(page);
     }
-
     return pages;
   }, [safeCurrentPage, totalPages]);
 
   useEffect(() => {
     setCurrentPage(1);
-  }, [filter, query, starFilter]);
+  }, [filter, query, starFilter, activePlatform.id]);
 
   useEffect(() => {
     if (currentPage > totalPages) setCurrentPage(totalPages);
@@ -439,14 +538,17 @@ export default function EReputationReviewsClient({
 
   const busy = publishing || generating || deleting || loadingMore || refreshing;
   const selectedAlreadyAnswered = selectedReview?.status === "Répondu";
-  const canGenerate = Boolean(selectedReview?.live && selectedReview.reviewName && !busy);
-  const canPublish = Boolean(selectedReview?.live && selectedReview.reviewName && replyText.trim().length >= 2 && !busy);
-  const canDelete = Boolean(selectedReview?.live && selectedReview.reviewName && selectedReview.reply && !busy);
-  const canReport = Boolean(selectedReview?.live && reportGoogleUrl);
+  const selectedCanReply = Boolean(selectedReview?.live && selectedReview.reviewName && selectedReview.replyable !== false && platformCanReply);
+  const canGenerate = Boolean(selectedCanReply && !busy);
+  const canPublish = Boolean(selectedCanReply && replyText.trim().length >= 2 && !busy);
+  const canDelete = Boolean(selectedCanReply && selectedReview?.reply && !busy);
+  const canReport = Boolean(selectedReview?.live && activePlatform.reportUrl && activePlatform.id === "google");
   const loadedLabel = totalReviewCount > 0 ? `${items.length.toLocaleString("fr-FR")} / ${totalReviewCount.toLocaleString("fr-FR")}` : items.length.toLocaleString("fr-FR");
   const totalReviewsLabel = (totalReviewCount > 0 ? totalReviewCount : stats.total).toLocaleString("fr-FR");
-  const summaryStatusLabel = reviewsReady ? "Avis chargés" : statusLabel;
-  const summaryStatusShortLabel = reviewsReady ? "Chargés" : statusLabel;
+  const summaryStatusLabel = reviewsReady ? "Avis chargés" : activePlatform.statusLabel || platformLabel;
+  const summaryStatusShortLabel = reviewsReady ? "Chargés" : activePlatform.statusLabel || platformShortLabel;
+  const averageRatingLabel = activePlatform.averageRatingLabel || "—";
+  const locationLabel = activePlatform.locationLabel || platformLabel;
 
   function openDetails(review: EReputationReviewItem) {
     setSelectedId(review.id);
@@ -455,11 +557,16 @@ export default function EReputationReviewsClient({
     setDetailsOpen(true);
   }
 
+  function changePlatform(platformId: EReputationPlatformId) {
+    if (platformId === activePlatform.id || busy) return;
+    setActivePlatformId(platformId);
+  }
+
   async function requestReviews(pageToken?: string | null) {
     const params = new URLSearchParams({ pageSize: String(REVIEWS_PAGE_SIZE) });
     if (pageToken) params.set("pageToken", pageToken);
 
-    const response = await fetch(`/api/e-reputation/google/reviews?${params.toString()}`, {
+    const response = await fetch(`${platformApiBase}/reviews?${params.toString()}`, {
       method: "GET",
       credentials: "include",
       cache: "no-store",
@@ -467,19 +574,21 @@ export default function EReputationReviewsClient({
     const payload = (await response.json().catch(() => null)) as ReviewsResponse | null;
 
     if (!response.ok || !payload) {
-      throw new Error(getErrorMessage(payload, "Impossible de charger les avis Google pour le moment."));
+      throw new Error(getErrorMessage(payload, `Impossible de charger les avis ${platformLabel} pour le moment.`));
     }
 
     return {
-      incoming: Array.isArray(payload.reviews) ? payload.reviews.map(toReviewItem) : [],
+      incoming: Array.isArray(payload.reviews) ? payload.reviews.map((review) => toReviewItem(review, activePlatform.id)) : [],
       nextToken: payload.nextPageToken || null,
+      total: Number.isFinite(Number(payload.totalReviewCount)) ? Number(payload.totalReviewCount) : activePlatform.totalReviewCount || 0,
     };
   }
 
   async function fetchReviews({ pageToken, replace }: { pageToken?: string | null; replace?: boolean } = {}) {
-    const { incoming, nextToken } = await requestReviews(pageToken);
+    const { incoming, nextToken, total } = await requestReviews(pageToken);
     setItems((current) => (replace ? incoming : mergeReviews(current, incoming)));
     setNextPageToken(nextToken);
+    updateActivePlatform((platform) => ({ ...platform, totalReviewCount: total }));
     setSelectedId((current) => {
       if (!replace && current) return current;
       return incoming[0]?.id || "";
@@ -491,15 +600,14 @@ export default function EReputationReviewsClient({
     if (!reviewsReady) return;
     setRefreshing(true);
     setListNotice(null);
-
     try {
       const count = await fetchReviews({ replace: true });
       setListNotice({
         type: "success",
-        text: count > 0 ? "Avis Google actualisés." : "Aucun avis Google n’a été retourné pour cette fiche.",
+        text: count > 0 ? `Avis ${platformLabel} actualisés.` : `Aucun avis ${platformLabel} n’a été retourné.`,
       });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Impossible d’actualiser les avis Google pour le moment.";
+      const message = error instanceof Error ? error.message : `Impossible d’actualiser les avis ${platformLabel} pour le moment.`;
       setListNotice({ type: "error", text: message });
     } finally {
       setRefreshing(false);
@@ -510,13 +618,9 @@ export default function EReputationReviewsClient({
     if (!nextPageToken || !reviewsReady) return;
     setLoadingMore(true);
     setListNotice(null);
-
     try {
       const count = await fetchReviews({ pageToken: nextPageToken });
-      setListNotice({
-        type: "success",
-        text: count > 0 ? "Avis supplémentaires chargés." : "Aucun autre avis à afficher.",
-      });
+      setListNotice({ type: "success", text: count > 0 ? "Avis supplémentaires chargés." : "Aucun autre avis à afficher." });
       if (count > 0) setCurrentPage((page) => page + 1);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Impossible de charger les avis suivants.";
@@ -538,20 +642,22 @@ export default function EReputationReviewsClient({
 
     setLoadingMore(true);
     setListNotice(null);
-
     try {
       let accumulated = items;
       let token: string | null = nextPageToken;
+      let total = activePlatform.totalReviewCount || 0;
 
       while (accumulated.length < requiredCount && token) {
         const payload = await requestReviews(token);
         accumulated = mergeReviews(accumulated, payload.incoming);
         token = payload.nextToken;
+        total = payload.total;
         if (payload.incoming.length === 0) break;
       }
 
       setItems(accumulated);
       setNextPageToken(token);
+      updateActivePlatform((platform) => ({ ...platform, totalReviewCount: total }));
       setCurrentPage(Math.min(cleanTarget, Math.max(1, Math.ceil(accumulated.length / REVIEWS_PAGE_SIZE))));
       setListNotice({ type: "success", text: "Page d’avis chargée." });
     } catch (error) {
@@ -564,13 +670,11 @@ export default function EReputationReviewsClient({
 
   async function generateReply() {
     if (!selectedReview?.reviewName) return;
-
     setGenerating(true);
     setNotice(null);
     setListNotice(null);
-
     try {
-      const response = await fetch("/api/e-reputation/google/generate-reply", {
+      const response = await fetch(`${platformApiBase}/generate-reply`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -583,17 +687,15 @@ export default function EReputationReviewsClient({
         }),
       });
       const payload = (await response.json().catch(() => null)) as GenerateReplyResponse | null;
-
       if (!response.ok || !payload?.ok || !payload.reply_text) {
         throw new Error(getErrorMessage(payload, "Impossible de générer une réponse IA pour le moment."));
       }
-
       setReplyText(payload.reply_text);
       setNotice({
         type: "success",
         text: selectedAlreadyAnswered
-          ? "Nouvelle proposition générée. Relisez-la puis modifiez la réponse Google si elle vous convient."
-          : "Réponse générée. Relisez-la puis publiez-la sur Google si elle vous convient.",
+          ? `Nouvelle proposition générée. Relisez-la puis modifiez la réponse ${platformLabel} si elle vous convient.`
+          : `Réponse générée. Relisez-la puis publiez-la sur ${platformLabel} si elle vous convient.`,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Impossible de générer une réponse IA pour le moment.";
@@ -610,40 +712,26 @@ export default function EReputationReviewsClient({
       setNotice({ type: "error", text: "La réponse ne peut pas être vide." });
       return;
     }
-
     setPublishing(true);
     setNotice(null);
     setListNotice(null);
-
     try {
-      const response = await fetch("/api/e-reputation/google/reply", {
+      const response = await fetch(`${platformApiBase}/reply`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({ reviewName: selectedReview.reviewName, comment: cleanReply }),
       });
       const payload = (await response.json().catch(() => null)) as ReplyResponse | null;
-
       if (!response.ok || !payload?.ok) {
-        throw new Error(getErrorMessage(payload, "Impossible de publier la réponse Google pour le moment."));
+        throw new Error(getErrorMessage(payload, `Impossible de publier la réponse ${platformLabel} pour le moment.`));
       }
-
       const publishedComment = payload.reply?.comment || cleanReply;
-      setItems((current) =>
-        current.map((review) =>
-          review.id === selectedReview.id
-            ? {
-                ...review,
-                reply: publishedComment,
-                status: "Répondu",
-              }
-            : review
-        )
-      );
+      setItems((current) => current.map((review) => review.id === selectedReview.id ? { ...review, reply: publishedComment, status: "Répondu" } : review));
       setReplyText(publishedComment);
-      setNotice({ type: "success", text: "Réponse publiée sur Google Business." });
+      setNotice({ type: "success", text: `Réponse publiée sur ${platformLabel}.` });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Impossible de publier la réponse Google pour le moment.";
+      const message = error instanceof Error ? error.message : `Impossible de publier la réponse ${platformLabel} pour le moment.`;
       setNotice({ type: "error", text: message });
     } finally {
       setPublishing(false);
@@ -652,41 +740,27 @@ export default function EReputationReviewsClient({
 
   async function deleteReply() {
     if (!selectedReview?.reviewName || !selectedReview.reply) return;
-    const confirmed = window.confirm("Supprimer la réponse publiée sur Google pour cet avis ?");
+    const confirmed = window.confirm(`Supprimer la réponse publiée sur ${platformLabel} pour cet avis ?`);
     if (!confirmed) return;
-
     setDeleting(true);
     setNotice(null);
     setListNotice(null);
-
     try {
-      const response = await fetch("/api/e-reputation/google/reply", {
+      const response = await fetch(`${platformApiBase}/reply`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({ reviewName: selectedReview.reviewName }),
       });
       const payload = (await response.json().catch(() => null)) as ReplyResponse | null;
-
       if (!response.ok || !payload?.ok) {
-        throw new Error(getErrorMessage(payload, "Impossible de supprimer la réponse Google pour le moment."));
+        throw new Error(getErrorMessage(payload, `Impossible de supprimer la réponse ${platformLabel} pour le moment.`));
       }
-
-      setItems((current) =>
-        current.map((review) =>
-          review.id === selectedReview.id
-            ? {
-                ...review,
-                reply: null,
-                status: "À répondre",
-              }
-            : review
-        )
-      );
+      setItems((current) => current.map((review) => review.id === selectedReview.id ? { ...review, reply: null, status: "À répondre" } : review));
       setReplyText(defaultReplyFor({ ...selectedReview, reply: null, status: "À répondre" }));
-      setNotice({ type: "success", text: "Réponse supprimée de Google Business." });
+      setNotice({ type: "success", text: `Réponse supprimée de ${platformLabel}.` });
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Impossible de supprimer la réponse Google pour le moment.";
+      const message = error instanceof Error ? error.message : `Impossible de supprimer la réponse ${platformLabel} pour le moment.`;
       setNotice({ type: "error", text: message });
     } finally {
       setDeleting(false);
@@ -695,264 +769,232 @@ export default function EReputationReviewsClient({
 
   return (
     <>
-    <section className={styles.mailboxPanel} aria-label="Gestion des avis Google">
-      <div className={styles.toolbar}>
-        <div className={styles.toolbarLeft}>
-          <label className={styles.filterLabel} htmlFor="review-filter">Filtrer</label>
-          <select id="review-filter" className={styles.select} value={filter} onChange={(event) => setFilter(event.target.value as "all" | "todo" | "answered")}>
-            <option value="all">Tous les avis</option>
-            <option value="todo">À répondre</option>
-            <option value="answered">Répondus</option>
-          </select>
-          <select id="review-star-filter" className={styles.select} value={starFilter} onChange={(event) => setStarFilter(event.target.value as "all" | "5" | "4" | "3" | "2" | "1")}>
-            <option value="all">Toutes les notes</option>
-            <option value="5">5 étoiles</option>
-            <option value="4">4 étoiles</option>
-            <option value="3">3 étoiles</option>
-            <option value="2">2 étoiles</option>
-            <option value="1">1 étoile</option>
-          </select>
-          <input
-            className={styles.searchInput}
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Rechercher un avis..."
-            type="search"
-          />
-        </div>
-        <div className={styles.toolbarRight}>
-          <div className={`${styles.reputationSummaryChip} ${gmbReady ? styles.reputationSummaryReady : ""}`} aria-label={`${locationLabel} · ${summaryStatusLabel} · Qté : ${totalReviewsLabel} · Note : ${averageRatingLabel}`}>
-            <span className={styles.summaryLocation}>{locationLabel}</span>
-            <span className={styles.summaryStatus}>
-              <span className={styles.summaryDot} aria-hidden="true" />
-              <span className={styles.summaryStatusDesktop}>{summaryStatusLabel}</span>
-              <span className={styles.summaryStatusMobile}>{summaryStatusShortLabel}</span>
-            </span>
-            <span>Qté : {totalReviewsLabel}</span>
-            <span>Note : {averageRatingLabel}</span>
+      <section className={styles.mailboxPanel} aria-label={`Gestion des avis ${platformLabel}`}>
+        <div className={styles.toolbar}>
+          <div className={styles.toolbarLeft}>
+            {platformData.length > 1 ? (
+              <div className={styles.platformTabs} role="tablist" aria-label="Plateformes d’avis">
+                {platformData.map((platform) => (
+                  <button
+                    key={platform.id}
+                    type="button"
+                    className={platform.id === activePlatform.id ? styles.platformTabActive : styles.platformTab}
+                    onClick={() => changePlatform(platform.id)}
+                    disabled={busy}
+                    role="tab"
+                    aria-selected={platform.id === activePlatform.id}
+                  >
+                    <img src={platform.iconSrc} alt="" aria-hidden="true" />
+                    <span>{platform.shortLabel}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+            <label className={styles.filterLabel} htmlFor="review-filter">Filtrer</label>
+            <select id="review-filter" className={styles.select} value={filter} onChange={(event) => setFilter(event.target.value as "all" | "todo" | "answered")}>
+              <option value="all">Tous les avis</option>
+              <option value="todo">À répondre</option>
+              <option value="answered">Répondus</option>
+            </select>
+            <select id="review-star-filter" className={styles.select} value={starFilter} onChange={(event) => setStarFilter(event.target.value as "all" | "5" | "4" | "3" | "2" | "1")}>
+              <option value="all">Toutes les notes</option>
+              <option value="5">5 étoiles</option>
+              <option value="4">4 étoiles</option>
+              <option value="3">3 étoiles</option>
+              <option value="2">2 étoiles</option>
+              <option value="1">1 étoile</option>
+            </select>
+            <input className={styles.searchInput} value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Rechercher un avis..." type="search" />
           </div>
-          <button
-            type="button"
-            className={`${styles.btnGhostSmall} ${styles.refreshButton}`}
-            onClick={refreshReviews}
-            disabled={!reviewsReady || busy}
-            aria-label={refreshing ? "Actualisation des avis" : "Actualiser les avis"}
-            title={refreshing ? "Actualisation..." : "Actualiser"}
-          >
-            <span className={styles.refreshIcon} aria-hidden="true">⟳</span>
-            <span className={styles.refreshText}>{refreshing ? "Actualisation..." : "Actualiser"}</span>
-          </button>
+          <div className={styles.toolbarRight}>
+            <div className={`${styles.reputationSummaryChip} ${activePlatform.connected ? styles.reputationSummaryReady : ""}`} aria-label={`${locationLabel} · ${summaryStatusLabel} · Qté : ${totalReviewsLabel} · Note : ${averageRatingLabel}`}>
+              <span className={styles.summaryLocation}>{locationLabel}</span>
+              <span className={styles.summaryStatus}>
+                <span className={styles.summaryDot} aria-hidden="true" />
+                <span className={styles.summaryStatusDesktop}>{summaryStatusLabel}</span>
+                <span className={styles.summaryStatusMobile}>{summaryStatusShortLabel}</span>
+              </span>
+              <span>Qté : {totalReviewsLabel}</span>
+              <span>Note : {averageRatingLabel}</span>
+            </div>
+            <button
+              type="button"
+              className={`${styles.btnGhostSmall} ${styles.refreshButton}`}
+              onClick={refreshReviews}
+              disabled={!reviewsReady || busy}
+              aria-label={refreshing ? "Actualisation des avis" : "Actualiser les avis"}
+              title={refreshing ? "Actualisation..." : "Actualiser"}
+            >
+              <span className={styles.refreshIcon} aria-hidden="true">⟳</span>
+              <span className={styles.refreshText}>{refreshing ? "Actualisation..." : "Actualiser"}</span>
+            </button>
+          </div>
         </div>
-      </div>
 
-      {reviewsError ? (
-        <div className={styles.noticeError}>
-          <strong>Avis indisponibles</strong>
-          <span>{reviewsError}</span>
-        </div>
-      ) : null}
+        {reviewsError ? (
+          <div className={styles.noticeError}>
+            <strong>Avis indisponibles</strong>
+            <span>{reviewsError}</span>
+          </div>
+        ) : null}
 
-      {!reviewsReady ? (
-        <div className={styles.noticeInfo}>
-          <strong>Prévisualisation</strong>
-          <span>Les boutons de gestion s’activeront dès que les vrais avis Google seront chargés.</span>
-        </div>
-      ) : null}
+        {!reviewsReady ? (
+          <div className={styles.noticeInfo}>
+            <strong>Prévisualisation</strong>
+            <span>Les boutons de gestion s’activeront dès que les vrais avis {platformLabel} seront chargés.</span>
+          </div>
+        ) : null}
 
-      {listNotice ? (
-        <div className={listNotice.type === "success" ? styles.noticeSuccess : styles.noticeError} role="status">
-          {listNotice.text}
-        </div>
-      ) : null}
+        {reviewsReady && !platformCanReply && activePlatform.id === "trustpilot" ? (
+          <div className={styles.noticeInfo}>
+            <strong>Lecture seule</strong>
+            <span>Connectez l’accès API Trustpilot OAuth pour répondre aux avis depuis iNrCy.</span>
+          </div>
+        ) : null}
 
-      <div className={styles.tableWrap}>
-        <table className={styles.reviewsTable}>
-          <thead>
-            <tr>
-              <th>Avis</th>
-              <th>Note</th>
-              <th>Statut</th>
-              <th>Date</th>
-              <th>Détails</th>
-            </tr>
-          </thead>
-          <tbody>
-            {paginatedReviews.length ? (
-              paginatedReviews.map((review) => (
-                <tr key={review.id} className={review.id === selectedId ? styles.activeRow : undefined}>
-                  <td>
-                    <button type="button" className={styles.reviewMainCell} onClick={() => openDetails(review)}>
-                      <strong>{review.name}</strong>
-                      <span>{truncateText(review)}</span>
-                      <span className={styles.mobileReviewMeta}>
-                        <span className={styles.mobileReviewStars} aria-label={`${review.rating} étoiles sur 5`}>
-                          {renderStars(review.rating)}
+        {listNotice ? <div className={listNotice.type === "success" ? styles.noticeSuccess : styles.noticeError} role="status">{listNotice.text}</div> : null}
+
+        <div className={styles.tableWrap}>
+          <table className={styles.reviewsTable}>
+            <thead>
+              <tr>
+                <th>Avis</th>
+                <th>Note</th>
+                <th>Statut</th>
+                <th>Date</th>
+                <th>Détails</th>
+              </tr>
+            </thead>
+            <tbody>
+              {paginatedReviews.length ? (
+                paginatedReviews.map((review) => (
+                  <tr key={review.id} className={review.id === selectedId ? styles.activeRow : undefined}>
+                    <td>
+                      <button type="button" className={styles.reviewMainCell} onClick={() => openDetails(review)}>
+                        <strong>{review.name}</strong>
+                        <span>{truncateText(review)}</span>
+                        <span className={styles.mobileReviewMeta}>
+                          <span className={styles.mobileReviewStars} aria-label={`${review.rating} étoiles sur 5`}>{renderStars(review.rating)}</span>
+                          <span className={review.status === "Répondu" ? styles.mobileStatusAnswered : styles.mobileStatusTodo}>{review.status}</span>
+                          <span>{review.date}</span>
                         </span>
-                        <span className={review.status === "Répondu" ? styles.mobileStatusAnswered : styles.mobileStatusTodo}>
-                          {review.status}
-                        </span>
-                        <span>{review.date}</span>
-                      </span>
-                    </button>
-                  </td>
-                  <td>
-                    <span className={styles.stars} aria-label={`${review.rating} étoiles sur 5`}>
-                      {renderStars(review.rating)}
-                    </span>
-                  </td>
-                  <td>
-                    <span className={review.status === "Répondu" ? styles.answeredBadge : styles.todoBadge}>{review.status}</span>
-                  </td>
-                  <td>{review.date}</td>
-                  <td>
-                    <button type="button" className={styles.detailsBtn} onClick={() => openDetails(review)} aria-label={`Ouvrir le détail de l’avis de ${review.name}`}>
-                      ↗
-                    </button>
+                      </button>
+                    </td>
+                    <td><span className={styles.stars} aria-label={`${review.rating} étoiles sur 5`}>{renderStars(review.rating)}</span></td>
+                    <td><span className={review.status === "Répondu" ? styles.answeredBadge : styles.todoBadge}>{review.status}</span></td>
+                    <td>{review.date}</td>
+                    <td>
+                      <button type="button" className={styles.detailsBtn} onClick={() => openDetails(review)} aria-label={`Ouvrir le détail de l’avis de ${review.name}`}>
+                        ↗
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              ) : (
+                <tr>
+                  <td colSpan={5}>
+                    <div className={styles.emptyState}>
+                      <strong>Aucun avis dans ce filtre</strong>
+                      <span>Changez de filtre ou réclamez de nouveaux avis.</span>
+                    </div>
                   </td>
                 </tr>
-              ))
-            ) : (
-              <tr>
-                <td colSpan={5}>
-                  <div className={styles.emptyState}>
-                    <strong>Aucun avis dans ce filtre</strong>
-                    <span>Changez de filtre ou réclamez de nouveaux avis via Propulser → Récolter.</span>
-                  </div>
-                </td>
-              </tr>
-            )}
-          </tbody>
-        </table>
-      </div>
+              )}
+            </tbody>
+          </table>
+        </div>
 
-      <div className={styles.footerBar}>
-        <span>
-          {paginatedReviews.length
-            ? `Affichage ${firstDisplayedReview.toLocaleString("fr-FR")}–${lastDisplayedReview.toLocaleString("fr-FR")} sur ${footerTotalReviews.toLocaleString("fr-FR")} avis`
-            : "Affichage 0 avis"} · {loadedLabel} chargés
-        </span>
-        {reviewsReady ? (
-          <div className={styles.paginationControls} aria-label="Pagination des avis">
-            <button type="button" className={styles.paginationArrow} onClick={() => goToPage(safeCurrentPage - 1)} disabled={busy || safeCurrentPage <= 1}>
-              ‹
-            </button>
-            {paginationItems.map((page, index) =>
-              page === "ellipsis" ? (
+        <div className={styles.footerBar}>
+          <span>
+            {paginatedReviews.length
+              ? `Affichage ${firstDisplayedReview.toLocaleString("fr-FR")}–${lastDisplayedReview.toLocaleString("fr-FR")} sur ${footerTotalReviews.toLocaleString("fr-FR")} avis`
+              : "Affichage 0 avis"} · {loadedLabel} chargés
+          </span>
+          {reviewsReady ? (
+            <div className={styles.paginationControls} aria-label="Pagination des avis">
+              <button type="button" className={styles.paginationArrow} onClick={() => goToPage(safeCurrentPage - 1)} disabled={busy || safeCurrentPage <= 1}>‹</button>
+              {paginationItems.map((page, index) => page === "ellipsis" ? (
                 <span key={`ellipsis-${index}`} className={styles.paginationEllipsis}>…</span>
               ) : (
-                <button
-                  key={page}
-                  type="button"
-                  className={page === safeCurrentPage ? styles.paginationActive : styles.paginationPage}
-                  onClick={() => goToPage(page)}
-                  disabled={busy || page === safeCurrentPage}
-                >
-                  {page}
-                </button>
-              )
-            )}
-            <button type="button" className={styles.paginationArrow} onClick={() => goToPage(safeCurrentPage + 1)} disabled={busy || safeCurrentPage >= totalPages || (!hasLocalFilter && !nextPageToken && items.length <= safeCurrentPage * REVIEWS_PAGE_SIZE)}>
-              ›
-            </button>
-          </div>
-        ) : (
-          <span className={styles.footerHint}>Connexion Google requise</span>
-        )}
-      </div>
+                <button key={page} type="button" className={page === safeCurrentPage ? styles.paginationActive : styles.paginationPage} onClick={() => goToPage(page)} disabled={busy || page === safeCurrentPage}>{page}</button>
+              ))}
+              <button type="button" className={styles.paginationArrow} onClick={() => goToPage(safeCurrentPage + 1)} disabled={busy || safeCurrentPage >= totalPages || (!hasLocalFilter && !nextPageToken && items.length <= safeCurrentPage * REVIEWS_PAGE_SIZE)}>›</button>
+            </div>
+          ) : (
+            <span className={styles.footerHint}>Connexion {platformLabel} requise</span>
+          )}
+        </div>
+      </section>
 
-    </section>
+      {detailsOpen && selectedReview && typeof document !== "undefined"
+        ? createPortal(
+            <div className={styles.modalBackdrop} role="presentation" onMouseDown={() => setDetailsOpen(false)}>
+              <section className={styles.detailsModal} role="dialog" aria-modal="true" aria-labelledby="review-details-title" onMouseDown={(event) => event.stopPropagation()}>
+                <header className={styles.modalHeader}>
+                  <span className={styles.modalKicker}>{activePlatform.modalKicker}</span>
+                  <h2 id="review-details-title">Détails de l’avis</h2>
+                  <button type="button" className={styles.modalClose} onClick={() => setDetailsOpen(false)} aria-label="Fermer">Fermer</button>
+                </header>
 
-    {detailsOpen && selectedReview && typeof document !== "undefined"
-      ? createPortal(
-          <div className={styles.modalBackdrop} role="presentation" onMouseDown={() => setDetailsOpen(false)}>
-            <section className={styles.detailsModal} role="dialog" aria-modal="true" aria-labelledby="review-details-title" onMouseDown={(event) => event.stopPropagation()}>
-              <header className={styles.modalHeader}>
-                <span className={styles.modalKicker}>Avis Google</span>
-                <h2 id="review-details-title">Détails de l’avis</h2>
-                <button type="button" className={styles.modalClose} onClick={() => setDetailsOpen(false)} aria-label="Fermer">
-                  Fermer
-                </button>
-              </header>
-
-              <div className={styles.modalBody}>
-                <article className={styles.reviewDetailCard}>
-                  <div className={styles.reviewDetailTop}>
-                    <div>
-                      <strong>{selectedReview.name}</strong>
-                      <span>{selectedReview.date}</span>
-                    </div>
-                    <span className={selectedReview.status === "Répondu" ? styles.answeredBadge : styles.todoBadge}>{selectedReview.status}</span>
-                  </div>
-                  <div className={styles.modalStars} aria-label={`${selectedReview.rating} étoiles sur 5`}>
-                    {renderStars(selectedReview.rating)}
-                  </div>
-                  <div className={styles.reviewDetailScroll}>
-                    <ReviewTextBlock review={selectedReview} />
-                    {selectedReview.reply ? (
-                      <div className={styles.currentReplyBox}>
-                        <strong>Réponse actuelle</strong>
-                        <span>{selectedReview.reply}</span>
+                <div className={styles.modalBody}>
+                  <article className={styles.reviewDetailCard}>
+                    <div className={styles.reviewDetailTop}>
+                      <div>
+                        <strong>{selectedReview.name}</strong>
+                        <span>{selectedReview.date}{selectedReview.verified ? " · Avis vérifié" : ""}</span>
                       </div>
-                    ) : null}
-                  </div>
-                </article>
+                      <span className={selectedReview.status === "Répondu" ? styles.answeredBadge : styles.todoBadge}>{selectedReview.status}</span>
+                    </div>
+                    <div className={styles.modalStars} aria-label={`${selectedReview.rating} étoiles sur 5`}>{renderStars(selectedReview.rating)}</div>
+                    <div className={styles.reviewDetailScroll}>
+                      <ReviewTextBlock review={selectedReview} />
+                      {selectedReview.reply ? (
+                        <div className={styles.currentReplyBox}>
+                          <strong>Réponse actuelle</strong>
+                          <span>{selectedReview.reply}</span>
+                        </div>
+                      ) : null}
+                    </div>
+                  </article>
 
-                <article className={styles.replyDetailCard}>
-                  <div className={styles.replyHeaderLine}>
-                    <div>
-                      <span className={styles.modalKicker}>Réponse Google</span>
-                      <h3>{selectedAlreadyAnswered ? "Modifier la réponse" : "Préparer la réponse"}</h3>
+                  <article className={styles.replyDetailCard}>
+                    <div className={styles.replyHeaderLine}>
+                      <div>
+                        <span className={styles.modalKicker}>{activePlatform.replyLabel}</span>
+                        <h3>{selectedAlreadyAnswered ? "Modifier la réponse" : "Préparer la réponse"}</h3>
+                      </div>
+                      <span className={styles.aiChip}>IA</span>
                     </div>
-                    <span className={styles.aiChip}>IA</span>
-                  </div>
-                  <textarea
-                    value={replyText}
-                    onChange={(event) => setReplyText(event.target.value)}
-                    disabled={!selectedReview.live || busy}
-                    maxLength={4096}
-                    placeholder="Rédigez votre réponse Google..."
-                  />
-                  <div className={styles.charCount}>{replyText.trim().length.toLocaleString("fr-FR")} / 4 096 caractères</div>
-                  {notice ? (
-                    <div className={notice.type === "success" ? styles.noticeSuccess : styles.noticeError} role="status">
-                      {notice.text}
+                    <textarea
+                      value={replyText}
+                      onChange={(event) => setReplyText(event.target.value)}
+                      disabled={!selectedCanReply || busy}
+                      maxLength={4096}
+                      placeholder={`Rédigez votre réponse ${platformLabel}...`}
+                    />
+                    <div className={styles.charCount}>{replyText.trim().length.toLocaleString("fr-FR")} / 4 096 caractères</div>
+                    {notice ? <div className={notice.type === "success" ? styles.noticeSuccess : styles.noticeError} role="status">{notice.text}</div> : null}
+                    <div className={styles.modalActions}>
+                      <button className={styles.btnGhostSmall} type="button" disabled={!canGenerate} onClick={generateReply}>{generating ? "Génération..." : "Générer avec iNrCy"}</button>
+                      <button className={styles.btnPrimarySmall} type="button" disabled={!canPublish} onClick={publishReply}>{publishing ? "Publication..." : selectedAlreadyAnswered ? "Modifier la réponse" : "Publier la réponse"}</button>
+                      {selectedAlreadyAnswered ? <button className={styles.btnDangerSmall} type="button" disabled={!canDelete} onClick={deleteReply}>{deleting ? "Suppression..." : "Supprimer"}</button> : null}
                     </div>
-                  ) : null}
-                  <div className={styles.modalActions}>
-                    <button className={styles.btnGhostSmall} type="button" disabled={!canGenerate} onClick={generateReply}>
-                      {generating ? "Génération..." : "Générer avec iNrCy"}
-                    </button>
-                    <button className={styles.btnPrimarySmall} type="button" disabled={!canPublish} onClick={publishReply}>
-                      {publishing ? "Publication..." : selectedAlreadyAnswered ? "Modifier la réponse" : "Publier la réponse"}
-                    </button>
-                    {selectedAlreadyAnswered ? (
-                      <button className={styles.btnDangerSmall} type="button" disabled={!canDelete} onClick={deleteReply}>
-                        {deleting ? "Suppression..." : "Supprimer"}
-                      </button>
-                    ) : null}
-                  </div>
-                  <div className={styles.reportFooterLine}>
-                    <p className={styles.secureText}>Vous validez chaque réponse avant publication sur Google.</p>
-                    {canReport ? (
-                      <a
-                        className={styles.reportReviewButton}
-                        href={reportGoogleUrl || "#"}
-                        target="_blank"
-                        rel="noreferrer"
-                        aria-label={`Signaler l’avis de ${selectedReview.name} sur Google`}
-                      >
-                        <span aria-hidden="true">⚠</span>
-                        <span className={styles.reportReviewTooltip}>Signaler l’avis sur Google</span>
-                      </a>
-                    ) : null}
-                  </div>
-                </article>
-              </div>
-            </section>
-          </div>,
-          document.body
-        )
-      : null}
+                    <div className={styles.reportFooterLine}>
+                      <p className={styles.secureText}>Vous validez chaque réponse avant publication sur {platformLabel}.</p>
+                      {canReport ? (
+                        <a className={styles.reportReviewButton} href={activePlatform.reportUrl || "#"} target="_blank" rel="noreferrer" aria-label={`Signaler l’avis de ${selectedReview.name} sur Google`}>
+                          <span aria-hidden="true">⚠</span>
+                          <span className={styles.reportReviewTooltip}>Signaler l’avis sur Google</span>
+                        </a>
+                      ) : null}
+                    </div>
+                  </article>
+                </div>
+              </section>
+            </div>,
+            document.body,
+          )
+        : null}
     </>
   );
 }

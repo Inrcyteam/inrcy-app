@@ -46,6 +46,7 @@ const CHANNEL_ICON_SRC: Record<ChannelKey, string> = {
   linkedin: "/icons/linkedin.png",
   tiktok: "/icons/tiktok.png",
   youtube_shorts: "/icons/youtube-shorts.png",
+  pinterest: "/icons/Pinterest-logo.webp",
 };
 
 function LinkIcon() {

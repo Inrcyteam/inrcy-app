@@ -108,6 +108,7 @@ type ChannelKey =
   | "linkedin"
   | "tiktok"
   | "youtube"
+  | "pinterest"
   | "mails";
 
 const AGENT_MEDIA_MAX_IMAGE_BYTES = INR_MEDIA_IMAGE_MAX_BYTES;
@@ -442,6 +443,7 @@ const channelOptions: Record<ChannelKey, { name: string; src: string }> = {
   linkedin: { name: "LinkedIn", src: "/icons/linkedin.png" },
   tiktok: { name: "TikTok", src: "/icons/tiktok.png" },
   youtube: { name: "YouTube", src: "/icons/youtube-shorts.png" },
+  pinterest: { name: "Pinterest", src: "/icons/Pinterest-logo.webp" },
   mails: { name: "Mails", src: "/icons/mails-inrcy-dashboard-v2.png" },
 };
 
@@ -492,6 +494,7 @@ const statsRubriqueOptions: Record<
     src: "/icons/youtube-shorts.png",
     channelKey: "youtube",
   },
+  Pinterest: { name: "Pinterest", src: "/icons/Pinterest-logo.webp", channelKey: "pinterest" },
 };
 
 const channelOrder: ChannelKey[] = [
@@ -503,6 +506,7 @@ const channelOrder: ChannelKey[] = [
   "linkedin",
   "tiktok",
   "youtube",
+  "pinterest",
   "mails",
 ];
 
@@ -544,6 +548,7 @@ const apiChannelToUi: Record<string, ChannelKey> = {
   linkedin: "linkedin",
   tiktok: "tiktok",
   youtube: "youtube",
+  pinterest: "pinterest",
   youtube_shorts: "youtube",
   mails: "mails",
   mail: "mails",
@@ -558,6 +563,7 @@ const channelPayloadKeys: Record<ChannelKey, string[]> = {
   linkedin: ["linkedin"],
   tiktok: ["tiktok"],
   youtube: ["youtube_shorts", "youtube"],
+  pinterest: ["pinterest"],
   mails: ["mails", "mail"],
 };
 
@@ -572,6 +578,7 @@ const agentChannelToBoosterDisplay: Partial<
   linkedin: "linkedin",
   tiktok: "tiktok",
   youtube: "youtube_shorts",
+  pinterest: "pinterest",
 };
 
 function boosterDisplayKeyFromAgentChannel(
@@ -875,6 +882,7 @@ const automations: Automation[] = [
       "linkedin",
       "tiktok",
       "youtube",
+      "pinterest",
     ],
   },
   {
@@ -913,6 +921,7 @@ const automations: Automation[] = [
       "LinkedIn",
       "TikTok",
       "YouTube",
+      "Pinterest",
     ],
     availableChannels: [],
   },
@@ -961,6 +970,7 @@ const defaultConfigs: Record<AutomationKey, AutomationConfig> = {
       "linkedin",
       "tiktok",
       "youtube",
+      "pinterest",
     ],
     themes: ["Conseils", "Réalisations", "Offres"],
     validation: "Validation obligatoire avant publication",
@@ -1013,6 +1023,7 @@ const defaultConfigs: Record<AutomationKey, AutomationConfig> = {
       "Facebook",
       "Instagram",
       "LinkedIn",
+      "Pinterest",
     ],
     validation: "Bilan automatique",
     source: "Rubriques iNr’Stats connectées",
@@ -1029,6 +1040,7 @@ const channelToApi: Record<ChannelKey, InrAgentChannel> = {
   linkedin: "linkedin",
   tiktok: "tiktok",
   youtube: "youtube",
+  pinterest: "pinterest",
   mails: "mails",
 };
 
@@ -1049,6 +1061,7 @@ const agentPublishChannelToBoosterChannel: Record<string, string> = {
   tiktok: "tiktok",
   youtube: "youtube_shorts",
   youtube_shorts: "youtube_shorts",
+  pinterest: "pinterest",
 };
 
 function normalizeAgentExternalHref(input: unknown) {
@@ -1080,6 +1093,7 @@ function channelMapFromConnectionStates(payload: unknown): ConnectedChannelMap {
     linkedin: isUsable("linkedin"),
     tiktok: isUsable("tiktok"),
     youtube: isUsable("youtube_shorts"),
+    pinterest: isUsable("pinterest"),
     mails: isUsable("mails"),
   };
 }
@@ -1173,6 +1187,7 @@ const themeToApi: Record<string, InrAgentTheme> = {
   LinkedIn: "linkedin",
   TikTok: "tiktok",
   YouTube: "youtube",
+  Pinterest: "pinterest",
 };
 
 const apiToTheme = Object.fromEntries(

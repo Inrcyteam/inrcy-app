@@ -88,6 +88,46 @@
   object-fit: cover;
 }
 
+.reputationBrandIcon {
+  position: relative;
+  width: 46px;
+  height: 46px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background:
+    radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.28), transparent 34%),
+    linear-gradient(135deg, rgba(30, 136, 229, 0.96), rgba(123, 97, 255, 0.92), rgba(255, 106, 144, 0.86));
+  box-shadow:
+    0 14px 34px rgba(56, 189, 248, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.16);
+}
+
+.reputationBrandIconMain {
+  font-size: 20px;
+  line-height: 1;
+  transform: translateY(-1px);
+  text-shadow: 0 3px 12px rgba(0, 0, 0, 0.24);
+}
+
+.reputationBrandIconAccent {
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 900;
+  color: #082032;
+  background: linear-gradient(135deg, rgba(134, 239, 172, 1), rgba(34, 197, 94, 0.96));
+  border: 1px solid rgba(255, 255, 255, 0.52);
+  box-shadow: 0 10px 22px rgba(34, 197, 94, 0.24);
+}
+
 .brandText {
   min-width: 0;
 }
@@ -2329,5 +2369,123 @@
   .reportFooterLine .secureText {
     order: 2;
     margin: 0 !important;
+  }
+}
+
+/* Step 7 — Google + Trustpilot dans E-réputation */
+.brandIconStack {
+  width: 76px;
+  height: 64px;
+  flex: 0 0 76px;
+  position: relative;
+  display: grid;
+  place-items: center;
+}
+
+.brandIconStack .brandIcon {
+  position: absolute;
+  width: 48px;
+  height: 48px;
+  border-radius: 999px;
+  object-fit: cover;
+  border: 1px solid rgba(255,255,255,0.16);
+  background: rgba(8, 12, 28, 0.88);
+  box-shadow: 0 16px 36px rgba(0,0,0,0.24);
+}
+
+.brandIconStack .brandIcon:first-child {
+  left: 0;
+  top: 8px;
+  z-index: 2;
+}
+
+.brandIconStack .brandIcon:last-child {
+  right: 0;
+  bottom: 8px;
+  z-index: 1;
+}
+
+.platformTabs {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.06);
+}
+
+.platformTab,
+.platformTabActive {
+  min-height: 34px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 7px 11px;
+  color: rgba(255,255,255,0.76);
+  background: transparent;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 950;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.platformTab img,
+.platformTabActive img {
+  width: 19px;
+  height: 19px;
+  border-radius: 999px;
+  object-fit: cover;
+}
+
+.platformTabActive {
+  color: rgba(255,255,255,0.96);
+  border-color: rgba(80,255,160,0.25);
+  background: linear-gradient(135deg, rgba(56,189,248,0.22), rgba(80,255,160,0.14));
+  box-shadow: 0 10px 30px rgba(56,189,248,0.12);
+}
+
+.platformTab:disabled,
+.platformTabActive:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+@media (max-width: 760px) {
+  .brandIconStack {
+    width: 56px;
+    height: 48px;
+    flex-basis: 56px;
+  }
+
+  .brandIconStack .brandIcon {
+    width: 38px;
+    height: 38px;
+  }
+
+  .brandIconStack .brandIcon:first-child {
+    top: 4px;
+  }
+
+  .brandIconStack .brandIcon:last-child {
+    bottom: 4px;
+  }
+
+  .platformTabs {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    border-radius: 16px;
+  }
+
+  .platformTab,
+  .platformTabActive {
+    width: 100%;
+    min-width: 0;
+    padding: 8px 9px;
   }
 }

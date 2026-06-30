@@ -20,8 +20,10 @@ const FACEBOOK_GRAPH_VERSION = "v20.0";
 const LINKEDIN_VERSION = "202603";
 const TIKTOK_INRSEND_EXTERNAL_ACTION_MESSAGE =
   "TikTok ne permet pas la modification ou la suppression réelle depuis iNrCy. Ouvrez TikTok pour gérer cette publication.";
+const PINTEREST_INRSEND_EXTERNAL_ACTION_MESSAGE =
+  "La modification ou suppression réelle Pinterest sera gérée dans une prochaine étape. Ouvrez Pinterest pour gérer cette épingle.";
 
-export type ChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin" | "tiktok";
+export type ChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin" | "tiktok" | "pinterest";
 type JsonRecord = Record<string, unknown>;
 
 type InstagramDeleteTokenCandidate = {
@@ -1523,6 +1525,9 @@ async function replaceChannelDelivery(params: {
   if (channel === "tiktok") {
     throw new Error(TIKTOK_INRSEND_EXTERNAL_ACTION_MESSAGE);
   }
+  if (channel === "pinterest") {
+    throw new Error(PINTEREST_INRSEND_EXTERNAL_ACTION_MESSAGE);
+  }
 
   throw new Error("Canal non supporté.");
 }
@@ -1538,6 +1543,9 @@ async function removeChannelDelivery(params: {
 
   if (channel === "tiktok") {
     throw new Error(TIKTOK_INRSEND_EXTERNAL_ACTION_MESSAGE);
+  }
+  if (channel === "pinterest") {
+    throw new Error(PINTEREST_INRSEND_EXTERNAL_ACTION_MESSAGE);
   }
 
   if (channel === "inrcy_site" || channel === "site_web") {
@@ -1768,6 +1776,9 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
       if (channel === "tiktok") {
         return jsonUserFacingError(TIKTOK_INRSEND_EXTERNAL_ACTION_MESSAGE, { status: 409, code: "tiktok_external_action_required" });
       }
+      if (channel === "pinterest") {
+        return jsonUserFacingError(PINTEREST_INRSEND_EXTERNAL_ACTION_MESSAGE, { status: 409, code: "pinterest_external_action_required" });
+      }
 
       const body = (await req.json().catch(() => null)) as JsonRecord | null;
       if (!body) return jsonUserFacingError("Bad payload", { status: 400, code: "invalid_payload" });
@@ -1897,6 +1908,9 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
 
       if (channel === "tiktok") {
         return jsonUserFacingError(TIKTOK_INRSEND_EXTERNAL_ACTION_MESSAGE, { status: 409, code: "tiktok_external_action_required" });
+      }
+      if (channel === "pinterest") {
+        return jsonUserFacingError(PINTEREST_INRSEND_EXTERNAL_ACTION_MESSAGE, { status: 409, code: "pinterest_external_action_required" });
       }
 
       const ctx = await loadPublicationContext(user.id, publicationId);

@@ -1068,6 +1068,8 @@ export function formatChannelLabel(channel: string): string {
       return "TikTok";
     case "youtube_shorts":
       return "YouTube";
+    case "pinterest":
+      return "Pinterest";
     default:
       return normalized || "canal";
   }
@@ -1090,6 +1092,8 @@ export function channelApiPath(channel: string): string {
       return "linkedin";
     case "tiktok":
       return "tiktok";
+    case "pinterest":
+      return "pinterest";
     default:
       return normalized || channel;
   }
@@ -1132,7 +1136,7 @@ export function isDeletedChannelResult(result: any): boolean {
 }
 
 export function orderChannelKeys(channels: string[]): string[] {
-  const priority = ["inrcy_site", "site_web", "gmb", "facebook", "instagram", "linkedin", "tiktok", "youtube_shorts"];
+  const priority = ["inrcy_site", "site_web", "gmb", "facebook", "instagram", "linkedin", "tiktok", "youtube_shorts", "pinterest"];
   const normalizedUnique = Array.from(new Set(channels.map((channel) => normalizeChannelKey(channel)).filter(Boolean)));
   return normalizedUnique.sort((a, b) => {
     const indexA = priority.indexOf(a);

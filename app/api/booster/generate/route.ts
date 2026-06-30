@@ -87,6 +87,7 @@ const allowedChannels: BoosterChannels[] = [
   "linkedin",
   "tiktok",
   "youtube_shorts",
+  "pinterest",
 ];
 const allowedThemes: BoosterTheme[] = [
   "",

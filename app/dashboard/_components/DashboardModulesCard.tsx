@@ -19,6 +19,7 @@ type DashboardPanelName =
   | "instagram"
   | "linkedin"
   | "gmb"
+  | "trustpilot"
   | "facebook"
   | "legal"
   | "rgpd"

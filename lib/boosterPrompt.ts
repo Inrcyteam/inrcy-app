@@ -17,7 +17,8 @@ export type BoosterChannels =
   | "instagram"
   | "linkedin"
   | "tiktok"
-  | "youtube_shorts";
+  | "youtube_shorts"
+  | "pinterest";
 
 export type BoosterTheme =
   | ""
@@ -58,6 +59,7 @@ const CHANNEL_LABELS: Record<BoosterChannels, string> = {
   linkedin: "LinkedIn",
   tiktok: "TikTok",
   youtube_shorts: "YouTube",
+  pinterest: "Pinterest",
 };
 
 const THEME_LABELS: Record<BoosterTheme, string> = {
@@ -124,6 +126,8 @@ const CHANNEL_EDITORIAL_PLAYBOOKS: Record<BoosterChannels, string> = {
     "Objectif : capter vite l'attention avec une accroche courte, naturelle et dynamique. Texte pensé pour accompagner une vidéo ou des photos : concret, vivant, local, avec 3 à 6 hashtags utiles. Éviter le ton institutionnel ou LinkedIn.",
   youtube_shorts:
     "Objectif : préparer une publication YouTube claire, utile et recherchable. Le canal affiché est YouTube : iNrCy publie la vidéo sur YouTube ; si elle est courte et adaptée, YouTube peut l’afficher au format court, sinon elle reste une vidéo classique. Produire un titre propre, une description utile, un CTA et des mots-clés cohérents.",
+  pinterest:
+    "Objectif : créer une épingle inspirante, utile et enregistrable. Priorité au bénéfice concret, à l'idée visuelle, aux mots-clés recherchables et à une description claire qui donne envie de cliquer ou de garder l'idée.",
 };
 
 type ChannelEditorialSpec = {
@@ -181,6 +185,12 @@ const CHANNEL_EDITORIAL_SPECS: Record<BoosterChannels, ChannelEditorialSpec> = {
     contentMin: 500,
     contentMax: 1200,
     goal: "Description YouTube utile, mots-clés, CTA",
+  },
+  pinterest: {
+    title: "35 à 80 caractères",
+    contentMin: 220,
+    contentMax: 500,
+    goal: "Épingle inspirante, mots-clés, action",
   },
 };
 
@@ -474,7 +484,7 @@ Tu dois répondre en JSON strict, avec exactement cette structure :
   }
 }
 
-Clés de canaux autorisées : inrcy_site, site_web, gmb, facebook, instagram, linkedin, tiktok, youtube_shorts.
+Clés de canaux autorisées : inrcy_site, site_web, gmb, facebook, instagram, linkedin, tiktok, youtube_shorts, pinterest.
 
 Règles JSON :
 - Ne renvoyer que les canaux explicitement demandés dans la requête utilisateur.
@@ -482,7 +492,7 @@ Règles JSON :
 - Pour chaque canal demandé, title, content et cta doivent être non vides.
 - Pour Google Business, le CTA doit rester neutre et non promotionnel.
 - hashtags = tableau de 0 à 8 mots-clés sans #.
-- Les hashtags sont utiles pour Instagram, TikTok et YouTube : pour les autres canaux, renvoie de préférence [].
+- Les hashtags sont utiles pour Instagram, TikTok, YouTube et Pinterest : pour les autres canaux, renvoie de préférence [].
 - Si un canal n'est pas demandé, ne pas l'ajouter.
 - Le title doit rester court et respecter la fourchette du canal (maximum 90 caractères) ; il ne doit jamais contenir de Markdown ni de balises HTML.
 - Le CTA doit être court et actionnable, sans Markdown ni balises HTML.

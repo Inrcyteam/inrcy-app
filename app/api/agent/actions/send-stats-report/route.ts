@@ -116,7 +116,8 @@ const channelLabels: Record<string, string> = {
   instagram: "Instagram",
   linkedin: "LinkedIn",
   tiktok: "TikTok",
-  youtube_shorts: "YouTube Shorts",
+  youtube_shorts: "YouTube",
+  pinterest: "Pinterest",
 };
 
 const REPORTS_BUCKET = "inr-agent-reports";
@@ -286,6 +287,7 @@ function buildChannelRecommendation(line: Omit<ChannelReportLine, "recommendatio
 
 function statsThemeToChannelKey(theme: InrAgentTheme) {
   if (theme === "youtube") return "youtube_shorts";
+  if (theme === "pinterest") return "pinterest";
   return Object.prototype.hasOwnProperty.call(channelLabels, theme) ? theme : "";
 }
 

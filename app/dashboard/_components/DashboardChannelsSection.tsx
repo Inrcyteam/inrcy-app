@@ -20,9 +20,11 @@ type DashboardPanelName =
   | "instagram"
   | "linkedin"
   | "gmb"
+  | "trustpilot"
   | "facebook"
   | "tiktok"
   | "youtube_shorts"
+  | "pinterest"
   | "inr_agent"
   | "legal"
   | "rgpd"
@@ -147,14 +149,18 @@ export default function DashboardChannelsSection({
     <DashboardFluxBubble key={keyOverride ?? item.key} item={item} itemKey={keyOverride ?? item.key} />
   );
 
-  const renderDesktopSideBubble = (item: DashboardFluxBubbleData, keyOverride?: string) => (
+  const renderDesktopSideBubble = (item: DashboardFluxBubbleData, keyOverride?: string) => {
+    const isComingSoon = item.bubbleStatus === "coming";
+
+    return (
     <article
       key={keyOverride ?? item.key}
-      className={`${styles.moduleCard} ${styles.moduleBubbleCard} ${styles.desktopSideBubbleCard} ${styles[`accent_${item.accent}`]}`}
+      className={`${styles.moduleCard} ${styles.moduleBubbleCard} ${styles.desktopSideBubbleCard} ${styles[`accent_${item.accent}`]} ${isComingSoon ? styles.moduleBubbleCardComingSoon : ""}`}
+      title={isComingSoon ? item.configureTitle || "Option désactivée" : undefined}
       aria-hidden
     >
       <div className={styles.desktopSideBubbleStack}>
-        <div className={`${styles.bubbleLogo} ${item.key === "mails" ? styles.bubbleLogoMail : ""} ${item.key === "inrbadge" ? styles.bubbleLogoProfile : ""} ${item.key === "youtube_shorts" ? styles.bubbleLogoYoutube : ""}`}>
+        <div className={`${styles.bubbleLogo} ${item.key === "mails" ? styles.bubbleLogoMail : ""} ${item.key === "inrbadge" ? styles.bubbleLogoProfile : ""} ${item.key === "youtube_shorts" ? styles.bubbleLogoYoutube : ""} ${item.key === "pinterest" ? styles.bubbleLogoPinterest : ""}`}>
           <img
             className={styles.bubbleLogoImg}
             src={item.logoSrc}
@@ -179,7 +185,8 @@ export default function DashboardChannelsSection({
 
       <div className={styles.moduleGlow} aria-hidden />
     </article>
-  );
+    );
+  };
 
   const baseModules = fluxBubbleItems;
   const hasCarousel = baseModules.length > 1;
@@ -191,6 +198,12 @@ export default function DashboardChannelsSection({
     () => baseModules.filter((item) => getChannelPillTone(item) === "connected").length,
     [baseModules],
   );
+
+  const channelPillRows = useMemo(() => {
+    if (baseModules.length <= 7) return [baseModules];
+    const firstRowCount = baseModules.length >= 11 ? 7 : Math.ceil(baseModules.length / 2);
+    return [baseModules.slice(0, firstRowCount), baseModules.slice(firstRowCount)].filter((row) => row.length > 0);
+  }, [baseModules]);
 
   const normalizeIndex = useCallback((index: number) => {
     if (!baseModules.length) return 0;
@@ -388,33 +401,38 @@ export default function DashboardChannelsSection({
 
 
         <div className={styles.channelPillRail} aria-label="Liste des canaux">
-          {baseModules.map((item, index) => {
-            const tone = getChannelPillTone(item);
-            const isActive = index === normalizeIndex(activeChannelIndex);
+          {channelPillRows.map((row, rowIndex) => (
+            <div className={styles.channelPillRow} key={`channel-row-${rowIndex}`}>
+              {row.map((item) => {
+                const index = baseModules.findIndex((entry) => entry.key === item.key);
+                const tone = getChannelPillTone(item);
+                const isActive = index === normalizeIndex(activeChannelIndex);
 
-            return (
-              <button
-                type="button"
-                key={item.key}
-                className={[
-                  styles.channelPill,
-                  tone === "connected" ? styles.channelPillConnected : tone === "warning" ? styles.channelPillWarning : styles.channelPillAvailable,
-                  isActive ? styles.channelPillActive : "",
-                ].join(" ")}
-                onClick={() => {
-                  setActiveChannelIndex(index);
-                  if (isMobile) {
-                    setCarouselTransition(true);
-                    setCarouselIndex(index + 1);
-                  }
-                }}
-                aria-pressed={isActive}
-              >
-                <span className={styles.channelPillDot} aria-hidden />
-                <span>{getChannelPillLabel(item)}</span>
-              </button>
-            );
-          })}
+                return (
+                  <button
+                    type="button"
+                    key={item.key}
+                    className={[
+                      styles.channelPill,
+                      tone === "connected" ? styles.channelPillConnected : tone === "warning" ? styles.channelPillWarning : styles.channelPillAvailable,
+                      isActive ? styles.channelPillActive : "",
+                    ].join(" ")}
+                    onClick={() => {
+                      setActiveChannelIndex(index);
+                      if (isMobile) {
+                        setCarouselTransition(true);
+                        setCarouselIndex(index + 1);
+                      }
+                    }}
+                    aria-pressed={isActive}
+                  >
+                    <span className={styles.channelPillDot} aria-hidden />
+                    <span>{getChannelPillLabel(item)}</span>
+                  </button>
+                );
+              })}
+            </div>
+          ))}
         </div>
       </div>
 
