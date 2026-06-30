@@ -87,6 +87,38 @@ function LegalLink({ href, label }: { href: string; label: string }) {
   );
 }
 
+function SectionIcon({ children }: { children: string }) {
+  return (
+    <span
+      aria-hidden="true"
+      style={{
+        width: 24,
+        height: 24,
+        borderRadius: 999,
+        display: "grid",
+        placeItems: "center",
+        flex: "0 0 auto",
+        background: "rgba(56,189,248,0.12)",
+        border: "1px solid rgba(56,189,248,0.28)",
+        color: "#93c5fd",
+        fontSize: 13,
+        lineHeight: 1,
+      }}
+    >
+      {children}
+    </span>
+  );
+}
+
+function SectionHeader({ icon, title }: { icon: string; title: string }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+      <SectionIcon>{icon}</SectionIcon>
+      <strong style={{ color: "#fff", fontSize: 15, lineHeight: 1.15 }}>{title}</strong>
+    </div>
+  );
+}
+
 function formatDuration(seconds: number | null) {
   if (!seconds || !Number.isFinite(seconds)) return "durée non détectée";
   const rounded = Math.round(seconds);
@@ -245,6 +277,31 @@ export default function TiktokPublicationSettingsModal({
   const hashtags = Array.isArray(previewHashtags) ? previewHashtags.filter(Boolean) : [];
   const caption = trimText(previewContent || previewTitle || "Publication iNrCy", 420);
 
+  const sectionCardStyle = {
+    borderRadius: 16,
+    padding: isMobile ? 14 : 12,
+    background: "linear-gradient(135deg, rgba(15,23,42,0.92), rgba(30,41,59,0.56))",
+    border: "1px solid rgba(148,163,184,0.22)",
+    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.035)",
+  } as const;
+
+  const fieldStyle = {
+    width: "100%",
+    borderRadius: 12,
+    border: "1px solid rgba(148,163,184,0.28)",
+    background: "rgba(15,23,42,0.96)",
+    color: "white",
+    colorScheme: "dark",
+    padding: isMobile ? "11px 12px" : "9px 12px",
+    outline: "none",
+  } as const;
+
+  const helperTextStyle = {
+    color: "rgba(226,232,240,0.62)",
+    fontSize: 12,
+    lineHeight: 1.42,
+  } as const;
+
   return (
     <div
       style={{
@@ -263,7 +320,7 @@ export default function TiktokPublicationSettingsModal({
       <div
         className={styles.blockCard}
         style={{
-          width: isMobile ? "min(100%, 720px)" : "min(960px, 100%)",
+          width: isMobile ? "min(100%, 720px)" : "min(1110px, calc(100vw - 36px))",
           maxHeight: isMobile ? "calc(100vh - 20px)" : "min(900px, calc(100vh - 28px))",
           overflowY: isMobile ? "auto" : "visible",
           display: "grid",
@@ -275,13 +332,13 @@ export default function TiktokPublicationSettingsModal({
           backdropFilter: "none",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-          <div style={{ fontSize: 23, lineHeight: 1, flex: "0 0 auto" }}>🎵</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+          <div style={{ fontSize: 28, lineHeight: 1, flex: "0 0 auto" }}>🎵</div>
           <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
-            <div className={styles.blockTitle} style={{ marginBottom: 0, lineHeight: 1.12 }}>
+            <div className={styles.blockTitle} style={{ marginBottom: 0, lineHeight: 1.08 }}>
               Vérification finale TikTok
             </div>
-            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.70)", lineHeight: 1.25 }}>
+            <div style={{ fontSize: 13, color: "rgba(255,255,255,0.70)", lineHeight: 1.2 }}>
               Compte, contenu, visibilité et déclarations avant envoi.
             </div>
           </div>
@@ -307,115 +364,119 @@ export default function TiktokPublicationSettingsModal({
 
         {creatorInfo ? (
           <>
-            <section
-              style={{
-                borderRadius: 16,
-                padding: isMobile ? 14 : 12,
-                background: "rgba(255,255,255,0.04)",
-                border: "1px solid rgba(255,255,255,0.10)",
-                display: "grid",
-                gridTemplateColumns: isMobile ? "1fr" : "auto 1fr",
-                gap: isMobile ? 14 : 12,
-                alignItems: "center",
-              }}
-            >
+            <section style={{ ...sectionCardStyle, display: "grid", gap: isMobile ? 12 : 10 }}>
+              <SectionHeader icon="👤" title="Compte TikTok" />
               <div
                 style={{
-                  width: isMobile ? 54 : 46,
-                  height: isMobile ? 54 : 46,
-                  borderRadius: 999,
-                  overflow: "hidden",
                   display: "grid",
-                  placeItems: "center",
-                  background: "linear-gradient(135deg, rgba(34,211,238,0.24), rgba(236,72,153,0.24))",
-                  border: "1px solid rgba(255,255,255,0.14)",
-                  color: "#fff",
-                  fontWeight: 900,
-                  fontSize: 20,
+                  gridTemplateColumns: "auto 1fr",
+                  gap: isMobile ? 12 : 14,
+                  alignItems: "center",
+                  paddingLeft: isMobile ? 0 : 34,
                 }}
               >
-                {creatorInfo.avatarUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={creatorInfo.avatarUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                ) : (
-                  (accountLabel.replace(/^@/, "").slice(0, 1) || "T").toUpperCase()
-                )}
-              </div>
-              <div style={{ display: "grid", gap: 4, minWidth: 0 }}>
-                <strong style={{ color: "#fff", fontSize: 14 }}>Compte TikTok utilisé : {accountLabel}</strong>
-                {creatorInfo.displayName && creatorInfo.displayName !== accountLabel ? (
-                  <span style={{ color: "rgba(255,255,255,0.64)", fontSize: 13 }}>{creatorInfo.displayName}</span>
-                ) : null}
-                <span style={{ color: "rgba(255,255,255,0.58)", fontSize: 12, lineHeight: 1.45 }}>
-                  Cette publication sera envoyée uniquement sur le compte TikTok connecté ci-dessus.
-                </span>
+                <div
+                  style={{
+                    width: isMobile ? 54 : 52,
+                    height: isMobile ? 54 : 52,
+                    borderRadius: 999,
+                    overflow: "hidden",
+                    display: "grid",
+                    placeItems: "center",
+                    background: "linear-gradient(135deg, rgba(124,58,237,0.95), rgba(217,70,239,0.78))",
+                    border: "1px solid rgba(255,255,255,0.16)",
+                    color: "#fff",
+                    fontWeight: 900,
+                    fontSize: 22,
+                    textTransform: "lowercase",
+                  }}
+                >
+                  {creatorInfo.avatarUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={creatorInfo.avatarUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  ) : (
+                    (accountLabel.replace(/^@/, "").slice(0, 1) || "t").toLowerCase()
+                  )}
+                </div>
+                <div style={{ display: "grid", gap: 5, minWidth: 0 }}>
+                  <strong style={{ color: "#fff", fontSize: 14 }}>{accountLabel}</strong>
+                  {creatorInfo.displayName && creatorInfo.displayName !== accountLabel ? (
+                    <span style={{ color: "rgba(255,255,255,0.64)", fontSize: 13 }}>{creatorInfo.displayName}</span>
+                  ) : null}
+                  <span style={{ color: "rgba(255,255,255,0.62)", fontSize: 12, lineHeight: 1.4 }}>
+                    Cette publication sera envoyée uniquement sur ce compte TikTok connecté.
+                  </span>
+                </div>
               </div>
             </section>
 
-            <section
-              style={{
-                borderRadius: 16,
-                padding: isMobile ? 14 : 12,
-                background: "rgba(15,23,42,0.72)",
-                border: "1px solid rgba(255,255,255,0.10)",
-                display: "grid",
-                gridTemplateColumns: isMobile ? "1fr" : "190px 1fr",
-                gap: isMobile ? 14 : 12,
-              }}
-            >
+            <section style={{ ...sectionCardStyle, display: "grid", gap: isMobile ? 12 : 10 }}>
+              <SectionHeader icon="🖼️" title="Contenu envoyé" />
               <div
                 style={{
-                  minHeight: isMobile ? (mediaType === "video" ? 150 : 170) : 118,
-                  borderRadius: 14,
-                  overflow: "hidden",
-                  background: "rgba(0,0,0,0.28)",
-                  border: "1px solid rgba(255,255,255,0.10)",
                   display: "grid",
-                  placeItems: "center",
+                  gridTemplateColumns: isMobile ? "1fr" : "200px 1fr",
+                  gap: isMobile ? 14 : 14,
+                  alignItems: "center",
+                  paddingLeft: isMobile ? 0 : 34,
                 }}
               >
-                {previewMediaUrl ? (
-                  mediaType === "video" ? (
-                    <video src={previewMediaUrl} controls muted playsInline style={{ width: "100%", height: "100%", objectFit: "contain", background: "#020617" }} />
-                  ) : (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={previewMediaUrl} alt="Aperçu TikTok" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
-                  )
-                ) : (
-                  <span style={{ color: "rgba(255,255,255,0.52)", fontSize: 13, textAlign: "center", padding: 12 }}>
-                    Aperçu média non disponible
-                  </span>
-                )}
-              </div>
-              <div style={{ display: "grid", gap: isMobile ? 10 : 8, minWidth: 0 }}>
-                <div style={{ display: "grid", gap: 4 }}>
-                  <strong style={{ color: "#fff", fontSize: 14 }}>Contenu envoyé à TikTok</strong>
-                  <span style={{ color: "rgba(255,255,255,0.62)", fontSize: 12 }}>{mediaSummary}</span>
-                </div>
                 <div
                   style={{
-                    borderRadius: 12,
-                    padding: isMobile ? 12 : 10,
-                    background: "rgba(255,255,255,0.04)",
-                    border: "1px solid rgba(255,255,255,0.08)",
-                    color: "rgba(255,255,255,0.82)",
-                    fontSize: 13,
-                    lineHeight: 1.35,
-                    whiteSpace: "pre-wrap",
-                    overflowWrap: "anywhere",
+                    minHeight: isMobile ? (mediaType === "video" ? 150 : 170) : 114,
+                    height: isMobile ? undefined : 124,
+                    borderRadius: 14,
+                    overflow: "hidden",
+                    background: "rgba(0,0,0,0.30)",
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    display: "grid",
+                    placeItems: "center",
                   }}
                 >
-                  {caption || "Publication iNrCy"}
+                  {previewMediaUrl ? (
+                    mediaType === "video" ? (
+                      <video src={previewMediaUrl} controls muted playsInline style={{ width: "100%", height: "100%", objectFit: "contain", background: "#020617" }} />
+                    ) : (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={previewMediaUrl} alt="Aperçu TikTok" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+                    )
+                  ) : (
+                    <span style={{ color: "rgba(255,255,255,0.52)", fontSize: 13, textAlign: "center", padding: 12 }}>
+                      Aperçu média non disponible
+                    </span>
+                  )}
                 </div>
-                {hashtags.length ? (
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                    {hashtags.slice(0, 10).map((tag) => (
-                      <span key={tag} style={{ borderRadius: 999, padding: "5px 8px", background: "rgba(76,195,255,0.10)", color: "rgba(191,239,255,0.92)", fontSize: 12 }}>
-                        {tag.startsWith("#") ? tag : `#${tag}`}
-                      </span>
-                    ))}
+                <div style={{ display: "grid", gap: isMobile ? 10 : 8, minWidth: 0 }}>
+                  <div style={{ display: "grid", gap: 5 }}>
+                    <strong style={{ color: "#fff", fontSize: 14 }}>{previewMediaName || (mediaType === "video" ? "Vidéo TikTok" : "Photos TikTok")}</strong>
+                    <span style={{ color: "rgba(255,255,255,0.62)", fontSize: 12 }}>{mediaSummary}</span>
                   </div>
-                ) : null}
+                  <div
+                    style={{
+                      borderRadius: 12,
+                      padding: isMobile ? 12 : 12,
+                      minHeight: isMobile ? 72 : 54,
+                      background: "rgba(255,255,255,0.04)",
+                      border: "1px solid rgba(255,255,255,0.10)",
+                      color: "rgba(255,255,255,0.84)",
+                      fontSize: 13,
+                      lineHeight: 1.35,
+                      whiteSpace: "pre-wrap",
+                      overflowWrap: "anywhere",
+                    }}
+                  >
+                    {caption || "Publication iNrCy"}
+                  </div>
+                  {hashtags.length ? (
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {hashtags.slice(0, 10).map((tag) => (
+                        <span key={tag} style={{ borderRadius: 999, padding: "5px 8px", background: "rgba(76,195,255,0.10)", color: "rgba(191,239,255,0.92)", fontSize: 12 }}>
+                          {tag.startsWith("#") ? tag : `#${tag}`}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
               </div>
             </section>
 
@@ -438,94 +499,78 @@ export default function TiktokPublicationSettingsModal({
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: isMobile ? "1fr" : "1.05fr 0.95fr",
+                gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
                 gap: isMobile ? 14 : 12,
-                alignItems: "start",
+                alignItems: "stretch",
               }}
             >
-              <section style={{ display: "grid", gap: isMobile ? 12 : 10 }}>
+              <section style={{ ...sectionCardStyle, display: "grid", gap: isMobile ? 12 : 10 }}>
+                <SectionHeader icon="⚙️" title="Paramètres de publication TikTok" />
                 <label style={{ display: "grid", gap: 6 }}>
-                  <span style={{ fontSize: 13, color: "rgba(255,255,255,0.78)", fontWeight: 800 }}>Visibilité TikTok obligatoire</span>
+                  <span style={{ fontSize: 12, color: "rgba(255,255,255,0.70)", fontWeight: 800 }}>Visibilité</span>
                   <select
                     value={privacyLevel}
                     onChange={(event) => {
                       clearFinalConsent();
                       setPrivacyLevel(event.target.value);
                     }}
-                    style={{
-                      width: "100%",
-                      borderRadius: 12,
-                      border: "1px solid rgba(255,255,255,0.14)",
-                      background: "rgba(15,23,42,0.95)",
-                      color: "white",
-                      colorScheme: "dark",
-                      padding: isMobile ? "10px 12px" : "8px 10px",
-                      outline: "none",
-                    }}
+                    style={fieldStyle}
                   >
                     <option value="">Choisir la visibilité</option>
                     {creatorInfo.privacyLevelOptions.map((option) => (
                       <option key={option} value={option}>{privacyLabels[option] || option}</option>
                     ))}
                   </select>
-                  <span style={{ color: "rgba(255,255,255,0.55)", fontSize: 12, lineHeight: 1.35 }}>
-                    Choix renvoyés par TikTok. Avant l'audit, la visibilité reste privée.
-                  </span>
                 </label>
 
-                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : mediaType === "video" ? "repeat(3, 1fr)" : "1fr", gap: isMobile ? 10 : 8 }}>
-                  <label style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", borderRadius: 12, border: "1px solid rgba(255,255,255,0.12)", padding: isMobile ? "10px 12px" : "8px 10px", color: creatorInfo.commentDisabled ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.88)", fontSize: 13 }}>
-                    Commentaires
-                    <input type="checkbox" checked={allowComments} disabled={creatorInfo.commentDisabled} onChange={(event) => {
-                      clearFinalConsent();
-                      setAllowComments(event.target.checked);
-                    }} />
-                  </label>
-                  {mediaType === "video" ? (
-                    <>
-                      <label style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", borderRadius: 12, border: "1px solid rgba(255,255,255,0.12)", padding: isMobile ? "10px 12px" : "8px 10px", color: creatorInfo.duetDisabled ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.88)", fontSize: 13 }}>
-                        Duo
-                        <input type="checkbox" checked={allowDuo} disabled={creatorInfo.duetDisabled} onChange={(event) => {
-                          clearFinalConsent();
-                          setAllowDuo(event.target.checked);
-                        }} />
-                      </label>
-                      <label style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", borderRadius: 12, border: "1px solid rgba(255,255,255,0.12)", padding: isMobile ? "10px 12px" : "8px 10px", color: creatorInfo.stitchDisabled ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.88)", fontSize: 13 }}>
-                        Stitch
-                        <input type="checkbox" checked={allowStitch} disabled={creatorInfo.stitchDisabled} onChange={(event) => {
-                          clearFinalConsent();
-                          setAllowStitch(event.target.checked);
-                        }} />
-                      </label>
-                    </>
-                  ) : null}
-                </div>
-                {creatorInfo.commentDisabled || (mediaType === "video" && (creatorInfo.duetDisabled || creatorInfo.stitchDisabled)) ? (
-                  <div style={{ color: "rgba(255,255,255,0.54)", fontSize: 12, lineHeight: 1.45 }}>
-                    Les options grisées sont désactivées par les réglages du compte TikTok connecté. Pour les photos, TikTok ne demande pas les options Duo/Stitch.
+                <div style={{ display: "grid", gap: 7 }}>
+                  <span style={{ fontSize: 12, color: "rgba(255,255,255,0.70)", fontWeight: 800 }}>Interactions</span>
+                  <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : mediaType === "video" ? "repeat(3, 1fr)" : "1fr", gap: isMobile ? 10 : 8 }}>
+                    <label style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", borderRadius: 12, border: "1px solid rgba(148,163,184,0.22)", background: "rgba(15,23,42,0.52)", padding: isMobile ? "10px 12px" : "9px 10px", color: creatorInfo.commentDisabled ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.88)", fontSize: 13 }}>
+                      <span>💬 Commentaires</span>
+                      <input type="checkbox" checked={allowComments} disabled={creatorInfo.commentDisabled} onChange={(event) => {
+                        clearFinalConsent();
+                        setAllowComments(event.target.checked);
+                      }} />
+                    </label>
+                    {mediaType === "video" ? (
+                      <>
+                        <label style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", borderRadius: 12, border: "1px solid rgba(148,163,184,0.22)", background: "rgba(15,23,42,0.52)", padding: isMobile ? "10px 12px" : "9px 10px", color: creatorInfo.duetDisabled ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.88)", fontSize: 13 }}>
+                          <span>👥 Duo</span>
+                          <input type="checkbox" checked={allowDuo} disabled={creatorInfo.duetDisabled} onChange={(event) => {
+                            clearFinalConsent();
+                            setAllowDuo(event.target.checked);
+                          }} />
+                        </label>
+                        <label style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", borderRadius: 12, border: "1px solid rgba(148,163,184,0.22)", background: "rgba(15,23,42,0.52)", padding: isMobile ? "10px 12px" : "9px 10px", color: creatorInfo.stitchDisabled ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.88)", fontSize: 13 }}>
+                          <span>✂️ Stitch</span>
+                          <input type="checkbox" checked={allowStitch} disabled={creatorInfo.stitchDisabled} onChange={(event) => {
+                            clearFinalConsent();
+                            setAllowStitch(event.target.checked);
+                          }} />
+                        </label>
+                      </>
+                    ) : null}
                   </div>
-                ) : null}
+                </div>
+
+                <div style={helperTextStyle}>
+                  Choix renvoyés par TikTok. Les options grisées suivent les réglages du compte connecté.
+                  {mediaType === "images" ? " Pour les photos, TikTok ne demande pas Duo/Stitch." : ""}
+                </div>
               </section>
 
-              <section style={{ display: "grid", gap: isMobile ? 12 : 10 }}>
+              <section style={{ ...sectionCardStyle, display: "grid", gap: isMobile ? 12 : 10 }}>
+                <SectionHeader icon="🛡️" title="Déclarations TikTok" />
                 <label style={{ display: "grid", gap: 6 }}>
-                  <span style={{ fontSize: 13, color: "rgba(255,255,255,0.78)", fontWeight: 800 }}>Déclaration de contenu commercial</span>
+                  <span style={{ fontSize: 12, color: "rgba(255,255,255,0.70)", fontWeight: 800 }}>Contenu commercial</span>
                   <select
                     value={commercialContent}
                     onChange={(event) => {
                       clearFinalConsent();
                       setCommercialContent(event.target.value as TiktokCommercialContent | "");
                     }}
-                    style={{
-                      width: "100%",
-                      borderRadius: 12,
-                      border: "1px solid rgba(255,255,255,0.14)",
-                      background: "rgba(15,23,42,0.95)",
-                      color: "white",
-                      colorScheme: "dark",
-                      padding: isMobile ? "10px 12px" : "8px 10px",
-                      outline: "none",
-                    }}
+                    style={fieldStyle}
                   >
                     <option value="">Choisir une déclaration</option>
                     <option value="none">{commercialLabels.none}</option>
@@ -544,11 +589,13 @@ export default function TiktokPublicationSettingsModal({
                       border: needsBrandedConsent ? "1px solid rgba(251,191,36,0.22)" : "1px solid rgba(76,195,255,0.14)",
                       color: "rgba(255,255,255,0.72)",
                       fontSize: 12,
-                      lineHeight: 1.45,
+                      lineHeight: 1.4,
                     }}
                   >
-                    Déclaration sélectionnée : <strong style={{ color: "#fff" }}>{commercialLabels[commercialContent]}</strong>.
-                    {needsBrandedConsent ? " Le consentement final inclura aussi la Branded Content Policy TikTok." : ""}
+                    Déclaration : <strong style={{ color: "#fff" }}>{commercialLabels[commercialContent]}</strong>.
+                    {needsBrandedConsent
+                      ? " Le consentement inclura aussi la Branded Content Policy TikTok."
+                      : ""}
                   </div>
                 ) : null}
 
@@ -559,18 +606,19 @@ export default function TiktokPublicationSettingsModal({
                       gap: 10,
                       alignItems: "flex-start",
                       borderRadius: 12,
-                      border: "1px solid rgba(255,255,255,0.12)",
+                      border: "1px solid rgba(148,163,184,0.22)",
+                      background: "rgba(15,23,42,0.52)",
                       padding: "10px 12px",
                       color: "rgba(255,255,255,0.82)",
                       fontSize: 13,
-                      lineHeight: 1.45,
+                      lineHeight: 1.4,
                     }}
                   >
                     <input type="checkbox" checked={photoAutoMusic} onChange={(event) => {
                       clearFinalConsent();
                       setPhotoAutoMusic(event.target.checked);
                     }} style={{ marginTop: 3 }} />
-                    <span>Autoriser TikTok à ajouter automatiquement une musique recommandée à cette publication photo.</span>
+                    <span>Autoriser TikTok à ajouter une musique recommandée à cette publication photo.</span>
                   </label>
                 ) : null}
 
@@ -579,20 +627,21 @@ export default function TiktokPublicationSettingsModal({
                     display: "grid",
                     gap: 6,
                     borderRadius: 12,
-                    border: "1px solid rgba(255,255,255,0.12)",
-                    padding: isMobile ? "10px 12px" : "8px 10px",
+                    border: "1px solid rgba(148,163,184,0.22)",
+                    background: "rgba(15,23,42,0.52)",
+                    padding: isMobile ? "10px 12px" : "10px 12px",
                     color: "rgba(255,255,255,0.88)",
                     fontSize: 13,
                   }}
                 >
                   <span style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
-                    Média généré ou fortement modifié par IA
+                    <strong style={{ color: "#fff", fontSize: 13 }}>Contenu généré ou modifié par IA</strong>
                     <input type="checkbox" checked={aiContent} onChange={(event) => {
                         clearFinalConsent();
                         setAiContent(event.target.checked);
                       }} />
                   </span>
-                  <span style={{ color: "rgba(255,255,255,0.58)", fontSize: 12, lineHeight: 1.35 }}>
+                  <span style={helperTextStyle}>
                     À cocher seulement si le média visuel/audio est généré ou fortement modifié par IA.
                   </span>
                 </label>
@@ -601,42 +650,38 @@ export default function TiktokPublicationSettingsModal({
 
             <section
               style={{
+                ...sectionCardStyle,
                 display: "grid",
                 gap: isMobile ? 10 : 8,
-                borderRadius: 16,
-                padding: isMobile ? 14 : 12,
-                background: "rgba(76,195,255,0.08)",
-                border: "1px solid rgba(76,195,255,0.18)",
+                background: "linear-gradient(135deg, rgba(14,165,233,0.12), rgba(30,41,59,0.70))",
+                border: "1px solid rgba(56,189,248,0.22)",
                 color: "rgba(255,255,255,0.82)",
                 fontSize: 13,
                 lineHeight: isMobile ? 1.5 : 1.35,
               }}
             >
-              <strong style={{ color: "#fff" }}>Consentement final TikTok</strong>
-              <label style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
+              <SectionHeader icon="✓" title="Consentement final TikTok" />
+              <label style={{ display: "flex", gap: 12, alignItems: "flex-start", paddingLeft: isMobile ? 0 : 34 }}>
                 <input type="checkbox" checked={musicUsageConfirmed} onChange={(event) => setMusicUsageConfirmed(event.target.checked)} style={{ marginTop: 3 }} />
                 <span>
                   J'ai vérifié le compte, le contenu, la visibilité et les interactions. J'accepte l'envoi à TikTok et je confirme respecter les {" "}
-                  <LegalLink href={tiktokLegalLinks.terms} label="Conditions TikTok" />, les {" "}
-                  <LegalLink href={tiktokLegalLinks.communityGuidelines} label="Règles communautaires" /> et la {" "}
+                  <LegalLink href={tiktokLegalLinks.terms} label="Conditions d'utilisation TikTok" />, les {" "}
+                  <LegalLink href={tiktokLegalLinks.communityGuidelines} label="Règles communautaires TikTok" /> et la {" "}
                   <LegalLink href={tiktokLegalLinks.musicUsageConfirmation} label="Music Usage Confirmation" />
                   {needsBrandedConsent ? (
                     <>
                       {" ainsi que la "}
-                      <LegalLink href={tiktokLegalLinks.brandedContentPolicy} label="Branded Content Policy" />
+                      <LegalLink href={tiktokLegalLinks.brandedContentPolicy} label="Branded Content Policy TikTok" />
                     </>
                   ) : null}
                   .
                 </span>
               </label>
-              <span style={{ color: "rgba(255,255,255,0.55)", fontSize: 12 }}>
-                Publication lancée uniquement après validation manuelle. Toute modification redemande confirmation.
-              </span>
             </section>
           </>
         ) : null}
 
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap", position: isMobile ? "sticky" : "static", bottom: -1, paddingTop: isMobile ? 6 : 2, background: "#111827" }}>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, flexWrap: "wrap", position: isMobile ? "sticky" : "static", bottom: -1, paddingTop: isMobile ? 6 : 2, background: "#111827" }}>
           <button type="button" className={styles.secondaryBtn} onClick={onCancel}>Retour modifier</button>
           <button
             type="button"
