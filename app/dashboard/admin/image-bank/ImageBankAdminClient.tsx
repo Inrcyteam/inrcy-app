@@ -46,17 +46,10 @@ type ImageBankRow = {
   usage_count: number | null;
   created_at: string;
   signed_url: string | null;
+  original_signed_url: string | null;
 };
 
 type ActiveFilter = "active" | "inactive" | "all";
-
-type EditDraft = {
-  title: string;
-  tags: string;
-  source: string;
-  source_url: string;
-  license_ref: string;
-};
 
 type UploadPrepareItem = {
   client_id: string;
@@ -80,6 +73,82 @@ const MAX_IMAGE_BYTES = INR_MEDIA_IMAGE_MAX_BYTES;
 const MAX_IMAGE_MB_LABEL = INR_MEDIA_IMAGE_MAX_MB_LABEL;
 const UPLOAD_BATCH_SIZE = INR_MEDIA_UPLOAD_BATCH_SIZE;
 const ALLOWED_IMAGE_TYPES = new Set<string>(INR_MEDIA_ALLOWED_IMAGE_MIME_TYPES);
+const OPTIMIZED_IMAGE_MIME_TYPE = "image/webp";
+const OPTIMIZED_IMAGE_MAX_SIZE = 1600;
+const OPTIMIZED_IMAGE_QUALITY = 0.82;
+
+function getOptimizedImageName(name: string) {
+  const safeName = name || "image-inrcy";
+  return safeName.replace(/\.[a-z0-9]{2,5}$/i, "") + ".webp";
+}
+
+function loadImageElement(file: File): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("Image illisible."));
+    };
+    image.src = url;
+  });
+}
+
+function canvasToWebpBlob(canvas: HTMLCanvasElement): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    canvas.toBlob(
+      (blob) => resolve(blob),
+      OPTIMIZED_IMAGE_MIME_TYPE,
+      OPTIMIZED_IMAGE_QUALITY,
+    );
+  });
+}
+
+async function optimizeImageForUpload(file: File): Promise<File> {
+  try {
+    const image = await loadImageElement(file);
+    const sourceWidth = image.naturalWidth || image.width;
+    const sourceHeight = image.naturalHeight || image.height;
+    if (!sourceWidth || !sourceHeight) return file;
+
+    const ratio = Math.min(
+      1,
+      OPTIMIZED_IMAGE_MAX_SIZE / Math.max(sourceWidth, sourceHeight),
+    );
+    const width = Math.max(1, Math.round(sourceWidth * ratio));
+    const height = Math.max(1, Math.round(sourceHeight * ratio));
+
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+
+    const context = canvas.getContext("2d");
+    if (!context) return file;
+
+    context.drawImage(image, 0, 0, width, height);
+    const blob = await canvasToWebpBlob(canvas);
+    if (!blob || blob.size <= 0) return file;
+
+    return new File([blob], getOptimizedImageName(file.name), {
+      type: OPTIMIZED_IMAGE_MIME_TYPE,
+      lastModified: file.lastModified,
+    });
+  } catch {
+    return file;
+  }
+}
+
+async function optimizeUploadFiles(selectedFiles: File[]) {
+  const optimized: File[] = [];
+  for (const file of selectedFiles) {
+    optimized.push(await optimizeImageForUpload(file));
+  }
+  return optimized;
+}
 
 async function readApiJson(response: Response, fallbackMessage: string) {
   const contentType = response.headers.get("content-type") || "";
@@ -149,14 +218,6 @@ function formatBytes(bytes: number | null | undefined) {
   return `${(bytes / 1024 / 1024).toFixed(1)} Mo`;
 }
 
-function formatDate(iso: string) {
-  try {
-    return new Date(iso).toLocaleString("fr-FR");
-  } catch {
-    return iso;
-  }
-}
-
 function groupBySector(categories: ImageBankCategory[]) {
   const map = new Map<
     string,
@@ -175,18 +236,6 @@ function groupBySector(categories: ImageBankCategory[]) {
   return Array.from(map.values());
 }
 
-function tagsToText(tags: string[] | null | undefined) {
-  return Array.isArray(tags) ? tags.join(", ") : "";
-}
-
-function cleanEditableTags(value: string) {
-  return value
-    .split(",")
-    .map((tag) => tag.trim().toLowerCase())
-    .filter(Boolean)
-    .slice(0, 20);
-}
-
 export default function ImageBankAdminClient() {
   const [categories, setCategories] = useState<ImageBankCategory[]>([]);
   const [images, setImages] = useState<ImageBankRow[]>([]);
@@ -194,7 +243,6 @@ export default function ImageBankAdminClient() {
   const [imagesLoading, setImagesLoading] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
-  const [editingId, setEditingId] = useState<string | null>(null);
   const [fileInputKey, setFileInputKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -212,11 +260,6 @@ export default function ImageBankAdminClient() {
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>("active");
   const [sourceFilter, setSourceFilter] = useState("all");
   const [search, setSearch] = useState("");
-  const [editDrafts, setEditDrafts] = useState<Record<string, EditDraft>>({});
-  const [selectedImageIds, setSelectedImageIds] = useState<Set<string>>(
-    () => new Set(),
-  );
-
   const sectors = useMemo(() => groupBySector(categories), [categories]);
   const selectedSectorJobs = useMemo(() => {
     if (!sectorSlug) return [];
@@ -244,15 +287,6 @@ export default function ImageBankAdminClient() {
       ),
     };
   }, [images]);
-
-  const selectedImages = useMemo(
-    () => images.filter((image) => selectedImageIds.has(image.id)),
-    [images, selectedImageIds],
-  );
-  const selectedImageCount = selectedImages.length;
-  const allVisibleImagesSelected =
-    images.length > 0 && images.every((image) => selectedImageIds.has(image.id));
-  const bulkDeleting = savingId === "__bulk__";
 
   const loadCategories = useCallback(async () => {
     setError(null);
@@ -304,25 +338,6 @@ export default function ImageBankAdminClient() {
           throw new Error(json?.error || "Impossible de charger les images.");
         const nextImages = (json.images ?? []) as ImageBankRow[];
         setImages(nextImages);
-        setSelectedImageIds((prev) => {
-          const visibleIds = new Set(nextImages.map((image) => image.id));
-          return new Set(Array.from(prev).filter((id) => visibleIds.has(id)));
-        });
-        setEditDrafts((prev) => {
-          const next = { ...prev };
-          for (const image of nextImages) {
-            if (!next[image.id]) {
-              next[image.id] = {
-                title: image.title || "",
-                tags: tagsToText(image.tags),
-                source: image.source || "freepik",
-                source_url: image.source_url || "",
-                license_ref: image.license_ref || "",
-              };
-            }
-          }
-          return next;
-        });
       } catch (e: any) {
         setError(e?.message || "Impossible de charger les images.");
       } finally {
@@ -368,9 +383,12 @@ export default function ImageBankAdminClient() {
     setUploading(true);
     try {
       validateUploadFiles(selectedFiles);
+      setUploadProgress("Optimisation des images avant import…");
+      const uploadFiles = await optimizeUploadFiles(selectedFiles);
+      validateUploadFiles(uploadFiles);
 
       const supabase = createClient();
-      const batches = chunkFiles(selectedFiles, UPLOAD_BATCH_SIZE);
+      const batches = chunkFiles(uploadFiles, UPLOAD_BATCH_SIZE);
       let uploaded = 0;
       let failed = 0;
       const failures: string[] = [];
@@ -516,105 +534,6 @@ export default function ImageBankAdminClient() {
     }
   }
 
-  async function patchImage(
-    id: string,
-    payload: Record<string, unknown>,
-    successMessage: string,
-  ) {
-    setSavingId(id);
-    setError(null);
-    setSuccess(null);
-    try {
-      const response = await fetch("/api/admin/image-bank/images", {
-        method: "PATCH",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id, ...payload }),
-      });
-      const json = await readApiJson(response, "Mise à jour impossible.");
-      if (!response.ok)
-        throw new Error(json?.error || "Mise à jour impossible.");
-      setSuccess(successMessage);
-      await loadImages(categoryId);
-    } catch (e: any) {
-      setError(e?.message || "Mise à jour impossible.");
-    } finally {
-      setSavingId(null);
-    }
-  }
-
-  async function saveImageMetadata(image: ImageBankRow) {
-    const draft = editDrafts[image.id];
-    if (!draft) return;
-    await patchImage(
-      image.id,
-      {
-        title: draft.title,
-        tags: cleanEditableTags(draft.tags),
-        source: draft.source,
-        source_url: draft.source_url,
-        license_ref: draft.license_ref,
-      },
-      "Métadonnées mises à jour.",
-    );
-    setEditingId(null);
-  }
-
-  function toggleImageSelection(id: string) {
-    setSelectedImageIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }
-
-  function toggleAllVisibleImages() {
-    setSelectedImageIds((prev) => {
-      const next = new Set(prev);
-      if (allVisibleImagesSelected) {
-        for (const image of images) next.delete(image.id);
-      } else {
-        for (const image of images) next.add(image.id);
-      }
-      return next;
-    });
-  }
-
-  function clearImageSelection() {
-    setSelectedImageIds(new Set());
-  }
-
-  async function deleteSelectedImages() {
-    const ids = selectedImages.map((image) => image.id);
-    if (!ids.length) return;
-
-    const ok = window.confirm(
-      `Supprimer définitivement ${ids.length} image(s) de la banque iNrCy ?`,
-    );
-    if (!ok) return;
-
-    setSavingId("__bulk__");
-    setError(null);
-    setSuccess(null);
-    try {
-      const response = await fetch("/api/admin/image-bank/images", {
-        method: "DELETE",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ ids }),
-      });
-      const json = await readApiJson(response, "Suppression impossible.");
-      if (!response.ok)
-        throw new Error(json?.error || "Suppression impossible.");
-      setSuccess(`${Number(json?.deleted || ids.length)} image(s) supprimée(s).`);
-      clearImageSelection();
-      await loadImages(categoryId);
-    } catch (e: any) {
-      setError(e?.message || "Suppression impossible.");
-    } finally {
-      setSavingId(null);
-    }
-  }
-
   async function deleteImage(image: ImageBankRow) {
     const ok = window.confirm(
       "Supprimer définitivement cette image de la banque iNrCy ?",
@@ -635,46 +554,12 @@ export default function ImageBankAdminClient() {
       if (!response.ok)
         throw new Error(json?.error || "Suppression impossible.");
       setSuccess("Image supprimée définitivement.");
-      setSelectedImageIds((prev) => {
-        const next = new Set(prev);
-        next.delete(image.id);
-        return next;
-      });
       await loadImages(categoryId);
     } catch (e: any) {
       setError(e?.message || "Suppression impossible.");
     } finally {
       setSavingId(null);
     }
-  }
-
-  async function copyPath(path: string) {
-    try {
-      await navigator.clipboard.writeText(path);
-      setSuccess("Chemin copié.");
-    } catch {
-      setError("Impossible de copier le chemin.");
-    }
-  }
-
-  function updateDraft(id: string, field: keyof EditDraft, value: string) {
-    setEditDrafts((prev) => {
-      const current: EditDraft = prev[id] ?? {
-        title: "",
-        tags: "",
-        source: "freepik",
-        source_url: "",
-        license_ref: "",
-      };
-
-      return {
-        ...prev,
-        [id]: {
-          ...current,
-          [field]: value,
-        },
-      };
-    });
   }
 
   return (
@@ -818,7 +703,7 @@ export default function ImageBankAdminClient() {
               </small>
               <small className={styles.uploadRules}>
                 JPG, PNG ou WebP · {MAX_IMAGE_MB_LABEL} maximum par image ·
-                import par lots automatique.
+                optimisation WebP automatique avant import.
               </small>
             </label>
 
@@ -963,32 +848,6 @@ export default function ImageBankAdminClient() {
                   {selectedCategory?.storage_prefix || "—"}
                 </span>
               </div>
-
-              <div className={styles.bulkToolbar}>
-                <button
-                  type="button"
-                  className={styles.smallGhostButton}
-                  onClick={toggleAllVisibleImages}
-                  disabled={imagesLoading || images.length === 0 || bulkDeleting}
-                >
-                  {allVisibleImagesSelected ? "Tout désélectionner" : "Tout sélectionner"}
-                </button>
-                {selectedImageCount > 0 ? (
-                  <>
-                    <span className={styles.selectedCount}>
-                      {selectedImageCount} sélectionnée(s)
-                    </span>
-                    <button
-                      type="button"
-                      className={styles.bulkDangerButton}
-                      onClick={deleteSelectedImages}
-                      disabled={bulkDeleting}
-                    >
-                      {bulkDeleting ? "Suppression…" : "Supprimer la sélection"}
-                    </button>
-                  </>
-                ) : null}
-              </div>
             </div>
 
             {images.length === 0 ? (
@@ -998,220 +857,47 @@ export default function ImageBankAdminClient() {
             ) : (
               <div className={styles.imageGrid}>
                 {images.map((image) => {
-                  const draft = editDrafts[image.id];
-                  const isEditing = editingId === image.id;
                   const isSaving = savingId === image.id;
-                  const isSelected = selectedImageIds.has(image.id);
                   const cardTitle = `${image.title || image.job || "Image"} · ${image.storage_path}`;
 
                   return (
                     <article
                       key={image.id}
                       title={cardTitle}
-                      className={`${styles.imageCard} ${isSelected ? styles.imageCardSelected : ""} ${isEditing ? styles.imageCardEditing : ""} ${image.is_active === false ? styles.imageCardInactive : ""}`}
+                      className={`${styles.imageCard} ${image.is_active === false ? styles.imageCardInactive : ""}`}
                     >
                       <div className={styles.thumbWrap}>
-                        <label
-                          className={styles.cubeCheck}
-                          aria-label={`Sélectionner ${image.title || image.storage_path}`}
-                          onClick={(event) => event.stopPropagation()}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => toggleImageSelection(image.id)}
-                            disabled={isSaving || bulkDeleting}
-                          />
-                          <span aria-hidden="true" />
-                        </label>
-                        <button
-                          type="button"
-                          className={styles.cubeDeleteButton}
-                          onClick={() => deleteImage(image)}
-                          disabled={isSaving || bulkDeleting}
-                          aria-label={`Supprimer ${image.title || image.storage_path}`}
-                        >
-                          ×
-                        </button>
                         {image.signed_url ? (
                           <img
                             src={image.signed_url}
                             alt={image.title || image.storage_path}
+                            loading="lazy"
+                            decoding="async"
+                            draggable={false}
+                            onError={(event) => {
+                              if (
+                                image.original_signed_url &&
+                                event.currentTarget.src !==
+                                  image.original_signed_url
+                              ) {
+                                event.currentTarget.src =
+                                  image.original_signed_url;
+                              }
+                            }}
                           />
                         ) : (
                           <span>Aperçu indisponible</span>
                         )}
-                        <span
-                          className={
-                            image.is_active === false
-                              ? styles.inactivePill
-                              : styles.activePill
-                          }
+                        <button
+                          type="button"
+                          className={styles.cubeDeleteButton}
+                          onClick={() => deleteImage(image)}
+                          disabled={isSaving}
+                          aria-label={`Supprimer ${image.title || image.storage_path}`}
+                          title="Supprimer"
                         >
-                          {image.is_active === false ? "Inactive" : "Active"}
-                        </span>
-                      </div>
-
-                      <div className={styles.imageInfo}>
-                        {isEditing ? (
-                          <div className={styles.editBlock}>
-                            <input
-                              className={styles.miniInput}
-                              value={draft?.title ?? ""}
-                              onChange={(event) =>
-                                updateDraft(
-                                  image.id,
-                                  "title",
-                                  event.target.value,
-                                )
-                              }
-                              placeholder="Titre"
-                            />
-                            <input
-                              className={styles.miniInput}
-                              value={draft?.tags ?? ""}
-                              onChange={(event) =>
-                                updateDraft(
-                                  image.id,
-                                  "tags",
-                                  event.target.value,
-                                )
-                              }
-                              placeholder="tags, séparés, par virgule"
-                            />
-                            <select
-                              className={styles.miniInput}
-                              value={draft?.source ?? "freepik"}
-                              onChange={(event) =>
-                                updateDraft(
-                                  image.id,
-                                  "source",
-                                  event.target.value,
-                                )
-                              }
-                            >
-                              <option value="freepik">
-                                Freepik / Magnific
-                              </option>
-                              <option value="inrcy">iNrCy</option>
-                              <option value="client">Client</option>
-                              <option value="autre">Autre</option>
-                            </select>
-                            <input
-                              className={styles.miniInput}
-                              value={draft?.license_ref ?? ""}
-                              onChange={(event) =>
-                                updateDraft(
-                                  image.id,
-                                  "license_ref",
-                                  event.target.value,
-                                )
-                              }
-                              placeholder="Référence licence"
-                            />
-                            <input
-                              className={styles.miniInput}
-                              value={draft?.source_url ?? ""}
-                              onChange={(event) =>
-                                updateDraft(
-                                  image.id,
-                                  "source_url",
-                                  event.target.value,
-                                )
-                              }
-                              placeholder="URL source"
-                            />
-                          </div>
-                        ) : (
-                          <>
-                            <strong>
-                              {image.title || image.job || "Image"}
-                            </strong>
-                            <span>{image.storage_path}</span>
-                            <small>
-                              {tagsToText(image.tags) || "Aucun tag"}
-                            </small>
-                            <small>
-                              {image.orientation || "—"} · {image.width || "—"}×
-                              {image.height || "—"} ·{" "}
-                              {formatBytes(image.size_bytes)}
-                            </small>
-                            <small>
-                              {image.source || "—"} ·{" "}
-                              {image.license_ref || "licence non renseignée"}
-                            </small>
-                            <small>
-                              {formatDate(image.created_at)} · utilisée{" "}
-                              {image.usage_count || 0} fois
-                            </small>
-                          </>
-                        )}
-
-                        <div className={styles.imageActions}>
-                          {isEditing ? (
-                            <>
-                              <button
-                                type="button"
-                                className={styles.smallButton}
-                                disabled={isSaving}
-                                onClick={() => saveImageMetadata(image)}
-                              >
-                                {isSaving ? "..." : "Enregistrer"}
-                              </button>
-                              <button
-                                type="button"
-                                className={styles.smallGhostButton}
-                                disabled={isSaving}
-                                onClick={() => setEditingId(null)}
-                              >
-                                Annuler
-                              </button>
-                            </>
-                          ) : (
-                            <>
-                              <button
-                                type="button"
-                                className={styles.smallButton}
-                                onClick={() => setEditingId(image.id)}
-                              >
-                                Modifier
-                              </button>
-                              <button
-                                type="button"
-                                className={styles.smallGhostButton}
-                                disabled={isSaving}
-                                onClick={() =>
-                                  patchImage(
-                                    image.id,
-                                    { is_active: image.is_active === false },
-                                    image.is_active === false
-                                      ? "Image réactivée."
-                                      : "Image désactivée.",
-                                  )
-                                }
-                              >
-                                {image.is_active === false
-                                  ? "Activer"
-                                  : "Désactiver"}
-                              </button>
-                              <button
-                                type="button"
-                                className={styles.smallGhostButton}
-                                onClick={() => copyPath(image.storage_path)}
-                              >
-                                Copier
-                              </button>
-                              <button
-                                type="button"
-                                className={styles.dangerButton}
-                                disabled={isSaving}
-                                onClick={() => deleteImage(image)}
-                              >
-                                Supprimer
-                              </button>
-                            </>
-                          )}
-                        </div>
+                          ×
+                        </button>
                       </div>
                     </article>
                   );

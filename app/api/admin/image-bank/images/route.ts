@@ -7,12 +7,17 @@ export const runtime = "nodejs";
 const BUCKET = "inrcy-image-bank";
 
 function cleanText(value: unknown, max = 500) {
-  return String(value ?? "").trim().slice(0, max);
+  return String(value ?? "")
+    .trim()
+    .slice(0, max);
 }
 
 function cleanTags(value: unknown) {
   if (Array.isArray(value)) {
-    return value.map((tag) => cleanText(tag, 60).toLowerCase()).filter(Boolean).slice(0, 20);
+    return value
+      .map((tag) => cleanText(tag, 60).toLowerCase())
+      .filter(Boolean)
+      .slice(0, 20);
   }
 
   return cleanText(value)
@@ -31,12 +36,15 @@ export async function GET(request: NextRequest) {
   const active = url.searchParams.get("active") || "active";
   const source = url.searchParams.get("source") || "all";
   const q = cleanText(url.searchParams.get("q"), 120);
-  const limit = Math.min(Math.max(Number(url.searchParams.get("limit") || 80), 1), 200);
+  const limit = Math.min(
+    Math.max(Number(url.searchParams.get("limit") || 80), 1),
+    200,
+  );
 
   let query = supabaseAdmin
     .from("inrcy_image_bank")
     .select(
-      "id,category_id,storage_path,title,sector,job,tags,orientation,mime_type,width,height,size_bytes,source,source_url,license_ref,is_active,usage_count,created_at"
+      "id,category_id,storage_path,title,sector,job,tags,orientation,mime_type,width,height,size_bytes,source,source_url,license_ref,is_active,usage_count,created_at",
     )
     .order("created_at", { ascending: false })
     .limit(limit);
@@ -58,24 +66,43 @@ export async function GET(request: NextRequest) {
   if (q) {
     const safeQ = q.replaceAll(",", " ");
     query = query.or(
-      `storage_path.ilike.%${safeQ}%,title.ilike.%${safeQ}%,job.ilike.%${safeQ}%,source.ilike.%${safeQ}%,license_ref.ilike.%${safeQ}%`
+      `storage_path.ilike.%${safeQ}%,title.ilike.%${safeQ}%,job.ilike.%${safeQ}%,source.ilike.%${safeQ}%,license_ref.ilike.%${safeQ}%`,
     );
   }
 
   const { data, error } = await query;
   if (error) {
-    return NextResponse.json({ error: "Impossible de charger les images.", detail: error.message }, { status: 500 });
+    return NextResponse.json(
+      { error: "Impossible de charger les images.", detail: error.message },
+      { status: 500 },
+    );
   }
 
   const rows = data ?? [];
   const withUrls = await Promise.all(
     rows.map(async (row: any) => {
-      const signed = await supabaseAdmin.storage.from(BUCKET).createSignedUrl(row.storage_path, 60 * 30);
+      const storage = supabaseAdmin.storage.from(BUCKET);
+      const [thumbnailSigned, originalSigned] = await Promise.all([
+        storage.createSignedUrl(row.storage_path, 60 * 30, {
+          transform: {
+            width: 320,
+            height: 320,
+            resize: "cover",
+            quality: 72,
+          },
+        }),
+        storage.createSignedUrl(row.storage_path, 60 * 30),
+      ]);
+
       return {
         ...row,
-        signed_url: signed.data?.signedUrl ?? null,
+        signed_url:
+          thumbnailSigned.data?.signedUrl ??
+          originalSigned.data?.signedUrl ??
+          null,
+        original_signed_url: originalSigned.data?.signedUrl ?? null,
       };
-    })
+    }),
   );
 
   return NextResponse.json({ images: withUrls });
@@ -127,7 +154,10 @@ export async function PATCH(request: NextRequest) {
     .maybeSingle();
 
   if (error) {
-    return NextResponse.json({ error: "Impossible de mettre à jour l’image.", detail: error.message }, { status: 500 });
+    return NextResponse.json(
+      { error: "Impossible de mettre à jour l’image.", detail: error.message },
+      { status: 500 },
+    );
   }
 
   if (!data) {
@@ -164,7 +194,13 @@ export async function DELETE(request: NextRequest) {
     .in("id", requestedIds);
 
   if (fetchError) {
-    return NextResponse.json({ error: "Impossible de retrouver les images.", detail: fetchError.message }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: "Impossible de retrouver les images.",
+        detail: fetchError.message,
+      },
+      { status: 500 },
+    );
   }
 
   const foundRows = Array.isArray(rows) ? rows : [];
@@ -177,16 +213,35 @@ export async function DELETE(request: NextRequest) {
     .filter(Boolean);
 
   if (storagePaths.length) {
-    const remove = await supabaseAdmin.storage.from(BUCKET).remove(storagePaths);
+    const remove = await supabaseAdmin.storage
+      .from(BUCKET)
+      .remove(storagePaths);
     if (remove.error) {
-      return NextResponse.json({ error: "Impossible de supprimer les fichiers Storage.", detail: remove.error.message }, { status: 500 });
+      return NextResponse.json(
+        {
+          error: "Impossible de supprimer les fichiers Storage.",
+          detail: remove.error.message,
+        },
+        { status: 500 },
+      );
     }
   }
 
-  const foundIds = foundRows.map((row: any) => cleanText(row.id, 80)).filter(Boolean);
-  const del = await supabaseAdmin.from("inrcy_image_bank").delete().in("id", foundIds);
+  const foundIds = foundRows
+    .map((row: any) => cleanText(row.id, 80))
+    .filter(Boolean);
+  const del = await supabaseAdmin
+    .from("inrcy_image_bank")
+    .delete()
+    .in("id", foundIds);
   if (del.error) {
-    return NextResponse.json({ error: "Impossible de supprimer les lignes Supabase.", detail: del.error.message }, { status: 500 });
+    return NextResponse.json(
+      {
+        error: "Impossible de supprimer les lignes Supabase.",
+        detail: del.error.message,
+      },
+      { status: 500 },
+    );
   }
 
   return NextResponse.json({ ok: true, deleted: foundIds.length });
