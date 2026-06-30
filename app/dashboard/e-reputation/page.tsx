@@ -399,8 +399,10 @@ export default async function EReputationPage() {
           <div className={styles.brand}>
             <div className={styles.brandIconWrap} aria-hidden="true">
               <div className={styles.reputationBrandIcon}>
-                <span className={styles.reputationBrandIconMain}>★</span>
-                <span className={styles.reputationBrandIconAccent}>✓</span>
+                <span className={`${styles.reputationBrandStar} ${styles.reputationBrandStarCenter}`}>★</span>
+                <span className={`${styles.reputationBrandStar} ${styles.reputationBrandStarTopLeft}`}>★</span>
+                <span className={`${styles.reputationBrandStar} ${styles.reputationBrandStarTopRight}`}>★</span>
+                <span className={`${styles.reputationBrandStar} ${styles.reputationBrandStarBottomLeft}`}>★</span>
               </div>
             </div>
             <div className={styles.brandText}>

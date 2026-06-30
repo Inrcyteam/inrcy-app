@@ -65,6 +65,28 @@ const commercialLabels: Record<TiktokCommercialContent, string> = {
   both: "Oui, les deux : mon activité et une marque tierce",
 };
 
+const legalLinkStyle = {
+  color: "#bae6fd",
+  fontWeight: 800,
+  textDecoration: "underline",
+  textUnderlineOffset: 3,
+} as const;
+
+const tiktokLegalLinks = {
+  terms: "https://www.tiktok.com/legal/page/row/terms-of-service/en",
+  communityGuidelines: "https://www.tiktok.com/community-guidelines/en/",
+  musicUsageConfirmation: "https://www.tiktok.com/legal/page/global/music-usage-confirmation/en",
+  brandedContentPolicy: "https://www.tiktok.com/legal/page/global/bc-policy/en",
+} as const;
+
+function LegalLink({ href, label }: { href: string; label: string }) {
+  return (
+    <a href={href} target="_blank" rel="noopener noreferrer" style={legalLinkStyle}>
+      {label}
+    </a>
+  );
+}
+
 function formatDuration(seconds: number | null) {
   if (!seconds || !Number.isFinite(seconds)) return "durée non détectée";
   const rounded = Math.round(seconds);
@@ -211,6 +233,9 @@ export default function TiktokPublicationSettingsModal({
       commercialContent &&
       musicUsageConfirmed,
   );
+  const clearFinalConsent = () => {
+    if (musicUsageConfirmed) setMusicUsageConfirmed(false);
+  };
 
   if (!open) return null;
 
@@ -421,7 +446,10 @@ export default function TiktokPublicationSettingsModal({
                   <span style={{ fontSize: 13, color: "rgba(255,255,255,0.78)", fontWeight: 800 }}>Visibilité TikTok obligatoire</span>
                   <select
                     value={privacyLevel}
-                    onChange={(event) => setPrivacyLevel(event.target.value)}
+                    onChange={(event) => {
+                      clearFinalConsent();
+                      setPrivacyLevel(event.target.value);
+                    }}
                     style={{
                       width: "100%",
                       borderRadius: 12,
@@ -446,17 +474,26 @@ export default function TiktokPublicationSettingsModal({
                 <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : mediaType === "video" ? "repeat(3, 1fr)" : "1fr", gap: 10 }}>
                   <label style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", borderRadius: 12, border: "1px solid rgba(255,255,255,0.12)", padding: "10px 12px", color: creatorInfo.commentDisabled ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.88)", fontSize: 13 }}>
                     Commentaires
-                    <input type="checkbox" checked={allowComments} disabled={creatorInfo.commentDisabled} onChange={(event) => setAllowComments(event.target.checked)} />
+                    <input type="checkbox" checked={allowComments} disabled={creatorInfo.commentDisabled} onChange={(event) => {
+                      clearFinalConsent();
+                      setAllowComments(event.target.checked);
+                    }} />
                   </label>
                   {mediaType === "video" ? (
                     <>
                       <label style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", borderRadius: 12, border: "1px solid rgba(255,255,255,0.12)", padding: "10px 12px", color: creatorInfo.duetDisabled ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.88)", fontSize: 13 }}>
                         Duo
-                        <input type="checkbox" checked={allowDuo} disabled={creatorInfo.duetDisabled} onChange={(event) => setAllowDuo(event.target.checked)} />
+                        <input type="checkbox" checked={allowDuo} disabled={creatorInfo.duetDisabled} onChange={(event) => {
+                          clearFinalConsent();
+                          setAllowDuo(event.target.checked);
+                        }} />
                       </label>
                       <label style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", borderRadius: 12, border: "1px solid rgba(255,255,255,0.12)", padding: "10px 12px", color: creatorInfo.stitchDisabled ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.88)", fontSize: 13 }}>
                         Stitch
-                        <input type="checkbox" checked={allowStitch} disabled={creatorInfo.stitchDisabled} onChange={(event) => setAllowStitch(event.target.checked)} />
+                        <input type="checkbox" checked={allowStitch} disabled={creatorInfo.stitchDisabled} onChange={(event) => {
+                          clearFinalConsent();
+                          setAllowStitch(event.target.checked);
+                        }} />
                       </label>
                     </>
                   ) : null}
@@ -473,7 +510,10 @@ export default function TiktokPublicationSettingsModal({
                   <span style={{ fontSize: 13, color: "rgba(255,255,255,0.78)", fontWeight: 800 }}>Déclaration de contenu commercial</span>
                   <select
                     value={commercialContent}
-                    onChange={(event) => setCommercialContent(event.target.value as TiktokCommercialContent | "")}
+                    onChange={(event) => {
+                      clearFinalConsent();
+                      setCommercialContent(event.target.value as TiktokCommercialContent | "");
+                    }}
                     style={{
                       width: "100%",
                       borderRadius: 12,
@@ -493,6 +533,23 @@ export default function TiktokPublicationSettingsModal({
                   </select>
                 </label>
 
+                {commercialContent ? (
+                  <div
+                    style={{
+                      borderRadius: 12,
+                      padding: "10px 12px",
+                      background: needsBrandedConsent ? "rgba(251,191,36,0.10)" : "rgba(76,195,255,0.07)",
+                      border: needsBrandedConsent ? "1px solid rgba(251,191,36,0.22)" : "1px solid rgba(76,195,255,0.14)",
+                      color: "rgba(255,255,255,0.72)",
+                      fontSize: 12,
+                      lineHeight: 1.45,
+                    }}
+                  >
+                    Déclaration sélectionnée : <strong style={{ color: "#fff" }}>{commercialLabels[commercialContent]}</strong>.
+                    {needsBrandedConsent ? " Le consentement final inclura aussi la Branded Content Policy TikTok." : ""}
+                  </div>
+                ) : null}
+
                 {mediaType === "images" ? (
                   <label
                     style={{
@@ -507,7 +564,10 @@ export default function TiktokPublicationSettingsModal({
                       lineHeight: 1.45,
                     }}
                   >
-                    <input type="checkbox" checked={photoAutoMusic} onChange={(event) => setPhotoAutoMusic(event.target.checked)} style={{ marginTop: 3 }} />
+                    <input type="checkbox" checked={photoAutoMusic} onChange={(event) => {
+                      clearFinalConsent();
+                      setPhotoAutoMusic(event.target.checked);
+                    }} style={{ marginTop: 3 }} />
                     <span>Autoriser TikTok à ajouter automatiquement une musique recommandée à cette publication photo.</span>
                   </label>
                 ) : null}
@@ -525,7 +585,10 @@ export default function TiktokPublicationSettingsModal({
                 >
                   <span style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
                     Média généré ou fortement modifié par IA
-                    <input type="checkbox" checked={aiContent} onChange={(event) => setAiContent(event.target.checked)} />
+                    <input type="checkbox" checked={aiContent} onChange={(event) => {
+                        clearFinalConsent();
+                        setAiContent(event.target.checked);
+                      }} />
                   </span>
                   <span style={{ color: "rgba(255,255,255,0.58)", fontSize: 12, lineHeight: 1.45 }}>
                     À cocher uniquement si le média visuel ou audio a été généré ou fortement modifié par IA. Le texte généré par iNrCy seul ne nécessite pas cette déclaration.
@@ -551,11 +614,21 @@ export default function TiktokPublicationSettingsModal({
               <label style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
                 <input type="checkbox" checked={musicUsageConfirmed} onChange={(event) => setMusicUsageConfirmed(event.target.checked)} style={{ marginTop: 3 }} />
                 <span>
-                  En publiant, j'accepte que ce contenu soit envoyé à TikTok et je confirme respecter les Conditions d'utilisation TikTok, les Règles communautaires TikTok et la Music Usage Confirmation pour cette publication{needsBrandedConsent ? ", ainsi que la Branded Content Policy de TikTok" : ""}.
+                  J'ai vérifié le compte TikTok, l'aperçu du contenu, la visibilité et les interactions. En publiant, j'accepte que ce contenu soit envoyé à TikTok et je confirme respecter les {" "}
+                  <LegalLink href={tiktokLegalLinks.terms} label="Conditions d'utilisation TikTok" />, les {" "}
+                  <LegalLink href={tiktokLegalLinks.communityGuidelines} label="Règles communautaires TikTok" /> et la {" "}
+                  <LegalLink href={tiktokLegalLinks.musicUsageConfirmation} label="Music Usage Confirmation" />
+                  {needsBrandedConsent ? (
+                    <>
+                      {" ainsi que la "}
+                      <LegalLink href={tiktokLegalLinks.brandedContentPolicy} label="Branded Content Policy" />
+                    </>
+                  ) : null}
+                  .
                 </span>
               </label>
               <span style={{ color: "rgba(255,255,255,0.55)", fontSize: 12 }}>
-                La publication ne commence qu'après cette validation manuelle. Les paramètres choisis ne valent que pour cette publication.
+                La publication ne commence qu'après cette validation manuelle. Si un paramètre est modifié ensuite, cette confirmation est redemandée.
               </span>
             </section>
           </>
@@ -582,7 +655,7 @@ export default function TiktokPublicationSettingsModal({
               });
             }}
           >
-            Valider et envoyer à TikTok
+            Valider et publier sur TikTok
           </button>
         </div>
       </div>
