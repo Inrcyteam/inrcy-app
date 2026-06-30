@@ -68,7 +68,7 @@ import {
   getBoosterGmbCallToAction,
 } from "@/lib/boosterCta";
 import { getLinkedInAccessToken } from "@/lib/linkedinOAuth";
-import { normalizeTiktokSettings } from "@/lib/tiktokMockSettings";
+import { normalizeTiktokSettings } from "@/lib/tiktokSettings";
 import { isTiktokIntegrationActive } from "@/lib/tiktokRouteStorage";
 import { buildTiktokMediaProxyUrl } from "@/lib/tiktokMediaUrl";
 import { refreshTiktokAccessToken } from "@/lib/tiktokOAuth";

@@ -1,36 +1,102 @@
-# Deploy checklist (Go/No-Go)
+# Deploy checklist iNrCy
 
-## Before deploy
+Checklist Go / No-Go pour déployer sans casser la version stable.
 
-- [ ] Sentry is receiving events (test in Preview only)
-- [ ] `HEALTHCHECK_TOKEN` set in Vercel (Production)
-- [ ] `VERCEL_CRON_SECRET` set in Vercel (Production + Preview if cron tested there)
-- [ ] `HEALTHCHECK_ALERT_TO` set if you want email alerts on failed health checks
-- [ ] Supabase backups enabled (and PITR if available)
-- [ ] New ENV vars added to **Production + Preview**
-- [ ] Migrations applied in staging/preview first
-- [ ] Smoke tests pass (login, dashboard load, one publish dry-run)
+## 0. Version stable
 
-## Deploy
+- [ ] Créer ou identifier le tag / commit stable avant déploiement.
+- [ ] Vérifier que le zip / dépôt ne contient pas `.env`, `.next`, `node_modules`.
+- [ ] Vérifier que le changement ne touche pas une zone sensible sans Preview dédiée.
 
-- [ ] Deploy to **Preview** and validate critical flows
-- [ ] Promote / deploy to **Production**
+Zones sensibles :
 
-## After deploy (10 minutes)
+- OAuth en cours de validation ;
+- règles média multi-canaux ;
+- accès admin ;
+- CSP ;
+- rate limiting fail-open / fail-closed ;
+- migrations Supabase ;
+- gros refactors React / API.
 
-- [ ] Check `GET /api/health` = 200
-- [ ] Check `GET /api/health/internal` = 200
-- [ ] Check `GET /api/cron/health?secret=...` = 200 (manual smoke once)
-- [ ] Vercel Logs: no spike 5xx
-- [ ] Sentry: no new high-volume issue
-- [ ] Key user journeys OK:
-  - [ ] Auth
-  - [ ] Integrations list
-  - [ ] Create a publication (no send required)
+## 1. Avant deploy
 
-## Rollback decision
+- [ ] `npm ci` OK.
+- [ ] `npm run typecheck` OK.
+- [ ] `npm run lint` OK.
+- [ ] `npm run test:media-rules` OK.
+- [ ] `npm run test:multicompte` OK.
+- [ ] `npm run verify:env` relu.
+- [ ] Sentry reçoit bien les événements en Preview si test applicable.
+- [ ] Supabase backups activés.
+- [ ] Migrations appliquées en Preview / staging avant Production.
+- [ ] Variables ajoutées dans Vercel Production + Preview si nécessaires.
 
-Rollback if:
-- 5xx error rate spikes and persists > 3 minutes
-- OAuth callbacks fail for multiple users
-- DB is saturated / timeouts start appearing
+Variables ops minimales :
+
+- [ ] `HEALTHCHECK_TOKEN`
+- [ ] `VERCEL_CRON_SECRET` ou `CRON_SECRET`
+- [ ] `KV_REST_API_URL`
+- [ ] `KV_REST_API_TOKEN`
+- [ ] `NEXT_PUBLIC_SUPABASE_URL`
+- [ ] `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- [ ] `SUPABASE_SERVICE_ROLE_KEY`
+
+Pendant l'attente TikTok / Pinterest / Trustpilot :
+
+- [ ] Ne pas forcer `STRICT=1` si les variables plateformes définitives ne sont pas encore disponibles.
+- [ ] Ne pas modifier les redirect URIs OAuth déjà soumises en review sans nécessité.
+- [ ] Ne pas retirer les routes ou pages nécessaires aux validations en cours.
+
+## 2. Preview
+
+- [ ] Déployer en Preview.
+- [ ] Vérifier login.
+- [ ] Vérifier dashboard.
+- [ ] Vérifier statuts canaux.
+- [ ] Vérifier Booster / Publier sans envoyer réellement si possible.
+- [ ] Vérifier iNrAgent : ouverture, paramètres, aperçu.
+- [ ] Vérifier iNrSend / Mails : liste et historique.
+- [ ] Vérifier E-réputation : liste + détail.
+- [ ] Vérifier iNrBadge public.
+- [ ] Vérifier une page légale si elle a été modifiée.
+
+## 3. Production
+
+- [ ] Promouvoir / déployer en Production.
+- [ ] Vérifier `GET /api/health` = 200.
+- [ ] Vérifier `GET /api/health/internal` = 200 avec `x-health-token`.
+- [ ] Vérifier `GET /api/cron/health?secret=...` = 200 si smoke manuel nécessaire.
+- [ ] Vérifier Vercel Logs : pas de spike 5xx.
+- [ ] Vérifier Sentry : pas de nouvelle erreur massive.
+- [ ] Vérifier un compte réel : login + dashboard + ouverture d'un module.
+
+## 4. Surveillance 10 minutes
+
+- [ ] Auth OK.
+- [ ] Dashboard OK.
+- [ ] API principales sans erreur récurrente.
+- [ ] Pas de plainte utilisateur bloquante.
+- [ ] Pas de latence Supabase anormale.
+- [ ] Pas de latence Upstash / KV anormale.
+
+## 5. Rollback
+
+Rollback si :
+
+- 5xx persistants ;
+- login ou dashboard cassé ;
+- OAuth callbacks cassés pour plusieurs utilisateurs ;
+- Supabase saturé ou timeouts répétés ;
+- publication ou email bloqué pour plusieurs utilisateurs ;
+- régression majeure visible côté client.
+
+Process :
+
+1. Vercel → Deployments → dernier déploiement stable → Redeploy.
+2. Si une migration DB est impliquée, préférer une forward-fix migration documentée.
+3. Noter l'incident dans le runbook ou une note courte.
+
+## 6. Après incident
+
+- [ ] Résumer en 10 lignes : date, impact, cause, correction, prévention.
+- [ ] Ajouter un test, une alerte ou une checklist pour éviter la récidive.

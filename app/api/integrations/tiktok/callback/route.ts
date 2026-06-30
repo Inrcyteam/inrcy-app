@@ -16,7 +16,7 @@ import {
   getTiktokRedirectUri,
   tiktokPostForm,
 } from "@/lib/tiktokOAuth";
-import { buildTiktokSettingsPatch } from "@/lib/tiktokMockSettings";
+import { buildTiktokSettingsPatch } from "@/lib/tiktokSettings";
 import { readTiktokSettings, saveTiktokSettings } from "@/lib/tiktokRouteStorage";
 
 function numberOrNull(value: unknown): number | null {

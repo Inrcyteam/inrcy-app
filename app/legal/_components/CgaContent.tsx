@@ -169,9 +169,8 @@ Le Client peut utiliser des médias dans les limites prévues par l’applicatio
 
 Sauf évolution ultérieure de l’offre, Booster / Publier permet notamment d’ajouter :
 
-jusqu’à 5 images ; ou
-1 vidéo ;
-dans une limite média de 40 Mo maximum.
+jusqu’à 5 images, dans une limite totale de 40 Mo pour une publication ; ou
+1 vidéo source jusqu’à 100 Mo, avec une version de publication optimisée jusqu’à 40 Mo lorsque l’application prépare une variante compressée.
 
 Les limites techniques peuvent évoluer selon les besoins de stabilité, de sécurité, de performance ou les contraintes imposées par les plateformes tierces.
 

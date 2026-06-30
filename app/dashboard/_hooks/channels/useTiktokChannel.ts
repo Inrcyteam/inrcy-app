@@ -12,7 +12,7 @@ import {
   normalizeTiktokSettings,
   type TiktokCommercialContent,
   type TiktokPreferredMedia,
-} from "@/lib/tiktokMockSettings";
+} from "@/lib/tiktokSettings";
 
 type UseTiktokChannelArgs = {
   panel: string | null;
@@ -128,7 +128,7 @@ export function useTiktokChannel({ panel, patchChannelConnectionLocally, trigger
     void loadTiktokStatus();
   }, [panel, loadTiktokStatus]);
 
-  const connectTiktokMock = useCallback(() => {
+  const connectTiktok = useCallback(() => {
     setTiktokLoading(true);
     setTiktokProfileUrlNotice(null);
     setTiktokProfileUrlError(null);
@@ -136,7 +136,7 @@ export function useTiktokChannel({ panel, patchChannelConnectionLocally, trigger
     window.location.href = `/api/integrations/tiktok/start?returnTo=${returnTo}`;
   }, []);
 
-  const disconnectTiktokMock = useCallback(async () => {
+  const disconnectTiktok = useCallback(async () => {
     setTiktokLoading(true);
     try {
       const json = await readJson(await fetch("/api/integrations/tiktok/disconnect-account", {
@@ -214,8 +214,8 @@ export function useTiktokChannel({ panel, patchChannelConnectionLocally, trigger
     tiktokSettingsNotice,
     tiktokSettingsError,
     tiktokLoading,
-    connectTiktokMock,
-    disconnectTiktokMock,
+    connectTiktok,
+    disconnectTiktok,
     saveTiktokProfileUrl,
     tiktokPreferredMedia,
     setTiktokPreferredMedia,

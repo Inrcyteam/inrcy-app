@@ -2,7 +2,7 @@ import { asRecord, asString } from "@/lib/tsSafe";
 import { getConnectionDisplayStatus, mailConnectionKind, type ConnectionDisplayStatus } from "@/lib/connectionVersions";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { hasActiveInrcySite } from "@/lib/inrcySite";
-import { normalizeTiktokSettings } from "@/lib/tiktokMockSettings";
+import { normalizeTiktokSettings } from "@/lib/tiktokSettings";
 import { applyYoutubeShortsIntegrationState } from "@/lib/youtubeShortsOAuth";
 
 type JsonRecord = Record<string, unknown>;

@@ -1,130 +1,268 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# iNrCy App
 
-## Getting Started
+Application SaaS iNrCy pour piloter la communication, les campagnes, les avis, les statistiques, les documents commerciaux et l'automatisation iNr'Agent.
 
-First, run the development server:
+Ce dépôt contient l'application Next.js principale : dashboard client, modules Booster / Propulser / Fidéliser / iNrSend / iNrStats / iNrCalendar / Devis-Factures / E-réputation / iNr'Badge / iNr'Agent, ainsi que les intégrations OAuth et les routes API associées.
+
+## État de stabilité
+
+Cette version est une base stable en attente de validations plateformes externes : TikTok, Pinterest et Trustpilot.
+
+Règle de travail actuelle : ne pas modifier le comportement métier tant que les validations plateformes sont en cours, sauf correction ciblée et testée.
+
+À privilégier pendant cette phase :
+
+- documentation ;
+- checklists de déploiement ;
+- vérification des variables d'environnement ;
+- sauvegardes Supabase ;
+- tests de non-régression ;
+- corrections isolées sans refactor massif.
+
+À éviter sans Preview complète :
+
+- refactor des gros fichiers métier ;
+- durcissement CSP brutal ;
+- changement des accès admin ;
+- passage global des limites coûteuses en fail-closed ;
+- modification des flows OAuth déjà en review ;
+- changement visuel global.
+
+## Stack
+
+- Next.js App Router
+- TypeScript
+- Supabase
+- Stripe
+- Vercel
+- Upstash / Vercel KV
+- Sentry
+- Playwright
+- OAuth multi-canaux : Google, Meta, LinkedIn, Microsoft, TikTok, Pinterest, Trustpilot selon disponibilité
+
+## Installation locale
 
 ```bash
+npm ci
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Puis ouvrir :
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```txt
+http://localhost:3000
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Pour un zip de transmission ou d'audit, ne pas inclure :
 
-## Learn More
+```txt
+node_modules
+.next
+.env
+.env.local
+```
 
-To learn more about Next.js, take a look at the following resources:
+Le fichier `package-lock.json` suffit pour réinstaller les dépendances.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-
-## Rate limiting & quotas (production)
-
-This app uses Upstash/Vercel KV for rate limiting and daily quotas.
-
-Required env (already present in Vercel KV integration):
-
-- `KV_REST_API_URL`
-- `KV_REST_API_TOKEN`
-
-Optional tuning env (defaults are safe):
-
-- `RL_BOOSTER_GENERATE_PER_MIN` (default: 8)
-- `QUOTA_BOOSTER_GENERATE_PER_DAY` (default: 120)
-- `RL_TEMPLATES_RENDER_PER_MIN` (default: 20)
-- `QUOTA_TEMPLATES_RENDER_PER_DAY` (default: 500)
-- `RL_PUBLISH_NOW_PER_MIN` (default: 6)
-- `QUOTA_PUBLISH_NOW_PER_DAY` (default: 80)
-- `RL_WIDGET_ISSUE_TOKEN_PER_MIN` (default: 30)
-- `QUOTA_WIDGET_ISSUE_TOKEN_PER_DAY` (default: 2000)
-
-Expensive endpoints are configured **fail-closed** to protect costs if KV is unavailable.
-
-## Ops (production)
-
-### Internal health
-
-- Public (safe): `GET /api/health`
-- Internal (deep): `GET /api/health/internal` with header `x-health-token: <HEALTHCHECK_TOKEN>`
-
-Add in Vercel (Production + Preview):
-
-- `HEALTHCHECK_TOKEN` (random long secret)
-
-### Smoke check after deploy
-
-Run locally:
-
-- `APP_BASE_URL=https://app.inrcy.com HEALTHCHECK_TOKEN=... npm run smoke:health`
-
-### Runbook
-
-See:
-
-- `ops/RUNBOOK.md`
-- `ops/DEPLOY_CHECKLIST.md`
-- `ops/MIGRATIONS.md`
-
-## E2E tests (Playwright)
-
-### Run locally
+## Commandes utiles
 
 ```bash
-npm i
+npm run typecheck
+npm run lint
+npm run test:media-rules
+npm run test:multicompte
+npm run build
+```
+
+Tests E2E :
+
+```bash
 npm run test:e2e:install
 npm run test:e2e
 ```
 
-This starts a local Next dev server automatically and runs the tests.
-
-### Run against a deployed environment
+Tests E2E contre une URL déployée :
 
 ```bash
 E2E_BASE_URL=https://app.inrcy.com npm run test:e2e
 ```
 
-### Authenticated tests (optional)
-
-If you want to run the authenticated flow, set:
+Tests authentifiés optionnels :
 
 ```bash
-E2E_EMAIL=you@example.com E2E_PASSWORD=... npm run test:e2e
+E2E_EMAIL=... E2E_PASSWORD=... npm run test:e2e
 ```
 
-## CI (GitHub Actions)
+## Variables d'environnement
 
-A CI workflow is included at `.github/workflows/ci.yml`.
+La liste de suivi est dans :
 
-- On every PR and push to `main`: runs **lint + build**.
-- Runs **E2E tests** only when required secrets are available (secrets are not exposed to forked PRs).
+```txt
+docs/ENVIRONMENT_CHECKLIST.md
+```
 
-Required secrets to enable E2E in CI:
+Le script de vérification est :
 
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY`
-- `KV_REST_API_URL`
-- `KV_REST_API_TOKEN`
+```bash
+npm run verify:env
+```
 
-Optional secrets (to enable authenticated E2E):
+En local ou en CI non bloquante :
 
-- `E2E_EMAIL`
-- `E2E_PASSWORD`
+```bash
+STRICT=0 npm run verify:env
+```
 
+En CI stricte, à activer seulement quand toutes les variables Production / Preview sont disponibles :
+
+```bash
+STRICT=1 npm run verify:env
+```
+
+Important : tant que TikTok, Pinterest et Trustpilot ne sont pas complètement validés / disponibles, garder le check env en non-strict est acceptable.
+
+## Rate limiting et quotas
+
+L'application utilise Upstash / Vercel KV pour les limites et quotas.
+
+Variables principales :
+
+```txt
+KV_REST_API_URL
+KV_REST_API_TOKEN
+```
+
+Variables de tuning possibles :
+
+```txt
+RL_BOOSTER_GENERATE_PER_MIN
+QUOTA_BOOSTER_GENERATE_PER_DAY
+RL_TEMPLATES_RENDER_PER_MIN
+QUOTA_TEMPLATES_RENDER_PER_DAY
+RL_PUBLISH_NOW_PER_MIN
+QUOTA_PUBLISH_NOW_PER_DAY
+RL_WIDGET_ISSUE_TOKEN_PER_MIN
+QUOTA_WIDGET_ISSUE_TOKEN_PER_DAY
+```
+
+État actuel documenté : certains endpoints coûteux sont configurés en fail-open côté code pour éviter de bloquer les utilisateurs si KV / Upstash est indisponible.
+
+C'est un choix de continuité de service. Le passage en fail-closed est une amélioration sécurité/coûts à tester en Preview, car il peut bloquer la génération IA ou la publication en cas d'incident KV.
+
+## Build et polices
+
+Le projet utilise `next/font` pour Geist. En local, un build peut échouer si l'environnement bloque le téléchargement des polices Google / Vercel.
+
+Si cela arrive uniquement en local avec une erreur réseau / TLS, ce n'est pas forcément une erreur applicative. Le build Vercel reste la référence.
+
+Une amélioration future possible est le self-host des polices, mais cela doit passer par Preview car le rendu visuel peut légèrement changer.
+
+## Déploiement
+
+Checklists principales :
+
+```txt
+ops/DEPLOY_CHECKLIST.md
+ops/RUNBOOK.md
+ops/MIGRATIONS.md
+```
+
+Ordre recommandé avant production :
+
+1. créer une version stable / tag Git ;
+2. vérifier les variables Vercel Production et Preview ;
+3. vérifier les migrations Supabase ;
+4. lancer typecheck / lint / tests ciblés ;
+5. déployer en Preview ;
+6. tester les flows critiques ;
+7. promouvoir en Production ;
+8. vérifier logs, Sentry et health checks.
+
+## Health checks
+
+Public :
+
+```txt
+GET /api/health
+```
+
+Interne :
+
+```txt
+GET /api/health/internal
+header: x-health-token: <HEALTHCHECK_TOKEN>
+```
+
+Smoke check :
+
+```bash
+APP_BASE_URL=https://app.inrcy.com HEALTHCHECK_TOKEN=... npm run smoke:health
+```
+
+## CI GitHub Actions
+
+Workflow :
+
+```txt
+.github/workflows/ci.yml
+```
+
+État actuel :
+
+- lint ;
+- build ;
+- E2E si secrets disponibles ;
+- verify-env en non-strict.
+
+À faire plus tard, quand toutes les variables plateformes sont stabilisées : passer `STRICT=1` sur `main`.
+
+## Migrations Supabase
+
+Avant d'ajouter ou modifier une migration :
+
+1. vérifier `ops/MIGRATIONS.md` ;
+2. tester en Preview / staging ;
+3. noter l'ordre d'application ;
+4. prévoir un rollback logique ou une forward-fix migration.
+
+Ne jamais lancer une migration non testée directement en production.
+
+## Règles média actuelles
+
+- Images : jusqu'à 5 images, 40 Mo total.
+- Vidéo source : 1 vidéo, jusqu'à 100 Mo.
+- Publication optimisée : jusqu'à 40 Mo.
+
+Ces règles doivent rester alignées entre :
+
+```txt
+lib/mediaRules.ts
+docs / textes légaux
+UI Booster / Publier
+routes de publication
+```
+
+## Phase actuelle recommandée
+
+Cette version doit surtout servir de socle stable.
+
+Priorité basse casse :
+
+```txt
+README / docs / checklists
+variables Vercel
+sauvegardes Supabase
+tests de non-régression
+attente validations TikTok / Pinterest / Trustpilot
+```
+
+Priorité à reporter après validations ou Preview dédiée :
+
+```txt
+refactor gros fichiers
+CSP stricte
+fail-closed global
+centralisation admin
+self-host polices
+nouveaux gros modules
+```

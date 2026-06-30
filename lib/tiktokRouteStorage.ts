@@ -1,6 +1,6 @@
 import "server-only";
 
-import { normalizeTiktokSettings, type TiktokMockSettings } from "@/lib/tiktokMockSettings";
+import { normalizeTiktokSettings, type TiktokSettings } from "@/lib/tiktokSettings";
 
 type IntegrationLite = {
   status?: string | null;
@@ -60,7 +60,7 @@ export function isTiktokIntegrationActive(integration: unknown) {
   return Boolean((status === "connected" || status === "account_connected") && (hasToken || hasRefreshToken) && !expired);
 }
 
-export function applyTiktokIntegrationState(settings: unknown, integration: unknown): TiktokMockSettings {
+export function applyTiktokIntegrationState(settings: unknown, integration: unknown): TiktokSettings {
   const base = normalizeTiktokSettings(settings);
   const row = asRecord(integration);
   const meta = asRecord(row.meta);
@@ -112,7 +112,7 @@ export function applyTiktokIntegrationState(settings: unknown, integration: unkn
   };
 }
 
-export async function readTiktokSettings(supabase: any, userId: string): Promise<{ root: Record<string, unknown>; tiktok: TiktokMockSettings }> {
+export async function readTiktokSettings(supabase: any, userId: string): Promise<{ root: Record<string, unknown>; tiktok: TiktokSettings }> {
   const { data } = await supabase
     .from("pro_tools_configs")
     .select("settings")
@@ -144,7 +144,7 @@ export async function readTiktokIntegration(supabase: any, userId: string): Prom
   return data || null;
 }
 
-export async function readTiktokSettingsWithOAuth(supabase: any, userId: string): Promise<{ root: Record<string, unknown>; tiktok: TiktokMockSettings; integration: IntegrationLite | null }> {
+export async function readTiktokSettingsWithOAuth(supabase: any, userId: string): Promise<{ root: Record<string, unknown>; tiktok: TiktokSettings; integration: IntegrationLite | null }> {
   const [{ root, tiktok }, integration] = await Promise.all([
     readTiktokSettings(supabase, userId),
     readTiktokIntegration(supabase, userId),
@@ -157,7 +157,7 @@ export async function readTiktokSettingsWithOAuth(supabase: any, userId: string)
   };
 }
 
-export async function saveTiktokSettings(supabase: any, userId: string, root: Record<string, unknown>, tiktok: TiktokMockSettings) {
+export async function saveTiktokSettings(supabase: any, userId: string, root: Record<string, unknown>, tiktok: TiktokSettings) {
   const settings = { ...root, tiktok };
   const { error } = await supabase
     .from("pro_tools_configs")

@@ -787,8 +787,8 @@ const {
   tiktokSettingsNotice,
   tiktokSettingsError,
   tiktokLoading,
-  connectTiktokMock,
-  disconnectTiktokMock,
+  connectTiktok,
+  disconnectTiktok,
   saveTiktokProfileUrl,
   tiktokPreferredMedia,
   setTiktokPreferredMedia,
@@ -3110,7 +3110,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     tiktokAllowDuo, setTiktokAllowDuo, tiktokAllowStitch, setTiktokAllowStitch,
     tiktokPhotoAutoMusic, setTiktokPhotoAutoMusic, tiktokCommercialContent, setTiktokCommercialContent,
     tiktokAiContent, setTiktokAiContent, tiktokSettingsNotice, tiktokSettingsError,
-    connectTiktokMock, disconnectTiktokMock, saveTiktokProfileUrl, saveTiktokDefaults,
+    connectTiktok, disconnectTiktok, saveTiktokProfileUrl, saveTiktokDefaults,
   };
 
   const {

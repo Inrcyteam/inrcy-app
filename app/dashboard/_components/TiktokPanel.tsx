@@ -34,8 +34,8 @@ export default function TiktokPanel(props: any) {
     tiktokProfileUrlNotice,
     tiktokProfileUrlError,
     tiktokLoading,
-    connectTiktokMock,
-    disconnectTiktokMock,
+    connectTiktok,
+    disconnectTiktok,
     saveTiktokProfileUrl,
   } = props;
 
@@ -81,15 +81,15 @@ export default function TiktokPanel(props: any) {
 
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           {!tiktokConnected ? (
-            <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={() => void connectTiktokMock?.()} disabled={tiktokLoading}>
+            <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} onClick={() => void connectTiktok?.()} disabled={tiktokLoading}>
               {tiktokLoading ? "Connexion..." : "Connecter TikTok"}
             </button>
           ) : (
             <>
-              <button type="button" className={`${styles.actionBtn} ${styles.secondaryBtn}`} onClick={() => void connectTiktokMock?.()} disabled={tiktokLoading}>
+              <button type="button" className={`${styles.actionBtn} ${styles.secondaryBtn}`} onClick={() => void connectTiktok?.()} disabled={tiktokLoading}>
                 {tiktokLoading ? "Chargement..." : "Reconnecter TikTok"}
               </button>
-              <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={() => void disconnectTiktokMock?.()} disabled={tiktokLoading}>
+              <button type="button" className={`${styles.actionBtn} ${styles.disconnectBtn}`} onClick={() => void disconnectTiktok?.()} disabled={tiktokLoading}>
                 {tiktokLoading ? "Déconnexion..." : "Déconnecter"}
               </button>
             </>

@@ -11,7 +11,7 @@ export type TiktokDefaultSettings = {
   aiContent: boolean;
 };
 
-export type TiktokMockSettings = {
+export type TiktokSettings = {
   connected: boolean;
   accountConnected: boolean;
   username: string;
@@ -21,7 +21,7 @@ export type TiktokMockSettings = {
   openId: string;
   scopes: string;
   expiresAt: string | null;
-  mode: "mock" | "oauth";
+  mode: "manual" | "oauth";
   defaults: TiktokDefaultSettings;
   stats: {
     followerCount: number | null;
@@ -42,10 +42,6 @@ export const TIKTOK_DEFAULT_SETTINGS: TiktokDefaultSettings = {
   aiContent: false,
 };
 
-export const TIKTOK_DEFAULT_MOCK_ACCOUNT = {
-  username: "@demo_inrcy",
-  profileUrl: "https://www.tiktok.com/@demo_inrcy",
-};
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
@@ -90,7 +86,7 @@ export function normalizeTiktokDefaults(value: unknown): TiktokDefaultSettings {
   };
 }
 
-export function normalizeTiktokSettings(value: unknown): TiktokMockSettings {
+export function normalizeTiktokSettings(value: unknown): TiktokSettings {
   const raw = asRecord(value);
   const defaults = normalizeTiktokDefaults(raw.defaults);
   const connected = asBoolean(raw.connected, false);
@@ -106,7 +102,7 @@ export function normalizeTiktokSettings(value: unknown): TiktokMockSettings {
     openId: asString(raw.openId),
     scopes: asString(raw.scopes),
     expiresAt: asString(raw.expiresAt) || null,
-    mode: raw.mode === "oauth" ? "oauth" : "mock",
+    mode: raw.mode === "oauth" ? "oauth" : "manual",
     defaults,
     stats: {
       followerCount: asNumber(stats.followerCount),
@@ -126,7 +122,7 @@ export function normalizeTiktokProfileUrl(input: unknown): { ok: true; url: stri
   return { ok: true, url: normalized };
 }
 
-export function buildTiktokSettingsPatch(current: unknown, patch: Partial<TiktokMockSettings>): TiktokMockSettings {
+export function buildTiktokSettingsPatch(current: unknown, patch: Partial<TiktokSettings>): TiktokSettings {
   const base = normalizeTiktokSettings(current);
   return {
     ...base,

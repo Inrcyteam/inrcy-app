@@ -4,7 +4,7 @@ import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { clearAllToolCaches } from "@/lib/statsCache";
 import { tryDecryptToken } from "@/lib/oauthCrypto";
-import { buildTiktokSettingsPatch } from "@/lib/tiktokMockSettings";
+import { buildTiktokSettingsPatch } from "@/lib/tiktokSettings";
 import { readTiktokSettings, saveTiktokSettings } from "@/lib/tiktokRouteStorage";
 
 async function revokeTiktokToken(token: string) {

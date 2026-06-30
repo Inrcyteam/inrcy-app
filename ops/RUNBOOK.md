@@ -1,67 +1,147 @@
-# iNrCy Ops Runbook (1 page)
+# iNrCy Ops Runbook
 
-This runbook is the **minimum** you need to operate iNrCy safely at scale.
+Runbook minimal pour exploiter iNrCy en production sans casser la version stable.
 
-## Key links
+## Liens clés
 
 - Vercel → Deployments / Logs
-- Supabase → Database / Logs / Query Performance
+- Supabase → Database / Logs / Query Performance / Backups
 - Sentry → Issues / Performance
+- Upstash / Vercel KV → usage / latence / disponibilité
+- Stripe → Webhooks / logs paiements
 
 ## Health checks
 
-- Public (safe): `GET /api/health`
-- Internal (deep): `GET /api/health/internal` with header `x-health-token: $HEALTHCHECK_TOKEN`
-- Scheduled infra check: `GET /api/cron/health` (Vercel Cron, bearer = `VERCEL_CRON_SECRET`)
+Public :
 
-If internal health is `503`, check:
-- Supabase status + connection pool
-- Upstash/KV status
-- Stripe API status / secret validity
-- SMTP reachability / credentials
+```txt
+GET /api/health
+```
 
-## Incident triage (5 minutes)
+Interne :
 
-1. **Is it global or one tenant?**
-   - Check Vercel error rate + Sentry issue volume.
-2. **Capture a request id**
-   - Every API response should include / log an `x-request-id`.
-3. **Identify the failing surface**
-   - Auth? DB? KV? OAuth provider? OpenAI?
+```txt
+GET /api/health/internal
+header: x-health-token: $HEALTHCHECK_TOKEN
+```
 
-## Common incidents
+Cron :
 
-### A) Spike of 500/503
+```txt
+GET /api/cron/health
+bearer / secret: $VERCEL_CRON_SECRET
+```
 
-1. Vercel Logs: filter status 5xx.
-2. Sentry: open latest issue, check stacktrace.
-3. Supabase: check Database health + Query Performance.
-4. If a recent deploy caused it: **rollback** to previous Vercel deployment.
+Si le health interne retourne `503`, vérifier dans cet ordre :
 
-### B) OAuth callbacks failing
+1. Supabase ;
+2. Upstash / KV ;
+3. Stripe ;
+4. SMTP ;
+5. variables Vercel ;
+6. dernier déploiement.
 
-1. Verify provider settings: redirect URL matches current domain.
-2. Check server logs for `state` mismatch (cookie/domain).
-3. Confirm ENV vars: client id/secret present in Production.
+## Triage incident en 5 minutes
 
-### C) Rate limit / quota complaints
+1. Déterminer si le problème est global ou limité à un client.
+2. Récupérer l'heure exacte et, si possible, un `x-request-id`.
+3. Vérifier Vercel Logs et Sentry.
+4. Identifier la surface : auth, DB, KV, OAuth, OpenAI, mails, publication, Stripe.
+5. Décider : rollback immédiat, hotfix, ou attente fournisseur.
 
-1. Confirm the endpoint class and limits in Vercel ENV.
-2. Check Upstash usage/latency.
-3. Temporarily raise limits for a specific tenant only (future improvement) or raise global safely.
+## Incidents fréquents
 
-### D) DB latency / timeouts
+### A. Spike 500 / 503
 
-1. Supabase Query Performance: identify slow query.
-2. Add indexes / reduce payload / paginate.
-3. If urgent: hotfix to reduce expensive queries + deploy.
+1. Vercel Logs : filtrer les statuts 5xx.
+2. Sentry : regarder la dernière issue active.
+3. Supabase : vérifier Query Performance et connexions.
+4. Si le problème suit un déploiement récent : rollback Vercel.
+
+### B. OAuth callbacks en erreur
+
+1. Vérifier que la redirect URI du provider correspond au domaine actuel.
+2. Vérifier les variables `CLIENT_ID`, `CLIENT_SECRET`, `REDIRECT_URI`.
+3. Vérifier les erreurs de `state` / cookies / domaine.
+4. Ne pas modifier une app en review sans noter précisément le changement.
+
+### C. Upstash / KV indisponible
+
+L'application utilise KV pour rate limiting et quotas.
+
+État actuel : certains endpoints coûteux sont en fail-open pour préserver la continuité de service si KV tombe.
+
+Conséquence :
+
+- les utilisateurs sont moins susceptibles d'être bloqués ;
+- le risque de coût / abus est plus élevé pendant l'incident KV.
+
+Actions :
+
+1. Vérifier Upstash / Vercel KV.
+2. Surveiller les endpoints IA et publication.
+3. Surveiller les coûts OpenAI et volumes de publication.
+4. Si abus réel : baisser temporairement les quotas via env ou désactiver le flux concerné avec une hotfix ciblée.
+5. Ne passer en fail-closed global qu'après test Preview dédié.
+
+### D. OpenAI / IA indisponible ou coûteuse
+
+1. Vérifier erreurs API et quotas OpenAI.
+2. Vérifier `OPENAI_API_KEY` et modèles configurés.
+3. Surveiller les endpoints de génération / transcription.
+4. En cas de dérive coût : réduire les quotas ou couper temporairement le module concerné.
+
+### E. DB latency / timeouts
+
+1. Supabase Query Performance : identifier la requête lente.
+2. Vérifier si un cron ou une campagne mail crée une charge.
+3. Ajouter index / pagination / réduction payload si nécessaire.
+4. En urgence : rollback ou hotfix ciblée.
+
+### F. Mails / iNrSend
+
+1. Vérifier SMTP transactionnel.
+2. Vérifier les webhooks iNrSend si concernés.
+3. Vérifier les limites horaires / journalières.
+4. Vérifier la boîte d'envoi du client si IMAP / SMTP personnel.
+
+### G. TikTok / Pinterest / Trustpilot en attente
+
+Pendant la phase de review ou d'accès incomplet :
+
+1. Ne pas forcer les variables manquantes en CI stricte.
+2. Ne pas supprimer les routes de callback / pages de validation.
+3. Ne pas modifier les scopes sans raison.
+4. Garder une trace des vidéos / screenshots envoyés aux plateformes.
+5. Tester seulement les flows disponibles.
 
 ## Rollback process
 
-1. Vercel → Deployments → select last known-good → **Redeploy**.
-2. If DB migration was deployed, apply **forward-fix migration** (preferred) or restore from backup/PITR.
+1. Vercel → Deployments.
+2. Sélectionner le dernier déploiement stable connu.
+3. Redeploy.
+4. Vérifier `/api/health` et login réel.
+5. Si une migration DB est déjà appliquée, faire une forward-fix migration plutôt qu'un rollback SQL risqué.
 
 ## Post-incident
 
-- Write a 10-lines postmortem: timeline, root cause, fix, prevention.
-- Add an alert or test so it’s caught earlier next time.
+Noter :
+
+- date / heure ;
+- impact ;
+- cause probable ;
+- correction ;
+- prévention ;
+- test ou alerte à ajouter.
+
+## Règles de prudence
+
+Ne pas faire directement en production sans Preview :
+
+- refactor massif ;
+- CSP stricte ;
+- changement d'accès admin ;
+- changement OAuth soumis en review ;
+- passage global en fail-closed ;
+- migration Supabase non testée ;
+- changement global UI / responsive.

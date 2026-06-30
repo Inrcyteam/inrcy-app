@@ -2,7 +2,7 @@ import "server-only";
 
 import { asRecord, asString } from "@/lib/tsSafe";
 import { fetchTiktokCreatorInfo } from "@/lib/tiktokOAuth";
-import type { TiktokCommercialContent } from "@/lib/tiktokMockSettings";
+import type { TiktokCommercialContent } from "@/lib/tiktokSettings";
 
 export type TiktokPublishStatus = {
   ok: boolean;

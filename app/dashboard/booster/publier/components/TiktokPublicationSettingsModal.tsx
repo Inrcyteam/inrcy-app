@@ -392,7 +392,6 @@ export default function TiktokPublicationSettingsModal({
                   }}
                 >
                   {creatorInfo.avatarUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
                     <img src={creatorInfo.avatarUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                   ) : (
                     (accountLabel.replace(/^@/, "").slice(0, 1) || "t").toLowerCase()
@@ -437,8 +436,7 @@ export default function TiktokPublicationSettingsModal({
                     mediaType === "video" ? (
                       <video src={previewMediaUrl} controls muted playsInline style={{ width: "100%", height: "100%", objectFit: "contain", background: "#020617" }} />
                     ) : (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={previewMediaUrl} alt="Aperçu TikTok" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
+                        <img src={previewMediaUrl} alt="Aperçu TikTok" style={{ width: "100%", height: "100%", objectFit: "contain" }} />
                     )
                   ) : (
                     <span style={{ color: "rgba(255,255,255,0.52)", fontSize: 13, textAlign: "center", padding: 12 }}>

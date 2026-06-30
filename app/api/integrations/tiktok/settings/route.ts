@@ -7,7 +7,7 @@ import {
   normalizeTiktokCommercialContent,
   normalizeTiktokPreferredMedia,
   normalizeTiktokProfileUrl,
-} from "@/lib/tiktokMockSettings";
+} from "@/lib/tiktokSettings";
 import { readTiktokSettings, readTiktokSettingsWithOAuth, saveTiktokSettings } from "@/lib/tiktokRouteStorage";
 
 function asRecord(value: unknown): Record<string, unknown> {
