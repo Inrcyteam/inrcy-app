@@ -89,7 +89,7 @@ function tiktokStatusLabel(status: string | null | undefined) {
   if (value === "PUBLISH_COMPLETE" || value === "DONE" || value === "SUCCESS") return "Publié";
   if (value === "FAILED" || value === "PUBLISH_FAILED" || value === "ERROR") return "Échec";
   if (value.includes("UPLOAD")) return "Upload en cours";
-  if (value.includes("DOWNLOAD")) return "Récupération en cours";
+  if (value.includes("DOWNLOAD")) return "Traitement TikTok";
   if (value.includes("PROCESS")) return "En traitement";
   return value || "En traitement";
 }

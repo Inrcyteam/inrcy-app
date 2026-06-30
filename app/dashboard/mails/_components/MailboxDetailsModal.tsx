@@ -251,7 +251,7 @@ function getTiktokStatusMeta(result: any) {
       : status.includes("UPLOAD")
         ? "Upload en cours"
         : status.includes("DOWNLOAD")
-          ? "Récupération en cours"
+          ? "Traitement TikTok"
           : pending
             ? "En traitement"
             : "Statut inconnu";
@@ -362,6 +362,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
   const [publicationCameraOpen, setPublicationCameraOpen] = React.useState(false);
   const [publicationMediaLibraryOpen, setPublicationMediaLibraryOpen] = React.useState(false);
   const [tiktokStatusChecking, setTiktokStatusChecking] = React.useState(false);
+  const [tiktokRetrying, setTiktokRetrying] = React.useState(false);
   const [isMobileViewport, setIsMobileViewport] = React.useState(false);
   const detailsBodyRef = React.useRef<HTMLDivElement | null>(null);
   const detailsScrollSnapshotRef = React.useRef<number | null>(null);
@@ -396,6 +397,45 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
       );
     } finally {
       setTiktokStatusChecking(false);
+    }
+  }
+
+  async function retryTiktokPublication(publicationId: string, statusMeta?: ReturnType<typeof getTiktokStatusMeta> | null) {
+    if (!publicationId || tiktokRetrying) return;
+    const isPending = Boolean(statusMeta?.pending);
+    const ok = await confirmInrcy({
+      eyebrow: isPending ? "Traitement TikTok en cours" : "Relance TikTok",
+      title: isPending ? "Retenter malgré le traitement ?" : "Retenter l’envoi TikTok ?",
+      message: isPending
+        ? "TikTok traite peut-être encore l’ancien envoi. Retenter peut créer un doublon si TikTok finalise aussi l’ancien traitement."
+        : "iNrCy va renvoyer cette publication à TikTok avec les mêmes paramètres validés.",
+      cancelLabel: "Annuler",
+      confirmLabel: "Retenter",
+      variant: isPending ? "danger" : "default",
+    });
+    if (!ok) return;
+
+    setTiktokRetrying(true);
+    setDetailsActionError(null);
+    setDetailsActionSuccess(null);
+    try {
+      const res = await fetch(`/api/inrsend/publications/${encodeURIComponent(publicationId)}/tiktok/retry`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || json?.ok === false) throw new Error(json?.error || json?.message || "Relance TikTok impossible.");
+      setDetailsActionSuccess(String(json?.message || "Nouvel envoi TikTok lancé."));
+      await refreshHistory?.();
+    } catch (e: any) {
+      setDetailsActionError(
+        getSimpleFrenchErrorMessage(
+          e,
+          "Impossible de retenter l’envoi TikTok pour le moment.",
+        ),
+      );
+    } finally {
+      setTiktokRetrying(false);
     }
   }
 
@@ -988,6 +1028,17 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                       >
                                         {tiktokStatusChecking ? "Vérification…" : "Vérifier le statut"}
                                       </button>
+                                      {tiktokStatusMeta?.failed || tiktokStatusMeta?.pending ? (
+                                        <button
+                                          type="button"
+                                          className={tiktokStatusMeta?.failed ? styles.btnPrimary : styles.btnGhost}
+                                          onClick={() => void retryTiktokPublication(publicationId, tiktokStatusMeta)}
+                                          disabled={detailsActionBusy || tiktokStatusChecking || tiktokRetrying}
+                                          title={tiktokStatusMeta?.pending ? "Retenter avec confirmation pour éviter les doublons" : "Retenter l’envoi TikTok"}
+                                        >
+                                          {tiktokRetrying ? "Relance…" : "Retenter l’envoi"}
+                                        </button>
+                                      ) : null}
                                       <button
                                         type="button"
                                         className={styles.btnPrimary}

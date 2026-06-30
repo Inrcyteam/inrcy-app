@@ -263,11 +263,11 @@ export default function TiktokPublicationSettingsModal({
       <div
         className={styles.blockCard}
         style={{
-          width: isMobile ? "min(100%, 720px)" : "min(920px, 100%)",
-          maxHeight: "calc(100vh - 28px)",
-          overflowY: "auto",
+          width: isMobile ? "min(100%, 720px)" : "min(960px, 100%)",
+          maxHeight: isMobile ? "calc(100vh - 20px)" : "min(900px, calc(100vh - 28px))",
+          overflowY: isMobile ? "auto" : "visible",
           display: "grid",
-          gap: 16,
+          gap: isMobile ? 12 : 10,
           background: "#111827",
           backgroundImage: "none",
           border: "1px solid rgba(148, 163, 184, 0.28)",
@@ -275,13 +275,15 @@ export default function TiktokPublicationSettingsModal({
           backdropFilter: "none",
         }}
       >
-        <div style={{ display: "grid", gap: 6 }}>
-          <div style={{ fontSize: 22 }}>🎵</div>
-          <div className={styles.blockTitle} style={{ marginBottom: 0 }}>
-            Vérification finale avant publication TikTok
-          </div>
-          <div style={{ fontSize: 13, color: "rgba(255,255,255,0.72)", lineHeight: 1.5 }}>
-            Vérifiez le compte, le contenu, la visibilité, les interactions et les déclarations obligatoires avant d'envoyer cette publication sur TikTok.
+        <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+          <div style={{ fontSize: 23, lineHeight: 1, flex: "0 0 auto" }}>🎵</div>
+          <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
+            <div className={styles.blockTitle} style={{ marginBottom: 0, lineHeight: 1.12 }}>
+              Vérification finale TikTok
+            </div>
+            <div style={{ fontSize: 12, color: "rgba(255,255,255,0.70)", lineHeight: 1.25 }}>
+              Compte, contenu, visibilité et déclarations avant envoi.
+            </div>
           </div>
         </div>
 
@@ -308,19 +310,19 @@ export default function TiktokPublicationSettingsModal({
             <section
               style={{
                 borderRadius: 16,
-                padding: 14,
+                padding: isMobile ? 14 : 12,
                 background: "rgba(255,255,255,0.04)",
                 border: "1px solid rgba(255,255,255,0.10)",
                 display: "grid",
                 gridTemplateColumns: isMobile ? "1fr" : "auto 1fr",
-                gap: 14,
+                gap: isMobile ? 14 : 12,
                 alignItems: "center",
               }}
             >
               <div
                 style={{
-                  width: 54,
-                  height: 54,
+                  width: isMobile ? 54 : 46,
+                  height: isMobile ? 54 : 46,
                   borderRadius: 999,
                   overflow: "hidden",
                   display: "grid",
@@ -353,17 +355,17 @@ export default function TiktokPublicationSettingsModal({
             <section
               style={{
                 borderRadius: 16,
-                padding: 14,
+                padding: isMobile ? 14 : 12,
                 background: "rgba(15,23,42,0.72)",
                 border: "1px solid rgba(255,255,255,0.10)",
                 display: "grid",
-                gridTemplateColumns: isMobile ? "1fr" : "220px 1fr",
-                gap: 14,
+                gridTemplateColumns: isMobile ? "1fr" : "190px 1fr",
+                gap: isMobile ? 14 : 12,
               }}
             >
               <div
                 style={{
-                  minHeight: mediaType === "video" ? 150 : 170,
+                  minHeight: isMobile ? (mediaType === "video" ? 150 : 170) : 118,
                   borderRadius: 14,
                   overflow: "hidden",
                   background: "rgba(0,0,0,0.28)",
@@ -385,7 +387,7 @@ export default function TiktokPublicationSettingsModal({
                   </span>
                 )}
               </div>
-              <div style={{ display: "grid", gap: 10, minWidth: 0 }}>
+              <div style={{ display: "grid", gap: isMobile ? 10 : 8, minWidth: 0 }}>
                 <div style={{ display: "grid", gap: 4 }}>
                   <strong style={{ color: "#fff", fontSize: 14 }}>Contenu envoyé à TikTok</strong>
                   <span style={{ color: "rgba(255,255,255,0.62)", fontSize: 12 }}>{mediaSummary}</span>
@@ -393,12 +395,12 @@ export default function TiktokPublicationSettingsModal({
                 <div
                   style={{
                     borderRadius: 12,
-                    padding: 12,
+                    padding: isMobile ? 12 : 10,
                     background: "rgba(255,255,255,0.04)",
                     border: "1px solid rgba(255,255,255,0.08)",
                     color: "rgba(255,255,255,0.82)",
                     fontSize: 13,
-                    lineHeight: 1.5,
+                    lineHeight: 1.35,
                     whiteSpace: "pre-wrap",
                     overflowWrap: "anywhere",
                   }}
@@ -426,7 +428,7 @@ export default function TiktokPublicationSettingsModal({
                   border: "1px solid rgba(248,113,113,0.24)",
                   color: "#fecaca",
                   fontSize: 13,
-                  lineHeight: 1.5,
+                  lineHeight: isMobile ? 1.5 : 1.35,
                 }}
               >
                 ⛔ {durationBlocker}
@@ -437,11 +439,11 @@ export default function TiktokPublicationSettingsModal({
               style={{
                 display: "grid",
                 gridTemplateColumns: isMobile ? "1fr" : "1.05fr 0.95fr",
-                gap: 14,
+                gap: isMobile ? 14 : 12,
                 alignItems: "start",
               }}
             >
-              <section style={{ display: "grid", gap: 12 }}>
+              <section style={{ display: "grid", gap: isMobile ? 12 : 10 }}>
                 <label style={{ display: "grid", gap: 6 }}>
                   <span style={{ fontSize: 13, color: "rgba(255,255,255,0.78)", fontWeight: 800 }}>Visibilité TikTok obligatoire</span>
                   <select
@@ -457,7 +459,7 @@ export default function TiktokPublicationSettingsModal({
                       background: "rgba(15,23,42,0.95)",
                       color: "white",
                       colorScheme: "dark",
-                      padding: "10px 12px",
+                      padding: isMobile ? "10px 12px" : "8px 10px",
                       outline: "none",
                     }}
                   >
@@ -466,13 +468,13 @@ export default function TiktokPublicationSettingsModal({
                       <option key={option} value={option}>{privacyLabels[option] || option}</option>
                     ))}
                   </select>
-                  <span style={{ color: "rgba(255,255,255,0.55)", fontSize: 12, lineHeight: 1.45 }}>
-                    iNrCy affiche uniquement les choix renvoyés par TikTok pour ce compte. Avant l'audit TikTok, les publications restent limitées à une visibilité privée.
+                  <span style={{ color: "rgba(255,255,255,0.55)", fontSize: 12, lineHeight: 1.35 }}>
+                    Choix renvoyés par TikTok. Avant l'audit, la visibilité reste privée.
                   </span>
                 </label>
 
-                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : mediaType === "video" ? "repeat(3, 1fr)" : "1fr", gap: 10 }}>
-                  <label style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", borderRadius: 12, border: "1px solid rgba(255,255,255,0.12)", padding: "10px 12px", color: creatorInfo.commentDisabled ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.88)", fontSize: 13 }}>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : mediaType === "video" ? "repeat(3, 1fr)" : "1fr", gap: isMobile ? 10 : 8 }}>
+                  <label style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", borderRadius: 12, border: "1px solid rgba(255,255,255,0.12)", padding: isMobile ? "10px 12px" : "8px 10px", color: creatorInfo.commentDisabled ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.88)", fontSize: 13 }}>
                     Commentaires
                     <input type="checkbox" checked={allowComments} disabled={creatorInfo.commentDisabled} onChange={(event) => {
                       clearFinalConsent();
@@ -481,14 +483,14 @@ export default function TiktokPublicationSettingsModal({
                   </label>
                   {mediaType === "video" ? (
                     <>
-                      <label style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", borderRadius: 12, border: "1px solid rgba(255,255,255,0.12)", padding: "10px 12px", color: creatorInfo.duetDisabled ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.88)", fontSize: 13 }}>
+                      <label style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", borderRadius: 12, border: "1px solid rgba(255,255,255,0.12)", padding: isMobile ? "10px 12px" : "8px 10px", color: creatorInfo.duetDisabled ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.88)", fontSize: 13 }}>
                         Duo
                         <input type="checkbox" checked={allowDuo} disabled={creatorInfo.duetDisabled} onChange={(event) => {
                           clearFinalConsent();
                           setAllowDuo(event.target.checked);
                         }} />
                       </label>
-                      <label style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", borderRadius: 12, border: "1px solid rgba(255,255,255,0.12)", padding: "10px 12px", color: creatorInfo.stitchDisabled ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.88)", fontSize: 13 }}>
+                      <label style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", borderRadius: 12, border: "1px solid rgba(255,255,255,0.12)", padding: isMobile ? "10px 12px" : "8px 10px", color: creatorInfo.stitchDisabled ? "rgba(255,255,255,0.45)" : "rgba(255,255,255,0.88)", fontSize: 13 }}>
                         Stitch
                         <input type="checkbox" checked={allowStitch} disabled={creatorInfo.stitchDisabled} onChange={(event) => {
                           clearFinalConsent();
@@ -505,7 +507,7 @@ export default function TiktokPublicationSettingsModal({
                 ) : null}
               </section>
 
-              <section style={{ display: "grid", gap: 12 }}>
+              <section style={{ display: "grid", gap: isMobile ? 12 : 10 }}>
                 <label style={{ display: "grid", gap: 6 }}>
                   <span style={{ fontSize: 13, color: "rgba(255,255,255,0.78)", fontWeight: 800 }}>Déclaration de contenu commercial</span>
                   <select
@@ -521,7 +523,7 @@ export default function TiktokPublicationSettingsModal({
                       background: "rgba(15,23,42,0.95)",
                       color: "white",
                       colorScheme: "dark",
-                      padding: "10px 12px",
+                      padding: isMobile ? "10px 12px" : "8px 10px",
                       outline: "none",
                     }}
                   >
@@ -537,7 +539,7 @@ export default function TiktokPublicationSettingsModal({
                   <div
                     style={{
                       borderRadius: 12,
-                      padding: "10px 12px",
+                      padding: isMobile ? "10px 12px" : "8px 10px",
                       background: needsBrandedConsent ? "rgba(251,191,36,0.10)" : "rgba(76,195,255,0.07)",
                       border: needsBrandedConsent ? "1px solid rgba(251,191,36,0.22)" : "1px solid rgba(76,195,255,0.14)",
                       color: "rgba(255,255,255,0.72)",
@@ -578,7 +580,7 @@ export default function TiktokPublicationSettingsModal({
                     gap: 6,
                     borderRadius: 12,
                     border: "1px solid rgba(255,255,255,0.12)",
-                    padding: "10px 12px",
+                    padding: isMobile ? "10px 12px" : "8px 10px",
                     color: "rgba(255,255,255,0.88)",
                     fontSize: 13,
                   }}
@@ -590,8 +592,8 @@ export default function TiktokPublicationSettingsModal({
                         setAiContent(event.target.checked);
                       }} />
                   </span>
-                  <span style={{ color: "rgba(255,255,255,0.58)", fontSize: 12, lineHeight: 1.45 }}>
-                    À cocher uniquement si le média visuel ou audio a été généré ou fortement modifié par IA. Le texte généré par iNrCy seul ne nécessite pas cette déclaration.
+                  <span style={{ color: "rgba(255,255,255,0.58)", fontSize: 12, lineHeight: 1.35 }}>
+                    À cocher seulement si le média visuel/audio est généré ou fortement modifié par IA.
                   </span>
                 </label>
               </section>
@@ -600,23 +602,23 @@ export default function TiktokPublicationSettingsModal({
             <section
               style={{
                 display: "grid",
-                gap: 10,
+                gap: isMobile ? 10 : 8,
                 borderRadius: 16,
-                padding: 14,
+                padding: isMobile ? 14 : 12,
                 background: "rgba(76,195,255,0.08)",
                 border: "1px solid rgba(76,195,255,0.18)",
                 color: "rgba(255,255,255,0.82)",
                 fontSize: 13,
-                lineHeight: 1.5,
+                lineHeight: isMobile ? 1.5 : 1.35,
               }}
             >
               <strong style={{ color: "#fff" }}>Consentement final TikTok</strong>
               <label style={{ display: "flex", gap: 10, alignItems: "flex-start" }}>
                 <input type="checkbox" checked={musicUsageConfirmed} onChange={(event) => setMusicUsageConfirmed(event.target.checked)} style={{ marginTop: 3 }} />
                 <span>
-                  J'ai vérifié le compte TikTok, l'aperçu du contenu, la visibilité et les interactions. En publiant, j'accepte que ce contenu soit envoyé à TikTok et je confirme respecter les {" "}
-                  <LegalLink href={tiktokLegalLinks.terms} label="Conditions d'utilisation TikTok" />, les {" "}
-                  <LegalLink href={tiktokLegalLinks.communityGuidelines} label="Règles communautaires TikTok" /> et la {" "}
+                  J'ai vérifié le compte, le contenu, la visibilité et les interactions. J'accepte l'envoi à TikTok et je confirme respecter les {" "}
+                  <LegalLink href={tiktokLegalLinks.terms} label="Conditions TikTok" />, les {" "}
+                  <LegalLink href={tiktokLegalLinks.communityGuidelines} label="Règles communautaires" /> et la {" "}
                   <LegalLink href={tiktokLegalLinks.musicUsageConfirmation} label="Music Usage Confirmation" />
                   {needsBrandedConsent ? (
                     <>
@@ -628,13 +630,13 @@ export default function TiktokPublicationSettingsModal({
                 </span>
               </label>
               <span style={{ color: "rgba(255,255,255,0.55)", fontSize: 12 }}>
-                La publication ne commence qu'après cette validation manuelle. Si un paramètre est modifié ensuite, cette confirmation est redemandée.
+                Publication lancée uniquement après validation manuelle. Toute modification redemande confirmation.
               </span>
             </section>
           </>
         ) : null}
 
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap", position: "sticky", bottom: -1, paddingTop: 6, background: "#111827" }}>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap", position: isMobile ? "sticky" : "static", bottom: -1, paddingTop: isMobile ? 6 : 2, background: "#111827" }}>
           <button type="button" className={styles.secondaryBtn} onClick={onCancel}>Retour modifier</button>
           <button
             type="button"
