@@ -1458,3 +1458,113 @@
   background-color: #1f2a44;
   color: #ffffff;
 }
+
+/* Step 13 — Banque d'images: sélection de masse, suppression et ZIP */
+.bulkActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.selectionCounter {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.055);
+  color: rgba(255, 255, 255, 0.76);
+  font-size: 10px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.imageCardSelected {
+  border-color: rgba(80, 255, 160, 0.74) !important;
+  box-shadow:
+    0 0 0 2px rgba(80, 255, 160, 0.22),
+    0 12px 28px rgba(0, 0, 0, 0.22) !important;
+}
+
+.imageCardSelected::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(
+    135deg,
+    rgba(80, 255, 160, 0.12),
+    rgba(34, 197, 248, 0.04)
+  );
+}
+
+.cubeSelectButton {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 6;
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(8, 10, 22, 0.68);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 950;
+  line-height: 18px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  box-shadow: 0 6px 14px rgba(0, 0, 0, 0.28);
+  transition:
+    transform 0.14s ease,
+    background 0.14s ease,
+    border-color 0.14s ease,
+    opacity 0.14s ease;
+}
+
+.cubeSelectButton:hover {
+  transform: scale(1.04);
+  background: rgba(34, 197, 248, 0.82);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.cubeSelectButtonActive {
+  background: rgba(55, 220, 130, 0.94);
+  border-color: rgba(255, 255, 255, 0.48);
+  color: #062313;
+}
+
+.cubeSelectButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+@media (max-width: 860px) {
+  .galleryHeader {
+    align-items: stretch !important;
+  }
+
+  .galleryHeaderInfo,
+  .bulkActions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .bulkActions .smallButton,
+  .bulkActions .smallGhostButton,
+  .bulkActions .dangerButton {
+    flex: 1 1 132px;
+  }
+
+  .selectionCounter {
+    flex: 1 1 100%;
+  }
+}

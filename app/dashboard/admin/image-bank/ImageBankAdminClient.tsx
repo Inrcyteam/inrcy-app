@@ -218,6 +218,27 @@ function formatBytes(bytes: number | null | undefined) {
   return `${(bytes / 1024 / 1024).toFixed(1)} Mo`;
 }
 
+function toSafeFileNamePart(value: string, fallback = "selection") {
+  const cleaned = value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase();
+
+  return cleaned || fallback;
+}
+
+function getZipDownloadName(
+  category: ImageBankCategory | null,
+  selectedCount: number,
+) {
+  const job = toSafeFileNamePart(category?.job_label || "images", "images");
+  return `inrcy-banque-images-${job}-${selectedCount}-image${
+    selectedCount > 1 ? "s" : ""
+  }.zip`;
+}
+
 function groupBySector(categories: ImageBankCategory[]) {
   const map = new Map<
     string,
@@ -260,6 +281,11 @@ export default function ImageBankAdminClient() {
   const [activeFilter, setActiveFilter] = useState<ActiveFilter>("active");
   const [sourceFilter, setSourceFilter] = useState("all");
   const [search, setSearch] = useState("");
+  const [selectedImageIds, setSelectedImageIds] = useState<string[]>([]);
+  const [bulkAction, setBulkAction] = useState<
+    "delete" | "download" | null
+  >(null);
+
   const sectors = useMemo(() => groupBySector(categories), [categories]);
   const selectedSectorJobs = useMemo(() => {
     if (!sectorSlug) return [];
@@ -287,6 +313,20 @@ export default function ImageBankAdminClient() {
       ),
     };
   }, [images]);
+
+  const selectedImageIdSet = useMemo(
+    () => new Set(selectedImageIds),
+    [selectedImageIds],
+  );
+
+  const selectedImages = useMemo(
+    () => images.filter((image) => selectedImageIdSet.has(image.id)),
+    [images, selectedImageIdSet],
+  );
+
+  const selectedCount = selectedImages.length;
+  const allVisibleSelected =
+    images.length > 0 && images.every((image) => selectedImageIdSet.has(image.id));
 
   const loadCategories = useCallback(async () => {
     setError(null);
@@ -338,6 +378,7 @@ export default function ImageBankAdminClient() {
           throw new Error(json?.error || "Impossible de charger les images.");
         const nextImages = (json.images ?? []) as ImageBankRow[];
         setImages(nextImages);
+        setSelectedImageIds([]);
       } catch (e: any) {
         setError(e?.message || "Impossible de charger les images.");
       } finally {
@@ -559,6 +600,105 @@ export default function ImageBankAdminClient() {
       setError(e?.message || "Suppression impossible.");
     } finally {
       setSavingId(null);
+    }
+  }
+
+  function toggleImageSelection(imageId: string) {
+    setSelectedImageIds((current) =>
+      current.includes(imageId)
+        ? current.filter((id) => id !== imageId)
+        : [...current, imageId],
+    );
+  }
+
+  function toggleVisibleSelection() {
+    if (allVisibleSelected) {
+      setSelectedImageIds([]);
+      return;
+    }
+
+    setSelectedImageIds(images.map((image) => image.id));
+  }
+
+  async function deleteSelectedImages() {
+    const ids = selectedImages.map((image) => image.id);
+    if (!ids.length) return;
+
+    const confirmationMessage = `Supprimer définitivement ${ids.length} image(s) sélectionnée(s) de la banque iNrCy ?`;
+    if (ids.length >= 50) {
+      const typed = window.prompt(
+        `${confirmationMessage}\n\nPour confirmer cette suppression de masse, tape SUPPRIMER.`,
+      );
+      if (typed !== "SUPPRIMER") return;
+    } else if (!window.confirm(confirmationMessage)) {
+      return;
+    }
+
+    setBulkAction("delete");
+    setError(null);
+    setSuccess(null);
+    try {
+      const response = await fetch("/api/admin/image-bank/images", {
+        method: "DELETE",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ids }),
+      });
+      const json = await readApiJson(response, "Suppression impossible.");
+      if (!response.ok)
+        throw new Error(json?.error || "Suppression impossible.");
+
+      setSuccess(
+        `${Number(json?.deleted || ids.length)} image(s) supprimée(s) définitivement.`,
+      );
+      setSelectedImageIds([]);
+      await loadImages(categoryId);
+    } catch (e: any) {
+      setError(e?.message || "Suppression impossible.");
+    } finally {
+      setBulkAction(null);
+    }
+  }
+
+  async function downloadSelectedImages() {
+    const ids = selectedImages.map((image) => image.id);
+    if (!ids.length) return;
+
+    const filename = getZipDownloadName(selectedCategory, ids.length);
+    setBulkAction("download");
+    setError(null);
+    setSuccess(null);
+    try {
+      const response = await fetch("/api/admin/image-bank/download", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ ids, filename }),
+      });
+
+      if (!response.ok) {
+        const json = await readApiJson(
+          response,
+          "Téléchargement impossible.",
+        );
+        throw new Error(json?.error || "Téléchargement impossible.");
+      }
+
+      const blob = await response.blob();
+      if (!blob.size) throw new Error("Le ZIP généré est vide.");
+
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+
+      setSuccess(`${ids.length} image(s) préparée(s) en téléchargement ZIP.`);
+    } catch (e: any) {
+      setError(e?.message || "Téléchargement impossible.");
+    } finally {
+      setBulkAction(null);
     }
   }
 
@@ -848,6 +988,36 @@ export default function ImageBankAdminClient() {
                   {selectedCategory?.storage_prefix || "—"}
                 </span>
               </div>
+
+              <div className={styles.bulkActions}>
+                <button
+                  type="button"
+                  className={styles.smallGhostButton}
+                  onClick={toggleVisibleSelection}
+                  disabled={imagesLoading || images.length === 0 || Boolean(bulkAction)}
+                >
+                  {allVisibleSelected ? "Tout désélectionner" : "Tout sélectionner"}
+                </button>
+                <span className={styles.selectionCounter}>
+                  {selectedCount} sélectionnée(s)
+                </span>
+                <button
+                  type="button"
+                  className={styles.smallButton}
+                  onClick={downloadSelectedImages}
+                  disabled={!selectedCount || Boolean(bulkAction)}
+                >
+                  {bulkAction === "download" ? "Préparation…" : "Télécharger ZIP"}
+                </button>
+                <button
+                  type="button"
+                  className={styles.dangerButton}
+                  onClick={deleteSelectedImages}
+                  disabled={!selectedCount || Boolean(bulkAction)}
+                >
+                  {bulkAction === "delete" ? "Suppression…" : "Supprimer"}
+                </button>
+              </div>
             </div>
 
             {images.length === 0 ? (
@@ -857,14 +1027,19 @@ export default function ImageBankAdminClient() {
             ) : (
               <div className={styles.imageGrid}>
                 {images.map((image) => {
-                  const isSaving = savingId === image.id;
+                  const isSelected = selectedImageIdSet.has(image.id);
+                  const isSaving =
+                    savingId === image.id ||
+                    (bulkAction === "delete" && isSelected);
                   const cardTitle = `${image.title || image.job || "Image"} · ${image.storage_path}`;
 
                   return (
                     <article
                       key={image.id}
                       title={cardTitle}
-                      className={`${styles.imageCard} ${image.is_active === false ? styles.imageCardInactive : ""}`}
+                      className={`${styles.imageCard} ${
+                        image.is_active === false ? styles.imageCardInactive : ""
+                      } ${isSelected ? styles.imageCardSelected : ""}`}
                     >
                       <div className={styles.thumbWrap}>
                         {image.signed_url ? (
@@ -890,9 +1065,26 @@ export default function ImageBankAdminClient() {
                         )}
                         <button
                           type="button"
+                          className={`${styles.cubeSelectButton} ${
+                            isSelected ? styles.cubeSelectButtonActive : ""
+                          }`}
+                          onClick={() => toggleImageSelection(image.id)}
+                          disabled={Boolean(bulkAction)}
+                          aria-pressed={isSelected}
+                          aria-label={`${
+                            isSelected ? "Désélectionner" : "Sélectionner"
+                          } ${image.title || image.storage_path}`}
+                          title={
+                            isSelected ? "Désélectionner" : "Sélectionner"
+                          }
+                        >
+                          {isSelected ? "✓" : ""}
+                        </button>
+                        <button
+                          type="button"
                           className={styles.cubeDeleteButton}
                           onClick={() => deleteImage(image)}
-                          disabled={isSaving}
+                          disabled={isSaving || Boolean(bulkAction)}
                           aria-label={`Supprimer ${image.title || image.storage_path}`}
                           title="Supprimer"
                         >
