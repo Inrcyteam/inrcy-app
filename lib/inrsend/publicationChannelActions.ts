@@ -1409,7 +1409,6 @@ async function replaceChannelDelivery(params: {
         accessToken,
         authorUrn: memberAuthorUrn,
         parentPostUrn: String(resp.postUrn),
-        commentary: canonMessage,
       });
       if (shareResp.ok) {
         linkedInPersonalShareUrn = shareResp.postUrn || null;

@@ -2319,7 +2319,6 @@ export async function POST(req: Request) {
               accessToken,
               authorUrn,
               parentPostUrn: String(resp.postUrn),
-              commentary: canonMessage,
             });
             if (shareResp.ok) {
               linkedInPersonalShareUrn = shareResp.postUrn || null;

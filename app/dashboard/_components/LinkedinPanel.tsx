@@ -203,7 +203,7 @@ export default function LinkedinPanel(props: any) {
                   disabled={linkedinShareToPersonalProfileBusy || linkedinOrganizationsLoading || linkedinOrganizationBusy}
                   style={{ width: 16, height: 16, accentColor: "#0A66C2" }}
                 />
-                Partager aussi sur mon profil personnel
+                Autoriser le partage auto sur mon profil personnel
               </label>
             ) : null}
 
