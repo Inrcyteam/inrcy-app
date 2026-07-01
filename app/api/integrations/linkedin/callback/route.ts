@@ -337,6 +337,7 @@ export async function GET(req: Request) {
           orgId: "",
           orgName: "",
           orgUrl: "",
+          shareToPersonalProfile: false,
         },
       };
       await supabaseAdmin

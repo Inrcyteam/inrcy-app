@@ -31,6 +31,7 @@ export async function POST() {
           orgId: "",
           orgName: "",
           orgUrl: "",
+          shareToPersonalProfile: false,
         },
       },
     }, { onConflict: "user_id" });

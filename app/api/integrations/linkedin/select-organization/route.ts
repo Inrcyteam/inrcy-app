@@ -127,6 +127,7 @@ export async function POST(req: Request) {
           orgId: "",
           orgName: "",
           orgUrl: "",
+          shareToPersonalProfile: false,
         },
       };
       await supabaseAdmin

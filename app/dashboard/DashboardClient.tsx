@@ -725,6 +725,10 @@ const {
   setLinkedinSelectedOrganizationId,
   linkedinSelectedOrganizationName,
   setLinkedinSelectedOrganizationName,
+  linkedinShareToPersonalProfile,
+  setLinkedinShareToPersonalProfile,
+  linkedinShareToPersonalProfileBusy,
+  updateLinkedinShareToPersonalProfile,
   loadLinkedinOrganizations,
   selectLinkedinOrganization,
   useLinkedinPersonalProfile,
@@ -853,6 +857,7 @@ const applyDashboardChannelState = useCallback((state: Record<string, any> | nul
   if (typeof state.linkedinDisplayName === "string") setLinkedinDisplayName(state.linkedinDisplayName);
   if (typeof state.linkedinSelectedOrganizationId === "string") setLinkedinSelectedOrganizationId(state.linkedinSelectedOrganizationId);
   if (typeof state.linkedinSelectedOrganizationName === "string") setLinkedinSelectedOrganizationName(state.linkedinSelectedOrganizationName);
+  if (typeof state.linkedinShareToPersonalProfile === "boolean") setLinkedinShareToPersonalProfile(state.linkedinShareToPersonalProfile);
 
   if (typeof state.gmbUrl === "string") setGmbUrl(state.gmbUrl);
   if (typeof state.gmbAccountConnected === "boolean") setGmbAccountConnected(state.gmbAccountConnected);
@@ -1341,6 +1346,7 @@ const loadSiteInrcy = useCallback(async () => {
     linkedinDisplayName: String(liObj?.displayName ?? ""),
     linkedinSelectedOrganizationId: String(liObj?.orgId ?? ""),
     linkedinSelectedOrganizationName: String(liObj?.orgName ?? ""),
+    linkedinShareToPersonalProfile: liObj?.shareToPersonalProfile === true || liObj?.shareToPersonalProfile === "true",
     gmbUrl: gmbObj?.url ?? "",
     gmbAccountConnected: !!gmbObj?.connected,
     gmbConfigured: !!gmbObj?.resource_id,
@@ -2832,6 +2838,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       linkedinDisplayName,
       linkedinSelectedOrganizationId,
       linkedinSelectedOrganizationName,
+      linkedinShareToPersonalProfile,
       tiktokConnected,
       tiktokUsername,
       tiktokProfileUrl,
@@ -3089,7 +3096,9 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     instagramAccountConnected, instagramConnected, instagramConnectionStatus, instagramUrl, instagramUrlError, instagramUrlNotice, instagramUsername,
     isDrawerMutationPending,
     linkedinAccountConnected, linkedinConnected, linkedinConnectionStatus, linkedinDisplayName, linkedinUrl, linkedinUrlError, linkedinUrlNotice,
-    linkedinOrganizations, linkedinOrganizationsLoading, linkedinOrganizationPickerOpen, linkedinSelectedOrganizationId, linkedinSelectedOrganizationName, loadLinkedinOrganizations, selectLinkedinOrganization, useLinkedinPersonalProfile,
+    linkedinOrganizations, linkedinOrganizationsLoading, linkedinOrganizationPickerOpen, linkedinSelectedOrganizationId, linkedinSelectedOrganizationName,
+    linkedinShareToPersonalProfile, linkedinShareToPersonalProfileBusy, updateLinkedinShareToPersonalProfile,
+    loadLinkedinOrganizations, selectLinkedinOrganization, useLinkedinPersonalProfile,
     loadFacebookPages, loadGmbAccountsAndLocations, loadInstagramAccounts,
     resetSiteInrcyAll, resetSiteWebAll, saveSiteInrcyActusWidgetSettings, saveSiteWebActusWidgetSettings,
     saveFacebookPageFromDrawer, saveGmbLocationFromDrawer, saveInstagramProfileFromDrawer, saveLinkedinProfileUrlFromDrawer, saveSiteInrcyUrlFromDrawer, saveSiteWebUrlFromDrawer,

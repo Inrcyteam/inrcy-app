@@ -49,6 +49,9 @@ export default function LinkedinPanel(props: any) {
     linkedinSelectedOrganizationId,
     linkedinSelectedOrganizationName,
     linkedinOrganizationPickerOpen,
+    linkedinShareToPersonalProfile,
+    linkedinShareToPersonalProfileBusy,
+    updateLinkedinShareToPersonalProfile,
     loadLinkedinOrganizations,
     selectLinkedinOrganization,
   } = props;
@@ -176,17 +179,45 @@ export default function LinkedinPanel(props: any) {
                 {linkedinOrganizationsLoading ? "Chargement..." : hasCompanyPage ? "Changer de page" : "Connecter une page"}
               </button>
 
-              {hasCompanyPage ? (
-                <button
-                  type="button"
-                  className={`${styles.actionBtn} ${styles.disconnectBtn}`}
-                  onClick={() => void disconnectLinkedinOrganization?.()}
-                  disabled={linkedinOrganizationsLoading || linkedinOrganizationBusy}
-                >
-                  {linkedinOrganizationAction === "disconnect" ? "Déconnexion..." : "Déconnecter la page"}
-                </button>
-              ) : null}
             </div>
+
+            {hasCompanyPage ? (
+              <label
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  width: "fit-content",
+                  maxWidth: "100%",
+                  color: "rgba(255,255,255,0.86)",
+                  fontSize: 13,
+                  lineHeight: 1.3,
+                  cursor: linkedinShareToPersonalProfileBusy ? "wait" : "pointer",
+                  opacity: linkedinShareToPersonalProfileBusy ? 0.72 : 1,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={!!linkedinShareToPersonalProfile}
+                  onChange={(event) => void updateLinkedinShareToPersonalProfile?.(event.target.checked)}
+                  disabled={linkedinShareToPersonalProfileBusy || linkedinOrganizationsLoading || linkedinOrganizationBusy}
+                  style={{ width: 16, height: 16, accentColor: "#0A66C2" }}
+                />
+                Partager aussi sur mon profil personnel
+              </label>
+            ) : null}
+
+            {hasCompanyPage ? (
+              <button
+                type="button"
+                className={`${styles.actionBtn} ${styles.disconnectBtn}`}
+                onClick={() => void disconnectLinkedinOrganization?.()}
+                disabled={linkedinOrganizationsLoading || linkedinOrganizationBusy}
+                style={{ width: "fit-content" }}
+              >
+                {linkedinOrganizationAction === "disconnect" ? "Déconnexion..." : "Déconnecter la page"}
+              </button>
+            ) : null}
 
             {linkedinOrganizationPickerOpen && linkedinOrganizations.length > 1 ? (
               <select

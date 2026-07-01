@@ -30,6 +30,7 @@ import {
   linkedinPublishMultiImage,
   linkedinPublishText,
   linkedinPublishVideo,
+  linkedinResharePost,
 } from "@/lib/linkedinPublish";
 import { getGmbToken, gmbCreateLocalPost } from "@/lib/googleBusiness";
 import {
@@ -2161,6 +2162,12 @@ export async function POST(req: Request) {
           const auth = await getLinkedInAccessToken({ userId });
           const accessToken = auth.accessToken || "";
           const liMeta = asRecord(li["meta"]);
+          const linkedinSettings = asRecord(proSettings["linkedin"]);
+          const shouldShareLinkedInPageToProfile =
+            linkedinSettings["shareToPersonalProfile"] === true ||
+            linkedinSettings["shareToPersonalProfile"] === "true" ||
+            linkedinSettings["autoShareToPersonalProfile"] === true ||
+            linkedinSettings["autoShareToPersonalProfile"] === "true";
           const rawAuthorUrn =
             auth.authorUrn || String(li["resource_id"] ?? "");
           const authorUrn = rawAuthorUrn.startsWith("urn:li:person:")
@@ -2298,6 +2305,63 @@ export async function POST(req: Request) {
             continue;
           }
 
+          let linkedInDiagnostics: any = resp;
+          let linkedInPersonalShareUrn: string | null = null;
+          const canSharePagePostToProfile = Boolean(
+            shouldShareLinkedInPageToProfile &&
+              orgUrn &&
+              authorUrn &&
+              resp.postUrn,
+          );
+
+          if (canSharePagePostToProfile) {
+            const shareResp = await linkedinResharePost({
+              accessToken,
+              authorUrn,
+              parentPostUrn: String(resp.postUrn),
+              commentary: canonMessage,
+            });
+            if (shareResp.ok) {
+              linkedInPersonalShareUrn = shareResp.postUrn || null;
+              linkedInDiagnostics = {
+                ...resp,
+                personalProfileShare: shareResp,
+              };
+            } else {
+              linkedInDiagnostics = {
+                ...resp,
+                personalProfileShare: {
+                  ok: false,
+                  error: shareResp.error,
+                  diagnostics: shareResp.diagnostics,
+                },
+              };
+              logPublishChannelFailure({
+                route: "booster_publish_now",
+                channel: "linkedin",
+                userId,
+                publicationId,
+                stage: "share_to_profile",
+                error: shareResp.error,
+                userMessage: "Publié sur la page LinkedIn. Le partage sur le profil personnel a échoué.",
+                diagnostics: shareResp,
+              });
+            }
+          } else if (shouldShareLinkedInPageToProfile) {
+            linkedInDiagnostics = {
+              ...resp,
+              personalProfileShare: {
+                ok: false,
+                skipped: true,
+                reason: !orgUrn
+                  ? "no_organization_post"
+                  : !authorUrn
+                    ? "no_personal_profile_author"
+                    : "missing_parent_post_urn",
+              },
+            };
+          }
+
           await setDelivery(ch, {
             status: "delivered",
             error: null,
@@ -2306,7 +2370,8 @@ export async function POST(req: Request) {
           results[ch] = {
             ok: true,
             external_id: resp.postUrn || null,
-            diagnostics: resp,
+            linkedin_personal_share_id: linkedInPersonalShareUrn,
+            diagnostics: linkedInDiagnostics,
           };
           continue;
         }

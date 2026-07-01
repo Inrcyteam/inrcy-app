@@ -4,7 +4,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { tryDecryptToken } from "@/lib/oauthCrypto";
 import { facebookPublishToPage, facebookPublishVideoToPage } from "@/lib/facebookPublish";
 import { instagramPublishCarouselWithTokenFallback, instagramPublishPhotoWithTokenFallback, instagramPublishVideoWithTokenFallback, isInstagramAuthorizationErrorResult } from "@/lib/instagramPublish";
-import { linkedinPublishImage, linkedinPublishMultiImage, linkedinPublishText, linkedinPublishVideo } from "@/lib/linkedinPublish";
+import { linkedinPublishImage, linkedinPublishMultiImage, linkedinPublishText, linkedinPublishVideo, linkedinResharePost } from "@/lib/linkedinPublish";
 import { getGmbToken, gmbCreateLocalPost } from "@/lib/googleBusiness";
 import { optimizeForGoogleBusiness, optimizeForInstagram, optimizeForSiteCard, optimizeForSocialFeed } from "@/lib/imageOptimizer";
 import { createHash, randomUUID } from "crypto";
@@ -1328,10 +1328,17 @@ async function replaceChannelDelivery(params: {
     const auth = await getLinkedInAccessToken({ userId });
     const accessToken = auth.accessToken || "";
     const liMeta = asRecord(li.meta);
+    const linkedinSettings = asRecord(proSettings.linkedin);
+    const shouldShareLinkedInPageToProfile =
+      linkedinSettings.shareToPersonalProfile === true ||
+      linkedinSettings.shareToPersonalProfile === "true" ||
+      linkedinSettings.autoShareToPersonalProfile === true ||
+      linkedinSettings.autoShareToPersonalProfile === "true";
     const rawAuthorUrn = auth.authorUrn || String(li.resource_id ?? "");
     const memberAuthorUrn = rawAuthorUrn.startsWith("urn:li:person:") ? rawAuthorUrn : "";
     const selectedOrgId = String(liMeta.org_id || "").trim();
-    const authorUrn = auth.orgUrn || String(liMeta.org_urn || "") || (selectedOrgId ? `urn:li:organization:${selectedOrgId}` : "") || memberAuthorUrn;
+    const organizationAuthorUrn = auth.orgUrn || String(liMeta.org_urn || "") || (selectedOrgId ? `urn:li:organization:${selectedOrgId}` : "");
+    const authorUrn = organizationAuthorUrn || memberAuthorUrn;
     if (String(li.status ?? "") !== "connected" || !accessToken || !authorUrn) {
       const linkedInRawError = auth.error || "not_connected";
       const linkedInUserError = getPublishChannelUserMessage("linkedin", linkedInRawError, "LinkedIn à connecter. Rendez-vous dans Canaux.");
@@ -1389,12 +1396,44 @@ async function replaceChannelDelivery(params: {
       });
       throw new Error(linkedInUserError);
     }
+    let linkedInPersonalShareUrn: string | null = null;
+    const canSharePagePostToProfile = Boolean(
+      shouldShareLinkedInPageToProfile &&
+        organizationAuthorUrn &&
+        memberAuthorUrn &&
+        resp.postUrn,
+    );
+
+    if (canSharePagePostToProfile) {
+      const shareResp = await linkedinResharePost({
+        accessToken,
+        authorUrn: memberAuthorUrn,
+        parentPostUrn: String(resp.postUrn),
+        commentary: canonMessage,
+      });
+      if (shareResp.ok) {
+        linkedInPersonalShareUrn = shareResp.postUrn || null;
+      } else {
+        logPublishChannelFailure({
+          route: "inrsend_publication_channel_action",
+          channel: "linkedin",
+          userId,
+          publicationId: publicationId || null,
+          stage: "share_to_profile",
+          error: shareResp.error,
+          userMessage: "Publié sur la page LinkedIn. Le partage sur le profil personnel a échoué.",
+          diagnostics: shareResp,
+        });
+      }
+    }
+
     return {
       externalId: resp.postUrn || null,
       status: "delivered",
       error: linkedInWarning?.message || null,
       warning: linkedInWarning?.code || null,
       warningMessage: linkedInWarning?.message || null,
+      linkedinPersonalShareId: linkedInPersonalShareUrn,
     };
   }
 

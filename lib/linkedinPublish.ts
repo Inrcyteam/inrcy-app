@@ -125,6 +125,45 @@ async function uploadLinkedInImage(params: {
   return { imageUrn, initJson: initJson ?? initRaw, uploadRaw };
 }
 
+
+export async function linkedinResharePost(params: {
+  accessToken: string;
+  authorUrn: string;
+  parentPostUrn: string;
+  commentary?: string;
+  visibility?: "PUBLIC" | "CONNECTIONS";
+}): Promise<LinkedInPublishResult> {
+  const { accessToken, authorUrn, parentPostUrn, visibility = "PUBLIC" } = params;
+  const commentary = String(params.commentary || "");
+
+  try {
+    if (!accessToken) return { ok: false, error: "Connexion LinkedIn invalide." };
+    if (!authorUrn) return { ok: false, error: "Compte LinkedIn invalide." };
+    if (!parentPostUrn?.trim()) return { ok: false, error: "Publication LinkedIn à partager introuvable." };
+
+    return await createLinkedInPost({
+      accessToken,
+      payload: {
+        author: authorUrn,
+        commentary,
+        visibility,
+        distribution: {
+          feedDistribution: "MAIN_FEED",
+          targetEntities: [],
+          thirdPartyDistributionChannels: [],
+        },
+        lifecycleState: "PUBLISHED",
+        isReshareDisabledByAuthor: false,
+        reshareContext: {
+          parent: parentPostUrn,
+        },
+      },
+    });
+  } catch (e: any) {
+    return { ok: false, error: e?.message || "Impossible de partager la publication LinkedIn pour le moment." };
+  }
+}
+
 export async function linkedinPublishText(params: {
   accessToken: string;
   authorUrn: string;

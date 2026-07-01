@@ -46,6 +46,8 @@ export function useLinkedinChannel({
   const [linkedinOrganizationPickerOpen, setLinkedinOrganizationPickerOpen] = useState(false);
   const [linkedinSelectedOrganizationId, setLinkedinSelectedOrganizationId] = useState<string>("");
   const [linkedinSelectedOrganizationName, setLinkedinSelectedOrganizationName] = useState<string>("");
+  const [linkedinShareToPersonalProfile, setLinkedinShareToPersonalProfile] = useState<boolean>(false);
+  const [linkedinShareToPersonalProfileBusy, setLinkedinShareToPersonalProfileBusy] = useState<boolean>(false);
   const organizationsAutoLoadRef = useRef(false);
 
   const clearPanelNotices = useCallback(() => {
@@ -87,6 +89,7 @@ export function useLinkedinChannel({
     setLinkedinOrganizationPickerOpen(false);
     setLinkedinSelectedOrganizationId("");
     setLinkedinSelectedOrganizationName("");
+    setLinkedinShareToPersonalProfile(false);
     organizationsAutoLoadRef.current = false;
     patchChannelConnectionLocally("linkedin", {
       connected: false,
@@ -106,6 +109,7 @@ export function useLinkedinChannel({
       orgId: "",
       orgName: "",
       orgUrl: "",
+      shareToPersonalProfile: false,
     });
     await triggerChannelRefresh("linkedin");
     setPanelSuccess("Compte LinkedIn déconnecté.");
@@ -278,6 +282,7 @@ export function useLinkedinChannel({
     const nextUrl = String(data?.profileUrl || linkedinUrl || "");
     setLinkedinSelectedOrganizationId("");
     setLinkedinSelectedOrganizationName("");
+    setLinkedinShareToPersonalProfile(false);
     setLinkedinOrganizationPickerOpen(false);
     setLinkedinConnected(true);
     setLinkedinConnectionStatus("connected");
@@ -291,6 +296,7 @@ export function useLinkedinChannel({
       orgId: "",
       orgName: "",
       orgUrl: "",
+      shareToPersonalProfile: false,
     });
     patchChannelConnectionLocally("linkedin", {
       connected: true,
@@ -303,6 +309,30 @@ export function useLinkedinChannel({
     await triggerChannelRefresh("linkedin");
     setPanelSuccess("Profil personnel LinkedIn activé.", 2200);
   }, [linkedinAccountConnected, linkedinDisplayName, linkedinUrl, updateRootSettingsKey, patchChannelConnectionLocally, triggerChannelRefresh, setPanelSuccess, setPanelError]);
+
+  const updateLinkedinShareToPersonalProfile = useCallback(async (enabled: boolean) => {
+    const nextEnabled = Boolean(enabled);
+    const previous = linkedinShareToPersonalProfile;
+    setLinkedinShareToPersonalProfile(nextEnabled);
+    setLinkedinShareToPersonalProfileBusy(true);
+    clearPanelNotices();
+
+    try {
+      const res = await fetch("/api/integrations/linkedin/share-profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled: nextEnabled }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "Impossible d'enregistrer l'option LinkedIn.");
+      setPanelSuccess("Option LinkedIn enregistrée.", 1600);
+    } catch (error) {
+      setLinkedinShareToPersonalProfile(previous);
+      setPanelError(error, "Impossible d'enregistrer l'option LinkedIn.", 3600);
+    } finally {
+      setLinkedinShareToPersonalProfileBusy(false);
+    }
+  }, [linkedinShareToPersonalProfile, clearPanelNotices, setPanelSuccess, setPanelError]);
 
   const saveLinkedinProfileUrl = useCallback(async () => {
     const raw = (linkedinUrl ?? "").trim();
@@ -374,6 +404,10 @@ export function useLinkedinChannel({
     setLinkedinSelectedOrganizationId,
     linkedinSelectedOrganizationName,
     setLinkedinSelectedOrganizationName,
+    linkedinShareToPersonalProfile,
+    setLinkedinShareToPersonalProfile,
+    linkedinShareToPersonalProfileBusy,
+    updateLinkedinShareToPersonalProfile,
     loadLinkedinOrganizations,
     selectLinkedinOrganization,
     useLinkedinPersonalProfile,
