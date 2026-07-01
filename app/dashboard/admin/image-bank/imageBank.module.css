@@ -1437,3 +1437,24 @@
     grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)) !important;
   }
 }
+
+/* Menus déroulants admin : options lisibles sur fond sombre */
+.select,
+.miniSelect,
+.compactSelect {
+  color-scheme: dark;
+}
+
+.select option,
+.miniSelect option,
+.compactSelect option {
+  background-color: #111827;
+  color: #ffffff;
+}
+
+.select option:checked,
+.miniSelect option:checked,
+.compactSelect option:checked {
+  background-color: #1f2a44;
+  color: #ffffff;
+}

@@ -68,6 +68,23 @@ import {
 import { pillBtn, pillBtnActive } from "./mailboxInlineStyles";
 
 
+
+function formatCampaignProgressFromHealth(raw: any, health: any | null) {
+  if (!health || typeof health !== "object") return formatCampaignProgress(raw || {});
+
+  const total = Math.max(0, Number(health.total ?? raw?.total_count ?? 0) || 0);
+  const sent = Math.max(0, Number(health.sent ?? raw?.sent_count ?? 0) || 0);
+  const processing = Math.max(0, Number(health.processing ?? raw?.processing_count ?? 0) || 0);
+  const queued = Math.max(0, Number(health.queued ?? raw?.queued_count ?? 0) || 0);
+  const failed = Math.max(0, Number(health.failed ?? raw?.failed_count ?? 0) || 0);
+
+  const bits = [`${sent}/${total || sent} envoyés`];
+  if (processing > 0) bits.push(`${processing} en cours`);
+  if (queued > 0) bits.push(`${queued} en attente`);
+  if (failed > 0) bits.push(`${failed} en échec`);
+  return bits.join(" • ");
+}
+
 type PublicationEditVideoState = {
   file: File | null;
   previewUrl: string;
@@ -909,7 +926,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                 </div>
                                 <div className={styles.metaRow}>
                                   <div className={styles.metaKey}>Progression</div>
-                                  <div className={styles.metaVal}>{formatCampaignProgress((detailsItem as any).raw || {})}</div>
+                                  <div className={styles.metaVal}>{formatCampaignProgressFromHealth((detailsItem as any).raw || {}, campaignHealth)}</div>
                                 </div>
                                 <div className={styles.metaRow}>
                                   <div className={styles.metaKey}>Objet</div>
@@ -934,6 +951,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                     void Promise.all([
                                       loadCampaignRecipients(detailsItem.id, campaignRecipientsPage, campaignRecipientsFilter),
                                       loadCampaignHealth(detailsItem.id, (detailsItem as any).raw || {}),
+                                      refreshHistory?.(),
                                     ]);
                                   }}
                                   disabled={campaignRecipientsLoading || campaignHealthLoading || campaignActionBusyId === detailsItem.id}

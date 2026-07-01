@@ -1639,18 +1639,27 @@ export default function MailboxClient() {
           return Math.max(0, Number(count || 0));
         };
 
-        const [optOut, blacklist] = await Promise.all([
+        const [total, queued, processing, sent, failed, optOut, blacklist] = await Promise.all([
+          countRecipients("all"),
+          countRecipients("queued"),
+          countRecipients("processing"),
+          countRecipients("sent"),
+          countRecipients("failed"),
           countRecipients("opt_out"),
           countRecipients("blacklist"),
         ]);
         const blocked = optOut + blacklist;
 
         setCampaignHealth({
-          ...baseCounts,
+          total,
+          queued,
+          processing,
+          sent,
+          failed,
           blocked,
           opt_out: optOut,
           blacklist,
-          retryable: Math.max(0, baseCounts.failed - blocked),
+          retryable: Math.max(0, failed - blocked),
         });
       } catch (error) {
         console.error(error);
