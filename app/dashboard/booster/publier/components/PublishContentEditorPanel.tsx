@@ -1,5 +1,9 @@
-import { useLayoutEffect } from "react";
-import type { Dispatch, KeyboardEvent, MutableRefObject, SetStateAction } from "react";
+import type {
+  Dispatch,
+  KeyboardEvent,
+  MutableRefObject,
+  SetStateAction,
+} from "react";
 import { stripSiteTextFormatting } from "@/lib/boosterFormatting";
 import {
   BOOSTER_PREFERRED_CTA_OPTIONS,
@@ -42,12 +46,19 @@ type PublishContentEditorPanelProps = {
   activeCard: DisplayKey;
   setSynchronizedActiveChannel: (channel: ChannelKey) => void;
   getDisplayPost: (key: DisplayKey) => ChannelPost;
-  updatePost: (channel: ChannelKey, patch: Partial<ChannelPost>) => void;
+  updatePost: (
+    channel: ChannelKey,
+    patch: Partial<ChannelPost>,
+    options?: { sanitize?: boolean },
+  ) => void;
   applySiteContentFormat: (kind: "bold" | "italic" | "underline") => void;
   siteContentEditorRef: MutableRefObject<HTMLDivElement | null>;
   contentTextAreaRef: MutableRefObject<HTMLTextAreaElement | null>;
   ctaDefaults: BoosterCtaDefaults | null;
-  applyPreferredCtaPrefill: (channel: ChannelKey, choice: BoosterPreferredCta) => void;
+  applyPreferredCtaPrefill: (
+    channel: ChannelKey,
+    choice: BoosterPreferredCta,
+  ) => void;
   instagramHashtagsInput: string;
   setInstagramHashtagsInput: Dispatch<SetStateAction<string>>;
   getLiveInstagramHashtags: () => string[];
@@ -74,24 +85,14 @@ export default function PublishContentEditorPanel({
   duplicateFeedback,
   onDuplicateContentToAllChannels,
 }: PublishContentEditorPanelProps) {
-  const activePost = getDisplayPost(activeCard);
-  const autoResizeContentTextArea = (element: HTMLTextAreaElement | null) => {
-    if (!element) return;
-    element.style.height = "auto";
-    element.style.height = `${element.scrollHeight}px`;
-  };
-
-  const keepEditorTypingInsideField = (event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+  const keepEditorTypingInsideField = (
+    event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) => {
     // Les bulles/carrousels du dashboard utilisent Espace/Entrée comme raccourcis clavier.
     // Quand on édite un titre ou un contenu, on bloque seulement la propagation
     // pour éviter qu'un parent intercepte la touche Espace, sans empêcher la saisie.
     event.stopPropagation();
   };
-
-  useLayoutEffect(() => {
-    if (isSiteDisplayKey(activeCard)) return;
-    autoResizeContentTextArea(contentTextAreaRef.current);
-  }, [activeCard, activePost.content, contentTextAreaRef]);
 
   return (
     <div
@@ -163,9 +164,15 @@ export default function PublishContentEditorPanel({
                       : {}),
                     ...(isMobile
                       ? {
-                          width: isLastOddMobileItem ? "calc(50% - 4px)" : "100%",
-                          gridColumn: isLastOddMobileItem ? "1 / -1" : undefined,
-                          justifySelf: isLastOddMobileItem ? "center" : undefined,
+                          width: isLastOddMobileItem
+                            ? "calc(50% - 4px)"
+                            : "100%",
+                          gridColumn: isLastOddMobileItem
+                            ? "1 / -1"
+                            : undefined,
+                          justifySelf: isLastOddMobileItem
+                            ? "center"
+                            : undefined,
                           minWidth: 0,
                           minHeight: 36,
                           padding: "0 8px",
@@ -202,7 +209,9 @@ export default function PublishContentEditorPanel({
                   <textarea
                     value={getDisplayPost(activeCard).title}
                     onKeyDown={keepEditorTypingInsideField}
-                    onChange={(e) => updatePost(activeCard, { title: e.target.value })}
+                    onChange={(e) =>
+                      updatePost(activeCard, { title: e.target.value })
+                    }
                     style={{
                       ...inputStyle,
                       minHeight: 64,
@@ -220,7 +229,9 @@ export default function PublishContentEditorPanel({
                   <input
                     value={getDisplayPost(activeCard).title}
                     onKeyDown={keepEditorTypingInsideField}
-                    onChange={(e) => updatePost(activeCard, { title: e.target.value })}
+                    onChange={(e) =>
+                      updatePost(activeCard, { title: e.target.value })
+                    }
                     style={inputStyle}
                     placeholder="Titre"
                   />
@@ -287,22 +298,22 @@ export default function PublishContentEditorPanel({
                           minWidth: 32,
                           height: 30,
                           borderRadius: 9,
-                          border:
-                            isSiteDisplayKey(activeCard)
-                              ? "1px solid rgba(76,195,255,0.35)"
-                              : "1px solid rgba(255,255,255,0.10)",
-                          background:
-                            isSiteDisplayKey(activeCard)
-                              ? "rgba(76,195,255,0.12)"
-                              : "rgba(255,255,255,0.04)",
-                          color:
-                            isSiteDisplayKey(activeCard)
-                              ? "#eaf7ff"
-                              : "rgba(255,255,255,0.32)",
+                          border: isSiteDisplayKey(activeCard)
+                            ? "1px solid rgba(76,195,255,0.35)"
+                            : "1px solid rgba(255,255,255,0.10)",
+                          background: isSiteDisplayKey(activeCard)
+                            ? "rgba(76,195,255,0.12)"
+                            : "rgba(255,255,255,0.04)",
+                          color: isSiteDisplayKey(activeCard)
+                            ? "#eaf7ff"
+                            : "rgba(255,255,255,0.32)",
                           fontWeight: 900,
                           fontStyle: kind === "italic" ? "italic" : "normal",
-                          textDecoration: kind === "underline" ? "underline" : "none",
-                          cursor: isSiteDisplayKey(activeCard) ? "pointer" : "not-allowed",
+                          textDecoration:
+                            kind === "underline" ? "underline" : "none",
+                          cursor: isSiteDisplayKey(activeCard)
+                            ? "pointer"
+                            : "not-allowed",
                         }}
                       >
                         {label}
@@ -322,29 +333,34 @@ export default function PublishContentEditorPanel({
                   <textarea
                     ref={(element) => {
                       contentTextAreaRef.current = element;
-                      autoResizeContentTextArea(element);
                     }}
                     value={getDisplayPost(activeCard).content}
                     onKeyDown={keepEditorTypingInsideField}
                     onChange={(e) => {
-                      updatePost(activeCard, { content: e.target.value });
-                      autoResizeContentTextArea(e.currentTarget);
+                      updatePost(
+                        activeCard,
+                        { content: e.target.value },
+                        { sanitize: false },
+                      );
                     }}
                     style={{
                       ...textAreaStyle,
                       minHeight: 280,
-                      height: 280,
-                      resize: "none",
-                      overflowY: "hidden",
+                      height: isMobile ? 260 : 280,
+                      maxHeight: isMobile ? 360 : 420,
+                      resize: "vertical",
+                      overflowY: "auto",
                     }}
-                    rows={1}
+                    rows={10}
                     placeholder="Contenu"
                   />
                 )}
                 {renderLimitCounter(
                   "Contenu",
                   isSiteDisplayKey(activeCard)
-                    ? stripSiteTextFormatting(getDisplayPost(activeCard).content).length
+                    ? stripSiteTextFormatting(
+                        getDisplayPost(activeCard).content,
+                      ).length
                     : getDisplayPost(activeCard).content.length,
                   CHANNEL_TEXT_GUIDELINES[activeCard].content,
                 )}
@@ -353,10 +369,17 @@ export default function PublishContentEditorPanel({
                 {(() => {
                   const currentPost = getDisplayPost(activeCard);
                   const ctaMode = currentPost.ctaMode || "none";
-                  const ctaChoice = getPreferredCtaChoiceFromPost(activeCard, currentPost);
+                  const ctaChoice = getPreferredCtaChoiceFromPost(
+                    activeCard,
+                    currentPost,
+                  );
                   const updateTarget = activeCard;
-                  const activeWebsiteUrl = getWebsiteUrlForChannel(activeCard, ctaDefaults);
-                  const activeWebsiteSourceLabel = getWebsiteSourceLabelForChannel(activeCard, ctaDefaults);
+                  const activeWebsiteUrl = getWebsiteUrlForChannel(
+                    activeCard,
+                    ctaDefaults,
+                  );
+                  const activeWebsiteSourceLabel =
+                    getWebsiteSourceLabelForChannel(activeCard, ctaDefaults);
                   const websiteChoices = [
                     ctaDefaults?.inrcySiteUrl
                       ? { label: "Site iNrCy", url: ctaDefaults.inrcySiteUrl }
@@ -429,7 +452,9 @@ export default function PublishContentEditorPanel({
                               <input
                                 value={currentPost.ctaUrl || ""}
                                 onChange={(e) =>
-                                  updatePost(updateTarget, { ctaUrl: e.target.value })
+                                  updatePost(updateTarget, {
+                                    ctaUrl: e.target.value,
+                                  })
                                 }
                                 style={lightFieldStyle}
                                 placeholder={
@@ -454,15 +479,19 @@ export default function PublishContentEditorPanel({
                                       key={choice.label}
                                       type="button"
                                       onClick={() =>
-                                        updatePost(updateTarget, { ctaUrl: choice.url })
+                                        updatePost(updateTarget, {
+                                          ctaUrl: choice.url,
+                                        })
                                       }
                                       style={{
-                                        border: currentPost.ctaUrl === choice.url
-                                          ? "1px solid rgba(76,195,255,0.55)"
-                                          : "1px solid rgba(255,255,255,0.14)",
-                                        background: currentPost.ctaUrl === choice.url
-                                          ? "rgba(76,195,255,0.14)"
-                                          : "rgba(255,255,255,0.06)",
+                                        border:
+                                          currentPost.ctaUrl === choice.url
+                                            ? "1px solid rgba(76,195,255,0.55)"
+                                            : "1px solid rgba(255,255,255,0.14)",
+                                        background:
+                                          currentPost.ctaUrl === choice.url
+                                            ? "rgba(76,195,255,0.14)"
+                                            : "rgba(255,255,255,0.06)",
                                         color: "rgba(255,255,255,0.86)",
                                         borderRadius: 999,
                                         padding: "5px 9px",
@@ -490,7 +519,9 @@ export default function PublishContentEditorPanel({
                               <input
                                 value={currentPost.cta}
                                 onChange={(e) =>
-                                  updatePost(updateTarget, { cta: e.target.value })
+                                  updatePost(updateTarget, {
+                                    cta: e.target.value,
+                                  })
                                 }
                                 style={lightFieldStyle}
                                 placeholder={`Texte du bouton (ex : ${getChannelDefaultCtaLabel(activeCard, "website") || "Voir le site"})`}
@@ -512,7 +543,9 @@ export default function PublishContentEditorPanel({
                             <input
                               value={currentPost.ctaPhone || ""}
                               onChange={(e) =>
-                                updatePost(updateTarget, { ctaPhone: e.target.value })
+                                updatePost(updateTarget, {
+                                  ctaPhone: e.target.value,
+                                })
                               }
                               style={lightFieldStyle}
                               placeholder={
@@ -538,7 +571,9 @@ export default function PublishContentEditorPanel({
                               <input
                                 value={currentPost.ctaUrl || ""}
                                 onChange={(e) =>
-                                  updatePost(updateTarget, { ctaUrl: e.target.value })
+                                  updatePost(updateTarget, {
+                                    ctaUrl: e.target.value,
+                                  })
                                 }
                                 style={lightFieldStyle}
                                 placeholder="URL personnalisée (optionnel)"
@@ -557,7 +592,9 @@ export default function PublishContentEditorPanel({
                               <input
                                 value={currentPost.cta}
                                 onChange={(e) =>
-                                  updatePost(updateTarget, { cta: e.target.value })
+                                  updatePost(updateTarget, {
+                                    cta: e.target.value,
+                                  })
                                 }
                                 style={lightFieldStyle}
                                 placeholder="Ex : En savoir plus"
@@ -586,7 +623,8 @@ export default function PublishContentEditorPanel({
                           }}
                         >
                           Valeur par défaut disponible depuis{" "}
-                          {activeWebsiteSourceLabel.toLowerCase()} : {activeWebsiteUrl}
+                          {activeWebsiteSourceLabel.toLowerCase()} :{" "}
+                          {activeWebsiteUrl}
                         </div>
                       ) : ctaMode === "website" && websiteChoices.length > 1 ? (
                         <div
@@ -597,7 +635,8 @@ export default function PublishContentEditorPanel({
                             lineHeight: 1.45,
                           }}
                         >
-                          Deux sites sont connectés : choisissez le lien à utiliser avec les boutons ci-dessus.
+                          Deux sites sont connectés : choisissez le lien à
+                          utiliser avec les boutons ci-dessus.
                         </div>
                       ) : null}
                       {ctaMode === "call" && ctaDefaults?.phone ? (
@@ -609,7 +648,8 @@ export default function PublishContentEditorPanel({
                             lineHeight: 1.45,
                           }}
                         >
-                          Valeur par défaut disponible depuis Mon profil : {ctaDefaults.phone}
+                          Valeur par défaut disponible depuis Mon profil :{" "}
+                          {ctaDefaults.phone}
                         </div>
                       ) : null}
                       {ctaMode === "website" || ctaMode === "custom"
@@ -632,7 +672,9 @@ export default function PublishContentEditorPanel({
                     value={instagramHashtagsInput}
                     onChange={(e) => setInstagramHashtagsInput(e.target.value)}
                     onBlur={() =>
-                      updatePost("instagram", { hashtags: getLiveInstagramHashtags() })
+                      updatePost("instagram", {
+                        hashtags: getLiveInstagramHashtags(),
+                      })
                     }
                     style={inputStyle}
                     placeholder="#local #metier"

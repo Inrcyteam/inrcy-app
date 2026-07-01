@@ -622,8 +622,10 @@ export default function PublishModal({
     immediateChannels: ChannelKey[];
     preparedPostsByChannel: Partial<Record<ChannelKey, ChannelPost>>;
   } | null>(null);
-  const [pendingImmediatePublishAfterSchedule, setPendingImmediatePublishAfterSchedule] =
-    useState<PendingImmediatePublishAfterSchedule | null>(null);
+  const [
+    pendingImmediatePublishAfterSchedule,
+    setPendingImmediatePublishAfterSchedule,
+  ] = useState<PendingImmediatePublishAfterSchedule | null>(null);
   const [tiktokSettingsOpen, setTiktokSettingsOpen] = useState(false);
   const [tiktokSettingsFlow, setTiktokSettingsFlow] = useState<
     "publish" | "schedule" | null
@@ -2446,14 +2448,30 @@ export default function PublishModal({
     restorePublishScroll();
   };
 
-  const updatePost = (channel: ChannelKey, patch: Partial<ChannelPost>) => {
-    setPostsByChannel((prev) => ({
-      ...prev,
-      [channel]: sanitizePostForEditor(channel, {
-        ...normalizePost(prev[channel]),
-        ...sanitizePatchForEditor(channel, patch),
-      }),
-    }));
+  const updatePost = (
+    channel: ChannelKey,
+    patch: Partial<ChannelPost>,
+    options?: { sanitize?: boolean },
+  ) => {
+    setPostsByChannel((prev) => {
+      const current = normalizePost(prev[channel]);
+      const nextPatch =
+        options?.sanitize === false
+          ? patch
+          : sanitizePatchForEditor(channel, patch);
+      const merged = {
+        ...current,
+        ...nextPatch,
+      };
+
+      return {
+        ...prev,
+        [channel]:
+          options?.sanitize === false
+            ? normalizePost(merged)
+            : sanitizePostForEditor(channel, merged),
+      };
+    });
   };
 
   const getDisplayPost = (key: DisplayKey): ChannelPost => {
@@ -2490,13 +2508,8 @@ export default function PublishModal({
         hashtags: getLiveInstagramHashtags(),
       }),
     };
-    for (const key of [
-      "gmb",
-      "facebook",
-      "instagram",
-      "linkedin",
-      "tiktok",
-    ] as const) {
+    for (const key of CHANNEL_KEYS) {
+      if (isSiteDisplayKey(key)) continue;
       if (!prepared[key]) continue;
       prepared[key] = normalizePost({
         ...prepared[key],
@@ -2838,8 +2851,13 @@ export default function PublishModal({
 
     if (publishableChannels.includes("pinterest")) {
       const pinterestImages = channelImageEditors.pinterest?.imageKeys || [];
-      if (publishMediaModeByChannel.pinterest !== "images" || !pinterestImages.length) {
-        setImgError("Veuillez ajouter au moins 1 image pour publier sur Pinterest.");
+      if (
+        publishMediaModeByChannel.pinterest !== "images" ||
+        !pinterestImages.length
+      ) {
+        setImgError(
+          "Veuillez ajouter au moins 1 image pour publier sur Pinterest.",
+        );
         return;
       }
     }
@@ -4016,14 +4034,22 @@ export default function PublishModal({
         ? getPublicationPreviewForChannel("tiktok")
         : null;
   const tiktokSettingsPreviewPost =
-    (finalReviewPosts || scheduleReviewPosts || pendingPublishPosts || buildPreparedPostsByChannel()).tiktok ||
-    null;
-  const tiktokSettingsPreviewTitle =
-    String(tiktokSettingsPreviewPost?.title || tiktokSettingsPreview?.title || "").trim();
-  const tiktokSettingsPreviewContent =
-    String(tiktokSettingsPreviewPost?.content || tiktokSettingsPreview?.content || "").trim();
+    (
+      finalReviewPosts ||
+      scheduleReviewPosts ||
+      pendingPublishPosts ||
+      buildPreparedPostsByChannel()
+    ).tiktok || null;
+  const tiktokSettingsPreviewTitle = String(
+    tiktokSettingsPreviewPost?.title || tiktokSettingsPreview?.title || "",
+  ).trim();
+  const tiktokSettingsPreviewContent = String(
+    tiktokSettingsPreviewPost?.content || tiktokSettingsPreview?.content || "",
+  ).trim();
   const tiktokSettingsPreviewHashtags =
-    tiktokSettingsPreviewPost?.hashtags || tiktokSettingsPreview?.hashtags || [];
+    tiktokSettingsPreviewPost?.hashtags ||
+    tiktokSettingsPreview?.hashtags ||
+    [];
   const tiktokSettingsPreviewAny = tiktokSettingsPreview as any;
   const tiktokSettingsPreviewMediaUrl =
     tiktokSettingsMediaMode === "video"
