@@ -2,6 +2,7 @@
 
 import React, { type CSSProperties } from "react";
 import { createClient } from "@/lib/supabaseClient";
+import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
 import type { ComposeAttachmentRef } from "@/app/dashboard/mails/_lib/mailboxPhase1";
 import { makeAttachmentPath } from "@/app/dashboard/mails/_lib/mailboxPhase25";
 import MediaLibraryPickerModal, {
@@ -44,7 +45,7 @@ export default function TemplateAttachmentPicker({
     try {
       const supabase = createClient();
       const { data: auth } = await supabase.auth.getUser();
-      const userId = auth?.user?.id || null;
+      const userId = auth?.user?.id ? resolveActiveBrowserUserId(auth.user.id) : null;
       const uploaded: ComposeAttachmentRef[] = [];
 
       for (const file of files) {

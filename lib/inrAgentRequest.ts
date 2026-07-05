@@ -10,6 +10,7 @@ export type InrAgentResolvedRequest = {
   supabase: any;
   user: { id: string; email?: string | null };
   userId: string;
+  authUserId: string;
   body: Record<string, unknown> | null;
   isCron: boolean;
   errorResponse: NextResponse | null;
@@ -30,6 +31,7 @@ export async function resolveInrAgentActionRequest(request: Request): Promise<In
       supabase: supabaseAdmin,
       user: { id: cronUserId },
       userId: cronUserId,
+      authUserId: cronUserId,
       body,
       isCron: true,
       errorResponse: null,
@@ -41,17 +43,19 @@ export async function resolveInrAgentActionRequest(request: Request): Promise<In
       supabase: null,
       user: { id: "" },
       userId: "",
+      authUserId: "",
       body,
       isCron: true,
       errorResponse: jsonUserFacingError("Utilisateur iNr’Agent invalide pour le cron.", { status: 400, code: "invalid_cron_user" }),
     };
   }
 
-  const { supabase, user, errorResponse } = await requireUser();
+  const { supabase, user, authUserId, activeUserId, errorResponse } = await requireUser();
   return {
     supabase,
     user,
-    userId: user?.id || "",
+    userId: activeUserId || "",
+    authUserId: authUserId || user?.id || "",
     body,
     isCron: false,
     errorResponse,

@@ -10,13 +10,14 @@ export const maxDuration = 60;
 
 export async function POST(req: Request) {
   try {
-    const { supabase, user, errorResponse } = await requireUser();
+    const { supabase, authUserId, errorResponse, activeUserId } = await requireUser();
     if (errorResponse) return errorResponse;
 
     const body = asRecord(await req.json().catch(() => ({})) as unknown);
     const generated = await generateTemplateAiContent({
       supabase,
-      userId: user.id,
+      userId: activeUserId,
+      quotaUserId: authUserId,
       input: body,
     });
 

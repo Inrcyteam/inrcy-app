@@ -137,6 +137,8 @@ async function resolveCampaignRequestUser(req: Request) {
     return {
       supabase: supabaseAdmin as any,
       user: { id: cronUserId },
+      authUserId: cronUserId,
+      activeUserId: cronUserId,
       errorResponse: null as NextResponse | null,
       isCron: true,
     };
@@ -246,13 +248,13 @@ function buildCampaignDuplicateMessage(
 }
 
 export async function POST(req: Request) {
-  const { supabase, user, errorResponse, isCron } = await resolveCampaignRequestUser(req);
+  const { supabase, user, activeUserId, errorResponse, isCron } = await resolveCampaignRequestUser(req);
   if (errorResponse) return errorResponse;
 
   if (!isCron) {
     const rateLimited = await enforceRateLimit({
       name: "crm_campaign_create",
-      identifier: user.id,
+      identifier: activeUserId,
       limit: 10,
       window: "10 m",
       failClosed: false,
@@ -300,7 +302,7 @@ export async function POST(req: Request) {
     .from("integrations")
     .select("id,user_id,provider,category,status,settings")
     .eq("id", accountId)
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .eq("category", "mail")
     .eq("status", "connected")
     .maybeSingle();
@@ -321,7 +323,7 @@ export async function POST(req: Request) {
   }
 
   const suppressedByEmail = await fetchSuppressedEmailsByUser(
-    user.id,
+    activeUserId,
     normalizedRecipients.map((recipient) => recipient.email),
   );
 
@@ -365,7 +367,7 @@ export async function POST(req: Request) {
   if (!isScheduledCampaignExecution) {
     const duplicate = await findSimilarUpcomingScheduledCampaign({
       supabase: supabaseAdmin,
-      userId: user.id,
+      userId: activeUserId,
       payload: {
         accountId,
         type,
@@ -399,7 +401,7 @@ export async function POST(req: Request) {
   const campaignIdempotency = campaignIdempotencyKey
     ? await acquireExecutionIdempotencyLock({
         supabase: supabaseAdmin,
-        userId: user.id,
+        userId: activeUserId,
         scope: CAMPAIGN_IDEMPOTENCY_SCOPE,
         idempotencyKey: campaignIdempotencyKey,
         ttlMs: CAMPAIGN_IDEMPOTENCY_TTL_MS,
@@ -442,14 +444,14 @@ export async function POST(req: Request) {
       : {}),
   };
 
-  const dispatchState = await evaluateCampaignDispatchState({ userId: user.id, integrationId: accountId });
+  const dispatchState = await evaluateCampaignDispatchState({ userId: activeUserId, integrationId: accountId });
   const deliveryConfig = getMailCampaignDeliveryConfig();
   const now = new Date().toISOString();
   const initialStatus = dispatchState.state === "paused" ? "paused" : "queued";
   const initialLastError = dispatchState.state === "ready" ? null : dispatchState.reason;
 
   const campaignInsertPayload: Record<string, unknown> = {
-    user_id: user.id,
+    user_id: activeUserId,
     integration_id: accountId,
     provider: account.provider,
     type,
@@ -512,7 +514,7 @@ export async function POST(req: Request) {
   }
 
   await saveInrSendHistoryFiles(supabase, {
-    userId: user.id,
+    userId: activeUserId,
     historySource: "mail_campaigns",
     historyId: campaign.id,
     category: folder,
@@ -529,7 +531,7 @@ export async function POST(req: Request) {
 
   const rows: CampaignRecipientRow[] = recipients.map((recipient) => ({
     campaign_id: campaign.id,
-    user_id: user.id,
+    user_id: activeUserId,
     contact_id: recipient.contact_id || null,
     display_name: recipient.display_name || null,
     email: recipient.email,
@@ -539,7 +541,7 @@ export async function POST(req: Request) {
   for (const chunk of chunkArray(rows, 500)) {
     const { error } = await supabase.from("mail_campaign_recipients").insert(chunk);
     if (error) {
-      await supabase.from("mail_campaigns").delete().eq("id", campaign.id);
+      await supabase.from("mail_campaigns").delete().eq("id", campaign.id).eq("user_id", activeUserId);
       await failExecutionIdempotencyLock({
         supabase: supabaseAdmin,
         lockId: campaignIdempotencyLockId,

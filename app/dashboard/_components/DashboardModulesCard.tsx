@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import styles from "../dashboard.module.css";
-import { INRCY_WORKFLOW_TOOLS } from "@/lib/inrcyWorkflow";
 import BaseModal from "./WorkflowBaseModal";
+import { useDashboardI18n } from "../_hooks/useDashboardI18n";
 
 type DashboardPanelName =
   | "contact"
@@ -38,6 +38,7 @@ type DashboardModulesCardProps = {
 };
 
 export default function DashboardModulesCard({ goToModule, openPanel, onOpenStats, onOpenBoosterPublish, onOpenBoosterStats }: DashboardModulesCardProps) {
+  const t = useDashboardI18n();
   const [cashModalOpen, setCashModalOpen] = useState(false);
 
   const openStats = () => {
@@ -52,8 +53,8 @@ export default function DashboardModulesCard({ goToModule, openPanel, onOpenStat
         <div className={styles.lowerRow}>
           <div className={styles.blockCard}>
             <div className={styles.blockHead}>
-              <h3 className={styles.h3}>Tableau de bord</h3>
-              <span className={styles.smallMuted}>Pilotage</span>
+              <h3 className={styles.h3}>{t.modules.dashboardTitle}</h3>
+              <span className={styles.smallMuted}>{t.modules.dashboardSub}</span>
             </div>
 
             <div className={styles.loopWrap}>
@@ -126,7 +127,7 @@ export default function DashboardModulesCard({ goToModule, openPanel, onOpenStat
       <div className={styles.loopTopRow}>
         <div className={styles.loopTitle}>STATS</div>
       </div>
-      <div className={styles.loopSub}>Tous vos leads, enfin visibles</div>
+      <div className={styles.loopSub}>{t.modules.statsSub}</div>
       <div className={styles.loopActions}>
         <button className={`${styles.actionBtn} ${styles.connectBtn}`} type="button" onClick={openStats}>
           iNr'Stats →
@@ -144,8 +145,8 @@ export default function DashboardModulesCard({ goToModule, openPanel, onOpenStat
 <button
   className={styles.loopGearBtn}
   type="button"
-  aria-label="Réglages Mails"
-  title="Réglages"
+  aria-label={t.modules.mailsSettingsAria}
+  title={t.notifications.settings}
   onClick={() => openPanel("mails")}
 >
   <svg className={styles.loopGearSvg} viewBox="0 0 24 24" aria-hidden="true">
@@ -154,7 +155,7 @@ export default function DashboardModulesCard({ goToModule, openPanel, onOpenStat
 </svg>
 </button>
 
-      <div className={styles.loopSub}>Tous vos messages partent d'ici</div>
+      <div className={styles.loopSub}>{t.modules.mailsSub}</div>
       <div className={styles.loopActions}>
         <button
   className={`${styles.actionBtn} ${styles.connectBtn}`}
@@ -176,8 +177,8 @@ export default function DashboardModulesCard({ goToModule, openPanel, onOpenStat
 <button
   className={styles.loopGearBtn}
   type="button"
-  aria-label="Réglages Agenda"
-  title="Réglages"
+  aria-label={t.modules.agendaSettingsAria}
+  title={t.notifications.settings}
   onClick={() => openPanel("agenda")}
 >
   <svg className={styles.loopGearSvg} viewBox="0 0 24 24" aria-hidden="true">
@@ -186,7 +187,7 @@ export default function DashboardModulesCard({ goToModule, openPanel, onOpenStat
   </svg>
 </button>
 
-      <div className={styles.loopSub}>Transformez les contacts en RDV</div>
+      <div className={styles.loopSub}>{t.modules.agendaSub}</div>
       <div className={styles.loopActions}>
         <button
   className={`${styles.actionBtn} ${styles.connectBtn}`}
@@ -204,7 +205,7 @@ export default function DashboardModulesCard({ goToModule, openPanel, onOpenStat
       <div className={styles.loopTopRow}>
         <div className={styles.loopTitle}>CRM</div>
       </div>
-      <div className={styles.loopSub}>Vos prospects et clients centralisés</div>
+      <div className={styles.loopSub}>{t.modules.crmSub}</div>
       <div className={styles.loopActions}>
         <button
           className={`${styles.actionBtn} ${styles.connectBtn}`}
@@ -230,8 +231,8 @@ export default function DashboardModulesCard({ goToModule, openPanel, onOpenStat
 
           <div className={`${styles.blockCard} ${styles.gearBlockCard}`}>
             <div className={styles.blockHead}>
-              <h3 className={styles.h3}>Boîte de vitesse</h3>
-              <span className={styles.smallMuted}>Conversion</span>
+              <h3 className={styles.h3}>{t.modules.gearboxTitle}</h3>
+              <span className={styles.smallMuted}>{t.modules.gearboxSub}</span>
             </div>
 
             <div className={styles.gearWrap}>
@@ -252,8 +253,8 @@ export default function DashboardModulesCard({ goToModule, openPanel, onOpenStat
                     className={`${styles.gearSettingsBtn} ${styles.gearStatsBtn}`}
                     role="button"
                     tabIndex={0}
-                    title="Statistiques Booster"
-                    aria-label="Statistiques Booster"
+                    title={t.modules.boosterStatsTitle}
+                    aria-label={t.modules.boosterStatsTitle}
                     onClick={(event) => {
                       event.stopPropagation();
                       if (onOpenBoosterStats) onOpenBoosterStats();
@@ -271,9 +272,9 @@ export default function DashboardModulesCard({ goToModule, openPanel, onOpenStat
                     <span className={styles.gearStatsIcon} aria-hidden="true" />
                   </span>
                   <div className={styles.gearInner}>
-                    <div className={styles.gearTitle}>Publier</div>
-                    <div className={styles.gearSub}>{INRCY_WORKFLOW_TOOLS.booster.dashboardSubtitle}</div>
-                    <div className={styles.gearBtn}>Publier</div>
+                    <div className={styles.gearTitle}>{t.modules.publishTitle}</div>
+                    <div className={styles.gearSub}>{t.modules.boosterSub}</div>
+                    <div className={styles.gearBtn}>{t.modules.publishCta}</div>
                   </div>
                 </button>
 
@@ -283,9 +284,9 @@ export default function DashboardModulesCard({ goToModule, openPanel, onOpenStat
                   onClick={() => goToModule("/dashboard/propulser")}
                 >
                   <div className={styles.gearInner}>
-                    <div className={styles.gearTitle}>{INRCY_WORKFLOW_TOOLS.propulser.label}</div>
-                    <div className={styles.gearSub}>Accélère votre activité</div>
-                    <div className={styles.gearBtn}>Développer</div>
+                    <div className={styles.gearTitle}>{t.modules.propulserTitle}</div>
+                    <div className={styles.gearSub}>{t.modules.propulserSub}</div>
+                    <div className={styles.gearBtn}>{t.modules.propulserCta}</div>
                   </div>
                 </button>
 
@@ -295,9 +296,9 @@ export default function DashboardModulesCard({ goToModule, openPanel, onOpenStat
                   onClick={() => goToModule("/dashboard/fideliser")}
                 >
                   <div className={styles.gearInner}>
-                    <div className={styles.gearTitle}>{INRCY_WORKFLOW_TOOLS.fideliser.label}</div>
-                    <div className={styles.gearSub}>{INRCY_WORKFLOW_TOOLS.fideliser.dashboardSubtitle}</div>
-                    <div className={styles.gearBtn}>{INRCY_WORKFLOW_TOOLS.fideliser.primaryCta}</div>
+                    <div className={styles.gearTitle}>{t.modules.fideliserTitle}</div>
+                    <div className={styles.gearSub}>{t.modules.fideliserSub}</div>
+                    <div className={styles.gearBtn}>{t.modules.fideliserCta}</div>
                   </div>
                 </button>
 
@@ -310,8 +311,8 @@ export default function DashboardModulesCard({ goToModule, openPanel, onOpenStat
                     className={styles.gearSettingsBtn}
                     role="button"
                     tabIndex={0}
-                    title="Réglages par défaut"
-                    aria-label="Réglages par défaut Devis et Factures"
+                    title={t.modules.cashSettingsTitle}
+                    aria-label={t.modules.cashSettingsTitle}
                     onClick={(event) => {
                       event.stopPropagation();
                       openPanel("documents");
@@ -327,9 +328,9 @@ export default function DashboardModulesCard({ goToModule, openPanel, onOpenStat
                     <span className={styles.gearSettingsIcon} aria-hidden="true" />
                   </span>
                   <div className={styles.gearInner}>
-                    <div className={styles.gearTitle}>Encaisser</div>
-                    <div className={styles.gearSub}>Devis et factures</div>
-                    <div className={styles.gearBtn}>Encaisser</div>
+                    <div className={styles.gearTitle}>{t.modules.cashTitle}</div>
+                    <div className={styles.gearSub}>{t.modules.cashSub}</div>
+                    <div className={styles.gearBtn}>{t.modules.cashCta}</div>
                   </div>
                 </button>
 
@@ -339,9 +340,9 @@ export default function DashboardModulesCard({ goToModule, openPanel, onOpenStat
                   onClick={() => goToModule("/dashboard/e-reputation")}
                 >
                   <div className={styles.gearInner}>
-                    <div className={styles.gearTitle}>E-réputation</div>
-                    <div className={styles.gearSub}>Pilotez vos avis Google</div>
-                    <div className={styles.gearBtn}>Gérer</div>
+                    <div className={styles.gearTitle}>{t.modules.reputationTitle}</div>
+                    <div className={styles.gearSub}>{t.modules.reputationSub}</div>
+                    <div className={styles.gearBtn}>{t.modules.reputationCta}</div>
                   </div>
                 </button>
               </div>
@@ -352,8 +353,8 @@ export default function DashboardModulesCard({ goToModule, openPanel, onOpenStat
 
         {cashModalOpen ? (
           <BaseModal
-            title="Encaisser"
-            moduleLabel="Devis et factures"
+            title={t.modules.cashModalTitle}
+            moduleLabel={t.modules.cashModalLabel}
             compact
             maxWidth={760}
             onClose={() => setCashModalOpen(false)}
@@ -362,15 +363,14 @@ export default function DashboardModulesCard({ goToModule, openPanel, onOpenStat
                 type="button"
                 className={styles.ghostBtn}
                 onClick={() => openPanel("documents")}
-                title="Réglages par défaut Devis et Factures"
+                title={t.modules.cashSettingsTitle}
               >
-                Réglages
+                {t.modules.cashModalSettings}
               </button>
             }
           >
             <div className={styles.cashModalIntro}>
-              <strong>Encaisser</strong> regroupe vos devis et vos factures sans changer vos habitudes.
-              Choisissez simplement l’action à lancer.
+              <strong>{t.modules.cashModalIntroStrong}</strong> {t.modules.cashModalIntroText}
             </div>
 
             <div className={styles.cashChoiceGrid}>
@@ -382,10 +382,10 @@ export default function DashboardModulesCard({ goToModule, openPanel, onOpenStat
                   goToModule("/dashboard/factures/new");
                 }}
               >
-                <span className={styles.cashChoiceEyebrow}>Factures</span>
-                <span className={styles.cashChoiceTitle}>Créer une facture</span>
-                <span className={styles.cashChoiceText}>Facturer un client et suivre le paiement.</span>
-                <span className={styles.cashChoiceCta}>Facturer →</span>
+                <span className={styles.cashChoiceEyebrow}>{t.modules.invoiceEyebrow}</span>
+                <span className={styles.cashChoiceTitle}>{t.modules.invoiceTitle}</span>
+                <span className={styles.cashChoiceText}>{t.modules.invoiceText}</span>
+                <span className={styles.cashChoiceCta}>{t.modules.invoiceCta}</span>
               </button>
 
               <button
@@ -396,10 +396,10 @@ export default function DashboardModulesCard({ goToModule, openPanel, onOpenStat
                   goToModule("/dashboard/devis/new");
                 }}
               >
-                <span className={styles.cashChoiceEyebrow}>Devis</span>
-                <span className={styles.cashChoiceTitle}>Créer un devis</span>
-                <span className={styles.cashChoiceText}>Chiffrer une demande et déclencher une opportunité.</span>
-                <span className={styles.cashChoiceCta}>Deviser →</span>
+                <span className={styles.cashChoiceEyebrow}>{t.modules.quoteEyebrow}</span>
+                <span className={styles.cashChoiceTitle}>{t.modules.quoteTitle}</span>
+                <span className={styles.cashChoiceText}>{t.modules.quoteText}</span>
+                <span className={styles.cashChoiceCta}>{t.modules.quoteCta}</span>
               </button>
             </div>
           </BaseModal>

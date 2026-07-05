@@ -1,5 +1,7 @@
 "use client";
 
+import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
+
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabaseClient";
 import type { InertiaSnapshot } from "@/lib/loyalty/inertia";
@@ -51,7 +53,7 @@ export default function InertiaContent({ snapshot, onOpenBoutique }: Props) {
         const balanceRes = await supabase
           .from("loyalty_balance")
           .select("balance")
-          .eq("user_id", user.id)
+          .eq("user_id", resolveActiveBrowserUserId(user.id))
           .maybeSingle();
 
         // Si table absente -> erreur -> fallback silencieux
@@ -62,7 +64,7 @@ export default function InertiaContent({ snapshot, onOpenBoutique }: Props) {
         const eventsRes = await supabase
           .from("loyalty_ledger")
           .select("id,created_at,action_key,label,amount")
-          .eq("user_id", user.id)
+          .eq("user_id", resolveActiveBrowserUserId(user.id))
           .order("created_at", { ascending: false })
           .limit(20);
 

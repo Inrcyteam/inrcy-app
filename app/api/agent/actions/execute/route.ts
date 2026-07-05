@@ -676,10 +676,10 @@ async function executeCampaignAction(args: {
 }
 
 export async function POST(request: Request) {
-  const { user, errorResponse } = await requireUser();
+  const { user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
-  const userId = user.id;
+  const userId = activeUserId;
   const rl = await enforceRateLimit({
     name: "inr_agent_execute_action",
     identifier: userId,

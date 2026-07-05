@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import {
   buildBubbleAccessMap,
@@ -16,10 +17,12 @@ export async function GET() {
     return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
   }
 
+  const activeUserId = await resolveActiveInrcyAccountId(supabase, user.id);
+
   const { data: existingRows, error: readError } = await supabaseAdmin
     .from("app_bubble_access")
     .select("bubble_key,enabled")
-    .eq("user_id", user.id);
+    .eq("user_id", activeUserId);
 
   if (readError) {
     console.warn("[bubble-access] read failed", readError);
@@ -32,7 +35,7 @@ export async function GET() {
       .filter((key): key is string => typeof key === "string"),
   );
 
-  const missingRows = createDefaultBubbleAccessRows(user.id)
+  const missingRows = createDefaultBubbleAccessRows(activeUserId)
     .filter((row) => !existingBubbleKeys.has(row.bubble_key));
 
   let rows = existingRows as AppBubbleAccessRow[] | null;
@@ -50,7 +53,7 @@ export async function GET() {
     const { data: refreshedRows, error: refreshError } = await supabaseAdmin
       .from("app_bubble_access")
       .select("bubble_key,enabled")
-      .eq("user_id", user.id);
+      .eq("user_id", activeUserId);
 
     if (refreshError) {
       console.warn("[bubble-access] refresh failed", refreshError);

@@ -4,6 +4,7 @@ import { createSupabaseServer } from "@/lib/supabaseServer";
 import { asRecord } from "@/lib/tsSafe";
 
 import { getConnectionDisplayStatus, mailConnectionKind, readConnectionVersion } from "@/lib/connectionVersions";
+import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 export async function GET() {
   const supabase = await createSupabaseServer();
 
@@ -12,7 +13,7 @@ export async function GET() {
     return jsonUserFacingError("Non authentifié.", { status: 401 });
   }
 
-  const userId = userData.user.id;
+  const userId = await resolveActiveInrcyAccountId(supabase, userData.user.id);
 
   const { data: rows, error: mailError } = await supabase
     .from("integrations")

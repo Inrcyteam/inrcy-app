@@ -4,6 +4,7 @@ import { clearAllToolCaches } from "@/lib/statsCache";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { syncSitePresenceIntegrations } from '@/lib/sitePresenceSync';
+import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
@@ -22,7 +23,7 @@ export async function POST(req: Request) {
     const supabase = await createSupabaseServer();
     const { data: authData, error: authErr } = await supabase.auth.getUser();
     if (authErr || !authData?.user) return NextResponse.json({ error: "Votre session a expiré. Merci de vous reconnecter." }, { status: 401 });
-    const userId = authData.user.id;
+    const userId = await resolveActiveInrcyAccountId(supabase, authData.user.id);
 
     const body = asRecord((await req.json().catch(() => ({}))) as unknown);
     const source = asString(body["source"]) ?? "site_inrcy";

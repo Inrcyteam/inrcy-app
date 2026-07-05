@@ -87,7 +87,7 @@ async function fetchChannelOverview(args: {
 
 export async function POST(req: Request) {
   try {
-    const { supabase, user, errorResponse } = await requireUser();
+    const { supabase, user, errorResponse, activeUserId } = await requireUser();
     if (errorResponse) return errorResponse;
 
     const body = await req.json().catch(() => ({} as { channel?: unknown }));
@@ -101,10 +101,10 @@ export async function POST(req: Request) {
 
     const snapshotDate = getDefaultSnapshotDate();
     const [profile, monthOverview, weekOverview, connectionSignature] = await Promise.all([
-      fetchProfileMetrics(supabase, user.id),
-      fetchChannelOverview({ supabase, userId: user.id, channel, days: 30, snapshotDate }),
-      fetchChannelOverview({ supabase, userId: user.id, channel, days: 7, snapshotDate }),
-      buildStatsConnectionSignature(supabase, user.id),
+      fetchProfileMetrics(supabase, activeUserId),
+      fetchChannelOverview({ supabase, userId: activeUserId, channel, days: 30, snapshotDate }),
+      fetchChannelOverview({ supabase, userId: activeUserId, channel, days: 7, snapshotDate }),
+      buildStatsConnectionSignature(supabase, activeUserId),
     ]);
 
     const monthOverviews: Partial<Record<CubeKey, Overview>> = { [channel]: monthOverview };
@@ -142,7 +142,7 @@ export async function POST(req: Request) {
     const linkedInFallback = channel === 'linkedin'
       ? await readLastGoodLinkedInGeneratorBlock({
           supabase,
-          userId: user.id,
+          userId: activeUserId,
           connectionSignature,
         })
       : null;

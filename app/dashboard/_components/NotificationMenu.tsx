@@ -1,6 +1,7 @@
 "use client";
 
 import styles from "../dashboard.module.css";
+import { useDashboardI18n } from "../_hooks/useDashboardI18n";
 import type { NotificationItem } from "../dashboard.types";
 
 export default function NotificationMenu(props: {
@@ -19,6 +20,8 @@ export default function NotificationMenu(props: {
   mobile?: boolean;
   label?: string;
 }) {
+  const t = useDashboardI18n();
+
   const {
     notificationMenuOpen,
     setNotificationMenuOpen,
@@ -41,7 +44,7 @@ export default function NotificationMenu(props: {
       <button
         type="button"
         className={`${styles.notificationBellBtn} ${label ? styles.notificationBellBtnWithLabel : ""} ${mobile ? styles.notificationBellBtnMobile : ""}`.trim()}
-        aria-label="Ouvrir les notifications"
+        aria-label={t.notifications.aria}
         aria-expanded={notificationMenuOpen}
         onClick={() => {
           setNotificationMenuOpen((v) => !v);
@@ -65,15 +68,15 @@ export default function NotificationMenu(props: {
         <div
           className={`${styles.notificationPanel} ${mobile ? styles.notificationPanelMobile : ""}`.trim()}
           role="dialog"
-          aria-label="Notifications"
+          aria-label={t.notifications.aria}
         >
           <div className={styles.notificationPanelHeader}>
             <div>
               <div className={styles.notificationPanelTitle}>
-                Actions à mener
+                {t.notifications.title}
               </div>
               <div className={styles.notificationPanelSub}>
-                Votre cockpit vous relance au bon moment.
+                {t.notifications.subtitle}
               </div>
             </div>
             <div className={styles.notificationPanelHeaderActions}>
@@ -85,7 +88,7 @@ export default function NotificationMenu(props: {
                   openPanel();
                 }}
               >
-                Réglages
+                {t.notifications.settings}
               </button>
               <button
                 type="button"
@@ -94,7 +97,7 @@ export default function NotificationMenu(props: {
                   void markAllNotificationsRead();
                 }}
               >
-                Tout lire
+                {t.notifications.markAllRead}
               </button>
             </div>
           </div>
@@ -102,7 +105,7 @@ export default function NotificationMenu(props: {
           <div className={styles.notificationList}>
             {notificationsLoading && notifications.length === 0 ? (
               <div className={styles.notificationEmpty}>
-                Chargement des notifications…
+                {t.notifications.loading}
               </div>
             ) : notificationsError ? (
               <div className={styles.notificationEmpty}>
@@ -110,8 +113,7 @@ export default function NotificationMenu(props: {
               </div>
             ) : notifications.length === 0 ? (
               <div className={styles.notificationEmpty}>
-                Votre cloche est vide pour l’instant. Les prochaines relances
-                business arriveront ici.
+                {t.notifications.empty}
               </div>
             ) : (
               notifications.slice(0, 6).map((item) => (
@@ -138,8 +140,8 @@ export default function NotificationMenu(props: {
                       <button
                         type="button"
                         className={styles.notificationDeleteBtn}
-                        aria-label="Supprimer la notification"
-                        title="Supprimer la notification"
+                        aria-label={t.notifications.delete}
+                        title={t.notifications.delete}
                         onClick={() => {
                           void deleteNotification(item.id);
                         }}
@@ -172,7 +174,7 @@ export default function NotificationMenu(props: {
                           void markNotificationRead(item.id);
                         }}
                       >
-                        Marquer comme lu
+                        {t.notifications.markRead}
                       </button>
                     )}
                   </div>

@@ -57,6 +57,16 @@ export type OAuthStateV1 = {
   returnTo: string;
 };
 
+function oauthStateDigest(stateB64: string): string {
+  return crypto.createHash("sha256").update(stateB64, "utf8").digest("base64url");
+}
+
+function safeEqualText(left: string, right: string): boolean {
+  const a = Buffer.from(left, "utf8");
+  const b = Buffer.from(right, "utf8");
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
 export function makeOAuthState<T extends Record<string, unknown> = Record<string, never>>(
   provider: string,
   returnTo: string,
@@ -64,9 +74,13 @@ export function makeOAuthState<T extends Record<string, unknown> = Record<string
 ) {
   const nonce = newOAuthNonce();
   const state = { ...(extra ?? ({} as T)), v: 1 as const, nonce, returnTo };
+  const stateB64 = b64urlJsonEncode(state);
   return {
-    stateB64: b64urlJsonEncode(state),
+    stateB64,
     nonce,
+    // The HttpOnly cookie also binds the full state payload (including accountId).
+    // Legacy nonce-only cookies remain accepted in verifyOAuthState for in-flight OAuth flows.
+    cookieValue: `${nonce}.${oauthStateDigest(stateB64)}`,
     cookieName: oauthStateCookieName(provider),
   };
 }
@@ -84,7 +98,17 @@ export function verifyOAuthState<T extends Record<string, unknown> = Record<stri
     return { ok: false as const, cookieName, returnTo: "/dashboard", reason: "invalid_state" };
   }
 
-  if (!cookieNonce || cookieNonce !== decoded.nonce) {
+  if (!cookieNonce) {
+    return { ok: false as const, cookieName, returnTo: "/dashboard", reason: "state_mismatch" };
+  }
+
+  // Backward compatibility: accept nonce-only cookies created just before this hardening
+  // so an OAuth flow already in progress is not broken during deployment.
+  const legacyNonceOnly = safeEqualText(cookieNonce, decoded.nonce);
+  const expectedBoundCookie = `${decoded.nonce}.${oauthStateDigest(stateB64 || "")}`;
+  const boundStateMatches = safeEqualText(cookieNonce, expectedBoundCookie);
+
+  if (!legacyNonceOnly && !boundStateMatches) {
     return { ok: false as const, cookieName, returnTo: "/dashboard", reason: "state_mismatch" };
   }
 

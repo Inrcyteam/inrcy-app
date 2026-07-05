@@ -5,9 +5,9 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { readTiktokSettingsWithOAuth } from "@/lib/tiktokRouteStorage";
 
 export async function GET() {
-  const { user, errorResponse } = await requireUser();
+  const { user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
-  const { tiktok } = await readTiktokSettingsWithOAuth(supabaseAdmin, user.id);
+  const { tiktok } = await readTiktokSettingsWithOAuth(supabaseAdmin, activeUserId);
   return NextResponse.json({ ok: true, tiktok });
 }

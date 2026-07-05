@@ -1,5 +1,7 @@
 "use client";
 
+import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
+
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { confirmInrcy } from "@/lib/inrcyDialog";
 import { useEffect, useMemo, useState } from "react";
@@ -180,7 +182,7 @@ export default function ActivityContent({
         const { data, error: dbErr } = await supabase
           .from(TABLE)
           .select("*")
-          .eq("user_id", user.id)
+          .eq("user_id", resolveActiveBrowserUserId(user.id))
           .maybeSingle();
 
         if (dbErr) throw new Error(dbErr.message);
@@ -324,7 +326,7 @@ export default function ActivityContent({
       if (!user) throw new Error("Utilisateur non connecté.");
 
       const payload = {
-        user_id: user.id,
+        user_id: resolveActiveBrowserUserId(user.id),
         sector: encodeBusinessSector(
           form.sectorCategory,
           getJobLabel(form.sectorCategory, form.sector) || form.sector.trim(),

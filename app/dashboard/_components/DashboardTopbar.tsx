@@ -6,6 +6,9 @@ import { useRouter } from "next/navigation";
 import styles from "../dashboard.module.css";
 import NotificationMenu from "./NotificationMenu";
 import UserMenu from "./UserMenu";
+import LanguageSelector from "./LanguageSelector";
+import EstablishmentMenu from "./EstablishmentMenu";
+import { useDashboardI18n } from "../_hooks/useDashboardI18n";
 import type { NotificationItem } from "../dashboard.types";
 
 type DashboardPanelName =
@@ -132,6 +135,7 @@ export default function DashboardTopbar({
   setMenuOpen,
 }: DashboardTopbarProps) {
   const router = useRouter();
+  const t = useDashboardI18n();
   const [pendingInrAgentCount, setPendingInrAgentCount] = useState(0);
 
   const refreshPendingInrAgentCount = useCallback(async () => {
@@ -160,9 +164,9 @@ export default function DashboardTopbar({
   const pendingInrAgentLabel = pendingInrAgentCount > 99 ? "99+" : String(pendingInrAgentCount);
   const agentTitle = inrAgentEnabled
     ? pendingInrAgentCount > 0
-      ? `Ouvrir iNr'Agent — ${pendingInrAgentLabel} action${pendingInrAgentCount > 1 ? "s" : ""} à valider`
-      : "Ouvrir iNr'Agent"
-    : "iNr'Agent est désactivé dans les accès du compte";
+      ? `${t.topbar.inrAgentOpen} — ${pendingInrAgentLabel} ${pendingInrAgentCount > 1 ? t.topbar.inrAgentActions : t.topbar.inrAgentAction} ${t.topbar.inrAgentPending}`
+      : t.topbar.inrAgentOpen
+    : t.topbar.inrAgentDisabled;
 
   useEffect(() => {
     if (!inrAgentEnabled) return;
@@ -220,7 +224,7 @@ export default function DashboardTopbar({
           fetchPriority="high"
         />
         <div className={styles.brandText}>
-          <div className={styles.brandTag}>Générateur de business</div>
+          <div className={styles.brandTag}>{t.topbar.brandTag}</div>
         </div>
       </div>
 
@@ -230,13 +234,22 @@ export default function DashboardTopbar({
             type="button"
             className={`${styles.ghostBtn} ${styles.adminTopbarBtn}`}
             onClick={() => onNavigateCta("/dashboard/admin")}
-            aria-label="Ouvrir l’administration iNrCy"
-            title="Administration iNrCy"
+            aria-label={t.topbar.adminTitle}
+            title={t.topbar.adminTitle}
           >
             <span className={styles.adminTopbarIcon} aria-hidden="true">⚙️</span>
-            Admin
+            {t.topbar.admin}
           </button>
         )}
+
+        <EstablishmentMenu
+          locale={t.locale}
+          onContact={() => openPanel("contact")}
+          onOpen={() => {
+            setUserMenuOpen(false);
+            setNotificationMenuOpen(false);
+          }}
+        />
 
         <div
           className={styles.notificationWrap}
@@ -255,7 +268,7 @@ export default function DashboardTopbar({
             markNotificationRead={markNotificationRead}
             deleteNotification={deleteNotification}
             onNavigate={onNavigateCta}
-            label="Notifications"
+            label={t.topbar.notifications}
           />
         </div>
 
@@ -301,7 +314,7 @@ export default function DashboardTopbar({
           onClick={goToGps}
         >
           <span className={styles.gpsTopbarIcon} aria-hidden="true">🧭</span>
-          GPS d’utilisation
+          {t.topbar.gps}
         </button>
 
         <button
@@ -309,7 +322,7 @@ export default function DashboardTopbar({
           className={styles.ghostBtn}
           onClick={() => openPanel("contact")}
         >
-          Nous contacter
+          {t.topbar.contact}
         </button>
 
         <div ref={userMenuRef}>
@@ -325,6 +338,13 @@ export default function DashboardTopbar({
             onNavigate={onNavigateCta}
           />
         </div>
+
+        <LanguageSelector
+          onOpen={() => {
+            setUserMenuOpen(false);
+            setNotificationMenuOpen(false);
+          }}
+        />
       </div>
 
       <div className={styles.mobileTopbarActions}>
@@ -332,13 +352,24 @@ export default function DashboardTopbar({
           <button
             type="button"
             className={`${styles.mobileHeaderIconBtn} ${styles.mobileHeaderAdminBtn}`}
-            aria-label="Ouvrir l’administration iNrCy"
-            title="Administration iNrCy"
+            aria-label={t.topbar.adminTitle}
+            title={t.topbar.adminTitle}
             onClick={() => onNavigateCta("/dashboard/admin")}
           >
             <span aria-hidden="true">⚙️</span>
           </button>
         )}
+
+        <EstablishmentMenu
+          mobile
+          locale={t.locale}
+          onContact={() => openPanel("contact")}
+          onOpen={() => {
+            setMenuOpen(false);
+            setUserMenuOpen(false);
+            setNotificationMenuOpen(false);
+          }}
+        />
 
         <div className={styles.mobileBellWrap}>
           <div
@@ -401,7 +432,7 @@ export default function DashboardTopbar({
         <button
           type="button"
           className={`${styles.mobileHeaderIconBtn} ${styles.mobileHeaderGpsBtn}`}
-          aria-label="Ouvrir le GPS d’utilisation"
+          aria-label={t.topbar.gpsAria}
           onClick={goToGps}
         >
           <span className={styles.mobileHeaderGpsIcon} aria-hidden>🧭</span>
@@ -411,14 +442,14 @@ export default function DashboardTopbar({
           <button
             type="button"
             className={styles.hamburgerBtn}
-            aria-label="Ouvrir le menu"
+            aria-label={t.topbar.openMenu}
             aria-expanded={menuOpen}
             onClick={() => setMenuOpen((v) => !v)}
           >
             <span className={styles.hamburgerIcon} aria-hidden />
 
             {(profileIncomplete || activityIncomplete) && (
-              <span className={styles.hamburgerWarnDot} aria-hidden />
+              <span className={styles.hamburgerWarnTriangle} aria-hidden>⚠️</span>
             )}
           </button>
 
@@ -426,36 +457,8 @@ export default function DashboardTopbar({
             <div
               className={styles.mobileMenuPanel}
               role="menu"
-              aria-label="Menu"
+              aria-label={t.topbar.menu}
             >
-              {profileIncomplete && (
-                <button
-                  className={styles.mobileMenuItem}
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    openPanel("profil");
-                  }}
-                >
-                  ⚠️ Profil incomplet — compléter
-                </button>
-              )}
-
-              {activityIncomplete && (
-                <button
-                  className={styles.mobileMenuItem}
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setMenuOpen(false);
-                    openPanel("activite");
-                  }}
-                >
-                  ⚠️ Activité incomplète — compléter
-                </button>
-              )}
-
               <button
                 className={styles.mobileMenuItem}
                 type="button"
@@ -465,7 +468,7 @@ export default function DashboardTopbar({
                   openPanel("contact");
                 }}
               >
-                Nous contacter
+                {t.topbar.contact}
               </button>
 
               <button
@@ -477,11 +480,11 @@ export default function DashboardTopbar({
                   openPanel("compte");
                 }}
               >
-                Compte iNrCytizen
+                {t.userMenu.account}
               </button>
 
               <button
-                className={styles.mobileMenuItem}
+                className={`${styles.mobileMenuItem} ${profileIncomplete ? styles.mobileMenuItemWithWarning : ""}`}
                 type="button"
                 role="menuitem"
                 onClick={() => {
@@ -489,11 +492,14 @@ export default function DashboardTopbar({
                   openPanel("profil");
                 }}
               >
-                Mon profil
+                <span>{t.userMenu.profile}</span>
+                {profileIncomplete && (
+                  <span className={styles.menuWarningTriangle} aria-hidden>⚠️</span>
+                )}
               </button>
 
               <button
-                className={styles.mobileMenuItem}
+                className={`${styles.mobileMenuItem} ${activityIncomplete ? styles.mobileMenuItemWithWarning : ""}`}
                 type="button"
                 role="menuitem"
                 onClick={() => {
@@ -501,7 +507,10 @@ export default function DashboardTopbar({
                   openPanel("activite");
                 }}
               >
-                Mon activité
+                <span>{t.userMenu.activity}</span>
+                {activityIncomplete && (
+                  <span className={styles.menuWarningTriangle} aria-hidden>⚠️</span>
+                )}
               </button>
 
 
@@ -514,7 +523,7 @@ export default function DashboardTopbar({
                   openPanel("preferences");
                 }}
               >
-                Préférences générales
+                {t.userMenu.preferences}
               </button>
 
               <button
@@ -526,7 +535,7 @@ export default function DashboardTopbar({
                   openPanel("ia");
                 }}
               >
-                Configuration IA
+                {t.userMenu.ai}
               </button>
 
               <button
@@ -538,7 +547,7 @@ export default function DashboardTopbar({
                   onNavigateCta("/dashboard/mediatheque");
                 }}
               >
-                Médiathèque
+                {t.userMenu.media}
               </button>
 
               <button
@@ -550,7 +559,7 @@ export default function DashboardTopbar({
                   openPanel("abonnement");
                 }}
               >
-                Mon abonnement
+                {t.userMenu.subscription}
               </button>
 
               <button
@@ -562,7 +571,7 @@ export default function DashboardTopbar({
                   openPanel("inertie");
                 }}
               >
-                Mon inertie
+                {t.userMenu.inertia}
               </button>
 
               <button
@@ -574,7 +583,7 @@ export default function DashboardTopbar({
                   openPanel("boutique");
                 }}
               >
-                Boutique
+                {t.userMenu.shop}
               </button>
 
               <button
@@ -586,7 +595,7 @@ export default function DashboardTopbar({
                   openPanel("parrainage");
                 }}
               >
-                Parrainer avec iNrCy
+                {t.userMenu.referral}
               </button>
 
               <button
@@ -598,7 +607,7 @@ export default function DashboardTopbar({
                   openPanel("legal");
                 }}
               >
-                Informations légales
+                {t.userMenu.legal}
               </button>
 
               <button
@@ -610,7 +619,7 @@ export default function DashboardTopbar({
                   openPanel("rgpd");
                 }}
               >
-                Mes données (RGPD)
+                {t.userMenu.rgpd}
               </button>
               <div className={styles.mobileMenuDivider} />
 
@@ -623,11 +632,19 @@ export default function DashboardTopbar({
                   void handleLogout();
                 }}
               >
-                Déconnexion
+                {t.userMenu.logout}
               </button>
             </div>
           )}
         </div>
+
+        <LanguageSelector
+          mobile
+          onOpen={() => {
+            setMenuOpen(false);
+            setNotificationMenuOpen(false);
+          }}
+        />
       </div>
     </header>
   );

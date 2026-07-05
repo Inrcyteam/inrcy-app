@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { buildUserFacingErrorBody } from "@/lib/apiUserFacingErrors";
 import crypto from "crypto";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 import { withApi } from "@/lib/observability/withApi";
 import { enforceRateLimit, getClientIp } from "@/lib/rateLimit";
 import { asRecord } from "@/lib/tsSafe";
@@ -163,10 +164,12 @@ const handler = async (_req: Request) => {
       return NextResponse.json({ ok: false, error: "Votre session a expiré. Merci de vous reconnecter." }, { status: 401, headers: corsHeaders(allowOrigin) });
     }
 
+    const activeUserId = await resolveActiveInrcyAccountId(supabase, user.id);
+
     // User-based limiter (protect costs + prevent a single account from hammering).
     const userLimit = await enforceRateLimit({
       name: "widgets_issue_token_user",
-      identifier: `${user.id}:${domain}:${source}`,
+      identifier: `${activeUserId}:${domain}:${source}`,
       limit: 60,
       window: "1 m",
     });
@@ -180,7 +183,7 @@ const handler = async (_req: Request) => {
       const { data, error } = await supabase
         .from("inrcy_site_configs")
         .select("site_url")
-        .eq("user_id", user.id)
+        .eq("user_id", activeUserId)
         .maybeSingle();
       if (error) throw error;
       const d = normalizeDomain(String(asRecord(data)["site_url"] ?? ""));
@@ -194,7 +197,7 @@ const handler = async (_req: Request) => {
       const { data, error } = await supabase
         .from("pro_tools_configs")
         .select("settings")
-        .eq("user_id", user.id)
+        .eq("user_id", activeUserId)
         .limit(1)
         .maybeSingle();
       if (error) throw error;

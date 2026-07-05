@@ -22,7 +22,7 @@ function sanitizeFilename(name: string): string {
 }
 
 export async function POST(req: Request) {
-  const { user, errorResponse } = await requireUser();
+  const { user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   const formData = await req.formData().catch(() => null);
@@ -40,7 +40,7 @@ export async function POST(req: Request) {
   }
 
   const ext = sanitizeFilename(file.name).split(".").pop() || (file.type === "image/svg+xml" ? "svg" : "png");
-  const path = `signatures/${user.id}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
+  const path = `signatures/${activeUserId}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
   const buffer = Buffer.from(await file.arrayBuffer());
 
   const upload = await supabaseAdmin.storage.from(BUCKET).upload(path, buffer, {
@@ -58,19 +58,19 @@ export async function POST(req: Request) {
 }
 
 export async function DELETE(req: Request) {
-  const { supabase, user, errorResponse } = await requireUser();
+  const { supabase, user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   const body = await req.json().catch(() => ({}));
   const imagePath = asString(asRecord(body).imagePath)?.trim() || "";
   if (!imagePath) return NextResponse.json({ ok: true });
-  if (!imagePath.startsWith(`signatures/${user.id}/`)) {
+  if (!imagePath.startsWith(`signatures/${activeUserId}/`)) {
     return NextResponse.json({ error: "Chemin d’image invalide." }, { status: 400 });
   }
 
   await supabaseAdmin.storage.from(BUCKET).remove([imagePath]);
 
-  const { data: cfgRow } = await (supabase as SupabaseLike).from("pro_tools_configs").select("settings").eq("user_id", user.id).maybeSingle();
+  const { data: cfgRow } = await (supabase as SupabaseLike).from("pro_tools_configs").select("settings").eq("user_id", activeUserId).maybeSingle();
   const currentSettings = asRecord(asRecord(cfgRow).settings);
   const nextSettings = {
     ...currentSettings,
@@ -81,6 +81,6 @@ export async function DELETE(req: Request) {
     },
   };
 
-  await (supabase as SupabaseLike).from("pro_tools_configs").upsert({ user_id: user.id, settings: nextSettings }, { onConflict: "user_id" });
+  await (supabase as SupabaseLike).from("pro_tools_configs").upsert({ user_id: activeUserId, settings: nextSettings }, { onConflict: "user_id" });
   return NextResponse.json({ ok: true });
 }

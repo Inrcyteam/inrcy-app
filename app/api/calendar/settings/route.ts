@@ -36,19 +36,19 @@ type MailIntegrationRow = {
 };
 
 export async function GET() {
-  const { supabase, user, errorResponse } = await requireUser();
+  const { supabase, user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   const [accountsRes, settingsRes] = await Promise.all([
     supabase
       .from("integrations")
       .select("id, provider, account_email, settings, status, created_at")
-      .eq("user_id", user.id)
+      .eq("user_id", activeUserId)
       .eq("category", "mail")
       .eq("status", "connected")
       .in("provider", ["gmail", "microsoft", "imap"])
       .order("created_at", { ascending: true }),
-    supabase.from("pro_tools_configs").select("settings").eq("user_id", user.id).maybeSingle(),
+    supabase.from("pro_tools_configs").select("settings").eq("user_id", activeUserId).maybeSingle(),
   ]);
 
   if (accountsRes.error) return jsonUserFacingError(accountsRes.error, { status: 500 });
@@ -82,7 +82,7 @@ export async function GET() {
 }
 
 export async function PATCH(req: Request) {
-  const { supabase, user, errorResponse } = await requireUser();
+  const { supabase, user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   const body = await req.json().catch(() => ({}));
@@ -90,7 +90,7 @@ export async function PATCH(req: Request) {
   const { data: current, error: currentError } = await supabase
     .from("pro_tools_configs")
     .select("settings")
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .maybeSingle();
   if (currentError) return jsonUserFacingError(currentError, { status: 500 });
 
@@ -108,7 +108,7 @@ export async function PATCH(req: Request) {
       .from("integrations")
       .select("id")
       .eq("id", selectedMailAccountId)
-      .eq("user_id", user.id)
+      .eq("user_id", activeUserId)
       .eq("category", "mail")
       .eq("status", "connected")
       .maybeSingle();
@@ -142,7 +142,7 @@ export async function PATCH(req: Request) {
     },
   };
 
-  const { error } = await supabase.from("pro_tools_configs").upsert({ user_id: user.id, settings: nextSettings }, { onConflict: "user_id" });
+  const { error } = await supabase.from("pro_tools_configs").upsert({ user_id: activeUserId, settings: nextSettings }, { onConflict: "user_id" });
   if (error) return jsonUserFacingError(error, { status: 500 });
 
   return NextResponse.json({

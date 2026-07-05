@@ -155,7 +155,7 @@ async function sendViaGmail(
     if (r.ok && r.data?.access_token) {
       accessToken = String(r.data.access_token);
       const expiresAt = r.data.expires_in != null ? new Date(Date.now() + Number(r.data.expires_in) * 1000).toISOString() : null;
-      await supabaseAdmin.from("integrations").update({ access_token_enc: encryptToken(accessToken), expires_at: expiresAt, status: "connected" }).eq("id", accountId);
+      await supabaseAdmin.from("integrations").update({ access_token_enc: encryptToken(accessToken), expires_at: expiresAt, status: "connected" }).eq("id", accountId).eq("user_id", asString(account.user_id) || "");
     }
   }
 
@@ -172,7 +172,7 @@ async function sendViaGmail(
     if (r.ok && r.data?.access_token) {
       accessToken = String(r.data.access_token);
       const expiresAt = r.data.expires_in != null ? new Date(Date.now() + Number(r.data.expires_in) * 1000).toISOString() : null;
-      await supabaseAdmin.from("integrations").update({ access_token_enc: encryptToken(accessToken), expires_at: expiresAt, status: "connected" }).eq("id", accountId);
+      await supabaseAdmin.from("integrations").update({ access_token_enc: encryptToken(accessToken), expires_at: expiresAt, status: "connected" }).eq("id", accountId).eq("user_id", asString(account.user_id) || "");
       sendRes = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
         method: "POST",
         headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
@@ -183,7 +183,7 @@ async function sendViaGmail(
 
   if (!sendRes.ok) {
     if (sendRes.status === 401 || sendRes.status === 403) {
-      await supabaseAdmin.from("integrations").update({ status: "expired" }).eq("id", accountId);
+      await supabaseAdmin.from("integrations").update({ status: "expired" }).eq("id", accountId).eq("user_id", asString(account.user_id) || "");
     }
     const data = await sendRes.text().catch(() => "");
     throw createMailProviderSendError(data || `Envoi Gmail impossible (${sendRes.status})`, "gmail", sendRes.status);
@@ -216,7 +216,7 @@ async function sendViaMicrosoft(
     if (r.ok && r.data?.access_token) {
       accessToken = String(r.data.access_token);
       const expiresAt = r.data.expires_in != null ? new Date(Date.now() + Number(r.data.expires_in) * 1000).toISOString() : null;
-      await supabaseAdmin.from("integrations").update({ access_token_enc: encryptToken(accessToken), expires_at: expiresAt, status: "connected" }).eq("id", accountId);
+      await supabaseAdmin.from("integrations").update({ access_token_enc: encryptToken(accessToken), expires_at: expiresAt, status: "connected" }).eq("id", accountId).eq("user_id", asString(account.user_id) || "");
     }
   }
 

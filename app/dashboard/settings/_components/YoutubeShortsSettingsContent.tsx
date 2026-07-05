@@ -1,5 +1,7 @@
 "use client";
 
+import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
+
 import { useCallback, useEffect, useState } from "react";
 
 import styles from "../../dashboard.module.css";
@@ -258,7 +260,7 @@ export default function YoutubeShortsSettingsContent() {
       const { data, error: readError } = await supabase
         .from("pro_tools_configs")
         .select("settings")
-        .eq("user_id", user.id)
+        .eq("user_id", resolveActiveBrowserUserId(user.id))
         .maybeSingle();
       if (readError) throw readError;
 
@@ -270,7 +272,7 @@ export default function YoutubeShortsSettingsContent() {
 
       const { error: upsertError } = await supabase
         .from("pro_tools_configs")
-        .upsert({ user_id: user.id, settings: merged }, { onConflict: "user_id" });
+        .upsert({ user_id: resolveActiveBrowserUserId(user.id), settings: merged }, { onConflict: "user_id" });
       if (upsertError) throw upsertError;
 
       setSettings(nextSettings);

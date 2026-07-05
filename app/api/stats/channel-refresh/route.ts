@@ -125,7 +125,7 @@ async function buildChannelPeriodPayload(args: {
 
 export async function POST(req: Request) {
   try {
-    const { supabase, user, errorResponse } = await requireUser();
+    const { supabase, user, errorResponse, activeUserId } = await requireUser();
     if (errorResponse) return errorResponse;
 
     const body = await req.json().catch(() => ({} as { channel?: unknown }));
@@ -139,21 +139,21 @@ export async function POST(req: Request) {
 
     const snapshotDate = getDefaultSnapshotDate();
     const [profile, channelStates, connectionSignature] = await Promise.all([
-      fetchProfileMetrics(supabase, user.id),
-      getChannelConnectionStates(supabase, user.id),
-      buildStatsConnectionSignature(supabase, user.id),
+      fetchProfileMetrics(supabase, activeUserId),
+      getChannelConnectionStates(supabase, activeUserId),
+      buildStatsConnectionSignature(supabase, activeUserId),
     ]);
     const linkedInFallback = channel === "linkedin"
       ? await readLastGoodLinkedInGeneratorBlock({
           supabase,
-          userId: user.id,
+          userId: activeUserId,
           connectionSignature,
         })
       : null;
 
     const [rawPeriod7, rawPeriod30] = await Promise.all([
-      buildChannelPeriodPayload({ supabase, userId: user.id, channel, period: 7, snapshotDate, channelStates, profile, linkedInFallback }),
-      buildChannelPeriodPayload({ supabase, userId: user.id, channel, period: 30, snapshotDate, channelStates, profile, linkedInFallback }),
+      buildChannelPeriodPayload({ supabase, userId: activeUserId, channel, period: 7, snapshotDate, channelStates, profile, linkedInFallback }),
+      buildChannelPeriodPayload({ supabase, userId: activeUserId, channel, period: 30, snapshotDate, channelStates, profile, linkedInFallback }),
     ]);
 
     const capturedLeads = {

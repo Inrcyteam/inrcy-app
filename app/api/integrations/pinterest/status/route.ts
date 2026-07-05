@@ -5,6 +5,7 @@ import { createSupabaseServer } from "@/lib/supabaseServer";
 import { asRecord, asString } from "@/lib/tsSafe";
 import { getChannelConnectionStates } from "@/lib/channelConnectionState";
 import { getPinterestIntegration, getPinterestAccessToken, fetchPinterestBoards } from "@/lib/pinterestOAuth";
+import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 
 export async function GET(request: Request) {
   try {
@@ -12,17 +13,18 @@ export async function GET(request: Request) {
     const { data: authData, error: authErr } = await supabase.auth.getUser();
     const user = authData?.user;
     if (authErr || !user) return NextResponse.json({ ok: false, error: "Non authentifié." }, { status: 401 });
+    const activeUserId = await resolveActiveInrcyAccountId(supabase, user.id);
 
-    if (!(await isAppBubbleEnabledForUser(supabase, user.id, "pinterest"))) {
+    if (!(await isAppBubbleEnabledForUser(supabase, activeUserId, "pinterest"))) {
       return bubbleAccessDisabledResponse("Pinterest");
     }
 
-    const states = await getChannelConnectionStates(supabase, user.id);
-    const integration = asRecord(await getPinterestIntegration(user.id).catch(() => ({})));
+    const states = await getChannelConnectionStates(supabase, activeUserId);
+    const integration = asRecord(await getPinterestIntegration(activeUserId).catch(() => ({})));
     const meta = asRecord(integration.meta);
     let boards = Array.isArray(meta.boards) ? meta.boards : [];
 
-    const accessToken = states.pinterest.connected ? await getPinterestAccessToken(user.id, request.url).catch(() => "") : "";
+    const accessToken = states.pinterest.connected ? await getPinterestAccessToken(activeUserId, request.url).catch(() => "") : "";
     if (accessToken) {
       boards = await fetchPinterestBoards(accessToken).catch(() => boards);
     }

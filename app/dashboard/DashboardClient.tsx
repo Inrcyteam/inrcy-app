@@ -18,6 +18,7 @@ import { useReferralForm } from "./_hooks/useReferralForm";
 import { useDashboardPanelRouting } from "./_hooks/useDashboardPanelRouting";
 import { useDashboardCompletionChecks } from "./_hooks/useDashboardCompletionChecks";
 import { useDashboardMenus } from "./_hooks/useDashboardMenus";
+import { useDashboardLanguage } from "./_hooks/useDashboardLanguage";
 import { useFacebookChannel } from "./_hooks/channels/useFacebookChannel";
 import { useInstagramChannel } from "./_hooks/channels/useInstagramChannel";
 import { useLinkedinChannel } from "./_hooks/channels/useLinkedinChannel";
@@ -28,7 +29,14 @@ import { useTiktokChannel } from "./_hooks/channels/useTiktokChannel";
 
 // ✅ IMPORTANT : même client que ta page login
 import { createClient } from "@/lib/supabaseClient";
-import { purgeAllBrowserAccountCaches, readAccountCacheValue, setActiveBrowserUserId, writeAccountCacheValue } from "@/lib/browserAccountCache";
+import {
+  getActiveBrowserUserId,
+  purgeAllBrowserAccountCaches,
+  readAccountCacheValue,
+  resolveActiveBrowserUserId,
+  setActiveBrowserUserId,
+  writeAccountCacheValue,
+} from "@/lib/browserAccountCache";
 import { expectedUiSnapshotDate, getLastChannelSyncAt, getOverviewSnapshotDate, hasFreshLocalGeneratorSnapshot, markChannelsSynced, mergeChannelBlockIntoCachedSnapshots, mergeGeneratorChannelBlockIntoCachedKpis, syncGeneratorOpportunitiesFromStatsSummary, readCachedChannelBlocks, readCachedChannelSyncAt, readCachedGeneratorChannelSyncAt, readCachedOppTotal, readGeneratorCache, readInrStatsPeriodSyncAt, statsCubeSessionKey, statsSummarySessionKey, type StatsWarmPeriod, readUiCacheValue, writeUiCacheValue } from "./dashboard.client-cache";
 import { markDailyStatsRefreshBootstrapChecked, markServerCacheSyncChecked, runDailyStatsRefreshBootstrap, wasDailyStatsRefreshBootstrapCheckedRecently, wasServerCacheSyncCheckedRecently, type DailyStatsRefreshBootstrapResponse } from "@/lib/dailyStatsRefreshClient";
 import { buildBubbleAccessMap, createDefaultBubbleAccessMap, isBubbleEnabled, type AppBubbleAccessMap } from "@/lib/bubbleAccess";
@@ -43,6 +51,7 @@ import { buildFluxBubbleItems } from "./dashboard.flux-bubbles";
 import { createInrBadgePublicUrl, type InrBadgeProfileSummary } from "@/lib/inrBadge";
 import { buildDashboardPanelProps } from "./dashboard.panel-props";
 import { createEmptyChannelBlock, createEmptyChannelBlocks, type InrstatsChannelBlock, type InrstatsChannelBlocksByChannel } from "@/lib/inrstats/channelBlocks";
+import { getDashboardTranslations } from "@/lib/dashboardI18n";
 import type { ConnectionDisplayStatus } from "@/lib/connectionVersions";
 
 
@@ -297,6 +306,8 @@ export default function DashboardClient({ isAdmin = false }: DashboardClientProp
   const [displayedSiteBubbleProgress, setDisplayedSiteBubbleProgress] = useState<SiteBubbleProgressCache>(() => readCachedSiteBubbleProgress());
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { language: dashboardLanguage } = useDashboardLanguage();
+  const dashboardCopy = useMemo(() => getDashboardTranslations(dashboardLanguage), [dashboardLanguage]);
   const { panel, openPanel, closePanel, goToModule } = useDashboardPanelRouting();
 
   const openStatsModule = useCallback(() => {
@@ -505,7 +516,7 @@ const updateRootSettingsKey = useCallback(
     const { data: row, error: readErr } = await supabase
       .from("pro_tools_configs")
       .select("settings")
-      .eq("user_id", user.id)
+      .eq("user_id", resolveActiveBrowserUserId(user.id))
       .maybeSingle();
 
     if (readErr) return;
@@ -513,7 +524,7 @@ const updateRootSettingsKey = useCallback(
     const current = (row as any)?.settings ?? {};
     const merged = { ...(current ?? {}), [key]: nextObj ?? {} };
 
-    await supabase.from("pro_tools_configs").upsert({ user_id: user.id, settings: merged }, { onConflict: "user_id" });
+    await supabase.from("pro_tools_configs").upsert({ user_id: resolveActiveBrowserUserId(user.id), settings: merged }, { onConflict: "user_id" });
   },
   []
 );
@@ -815,7 +826,7 @@ const {
   triggerChannelRefresh: triggerChannelRefreshProxy,
 });
 
-const { profileIncomplete, activityIncomplete, profileCheckReady, checkProfile, checkActivity } = useDashboardCompletionChecks();
+const { profileIncomplete, activityIncomplete, profileCheckReady, activityCheckReady, checkProfile, checkActivity } = useDashboardCompletionChecks();
 
 const applyDashboardChannelState = useCallback((state: Record<string, any> | null, options?: { markReady?: boolean }) => {
   if (!state) return false;
@@ -1078,7 +1089,7 @@ const setPanelError = useCallback((kind: "facebook" | "instagram" | "linkedin" |
       const res = await supabase
         .from("loyalty_balance")
         .select("balance")
-        .eq("user_id", user.id)
+        .eq("user_id", resolveActiveBrowserUserId(user.id))
         .maybeSingle();
       const bal = Number((res.data as any)?.balance ?? 0);
       const next = Number.isFinite(bal) ? bal : 0;
@@ -1101,12 +1112,40 @@ const setPanelError = useCallback((kind: "facebook" | "instagram" | "linkedin" |
     const supabase = createClient();
     let cancelled = false;
 
+    const syncActiveAccountFromServer = async (authUserId: string) => {
+      try {
+        const response = await fetch("/api/multicompte/accounts", { cache: "no-store", credentials: "include" });
+        const payload = await response.json().catch(() => null) as { ok?: boolean; activeUserId?: string | null } | null;
+        if (cancelled) return;
+
+        const activeUserId = response.ok && payload?.ok && typeof payload.activeUserId === "string" ? payload.activeUserId : null;
+        if (activeUserId) {
+          const currentUserId = getActiveBrowserUserId();
+          if (currentUserId !== activeUserId) {
+            purgeAllBrowserAccountCaches();
+          }
+          setActiveBrowserUserId(activeUserId);
+          return;
+        }
+      } catch {
+        // Scope API unavailable: keep the current browser scope if one already exists.
+      }
+
+      if (!cancelled && !getActiveBrowserUserId()) {
+        setActiveBrowserUserId(authUserId);
+      }
+    };
+
     supabase.auth.getUser().then(({ data }) => {
       if (cancelled) return;
       const user = data.user ?? null;
       activeUserIdRef.current = user?.id ?? null;
       setUserEmail(user?.email ?? null);
-      setActiveBrowserUserId(user?.id ?? null);
+      if (user?.id) {
+        void syncActiveAccountFromServer(user.id);
+      } else {
+        setActiveBrowserUserId(null);
+      }
     });
 
     const { data: authListener } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -1115,13 +1154,17 @@ const setPanelError = useCallback((kind: "facebook" | "instagram" | "linkedin" |
       const nextUserId = nextUser?.id ?? null;
       if (previousUserId && nextUserId && previousUserId !== nextUserId) {
         purgeAllBrowserAccountCaches();
-        setActiveBrowserUserId(nextUserId);
+        setActiveBrowserUserId(null);
         window.location.replace("/dashboard");
         return;
       }
       activeUserIdRef.current = nextUserId;
       setUserEmail(nextUser?.email ?? null);
-      setActiveBrowserUserId(nextUserId);
+      if (!nextUserId) {
+        setActiveBrowserUserId(null);
+      } else {
+        void syncActiveAccountFromServer(nextUserId);
+      }
     });
 
     return () => {
@@ -1219,7 +1262,7 @@ const loadSiteInrcy = useCallback(async () => {
     supabase
       .from("profiles")
       .select("inrcy_site_ownership,logo_url,logo_path,company_legal_name,first_name,last_name,phone,contact_email")
-      .eq("user_id", user.id)
+      .eq("user_id", resolveActiveBrowserUserId(user.id))
       .maybeSingle(),
     fetch("/api/bubble-access/ensure", { method: "GET", cache: "no-store" })
       .then((res) => (res.ok ? res.json() : null))
@@ -1247,7 +1290,7 @@ const loadSiteInrcy = useCallback(async () => {
   if (requestSeq !== siteConfigRequestSeqRef.current) return;
 
   const nextInrBadgeProfile: InrBadgeProfileSummary = {
-    userId: user.id,
+    userId: resolveActiveBrowserUserId(user.id),
     logoUrl: resolvedProfileLogo.logoUrl || "",
     companyLegalName: String(profile?.company_legal_name ?? ""),
     firstName: String(profile?.first_name ?? ""),
@@ -1263,12 +1306,12 @@ const loadSiteInrcy = useCallback(async () => {
     supabase
       .from("inrcy_site_configs")
       .select("contact_email,settings,site_url")
-      .eq("user_id", user.id)
+      .eq("user_id", resolveActiveBrowserUserId(user.id))
       .maybeSingle(),
     supabase
       .from("pro_tools_configs")
       .select("settings")
-      .eq("user_id", user.id)
+      .eq("user_id", resolveActiveBrowserUserId(user.id))
       .maybeSingle(),
   ]);
   if (requestSeq !== siteConfigRequestSeqRef.current) return;
@@ -1478,8 +1521,8 @@ const siteInrcyProgressCount = (hasSiteInrcyUrl ? 1 : 0) + (hasSiteInrcyUrl && s
 const siteWebProgressCount = (hasSiteWebUrl ? 1 : 0) + (hasSiteWebUrl && siteWebGa4Connected ? 1 : 0) + (hasSiteWebUrl && siteWebGscConnected ? 1 : 0);
 const siteInrcyAllGreen = canAccessSiteInrcy && siteInrcyProgressCount === 3;
 const siteWebAllGreen = siteWebProgressCount === 3;
-const profileCompleted = !profileIncomplete;
-const activityCompleted = !activityIncomplete;
+const profileCompleted = profileCheckReady && !profileIncomplete;
+const activityCompleted = activityCheckReady && !activityIncomplete;
 const sitePowerLinkConnected = hasSiteInrcyUrl || hasSiteWebUrl;
 const sitePowerGa4Connected = (hasSiteInrcyUrl && siteInrcyGa4Connected) || (hasSiteWebUrl && siteWebGa4Connected);
 const sitePowerGscConnected = (hasSiteInrcyUrl && siteInrcyGscConnected) || (hasSiteWebUrl && siteWebGscConnected);
@@ -1489,17 +1532,17 @@ const proNetworkPowerConnected = Boolean(
 );
 
 const generatorPowerSteps = [
-  { key: "profile", label: "Compléter mon profil", shortLabel: "Profil", weight: 10, completed: profileCompleted },
-  { key: "activity", label: "Compléter mon activité", shortLabel: "Activité", weight: 10, completed: activityCompleted },
-  { key: "site_link", label: "Connecter un site internet", shortLabel: "Site internet", weight: 10, completed: sitePowerLinkConnected },
-  { key: "site_ga4", label: "Brancher GA4", shortLabel: "GA4", weight: 5, completed: sitePowerGa4Connected },
-  { key: "site_gsc", label: "Brancher GSC", shortLabel: "GSC", weight: 5, completed: sitePowerGscConnected },
-  { key: "gmb", label: "Connecter Google Business", shortLabel: "Google Business", weight: 20, completed: gmbConnected && gmbConnectionStatus !== "needs_update" },
-  { key: "facebook", label: "Connecter Facebook", shortLabel: "Facebook", weight: 10, completed: facebookPageConnected && facebookConnectionStatus !== "needs_update" },
-  { key: "instagram", label: "Connecter Instagram", shortLabel: "Instagram", weight: 10, completed: instagramConnected && instagramConnectionStatus !== "needs_update" },
-  { key: "pro_network", label: "Connecter LinkedIn ou Pinterest", shortLabel: "LinkedIn / Pinterest", weight: 7, completed: proNetworkPowerConnected },
-  { key: "mails", label: "Connecter Mails", shortLabel: "Mails", weight: 5, completed: mailAccountsConnectedCount > 0 },
-  { key: "video", label: "Connecter TikTok ou YouTube", shortLabel: "TikTok / YouTube", weight: 8, completed: videoPowerConnected },
+  { key: "profile", label: dashboardCopy.generatorSteps.profile.label, shortLabel: dashboardCopy.generatorSteps.profile.shortLabel, weight: 10, completed: profileCompleted },
+  { key: "activity", label: dashboardCopy.generatorSteps.activity.label, shortLabel: dashboardCopy.generatorSteps.activity.shortLabel, weight: 10, completed: activityCompleted },
+  { key: "site_link", label: dashboardCopy.generatorSteps.site_link.label, shortLabel: dashboardCopy.generatorSteps.site_link.shortLabel, weight: 10, completed: sitePowerLinkConnected },
+  { key: "site_ga4", label: dashboardCopy.generatorSteps.site_ga4.label, shortLabel: dashboardCopy.generatorSteps.site_ga4.shortLabel, weight: 5, completed: sitePowerGa4Connected },
+  { key: "site_gsc", label: dashboardCopy.generatorSteps.site_gsc.label, shortLabel: dashboardCopy.generatorSteps.site_gsc.shortLabel, weight: 5, completed: sitePowerGscConnected },
+  { key: "gmb", label: dashboardCopy.generatorSteps.gmb.label, shortLabel: dashboardCopy.generatorSteps.gmb.shortLabel, weight: 20, completed: gmbConnected && gmbConnectionStatus !== "needs_update" },
+  { key: "facebook", label: dashboardCopy.generatorSteps.facebook.label, shortLabel: dashboardCopy.generatorSteps.facebook.shortLabel, weight: 10, completed: facebookPageConnected && facebookConnectionStatus !== "needs_update" },
+  { key: "instagram", label: dashboardCopy.generatorSteps.instagram.label, shortLabel: dashboardCopy.generatorSteps.instagram.shortLabel, weight: 10, completed: instagramConnected && instagramConnectionStatus !== "needs_update" },
+  { key: "pro_network", label: dashboardCopy.generatorSteps.pro_network.label, shortLabel: dashboardCopy.generatorSteps.pro_network.shortLabel, weight: 7, completed: proNetworkPowerConnected },
+  { key: "mails", label: dashboardCopy.generatorSteps.mails.label, shortLabel: dashboardCopy.generatorSteps.mails.shortLabel, weight: 5, completed: mailAccountsConnectedCount > 0 },
+  { key: "video", label: dashboardCopy.generatorSteps.video.label, shortLabel: dashboardCopy.generatorSteps.video.shortLabel, weight: 8, completed: videoPowerConnected },
 ] as const;
 
 const computedGeneratorPower = generatorPowerSteps.reduce((sum, step) => sum + (step.completed ? step.weight : 0), 0);
@@ -2770,14 +2813,14 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     const canUseSite = kind === "site_inrcy" ? canAccessSiteInrcy : true;
 
     if (kind === "site_inrcy" && !canUseSite) {
-      return { status: "coming", text: "Aucun site" };
+      return { status: "coming", text: dashboardCopy.status.noSite };
     }
 
     return {
       status: hasUrl ? "connected" : "available",
-      text: `${hasUrl ? "Connecté" : "A configurer"} ${progress}/3`,
+      text: `${hasUrl ? dashboardCopy.status.connected : dashboardCopy.status.toConfigure} ${progress}/3`,
     };
-  }, [canAccessSiteInrcy, hasSiteInrcyUrl, hasSiteWebUrl, siteInrcyProgressCount, siteWebProgressCount]);
+  }, [canAccessSiteInrcy, dashboardCopy, hasSiteInrcyUrl, hasSiteWebUrl, siteInrcyProgressCount, siteWebProgressCount]);
 
   const siteBubbleProgressSnapshot = useMemo<SiteBubbleProgressCache>(() => ({
     site_inrcy: computeSiteBubbleProgress("site_inrcy"),
@@ -2934,6 +2977,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     setHelpSiteWebOpen,
     siteInrcySavedUrl,
     siteWebSavedUrl,
+    language: dashboardLanguage,
   }), [
     bubbleAccessMap,
     canAccessPinterest,
@@ -2941,6 +2985,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     canConfigureSite,
     canViewSite,
     channelBlocks,
+    dashboardLanguage,
     facebookPageConnected,
     facebookUrl,
     getSiteBubbleProgress,
@@ -3240,7 +3285,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       ) : null}
 
       <SettingsDrawer
-        title={getDrawerTitle(panel)}
+        title={getDrawerTitle(panel, dashboardLanguage)}
         isOpen={isDrawerPanel(panel)}
         onClose={closePanel}
         headerActions={

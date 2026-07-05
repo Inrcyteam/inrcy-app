@@ -1,5 +1,7 @@
 "use client";
 
+import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabaseClient";
@@ -829,13 +831,13 @@ export default function NewFacturePage() {
         .select(
           "user_id,company_legal_name,hq_address,hq_zip,hq_city,contact_email,phone,siren,rcs_city,vat_number,vat_dispense,logo_url,logo_path",
         )
-        .eq("user_id", user.id)
+        .eq("user_id", resolveActiveBrowserUserId(user.id))
         .single();
 
       const { data: businessProfile } = await supabase
         .from("business_profiles")
         .select("client_language, timezone, date_format, currency, updated_at")
-        .eq("user_id", user.id)
+        .eq("user_id", resolveActiveBrowserUserId(user.id))
         .order("updated_at", { ascending: false })
         .limit(1)
         .maybeSingle();
@@ -999,7 +1001,7 @@ export default function NewFacturePage() {
       const { data, error } = await supabase
         .from("doc_saves")
         .select("id,updated_at,name,payload")
-        .eq("user_id", user.id)
+        .eq("user_id", resolveActiveBrowserUserId(user.id))
         .eq("type", SAVES_TYPE)
         .order("updated_at", { ascending: false });
 
@@ -1136,7 +1138,7 @@ export default function NewFacturePage() {
         .from("doc_saves")
         .select("id,payload")
         .eq("id", saveId)
-        .eq("user_id", user.id)
+        .eq("user_id", resolveActiveBrowserUserId(user.id))
         .eq("type", SAVES_TYPE)
         .maybeSingle();
 
@@ -1197,7 +1199,7 @@ export default function NewFacturePage() {
         .from("doc_saves")
         .select("id,payload")
         .eq("id", devisSaveId)
-        .eq("user_id", user.id)
+        .eq("user_id", resolveActiveBrowserUserId(user.id))
         .eq("type", "devis")
         .maybeSingle();
 
@@ -1555,11 +1557,11 @@ export default function NewFacturePage() {
             payload: snapshot,
             updated_at: nowISO,
           })
-          .eq("user_id", user.id)
+          .eq("user_id", resolveActiveBrowserUserId(user.id))
           .eq("type", SAVES_TYPE)
           .eq("id", currentSaveId)
       : supabase.from("doc_saves").insert({
-          user_id: user.id,
+          user_id: resolveActiveBrowserUserId(user.id),
           type: SAVES_TYPE,
           name: autoName,
           payload: snapshot,
@@ -1659,7 +1661,7 @@ export default function NewFacturePage() {
     if (userErr || !user) return;
 
     const { error } = await supabase.from("doc_saves").insert({
-      user_id: user.id,
+      user_id: resolveActiveBrowserUserId(user.id),
       type: SAVES_TYPE,
       name: cleanName,
       payload: snapshot,
@@ -1913,7 +1915,7 @@ export default function NewFacturePage() {
     await supabase
       .from("doc_saves")
       .delete()
-      .eq("user_id", user.id)
+      .eq("user_id", resolveActiveBrowserUserId(user.id))
       .eq("type", SAVES_TYPE)
       .eq("id", id);
 
@@ -2102,7 +2104,7 @@ export default function NewFacturePage() {
     const rawFilename =
       filename && filename.trim() ? filename : `${officialNumber}.pdf`;
     const safeName = rawFilename.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const key = `${user.id}/factures/${Date.now()}_${safeName}`;
+    const key = `${resolveActiveBrowserUserId(user.id)}/factures/${Date.now()}_${safeName}`;
 
     const { error: upErr } = await supabase.storage
       .from(ATTACH_BUCKET)

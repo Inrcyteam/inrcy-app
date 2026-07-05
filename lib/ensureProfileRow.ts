@@ -19,7 +19,7 @@ function cleanString(value: unknown) {
   return value.trim();
 }
 
-function buildProfileSeed(user: User): ProfileSeed {
+function buildProfileSeed(user: User, accountUserId = user.id): ProfileSeed {
   const metadata = user.user_metadata && typeof user.user_metadata === "object"
     ? (user.user_metadata as Record<string, unknown>)
     : {};
@@ -31,28 +31,31 @@ function buildProfileSeed(user: User): ProfileSeed {
   const companyName = cleanString(metadata.company_legal_name);
 
   const seed: ProfileSeed = {
-    user_id: user.id,
+    user_id: accountUserId,
     updated_at: new Date().toISOString(),
   };
 
-  if (email) {
-    seed.admin_email = email;
-    seed.contact_email = email;
+  if (accountUserId === user.id) {
+    if (email) {
+      seed.admin_email = email;
+      seed.contact_email = email;
+    }
+    if (firstName) seed.first_name = firstName;
+    if (lastName) seed.last_name = lastName;
+    if (phone) seed.phone = phone;
+    if (companyName) seed.company_legal_name = companyName;
   }
-  if (firstName) seed.first_name = firstName;
-  if (lastName) seed.last_name = lastName;
-  if (phone) seed.phone = phone;
-  if (companyName) seed.company_legal_name = companyName;
 
   return seed;
 }
 
-export async function ensureProfileRow(user: User | null | undefined) {
+export async function ensureProfileRow(user: User | null | undefined, accountUserId?: string | null) {
   if (!user?.id) return;
+  const targetUserId = accountUserId || user.id;
 
   const { error } = await supabaseAdmin
     .from("profiles")
-    .upsert(buildProfileSeed(user), { onConflict: "user_id", ignoreDuplicates: true });
+    .upsert(buildProfileSeed(user, targetUserId), { onConflict: "user_id", ignoreDuplicates: true });
 
   if (error) {
     throw new Error(error.message);

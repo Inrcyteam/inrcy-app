@@ -8,6 +8,7 @@ import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { extractFacebookUserTokens, findAccessibleFacebookPage, listAccessibleFacebookPagesFromTokens } from "@/lib/metaBusinessAssets";
 
 import { withCurrentConnectionVersion } from "@/lib/connectionVersions";
+import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServer>>;
 
 async function invalidateUserStatsCache(supabase: SupabaseServerClient, userId: string) {
@@ -20,7 +21,7 @@ export async function POST(req: Request) {
     const { data: auth, error } = await supabase.auth.getUser();
     if (error || !auth?.user) return NextResponse.json({ error: "Accès non autorisé." }, { status: 401 });
 
-    const userId = auth.user.id;
+    const userId = await resolveActiveInrcyAccountId(supabase, auth.user.id);
     const body = await req.json().catch(() => null);
     if (!body) return NextResponse.json({ error: "Données invalides." }, { status: 400 });
     const bodyRec = asRecord(body);

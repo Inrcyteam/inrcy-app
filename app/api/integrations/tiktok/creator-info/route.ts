@@ -77,19 +77,19 @@ function normalizePrivacyOptions(value: unknown) {
 }
 
 export async function GET() {
-  const { user, errorResponse } = await requireUser();
+  const { user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   const [integration, settingsResult] = await Promise.all([
-    readTiktokIntegration(supabaseAdmin, user.id),
-    readTiktokSettingsWithOAuth(supabaseAdmin, user.id),
+    readTiktokIntegration(supabaseAdmin, activeUserId),
+    readTiktokSettingsWithOAuth(supabaseAdmin, activeUserId),
   ]);
 
   if (!isTiktokIntegrationActive(integration)) {
     return NextResponse.json({ ok: false, error: "TikTok à connecter avant publication." }, { status: 409 });
   }
 
-  const accessToken = await getTiktokAccessToken(user.id, integration);
+  const accessToken = await getTiktokAccessToken(activeUserId, integration);
   if (!accessToken) {
     return NextResponse.json({ ok: false, error: "Connexion TikTok expirée. Reconnecte TikTok dans Canaux." }, { status: 401 });
   }

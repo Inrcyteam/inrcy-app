@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import HelpButton from "./HelpButton";
+import { useDashboardI18n } from "../_hooks/useDashboardI18n";
 import styles from "../dashboard.module.css";
 
 type GeneratorPowerStep = {
@@ -52,6 +53,7 @@ export default function DashboardHero({
   leadsWeek,
   leadsMonth,
 }: DashboardHeroProps) {
+  const t = useDashboardI18n();
   const [powerBreakdownOpen, setPowerBreakdownOpen] = useState(false);
   const powerBreakdownRef = useRef<HTMLDivElement | null>(null);
 
@@ -80,8 +82,8 @@ export default function DashboardHero({
   }, [powerBreakdownOpen]);
 
   const powerInfoPanel = powerBreakdownOpen ? (
-    <div className={styles.powerInfoPanel} role="dialog" aria-label="Détail de la puissance du générateur">
-      <div className={styles.powerInfoPanelTitle}>Détail puissance</div>
+    <div className={styles.powerInfoPanel} role="dialog" aria-label={t.hero.powerDialogAria}>
+      <div className={styles.powerInfoPanelTitle}>{t.hero.powerPanelTitle}</div>
 
       <div className={styles.powerInfoCompact}>
         {generatorPowerSteps.map((step) => (
@@ -103,39 +105,39 @@ export default function DashboardHero({
       <div className={styles.heroLeft}>
         <div className={styles.heroTop}>
           <div className={styles.kicker}>
-            <span className={styles.kickerText}>Votre cockpit iNrCy</span>
+            <span className={styles.kickerText}>{t.hero.kicker}</span>
           </div>
 
           <h1 className={styles.title}>
-            <span className={styles.titleAccent}>Le Générateur est lancé&nbsp;!</span>
+            <span className={styles.titleAccent}>{t.hero.title}</span>
           </h1>
 
           <p className={styles.subtitle}>
-            Tous vos canaux alimentent maintenant une seule et même machine.
+            {t.hero.subtitle}
           </p>
 
           <div className={styles.signatureFlow}>
-            <span>Contacts</span>
+            <span>{t.hero.flowContacts}</span>
             <span className={styles.flowArrow}>→</span>
-            <span>Devis</span>
+            <span>{t.hero.flowQuotes}</span>
             <span className={styles.flowArrow}>→</span>
-            <span>Chiffre d'affaires</span>
+            <span>{t.hero.flowRevenue}</span>
           </div>
         </div>
 
         <div className={styles.powerBlock} ref={powerBreakdownRef}>
           <div className={styles.powerHeader}>
             <div className={styles.powerInlineTitle}>
-              Puissance du générateur :
+              {t.hero.powerTitle}
               <span className={styles.powerValueWrap}>
                 <span className={styles.powerInlineValue}>{generatorPower}%</span>
                 <button
                   type="button"
                   className={styles.powerInfoBtn}
                   onClick={() => setPowerBreakdownOpen((open) => !open)}
-                  aria-label="Voir le détail de la puissance du générateur"
+                  aria-label={t.hero.powerDetailsAria}
                   aria-expanded={powerBreakdownOpen}
-                  title="Voir le détail"
+                  title={t.hero.powerDetailsTitle}
                 >
                   i
                 </button>
@@ -143,8 +145,8 @@ export default function DashboardHero({
             </div>
             <div className={styles.powerMeta}>
               {remainingGeneratorPowerSteps === 0
-                ? "Pleine puissance"
-                : `${remainingGeneratorPowerSteps} étape${remainingGeneratorPowerSteps > 1 ? "s" : ""} restante${remainingGeneratorPowerSteps > 1 ? "s" : ""}`}
+                ? t.hero.fullPower
+                : `${remainingGeneratorPowerSteps} ${remainingGeneratorPowerSteps > 1 ? t.hero.stepPlural : t.hero.stepSingular} ${remainingGeneratorPowerSteps > 1 ? t.hero.remainingPlural : t.hero.remainingSingular}`}
             </div>
           </div>
 
@@ -153,7 +155,7 @@ export default function DashboardHero({
           <div
             className={styles.powerBar}
             role="progressbar"
-            aria-label="Puissance du générateur"
+            aria-label={t.hero.progressAria}
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={generatorPower}
@@ -164,10 +166,10 @@ export default function DashboardHero({
           <div className={styles.powerFooter}>
             {nextGeneratorPowerStep ? (
               <span className={styles.powerHint}>
-                Prochaine montée : {nextGeneratorPowerStep.label} <strong>(+{nextGeneratorPowerStep.weight}%)</strong>
+                {t.hero.nextRise} {nextGeneratorPowerStep.label} <strong>(+{nextGeneratorPowerStep.weight}%)</strong>
               </span>
             ) : (
-              <span className={styles.powerHintComplete}>Tous vos leviers alimentent la machine à pleine puissance.</span>
+              <span className={styles.powerHintComplete}>{t.hero.completeHint}</span>
             )}
           </div>
         </div>
@@ -181,10 +183,10 @@ export default function DashboardHero({
         <div className={styles.generatorHeader}>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <div className={styles.generatorTitle}>Générateur iNrCy</div>
-              <HelpButton onClick={onOpenGeneratorHelp} title="Aide : Générateur iNrCy" />
+              <div className={styles.generatorTitle}>{t.hero.generatorTitle}</div>
+              <HelpButton onClick={onOpenGeneratorHelp} title={t.hero.generatorHelpTitle} />
             </div>
-            <div className={styles.generatorDesc}>Production de prospects et de clients dès qu’un module est connecté</div>
+            <div className={styles.generatorDesc}>{t.hero.generatorDesc}</div>
           </div>
 
           <div className={styles.generatorHeaderRight}>
@@ -193,8 +195,8 @@ export default function DashboardHero({
               className={styles.generatorRefreshBtn}
               onClick={onRefreshGenerator}
               disabled={kpisLoading}
-              aria-label="Actualiser le générateur"
-              title="Actualiser"
+              aria-label={t.hero.refreshAria}
+              title={t.hero.refreshTitle}
             >
               {kpisLoading ? (
                 <span className={styles.miniSpinner} aria-hidden />
@@ -225,17 +227,17 @@ export default function DashboardHero({
 
             <div className={`${styles.generatorStatus} ${generatorIsActive ? styles.statusLive : styles.statusSetup}`}>
               <span className={generatorIsActive ? styles.liveDot : styles.setupDot} aria-hidden />
-              {generatorIsActive ? "Actif" : "En attente"}
+              {generatorIsActive ? t.hero.active : t.hero.waiting}
             </div>
           </div>
         </div>
 
         <div className={styles.generatorGrid}>
           <div className={`${styles.metricCard} ${styles.metricInertia}`}>
-            <div className={styles.metricLabel}>Unités d'Inertie</div>
+            <div className={styles.metricLabel}>{t.hero.inertiaUnits}</div>
             <div className={styles.metricValue}>{uiBalance}</div>
             <div className={styles.metricHint}>
-              Turbo UI ×{inertiaSnapshot.multiplier} — {inertiaSnapshot.connectedCount}/{inertiaSnapshot.totalChannels} canaux
+              Turbo UI ×{inertiaSnapshot.multiplier} — {inertiaSnapshot.connectedCount}/{inertiaSnapshot.totalChannels} {t.hero.channels}
             </div>
           </div>
 
@@ -247,15 +249,15 @@ export default function DashboardHero({
           </div>
 
           <div className={`${styles.metricCard} ${styles.metricCa}`}>
-            <div className={styles.metricLabel}>CA POTENTIEL 30 jours</div>
+            <div className={styles.metricLabel}>{t.hero.potentialRevenue}</div>
             <div className={styles.metricValue}>
-              {estimatedValue === null ? "—" : `${estimatedValue.toLocaleString("fr-FR")} €`}
+              {estimatedValue === null ? "—" : `${estimatedValue.toLocaleString(t.locale)} €`}
             </div>
-            <div className={styles.metricHint}>Basé sur profil + opportunités</div>
+            <div className={styles.metricHint}>{t.hero.basedOnProfile}</div>
           </div>
 
           <div className={`${styles.metricCard} ${styles.metricOpportunities}`}>
-            <div className={styles.metricLabel}>Opportunités activables</div>
+            <div className={styles.metricLabel}>{t.hero.opportunities}</div>
 
             <div className={styles.metricValueRow}>
               <div className={styles.metricValue}>
@@ -273,19 +275,19 @@ export default function DashboardHero({
               </button>
             </div>
 
-            <div className={styles.metricHint}>Projection 30 jours</div>
+            <div className={styles.metricHint}>{t.hero.projection30}</div>
           </div>
 
           <div className={`${styles.metricCard} ${styles.metricDemandes}`}>
-            <div className={styles.metricLabel}>Demandes captées</div>
+            <div className={styles.metricLabel}>{t.hero.capturedLeads}</div>
             <div className={styles.metricSplit}>
               <div className={styles.metricSplitItem}>
                 <div className={styles.metricSplitValue}>{leadsWeek === null ? "—" : leadsWeek}</div>
-                <div className={styles.metricSplitLabel}>7 derniers jours</div>
+                <div className={styles.metricSplitLabel}>{t.hero.last7}</div>
               </div>
               <div className={styles.metricSplitItem}>
                 <div className={styles.metricSplitValue}>{leadsMonth === null ? "—" : leadsMonth}</div>
-                <div className={styles.metricSplitLabel}>30 derniers jours</div>
+                <div className={styles.metricSplitLabel}>{t.hero.last30}</div>
               </div>
             </div>
           </div>

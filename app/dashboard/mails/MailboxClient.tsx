@@ -1,5 +1,7 @@
 "use client";
 
+import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
+
 import { readWorkflowMailPrefillAttachments } from "@/app/dashboard/_lib/workflowMailPrefillAttachments";
 import { saveWorkflowCampaignState } from "@/app/dashboard/_lib/workflowCampaignState";
 import React, {
@@ -619,7 +621,7 @@ export default function MailboxClient() {
     setAttachBusy(true);
     try {
       const { data: auth } = await supabase.auth.getUser();
-      const userId = auth?.user?.id || null;
+      const userId = auth?.user?.id ? resolveActiveBrowserUserId(auth.user.id) : null;
       const uploaded: ComposeAttachmentRef[] = [];
       for (const file of nextFiles) {
         const path = makeAttachmentPath(file.name || "piece-jointe", userId);
@@ -1223,6 +1225,10 @@ export default function MailboxClient() {
   async function loadAllCampaignRecipientsForCompose(
     campaignId: string,
   ): Promise<ComposeCrmRecipientHint[]> {
+    const { data: auth } = await supabase.auth.getUser();
+    const userId = auth?.user?.id ? resolveActiveBrowserUserId(auth.user.id) : null;
+    if (!userId) throw new Error("Établissement actif indisponible.");
+
     const pageSize = 1000;
     let from = 0;
     const result: ComposeCrmRecipientHint[] = [];
@@ -1233,6 +1239,7 @@ export default function MailboxClient() {
       const { data, error } = await supabase
         .from("mail_campaign_recipients")
         .select("email,display_name,contact_id")
+        .eq("user_id", userId)
         .eq("campaign_id", campaignId)
         .order("created_at", { ascending: true })
         .range(from, toRange);
@@ -1554,6 +1561,10 @@ export default function MailboxClient() {
       }
       setCampaignRecipientsLoading(true);
       try {
+        const { data: auth } = await supabase.auth.getUser();
+        const userId = auth?.user?.id ? resolveActiveBrowserUserId(auth.user.id) : null;
+        if (!userId) throw new Error("Établissement actif indisponible.");
+
         const safePage = Math.max(1, targetPage);
         const from = (safePage - 1) * MAILBOX_RECIPIENTS_PAGE_SIZE;
         const to = from + MAILBOX_RECIPIENTS_PAGE_SIZE - 1;
@@ -1563,6 +1574,7 @@ export default function MailboxClient() {
             "id,email,display_name,status,error,last_error,attempt_count,max_attempts,next_attempt_at,sent_at,updated_at,suppression_reason,bounce_type,bounced_at,unsubscribed_at,delivery_status,delivery_event,delivery_last_event_at,delivered_at",
             { count: "exact" },
           )
+          .eq("user_id", userId)
           .eq("campaign_id", campaignId)
           .order("created_at", { ascending: true });
         query = applyCampaignRecipientsFilter(query, targetFilter);
@@ -1620,12 +1632,17 @@ export default function MailboxClient() {
       const baseCounts = campaignCounts(raw || {});
       setCampaignHealthLoading(true);
       try {
+        const { data: auth } = await supabase.auth.getUser();
+        const userId = auth?.user?.id ? resolveActiveBrowserUserId(auth.user.id) : null;
+        if (!userId) throw new Error("Établissement actif indisponible.");
+
         const countRecipients = async (
           filter: CampaignRecipientsFilterId | "__blocked__",
         ) => {
           let query: any = supabase
             .from("mail_campaign_recipients")
             .select("id", { count: "exact", head: true })
+            .eq("user_id", userId)
             .eq("campaign_id", campaignId);
           if (filter === "__blocked__") {
             query = query
@@ -1761,7 +1778,7 @@ export default function MailboxClient() {
         .from("doc_saves")
         .select("payload")
         .eq("id", saveId)
-        .eq("user_id", user.id)
+        .eq("user_id", resolveActiveBrowserUserId(user.id))
         .eq("type", sourceType)
         .maybeSingle();
 
@@ -2786,7 +2803,7 @@ export default function MailboxClient() {
       );
     }
     const { data: auth } = await supabase.auth.getUser();
-    const userId = auth?.user?.id;
+    const userId = auth?.user?.id ? resolveActiveBrowserUserId(auth.user.id) : null;
     if (!userId) return;
 
     const draftFolder = getBulkCampaignFolder();
@@ -2844,12 +2861,14 @@ export default function MailboxClient() {
       let { error } = await supabase
         .from("send_items")
         .update(draftPayload as any)
-        .eq("id", draftId);
+        .eq("id", draftId)
+        .eq("user_id", userId);
       if (error && isMissingDraftMetadataColumn(error)) {
         ({ error } = await supabase
           .from("send_items")
           .update(legacyPayload)
-          .eq("id", draftId));
+          .eq("id", draftId)
+          .eq("user_id", userId));
         usedLegacyFallback = !error;
       }
       if (error) {
@@ -2924,7 +2943,7 @@ export default function MailboxClient() {
       setDeletingDraftId(id);
 
       const { data: auth } = await supabase.auth.getUser();
-      const userId = auth?.user?.id;
+      const userId = auth?.user?.id ? resolveActiveBrowserUserId(auth.user.id) : null;
       if (!userId) return;
 
       const { error } = await supabase
@@ -3290,7 +3309,7 @@ export default function MailboxClient() {
           .from("send_items")
           .delete()
           .eq("id", draftId)
-          .eq("user_id", (await supabase.auth.getUser()).data?.user?.id || "")
+          .eq("user_id", resolveActiveBrowserUserId((await supabase.auth.getUser()).data?.user?.id || ""))
           .eq("status", "draft");
       }
       setToast(
@@ -3414,7 +3433,7 @@ export default function MailboxClient() {
             .from("send_items")
             .delete()
             .eq("id", draftId)
-            .eq("user_id", (await supabase.auth.getUser()).data?.user?.id || "")
+            .eq("user_id", resolveActiveBrowserUserId((await supabase.auth.getUser()).data?.user?.id || ""))
             .eq("status", "draft");
         }
         if (trackedCampaign) setPendingTrack(null);

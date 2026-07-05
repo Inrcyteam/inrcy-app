@@ -105,12 +105,12 @@ async function convertToJpeg(input: Buffer) {
 
 export async function POST(req: Request) {
   try {
-    const { user, errorResponse } = await requireUser();
+    const { user, errorResponse, activeUserId } = await requireUser();
     if (errorResponse) return errorResponse;
 
     const rateLimited = await enforceRateLimit({
       name: "booster_convert_image",
-      identifier: user.id,
+      identifier: activeUserId,
       limit: 40,
       window: "1 m",
       failClosed: false,

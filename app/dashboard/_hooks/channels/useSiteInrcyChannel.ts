@@ -1,5 +1,7 @@
 "use client";
 
+import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
+
 import { useCallback, useEffect, useState } from "react";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { confirmInrcy } from "@/lib/inrcyDialog";
@@ -106,7 +108,7 @@ export function useSiteInrcyChannel({
 
     const { error } = await supabase
       .from("inrcy_site_configs")
-      .upsert({ user_id: user.id, settings: nextSettings ?? {} }, { onConflict: "user_id" });
+      .upsert({ user_id: resolveActiveBrowserUserId(user.id), settings: nextSettings ?? {} }, { onConflict: "user_id" });
 
     if (error) {
       setSiteInrcySettingsError(getSimpleFrenchErrorMessage(error));
@@ -138,7 +140,7 @@ export function useSiteInrcyChannel({
     const user = authData?.user;
     if (!user) return;
 
-    const { error } = await supabase.from("inrcy_site_configs").upsert({ user_id: user.id, settings: parsed }, { onConflict: "user_id" });
+    const { error } = await supabase.from("inrcy_site_configs").upsert({ user_id: resolveActiveBrowserUserId(user.id), settings: parsed }, { onConflict: "user_id" });
 
     if (error) {
       setSiteInrcySettingsError(getSimpleFrenchErrorMessage(error));
@@ -176,7 +178,7 @@ export function useSiteInrcyChannel({
     const user = authData?.user;
     if (!user) return;
 
-    const { error } = await supabase.from("inrcy_site_configs").upsert({ user_id: user.id, settings: parsed }, { onConflict: "user_id" });
+    const { error } = await supabase.from("inrcy_site_configs").upsert({ user_id: resolveActiveBrowserUserId(user.id), settings: parsed }, { onConflict: "user_id" });
 
     if (error) {
       setSiteInrcySettingsError(getSimpleFrenchErrorMessage(error));
@@ -212,7 +214,7 @@ export function useSiteInrcyChannel({
     const user = authData?.user;
     if (!user) return;
 
-    const { error } = await supabase.from("inrcy_site_configs").upsert({ user_id: user.id, settings: parsed }, { onConflict: "user_id" });
+    const { error } = await supabase.from("inrcy_site_configs").upsert({ user_id: resolveActiveBrowserUserId(user.id), settings: parsed }, { onConflict: "user_id" });
 
     if (error) {
       setSiteInrcySettingsError(getSimpleFrenchErrorMessage(error));
@@ -490,7 +492,7 @@ export function useSiteInrcyChannel({
 
     const { error } = await supabase
       .from("inrcy_site_configs")
-      .upsert({ user_id: user.id, site_url: valueToSave }, { onConflict: "user_id" });
+      .upsert({ user_id: resolveActiveBrowserUserId(user.id), site_url: valueToSave }, { onConflict: "user_id" });
     if (error) {
       setSiteInrcySettingsError(getSimpleFrenchErrorMessage(error));
       return;
@@ -537,7 +539,7 @@ export function useSiteInrcyChannel({
 
     const { error } = await supabase
       .from("inrcy_site_configs")
-      .upsert({ user_id: user.id, site_url: "" }, { onConflict: "user_id" });
+      .upsert({ user_id: resolveActiveBrowserUserId(user.id), site_url: "" }, { onConflict: "user_id" });
     if (error) {
       setSiteInrcySettingsError(getSimpleFrenchErrorMessage(error));
       return;
@@ -579,7 +581,7 @@ export function useSiteInrcyChannel({
     const { data: authData } = await supabase.auth.getUser();
     const user = authData?.user;
     if (user) {
-      await supabase.from("inrcy_site_configs").upsert({ user_id: user.id, site_url: "" }, { onConflict: "user_id" });
+      await supabase.from("inrcy_site_configs").upsert({ user_id: resolveActiveBrowserUserId(user.id), site_url: "" }, { onConflict: "user_id" });
     }
 
     setSiteInrcyUrl("");

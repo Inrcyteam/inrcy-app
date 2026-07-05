@@ -95,7 +95,7 @@ function buildDisplaySignatureOptions(company: string, firstName: string, lastNa
 
 export async function POST(req: Request) {
   try {
-    const { supabase, user, errorResponse } = await requireUser();
+    const { supabase, authUserId, activeUserId, errorResponse } = await requireUser();
     if (errorResponse) return errorResponse;
 
     const body = asRecord(await req.json().catch(() => ({})) as unknown);
@@ -141,12 +141,12 @@ export async function POST(req: Request) {
       );
     }
 
-    const userId = user.id;
-    const isAdmin = await isAdminUserForAi(supabase, userId);
+    const userId = activeUserId;
+    const isAdmin = await isAdminUserForAi(supabase, authUserId);
     if (!isAdmin) {
       const rateLimited = await enforceRateLimit({
         name: "ereputation_review_reply_ai",
-        identifier: userId,
+        identifier: authUserId,
         limit: 80,
         window: "1 d",
         failClosed: false,
@@ -155,7 +155,7 @@ export async function POST(req: Request) {
 
       const quotaLimited = await consumeAiCredits({
         supabase,
-        userId,
+        userId: authUserId,
         action: "review_reply",
         credits: computeReviewReplyAiCredits({ rating, comment: reviewComment, existingReply }),
       });

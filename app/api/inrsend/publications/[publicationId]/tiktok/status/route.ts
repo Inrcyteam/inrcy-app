@@ -165,7 +165,7 @@ async function persistTiktokStatus({
   };
 
   if (event?.id) {
-    await supabaseAdmin.from("app_events").update({ payload: nextPayload }).eq("id", event.id);
+    await supabaseAdmin.from("app_events").update({ payload: nextPayload }).eq("id", event.id).eq("user_id", userId);
   }
 
   await supabaseAdmin
@@ -183,7 +183,7 @@ async function persistTiktokStatus({
 
 async function handler(_request: Request, context: { params: Promise<{ publicationId: string }> }) {
   try {
-    const { user, errorResponse } = await requireUser();
+    const { user, errorResponse, activeUserId } = await requireUser();
     if (errorResponse) return errorResponse;
 
     const params = await context.params;
@@ -193,14 +193,14 @@ async function handler(_request: Request, context: { params: Promise<{ publicati
     const { data: delivery, error: deliveryError } = await supabaseAdmin
       .from("publication_deliveries")
       .select("status,error,channel")
-      .eq("user_id", user.id)
+      .eq("user_id", activeUserId)
       .eq("publication_id", publicationId)
       .eq("channel", "tiktok")
       .maybeSingle();
 
     if (deliveryError) throw deliveryError;
 
-    const event = await loadAppEvent(user.id, publicationId);
+    const event = await loadAppEvent(activeUserId, publicationId);
     const eventPayload = asRecord(event?.payload);
     const eventResult = asRecord(asRecord(eventPayload.results).tiktok);
     const diagnostics = asRecord(eventResult.diagnostics);
@@ -210,14 +210,14 @@ async function handler(_request: Request, context: { params: Promise<{ publicati
       return jsonUserFacingError("Identifiant TikTok introuvable pour cette publication.", { status: 404, code: "missing_tiktok_publish_id" });
     }
 
-    const integration = await getLatestTiktokIntegration(user.id);
-    const accessToken = await getTiktokAccessToken(user.id, integration);
+    const integration = await getLatestTiktokIntegration(activeUserId);
+    const accessToken = await getTiktokAccessToken(activeUserId, integration);
     if (!accessToken) {
       return jsonUserFacingError("Connexion TikTok expirée. Reconnecte TikTok dans Canaux.", { status: 401, code: "tiktok_reconnect_required" });
     }
 
     const status = await fetchTiktokPublishStatus(accessToken, publishId);
-    const persisted = await persistTiktokStatus({ userId: user.id, publicationId, publishId, status });
+    const persisted = await persistTiktokStatus({ userId: activeUserId, publicationId, publishId, status });
 
     return NextResponse.json({
       ok: !status.failed,

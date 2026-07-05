@@ -220,6 +220,186 @@
   font-size: 17px;
 }
 
+
+.languageSelectorWrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+.languageSelectorBtn {
+  position: relative;
+  overflow: hidden;
+  min-height: 40px;
+  height: 40px;
+  min-width: 82px;
+  border-radius: 999px;
+  border: 1px solid rgba(56, 189, 248, 0.32);
+  background:
+    radial-gradient(circle at 18% 0%, rgba(56, 189, 248, 0.24), transparent 34%),
+    linear-gradient(135deg, rgba(15, 23, 42, 0.84), rgba(49, 46, 129, 0.58));
+  color: rgba(255, 255, 255, 0.96);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 0 12px 0 10px;
+  box-sizing: border-box;
+  cursor: pointer;
+  font-weight: 900;
+  font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
+  box-shadow:
+    0 18px 46px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.14),
+    inset 0 -1px 0 rgba(56, 189, 248, 0.14);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  transition:
+    transform 0.15s ease,
+    background 0.15s ease,
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.languageSelectorBtn::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  z-index: 0;
+  border-radius: inherit;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0));
+  opacity: 0.65;
+  pointer-events: none;
+}
+
+.languageSelectorBtn:hover {
+  transform: translateY(-1px);
+  border-color: rgba(56, 189, 248, 0.46);
+  background:
+    radial-gradient(circle at 18% 0%, rgba(56, 189, 248, 0.28), transparent 34%),
+    linear-gradient(135deg, rgba(30, 41, 70, 0.88), rgba(49, 46, 129, 0.68));
+  box-shadow:
+    0 20px 52px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    inset 0 -1px 0 rgba(56, 189, 248, 0.18);
+}
+
+.languageFlag,
+.languageItemFlag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  border-radius: 999px;
+  object-fit: cover;
+  object-position: center;
+  pointer-events: none;
+  user-select: none;
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.18),
+    0 8px 18px rgba(0, 0, 0, 0.22);
+}
+
+.languageFlag {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+  position: relative;
+  z-index: 1;
+}
+
+.languageShort {
+  min-width: 16px;
+  text-align: center;
+  letter-spacing: 0.01em;
+  position: relative;
+  z-index: 1;
+}
+
+.languageChevron {
+  font-size: 10px;
+  opacity: 0.7;
+  transform: translateY(-1px);
+  position: relative;
+  z-index: 1;
+}
+
+.languageSelectorPanel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 10px);
+  width: 184px;
+  border-radius: 16px;
+  padding: 8px;
+  z-index: 82;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(18, 26, 56, 0.94);
+  box-shadow: 0 24px 90px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.languageSelectorItem {
+  width: 100%;
+  min-height: 38px;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  border-radius: 12px;
+  padding: 8px 9px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(255, 255, 255, 0.90);
+  cursor: pointer;
+  font-weight: 850;
+  font-size: 12px;
+  text-align: left;
+  transition:
+    transform 0.15s ease,
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.languageSelectorItem:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+
+.languageSelectorItemActive {
+  border-color: rgba(56, 189, 248, 0.36);
+  background: rgba(56, 189, 248, 0.12);
+}
+
+.languageItemFlag {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+}
+
+.languageItemLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.languageItemShort {
+  border-radius: 999px;
+  padding: 4px 6px;
+  color: rgba(255, 255, 255, 0.76);
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 10px;
+  font-weight: 950;
+}
+
 /* =========================
    User menu (desktop)
 ========================= */
@@ -2153,13 +2333,66 @@
   }
 
   .mobileTopbarActions {
-    gap: 7px;
+    gap: 4px;
   }
   .mobileHeaderIconBtn,
   .notificationBellBtnMobile,
-  .hamburgerBtn {
-    width: 40px;
-    height: 40px;
+  .hamburgerBtn,
+  .languageSelectorBtnMobile {
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    min-height: 36px;
+  }
+  .languageSelectorBtnMobile {
+    overflow: visible;
+    min-width: 36px;
+    width: 36px;
+    gap: 0;
+    padding: 0;
+    border-color: transparent !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    font-size: 10px;
+  }
+  .languageSelectorBtnMobile::before {
+    display: none;
+  }
+  .languageSelectorBtnMobile:hover {
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+  .languageSelectorBtnMobile .languageFlag {
+    width: 25px;
+    height: 25px;
+    flex-basis: 25px;
+    box-shadow:
+      0 0 0 1px rgba(255, 255, 255, 0.22),
+      0 0 0 4px rgba(56, 189, 248, 0.08),
+      0 10px 24px rgba(0, 0, 0, 0.28);
+  }
+  .languageSelectorBtnMobile .languageShort {
+    display: none;
+  }
+  .languageSelectorBtnMobile .languageChevron {
+    position: absolute;
+    right: 3px;
+    bottom: 5px;
+    width: 12px;
+    height: 12px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(9, 14, 34, 0.82);
+    border: 1px solid rgba(255, 255, 255, 0.18);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.24);
+    font-size: 8px;
+    line-height: 1;
+    opacity: 0.82;
+    transform: none;
   }
   .mobileHeaderAgentIcon {
     width: 22px;
@@ -2185,9 +2418,33 @@
   }
   .mobileHeaderIconBtn,
   .notificationBellBtnMobile,
-  .hamburgerBtn {
-    width: 38px;
-    height: 38px;
+  .hamburgerBtn,
+  .languageSelectorBtnMobile {
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+    min-height: 34px;
+  }
+  .languageSelectorBtnMobile {
+    min-width: 34px;
+    width: 34px;
+    padding: 0;
+    font-size: 10px;
+  }
+  .languageSelectorBtnMobile .languageFlag {
+    width: 23px;
+    height: 23px;
+    flex-basis: 23px;
+  }
+  .languageSelectorBtnMobile .languageChevron {
+    right: 2px;
+    bottom: 5px;
+    width: 11px;
+    height: 11px;
+    font-size: 7px;
+  }
+  .languageSelectorPanelMobile {
+    right: 0;
   }
   .brandTag {
     font-size: 10px;
@@ -4325,20 +4582,14 @@
   position: relative;
 }
 
-.hamburgerWarnDot {
+.hamburgerWarnTriangle {
   position: absolute;
-  top: 6px;
-  right: 6px;
-
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-
-  background: rgba(251, 146, 60, 0.95);
-  box-shadow:
-    0 0 0 3px rgba(251, 146, 60, 0.16),
-    0 0 14px rgba(251, 146, 60, 0.32);
-
+  top: -6px;
+  right: -6px;
+  z-index: 3;
+  font-size: 15px;
+  line-height: 1;
+  filter: drop-shadow(0 0 7px rgba(251, 146, 60, 0.55));
   pointer-events: none;
 }
 
@@ -4818,6 +5069,24 @@
   white-space: nowrap;
 }
 
+.userMenuWarningTriangle {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  z-index: 3;
+  font-size: 15px;
+  line-height: 1;
+  filter: drop-shadow(0 0 7px rgba(251, 146, 60, 0.55));
+  pointer-events: none;
+}
+
+.menuWarningTriangle {
+  flex: 0 0 auto;
+  font-size: 14px;
+  line-height: 1;
+  filter: drop-shadow(0 0 6px rgba(251, 146, 60, 0.4));
+}
+
 @keyframes bubbleShift {
   0% {
     background-position: 0% 50%;
@@ -4869,6 +5138,14 @@
   transform: translateY(-1px);
   background: rgba(255, 255, 255, 0.08);
   border-color: rgba(255, 255, 255, 0.16);
+}
+
+.userMenuItemWithWarning,
+.mobileMenuItemWithWarning {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 .userMenuDivider {
@@ -8083,7 +8360,8 @@
 @media (min-width: 769px) {
   .topbarActions .ghostBtn,
   .notificationBellBtnWithLabel,
-  .userBubbleBtn {
+  .userBubbleBtn,
+  .languageSelectorBtn {
     min-height: 40px !important;
     border-radius: 999px !important;
     border: 1px solid rgba(255, 255, 255, 0.14) !important;
@@ -8099,7 +8377,8 @@
 
   .topbarActions .ghostBtn:hover,
   .notificationBellBtnWithLabel:hover,
-  .userBubbleBtn:hover {
+  .userBubbleBtn:hover,
+  .languageSelectorBtn:hover {
     transform: translateY(-1px) !important;
     background:
       radial-gradient(circle at 18% 0%, rgba(255, 255, 255, 0.18), transparent 32%),
@@ -8231,6 +8510,12 @@
       radial-gradient(circle at 18% 0%, rgba(167, 139, 250, 0.25), transparent 34%),
       linear-gradient(135deg, rgba(49, 46, 129, 0.48), rgba(15, 23, 42, 0.76)) !important;
   }
+  .languageSelectorBtn {
+    border-color: rgba(56, 189, 248, 0.36) !important;
+    background:
+      radial-gradient(circle at 18% 0%, rgba(56, 189, 248, 0.24), transparent 34%),
+      linear-gradient(135deg, rgba(14, 116, 144, 0.34), rgba(49, 46, 129, 0.62)) !important;
+  }
 }
 
 
@@ -8348,7 +8633,8 @@
 
   .topbarActions .ghostBtn,
   .notificationBellBtnWithLabel,
-  .userBubbleBtn {
+  .userBubbleBtn,
+  .languageSelectorBtn {
     height: 40px !important;
     min-height: 40px !important;
     max-height: 40px !important;
@@ -8957,5 +9243,616 @@
 
   .channelPillRow {
     gap: 8px;
+  }
+}
+
+
+@media (max-width: 560px) {
+  .languageSelectorWrapMobile {
+    display: inline-flex;
+  }
+
+  .languageSelectorPanelMobile {
+    position: fixed;
+    top: max(70px, calc(env(safe-area-inset-top, 0px) + 58px));
+    right: 10px;
+    width: min(184px, calc(100vw - 20px));
+    max-height: min(70vh, calc(100dvh - 88px));
+    overflow: auto;
+  }
+}
+
+@media (max-width: 340px) {
+  .mobileTopbarActions {
+    gap: 3px;
+  }
+
+  .mobileHeaderIconBtn,
+  .notificationBellBtnMobile,
+  .hamburgerBtn,
+  .languageSelectorBtnMobile {
+    width: 32px !important;
+    height: 32px !important;
+    min-width: 32px !important;
+    min-height: 32px !important;
+  }
+
+  .languageSelectorBtnMobile {
+    min-width: 32px !important;
+    width: 32px !important;
+    padding: 0;
+  }
+
+  .languageSelectorBtnMobile .languageFlag {
+    width: 22px;
+    height: 22px;
+    flex-basis: 22px;
+  }
+
+  .languageSelectorBtnMobile .languageShort {
+    display: none;
+  }
+}
+
+
+/* Multilang header — final responsive layout: logo/actions on line 1, subtitle full on line 2 */
+@media (max-width: 560px) {
+  .topbar {
+    position: relative;
+    align-items: flex-start;
+    gap: 8px;
+    min-height: 50px;
+    margin-bottom: 12px;
+  }
+
+  .brand {
+    flex: 0 0 76px;
+    width: 76px;
+    min-width: 76px;
+    position: relative;
+    gap: 0;
+  }
+
+  .brandText {
+    position: absolute;
+    left: 0;
+    top: 30px;
+    width: max-content;
+    max-width: calc(100vw - 36px);
+    pointer-events: none;
+  }
+
+  .brandTag {
+    max-width: none !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    white-space: nowrap !important;
+    font-size: 10.5px;
+    line-height: 1.08;
+  }
+
+  .mobileTopbarActions {
+    gap: 4px;
+    margin-left: auto;
+    padding-top: 0;
+  }
+
+  .mobileHeaderIconBtn,
+  .notificationBellBtnMobile,
+  .hamburgerBtn {
+    width: 34px;
+    height: 34px;
+    min-width: 34px;
+    min-height: 34px;
+  }
+
+  .languageSelectorBtnMobile {
+    width: 32px;
+    min-width: 32px;
+    height: 34px;
+    min-height: 34px;
+  }
+
+  .languageSelectorBtnMobile .languageFlag {
+    width: 23px;
+    height: 23px;
+    flex-basis: 23px;
+  }
+
+  .languageSelectorBtnMobile .languageChevron {
+    right: 1px;
+    bottom: 5px;
+    width: 10px;
+    height: 10px;
+    font-size: 7px;
+  }
+
+  .mobileHeaderAgentIcon {
+    width: 21px;
+    height: 21px;
+  }
+}
+
+@media (max-width: 380px) {
+  .topbar {
+    gap: 6px;
+    min-height: 49px;
+  }
+
+  .brand {
+    flex-basis: 74px;
+    width: 74px;
+    min-width: 74px;
+  }
+
+  .logoImg {
+    width: 72px;
+    height: 27px;
+  }
+
+  .brandText {
+    top: 29px;
+  }
+
+  .brandTag {
+    font-size: 10px;
+  }
+
+  .mobileTopbarActions {
+    gap: 4px;
+  }
+
+  .mobileHeaderIconBtn,
+  .notificationBellBtnMobile,
+  .hamburgerBtn {
+    width: 32px !important;
+    height: 32px !important;
+    min-width: 32px !important;
+    min-height: 32px !important;
+  }
+
+  .languageSelectorBtnMobile {
+    width: 30px !important;
+    min-width: 30px !important;
+    height: 32px !important;
+    min-height: 32px !important;
+  }
+
+  .languageSelectorBtnMobile .languageFlag {
+    width: 21px;
+    height: 21px;
+    flex-basis: 21px;
+  }
+
+  .languageSelectorBtnMobile .languageChevron {
+    right: 0;
+    bottom: 4px;
+  }
+}
+
+@media (max-width: 340px) {
+  .topbar {
+    gap: 5px;
+    min-height: 47px;
+  }
+
+  .brand {
+    flex-basis: 70px;
+    width: 70px;
+    min-width: 70px;
+  }
+
+  .logoImg {
+    width: 68px;
+    height: 26px;
+  }
+
+  .brandText {
+    top: 28px;
+  }
+
+  .brandTag {
+    font-size: 9.6px;
+  }
+
+  .mobileTopbarActions {
+    gap: 3px;
+  }
+
+  .mobileHeaderIconBtn,
+  .notificationBellBtnMobile,
+  .hamburgerBtn {
+    width: 30px !important;
+    height: 30px !important;
+    min-width: 30px !important;
+    min-height: 30px !important;
+  }
+
+  .languageSelectorBtnMobile {
+    width: 28px !important;
+    min-width: 28px !important;
+    height: 30px !important;
+    min-height: 30px !important;
+  }
+
+  .languageSelectorBtnMobile .languageFlag {
+    width: 20px;
+    height: 20px;
+    flex-basis: 20px;
+  }
+}
+
+/* ✅ Multicompte — sélecteur d'établissements du header */
+.establishmentMenuWrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+.establishmentTopbarBtn {
+  position: relative;
+  width: 40px;
+  min-width: 40px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0 !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-color: rgba(56, 189, 248, 0.38) !important;
+  background:
+    radial-gradient(circle at 28% 18%, rgba(56, 189, 248, 0.28), transparent 38%),
+    linear-gradient(135deg, rgba(15, 23, 42, 0.82), rgba(76, 29, 149, 0.42)) !important;
+  box-shadow:
+    0 18px 46px rgba(0, 0, 0, 0.28),
+    0 0 24px rgba(56, 189, 248, 0.10),
+    inset 0 1px 0 rgba(255, 255, 255, 0.13) !important;
+}
+
+.establishmentTopbarBtn:hover {
+  border-color: rgba(56, 189, 248, 0.58) !important;
+}
+
+.establishmentTopbarIcon {
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(186, 230, 253, 0.98);
+  filter: drop-shadow(0 0 10px rgba(56, 189, 248, 0.45));
+}
+
+.establishmentTopbarCount {
+  position: absolute;
+  right: -5px;
+  top: -6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.30);
+  background: linear-gradient(135deg, #8b5cf6, #ec4899);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 950;
+  line-height: 1;
+  box-shadow: 0 8px 20px rgba(139, 92, 246, 0.38);
+  z-index: 2;
+}
+
+.mobileHeaderEstablishmentBtn {
+  position: relative;
+  border-color: rgba(56, 189, 248, 0.38);
+  background:
+    radial-gradient(circle at 30% 20%, rgba(56, 189, 248, 0.26), transparent 40%),
+    rgba(255, 255, 255, 0.08);
+}
+
+.establishmentMenuPanel {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 10px);
+  z-index: 130;
+  width: min(360px, calc(100vw - 24px));
+  max-height: min(610px, calc(100vh - 90px));
+  overflow: auto;
+  padding: 10px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background:
+    radial-gradient(420px 180px at 12% 0%, rgba(56, 189, 248, 0.15), transparent 62%),
+    radial-gradient(380px 190px at 100% 0%, rgba(168, 85, 247, 0.16), transparent 62%),
+    rgba(14, 20, 43, 0.97);
+  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.58);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  scrollbar-width: thin;
+}
+
+.establishmentMenuPanelMobile {
+  right: 0;
+}
+
+.establishmentMenuHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 9px 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+}
+
+.establishmentMenuHeader > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.establishmentMenuHeader strong {
+  color: rgba(255, 255, 255, 0.96);
+  font-size: 14px;
+  font-weight: 950;
+}
+
+.establishmentMenuHeader small {
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.establishmentMenuHeaderIcon {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(186, 230, 253, 0.96);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  background: rgba(56, 189, 248, 0.10);
+}
+
+.establishmentMenuList {
+  display: grid;
+  gap: 7px;
+  padding: 10px 0 4px;
+}
+
+.establishmentAccountRow,
+.establishmentCreateButton {
+  width: 100%;
+  min-height: 50px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.055);
+  color: rgba(255, 255, 255, 0.92);
+  cursor: pointer;
+  transition: transform 0.14s ease, border-color 0.14s ease, background 0.14s ease;
+}
+
+.establishmentAccountRow {
+  padding: 8px 10px;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+}
+
+.establishmentAccountRow:hover:not(:disabled),
+.establishmentCreateButton:hover {
+  transform: translateY(-1px);
+  border-color: rgba(56, 189, 248, 0.30);
+  background: rgba(56, 189, 248, 0.085);
+}
+
+.establishmentAccountRow:disabled {
+  cursor: default;
+}
+
+.establishmentAccountRowActive {
+  border-color: rgba(52, 211, 153, 0.30);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.13), rgba(56, 189, 248, 0.07));
+}
+
+.establishmentAccountMark {
+  width: 26px;
+  height: 26px;
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.establishmentAccountRowActive .establishmentAccountMark {
+  color: #a7f3d0;
+  border-color: rgba(52, 211, 153, 0.24);
+  background: rgba(16, 185, 129, 0.14);
+}
+
+.establishmentAccountName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.establishmentAccountRow small {
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.establishmentCreateSlot {
+  border-radius: 14px;
+}
+
+.establishmentCreateButton {
+  padding: 8px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+  border-style: dashed;
+  border-color: rgba(167, 139, 250, 0.28);
+}
+
+.establishmentCreateButton span {
+  color: rgba(255, 255, 255, 0.70);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.establishmentCreateButton strong {
+  color: rgba(216, 180, 254, 0.98);
+  font-size: 11px;
+  font-weight: 950;
+}
+
+.establishmentCreateForm {
+  padding: 11px;
+  display: grid;
+  gap: 10px;
+  border-radius: 15px;
+  border: 1px solid rgba(167, 139, 250, 0.28);
+  background: rgba(76, 29, 149, 0.16);
+}
+
+.establishmentCreateForm > strong {
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.establishmentCreateForm label {
+  display: grid;
+  gap: 6px;
+}
+
+.establishmentCreateForm label span {
+  color: rgba(255, 255, 255, 0.62);
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.establishmentCreateForm input {
+  width: 100%;
+  min-height: 40px;
+  box-sizing: border-box;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.24);
+  color: #fff;
+  padding: 9px 11px;
+  outline: none;
+}
+
+.establishmentCreateForm input:focus {
+  border-color: rgba(56, 189, 248, 0.42);
+  box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.08);
+}
+
+.establishmentCreateActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.establishmentCreateActions button,
+.establishmentMenuState button,
+.establishmentContactNote button {
+  border: 0;
+  color: rgba(255, 255, 255, 0.82);
+  background: transparent;
+  font: inherit;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.establishmentCreateActions button {
+  min-height: 34px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 11px;
+}
+
+.establishmentCreateActions .establishmentCreateConfirm {
+  border-color: rgba(56, 189, 248, 0.28);
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.30), rgba(124, 58, 237, 0.30));
+}
+
+.establishmentCreateActions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.establishmentMenuState,
+.establishmentMenuError {
+  margin-top: 10px;
+  padding: 11px 12px;
+  border-radius: 13px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.establishmentMenuState {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: rgba(255, 255, 255, 0.68);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.establishmentMenuState button {
+  color: rgba(125, 211, 252, 0.98);
+}
+
+.establishmentMenuError {
+  color: #fecaca;
+  border: 1px solid rgba(248, 113, 113, 0.22);
+  background: rgba(127, 29, 29, 0.20);
+}
+
+.establishmentContactNote {
+  margin-top: 9px;
+  padding: 10px 9px 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.09);
+  color: rgba(255, 255, 255, 0.56);
+  font-size: 10px;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.establishmentContactNote button {
+  padding: 0;
+  color: rgba(125, 211, 252, 0.96);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+@media (max-width: 768px) {
+  .establishmentMenuPanel {
+    position: fixed;
+    top: 72px;
+    right: 12px;
+    left: 12px;
+    width: auto;
+    max-height: calc(100vh - 88px);
   }
 }

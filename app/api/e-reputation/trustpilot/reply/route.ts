@@ -23,9 +23,9 @@ function clean(value: unknown, max = MAX_REPLY_LENGTH) {
 
 export async function POST(req: Request) {
   try {
-    const { supabase, user, errorResponse } = await requireUser();
+    const { supabase, activeUserId, errorResponse } = await requireUser();
     if (errorResponse) return errorResponse;
-    if (!(await isAppBubbleEnabledForUser(supabase, user.id, "trustpilot"))) {
+    if (!(await isAppBubbleEnabledForUser(supabase, activeUserId, "trustpilot"))) {
       return bubbleAccessDisabledResponse("Trustpilot");
     }
 
@@ -57,7 +57,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const reply = await trustpilotReplyToReview(user.id, reviewName, comment);
+    const reply = await trustpilotReplyToReview(activeUserId, reviewName, comment);
 
     return NextResponse.json({
       ok: true,
@@ -75,9 +75,9 @@ export async function POST(req: Request) {
 
 export async function DELETE(req: Request) {
   try {
-    const { supabase, user, errorResponse } = await requireUser();
+    const { supabase, activeUserId, errorResponse } = await requireUser();
     if (errorResponse) return errorResponse;
-    if (!(await isAppBubbleEnabledForUser(supabase, user.id, "trustpilot"))) {
+    if (!(await isAppBubbleEnabledForUser(supabase, activeUserId, "trustpilot"))) {
       return bubbleAccessDisabledResponse("Trustpilot");
     }
 
@@ -91,7 +91,7 @@ export async function DELETE(req: Request) {
       );
     }
 
-    await trustpilotDeleteReviewReply(user.id, reviewName);
+    await trustpilotDeleteReviewReply(activeUserId, reviewName);
 
     return NextResponse.json({
       ok: true,

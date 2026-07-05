@@ -1,11 +1,11 @@
 import styles from "./dashboard.module.css";
 import type { ModuleStatus } from "./dashboard.types";
 import { DRAWER_PANELS, DRAWER_TITLES } from "./dashboard.constants";
+import { getDashboardDrawerTitle, getDashboardStatusLabel } from "@/lib/dashboardI18n";
+import type { AppLanguageCode } from "@/lib/appLanguage";
 
-export function statusLabel(s: ModuleStatus) {
-  if (s === "connected") return "Connecté";
-  if (s === "available") return "À connecter";
-  return "Bientôt";
+export function statusLabel(s: ModuleStatus, language?: AppLanguageCode | string | null) {
+  return getDashboardStatusLabel(s, language);
 }
 
 export function statusClass(s: ModuleStatus) {
@@ -14,7 +14,9 @@ export function statusClass(s: ModuleStatus) {
   return styles.badgeSoon;
 }
 
-export function getDrawerTitle(panel: string | null) {
+export function getDrawerTitle(panel: string | null, language?: AppLanguageCode | string | null) {
+  const translatedTitle = getDashboardDrawerTitle(panel, language);
+  if (translatedTitle) return translatedTitle;
   if (!panel) return "";
   return DRAWER_TITLES[panel as keyof typeof DRAWER_TITLES] ?? "";
 }

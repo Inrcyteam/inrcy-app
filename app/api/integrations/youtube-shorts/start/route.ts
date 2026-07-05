@@ -1,9 +1,15 @@
 import { NextResponse } from "next/server";
+import { getCurrentInrcyAccountScope } from "@/lib/multicompte/server";
 
 import { getYoutubeShortsOAuthClientId, getYoutubeShortsOAuthScope, getYoutubeShortsRedirectUri } from "@/lib/youtubeShortsOAuth";
 import { makeOAuthState, safeInternalPath } from "@/lib/security";
 
 export async function GET(request: Request) {
+  const currentAccount = await getCurrentInrcyAccountScope();
+  if (!currentAccount) {
+    return NextResponse.json({ error: "Votre session a expiré. Merci de vous reconnecter." }, { status: 401 });
+  }
+  const accountId = currentAccount.scope.activeUserId;
   const clientId = getYoutubeShortsOAuthClientId();
   const redirectUri = getYoutubeShortsRedirectUri(request.url);
 
@@ -17,7 +23,7 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const returnTo = safeInternalPath(searchParams.get("returnTo") || "/dashboard?panel=youtube_shorts", "/dashboard?panel=youtube_shorts");
-  const { stateB64, nonce, cookieName } = makeOAuthState("youtube_shorts", returnTo);
+  const { stateB64, cookieValue, cookieName } = makeOAuthState("youtube_shorts", returnTo, { accountId });
 
   const params = new URLSearchParams({
     client_id: clientId,
@@ -31,7 +37,7 @@ export async function GET(request: Request) {
   });
 
   const res = NextResponse.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
-  res.cookies.set(cookieName, nonce, {
+  res.cookies.set(cookieName, cookieValue, {
     httpOnly: true,
     secure: true,
     sameSite: "lax",

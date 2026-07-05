@@ -65,13 +65,13 @@ function isCampaignSchedule(row: ReturnType<typeof scheduledActionToDbRow>) {
 }
 
 export async function GET() {
-  const { user, errorResponse } = await requireUser();
+  const { user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   const { data, error } = await supabaseAdmin
     .from("inr_agent_scheduled_actions")
     .select(SCHEDULED_ACTION_SELECT)
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .in("status", VISIBLE_SCHEDULED_STATUSES)
     .order("updated_at", { ascending: false })
     .limit(150);
@@ -90,7 +90,7 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const { user, errorResponse } = await requireUser();
+  const { user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   let body: unknown;
@@ -118,7 +118,7 @@ export async function POST(request: Request) {
   const source: InrAgentScheduledActionSource = record?.source === "automatic" ? "automatic" : "manual";
 
   const row = scheduledActionToDbRow({
-    userId: user.id,
+    userId: activeUserId,
     automationKey,
     actionType,
     targetTool,
@@ -134,7 +134,7 @@ export async function POST(request: Request) {
   if (row.action_type === "publication" && row.target_tool === "booster") {
     const duplicate = await findSimilarScheduledPublication({
       supabase: supabaseAdmin,
-      userId: user.id,
+      userId: activeUserId,
       scheduledAt,
       channels: row.channels,
       payload: row.payload,
@@ -155,7 +155,7 @@ export async function POST(request: Request) {
   if (isCampaignSchedule(row)) {
     const duplicate = await findSimilarScheduledCampaign({
       supabase: supabaseAdmin,
-      userId: user.id,
+      userId: activeUserId,
       scheduledAt,
       payload: row.payload,
     });

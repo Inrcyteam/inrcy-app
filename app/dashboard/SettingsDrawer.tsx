@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
+import { useDashboardI18n } from "./_hooks/useDashboardI18n";
 
 type Props = {
   title: string;
@@ -12,6 +13,7 @@ type Props = {
 };
 
 export default function SettingsDrawer({ title, isOpen, onClose, headerActions, children }: Props) {
+  const t = useDashboardI18n();
   // Valeurs stables côté serveur/client au premier rendu : évite les erreurs React #418
   // quand le drawer est ouvert directement via /dashboard?panel=ia sur mobile.
   const [viewportWidth, setViewportWidth] = useState<number>(1440);
@@ -139,7 +141,7 @@ export default function SettingsDrawer({ title, isOpen, onClose, headerActions, 
                 cursor: "pointer",
               }}
             >
-              Fermer
+              {t.drawer.close}
             </button>
           </div>
         </div>

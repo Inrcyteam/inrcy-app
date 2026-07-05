@@ -1,5 +1,7 @@
 "use client";
 
+import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
+
 import { useCallback, useEffect, useState } from "react";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { confirmInrcy } from "@/lib/inrcyDialog";
@@ -102,7 +104,7 @@ export function useSiteWebChannel({
       const { data: row, error: readErr } = await supabase
         .from("pro_tools_configs")
         .select("settings")
-        .eq("user_id", user.id)
+        .eq("user_id", resolveActiveBrowserUserId(user.id))
         .maybeSingle();
 
       if (readErr) {
@@ -113,7 +115,7 @@ export function useSiteWebChannel({
       const current = (row as any)?.settings ?? {};
       const merged = { ...(current ?? {}), site_web: nextSiteWeb ?? {} };
 
-      const { error } = await supabase.from("pro_tools_configs").upsert({ user_id: user.id, settings: merged }, { onConflict: "user_id" });
+      const { error } = await supabase.from("pro_tools_configs").upsert({ user_id: resolveActiveBrowserUserId(user.id), settings: merged }, { onConflict: "user_id" });
       if (error) {
         setSiteWebSettingsError(getSimpleFrenchErrorMessage(error));
         return false;

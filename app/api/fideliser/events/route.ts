@@ -6,9 +6,9 @@ type FideliserEventType = "newsletter_mail" | "thanks_mail" | "satisfaction_mail
 
 export async function POST(req: Request) {
   try {
-    const { supabase, user, errorResponse } = await requireUser();
+    const { supabase, activeUserId, errorResponse } = await requireUser();
     if (errorResponse) return errorResponse;
-    const userId = user.id;
+    const userId = activeUserId;
 const body = await req.json().catch(() => ({}));
     const type = body?.type as FideliserEventType;
     const payload = (body?.payload ?? {}) as Record<string, unknown>;

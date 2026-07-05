@@ -25,13 +25,13 @@ async function revokeTiktokToken(token: string) {
 }
 
 export async function POST() {
-  const { supabase, user, errorResponse } = await requireUser();
+  const { supabase, user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   const { data: integration } = await supabaseAdmin
     .from("integrations")
     .select("access_token_enc")
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .eq("provider", "tiktok")
     .eq("source", "tiktok")
     .eq("product", "tiktok")
@@ -43,12 +43,12 @@ export async function POST() {
   await supabaseAdmin
     .from("integrations")
     .delete()
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .eq("provider", "tiktok")
     .eq("source", "tiktok")
     .eq("product", "tiktok");
 
-  const { root, tiktok: current } = await readTiktokSettings(supabaseAdmin, user.id);
+  const { root, tiktok: current } = await readTiktokSettings(supabaseAdmin, activeUserId);
   const next = buildTiktokSettingsPatch(current, {
     connected: false,
     accountConnected: false,
@@ -68,7 +68,7 @@ export async function POST() {
     },
   });
 
-  await saveTiktokSettings(supabaseAdmin, user.id, root, next);
-  await clearAllToolCaches(supabase, user.id);
+  await saveTiktokSettings(supabaseAdmin, activeUserId, root, next);
+  await clearAllToolCaches(supabase, activeUserId);
   return NextResponse.json({ ok: true, tiktok: next });
 }

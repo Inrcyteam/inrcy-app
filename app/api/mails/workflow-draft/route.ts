@@ -42,7 +42,7 @@ function isMissingDraftMetadataColumn(error: any) {
 }
 
 export async function POST(req: Request) {
-  const { supabase, user, errorResponse } = await requireUser();
+  const { supabase, user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   const body = await req.json().catch(() => ({}));
@@ -67,7 +67,7 @@ export async function POST(req: Request) {
   }
 
   const draftPayload = {
-    user_id: user.id,
+    user_id: activeUserId,
     integration_id: null,
     type: "mail",
     status: "draft",
@@ -106,13 +106,13 @@ export async function POST(req: Request) {
       .from("send_items")
       .update(draftPayload as any)
       .eq("id", draftId)
-      .eq("user_id", user.id);
+      .eq("user_id", activeUserId);
     if (error && isMissingDraftMetadataColumn(error)) {
       ({ error } = await supabase
         .from("send_items")
         .update(legacyPayload)
         .eq("id", draftId)
-        .eq("user_id", user.id));
+        .eq("user_id", activeUserId));
     }
     if (error) return NextResponse.json({ error: "Impossible d’enregistrer le brouillon." }, { status: 500 });
     return NextResponse.json({ draftId });

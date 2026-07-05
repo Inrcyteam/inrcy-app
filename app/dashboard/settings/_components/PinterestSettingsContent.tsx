@@ -1,5 +1,7 @@
 "use client";
 
+import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import styles from "../../dashboard.module.css";
@@ -181,7 +183,7 @@ export default function PinterestSettingsContent() {
       const { data, error: readError } = await supabase
         .from("pro_tools_configs")
         .select("settings")
-        .eq("user_id", user.id)
+        .eq("user_id", resolveActiveBrowserUserId(user.id))
         .maybeSingle();
       if (readError) throw readError;
 
@@ -215,7 +217,7 @@ export default function PinterestSettingsContent() {
       const { data, error: readError } = await supabase
         .from("pro_tools_configs")
         .select("settings")
-        .eq("user_id", user.id)
+        .eq("user_id", resolveActiveBrowserUserId(user.id))
         .maybeSingle();
       if (readError) throw readError;
 
@@ -230,7 +232,7 @@ export default function PinterestSettingsContent() {
       const merged = { ...current, pinterest: settingsToSave };
       const { error: saveError } = await supabase
         .from("pro_tools_configs")
-        .upsert({ user_id: user.id, settings: merged }, { onConflict: "user_id" });
+        .upsert({ user_id: resolveActiveBrowserUserId(user.id), settings: merged }, { onConflict: "user_id" });
       if (saveError) throw saveError;
 
       setSettings(settingsToSave);

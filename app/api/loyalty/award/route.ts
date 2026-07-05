@@ -1,9 +1,8 @@
-// app/api/loyalty/award/route.ts
 import { NextResponse } from "next/server";
+import { awardInertiaActionForUser, type InertiaActionKey } from "@/lib/loyalty/serverAward";
+import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
-import { computeInertiaSnapshot } from "@/lib/loyalty/inertia";
-import { hasActiveInrcySite } from "@/lib/inrcySite";
-import { awardInertiaActionForUser, type WeeklyMissionActionKey } from "@/lib/loyalty/serverAward";
+import { getIsoWeekId } from "@/lib/weeklyGoals";
 
 type AwardBody = {
   actionKey: string;
@@ -13,127 +12,48 @@ type AwardBody = {
   meta?: Record<string, unknown> | null;
 };
 
-// Optionnel (recommandé) : liste blanche des actions autorisées
-const ALLOWED_ACTION_KEYS = new Set([
-  // Onboarding / profil
+const ALLOWED_ACTION_KEYS = new Set<InertiaActionKey>([
   "account_open",
   "profile_complete",
   "activity_complete",
-
-  // Turbo UI (multiplicateur) : pas de points ici, mais on garde l'action si besoin plus tard
   "connect_channel",
-
-  // Actions hebdo
-  "create_actu",
-  "weekly_feature_use", // compat ancienne mission commune
-  "weekly_propulser_use",
-  "weekly_fideliser_use",
-
-  // Ancienneté
-  "monthly_seniority",
-]);
-
-
-// Actions dont les gains sont multipliés par le Turbo UI
-const MULTIPLIED_ACTION_KEYS = new Set([
   "create_actu",
   "weekly_feature_use",
   "weekly_propulser_use",
   "weekly_fideliser_use",
-  // (ajouter ici les futures actions de gains récurrents)
-]);
-
-// Actions déclenchées en arrière-plan par l'UI.
-// Lorsqu'une limite/cooldown est déjà atteinte, on préfère répondre 200
-// avec un statut "skipped" plutôt que remonter un 429 côté navigateur,
-// car cela crée un bruit console non bloquant en CI/E2E.
-const SOFT_LIMIT_ACTION_KEYS = new Set([
-  "account_open",
   "monthly_seniority",
-  "profile_complete",
-  "activity_complete",
 ]);
 
-type TurboSupabaseLike = {
-  from: (_table: string) => {
-    select: (_query: string) => {
-      eq: (_column: string, _value: string) => {
-        maybeSingle: () => Promise<{ data: unknown | null }>;
-        in: (_column: string, _values: string[]) => Promise<{ data: unknown[] | null }>;
-      };
-    };
-  };
+const DEFAULT_LABELS: Record<InertiaActionKey, string> = {
+  account_open: "Ouverture du compte",
+  profile_complete: "Profil complete",
+  activity_complete: "Activite complete",
+  connect_channel: "Canal connecte",
+  create_actu: "Actu creee",
+  weekly_feature_use: "Action hebdomadaire",
+  weekly_propulser_use: "Action Propulser",
+  weekly_fideliser_use: "Action Fideliser",
+  monthly_seniority: "Anciennete",
 };
-
-type TurboProfileRow = { inrcy_site_ownership?: string | null };
-type TurboInrcyConfigRow = { site_url?: string | null };
-type TurboProConfigRow = { settings?: { site_web?: { url?: string | null } } | null };
-
-function asRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-}
 
 function badRequest(message: string) {
   return NextResponse.json({ ok: false, error: message }, { status: 400 });
 }
 
-
-async function getTurboMultiplier(supabase: TurboSupabaseLike, userId: string) {
-  // Reprise de la logique de /api/booster/connected-channels (source of truth)
-  const [profileRes, inrcyCfgRes, proCfgRes, integRes] = await Promise.all([
-    supabase.from("profiles").select("inrcy_site_ownership").eq("user_id", userId).maybeSingle(),
-    supabase.from("inrcy_site_configs").select("site_url").eq("user_id", userId).maybeSingle(),
-    supabase.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle(),
-    supabase
-      .from("integrations")
-      .select("provider,status,resource_id,source,product")
-      .eq("user_id", userId)
-      .in("provider", ["google", "facebook", "instagram", "linkedin", "tiktok", "youtube"]),
-  ]);
-
-  const profile = (profileRes.data ?? {}) as TurboProfileRow;
-  const inrcyCfg = (inrcyCfgRes.data ?? {}) as TurboInrcyConfigRow;
-  const proCfg = (proCfgRes.data ?? {}) as TurboProConfigRow;
-  const settings = asRecord(proCfg.settings);
-  const siteWebSettings = asRecord(settings["site_web"]);
-  const siteWebUrl = String(siteWebSettings["url"] ?? "").trim();
-
-  const ownership = String(profile.inrcy_site_ownership ?? "none");
-  const inrcyUrl = String(inrcyCfg.site_url ?? "").trim();
-
-  const rows = (integRes.data ?? []) as Array<{ provider: string; status: string; resource_id: string | null; source?: string | null; product?: string | null }>;
-
-  const hasGoogleStats = (source: "site_inrcy" | "site_web") => {
-    const hasGa4 = rows.some((r) => r.provider === "google" && r.status === "connected" && r.source === source && r.product === "ga4");
-    const hasGsc = rows.some((r) => r.provider === "google" && r.status === "connected" && r.source === source && r.product === "gsc");
-    return hasGa4 || hasGsc;
-  };
-
-  const channels = {
-    site_inrcy: hasActiveInrcySite(ownership) && !!inrcyUrl && hasGoogleStats("site_inrcy"),
-    site_web: !!siteWebUrl && hasGoogleStats("site_web"),
-    gmb: rows.some((r) => r.provider === "google" && r.status === "connected" && !!r.resource_id),
-    facebook: rows.some((r) => r.provider === "facebook" && r.status === "connected" && !!r.resource_id),
-    instagram: rows.some((r) => r.provider === "instagram" && r.status === "connected" && !!r.resource_id),
-    linkedin: rows.some((r) => r.provider === "linkedin" && r.status === "connected"),
-    tiktok: rows.some((r) => r.provider === "tiktok" && r.status === "connected"),
-    youtube_shorts: rows.some((r) => r.provider === "youtube" && r.status === "connected" && r.source === "youtube_shorts" && r.product === "youtube_shorts"),
-  };
-
-  return computeInertiaSnapshot(channels, { maxMultiplier: 7 }).multiplier;
+function asActionKey(value: string): InertiaActionKey | null {
+  const actionKey = value.trim() as InertiaActionKey;
+  return ALLOWED_ACTION_KEYS.has(actionKey) ? actionKey : null;
 }
 
-function normalizePgError(errMsg?: string) {
-  const msg = (errMsg ?? "").toLowerCase();
-
-  // Exceptions levées par ta fonction SQL
-  if (msg.includes("cooldown")) return { code: "COOLDOWN", status: 429 };
-  if (msg.includes("daily_points_cap")) return { code: "DAILY_POINTS_CAP", status: 429 };
-  if (msg.includes("daily_count_cap")) return { code: "DAILY_COUNT_CAP", status: 429 };
-  if (msg.includes("global_daily_points_cap")) return { code: "GLOBAL_DAILY_POINTS_CAP", status: 429 };
-  if (msg.includes("not authenticated")) return { code: "UNAUTHENTICATED", status: 401 };
-
-  return { code: "RPC_ERROR", status: 400 };
+function defaultSourceId(actionKey: InertiaActionKey) {
+  const today = new Date().toISOString().slice(0, 10);
+  if (actionKey === "create_actu" || actionKey === "weekly_feature_use" || actionKey === "weekly_propulser_use" || actionKey === "weekly_fideliser_use") {
+    return `week-${getIsoWeekId()}`;
+  }
+  if (actionKey === "monthly_seniority") {
+    return `seniority-${today.slice(0, 7)}`;
+  }
+  return "once";
 }
 
 export async function POST(req: Request) {
@@ -145,103 +65,41 @@ export async function POST(req: Request) {
     return badRequest("Body JSON invalide.");
   }
 
-  const actionKey = (body.actionKey ?? "").trim();
+  const actionKey = asActionKey(String(body.actionKey ?? ""));
   const amount = Number(body.amount);
 
-  if (!actionKey) return badRequest("actionKey manquant.");
-  if (!Number.isFinite(amount) || amount === 0) return badRequest("amount invalide (doit être non nul).");
-
-  // Pour l’instant on verrouille à du positif (récompenses/débits plus tard)
-  if (amount < 0) return badRequest("amount négatif non autorisé pour le moment.");
-
-  // Sécurité : évite que le front appelle n’importe quoi
-  if (!ALLOWED_ACTION_KEYS.has(actionKey)) {
-    return badRequest("actionKey non autorisée.");
-  }
+  if (!actionKey) return badRequest("actionKey non autorisee.");
+  if (!Number.isFinite(amount) || amount === 0) return badRequest("amount invalide (doit etre non nul).");
+  if (amount < 0) return badRequest("amount negatif non autorise pour le moment.");
 
   const supabase = await createSupabaseServer();
-
-  // Vérifie qu’on a un user connecté
   const { data: userData, error: userErr } = await supabase.auth.getUser();
+
   if (userErr || !userData?.user) {
-    return NextResponse.json({ ok: false, error: "Non authentifié." }, { status: 401 });
+    return NextResponse.json({ ok: false, error: "Non authentifie." }, { status: 401 });
   }
 
-  // Turbo UI : certains gains sont multipliés selon les canaux connectés.
-  // On calcule côté serveur (anti-triche).
-  let effectiveAmount = amount;
-  let turbo = 1;
-  try {
-    turbo = await getTurboMultiplier(supabase as unknown as TurboSupabaseLike, userData.user.id);
-  } catch {
-    turbo = 1;
-  }
-  if (MULTIPLIED_ACTION_KEYS.has(actionKey)) {
-    // arrondi à l'entier le plus proche (UI = entier)
-    effectiveAmount = Math.round(amount * turbo);
-  }
+  const activeUserId = await resolveActiveInrcyAccountId(supabase, userData.user.id);
+  const sourceId = String(body.sourceId || defaultSourceId(actionKey)).trim();
+  const label = String(body.label || DEFAULT_LABELS[actionKey]).trim();
+  const result = await awardInertiaActionForUser({
+    userId: activeUserId,
+    actionKey,
+    baseAmount: amount,
+    sourceId,
+    label,
+    meta: body.meta ?? {},
+  });
 
-  // Nouvelles missions hebdo séparées : Propulser et Fidéliser.
-  // On passe par l’insert serveur centralisé pour éviter toute dépendance à une ancienne RPC SQL
-  // qui ne connaîtrait que l’ancienne mission commune weekly_feature_use.
-  if (actionKey === "weekly_propulser_use" || actionKey === "weekly_fideliser_use") {
-    const result = await awardInertiaActionForUser({
-      userId: userData.user.id,
-      actionKey: actionKey as WeeklyMissionActionKey,
-      baseAmount: amount,
-      sourceId: String(body.sourceId || `week-${new Date().toISOString().slice(0, 10)}`),
-      label: body.label || (actionKey === "weekly_propulser_use" ? "Action Propulser" : "Action Fidéliser"),
-      meta: body.meta ?? {},
-    });
-
-    return NextResponse.json({
+  return NextResponse.json(
+    {
       ok: result.ok,
       skipped: result.skipped ?? false,
       amount: result.amount ?? null,
-      balance: null,
-      updatedAt: null,
+      balance: result.balance ?? null,
+      updatedAt: result.updatedAt ?? null,
       error: result.error ?? null,
-    }, { status: result.ok ? 200 : 400 });
-  }
-
-  const { data, error } = await supabase.rpc("award_inertia_action", {
-    p_action_key: actionKey,
-    p_amount: effectiveAmount,
-    p_source_id: body.sourceId ?? null,
-    p_label: body.label ?? null,
-    p_meta: { ...(body.meta ?? {}), turbo_multiplier: turbo, base_amount: amount },
-  });
-
-  if (error) {
-    const norm = normalizePgError(error.message);
-
-    const isSoftLimited =
-      SOFT_LIMIT_ACTION_KEYS.has(actionKey) &&
-      ["COOLDOWN", "DAILY_POINTS_CAP", "DAILY_COUNT_CAP", "GLOBAL_DAILY_POINTS_CAP"].includes(norm.code);
-
-    if (isSoftLimited) {
-      return NextResponse.json({
-        ok: true,
-        skipped: true,
-        code: norm.code,
-        balance: null,
-        updatedAt: null,
-      });
-    }
-
-    return NextResponse.json(
-      {
-        ok: false,
-        code: norm.code,
-        error: error.message,
-      },
-      { status: norm.status }
-    );
-  }
-
-  return NextResponse.json({
-    ok: true,
-    balance: data?.balance ?? null,
-    updatedAt: data?.updated_at ?? null,
-  });
+    },
+    { status: result.ok ? 200 : 400 },
+  );
 }

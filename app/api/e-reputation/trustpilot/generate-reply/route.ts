@@ -68,9 +68,9 @@ function listFrom(value: unknown, max = 8) {
 
 export async function POST(req: Request) {
   try {
-    const { supabase, user, errorResponse } = await requireUser();
+    const { supabase, authUserId, activeUserId, errorResponse } = await requireUser();
     if (errorResponse) return errorResponse;
-    if (!(await isAppBubbleEnabledForUser(supabase, user.id, "trustpilot"))) {
+    if (!(await isAppBubbleEnabledForUser(supabase, activeUserId, "trustpilot"))) {
       return bubbleAccessDisabledResponse("Trustpilot");
     }
 
@@ -88,12 +88,12 @@ export async function POST(req: Request) {
       );
     }
 
-    const userId = user.id;
-    const isAdmin = await isAdminUserForAi(supabase, userId);
+    const userId = activeUserId;
+    const isAdmin = await isAdminUserForAi(supabase, authUserId);
     if (!isAdmin) {
       const rateLimited = await enforceRateLimit({
         name: "ereputation_trustpilot_review_reply_ai",
-        identifier: userId,
+        identifier: authUserId,
         limit: 80,
         window: "1 d",
         failClosed: false,
@@ -102,7 +102,7 @@ export async function POST(req: Request) {
 
       const quotaLimited = await consumeAiCredits({
         supabase,
-        userId,
+        userId: authUserId,
         action: "review_reply",
         credits: computeReviewReplyAiCredits({ rating, comment: reviewComment, existingReply }),
       });

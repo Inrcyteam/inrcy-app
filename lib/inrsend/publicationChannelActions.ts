@@ -1002,7 +1002,7 @@ async function persistEventPayload(userId: string, publicationId: string, nextPa
     .map((row) => String(row.id));
 
   if (!ids.length) return;
-  const { error: upError } = await supabaseAdmin.from("app_events").update({ payload: nextPayload }).in("id", ids);
+  const { error: upError } = await supabaseAdmin.from("app_events").update({ payload: nextPayload }).in("id", ids).eq("user_id", userId);
   if (upError) throw upError;
 }
 
@@ -1804,7 +1804,7 @@ function buildDeletedPayload(params: {
 export function createPublicationChannelHandlers(channel: ChannelKey) {
   async function PATCH(req: Request, context: { params: Promise<{ publicationId: string }> }) {
     try {
-      const { user, errorResponse } = await requireUser();
+      const { user, activeUserId, errorResponse } = await requireUser();
       if (errorResponse) return errorResponse;
 
       const params = await context.params;
@@ -1821,7 +1821,7 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
       const body = (await req.json().catch(() => null)) as JsonRecord | null;
       if (!body) return jsonUserFacingError("Bad payload", { status: 400, code: "invalid_payload" });
 
-      const ctx = await loadPublicationContext(user.id, publicationId);
+      const ctx = await loadPublicationContext(activeUserId, publicationId);
       if (!ctx) return jsonUserFacingError("Publication introuvable.", { status: 404, code: "publication_not_found" });
 
       const results = asRecord(ctx.eventPayload.results);
@@ -1879,7 +1879,7 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
 
       const imageSet = mediaType === "images"
         ? await updatePublicationImages({
-            userId: user.id,
+            userId: activeUserId,
             publication: ctx.publication,
             eventPayload: ctx.eventPayload,
             channel,
@@ -1890,7 +1890,7 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
 
       const previousExternalId = String(body.externalId ?? channelResult.external_id ?? "").trim() || null;
       const replaceResult = await replaceChannelDelivery({
-        userId: user.id,
+        userId: activeUserId,
         publicationId,
         channel,
         previousExternalId,
@@ -1918,8 +1918,8 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
         videoSettings: requestedVideoSettings,
       });
 
-      await persistEventPayload(user.id, publicationId, nextPayload);
-      await syncDeliveryRow({ userId: user.id, publicationId, channel, status: replaceResult.status, error: replaceResult.error });
+      await persistEventPayload(activeUserId, publicationId, nextPayload);
+      await syncDeliveryRow({ userId: activeUserId, publicationId, channel, status: replaceResult.status, error: replaceResult.error });
 
       return NextResponse.json({ ok: true, publication_id: publicationId, channel, external_id: replaceResult.externalId, payload: nextPayload });
     } catch (e: unknown) {
@@ -1937,7 +1937,7 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
 
   async function DELETE(req: Request, context: { params: Promise<{ publicationId: string }> }) {
     try {
-      const { user, errorResponse } = await requireUser();
+      const { user, activeUserId, errorResponse } = await requireUser();
       if (errorResponse) return errorResponse;
 
       const params = await context.params;
@@ -1951,7 +1951,7 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
         return jsonUserFacingError(PINTEREST_INRSEND_EXTERNAL_ACTION_MESSAGE, { status: 409, code: "pinterest_external_action_required" });
       }
 
-      const ctx = await loadPublicationContext(user.id, publicationId);
+      const ctx = await loadPublicationContext(activeUserId, publicationId);
       if (!ctx) return jsonUserFacingError("Publication introuvable.", { status: 404, code: "publication_not_found" });
 
       const body = (await req.json().catch(() => ({}))) as JsonRecord;
@@ -1964,11 +1964,11 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
         return NextResponse.json({ ok: true, deleted: true, removed_publication: false, payload });
       }
 
-      await removeChannelDelivery({ userId: user.id, publicationId, channel, previousExternalId, eventPayload: ctx.eventPayload });
+      await removeChannelDelivery({ userId: activeUserId, publicationId, channel, previousExternalId, eventPayload: ctx.eventPayload });
 
       const nextPayload = buildDeletedPayload({ eventPayload: ctx.eventPayload, channel, previousExternalId });
-      await persistEventPayload(user.id, publicationId, nextPayload);
-      await syncDeliveryRow({ userId: user.id, publicationId, channel, status: "deleted", error: null });
+      await persistEventPayload(activeUserId, publicationId, nextPayload);
+      await syncDeliveryRow({ userId: activeUserId, publicationId, channel, status: "deleted", error: null });
 
       return NextResponse.json({ ok: true, deleted: true, removed_publication: false, payload: nextPayload });
     } catch (e: unknown) {

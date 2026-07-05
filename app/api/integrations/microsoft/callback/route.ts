@@ -9,6 +9,7 @@ import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 import { withCurrentConnectionVersion } from "@/lib/connectionVersions";
+import { resolveOAuthBoundInrcyAccountId } from "@/lib/multicompte/server";
 type TokenResponse = {
   token_type?: string;
   scope?: string;
@@ -94,7 +95,7 @@ export async function GET(req: Request) {
       finalUrl.searchParams.set("error", "not_authenticated");
       return clearStateCookie(NextResponse.redirect(finalUrl));
     }
-    const userId = authData.user.id;
+    const userId = await resolveOAuthBoundInrcyAccountId(supabase, authData.user.id, st.state.accountId);
 
     const rlUser = await enforceRateLimit({
       name: "oauth_microsoft_cb",
@@ -189,7 +190,8 @@ export async function GET(req: Request) {
       const { error: upErr } = await supabaseAdmin
         .from("integrations")
         .update(payload)
-        .eq("id", String(asRecord(existing)["id"]));
+        .eq("id", String(asRecord(existing)["id"]))
+        .eq("user_id", userId);
 
       if (upErr) return fail("db_update_failed", "La mise à jour a échoué.");
     } else {

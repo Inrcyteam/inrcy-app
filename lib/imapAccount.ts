@@ -1,4 +1,5 @@
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 import { decryptSecret } from "@/lib/imapCrypto";
 import { getConnectionDisplayStatus } from "@/lib/connectionVersions";
 
@@ -9,11 +10,13 @@ export async function loadImapAccount(accountId: string) {
     return { error: "Votre session a expiré. Merci de vous reconnecter." as const, status: 401 };
   }
 
+  const activeUserId = await resolveActiveInrcyAccountId(supabase, userData.user.id);
+
   const { data, error } = await supabase
     .from("integrations")
     .select("id, user_id, provider, account_email, settings, refresh_token_enc, status")
     .eq("id", accountId)
-    .eq("user_id", userData.user.id)
+    .eq("user_id", activeUserId)
     .eq("provider", "imap")
     .eq("category", "mail")
     .single();
@@ -38,7 +41,7 @@ export async function loadImapAccount(accountId: string) {
 
   return {
     ok: true as const,
-    userId: userData.user.id,
+    userId: activeUserId,
     imap: {
       user: login,
       password,

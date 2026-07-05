@@ -7,13 +7,13 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const { user, errorResponse } = await requireUser();
+  const { user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   const { data } = await supabaseAdmin
     .from("integrations")
     .select("source,product,meta")
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .in("provider", ["google", "gmail"]);
 
   return NextResponse.json({ ok: true, reauth: buildGoogleRiscStatusFromRows(data || []) });

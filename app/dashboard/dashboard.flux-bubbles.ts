@@ -4,8 +4,10 @@ import { statusLabel } from "./dashboard.utils";
 import { getBubbleStatusFromBlock, getBubbleViewHrefFromBlock, normalizeExternalHref } from "./dashboard.shared";
 import type { DashboardChannelKey } from "@/lib/dashboardChannels";
 import type { InrstatsChannelBlock } from "@/lib/inrstats/channelBlocks";
-import type { ModuleStatus } from "./dashboard.types";
+import type { ModuleAction, ModuleStatus } from "./dashboard.types";
 import { isBubbleEnabled, normalizeAppBubbleKey, type AppBubbleAccessMap } from "@/lib/bubbleAccess";
+import type { AppLanguageCode } from "@/lib/appLanguage";
+import { getDashboardModuleCopy, getDashboardTranslations, translateDashboardStatusText } from "@/lib/dashboardI18n";
 
 type BuildFluxBubbleItemsArgs = {
   bubbleAccessMap: AppBubbleAccessMap;
@@ -39,6 +41,7 @@ type BuildFluxBubbleItemsArgs = {
   setHelpSiteWebOpen: (open: boolean) => void;
   siteInrcySavedUrl: string | null | undefined;
   siteWebSavedUrl: string | null | undefined;
+  language?: AppLanguageCode | string | null;
 };
 
 export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardFluxBubbleData[] {
@@ -74,7 +77,10 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
     setHelpSiteWebOpen,
     siteInrcySavedUrl,
     siteWebSavedUrl,
+    language,
   } = args;
+
+  const copy = getDashboardTranslations(language);
 
   return fluxModules.flatMap((m) => {
     const bubbleKey = normalizeAppBubbleKey(m.key);
@@ -83,9 +89,14 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
     const channelBlock = channelBlocks?.[channelKey] ?? null;
     const blockDrivenStatus = getBubbleStatusFromBlock(channelKey, channelBlock as InrstatsChannelBlock);
     const blockDrivenViewHref = getBubbleViewHrefFromBlock(channelKey, channelBlock);
+    const moduleCopy = getDashboardModuleCopy(m.key, language);
+
+    const localizeViewAction = (action: ModuleAction | undefined): ModuleAction | undefined => action
+      ? { ...action, label: moduleCopy?.view || action.label }
+      : undefined;
 
     const viewActionRaw = m.actions.find((a) => a.variant === "view");
-    const viewAction =
+    const viewAction = localizeViewAction(
       (m.key === "site_inrcy" && viewActionRaw)
         ? { ...viewActionRaw, href: normalizeExternalHref(blockDrivenViewHref || siteInrcySavedUrl) || "#" }
         : (m.key === "site_web" && viewActionRaw)
@@ -94,35 +105,41 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
             ? { ...viewActionRaw, href: normalizeExternalHref(blockDrivenViewHref || instagramUrl) || "#" }
             : (m.key === "linkedin" && viewActionRaw)
               ? { ...viewActionRaw, href: normalizeExternalHref(blockDrivenViewHref || linkedinUrl) || "#" }
-              : viewActionRaw;
+              : viewActionRaw,
+    );
 
-    const resolvedBubbleProgress = (m.key === "site_inrcy")
+    const resolvedBubbleProgressRaw = (m.key === "site_inrcy")
       ? getSiteBubbleProgress("site_inrcy")
       : (m.key === "site_web")
         ? getSiteBubbleProgress("site_web")
         : blockDrivenStatus ?? (() => {
-          if (m.key === "inrbadge") return inrBadgeProfileReady ? { status: "connected" as ModuleStatus, text: "Connecté" } : { status: "available" as ModuleStatus, text: "Déconnecté" };
-          if (m.key === "instagram") return instagramConnected ? { status: "connected" as ModuleStatus, text: "Connecté" } : { status: "available" as ModuleStatus, text: "A connecter" };
-          if (m.key === "linkedin") return linkedinConnected ? { status: "connected" as ModuleStatus, text: "Connecté" } : { status: "available" as ModuleStatus, text: "A connecter" };
-          if (m.key === "gmb") return gmbConnected ? { status: "connected" as ModuleStatus, text: "Connecté" } : { status: "available" as ModuleStatus, text: "A connecter" };
-          if (m.key === "facebook") return facebookPageConnected ? { status: "connected" as ModuleStatus, text: "Connecté" } : { status: "available" as ModuleStatus, text: "A connecter" };
+          if (m.key === "inrbadge") return inrBadgeProfileReady ? { status: "connected" as ModuleStatus, text: copy.status.connected } : { status: "available" as ModuleStatus, text: copy.status.disconnected };
+          if (m.key === "instagram") return instagramConnected ? { status: "connected" as ModuleStatus, text: copy.status.connected } : { status: "available" as ModuleStatus, text: copy.status.toConnect };
+          if (m.key === "linkedin") return linkedinConnected ? { status: "connected" as ModuleStatus, text: copy.status.connected } : { status: "available" as ModuleStatus, text: copy.status.toConnect };
+          if (m.key === "gmb") return gmbConnected ? { status: "connected" as ModuleStatus, text: copy.status.connected } : { status: "available" as ModuleStatus, text: copy.status.toConnect };
+          if (m.key === "facebook") return facebookPageConnected ? { status: "connected" as ModuleStatus, text: copy.status.connected } : { status: "available" as ModuleStatus, text: copy.status.toConnect };
           if (m.key === "mails") {
             const count = Math.max(0, Math.round(Number(mailAccountsConnectedCount) || 0));
             return count > 0
-              ? { status: "connected" as ModuleStatus, text: "Connecté" }
-              : { status: "available" as ModuleStatus, text: "A connecter" };
+              ? { status: "connected" as ModuleStatus, text: copy.status.connected }
+              : { status: "available" as ModuleStatus, text: copy.status.toConnect };
           }
-          if (m.key === "tiktok") return tiktokConnected ? { status: "connected" as ModuleStatus, text: "Connecté" } : { status: "available" as ModuleStatus, text: "A connecter" };
-          if (m.key === "youtube_shorts") return youtubeShortsConnected ? { status: "connected" as ModuleStatus, text: "Connecté" } : { status: "available" as ModuleStatus, text: "A connecter" };
-          if (m.key === "pinterest") return pinterestConnected ? { status: "connected" as ModuleStatus, text: "Connecté" } : { status: "available" as ModuleStatus, text: "A connecter" };
-          if (m.key === "trustpilot") return trustpilotConnected ? { status: "connected" as ModuleStatus, text: "Connecté" } : { status: "available" as ModuleStatus, text: "A connecter" };
-          if (m.key === "inr_agent") return { status: "connected" as ModuleStatus, text: "Connecté" };
-          return { status: m.status, text: statusLabel(m.status) };
+          if (m.key === "tiktok") return tiktokConnected ? { status: "connected" as ModuleStatus, text: copy.status.connected } : { status: "available" as ModuleStatus, text: copy.status.toConnect };
+          if (m.key === "youtube_shorts") return youtubeShortsConnected ? { status: "connected" as ModuleStatus, text: copy.status.connected } : { status: "available" as ModuleStatus, text: copy.status.toConnect };
+          if (m.key === "pinterest") return pinterestConnected ? { status: "connected" as ModuleStatus, text: copy.status.connected } : { status: "available" as ModuleStatus, text: copy.status.toConnect };
+          if (m.key === "trustpilot") return trustpilotConnected ? { status: "connected" as ModuleStatus, text: copy.status.connected } : { status: "available" as ModuleStatus, text: copy.status.toConnect };
+          if (m.key === "inr_agent") return { status: "connected" as ModuleStatus, text: copy.status.connected };
+          return { status: m.status, text: statusLabel(m.status, language) };
         })();
+
+    const resolvedBubbleProgress = {
+      ...resolvedBubbleProgressRaw,
+      text: translateDashboardStatusText(resolvedBubbleProgressRaw.text, language),
+    };
 
     const { status: bubbleStatus, text: bubbleStatusText } = accessEnabled
       ? resolvedBubbleProgress
-      : { status: "coming" as ModuleStatus, text: "Désactivé" };
+      : { status: "coming" as ModuleStatus, text: copy.status.disabled };
 
     const specialViewHref = m.key === "site_inrcy"
       ? (blockDrivenViewHref || normalizeExternalHref(siteInrcySavedUrl) || "#")
@@ -147,22 +164,10 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
                         : undefined;
 
     const specialViewLabel = m.key === "inrbadge"
-      ? "Voir mon badge"
-      : m.key === "site_inrcy"
-        ? "Voir le site"
-        : m.key === "site_web"
-          ? "Voir le site"
-          : m.key === "gmb"
-            ? "Voir la page"
-            : ["instagram", "linkedin", "facebook", "tiktok"].includes(m.key)
-              ? "Voir le compte"
-              : m.key === "youtube_shorts"
-                ? "Voir la chaîne"
-                : m.key === "pinterest"
-                  ? "Voir le compte"
-                  : m.key === "trustpilot"
-                    ? "Voir la page"
-                    : undefined;
+      ? moduleCopy?.view
+      : specialViewHref
+        ? moduleCopy?.view
+        : undefined;
 
     const canViewSpecial = m.key === "inrbadge"
       ? inrBadgeProfileReady
@@ -228,8 +233,8 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
 
     return {
       key: m.key,
-      name: m.name,
-      description: m.description,
+      name: moduleCopy?.name || m.name,
+      description: moduleCopy?.description || m.description,
       accent: m.accent,
       logoSrc: MODULE_ICONS[m.key]?.src,
       logoAlt: MODULE_ICONS[m.key]?.alt,
@@ -246,10 +251,12 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
       onConfigure,
       configureDisabled: !accessEnabled || (m.key === "site_inrcy" ? !canConfigureSite : false),
       configureTitle: !accessEnabled
-        ? "Option désactivée"
+        ? copy.bubble.disabled
         : m.key === "site_inrcy" && !canConfigureSite
-          ? "Disponible uniquement si vous avez un site iNrCy"
+          ? moduleCopy?.siteOnlyTitle || copy.bubble.disabled
           : undefined,
+      configureLabel: m.key === "site_inrcy" || m.key === "site_web" ? copy.bubble.configure : moduleCopy?.connect || copy.bubble.configure,
+      viewFallbackLabel: copy.bubble.viewFallback,
     };
   });
 }

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 
 type Category = "particulier" | "professionnel" | "collectivite_publique";
 type ContactType = "client" | "prospect" | "fournisseur" | "partenaire" | "autre";
@@ -405,6 +406,8 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Votre session a expiré. Merci de vous reconnecter." }, { status: 401 });
   }
 
+  const activeUserId = await resolveActiveInrcyAccountId(supabase, userData.user.id);
+
   const url = new URL(req.url);
   const page = parsePositiveInt(url.searchParams.get("page"), 1, 100000);
   const all = ["1", "true", "yes"].includes((url.searchParams.get("all") ?? "").toLowerCase());
@@ -422,7 +425,7 @@ export async function GET(req: Request) {
   let builder: any = supabase
     .from("crm_contacts")
     .select(CONTACT_SELECT, { count: "exact" })
-    .eq("user_id", userData.user.id)
+    .eq("user_id", activeUserId)
     .order("created_at", { ascending: false });
 
   builder = applyContactSearch(builder, query);
@@ -436,7 +439,7 @@ export async function GET(req: Request) {
 
   const [{ data, error, count }, summary] = await Promise.all([
     builder,
-    buildSummary(supabase, userData.user.id, query, filters),
+    buildSummary(supabase, activeUserId, query, filters),
   ]);
 
   if (error) {
@@ -464,11 +467,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Votre session a expiré. Merci de vous reconnecter." }, { status: 401 });
   }
 
+  const activeUserId = await resolveActiveInrcyAccountId(supabase, userData.user.id);
+
   const body = await req.json().catch(() => ({}));
 
   // ✅ Bulk import: POST { contacts: [...] }
   if (Array.isArray(body?.contacts)) {
-    const { payloads, stats } = await prepareBulkImportPayloads(supabase, userData.user.id, body.contacts, {
+    const { payloads, stats } = await prepareBulkImportPayloads(supabase, activeUserId, body.contacts, {
       includeNotes: true,
       includeImportant: true,
     });
@@ -490,7 +495,7 @@ export async function POST(req: Request) {
   const fromDisplay = parseDisplayName(body.display_name);
 
   const payload = {
-    user_id: userData.user.id,
+    user_id: activeUserId,
     last_name: fromDisplay.last_name || cleanString(body.last_name),
     first_name: fromDisplay.first_name || cleanString(body.first_name),
     company_name: fromDisplay.company_name || cleanString(body.company_name),
@@ -534,11 +539,13 @@ export async function PUT(req: Request) {
     return NextResponse.json({ error: "Votre session a expiré. Merci de vous reconnecter." }, { status: 401 });
   }
 
+  const activeUserId = await resolveActiveInrcyAccountId(supabase, userData.user.id);
+
   const body = await req.json().catch(() => ({}));
 
   // ✅ Bulk import: PUT { contacts: [...] }
   if (Array.isArray(body?.contacts)) {
-    const { payloads, stats } = await prepareBulkImportPayloads(supabase, userData.user.id, body.contacts);
+    const { payloads, stats } = await prepareBulkImportPayloads(supabase, activeUserId, body.contacts);
 
     if (payloads.length > 0) {
       const { error } = await supabase.from("crm_contacts").insert(payloads);
@@ -583,7 +590,7 @@ export async function PUT(req: Request) {
     .update(patch)
     .eq("id", id)
     // double sécurité si RLS pas en place
-    .eq("user_id", userData.user.id);
+    .eq("user_id", activeUserId);
 
   if (error) {
     return jsonUserFacingError(error, { status: 500 });
@@ -600,6 +607,8 @@ export async function DELETE(req: Request) {
     return NextResponse.json({ error: "Votre session a expiré. Merci de vous reconnecter." }, { status: 401 });
   }
 
+  const activeUserId = await resolveActiveInrcyAccountId(supabase, userData.user.id);
+
   const url = new URL(req.url);
   const id = url.searchParams.get("id")?.trim();
   if (!id) return NextResponse.json({ error: "L'identifiant du contact est manquant." }, { status: 400 });
@@ -609,7 +618,7 @@ export async function DELETE(req: Request) {
     .delete()
     .eq("id", id)
     // double sécurité si RLS pas en place
-    .eq("user_id", userData.user.id);
+    .eq("user_id", activeUserId);
 
   if (error) {
     return jsonUserFacingError(error, { status: 500 });

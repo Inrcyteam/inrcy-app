@@ -7,6 +7,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { extractFacebookUserTokens, findAccessibleFacebookPage, listAccessibleFacebookPagesFromTokens } from "@/lib/metaBusinessAssets";
 
 import { withCurrentConnectionVersion } from "@/lib/connectionVersions";
+import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServer>>;
 
 async function invalidateUserStatsCache(supabase: SupabaseServerClient, userId: string) {
@@ -21,6 +22,7 @@ export async function POST(req: Request) {
   } = await supabase.auth.getUser();
 
   if (authErr || !user) return NextResponse.json({ error: "Accès non autorisé." }, { status: 401 });
+  const activeUserId = await resolveActiveInrcyAccountId(supabase, user.id);
 
   const body = await req.json().catch(() => null);
   const bodyRec = asRecord(body);
@@ -30,7 +32,7 @@ export async function POST(req: Request) {
   const { data: rows } = await supabase
     .from("integrations")
     .select("access_token_enc,id,meta")
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .eq("provider", "instagram")
     .eq("source", "instagram")
     .eq("product", "instagram")
@@ -75,7 +77,7 @@ export async function POST(req: Request) {
       },
       updated_at: new Date().toISOString(),
     })
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .eq("provider", "instagram")
     .eq("source", "instagram")
     .eq("product", "instagram")
@@ -89,12 +91,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Aucune ligne Instagram mise à jour." }, { status: 500 });
   }
 
-  await invalidateUserStatsCache(supabase, user.id);
+  await invalidateUserStatsCache(supabase, activeUserId);
 
   const profileUrl = username ? `https://www.instagram.com/${username}/` : null;
 
   try {
-    const { data: scRow } = await supabaseAdmin.from("pro_tools_configs").select("settings").eq("user_id", user.id).maybeSingle();
+    const { data: scRow } = await supabaseAdmin.from("pro_tools_configs").select("settings").eq("user_id", activeUserId).maybeSingle();
     const scRec = asRecord(scRow);
     const current = asRecord(scRec["settings"]);
     const currentIg = asRecord(current["instagram"]);
@@ -110,7 +112,7 @@ export async function POST(req: Request) {
         igId,
       },
     };
-    await supabaseAdmin.from("pro_tools_configs").upsert({ user_id: user.id, settings: merged }, { onConflict: "user_id" });
+    await supabaseAdmin.from("pro_tools_configs").upsert({ user_id: activeUserId, settings: merged }, { onConflict: "user_id" });
   } catch {}
 
   return NextResponse.json({ ok: true, username: username || null, profileUrl, source: page.source, businessName: page.business_name || null });

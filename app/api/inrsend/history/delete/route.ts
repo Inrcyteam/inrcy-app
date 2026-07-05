@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 import { deleteInrSendHistoryItem, deleteInrSendHistoryItems } from "@/lib/inrsendRetentionCleanup";
 
 type DeletePayload = {
@@ -19,6 +20,8 @@ export async function POST(req: Request) {
   if (userError || !userData?.user) {
     return NextResponse.json({ error: "Votre session a expiré. Merci de vous reconnecter." }, { status: 401 });
   }
+
+  const activeUserId = await resolveActiveInrcyAccountId(supabase, userData.user.id);
 
   try {
     const body = (await req.json().catch(() => ({}))) as DeletePayload;
@@ -48,9 +51,9 @@ export async function POST(req: Request) {
     }
 
     const deletedCount = items.length === 1
-      ? ((await deleteInrSendHistoryItem(userData.user.id, items[0].source as "send_items" | "mail_campaigns" | "app_events", items[0].id)) ? 1 : 0)
+      ? ((await deleteInrSendHistoryItem(activeUserId, items[0].source as "send_items" | "mail_campaigns" | "app_events", items[0].id)) ? 1 : 0)
       : await deleteInrSendHistoryItems(
-          userData.user.id,
+          activeUserId,
           items.map((entry) => ({ source: entry.source as "send_items" | "mail_campaigns" | "app_events", id: entry.id })),
         );
 

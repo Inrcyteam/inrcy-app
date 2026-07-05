@@ -12,6 +12,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabaseClient";
+import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
 import { ChannelImageAdapterModal } from "@/app/dashboard/_components/ChannelImageAdapterTool";
 import { requestBoosterVideoTransforms } from "@/lib/boosterVideoTransformClient";
 import type { BoosterVideoTransformedVariant } from "@/lib/boosterVideoTransforms";
@@ -6374,7 +6375,7 @@ export default function AgentClient() {
     try {
       const supabase = createClient();
       const { data: auth } = await supabase.auth.getUser();
-      const userId = auth?.user?.id || null;
+      const userId = auth?.user?.id ? resolveActiveBrowserUserId(auth.user.id) : null;
       const uploaded: CampaignAttachmentRef[] = [];
 
       for (const file of files.slice(0, 10)) {

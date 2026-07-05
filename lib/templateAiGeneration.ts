@@ -101,12 +101,14 @@ async function throwTemplateAiErrorFromResponse(response: Response): Promise<nev
 export async function generateTemplateAiContent(args: {
   supabase: any;
   userId: string;
+  quotaUserId?: string;
   input: TemplateAiGenerationInput;
   enforceUserLimits?: boolean;
 }): Promise<TemplateAiGenerationResult> {
   const body = asRecord(args.input);
   const supabase = args.supabase;
   const userId = clean(args.userId, 160);
+  const quotaUserId = clean(args.quotaUserId || args.userId, 160);
   const enforceUserLimits = args.enforceUserLimits !== false;
 
   if (!supabase || !userId) {
@@ -129,12 +131,12 @@ export async function generateTemplateAiContent(args: {
     throw new TemplateAiGenerationError("Aucun modèle à reformuler.", { status: 400 });
   }
 
-  const isAdmin = await isAdminUserForAi(supabase, userId);
+  const isAdmin = await isAdminUserForAi(supabase, quotaUserId);
 
   if (enforceUserLimits && !isAdmin) {
     const rateLimited = await enforceRateLimit({
       name: "template_ai",
-      identifier: userId,
+      identifier: quotaUserId,
       limit: 40,
       window: "1 d",
       failClosed: false,
@@ -143,7 +145,7 @@ export async function generateTemplateAiContent(args: {
 
     const quotaLimited = await consumeAiCredits({
       supabase,
-      userId,
+      userId: quotaUserId,
       action: "template",
       credits: computeTemplateAiCredits(attachmentRefs),
     });

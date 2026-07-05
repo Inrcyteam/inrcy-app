@@ -363,7 +363,7 @@ async function handleFinalizeUpload(
 }
 
 export async function POST(request: NextRequest) {
-  const { user, errorResponse } = await requireUser();
+  const { user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   try {
@@ -375,8 +375,8 @@ export async function POST(request: NextRequest) {
       return jsonError("Requête d’import invalide.", 400);
 
     const mode = cleanText(body.mode, "", 40);
-    if (mode === "prepare") return await handlePrepareUpload(user.id, body);
-    if (mode === "finalize") return await handleFinalizeUpload(user.id, body);
+    if (mode === "prepare") return await handlePrepareUpload(activeUserId, body);
+    if (mode === "finalize") return await handleFinalizeUpload(activeUserId, body);
 
     return jsonError("Mode d’import inconnu.", 400);
   } catch (error: any) {

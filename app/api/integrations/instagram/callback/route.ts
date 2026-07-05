@@ -10,6 +10,7 @@ import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 import { withCurrentConnectionVersion } from "@/lib/connectionVersions";
+import { resolveOAuthBoundInrcyAccountId } from "@/lib/multicompte/server";
 type TokenResponse = {
   access_token?: string;
   expires_in?: number;
@@ -93,7 +94,7 @@ export async function GET(req: Request) {
     const supabase = await createSupabaseServer();
     const { data: authData, error: authErr } = await supabase.auth.getUser();
     if (authErr || !authData?.user) { oauthCallbackEvent(req, { provider: "instagram", outcome: "not_authenticated", error: "not_authenticated", return_to: returnTo }); const finalUrl = new URL(returnTo, siteUrl); finalUrl.searchParams.set("linked", "instagram"); finalUrl.searchParams.set("ok", "0"); finalUrl.searchParams.set("error", "not_authenticated"); return clearStateCookie(NextResponse.redirect(finalUrl)); }
-    const userId = authData.user.id;
+    const userId = await resolveOAuthBoundInrcyAccountId(supabase, authData.user.id, st.state.accountId);
 
     const rlUser = await enforceRateLimit({
       name: "oauth_instagram_cb",

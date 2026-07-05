@@ -5,6 +5,7 @@ import styles from "../dashboard.module.css";
 import HelpButton from "./HelpButton";
 import DashboardFluxBubble, { type DashboardFluxBubbleData } from "./DashboardFluxBubble";
 import DashboardModulesCard from "./DashboardModulesCard";
+import { useDashboardI18n } from "../_hooks/useDashboardI18n";
 
 type DashboardPanelName =
   | "contact"
@@ -55,6 +56,16 @@ function getChannelPillTone(item: DashboardFluxBubbleData): ChannelPillTone {
 
   if (
     normalizedStatusText.includes("reconnect") ||
+    normalizedStatusText.includes("reconnexion") ||
+    normalizedStatusText.includes("reconectar") ||
+    normalizedStatusText.includes("ricolleg") ||
+    normalizedStatusText.includes("neu verbinden") ||
+    normalizedStatusText.includes("opnieuw") ||
+    normalizedStatusText.includes("religar") ||
+    normalizedStatusText.includes("actual") ||
+    normalizedStatusText.includes("update") ||
+    normalizedStatusText.includes("aktual") ||
+    normalizedStatusText.includes("bijwerk") ||
     normalizedStatusText.includes("expire") ||
     normalizedStatusText.includes("token") ||
     normalizedStatusText.includes("attention")
@@ -84,6 +95,7 @@ export default function DashboardChannelsSection({
   onOpenBoosterPublish,
   onOpenBoosterStats,
 }: DashboardChannelsSectionProps) {
+  const t = useDashboardI18n();
   const [bubbleView, setBubbleView] = useState<BubbleViewMode>("carousel");
   const [isMobile, setIsMobile] = useState<boolean | null>(null);
   const carouselRef = useRef<HTMLDivElement | null>(null);
@@ -156,7 +168,7 @@ export default function DashboardChannelsSection({
     <article
       key={keyOverride ?? item.key}
       className={`${styles.moduleCard} ${styles.moduleBubbleCard} ${styles.desktopSideBubbleCard} ${styles[`accent_${item.accent}`]} ${isComingSoon ? styles.moduleBubbleCardComingSoon : ""}`}
-      title={isComingSoon ? item.configureTitle || "Option désactivée" : undefined}
+      title={isComingSoon ? item.configureTitle || item.configureLabel || "Option désactivée" : undefined}
       aria-hidden
     >
       <div className={styles.desktopSideBubbleStack}>
@@ -370,37 +382,37 @@ export default function DashboardChannelsSection({
       <div className={styles.sectionHead}>
         <div className={styles.sectionHeadTop}>
           <div className={styles.channelTitleCluster}>
-            <h2 className={styles.h2}>Canaux</h2>
-            <HelpButton onClick={onOpenChannelsHelp} title="Aide : Canaux" />
+            <h2 className={styles.h2}>{t.channels.title}</h2>
+            <HelpButton onClick={onOpenChannelsHelp} title={t.channels.helpTitle} />
           </div>
 
 
           <div className={styles.channelHeaderActions}>
             <div className={styles.channelSummaryBadge}>
-              {connectedChannelsCount} connectés / {baseModules.length} disponibles
+              {connectedChannelsCount} {t.channels.connected} / {baseModules.length} {t.channels.available}
             </div>
 
-            <div className={styles.mobileViewToggle} aria-label="Affichage des canaux">
+            <div className={styles.mobileViewToggle} aria-label={t.channels.displayAria}>
               <button
                 type="button"
                 className={`${styles.viewToggleBtn} ${bubbleView === "list" ? styles.viewToggleActive : ""}`}
                 onClick={() => setBubbleView("list")}
               >
-                Liste
+                {t.channels.list}
               </button>
               <button
                 type="button"
                 className={`${styles.viewToggleBtn} ${bubbleView === "carousel" ? styles.viewToggleActive : ""}`}
                 onClick={() => setBubbleView("carousel")}
               >
-                Carrousel
+                {t.channels.carousel}
               </button>
             </div>
           </div>
         </div>
 
 
-        <div className={styles.channelPillRail} aria-label="Liste des canaux">
+        <div className={styles.channelPillRail} aria-label={t.channels.railAria}>
           {channelPillRows.map((row, rowIndex) => (
             <div className={styles.channelPillRow} key={`channel-row-${rowIndex}`}>
               {row.map((item) => {
@@ -463,12 +475,12 @@ export default function DashboardChannelsSection({
 
           {hasCarousel && (
             <div className={styles.carouselNavWrap}>
-              <div className={styles.carouselNav} aria-label="Position dans le carrousel">
+              <div className={styles.carouselNav} aria-label={t.channels.positionAria}>
                 <button
                   type="button"
                   className={styles.carouselArrow}
                   onClick={goPrev}
-                  aria-label="Canal précédent"
+                  aria-label={t.channels.prev}
                 >
                   <span aria-hidden="true">&lt;</span>
                 </button>
@@ -496,7 +508,7 @@ export default function DashboardChannelsSection({
                           setCarouselTransition(true);
                           setCarouselIndex(i + 1);
                         }}
-                        aria-label={`Aller au canal ${item.name}`}
+                        aria-label={`${t.channels.goToChannel} ${item.name}`}
                         aria-pressed={i === activeDot}
                         title={item.name}
                       >
@@ -510,14 +522,14 @@ export default function DashboardChannelsSection({
                   type="button"
                   className={styles.carouselArrow}
                   onClick={goNext}
-                  aria-label="Canal suivant"
+                  aria-label={t.channels.next}
                 >
                   <span aria-hidden="true">&gt;</span>
                 </button>
               </div>
 
-              <div className={styles.mobileChannelSummary} aria-label={`${connectedChannelsCount} canaux connectés sur ${baseModules.length}`}>
-                {connectedChannelsCount}/{baseModules.length} connectés
+              <div className={styles.mobileChannelSummary} aria-label={`${connectedChannelsCount} ${t.channels.connectedAria} ${baseModules.length}`}>
+                {connectedChannelsCount}/{baseModules.length} {t.channels.connected}
               </div>
             </div>
           )}
@@ -528,22 +540,22 @@ export default function DashboardChannelsSection({
             {fluxBubbleItems.map((item) => renderFluxBubble(item, item.key))}
           </div>
 
-          <div className={styles.mobileChannelSummary} aria-label={`${connectedChannelsCount} canaux connectés sur ${baseModules.length}`}>
-            {connectedChannelsCount}/{baseModules.length} connectés
+          <div className={styles.mobileChannelSummary} aria-label={`${connectedChannelsCount} ${t.channels.connectedAria} ${baseModules.length}`}>
+            {connectedChannelsCount}/{baseModules.length} {t.channels.connected}
           </div>
         </>
       ) : (
         <>
           <div
             className={styles.desktopChannelsCarousel}
-            aria-label="Carrousel des canaux"
+            aria-label={t.channels.positionAria}
           >
             {hasCarousel && (
               <button
                 type="button"
                 className={`${styles.desktopChannelArrow} ${styles.desktopChannelArrowLeft}`}
                 onClick={goPrevDesktop}
-                aria-label="Canal précédent"
+                aria-label={t.channels.prev}
               >
                 <span aria-hidden="true">&lt;</span>
               </button>
@@ -568,7 +580,7 @@ export default function DashboardChannelsSection({
                       goPrevDesktop();
                     }
                   }}
-                  aria-label={`Afficher ${desktopPrevItem.name}`}
+                  aria-label={`${t.channels.showChannel} ${desktopPrevItem.name}`}
                 >
                   {renderDesktopSideBubble(desktopPrevItem, `${desktopPrevItem.key}_desktop_prev`)}
                 </div>
@@ -592,7 +604,7 @@ export default function DashboardChannelsSection({
                       goNextDesktop();
                     }
                   }}
-                  aria-label={`Afficher ${desktopNextItem.name}`}
+                  aria-label={`${t.channels.showChannel} ${desktopNextItem.name}`}
                 >
                   {renderDesktopSideBubble(desktopNextItem, `${desktopNextItem.key}_desktop_next`)}
                 </div>
@@ -604,7 +616,7 @@ export default function DashboardChannelsSection({
                 type="button"
                 className={`${styles.desktopChannelArrow} ${styles.desktopChannelArrowRight}`}
                 onClick={goNextDesktop}
-                aria-label="Canal suivant"
+                aria-label={t.channels.next}
               >
                 <span aria-hidden="true">&gt;</span>
               </button>
@@ -612,14 +624,14 @@ export default function DashboardChannelsSection({
           </div>
 
           {hasCarousel && (
-            <div className={styles.desktopChannelDots} aria-label="Position dans les canaux">
+            <div className={styles.desktopChannelDots} aria-label={t.channels.positionAria}>
               {baseModules.map((item, index) => (
                 <button
                   type="button"
                   key={item.key}
                   className={`${styles.carouselDot} ${index === normalizeIndex(activeChannelIndex) ? styles.carouselDotActive : ""}`}
                   onClick={() => setActiveChannelIndex(index)}
-                  aria-label={`Afficher ${item.name}`}
+                  aria-label={`${t.channels.showChannel} ${item.name}`}
                 />
               ))}
             </div>

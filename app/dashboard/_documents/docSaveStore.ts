@@ -1,5 +1,7 @@
 "use client";
 
+import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
+
 import { createClient } from "@/lib/supabaseClient";
 import {
   type DiscountKind,
@@ -123,7 +125,7 @@ export async function fetchDocRecords(kind: DocKind): Promise<DocRecord[]> {
   const { data, error } = await supabase
     .from("doc_saves")
     .select("id,type,name,payload,created_at,updated_at")
-    .eq("user_id", user.id)
+    .eq("user_id", resolveActiveBrowserUserId(user.id))
     .eq("type", kind)
     .order("updated_at", { ascending: false });
 
@@ -146,7 +148,7 @@ export async function deleteDocRecord(kind: DocKind, id: string) {
   const { error } = await supabase
     .from("doc_saves")
     .delete()
-    .eq("user_id", user.id)
+    .eq("user_id", resolveActiveBrowserUserId(user.id))
     .eq("type", kind)
     .eq("id", id);
 
@@ -165,7 +167,7 @@ export async function updateDocRecordStatus(kind: DocKind, id: string, status: D
   const { data, error } = await supabase
     .from("doc_saves")
     .select("payload")
-    .eq("user_id", user.id)
+    .eq("user_id", resolveActiveBrowserUserId(user.id))
     .eq("type", kind)
     .eq("id", id)
     .maybeSingle();
@@ -177,7 +179,7 @@ export async function updateDocRecordStatus(kind: DocKind, id: string, status: D
   const { error: updateError } = await supabase
     .from("doc_saves")
     .update({ payload, updated_at: new Date().toISOString() })
-    .eq("user_id", user.id)
+    .eq("user_id", resolveActiveBrowserUserId(user.id))
     .eq("type", kind)
     .eq("id", id);
 
@@ -196,7 +198,7 @@ export async function duplicateDocRecord(kind: DocKind, id: string) {
   const { data, error } = await supabase
     .from("doc_saves")
     .select("payload")
-    .eq("user_id", user.id)
+    .eq("user_id", resolveActiveBrowserUserId(user.id))
     .eq("type", kind)
     .eq("id", id)
     .maybeSingle();
@@ -238,7 +240,7 @@ export async function duplicateDocRecord(kind: DocKind, id: string) {
   const { data: inserted, error: insertError } = await supabase
     .from("doc_saves")
     .insert({
-      user_id: user.id,
+      user_id: resolveActiveBrowserUserId(user.id),
       type: kind,
       name: autoName,
       payload: nextPayload,

@@ -5,10 +5,10 @@ import { DEFAULT_INRSEND_SIGNATURE_TEMPLATE, buildInrSendSignature, getInrSendSi
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 
 export async function GET(req: Request) {
-  const { supabase, user, errorResponse } = await requireUser();
+  const { supabase, user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
-  const settings = await getInrSendSignatureSettings(supabase as SupabaseLike, user.id);
+  const settings = await getInrSendSignatureSettings(supabase as SupabaseLike, activeUserId);
 
   const url = new URL(req.url);
   const accountId = url.searchParams.get("accountId")?.trim() || "";
@@ -17,14 +17,14 @@ export async function GET(req: Request) {
     const { data: accountRow } = await (supabase as any)
       .from("integrations")
       .select("id,provider,account_email,settings,status")
-      .eq("user_id", user.id)
+      .eq("user_id", activeUserId)
       .eq("category", "mail")
       .eq("id", accountId)
       .maybeSingle();
     account = accountRow || undefined;
   }
 
-  const rendered = await buildInrSendSignature({ supabase: supabase as SupabaseLike, userId: user.id, account });
+  const rendered = await buildInrSendSignature({ supabase: supabase as SupabaseLike, userId: activeUserId, account });
 
   return NextResponse.json({
     enabled: settings.enabled,
@@ -53,7 +53,7 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const { supabase, user, errorResponse } = await requireUser();
+  const { supabase, user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   const body = await req.json().catch(() => ({}));
@@ -64,7 +64,7 @@ export async function POST(req: Request) {
   const imageWidthRaw = Number(asString(asRecord(body).imageWidth) || 400);
   const imageWidth = Number.isFinite(imageWidthRaw) ? Math.max(180, Math.min(600, imageWidthRaw)) : 400;
 
-  const { data: cfgRow } = await (supabase as SupabaseLike).from("pro_tools_configs").select("settings").eq("user_id", user.id).maybeSingle();
+  const { data: cfgRow } = await (supabase as SupabaseLike).from("pro_tools_configs").select("settings").eq("user_id", activeUserId).maybeSingle();
   const currentSettings = asRecord(asRecord(cfgRow).settings);
   const nextSettings = {
     ...currentSettings,
@@ -80,12 +80,12 @@ export async function POST(req: Request) {
 
   const { error } = await (supabase as SupabaseLike)
     .from("pro_tools_configs")
-    .upsert({ user_id: user.id, settings: nextSettings }, { onConflict: "user_id" });
+    .upsert({ user_id: activeUserId, settings: nextSettings }, { onConflict: "user_id" });
 
   if (error) {
     return jsonUserFacingError(error, { status: 500, fallback: "Impossible d’enregistrer la signature." });
   }
 
-  const rendered = await buildInrSendSignature({ supabase: supabase as SupabaseLike, userId: user.id });
+  const rendered = await buildInrSendSignature({ supabase: supabase as SupabaseLike, userId: activeUserId });
   return NextResponse.json({ ok: true, enabled, template, imagePath, imageUrl: rendered.imageUrl, imageWidth, preview: rendered.signatureText });
 }

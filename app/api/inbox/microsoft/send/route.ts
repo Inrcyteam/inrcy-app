@@ -61,9 +61,9 @@ async function refreshAccessToken(refreshToken: string, scope?: string | null) {
 
 const handler = async (req: Request) => {
   try {
-    const { supabase, user, errorResponse } = await requireUser();
+    const { supabase, activeUserId, errorResponse } = await requireUser();
     if (errorResponse) return errorResponse;
-    const userId = user.id;
+    const userId = activeUserId;
 
     const rateLimited = await enforceRateLimit({
       name: "microsoft_send",
@@ -172,7 +172,8 @@ const handler = async (req: Request) => {
         await supabase
           .from("integrations")
           .update({ access_token_enc: encryptToken(accessToken), expires_at: newExpiresAt, status: "connected" })
-          .eq("id", accountRowId);
+          .eq("id", accountRowId)
+          .eq("user_id", userId);
       }
     }
 
@@ -242,7 +243,7 @@ const handler = async (req: Request) => {
 
     let historyId = sendItemId || "";
     if (sendItemId) {
-      await supabase.from("send_items").update(historyPayload).eq("id", sendItemId);
+      await supabase.from("send_items").update(historyPayload).eq("id", sendItemId).eq("user_id", userId);
     } else {
       const { data: insertedHistory } = await supabase.from("send_items").insert(historyPayload).select("id").single();
       historyId = String(insertedHistory?.id || "");

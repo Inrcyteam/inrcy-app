@@ -191,12 +191,12 @@ async function uploadToBoosterStorage(
 
 export async function POST(req: Request) {
   try {
-    const { user, errorResponse } = await requireUser();
+    const { user, errorResponse, activeUserId } = await requireUser();
     if (errorResponse) return errorResponse;
 
     const rateLimited = await enforceRateLimit({
       name: "booster_upload_video",
-      identifier: user.id,
+      identifier: activeUserId,
       limit: 10,
       window: "1 m",
       // Ne bloque pas l'upload si Upstash / KV est momentanément indisponible.
@@ -248,7 +248,7 @@ export async function POST(req: Request) {
     let storagePath = sanitizeStoragePath(
       requestedPath,
       file.name || "video-inrcy.mp4",
-      user.id,
+      activeUserId,
       contentType,
     );
 
@@ -258,7 +258,7 @@ export async function POST(req: Request) {
     // on retente avec un nom 100 % généré côté serveur.
     if (upload.error) {
       const fallbackPath = buildFallbackStoragePath(
-        user.id,
+        activeUserId,
         file.name || "video-inrcy.mp4",
         contentType,
         requestedPath,

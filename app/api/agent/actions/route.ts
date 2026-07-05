@@ -1536,13 +1536,13 @@ async function saveCampaignActionAsInrSendDraft(args: {
 }
 
 export async function GET() {
-  const { user, errorResponse } = await requireUser();
+  const { user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   const { data, error } = await supabaseAdmin
     .from("inr_agent_actions")
     .select(ACTION_SELECT)
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .order("created_at", { ascending: false })
     .limit(40);
 
@@ -1573,7 +1573,7 @@ export async function GET() {
 }
 
 export async function PATCH(request: Request) {
-  const { user, errorResponse } = await requireUser();
+  const { user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   let body: unknown;
@@ -1617,11 +1617,11 @@ export async function PATCH(request: Request) {
       editType === "save_publish_draft"
         ? await savePublishActionAsBoosterDraft({
             actionId,
-            userId: user.id,
+            userId: activeUserId,
           })
         : await saveCampaignActionAsInrSendDraft({
             actionId,
-            userId: user.id,
+            userId: activeUserId,
           });
 
     if ("response" in result) return result.response;
@@ -1669,7 +1669,7 @@ export async function PATCH(request: Request) {
       .from("inr_agent_actions")
       .select(ACTION_SELECT)
       .eq("id", actionId)
-      .eq("user_id", user.id)
+      .eq("user_id", activeUserId)
       .single();
 
     if (readError || !currentRow) {
@@ -1750,7 +1750,7 @@ export async function PATCH(request: Request) {
         last_error: null,
       })
       .eq("id", actionId)
-      .eq("user_id", user.id)
+      .eq("user_id", activeUserId)
       .select(ACTION_SELECT)
       .single();
 
@@ -1798,7 +1798,7 @@ export async function PATCH(request: Request) {
       .from("inr_agent_actions")
       .select(ACTION_SELECT)
       .eq("id", actionId)
-      .eq("user_id", user.id)
+      .eq("user_id", activeUserId)
       .single();
 
     if (readError || !currentRow) {
@@ -1934,7 +1934,7 @@ export async function PATCH(request: Request) {
         last_error: null,
       })
       .eq("id", actionId)
-      .eq("user_id", user.id)
+      .eq("user_id", activeUserId)
       .select(ACTION_SELECT)
       .single();
 
@@ -1974,7 +1974,7 @@ export async function PATCH(request: Request) {
       );
     }
 
-    const { action, response } = await readCampaignAction(actionId, user.id);
+    const { action, response } = await readCampaignAction(actionId, activeUserId);
     if (response) return response;
     if (!action)
       return NextResponse.json(
@@ -1997,7 +1997,7 @@ export async function PATCH(request: Request) {
     );
     const result = await updateCampaignAction({
       actionId,
-      userId: user.id,
+      userId: activeUserId,
       patch: {
         recipients,
         payload: {
@@ -2026,7 +2026,7 @@ export async function PATCH(request: Request) {
       );
     }
 
-    const { action, response } = await readCampaignAction(actionId, user.id);
+    const { action, response } = await readCampaignAction(actionId, activeUserId);
     if (response) return response;
     if (!action)
       return NextResponse.json(
@@ -2034,7 +2034,7 @@ export async function PATCH(request: Request) {
         { status: 404 },
       );
 
-    const mailAccount = await fetchConnectedMailAccount(user.id, accountId);
+    const mailAccount = await fetchConnectedMailAccount(activeUserId, accountId);
     if (!mailAccount?.id) {
       return NextResponse.json(
         {
@@ -2048,7 +2048,7 @@ export async function PATCH(request: Request) {
     const payload = action.payload || {};
     const result = await updateCampaignAction({
       actionId,
-      userId: user.id,
+      userId: activeUserId,
       patch: {
         payload: {
           ...payload,
@@ -2069,7 +2069,7 @@ export async function PATCH(request: Request) {
     }
 
     const attachments = cleanDraftAttachments(requestBody?.attachments);
-    const { action, response } = await readCampaignAction(actionId, user.id);
+    const { action, response } = await readCampaignAction(actionId, activeUserId);
     if (response) return response;
     if (!action)
       return NextResponse.json(
@@ -2080,7 +2080,7 @@ export async function PATCH(request: Request) {
     const payload = action.payload || {};
     const result = await updateCampaignAction({
       actionId,
-      userId: user.id,
+      userId: activeUserId,
       patch: {
         payload: {
           ...payload,
@@ -2111,7 +2111,7 @@ export async function PATCH(request: Request) {
       .from("inr_agent_actions")
       .select(ACTION_SELECT)
       .eq("id", actionId)
-      .eq("user_id", user.id)
+      .eq("user_id", activeUserId)
       .single();
 
     if (readError || !currentRow) {
@@ -2156,7 +2156,7 @@ export async function PATCH(request: Request) {
         updated_at: now,
       })
       .eq("id", actionId)
-      .eq("user_id", user.id)
+      .eq("user_id", activeUserId)
       .select(ACTION_SELECT)
       .single();
 
@@ -2222,7 +2222,7 @@ export async function PATCH(request: Request) {
     .from("inr_agent_actions")
     .update(updatePayload)
     .eq("id", actionId)
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .select(ACTION_SELECT)
     .single();
 

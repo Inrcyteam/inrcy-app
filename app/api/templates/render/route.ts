@@ -11,9 +11,9 @@ import { stripTemplateSignatureBlock } from "@/lib/mailTemplateCleanup";
 // Returns: rendered { subject, body_text, ctx, links }
 export async function POST(req: Request) {
   try {
-    const { supabase, user, errorResponse } = await requireUser();
+    const { supabase, user, errorResponse, activeUserId } = await requireUser();
     if (errorResponse) return errorResponse;
-    const userId = user.id;
+    const userId = activeUserId;
 
     const body = asRecord(await req.json().catch(() => ({})) as unknown);
     const subjectOverride = String(body["subject_override"] ?? "");

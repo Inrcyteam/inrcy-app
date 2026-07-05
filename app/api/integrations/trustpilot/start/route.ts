@@ -4,14 +4,16 @@ import { bubbleAccessDisabledResponse, isAppBubbleEnabledForUser } from "@/lib/a
 import { makeOAuthState, safeInternalPath } from "@/lib/security";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { getTrustpilotClientId, getTrustpilotRedirectUri } from "@/lib/trustpilotOAuth";
+import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 
 export async function GET(request: Request) {
   const supabase = await createSupabaseServer();
   const { data: authData, error: authErr } = await supabase.auth.getUser();
   const user = authData?.user;
   if (authErr || !user) return NextResponse.json({ ok: false, error: "Non authentifié." }, { status: 401 });
+  const activeUserId = await resolveActiveInrcyAccountId(supabase, user.id);
 
-  if (!(await isAppBubbleEnabledForUser(supabase, user.id, "trustpilot"))) {
+  if (!(await isAppBubbleEnabledForUser(supabase, activeUserId, "trustpilot"))) {
     return bubbleAccessDisabledResponse("Trustpilot");
   }
 
@@ -34,7 +36,7 @@ export async function GET(request: Request) {
     searchParams.get("returnTo") || "/dashboard?panel=trustpilot",
     "/dashboard?panel=trustpilot",
   );
-  const { stateB64, nonce, cookieName } = makeOAuthState("trustpilot", returnTo);
+  const { stateB64, cookieValue, cookieName } = makeOAuthState("trustpilot", returnTo, { accountId: activeUserId });
 
   const params = new URLSearchParams({
     client_id: clientId,
@@ -44,7 +46,7 @@ export async function GET(request: Request) {
   });
 
   const res = NextResponse.redirect(`https://authenticate.trustpilot.com?${params.toString()}`);
-  res.cookies.set(cookieName, nonce, {
+  res.cookies.set(cookieName, cookieValue, {
     httpOnly: true,
     secure: true,
     sameSite: "lax",

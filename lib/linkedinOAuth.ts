@@ -200,7 +200,8 @@ export async function getLinkedInAccessToken(params: {
         meta: nextMeta,
         updated_at: new Date().toISOString(),
       })
-      .eq("id", row.id);
+      .eq("id", row.id)
+      .eq("user_id", params.userId);
 
     const nextRow: LinkedInIntegrationRecord = {
       ...row,

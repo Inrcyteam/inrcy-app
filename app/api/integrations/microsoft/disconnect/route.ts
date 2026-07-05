@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 
 /**
  * Déconnecte un compte Microsoft (provider = 'microsoft').
@@ -13,6 +14,7 @@ export async function POST(req: Request) {
   if (!auth?.user) {
     return NextResponse.json({ error: "Accès non autorisé." }, { status: 401 });
   }
+  const activeUserId = await resolveActiveInrcyAccountId(supabase, auth.user.id);
 
   const body = await req.json().catch(() => ({}));
   const accountId = body?.accountId as string | undefined;
@@ -24,7 +26,7 @@ export async function POST(req: Request) {
     .from("integrations")
     .delete()
     .eq("id", accountId)
-    .eq("user_id", auth.user.id)
+    .eq("user_id", activeUserId)
     .eq("provider", "microsoft")
     .eq("category", "mail");
 

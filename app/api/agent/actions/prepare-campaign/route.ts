@@ -314,6 +314,7 @@ function pickTemplate(args: {
 async function generateCampaignContent(args: {
   supabase: any;
   userId: string;
+  quotaUserId: string;
   templateModule: string;
   mission: string;
   templateKey: string;
@@ -325,6 +326,7 @@ async function generateCampaignContent(args: {
   const payload = await generateTemplateAiContent({
     supabase: args.supabase,
     userId: args.userId,
+    quotaUserId: args.quotaUserId,
     input: {
       module: args.templateModule,
       mission: args.mission,
@@ -689,7 +691,8 @@ export async function POST(request: Request) {
   const context = await resolveInrAgentActionRequest(request);
   if (context.errorResponse) return context.errorResponse;
 
-  const { supabase, user, userId, isCron } = context;
+  const { supabase, user, userId, authUserId, isCron } = context;
+  const quotaUserId = isCron ? userId : authUserId;
   const body = context.body as {
     automationKey?: unknown;
   } | null;
@@ -699,7 +702,7 @@ export async function POST(request: Request) {
 
   const rl = await enforceRateLimit({
     name: `inr_agent_prepare_${automationKey}`,
-    identifier: userId,
+    identifier: quotaUserId,
     limit: 4,
     window: "1 m",
     failClosed: false,
@@ -787,6 +790,7 @@ export async function POST(request: Request) {
     generated = await generateCampaignContent({
       supabase,
       userId,
+      quotaUserId,
       templateModule: themeConfig.templateModule,
       mission: themeConfig.label,
       templateKey: template.key,

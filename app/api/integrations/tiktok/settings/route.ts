@@ -15,22 +15,22 @@ function asRecord(value: unknown): Record<string, unknown> {
 }
 
 export async function GET() {
-  const { user, errorResponse } = await requireUser();
+  const { user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
-  const { tiktok } = await readTiktokSettingsWithOAuth(supabaseAdmin, user.id);
+  const { tiktok } = await readTiktokSettingsWithOAuth(supabaseAdmin, activeUserId);
   return NextResponse.json({ ok: true, tiktok });
 }
 
 export async function POST(request: Request) {
-  const { supabase, user, errorResponse } = await requireUser();
+  const { supabase, user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   const body = await request.json().catch(() => ({}));
   const payload = asRecord(body);
   const defaultsPayload = asRecord(payload.defaults);
 
-  const { root, tiktok: current } = await readTiktokSettings(supabase, user.id);
+  const { root, tiktok: current } = await readTiktokSettings(supabase, activeUserId);
   const patch: any = {};
 
   if (typeof payload.profileUrl === "string") {
@@ -56,8 +56,8 @@ export async function POST(request: Request) {
   if (Object.keys(defaultPatch).length) patch.defaults = defaultPatch;
 
   const next = buildTiktokSettingsPatch(current, patch);
-  await saveTiktokSettings(supabaseAdmin, user.id, root, next);
-  const refreshed = await readTiktokSettingsWithOAuth(supabaseAdmin, user.id);
+  await saveTiktokSettings(supabaseAdmin, activeUserId, root, next);
+  const refreshed = await readTiktokSettingsWithOAuth(supabaseAdmin, activeUserId);
 
   return NextResponse.json({ ok: true, tiktok: refreshed.tiktok });
 }

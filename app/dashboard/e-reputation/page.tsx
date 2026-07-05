@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { unstable_noStore as noStore } from "next/cache";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 import { getChannelConnectionStates } from "@/lib/channelConnectionState";
 import { getGmbToken } from "@/lib/googleBusiness";
 import { getGmbReviewTargetFromRow, gmbListReviews, type NormalizedGmbReview } from "@/lib/googleBusinessReviews";
@@ -122,7 +123,8 @@ async function getCurrentUserId() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  return user?.id || null;
+  if (!user) return null;
+  return resolveActiveInrcyAccountId(supabase, user.id);
 }
 
 async function loadBubbleEnabled(bubbleKey: "trustpilot") {
@@ -134,10 +136,12 @@ async function loadBubbleEnabled(bubbleKey: "trustpilot") {
     } = await supabase.auth.getUser();
     if (!user) return false;
 
+    const activeUserId = await resolveActiveInrcyAccountId(supabase, user.id);
+
     const { data } = await supabase
       .from("app_bubble_access")
       .select("bubble_key,enabled")
-      .eq("user_id", user.id)
+      .eq("user_id", activeUserId)
       .eq("bubble_key", bubbleKey);
     const map = buildBubbleAccessMap(data || []);
     return isBubbleEnabled(map, bubbleKey);
@@ -154,7 +158,8 @@ async function loadGoogleBusinessStatus(): Promise<GoogleBusinessStatus> {
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) return null;
-    const states = await getChannelConnectionStates(supabase, user.id);
+    const activeUserId = await resolveActiveInrcyAccountId(supabase, user.id);
+    const states = await getChannelConnectionStates(supabase, activeUserId);
     return states.gmb ?? null;
   } catch {
     return null;
@@ -169,7 +174,8 @@ async function loadTrustpilotStatus(): Promise<TrustpilotStatus> {
       data: { user },
     } = await supabase.auth.getUser();
     if (!user) return null;
-    const states = await getChannelConnectionStates(supabase, user.id);
+    const activeUserId = await resolveActiveInrcyAccountId(supabase, user.id);
+    const states = await getChannelConnectionStates(supabase, activeUserId);
     return states.trustpilot ?? null;
   } catch {
     return null;

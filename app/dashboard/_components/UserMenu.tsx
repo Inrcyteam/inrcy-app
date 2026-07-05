@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import styles from "../dashboard.module.css";
+import { useDashboardI18n } from "../_hooks/useDashboardI18n";
 
 type OpenPanelName =
   | "contact"
@@ -36,6 +36,8 @@ export default function UserMenu(props: {
   handleLogout: () => void | Promise<void>;
   onNavigate?: (href: string) => void;
 }) {
+  const t = useDashboardI18n();
+
   const {
     userEmail,
     profileIncomplete,
@@ -47,46 +49,18 @@ export default function UserMenu(props: {
     onNavigate,
   } = props;
 
-  const [profileTooltipOpen, setProfileTooltipOpen] = useState(false);
-  const [activityTooltipOpen, setActivityTooltipOpen] = useState(false);
-  const profileTooltipWrapRef = useRef<HTMLDivElement | null>(null);
-  const activityTooltipWrapRef = useRef<HTMLDivElement | null>(null);
+  const hasCompletionWarning = profileIncomplete || activityIncomplete;
 
   const closeAndOpen = (panel: OpenPanelName) => {
     setUserMenuOpen(false);
-    setProfileTooltipOpen(false);
-    setActivityTooltipOpen(false);
     openPanel(panel);
   };
 
   const closeAndNavigate = (href: string) => {
     setUserMenuOpen(false);
-    setProfileTooltipOpen(false);
-    setActivityTooltipOpen(false);
     if (onNavigate) onNavigate(href);
     else if (typeof window !== "undefined") window.location.href = href;
   };
-
-  useEffect(() => {
-    const onPointerDown = (event: MouseEvent) => {
-      const target = event.target as Node | null;
-      if (
-        profileTooltipWrapRef.current &&
-        !profileTooltipWrapRef.current.contains(target)
-      ) {
-        setProfileTooltipOpen(false);
-      }
-      if (
-        activityTooltipWrapRef.current &&
-        !activityTooltipWrapRef.current.contains(target)
-      ) {
-        setActivityTooltipOpen(false);
-      }
-    };
-
-    document.addEventListener("mousedown", onPointerDown);
-    return () => document.removeEventListener("mousedown", onPointerDown);
-  }, []);
 
   return (
     <div className={styles.userMenuWrap}>
@@ -96,85 +70,28 @@ export default function UserMenu(props: {
         aria-haspopup="menu"
         aria-expanded={userMenuOpen}
         onClick={() => setUserMenuOpen((v) => !v)}
-        title={userEmail ?? "Menu utilisateur"}
+        title={userEmail ?? t.userMenu.title}
       >
         <span className={styles.userBubble} aria-hidden>
           <span className={styles.userMenuHamburgerIcon} />
         </span>
-        <span className={styles.userMenuLabel}>Menu</span>
+        <span className={styles.userMenuLabel}>{t.userMenu.label}</span>
+        {hasCompletionWarning && (
+          <span
+            className={styles.userMenuWarningTriangle}
+            aria-hidden="true"
+            title={t.userMenu.profileIncomplete}
+          >
+            ⚠️
+          </span>
+        )}
       </button>
-
-      {profileIncomplete && (
-        <div
-          ref={profileTooltipWrapRef}
-          className={styles.profileIndicatorWrap}
-          style={{ marginLeft: 6 }}
-          data-open={profileTooltipOpen ? "true" : "false"}
-        >
-          <button
-            type="button"
-            className={styles.profileWarnBtn}
-            aria-label="Profil incomplet"
-            onClick={() => {
-              setProfileTooltipOpen((value) => !value);
-              setActivityTooltipOpen(false);
-            }}
-          >
-            <span className={styles.profileWarnDot} aria-hidden />
-          </button>
-
-          <div
-            className={styles.profileTooltip}
-            role="tooltip"
-            onClick={() => closeAndOpen("profil")}
-          >
-            <div>
-              ⚠️ <strong>Profil incomplet</strong>
-              <br />
-              Cliquez pour compléter votre profil et activer pleinement iNrCy.
-            </div>
-          </div>
-        </div>
-      )}
-
-      {activityIncomplete && (
-        <div
-          ref={activityTooltipWrapRef}
-          className={styles.profileIndicatorWrap}
-          style={{ marginLeft: 6 }}
-          data-open={activityTooltipOpen ? "true" : "false"}
-        >
-          <button
-            type="button"
-            className={styles.profileWarnBtn}
-            aria-label="Activité incomplète"
-            onClick={() => {
-              setActivityTooltipOpen((value) => !value);
-              setProfileTooltipOpen(false);
-            }}
-          >
-            <span className={styles.profileWarnDot} aria-hidden />
-          </button>
-
-          <div
-            className={styles.profileTooltip}
-            role="tooltip"
-            onClick={() => closeAndOpen("activite")}
-          >
-            <div>
-              ⚠️ <strong>Activité incomplète</strong>
-              <br />
-              Cliquez pour compléter votre profil et activer pleinement iNrCy.
-            </div>
-          </div>
-        </div>
-      )}
 
       {userMenuOpen && (
         <div
           className={styles.userMenuPanel}
           role="menu"
-          aria-label="Menu utilisateur"
+          aria-label={t.userMenu.title}
         >
           <button
             type="button"
@@ -182,23 +99,29 @@ export default function UserMenu(props: {
             role="menuitem"
             onClick={() => closeAndOpen("compte")}
           >
-            Compte iNrCytizen
+            {t.userMenu.account}
           </button>
           <button
             type="button"
-            className={styles.userMenuItem}
+            className={`${styles.userMenuItem} ${profileIncomplete ? styles.userMenuItemWithWarning : ""}`}
             role="menuitem"
             onClick={() => closeAndOpen("profil")}
           >
-            Mon profil
+            <span>{t.userMenu.profile}</span>
+            {profileIncomplete && (
+              <span className={styles.menuWarningTriangle} aria-hidden="true">⚠️</span>
+            )}
           </button>
           <button
             type="button"
-            className={styles.userMenuItem}
+            className={`${styles.userMenuItem} ${activityIncomplete ? styles.userMenuItemWithWarning : ""}`}
             role="menuitem"
             onClick={() => closeAndOpen("activite")}
           >
-            Mon activité
+            <span>{t.userMenu.activity}</span>
+            {activityIncomplete && (
+              <span className={styles.menuWarningTriangle} aria-hidden="true">⚠️</span>
+            )}
           </button>
           <button
             type="button"
@@ -206,7 +129,7 @@ export default function UserMenu(props: {
             role="menuitem"
             onClick={() => closeAndOpen("preferences")}
           >
-            Préférences générales
+            {t.userMenu.preferences}
           </button>
           <button
             type="button"
@@ -214,7 +137,7 @@ export default function UserMenu(props: {
             role="menuitem"
             onClick={() => closeAndOpen("ia")}
           >
-            Configuration IA
+            {t.userMenu.ai}
           </button>
           <button
             type="button"
@@ -222,7 +145,7 @@ export default function UserMenu(props: {
             role="menuitem"
             onClick={() => closeAndNavigate("/dashboard/mediatheque")}
           >
-            Médiathèque
+            {t.userMenu.media}
           </button>
           <button
             type="button"
@@ -230,7 +153,7 @@ export default function UserMenu(props: {
             role="menuitem"
             onClick={() => closeAndOpen("notifications")}
           >
-            Notifications
+            {t.userMenu.notifications}
           </button>
           <button
             type="button"
@@ -238,7 +161,7 @@ export default function UserMenu(props: {
             role="menuitem"
             onClick={() => closeAndOpen("abonnement")}
           >
-            Mon abonnement
+            {t.userMenu.subscription}
           </button>
           <button
             type="button"
@@ -246,7 +169,7 @@ export default function UserMenu(props: {
             role="menuitem"
             onClick={() => closeAndOpen("inertie")}
           >
-            Mon inertie
+            {t.userMenu.inertia}
           </button>
           <button
             type="button"
@@ -254,7 +177,7 @@ export default function UserMenu(props: {
             role="menuitem"
             onClick={() => closeAndOpen("boutique")}
           >
-            Boutique
+            {t.userMenu.shop}
           </button>
           <button
             type="button"
@@ -262,7 +185,7 @@ export default function UserMenu(props: {
             role="menuitem"
             onClick={() => closeAndOpen("parrainage")}
           >
-            Parrainer avec iNrCy
+            {t.userMenu.referral}
           </button>
           <button
             type="button"
@@ -270,7 +193,7 @@ export default function UserMenu(props: {
             role="menuitem"
             onClick={() => closeAndOpen("legal")}
           >
-            Informations légales
+            {t.userMenu.legal}
           </button>
           <button
             type="button"
@@ -278,7 +201,7 @@ export default function UserMenu(props: {
             role="menuitem"
             onClick={() => closeAndOpen("rgpd")}
           >
-            Mes données (RGPD)
+            {t.userMenu.rgpd}
           </button>
 
           <div className={styles.userMenuDivider} />
@@ -292,7 +215,7 @@ export default function UserMenu(props: {
               void handleLogout();
             }}
           >
-            Déconnexion
+            {t.userMenu.logout}
           </button>
         </div>
       )}

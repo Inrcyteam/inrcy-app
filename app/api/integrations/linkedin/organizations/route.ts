@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { asRecord, asString } from "@/lib/tsSafe";
 import { getLinkedInAccessToken } from "@/lib/linkedinOAuth";
+import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 
 type LinkedinOrg = {
   id: string;
@@ -117,8 +118,9 @@ export async function GET() {
   } = await supabase.auth.getUser();
 
   if (authErr || !user) return NextResponse.json({ error: "Accès non autorisé." }, { status: 401 });
+  const activeUserId = await resolveActiveInrcyAccountId(supabase, user.id);
 
-  const auth = await getLinkedInAccessToken({ userId: user.id });
+  const auth = await getLinkedInAccessToken({ userId: activeUserId });
   const tok = auth.accessToken || "";
   if (!tok) return NextResponse.json({ error: auth.error || "Compte LinkedIn non connecté." }, { status: 400 });
 

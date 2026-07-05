@@ -5,9 +5,9 @@ import { requireUser } from "@/lib/requireUser";
 import { findTrustpilotBusinessUnitByDomain, searchTrustpilotBusinessUnits } from "@/lib/trustpilotOAuth";
 
 export async function GET(request: Request) {
-  const { supabase, user, errorResponse } = await requireUser();
+  const { supabase, user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
-  if (!(await isAppBubbleEnabledForUser(supabase, user.id, "trustpilot"))) {
+  if (!(await isAppBubbleEnabledForUser(supabase, activeUserId, "trustpilot"))) {
     return bubbleAccessDisabledResponse("Trustpilot");
   }
 

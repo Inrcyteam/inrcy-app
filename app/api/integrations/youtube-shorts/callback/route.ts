@@ -9,6 +9,7 @@ import { safeInternalPath, verifyOAuthState } from "@/lib/security";
 import { asRecord, asString } from "@/lib/tsSafe";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { withCurrentConnectionVersion } from "@/lib/connectionVersions";
+import { resolveOAuthBoundInrcyAccountId } from "@/lib/multicompte/server";
 import {
   fetchYoutubeMineChannel,
   getYoutubeShortsOAuthClientId,
@@ -92,10 +93,11 @@ export async function GET(request: Request) {
     const { data: authData, error: authErr } = await supabase.auth.getUser();
     const user = authData?.user;
     if (authErr || !user) return fail("not_authenticated", "Tu dois être connecté à iNrCy pour connecter YouTube.");
+    const activeUserId = await resolveOAuthBoundInrcyAccountId(supabase, user.id, st.state.accountId);
 
     const rlUser = await enforceRateLimit({
       name: "oauth_youtube_shorts_cb",
-      identifier: user.id,
+      identifier: activeUserId,
       limit: 10,
       window: "10 m",
     });
@@ -146,7 +148,7 @@ export async function GET(request: Request) {
     const { data: existing, error: existingErr } = await supabaseAdmin
       .from("integrations")
       .select("id,refresh_token_enc")
-      .eq("user_id", user.id)
+      .eq("user_id", activeUserId)
       .eq("provider", "youtube")
       .eq("source", "youtube_shorts")
       .eq("product", "youtube_shorts")
@@ -175,7 +177,7 @@ export async function GET(request: Request) {
     });
 
     const payload: Record<string, unknown> = {
-      user_id: user.id,
+      user_id: activeUserId,
       provider: "youtube",
       category: "social",
       source: "youtube_shorts",
@@ -195,14 +197,14 @@ export async function GET(request: Request) {
     };
 
     if (existingId) {
-      const { error: updateErr } = await supabaseAdmin.from("integrations").update(payload).eq("id", existingId);
+      const { error: updateErr } = await supabaseAdmin.from("integrations").update(payload).eq("id", existingId).eq("user_id", activeUserId);
       if (updateErr) return fail("db_update_failed", "La mise à jour de la connexion YouTube a échoué.");
     } else {
       const { error: insertErr } = await supabaseAdmin.from("integrations").insert(payload);
       if (insertErr) return fail("db_insert_failed", "L'enregistrement de la connexion YouTube a échoué.");
     }
 
-    const { root, youtubeShorts: current } = await readYoutubeShortsSettings(supabaseAdmin, user.id);
+    const { root, youtubeShorts: current } = await readYoutubeShortsSettings(supabaseAdmin, activeUserId);
     const next: YoutubeShortsSettings = {
       ...current,
       connected: true,
@@ -222,8 +224,8 @@ export async function GET(request: Request) {
         viewCount: numberOrNull(channel.stats.viewCount),
       },
     };
-    await saveYoutubeShortsSettings(supabaseAdmin, user.id, root, next);
-    await clearAllToolCaches(supabase, user.id);
+    await saveYoutubeShortsSettings(supabaseAdmin, activeUserId, root, next);
+    await clearAllToolCaches(supabase, activeUserId);
 
     const finalUrl = new URL(returnTo, siteUrl);
     finalUrl.searchParams.set("linked", "youtube_shorts");

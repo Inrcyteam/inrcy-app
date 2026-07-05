@@ -1,7 +1,10 @@
 "use client";
 
+import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
+
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabaseClient";
+import { APP_LANGUAGE_OPTIONS, APP_LANGUAGE_STORAGE_KEY, type AppLanguageCode, normalizeAppLanguage } from "@/lib/appLanguage";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import {
   BOOSTER_PREFERRED_CTA_OPTIONS,
@@ -23,13 +26,14 @@ type AiConfigForm = {
   mainGoal: "visibility" | "contacts" | "reassure" | "offer";
   preferredAngle: "local" | "quality" | "price" | "speed" | "trust";
   preferredCta: BoosterPreferredCta;
-  language: "fr" | "en" | "es" | "it" | "de" | "nl" | "pt";
+  language: AppLanguageCode;
   likedExample: string;
   forbiddenStyle: string;
 };
 
 const TABLE = "business_profiles";
 const STORAGE_KEY = "inrcy_ai_configuration";
+const AI_LANGUAGE_CUSTOM_STORAGE_KEY = "inrcy_ai_language_custom_v1";
 
 const initialForm: AiConfigForm = {
   tone: "serious",
@@ -125,16 +129,32 @@ const normalizePreferredAngle = (value: unknown): AiConfigForm["preferredAngle"]
   return "trust";
 };
 
-const normalizeLanguage = (value: unknown): AiConfigForm["language"] => {
-  const raw = String(value || "").trim().toLowerCase();
-  if (["en", "english", "anglais"].includes(raw)) return "en";
-  if (["es", "spanish", "espagnol"].includes(raw)) return "es";
-  if (["it", "italian", "italien"].includes(raw)) return "it";
-  if (["de", "german", "allemand"].includes(raw)) return "de";
-  if (["nl", "dutch", "neerlandais", "néerlandais"].includes(raw)) return "nl";
-  if (["pt", "portuguese", "portugais"].includes(raw)) return "pt";
-  return "fr";
-};
+const normalizeLanguage = (value: unknown): AiConfigForm["language"] => normalizeAppLanguage(value);
+
+const hasLanguageValue = (value: unknown): boolean => String(value ?? "").trim().length > 0;
+
+function readDefaultAppLanguage(): AppLanguageCode {
+  if (typeof window === "undefined") return initialForm.language;
+  try {
+    return normalizeLanguage(window.localStorage.getItem(APP_LANGUAGE_STORAGE_KEY));
+  } catch {
+    return initialForm.language;
+  }
+}
+
+function readAiLanguageIsCustom(local: Partial<Record<string, unknown>>): boolean {
+  if (typeof window === "undefined") return hasLanguageValue(local.language);
+  try {
+    return window.localStorage.getItem(AI_LANGUAGE_CUSTOM_STORAGE_KEY) === "1" || hasLanguageValue(local.language);
+  } catch {
+    return hasLanguageValue(local.language);
+  }
+}
+
+function markAiLanguageCustom() {
+  if (typeof window === "undefined") return;
+  try { window.localStorage.setItem(AI_LANGUAGE_CUSTOM_STORAGE_KEY, "1"); } catch {}
+}
 
 export default function AiConfigurationContent({ mode = "drawer" }: Props) {
   const [form, setForm] = useState<AiConfigForm>(initialForm);
@@ -222,14 +242,18 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
         if (authErr) throw new Error(authErr.message);
         const user = authData?.user;
 
+        const appDefaultLanguage = readDefaultAppLanguage();
+        const aiLanguageIsCustom = readAiLanguageIsCustom(local);
         let dbTone: Partial<AiConfigForm> = {};
         if (user) {
           const { data, error: dbErr } = await supabase
             .from(TABLE)
             .select("*")
-            .eq("user_id", user.id)
+            .eq("user_id", resolveActiveBrowserUserId(user.id))
             .maybeSingle();
           if (dbErr) throw new Error(dbErr.message);
+          const dbLanguage = hasLanguageValue(data?.ai_language) ? normalizeLanguage(data?.ai_language) : undefined;
+          const shouldUseDbLanguage = Boolean(dbLanguage && (aiLanguageIsCustom || dbLanguage !== initialForm.language));
           dbTone = {
             tone: normalizeTone(data?.tone),
             textStyle: normalizeTextStyle(data?.communication_style),
@@ -242,7 +266,7 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
             mainGoal: normalizeMainGoal(data?.ai_main_goal),
             preferredAngle: normalizePreferredAngle(data?.ai_preferred_angle),
             preferredCta: normalizeBoosterPreferredCta(data?.preferred_cta || initialForm.preferredCta),
-            language: normalizeLanguage(data?.ai_language),
+            ...(shouldUseDbLanguage && dbLanguage ? { language: dbLanguage } : {}),
             likedExample: String(data?.ai_liked_example || initialForm.likedExample).slice(0, 1200),
             forbiddenStyle: String(data?.ai_custom_instructions || initialForm.forbiddenStyle).slice(0, 700),
           };
@@ -260,12 +284,12 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
           mainGoal: normalizeMainGoal(local.mainGoal),
           preferredAngle: normalizePreferredAngle(local.preferredAngle),
           preferredCta: normalizeBoosterPreferredCta(local.preferredCta || initialForm.preferredCta),
-          language: normalizeLanguage(local.language),
+          ...(hasLanguageValue(local.language) ? { language: normalizeLanguage(local.language) } : {}),
           likedExample: String(local.likedExample || "").slice(0, 1200),
           forbiddenStyle: String(local.forbiddenStyle ?? local.customInstructions ?? "").slice(0, 700),
         };
 
-        const merged = { ...initialForm, ...migratedLocal, ...dbTone } as AiConfigForm;
+        const merged = { ...initialForm, language: appDefaultLanguage, ...migratedLocal, ...dbTone } as AiConfigForm;
         setForm({
           ...merged,
           preferredCta: normalizeBoosterPreferredCta(merged.preferredCta),
@@ -285,12 +309,18 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
     setForm((current) => ({ ...current, [key]: value }));
   };
 
+  const setGenerationLanguage = (value: AiConfigForm["language"]) => {
+    markAiLanguageCustom();
+    set("language", value);
+  };
+
   const save = async () => {
     setSaving(true);
     setSaved(false);
     setError("");
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(form));
+      markAiLanguageCustom();
 
       const supabase = createClient();
       const { data: authData, error: authErr } = await supabase.auth.getUser();
@@ -299,7 +329,7 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
       if (user) {
         const { error: upErr } = await supabase.from(TABLE).upsert(
           {
-            user_id: user.id,
+            user_id: resolveActiveBrowserUserId(user.id),
             tone: form.tone,
             preferred_cta: form.preferredCta,
             communication_style: form.textStyle,
@@ -344,10 +374,13 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
   };
 
   const reset = () => {
-    setForm(initialForm);
+    setForm({ ...initialForm, language: readDefaultAppLanguage() });
     setSaved(false);
     setError("");
-    try { localStorage.removeItem(STORAGE_KEY); } catch {}
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(AI_LANGUAGE_CUSTOM_STORAGE_KEY);
+    } catch {}
   };
 
   return (
@@ -431,14 +464,10 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
 
                 <label style={label}>
                   <span style={labelTitle}>Langue du contenu généré</span>
-                  <select style={input} value={form.language} onChange={(e) => set("language", e.target.value as AiConfigForm["language"])}>
-                    <option value="fr" style={selectOption}>Français</option>
-                    <option value="en" style={selectOption}>English</option>
-                    <option value="es" style={selectOption}>Español</option>
-                    <option value="it" style={selectOption}>Italiano</option>
-                    <option value="de" style={selectOption}>Deutsch</option>
-                    <option value="nl" style={selectOption}>Nederlands</option>
-                    <option value="pt" style={selectOption}>Português</option>
+                  <select style={input} value={form.language} onChange={(e) => setGenerationLanguage(e.target.value as AiConfigForm["language"])}>
+                    {APP_LANGUAGE_OPTIONS.map((option) => (
+                      <option key={option.value} value={option.value} style={selectOption}>{option.label}</option>
+                    ))}
                   </select>
                 </label>
               </div>

@@ -116,6 +116,40 @@ async function fetchSubscriptions(userIds: string[]) {
   return map;
 }
 
+async function fetchMultiAccountConfigs(userIds: string[]) {
+  if (!userIds.length) return new Map<string, any>();
+
+  const { data, error } = await supabaseAdmin
+    .from("inrcy_multi_account_config")
+    .select("auth_user_id,multi_account_enabled,max_establishments,updated_at")
+    .in("auth_user_id", userIds);
+
+  if (error) throw error;
+
+  const map = new Map<string, any>();
+  for (const row of data ?? []) map.set(row.auth_user_id, row);
+  return map;
+}
+
+async function fetchAccountCounts(userIds: string[]) {
+  if (!userIds.length) return new Map<string, number>();
+
+  const { data, error } = await supabaseAdmin
+    .from("inrcy_account_members")
+    .select("auth_user_id,account_id")
+    .in("auth_user_id", userIds);
+
+  if (error) throw error;
+
+  const counts = new Map<string, number>();
+  for (const row of data ?? []) {
+    const authUserId = String(row.auth_user_id || "");
+    if (!authUserId) continue;
+    counts.set(authUserId, (counts.get(authUserId) || 0) + 1);
+  }
+  return counts;
+}
+
 export async function GET(request: NextRequest) {
   const admin = await requireAdminApi();
   if (!admin.ok) return admin.response;
@@ -130,9 +164,11 @@ export async function GET(request: NextRequest) {
     const users = await listAuthUsers(limit);
     const userIds = users.map((user: any) => user.id).filter(Boolean);
 
-    const [profiles, subscriptions] = await Promise.all([
+    const [profiles, subscriptions, multiAccountConfigs, accountCounts] = await Promise.all([
       fetchProfiles(userIds),
       fetchSubscriptions(userIds),
+      fetchMultiAccountConfigs(userIds),
+      fetchAccountCounts(userIds),
     ]);
 
     let rows = users.map((user: any) => {
@@ -140,6 +176,8 @@ export async function GET(request: NextRequest) {
       const subscription = subscriptions.get(user.id) ?? null;
       const role = profile?.role || (ADMIN_USER_IDS.includes(user.id as any) ? "admin" : "user");
       const email = user.email || profile?.admin_email || subscription?.contact_email || null;
+      const multiConfig = multiAccountConfigs.get(user.id) ?? null;
+      const accountCount = Math.max(1, accountCounts.get(user.id) || 0);
 
       return {
         user_id: user.id,
@@ -152,6 +190,12 @@ export async function GET(request: NextRequest) {
         is_hard_admin: ADMIN_USER_IDS.includes(user.id as any),
         profile,
         subscription,
+        multi_account: {
+          multi_account_enabled: multiConfig?.multi_account_enabled === true,
+          max_establishments: Math.max(1, Number(multiConfig?.max_establishments || 1)),
+          account_count: accountCount,
+          updated_at: multiConfig?.updated_at ?? null,
+        },
       };
     });
 
@@ -255,6 +299,58 @@ export async function PATCH(request: NextRequest) {
 
       if (error) throw error;
       updates.founder_offer_enabled = enabled;
+    }
+
+    const hasMultiEnabled = Object.prototype.hasOwnProperty.call(body, "multi_account_enabled");
+    const hasMaxEstablishments = Object.prototype.hasOwnProperty.call(body, "max_establishments");
+
+    if (hasMultiEnabled || hasMaxEstablishments) {
+      const { data: existingConfig, error: existingConfigError } = await supabaseAdmin
+        .from("inrcy_multi_account_config")
+        .select("multi_account_enabled,max_establishments")
+        .eq("auth_user_id", userId)
+        .maybeSingle();
+      if (existingConfigError) throw existingConfigError;
+
+      const nextEnabled = hasMultiEnabled
+        ? body.multi_account_enabled === true
+        : existingConfig?.multi_account_enabled === true;
+      const requestedMax = hasMaxEstablishments
+        ? Number(body.max_establishments)
+        : Number(existingConfig?.max_establishments || 1);
+
+      if (!Number.isInteger(requestedMax) || requestedMax < 1 || requestedMax > 100) {
+        return NextResponse.json({ error: "Nombre maximum d’établissements invalide (1 à 100)." }, { status: 400 });
+      }
+
+      const { data: configResult, error: configError } = await supabaseAdmin.rpc(
+        "inrcy_set_multi_account_config",
+        {
+          p_auth_user_id: userId,
+          p_enabled: nextEnabled,
+          p_max_establishments: requestedMax,
+        },
+      );
+
+      if (configError) {
+        const message = configError.message || "";
+        const match = message.match(/INRCY_MAX_BELOW_ACCOUNT_COUNT:(\d+)/);
+        if (match) {
+          return NextResponse.json(
+            { error: `Impossible de descendre sous ${match[1]} établissement(s) déjà existant(s).` },
+            { status: 409 },
+          );
+        }
+        if (message.includes("INRCY_MAX_ESTABLISHMENTS_INVALID")) {
+          return NextResponse.json({ error: "Nombre maximum d’établissements invalide (1 à 100)." }, { status: 400 });
+        }
+        throw configError;
+      }
+
+      const resultRow = Array.isArray(configResult) ? configResult[0] : configResult;
+      updates.multi_account_enabled = resultRow?.multi_account_enabled ?? nextEnabled;
+      updates.max_establishments = resultRow?.max_establishments ?? requestedMax;
+      updates.account_count = resultRow?.account_count ?? null;
     }
 
     return NextResponse.json({ ok: true, updates });

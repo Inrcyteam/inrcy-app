@@ -13,13 +13,13 @@ function safeObj(value: unknown): Record<string, unknown> {
 }
 
 export async function GET() {
-  const { supabase, user, errorResponse } = await requireUser();
+  const { supabase, user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   const { data, error } = await supabase
     .from("pro_tools_configs")
     .select("settings")
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .maybeSingle();
 
   if (error) return jsonUserFacingError(error, { status: 500 });
@@ -34,7 +34,7 @@ export async function GET() {
 }
 
 export async function PATCH(req: Request) {
-  const { supabase, user, errorResponse } = await requireUser();
+  const { supabase, user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   const body = await req.json().catch(() => ({}));
@@ -43,7 +43,7 @@ export async function PATCH(req: Request) {
   const { data: current, error: currentError } = await supabase
     .from("pro_tools_configs")
     .select("settings")
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .maybeSingle();
 
   if (currentError) return jsonUserFacingError(currentError, { status: 500 });
@@ -80,7 +80,7 @@ export async function PATCH(req: Request) {
 
   const { error } = await supabase
     .from("pro_tools_configs")
-    .upsert({ user_id: user.id, settings: nextSettings }, { onConflict: "user_id" });
+    .upsert({ user_id: activeUserId, settings: nextSettings }, { onConflict: "user_id" });
 
   if (error) return jsonUserFacingError(error, { status: 500 });
 

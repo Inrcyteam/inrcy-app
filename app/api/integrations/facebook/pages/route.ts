@@ -5,6 +5,7 @@ import { asRecord, asString } from "@/lib/tsSafe";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { extractFacebookUserTokens, listAccessibleFacebookPagesFromTokens } from "@/lib/metaBusinessAssets";
+import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 
 export async function GET() {
   try {
@@ -12,7 +13,7 @@ export async function GET() {
     const { data: auth, error } = await supabase.auth.getUser();
     if (error || !auth?.user) return NextResponse.json({ error: "Accès non autorisé." }, { status: 401 });
 
-    const userId = auth.user.id;
+    const userId = await resolveActiveInrcyAccountId(supabase, auth.user.id);
 
     const { data: integ, error: integErr } = await supabaseAdmin
       .from("integrations")

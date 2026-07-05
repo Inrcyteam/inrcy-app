@@ -3,6 +3,7 @@ import { createSupabaseServer } from "@/lib/supabaseServer";
 import { tryDecryptToken } from "@/lib/oauthCrypto";
 import { asRecord, asString } from "@/lib/tsSafe";
 import { extractFacebookUserTokens, listAccessibleFacebookPagesFromTokens } from "@/lib/metaBusinessAssets";
+import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 
 export async function GET() {
   const supabase = await createSupabaseServer();
@@ -12,11 +13,12 @@ export async function GET() {
   } = await supabase.auth.getUser();
 
   if (authErr || !user) return NextResponse.json({ error: "Accès non autorisé." }, { status: 401 });
+  const activeUserId = await resolveActiveInrcyAccountId(supabase, user.id);
 
   const { data: rows } = await supabase
     .from("integrations")
     .select("status,access_token_enc,meta")
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .eq("provider", "instagram")
     .eq("source", "instagram")
     .eq("product", "instagram")

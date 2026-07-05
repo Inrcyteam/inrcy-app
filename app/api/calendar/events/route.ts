@@ -754,7 +754,7 @@ async function sendAgendaConfirmationEmails(args: {
 }
 
 export async function GET(req: Request) {
-  const { supabase, user, errorResponse } = await requireUser();
+  const { supabase, user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   const { searchParams } = new URL(req.url);
@@ -771,7 +771,7 @@ export async function GET(req: Request) {
   const { data, error } = await supabase
     .from("agenda_events")
     .select("id,title,description,location,start_at,end_at,all_day,meta")
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .lt("start_at", timeMax.toISOString())
     .gt("end_at", timeMin.toISOString())
     .order("start_at", { ascending: true })
@@ -786,7 +786,7 @@ export async function GET(req: Request) {
   const { data: pendingRequests, error: pendingRequestsError } = await supabase
     .from("agenda_events")
     .select("id,title,description,location,start_at,end_at,all_day,meta")
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .contains("meta", { source: "inrbadge", status: "pending" })
     .order("start_at", { ascending: true })
     .limit(100);
@@ -807,7 +807,7 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const { supabase, user, errorResponse } = await requireUser();
+  const { supabase, user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   const body = (await req.json().catch(() => ({}))) as CreateEventBody;
@@ -837,7 +837,7 @@ export async function POST(req: Request) {
   const { data, error } = await supabase
     .from("agenda_events")
     .insert({
-      user_id: user.id,
+      user_id: activeUserId,
       title: body.summary ?? "(Sans titre)",
       description: body.description ?? null,
       location: body.location ?? null,
@@ -851,9 +851,9 @@ export async function POST(req: Request) {
 
   if (error) return jsonUserFacingError(error, { status: 500, extra: { ok: false } });
   if (!isDraftAgendaEvent(meta)) {
-    await createAgendaConfirmationNotification(user.id, String(body.summary ?? "(Sans titre)"), startAt, safeObj(meta.reminders).enabled !== false).catch(() => null);
+    await createAgendaConfirmationNotification(activeUserId, String(body.summary ?? "(Sans titre)"), startAt, safeObj(meta.reminders).enabled !== false).catch(() => null);
     await sendAgendaConfirmationEmails({
-      userId: user.id,
+      userId: activeUserId,
       row: {
         title: String(body.summary ?? "(Sans titre)"),
         description: body.description ?? null,
@@ -869,7 +869,7 @@ export async function POST(req: Request) {
 }
 
 export async function PATCH(req: Request) {
-  const { supabase, user, errorResponse } = await requireUser();
+  const { supabase, user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   const { searchParams } = new URL(req.url);
@@ -883,7 +883,7 @@ export async function PATCH(req: Request) {
     .from("agenda_events")
     .select("meta,start_at,end_at,title,description,location,all_day")
     .eq("id", id)
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .maybeSingle();
 
   if (currentError) return jsonUserFacingError(currentError, { status: 500, extra: { ok: false } });
@@ -954,14 +954,14 @@ export async function PATCH(req: Request) {
     meta: nextMeta,
   };
 
-  const { error } = await supabase.from("agenda_events").update(patch).eq("id", id).eq("user_id", user.id);
+  const { error } = await supabase.from("agenda_events").update(patch).eq("id", id).eq("user_id", activeUserId);
 
   if (error) return jsonUserFacingError(error, { status: 500, extra: { ok: false } });
   if (!isDraftAgendaEvent(nextMeta)) {
-    await createAgendaConfirmationNotification(user.id, String(nextTitle), startAt, safeObj(nextMeta.reminders).enabled !== false).catch(() => null);
+    await createAgendaConfirmationNotification(activeUserId, String(nextTitle), startAt, safeObj(nextMeta.reminders).enabled !== false).catch(() => null);
     if (eventChanged) {
       await sendAgendaConfirmationEmails({
-        userId: user.id,
+        userId: activeUserId,
         row: {
           title: String(nextTitle),
           description: typeof nextDescription === "string" ? nextDescription : null,
@@ -978,14 +978,14 @@ export async function PATCH(req: Request) {
 }
 
 export async function DELETE(req: Request) {
-  const { supabase, user, errorResponse } = await requireUser();
+  const { supabase, user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   const { searchParams } = new URL(req.url);
   const id = searchParams.get("id");
   if (!id) return bad("id requis");
 
-  const { error } = await supabase.from("agenda_events").delete().eq("id", id).eq("user_id", user.id);
+  const { error } = await supabase.from("agenda_events").delete().eq("id", id).eq("user_id", activeUserId);
   if (error) return jsonUserFacingError(error, { status: 500, extra: { ok: false } });
   return NextResponse.json({ ok: true });
 }

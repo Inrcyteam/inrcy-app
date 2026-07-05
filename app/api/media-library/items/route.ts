@@ -256,7 +256,7 @@ async function findProtectedMediaUsages(
 }
 
 export async function GET(request: NextRequest) {
-  const { user, errorResponse } = await requireUser();
+  const { user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   const url = new URL(request.url);
@@ -269,7 +269,7 @@ export async function GET(request: NextRequest) {
   let query = supabaseAdmin
     .from("pro_media_library")
     .select("id,user_id,bucket_name,storage_path,media_type,mime_type,size_bytes,title,tags,source,width,height,duration_seconds,is_active,usage_count,last_used_at,created_at,updated_at")
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .order("created_at", { ascending: false })
     .limit(fetchLimit);
 
@@ -325,7 +325,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const { user, errorResponse } = await requireUser();
+  const { user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   const body = await request.json().catch(() => ({}));
@@ -351,7 +351,7 @@ export async function PATCH(request: NextRequest) {
     .from("pro_media_library")
     .update(patch)
     .eq("id", id)
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .select("id")
     .maybeSingle();
 
@@ -365,7 +365,7 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const { user, errorResponse } = await requireUser();
+  const { user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   const url = new URL(request.url);
@@ -388,7 +388,7 @@ export async function DELETE(request: NextRequest) {
   const { data: rows, error: fetchError } = await supabaseAdmin
     .from("pro_media_library")
     .select("id,bucket_name,storage_path")
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .in("id", requestedIds);
 
   if (fetchError) {
@@ -401,14 +401,14 @@ export async function DELETE(request: NextRequest) {
 
   for (const row of foundRows as any[]) {
     const storagePath = String(row.storage_path || "");
-    if (!isOwnedStoragePath(user.id, storagePath)) return jsonError("Chemin Storage invalide.", 403);
+    if (!isOwnedStoragePath(activeUserId, storagePath)) return jsonError("Chemin Storage invalide.", 403);
   }
 
   if (!forceDelete) {
     let usages: MediaDeleteUsage[] = [];
     try {
       usages = await findProtectedMediaUsages(
-        user.id,
+        activeUserId,
         (foundRows as any[]).map((row) => ({
           id: String(row.id || ""),
           bucket_name: String(row.bucket_name || BUCKET),
@@ -457,7 +457,7 @@ export async function DELETE(request: NextRequest) {
   const del = await supabaseAdmin
     .from("pro_media_library")
     .delete()
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .in("id", foundIds);
   if (del.error) return jsonError("Impossible de supprimer les lignes Supabase.", 500, del.error.message);
 

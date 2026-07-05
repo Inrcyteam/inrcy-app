@@ -26,16 +26,16 @@ function configured(settings: Record<string, unknown>) {
 }
 
 export async function GET() {
-  const { supabase, user, errorResponse } = await requireUser();
+  const { supabase, user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
-  if (!(await isAppBubbleEnabledForUser(supabase, user.id, "trustpilot"))) {
+  if (!(await isAppBubbleEnabledForUser(supabase, activeUserId, "trustpilot"))) {
     return bubbleAccessDisabledResponse("Trustpilot");
   }
 
   const { data, error } = await supabase
     .from("pro_tools_configs")
     .select("settings")
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .maybeSingle();
   if (error) return NextResponse.json({ ok: false, error: "Réglages Trustpilot indisponibles." }, { status: 400 });
 
@@ -45,9 +45,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
-  const { supabase, user, errorResponse } = await requireUser();
+  const { supabase, user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
-  if (!(await isAppBubbleEnabledForUser(supabase, user.id, "trustpilot"))) {
+  if (!(await isAppBubbleEnabledForUser(supabase, activeUserId, "trustpilot"))) {
     return bubbleAccessDisabledResponse("Trustpilot");
   }
 
@@ -56,7 +56,7 @@ export async function POST(request: Request) {
     const { data, error: readError } = await supabase
       .from("pro_tools_configs")
       .select("settings")
-      .eq("user_id", user.id)
+      .eq("user_id", activeUserId)
       .maybeSingle();
     if (readError) throw readError;
 
@@ -84,9 +84,9 @@ export async function POST(request: Request) {
 
     await supabaseAdmin
       .from("pro_tools_configs")
-      .upsert({ user_id: user.id, settings: { ...root, trustpilot: nextTrustpilot } }, { onConflict: "user_id" });
+      .upsert({ user_id: activeUserId, settings: { ...root, trustpilot: nextTrustpilot } }, { onConflict: "user_id" });
 
-    await clearAllToolCaches(supabase, user.id);
+    await clearAllToolCaches(supabase, activeUserId);
     return NextResponse.json({ ok: true, trustpilot: nextTrustpilot });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Enregistrement Trustpilot impossible.";

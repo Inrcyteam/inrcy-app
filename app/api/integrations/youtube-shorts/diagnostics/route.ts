@@ -92,10 +92,10 @@ async function pingAnalytics(accessToken: string) {
 }
 
 export async function GET() {
-  const { user, errorResponse } = await requireUser();
+  const { user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
-  const integration = await readYoutubeShortsIntegration(supabaseAdmin, user.id);
+  const integration = await readYoutubeShortsIntegration(supabaseAdmin, activeUserId);
   const active = isYoutubeShortsIntegrationActive(integration);
   const missing = missingScopes(integration?.scopes);
 
@@ -125,7 +125,7 @@ export async function GET() {
   }
 
   try {
-    const accessToken = await getFreshAccessToken(user.id, integration);
+    const accessToken = await getFreshAccessToken(activeUserId, integration);
     if (!accessToken) throw new Error("Token YouTube indisponible.");
 
     const channel = await fetchYoutubeMineChannel(accessToken);

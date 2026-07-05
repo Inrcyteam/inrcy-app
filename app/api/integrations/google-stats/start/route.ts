@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { makeOAuthState, safeInternalPath } from "@/lib/security";
 import { asRecord } from "@/lib/tsSafe";
+import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
+import { createSupabaseServer } from "@/lib/supabaseServer";
 
 const ALLOWED_SOURCES = ["site_inrcy", "site_web"] as const;
 const ALLOWED_PRODUCTS = ["ga4", "gsc"] as const;
@@ -127,20 +129,20 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Produit invalide." }, { status: 400 });
   }
 
-  try {
-    const { createSupabaseServer } = await import("@/lib/supabaseServer");
-    const supabase = await createSupabaseServer();
-    const { data: authData, error: authErr } = await supabase.auth.getUser();
-    const userId = authErr ? null : authData?.user?.id ?? null;
+  const supabase = await createSupabaseServer();
+  const { data: authData, error: authErr } = await supabase.auth.getUser();
+  if (authErr || !authData?.user) {
+    return NextResponse.json({ error: "Votre session a expiré. Merci de vous reconnecter." }, { status: 401 });
+  }
+  const accountId = await resolveActiveInrcyAccountId(supabase, authData.user.id);
 
-    if (userId) {
-      const canReuseExistingConnection = await findReusableGoogleStatsConnection({ userId, source, product });
-      if (canReuseExistingConnection) {
-        returnRedirectUrl.searchParams.set("linked", product);
-        returnRedirectUrl.searchParams.set("ok", "1");
-        returnRedirectUrl.searchParams.set("skipped", "1");
-        return NextResponse.redirect(returnRedirectUrl);
-      }
+  try {
+    const canReuseExistingConnection = await findReusableGoogleStatsConnection({ userId: accountId, source, product });
+    if (canReuseExistingConnection) {
+      returnRedirectUrl.searchParams.set("linked", product);
+      returnRedirectUrl.searchParams.set("ok", "1");
+      returnRedirectUrl.searchParams.set("skipped", "1");
+      return NextResponse.redirect(returnRedirectUrl);
     }
   } catch {
     // If the pre-check fails, fall back to the normal OAuth flow.
@@ -161,13 +163,7 @@ export async function GET(request: Request) {
   }
 
 if (mode === "activate") {
-    const { createSupabaseServer } = await import("@/lib/supabaseServer");
-    const supabase = await createSupabaseServer();
-    const { data: authData, error: authErr } = await supabase.auth.getUser();
-    if (authErr || !authData?.user) {
-      return NextResponse.json({ error: "Votre session a expiré. Merci de vous reconnecter." }, { status: 401 });
-    }
-    const userId = authData.user.id;
+    const userId = accountId;
 
     
 // Nouveau schéma :
@@ -203,7 +199,7 @@ const rawUrl =
     siteUrl = parsed.normalizedUrl;
   }
 
-  const { stateB64, nonce, cookieName } = makeOAuthState("google_stats", returnTo, { source, product, mode, domain, siteUrl });
+  const { stateB64, cookieValue, cookieName } = makeOAuthState("google_stats", returnTo, { source, product, mode, domain, siteUrl, accountId });
 
   const requestedScopes = [
     REQUIRED_SCOPE_BY_PRODUCT[product],
@@ -223,7 +219,7 @@ const rawUrl =
 
   const url = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
   const res = NextResponse.redirect(url);
-  res.cookies.set(cookieName, nonce, {
+  res.cookies.set(cookieName, cookieValue, {
     httpOnly: true,
     secure: true,
     sameSite: "lax",

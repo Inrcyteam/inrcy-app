@@ -5,9 +5,28 @@ import { getChannelConnectionStates } from "@/lib/channelConnectionState";
 import { computeInertiaSnapshot } from "@/lib/loyalty/inertia";
 import { getIsoWeekId, getIsoWeekStart } from "@/lib/weeklyGoals";
 
-export type WeeklyMissionActionKey = "create_actu" | "weekly_feature_use" | "weekly_propulser_use" | "weekly_fideliser_use";
+export type InertiaActionKey =
+  | "account_open"
+  | "profile_complete"
+  | "activity_complete"
+  | "connect_channel"
+  | "create_actu"
+  | "weekly_feature_use"
+  | "weekly_propulser_use"
+  | "weekly_fideliser_use"
+  | "monthly_seniority";
 
-const MULTIPLIED_ACTION_KEYS = new Set<WeeklyMissionActionKey>(["create_actu", "weekly_feature_use", "weekly_propulser_use", "weekly_fideliser_use"]);
+export type WeeklyMissionActionKey = Extract<
+  InertiaActionKey,
+  "create_actu" | "weekly_feature_use" | "weekly_propulser_use" | "weekly_fideliser_use"
+>;
+
+const MULTIPLIED_ACTION_KEYS = new Set<InertiaActionKey>([
+  "create_actu",
+  "weekly_feature_use",
+  "weekly_propulser_use",
+  "weekly_fideliser_use",
+]);
 
 const PROPULSER_CAMPAIGNS = new Set([
   "propulser:valorize",
@@ -39,6 +58,8 @@ type AwardResult = {
   ok: boolean;
   skipped?: boolean;
   amount?: number;
+  balance?: number | null;
+  updatedAt?: string | null;
   error?: string;
 };
 
@@ -109,14 +130,14 @@ async function getTurboMultiplier(userId: string) {
 
 export async function awardInertiaActionForUser(args: {
   userId: string;
-  actionKey: WeeklyMissionActionKey;
+  actionKey: InertiaActionKey;
   baseAmount: number;
   sourceId: string;
   label: string;
   meta?: Record<string, unknown>;
 }): Promise<AwardResult> {
   const userId = String(args.userId || "").trim();
-  const actionKey = String(args.actionKey || "").trim() as WeeklyMissionActionKey;
+  const actionKey = String(args.actionKey || "").trim() as InertiaActionKey;
   const sourceId = String(args.sourceId || "").trim();
   const baseAmount = Number(args.baseAmount || 0);
 
@@ -142,6 +163,7 @@ export async function awardInertiaActionForUser(args: {
 
   const turbo = MULTIPLIED_ACTION_KEYS.has(actionKey) ? await getTurboMultiplier(userId) : 1;
   const amount = MULTIPLIED_ACTION_KEYS.has(actionKey) ? Math.round(baseAmount * turbo) : baseAmount;
+  const updatedAt = new Date().toISOString();
 
   const insertRes = await supabaseAdmin
     .from("loyalty_ledger")
@@ -180,7 +202,7 @@ export async function awardInertiaActionForUser(args: {
       .eq("user_id", userId);
 
     if (updateRes.error) return { ok: false, skipped: true, amount, error: updateRes.error.message };
-    return { ok: true, amount };
+    return { ok: true, amount, balance: next, updatedAt };
   }
 
   const createBalanceRes = await supabaseAdmin
@@ -206,9 +228,11 @@ export async function awardInertiaActionForUser(args: {
     if (retryUpdateRes.error) {
       return { ok: false, skipped: true, amount, error: retryUpdateRes.error.message };
     }
+
+    return { ok: true, amount, balance: (Number.isFinite(current) ? current : 0) + amount, updatedAt };
   }
 
-  return { ok: true, amount };
+  return { ok: true, amount, balance: amount, updatedAt };
 }
 
 export async function awardWeeklyFeatureUseForCampaign(args: CampaignLike & {

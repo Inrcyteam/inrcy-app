@@ -9,6 +9,7 @@ import { withCurrentConnectionVersion } from "@/lib/connectionVersions";
 import { safeInternalPath, verifyOAuthState } from "@/lib/security";
 import { asRecord, asString } from "@/lib/tsSafe";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { resolveOAuthBoundInrcyAccountId } from "@/lib/multicompte/server";
 import {
   buildPinterestTokenDates,
   exchangePinterestAuthorizationCode,
@@ -84,8 +85,9 @@ export async function GET(request: Request) {
     const { data: authData, error: authErr } = await supabase.auth.getUser();
     const user = authData?.user;
     if (authErr || !user) return fail("not_authenticated", "Tu dois être connecté à iNrCy pour connecter Pinterest.");
+    const activeUserId = await resolveOAuthBoundInrcyAccountId(supabase, user.id, st.state.accountId);
 
-    if (!(await isAppBubbleEnabledForUser(supabase, user.id, "pinterest"))) {
+    if (!(await isAppBubbleEnabledForUser(supabase, activeUserId, "pinterest"))) {
       return fail("bubble_access_disabled", "Pinterest est désactivé dans Bubble Access.");
     }
 
@@ -116,7 +118,7 @@ export async function GET(request: Request) {
 
     await supabaseAdmin.from("integrations").upsert(
       {
-        user_id: user.id,
+        user_id: activeUserId,
         provider: PINTEREST_PROVIDER,
         category: "social",
         source: PINTEREST_SOURCE,
@@ -139,7 +141,7 @@ export async function GET(request: Request) {
     const { data: cfg } = await supabaseAdmin
       .from("pro_tools_configs")
       .select("settings")
-      .eq("user_id", user.id)
+      .eq("user_id", activeUserId)
       .maybeSingle();
     const root = normalizeSettingsRoot(asRecord(cfg).settings);
     const currentPinterest = normalizeSettingsRoot(root.pinterest);
@@ -161,9 +163,9 @@ export async function GET(request: Request) {
 
     await supabaseAdmin
       .from("pro_tools_configs")
-      .upsert({ user_id: user.id, settings: { ...root, pinterest: nextPinterest } }, { onConflict: "user_id" });
+      .upsert({ user_id: activeUserId, settings: { ...root, pinterest: nextPinterest } }, { onConflict: "user_id" });
 
-    await clearAllToolCaches(supabase, user.id);
+    await clearAllToolCaches(supabase, activeUserId);
 
     const finalUrl = new URL(returnTo, siteUrl);
     finalUrl.searchParams.set("linked", "pinterest");

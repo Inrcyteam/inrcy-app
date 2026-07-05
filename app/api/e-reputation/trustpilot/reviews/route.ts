@@ -10,16 +10,16 @@ export const revalidate = 0;
 
 export async function GET(req: Request) {
   try {
-    const { supabase, user, errorResponse } = await requireUser();
+    const { supabase, activeUserId, errorResponse } = await requireUser();
     if (errorResponse) return errorResponse;
-    if (!(await isAppBubbleEnabledForUser(supabase, user.id, "trustpilot"))) {
+    if (!(await isAppBubbleEnabledForUser(supabase, activeUserId, "trustpilot"))) {
       return bubbleAccessDisabledResponse("Trustpilot");
     }
 
     const url = new URL(req.url);
     const pageSize = Number(url.searchParams.get("pageSize") || 50);
     const pageToken = url.searchParams.get("pageToken");
-    const payload = await listTrustpilotReviewsForUser(user.id, { pageSize, pageToken });
+    const payload = await listTrustpilotReviewsForUser(activeUserId, { pageSize, pageToken });
 
     return NextResponse.json(payload);
   } catch (error) {

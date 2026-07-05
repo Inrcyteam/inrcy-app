@@ -725,7 +725,7 @@ async function buildScheduledPayload(
 }
 
 export async function POST(request: Request) {
-  const { user, errorResponse } = await requireUser();
+  const { user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   const body = (await request.json().catch(() => null)) as {
@@ -752,7 +752,7 @@ export async function POST(request: Request) {
     .from("inr_agent_actions")
     .select(ACTION_SELECT)
     .eq("id", actionId)
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .maybeSingle();
 
   if (readError) {
@@ -791,7 +791,7 @@ export async function POST(request: Request) {
     }
 
     const baseScheduleArgs = {
-      userId: user.id,
+      userId: activeUserId,
       automationKey: action.automationKey,
       actionType: scheduledPayload.actionType,
       targetTool: scheduledPayload.targetTool,
@@ -874,7 +874,7 @@ export async function POST(request: Request) {
       if (scheduledPayload.actionType === "publication") {
         const duplicate = await findSimilarScheduledPublication({
           supabase: supabaseAdmin,
-          userId: user.id,
+          userId: activeUserId,
           scheduledAt: row.scheduled_at,
           channels: row.channels || [],
           payload: row.payload || {},
@@ -895,7 +895,7 @@ export async function POST(request: Request) {
       if (scheduledPayload.actionType === "campaign") {
         const duplicate = await findSimilarScheduledCampaign({
           supabase: supabaseAdmin,
-          userId: user.id,
+          userId: activeUserId,
           scheduledAt: row.scheduled_at,
           payload: row.payload || {},
         });
@@ -974,7 +974,7 @@ export async function POST(request: Request) {
         updated_at: now,
       })
       .eq("id", action.id)
-      .eq("user_id", user.id)
+      .eq("user_id", activeUserId)
       .select(ACTION_SELECT)
       .single();
 

@@ -1,5 +1,7 @@
 "use client";
 
+import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
+
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabaseClient";
 import { decodeBusinessSector, type ActivitySectorCategory } from "@/lib/activitySectors";
@@ -21,7 +23,7 @@ export function useBusinessTemplateContext() {
         const { data } = await supabase
           .from("business_profiles")
           .select("sector")
-          .eq("user_id", user.id)
+          .eq("user_id", resolveActiveBrowserUserId(user.id))
           .maybeSingle();
 
         if (cancelled) return;

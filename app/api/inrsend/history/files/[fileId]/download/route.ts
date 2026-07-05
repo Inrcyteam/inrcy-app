@@ -16,7 +16,7 @@ function encodeContentDisposition(filename: string) {
 }
 
 export async function GET(_req: Request, context: RouteContext) {
-  const { user, errorResponse } = await requireUser();
+  const { user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   try {
@@ -30,7 +30,7 @@ export async function GET(_req: Request, context: RouteContext) {
       .from("inrsend_history_files")
       .select("id, user_id, file_name, mime_type, size_bytes, storage_bucket, storage_path")
       .eq("id", fileId)
-      .eq("user_id", user.id)
+      .eq("user_id", activeUserId)
       .maybeSingle();
 
     if (error) {

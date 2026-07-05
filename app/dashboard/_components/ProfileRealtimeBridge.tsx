@@ -1,5 +1,7 @@
 "use client";
 
+import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
+
 import { useCallback, useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabaseClient";
 import {
@@ -82,26 +84,26 @@ export default function ProfileRealtimeBridge() {
       } = await supabase.auth.getUser();
 
       if (!user || cancelled) return;
-      userId = user.id;
+      userId = resolveActiveBrowserUserId(user.id);
 
       const { data: profileRow } = await supabase
         .from("profiles")
         .select(PROFILE_VERSION_FIELDS.join(","))
-        .eq("user_id", user.id)
+        .eq("user_id", resolveActiveBrowserUserId(user.id))
         .maybeSingle();
 
       versionsRef.current = toProfileVersionsSnapshot(profileRow);
       if (cancelled) return;
 
       channel = supabase
-        .channel(`inrcy-profile-versions:${user.id}`)
+        .channel(`inrcy-profile-versions:${resolveActiveBrowserUserId(user.id)}`)
         .on(
           "postgres_changes",
           {
             event: "*",
             schema: "public",
             table: "profiles",
-            filter: `user_id=eq.${user.id}`,
+            filter: `user_id=eq.${resolveActiveBrowserUserId(user.id)}`,
           },
           (payload) => {
             dispatchChanges(payload.new ?? payload.old ?? null);

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 import { isAuthorizedCronRequest, getCronUserIdFromRequest } from "@/lib/cronAuth";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import {
@@ -143,7 +144,7 @@ export async function GET(req: Request) {
     if (userError || !userData?.user) {
       return jsonUserFacingError("Non authentifié.", { status: 401 });
     }
-    userId = userData.user.id;
+    userId = await resolveActiveInrcyAccountId(supabase, userData.user.id);
   }
   const now = Date.now();
   const cutoffTime = now - 30 * 24 * 60 * 60 * 1000;

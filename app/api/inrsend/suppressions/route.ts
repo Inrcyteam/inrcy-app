@@ -7,13 +7,13 @@ export const runtime = "nodejs";
 const ALLOWED_REASONS = new Set(["opt_out", "blacklist", "hard_bounce", "complaint"]);
 
 export async function GET() {
-  const { supabase, user, errorResponse } = await requireUser();
+  const { supabase, user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   const { data, error } = await supabase
     .from("mail_suppression_list")
     .select("id,email,email_normalized,reason,source,note,created_at,updated_at")
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .order("created_at", { ascending: false })
     .limit(200);
 
@@ -22,7 +22,7 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const { user, errorResponse } = await requireUser();
+  const { user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   const body = await req.json().catch(() => ({}));
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
   if (!ALLOWED_REASONS.has(reason)) return NextResponse.json({ error: "Raison invalide." }, { status: 400 });
 
   const row = await upsertSuppressionEntry({
-    user_id: user.id,
+    user_id: activeUserId,
     email,
     reason: reason as any,
     source: "dashboard_api",
@@ -41,7 +41,7 @@ export async function POST(req: Request) {
   });
 
   const blockedQueued = await markQueuedRecipientsBlockedBySuppression({
-    userId: user.id,
+    userId: activeUserId,
     email,
     reason: reason as any,
     source: "dashboard_api",
@@ -52,13 +52,13 @@ export async function POST(req: Request) {
 }
 
 export async function DELETE(req: Request) {
-  const { user, errorResponse } = await requireUser();
+  const { user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   const url = new URL(req.url);
   const email = normalizeSuppressionEmail(url.searchParams.get("email"));
   if (!email) return NextResponse.json({ error: "Email manquant." }, { status: 400 });
 
-  await removeSuppressionEntry(user.id, email);
+  await removeSuppressionEntry(activeUserId, email);
   return NextResponse.json({ success: true });
 }

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { bubbleAccessDisabledResponse, isAppBubbleEnabledForUser } from "@/lib/appBubbleAccessServer";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { fetchPinterestBoards, getPinterestAccessToken } from "@/lib/pinterestOAuth";
+import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 
 export async function GET(request: Request) {
   try {
@@ -10,12 +11,13 @@ export async function GET(request: Request) {
     const { data: authData, error: authErr } = await supabase.auth.getUser();
     const user = authData?.user;
     if (authErr || !user) return NextResponse.json({ ok: false, error: "Non authentifié." }, { status: 401 });
+    const activeUserId = await resolveActiveInrcyAccountId(supabase, user.id);
 
-    if (!(await isAppBubbleEnabledForUser(supabase, user.id, "pinterest"))) {
+    if (!(await isAppBubbleEnabledForUser(supabase, activeUserId, "pinterest"))) {
       return bubbleAccessDisabledResponse("Pinterest");
     }
 
-    const accessToken = await getPinterestAccessToken(user.id, request.url);
+    const accessToken = await getPinterestAccessToken(activeUserId, request.url);
     if (!accessToken) {
       return NextResponse.json({ ok: false, error: "Pinterest à connecter." }, { status: 401 });
     }

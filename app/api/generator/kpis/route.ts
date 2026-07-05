@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createSupabaseServer } from '@/lib/supabaseServer';
+import { resolveActiveInrcyAccountId } from '@/lib/multicompte/server';
 import { buildMetricsSummary } from '@/lib/metrics/summary';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -47,6 +48,8 @@ export async function GET(req: Request) {
       );
     }
 
+    const activeUserId = await resolveActiveInrcyAccountId(supabase, user.id);
+
     const { searchParams, origin } = new URL(req.url);
     const monthDays = Math.max(1, Number(searchParams.get('monthDays') || 30));
     const weekDays = Math.max(1, Number(searchParams.get('weekDays') || 7));
@@ -56,7 +59,7 @@ export async function GET(req: Request) {
 
     const summary = await buildMetricsSummary({
       supabase,
-      userId: user.id,
+      userId: activeUserId,
       origin,
       getHeaders: () => (cookie ? { cookie } : undefined),
       monthDays,

@@ -164,12 +164,12 @@ async function uploadToBoosterStorage(
 
 export async function POST(req: Request) {
   try {
-    const { user, errorResponse } = await requireUser();
+    const { user, errorResponse, activeUserId } = await requireUser();
     if (errorResponse) return errorResponse;
 
     const rateLimited = await enforceRateLimit({
       name: "booster_upload_prepared",
-      identifier: user.id,
+      identifier: activeUserId,
       limit: 80,
       window: "1 m",
       // Ne bloque pas l upload si Upstash / KV est momentanement indisponible.
@@ -210,7 +210,7 @@ export async function POST(req: Request) {
     let storagePath = sanitizeStoragePath(
       requestedPath,
       file.name || "image",
-      user.id,
+      activeUserId,
       file.type,
     );
 
@@ -224,7 +224,7 @@ export async function POST(req: Request) {
     // on retente avec un nom 100 % généré côté serveur.
     if (upload.error) {
       const fallbackPath = buildFallbackStoragePath(
-        user.id,
+        activeUserId,
         file.name || "image",
         file.type,
         requestedPath,

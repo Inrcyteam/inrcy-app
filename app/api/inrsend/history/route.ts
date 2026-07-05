@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getInrSendRetentionCutoffIso, getOldestAutoRetentionCutoffIso, isInrSendItemRetained } from "@/lib/inrsendRetention";
 import { fetchInrSendHistoryFiles } from "@/lib/inrsend/historyFiles";
@@ -1119,6 +1120,8 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: "Votre session a expiré. Merci de vous reconnecter." }, { status: 401 });
   }
 
+  const activeUserId = await resolveActiveInrcyAccountId(supabase, userData.user.id);
+
   try {
     const url = new URL(req.url);
     const page = parsePositiveInt(url.searchParams.get("page"), 1, 100000);
@@ -1170,7 +1173,7 @@ export async function GET(req: Request) {
           let builder: any = supabase
             .from("send_items")
             .select("*")
-            .eq("user_id", userData.user.id)
+            .eq("user_id", activeUserId)
             .order("created_at", { ascending: false });
 
           if (folderCutoffIso) builder = builder.gte("created_at", folderCutoffIso);
@@ -1200,7 +1203,7 @@ export async function GET(req: Request) {
           let builder: any = supabase
             .from("mail_campaigns")
             .select("*")
-            .eq("user_id", userData.user.id)
+            .eq("user_id", activeUserId)
             .order("created_at", { ascending: false });
 
           if (folderCutoffIso) builder = builder.gte("created_at", folderCutoffIso);
@@ -1223,7 +1226,7 @@ export async function GET(req: Request) {
           let builder: any = supabase
             .from("app_events")
             .select("id, module, type, payload, created_at")
-            .eq("user_id", userData.user.id)
+            .eq("user_id", activeUserId)
             .order("created_at", { ascending: false });
 
           if (folderCutoffIso) builder = builder.gte("created_at", folderCutoffIso);
@@ -1265,7 +1268,7 @@ export async function GET(req: Request) {
           const { data, error } = await supabaseAdmin
             .from("inr_agent_actions")
             .select("id, automation_key, action_type, target_tool, title, summary, preview_text, recipients, payload, status, completed_at, created_at, updated_at, last_error")
-            .eq("user_id", userData.user.id)
+            .eq("user_id", activeUserId)
             .eq("automation_key", "stats")
             .eq("action_type", "stats_report")
             .order("completed_at", { ascending: false, nullsFirst: false })
@@ -1299,7 +1302,7 @@ export async function GET(req: Request) {
     const hasMore = total != null ? end < total : filtered.length > end || !allSourcesExhausted;
     const historyFiles = await fetchInrSendHistoryFiles(
       supabase,
-      userData.user.id,
+      activeUserId,
       items
         .filter((item) => item.source === "send_items" || item.source === "mail_campaigns" || item.source === "app_events")
         .map((item) => ({ source: item.source, id: item.id })),
@@ -1332,8 +1335,8 @@ export async function GET(req: Request) {
     await withStatsReportSignedUrls(items);
 
     const [folderCounts, draftFolderCounts] = await Promise.all([
-      computeFolderCounts(supabase, userData.user.id, "sent", filterAccountId, query),
-      computeFolderCounts(supabase, userData.user.id, "drafts", filterAccountId, query),
+      computeFolderCounts(supabase, activeUserId, "sent", filterAccountId, query),
+      computeFolderCounts(supabase, activeUserId, "drafts", filterAccountId, query),
     ]);
 
     return NextResponse.json({

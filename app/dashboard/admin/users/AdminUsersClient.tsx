@@ -56,6 +56,12 @@ type AdminUserRow = {
     founder_offer_enabled?: boolean | null;
     updated_at?: string | null;
   } | null;
+  multi_account: {
+    multi_account_enabled: boolean;
+    max_establishments: number;
+    account_count: number;
+    updated_at?: string | null;
+  };
 };
 
 const STATUS_OPTIONS: Array<{ value: StatusFilter; label: string }> = [
@@ -195,7 +201,7 @@ export default function AdminUsersClient() {
             <div className={styles.kicker}>Administration iNrCy</div>
             <h1 className={styles.title}>Comptes utilisateurs</h1>
             <p className={styles.subtitle}>
-              Gestion des comptes, rôles et abonnements.
+              Gestion des comptes, rôles, abonnements et droits multicompte.
             </p>
           </div>
 
@@ -312,6 +318,9 @@ export default function AdminUsersClient() {
                         <div className={styles.userTitleRow}>
                           <strong>{companyName(user)}</strong>
                           {user.is_hard_admin ? <span className={styles.adminPill}>Admin principal</span> : null}
+                          {user.multi_account?.multi_account_enabled ? (
+                            <span className={styles.multiAccountPill}>Multicompte · {user.multi_account.account_count}/{user.multi_account.max_establishments}</span>
+                          ) : null}
                         </div>
                         <span>{user.email || "Email non renseigné"}</span>
                         <small>{fullName(user)} · {user.profile?.phone || "Téléphone non renseigné"}</small>
@@ -376,6 +385,53 @@ export default function AdminUsersClient() {
                             >
                               {subscription?.founder_offer_enabled ? "Activée" : "Désactivée"}
                             </button>
+                          </div>
+
+                          <div className={styles.detailBox}>
+                            <span>Mode multicompte</span>
+                            <button
+                              type="button"
+                              className={user.multi_account?.multi_account_enabled ? styles.smallButton : styles.smallGhostButton}
+                              disabled={isSaving}
+                              onClick={() => patchUser(
+                                user.user_id,
+                                { multi_account_enabled: !user.multi_account?.multi_account_enabled },
+                                "Mode multicompte mis à jour.",
+                              )}
+                            >
+                              {user.multi_account?.multi_account_enabled ? "TRUE · Activé" : "FALSE · Désactivé"}
+                            </button>
+                            <small>{user.multi_account?.account_count || 1} établissement(s) existant(s)</small>
+                          </div>
+
+                          <div className={styles.detailBox}>
+                            <span>Maximum établissements</span>
+                            <input
+                              key={`${user.user_id}:${user.multi_account?.max_establishments || 1}`}
+                              className={styles.miniNumberInput}
+                              type="number"
+                              min={Math.max(1, user.multi_account?.account_count || 1)}
+                              max={100}
+                              defaultValue={Math.max(1, user.multi_account?.max_establishments || 1)}
+                              disabled={isSaving}
+                              onKeyDown={(event) => {
+                                if (event.key === "Enter") event.currentTarget.blur();
+                              }}
+                              onBlur={(event) => {
+                                const next = Number(event.currentTarget.value);
+                                const current = Math.max(1, user.multi_account?.max_establishments || 1);
+                                if (!Number.isInteger(next) || next === current) {
+                                  event.currentTarget.value = String(current);
+                                  return;
+                                }
+                                void patchUser(
+                                  user.user_id,
+                                  { max_establishments: next },
+                                  "Nombre maximum d’établissements mis à jour.",
+                                );
+                              }}
+                            />
+                            <small>Minimum actuel : {Math.max(1, user.multi_account?.account_count || 1)}</small>
                           </div>
 
                           <div className={styles.detailBox}>

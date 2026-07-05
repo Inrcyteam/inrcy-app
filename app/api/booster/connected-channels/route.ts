@@ -140,12 +140,12 @@ function firstCleanLabel(candidates: unknown[], fallback: string, formatter: (va
 
 export async function GET() {
   try {
-    const { supabase, user, errorResponse } = await requireUser();
+    const { supabase, user, errorResponse, activeUserId } = await requireUser();
     if (errorResponse) return errorResponse;
 
     const [states, bubbleAccess] = await Promise.all([
-      getChannelConnectionStates(supabase, user.id),
-      getAppBubbleAccessMapForUser(supabase, user.id),
+      getChannelConnectionStates(supabase, activeUserId),
+      getAppBubbleAccessMapForUser(supabase, activeUserId),
     ]);
     const pinterestEnabled = isBubbleEnabled(bubbleAccess, "pinterest");
     return NextResponse.json({

@@ -1,5 +1,7 @@
 "use client";
 
+import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabaseClient";
@@ -125,7 +127,7 @@ export default function ProfilContent({
         const { data, error } = await supabase
           .from("profiles")
           .select("*")
-          .eq("user_id", user.id)
+          .eq("user_id", resolveActiveBrowserUserId(user.id))
           .maybeSingle();
 
         if (error) throw new Error(getSimpleFrenchErrorMessage(error));
@@ -311,7 +313,7 @@ export default function ProfilContent({
       let logoPath = form.logoPath || extractLogoPathFromUrl(form.logoPreview) || "";
 
       if (form.logoFile) {
-        const uploaded = await uploadLogoIfNeeded(supabase, user.id, form.logoFile);
+        const uploaded = await uploadLogoIfNeeded(supabase, resolveActiveBrowserUserId(user.id), form.logoFile);
         logoUrl = uploaded.signedUrl;
         logoPath = uploaded.path;
 
@@ -323,7 +325,7 @@ export default function ProfilContent({
 
       // 2) Upsert dans la table profiles
       const payload = {
-        user_id: user.id,
+        user_id: resolveActiveBrowserUserId(user.id),
 
         contact_email: form.contactEmail.trim(),
         first_name: form.firstName.trim(),

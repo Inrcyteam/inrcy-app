@@ -1,12 +1,15 @@
 "use client";
 
+import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
+
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabaseClient";
+import { APP_LANGUAGE_STORAGE_KEY, normalizeAppLanguage, type AppLanguageCode } from "@/lib/appLanguage";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
 type Props = { mode?: "page" | "drawer" };
 
-type ClientLanguage = "fr" | "en" | "es" | "it" | "de" | "nl" | "pt";
+type ClientLanguage = AppLanguageCode;
 type DateFormat = "dd/MM/yyyy" | "MM/dd/yyyy" | "yyyy-MM-dd" | "d MMMM yyyy";
 type Currency = "EUR" | "USD" | "GBP" | "CHF" | "CAD";
 type PreferencesForm = {
@@ -18,6 +21,7 @@ type PreferencesForm = {
 
 const TABLE = "business_profiles";
 const STORAGE_KEY = "inrcy_general_preferences";
+const CLIENT_LANGUAGE_CUSTOM_STORAGE_KEY = "inrcy_client_language_custom_v1";
 
 const initialForm: PreferencesForm = {
   clientLanguage: "fr",
@@ -28,16 +32,7 @@ const initialForm: PreferencesForm = {
 
 const selectOption: React.CSSProperties = { color: "#0b1020", background: "#ffffff" };
 
-const normalizeClientLanguage = (value: unknown): ClientLanguage => {
-  const raw = String(value || "").trim().toLowerCase();
-  if (["en", "english", "anglais"].includes(raw)) return "en";
-  if (["es", "spanish", "espagnol"].includes(raw)) return "es";
-  if (["it", "italian", "italien"].includes(raw)) return "it";
-  if (["de", "german", "allemand"].includes(raw)) return "de";
-  if (["nl", "dutch", "neerlandais", "néerlandais"].includes(raw)) return "nl";
-  if (["pt", "portuguese", "portugais"].includes(raw)) return "pt";
-  return "fr";
-};
+const normalizeClientLanguage = (value: unknown): ClientLanguage => normalizeAppLanguage(value);
 
 const normalizeTimezone = (value: unknown): string => {
   const raw = String(value || "").trim();
@@ -60,6 +55,31 @@ const normalizeCurrency = (value: unknown): Currency => {
 };
 
 const hasPreferenceValue = (value: unknown): boolean => String(value ?? "").trim().length > 0;
+
+function readDefaultAppLanguage(): ClientLanguage {
+  if (typeof window === "undefined") return initialForm.clientLanguage;
+  try {
+    return normalizeClientLanguage(window.localStorage.getItem(APP_LANGUAGE_STORAGE_KEY));
+  } catch {
+    return initialForm.clientLanguage;
+  }
+}
+
+function readClientLanguageIsCustom(local: Record<string, unknown>): boolean {
+  if (typeof window === "undefined") return hasPreferenceValue(local.clientLanguage) || hasPreferenceValue(local.client_language);
+  try {
+    return window.localStorage.getItem(CLIENT_LANGUAGE_CUSTOM_STORAGE_KEY) === "1"
+      || hasPreferenceValue(local.clientLanguage)
+      || hasPreferenceValue(local.client_language);
+  } catch {
+    return hasPreferenceValue(local.clientLanguage) || hasPreferenceValue(local.client_language);
+  }
+}
+
+function markClientLanguageCustom() {
+  if (typeof window === "undefined") return;
+  try { window.localStorage.setItem(CLIENT_LANGUAGE_CUSTOM_STORAGE_KEY, "1"); } catch {}
+}
 
 const normalizePartialPreferences = (source: Record<string, unknown> | null | undefined): Partial<PreferencesForm> => {
   if (!source) return {};
@@ -183,22 +203,31 @@ export default function GeneralPreferencesContent({ mode = "drawer" }: Props) {
         if (authErr) throw new Error(authErr.message);
         const user = authData?.user;
 
+        const appDefaultLanguage = readDefaultAppLanguage();
+        const clientLanguageIsCustom = readClientLanguageIsCustom(local);
         let dbPreferences: Partial<PreferencesForm> = {};
         if (user) {
           const { data, error: dbErr } = await supabase
             .from(TABLE)
             .select("client_language, timezone, date_format, currency, updated_at")
-            .eq("user_id", user.id)
+            .eq("user_id", resolveActiveBrowserUserId(user.id))
             .order("updated_at", { ascending: false })
             .limit(1)
             .maybeSingle();
           if (dbErr) throw new Error(dbErr.message);
           dbPreferences = normalizePartialPreferences(data);
+          if (
+            dbPreferences.clientLanguage === initialForm.clientLanguage
+            && appDefaultLanguage !== initialForm.clientLanguage
+            && !clientLanguageIsCustom
+          ) {
+            delete dbPreferences.clientLanguage;
+          }
         }
 
         const migratedLocal = normalizePartialPreferences(local);
 
-        setForm({ ...initialForm, ...migratedLocal, ...dbPreferences });
+        setForm({ ...initialForm, clientLanguage: appDefaultLanguage, ...migratedLocal, ...dbPreferences });
       } catch (e) {
         setError(getSimpleFrenchErrorMessage(e, "Impossible de charger les préférences générales."));
       } finally {
@@ -214,12 +243,18 @@ export default function GeneralPreferencesContent({ mode = "drawer" }: Props) {
     setForm((current) => ({ ...current, [key]: value }));
   };
 
+  const setClientLanguage = (value: ClientLanguage) => {
+    markClientLanguageCustom();
+    set("clientLanguage", value);
+  };
+
   const save = async () => {
     setSaving(true);
     setSaved(false);
     setError("");
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(form));
+      markClientLanguageCustom();
 
       const supabase = createClient();
       const { data: authData, error: authErr } = await supabase.auth.getUser();
@@ -228,7 +263,7 @@ export default function GeneralPreferencesContent({ mode = "drawer" }: Props) {
       if (user) {
         const { error: upErr } = await supabase.from(TABLE).upsert(
           {
-            user_id: user.id,
+            user_id: resolveActiveBrowserUserId(user.id),
             client_language: form.clientLanguage,
             timezone: form.timezone,
             date_format: form.dateFormat,
@@ -265,10 +300,13 @@ export default function GeneralPreferencesContent({ mode = "drawer" }: Props) {
   };
 
   const reset = () => {
-    setForm(initialForm);
+    setForm({ ...initialForm, clientLanguage: readDefaultAppLanguage() });
     setSaved(false);
     setError("");
-    try { localStorage.removeItem(STORAGE_KEY); } catch {}
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(CLIENT_LANGUAGE_CUSTOM_STORAGE_KEY);
+    } catch {}
   };
 
   return (
@@ -305,7 +343,7 @@ export default function GeneralPreferencesContent({ mode = "drawer" }: Props) {
               <div style={grid2}>
                 <label style={label}>
                   <span style={labelTitle}>Langue clients</span>
-                  <select style={input} value={form.clientLanguage} onChange={(e) => set("clientLanguage", e.target.value as ClientLanguage)}>
+                  <select style={input} value={form.clientLanguage} onChange={(e) => setClientLanguage(e.target.value as ClientLanguage)}>
                     <option value="fr" style={selectOption}>Français</option>
                     <option value="en" style={selectOption}>English</option>
                     <option value="es" style={selectOption}>Español</option>

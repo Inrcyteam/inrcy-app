@@ -13,20 +13,20 @@ type LedgerRow = {
 };
 
 export async function GET() {
-  const { supabase, user, errorResponse } = await requireUser();
+  const { supabase, user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   const weekStart = getIsoWeekStart();
   const weekId = getIsoWeekId();
 
-  await repairWeeklyMissionAwardsForUser(user.id).catch(() => null);
+  await repairWeeklyMissionAwardsForUser(activeUserId).catch(() => null);
 
   const [states, ledgerRes] = await Promise.all([
-    getChannelConnectionStates(supabase, user.id),
+    getChannelConnectionStates(supabase, activeUserId),
     supabase
       .from("loyalty_ledger")
       .select("created_at,action_key,amount,meta")
-      .eq("user_id", user.id)
+      .eq("user_id", activeUserId)
       .gte("created_at", weekStart.toISOString())
       .order("created_at", { ascending: false })
       .limit(50),

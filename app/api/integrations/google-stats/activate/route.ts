@@ -3,6 +3,7 @@ import { createSupabaseServer } from "@/lib/supabaseServer";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { tryDecryptToken } from "@/lib/oauthCrypto";
+import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
@@ -237,6 +238,7 @@ export async function POST(req: Request) {
     const supabase = await createSupabaseServer();
     const { data: authData, error: authErr } = await supabase.auth.getUser();
     if (authErr || !authData?.user) return NextResponse.json({ error: "Votre session a expiré. Merci de vous reconnecter." }, { status: 401 });
+    const activeUserId = await resolveActiveInrcyAccountId(supabase, authData.user.id);
 
     const body = asRecord((await req.json().catch(() => ({}))) as unknown);
     const source = asString(body["source"]) ?? "site_inrcy";
@@ -250,7 +252,7 @@ export async function POST(req: Request) {
       const { data: row } = await supabase
         .from("inrcy_site_configs")
         .select("site_url")
-        .eq("user_id", authData.user.id)
+        .eq("user_id", activeUserId)
         .maybeSingle();
       siteUrl = String(asString(asRecord(row)["site_url"]) ?? "").trim();
     }
@@ -266,7 +268,7 @@ export async function POST(req: Request) {
     const { data: prof } = await supabase
       .from("profiles")
       .select("inrcy_site_ownership")
-      .eq("user_id", authData.user.id)
+      .eq("user_id", activeUserId)
       .maybeSingle();
 
     const profRec = asRecord(prof);
@@ -348,7 +350,7 @@ let adminRefreshToken = "";
     // sans jamais stocker le refresh_token admin sur son user_id.
     const nowIso = new Date().toISOString();
     const base: Record<string, unknown> = {
-      user_id: authData.user.id,
+      user_id: activeUserId,
       provider: "google",
       source: "site_inrcy",
       status: "connected",
@@ -365,7 +367,7 @@ let adminRefreshToken = "";
       const { data: existing } = await supabase
         .from("integrations")
         .select("id")
-        .eq("user_id", authData.user.id)
+        .eq("user_id", activeUserId)
         .eq("provider", "google")
         .eq("source", "site_inrcy")
         .eq("product", product)
@@ -377,7 +379,8 @@ let adminRefreshToken = "";
         await supabase
           .from("integrations")
           .update(payload)
-          .eq("id", existingId);
+          .eq("id", existingId)
+          .eq("user_id", activeUserId);
       } else {
         await supabaseAdmin.from("integrations").insert(payload);
       }
@@ -387,7 +390,7 @@ let adminRefreshToken = "";
     const { data: cfg } = await supabase
       .from("inrcy_site_configs")
       .select("settings")
-      .eq("user_id", authData.user.id)
+      .eq("user_id", activeUserId)
       .maybeSingle();
 
     const current = safeJsonParse<SiteSettings>(asRecord(cfg)["settings"], {});
@@ -404,12 +407,12 @@ let adminRefreshToken = "";
 
     const { error: upErr } = await supabase
       .from("inrcy_site_configs")
-      .upsert({ user_id: authData.user.id, site_url: parsed.normalizedUrl, settings: next }, { onConflict: "user_id" });
+      .upsert({ user_id: activeUserId, site_url: parsed.normalizedUrl, settings: next }, { onConflict: "user_id" });
     if (upErr) return NextResponse.json({ error: "La mise à jour a échoué." }, { status: 500 });
 
     // Invalider le cache stats pour rafraîchir immédiatement les KPI après activation.
     try {
-      await supabase.from("stats_cache").delete().eq("user_id", authData.user.id).eq("source", "overview");
+      await supabase.from("stats_cache").delete().eq("user_id", activeUserId).eq("source", "overview");
     } catch {}
 
     return NextResponse.json({ ok: true, ga4: ga4Resolved, gsc: { property: gscResolved } });

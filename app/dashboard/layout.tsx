@@ -11,6 +11,8 @@ import { getMaintenanceState, isAdminUser } from "@/lib/maintenance";
 import ProfileRealtimeBridge from "./_components/ProfileRealtimeBridge";
 import LastActiveTracker from "./_components/LastActiveTracker";
 import { ensureProfileRow } from "@/lib/ensureProfileRow";
+import { resolveInrcyAccountScopeForUser } from "@/lib/multicompte/server";
+import ActiveAccountTabSync from "./_components/ActiveAccountTabSync";
 
 
 type SubscriptionGateRow = {
@@ -88,7 +90,8 @@ export default async function DashboardLayout({
     redirect("/login");
   }
 
-  await ensureProfileRow(user).catch(() => null);
+  const accountScope = await resolveInrcyAccountScopeForUser(supabase, user);
+  await ensureProfileRow(user, accountScope.activeUserId).catch(() => null);
 
   const { data: subscription } = await supabaseAdmin
     .from("subscriptions")
@@ -118,6 +121,7 @@ export default async function DashboardLayout({
       ))}
       <div className={styles.bg} />
       <div className={styles.noise} />
+      <ActiveAccountTabSync />
       <ProfileRealtimeBridge />
       <LastActiveTracker />
 

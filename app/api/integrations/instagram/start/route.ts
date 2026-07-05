@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { makeOAuthState, safeInternalPath } from "@/lib/security";
+import { getCurrentInrcyAccountScope } from "@/lib/multicompte/server";
 
 export async function GET(request: Request) {
+  const currentAccount = await getCurrentInrcyAccountScope();
+  if (!currentAccount) {
+    return NextResponse.json({ error: "Votre session a expiré. Merci de vous reconnecter." }, { status: 401 });
+  }
+  const accountId = currentAccount.scope.activeUserId;
   const appId = process.env.FACEBOOK_APP_ID;
   const redirectFromEnv = process.env.INSTAGRAM_REDIRECT_URI;
   const configId = process.env.INSTAGRAM_LOGIN_FOR_BUSINESS_CONFIG_ID;
@@ -18,7 +24,7 @@ export async function GET(request: Request) {
   returnUrl.searchParams.set("ig_mode", mode);
   const returnTo = `${returnUrl.pathname}${returnUrl.search}`;
 
-  const { stateB64, nonce, cookieName } = makeOAuthState("instagram", returnTo);
+  const { stateB64, cookieValue, cookieName } = makeOAuthState("instagram", returnTo, { accountId });
 
   // Instagram Graph API uses Meta OAuth (Facebook dialog) + specific scopes.
   const params = new URLSearchParams({
@@ -42,7 +48,7 @@ export async function GET(request: Request) {
 
   const url = `https://www.facebook.com/v20.0/dialog/oauth?${params.toString()}`;
   const res = NextResponse.redirect(url);
-  res.cookies.set(cookieName, nonce, {
+  res.cookies.set(cookieName, cookieValue, {
     httpOnly: true,
     secure: true,
     sameSite: "lax",

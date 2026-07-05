@@ -1,5 +1,7 @@
-export const ACTIVE_USER_COOKIE = "inrcy_uid";
-const ACTIVE_USER_STORAGE_KEY = "inrcy_active_user_id_v1";
+import { ACTIVE_INRCY_ACCOUNT_COOKIE, ACTIVE_INRCY_ACCOUNT_STORAGE_KEY } from "@/lib/multicompte/constants";
+
+export const ACTIVE_USER_COOKIE = ACTIVE_INRCY_ACCOUNT_COOKIE;
+const ACTIVE_USER_STORAGE_KEY = ACTIVE_INRCY_ACCOUNT_STORAGE_KEY;
 
 const ACCOUNT_CACHE_BASE_KEYS = [
   "inrcy_stats_last_channel_sync_v1",
@@ -67,6 +69,13 @@ export function getActiveBrowserUserId(): string | null {
   } catch {
     return null;
   }
+}
+
+
+export function resolveActiveBrowserUserId(authUserId: string): string {
+  const activeUserId = getActiveBrowserUserId();
+  const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+  return activeUserId && uuidPattern.test(activeUserId) ? activeUserId : authUserId;
 }
 
 export function setActiveBrowserUserId(userId: string | null) {

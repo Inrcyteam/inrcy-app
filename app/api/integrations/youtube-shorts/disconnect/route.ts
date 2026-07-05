@@ -7,13 +7,13 @@ import { revokeGoogleTokensBestEffort, shouldRevokeGoogleTokensForDisconnect } f
 import { isYoutubeUsingDedicatedOAuthClient, readYoutubeShortsSettings, saveYoutubeShortsSettings } from "@/lib/youtubeShortsOAuth";
 
 export async function POST() {
-  const { supabase, user, errorResponse } = await requireUser();
+  const { supabase, user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   const { data: integration } = await supabaseAdmin
     .from("integrations")
     .select("id,provider_account_id,email_address,access_token_enc,refresh_token_enc")
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .eq("provider", "youtube")
     .eq("source", "youtube_shorts")
     .eq("product", "youtube_shorts")
@@ -22,7 +22,7 @@ export async function POST() {
   const canRevokeGoogleAuth = isYoutubeUsingDedicatedOAuthClient()
     ? true
     : await shouldRevokeGoogleTokensForDisconnect({
-        userId: user.id,
+        userId: activeUserId,
         rows: integration ? [integration] : [],
         context: "youtube_disconnect",
       });
@@ -39,12 +39,12 @@ export async function POST() {
   await supabaseAdmin
     .from("integrations")
     .delete()
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .eq("provider", "youtube")
     .eq("source", "youtube_shorts")
     .eq("product", "youtube_shorts");
 
-  const { root, youtubeShorts: current } = await readYoutubeShortsSettings(supabaseAdmin, user.id);
+  const { root, youtubeShorts: current } = await readYoutubeShortsSettings(supabaseAdmin, activeUserId);
   const next = {
     ...current,
     connected: false,
@@ -64,8 +64,8 @@ export async function POST() {
       viewCount: null,
     },
   };
-  await saveYoutubeShortsSettings(supabaseAdmin, user.id, root, next);
-  await clearAllToolCaches(supabase, user.id);
+  await saveYoutubeShortsSettings(supabaseAdmin, activeUserId, root, next);
+  await clearAllToolCaches(supabase, activeUserId);
 
   return NextResponse.json({ ok: true, youtube_shorts: next });
 }

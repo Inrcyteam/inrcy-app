@@ -26,17 +26,17 @@ function normalizeAiLanguage(value: unknown) {
 
 export async function GET() {
   try {
-    const { supabase, user, errorResponse } = await requireUser();
+    const { supabase, user, errorResponse, activeUserId } = await requireUser();
     if (errorResponse) return errorResponse;
 
     const [profileRes, inrcyCfgRes, proCfgRes, businessRes] = await Promise.all([
-      supabase.from("profiles").select("phone").eq("user_id", user.id).maybeSingle(),
-      supabase.from("inrcy_site_configs").select("site_url").eq("user_id", user.id).maybeSingle(),
-      supabase.from("pro_tools_configs").select("settings").eq("user_id", user.id).maybeSingle(),
+      supabase.from("profiles").select("phone").eq("user_id", activeUserId).maybeSingle(),
+      supabase.from("inrcy_site_configs").select("site_url").eq("user_id", activeUserId).maybeSingle(),
+      supabase.from("pro_tools_configs").select("settings").eq("user_id", activeUserId).maybeSingle(),
       supabase
         .from("business_profiles")
         .select("preferred_cta,ai_language,updated_at")
-        .eq("user_id", user.id)
+        .eq("user_id", activeUserId)
         .order("updated_at", { ascending: false })
         .limit(1)
         .maybeSingle(),

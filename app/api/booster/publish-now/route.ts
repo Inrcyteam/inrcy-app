@@ -1046,9 +1046,9 @@ export async function POST(req: Request) {
     let userId = cronUserId;
 
     if (!userId) {
-      const { user, errorResponse } = await requireUser();
+      const { user, errorResponse, activeUserId } = await requireUser();
       if (errorResponse) return errorResponse;
-      userId = user.id;
+      userId = activeUserId;
 
       const rl = await enforceRateLimit({
         name: "booster_publish",

@@ -159,12 +159,12 @@ ${fallback}`,
 
 const handler = async (request: Request) => {
   try {
-    const { user, errorResponse } = await requireUser();
+    const { user, errorResponse, activeUserId } = await requireUser();
     if (errorResponse) return errorResponse;
 
     const rateLimit = await enforceRateLimit({
       name: "booster_transcribe",
-      identifier: user.id,
+      identifier: activeUserId,
       limit: 12,
       window: "10 m",
     });

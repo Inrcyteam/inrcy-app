@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { makeOAuthState, safeInternalPath } from "@/lib/security";
+import { getCurrentInrcyAccountScope } from "@/lib/multicompte/server";
 
 export async function GET(request: Request) {
+  const currentAccount = await getCurrentInrcyAccountScope();
+  if (!currentAccount) {
+    return NextResponse.json({ error: "Votre session a expiré. Merci de vous reconnecter." }, { status: 401 });
+  }
+  const accountId = currentAccount.scope.activeUserId;
   const clientId = process.env.GOOGLE_CLIENT_ID;
   const redirectFromEnv = process.env.GOOGLE_REDIRECT_URI;
 
@@ -26,7 +32,7 @@ export async function GET(request: Request) {
   // ✅ CSRF-safe OAuth state + safe post-auth redirect
   const { searchParams } = new URL(request.url);
   const returnTo = safeInternalPath(searchParams.get("returnTo") || "/dashboard?panel=mails", "/dashboard?panel=mails");
-  const { stateB64, nonce, cookieName } = makeOAuthState("google", returnTo);
+  const { stateB64, cookieValue, cookieName } = makeOAuthState("google", returnTo, { accountId });
 
   const params = new URLSearchParams({
     client_id: clientId,
@@ -44,7 +50,7 @@ export async function GET(request: Request) {
 
   const url = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
   const res = NextResponse.redirect(url);
-  res.cookies.set(cookieName, nonce, {
+  res.cookies.set(cookieName, cookieValue, {
     httpOnly: true,
     secure: true,
     sameSite: "lax",

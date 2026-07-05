@@ -14,6 +14,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getLinkedInOAuthScope } from "@/lib/linkedinScopes";
 
 import { withCurrentConnectionVersion } from "@/lib/connectionVersions";
+import { resolveOAuthBoundInrcyAccountId } from "@/lib/multicompte/server";
 type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServer>>;
 
 async function invalidateUserStatsCache(
@@ -189,7 +190,7 @@ export async function GET(req: Request) {
       finalUrl.searchParams.set("error", "not_authenticated");
       return clearStateCookie(NextResponse.redirect(finalUrl));
     }
-    const userId = authData.user.id;
+    const userId = await resolveOAuthBoundInrcyAccountId(supabase, authData.user.id, st.state.accountId);
 
     const rlUser = await enforceRateLimit({
       name: "oauth_linkedin_cb",

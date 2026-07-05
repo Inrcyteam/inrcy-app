@@ -1275,13 +1275,14 @@ export async function POST(request: Request) {
   const context = await resolveInrAgentActionRequest(request);
   if (context.errorResponse) return context.errorResponse;
 
-  const { supabase, userId, isCron } = context;
-  const isAdmin = await isAdminUserForAi(supabase, userId);
+  const { supabase, userId, authUserId, isCron } = context;
+  const quotaUserId = isCron ? userId : authUserId;
+  const isAdmin = await isAdminUserForAi(supabase, quotaUserId);
 
   if (!isAdmin) {
     const rl = await enforceRateLimit({
       name: "inr_agent_prepare_publish",
-      identifier: userId,
+      identifier: quotaUserId,
       limit: 4,
       window: "1 m",
     });
@@ -1314,7 +1315,7 @@ export async function POST(request: Request) {
   if (!isAdmin) {
     const quotaLimited = await consumeAiCredits({
       supabase,
-      userId,
+      userId: quotaUserId,
       action: "booster",
       credits: computeBoosterAiCredits({ mediaType: "images" }),
     });

@@ -8,6 +8,7 @@ import { safeInternalPath, verifyOAuthState } from "@/lib/security";
 import { asRecord, asString } from "@/lib/tsSafe";
 import { oauthCallbackEvent, oauthCallbackException } from "@/lib/observability/oauth";
 import { syncSitePresenceIntegrations } from '@/lib/sitePresenceSync';
+import { resolveOAuthBoundInrcyAccountId } from "@/lib/multicompte/server";
 
 type TokenResponse = {
   access_token?: string;
@@ -402,7 +403,7 @@ export async function GET(req: Request) {
   const origin = process.env.NEXT_PUBLIC_SITE_URL || new URL(req.url).origin;
   const urlObj = new URL(req.url);
   const stateRaw = urlObj.searchParams.get("state");
-  const stateCheck = verifyOAuthState<{ source?: string; product?: string; mode?: string; domain?: string; siteUrl?: string }>(req, "google_stats", stateRaw);
+  const stateCheck = verifyOAuthState<{ source?: string; product?: string; mode?: string; domain?: string; siteUrl?: string; accountId?: string }>(req, "google_stats", stateRaw);
   const returnTo = safeInternalPath(stateCheck.returnTo || "/dashboard?panel=stats", "/dashboard?panel=stats");
   const clearStateCookie = (res: NextResponse) => {
     if (stateCheck.cookieName) {
@@ -480,7 +481,7 @@ export async function GET(req: Request) {
       oauthCallbackEvent(req, { provider: "google_stats", outcome: "not_authenticated", error: "not_authenticated", return_to: returnTo });
       return redirectBack({ linked: product, ok: "0", error: "not_authenticated" });
     }
-    const userId = authData.user.id;
+    const userId = await resolveOAuthBoundInrcyAccountId(sessionSupabase, authData.user.id, state["accountId"]);
 
     const rlUser = await enforceRateLimit({
       name: `oauth_google_stats_cb_${product}`,

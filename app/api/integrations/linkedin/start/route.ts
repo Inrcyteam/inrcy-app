@@ -1,8 +1,14 @@
 import { NextResponse } from "next/server";
 import { makeOAuthState, safeInternalPath } from "@/lib/security";
 import { getLinkedInOAuthScope } from "@/lib/linkedinScopes";
+import { getCurrentInrcyAccountScope } from "@/lib/multicompte/server";
 
 export async function GET(request: Request) {
+  const currentAccount = await getCurrentInrcyAccountScope();
+  if (!currentAccount) {
+    return NextResponse.json({ error: "Votre session a expiré. Merci de vous reconnecter." }, { status: 401 });
+  }
+  const accountId = currentAccount.scope.activeUserId;
   const clientId = process.env.LINKEDIN_CLIENT_ID;
   const redirectFromEnv = process.env.LINKEDIN_REDIRECT_URI;
 
@@ -13,7 +19,7 @@ export async function GET(request: Request) {
 
   const { searchParams } = new URL(request.url);
   const returnTo = safeInternalPath(searchParams.get("returnTo") || "/dashboard?panel=linkedin", "/dashboard?panel=linkedin");
-  const { stateB64, nonce, cookieName } = makeOAuthState("linkedin", returnTo);
+  const { stateB64, cookieValue, cookieName } = makeOAuthState("linkedin", returnTo, { accountId });
 
   const scope = getLinkedInOAuthScope();
 
@@ -26,7 +32,7 @@ export async function GET(request: Request) {
   });
 
   const res = NextResponse.redirect(`https://www.linkedin.com/oauth/v2/authorization?${params.toString()}`);
-  res.cookies.set(cookieName, nonce, {
+  res.cookies.set(cookieName, cookieValue, {
     httpOnly: true,
     secure: true,
     sameSite: "lax",

@@ -9,9 +9,9 @@ type RevokeRow = { id?: string | null; access_token_enc?: string | null; refresh
  * Le front passe { accountId }.
  */
 export async function POST(req: Request) {
-  const { supabase, user, errorResponse } = await requireUser();
+  const { supabase, user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
-  const userId = user.id;
+  const userId = activeUserId;
 const body = await req.json().catch(() => ({}));
   const accountId = String(body.accountId || "").trim();
 

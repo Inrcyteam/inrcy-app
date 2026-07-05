@@ -328,16 +328,16 @@ async function fetchRecentPublicationMemory(
 
 const handler = async (req: Request) => {
   try {
-    const { supabase, user, errorResponse } = await requireUser();
+    const { supabase, authUserId, errorResponse, activeUserId } = await requireUser();
     if (errorResponse) return errorResponse;
-    const userId = user.id;
+    const userId = activeUserId;
 
-    const isAdmin = await isAdminUserForAi(supabase, userId);
+    const isAdmin = await isAdminUserForAi(supabase, authUserId);
 
     if (!isAdmin) {
       const rl = await enforceRateLimit({
         name: "booster_generate",
-        identifier: userId,
+        identifier: authUserId,
         limit: 10,
         window: "1 m",
       });
@@ -382,7 +382,7 @@ const handler = async (req: Request) => {
     if (!isAdmin) {
       const quotaLimited = await consumeAiCredits({
         supabase,
-        userId,
+        userId: authUserId,
         action: "booster",
         credits: computeBoosterAiCredits({
           mediaType,

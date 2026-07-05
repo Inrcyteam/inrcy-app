@@ -18,6 +18,7 @@ import {
 } from "@/lib/tiktokOAuth";
 import { buildTiktokSettingsPatch } from "@/lib/tiktokSettings";
 import { readTiktokSettings, saveTiktokSettings } from "@/lib/tiktokRouteStorage";
+import { resolveOAuthBoundInrcyAccountId } from "@/lib/multicompte/server";
 
 function numberOrNull(value: unknown): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -82,6 +83,7 @@ export async function GET(request: Request) {
     const { data: authData, error: authErr } = await supabase.auth.getUser();
     const user = authData?.user;
     if (authErr || !user) return fail("not_authenticated", "Tu dois être connecté à iNrCy pour connecter TikTok.");
+    const activeUserId = await resolveOAuthBoundInrcyAccountId(supabase, user.id, st.state.accountId);
 
     const redirectUri = getTiktokRedirectUri(request.url);
     const token = await tiktokPostForm("https://open.tiktokapis.com/v2/oauth/token/", {
@@ -149,7 +151,7 @@ export async function GET(request: Request) {
     };
 
     await supabaseAdmin.from("integrations").upsert({
-      user_id: user.id,
+      user_id: activeUserId,
       provider: "tiktok",
       category: "social",
       source: "tiktok",
@@ -166,7 +168,7 @@ export async function GET(request: Request) {
       meta,
     }, { onConflict: "user_id,provider,source,product" });
 
-    const { root, tiktok: current } = await readTiktokSettings(supabaseAdmin, user.id);
+    const { root, tiktok: current } = await readTiktokSettings(supabaseAdmin, activeUserId);
     const next = buildTiktokSettingsPatch(current, {
       connected: true,
       accountConnected: true,
@@ -185,8 +187,8 @@ export async function GET(request: Request) {
         videoCount: numberOrNull(userInfo.video_count),
       },
     });
-    await saveTiktokSettings(supabaseAdmin, user.id, root, next);
-    await clearAllToolCaches(supabase, user.id);
+    await saveTiktokSettings(supabaseAdmin, activeUserId, root, next);
+    await clearAllToolCaches(supabase, activeUserId);
 
     const finalUrl = new URL(returnTo, siteUrl);
     finalUrl.searchParams.set("linked", "tiktok");

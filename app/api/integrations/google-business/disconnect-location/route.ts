@@ -3,6 +3,7 @@ import { createSupabaseServer } from "@/lib/supabaseServer";
 import { clearAllToolCaches } from "@/lib/statsCache";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
+import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
@@ -13,7 +14,7 @@ export async function POST() {
   const { data: authData, error: authErr } = await supabase.auth.getUser();
   if (authErr || !authData?.user) return NextResponse.json({ error: "Non authentifié." }, { status: 401 });
 
-  const userId = authData.user.id;
+  const userId = await resolveActiveInrcyAccountId(supabase, authData.user.id);
   const { error } = await supabaseAdmin
     .from("integrations")
     .update({ resource_id: null, resource_label: null, page_url: null, updated_at: new Date().toISOString() })

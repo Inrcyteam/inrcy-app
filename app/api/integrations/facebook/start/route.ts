@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { makeOAuthState, safeInternalPath } from "@/lib/security";
+import { getCurrentInrcyAccountScope } from "@/lib/multicompte/server";
 
 export async function GET(request: Request) {
+  const currentAccount = await getCurrentInrcyAccountScope();
+  if (!currentAccount) {
+    return NextResponse.json({ error: "Votre session a expiré. Merci de vous reconnecter." }, { status: 401 });
+  }
+  const accountId = currentAccount.scope.activeUserId;
   const appId = process.env.FACEBOOK_APP_ID;
   const redirectFromEnv = process.env.FACEBOOK_REDIRECT_URI;
   const configId = process.env.FACEBOOK_LOGIN_FOR_BUSINESS_CONFIG_ID;
@@ -20,7 +26,7 @@ export async function GET(request: Request) {
   const returnUrl = new URL(requestedReturnTo, siteUrl);
   returnUrl.searchParams.set("fb_mode", mode);
   const returnTo = `${returnUrl.pathname}${returnUrl.search}`;
-  const { stateB64, nonce, cookieName } = makeOAuthState("facebook", returnTo);
+  const { stateB64, cookieValue, cookieName } = makeOAuthState("facebook", returnTo, { accountId });
 
   const params = new URLSearchParams({
     client_id: appId,
@@ -44,7 +50,7 @@ export async function GET(request: Request) {
 
   const url = `https://www.facebook.com/v20.0/dialog/oauth?${params.toString()}`;
   const res = NextResponse.redirect(url);
-  res.cookies.set(cookieName, nonce, {
+  res.cookies.set(cookieName, cookieValue, {
     httpOnly: true,
     secure: true,
     sameSite: "lax",

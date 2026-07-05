@@ -9,6 +9,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { withImap } from "@/lib/imapClient";
 
 import { withCurrentConnectionVersion } from "@/lib/connectionVersions";
+import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 function isPrivateIp(ip: string): boolean {
   if (/^10\./.test(ip)) return true;
   if (/^127\./.test(ip)) return true;
@@ -123,7 +124,7 @@ const handler = async (req: Request) => {
     });
     await transport.verify();
 
-    const userId = userData.user.id;
+    const userId = await resolveActiveInrcyAccountId(supabase, userData.user.id);
     await supabaseAdmin.from("integrations").delete().eq("user_id", userId).eq("category", "mail").eq("provider", "imap");
 
     const password_enc = encryptSecret(password);

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendTxMail } from "@/lib/txMailer";
 import { findBoutiqueProduct } from "@/lib/boutique/products";
@@ -64,11 +65,12 @@ export async function POST(req: Request) {
   }
 
   const user = userData.user;
+  const activeUserId = await resolveActiveInrcyAccountId(supabase, user.id);
 
   // Admin email = email pro renseigné dans le profil (si dispo)
   const [profileRes, balanceRes] = await Promise.all([
-    supabase.from("profiles").select("contact_email").eq("user_id", user.id).maybeSingle(),
-    supabase.from("loyalty_balance").select("balance").eq("user_id", user.id).maybeSingle(),
+    supabase.from("profiles").select("contact_email").eq("user_id", activeUserId).maybeSingle(),
+    supabase.from("loyalty_balance").select("balance").eq("user_id", activeUserId).maybeSingle(),
   ]);
 
   const profileData = (profileRes.data ?? null) as ProfileContactRow | null;
@@ -90,7 +92,7 @@ export async function POST(req: Request) {
     const { data: existing, error: existErr } = await supabaseAdmin
       .from("boutique_orders")
       .select("id,status")
-      .eq("user_id", user.id)
+      .eq("user_id", activeUserId)
       .eq("idempotency_key", idempotencyKey)
       .maybeSingle();
 
@@ -101,7 +103,7 @@ export async function POST(req: Request) {
 
   // Insert order row first (safety/audit). Use service role to avoid any RLS friction.
   const insertPayload: BoutiqueOrderInsert = {
-    user_id: user.id,
+    user_id: activeUserId,
     account_email: user.email ?? null,
     admin_email: adminEmail,
     product_key: product.key,
@@ -140,7 +142,7 @@ export async function POST(req: Request) {
     `Compte :`,
     `- Email compte (auth) : ${user.email ?? "(non disponible)"}`,
     `- Email admin (profil) : ${adminEmail ?? "(non disponible)"}`,
-    `- User ID : ${user.id}`,
+    `- Établissement ID : ${activeUserId}`,
     `- Solde UI (indicatif) : ${uiBalance}`,
   ];
 

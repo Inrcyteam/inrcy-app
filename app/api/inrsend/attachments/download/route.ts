@@ -12,7 +12,7 @@ function encodeContentDisposition(filename: string) {
 }
 
 export async function GET(req: Request) {
-  const { user, errorResponse } = await requireUser();
+  const { user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   try {
@@ -27,7 +27,7 @@ export async function GET(req: Request) {
 
     // Les pièces jointes iNr'Send sont stockées sous le préfixe utilisateur.
     // Cela évite qu'un pro puisse télécharger une pièce jointe d'un autre compte.
-    if (!path.startsWith(`${user.id}/`)) {
+    if (!path.startsWith(`${activeUserId}/`)) {
       return NextResponse.json({ error: "Accès refusé." }, { status: 403 });
     }
 

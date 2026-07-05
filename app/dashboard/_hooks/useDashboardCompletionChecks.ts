@@ -1,5 +1,7 @@
 "use client";
 
+import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
+
 import { useCallback, useEffect, useState } from "react";
 import { decodeBusinessSector } from "@/lib/activitySectors";
 import { createClient } from "@/lib/supabaseClient";
@@ -49,7 +51,7 @@ export function useDashboardCompletionChecks() {
       .select(
         "first_name,last_name,phone,contact_email,company_legal_name,hq_address,hq_zip,hq_city,hq_country,siren,rcs_city",
       )
-      .eq("user_id", user.id)
+      .eq("user_id", resolveActiveBrowserUserId(user.id))
       .maybeSingle();
 
     if (!profile) {
@@ -81,7 +83,7 @@ export function useDashboardCompletionChecks() {
     const { data: business } = await supabase
       .from("business_profiles")
       .select("*")
-      .eq("user_id", user.id)
+      .eq("user_id", resolveActiveBrowserUserId(user.id))
       .maybeSingle();
 
     if (!business) {

@@ -172,12 +172,12 @@ async function createSignedUpload(storagePath: string) {
 
 export async function POST(req: Request) {
   try {
-    const { user, errorResponse } = await requireUser();
+    const { user, errorResponse, activeUserId } = await requireUser();
     if (errorResponse) return errorResponse;
 
     const rateLimited = await enforceRateLimit({
       name: "booster_video_signed_upload",
-      identifier: user.id,
+      identifier: activeUserId,
       limit: 20,
       window: "1 m",
       failClosed: false,
@@ -227,7 +227,7 @@ export async function POST(req: Request) {
     let storagePath = sanitizeStoragePath(
       requestedPath,
       name || "video-inrcy.mp4",
-      user.id,
+      activeUserId,
       contentType,
     );
 
@@ -235,7 +235,7 @@ export async function POST(req: Request) {
 
     if (signed.error) {
       const fallbackPath = buildFallbackStoragePath(
-        user.id,
+        activeUserId,
         name || "video-inrcy.mp4",
         contentType,
         requestedPath,

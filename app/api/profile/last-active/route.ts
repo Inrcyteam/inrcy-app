@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
@@ -16,10 +17,12 @@ export async function POST() {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
 
+  const activeUserId = await resolveActiveInrcyAccountId(supabase, user.id);
+
   const { error } = await supabaseAdmin
     .from("profiles")
     .update({ last_active_at: new Date().toISOString() })
-    .eq("user_id", user.id);
+    .eq("user_id", activeUserId);
 
   if (error) {
     console.warn("[last-active] impossible de mettre à jour profiles.last_active_at", error.message);

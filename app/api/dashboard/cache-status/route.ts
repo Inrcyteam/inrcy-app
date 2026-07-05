@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 import { DASHBOARD_CHANNEL_KEYS, type DashboardChannelKey } from "@/lib/dashboardChannels";
 import { buildStatsConnectionSignature } from "@/lib/stats/connectionSignature";
 
@@ -86,15 +87,17 @@ export async function GET() {
       return NextResponse.json({ error: "Non authentifié." }, { status: 401 });
     }
 
+    const activeUserId = await resolveActiveInrcyAccountId(supabase, user.id);
+
     const nowIso = new Date().toISOString();
     const { data: rows = [] } = await supabase
       .from("stats_cache")
       .select("source, range_key, payload, expires_at")
-      .eq("user_id", user.id)
+      .eq("user_id", activeUserId)
       .in("source", ["metrics_summary", "overview"])
       .gt("expires_at", nowIso);
 
-    const currentConnectionSignature = await buildStatsConnectionSignature(supabase, user.id);
+    const currentConnectionSignature = await buildStatsConnectionSignature(supabase, activeUserId);
     let latestGeneratorConnectionSignature: string | null = null;
     let latestGeneratorCacheTs = 0;
 

@@ -339,7 +339,7 @@ async function sendAppointmentRejectionEmail(args: { userId: string; row: Appoin
 }
 
 export async function PATCH(req: Request) {
-  const { supabase, user, errorResponse } = await requireUser();
+  const { supabase, user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   const { searchParams } = new URL(req.url);
@@ -354,7 +354,7 @@ export async function PATCH(req: Request) {
     .from("agenda_events")
     .select("id,title,description,location,start_at,end_at,meta")
     .eq("id", id)
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .maybeSingle();
 
   if (currentError) return jsonUserFacingError(currentError, { status: 500, extra: { ok: false } });
@@ -372,16 +372,16 @@ export async function PATCH(req: Request) {
     .from("agenda_events")
     .update({ meta: nextMeta })
     .eq("id", id)
-    .eq("user_id", user.id);
+    .eq("user_id", activeUserId);
 
   if (error) return jsonUserFacingError(error, { status: 500, extra: { ok: false } });
 
   let rejectionMailSent = false;
   try {
-    rejectionMailSent = await sendAppointmentRejectionEmail({ userId: user.id, row: current, meta: nextMeta });
+    rejectionMailSent = await sendAppointmentRejectionEmail({ userId: activeUserId, row: current, meta: nextMeta });
   } catch (mailError) {
     console.error("[calendar-appointment-requests] rejection mail failed", {
-      userId: user.id,
+      userId: activeUserId,
       requestId: id,
       error: mailError,
     });
@@ -392,7 +392,7 @@ export async function PATCH(req: Request) {
       .from("agenda_events")
       .update({ meta: { ...nextMeta, rejectionMailSent: true, rejectionMailSentAt: new Date().toISOString() } })
       .eq("id", id)
-      .eq("user_id", user.id);
+      .eq("user_id", activeUserId);
 
     if (metaUpdateError) {
       console.warn("[calendar-appointment-requests] rejection mail meta update failed", metaUpdateError);

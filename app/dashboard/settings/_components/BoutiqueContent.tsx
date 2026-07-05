@@ -1,5 +1,7 @@
 "use client";
 
+import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
+
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { confirmInrcy } from "@/lib/inrcyDialog";
 import { useEffect, useMemo, useState } from "react";
@@ -84,7 +86,8 @@ export default function BoutiqueContent({ onOpenInertia }: Props) {
           return;
         }
         if (!mounted) return;
-        setUserId(user.id);
+        const activeUserId = resolveActiveBrowserUserId(user.id);
+        setUserId(activeUserId);
 
         // role (si dispo)
         const profileRes = await supabase
@@ -99,7 +102,7 @@ export default function BoutiqueContent({ onOpenInertia }: Props) {
         const balanceRes = await supabase
           .from("loyalty_balance")
           .select("balance")
-          .eq("user_id", user.id)
+          .eq("user_id", activeUserId)
           .maybeSingle();
 
         const bal = Number((balanceRes.data as any)?.balance ?? 0);
@@ -107,7 +110,7 @@ export default function BoutiqueContent({ onOpenInertia }: Props) {
         setUiBalance(Number.isFinite(bal) ? bal : 0);
 
         // Orders history
-        await refreshOrders(user.id);
+        await refreshOrders(activeUserId);
       } catch {
         if (!mounted) return;
         setUiBalance(0);
@@ -169,15 +172,16 @@ Prix : ${priceLabel}`,
       const { data: auth } = await supabase.auth.getUser();
       const user = auth?.user;
       if (user) {
+        const activeUserId = resolveActiveBrowserUserId(user.id);
         const balanceRes = await supabase
           .from("loyalty_balance")
           .select("balance")
-          .eq("user_id", user.id)
+          .eq("user_id", activeUserId)
           .maybeSingle();
         const bal = Number((balanceRes.data as any)?.balance ?? 0);
         setUiBalance(Number.isFinite(bal) ? bal : 0);
 
-        await refreshOrders(user.id);
+        await refreshOrders(activeUserId);
       }
     } finally {
       setSendingKey(null);

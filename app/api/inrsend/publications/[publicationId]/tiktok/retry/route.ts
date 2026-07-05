@@ -247,7 +247,7 @@ async function persistRetryResult({
     },
   } satisfies JsonRecord;
 
-  await supabaseAdmin.from("app_events").update({ payload: nextPayload }).eq("id", eventId);
+  await supabaseAdmin.from("app_events").update({ payload: nextPayload }).eq("id", eventId).eq("user_id", userId);
   await supabaseAdmin
     .from("publication_deliveries")
     .update({ status, error: error || null })
@@ -260,14 +260,14 @@ async function persistRetryResult({
 
 async function handler(request: Request, context: { params: Promise<{ publicationId: string }> }) {
   try {
-    const { user, errorResponse } = await requireUser();
+    const { user, errorResponse, activeUserId } = await requireUser();
     if (errorResponse) return errorResponse;
 
     const params = await context.params;
     const publicationId = String(params.publicationId || "").trim();
     if (!publicationId) return jsonUserFacingError("Paramètres invalides.", { status: 400, code: "invalid_input" });
 
-    const event = await loadAppEvent(user.id, publicationId);
+    const event = await loadAppEvent(activeUserId, publicationId);
     if (!event?.id) return jsonUserFacingError("Publication iNrSend introuvable.", { status: 404, code: "publication_not_found" });
 
     const payload = asRecord(event.payload);
@@ -280,8 +280,8 @@ async function handler(request: Request, context: { params: Promise<{ publicatio
     }
     const publicationSettings = settingsCandidate;
 
-    const integration = await getLatestTiktokIntegration(user.id);
-    const accessToken = await getTiktokAccessToken(user.id, integration);
+    const integration = await getLatestTiktokIntegration(activeUserId);
+    const accessToken = await getTiktokAccessToken(activeUserId, integration);
     if (!accessToken) {
       return jsonUserFacingError("Connexion TikTok expirée. Reconnecte TikTok dans Canaux.", { status: 401, code: "tiktok_reconnect_required" });
     }
@@ -355,7 +355,7 @@ async function handler(request: Request, context: { params: Promise<{ publicatio
         },
       } satisfies JsonRecord;
       const nextPayload = await persistRetryResult({
-        userId: user.id,
+        userId: activeUserId,
         publicationId,
         eventId: event.id,
         payload,
@@ -375,7 +375,7 @@ async function handler(request: Request, context: { params: Promise<{ publicatio
     });
     const nextStatus = publishResult.status?.pending ? "processing" : "delivered";
     const nextPayload = await persistRetryResult({
-      userId: user.id,
+      userId: activeUserId,
       publicationId,
       eventId: event.id,
       payload,

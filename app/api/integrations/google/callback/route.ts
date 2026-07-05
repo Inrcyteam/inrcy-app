@@ -7,6 +7,7 @@ import { asRecord, asString } from "@/lib/tsSafe";
 import { oauthCallbackEvent, oauthCallbackException } from "@/lib/observability/oauth";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { resolveOAuthBoundInrcyAccountId } from "@/lib/multicompte/server";
 
 import { withCurrentConnectionVersion } from "@/lib/connectionVersions";
 type TokenResponse = {
@@ -81,12 +82,12 @@ export async function GET(req: Request) {
       return res;
     }
 
-    const { user, errorResponse } = await requireUser();
+    const { supabase, user, authUserId, errorResponse } = await requireUser();
     if (errorResponse) {
       oauthCallbackEvent(req, { provider: "google", outcome: "not_authenticated", error: "not_authenticated", return_to: returnTo });
       return fail("not_authenticated");
     }
-    const userId = user.id;
+    const userId = await resolveOAuthBoundInrcyAccountId(supabase, authUserId, st.state.accountId);
 
     // Clear state cookie once used
     // (do it early; if the rest fails, user can restart the flow)
@@ -189,7 +190,8 @@ if (!tokenRes.ok || !tokenData.access_token) {
       const { error: upErr } = await supabaseAdmin
         .from("integrations")
         .update(payload)
-        .eq("id", String(asRecord(existing)["id"]));
+        .eq("id", String(asRecord(existing)["id"]))
+        .eq("user_id", userId);
 
       if (upErr) {
         return fail("db_update_failed", "La mise à jour a échoué.");

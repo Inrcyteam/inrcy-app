@@ -889,3 +889,39 @@
   background-color: #1f2a44;
   color: #ffffff;
 }
+
+.multiAccountPill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 6px 9px;
+  border: 1px solid rgba(56, 189, 248, 0.28);
+  background: linear-gradient(135deg, rgba(14, 165, 233, 0.16), rgba(124, 58, 237, 0.16));
+  color: rgba(186, 230, 253, 0.96);
+  font-size: 10px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.miniNumberInput {
+  width: 100%;
+  min-height: 34px;
+  box-sizing: border-box;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.24);
+  color: #fff;
+  padding: 8px 10px;
+  outline: none;
+  font-weight: 900;
+}
+
+.miniNumberInput:focus {
+  border-color: rgba(56, 189, 248, 0.40);
+  box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.08);
+}
+
+.miniNumberInput:disabled {
+  opacity: 0.55;
+}

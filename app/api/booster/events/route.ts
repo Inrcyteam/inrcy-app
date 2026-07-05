@@ -7,7 +7,7 @@ type BoosterEventType = "publish" | "publish_draft" | "review_mail" | "promo_mai
 
 export async function GET(req: Request) {
   try {
-    const { supabase, user, errorResponse } = await requireUser();
+    const { supabase, user, errorResponse, activeUserId } = await requireUser();
     if (errorResponse) return errorResponse;
 
     const url = new URL(req.url);
@@ -19,7 +19,7 @@ export async function GET(req: Request) {
     const { data, error } = await supabase
       .from("app_events")
       .select("id,module,type,payload,created_at")
-      .eq("user_id", user.id)
+      .eq("user_id", activeUserId)
       .eq("id", draftId)
       .eq("module", "booster")
       .eq("type", "publish_draft")
@@ -36,9 +36,9 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const { supabase, user, errorResponse } = await requireUser();
+    const { supabase, user, errorResponse, activeUserId } = await requireUser();
     if (errorResponse) return errorResponse;
-    const userId = user.id;
+    const userId = activeUserId;
     const body = await req.json().catch(() => ({}));
     const type = body?.type as BoosterEventType;
     const payload = (body?.payload ?? {}) as Record<string, unknown>;

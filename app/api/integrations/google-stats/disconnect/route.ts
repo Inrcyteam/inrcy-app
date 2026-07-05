@@ -4,6 +4,7 @@ import { clearAllToolCaches } from "@/lib/statsCache";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { revokeGoogleTokensBestEffort, shouldRevokeGoogleTokensForDisconnect } from "@/lib/googleOAuthRevoke";
 import { syncSitePresenceIntegrations } from '@/lib/sitePresenceSync';
+import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 
 type RevokeRow = {
   id?: string | null;
@@ -29,7 +30,7 @@ export async function POST(request: Request) {
   const { data: authData, error: authErr } = await supabase.auth.getUser();
   if (authErr || !authData?.user) return NextResponse.json({ error: "Votre session a expiré. Merci de vous reconnecter." }, { status: 401 });
 
-  const userId = authData.user.id;
+  const userId = await resolveActiveInrcyAccountId(supabase, authData.user.id);
   const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
   const source = typeof body.source === "string" ? body.source : "";
   const product = typeof body.product === "string" ? body.product : "";

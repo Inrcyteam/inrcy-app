@@ -333,13 +333,13 @@ function rowsToSettings(globalRow: DbAgentGlobalSettingsRow | null | undefined, 
 }
 
 export async function GET() {
-  const { user, errorResponse } = await requireUser();
+  const { user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   const { data: globalData, error: globalError } = await supabaseAdmin
     .from("inr_agent_settings")
     .select(GLOBAL_SELECT)
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .maybeSingle();
 
   if (globalError) {
@@ -353,7 +353,7 @@ export async function GET() {
   const { data: automationData, error: automationError } = await supabaseAdmin
     .from("inr_agent_automation_settings")
     .select(AUTOMATION_SELECT)
-    .eq("user_id", user.id);
+    .eq("user_id", activeUserId);
 
   if (automationError) {
     if (isMissingSchemaError(automationError)) {
@@ -371,13 +371,13 @@ export async function GET() {
   );
 
   return NextResponse.json({
-    settings: await applyConnectedChannelFilter(settings, user.id),
+    settings: await applyConnectedChannelFilter(settings, activeUserId),
     tableMissing: false,
   });
 }
 
 export async function POST(request: Request) {
-  const { user, errorResponse } = await requireUser();
+  const { user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   let body: unknown;
@@ -391,12 +391,12 @@ export async function POST(request: Request) {
     sanitizeInrAgentSettings(
       (body as { settings?: Partial<InrAgentSettings> } | null)?.settings,
     ),
-    user.id,
+    activeUserId,
   );
   const now = new Date().toISOString();
 
   const globalPayload = {
-    user_id: user.id,
+    user_id: activeUserId,
     global_enabled: settings.globalEnabled,
     tone: settings.tone,
     timezone: settings.timezone,
@@ -426,7 +426,7 @@ export async function POST(request: Request) {
   const { data: existingAutomationData, error: existingAutomationError } = await supabaseAdmin
     .from("inr_agent_automation_settings")
     .select(AUTOMATION_SELECT)
-    .eq("user_id", user.id);
+    .eq("user_id", activeUserId);
 
   if (existingAutomationError && !isMissingSchemaError(existingAutomationError)) {
     console.warn("[inr-agent-settings] existing automations read failed", existingAutomationError);
@@ -441,7 +441,7 @@ export async function POST(request: Request) {
   const automationPayloads = INR_AGENT_AUTOMATION_KEYS.map((key: InrAgentAutomationKey) => {
     const automation = settings.automations[key];
     const existing = existingByKey.get(key);
-    const row = automationSettingsToDbRow(user.id, key, automation);
+    const row = automationSettingsToDbRow(activeUserId, key, automation);
     const scheduleChanged = scheduleSignature(existing) !== automationSignature(automation);
     const recomputeNextRun = shouldRecomputeNextRunAt({ existing, automation, scheduleChanged });
     const nextRunAt = recomputeNextRun

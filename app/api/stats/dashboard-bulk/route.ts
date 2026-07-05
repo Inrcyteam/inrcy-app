@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { jsonUserFacingError } from '@/lib/apiUserFacingErrors';
 import { createSupabaseServer } from '@/lib/supabaseServer';
+import { resolveActiveInrcyAccountId } from '@/lib/multicompte/server';
 import { isAuthorizedCronRequest, getCronUserIdFromRequest } from '@/lib/cronAuth';
 import { supabaseAdmin } from '@/lib/supabaseAdmin';
 import { getChannelConnectionStates } from '@/lib/channelConnectionState';
@@ -59,7 +60,7 @@ export async function GET(req: Request) {
       if (!user) {
         return NextResponse.json({ error: 'Non authentifié.' }, { status: 401 });
       }
-      userId = user.id;
+      userId = await resolveActiveInrcyAccountId(supabase, user.id);
     }
 
     const { searchParams, origin } = new URL(req.url);

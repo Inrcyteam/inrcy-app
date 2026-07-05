@@ -163,7 +163,7 @@ async function handler(req: Request) {
   const totalStarted = nowMs();
 
   try {
-    const { supabase, user, errorResponse } = await requireUser();
+    const { supabase, user, errorResponse, activeUserId } = await requireUser();
     if (errorResponse) return errorResponse;
 
     const body = await req.json().catch(() => ({} as { announce?: unknown; force?: unknown }));
@@ -174,6 +174,7 @@ async function handler(req: Request) {
     const claimResult = force
       ? { data: true, error: null as { message?: string } | null }
       : await supabase.rpc("claim_daily_stats_refresh", {
+          p_user_id: activeUserId,
           p_snapshot_date: snapshotDate,
           p_lease_seconds: DAILY_REFRESH_LEASE_SECONDS,
         });
@@ -188,7 +189,7 @@ async function handler(req: Request) {
       const { data: state } = await supabase
         .from("user_daily_stats_refresh")
         .select("last_started_snapshot_date, last_started_at, last_completed_snapshot_date")
-        .eq("user_id", user.id)
+        .eq("user_id", activeUserId)
         .maybeSingle();
 
       const inProgress =
@@ -197,7 +198,7 @@ async function handler(req: Request) {
         isLeaseActive(state?.last_started_at);
 
       devLogDailyRefresh({
-        userId: user.id,
+        userId: activeUserId,
         action: "run",
         ran: false,
         inProgress,
@@ -209,7 +210,7 @@ async function handler(req: Request) {
 
       const syncAt = Date.now();
       if (announce) {
-        await bumpStatsVersion(supabase, user.id);
+        await bumpStatsVersion(supabase, activeUserId);
       }
 
       return NextResponse.json({
@@ -235,7 +236,7 @@ async function handler(req: Request) {
     try {
       const headers = () => (cookie ? { cookie } : undefined);
       const profileStarted = nowMs();
-      const profilePromise = fetchProfileMetrics(supabase, user.id);
+      const profilePromise = fetchProfileMetrics(supabase, activeUserId);
       const monthStarted = nowMs();
       const monthPromise = fetchCubeOverviews({
         origin,
@@ -243,7 +244,7 @@ async function handler(req: Request) {
         getHeaders: headers,
         bypassCache: force,
         supabase,
-        userId: user.id,
+        userId: activeUserId,
         snapshotDate,
       });
       const weekStarted = nowMs();
@@ -253,7 +254,7 @@ async function handler(req: Request) {
         getHeaders: headers,
         bypassCache: force,
         supabase,
-        userId: user.id,
+        userId: activeUserId,
         snapshotDate,
       });
 
@@ -261,19 +262,19 @@ async function handler(req: Request) {
         profilePromise,
         monthPromise,
         weekPromise,
-        buildStatsConnectionSignature(supabase, user.id),
+        buildStatsConnectionSignature(supabase, activeUserId),
       ]);
-      const channelStates = await getChannelConnectionStates(supabase, user.id);
+      const channelStates = await getChannelConnectionStates(supabase, activeUserId);
       const linkedInFallback = await readLastGoodLinkedInGeneratorBlock({
         supabase,
-        userId: user.id,
+        userId: activeUserId,
         connectionSignature,
       });
 
       const generatorStarted = nowMs();
       const generator = await buildMetricsSummary({
         supabase,
-        userId: user.id,
+        userId: activeUserId,
         origin,
         getHeaders: headers,
         monthDays: 30,
@@ -303,6 +304,7 @@ async function handler(req: Request) {
       ] as const;
 
       const { error: completeError } = await supabase.rpc("complete_daily_stats_refresh", {
+        p_user_id: activeUserId,
         p_snapshot_date: snapshotDate,
       });
 
@@ -310,10 +312,10 @@ async function handler(req: Request) {
         return jsonUserFacingError(`daily_refresh_complete_failed:${completeError.message}`, { status: 500 });
       }
 
-      await bumpStatsVersion(supabase, user.id);
+      await bumpStatsVersion(supabase, activeUserId);
 
       devLogDailyRefresh({
-        userId: user.id,
+        userId: activeUserId,
         action: "run",
         ran: true,
         snapshotDate,
@@ -344,6 +346,7 @@ async function handler(req: Request) {
     } catch (error) {
       if (!force) {
         await supabase.rpc("release_daily_stats_refresh_claim", {
+          p_user_id: activeUserId,
           p_snapshot_date: snapshotDate,
         }).catch(() => undefined);
       }

@@ -1,11 +1,17 @@
 import { NextResponse } from "next/server";
 import { makeOAuthState, safeInternalPath } from "@/lib/security";
+import { getCurrentInrcyAccountScope } from "@/lib/multicompte/server";
 
 /**
  * Démarre l'OAuth Microsoft (Outlook/Hotmail/Office365) via Microsoft Identity Platform v2.
  * On utilise /common pour supporter comptes perso + org.
  */
 export async function GET(req: Request) {
+  const currentAccount = await getCurrentInrcyAccountScope();
+  if (!currentAccount) {
+    return NextResponse.json({ error: "Votre session a expiré. Merci de vous reconnecter." }, { status: 401 });
+  }
+  const accountId = currentAccount.scope.activeUserId;
   const clientId = process.env.MICROSOFT_CLIENT_ID;
   const redirectUri = process.env.MICROSOFT_REDIRECT_URI;
 
@@ -37,11 +43,11 @@ export async function GET(req: Request) {
 
   const { searchParams } = new URL(req.url);
   const returnTo = safeInternalPath(searchParams.get("returnTo") || "/dashboard?panel=mails", "/dashboard?panel=mails");
-  const { stateB64, nonce, cookieName } = makeOAuthState("microsoft", returnTo);
+  const { stateB64, cookieValue, cookieName } = makeOAuthState("microsoft", returnTo, { accountId });
   url.searchParams.set("state", stateB64);
 
   const res = NextResponse.redirect(url);
-  res.cookies.set(cookieName, nonce, {
+  res.cookies.set(cookieName, cookieValue, {
     httpOnly: true,
     secure: true,
     sameSite: "lax",

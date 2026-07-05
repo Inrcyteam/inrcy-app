@@ -9,6 +9,7 @@ import { withCurrentConnectionVersion } from "@/lib/connectionVersions";
 import { safeInternalPath, verifyOAuthState } from "@/lib/security";
 import { asRecord, asString } from "@/lib/tsSafe";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { resolveOAuthBoundInrcyAccountId } from "@/lib/multicompte/server";
 import {
   buildTrustpilotTokenDates,
   exchangeTrustpilotAuthorizationCode,
@@ -77,8 +78,9 @@ export async function GET(request: Request) {
     const { data: authData, error: authErr } = await supabase.auth.getUser();
     const user = authData?.user;
     if (authErr || !user) return fail("not_authenticated", "Tu dois être connecté à iNrCy pour connecter Trustpilot.");
+    const activeUserId = await resolveOAuthBoundInrcyAccountId(supabase, user.id, st.state.accountId);
 
-    if (!(await isAppBubbleEnabledForUser(supabase, user.id, "trustpilot"))) {
+    if (!(await isAppBubbleEnabledForUser(supabase, activeUserId, "trustpilot"))) {
       return fail("bubble_access_disabled", "Trustpilot est désactivé dans Bubble Access.");
     }
 
@@ -89,7 +91,7 @@ export async function GET(request: Request) {
     const { data: cfg } = await supabaseAdmin
       .from("pro_tools_configs")
       .select("settings")
-      .eq("user_id", user.id)
+      .eq("user_id", activeUserId)
       .maybeSingle();
     const root = normalizeSettingsRoot(asRecord(cfg).settings);
     const currentTrustpilot = normalizeSettingsRoot(root.trustpilot);
@@ -110,7 +112,7 @@ export async function GET(request: Request) {
 
     await supabaseAdmin.from("integrations").upsert(
       {
-        user_id: user.id,
+        user_id: activeUserId,
         provider: TRUSTPILOT_PROVIDER,
         category: "reputation",
         source: TRUSTPILOT_SOURCE,
@@ -147,9 +149,9 @@ export async function GET(request: Request) {
 
     await supabaseAdmin
       .from("pro_tools_configs")
-      .upsert({ user_id: user.id, settings: { ...root, trustpilot: nextTrustpilot } }, { onConflict: "user_id" });
+      .upsert({ user_id: activeUserId, settings: { ...root, trustpilot: nextTrustpilot } }, { onConflict: "user_id" });
 
-    await clearAllToolCaches(supabase, user.id);
+    await clearAllToolCaches(supabase, activeUserId);
 
     const finalUrl = new URL(returnTo, siteUrl);
     finalUrl.searchParams.set("linked", "trustpilot");

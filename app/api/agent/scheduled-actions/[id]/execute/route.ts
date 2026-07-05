@@ -180,7 +180,7 @@ function buildActionFromScheduled(row: any, userId: string) {
 }
 
 export async function POST(_request: Request, ctx: { params: Promise<{ id: string }> }) {
-  const { user, errorResponse } = await requireUser();
+  const { user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
   const { id } = await ctx.params;
 
@@ -188,7 +188,7 @@ export async function POST(_request: Request, ctx: { params: Promise<{ id: strin
     .from("inr_agent_scheduled_actions")
     .select(SCHEDULED_ACTION_SELECT)
     .eq("id", id)
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .in("status", ["scheduled", "failed"])
     .maybeSingle();
 
@@ -202,7 +202,7 @@ export async function POST(_request: Request, ctx: { params: Promise<{ id: strin
     return NextResponse.json({ error: "Action programmée introuvable." }, { status: 404 });
   }
 
-  const actionRow = buildActionFromScheduled(scheduledRow, user.id);
+  const actionRow = buildActionFromScheduled(scheduledRow, activeUserId);
   const { data: insertedAction, error: insertError } = await supabaseAdmin
     .from("inr_agent_actions")
     .insert(actionRow)
@@ -256,7 +256,7 @@ export async function POST(_request: Request, ctx: { params: Promise<{ id: strin
       updated_at: now,
     })
     .eq("id", id)
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .select(SCHEDULED_ACTION_SELECT)
     .maybeSingle();
 

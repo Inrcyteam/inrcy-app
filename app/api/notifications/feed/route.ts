@@ -7,7 +7,7 @@ import { toNotificationPayload, type NotificationRow } from "@/lib/notifications
 export const runtime = "nodejs";
 
 export async function GET(req: Request) {
-  const { user, errorResponse } = await requireUser();
+  const { user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   const url = new URL(req.url);
@@ -16,7 +16,7 @@ export async function GET(req: Request) {
   const { data: pref } = await supabaseAdmin
     .from("notification_preferences")
     .select("in_app_enabled")
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .maybeSingle();
 
   if (pref && pref.in_app_enabled === false) {
@@ -26,7 +26,7 @@ export async function GET(req: Request) {
   const { data, error } = await supabaseAdmin
     .from("notifications")
     .select("id, user_id, category, kind, title, body, cta_label, cta_url, read_at, meta, dedupe_key, created_at")
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .order("created_at", { ascending: false })
     .limit(limit);
 

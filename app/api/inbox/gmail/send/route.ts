@@ -177,9 +177,9 @@ async function gmailSend(token: string, raw: string, threadId?: string) {
 }
 
 const handler = async (req: Request) => {
-  const { supabase, user, errorResponse } = await requireUser();
+  const { supabase, activeUserId, errorResponse } = await requireUser();
   if (errorResponse) return errorResponse;
-  const userId = user.id;
+  const userId = activeUserId;
 
   const rl = await enforceRateLimit({ name: "gmail_send", identifier: userId, limit: 30, window: "1 m" });
   if (rl) return rl;
@@ -306,7 +306,8 @@ const handler = async (req: Request) => {
       await supabase
         .from("integrations")
         .update({ access_token_enc: encryptToken(accessToken), expires_at: expiresAt, status: "connected" })
-        .eq("id", account.id);
+        .eq("id", account.id)
+        .eq("user_id", userId);
     }
   }
 
@@ -347,7 +348,8 @@ const handler = async (req: Request) => {
       await supabase
         .from("integrations")
         .update({ access_token_enc: encryptToken(accessToken), expires_at: expiresAt, status: "connected" })
-        .eq("id", account.id);
+        .eq("id", account.id)
+        .eq("user_id", userId);
 
       const retry = await gmailSend(accessToken, raw, threadId || undefined);
       sendRes = retry.res;
@@ -357,7 +359,7 @@ const handler = async (req: Request) => {
 
   if (!sendRes.ok) {
     if (sendRes.status === 401 || sendRes.status === 403) {
-      await supabase.from("integrations").update({ status: "expired" }).eq("id", account.id);
+      await supabase.from("integrations").update({ status: "expired" }).eq("id", account.id).eq("user_id", userId);
     }
     const normalized = normalizeMailDeliveryError(sendData || `Envoi Gmail impossible (${sendRes.status})`, "gmail", sendRes.status);
     return NextResponse.json(
@@ -394,7 +396,7 @@ const handler = async (req: Request) => {
 
   let historyId = sendItemId || "";
   if (sendItemId) {
-    await supabase.from("send_items").update(historyPayload).eq("id", sendItemId);
+    await supabase.from("send_items").update(historyPayload).eq("id", sendItemId).eq("user_id", userId);
   } else {
     const { data: insertedHistory } = await supabase.from("send_items").insert(historyPayload).select("id").single();
     historyId = String(insertedHistory?.id || "");

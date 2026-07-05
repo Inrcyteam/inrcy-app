@@ -5,6 +5,7 @@ import { asRecord, asString } from "@/lib/tsSafe";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 import { withCurrentConnectionVersion } from "@/lib/connectionVersions";
+import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 
 type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServer>>;
 
@@ -34,6 +35,7 @@ export async function POST(req: Request) {
 
   if (authErr || !user)
     return NextResponse.json({ error: "Accès non autorisé." }, { status: 401 });
+  const activeUserId = await resolveActiveInrcyAccountId(supabase, user.id);
 
   const body = await req.json().catch(() => null);
   const mode = String(body?.mode || "");
@@ -48,7 +50,7 @@ export async function POST(req: Request) {
   const { data: currentIntegration } = await supabaseAdmin
     .from("integrations")
     .select("meta,provider_account_id,display_name,resource_label")
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .eq("provider", "linkedin")
     .eq("source", "linkedin")
     .eq("product", "linkedin")
@@ -73,7 +75,7 @@ export async function POST(req: Request) {
       const { data } = await supabaseAdmin
         .from("pro_tools_configs")
         .select("settings")
-        .eq("user_id", user.id)
+        .eq("user_id", activeUserId)
         .maybeSingle();
       currentLinkedinSettings = asRecord(asRecord(data)["settings"])["linkedin"];
     } catch {
@@ -103,7 +105,7 @@ export async function POST(req: Request) {
         }),
         updated_at: new Date().toISOString(),
       })
-      .eq("user_id", user.id)
+      .eq("user_id", activeUserId)
       .eq("provider", "linkedin")
       .eq("source", "linkedin")
       .eq("product", "linkedin");
@@ -112,7 +114,7 @@ export async function POST(req: Request) {
       const { data: scRow } = await supabaseAdmin
         .from("pro_tools_configs")
         .select("settings")
-        .eq("user_id", user.id)
+        .eq("user_id", activeUserId)
         .maybeSingle();
       const current = asRecord(asRecord(scRow)["settings"]);
       const merged = {
@@ -133,12 +135,12 @@ export async function POST(req: Request) {
       await supabaseAdmin
         .from("pro_tools_configs")
         .upsert(
-          { user_id: user.id, settings: merged },
+          { user_id: activeUserId, settings: merged },
           { onConflict: "user_id" },
         );
     } catch {}
 
-    await invalidateUserStatsCache(supabase, user.id);
+    await invalidateUserStatsCache(supabase, activeUserId);
 
     return NextResponse.json({ ok: true, mode: "profile", profileUrl: resolvedProfileUrl });
   }
@@ -170,7 +172,7 @@ export async function POST(req: Request) {
       }),
       updated_at: new Date().toISOString(),
     })
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .eq("provider", "linkedin")
     .eq("source", "linkedin")
     .eq("product", "linkedin");
@@ -179,7 +181,7 @@ export async function POST(req: Request) {
     const { data: scRow } = await supabaseAdmin
       .from("pro_tools_configs")
       .select("settings")
-      .eq("user_id", user.id)
+      .eq("user_id", activeUserId)
       .maybeSingle();
     const current = asRecord(asRecord(scRow)["settings"]);
     const currentLinkedin = asRecord(current["linkedin"]);
@@ -200,12 +202,12 @@ export async function POST(req: Request) {
     await supabaseAdmin
       .from("pro_tools_configs")
       .upsert(
-        { user_id: user.id, settings: merged },
+        { user_id: activeUserId, settings: merged },
         { onConflict: "user_id" },
       );
   } catch {}
 
-  await invalidateUserStatsCache(supabase, user.id);
+  await invalidateUserStatsCache(supabase, activeUserId);
 
   return NextResponse.json({
     ok: true,

@@ -175,8 +175,12 @@ async function fetchUserTable(
 }
 
 export const GET = withApi(async () => {
-  const { supabase, user, errorResponse } = await requireUser();
+  const { supabase, user, authUserId, accountScope, errorResponse } = await requireUser();
   if (errorResponse) return errorResponse;
+  if (!accountScope) {
+    return NextResponse.json({ error: "Contexte établissement indisponible." }, { status: 500 });
+  }
+  const exportSupabase = supabase as unknown as ExportSupabaseLike;
 
   // Minimal set: add more tables if/when schema evolves.
   const tables: Array<{ table: string; opts?: { limit?: number; orderBy?: string; desc?: boolean } }> = [
@@ -202,15 +206,38 @@ export const GET = withApi(async () => {
     { table: "app_events", opts: { limit: 2000, orderBy: "created_at", desc: true } },
   ];
 
-  const blocks = await Promise.all(tables.map((t) => fetchUserTable(supabase, t.table, user.id, t.opts)));
+  const accountIds = Array.from(new Set(accountScope.accounts.map((account) => account.id)));
+  const businessTables = tables.filter((table) => table.table !== "subscriptions");
+  const businessBlocks = await Promise.all(
+    businessTables.map(async (table) => {
+      const scopedBlocks = await Promise.all(
+        accountIds.map((accountId) => fetchUserTable(exportSupabase, table.table, accountId, table.opts)),
+      );
+      return {
+        table: table.table,
+        rows: scopedBlocks.flatMap((block) => block.rows),
+        ...(scopedBlocks.some((block) => block.error)
+          ? { error: "Une partie de ces données n’a pas pu être récupérée." }
+          : {}),
+      } satisfies ExportBlock;
+    }),
+  );
+  const subscriptionBlock = await fetchUserTable(exportSupabase, "subscriptions", authUserId);
+  const blocks = [...businessBlocks, subscriptionBlock];
 
   const payload = {
     exported_at: new Date().toISOString(),
     user: {
-      id: user.id,
+      id: authUserId,
       email: user.email ?? null,
       created_at: asRecord(user)["created_at"] ?? null,
     },
+    establishments: accountScope.accounts.map((account) => ({
+      id: account.id,
+      display_name: account.displayName,
+      role: account.role,
+      is_default: account.isDefault,
+    })),
     data: blocks,
   };
 

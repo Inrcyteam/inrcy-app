@@ -24,13 +24,13 @@ function isMissingTableError(
 }
 
 export async function GET() {
-  const { user, errorResponse } = await requireUser();
+  const { user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   const { count, error } = await supabaseAdmin
     .from("inr_agent_actions")
     .select("id", { count: "exact", head: true })
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .eq("validation_required", true)
     .in("status", PENDING_AGENT_ACTION_STATUSES);
 

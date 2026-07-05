@@ -1,4 +1,5 @@
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { tryDecryptToken, encryptToken } from "@/lib/oauthCrypto";
 
@@ -138,7 +139,7 @@ export async function getGoogleTokenFor(
   if (!effectiveUserId) {
     const { data: authData, error: authErr } = await supabase.auth.getUser();
     if (authErr || !authData?.user) throw new Error("Non authentifié.");
-    effectiveUserId = authData.user.id;
+    effectiveUserId = await resolveActiveInrcyAccountId(supabase, authData.user.id);
   }
 
   // Legacy override: si une ligne existe dans integrations_statistiques en "déconnecté",
@@ -177,7 +178,8 @@ export async function getGoogleTokenFor(
         expires_at: expiresAt,
         status: "connected",
       })
-      .eq("id", row.id);
+      .eq("id", row.id)
+      .eq("user_id", effectiveUserId);
   }
 
   return { accessToken: accessToken!, row };
@@ -435,7 +437,7 @@ export async function getGoogleTokenForAnyGoogle(
   if (!userId) {
     const { data: authData, error: authErr } = await supabase.auth.getUser();
     if (authErr || !authData?.user) throw new Error("Non authentifié.");
-    userId = authData.user.id;
+    userId = await resolveActiveInrcyAccountId(supabase, authData.user.id);
   }
 
   if (await legacyOverrideDisconnected(supabase, userId, "google", source, product)) {
@@ -459,7 +461,8 @@ export async function getGoogleTokenForAnyGoogle(
     await supabase
       .from("integrations")
       .update({ access_token_enc: accessToken ? encryptToken(accessToken) : null, expires_at: expiresAt })
-      .eq("id", row.id);
+      .eq("id", row.id)
+      .eq("user_id", userId);
   }
 
   return { accessToken, row };

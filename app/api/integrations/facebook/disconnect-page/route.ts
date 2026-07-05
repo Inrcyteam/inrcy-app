@@ -2,12 +2,14 @@ import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { clearAllToolCaches } from "@/lib/statsCache";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 
 export async function POST() {
   const supabase = await createSupabaseServer();
   const { data: authData, error } = await supabase.auth.getUser();
   const user = authData?.user;
   if (error || !user) return NextResponse.json({ error: "Accès non autorisé." }, { status: 401 });
+  const activeUserId = await resolveActiveInrcyAccountId(supabase, user.id);
 
   const { error: updErr } = await supabaseAdmin
     .from("integrations")
@@ -17,12 +19,12 @@ export async function POST() {
       resource_label: null,
             updated_at: new Date().toISOString(),
     })
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .eq("provider", "facebook")
     .eq("source", "facebook")
     .eq("product", "facebook");
 
   if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 });
-  await clearAllToolCaches(supabase, user.id);
+  await clearAllToolCaches(supabase, activeUserId);
   return NextResponse.json({ ok: true });
 }

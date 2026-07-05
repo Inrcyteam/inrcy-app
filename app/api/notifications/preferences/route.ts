@@ -7,11 +7,11 @@ import { ensureNotificationPreferences } from "@/lib/notifications";
 export const runtime = "nodejs";
 
 export async function GET() {
-  const { user, errorResponse } = await requireUser();
+  const { user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   try {
-    const preferences = await ensureNotificationPreferences(user.id);
+    const preferences = await ensureNotificationPreferences(activeUserId);
     return NextResponse.json({ preferences });
   } catch (error: unknown) {
     return jsonUserFacingError(error, { status: 500 });
@@ -19,12 +19,12 @@ export async function GET() {
 }
 
 export async function PUT(req: Request) {
-  const { user, errorResponse } = await requireUser();
+  const { user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   const body = await req.json().catch(() => ({}));
   const payload = {
-    user_id: user.id,
+    user_id: activeUserId,
     in_app_enabled: body?.in_app_enabled !== false,
     email_enabled: body?.email_enabled !== false,
     performance_enabled: body?.performance_enabled !== false,

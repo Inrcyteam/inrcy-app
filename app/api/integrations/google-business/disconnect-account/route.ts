@@ -4,6 +4,7 @@ import { clearAllToolCaches } from "@/lib/statsCache";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { revokeGoogleTokensBestEffort, shouldRevokeGoogleTokensForDisconnect } from "@/lib/googleOAuthRevoke";
+import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 
 type RevokeRow = {
   id?: string | null;
@@ -22,7 +23,7 @@ export async function POST() {
   const { data: authData, error: authErr } = await supabase.auth.getUser();
   if (authErr || !authData?.user) return NextResponse.json({ error: "Non authentifié." }, { status: 401 });
 
-  const userId = authData.user.id;
+  const userId = await resolveActiveInrcyAccountId(supabase, authData.user.id);
 
   const { data: revokeRows } = await supabaseAdmin
     .from("integrations")

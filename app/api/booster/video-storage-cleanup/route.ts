@@ -9,12 +9,12 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: Request) {
   try {
-    const { user, errorResponse } = await requireUser();
+    const { user, errorResponse, activeUserId } = await requireUser();
     if (errorResponse) return errorResponse;
 
     const rateLimited = await enforceRateLimit({
       name: "booster_video_storage_cleanup",
-      identifier: user.id,
+      identifier: activeUserId,
       limit: 20,
       window: "1 m",
       failClosed: false,
@@ -27,10 +27,10 @@ export async function POST(req: Request) {
 
     const cleanupResults: Array<{ removed: string[]; kept: string[] }> = [];
     if (payloads.length) {
-      cleanupResults.push(await cleanupBoosterVideoStorageFromPayloads(user.id, payloads));
+      cleanupResults.push(await cleanupBoosterVideoStorageFromPayloads(activeUserId, payloads));
     }
     if (paths.length) {
-      cleanupResults.push(await cleanupUnusedBoosterVideoStorage(user.id, paths));
+      cleanupResults.push(await cleanupUnusedBoosterVideoStorage(activeUserId, paths));
     }
 
     const removed = Array.from(new Set(cleanupResults.flatMap((result) => result.removed || [])));

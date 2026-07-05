@@ -12,12 +12,12 @@ async function getRouteId(ctx: any) {
 }
 
 export async function POST(req: Request, ctx: any) {
-  const { supabase, user, errorResponse } = await requireUser();
+  const { supabase, user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   const rateLimited = await enforceRateLimit({
     name: "crm_campaign_retry",
-    identifier: user.id,
+    identifier: activeUserId,
     limit: 10,
     window: "10 m",
     failClosed: false,
@@ -33,7 +33,7 @@ export async function POST(req: Request, ctx: any) {
     .from("mail_campaigns")
     .select("id,user_id,status,integration_id")
     .eq("id", campaignId)
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .maybeSingle();
 
   if (campaignError) {
@@ -48,7 +48,7 @@ export async function POST(req: Request, ctx: any) {
     .from("mail_campaign_recipients")
     .select("id,email,suppression_reason,bounce_type")
     .eq("campaign_id", campaignId)
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .eq("status", "failed")
     .limit(1000);
 
@@ -57,7 +57,7 @@ export async function POST(req: Request, ctx: any) {
   }
 
   const suppressedMap = await fetchSuppressedEmailsByUser(
-    user.id,
+    activeUserId,
     (failedRows || []).map((row: any) => String(row?.email || "")),
   );
 
@@ -104,7 +104,7 @@ export async function POST(req: Request, ctx: any) {
       bounced_at: null,
     })
     .in("id", ids)
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .eq("status", "failed");
 
   if (updateError) {
@@ -112,7 +112,7 @@ export async function POST(req: Request, ctx: any) {
   }
 
   const dispatchState = await evaluateCampaignDispatchState({
-    userId: user.id,
+    userId: activeUserId,
     integrationId: String(campaign.integration_id || ""),
     currentCampaignId: campaignId,
   });
@@ -129,7 +129,7 @@ export async function POST(req: Request, ctx: any) {
       last_activity_at: now,
     })
     .eq("id", campaignId)
-    .eq("user_id", user.id);
+    .eq("user_id", activeUserId);
 
   return NextResponse.json({
     success: true,

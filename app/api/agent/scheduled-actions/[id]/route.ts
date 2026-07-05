@@ -45,7 +45,7 @@ function sanitizeText(value: unknown, fallback = "", maxLength = 180) {
 
 
 export async function GET(_request: Request, ctx: { params: Promise<{ id: string }> }) {
-  const { user, errorResponse } = await requireUser();
+  const { user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
   const { id } = await ctx.params;
 
@@ -53,7 +53,7 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
     .from("inr_agent_scheduled_actions")
     .select(SCHEDULED_ACTION_SELECT)
     .eq("id", id)
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .maybeSingle();
 
   if (error) {
@@ -69,7 +69,7 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
 }
 
 export async function PATCH(request: Request, ctx: { params: Promise<{ id: string }> }) {
-  const { user, errorResponse } = await requireUser();
+  const { user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
   const { id } = await ctx.params;
 
@@ -135,7 +135,7 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
     .from("inr_agent_scheduled_actions")
     .update(updates)
     .eq("id", id)
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .select(SCHEDULED_ACTION_SELECT)
     .maybeSingle();
 
@@ -153,7 +153,7 @@ export async function PATCH(request: Request, ctx: { params: Promise<{ id: strin
 }
 
 export async function DELETE(_request: Request, ctx: { params: Promise<{ id: string }> }) {
-  const { user, errorResponse } = await requireUser();
+  const { user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
   const { id } = await ctx.params;
 
@@ -161,7 +161,7 @@ export async function DELETE(_request: Request, ctx: { params: Promise<{ id: str
     .from("inr_agent_scheduled_actions")
     .update({ status: "cancelled", updated_at: new Date().toISOString() })
     .eq("id", id)
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .select(SCHEDULED_ACTION_SELECT)
     .maybeSingle();
 

@@ -6,7 +6,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 export const runtime = "nodejs";
 
 export async function POST(_: Request, ctx: { params: Promise<{ id: string }> }) {
-  const { user, errorResponse } = await requireUser();
+  const { user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
   const { id } = await ctx.params;
 
@@ -14,7 +14,7 @@ export async function POST(_: Request, ctx: { params: Promise<{ id: string }> })
     .from("notifications")
     .update({ read_at: new Date().toISOString() })
     .eq("id", id)
-    .eq("user_id", user.id)
+    .eq("user_id", activeUserId)
     .is("read_at", null);
 
   if (error) return jsonUserFacingError(error, { status: 500 });

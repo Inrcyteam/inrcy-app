@@ -49,7 +49,7 @@ function listFrom(value: unknown, max = 8) {
 
 export async function POST(req: Request) {
   try {
-    const { supabase, user, errorResponse } = await requireUser();
+    const { supabase, authUserId, errorResponse, activeUserId } = await requireUser();
     if (errorResponse) return errorResponse;
 
     const body = asRecord(await req.json().catch(() => ({})) as unknown);
@@ -63,13 +63,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Renseignez d’abord un objet pour générer votre mail avec iNrCy." }, { status: 400 });
     }
 
-    const userId = user.id;
-    const isAdmin = await isAdminUserForAi(supabase, userId);
+    const userId = activeUserId;
+    const isAdmin = await isAdminUserForAi(supabase, authUserId);
 
     if (!isAdmin) {
       const rateLimited = await enforceRateLimit({
         name: "mail_ai",
-        identifier: userId,
+        identifier: authUserId,
         limit: 60,
         window: "1 d",
         failClosed: false,
@@ -78,7 +78,7 @@ export async function POST(req: Request) {
 
       const quotaLimited = await consumeAiCredits({
         supabase,
-        userId,
+        userId: authUserId,
         action: "mail",
         credits: computeMailAiCredits(attachmentRefs),
       });

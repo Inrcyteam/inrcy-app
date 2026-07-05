@@ -22,6 +22,8 @@ export type DashboardFluxBubbleData = {
   onConfigure: () => void;
   configureDisabled?: boolean;
   configureTitle?: string;
+  configureLabel?: string;
+  viewFallbackLabel?: string;
 };
 
 type Props = {
@@ -35,7 +37,7 @@ export default function DashboardFluxBubble({ item, itemKey }: Props) {
     <article
       key={itemKey ?? item.key}
       className={`${styles.moduleCard} ${styles.moduleBubbleCard} ${styles[`accent_${item.accent}`]} ${isComingSoon ? styles.moduleBubbleCardComingSoon : ""}`}
-      title={isComingSoon ? item.configureTitle || "Option désactivée" : undefined}
+      title={isComingSoon ? item.configureTitle || item.configureLabel || "Option désactivée" : undefined}
     >
       <div className={styles.bubbleStack}>
         <div className={`${styles.bubbleLogo} ${item.key === "mails" ? styles.bubbleLogoMail : ""} ${item.key === "inrbadge" ? styles.bubbleLogoProfile : ""} ${item.key === "inr_agent" ? styles.bubbleLogoAgent : ""} ${item.key === "youtube_shorts" ? styles.bubbleLogoYoutube : ""} ${item.key === "pinterest" ? styles.bubbleLogoPinterest : ""}`} aria-hidden>
@@ -99,7 +101,7 @@ export default function DashboardFluxBubble({ item, itemKey }: Props) {
             <DashboardActionButton action={item.viewAction} />
           ) : (
             <button className={`${styles.actionBtn} ${styles.actionView}`} type="button" disabled>
-              Voir
+              {item.viewFallbackLabel || "Voir"}
             </button>
           )}
 
@@ -110,7 +112,7 @@ export default function DashboardFluxBubble({ item, itemKey }: Props) {
             disabled={item.configureDisabled}
             title={item.configureTitle}
           >
-            {"Configurer"}
+            {item.configureLabel || "Configurer"}
           </button>
         </div>
       </div>

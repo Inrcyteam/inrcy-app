@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { buildStatsOverview } from "@/lib/stats/buildOverview";
+import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 
 export async function GET(request: Request) {
   try {
@@ -25,7 +26,7 @@ export async function GET(request: Request) {
       if (authErr || !authData?.user) {
         return NextResponse.json({ error: "Non authentifié." }, { status: 401 });
       }
-      userId = authData.user.id;
+      userId = await resolveActiveInrcyAccountId(supabase, authData.user.id);
     }
 
     const payload = await buildStatsOverview({

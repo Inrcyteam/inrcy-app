@@ -4,14 +4,16 @@ import { bubbleAccessDisabledResponse, isAppBubbleEnabledForUser } from "@/lib/a
 import { getPinterestClientId, getPinterestOAuthScope, getPinterestRedirectUri } from "@/lib/pinterestOAuth";
 import { makeOAuthState, safeInternalPath } from "@/lib/security";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 
 export async function GET(request: Request) {
   const supabase = await createSupabaseServer();
   const { data: authData, error: authErr } = await supabase.auth.getUser();
   const user = authData?.user;
   if (authErr || !user) return NextResponse.json({ ok: false, error: "Non authentifié." }, { status: 401 });
+  const activeUserId = await resolveActiveInrcyAccountId(supabase, user.id);
 
-  if (!(await isAppBubbleEnabledForUser(supabase, user.id, "pinterest"))) {
+  if (!(await isAppBubbleEnabledForUser(supabase, activeUserId, "pinterest"))) {
     return bubbleAccessDisabledResponse("Pinterest");
   }
 
@@ -34,7 +36,7 @@ export async function GET(request: Request) {
     searchParams.get("returnTo") || "/dashboard?panel=pinterest",
     "/dashboard?panel=pinterest",
   );
-  const { stateB64, nonce, cookieName } = makeOAuthState("pinterest", returnTo);
+  const { stateB64, cookieValue, cookieName } = makeOAuthState("pinterest", returnTo, { accountId: activeUserId });
 
   const params = new URLSearchParams({
     client_id: clientId,
@@ -45,7 +47,7 @@ export async function GET(request: Request) {
   });
 
   const res = NextResponse.redirect(`https://www.pinterest.com/oauth/?${params.toString()}`);
-  res.cookies.set(cookieName, nonce, {
+  res.cookies.set(cookieName, cookieValue, {
     httpOnly: true,
     secure: true,
     sameSite: "lax",

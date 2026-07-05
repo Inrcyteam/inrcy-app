@@ -5,6 +5,7 @@ import { createSupabaseServer } from "@/lib/supabaseServer";
 import { getChannelConnectionStates } from "@/lib/channelConnectionState";
 import { asRecord, asString } from "@/lib/tsSafe";
 import { getTrustpilotIntegration } from "@/lib/trustpilotOAuth";
+import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 
 export async function GET() {
   try {
@@ -12,15 +13,16 @@ export async function GET() {
     const { data: authData, error: authErr } = await supabase.auth.getUser();
     const user = authData?.user;
     if (authErr || !user) return NextResponse.json({ ok: false, error: "Non authentifié." }, { status: 401 });
+    const activeUserId = await resolveActiveInrcyAccountId(supabase, user.id);
 
-    if (!(await isAppBubbleEnabledForUser(supabase as any, user.id, "trustpilot"))) {
+    if (!(await isAppBubbleEnabledForUser(supabase as any, activeUserId, "trustpilot"))) {
       return bubbleAccessDisabledResponse("Trustpilot");
     }
 
     const [states, integrationRaw, configRes] = await Promise.all([
-      getChannelConnectionStates(supabase as any, user.id),
-      getTrustpilotIntegration(user.id).catch(() => ({})),
-      (supabase.from("pro_tools_configs").select("settings").eq("user_id", user.id).maybeSingle() as any).catch(() => ({ data: null })),
+      getChannelConnectionStates(supabase as any, activeUserId),
+      getTrustpilotIntegration(activeUserId).catch(() => ({})),
+      (supabase.from("pro_tools_configs").select("settings").eq("user_id", activeUserId).maybeSingle() as any).catch(() => ({ data: null })),
     ]);
     const integration = asRecord(integrationRaw);
     const meta = asRecord(integration.meta);

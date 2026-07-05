@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
+import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 
 const ALLOWED_TARGET_STATUSES = new Set(["en_attente_paiement", "envoye", "paye"]);
@@ -28,6 +29,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Votre session a expiré. Merci de vous reconnecter." }, { status: 401 });
   }
 
+  const activeUserId = await resolveActiveInrcyAccountId(supabase, userData.user.id);
+
   const body = await req.json().catch(() => ({}));
   const docSaveId = asTrimmedString(body?.docSaveId);
   const targetStatus = normalizeTargetStatus(body?.targetStatus);
@@ -40,7 +43,7 @@ export async function POST(req: Request) {
     .from("doc_saves")
     .select("id,name,payload")
     .eq("id", docSaveId)
-    .eq("user_id", userData.user.id)
+    .eq("user_id", activeUserId)
     .eq("type", "facture")
     .maybeSingle();
 
@@ -109,7 +112,7 @@ export async function POST(req: Request) {
       updated_at: nowISO,
     })
     .eq("id", docSaveId)
-    .eq("user_id", userData.user.id)
+    .eq("user_id", activeUserId)
     .eq("type", "facture");
 
   if (updateError) return jsonUserFacingError(updateError, { status: 500 });

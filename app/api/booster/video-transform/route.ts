@@ -301,12 +301,12 @@ function buildOutputStoragePath(
 export async function POST(req: Request) {
   let tempDir = "";
   try {
-    const { user, errorResponse } = await requireUser();
+    const { user, errorResponse, activeUserId } = await requireUser();
     if (errorResponse) return errorResponse;
 
     const rateLimited = await enforceRateLimit({
       name: "booster_video_transform",
-      identifier: user.id,
+      identifier: activeUserId,
       limit: 6,
       window: "1 m",
       failClosed: false,
@@ -411,7 +411,7 @@ export async function POST(req: Request) {
             `La variante ${variant.target.label} reste trop lourde après compression (${Math.ceil(outputBuffer.length / 1024 / 1024)} Mo). Réduisez la durée de la vidéo ou choisissez un format plus léger.`,
           );
         }
-        const storagePath = buildOutputStoragePath(user.id, variant);
+        const storagePath = buildOutputStoragePath(activeUserId, variant);
         const upload = await supabaseAdmin.storage
           .from(BOOSTER_BUCKET)
           .upload(storagePath, outputBuffer, {
