@@ -54,9 +54,9 @@ export const GPS_SECTIONS: GpsSection[] = [
           "Une IA bien configurée produit des contenus beaucoup plus naturels, locaux et efficaces.",
         ],
         links: [
-          { label: "Ouvrir Mon activité", href: "/dashboard/settings/activite" },
-          { label: "Ouvrir Mon profil", href: "/dashboard/settings/profil" },
-          { label: "Configuration IA", href: "/dashboard/settings/ia" },
+          { label: "Ouvrir Mon activité", href: "/dashboard?panel=activite&panelSource=gps" },
+          { label: "Ouvrir Mon profil", href: "/dashboard?panel=profil&panelSource=gps" },
+          { label: "Configuration IA", href: "/dashboard?panel=ia&panelSource=gps" },
         ],
       },
     ],
@@ -129,7 +129,7 @@ export const GPS_SECTIONS: GpsSection[] = [
         ],
         links: [
           { label: "Ouvrir iNr'Agent", href: "/dashboard/agent" },
-          { label: "Configurer iNr'Agent", href: "/dashboard?panel=inr_agent" },
+          { label: "Configurer iNr'Agent", href: "/dashboard?panel=inr_agent&panelSource=gps" },
         ],
       },
     ],
@@ -169,7 +169,7 @@ export const GPS_SECTIONS: GpsSection[] = [
         links: [
           { label: "Ouvrir Générateur", href: "/dashboard" },
           { label: "Ouvrir iNrStats", href: "/dashboard/stats" },
-          { label: "Ouvrir la Boutique", href: "/dashboard?panel=boutique" },
+          { label: "Ouvrir la Boutique", href: "/dashboard?panel=boutique&panelSource=gps" },
         ],
       },
     ],
@@ -247,7 +247,7 @@ export const GPS_SECTIONS: GpsSection[] = [
         ],
         links: [
           { label: "Ouvrir Booster", href: "/dashboard?action=publish" },
-          { label: "Configuration IA", href: "/dashboard/settings/ia" },
+          { label: "Configuration IA", href: "/dashboard?panel=ia&panelSource=gps" },
           { label: "Ouvrir les canaux", href: "/dashboard" },
         ],
       },
@@ -362,8 +362,8 @@ export const GPS_SECTIONS: GpsSection[] = [
         ],
         links: [
           { label: "Ouvrir iNr’Send", href: "/dashboard/mails" },
-          { label: "Configurer boîte mail", href: "/dashboard?panel=mails" },
-          { label: "Créer ma signature", href: "/dashboard?panel=mails" },
+          { label: "Configurer boîte mail", href: "/dashboard?panel=mails&panelSource=gps" },
+          { label: "Créer ma signature", href: "/dashboard?panel=mails&panelSource=gps" },
         ],
       },
     ],
@@ -440,7 +440,7 @@ export const GPS_SECTIONS: GpsSection[] = [
         links: [
           { label: "Ouvrir Agenda", href: "/dashboard/agenda" },
           { label: "Nouvel événement", href: "/dashboard/agenda" },
-          { label: "Réglages Agenda", href: "/dashboard?panel=agenda" },
+          { label: "Réglages Agenda", href: "/dashboard?panel=agenda&panelSource=gps" },
         ],
       },
     ],
@@ -478,8 +478,8 @@ export const GPS_SECTIONS: GpsSection[] = [
         links: [
           { label: "Créer un devis", href: "/dashboard/devis/new" },
           { label: "Créer une facture", href: "/dashboard/factures/new" },
-          { label: "Voir mes documents", href: "/dashboard?panel=documents" },
-          { label: "Réglages", href: "/dashboard?panel=documents" },
+          { label: "Voir mes documents", href: "/dashboard?panel=documents&panelSource=gps" },
+          { label: "Réglages", href: "/dashboard?panel=documents&panelSource=gps" },
         ],
       },
     ],
@@ -515,8 +515,8 @@ export const GPS_SECTIONS: GpsSection[] = [
           "L’offre réelle du compte reste la référence côté abonnement.",
         ],
         links: [
-          { label: "Voir mon abonnement", href: "/dashboard/settings/abonnement" },
-          { label: "Nous contacter", href: "/dashboard?panel=contact" },
+          { label: "Voir mon abonnement", href: "/dashboard?panel=abonnement&panelSource=gps" },
+          { label: "Nous contacter", href: "/dashboard?panel=contact&panelSource=gps" },
         ],
       },
     ],

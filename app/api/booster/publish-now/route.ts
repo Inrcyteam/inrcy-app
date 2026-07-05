@@ -34,6 +34,7 @@ import {
 } from "@/lib/linkedinPublish";
 import { getGmbToken, gmbCreateLocalPost } from "@/lib/googleBusiness";
 import {
+  optimizeFinalImageGeometry,
   optimizeForGoogleBusiness,
   optimizeForInstagram,
   optimizeForSiteCard,
@@ -242,6 +243,9 @@ type ImagePayload = {
   imageKey?: string;
   transform?: unknown;
   imageMeta?: unknown;
+  imageDecisionMode?: "original" | "adapted" | "customized" | "unsupported";
+  imageDecisionLabel?: "Originale" | "Adaptée" | "Personnalisée" | "Indisponible";
+  isCustomized?: boolean;
 };
 
 type PublicationMediaType = "images" | "video";
@@ -330,6 +334,9 @@ type EditableImageAttachment = {
   imageKey?: string | null;
   transform?: unknown;
   imageMeta?: unknown;
+  imageDecisionMode?: string | null;
+  imageDecisionLabel?: string | null;
+  isCustomized?: boolean;
 };
 
 type PostPayload = {
@@ -354,6 +361,7 @@ type ImageSet = {
   storagePaths: string[];
   publishableStoragePaths: string[];
   socialFeedStoragePaths: string[];
+  imageKeys?: string[];
   editableAttachments?: EditableImageAttachment[];
 };
 
@@ -641,14 +649,26 @@ type ImageOptimizationFormats = {
 
 const EMPTY_IMAGE_FORMATS: ImageOptimizationFormats = {};
 
+function hasFinalImageGeometryDecision(img: ImagePayload) {
+  return (
+    img.imageDecisionMode === "original" ||
+    img.imageDecisionMode === "adapted" ||
+    img.imageDecisionMode === "customized"
+  );
+}
+
 function getRequiredImageFormatsForChannel(
   channel: ChannelKey,
 ): ImageOptimizationFormats {
   if (channel === "instagram") return { instagram: true };
-  if (channel === "facebook" || channel === "linkedin")
+  if (
+    channel === "facebook" ||
+    channel === "linkedin" ||
+    channel === "tiktok" ||
+    channel === "pinterest"
+  ) {
     return { socialFeed: true, socialFeedNativeFirst: true };
-  if (channel === "tiktok" || channel === "youtube_shorts")
-    return { socialFeed: true };
+  }
   if (channel === "gmb") return { gmb: true };
   // Site iNrCy / Site web use the original prepared image in the article payload.
   // Avoid generating social/Instagram/GMB derivatives when they are not needed.
@@ -675,12 +695,18 @@ function mergeImageFormats(
 function buildEditableImageAttachments(
   rawImages: ImagePayload[],
   imageSet: ImageSet,
+  originalSourceUrlByKey?: ReadonlyMap<string, string>,
 ): EditableImageAttachment[] {
   return imageSet.images.map((renderedUrl, index) => {
     const raw = rawImages[index] || ({} as ImagePayload);
+    const imageKey = String(raw.imageKey || "").trim();
+    const mappedOriginalUrl = imageKey
+      ? String(originalSourceUrlByKey?.get(imageKey) || "").trim()
+      : "";
     const originalUrl = String(
       raw.originalPublicUrl ||
         raw.originalUrl ||
+        mappedOriginalUrl ||
         raw.publicUrl ||
         renderedUrl ||
         "",
@@ -702,9 +728,14 @@ function buildEditableImageAttachments(
       originalStoragePath: String(raw.originalStoragePath || "").trim() || null,
       originalName: String(raw.originalName || raw.name || "").trim() || null,
       originalType: String(raw.originalType || raw.type || "").trim() || null,
-      imageKey: String(raw.imageKey || "").trim() || null,
+      imageKey: imageKey || null,
       transform: raw.transform || null,
       imageMeta: raw.imageMeta || null,
+      imageDecisionMode:
+        String(raw.imageDecisionMode || "").trim() || null,
+      imageDecisionLabel:
+        String(raw.imageDecisionLabel || "").trim() || null,
+      isCustomized: raw.isCustomized === true,
     };
   });
 }
@@ -726,6 +757,7 @@ async function uploadImageSet(
   const storagePaths: string[] = [];
   const publishableStoragePaths: string[] = [];
   const socialFeedStoragePaths: string[] = [];
+  const imageKeys: string[] = [];
   const uploadErrors: Array<{ name: string; reason: string; stage: string }> =
     [];
 
@@ -753,6 +785,7 @@ async function uploadImageSet(
     }
 
     const parsed = { mime: source.mime, buffer: source.buffer };
+    const finalGeometryLocked = hasFinalImageGeometryDecision(img);
     let originalPublicUrl = source.originalPublicUrl;
     let originalPublishableUrl = source.originalPublishableUrl;
     let sourceStoragePath = source.storagePath || "";
@@ -789,6 +822,7 @@ async function uploadImageSet(
 
     if (originalPublicUrl) {
       uploadedUrls.push(originalPublicUrl);
+      imageKeys.push(String(img.imageKey || "").trim());
     } else {
       uploadErrors.push({
         name: img?.name || "image",
@@ -821,7 +855,9 @@ async function uploadImageSet(
 
     if (formats.instagram) {
       try {
-        const optimized = await optimizeForInstagram(parsed.buffer);
+        const optimized = finalGeometryLocked
+          ? await optimizeFinalImageGeometry(parsed.buffer, "instagram")
+          : await optimizeForInstagram(parsed.buffer);
         const igPath = `${userId}/instagram/${randomUUID()}.${optimized.extension}`;
         const igUpload = await supabaseAdmin.storage
           .from("booster")
@@ -856,19 +892,33 @@ async function uploadImageSet(
           }
         }
       } catch (optErr) {
-        uploadErrors.push({
-          name: img?.name || "image",
-          reason: errMessage(optErr, "Instagram image optimization failed"),
-          stage: "instagramOptimize",
-        });
+        if (finalGeometryLocked && (originalPublishableUrl || originalPublicUrl)) {
+          instagramPublishableUrls.push(
+            originalPublishableUrl || originalPublicUrl || "",
+          );
+          uploadErrors.push({
+            name: img?.name || "image",
+            reason:
+              "Final geometry optimizer unavailable; preserved the Booster-prepared image without fallback recrop",
+            stage: "instagramGeometryPreserveFallback",
+          });
+        } else {
+          uploadErrors.push({
+            name: img?.name || "image",
+            reason: errMessage(optErr, "Instagram image optimization failed"),
+            stage: "instagramOptimize",
+          });
+        }
       }
     }
 
     if (formats.socialFeed) {
       try {
-        const optimized = await optimizeForSocialFeed(parsed.buffer, {
-          nativeFirst: Boolean(formats.socialFeedNativeFirst),
-        });
+        const optimized = finalGeometryLocked
+          ? await optimizeFinalImageGeometry(parsed.buffer, "social-feed")
+          : await optimizeForSocialFeed(parsed.buffer, {
+              nativeFirst: Boolean(formats.socialFeedNativeFirst),
+            });
         const socialPath = `${userId}/social-feed/${randomUUID()}.${optimized.extension}`;
         const socialUpload = await supabaseAdmin.storage
           .from("booster")
@@ -905,11 +955,24 @@ async function uploadImageSet(
           }
         }
       } catch (optErr) {
-        uploadErrors.push({
-          name: img?.name || "image",
-          reason: errMessage(optErr, "Social feed image optimization failed"),
-          stage: "socialFeedOptimize",
-        });
+        if (finalGeometryLocked && (originalPublishableUrl || originalPublicUrl)) {
+          socialFeedPublishableUrls.push(
+            originalPublishableUrl || originalPublicUrl || "",
+          );
+          if (sourceStoragePath) socialFeedStoragePaths.push(sourceStoragePath);
+          uploadErrors.push({
+            name: img?.name || "image",
+            reason:
+              "Final geometry optimizer unavailable; preserved the Booster-prepared image without fallback recrop",
+            stage: "socialFeedGeometryPreserveFallback",
+          });
+        } else {
+          uploadErrors.push({
+            name: img?.name || "image",
+            reason: errMessage(optErr, "Social feed image optimization failed"),
+            stage: "socialFeedOptimize",
+          });
+        }
       }
     }
 
@@ -960,7 +1023,9 @@ async function uploadImageSet(
 
     if (formats.gmb) {
       try {
-        const optimized = await optimizeForGoogleBusiness(parsed.buffer);
+        const optimized = finalGeometryLocked
+          ? await optimizeFinalImageGeometry(parsed.buffer, "gmb")
+          : await optimizeForGoogleBusiness(parsed.buffer);
         const gmbPath = `${userId}/gmb/${randomUUID()}.${optimized.extension}`;
         const gmbUpload = await supabaseAdmin.storage
           .from("booster")
@@ -988,14 +1053,40 @@ async function uploadImageSet(
           }
         }
       } catch (optErr) {
-        uploadErrors.push({
-          name: img?.name || "image",
-          reason: errMessage(
-            optErr,
-            "Google Business image optimization failed",
-          ),
-          stage: "gmbOptimize",
-        });
+        if (finalGeometryLocked) {
+          const preservedUrl = sourceStoragePath
+            ? await getGoogleBusinessPublishableUrl(sourceStoragePath).catch(
+                () => null,
+              )
+            : originalPublishableUrl || originalPublicUrl;
+          if (preservedUrl) {
+            gmbPublishableUrls.push(preservedUrl);
+            uploadErrors.push({
+              name: img?.name || "image",
+              reason:
+                "Final geometry optimizer unavailable; preserved the Booster-prepared image without fallback recrop",
+              stage: "gmbGeometryPreserveFallback",
+            });
+          } else {
+            uploadErrors.push({
+              name: img?.name || "image",
+              reason: errMessage(
+                optErr,
+                "Google Business image optimization failed",
+              ),
+              stage: "gmbOptimize",
+            });
+          }
+        } else {
+          uploadErrors.push({
+            name: img?.name || "image",
+            reason: errMessage(
+              optErr,
+              "Google Business image optimization failed",
+            ),
+            stage: "gmbOptimize",
+          });
+        }
       }
     }
   }
@@ -1011,6 +1102,7 @@ async function uploadImageSet(
       storagePaths,
       publishableStoragePaths,
       socialFeedStoragePaths,
+      imageKeys,
     },
     uploadErrors,
   };
@@ -1414,6 +1506,13 @@ export async function POST(req: Request) {
     const siteCardPublishableUrls = baseImageSet.siteCardPublishableUrls;
     const gmbPublishableUrls = baseImageSet.gmbPublishableUrls;
 
+    const originalSourceUrlByKey = new Map<string, string>();
+    (baseImageSet.imageKeys || []).forEach((key, index) => {
+      const normalizedKey = String(key || "").trim();
+      const url = String(baseImageSet.images[index] || "").trim();
+      if (normalizedKey && url) originalSourceUrlByKey.set(normalizedKey, url);
+    });
+
     const channelImageSets: Partial<Record<ChannelKey, ImageSet>> = {};
     for (const channel of selected) {
       const rawChannelImages = Array.isArray(imagesByChannel?.[channel])
@@ -1432,6 +1531,7 @@ export async function POST(req: Request) {
         editableAttachments: buildEditableImageAttachments(
           channelImagesToUpload,
           imageSet,
+          originalSourceUrlByKey,
         ),
       };
       uploadErrors.push(
@@ -1661,6 +1761,57 @@ export async function POST(req: Request) {
     const getChannelImageSet = (channel: ChannelKey): ImageSet =>
       channelImageSets[channel] || baseImageSet;
 
+    type ChannelImageUrlKey =
+      | "images"
+      | "publishableUrls"
+      | "instagramPublishableUrls"
+      | "socialFeedPublishableUrls"
+      | "gmbPublishableUrls";
+
+    const getExpectedChannelImageCount = (channel: ChannelKey) => {
+      const raw = Array.isArray(imagesByChannel?.[channel])
+        ? (imagesByChannel[channel] as ImagePayload[])
+        : [];
+      const limited = channel === "gmb" ? raw.slice(0, 1) : raw.slice(0, 5);
+      return limited.length;
+    };
+
+    /**
+     * New Booster payloads carry a dedicated image set per channel. Once such
+     * a set exists, never borrow a fallback from another channel: that could
+     * publish the wrong crop/ratio. Also reject partial derivative lists so a
+     * carousel cannot silently lose one image. Legacy payloads still use the
+     * historical global fallback passed by the caller.
+     */
+    const pickCompleteChannelImageUrls = (params: {
+      channel: ChannelKey;
+      candidates: ChannelImageUrlKey[];
+      legacyFallback: string[];
+      limit: number;
+    }) => {
+      const { channel, candidates, legacyFallback, limit } = params;
+      const explicitSet = channelImageSets[channel];
+      if (!explicitSet) {
+        return legacyFallback.filter(Boolean).slice(0, limit);
+      }
+
+      const expected = Math.min(
+        getExpectedChannelImageCount(channel),
+        limit,
+      );
+      for (const key of candidates) {
+        const urls = (explicitSet[key] || []).filter(Boolean);
+        if (expected > 0 && urls.length >= expected) {
+          return urls.slice(0, expected);
+        }
+        if (expected === 0 && urls.length) {
+          return urls.slice(0, limit);
+        }
+      }
+
+      return [];
+    };
+
     async function setDelivery(channel: ChannelKey, patch: JsonRecord) {
       const nextStatus = String(patch.status ?? "").trim();
       const nextError = String(patch.error ?? patch.last_error ?? "").trim();
@@ -1836,6 +1987,33 @@ export async function POST(req: Request) {
             continue;
           }
 
+          const legacySiteImageSet = getChannelImageSet(ch);
+          const legacySiteImageUrls = legacySiteImageSet.images.length
+            ? legacySiteImageSet.images
+            : legacySiteImageSet.socialFeedPublishableUrls.length
+              ? legacySiteImageSet.socialFeedPublishableUrls
+              : legacySiteImageSet.siteCardPublishableUrls;
+          const siteImageUrls =
+            mediaModeByChannel[ch] === "images"
+              ? pickCompleteChannelImageUrls({
+                  channel: ch,
+                  candidates: ["images", "publishableUrls"],
+                  legacyFallback: legacySiteImageUrls,
+                  limit: 5,
+                })
+              : [];
+          if (
+            mediaModeByChannel[ch] === "images" &&
+            getExpectedChannelImageCount(ch) > 0 &&
+            !siteImageUrls.length
+          ) {
+            const siteImageError =
+              "Les images du site n'ont pas pu être préparées sans modifier le rendu.";
+            await setDelivery(ch, { status: "failed", error: siteImageError });
+            results[ch] = { ok: false, error: siteImageError };
+            continue;
+          }
+
           const articleId = randomUUID();
           const slug = slugify(channelPost.title) || "actu";
           const externalUrl = targetUrl
@@ -1855,20 +2033,9 @@ export async function POST(req: Request) {
               content: channelPost.content,
               cta: channelPost.cta,
               hashtags: channelPost.hashtags,
-              images:
-                mediaModeByChannel[ch] === "images"
-                  ? (() => {
-                      const channelImageSet = getChannelImageSet(ch);
-                      // For website embeds, always prefer the original uploaded assets.
-                      // They preserve the real framing and avoid publishing the blurred
-                      // site-card derivative inside the iframe media slot.
-                      return channelImageSet.images.length
-                        ? channelImageSet.images
-                        : channelImageSet.socialFeedPublishableUrls.length
-                          ? channelImageSet.socialFeedPublishableUrls
-                          : channelImageSet.siteCardPublishableUrls;
-                    })()
-                  : [],
+              // For website embeds, keep the channel-specific prepared source.
+              // Never borrow another channel's crop/ratio as a fallback.
+              images: siteImageUrls,
               ...(mediaModeByChannel[ch] === "video" && channelVideo
                 ? {
                     media_type: "video",
@@ -1957,6 +2124,28 @@ export async function POST(req: Request) {
             continue;
           }
 
+          const facebookImageUrls = pickCompleteChannelImageUrls({
+            channel: ch,
+            candidates: [
+              "socialFeedPublishableUrls",
+              "publishableUrls",
+              "images",
+            ],
+            legacyFallback: socialFeedImageUrls,
+            limit: 5,
+          });
+          if (
+            mediaModeByChannel[ch] === "images" &&
+            getExpectedChannelImageCount(ch) > 0 &&
+            !facebookImageUrls.length
+          ) {
+            const facebookUserError =
+              "Les images Facebook n'ont pas pu être préparées sans modifier le rendu.";
+            await setDelivery(ch, { status: "failed", error: facebookUserError });
+            results[ch] = { ok: false, error: facebookUserError };
+            continue;
+          }
+
           const resp =
             mediaModeByChannel[ch] === "video" && channelVideo
               ? await facebookPublishVideoToPage({
@@ -1970,11 +2159,7 @@ export async function POST(req: Request) {
                   pageId,
                   pageAccessToken: pageToken,
                   message: canonMessage,
-                  imageUrls: (getChannelImageSet(ch).socialFeedPublishableUrls
-                    .length
-                    ? getChannelImageSet(ch).socialFeedPublishableUrls
-                    : socialFeedImageUrls
-                  ).slice(0, 5),
+                  imageUrls: facebookImageUrls,
                 });
 
           if (!resp.ok) {
@@ -2072,13 +2257,12 @@ export async function POST(req: Request) {
               videoUrl: channelVideo.publicUrl,
             });
           } else {
-            const instagramImages = (
-              getChannelImageSet(ch).instagramPublishableUrls.length
-                ? getChannelImageSet(ch).instagramPublishableUrls
-                : instagramImageUrls
-            )
-              .filter(Boolean)
-              .slice(0, 10);
+            const instagramImages = pickCompleteChannelImageUrls({
+              channel: ch,
+              candidates: ["instagramPublishableUrls"],
+              legacyFallback: instagramImageUrls,
+              limit: 10,
+            });
             if (!instagramImages.length) {
               await setDelivery(ch, {
                 status: "failed",
@@ -2217,15 +2401,30 @@ export async function POST(req: Request) {
             };
             continue;
           }
-          const linkedInImages = (
-            getChannelImageSet(ch).socialFeedPublishableUrls.length
-              ? getChannelImageSet(ch).socialFeedPublishableUrls
-              : socialFeedImageUrls.length
-                ? socialFeedImageUrls
-                : externalImageUrls
-          )
-            .filter(Boolean)
-            .slice(0, 20);
+          const linkedInImages = pickCompleteChannelImageUrls({
+            channel: ch,
+            candidates: [
+              "socialFeedPublishableUrls",
+              "publishableUrls",
+              "images",
+            ],
+            legacyFallback: socialFeedImageUrls.length
+              ? socialFeedImageUrls
+              : externalImageUrls,
+            limit: 20,
+          });
+          if (
+            mediaModeByChannel[ch] === "images" &&
+            getExpectedChannelImageCount(ch) > 0 &&
+            !linkedInImages.length
+          ) {
+            const linkedInUserError =
+              "Les images LinkedIn n'ont pas pu être préparées sans modifier le rendu.";
+            await setDelivery(ch, { status: "failed", error: linkedInUserError });
+            results[ch] = { ok: false, error: linkedInUserError };
+            continue;
+          }
+
           const isLinkedInVideo = Boolean(
             mediaModeByChannel[ch] === "video" && channelVideo,
           );
@@ -2550,16 +2749,37 @@ export async function POST(req: Request) {
 
           const tiktokMode = mediaModeByChannel[ch] || "none";
           const tiktokImageSet = getChannelImageSet(ch);
-          const tiktokImageStoragePaths = (
-            tiktokImageSet.socialFeedStoragePaths?.length
-              ? tiktokImageSet.socialFeedStoragePaths
-              : tiktokImageSet.publishableStoragePaths?.length
-                ? tiktokImageSet.publishableStoragePaths
-                : tiktokImageSet.storagePaths || []
-          )
-            .filter(Boolean)
-            .slice(0, 35);
-          const tiktokFallbackImageUrls = (
+          const tiktokRawImages = Array.isArray(imagesByChannel?.tiktok)
+            ? (imagesByChannel.tiktok as ImagePayload[])
+            : [];
+          const tiktokGeometryLocked =
+            tiktokRawImages.length > 0 &&
+            tiktokRawImages.every((image) => hasFinalImageGeometryDecision(image));
+          const expectedTiktokImageCount = getExpectedChannelImageCount(ch);
+          const explicitTiktokImageSet = channelImageSets[ch];
+          const socialStoragePaths = (
+            tiktokImageSet.socialFeedStoragePaths || []
+          ).filter(Boolean);
+          const sourceStoragePaths = (
+            tiktokImageSet.publishableStoragePaths?.length
+              ? tiktokImageSet.publishableStoragePaths
+              : tiktokImageSet.storagePaths || []
+          ).filter(Boolean);
+          const hasCompleteTikTokPaths = (paths: string[]) =>
+            expectedTiktokImageCount > 0
+              ? paths.length >= expectedTiktokImageCount
+              : paths.length > 0;
+          const tiktokImageStoragePaths = explicitTiktokImageSet
+            ? hasCompleteTikTokPaths(socialStoragePaths)
+              ? socialStoragePaths.slice(0, expectedTiktokImageCount)
+              : hasCompleteTikTokPaths(sourceStoragePaths)
+                ? sourceStoragePaths.slice(0, expectedTiktokImageCount)
+                : []
+            : (socialStoragePaths.length
+                ? socialStoragePaths
+                : sourceStoragePaths
+              ).slice(0, 35);
+          const legacyTiktokFallbackImageUrls = (
             tiktokImageSet.publishableUrls.length
               ? tiktokImageSet.publishableUrls
               : tiktokImageSet.socialFeedPublishableUrls.length
@@ -2567,14 +2787,22 @@ export async function POST(req: Request) {
                 : tiktokImageSet.images.length
                   ? tiktokImageSet.images
                   : externalImageUrls
-          )
-            .filter(Boolean)
-            .slice(0, 35);
+          ).filter(Boolean);
+          const tiktokFallbackImageUrls = pickCompleteChannelImageUrls({
+            channel: ch,
+            candidates: [
+              "socialFeedPublishableUrls",
+              "publishableUrls",
+              "images",
+            ],
+            legacyFallback: legacyTiktokFallbackImageUrls,
+            limit: 35,
+          });
           const tiktokImageUrls = tiktokImageStoragePaths.length
             ? tiktokImageStoragePaths
                 .map((path) =>
                   buildTiktokMediaProxyUrl(req.url, path, undefined, {
-                    variant: "photo",
+                    variant: tiktokGeometryLocked ? "photo_locked" : "photo",
                   }),
                 )
                 .filter(Boolean)
@@ -2781,18 +3009,16 @@ export async function POST(req: Request) {
             continue;
           }
 
-          const pinterestImageSet = getChannelImageSet(ch);
-          const pinterestImageUrls = (
-            pinterestImageSet.images.length
-              ? pinterestImageSet.images
-              : pinterestImageSet.publishableUrls.length
-                ? pinterestImageSet.publishableUrls
-                : pinterestImageSet.socialFeedPublishableUrls.length
-                  ? pinterestImageSet.socialFeedPublishableUrls
-                  : externalImageUrls
-          )
-            .filter(Boolean)
-            .slice(0, 1);
+          const pinterestImageUrls = pickCompleteChannelImageUrls({
+            channel: ch,
+            candidates: [
+              "socialFeedPublishableUrls",
+              "publishableUrls",
+              "images",
+            ],
+            legacyFallback: externalImageUrls,
+            limit: 1,
+          });
 
           if (!pinterestImageUrls.length) {
             const pinterestUserError = "Veuillez ajouter au moins 1 image pour publier sur Pinterest.";
@@ -2882,18 +3108,31 @@ export async function POST(req: Request) {
             continue;
           }
 
-          const gmbChannelImageSet = getChannelImageSet(ch);
           const gmbChannelImages =
             mediaModeByChannel[ch] === "images"
-              ? (gmbChannelImageSet.gmbPublishableUrls.length
-                  ? gmbChannelImageSet.gmbPublishableUrls
-                  : gmbImageUrls.length
-                    ? gmbImageUrls
-                    : gmbChannelImageSet.publishableUrls
-                )
-                  .filter(Boolean)
-                  .slice(0, 1)
+              ? pickCompleteChannelImageUrls({
+                  channel: ch,
+                  candidates: [
+                    "gmbPublishableUrls",
+                    "publishableUrls",
+                    "images",
+                  ],
+                  legacyFallback: gmbImageUrls,
+                  limit: 1,
+                })
               : [];
+          if (
+            mediaModeByChannel[ch] === "images" &&
+            getExpectedChannelImageCount(ch) > 0 &&
+            !gmbChannelImages.length
+          ) {
+            const gmbUserError =
+              "L'image Google Business n'a pas pu être préparée sans modifier le rendu.";
+            await setDelivery(ch, { status: "failed", error: gmbUserError });
+            results[ch] = { ok: false, error: gmbUserError };
+            continue;
+          }
+
           const gmbChannelVideos =
             mediaModeByChannel[ch] === "video" && channelVideo
               ? [channelVideo.publicUrl].filter(Boolean).slice(0, 1)

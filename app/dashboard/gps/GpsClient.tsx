@@ -25,6 +25,20 @@ function renderStrongParts(input: string) {
   });
 }
 
+function rememberPanelLink(href: string) {
+  if (typeof window === "undefined" || !href.startsWith("/dashboard?")) return;
+
+  try {
+    const query = href.split("?")[1] || "";
+    const params = new URLSearchParams(query);
+    const panel = params.get("panel");
+    if (!panel) return;
+
+    sessionStorage.setItem("inrcy_panel_explicit_open", "1");
+    sessionStorage.setItem("inrcy_last_panel", panel);
+  } catch {}
+}
+
 type SearchHit = {
   article: GpsArticle;
   sectionId: string;
@@ -320,7 +334,12 @@ export default function GpsClient() {
               {selectedArticle.links && selectedArticle.links.length > 0 && (
                 <div className={styles.linksRow}>
                   {selectedArticle.links.slice(0, 4).map((link) => (
-                    <Link key={link.href + link.label} href={link.href} className={styles.primaryLink}>
+                    <Link
+                      key={link.href + link.label}
+                      href={link.href}
+                      className={styles.primaryLink}
+                      onClick={() => rememberPanelLink(link.href)}
+                    >
                       {link.label} <span aria-hidden="true">→</span>
                     </Link>
                   ))}

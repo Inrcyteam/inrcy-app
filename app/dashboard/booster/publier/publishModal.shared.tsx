@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import type { BoosterVideoTransformedVariant } from "@/lib/boosterVideoTransforms";
+import { getBoosterImageDisplayPlan } from "@/lib/boosterImageDecision";
 import {
   INR_MEDIA_IMAGE_MAX_BYTES,
   INR_MEDIA_IMAGE_MAX_MB_LABEL,
@@ -288,6 +289,9 @@ export type ImagePayload = {
   imageKey?: string;
   transform?: ImageTransform;
   imageMeta?: ImageMeta;
+  imageDecisionMode?: "original" | "adapted" | "customized" | "unsupported";
+  imageDecisionLabel?: "Originale" | "Adaptée" | "Personnalisée" | "Indisponible";
+  isCustomized?: boolean;
 };
 
 export type ImageTransform = {
@@ -309,12 +313,18 @@ export type ImageMeta = {
 export type ChannelImageEditorState = {
   imageKeys: string[];
   transforms: Record<string, ImageTransform>;
+  /** Explicit Adapter provenance. Opening the modal alone never adds a key. */
+  customizedImageKeys?: string[];
 };
 
 export type ChannelImagePayload = Record<ChannelKey, ImagePayload[]>;
 export type ChannelImageSettingsPayload = Record<
   ChannelKey,
-  { imageKeys: string[]; transforms: Record<string, ImageTransform> }
+  {
+    imageKeys: string[];
+    transforms: Record<string, ImageTransform>;
+    customizedImageKeys?: string[];
+  }
 >;
 
 export type RenderPreset = {
@@ -342,6 +352,12 @@ export const DEFAULT_TRANSFORM: ImageTransform = {
   backgroundMode: "color",
   backgroundColor: "#ffffff",
 };
+
+export function getImageFitLabel(
+  transform?: Pick<ImageTransform, "fit"> | null,
+) {
+  return transform?.fit === "cover" ? "Plein cadre" : "Image entière";
+}
 
 export const DISPLAY_LABELS: Record<DisplayKey, string> = {
   inrcy_site: "Site iNrCy",
@@ -2233,90 +2249,38 @@ export function getOptimizedTransform(
   meta?: ImageMeta,
 ): ImageTransform {
   const base = getDefaultTransform(channel);
-  if (!meta || !meta.width || !meta.height) return base;
+  const displayPlan = getBoosterImageDisplayPlan({ channel, meta });
 
-  const ratio = meta.ratio || meta.width / meta.height;
-  const isVeryWide = ratio >= 1.45;
-  const isWide = ratio >= 1.15;
-  const isTall = ratio <= 0.85;
-  const isVeryTall = ratio <= 0.68;
-
-  if (channel === "inrcy_site" || channel === "site_web" || channel === "gmb") {
-    return withBackgroundMode(
-      { ...base, fit: "contain", zoom: 1, backgroundColor: "#ffffff" },
-      "color",
-    );
-  }
-
-  if (channel === "instagram") {
-    if (isVeryWide)
-      return withBackgroundMode(
-        {
-          ...base,
-          fit: "contain",
-          zoom: 1,
-          offsetX: 0,
-          offsetY: 0,
-          backgroundColor: "#ffffff",
-        },
-        "color",
-      );
-    if (isWide)
-      return withBackgroundMode(
-        { ...base, fit: "contain", zoom: 1, backgroundColor: "#ffffff" },
-        "color",
-      );
-    if (isVeryTall)
-      return withBackgroundMode(
-        { ...base, fit: "contain", zoom: 1, backgroundColor: "#ffffff" },
-        "color",
-      );
-    if (isTall)
-      return withBackgroundMode(
-        { ...base, fit: "cover", zoom: 1.04, offsetX: 0, offsetY: -10 },
-        "black",
-      );
+  if (displayPlan.decision.mode === "adapted") {
+    const fit = displayPlan.automaticFit;
     return withBackgroundMode(
       {
         ...base,
-        fit: "cover",
-        zoom: ratio < 1 ? 1.03 : 1.08,
+        fit,
+        zoom: 1,
         offsetX: 0,
-        offsetY: ratio > 1 ? 0 : -6,
+        offsetY: 0,
+        blurBackground: false,
+        backgroundColor: "#ffffff",
       },
-      "black",
+      fit === "contain" ? "color" : "black",
     );
   }
 
-  if (channel === "facebook" || channel === "linkedin") {
-    if (isVeryWide || isVeryTall)
-      return withBackgroundMode(
-        { ...base, fit: "contain", zoom: 1, backgroundColor: "#ffffff" },
-        "color",
-      );
-    if (isWide)
-      return withBackgroundMode(
-        { ...base, fit: "contain", zoom: 1, backgroundColor: "#ffffff" },
-        "color",
-      );
-    if (isTall)
-      return withBackgroundMode(
-        { ...base, fit: "cover", zoom: 1.06, offsetX: 0, offsetY: -12 },
-        "black",
-      );
-    return withBackgroundMode(
-      {
-        ...base,
-        fit: "cover",
-        zoom: ratio < 1 ? 1.02 : 1.06,
-        offsetX: 0,
-        offsetY: ratio < 0.98 ? -8 : 0,
-      },
-      "black",
-    );
-  }
-
-  return base;
+  // Automatic Originale state: the publication path keeps the source ratio.
+  // This neutral transform is only the Adapter reference, not a forced canvas.
+  return withBackgroundMode(
+    {
+      ...base,
+      fit: "contain",
+      zoom: 1,
+      offsetX: 0,
+      offsetY: 0,
+      blurBackground: false,
+      backgroundColor: "#ffffff",
+    },
+    "color",
+  );
 }
 
 export async function readImageMeta(file: File): Promise<ImageMeta> {
@@ -2369,7 +2333,10 @@ export function syncChannelImageEditors(params: {
           : getOptimizedTransform(channel, imageMetaByKey[key]);
       }
     }
-    next[channel] = { imageKeys: mergedKeys, transforms };
+    const customizedImageKeys = (prevState?.customizedImageKeys || []).filter(
+      (key) => imageKeys.includes(key),
+    );
+    next[channel] = { imageKeys: mergedKeys, transforms, customizedImageKeys };
   }
 
   return next;

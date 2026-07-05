@@ -33,7 +33,7 @@ export type DashboardPanelName =
   | "parrainage"
   | "documents";
 
-const PANEL_RETURN_QUERY_KEYS = ["linked", "ok", "error", "message", "warning", "toast", "activated", "skipped"];
+const PANEL_RETURN_QUERY_KEYS = ["linked", "ok", "error", "message", "warning", "toast", "activated", "skipped", "panelSource"];
 
 function rememberDashboardScroll() {
   try {
@@ -86,6 +86,8 @@ export function useDashboardPanelRouting() {
   // ⚠️ On ne touche PAS aux panels utilisés comme retours OAuth/Stripe (abonnement, mails, etc.).
   useEffect(() => {
     if (panel !== "profil" && panel !== "compte") return;
+    const panelSource = searchParams.get("panelSource");
+    if (panelSource === "gps" || panelSource === "settings") return;
     try {
       const explicit = sessionStorage.getItem("inrcy_panel_explicit_open");
       if (explicit) return;
@@ -94,7 +96,7 @@ export function useDashboardPanelRouting() {
       return;
     }
     closePanel();
-  }, [panel, closePanel]);
+  }, [panel, closePanel, searchParams]);
 
   // Preserve dashboard scroll position when leaving the dashboard (vers un module)
   const goToModule = useCallback(

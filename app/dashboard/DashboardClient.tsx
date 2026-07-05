@@ -1546,7 +1546,8 @@ const generatorPowerSteps = [
 ] as const;
 
 const computedGeneratorPower = generatorPowerSteps.reduce((sum, step) => sum + (step.completed ? step.weight : 0), 0);
-const usingCachedGeneratorPower = !siteConnectionsReady && displayedGeneratorPower !== null && displayedGeneratorPower > computedGeneratorPower;
+const generatorPowerReady = siteConnectionsReady && profileCheckReady && activityCheckReady;
+const usingCachedGeneratorPower = !generatorPowerReady && displayedGeneratorPower !== null && displayedGeneratorPower > computedGeneratorPower;
 const generatorPower = usingCachedGeneratorPower ? displayedGeneratorPower : computedGeneratorPower;
 const computedNextGeneratorPowerStep = generatorPowerSteps.find((step) => !step.completed) ?? null;
 const computedRemainingGeneratorPowerSteps = generatorPowerSteps.filter((step) => !step.completed).length;
@@ -1554,14 +1555,14 @@ const nextGeneratorPowerStep = usingCachedGeneratorPower && generatorPower >= 10
 const remainingGeneratorPowerSteps = usingCachedGeneratorPower && generatorPower >= 100 ? 0 : computedRemainingGeneratorPowerSteps;
 
 useEffect(() => {
-  if (!siteConnectionsReady) return;
+  if (!generatorPowerReady) return;
   setDisplayedGeneratorPower(computedGeneratorPower);
   try {
     writeUiCacheValue(GENERATOR_POWER_CACHE_KEY, String(computedGeneratorPower));
   } catch {
     // ignore browser storage failures
   }
-}, [computedGeneratorPower, siteConnectionsReady]);
+}, [computedGeneratorPower, generatorPowerReady]);
 
 const applyGeneratorCacheToState = useCallback(() => {
     const mergedPayload = readGeneratorCache()?.payload;

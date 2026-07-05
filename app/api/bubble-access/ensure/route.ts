@@ -34,16 +34,22 @@ export async function GET() {
       .map((row) => row.bubble_key)
       .filter((key): key is string => typeof key === "string"),
   );
+  const mustEnableInrAgent = ((existingRows as AppBubbleAccessRow[] | null) ?? [])
+    .some((row) => row.bubble_key === "inr_agent" && row.enabled !== true);
 
   const missingRows = createDefaultBubbleAccessRows(activeUserId)
     .filter((row) => !existingBubbleKeys.has(row.bubble_key));
 
   let rows = existingRows as AppBubbleAccessRow[] | null;
 
-  if (missingRows.length > 0) {
+  if (missingRows.length > 0 || mustEnableInrAgent) {
+    const rowsToUpsert = mustEnableInrAgent
+      ? [...missingRows.filter((row) => row.bubble_key !== "inr_agent"), { user_id: activeUserId, bubble_key: "inr_agent" as const, enabled: true }]
+      : missingRows;
+
     const { error: upsertError } = await supabaseAdmin
       .from("app_bubble_access")
-      .upsert(missingRows, { onConflict: "user_id,bubble_key", ignoreDuplicates: true });
+      .upsert(rowsToUpsert, { onConflict: "user_id,bubble_key" });
 
     if (upsertError) {
       console.warn("[bubble-access] upsert failed", upsertError);
@@ -66,5 +72,6 @@ export async function GET() {
   return NextResponse.json({
     bubbleAccessMap: buildBubbleAccessMap(rows),
     rowsCreated: missingRows.length,
+    inrAgentEnabled: true,
   });
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { buildVideoSettingsByChannel } from "@/lib/boosterVideoSettings";
+import { prepareBoosterImagesByChannelOnServer } from "@/lib/boosterImageServerPreparation";
 import { requireUser } from "@/lib/requireUser";
 import { rowToInrAgentAction } from "@/lib/inrAgentActions";
 import {
@@ -22,7 +23,8 @@ type BoosterChannel =
   | "instagram"
   | "linkedin"
   | "tiktok"
-  | "youtube_shorts";
+  | "youtube_shorts"
+  | "pinterest";
 
 type BoosterPost = {
   title: string;
@@ -60,6 +62,7 @@ const agentToBoosterChannel: Record<string, BoosterChannel> = {
   tiktok: "tiktok",
   youtube: "youtube_shorts",
   youtube_shorts: "youtube_shorts",
+  pinterest: "pinterest",
 };
 
 function canPublishWithoutMedia(channel: BoosterChannel) {
@@ -73,7 +76,7 @@ function isVideoOnlyChannel(channel: BoosterChannel) {
 }
 
 function isImageRequiredChannel(channel: BoosterChannel) {
-  return channel === "instagram" || channel === "tiktok";
+  return channel === "instagram" || channel === "tiktok" || channel === "pinterest";
 }
 
 function asRecord(value: unknown): JsonRecord | null {
@@ -644,7 +647,7 @@ async function buildScheduledPayload(
         ? "images"
         : "none";
     const publishChannels = selectedChannels.filter((channel) => {
-      if (activeMediaMode === "video") return true;
+      if (activeMediaMode === "video") return channel !== "pinterest";
       if (isVideoOnlyChannel(channel)) return false;
       if (isImageRequiredChannel(channel)) return hasImagePayload;
       return canPublishWithoutMedia(channel) || hasImagePayload;
@@ -695,6 +698,14 @@ async function buildScheduledPayload(
             sourceMetadata: (videoPayload as any)?.sourceMetadata || null,
           })
         : {};
+    const preparedImages =
+      activeMediaMode === "images" && imagePayload
+        ? await prepareBoosterImagesByChannelOnServer({
+            channels: publishChannels,
+            images: [imagePayload],
+          })
+        : { imagesByChannel: {}, imageSettingsByChannel: {}, warnings: [] };
+
     return {
       actionType: "publication" as const,
       targetTool: "booster" as const,
@@ -711,6 +722,9 @@ async function buildScheduledPayload(
           mediaModeByChannel,
           videoSettingsByChannel,
           images: imagePayload ? [imagePayload] : [],
+          imagesByChannel: preparedImages.imagesByChannel,
+          imageSettingsByChannel: preparedImages.imageSettingsByChannel,
+          imagePreparationWarnings: preparedImages.warnings,
           video: videoPayload,
           workflowTool: "booster",
           workflowAction: "publier",

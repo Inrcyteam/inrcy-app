@@ -60,6 +60,8 @@ type CardItem = {
   title: string;
   subtitle: string;
   fitLabel: string;
+  /** Per-image ratio used by Booster's intelligent Originale/Adaptée preview. */
+  previewAspectRatio?: string;
   backgroundMode: BackgroundMode;
   backgroundColor?: string;
   transform?: RenderTransform;
@@ -80,6 +82,7 @@ type SidebarItem = {
   previewUrl: string;
   title: string;
   subtitle: string;
+  fitLabel?: string;
   active: boolean;
   onClick: () => void;
 };
@@ -1244,7 +1247,7 @@ export function ChannelImageAdapterCardsPanel({
                 <div style={{ position: "relative", borderRadius: 14, overflow: "hidden" }}>
                   <FinalImageFrame
                     image={{ previewUrl: item.previewUrl, transform: item.transform, preset: item.preset, imageMeta: item.imageMeta }}
-                    aspectRatio={aspectRatio}
+                    aspectRatio={item.previewAspectRatio || aspectRatio}
                     fallbackMode={item.backgroundMode}
                     fitLabel={item.fitLabel}
                   />
@@ -1252,7 +1255,54 @@ export function ChannelImageAdapterCardsPanel({
 
                 <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 800, cursor: isDisabled ? "not-allowed" : "pointer", minWidth: 0 }}>
                   <input type="checkbox" checked={item.included} disabled={isDisabled} onChange={isDisabled ? undefined : item.onToggle} style={{ width: 16, height: 16, accentColor: "#4cc3ff", flex: "0 0 auto" }} />
-                  <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</span>
+                  <span
+                    style={{
+                      minWidth: 0,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
+                      fontSize: viewportWidth > 920 ? 11 : 13,
+                      flexShrink: viewportWidth > 920 ? 0 : 1,
+                    }}
+                  >
+                    {item.title}
+                  </span>
+                  <span
+                    style={{
+                      flex: "0 0 auto",
+                      fontSize: 10,
+                      fontWeight: 900,
+                      padding: "4px 7px",
+                      borderRadius: 999,
+                      background:
+                        item.fitLabel === "Adaptée"
+                          ? "rgba(76,195,255,0.14)"
+                          : item.fitLabel === "Personnalisée"
+                            ? "rgba(192,132,252,0.14)"
+                            : item.fitLabel === "Plein cadre"
+                              ? "rgba(76,195,255,0.14)"
+                              : "rgba(255,255,255,0.08)",
+                      color:
+                        item.fitLabel === "Adaptée"
+                          ? "#bae6fd"
+                          : item.fitLabel === "Personnalisée"
+                            ? "#e9d5ff"
+                            : item.fitLabel === "Plein cadre"
+                              ? "#bae6fd"
+                              : "rgba(255,255,255,0.76)",
+                      border:
+                        item.fitLabel === "Adaptée"
+                          ? "1px solid rgba(76,195,255,0.24)"
+                          : item.fitLabel === "Personnalisée"
+                            ? "1px solid rgba(192,132,252,0.26)"
+                            : item.fitLabel === "Plein cadre"
+                              ? "1px solid rgba(76,195,255,0.24)"
+                              : "1px solid rgba(255,255,255,0.10)",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {item.fitLabel}
+                  </span>
                   <span style={{ marginLeft: "auto", fontSize: 10, fontWeight: 900, padding: "4px 7px", borderRadius: 999, background: item.included ? "rgba(34,197,94,0.13)" : "rgba(255,255,255,0.06)", color: item.included ? "#bbf7d0" : "rgba(255,255,255,0.62)", border: item.included ? "1px solid rgba(34,197,94,0.22)" : "1px solid rgba(255,255,255,0.08)" }}>
                     {item.included ? "Incluse" : "Ignorée"}
                   </span>
@@ -1370,6 +1420,21 @@ export function ChannelImageAdapterModal({
   const controlsGridColumns = isMobile ? "repeat(2, minmax(0, 1fr))" : "48px 48px 1fr 1fr";
   const contentGridTemplateColumns = isMobile ? undefined : isCompact ? "minmax(0, 1fr)" : "minmax(0, 1fr) 300px 320px";
   const contentGridTemplateRows = isMobile ? undefined : isCompact ? "auto auto auto" : undefined;
+  const isFullFrame = fitLabel === "Plein cadre";
+  const fitModeButtonStyle = (active: boolean): React.CSSProperties => ({
+    justifyContent: "center",
+    minWidth: 0,
+    whiteSpace: "normal",
+    lineHeight: 1.1,
+    textAlign: "center",
+    ...(active
+      ? {
+          borderColor: "rgba(76,195,255,0.48)",
+          background: "rgba(76,195,255,0.14)",
+          boxShadow: "0 0 0 1px rgba(76,195,255,0.16) inset",
+        }
+      : {}),
+  });
   return (
     <div role="dialog" aria-modal="true" onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 10020, background: "rgba(4, 8, 18, 0.78)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)", display: "grid", placeItems: isMobile ? "stretch" : "center", padding: isMobile ? mobileOuterPadding : 16, overflow: "hidden", boxSizing: "border-box" }}>
       <div onClick={(event) => event.stopPropagation()} style={{ width: modalWidth, maxWidth: isMobile ? mobileViewportWidth : "100%", height: modalHeight, maxHeight: isMobile ? mobileViewportHeight : "100%", minWidth: 0, minHeight: 0, alignSelf: isMobile ? "stretch" : undefined, justifySelf: isMobile ? "stretch" : undefined, borderRadius: isMobile ? 20 : 28, border: "1px solid rgba(255,255,255,0.12)", background: "linear-gradient(180deg, rgba(24,28,42,0.985), rgba(14,17,28,0.985))", boxShadow: "0 28px 100px rgba(0,0,0,0.5)", padding: modalPadding, display: "grid", gridTemplateRows: "auto minmax(0, 1fr)", gap: isMobile ? 10 : 16, overflow: "hidden", boxSizing: "border-box" }}>
@@ -1412,12 +1477,12 @@ export function ChannelImageAdapterModal({
                 )}
                 <div style={{ position: "absolute", inset: 12, borderRadius: 16, border: "1px solid rgba(255,255,255,0.14)", boxShadow: "inset 0 0 0 1px rgba(0,0,0,0.14)", pointerEvents: "none" }} />
                 <div style={{ position: "absolute", left: 12, right: 12, bottom: 12, display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center", pointerEvents: "none", flexWrap: "wrap" }}>
-                  <div style={{ fontSize: 12, padding: "6px 10px", borderRadius: 999, background: "rgba(6,10,20,0.72)", border: "1px solid rgba(255,255,255,0.12)", color: "#fff" }}>{showBefore ? "Avant auto" : `${fitLabel} • ${zoomLabel}`}</div>
+                  <div style={{ fontSize: 12, padding: "6px 10px", borderRadius: 999, background: "rgba(6,10,20,0.72)", border: "1px solid rgba(255,255,255,0.12)", color: "#fff" }}>{showBefore ? "Image source" : `${fitLabel} • ${zoomLabel}`}</div>
                   {!isMobile ? <div style={{ fontSize: 11, padding: "6px 10px", borderRadius: 999, background: "rgba(6,10,20,0.72)", border: "1px solid rgba(255,255,255,0.12)", color: "#fff" }}>Glisser • Molette • Double-clic</div> : null}
                 </div>
               </div>
             </div>
-            <div style={{ fontSize: 12, opacity: 0.72, padding: isMobile ? "12px 10px 0" : "10px 2px 0", lineHeight: 1.55, width: "100%", maxWidth: "100%", boxSizing: "border-box", overflowWrap: "break-word", wordBreak: "normal" }}>Déplacez l’image, ajustez le zoom, choisissez Remplir ou Adapter, puis enregistrez. {isolationNote || "Ces réglages concernent uniquement ce canal."}</div>
+            <div style={{ fontSize: 12, opacity: 0.72, padding: isMobile ? "12px 10px 0" : "10px 2px 0", lineHeight: 1.55, width: "100%", maxWidth: "100%", boxSizing: "border-box", overflowWrap: "break-word", wordBreak: "normal" }}>Déplacez l’image, ajustez le zoom, choisissez Image entière ou Plein cadre, puis enregistrez. {isolationNote || "Ces réglages concernent uniquement ce canal."}</div>
           </div>
 
           <div style={{ minWidth: 0, minHeight: 0, display: isMobile ? "flex" : "grid", flexDirection: isMobile ? "column" : undefined, alignContent: "start", gap: 12, order: isMobile ? 2 : 1, flex: isMobile ? "0 0 auto" : undefined }}>
@@ -1426,8 +1491,8 @@ export function ChannelImageAdapterModal({
               <div style={{ display: "grid", gridTemplateColumns: controlsGridColumns, gap: 8 }}>
                 <button type="button" className={buttonClassName} onClick={onZoomOut} style={{ justifyContent: "center" }}>−</button>
                 <button type="button" className={buttonClassName} onClick={onZoomIn} style={{ justifyContent: "center" }}>+</button>
-                <button type="button" className={buttonClassName} onClick={onContain} style={{ justifyContent: "center" }}>Adapter</button>
-                <button type="button" className={buttonClassName} onClick={onCover} style={{ justifyContent: "center" }}>Remplir</button>
+                <button type="button" className={buttonClassName} onClick={onContain} style={fitModeButtonStyle(!isFullFrame)}>Image entière</button>
+                <button type="button" className={buttonClassName} onClick={onCover} style={fitModeButtonStyle(isFullFrame)}>Plein cadre</button>
               </div>
               <button type="button" className={buttonClassName} onClick={() => setShowBefore((value) => !value)} style={{ width: "100%", justifyContent: "center" }}>{showBefore ? "Voir le rendu final" : "Comparer avant / rendu"}</button>
               <button type="button" className={buttonClassName} onClick={onReset} style={{ width: "100%", justifyContent: "center" }}>Réinitialiser cette image</button>
@@ -1475,7 +1540,14 @@ export function ChannelImageAdapterModal({
                     <button key={item.key} type="button" onClick={item.onClick} style={{ width: "100%", display: "grid", gridTemplateColumns: "60px minmax(0, 1fr)", gap: 10, alignItems: "center", textAlign: "left", borderRadius: 16, padding: 8, border: item.active ? "1px solid rgba(76,195,255,0.45)" : "1px solid rgba(255,255,255,0.08)", background: item.active ? "rgba(76,195,255,0.08)" : "rgba(255,255,255,0.03)", color: "inherit", cursor: "pointer", minWidth: 0, flex: undefined }}>
                       <img src={item.previewUrl} alt={item.title} style={{ width: 60, height: 60, objectFit: "cover", borderRadius: 12, display: "block" }} />
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 12, fontWeight: 800 }}>{item.title}</div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                          <div style={{ fontSize: 12, fontWeight: 800, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.title}</div>
+                          {item.fitLabel ? (
+                            <span style={{ flex: "0 0 auto", fontSize: 9.5, fontWeight: 900, padding: "3px 6px", borderRadius: 999, background: item.fitLabel === "Plein cadre" ? "rgba(76,195,255,0.14)" : "rgba(255,255,255,0.08)", color: item.fitLabel === "Plein cadre" ? "#bae6fd" : "rgba(255,255,255,0.72)", border: item.fitLabel === "Plein cadre" ? "1px solid rgba(76,195,255,0.24)" : "1px solid rgba(255,255,255,0.10)", whiteSpace: "nowrap" }}>
+                              {item.fitLabel}
+                            </span>
+                          ) : null}
+                        </div>
                         <div style={{ fontSize: 11, opacity: 0.68, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{item.subtitle}</div>
                       </div>
                     </button>

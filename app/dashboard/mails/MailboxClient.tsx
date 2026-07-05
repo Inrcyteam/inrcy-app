@@ -1908,9 +1908,15 @@ export default function MailboxClient() {
             att.transform && typeof att.transform === "object"
               ? (att.transform as Partial<PublicationImageTransform>)
               : null;
-          const initialTransform = storedTransform
-            ? { ...defaultTransform, ...storedTransform }
-            : { ...defaultTransform };
+          // iNrSend edition always restarts from the healthy source image when
+          // the publication kept one. Never reapply a previous crop to that
+          // source: the professional can create a fresh adaptation instead of
+          // accumulating crops across successive edits.
+          const initialTransform = originalUrl
+            ? { ...defaultTransform }
+            : storedTransform
+              ? { ...defaultTransform, ...storedTransform }
+              : { ...defaultTransform };
           return {
             key: makePublicationImageAssetKey(
               "existing",

@@ -1,4 +1,9 @@
 import type { MutableRefObject } from "react";
+import {
+  getBoosterImageDisplayPlan,
+  getBoosterImageRenderDimensions,
+  getBoosterImageSequenceTargetRatio,
+} from "@/lib/boosterImageDecision";
 import type { BoosterVideoTransformedVariant } from "@/lib/boosterVideoTransforms";
 import { ChannelImageAdapterCardsPanel } from "@/app/dashboard/_components/ChannelImageAdapterTool";
 import PublishVideoAdapterPanel, {
@@ -189,6 +194,20 @@ export default function PublishImagesPanel({
   };
 
   const activeMode: ChannelMediaMode = getModeForChannel(activeImageChannel);
+  const activeImageEditor = channelImageEditors[activeImageChannel];
+  const activeImageFirstKey = activeImageEditor?.imageKeys?.[0] || "";
+  const activeImageSequenceTargetRatio = getBoosterImageSequenceTargetRatio({
+    channel: activeImageChannel,
+    metas: (activeImageEditor?.imageKeys || []).map(
+      (key) => imageMetaByKey[key],
+    ),
+    firstImageCustomizedTargetRatio:
+      activeImageChannel === "instagram" &&
+      activeImageFirstKey &&
+      (activeImageEditor?.customizedImageKeys || []).includes(activeImageFirstKey)
+        ? CHANNEL_PRESETS.instagram.width / CHANNEL_PRESETS.instagram.height
+        : null,
+  });
   const getPreparationTone = (state?: PublishVideoVariantPreparationState) => {
     if (state?.status === "ready") return { icon: "✅", color: "#bbf7d0", border: "rgba(34,197,94,0.28)", background: "rgba(34,197,94,0.10)" };
     if (state?.status === "preparing") return { icon: "⏳", color: "#bfdbfe", border: "rgba(96,165,250,0.30)", background: "rgba(59,130,246,0.12)" };
@@ -682,12 +701,7 @@ export default function PublishImagesPanel({
                   setSynchronizedActiveChannel(key as ChannelKey)
                 }
                 channelTitle={getImageAdapterLabel(activeImageChannel)}
-                formatLabel={
-                  activeImageChannel === "inrcy_site" ||
-                  activeImageChannel === "site_web"
-                    ? "Rendu site / iframe"
-                    : `Format final : ${CHANNEL_PRESETS[activeImageChannel].width}×${CHANNEL_PRESETS[activeImageChannel].height}`
-                }
+                formatLabel="Rendu intelligent par image"
                 aspectRatio={previewAspectRatio}
                 items={imageKeys.map((key, index) => {
                   const selectedKeysForActiveChannel =
@@ -700,10 +714,81 @@ export default function PublishImagesPanel({
                     activeImageChannel === "gmb" &&
                     selectedKeysForActiveChannel.length >= 1 &&
                     !included;
-                  const transform =
+                  const automaticTransform = getOptimizedTransform(
+                    activeImageChannel,
+                    imageMetaByKey[key],
+                  );
+                  const currentTransform =
                     channelImageEditors[activeImageChannel]?.transforms?.[key] ||
-                    getOptimizedTransform(activeImageChannel, imageMetaByKey[key]);
-                  const bgMode = getBackgroundMode(transform);
+                    automaticTransform;
+                  const explicitlyCustomized = (
+                    channelImageEditors[activeImageChannel]?.customizedImageKeys || []
+                  ).includes(key);
+                  const displayPlan = getBoosterImageDisplayPlan({
+                    channel: activeImageChannel,
+                    meta: imageMetaByKey[key],
+                    customized: explicitlyCustomized,
+                    currentTransform,
+                    automaticTransform,
+                    requiredTargetRatio: activeImageSequenceTargetRatio,
+                  });
+                  const decision = displayPlan.decision;
+                  const sourceMeta = imageMetaByKey[key];
+                  const channelPreset = CHANNEL_PRESETS[activeImageChannel];
+
+                  const previewPreset = (() => {
+                    if (decision.mode === "original" && sourceMeta?.width && sourceMeta?.height) {
+                      return { width: sourceMeta.width, height: sourceMeta.height };
+                    }
+                    if (decision.mode === "adapted" && displayPlan.previewRatio) {
+                      return getBoosterImageRenderDimensions({
+                        baseWidth: channelPreset.width,
+                        baseHeight: channelPreset.height,
+                        targetRatio: displayPlan.previewRatio,
+                      });
+                    }
+                    if (
+                      decision.mode === "customized" &&
+                      activeImageChannel === "instagram" &&
+                      activeImageSequenceTargetRatio
+                    ) {
+                      return getBoosterImageRenderDimensions({
+                        baseWidth: channelPreset.width,
+                        baseHeight: channelPreset.height,
+                        targetRatio: activeImageSequenceTargetRatio,
+                      });
+                    }
+                    return channelPreset;
+                  })();
+
+                  const previewTransform = (() => {
+                    if (decision.mode === "customized") return currentTransform;
+                    if (decision.mode === "adapted") {
+                      return {
+                        ...automaticTransform,
+                        fit: displayPlan.automaticFit,
+                        zoom: 1,
+                        offsetX: 0,
+                        offsetY: 0,
+                        blurBackground: false,
+                        backgroundMode: "color" as const,
+                        backgroundColor: "#ffffff",
+                      };
+                    }
+                    return {
+                      ...automaticTransform,
+                      fit: "contain" as const,
+                      zoom: 1,
+                      offsetX: 0,
+                      offsetY: 0,
+                      blurBackground: false,
+                      backgroundMode: "color" as const,
+                      backgroundColor: "#ffffff",
+                    };
+                  })();
+
+                  const previewAspectRatio = `${previewPreset.width} / ${previewPreset.height}`;
+                  const bgMode = getBackgroundMode(previewTransform);
                   return {
                     key,
                     previewUrl: previewByKey[key],
@@ -715,12 +800,13 @@ export default function PublishImagesPanel({
                       : included
                         ? `Publiée sur ce canal · utilisée sur ${usedChannelCount} canal${usedChannelCount > 1 ? "aux" : ""}`
                         : `Retirée de ce canal · utilisée sur ${usedChannelCount} canal${usedChannelCount > 1 ? "aux" : ""}`,
-                    fitLabel: transform.fit === "cover" ? "Remplir" : "Adapter",
+                    fitLabel: decision.label,
+                    previewAspectRatio,
                     backgroundMode: bgMode,
-                    backgroundColor: transform.backgroundColor,
-                    transform,
-                    preset: CHANNEL_PRESETS[activeImageChannel],
-                    imageMeta: imageMetaByKey[key],
+                    backgroundColor: previewTransform.backgroundColor,
+                    transform: previewTransform,
+                    preset: previewPreset,
+                    imageMeta: sourceMeta,
                     onToggle: () => toggleChannelImage(activeImageChannel, key),
                     onAdapt: () => openImageEditor(activeImageChannel, key),
                     onReset: () => resetChannelImage(activeImageChannel, key),

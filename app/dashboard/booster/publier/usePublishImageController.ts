@@ -11,6 +11,12 @@ import {
 } from "react";
 import { confirmInrcy } from "@/lib/inrcyDialog";
 import {
+  areBoosterImageTransformsEquivalent,
+  getBoosterImageDisplayPlan,
+  getBoosterImageRenderDimensions,
+  getBoosterImageSequenceTargetRatio,
+} from "@/lib/boosterImageDecision";
+import {
   BOOSTER_MAX_IMAGE_BYTES,
   BOOSTER_MAX_IMAGE_COUNT,
   BOOSTER_MAX_IMAGE_MB_LABEL,
@@ -25,7 +31,6 @@ import {
   convertHeicOrHeifImageFile,
   getBackgroundFill,
   getBackgroundMode,
-  getDefaultTransform,
   getEffectiveTransformZoom,
   getOptimizedTransform,
   isBoosterImageFile,
@@ -138,6 +143,7 @@ export default function usePublishImageController({
     if (selectedChannels.includes("linkedin")) adapterChannels.push("linkedin");
     if (selectedChannels.includes("tiktok")) adapterChannels.push("tiktok");
     if (selectedChannels.includes("youtube_shorts")) adapterChannels.push("youtube_shorts");
+    if (selectedChannels.includes("pinterest")) adapterChannels.push("pinterest");
     return adapterChannels;
   }, [selectedChannels]);
 
@@ -266,20 +272,79 @@ export default function usePublishImageController({
     activeImageKeyByChannel[activeImageChannel] ||
     activeEditor?.imageKeys?.[0] ||
     "";
+  const activeEditorMeta = imageMetaByKey[activeEditorImageKey];
+  const activeEditorAutomaticTransform = getOptimizedTransform(
+    activeImageChannel,
+    activeEditorMeta,
+  );
   const activeEditorTransform =
     activeEditor?.transforms?.[activeEditorImageKey] ||
-    getOptimizedTransform(
-      activeImageChannel,
-      imageMetaByKey[activeEditorImageKey],
-    );
-  const activeEditorMeta = imageMetaByKey[activeEditorImageKey];
+    activeEditorAutomaticTransform;
+  const activeEditorFirstImageKey = activeEditor?.imageKeys?.[0] || "";
+  const activeEditorSequenceTargetRatio = getBoosterImageSequenceTargetRatio({
+    channel: activeImageChannel,
+    metas: (activeEditor?.imageKeys || []).map((key) => imageMetaByKey[key]),
+    firstImageCustomizedTargetRatio:
+      activeImageChannel === "instagram" &&
+      activeEditorFirstImageKey &&
+      (activeEditor?.customizedImageKeys || []).includes(activeEditorFirstImageKey)
+        ? CHANNEL_PRESETS.instagram.width / CHANNEL_PRESETS.instagram.height
+        : null,
+  });
+  const activeEditorExplicitlyCustomized = (
+    activeEditor?.customizedImageKeys || []
+  ).includes(activeEditorImageKey);
+  const activeEditorDisplayPlan = getBoosterImageDisplayPlan({
+    channel: activeImageChannel,
+    meta: activeEditorMeta,
+    customized: activeEditorExplicitlyCustomized,
+    currentTransform: activeEditorTransform,
+    automaticTransform: activeEditorAutomaticTransform,
+    requiredTargetRatio: activeEditorSequenceTargetRatio,
+  });
   const activeEffectiveZoom = getEffectiveTransformZoom(activeEditorTransform);
   const activeBackgroundMode = getBackgroundMode(activeEditorTransform);
   const activeBackgroundColor = getBackgroundFill(
     activeEditorTransform.backgroundMode || activeBackgroundMode,
     activeEditorTransform.backgroundColor,
   );
-  const previewAspectRatio = `${CHANNEL_PRESETS[activeImageChannel].width} / ${CHANNEL_PRESETS[activeImageChannel].height}`;
+  const activePreset = CHANNEL_PRESETS[activeImageChannel];
+  const activeEditorPreviewDimensions = (() => {
+    if (
+      activeEditorDisplayPlan.decision.mode === "original" &&
+      activeEditorMeta?.width &&
+      activeEditorMeta?.height
+    ) {
+      return {
+        width: activeEditorMeta.width,
+        height: activeEditorMeta.height,
+      };
+    }
+
+    if (activeEditorDisplayPlan.decision.mode === "adapted") {
+      return getBoosterImageRenderDimensions({
+        baseWidth: activePreset.width,
+        baseHeight: activePreset.height,
+        targetRatio: activeEditorDisplayPlan.decision.targetRatio,
+      });
+    }
+
+    if (
+      activeEditorDisplayPlan.decision.mode === "customized" &&
+      activeImageChannel === "instagram" &&
+      activeEditorSequenceTargetRatio
+    ) {
+      return getBoosterImageRenderDimensions({
+        baseWidth: activePreset.width,
+        baseHeight: activePreset.height,
+        targetRatio: activeEditorSequenceTargetRatio,
+      });
+    }
+
+    return { width: activePreset.width, height: activePreset.height };
+  })();
+  const previewAspectRatio = `${activeEditorPreviewDimensions.width} / ${activeEditorPreviewDimensions.height}`;
+  const activeEditorDecisionLabel = activeEditorDisplayPlan.decision.label;
   const previewLayout = computePreviewLayout({
     containerWidth: previewStageSize.width,
     containerHeight: previewStageSize.height,
@@ -434,11 +499,13 @@ export default function usePublishImageController({
           transforms: {},
         };
         next[targetChannel] = {
+          ...current,
           imageKeys:
             targetChannel === "gmb"
               ? [newKeys[0]].filter(Boolean)
               : Array.from(new Set([...current.imageKeys, ...newKeys])),
           transforms: current.transforms,
+          customizedImageKeys: current.customizedImageKeys || [],
         };
         return next;
       });
@@ -544,6 +611,9 @@ export default function usePublishImageController({
               .filter(([key]) => imageKeysForChannel.includes(key))
               .map(([key, value]) => [key, { ...(value as ImageTransform) }]),
           ),
+          customizedImageKeys: (editor.customizedImageKeys || []).filter((key) =>
+            imageKeysForChannel.includes(key),
+          ),
         };
         return acc;
       },
@@ -631,17 +701,35 @@ export default function usePublishImageController({
         const current = next[targetChannel] || {
           imageKeys: imageKeys.slice(),
           transforms: {},
+          customizedImageKeys: [],
         };
+        const automaticTransform = getOptimizedTransform(
+          targetChannel,
+          imageMetaByKey[imageKey],
+        );
+        const nextTransform = {
+          ...(current.transforms[imageKey] || automaticTransform),
+          ...patch,
+        };
+        const customizedImageKeys = new Set(current.customizedImageKeys || []);
+        if (
+          areBoosterImageTransformsEquivalent(
+            nextTransform,
+            automaticTransform,
+          )
+        ) {
+          customizedImageKeys.delete(imageKey);
+        } else {
+          customizedImageKeys.add(imageKey);
+        }
         next[targetChannel] = {
+          ...current,
           imageKeys: current.imageKeys,
           transforms: {
             ...current.transforms,
-            [imageKey]: {
-              ...(current.transforms[imageKey] ||
-                getOptimizedTransform(targetChannel, imageMetaByKey[imageKey])),
-              ...patch,
-            },
+            [imageKey]: nextTransform,
           },
+          customizedImageKeys: Array.from(customizedImageKeys),
         };
       }
       return next;
@@ -823,6 +911,7 @@ export default function usePublishImageController({
           transforms: {},
         };
         next[targetChannel] = {
+          ...currentTarget,
           imageKeys: nextKeys,
           transforms: {
             ...currentTarget.transforms,
@@ -903,6 +992,9 @@ export default function usePublishImageController({
         ...current,
         imageKeys: imageKeysForChannel,
         transforms,
+        customizedImageKeys: (current.customizedImageKeys || []).filter(
+          (key) => !imageKeysForChannel.includes(key),
+        ),
       };
       return next;
     });
@@ -923,10 +1015,28 @@ export default function usePublishImageController({
       for (const imageKey of imageKeysForChannel) {
         transforms[imageKey] = { ...activeEditorTransform };
       }
+      const customizedImageKeys = new Set(current.customizedImageKeys || []);
+      for (const imageKey of imageKeysForChannel) {
+        const automaticTransform = getOptimizedTransform(
+          activeImageChannel,
+          imageMetaByKey[imageKey],
+        );
+        if (
+          areBoosterImageTransformsEquivalent(
+            transforms[imageKey],
+            automaticTransform,
+          )
+        ) {
+          customizedImageKeys.delete(imageKey);
+        } else {
+          customizedImageKeys.add(imageKey);
+        }
+      }
       next[activeImageChannel] = {
         ...current,
         imageKeys: imageKeysForChannel,
         transforms,
+        customizedImageKeys: Array.from(customizedImageKeys),
       };
       return next;
     });
@@ -969,7 +1079,23 @@ export default function usePublishImageController({
           imageKeys: imageKeys.slice(),
           transforms: {},
         };
+        const automaticTransform = getOptimizedTransform(
+          channel,
+          imageMetaByKey[activeEditorImageKey],
+        );
+        const customizedImageKeys = new Set(current.customizedImageKeys || []);
+        if (
+          areBoosterImageTransformsEquivalent(
+            activeEditorTransform,
+            automaticTransform,
+          )
+        ) {
+          customizedImageKeys.delete(activeEditorImageKey);
+        } else {
+          customizedImageKeys.add(activeEditorImageKey);
+        }
         next[channel] = {
+          ...current,
           imageKeys:
             channel === "gmb"
               ? [activeEditorImageKey]
@@ -980,6 +1106,7 @@ export default function usePublishImageController({
             ...current.transforms,
             [activeEditorImageKey]: { ...activeEditorTransform },
           },
+          customizedImageKeys: Array.from(customizedImageKeys),
         };
       }
       return next;
@@ -1017,49 +1144,17 @@ export default function usePublishImageController({
       reader.readAsDataURL(file);
     });
 
-  const areImageTransformsEquivalent = (
-    a: ImageTransform | undefined,
-    b: ImageTransform | undefined,
-  ) => {
-    if (!a || !b) return false;
-    const num = (value: unknown, fallback = 0) =>
-      Math.round((Number(value) || fallback) * 100) / 100;
-    return (
-      a.fit === b.fit &&
-      num(a.zoom, 1) === num(b.zoom, 1) &&
-      num(a.offsetX) === num(b.offsetX) &&
-      num(a.offsetY) === num(b.offsetY) &&
-      getBackgroundMode(a) === getBackgroundMode(b) &&
-      String(a.backgroundColor || "")
-        .trim()
-        .toLowerCase() ===
-        String(b.backgroundColor || "")
-          .trim()
-          .toLowerCase()
-    );
-  };
-
-  const shouldUseNativeFirstPayload = (
+  const buildAutomaticRenderPreset = (
     channel: ChannelKey,
-    imageKey: string,
-    transform: ImageTransform,
+    targetRatio: number | null,
   ) => {
-    if (
-      channel !== "instagram" &&
-      channel !== "gmb" &&
-      channel !== "facebook" &&
-      channel !== "linkedin"
-    )
-      return false;
-    const optimizedDefaultTransform = getOptimizedTransform(
-      channel,
-      imageMetaByKey[imageKey],
-    );
-    const baseDefaultTransform = getDefaultTransform(channel);
-    return (
-      areImageTransformsEquivalent(transform, optimizedDefaultTransform) ||
-      areImageTransformsEquivalent(transform, baseDefaultTransform)
-    );
+    const base = CHANNEL_PRESETS[channel];
+    const dimensions = getBoosterImageRenderDimensions({
+      baseWidth: base.width,
+      baseHeight: base.height,
+      targetRatio,
+    });
+    return { ...base, ...dimensions };
   };
 
   const uploadOriginalImagesForPublication = async (
@@ -1105,40 +1200,113 @@ export default function usePublishImageController({
     for (const channel of selectedChannels) {
       if (!channelSupportsImages(channel)) {
         channelImages[channel] = [];
-        channelSettings[channel] = { imageKeys: [], transforms: {} };
+        channelSettings[channel] = {
+          imageKeys: [],
+          transforms: {},
+          customizedImageKeys: [],
+        };
         continue;
       }
+
       const editor = getEditorForPublish(channel);
       const renderList: ImagePayload[] = [];
+      const actualTransforms: Record<string, ImageTransform> = {};
+      const actualCustomizedImageKeys: string[] = [];
       const imageKeysToRender =
         channel === "gmb" ? editor.imageKeys.slice(0, 1) : editor.imageKeys;
+      const firstImageKey = imageKeysToRender[0] || "";
+      const sequenceTargetRatio = getBoosterImageSequenceTargetRatio({
+        channel,
+        metas: imageKeysToRender.map((key) => imageMetaByKey[key]),
+        firstImageCustomizedTargetRatio:
+          channel === "instagram" &&
+          firstImageKey &&
+          (editor.customizedImageKeys || []).includes(firstImageKey)
+            ? CHANNEL_PRESETS.instagram.width / CHANNEL_PRESETS.instagram.height
+            : null,
+      });
+
       for (const imageKey of imageKeysToRender) {
         const file = imageFileByKey[imageKey];
         if (!file) continue;
-        const transform =
-          editor.transforms[imageKey] || getDefaultTransform(channel);
-        renderList.push(
-          shouldUseNativeFirstPayload(channel, imageKey, transform)
-            ? await fileToImagePayload(file)
-            : await renderChannelImage({
-                file,
-                transform,
-                preset: CHANNEL_PRESETS[channel],
-                channel,
-              }),
+
+        const imageMeta = imageMetaByKey[imageKey];
+        const automaticTransform = getOptimizedTransform(channel, imageMeta);
+        const currentTransform =
+          editor.transforms[imageKey] || automaticTransform;
+        const explicitlyCustomized = (editor.customizedImageKeys || []).includes(
+          imageKey,
         );
+        const displayPlan = getBoosterImageDisplayPlan({
+          channel,
+          meta: imageMeta,
+          customized: explicitlyCustomized,
+          currentTransform,
+          automaticTransform,
+          requiredTargetRatio: sequenceTargetRatio,
+        });
+
+        let payload: ImagePayload;
+        let outputTransform: ImageTransform;
+
+        if (displayPlan.decision.mode === "original") {
+          payload = await fileToImagePayload(file);
+          outputTransform = automaticTransform;
+        } else if (displayPlan.decision.mode === "adapted") {
+          outputTransform = {
+            ...automaticTransform,
+            fit: displayPlan.automaticFit,
+            zoom: 1,
+            offsetX: 0,
+            offsetY: 0,
+            blurBackground: false,
+            backgroundMode:
+              displayPlan.automaticFit === "contain" ? "color" : "black",
+            backgroundColor: "#ffffff",
+          };
+          payload = await renderChannelImage({
+            file,
+            transform: outputTransform,
+            preset: buildAutomaticRenderPreset(
+              channel,
+              displayPlan.decision.targetRatio,
+            ),
+            channel,
+          });
+        } else {
+          outputTransform = currentTransform;
+          const customizedPreset =
+            channel === "instagram" && sequenceTargetRatio
+              ? buildAutomaticRenderPreset(channel, sequenceTargetRatio)
+              : CHANNEL_PRESETS[channel];
+          payload = await renderChannelImage({
+            file,
+            transform: currentTransform,
+            preset: customizedPreset,
+            channel,
+          });
+          actualCustomizedImageKeys.push(imageKey);
+        }
+
+        actualTransforms[imageKey] = { ...outputTransform };
+        renderList.push({
+          ...payload,
+          imageKey,
+          transform: { ...outputTransform },
+          imageMeta,
+          imageDecisionMode: displayPlan.decision.mode,
+          imageDecisionLabel: displayPlan.decision.label,
+          isCustomized: displayPlan.decision.mode === "customized",
+        });
         doneRenders += 1;
         onProgress?.(doneRenders, totalRenders);
       }
+
       channelImages[channel] = renderList;
       channelSettings[channel] = {
         imageKeys: [...imageKeysToRender],
-        transforms: Object.fromEntries(
-          Object.entries(editor.transforms || {}).map(([key, value]) => [
-            key,
-            { ...(value as ImageTransform) },
-          ]),
-        ),
+        transforms: actualTransforms,
+        customizedImageKeys: actualCustomizedImageKeys,
       };
     }
 
@@ -1160,6 +1328,7 @@ export default function usePublishImageController({
     previewByKey,
     activeEditorImageKey,
     activeEditorTransform,
+    activeEditorDecisionLabel,
     activeEditorMeta,
     activeEffectiveZoom,
     activeBackgroundMode,

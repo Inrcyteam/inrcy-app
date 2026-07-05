@@ -17,7 +17,9 @@
     "audit:multicompte": "node scripts/audit-multicompte.mjs",
     "prebuild": "node scripts/prebuild-clean.mjs",
     "test:media-rules": "node --test tests/media-rules/media-rules.test.mjs",
-    "qa:multicompte": "node scripts/qa-multicompte-final.mjs && node scripts/qa-multicompte-scope-lockdown.mjs && npm run test:multicompte"
+    "qa:multicompte": "node scripts/qa-multicompte-final.mjs && node scripts/qa-multicompte-scope-lockdown.mjs && npm run test:multicompte",
+    "test:booster-images": "node --test --experimental-strip-types tests/booster-image-decision/booster-image-decision.test.mts && node --test tests/booster-image-decision/*.test.mjs",
+    "qa:booster-images": "npm run test:booster-images && npm run test:media-rules"
   },
   "dependencies": {
     "@sentry/nextjs": "^10.39.0",

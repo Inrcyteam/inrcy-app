@@ -44,7 +44,7 @@ const COPIES: Record<string, Copy> = {
     create: "Créer",
     createTitle: "Créer un établissement",
     nameLabel: "Nom de l’établissement",
-    namePlaceholder: "Ex. AXA Oignies",
+    namePlaceholder: "Etablissement 2",
     confirm: "Créer",
     cancel: "Annuler",
     creating: "Création…",
@@ -62,7 +62,7 @@ const COPIES: Record<string, Copy> = {
     create: "Create",
     createTitle: "Create an establishment",
     nameLabel: "Establishment name",
-    namePlaceholder: "E.g. AXA Oignies",
+    namePlaceholder: "Establishment 2",
     confirm: "Create",
     cancel: "Cancel",
     creating: "Creating…",
@@ -74,35 +74,35 @@ const COPIES: Record<string, Copy> = {
   es: {
     button: "Establecimientos", title: "Mis establecimientos", loading: "Cargando…", current: "Actual",
     switchError: "No se puede cambiar de establecimiento.", create: "Crear", createTitle: "Crear un establecimiento",
-    nameLabel: "Nombre del establecimiento", namePlaceholder: "Ej. AXA Oignies", confirm: "Crear", cancel: "Cancelar",
+    nameLabel: "Nombre del establecimiento", namePlaceholder: "Establecimiento 2", confirm: "Crear", cancel: "Cancelar",
     creating: "Creando…", contactPrefix: "Para añadir otro establecimiento,", contactAction: "contacte con iNrCy",
     establishment: "Establecimiento", retry: "Reintentar",
   },
   it: {
     button: "Sedi", title: "Le mie sedi", loading: "Caricamento…", current: "Attuale",
     switchError: "Impossibile cambiare sede.", create: "Crea", createTitle: "Crea una sede",
-    nameLabel: "Nome della sede", namePlaceholder: "Es. AXA Oignies", confirm: "Crea", cancel: "Annulla",
+    nameLabel: "Nome della sede", namePlaceholder: "Sede 2", confirm: "Crea", cancel: "Annulla",
     creating: "Creazione…", contactPrefix: "Per aggiungere un'altra sede,", contactAction: "contatta iNrCy",
     establishment: "Sede", retry: "Riprova",
   },
   de: {
     button: "Standorte", title: "Meine Standorte", loading: "Wird geladen…", current: "Aktuell",
     switchError: "Standortwechsel nicht möglich.", create: "Erstellen", createTitle: "Standort erstellen",
-    nameLabel: "Name des Standorts", namePlaceholder: "Z. B. AXA Oignies", confirm: "Erstellen", cancel: "Abbrechen",
+    nameLabel: "Name des Standorts", namePlaceholder: "Standort 2", confirm: "Erstellen", cancel: "Abbrechen",
     creating: "Erstellung…", contactPrefix: "Für einen weiteren Standort", contactAction: "iNrCy kontaktieren",
     establishment: "Standort", retry: "Erneut versuchen",
   },
   nl: {
     button: "Vestigingen", title: "Mijn vestigingen", loading: "Laden…", current: "Actief",
     switchError: "Kan niet van vestiging wisselen.", create: "Maken", createTitle: "Vestiging maken",
-    nameLabel: "Naam van de vestiging", namePlaceholder: "Bijv. AXA Oignies", confirm: "Maken", cancel: "Annuleren",
+    nameLabel: "Naam van de vestiging", namePlaceholder: "Vestiging 2", confirm: "Maken", cancel: "Annuleren",
     creating: "Aanmaken…", contactPrefix: "Om een extra vestiging toe te voegen,", contactAction: "neem contact op met iNrCy",
     establishment: "Vestiging", retry: "Opnieuw proberen",
   },
   pt: {
     button: "Estabelecimentos", title: "Meus estabelecimentos", loading: "A carregar…", current: "Atual",
     switchError: "Não foi possível mudar de estabelecimento.", create: "Criar", createTitle: "Criar estabelecimento",
-    nameLabel: "Nome do estabelecimento", namePlaceholder: "Ex. AXA Oignies", confirm: "Criar", cancel: "Cancelar",
+    nameLabel: "Nome do estabelecimento", namePlaceholder: "Estabelecimento 2", confirm: "Criar", cancel: "Cancelar",
     creating: "A criar…", contactPrefix: "Para adicionar outro estabelecimento,", contactAction: "contacte a iNrCy",
     establishment: "Estabelecimento", retry: "Tentar novamente",
   },
@@ -161,6 +161,11 @@ export default function EstablishmentMenu({
   }, [load, open]);
 
   useEffect(() => {
+    if (mobile) return;
+    void load();
+  }, [load, mobile]);
+
+  useEffect(() => {
     if (!open) return;
     const onPointerDown = (event: PointerEvent) => {
       if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
@@ -179,6 +184,13 @@ export default function EstablishmentMenu({
   const accounts = payload?.accounts || [];
   const config = payload?.config || { multiAccountEnabled: false, maxEstablishments: 1 };
   const availableSlots = getAvailableEstablishmentSlots(config, accounts.length);
+  const totalEstablishments = Math.max(config.maxEstablishments, accounts.length || 1);
+  const activeAccount = payload ? accounts.find((account) => account.id === payload.activeUserId) : null;
+  const buttonLabel = activeAccount?.displayName || copy.button;
+  const buttonMeta = payload && config.multiAccountEnabled ? `${accounts.length}/${totalEstablishments}` : null;
+  const buttonTitle = activeAccount
+    ? `${copy.button}: ${buttonLabel}${buttonMeta ? ` (${buttonMeta})` : ""}`
+    : copy.button;
 
   const switchAccount = async (accountId: string) => {
     if (accountId === payload?.activeUserId || switchingId) return;
@@ -234,8 +246,8 @@ export default function EstablishmentMenu({
       <button
         type="button"
         className={buttonClass}
-        aria-label={copy.button}
-        title={copy.button}
+        aria-label={buttonTitle}
+        title={buttonTitle}
         aria-expanded={open}
         onClick={() => {
           setOpen((value) => {
@@ -246,7 +258,16 @@ export default function EstablishmentMenu({
         }}
       >
         <span className={styles.establishmentTopbarIcon} aria-hidden="true"><EstablishmentIcon /></span>
-        {accounts.length > 1 ? <span className={styles.establishmentTopbarCount}>{accounts.length}</span> : null}
+        {!mobile ? (
+          <>
+            <span className={styles.establishmentTopbarText}>
+              <span className={styles.establishmentTopbarName}>{buttonLabel}</span>
+              {buttonMeta ? <span className={styles.establishmentTopbarMeta}>{buttonMeta}</span> : null}
+            </span>
+            <span className={styles.establishmentTopbarChevron} aria-hidden="true">v</span>
+          </>
+        ) : null}
+        {mobile && accounts.length > 1 ? <span className={styles.establishmentTopbarCount}>{accounts.length}</span> : null}
       </button>
 
       {open ? (
@@ -303,7 +324,7 @@ export default function EstablishmentMenu({
                           <input
                             value={displayName}
                             onChange={(event) => setDisplayName(event.target.value)}
-                            placeholder={copy.namePlaceholder}
+                            placeholder={`${copy.establishment} ${slot}`}
                             maxLength={120}
                             autoFocus
                             onKeyDown={(event) => {

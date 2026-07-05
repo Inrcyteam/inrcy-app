@@ -1,14 +1,5 @@
-import SettingsShell from "../SettingsShell";
-import ProfilContent from "../_components/ProfilContent";
+import { redirect } from "next/navigation";
 
 export default function ProfilPage() {
-  return (
-    <SettingsShell
-      title="Mon profil"
-      subtitle="Vos informations et celles de votre entreprise (utilisées par iNrCy)."
-    >
-      <ProfilContent mode="page" />
-    </SettingsShell>
-  );
+  redirect("/dashboard?panel=profil&panelSource=settings");
 }
-

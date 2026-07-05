@@ -38,6 +38,11 @@ begin
   values (new.id, false, 1)
   on conflict (auth_user_id) do nothing;
 
+  insert into public.app_bubble_access (user_id, bubble_key, enabled)
+  values (new.id, 'inr_agent', true)
+  on conflict (user_id, bubble_key) do update
+  set enabled = true;
+
   return new;
 end;
 $$;
@@ -147,6 +152,11 @@ begin
     is_default
   )
   values (v_auth_user_id, v_account_id, 'owner', false);
+
+  insert into public.app_bubble_access (user_id, bubble_key, enabled)
+  values (v_account_id, 'inr_agent', true)
+  on conflict (user_id, bubble_key) do update
+  set enabled = true;
 
   return v_account_id;
 end;

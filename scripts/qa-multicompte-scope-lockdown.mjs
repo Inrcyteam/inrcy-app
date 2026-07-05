@@ -135,6 +135,22 @@ for (const forbidden of ["setActiveBrowserUserId(user.id)", "setActiveBrowserUse
     errors.push(`DashboardClient.tsx: fallback direct AUTH UID interdit: ${forbidden}`);
   }
 }
+if (!dashboardClient.includes("const generatorPowerReady = siteConnectionsReady && profileCheckReady && activityCheckReady")) {
+  errors.push("DashboardClient.tsx: barre generateur non protegee contre les checks partiels au refresh");
+}
+
+const establishmentMenu = read(join(root, "app/dashboard/_components/EstablishmentMenu.tsx"));
+if (establishmentMenu.includes("AXA Oignies")) {
+  errors.push("EstablishmentMenu.tsx: placeholder client reel encore present");
+}
+if (!establishmentMenu.includes('placeholder={`${copy.establishment} ${slot}`}')) {
+  errors.push("EstablishmentMenu.tsx: placeholder de creation non generique/dynamique");
+}
+
+const bubbleEnsureRoute = read(join(root, "app/api/bubble-access/ensure/route.ts"));
+if (!bubbleEnsureRoute.includes('row.bubble_key === "inr_agent"') || !bubbleEnsureRoute.includes("mustEnableInrAgent")) {
+  errors.push("bubble-access ensure: iNr'Agent non force par defaut");
+}
 
 const lockdownSql = read(join(root, "ops/sql/2026-07-05_multicompte_step6_1_scope_lockdown.sql"));
 for (const signature of [

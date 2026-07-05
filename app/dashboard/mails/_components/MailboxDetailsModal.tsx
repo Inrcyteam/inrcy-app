@@ -56,6 +56,7 @@ import {
   getChannelIndicatorMeta,
   getFailedChannelMessage,
   getPublicationBackgroundMode,
+  arePublicationTransformsEquivalent,
   isDeletedChannelResult,
   isFailedChannelResult,
   isImageAttachment,
@@ -1845,7 +1846,12 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                         : asset.selected
                                           ? "Publiée sur ce canal"
                                           : "Non publiée sur ce canal",
-                                      fitLabel: asset.transform.fit === "cover" ? "Remplir" : "Adapter",
+                                      fitLabel:
+                                        asset.originalUrl &&
+                                        asset.savedTransform &&
+                                        arePublicationTransformsEquivalent(asset.transform, asset.savedTransform)
+                                          ? "Originale"
+                                          : "Personnalisée",
                                       backgroundMode: getPublicationBackgroundMode(asset.transform),
                                       backgroundColor: asset.transform.backgroundColor,
                                       transform: asset.transform,

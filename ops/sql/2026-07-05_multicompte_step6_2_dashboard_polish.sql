@@ -1,17 +1,21 @@
--- iNrCy multicompte — Étape 5
--- Isolation runtime des établissements + profil vierge atomique à la création.
--- Pré-requis : étapes 1 à 4 appliquées.
+-- iNrCy multicompte - Etape 6.2
+-- Correctifs UX post-deploiement :
+--   * iNr'Agent est accessible par defaut sur chaque etablissement.
+--   * la RPC de creation d'etablissement provisionne cet acces immediatement.
 
 begin;
 
--- Chaque établissement métier possède une ligne profiles indépendante.
--- Les comptes secondaires sont volontairement créés sans recopier les métadonnées AUTH.
-insert into public.profiles (user_id, updated_at)
-select a.id, now()
-from public.inrcy_accounts a
-left join public.profiles p on p.user_id = a.id
-where p.user_id is null
-on conflict (user_id) do nothing;
+do $$
+begin
+  if to_regclass('public.inrcy_accounts') is null
+     or to_regclass('public.inrcy_account_members') is null
+     or to_regclass('public.inrcy_multi_account_config') is null
+     or to_regclass('public.app_bubble_access') is null
+     or to_regprocedure('public.inrcy_create_establishment(text)') is null then
+    raise exception 'Prerequis multicompte incomplets : appliquer les etapes 1 a 6.1 avant l''etape 6.2.';
+  end if;
+end;
+$$;
 
 insert into public.app_bubble_access (user_id, bubble_key, enabled)
 select a.id, 'inr_agent', true
@@ -19,8 +23,6 @@ from public.inrcy_accounts a
 on conflict (user_id, bubble_key) do update
 set enabled = true;
 
--- Remplace la RPC Étape 4 : même verrouillage quota, avec création atomique
--- de la ligne profiles vierge du nouvel établissement.
 create or replace function public.inrcy_create_establishment(p_display_name text)
 returns uuid
 language plpgsql
@@ -81,8 +83,6 @@ begin
   )
   values (v_auth_user_id, v_account_id, 'owner', false);
 
-  -- Profil strictement vierge : aucun email, nom, société ou donnée métier
-  -- du compte AUTH/principal n'est copié dans le nouvel établissement.
   insert into public.profiles (user_id, updated_at)
   values (v_account_id, now())
   on conflict (user_id) do nothing;

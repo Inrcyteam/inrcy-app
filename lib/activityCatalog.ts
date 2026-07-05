@@ -193,7 +193,7 @@ export const ACTIVITY_CATALOG: Record<ActivitySectorCategory, SectorCatalog> = {
   evenementiel: {
     label: 'Événementiel',
     jobs: {
-      decorateur_evenementiel: { label: 'Décoration événementielle', services: ['Scénographie', 'Décoration salle', 'Arche / cérémonie', 'Table / centre de table', 'Location déco', 'Installation', 'Coordination', 'Projet sur mesure'] },
+      decorateur_evenementiel: { label: 'Décoration événementielle', services: ['Location décoration', 'Location de mobilier', 'Location de vaisselle', 'Scénographie', 'Projet sur mesure', 'Coordination', 'Installation', 'Personnalisation'] },
       dj: { label: 'DJ / Animation', services: ['Mariage', 'Anniversaire', 'Soirée entreprise', 'Sonorisation', 'Éclairage', 'Playlist sur mesure', 'Pack animation', 'Devis événement'] },
       location_materiel: { label: 'Location de matériel', services: ['Location mobilier', 'Sonorisation', 'Éclairage', 'Vaisselle', 'Structures', 'Livraison', 'Installation', 'Devis sur mesure'] },
       photographe: { label: 'Photographe', services: ['Mariage', 'Portrait', 'Famille', 'Entreprise', 'Événement', 'Shooting extérieur', 'Album / tirages', 'Séance découverte'] },

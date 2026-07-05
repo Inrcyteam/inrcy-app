@@ -4,7 +4,7 @@ import { createHmac, timingSafeEqual } from "crypto";
 
 const DEFAULT_TIKTOK_MEDIA_TTL_SECONDS = 60 * 60 * 6;
 
-export type TiktokMediaVariant = "raw" | "photo";
+export type TiktokMediaVariant = "raw" | "photo" | "photo_locked";
 
 function getSigningSecret() {
   return (
@@ -25,7 +25,10 @@ function base64url(value: Buffer | string) {
 }
 
 function normalizeVariant(input: unknown): TiktokMediaVariant {
-  return String(input || "").trim() === "photo" ? "photo" : "raw";
+  const value = String(input || "").trim();
+  if (value === "photo_locked") return "photo_locked";
+  if (value === "photo") return "photo";
+  return "raw";
 }
 
 function signaturePayload(path: string, exp: number, variant: TiktokMediaVariant) {

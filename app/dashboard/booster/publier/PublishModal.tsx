@@ -37,6 +37,7 @@ import {
   getDefaultCtaModeForChannel,
   normalizeBoosterPreferredCta,
   getPublicationMediaLabel,
+  getImageFitLabel,
   getOptimizedTransform,
   getRecommendedVideoFormatForSource,
   getVideoFormatLabel,
@@ -1279,6 +1280,7 @@ export default function PublishModal({
     previewByKey,
     activeEditorImageKey,
     activeEditorTransform,
+    activeEditorDecisionLabel,
     activeEditorMeta,
     activeEffectiveZoom,
     activeBackgroundMode,
@@ -4296,11 +4298,11 @@ export default function PublishModal({
       <ChannelImageAdapterModal
         open={!!(isImageEditorOpen && activeEditorImageKey)}
         title={`Adapter Image ${(imageKeys.indexOf(activeEditorImageKey || "") || 0) + 1}`}
-        subtitle={`${getImageAdapterLabel(activeImageChannel)} • ${CHANNEL_PRESETS[activeImageChannel].width}×${CHANNEL_PRESETS[activeImageChannel].height}`}
+        subtitle={`${getImageAdapterLabel(activeImageChannel)} • ${activeEditorDecisionLabel}`}
         aspectRatio={previewAspectRatio}
         backgroundMode={activeBackgroundMode}
         backgroundColor={activeBackgroundColor}
-        fitLabel={activeEditorTransform.fit === "cover" ? "Remplir" : "Adapter"}
+        fitLabel={getImageFitLabel(activeEditorTransform)}
         zoomLabel={`zoom ${activeEffectiveZoom.toFixed(2)}×`}
         previewSrc={
           activeEditorImageKey ? previewByKey[activeEditorImageKey] : ""
@@ -4404,6 +4406,9 @@ export default function PublishModal({
           const included = (
             channelImageEditors[activeImageChannel]?.imageKeys || []
           ).includes(key);
+          const transform =
+            channelImageEditors[activeImageChannel]?.transforms?.[key] ||
+            getOptimizedTransform(activeImageChannel, imageMetaByKey[key]);
           return {
             key,
             previewUrl: previewByKey[key],
@@ -4411,6 +4416,7 @@ export default function PublishModal({
             subtitle: included
               ? "Publiée sur ce canal"
               : "Non envoyée sur ce canal",
+            fitLabel: getImageFitLabel(transform),
             active: key === activeEditorImageKey,
             onClick: () =>
               setActiveImageKeyByChannel((prev) => ({

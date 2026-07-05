@@ -146,9 +146,17 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  color: rgba(254, 215, 170, 0.96);
   filter: drop-shadow(0 0 10px rgba(251, 146, 60, 0.5));
+}
+
+.adminTopbarIcon svg {
+  width: 22px;
+  height: 22px;
+  display: block;
 }
 
 .mobileTopbarActions {
@@ -218,6 +226,12 @@
   border-color: rgba(251, 146, 60, 0.34);
   background: radial-gradient(circle at 35% 25%, rgba(251, 146, 60, 0.22), transparent 40%), rgba(255, 255, 255, 0.08);
   font-size: 17px;
+}
+
+.mobileHeaderAdminBtn svg {
+  width: 22px;
+  height: 22px;
+  display: block;
 }
 
 
@@ -2212,6 +2226,44 @@
     rgba(57, 213, 255, 0.2),
     rgba(139, 92, 246, 0.16)
   );
+}
+
+.contactTopbarBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border-color: rgba(251, 113, 133, 0.32);
+  background: linear-gradient(
+    135deg,
+    rgba(244, 114, 182, 0.14),
+    rgba(139, 92, 246, 0.11)
+  );
+}
+
+.contactTopbarBtn:hover {
+  border-color: rgba(251, 113, 133, 0.50);
+  background: linear-gradient(
+    135deg,
+    rgba(244, 114, 182, 0.20),
+    rgba(139, 92, 246, 0.15)
+  );
+}
+
+.contactTopbarIcon {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(251, 207, 232, 0.96);
+  filter: drop-shadow(0 0 10px rgba(244, 114, 182, 0.42));
+}
+
+.contactTopbarIcon svg {
+  width: 22px;
+  height: 22px;
+  display: block;
 }
 
 /* Connecter = gradient iNrCy */
@@ -8358,6 +8410,40 @@
 
 /* ✅ Header Dashboard — bulles outils harmonisées façon iNrCy */
 @media (min-width: 769px) {
+  .establishmentMenuWrap {
+    order: 1;
+  }
+
+  .notificationWrap {
+    order: 2;
+  }
+
+  .agentTopbarBtn {
+    order: 3;
+  }
+
+  .gpsTopbarBtn {
+    order: 4;
+  }
+
+  .adminTopbarBtn {
+    order: 5;
+  }
+
+  .contactTopbarBtn {
+    order: 6;
+  }
+
+  .userTopbarSlot {
+    order: 7;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .languageSelectorWrap {
+    order: 8;
+  }
+
   .topbarActions .ghostBtn,
   .notificationBellBtnWithLabel,
   .userBubbleBtn,
@@ -8474,7 +8560,7 @@
   transform: none;
 }
 
-.gpsTopbarBtn {
+  .gpsTopbarBtn {
     border-color: rgba(56, 189, 248, 0.42) !important;
     background:
       radial-gradient(circle at 18% 0%, rgba(56, 189, 248, 0.28), transparent 34%),
@@ -8482,6 +8568,17 @@
     box-shadow:
       0 18px 46px rgba(0, 0, 0, 0.28),
       0 0 26px rgba(56, 189, 248, 0.14),
+      inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
+  }
+
+  .contactTopbarBtn {
+    border-color: rgba(251, 113, 133, 0.38) !important;
+    background:
+      radial-gradient(circle at 18% 0%, rgba(251, 113, 133, 0.22), transparent 34%),
+      linear-gradient(135deg, rgba(88, 28, 135, 0.34), rgba(15, 23, 42, 0.74)) !important;
+    box-shadow:
+      0 18px 46px rgba(0, 0, 0, 0.28),
+      0 0 24px rgba(244, 114, 182, 0.12),
       inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
   }
 
@@ -8497,7 +8594,7 @@
       inset 0 1px 0 rgba(255, 255, 255, 0.12) !important;
   }
 
-  .topbarActions > .ghostBtn:not(.agentTopbarBtn):not(.gpsTopbarBtn):not(.adminTopbarBtn) {
+  .topbarActions > .ghostBtn:not(.agentTopbarBtn):not(.gpsTopbarBtn):not(.adminTopbarBtn):not(.contactTopbarBtn) {
     border-color: rgba(251, 113, 133, 0.32) !important;
     background:
       radial-gradient(circle at 18% 0%, rgba(251, 113, 133, 0.22), transparent 34%),
@@ -8629,6 +8726,7 @@
 @media (min-width: 769px) {
   .topbarActions {
     align-items: center !important;
+    gap: 8px !important;
   }
 
   .topbarActions .ghostBtn,
@@ -8664,6 +8762,10 @@
   .agentTopbarIcon {
     width: 29px !important;
     height: 29px !important;
+  }
+
+  .establishmentTopbarBtn {
+    justify-content: flex-start !important;
   }
 }
 
@@ -9492,14 +9594,16 @@
 
 .establishmentTopbarBtn {
   position: relative;
-  width: 40px;
-  min-width: 40px;
+  width: auto;
+  min-width: 150px;
+  max-width: 210px;
   height: 40px;
   min-height: 40px;
-  padding: 0 !important;
+  padding: 0 10px !important;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
+  gap: 8px;
   border-color: rgba(56, 189, 248, 0.38) !important;
   background:
     radial-gradient(circle at 28% 18%, rgba(56, 189, 248, 0.28), transparent 38%),
@@ -9508,6 +9612,39 @@
     0 18px 46px rgba(0, 0, 0, 0.28),
     0 0 24px rgba(56, 189, 248, 0.10),
     inset 0 1px 0 rgba(255, 255, 255, 0.13) !important;
+}
+
+.establishmentTopbarText {
+  min-width: 0;
+  display: grid;
+  gap: 1px;
+  text-align: left;
+  line-height: 1;
+}
+
+.establishmentTopbarName {
+  min-width: 0;
+  max-width: 122px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: rgba(255, 255, 255, 0.94);
+  font-size: 12px;
+  font-weight: 950;
+}
+
+.establishmentTopbarMeta {
+  color: rgba(186, 230, 253, 0.72);
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.establishmentTopbarChevron {
+  margin-left: auto;
+  color: rgba(186, 230, 253, 0.78);
+  font-size: 10px;
+  font-weight: 950;
+  line-height: 1;
 }
 
 .establishmentTopbarBtn:hover {

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { POST as publishNowBooster } from "@/app/api/booster/publish-now/route";
 import { buildVideoSettingsByChannel } from "@/lib/boosterVideoSettings";
+import { prepareBoosterImagesByChannelOnServer } from "@/lib/boosterImageServerPreparation";
 import { POST as createCrmCampaign } from "@/app/api/crm/campaigns/route";
 import { requireUser } from "@/lib/requireUser";
 import { enforceRateLimit } from "@/lib/rateLimit";
@@ -842,6 +843,14 @@ export async function POST(request: Request) {
             sourceMetadata: (videoPayload as any)?.sourceMetadata || null,
           })
         : {};
+    const preparedImages =
+      activeMediaMode === "images" && imagePayload
+        ? await prepareBoosterImagesByChannelOnServer({
+            channels: publishChannels,
+            images: [imagePayload],
+          })
+        : { imagesByChannel: {}, imageSettingsByChannel: {}, warnings: [] };
+
     const publishBody = {
       channels: publishChannels,
       post: firstPost,
@@ -851,6 +860,9 @@ export async function POST(request: Request) {
       mediaModeByChannel,
       videoSettingsByChannel,
       images: imagePayload ? [imagePayload] : [],
+      imagesByChannel: preparedImages.imagesByChannel,
+      imageSettingsByChannel: preparedImages.imageSettingsByChannel,
+      imagePreparationWarnings: preparedImages.warnings,
       video: videoPayload,
       workflowTool: "booster",
       workflowAction: "publier",

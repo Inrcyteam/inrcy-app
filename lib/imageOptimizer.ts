@@ -1,4 +1,8 @@
 import sharp from "sharp";
+import {
+  BOOSTER_AUTO_CROP_MAX_LOSS,
+  getImageCropLossFraction,
+} from "@/lib/boosterImageDecision";
 
 const INSTAGRAM_MAX_BYTES = 8 * 1024 * 1024;
 const INSTAGRAM_WIDTH = 1080;
@@ -10,8 +14,6 @@ const INSTAGRAM_NATIVE_MIN_WIDTH = 320;
 const SOCIAL_FEED_MAX_BYTES = 8 * 1024 * 1024;
 const SOCIAL_FEED_WIDTH = 1200;
 const SOCIAL_FEED_HEIGHT = 1200;
-const SOCIAL_FEED_NATIVE_MIN_RATIO = 0.5;
-const SOCIAL_FEED_NATIVE_MAX_RATIO = 2;
 const SOCIAL_FEED_NATIVE_MAX_SIDE = 1600;
 const SITE_CARD_MAX_BYTES = 8 * 1024 * 1024;
 const SITE_CARD_WIDTH = 1440;
@@ -20,9 +22,10 @@ const GMB_MAX_BYTES = 5 * 1024 * 1024;
 const GMB_WIDTH = 1200;
 const GMB_HEIGHT = 900;
 const GMB_NATIVE_MAX_SIDE = 1600;
+const FINAL_GEOMETRY_SCALE_STEPS = [1, 0.85, 0.7, 0.55, 0.4, 0.3, 0.2] as const;
+const FINAL_GEOMETRY_RATIO_EPSILON = 0.005;
 
 const DEFAULT_BACKGROUND = { r: 255, g: 255, b: 255, alpha: 1 };
-const COVER_CROP_THRESHOLD = 0.08;
 
 export type OptimizeResult = {
   buffer: Buffer;
@@ -33,25 +36,10 @@ export type OptimizeResult = {
   size: number;
   quality: number;
   sourceFormat?: string;
-  strategy?: "native" | "safe-frame";
+  strategy?: "native" | "safe-frame" | "geometry-locked";
 };
 
-function getCropLossFraction(sourceRatio: number, targetRatio: number) {
-  if (
-    !Number.isFinite(sourceRatio) ||
-    sourceRatio <= 0 ||
-    !Number.isFinite(targetRatio) ||
-    targetRatio <= 0
-  ) {
-    return Number.POSITIVE_INFINITY;
-  }
-
-  if (sourceRatio > targetRatio) {
-    return 1 - targetRatio / sourceRatio;
-  }
-
-  return 1 - sourceRatio / targetRatio;
-}
+export type FinalGeometryProfile = "instagram" | "social-feed" | "gmb";
 
 function shouldUseCover(
   sourceWidth: number,
@@ -61,7 +49,10 @@ function shouldUseCover(
 ) {
   const sourceRatio = sourceWidth / sourceHeight;
   const targetRatio = targetWidth / targetHeight;
-  return getCropLossFraction(sourceRatio, targetRatio) <= COVER_CROP_THRESHOLD;
+  return (
+    getImageCropLossFraction(sourceRatio, targetRatio) <=
+    BOOSTER_AUTO_CROP_MAX_LOSS
+  );
 }
 
 async function getOutputMeta(
@@ -78,6 +69,28 @@ async function getOutputMeta(
   };
 }
 
+function getOrientedDimensions(meta: {
+  width?: number;
+  height?: number;
+  orientation?: number;
+}) {
+  const width = Number(meta.width || 0);
+  const height = Number(meta.height || 0);
+  const orientation = Number(meta.orientation || 1);
+  const swapsAxes = orientation >= 5 && orientation <= 8;
+  return {
+    width: swapsAxes ? height : width,
+    height: swapsAxes ? width : height,
+  };
+}
+
+async function getVisualSourceRatio(inputBuffer: Buffer) {
+  const meta = await sharp(inputBuffer, { failOn: "none" }).metadata();
+  const oriented = getOrientedDimensions(meta);
+  if (!oriented.width || !oriented.height) return null;
+  return oriented.width / oriented.height;
+}
+
 async function createNativeJpeg(params: {
   inputBuffer: Buffer;
   maxBytes: number;
@@ -88,6 +101,7 @@ async function createNativeJpeg(params: {
   maxSide?: number;
   ratioMin?: number;
   ratioMax?: number;
+  scaleSteps?: readonly number[];
 }): Promise<OptimizeResult | null> {
   const {
     inputBuffer,
@@ -99,6 +113,7 @@ async function createNativeJpeg(params: {
     maxSide,
     ratioMin,
     ratioMax,
+    scaleSteps = [1, 0.85, 0.7, 0.55],
   } = params;
 
   const src = sharp(inputBuffer, { failOn: "none" }).rotate();
@@ -162,7 +177,6 @@ async function createNativeJpeg(params: {
       .toBuffer();
   }
 
-  const scaleSteps = [1, 0.85, 0.7, 0.55];
   let output: Buffer | null = null;
   let finalQuality = quality;
   let finalScale = 1;
@@ -202,6 +216,65 @@ async function createNativeJpeg(params: {
     sourceFormat: meta.format,
     strategy: "native",
   };
+}
+
+/**
+ * Final publication optimizer used once Booster has already decided and, when
+ * needed, rendered the visual composition for a channel.
+ *
+ * Contract: this function may rotate from EXIF, resize proportionally and
+ * compress/re-encode, but it must never crop or place the image in a new
+ * canvas. In other words, the geometry prepared by Booster is locked.
+ */
+export async function optimizeFinalImageGeometry(
+  inputBuffer: Buffer,
+  profile: FinalGeometryProfile,
+): Promise<OptimizeResult> {
+  const sourceRatio = await getVisualSourceRatio(inputBuffer).catch(() => null);
+  const result = await createNativeJpeg(
+    profile === "instagram"
+      ? {
+          inputBuffer,
+          maxBytes: INSTAGRAM_MAX_BYTES,
+          startQuality: 88,
+          minQuality: 50,
+          maxWidth: INSTAGRAM_NATIVE_MAX_WIDTH,
+          minWidth: INSTAGRAM_NATIVE_MIN_WIDTH,
+          scaleSteps: FINAL_GEOMETRY_SCALE_STEPS,
+        }
+      : profile === "gmb"
+        ? {
+            inputBuffer,
+            maxBytes: GMB_MAX_BYTES,
+            startQuality: 88,
+            minQuality: 50,
+            maxSide: GMB_NATIVE_MAX_SIDE,
+            scaleSteps: FINAL_GEOMETRY_SCALE_STEPS,
+          }
+        : {
+            inputBuffer,
+            maxBytes: SOCIAL_FEED_MAX_BYTES,
+            startQuality: 88,
+            minQuality: 50,
+            maxSide: SOCIAL_FEED_NATIVE_MAX_SIDE,
+            scaleSteps: FINAL_GEOMETRY_SCALE_STEPS,
+          },
+  ).catch(() => null);
+
+  if (!result) {
+    throw new Error("final_geometry_optimization_failed");
+  }
+
+  const outputRatio =
+    result.width > 0 && result.height > 0 ? result.width / result.height : null;
+  if (sourceRatio && outputRatio) {
+    const relativeDrift = Math.abs(outputRatio - sourceRatio) / sourceRatio;
+    if (relativeDrift > FINAL_GEOMETRY_RATIO_EPSILON) {
+      throw new Error("final_geometry_ratio_drift");
+    }
+  }
+
+  return { ...result, strategy: "geometry-locked" };
 }
 
 async function createSmartJpeg(params: {
@@ -352,8 +425,6 @@ export async function optimizeForSocialFeed(
       startQuality: 88,
       minQuality: 50,
       maxSide: SOCIAL_FEED_NATIVE_MAX_SIDE,
-      ratioMin: SOCIAL_FEED_NATIVE_MIN_RATIO,
-      ratioMax: SOCIAL_FEED_NATIVE_MAX_RATIO,
     }).catch(() => null);
 
     if (native) return native;

@@ -59,6 +59,49 @@ const INR_AGENT_PRELOAD_ASSETS = [
 
 const preloadedInrAgentAssets = new Set<string>();
 
+function GearIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">
+      <path
+        d="M12 8.2a3.8 3.8 0 1 0 0 7.6 3.8 3.8 0 0 0 0-7.6Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      />
+      <path
+        d="M19.4 13.4c.1-.5.1-.9.1-1.4s0-.9-.1-1.4l2-1.5-2-3.4-2.4 1a8 8 0 0 0-2.4-1.4L14.3 2h-4.6l-.4 3.3c-.9.3-1.7.8-2.4 1.4l-2.4-1-2 3.4 2 1.5c-.1.5-.1.9-.1 1.4s0 .9.1 1.4l-2 1.5 2 3.4 2.4-1c.7.6 1.5 1 2.4 1.4l.4 3.3h4.6l.4-3.3c.9-.3 1.7-.8 2.4-1.4l2.4 1 2-3.4-2.1-1.5Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ContactIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false">
+      <path
+        d="M4 5.5h16c.8 0 1.5.7 1.5 1.5v10c0 .8-.7 1.5-1.5 1.5H4c-.8 0-1.5-.7-1.5-1.5V7c0-.8.7-1.5 1.5-1.5Z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+      <path
+        d="m4 7 8 6 8-6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function preloadInrAgentImages() {
   if (typeof window === "undefined") return;
 
@@ -237,7 +280,7 @@ export default function DashboardTopbar({
             aria-label={t.topbar.adminTitle}
             title={t.topbar.adminTitle}
           >
-            <span className={styles.adminTopbarIcon} aria-hidden="true">⚙️</span>
+            <span className={styles.adminTopbarIcon} aria-hidden="true"><GearIcon /></span>
             {t.topbar.admin}
           </button>
         )}
@@ -319,13 +362,16 @@ export default function DashboardTopbar({
 
         <button
           type="button"
-          className={styles.ghostBtn}
+          className={`${styles.ghostBtn} ${styles.contactTopbarBtn}`}
           onClick={() => openPanel("contact")}
+          aria-label={t.topbar.contact}
+          title={t.topbar.contact}
         >
+          <span className={styles.contactTopbarIcon} aria-hidden="true"><ContactIcon /></span>
           {t.topbar.contact}
         </button>
 
-        <div ref={userMenuRef}>
+        <div className={styles.userTopbarSlot} ref={userMenuRef}>
           <UserMenu
             userEmail={userEmail}
             userFirstLetter={userFirstLetter}
@@ -356,7 +402,7 @@ export default function DashboardTopbar({
             title={t.topbar.adminTitle}
             onClick={() => onNavigateCta("/dashboard/admin")}
           >
-            <span aria-hidden="true">⚙️</span>
+            <span aria-hidden="true"><GearIcon /></span>
           </button>
         )}
 
