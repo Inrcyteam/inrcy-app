@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import sharp from "sharp";
 import { requireAdminApi } from "@/lib/adminSecurity";
+import { ensureImageBankCategories } from "@/lib/imageBankCategories";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import {
   INR_MEDIA_ALLOWED_IMAGE_MIME_TYPES,
@@ -140,6 +141,8 @@ function buildStoragePath(
 async function getCategory(
   categoryId: string,
 ): Promise<ImageBankCategory | null> {
+  await ensureImageBankCategories();
+
   const { data, error } = await supabaseAdmin
     .from("inrcy_image_bank_categories")
     .select("id,sector_slug,sector_label,job_slug,job_label,storage_prefix")

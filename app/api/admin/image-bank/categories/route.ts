@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/adminSecurity";
+import { ensureImageBankCategories } from "@/lib/imageBankCategories";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
@@ -7,6 +8,8 @@ export const runtime = "nodejs";
 export async function GET() {
   const admin = await requireAdminApi();
   if (!admin.ok) return admin.response;
+
+  await ensureImageBankCategories();
 
   const { data, error } = await supabaseAdmin
     .from("inrcy_image_bank_categories")
