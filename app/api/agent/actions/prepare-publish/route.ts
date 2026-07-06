@@ -1526,9 +1526,12 @@ export async function POST(request: Request) {
         automationFrequency: automation.frequency,
         preparedManually: !isCron,
         preparedByCron: isCron,
-        fallbackAppliedChannels: recoveredChannels.map(
+        // Les canaux récupérés le sont désormais exclusivement par une nouvelle passe IA.
+        // Aucun texte éditorial générique local n'est injecté.
+        aiRecoveredChannels: recoveredChannels.map(
           (channel) => boosterToAgentChannel[channel],
         ),
+        fallbackAppliedChannels: [],
         mediaSelectionTrace,
       },
       created_at: now,

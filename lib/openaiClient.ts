@@ -25,7 +25,7 @@ export async function openaiGenerateJSON<T extends OpenAIResponseJSON>(opts: {
     (hasImages ? process.env.OPENAI_VISION_MODEL : "") ||
     process.env.OPENAI_MODEL ||
     "gpt-4o-mini";
-  const max_output_tokens = Math.max(128, Math.min(6000, opts.maxOutputTokens ?? 700));
+  const max_output_tokens = Math.max(128, Math.min(8000, opts.maxOutputTokens ?? 700));
   const temperature = typeof opts.temperature === "number" ? Math.max(0, Math.min(2, opts.temperature)) : undefined;
 
   const userContent: Array<Record<string, unknown>> = [
