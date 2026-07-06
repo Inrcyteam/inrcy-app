@@ -70,13 +70,24 @@ export async function openaiGenerateJSON<T extends OpenAIResponseJSON>(opts: {
 
   const json = (await res.json()) as any;
 
-  // Usually present convenience field
-  const contentText =
-    (typeof json?.output_text === "string" && json.output_text) ||
-    (typeof json?.output?.[0]?.content?.[0]?.text === "string" && json.output[0].content[0].text) ||
-    "";
+  // Usually present convenience field. Some Responses API models may prepend
+  // reasoning/tool items before the final message, so never assume output[0].
+  const outputText = typeof json?.output_text === "string" ? json.output_text : "";
+  const nestedTexts = Array.isArray(json?.output)
+    ? json.output.flatMap((item: any) =>
+        Array.isArray(item?.content)
+          ? item.content
+              .map((part: any) => (typeof part?.text === "string" ? part.text : ""))
+              .filter(Boolean)
+          : [],
+      )
+    : [];
+  const contentText = outputText || nestedTexts.join("\n").trim();
 
-  if (!contentText) throw new Error("OpenAI: missing output text");
+  if (!contentText) {
+    const status = typeof json?.status === "string" ? ` (${json.status})` : "";
+    throw new Error(`OpenAI: missing output text${status}`);
+  }
 
   try {
     return JSON.parse(contentText) as T;

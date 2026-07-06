@@ -59,16 +59,19 @@ const CHANNEL_OUTPUT_TOKEN_BUDGET: Record<BoosterChannels, number> = {
   pinterest: 850,
 };
 
+// Seuils techniques de sécurité, volontairement plus bas que les objectifs éditoriaux
+// du prompt. Ils servent uniquement à détecter une réponse cassée/vidée, pas à rejeter
+// un vrai contenu IA pertinent parce qu'il est un peu plus court que la cible idéale.
 const CHANNEL_MIN_CONTENT_LENGTH: Record<BoosterChannels, number> = {
-  inrcy_site: 650,
-  site_web: 800,
-  gmb: 280,
-  facebook: 300,
-  instagram: 220,
-  linkedin: 450,
-  tiktok: 120,
-  youtube_shorts: 280,
-  pinterest: 160,
+  inrcy_site: 400,
+  site_web: 500,
+  gmb: 140,
+  facebook: 180,
+  instagram: 140,
+  linkedin: 250,
+  tiktok: 80,
+  youtube_shorts: 220,
+  pinterest: 110,
 };
 
 const CHANNEL_LABELS: Record<BoosterChannels, string> = {
@@ -263,11 +266,145 @@ function normalizePost(channel: BoosterChannels, raw: Partial<ChannelPost> | und
   };
 }
 
-function hasRequiredContent(channel: BoosterChannels, post: ChannelPost | undefined) {
+
+
+const CHANNEL_OUTPUT_ALIASES: Record<BoosterChannels, string[]> = {
+  inrcy_site: ["inrcy_site", "inrcysite", "site_inrcy", "siteinrcy"],
+  site_web: ["site_web", "siteweb", "website", "web_site"],
+  gmb: ["gmb", "google_business", "googlebusiness", "google_business_profile"],
+  facebook: ["facebook", "fb"],
+  instagram: ["instagram", "insta"],
+  linkedin: ["linkedin", "linked_in"],
+  tiktok: ["tiktok", "tik_tok"],
+  youtube_shorts: [
+    "youtube_shorts",
+    "youtubeshorts",
+    "youtube_short",
+    "youtube",
+    "youtube_video",
+    "youtubevideo",
+  ],
+  pinterest: ["pinterest", "pin"],
+};
+
+function asJsonRecord(value: unknown): JsonRecord | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as JsonRecord)
+    : null;
+}
+
+function normalizeOutputKey(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function firstTextField(record: JsonRecord | null, keys: string[]) {
+  if (!record) return "";
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return "";
+}
+
+function coerceHashtagField(value: unknown): unknown {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== "string") return [];
+  return value
+    .split(/[\s,;]+/g)
+    .map((item) => item.trim().replace(/^#+/, ""))
+    .filter(Boolean);
+}
+
+function coerceGeneratedPost(value: unknown): Partial<ChannelPost> | undefined {
+  let record = asJsonRecord(value);
+  if (!record) return undefined;
+
+  // Certains modèles enveloppent encore l'objet final dans post/data/result.
+  for (const key of ["post", "data", "result", "version"]) {
+    const nested = asJsonRecord(record[key]);
+    if (nested) {
+      record = nested;
+      break;
+    }
+  }
+
+  const title = firstTextField(record, [
+    "title",
+    "titre",
+    "headline",
+    "name",
+  ]);
+  const content = firstTextField(record, [
+    "content",
+    "description",
+    "body",
+    "text",
+    "caption",
+    "copy",
+  ]);
+  const cta = firstTextField(record, [
+    "cta",
+    "call_to_action",
+    "callToAction",
+    "action",
+    "button_text",
+    "buttonText",
+  ]);
+  const hashtags =
+    record.hashtags ?? record.tags ?? record.keywords ?? record.hash_tags ?? [];
+
+  if (!title && !content && !cta) return undefined;
+  return {
+    title,
+    content,
+    cta,
+    hashtags: coerceHashtagField(hashtags) as string[],
+  };
+}
+
+function extractGeneratedChannelVersion(
+  output: unknown,
+  channel: BoosterChannels,
+): Partial<ChannelPost> | undefined {
+  const root = asJsonRecord(output);
+  if (!root) return undefined;
+
+  const candidateContainers = [
+    asJsonRecord(root.versions),
+    asJsonRecord(root.data),
+    asJsonRecord(root.result),
+    root,
+  ].filter((value): value is JsonRecord => Boolean(value));
+
+  const aliases = new Set(
+    CHANNEL_OUTPUT_ALIASES[channel].map((key) => normalizeOutputKey(key)),
+  );
+
+  for (const container of candidateContainers) {
+    for (const [key, value] of Object.entries(container)) {
+      if (aliases.has(normalizeOutputKey(key))) {
+        const post = coerceGeneratedPost(value);
+        if (post) return post;
+      }
+    }
+  }
+
+  // Pour un appel canal unique, certains modèles renvoient directement
+  // {title, description, cta, hashtags} sans l'enveloppe versions.
+  return coerceGeneratedPost(root);
+}
+
+function hasCorePublishableContent(channel: BoosterChannels, post: ChannelPost | undefined) {
   if (!post) return false;
-  if (!post.title.trim() || !post.content.trim() || !post.cta.trim()) return false;
+  if (!post.title.trim() || !post.content.trim()) return false;
   const minContentLength = CHANNEL_MIN_CONTENT_LENGTH[channel] ?? 80;
   return post.content.trim().length >= minContentLength;
+}
+
+function hasRequiredContent(channel: BoosterChannels, post: ChannelPost | undefined) {
+  // Le CTA reste un objectif qualité et déclenche une récupération IA s'il manque,
+  // mais son absence seule ne doit jamais transformer un bon texte en erreur 502 globale.
+  return Boolean(hasCorePublishableContent(channel, post) && post?.cta.trim());
 }
 
 function hasPublishableText(post: ChannelPost | undefined) {
@@ -511,14 +648,26 @@ function getCreativityTemperature(business: JsonRecord | null) {
 
 function computeMaxOutputTokens(channels: BoosterChannels[]) {
   const uniqueChannels = Array.from(new Set(channels));
-  const budget = uniqueChannels.reduce((sum, channel) => sum + CHANNEL_OUTPUT_TOKEN_BUDGET[channel], 850);
-  return Math.min(7600, Math.max(2800, budget));
+  const budget = uniqueChannels.reduce(
+    (sum, channel) => sum + CHANNEL_OUTPUT_TOKEN_BUDGET[channel],
+    850,
+  );
+
+  // YouTube est isolé dans son propre lot. Avec certains modèles Responses API,
+  // max_output_tokens couvre aussi les tokens de raisonnement : l'ancien plancher
+  // effectif (~2950) pouvait produire un HTTP 200 mais aucune sortie JSON exploitable.
+  // On réserve donc une vraie marge à la génération SEO YouTube.
+  const minimum = uniqueChannels.includes("youtube_shorts") ? 6200 : 2800;
+  return Math.min(8000, Math.max(minimum, budget));
 }
 
 function buildGenerationBatches(channels: BoosterChannels[]) {
   const uniqueChannels = allowedChannels.filter((channel) => channels.includes(channel));
   const sites = uniqueChannels.filter((channel) => siteChannels.has(channel));
-  const socials = uniqueChannels.filter((channel) => !siteChannels.has(channel));
+  const youtubeRequested = uniqueChannels.includes("youtube_shorts");
+  const socials = uniqueChannels.filter(
+    (channel) => !siteChannels.has(channel) && channel !== "youtube_shorts",
+  );
   const batches: Array<{ channels: BoosterChannels[]; extraInstructions?: string }> = [];
 
   if (sites.length) {
@@ -533,6 +682,17 @@ function buildGenerationBatches(channels: BoosterChannels[]) {
 
   for (let index = 0; index < socials.length; index += CHANNEL_BATCH_SIZE) {
     batches.push({ channels: socials.slice(index, index + CHANNEL_BATCH_SIZE) });
+  }
+
+  // YouTube est volontairement isolé : sa description est plus longue, SEO et structurée.
+  // Le mélanger avec LinkedIn/TikTok augmentait les réponses tronquées ou trop courtes,
+  // puis déclenchait inutilement les récupérations IA et parfois une erreur globale.
+  if (youtubeRequested) {
+    batches.push({
+      channels: ["youtube_shorts"],
+      extraInstructions:
+        `YOUTUBE PRIORITAIRE : pars directement de la phrase libre du pro et produis un titre + une vraie description SEO finale. Le texte doit parler du sujet réel de la vidéo, jamais expliquer comment écrire une description.`,
+    });
   }
 
   return batches;
@@ -576,9 +736,15 @@ async function generateVersions(args: {
     images: args.imagesForAI,
     maxOutputTokens: computeMaxOutputTokens(args.channels),
     temperature: getCreativityTemperature(args.business),
-    // 24 s était trop court dès qu'une vidéo, plusieurs images ou un canal long
-    // (notamment YouTube / LinkedIn / sites) demandaient davantage de raisonnement.
-    timeoutMs: args.imagesForAI?.length ? 48_000 : 38_000,
+    // YouTube dispose d'une marge dédiée : certains modèles Responses API
+    // consomment une partie du budget en raisonnement avant d'émettre le JSON final.
+    timeoutMs: args.channels.includes("youtube_shorts")
+      ? args.imagesForAI?.length
+        ? 72_000
+        : 58_000
+      : args.imagesForAI?.length
+        ? 48_000
+        : 38_000,
     retries: 1,
   });
 }
@@ -603,11 +769,14 @@ async function generateVersionsForChannels(args: {
       const out = await generateVersions({
         ...args,
         channels: batch.channels,
-        extraInstructions: [batch.extraInstructions, args.extraInstructions].filter(Boolean).join("\n\n"),
+        extraInstructions: [batch.extraInstructions, args.extraInstructions]
+          .filter(Boolean)
+          .join("\n\n"),
       });
-      const rawVersions = out?.versions && typeof out.versions === "object" ? out.versions : {};
+
       for (const channel of batch.channels) {
-        if (rawVersions[channel]) versions[channel] = rawVersions[channel];
+        const candidate = extractGeneratedChannelVersion(out, channel);
+        if (candidate) versions[channel] = candidate;
       }
     } catch {
       for (const channel of batch.channels) {
@@ -623,8 +792,8 @@ async function generateVersionsForChannels(args: {
               .filter(Boolean)
               .join("\n\n"),
           });
-          const singleVersions = singleOut?.versions && typeof singleOut.versions === "object" ? singleOut.versions : {};
-          if (singleVersions[channel]) versions[channel] = singleVersions[channel];
+          const candidate = extractGeneratedChannelVersion(singleOut, channel);
+          if (candidate) versions[channel] = candidate;
         } catch {
           continue;
         }
@@ -633,6 +802,18 @@ async function generateVersionsForChannels(args: {
   }
 
   return { versions };
+}
+
+function isGeneratedPostSafe(args: {
+  channel: BoosterChannels;
+  post: ChannelPost | undefined;
+  languageCode: string;
+}) {
+  return Boolean(
+    hasCorePublishableContent(args.channel, args.post) &&
+      !hasLanguageMismatch(args.languageCode, args.post) &&
+      !hasEditorialMetaLeak(args.post),
+  );
 }
 
 function isGeneratedPostAcceptable(args: {
@@ -644,8 +825,11 @@ function isGeneratedPostAcceptable(args: {
   return Boolean(
     hasRequiredContent(args.channel, args.post) &&
       isPostAnchoredToIdea(args.ideaKeywords, args.post) &&
-      !hasLanguageMismatch(args.languageCode, args.post) &&
-      !hasEditorialMetaLeak(args.post),
+      isGeneratedPostSafe({
+        channel: args.channel,
+        post: args.post,
+        languageCode: args.languageCode,
+      }),
   );
 }
 
@@ -689,6 +873,139 @@ function buildFocusedRecoveryInstructions(args: {
   ].filter(Boolean).join("\n\n");
 }
 
+
+function buildCompactYoutubeContext(
+  profile: JsonRecord | null,
+  business: JsonRecord | null,
+) {
+  const source = { ...(profile || {}), ...(business || {}) } as JsonRecord;
+  const keys = [
+    "company_name",
+    "business_name",
+    "name",
+    "city",
+    "postal_code",
+    "sector",
+    "sector_category",
+    "profession",
+    "job",
+    "business_description",
+    "activity_description",
+    "description",
+    "services",
+    "intervention_zones",
+    "strengths",
+    "customer_typologies",
+    "ai_tone",
+    "ai_pronoun",
+    "ai_audience_relation",
+    "ai_emoji_level",
+    "ai_content_length",
+    "ai_cta_preference",
+  ];
+  const context: JsonRecord = {};
+  for (const key of keys) {
+    const value = source[key];
+    if (typeof value === "string" && value.trim()) {
+      context[key] = value.trim().slice(0, 700);
+    } else if (Array.isArray(value) && value.length) {
+      context[key] = value.slice(0, 12);
+    }
+  }
+  return JSON.stringify(context, null, 2).slice(0, 6500);
+}
+
+function isMeaningfulYoutubeCandidate(
+  post: ChannelPost | undefined,
+  languageCode: string,
+) {
+  if (!post) return false;
+  return Boolean(
+    post.title.trim().length >= 8 &&
+      post.content.trim().length >= 140 &&
+      !hasLanguageMismatch(languageCode, post) &&
+      !hasEditorialMetaLeak(post),
+  );
+}
+
+async function rescueYoutubeWithDedicatedAi(args: {
+  idea: string;
+  theme: BoosterTheme;
+  style: BoosterStyle;
+  profile: JsonRecord | null;
+  business: JsonRecord | null;
+  imagesForAI?: BoosterAiImage[];
+  extraInstructions?: string;
+  languageCode: string;
+  ideaKeywords: string[];
+}) {
+  const languageLabel = getAiLanguageLabel({ ai_language: args.languageCode });
+  const businessContext = buildCompactYoutubeContext(args.profile, args.business);
+
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const out = await openaiGenerateJSON<JsonRecord>({
+        system: [
+          `Tu es un rédacteur YouTube professionnel pour une entreprise locale.`,
+          `Écris exclusivement le contenu FINAL destiné au public, en ${languageLabel}.`,
+          `Ne donne jamais de consigne de rédaction et ne commente jamais la description, le contenu, le message ou la publication.`,
+          `Réponds uniquement en JSON strict avec les clés title, content, cta, hashtags.`,
+        ].join("\n"),
+        input: [
+          `SUJET LIBRE PRIORITAIRE : "${args.idea}"`,
+          `Thème : ${args.theme || "information"}`,
+          `Style : ${args.style}`,
+          businessContext
+            ? `Contexte réel de l'activité (utiliser seulement ce qui est utile, ne rien inventer) :\n${businessContext}`
+            : "",
+          args.extraInstructions
+            ? `Contexte média disponible :\n${args.extraInstructions.slice(0, 4500)}`
+            : "",
+          `MISSION YOUTUBE :`,
+          `- Crée un titre naturel de 45 à 90 caractères, directement lié au sujet libre.`,
+          `- Crée une vraie description SEO YouTube de 500 à 1200 caractères, intéressante, concrète et prête à publier.`,
+          `- Commence par le sujet réel de la vidéo. Développe ce qui a été réalisé, présenté, conseillé ou annoncé selon la phrase libre.`,
+          `- Intègre naturellement les mots importants du sujet, puis le métier et la localité uniquement s'ils sont réellement fournis.`,
+          `- Ajoute un CTA utile et 2 à 6 hashtags ciblés si pertinent.`,
+          `- Interdiction absolue d'écrire des phrases méta comme "la description doit", "cette publication peut", "ce contenu sert à", ou d'expliquer comment rédiger.`,
+          `- N'invente aucun client, résultat, prix, lieu, marque, date, personne ou détail technique absent du contexte.`,
+          `JSON attendu exactement : {"title":"...","content":"...","cta":"...","hashtags":["..."]}`,
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
+        images: attempt === 0 ? args.imagesForAI?.slice(0, 3) : undefined,
+        maxOutputTokens: attempt === 0 ? 7000 : 8000,
+        temperature: getCreativityTemperature(args.business),
+        timeoutMs: attempt === 0 && args.imagesForAI?.length ? 72_000 : 58_000,
+        retries: 1,
+      });
+
+      const candidate = normalizePost(
+        "youtube_shorts",
+        coerceGeneratedPost(out) ||
+          extractGeneratedChannelVersion(out, "youtube_shorts"),
+      );
+
+      if (
+        isGeneratedPostAcceptable({
+          channel: "youtube_shorts",
+          post: candidate,
+          ideaKeywords: args.ideaKeywords,
+          languageCode: args.languageCode,
+        }) ||
+        (isMeaningfulYoutubeCandidate(candidate, args.languageCode) &&
+          isPostAnchoredToIdea(args.ideaKeywords, candidate))
+      ) {
+        return candidate;
+      }
+    } catch {
+      // Deuxième passe : texte seul et prompt réduit, pour ne pas dépendre de la vision.
+    }
+  }
+
+  return null;
+}
+
 async function recoverChannelsWithAi(args: {
   channels: BoosterChannels[];
   versions: Partial<Record<BoosterChannels, ChannelPost>>;
@@ -718,7 +1035,9 @@ async function recoverChannelsWithAi(args: {
           business: args.business,
           recentPublications: args.recentPublications,
           hiddenAngle: args.hiddenAngle,
-          imagesForAI: args.imagesForAI,
+          // Une seconde tentative textuelle n'a pas besoin de renvoyer toutes les images/frames :
+          // la phrase libre reste prioritaire et on évite des appels vision lents ou fragiles.
+          imagesForAI: attempt === 0 ? args.imagesForAI : undefined,
           extraInstructions: [
             args.extraInstructions,
             buildFocusedRecoveryInstructions({
@@ -729,16 +1048,26 @@ async function recoverChannelsWithAi(args: {
             }),
           ].filter(Boolean).join("\n\n"),
         });
-        const rawVersions = out?.versions && typeof out.versions === "object" ? out.versions : {};
-        const candidate = normalizePost(channel, rawVersions[channel]);
-        if (
-          isGeneratedPostAcceptable({
+        const candidate = normalizePost(
+          channel,
+          extractGeneratedChannelVersion(out, channel),
+        );
+        const strictAccept = isGeneratedPostAcceptable({
+          channel,
+          post: candidate,
+          ideaKeywords: args.ideaKeywords,
+          languageCode: args.languageCode,
+        });
+        const safeAnchoredAccept =
+          attempt > 0 &&
+          isGeneratedPostSafe({
             channel,
             post: candidate,
-            ideaKeywords: args.ideaKeywords,
             languageCode: args.languageCode,
-          })
-        ) {
+          }) &&
+          isPostAnchoredToIdea(args.ideaKeywords, candidate);
+
+        if (strictAccept || safeAnchoredAccept) {
           args.versions[channel] = candidate;
           recovered.add(channel);
           break;
@@ -800,13 +1129,17 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
     ]),
   );
 
-  if (retryChannels.length) {
+  const standardRetryChannels = retryChannels.filter(
+    (channel) => channel !== "youtube_shorts",
+  );
+
+  if (standardRetryChannels.length) {
     try {
       const retryOut = await generateVersionsForChannels({
         idea: args.idea,
         theme: args.theme,
         style,
-        channels: retryChannels,
+        channels: standardRetryChannels,
         profile: args.profile,
         business: args.business,
         recentPublications: args.recentPublications,
@@ -832,9 +1165,11 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
           `Respecte strictement la langue IA configurée.`,
         ].filter(Boolean).join("\n"),
       });
-      const retryVersions = retryOut?.versions && typeof retryOut.versions === "object" ? retryOut.versions : {};
-      for (const channel of retryChannels) {
-        const retriedPost = normalizePost(channel, retryVersions[channel]);
+      for (const channel of standardRetryChannels) {
+        const retriedPost = normalizePost(
+          channel,
+          extractGeneratedChannelVersion(retryOut, channel),
+        );
         if (
           isGeneratedPostAcceptable({
             channel,
@@ -852,7 +1187,7 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
     }
   }
 
-  let invalidChannels = channels.filter(
+  let strictInvalidChannels = channels.filter(
     (channel) =>
       !isGeneratedPostAcceptable({
         channel,
@@ -863,7 +1198,11 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
   );
   let duplicateChannels = findOverSimilarChannels(channels, safeVersions);
 
-  const focusedRecoveryChannels = Array.from(new Set([...invalidChannels, ...duplicateChannels]));
+  // Une seule récupération ciblée suffit : elle couvre les contenus manquants, trop courts,
+  // hors sujet, sans CTA, trop proches ou suspects. YouTube est déjà isolé dans son batch.
+  const focusedRecoveryChannels = Array.from(
+    new Set([...strictInvalidChannels, ...duplicateChannels]),
+  ).filter((channel) => channel !== "youtube_shorts");
   if (focusedRecoveryChannels.length) {
     const aiRecovered = await recoverChannelsWithAi({
       channels: focusedRecoveryChannels,
@@ -883,7 +1222,7 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
     aiRecovered.forEach((channel) => recoveredChannels.add(channel));
   }
 
-  invalidChannels = channels.filter(
+  strictInvalidChannels = channels.filter(
     (channel) =>
       !isGeneratedPostAcceptable({
         channel,
@@ -894,50 +1233,64 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
   );
   duplicateChannels = findOverSimilarChannels(channels, safeVersions);
 
-  // Une seconde passe IA ne cible que les doublons persistants. Aucun fallback local n'est injecté.
-  if (duplicateChannels.length) {
-    const aiRecovered = await recoverChannelsWithAi({
-      channels: duplicateChannels,
-      versions: safeVersions,
+  // Dernière reprise dédiée YouTube : prompt court, sortie JSON plate, budget élevé
+  // et seconde tentative sans vision. Cette passe traite les HTTP 200 OpenAI dont
+  // la forme JSON est exploitable mais ne respecte pas l'enveloppe multicanal.
+  if (
+    channels.includes("youtube_shorts") &&
+    !isGeneratedPostAcceptable({
+      channel: "youtube_shorts",
+      post: safeVersions.youtube_shorts,
+      ideaKeywords,
+      languageCode,
+    })
+  ) {
+    const rescuedYoutube = await rescueYoutubeWithDedicatedAi({
       idea: args.idea,
       theme: args.theme,
       style,
       profile: args.profile,
       business: args.business,
-      recentPublications: args.recentPublications,
-      hiddenAngle: args.hiddenAngle,
       imagesForAI: args.imagesForAI,
-      extraInstructions: [
-        args.extraInstructions,
-        `ANTI-DUPLICATION STRICT : les variantes restantes sont encore trop proches. Change l'angle, l'accroche, l'ordre des idées, le vocabulaire et le CTA sans quitter le sujet.`,
-      ].filter(Boolean).join("\n\n"),
-      ideaKeywords,
+      extraInstructions: args.extraInstructions,
       languageCode,
+      ideaKeywords,
     });
-    aiRecovered.forEach((channel) => recoveredChannels.add(channel));
+
+    if (rescuedYoutube) {
+      safeVersions.youtube_shorts = rescuedYoutube;
+      recoveredChannels.add("youtube_shorts");
+    }
   }
 
-  invalidChannels = channels.filter(
+  // IMPORTANT UX : les contrôles "ancrage exact", "CTA présent" et "anti-doublon"
+  // sont des garde-fous de qualité, pas des raisons de jeter une vraie réponse IA.
+  // Après les tentatives de récupération, on accepte un texte IA réellement publiable
+  // même s'il reformule le sujet avec des synonymes, reste un peu plus court que la cible,
+  // oublie le CTA séparé ou ressemble encore partiellement à un autre canal.
+  // En revanche, un texte vide/cassé, dans la mauvaise langue ou contenant des consignes
+  // techniques reste bloqué : jamais de contenu poubelle ni de fallback local visible.
+  const unsafeChannels = channels.filter(
     (channel) =>
-      !isGeneratedPostAcceptable({
+      !isGeneratedPostSafe({
         channel,
         post: safeVersions[channel],
-        ideaKeywords,
         languageCode,
       }),
   );
-  duplicateChannels = findOverSimilarChannels(channels, safeVersions);
 
-  if (invalidChannels.length || duplicateChannels.length) {
-    const failedChannels = Array.from(new Set([...invalidChannels, ...duplicateChannels]));
-    // Choix UX volontaire : mieux vaut signaler un échec IA que montrer ou publier un texte
-    // générique/technique. Ceci vaut aussi pour iNrAgent : pas de publication automatique dégradée.
+  if (unsafeChannels.length) {
     throw new Error(
-      `La génération IA n'a pas produit un contenu suffisamment qualitatif pour ${failedChannels
+      `La génération IA n'a pas pu finaliser un contenu publiable pour ${unsafeChannels
         .map((channel) => CHANNEL_LABELS[channel])
         .join(", ")}. Merci de relancer la génération.`,
     );
   }
+
+  // Ces listes restent volontairement non bloquantes après récupération. Elles servent
+  // uniquement au raisonnement interne ; le contenu retourné vient toujours de l'IA.
+  void strictInvalidChannels;
+  void duplicateChannels;
 
   return {
     versions: safeVersions,

@@ -31,6 +31,26 @@ function normalizeMime(type: string) {
   );
 }
 
+function isFileLike(value: FormDataEntryValue | null | undefined): value is File {
+  if (!value || typeof value === "string") return false;
+  const candidate = value as File;
+  return (
+    typeof candidate.size === "number" &&
+    typeof candidate.type === "string" &&
+    typeof candidate.arrayBuffer === "function"
+  );
+}
+
+function videoTranscriptionSkipped(source: string) {
+  return NextResponse.json({
+    ok: true,
+    text: "",
+    raw_text: "",
+    source,
+    skipped: true,
+  });
+}
+
 function isAllowedAudioFile(file: File) {
   const type = normalizeMime(file.type || "");
   if (!type) return true;
@@ -83,49 +103,70 @@ async function transcribeMedia(
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) throw new Error("Configuration OpenAI manquante.");
 
-  const formData = new FormData();
-  formData.append(
-    "file",
-    file,
-    options?.source === "video"
-      ? sanitizeVideoFileName(file.name || "", file.type || "")
-      : sanitizeAudioFileName(file.name || "", file.type || ""),
-  );
-  formData.append(
-    "model",
-    process.env.OPENAI_TRANSCRIBE_MODEL || "gpt-4o-mini-transcribe",
-  );
-  formData.append("language", "fr");
-  formData.append("response_format", "json");
-  formData.append(
-    "prompt",
-    options?.source === "video"
-      ? "Audio extrait d’une vidéo fournie par un professionnel pour préparer une publication iNrCy. Transcrire uniquement les paroles utiles. Conserver les noms propres, villes, métiers, prestations et informations commerciales."
-      : "Vocal court dicté par un professionnel pour préparer une publication iNrCy. Conserver les noms propres, villes, métiers, prestations et informations commerciales.",
-  );
+  const primaryModel =
+    process.env.OPENAI_TRANSCRIBE_MODEL || "gpt-4o-mini-transcribe";
+  const models = Array.from(new Set([primaryModel, "whisper-1"]));
+  const errors: string[] = [];
 
-  const response = await fetchWithRetry(
-    "https://api.openai.com/v1/audio/transcriptions",
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: formData,
-      retries: 1,
-      timeoutMs: 45_000,
-    },
-  );
-
-  if (!response.ok) {
-    const errorText = await response.text().catch(() => "");
-    throw new Error(
-      `OpenAI transcription error (${response.status}): ${errorText || response.statusText}`,
+  for (const model of models) {
+    const formData = new FormData();
+    formData.append(
+      "file",
+      file,
+      options?.source === "video"
+        ? sanitizeVideoFileName(file.name || "", file.type || "")
+        : sanitizeAudioFileName(file.name || "", file.type || ""),
     );
+    formData.append("model", model);
+    formData.append("language", "fr");
+    formData.append("response_format", "json");
+    formData.append(
+      "prompt",
+      options?.source === "video"
+        ? "Audio extrait d’une vidéo fournie par un professionnel pour préparer une publication iNrCy. Transcrire uniquement les paroles utiles. Conserver les noms propres, villes, métiers, prestations et informations commerciales."
+        : "Vocal court dicté par un professionnel pour préparer une publication iNrCy. Conserver les noms propres, villes, métiers, prestations et informations commerciales.",
+    );
+
+    try {
+      const response = await fetchWithRetry(
+        "https://api.openai.com/v1/audio/transcriptions",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: formData,
+          retries: 1,
+          timeoutMs: 55_000,
+        },
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "");
+        errors.push(
+          `${model}: ${response.status} ${errorText || response.statusText}`.trim(),
+        );
+        // Une erreur d'authentification/configuration ne sera pas corrigée par un autre modèle.
+        if (response.status === 401 || response.status === 403) break;
+        continue;
+      }
+
+      const json = (await response.json().catch(() => ({}))) as {
+        text?: string;
+      };
+      const text = cleanTranscriptText(json.text);
+      if (text) return text;
+      errors.push(`${model}: transcription vide`);
+    } catch (error) {
+      errors.push(
+        `${model}: ${error instanceof Error ? error.message : "échec de transcription"}`,
+      );
+    }
   }
 
-  const json = (await response.json().catch(() => ({}))) as { text?: string };
-  return cleanTranscriptText(json.text);
+  throw new Error(
+    `OpenAI transcription indisponible : ${errors.filter(Boolean).join(" | ") || "aucun résultat"}`,
+  );
 }
 
 async function correctTranscript(rawTranscript: string) {
@@ -198,48 +239,58 @@ const handler = async (request: Request) => {
       });
     }
 
-    if (video instanceof File) {
+    if (isFileLike(video)) {
+      // La transcription vidéo n'est qu'un enrichissement IA. Un fichier sans piste
+      // audio, trop petit pour l'analyse ou dans un conteneur non reconnu ne doit
+      // jamais produire un 400/415 visible ni bloquer la génération YouTube.
       if (video.size < MIN_AUDIO_BYTES) {
-        return jsonUserFacingError("La vidéo est trop courte ou vide.", {
-          status: 400,
-          code: "video_too_short",
-        });
+        return videoTranscriptionSkipped("video_too_short_skipped");
       }
 
       if (video.size > MAX_VIDEO_TRANSCRIBE_BYTES) {
-        return jsonUserFacingError(
-          "La vidéo est trop lourde pour l’analyse audio. Taille maximale : 40 Mo.",
-          {
-            status: 413,
-            code: "video_too_large",
-          },
-        );
+        return videoTranscriptionSkipped("video_too_large_skipped");
       }
 
       if (!isAllowedVideoFile(video)) {
-        return jsonUserFacingError(
-          "Format vidéo non supporté pour l’analyse audio. Formats acceptés : MP4/M4V, MOV ou WebM.",
-          { status: 415, code: "video_unsupported" },
-        );
+        return videoTranscriptionSkipped("video_unsupported_skipped");
       }
 
-      const transcript = await transcribeMedia(video, { source: "video" });
+      // L'analyse audio d'une vidéo est un bonus de contexte pour l'IA, jamais un
+      // prérequis de génération. Si OpenAI transcription est momentanément indisponible,
+      // on laisse Booster continuer avec la phrase libre + les frames vidéo au lieu de
+      // remonter un 502 visible dans la console et de dégrader l'expérience client.
+      let transcript = "";
+      try {
+        transcript = await transcribeMedia(video, { source: "video" });
+      } catch {
+        return NextResponse.json({
+          ok: true,
+          text: "",
+          raw_text: "",
+          source: "video_audio_unavailable",
+          skipped: true,
+        });
+      }
+
       if (!transcript) {
-        return jsonUserFacingError(
-          "Aucune parole exploitable n’a été détectée dans la vidéo.",
-          { status: 422, code: "empty_video_transcript" },
-        );
+        return NextResponse.json({
+          ok: true,
+          text: "",
+          raw_text: "",
+          source: "video_audio_empty",
+          skipped: true,
+        });
       }
 
       const correctedText = await correctTranscript(transcript);
       if (!correctedText) {
-        return jsonUserFacingError(
-          "L’audio de la vidéo n’a pas pu être converti en texte.",
-          {
-            status: 502,
-            code: "video_transcription_empty_after_cleanup",
-          },
-        );
+        return NextResponse.json({
+          ok: true,
+          text: transcript,
+          raw_text: transcript,
+          source: "video_audio_raw",
+          skipped_cleanup: true,
+        });
       }
 
       return NextResponse.json({
@@ -250,7 +301,11 @@ const handler = async (request: Request) => {
       });
     }
 
-    if (!(audio instanceof File)) {
+    if (video !== null && video !== undefined) {
+      return videoTranscriptionSkipped("video_payload_unavailable_skipped");
+    }
+
+    if (!isFileLike(audio)) {
       return jsonUserFacingError("Fichier audio manquant.", {
         status: 400,
         code: "audio_missing",

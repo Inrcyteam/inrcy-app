@@ -1,9 +1,29 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { login } from './helpers/auth';
 import { attachRuntimeErrorTracking } from './helpers/runtime';
 
 const email = process.env.E2E_EMAIL;
 const password = process.env.E2E_PASSWORD;
+
+async function expectSettingsPanelUrl(page: Page, panel: string) {
+  await expect
+    .poll(
+      () => {
+        const url = new URL(page.url());
+        return {
+          pathname: url.pathname,
+          panel: url.searchParams.get('panel'),
+          panelSource: url.searchParams.get('panelSource'),
+        };
+      },
+      { timeout: 30_000 },
+    )
+    .toEqual({
+      pathname: '/dashboard',
+      panel,
+      panelSource: 'settings',
+    });
+}
 
 test.describe('settings pages', () => {
   test.skip(!email || !password, 'E2E_EMAIL et E2E_PASSWORD sont requis');
@@ -14,7 +34,7 @@ test.describe('settings pages', () => {
     await login(page);
     await page.goto('/dashboard/settings/profil', { waitUntil: 'domcontentloaded' });
 
-    await expect(page).toHaveURL(/\/dashboard\/settings\/profil/, { timeout: 30_000 });
+    await expectSettingsPanelUrl(page, 'profil');
     await expect(page.getByText(/Mon profil/i).first()).toBeVisible({ timeout: 20_000 });
 
     await runtime.expectNoErrors();
@@ -26,7 +46,7 @@ test.describe('settings pages', () => {
     await login(page);
     await page.goto('/dashboard/settings/contact', { waitUntil: 'domcontentloaded' });
 
-    await expect(page).toHaveURL(/\/dashboard\/settings\/contact/, { timeout: 30_000 });
+    await expectSettingsPanelUrl(page, 'contact');
     await expect(page.getByText(/Nous contacter/i).first()).toBeVisible({ timeout: 20_000 });
 
     await runtime.expectNoErrors();
@@ -38,7 +58,7 @@ test.describe('settings pages', () => {
     await login(page);
     await page.goto('/dashboard/settings/activite', { waitUntil: 'domcontentloaded' });
 
-    await expect(page).toHaveURL(/\/dashboard\/settings\/activite/, { timeout: 30_000 });
+    await expectSettingsPanelUrl(page, 'activite');
     await expect(page.getByText(/Mon activité/i).first()).toBeVisible({ timeout: 20_000 });
 
     await runtime.expectNoErrors();
@@ -50,7 +70,7 @@ test.describe('settings pages', () => {
     await login(page);
     await page.goto('/dashboard/settings/abonnement', { waitUntil: 'domcontentloaded' });
 
-    await expect(page).toHaveURL(/\/dashboard\/settings\/abonnement/, { timeout: 30_000 });
+    await expectSettingsPanelUrl(page, 'abonnement');
     await expect(page.getByText(/Mon abonnement/i).first()).toBeVisible({ timeout: 20_000 });
 
     await runtime.expectNoErrors();
