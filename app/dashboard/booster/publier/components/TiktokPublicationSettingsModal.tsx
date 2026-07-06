@@ -278,6 +278,8 @@ export default function TiktokPublicationSettingsModal({
   const caption = trimText(previewContent || previewTitle || "Publication iNrCy", 420);
 
   const sectionCardStyle = {
+    minWidth: 0,
+    boxSizing: "border-box",
     borderRadius: 16,
     padding: isMobile ? 14 : 12,
     background: "linear-gradient(135deg, rgba(15,23,42,0.92), rgba(30,41,59,0.56))",
@@ -287,6 +289,8 @@ export default function TiktokPublicationSettingsModal({
 
   const fieldStyle = {
     width: "100%",
+    minWidth: 0,
+    boxSizing: "border-box",
     borderRadius: 12,
     border: "1px solid rgba(148,163,184,0.28)",
     background: "rgba(15,23,42,0.96)",
@@ -310,29 +314,47 @@ export default function TiktokPublicationSettingsModal({
         zIndex: 10013,
         background: "rgba(4, 8, 18, 0.78)",
         backdropFilter: "blur(8px)",
-        display: "grid",
-        placeItems: "center",
+        display: "flex",
+        alignItems: "flex-start",
+        justifyContent: "center",
         padding: isMobile ? 10 : 18,
         overflowY: "auto",
         overscrollBehavior: "contain",
+        WebkitOverflowScrolling: "touch",
       }}
     >
       <div
         className={styles.blockCard}
         style={{
           width: isMobile ? "min(100%, 720px)" : "min(1110px, calc(100vw - 36px))",
-          maxHeight: isMobile ? "calc(100vh - 20px)" : "min(900px, calc(100vh - 28px))",
-          overflowY: isMobile ? "auto" : "visible",
-          display: "grid",
-          gap: isMobile ? 12 : 10,
+          minWidth: 0,
+          boxSizing: "border-box",
+          overflow: "hidden",
+          display: "flex",
+          flexDirection: "column",
+          gap: 0,
+          marginBlock: "auto",
+          padding: 0,
+          borderRadius: isMobile ? 18 : 22,
           background: "#111827",
           backgroundImage: "none",
-          border: "1px solid rgba(148, 163, 184, 0.28)",
-          boxShadow: "0 30px 90px rgba(0,0,0,0.62)",
+          border: "1px solid rgba(148, 163, 184, 0.34)",
+          boxShadow: "0 30px 90px rgba(0,0,0,0.62), inset 0 1px 0 rgba(255,255,255,0.035)",
           backdropFilter: "none",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 0 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            minWidth: 0,
+            flexShrink: 0,
+            padding: isMobile ? "14px 14px 12px" : "16px 18px 14px",
+            borderBottom: "1px solid rgba(148,163,184,0.16)",
+            background: "linear-gradient(180deg, rgba(30,41,59,0.78), rgba(17,24,39,0.96))",
+          }}
+        >
           <div style={{ fontSize: 28, lineHeight: 1, flex: "0 0 auto" }}>🎵</div>
           <div style={{ display: "grid", gap: 2, minWidth: 0 }}>
             <div className={styles.blockTitle} style={{ marginBottom: 0, lineHeight: 1.08 }}>
@@ -344,7 +366,16 @@ export default function TiktokPublicationSettingsModal({
           </div>
         </div>
 
-        {loading ? <TiktokSettingsLoader /> : null}
+        <div
+          style={{
+            display: "grid",
+            gap: isMobile ? 12 : 10,
+            minWidth: 0,
+            padding: isMobile ? 12 : 14,
+            background: "#111827",
+          }}
+        >
+          {loading ? <TiktokSettingsLoader /> : null}
 
         {error ? (
           <div
@@ -414,7 +445,7 @@ export default function TiktokPublicationSettingsModal({
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: isMobile ? "1fr" : "200px 1fr",
+                  gridTemplateColumns: isMobile ? "minmax(0, 1fr)" : "200px minmax(0, 1fr)",
                   gap: isMobile ? 14 : 14,
                   alignItems: "center",
                   paddingLeft: isMobile ? 0 : 34,
@@ -497,7 +528,7 @@ export default function TiktokPublicationSettingsModal({
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+                gridTemplateColumns: isMobile ? "minmax(0, 1fr)" : "repeat(2, minmax(0, 1fr))",
                 gap: isMobile ? 14 : 12,
                 alignItems: "stretch",
               }}
@@ -679,13 +710,41 @@ export default function TiktokPublicationSettingsModal({
           </>
         ) : null}
 
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 12, flexWrap: "wrap", position: isMobile ? "sticky" : "static", bottom: -1, paddingTop: isMobile ? 6 : 2, background: "#111827" }}>
-          <button type="button" className={styles.secondaryBtn} onClick={onCancel}>Retour modifier</button>
+        </div>
+
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: isMobile ? "minmax(0, 1fr)" : "auto auto",
+            justifyContent: isMobile ? "stretch" : "end",
+            gap: isMobile ? 10 : 12,
+            minWidth: 0,
+            flexShrink: 0,
+            padding: isMobile
+              ? "12px 12px max(12px, env(safe-area-inset-bottom))"
+              : "12px 14px 14px",
+            borderTop: "1px solid rgba(148,163,184,0.18)",
+            background: "linear-gradient(180deg, rgba(17,24,39,0.98), rgba(15,23,42,1))",
+            boxShadow: "0 -12px 28px rgba(2,6,23,0.18)",
+          }}
+        >
+          <button
+            type="button"
+            className={styles.secondaryBtn}
+            onClick={onCancel}
+            style={{ width: isMobile ? "100%" : undefined, minHeight: 42 }}
+          >
+            Retour modifier
+          </button>
           <button
             type="button"
             className={styles.primaryBtn}
             disabled={!canValidate || loading}
-            style={{ opacity: !canValidate || loading ? 0.58 : 1 }}
+            style={{
+              width: isMobile ? "100%" : undefined,
+              minHeight: 42,
+              opacity: !canValidate || loading ? 0.58 : 1,
+            }}
             onClick={() => {
               if (!canValidate || !commercialContent) return;
               onValidate({
