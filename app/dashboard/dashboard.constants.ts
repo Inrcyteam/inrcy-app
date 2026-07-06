@@ -256,7 +256,6 @@ export const DRAWER_TITLES = {
   tiktok: "Configuration — TikTok",
   youtube_shorts: "Configuration — YouTube",
   pinterest: "Configuration — Pinterest",
-  inr_agent: "Configuration — iNr'Agent",
   inertie: "Mon inertie",
   boutique: "Boutique",
   parrainage: "Parrainer avec iNrCy",

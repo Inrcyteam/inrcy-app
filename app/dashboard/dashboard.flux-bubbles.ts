@@ -24,6 +24,7 @@ type BuildFluxBubbleItemsArgs = {
   inrBadgeLogoUrl?: string | null;
   inrBadgeProfileReady: boolean;
   onOpenInrBadgeModal: () => void;
+  onOpenInrAgent: () => void;
   linkedinConnected: boolean;
   linkedinUrl: string | null | undefined;
   mailAccountsConnectedCount: number;
@@ -60,6 +61,7 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
     inrBadgeLogoUrl,
     inrBadgeProfileReady,
     onOpenInrBadgeModal,
+    onOpenInrAgent,
     linkedinConnected,
     linkedinUrl,
     mailAccountsConnectedCount,
@@ -217,7 +219,7 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
         return;
       }
       if (m.key === "inr_agent") {
-        openPanel("inr_agent");
+        onOpenInrAgent();
         return;
       }
       if (m.key === "inrbadge") {
@@ -255,7 +257,11 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
         : m.key === "site_inrcy" && !canConfigureSite
           ? moduleCopy?.siteOnlyTitle || copy.bubble.disabled
           : undefined,
-      configureLabel: m.key === "site_inrcy" || m.key === "site_web" ? copy.bubble.configure : moduleCopy?.connect || copy.bubble.configure,
+      configureLabel: m.key === "inr_agent"
+        ? moduleCopy?.view || "Ouvrir"
+        : m.key === "site_inrcy" || m.key === "site_web"
+          ? copy.bubble.configure
+          : moduleCopy?.connect || copy.bubble.configure,
       viewFallbackLabel: copy.bubble.viewFallback,
     };
   });

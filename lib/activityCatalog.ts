@@ -96,6 +96,7 @@ export const ACTIVITY_CATALOG: Record<ActivitySectorCategory, SectorCatalog> = {
     jobs: {
       carrosserie: { label: 'Carrosserie', services: ['Débosselage', 'Peinture carrosserie', 'Réparation choc', 'Pare-chocs', 'Remplacement éléments', 'Lustrage', 'Rénovation optiques', 'Véhicule de courtoisie'] },
       centre_auto: { label: 'Centre auto', services: ['Pneus', 'Parallélisme', 'Batterie', 'Freins', 'Vidange', 'Balais essuie-glace', 'Climatisation', 'Diagnostic rapide'] },
+      concession: { label: 'Concession', services: ['Véhicules neufs', 'Véhicules d’occasion', 'Reprise de véhicule', 'Financement', 'LOA / LLD', 'Essai véhicule', 'Entretien & SAV', 'Accessoires & options'] },
       controle_technique: { label: 'Contrôle technique', services: ['Contrôle périodique', 'Contre-visite', 'Contrôle pollution', 'Véhicule utilitaire', 'Véhicule particulier', 'Rendez-vous rapide', 'Rappel échéance', 'Informations contrôle'] },
       depannage_auto: { label: 'Dépannage auto', services: ['Remorquage', 'Batterie', 'Panne démarrage', 'Crevaison', 'Ouverture véhicule', 'Assistance route', 'Diagnostic sur place', 'Intervention urgence'] },
       garage_auto: { label: 'Garage auto', services: ['Révision', 'Vidange', 'Freinage', 'Diagnostic panne', 'Distribution', 'Embrayage', 'Pré-contrôle technique', 'Entretien courant'] },

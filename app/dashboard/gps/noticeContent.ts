@@ -129,7 +129,6 @@ export const GPS_SECTIONS: GpsSection[] = [
         ],
         links: [
           { label: "Ouvrir iNr'Agent", href: "/dashboard/agent" },
-          { label: "Configurer iNr'Agent", href: "/dashboard?panel=inr_agent&panelSource=gps" },
         ],
       },
     ],
@@ -478,7 +477,6 @@ export const GPS_SECTIONS: GpsSection[] = [
         links: [
           { label: "Créer un devis", href: "/dashboard/devis/new" },
           { label: "Créer une facture", href: "/dashboard/factures/new" },
-          { label: "Voir mes documents", href: "/dashboard?panel=documents&panelSource=gps" },
           { label: "Réglages", href: "/dashboard?panel=documents&panelSource=gps" },
         ],
       },

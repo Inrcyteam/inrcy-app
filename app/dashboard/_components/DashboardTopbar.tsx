@@ -32,7 +32,6 @@ type DashboardPanelName =
   | "tiktok"
   | "youtube_shorts"
   | "pinterest"
-  | "inr_agent"
   | "legal"
   | "rgpd"
   | "inertie"
