@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { confirmInrcy, type InrcyDialogVariant } from "@/lib/inrcyDialog";
+import { useDashboardUnsavedNavigation } from "../_components/DashboardUnsavedNavigationProvider";
 
 type UseUnsavedExitGuardOptions = {
   active: boolean;
@@ -36,6 +37,7 @@ export function useUnsavedExitGuard({
   cancelLabel = DEFAULT_CANCEL_LABEL,
   variant = "warning",
 }: UseUnsavedExitGuardOptions) {
+  const { registerGuard } = useDashboardUnsavedNavigation();
   const onConfirmExitRef = useRef(onConfirmExit);
   const shouldBlockRef = useRef(shouldBlock);
   const confirmingRef = useRef(false);
@@ -76,6 +78,15 @@ export function useUnsavedExitGuard({
       confirmingRef.current = false;
     }
   }, [cancelLabel, confirmLabel, eyebrow, message, title, variant]);
+
+  useEffect(() => {
+    if (!active) return;
+    return registerGuard({
+      id: guardIdRef.current,
+      shouldBlock: () => shouldBlockRef.current,
+      confirmExit,
+    });
+  }, [active, confirmExit, registerGuard]);
 
   useEffect(() => {
     if (!active || typeof window === "undefined") return;

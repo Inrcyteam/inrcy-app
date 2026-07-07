@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useDashboardUnsavedNavigation } from "../_components/DashboardUnsavedNavigationProvider";
 
 export type DashboardPanelName =
   | "contact"
@@ -43,23 +44,26 @@ function rememberDashboardScroll() {
 export function useDashboardPanelRouting() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { requestNavigation } = useDashboardUnsavedNavigation();
   const panel = searchParams.get("panel");
 
   const openPanel = useCallback(
     (name: DashboardPanelName) => {
-      const params = new URLSearchParams(searchParams.toString());
-      params.set("panel", name);
-      // ✅ Marqueur: panneau ouvert volontairement par l'utilisateur.
-      // Sert à éviter l'ouverture automatique en boucle lors d'un refresh/connexion.
-      try {
-        sessionStorage.setItem("inrcy_panel_explicit_open", "1");
-        sessionStorage.setItem("inrcy_last_panel", name);
-      } catch {}
-      // ✅ En mobile, on garde la position de scroll (pas de jump en haut)
-      rememberDashboardScroll();
-      router.push(`/dashboard?${params.toString()}`, { scroll: false });
+      void requestNavigation(() => {
+        const params = new URLSearchParams(searchParams.toString());
+        params.set("panel", name);
+        // ✅ Marqueur: panneau ouvert volontairement par l'utilisateur.
+        // Sert à éviter l'ouverture automatique en boucle lors d'un refresh/connexion.
+        try {
+          sessionStorage.setItem("inrcy_panel_explicit_open", "1");
+          sessionStorage.setItem("inrcy_last_panel", name);
+        } catch {}
+        // ✅ En mobile, on garde la position de scroll (pas de jump en haut)
+        rememberDashboardScroll();
+        router.push(`/dashboard?${params.toString()}`, { scroll: false });
+      });
     },
-    [router, searchParams]
+    [requestNavigation, router, searchParams]
   );
 
   const closePanel = useCallback(() => {
@@ -100,12 +104,14 @@ export function useDashboardPanelRouting() {
   // Preserve dashboard scroll position when leaving the dashboard (vers un module)
   const goToModule = useCallback(
     (path: string) => {
-      rememberDashboardScroll();
-      // IMPORTANT: en allant dans un module, on VEUT arriver en haut de page.
-      // On ne désactive donc PAS le scroll automatique de Next ici.
-      router.push(path);
+      void requestNavigation(() => {
+        rememberDashboardScroll();
+        // IMPORTANT: en allant dans un module, on VEUT arriver en haut de page.
+        // On ne désactive donc PAS le scroll automatique de Next ici.
+        router.push(path);
+      });
     },
-    [router]
+    [requestNavigation, router]
   );
 
   useEffect(() => {

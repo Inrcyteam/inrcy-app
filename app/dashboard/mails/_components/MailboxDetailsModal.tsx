@@ -35,6 +35,7 @@ import {
 } from "@/app/dashboard/booster/publier/publishModal.shared";
 import { darkOptionStyle, darkSelectStyle, lightFieldStyle, textAreaStyle } from "@/app/dashboard/booster/publier/publishModal.styles";
 import { confirmInrcy } from "@/lib/inrcyDialog";
+import { useUnsavedExitGuard } from "@/app/dashboard/_hooks/useUnsavedExitGuard";
 import { getUserFacingMailError } from "@/lib/mailDeliveryErrors";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import {
@@ -643,6 +644,24 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
     setDetailsEditMode(false);
     onClose();
   }, [confirmDiscardPublicationEdit, onClose, setDetailsEditMode]);
+
+  const closePublicationEditForNavigation = React.useCallback(() => {
+    setPublicationEditDirty(false);
+    setDetailsEditMode(false);
+    onClose();
+  }, [onClose, setDetailsEditMode]);
+
+  useUnsavedExitGuard({
+    active: open && detailsEditMode,
+    shouldBlock: open && detailsEditMode && publicationEditDirty,
+    onConfirmExit: closePublicationEditForNavigation,
+    eyebrow: "Modification en cours",
+    title: "Quitter la modification ?",
+    message: "Vos changements ne seront pas enregistrés.",
+    cancelLabel: "Continuer l’édition",
+    confirmLabel: "Quitter",
+    variant: "danger",
+  });
 
   const requestChannelChange = React.useCallback(async (channelKey: string) => {
     if (!channelKey || channelKey === activePublicationEditChannelKey) return;

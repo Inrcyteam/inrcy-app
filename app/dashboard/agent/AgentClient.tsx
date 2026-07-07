@@ -27,6 +27,7 @@ import {
 } from "@/lib/mediaRules";
 import { makeAttachmentPath } from "@/app/dashboard/mails/_lib/mailboxPhase25";
 import HelpButton from "../_components/HelpButton";
+import { useUnsavedExitGuard } from "../_hooks/useUnsavedExitGuard";
 import PublishExecutionProgress from "../_components/PublishExecutionProgress";
 import PublishExecutionResultModal from "../_components/PublishExecutionResultModal";
 import CampaignScheduleModal from "../_components/CampaignScheduleModal";
@@ -4374,16 +4375,6 @@ export default function AgentClient() {
     refreshScheduledActions(true);
   }, []);
 
-  useEffect(() => {
-    if (!scheduledEditSession?.dirty) return;
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = "";
-    };
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
-  }, [scheduledEditSession?.dirty]);
-
   const pendingActionsByAutomation = useMemo(() => {
     return actions.reduce<Record<AutomationKey, number>>(
       (acc, action) => {
@@ -7069,6 +7060,20 @@ export default function AgentClient() {
     restorePreviousState();
     return true;
   }
+
+  useUnsavedExitGuard({
+    active: Boolean(scheduledEditSession),
+    shouldBlock: scheduledEditDirty,
+    onConfirmExit: () => {
+      exitScheduledEditSession({ silent: true, force: true });
+    },
+    eyebrow: "Édition iNrAgent",
+    title: "Continuer sans sauvegarder ?",
+    message: "Les modifications en cours seront perdues. L’action programmée restera inchangée.",
+    confirmLabel: "Continuer",
+    cancelLabel: "Annuler",
+    variant: "danger",
+  });
 
   function openScheduledActionEditor(actionId: string | null | undefined) {
     if (!actionId) return;

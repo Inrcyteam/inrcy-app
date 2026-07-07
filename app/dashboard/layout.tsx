@@ -14,6 +14,7 @@ import { ensureProfileRow } from "@/lib/ensureProfileRow";
 import { resolveInrcyAccountScopeForUser } from "@/lib/multicompte/server";
 import ActiveAccountTabSync from "./_components/ActiveAccountTabSync";
 import ResponsiveBottomNav from "./_components/ResponsiveBottomNav";
+import DashboardUnsavedNavigationProvider from "./_components/DashboardUnsavedNavigationProvider";
 
 
 type SubscriptionGateRow = {
@@ -126,10 +127,12 @@ export default async function DashboardLayout({
       <ProfileRealtimeBridge />
       <LastActiveTracker />
 
-      <div className={styles.mobileViewport}>
-        {children}
-      </div>
-      <ResponsiveBottomNav />
+      <DashboardUnsavedNavigationProvider>
+        <div className={styles.mobileViewport}>
+          {children}
+        </div>
+        <ResponsiveBottomNav />
+      </DashboardUnsavedNavigationProvider>
     </div>
   );
 }

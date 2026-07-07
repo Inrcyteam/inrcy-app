@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import styles from "./ResponsiveBottomNav.module.css";
 import { useDashboardCompletionChecks } from "../_hooks/useDashboardCompletionChecks";
 import { useDashboardI18n } from "../_hooks/useDashboardI18n";
 import { createClient } from "@/lib/supabaseClient";
 import { setActiveBrowserUserId } from "@/lib/browserAccountCache";
+import { useDashboardUnsavedNavigation } from "./DashboardUnsavedNavigationProvider";
 
 type DashboardPanelName =
   | "contact"
@@ -56,6 +57,8 @@ function compactLabels(locale: string) {
 function ResponsiveBottomNavMobile() {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const { requestNavigation } = useDashboardUnsavedNavigation();
   const t = useDashboardI18n();
   const labels = useMemo(() => compactLabels(t.locale), [t.locale]);
   const { profileIncomplete, activityIncomplete } = useDashboardCompletionChecks();
@@ -187,30 +190,36 @@ function ResponsiveBottomNavMobile() {
   }, [hidden]);
 
   const navigate = useCallback((href: string) => {
-    setMenuOpen(false);
-    router.push(href);
-  }, [router]);
+    void requestNavigation(() => {
+      setMenuOpen(false);
+      router.push(href);
+    });
+  }, [requestNavigation, router]);
 
   const openDashboardPanel = useCallback((panel: DashboardPanelName) => {
-    try {
-      sessionStorage.setItem("inrcy_panel_explicit_open", "1");
-      sessionStorage.setItem("inrcy_last_panel", panel);
-    } catch {}
-    setMenuOpen(false);
-    router.push(`/dashboard?panel=${encodeURIComponent(panel)}`, { scroll: false });
-  }, [router]);
+    void requestNavigation(() => {
+      try {
+        sessionStorage.setItem("inrcy_panel_explicit_open", "1");
+        sessionStorage.setItem("inrcy_last_panel", panel);
+      } catch {}
+      setMenuOpen(false);
+      router.push(`/dashboard?panel=${encodeURIComponent(panel)}`, { scroll: false });
+    });
+  }, [requestNavigation, router]);
 
   const handleLogout = useCallback(async () => {
-    const supabase = createClient();
-    setActiveBrowserUserId(null);
-    const { error } = await (supabase.auth.signOut as any)({ scope: "local" })
-      .catch(() => ({ error: null as { message?: string } | null }));
-    if (error) {
-      console.error("Erreur déconnexion:", error.message);
-      return;
-    }
-    window.location.replace("/login");
-  }, []);
+    await requestNavigation(async () => {
+      const supabase = createClient();
+      setActiveBrowserUserId(null);
+      const { error } = await (supabase.auth.signOut as any)({ scope: "local" })
+        .catch(() => ({ error: null as { message?: string } | null }));
+      if (error) {
+        console.error("Erreur déconnexion:", error.message);
+        return;
+      }
+      window.location.replace("/login");
+    });
+  }, [requestNavigation]);
 
   const pendingLabel = pendingInrAgentCount > 99 ? "99+" : String(pendingInrAgentCount);
   const homeActive = pathname === "/dashboard";
@@ -315,7 +324,10 @@ function ResponsiveBottomNavMobile() {
             type="button"
             className={styles.publishItem}
             aria-label={labels.publish}
-            onClick={() => navigate("/dashboard?action=publish")}
+            onClick={() => {
+              if (pathname === "/dashboard" && searchParams.get("action") === "publish") return;
+              navigate("/dashboard?action=publish");
+            }}
           >
             <span className={styles.publishButton}>{labels.publish}</span>
           </button>

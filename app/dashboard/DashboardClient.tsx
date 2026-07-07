@@ -8,6 +8,7 @@ import HelpButton from "./_components/HelpButton";
 import DashboardHelpModals from "./_components/DashboardHelpModals";
 import DashboardHero from "./_components/DashboardHero";
 import DashboardTopbar from "./_components/DashboardTopbar";
+import { useDashboardUnsavedNavigation } from "./_components/DashboardUnsavedNavigationProvider";
 import DashboardChannelsSection from "./_components/DashboardChannelsSection";
 import DashboardBoosterModalLayer from "./_components/DashboardBoosterModalLayer";
 import DashboardSettingsDrawerContent from "./_components/DashboardSettingsDrawerContent";
@@ -306,23 +307,26 @@ export default function DashboardClient({ isAdmin = false }: DashboardClientProp
   const [displayedSiteBubbleProgress, setDisplayedSiteBubbleProgress] = useState<SiteBubbleProgressCache>(() => readCachedSiteBubbleProgress());
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { requestNavigation } = useDashboardUnsavedNavigation();
   const { language: dashboardLanguage } = useDashboardLanguage();
   const dashboardCopy = useMemo(() => getDashboardTranslations(dashboardLanguage), [dashboardLanguage]);
   const { panel, openPanel, closePanel, goToModule } = useDashboardPanelRouting();
 
   const openStatsModule = useCallback(() => {
-    try {
-      sessionStorage.setItem("inrcy_dashboard_scrollY", String(window.scrollY ?? 0));
-    } catch {}
+    void requestNavigation(() => {
+      try {
+        sessionStorage.setItem("inrcy_dashboard_scrollY", String(window.scrollY ?? 0));
+      } catch {}
 
-    router.push("/dashboard/stats");
+      router.push("/dashboard/stats");
 
-    window.setTimeout(() => {
-      if (window.location.pathname !== "/dashboard/stats") {
-        window.location.assign("/dashboard/stats");
-      }
-    }, 120);
-  }, [router]);
+      window.setTimeout(() => {
+        if (window.location.pathname !== "/dashboard/stats") {
+          window.location.assign("/dashboard/stats");
+        }
+      }, 120);
+    });
+  }, [requestNavigation, router]);
 
   useEffect(() => {
     const action = searchParams.get("action");
@@ -3194,11 +3198,13 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         markNotificationRead={markNotificationRead}
         deleteNotification={deleteNotification}
         onNavigateCta={(ctaUrl) => {
-          if (ctaUrl.startsWith('/')) {
-            router.push(ctaUrl);
-          } else {
-            window.location.href = ctaUrl;
-          }
+          void requestNavigation(() => {
+            if (ctaUrl.startsWith('/')) {
+              router.push(ctaUrl);
+            } else {
+              window.location.href = ctaUrl;
+            }
+          });
         }}
         openPanel={openPanel}
         inrAgentEnabled={canAccessInrAgent}
@@ -3209,8 +3215,10 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         activityIncomplete={activityIncomplete}
         userMenuOpen={userMenuOpen}
         setUserMenuOpen={setUserMenuOpen}
-        goToGps={() => router.push("/dashboard/gps")}
-        handleLogout={handleLogout}
+        goToGps={() => {
+          void requestNavigation(() => router.push("/dashboard/gps"));
+        }}
+        handleLogout={async () => { await requestNavigation(handleLogout); }}
       />
 
       <DashboardHero
