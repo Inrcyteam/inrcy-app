@@ -2306,6 +2306,23 @@
 .footerRight {
 }
 
+/*
+  Android mobile: certains navigateurs / modes de navigation système ne
+  remontent pas d'inset bas exploitable via env(safe-area-inset-bottom).
+  Le dock visuel étant fixé au viewport, on garde une petite queue de scroll
+  uniquement après le footer du dashboard afin que « © 2026 iNrCy » puisse
+  toujours remonter entièrement au-dessus du dock / chrome système.
+  iOS est volontairement exclu : son rendu est déjà correct et sa safe-area
+  est correctement exposée par WebKit.
+*/
+@media (max-width: 560px) and (hover: none) and (pointer: coarse) {
+  @supports not (-webkit-touch-callout: none) {
+    .footer {
+      padding-bottom: 24px;
+    }
+  }
+}
+
 /* responsive */
 @media (max-width: 1080px) {
   .hero {
