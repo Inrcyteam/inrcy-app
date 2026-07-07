@@ -4,6 +4,12 @@
 
 @media (max-width: 560px) {
   .root {
+    /*
+      Architecture hybride : ce bloc conserve physiquement la place du dock
+      dans le layout, tandis que .bar est réellement fixé au viewport.
+      Ainsi le contenu ne passe jamais sous le dock et le dock reste visible
+      même quand le viewport mobile réel diffère de 100dvh (Android/iOS).
+    */
     position: relative;
     z-index: 120;
     display: block;
@@ -21,24 +27,28 @@
   }
 
   .bar {
-    position: relative;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 120;
     width: 100%;
     height: calc(var(--inrcy-mobile-bottom-nav-height, 50px) + env(safe-area-inset-bottom));
     display: grid;
     grid-template-columns:
-      minmax(40px, 1fr)
-      minmax(40px, 1fr)
+      42px
+      42px
       minmax(104px, 118px)
-      minmax(40px, 1fr)
-      minmax(40px, 1fr);
+      42px
+      42px;
     align-items: center;
-    justify-content: stretch;
-    gap: 5px;
+    justify-content: center;
+    gap: clamp(5px, 1.8vw, 8px);
     padding:
       4px
-      max(8px, env(safe-area-inset-right))
+      max(14px, env(safe-area-inset-right))
       calc(4px + env(safe-area-inset-bottom))
-      max(8px, env(safe-area-inset-left));
+      max(14px, env(safe-area-inset-left));
     box-sizing: border-box;
     border-top: 1px solid rgba(255, 255, 255, 0.15);
     background:
@@ -321,14 +331,14 @@
 @media (max-width: 340px) {
   .bar {
     grid-template-columns:
-      minmax(37px, 1fr)
-      minmax(37px, 1fr)
-      minmax(94px, 108px)
-      minmax(37px, 1fr)
-      minmax(37px, 1fr);
-    gap: 3px;
-    padding-left: max(5px, env(safe-area-inset-left));
-    padding-right: max(5px, env(safe-area-inset-right));
+      39px
+      39px
+      minmax(94px, 106px)
+      39px
+      39px;
+    gap: 4px;
+    padding-left: max(12px, env(safe-area-inset-left));
+    padding-right: max(12px, env(safe-area-inset-right));
   }
 
   .item {
