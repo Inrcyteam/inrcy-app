@@ -41,17 +41,29 @@ export default function PublishFooterActions({
             publishProgressLabel={publishProgressLabel}
           />
         ) : (
-          <div style={{display:'flex',gap:10,flexWrap:'wrap',justifyContent:'flex-end',marginLeft:'auto'}}>
+          <div className={styles.publishFooterActionsGroup}>
             <button
               type="button"
-              className={styles.secondaryBtn}
+              className={`${styles.secondaryBtn} ${styles.publishScheduleButton}`}
               onClick={onSchedule}
               disabled={draftSaving}
-              style={{minHeight:52,padding:'0 18px',fontSize:15,fontWeight:800,opacity:draftSaving?0.64:1,cursor:draftSaving?'wait':'pointer'}}
+              style={{
+                opacity: draftSaving ? 0.64 : 1,
+                cursor: draftSaving ? "wait" : "pointer",
+              }}
             >
               🕒 Programmer
             </button>
-            <button type="button" className={styles.primaryBtn} onClick={onPublish} disabled={draftSaving} style={{minHeight:52,padding:'0 24px',fontSize:16,fontWeight:800,opacity:draftSaving?0.64:1,cursor:draftSaving?'wait':'pointer'}}>
+            <button
+              type="button"
+              className={`${styles.primaryBtn} ${styles.publishConfirmButton}`}
+              onClick={onPublish}
+              disabled={draftSaving}
+              style={{
+                opacity: draftSaving ? 0.64 : 1,
+                cursor: draftSaving ? "wait" : "pointer",
+              }}
+            >
               Vérifier et publier
             </button>
           </div>

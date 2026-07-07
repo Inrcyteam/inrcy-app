@@ -14,6 +14,7 @@ import {
   editableHtmlToSiteText,
   stripSiteTextFormatting,
   stripSiteTextFormattingForEditor,
+  stripSiteTextFormattingPreserveLayout,
 } from "@/lib/boosterFormatting";
 import stylesDash from "../../dashboard.module.css";
 import { ChannelImageAdapterModal } from "@/app/dashboard/_components/ChannelImageAdapterTool";
@@ -315,7 +316,7 @@ function sanitizePatchForEditor(
     if (typeof next.title === "string")
       next.title = stripSiteTextFormattingForEditor(next.title);
     if (typeof next.content === "string")
-      next.content = stripSiteTextFormattingForEditor(next.content);
+      next.content = stripSiteTextFormattingPreserveLayout(next.content);
     if (typeof next.cta === "string")
       next.cta = stripSiteTextFormattingForEditor(next.cta);
   }
@@ -2216,7 +2217,7 @@ export default function PublishModal({
     };
     const plainPatch: Pick<ChannelPost, "title" | "content"> = {
       title: stripSiteTextFormatting(source.title),
-      content: stripSiteTextFormatting(source.content),
+      content: stripSiteTextFormattingPreserveLayout(source.content),
     };
 
     setPostsByChannel((prev) => {
@@ -2516,7 +2517,9 @@ export default function PublishModal({
       prepared[key] = normalizePost({
         ...prepared[key],
         title: stripSiteTextFormatting(prepared[key]?.title || ""),
-        content: stripSiteTextFormatting(prepared[key]?.content || ""),
+        content: stripSiteTextFormattingPreserveLayout(
+          prepared[key]?.content || "",
+        ),
         cta: stripSiteTextFormatting(prepared[key]?.cta || ""),
       });
     }

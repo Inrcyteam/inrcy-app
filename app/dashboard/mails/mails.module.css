@@ -5641,3 +5641,29 @@
     display: none;
   }
 }
+
+
+/* =========================
+   iNrSend + dock mobile global
+   Le module occupe la zone utile du layout, jamais les 100dvh complets.
+   Le footer/pager reste donc entièrement au-dessus du dock.
+========================= */
+@media (max-width: 560px) {
+  .page {
+    height: 100%;
+    min-height: 0;
+    padding-bottom: 8px;
+  }
+
+  .wrap,
+  .grid,
+  .listCard {
+    min-height: 0;
+  }
+
+  .listFooter {
+    position: relative;
+    z-index: 2;
+    padding-bottom: 10px;
+  }
+}

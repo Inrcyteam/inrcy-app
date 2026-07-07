@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { verifyStripeWebhookSignature } from "@/lib/stripeRest";
+import { stripeGet, verifyStripeWebhookSignature } from "@/lib/stripeRest";
 import { optionalEnv } from "@/lib/env";
 import { sendAdminSubscriptionAlertForUser } from "@/lib/subscriptionAdmin";
 
@@ -31,6 +31,7 @@ type SubscriptionSnapshot = {
   stripe_customer_id?: string | null;
   stripe_subscription_id?: string | null;
   stripe_price_id?: string | null;
+  monthly_price_eur?: number | null;
 };
 
 function normalizeStripeStatus(status: string): string {
@@ -63,28 +64,44 @@ function planFromPriceId(priceId: string | null) {
   return null;
 }
 
-function monthlyPriceFromPlan(plan: string | null): number | null {
-  if (!plan) return null;
-  if (plan === "Starter") return 69;
-  if (plan === "Accel") return 149;
-  if (plan === "Speed") return 359;
-  return null;
+function storedDbPrice(raw: unknown): number | null {
+  if (raw === null || raw === undefined || raw === "") return null;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0 ? value : null;
 }
 
-function annualPriceFromPlan(plan: string | null): number | null {
-  if (!plan) return null;
-  if (plan === "Starter") return 690;
-  if (plan === "Accel") return 1490;
-  return null;
+function stripePriceAmountForIntegerColumn(price: StripeObjectLoose | null | undefined, quantity = 1): number | null {
+  if (!price) return null;
+
+  const amountRaw = price.unit_amount ?? price.unit_amount_decimal;
+  const amountCents = Number(amountRaw);
+  const normalizedQuantity = Number.isFinite(quantity) && quantity > 0 ? quantity : 1;
+  if (!Number.isFinite(amountCents) || amountCents < 0) return null;
+
+  const amountEur = (amountCents * normalizedQuantity) / 100;
+
+  // La colonne actuelle monthly_price_eur est entière (int4) dans Supabase.
+  // On refuse donc d'inventer/arrondir un prix Stripe avec des centimes.
+  return Number.isInteger(amountEur) ? amountEur : null;
 }
 
-function storedPriceFromStripePriceId(priceId: string | null, plan: string | null, billingCycle: string | null): number | null {
-  const starterYearly = optionalEnv("STRIPE_PRICE_YEARLY");
-  const accelYearly = optionalEnv("STRIPE_PRICE_ACCEL_YEARLY_ID");
-  if (starterYearly && priceId === starterYearly) return 690;
-  if (accelYearly && priceId === accelYearly) return 1490;
-  if (billingCycle === "yearly") return annualPriceFromPlan(plan);
-  return monthlyPriceFromPlan(plan);
+async function resolveStripeStoredPrice(
+  price: StripeObjectLoose | null | undefined,
+  priceId: string | null,
+  quantity = 1
+): Promise<number | null> {
+  const inlineAmount = stripePriceAmountForIntegerColumn(price, quantity);
+  if (inlineAmount != null) return inlineAmount;
+  if (!priceId) return null;
+
+  try {
+    const fetchedPrice = (await stripeGet(`/prices/${encodeURIComponent(priceId)}`)) as StripeObjectLoose;
+    return stripePriceAmountForIntegerColumn(fetchedPrice, quantity);
+  } catch {
+    // Un webhook de statut ne doit pas échouer uniquement parce que Stripe Price
+    // n'a pas pu être relu. La valeur DB existante reste alors intacte.
+    return null;
+  }
 }
 
 async function getSubscriptionRow(userId?: string | null, customerId?: string | null) {
@@ -92,7 +109,7 @@ async function getSubscriptionRow(userId?: string | null, customerId?: string | 
     const { data } = await supabaseAdmin
       .from("subscriptions")
       .select(
-        "user_id, contact_email, plan, scheduled_plan, status, trial_start_at, trial_end_at, cancel_requested_at, end_date, next_renewal_date, stripe_customer_id, stripe_subscription_id, stripe_price_id"
+        "user_id, contact_email, plan, scheduled_plan, status, trial_start_at, trial_end_at, cancel_requested_at, end_date, next_renewal_date, stripe_customer_id, stripe_subscription_id, stripe_price_id, monthly_price_eur"
       )
       .eq("user_id", userId)
       .maybeSingle();
@@ -103,7 +120,7 @@ async function getSubscriptionRow(userId?: string | null, customerId?: string | 
     const { data } = await supabaseAdmin
       .from("subscriptions")
       .select(
-        "user_id, contact_email, plan, scheduled_plan, status, trial_start_at, trial_end_at, cancel_requested_at, end_date, next_renewal_date, stripe_customer_id, stripe_subscription_id, stripe_price_id"
+        "user_id, contact_email, plan, scheduled_plan, status, trial_start_at, trial_end_at, cancel_requested_at, end_date, next_renewal_date, stripe_customer_id, stripe_subscription_id, stripe_price_id, monthly_price_eur"
       )
       .eq("stripe_customer_id", customerId)
       .maybeSingle();
@@ -201,9 +218,23 @@ export async function POST(req: Request) {
       const trialEndAt = sub?.trial_end ? new Date(Number(sub.trial_end) * 1000).toISOString() : null;
       const trialStartAt = sub?.trial_start ? new Date(Number(sub.trial_start) * 1000).toISOString() : null;
       const inrcyPlan = planFromPriceId(priceId);
-      const billingCycleFromMetadata = typeof metadata?.billing_cycle === "string" ? metadata.billing_cycle : null;
-      const monthlyPrice = storedPriceFromStripePriceId(priceId, inrcyPlan, billingCycleFromMetadata);
+      const quantityRaw = Number(firstItem?.quantity ?? 1);
+      const quantity = Number.isFinite(quantityRaw) && quantityRaw > 0 ? quantityRaw : 1;
+      const existingRow = await getSubscriptionRow(userId, customerId);
+      const currentStoredPrice = storedDbPrice(existingRow?.monthly_price_eur);
+      const stripeStoredPrice = await resolveStripeStoredPrice(priceObj, priceId, quantity);
       const shouldKeepTrialPlan = stripeStatus === "trialing";
+      const existingWasTrial =
+        String(existingRow?.plan || "").toLowerCase() === "trial" ||
+        String(existingRow?.status || "").toLowerCase() === "trialing";
+
+      // Une valeur déjà présente dans Supabase est volontairement prioritaire :
+      // elle peut venir d'un tarif négocié saisi manuellement. Pour un nouvel abonnement
+      // automatique (prix absent ou sortie d'essai), on enregistre le montant réel Stripe.
+      const shouldAutofillPriceFromStripe =
+        !shouldKeepTrialPlan &&
+        stripeStoredPrice != null &&
+        (currentStoredPrice == null || (existingWasTrial && currentStoredPrice === 0));
       const cancellationTimestamp = cancelAtPeriodEnd
         ? new Date().toISOString()
         : null;
@@ -215,10 +246,14 @@ export async function POST(req: Request) {
         stripe_price_id: priceId,
         ...(inrcyPlan ? { scheduled_plan: inrcyPlan } : {}),
         ...(shouldKeepTrialPlan
-          ? { plan: "Trial", monthly_price_eur: 0 }
+          ? {
+              plan: "Trial",
+              // Ne jamais écraser un tarif manuel déjà enregistré.
+              ...(currentStoredPrice == null ? { monthly_price_eur: 0 } : {}),
+            }
           : {
               ...(inrcyPlan ? { plan: inrcyPlan } : {}),
-              ...(monthlyPrice != null ? { monthly_price_eur: monthlyPrice } : {}),
+              ...(shouldAutofillPriceFromStripe ? { monthly_price_eur: stripeStoredPrice } : {}),
               scheduled_plan: null,
             }),
         ...(trialEndAt ? { trial_end_at: trialEndAt } : {}),

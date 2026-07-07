@@ -95,6 +95,7 @@ import {
 import {
   sanitizeBoosterSiteText,
   stripSiteTextFormatting,
+  stripSiteTextFormattingPreserveLayout,
 } from "@/lib/boosterFormatting";
 
 type ChannelKey =
@@ -1468,7 +1469,7 @@ export async function POST(req: Request) {
         : stripSiteTextFormatting(rawTitle);
       const content = isSiteChannel
         ? sanitizeBoosterSiteText(rawContent)
-        : stripSiteTextFormatting(rawContent);
+        : stripSiteTextFormattingPreserveLayout(rawContent);
       const cta = stripSiteTextFormatting(rawCta);
       const ctaMode = String(raw.ctaMode || "").trim();
       const ctaUrl = String(raw.ctaUrl || "").trim();

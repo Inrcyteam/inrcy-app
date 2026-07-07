@@ -185,6 +185,28 @@ export function stripSiteTextFormattingForEditor(input: unknown) {
     .replace(/\n{3,}/g, "\n\n");
 }
 
+/**
+ * Remove site-only formatting without rewriting the professional's layout.
+ * Internal blank lines and horizontal spacing are intentionally preserved so
+ * manual edits made in Booster reach social channels as authored.
+ */
+export function stripSiteTextFormattingPreserveLayout(input: unknown) {
+  return decodeBasicHtmlEntities(String(input ?? ""))
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/<\s*br\s*\/?\s*>/gi, "\n")
+    .replace(/<\s*\/\s*(div|p|li|h[1-6])\s*>/gi, "\n")
+    .replace(/<\s*(div|p|li|h[1-6])\b[^>]*>/gi, "")
+    .replace(new RegExp(`<\\/?\\s*(${ALLOWED_INLINE_TAGS})[^>]*>`, "gi"), "")
+    .replace(new RegExp(`&lt;\\/?\\s*(${ALLOWED_INLINE_TAGS})[^&]*?&gt;`, "gi"), "")
+    .replace(/<[^>]*>/g, "")
+    .replace(/\*\*\*([^*\n]+?)\*\*\*/g, "$1")
+    .replace(/\*\*([^*\n]+?)\*\*/g, "$1")
+    .replace(/(^|[^*])\*([^*\n]+?)\*/g, "$1$2")
+    .replace(/\*{1,3}/g, "")
+    .trim();
+}
+
 export function stripSiteTextFormatting(input: unknown) {
   return stripSiteTextFormattingForEditor(input).trim();
 }

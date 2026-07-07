@@ -463,9 +463,6 @@ export default function DashboardClient({ isAdmin = false }: DashboardClientProp
     desktopNotificationMenuRef,
     mobileNotificationMenuRef,
     userFirstLetter,
-    menuOpen,
-    setMenuOpen,
-    menuRef,
   } = useDashboardMenus(userEmail);
 
 const {
@@ -3186,7 +3183,6 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         desktopNotificationMenuRef={desktopNotificationMenuRef}
         mobileNotificationMenuRef={mobileNotificationMenuRef}
         userMenuRef={userMenuRef}
-        menuRef={menuRef}
         notificationMenuOpen={notificationMenuOpen}
         setNotificationMenuOpen={setNotificationMenuOpen}
         unreadNotificationsCount={unreadNotificationsCount}
@@ -3215,8 +3211,6 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         setUserMenuOpen={setUserMenuOpen}
         goToGps={() => router.push("/dashboard/gps")}
         handleLogout={handleLogout}
-        menuOpen={menuOpen}
-        setMenuOpen={setMenuOpen}
       />
 
       <DashboardHero

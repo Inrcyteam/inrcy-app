@@ -1,4 +1,8 @@
-import { sanitizeBoosterSiteText, stripSiteTextFormatting } from "@/lib/boosterFormatting";
+import {
+  sanitizeBoosterSiteText,
+  stripSiteTextFormatting,
+  stripSiteTextFormattingPreserveLayout,
+} from "@/lib/boosterFormatting";
 
 export type BoosterChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin" | "tiktok" | "youtube_shorts" | "pinterest";
 export type BoosterCtaMode = "none" | "website" | "call" | "message" | "custom";
@@ -127,12 +131,17 @@ export function buildCtaTextForChannel(channel: BoosterChannelKey, post: Partial
 
 function buildPrimaryBoosterText(channel: BoosterChannelKey, post: Partial<BoosterPostLike> | null | undefined) {
   const isSiteChannel = channel === "inrcy_site" || channel === "site_web";
-  const title = collapseWhitespace(isSiteChannel ? sanitizeBoosterSiteText(post?.title || "") : stripSiteTextFormatting(post?.title || ""));
-  const content = collapseWhitespace(isSiteChannel ? sanitizeBoosterSiteText(post?.content || "") : stripSiteTextFormatting(post?.content || ""));
+  const title = collapseWhitespace(
+    isSiteChannel
+      ? sanitizeBoosterSiteText(post?.title || "")
+      : stripSiteTextFormatting(post?.title || ""),
+  );
+  const content = isSiteChannel
+    ? sanitizeBoosterSiteText(post?.content || "")
+    : stripSiteTextFormattingPreserveLayout(post?.content || "");
 
-  // Preserve the professional's paragraph breaks on every channel.
-  // Facebook and LinkedIn used to join title + content with an em dash,
-  // which made airy texts look like one compact block after publishing.
+  // The professional's edited paragraph layout is the source of truth for
+  // social-channel bodies. Do not collapse repeated blank lines here.
   return [title, content].filter(Boolean).join("\n\n").trim();
 }
 
@@ -163,10 +172,10 @@ export function buildBoosterInstagramCaption(post: Partial<BoosterPostLike> | nu
 export function buildBoosterGmbSummary(post: Partial<BoosterPostLike> | null | undefined) {
   const parts = [
     collapseWhitespace(stripSiteTextFormatting(post?.title || "")),
-    collapseWhitespace(stripSiteTextFormatting(post?.content || "")),
+    stripSiteTextFormattingPreserveLayout(post?.content || ""),
     getCtaMode(post) === "custom" ? getCtaLabel(post, "custom") : "",
   ].filter(Boolean);
-  return collapseWhitespace(parts.join("\n\n")).slice(0, 1498);
+  return parts.join("\n\n").trim().slice(0, 1498);
 }
 
 export function getBoosterGmbCallToAction(post: Partial<BoosterPostLike> | null | undefined, context?: BoosterCtaContext): BoosterGmbCallToAction {

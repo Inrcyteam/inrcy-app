@@ -17,10 +17,18 @@ export type PinterestCreatePinResult = {
   raw: unknown;
 };
 
-function cleanText(value: unknown, maxLength: number) {
+function cleanSingleLineText(value: unknown, maxLength: number) {
   return String(value || "")
-    .replace(/\s+\n/g, "\n")
-    .replace(/\n{3,}/g, "\n\n")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, maxLength)
+    .trim();
+}
+
+function cleanMultilineText(value: unknown, maxLength: number) {
+  return String(value || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
     .trim()
     .slice(0, maxLength)
     .trim();
@@ -83,8 +91,8 @@ export async function createPinterestImagePin({
 
   const payload: Record<string, unknown> = {
     board_id: cleanBoardId,
-    title: cleanText(title || "Publication iNrCy", 100),
-    description: cleanText(description || "", 500),
+    title: cleanSingleLineText(title || "Publication iNrCy", 100),
+    description: cleanMultilineText(description || "", 500),
     media_source: {
       source_type: "image_url",
       url: cleanImageUrl,

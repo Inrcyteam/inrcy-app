@@ -55,7 +55,7 @@ type SubData = {
     | "canceled"
     | "paused"
     | string;
-  monthly_price_eur: number;
+  monthly_price_eur: number | null;
   start_date: string; // YYYY-MM-DD
   trial_start_at?: string | null;
   trial_end_at?: string | null;
@@ -353,11 +353,17 @@ useEffect(() => {
     const scheduledStart = trialEnd;
 
     const scheduledPlan = normalizePlan(sub.scheduled_plan || "Starter") as SubData["plan"];
-    const monthlyPriceTtc = annualPayment
-      ? Number(sub.monthly_price_eur) || 690
-      : planNormalized === "Trial"
-        ? 0
-        : monthlyPriceTtcFromPlan(planNormalized) || Number(sub.monthly_price_eur) || 0;
+    const storedPriceRaw = sub.monthly_price_eur == null ? null : Number(sub.monthly_price_eur);
+    const storedPrice = storedPriceRaw != null && Number.isFinite(storedPriceRaw) && storedPriceRaw >= 0
+      ? storedPriceRaw
+      : null;
+
+    // Source de vérité : subscriptions.monthly_price_eur.
+    // Cela s'applique aussi aux abonnements déjà en cours et aux tarifs négociés saisis manuellement.
+    // Le tarif du plan ne sert que de secours si la colonne DB est réellement absente/invalide.
+    const monthlyPriceTtc = planNormalized === "Trial"
+      ? 0
+      : storedPrice ?? monthlyPriceTtcFromPlan(planNormalized);
 
     return {
       startLabel: frDate(start),

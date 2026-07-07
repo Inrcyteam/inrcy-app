@@ -119,7 +119,6 @@ type DashboardTopbarProps = {
   desktopNotificationMenuRef: RefObject<HTMLDivElement | null>;
   mobileNotificationMenuRef: RefObject<HTMLDivElement | null>;
   userMenuRef: RefObject<HTMLDivElement | null>;
-  menuRef: RefObject<HTMLDivElement | null>;
   notificationMenuOpen: boolean;
   setNotificationMenuOpen: Dispatch<SetStateAction<boolean>>;
   unreadNotificationsCount: number;
@@ -142,15 +141,12 @@ type DashboardTopbarProps = {
   setUserMenuOpen: Dispatch<SetStateAction<boolean>>;
   goToGps: () => void;
   handleLogout: () => void | Promise<void>;
-  menuOpen: boolean;
-  setMenuOpen: Dispatch<SetStateAction<boolean>>;
 };
 
 export default function DashboardTopbar({
   desktopNotificationMenuRef,
   mobileNotificationMenuRef,
   userMenuRef,
-  menuRef,
   notificationMenuOpen,
   setNotificationMenuOpen,
   unreadNotificationsCount,
@@ -173,8 +169,6 @@ export default function DashboardTopbar({
   setUserMenuOpen,
   goToGps,
   handleLogout,
-  menuOpen,
-  setMenuOpen,
 }: DashboardTopbarProps) {
   const router = useRouter();
   const t = useDashboardI18n();
@@ -410,7 +404,6 @@ export default function DashboardTopbar({
           locale={t.locale}
           onContact={() => openPanel("contact")}
           onOpen={() => {
-            setMenuOpen(false);
             setUserMenuOpen(false);
             setNotificationMenuOpen(false);
           }}
@@ -441,41 +434,6 @@ export default function DashboardTopbar({
 
         <button
           type="button"
-          className={`${styles.mobileHeaderIconBtn} ${styles.mobileHeaderAgentBtn} ${!inrAgentEnabled ? styles.mobileHeaderAgentBtnDisabled : ""}`}
-          aria-label={agentTitle}
-          title={agentTitle}
-          disabled={!inrAgentEnabled}
-          aria-disabled={!inrAgentEnabled}
-          onPointerEnter={warmInrAgent}
-          onFocus={warmInrAgent}
-          onClick={() => {
-            if (!inrAgentEnabled) return;
-            warmInrAgent();
-            onNavigateCta(INR_AGENT_ROUTE);
-          }}
-        >
-          <span className={styles.mobileHeaderAgentIconSlot} aria-hidden>
-            <img
-              className={styles.mobileHeaderAgentIcon}
-              src="/icons/inr-agent-header.png"
-              alt=""
-              width={29}
-              height={29}
-              loading="eager"
-              decoding="sync"
-              fetchPriority="high"
-              aria-hidden
-            />
-          </span>
-          {pendingInrAgentCount > 0 && (
-            <span className={styles.mobileHeaderAgentBadge} aria-hidden="true">
-              {pendingInrAgentLabel}
-            </span>
-          )}
-        </button>
-
-        <button
-          type="button"
           className={`${styles.mobileHeaderIconBtn} ${styles.mobileHeaderGpsBtn}`}
           aria-label={t.topbar.gpsAria}
           onClick={goToGps}
@@ -483,210 +441,9 @@ export default function DashboardTopbar({
           <span className={styles.mobileHeaderGpsIcon} aria-hidden>🧭</span>
         </button>
 
-        <div className={styles.mobileMenuWrap} ref={menuRef}>
-          <button
-            type="button"
-            className={styles.hamburgerBtn}
-            aria-label={t.topbar.openMenu}
-            aria-expanded={menuOpen}
-            onClick={() => setMenuOpen((v) => !v)}
-          >
-            <span className={styles.hamburgerIcon} aria-hidden />
-
-            {(profileIncomplete || activityIncomplete) && (
-              <span className={styles.hamburgerWarnTriangle} aria-hidden>⚠️</span>
-            )}
-          </button>
-
-          {menuOpen && (
-            <div
-              className={styles.mobileMenuPanel}
-              role="menu"
-              aria-label={t.topbar.menu}
-            >
-              <button
-                className={styles.mobileMenuItem}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  openPanel("contact");
-                }}
-              >
-                {t.topbar.contact}
-              </button>
-
-              <button
-                className={styles.mobileMenuItem}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  openPanel("compte");
-                }}
-              >
-                {t.userMenu.account}
-              </button>
-
-              <button
-                className={`${styles.mobileMenuItem} ${profileIncomplete ? styles.mobileMenuItemWithWarning : ""}`}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  openPanel("profil");
-                }}
-              >
-                <span>{t.userMenu.profile}</span>
-                {profileIncomplete && (
-                  <span className={styles.menuWarningTriangle} aria-hidden>⚠️</span>
-                )}
-              </button>
-
-              <button
-                className={`${styles.mobileMenuItem} ${activityIncomplete ? styles.mobileMenuItemWithWarning : ""}`}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  openPanel("activite");
-                }}
-              >
-                <span>{t.userMenu.activity}</span>
-                {activityIncomplete && (
-                  <span className={styles.menuWarningTriangle} aria-hidden>⚠️</span>
-                )}
-              </button>
-
-
-              <button
-                className={styles.mobileMenuItem}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  openPanel("preferences");
-                }}
-              >
-                {t.userMenu.preferences}
-              </button>
-
-              <button
-                className={styles.mobileMenuItem}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  openPanel("ia");
-                }}
-              >
-                {t.userMenu.ai}
-              </button>
-
-              <button
-                className={styles.mobileMenuItem}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  onNavigateCta("/dashboard/mediatheque");
-                }}
-              >
-                {t.userMenu.media}
-              </button>
-
-              <button
-                className={styles.mobileMenuItem}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  openPanel("abonnement");
-                }}
-              >
-                {t.userMenu.subscription}
-              </button>
-
-              <button
-                className={styles.mobileMenuItem}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  openPanel("inertie");
-                }}
-              >
-                {t.userMenu.inertia}
-              </button>
-
-              <button
-                className={styles.mobileMenuItem}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  openPanel("boutique");
-                }}
-              >
-                {t.userMenu.shop}
-              </button>
-
-              <button
-                className={styles.mobileMenuItem}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  openPanel("parrainage");
-                }}
-              >
-                {t.userMenu.referral}
-              </button>
-
-              <button
-                className={styles.mobileMenuItem}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  openPanel("legal");
-                }}
-              >
-                {t.userMenu.legal}
-              </button>
-
-              <button
-                className={styles.mobileMenuItem}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  openPanel("rgpd");
-                }}
-              >
-                {t.userMenu.rgpd}
-              </button>
-              <div className={styles.mobileMenuDivider} />
-
-              <button
-                className={`${styles.mobileMenuItem} ${styles.mobileMenuDanger}`}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  setMenuOpen(false);
-                  void handleLogout();
-                }}
-              >
-                {t.userMenu.logout}
-              </button>
-            </div>
-          )}
-        </div>
-
         <LanguageSelector
           mobile
           onOpen={() => {
-            setMenuOpen(false);
             setNotificationMenuOpen(false);
           }}
         />

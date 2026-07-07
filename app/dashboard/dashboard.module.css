@@ -5836,6 +5836,52 @@
   }
 }
 
+
+/* Le dock mobile reste visible dans les workflows métier (Booster, campagnes, etc.).
+   Les surfaces plein écran s'arrêtent physiquement au-dessus du dock. */
+@media (max-width: 560px) {
+  .fullscreenModalOverlay {
+    bottom: var(
+      --inrcy-mobile-bottom-nav-total-height,
+      calc(50px + env(safe-area-inset-bottom))
+    ) !important;
+    height: calc(
+      100dvh - var(
+        --inrcy-mobile-bottom-nav-total-height,
+        calc(50px + env(safe-area-inset-bottom))
+      )
+    ) !important;
+    max-height: calc(
+      100dvh - var(
+        --inrcy-mobile-bottom-nav-total-height,
+        calc(50px + env(safe-area-inset-bottom))
+      )
+    ) !important;
+    --inrcy-modal-overlay-padding: max(2px, env(safe-area-inset-top))
+      max(2px, env(safe-area-inset-right)) 4px
+      max(2px, env(safe-area-inset-left));
+  }
+}
+
+@supports not (height: 100dvh) {
+  @media (max-width: 560px) {
+    .fullscreenModalOverlay {
+      height: calc(
+        100vh - var(
+          --inrcy-mobile-bottom-nav-total-height,
+          calc(50px + env(safe-area-inset-bottom))
+        )
+      ) !important;
+      max-height: calc(
+        100vh - var(
+          --inrcy-mobile-bottom-nav-total-height,
+          calc(50px + env(safe-area-inset-bottom))
+        )
+      ) !important;
+    }
+  }
+}
+
 /* Étape 4 ter — Boîte de vitesse : 5 bulles compactes sans ajouter de hauteur */
 @media (min-width: 701px) and (hover: hover) and (pointer: fine) {
   .gearWrap {
@@ -7381,6 +7427,31 @@
   width: 100%;
 }
 
+
+.publishFooterActionsGroup {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  margin-left: auto;
+}
+
+.publishScheduleButton {
+  min-height: 52px;
+  padding: 0 18px;
+  font-size: 15px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.publishConfirmButton {
+  min-height: 52px;
+  padding: 0 24px;
+  font-size: 16px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 .publishProgressBox {
   display: flex;
   align-items: center;
@@ -7435,6 +7506,38 @@
     gap: 8px;
     flex-wrap: nowrap;
     max-width: 100%;
+  }
+
+
+  .publishFooterActionsGroup {
+    display: grid;
+    grid-template-columns: minmax(0, 0.78fr) minmax(0, 1.22fr);
+    align-items: stretch;
+    gap: 8px;
+    width: 100%;
+    min-width: 0;
+    margin-left: 0;
+  }
+
+  .publishScheduleButton,
+  .publishConfirmButton {
+    width: 100%;
+    min-width: 0;
+    min-height: 42px;
+    padding: 0 8px !important;
+    border-radius: 999px;
+    font-size: 12px;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .publishScheduleButton {
+    font-weight: 800;
+  }
+
+  .publishConfirmButton {
+    font-size: 12.5px;
+    font-weight: 850;
   }
 
   .publishProgressBox {
@@ -9991,5 +10094,61 @@
     left: 12px;
     width: auto;
     max-height: calc(100vh - 88px);
+  }
+}
+
+/* =========================
+   Persistent responsive bottom navigation
+   Le viewport utile s'arrête réellement au-dessus du dock mobile.
+========================= */
+.mobileViewport {
+  display: contents;
+}
+
+@media (max-width: 560px) {
+  .shell {
+    --inrcy-mobile-bottom-nav-height: 50px;
+    --inrcy-mobile-bottom-nav-total-height:
+      calc(var(--inrcy-mobile-bottom-nav-height) + env(safe-area-inset-bottom));
+    --inrcy-mobile-content-height:
+      calc(100dvh - var(--inrcy-mobile-bottom-nav-total-height));
+
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100dvh;
+    min-height: 100dvh;
+    overflow: hidden;
+    box-sizing: border-box;
+    padding-bottom: 0;
+  }
+
+  .mobileViewport {
+    display: block;
+    flex: 1 1 auto;
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    scroll-padding-bottom: 12px;
+    box-sizing: border-box;
+  }
+
+  .mobileViewport > * {
+    min-height: 0;
+    max-width: 100%;
+  }
+}
+
+@supports not (height: 100dvh) {
+  @media (max-width: 560px) {
+    .shell {
+      --inrcy-mobile-content-height:
+        calc(100vh - var(--inrcy-mobile-bottom-nav-total-height));
+      height: 100vh;
+      min-height: 100vh;
+    }
   }
 }
