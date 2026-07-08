@@ -44,7 +44,6 @@ set settings = jsonb_set(
       - 'username'
       - 'profileUrl'
       - 'url'
-      - 'defaultBoardId'
       - 'defaultBoardName'
       - 'boardId'
       - 'boardName'

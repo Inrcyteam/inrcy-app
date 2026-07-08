@@ -140,7 +140,9 @@ function formatDuplicateScheduledAt(value?: string | null) {
 }
 
 function buildImmediateDuplicateMessage(
-  duplicate: Awaited<ReturnType<typeof findSimilarUpcomingScheduledPublication>>,
+  duplicate: Awaited<
+    ReturnType<typeof findSimilarUpcomingScheduledPublication>
+  >,
 ) {
   const channels = (duplicate.overlappingChannels || [])
     .map((channel) => CHANNEL_LABELS[channel as ChannelKey] || channel)
@@ -245,7 +247,8 @@ type ImagePayload = {
   transform?: unknown;
   imageMeta?: unknown;
   imageDecisionMode?: "original" | "adapted" | "customized" | "unsupported";
-  imageDecisionLabel?: "Originale" | "Adaptée" | "Personnalisée" | "Indisponible";
+  imageDecisionLabel?:
+    "Originale" | "Adaptée" | "Personnalisée" | "Indisponible";
   isCustomized?: boolean;
 };
 
@@ -305,7 +308,9 @@ function normalizeTiktokPublicationSettings(
   const raw = asRecord(value);
   const privacyLevel = String(raw.privacyLevel || "").trim();
   const commercialContentRaw = String(raw.commercialContent || "").trim();
-  const commercialContent = ["none", "self", "branded", "both"].includes(commercialContentRaw)
+  const commercialContent = ["none", "self", "branded", "both"].includes(
+    commercialContentRaw,
+  )
     ? commercialContentRaw
     : "";
   if (!privacyLevel || !commercialContent) return null;
@@ -314,7 +319,8 @@ function normalizeTiktokPublicationSettings(
     allowComments: raw.allowComments === true,
     allowDuo: raw.allowDuo === true,
     allowStitch: raw.allowStitch === true,
-    commercialContent: commercialContent as TiktokPublicationSettings["commercialContent"],
+    commercialContent:
+      commercialContent as TiktokPublicationSettings["commercialContent"],
     aiContent: raw.aiContent === true,
     photoAutoMusic: raw.photoAutoMusic === true,
     musicUsageConfirmed: raw.musicUsageConfirmed === true,
@@ -732,10 +738,8 @@ function buildEditableImageAttachments(
       imageKey: imageKey || null,
       transform: raw.transform || null,
       imageMeta: raw.imageMeta || null,
-      imageDecisionMode:
-        String(raw.imageDecisionMode || "").trim() || null,
-      imageDecisionLabel:
-        String(raw.imageDecisionLabel || "").trim() || null,
+      imageDecisionMode: String(raw.imageDecisionMode || "").trim() || null,
+      imageDecisionLabel: String(raw.imageDecisionLabel || "").trim() || null,
       isCustomized: raw.isCustomized === true,
     };
   });
@@ -893,7 +897,10 @@ async function uploadImageSet(
           }
         }
       } catch (optErr) {
-        if (finalGeometryLocked && (originalPublishableUrl || originalPublicUrl)) {
+        if (
+          finalGeometryLocked &&
+          (originalPublishableUrl || originalPublicUrl)
+        ) {
           instagramPublishableUrls.push(
             originalPublishableUrl || originalPublicUrl || "",
           );
@@ -956,7 +963,10 @@ async function uploadImageSet(
           }
         }
       } catch (optErr) {
-        if (finalGeometryLocked && (originalPublishableUrl || originalPublicUrl)) {
+        if (
+          finalGeometryLocked &&
+          (originalPublishableUrl || originalPublicUrl)
+        ) {
           socialFeedPublishableUrls.push(
             originalPublishableUrl || originalPublicUrl || "",
           );
@@ -1167,7 +1177,10 @@ export async function POST(req: Request) {
     const idea = String(body.idea || "").trim();
     const mediaType = normalizePublicationMediaType(body.mediaType);
     const selected = Array.from(new Set(channels)).filter(Boolean);
-    const bubbleAccess = await getAppBubbleAccessMapForUser(supabaseAdmin as any, userId);
+    const bubbleAccess = await getAppBubbleAccessMapForUser(
+      supabaseAdmin as any,
+      userId,
+    );
     const rawModeByChannel = (body.mediaModeByChannel || {}) as Record<
       string,
       unknown
@@ -1290,7 +1303,8 @@ export async function POST(req: Request) {
       if (originSource === "inr_agent") {
         return {
           source: "inr_agent",
-          label: String(body.origin?.label || "iNr'Agent").trim() || "iNr'Agent",
+          label:
+            String(body.origin?.label || "iNr'Agent").trim() || "iNr'Agent",
           agentActionId:
             String(
               body.inrAgentActionId || body.origin?.agentActionId || "",
@@ -1741,6 +1755,10 @@ export async function POST(req: Request) {
     const proCfg = asRecord(proCfgRes.data);
     const proSettings = asRecord(proCfg["settings"]);
     const proSiteWeb = asRecord(proSettings["site_web"]);
+    const proPinterest = asRecord(proSettings["pinterest"]);
+    const configuredPinterestDefaultBoardId = String(
+      proPinterest["defaultBoardId"] || "",
+    ).trim();
 
     const ownership = String(profile["inrcy_site_ownership"] ?? "none");
     const businessPhone = String(profile["phone"] ?? "").trim();
@@ -1809,10 +1827,7 @@ export async function POST(req: Request) {
         return legacyFallback.filter(Boolean).slice(0, limit);
       }
 
-      const expected = Math.min(
-        getExpectedChannelImageCount(channel),
-        limit,
-      );
+      const expected = Math.min(getExpectedChannelImageCount(channel), limit);
       for (const key of candidates) {
         const urls = (explicitSet[key] || []).filter(Boolean);
         if (expected > 0 && urls.length >= expected) {
@@ -1852,7 +1867,9 @@ export async function POST(req: Request) {
     async function loadBoosterVideoForTikTok(storagePath: string) {
       const cleanPath = String(storagePath || "").trim();
       if (!cleanPath) return null;
-      const { data, error } = await supabaseAdmin.storage.from("booster").download(cleanPath);
+      const { data, error } = await supabaseAdmin.storage
+        .from("booster")
+        .download(cleanPath);
       if (error || !data) return null;
       const buffer = Buffer.from(await data.arrayBuffer());
       if (!buffer.length) return null;
@@ -1956,7 +1973,11 @@ export async function POST(req: Request) {
         if (ch === "pinterest" && !isBubbleEnabled(bubbleAccess, "pinterest")) {
           const disabledMessage = "Pinterest est désactivé dans Bubble Access.";
           await setDelivery(ch, { status: "failed", error: disabledMessage });
-          results[ch] = { ok: false, error: disabledMessage, code: "bubble_access_disabled" };
+          results[ch] = {
+            ok: false,
+            error: disabledMessage,
+            code: "bubble_access_disabled",
+          };
           continue;
         }
 
@@ -2155,7 +2176,10 @@ export async function POST(req: Request) {
           ) {
             const facebookUserError =
               "Les images Facebook n'ont pas pu être préparées sans modifier le rendu.";
-            await setDelivery(ch, { status: "failed", error: facebookUserError });
+            await setDelivery(ch, {
+              status: "failed",
+              error: facebookUserError,
+            });
             results[ch] = { ok: false, error: facebookUserError };
             continue;
           }
@@ -2434,7 +2458,10 @@ export async function POST(req: Request) {
           ) {
             const linkedInUserError =
               "Les images LinkedIn n'ont pas pu être préparées sans modifier le rendu.";
-            await setDelivery(ch, { status: "failed", error: linkedInUserError });
+            await setDelivery(ch, {
+              status: "failed",
+              error: linkedInUserError,
+            });
             results[ch] = { ok: false, error: linkedInUserError };
             continue;
           }
@@ -2522,9 +2549,9 @@ export async function POST(req: Request) {
           let linkedInPersonalShareUrn: string | null = null;
           const canSharePagePostToProfile = Boolean(
             shouldShareLinkedInPageToProfile &&
-              orgUrn &&
-              authorUrn &&
-              resp.postUrn,
+            orgUrn &&
+            authorUrn &&
+            resp.postUrn,
           );
 
           if (canSharePagePostToProfile) {
@@ -2555,7 +2582,8 @@ export async function POST(req: Request) {
                 publicationId,
                 stage: "share_to_profile",
                 error: shareResp.error,
-                userMessage: "Publié sur la page LinkedIn. Le partage sur le profil personnel a échoué.",
+                userMessage:
+                  "Publié sur la page LinkedIn. Le partage sur le profil personnel a échoué.",
                 diagnostics: shareResp,
               });
             }
@@ -2768,7 +2796,9 @@ export async function POST(req: Request) {
             : [];
           const tiktokGeometryLocked =
             tiktokRawImages.length > 0 &&
-            tiktokRawImages.every((image) => hasFinalImageGeometryDecision(image));
+            tiktokRawImages.every((image) =>
+              hasFinalImageGeometryDecision(image),
+            );
           const expectedTiktokImageCount = getExpectedChannelImageCount(ch);
           const explicitTiktokImageSet = channelImageSets[ch];
           const socialStoragePaths = (
@@ -2868,7 +2898,9 @@ export async function POST(req: Request) {
           if (
             !tiktokPublicationSettings?.privacyLevel ||
             !tiktokPublicationSettings.musicUsageConfirmed ||
-            !["none", "self", "branded", "both"].includes(String(tiktokPublicationSettings.commercialContent || ""))
+            !["none", "self", "branded", "both"].includes(
+              String(tiktokPublicationSettings.commercialContent || ""),
+            )
           ) {
             const tiktokUserError =
               "Validez les paramètres TikTok avant publication.";
@@ -2882,9 +2914,10 @@ export async function POST(req: Request) {
             channelPost.content ||
             channelPost.title ||
             "Publication iNrCy";
-          const tiktokVideoFile = isVideo && channelVideo?.storagePath
-            ? await loadBoosterVideoForTikTok(channelVideo.storagePath)
-            : null;
+          const tiktokVideoFile =
+            isVideo && channelVideo?.storagePath
+              ? await loadBoosterVideoForTikTok(channelVideo.storagePath)
+              : null;
 
           const tiktokResult = isVideo
             ? tiktokVideoFile
@@ -2966,7 +2999,11 @@ export async function POST(req: Request) {
             diagnostics: {
               provider: "tiktok",
               mode: "direct_post",
-              transfer: isVideo ? (tiktokVideoFile ? "FILE_UPLOAD" : "PULL_FROM_URL") : "PULL_FROM_URL",
+              transfer: isVideo
+                ? tiktokVideoFile
+                  ? "FILE_UPLOAD"
+                  : "PULL_FROM_URL"
+                : "PULL_FROM_URL",
               publish_id: tiktokResult.publishId || null,
               mediaType: isVideo ? "video" : "photos",
               privacyLevel: tiktokResult.privacyLevel || null,
@@ -2983,30 +3020,46 @@ export async function POST(req: Request) {
         if (ch === "pinterest") {
           const pinterestStatus = String(asRecord(pinterestRow).status || "");
           // Chaque publication Pinterest doit porter le tableau explicitement choisi pour cette action.
-          const boardId = String(requestedPinterestBoardId || "").trim();
+          const boardId = String(
+            requestedPinterestBoardId ||
+              configuredPinterestDefaultBoardId ||
+              "",
+          ).trim();
           const boardName = String(requestedPinterestBoardName || "").trim();
           const pinterestAccessToken =
-            pinterestStatus === "connected" || pinterestStatus === "account_connected"
+            pinterestStatus === "connected" ||
+            pinterestStatus === "account_connected"
               ? await getPinterestAccessToken(userId, req.url)
               : "";
 
           if (!pinterestAccessToken) {
-            const pinterestUserError = "Pinterest à connecter. Rendez-vous dans Canaux.";
-            await setDelivery(ch, { status: "failed", error: pinterestUserError });
+            const pinterestUserError =
+              "Pinterest à connecter. Rendez-vous dans Canaux.";
+            await setDelivery(ch, {
+              status: "failed",
+              error: pinterestUserError,
+            });
             results[ch] = { ok: false, error: pinterestUserError };
             continue;
           }
 
           if (!boardId) {
-            const pinterestUserError = "Choisissez un tableau Pinterest avant de publier.";
-            await setDelivery(ch, { status: "failed", error: pinterestUserError });
+            const pinterestUserError =
+              "Choisissez un tableau Pinterest avant de publier.";
+            await setDelivery(ch, {
+              status: "failed",
+              error: pinterestUserError,
+            });
             results[ch] = { ok: false, error: pinterestUserError };
             continue;
           }
 
           if (mediaModeByChannel[ch] !== "images") {
             const pinterestUserError = "Pinterest nécessite au moins 1 image.";
-            await setDelivery(ch, { status: "failed", error: pinterestUserError });
+            await setDelivery(ch, {
+              status: "failed",
+              error: pinterestUserError,
+            });
             results[ch] = { ok: false, error: pinterestUserError };
             continue;
           }
@@ -3023,8 +3076,12 @@ export async function POST(req: Request) {
           });
 
           if (!pinterestImageUrls.length) {
-            const pinterestUserError = "Veuillez ajouter au moins 1 image pour publier sur Pinterest.";
-            await setDelivery(ch, { status: "failed", error: pinterestUserError });
+            const pinterestUserError =
+              "Veuillez ajouter au moins 1 image pour publier sur Pinterest.";
+            await setDelivery(ch, {
+              status: "failed",
+              error: pinterestUserError,
+            });
             results[ch] = { ok: false, error: pinterestUserError };
             continue;
           }
@@ -3048,7 +3105,10 @@ export async function POST(req: Request) {
             title: channelPost.title || post.title || "Publication iNrCy",
             description,
             imageUrl: pinterestImageUrls[0],
-            link: normalizePublicHttpUrl(channelPost.ctaUrl) || normalizePublicHttpUrl(siteWebUrl) || normalizePublicHttpUrl(inrcySiteUrl),
+            link:
+              normalizePublicHttpUrl(channelPost.ctaUrl) ||
+              normalizePublicHttpUrl(siteWebUrl) ||
+              normalizePublicHttpUrl(inrcySiteUrl),
           });
 
           await setDelivery(ch, {

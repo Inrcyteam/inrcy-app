@@ -643,7 +643,9 @@ export default function PublishModal({
   const [pendingPublishPosts, setPendingPublishPosts] = useState<Partial<
     Record<ChannelKey, ChannelPost>
   > | null>(null);
-  const [pinterestBoards, setPinterestBoards] = useState<PinterestBoardOption[]>([]);
+  const [pinterestBoards, setPinterestBoards] = useState<
+    PinterestBoardOption[]
+  >([]);
   const [pinterestBoardId, setPinterestBoardId] = useState("");
   const [pinterestBoardName, setPinterestBoardName] = useState("");
   const [pinterestBoardsLoading, setPinterestBoardsLoading] = useState(false);
@@ -846,19 +848,34 @@ export default function PublishModal({
       });
       const result = await response.json().catch(() => ({}));
       if (!response.ok || !result?.ok) {
-        throw new Error(String(result?.error || "Impossible de charger les tableaux Pinterest."));
+        throw new Error(
+          String(
+            result?.error || "Impossible de charger les tableaux Pinterest.",
+          ),
+        );
       }
 
-      const rawBoards: unknown[] = Array.isArray(result.boards) ? result.boards : [];
+      const rawBoards: unknown[] = Array.isArray(result.boards)
+        ? result.boards
+        : [];
       const boards: PinterestBoardOption[] = rawBoards
         .map((value: unknown): PinterestBoardOption | null => {
-          if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+          if (!value || typeof value !== "object" || Array.isArray(value))
+            return null;
           const record = value as Record<string, unknown>;
           const id = String(record.id || "").trim();
           if (!id) return null;
-          return { id, name: String(record.name || "Tableau Pinterest").trim() || "Tableau Pinterest" };
+          return {
+            id,
+            name:
+              String(record.name || "Tableau Pinterest").trim() ||
+              "Tableau Pinterest",
+          };
         })
-        .filter((value: PinterestBoardOption | null): value is PinterestBoardOption => Boolean(value));
+        .filter(
+          (value: PinterestBoardOption | null): value is PinterestBoardOption =>
+            Boolean(value),
+        );
 
       setPinterestBoards(boards);
       setPinterestBoardId((currentId) => {
@@ -875,7 +892,10 @@ export default function PublishModal({
       });
     } catch (error) {
       setPinterestBoardsError(
-        getSimpleFrenchErrorMessage(error, "Impossible de charger les tableaux Pinterest."),
+        getSimpleFrenchErrorMessage(
+          error,
+          "Impossible de charger les tableaux Pinterest.",
+        ),
       );
     } finally {
       setPinterestBoardsLoading(false);
@@ -887,13 +907,18 @@ export default function PublishModal({
     void loadPinterestBoardsForPublish();
   }, [connected.pinterest, channels.pinterest, loadPinterestBoardsForPublish]);
 
-  const onPinterestBoardChange = useCallback((boardId: string) => {
-    const cleanId = String(boardId || "").trim();
-    const selectedBoard = pinterestBoards.find((board) => board.id === cleanId);
-    setPinterestBoardId(cleanId);
-    setPinterestBoardName(selectedBoard?.name || "");
-    setPinterestBoardsError("");
-  }, [pinterestBoards]);
+  const onPinterestBoardChange = useCallback(
+    (boardId: string) => {
+      const cleanId = String(boardId || "").trim();
+      const selectedBoard = pinterestBoards.find(
+        (board) => board.id === cleanId,
+      );
+      setPinterestBoardId(cleanId);
+      setPinterestBoardName(selectedBoard?.name || "");
+      setPinterestBoardsError("");
+    },
+    [pinterestBoards],
+  );
 
   useEffect(() => {
     if (!connected.tiktok) {
@@ -1815,8 +1840,12 @@ export default function PublishModal({
           (Array.isArray((nextPostsByChannel as any)?.instagram?.hashtags)
             ? (nextPostsByChannel as any).instagram.hashtags.join(" ")
             : "");
-        const nextPinterestBoardId = String(payload.pinterestBoardId || "").trim();
-        const nextPinterestBoardName = String(payload.pinterestBoardName || "").trim();
+        const nextPinterestBoardId = String(
+          payload.pinterestBoardId || "",
+        ).trim();
+        const nextPinterestBoardName = String(
+          payload.pinterestBoardName || "",
+        ).trim();
 
         setIdea(nextIdea);
         setTheme(nextTheme);
@@ -3691,7 +3720,9 @@ export default function PublishModal({
                 tiktokPublicationSettings: groupChannels.includes("tiktok")
                   ? tiktokSettingsForSchedule
                   : null,
-                pinterestPublicationSettings: groupChannels.includes("pinterest")
+                pinterestPublicationSettings: groupChannels.includes(
+                  "pinterest",
+                )
                   ? { boardId: pinterestBoardId, boardName: pinterestBoardName }
                   : null,
               },
@@ -4350,7 +4381,6 @@ export default function PublishModal({
         pinterestBoardsLoading={pinterestBoardsLoading}
         pinterestBoardsError={pinterestBoardsError}
         onPinterestBoardChange={onPinterestBoardChange}
-        onRefreshPinterestBoards={() => void loadPinterestBoardsForPublish()}
       />
 
       <PublishImagesPanel

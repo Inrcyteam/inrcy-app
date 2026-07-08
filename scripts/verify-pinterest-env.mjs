@@ -8,6 +8,7 @@ const required = [
   "PINTEREST_CLIENT_SECRET",
   "PINTEREST_REDIRECT_URI",
   "PINTEREST_OAUTH_SCOPES",
+  "PINTEREST_API_ENV",
   "NEXT_PUBLIC_APP_URL",
   "INRCY_CREDENTIALS_SECRET",
 ];
@@ -36,24 +37,40 @@ let redirect;
 try {
   redirect = new URL(value("PINTEREST_REDIRECT_URI"));
 } catch {
-  console.error("[pinterest-env] PINTEREST_REDIRECT_URI n'est pas une URL valide.");
+  console.error(
+    "[pinterest-env] PINTEREST_REDIRECT_URI n'est pas une URL valide.",
+  );
   process.exit(1);
 }
 
 if (redirect.protocol !== "https:") {
-  console.error("[pinterest-env] PINTEREST_REDIRECT_URI doit utiliser HTTPS en production.");
+  console.error(
+    "[pinterest-env] PINTEREST_REDIRECT_URI doit utiliser HTTPS en production.",
+  );
   process.exit(1);
 }
 
 if (redirect.pathname !== "/api/integrations/pinterest/callback") {
-  console.error("[pinterest-env] Le chemin de callback Pinterest est incorrect.");
+  console.error(
+    "[pinterest-env] Le chemin de callback Pinterest est incorrect.",
+  );
   console.error("  Attendu: /api/integrations/pinterest/callback");
   process.exit(1);
 }
 
 const appOrigin = new URL(value("NEXT_PUBLIC_APP_URL")).origin;
 if (redirect.origin !== appOrigin) {
-  console.error("[pinterest-env] L'origine du callback Pinterest doit correspondre à NEXT_PUBLIC_APP_URL.");
+  console.error(
+    "[pinterest-env] L'origine du callback Pinterest doit correspondre à NEXT_PUBLIC_APP_URL.",
+  );
+  process.exit(1);
+}
+
+const apiEnvironment = value("PINTEREST_API_ENV").toLowerCase();
+if (!["sandbox", "production"].includes(apiEnvironment)) {
+  console.error(
+    "[pinterest-env] PINTEREST_API_ENV doit valoir sandbox ou production.",
+  );
   process.exit(1);
 }
 
@@ -74,4 +91,5 @@ if (missingScopes.length) {
 console.log("[pinterest-env] OK");
 console.log(`  App origin: ${appOrigin}`);
 console.log(`  Redirect path: ${redirect.pathname}`);
+console.log(`  API environment: ${apiEnvironment}`);
 console.log(`  Scopes: ${[...scopes].join(",")}`);

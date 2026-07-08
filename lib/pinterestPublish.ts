@@ -1,3 +1,4 @@
+import { getPinterestApiBaseUrl } from "@/lib/pinterestOAuth";
 import { asRecord, asString } from "@/lib/tsSafe";
 
 export type PinterestCreateImagePinArgs = {
@@ -40,7 +41,9 @@ function normalizePublicUrl(value: unknown) {
 }
 
 function buildPinterestPinUrl(pinId: string | null) {
-  return pinId ? `https://www.pinterest.com/pin/${encodeURIComponent(pinId)}/` : null;
+  return pinId
+    ? `https://www.pinterest.com/pin/${encodeURIComponent(pinId)}/`
+    : null;
 }
 
 type PinterestApiMethod = "POST" | "PATCH" | "DELETE";
@@ -52,7 +55,7 @@ async function pinterestApiRequest<T = unknown>(
 ): Promise<T> {
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
   const hasBody = options.body !== undefined && options.method !== "DELETE";
-  const res = await fetch(`https://api.pinterest.com/v5${cleanPath}`, {
+  const res = await fetch(`${getPinterestApiBaseUrl()}/v5${cleanPath}`, {
     method: options.method,
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -99,9 +102,12 @@ export async function createPinterestImagePin({
   const cleanBoardId = String(boardId || "").trim();
   const cleanImageUrl = normalizePublicUrl(imageUrl);
 
-  if (!token) throw new Error("Pinterest à connecter. Rendez-vous dans Canaux.");
-  if (!cleanBoardId) throw new Error("Choisissez un tableau Pinterest avant de publier.");
-  if (!cleanImageUrl) throw new Error("Pinterest nécessite une image publique valide.");
+  if (!token)
+    throw new Error("Pinterest à connecter. Rendez-vous dans Canaux.");
+  if (!cleanBoardId)
+    throw new Error("Choisissez un tableau Pinterest avant de publier.");
+  if (!cleanImageUrl)
+    throw new Error("Pinterest nécessite une image publique valide.");
 
   const payload: Record<string, unknown> = {
     board_id: cleanBoardId,
@@ -117,7 +123,12 @@ export async function createPinterestImagePin({
   const cleanLink = normalizePublicUrl(link);
   if (cleanLink) payload.link = cleanLink;
 
-  const json = asRecord(await pinterestApiRequest("/pins", token, { method: "POST", body: payload }));
+  const json = asRecord(
+    await pinterestApiRequest("/pins", token, {
+      method: "POST",
+      body: payload,
+    }),
+  );
   const id = asString(json.id) || asString(json.pin_id) || null;
 
   return {
@@ -147,7 +158,8 @@ export async function updatePinterestPin({
 }: PinterestUpdatePinArgs): Promise<PinterestCreatePinResult> {
   const token = String(accessToken || "").trim();
   const cleanPinId = String(pinId || "").trim();
-  if (!token) throw new Error("Pinterest à connecter. Rendez-vous dans Canaux.");
+  if (!token)
+    throw new Error("Pinterest à connecter. Rendez-vous dans Canaux.");
   if (!cleanPinId) throw new Error("Épingle Pinterest introuvable.");
 
   const payload: Record<string, unknown> = {
@@ -162,10 +174,14 @@ export async function updatePinterestPin({
   payload.link = cleanLink || null;
 
   const json = asRecord(
-    await pinterestApiRequest(`/pins/${encodeURIComponent(cleanPinId)}`, token, {
-      method: "PATCH",
-      body: payload,
-    }),
+    await pinterestApiRequest(
+      `/pins/${encodeURIComponent(cleanPinId)}`,
+      token,
+      {
+        method: "PATCH",
+        body: payload,
+      },
+    ),
   );
   const id = asString(json.id) || asString(json.pin_id) || cleanPinId;
 
@@ -177,18 +193,25 @@ export async function updatePinterestPin({
   };
 }
 
-export async function deletePinterestPin(accessToken: string, pinId: string): Promise<void> {
+export async function deletePinterestPin(
+  accessToken: string,
+  pinId: string,
+): Promise<void> {
   const token = String(accessToken || "").trim();
   const cleanPinId = String(pinId || "").trim();
-  if (!token) throw new Error("Pinterest à connecter. Rendez-vous dans Canaux.");
+  if (!token)
+    throw new Error("Pinterest à connecter. Rendez-vous dans Canaux.");
   if (!cleanPinId) throw new Error("Épingle Pinterest introuvable.");
 
   try {
-    await pinterestApiRequest(`/pins/${encodeURIComponent(cleanPinId)}`, token, { method: "DELETE" });
+    await pinterestApiRequest(
+      `/pins/${encodeURIComponent(cleanPinId)}`,
+      token,
+      { method: "DELETE" },
+    );
   } catch (error) {
     const status = Number((error as Error & { status?: number })?.status || 0);
     if (status === 404) return;
     throw error;
   }
 }
-

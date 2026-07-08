@@ -51,6 +51,20 @@ function trimSlash(value: string) {
   return value.replace(/\/+$/g, "");
 }
 
+export type PinterestApiEnvironment = "sandbox" | "production";
+
+export function getPinterestApiEnvironment(): PinterestApiEnvironment {
+  return String(process.env.PINTEREST_API_ENV || "production").trim().toLowerCase() === "sandbox"
+    ? "sandbox"
+    : "production";
+}
+
+export function getPinterestApiBaseUrl() {
+  return getPinterestApiEnvironment() === "sandbox"
+    ? "https://api-sandbox.pinterest.com"
+    : "https://api.pinterest.com";
+}
+
 export function getPinterestClientId() {
   return String(process.env.PINTEREST_CLIENT_ID || process.env.PINTEREST_APP_ID || "").trim();
 }
@@ -94,7 +108,7 @@ async function pinterestPostForm(body: Record<string, string>): Promise<Pinteres
     throw new Error("Configuration Pinterest incomplète côté serveur.");
   }
 
-  const res = await fetch("https://api.pinterest.com/v5/oauth/token", {
+  const res = await fetch(`${getPinterestApiBaseUrl()}/v5/oauth/token`, {
     method: "POST",
     headers: {
       Authorization: pinterestBasicAuthHeader(clientId, clientSecret),
@@ -136,7 +150,7 @@ async function pinterestApiRequest<T = any>(
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
   const method = options.method || "GET";
   const hasBody = options.body && method !== "GET";
-  const res = await fetch(`https://api.pinterest.com/v5${cleanPath}`, {
+  const res = await fetch(`${getPinterestApiBaseUrl()}/v5${cleanPath}`, {
     method,
     headers: {
       Authorization: `Bearer ${accessToken}`,
@@ -279,6 +293,10 @@ export async function getPinterestAccessToken(userId: string, _requestUrl?: stri
   const status = asString(row.status);
   if (status !== "connected" && status !== "account_connected") return "";
 
+  const meta = asRecord(row.meta);
+  const storedEnvironment = asString(meta.pinterest_api_environment) || "production";
+  if (storedEnvironment !== getPinterestApiEnvironment()) return "";
+
   let accessToken = tryDecryptToken(asString(row.access_token_enc) || "") || "";
   const refreshToken = tryDecryptToken(asString(row.refresh_token_enc) || "") || "";
   if (accessToken && !isExpired(row.expires_at)) return accessToken;
@@ -289,7 +307,7 @@ export async function getPinterestAccessToken(userId: string, _requestUrl?: stri
   if (!nextAccessToken) return "";
   const nextRefreshToken = asString(refreshed.refresh_token) || refreshToken;
   const dates = buildPinterestTokenDates(refreshed);
-  const meta = { ...asRecord(row.meta) };
+  const refreshedMeta = { ...asRecord(row.meta) };
   for (const key of [
     "account_id",
     "username",
@@ -303,9 +321,10 @@ export async function getPinterestAccessToken(userId: string, _requestUrl?: stri
     "default_board_name",
     "refresh_expires_at",
   ]) {
-    delete meta[key];
+    delete refreshedMeta[key];
   }
-  meta.pinterest_token_refreshed_at = new Date().toISOString();
+  refreshedMeta.pinterest_token_refreshed_at = new Date().toISOString();
+  refreshedMeta.pinterest_api_environment = getPinterestApiEnvironment();
 
   await supabaseAdmin
     .from("integrations")
@@ -314,7 +333,7 @@ export async function getPinterestAccessToken(userId: string, _requestUrl?: stri
       refresh_token_enc: nextRefreshToken ? encryptToken(nextRefreshToken) : row.refresh_token_enc || null,
       expires_at: dates.expiresAt || row.expires_at || null,
       scopes: asString(refreshed.scope) || asString(row.scopes) || getPinterestOAuthScope(),
-      meta,
+      meta: refreshedMeta,
       updated_at: new Date().toISOString(),
     })
     .eq("user_id", userId)

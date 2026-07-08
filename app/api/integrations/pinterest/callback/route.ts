@@ -13,6 +13,7 @@ import { resolveOAuthBoundInrcyAccountId } from "@/lib/multicompte/server";
 import {
   buildPinterestTokenDates,
   exchangePinterestAuthorizationCode,
+  getPinterestApiEnvironment,
   getPinterestOAuthScope,
   PINTEREST_PRODUCT,
   PINTEREST_PROVIDER,
@@ -91,7 +92,9 @@ export async function GET(request: Request) {
     const dates = buildPinterestTokenDates(token);
     const scope = asString(token.scope) || getPinterestOAuthScope();
 
-    const meta = withCurrentConnectionVersion("channel:pinterest", {});
+    const meta = withCurrentConnectionVersion("channel:pinterest", {
+      pinterest_api_environment: getPinterestApiEnvironment(),
+    });
 
     await supabaseAdmin.from("integrations").upsert(
       {
@@ -135,7 +138,6 @@ export async function GET(request: Request) {
       "username",
       "profileUrl",
       "url",
-      "defaultBoardId",
       "defaultBoardName",
       "boardId",
       "boardName",

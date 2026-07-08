@@ -517,9 +517,9 @@ Le logiciel iNrCy peut permettre à l’utilisateur de connecter son propre comp
 
 Selon les actions demandées par l’utilisateur, iNrCy peut consulter en direct les informations strictement nécessaires fournies par Pinterest, notamment le profil du compte connecté, les tableaux disponibles, les épingles concernées et les indicateurs de performance accessibles.
 
-Les informations lues depuis l’API Pinterest, notamment les informations de profil, les listes de tableaux et les statistiques, sont consultées à la demande pour fournir la fonctionnalité concernée et ne sont pas conservées durablement comme copie de la donnée Pinterest. iNrCy conserve uniquement les éléments nécessaires au fonctionnement sécurisé du service, notamment les jetons OAuth chiffrés et ses propres données internes liées aux actions explicitement demandées par l’utilisateur.
+Les informations lues depuis l’API Pinterest, notamment les informations de profil, les listes de tableaux et les statistiques, sont consultées à la demande pour fournir la fonctionnalité concernée et ne sont pas conservées durablement comme copie de la donnée Pinterest. iNrCy conserve uniquement les éléments nécessaires au fonctionnement sécurisé du service, notamment les jetons OAuth chiffrés, ses propres données internes liées aux actions explicitement demandées par l’utilisateur et, lorsque l’utilisateur le choisit, l’identifiant technique du tableau défini comme destination par défaut. Le nom et la liste des tableaux restent relus en direct depuis Pinterest.
 
-Les actions de création, modification ou suppression d’un tableau ou d’une épingle sont exécutées uniquement à la suite d’une action explicite de l’utilisateur dans iNrCy. Lors d’une publication, l’utilisateur choisit le contenu concerné et le tableau Pinterest de destination.
+Les actions de création, modification ou suppression d’un tableau ou d’une épingle sont exécutées uniquement à la suite d’une action explicite de l’utilisateur dans iNrCy. Lors d’une publication, le tableau défini par défaut est présélectionné et l’utilisateur peut choisir une autre destination avant l’envoi.
 
 Les contenus transmis vers Pinterest sont envoyés à Pinterest afin d’exécuter l’action demandée. Les statistiques Pinterest affichées dans iNrCy sont récupérées en direct lorsque la fonctionnalité est consultée.
 
