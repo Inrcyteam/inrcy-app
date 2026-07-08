@@ -103,7 +103,13 @@ export async function POST(request: Request) {
       );
 
     const board = await createPinterestBoard(accessToken, name);
-    const boards = await fetchPinterestBoards(accessToken).catch(() => [board]);
+    const fetchedBoards = await fetchPinterestBoards(accessToken).catch(() => []);
+    // Pinterest peut mettre un court instant avant de réexposer le nouveau tableau
+    // dans la liste. On fusionne donc la réponse de création immédiatement.
+    const boards = [
+      board,
+      ...fetchedBoards.filter((item) => String(item.id || "") !== board.id),
+    ];
     const defaultBoardId = await ensurePinterestDefaultBoardId(
       activeUserId,
       boards,

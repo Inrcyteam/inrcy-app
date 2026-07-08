@@ -285,8 +285,22 @@ export default function PinterestSettingsContent() {
         throw new Error(
           String(json?.error || "Création du tableau impossible."),
         );
+      const createdBoard = asBoard(json?.board);
+      const defaultBoardId = String(json?.defaultBoardId || "").trim();
+
       setNewBoardName("");
-      await refreshBoards(`Tableau « ${name} » créé sur Pinterest.`);
+      setSettings((current) => {
+        const boards = createdBoard
+          ? [createdBoard, ...current.boards.filter((item) => item.id !== createdBoard.id)]
+          : current.boards;
+        return {
+          ...current,
+          boards,
+          defaultBoardId:
+            defaultBoardId || current.defaultBoardId || createdBoard?.id || "",
+        };
+      });
+      setNotice(`Tableau « ${name} » créé sur Pinterest.`);
     } catch (err) {
       console.warn("[pinterest-settings] board create failed", err);
       setError(
@@ -297,7 +311,7 @@ export default function PinterestSettingsContent() {
     } finally {
       setBoardAction(null);
     }
-  }, [newBoardName, refreshBoards]);
+  }, [newBoardName]);
 
   const startRenameBoard = useCallback((board: PinterestBoard) => {
     setEditingBoardId(board.id);
@@ -544,7 +558,7 @@ export default function PinterestSettingsContent() {
           {!settings.accountConnected ? (
             <button
               type="button"
-              className={`${styles.actionBtn} ${styles.connectBtn}`}
+              className={`${styles.actionBtn} ${styles.pinterestConfigActionBtn} ${styles.connectBtn}`}
               onClick={connectPinterest}
               disabled={loading || syncing}
             >
@@ -557,7 +571,7 @@ export default function PinterestSettingsContent() {
                   href={settings.profileUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className={`${styles.actionBtn} ${styles.viewBtn}`}
+                  className={`${styles.actionBtn} ${styles.pinterestConfigActionBtn} ${styles.viewBtn}`}
                   style={{ flex: "0 0 auto" }}
                 >
                   Voir le compte
@@ -565,7 +579,7 @@ export default function PinterestSettingsContent() {
               ) : null}
               <button
                 type="button"
-                className={`${styles.actionBtn} ${styles.secondaryBtn}`}
+                className={`${styles.actionBtn} ${styles.pinterestConfigActionBtn} ${styles.secondaryBtn}`}
                 onClick={connectPinterest}
                 disabled={loading || syncing}
                 style={{ flex: "0 0 auto" }}
@@ -574,7 +588,7 @@ export default function PinterestSettingsContent() {
               </button>
               <button
                 type="button"
-                className={`${styles.actionBtn} ${styles.disconnectBtn}`}
+                className={`${styles.actionBtn} ${styles.pinterestConfigActionBtn} ${styles.disconnectBtn}`}
                 onClick={disconnectPinterest}
                 disabled={syncing}
                 style={{ flex: "0 0 auto" }}
@@ -598,7 +612,7 @@ export default function PinterestSettingsContent() {
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <button
                 type="button"
-                className={`${styles.actionBtn} ${styles.secondaryBtn}`}
+                className={`${styles.actionBtn} ${styles.pinterestConfigActionBtn} ${styles.secondaryBtn}`}
                 onClick={() => void refreshBoards("")}
                 disabled={Boolean(boardAction) || syncing || loading}
                 title="Actualiser les tableaux"
@@ -639,7 +653,7 @@ export default function PinterestSettingsContent() {
             />
             <button
               type="button"
-              className={`${styles.actionBtn} ${styles.connectBtn}`}
+              className={`${styles.actionBtn} ${styles.pinterestConfigActionBtn} ${styles.connectBtn}`}
               onClick={() => void createBoard()}
               disabled={
                 Boolean(boardAction) ||
@@ -715,7 +729,7 @@ export default function PinterestSettingsContent() {
                         />
                         <button
                           type="button"
-                          className={`${styles.actionBtn} ${styles.connectBtn}`}
+                          className={`${styles.actionBtn} ${styles.pinterestConfigActionBtn} ${styles.connectBtn}`}
                           onClick={() => void renameBoard(board)}
                           disabled={isRenaming || !editingBoardName.trim()}
                         >
@@ -723,7 +737,7 @@ export default function PinterestSettingsContent() {
                         </button>
                         <button
                           type="button"
-                          className={`${styles.actionBtn} ${styles.secondaryBtn}`}
+                          className={`${styles.actionBtn} ${styles.pinterestConfigActionBtn} ${styles.secondaryBtn}`}
                           onClick={() => {
                             setEditingBoardId(null);
                             setEditingBoardName("");
@@ -796,7 +810,7 @@ export default function PinterestSettingsContent() {
                           {!isDefault ? (
                             <button
                               type="button"
-                              className={`${styles.actionBtn} ${styles.secondaryBtn}`}
+                              className={`${styles.actionBtn} ${styles.pinterestConfigActionBtn} ${styles.secondaryBtn}`}
                               onClick={() => void setDefaultBoard(board)}
                               disabled={isBusy}
                             >
@@ -807,7 +821,7 @@ export default function PinterestSettingsContent() {
                           ) : null}
                           <button
                             type="button"
-                            className={`${styles.actionBtn} ${styles.secondaryBtn}`}
+                            className={`${styles.actionBtn} ${styles.pinterestConfigActionBtn} ${styles.secondaryBtn}`}
                             onClick={() => startRenameBoard(board)}
                             disabled={isBusy}
                           >
@@ -815,7 +829,7 @@ export default function PinterestSettingsContent() {
                           </button>
                           <button
                             type="button"
-                            className={`${styles.actionBtn} ${styles.disconnectBtn}`}
+                            className={`${styles.actionBtn} ${styles.pinterestConfigActionBtn} ${styles.disconnectBtn}`}
                             onClick={() => void deleteBoard(board)}
                             disabled={isBusy}
                           >

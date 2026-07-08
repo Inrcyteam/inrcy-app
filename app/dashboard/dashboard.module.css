@@ -10374,3 +10374,9 @@
     grid-row: 2;
   }
 }
+
+/* Pinterest configuration drawer: keep pill buttons fully visible on hover.
+   The shared actionBtn lifts by 1px; inside the drawer this can clip the top edge. */
+.pinterestConfigActionBtn:hover {
+  transform: none;
+}
