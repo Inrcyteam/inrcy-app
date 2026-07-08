@@ -6,14 +6,13 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 export const runtime = "nodejs";
 
 export async function POST() {
-  const { user, errorResponse, activeUserId } = await requireUser();
+  const { errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   const { error } = await supabaseAdmin
     .from("notifications")
-    .update({ read_at: new Date().toISOString() })
-    .eq("user_id", activeUserId)
-    .is("read_at", null);
+    .delete()
+    .eq("user_id", activeUserId);
 
   if (error) return jsonUserFacingError(error, { status: 500 });
   return NextResponse.json({ ok: true });

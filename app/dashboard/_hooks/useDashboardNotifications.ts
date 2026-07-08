@@ -58,17 +58,27 @@ export function useDashboardNotifications() {
   }, [refreshNotifications]);
 
   const markNotificationRead = useCallback(async (id: string) => {
-    setNotifications((current) => current.map((item) => (item.id === id ? { ...item, unread: false } : item)));
     try {
-      await fetch(`/api/notifications/${id}/read`, { method: "POST", credentials: "include" });
-    } catch {}
+      const res = await fetch(`/api/notifications/${id}/read`, { method: "POST", credentials: "include" });
+      if (!res.ok) throw new Error(await getSimpleFrenchApiError(res, "Impossible de traiter cette notification."));
+      setNotifications((current) => current.filter((item) => item.id !== id));
+      setNotificationsCount((current) => Math.max(0, current - 1));
+      setNotificationsError(null);
+    } catch (e: unknown) {
+      setNotificationsError(getSimpleFrenchErrorMessage(e, "Impossible de traiter cette notification pour le moment."));
+    }
   }, []);
 
   const markAllNotificationsRead = useCallback(async () => {
-    setNotifications((current) => current.map((item) => ({ ...item, unread: false })));
     try {
-      await fetch("/api/notifications/mark-all-read", { method: "POST", credentials: "include" });
-    } catch {}
+      const res = await fetch("/api/notifications/mark-all-read", { method: "POST", credentials: "include" });
+      if (!res.ok) throw new Error(await getSimpleFrenchApiError(res, "Impossible de traiter toutes les notifications."));
+      setNotifications([]);
+      setNotificationsCount(0);
+      setNotificationsError(null);
+    } catch (e: unknown) {
+      setNotificationsError(getSimpleFrenchErrorMessage(e, "Impossible de traiter toutes les notifications pour le moment."));
+    }
   }, []);
 
   const deleteNotification = useCallback(async (id: string) => {

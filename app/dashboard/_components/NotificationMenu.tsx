@@ -3,6 +3,7 @@
 import styles from "../dashboard.module.css";
 import { useDashboardI18n } from "../_hooks/useDashboardI18n";
 import type { NotificationItem } from "../dashboard.types";
+import { confirmInrcy } from "@/lib/inrcyDialog";
 
 export default function NotificationMenu(props: {
   notificationMenuOpen: boolean;
@@ -52,6 +53,20 @@ export default function NotificationMenu(props: {
   const loadedUnreadCount = notifications.reduce((count, item) => count + (item.unread ? 1 : 0), 0);
   const displayedUnreadCount = Math.max(unreadNotificationsCount, loadedUnreadCount);
   const displayedBadgeCount = typeof badgeCount === "number" ? Math.max(0, badgeCount) : displayedUnreadCount;
+
+  const confirmAndMarkAllRead = async () => {
+    if (notifications.length === 0 || notificationsLoading) return;
+    const confirmed = await confirmInrcy({
+      eyebrow: t.notifications.aria,
+      title: t.notifications.markAllReadConfirmTitle,
+      message: t.notifications.markAllReadConfirmMessage,
+      confirmLabel: t.notifications.markAllRead,
+      cancelLabel: t.notifications.markAllReadConfirmCancel,
+      variant: "warning",
+    });
+    if (!confirmed) return;
+    await markAllNotificationsRead();
+  };
 
   return (
     <>
@@ -107,7 +122,7 @@ export default function NotificationMenu(props: {
                 type="button"
                 className={`${styles.notificationGhostBtn} ${styles.notificationHeaderButtonMobile}`}
                 onClick={() => {
-                  void markAllNotificationsRead();
+                  void confirmAndMarkAllRead();
                 }}
               >
                 {t.notifications.markAllRead}
@@ -138,7 +153,7 @@ export default function NotificationMenu(props: {
                   type="button"
                   className={styles.notificationGhostBtn}
                   onClick={() => {
-                    void markAllNotificationsRead();
+                    void confirmAndMarkAllRead();
                   }}
                 >
                   {t.notifications.markAllRead}

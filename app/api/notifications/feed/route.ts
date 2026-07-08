@@ -7,7 +7,7 @@ import { toNotificationPayload, type NotificationRow } from "@/lib/notifications
 export const runtime = "nodejs";
 
 export async function GET(req: Request) {
-  const { user, errorResponse, activeUserId } = await requireUser();
+  const { errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
   const url = new URL(req.url);
@@ -28,12 +28,14 @@ export async function GET(req: Request) {
       .from("notifications")
       .select("id, user_id, category, kind, title, body, cta_label, cta_url, read_at, meta, dedupe_key, created_at")
       .eq("user_id", activeUserId)
+      .is("read_at", null)
       .order("created_at", { ascending: false })
       .limit(limit),
     supabaseAdmin
       .from("notifications")
       .select("id", { count: "exact", head: true })
-      .eq("user_id", activeUserId),
+      .eq("user_id", activeUserId)
+      .is("read_at", null),
   ]);
 
   if (feedResult.error) return jsonUserFacingError(feedResult.error, { status: 500 });
