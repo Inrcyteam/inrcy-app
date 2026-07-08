@@ -62,8 +62,9 @@ export function getPinterestClientSecret() {
 export function getPinterestRedirectUri(requestUrl?: string) {
   const explicit = String(process.env.PINTEREST_REDIRECT_URI || "").trim();
   if (explicit) return explicit;
-  const origin = process.env.NEXT_PUBLIC_SITE_URL
-    ? trimSlash(process.env.NEXT_PUBLIC_SITE_URL)
+  const configuredOrigin = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || "";
+  const origin = configuredOrigin
+    ? trimSlash(configuredOrigin)
     : requestUrl
       ? new URL(requestUrl).origin
       : "";
@@ -86,7 +87,7 @@ function pinterestBasicAuthHeader(clientId: string, clientSecret: string) {
   return `Basic ${Buffer.from(`${clientId}:${clientSecret}`, "utf8").toString("base64")}`;
 }
 
-async function pinterestPostForm(body: Record<string, string>, requestUrl?: string): Promise<PinterestTokenResponse> {
+async function pinterestPostForm(body: Record<string, string>): Promise<PinterestTokenResponse> {
   const clientId = getPinterestClientId();
   const clientSecret = getPinterestClientSecret();
   if (!clientId || !clientSecret) {
@@ -99,10 +100,7 @@ async function pinterestPostForm(body: Record<string, string>, requestUrl?: stri
       Authorization: pinterestBasicAuthHeader(clientId, clientSecret),
       "Content-Type": "application/x-www-form-urlencoded",
     },
-    body: new URLSearchParams({
-      ...body,
-      redirect_uri: body.redirect_uri || getPinterestRedirectUri(requestUrl),
-    }),
+    body: new URLSearchParams(body),
     cache: "no-store",
   });
 
@@ -118,28 +116,55 @@ export async function exchangePinterestAuthorizationCode(code: string, requestUr
     code,
     grant_type: "authorization_code",
     redirect_uri: getPinterestRedirectUri(requestUrl),
-  }, requestUrl);
+  });
 }
 
-export async function refreshPinterestAccessToken(refreshToken: string, requestUrl?: string) {
+export async function refreshPinterestAccessToken(refreshToken: string) {
   return pinterestPostForm({
     grant_type: "refresh_token",
     refresh_token: refreshToken,
-  }, requestUrl);
+  });
 }
 
-export async function pinterestApiGet<T = any>(path: string, accessToken: string): Promise<T> {
+type PinterestApiMethod = "GET" | "POST" | "PATCH" | "DELETE";
+
+async function pinterestApiRequest<T = any>(
+  path: string,
+  accessToken: string,
+  options: { method?: PinterestApiMethod; body?: Record<string, unknown> } = {},
+): Promise<T> {
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
+  const method = options.method || "GET";
+  const hasBody = options.body && method !== "GET";
   const res = await fetch(`https://api.pinterest.com/v5${cleanPath}`, {
-    headers: { Authorization: `Bearer ${accessToken}` },
+    method,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      ...(hasBody ? { "Content-Type": "application/json" } : {}),
+    },
+    body: hasBody ? JSON.stringify(options.body) : undefined,
     cache: "no-store",
   });
-  const json = await res.json().catch(() => ({}));
+
+  const raw = await res.text().catch(() => "");
+  let json: unknown = {};
+  if (raw) {
+    try {
+      json = JSON.parse(raw);
+    } catch {
+      json = { message: raw };
+    }
+  }
+
   if (!res.ok) {
     const rec = asRecord(json);
     throw new Error(asString(rec.message) || asString(rec.error_description) || asString(rec.error) || "Appel Pinterest impossible.");
   }
   return json as T;
+}
+
+export async function pinterestApiGet<T = any>(path: string, accessToken: string): Promise<T> {
+  return pinterestApiRequest<T>(path, accessToken);
 }
 
 export async function fetchPinterestUserAccount(accessToken: string): Promise<PinterestUserAccount> {
@@ -192,6 +217,33 @@ export async function fetchPinterestBoards(accessToken: string): Promise<Pintere
   return boards;
 }
 
+
+export async function createPinterestBoard(accessToken: string, name: string): Promise<PinterestBoard> {
+  const data = await pinterestApiRequest("/boards", accessToken, {
+    method: "POST",
+    body: { name },
+  });
+  const board = normalizePinterestBoard(data);
+  if (!board) throw new Error("Pinterest n'a pas renvoyé le tableau créé.");
+  return board;
+}
+
+export async function updatePinterestBoard(accessToken: string, boardId: string, name: string): Promise<PinterestBoard> {
+  const data = await pinterestApiRequest(`/boards/${encodeURIComponent(boardId)}`, accessToken, {
+    method: "PATCH",
+    body: { name },
+  });
+  const board = normalizePinterestBoard(data);
+  if (!board) throw new Error("Pinterest n'a pas renvoyé le tableau modifié.");
+  return board;
+}
+
+export async function deletePinterestBoard(accessToken: string, boardId: string): Promise<void> {
+  await pinterestApiRequest(`/boards/${encodeURIComponent(boardId)}`, accessToken, {
+    method: "DELETE",
+  });
+}
+
 export function buildPinterestTokenDates(token: PinterestTokenResponse) {
   const expiresIn = numberOrNull(token.expires_in);
   const refreshExpiresIn = numberOrNull(token.refresh_token_expires_in);
@@ -222,7 +274,7 @@ function isExpired(expiresAt: unknown, skewSeconds = 120) {
   return time <= Date.now() + skewSeconds * 1000;
 }
 
-export async function getPinterestAccessToken(userId: string, requestUrl?: string) {
+export async function getPinterestAccessToken(userId: string, _requestUrl?: string) {
   const row = await getPinterestIntegration(userId);
   const status = asString(row.status);
   if (status !== "connected" && status !== "account_connected") return "";
@@ -230,18 +282,30 @@ export async function getPinterestAccessToken(userId: string, requestUrl?: strin
   let accessToken = tryDecryptToken(asString(row.access_token_enc) || "") || "";
   const refreshToken = tryDecryptToken(asString(row.refresh_token_enc) || "") || "";
   if (accessToken && !isExpired(row.expires_at)) return accessToken;
-  if (!refreshToken) return accessToken;
+  if (!refreshToken) return "";
 
-  const refreshed = await refreshPinterestAccessToken(refreshToken, requestUrl);
+  const refreshed = await refreshPinterestAccessToken(refreshToken);
   const nextAccessToken = asString(refreshed.access_token) || "";
-  if (!nextAccessToken) return accessToken;
+  if (!nextAccessToken) return "";
   const nextRefreshToken = asString(refreshed.refresh_token) || refreshToken;
   const dates = buildPinterestTokenDates(refreshed);
-  const meta = {
-    ...asRecord(row.meta),
-    pinterest_token_refreshed_at: new Date().toISOString(),
-    refresh_expires_at: dates.refreshExpiresAt || asRecord(row.meta).refresh_expires_at || null,
-  };
+  const meta = { ...asRecord(row.meta) };
+  for (const key of [
+    "account_id",
+    "username",
+    "display_name",
+    "profile_url",
+    "avatar_url",
+    "website_url",
+    "account_type",
+    "boards",
+    "default_board_id",
+    "default_board_name",
+    "refresh_expires_at",
+  ]) {
+    delete meta[key];
+  }
+  meta.pinterest_token_refreshed_at = new Date().toISOString();
 
   await supabaseAdmin
     .from("integrations")

@@ -13,6 +13,8 @@ import { refreshTiktokAccessToken } from "@/lib/tiktokOAuth";
 import { fetchTiktokAnalyticsSnapshot } from "@/lib/tiktokAnalytics";
 import { fetchYoutubeMineChannel, refreshYoutubeShortsAccessToken } from "@/lib/youtubeShortsOAuth";
 import { fetchYoutubeShortsAnalyticsSnapshot, mergeYoutubeShortsLocalPublicationStats } from "@/lib/youtubeShortsAnalytics";
+import { getPinterestAccessToken } from "@/lib/pinterestOAuth";
+import { fetchPinterestAnalyticsSnapshot } from "@/lib/pinterestAnalytics";
 
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v)
@@ -240,6 +242,24 @@ function mergeCachedSourcesWithLiveState(
     out[key] = nextNode;
   }
   return out;
+}
+
+function stripPinterestApiMetricsFromPayload(payloadUnknown: unknown): Record<string, unknown> {
+  const payload = asRecord(payloadUnknown);
+  const sources = asRecord(payload["sources"]);
+  const pinterest = asRecord(sources["pinterest"]);
+  return {
+    ...payload,
+    sources: {
+      ...sources,
+      pinterest: {
+        ...pinterest,
+        // Pinterest interdit la conservation durable des informations lues via son API.
+        // Les métriques live sont donc retirées de tous les caches persistants.
+        metrics: null,
+      },
+    },
+  };
 }
 
 function normalizeIdentityValue(value: unknown) {
@@ -1343,6 +1363,69 @@ export async function buildStatsOverview(args: {
     } satisfies LiveSourcesSnapshot;
   }
 
+  async function fetchPinterestMetricsLive() {
+    const states = await channelStatesPromise;
+    const connected = isStatsActiveConnection(states.pinterest);
+    if (!connected) return null;
+
+    try {
+      const accessToken = await getPinterestAccessToken(userId);
+      if (!accessToken) {
+        throw new Error("Connexion Pinterest expirée. Reconnecte Pinterest dans Canaux.");
+      }
+      const remote = await fetchPinterestAnalyticsSnapshot({
+        accessToken,
+        start: dateWindow.startDateYmd,
+        end: dateWindow.endDateYmd,
+      });
+      return mergePinterestLocalPublicationStats(remote, pinterestLocalPublicationStats);
+    } catch (error) {
+      const rawMessage = error instanceof Error ? error.message : String(error || "");
+      const lower = rawMessage.toLowerCase();
+      const needsReconnect =
+        lower.includes("access token") ||
+        lower.includes("invalid token") ||
+        lower.includes("expired") ||
+        lower.includes("unauthorized") ||
+        lower.includes("forbidden") ||
+        lower.includes("scope") ||
+        lower.includes("permission") ||
+        lower.includes("reconnect");
+      return mergePinterestLocalPublicationStats(
+        {
+          error: needsReconnect
+            ? "Pinterest doit être reconnecté pour récupérer les statistiques en direct."
+            : getSimpleFrenchErrorMessage(
+                error,
+                "Impossible de récupérer les statistiques Pinterest pour le moment.",
+              ),
+          needs_reconnect: needsReconnect,
+        },
+        pinterestLocalPublicationStats,
+      );
+    }
+  }
+
+  async function hydratePinterestMetricsOnPayload(payloadUnknown: unknown): Promise<Record<string, unknown>> {
+    const payload: Record<string, unknown> = stripPinterestApiMetricsFromPayload(payloadUnknown);
+    const shouldLoadPinterest = includeAll || includeSet.has("pinterest");
+    if (!shouldLoadPinterest) return payload;
+
+    const sources = asRecord(payload["sources"]);
+    const pinterest = asRecord(sources["pinterest"]);
+    const liveMetrics = await fetchPinterestMetricsLive();
+    return {
+      ...payload,
+      sources: {
+        ...sources,
+        pinterest: {
+          ...pinterest,
+          metrics: liveMetrics,
+        },
+      },
+    };
+  }
+
   // ---- Cache (anti-quota Google) ----
   // ⚠️ Correctif critique : la clé de cache DOIT dépendre de l'état des connexions.
   // Sinon, après une déconnexion, on peut resservir un ancien payload (ex: GMB +90) jusqu'à expiration.
@@ -1795,7 +1878,7 @@ export async function buildStatsOverview(args: {
         .limit(1)
         .maybeSingle();
       if (asRecord(cacheHit)["payload"]) {
-        const payload = asRecord(asRecord(cacheHit)["payload"]);
+        let payload = stripPinterestApiMetricsFromPayload(asRecord(asRecord(cacheHit)["payload"]));
         // Rehydrate all live connection flags to avoid stale/missing keys in cached payloads.
         try {
           const liveSources = await fetchLiveSourcesStatus();
@@ -1804,6 +1887,7 @@ export async function buildStatsOverview(args: {
             liveSources,
           );
         } catch {}
+        payload = await hydratePinterestMetricsOnPayload(payload);
         const stabilizedPayload = await stabilizeOverviewPayload({
           supabase,
           userId,
@@ -1832,7 +1916,7 @@ export async function buildStatsOverview(args: {
         .maybeSingle();
 
       if (asRecord(legacyHit)["charge_utile"]) {
-        const payload = asRecord(asRecord(legacyHit)["charge_utile"]);
+        let payload = stripPinterestApiMetricsFromPayload(asRecord(asRecord(legacyHit)["charge_utile"]));
         // Rehydrate all live connection flags to avoid stale/missing keys in legacy cached payloads.
         try {
           const liveSources = await fetchLiveSourcesStatus();
@@ -1841,6 +1925,7 @@ export async function buildStatsOverview(args: {
             liveSources,
           );
         } catch {}
+        payload = await hydratePinterestMetricsOnPayload(payload);
         const stabilizedPayload = await stabilizeOverviewPayload({
           supabase,
           userId,
@@ -2403,13 +2488,15 @@ export async function buildStatsOverview(args: {
     }
   } catch {}
 
-  // Pinterest: premières stats locales iNrCy en attendant les analytics API Pinterest.
+  // Pinterest: analytics réelles lues en direct, sans persistance des données API Pinterest.
   try {
     sourcesStatus.pinterest.connected = isStatsActiveConnection(channelStates.pinterest);
     const includePinterest = includeAll || includeSet.has("pinterest");
     if (!includePinterest) {
       sourcesStatus.pinterest.metrics = null;
-    } else if (sourcesStatus.pinterest.connected || pinterestLocalPublicationStats.posts > 0) {
+    } else if (sourcesStatus.pinterest.connected) {
+      sourcesStatus.pinterest.metrics = await fetchPinterestMetricsLive();
+    } else if (pinterestLocalPublicationStats.posts > 0) {
       sourcesStatus.pinterest.metrics = mergePinterestLocalPublicationStats({}, pinterestLocalPublicationStats);
     } else {
       sourcesStatus.pinterest.metrics = null;
@@ -3129,7 +3216,7 @@ export async function buildStatsOverview(args: {
         user_id: userId,
         source: "overview",
         range_key: rangeKey,
-        payload,
+        payload: stripPinterestApiMetricsFromPayload(payload),
         expires_at: expiresAt,
       },
       { onConflict: "user_id,source,range_key" },
@@ -3142,7 +3229,7 @@ export async function buildStatsOverview(args: {
       id_utilisateur: userId,
       source: "apercu",
       plage_cle: rangeKey,
-      charge_utile: payload,
+      charge_utile: stripPinterestApiMetricsFromPayload(payload),
     });
   } catch {}
 

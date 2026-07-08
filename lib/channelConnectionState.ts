@@ -342,17 +342,11 @@ export async function getChannelConnectionStates(
   const mailsConnected = mailConnectedCount > 0;
 
   const pinterest = latestIntegration(rows, "pinterest", "pinterest", "pinterest");
-  const pinterestMeta = asRecord(pinterest.meta);
-  const pinterestSettings = asRecord(settings.pinterest);
   const pinterestHasToken = hasTruthyString(pinterest.access_token_enc) || hasTruthyString(pinterest.refresh_token_enc);
   const pinterestExpired = isExpired(pinterest.expires_at) && !hasTruthyString(pinterest.refresh_token_enc);
   const pinterestStatus = asString(pinterest.status);
   const pinterestOAuthConnected = Boolean((pinterestStatus === "connected" || pinterestStatus === "account_connected") && pinterestHasToken && !pinterestExpired);
-  const pinterestProfileUrl = asString(pinterestMeta.profile_url) || asString(pinterestSettings.profileUrl) || asString(pinterestSettings.url) || null;
-  const pinterestDefaultBoardId = asString(pinterestMeta.default_board_id) || asString(pinterestSettings.defaultBoardId) || asString(pinterestSettings.boardId) || null;
-  const pinterestDefaultBoardName = asString(pinterestMeta.default_board_name) || asString(pinterestSettings.defaultBoardName) || asString(pinterestSettings.boardName) || null;
-  const pinterestUsername = asString(pinterestMeta.username) || asString(pinterest.resource_label) || asString(pinterestSettings.username) || asString(pinterestSettings.accountName) || null;
-  const pinterestConnected = Boolean(pinterestOAuthConnected || pinterestSettings.connected || pinterestProfileUrl || pinterestDefaultBoardId);
+  const pinterestConnected = pinterestOAuthConnected;
 
   const trustpilot = latestIntegration(rows, "trustpilot", "trustpilot", "trustpilot");
   const trustpilotMeta = asRecord(trustpilot.meta);
@@ -490,11 +484,12 @@ export async function getChannelConnectionStates(
       expired: pinterestExpired,
       requiresUpdate: false,
       connection_status: pinterestConnected ? "connected" : "disconnected",
-      resource_id: pinterestConnected ? (asString(pinterest.resource_id) || pinterestDefaultBoardId || pinterestUsername || pinterestProfileUrl || null) : null,
-      username: pinterestConnected ? pinterestUsername : null,
-      profile_url: pinterestConnected ? pinterestProfileUrl : null,
-      default_board_id: pinterestConnected ? pinterestDefaultBoardId : null,
-      default_board_name: pinterestConnected ? pinterestDefaultBoardName : null,
+      // Profil et tableaux Pinterest sont lus en direct via /api/integrations/pinterest/status.
+      resource_id: null,
+      username: null,
+      profile_url: null,
+      default_board_id: null,
+      default_board_name: null,
     },
     trustpilot: {
       accountConnected: trustpilotOAuthConnected || trustpilotConnected,

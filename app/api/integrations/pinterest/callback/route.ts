@@ -13,13 +13,10 @@ import { resolveOAuthBoundInrcyAccountId } from "@/lib/multicompte/server";
 import {
   buildPinterestTokenDates,
   exchangePinterestAuthorizationCode,
-  fetchPinterestBoards,
-  fetchPinterestUserAccount,
   getPinterestOAuthScope,
   PINTEREST_PRODUCT,
   PINTEREST_PROVIDER,
   PINTEREST_SOURCE,
-  type PinterestBoard,
 } from "@/lib/pinterestOAuth";
 
 function normalizeSettingsRoot(value: unknown) {
@@ -28,12 +25,8 @@ function normalizeSettingsRoot(value: unknown) {
     : {};
 }
 
-function pickDefaultBoard(boards: PinterestBoard[]) {
-  return boards.find((board) => board.id)?.id || "";
-}
-
 export async function GET(request: Request) {
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
+  const siteUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || new URL(request.url).origin;
   let returnTo = "/dashboard?panel=pinterest";
 
   try {
@@ -95,26 +88,10 @@ export async function GET(request: Request) {
     const accessToken = asString(token.access_token) || "";
     if (!accessToken) return fail("missing_access_token", "Pinterest n'a pas renvoyé de jeton d'accès.");
 
-    const account = await fetchPinterestUserAccount(accessToken);
-    const boards = await fetchPinterestBoards(accessToken).catch(() => [] as PinterestBoard[]);
-    const defaultBoardId = pickDefaultBoard(boards);
-    const defaultBoard = boards.find((board) => board.id === defaultBoardId) || null;
     const dates = buildPinterestTokenDates(token);
     const scope = asString(token.scope) || getPinterestOAuthScope();
 
-    const meta = withCurrentConnectionVersion("channel:pinterest", {
-      account_id: account.id,
-      username: account.username,
-      display_name: account.displayName,
-      profile_url: account.profileUrl,
-      avatar_url: account.avatarUrl,
-      website_url: account.websiteUrl,
-      account_type: account.accountType,
-      boards,
-      default_board_id: defaultBoardId || null,
-      default_board_name: defaultBoard?.name || null,
-      refresh_expires_at: dates.refreshExpiresAt,
-    });
+    const meta = withCurrentConnectionVersion("channel:pinterest", {});
 
     await supabaseAdmin.from("integrations").upsert(
       {
@@ -124,14 +101,14 @@ export async function GET(request: Request) {
         source: PINTEREST_SOURCE,
         product: PINTEREST_PRODUCT,
         status: "connected",
-        display_name: account.displayName || account.username || "Compte Pinterest",
-        provider_account_id: account.id || account.username || null,
+        display_name: "Compte Pinterest",
+        provider_account_id: null,
         scopes: scope,
         access_token_enc: encryptToken(accessToken),
         refresh_token_enc: token.refresh_token ? encryptToken(token.refresh_token) : null,
         expires_at: dates.expiresAt,
-        resource_id: account.id || account.username || null,
-        resource_label: account.username || account.displayName || null,
+        resource_id: null,
+        resource_label: null,
         meta,
         updated_at: new Date().toISOString(),
       },
@@ -145,21 +122,31 @@ export async function GET(request: Request) {
       .maybeSingle();
     const root = normalizeSettingsRoot(asRecord(cfg).settings);
     const currentPinterest = normalizeSettingsRoot(root.pinterest);
-    const nextPinterest = {
-      ...currentPinterest,
-      connected: true,
-      accountConnected: true,
-      mode: "oauth",
-      accountName: account.displayName || account.username || currentPinterest.accountName || "",
-      username: account.username || currentPinterest.username || "",
-      profileUrl: account.profileUrl || currentPinterest.profileUrl || "",
-      avatarUrl: account.avatarUrl || currentPinterest.avatarUrl || "",
-      defaultBoardId: defaultBoardId || currentPinterest.defaultBoardId || "",
-      defaultBoardName: defaultBoard?.name || currentPinterest.defaultBoardName || "",
-      boards,
-      scopes: scope,
-      expiresAt: dates.expiresAt,
-    };
+    const nextPinterest = { ...currentPinterest };
+    // Pinterest interdit la conservation durable des informations lues via son API.
+    // On ne garde ici que des préférences propres à iNrCy ; le profil et les tableaux sont relus en direct.
+    for (const key of [
+      "boards",
+      "avatarUrl",
+      "websiteUrl",
+      "accountType",
+      "accountName",
+      "displayName",
+      "username",
+      "profileUrl",
+      "url",
+      "defaultBoardId",
+      "defaultBoardName",
+      "boardId",
+      "boardName",
+      "scopes",
+      "expiresAt",
+      "connected",
+      "accountConnected",
+      "mode",
+    ]) {
+      delete nextPinterest[key];
+    }
 
     await supabaseAdmin
       .from("pro_tools_configs")

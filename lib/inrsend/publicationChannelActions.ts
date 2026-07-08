@@ -12,6 +12,8 @@ import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { buildBoosterGmbSummary, buildBoosterInstagramCaption, buildBoosterMessage, getBoosterGmbCallToAction } from "@/lib/boosterCta";
 import { log } from "@/lib/observability/logger";
 import { getLinkedInAccessToken } from "@/lib/linkedinOAuth";
+import { getPinterestAccessToken } from "@/lib/pinterestOAuth";
+import { createPinterestImagePin, deletePinterestPin, updatePinterestPin } from "@/lib/pinterestPublish";
 import { buildVideoSettingsByChannel, normalizeChannelVideoSettings } from "@/lib/boosterVideoSettings";
 import { INSTAGRAM_RECONNECT_USER_MESSAGE, isInstagramAuthorizationLikeMessage } from "@/lib/userFacingErrors";
 import { getPublishChannelUserMessage, logPublishChannelFailure } from "@/lib/channelPublishDiagnostics";
@@ -20,8 +22,6 @@ const FACEBOOK_GRAPH_VERSION = "v20.0";
 const LINKEDIN_VERSION = "202603";
 const TIKTOK_INRSEND_EXTERNAL_ACTION_MESSAGE =
   "TikTok ne permet pas la modification ou la suppression réelle depuis iNrCy. Ouvrez TikTok pour gérer cette publication.";
-const PINTEREST_INRSEND_EXTERNAL_ACTION_MESSAGE =
-  "La modification ou suppression réelle Pinterest sera gérée dans une prochaine étape. Ouvrez Pinterest pour gérer cette épingle.";
 
 export type ChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin" | "tiktok" | "pinterest";
 type JsonRecord = Record<string, unknown>;
@@ -145,6 +145,16 @@ function normalizeHashtag(input: string): string {
     .replace(/^#+/, "")
     .replace(/[^\p{L}\p{N}_]/gu, "")
     .slice(0, 40);
+}
+
+function normalizePublicHttpUrl(value: unknown): string {
+  const raw = String(value || "").trim();
+  if (!/^https?:\/\//i.test(raw)) return "";
+  try {
+    return new URL(raw).toString();
+  } catch {
+    return "";
+  }
 }
 
 function dataUrlToBuffer(dataUrl: string) {
@@ -1563,8 +1573,87 @@ async function replaceChannelDelivery(params: {
   if (channel === "tiktok") {
     throw new Error(TIKTOK_INRSEND_EXTERNAL_ACTION_MESSAGE);
   }
+
   if (channel === "pinterest") {
-    throw new Error(PINTEREST_INRSEND_EXTERNAL_ACTION_MESSAGE);
+    const accessToken = await getPinterestAccessToken(userId);
+    if (!accessToken) throw new Error("Pinterest à reconnecter. Rendez-vous dans Canaux.");
+    if (!previousExternalId) throw new Error("Épingle Pinterest introuvable dans l’historique iNrSend.");
+    if (isVideoPublication) throw new Error("Pinterest nécessite une image dans cette version.");
+
+    const channelResult = asRecord(asRecord(eventPayload.results).pinterest);
+    const boardId = String(channelResult.board_id || "").trim();
+    if (!boardId) throw new Error("Tableau Pinterest introuvable. Configurez Pinterest puis réessayez.");
+
+    const pinterestImageUrls = socialFeedImageUrls.filter(Boolean).slice(0, 1);
+    if (!pinterestImageUrls.length) throw new Error("Pinterest nécessite au moins 1 image.");
+
+    const pinterestTags = nextPost.hashtags
+      .map((tag) => normalizeHashtag(tag))
+      .filter(Boolean)
+      .slice(0, 8);
+    const tagLine = pinterestTags.length ? pinterestTags.map((tag) => `#${tag}`).join(" ") : "";
+    const description = [canonMessage, tagLine].filter(Boolean).join("\n\n").slice(0, 500);
+    const link = normalizePublicHttpUrl(nextPost.ctaUrl) || normalizePublicHttpUrl(websiteUrl) || null;
+    const currentImageSet = getChannelImageSet(eventPayload, publication, channel);
+    const currentPinterestImageUrls = (
+      currentImageSet.socialFeedPublishableUrls.length
+        ? currentImageSet.socialFeedPublishableUrls
+        : currentImageSet.images
+    ).filter(Boolean).slice(0, 1);
+    const imageChanged = !areImageListsEqual(currentPinterestImageUrls, pinterestImageUrls);
+
+    if (!imageChanged) {
+      const updated = await updatePinterestPin({
+        accessToken,
+        pinId: previousExternalId,
+        boardId,
+        title: nextPost.title || "Publication iNrCy",
+        description,
+        link,
+      });
+      return {
+        externalId: updated.id || previousExternalId,
+        status: "delivered",
+        error: null,
+        pinterestMeta: {
+          board_id: boardId,
+          external_url: updated.url || null,
+          media_type: "image",
+        },
+      };
+    }
+
+    const created = await createPinterestImagePin({
+      accessToken,
+      boardId,
+      title: nextPost.title || "Publication iNrCy",
+      description,
+      imageUrl: pinterestImageUrls[0],
+      link,
+    });
+    if (!created.id) throw new Error("Pinterest n'a pas renvoyé l’identifiant de la nouvelle épingle.");
+
+    try {
+      await deletePinterestPin(accessToken, previousExternalId);
+    } catch (deleteOldError) {
+      try {
+        await deletePinterestPin(accessToken, created.id);
+      } catch {
+        // Rollback best effort : on conserve l’erreur originale, plus utile au pro.
+      }
+      throw deleteOldError;
+    }
+
+    return {
+      externalId: created.id,
+      status: "delivered",
+      error: null,
+      pinterestMeta: {
+        board_id: boardId,
+        external_url: created.url || null,
+        media_type: "image",
+      },
+    };
   }
 
   throw new Error("Canal non supporté.");
@@ -1582,8 +1671,13 @@ async function removeChannelDelivery(params: {
   if (channel === "tiktok") {
     throw new Error(TIKTOK_INRSEND_EXTERNAL_ACTION_MESSAGE);
   }
+
   if (channel === "pinterest") {
-    throw new Error(PINTEREST_INRSEND_EXTERNAL_ACTION_MESSAGE);
+    const accessToken = await getPinterestAccessToken(userId);
+    if (!accessToken) throw new Error("Pinterest à reconnecter. Rendez-vous dans Canaux.");
+    if (!previousExternalId) throw new Error("Épingle Pinterest introuvable dans l’historique iNrSend.");
+    await deletePinterestPin(accessToken, previousExternalId);
+    return;
   }
 
   if (channel === "inrcy_site" || channel === "site_web") {
@@ -1658,11 +1752,12 @@ function buildUpdatedPayload(params: {
   imageSet?: ImageSet | null;
   instagramMeta?: JsonRecord | null;
   tiktokMeta?: JsonRecord | null;
+  pinterestMeta?: JsonRecord | null;
   warning?: string | null;
   warningMessage?: string | null;
   videoSettings?: JsonRecord | null;
 }) {
-  const { eventPayload, publication, channel, nextPost, externalId, imageSet, instagramMeta, tiktokMeta } = params;
+  const { eventPayload, publication, channel, nextPost, externalId, imageSet, instagramMeta, tiktokMeta, pinterestMeta } = params;
   const mediaType = params.mediaType || getEventPublicationMediaType(eventPayload, publication, channel);
   const video = params.video || getPublicationVideo(eventPayload, publication, channel);
   const isVideoPublication = mediaType === "video" && !!video?.publicUrl;
@@ -1678,6 +1773,7 @@ function buildUpdatedPayload(params: {
     ...(params.warning ? { warning: params.warning, warning_message: params.warningMessage || null } : {}),
     ...(channel === "instagram" && instagramMeta ? instagramMeta : {}),
     ...(channel === "tiktok" && tiktokMeta ? tiktokMeta : {}),
+    ...(channel === "pinterest" && pinterestMeta ? pinterestMeta : {}),
     updated_at: new Date().toISOString(),
   };
 
@@ -1814,10 +1910,6 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
       if (channel === "tiktok") {
         return jsonUserFacingError(TIKTOK_INRSEND_EXTERNAL_ACTION_MESSAGE, { status: 409, code: "tiktok_external_action_required" });
       }
-      if (channel === "pinterest") {
-        return jsonUserFacingError(PINTEREST_INRSEND_EXTERNAL_ACTION_MESSAGE, { status: 409, code: "pinterest_external_action_required" });
-      }
-
       const body = (await req.json().catch(() => null)) as JsonRecord | null;
       if (!body) return jsonUserFacingError("Bad payload", { status: 400, code: "invalid_payload" });
 
@@ -1873,6 +1965,9 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
       if (retainedImages.length + newImages.length > 5) {
         return jsonUserFacingError("Maximum 5 images par publication.", { status: 400, code: "too_many_images" });
       }
+      if (channel === "pinterest" && retainedImages.length + newImages.length > 1) {
+        return jsonUserFacingError("Pinterest utilise 1 image par épingle dans cette version.", { status: 400, code: "pinterest_single_image_required" });
+      }
       if (mediaType === "video" && !video?.publicUrl) {
         return jsonUserFacingError("Vidéo introuvable. Merci de relancer la publication depuis Booster.", { status: 400, code: "video_missing" });
       }
@@ -1913,6 +2008,7 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
         imageSet,
         instagramMeta: asRecord((replaceResult as JsonRecord).instagramMeta),
         tiktokMeta: asRecord((replaceResult as JsonRecord).tiktokMeta),
+        pinterestMeta: asRecord((replaceResult as JsonRecord).pinterestMeta),
         warning: String((replaceResult as JsonRecord).warning || "").trim() || null,
         warningMessage: String((replaceResult as JsonRecord).warningMessage || replaceResult.error || "").trim() || null,
         videoSettings: requestedVideoSettings,
@@ -1947,10 +2043,6 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
       if (channel === "tiktok") {
         return jsonUserFacingError(TIKTOK_INRSEND_EXTERNAL_ACTION_MESSAGE, { status: 409, code: "tiktok_external_action_required" });
       }
-      if (channel === "pinterest") {
-        return jsonUserFacingError(PINTEREST_INRSEND_EXTERNAL_ACTION_MESSAGE, { status: 409, code: "pinterest_external_action_required" });
-      }
-
       const ctx = await loadPublicationContext(activeUserId, publicationId);
       if (!ctx) return jsonUserFacingError("Publication introuvable.", { status: 404, code: "publication_not_found" });
 

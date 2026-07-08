@@ -634,7 +634,7 @@ export function getChannelPublicationRequirements({
     }
 
     if (channel === "pinterest" && hasImage) {
-      warnings.push("Pinterest créera une épingle dans le tableau configuré.");
+      warnings.push("Pinterest créera une épingle dans le tableau choisi.");
     }
 
     if (channel === "youtube_shorts" && hasImage) {

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { bubbleAccessDisabledResponse, isAppBubbleEnabledForUser } from "@/lib/appBubbleAccessServer";
-import { getPinterestClientId, getPinterestOAuthScope, getPinterestRedirectUri } from "@/lib/pinterestOAuth";
+import { getPinterestClientId, getPinterestClientSecret, getPinterestOAuthScope, getPinterestRedirectUri } from "@/lib/pinterestOAuth";
 import { makeOAuthState, safeInternalPath } from "@/lib/security";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
@@ -18,9 +18,10 @@ export async function GET(request: Request) {
   }
 
   const clientId = getPinterestClientId();
+  const clientSecret = getPinterestClientSecret();
   const redirectUri = getPinterestRedirectUri(request.url);
 
-  if (!clientId) {
+  if (!clientId || !clientSecret) {
     return NextResponse.json(
       {
         ok: false,

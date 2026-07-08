@@ -13,10 +13,16 @@ function StableBootScreen({ label = "Chargement de votre espace iNrCy..." }: { l
     <main
       aria-busy="true"
       style={{
-        minHeight: "100vh",
+        position: "fixed",
+        inset: 0,
+        zIndex: 10000,
+        width: "100%",
+        height: "100dvh",
         display: "grid",
         placeItems: "center",
-        padding: "24px",
+        padding: "clamp(16px, 4vw, 24px)",
+        boxSizing: "border-box",
+        overflow: "hidden",
         color: "white",
         background:
           "radial-gradient(circle at 20% 15%, rgba(56,189,248,.20), transparent 28%), radial-gradient(circle at 78% 20%, rgba(244,114,182,.18), transparent 26%), linear-gradient(135deg, #0f172a, #1e1b4b 55%, #111827)",
@@ -24,7 +30,9 @@ function StableBootScreen({ label = "Chargement de votre espace iNrCy..." }: { l
     >
       <div
         style={{
-          width: "min(420px, 92vw)",
+          width: "min(420px, calc(100vw - 32px))",
+          maxWidth: "100%",
+          boxSizing: "border-box",
           borderRadius: "24px",
           padding: "22px",
           textAlign: "center",

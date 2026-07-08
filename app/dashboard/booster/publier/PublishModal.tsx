@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -108,6 +109,11 @@ type ChannelConnectionDetail = {
   type?: string | null;
   label?: string | null;
   href?: string | null;
+};
+
+type PinterestBoardOption = {
+  id: string;
+  name: string;
 };
 
 type PendingImmediatePublishAfterSchedule = {
@@ -637,6 +643,11 @@ export default function PublishModal({
   const [pendingPublishPosts, setPendingPublishPosts] = useState<Partial<
     Record<ChannelKey, ChannelPost>
   > | null>(null);
+  const [pinterestBoards, setPinterestBoards] = useState<PinterestBoardOption[]>([]);
+  const [pinterestBoardId, setPinterestBoardId] = useState("");
+  const [pinterestBoardName, setPinterestBoardName] = useState("");
+  const [pinterestBoardsLoading, setPinterestBoardsLoading] = useState(false);
+  const [pinterestBoardsError, setPinterestBoardsError] = useState("");
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const videoInputRef = useRef<HTMLInputElement | null>(null);
@@ -819,6 +830,70 @@ export default function PublishModal({
     setChannels(nextConnected);
     setDidInitChannels(true);
   }, [initialConnectedChannels, didInitChannels]);
+
+  const loadPinterestBoardsForPublish = useCallback(async () => {
+    if (!connected.pinterest) {
+      setPinterestBoards([]);
+      setPinterestBoardsError("");
+      return;
+    }
+
+    setPinterestBoardsLoading(true);
+    setPinterestBoardsError("");
+    try {
+      const response = await fetch("/api/integrations/pinterest/status", {
+        cache: "no-store" as any,
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok || !result?.ok) {
+        throw new Error(String(result?.error || "Impossible de charger les tableaux Pinterest."));
+      }
+
+      const rawBoards: unknown[] = Array.isArray(result.boards) ? result.boards : [];
+      const boards: PinterestBoardOption[] = rawBoards
+        .map((value: unknown): PinterestBoardOption | null => {
+          if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+          const record = value as Record<string, unknown>;
+          const id = String(record.id || "").trim();
+          if (!id) return null;
+          return { id, name: String(record.name || "Tableau Pinterest").trim() || "Tableau Pinterest" };
+        })
+        .filter((value: PinterestBoardOption | null): value is PinterestBoardOption => Boolean(value));
+
+      setPinterestBoards(boards);
+      setPinterestBoardId((currentId) => {
+        const current = String(currentId || "").trim();
+        const defaultId = String(result.defaultBoardId || "").trim();
+        const nextId = boards.some((board) => board.id === current)
+          ? current
+          : boards.some((board) => board.id === defaultId)
+            ? defaultId
+            : "";
+        const nextBoard = boards.find((board) => board.id === nextId);
+        setPinterestBoardName(nextBoard?.name || "");
+        return nextId;
+      });
+    } catch (error) {
+      setPinterestBoardsError(
+        getSimpleFrenchErrorMessage(error, "Impossible de charger les tableaux Pinterest."),
+      );
+    } finally {
+      setPinterestBoardsLoading(false);
+    }
+  }, [connected.pinterest]);
+
+  useEffect(() => {
+    if (!connected.pinterest || !channels.pinterest) return;
+    void loadPinterestBoardsForPublish();
+  }, [connected.pinterest, channels.pinterest, loadPinterestBoardsForPublish]);
+
+  const onPinterestBoardChange = useCallback((boardId: string) => {
+    const cleanId = String(boardId || "").trim();
+    const selectedBoard = pinterestBoards.find((board) => board.id === cleanId);
+    setPinterestBoardId(cleanId);
+    setPinterestBoardName(selectedBoard?.name || "");
+    setPinterestBoardsError("");
+  }, [pinterestBoards]);
 
   useEffect(() => {
     if (!connected.tiktok) {
@@ -1479,6 +1554,8 @@ export default function PublishModal({
       channels: selectedChannels,
       postsByChannel,
       instagramHashtagsInput,
+      pinterestBoardId,
+      pinterestBoardName,
       imageNames,
       videoName,
       videoTransformedVariants: normalizeRestoredVideoVariants(
@@ -1499,6 +1576,8 @@ export default function PublishModal({
     selectedChannels,
     postsByChannel,
     instagramHashtagsInput,
+    pinterestBoardId,
+    pinterestBoardName,
     images,
     videoFile,
     videoDurationSeconds,
@@ -1736,6 +1815,8 @@ export default function PublishModal({
           (Array.isArray((nextPostsByChannel as any)?.instagram?.hashtags)
             ? (nextPostsByChannel as any).instagram.hashtags.join(" ")
             : "");
+        const nextPinterestBoardId = String(payload.pinterestBoardId || "").trim();
+        const nextPinterestBoardName = String(payload.pinterestBoardName || "").trim();
 
         setIdea(nextIdea);
         setTheme(nextTheme);
@@ -1743,6 +1824,8 @@ export default function PublishModal({
         setChannels(nextChannels);
         setPostsByChannel(nextPostsByChannel);
         setInstagramHashtagsInput(nextInstagramHashtags);
+        setPinterestBoardId(nextPinterestBoardId);
+        setPinterestBoardName(nextPinterestBoardName);
         const effectiveMediaType = restoredVideo.file ? "video" : nextMediaType;
         setPublicationMediaType(effectiveMediaType);
         setChannelMediaModes(nextChannelMediaModes);
@@ -1803,6 +1886,8 @@ export default function PublishModal({
             channels: selectedDraftChannels,
             postsByChannel: nextPostsByChannel,
             instagramHashtagsInput: nextInstagramHashtags,
+            pinterestBoardId: nextPinterestBoardId,
+            pinterestBoardName: nextPinterestBoardName,
             imageNames,
             videoName,
             videoTransformedVariants: restoredVideo.transformedVariants,
@@ -2855,6 +2940,10 @@ export default function PublishModal({
     }
 
     if (publishableChannels.includes("pinterest")) {
+      if (!pinterestBoardId) {
+        setPublishError("Choisissez un tableau Pinterest avant de publier.");
+        return;
+      }
       const pinterestImages = channelImageEditors.pinterest?.imageKeys || [];
       if (
         publishMediaModeByChannel.pinterest !== "images" ||
@@ -3069,6 +3158,9 @@ export default function PublishModal({
         tiktokPublicationSettings: publishableChannels.includes("tiktok")
           ? options?.tiktokPublicationSettings || tiktokPublicationSettings
           : null,
+        pinterestPublicationSettings: publishableChannels.includes("pinterest")
+          ? { boardId: pinterestBoardId, boardName: pinterestBoardName }
+          : null,
       });
 
       if (publishPulseTimerRef.current) {
@@ -3202,6 +3294,8 @@ export default function PublishModal({
             useImagesForAI,
             imageSettingsByChannel: getDraftImageSettingsByChannel(),
             instagramHashtagsInput,
+            pinterestBoardId,
+            pinterestBoardName,
             saved_at: new Date().toISOString(),
           },
         }),
@@ -3597,6 +3691,9 @@ export default function PublishModal({
                 tiktokPublicationSettings: groupChannels.includes("tiktok")
                   ? tiktokSettingsForSchedule
                   : null,
+                pinterestPublicationSettings: groupChannels.includes("pinterest")
+                  ? { boardId: pinterestBoardId, boardName: pinterestBoardName }
+                  : null,
               },
             },
           }),
@@ -3829,6 +3926,13 @@ export default function PublishModal({
         hasContent,
       });
 
+      const blockers = [
+        ...requirements.blockers,
+        ...(channel === "pinterest" && !pinterestBoardId
+          ? ["Choisissez un tableau Pinterest."]
+          : []),
+      ];
+
       return {
         channel,
         label: CHANNEL_LABELS[channel],
@@ -3841,8 +3945,8 @@ export default function PublishModal({
               : "Texte seul",
         imageCount: imageKeysToPublish.length,
         warnings: requirements.warnings,
-        blockers: requirements.blockers,
-        publishable: requirements.blockers.length === 0,
+        blockers,
+        publishable: blockers.length === 0,
         tiktokParametersValidated:
           channel === "tiktok" && Boolean(tiktokPublicationSettings),
         hasContent,
@@ -4241,6 +4345,12 @@ export default function PublishModal({
         getLiveInstagramHashtags={getLiveInstagramHashtags}
         duplicateFeedback={duplicateFeedback}
         onDuplicateContentToAllChannels={onDuplicateContentToAllChannels}
+        pinterestBoards={pinterestBoards}
+        pinterestBoardId={pinterestBoardId}
+        pinterestBoardsLoading={pinterestBoardsLoading}
+        pinterestBoardsError={pinterestBoardsError}
+        onPinterestBoardChange={onPinterestBoardChange}
+        onRefreshPinterestBoards={() => void loadPinterestBoardsForPublish()}
       />
 
       <PublishImagesPanel

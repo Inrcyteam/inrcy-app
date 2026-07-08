@@ -45,8 +45,6 @@ type PinterestSettings = {
   accountName: string;
   username: string;
   profileUrl: string;
-  defaultBoardName: string;
-  defaultBoardId: string;
   preferredMedia: "image" | "video" | "auto";
   autoHashtags: boolean;
   boards: PinterestBoard[];
@@ -61,8 +59,6 @@ const DEFAULT_SETTINGS: PinterestSettings = {
   accountName: "",
   username: "",
   profileUrl: "",
-  defaultBoardName: "",
-  defaultBoardId: "",
   preferredMedia: "auto",
   autoHashtags: true,
   boards: [],
@@ -91,8 +87,8 @@ function normalizeBoards(value: unknown): PinterestBoard[] {
   return Array.isArray(value) ? value.map(asBoard).filter((item): item is PinterestBoard => Boolean(item)) : [];
 }
 
-function isPinterestConfigured(settings: Pick<PinterestSettings, "profileUrl" | "defaultBoardId" | "accountConnected">) {
-  return Boolean(settings.accountConnected || settings.profileUrl.trim() || settings.defaultBoardId.trim());
+function isPinterestConfigured(settings: Pick<PinterestSettings, "accountConnected">) {
+  return Boolean(settings.accountConnected);
 }
 
 function normalizeSettings(value: unknown): PinterestSettings {
@@ -104,45 +100,41 @@ function normalizeSettings(value: unknown): PinterestSettings {
 
   const next = {
     connected: false,
-    accountConnected: Boolean(source.accountConnected),
+    accountConnected: false,
     mode,
-    accountName: String(source.accountName || source.displayName || source.username || ""),
-    username: String(source.username || ""),
-    profileUrl: String(source.profileUrl || source.url || ""),
-    defaultBoardName: String(source.defaultBoardName || source.boardName || ""),
-    defaultBoardId: String(source.defaultBoardId || source.boardId || ""),
+    accountName: "",
+    username: "",
+    profileUrl: "",
     preferredMedia,
     autoHashtags: source.autoHashtags !== false,
-    boards: normalizeBoards(source.boards),
-    scopes: String(source.scopes || ""),
-    expiresAt: String(source.expiresAt || "") || null,
+    // Profil et tableaux viennent toujours de Pinterest en direct, jamais d'une copie Supabase.
+    boards: [],
+    scopes: "",
+    expiresAt: null,
   };
 
   return {
     ...next,
-    connected: Boolean(source.connected) || isPinterestConfigured(next),
+    connected: isPinterestConfigured(next),
   };
 }
 
 function mergeSettings(saved: PinterestSettings, status: any): PinterestSettings {
   if (!status?.ok) return saved;
   const boards = normalizeBoards(status.boards);
-  const defaultBoardId = String(status.defaultBoardId || saved.defaultBoardId || "");
-  const selectedBoard = boards.find((board) => board.id === defaultBoardId);
   const accountConnected = Boolean(status.connected);
-  const profileUrl = String(status.profileUrl || saved.profileUrl || "");
+  const profileUrl = String(status.profileUrl || "");
   return {
     ...saved,
-    connected: accountConnected || saved.connected,
+    connected: accountConnected,
     accountConnected,
     mode: accountConnected ? "oauth" : saved.mode,
-    username: String(status.username || saved.username || ""),
+    accountName: String(status.accountName || status.username || ""),
+    username: String(status.username || ""),
     profileUrl,
-    defaultBoardId,
-    defaultBoardName: String(status.defaultBoardName || selectedBoard?.name || saved.defaultBoardName || ""),
-    boards: boards.length ? boards : saved.boards,
-    scopes: String(status.scopes || saved.scopes || ""),
-    expiresAt: String(status.expiresAt || saved.expiresAt || "") || null,
+    boards,
+    scopes: String(status.scopes || ""),
+    expiresAt: String(status.expiresAt || "") || null,
   };
 }
 
@@ -160,14 +152,13 @@ function emitDashboardUpdate(settings: PinterestSettings) {
 export default function PinterestSettingsContent() {
   const [settings, setSettings] = useState<PinterestSettings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [boardAction, setBoardAction] = useState<string | null>(null);
+  const [newBoardName, setNewBoardName] = useState("");
+  const [editingBoardId, setEditingBoardId] = useState<string | null>(null);
+  const [editingBoardName, setEditingBoardName] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
-  const patch = useCallback((next: Partial<PinterestSettings>) => {
-    setSettings((current) => ({ ...current, ...next }));
-  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -204,54 +195,14 @@ export default function PinterestSettingsContent() {
     void load();
   }, [load]);
 
-  const save = useCallback(async (override?: Partial<PinterestSettings>) => {
-    setSaving(true);
-    setNotice(null);
-    setError(null);
-    try {
-      const supabase = createClient();
-      const { data: authData } = await supabase.auth.getUser();
-      const user = authData?.user;
-      if (!user) throw new Error("Utilisateur non authentifié.");
-
-      const { data, error: readError } = await supabase
-        .from("pro_tools_configs")
-        .select("settings")
-        .eq("user_id", resolveActiveBrowserUserId(user.id))
-        .maybeSingle();
-      if (readError) throw readError;
-
-      const current = asRecord((data as { settings?: unknown } | null)?.settings);
-      const mergedLocal = { ...settings, ...(override || {}) };
-      const selectedBoard = mergedLocal.boards.find((board) => board.id === mergedLocal.defaultBoardId);
-      const settingsToSave = {
-        ...mergedLocal,
-        defaultBoardName: selectedBoard?.name || mergedLocal.defaultBoardName,
-        connected: isPinterestConfigured(mergedLocal),
-      };
-      const merged = { ...current, pinterest: settingsToSave };
-      const { error: saveError } = await supabase
-        .from("pro_tools_configs")
-        .upsert({ user_id: resolveActiveBrowserUserId(user.id), settings: merged }, { onConflict: "user_id" });
-      if (saveError) throw saveError;
-
-      setSettings(settingsToSave);
-      emitDashboardUpdate(settingsToSave);
-      setNotice("Réglages Pinterest enregistrés.");
-    } catch (err) {
-      console.warn("[pinterest-settings] save failed", err);
-      setError("Enregistrement Pinterest impossible.");
-    } finally {
-      setSaving(false);
-    }
-  }, [settings]);
-
   const connectPinterest = useCallback(() => {
     if (typeof window === "undefined") return;
     window.location.href = "/api/integrations/pinterest/start?returnTo=/dashboard?panel=pinterest";
   }, []);
 
-  const refreshBoards = useCallback(async () => {
+  const refreshBoards = useCallback(async (
+    successMessage = "Tableaux Pinterest actualisés.",
+  ) => {
     setSyncing(true);
     setNotice(null);
     setError(null);
@@ -260,20 +211,117 @@ export default function PinterestSettingsContent() {
       const json = await response.json().catch(() => ({}));
       if (!response.ok || !json?.ok) throw new Error(String(json?.error || "Impossible de récupérer les tableaux Pinterest."));
       const boards = normalizeBoards(json.boards);
-      const fallbackBoard = boards[0] || null;
-      const nextBoardId = boards.some((board) => board.id === settings.defaultBoardId)
-        ? settings.defaultBoardId
-        : fallbackBoard?.id || "";
-      const nextBoardName = boards.find((board) => board.id === nextBoardId)?.name || "";
-      await save({ boards, defaultBoardId: nextBoardId, defaultBoardName: nextBoardName });
-      setNotice("Tableaux Pinterest synchronisés.");
+      setSettings((current) => ({ ...current, boards }));
+      setNotice(successMessage);
+      return boards;
     } catch (err) {
       console.warn("[pinterest-settings] boards sync failed", err);
-      setError("Synchronisation des tableaux Pinterest impossible.");
+      setError(err instanceof Error ? err.message : "Synchronisation des tableaux Pinterest impossible.");
+      return [];
     } finally {
       setSyncing(false);
     }
-  }, [save, settings.defaultBoardId]);
+  }, []);
+
+  const createBoard = useCallback(async () => {
+    const name = newBoardName.trim().replace(/\s+/g, " ");
+    if (!name) {
+      setError("Saisis un nom de tableau.");
+      return;
+    }
+
+    setBoardAction("create");
+    setNotice(null);
+    setError(null);
+    try {
+      const response = await fetch("/api/integrations/pinterest/boards", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok || !json?.ok) throw new Error(String(json?.error || "Création du tableau impossible."));
+      setNewBoardName("");
+      await refreshBoards(`Tableau « ${name} » créé sur Pinterest.`);
+    } catch (err) {
+      console.warn("[pinterest-settings] board create failed", err);
+      setError(err instanceof Error ? err.message : "Création du tableau Pinterest impossible.");
+    } finally {
+      setBoardAction(null);
+    }
+  }, [newBoardName, refreshBoards]);
+
+  const startRenameBoard = useCallback((board: PinterestBoard) => {
+    setEditingBoardId(board.id);
+    setEditingBoardName(board.name);
+    setNotice(null);
+    setError(null);
+  }, []);
+
+  const renameBoard = useCallback(async (board: PinterestBoard) => {
+    const name = editingBoardName.trim().replace(/\s+/g, " ");
+    if (!name) {
+      setError("Le nom du tableau est obligatoire.");
+      return;
+    }
+    if (name === board.name) {
+      setEditingBoardId(null);
+      setEditingBoardName("");
+      return;
+    }
+
+    setBoardAction(`rename:${board.id}`);
+    setNotice(null);
+    setError(null);
+    try {
+      const response = await fetch(`/api/integrations/pinterest/boards/${encodeURIComponent(board.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok || !json?.ok) throw new Error(String(json?.error || "Modification du tableau impossible."));
+      setEditingBoardId(null);
+      setEditingBoardName("");
+      await refreshBoards(`Tableau renommé « ${name} ».`);
+    } catch (err) {
+      console.warn("[pinterest-settings] board rename failed", err);
+      setError(err instanceof Error ? err.message : "Modification du tableau Pinterest impossible.");
+    } finally {
+      setBoardAction(null);
+    }
+  }, [editingBoardName, refreshBoards]);
+
+  const deleteBoard = useCallback(async (board: PinterestBoard) => {
+    if (typeof window !== "undefined") {
+      const confirmed = window.confirm(
+        `Supprimer le tableau « ${board.name} » ?\n\nCette action sera effectuée directement sur votre compte Pinterest.`,
+      );
+      if (!confirmed) return;
+    }
+
+    setBoardAction(`delete:${board.id}`);
+    setNotice(null);
+    setError(null);
+    try {
+      const response = await fetch(`/api/integrations/pinterest/boards/${encodeURIComponent(board.id)}`, {
+        method: "DELETE",
+      });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok || !json?.ok) throw new Error(String(json?.error || "Suppression du tableau impossible."));
+      if (editingBoardId === board.id) {
+        setEditingBoardId(null);
+        setEditingBoardName("");
+      }
+      await refreshBoards(`Tableau « ${board.name} » supprimé de Pinterest.`);
+    } catch (err) {
+      console.warn("[pinterest-settings] board delete failed", err);
+      setError(err instanceof Error ? err.message : "Suppression du tableau Pinterest impossible.");
+    } finally {
+      setBoardAction(null);
+    }
+  }, [editingBoardId, refreshBoards]);
+
 
   const disconnectPinterest = useCallback(async () => {
     setSyncing(true);
@@ -291,8 +339,6 @@ export default function PinterestSettingsContent() {
         accountName: "",
         username: "",
         profileUrl: "",
-        defaultBoardId: "",
-        defaultBoardName: "",
         boards: [],
         scopes: "",
         expiresAt: null,
@@ -346,9 +392,9 @@ export default function PinterestSettingsContent() {
           <input
             style={{ ...inputStyle, opacity: settings.accountConnected ? 1 : 0.8 }}
             value={settings.accountConnected ? (settings.accountName || settings.username || "Compte Pinterest connecté") : ""}
-            onChange={(event) => patch({ accountName: event.target.value })}
+            readOnly
             placeholder={settings.accountConnected ? "Compte Pinterest connecté" : "Aucun compte connecté"}
-            disabled={loading || saving || !settings.accountConnected}
+            disabled={loading || !settings.accountConnected}
           />
           {settings.profileUrl ? (
             <a href={settings.profileUrl} target="_blank" rel="noreferrer" className={`${styles.actionBtn} ${styles.viewBtn}`} style={{ justifySelf: "flex-start" }}>
@@ -381,40 +427,144 @@ export default function PinterestSettingsContent() {
       {settings.accountConnected ? (
         <section style={cardStyle}>
           <div className={styles.blockHeaderRow}>
-            <div className={styles.blockTitle}>Tableau à utiliser</div>
-            <ConnectionPill connected={Boolean(settings.defaultBoardId || settings.defaultBoardName)} />
+            <div className={styles.blockTitle}>Mes tableaux Pinterest</div>
+            <ConnectionPill connected={settings.accountConnected} />
           </div>
           <div className={styles.blockSub}>
-            Choisissez où iNrCy publiera les épingles Pinterest.
+            Gérez ici vos tableaux. Les actions sont appliquées directement sur votre compte Pinterest.
           </div>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-            <button type="button" className={`${styles.actionBtn} ${styles.secondaryBtn}`} onClick={refreshBoards} disabled={syncing || loading || saving}>
-              {syncing ? "Chargement..." : "Charger mes tableaux"}
-            </button>
-
-            <select
+            <input
               style={{ ...inputStyle, flex: "1 1 260px" }}
-              value={settings.defaultBoardId}
-              onChange={(event) => {
-                const board = boardOptions.find((item) => item.id === event.target.value);
-                patch({ defaultBoardId: event.target.value, defaultBoardName: board?.name || "" });
+              value={newBoardName}
+              onChange={(event) => setNewBoardName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void createBoard();
+                }
               }}
-              disabled={loading || saving || syncing}
+              maxLength={180}
+              placeholder="Nom du nouveau tableau"
+              disabled={Boolean(boardAction) || syncing || loading}
+            />
+            <button
+              type="button"
+              className={`${styles.actionBtn} ${styles.connectBtn}`}
+              onClick={() => void createBoard()}
+              disabled={Boolean(boardAction) || syncing || loading || !newBoardName.trim()}
             >
-              <option value="">Choisir un tableau</option>
-              {settings.defaultBoardId && !boardOptions.some((board) => board.id === settings.defaultBoardId) ? (
-                <option value={settings.defaultBoardId}>{settings.defaultBoardName || "Tableau sélectionné"}</option>
-              ) : null}
-              {boardOptions.map((board) => (
-                <option key={board.id} value={board.id}>{board.name}</option>
-              ))}
-            </select>
+              {boardAction === "create" ? "Création..." : "+ Créer un tableau"}
+            </button>
+            <button
+              type="button"
+              className={`${styles.actionBtn} ${styles.secondaryBtn}`}
+              onClick={() => void refreshBoards()}
+              disabled={Boolean(boardAction) || syncing || loading}
+            >
+              {syncing ? "Actualisation..." : "Actualiser"}
+            </button>
           </div>
 
-          <button type="button" className={`${styles.actionBtn} ${styles.connectBtn}`} style={{ justifySelf: "flex-start" }} onClick={() => void save()} disabled={saving || loading}>
-            {saving ? "Enregistrement..." : "Enregistrer"}
-          </button>
+          <div style={{ display: "grid", gap: 8 }}>
+            {boardOptions.length === 0 ? (
+              <div style={{ color: "rgba(255,255,255,0.68)", fontSize: 13, padding: "8px 2px" }}>
+                Aucun tableau disponible. Créez votre premier tableau Pinterest.
+              </div>
+            ) : boardOptions.map((board) => {
+              const isEditing = editingBoardId === board.id;
+              const isRenaming = boardAction === `rename:${board.id}`;
+              const isDeleting = boardAction === `delete:${board.id}`;
+              const isBusy = Boolean(boardAction) || syncing;
+
+              return (
+                <div
+                  key={board.id}
+                  style={{
+                    border: "1px solid rgba(255,255,255,0.10)",
+                    background: "rgba(15,23,42,0.45)",
+                    borderRadius: 12,
+                    padding: 10,
+                    display: "grid",
+                    gap: 8,
+                  }}
+                >
+                  {isEditing ? (
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                      <input
+                        style={{ ...inputStyle, flex: "1 1 240px" }}
+                        value={editingBoardName}
+                        onChange={(event) => setEditingBoardName(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") {
+                            event.preventDefault();
+                            void renameBoard(board);
+                          }
+                          if (event.key === "Escape") {
+                            setEditingBoardId(null);
+                            setEditingBoardName("");
+                          }
+                        }}
+                        maxLength={180}
+                        autoFocus
+                        disabled={isRenaming}
+                      />
+                      <button
+                        type="button"
+                        className={`${styles.actionBtn} ${styles.connectBtn}`}
+                        onClick={() => void renameBoard(board)}
+                        disabled={isRenaming || !editingBoardName.trim()}
+                      >
+                        {isRenaming ? "Enregistrement..." : "Enregistrer"}
+                      </button>
+                      <button
+                        type="button"
+                        className={`${styles.actionBtn} ${styles.secondaryBtn}`}
+                        onClick={() => {
+                          setEditingBoardId(null);
+                          setEditingBoardName("");
+                        }}
+                        disabled={isRenaming}
+                      >
+                        Annuler
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", justifyContent: "space-between" }}>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ color: "white", fontWeight: 700, overflowWrap: "anywhere" }}>{board.name}</div>
+                        {typeof board.pin_count === "number" ? (
+                          <div style={{ color: "rgba(255,255,255,0.58)", fontSize: 12, marginTop: 2 }}>
+                            {board.pin_count} {board.pin_count > 1 ? "épingles" : "épingle"}
+                          </div>
+                        ) : null}
+                      </div>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          className={`${styles.actionBtn} ${styles.secondaryBtn}`}
+                          onClick={() => startRenameBoard(board)}
+                          disabled={isBusy}
+                        >
+                          Renommer
+                        </button>
+                        <button
+                          type="button"
+                          className={`${styles.actionBtn} ${styles.disconnectBtn}`}
+                          onClick={() => void deleteBoard(board)}
+                          disabled={isBusy}
+                        >
+                          {isDeleting ? "Suppression..." : "Supprimer"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
         </section>
       ) : null}
     </div>

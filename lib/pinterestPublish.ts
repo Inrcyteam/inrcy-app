@@ -14,7 +14,6 @@ export type PinterestCreatePinResult = {
   id: string | null;
   url: string | null;
   board_id: string | null;
-  raw: unknown;
 };
 
 function cleanSingleLineText(value: unknown, maxLength: number) {
@@ -44,31 +43,46 @@ function buildPinterestPinUrl(pinId: string | null) {
   return pinId ? `https://www.pinterest.com/pin/${encodeURIComponent(pinId)}/` : null;
 }
 
-async function pinterestApiPost<T = unknown>(
+type PinterestApiMethod = "POST" | "PATCH" | "DELETE";
+
+async function pinterestApiRequest<T = unknown>(
   path: string,
   accessToken: string,
-  body: unknown,
+  options: { method: PinterestApiMethod; body?: unknown },
 ): Promise<T> {
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
+  const hasBody = options.body !== undefined && options.method !== "DELETE";
   const res = await fetch(`https://api.pinterest.com/v5${cleanPath}`, {
-    method: "POST",
+    method: options.method,
     headers: {
       Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
+      ...(hasBody ? { "Content-Type": "application/json" } : {}),
       Accept: "application/json",
     },
-    body: JSON.stringify(body),
+    body: hasBody ? JSON.stringify(options.body) : undefined,
     cache: "no-store",
   });
-  const json = await res.json().catch(() => ({}));
+
+  const raw = await res.text().catch(() => "");
+  let json: unknown = {};
+  if (raw) {
+    try {
+      json = JSON.parse(raw);
+    } catch {
+      json = { message: raw };
+    }
+  }
+
   if (!res.ok) {
     const rec = asRecord(json);
-    throw new Error(
+    const message =
       asString(rec.message) ||
-        asString(rec.error_description) ||
-        asString(rec.error) ||
-        `Pinterest a refusé la publication (${res.status}).`,
-    );
+      asString(rec.error_description) ||
+      asString(rec.error) ||
+      `Pinterest a refusé l'action (${res.status}).`;
+    const error = new Error(message) as Error & { status?: number };
+    error.status = res.status;
+    throw error;
   }
   return json as T;
 }
@@ -86,7 +100,7 @@ export async function createPinterestImagePin({
   const cleanImageUrl = normalizePublicUrl(imageUrl);
 
   if (!token) throw new Error("Pinterest à connecter. Rendez-vous dans Canaux.");
-  if (!cleanBoardId) throw new Error("Sélectionnez un tableau Pinterest dans la configuration.");
+  if (!cleanBoardId) throw new Error("Choisissez un tableau Pinterest avant de publier.");
   if (!cleanImageUrl) throw new Error("Pinterest nécessite une image publique valide.");
 
   const payload: Record<string, unknown> = {
@@ -103,7 +117,7 @@ export async function createPinterestImagePin({
   const cleanLink = normalizePublicUrl(link);
   if (cleanLink) payload.link = cleanLink;
 
-  const json = asRecord(await pinterestApiPost("/pins", token, payload));
+  const json = asRecord(await pinterestApiRequest("/pins", token, { method: "POST", body: payload }));
   const id = asString(json.id) || asString(json.pin_id) || null;
 
   return {
@@ -111,6 +125,70 @@ export async function createPinterestImagePin({
     id,
     url: asString(json.url) || asString(json.link) || buildPinterestPinUrl(id),
     board_id: asString(json.board_id) || cleanBoardId,
-    raw: json,
   };
 }
+
+export type PinterestUpdatePinArgs = {
+  accessToken: string;
+  pinId: string;
+  title: string;
+  description?: string;
+  link?: string | null;
+  boardId?: string | null;
+};
+
+export async function updatePinterestPin({
+  accessToken,
+  pinId,
+  title,
+  description,
+  link,
+  boardId,
+}: PinterestUpdatePinArgs): Promise<PinterestCreatePinResult> {
+  const token = String(accessToken || "").trim();
+  const cleanPinId = String(pinId || "").trim();
+  if (!token) throw new Error("Pinterest à connecter. Rendez-vous dans Canaux.");
+  if (!cleanPinId) throw new Error("Épingle Pinterest introuvable.");
+
+  const payload: Record<string, unknown> = {
+    title: cleanSingleLineText(title || "Publication iNrCy", 100),
+    description: cleanMultilineText(description || "", 500),
+  };
+
+  const cleanBoardId = String(boardId || "").trim();
+  if (cleanBoardId) payload.board_id = cleanBoardId;
+
+  const cleanLink = normalizePublicUrl(link);
+  payload.link = cleanLink || null;
+
+  const json = asRecord(
+    await pinterestApiRequest(`/pins/${encodeURIComponent(cleanPinId)}`, token, {
+      method: "PATCH",
+      body: payload,
+    }),
+  );
+  const id = asString(json.id) || asString(json.pin_id) || cleanPinId;
+
+  return {
+    ok: true,
+    id,
+    url: asString(json.url) || buildPinterestPinUrl(id),
+    board_id: asString(json.board_id) || cleanBoardId || null,
+  };
+}
+
+export async function deletePinterestPin(accessToken: string, pinId: string): Promise<void> {
+  const token = String(accessToken || "").trim();
+  const cleanPinId = String(pinId || "").trim();
+  if (!token) throw new Error("Pinterest à connecter. Rendez-vous dans Canaux.");
+  if (!cleanPinId) throw new Error("Épingle Pinterest introuvable.");
+
+  try {
+    await pinterestApiRequest(`/pins/${encodeURIComponent(cleanPinId)}`, token, { method: "DELETE" });
+  } catch (error) {
+    const status = Number((error as Error & { status?: number })?.status || 0);
+    if (status === 404) return;
+    throw error;
+  }
+}
+

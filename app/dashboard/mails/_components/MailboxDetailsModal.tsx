@@ -1853,15 +1853,18 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                   items={activePublicationEditAssets.map((asset, index) => {
                                     const selectedAssets = activePublicationEditAssets.filter((candidate) => candidate.selected);
                                     const selectedIndex = selectedAssets.findIndex((candidate) => candidate.key === asset.key);
-                                    const disabledByGoogleBusinessLimit = activePublicationEditChannelKey === "gmb" && selectedAssets.length >= 1 && !asset.selected;
+                                    const isSingleImageChannel = activePublicationEditChannelKey === "gmb" || activePublicationEditChannelKey === "pinterest";
+                                    const disabledBySingleImageLimit = isSingleImageChannel && selectedAssets.length >= 1 && !asset.selected;
                                     return {
                                       key: asset.key,
                                       previewUrl: asset.previewUrl,
                                       included: asset.selected,
-                                      disabled: disabledByGoogleBusinessLimit,
+                                      disabled: disabledBySingleImageLimit,
                                       title: `Image ${index + 1}`,
-                                      subtitle: disabledByGoogleBusinessLimit
-                                        ? "Une seule photo par publication Google Business"
+                                      subtitle: disabledBySingleImageLimit
+                                        ? activePublicationEditChannelKey === "pinterest"
+                                          ? "Une seule image par épingle Pinterest"
+                                          : "Une seule photo par publication Google Business"
                                         : asset.selected
                                           ? "Publiée sur ce canal"
                                           : "Non publiée sur ce canal",

@@ -89,7 +89,7 @@ for (const file of runtimeFiles) {
   const source = read(file);
   const path = rel(file);
   const directEqCount = (source.match(/\.eq\(\s*["']user_id["']\s*,\s*user\.id\s*\)/g) || []).length;
-  const directPayloadCount = (source.match(/user_id\s*:\s*user\.id\b/g) || []).length;
+  const directPayloadCount = (source.match(/\buser_id\s*:\s*user\.id\b/g) || []).length;
   const authAssignmentCount = (source.match(/\bconst\s+userId\s*=\s*user\.id\b/g) || []).length;
   if (directEqCount) observedDirectEq.set(path, directEqCount);
   if (directPayloadCount) observedDirectPayload.set(path, directPayloadCount);

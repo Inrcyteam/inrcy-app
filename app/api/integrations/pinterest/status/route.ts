@@ -4,7 +4,7 @@ import { bubbleAccessDisabledResponse, isAppBubbleEnabledForUser } from "@/lib/a
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { asRecord, asString } from "@/lib/tsSafe";
 import { getChannelConnectionStates } from "@/lib/channelConnectionState";
-import { getPinterestIntegration, getPinterestAccessToken, fetchPinterestBoards } from "@/lib/pinterestOAuth";
+import { fetchPinterestBoards, fetchPinterestUserAccount, getPinterestAccessToken, getPinterestIntegration } from "@/lib/pinterestOAuth";
 import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 
 export async function GET(request: Request) {
@@ -21,22 +21,25 @@ export async function GET(request: Request) {
 
     const states = await getChannelConnectionStates(supabase, activeUserId);
     const integration = asRecord(await getPinterestIntegration(activeUserId).catch(() => ({})));
-    const meta = asRecord(integration.meta);
-    let boards = Array.isArray(meta.boards) ? meta.boards : [];
+    let boards: unknown[] = [];
+    let account: Awaited<ReturnType<typeof fetchPinterestUserAccount>> | null = null;
 
     const accessToken = states.pinterest.connected ? await getPinterestAccessToken(activeUserId, request.url).catch(() => "") : "";
     if (accessToken) {
-      boards = await fetchPinterestBoards(accessToken).catch(() => boards);
+      [account, boards] = await Promise.all([
+        fetchPinterestUserAccount(accessToken).catch(() => null),
+        fetchPinterestBoards(accessToken).catch(() => []),
+      ]);
     }
 
+    const connected = Boolean(states.pinterest.connected && !states.pinterest.requiresUpdate && accessToken);
     return NextResponse.json({
       ok: true,
-      connected: states.pinterest.connected && !states.pinterest.requiresUpdate,
-      status: states.pinterest.connection_status,
-      username: states.pinterest.username,
-      profileUrl: states.pinterest.profile_url,
-      defaultBoardId: states.pinterest.default_board_id,
-      defaultBoardName: states.pinterest.default_board_name,
+      connected,
+      status: connected ? "connected" : states.pinterest.connection_status,
+      accountName: account?.displayName || account?.username || null,
+      username: account?.username || null,
+      profileUrl: account?.profileUrl || null,
       boards,
       scopes: asString(integration.scopes) || "",
       expiresAt: asString(integration.expires_at) || null,

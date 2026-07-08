@@ -1040,13 +1040,15 @@ function getSocialMetrics(cubeKey: "facebook" | "instagram" | "linkedin" | "tikt
           ? safeNum(m?.totals?.followers) + safeNum(m?.totals?.profile_views) + safeNum(m?.totals?.video_views)
           : cubeKey === "youtube_shorts"
             ? safeNum(m?.totals?.subscribers) + safeNum(m?.totals?.followers) + safeNum(m?.totals?.profile_views) + safeNum(m?.totals?.video_views) + safeNum(m?.totals?.views)
-            : safeNum(m?.totals?.followers) +
-            safeNum(m?.totals?.followerCount) +
-            safeNum(m?.totals?.memberFollowersCount) +
-            safeNum(m?.totals?.organicFollowerCount) +
-            safeNum(m?.totals?.paidFollowerCount) +
-            safeNum(m?.totals?.pageViews) +
-            safeNum(m?.totals?.uniqueImpressionsCount);
+            : cubeKey === "pinterest"
+              ? Math.max(safeNum(m?.totals?.impressions), safeNum(m?.totals?.impressionCount))
+              : safeNum(m?.totals?.followers) +
+              safeNum(m?.totals?.followerCount) +
+              safeNum(m?.totals?.memberFollowersCount) +
+              safeNum(m?.totals?.organicFollowerCount) +
+              safeNum(m?.totals?.paidFollowerCount) +
+              safeNum(m?.totals?.pageViews) +
+              safeNum(m?.totals?.uniqueImpressionsCount);
 
   const engagement =
     cubeKey === "facebook"
@@ -1057,7 +1059,9 @@ function getSocialMetrics(cubeKey: "facebook" | "instagram" | "linkedin" | "tikt
           ? safeNum(m?.totals?.engagements) + safeNum(m?.totals?.likes) + safeNum(m?.totals?.comments) + safeNum(m?.totals?.shares) + safeNum(m?.totals?.saves)
           : cubeKey === "youtube_shorts"
             ? safeNum(m?.totals?.engagements) + safeNum(m?.totals?.likes) + safeNum(m?.totals?.comments) + safeNum(m?.totals?.shares) + safeNum(m?.totals?.saves)
-            : safeNum(m?.totals?.engagementCount) + safeNum(m?.totals?.reactionCount) + safeNum(m?.totals?.commentCount) + safeNum(m?.totals?.shareCount);
+            : cubeKey === "pinterest"
+              ? Math.max(safeNum(m?.totals?.engagements), safeNum(m?.totals?.engagementCount))
+              : safeNum(m?.totals?.engagementCount) + safeNum(m?.totals?.reactionCount) + safeNum(m?.totals?.commentCount) + safeNum(m?.totals?.shareCount);
 
   const conversions =
     cubeKey === "facebook"
@@ -1068,7 +1072,9 @@ function getSocialMetrics(cubeKey: "facebook" | "instagram" | "linkedin" | "tikt
           ? safeNum(m?.totals?.website_clicks) + safeNum(m?.totals?.profile_views) + safeNum(m?.totals?.messages)
           : cubeKey === "youtube_shorts"
             ? safeNum(m?.totals?.website_clicks) + safeNum(m?.totals?.profile_views) + safeNum(m?.totals?.messages)
-            : safeNum(m?.totals?.clickCount) + safeNum(m?.totals?.pageClicks);
+            : cubeKey === "pinterest"
+              ? Math.max(safeNum(m?.totals?.outbound_clicks), safeNum(m?.totals?.pageClicks)) + Math.max(safeNum(m?.totals?.pin_clicks), safeNum(m?.totals?.clickCount))
+              : safeNum(m?.totals?.clickCount) + safeNum(m?.totals?.pageClicks);
 
   const visibility =
     cubeKey === "facebook"
@@ -1079,7 +1085,9 @@ function getSocialMetrics(cubeKey: "facebook" | "instagram" | "linkedin" | "tikt
           ? safeNum(m?.totals?.impressions) + safeNum(m?.totals?.video_views) + safeNum(m?.totals?.views)
           : cubeKey === "youtube_shorts"
             ? safeNum(m?.totals?.impressions) + safeNum(m?.totals?.video_views) + safeNum(m?.totals?.views)
-            : safeNum(m?.totals?.impressionCount) + safeNum(m?.totals?.uniqueImpressionsCount);
+            : cubeKey === "pinterest"
+              ? Math.max(safeNum(m?.totals?.impressions), safeNum(m?.totals?.impressionCount))
+              : safeNum(m?.totals?.impressionCount) + safeNum(m?.totals?.uniqueImpressionsCount);
 
   return { audience, engagement, conversions, visibility };
 }

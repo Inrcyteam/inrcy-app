@@ -513,37 +513,17 @@ L’utilisateur peut également demander la suppression des données concernées
 
 17. Utilisation de l’API Pinterest
 
-Le logiciel iNrCy peut permettre à l’utilisateur de connecter son compte Pinterest afin de préparer, créer, publier, planifier ou suivre certains contenus via les fonctionnalités mises à disposition par Pinterest.
+Le logiciel iNrCy peut permettre à l’utilisateur de connecter son propre compte Pinterest au moyen du flux d’autorisation OAuth officiel afin de gérer les fonctionnalités qu’il active dans iNrCy.
 
-Lorsque l’utilisateur connecte son compte Pinterest, iNrCy peut accéder ou traiter uniquement les données nécessaires au fonctionnement des fonctionnalités activées, notamment :
+Selon les actions demandées par l’utilisateur, iNrCy peut consulter en direct les informations strictement nécessaires fournies par Pinterest, notamment le profil du compte connecté, les tableaux disponibles, les épingles concernées et les indicateurs de performance accessibles.
 
-identifiant du compte Pinterest autorisé ;
-nom d’utilisateur ;
-informations publiques ou professionnelles du profil lorsque ces informations sont fournies ;
-tableaux Pinterest accessibles au compte connecté ;
-identifiants de tableaux ;
-épingles créées ou sélectionnées ;
-titres, descriptions, liens, images, médias et métadonnées techniques associés aux épingles ;
-statuts de publication ;
-données statistiques ou indicateurs de performance lorsque ces données sont disponibles ;
-impressions, clics, enregistrements, vues ou autres données d’engagement lorsque ces informations sont fournies par Pinterest ;
-jetons d’authentification nécessaires à la connexion sécurisée ;
-erreurs ou retours techniques de Pinterest.
+Les informations lues depuis l’API Pinterest, notamment les informations de profil, les listes de tableaux et les statistiques, sont consultées à la demande pour fournir la fonctionnalité concernée et ne sont pas conservées durablement comme copie de la donnée Pinterest. iNrCy conserve uniquement les éléments nécessaires au fonctionnement sécurisé du service, notamment les jetons OAuth chiffrés et ses propres données internes liées aux actions explicitement demandées par l’utilisateur.
 
-Ces données sont utilisées uniquement pour permettre à l’utilisateur de connecter son compte Pinterest, afficher les tableaux disponibles, choisir un tableau de publication, préparer un contenu, publier une épingle, suivre le statut d’une publication, afficher des statistiques ou assurer le bon fonctionnement technique des fonctionnalités Pinterest dans iNrCy.
+Les actions de création, modification ou suppression d’un tableau ou d’une épingle sont exécutées uniquement à la suite d’une action explicite de l’utilisateur dans iNrCy. Lors d’une publication, l’utilisateur choisit le contenu concerné et le tableau Pinterest de destination.
 
-Les contenus publiés ou transmis vers Pinterest sont envoyés à Pinterest pour permettre l’exécution de l’action demandée par l’utilisateur.
+Les contenus transmis vers Pinterest sont envoyés à Pinterest afin d’exécuter l’action demandée. Les statistiques Pinterest affichées dans iNrCy sont récupérées en direct lorsque la fonctionnalité est consultée.
 
 iNrCy ne vend pas les données Pinterest des utilisateurs, ne les loue pas, ne les utilise pas à des fins publicitaires propres et ne les utilise pas pour entraîner des modèles d’intelligence artificielle généraux.
-
-iNrCy ne transmet les données Pinterest à des tiers que lorsque cela est nécessaire :
-
-pour fournir la fonctionnalité demandée par l’utilisateur ;
-pour assurer l’hébergement, le stockage, la sécurité ou le fonctionnement technique du service ;
-pour réaliser une action explicitement demandée par l’utilisateur ;
-pour afficher des statistiques ou historiques dans l’application ;
-pour assurer le support ou le diagnostic technique avec l’accord de l’utilisateur ;
-pour respecter une obligation légale.
 
 L’utilisateur reste responsable des contenus qu’il prépare, importe, valide ou publie sur Pinterest depuis iNrCy, ainsi que du respect des règles applicables sur Pinterest, des droits d’auteur, des droits à l’image, des droits de marque, des droits liés aux médias et de la confidentialité des personnes apparaissant dans les contenus.
 

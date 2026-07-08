@@ -64,6 +64,12 @@ type PublishContentEditorPanelProps = {
   getLiveInstagramHashtags: () => string[];
   duplicateFeedback: DuplicateFeedback;
   onDuplicateContentToAllChannels: () => void;
+  pinterestBoards: Array<{ id: string; name: string }>;
+  pinterestBoardId: string;
+  pinterestBoardsLoading: boolean;
+  pinterestBoardsError: string;
+  onPinterestBoardChange: (boardId: string) => void;
+  onRefreshPinterestBoards: () => void;
 };
 
 export default function PublishContentEditorPanel({
@@ -84,6 +90,12 @@ export default function PublishContentEditorPanel({
   getLiveInstagramHashtags,
   duplicateFeedback,
   onDuplicateContentToAllChannels,
+  pinterestBoards,
+  pinterestBoardId,
+  pinterestBoardsLoading,
+  pinterestBoardsError,
+  onPinterestBoardChange,
+  onRefreshPinterestBoards,
 }: PublishContentEditorPanelProps) {
   const keepEditorTypingInsideField = (
     event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
@@ -201,6 +213,58 @@ export default function PublishContentEditorPanel({
               {DISPLAY_LABELS[activeCard]}
             </div>
             <div style={{ display: "grid", gap: 10 }}>
+              {activeCard === "pinterest" ? (
+                <div>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 8,
+                      marginBottom: 6,
+                    }}
+                  >
+                    <div style={{ fontSize: 12, opacity: 0.85 }}>Tableau Pinterest</div>
+                    <button
+                      type="button"
+                      onClick={onRefreshPinterestBoards}
+                      disabled={pinterestBoardsLoading}
+                      style={{
+                        ...pillBtn,
+                        minHeight: 30,
+                        padding: "0 10px",
+                        opacity: pinterestBoardsLoading ? 0.6 : 1,
+                      }}
+                    >
+                      {pinterestBoardsLoading ? "Chargement…" : "Actualiser"}
+                    </button>
+                  </div>
+                  <select
+                    value={pinterestBoardId}
+                    onChange={(event) => onPinterestBoardChange(event.target.value)}
+                    disabled={pinterestBoardsLoading}
+                    style={darkSelectStyle}
+                  >
+                    <option value="" style={darkOptionStyle}>
+                      Choisir un tableau
+                    </option>
+                    {pinterestBoards.map((board) => (
+                      <option key={board.id} value={board.id} style={darkOptionStyle}>
+                        {board.name}
+                      </option>
+                    ))}
+                  </select>
+                  {pinterestBoardsError ? (
+                    <div style={{ marginTop: 6, fontSize: 12, color: "#fecaca" }}>
+                      {pinterestBoardsError}
+                    </div>
+                  ) : !pinterestBoardsLoading && !pinterestBoards.length ? (
+                    <div style={{ marginTop: 6, fontSize: 12, opacity: 0.72 }}>
+                      Aucun tableau disponible. Créez-en un dans Configurer Pinterest.
+                    </div>
+                  ) : null}
+                </div>
+              ) : null}
               <div>
                 <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6 }}>
                   Titre

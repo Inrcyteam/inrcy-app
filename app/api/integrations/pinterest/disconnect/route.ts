@@ -4,6 +4,7 @@ import { bubbleAccessDisabledResponse, isAppBubbleEnabledForUser } from "@/lib/a
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { clearAllToolCaches } from "@/lib/statsCache";
+import { withCurrentConnectionVersion } from "@/lib/connectionVersions";
 import { asRecord } from "@/lib/tsSafe";
 import { PINTEREST_PRODUCT, PINTEREST_PROVIDER, PINTEREST_SOURCE } from "@/lib/pinterestOAuth";
 import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
@@ -30,9 +31,14 @@ export async function POST() {
       .from("integrations")
       .update({
         status: "disconnected",
+        display_name: "Compte Pinterest",
+        provider_account_id: null,
+        resource_id: null,
+        resource_label: null,
         access_token_enc: null,
         refresh_token_enc: null,
         expires_at: null,
+        meta: withCurrentConnectionVersion("channel:pinterest", {}),
         updated_at: new Date().toISOString(),
       })
       .eq("user_id", activeUserId)
@@ -47,21 +53,29 @@ export async function POST() {
       .maybeSingle();
     const root = normalizeSettingsRoot(asRecord(cfg).settings);
     const currentPinterest = normalizeSettingsRoot(root.pinterest);
-    const nextPinterest = {
-      ...currentPinterest,
-      connected: false,
-      accountConnected: false,
-      mode: "manual",
-      accountName: "",
-      username: "",
-      profileUrl: "",
-      avatarUrl: "",
-      defaultBoardId: "",
-      defaultBoardName: "",
-      boards: [],
-      scopes: "",
-      expiresAt: null,
-    };
+    const nextPinterest = { ...currentPinterest };
+    for (const key of [
+      "boards",
+      "avatarUrl",
+      "websiteUrl",
+      "accountType",
+      "accountName",
+      "displayName",
+      "username",
+      "profileUrl",
+      "url",
+      "defaultBoardId",
+      "defaultBoardName",
+      "boardId",
+      "boardName",
+      "scopes",
+      "expiresAt",
+      "connected",
+      "accountConnected",
+      "mode",
+    ]) {
+      delete nextPinterest[key];
+    }
 
     await supabaseAdmin
       .from("pro_tools_configs")

@@ -155,16 +155,16 @@ Limites optionnelles :
 - [ ] `TIKTOK_MEDIA_BASE_URL`
 - [ ] `TIKTOK_MEDIA_SIGNING_SECRET`
 
-## Pinterest — en attente selon validation plateforme
+## Pinterest — Trial approuvé
 
-À compléter quand les accès définitifs sont disponibles.
+Configurer les variables canoniques en Production avant le premier OAuth réel.
 
 - [ ] `PINTEREST_CLIENT_ID`
 - [ ] `PINTEREST_CLIENT_SECRET`
 - [ ] `PINTEREST_REDIRECT_URI`
 - [ ] `PINTEREST_OAUTH_SCOPES`
-- [ ] `PINTEREST_APP_ID`
-- [ ] `PINTEREST_APP_SECRET`
+- [ ] `PINTEREST_APP_ID` (alias legacy uniquement)
+- [ ] `PINTEREST_APP_SECRET` (alias legacy uniquement)
 
 ## Trustpilot — en attente selon validation plateforme
 

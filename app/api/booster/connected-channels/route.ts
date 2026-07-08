@@ -158,7 +158,7 @@ export async function GET() {
         linkedin: states.linkedin.connected && !states.linkedin.requiresUpdate,
         tiktok: states.tiktok.connected && !states.tiktok.requiresUpdate,
         youtube_shorts: states.youtube_shorts.connected && !states.youtube_shorts.requiresUpdate,
-        pinterest: pinterestEnabled && states.pinterest.connected && !states.pinterest.requiresUpdate && Boolean(states.pinterest.default_board_id),
+        pinterest: pinterestEnabled && states.pinterest.connected && !states.pinterest.requiresUpdate,
       },
       channelDetails: {
         inrcy_site: {

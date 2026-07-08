@@ -1935,7 +1935,7 @@ export default function MailboxClient() {
             originalName: att.originalName || att.name || null,
             originalType: att.originalType || att.type || null,
             file: null,
-            selected: channel === "gmb" ? index === 0 : true,
+            selected: channel === "gmb" || channel === "pinterest" ? index === 0 : true,
             transform: initialTransform,
             savedTransform: { ...initialTransform },
             imageMeta: att.imageMeta || null,
@@ -3577,7 +3577,7 @@ export default function MailboxClient() {
   function togglePublicationImage(channel: string, imageKey: string) {
     const normalizedChannel = normalizeChannelKey(channel);
     updatePublicationChannelAssets(normalizedChannel, (assets) => {
-      if (normalizedChannel === "gmb") {
+      if (normalizedChannel === "gmb" || normalizedChannel === "pinterest") {
         const target = assets.find((asset) => asset.key === imageKey);
         if (!target) return assets;
         if (target.selected) {
@@ -3761,7 +3761,7 @@ export default function MailboxClient() {
           sourceUrl: null,
           file,
           selected:
-            channel === "gmb" ? !merged.some((asset) => asset.selected) : true,
+            channel === "gmb" || channel === "pinterest" ? !merged.some((asset) => asset.selected) : true,
           transform: buildPublicationDefaultTransform(channel),
         });
       }
@@ -4006,7 +4006,7 @@ export default function MailboxClient() {
             originalType: item.mime_type || file.type || "image/jpeg",
             file,
             selected:
-              channel === "gmb"
+              channel === "gmb" || channel === "pinterest"
                 ? !merged.some((asset) => asset.selected)
                 : true,
             transform: buildPublicationDefaultTransform(channel),

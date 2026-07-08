@@ -1189,6 +1189,19 @@ export async function POST(req: Request) {
     const tiktokPublicationSettings = normalizeTiktokPublicationSettings(
       body.tiktokPublicationSettings,
     );
+    const pinterestPublicationSettings = asRecord(
+      body.pinterestPublicationSettings,
+    );
+    const requestedPinterestBoardId = String(
+      pinterestPublicationSettings.boardId ||
+        pinterestPublicationSettings.board_id ||
+        "",
+    ).trim();
+    const requestedPinterestBoardName = String(
+      pinterestPublicationSettings.boardName ||
+        pinterestPublicationSettings.board_name ||
+        "",
+    ).trim();
     const hasAnyImageChannel = selected.some(
       (channel) => mediaModeByChannel[channel] === "images",
     );
@@ -2968,22 +2981,10 @@ export async function POST(req: Request) {
         }
 
         if (ch === "pinterest") {
-          const pinterestSettings = asRecord(proSettings["pinterest"]);
-          const pinterestMeta = asRecord(asRecord(pinterestRow).meta);
           const pinterestStatus = String(asRecord(pinterestRow).status || "");
-          const boardId = String(
-            pinterestSettings.defaultBoardId ||
-              pinterestSettings.boardId ||
-              pinterestMeta.default_board_id ||
-              "",
-          ).trim();
-          const boardName = String(
-            pinterestSettings.defaultBoardName ||
-              pinterestSettings.boardName ||
-              pinterestMeta.default_board_name ||
-              asRecord(pinterestRow).resource_label ||
-              "",
-          ).trim();
+          // Chaque publication Pinterest doit porter le tableau explicitement choisi pour cette action.
+          const boardId = String(requestedPinterestBoardId || "").trim();
+          const boardName = String(requestedPinterestBoardName || "").trim();
           const pinterestAccessToken =
             pinterestStatus === "connected" || pinterestStatus === "account_connected"
               ? await getPinterestAccessToken(userId, req.url)
@@ -2997,7 +2998,7 @@ export async function POST(req: Request) {
           }
 
           if (!boardId) {
-            const pinterestUserError = "Sélectionnez un tableau Pinterest dans la configuration.";
+            const pinterestUserError = "Choisissez un tableau Pinterest avant de publier.";
             await setDelivery(ch, { status: "failed", error: pinterestUserError });
             results[ch] = { ok: false, error: pinterestUserError };
             continue;
@@ -3058,10 +3059,9 @@ export async function POST(req: Request) {
             ok: true,
             external_id: pin.id || null,
             external_url: pin.url || null,
-            board_id: pin.board_id || boardId,
+            board_id: boardId,
             board_name: boardName || null,
             media_type: "image",
-            diagnostics: pin,
           };
           continue;
         }
