@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import styles from "../dashboard.module.css";
 import BaseModal from "./WorkflowBaseModal";
 import { useDashboardI18n } from "../_hooks/useDashboardI18n";
@@ -39,7 +40,20 @@ type DashboardModulesCardProps = {
 
 export default function DashboardModulesCard({ goToModule, openPanel, onOpenStats, onOpenBoosterPublish, onOpenBoosterStats }: DashboardModulesCardProps) {
   const t = useDashboardI18n();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [cashModalOpen, setCashModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (searchParams.get("action") === "cash") setCashModalOpen(true);
+  }, [searchParams]);
+
+  const closeCashModal = () => {
+    setCashModalOpen(false);
+    if (searchParams.get("action") === "cash") {
+      router.replace("/dashboard", { scroll: false });
+    }
+  };
 
   const openStats = () => {
     if (onOpenStats) {
@@ -357,7 +371,7 @@ export default function DashboardModulesCard({ goToModule, openPanel, onOpenStat
             moduleLabel={t.modules.cashModalLabel}
             compact
             maxWidth={760}
-            onClose={() => setCashModalOpen(false)}
+            onClose={closeCashModal}
             headerActions={
               <button
                 type="button"

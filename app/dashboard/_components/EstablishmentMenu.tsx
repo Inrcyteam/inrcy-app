@@ -122,11 +122,17 @@ export default function EstablishmentMenu({
   onContact,
   onOpen,
   locale = "fr-FR",
+  buttonClassName,
+  panelClassName,
+  beforeAccountSwitch,
 }: {
   mobile?: boolean;
   onContact: () => void;
   onOpen?: () => void;
   locale?: string;
+  buttonClassName?: string;
+  panelClassName?: string;
+  beforeAccountSwitch?: (proceed: () => Promise<void>) => void | Promise<void> | Promise<boolean>;
 }) {
   const language = String(locale || "fr").slice(0, 2).toLowerCase();
   const copy = COPIES[language] || COPIES.fr;
@@ -194,15 +200,24 @@ export default function EstablishmentMenu({
 
   const switchAccount = async (accountId: string) => {
     if (accountId === payload?.activeUserId || switchingId) return;
-    setSwitchingId(accountId);
-    setError(null);
-    try {
-      await switchActiveInrcyAccount(accountId);
-      window.location.reload();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : copy.switchError);
-      setSwitchingId(null);
+
+    const proceed = async () => {
+      setSwitchingId(accountId);
+      setError(null);
+      try {
+        await switchActiveInrcyAccount(accountId);
+        window.location.reload();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : copy.switchError);
+        setSwitchingId(null);
+      }
+    };
+
+    if (beforeAccountSwitch) {
+      await beforeAccountSwitch(proceed);
+      return;
     }
+    await proceed();
   };
 
   const startCreate = (slot: number) => {
@@ -237,9 +252,9 @@ export default function EstablishmentMenu({
     }
   };
 
-  const buttonClass = mobile
+  const buttonClass = buttonClassName || (mobile
     ? `${styles.mobileHeaderIconBtn} ${styles.mobileHeaderEstablishmentBtn}`
-    : `${styles.ghostBtn} ${styles.establishmentTopbarBtn}`;
+    : `${styles.ghostBtn} ${styles.establishmentTopbarBtn}`);
 
   return (
     <div className={styles.establishmentMenuWrap} ref={rootRef}>
@@ -250,11 +265,9 @@ export default function EstablishmentMenu({
         title={buttonTitle}
         aria-expanded={open}
         onClick={() => {
-          setOpen((value) => {
-            const next = !value;
-            if (next) onOpen?.();
-            return next;
-          });
+          const next = !open;
+          if (next) onOpen?.();
+          setOpen(next);
         }}
       >
         <span className={styles.establishmentTopbarIcon} aria-hidden="true"><EstablishmentIcon /></span>
@@ -267,11 +280,10 @@ export default function EstablishmentMenu({
             <span className={styles.establishmentTopbarChevron} aria-hidden="true">v</span>
           </>
         ) : null}
-        {mobile && accounts.length > 1 ? <span className={styles.establishmentTopbarCount}>{accounts.length}</span> : null}
       </button>
 
       {open ? (
-        <div className={`${styles.establishmentMenuPanel} ${mobile ? styles.establishmentMenuPanelMobile : ""}`} role="dialog" aria-label={copy.title}>
+        <div className={`${styles.establishmentMenuPanel} ${mobile ? styles.establishmentMenuPanelMobile : ""} ${panelClassName || ""}`.trim()} role="dialog" aria-label={copy.title}>
           <div className={styles.establishmentMenuHeader}>
             <div>
               <strong>{copy.title}</strong>

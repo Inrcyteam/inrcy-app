@@ -8,6 +8,7 @@ export default function NotificationMenu(props: {
   notificationMenuOpen: boolean;
   setNotificationMenuOpen: React.Dispatch<React.SetStateAction<boolean>>;
   unreadNotificationsCount: number;
+  badgeCount?: number;
   refreshNotifications: () => void | Promise<void>;
   notificationsLoading: boolean;
   notifications: NotificationItem[];
@@ -19,6 +20,10 @@ export default function NotificationMenu(props: {
   onNavigate: (ctaUrl: string) => void;
   mobile?: boolean;
   label?: string;
+  buttonClassName?: string;
+  panelClassName?: string;
+  countClassName?: string;
+  onOpen?: () => void;
 }) {
   const t = useDashboardI18n();
 
@@ -26,6 +31,7 @@ export default function NotificationMenu(props: {
     notificationMenuOpen,
     setNotificationMenuOpen,
     unreadNotificationsCount,
+    badgeCount,
     refreshNotifications,
     notificationsLoading,
     notifications,
@@ -37,18 +43,27 @@ export default function NotificationMenu(props: {
     onNavigate,
     mobile = false,
     label,
+    buttonClassName,
+    panelClassName,
+    countClassName,
+    onOpen,
   } = props;
+
+  const loadedUnreadCount = notifications.reduce((count, item) => count + (item.unread ? 1 : 0), 0);
+  const displayedUnreadCount = Math.max(unreadNotificationsCount, loadedUnreadCount);
+  const displayedBadgeCount = typeof badgeCount === "number" ? Math.max(0, badgeCount) : displayedUnreadCount;
 
   return (
     <>
       <button
         type="button"
-        className={`${styles.notificationBellBtn} ${label ? styles.notificationBellBtnWithLabel : ""} ${mobile ? styles.notificationBellBtnMobile : ""}`.trim()}
+        className={buttonClassName || `${styles.notificationBellBtn} ${label ? styles.notificationBellBtnWithLabel : ""} ${mobile ? styles.notificationBellBtnMobile : ""}`.trim()}
         aria-label={t.notifications.aria}
         aria-expanded={notificationMenuOpen}
         onClick={() => {
           setNotificationMenuOpen((v) => !v);
           if (!notificationMenuOpen) {
+            onOpen?.();
             void refreshNotifications();
           }
         }}
@@ -57,32 +72,27 @@ export default function NotificationMenu(props: {
           🔔
         </span>
         {label && <span className={styles.notificationBellLabel}>{label}</span>}
-        {unreadNotificationsCount > 0 && (
-          <span className={styles.notificationBellCount} aria-hidden>
-            {Math.min(99, unreadNotificationsCount)}
+        {displayedBadgeCount > 0 && (
+          <span className={countClassName || styles.notificationBellCount} aria-hidden>
+            {displayedBadgeCount > 99 ? "99+" : displayedBadgeCount}
           </span>
         )}
       </button>
 
       {notificationMenuOpen && (
         <div
-          className={`${styles.notificationPanel} ${mobile ? styles.notificationPanelMobile : ""}`.trim()}
+          className={`${styles.notificationPanel} ${mobile ? styles.notificationPanelMobile : ""} ${panelClassName || ""}`.trim()}
           role="dialog"
           aria-label={t.notifications.aria}
         >
-          <div className={styles.notificationPanelHeader}>
-            <div>
+          {mobile ? (
+            <div className={`${styles.notificationPanelHeader} ${styles.notificationPanelHeaderMobile}`}>
               <div className={styles.notificationPanelTitle}>
                 {t.notifications.title}
               </div>
-              <div className={styles.notificationPanelSub}>
-                {t.notifications.subtitle}
-              </div>
-            </div>
-            <div className={styles.notificationPanelHeaderActions}>
               <button
                 type="button"
-                className={styles.notificationGhostBtn}
+                className={`${styles.notificationGhostBtn} ${styles.notificationHeaderButtonMobile}`}
                 onClick={() => {
                   setNotificationMenuOpen(false);
                   openPanel();
@@ -90,9 +100,12 @@ export default function NotificationMenu(props: {
               >
                 {t.notifications.settings}
               </button>
+              <div className={styles.notificationPanelSub}>
+                {t.notifications.subtitle}
+              </div>
               <button
                 type="button"
-                className={styles.notificationGhostBtn}
+                className={`${styles.notificationGhostBtn} ${styles.notificationHeaderButtonMobile}`}
                 onClick={() => {
                   void markAllNotificationsRead();
                 }}
@@ -100,7 +113,39 @@ export default function NotificationMenu(props: {
                 {t.notifications.markAllRead}
               </button>
             </div>
-          </div>
+          ) : (
+            <div className={styles.notificationPanelHeader}>
+              <div>
+                <div className={styles.notificationPanelTitle}>
+                  {t.notifications.title}
+                </div>
+                <div className={styles.notificationPanelSub}>
+                  {t.notifications.subtitle}
+                </div>
+              </div>
+              <div className={styles.notificationPanelHeaderActions}>
+                <button
+                  type="button"
+                  className={styles.notificationGhostBtn}
+                  onClick={() => {
+                    setNotificationMenuOpen(false);
+                    openPanel();
+                  }}
+                >
+                  {t.notifications.settings}
+                </button>
+                <button
+                  type="button"
+                  className={styles.notificationGhostBtn}
+                  onClick={() => {
+                    void markAllNotificationsRead();
+                  }}
+                >
+                  {t.notifications.markAllRead}
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className={styles.notificationList}>
             {notificationsLoading && notifications.length === 0 ? (
@@ -116,7 +161,7 @@ export default function NotificationMenu(props: {
                 {t.notifications.empty}
               </div>
             ) : (
-              notifications.slice(0, 6).map((item) => (
+              notifications.map((item) => (
                 <div key={item.id} className={styles.notificationCard}>
                   <div className={styles.notificationMetaRow}>
                     <span

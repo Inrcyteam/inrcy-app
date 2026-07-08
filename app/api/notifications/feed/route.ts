@@ -20,22 +20,30 @@ export async function GET(req: Request) {
     .maybeSingle();
 
   if (pref && pref.in_app_enabled === false) {
-    return NextResponse.json({ items: [], unreadCount: 0 });
+    return NextResponse.json({ items: [], unreadCount: 0, totalCount: 0 });
   }
 
-  const { data, error } = await supabaseAdmin
-    .from("notifications")
-    .select("id, user_id, category, kind, title, body, cta_label, cta_url, read_at, meta, dedupe_key, created_at")
-    .eq("user_id", activeUserId)
-    .order("created_at", { ascending: false })
-    .limit(limit);
+  const [feedResult, countResult] = await Promise.all([
+    supabaseAdmin
+      .from("notifications")
+      .select("id, user_id, category, kind, title, body, cta_label, cta_url, read_at, meta, dedupe_key, created_at")
+      .eq("user_id", activeUserId)
+      .order("created_at", { ascending: false })
+      .limit(limit),
+    supabaseAdmin
+      .from("notifications")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", activeUserId),
+  ]);
 
-  if (error) return jsonUserFacingError(error, { status: 500 });
+  if (feedResult.error) return jsonUserFacingError(feedResult.error, { status: 500 });
 
-  const rows = data ?? [];
-
+  const rows = feedResult.data ?? [];
   const items = rows.map((row) => toNotificationPayload(row as NotificationRow));
   const unreadCount = items.filter((item) => item.unread).length;
+  const totalCount = countResult.error
+    ? items.length
+    : Math.max(0, Number(countResult.count ?? items.length));
 
-  return NextResponse.json({ items, unreadCount });
+  return NextResponse.json({ items, unreadCount, totalCount });
 }

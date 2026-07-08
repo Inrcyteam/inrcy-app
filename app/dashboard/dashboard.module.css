@@ -5480,16 +5480,24 @@
   font-size: 11px;
   font-weight: 900;
   letter-spacing: 0.02em;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.34);
 }
 .notificationCategory_performance {
-  background: rgba(56, 189, 248, 0.14);
+  color: rgba(224, 247, 255, 0.98);
+  background: rgba(56, 189, 248, 0.24);
+  border-color: rgba(125, 211, 252, 0.34);
 }
 .notificationCategory_action {
-  background: rgba(244, 114, 182, 0.14);
+  color: rgba(255, 235, 248, 0.98);
+  background: rgba(244, 114, 182, 0.24);
+  border-color: rgba(244, 114, 182, 0.34);
 }
 .notificationCategory_information {
-  background: rgba(251, 146, 60, 0.14);
+  color: rgba(255, 243, 224, 0.98);
+  background: rgba(251, 146, 60, 0.24);
+  border-color: rgba(251, 146, 60, 0.34);
 }
 .notificationDate {
   font-size: 12px;
@@ -5566,20 +5574,23 @@
   height: 44px;
 }
 .notificationPanelMobile {
-  --notification-mobile-offset: max(
-    88px,
-    calc(env(safe-area-inset-top, 0px) + 76px)
-  );
   position: fixed;
-  top: var(--notification-mobile-offset);
+  top: calc(env(safe-area-inset-top, 0px) + 8px);
   left: 12px;
   right: 12px;
+  bottom: auto;
   width: auto;
   max-width: none;
-  max-height: min(
-    72vh,
-    calc(100dvh - var(--notification-mobile-offset) - 24px)
+  height: auto;
+  max-height: calc(
+    100dvh
+    - env(safe-area-inset-top, 0px)
+    - env(safe-area-inset-bottom, 0px)
+    - 24px
   );
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   transform: none;
   margin: 0;
   box-sizing: border-box;
@@ -5592,10 +5603,19 @@
   }
 
   .notificationPanelMobile {
-    --notification-mobile-offset: max(
-      88px,
-      calc(env(safe-area-inset-top, 0px) + 76px)
-    );
+    top: calc(env(safe-area-inset-top, 0px) + 8px);
+  }
+
+  .notificationPanelMobile .notificationPanelHeader {
+    position: sticky;
+    top: -1px;
+    z-index: 3;
+    margin: -6px -4px 8px;
+    padding: 12px 8px 10px;
+    background: linear-gradient(180deg, rgba(18, 26, 56, 0.99), rgba(18, 26, 56, 0.94));
+    border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
   }
 
   .notificationPanelHeader {
@@ -10167,5 +10187,189 @@
       height: 100vh;
       min-height: 100vh;
     }
+  }
+}
+
+/* Mobile cockpit architecture — no responsive header, identity integrated into hero */
+.kickerLogo {
+  display: none;
+}
+
+.heroDesktopCopy {
+  display: inline;
+}
+
+.heroMobileCopy {
+  display: none;
+}
+
+@media (max-width: 560px) {
+  .topbar {
+    display: none !important;
+  }
+
+  .hero {
+    margin-top: 0;
+  }
+
+  .heroLeft {
+    padding: 14px 13px 13px;
+    border-radius: 20px;
+  }
+
+  .kicker {
+    gap: 7px;
+    padding: 7px 12px 7px 9px;
+    font-size: 12.5px;
+  }
+
+  .kickerLogo {
+    display: block;
+    width: 24px;
+    height: 24px;
+    object-fit: contain;
+    flex: 0 0 24px;
+  }
+
+  .heroDesktopCopy {
+    display: none !important;
+  }
+
+  .heroMobileCopy {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .title {
+    margin: 10px 0 5px;
+    font-size: clamp(18px, 5.4vw, 21px);
+    line-height: 1.08;
+    letter-spacing: -0.45px;
+  }
+
+  .title .heroMobileCopy {
+    gap: 1px;
+  }
+
+  .title .heroMobileCopy > span:first-child {
+    white-space: nowrap;
+  }
+
+  .subtitle {
+    margin-top: 5px;
+    font-size: clamp(15px, 4.4vw, 17px);
+    line-height: 1.38;
+  }
+
+  .subtitle .heroMobileCopy {
+    gap: 0;
+  }
+
+  .signatureFlow {
+    margin-top: 9px;
+    padding: 7px 12px;
+    gap: 7px;
+  }
+
+  .powerBlock {
+    margin-top: 10px;
+  }
+
+  .generatorDesc {
+    font-size: 11px;
+    line-height: 1.28;
+    letter-spacing: -0.08px;
+  }
+}
+
+/* Mobile dock overlays: bottom-anchored, content-sized, then internally scrollable at the viewport ceiling. */
+@media (max-width: 560px) {
+  .notificationPanelMobile {
+    top: auto;
+    bottom: calc(var(--inrcy-mobile-bottom-nav-height, 50px) + env(safe-area-inset-bottom, 0px) + 8px);
+    height: auto;
+    max-height: calc(
+      100dvh
+      - env(safe-area-inset-top, 0px)
+      - var(--inrcy-mobile-bottom-nav-height, 50px)
+      - env(safe-area-inset-bottom, 0px)
+      - 16px
+    );
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .notificationPanelMobile .notificationPanelHeader {
+    position: relative;
+    top: auto;
+    z-index: 3;
+    flex: 0 0 auto;
+    margin: -6px -4px 8px;
+    padding: 12px 8px 10px;
+    background: linear-gradient(180deg, rgba(18, 26, 56, 0.995), rgba(18, 26, 56, 0.96));
+    border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  .notificationPanelMobile .notificationList {
+    min-height: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding-right: 2px;
+  }
+}
+
+
+/* Mobile notification header: two compact rows, actions aligned right. */
+@media (max-width: 560px) {
+  .notificationPanelHeaderMobile {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
+    align-items: center;
+    column-gap: 10px;
+    row-gap: 5px;
+    width: auto;
+  }
+
+  .notificationPanelHeaderMobile .notificationPanelTitle {
+    grid-column: 1;
+    grid-row: 1;
+    min-width: 0;
+    margin: 0;
+    line-height: 1.12;
+    white-space: nowrap;
+  }
+
+  .notificationPanelHeaderMobile .notificationPanelSub {
+    grid-column: 1;
+    grid-row: 2;
+    min-width: 0;
+    margin: 0;
+    font-size: 10.5px;
+    line-height: 1.15;
+    white-space: nowrap;
+  }
+
+  .notificationHeaderButtonMobile {
+    justify-self: end;
+    min-width: 72px;
+    padding: 7px 10px;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .notificationPanelHeaderMobile > .notificationHeaderButtonMobile:nth-of-type(1) {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .notificationPanelHeaderMobile > .notificationHeaderButtonMobile:nth-of-type(2) {
+    grid-column: 2;
+    grid-row: 2;
   }
 }

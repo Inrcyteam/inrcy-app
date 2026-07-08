@@ -7,6 +7,7 @@ export function useDashboardNotifications() {
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [notificationsLoading, setNotificationsLoading] = useState(false);
   const [notificationsError, setNotificationsError] = useState<string | null>(null);
+  const [notificationsCount, setNotificationsCount] = useState(0);
   const unreadNotificationsCount = useMemo(() => notifications.filter((item) => item.unread).length, [notifications]);
   const notificationsRequestSeqRef = useRef(0);
 
@@ -18,7 +19,10 @@ export function useDashboardNotifications() {
       const json = await res.json().catch(() => null);
       if (!res.ok) throw new Error(await getSimpleFrenchApiError(res));
       if (requestSeq !== notificationsRequestSeqRef.current) return;
-      setNotifications(Array.isArray(json?.items) ? json.items : []);
+      const nextItems = Array.isArray(json?.items) ? json.items : [];
+      const rawTotalCount = Number(json?.totalCount);
+      setNotifications(nextItems);
+      setNotificationsCount(Number.isFinite(rawTotalCount) ? Math.max(0, Math.round(rawTotalCount)) : nextItems.length);
       setNotificationsError(null);
     } catch (e: unknown) {
       if (requestSeq !== notificationsRequestSeqRef.current) return;
@@ -36,13 +40,20 @@ export function useDashboardNotifications() {
       if (cancelled) return;
       void refreshNotifications();
     };
+    const onFocus = () => run();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") run();
+    };
 
-    const initialTimer = window.setTimeout(run, 900);
+    run();
     const timer = window.setInterval(run, 120000);
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisible);
     return () => {
       cancelled = true;
-      window.clearTimeout(initialTimer);
       window.clearInterval(timer);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisible);
     };
   }, [refreshNotifications]);
 
@@ -63,11 +74,13 @@ export function useDashboardNotifications() {
   const deleteNotification = useCallback(async (id: string) => {
     const previous = notifications;
     setNotifications((current) => current.filter((item) => item.id !== id));
+    setNotificationsCount((current) => Math.max(0, current - 1));
     try {
       const res = await fetch(`/api/notifications/${id}`, { method: "DELETE", credentials: "include" });
       if (!res.ok) throw new Error(await getSimpleFrenchApiError(res, "Impossible de supprimer cette notification."));
     } catch {
       setNotifications(previous);
+      setNotificationsCount((current) => Math.max(current, previous.length));
     }
   }, [notifications]);
 
@@ -76,6 +89,7 @@ export function useDashboardNotifications() {
     notificationsLoading,
     notificationsError,
     unreadNotificationsCount,
+    notificationsCount,
     refreshNotifications,
     markNotificationRead,
     markAllNotificationsRead,

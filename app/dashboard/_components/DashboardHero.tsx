@@ -18,6 +18,18 @@ type InertiaSnapshot = {
   totalChannels: number;
 };
 
+
+function getMobileHeroCopy(locale: string) {
+  const language = String(locale || "fr").slice(0, 2).toLowerCase();
+  if (language === "en") return { title1: "Your business generator", title2: "is live!", subtitle1: "All your channels now feed", subtitle2: "one single machine." };
+  if (language === "es") return { title1: "Tu generador de negocio", title2: "está activo!", subtitle1: "Todos tus canales alimentan ahora", subtitle2: "una sola máquina." };
+  if (language === "it") return { title1: "Il tuo generatore di business", title2: "è attivo!", subtitle1: "Tutti i tuoi canali alimentano ora", subtitle2: "un'unica macchina." };
+  if (language === "de") return { title1: "Ihr Business-Generator", title2: "läuft!", subtitle1: "Alle Kanäle speisen jetzt", subtitle2: "eine einzige Maschine." };
+  if (language === "nl") return { title1: "Uw businessgenerator", title2: "is actief!", subtitle1: "Al uw kanalen voeden nu", subtitle2: "één enkele machine." };
+  if (language === "pt") return { title1: "O seu gerador de negócio", title2: "está ativo!", subtitle1: "Todos os canais alimentam agora", subtitle2: "uma única máquina." };
+  return { title1: "Votre générateur de business", title2: "est lancé !", subtitle1: "Tous vos canaux alimentent maintenant", subtitle2: "une seule machine." };
+}
+
 type DashboardHeroProps = {
   generatorPower: number;
   generatorPowerSteps: readonly GeneratorPowerStep[];
@@ -54,6 +66,7 @@ export default function DashboardHero({
   leadsMonth,
 }: DashboardHeroProps) {
   const t = useDashboardI18n();
+  const mobileCopy = getMobileHeroCopy(t.locale);
   const [powerBreakdownOpen, setPowerBreakdownOpen] = useState(false);
   const powerBreakdownRef = useRef<HTMLDivElement | null>(null);
 
@@ -105,15 +118,24 @@ export default function DashboardHero({
       <div className={styles.heroLeft}>
         <div className={styles.heroTop}>
           <div className={styles.kicker}>
+            <img className={styles.kickerLogo} src="/mobile-shortcuts/inrcy-bubble.png" alt="" aria-hidden="true" />
             <span className={styles.kickerText}>{t.hero.kicker}</span>
           </div>
 
           <h1 className={styles.title}>
-            <span className={styles.titleAccent}>{t.hero.title}</span>
+            <span className={`${styles.titleAccent} ${styles.heroDesktopCopy}`}>{t.hero.title}</span>
+            <span className={`${styles.titleAccent} ${styles.heroMobileCopy}`}>
+              <span>{mobileCopy.title1}</span>
+              <span>{mobileCopy.title2}</span>
+            </span>
           </h1>
 
           <p className={styles.subtitle}>
-            {t.hero.subtitle}
+            <span className={styles.heroDesktopCopy}>{t.hero.subtitle}</span>
+            <span className={styles.heroMobileCopy}>
+              <span>{mobileCopy.subtitle1}</span>
+              <span>{mobileCopy.subtitle2}</span>
+            </span>
           </p>
 
           <div className={styles.signatureFlow}>

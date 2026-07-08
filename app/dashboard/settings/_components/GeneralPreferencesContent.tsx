@@ -6,6 +6,16 @@ import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabaseClient";
 import { APP_LANGUAGE_STORAGE_KEY, normalizeAppLanguage, type AppLanguageCode } from "@/lib/appLanguage";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { useDashboardI18n } from "../../_hooks/useDashboardI18n";
+import {
+  DEFAULT_MOBILE_SHORTCUTS,
+  MOBILE_SHORTCUT_MAX,
+  MOBILE_SHORTCUT_OPTIONS,
+  getMobileShortcutLabel,
+  loadMobileShortcutsPreference,
+  saveMobileShortcutsPreference,
+  type MobileShortcutId,
+} from "@/lib/mobileShortcuts";
 
 type Props = { mode?: "page" | "drawer" };
 
@@ -109,11 +119,13 @@ const normalizePartialPreferences = (source: Record<string, unknown> | null | un
 };
 
 export default function GeneralPreferencesContent({ mode = "drawer" }: Props) {
+  const t = useDashboardI18n();
   const [form, setForm] = useState<PreferencesForm>(initialForm);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
+  const [mobileShortcuts, setMobileShortcuts] = useState<MobileShortcutId[]>([...DEFAULT_MOBILE_SHORTCUTS]);
 
   const card: React.CSSProperties = useMemo(() => ({
     width: "100%",
@@ -228,6 +240,7 @@ export default function GeneralPreferencesContent({ mode = "drawer" }: Props) {
         const migratedLocal = normalizePartialPreferences(local);
 
         setForm({ ...initialForm, clientLanguage: appDefaultLanguage, ...migratedLocal, ...dbPreferences });
+        setMobileShortcuts(await loadMobileShortcutsPreference());
       } catch (e) {
         setError(getSimpleFrenchErrorMessage(e, "Impossible de charger les préférences générales."));
       } finally {
@@ -275,6 +288,8 @@ export default function GeneralPreferencesContent({ mode = "drawer" }: Props) {
         if (upErr) throw new Error(upErr.message);
       }
 
+      await saveMobileShortcutsPreference(mobileShortcuts);
+
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("inrcy:general-preferences-updated", {
           detail: {
@@ -301,12 +316,35 @@ export default function GeneralPreferencesContent({ mode = "drawer" }: Props) {
 
   const reset = () => {
     setForm({ ...initialForm, clientLanguage: readDefaultAppLanguage() });
+    setMobileShortcuts([...DEFAULT_MOBILE_SHORTCUTS]);
     setSaved(false);
     setError("");
     try {
       localStorage.removeItem(STORAGE_KEY);
       localStorage.removeItem(CLIENT_LANGUAGE_CUSTOM_STORAGE_KEY);
     } catch {}
+  };
+
+  const toggleMobileShortcut = (id: MobileShortcutId) => {
+    setSaved(false);
+    setError("");
+    setMobileShortcuts((current) => {
+      if (current.includes(id)) return current.filter((item) => item !== id);
+      if (current.length >= MOBILE_SHORTCUT_MAX) return current;
+      return [...current, id];
+    });
+  };
+
+  const moveMobileShortcut = (id: MobileShortcutId, direction: -1 | 1) => {
+    setSaved(false);
+    setMobileShortcuts((current) => {
+      const index = current.indexOf(id);
+      const target = index + direction;
+      if (index < 0 || target < 0 || target >= current.length) return current;
+      const next = [...current];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
   };
 
   return (
@@ -390,6 +428,53 @@ export default function GeneralPreferencesContent({ mode = "drawer" }: Props) {
                     <option value="CAD" style={selectOption}>CAD $</option>
                   </select>
                 </label>
+              </div>
+            </div>
+
+
+            <div style={{ display: "grid", gap: 12 }}>
+              <div>
+                <div style={sectionTitle}>Raccourcis mobiles</div>
+                <div style={{ marginTop: 6, color: "rgba(255,255,255,0.70)", fontSize: 12.5, lineHeight: 1.5 }}>
+                  Choisissez jusqu’à {MOBILE_SHORTCUT_MAX} outils pour le bloc <strong>Raccourcis</strong> du menu mobile. Le choix est enregistré pour cet utilisateur et cet établissement.
+                </div>
+              </div>
+
+              <div style={{ display: "grid", gap: 8 }}>
+                {mobileShortcuts.map((id, index) => (
+                  <div key={id} style={{ ...label, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                    <span style={{ ...labelTitle, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {index + 1}. {getMobileShortcutLabel(id, t.locale)}
+                    </span>
+                    <span style={{ display: "inline-flex", gap: 6, flex: "0 0 auto" }}>
+                      <button type="button" aria-label="Monter" disabled={index === 0} onClick={() => moveMobileShortcut(id, -1)} style={{ width: 34, height: 34, borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.06)", color: "white", cursor: index === 0 ? "default" : "pointer", opacity: index === 0 ? 0.35 : 1 }}>↑</button>
+                      <button type="button" aria-label="Descendre" disabled={index === mobileShortcuts.length - 1} onClick={() => moveMobileShortcut(id, 1)} style={{ width: 34, height: 34, borderRadius: 10, border: "1px solid rgba(255,255,255,0.12)", background: "rgba(255,255,255,0.06)", color: "white", cursor: index === mobileShortcuts.length - 1 ? "default" : "pointer", opacity: index === mobileShortcuts.length - 1 ? 0.35 : 1 }}>↓</button>
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ ...grid2, alignItems: "stretch" }}>
+                {MOBILE_SHORTCUT_OPTIONS.map((option) => {
+                  const checked = mobileShortcuts.includes(option.id);
+                  const disabled = !checked && mobileShortcuts.length >= MOBILE_SHORTCUT_MAX;
+                  return (
+                    <label key={option.id} style={{ ...label, display: "flex", gridTemplateColumns: "auto 1fr", alignItems: "center", cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.45 : 1 }}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        disabled={disabled}
+                        onChange={() => toggleMobileShortcut(option.id)}
+                        style={{ width: 18, height: 18, accentColor: "#8b5cf6" }}
+                      />
+                      <span style={labelTitle}>{getMobileShortcutLabel(option.id, t.locale)}</span>
+                    </label>
+                  );
+                })}
+              </div>
+
+              <div style={{ color: mobileShortcuts.length >= MOBILE_SHORTCUT_MAX ? "rgba(251,191,36,0.95)" : "rgba(255,255,255,0.64)", fontSize: 12, fontWeight: 800 }}>
+                {mobileShortcuts.length} / {MOBILE_SHORTCUT_MAX} raccourcis sélectionnés
               </div>
             </div>
 
