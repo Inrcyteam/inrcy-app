@@ -8,6 +8,10 @@ import {
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import {
+  readPinterestBoardUiCache,
+  writePinterestBoardUiCache,
+} from "@/lib/pinterestUiSessionCache";
 import { buildVideoTransformSignature } from "@/lib/boosterVideoTransforms";
 import { readSanitizedElementHtml } from "@/lib/sanitizeHtml";
 import { confirmInrcy } from "@/lib/inrcyDialog";
@@ -643,11 +647,23 @@ export default function PublishModal({
   const [pendingPublishPosts, setPendingPublishPosts] = useState<Partial<
     Record<ChannelKey, ChannelPost>
   > | null>(null);
+  const initialPinterestBoardCache = useMemo(
+    () => readPinterestBoardUiCache(),
+    [],
+  );
   const [pinterestBoards, setPinterestBoards] = useState<
     PinterestBoardOption[]
-  >([]);
-  const [pinterestBoardId, setPinterestBoardId] = useState("");
-  const [pinterestBoardName, setPinterestBoardName] = useState("");
+  >(() => initialPinterestBoardCache?.boards || []);
+  const [pinterestBoardId, setPinterestBoardId] = useState(
+    () => initialPinterestBoardCache?.defaultBoardId || "",
+  );
+  const [pinterestBoardName, setPinterestBoardName] = useState(() => {
+    const defaultId = initialPinterestBoardCache?.defaultBoardId || "";
+    return (
+      initialPinterestBoardCache?.boards.find((board) => board.id === defaultId)
+        ?.name || ""
+    );
+  });
   const [pinterestBoardsLoading, setPinterestBoardsLoading] = useState(false);
   const [pinterestBoardsError, setPinterestBoardsError] = useState("");
 
@@ -843,7 +859,7 @@ export default function PublishModal({
     setPinterestBoardsLoading(true);
     setPinterestBoardsError("");
     try {
-      const response = await fetch("/api/integrations/pinterest/status", {
+      const response = await fetch("/api/integrations/pinterest/boards", {
         cache: "no-store" as any,
       });
       const result = await response.json().catch(() => ({}));
@@ -878,6 +894,7 @@ export default function PublishModal({
         );
 
       setPinterestBoards(boards);
+      writePinterestBoardUiCache(boards, result.defaultBoardId);
       setPinterestBoardId((currentId) => {
         const current = String(currentId || "").trim();
         const defaultId = String(result.defaultBoardId || "").trim();

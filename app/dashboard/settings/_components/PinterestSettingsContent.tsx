@@ -4,6 +4,10 @@ import {
   getActiveBrowserUserId,
   readAccountCacheValue,
 } from "@/lib/browserAccountCache";
+import {
+  readPinterestBoardUiCache,
+  writePinterestBoardUiCache,
+} from "@/lib/pinterestUiSessionCache";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -174,7 +178,19 @@ function getInitialPinterestSettings(): PinterestSettings {
     return cached.settings;
   }
 
+  const sharedBoardCache = readPinterestBoardUiCache();
   const connectedHint = readDashboardPinterestConnectionHint();
+  if (sharedBoardCache) {
+    return {
+      ...DEFAULT_SETTINGS,
+      connected: Boolean(connectedHint),
+      accountConnected: Boolean(connectedHint),
+      mode: connectedHint ? "oauth" : "manual",
+      accountName: connectedHint ? "Compte Pinterest connecté" : "",
+      boards: sharedBoardCache.boards,
+      defaultBoardId: sharedBoardCache.defaultBoardId,
+    };
+  }
   if (connectedHint) {
     return {
       ...DEFAULT_SETTINGS,
@@ -192,6 +208,7 @@ function cachePinterestSettings(settings: PinterestSettings) {
     settings,
     updatedAt: Date.now(),
   });
+  writePinterestBoardUiCache(settings.boards, settings.defaultBoardId);
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

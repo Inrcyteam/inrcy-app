@@ -21,6 +21,7 @@ const settings = read(
   "app/dashboard/settings/_components/PinterestSettingsContent.tsx",
 );
 const publish = read("app/api/booster/publish-now/route.ts");
+const publishModal = read("app/dashboard/booster/publier/PublishModal.tsx");
 const inrsend = read("lib/inrsend/publicationChannelActions.ts");
 const analytics = read("lib/pinterestAnalytics.ts");
 const stats = read("lib/stats/buildOverview.ts");
@@ -111,6 +112,12 @@ check(
   publish.includes("requestedPinterestBoardId") &&
     publish.includes("Choisissez un tableau Pinterest avant de publier"),
   "Booster doit exiger le tableau de cette publication.",
+);
+check(
+  "Boards Booster lus via endpoint live",
+  publishModal.includes('/api/integrations/pinterest/boards') &&
+    !publishModal.includes('fetch("/api/integrations/pinterest/status", {\n        cache: "no-store" as any,\n      });\n      const result'),
+  "Booster doit lire les tableaux via /boards et non via /status.",
 );
 check(
   "Création Pin réelle",
