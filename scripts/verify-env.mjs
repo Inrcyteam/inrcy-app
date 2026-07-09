@@ -74,7 +74,13 @@ const optionalButRecommended = [
   "SENTRY_DSN",
   "NEXT_PUBLIC_SENTRY_DSN",
 
-  // AI
+  // AI Gateway (génération centrale)
+  "AI_GATEWAY_API_KEY",
+  "AI_GATEWAY_MODE",
+  "AI_GATEWAY_MODEL",
+  "AI_GATEWAY_VISION_MODEL",
+
+  // OpenAI direct (secours transitoire + transcription actuelle)
   "OPENAI_API_KEY",
   "OPENAI_MODEL",
   "HEALTHCHECK_ALERT_TO",

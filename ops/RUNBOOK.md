@@ -87,7 +87,7 @@ Actions :
 ### D. OpenAI / IA indisponible ou coûteuse
 
 1. Vérifier erreurs API et quotas OpenAI.
-2. Vérifier `OPENAI_API_KEY` et modèles configurés.
+2. Vérifier `AI_GATEWAY_API_KEY`/OIDC, `AI_GATEWAY_MODE` et les modèles Gateway. Pour la transcription, vérifier aussi `OPENAI_API_KEY`.
 3. Surveiller les endpoints de génération / transcription.
 4. En cas de dérive coût : réduire les quotas ou couper temporairement le module concerné.
 

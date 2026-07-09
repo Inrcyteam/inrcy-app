@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
-import { openaiGenerateJSON } from "@/lib/openaiClient";
+import { aiGenerateJSON } from "@/lib/aiGatewayClient";
 import { enforceRateLimit } from "@/lib/rateLimit";
 import { asRecord, asString } from "@/lib/tsSafe";
 import { getGmbToken } from "@/lib/googleBusiness";
@@ -261,7 +261,7 @@ ${existingReply ? `\nRéponse actuelle à améliorer/modifier :\n${existingReply
 
 Génère une seule réponse prête à publier, naturelle, rassurante et adaptée à la note. Ne recopie pas mot pour mot l'avis. Ne commence pas par le prénom si le nom semble incomplet ou anonymisé. Fais une réponse différente des formulations génériques habituelles lorsque c’est possible.`;
 
-    const generated = await openaiGenerateJSON<GeneratedReviewReply>({
+    const generated = await aiGenerateJSON<GeneratedReviewReply>({
       system,
       input,
       maxOutputTokens: 700,

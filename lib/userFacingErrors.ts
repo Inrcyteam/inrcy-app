@@ -157,7 +157,7 @@ export function getSimpleFrenchErrorMessage(input: unknown, fallback = "Cette ac
     return "Certaines informations sont manquantes ou incorrectes.";
   }
 
-  if (matches(message, ["500", "502", "503", "504", "server error", "internal server error", "unknown error", "unknown", "unhandled", "db read failed", "db insert failed", "db upsert failed", "userinfo fetch failed", "oauth callback failed", "oauth_config_missing", "oauth_callback_failed", "invalid_state", "missing_state", "token_exchange_failed", "overview_failed", "openai", "stripe error", "webhook error", "stripe customer manquant", "getpublicurl returned empty", "invalid dataurl", "optimized image url unavailable", "missing openai_api_key", "bad payload", "rate limiting unavailable", "ga4 admin request failed", "gsc sites.list failed", "inrstats_opportunities_failed", "actus", "issue-token"])) {
+  if (matches(message, ["500", "502", "503", "504", "server error", "internal server error", "unknown error", "unknown", "unhandled", "db read failed", "db insert failed", "db upsert failed", "userinfo fetch failed", "oauth callback failed", "oauth_config_missing", "oauth_callback_failed", "invalid_state", "missing_state", "token_exchange_failed", "overview_failed", "openai", "ai gateway", "service ia", "stripe error", "webhook error", "stripe customer manquant", "getpublicurl returned empty", "invalid dataurl", "optimized image url unavailable", "missing openai_api_key", "bad payload", "rate limiting unavailable", "ga4 admin request failed", "gsc sites.list failed", "inrstats_opportunities_failed", "actus", "issue-token"])) {
     return "Le service est momentanément indisponible. Merci de réessayer dans quelques minutes.";
   }
 
@@ -254,5 +254,5 @@ function matches(message: string, needles: string[]) {
 }
 
 function looksTechnical(raw: string) {
-  return /(^http\s?\d+$)|(<!doctype|<html|stack|trace|sql|postgres|supabase|oauth|jwt|token|unexpected token|syntaxerror|typeerror|referenceerror|filereader|openai_api_key|access token|client_secret|client_id|\{.*\}|\[object object\])/i.test(raw);
+  return /(^http\s?\d+$)|(<!doctype|<html|stack|trace|sql|postgres|supabase|oauth|jwt|token|unexpected token|syntaxerror|typeerror|referenceerror|filereader|openai_api_key|ai_gateway_api_key|vercel_oidc_token|access token|client_secret|client_id|\{.*\}|\[object object\])/i.test(raw);
 }

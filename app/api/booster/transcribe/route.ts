@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
-import { openaiGenerateJSON } from "@/lib/openaiClient";
+import { aiGenerateJSON } from "@/lib/aiGatewayClient";
 import { fetchWithRetry } from "@/lib/observability/fetch";
 import { withApi } from "@/lib/observability/withApi";
 import { enforceRateLimit } from "@/lib/rateLimit";
@@ -174,7 +174,7 @@ async function correctTranscript(rawTranscript: string) {
   if (!fallback) return "";
 
   try {
-    const result = await openaiGenerateJSON<CorrectionResponse>({
+    const result = await aiGenerateJSON<CorrectionResponse>({
       model:
         process.env.OPENAI_TRANSCRIPT_CLEANUP_MODEL ||
         process.env.OPENAI_MODEL ||

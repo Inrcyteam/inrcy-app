@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync, readFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
 import { spawnSync } from "child_process";
-import { openaiGenerateJSON } from "@/lib/openaiClient";
+import { aiGenerateJSON } from "@/lib/aiGatewayClient";
 import type { MailAttachmentRef } from "@/lib/mailAttachmentRefs";
 
 const DEFAULT_MAX_FILES = 4;
@@ -268,7 +268,7 @@ async function summarizeImageWithVision(name: string, mimeType: string, buffer: 
   }
 
   try {
-    const result = await openaiGenerateJSON<{ summary?: unknown; visible_text?: unknown }>({
+    const result = await aiGenerateJSON<{ summary?: unknown; visible_text?: unknown }>({
       system: `Tu analyses une pièce jointe visuelle pour aider iNrCy à rédiger un email professionnel.
 Réponds uniquement en JSON valide : {"summary":"...","visible_text":"..."}.
 Décris brièvement ce que montre l'image, les éléments importants pour un email commercial ou informatif, et le texte lisible s'il y en a.
@@ -347,7 +347,7 @@ async function summarizeVideoWithVision(name: string, mimeType: string, buffer: 
   try {
     const { frames, duration } = extractVideoFrameDataUrls(buffer, mimeType);
     if (!frames.length) return { summary: "", note: "aperçu vidéo indisponible" };
-    const result = await openaiGenerateJSON<{ summary?: unknown; visible_text?: unknown }>({
+    const result = await aiGenerateJSON<{ summary?: unknown; visible_text?: unknown }>({
       system: `Tu analyses les images clés d'une vidéo jointe pour aider iNrCy à rédiger un email professionnel.
 Réponds uniquement en JSON valide : {"summary":"...","visible_text":"..."}.
 Décris brièvement le sujet visible, les éléments importants pour le message, et le texte lisible s'il apparaît à l'écran.

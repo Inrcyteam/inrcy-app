@@ -419,10 +419,12 @@ Règles par canal et longueurs de qualité :
 - TikTok : titre 30 à 70 caractères ; contenu 180 à 450 caractères. Accroche courte, dynamique et naturelle. Texte pensé pour accompagner une vidéo ou des photos, avec 3 à 6 hashtags utiles. Liste très courte possible, 3 points maximum.
 - YouTube : titre 45 à 90 caractères ; contenu 500 à 1200 caractères. Écrire une vraie description SEO prête à publier, centrée concrètement sur la phrase libre du pro. Inclure naturellement le sujet et, seulement s’ils sont fournis, le métier, la ville ou la zone, puis un CTA utile et quelques mots-clés cohérents. La description doit informer le spectateur sur le sujet réel de la vidéo et donner envie de regarder ou de contacter le pro ; elle ne doit jamais parler de “la description”, de “la publication”, de “ce contenu” ni expliquer comment rédiger. Si le contexte vidéo indique clairement une vidéo longue, viser plutôt 700 à 1500 caractères ; si elle est très courte, rester plus direct. Liste possible dans la description si elle clarifie ce que l'on voit, les étapes ou les bénéfices.
 - Si Site iNrCy et Site web sont demandés ensemble : garder la même intention commerciale, mais produire deux variantes distinctes. Ne jamais inventer de ville, zone ou prestation absente du profil ou de Mon activité.
-- Facebook / Instagram / LinkedIn / Google Business / TikTok / YouTube : ne jamais utiliser de Markdown ni de balises HTML de formatage. Ces canaux doivent rester en texte brut.
+- Facebook / Instagram / LinkedIn / Google Business / TikTok / YouTube / Pinterest : ne jamais utiliser de Markdown ni de balises HTML de formatage. Ces canaux doivent rester en texte brut.
 
 Aération, paragraphes et listes :
-- Aérer naturellement les contenus avec des paragraphes courts quand le canal s'y prête.
+- Aérer naturellement les contenus avec des paragraphes courts pour TOUS les canaux, y compris les sites, Google Business, TikTok, YouTube et Pinterest.
+- Dès qu'un contenu dépasse 2 à 3 phrases, séparer les idées en vrais paragraphes distincts avec une ligne vide entre eux, donc deux sauts de ligne consécutifs dans le champ content.
+- Les retours à la ligne font partie du texte final prêt à publier : ne jamais les supprimer, ne jamais compacter plusieurs paragraphes en un seul bloc.
 - Les listes sont autorisées, mais elles ne doivent jamais devenir automatiques : alterner naturellement entre texte fluide, paragraphes courts et liste courte selon le sujet.
 - Utiliser une liste uniquement si elle améliore la clarté, la lisibilité, le SEO, l'impact commercial ou la compréhension des prestations.
 - Site iNrCy / Site web : listes SEO propres possibles, sans emoji, pour prestations, étapes, avantages, zones, problèmes résolus ou FAQ courte. Ne pas créer de liste froide si un texte fluide est meilleur.
@@ -430,7 +432,7 @@ Aération, paragraphes et listes :
 - LinkedIn : listes sobres possibles, sans effet influenceur, pour méthode, points clés, résultats ou apprentissages.
 - Google Business : liste très courte seulement si utile, sans surcharge.
 - TikTok / YouTube : liste courte possible uniquement si elle aide la lecture.
-- Facebook, Instagram, LinkedIn, TikTok, YouTube et Google Business : viser 2 à 4 courts paragraphes maximum, selon la longueur du texte, sauf si une liste courte est plus claire.
+- Facebook, Instagram, LinkedIn, TikTok, YouTube, Pinterest et Google Business : viser 2 à 4 courts paragraphes maximum, selon la longueur du texte, sauf si une liste courte est plus claire.
 - Ne pas ajouter de retours à la ligne excessifs, de lignes isolées inutiles ou d'effet "post LinkedIn influenceur".
 - Ne jamais rendre un gros bloc de texte compact quand le contenu dépasse quelques phrases.
 

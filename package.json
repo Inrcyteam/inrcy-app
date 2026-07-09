@@ -21,7 +21,8 @@
     "test:booster-images": "node --test --experimental-strip-types tests/booster-image-decision/booster-image-decision.test.mts && node --test tests/booster-image-decision/*.test.mjs",
     "qa:booster-images": "npm run test:booster-images && npm run test:media-rules",
     "verify:pinterest-env": "node scripts/verify-pinterest-env.mjs",
-    "qa:pinterest": "node scripts/qa-pinterest-standard.mjs && npm run verify:pinterest-env"
+    "qa:pinterest": "node scripts/qa-pinterest-standard.mjs && npm run verify:pinterest-env",
+    "audit:ai-gateway": "node scripts/audit-ai-gateway.mjs"
   },
   "dependencies": {
     "@sentry/nextjs": "^10.39.0",

@@ -67,6 +67,7 @@ import {
   buildBoosterGmbSummary,
   buildBoosterInstagramCaption,
   buildBoosterMessage,
+  buildCtaTextForChannel,
   getBoosterGmbCallToAction,
 } from "@/lib/boosterCta";
 import { getLinkedInAccessToken } from "@/lib/linkedinOAuth";
@@ -3107,10 +3108,31 @@ export async function POST(req: Request) {
           const pinterestTagLine = pinterestTags.length
             ? pinterestTags.map((tag) => `#${tag}`).join(" ")
             : "";
-          const description = [canonMessage, pinterestTagLine]
-            .filter(Boolean)
-            .join("\n\n")
-            .slice(0, 500);
+          const pinterestContent = stripSiteTextFormattingPreserveLayout(
+            channelPost.content || "",
+          );
+          if (pinterestContent.length > 500) {
+            const pinterestUserError =
+              "Le contenu Pinterest dépasse 500 caractères. Raccourcissez-le avant de publier pour conserver exactement votre mise en page.";
+            await setDelivery(ch, {
+              status: "failed",
+              error: pinterestUserError,
+            });
+            results[ch] = { ok: false, error: pinterestUserError };
+            continue;
+          }
+
+          const pinterestCta = buildCtaTextForChannel("pinterest", channelPost, {
+            websiteUrl: siteWebUrl || inrcySiteUrl,
+            phone: businessPhone,
+          });
+          let description = pinterestContent;
+          for (const optionalPart of [pinterestCta, pinterestTagLine]) {
+            if (!optionalPart) continue;
+            const candidate = [description, optionalPart].filter(Boolean).join("\n\n");
+            if (candidate.length <= 500) description = candidate;
+          }
+
           const pin = await createPinterestImagePin({
             accessToken: pinterestAccessToken,
             boardId,

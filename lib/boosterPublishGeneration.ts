@@ -1,4 +1,4 @@
-import { openaiGenerateJSON } from "@/lib/openaiClient";
+import { aiGenerateJSON } from "@/lib/aiGatewayClient";
 import {
   boosterSystemPrompt,
   boosterUserPrompt,
@@ -13,6 +13,7 @@ import { getAiLanguageLabel, normalizeAiLanguage } from "@/lib/aiWritingProfile"
 import {
   sanitizeBoosterSiteText,
   stripSiteTextFormatting,
+  stripSiteTextFormattingPreserveLayout,
 } from "@/lib/boosterFormatting";
 
 export type JsonRecord = Record<string, unknown>;
@@ -260,7 +261,7 @@ function normalizePost(channel: BoosterChannels, raw: Partial<ChannelPost> | und
 
   return {
     title: (siteChannel ? sanitizeBoosterSiteText(title) : stripSiteTextFormatting(title)).slice(0, 90),
-    content: (siteChannel ? sanitizeBoosterSiteText(content) : stripSiteTextFormatting(content)).slice(0, siteChannel ? 6000 : 2000),
+    content: (siteChannel ? sanitizeBoosterSiteText(content) : stripSiteTextFormattingPreserveLayout(content)).slice(0, siteChannel ? 6000 : 2000),
     cta: stripSiteTextFormatting(raw?.cta || "").slice(0, 180),
     hashtags: cleanHashtags(channel, raw?.hashtags),
   };
@@ -713,7 +714,7 @@ async function generateVersions(args: {
   const languageInstructions = buildStrictLanguageGenerationInstructions(args.business);
   const imageInstructions = buildImageGenerationInstructions(args.imagesForAI?.length || 0);
 
-  return openaiGenerateJSON<BoosterGenResponse>({
+  return aiGenerateJSON<BoosterGenResponse>({
     system: boosterSystemPrompt(args.business),
     input: [
       boosterUserPrompt({
@@ -944,7 +945,7 @@ async function rescueYoutubeWithDedicatedAi(args: {
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      const out = await openaiGenerateJSON<JsonRecord>({
+      const out = await aiGenerateJSON<JsonRecord>({
         system: [
           `Tu es un rédacteur YouTube professionnel pour une entreprise locale.`,
           `Écris exclusivement le contenu FINAL destiné au public, en ${languageLabel}.`,

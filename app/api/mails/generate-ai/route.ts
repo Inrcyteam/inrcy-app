@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
-import { openaiGenerateJSON } from "@/lib/openaiClient";
+import { aiGenerateJSON } from "@/lib/aiGatewayClient";
 import { enforceRateLimit } from "@/lib/rateLimit";
 import { asRecord } from "@/lib/tsSafe";
 import { normalizeMailSubject } from "@/lib/mailEncoding";
@@ -163,7 +163,7 @@ Rédige uniquement le corps du mail, avec une salutation, un message clair et un
 Si le type d’écriture est précisé, adapte l'intention du message à ce type sans devenir artificiel.
 Si des pièces jointes existent, les mentionner seulement quand cela aide le destinataire à comprendre le mail.`;
 
-    const generated = await openaiGenerateJSON<GeneratedMail>({
+    const generated = await aiGenerateJSON<GeneratedMail>({
       system,
       input,
       maxOutputTokens: 1100,

@@ -6,7 +6,7 @@ import { enforceRateLimit } from "@/lib/rateLimit";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendTxMail } from "@/lib/txMailer";
 import { getInrcyBrandInlineAttachments } from "@/lib/txEmailAssets";
-import { openaiGenerateJSON } from "@/lib/openaiClient";
+import { aiGenerateJSON, hasAiGenerationCredentials } from "@/lib/aiGatewayClient";
 import {
   sanitizeInrAgentAutomationSettings,
   type InrAgentAutomationSettings,
@@ -408,7 +408,7 @@ function fallbackInsights(report: StatsReportData): StatsAiInsights {
 }
 
 async function generateAiInsights(report: StatsReportData, aiLanguageInstruction: string): Promise<StatsAiInsights> {
-  if (!process.env.OPENAI_API_KEY) return fallbackInsights(report);
+  if (!hasAiGenerationCredentials()) return fallbackInsights(report);
 
   try {
     const compact = {
@@ -427,7 +427,7 @@ async function generateAiInsights(report: StatsReportData, aiLanguageInstruction
       badge: report.badge,
     };
 
-    const generated = await openaiGenerateJSON<StatsAiInsights>({
+    const generated = await aiGenerateJSON<StatsAiInsights>({
       maxOutputTokens: 1300,
       temperature: 0.25,
       system:

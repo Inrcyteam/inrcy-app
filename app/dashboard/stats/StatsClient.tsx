@@ -187,6 +187,43 @@ function normalizeInrBadgeStatsSnapshot(value: unknown, syncedAt?: number): InrB
 const MAIL_STATS_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const DASHBOARD_CHANNEL_STATE_CACHE_KEY = "inrcy_dashboard_channel_state_v1";
 
+type ChannelIdentityHints = Partial<Record<CubeKey, string>>;
+
+function cleanChannelIdentityHint(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function readCachedDashboardChannelIdentityHints(): ChannelIdentityHints {
+  if (typeof window === "undefined") return {};
+
+  try {
+    const raw = readUiCacheValue(DASHBOARD_CHANNEL_STATE_CACHE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw) as any;
+    const state = parsed?.state && typeof parsed.state === "object" ? parsed.state : parsed;
+    if (!state || typeof state !== "object" || Array.isArray(state)) return {};
+
+    const instagramUsername = cleanChannelIdentityHint(state.instagramUsername).replace(/^@+/, "");
+    const hints: ChannelIdentityHints = {
+      site_inrcy: cleanChannelIdentityHint(state.siteInrcySavedUrl || state.siteInrcyUrl),
+      site_web: cleanChannelIdentityHint(state.siteWebSavedUrl || state.siteWebUrl),
+      gmb: state.gmbConnected ? cleanChannelIdentityHint(state.gmbLocationLabel || state.gmbLocationName) : "",
+      facebook: state.facebookPageConnected ? cleanChannelIdentityHint(state.fbSelectedPageName) : "",
+      instagram: state.instagramConnected && instagramUsername ? `@${instagramUsername}` : "",
+      linkedin: state.linkedinConnected ? cleanChannelIdentityHint(state.linkedinSelectedOrganizationName || state.linkedinDisplayName) : "",
+      tiktok: state.tiktokConnected ? cleanChannelIdentityHint(state.tiktokUsername) : "",
+      youtube_shorts: state.youtubeShortsConnected ? cleanChannelIdentityHint(state.youtubeShortsChannelName || state.youtubeShortsUrl) : "",
+      pinterest: state.pinterestConnected ? cleanChannelIdentityHint(state.pinterestAccountName || state.pinterestUrl) : "",
+    };
+
+    return Object.fromEntries(
+      Object.entries(hints).filter(([, value]) => Boolean(cleanChannelIdentityHint(value))),
+    ) as ChannelIdentityHints;
+  } catch {
+    return {};
+  }
+}
+
 function mailStatsSessionKey(period: Period) {
   return `inrcy_stats_mail_snapshot_v3:${period}`;
 }
@@ -563,6 +600,7 @@ export default function StatsClient() {
   const [dailyBootReady, setDailyBootReady] = useState(false);
   const [mailStats, setMailStats] = useState<MailStatsSnapshot>(() => buildInitialMailStatsSnapshot(period));
   const [inrBadgeStats, setInrBadgeStats] = useState<InrBadgeStatsSnapshot>(EMPTY_INRBADGE_STATS);
+  const [channelIdentityHints, setChannelIdentityHints] = useState<ChannelIdentityHints>({});
 
   const scrollTo = (key: CubeKey) => {
     setActiveStatsPanel(key);
@@ -577,6 +615,38 @@ export default function StatsClient() {
   const refreshTimeoutRef = useRef<number | null>(null);
   const lastServerCacheCheckAtRef = useRef(0);
   const serverCacheCheckPromiseRef = useRef<Promise<void> | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const cachedHints = readCachedDashboardChannelIdentityHints();
+    if (Object.keys(cachedHints).length > 0) {
+      setChannelIdentityHints((current) => ({ ...current, ...cachedHints }));
+    }
+
+    // Même source de connexion que les bulles du Dashboard. Pinterest est relu
+    // en direct côté serveur afin de ne pas conserver durablement son profil.
+    void fetch("/api/stats/channel-identities", {
+      cache: "no-store",
+      credentials: "include",
+    })
+      .then(async (response) => (response.ok ? response.json().catch(() => null) : null))
+      .then((payload) => {
+        if (cancelled || !payload?.ok || !payload?.identities) return;
+        const freshHints = Object.fromEntries(
+          Object.entries(payload.identities as Record<string, unknown>)
+            .map(([key, value]) => [key, cleanChannelIdentityHint(value)])
+            .filter(([, value]) => Boolean(value)),
+        ) as ChannelIdentityHints;
+        if (Object.keys(freshHints).length === 0) return;
+        setChannelIdentityHints((current) => ({ ...current, ...freshHints }));
+      })
+      .catch(() => null);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshNonce]);
 
   const hydrateMailStatsFromCache = useCallback((targetPeriod: Period) => {
     const cachedMail = readCachedMailStats(targetPeriod);
@@ -1473,19 +1543,30 @@ useEffect(() => {
 
   const centralPotential30 = Math.max(0, safeNum(summaryOpp.total) + mailOpportunity30 + inrBadgeOpportunity30);
 
-  const models: CubeModel[] = useMemo(() => ([
-    buildInrBadgeCubeModel(period, inrBadgeStats),
-    buildMailCubeModel(mailStats, period),
-    buildCubeModel("site_inrcy", "Site iNrCy", "Optimisé pour convertir", period, dataByCube.site_inrcy, centralByCube),
-    buildCubeModel("site_web", "Site Web", "Votre image", period, dataByCube.site_web, centralByCube),
-    buildCubeModel("gmb", "Google Business", "Visibilité locale", period, dataByCube.gmb, centralByCube),
-    buildCubeModel("facebook", "Facebook", "Visibilité sociale", period, dataByCube.facebook, centralByCube),
-    buildCubeModel("instagram", "Instagram", "Visibilité de marque", period, dataByCube.instagram, centralByCube),
-    buildCubeModel("linkedin", "LinkedIn", "Visibilité professionnelle", period, dataByCube.linkedin, centralByCube),
-    buildCubeModel("tiktok", "TikTok", "Photos & vidéos courtes", period, dataByCube.tiktok, centralByCube),
-    buildCubeModel("youtube_shorts", "YouTube", "Vidéos courtes & longues", period, dataByCube.youtube_shorts, centralByCube),
-    buildCubeModel("pinterest", "Pinterest", "Inspiration & idées", period, dataByCube.pinterest, centralByCube),
-  ]), [centralByCube, dataByCube, inrBadgeStats, mailStats, period]);
+  const models: CubeModel[] = useMemo(() => {
+    const baseModels: CubeModel[] = [
+      buildInrBadgeCubeModel(period, inrBadgeStats),
+      buildMailCubeModel(mailStats, period),
+      buildCubeModel("site_inrcy", "Site iNrCy", "Optimisé pour convertir", period, dataByCube.site_inrcy, centralByCube),
+      buildCubeModel("site_web", "Site Web", "Votre image", period, dataByCube.site_web, centralByCube),
+      buildCubeModel("gmb", "Google Business", "Visibilité locale", period, dataByCube.gmb, centralByCube),
+      buildCubeModel("facebook", "Facebook", "Visibilité sociale", period, dataByCube.facebook, centralByCube),
+      buildCubeModel("instagram", "Instagram", "Visibilité de marque", period, dataByCube.instagram, centralByCube),
+      buildCubeModel("linkedin", "LinkedIn", "Visibilité professionnelle", period, dataByCube.linkedin, centralByCube),
+      buildCubeModel("tiktok", "TikTok", "Photos & vidéos courtes", period, dataByCube.tiktok, centralByCube),
+      buildCubeModel("youtube_shorts", "YouTube", "Vidéos courtes & longues", period, dataByCube.youtube_shorts, centralByCube),
+      buildCubeModel("pinterest", "Pinterest", "Inspiration & idées", period, dataByCube.pinterest, centralByCube),
+    ];
+
+    return baseModels.map((model) => {
+      const identityHint = cleanChannelIdentityHint(channelIdentityHints[model.key]);
+      if (!identityHint) return model;
+
+      // La source fraîche est la même que celle des bulles du Dashboard.
+      // Elle prend donc le dessus sur un éventuel snapshot iNrStats plus ancien.
+      return { ...model, accountLabel: identityHint };
+    });
+  }, [centralByCube, channelIdentityHints, dataByCube, inrBadgeStats, mailStats, period]);
 
   const computedEstimatedByCube = useMemo<Record<CubeKey, number>>(() => {
     const rate = Math.max(0, safeNum(summaryProfile.lead_conversion_rate)) / 100;

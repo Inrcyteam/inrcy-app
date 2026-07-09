@@ -1,6 +1,6 @@
 import "server-only";
 
-import { openaiGenerateJSON } from "@/lib/openaiClient";
+import { aiGenerateJSON } from "@/lib/aiGatewayClient";
 import { enforceRateLimit } from "@/lib/rateLimit";
 import { asRecord } from "@/lib/tsSafe";
 import { renderWithContext, buildDefaultContext } from "@/lib/templateEngine";
@@ -259,7 +259,7 @@ ${renderedBody}
 
 Réécris un nouvel objet et un nouveau message, plus personnalisé et plus naturel, en respectant la même mission. Si une pièce jointe utile est présente, exploite ses informations pour rendre le mail plus concret sans la recopier. Utilise au maximum les informations Profil / Activité ci-dessus. Ne renvoie jamais un modèle à compléter : remplace les exemples, crochets et libellés techniques par un email finalisé.`;
 
-  const generateOnce = (extraInstruction = "") => openaiGenerateJSON<GeneratedTemplateMail>({
+  const generateOnce = (extraInstruction = "") => aiGenerateJSON<GeneratedTemplateMail>({
     system,
     input: [input, extraInstruction].filter(Boolean).join("\n\n"),
     maxOutputTokens: 1300,

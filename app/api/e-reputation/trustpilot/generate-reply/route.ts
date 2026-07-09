@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { bubbleAccessDisabledResponse, isAppBubbleEnabledForUser } from "@/lib/appBubbleAccessServer";
 import { requireUser } from "@/lib/requireUser";
-import { openaiGenerateJSON } from "@/lib/openaiClient";
+import { aiGenerateJSON } from "@/lib/aiGatewayClient";
 import { enforceRateLimit } from "@/lib/rateLimit";
 import { asRecord, asString } from "@/lib/tsSafe";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
@@ -174,7 +174,7 @@ ${existingReply ? `\nRéponse actuelle à améliorer/modifier :\n${existingReply
 
 Génère une seule réponse prête à publier, naturelle, rassurante et adaptée à la note. Ne recopie pas mot pour mot l'avis.`;
 
-    const generated = await openaiGenerateJSON<GeneratedReviewReply>({
+    const generated = await aiGenerateJSON<GeneratedReviewReply>({
       system,
       input,
       maxOutputTokens: 700,
