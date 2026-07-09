@@ -85,6 +85,13 @@ export function getPublishChannelUserMessage(
   // Si l'erreur brute indique clairement une connexion/tokens invalides mais que le mapper
   // global est passé à côté, on garde un message court et actionnable.
   const lower = raw.toLowerCase();
+  if (
+    channel === "pinterest" &&
+    (lower.includes("pin_edit") ||
+      (lower.includes("restricted feature") && lower.includes("edit")))
+  ) {
+    return "Pinterest n’autorise pas encore la modification directe de cette épingle pour l’accès actuel.";
+  }
   const reconnectMessage = CHANNEL_RECONNECTS[channel];
   if (
     reconnectMessage

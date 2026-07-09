@@ -27,6 +27,9 @@ const analytics = read("lib/pinterestAnalytics.ts");
 const stats = read("lib/stats/buildOverview.ts");
 const connectedChannels = read("app/api/booster/connected-channels/route.ts");
 const privacy = read("app/legal/_components/ConfidentialiteContent.tsx");
+const pinterestPublish = read("lib/pinterestPublish.ts");
+const publishRules = read("app/dashboard/booster/publier/publishModal.shared.tsx");
+const inrsendDetails = read("app/dashboard/mails/_components/MailboxDetailsModal.tsx");
 
 for (const scope of [
   "user_accounts:read",
@@ -134,6 +137,25 @@ check(
   "Suppression Pin réelle",
   inrsend.includes("deletePinterestPin"),
   "Suppression Pinterest absente.",
+);
+check(
+  "Fallback édition Sandbox",
+  inrsend.includes("pinterest_sandbox_pin_replaced") &&
+    inrsend.includes("isPinterestPinEditRestrictedError") &&
+    pinterestPublish.includes("pin_edit"),
+  "Le fallback de remplacement Sandbox pour pin_edit manque.",
+);
+check(
+  "Pas de perte silencieuse multi-images",
+  publish.includes("pinterestImageUrls.length > 1") &&
+    publishRules.includes("Sélectionnez une seule image"),
+  "Pinterest ne doit jamais ignorer silencieusement les images supplémentaires.",
+);
+check(
+  "Erreurs publication non mappées en erreur mail",
+  inrsendDetails.includes('detailsItem.source === "app_events"') &&
+    inrsendDetails.includes("? detailsActionError"),
+  "iNrSend ne doit pas transformer une erreur Pinterest en erreur de boîte mail.",
 );
 check(
   "Analytics live",

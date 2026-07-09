@@ -1182,7 +1182,10 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
 
                           {detailsActionError ? (
                             <div className={styles.detailsError}>
-                              <b>Action :</b> {formatVisibleMailError(detailsActionError, detailsMailProvider) || detailsActionError}
+                              <b>Action :</b>{" "}
+                              {detailsItem.source === "app_events"
+                                ? detailsActionError
+                                : formatVisibleMailError(detailsActionError, detailsMailProvider) || detailsActionError}
                             </div>
                           ) : null}
 

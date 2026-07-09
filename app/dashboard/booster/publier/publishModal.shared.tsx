@@ -498,7 +498,7 @@ export function getUnavailableMediaModeMessage(
     return "TikTok nécessite au moins une photo ou une vidéo.";
   }
   if (channel === "pinterest" && mode !== "images") {
-    return "Pinterest nécessite au moins 1 image pour créer une épingle.";
+    return "Les Video Pins ne sont pas disponibles dans le Sandbox Pinterest actuel. Utilisez une image.";
   }
   return "";
 }
@@ -592,7 +592,9 @@ export function getChannelPublicationRequirements({
     }
 
     if (channel === "pinterest") {
-      blockers.push("Pinterest publie les images dans cette version. Ajoutez au moins 1 image.");
+      blockers.push(
+        "Les Video Pins ne sont pas disponibles dans le Sandbox Pinterest actuel. Utilisez une image.",
+      );
     }
 
     if (channel === "gmb") {
@@ -634,7 +636,13 @@ export function getChannelPublicationRequirements({
     }
 
     if (channel === "pinterest" && hasImage) {
-      warnings.push("Pinterest créera une épingle dans le tableau choisi.");
+      if (imageCount > 1) {
+        blockers.push(
+          "Cette intégration Pinterest publie 1 image par épingle. Sélectionnez une seule image.",
+        );
+      } else {
+        warnings.push("Pinterest créera une épingle dans le tableau choisi.");
+      }
     }
 
     if (channel === "youtube_shorts" && hasImage) {

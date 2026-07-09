@@ -3055,7 +3055,8 @@ export async function POST(req: Request) {
           }
 
           if (mediaModeByChannel[ch] !== "images") {
-            const pinterestUserError = "Pinterest nécessite au moins 1 image.";
+            const pinterestUserError =
+              "Les Video Pins ne sont pas disponibles dans le Sandbox Pinterest actuel. Utilisez une image.";
             await setDelivery(ch, {
               status: "failed",
               error: pinterestUserError,
@@ -3072,12 +3073,23 @@ export async function POST(req: Request) {
               "images",
             ],
             legacyFallback: externalImageUrls,
-            limit: 1,
+            limit: 5,
           });
 
           if (!pinterestImageUrls.length) {
             const pinterestUserError =
               "Veuillez ajouter au moins 1 image pour publier sur Pinterest.";
+            await setDelivery(ch, {
+              status: "failed",
+              error: pinterestUserError,
+            });
+            results[ch] = { ok: false, error: pinterestUserError };
+            continue;
+          }
+
+          if (pinterestImageUrls.length > 1) {
+            const pinterestUserError =
+              "Cette intégration Pinterest publie 1 image par épingle. Sélectionnez une seule image.";
             await setDelivery(ch, {
               status: "failed",
               error: pinterestUserError,

@@ -12,8 +12,13 @@ import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { buildBoosterGmbSummary, buildBoosterInstagramCaption, buildBoosterMessage, getBoosterGmbCallToAction } from "@/lib/boosterCta";
 import { log } from "@/lib/observability/logger";
 import { getLinkedInAccessToken } from "@/lib/linkedinOAuth";
-import { getPinterestAccessToken } from "@/lib/pinterestOAuth";
-import { createPinterestImagePin, deletePinterestPin, updatePinterestPin } from "@/lib/pinterestPublish";
+import { getPinterestAccessToken, getPinterestApiEnvironment } from "@/lib/pinterestOAuth";
+import {
+  createPinterestImagePin,
+  deletePinterestPin,
+  isPinterestPinEditRestrictedError,
+  updatePinterestPin,
+} from "@/lib/pinterestPublish";
 import { buildVideoSettingsByChannel, normalizeChannelVideoSettings } from "@/lib/boosterVideoSettings";
 import { INSTAGRAM_RECONNECT_USER_MESSAGE, isInstagramAuthorizationLikeMessage } from "@/lib/userFacingErrors";
 import { getPublishChannelUserMessage, logPublishChannelFailure } from "@/lib/channelPublishDiagnostics";
@@ -1578,7 +1583,11 @@ async function replaceChannelDelivery(params: {
     const accessToken = await getPinterestAccessToken(userId);
     if (!accessToken) throw new Error("Pinterest à reconnecter. Rendez-vous dans Canaux.");
     if (!previousExternalId) throw new Error("Épingle Pinterest introuvable dans l’historique iNrSend.");
-    if (isVideoPublication) throw new Error("Pinterest nécessite une image dans cette version.");
+    if (isVideoPublication) {
+      throw new Error(
+        "Les Video Pins ne sont pas disponibles dans le Sandbox Pinterest actuel. Utilisez une image.",
+      );
+    }
 
     const channelResult = asRecord(asRecord(eventPayload.results).pinterest);
     const boardId = String(channelResult.board_id || "").trim();
@@ -1602,58 +1611,89 @@ async function replaceChannelDelivery(params: {
     ).filter(Boolean).slice(0, 1);
     const imageChanged = !areImageListsEqual(currentPinterestImageUrls, pinterestImageUrls);
 
-    if (!imageChanged) {
-      const updated = await updatePinterestPin({
+    const replacePinterestPin = async (params: {
+      imageUrl: string;
+      warning?: string | null;
+      warningMessage?: string | null;
+    }) => {
+      const created = await createPinterestImagePin({
         accessToken,
-        pinId: previousExternalId,
         boardId,
         title: nextPost.title || "Publication iNrCy",
         description,
+        imageUrl: params.imageUrl,
         link,
       });
+      if (!created.id) {
+        throw new Error(
+          "Pinterest n'a pas renvoyé l’identifiant de la nouvelle épingle.",
+        );
+      }
+
+      try {
+        await deletePinterestPin(accessToken, previousExternalId);
+      } catch (deleteOldError) {
+        try {
+          await deletePinterestPin(accessToken, created.id);
+        } catch {
+          // Rollback best effort : on conserve l’erreur originale, plus utile au pro.
+        }
+        throw deleteOldError;
+      }
+
       return {
-        externalId: updated.id || previousExternalId,
+        externalId: created.id,
         status: "delivered",
         error: null,
+        warning: params.warning || null,
+        warningMessage: params.warningMessage || null,
         pinterestMeta: {
           board_id: boardId,
-          external_url: updated.url || null,
+          external_url: created.url || null,
           media_type: "image",
         },
       };
-    }
-
-    const created = await createPinterestImagePin({
-      accessToken,
-      boardId,
-      title: nextPost.title || "Publication iNrCy",
-      description,
-      imageUrl: pinterestImageUrls[0],
-      link,
-    });
-    if (!created.id) throw new Error("Pinterest n'a pas renvoyé l’identifiant de la nouvelle épingle.");
-
-    try {
-      await deletePinterestPin(accessToken, previousExternalId);
-    } catch (deleteOldError) {
-      try {
-        await deletePinterestPin(accessToken, created.id);
-      } catch {
-        // Rollback best effort : on conserve l’erreur originale, plus utile au pro.
-      }
-      throw deleteOldError;
-    }
-
-    return {
-      externalId: created.id,
-      status: "delivered",
-      error: null,
-      pinterestMeta: {
-        board_id: boardId,
-        external_url: created.url || null,
-        media_type: "image",
-      },
     };
+
+    if (!imageChanged) {
+      try {
+        const updated = await updatePinterestPin({
+          accessToken,
+          pinId: previousExternalId,
+          boardId,
+          title: nextPost.title || "Publication iNrCy",
+          description,
+          link,
+        });
+        return {
+          externalId: updated.id || previousExternalId,
+          status: "delivered",
+          error: null,
+          pinterestMeta: {
+            board_id: boardId,
+            external_url: updated.url || null,
+            media_type: "image",
+          },
+        };
+      } catch (updateError) {
+        const canFallbackReplace =
+          getPinterestApiEnvironment() === "sandbox" &&
+          isPinterestPinEditRestrictedError(updateError);
+        if (!canFallbackReplace) throw updateError;
+
+        const stableExistingImageUrl =
+          normalizePublicHttpUrl(currentImageSet.images[0]) ||
+          pinterestImageUrls[0];
+        return replacePinterestPin({
+          imageUrl: stableExistingImageUrl,
+          warning: "pinterest_sandbox_pin_replaced",
+          warningMessage:
+            "Pinterest Sandbox a remplacé l’épingle pour appliquer la modification. Son identifiant et ses statistiques de test repartent de zéro.",
+        });
+      }
+    }
+
+    return replacePinterestPin({ imageUrl: pinterestImageUrls[0] });
   }
 
   throw new Error("Canal non supporté.");
@@ -1966,7 +2006,10 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
         return jsonUserFacingError("Maximum 5 images par publication.", { status: 400, code: "too_many_images" });
       }
       if (channel === "pinterest" && retainedImages.length + newImages.length > 1) {
-        return jsonUserFacingError("Pinterest utilise 1 image par épingle dans cette version.", { status: 400, code: "pinterest_single_image_required" });
+        return jsonUserFacingError(
+          "Cette intégration Pinterest publie 1 image par épingle. Sélectionnez une seule image.",
+          { status: 400, code: "pinterest_single_image_required" },
+        );
       }
       if (mediaType === "video" && !video?.publicUrl) {
         return jsonUserFacingError("Vidéo introuvable. Merci de relancer la publication depuis Booster.", { status: 400, code: "video_missing" });

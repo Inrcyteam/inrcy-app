@@ -83,11 +83,31 @@ async function pinterestApiRequest<T = unknown>(
       asString(rec.error_description) ||
       asString(rec.error) ||
       `Pinterest a refusé l'action (${res.status}).`;
-    const error = new Error(message) as Error & { status?: number };
+    const pinterestCode =
+      asString(rec.code) || asString(rec.error_code) || asString(rec.error_type) || null;
+    const error = new Error(message) as Error & {
+      status?: number;
+      pinterestCode?: string | null;
+    };
     error.status = res.status;
+    error.pinterestCode = pinterestCode;
     throw error;
   }
   return json as T;
+}
+
+
+export function isPinterestPinEditRestrictedError(error: unknown) {
+  const rec = error && typeof error === "object" ? (error as Record<string, unknown>) : {};
+  const message = String(
+    error instanceof Error ? error.message : rec.message || error || "",
+  ).toLowerCase();
+  const code = String(rec.pinterestCode || rec.code || "").toLowerCase();
+  return (
+    message.includes("pin_edit") ||
+    code.includes("pin_edit") ||
+    (message.includes("restricted feature") && message.includes("edit"))
+  );
 }
 
 export async function createPinterestImagePin({
