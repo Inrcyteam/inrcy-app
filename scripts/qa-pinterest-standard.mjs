@@ -73,9 +73,9 @@ check(
 );
 check(
   "Tableaux lus en direct",
-  status.includes("fetchPinterestBoards(accessToken)") &&
-    boards.includes("fetchPinterestBoards(accessToken)"),
-  "Les tableaux doivent être lus via API.",
+  boards.includes("fetchPinterestBoards(accessToken)") &&
+    settings.includes("/api/integrations/pinterest/boards"),
+  "Les tableaux doivent être lus via API sans bloquer le statut local.",
 );
 check(
   "CRUD tableaux",

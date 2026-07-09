@@ -10,7 +10,11 @@ import {
   fetchPinterestBoards,
   getPinterestAccessToken,
 } from "@/lib/pinterestOAuth";
-import { ensurePinterestDefaultBoardId } from "@/lib/pinterestPreferences";
+import {
+  ensurePinterestDefaultBoardId,
+  getPinterestDefaultBoardId,
+  setPinterestDefaultBoardId,
+} from "@/lib/pinterestPreferences";
 import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 
 export async function GET(request: Request) {
@@ -103,17 +107,17 @@ export async function POST(request: Request) {
       );
 
     const board = await createPinterestBoard(accessToken, name);
-    const fetchedBoards = await fetchPinterestBoards(accessToken).catch(() => []);
-    // Pinterest peut mettre un court instant avant de réexposer le nouveau tableau
-    // dans la liste. On fusionne donc la réponse de création immédiatement.
-    const boards = [
-      board,
-      ...fetchedBoards.filter((item) => String(item.id || "") !== board.id),
-    ];
-    const defaultBoardId = await ensurePinterestDefaultBoardId(
-      activeUserId,
-      boards,
+
+    // Réponse immédiate : on n'attend pas que Pinterest réexpose le nouveau
+    // tableau dans GET /boards (propagation parfois retardée de quelques secondes).
+    let defaultBoardId = await getPinterestDefaultBoardId(activeUserId).catch(
+      () => "",
     );
+    if (!defaultBoardId) {
+      defaultBoardId = board.id;
+      await setPinterestDefaultBoardId(activeUserId, board.id);
+    }
+
     return NextResponse.json({ ok: true, board, defaultBoardId });
   } catch (error) {
     const message =

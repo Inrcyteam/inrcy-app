@@ -1,11 +1,13 @@
 "use client";
 
-import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
+import {
+  getActiveBrowserUserId,
+  readAccountCacheValue,
+} from "@/lib/browserAccountCache";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import styles from "../../dashboard.module.css";
-import { createClient } from "@/lib/supabaseClient";
 import ConnectionPill from "../../_components/ConnectionPill";
 import StatusMessage from "../../_components/StatusMessage";
 
@@ -68,6 +70,130 @@ const DEFAULT_SETTINGS: PinterestSettings = {
   expiresAt: null,
 };
 
+const DASHBOARD_CHANNEL_STATE_CACHE_KEY = "inrcy_dashboard_channel_state_v1";
+const PINTEREST_UI_CACHE_TTL_MS = 10 * 60 * 1000;
+const PINTEREST_EVENTUAL_CONSISTENCY_TTL_MS = 2 * 60 * 1000;
+
+type PinterestUiCacheEntry = {
+  settings: PinterestSettings;
+  updatedAt: number;
+};
+
+type RecentBoardMutation = {
+  board?: PinterestBoard;
+  expiresAt: number;
+};
+
+const pinterestUiCache = new Map<string, PinterestUiCacheEntry>();
+const recentCreatedBoards = new Map<string, Map<string, RecentBoardMutation>>();
+const recentRenamedBoards = new Map<string, Map<string, RecentBoardMutation>>();
+const recentDeletedBoards = new Map<string, Map<string, RecentBoardMutation>>();
+
+function getPinterestCacheKey() {
+  return getActiveBrowserUserId() || "current";
+}
+
+function pruneMutationMap(map: Map<string, RecentBoardMutation> | undefined) {
+  if (!map) return;
+  const now = Date.now();
+  for (const [id, value] of map.entries()) {
+    if (value.expiresAt <= now) map.delete(id);
+  }
+}
+
+function rememberBoardMutation(
+  store: Map<string, Map<string, RecentBoardMutation>>,
+  boardId: string,
+  board?: PinterestBoard,
+) {
+  const key = getPinterestCacheKey();
+  const map = store.get(key) || new Map<string, RecentBoardMutation>();
+  map.set(boardId, {
+    board,
+    expiresAt: Date.now() + PINTEREST_EVENTUAL_CONSISTENCY_TTL_MS,
+  });
+  store.set(key, map);
+}
+
+function mergeLiveBoardsWithRecentMutations(boards: PinterestBoard[]) {
+  const key = getPinterestCacheKey();
+  const created = recentCreatedBoards.get(key);
+  const renamed = recentRenamedBoards.get(key);
+  const deleted = recentDeletedBoards.get(key);
+  pruneMutationMap(created);
+  pruneMutationMap(renamed);
+  pruneMutationMap(deleted);
+
+  const deletedIds = new Set(deleted ? [...deleted.keys()] : []);
+  const byId = new Map<string, PinterestBoard>();
+
+  for (const board of boards) {
+    if (!deletedIds.has(board.id)) byId.set(board.id, board);
+  }
+
+  if (renamed) {
+    for (const [id, mutation] of renamed.entries()) {
+      if (deletedIds.has(id) || !mutation.board) continue;
+      byId.set(id, { ...(byId.get(id) || mutation.board), ...mutation.board });
+    }
+  }
+
+  if (created) {
+    for (const [id, mutation] of created.entries()) {
+      if (deletedIds.has(id) || !mutation.board) continue;
+      byId.set(id, { ...(byId.get(id) || mutation.board), ...mutation.board });
+    }
+  }
+
+  const createdIds = new Set(created ? [...created.keys()] : []);
+  return [...byId.values()].sort((a, b) => {
+    const aRecent = createdIds.has(a.id) ? 1 : 0;
+    const bRecent = createdIds.has(b.id) ? 1 : 0;
+    return bRecent - aRecent;
+  });
+}
+
+function readDashboardPinterestConnectionHint(): boolean | null {
+  try {
+    const raw = readAccountCacheValue(DASHBOARD_CHANNEL_STATE_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const state = asRecord(parsed.state || parsed);
+    return typeof state.pinterestConnected === "boolean"
+      ? state.pinterestConnected
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function getInitialPinterestSettings(): PinterestSettings {
+  const key = getPinterestCacheKey();
+  const cached = pinterestUiCache.get(key);
+  if (cached && Date.now() - cached.updatedAt <= PINTEREST_UI_CACHE_TTL_MS) {
+    return cached.settings;
+  }
+
+  const connectedHint = readDashboardPinterestConnectionHint();
+  if (connectedHint) {
+    return {
+      ...DEFAULT_SETTINGS,
+      connected: true,
+      accountConnected: true,
+      mode: "oauth",
+      accountName: "Compte Pinterest connecté",
+    };
+  }
+  return DEFAULT_SETTINGS;
+}
+
+function cachePinterestSettings(settings: PinterestSettings) {
+  pinterestUiCache.set(getPinterestCacheKey(), {
+    settings,
+    updatedAt: Date.now(),
+  });
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -93,51 +219,13 @@ function normalizeBoards(value: unknown): PinterestBoard[] {
     : [];
 }
 
-function isPinterestConfigured(
-  settings: Pick<PinterestSettings, "accountConnected">,
-) {
-  return Boolean(settings.accountConnected);
-}
-
-function normalizeSettings(value: unknown): PinterestSettings {
-  const source = asRecord(value);
-  const preferredMedia = ["image", "video", "auto"].includes(
-    String(source.preferredMedia),
-  )
-    ? (String(source.preferredMedia) as PinterestSettings["preferredMedia"])
-    : DEFAULT_SETTINGS.preferredMedia;
-  const mode: PinterestSettings["mode"] =
-    String(source.mode || "") === "oauth" ? "oauth" : "manual";
-
-  const next = {
-    connected: false,
-    accountConnected: false,
-    mode,
-    accountName: "",
-    username: "",
-    profileUrl: "",
-    preferredMedia,
-    autoHashtags: source.autoHashtags !== false,
-    // Profil et tableaux viennent toujours de Pinterest en direct, jamais d'une copie Supabase.
-    boards: [],
-    // Préférence iNrCy uniquement : l'identifiant du tableau choisi par le pro.
-    defaultBoardId: String(source.defaultBoardId || "").trim(),
-    scopes: "",
-    expiresAt: null,
-  };
-
-  return {
-    ...next,
-    connected: isPinterestConfigured(next),
-  };
-}
-
 function mergeSettings(
   saved: PinterestSettings,
   status: any,
 ): PinterestSettings {
   if (!status?.ok) return saved;
-  const boards = normalizeBoards(status.boards);
+  const liveBoards = normalizeBoards(status.boards);
+  const boards = liveBoards.length > 0 ? liveBoards : saved.boards;
   const accountConnected = Boolean(status.connected);
   const profileUrl = String(status.profileUrl || "");
   return {
@@ -145,9 +233,11 @@ function mergeSettings(
     connected: accountConnected,
     accountConnected,
     mode: accountConnected ? "oauth" : saved.mode,
-    accountName: String(status.accountName || status.username || ""),
-    username: String(status.username || ""),
-    profileUrl,
+    accountName: String(
+      status.accountName || status.username || saved.accountName || "",
+    ),
+    username: String(status.username || saved.username || ""),
+    profileUrl: profileUrl || saved.profileUrl,
     boards,
     defaultBoardId: String(
       status.defaultBoardId || saved.defaultBoardId || "",
@@ -171,7 +261,9 @@ function emitDashboardUpdate(settings: PinterestSettings) {
 }
 
 export default function PinterestSettingsContent() {
-  const [settings, setSettings] = useState<PinterestSettings>(DEFAULT_SETTINGS);
+  const [settings, setSettings] = useState<PinterestSettings>(() =>
+    getInitialPinterestSettings(),
+  );
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [boardAction, setBoardAction] = useState<string | null>(null);
@@ -185,31 +277,21 @@ export default function PinterestSettingsContent() {
     setLoading(true);
     setError(null);
     try {
-      const supabase = createClient();
-      const [{ data: authData }, statusResponse] = await Promise.all([
-        supabase.auth.getUser(),
-        fetch("/api/integrations/pinterest/status", {
-          cache: "no-store" as any,
-        }).catch(() => null),
-      ]);
-      const user = authData?.user;
-      if (!user) throw new Error("Utilisateur non authentifié.");
-      const { data, error: readError } = await supabase
-        .from("pro_tools_configs")
-        .select("settings")
-        .eq("user_id", resolveActiveBrowserUserId(user.id))
-        .maybeSingle();
-      if (readError) throw readError;
-
-      const savedSettings = normalizeSettings(
-        asRecord((data as { settings?: unknown } | null)?.settings).pinterest,
-      );
+      // Le statut local iNrCy doit arriver vite : aucune requête Pinterest externe
+      // n'est nécessaire pour savoir si le compte OAuth est connecté.
+      const statusResponse = await fetch("/api/integrations/pinterest/status", {
+        cache: "no-store" as any,
+      }).catch(() => null);
       const status = statusResponse?.ok
         ? await statusResponse.json().catch(() => null)
         : null;
-      const nextSettings = mergeSettings(savedSettings, status);
-      setSettings(nextSettings);
-      emitDashboardUpdate(nextSettings);
+
+      setSettings((current) => {
+        const nextSettings = mergeSettings(current, status);
+        cachePinterestSettings(nextSettings);
+        emitDashboardUpdate(nextSettings);
+        return nextSettings;
+      });
     } catch (err) {
       console.warn("[pinterest-settings] load failed", err);
       setError("Chargement des réglages Pinterest impossible.");
@@ -221,6 +303,10 @@ export default function PinterestSettingsContent() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    cachePinterestSettings(settings);
+  }, [settings]);
 
   const connectPinterest = useCallback(() => {
     if (typeof window === "undefined") return;
@@ -244,7 +330,8 @@ export default function PinterestSettingsContent() {
               json?.error || "Impossible de récupérer les tableaux Pinterest.",
             ),
           );
-        const boards = normalizeBoards(json.boards);
+        const liveBoards = normalizeBoards(json.boards);
+        const boards = mergeLiveBoardsWithRecentMutations(liveBoards);
         const defaultBoardId = String(json.defaultBoardId || "").trim();
         setSettings((current) => ({ ...current, boards, defaultBoardId }));
         if (successMessage) setNotice(successMessage);
@@ -263,6 +350,32 @@ export default function PinterestSettingsContent() {
     },
     [],
   );
+
+  useEffect(() => {
+    if (loading || !settings.accountConnected) return;
+
+    // Les tableaux sont synchronisés en arrière-plan sans bloquer l'affichage
+    // du statut connecté ni effacer le cache UI pendant la propagation Pinterest.
+    void refreshBoards("");
+
+    let cancelled = false;
+    void fetch("/api/integrations/pinterest/status?live=1", {
+      cache: "no-store" as any,
+    })
+      .then(async (response) => {
+        if (!response.ok) return null;
+        return response.json().catch(() => null);
+      })
+      .then((status) => {
+        if (cancelled || !status?.ok) return;
+        setSettings((current) => mergeSettings(current, status));
+      })
+      .catch(() => null);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loading, settings.accountConnected, refreshBoards]);
 
   const createBoard = useCallback(async () => {
     const name = newBoardName.trim().replace(/\s+/g, " ");
@@ -287,11 +400,21 @@ export default function PinterestSettingsContent() {
         );
       const createdBoard = asBoard(json?.board);
       const defaultBoardId = String(json?.defaultBoardId || "").trim();
+      if (createdBoard) {
+        rememberBoardMutation(
+          recentCreatedBoards,
+          createdBoard.id,
+          createdBoard,
+        );
+      }
 
       setNewBoardName("");
       setSettings((current) => {
         const boards = createdBoard
-          ? [createdBoard, ...current.boards.filter((item) => item.id !== createdBoard.id)]
+          ? [
+              createdBoard,
+              ...current.boards.filter((item) => item.id !== createdBoard.id),
+            ]
           : current.boards;
         return {
           ...current,
@@ -350,9 +473,17 @@ export default function PinterestSettingsContent() {
           throw new Error(
             String(json?.error || "Modification du tableau impossible."),
           );
+        const updatedBoard = asBoard(json?.board) || { ...board, name };
+        rememberBoardMutation(recentRenamedBoards, board.id, updatedBoard);
+        setSettings((current) => ({
+          ...current,
+          boards: current.boards.map((item) =>
+            item.id === board.id ? { ...item, ...updatedBoard, name } : item,
+          ),
+        }));
         setEditingBoardId(null);
         setEditingBoardName("");
-        await refreshBoards(`Tableau renommé « ${name} ».`);
+        setNotice(`Tableau renommé « ${name} ».`);
       } catch (err) {
         console.warn("[pinterest-settings] board rename failed", err);
         setError(
@@ -364,7 +495,7 @@ export default function PinterestSettingsContent() {
         setBoardAction(null);
       }
     },
-    [editingBoardName, refreshBoards],
+    [editingBoardName],
   );
 
   const deleteBoard = useCallback(
@@ -391,11 +522,21 @@ export default function PinterestSettingsContent() {
           throw new Error(
             String(json?.error || "Suppression du tableau impossible."),
           );
+        rememberBoardMutation(recentDeletedBoards, board.id);
         if (editingBoardId === board.id) {
           setEditingBoardId(null);
           setEditingBoardName("");
         }
-        await refreshBoards(`Tableau « ${board.name} » supprimé de Pinterest.`);
+        const nextDefaultBoardId = String(json?.defaultBoardId || "").trim();
+        setSettings((current) => ({
+          ...current,
+          boards: current.boards.filter((item) => item.id !== board.id),
+          defaultBoardId:
+            current.defaultBoardId === board.id
+              ? nextDefaultBoardId
+              : current.defaultBoardId,
+        }));
+        setNotice(`Tableau « ${board.name} » supprimé de Pinterest.`);
       } catch (err) {
         console.warn("[pinterest-settings] board delete failed", err);
         setError(
@@ -407,7 +548,7 @@ export default function PinterestSettingsContent() {
         setBoardAction(null);
       }
     },
-    [editingBoardId, refreshBoards],
+    [editingBoardId],
   );
 
   const setDefaultBoard = useCallback(async (board: PinterestBoard) => {
@@ -473,10 +614,17 @@ export default function PinterestSettingsContent() {
   }, [settings]);
 
   const boardOptions = useMemo(() => settings.boards, [settings.boards]);
-  const statusLabel = settings.accountConnected ? "Connecté" : "À connecter";
+  const statusLabel =
+    loading && !settings.accountConnected
+      ? "Chargement..."
+      : settings.accountConnected
+        ? "Connecté"
+        : "À connecter";
   const statusColor = settings.accountConnected
     ? "rgba(34,197,94,0.95)"
-    : "rgba(148,163,184,0.9)";
+    : loading
+      ? "rgba(250,204,21,0.95)"
+      : "rgba(148,163,184,0.9)";
 
   return (
     <div style={{ display: "grid", gap: 14 }}>
@@ -517,7 +665,14 @@ export default function PinterestSettingsContent() {
       <section style={cardStyle}>
         <div className={styles.blockHeaderRow}>
           <div className={styles.blockTitle}>Compte connecté</div>
-          <ConnectionPill connected={settings.accountConnected} />
+          <ConnectionPill
+            connected={settings.accountConnected}
+            label={
+              loading && !settings.accountConnected
+                ? "Chargement..."
+                : undefined
+            }
+          />
         </div>
         <div className={styles.blockSub}>
           Connectez le compte Pinterest utilisé pour vos publications.
@@ -666,7 +821,17 @@ export default function PinterestSettingsContent() {
             </button>
           </div>
 
-          <div style={{ display: "grid", gap: 8 }}>
+          <div
+            style={{
+              display: "grid",
+              gap: 8,
+              maxHeight: boardOptions.length >= 5 ? 360 : undefined,
+              overflowY: boardOptions.length >= 5 ? "auto" : "visible",
+              overscrollBehavior: "contain",
+              paddingRight: boardOptions.length >= 5 ? 4 : 0,
+              scrollbarGutter: boardOptions.length >= 5 ? "stable" : undefined,
+            }}
+          >
             {boardOptions.length === 0 ? (
               <div
                 style={{
