@@ -20,7 +20,7 @@ test("V2 step 2 sends editorial contracts only for requested channels", () => {
   const prompt = read("lib/boosterPrompt.ts");
 
   assert.match(prompt, /CONTRATS DES SEULS CANAUX DEMANDÉS/);
-  assert.match(prompt, /formatCompactChannelContracts\(args\.channels\)/);
+  assert.match(prompt, /formatCompactChannelContracts\(args\.channels, preferences\.length\)/);
   assert.match(prompt, /Array\.from\(new Set\(channels\)\)/);
   assert.doesNotMatch(prompt, /CHANNEL_EDITORIAL_PLAYBOOKS/);
   assert.doesNotMatch(prompt, /CHANNEL_EDITORIAL_SPECS/);

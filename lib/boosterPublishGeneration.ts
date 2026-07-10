@@ -78,6 +78,21 @@ const CHANNEL_MIN_CONTENT_LENGTH: Record<BoosterChannels, number> = {
   pinterest: 70,
 };
 
+// Planchers éditoriaux utilisés uniquement quand le pro choisit « Détaillé ».
+// Contrairement aux seuils anti-casse ci-dessus, ils peuvent déclencher une unique
+// passe d'enrichissement mais ne rendent jamais le résultat final invalide.
+const CHANNEL_DETAILED_ENRICHMENT_MIN: Record<BoosterChannels, number> = {
+  inrcy_site: 1300,
+  site_web: 1600,
+  gmb: 650,
+  facebook: 750,
+  instagram: 500,
+  linkedin: 900,
+  tiktok: 250,
+  youtube_shorts: 900,
+  pinterest: 320,
+};
+
 const CHANNEL_LABELS: Record<BoosterChannels, string> = {
   inrcy_site: "Site iNrCy",
   site_web: "Site web",
@@ -787,16 +802,19 @@ type ChannelQualityIssue =
   | "off_topic"
   | "meta_leak"
   | "language_mismatch"
-  | "too_similar";
+  | "too_similar"
+  | "too_short_editorial";
 
-// Seuls les défauts réellement dangereux déclenchent une seconde génération.
-// L'ancrage lexical et la similarité inter-canaux restent des signaux de qualité :
-// ils sont utiles pour l'observabilité mais ne doivent plus punir une reformulation
-// créative ni provoquer une réparation massive de contenus pourtant publiables.
-const REPAIR_BLOCKING_ISSUES = new Set<ChannelQualityIssue>([
+// Une seconde passe reste unique et ciblée. Les trois défauts de sécurité ci-dessous
+// la déclenchent pour réparer une vraie sortie cassée. En mode « Détaillé »,
+// too_short_editorial déclenche seulement un enrichissement non bloquant : si cette
+// passe échoue ou reste trop concise, le contenu initial publiable est conservé.
+// L'ancrage lexical et la similarité inter-canaux restent purement consultatifs.
+const REPAIR_TRIGGER_ISSUES = new Set<ChannelQualityIssue>([
   "missing",
   "meta_leak",
   "language_mismatch",
+  "too_short_editorial",
 ]);
 
 function collectChannelQualityIssues(args: {
@@ -804,6 +822,7 @@ function collectChannelQualityIssues(args: {
   versions: Partial<Record<BoosterChannels, ChannelPost>>;
   ideaKeywords: string[];
   languageCode: string;
+  lengthPreference: NormalizedAiGenerationProfile["preferences"]["length"];
 }) {
   const duplicateChannels = new Set(findOverSimilarChannels(args.channels, args.versions));
   const issues = new Map<BoosterChannels, ChannelQualityIssue[]>();
@@ -820,6 +839,13 @@ function collectChannelQualityIssues(args: {
     if (hasEditorialMetaLeak(post)) channelIssues.push("meta_leak");
     if (hasLanguageMismatch(args.languageCode, post)) channelIssues.push("language_mismatch");
     if (duplicateChannels.has(channel)) channelIssues.push("too_similar");
+    if (
+      args.lengthPreference === "detailed" &&
+      hasCorePublishableContent(channel, post) &&
+      (post?.content?.trim().length || 0) < CHANNEL_DETAILED_ENRICHMENT_MIN[channel]
+    ) {
+      channelIssues.push("too_short_editorial");
+    }
 
     if (channelIssues.length) issues.set(channel, channelIssues);
   }
@@ -840,6 +866,7 @@ function buildSingleRepairInstructions(args: {
     meta_leak: "commentaire éditorial/méta visible",
     language_mismatch: "mauvaise langue",
     too_similar: "trop proche d'un autre canal",
+    too_short_editorial: "contenu trop court pour la préférence Détaillé",
   };
 
   const diagnostics = args.channels
@@ -862,12 +889,22 @@ function buildSingleRepairInstructions(args: {
   const languageMismatchChannels = args.channels.filter((channel) =>
     args.issues.get(channel)?.includes("language_mismatch"),
   );
+  const detailedLengthTargets = args.channels
+    .filter((channel) => args.issues.get(channel)?.includes("too_short_editorial"))
+    .map(
+      (channel) =>
+        `- ${CHANNEL_LABELS[channel]} : au moins ${CHANNEL_DETAILED_ENRICHMENT_MIN[channel]} caractères de contenu utile`,
+    )
+    .join("\n");
 
   return [
     `RÉPARATION CIBLÉE UNIQUE iNrCy. Regénère uniquement les canaux demandés dans cette passe.`,
     `Sujet obligatoire et prioritaire : "${args.idea}".`,
     `Diagnostics locaux à corriger :\n${diagnostics}`,
     buildLanguageRetryInstructions(args.languageCode, languageMismatchChannels),
+    detailedLengthTargets
+      ? `ENRICHISSEMENT DE LONGUEUR — préférence DÉTAILLÉ :\n${detailedLengthTargets}\nDéveloppe avec contexte, explication, bénéfice, méthode, étapes ou portée du sujet selon le canal. Ne remplis pas artificiellement et n'invente aucun fait.`
+      : "",
     `Retourne uniquement des contenus finaux prêts à publier. Aucun commentaire sur la rédaction, aucune explication technique.`,
     `Conserve la personnalité native du moteur choisi et toutes les préférences du pro. Ne transforme pas la réparation en texte standardisé.`,
     `Chaque canal doit rester réellement adapté à son usage et distinct des autres.`,
@@ -941,8 +978,19 @@ async function repairChannelsOnce(args: {
       post: candidate,
       languageCode: args.languageCode,
     });
+    const channelIssues = args.issues.get(channel) || [];
+    const hasSafetyRepairIssue = channelIssues.some((issue) =>
+      issue === "missing" || issue === "meta_leak" || issue === "language_mismatch",
+    );
+    const isLengthEnrichment =
+      channelIssues.includes("too_short_editorial") && !hasSafetyRepairIssue;
+    const originalLength = args.versions[channel]?.content?.trim().length || 0;
+    const candidateLength = candidate.content.trim().length;
+    const improvesLength = candidateLength > originalLength;
 
-    if (safeCandidate) {
+    // Une passe de longueur ne doit jamais dégrader un contenu déjà publiable :
+    // on conserve l'original si l'enrichissement échoue ou revient encore plus court.
+    if (safeCandidate && (!isLengthEnrichment || improvesLength)) {
       args.versions[channel] = candidate;
       recovered.push(channel);
     }
@@ -1084,15 +1132,16 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
     versions: safeVersions,
     ideaKeywords,
     languageCode,
+    lengthPreference: generationProfile.preferences.length,
   });
   const repairChannels = channels.filter((channel) =>
-    (repairIssues.get(channel) || []).some((issue) => REPAIR_BLOCKING_ISSUES.has(issue)),
+    (repairIssues.get(channel) || []).some((issue) => REPAIR_TRIGGER_ISSUES.has(issue)),
   );
   const advisoryChannels = channels.filter((channel) =>
-    (repairIssues.get(channel) || []).some((issue) => !REPAIR_BLOCKING_ISSUES.has(issue)),
+    (repairIssues.get(channel) || []).some((issue) => !REPAIR_TRIGGER_ISSUES.has(issue)),
   );
   const qualityIssueCounts = Object.fromEntries(
-    (["missing", "off_topic", "meta_leak", "language_mismatch", "too_similar"] as ChannelQualityIssue[])
+    (["missing", "off_topic", "meta_leak", "language_mismatch", "too_similar", "too_short_editorial"] as ChannelQualityIssue[])
       .map((issue) => [
         issue,
         channels.filter((channel) => (repairIssues.get(channel) || []).includes(issue)).length,
@@ -1147,9 +1196,9 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
     }
   }
 
-  // Après l'unique réparation, seuls les défauts réellement dangereux bloquent.
-  // Les contrôles de style, de longueur idéale ou de synonymie restent non bloquants
-  // afin de préserver la créativité native du moteur choisi.
+  // Après l'unique réparation/enrichissement, seuls les défauts réellement dangereux
+  // bloquent. Une longueur éditoriale encore inférieure à la cible ne provoque jamais
+  // de 502 : le contenu publiable est conservé afin de préserver la robustesse.
   const unsafeChannels = channels.filter(
     (channel) =>
       !isGeneratedPostSafe({

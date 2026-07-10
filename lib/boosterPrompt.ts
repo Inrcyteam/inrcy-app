@@ -170,24 +170,91 @@ function formatRecentPublications(
 
 const CHANNEL_COMPACT_CONTRACTS: Record<BoosterChannels, string> = {
   inrcy_site:
-    "Actualité site iNrCy, utile et locale. SEO naturel + conversion douce. 900–1500 car. Titre 45–70. Paragraphes aérés. Jusqu’à 2–5 expressions **en gras** si utile. Liste SEO facultative, sans emoji.",
+    "Actualité site iNrCy, utile et locale. SEO naturel + conversion douce. Titre 45–70. Paragraphes aérés. Jusqu’à 2–5 expressions **en gras** si utile. Liste SEO facultative, sans emoji.",
   site_web:
-    "Contenu web durable, crédible et plus riche. SEO local naturel. 1100–1800 car. Titre 45–70. Différent du Site iNrCy. Paragraphes aérés, liste SEO facultative, sans emoji.",
+    "Contenu web durable, crédible et plus riche. SEO local naturel. Titre 45–70. Différent du Site iNrCy. Paragraphes aérés, liste SEO facultative, sans emoji.",
   gmb:
-    "Google Business factuel, local, utile et sobre. 450–800 car. Titre 40–70. Zéro hashtag, téléphone, email, URL, remise ou promesse invérifiable. CTA neutre seulement si utile.",
+    "Google Business factuel, local, utile et sobre. Titre 40–70. Zéro hashtag, téléphone, email, URL, remise ou promesse invérifiable. CTA neutre seulement si utile.",
   facebook:
-    "Facebook humain, local et conversationnel. 500–900 car. Titre 40–80. Proximité et interaction naturelle. Mini-liste facultative. CTA non agressif.",
+    "Facebook humain, local et conversationnel. Titre 40–80. Proximité et interaction naturelle. Mini-liste facultative. CTA non agressif.",
   instagram:
-    "Instagram visuel, vivant et spontané. 350–700 car. Titre 35–70. Paragraphes courts. Hashtags ciblés si utiles. Ne jamais inventer ‘lien en bio’.",
+    "Instagram visuel, vivant et spontané. Titre 35–70. Paragraphes courts. Hashtags ciblés si utiles. Ne jamais inventer ‘lien en bio’.",
   linkedin:
-    "LinkedIn professionnel, humain et crédible. 700–1200 car. Titre 45–90. Expertise, méthode, recul ou retour terrain. Peu d’emojis, pas de ton vendeur artificiel.",
+    "LinkedIn professionnel, humain et crédible. Titre 45–90. Expertise, méthode, recul ou retour terrain. Peu d’emojis, pas de ton vendeur artificiel.",
   tiktok:
-    "TikTok direct, vivant et concret. 180–450 car. Titre 30–70. Pensé pour accompagner vidéo/photos. Hashtags ciblés si utiles. Éviter le ton institutionnel.",
+    "TikTok direct, vivant et concret. Titre 30–70. Pensé pour accompagner vidéo/photos. Hashtags ciblés si utiles. Éviter le ton institutionnel.",
   youtube_shorts:
-    "YouTube prêt à publier. Titre 45–90. Description SEO 500–1200 car, ou 700–1500 si vidéo longue. Sujet réel d’abord, mots-clés naturels. Aucun commentaire méta sur la rédaction.",
+    "YouTube prêt à publier. Titre 45–90. Description SEO, sujet réel d’abord, mots-clés naturels. Aucun commentaire méta sur la rédaction.",
   pinterest:
-    "Pinterest inspirant, utile et enregistrable. 220–500 car. Titre 35–80. Bénéfice concret, idée visuelle et mots-clés recherchables. Hashtags seulement s’ils apportent une valeur réelle.",
+    "Pinterest inspirant, utile et enregistrable. Titre 35–80. Bénéfice concret, idée visuelle et mots-clés recherchables. Hashtags seulement s’ils apportent une valeur réelle.",
 };
+
+type BoosterLengthPreference = NormalizedAiGenerationProfile["preferences"]["length"];
+
+const CHANNEL_LENGTH_TARGETS: Record<
+  BoosterLengthPreference,
+  Record<BoosterChannels, string>
+> = {
+  short: {
+    inrcy_site: "500–800 car.",
+    site_web: "650–1000 car.",
+    gmb: "250–450 car.",
+    facebook: "250–450 car.",
+    instagram: "180–350 car.",
+    linkedin: "350–650 car.",
+    tiktok: "100–220 car.",
+    youtube_shorts: "300–650 car.",
+    pinterest: "150–300 car.",
+  },
+  medium: {
+    inrcy_site: "900–1500 car.",
+    site_web: "1100–1800 car.",
+    gmb: "450–800 car.",
+    facebook: "500–900 car.",
+    instagram: "350–700 car.",
+    linkedin: "700–1200 car.",
+    tiktok: "180–450 car.",
+    youtube_shorts: "500–1200 car. (700–1500 si vidéo longue)",
+    pinterest: "220–500 car.",
+  },
+  detailed: {
+    inrcy_site: "1300–2200 car.",
+    site_web: "1600–2600 car.",
+    gmb: "650–1000 car.",
+    facebook: "750–1300 car.",
+    instagram: "500–900 car.",
+    linkedin: "900–1600 car.",
+    tiktok: "250–500 car.",
+    youtube_shorts: "900–1700 car.",
+    pinterest: "320–500 car.",
+  },
+};
+
+function buildBoosterLengthDirective(
+  length: BoosterLengthPreference,
+  channels: BoosterChannels[],
+) {
+  const labels: Record<BoosterLengthPreference, string> = {
+    short: "COURT",
+    medium: "MOYEN",
+    detailed: "DÉTAILLÉ",
+  };
+  const targets = Array.from(new Set(channels))
+    .map(
+      (channel) =>
+        `- ${CHANNEL_LABELS[channel]} : ${CHANNEL_LENGTH_TARGETS[length][channel]}`,
+    )
+    .join("\n");
+
+  const priority =
+    length === "detailed"
+      ? "Consigne éditoriale forte : développe réellement le sujet, apporte du contexte, de la matière utile et plusieurs idées distinctes. Ne résume pas en 2–3 phrases. Vise au minimum le bas de chaque plage sans inventer de faits."
+      : length === "short"
+        ? "Reste volontairement concis tout en conservant un contenu complet et publiable."
+        : "Produis un contenu suffisamment développé, sans remplissage ni résumé excessif.";
+
+  return `LONGUEUR ${labels[length]} — PRIORITÉ ÉDITORIALE\n${priority}\nLes plages ci-dessous pilotent réellement la quantité de texte attendue ; elles ne sont pas décoratives. Si le contexte factuel est limité, développe l'explication, le bénéfice, la méthode ou le contexte sans inventer de faits.\n${targets}`;
+}
 
 function compactRecord(record: Record<string, unknown>) {
   return Object.fromEntries(
@@ -248,9 +315,15 @@ function buildCompactPreferencePayload(profile: NormalizedAiGenerationProfile) {
   });
 }
 
-function formatCompactChannelContracts(channels: BoosterChannels[]) {
+function formatCompactChannelContracts(
+  channels: BoosterChannels[],
+  length: BoosterLengthPreference,
+) {
   return Array.from(new Set(channels))
-    .map((channel) => `- ${channel} (${CHANNEL_LABELS[channel]}) : ${CHANNEL_COMPACT_CONTRACTS[channel]}`)
+    .map(
+      (channel) =>
+        `- ${channel} (${CHANNEL_LABELS[channel]}) : ${CHANNEL_COMPACT_CONTRACTS[channel]} Longueur attendue : ${CHANNEL_LENGTH_TARGETS[length][channel]}`,
+    )
     .join("\n");
 }
 
@@ -343,7 +416,10 @@ CONTEXTE ENTREPRISE — utiliser seulement si pertinent, ne rien inventer
 ${JSON.stringify(businessPayload)}
 
 CONTRATS DES SEULS CANAUX DEMANDÉS
-${formatCompactChannelContracts(args.channels)}
+${formatCompactChannelContracts(args.channels, preferences.length)}
+
+POLITIQUE DE LONGUEUR
+${buildBoosterLengthDirective(preferences.length, args.channels)}
 
 LIBERTÉ CRÉATIVE DU MOTEUR
 ${engineDirective}

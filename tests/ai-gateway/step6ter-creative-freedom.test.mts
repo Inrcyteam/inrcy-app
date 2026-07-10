@@ -112,11 +112,28 @@ test("creative synonym reformulations and normal same-topic overlap are advisory
   const generation = read("lib/boosterPublishGeneration.ts");
   assert.match(
     generation,
-    /const REPAIR_BLOCKING_ISSUES = new Set<ChannelQualityIssue>\(\[\s*"missing",\s*"meta_leak",\s*"language_mismatch",?\s*\]\);/,
+    /const REPAIR_TRIGGER_ISSUES = new Set<ChannelQualityIssue>\(\[[\s\S]*"missing"[\s\S]*"meta_leak"[\s\S]*"language_mismatch"[\s\S]*"too_short_editorial"[\s\S]*\]\);/,
   );
   assert.match(generation, /advisoryChannels/);
-  assert.match(generation, /!REPAIR_BLOCKING_ISSUES\.has\(issue\)/);
+  assert.match(generation, /!REPAIR_TRIGGER_ISSUES\.has\(issue\)/);
   assert.match(generation, /L'ancrage lexical exact est volontairement non bloquant/i);
   assert.match(generation, /unsafe channels after single repair/);
   assert.doesNotMatch(generation, /attempt > 0/);
+});
+
+
+test("detailed Booster length is a strong editorial target but never a final 502 condition", () => {
+  const prompt = read("lib/boosterPrompt.ts");
+  const generation = read("lib/boosterPublishGeneration.ts");
+
+  assert.match(prompt, /detailed: "DÉTAILLÉ"/i);
+  assert.match(prompt, /PRIORITÉ ÉDITORIALE/i);
+  assert.match(prompt, /site_web: "1600–2600 car\."/i);
+  assert.match(prompt, /youtube_shorts: "900–1700 car\."/i);
+  assert.match(prompt, /Les plages ci-dessous pilotent réellement la quantité de texte attendue/i);
+
+  assert.match(generation, /CHANNEL_DETAILED_ENRICHMENT_MIN/);
+  assert.match(generation, /too_short_editorial/);
+  assert.match(generation, /Une longueur éditoriale encore inférieure à la cible ne provoque jamais/i);
+  assert.match(generation, /improvesLength/);
 });
