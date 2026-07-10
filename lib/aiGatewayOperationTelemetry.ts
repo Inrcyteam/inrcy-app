@@ -8,6 +8,8 @@ export type AiGatewayOperationCallTelemetry = {
   feature: string;
   engine?: string;
   model: string;
+  transport?: "vercel_ai_gateway" | "openai_direct";
+  fallbackStage?: "primary" | "gateway_model" | "openai_direct";
   status: AiGatewayOperationCallStatus;
   statusCode?: number;
   inputTokens: number;

@@ -78,12 +78,18 @@ const optionalButRecommended = [
   "SENTRY_DSN",
   "NEXT_PUBLIC_SENTRY_DSN",
 
-  // AI Gateway (génération centrale obligatoire ; credential vérifié dans requiredGroups)
+  // AI Gateway (transport principal ; credential vérifié dans requiredGroups)
   "AI_GATEWAY_MODEL",
   "AI_GATEWAY_VISION_MODEL",
+  "AI_GATEWAY_FALLBACK_MODEL",
+  "AI_GATEWAY_OPENAI_PRIMARY_FALLBACK_MODEL",
   "AI_GATEWAY_MODEL_PRICING_JSON",
   "AI_GATEWAY_FALLBACK_INPUT_USD_PER_MILLION",
   "AI_GATEWAY_FALLBACK_OUTPUT_USD_PER_MILLION",
+
+  // Ultime secours indépendant de la Gateway (recommandé en production)
+  "OPENAI_API_KEY",
+  "OPENAI_DIRECT_FALLBACK_MODEL",
 
   // Transcription via Vercel AI Gateway (modèles optionnels : valeurs par défaut intégrées)
   "AI_GATEWAY_TRANSCRIBE_MODEL",

@@ -45,14 +45,14 @@ test("video transcription extracts an audio track before Gateway when FFmpeg is 
   assert.match(route, /mediaType = "audio\/mpeg"/);
 });
 
-test("obsolete direct OpenAI transcription configuration is absent from active runtime code", () => {
-  const active = [
+test("direct OpenAI fallback is never used by the raw transcription runtime", () => {
+  const activeTranscription = [
     read("app/api/booster/transcribe/route.ts"),
-    read("lib/aiGatewayClient.ts"),
     read("lib/aiGatewayTranscription.ts"),
-    read("scripts/verify-env.mjs"),
-    read("app/api/admin/settings/route.ts"),
   ].join("\n");
 
-  assert.doesNotMatch(active, /OPENAI_API_KEY|OPENAI_TRANSCRIBE_MODEL|api\.openai\.com/);
+  assert.doesNotMatch(activeTranscription, /OPENAI_API_KEY|OPENAI_TRANSCRIBE_MODEL|api\.openai\.com/);
+  const generationClient = read("lib/aiGatewayClient.ts");
+  assert.match(generationClient, /OPENAI_API_KEY/);
+  assert.match(generationClient, /api\.openai\.com/);
 });

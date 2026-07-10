@@ -26,8 +26,9 @@ test("V2 multichannel budget allows one primary call and one targeted repair onl
 
 test("Gateway validates the exact effective prompt sent to prompt-only engines", () => {
   const client = read("lib/aiGatewayClient.ts");
-  assert.match(client, /const effectiveSystemPrompt = routing\.jsonMode === "prompt-only"/);
-  assert.match(client, /validatePayloadAgainstPolicy\(opts, max_output_tokens, effectiveSystemPrompt\)/);
+  assert.match(client, /function buildEffectiveSystemPrompt/);
+  assert.match(client, /appendPromptOnlyJsonContract\(opts\.system\)/);
+  assert.match(client, /validatePayloadAgainstPolicy\(opts, maxOutputTokens, primarySystemPrompt\)/);
   assert.match(client, /\[ai-gateway\] input policy exceeded/);
 });
 

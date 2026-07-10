@@ -19,16 +19,18 @@ function walk(relDir: string): string[] {
   });
 }
 
-test("content and vision generation client is Gateway-only", () => {
+test("content and vision generation are Gateway-first with one centralized OpenAI emergency fallback", () => {
   const client = read("lib/aiGatewayClient.ts");
   const config = read("lib/aiGatewayConfig.ts");
   assert.match(config, /ai-gateway\.vercel\.sh\/v1/);
-  assert.doesNotMatch(client, /api\.openai\.com/);
-  assert.doesNotMatch(client, /openai-direct/);
+  assert.match(client, /https:\/\/api\.openai\.com\/v1/);
+  assert.match(client, /transport:\s*"openai_direct"/);
+  assert.match(client, /store:\s*false/);
+  assert.match(client, /OPENAI_API_KEY/);
   assert.doesNotMatch(client, /OPENAI_MODEL|OPENAI_VISION_MODEL/);
 });
 
-test("no direct AI provider endpoint remains and raw transcription uses Vercel Gateway", () => {
+test("only the centralized OpenAI emergency endpoint is allowed and raw transcription stays on Vercel Gateway", () => {
   const providerPattern = /api\.openai\.com|api\.anthropic\.com|generativelanguage\.googleapis\.com|api\.mistral\.ai|api\.x\.ai|api\.perplexity\.ai|api\.deepseek\.com/g;
   const hits: Array<{ file: string; match: string }> = [];
 
@@ -39,7 +41,9 @@ test("no direct AI provider endpoint remains and raw transcription uses Vercel G
     }
   }
 
-  assert.deepEqual(hits, []);
+  assert.deepEqual(hits, [
+    { file: "lib/aiGatewayClient.ts", match: "api.openai.com" },
+  ]);
   const transcription = read("lib/aiGatewayTranscription.ts");
   const config = read("lib/aiGatewayConfig.ts");
   assert.match(config, /v4\/ai\/transcription-model/);

@@ -92,18 +92,21 @@ Limites optionnelles :
 
 ## IA / Vercel AI Gateway
 
-- [ ] `AI_GATEWAY_API_KEY` ou authentification OIDC Vercel — obligatoire pour toute génération texte/vision et transcription
+- [ ] `AI_GATEWAY_API_KEY` ou authentification OIDC Vercel — transport principal pour la génération texte/vision et la transcription
 - [ ] `AI_GATEWAY_MODEL` (format `provider/model`)
 - [ ] `AI_GATEWAY_VISION_MODEL` si modèle vision distinct
 - [ ] `AI_GATEWAY_BASE_URL` seulement si surcharge volontaire
-
-### OpenAI direct — transition / transcription
-
-- [ ] `OPENAI_MODEL` (fallback transitoire)
-- [ ] `OPENAI_VISION_MODEL` (fallback transitoire)
+- [ ] `AI_GATEWAY_FALLBACK_MODEL` (optionnel ; secours Gateway des moteurs non-OpenAI, défaut `openai/gpt-4o-mini`)
+- [ ] `AI_GATEWAY_OPENAI_PRIMARY_FALLBACK_MODEL` (optionnel ; secours Gateway lorsque ChatGPT est sélectionné, défaut `google/gemini-2.5-flash-lite`)
 - [ ] `AI_GATEWAY_TRANSCRIBE_MODEL` (optionnel, défaut `openai/gpt-4o-transcribe`)
 - [ ] `AI_GATEWAY_TRANSCRIBE_FALLBACK_MODEL` (optionnel, défaut `openai/whisper-1`)
-- [ ] `OPENAI_TRANSCRIPT_CLEANUP_MODEL`
+
+### OpenAI direct — ultime secours indépendant
+
+- [ ] `OPENAI_API_KEY` — recommandé en Production ; utilisé une seule fois uniquement après échec du moteur choisi et du secours Gateway
+- [ ] `OPENAI_DIRECT_FALLBACK_MODEL` (optionnel, défaut `gpt-4o-mini`)
+
+La clé directe reste exclusivement côté serveur. Elle ne contourne jamais les quotas produit, les limites économiques, les requêtes invalides ni les délais de sécurité.
 
 ## Google / Google Business / YouTube
 

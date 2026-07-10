@@ -83,6 +83,110 @@ const CTA_LABELS: Record<string, string> = {
   custom: "Lien personnalisé",
 };
 
+const TONE_EXECUTION_DIRECTIVES: Record<string, string> = {
+  serious:
+    "Ton sérieux perceptible : formulations posées, précises et rassurantes ; éviter la froideur administrative.",
+  warm:
+    "Ton chaleureux perceptible : proximité, empathie, vocabulaire humain et accueillant ; éviter la familiarité forcée.",
+  fun:
+    "Ton fun perceptible : énergie, légèreté, rythme vivant et formulations plus joueuses quand le sujet l'autorise ; éviter le clownesque.",
+  premium:
+    "Ton premium perceptible : sobriété, élégance, précision et valeur perçue ; éviter les superlatifs creux et le luxe artificiel.",
+  direct:
+    "Ton direct perceptible : phrases nettes, entrée rapide dans le sujet et message assumé ; éviter l'agressivité.",
+};
+
+const TEXT_STYLE_EXECUTION_DIRECTIVES: Record<string, string> = {
+  simple:
+    "Style simple et clair : vocabulaire accessible, idées immédiatement compréhensibles, phrases fluides et peu de jargon.",
+  dynamic:
+    "Style dynamique : rythme soutenu, variations de phrases, verbes d'action et progression énergique sans surjouer.",
+  expert:
+    "Style conseil d'expert : expliquer le pourquoi, la méthode, les points de vigilance et la valeur concrète avec pédagogie.",
+  coulisses:
+    "Style coulisses / histoire : donner une vraie sensation de récit, de terrain, de préparation ou d'envers du décor sans inventer de faits.",
+  local_humain:
+    "Style local et humain : proximité concrète, ancrage terrain et relation de confiance sans répéter artificiellement la ville.",
+  premium:
+    "Style haut de gamme : texte maîtrisé, sélectif, précis et élégant ; préférer la preuve et le détail juste à l'emphase.",
+};
+
+const COMMERCIAL_EXECUTION_DIRECTIVES: Record<string, string> = {
+  discreet:
+    "Commercial discret : priorité à l'utilité et à la confiance ; l'action commerciale reste implicite ou très douce.",
+  balanced:
+    "Commercial équilibré : faire comprendre le bénéfice concret et proposer une suite naturelle quand elle sert le message.",
+  direct:
+    "Commercial direct : rendre l'offre, le bénéfice et l'action attendue clairement visibles, sans pression ni promesse excessive.",
+};
+
+const MAIN_GOAL_EXECUTION_DIRECTIVES: Record<string, string> = {
+  visibility:
+    "Objectif visibilité : faire mémoriser l'entreprise, son savoir-faire et sa différence ; privilégier la compréhension et la notoriété.",
+  contacts:
+    "Objectif contacts : donner une raison concrète de prendre contact et réduire les freins, avec une prochaine étape naturelle si pertinente.",
+  reassure:
+    "Objectif réassurance : renforcer confiance, méthode, sérieux, transparence, preuves ou maîtrise du sujet sans inventer de témoignage.",
+  offer:
+    "Objectif offre : rendre clairement visible ce qui est proposé, pour qui, quel bénéfice et pourquoi s'y intéresser maintenant sans fausse urgence.",
+};
+
+const EMOJI_EXECUTION_DIRECTIVES: Record<string, string> = {
+  none:
+    "Emojis : aucun emoji dans le contenu final, sauf symbole faisant partie d'un nom propre fourni.",
+  light:
+    "Emojis : présence discrète et réellement perceptible sur les canaux qui s'y prêtent ; quelques touches utiles, jamais une décoration automatique.",
+  dynamic:
+    "Emojis : présence franchement visible sur les canaux sociaux qui s'y prêtent ; plusieurs touches réparties naturellement, sans suite artificielle ni surcharge.",
+};
+
+const CTA_EXECUTION_DIRECTIVES: Record<string, string> = {
+  none: "CTA : ne pas forcer d'appel à l'action ni de bouton dans le texte.",
+  site: "CTA : si une action est pertinente, orienter naturellement vers la découverte du site.",
+  devis: "CTA : si une action est pertinente, orienter clairement vers une demande de devis.",
+  appeler: "CTA : si une action est pertinente, favoriser la prise de contact par appel.",
+  message: "CTA : si une action est pertinente, favoriser l'envoi d'un message.",
+  custom: "CTA : si une action est pertinente, respecter l'intention du lien personnalisé fourni par l'application.",
+};
+
+const VOICE_EXECUTION_DIRECTIVES: Record<string, string> = {
+  je: "Voix : une personne parle réellement à la première personne du singulier (je/mon/ma), sans basculer en nous.",
+  nous: "Voix : l'entreprise ou l'équipe parle réellement à la première personne du pluriel (nous/notre/nos).",
+  vous: "Voix : texte centré sur le lecteur et ses besoins ; réaliser cette orientation avec vous/votre ou tu/ton selon la relation choisie.",
+  neutral: "Voix : formulation neutre ; éviter autant que possible je, nous, tu et vous.",
+};
+
+const ADDRESS_EXECUTION_DIRECTIVES: Record<string, string> = {
+  vous: "Relation lecteur : vouvoiement cohérent du début à la fin ; ne jamais mélanger avec le tutoiement.",
+  tu: "Relation lecteur : tutoiement cohérent du début à la fin ; ne jamais employer vous/votre pour s'adresser au lecteur.",
+};
+
+const PREFERRED_ANGLE_EXECUTION_DIRECTIVES: Record<string, string> = {
+  local: "Angle préféré : faire sentir la proximité et le terrain local quand les faits disponibles le permettent, sans bourrage de ville.",
+  quality: "Angle préféré : rendre visibles le soin, la méthode, les détails utiles et la qualité du travail plutôt que des promesses vagues.",
+  price: "Angle préféré : mettre en valeur l'avantage, le rapport valeur/bénéfice ou l'économie pertinente sans inventer de prix ni casser la valeur perçue.",
+  speed: "Angle préféré : valoriser réactivité, simplicité du parcours ou rapidité quand le contexte le permet, sans inventer de délai.",
+  trust: "Angle préféré : renforcer confiance, sérieux, transparence et maîtrise du sujet avec des éléments concrets disponibles.",
+};
+
+function buildVisiblePreferenceExecutionDirectives(source: unknown) {
+  const preferences = asNormalized(source).preferences;
+  return [
+    TONE_EXECUTION_DIRECTIVES[preferences.tone],
+    TEXT_STYLE_EXECUTION_DIRECTIVES[preferences.communicationStyle],
+    COMMERCIAL_EXECUTION_DIRECTIVES[preferences.commercialLevel],
+    MAIN_GOAL_EXECUTION_DIRECTIVES[preferences.mainGoal],
+    PREFERRED_ANGLE_EXECUTION_DIRECTIVES[preferences.preferredAngle],
+    EMOJI_EXECUTION_DIRECTIVES[preferences.emojiLevel],
+    VOICE_EXECUTION_DIRECTIVES[preferences.voice],
+    ADDRESS_EXECUTION_DIRECTIVES[preferences.addressMode],
+    CTA_EXECUTION_DIRECTIVES[preferences.preferredCta],
+    preferences.likedExample
+      ? "Exemple aimé : s'inspirer visiblement de son rythme, de son niveau d'énergie et de sa densité, sans copier sa structure ni ses formulations."
+      : "",
+  ].filter(Boolean) as string[];
+}
+
 const AI_LANGUAGE_LABELS: Record<string, string> = {
   fr: "français",
   en: "anglais",
@@ -240,13 +344,16 @@ export function buildCompactAiWritingDirective(
   const preferences = normalized.preferences;
   const engineOption = getAiEngineOption(engine || preferences.engine);
 
+  const visiblePreferenceDirectives = buildVisiblePreferenceExecutionDirectives(normalized);
+
   return [
     `MOTEUR-AUTEUR : ${engineOption.shortLabel}. ${ENGINE_NATIVE_FREEDOM[engineOption.value]}`,
     `ANTI-CLONAGE : ${ENGINE_NATIVE_BOUNDARIES[engineOption.value]}`,
     `LIBERTÉ : ${getCreativeLatitude(normalized)}`,
-    "ARBITRAGE : phrase libre = mission ; médias = preuves/contextes ; Configuration IA = préférences du pro ; personnalité du moteur = manière d'écrire.",
+    "ARBITRAGE : phrase libre = mission ; médias = preuves/contextes ; Configuration IA = préférences du pro et direction éditoriale visible ; personnalité du moteur = manière d'écrire.",
     "RÈGLES DURES : vérité, langue, canal, format, consigne explicite du pro, pronom, tutoiement/vouvoiement et interdits personnalisés.",
-    "PRÉFÉRENCES SOUPLES : ton, style, créativité, longueur, intensité commerciale, angle, emojis, CTA et exemple aimé orientent le résultat sans imposer de gabarit.",
+    "PRÉFÉRENCES SOUPLES MAIS VISIBLES : ton, style, intensité commerciale, objectif, emojis, angle, CTA, longueur et exemple aimé doivent influencer concrètement le résultat sans imposer de gabarit ni devenir des motifs de rejet technique.",
+    ...visiblePreferenceDirectives.map((directive) => `EXÉCUTION CONFIG IA : ${directive}`),
     "Choisis librement accroche, rythme, narration, ordre des idées et structure. N'imite aucun autre moteur et n'applique pas une recette iNrCy uniforme.",
     "Un CTA, une liste, une question ou une accroche spectaculaire restent facultatifs sauf contrainte explicite du canal.",
   ].join("\n");
@@ -263,11 +370,14 @@ export function buildAiWritingProfileRules(
   const normalized = asNormalized(source);
   const engineOption = getAiEngineOption(engine || normalized.preferences.engine);
 
+  const visiblePreferenceDirectives = buildVisiblePreferenceExecutionDirectives(normalized);
+
   return [
     "HIÉRARCHIE DE RÉDACTION iNrCy :",
     "- RÈGLES DURES : vérité des faits, sécurité, langue finale, canal, format JSON, contraintes techniques, consignes explicites du pro, tutoiement/vouvoiement, pronom choisi et éléments 'À éviter absolument'. Elles doivent être respectées.",
-    "- PRÉFÉRENCES SOUPLES : ton, style, originalité, longueur favorite, niveau commercial, angle, emojis, CTA préféré et exemple aimé orientent le résultat mais ne constituent jamais un plan de texte obligatoire.",
-    "- La Configuration IA fixe une personnalité et une direction, pas une recette du type accroche + liste + bénéfices + CTA + hashtags.",
+    "- PRÉFÉRENCES SOUPLES MAIS VISIBLES : ton, style, originalité, longueur favorite, niveau commercial, objectif, angle, emojis, CTA préféré et exemple aimé doivent se ressentir dans le résultat sans constituer un plan obligatoire ni un motif de rejet technique.",
+    "- La Configuration IA fixe une personnalité et une direction, pas une recette du type accroche + liste + bénéfices + CTA + hashtags ; ces préférences doivent néanmoins rester perceptibles.",
+    ...visiblePreferenceDirectives.map((directive) => `- CONFIG IA À RENDRE VISIBLE : ${directive}`),
     `- Moteur-auteur actif : ${engineOption.shortLabel}. ${ENGINE_NATIVE_FREEDOM[engineOption.value]}`,
     `- Anti-clonage moteur : ${ENGINE_NATIVE_BOUNDARIES[engineOption.value]}`,
     "- Exploite ta propre voix et ton propre jugement éditorial. Ne cherche pas à imiter ChatGPT, Claude, Gemini, Mistral, Grok, Perplexity, DeepSeek, Llama ni un prétendu 'style iNrCy' uniforme.",
@@ -276,10 +386,10 @@ export function buildAiWritingProfileRules(
     "- Une accroche spectaculaire n'est pas obligatoire. Une liste n'est pas obligatoire. Une question n'est pas obligatoire. Un CTA séparé n'est pas obligatoire si le message est meilleur sans lui et si le canal ne l'exige pas.",
     "- Si un CTA est pertinent, intègre-le naturellement. Le CTA préféré est une préférence de destination/action, pas l'obligation de terminer chaque texte par la même formule.",
     "- Si un exemple de contenu aimé est fourni, s'inspirer du rythme et de l'esprit sans copier sa structure exacte, ses formulations ou ses détails non fournis.",
-    "- Respecter le pronom utilisé : Je = une personne parle ; Nous = l'entreprise/l'équipe parle ; Vous = le texte s'adresse principalement au lecteur ; Neutre = éviter je/nous/vous autant que possible.",
+    "- Respecter le pronom utilisé : Je = une personne parle ; Nous = l'entreprise/l'équipe parle ; Vous = texte centré sur le lecteur ; Neutre = éviter je/nous/vous autant que possible. Si la voix « Vous » est combinée au tutoiement, rester centré sur le lecteur mais employer tu/te/ton, jamais vous.",
     "- Respecter la relation avec le lecteur : vouvoiement ou tutoiement. Ne pas mélanger les deux.",
     "- Respecter le niveau commercial comme une intensité : discret = conseil naturel ; équilibré = bénéfice et action quand utile ; direct = action plus claire sans agressivité. Ne pas imposer un CTA mécanique.",
-    "- Respecter le niveau d'emojis comme une intensité visuelle compatible avec le canal, pas comme un nombre exact à atteindre à tout prix.",
+    "- Respecter réellement le niveau d'emojis comme une intensité visuelle compatible avec le canal : Aucun = zéro ; Léger = présence discrète ; Beaucoup = présence nettement visible sur les canaux adaptés. Ce réglage reste non bloquant et ne doit jamais déclencher une réparation technique à lui seul.",
     "- Les listes sont un outil facultatif. Les utiliser uniquement lorsqu'elles améliorent réellement la lecture, le SEO, la compréhension ou l'impact.",
     "- Pour les emails : rester lisible, humain et prêt à envoyer. Choisir librement salutation, transition, CTA et formule de fin selon la mission ; ne pas forcer quatre blocs identiques à chaque génération.",
     "- Respecter l'angle préféré quand il sert le sujet ; l'ignorer s'il rend le texte artificiel ou détourne l'intention.",

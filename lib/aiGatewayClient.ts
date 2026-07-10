@@ -38,6 +38,17 @@ import {
   parseAiGatewayJsonObject,
 } from "@/lib/aiGatewayResponse";
 import { recordAiGatewayOperationCall } from "@/lib/aiGatewayOperationTelemetry";
+import {
+  attachAiGenerationFallbackInfo,
+  buildAiGenerationFallbackInfo,
+  getFallbackReason,
+  getOpenAiDirectAccountingModel,
+  getOpenAiDirectFallbackCredential,
+  getOpenAiDirectFallbackModel,
+  resolveGatewayFallbackRouting,
+  type AiGenerationFallbackReason,
+  type AiGenerationTransport,
+} from "@/lib/aiGenerationFallback";
 
 export type { AiGenerationFeature, AiOperationBudget } from "@/lib/aiGatewayPolicy";
 
@@ -117,18 +128,10 @@ function resolveHardDeadlineAt(opts: AiGenerateJsonOptions, policyMaxDurationMs:
   return candidates.length ? Math.min(...candidates) : Date.now() + policyMaxDurationMs;
 }
 
-function resolveRemainingTimeoutMs(deadlineAt: number, requestedTimeoutMs: number) {
-  const remaining = deadlineAt - Date.now();
-  if (remaining <= 750) {
-    throw new AiOperationDeadlineExceededError();
-  }
-  return Math.max(500, Math.min(requestedTimeoutMs, remaining - 250));
-}
-
 export { normalizeGatewayModelId } from "@/lib/aiGatewayConfig";
 
 export function hasAiGenerationCredentials(): boolean {
-  return Boolean(getAiGatewayCredential());
+  return Boolean(getAiGatewayCredential() || getOpenAiDirectFallbackCredential());
 }
 
 type ResolvedAiRequestRouting = {
@@ -232,49 +235,27 @@ function validatePayloadAgainstPolicy(
     throw new Error("Les médias envoyés à l'IA sont trop volumineux pour cette action.");
   }
 
-  reserveAiOperationBudget(opts.budget, maxOutputTokens);
 }
 
-/**
- * Point d'entrée unique de génération IA iNrCy — Étape 6.
- *
- * Toute génération texte/vision passe obligatoirement par Vercel AI Gateway.
- * Les modèles, retries, volumes, budgets d'opération et garde-fous par compte
- * sont contrôlés ici. La transcription brute utilise elle aussi le Gateway via
- * lib/aiGatewayTranscription.ts.
- */
-export async function aiGenerateJSON<T extends AiResponseJSON>(opts: AiGenerateJsonOptions): Promise<T> {
-  const credential = getAiGatewayCredential();
-  if (!credential) {
-    throw new Error("Configuration AI Gateway manquante.");
-  }
+type AiJsonExecutionTarget = {
+  transport: AiGenerationTransport;
+  stage: "primary" | "gateway_model" | "openai_direct";
+  requestModel: string;
+  accountingModel: string;
+  jsonMode: AiJsonMode;
+  credential: string;
+  baseUrl: string;
+  retries: number;
+  timeoutMs: number;
+  deadlineAt: number;
+  engine?: AiPreferredEngine;
+};
 
-  const policy = getAiFeaturePolicy(opts.feature);
-  const hasImages = Array.isArray(opts.images) && opts.images.length > 0;
-  const routing = resolveRequestedRouting(opts, hasImages);
-  const model = normalizeGatewayModelId(routing.model);
-  assertAllowedAiGatewayModel(model, process.env.AI_GATEWAY_ALLOWED_MODELS);
-
-  const baseUrl = normalizeAiGatewayBaseUrl(process.env.AI_GATEWAY_BASE_URL);
-  const max_output_tokens = Math.max(
-    128,
-    Math.min(policy.maxOutputTokens, opts.maxOutputTokens ?? 700),
-  );
-  const temperature = typeof opts.temperature === "number"
-    ? Math.max(0, Math.min(2, opts.temperature))
-    : undefined;
-  const retries = Math.max(0, Math.min(policy.maxRetries, Math.floor(opts.retries ?? policy.maxRetries)));
-  const requestedTimeoutMs = Math.max(
-    5000,
-    Math.min(policy.maxTimeoutMs, Math.floor(opts.timeoutMs ?? policy.maxTimeoutMs)),
-  );
-  const hardDeadlineAt = resolveHardDeadlineAt(opts, policy.defaultOperationMaxDurationMs);
-  const timeoutMs = resolveRemainingTimeoutMs(hardDeadlineAt, requestedTimeoutMs);
-
-  // Pour les moteurs sans mode JSON strict natif, le contrat JSON est ajouté au
-  // système. On valide donc la taille RÉELLEMENT envoyée au Gateway, pas seulement
-  // le prompt d'origine.
-  const effectiveSystemPrompt = routing.jsonMode === "prompt-only"
+function buildEffectiveSystemPrompt(
+  opts: AiGenerateJsonOptions,
+  jsonMode: AiJsonMode,
+): string {
+  return jsonMode === "prompt-only"
     ? [
         appendPromptOnlyJsonContract(opts.system),
         opts.responseSchema
@@ -284,21 +265,69 @@ export async function aiGenerateJSON<T extends AiResponseJSON>(opts: AiGenerateJ
         .filter(Boolean)
         .join("\n\n")
     : opts.system;
+}
 
-  validatePayloadAgainstPolicy(opts, max_output_tokens, effectiveSystemPrompt);
+function buildStructuredFormat(
+  opts: AiGenerateJsonOptions,
+  jsonMode: AiJsonMode,
+) {
+  return opts.responseSchema && jsonMode === "strict"
+    ? {
+        type: "json_schema",
+        name: normalizeJsonSchemaName(opts.responseSchema.name),
+        strict: opts.responseSchema.strict !== false,
+        schema: opts.responseSchema.schema,
+      }
+    : jsonMode === "strict"
+      ? { type: "json_object" }
+      : undefined;
+}
 
-  const structuredFormat =
-    opts.responseSchema && routing.jsonMode === "strict"
-      ? {
-          type: "json_schema",
-          name: normalizeJsonSchemaName(opts.responseSchema.name),
-          strict: opts.responseSchema.strict !== false,
-          schema: opts.responseSchema.schema,
-        }
-      : routing.jsonMode === "strict"
-        ? { type: "json_object" }
-        : undefined;
+function resolveFallbackStageTimeoutMs(args: {
+  hardDeadlineAt: number;
+  requestedTimeoutMs: number;
+  reserveForNextStagesMs: number;
+  maxStageMs: number;
+}) {
+  const remaining = args.hardDeadlineAt - Date.now();
+  if (remaining <= 5_750) throw new AiOperationDeadlineExceededError();
+  const available = Math.max(5_000, remaining - Math.max(0, args.reserveForNextStagesMs));
+  return Math.max(
+    5_000,
+    Math.min(args.requestedTimeoutMs, args.maxStageMs, available),
+  );
+}
 
+function resolveNextStagesReserveMs(
+  hardDeadlineAt: number,
+  remainingStages: 0 | 1 | 2,
+) {
+  if (remainingStages <= 0) return 0;
+  const remaining = Math.max(0, hardDeadlineAt - Date.now());
+
+  // Réserve proportionnelle : les opérations courtes (ex. compréhension média)
+  // gardent la majorité de leur temps pour le moteur choisi, tandis que les
+  // opérations longues conservent assez de marge pour les deux secours.
+  if (remainingStages === 2) {
+    return Math.min(32_000, Math.max(8_000, Math.floor(remaining * 0.25)));
+  }
+  return Math.min(15_000, Math.max(5_000, Math.floor(remaining * 0.18)));
+}
+
+function hasTimeForFallback(deadlineAt: number, minimumMs = 5_750) {
+  return deadlineAt - Date.now() > minimumMs;
+}
+
+async function executeAiJsonAttempt<T extends AiResponseJSON>(args: {
+  opts: AiGenerateJsonOptions;
+  policyMaxOutputTokens: number;
+  temperature?: number;
+  hasImages: boolean;
+  target: AiJsonExecutionTarget;
+}): Promise<T> {
+  const { opts, target, hasImages, temperature } = args;
+  const effectiveSystemPrompt = buildEffectiveSystemPrompt(opts, target.jsonMode);
+  const structuredFormat = buildStructuredFormat(opts, target.jsonMode);
   const userContent: Array<Record<string, unknown>> = [
     { type: "input_text", text: opts.input },
     ...((opts.images || []).map((image) => ({
@@ -314,99 +343,104 @@ export async function aiGenerateJSON<T extends AiResponseJSON>(opts: AiGenerateJ
     imageCount: opts.images?.length || 0,
     imageDetail: opts.images?.some((image) => image.detail === "high") ? "high" : "low",
   });
-  warnIfFallbackGuardPricing(model);
-  const estimatedCostMicroUsd = estimateAiGatewayCostMicroUsd(model, {
+  warnIfFallbackGuardPricing(target.accountingModel);
+  const estimatedCostMicroUsd = estimateAiGatewayCostMicroUsd(target.accountingModel, {
     inputTokens: estimatedInputTokens,
-    outputTokens: max_output_tokens,
+    outputTokens: args.policyMaxOutputTokens,
   });
 
   const attemptReservations = new Map<number, AiGatewayAccountAttemptReservation | null>();
   let successfulReservation: AiGatewayAccountAttemptReservation | null = null;
   let httpAttempts = 0;
-
   let res: Response;
+
   try {
-    res = await fetchWithRetry(`${baseUrl}/responses`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${credential}`,
-    },
-    body: JSON.stringify({
-      model,
-      max_output_tokens,
-      ...(temperature === undefined ? {} : { temperature }),
-      ...(structuredFormat
-        ? {
-            text: {
-              format: structuredFormat,
-            },
-          }
-        : {}),
-      input: [
-        { role: "system", content: [{ type: "input_text", text: effectiveSystemPrompt }] },
-        { role: "user", content: userContent },
-      ],
-    }),
-    retries,
-    timeoutMs,
-    deadlineAt: hardDeadlineAt,
-    // 429 ne doit pas être rejoué immédiatement : cela amplifie les rate limits.
-    // Une seule reprise réseau bornée est possible sur erreurs transitoires.
-    retryStatuses: [408, 500, 502, 503, 504],
-    onAttempt: async (attempt) => {
-      httpAttempts = Math.max(httpAttempts, attempt + 1);
-      const reservation = await reserveAiGatewayAccountAttempt(opts.accountId, {
-        estimatedInputTokens,
-        reservedOutputTokens: max_output_tokens,
-        estimatedCostMicroUsd,
-      });
-      attemptReservations.set(attempt, reservation);
-    },
-    onAttemptSettled: async ({ attempt, response }) => {
-      const reservation = attemptReservations.get(attempt) || null;
-      if (response?.ok) {
-        successfulReservation = reservation;
-        return;
-      }
-      await rollbackAiGatewayAccountAttempt(reservation).catch((error) => {
-        console.warn("[ai-gateway] attempt reservation rollback unavailable", {
-          feature: opts.feature,
-          model,
-          attempt,
-          message: error instanceof Error ? error.message : String(error),
+    res = await fetchWithRetry(`${target.baseUrl}/responses`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${target.credential}`,
+      },
+      body: JSON.stringify({
+        model: target.requestModel,
+        max_output_tokens: args.policyMaxOutputTokens,
+        ...(temperature === undefined ? {} : { temperature }),
+        ...(target.transport === "openai_direct" ? { store: false } : {}),
+        ...(structuredFormat
+          ? {
+              text: {
+                format: structuredFormat,
+              },
+            }
+          : {}),
+        input: [
+          { role: "system", content: [{ type: "input_text", text: effectiveSystemPrompt }] },
+          { role: "user", content: userContent },
+        ],
+      }),
+      retries: target.retries,
+      timeoutMs: target.timeoutMs,
+      deadlineAt: target.deadlineAt,
+      retryStatuses: [408, 500, 502, 503, 504],
+      onAttempt: async (attempt) => {
+        httpAttempts = Math.max(httpAttempts, attempt + 1);
+        const reservation = await reserveAiGatewayAccountAttempt(opts.accountId, {
+          estimatedInputTokens,
+          reservedOutputTokens: args.policyMaxOutputTokens,
+          estimatedCostMicroUsd,
         });
-      });
-    },
+        attemptReservations.set(attempt, reservation);
+      },
+      onAttemptSettled: async ({ attempt, response }) => {
+        const reservation = attemptReservations.get(attempt) || null;
+        if (response?.ok) {
+          successfulReservation = reservation;
+          return;
+        }
+        await rollbackAiGatewayAccountAttempt(reservation).catch((error) => {
+          console.warn("[ai-generation] attempt reservation rollback unavailable", {
+            feature: opts.feature,
+            model: target.accountingModel,
+            transport: target.transport,
+            stage: target.stage,
+            attempt,
+            message: error instanceof Error ? error.message : String(error),
+          });
+        });
+      },
     });
   } catch (error) {
     const failedDurationMs = Date.now() - requestStartedAt;
     await recordAiGatewayAccountFailure({
       accountId: opts.accountId,
       feature: opts.feature,
-      model,
+      model: target.accountingModel,
       status: 0,
     }).catch(() => undefined);
     recordAiGatewayOperationCall({
       feature: opts.feature,
-      engine: "engine" in opts ? opts.engine : undefined,
-      model,
+      engine: target.engine,
+      model: target.accountingModel,
+      transport: target.transport,
+      fallbackStage: target.stage,
       status: "failure",
       inputTokens: 0,
       outputTokens: 0,
       totalTokens: 0,
-      reservedOutputTokens: max_output_tokens,
+      reservedOutputTokens: args.policyMaxOutputTokens,
       costMicroUsd: 0,
-      pricingSource: resolveAiGatewayGuardPricing(model).source,
+      pricingSource: resolveAiGatewayGuardPricing(target.accountingModel).source,
       usageEstimated: false,
       durationMs: failedDurationMs,
       hasImages,
       httpAttempts,
     });
-    console.error("[ai-gateway] generation transport failed", {
+    console.error("[ai-generation] transport failed", {
       feature: opts.feature,
-      model,
-      engine: "engine" in opts ? opts.engine : undefined,
+      model: target.accountingModel,
+      engine: target.engine,
+      transport: target.transport,
+      stage: target.stage,
       accountId: opts.accountId || undefined,
       hasImages,
       httpAttempts,
@@ -415,49 +449,56 @@ export async function aiGenerateJSON<T extends AiResponseJSON>(opts: AiGenerateJ
     });
     throw error;
   }
+
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     const retryAfterHeader = Number.parseInt(String(res.headers.get("Retry-After") || ""), 10);
-    const retryAfterSeconds = Number.isFinite(retryAfterHeader) && retryAfterHeader > 0 ? retryAfterHeader : undefined;
+    const retryAfterSeconds = Number.isFinite(retryAfterHeader) && retryAfterHeader > 0
+      ? retryAfterHeader
+      : undefined;
     await recordAiGatewayAccountFailure({
       accountId: opts.accountId,
       feature: opts.feature,
-      model,
+      model: target.accountingModel,
       status: res.status,
     }).catch(() => undefined);
     const failedDurationMs = Date.now() - requestStartedAt;
-    console.error("[ai-gateway] generation failed", {
+    console.error("[ai-generation] request failed", {
       feature: opts.feature,
-      model,
-      engine: "engine" in opts ? opts.engine : undefined,
+      model: target.accountingModel,
+      engine: target.engine,
+      transport: target.transport,
+      stage: target.stage,
       accountId: opts.accountId || undefined,
       hasImages,
-      retries,
       structuredOutput: Boolean(structuredFormat),
       status: res.status,
       durationMs: failedDurationMs,
     });
     recordAiGatewayOperationCall({
       feature: opts.feature,
-      engine: "engine" in opts ? opts.engine : undefined,
-      model,
+      engine: target.engine,
+      model: target.accountingModel,
+      transport: target.transport,
+      fallbackStage: target.stage,
       status: "failure",
       statusCode: res.status,
       inputTokens: 0,
       outputTokens: 0,
       totalTokens: 0,
-      reservedOutputTokens: max_output_tokens,
+      reservedOutputTokens: args.policyMaxOutputTokens,
       costMicroUsd: 0,
-      pricingSource: resolveAiGatewayGuardPricing(model).source,
+      pricingSource: resolveAiGatewayGuardPricing(target.accountingModel).source,
       usageEstimated: false,
       durationMs: failedDurationMs,
       hasImages,
       httpAttempts,
     });
     const safeDetail = String(text || res.statusText || "").trim().slice(0, 500);
+    const sourceLabel = target.transport === "openai_direct" ? "OpenAI direct" : "AI Gateway";
     throw new AiGatewayHttpError(
       res.status,
-      `AI Gateway error (${res.status}): ${safeDetail || "Erreur fournisseur"}`,
+      `${sourceLabel} error (${res.status}): ${safeDetail || "Erreur fournisseur"}`,
       retryAfterSeconds,
     );
   }
@@ -466,57 +507,57 @@ export async function aiGenerateJSON<T extends AiResponseJSON>(opts: AiGenerateJ
   try {
     json = await res.json();
   } catch (error) {
-    // Le fournisseur a accepté et exécuté l'appel : on ne libère pas le budget
-    // économique comme si rien n'avait été consommé. On commit l'estimation réservée.
     await commitAiGatewayAccountAttempt({
       reservation: successfulReservation,
       feature: opts.feature,
-      model,
+      model: target.accountingModel,
       usage: {
         inputTokens: estimatedInputTokens,
-        outputTokens: max_output_tokens,
-        totalTokens: estimatedInputTokens + max_output_tokens,
+        outputTokens: args.policyMaxOutputTokens,
+        totalTokens: estimatedInputTokens + args.policyMaxOutputTokens,
       },
     }).catch(() => undefined);
     throw error;
   }
+
   const usage = parseUsage(json);
   const usageForGuard = usage.totalTokens > 0
     ? usage
     : {
         inputTokens: estimatedInputTokens,
-        outputTokens: max_output_tokens,
-        totalTokens: estimatedInputTokens + max_output_tokens,
+        outputTokens: args.policyMaxOutputTokens,
+        totalTokens: estimatedInputTokens + args.policyMaxOutputTokens,
       };
   const contentText = extractAiGatewayResponseText(json);
 
-  // Commit économique atomique : la capacité réservée est remplacée par
-  // l'usage réel. Si le fournisseur omet usage, iNrCy conserve l'estimation
-  // réservée au lieu de rendre le garde-fou aveugle.
   await commitAiGatewayAccountAttempt({
     reservation: successfulReservation,
     feature: opts.feature,
-    model,
+    model: target.accountingModel,
     usage: usageForGuard,
   }).catch((error) => {
-    console.error("[ai-gateway] atomic usage commit unavailable", {
+    console.error("[ai-generation] atomic usage commit unavailable", {
       feature: opts.feature,
-      model,
+      model: target.accountingModel,
+      transport: target.transport,
+      stage: target.stage,
       message: error instanceof Error ? error.message : String(error),
     });
   });
 
-  const actualCostMicroUsd = estimateAiGatewayCostMicroUsd(model, usageForGuard);
-  const pricingSource = resolveAiGatewayGuardPricing(model).source;
+  const actualCostMicroUsd = estimateAiGatewayCostMicroUsd(target.accountingModel, usageForGuard);
+  const pricingSource = resolveAiGatewayGuardPricing(target.accountingModel).source;
   recordAiGatewayOperationCall({
     feature: opts.feature,
-    engine: "engine" in opts ? opts.engine : undefined,
-    model,
+    engine: target.engine,
+    model: target.accountingModel,
+    transport: target.transport,
+    fallbackStage: target.stage,
     status: "success",
     inputTokens: usageForGuard.inputTokens,
     outputTokens: usageForGuard.outputTokens,
     totalTokens: usageForGuard.totalTokens,
-    reservedOutputTokens: max_output_tokens,
+    reservedOutputTokens: args.policyMaxOutputTokens,
     costMicroUsd: actualCostMicroUsd,
     pricingSource,
     usageEstimated: usage.totalTokens <= 0,
@@ -525,10 +566,12 @@ export async function aiGenerateJSON<T extends AiResponseJSON>(opts: AiGenerateJ
     httpAttempts,
   });
 
-  console.info("[ai-gateway] generation usage", {
+  console.info("[ai-generation] usage", {
     feature: opts.feature,
-    model,
-    engine: "engine" in opts ? opts.engine : undefined,
+    model: target.accountingModel,
+    engine: target.engine,
+    transport: target.transport,
+    stage: target.stage,
     accountId: opts.accountId || undefined,
     hasImages,
     structuredOutput: Boolean(structuredFormat),
@@ -541,10 +584,12 @@ export async function aiGenerateJSON<T extends AiResponseJSON>(opts: AiGenerateJ
 
   if (!contentText) {
     const status = typeof json?.status === "string" ? ` (${json.status})` : "";
-    console.error("[ai-gateway] empty output", {
+    console.error("[ai-generation] empty output", {
       feature: opts.feature,
-      model,
-      engine: "engine" in opts ? opts.engine : undefined,
+      model: target.accountingModel,
+      engine: target.engine,
+      transport: target.transport,
+      stage: target.stage,
       accountId: opts.accountId || undefined,
       hasImages,
       durationMs: Date.now() - requestStartedAt,
@@ -555,10 +600,12 @@ export async function aiGenerateJSON<T extends AiResponseJSON>(opts: AiGenerateJ
   try {
     return parseAiGatewayJsonObject<T>(contentText);
   } catch (error) {
-    console.error("[ai-gateway] invalid structured output", {
+    console.error("[ai-generation] invalid structured output", {
       feature: opts.feature,
-      model,
-      engine: "engine" in opts ? opts.engine : undefined,
+      model: target.accountingModel,
+      engine: target.engine,
+      transport: target.transport,
+      stage: target.stage,
       accountId: opts.accountId || undefined,
       structuredOutput: Boolean(structuredFormat),
       contentChars: contentText.length,
@@ -567,4 +614,224 @@ export async function aiGenerateJSON<T extends AiResponseJSON>(opts: AiGenerateJ
     });
     throw error;
   }
+}
+
+/**
+ * Point d'entrée unique de génération IA iNrCy.
+ *
+ * Chaîne de sécurité bornée :
+ * 1. moteur choisi par le professionnel via Vercel AI Gateway ;
+ * 2. un seul modèle de secours via la Gateway ;
+ * 3. OpenAI direct, une seule fois, uniquement si OPENAI_API_KEY est présente.
+ *
+ * Les quotas produit ne sont débités qu'une fois par action utilisateur, tandis
+ * que les garde-fous économiques comptabilisent chaque véritable appel fournisseur.
+ */
+export async function aiGenerateJSON<T extends AiResponseJSON>(opts: AiGenerateJsonOptions): Promise<T> {
+  const policy = getAiFeaturePolicy(opts.feature);
+  const hasImages = Array.isArray(opts.images) && opts.images.length > 0;
+  const primaryRouting = resolveRequestedRouting(opts, hasImages);
+  const primaryModel = normalizeGatewayModelId(primaryRouting.model);
+  const primaryEngine = "engine" in opts ? opts.engine : undefined;
+  assertAllowedAiGatewayModel(primaryModel, process.env.AI_GATEWAY_ALLOWED_MODELS);
+
+  const maxOutputTokens = Math.max(
+    128,
+    Math.min(policy.maxOutputTokens, opts.maxOutputTokens ?? 700),
+  );
+  const temperature = typeof opts.temperature === "number"
+    ? Math.max(0, Math.min(2, opts.temperature))
+    : undefined;
+  const requestedTimeoutMs = Math.max(
+    5_000,
+    Math.min(policy.maxTimeoutMs, Math.floor(opts.timeoutMs ?? policy.maxTimeoutMs)),
+  );
+  const hardDeadlineAt = resolveHardDeadlineAt(opts, policy.defaultOperationMaxDurationMs);
+  const primarySystemPrompt = buildEffectiveSystemPrompt(opts, primaryRouting.jsonMode);
+
+  validatePayloadAgainstPolicy(opts, maxOutputTokens, primarySystemPrompt);
+  // Un appel logique peut utiliser un transport de secours sans multiplier le quota
+  // fonctionnel. La réserve d'opération reste donc unique ; les appels réels sont
+  // comptabilisés séparément par aiGatewayAccountGuard.
+  reserveAiOperationBudget(opts.budget, maxOutputTokens);
+
+  const gatewayCredential = getAiGatewayCredential();
+  const directCredential = getOpenAiDirectFallbackCredential();
+  const gatewayBaseUrl = normalizeAiGatewayBaseUrl(process.env.AI_GATEWAY_BASE_URL);
+  let lastError: unknown = gatewayCredential
+    ? null
+    : Object.assign(new Error("Configuration AI Gateway manquante."), {
+        code: "ai_gateway_auth",
+        status: 401,
+      });
+  let fallbackReason: AiGenerationFallbackReason = gatewayCredential
+    ? "transport_error"
+    : "gateway_credentials_missing";
+
+  if (gatewayCredential) {
+    const primaryTimeoutMs = resolveFallbackStageTimeoutMs({
+      hardDeadlineAt,
+      requestedTimeoutMs,
+      reserveForNextStagesMs: resolveNextStagesReserveMs(
+        hardDeadlineAt,
+        directCredential ? 2 : 1,
+      ),
+      maxStageMs: requestedTimeoutMs,
+    });
+
+    try {
+      // Une tentative par niveau : on préfère basculer vers un fournisseur différent
+      // plutôt que de rejouer longuement le même modèle en panne.
+      return await executeAiJsonAttempt<T>({
+        opts,
+        policyMaxOutputTokens: maxOutputTokens,
+        temperature,
+        hasImages,
+        target: {
+          transport: "vercel_ai_gateway",
+          stage: "primary",
+          requestModel: primaryModel,
+          accountingModel: primaryModel,
+          jsonMode: primaryRouting.jsonMode,
+          credential: gatewayCredential,
+          baseUrl: gatewayBaseUrl,
+          retries: 0,
+          timeoutMs: primaryTimeoutMs,
+          deadlineAt: hardDeadlineAt,
+          engine: primaryEngine,
+        },
+      });
+    } catch (error) {
+      lastError = error;
+      const classification = getFallbackReason(error);
+      if (!classification.eligible) throw error;
+      fallbackReason = classification.reason;
+
+      const gatewayFallback = classification.skipGatewayModelFallback
+        ? null
+        : resolveGatewayFallbackRouting(primaryModel);
+
+      if (gatewayFallback && hasTimeForFallback(hardDeadlineAt, directCredential ? 12_000 : 7_000)) {
+        assertAllowedAiGatewayModel(
+          gatewayFallback.model,
+          process.env.AI_GATEWAY_ALLOWED_MODELS,
+        );
+        const gatewayFallbackTimeoutMs = resolveFallbackStageTimeoutMs({
+          hardDeadlineAt,
+          requestedTimeoutMs,
+          reserveForNextStagesMs: resolveNextStagesReserveMs(
+            hardDeadlineAt,
+            directCredential ? 1 : 0,
+          ),
+          maxStageMs: 30_000,
+        });
+
+        console.warn("[ai-fallback] gateway model fallback", {
+          feature: opts.feature,
+          accountId: opts.accountId || undefined,
+          primaryEngine,
+          primaryModel,
+          fallbackEngine: gatewayFallback.engine,
+          fallbackModel: gatewayFallback.model,
+          reason: fallbackReason,
+        });
+
+        try {
+          const result = await executeAiJsonAttempt<T>({
+            opts,
+            policyMaxOutputTokens: maxOutputTokens,
+            temperature,
+            hasImages,
+            target: {
+              transport: "vercel_ai_gateway",
+              stage: "gateway_model",
+              requestModel: gatewayFallback.model,
+              accountingModel: gatewayFallback.model,
+              jsonMode: gatewayFallback.jsonMode,
+              credential: gatewayCredential,
+              baseUrl: gatewayBaseUrl,
+              retries: 0,
+              timeoutMs: gatewayFallbackTimeoutMs,
+              deadlineAt: hardDeadlineAt,
+              engine: gatewayFallback.engine,
+            },
+          });
+          return attachAiGenerationFallbackInfo(
+            result,
+            buildAiGenerationFallbackInfo({
+              stage: "gateway_model",
+              reason: fallbackReason,
+              primaryEngine,
+              primaryModel,
+              finalEngine: gatewayFallback.engine,
+              finalModel: gatewayFallback.model,
+              transport: "vercel_ai_gateway",
+            }),
+          );
+        } catch (error) {
+          lastError = error;
+          const fallbackClassification = getFallbackReason(error);
+          if (!fallbackClassification.eligible) throw error;
+          fallbackReason = fallbackClassification.reason;
+        }
+      }
+    }
+  }
+
+  if (directCredential && hasTimeForFallback(hardDeadlineAt)) {
+    const directModel = getOpenAiDirectFallbackModel();
+    const accountingModel = getOpenAiDirectAccountingModel();
+    const directTimeoutMs = resolveFallbackStageTimeoutMs({
+      hardDeadlineAt,
+      requestedTimeoutMs,
+      reserveForNextStagesMs: 0,
+      maxStageMs: 28_000,
+    });
+
+    console.error("[ai-fallback] OpenAI direct emergency fallback", {
+      feature: opts.feature,
+      accountId: opts.accountId || undefined,
+      primaryEngine,
+      primaryModel,
+      directModel,
+      reason: fallbackReason,
+    });
+
+    const result = await executeAiJsonAttempt<T>({
+      opts,
+      policyMaxOutputTokens: maxOutputTokens,
+      temperature,
+      hasImages,
+      target: {
+        transport: "openai_direct",
+        stage: "openai_direct",
+        requestModel: directModel,
+        accountingModel,
+        jsonMode: "strict",
+        credential: directCredential,
+        baseUrl: "https://api.openai.com/v1",
+        retries: 0,
+        timeoutMs: directTimeoutMs,
+        deadlineAt: hardDeadlineAt,
+        engine: "openai",
+      },
+    });
+
+    return attachAiGenerationFallbackInfo(
+      result,
+      buildAiGenerationFallbackInfo({
+        stage: "openai_direct",
+        reason: fallbackReason,
+        primaryEngine,
+        primaryModel,
+        finalEngine: "openai",
+        finalModel: accountingModel,
+        transport: "openai_direct",
+      }),
+    );
+  }
+
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("La génération IA n'a pas pu aboutir après les tentatives de secours.");
 }

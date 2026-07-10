@@ -230,6 +230,70 @@ const CHANNEL_LENGTH_TARGETS: Record<
   },
 };
 
+type BoosterEmojiPreference = NormalizedAiGenerationProfile["preferences"]["emojiLevel"];
+
+const CHANNEL_EMOJI_TARGETS: Record<
+  BoosterEmojiPreference,
+  Record<BoosterChannels, string>
+> = {
+  none: {
+    inrcy_site: "0 emoji.",
+    site_web: "0 emoji.",
+    gmb: "0 emoji.",
+    facebook: "0 emoji.",
+    instagram: "0 emoji.",
+    linkedin: "0 emoji.",
+    tiktok: "0 emoji.",
+    youtube_shorts: "0 emoji.",
+    pinterest: "0 emoji.",
+  },
+  light: {
+    inrcy_site: "0 emoji.",
+    site_web: "0 emoji.",
+    gmb: "0–1 emoji seulement si naturel.",
+    facebook: "1–3 emojis maximum, bien répartis.",
+    instagram: "2–5 emojis utiles, sans décoration automatique.",
+    linkedin: "0–2 emojis maximum, très sobres.",
+    tiktok: "2–5 emojis vivants si pertinents.",
+    youtube_shorts: "0–3 emojis utiles, sans nuire au SEO.",
+    pinterest: "1–3 emojis utiles si l'idée visuelle s'y prête.",
+  },
+  dynamic: {
+    inrcy_site: "0 emoji malgré le niveau Beaucoup : priorité SEO et lisibilité.",
+    site_web: "0 emoji malgré le niveau Beaucoup : priorité SEO et lisibilité.",
+    gmb: "1–2 emojis maximum et sobres.",
+    facebook: "3–6 emojis visibles et naturellement répartis.",
+    instagram: "4–8 emojis visibles et variés, sans suite artificielle.",
+    linkedin: "1–3 emojis maximum : présence visible mais professionnelle.",
+    tiktok: "4–8 emojis visibles, vivants et répartis naturellement.",
+    youtube_shorts: "2–5 emojis visibles, sans nuire aux mots-clés.",
+    pinterest: "2–5 emojis visibles si cohérents avec l'inspiration et la recherche.",
+  },
+};
+
+function buildBoosterEmojiDirective(
+  emojiLevel: BoosterEmojiPreference,
+  channels: BoosterChannels[],
+) {
+  const labels: Record<BoosterEmojiPreference, string> = {
+    none: "AUCUN",
+    light: "LÉGER",
+    dynamic: "BEAUCOUP",
+  };
+  const targets = Array.from(new Set(channels))
+    .map((channel) => `- ${CHANNEL_LABELS[channel]} : ${CHANNEL_EMOJI_TARGETS[emojiLevel][channel]}`)
+    .join("\n");
+
+  const priority =
+    emojiLevel === "none"
+      ? "Consigne forte : aucun emoji sur les canaux demandés."
+      : emojiLevel === "dynamic"
+        ? "Consigne éditoriale forte : la présence d'emojis doit être réellement visible sur les canaux sociaux compatibles, sans surcharge ni série mécanique."
+        : "Consigne éditoriale : présence discrète mais perceptible sur les canaux compatibles.";
+
+  return `EMOJIS ${labels[emojiLevel]} — INTENSITÉ VISIBLE\n${priority}\nLes repères ci-dessous servent à rendre le réglage perceptible ; ils restent éditoriaux et non bloquants, jamais un motif de 502 ou de réparation à eux seuls.\n${targets}`;
+}
+
 function buildBoosterLengthDirective(
   length: BoosterLengthPreference,
   channels: BoosterChannels[],
@@ -310,7 +374,7 @@ function buildCompactPreferencePayload(profile: NormalizedAiGenerationProfile) {
     objectif: preferences.mainGoal,
     angle_prefere: preferences.preferredAngle,
     cta_prefere: preferences.preferredCta,
-    exemple_aime: cleanText(preferences.likedExample, 700),
+    exemple_aime: cleanText(preferences.likedExample, 1200),
     a_eviter: cleanText(preferences.customInstructions, 700),
   });
 }
@@ -327,19 +391,26 @@ function formatCompactChannelContracts(
     .join("\n");
 }
 
-export function boosterSystemPrompt(source?: unknown) {
+export function boosterSystemPrompt(
+  source?: unknown,
+  publicationInstruction?: string,
+) {
   const normalized = buildNormalizedAiGenerationProfile({ business: source });
   const language = getAiLanguageLabel(normalized);
+  const hasPublicationInstruction = Boolean(cleanText(publicationInstruction, 4_000));
 
   return `RÔLE : rédacteur marketing local iNrCy. Produis uniquement des contenus finaux prêts à publier.
 
-LANGUE DURE : toutes les valeurs visibles (title, content, cta, hashtags textuels) sont exclusivement en ${language}. Les clés JSON restent inchangées. Noms propres, marques, URLs, emails et termes exacts fournis peuvent rester tels quels.
+LANGUE FINALE : toutes les valeurs visibles (title, content, cta, hashtags textuels) sont exclusivement en ${language}. Les clés JSON restent inchangées. Noms propres, marques, URLs, emails et termes exacts fournis peuvent rester tels quels.${hasPublicationInstruction ? " La consigne ponctuelle a déjà été prise en compte pour résoudre une éventuelle dérogation explicite de langue." : ""}
 
-PRIORITÉ DE VÉRITÉ ET DE SUJET :
-1. La phrase libre du pro est le sujet obligatoire.
-2. Les médias joints l’enrichissent sans jamais changer ce sujet.
-3. Le profil métier contextualise seulement avec des faits fournis.
-4. Le canal adapte angle, profondeur, rythme et vocabulaire.
+PRIORITÉ DE VÉRITÉ, DE SUJET ET D’INSTRUCTIONS :
+1. Vérité des faits, sécurité et contraintes techniques du canal.
+2. La phrase libre du pro définit le sujet obligatoire.
+3. Si elle existe, la consigne ponctuelle de cette publication est prioritaire sur la Configuration IA générale pour tous les points qu’elle précise.
+4. Les médias joints enrichissent le sujet sans jamais le changer.
+5. La Configuration IA générale s’applique sur tous les points non remplacés par la consigne ponctuelle.
+6. Le profil métier contextualise seulement avec des faits fournis.
+7. Le canal adapte angle, profondeur, rythme et vocabulaire.
 N’invente jamais client, lieu, prix, résultat, certification, avis, date ou détail précis absent du contexte.
 
 RÈGLES DURES :
@@ -356,6 +427,7 @@ SORTIE : JSON strict. Objet racine {"versions":{...}}. Renvoie uniquement les ca
 
 export function boosterUserPrompt(args: {
   idea: string;
+  publicationInstruction?: string;
   theme: BoosterTheme;
   style: BoosterStyle;
   channels: BoosterChannels[];
@@ -375,6 +447,7 @@ export function boosterUserPrompt(args: {
       style: args.style,
     });
   const preferences = generationProfile.preferences;
+  const publicationInstruction = cleanText(args.publicationInstruction, 4_000);
   const hiddenAngle =
     args.hiddenAngle || pickBoosterHiddenAngle(generationProfile.preferences.preferredAngle);
   const recentPublicationMemory = formatRecentPublications(args.recentPublications);
@@ -387,6 +460,9 @@ export function boosterUserPrompt(args: {
   const channelSet = new Set(args.channels);
   const executionRules = [
     "- Traite d’abord exactement la phrase libre ; le métier et la ville ne servent qu’à rendre le résultat crédible et local.",
+    publicationInstruction
+      ? "- La consigne ponctuelle est une dérogation temporaire prioritaire : applique-la sur chaque point qu’elle précise, même si la Configuration IA générale indique autre chose. Les réglages généraux restent valables pour le reste."
+      : "",
     "- Respecte le contrat propre à chaque canal et les préférences du pro, sans transformer ces préférences en gabarit fixe.",
     channelSet.has("inrcy_site") && channelSet.has("site_web")
       ? "- Site iNrCy et Site web : produis deux variantes complètes et réellement distinctes."
@@ -397,14 +473,19 @@ export function boosterUserPrompt(args: {
     channelSet.has("inrcy_site") || channelSet.has("site_web")
       ? "- Canaux site : zéro emoji ; SEO local naturel uniquement avec les faits réellement fournis."
       : "",
-    "- Les emojis suivent la préférence du pro mais restent compatibles avec le canal : une intensité, pas un quota numérique exact.",
+    "- La politique emojis ci-dessous doit être perceptible : une intensité, pas un quota numérique exact ; les repères restent éditoriaux, non bloquants et compatibles avec chaque canal.",
     "- Le CTA préféré est une orientation, pas une obligation.",
     "- Conserve les vrais retours à la ligne dans content avec \\n\\n entre paragraphes.",
     "- Renvoie uniquement le JSON attendu, sans explication.",
   ].filter(Boolean).join("\n");
 
   return `MISSION
-Phrase libre prioritaire : ${cleanText(args.idea, 4000)}
+Phrase libre prioritaire — sujet obligatoire de la publication : ${cleanText(args.idea, 4000)}
+
+CONSIGNE PONCTUELLE PRIORITAIRE — publication en cours uniquement
+${publicationInstruction || "Aucune consigne ponctuelle. Appliquer intégralement la Configuration IA générale."}
+${publicationInstruction ? "Cette consigne remplace temporairement les réglages généraux uniquement sur les points qu’elle précise. Elle ne peut jamais autoriser l’invention de faits ni contourner les contraintes techniques et de sécurité." : ""}
+
 Thème : ${THEME_LABELS[args.theme]}
 Style historique : ${STYLE_LABELS[args.style]} (secondaire face à la Configuration IA)
 Canaux exacts : ${args.channels.join(", ")}
@@ -420,6 +501,9 @@ ${formatCompactChannelContracts(args.channels, preferences.length)}
 
 POLITIQUE DE LONGUEUR
 ${buildBoosterLengthDirective(preferences.length, args.channels)}
+
+POLITIQUE EMOJIS
+${buildBoosterEmojiDirective(preferences.emojiLevel, args.channels)}
 
 LIBERTÉ CRÉATIVE DU MOTEUR
 ${engineDirective}
@@ -438,6 +522,7 @@ ${executionRules}`;
 
 export function compileBoosterGenerationPrompt(args: {
   idea: string;
+  publicationInstruction?: string;
   theme: BoosterTheme;
   style: BoosterStyle;
   channels: BoosterChannels[];
@@ -450,7 +535,10 @@ export function compileBoosterGenerationPrompt(args: {
   mediaContext?: unknown;
   extraInstructions?: unknown;
 }) {
-  const system = boosterSystemPrompt(args.generationProfile);
+  const system = boosterSystemPrompt(
+    args.generationProfile,
+    args.publicationInstruction,
+  );
   const core = boosterUserPrompt(args);
   const imageCount = Math.max(0, Number(args.imageCount || 0));
   const mediaContext = compactLongPromptContext(args.mediaContext, 5_000);

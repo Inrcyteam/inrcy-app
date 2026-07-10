@@ -32,6 +32,7 @@ function formatVideoSeconds(seconds: number | null) {
 
 type VoiceState = "idle" | "recording" | "transcribing";
 type VoiceRecordingMode = "media" | "liveOnly";
+type VoiceTarget = "idea" | "instruction";
 
 type VoiceSpeechRecognitionAlternative = {
   transcript?: string;
@@ -210,6 +211,8 @@ type PublishIntentPanelProps = {
   theme: ThemeKey;
   idea: string;
   setIdea: Dispatch<SetStateAction<string>>;
+  publicationInstruction: string;
+  setPublicationInstruction: Dispatch<SetStateAction<string>>;
   fileInputRef: MutableRefObject<HTMLInputElement | null>;
   videoInputRef: MutableRefObject<HTMLInputElement | null>;
   onImagesChange: (files: FileList | null) => void;
@@ -232,6 +235,7 @@ type PublishIntentPanelProps = {
   setUseImagesForAI: Dispatch<SetStateAction<boolean>>;
   imgError: string;
   genError: string;
+  generationNotice: string;
   generating: boolean;
   generationStage: string;
   generationProgress: number;
@@ -246,6 +250,8 @@ export default function PublishIntentPanel({
   theme,
   idea,
   setIdea,
+  publicationInstruction,
+  setPublicationInstruction,
   fileInputRef,
   videoInputRef,
   onImagesChange,
@@ -268,6 +274,7 @@ export default function PublishIntentPanel({
   setUseImagesForAI,
   imgError,
   genError,
+  generationNotice,
   generating,
   generationStage,
   generationProgress,
@@ -276,11 +283,16 @@ export default function PublishIntentPanel({
   onOpenAiConfiguration,
 }: PublishIntentPanelProps) {
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
+  const [voiceTarget, setVoiceTarget] = useState<VoiceTarget | null>(null);
   const [voiceError, setVoiceError] = useState("");
+  const [voiceErrorTarget, setVoiceErrorTarget] = useState<VoiceTarget>("idea");
   const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [mobileInstructionExpanded, setMobileInstructionExpanded] =
+    useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const voiceRecordingModeRef = useRef<VoiceRecordingMode | null>(null);
+  const voiceTargetRef = useRef<VoiceTarget | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const recordingTimerRef = useRef<number | null>(null);
   const maxRecordingTimerRef = useRef<number | null>(null);
@@ -290,6 +302,30 @@ export default function PublishIntentPanel({
   const hasLiveVoiceDraftRef = useRef(false);
   const liveOnlyUnavailableRef = useRef(false);
   const [liveVoiceEnabled, setLiveVoiceEnabled] = useState(false);
+
+  const setVoiceTargetText = (
+    target: VoiceTarget,
+    updater: SetStateAction<string>,
+  ) => {
+    if (target === "idea") {
+      setIdea(updater);
+      return;
+    }
+    setPublicationInstruction(updater);
+  };
+
+  const getVoiceTargetText = (target: VoiceTarget) =>
+    target === "idea" ? idea : publicationInstruction;
+
+  const setTargetedVoiceError = (target: VoiceTarget, message: string) => {
+    setVoiceErrorTarget(target);
+    setVoiceError(message);
+  };
+
+  const clearVoiceTarget = () => {
+    voiceTargetRef.current = null;
+    setVoiceTarget(null);
+  };
 
   const clearVoiceTimers = () => {
     if (recordingTimerRef.current) {
@@ -332,7 +368,10 @@ export default function PublishIntentPanel({
     hasLiveVoiceDraftRef.current = false;
   };
 
-  const startLiveSpeechRecognition = (baseText: string) => {
+  const startLiveSpeechRecognition = (
+    baseText: string,
+    target: VoiceTarget,
+  ) => {
     const SpeechRecognitionConstructor = getSpeechRecognitionConstructor();
     if (!SpeechRecognitionConstructor) return false;
 
@@ -363,7 +402,7 @@ export default function PublishIntentPanel({
 
         liveVoiceLastTextRef.current = normalizedLiveText;
         hasLiveVoiceDraftRef.current = true;
-        setIdea(() =>
+        setVoiceTargetText(target, () =>
           appendVoiceText(liveVoiceBaseTextRef.current, normalizedLiveText),
         );
       };
@@ -377,9 +416,11 @@ export default function PublishIntentPanel({
           liveOnlyUnavailableRef.current = true;
           setRecordingSeconds(0);
           setVoiceState("idle");
-          setVoiceError(
+          setTargetedVoiceError(
+            target,
             "Dictée en direct indisponible sur ce navigateur. Réessaie : iNrCy basculera sur le vocal classique.",
           );
+          clearVoiceTarget();
         }
       };
 
@@ -389,7 +430,7 @@ export default function PublishIntentPanel({
         if (voiceRecordingModeRef.current === "liveOnly") {
           clearVoiceTimers();
           voiceRecordingModeRef.current = null;
-          void submitLiveVoiceTextForCorrection();
+          void submitLiveVoiceTextForCorrection(target);
         }
       };
 
@@ -404,17 +445,19 @@ export default function PublishIntentPanel({
     }
   };
 
-  const submitLiveVoiceTextForCorrection = async () => {
+  const submitLiveVoiceTextForCorrection = async (target: VoiceTarget) => {
     const liveTranscript = cleanTranscriptTextForSubmission(
       liveVoiceLastTextRef.current,
     );
     if (!liveTranscript) {
-      setVoiceError(
+      setTargetedVoiceError(
+        target,
         "Aucun texte n’a été détecté pendant le vocal. Réessaie en parlant un peu plus longtemps.",
       );
       resetLiveVoiceDraft();
       setVoiceState("idle");
       setRecordingSeconds(0);
+      clearVoiceTarget();
       return;
     }
 
@@ -442,7 +485,7 @@ export default function PublishIntentPanel({
         throw new Error("Aucun texte n’a été détecté dans le vocal.");
       }
 
-      setIdea(() =>
+      setVoiceTargetText(target, () =>
         appendVoiceText(liveVoiceBaseTextRef.current, correctedText),
       );
       resetLiveVoiceDraft();
@@ -451,27 +494,31 @@ export default function PublishIntentPanel({
         error instanceof Error
           ? error.message
           : "Le vocal n’a pas pu être corrigé.";
-      setVoiceError(
+      setTargetedVoiceError(
+        target,
         `${message} Le texte affiché en direct est conservé sans correction finale.`,
       );
       resetLiveVoiceDraft();
     } finally {
       setVoiceState("idle");
       setRecordingSeconds(0);
+      clearVoiceTarget();
     }
   };
 
-  const submitVoiceBlob = async (audioBlob: Blob) => {
+  const submitVoiceBlob = async (audioBlob: Blob, target: VoiceTarget) => {
     if (!audioBlob.size || audioBlob.size < VOICE_MIN_BYTES) {
       const liveDraftKept =
         hasLiveVoiceDraftRef.current && liveVoiceLastTextRef.current.trim();
-      setVoiceError(
+      setTargetedVoiceError(
+        target,
         liveDraftKept
           ? "Vocal trop court pour la correction finale. Le texte affiché en direct est conservé."
           : "Vocal trop court ou vide. Réessaie en parlant un peu plus longtemps.",
       );
       resetLiveVoiceDraft();
       setVoiceState("idle");
+      clearVoiceTarget();
       return;
     }
 
@@ -507,11 +554,13 @@ export default function PublishIntentPanel({
       }
 
       if (hasLiveVoiceDraftRef.current) {
-        setIdea(() =>
+        setVoiceTargetText(target, () =>
           appendVoiceText(liveVoiceBaseTextRef.current, transcript),
         );
       } else {
-        setIdea((current) => appendVoiceText(current, transcript));
+        setVoiceTargetText(target, (current) =>
+          appendVoiceText(current, transcript),
+        );
       }
       resetLiveVoiceDraft();
     } catch (error) {
@@ -521,7 +570,8 @@ export default function PublishIntentPanel({
         error instanceof Error
           ? error.message
           : "Le vocal n’a pas pu être transcrit.";
-      setVoiceError(
+      setTargetedVoiceError(
+        target,
         liveDraftKept
           ? `${message} Le texte affiché en direct est conservé sans correction finale.`
           : message,
@@ -530,6 +580,7 @@ export default function PublishIntentPanel({
     } finally {
       setVoiceState("idle");
       setRecordingSeconds(0);
+      clearVoiceTarget();
     }
   };
 
@@ -540,7 +591,8 @@ export default function PublishIntentPanel({
       clearVoiceTimers();
       stopLiveSpeechRecognition();
       voiceRecordingModeRef.current = null;
-      void submitLiveVoiceTextForCorrection();
+      const target = voiceTargetRef.current || "idea";
+      void submitLiveVoiceTextForCorrection(target);
       return;
     }
 
@@ -554,10 +606,14 @@ export default function PublishIntentPanel({
     stopMediaStream();
     voiceRecordingModeRef.current = null;
     setVoiceState("idle");
+    clearVoiceTarget();
   };
 
-  const startLiveOnlyVoiceRecording = () => {
-    const started = startLiveSpeechRecognition(idea);
+  const startLiveOnlyVoiceRecording = (target: VoiceTarget) => {
+    const started = startLiveSpeechRecognition(
+      getVoiceTargetText(target),
+      target,
+    );
     if (!started) {
       liveOnlyUnavailableRef.current = true;
       return false;
@@ -575,14 +631,20 @@ export default function PublishIntentPanel({
     return true;
   };
 
-  const startMediaVoiceRecording = async (allowLivePreview: boolean) => {
+  const startMediaVoiceRecording = async (
+    allowLivePreview: boolean,
+    target: VoiceTarget,
+  ) => {
     if (
       !navigator.mediaDevices?.getUserMedia ||
       typeof window.MediaRecorder === "undefined"
     ) {
-      setVoiceError(
+      setTargetedVoiceError(
+        target,
         "Ce navigateur ne permet pas l’enregistrement vocal. Utilise Chrome, Edge ou Safari récent.",
       );
+      setVoiceState("idle");
+      clearVoiceTarget();
       return;
     }
 
@@ -605,7 +667,8 @@ export default function PublishIntentPanel({
       };
 
       recorder.onerror = () => {
-        setVoiceError(
+        setTargetedVoiceError(
+          target,
           "Erreur micro pendant l’enregistrement. Réessaie dans quelques secondes.",
         );
         clearVoiceTimers();
@@ -614,6 +677,7 @@ export default function PublishIntentPanel({
         stopMediaStream();
         voiceRecordingModeRef.current = null;
         setVoiceState("idle");
+        clearVoiceTarget();
       };
 
       recorder.onstop = () => {
@@ -624,12 +688,12 @@ export default function PublishIntentPanel({
         mediaRecorderRef.current = null;
         voiceRecordingModeRef.current = null;
         audioChunksRef.current = [];
-        void submitVoiceBlob(audioBlob);
+        void submitVoiceBlob(audioBlob, target);
       };
 
       recorder.start(1000);
       if (allowLivePreview) {
-        startLiveSpeechRecognition(idea);
+        startLiveSpeechRecognition(getVoiceTargetText(target), target);
       }
       setRecordingSeconds(0);
       setVoiceState("recording");
@@ -646,22 +710,28 @@ export default function PublishIntentPanel({
       voiceRecordingModeRef.current = null;
       const name = error instanceof DOMException ? error.name : "";
       if (name === "NotAllowedError" || name === "SecurityError") {
-        setVoiceError(
+        setTargetedVoiceError(
+          target,
           "Micro refusé. Autorise le micro dans le navigateur puis réessaie.",
         );
       } else if (name === "NotFoundError" || name === "DevicesNotFoundError") {
-        setVoiceError("Aucun micro détecté sur cet appareil.");
+        setTargetedVoiceError(target, "Aucun micro détecté sur cet appareil.");
       } else {
-        setVoiceError(
+        setTargetedVoiceError(
+          target,
           "Impossible d’activer le micro. Vérifie l’autorisation navigateur/appareil.",
         );
       }
       setVoiceState("idle");
+      clearVoiceTarget();
     }
   };
 
-  const startVoiceRecording = async () => {
+  const startVoiceRecording = async (target: VoiceTarget) => {
+    setVoiceErrorTarget(target);
     setVoiceError("");
+    voiceTargetRef.current = target;
+    setVoiceTarget(target);
     stopLiveSpeechRecognition();
     resetLiveVoiceDraft();
     voiceRecordingModeRef.current = null;
@@ -669,7 +739,11 @@ export default function PublishIntentPanel({
     if (typeof window === "undefined" || typeof navigator === "undefined")
       return;
     if (!window.isSecureContext && window.location.hostname !== "localhost") {
-      setVoiceError("Le micro nécessite une connexion sécurisée HTTPS.");
+      setTargetedVoiceError(
+        target,
+        "Le micro nécessite une connexion sécurisée HTTPS.",
+      );
+      clearVoiceTarget();
       return;
     }
 
@@ -677,21 +751,21 @@ export default function PublishIntentPanel({
     if (
       platformInfo.shouldUseLiveOnly &&
       !liveOnlyUnavailableRef.current &&
-      startLiveOnlyVoiceRecording()
+      startLiveOnlyVoiceRecording(target)
     ) {
       return;
     }
 
-    await startMediaVoiceRecording(platformInfo.canUseLivePreview);
+    await startMediaVoiceRecording(platformInfo.canUseLivePreview, target);
   };
 
-  const onVoiceButtonClick = () => {
-    if (voiceState === "recording") {
+  const onVoiceButtonClick = (target: VoiceTarget) => {
+    if (voiceState === "recording" && voiceTarget === target) {
       stopVoiceRecording();
       return;
     }
     if (voiceState === "idle") {
-      void startVoiceRecording();
+      void startVoiceRecording(target);
     }
   };
 
@@ -701,25 +775,169 @@ export default function PublishIntentPanel({
       stopLiveSpeechRecognition();
       stopMediaStream();
       voiceRecordingModeRef.current = null;
+      voiceTargetRef.current = null;
       const recorder = mediaRecorderRef.current;
       if (recorder && recorder.state === "recording") recorder.stop();
     };
   }, []);
 
-  const voiceDisabled = generating || voiceState === "transcribing";
   const generationDisabled = generating || voiceState !== "idle";
-  const voiceButtonLabel =
-    voiceState === "recording"
+  const isVoiceTargetDisabled = (target: VoiceTarget) =>
+    generating ||
+    voiceState === "transcribing" ||
+    (voiceState === "recording" && voiceTarget !== target);
+  const getVoiceButtonLabel = (target: VoiceTarget) =>
+    voiceTarget === target && voiceState === "recording"
       ? `Arrêter le vocal ${formatVoiceDuration(recordingSeconds)}`
-      : voiceState === "transcribing"
+      : voiceTarget === target && voiceState === "transcribing"
         ? "Correction du vocal en cours"
-        : "Faire un vocal";
-  const voiceButtonShortLabel =
-    voiceState === "recording"
+        : target === "idea"
+          ? "Dicter le sujet"
+          : "Dicter la consigne ponctuelle";
+  const getVoiceButtonShortLabel = (target: VoiceTarget) =>
+    voiceTarget === target && voiceState === "recording"
       ? `■ ${formatVoiceDuration(recordingSeconds)}`
-      : voiceState === "transcribing"
+      : voiceTarget === target && voiceState === "transcribing"
         ? "…"
         : "🎙️";
+
+  const renderIntentField = (args: {
+    target: VoiceTarget;
+    label: string;
+    helper: string;
+    placeholder: string;
+    value: string;
+    onChange: (value: string) => void;
+    maxLength?: number;
+  }) => {
+    const targetActive = voiceTarget === args.target;
+    const voiceDisabled = isVoiceTargetDisabled(args.target);
+    return (
+      <div style={{ minWidth: 0, display: "grid", alignContent: "start" }}>
+        <div
+          style={{
+            minHeight: isMobile ? 34 : 38,
+            marginBottom: 6,
+            display: "grid",
+            alignContent: "start",
+            gap: 2,
+          }}
+        >
+          <div style={{ fontSize: 12, fontWeight: 800, opacity: 0.94 }}>
+            {args.label}
+          </div>
+          <div style={{ fontSize: 10.5, opacity: 0.68, lineHeight: 1.2 }}>
+            {args.helper}
+          </div>
+        </div>
+        <div style={{ display: "grid", gap: 8 }}>
+          <div style={{ position: "relative", minWidth: 0 }}>
+            <textarea
+              placeholder={args.placeholder}
+              style={{
+                ...textAreaStyle,
+                minHeight: isMobile ? 104 : 130,
+                paddingRight: isMobile ? 58 : 66,
+                paddingBottom: isMobile ? 52 : 56,
+              }}
+              value={args.value}
+              maxLength={args.maxLength}
+              onChange={(event) => args.onChange(event.target.value)}
+            />
+            <button
+              type="button"
+              className={
+                targetActive && voiceState === "recording"
+                  ? styles.primaryBtn
+                  : styles.secondaryBtn
+              }
+              onClick={() => onVoiceButtonClick(args.target)}
+              disabled={voiceDisabled}
+              aria-label={getVoiceButtonLabel(args.target)}
+              title={
+                args.target === "idea"
+                  ? "Dictez le sujet : iNrCy le transcrit et corrige les fautes."
+                  : "Dictez la consigne ponctuelle : iNrCy la transcrit et corrige les fautes."
+              }
+              style={{
+                position: "absolute",
+                right: isMobile ? 10 : 12,
+                bottom: isMobile ? 10 : 12,
+                zIndex: 2,
+                minWidth:
+                  targetActive && voiceState === "recording"
+                    ? isMobile
+                      ? 82
+                      : 90
+                    : isMobile
+                      ? 38
+                      : 42,
+                height: isMobile ? 36 : 40,
+                minHeight: isMobile ? 36 : 40,
+                borderRadius: 999,
+                padding:
+                  targetActive && voiceState === "recording"
+                    ? isMobile
+                      ? "0 10px"
+                      : "0 12px"
+                    : 0,
+                display: "inline-flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize:
+                  targetActive && voiceState === "recording"
+                    ? isMobile
+                      ? 11
+                      : 12
+                    : isMobile
+                      ? 16
+                      : 18,
+                fontWeight: 950,
+                lineHeight: 1,
+                whiteSpace: "nowrap",
+                boxShadow: "0 10px 24px rgba(0,0,0,0.28)",
+                opacity: voiceDisabled ? 0.6 : 1,
+                cursor: voiceDisabled ? "not-allowed" : "pointer",
+              }}
+            >
+              {getVoiceButtonShortLabel(args.target)}
+            </button>
+          </div>
+          {targetActive && voiceState === "recording" ? (
+            <div
+              style={{
+                fontSize: isMobile ? 11 : 12,
+                color: "#ffdfdf",
+                fontWeight: 800,
+              }}
+            >
+              {liveVoiceEnabled
+                ? "Les mots apparaissent en direct. Recliquez sur le micro pour corriger le vocal."
+                : "Parlez maintenant, puis recliquez sur le micro pour arrêter."}
+            </div>
+          ) : null}
+          {targetActive && voiceState === "transcribing" ? (
+            <div
+              style={{
+                fontSize: isMobile ? 11 : 12,
+                color: "#dff6ff",
+                fontWeight: 800,
+              }}
+            >
+              Transcription + correction en cours...
+            </div>
+          ) : null}
+          {voiceError && voiceErrorTarget === args.target ? (
+            <div
+              style={{ fontSize: 12.5, color: "#ffb4b4", lineHeight: 1.35 }}
+            >
+              {voiceError}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    );
+  };
   const hasImages = images.length > 0;
   const hasVideoMedia = Boolean(videoFile || videoPreviewUrl);
   const imagesLimitReached = images.length >= BOOSTER_MAX_IMAGE_COUNT;
@@ -748,116 +966,92 @@ export default function PublishIntentPanel({
         className={styles.subtitle}
         style={{ marginBottom: 10, maxWidth: "none", whiteSpace: "normal" }}
       >
-        Décrivez votre idée.{" "}
+        Décrivez le sujet de cette publication et ajoutez, si nécessaire, une
+        consigne ponctuelle prioritaire. {" "}
         <strong>Ajoutez jusqu’à 5 images ou 1 vidéo</strong> pour préparer votre
         publication.
       </div>
       <div style={{ display: "grid", gap: 10 }}>
-        <div>
-          <div style={{ fontSize: 12, opacity: 0.85, marginBottom: 6 }}>
-            Phrase libre
-          </div>
-          <div style={{ display: "grid", gap: 8 }}>
-            <div style={{ position: "relative", minWidth: 0 }}>
-              <textarea
-                placeholder={
-                  THEME_PLACEHOLDERS[theme] || THEME_PLACEHOLDERS[""]
-                }
-                style={{
-                  ...textAreaStyle,
-                  paddingRight: isMobile ? 58 : 66,
-                  paddingBottom: isMobile ? 52 : 56,
-                }}
-                value={idea}
-                onChange={(e) => setIdea(e.target.value)}
-              />
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: isMobile
+              ? "minmax(0, 1fr)"
+              : "minmax(0, 1fr) minmax(0, 1fr)",
+            gap: 10,
+            alignItems: "start",
+            minWidth: 0,
+          }}
+        >
+          {renderIntentField({
+            target: "idea",
+            label: "Sujet de la publication — obligatoire",
+            helper: "Le thème et les faits à traiter dans cette actualité.",
+            placeholder:
+              THEME_PLACEHOLDERS[theme] || THEME_PLACEHOLDERS[""],
+            value: idea,
+            onChange: setIdea,
+          })}
+
+          {isMobile ? (
+            <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
               <button
                 type="button"
-                className={
-                  voiceState === "recording"
-                    ? styles.primaryBtn
-                    : styles.secondaryBtn
+                className={styles.secondaryBtn}
+                onClick={() =>
+                  setMobileInstructionExpanded((current) => !current)
                 }
-                onClick={onVoiceButtonClick}
-                disabled={voiceDisabled}
-                aria-label={voiceButtonLabel}
-                title="Dictez votre idée : iNrCy la transcrit et corrige les fautes."
+                aria-expanded={mobileInstructionExpanded}
                 style={{
-                  position: "absolute",
-                  right: isMobile ? 10 : 12,
-                  bottom: isMobile ? 10 : 12,
-                  zIndex: 2,
-                  minWidth:
-                    voiceState === "recording"
-                      ? isMobile
-                        ? 82
-                        : 90
-                      : isMobile
-                        ? 38
-                        : 42,
-                  height: isMobile ? 36 : 40,
-                  minHeight: isMobile ? 36 : 40,
-                  borderRadius: 999,
-                  padding:
-                    voiceState === "recording"
-                      ? isMobile
-                        ? "0 10px"
-                        : "0 12px"
-                      : 0,
-                  display: "inline-flex",
+                  width: "100%",
+                  minHeight: 38,
+                  display: "flex",
                   alignItems: "center",
-                  justifyContent: "center",
-                  fontSize:
-                    voiceState === "recording"
-                      ? isMobile
-                        ? 11
-                        : 12
-                      : isMobile
-                        ? 16
-                        : 18,
-                  fontWeight: 950,
-                  lineHeight: 1,
-                  whiteSpace: "nowrap",
-                  boxShadow: "0 10px 24px rgba(0,0,0,0.28)",
-                  opacity: voiceDisabled ? 0.6 : 1,
-                  cursor: voiceDisabled ? "not-allowed" : "pointer",
+                  justifyContent: "space-between",
+                  gap: 10,
+                  padding: "7px 11px",
+                  borderRadius: 12,
+                  textAlign: "left",
+                  fontSize: 12,
+                  fontWeight: 850,
                 }}
               >
-                {voiceButtonShortLabel}
+                <span>
+                  {publicationInstruction.trim()
+                    ? "✓ Consigne ajoutée — Modifier"
+                    : "+ Ajouter une consigne à l’IA"}
+                </span>
+                <span aria-hidden="true">
+                  {mobileInstructionExpanded ? "▴" : "▾"}
+                </span>
               </button>
+              {mobileInstructionExpanded
+                ? renderIntentField({
+                    target: "instruction",
+                    label: "Consigne ponctuelle à l’IA — facultatif",
+                    helper:
+                      "Prioritaire sur votre Configuration IA pour cette publication uniquement.",
+                    placeholder:
+                      "Ex. : insistez sur la personnalisation, rédigez en espagnol, sans emoji, et terminez par une question.",
+                    value: publicationInstruction,
+                    onChange: setPublicationInstruction,
+                    maxLength: 4_000,
+                  })
+                : null}
             </div>
-            {voiceState === "recording" ? (
-              <div
-                style={{
-                  fontSize: isMobile ? 11 : 12,
-                  color: "#ffdfdf",
-                  fontWeight: 800,
-                }}
-              >
-                {liveVoiceEnabled
-                  ? "Les mots apparaissent en direct. Recliquez sur le micro pour corriger le vocal."
-                  : "Parlez maintenant, puis recliquez sur le micro pour arrêter."}
-              </div>
-            ) : null}
-            {voiceState === "transcribing" ? (
-              <div
-                style={{
-                  fontSize: isMobile ? 11 : 12,
-                  color: "#dff6ff",
-                  fontWeight: 800,
-                }}
-              >
-                Transcription + correction en cours...
-              </div>
-            ) : null}
-            {voiceError ? (
-              <div
-                style={{ fontSize: 12.5, color: "#ffb4b4", lineHeight: 1.35 }}
-              >
-                {voiceError}
-              </div>
-            ) : null}
-          </div>
+          ) : (
+            renderIntentField({
+              target: "instruction",
+              label: "Consigne ponctuelle à l’IA — facultatif",
+              helper:
+                "Prioritaire sur votre Configuration IA pour cette publication uniquement.",
+              placeholder:
+                "Ex. : insistez sur la personnalisation, rédigez en espagnol, sans emoji, et terminez par une question.",
+              value: publicationInstruction,
+              onChange: setPublicationInstruction,
+              maxLength: 4_000,
+            })
+          )}
         </div>
         <input
           ref={fileInputRef}
@@ -1236,6 +1430,22 @@ export default function PublishIntentPanel({
         ) : null}
         {genError ? (
           <div style={{ fontSize: 13, color: "#ffb4b4" }}>{genError}</div>
+        ) : null}
+        {generationNotice ? (
+          <div
+            role="status"
+            style={{
+              fontSize: 13,
+              lineHeight: 1.4,
+              color: "#dff6ff",
+              border: "1px solid rgba(126, 220, 255, 0.28)",
+              background: "rgba(78, 177, 220, 0.10)",
+              borderRadius: 10,
+              padding: "8px 10px",
+            }}
+          >
+            {generationNotice}
+          </div>
         ) : null}
         <div style={{ display: "grid", gap: 6, justifyItems: "start" }}>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>

@@ -167,7 +167,7 @@ test("Step 9 live QA uses real production telemetry for tokens, costs, calls and
   assert.match(route, /captureAiGatewayOperationTelemetry/);
   assert.match(route, /telemetry:\s*captured\.telemetry/);
   assert.match(client, /recordAiGatewayOperationCall/);
-  assert.match(client, /generation transport failed/);
+  assert.match(client, /\[ai-generation\] transport failed/);
   assert.match(qa, /buildFinalCertification/);
   assert.match(qa, /payload\?\.telemetry/);
   assert.match(qa, /totalCostUsd/);

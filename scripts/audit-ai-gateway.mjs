@@ -105,9 +105,32 @@ for (const rule of rules) {
 }
 
 const violations = [];
+const allowedDirectOpenAiFile = "lib/aiGatewayClient.ts";
+const directOpenAiRows = findings.get("direct-openai-endpoint") || [];
 
-for (const row of findings.get("direct-openai-endpoint") || []) {
-  violations.push(`Endpoint OpenAI direct interdit: ${row.file}:${row.line}`);
+for (const row of directOpenAiRows) {
+  if (row.file !== allowedDirectOpenAiFile) {
+    violations.push(`Endpoint OpenAI direct hors secours centralisé: ${row.file}:${row.line}`);
+  }
+}
+
+if (directOpenAiRows.length !== 1 || directOpenAiRows[0]?.file !== allowedDirectOpenAiFile) {
+  violations.push(
+    `Le secours OpenAI direct doit exister exactement une fois dans ${allowedDirectOpenAiFile} (trouvé: ${directOpenAiRows.length}).`,
+  );
+}
+
+const directFallbackClient = sourceTexts.get(allowedDirectOpenAiFile) || "";
+for (const [pattern, label] of [
+  [/OPENAI_API_KEY/, "clé serveur OPENAI_API_KEY"],
+  [/transport:\s*"openai_direct"/, "transport openai_direct"],
+  [/store:\s*false/, "non-conservation store:false"],
+  [/reserveAiGatewayAccountAttempt/, "garde-fou économique par tentative"],
+  [/stage:\s*"openai_direct"/, "étape de secours bornée"],
+]) {
+  if (!pattern.test(directFallbackClient)) {
+    violations.push(`Secours OpenAI direct incomplet: ${label} absent de ${allowedDirectOpenAiFile}`);
+  }
 }
 
 for (const row of findings.get("direct-other-ai-provider-endpoint") || []) {
@@ -140,7 +163,7 @@ if (legacyConsumers.length) {
   }
 }
 
-const directEndpoints = findings.get("direct-openai-endpoint") || [];
+const directEndpoints = directOpenAiRows;
 const gatewayRefs = findings.get("vercel-gateway-endpoint") || [];
 const neutralConsumers = findings.get("neutral-ai-consumer") || [];
 
@@ -149,12 +172,12 @@ console.log(`  - Couche neutre aiGenerateJSON présente: ${neutralConsumers.leng
 console.log(`  - Consommateurs legacy openaiGenerateJSON: ${legacyConsumers.length ? "OUI" : "NON"}`);
 console.log(`  - Texte, vision et transcription Gateway + garde-fous économiques verrouillés: ${violations.length ? "NON" : "OUI"}`);
 console.log(`  - Référence Vercel AI Gateway présente: ${gatewayRefs.length ? "OUI" : "NON"}`);
-console.log(`  - Endpoint OpenAI direct total: ${directEndpoints.length} (aucun autorisé)`);
+console.log(`  - Endpoint OpenAI direct total: ${directEndpoints.length} (1 secours centralisé autorisé)`);
 
 if (violations.length) {
   console.error("\nÉCHEC AUDIT — violations Étape 6 bis:");
   for (const violation of violations) console.error(`  - ${violation}`);
   process.exitCode = 1;
 } else {
-  console.log("\nAUDIT OK — aucun contournement fournisseur et aucun appel IA non rattaché à un compte actif détecté.");
+  console.log("\nAUDIT OK — Gateway prioritaire, secours OpenAI direct strictement centralisé et appels IA rattachés aux garde-fous économiques.");
 }

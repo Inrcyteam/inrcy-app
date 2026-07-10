@@ -5,6 +5,10 @@ import {
 } from "@/lib/aiGatewayClient";
 import { createAiOperationBudget, type AiOperationBudget } from "@/lib/aiGatewayPolicy";
 import {
+  getAiGenerationFallbackInfo,
+  type AiGenerationFallbackInfo,
+} from "@/lib/aiGenerationFallback";
+import {
   buildNormalizedAiGenerationProfile,
   type NormalizedAiGenerationProfile,
 } from "@/lib/aiGenerationProfile";
@@ -292,6 +296,7 @@ const similarityStopWords = new Set([
 
 export type GenerateSharedBoosterPostsArgs = {
   idea: string;
+  publicationInstruction?: string;
   theme: BoosterTheme;
   style?: BoosterStyle;
   channels: BoosterChannels[];
@@ -311,6 +316,7 @@ export type GenerateSharedBoosterPostsArgs = {
 export type GenerateSharedBoosterPostsResult = {
   versions: Partial<Record<BoosterChannels, ChannelPost>>;
   recoveredChannels: BoosterChannels[];
+  aiFallback?: AiGenerationFallbackInfo;
 };
 
 function cleanHashtags(channel: BoosterChannels, input: unknown) {
@@ -720,6 +726,7 @@ function computeGenerationTimeoutMs(args: {
 
 async function generateVersions(args: {
   idea: string;
+  publicationInstruction?: string;
   theme: BoosterTheme;
   style: BoosterStyle;
   channels: BoosterChannels[];
@@ -739,6 +746,7 @@ async function generateVersions(args: {
   const mode = args.mode || "primary";
   const compiledPrompt = compileBoosterGenerationPrompt({
     idea: args.idea,
+    publicationInstruction: args.publicationInstruction,
     theme: args.theme,
     style: args.style,
     channels: args.channels,
@@ -919,6 +927,7 @@ async function repairChannelsOnce(args: {
   issues: Map<BoosterChannels, ChannelQualityIssue[]>;
   versions: Partial<Record<BoosterChannels, ChannelPost>>;
   idea: string;
+  publicationInstruction?: string;
   theme: BoosterTheme;
   style: BoosterStyle;
   profile: JsonRecord | null;
@@ -934,10 +943,13 @@ async function repairChannelsOnce(args: {
   budget?: AiOperationBudget;
   deadlineAt?: number;
 }) {
-  if (!args.channels.length) return [] as BoosterChannels[];
+  if (!args.channels.length) {
+    return { recoveredChannels: [] as BoosterChannels[], aiFallback: undefined };
+  }
 
   const out = await generateVersions({
     idea: args.idea,
+    publicationInstruction: args.publicationInstruction,
     theme: args.theme,
     style: args.style,
     channels: args.channels,
@@ -966,6 +978,7 @@ async function repairChannelsOnce(args: {
       }),
     ].filter(Boolean).join("\n\n"),
   });
+  const aiFallback = getAiGenerationFallbackInfo(out);
 
   const recovered: BoosterChannels[] = [];
   for (const channel of args.channels) {
@@ -996,7 +1009,125 @@ async function repairChannelsOnce(args: {
     }
   }
 
-  return recovered;
+  return { recoveredChannels: recovered, aiFallback };
+}
+
+
+function normalizeInstructionForDetection(value: unknown) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function removeNegatedInstructionSegments(value: string) {
+  return value
+    .replace(
+      /\b(?:ne\s+)?(?:pas|jamais)\b[^.!?;]{0,48}\b(?:en|in)\s+(?:francais|anglais|espagnol|italien|allemand|neerlandais|portugais|french|english|spanish|italian|german|dutch|portuguese)\b/g,
+      " ",
+    )
+    .replace(
+      /\b(?:ne\s+)?(?:pas|jamais)\b[^.!?;]{0,36}\b(?:court|courte|long|longue|detaille|detaillee|developpe|developpee|approfondi|approfondie)\b/g,
+      " ",
+    )
+    .replace(/\bni\s+trop\s+court\s+ni\s+trop\s+long\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function detectPublicationInstructionLanguage(
+  instruction: string | undefined,
+): NormalizedAiGenerationProfile["preferences"]["language"] | null {
+  const value = removeNegatedInstructionSegments(
+    normalizeInstructionForDetection(instruction),
+  );
+  if (!value) return null;
+
+  const rules: Array<[
+    NormalizedAiGenerationProfile["preferences"]["language"],
+    RegExp,
+  ]> = [
+    ["fr", /\b(?:en|in)\s+francais\b|\bfrench\b/],
+    ["en", /\b(?:en|in)\s+anglais\b|\benglish\b/],
+    ["es", /\b(?:en|in)\s+espagnol\b|\bspanish\b|\bcastillan\b/],
+    ["it", /\b(?:en|in)\s+italien\b|\bitalian\b/],
+    ["de", /\b(?:en|in)\s+allemand\b|\bgerman\b/],
+    ["nl", /\b(?:en|in)\s+neerlandais\b|\bdutch\b/],
+    ["pt", /\b(?:en|in)\s+portugais\b|\bportuguese\b/],
+  ];
+
+  for (const [language, pattern] of rules) {
+    if (pattern.test(value)) return language;
+  }
+  return null;
+}
+
+function detectPublicationInstructionLength(
+  instruction: string | undefined,
+): NormalizedAiGenerationProfile["preferences"]["length"] | null {
+  const value = removeNegatedInstructionSegments(
+    normalizeInstructionForDetection(instruction),
+  );
+  if (!value) return null;
+  if (
+    /\b(?:texte|contenu|publication|format|version)\s+(?:tres\s+)?(?:court|courte|bref|breve|concis|concise|synthetique)\b/.test(value) ||
+    /\b(?:redige|ecris|produis|genere|fais)\b[^.!?;]{0,28}\b(?:court|courte|bref|breve|concis|concise|synthetique)\b/.test(value)
+  ) {
+    return "short";
+  }
+  if (
+    /\b(?:texte|contenu|publication|format|version)\s+(?:tres\s+)?(?:detaille|detaillee|developpe|developpee|approfondi|approfondie|long|longue)\b/.test(value) ||
+    /\b(?:redige|ecris|produis|genere|fais)\b[^.!?;]{0,28}\b(?:detaille|detaillee|developpe|developpee|approfondi|approfondie|long|longue)\b/.test(value)
+  ) {
+    return "detailed";
+  }
+  if (/\b(?:longueur|format)\s+moyen(?:ne)?\b/.test(value)) {
+    return "medium";
+  }
+  return null;
+}
+
+function detectPublicationInstructionEmojiLevel(
+  instruction: string | undefined,
+): NormalizedAiGenerationProfile["preferences"]["emojiLevel"] | null {
+  const value = normalizeInstructionForDetection(instruction);
+  if (!value) return null;
+  if (
+    /\bsans\s+(?:aucun\s+)?emoji(?:s)?\b|\baucun\s+emoji(?:s)?\b|\b0\s*emoji(?:s)?\b|\bne\s+(?:mets|mettez|utilise|utilisez)\s+pas\s+d['’]?emoji(?:s)?\b/.test(
+      value,
+    )
+  ) {
+    return "none";
+  }
+  if (/\b(?:beaucoup|plein|plusieurs)\s+d['’]?emoji(?:s)?\b|\bemojis?\s+(?:tres\s+)?visibles?\b/.test(value)) {
+    return "dynamic";
+  }
+  if (/\b(?:peu|quelques)\s+d['’]?emoji(?:s)?\b|\bemojis?\s+(?:legers?|discrets?)\b/.test(value)) {
+    return "light";
+  }
+  return null;
+}
+
+function applyPublicationInstructionOverrides(
+  profile: NormalizedAiGenerationProfile,
+  instruction: string | undefined,
+): NormalizedAiGenerationProfile {
+  const language = detectPublicationInstructionLanguage(instruction);
+  const length = detectPublicationInstructionLength(instruction);
+  const emojiLevel = detectPublicationInstructionEmojiLevel(instruction);
+  if (!language && !length && !emojiLevel) return profile;
+
+  return {
+    ...profile,
+    preferences: {
+      ...profile.preferences,
+      ...(language ? { language } : {}),
+      ...(length ? { length } : {}),
+      ...(emojiLevel ? { emojiLevel } : {}),
+    },
+  };
 }
 
 export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPostsArgs): Promise<GenerateSharedBoosterPostsResult> {
@@ -1021,11 +1152,18 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
       context: compactPromptContext(args.extraInstructions),
     },
   });
+  const instructionAdjustedGenerationProfile =
+    applyPublicationInstructionOverrides(
+      baseGenerationProfile,
+      args.publicationInstruction,
+    );
   // Étape 7 : une seule graine créative par opération. Le primaire et l'unique
   // réparation ciblée partagent exactement le même angle discret.
   const operationHiddenAngle =
     args.hiddenAngle ||
-    pickBoosterHiddenAngle(baseGenerationProfile.preferences.preferredAngle);
+    pickBoosterHiddenAngle(
+      instructionAdjustedGenerationProfile.preferences.preferredAngle,
+    );
 
   const channels = Array.from(new Set(args.channels)).filter(
     (channel): channel is BoosterChannels => allowedChannels.includes(channel),
@@ -1052,13 +1190,13 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
   });
 
   const generationProfile: NormalizedAiGenerationProfile = {
-    ...baseGenerationProfile,
+    ...instructionAdjustedGenerationProfile,
     request: {
-      ...baseGenerationProfile.request,
+      ...instructionAdjustedGenerationProfile.request,
       media: {
-        ...baseGenerationProfile.request.media,
+        ...instructionAdjustedGenerationProfile.request.media,
         hasVisualContext:
-          baseGenerationProfile.request.media.hasVisualContext ||
+          instructionAdjustedGenerationProfile.request.media.hasVisualContext ||
           preparedMedia.visionAnalysisAvailable,
         context: compactPromptContext(preparedMedia.writerContext),
       },
@@ -1079,6 +1217,7 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
   const languageCode = generationProfile.preferences.language;
   const ideaKeywords = extractIdeaKeywords(args.idea);
   const recoveredChannels = new Set<BoosterChannels>();
+  let aiFallback: AiGenerationFallbackInfo | undefined;
   let initialGenerationError: unknown = null;
 
   // V2 Étape 3 : 1 appel principal quel que soit le nombre de canaux sélectionnés.
@@ -1087,6 +1226,7 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
   try {
     const out = await generateVersions({
       idea: args.idea,
+      publicationInstruction: args.publicationInstruction,
       theme: args.theme,
       style,
       channels,
@@ -1103,6 +1243,7 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
       deadlineAt: operationDeadlineAt,
       mode: "primary",
     });
+    aiFallback = getAiGenerationFallbackInfo(out) || aiFallback;
     rawVersions = out?.versions && typeof out.versions === "object" ? out.versions : {};
   } catch (error) {
     initialGenerationError = error;
@@ -1157,6 +1298,8 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
     advisoryChannels: advisoryChannels.length,
     qualityIssueCounts,
     primarySucceeded: !initialGenerationError,
+    aiFallbackStage: aiFallback?.stage,
+    aiFallbackModel: aiFallback?.finalModel,
   });
 
   // Une seule réparation ciblée, regroupée dans un unique appel. Jamais de boucle
@@ -1168,6 +1311,7 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
         issues: repairIssues,
         versions: safeVersions,
         idea: args.idea,
+        publicationInstruction: args.publicationInstruction,
         theme: args.theme,
         style,
         profile: args.profile,
@@ -1183,7 +1327,8 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
         budget,
         deadlineAt: operationDeadlineAt,
       });
-      repaired.forEach((channel) => recoveredChannels.add(channel));
+      aiFallback = repaired.aiFallback || aiFallback;
+      repaired.recoveredChannels.forEach((channel) => recoveredChannels.add(channel));
     } catch (error) {
       logGenerationAttemptFailure({
         stage: "targeted-repair-once",
@@ -1252,10 +1397,13 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
     mediaCount: baseGenerationProfile.request.media.count,
     language: generationProfile.preferences.language,
     creativity: generationProfile.preferences.creativity,
+    aiFallbackStage: aiFallback?.stage,
+    aiFallbackModel: aiFallback?.finalModel,
   });
 
   return {
     versions: safeVersions,
     recoveredChannels: Array.from(recoveredChannels),
+    ...(aiFallback ? { aiFallback } : {}),
   };
 }

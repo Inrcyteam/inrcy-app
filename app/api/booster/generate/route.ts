@@ -24,6 +24,7 @@ export const maxDuration = 120;
 
 type Payload = {
   idea?: string;
+  publicationInstruction?: string;
   theme?: BoosterTheme;
   style?: BoosterStyle;
   channels?: BoosterChannels[];
@@ -349,6 +350,12 @@ const handler = async (req: Request) => {
 
     const body = (await req.json().catch(() => ({}))) as Payload;
     const idea = (body?.idea || "").trim();
+    const publicationInstruction = String(
+      body?.publicationInstruction || "",
+    )
+      .replace(/\u0000/g, "")
+      .trim()
+      .slice(0, 4_000);
     if (!idea) {
       return NextResponse.json({ error: "Idée manquante." }, { status: 400 });
     }
@@ -421,8 +428,9 @@ const handler = async (req: Request) => {
       supabase,
       userId,
     );
-    const { versions, recoveredChannels } = await generateSharedBoosterPosts({
+    const { versions, recoveredChannels, aiFallback } = await generateSharedBoosterPosts({
       idea,
+      publicationInstruction,
       theme,
       style,
       channels,
@@ -445,6 +453,7 @@ const handler = async (req: Request) => {
     return NextResponse.json({
       versions,
       recoveredChannels,
+      ...(aiFallback ? { aiFallback } : {}),
     });
   } catch (e: unknown) {
     await rollbackAiCredits(quotaReservation);

@@ -570,6 +570,7 @@ export default function PublishModal({
   >(null);
   const [saving, setSaving] = useState(false);
   const [idea, setIdea] = useState("");
+  const [publicationInstruction, setPublicationInstruction] = useState("");
   const [theme, setTheme] = useState<ThemeKey>("");
   const [contentStyle, setContentStyle] = useState<StyleKey>("equilibre");
   const [generating, setGenerating] = useState(false);
@@ -581,6 +582,7 @@ export default function PublishModal({
     null,
   );
   const [genError, setGenError] = useState("");
+  const [generationNotice, setGenerationNotice] = useState("");
   const [publishError, setPublishError] = useState("");
   const [draftSaving, setDraftSaving] = useState(false);
   const [draftMessage, setDraftMessage] = useState("");
@@ -1530,7 +1532,11 @@ export default function PublishModal({
   ]);
 
   const hasDraftablePublicationContent = useMemo(() => {
-    const hasText = !!idea.trim() || !!theme || contentStyle !== "equilibre";
+    const hasText =
+      !!idea.trim() ||
+      !!publicationInstruction.trim() ||
+      !!theme ||
+      contentStyle !== "equilibre";
     const hasGeneratedContent = Object.values(postsByChannel).some((post) => {
       const normalized = normalizePost(post);
       return !!(
@@ -1557,6 +1563,7 @@ export default function PublishModal({
     videoAdaptationModeByChannel,
     videoSettingsByChannel,
     idea,
+    publicationInstruction,
     theme,
     contentStyle,
     postsByChannel,
@@ -1591,6 +1598,7 @@ export default function PublishModal({
       videoAdaptationModeByChannel,
       videoSettingsByChannel,
       idea: idea.trim(),
+      publicationInstruction: publicationInstruction.trim(),
       theme,
       contentStyle,
       channels: selectedChannels,
@@ -1613,6 +1621,7 @@ export default function PublishModal({
     videoAdaptationModeByChannel,
     videoSettingsByChannel,
     idea,
+    publicationInstruction,
     theme,
     contentStyle,
     selectedChannels,
@@ -1852,6 +1861,9 @@ export default function PublishModal({
         if (cancelled) return;
 
         const nextIdea = String(payload.idea || "");
+        const nextPublicationInstruction = String(
+          payload.publicationInstruction || "",
+        );
         const nextInstagramHashtags =
           String(payload.instagramHashtagsInput || "") ||
           (Array.isArray((nextPostsByChannel as any)?.instagram?.hashtags)
@@ -1865,6 +1877,7 @@ export default function PublishModal({
         ).trim();
 
         setIdea(nextIdea);
+        setPublicationInstruction(nextPublicationInstruction);
         setTheme(nextTheme);
         setContentStyle(nextContentStyle);
         setChannels(nextChannels);
@@ -1927,6 +1940,7 @@ export default function PublishModal({
               nextCanonicalVideoAdaptationModeByChannel,
             videoSettingsByChannel: nextCanonicalVideoSettingsByChannel,
             idea: nextIdea.trim(),
+            publicationInstruction: nextPublicationInstruction.trim(),
             theme: nextTheme,
             contentStyle: nextContentStyle,
             channels: selectedDraftChannels,
@@ -2051,12 +2065,14 @@ export default function PublishModal({
 
   const clearPublicationWork = () => {
     setIdea("");
+    setPublicationInstruction("");
     setTheme("");
     setContentStyle("equilibre");
     setPostsByChannel({});
     setInstagramHashtagsInput("");
     closeEmptyContentWarnings();
     setGenError("");
+    setGenerationNotice("");
     setDuplicateFeedback(null);
     setDraftMessage("");
     setLastPublicationDraftSnapshot(null);
@@ -2081,6 +2097,7 @@ export default function PublishModal({
   const onGenerate = async () => {
     if (generating) return;
     setGenError("");
+    setGenerationNotice("");
 
     const trimmed = idea.trim();
     if (!selectedChannels.length) {
@@ -2247,6 +2264,7 @@ export default function PublishModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           idea: trimmed,
+          publicationInstruction: publicationInstruction.trim(),
           theme,
           style: contentStyle,
           channels: selectedForGeneration,
@@ -2285,6 +2303,22 @@ export default function PublishModal({
 
       const versions = json?.versions || {};
       setPostsByChannel(sanitizePostsForEditor(versions));
+      const aiFallback = json?.aiFallback;
+      if (aiFallback?.used) {
+        const primaryLabel = String(
+          aiFallback.primaryEngineLabel || "Le moteur sélectionné",
+        ).trim();
+        const finalLabel = String(
+          aiFallback.finalEngineLabel || "ChatGPT",
+        ).trim();
+        const transportLabel =
+          aiFallback.transport === "openai_direct"
+            ? "via la connexion OpenAI de secours"
+            : "via le moteur de secours";
+        setGenerationNotice(
+          `${primaryLabel} était temporairement indisponible. Le contenu a été généré avec ${finalLabel} ${transportLabel}.`,
+        );
+      }
       didGenerate = true;
     } catch {
       setGenError(
@@ -3322,6 +3356,7 @@ export default function PublishModal({
             preview: firstContent || idea.trim() || channelLabels,
             content: firstContent || "",
             idea: idea.trim(),
+            publicationInstruction: publicationInstruction.trim(),
             theme,
             contentStyle,
             channel: channelLabels,
@@ -4345,6 +4380,8 @@ export default function PublishModal({
         theme={theme}
         idea={idea}
         setIdea={setIdea}
+        publicationInstruction={publicationInstruction}
+        setPublicationInstruction={setPublicationInstruction}
         fileInputRef={fileInputRef}
         videoInputRef={videoInputRef}
         onImagesChange={onImagesChange}
@@ -4367,6 +4404,7 @@ export default function PublishModal({
         setUseImagesForAI={setUseImagesForAI}
         imgError={imgError}
         genError={genError}
+        generationNotice={generationNotice}
         generating={generating}
         generationStage={generationStage}
         generationProgress={generationProgress}
