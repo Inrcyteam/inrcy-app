@@ -103,7 +103,30 @@ export default function PublishChannelSelector({
           marginBottom: 8,
         }}
       >
-        <div className={styles.blockTitle}>Canaux</div>
+        <div
+          className={styles.blockTitle}
+          style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
+        >
+          <span
+            aria-hidden="true"
+            style={{
+              width: 24,
+              height: 24,
+              borderRadius: 999,
+              display: "inline-grid",
+              placeItems: "center",
+              border: "1px solid rgba(76,195,255,0.38)",
+              background: "rgba(76,195,255,0.12)",
+              color: "#dff6ff",
+              fontSize: 12,
+              fontWeight: 950,
+              flex: "0 0 auto",
+            }}
+          >
+            1
+          </span>
+          Canaux
+        </div>
         <button
           type="button"
           aria-label={bulkLabel}

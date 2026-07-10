@@ -241,6 +241,7 @@ type PublishIntentPanelProps = {
   generationProgress: number;
   onGenerate: () => void;
   onReset: () => void;
+  onCreateManually: () => void;
   onOpenAiConfiguration: () => void;
 };
 
@@ -280,6 +281,7 @@ export default function PublishIntentPanel({
   generationProgress,
   onGenerate,
   onReset,
+  onCreateManually,
   onOpenAiConfiguration,
 }: PublishIntentPanelProps) {
   const [voiceState, setVoiceState] = useState<VoiceState>("idle");
@@ -960,7 +962,30 @@ export default function PublishIntentPanel({
           flexWrap: "wrap",
         }}
       >
-        <div className={styles.blockTitle}>Votre intention</div>
+        <div
+          className={styles.blockTitle}
+          style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
+        >
+          <span
+            aria-hidden="true"
+            style={{
+              width: 24,
+              height: 24,
+              borderRadius: 999,
+              display: "inline-grid",
+              placeItems: "center",
+              border: "1px solid rgba(76,195,255,0.38)",
+              background: "rgba(76,195,255,0.12)",
+              color: "#dff6ff",
+              fontSize: 12,
+              fontWeight: 950,
+              flex: "0 0 auto",
+            }}
+          >
+            2
+          </span>
+          Votre intention
+        </div>
       </div>
       <div
         className={styles.subtitle}
@@ -985,7 +1010,7 @@ export default function PublishIntentPanel({
         >
           {renderIntentField({
             target: "idea",
-            label: "Sujet de la publication — obligatoire",
+            label: "Sujet de la publication — obligatoire pour l’IA",
             helper: "Le thème et les faits à traiter dans cette actualité.",
             placeholder:
               THEME_PLACEHOLDERS[theme] || THEME_PLACEHOLDERS[""],
@@ -1467,6 +1492,18 @@ export default function PublishIntentPanel({
               onClick={onReset}
             >
               Réinitialiser
+            </button>
+            <button
+              type="button"
+              className={styles.secondaryBtn}
+              onClick={onCreateManually}
+              disabled={generationDisabled}
+              style={{
+                opacity: generationDisabled ? 0.6 : 1,
+                cursor: generationDisabled ? "wait" : "pointer",
+              }}
+            >
+              Créer manuellement
             </button>
           </div>
           {generating ? (

@@ -59,7 +59,33 @@ export default function PublishPreviewPanel({
         }}
       >
         <div style={{ minWidth: 0, width: isMobile ? "100%" : undefined }}>
-          <div className={styles.blockTitle} style={{ marginBottom: 4 }}>
+          <div
+            className={styles.blockTitle}
+            style={{
+              marginBottom: 4,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+            }}
+          >
+            <span
+              aria-hidden="true"
+              style={{
+                width: 24,
+                height: 24,
+                borderRadius: 999,
+                display: "inline-grid",
+                placeItems: "center",
+                border: "1px solid rgba(76,195,255,0.38)",
+                background: "rgba(76,195,255,0.12)",
+                color: "#dff6ff",
+                fontSize: 12,
+                fontWeight: 950,
+                flex: "0 0 auto",
+              }}
+            >
+              5
+            </span>
             Aperçu
           </div>
           <div

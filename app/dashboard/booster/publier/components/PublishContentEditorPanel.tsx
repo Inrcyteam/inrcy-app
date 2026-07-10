@@ -109,7 +109,33 @@ export default function PublishContentEditorPanel({
       className={styles.blockCard}
       style={{ minWidth: 0, maxWidth: "100%", boxSizing: "border-box" }}
     >
-      <div className={styles.blockTitle} style={{ marginBottom: 8 }}>
+      <div
+        className={styles.blockTitle}
+        style={{
+          marginBottom: 8,
+          display: "inline-flex",
+          alignItems: "center",
+          gap: 8,
+        }}
+      >
+        <span
+          aria-hidden="true"
+          style={{
+            width: 24,
+            height: 24,
+            borderRadius: 999,
+            display: "inline-grid",
+            placeItems: "center",
+            border: "1px solid rgba(76,195,255,0.38)",
+            background: "rgba(76,195,255,0.12)",
+            color: "#dff6ff",
+            fontSize: 12,
+            fontWeight: 950,
+            flex: "0 0 auto",
+          }}
+        >
+          3
+        </span>
         Contenus par canal
       </div>
       <div

@@ -597,6 +597,7 @@ export default function PublishModal({
   const [postsByChannel, setPostsByChannel] = useState<
     Partial<Record<ChannelKey, ChannelPost>>
   >({});
+  const [contentWorkspaceOpen, setContentWorkspaceOpen] = useState(false);
   const [activeCard, setActiveCard] = useState<DisplayKey>("inrcy_site");
   const [isMobile, setIsMobile] = useState(false);
   const [drawerViewportHeight, setDrawerViewportHeight] = useState<
@@ -702,6 +703,7 @@ export default function PublishModal({
   const publishAreaRef = useRef<HTMLDivElement | null>(null);
   const contentTextAreaRef = useRef<HTMLTextAreaElement | null>(null);
   const siteContentEditorRef = useRef<HTMLDivElement | null>(null);
+  const contentWorkspaceRef = useRef<HTMLDivElement | null>(null);
   const publishPulseTimerRef = useRef<number | null>(null);
   const publishPulseProgressRef = useRef(0);
   const [isDraggingImage, setIsDraggingImage] = useState(false);
@@ -1531,6 +1533,24 @@ export default function PublishModal({
     images.length,
   ]);
 
+  const hasWrittenChannelContent = useMemo(
+    () =>
+      (
+        Object.values(postsByChannel) as Array<ChannelPost | undefined>
+      ).some((post) => {
+        const normalized = normalizePost(post);
+        return Boolean(
+          String(normalized.title || "").trim() ||
+            String(normalized.content || "").trim(),
+        );
+      }),
+    [postsByChannel],
+  );
+
+  useEffect(() => {
+    if (hasWrittenChannelContent) setContentWorkspaceOpen(true);
+  }, [hasWrittenChannelContent]);
+
   const hasDraftablePublicationContent = useMemo(() => {
     const hasText =
       !!idea.trim() ||
@@ -2078,6 +2098,9 @@ export default function PublishModal({
     setLastPublicationDraftSnapshot(null);
     setFinalReviewOpen(false);
     setFinalReviewPosts(null);
+    setContentWorkspaceOpen(false);
+    setShowPublicationPreview(false);
+    setIsImageEditorOpen(false);
     clearImagesMedia();
     clearVideoMedia({ cleanupStorage: true, reason: "reset-publication" });
     setPublicationMediaType("images");
@@ -2094,6 +2117,32 @@ export default function PublishModal({
     clearPublicationWork();
   };
 
+  const scrollToContentWorkspace = () => {
+    if (typeof window === "undefined") return;
+    window.setTimeout(() => {
+      contentWorkspaceRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 100);
+  };
+
+  const onCreateManually = () => {
+    if (generating) return;
+    setGenError("");
+    setGenerationNotice("");
+    if (!selectedChannels.length) {
+      setGenError(
+        "Veuillez sélectionner au moins 1 canal avant de créer le contenu manuellement.",
+      );
+      return;
+    }
+
+    setContentWorkspaceOpen(true);
+    setSynchronizedActiveChannel(selectedChannels[0]);
+    scrollToContentWorkspace();
+  };
+
   const onGenerate = async () => {
     if (generating) return;
     setGenError("");
@@ -2107,6 +2156,19 @@ export default function PublishModal({
     if (!trimmed) {
       setGenError("Écrivez une phrase (ex : chantier terminé...).");
       return;
+    }
+
+    if (hasWrittenChannelContent) {
+      const confirmed = await confirmInrcy({
+        eyebrow: "Contenus déjà présents",
+        title: "Générer de nouveaux contenus ?",
+        message:
+          "Les textes déjà saisis ou générés seront remplacés par les nouveaux contenus créés par iNrCy.",
+        cancelLabel: "Conserver mes textes",
+        confirmLabel: "Générer et remplacer",
+        variant: "warning",
+      });
+      if (!confirmed) return;
     }
 
     const shouldUseImagesForAI = images.length > 0 && useImagesForAI;
@@ -2303,6 +2365,11 @@ export default function PublishModal({
 
       const versions = json?.versions || {};
       setPostsByChannel(sanitizePostsForEditor(versions));
+      setContentWorkspaceOpen(true);
+      if (selectedForGeneration.length) {
+        setSynchronizedActiveChannel(selectedForGeneration[0]);
+      }
+      scrollToContentWorkspace();
       const aiFallback = json?.aiFallback;
       if (aiFallback?.used) {
         const primaryLabel = String(
@@ -4410,90 +4477,98 @@ export default function PublishModal({
         generationProgress={generationProgress}
         onGenerate={onGenerate}
         onReset={onReset}
+        onCreateManually={onCreateManually}
         onOpenAiConfiguration={() => setAiConfigurationOpen(true)}
       />
 
-      <PublishContentEditorPanel
-        styles={styles}
-        isMobile={isMobile}
-        displayCards={displayCards}
-        activeCard={activeCard}
-        setSynchronizedActiveChannel={setSynchronizedActiveChannel}
-        getDisplayPost={getDisplayPost}
-        updatePost={updatePost}
-        applySiteContentFormat={applySiteContentFormat}
-        siteContentEditorRef={siteContentEditorRef}
-        contentTextAreaRef={contentTextAreaRef}
-        ctaDefaults={ctaDefaults}
-        applyPreferredCtaPrefill={applyPreferredCtaPrefill}
-        instagramHashtagsInput={instagramHashtagsInput}
-        setInstagramHashtagsInput={setInstagramHashtagsInput}
-        getLiveInstagramHashtags={getLiveInstagramHashtags}
-        duplicateFeedback={duplicateFeedback}
-        onDuplicateContentToAllChannels={onDuplicateContentToAllChannels}
-        pinterestBoards={pinterestBoards}
-        pinterestBoardId={pinterestBoardId}
-        pinterestBoardsLoading={pinterestBoardsLoading}
-        pinterestBoardsError={pinterestBoardsError}
-        onPinterestBoardChange={onPinterestBoardChange}
-      />
+      {contentWorkspaceOpen ? (
+        <>
+          <div
+            ref={contentWorkspaceRef}
+            style={{ display: "grid", gap: 12, minWidth: 0 }}
+          >
+            <PublishContentEditorPanel
+              styles={styles}
+              isMobile={isMobile}
+              displayCards={displayCards}
+              activeCard={activeCard}
+              setSynchronizedActiveChannel={setSynchronizedActiveChannel}
+              getDisplayPost={getDisplayPost}
+              updatePost={updatePost}
+              applySiteContentFormat={applySiteContentFormat}
+              siteContentEditorRef={siteContentEditorRef}
+              contentTextAreaRef={contentTextAreaRef}
+              ctaDefaults={ctaDefaults}
+              applyPreferredCtaPrefill={applyPreferredCtaPrefill}
+              instagramHashtagsInput={instagramHashtagsInput}
+              setInstagramHashtagsInput={setInstagramHashtagsInput}
+              getLiveInstagramHashtags={getLiveInstagramHashtags}
+              duplicateFeedback={duplicateFeedback}
+              onDuplicateContentToAllChannels={onDuplicateContentToAllChannels}
+              pinterestBoards={pinterestBoards}
+              pinterestBoardId={pinterestBoardId}
+              pinterestBoardsLoading={pinterestBoardsLoading}
+              pinterestBoardsError={pinterestBoardsError}
+              onPinterestBoardChange={onPinterestBoardChange}
+            />
 
-      <PublishImagesPanel
-        styles={styles}
-        isMobile={isMobile}
-        publicationMediaType={publicationMediaType}
-        channelMediaModes={channelMediaModes}
-        setChannelMediaMode={setChannelMediaMode}
-        videoFormatByChannel={videoFormatByChannel}
-        setVideoFormatForChannel={setVideoFormatForChannel}
-        videoAdaptationModeByChannel={videoAdaptationModeByChannel}
-        setVideoAdaptationModeForChannel={setVideoAdaptationModeForChannel}
-        images={images}
-        videoFile={videoFile}
-        videoPreviewUrl={videoPreviewUrl}
-        videoDurationSeconds={videoDurationSeconds}
-        videoSourceMetadata={videoSourceMetadata}
-        videoVariantPreparationByChannel={videoVariantPreparationByChannel}
-        videoTransformedVariants={videoTransformedVariants}
-        videoPreviewVariantsPreparing={videoPreviewVariantsPreparing}
-        onApplyVideoFormatForChannel={applyVideoFormatForChannel}
-        onApplyVideoFormatToAllChannels={applyVideoFormatToAllChannels}
-        imgError={imgError}
-        selectedChannels={selectedChannels}
-        activeImageChannel={activeImageChannel}
-        imageAdapterTabs={imageAdapterTabs}
-        imageKeys={imageKeys}
-        channelImageEditors={channelImageEditors}
-        imageMetaByKey={imageMetaByKey}
-        previewByKey={previewByKey}
-        previewAspectRatio={previewAspectRatio}
-        getImageAdapterLabel={getImageAdapterLabel}
-        setSynchronizedActiveChannel={setSynchronizedActiveChannel}
-        onPickImagesClick={onPickImagesClick}
-        onPickVideoClick={onPickVideoClick}
-        onTakePhotoClick={onTakePhotoClick}
-        onImagesChange={onImagesChange}
-        gmbFileInputRef={gmbFileInputRef}
-        setImgError={setImgError}
-        toggleChannelImage={toggleChannelImage}
-        openImageEditor={openImageEditor}
-        resetChannelImage={resetChannelImage}
-        removeImage={removeImage}
-        moveChannelImage={moveChannelImage}
-      />
+            <PublishImagesPanel
+              styles={styles}
+              isMobile={isMobile}
+              publicationMediaType={publicationMediaType}
+              channelMediaModes={channelMediaModes}
+              setChannelMediaMode={setChannelMediaMode}
+              videoFormatByChannel={videoFormatByChannel}
+              setVideoFormatForChannel={setVideoFormatForChannel}
+              videoAdaptationModeByChannel={videoAdaptationModeByChannel}
+              setVideoAdaptationModeForChannel={setVideoAdaptationModeForChannel}
+              images={images}
+              videoFile={videoFile}
+              videoPreviewUrl={videoPreviewUrl}
+              videoDurationSeconds={videoDurationSeconds}
+              videoSourceMetadata={videoSourceMetadata}
+              videoVariantPreparationByChannel={videoVariantPreparationByChannel}
+              videoTransformedVariants={videoTransformedVariants}
+              videoPreviewVariantsPreparing={videoPreviewVariantsPreparing}
+              onApplyVideoFormatForChannel={applyVideoFormatForChannel}
+              onApplyVideoFormatToAllChannels={applyVideoFormatToAllChannels}
+              imgError={imgError}
+              selectedChannels={selectedChannels}
+              activeImageChannel={activeImageChannel}
+              imageAdapterTabs={imageAdapterTabs}
+              imageKeys={imageKeys}
+              channelImageEditors={channelImageEditors}
+              imageMetaByKey={imageMetaByKey}
+              previewByKey={previewByKey}
+              previewAspectRatio={previewAspectRatio}
+              getImageAdapterLabel={getImageAdapterLabel}
+              setSynchronizedActiveChannel={setSynchronizedActiveChannel}
+              onPickImagesClick={onPickImagesClick}
+              onPickVideoClick={onPickVideoClick}
+              onTakePhotoClick={onTakePhotoClick}
+              onImagesChange={onImagesChange}
+              gmbFileInputRef={gmbFileInputRef}
+              setImgError={setImgError}
+              toggleChannelImage={toggleChannelImage}
+              openImageEditor={openImageEditor}
+              resetChannelImage={resetChannelImage}
+              removeImage={removeImage}
+              moveChannelImage={moveChannelImage}
+            />
 
-      <PublishPreviewPanel
-        styles={styles}
-        isMobile={isMobile}
-        activePublicationPreview={activePublicationPreview}
-        previewReadinessTabs={previewReadinessTabs}
-        activeImageChannel={activeImageChannel}
-        showPublicationPreview={showPublicationPreview}
-        setShowPublicationPreview={setShowPublicationPreview}
-        setSynchronizedActiveChannel={setSynchronizedActiveChannel}
-      />
+            <PublishPreviewPanel
+              styles={styles}
+              isMobile={isMobile}
+              activePublicationPreview={activePublicationPreview}
+              previewReadinessTabs={previewReadinessTabs}
+              activeImageChannel={activeImageChannel}
+              showPublicationPreview={showPublicationPreview}
+              setShowPublicationPreview={setShowPublicationPreview}
+              setSynchronizedActiveChannel={setSynchronizedActiveChannel}
+            />
+          </div>
 
-      <ChannelImageAdapterModal
+          <ChannelImageAdapterModal
         open={!!(isImageEditorOpen && activeEditorImageKey)}
         title={`Adapter Image ${(imageKeys.indexOf(activeEditorImageKey || "") || 0) + 1}`}
         subtitle={`${getImageAdapterLabel(activeImageChannel)} • ${activeEditorDecisionLabel}`}
@@ -4623,20 +4698,22 @@ export default function PublishModal({
               })),
           };
         })}
-      />
+          />
 
-      <PublishFooterActions
-        styles={styles}
-        publishAreaRef={publishAreaRef}
-        saving={saving}
-        scheduling={scheduleSaving}
-        draftSaving={draftSaving}
-        publishProgress={publishProgress}
-        publishProgressLabel={publishProgressLabel}
-        publishError={publishError}
-        onPublish={onPublish}
-        onSchedule={openSchedulePublicationModal}
-      />
+          <PublishFooterActions
+            styles={styles}
+            publishAreaRef={publishAreaRef}
+            saving={saving}
+            scheduling={scheduleSaving}
+            draftSaving={draftSaving}
+            publishProgress={publishProgress}
+            publishProgressLabel={publishProgressLabel}
+            publishError={publishError}
+            onPublish={onPublish}
+            onSchedule={openSchedulePublicationModal}
+          />
+        </>
+      ) : null}
     </div>
   );
 }
