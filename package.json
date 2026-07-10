@@ -26,8 +26,12 @@
     "test:ai-gateway": "node --test --experimental-strip-types tests/ai-gateway/*.test.mts",
     "qa:ai-gateway": "npm run audit:ai-gateway && npm run test:ai-gateway && npm run typecheck",
     "verify:ai-gateway-catalog": "node scripts/verify-ai-gateway-catalog.mjs",
-    "qa:ai-gateway:live": "node scripts/qa-ai-gateway-live.mjs",
-    "qa:ai-gateway:final": "npm run audit:ai-gateway && npm run test:ai-gateway && npm run typecheck && npm run verify:ai-gateway-catalog"
+    "qa:ai-gateway:live": "node scripts/qa-ai-gateway-live.mjs --mode=smoke",
+    "qa:ai-gateway:final": "npm run audit:ai-gateway && npm run test:ai-gateway && npm run typecheck && npm run verify:ai-gateway-catalog",
+    "qa:ai-gateway:matrix": "node scripts/qa-ai-gateway-live.mjs --mode=matrix",
+    "qa:ai-gateway:full": "node scripts/qa-ai-gateway-live.mjs --mode=full",
+    "qa:ai-gateway:calibrate": "node scripts/calibrate-ai-engines.mjs",
+    "qa:ai-gateway:certify": "node scripts/qa-ai-gateway-live.mjs --mode=certify"
   },
   "dependencies": {
     "@sentry/nextjs": "^10.39.0",
@@ -38,19 +42,16 @@
     "html2canvas": "^1.4.1",
     "imapflow": "^1.2.9",
     "jspdf": "^4.0.0",
-    "mailparser": "^3.9.3",
     "next": "^16.1.6",
     "nodemailer": "^6.10.1",
     "react": "19.2.3",
     "react-dom": "19.2.3",
     "sharp": "^0.34.4",
-    "ffmpeg-static": "^5.2.0",
-    "fluent-ffmpeg": "^2.1.3"
+    "ffmpeg-static": "^5.2.0"
   },
   "devDependencies": {
     "@playwright/test": "^1.50.1",
     "@tailwindcss/postcss": "^4",
-    "@types/mailparser": "^3.4.6",
     "@types/node": "^20",
     "@types/nodemailer": "^7.0.9",
     "@types/react": "^19",

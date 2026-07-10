@@ -3,9 +3,12 @@ import { resolveInrAgentActionRequest } from "@/lib/inrAgentRequest";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { enforceRateLimit } from "@/lib/rateLimit";
 import {
+  commitAiCredits,
   computeBoosterAiCredits,
-  consumeAiCredits,
+  reserveAiCredits,
+  rollbackAiCredits,
   isAdminUserForAi,
+  type AiCreditReservation,
 } from "@/lib/aiUsageQuota";
 import {
   type BoosterChannels,
@@ -30,7 +33,10 @@ import {
   type InrAgentValidationMode,
 } from "@/lib/inrAgentSettings";
 import { rowToInrAgentAction } from "@/lib/inrAgentActions";
-import { generateSharedBoosterPosts } from "@/lib/boosterPublishGeneration";
+import {
+  generateSharedBoosterPosts,
+  type BoosterAiImage,
+} from "@/lib/boosterPublishGeneration";
 
 export const maxDuration = 120;
 export const runtime = "nodejs";
@@ -728,6 +734,81 @@ function cleanHashtags(channel: BoosterChannels, input: unknown) {
     : [];
 }
 
+const AGENT_AI_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
+const AGENT_AI_IMAGE_FETCH_TIMEOUT_MS = 12_000;
+
+async function prepareAgentSelectedImageForAI(
+  media: ImageBankAsset | null,
+): Promise<BoosterAiImage[]> {
+  const mediaKind = media?.mediaType || media?.kind || "image";
+  const sourceUrl = cleanText(media?.url, 4_000);
+  if (!media || mediaKind !== "image" || !sourceUrl) return [];
+
+  if (/^data:image\//i.test(sourceUrl)) {
+    return [{ dataUrl: sourceUrl, detail: "low" }];
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), AGENT_AI_IMAGE_FETCH_TIMEOUT_MS);
+  try {
+    const response = await fetch(sourceUrl, { signal: controller.signal });
+    if (!response.ok) throw new Error(`image_download_${response.status}`);
+
+    const declaredLength = Number(response.headers.get("content-length") || 0);
+    if (Number.isFinite(declaredLength) && declaredLength > AGENT_AI_IMAGE_MAX_BYTES) {
+      throw new Error("image_too_large");
+    }
+
+    const mimeType = cleanText(
+      response.headers.get("content-type") || media.mimeType || "image/jpeg",
+      120,
+    ).split(";")[0] || "image/jpeg";
+    if (!mimeType.startsWith("image/")) throw new Error("invalid_image_mime");
+
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (!buffer.length || buffer.length > AGENT_AI_IMAGE_MAX_BYTES) {
+      throw new Error(buffer.length ? "image_too_large" : "image_empty");
+    }
+
+    return [{
+      dataUrl: `data:${mimeType};base64,${buffer.toString("base64")}`,
+      detail: "low",
+    }];
+  } catch (error) {
+    console.warn("[inr-agent] selected image unavailable for AI understanding", {
+      mediaId: media.id || undefined,
+      source: media.librarySource || media.source || undefined,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return [];
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function buildAgentSelectedMediaContext(
+  media: ImageBankAsset | null,
+  aiImageAvailable: boolean,
+) {
+  if (!media) return "";
+  const mediaKind = media.mediaType || media.kind || "image";
+  const metadata = [
+    media.title ? `titre interne: ${cleanText(media.title, 160)}` : "",
+    media.tags?.length ? `tags: ${cleanList(media.tags, 8, 60).join(", ")}` : "",
+    media.orientation ? `orientation: ${cleanText(media.orientation, 40)}` : "",
+  ].filter(Boolean);
+
+  return [
+    `MÉDIA SÉLECTIONNÉ PAR iNrAgent : ${mediaKind}.`,
+    metadata.length ? `Métadonnées internes factuelles : ${metadata.join(" | ")}.` : "",
+    mediaKind === "image"
+      ? aiImageAvailable
+        ? "L'image est effectivement transmise à l'analyse IA : utilise uniquement les éléments raisonnablement visibles, sans inventer."
+        : "L'image n'a pas pu être chargée pour analyse visuelle : n'invente aucun détail visuel à partir du seul nom du fichier."
+      : "La vidéo est jointe à l'action finale mais aucune observation visuelle non fournie ne doit être inventée.",
+  ].filter(Boolean).join("\n");
+}
+
 async function generateBoosterPosts(args: {
   idea: string;
   theme: BoosterTheme;
@@ -736,6 +817,8 @@ async function generateBoosterPosts(args: {
   business: JsonRecord | null;
   recentPublications: BoosterRecentPublication[];
   mediaType?: "images" | "video";
+  imagesForAI?: BoosterAiImage[];
+  mediaContext?: string;
   accountId: string;
 }) {
   const { versions, recoveredChannels } = await generateSharedBoosterPosts({
@@ -747,13 +830,17 @@ async function generateBoosterPosts(args: {
     business: args.business,
     recentPublications: args.recentPublications,
     mediaType: args.mediaType || "images",
+    imagesForAI: args.imagesForAI,
     forceNonBlocking: true,
     aiFeature: "agent.publish",
     accountId: args.accountId,
-    extraInstructions: `CONTEXTE iNrAgent : cette génération provient de l'automatisation Publier.
+    extraInstructions: [
+      `CONTEXTE iNrAgent : cette génération provient de l'automatisation Publier.
 Objectif : produire exactement la même logique éditoriale que Booster / Publier manuel, avec un contenu réellement adapté à chaque canal.
 Ne fournis jamais des copies entre canaux. Adapte réellement l'angle, la profondeur, le vocabulaire et le rythme, sans imposer artificiellement une structure différente à chaque version.
 Préserve la voix native du moteur IA choisi par l'établissement. Le titre et le contenu sont prioritaires ; un CTA séparé reste facultatif lorsqu'il serait artificiel.`,
+      args.mediaContext || "",
+    ].filter(Boolean).join("\n\n"),
   });
 
   return { versions, recoveredChannels };
@@ -1316,16 +1403,6 @@ export async function POST(request: Request) {
     );
   }
 
-  if (!isAdmin) {
-    const quotaLimited = await consumeAiCredits({
-      supabase,
-      userId: quotaAccountId,
-      action: "booster",
-      credits: computeBoosterAiCredits({ mediaType: "images" }),
-    });
-    if (quotaLimited) return quotaLimited;
-  }
-
   const { data: profileData } = await supabase
     .from("profiles")
     .select("*")
@@ -1452,6 +1529,18 @@ export async function POST(request: Request) {
   const mediaKind = media?.mediaType || media?.kind || "image";
   const image = media && mediaKind === "image" ? media : null;
   const video = media && mediaKind === "video" ? media : null;
+  const imagesForAI = await prepareAgentSelectedImageForAI(image);
+  const selectedMediaContext = buildAgentSelectedMediaContext(
+    media,
+    imagesForAI.length > 0,
+  );
+
+  console.info("[inr-agent] selected media AI routing", {
+    userId,
+    mediaId: media?.id || undefined,
+    mediaType: media ? mediaKind : "none",
+    imagesSentToGeneration: imagesForAI.length,
+  });
 
   // Même logique que Booster / Publier : l'absence de média ne bloque jamais
   // la préparation du texte. Les canaux compatibles restent prêts en texte seul,
@@ -1466,7 +1555,24 @@ export async function POST(request: Request) {
     ]),
   );
 
-  const { versions, recoveredChannels } = await generateBoosterPosts({
+  let quotaReservation: AiCreditReservation | null = null;
+  if (!isAdmin) {
+    const quota = await reserveAiCredits({
+      supabase,
+      userId: quotaAccountId,
+      action: "booster",
+      credits: computeBoosterAiCredits({
+        mediaType: mediaKind === "video" ? "video" : "images",
+        imagesForAI: image ? [image] : [],
+        videoForAI: video || undefined,
+      }),
+    });
+    if (quota.errorResponse) return quota.errorResponse;
+    quotaReservation = quota.reservation;
+  }
+
+  try {
+    const { versions, recoveredChannels } = await generateBoosterPosts({
     idea,
     theme: boosterTheme,
     channels,
@@ -1474,6 +1580,8 @@ export async function POST(request: Request) {
     business,
     recentPublications,
     mediaType: mediaKind === "video" ? "video" : "images",
+    imagesForAI,
+    mediaContext: selectedMediaContext,
     accountId: userId,
   });
 
@@ -1548,6 +1656,7 @@ export async function POST(request: Request) {
     .single();
 
   if (insertError) {
+    await rollbackAiCredits(quotaReservation);
     return NextResponse.json(
       {
         error: "Impossible d’enregistrer l’action préparée iNr’Agent.",
@@ -1591,10 +1700,15 @@ export async function POST(request: Request) {
     }
   }
 
-  return NextResponse.json({
-    action: rowToInrAgentAction(inserted as any),
-    prepared: true,
-  });
+    await commitAiCredits(quotaReservation);
+    return NextResponse.json({
+      action: rowToInrAgentAction(inserted as any),
+      prepared: true,
+    });
+  } catch (error) {
+    await rollbackAiCredits(quotaReservation);
+    throw error;
+  }
 }
 function channelMediaAdaptation(
   channel: BoosterChannels,

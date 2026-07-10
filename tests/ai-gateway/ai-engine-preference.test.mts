@@ -4,9 +4,7 @@ import assert from "node:assert/strict";
 import {
   AI_ENGINE_OPTIONS,
   DEFAULT_AI_PREFERRED_ENGINE,
-  getAiEngineJsonMode,
-  getAiEngineModel,
-  getAiEngineSupportsVision,
+  getAiEngineOption,
   getAiPreferredEngineFromBusiness,
   normalizeAiPreferredEngine,
   resolveAiEngineRequestRouting,
@@ -38,39 +36,32 @@ test("the eight selectable engines map to provider/model Gateway identifiers", (
 
   for (const option of AI_ENGINE_OPTIONS) {
     assert.match(option.model, /^[a-z0-9-]+\/[a-z0-9.-]+$/i);
-    assert.equal(getAiEngineModel(option.value), option.model);
+    assert.equal(getAiEngineOption(option.value).model, option.model);
   }
 });
 
 test("vision capability is explicit so image flows never select a text-only model blindly", () => {
-  assert.equal(getAiEngineSupportsVision("deepseek"), false);
+  assert.equal(getAiEngineOption("deepseek").supportsVision, false);
   for (const engine of ["openai", "anthropic", "google", "mistral", "xai", "perplexity", "meta"] as const) {
-    assert.equal(getAiEngineSupportsVision(engine), true);
+    assert.equal(getAiEngineOption(engine).supportsVision, true);
   }
 });
 
 test("prompt-only JSON compatibility is explicit for engines with heterogeneous provider support", () => {
-  assert.equal(getAiEngineJsonMode("perplexity"), "prompt-only");
-  assert.equal(getAiEngineJsonMode("deepseek"), "prompt-only");
-  assert.equal(getAiEngineJsonMode("meta"), "prompt-only");
-  assert.equal(getAiEngineJsonMode("openai"), "strict");
+  assert.equal(getAiEngineOption("perplexity").jsonMode, "prompt-only");
+  assert.equal(getAiEngineOption("deepseek").jsonMode, "prompt-only");
+  assert.equal(getAiEngineOption("meta").jsonMode, "prompt-only");
+  assert.equal(getAiEngineOption("openai").jsonMode, "strict");
 });
 
 
-test("DeepSeek image requests are routed through a compatible vision fallback", () => {
+test("DeepSeek keeps the selected author and requires a neutral vision prepass", () => {
   assert.deepEqual(resolveAiEngineRequestRouting("deepseek", false), {
     model: "deepseek/deepseek-v3.2",
     jsonMode: "prompt-only",
-    usedVisionFallback: false,
   });
-  assert.deepEqual(resolveAiEngineRequestRouting("deepseek", true), {
-    model: "google/gemini-2.5-flash-lite",
-    jsonMode: "strict",
-    usedVisionFallback: true,
-  });
-  assert.deepEqual(resolveAiEngineRequestRouting("deepseek", true, "openai/gpt-4o-mini"), {
-    model: "openai/gpt-4o-mini",
-    jsonMode: "strict",
-    usedVisionFallback: true,
-  });
+  assert.throws(
+    () => resolveAiEngineRequestRouting("deepseek", true),
+    /préanalyse visuelle neutre/i,
+  );
 });

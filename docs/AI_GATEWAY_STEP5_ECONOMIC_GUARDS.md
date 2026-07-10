@@ -81,17 +81,16 @@ Les compteurs sont agrégés dans Upstash par établissement, jour, mois, featur
 
 ## 6. Quotas crédits multicompte
 
-Les quotas existants restent par défaut :
+Les quotas produit actifs sont par défaut :
 
-- 60 crédits / jour ;
-- 200 / semaine ;
-- 500 / mois.
+- aucun plafond quotidien ;
+- 200 crédits / semaine ;
+- 500 crédits / mois.
 
 Ils sont désormais rattachés à l'établissement actif pour les flux manuels au lieu de l'utilisateur authentifié qui pilote éventuellement plusieurs comptes.
 
 Variables optionnelles :
 
-- `AI_QUOTA_CREDITS_DAY`
 - `AI_QUOTA_CREDITS_WEEK`
 - `AI_QUOTA_CREDITS_MONTH`
 

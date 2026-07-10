@@ -1,12 +1,19 @@
 import { NextResponse } from "next/server";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { aiGenerateJSON } from "@/lib/aiGatewayClient";
-import { getAiPreferredEngineFromBusiness, type AiPreferredEngine } from "@/lib/aiEnginePreference";
+import { type AiPreferredEngine } from "@/lib/aiEnginePreference";
+import { buildNormalizedAiGenerationProfile } from "@/lib/aiGenerationProfile";
 import { withApi } from "@/lib/observability/withApi";
 import { enforceRateLimit } from "@/lib/rateLimit";
 import { requireUser } from "@/lib/requireUser";
 import { INR_MEDIA_ALLOWED_VIDEO_MIME_TYPES } from "@/lib/mediaRules";
-import { consumeAiCredits, isAdminUserForAi } from "@/lib/aiUsageQuota";
+import {
+  commitAiCredits,
+  reserveAiCredits,
+  rollbackAiCredits,
+  isAdminUserForAi,
+  type AiCreditReservation,
+} from "@/lib/aiUsageQuota";
 import { aiTranscribeMedia } from "@/lib/aiGatewayTranscription";
 import { extractVideoAudioForGateway } from "@/lib/transcriptionMedia";
 
@@ -140,6 +147,7 @@ ${fallback}`,
 }
 
 const handler = async (request: Request) => {
+  let quotaReservation: AiCreditReservation | null = null;
   try {
     const { supabase, authUserId, errorResponse, activeUserId } = await requireUser();
     if (errorResponse) return errorResponse;
@@ -151,9 +159,12 @@ const handler = async (request: Request) => {
       .order("updated_at", { ascending: false })
       .limit(1)
       .maybeSingle();
-    const preferredEngine = getAiPreferredEngineFromBusiness(
-      (businessPreference || {}) as Record<string, unknown>,
-    );
+    const generationProfile = buildNormalizedAiGenerationProfile({
+      business: (businessPreference || {}) as Record<string, unknown>,
+      theme: "booster-transcription",
+      style: "transcription",
+    });
+    const preferredEngine = generationProfile.preferences.engine;
     const isAdmin = await isAdminUserForAi(supabase, authUserId);
 
     const rateLimit = await enforceRateLimit({
@@ -174,16 +185,18 @@ const handler = async (request: Request) => {
 
     if (liveText) {
       if (!isAdmin) {
-        const quotaLimited = await consumeAiCredits({
+        const quota = await reserveAiCredits({
           supabase,
           userId: activeUserId,
           action: "transcription",
           credits: 1,
         });
-        if (quotaLimited) return quotaLimited;
+        if (quota.errorResponse) return quota.errorResponse;
+        quotaReservation = quota.reservation;
       }
       const correctedText = await correctTranscript(liveText, preferredEngine, activeUserId);
       if (!correctedText) {
+        await rollbackAiCredits(quotaReservation);
         return jsonUserFacingError(
           "Le vocal n’a pas pu être converti en texte.",
           {
@@ -193,6 +206,7 @@ const handler = async (request: Request) => {
         );
       }
 
+      await commitAiCredits(quotaReservation);
       return NextResponse.json({
         ok: true,
         text: correctedText,
@@ -218,13 +232,14 @@ const handler = async (request: Request) => {
       }
 
       if (!isAdmin) {
-        const quotaLimited = await consumeAiCredits({
+        const quota = await reserveAiCredits({
           supabase,
           userId: activeUserId,
           action: "transcription",
           credits: 3,
         });
-        if (quotaLimited) return quotaLimited;
+        if (quota.errorResponse) return quota.errorResponse;
+        quotaReservation = quota.reservation;
       }
 
       // L'analyse audio d'une vidéo est un bonus de contexte pour l'IA, jamais un
@@ -235,6 +250,7 @@ const handler = async (request: Request) => {
       try {
         transcript = await transcribeMedia(video, { source: "video", accountId: activeUserId });
       } catch {
+        await rollbackAiCredits(quotaReservation);
         return NextResponse.json({
           ok: true,
           text: "",
@@ -245,6 +261,7 @@ const handler = async (request: Request) => {
       }
 
       if (!transcript) {
+        await rollbackAiCredits(quotaReservation);
         return NextResponse.json({
           ok: true,
           text: "",
@@ -256,6 +273,7 @@ const handler = async (request: Request) => {
 
       const correctedText = await correctTranscript(transcript, preferredEngine, activeUserId);
       if (!correctedText) {
+        await commitAiCredits(quotaReservation);
         return NextResponse.json({
           ok: true,
           text: transcript,
@@ -265,6 +283,7 @@ const handler = async (request: Request) => {
         });
       }
 
+      await commitAiCredits(quotaReservation);
       return NextResponse.json({
         ok: true,
         text: correctedText,
@@ -309,17 +328,19 @@ const handler = async (request: Request) => {
     }
 
     if (!isAdmin) {
-      const quotaLimited = await consumeAiCredits({
+      const quota = await reserveAiCredits({
         supabase,
         userId: activeUserId,
         action: "transcription",
         credits: 2,
       });
-      if (quotaLimited) return quotaLimited;
+      if (quota.errorResponse) return quota.errorResponse;
+      quotaReservation = quota.reservation;
     }
 
     const transcript = await transcribeMedia(audio, { source: "audio", accountId: activeUserId });
     if (!transcript) {
+      await rollbackAiCredits(quotaReservation);
       return jsonUserFacingError("Aucun texte n’a été détecté dans le vocal.", {
         status: 422,
         code: "empty_transcript",
@@ -328,6 +349,7 @@ const handler = async (request: Request) => {
 
     const correctedText = await correctTranscript(transcript, preferredEngine, activeUserId);
     if (!correctedText) {
+      await rollbackAiCredits(quotaReservation);
       return jsonUserFacingError(
         "Le vocal n’a pas pu être converti en texte.",
         {
@@ -337,6 +359,7 @@ const handler = async (request: Request) => {
       );
     }
 
+    await commitAiCredits(quotaReservation);
     return NextResponse.json({
       ok: true,
       text: correctedText,
@@ -344,6 +367,7 @@ const handler = async (request: Request) => {
       source: "audio",
     });
   } catch (error) {
+    await rollbackAiCredits(quotaReservation);
     return jsonUserFacingError(error, {
       status: 502,
       fallback: "Le vocal n’a pas pu être transcrit. Merci de réessayer.",

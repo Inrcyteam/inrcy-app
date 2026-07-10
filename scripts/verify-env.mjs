@@ -79,9 +79,11 @@ const optionalButRecommended = [
   "NEXT_PUBLIC_SENTRY_DSN",
 
   // AI Gateway (génération centrale obligatoire ; credential vérifié dans requiredGroups)
-  "AI_GATEWAY_MODE",
   "AI_GATEWAY_MODEL",
   "AI_GATEWAY_VISION_MODEL",
+  "AI_GATEWAY_MODEL_PRICING_JSON",
+  "AI_GATEWAY_FALLBACK_INPUT_USD_PER_MILLION",
+  "AI_GATEWAY_FALLBACK_OUTPUT_USD_PER_MILLION",
 
   // Transcription via Vercel AI Gateway (modèles optionnels : valeurs par défaut intégrées)
   "AI_GATEWAY_TRANSCRIBE_MODEL",

@@ -2,26 +2,28 @@ import "server-only";
 
 import { aiGenerateJSON } from "@/lib/aiGatewayClient";
 import { createAiOperationBudget } from "@/lib/aiGatewayPolicy";
-import { getAiPreferredEngineFromBusiness } from "@/lib/aiEnginePreference";
 import { enforceRateLimit } from "@/lib/rateLimit";
 import { asRecord } from "@/lib/tsSafe";
 import { renderWithContext, buildDefaultContext } from "@/lib/templateEngine";
 import { hasActiveInrcySite } from "@/lib/inrcySite";
 import { normalizeMailSubject } from "@/lib/mailEncoding";
 import { stripTemplateSignatureBlock } from "@/lib/mailTemplateCleanup";
-import { getJobLabel } from "@/lib/activityCatalog";
-import { decodeBusinessSector, getActivitySectorLabel } from "@/lib/activitySectors";
 import {
   buildAiLanguageInstruction,
+  getAiEngineTemperature,
   buildAiWritingProfilePromptSection,
   buildAiWritingProfileRules,
 } from "@/lib/aiWritingProfile";
+import { buildNormalizedAiGenerationProfile } from "@/lib/aiGenerationProfile";
 import { parseMailAttachmentRefs } from "@/lib/mailAttachmentRefs";
 import { buildMailAttachmentAiPromptSection } from "@/lib/aiAttachmentContext";
 import {
+  commitAiCredits,
   computeTemplateAiCredits,
-  consumeAiCredits,
+  reserveAiCredits,
+  rollbackAiCredits,
   isAdminUserForAi,
+  type AiCreditReservation,
 } from "@/lib/aiUsageQuota";
 
 export type TemplateAiGenerationInput = Record<string, unknown>;
@@ -115,6 +117,7 @@ export async function generateTemplateAiContent(args: {
   const quotaUserId = clean(args.quotaUserId || args.userId, 160);
   const actorUserId = clean(args.actorUserId || args.quotaUserId || args.userId, 160);
   const enforceUserLimits = args.enforceUserLimits !== false;
+  let quotaReservation: AiCreditReservation | null = null;
 
   if (!supabase || !userId) {
     throw new TemplateAiGenerationError("Votre session a expiré. Merci de vous reconnecter.", {
@@ -148,13 +151,14 @@ export async function generateTemplateAiContent(args: {
     });
     if (rateLimited) await throwTemplateAiErrorFromResponse(rateLimited);
 
-    const quotaLimited = await consumeAiCredits({
+    const quota = await reserveAiCredits({
       supabase,
       userId: quotaUserId,
       action: "template",
       credits: computeTemplateAiCredits(attachmentRefs),
     });
-    if (quotaLimited) await throwTemplateAiErrorFromResponse(quotaLimited);
+    if (quota.errorResponse) await throwTemplateAiErrorFromResponse(quota.errorResponse);
+    quotaReservation = quota.reservation;
   }
 
   const [profileRes, businessRes, inrcyCfgRes, proCfgRes, integrationsRes] = await Promise.all([
@@ -171,9 +175,21 @@ export async function generateTemplateAiContent(args: {
 
   const profile = asRecord(profileRes.data);
   const business = asRecord(businessRes.data);
-  const decodedSector = decodeBusinessSector(String(business["sector"] ?? ""));
-  const profession = getJobLabel(decodedSector.sectorCategory, decodedSector.profession) || decodedSector.profession || "";
-  const sectorLabel = getActivitySectorLabel(decodedSector.sectorCategory);
+  const generationProfile = buildNormalizedAiGenerationProfile({
+    profile,
+    business,
+    idea: [mission, templateTitle].filter(Boolean).join(" — "),
+    theme: templateModule,
+    style: "campaign-email",
+    media: {
+      type: attachmentRefs.length ? "attachments" : "none",
+      count: attachmentRefs.length,
+      hasVisualContext: attachmentRefs.length > 0,
+    },
+  });
+  const businessContext = generationProfile.business;
+  const profession = businessContext.professionLabel;
+  const sectorLabel = businessContext.sectorLabel;
 
   const ownership = String(profile["inrcy_site_ownership"] ?? "none");
   const inrcyUrl = clean(asRecord(inrcyCfgRes.data)["site_url"], 300);
@@ -203,17 +219,17 @@ export async function generateTemplateAiContent(args: {
   const renderedSubject = normalizeMailSubject(renderWithContext(currentSubject, ctx));
   const renderedBody = stripTemplateSignatureBlock(renderWithContext(currentBody, ctx));
 
-  const company = clean(profile["company_legal_name"] || profile["company_name"] || business["company_name"], 160);
-  const city = clean(profile["hq_city"] || profile["hqCity"], 80);
-  const activityDescription = clean(business["activity_description"] || business["description"] || business["business_description"], 800);
-  const services = listFrom(business["services"] || business["services_text"], 10);
-  const zones = listFrom(business["intervention_zones"] || business["intervention_zones_text"], 8);
-  const strengths = listFrom(business["strengths"] || business["strengths_text"], 8);
+  const company = clean(businessContext.companyName, 160);
+  const city = clean(businessContext.city, 80);
+  const activityDescription = clean(businessContext.description, 800);
+  const services = listFrom(businessContext.services, 10);
+  const zones = listFrom(businessContext.interventionZones, 8);
+  const strengths = listFrom(businessContext.strengths, 8);
 
-  const preferredEngine = getAiPreferredEngineFromBusiness(business);
-  const aiConfig = buildAiWritingProfilePromptSection(business);
-  const aiRules = buildAiWritingProfileRules(business, preferredEngine);
-  const aiLanguageInstruction = buildAiLanguageInstruction(business);
+  const preferredEngine = generationProfile.preferences.engine;
+  const aiConfig = buildAiWritingProfilePromptSection(generationProfile);
+  const aiRules = buildAiWritingProfileRules(generationProfile, preferredEngine);
+  const aiLanguageInstruction = buildAiLanguageInstruction(generationProfile);
   const attachmentContext = await buildMailAttachmentAiPromptSection(supabase, attachmentRefs, {
     userId,
     engine: preferredEngine,
@@ -278,11 +294,12 @@ Réécris un nouvel objet et un nouveau message, plus personnalisé et plus natu
     system,
     input: [input, extraInstruction].filter(Boolean).join("\n\n"),
     maxOutputTokens: 1300,
-    temperature: 0.82,
+    temperature: getAiEngineTemperature(generationProfile, preferredEngine, "content"),
     retries: 1,
   });
 
-  let generated = await generateOnce();
+  try {
+    let generated = await generateOnce();
   let generatedSubject = normalizeMailSubject(normalizeGeneratedMailText(String(generated.subject || ""), 220));
   let generatedBody = stripTemplateSignatureBlock(normalizeGeneratedMailText(String(generated.body_text || ""), 6000));
   let unfinishedFragment = isAutomaticCampaign ? findUnfinishedMailFragment(generatedSubject, generatedBody) : "";
@@ -303,5 +320,10 @@ Réécris un nouvel objet et un nouveau message, plus personnalisé et plus natu
     );
   }
 
-  return { subject: generatedSubject, body_text: generatedBody };
+    await commitAiCredits(quotaReservation);
+    return { subject: generatedSubject, body_text: generatedBody };
+  } catch (error) {
+    await rollbackAiCredits(quotaReservation);
+    throw error;
+  }
 }

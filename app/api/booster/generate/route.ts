@@ -3,15 +3,17 @@ import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { requireUser } from "@/lib/requireUser";
 import { enforceRateLimit } from "@/lib/rateLimit";
 import {
+  commitAiCredits,
   computeBoosterAiCredits,
-  consumeAiCredits,
+  reserveAiCredits,
+  rollbackAiCredits,
   isAdminUserForAi,
+  type AiCreditReservation,
 } from "@/lib/aiUsageQuota";
 import { withApi } from "@/lib/observability/withApi";
 import { generateSharedBoosterPosts } from "@/lib/boosterPublishGeneration";
 import { INR_MEDIA_VIDEO_SOURCE_MAX_BYTES } from "@/lib/mediaRules";
 import {
-  pickBoosterHiddenAngle,
   type BoosterChannels,
   type BoosterStyle,
   type BoosterTheme,
@@ -327,6 +329,7 @@ async function fetchRecentPublicationMemory(
 }
 
 const handler = async (req: Request) => {
+  let quotaReservation: AiCreditReservation | null = null;
   try {
     const { supabase, authUserId, errorResponse, activeUserId } = await requireUser();
     if (errorResponse) return errorResponse;
@@ -380,7 +383,7 @@ const handler = async (req: Request) => {
       buildVideoGenerationInstructions(videoForAI);
 
     if (!isAdmin) {
-      const quotaLimited = await consumeAiCredits({
+      const quota = await reserveAiCredits({
         supabase,
         userId,
         action: "booster",
@@ -390,7 +393,8 @@ const handler = async (req: Request) => {
           videoForAI,
         }),
       });
-      if (quotaLimited) return quotaLimited;
+      if (quota.errorResponse) return quota.errorResponse;
+      quotaReservation = quota.reservation;
     }
 
     const { data: profile } = await supabase
@@ -417,8 +421,6 @@ const handler = async (req: Request) => {
       supabase,
       userId,
     );
-    const hiddenAngle = pickBoosterHiddenAngle();
-
     const { versions, recoveredChannels } = await generateSharedBoosterPosts({
       idea,
       theme,
@@ -427,7 +429,6 @@ const handler = async (req: Request) => {
       profile: (profile ?? null) as JsonRecord | null,
       business,
       recentPublications,
-      hiddenAngle,
       imagesForAI:
         mediaType === "video"
           ? [...videoFrameImagesForAI, ...imagesForAI].slice(
@@ -440,11 +441,13 @@ const handler = async (req: Request) => {
       accountId: userId,
     });
 
+    await commitAiCredits(quotaReservation);
     return NextResponse.json({
       versions,
       recoveredChannels,
     });
   } catch (e: unknown) {
+    await rollbackAiCredits(quotaReservation);
     return jsonUserFacingError(e, {
       status: 502,
       fallback: "La génération IA n'a pas pu aboutir. Merci de réessayer.",

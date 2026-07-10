@@ -9,9 +9,6 @@ const PROMPT_ONLY_JSON_CONTRACT = [
   "- Ne compacte jamais plusieurs paragraphes en un seul bloc.",
 ].join("\n");
 
-export function getPromptOnlyJsonContract(): string {
-  return PROMPT_ONLY_JSON_CONTRACT;
-}
 
 export function appendPromptOnlyJsonContract(systemPrompt: unknown): string {
   const base = String(systemPrompt ?? "").trim();

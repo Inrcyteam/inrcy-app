@@ -110,7 +110,6 @@ export const DEFAULT_AI_VISION_FALLBACK_MODEL = "google/gemini-2.5-flash-lite";
 export type AiEngineRequestRouting = {
   model: string;
   jsonMode: AiJsonMode;
-  usedVisionFallback: boolean;
 };
 
 
@@ -140,41 +139,39 @@ export function getAiEngineOption(value: unknown): AiEngineOption {
   return AI_ENGINE_OPTIONS.find((option) => option.value === engine) || AI_ENGINE_OPTIONS[0];
 }
 
-export function getAiEngineModel(value: unknown): string {
-  return getAiEngineOption(value).model;
-}
-
-export function getAiEngineSupportsVision(value: unknown): boolean {
-  return getAiEngineOption(value).supportsVision;
-}
-
-export function getAiEngineJsonMode(value: unknown): AiJsonMode {
-  return getAiEngineOption(value).jsonMode;
-}
 
 export function resolveAiEngineRequestRouting(
   value: unknown,
   hasImages: boolean,
-  visionFallbackModel = DEFAULT_AI_VISION_FALLBACK_MODEL,
 ): AiEngineRequestRouting {
   const option = getAiEngineOption(value);
+
+  // Étape 7 : ne jamais remplacer silencieusement l'auteur choisi par le pro.
+  // Les moteurs sans vision doivent recevoir une préanalyse factuelle via
+  // prepareMediaForSelectedWriter(), puis rédiger eux-mêmes sans image brute.
   if (hasImages && !option.supportsVision) {
-    return {
-      model: visionFallbackModel || DEFAULT_AI_VISION_FALLBACK_MODEL,
-      jsonMode: "strict",
-      usedVisionFallback: true,
-    };
+    throw new Error(
+      `Le moteur ${option.shortLabel} ne prend pas en charge les images brutes. Une préanalyse visuelle neutre est requise avant la rédaction.`,
+    );
   }
 
   return {
     model: option.model,
     jsonMode: option.jsonMode,
-    usedVisionFallback: false,
   };
 }
 
 export function getAiPreferredEngineFromBusiness(
   business: Record<string, unknown> | null | undefined,
 ): AiPreferredEngine {
-  return normalizeAiPreferredEngine(business?.ai_preferred_engine);
+  const preferences =
+    business?.preferences &&
+    typeof business.preferences === "object" &&
+    !Array.isArray(business.preferences)
+      ? (business.preferences as Record<string, unknown>)
+      : null;
+
+  return normalizeAiPreferredEngine(
+    preferences?.engine ?? business?.ai_preferred_engine,
+  );
 }

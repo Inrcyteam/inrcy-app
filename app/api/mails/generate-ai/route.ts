@@ -1,17 +1,23 @@
 import { NextResponse } from "next/server";
+import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { requireUser } from "@/lib/requireUser";
 import { aiGenerateJSON } from "@/lib/aiGatewayClient";
-import { getAiPreferredEngineFromBusiness } from "@/lib/aiEnginePreference";
 import { enforceRateLimit } from "@/lib/rateLimit";
 import { asRecord } from "@/lib/tsSafe";
 import { normalizeMailSubject } from "@/lib/mailEncoding";
 import { stripTemplateSignatureBlock } from "@/lib/mailTemplateCleanup";
-import { getJobLabel } from "@/lib/activityCatalog";
-import { decodeBusinessSector, getActivitySectorLabel } from "@/lib/activitySectors";
-import { buildAiLanguageInstruction, buildAiWritingProfilePromptSection, buildAiWritingProfileRules } from "@/lib/aiWritingProfile";
+import { buildAiLanguageInstruction, buildAiWritingProfilePromptSection, buildAiWritingProfileRules, getAiEngineTemperature } from "@/lib/aiWritingProfile";
+import { buildNormalizedAiGenerationProfile } from "@/lib/aiGenerationProfile";
 import { parseMailAttachmentRefs } from "@/lib/mailAttachmentRefs";
 import { buildMailAttachmentAiPromptSection } from "@/lib/aiAttachmentContext";
-import { computeMailAiCredits, consumeAiCredits, isAdminUserForAi } from "@/lib/aiUsageQuota";
+import {
+  commitAiCredits,
+  computeMailAiCredits,
+  reserveAiCredits,
+  rollbackAiCredits,
+  isAdminUserForAi,
+  type AiCreditReservation,
+} from "@/lib/aiUsageQuota";
 
 export const maxDuration = 60;
 
@@ -49,6 +55,7 @@ function listFrom(value: unknown, max = 8) {
 }
 
 export async function POST(req: Request) {
+  let quotaReservation: AiCreditReservation | null = null;
   try {
     const { supabase, authUserId, errorResponse, activeUserId } = await requireUser();
     if (errorResponse) return errorResponse;
@@ -77,13 +84,14 @@ export async function POST(req: Request) {
       });
       if (rateLimited) return rateLimited;
 
-      const quotaLimited = await consumeAiCredits({
+      const quota = await reserveAiCredits({
         supabase,
         userId,
         action: "mail",
         credits: computeMailAiCredits(attachmentRefs),
       });
-      if (quotaLimited) return quotaLimited;
+      if (quota.errorResponse) return quota.errorResponse;
+      quotaReservation = quota.reservation;
     }
 
     const [profileRes, businessRes] = await Promise.all([
@@ -93,21 +101,33 @@ export async function POST(req: Request) {
 
     const profile = asRecord(profileRes.data);
     const business = asRecord(businessRes.data);
-    const preferredEngine = getAiPreferredEngineFromBusiness(business);
-    const decodedSector = decodeBusinessSector(String(business["sector"] ?? ""));
-    const profession = getJobLabel(decodedSector.sectorCategory, decodedSector.profession) || decodedSector.profession || "";
-    const sectorLabel = getActivitySectorLabel(decodedSector.sectorCategory);
+    const generationProfile = buildNormalizedAiGenerationProfile({
+      profile,
+      business,
+      idea: subject,
+      theme: writingTypeKey,
+      style: "mail",
+      media: {
+        type: attachmentRefs.length ? "attachments" : "none",
+        count: attachmentRefs.length,
+        hasVisualContext: attachmentRefs.length > 0,
+      },
+    });
+    const preferredEngine = generationProfile.preferences.engine;
+    const businessContext = generationProfile.business;
+    const profession = businessContext.professionLabel;
+    const sectorLabel = businessContext.sectorLabel;
 
-    const company = clean(profile["company_legal_name"] || profile["company_name"] || business["company_name"], 160);
-    const city = clean(profile["hq_city"] || profile["hqCity"], 80);
-    const activityDescription = clean(business["activity_description"] || business["description"] || business["business_description"], 800);
-    const services = listFrom(business["services"] || business["services_text"], 10);
-    const zones = listFrom(business["intervention_zones"] || business["intervention_zones_text"], 8);
-    const strengths = listFrom(business["strengths"] || business["strengths_text"], 8);
+    const company = clean(businessContext.companyName, 160);
+    const city = clean(businessContext.city, 80);
+    const activityDescription = clean(businessContext.description, 800);
+    const services = listFrom(businessContext.services, 10);
+    const zones = listFrom(businessContext.interventionZones, 8);
+    const strengths = listFrom(businessContext.strengths, 8);
 
-    const aiConfig = buildAiWritingProfilePromptSection(business);
-    const aiRules = buildAiWritingProfileRules(business, preferredEngine);
-    const aiLanguageInstruction = buildAiLanguageInstruction(business);
+    const aiConfig = buildAiWritingProfilePromptSection(generationProfile);
+    const aiRules = buildAiWritingProfileRules(generationProfile, preferredEngine);
+    const aiLanguageInstruction = buildAiLanguageInstruction(generationProfile);
     const attachmentContext = await buildMailAttachmentAiPromptSection(supabase, attachmentRefs, {
       userId,
       engine: preferredEngine,
@@ -173,17 +193,23 @@ Si des pièces jointes existent, les mentionner seulement quand cela aide le des
       system,
       input,
       maxOutputTokens: 1100,
-      temperature: 0.78,
+      temperature: getAiEngineTemperature(generationProfile, preferredEngine, "content"),
     });
 
     const bodyText = stripTemplateSignatureBlock(clean(generated.body_text, 5000));
     if (!bodyText) {
+      await rollbackAiCredits(quotaReservation);
       return NextResponse.json({ error: "iNrCy n’a pas retourné de message exploitable." }, { status: 500 });
     }
 
+    await commitAiCredits(quotaReservation);
     return NextResponse.json({ body_text: bodyText });
   } catch (error) {
+    await rollbackAiCredits(quotaReservation);
     console.error("mails/generate-ai", error);
-    return NextResponse.json({ error: "La génération IA n’a pas pu aboutir." }, { status: 500 });
+    return jsonUserFacingError(error, {
+      status: 500,
+      fallback: "La génération IA n’a pas pu aboutir.",
+    });
   }
 }

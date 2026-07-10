@@ -7,8 +7,15 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendTxMail } from "@/lib/txMailer";
 import { getInrcyBrandInlineAttachments } from "@/lib/txEmailAssets";
 import { aiGenerateJSON, hasAiGenerationCredentials } from "@/lib/aiGatewayClient";
-import { getAiPreferredEngineFromBusiness, type AiPreferredEngine } from "@/lib/aiEnginePreference";
-import { consumeAiCredits, isAdminUserForAi } from "@/lib/aiUsageQuota";
+import { type AiPreferredEngine } from "@/lib/aiEnginePreference";
+import { buildNormalizedAiGenerationProfile } from "@/lib/aiGenerationProfile";
+import {
+  commitAiCredits,
+  reserveAiCredits,
+  rollbackAiCredits,
+  isAdminUserForAi,
+  type AiCreditReservation,
+} from "@/lib/aiUsageQuota";
 import {
   sanitizeInrAgentAutomationSettings,
   type InrAgentAutomationSettings,
@@ -1280,6 +1287,7 @@ export async function POST(request: Request) {
   if (context.errorResponse) return context.errorResponse;
 
   const { supabase, user, userId, authUserId, isCron, body } = context;
+  let quotaReservation: AiCreditReservation | null = null;
   const rl = await enforceRateLimit({
     name: "inr_agent_stats_report",
     identifier: userId,
@@ -1313,8 +1321,15 @@ export async function POST(request: Request) {
 
   const profile = asRecord(profileResult.data);
   const business = asRecord(businessResult.data);
-  const aiLanguageInstruction = buildAiLanguageInstruction(business);
-  const preferredEngine = getAiPreferredEngineFromBusiness(business);
+  const generationProfile = buildNormalizedAiGenerationProfile({
+    profile,
+    business,
+    idea: "Analyser les statistiques de l'activité et produire un bilan utile",
+    theme: "inrstats-report",
+    style: "analysis",
+  });
+  const aiLanguageInstruction = buildAiLanguageInstruction(generationProfile);
+  const preferredEngine = generationProfile.preferences.engine;
   const recipientEmail = cleanEmail(profile.contact_email) || cleanEmail(profile.admin_email) || cleanEmail((user as { email?: string | null }).email);
   if (!recipientEmail) {
     return NextResponse.json(
@@ -1349,13 +1364,14 @@ export async function POST(request: Request) {
     const actorUserId = isCron ? userId : authUserId;
     const isAdmin = await isAdminUserForAi(supabase, actorUserId);
     if (!isAdmin) {
-      const quotaLimited = await consumeAiCredits({
+      const quota = await reserveAiCredits({
         supabase,
         userId,
         action: "agent_stats",
-        credits: 3,
+        credits: 1,
       });
-      if (quotaLimited) return quotaLimited;
+      if (quota.errorResponse) return quota.errorResponse;
+      quotaReservation = quota.reservation;
     }
   }
 
@@ -1478,6 +1494,7 @@ export async function POST(request: Request) {
         .select(ACTION_SELECT)
         .maybeSingle();
 
+      await rollbackAiCredits(quotaReservation);
       return NextResponse.json(
         {
           error: "Le PDF a été généré, mais l’envoi du mail a échoué.",
@@ -1488,6 +1505,7 @@ export async function POST(request: Request) {
       );
     }
 
+    await rollbackAiCredits(quotaReservation);
     return NextResponse.json(
       { error: "Le PDF a été généré, mais l’envoi du mail a échoué.", detail: errorMessage },
       { status: 500 },
@@ -1531,6 +1549,7 @@ export async function POST(request: Request) {
   // Les bilans iNr’Stats sont maintenant historisés dans iNr’Send :
   // on conserve les PDF complets au lieu de limiter le stockage aux 5 derniers.
 
+  await commitAiCredits(quotaReservation);
   return NextResponse.json({
     action,
     sent: true,

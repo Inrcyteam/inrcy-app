@@ -1,7 +1,8 @@
 export type AiGenerationFeature =
   | "booster.publish"
-  | "booster.youtube-rescue"
+  | "booster.media-understanding"
   | "agent.publish"
+  | "agent.media-understanding"
   | "templates.generate"
   | "agent.campaign"
   | "mails.generate"
@@ -47,45 +48,56 @@ const DEFAULT_ALLOWED_AI_GATEWAY_TRANSCRIPTION_MODELS = [
 
 export const AI_FEATURE_POLICIES: Readonly<Record<AiGenerationFeature, AiFeaturePolicy>> = {
   "booster.publish": {
-    maxOutputTokens: 8000,
+    maxOutputTokens: 10_000,
     maxRetries: 1,
     maxTimeoutMs: 72_000,
-    // Les prompts Booster multi-canaux dépassent légitimement 32k caractères
-    // depuis l'ajout des playbooks, profils d'écriture et moteurs multi-IA.
-    // 72k caractères restent un garde-fou strict tout en laissant une marge
-    // suffisante aux profils réels et au contexte média compacté.
+    // Le Prompt Compiler V2 compacte fortement le contexte. 72k reste un dernier
+    // garde-fou défensif pour les cas média/transcription atypiques, pas une cible.
     maxInputChars: 72_000,
     maxImages: 5,
     maxImageDataChars: 40 * MB_AS_DATA_URL_CHARS,
-    // Le pipeline prévoit des lots initiaux puis des reprises ciblées. 8 appels
-    // pouvaient couper la récupération avant qu'elle n'ait fini sur 8-9 canaux.
-    defaultOperationMaxCalls: 12,
-    defaultOperationMaxReservedOutputTokens: 64_000,
-    defaultOperationMaxDurationMs: 180_000,
+    // V2 Étape 3 : un appel principal pour tous les canaux, puis au maximum
+    // une réparation ciblée unique. Le nombre de canaux ne multiplie plus les appels.
+    defaultOperationMaxCalls: 2,
+    defaultOperationMaxReservedOutputTokens: 20_000,
+    // Les routes Booster/iNrAgent sont limitées à 120 s : le budget interne
+    // reste volontairement inférieur pour éviter un timeout plateforme tardif.
+    defaultOperationMaxDurationMs: 110_000,
   },
-  "booster.youtube-rescue": {
-    maxOutputTokens: 8000,
-    maxRetries: 1,
-    maxTimeoutMs: 72_000,
-    maxInputChars: 24_000,
+  "agent.media-understanding": {
+    maxOutputTokens: 900,
+    maxRetries: 0,
+    maxTimeoutMs: 32_000,
+    maxInputChars: 12_000,
     maxImages: 5,
     maxImageDataChars: 40 * MB_AS_DATA_URL_CHARS,
-    defaultOperationMaxCalls: 2,
-    defaultOperationMaxReservedOutputTokens: 14_000,
-    defaultOperationMaxDurationMs: 120_000,
+    defaultOperationMaxCalls: 1,
+    defaultOperationMaxReservedOutputTokens: 900,
+    defaultOperationMaxDurationMs: 35_000,
+  },
+  "booster.media-understanding": {
+    maxOutputTokens: 900,
+    maxRetries: 0,
+    maxTimeoutMs: 32_000,
+    maxInputChars: 12_000,
+    maxImages: 5,
+    maxImageDataChars: 40 * MB_AS_DATA_URL_CHARS,
+    defaultOperationMaxCalls: 1,
+    defaultOperationMaxReservedOutputTokens: 900,
+    defaultOperationMaxDurationMs: 35_000,
   },
   "agent.publish": {
-    maxOutputTokens: 8000,
+    maxOutputTokens: 10_000,
     maxRetries: 1,
     maxTimeoutMs: 72_000,
-    // iNrAgent réutilise le pipeline Booster et a besoin de la même marge.
+    // iNrAgent réutilise le même Prompt Compiler et le même orchestrateur Booster.
     maxInputChars: 72_000,
     maxImages: 5,
     maxImageDataChars: 40 * MB_AS_DATA_URL_CHARS,
-    // Même logique que Booster : iNrAgent partage les reprises multicanales.
-    defaultOperationMaxCalls: 11,
-    defaultOperationMaxReservedOutputTokens: 60_000,
-    defaultOperationMaxDurationMs: 180_000,
+    // iNrAgent réutilise le même orchestrateur 1 appel + 1 réparation max.
+    defaultOperationMaxCalls: 2,
+    defaultOperationMaxReservedOutputTokens: 20_000,
+    defaultOperationMaxDurationMs: 110_000,
   },
   "templates.generate": {
     maxOutputTokens: 3000,
@@ -253,6 +265,15 @@ export class AiOperationBudgetExceededError extends Error {
   }
 }
 
+export class AiOperationDeadlineExceededError extends Error {
+  code = "ai_operation_deadline_exceeded" as const;
+
+  constructor(message = "La génération IA a dépassé sa durée de sécurité. Merci de relancer.") {
+    super(message);
+    this.name = "AiOperationDeadlineExceededError";
+  }
+}
+
 export type AiOperationBudget = {
   id: string;
   feature: AiGenerationFeature;
@@ -294,7 +315,7 @@ export function reserveAiOperationBudget(
   if (!budget) return;
 
   if (Date.now() - budget.startedAt > budget.maxDurationMs) {
-    throw new AiOperationBudgetExceededError("La génération IA a dépassé sa durée de sécurité. Merci de relancer.");
+    throw new AiOperationDeadlineExceededError("La génération IA a dépassé sa durée de sécurité. Merci de relancer.");
   }
 
   const nextCalls = budget.calls + 1;

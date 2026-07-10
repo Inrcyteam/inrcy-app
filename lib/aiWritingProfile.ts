@@ -1,21 +1,14 @@
-import { asRecord } from "@/lib/tsSafe";
 import { getAiEngineOption, type AiPreferredEngine } from "@/lib/aiEnginePreference";
-
-const clean = (value: unknown, max = 800) => String(value ?? "").trim().slice(0, max);
-
-const labelFromMap = (value: unknown, labels: Record<string, string>, fallback: string) => {
-  const key = clean(value, 120);
-  return labels[key] || (key ? key : fallback);
-};
+import { applyAiEngineTemperatureCalibration } from "@/lib/aiEngineCalibration";
+import {
+  normalizeAiGenerationSource,
+  normalizeAiLanguageCode,
+  type NormalizedAiGenerationProfile,
+} from "@/lib/aiGenerationProfile";
 
 const TONE_LABELS: Record<string, string> = {
   serious: "Sérieux",
-  serieux: "Sérieux",
-  pro: "Sérieux",
-  professional: "Sérieux",
   warm: "Chaleureux",
-  chaleureux: "Chaleureux",
-  friendly: "Chaleureux",
   fun: "Fun",
   premium: "Premium",
   direct: "Direct",
@@ -24,24 +17,16 @@ const TONE_LABELS: Record<string, string> = {
 const TEXT_STYLE_LABELS: Record<string, string> = {
   simple: "Simple et clair",
   dynamic: "Dynamique",
-  dynamique: "Dynamique",
-  moderne: "Dynamique",
   expert: "Conseil d'expert",
-  professionnel: "Conseil d'expert",
   coulisses: "Coulisses / histoire",
-  histoire: "Coulisses / histoire",
   local_humain: "Local et humain",
   premium: "Haut de gamme",
 };
 
 const ORIGINALITY_LABELS: Record<string, string> = {
   classic: "Classique",
-  classique: "Classique",
-  stable: "Classique",
   balanced: "Équilibrée",
-  equilibree: "Équilibrée",
   creative: "Créative",
-  creatif: "Créative",
 };
 
 const LENGTH_LABELS: Record<string, string> = {
@@ -53,13 +38,10 @@ const LENGTH_LABELS: Record<string, string> = {
 const EMOJI_LEVEL_LABELS: Record<string, string> = {
   none: "Aucun",
   light: "Léger",
-  moderate: "Léger",
   dynamic: "Beaucoup",
-  many: "Beaucoup",
 };
 
 const PRONOUN_LABELS: Record<string, string> = {
-  auto: "Nous",
   je: "Je",
   nous: "Nous",
   vous: "Vous",
@@ -69,38 +51,27 @@ const PRONOUN_LABELS: Record<string, string> = {
 const ADDRESS_MODE_LABELS: Record<string, string> = {
   vous: "Vouvoiement",
   tu: "Tutoiement",
-  auto: "Vouvoiement",
 };
 
 const COMMERCIAL_LEVEL_LABELS: Record<string, string> = {
   discreet: "Discret",
-  discret: "Discret",
   balanced: "Équilibré",
-  equilibre: "Équilibré",
   direct: "Direct",
 };
 
 const MAIN_GOAL_LABELS: Record<string, string> = {
   visibility: "Faire connaître l'entreprise",
-  visible: "Faire connaître l'entreprise",
   contacts: "Obtenir des contacts",
-  contact: "Obtenir des contacts",
   reassure: "Rassurer les clients",
-  rassurer: "Rassurer les clients",
   offer: "Mettre en avant une offre",
-  offre: "Mettre en avant une offre",
 };
 
 const PREFERRED_ANGLE_LABELS: Record<string, string> = {
   local: "Local / proximité",
   quality: "Qualité du travail",
-  qualite: "Qualité du travail",
   price: "Prix / avantage",
-  prix: "Prix / avantage",
   speed: "Rapidité / réactivité",
-  rapidite: "Rapidité / réactivité",
   trust: "Confiance",
-  confiance: "Confiance",
 };
 
 const CTA_LABELS: Record<string, string> = {
@@ -122,21 +93,18 @@ const AI_LANGUAGE_LABELS: Record<string, string> = {
   pt: "portugais",
 };
 
+function asNormalized(source: unknown): NormalizedAiGenerationProfile {
+  return normalizeAiGenerationSource(source);
+}
+
+/** Compatibilité publique : la normalisation canonique résout aussi les anciennes valeurs. */
 export function normalizeAiLanguage(value: unknown) {
-  const raw = clean(value, 80).toLowerCase();
-  if (["fr", "french", "francais", "français"].includes(raw)) return "fr";
-  if (["en", "english", "anglais"].includes(raw)) return "en";
-  if (["es", "spanish", "espagnol"].includes(raw)) return "es";
-  if (["it", "italian", "italien"].includes(raw)) return "it";
-  if (["de", "german", "allemand"].includes(raw)) return "de";
-  if (["nl", "dutch", "neerlandais", "néerlandais"].includes(raw)) return "nl";
-  if (["pt", "portuguese", "portugais"].includes(raw)) return "pt";
-  return "fr";
+  return normalizeAiLanguageCode(value);
 }
 
 export function getAiLanguageLabel(source: unknown) {
-  const business = asRecord(source);
-  return AI_LANGUAGE_LABELS[normalizeAiLanguage(business["ai_language"])] || AI_LANGUAGE_LABELS.fr;
+  const language = asNormalized(source).preferences.language;
+  return AI_LANGUAGE_LABELS[language] || AI_LANGUAGE_LABELS.fr;
 }
 
 export function buildAiLanguageInstruction(source: unknown) {
@@ -155,23 +123,24 @@ export function buildAiLanguageInstruction(source: unknown) {
 }
 
 export function buildAiWritingProfilePromptSection(source: unknown) {
-  const business = asRecord(source);
-  const forbiddenStyle = clean(business["ai_custom_instructions"], 700);
-  const likedExample = clean(business["ai_liked_example"], 1200);
+  const normalized = asNormalized(source);
+  const preferences = normalized.preferences;
+  const forbiddenStyle = preferences.customInstructions.slice(0, 700);
+  const likedExample = preferences.likedExample.slice(0, 1200);
 
   const lines = [
-    `- Ton du contenu : ${labelFromMap(business["tone"], TONE_LABELS, "Sérieux")}`,
-    `- Style du texte : ${labelFromMap(business["communication_style"], TEXT_STYLE_LABELS, "Simple et clair")}`,
-    `- Originalité : ${labelFromMap(business["ai_creativity"], ORIGINALITY_LABELS, "Équilibrée")}`,
-    `- Longueur favorite : ${labelFromMap(business["ai_length"], LENGTH_LABELS, "Moyen")}`,
-    `- Emojis : ${labelFromMap(business["emoji_level"], EMOJI_LEVEL_LABELS, "Léger")}`,
-    `- Pronom utilisé : ${labelFromMap(business["ai_voice"], PRONOUN_LABELS, "Nous")}`,
-    `- Relation avec le lecteur : ${labelFromMap(business["address_mode"], ADDRESS_MODE_LABELS, "Vouvoiement")}`,
-    `- Niveau commercial : ${labelFromMap(business["ai_commercial_level"], COMMERCIAL_LEVEL_LABELS, "Équilibré")}`,
-    `- Objectif principal : ${labelFromMap(business["ai_main_goal"], MAIN_GOAL_LABELS, "Obtenir des contacts")}`,
-    `- Angle préféré : ${labelFromMap(business["ai_preferred_angle"], PREFERRED_ANGLE_LABELS, "Confiance")}`,
-    `- Bouton préféré : ${labelFromMap(business["preferred_cta"], CTA_LABELS, "Demander un devis")}`,
-    `- Langue de génération : ${getAiLanguageLabel(business)}`,
+    `- Ton du contenu : ${TONE_LABELS[preferences.tone] || "Sérieux"}`,
+    `- Style du texte : ${TEXT_STYLE_LABELS[preferences.communicationStyle] || "Simple et clair"}`,
+    `- Originalité : ${ORIGINALITY_LABELS[preferences.creativity] || "Équilibrée"}`,
+    `- Longueur favorite : ${LENGTH_LABELS[preferences.length] || "Moyen"}`,
+    `- Emojis : ${EMOJI_LEVEL_LABELS[preferences.emojiLevel] || "Léger"}`,
+    `- Pronom utilisé : ${PRONOUN_LABELS[preferences.voice] || "Nous"}`,
+    `- Relation avec le lecteur : ${ADDRESS_MODE_LABELS[preferences.addressMode] || "Vouvoiement"}`,
+    `- Niveau commercial : ${COMMERCIAL_LEVEL_LABELS[preferences.commercialLevel] || "Équilibré"}`,
+    `- Objectif principal : ${MAIN_GOAL_LABELS[preferences.mainGoal] || "Obtenir des contacts"}`,
+    `- Angle préféré : ${PREFERRED_ANGLE_LABELS[preferences.preferredAngle] || "Confiance"}`,
+    `- Bouton préféré : ${CTA_LABELS[preferences.preferredCta] || "Demander un devis"}`,
+    `- Langue de génération : ${getAiLanguageLabel(normalized)}`,
     likedExample ? `- Exemple de contenu aimé : ${likedExample}` : "",
     forbiddenStyle ? `- À éviter absolument : ${forbiddenStyle}` : "",
   ].filter(Boolean);
@@ -181,53 +150,128 @@ export function buildAiWritingProfilePromptSection(source: unknown) {
 
 const ENGINE_NATIVE_FREEDOM: Record<AiPreferredEngine, string> = {
   openai:
-    "Conserve ton propre jugement éditorial polyvalent : choisis librement entre narration, efficacité, émotion, expertise ou conversation selon le sujet.",
+    "Signature polyvalente et adaptative : synthèse claire, sens du rythme, équilibre entre narration, émotion, expertise et efficacité selon le sujet.",
   anthropic:
-    "Conserve ton propre jugement éditorial et ta capacité à produire une écriture naturelle, nuancée et fluide sans imiter un style marketing standard.",
+    "Signature naturelle et nuancée : prose fluide, transitions humaines, précision du ton et capacité à laisser respirer le texte sans marketing mécanique.",
   google:
-    "Conserve ton propre jugement éditorial : exploite le contexte disponible, la structure utile et le multimodal sans transformer chaque réponse en plan scolaire.",
+    "Signature contextuelle et structurée : exploite les détails utiles, relie bien les éléments disponibles et organise l'information sans transformer le texte en plan scolaire.",
   mistral:
-    "Conserve ton propre jugement éditorial multilingue et une expression directe et naturelle ; ne cherche pas à reproduire le style d'un autre moteur.",
+    "Signature directe et idiomatique : expression nette, naturelle, multilingue et concrète, avec un rythme efficace sans copier les habitudes des autres moteurs.",
   xai:
-    "Conserve ton propre jugement éditorial : tu peux être plus vif, direct ou inattendu quand le sujet et la configuration du pro l'autorisent, sans surjouer.",
+    "Signature vive et moins prévisible : peut choisir une accroche plus franche, un angle plus inattendu ou un rythme plus nerveux lorsque le sujet et le pro l'autorisent.",
   perplexity:
-    "Conserve ton propre jugement éditorial informatif : privilégie la précision et le contexte utile, sans ajouter de faits externes non nécessaires ou non vérifiables.",
+    "Signature informative et précise : contextualise utilement, privilégie la clarté factuelle et la valeur d'information sans transformer le contenu en réponse de moteur de recherche.",
   deepseek:
-    "Conserve ton propre jugement éditorial : tu peux privilégier une progression claire, concrète ou analytique si elle sert le sujet, sans appliquer un plan automatique.",
+    "Signature logique et concrète : progression claire, sens de la démonstration et formulations utiles, sans rigidité de plan ni ton académique automatique.",
   meta:
-    "Conserve ton propre jugement éditorial conversationnel et varié ; choisis librement le rythme et la construction qui rendent le message le plus naturel.",
+    "Signature conversationnelle et variée : rythme naturel, formulations accessibles, capacité à changer de construction et à produire un message social moins formaté.",
 };
 
+const ENGINE_NATIVE_BOUNDARIES: Record<AiPreferredEngine, string> = {
+  openai: "Évite les accroches et structures trop prévisibles de type modèle marketing générique.",
+  anthropic: "Évite la prudence molle, les longues précautions et les formulations trop lisses si le pro demande de l'énergie.",
+  google: "Évite les listes systématiques, les sous-parties scolaires et les résumés mécaniques.",
+  mistral: "Évite le style télégraphique, les répétitions sèches et les traductions littérales.",
+  xai: "Évite la provocation gratuite, le sarcasme et les effets de manche quand ils ne servent pas la marque.",
+  perplexity: "N'ajoute pas de faits externes, citations, statistiques ou actualités non demandés et non fournis comme s'ils étaient nécessaires au post.",
+  deepseek: "Évite les plans rigides, les transitions de dissertation et la sur-explication analytique.",
+  meta: "Évite les clichés sociaux, les suites d'emojis automatiques et le ton influenceur générique.",
+};
+
+const ENGINE_TEMPERATURE_PROFILES: Record<
+  AiPreferredEngine,
+  { classic: number; balanced: number; creative: number }
+> = {
+  openai: { classic: 0.52, balanced: 0.82, creative: 1.04 },
+  anthropic: { classic: 0.46, balanced: 0.72, creative: 0.94 },
+  google: { classic: 0.50, balanced: 0.76, creative: 0.98 },
+  mistral: { classic: 0.54, balanced: 0.82, creative: 1.04 },
+  xai: { classic: 0.60, balanced: 0.92, creative: 1.16 },
+  perplexity: { classic: 0.34, balanced: 0.56, creative: 0.74 },
+  deepseek: { classic: 0.46, balanced: 0.70, creative: 0.92 },
+  meta: { classic: 0.58, balanced: 0.88, creative: 1.10 },
+};
+
+
+export type AiTemperaturePurpose = "content" | "reply" | "factual";
+
+/**
+ * Calibration légère par famille de moteur. La valeur ne crée pas la personnalité
+ * à elle seule : elle évite surtout d'appliquer le même niveau d'aléa à huit
+ * moteurs différents. Les préférences du pro restent la source de créativité.
+ */
+export function getAiEngineTemperature(
+  source: unknown,
+  engine?: AiPreferredEngine | string | null,
+  purpose: AiTemperaturePurpose = "content",
+) {
+  const normalized = asNormalized(source);
+  const engineOption = getAiEngineOption(engine || normalized.preferences.engine);
+  const profile = ENGINE_TEMPERATURE_PROFILES[engineOption.value];
+  const base = profile[normalized.preferences.creativity];
+  const adjusted =
+    purpose === "reply" ? base * 0.82 : purpose === "factual" ? base * 0.5 : base;
+  return applyAiEngineTemperatureCalibration(adjusted, engineOption.value);
+}
+
 function getCreativeLatitude(source: unknown) {
-  const business = asRecord(source);
-  const raw = clean(business["ai_creativity"], 80).toLowerCase();
-  if (["creative", "creatif", "créative", "creativite", "créativité"].includes(raw)) {
+  // La valeur historique ai_creativity est désormais résolue une seule fois dans le profil canonique.
+  const creativity = asNormalized(source).preferences.creativity;
+  if (creativity === "creative") {
     return "LIBERTÉ ÉLEVÉE : ose un angle, un rythme et une construction plus singuliers. Évite les recettes marketing prévisibles tant que le résultat reste crédible et publiable.";
   }
-  if (["classic", "classique", "stable"].includes(raw)) {
+  if (creativity === "classic") {
     return "LIBERTÉ MODÉRÉE : reste rassurant et lisible, mais choisis quand même librement la structure et les formulations au lieu de reproduire un gabarit fixe.";
   }
   return "LIBERTÉ ÉQUILIBRÉE : respecte la personnalité demandée tout en choisissant librement l'angle, le rythme et la structure les plus pertinents.";
 }
 
+
 /**
- * Étape 6 ter — garde les contraintes métier iNrCy, mais empêche la
- * Configuration IA de devenir un gabarit éditorial qui uniformise les moteurs.
+ * Directive compacte destinée au compilateur de prompts V2.
+ * Elle conserve la personnalité native du moteur et les préférences du pro
+ * sans répéter tout le manuel éditorial iNrCy à chaque appel.
+ */
+export function buildCompactAiWritingDirective(
+  source?: unknown,
+  engine?: AiPreferredEngine | string | null,
+) {
+  const normalized = asNormalized(source);
+  const preferences = normalized.preferences;
+  const engineOption = getAiEngineOption(engine || preferences.engine);
+
+  return [
+    `MOTEUR-AUTEUR : ${engineOption.shortLabel}. ${ENGINE_NATIVE_FREEDOM[engineOption.value]}`,
+    `ANTI-CLONAGE : ${ENGINE_NATIVE_BOUNDARIES[engineOption.value]}`,
+    `LIBERTÉ : ${getCreativeLatitude(normalized)}`,
+    "ARBITRAGE : phrase libre = mission ; médias = preuves/contextes ; Configuration IA = préférences du pro ; personnalité du moteur = manière d'écrire.",
+    "RÈGLES DURES : vérité, langue, canal, format, consigne explicite du pro, pronom, tutoiement/vouvoiement et interdits personnalisés.",
+    "PRÉFÉRENCES SOUPLES : ton, style, créativité, longueur, intensité commerciale, angle, emojis, CTA et exemple aimé orientent le résultat sans imposer de gabarit.",
+    "Choisis librement accroche, rythme, narration, ordre des idées et structure. N'imite aucun autre moteur et n'applique pas une recette iNrCy uniforme.",
+    "Un CTA, une liste, une question ou une accroche spectaculaire restent facultatifs sauf contrainte explicite du canal.",
+  ].join("\n");
+}
+
+/**
+ * Les contraintes métier iNrCy restent fortes, mais les préférences du pro
+ * proviennent toutes du même profil canonique, y compris dans les reprises.
  */
 export function buildAiWritingProfileRules(
   source?: unknown,
   engine?: AiPreferredEngine | string | null,
 ) {
-  const engineOption = getAiEngineOption(engine);
+  const normalized = asNormalized(source);
+  const engineOption = getAiEngineOption(engine || normalized.preferences.engine);
 
   return [
     "HIÉRARCHIE DE RÉDACTION iNrCy :",
     "- RÈGLES DURES : vérité des faits, sécurité, langue finale, canal, format JSON, contraintes techniques, consignes explicites du pro, tutoiement/vouvoiement, pronom choisi et éléments 'À éviter absolument'. Elles doivent être respectées.",
     "- PRÉFÉRENCES SOUPLES : ton, style, originalité, longueur favorite, niveau commercial, angle, emojis, CTA préféré et exemple aimé orientent le résultat mais ne constituent jamais un plan de texte obligatoire.",
     "- La Configuration IA fixe une personnalité et une direction, pas une recette du type accroche + liste + bénéfices + CTA + hashtags.",
-    `- Moteur actif : ${engineOption.shortLabel}. ${ENGINE_NATIVE_FREEDOM[engineOption.value]}`,
+    `- Moteur-auteur actif : ${engineOption.shortLabel}. ${ENGINE_NATIVE_FREEDOM[engineOption.value]}`,
+    `- Anti-clonage moteur : ${ENGINE_NATIVE_BOUNDARIES[engineOption.value]}`,
     "- Exploite ta propre voix et ton propre jugement éditorial. Ne cherche pas à imiter ChatGPT, Claude, Gemini, Mistral, Grok, Perplexity, DeepSeek, Llama ni un prétendu 'style iNrCy' uniforme.",
-    `- ${getCreativeLatitude(source)}`,
+    `- ${getCreativeLatitude(normalized)}`,
     "- Choisis librement la meilleure construction selon le sujet : narration, constat direct, question, conseil, anecdote prudente, démonstration, retour terrain, mini-liste, texte continu ou autre forme pertinente.",
     "- Une accroche spectaculaire n'est pas obligatoire. Une liste n'est pas obligatoire. Une question n'est pas obligatoire. Un CTA séparé n'est pas obligatoire si le message est meilleur sans lui et si le canal ne l'exige pas.",
     "- Si un CTA est pertinent, intègre-le naturellement. Le CTA préféré est une préférence de destination/action, pas l'obligation de terminer chaque texte par la même formule.",

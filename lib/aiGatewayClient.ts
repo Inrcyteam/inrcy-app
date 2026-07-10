@@ -13,6 +13,7 @@ import {
   type AiPreferredEngine,
 } from "@/lib/aiEnginePreference";
 import {
+  AiOperationDeadlineExceededError,
   assertAllowedAiGatewayModel,
   getAiFeaturePolicy,
   reserveAiOperationBudget,
@@ -20,16 +21,45 @@ import {
   type AiOperationBudget,
 } from "@/lib/aiGatewayPolicy";
 import {
-  recordAiGatewayAccountUsage,
+  commitAiGatewayAccountAttempt,
+  recordAiGatewayAccountFailure,
   reserveAiGatewayAccountAttempt,
+  rollbackAiGatewayAccountAttempt,
+  type AiGatewayAccountAttemptReservation,
 } from "@/lib/aiGatewayAccountGuard";
+import {
+  estimateAiGatewayCostMicroUsd,
+  estimateInputTokensWithImages,
+  resolveAiGatewayGuardPricing,
+} from "@/lib/aiGatewayEconomics";
 import {
   appendPromptOnlyJsonContract,
   extractAiGatewayResponseText,
   parseAiGatewayJsonObject,
 } from "@/lib/aiGatewayResponse";
+import { recordAiGatewayOperationCall } from "@/lib/aiGatewayOperationTelemetry";
 
 export type { AiGenerationFeature, AiOperationBudget } from "@/lib/aiGatewayPolicy";
+
+export class AiGatewayHttpError extends Error {
+  code: "ai_gateway_rate_limit" | "ai_gateway_auth" | "ai_gateway_unavailable" | "ai_gateway_request_failed";
+  status: number;
+  retryAfterSeconds?: number;
+
+  constructor(status: number, message: string, retryAfterSeconds?: number) {
+    super(message);
+    this.name = "AiGatewayHttpError";
+    this.status = status;
+    this.retryAfterSeconds = retryAfterSeconds;
+    this.code = status === 429
+      ? "ai_gateway_rate_limit"
+      : status === 401 || status === 403
+        ? "ai_gateway_auth"
+        : status >= 500
+          ? "ai_gateway_unavailable"
+          : "ai_gateway_request_failed";
+  }
+}
 
 
 type AiResponseJSON = Record<string, unknown>;
@@ -40,9 +70,6 @@ export type AiJsonResponseSchema = {
   schema: Record<string, unknown>;
   strict?: boolean;
 };
-
-export type AiGatewayMode = "auto" | "gateway";
-export type AiGenerationRuntime = "vercel-ai-gateway";
 
 type AiGenerateJsonBaseOptions = {
   feature: AiGenerationFeature;
@@ -57,6 +84,8 @@ type AiGenerateJsonBaseOptions = {
   temperature?: number;
   retries?: number;
   timeoutMs?: number;
+  /** Deadline absolue partagée par une action utilisateur et ses sous-appels. */
+  deadlineAt?: number;
   /** Optional JSON Schema for reliable multi-provider structured output. */
   responseSchema?: AiJsonResponseSchema;
 };
@@ -67,39 +96,44 @@ type AiGenerateJsonRouting =
 
 export type AiGenerateJsonOptions = AiGenerateJsonBaseOptions & AiGenerateJsonRouting;
 
-function resolveMode(): AiGatewayMode {
-  const raw = cleanAiGatewayEnv(process.env.AI_GATEWAY_MODE).toLowerCase();
-  return raw === "gateway" ? "gateway" : "auto";
+const warnedFallbackPricingModels = new Set<string>();
+
+function warnIfFallbackGuardPricing(model: string) {
+  const resolution = resolveAiGatewayGuardPricing(model);
+  if (resolution.source !== "conservative_fallback" || warnedFallbackPricingModels.has(model)) return;
+  warnedFallbackPricingModels.add(model);
+  console.warn("[ai-gateway] conservative guard pricing active", {
+    model,
+    pricingSource: resolution.source,
+    message: "AI_GATEWAY_MODEL_PRICING_JSON absent/incomplet pour ce modèle ; iNrCy conserve un garde-fou monétaire conservateur.",
+  });
+}
+
+function resolveHardDeadlineAt(opts: AiGenerateJsonOptions, policyMaxDurationMs: number): number {
+  const candidates = [
+    Number(opts.deadlineAt || 0),
+    opts.budget ? opts.budget.startedAt + opts.budget.maxDurationMs : 0,
+  ].filter((value) => Number.isFinite(value) && value > 0);
+  return candidates.length ? Math.min(...candidates) : Date.now() + policyMaxDurationMs;
+}
+
+function resolveRemainingTimeoutMs(deadlineAt: number, requestedTimeoutMs: number) {
+  const remaining = deadlineAt - Date.now();
+  if (remaining <= 750) {
+    throw new AiOperationDeadlineExceededError();
+  }
+  return Math.max(500, Math.min(requestedTimeoutMs, remaining - 250));
 }
 
 export { normalizeGatewayModelId } from "@/lib/aiGatewayConfig";
-
-export function getAiGenerationRuntime(): AiGenerationRuntime {
-  return "vercel-ai-gateway";
-}
 
 export function hasAiGenerationCredentials(): boolean {
   return Boolean(getAiGatewayCredential());
 }
 
-export function getAiGenerationRuntimeInfo() {
-  return {
-    mode: resolveMode(),
-    runtime: getAiGenerationRuntime(),
-    gatewayConfigured: Boolean(getAiGatewayCredential()),
-    gatewayAuth: cleanAiGatewayEnv(process.env.AI_GATEWAY_API_KEY)
-      ? "api-key"
-      : cleanAiGatewayEnv(process.env.VERCEL_OIDC_TOKEN)
-        ? "oidc"
-        : "none",
-    gatewayBaseUrl: normalizeAiGatewayBaseUrl(process.env.AI_GATEWAY_BASE_URL),
-  } as const;
-}
-
 type ResolvedAiRequestRouting = {
   model: string;
   jsonMode: AiJsonMode;
-  usedVisionFallback: boolean;
 };
 
 function resolveRequestedRouting(
@@ -110,16 +144,11 @@ function resolveRequestedRouting(
     return {
       model: cleanAiGatewayEnv(opts.model),
       jsonMode: "strict",
-      usedVisionFallback: false,
     };
   }
 
   if ("engine" in opts && opts.engine) {
-    return resolveAiEngineRequestRouting(
-      opts.engine,
-      hasImages,
-      cleanAiGatewayEnv(process.env.AI_GATEWAY_VISION_MODEL),
-    );
+    return resolveAiEngineRequestRouting(opts.engine, hasImages);
   }
 
   // Le type TypeScript empêche normalement ce cas. On garde un garde-fou runtime.
@@ -129,7 +158,6 @@ function resolveRequestedRouting(
       cleanAiGatewayEnv(process.env.AI_GATEWAY_MODEL) ||
       "openai/gpt-4o-mini",
     jsonMode: "strict",
-    usedVisionFallback: false,
   };
 }
 
@@ -230,16 +258,18 @@ export async function aiGenerateJSON<T extends AiResponseJSON>(opts: AiGenerateJ
   const baseUrl = normalizeAiGatewayBaseUrl(process.env.AI_GATEWAY_BASE_URL);
   const max_output_tokens = Math.max(
     128,
-    Math.min(policy.maxOutputTokens, 8000, opts.maxOutputTokens ?? 700),
+    Math.min(policy.maxOutputTokens, opts.maxOutputTokens ?? 700),
   );
   const temperature = typeof opts.temperature === "number"
     ? Math.max(0, Math.min(2, opts.temperature))
     : undefined;
   const retries = Math.max(0, Math.min(policy.maxRetries, Math.floor(opts.retries ?? policy.maxRetries)));
-  const timeoutMs = Math.max(
+  const requestedTimeoutMs = Math.max(
     5000,
     Math.min(policy.maxTimeoutMs, Math.floor(opts.timeoutMs ?? policy.maxTimeoutMs)),
   );
+  const hardDeadlineAt = resolveHardDeadlineAt(opts, policy.defaultOperationMaxDurationMs);
+  const timeoutMs = resolveRemainingTimeoutMs(hardDeadlineAt, requestedTimeoutMs);
 
   // Pour les moteurs sans mode JSON strict natif, le contrat JSON est ajouté au
   // système. On valide donc la taille RÉELLEMENT envoyée au Gateway, pas seulement
@@ -279,8 +309,24 @@ export async function aiGenerateJSON<T extends AiResponseJSON>(opts: AiGenerateJ
   ];
 
   const requestStartedAt = Date.now();
+  const estimatedInputTokens = estimateInputTokensWithImages({
+    textChars: String(effectiveSystemPrompt || "").length + String(opts.input || "").length,
+    imageCount: opts.images?.length || 0,
+    imageDetail: opts.images?.some((image) => image.detail === "high") ? "high" : "low",
+  });
+  warnIfFallbackGuardPricing(model);
+  const estimatedCostMicroUsd = estimateAiGatewayCostMicroUsd(model, {
+    inputTokens: estimatedInputTokens,
+    outputTokens: max_output_tokens,
+  });
 
-  const res = await fetchWithRetry(`${baseUrl}/responses`, {
+  const attemptReservations = new Map<number, AiGatewayAccountAttemptReservation | null>();
+  let successfulReservation: AiGatewayAccountAttemptReservation | null = null;
+  let httpAttempts = 0;
+
+  let res: Response;
+  try {
+    res = await fetchWithRetry(`${baseUrl}/responses`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -304,47 +350,179 @@ export async function aiGenerateJSON<T extends AiResponseJSON>(opts: AiGenerateJ
     }),
     retries,
     timeoutMs,
-    // 429 ne doit pas être rejoué immédiatement : cela amplifie les rate limits
-    // des fournisseurs et déclenche des cascades de reprises coûteuses.
+    deadlineAt: hardDeadlineAt,
+    // 429 ne doit pas être rejoué immédiatement : cela amplifie les rate limits.
+    // Une seule reprise réseau bornée est possible sur erreurs transitoires.
     retryStatuses: [408, 500, 502, 503, 504],
-    onAttempt: async () => {
-      await reserveAiGatewayAccountAttempt(opts.accountId);
+    onAttempt: async (attempt) => {
+      httpAttempts = Math.max(httpAttempts, attempt + 1);
+      const reservation = await reserveAiGatewayAccountAttempt(opts.accountId, {
+        estimatedInputTokens,
+        reservedOutputTokens: max_output_tokens,
+        estimatedCostMicroUsd,
+      });
+      attemptReservations.set(attempt, reservation);
     },
-  });
-
+    onAttemptSettled: async ({ attempt, response }) => {
+      const reservation = attemptReservations.get(attempt) || null;
+      if (response?.ok) {
+        successfulReservation = reservation;
+        return;
+      }
+      await rollbackAiGatewayAccountAttempt(reservation).catch((error) => {
+        console.warn("[ai-gateway] attempt reservation rollback unavailable", {
+          feature: opts.feature,
+          model,
+          attempt,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      });
+    },
+    });
+  } catch (error) {
+    const failedDurationMs = Date.now() - requestStartedAt;
+    await recordAiGatewayAccountFailure({
+      accountId: opts.accountId,
+      feature: opts.feature,
+      model,
+      status: 0,
+    }).catch(() => undefined);
+    recordAiGatewayOperationCall({
+      feature: opts.feature,
+      engine: "engine" in opts ? opts.engine : undefined,
+      model,
+      status: "failure",
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      reservedOutputTokens: max_output_tokens,
+      costMicroUsd: 0,
+      pricingSource: resolveAiGatewayGuardPricing(model).source,
+      usageEstimated: false,
+      durationMs: failedDurationMs,
+      hasImages,
+      httpAttempts,
+    });
+    console.error("[ai-gateway] generation transport failed", {
+      feature: opts.feature,
+      model,
+      engine: "engine" in opts ? opts.engine : undefined,
+      accountId: opts.accountId || undefined,
+      hasImages,
+      httpAttempts,
+      durationMs: failedDurationMs,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
   if (!res.ok) {
     const text = await res.text().catch(() => "");
+    const retryAfterHeader = Number.parseInt(String(res.headers.get("Retry-After") || ""), 10);
+    const retryAfterSeconds = Number.isFinite(retryAfterHeader) && retryAfterHeader > 0 ? retryAfterHeader : undefined;
+    await recordAiGatewayAccountFailure({
+      accountId: opts.accountId,
+      feature: opts.feature,
+      model,
+      status: res.status,
+    }).catch(() => undefined);
+    const failedDurationMs = Date.now() - requestStartedAt;
     console.error("[ai-gateway] generation failed", {
       feature: opts.feature,
       model,
       engine: "engine" in opts ? opts.engine : undefined,
       accountId: opts.accountId || undefined,
       hasImages,
-      usedVisionFallback: routing.usedVisionFallback,
       retries,
       structuredOutput: Boolean(structuredFormat),
       status: res.status,
-      durationMs: Date.now() - requestStartedAt,
+      durationMs: failedDurationMs,
     });
-    throw new Error(`AI Gateway error (${res.status}): ${text || res.statusText}`);
+    recordAiGatewayOperationCall({
+      feature: opts.feature,
+      engine: "engine" in opts ? opts.engine : undefined,
+      model,
+      status: "failure",
+      statusCode: res.status,
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      reservedOutputTokens: max_output_tokens,
+      costMicroUsd: 0,
+      pricingSource: resolveAiGatewayGuardPricing(model).source,
+      usageEstimated: false,
+      durationMs: failedDurationMs,
+      hasImages,
+      httpAttempts,
+    });
+    const safeDetail = String(text || res.statusText || "").trim().slice(0, 500);
+    throw new AiGatewayHttpError(
+      res.status,
+      `AI Gateway error (${res.status}): ${safeDetail || "Erreur fournisseur"}`,
+      retryAfterSeconds,
+    );
   }
 
-  const json = (await res.json()) as any;
+  let json: any;
+  try {
+    json = await res.json();
+  } catch (error) {
+    // Le fournisseur a accepté et exécuté l'appel : on ne libère pas le budget
+    // économique comme si rien n'avait été consommé. On commit l'estimation réservée.
+    await commitAiGatewayAccountAttempt({
+      reservation: successfulReservation,
+      feature: opts.feature,
+      model,
+      usage: {
+        inputTokens: estimatedInputTokens,
+        outputTokens: max_output_tokens,
+        totalTokens: estimatedInputTokens + max_output_tokens,
+      },
+    }).catch(() => undefined);
+    throw error;
+  }
   const usage = parseUsage(json);
+  const usageForGuard = usage.totalTokens > 0
+    ? usage
+    : {
+        inputTokens: estimatedInputTokens,
+        outputTokens: max_output_tokens,
+        totalTokens: estimatedInputTokens + max_output_tokens,
+      };
   const contentText = extractAiGatewayResponseText(json);
 
-  // La télémétrie économique ne doit jamais casser une réponse IA valide.
-  void recordAiGatewayAccountUsage({
-    accountId: opts.accountId,
+  // Commit économique atomique : la capacité réservée est remplacée par
+  // l'usage réel. Si le fournisseur omet usage, iNrCy conserve l'estimation
+  // réservée au lieu de rendre le garde-fou aveugle.
+  await commitAiGatewayAccountAttempt({
+    reservation: successfulReservation,
     feature: opts.feature,
     model,
-    usage,
+    usage: usageForGuard,
   }).catch((error) => {
-    console.warn("[ai-gateway] usage telemetry unavailable", {
+    console.error("[ai-gateway] atomic usage commit unavailable", {
       feature: opts.feature,
       model,
       message: error instanceof Error ? error.message : String(error),
     });
+  });
+
+  const actualCostMicroUsd = estimateAiGatewayCostMicroUsd(model, usageForGuard);
+  const pricingSource = resolveAiGatewayGuardPricing(model).source;
+  recordAiGatewayOperationCall({
+    feature: opts.feature,
+    engine: "engine" in opts ? opts.engine : undefined,
+    model,
+    status: "success",
+    inputTokens: usageForGuard.inputTokens,
+    outputTokens: usageForGuard.outputTokens,
+    totalTokens: usageForGuard.totalTokens,
+    reservedOutputTokens: max_output_tokens,
+    costMicroUsd: actualCostMicroUsd,
+    pricingSource,
+    usageEstimated: usage.totalTokens <= 0,
+    durationMs: Date.now() - requestStartedAt,
+    hasImages,
+    httpAttempts,
   });
 
   console.info("[ai-gateway] generation usage", {
@@ -353,11 +531,11 @@ export async function aiGenerateJSON<T extends AiResponseJSON>(opts: AiGenerateJ
     engine: "engine" in opts ? opts.engine : undefined,
     accountId: opts.accountId || undefined,
     hasImages,
-    usedVisionFallback: routing.usedVisionFallback,
     structuredOutput: Boolean(structuredFormat),
     inputTokens: usage.inputTokens,
     outputTokens: usage.outputTokens,
     totalTokens: usage.totalTokens,
+    guardUsageEstimated: usage.totalTokens <= 0,
     durationMs: Date.now() - requestStartedAt,
   });
 
@@ -369,7 +547,6 @@ export async function aiGenerateJSON<T extends AiResponseJSON>(opts: AiGenerateJ
       engine: "engine" in opts ? opts.engine : undefined,
       accountId: opts.accountId || undefined,
       hasImages,
-      usedVisionFallback: routing.usedVisionFallback,
       durationMs: Date.now() - requestStartedAt,
     });
     throw new Error(`Service IA : contenu de sortie manquant${status}`);

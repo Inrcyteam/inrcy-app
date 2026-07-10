@@ -49,10 +49,11 @@ test("Booster keeps airy paragraphs but removes fixed layout and emoji quotas", 
 test("CTA is no longer a reason to rewrite an otherwise publishable Booster result", () => {
   const generation = read("lib/boosterPublishGeneration.ts");
   const prompt = read("lib/boosterPrompt.ts");
-  assert.match(generation, /un CTA séparé est une préférence éditoriale, pas un motif de/i);
-  assert.match(generation, /const missingChannels = channels\.filter\(\(channel\) => !hasCorePublishableContent/i);
+  assert.match(generation, /collectChannelQualityIssues\(/);
+  assert.match(generation, /hasCorePublishableContent\(channel, post\)/);
+  assert.doesNotMatch(generation, /missingCta|cta_missing|missing_cta/);
   assert.match(prompt, /La clé cta doit toujours exister mais peut contenir ""/i);
-  assert.match(generation, /La clé cta peut rester vide si un CTA séparé n'apporte rien/i);
+  assert.match(prompt, /Le CTA préféré est une orientation, pas une obligation/i);
 });
 
 test("anti-duplication only regenerates quasi copies instead of normal same-topic vocabulary", () => {
@@ -80,20 +81,24 @@ test("engine preference is passed into shared writing-freedom rules across writi
   ];
   for (const file of files) {
     const source = read(file);
-    assert.match(source, /buildAiWritingProfileRules\([\s\S]*preferredEngine|buildAiWritingProfileRules\([\s\S]*getAiPreferredEngineFromBusiness/i, file);
+    assert.match(
+      source,
+      /buildAiWritingProfileRules\([\s\S]*preferredEngine|buildAiWritingProfileRules\([\s\S]*getAiPreferredEngineFromBusiness|buildCompactAiWritingDirective\([\s\S]*preferences\.engine/i,
+      file,
+    );
   }
 });
 
 test("text generation capacities remain unchanged after creative freedom changes", () => {
-  assert.equal(AI_FEATURE_POLICIES["booster.publish"].maxOutputTokens, 8000);
-  assert.equal(AI_FEATURE_POLICIES["agent.publish"].maxOutputTokens, 8000);
-  assert.equal(AI_FEATURE_POLICIES["booster.youtube-rescue"].maxOutputTokens, 8000);
+  assert.equal(AI_FEATURE_POLICIES["booster.publish"].maxOutputTokens, 10_000);
+  assert.equal(AI_FEATURE_POLICIES["agent.publish"].maxOutputTokens, 10_000);
   assert.equal(AI_FEATURE_POLICIES["templates.generate"].maxOutputTokens, 3000);
 
   const generation = read("lib/boosterPublishGeneration.ts");
   assert.match(generation, /siteChannel \? 6000 : 2000/);
-  assert.match(generation, /youtube_shorts:\s*2100/);
-  assert.match(generation, /site_web:\s*2200/);
+  assert.match(generation, /youtube_shorts:\s*950/);
+  assert.match(generation, /site_web:\s*1100/);
+  assert.match(generation, /Math\.min\(10_000, Math\.max\(minimum, contentBudget\)\)/);
 });
 
 test("iNrAgent publishing explicitly preserves the selected engine's native voice", () => {
@@ -103,11 +108,12 @@ test("iNrAgent publishing explicitly preserves the selected engine's native voic
 });
 
 
-test("creative synonym reformulations are not discarded during second-pass recovery", () => {
+test("creative synonym reformulations are not discarded by the single targeted repair", () => {
   const generation = read("lib/boosterPublishGeneration.ts");
-  assert.match(generation, /const safeRecoveryAccept =/);
-  assert.match(generation, /attempt > 0 &&[\s\S]*isGeneratedPostSafe/);
-  assert.doesNotMatch(generation, /const safeAnchoredAccept =/);
-  assert.match(generation, /attempt > 0 && meaningfulYoutubeCandidate/);
-  assert.match(generation, /unsafe channels after recovery/);
+  assert.match(generation, /const safeCandidate = isGeneratedPostSafe\(/);
+  assert.match(generation, /const requiresIdeaAnchor = channelIssues\.includes\("off_topic"\)/);
+  assert.match(generation, /!requiresIdeaAnchor \|\| isPostAnchoredToIdea\(args\.ideaKeywords, candidate\)/);
+  assert.match(generation, /L'ancrage exact[\s\S]*signal de qualité et non une raison de jeter une bonne reformulation/i);
+  assert.match(generation, /unsafe channels after single repair/);
+  assert.doesNotMatch(generation, /attempt > 0/);
 });

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { readFileSync, readdirSync } from "node:fs";
+import { join, resolve } from "node:path";
 
 const ROOT = resolve(import.meta.dirname, "../..");
 
@@ -67,7 +67,6 @@ test("every aiGenerateJSON call is tagged and explicitly routed", () => {
 test("major iNrCy modules have distinct Gateway feature tags", () => {
   const expected = [
     "booster.publish",
-    "booster.youtube-rescue",
     "agent.publish",
     "templates.generate",
     "agent.campaign",

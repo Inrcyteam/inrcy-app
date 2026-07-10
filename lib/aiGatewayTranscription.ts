@@ -7,8 +7,11 @@ import {
   normalizeGatewayModelId,
 } from "@/lib/aiGatewayConfig";
 import {
-  recordAiGatewayAccountUsage,
+  commitAiGatewayAccountAttempt,
+  recordAiGatewayAccountFailure,
   reserveAiGatewayAccountAttempt,
+  rollbackAiGatewayAccountAttempt,
+  type AiGatewayAccountAttemptReservation,
 } from "@/lib/aiGatewayAccountGuard";
 import { assertAllowedAiGatewayTranscriptionModel } from "@/lib/aiGatewayPolicy";
 import { fetchWithRetry } from "@/lib/observability/fetch";
@@ -73,6 +76,7 @@ export async function aiTranscribeMedia(args: {
   const url = getAiGatewayTranscriptionUrl();
   const models = getConfiguredModels();
   const errors: string[] = [];
+  const hardDeadlineAt = Date.now() + Math.max(15_000, Math.min(110_000, Math.floor(args.timeoutMs ?? 100_000)));
 
   for (const model of models) {
     assertAllowedAiGatewayTranscriptionModel(
@@ -81,6 +85,8 @@ export async function aiTranscribeMedia(args: {
     );
 
     try {
+      const attemptReservations = new Map<number, AiGatewayAccountAttemptReservation | null>();
+      let successfulReservation: AiGatewayAccountAttemptReservation | null = null;
       const response = await fetchWithRetry(url, {
         method: "POST",
         headers: {
@@ -91,13 +97,33 @@ export async function aiTranscribeMedia(args: {
         body: JSON.stringify({ audio, mediaType }),
         retries: Math.max(0, Math.min(1, Math.floor(args.retries ?? 1))),
         timeoutMs: Math.max(10_000, Math.min(90_000, Math.floor(args.timeoutMs ?? 70_000))),
-        onAttempt: async () => {
-          await reserveAiGatewayAccountAttempt(args.accountId);
+        deadlineAt: hardDeadlineAt,
+        retryStatuses: [408, 500, 502, 503, 504],
+        onAttempt: async (attempt) => {
+          const reservation = await reserveAiGatewayAccountAttempt(args.accountId, {
+            reservedOutputTokens: 128,
+            estimatedCostMicroUsd: 1,
+          });
+          attemptReservations.set(attempt, reservation);
+        },
+        onAttemptSettled: async ({ attempt, response: settledResponse }) => {
+          const reservation = attemptReservations.get(attempt) || null;
+          if (settledResponse?.ok) {
+            successfulReservation = reservation;
+            return;
+          }
+          await rollbackAiGatewayAccountAttempt(reservation).catch(() => undefined);
         },
       });
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => "");
+        await recordAiGatewayAccountFailure({
+          accountId: args.accountId,
+          feature: "booster.transcribe",
+          model,
+          status: response.status,
+        }).catch(() => undefined);
         errors.push(`${model}: ${response.status} ${errorText || response.statusText}`.trim());
         if (response.status === 401 || response.status === 403) break;
         continue;
@@ -110,13 +136,13 @@ export async function aiTranscribeMedia(args: {
         continue;
       }
 
-      void recordAiGatewayAccountUsage({
-        accountId: args.accountId,
+      await commitAiGatewayAccountAttempt({
+        reservation: successfulReservation,
         feature: "booster.transcribe",
         model,
         usage: { inputTokens: 0, outputTokens: 0, totalTokens: 0 },
       }).catch((error) => {
-        console.warn("[ai-gateway] transcription usage telemetry unavailable", {
+        console.warn("[ai-gateway] transcription atomic usage commit unavailable", {
           model,
           message: error instanceof Error ? error.message : String(error),
         });

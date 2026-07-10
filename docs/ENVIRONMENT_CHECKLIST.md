@@ -57,7 +57,6 @@ STRICT=1 npm run verify:env
 Limites optionnelles :
 
 - [ ] `RL_BOOSTER_GENERATE_PER_MIN`
-- [ ] `QUOTA_BOOSTER_GENERATE_PER_DAY`
 - [ ] `RL_TEMPLATES_RENDER_PER_MIN`
 - [ ] `QUOTA_TEMPLATES_RENDER_PER_DAY`
 - [ ] `RL_PUBLISH_NOW_PER_MIN`
@@ -94,7 +93,6 @@ Limites optionnelles :
 ## IA / Vercel AI Gateway
 
 - [ ] `AI_GATEWAY_API_KEY` ou authentification OIDC Vercel — obligatoire pour toute génération texte/vision et transcription
-- [ ] `AI_GATEWAY_MODE=gateway` (mode de production recommandé)
 - [ ] `AI_GATEWAY_MODEL` (format `provider/model`)
 - [ ] `AI_GATEWAY_VISION_MODEL` si modèle vision distinct
 - [ ] `AI_GATEWAY_BASE_URL` seulement si surcharge volontaire

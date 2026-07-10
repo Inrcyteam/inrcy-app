@@ -29,7 +29,9 @@ test("transcription keeps a quality-first model with a Whisper fallback", () => 
 
 test("raw transcription attempts are attached to the active account economic guard", () => {
   const client = read("lib/aiGatewayTranscription.ts");
-  assert.match(client, /reserveAiGatewayAccountAttempt\(args\.accountId\)/);
+  assert.match(client, /reserveAiGatewayAccountAttempt\(args\.accountId,\s*\{/);
+  assert.match(client, /commitAiGatewayAccountAttempt/);
+  assert.match(client, /rollbackAiGatewayAccountAttempt/);
   assert.match(client, /feature:\s*"booster\.transcribe"/);
   assert.equal(AI_FEATURE_POLICIES["booster.transcribe"].maxRetries, 1);
 });

@@ -516,7 +516,6 @@ function pickLimit(pathname: string, method: string): LimitPlan {
           windowSeconds: 60,
           name: "booster-generate-write",
           failClosed: false,
-          dailyQuota: Number(process.env.QUOTA_BOOSTER_GENERATE_PER_DAY || 120),
         }
       : { tokens: 30, windowSeconds: 60, name: "booster-generate-read" };
   }

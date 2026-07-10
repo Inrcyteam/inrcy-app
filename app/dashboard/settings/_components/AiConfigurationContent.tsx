@@ -443,7 +443,7 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
                 <span style={hint}>
                   {getAiEngineOption(form.preferredEngine).description} iNrCy conserve ses règles métier, ses longueurs et ses adaptations par canal.
                   {!getAiEngineOption(form.preferredEngine).supportsVision
-                    ? " Pour les analyses d’images, iNrCy utilise automatiquement un modèle vision compatible."
+                    ? " Pour comprendre les images, iNrCy peut utiliser un module vision compatible, mais le moteur choisi reste l’auteur du contenu final."
                     : ""}
                 </span>
               </label>

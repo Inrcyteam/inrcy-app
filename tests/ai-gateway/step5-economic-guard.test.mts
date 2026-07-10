@@ -29,12 +29,13 @@ function walk(relDir: string): string[] {
 test("all Gateway feature tags have explicit economic policies", () => {
   assert.deepEqual(Object.keys(AI_FEATURE_POLICIES).sort(), [
     "agent.campaign",
+    "agent.media-understanding",
     "agent.publish",
     "agent.stats-report",
+    "booster.media-understanding",
     "booster.publish",
     "booster.transcribe",
     "booster.transcript-cleanup",
-    "booster.youtube-rescue",
     "mails.attachment-image",
     "mails.attachment-video",
     "mails.generate",
@@ -44,7 +45,7 @@ test("all Gateway feature tags have explicit economic policies", () => {
   ].sort());
 
   for (const policy of Object.values(AI_FEATURE_POLICIES)) {
-    assert.ok(policy.maxOutputTokens >= 128 && policy.maxOutputTokens <= 8000);
+    assert.ok(policy.maxOutputTokens >= 128 && policy.maxOutputTokens <= 10_000);
     assert.ok(policy.maxRetries >= 0 && policy.maxRetries <= 1);
     assert.ok(policy.defaultOperationMaxCalls >= 1);
     assert.ok(policy.defaultOperationMaxReservedOutputTokens >= policy.maxOutputTokens);
@@ -121,11 +122,12 @@ test("Gateway retries count real HTTP attempts and account quotas use active acc
   const clientSource = read("lib/aiGatewayClient.ts");
   assert.match(fetchSource, /onAttempt\?:/);
   assert.match(fetchSource, /if \(onAttempt\) await onAttempt\(i\)/);
-  assert.match(clientSource, /reserveAiGatewayAccountAttempt\(opts\.accountId\)/);
-  assert.match(clientSource, /recordAiGatewayAccountUsage/);
+  assert.match(clientSource, /reserveAiGatewayAccountAttempt\(opts\.accountId,\s*\{/);
+  assert.match(clientSource, /commitAiGatewayAccountAttempt/);
+  assert.match(clientSource, /rollbackAiGatewayAccountAttempt/);
 
-  assert.match(read("app/api/booster/generate/route.ts"), /consumeAiCredits\(\{[\s\S]{0,180}userId,[\s\S]{0,120}action: "booster"/);
-  assert.match(read("app/api/mails/generate-ai/route.ts"), /consumeAiCredits\(\{[\s\S]{0,180}userId,[\s\S]{0,120}action: "mail"/);
+  assert.match(read("app/api/booster/generate/route.ts"), /reserveAiCredits\(\{[\s\S]{0,180}userId,[\s\S]{0,120}action: "booster"/);
+  assert.match(read("app/api/mails/generate-ai/route.ts"), /reserveAiCredits\(\{[\s\S]{0,180}userId,[\s\S]{0,120}action: "mail"/);
   assert.match(read("app/api/templates/generate-ai/route.ts"), /quotaUserId: activeUserId/);
   assert.match(read("app/api/agent/actions/prepare-publish/route.ts"), /const quotaAccountId = userId/);
 });

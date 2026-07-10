@@ -53,7 +53,8 @@ test("Booster uses JSON Schema structured output instead of provider-specific lo
   assert.match(client, /type:\s*"json_schema"/);
   assert.match(client, /schema:\s*opts\.responseSchema\.schema/);
   assert.match(booster, /responseSchema:\s*buildBoosterResponseSchema\(args\.channels\)/);
-  assert.match(booster, /responseSchema:\s*buildFlatChannelPostResponseSchema\("youtube_post"\)/);
+  assert.doesNotMatch(booster, /buildFlatChannelPostResponseSchema/);
+  assert.match(booster, /1 appel principal quel que soit le nombre de canaux sélectionnés/);
 });
 
 test("AI generation does not retry 429 immediately and Booster stops recovery storms", () => {
@@ -64,7 +65,9 @@ test("AI generation does not retry 429 immediately and Booster stops recovery st
   assert.match(booster, /shouldAbortAiRecovery/);
   assert.match(booster, /AI Gateway error/);
   assert.match(booster, /429/);
-  assert.match(booster, /rethrowIfRecoveryMustStop\(singleError\)/);
+  assert.match(booster, /rethrowIfRecoveryMustStop\(error\)/);
+  assert.match(booster, /targeted-repair-once/);
+  assert.doesNotMatch(booster, /single-channel-fallback|focused-recovery-/);
 });
 
 test("paragraph breaks survive JSON parsing and Booster sanitization", () => {
@@ -103,15 +106,15 @@ test("Booster prompt explicitly requires airy paragraphs for every channel", () 
 });
 
 test("Step 6 does not reduce previous text-generation capacities", () => {
-  assert.equal(AI_FEATURE_POLICIES["booster.publish"].maxOutputTokens, 8000);
-  assert.equal(AI_FEATURE_POLICIES["agent.publish"].maxOutputTokens, 8000);
-  assert.equal(AI_FEATURE_POLICIES["booster.youtube-rescue"].maxOutputTokens, 8000);
+  assert.equal(AI_FEATURE_POLICIES["booster.publish"].maxOutputTokens, 10_000);
+  assert.equal(AI_FEATURE_POLICIES["agent.publish"].maxOutputTokens, 10_000);
   assert.equal(AI_FEATURE_POLICIES["templates.generate"].maxOutputTokens, 3000);
 
   const boosterGeneration = read("lib/boosterPublishGeneration.ts");
   assert.match(boosterGeneration, /siteChannel \? 6000 : 2000/);
-  assert.match(boosterGeneration, /youtube_shorts:\s*2100/);
-  assert.match(boosterGeneration, /site_web:\s*2200/);
+  assert.match(boosterGeneration, /youtube_shorts:\s*950/);
+  assert.match(boosterGeneration, /site_web:\s*1100/);
+  assert.match(boosterGeneration, /Math\.min\(10_000, Math\.max\(minimum, contentBudget\)\)/);
 });
 
 test("all eight engines keep explicit model, vision and JSON-mode contracts", () => {

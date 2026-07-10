@@ -2,21 +2,23 @@ import { NextResponse } from "next/server";
 import { bubbleAccessDisabledResponse, isAppBubbleEnabledForUser } from "@/lib/appBubbleAccessServer";
 import { requireUser } from "@/lib/requireUser";
 import { aiGenerateJSON } from "@/lib/aiGatewayClient";
-import { getAiPreferredEngineFromBusiness } from "@/lib/aiEnginePreference";
 import { enforceRateLimit } from "@/lib/rateLimit";
 import { asRecord, asString } from "@/lib/tsSafe";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
-import { getJobLabel } from "@/lib/activityCatalog";
-import { decodeBusinessSector, getActivitySectorLabel } from "@/lib/activitySectors";
 import {
   buildAiLanguageInstruction,
+  getAiEngineTemperature,
   buildAiWritingProfilePromptSection,
   buildAiWritingProfileRules,
 } from "@/lib/aiWritingProfile";
+import { buildNormalizedAiGenerationProfile } from "@/lib/aiGenerationProfile";
 import {
+  commitAiCredits,
   computeReviewReplyAiCredits,
-  consumeAiCredits,
+  reserveAiCredits,
+  rollbackAiCredits,
   isAdminUserForAi,
+  type AiCreditReservation,
 } from "@/lib/aiUsageQuota";
 
 export const maxDuration = 60;
@@ -68,6 +70,7 @@ function listFrom(value: unknown, max = 8) {
 }
 
 export async function POST(req: Request) {
+  let quotaReservation: AiCreditReservation | null = null;
   try {
     const { supabase, authUserId, activeUserId, errorResponse } = await requireUser();
     if (errorResponse) return errorResponse;
@@ -101,13 +104,14 @@ export async function POST(req: Request) {
       });
       if (rateLimited) return rateLimited;
 
-      const quotaLimited = await consumeAiCredits({
+      const quota = await reserveAiCredits({
         supabase,
         userId,
         action: "review_reply",
         credits: computeReviewReplyAiCredits({ rating, comment: reviewComment, existingReply }),
       });
-      if (quotaLimited) return quotaLimited;
+      if (quota.errorResponse) return quota.errorResponse;
+      quotaReservation = quota.reservation;
     }
 
     const [profileRes, businessRes] = await Promise.all([
@@ -123,18 +127,25 @@ export async function POST(req: Request) {
 
     const profile = asRecord(profileRes.data);
     const business = asRecord(businessRes.data);
-    const preferredEngine = getAiPreferredEngineFromBusiness(business);
-    const decodedSector = decodeBusinessSector(String(business["sector"] ?? ""));
-    const profession = getJobLabel(decodedSector.sectorCategory, decodedSector.profession) || decodedSector.profession || "";
-    const sectorLabel = getActivitySectorLabel(decodedSector.sectorCategory);
-    const company = clean(profile["company_legal_name"] || profile["company_name"] || business["company_name"], 160);
-    const city = clean(profile["hq_city"] || profile["hqCity"], 80);
-    const activityDescription = clean(business["activity_description"] || business["description"] || business["business_description"], 800);
-    const services = listFrom(business["services"] || business["services_text"], 10);
-    const strengths = listFrom(business["strengths"] || business["strengths_text"], 8);
-    const aiConfig = buildAiWritingProfilePromptSection(business);
-    const aiRules = buildAiWritingProfileRules(business, preferredEngine);
-    const aiLanguageInstruction = buildAiLanguageInstruction(business);
+    const generationProfile = buildNormalizedAiGenerationProfile({
+      profile,
+      business,
+      idea: reviewComment || `Avis ${rating}/5`,
+      theme: "trustpilot-review-reply",
+      style: "review-reply",
+    });
+    const preferredEngine = generationProfile.preferences.engine;
+    const businessContext = generationProfile.business;
+    const profession = businessContext.professionLabel;
+    const sectorLabel = businessContext.sectorLabel;
+    const company = clean(businessContext.companyName, 160);
+    const city = clean(businessContext.city, 80);
+    const activityDescription = clean(businessContext.description, 800);
+    const services = listFrom(businessContext.services, 10);
+    const strengths = listFrom(businessContext.strengths, 8);
+    const aiConfig = buildAiWritingProfilePromptSection(generationProfile);
+    const aiRules = buildAiWritingProfileRules(generationProfile, preferredEngine);
+    const aiLanguageInstruction = buildAiLanguageInstruction(generationProfile);
 
     const system = `Tu es l'assistant IA d'iNrCy spécialisé dans les réponses aux avis Trustpilot.
 Réponds uniquement en JSON valide : {"reply_text":"..."}.
@@ -183,19 +194,22 @@ Génère une seule réponse prête à publier, naturelle, rassurante et adaptée
       system,
       input,
       maxOutputTokens: 700,
-      temperature: 0.68,
+      temperature: getAiEngineTemperature(generationProfile, preferredEngine, "reply"),
     });
 
     const replyText = cleanReply(generated?.reply_text || generated?.comment);
     if (!replyText) {
+      await rollbackAiCredits(quotaReservation);
       return NextResponse.json(
         { error: "iNrCy n’a pas retourné de réponse exploitable.", user_message: "iNrCy n’a pas retourné de réponse exploitable." },
         { status: 500 },
       );
     }
 
+    await commitAiCredits(quotaReservation);
     return NextResponse.json({ ok: true, reviewName, reply_text: replyText });
   } catch (error) {
+    await rollbackAiCredits(quotaReservation);
     return jsonUserFacingError(error, {
       status: 500,
       fallback: "La génération IA n’a pas pu aboutir pour cet avis Trustpilot.",

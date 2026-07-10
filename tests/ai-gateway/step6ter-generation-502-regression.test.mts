@@ -15,10 +15,13 @@ test("Booster and iNrAgent prompts keep enough headroom after multi-AI expansion
   assert.ok(AI_FEATURE_POLICIES["agent.publish"].maxInputChars >= 72_000);
 });
 
-test("multichannel recovery budget matches the recovery pipeline instead of stopping at eight calls", () => {
-  assert.ok(AI_FEATURE_POLICIES["booster.publish"].defaultOperationMaxCalls >= 12);
-  assert.ok(AI_FEATURE_POLICIES["booster.publish"].defaultOperationMaxReservedOutputTokens >= 64_000);
-  assert.ok(AI_FEATURE_POLICIES["agent.publish"].defaultOperationMaxCalls >= 11);
+test("V2 multichannel budget allows one primary call and one targeted repair only", () => {
+  assert.equal(AI_FEATURE_POLICIES["booster.publish"].defaultOperationMaxCalls, 2);
+  assert.equal(AI_FEATURE_POLICIES["agent.publish"].defaultOperationMaxCalls, 2);
+  assert.ok(AI_FEATURE_POLICIES["booster.publish"].defaultOperationMaxReservedOutputTokens >= 20_000);
+  assert.ok(AI_FEATURE_POLICIES["agent.publish"].defaultOperationMaxReservedOutputTokens >= 20_000);
+  assert.ok(AI_FEATURE_POLICIES["booster.publish"].defaultOperationMaxDurationMs < 120_000);
+  assert.ok(AI_FEATURE_POLICIES["agent.publish"].defaultOperationMaxDurationMs < 120_000);
 });
 
 test("Gateway validates the exact effective prompt sent to prompt-only engines", () => {
@@ -28,11 +31,12 @@ test("Gateway validates the exact effective prompt sent to prompt-only engines",
   assert.match(client, /\[ai-gateway\] input policy exceeded/);
 });
 
-test("Booster bounds long media context and does not hide a complete generation failure as unsafe channels", () => {
+test("Booster bounds media context and keeps the root failure visible after the single repair", () => {
   const generation = read("lib/boosterPublishGeneration.ts");
   assert.match(generation, /MAX_BOOSTER_EXTRA_INSTRUCTIONS_CHARS = 8_000/);
   assert.match(generation, /compactPromptContext\(args\.extraInstructions\)/);
-  assert.match(generation, /if \(!Object\.keys\(versions\)\.length && firstFailure\)/);
+  assert.match(generation, /stage: "primary-single-pass"/);
+  assert.match(generation, /stage: "targeted-repair-once"/);
   assert.match(generation, /if \(initialGenerationError && unsafeChannels\.length === channels\.length\)/);
   assert.match(generation, /generation attempt failed/);
 });
