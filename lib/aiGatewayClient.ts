@@ -34,6 +34,13 @@ export type { AiGenerationFeature, AiOperationBudget } from "@/lib/aiGatewayPoli
 
 type AiResponseJSON = Record<string, unknown>;
 
+export type AiJsonResponseSchema = {
+  /** Stable schema name sent to the Responses API. */
+  name: string;
+  schema: Record<string, unknown>;
+  strict?: boolean;
+};
+
 export type AiGatewayMode = "auto" | "gateway";
 export type AiGenerationRuntime = "vercel-ai-gateway";
 
@@ -50,6 +57,8 @@ type AiGenerateJsonBaseOptions = {
   temperature?: number;
   retries?: number;
   timeoutMs?: number;
+  /** Optional JSON Schema for reliable multi-provider structured output. */
+  responseSchema?: AiJsonResponseSchema;
 };
 
 type AiGenerateJsonRouting =
@@ -121,6 +130,33 @@ function resolveRequestedRouting(
       "openai/gpt-4o-mini",
     jsonMode: "strict",
     usedVisionFallback: false,
+  };
+}
+
+
+function normalizeJsonSchemaName(value: unknown): string {
+  const normalized = String(value || "inrcy_response")
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, "_")
+    .slice(0, 64);
+  return normalized || "inrcy_response";
+}
+
+function getOutputDiagnostics(json: any) {
+  const output = Array.isArray(json?.output) ? json.output : [];
+  return {
+    responseStatus: typeof json?.status === "string" ? json.status : undefined,
+    incompleteReason:
+      typeof json?.incomplete_details?.reason === "string"
+        ? json.incomplete_details.reason
+        : undefined,
+    outputItemTypes: output
+      .map((item: any) => (typeof item?.type === "string" ? item.type : "unknown"))
+      .slice(0, 12),
+    contentPartTypes: output
+      .flatMap((item: any) => (Array.isArray(item?.content) ? item.content : []))
+      .map((part: any) => (typeof part?.type === "string" ? part.type : "unknown"))
+      .slice(0, 20),
   };
 }
 
@@ -209,10 +245,29 @@ export async function aiGenerateJSON<T extends AiResponseJSON>(opts: AiGenerateJ
   // système. On valide donc la taille RÉELLEMENT envoyée au Gateway, pas seulement
   // le prompt d'origine.
   const effectiveSystemPrompt = routing.jsonMode === "prompt-only"
-    ? appendPromptOnlyJsonContract(opts.system)
+    ? [
+        appendPromptOnlyJsonContract(opts.system),
+        opts.responseSchema
+          ? `SCHÉMA JSON OBLIGATOIRE (respecte exactement cette structure) :\n${JSON.stringify(opts.responseSchema.schema)}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n\n")
     : opts.system;
 
   validatePayloadAgainstPolicy(opts, max_output_tokens, effectiveSystemPrompt);
+
+  const structuredFormat =
+    opts.responseSchema && routing.jsonMode === "strict"
+      ? {
+          type: "json_schema",
+          name: normalizeJsonSchemaName(opts.responseSchema.name),
+          strict: opts.responseSchema.strict !== false,
+          schema: opts.responseSchema.schema,
+        }
+      : routing.jsonMode === "strict"
+        ? { type: "json_object" }
+        : undefined;
 
   const userContent: Array<Record<string, unknown>> = [
     { type: "input_text", text: opts.input },
@@ -235,10 +290,10 @@ export async function aiGenerateJSON<T extends AiResponseJSON>(opts: AiGenerateJ
       model,
       max_output_tokens,
       ...(temperature === undefined ? {} : { temperature }),
-      ...(routing.jsonMode === "strict"
+      ...(structuredFormat
         ? {
             text: {
-              format: { type: "json_object" },
+              format: structuredFormat,
             },
           }
         : {}),
@@ -249,6 +304,9 @@ export async function aiGenerateJSON<T extends AiResponseJSON>(opts: AiGenerateJ
     }),
     retries,
     timeoutMs,
+    // 429 ne doit pas être rejoué immédiatement : cela amplifie les rate limits
+    // des fournisseurs et déclenche des cascades de reprises coûteuses.
+    retryStatuses: [408, 500, 502, 503, 504],
     onAttempt: async () => {
       await reserveAiGatewayAccountAttempt(opts.accountId);
     },
@@ -264,6 +322,7 @@ export async function aiGenerateJSON<T extends AiResponseJSON>(opts: AiGenerateJ
       hasImages,
       usedVisionFallback: routing.usedVisionFallback,
       retries,
+      structuredOutput: Boolean(structuredFormat),
       status: res.status,
       durationMs: Date.now() - requestStartedAt,
     });
@@ -295,6 +354,7 @@ export async function aiGenerateJSON<T extends AiResponseJSON>(opts: AiGenerateJ
     accountId: opts.accountId || undefined,
     hasImages,
     usedVisionFallback: routing.usedVisionFallback,
+    structuredOutput: Boolean(structuredFormat),
     inputTokens: usage.inputTokens,
     outputTokens: usage.outputTokens,
     totalTokens: usage.totalTokens,
@@ -315,5 +375,19 @@ export async function aiGenerateJSON<T extends AiResponseJSON>(opts: AiGenerateJ
     throw new Error(`Service IA : contenu de sortie manquant${status}`);
   }
 
-  return parseAiGatewayJsonObject<T>(contentText);
+  try {
+    return parseAiGatewayJsonObject<T>(contentText);
+  } catch (error) {
+    console.error("[ai-gateway] invalid structured output", {
+      feature: opts.feature,
+      model,
+      engine: "engine" in opts ? opts.engine : undefined,
+      accountId: opts.accountId || undefined,
+      structuredOutput: Boolean(structuredFormat),
+      contentChars: contentText.length,
+      ...getOutputDiagnostics(json),
+      message: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
 }

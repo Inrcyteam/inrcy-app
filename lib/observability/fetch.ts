@@ -30,9 +30,16 @@ export async function fetchWithRetry(
     requestId?: string;
     route?: string;
     onAttempt?: (attempt: number) => void | Promise<void>;
+    /** HTTP statuses eligible for an automatic retry. Defaults to transient server errors + 429. */
+    retryStatuses?: number[];
   } = {}
 ): Promise<Response> {
-  const { retries = 2, onAttempt, ...rest } = init;
+  const {
+    retries = 2,
+    onAttempt,
+    retryStatuses = [408, 429, 500, 502, 503, 504],
+    ...rest
+  } = init;
   let lastErr: any;
   for (let i = 0; i <= retries; i++) {
     // Exécuté avant chaque vraie tentative HTTP. Une erreur de garde-fou ne doit
@@ -41,8 +48,8 @@ export async function fetchWithRetry(
     try {
       const res = await fetchWithTimeout(input, rest);
       if (res.ok) return res;
-      // Retry on common transient errors
-      if (![408, 429, 500, 502, 503, 504].includes(res.status)) return res;
+      // Retry only the statuses explicitly allowed by the caller.
+      if (!retryStatuses.includes(res.status)) return res;
       lastErr = new Error(`HTTP ${res.status}`);
     } catch (e: any) {
       lastErr = e;

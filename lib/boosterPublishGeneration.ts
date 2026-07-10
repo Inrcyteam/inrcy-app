@@ -1,4 +1,8 @@
-import { aiGenerateJSON, type AiGenerationFeature } from "@/lib/aiGatewayClient";
+import {
+  aiGenerateJSON,
+  type AiGenerationFeature,
+  type AiJsonResponseSchema,
+} from "@/lib/aiGatewayClient";
 import { createAiOperationBudget, type AiOperationBudget } from "@/lib/aiGatewayPolicy";
 import { getAiPreferredEngineFromBusiness } from "@/lib/aiEnginePreference";
 import {
@@ -92,6 +96,92 @@ const CHANNEL_LABELS: Record<BoosterChannels, string> = {
   youtube_shorts: "YouTube",
   pinterest: "Pinterest",
 };
+
+export function buildBoosterResponseSchema(
+  channels: BoosterChannels[],
+): AiJsonResponseSchema {
+  const uniqueChannels = Array.from(new Set(channels)).filter((channel) =>
+    allowedChannels.includes(channel),
+  );
+
+  const postSchema = {
+    type: "object",
+    properties: {
+      title: { type: "string" },
+      content: { type: "string" },
+      cta: { type: "string" },
+      hashtags: {
+        type: "array",
+        items: { type: "string" },
+      },
+    },
+    required: ["title", "content", "cta", "hashtags"],
+    additionalProperties: false,
+  };
+
+  const versionProperties = Object.fromEntries(
+    uniqueChannels.map((channel) => [channel, postSchema]),
+  );
+
+  return {
+    name: "booster_versions",
+    strict: true,
+    schema: {
+      type: "object",
+      properties: {
+        versions: {
+          type: "object",
+          properties: versionProperties,
+          required: uniqueChannels,
+          additionalProperties: false,
+        },
+      },
+      required: ["versions"],
+      additionalProperties: false,
+    },
+  };
+}
+
+function buildFlatChannelPostResponseSchema(name = "channel_post"): AiJsonResponseSchema {
+  return {
+    name,
+    strict: true,
+    schema: {
+      type: "object",
+      properties: {
+        title: { type: "string" },
+        content: { type: "string" },
+        cta: { type: "string" },
+        hashtags: {
+          type: "array",
+          items: { type: "string" },
+        },
+      },
+      required: ["title", "content", "cta", "hashtags"],
+      additionalProperties: false,
+    },
+  };
+}
+
+function shouldAbortAiRecovery(error: unknown): boolean {
+  const code =
+    error && typeof error === "object" && "code" in error
+      ? String((error as { code?: unknown }).code || "")
+      : "";
+  if (["ai_operation_budget_exceeded", "ai_gateway_account_limit_reached"].includes(code)) {
+    return true;
+  }
+
+  const message = generationErrorMessage(error);
+  return (
+    /(?:AI Gateway error\s*\(|HTTP\s+)(?:400|401|403|404|409|422|429)\b/i.test(message) ||
+    /limite de sécurité IA|nombre maximal de reprises|budget maximal de sortie|durée de sécurité/i.test(message)
+  );
+}
+
+function rethrowIfRecoveryMustStop(error: unknown): void {
+  if (shouldAbortAiRecovery(error)) throw error;
+}
 
 const CHANNEL_BATCH_SIZE = 3;
 const MAX_BOOSTER_EXTRA_INSTRUCTIONS_CHARS = 8_000;
@@ -769,6 +859,7 @@ async function generateVersions(args: {
     accountId: args.accountId,
     budget: args.budget,
     engine: getAiPreferredEngineFromBusiness(args.business),
+    responseSchema: buildBoosterResponseSchema(args.channels),
     system: boosterSystemPrompt(args.business),
     input: [
       boosterUserPrompt({
@@ -846,6 +937,7 @@ async function generateVersionsForChannels(args: {
         accountId: args.accountId,
         error,
       });
+      rethrowIfRecoveryMustStop(error);
 
       for (const channel of batch.channels) {
         try {
@@ -871,6 +963,7 @@ async function generateVersionsForChannels(args: {
             accountId: args.accountId,
             error: singleError,
           });
+          rethrowIfRecoveryMustStop(singleError);
         }
       }
     }
@@ -1036,6 +1129,7 @@ async function rescueYoutubeWithDedicatedAi(args: {
         accountId: args.accountId,
         budget: args.budget,
         engine: preferredEngine,
+        responseSchema: buildFlatChannelPostResponseSchema("youtube_post"),
         system: [
           `Tu es un rédacteur YouTube professionnel pour une entreprise locale.`,
           `Écris exclusivement le contenu FINAL destiné au public, en ${languageLabel}.`,
@@ -1110,6 +1204,7 @@ async function rescueYoutubeWithDedicatedAi(args: {
         accountId: args.accountId,
         error,
       });
+      rethrowIfRecoveryMustStop(error);
       // Deuxième passe : texte seul et prompt réduit, pour ne pas dépendre de la vision.
     }
   }
@@ -1200,6 +1295,7 @@ async function recoverChannelsWithAi(args: {
           accountId: args.accountId,
           error,
         });
+        rethrowIfRecoveryMustStop(error);
         // On retente une fois avec une instruction encore plus ciblée.
       }
     }
@@ -1245,6 +1341,7 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
       accountId: args.accountId,
       error,
     });
+    rethrowIfRecoveryMustStop(error);
     rawVersions = {};
   }
 
@@ -1334,6 +1431,7 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
         accountId: args.accountId,
         error,
       });
+      rethrowIfRecoveryMustStop(error);
       // La récupération ciblée canal par canal ci-dessous prend le relais.
     }
   }

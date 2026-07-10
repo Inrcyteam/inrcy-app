@@ -48,7 +48,26 @@ async function callModel(engine, withVision = false) {
   const body = {
     model: engine.model,
     max_output_tokens: 180,
-    ...(engine.jsonMode === "strict" ? { text: { format: { type: "json_object" } } } : {}),
+    ...(engine.jsonMode === "strict"
+      ? {
+          text: {
+            format: {
+              type: "json_schema",
+              name: "inrcy_live_smoke",
+              strict: true,
+              schema: {
+                type: "object",
+                properties: {
+                  ok: { type: "boolean" },
+                  mode: { type: "string" },
+                },
+                required: ["ok", "mode"],
+                additionalProperties: false,
+              },
+            },
+          },
+        }
+      : {}),
     input: [
       { role: "system", content: [{ type: "input_text", text: `Tu exécutes un smoke test technique iNrCy.${promptOnlyContract}` }] },
       {

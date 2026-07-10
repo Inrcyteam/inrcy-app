@@ -38,6 +38,35 @@ test("JSON parser rejects arrays and primitives instead of accepting an invalid 
   assert.throws(() => parseAiGatewayJsonObject('"ok"'), /finalisée/);
 });
 
+
+test("multi-provider JSON parser repairs literal line breaks and trailing commas conservatively", () => {
+  const malformed = '{"title":"Test","content":"Ligne 1\n\nLigne 2", "hashtags":["test",],}';
+  const parsed = parseAiGatewayJsonObject<{ title: string; content: string; hashtags: string[] }>(malformed);
+  assert.equal(parsed.title, "Test");
+  assert.equal(parsed.content, "Ligne 1\n\nLigne 2");
+  assert.deepEqual(parsed.hashtags, ["test"]);
+});
+
+test("Booster uses JSON Schema structured output instead of provider-specific loose JSON mode", () => {
+  const client = read("lib/aiGatewayClient.ts");
+  const booster = read("lib/boosterPublishGeneration.ts");
+  assert.match(client, /type:\s*"json_schema"/);
+  assert.match(client, /schema:\s*opts\.responseSchema\.schema/);
+  assert.match(booster, /responseSchema:\s*buildBoosterResponseSchema\(args\.channels\)/);
+  assert.match(booster, /responseSchema:\s*buildFlatChannelPostResponseSchema\("youtube_post"\)/);
+});
+
+test("AI generation does not retry 429 immediately and Booster stops recovery storms", () => {
+  const client = read("lib/aiGatewayClient.ts");
+  const booster = read("lib/boosterPublishGeneration.ts");
+  assert.match(client, /retryStatuses:\s*\[408, 500, 502, 503, 504\]/);
+  assert.doesNotMatch(client, /retryStatuses:\s*\[[^\]]*429/);
+  assert.match(booster, /shouldAbortAiRecovery/);
+  assert.match(booster, /AI Gateway error/);
+  assert.match(booster, /429/);
+  assert.match(booster, /rethrowIfRecoveryMustStop\(singleError\)/);
+});
+
 test("paragraph breaks survive JSON parsing and Booster sanitization", () => {
   const parsed = parseAiGatewayJsonObject<{ content: string }>(
     JSON.stringify({ content: "Premier paragraphe.\n\nDeuxième paragraphe.\n\nTroisième paragraphe." }),

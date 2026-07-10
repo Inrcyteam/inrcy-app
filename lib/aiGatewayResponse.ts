@@ -103,18 +103,84 @@ function asJsonObject(value: unknown): AiGatewayJsonObject | null {
   return value as AiGatewayJsonObject;
 }
 
-function tryParseObject(candidate: string): AiGatewayJsonObject | null {
-  try {
-    let parsed: unknown = JSON.parse(candidate);
+function repairCommonJsonIssues(candidate: string): string {
+  let output = "";
+  let inString = false;
+  let escaped = false;
 
-    // Quelques modèles peuvent exceptionnellement double-encoder l'objet JSON.
-    if (typeof parsed === "string") {
-      const nested = stripBom(parsed);
-      if (nested.startsWith("{") && nested.endsWith("}")) parsed = JSON.parse(nested);
+  for (const char of candidate) {
+    if (!inString) {
+      output += char;
+      if (char === '"') inString = true;
+      continue;
     }
 
-    return asJsonObject(parsed);
+    if (escaped) {
+      output += char;
+      escaped = false;
+      continue;
+    }
+
+    if (char === "\\") {
+      output += char;
+      escaped = true;
+      continue;
+    }
+
+    if (char === '"') {
+      output += char;
+      inString = false;
+      continue;
+    }
+
+    if (char === "\n") {
+      output += "\\n";
+      continue;
+    }
+    if (char === "\r") {
+      output += "\\r";
+      continue;
+    }
+    if (char === "\t") {
+      output += "\\t";
+      continue;
+    }
+
+    const code = char.charCodeAt(0);
+    if (code < 0x20) {
+      output += `\\u${code.toString(16).padStart(4, "0")}`;
+      continue;
+    }
+
+    output += char;
+  }
+
+  // Trailing commas are a common near-JSON mistake across prompt-only models.
+  return output.replace(/,\s*([}\]])/g, "$1");
+}
+
+function parseObjectCandidate(candidate: string): AiGatewayJsonObject | null {
+  let parsed: unknown = JSON.parse(candidate);
+
+  // Quelques modèles peuvent exceptionnellement double-encoder l'objet JSON.
+  if (typeof parsed === "string") {
+    const nested = stripBom(parsed);
+    if (nested.startsWith("{") && nested.endsWith("}")) parsed = JSON.parse(nested);
+  }
+
+  return asJsonObject(parsed);
+}
+
+function tryParseObject(candidate: string): AiGatewayJsonObject | null {
+  try {
+    return parseObjectCandidate(candidate);
   } catch {
+    try {
+      const repaired = repairCommonJsonIssues(candidate);
+      if (repaired !== candidate) return parseObjectCandidate(repaired);
+    } catch {
+      // La réparation reste volontairement conservatrice.
+    }
     return null;
   }
 }
