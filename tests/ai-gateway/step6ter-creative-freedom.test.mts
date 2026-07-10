@@ -101,3 +101,13 @@ test("iNrAgent publishing explicitly preserves the selected engine's native voic
   assert.match(agent, /Préserve la voix native du moteur IA choisi par l'établissement/i);
   assert.match(agent, /un CTA séparé reste facultatif/i);
 });
+
+
+test("creative synonym reformulations are not discarded during second-pass recovery", () => {
+  const generation = read("lib/boosterPublishGeneration.ts");
+  assert.match(generation, /const safeRecoveryAccept =/);
+  assert.match(generation, /attempt > 0 &&[\s\S]*isGeneratedPostSafe/);
+  assert.doesNotMatch(generation, /const safeAnchoredAccept =/);
+  assert.match(generation, /attempt > 0 && meaningfulYoutubeCandidate/);
+  assert.match(generation, /unsafe channels after recovery/);
+});

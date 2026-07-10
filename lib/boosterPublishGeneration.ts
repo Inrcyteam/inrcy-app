@@ -1019,6 +1019,15 @@ async function rescueYoutubeWithDedicatedAi(args: {
           extractGeneratedChannelVersion(out, "youtube_shorts"),
       );
 
+      const meaningfulYoutubeCandidate = isMeaningfulYoutubeCandidate(
+        candidate,
+        args.languageCode,
+      );
+      const anchoredYoutubeCandidate = isPostAnchoredToIdea(
+        args.ideaKeywords,
+        candidate,
+      );
+
       if (
         isGeneratedPostAcceptable({
           channel: "youtube_shorts",
@@ -1026,8 +1035,11 @@ async function rescueYoutubeWithDedicatedAi(args: {
           ideaKeywords: args.ideaKeywords,
           languageCode: args.languageCode,
         }) ||
-        (isMeaningfulYoutubeCandidate(candidate, args.languageCode) &&
-          isPostAnchoredToIdea(args.ideaKeywords, candidate))
+        (meaningfulYoutubeCandidate && anchoredYoutubeCandidate) ||
+        // La deuxième passe est déjà une mission YouTube ultra ciblée sur le sujet libre.
+        // Ne pas jeter un bon texte uniquement parce qu'il emploie des synonymes au lieu
+        // de répéter littéralement un mot-clé de l'intention.
+        (attempt > 0 && meaningfulYoutubeCandidate)
       ) {
         return candidate;
       }
@@ -1097,16 +1109,19 @@ async function recoverChannelsWithAi(args: {
           ideaKeywords: args.ideaKeywords,
           languageCode: args.languageCode,
         });
-        const safeAnchoredAccept =
+        // Étape 6 ter hotfix : après une première reprise strictement ancrée,
+        // la seconde passe peut être acceptée dès qu'elle est techniquement publiable.
+        // Le prompt de reprise contient déjà le sujet libre mot pour mot ; exiger encore
+        // un mot-clé exact rejetait de bonnes reformulations créatives avec synonymes.
+        const safeRecoveryAccept =
           attempt > 0 &&
           isGeneratedPostSafe({
             channel,
             post: candidate,
             languageCode: args.languageCode,
-          }) &&
-          isPostAnchoredToIdea(args.ideaKeywords, candidate);
+          });
 
-        if (strictAccept || safeAnchoredAccept) {
+        if (strictAccept || safeRecoveryAccept) {
           args.versions[channel] = candidate;
           recovered.add(channel);
           break;
@@ -1334,6 +1349,19 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
   );
 
   if (unsafeChannels.length) {
+    console.error("[booster-generation] unsafe channels after recovery", {
+      aiFeature,
+      accountId: args.accountId || "",
+      channels: unsafeChannels,
+      diagnostics: unsafeChannels.map((channel) => ({
+        channel,
+        hasPost: Boolean(safeVersions[channel]),
+        titleLength: safeVersions[channel]?.title?.trim().length || 0,
+        contentLength: safeVersions[channel]?.content?.trim().length || 0,
+        languageMismatch: hasLanguageMismatch(languageCode, safeVersions[channel]),
+        editorialMetaLeak: hasEditorialMetaLeak(safeVersions[channel]),
+      })),
+    });
     throw new Error(
       `La génération IA n'a pas pu finaliser un contenu publiable pour ${unsafeChannels
         .map((channel) => CHANNEL_LABELS[channel])
