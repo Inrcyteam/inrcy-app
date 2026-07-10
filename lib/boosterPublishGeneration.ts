@@ -94,6 +94,41 @@ const CHANNEL_LABELS: Record<BoosterChannels, string> = {
 };
 
 const CHANNEL_BATCH_SIZE = 3;
+const MAX_BOOSTER_EXTRA_INSTRUCTIONS_CHARS = 8_000;
+
+function compactPromptContext(value: unknown, maxChars = MAX_BOOSTER_EXTRA_INSTRUCTIONS_CHARS) {
+  const text = String(value || "").trim();
+  if (!text || text.length <= maxChars) return text;
+
+  // Les consignes média peuvent contenir des transcriptions longues. On garde le
+  // début (contexte principal) et la fin (souvent les dernières précisions utiles)
+  // au lieu de laisser grossir le prompt jusqu'au rejet par la politique Gateway.
+  const marker = "\n\n[… contexte compacté automatiquement par iNrCy …]\n\n";
+  const available = Math.max(0, maxChars - marker.length);
+  const headLength = Math.ceil(available * 0.7);
+  const tailLength = Math.max(0, available - headLength);
+  return `${text.slice(0, headLength)}${marker}${text.slice(-tailLength)}`;
+}
+
+function generationErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error || "Erreur IA inconnue");
+}
+
+function logGenerationAttemptFailure(args: {
+  stage: string;
+  channels: BoosterChannels[];
+  aiFeature: AiGenerationFeature;
+  accountId?: string;
+  error: unknown;
+}) {
+  console.warn("[booster-generation] generation attempt failed", {
+    stage: args.stage,
+    channels: args.channels,
+    aiFeature: args.aiFeature,
+    accountId: args.accountId || undefined,
+    message: generationErrorMessage(args.error),
+  });
+}
 
 function buildImageGenerationInstructions(imageCount: number) {
   if (imageCount <= 0) return "";
@@ -749,7 +784,7 @@ async function generateVersions(args: {
       languageInstructions,
       imageInstructions,
       `DIFFÉRENCIATION CANAUX : aucun copier-coller entre canaux. Adapte réellement la profondeur, le rythme, le vocabulaire et l'angle au support. Ne force toutefois pas des accroches, CTA ou structures artificiellement opposés : laisse chaque version trouver sa meilleure forme naturelle.`,
-      args.extraInstructions,
+      compactPromptContext(args.extraInstructions),
     ]
       .filter(Boolean)
       .join("\n\n"),
@@ -786,6 +821,7 @@ async function generateVersionsForChannels(args: {
 }) {
   const versions: Partial<Record<BoosterChannels, Partial<ChannelPost>>> = {};
   const batches = buildGenerationBatches(args.channels);
+  let firstFailure: unknown = null;
 
   for (const batch of batches) {
     try {
@@ -801,7 +837,16 @@ async function generateVersionsForChannels(args: {
         const candidate = extractGeneratedChannelVersion(out, channel);
         if (candidate) versions[channel] = candidate;
       }
-    } catch {
+    } catch (error) {
+      firstFailure ??= error;
+      logGenerationAttemptFailure({
+        stage: "batch",
+        channels: batch.channels,
+        aiFeature: args.aiFeature,
+        accountId: args.accountId,
+        error,
+      });
+
       for (const channel of batch.channels) {
         try {
           const singleOut = await generateVersions({
@@ -817,11 +862,25 @@ async function generateVersionsForChannels(args: {
           });
           const candidate = extractGeneratedChannelVersion(singleOut, channel);
           if (candidate) versions[channel] = candidate;
-        } catch {
-          continue;
+        } catch (singleError) {
+          firstFailure ??= singleError;
+          logGenerationAttemptFailure({
+            stage: "single-channel-fallback",
+            channels: [channel],
+            aiFeature: args.aiFeature,
+            accountId: args.accountId,
+            error: singleError,
+          });
         }
       }
     }
+  }
+
+  // Ne jamais transformer une panne réelle du Gateway / une erreur de politique en
+  // faux "unsafe channels". Si absolument aucun canal n'a pu être généré, on remonte
+  // la première cause racine après les reprises ciblées ci-dessus.
+  if (!Object.keys(versions).length && firstFailure) {
+    throw firstFailure;
   }
 
   return { versions };
@@ -1043,7 +1102,14 @@ async function rescueYoutubeWithDedicatedAi(args: {
       ) {
         return candidate;
       }
-    } catch {
+    } catch (error) {
+      logGenerationAttemptFailure({
+        stage: `youtube-rescue-${attempt + 1}`,
+        channels: ["youtube_shorts"],
+        aiFeature: args.aiFeature,
+        accountId: args.accountId,
+        error,
+      });
       // Deuxième passe : texte seul et prompt réduit, pour ne pas dépendre de la vision.
     }
   }
@@ -1126,7 +1192,14 @@ async function recoverChannelsWithAi(args: {
           recovered.add(channel);
           break;
         }
-      } catch {
+      } catch (error) {
+        logGenerationAttemptFailure({
+          stage: `focused-recovery-${attempt + 1}`,
+          channels: [channel],
+          aiFeature: args.aiFeature,
+          accountId: args.accountId,
+          error,
+        });
         // On retente une fois avec une instruction encore plus ciblée.
       }
     }
@@ -1143,6 +1216,7 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
   const channels = Array.from(new Set(args.channels)).filter((channel): channel is BoosterChannels => allowedChannels.includes(channel));
   const ideaKeywords = extractIdeaKeywords(args.idea);
   const recoveredChannels = new Set<BoosterChannels>();
+  let initialGenerationError: unknown = null;
 
   let rawVersions: Partial<Record<BoosterChannels, Partial<ChannelPost>>> = {};
   try {
@@ -1162,7 +1236,15 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
       budget,
     });
     rawVersions = out?.versions && typeof out.versions === "object" ? out.versions : {};
-  } catch {
+  } catch (error) {
+    initialGenerationError = error;
+    logGenerationAttemptFailure({
+      stage: "initial-generation",
+      channels,
+      aiFeature,
+      accountId: args.accountId,
+      error,
+    });
     rawVersions = {};
   }
 
@@ -1244,7 +1326,14 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
           recoveredChannels.add(channel);
         }
       }
-    } catch {
+    } catch (error) {
+      logGenerationAttemptFailure({
+        stage: "standard-retry",
+        channels: standardRetryChannels,
+        aiFeature,
+        accountId: args.accountId,
+        error,
+      });
       // La récupération ciblée canal par canal ci-dessous prend le relais.
     }
   }
@@ -1361,7 +1450,18 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
         languageMismatch: hasLanguageMismatch(languageCode, safeVersions[channel]),
         editorialMetaLeak: hasEditorialMetaLeak(safeVersions[channel]),
       })),
+      initialError: initialGenerationError
+        ? generationErrorMessage(initialGenerationError)
+        : undefined,
     });
+
+    // Si toute la génération est restée vide à cause d'une panne racine déjà connue
+    // (Gateway, politique, budget, timeout…), remonter cette cause plutôt que de la
+    // maquiller en simple contrôle qualité final.
+    if (initialGenerationError && unsafeChannels.length === channels.length) {
+      throw initialGenerationError;
+    }
+
     throw new Error(
       `La génération IA n'a pas pu finaliser un contenu publiable pour ${unsafeChannels
         .map((channel) => CHANNEL_LABELS[channel])

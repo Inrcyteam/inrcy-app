@@ -50,11 +50,17 @@ export const AI_FEATURE_POLICIES: Readonly<Record<AiGenerationFeature, AiFeature
     maxOutputTokens: 8000,
     maxRetries: 1,
     maxTimeoutMs: 72_000,
-    maxInputChars: 32_000,
+    // Les prompts Booster multi-canaux dépassent légitimement 32k caractères
+    // depuis l'ajout des playbooks, profils d'écriture et moteurs multi-IA.
+    // 72k caractères restent un garde-fou strict tout en laissant une marge
+    // suffisante aux profils réels et au contexte média compacté.
+    maxInputChars: 72_000,
     maxImages: 5,
     maxImageDataChars: 40 * MB_AS_DATA_URL_CHARS,
-    defaultOperationMaxCalls: 8,
-    defaultOperationMaxReservedOutputTokens: 42_000,
+    // Le pipeline prévoit des lots initiaux puis des reprises ciblées. 8 appels
+    // pouvaient couper la récupération avant qu'elle n'ait fini sur 8-9 canaux.
+    defaultOperationMaxCalls: 12,
+    defaultOperationMaxReservedOutputTokens: 64_000,
     defaultOperationMaxDurationMs: 180_000,
   },
   "booster.youtube-rescue": {
@@ -72,11 +78,13 @@ export const AI_FEATURE_POLICIES: Readonly<Record<AiGenerationFeature, AiFeature
     maxOutputTokens: 8000,
     maxRetries: 1,
     maxTimeoutMs: 72_000,
-    maxInputChars: 32_000,
+    // iNrAgent réutilise le pipeline Booster et a besoin de la même marge.
+    maxInputChars: 72_000,
     maxImages: 5,
     maxImageDataChars: 40 * MB_AS_DATA_URL_CHARS,
-    defaultOperationMaxCalls: 7,
-    defaultOperationMaxReservedOutputTokens: 38_000,
+    // Même logique que Booster : iNrAgent partage les reprises multicanales.
+    defaultOperationMaxCalls: 11,
+    defaultOperationMaxReservedOutputTokens: 60_000,
     defaultOperationMaxDurationMs: 180_000,
   },
   "templates.generate": {

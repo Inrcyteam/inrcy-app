@@ -135,11 +135,27 @@ function parseUsage(json: any) {
   return { inputTokens, outputTokens, totalTokens };
 }
 
-function validatePayloadAgainstPolicy(opts: AiGenerateJsonOptions, maxOutputTokens: number) {
+function validatePayloadAgainstPolicy(
+  opts: AiGenerateJsonOptions,
+  maxOutputTokens: number,
+  effectiveSystemPrompt: string,
+) {
   const policy = getAiFeaturePolicy(opts.feature);
-  const inputChars = String(opts.system || "").length + String(opts.input || "").length;
+  const systemChars = String(effectiveSystemPrompt || "").length;
+  const inputCharsOnly = String(opts.input || "").length;
+  const inputChars = systemChars + inputCharsOnly;
   if (inputChars > policy.maxInputChars) {
-    throw new Error("La demande IA est trop volumineuse pour cette action. Réduisez le contenu puis réessayez.");
+    console.error("[ai-gateway] input policy exceeded", {
+      feature: opts.feature,
+      accountId: opts.accountId || undefined,
+      systemChars,
+      inputChars: inputCharsOnly,
+      totalChars: inputChars,
+      maxInputChars: policy.maxInputChars,
+    });
+    throw new Error(
+      `La demande IA est trop volumineuse pour cette action (${inputChars}/${policy.maxInputChars} caractères).`,
+    );
   }
 
   const images = Array.isArray(opts.images) ? opts.images : [];
@@ -189,7 +205,14 @@ export async function aiGenerateJSON<T extends AiResponseJSON>(opts: AiGenerateJ
     Math.min(policy.maxTimeoutMs, Math.floor(opts.timeoutMs ?? policy.maxTimeoutMs)),
   );
 
-  validatePayloadAgainstPolicy(opts, max_output_tokens);
+  // Pour les moteurs sans mode JSON strict natif, le contrat JSON est ajouté au
+  // système. On valide donc la taille RÉELLEMENT envoyée au Gateway, pas seulement
+  // le prompt d'origine.
+  const effectiveSystemPrompt = routing.jsonMode === "prompt-only"
+    ? appendPromptOnlyJsonContract(opts.system)
+    : opts.system;
+
+  validatePayloadAgainstPolicy(opts, max_output_tokens, effectiveSystemPrompt);
 
   const userContent: Array<Record<string, unknown>> = [
     { type: "input_text", text: opts.input },
@@ -201,9 +224,6 @@ export async function aiGenerateJSON<T extends AiResponseJSON>(opts: AiGenerateJ
   ];
 
   const requestStartedAt = Date.now();
-  const effectiveSystemPrompt = routing.jsonMode === "prompt-only"
-    ? appendPromptOnlyJsonContract(opts.system)
-    : opts.system;
 
   const res = await fetchWithRetry(`${baseUrl}/responses`, {
     method: "POST",
