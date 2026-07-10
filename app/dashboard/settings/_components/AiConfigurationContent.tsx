@@ -7,6 +7,13 @@ import { createClient } from "@/lib/supabaseClient";
 import { APP_LANGUAGE_OPTIONS, APP_LANGUAGE_STORAGE_KEY, type AppLanguageCode, normalizeAppLanguage } from "@/lib/appLanguage";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import {
+  AI_ENGINE_OPTIONS,
+  DEFAULT_AI_PREFERRED_ENGINE,
+  getAiEngineOption,
+  normalizeAiPreferredEngine,
+  type AiPreferredEngine,
+} from "@/lib/aiEnginePreference";
+import {
   BOOSTER_PREFERRED_CTA_OPTIONS,
   normalizeBoosterPreferredCta,
   type BoosterPreferredCta,
@@ -15,6 +22,7 @@ import {
 type Props = { mode?: "page" | "drawer" };
 
 type AiConfigForm = {
+  preferredEngine: AiPreferredEngine;
   tone: "serious" | "warm" | "fun" | "premium";
   textStyle: "simple" | "dynamic" | "expert" | "coulisses";
   originality: "classic" | "balanced" | "creative";
@@ -36,6 +44,7 @@ const STORAGE_KEY = "inrcy_ai_configuration";
 const AI_LANGUAGE_CUSTOM_STORAGE_KEY = "inrcy_ai_language_custom_v1";
 
 const initialForm: AiConfigForm = {
+  preferredEngine: DEFAULT_AI_PREFERRED_ENGINE,
   tone: "serious",
   textStyle: "simple",
   originality: "balanced",
@@ -255,6 +264,7 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
           const dbLanguage = hasLanguageValue(data?.ai_language) ? normalizeLanguage(data?.ai_language) : undefined;
           const shouldUseDbLanguage = Boolean(dbLanguage && (aiLanguageIsCustom || dbLanguage !== initialForm.language));
           dbTone = {
+            preferredEngine: normalizeAiPreferredEngine(data?.ai_preferred_engine),
             tone: normalizeTone(data?.tone),
             textStyle: normalizeTextStyle(data?.communication_style),
             originality: normalizeOriginality(data?.ai_creativity),
@@ -273,6 +283,7 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
         }
 
         const migratedLocal: Partial<AiConfigForm> = {
+          preferredEngine: normalizeAiPreferredEngine(local.preferredEngine),
           tone: normalizeTone(local.tone),
           textStyle: normalizeTextStyle(local.textStyle ?? local.communicationStyle),
           originality: normalizeOriginality(local.originality ?? local.creativity),
@@ -330,6 +341,7 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
         const { error: upErr } = await supabase.from(TABLE).upsert(
           {
             user_id: resolveActiveBrowserUserId(user.id),
+            ai_preferred_engine: form.preferredEngine,
             tone: form.tone,
             preferred_cta: form.preferredCta,
             communication_style: form.textStyle,
@@ -354,6 +366,7 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
       if (typeof window !== "undefined") {
         window.dispatchEvent(new CustomEvent("inrcy:ai-configuration-updated", {
           detail: {
+            aiPreferredEngine: form.preferredEngine,
             aiLanguage: form.language,
             preferredCta: form.preferredCta,
           },
@@ -363,7 +376,7 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
       setSaved(true);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
-      if (/ai_commercial_level|ai_main_goal|ai_preferred_angle|ai_liked_example|ai_language/i.test(message)) {
+      if (/ai_preferred_engine|ai_commercial_level|ai_main_goal|ai_preferred_angle|ai_liked_example|ai_language/i.test(message)) {
         setError("Il faut d’abord exécuter le SQL de mise à jour Configuration IA dans Supabase.");
       } else {
         setError(getSimpleFrenchErrorMessage(e, "Impossible d’enregistrer la configuration IA."));
@@ -412,6 +425,30 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
           <div style={{ color: "rgba(255,255,255,0.72)", fontSize: 13 }}>Chargement…</div>
         ) : (
           <div style={{ display: "grid", gap: 18 }}>
+            <div style={{ display: "grid", gap: 12 }}>
+              <div style={sectionTitle}>Moteur IA</div>
+              <label style={label}>
+                <span style={labelTitle}>Choisir votre moteur préférentiel</span>
+                <select
+                  style={input}
+                  value={form.preferredEngine}
+                  onChange={(e) => set("preferredEngine", e.target.value as AiConfigForm["preferredEngine"])}
+                >
+                  {AI_ENGINE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value} style={selectOption}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <span style={hint}>
+                  {getAiEngineOption(form.preferredEngine).description} iNrCy conserve ses règles métier, ses longueurs et ses adaptations par canal.
+                  {!getAiEngineOption(form.preferredEngine).supportsVision
+                    ? " Pour les analyses d’images, iNrCy utilise automatiquement un modèle vision compatible."
+                    : ""}
+                </span>
+              </label>
+            </div>
+
             <div style={{ display: "grid", gap: 12 }}>
               <div style={sectionTitle}>Style des contenus</div>
               <div style={grid2}>

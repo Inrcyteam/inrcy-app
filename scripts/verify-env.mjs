@@ -52,6 +52,10 @@ const requiredGroups = [
     label: "Cron secret",
     keys: ["VERCEL_CRON_SECRET", "CRON_SECRET"],
   },
+  {
+    label: "AI Gateway credentials",
+    keys: ["AI_GATEWAY_API_KEY", "VERCEL_OIDC_TOKEN"],
+  },
 ];
 
 /** @type {string[]} */
@@ -74,15 +78,16 @@ const optionalButRecommended = [
   "SENTRY_DSN",
   "NEXT_PUBLIC_SENTRY_DSN",
 
-  // AI Gateway (génération centrale)
-  "AI_GATEWAY_API_KEY",
+  // AI Gateway (génération centrale obligatoire ; credential vérifié dans requiredGroups)
   "AI_GATEWAY_MODE",
   "AI_GATEWAY_MODEL",
   "AI_GATEWAY_VISION_MODEL",
 
-  // OpenAI direct (secours transitoire + transcription actuelle)
-  "OPENAI_API_KEY",
-  "OPENAI_MODEL",
+  // Transcription via Vercel AI Gateway (modèles optionnels : valeurs par défaut intégrées)
+  "AI_GATEWAY_TRANSCRIBE_MODEL",
+  "AI_GATEWAY_TRANSCRIBE_FALLBACK_MODEL",
+  "AI_GATEWAY_TRANSCRIPTION_URL",
+  "AI_GATEWAY_ALLOWED_TRANSCRIPTION_MODELS",
   "HEALTHCHECK_ALERT_TO",
 
   // Integrations / OAuth

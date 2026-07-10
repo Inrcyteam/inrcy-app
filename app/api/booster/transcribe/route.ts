@@ -1,11 +1,14 @@
 import { NextResponse } from "next/server";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { aiGenerateJSON } from "@/lib/aiGatewayClient";
-import { fetchWithRetry } from "@/lib/observability/fetch";
+import { getAiPreferredEngineFromBusiness, type AiPreferredEngine } from "@/lib/aiEnginePreference";
 import { withApi } from "@/lib/observability/withApi";
 import { enforceRateLimit } from "@/lib/rateLimit";
 import { requireUser } from "@/lib/requireUser";
 import { INR_MEDIA_ALLOWED_VIDEO_MIME_TYPES } from "@/lib/mediaRules";
+import { consumeAiCredits, isAdminUserForAi } from "@/lib/aiUsageQuota";
+import { aiTranscribeMedia } from "@/lib/aiGatewayTranscription";
+import { extractVideoAudioForGateway } from "@/lib/transcriptionMedia";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -66,26 +69,6 @@ function isAllowedVideoFile(file: File) {
   );
 }
 
-function sanitizeAudioFileName(name: string, type: string) {
-  const clean = name.replace(/[^a-zA-Z0-9._-]/g, "").slice(0, 80);
-  if (clean && /\.(webm|m4a|mp4|mp3|mpeg|mpga|wav|ogg)$/i.test(clean))
-    return clean;
-  if (type.includes("mp4")) return "booster-vocal.m4a";
-  if (type.includes("mpeg")) return "booster-vocal.mp3";
-  if (type.includes("ogg")) return "booster-vocal.ogg";
-  if (type.includes("wav")) return "booster-vocal.wav";
-  return "booster-vocal.webm";
-}
-
-function sanitizeVideoFileName(name: string, type: string) {
-  const clean = name.replace(/[^a-zA-Z0-9._-]/g, "").slice(0, 90);
-  if (clean && /\.(mp4|mov|webm|m4v)$/i.test(clean)) return clean;
-  const normalized = normalizeMime(type);
-  if (normalized.includes("quicktime")) return "booster-video.mov";
-  if (normalized.includes("webm")) return "booster-video.webm";
-  return "booster-video.mp4";
-}
-
 function cleanTranscriptText(value: unknown, maxLength = 1400) {
   return String(value || "")
     .replace(/[ \t]+/g, " ")
@@ -98,87 +81,45 @@ function cleanTranscriptText(value: unknown, maxLength = 1400) {
 
 async function transcribeMedia(
   file: File,
-  options?: { source?: "audio" | "video" },
+  options: { source: "audio" | "video"; accountId: string },
 ) {
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) throw new Error("Configuration OpenAI manquante.");
+  let gatewayFile = file;
+  let mediaType = normalizeMime(file.type || "") || "audio/webm";
 
-  const primaryModel =
-    process.env.OPENAI_TRANSCRIBE_MODEL || "gpt-4o-mini-transcribe";
-  const models = Array.from(new Set([primaryModel, "whisper-1"]));
-  const errors: string[] = [];
-
-  for (const model of models) {
-    const formData = new FormData();
-    formData.append(
-      "file",
-      file,
-      options?.source === "video"
-        ? sanitizeVideoFileName(file.name || "", file.type || "")
-        : sanitizeAudioFileName(file.name || "", file.type || ""),
-    );
-    formData.append("model", model);
-    formData.append("language", "fr");
-    formData.append("response_format", "json");
-    formData.append(
-      "prompt",
-      options?.source === "video"
-        ? "Audio extrait d’une vidéo fournie par un professionnel pour préparer une publication iNrCy. Transcrire uniquement les paroles utiles. Conserver les noms propres, villes, métiers, prestations et informations commerciales."
-        : "Vocal court dicté par un professionnel pour préparer une publication iNrCy. Conserver les noms propres, villes, métiers, prestations et informations commerciales.",
-    );
-
+  if (options.source === "video") {
     try {
-      const response = await fetchWithRetry(
-        "https://api.openai.com/v1/audio/transcriptions",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: formData,
-          retries: 1,
-          timeoutMs: 55_000,
-        },
-      );
-
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => "");
-        errors.push(
-          `${model}: ${response.status} ${errorText || response.statusText}`.trim(),
-        );
-        // Une erreur d'authentification/configuration ne sera pas corrigée par un autre modèle.
-        if (response.status === 401 || response.status === 403) break;
-        continue;
-      }
-
-      const json = (await response.json().catch(() => ({}))) as {
-        text?: string;
-      };
-      const text = cleanTranscriptText(json.text);
-      if (text) return text;
-      errors.push(`${model}: transcription vide`);
+      gatewayFile = await extractVideoAudioForGateway(file);
+      mediaType = "audio/mpeg";
     } catch (error) {
-      errors.push(
-        `${model}: ${error instanceof Error ? error.message : "échec de transcription"}`,
-      );
+      // La transcription vidéo est un bonus. On garde un dernier essai best-effort
+      // avec le conteneur original avant que l'appelant ne bascule en mode skipped.
+      console.warn("[booster-transcribe] video audio extraction unavailable", {
+        message: error instanceof Error ? error.message : String(error),
+      });
+      mediaType = normalizeMime(file.type || "") || "video/mp4";
     }
   }
 
-  throw new Error(
-    `OpenAI transcription indisponible : ${errors.filter(Boolean).join(" | ") || "aucun résultat"}`,
-  );
+  const result = await aiTranscribeMedia({
+    file: gatewayFile,
+    accountId: options.accountId,
+    mediaType,
+    retries: 1,
+    timeoutMs: 70_000,
+  });
+
+  return cleanTranscriptText(result.text);
 }
 
-async function correctTranscript(rawTranscript: string) {
+async function correctTranscript(rawTranscript: string, preferredEngine: AiPreferredEngine, accountId: string) {
   const fallback = cleanTranscriptText(rawTranscript);
   if (!fallback) return "";
 
   try {
     const result = await aiGenerateJSON<CorrectionResponse>({
-      model:
-        process.env.OPENAI_TRANSCRIPT_CLEANUP_MODEL ||
-        process.env.OPENAI_MODEL ||
-        "gpt-4o-mini",
+      feature: "booster.transcript-cleanup",
+      accountId,
+      engine: preferredEngine,
       system:
         "Tu corriges une transcription dans sa langue d'origine pour une publication professionnelle. Réponds uniquement en JSON avec la clé text.",
       input: `Corrige uniquement les fautes d'orthographe, la ponctuation, les accords et les majuscules du texte ci-dessous.
@@ -200,8 +141,20 @@ ${fallback}`,
 
 const handler = async (request: Request) => {
   try {
-    const { user, errorResponse, activeUserId } = await requireUser();
+    const { supabase, authUserId, errorResponse, activeUserId } = await requireUser();
     if (errorResponse) return errorResponse;
+
+    const { data: businessPreference } = await supabase
+      .from("business_profiles")
+      .select("*")
+      .eq("user_id", activeUserId)
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    const preferredEngine = getAiPreferredEngineFromBusiness(
+      (businessPreference || {}) as Record<string, unknown>,
+    );
+    const isAdmin = await isAdminUserForAi(supabase, authUserId);
 
     const rateLimit = await enforceRateLimit({
       name: "booster_transcribe",
@@ -220,7 +173,16 @@ const handler = async (request: Request) => {
     );
 
     if (liveText) {
-      const correctedText = await correctTranscript(liveText);
+      if (!isAdmin) {
+        const quotaLimited = await consumeAiCredits({
+          supabase,
+          userId: activeUserId,
+          action: "transcription",
+          credits: 1,
+        });
+        if (quotaLimited) return quotaLimited;
+      }
+      const correctedText = await correctTranscript(liveText, preferredEngine, activeUserId);
       if (!correctedText) {
         return jsonUserFacingError(
           "Le vocal n’a pas pu être converti en texte.",
@@ -255,13 +217,23 @@ const handler = async (request: Request) => {
         return videoTranscriptionSkipped("video_unsupported_skipped");
       }
 
+      if (!isAdmin) {
+        const quotaLimited = await consumeAiCredits({
+          supabase,
+          userId: activeUserId,
+          action: "transcription",
+          credits: 3,
+        });
+        if (quotaLimited) return quotaLimited;
+      }
+
       // L'analyse audio d'une vidéo est un bonus de contexte pour l'IA, jamais un
-      // prérequis de génération. Si OpenAI transcription est momentanément indisponible,
+      // prérequis de génération. Si la transcription Gateway est momentanément indisponible,
       // on laisse Booster continuer avec la phrase libre + les frames vidéo au lieu de
       // remonter un 502 visible dans la console et de dégrader l'expérience client.
       let transcript = "";
       try {
-        transcript = await transcribeMedia(video, { source: "video" });
+        transcript = await transcribeMedia(video, { source: "video", accountId: activeUserId });
       } catch {
         return NextResponse.json({
           ok: true,
@@ -282,7 +254,7 @@ const handler = async (request: Request) => {
         });
       }
 
-      const correctedText = await correctTranscript(transcript);
+      const correctedText = await correctTranscript(transcript, preferredEngine, activeUserId);
       if (!correctedText) {
         return NextResponse.json({
           ok: true,
@@ -336,7 +308,17 @@ const handler = async (request: Request) => {
       });
     }
 
-    const transcript = await transcribeMedia(audio, { source: "audio" });
+    if (!isAdmin) {
+      const quotaLimited = await consumeAiCredits({
+        supabase,
+        userId: activeUserId,
+        action: "transcription",
+        credits: 2,
+      });
+      if (quotaLimited) return quotaLimited;
+    }
+
+    const transcript = await transcribeMedia(audio, { source: "audio", accountId: activeUserId });
     if (!transcript) {
       return jsonUserFacingError("Aucun texte n’a été détecté dans le vocal.", {
         status: 422,
@@ -344,7 +326,7 @@ const handler = async (request: Request) => {
       });
     }
 
-    const correctedText = await correctTranscript(transcript);
+    const correctedText = await correctTranscript(transcript, preferredEngine, activeUserId);
     if (!correctedText) {
       return jsonUserFacingError(
         "Le vocal n’a pas pu être converti en texte.",

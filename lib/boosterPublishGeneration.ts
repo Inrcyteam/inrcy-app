@@ -1,4 +1,6 @@
-import { aiGenerateJSON } from "@/lib/aiGatewayClient";
+import { aiGenerateJSON, type AiGenerationFeature } from "@/lib/aiGatewayClient";
+import { createAiOperationBudget, type AiOperationBudget } from "@/lib/aiGatewayPolicy";
+import { getAiPreferredEngineFromBusiness } from "@/lib/aiEnginePreference";
 import {
   boosterSystemPrompt,
   boosterUserPrompt,
@@ -9,7 +11,11 @@ import {
   type BoosterTheme,
 } from "@/lib/boosterPrompt";
 import { sanitizeGmbGeneratedPost } from "@/lib/googleBusinessCompliance";
-import { getAiLanguageLabel, normalizeAiLanguage } from "@/lib/aiWritingProfile";
+import {
+  buildAiWritingProfileRules,
+  getAiLanguageLabel,
+  normalizeAiLanguage,
+} from "@/lib/aiWritingProfile";
 import {
   sanitizeBoosterSiteText,
   stripSiteTextFormatting,
@@ -221,6 +227,8 @@ export type GenerateSharedBoosterPostsArgs = {
   mediaType?: "images" | "video";
   forceNonBlocking?: boolean;
   allowLocalFallback?: boolean;
+  aiFeature?: "booster.publish" | "agent.publish";
+  accountId?: string;
 };
 
 export type GenerateSharedBoosterPostsResult = {
@@ -403,9 +411,10 @@ function hasCorePublishableContent(channel: BoosterChannels, post: ChannelPost |
 }
 
 function hasRequiredContent(channel: BoosterChannels, post: ChannelPost | undefined) {
-  // Le CTA reste un objectif qualité et déclenche une récupération IA s'il manque,
-  // mais son absence seule ne doit jamais transformer un bon texte en erreur 502 globale.
-  return Boolean(hasCorePublishableContent(channel, post) && post?.cta.trim());
+  // Étape 6 ter : un CTA séparé est une préférence éditoriale, pas un motif de
+  // normalisation. Un bon texte doit rester intact même si le moteur juge qu'un
+  // CTA serait artificiel. La clé cta existe toujours dans le JSON et peut être vide.
+  return hasCorePublishableContent(channel, post);
 }
 
 function hasPublishableText(post: ChannelPost | undefined) {
@@ -530,7 +539,7 @@ function normalizeComparablePostText(post: ChannelPost | undefined) {
 
 function findOverSimilarChannels(channels: BoosterChannels[], versions: Partial<Record<BoosterChannels, ChannelPost>>) {
   const duplicateChannels = new Set<BoosterChannels>();
-  const candidates = channels.filter((channel) => hasRequiredContent(channel, versions[channel]));
+  const candidates = channels.filter((channel) => hasCorePublishableContent(channel, versions[channel]));
 
   for (let index = 0; index < candidates.length; index += 1) {
     const left = candidates[index]!;
@@ -547,7 +556,10 @@ function findOverSimilarChannels(channels: BoosterChannels[], versions: Partial<
       const jaccard = computeJaccardSimilarity(leftTokens, rightTokens);
       const lengthRatio = Math.min(leftComparable.length, rightComparable.length) / Math.max(leftComparable.length || 1, rightComparable.length || 1);
 
-      if (exactSame || (jaccard >= 0.82 && lengthRatio >= 0.72)) {
+      // On ne régénère plus une bonne variation simplement parce qu'elle partage
+      // naturellement le vocabulaire du même sujet. Seules les copies quasi
+      // identiques déclenchent une reprise anti-duplication.
+      if (exactSame || (jaccard >= 0.92 && lengthRatio >= 0.86)) {
         duplicateChannels.add(right);
       }
     }
@@ -642,9 +654,9 @@ function buildLanguageRetryInstructions(languageCode: string, channels: BoosterC
 
 function getCreativityTemperature(business: JsonRecord | null) {
   const creativity = String(business?.ai_creativity || "balanced");
-  if (creativity === "stable") return 0.55;
-  if (creativity === "creative") return 0.92;
-  return 0.78;
+  if (["stable", "classic", "classique"].includes(creativity)) return 0.58;
+  if (["creative", "creatif", "créative"].includes(creativity)) return 1.02;
+  return 0.84;
 }
 
 function computeMaxOutputTokens(channels: BoosterChannels[]) {
@@ -710,11 +722,18 @@ async function generateVersions(args: {
   extraInstructions?: string;
   hiddenAngle?: BoosterHiddenAngle;
   imagesForAI?: BoosterAiImage[];
+  aiFeature: AiGenerationFeature;
+  accountId?: string;
+  budget?: AiOperationBudget;
 }) {
   const languageInstructions = buildStrictLanguageGenerationInstructions(args.business);
   const imageInstructions = buildImageGenerationInstructions(args.imagesForAI?.length || 0);
 
   return aiGenerateJSON<BoosterGenResponse>({
+    feature: args.aiFeature,
+    accountId: args.accountId,
+    budget: args.budget,
+    engine: getAiPreferredEngineFromBusiness(args.business),
     system: boosterSystemPrompt(args.business),
     input: [
       boosterUserPrompt({
@@ -729,7 +748,7 @@ async function generateVersions(args: {
       }),
       languageInstructions,
       imageInstructions,
-      `ANTI-DUPLICATION CANAUX : ne retourne jamais deux objets versions avec le même title ou le même content. Chaque canal doit être une vraie variante éditoriale : angle, accroche, ordre des idées, longueur et CTA différents. Les canaux demandés ne sont pas des copies adaptées seulement par le nom du canal.`,
+      `DIFFÉRENCIATION CANAUX : aucun copier-coller entre canaux. Adapte réellement la profondeur, le rythme, le vocabulaire et l'angle au support. Ne force toutefois pas des accroches, CTA ou structures artificiellement opposés : laisse chaque version trouver sa meilleure forme naturelle.`,
       args.extraInstructions,
     ]
       .filter(Boolean)
@@ -761,6 +780,9 @@ async function generateVersionsForChannels(args: {
   extraInstructions?: string;
   hiddenAngle?: BoosterHiddenAngle;
   imagesForAI?: BoosterAiImage[];
+  aiFeature: AiGenerationFeature;
+  accountId?: string;
+  budget?: AiOperationBudget;
 }) {
   const versions: Partial<Record<BoosterChannels, Partial<ChannelPost>>> = {};
   const batches = buildGenerationBatches(args.channels);
@@ -865,7 +887,7 @@ function buildFocusedRecoveryInstructions(args: {
     `Génère uniquement ${CHANNEL_LABELS[args.channel]} et retourne le texte FINAL PRÊT À PUBLIER.`,
     `Sujet obligatoire : \"${args.idea}\". Reste centré sur cette phrase libre et reformule naturellement sans changer de sujet.`,
     `Ne donne aucune consigne de rédaction, aucun commentaire technique et aucune phrase méta sur \"la description\", \"le contenu\", \"le message\" ou \"la publication\".`,
-    `title, content et cta doivent être remplis. Le contenu doit respecter la longueur et le ton du canal définis dans le prompt système.`,
+    `title et content doivent être remplis. La clé cta peut rester vide si un CTA séparé serait artificiel. Le contenu doit rester substantiel et adapté au canal.`,
     `Le résultat doit être intéressant, concret, humain et spécifique au sujet, pas générique.`,
     youtubeRules,
     otherSnippets
@@ -939,18 +961,28 @@ async function rescueYoutubeWithDedicatedAi(args: {
   extraInstructions?: string;
   languageCode: string;
   ideaKeywords: string[];
+  aiFeature: AiGenerationFeature;
+  accountId?: string;
+  budget?: AiOperationBudget;
 }) {
   const languageLabel = getAiLanguageLabel({ ai_language: args.languageCode });
   const businessContext = buildCompactYoutubeContext(args.profile, args.business);
+  const preferredEngine = getAiPreferredEngineFromBusiness(args.business);
+  const creativeFreedomRules = buildAiWritingProfileRules(args.business, preferredEngine);
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       const out = await aiGenerateJSON<JsonRecord>({
+        feature: args.aiFeature === "agent.publish" ? "agent.publish" : "booster.youtube-rescue",
+        accountId: args.accountId,
+        budget: args.budget,
+        engine: preferredEngine,
         system: [
           `Tu es un rédacteur YouTube professionnel pour une entreprise locale.`,
           `Écris exclusivement le contenu FINAL destiné au public, en ${languageLabel}.`,
           `Ne donne jamais de consigne de rédaction et ne commente jamais la description, le contenu, le message ou la publication.`,
           `Réponds uniquement en JSON strict avec les clés title, content, cta, hashtags.`,
+          creativeFreedomRules,
         ].join("\n"),
         input: [
           `SUJET LIBRE PRIORITAIRE : "${args.idea}"`,
@@ -967,7 +999,7 @@ async function rescueYoutubeWithDedicatedAi(args: {
           `- Crée une vraie description SEO YouTube de 500 à 1200 caractères, intéressante, concrète et prête à publier.`,
           `- Commence par le sujet réel de la vidéo. Développe ce qui a été réalisé, présenté, conseillé ou annoncé selon la phrase libre.`,
           `- Intègre naturellement les mots importants du sujet, puis le métier et la localité uniquement s'ils sont réellement fournis.`,
-          `- Ajoute un CTA utile et 2 à 6 hashtags ciblés si pertinent.`,
+          `- CTA et hashtags sont facultatifs : ajoute-les seulement s'ils améliorent réellement la description.`,
           `- Interdiction absolue d'écrire des phrases méta comme "la description doit", "cette publication peut", "ce contenu sert à", ou d'expliquer comment rédiger.`,
           `- N'invente aucun client, résultat, prix, lieu, marque, date, personne ou détail technique absent du contexte.`,
           `JSON attendu exactement : {"title":"...","content":"...","cta":"...","hashtags":["..."]}`,
@@ -1021,6 +1053,9 @@ async function recoverChannelsWithAi(args: {
   extraInstructions?: string;
   ideaKeywords: string[];
   languageCode: string;
+  aiFeature: AiGenerationFeature;
+  accountId?: string;
+  budget?: AiOperationBudget;
 }) {
   const recovered = new Set<BoosterChannels>();
 
@@ -1039,6 +1074,9 @@ async function recoverChannelsWithAi(args: {
           // Une seconde tentative textuelle n'a pas besoin de renvoyer toutes les images/frames :
           // la phrase libre reste prioritaire et on évite des appels vision lents ou fragiles.
           imagesForAI: attempt === 0 ? args.imagesForAI : undefined,
+          aiFeature: args.aiFeature,
+          accountId: args.accountId,
+          budget: args.budget,
           extraInstructions: [
             args.extraInstructions,
             buildFocusedRecoveryInstructions({
@@ -1083,6 +1121,8 @@ async function recoverChannelsWithAi(args: {
 }
 
 export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPostsArgs): Promise<GenerateSharedBoosterPostsResult> {
+  const aiFeature = args.aiFeature || "booster.publish";
+  const budget = createAiOperationBudget(aiFeature);
   const style = args.style || "equilibre";
   const languageCode = normalizeAiLanguage(args.business?.ai_language);
   const channels = Array.from(new Set(args.channels)).filter((channel): channel is BoosterChannels => allowedChannels.includes(channel));
@@ -1102,6 +1142,9 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
       hiddenAngle: args.hiddenAngle,
       imagesForAI: args.imagesForAI,
       extraInstructions: args.extraInstructions,
+      aiFeature,
+      accountId: args.accountId,
+      budget,
     });
     rawVersions = out?.versions && typeof out.versions === "object" ? out.versions : {};
   } catch {
@@ -1113,9 +1156,9 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
     safeVersions[channel] = normalizePost(channel, rawVersions[channel]);
   }
 
-  const missingChannels = channels.filter((channel) => !hasRequiredContent(channel, safeVersions[channel]));
+  const missingChannels = channels.filter((channel) => !hasCorePublishableContent(channel, safeVersions[channel]));
   const offTopicChannels = channels.filter(
-    (channel) => hasRequiredContent(channel, safeVersions[channel]) && !isPostAnchoredToIdea(ideaKeywords, safeVersions[channel]),
+    (channel) => hasCorePublishableContent(channel, safeVersions[channel]) && !isPostAnchoredToIdea(ideaKeywords, safeVersions[channel]),
   );
   const metaLeakChannels = channels.filter((channel) => hasEditorialMetaLeak(safeVersions[channel]));
   const overSimilarChannels = findOverSimilarChannels(channels, safeVersions);
@@ -1146,10 +1189,13 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
         recentPublications: args.recentPublications,
         hiddenAngle: args.hiddenAngle,
         imagesForAI: args.imagesForAI,
+        aiFeature,
+        accountId: args.accountId,
+        budget,
         extraInstructions: [
           args.extraInstructions,
           `IMPORTANT : regénère uniquement les canaux demandés ci-dessus.`,
-          `Le contenu précédent était vide/trop court, trop proche d'un autre canal, trop éloigné du sujet, dans la mauvaise langue ou contenait du texte méta/technique non publiable.`,
+          `Le contenu précédent était vide/cassé, vraiment trop court, quasi copié d'un autre canal, hors sujet, dans la mauvaise langue ou contenait du texte méta/technique non publiable.`,
           overSimilarChannels.length
             ? `Canaux à différencier fortement : ${overSimilarChannels.map((channel) => CHANNEL_LABELS[channel]).join(", ")}.`
             : "",
@@ -1160,7 +1206,7 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
           `Sujet obligatoire à respecter : "${args.idea}".`,
           `Écris uniquement le contenu FINAL prêt à publier. Ne dis jamais ce que la description, le texte, le message ou la publication doit faire.`,
           `Chaque canal doit avoir une vraie adaptation : Site = SEO long, Google Business = local sobre, Facebook = humain, Instagram = visuel, LinkedIn = expertise, TikTok = court, YouTube = vraie description SEO du sujet, Pinterest = inspirant et recherchable.`,
-          `Pour chaque canal, title, content et cta doivent être non vides.`,
+          `Pour chaque canal, title et content doivent être non vides. La clé cta peut rester vide si un CTA séparé n'apporte rien.`,
           `Le content doit viser au minimum : Site iNrCy >= 900 caractères, Site web >= 1100, Google Business >= 450, Facebook >= 500, Instagram >= 350, LinkedIn >= 700, TikTok >= 180, YouTube >= 500, Pinterest >= 220.`,
           `Si Site iNrCy et Site web sont présents, ils doivent être deux variantes distinctes et non deux copies.`,
           `Respecte strictement la langue IA configurée.`,
@@ -1199,8 +1245,9 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
   );
   let duplicateChannels = findOverSimilarChannels(channels, safeVersions);
 
-  // Une seule récupération ciblée suffit : elle couvre les contenus manquants, trop courts,
-  // hors sujet, sans CTA, trop proches ou suspects. YouTube est déjà isolé dans son batch.
+  // Une seule récupération ciblée suffit : elle couvre les contenus manquants, réellement
+  // trop courts, hors sujet, quasi copiés ou suspects. L'absence de CTA n'est plus un motif
+  // de régénération : on préserve la voix native du moteur. YouTube reste isolé.
   const focusedRecoveryChannels = Array.from(
     new Set([...strictInvalidChannels, ...duplicateChannels]),
   ).filter((channel) => channel !== "youtube_shorts");
@@ -1219,6 +1266,9 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
       extraInstructions: args.extraInstructions,
       ideaKeywords,
       languageCode,
+      aiFeature,
+      accountId: args.accountId,
+      budget,
     });
     aiRecovered.forEach((channel) => recoveredChannels.add(channel));
   }
@@ -1256,6 +1306,9 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
       extraInstructions: args.extraInstructions,
       languageCode,
       ideaKeywords,
+      aiFeature,
+      accountId: args.accountId,
+      budget,
     });
 
     if (rescuedYoutube) {
@@ -1264,7 +1317,7 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
     }
   }
 
-  // IMPORTANT UX : les contrôles "ancrage exact", "CTA présent" et "anti-doublon"
+  // IMPORTANT UX : les contrôles "ancrage exact" et "anti-doublon"
   // sont des garde-fous de qualité, pas des raisons de jeter une vraie réponse IA.
   // Après les tentatives de récupération, on accepte un texte IA réellement publiable
   // même s'il reformule le sujet avec des synonymes, reste un peu plus court que la cible,

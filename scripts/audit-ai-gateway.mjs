@@ -4,6 +4,7 @@ import { relative, resolve } from "node:path";
 const ROOT = process.cwd();
 const SCAN_DIRS = ["app", "lib", "scripts", "ops"];
 const IGNORE_DIRS = new Set(["node_modules", ".next", ".git"]);
+const SELF = "scripts/audit-ai-gateway.mjs";
 
 function walk(dir) {
   const abs = resolve(ROOT, dir);
@@ -23,7 +24,7 @@ const files = SCAN_DIRS.flatMap((dir) => {
   } catch {
     return [];
   }
-}).filter((file) => relative(ROOT, file).replaceAll("\\", "/") !== "scripts/audit-ai-gateway.mjs");
+}).filter((file) => relative(ROOT, file).replaceAll("\\", "/") !== SELF);
 
 const rules = [
   {
@@ -42,6 +43,11 @@ const rules = [
     regex: /api\.openai\.com/g,
   },
   {
+    id: "direct-other-ai-provider-endpoint",
+    label: "Références directes à d'autres endpoints fournisseurs IA",
+    regex: /api\.anthropic\.com|generativelanguage\.googleapis\.com|api\.mistral\.ai|api\.x\.ai|api\.perplexity\.ai|api\.deepseek\.com/g,
+  },
+  {
     id: "openai-env",
     label: "Variables d'environnement OPENAI_*",
     regex: /OPENAI_[A-Z_]+/g,
@@ -52,6 +58,11 @@ const rules = [
     regex: /AI_GATEWAY_[A-Z_]+/g,
   },
   {
+    id: "preferred-engine",
+    label: "Références au moteur IA préférentiel",
+    regex: /ai_preferred_engine|getAiPreferredEngineFromBusiness/g,
+  },
+  {
     id: "vercel-gateway-endpoint",
     label: "Références endpoint Vercel AI Gateway",
     regex: /ai-gateway\.vercel\.sh/g,
@@ -59,6 +70,7 @@ const rules = [
 ];
 
 const findings = new Map(rules.map((rule) => [rule.id, []]));
+const sourceTexts = new Map();
 
 for (const file of files) {
   let text;
@@ -68,6 +80,7 @@ for (const file of files) {
     continue;
   }
   const rel = relative(ROOT, file).replaceAll("\\", "/");
+  sourceTexts.set(rel, text);
   const lines = text.split(/\r?\n/);
   for (const rule of rules) {
     for (let index = 0; index < lines.length; index += 1) {
@@ -79,7 +92,7 @@ for (const file of files) {
   }
 }
 
-console.log("iNrCy — audit statique AI Gateway\n");
+console.log("iNrCy — audit statique AI Gateway Étape 6 bis\n");
 for (const rule of rules) {
   const rows = findings.get(rule.id) || [];
   const uniqueFiles = new Set(rows.map((row) => row.file));
@@ -91,14 +104,57 @@ for (const rule of rules) {
   console.log("");
 }
 
+const violations = [];
+
+for (const row of findings.get("direct-openai-endpoint") || []) {
+  violations.push(`Endpoint OpenAI direct interdit: ${row.file}:${row.line}`);
+}
+
+for (const row of findings.get("direct-other-ai-provider-endpoint") || []) {
+  violations.push(`Endpoint fournisseur IA direct interdit: ${row.file}:${row.line}`);
+}
+
+for (const [file, text] of sourceTexts) {
+  if (!/\.(?:ts|tsx|mts|mjs|js)$/.test(file)) continue;
+  const callRegex = /aiGenerateJSON(?:<[^;\n]+?>)?\s*\(\s*\{/g;
+  let match;
+  while ((match = callRegex.exec(text))) {
+    const line = text.slice(0, match.index).split(/\r?\n/).length;
+    const block = text.slice(match.index, match.index + 900);
+    if (!/\bfeature\s*:/.test(block)) {
+      violations.push(`Appel aiGenerateJSON sans tag feature: ${file}:${line}`);
+    }
+    if (!/\bengine\s*:|\bmodel\s*:/.test(block)) {
+      violations.push(`Appel aiGenerateJSON sans routage moteur/modèle explicite: ${file}:${line}`);
+    }
+    if (!/\baccountId\s*(?::|[,}])/.test(block)) {
+      violations.push(`Appel aiGenerateJSON sans compte actif pour garde-fous économiques: ${file}:${line}`);
+    }
+  }
+}
+
 const legacyConsumers = findings.get("legacy-openai-consumer") || [];
+if (legacyConsumers.length) {
+  for (const row of legacyConsumers) {
+    violations.push(`Consommateur legacy openaiGenerateJSON: ${row.file}:${row.line}`);
+  }
+}
+
 const directEndpoints = findings.get("direct-openai-endpoint") || [];
 const gatewayRefs = findings.get("vercel-gateway-endpoint") || [];
 const neutralConsumers = findings.get("neutral-ai-consumer") || [];
+
 console.log("Résumé migration:");
 console.log(`  - Couche neutre aiGenerateJSON présente: ${neutralConsumers.length ? "OUI" : "NON"}`);
 console.log(`  - Consommateurs legacy openaiGenerateJSON: ${legacyConsumers.length ? "OUI" : "NON"}`);
-console.log(`  - Références OpenAI direct encore présentes: ${directEndpoints.length ? "OUI" : "NON"}`);
+console.log(`  - Texte, vision et transcription Gateway + garde-fous économiques verrouillés: ${violations.length ? "NON" : "OUI"}`);
 console.log(`  - Référence Vercel AI Gateway présente: ${gatewayRefs.length ? "OUI" : "NON"}`);
-console.log("  - Les références OpenAI direct restantes sont attendues en étape 2 pour le secours transitoire et la transcription.");
-console.log("  - Ce script est informatif et ne modifie aucun fichier.");
+console.log(`  - Endpoint OpenAI direct total: ${directEndpoints.length} (aucun autorisé)`);
+
+if (violations.length) {
+  console.error("\nÉCHEC AUDIT — violations Étape 6 bis:");
+  for (const violation of violations) console.error(`  - ${violation}`);
+  process.exitCode = 1;
+} else {
+  console.log("\nAUDIT OK — aucun contournement fournisseur et aucun appel IA non rattaché à un compte actif détecté.");
+}

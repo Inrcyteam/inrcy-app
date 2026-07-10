@@ -736,6 +736,7 @@ async function generateBoosterPosts(args: {
   business: JsonRecord | null;
   recentPublications: BoosterRecentPublication[];
   mediaType?: "images" | "video";
+  accountId: string;
 }) {
   const { versions, recoveredChannels } = await generateSharedBoosterPosts({
     idea: args.idea,
@@ -747,10 +748,12 @@ async function generateBoosterPosts(args: {
     recentPublications: args.recentPublications,
     mediaType: args.mediaType || "images",
     forceNonBlocking: true,
+    aiFeature: "agent.publish",
+    accountId: args.accountId,
     extraInstructions: `CONTEXTE iNrAgent : cette génération provient de l'automatisation Publier.
 Objectif : produire exactement la même logique éditoriale que Booster / Publier manuel, avec un contenu réellement adapté à chaque canal.
-Ne fournis jamais 8 variantes identiques. Varie nettement l'angle, la longueur, la structure et le ton selon les règles Booster de chaque canal.
-Le titre et le CTA doivent être renseignés quand c'est possible, mais le contenu reste prioritaire.`,
+Ne fournis jamais des copies entre canaux. Adapte réellement l'angle, la profondeur, le vocabulaire et le rythme, sans imposer artificiellement une structure différente à chaque version.
+Préserve la voix native du moteur IA choisi par l'établissement. Le titre et le contenu sont prioritaires ; un CTA séparé reste facultatif lorsqu'il serait artificiel.`,
   });
 
   return { versions, recoveredChannels };
@@ -1276,13 +1279,14 @@ export async function POST(request: Request) {
   if (context.errorResponse) return context.errorResponse;
 
   const { supabase, userId, authUserId, isCron } = context;
-  const quotaUserId = isCron ? userId : authUserId;
-  const isAdmin = await isAdminUserForAi(supabase, quotaUserId);
+  const actorUserId = isCron ? userId : authUserId;
+  const quotaAccountId = userId;
+  const isAdmin = await isAdminUserForAi(supabase, actorUserId);
 
   if (!isAdmin) {
     const rl = await enforceRateLimit({
       name: "inr_agent_prepare_publish",
-      identifier: quotaUserId,
+      identifier: actorUserId,
       limit: 4,
       window: "1 m",
     });
@@ -1315,7 +1319,7 @@ export async function POST(request: Request) {
   if (!isAdmin) {
     const quotaLimited = await consumeAiCredits({
       supabase,
-      userId: quotaUserId,
+      userId: quotaAccountId,
       action: "booster",
       credits: computeBoosterAiCredits({ mediaType: "images" }),
     });
@@ -1470,6 +1474,7 @@ export async function POST(request: Request) {
     business,
     recentPublications,
     mediaType: mediaKind === "video" ? "video" : "images",
+    accountId: userId,
   });
 
   const now = new Date().toISOString();

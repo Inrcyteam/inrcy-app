@@ -1,6 +1,8 @@
 import "server-only";
 
 import { aiGenerateJSON } from "@/lib/aiGatewayClient";
+import { createAiOperationBudget } from "@/lib/aiGatewayPolicy";
+import { getAiPreferredEngineFromBusiness } from "@/lib/aiEnginePreference";
 import { enforceRateLimit } from "@/lib/rateLimit";
 import { asRecord } from "@/lib/tsSafe";
 import { renderWithContext, buildDefaultContext } from "@/lib/templateEngine";
@@ -102,13 +104,16 @@ export async function generateTemplateAiContent(args: {
   supabase: any;
   userId: string;
   quotaUserId?: string;
+  actorUserId?: string;
   input: TemplateAiGenerationInput;
   enforceUserLimits?: boolean;
+  aiFeature?: "templates.generate" | "agent.campaign";
 }): Promise<TemplateAiGenerationResult> {
   const body = asRecord(args.input);
   const supabase = args.supabase;
   const userId = clean(args.userId, 160);
   const quotaUserId = clean(args.quotaUserId || args.userId, 160);
+  const actorUserId = clean(args.actorUserId || args.quotaUserId || args.userId, 160);
   const enforceUserLimits = args.enforceUserLimits !== false;
 
   if (!supabase || !userId) {
@@ -131,7 +136,7 @@ export async function generateTemplateAiContent(args: {
     throw new TemplateAiGenerationError("Aucun modèle à reformuler.", { status: 400 });
   }
 
-  const isAdmin = await isAdminUserForAi(supabase, quotaUserId);
+  const isAdmin = await isAdminUserForAi(supabase, actorUserId);
 
   if (enforceUserLimits && !isAdmin) {
     const rateLimited = await enforceRateLimit({
@@ -205,10 +210,14 @@ export async function generateTemplateAiContent(args: {
   const zones = listFrom(business["intervention_zones"] || business["intervention_zones_text"], 8);
   const strengths = listFrom(business["strengths"] || business["strengths_text"], 8);
 
+  const preferredEngine = getAiPreferredEngineFromBusiness(business);
   const aiConfig = buildAiWritingProfilePromptSection(business);
-  const aiRules = buildAiWritingProfileRules();
+  const aiRules = buildAiWritingProfileRules(business, preferredEngine);
   const aiLanguageInstruction = buildAiLanguageInstruction(business);
-  const attachmentContext = await buildMailAttachmentAiPromptSection(supabase, attachmentRefs, { userId });
+  const attachmentContext = await buildMailAttachmentAiPromptSection(supabase, attachmentRefs, {
+    userId,
+    engine: preferredEngine,
+  });
 
   const system = `Tu es le rédacteur IA d'iNrCy pour des emails professionnels. Tu réécris des modèles Propulser/Fidéliser.
 Réponds uniquement en JSON valide : {"subject":"...","body_text":"..."}.
@@ -221,7 +230,7 @@ Règles strictes :
 - Ne pas copier mot pour mot le modèle : reformuler vraiment l'objet et le message.
 - Respecter strictement l'instruction de langue prioritaire : la langue du modèle, de la demande ou des pièces jointes ne doit pas changer la langue finale demandée.
 - Ne pas changer la finalité : avis, recommandation, offre, information, suivi ou enquête selon le modèle.
-- Garder un email prêt à envoyer : salutation, message clair, CTA, formule de fin.
+- Garder un email prêt à envoyer, mais laisser le moteur choisir librement la construction. Salutation, CTA séparé et formule de fin ne sont pas obligatoires si la mission est plus naturelle sans l'un de ces éléments.
 - Ne pas ajouter de markdown lourd ni de HTML. Texte brut uniquement.
 - Ne jamais laisser de texte à compléter : aucun crochet [..], aucune variable {{..}}, aucun “Exemple local”, aucun “Secteur :”, aucun “Besoin :”, aucun “Résultat :” repris du modèle.
 - Les modèles peuvent contenir des zones de travail. Tu dois les transformer en phrases complètes avec les informations disponibles, ou les supprimer proprement si l'information manque.
@@ -257,9 +266,15 @@ ${renderedSubject}
 Message actuel du modèle :
 ${renderedBody}
 
-Réécris un nouvel objet et un nouveau message, plus personnalisé et plus naturel, en respectant la même mission. Si une pièce jointe utile est présente, exploite ses informations pour rendre le mail plus concret sans la recopier. Utilise au maximum les informations Profil / Activité ci-dessus. Ne renvoie jamais un modèle à compléter : remplace les exemples, crochets et libellés techniques par un email finalisé.`;
+Réécris un nouvel objet et un nouveau message, plus personnalisé et plus naturel, en respectant la même mission. Si une pièce jointe utile est présente, exploite ses informations pour rendre le mail plus concret sans la recopier. Utilise les informations Profil / Activité seulement quand elles servent réellement le message. Laisse le moteur choisir librement le rythme, l'ouverture, les transitions et la conclusion : ne reproduis pas automatiquement la structure du modèle de départ. Ne renvoie jamais un modèle à compléter : remplace les exemples, crochets et libellés techniques par un email finalisé.`;
 
+  const generationFeature = args.aiFeature || "templates.generate";
+  const operationBudget = createAiOperationBudget(generationFeature);
   const generateOnce = (extraInstruction = "") => aiGenerateJSON<GeneratedTemplateMail>({
+    feature: generationFeature,
+    accountId: userId,
+    budget: operationBudget,
+    engine: preferredEngine,
     system,
     input: [input, extraInstruction].filter(Boolean).join("\n\n"),
     maxOutputTokens: 1300,

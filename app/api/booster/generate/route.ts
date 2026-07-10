@@ -382,7 +382,7 @@ const handler = async (req: Request) => {
     if (!isAdmin) {
       const quotaLimited = await consumeAiCredits({
         supabase,
-        userId: authUserId,
+        userId,
         action: "booster",
         credits: computeBoosterAiCredits({
           mediaType,
@@ -437,6 +437,7 @@ const handler = async (req: Request) => {
           : imagesForAI,
       extraInstructions: mediaGenerationInstructions,
       mediaType,
+      accountId: userId,
     });
 
     return NextResponse.json({

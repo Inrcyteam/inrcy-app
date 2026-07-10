@@ -8,7 +8,7 @@ import { shouldBypassUpstashInCurrentEnv } from "@/lib/upstashMode";
 import { ADMIN_USER_IDS } from "@/lib/roles";
 import type { MailAttachmentRef } from "@/lib/mailAttachmentRefs";
 
-type AiQuotaAction = "booster" | "template" | "mail" | "review_reply";
+type AiQuotaAction = "booster" | "template" | "mail" | "review_reply" | "agent_stats" | "transcription";
 
 type ConsumeAiCreditsArgs = {
   supabase: any;
@@ -17,11 +17,24 @@ type ConsumeAiCreditsArgs = {
   credits: number;
 };
 
-const AI_QUOTA_LIMITS = {
+const DEFAULT_AI_QUOTA_LIMITS = {
   day: 60,
   week: 200,
   month: 500,
 } as const;
+
+function positiveInt(value: unknown, fallback: number) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+export function getAiQuotaLimits() {
+  return {
+    day: positiveInt(process.env.AI_QUOTA_CREDITS_DAY, DEFAULT_AI_QUOTA_LIMITS.day),
+    week: positiveInt(process.env.AI_QUOTA_CREDITS_WEEK, DEFAULT_AI_QUOTA_LIMITS.week),
+    month: positiveInt(process.env.AI_QUOTA_CREDITS_MONTH, DEFAULT_AI_QUOTA_LIMITS.month),
+  } as const;
+}
 
 const AI_QUOTA_PERIODS = {
   day: 24 * 60 * 60,
@@ -54,7 +67,7 @@ export async function isAdminUserForAi(supabase: any, userId: string) {
   }
 }
 
-function buildQuotaError(period: keyof typeof AI_QUOTA_LIMITS) {
+function buildQuotaError(period: keyof typeof DEFAULT_AI_QUOTA_LIMITS) {
   if (period === "day") {
     return "Vous avez atteint votre quota IA du jour sur ce compte. Pour préserver la qualité du service, les générations IA sont temporairement mises en pause. Réessayez demain.";
   }
@@ -67,7 +80,7 @@ function buildQuotaError(period: keyof typeof AI_QUOTA_LIMITS) {
 async function getWindowState(args: {
   redis: Redis;
   userId: string;
-  period: keyof typeof AI_QUOTA_LIMITS;
+  period: keyof typeof DEFAULT_AI_QUOTA_LIMITS;
 }) {
   const key = `inrcy_aiq:${args.period}:${args.userId}`;
   const countRaw = await args.redis.get<number | null>(key);
@@ -83,7 +96,8 @@ export async function consumeAiCredits(args: ConsumeAiCreditsArgs): Promise<Next
 
   try {
     const redis = getRedis();
-    const periods: Array<keyof typeof AI_QUOTA_LIMITS> = ["day", "week", "month"];
+    const limits = getAiQuotaLimits();
+    const periods: Array<keyof typeof DEFAULT_AI_QUOTA_LIMITS> = ["day", "week", "month"];
     const credits = Math.max(1, Math.floor(args.credits || 1));
 
     const states = await Promise.all(periods.map((period) => getWindowState({ redis, userId: args.userId, period })));
@@ -91,7 +105,7 @@ export async function consumeAiCredits(args: ConsumeAiCreditsArgs): Promise<Next
     for (let index = 0; index < periods.length; index += 1) {
       const period = periods[index];
       const state = states[index];
-      const limit = AI_QUOTA_LIMITS[period];
+      const limit = limits[period];
       if (state.count + credits > limit) {
         return NextResponse.json(
           {
@@ -99,6 +113,8 @@ export async function consumeAiCredits(args: ConsumeAiCreditsArgs): Promise<Next
             code: "ai_quota_reached",
             quota_period: period,
             quota_limit: limit,
+            quota_used: state.count,
+            quota_remaining: Math.max(0, limit - state.count),
             credits_requested: credits,
           },
           {

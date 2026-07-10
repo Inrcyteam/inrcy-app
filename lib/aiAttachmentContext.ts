@@ -5,6 +5,7 @@ import { tmpdir } from "os";
 import { join } from "path";
 import { spawnSync } from "child_process";
 import { aiGenerateJSON } from "@/lib/aiGatewayClient";
+import type { AiPreferredEngine } from "@/lib/aiEnginePreference";
 import type { MailAttachmentRef } from "@/lib/mailAttachmentRefs";
 
 const DEFAULT_MAX_FILES = 4;
@@ -14,6 +15,7 @@ const DEFAULT_MAX_CHARS_PER_FILE = 2200;
 
 type BuildAttachmentAiContextOptions = {
   userId?: string | null;
+  engine: AiPreferredEngine;
   maxFiles?: number;
   maxFileBytes?: number;
   maxTotalChars?: number;
@@ -262,13 +264,22 @@ function bufferToDataUrl(buffer: Buffer, mimeType: string) {
   return `data:${mimeType || "application/octet-stream"};base64,${buffer.toString("base64")}`;
 }
 
-async function summarizeImageWithVision(name: string, mimeType: string, buffer: Buffer): Promise<VisualAttachmentSummary | null> {
+async function summarizeImageWithVision(
+  name: string,
+  mimeType: string,
+  buffer: Buffer,
+  engine: AiPreferredEngine,
+  accountId?: string | null,
+): Promise<VisualAttachmentSummary | null> {
   if (buffer.length > DEFAULT_MAX_IMAGE_BYTES) {
     return { summary: "", note: "image trop volumineuse pour analyse visuelle IA" };
   }
 
   try {
     const result = await aiGenerateJSON<{ summary?: unknown; visible_text?: unknown }>({
+      feature: "mails.attachment-image",
+      accountId: accountId || undefined,
+      engine,
       system: `Tu analyses une pièce jointe visuelle pour aider iNrCy à rédiger un email professionnel.
 Réponds uniquement en JSON valide : {"summary":"...","visible_text":"..."}.
 Décris brièvement ce que montre l'image, les éléments importants pour un email commercial ou informatif, et le texte lisible s'il y en a.
@@ -339,7 +350,13 @@ function extractVideoFrameDataUrls(buffer: Buffer, mimeType: string) {
   }
 }
 
-async function summarizeVideoWithVision(name: string, mimeType: string, buffer: Buffer): Promise<VisualAttachmentSummary | null> {
+async function summarizeVideoWithVision(
+  name: string,
+  mimeType: string,
+  buffer: Buffer,
+  engine: AiPreferredEngine,
+  accountId?: string | null,
+): Promise<VisualAttachmentSummary | null> {
   if (buffer.length > DEFAULT_MAX_VIDEO_BYTES) {
     return { summary: "", note: "vidéo trop volumineuse pour analyse visuelle IA" };
   }
@@ -348,6 +365,9 @@ async function summarizeVideoWithVision(name: string, mimeType: string, buffer: 
     const { frames, duration } = extractVideoFrameDataUrls(buffer, mimeType);
     if (!frames.length) return { summary: "", note: "aperçu vidéo indisponible" };
     const result = await aiGenerateJSON<{ summary?: unknown; visible_text?: unknown }>({
+      feature: "mails.attachment-video",
+      accountId: accountId || undefined,
+      engine,
       system: `Tu analyses les images clés d'une vidéo jointe pour aider iNrCy à rédiger un email professionnel.
 Réponds uniquement en JSON valide : {"summary":"...","visible_text":"..."}.
 Décris brièvement le sujet visible, les éléments importants pour le message, et le texte lisible s'il apparaît à l'écran.
@@ -411,7 +431,7 @@ function extractAttachmentText(buffer: Buffer, name: string, mimeType: string, m
 async function analyseOneAttachment(
   supabase: any,
   ref: MailAttachmentRef,
-  options: Required<Omit<BuildAttachmentAiContextOptions, "userId">> & { userId: string | null },
+  options: Required<Omit<BuildAttachmentAiContextOptions, "userId" | "engine">> & { userId: string | null; engine: AiPreferredEngine },
   visualState: { used: number },
 ): Promise<AttachmentExtract> {
   const name = clean(ref.name || ref.path.split("/").pop() || "piece-jointe", 160);
@@ -447,7 +467,7 @@ async function analyseOneAttachment(
 
     if (visualState.used < DEFAULT_MAX_VISUAL_FILES && isImageAttachment(name, resolvedMime)) {
       visualState.used += 1;
-      const summary = await summarizeImageWithVision(name, resolvedMime, buffer);
+      const summary = await summarizeImageWithVision(name, resolvedMime, buffer, options.engine, options.userId);
       if (summary?.summary) {
         return { name, mimeType: resolvedMime, size: actualSize, status: "analysed", text: summary.summary, note: "analyse visuelle" };
       }
@@ -458,7 +478,7 @@ async function analyseOneAttachment(
 
     if (visualState.used < DEFAULT_MAX_VISUAL_FILES && isVideoAttachment(name, resolvedMime)) {
       visualState.used += 1;
-      const summary = await summarizeVideoWithVision(name, resolvedMime, buffer);
+      const summary = await summarizeVideoWithVision(name, resolvedMime, buffer, options.engine, options.userId);
       if (summary?.summary) {
         return { name, mimeType: resolvedMime, size: actualSize, status: "analysed", text: summary.summary, note: "analyse vidéo" };
       }
@@ -477,13 +497,14 @@ async function analyseOneAttachment(
 export async function buildMailAttachmentAiPromptSection(
   supabase: any,
   refs: MailAttachmentRef[],
-  options: BuildAttachmentAiContextOptions = {},
+  options: BuildAttachmentAiContextOptions,
 ) {
   const safeRefs = refs.filter(isSafeStorageRef).slice(0, options.maxFiles ?? DEFAULT_MAX_FILES);
   if (!safeRefs.length) return "";
 
   const resolvedOptions = {
     userId: options.userId || null,
+    engine: options.engine,
     maxFiles: options.maxFiles ?? DEFAULT_MAX_FILES,
     maxFileBytes: options.maxFileBytes ?? DEFAULT_MAX_FILE_BYTES,
     maxTotalChars: options.maxTotalChars ?? DEFAULT_MAX_TOTAL_CHARS,

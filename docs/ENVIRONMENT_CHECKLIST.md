@@ -93,18 +93,18 @@ Limites optionnelles :
 
 ## IA / Vercel AI Gateway
 
-- [ ] `AI_GATEWAY_API_KEY` ou authentification OIDC Vercel
-- [ ] `AI_GATEWAY_MODE` (`gateway` recommandé après validation)
+- [ ] `AI_GATEWAY_API_KEY` ou authentification OIDC Vercel — obligatoire pour toute génération texte/vision et transcription
+- [ ] `AI_GATEWAY_MODE=gateway` (mode de production recommandé)
 - [ ] `AI_GATEWAY_MODEL` (format `provider/model`)
 - [ ] `AI_GATEWAY_VISION_MODEL` si modèle vision distinct
 - [ ] `AI_GATEWAY_BASE_URL` seulement si surcharge volontaire
 
 ### OpenAI direct — transition / transcription
 
-- [ ] `OPENAI_API_KEY` (encore requis pour la transcription actuelle)
 - [ ] `OPENAI_MODEL` (fallback transitoire)
 - [ ] `OPENAI_VISION_MODEL` (fallback transitoire)
-- [ ] `OPENAI_TRANSCRIBE_MODEL`
+- [ ] `AI_GATEWAY_TRANSCRIBE_MODEL` (optionnel, défaut `openai/gpt-4o-transcribe`)
+- [ ] `AI_GATEWAY_TRANSCRIBE_FALLBACK_MODEL` (optionnel, défaut `openai/whisper-1`)
 - [ ] `OPENAI_TRANSCRIPT_CLEANUP_MODEL`
 
 ## Google / Google Business / YouTube

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { bubbleAccessDisabledResponse, isAppBubbleEnabledForUser } from "@/lib/appBubbleAccessServer";
 import { requireUser } from "@/lib/requireUser";
 import { aiGenerateJSON } from "@/lib/aiGatewayClient";
+import { getAiPreferredEngineFromBusiness } from "@/lib/aiEnginePreference";
 import { enforceRateLimit } from "@/lib/rateLimit";
 import { asRecord, asString } from "@/lib/tsSafe";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
@@ -102,7 +103,7 @@ export async function POST(req: Request) {
 
       const quotaLimited = await consumeAiCredits({
         supabase,
-        userId: authUserId,
+        userId,
         action: "review_reply",
         credits: computeReviewReplyAiCredits({ rating, comment: reviewComment, existingReply }),
       });
@@ -122,6 +123,7 @@ export async function POST(req: Request) {
 
     const profile = asRecord(profileRes.data);
     const business = asRecord(businessRes.data);
+    const preferredEngine = getAiPreferredEngineFromBusiness(business);
     const decodedSector = decodeBusinessSector(String(business["sector"] ?? ""));
     const profession = getJobLabel(decodedSector.sectorCategory, decodedSector.profession) || decodedSector.profession || "";
     const sectorLabel = getActivitySectorLabel(decodedSector.sectorCategory);
@@ -131,7 +133,7 @@ export async function POST(req: Request) {
     const services = listFrom(business["services"] || business["services_text"], 10);
     const strengths = listFrom(business["strengths"] || business["strengths_text"], 8);
     const aiConfig = buildAiWritingProfilePromptSection(business);
-    const aiRules = buildAiWritingProfileRules();
+    const aiRules = buildAiWritingProfileRules(business, preferredEngine);
     const aiLanguageInstruction = buildAiLanguageInstruction(business);
 
     const system = `Tu es l'assistant IA d'iNrCy spécialisé dans les réponses aux avis Trustpilot.
@@ -147,7 +149,7 @@ Règles strictes :
 - Adapter clairement le ton selon la note : 5★ chaleureux et valorisant ; 4★ positif avec nuance ; 3★ neutre et ouvert ; 1–2★ empathique, calme et orienté résolution.
 - Varier fortement les formulations d'un avis à l'autre.
 - Pas de markdown, pas de HTML, pas de hashtag, pas de formule lourde.
-- Une réponse Trustpilot doit rester concise : 2 à 5 phrases maximum.
+- Une réponse Trustpilot doit rester concise et proportionnée à l'avis. Ne force pas un nombre fixe de phrases ni une structure répétitive.
 - Respecter la Configuration IA du professionnel quand elle est compatible avec une réponse d'avis.
 ${aiLanguageInstruction}
 ${aiRules}`;
@@ -175,6 +177,9 @@ ${existingReply ? `\nRéponse actuelle à améliorer/modifier :\n${existingReply
 Génère une seule réponse prête à publier, naturelle, rassurante et adaptée à la note. Ne recopie pas mot pour mot l'avis.`;
 
     const generated = await aiGenerateJSON<GeneratedReviewReply>({
+      feature: "reviews.trustpilot",
+      accountId: userId,
+      engine: preferredEngine,
       system,
       input,
       maxOutputTokens: 700,

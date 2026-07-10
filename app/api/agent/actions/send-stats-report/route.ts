@@ -7,6 +7,8 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendTxMail } from "@/lib/txMailer";
 import { getInrcyBrandInlineAttachments } from "@/lib/txEmailAssets";
 import { aiGenerateJSON, hasAiGenerationCredentials } from "@/lib/aiGatewayClient";
+import { getAiPreferredEngineFromBusiness, type AiPreferredEngine } from "@/lib/aiEnginePreference";
+import { consumeAiCredits, isAdminUserForAi } from "@/lib/aiUsageQuota";
 import {
   sanitizeInrAgentAutomationSettings,
   type InrAgentAutomationSettings,
@@ -407,7 +409,12 @@ function fallbackInsights(report: StatsReportData): StatsAiInsights {
   };
 }
 
-async function generateAiInsights(report: StatsReportData, aiLanguageInstruction: string): Promise<StatsAiInsights> {
+async function generateAiInsights(
+  report: StatsReportData,
+  aiLanguageInstruction: string,
+  preferredEngine: AiPreferredEngine,
+  accountId: string,
+): Promise<StatsAiInsights> {
   if (!hasAiGenerationCredentials()) return fallbackInsights(report);
 
   try {
@@ -428,6 +435,9 @@ async function generateAiInsights(report: StatsReportData, aiLanguageInstruction
     };
 
     const generated = await aiGenerateJSON<StatsAiInsights>({
+      feature: "agent.stats-report",
+      accountId,
+      engine: preferredEngine,
       maxOutputTokens: 1300,
       temperature: 0.25,
       system:
@@ -1269,7 +1279,7 @@ export async function POST(request: Request) {
   const context = await resolveInrAgentActionRequest(request);
   if (context.errorResponse) return context.errorResponse;
 
-  const { user, userId, isCron, body } = context;
+  const { supabase, user, userId, authUserId, isCron, body } = context;
   const rl = await enforceRateLimit({
     name: "inr_agent_stats_report",
     identifier: userId,
@@ -1294,7 +1304,7 @@ export async function POST(request: Request) {
       .maybeSingle(),
     supabaseAdmin
       .from("business_profiles")
-      .select("ai_language")
+      .select("*")
       .eq("user_id", userId)
       .order("updated_at", { ascending: false })
       .limit(1)
@@ -1304,6 +1314,7 @@ export async function POST(request: Request) {
   const profile = asRecord(profileResult.data);
   const business = asRecord(businessResult.data);
   const aiLanguageInstruction = buildAiLanguageInstruction(business);
+  const preferredEngine = getAiPreferredEngineFromBusiness(business);
   const recipientEmail = cleanEmail(profile.contact_email) || cleanEmail(profile.admin_email) || cleanEmail((user as { email?: string | null }).email);
   if (!recipientEmail) {
     return NextResponse.json(
@@ -1334,7 +1345,21 @@ export async function POST(request: Request) {
     totals: buildTotals(stats.channels),
   };
 
-  const rawInsights = await generateAiInsights(report, aiLanguageInstruction);
+  if (hasAiGenerationCredentials()) {
+    const actorUserId = isCron ? userId : authUserId;
+    const isAdmin = await isAdminUserForAi(supabase, actorUserId);
+    if (!isAdmin) {
+      const quotaLimited = await consumeAiCredits({
+        supabase,
+        userId,
+        action: "agent_stats",
+        credits: 3,
+      });
+      if (quotaLimited) return quotaLimited;
+    }
+  }
+
+  const rawInsights = await generateAiInsights(report, aiLanguageInstruction, preferredEngine, userId);
   const reportSummary = cleanNarrativeText(
     rawInsights.globalSummary,
     fallbackReportSummary(report),

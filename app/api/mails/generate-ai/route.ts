@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
 import { aiGenerateJSON } from "@/lib/aiGatewayClient";
+import { getAiPreferredEngineFromBusiness } from "@/lib/aiEnginePreference";
 import { enforceRateLimit } from "@/lib/rateLimit";
 import { asRecord } from "@/lib/tsSafe";
 import { normalizeMailSubject } from "@/lib/mailEncoding";
@@ -78,7 +79,7 @@ export async function POST(req: Request) {
 
       const quotaLimited = await consumeAiCredits({
         supabase,
-        userId: authUserId,
+        userId,
         action: "mail",
         credits: computeMailAiCredits(attachmentRefs),
       });
@@ -92,6 +93,7 @@ export async function POST(req: Request) {
 
     const profile = asRecord(profileRes.data);
     const business = asRecord(businessRes.data);
+    const preferredEngine = getAiPreferredEngineFromBusiness(business);
     const decodedSector = decodeBusinessSector(String(business["sector"] ?? ""));
     const profession = getJobLabel(decodedSector.sectorCategory, decodedSector.profession) || decodedSector.profession || "";
     const sectorLabel = getActivitySectorLabel(decodedSector.sectorCategory);
@@ -104,10 +106,11 @@ export async function POST(req: Request) {
     const strengths = listFrom(business["strengths"] || business["strengths_text"], 8);
 
     const aiConfig = buildAiWritingProfilePromptSection(business);
-    const aiRules = buildAiWritingProfileRules();
+    const aiRules = buildAiWritingProfileRules(business, preferredEngine);
     const aiLanguageInstruction = buildAiLanguageInstruction(business);
     const attachmentContext = await buildMailAttachmentAiPromptSection(supabase, attachmentRefs, {
       userId,
+      engine: preferredEngine,
       maxFiles: 4,
       maxFileBytes: 8 * 1024 * 1024,
       maxTotalChars: 6500,
@@ -159,11 +162,14 @@ ${attachmentContext || "Aucune pièce jointe exploitable."}
 Message actuel, si présent :
 ${currentBody || "Aucun"}
 
-Rédige uniquement le corps du mail, avec une salutation, un message clair et une fin simple. L'objet doit rester inchangé.
+Rédige uniquement le corps du mail. L'objet doit rester inchangé. Choisis librement la meilleure construction : une salutation et une fin simple sont possibles mais pas obligatoires si le contexte appelle une forme plus directe.
 Si le type d’écriture est précisé, adapte l'intention du message à ce type sans devenir artificiel.
 Si des pièces jointes existent, les mentionner seulement quand cela aide le destinataire à comprendre le mail.`;
 
     const generated = await aiGenerateJSON<GeneratedMail>({
+      feature: "mails.generate",
+      accountId: userId,
+      engine: preferredEngine,
       system,
       input,
       maxOutputTokens: 1100,

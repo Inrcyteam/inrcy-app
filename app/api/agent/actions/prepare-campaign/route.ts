@@ -315,6 +315,7 @@ async function generateCampaignContent(args: {
   supabase: any;
   userId: string;
   quotaUserId: string;
+  actorUserId: string;
   templateModule: string;
   mission: string;
   templateKey: string;
@@ -327,6 +328,8 @@ async function generateCampaignContent(args: {
     supabase: args.supabase,
     userId: args.userId,
     quotaUserId: args.quotaUserId,
+    actorUserId: args.actorUserId,
+    aiFeature: "agent.campaign",
     input: {
       module: args.templateModule,
       mission: args.mission,
@@ -692,7 +695,8 @@ export async function POST(request: Request) {
   if (context.errorResponse) return context.errorResponse;
 
   const { supabase, user, userId, authUserId, isCron } = context;
-  const quotaUserId = isCron ? userId : authUserId;
+  const actorUserId = isCron ? userId : authUserId;
+  const quotaUserId = userId;
   const body = context.body as {
     automationKey?: unknown;
   } | null;
@@ -702,7 +706,7 @@ export async function POST(request: Request) {
 
   const rl = await enforceRateLimit({
     name: `inr_agent_prepare_${automationKey}`,
-    identifier: quotaUserId,
+    identifier: actorUserId,
     limit: 4,
     window: "1 m",
     failClosed: false,
@@ -791,6 +795,7 @@ export async function POST(request: Request) {
       supabase,
       userId,
       quotaUserId,
+      actorUserId,
       templateModule: themeConfig.templateModule,
       mission: themeConfig.label,
       templateKey: template.key,

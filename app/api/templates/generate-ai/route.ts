@@ -17,7 +17,8 @@ export async function POST(req: Request) {
     const generated = await generateTemplateAiContent({
       supabase,
       userId: activeUserId,
-      quotaUserId: authUserId,
+      quotaUserId: activeUserId,
+      actorUserId: authUserId,
       input: body,
     });
 

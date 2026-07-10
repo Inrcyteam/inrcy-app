@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
 import { aiGenerateJSON } from "@/lib/aiGatewayClient";
+import { getAiPreferredEngineFromBusiness } from "@/lib/aiEnginePreference";
 import { enforceRateLimit } from "@/lib/rateLimit";
 import { asRecord, asString } from "@/lib/tsSafe";
 import { getGmbToken } from "@/lib/googleBusiness";
@@ -155,7 +156,7 @@ export async function POST(req: Request) {
 
       const quotaLimited = await consumeAiCredits({
         supabase,
-        userId: authUserId,
+        userId,
         action: "review_reply",
         credits: computeReviewReplyAiCredits({ rating, comment: reviewComment, existingReply }),
       });
@@ -175,6 +176,7 @@ export async function POST(req: Request) {
 
     const profile = asRecord(profileRes.data);
     const business = asRecord(businessRes.data);
+    const preferredEngine = getAiPreferredEngineFromBusiness(business);
     const decodedSector = decodeBusinessSector(String(business["sector"] ?? ""));
     const profession = getJobLabel(decodedSector.sectorCategory, decodedSector.profession) || decodedSector.profession || "";
     const sectorLabel = getActivitySectorLabel(decodedSector.sectorCategory);
@@ -186,7 +188,7 @@ export async function POST(req: Request) {
     const services = listFrom(business["services"] || business["services_text"], 10);
     const strengths = listFrom(business["strengths"] || business["strengths_text"], 8);
     const aiConfig = buildAiWritingProfilePromptSection(business);
-    const aiRules = buildAiWritingProfileRules();
+    const aiRules = buildAiWritingProfileRules(business, preferredEngine);
     const aiLanguageInstruction = buildAiLanguageInstruction(business);
     const variationSeed = stableHash([reviewName, reviewerName, rating, reviewComment, company].join("|"));
     const openingVariant = pickVariant([
@@ -227,7 +229,7 @@ Règles strictes :
 - Éviter si possible les phrases trop vues comme « Merci beaucoup pour votre excellente note » ou « Nous sommes ravis de savoir que notre service vous satisfait » si une formulation plus naturelle peut être proposée.
 - Ajouter une courte signature personnalisée seulement de temps en temps, jamais systématiquement.
 - Pas de markdown, pas de HTML, pas de hashtag, pas de formule lourde.
-- Une réponse Google doit rester concise : 2 à 5 phrases maximum.
+- Une réponse Google doit rester concise et proportionnée à l'avis. Ne force pas un nombre fixe de phrases : une réponse très courte peut suffire, une réponse négative peut nécessiter un peu plus de matière.
 - Respecter la Configuration IA du professionnel quand elle est compatible avec une réponse d'avis Google.
 ${aiLanguageInstruction}
 ${aiRules}`;
@@ -247,11 +249,13 @@ ${aiConfig || "- Non précisée"}
 Instruction de langue prioritaire :
 ${aiLanguageInstruction}
 
-Variation souhaitée pour cette réponse :
+Pistes facultatives anti-répétition pour cette réponse :
 - Angle d’ouverture : ${openingVariant}
 - Style attendu : ${toneVariant}
 - Clôture : ${closingVariant}
 - Signature : ${signatureInstruction}
+
+Ces pistes sont des inspirations, pas un plan obligatoire. Si une autre construction naturelle convient mieux au moteur actif et à l'avis, utilise-la.
 
 Avis Google à traiter :
 - Auteur : ${reviewerName}
@@ -262,6 +266,9 @@ ${existingReply ? `\nRéponse actuelle à améliorer/modifier :\n${existingReply
 Génère une seule réponse prête à publier, naturelle, rassurante et adaptée à la note. Ne recopie pas mot pour mot l'avis. Ne commence pas par le prénom si le nom semble incomplet ou anonymisé. Fais une réponse différente des formulations génériques habituelles lorsque c’est possible.`;
 
     const generated = await aiGenerateJSON<GeneratedReviewReply>({
+      feature: "reviews.google",
+      accountId: userId,
+      engine: preferredEngine,
       system,
       input,
       maxOutputTokens: 700,

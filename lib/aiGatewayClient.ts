@@ -1,14 +1,48 @@
 import "server-only";
 
 import { fetchWithRetry } from "@/lib/observability/fetch";
+import {
+  cleanAiGatewayEnv,
+  getAiGatewayCredential,
+  normalizeAiGatewayBaseUrl,
+  normalizeGatewayModelId,
+} from "@/lib/aiGatewayConfig";
+import {
+  resolveAiEngineRequestRouting,
+  type AiJsonMode,
+  type AiPreferredEngine,
+} from "@/lib/aiEnginePreference";
+import {
+  assertAllowedAiGatewayModel,
+  getAiFeaturePolicy,
+  reserveAiOperationBudget,
+  type AiGenerationFeature,
+  type AiOperationBudget,
+} from "@/lib/aiGatewayPolicy";
+import {
+  recordAiGatewayAccountUsage,
+  reserveAiGatewayAccountAttempt,
+} from "@/lib/aiGatewayAccountGuard";
+import {
+  appendPromptOnlyJsonContract,
+  extractAiGatewayResponseText,
+  parseAiGatewayJsonObject,
+} from "@/lib/aiGatewayResponse";
+
+export type { AiGenerationFeature, AiOperationBudget } from "@/lib/aiGatewayPolicy";
+
 
 type AiResponseJSON = Record<string, unknown>;
 
-export type AiGatewayMode = "auto" | "gateway" | "openai-direct";
-export type AiGenerationRuntime = "vercel-ai-gateway" | "openai-direct";
+export type AiGatewayMode = "auto" | "gateway";
+export type AiGenerationRuntime = "vercel-ai-gateway";
 
-export type AiGenerateJsonOptions = {
-  model?: string;
+type AiGenerateJsonBaseOptions = {
+  feature: AiGenerationFeature;
+  /** Établissement / compte actif iNrCy. Utilisé uniquement pour les garde-fous économiques. */
+  accountId?: string;
+  /** Budget partagé entre plusieurs sous-appels d'une même action utilisateur. */
+  budget?: AiOperationBudget;
   system: string;
   input: string;
   images?: Array<{ dataUrl: string; detail?: "low" | "high" | "auto" }>;
@@ -18,159 +52,144 @@ export type AiGenerateJsonOptions = {
   timeoutMs?: number;
 };
 
-const DEFAULT_GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh/v1";
-const DEFAULT_OPENAI_MODEL = "gpt-4o-mini";
+type AiGenerateJsonRouting =
+  | { engine: AiPreferredEngine; model?: never }
+  | { model: string; engine?: never };
 
-function cleanEnv(value: unknown): string {
-  return typeof value === "string" ? value.trim() : "";
-}
+export type AiGenerateJsonOptions = AiGenerateJsonBaseOptions & AiGenerateJsonRouting;
 
 function resolveMode(): AiGatewayMode {
-  const raw = cleanEnv(process.env.AI_GATEWAY_MODE).toLowerCase();
-  if (raw === "gateway" || raw === "openai-direct") return raw;
-  return "auto";
+  const raw = cleanAiGatewayEnv(process.env.AI_GATEWAY_MODE).toLowerCase();
+  return raw === "gateway" ? "gateway" : "auto";
 }
 
-function getGatewayCredential(): string {
-  return cleanEnv(process.env.AI_GATEWAY_API_KEY) || cleanEnv(process.env.VERCEL_OIDC_TOKEN);
-}
-
-function getOpenAiCredential(): string {
-  return cleanEnv(process.env.OPENAI_API_KEY);
-}
-
-function normalizeGatewayBaseUrl(value: unknown): string {
-  const raw = cleanEnv(value) || DEFAULT_GATEWAY_BASE_URL;
-  return raw.replace(/\/+$/, "");
-}
-
-/**
- * AI Gateway expects provider/model identifiers. During the transition, old
- * OpenAI model names such as "gpt-4o-mini" remain accepted and are normalized
- * to "openai/gpt-4o-mini".
- */
-export function normalizeGatewayModelId(value: unknown, defaultProvider = "openai"): string {
-  const raw = cleanEnv(value);
-  if (!raw) return `${defaultProvider}/${DEFAULT_OPENAI_MODEL}`;
-  return raw.includes("/") ? raw : `${defaultProvider}/${raw}`;
-}
-
-function normalizeDirectOpenAiModelId(value: unknown): string {
-  const raw = cleanEnv(value) || DEFAULT_OPENAI_MODEL;
-  if (raw.startsWith("openai/")) return raw.slice("openai/".length);
-  if (raw.includes("/")) {
-    throw new Error(
-      `Le modèle ${raw} nécessite Vercel AI Gateway. Configurez AI_GATEWAY_API_KEY ou VERCEL_OIDC_TOKEN.`,
-    );
-  }
-  return raw;
-}
+export { normalizeGatewayModelId } from "@/lib/aiGatewayConfig";
 
 export function getAiGenerationRuntime(): AiGenerationRuntime {
-  const mode = resolveMode();
-  const gatewayCredential = getGatewayCredential();
-
-  if (mode === "gateway") return "vercel-ai-gateway";
-  if (mode === "openai-direct") return "openai-direct";
-  return gatewayCredential ? "vercel-ai-gateway" : "openai-direct";
+  return "vercel-ai-gateway";
 }
 
 export function hasAiGenerationCredentials(): boolean {
-  const runtime = getAiGenerationRuntime();
-  return runtime === "vercel-ai-gateway"
-    ? Boolean(getGatewayCredential())
-    : Boolean(getOpenAiCredential());
+  return Boolean(getAiGatewayCredential());
 }
 
 export function getAiGenerationRuntimeInfo() {
-  const mode = resolveMode();
-  const runtime = getAiGenerationRuntime();
   return {
-    mode,
-    runtime,
-    gatewayConfigured: Boolean(getGatewayCredential()),
-    gatewayAuth: cleanEnv(process.env.AI_GATEWAY_API_KEY)
+    mode: resolveMode(),
+    runtime: getAiGenerationRuntime(),
+    gatewayConfigured: Boolean(getAiGatewayCredential()),
+    gatewayAuth: cleanAiGatewayEnv(process.env.AI_GATEWAY_API_KEY)
       ? "api-key"
-      : cleanEnv(process.env.VERCEL_OIDC_TOKEN)
+      : cleanAiGatewayEnv(process.env.VERCEL_OIDC_TOKEN)
         ? "oidc"
         : "none",
-    openAiDirectConfigured: Boolean(getOpenAiCredential()),
-    gatewayBaseUrl: normalizeGatewayBaseUrl(process.env.AI_GATEWAY_BASE_URL),
+    gatewayBaseUrl: normalizeAiGatewayBaseUrl(process.env.AI_GATEWAY_BASE_URL),
   } as const;
 }
 
-function resolveRequestedModel(opts: AiGenerateJsonOptions, hasImages: boolean): string {
-  return (
-    cleanEnv(opts.model) ||
-    (hasImages ? cleanEnv(process.env.AI_GATEWAY_VISION_MODEL) : "") ||
-    cleanEnv(process.env.AI_GATEWAY_MODEL) ||
-    (hasImages ? cleanEnv(process.env.OPENAI_VISION_MODEL) : "") ||
-    cleanEnv(process.env.OPENAI_MODEL) ||
-    DEFAULT_OPENAI_MODEL
-  );
-}
+type ResolvedAiRequestRouting = {
+  model: string;
+  jsonMode: AiJsonMode;
+  usedVisionFallback: boolean;
+};
 
-function extractResponseText(json: any): string {
-  const outputText = typeof json?.output_text === "string" ? json.output_text : "";
-  const nestedTexts = Array.isArray(json?.output)
-    ? json.output.flatMap((item: any) =>
-        Array.isArray(item?.content)
-          ? item.content
-              .map((part: any) => (typeof part?.text === "string" ? part.text : ""))
-              .filter(Boolean)
-          : [],
-      )
-    : [];
-  return outputText || nestedTexts.join("\n").trim();
-}
-
-function parseJsonOutput<T extends AiResponseJSON>(contentText: string): T {
-  try {
-    return JSON.parse(contentText) as T;
-  } catch {
-    const start = contentText.indexOf("{");
-    const end = contentText.lastIndexOf("}");
-    if (start >= 0 && end > start) {
-      return JSON.parse(contentText.slice(start, end + 1)) as T;
-    }
-    throw new Error("La génération n'a pas pu être finalisée. Merci de réessayer.");
+function resolveRequestedRouting(
+  opts: AiGenerateJsonOptions,
+  hasImages: boolean,
+): ResolvedAiRequestRouting {
+  if ("model" in opts && cleanAiGatewayEnv(opts.model)) {
+    return {
+      model: cleanAiGatewayEnv(opts.model),
+      jsonMode: "strict",
+      usedVisionFallback: false,
+    };
   }
-}
 
-/**
- * Point d'entrée neutre de génération IA iNrCy.
- *
- * - AI_GATEWAY_MODE=gateway : Vercel AI Gateway obligatoire.
- * - AI_GATEWAY_MODE=openai-direct : OpenAI direct obligatoire (transition).
- * - AI_GATEWAY_MODE=auto (défaut) : Gateway si configuré, sinon OpenAI direct.
- *
- * Les prompts métier et le contrat JSON restent inchangés.
- */
-export async function aiGenerateJSON<T extends AiResponseJSON>(opts: AiGenerateJsonOptions): Promise<T> {
-  const hasImages = Array.isArray(opts.images) && opts.images.length > 0;
-  const runtime = getAiGenerationRuntime();
-  const requestedModel = resolveRequestedModel(opts, hasImages);
-
-  const credential = runtime === "vercel-ai-gateway" ? getGatewayCredential() : getOpenAiCredential();
-  if (!credential) {
-    throw new Error(
-      runtime === "vercel-ai-gateway"
-        ? "Configuration AI Gateway manquante."
-        : "Configuration IA manquante.",
+  if ("engine" in opts && opts.engine) {
+    return resolveAiEngineRequestRouting(
+      opts.engine,
+      hasImages,
+      cleanAiGatewayEnv(process.env.AI_GATEWAY_VISION_MODEL),
     );
   }
 
-  const baseUrl = runtime === "vercel-ai-gateway"
-    ? normalizeGatewayBaseUrl(process.env.AI_GATEWAY_BASE_URL)
-    : "https://api.openai.com/v1";
-  const model = runtime === "vercel-ai-gateway"
-    ? normalizeGatewayModelId(requestedModel)
-    : normalizeDirectOpenAiModelId(requestedModel);
+  // Le type TypeScript empêche normalement ce cas. On garde un garde-fou runtime.
+  return {
+    model:
+      (hasImages ? cleanAiGatewayEnv(process.env.AI_GATEWAY_VISION_MODEL) : "") ||
+      cleanAiGatewayEnv(process.env.AI_GATEWAY_MODEL) ||
+      "openai/gpt-4o-mini",
+    jsonMode: "strict",
+    usedVisionFallback: false,
+  };
+}
 
-  const max_output_tokens = Math.max(128, Math.min(8000, opts.maxOutputTokens ?? 700));
+function parseUsage(json: any) {
+  const usage = json?.usage && typeof json.usage === "object" ? json.usage : {};
+  const inputTokens = Math.max(0, Math.floor(Number(usage.input_tokens ?? usage.prompt_tokens ?? 0) || 0));
+  const outputTokens = Math.max(0, Math.floor(Number(usage.output_tokens ?? usage.completion_tokens ?? 0) || 0));
+  const totalTokens = Math.max(
+    0,
+    Math.floor(Number(usage.total_tokens ?? inputTokens + outputTokens) || inputTokens + outputTokens),
+  );
+  return { inputTokens, outputTokens, totalTokens };
+}
+
+function validatePayloadAgainstPolicy(opts: AiGenerateJsonOptions, maxOutputTokens: number) {
+  const policy = getAiFeaturePolicy(opts.feature);
+  const inputChars = String(opts.system || "").length + String(opts.input || "").length;
+  if (inputChars > policy.maxInputChars) {
+    throw new Error("La demande IA est trop volumineuse pour cette action. Réduisez le contenu puis réessayez.");
+  }
+
+  const images = Array.isArray(opts.images) ? opts.images : [];
+  if (images.length > policy.maxImages) {
+    throw new Error(`Trop d'images ont été envoyées à l'IA pour cette action (maximum ${policy.maxImages}).`);
+  }
+
+  const imageDataChars = images.reduce((sum, image) => sum + String(image?.dataUrl || "").length, 0);
+  if (imageDataChars > policy.maxImageDataChars) {
+    throw new Error("Les médias envoyés à l'IA sont trop volumineux pour cette action.");
+  }
+
+  reserveAiOperationBudget(opts.budget, maxOutputTokens);
+}
+
+/**
+ * Point d'entrée unique de génération IA iNrCy — Étape 6.
+ *
+ * Toute génération texte/vision passe obligatoirement par Vercel AI Gateway.
+ * Les modèles, retries, volumes, budgets d'opération et garde-fous par compte
+ * sont contrôlés ici. La transcription brute utilise elle aussi le Gateway via
+ * lib/aiGatewayTranscription.ts.
+ */
+export async function aiGenerateJSON<T extends AiResponseJSON>(opts: AiGenerateJsonOptions): Promise<T> {
+  const credential = getAiGatewayCredential();
+  if (!credential) {
+    throw new Error("Configuration AI Gateway manquante.");
+  }
+
+  const policy = getAiFeaturePolicy(opts.feature);
+  const hasImages = Array.isArray(opts.images) && opts.images.length > 0;
+  const routing = resolveRequestedRouting(opts, hasImages);
+  const model = normalizeGatewayModelId(routing.model);
+  assertAllowedAiGatewayModel(model, process.env.AI_GATEWAY_ALLOWED_MODELS);
+
+  const baseUrl = normalizeAiGatewayBaseUrl(process.env.AI_GATEWAY_BASE_URL);
+  const max_output_tokens = Math.max(
+    128,
+    Math.min(policy.maxOutputTokens, 8000, opts.maxOutputTokens ?? 700),
+  );
   const temperature = typeof opts.temperature === "number"
     ? Math.max(0, Math.min(2, opts.temperature))
     : undefined;
+  const retries = Math.max(0, Math.min(policy.maxRetries, Math.floor(opts.retries ?? policy.maxRetries)));
+  const timeoutMs = Math.max(
+    5000,
+    Math.min(policy.maxTimeoutMs, Math.floor(opts.timeoutMs ?? policy.maxTimeoutMs)),
+  );
+
+  validatePayloadAgainstPolicy(opts, max_output_tokens);
 
   const userContent: Array<Record<string, unknown>> = [
     { type: "input_text", text: opts.input },
@@ -180,6 +199,11 @@ export async function aiGenerateJSON<T extends AiResponseJSON>(opts: AiGenerateJ
       detail: image.detail || "low",
     }))),
   ];
+
+  const requestStartedAt = Date.now();
+  const effectiveSystemPrompt = routing.jsonMode === "prompt-only"
+    ? appendPromptOnlyJsonContract(opts.system)
+    : opts.system;
 
   const res = await fetchWithRetry(`${baseUrl}/responses`, {
     method: "POST",
@@ -191,31 +215,85 @@ export async function aiGenerateJSON<T extends AiResponseJSON>(opts: AiGenerateJ
       model,
       max_output_tokens,
       ...(temperature === undefined ? {} : { temperature }),
-      text: {
-        format: { type: "json_object" },
-      },
+      ...(routing.jsonMode === "strict"
+        ? {
+            text: {
+              format: { type: "json_object" },
+            },
+          }
+        : {}),
       input: [
-        { role: "system", content: [{ type: "input_text", text: opts.system }] },
+        { role: "system", content: [{ type: "input_text", text: effectiveSystemPrompt }] },
         { role: "user", content: userContent },
       ],
     }),
-    retries: opts.retries ?? 2,
-    timeoutMs: opts.timeoutMs ?? 30_000,
+    retries,
+    timeoutMs,
+    onAttempt: async () => {
+      await reserveAiGatewayAccountAttempt(opts.accountId);
+    },
   });
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    const label = runtime === "vercel-ai-gateway" ? "AI Gateway" : "Service IA";
-    throw new Error(`${label} error (${res.status}): ${text || res.statusText}`);
+    console.error("[ai-gateway] generation failed", {
+      feature: opts.feature,
+      model,
+      engine: "engine" in opts ? opts.engine : undefined,
+      accountId: opts.accountId || undefined,
+      hasImages,
+      usedVisionFallback: routing.usedVisionFallback,
+      retries,
+      status: res.status,
+      durationMs: Date.now() - requestStartedAt,
+    });
+    throw new Error(`AI Gateway error (${res.status}): ${text || res.statusText}`);
   }
 
   const json = (await res.json()) as any;
-  const contentText = extractResponseText(json);
+  const usage = parseUsage(json);
+  const contentText = extractAiGatewayResponseText(json);
+
+  // La télémétrie économique ne doit jamais casser une réponse IA valide.
+  void recordAiGatewayAccountUsage({
+    accountId: opts.accountId,
+    feature: opts.feature,
+    model,
+    usage,
+  }).catch((error) => {
+    console.warn("[ai-gateway] usage telemetry unavailable", {
+      feature: opts.feature,
+      model,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  });
+
+  console.info("[ai-gateway] generation usage", {
+    feature: opts.feature,
+    model,
+    engine: "engine" in opts ? opts.engine : undefined,
+    accountId: opts.accountId || undefined,
+    hasImages,
+    usedVisionFallback: routing.usedVisionFallback,
+    inputTokens: usage.inputTokens,
+    outputTokens: usage.outputTokens,
+    totalTokens: usage.totalTokens,
+    durationMs: Date.now() - requestStartedAt,
+  });
 
   if (!contentText) {
     const status = typeof json?.status === "string" ? ` (${json.status})` : "";
+    console.error("[ai-gateway] empty output", {
+      feature: opts.feature,
+      model,
+      engine: "engine" in opts ? opts.engine : undefined,
+      accountId: opts.accountId || undefined,
+      hasImages,
+      usedVisionFallback: routing.usedVisionFallback,
+      durationMs: Date.now() - requestStartedAt,
+    });
     throw new Error(`Service IA : contenu de sortie manquant${status}`);
   }
 
-  return parseJsonOutput<T>(contentText);
+  return parseAiGatewayJsonObject<T>(contentText);
 }

@@ -29,11 +29,15 @@ export async function fetchWithRetry(
     timeoutMs?: number;
     requestId?: string;
     route?: string;
+    onAttempt?: (attempt: number) => void | Promise<void>;
   } = {}
 ): Promise<Response> {
-  const { retries = 2, ...rest } = init;
+  const { retries = 2, onAttempt, ...rest } = init;
   let lastErr: any;
   for (let i = 0; i <= retries; i++) {
+    // Exécuté avant chaque vraie tentative HTTP. Une erreur de garde-fou ne doit
+    // jamais être absorbée ni transformée en retry supplémentaire.
+    if (onAttempt) await onAttempt(i);
     try {
       const res = await fetchWithTimeout(input, rest);
       if (res.ok) return res;

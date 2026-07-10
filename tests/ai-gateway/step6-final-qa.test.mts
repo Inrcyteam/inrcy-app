@@ -1,0 +1,103 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+
+import {
+  appendPromptOnlyJsonContract,
+  extractAiGatewayResponseText,
+  parseAiGatewayJsonObject,
+} from "../../lib/aiGatewayResponse.ts";
+import { AI_ENGINE_OPTIONS } from "../../lib/aiEnginePreference.ts";
+import { AI_FEATURE_POLICIES } from "../../lib/aiGatewayPolicy.ts";
+import {
+  sanitizeBoosterSiteText,
+  stripSiteTextFormattingPreserveLayout,
+} from "../../lib/boosterFormatting.ts";
+
+const ROOT = resolve(import.meta.dirname, "../..");
+const read = (rel: string) => readFileSync(resolve(ROOT, rel), "utf8");
+
+test("Responses API text extraction supports output_text and nested output content", () => {
+  assert.equal(extractAiGatewayResponseText({ output_text: '{"ok":true}' }), '{"ok":true}');
+  assert.equal(
+    extractAiGatewayResponseText({ output: [{ content: [{ type: "output_text", text: '{"ok":true}' }] }] }),
+    '{"ok":true}',
+  );
+});
+
+test("multi-provider JSON parser accepts clean, fenced, wrapped and double-encoded objects", () => {
+  assert.deepEqual(parseAiGatewayJsonObject('{"ok":true}'), { ok: true });
+  assert.deepEqual(parseAiGatewayJsonObject('```json\n{"ok":true}\n```'), { ok: true });
+  assert.deepEqual(parseAiGatewayJsonObject('Voici le résultat :\n{"ok":true}\nMerci.'), { ok: true });
+  assert.deepEqual(parseAiGatewayJsonObject(JSON.stringify('{"ok":true}')), { ok: true });
+});
+
+test("JSON parser rejects arrays and primitives instead of accepting an invalid app contract", () => {
+  assert.throws(() => parseAiGatewayJsonObject('[{"ok":true}]'), /finalisée/);
+  assert.throws(() => parseAiGatewayJsonObject('"ok"'), /finalisée/);
+});
+
+test("paragraph breaks survive JSON parsing and Booster sanitization", () => {
+  const parsed = parseAiGatewayJsonObject<{ content: string }>(
+    JSON.stringify({ content: "Premier paragraphe.\n\nDeuxième paragraphe.\n\nTroisième paragraphe." }),
+  );
+  assert.equal(parsed.content.split("\n\n").length, 3);
+  assert.equal(stripSiteTextFormattingPreserveLayout(parsed.content), parsed.content);
+  assert.equal(sanitizeBoosterSiteText(parsed.content), parsed.content);
+});
+
+test("social layout sanitizer removes formatting without compacting authored blank lines", () => {
+  const input = "**Accroche**\n\nParagraphe deux.\n\nParagraphe trois.";
+  assert.equal(
+    stripSiteTextFormattingPreserveLayout(input),
+    "Accroche\n\nParagraphe deux.\n\nParagraphe trois.",
+  );
+});
+
+test("prompt-only engines receive a universal JSON-only and paragraph-preservation contract", () => {
+  const contract = appendPromptOnlyJsonContract("SYSTEME METIER");
+  assert.match(contract, /uniquement un objet JSON valide/i);
+  assert.match(contract, /Aucun bloc Markdown/i);
+  assert.match(contract, /deux sauts de ligne consécutifs/i);
+  assert.match(contract, /Ne compacte jamais plusieurs paragraphes/i);
+
+  const promptOnlyEngines = AI_ENGINE_OPTIONS.filter((engine) => engine.jsonMode === "prompt-only");
+  assert.deepEqual(promptOnlyEngines.map((engine) => engine.value), ["perplexity", "deepseek", "meta"]);
+});
+
+test("Booster prompt explicitly requires airy paragraphs for every channel", () => {
+  const prompt = read("lib/boosterPrompt.ts");
+  assert.match(prompt, /paragraphes courts pour TOUS les canaux/i);
+  assert.match(prompt, /deux sauts de ligne consécutifs/i);
+  assert.match(prompt, /ne jamais les supprimer/i);
+});
+
+test("Step 6 does not reduce previous text-generation capacities", () => {
+  assert.equal(AI_FEATURE_POLICIES["booster.publish"].maxOutputTokens, 8000);
+  assert.equal(AI_FEATURE_POLICIES["agent.publish"].maxOutputTokens, 8000);
+  assert.equal(AI_FEATURE_POLICIES["booster.youtube-rescue"].maxOutputTokens, 8000);
+  assert.equal(AI_FEATURE_POLICIES["templates.generate"].maxOutputTokens, 3000);
+
+  const boosterGeneration = read("lib/boosterPublishGeneration.ts");
+  assert.match(boosterGeneration, /siteChannel \? 6000 : 2000/);
+  assert.match(boosterGeneration, /youtube_shorts:\s*2100/);
+  assert.match(boosterGeneration, /site_web:\s*2200/);
+});
+
+test("all eight engines keep explicit model, vision and JSON-mode contracts", () => {
+  assert.equal(AI_ENGINE_OPTIONS.length, 8);
+  for (const engine of AI_ENGINE_OPTIONS) {
+    assert.match(engine.model, /^[a-z0-9-]+\/[a-z0-9.-]+$/i);
+    assert.equal(typeof engine.supportsVision, "boolean");
+    assert.ok(engine.jsonMode === "strict" || engine.jsonMode === "prompt-only");
+  }
+});
+
+test("final QA commands include offline, catalog and optional live checks", () => {
+  const pkg = JSON.parse(read("package.json"));
+  assert.equal(typeof pkg.scripts["qa:ai-gateway"], "string");
+  assert.equal(typeof pkg.scripts["verify:ai-gateway-catalog"], "string");
+  assert.equal(typeof pkg.scripts["qa:ai-gateway:live"], "string");
+  assert.equal(typeof pkg.scripts["qa:ai-gateway:final"], "string");
+});
