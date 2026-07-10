@@ -63,19 +63,19 @@ const allowedChannels: BoosterChannels[] = [
 
 const siteChannels = new Set<BoosterChannels>(["inrcy_site", "site_web"]);
 
-// Seuils techniques de sécurité, volontairement plus bas que les objectifs éditoriaux
-// du prompt. Ils servent uniquement à détecter une réponse cassée/vidée, pas à rejeter
-// un vrai contenu IA pertinent parce qu'il est un peu plus court que la cible idéale.
+// Seuils anti-réponse cassée uniquement. Ils sont volontairement très inférieurs
+// aux objectifs éditoriaux du prompt : une IA concise mais pertinente doit passer.
+// Ces valeurs détectent surtout une sortie vide/tronquée, jamais un simple écart de style.
 const CHANNEL_MIN_CONTENT_LENGTH: Record<BoosterChannels, number> = {
-  inrcy_site: 400,
-  site_web: 500,
-  gmb: 140,
-  facebook: 180,
-  instagram: 140,
-  linkedin: 250,
-  tiktok: 80,
-  youtube_shorts: 220,
-  pinterest: 110,
+  inrcy_site: 180,
+  site_web: 220,
+  gmb: 80,
+  facebook: 100,
+  instagram: 80,
+  linkedin: 120,
+  tiktok: 45,
+  youtube_shorts: 120,
+  pinterest: 70,
 };
 
 const CHANNEL_LABELS: Record<BoosterChannels, string> = {
@@ -789,6 +789,16 @@ type ChannelQualityIssue =
   | "language_mismatch"
   | "too_similar";
 
+// Seuls les défauts réellement dangereux déclenchent une seconde génération.
+// L'ancrage lexical et la similarité inter-canaux restent des signaux de qualité :
+// ils sont utiles pour l'observabilité mais ne doivent plus punir une reformulation
+// créative ni provoquer une réparation massive de contenus pourtant publiables.
+const REPAIR_BLOCKING_ISSUES = new Set<ChannelQualityIssue>([
+  "missing",
+  "meta_leak",
+  "language_mismatch",
+]);
+
 function collectChannelQualityIssues(args: {
   channels: BoosterChannels[];
   versions: Partial<Record<BoosterChannels, ChannelPost>>;
@@ -881,7 +891,6 @@ async function repairChannelsOnce(args: {
   hiddenAngle?: BoosterHiddenAngle;
   imagesForAI?: BoosterAiImage[];
   extraInstructions?: string;
-  ideaKeywords: string[];
   languageCode: string;
   aiFeature: AiGenerationFeature;
   accountId?: string;
@@ -924,19 +933,16 @@ async function repairChannelsOnce(args: {
   const recovered: BoosterChannels[] = [];
   for (const channel of args.channels) {
     const candidate = normalizePost(channel, extractGeneratedChannelVersion(out, channel));
-    // Après une réparation ciblée, on exige la sécurité éditoriale. L'ancrage exact
-    // reste un signal de qualité et non une raison de jeter une bonne reformulation.
-    const channelIssues = args.issues.get(channel) || [];
-    const requiresIdeaAnchor = channelIssues.includes("off_topic");
+    // Après une réparation ciblée, on ne conserve que les règles de sécurité réelles.
+    // L'ancrage lexical exact est volontairement non bloquant : un moteur peut utiliser
+    // des synonymes, reformuler un lieu/sujet ou choisir un angle éditorial naturel.
     const safeCandidate = isGeneratedPostSafe({
       channel,
       post: candidate,
       languageCode: args.languageCode,
     });
-    const anchorRecovered =
-      !requiresIdeaAnchor || isPostAnchoredToIdea(args.ideaKeywords, candidate);
 
-    if (safeCandidate && anchorRecovered) {
+    if (safeCandidate) {
       args.versions[channel] = candidate;
       recovered.push(channel);
     }
@@ -1068,15 +1074,30 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
     safeVersions[channel] = normalizePost(channel, rawVersions[channel]);
   }
 
-  // Validation locale gratuite : aucun appel IA pour détecter vide, longueur cassée,
-  // hors-sujet évident, fuite méta, mauvaise langue ou quasi-doublon.
+  // Validation locale gratuite. On distingue désormais :
+  // - défauts bloquants : sortie cassée, fuite méta, mauvaise langue ;
+  // - signaux souples : ancrage lexical faible, contenus trop proches.
+  // Les signaux souples ne déclenchent plus de réparation et ne peuvent plus faire
+  // échouer une génération créative simplement parce que le moteur reformule.
   const repairIssues = collectChannelQualityIssues({
     channels,
     versions: safeVersions,
     ideaKeywords,
     languageCode,
   });
-  const repairChannels = channels.filter((channel) => repairIssues.has(channel));
+  const repairChannels = channels.filter((channel) =>
+    (repairIssues.get(channel) || []).some((issue) => REPAIR_BLOCKING_ISSUES.has(issue)),
+  );
+  const advisoryChannels = channels.filter((channel) =>
+    (repairIssues.get(channel) || []).some((issue) => !REPAIR_BLOCKING_ISSUES.has(issue)),
+  );
+  const qualityIssueCounts = Object.fromEntries(
+    (["missing", "off_topic", "meta_leak", "language_mismatch", "too_similar"] as ChannelQualityIssue[])
+      .map((issue) => [
+        issue,
+        channels.filter((channel) => (repairIssues.get(channel) || []).includes(issue)).length,
+      ]),
+  );
 
   console.info("[booster-generation] v2 orchestrator", {
     aiFeature,
@@ -1084,6 +1105,8 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
     engine: generationProfile.preferences.engine,
     selectedChannels: channels.length,
     repairChannels: repairChannels.length,
+    advisoryChannels: advisoryChannels.length,
+    qualityIssueCounts,
     primarySucceeded: !initialGenerationError,
   });
 
@@ -1105,7 +1128,6 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
         hiddenAngle: operationHiddenAngle,
         imagesForAI: preparedMedia.imagesForWriter,
         extraInstructions: preparedMedia.writerContext,
-        ideaKeywords,
         languageCode,
         aiFeature,
         accountId: args.accountId,

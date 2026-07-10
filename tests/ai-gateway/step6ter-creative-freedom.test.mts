@@ -108,12 +108,15 @@ test("iNrAgent publishing explicitly preserves the selected engine's native voic
 });
 
 
-test("creative synonym reformulations are not discarded by the single targeted repair", () => {
+test("creative synonym reformulations and normal same-topic overlap are advisory only", () => {
   const generation = read("lib/boosterPublishGeneration.ts");
-  assert.match(generation, /const safeCandidate = isGeneratedPostSafe\(/);
-  assert.match(generation, /const requiresIdeaAnchor = channelIssues\.includes\("off_topic"\)/);
-  assert.match(generation, /!requiresIdeaAnchor \|\| isPostAnchoredToIdea\(args\.ideaKeywords, candidate\)/);
-  assert.match(generation, /L'ancrage exact[\s\S]*signal de qualité et non une raison de jeter une bonne reformulation/i);
+  assert.match(
+    generation,
+    /const REPAIR_BLOCKING_ISSUES = new Set<ChannelQualityIssue>\(\[\s*"missing",\s*"meta_leak",\s*"language_mismatch",?\s*\]\);/,
+  );
+  assert.match(generation, /advisoryChannels/);
+  assert.match(generation, /!REPAIR_BLOCKING_ISSUES\.has\(issue\)/);
+  assert.match(generation, /L'ancrage lexical exact est volontairement non bloquant/i);
   assert.match(generation, /unsafe channels after single repair/);
   assert.doesNotMatch(generation, /attempt > 0/);
 });
