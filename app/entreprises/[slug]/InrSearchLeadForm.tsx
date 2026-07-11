@@ -9,6 +9,7 @@ const VISITOR_STORAGE_KEY = "inrcy.inrsearch.visitor";
 type Props = {
   slug: string;
   companyName: string;
+  modal?: boolean;
 };
 
 type FormState = {
@@ -61,7 +62,7 @@ function detectSource() {
   return "other";
 }
 
-export default function InrSearchLeadForm({ slug, companyName }: Props) {
+export default function InrSearchLeadForm({ slug, companyName, modal = false }: Props) {
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [submitting, setSubmitting] = useState(false);
   const [sent, setSent] = useState(false);
@@ -116,11 +117,11 @@ export default function InrSearchLeadForm({ slug, companyName }: Props) {
   }
 
   return (
-    <section className={styles.section} id="demande" aria-labelledby="demande-title">
+    <section className={`${styles.section} ${modal ? styles.modalSection : ""}`} id="demande" aria-labelledby="demande-title">
       <div className={styles.intro}>
         <span className={styles.kicker}>Contact direct</span>
         <h2 id="demande-title">Présentez votre besoin à {companyName}</h2>
-        <p>Décrivez votre projet en quelques lignes. Vos coordonnées seront transmises directement à l’entreprise et enregistrées dans son espace professionnel iNrCy.</p>
+        <p>Décrivez votre projet en quelques lignes. Vos coordonnées seront transmises directement à l’entreprise afin qu’elle puisse vous recontacter.</p>
         <div className={styles.signals}>
           <span><i>✓</i> Demande transmise immédiatement</span>
           <span><i>✓</i> Aucun compte à créer</span>

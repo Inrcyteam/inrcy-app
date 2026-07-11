@@ -67,6 +67,13 @@ const DASHBOARD_CHANNEL_STATE_CACHE_KEY = "inrcy_dashboard_channel_state_v1";
 const BUBBLE_ACCESS_CACHE_KEY = "inrcy_bubble_access_map_v1";
 const INR_SEARCH_PUBLIC_ORIGIN = ((process.env.NEXT_PUBLIC_INRSEARCH_PUBLIC_ORIGIN || "https://app.inrcy.com").replace(/\/$/, "") === "https://inrcy.com" ? "https://app.inrcy.com" : (process.env.NEXT_PUBLIC_INRSEARCH_PUBLIC_ORIGIN || "https://app.inrcy.com").replace(/\/$/, ""));
 
+function getRuntimeInrSearchOrigin() {
+  if (typeof window !== "undefined" && ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname)) {
+    return window.location.origin;
+  }
+  return INR_SEARCH_PUBLIC_ORIGIN;
+}
+
 type SiteBubbleProgress = { status: ModuleStatus; text: string };
 type SiteBubbleProgressCache = Partial<Record<"site_inrcy" | "site_web", SiteBubbleProgress>>;
 type ChannelRefreshOptions = { force?: boolean; dedupeMs?: number };
@@ -989,7 +996,7 @@ useEffect(() => {
       const publication = payload.publication && typeof payload.publication === "object" ? payload.publication : {};
       const slug = String(config.slug || "").trim();
       const connected = Boolean(config.enabled && slug && publication.allowed);
-      const profileUrl = slug ? `${INR_SEARCH_PUBLIC_ORIGIN}/entreprises/${slug}` : "";
+      const profileUrl = slug ? `${getRuntimeInrSearchOrigin()}/entreprises/${slug}` : "";
       setInrSearchConnected(connected);
       setInrSearchUrl(profileUrl);
       mergeCachedDashboardChannelState({ inrSearchConnected: connected, inrSearchUrl: profileUrl });
@@ -1411,7 +1418,7 @@ const loadSiteInrcy = useCallback(async () => {
   const pinterestUrlValue = String(pinterestObj?.profileUrl ?? pinterestObj?.url ?? "");
   const inrSearchSlug = String(inrSearchObj?.slug ?? "").trim();
   const inrSearchUrlValue = inrSearchObj?.enabled && inrSearchSlug
-    ? `${INR_SEARCH_PUBLIC_ORIGIN}/entreprises/${inrSearchSlug}`
+    ? `${getRuntimeInrSearchOrigin()}/entreprises/${inrSearchSlug}`
     : "";
 
   const nextState = {

@@ -1,19 +1,30 @@
 import type { Metadata } from "next";
-import type { ReactNode } from "react";
-import Link from "next/link";
+import type { CSSProperties, ReactNode } from "react";
 import { notFound, permanentRedirect } from "next/navigation";
 import {
   buildInrSearchProfessionUrl,
   buildInrSearchPublicUrl,
-  buildInrSearchSectorUrl,
   loadInrSearchPublicPage,
   normalizeInrSearchDirectorySlug,
   type InrSearchPublicPageData,
 } from "@/lib/inrSearchPublic";
 import styles from "./inrSearchPublic.module.css";
 import InrSearchAnalyticsClient from "./InrSearchAnalyticsClient";
-import InrSearchLeadForm from "./InrSearchLeadForm";
-import { createInrBadgeQrMatrix } from "@/lib/inrBadgeQr";
+import InrSearchExperience from "./InrSearchExperience";
+import InrSearchNewsShowcase from "./InrSearchNewsShowcase";
+import InrSearchServicesOrbit from "./InrSearchServicesOrbit";
+import InrSearchGalleryOrbit from "./InrSearchGalleryOrbit";
+import InrSearchZoneOrbit from "./InrSearchZoneOrbit";
+import InrSearchFaqOrbit from "./InrSearchFaqOrbit";
+import InrSearchContactOrbit from "./InrSearchContactOrbit";
+import InrSearchVisualIdentity from "./InrSearchVisualIdentity";
+import InrSearchSocialOrbit from "./InrSearchSocialOrbit";
+import InrSearchStrengthsOrbit from "./InrSearchStrengthsOrbit";
+import {
+  buildInrSearchFallbackPalette,
+  inferInrSearchVisualTheme,
+  rgbTriplet,
+} from "@/lib/inrSearchVisualIdentity";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -47,53 +58,201 @@ function Icon({ name }: { name: IconName }) {
   };
 
   const paths: Record<IconName, ReactNode> = {
-    arrow: <><path d="M5 12h14" {...common} /><path d="m14 7 5 5-5 5" {...common} /></>,
-    calendar: <><rect x="3" y="5" width="18" height="16" rx="3" {...common} /><path d="M8 3v4M16 3v4M3 10h18" {...common} /></>,
+    arrow: (
+      <>
+        <path d="M5 12h14" {...common} />
+        <path d="m14 7 5 5-5 5" {...common} />
+      </>
+    ),
+    calendar: (
+      <>
+        <rect x="3" y="5" width="18" height="16" rx="3" {...common} />
+        <path d="M8 3v4M16 3v4M3 10h18" {...common} />
+      </>
+    ),
     check: <path d="m5 12 4 4L19 6" {...common} />,
-    clock: <><circle cx="12" cy="12" r="9" {...common} /><path d="M12 7v5l3 2" {...common} /></>,
-    email: <><rect x="3" y="5" width="18" height="14" rx="3" {...common} /><path d="m4 7 8 6 8-6" {...common} /></>,
-    globe: <><circle cx="12" cy="12" r="9" {...common} /><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" {...common} /></>,
-    location: <><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z" {...common} /><circle cx="12" cy="10" r="2.5" {...common} /></>,
-    phone: <path d="M8.2 3.8 10 8.2 7.7 10a15 15 0 0 0 6.3 6.3l1.8-2.3 4.4 1.8v3.3c0 1-.8 1.8-1.8 1.8C9.9 20.9 3.1 14.1 3.1 5.6c0-1 .8-1.8 1.8-1.8h3.3Z" {...common} />,
-    qr: <><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4z" {...common} /><path d="M14 14h2v2h-2zM18 14h2v4h-2zM14 18h4v2h-4z" {...common} /></>,
-    search: <><circle cx="10.5" cy="10.5" r="6.5" {...common} /><path d="m15.5 15.5 5 5" {...common} /></>,
-    services: <><path d="M4 7h16M4 12h10M4 17h13" {...common} /><circle cx="19" cy="17" r="2" {...common} /></>,
-    sparkles: <><path d="m12 3 1.2 3.8L17 8l-3.8 1.2L12 13l-1.2-3.8L7 8l3.8-1.2L12 3Z" {...common} /><path d="m5 14 .8 2.2L8 17l-2.2.8L5 20l-.8-2.2L2 17l2.2-.8L5 14ZM19 12l.6 1.4L21 14l-1.4.6L19 16l-.6-1.4L17 14l1.4-.6L19 12Z" {...common} /></>,
-    users: <><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" {...common} /><circle cx="9" cy="7" r="4" {...common} /><path d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8" {...common} /></>,
+    clock: (
+      <>
+        <circle cx="12" cy="12" r="9" {...common} />
+        <path d="M12 7v5l3 2" {...common} />
+      </>
+    ),
+    email: (
+      <>
+        <rect x="3" y="5" width="18" height="14" rx="3" {...common} />
+        <path d="m4 7 8 6 8-6" {...common} />
+      </>
+    ),
+    globe: (
+      <>
+        <circle cx="12" cy="12" r="9" {...common} />
+        <path
+          d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"
+          {...common}
+        />
+      </>
+    ),
+    location: (
+      <>
+        <path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z" {...common} />
+        <circle cx="12" cy="10" r="2.5" {...common} />
+      </>
+    ),
+    phone: (
+      <path
+        d="M8.2 3.8 10 8.2 7.7 10a15 15 0 0 0 6.3 6.3l1.8-2.3 4.4 1.8v3.3c0 1-.8 1.8-1.8 1.8C9.9 20.9 3.1 14.1 3.1 5.6c0-1 .8-1.8 1.8-1.8h3.3Z"
+        {...common}
+      />
+    ),
+    qr: (
+      <>
+        <path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4z" {...common} />
+        <path d="M14 14h2v2h-2zM18 14h2v4h-2zM14 18h4v2h-4z" {...common} />
+      </>
+    ),
+    search: (
+      <>
+        <circle cx="10.5" cy="10.5" r="6.5" {...common} />
+        <path d="m15.5 15.5 5 5" {...common} />
+      </>
+    ),
+    services: (
+      <>
+        <path d="M4 7h16M4 12h10M4 17h13" {...common} />
+        <circle cx="19" cy="17" r="2" {...common} />
+      </>
+    ),
+    sparkles: (
+      <>
+        <path
+          d="m12 3 1.2 3.8L17 8l-3.8 1.2L12 13l-1.2-3.8L7 8l3.8-1.2L12 3Z"
+          {...common}
+        />
+        <path
+          d="m5 14 .8 2.2L8 17l-2.2.8L5 20l-.8-2.2L2 17l2.2-.8L5 14ZM19 12l.6 1.4L21 14l-1.4.6L19 16l-.6-1.4L17 14l1.4-.6L19 12Z"
+          {...common}
+        />
+      </>
+    ),
+    users: (
+      <>
+        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" {...common} />
+        <circle cx="9" cy="7" r="4" {...common} />
+        <path
+          d="M22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8"
+          {...common}
+        />
+      </>
+    ),
   };
 
-  return <svg viewBox="0 0 24 24" aria-hidden="true">{paths[name]}</svg>;
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      {paths[name]}
+    </svg>
+  );
 }
 
-function formatDate(value: string | null) {
-  if (!value) return "";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  return date.toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+function joinFrenchList(values: string[]) {
+  const cleanValues = values.map((value) => value.trim()).filter(Boolean);
+  if (!cleanValues.length) return "";
+  if (cleanValues.length === 1) return cleanValues[0];
+  if (cleanValues.length === 2) return `${cleanValues[0]} et ${cleanValues[1]}`;
+  return `${cleanValues.slice(0, -1).join(", ")} et ${cleanValues[cleanValues.length - 1]}`;
 }
 
-function InrBadgeQr({ value, label }: { value: string; label: string }) {
-  let matrix: boolean[][] = [];
-  try {
-    matrix = createInrBadgeQrMatrix(value);
-  } catch {
-    matrix = [];
-  }
-  if (!matrix.length) return null;
+function lowerInitial(value: string) {
+  if (!value) return value;
+  return value.slice(0, 1).toLocaleLowerCase("fr-FR") + value.slice(1);
+}
 
-  const quietZone = 4;
-  const viewBoxSize = matrix.length + quietZone * 2;
-  const path = matrix
-    .flatMap((row, rowIndex) => row.map((dark, colIndex) => dark ? `M${colIndex + quietZone},${rowIndex + quietZone}h1v1h-1z` : ""))
+function buildFactualSummary(data: InrSearchPublicPageData) {
+  const identity = [
+    data.companyName,
+    data.profession
+      ? `exerce l’activité de ${lowerInitial(data.profession)}`
+      : data.sectorLabel
+        ? `exerce dans le secteur ${lowerInitial(data.sectorLabel)}`
+        : "est une entreprise",
+    data.city ? `située à ${data.city}` : "",
+  ]
     .filter(Boolean)
     .join(" ");
 
-  return (
-    <svg className={styles.badgeQrSvg} viewBox={`0 0 ${viewBoxSize} ${viewBoxSize}`} role="img" aria-label={label} shapeRendering="crispEdges">
-      <rect width={viewBoxSize} height={viewBoxSize} rx="2.5" className={styles.badgeQrBackground} />
-      <path d={path} className={styles.badgeQrModules} />
-    </svg>
-  );
+  const serviceSentence = data.services.length
+    ? `Elle propose notamment les prestations suivantes : ${joinFrenchList(data.services.slice(0, 5))}.`
+    : "";
+  const zoneSentence = data.zones.length
+    ? `Elle intervient notamment à ${joinFrenchList(data.zones.slice(0, 8))}.`
+    : "";
+  const audienceSentence = data.customerTypes.length
+    ? `Ses prestations s’adressent notamment aux ${joinFrenchList(data.customerTypes.map(lowerInitial))}.`
+    : "";
+  const hoursSentence =
+    data.openingDays || data.openingHours
+      ? `L’entreprise est joignable ${[data.openingDays, data.openingHours].filter(Boolean).join(", ")}.`
+      : "";
+
+  return [
+    `${identity}.`,
+    serviceSentence,
+    zoneSentence,
+    audienceSentence,
+    hoursSentence,
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+
+function buildPresentationLead(data: InrSearchPublicPageData) {
+  const intro = data.description?.trim();
+  if (intro) {
+    return intro;
+  }
+
+  const services = data.services.length
+    ? `Elle accompagne ses clients sur ${joinFrenchList(data.services.slice(0, 4).map(lowerInitial))}.`
+    : "";
+  const audience = data.customerTypes.length
+    ? `Ses prestations s’adressent aux ${joinFrenchList(data.customerTypes.map(lowerInitial))}.`
+    : "";
+  const zones = data.zones.length
+    ? `Elle intervient notamment à ${joinFrenchList(data.zones.slice(0, 4))}.`
+    : "";
+
+  return [
+    data.companyName,
+    data.profession
+      ? `est une ${lowerInitial(data.profession)}`
+      : data.sectorLabel
+        ? `évolue dans le secteur ${lowerInitial(data.sectorLabel)}`
+        : "est une entreprise locale",
+    data.city ? `basée à ${data.city}.` : ".",
+    services,
+    audience,
+    zones,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildServiceDescription(
+  service: string,
+  data: InrSearchPublicPageData,
+) {
+  const professionContext = data.profession
+    ? ` dans le cadre de son activité de ${lowerInitial(data.profession)}`
+    : "";
+  const audience = data.customerTypes.length
+    ? ` Cette prestation s’adresse notamment aux ${joinFrenchList(data.customerTypes.map(lowerInitial))}.`
+    : "";
+  const location = data.zones.length
+    ? ` Elle est proposée dans les zones d’intervention indiquées sur cette page.`
+    : "";
+  return `« ${service} » fait partie des prestations proposées par ${data.companyName}${professionContext}.${audience}${location} Contactez l’entreprise pour préciser le besoin et les modalités d’intervention.`;
 }
 
 function withSource(value: string, source: string) {
@@ -116,13 +275,18 @@ function safeJsonLd(value: unknown) {
 }
 
 function buildJsonLd(data: InrSearchPublicPageData) {
-  const sameAs = [data.inrBadgeUrl, ...data.socialLinks.map((link) => link.url)].filter(Boolean);
+  const sameAs = data.socialLinks.map((link) => link.url).filter(Boolean);
   const offers = data.services.map((service) => ({
     "@type": "Offer",
     itemOffered: {
       "@type": "Service",
       name: service,
-      areaServed: data.zones.length ? data.zones : undefined,
+      serviceType: service,
+      description: buildServiceDescription(service, data),
+      provider: { "@id": `${buildInrSearchPublicUrl(data.slug)}#business` },
+      areaServed: data.zones.length
+        ? data.zones.map((zone) => ({ "@type": "City", name: zone }))
+        : undefined,
     },
   }));
 
@@ -135,12 +299,36 @@ function buildJsonLd(data: InrSearchPublicPageData) {
     url: buildInrSearchPublicUrl(data.slug),
     mainEntityOfPage: {
       "@type": "WebPage",
-      "@id": buildInrSearchPublicUrl(data.slug),
+      "@id": `${buildInrSearchPublicUrl(data.slug)}#webpage`,
     },
-    image: data.logoUrl || data.media[0]?.url || undefined,
+    dateModified: data.updatedAt || undefined,
+    image: [data.logoUrl, ...data.media.map((media) => media.url)].filter(
+      Boolean,
+    ),
     logo: data.logoUrl || undefined,
     telephone: data.phone || undefined,
     email: data.email || undefined,
+    contactPoint:
+      data.phone || data.email
+        ? {
+            "@type": "ContactPoint",
+            telephone: data.phone || undefined,
+            email: data.email || undefined,
+            contactType: "customer service",
+            availableLanguage: ["fr"],
+          }
+        : undefined,
+    hasMap: data.googleBusinessUrl || undefined,
+    potentialAction:
+      data.phone || data.email
+        ? {
+            "@type": "CommunicateAction",
+            name: `Contacter ${data.companyName}`,
+            target: data.phone
+              ? `tel:${data.phone.replace(/[^+\d]/g, "")}`
+              : `mailto:${data.email}`,
+          }
+        : undefined,
     address: data.addressLine
       ? {
           "@type": "PostalAddress",
@@ -150,10 +338,25 @@ function buildJsonLd(data: InrSearchPublicPageData) {
           addressCountry: data.country || "FR",
         }
       : undefined,
-    areaServed: data.zones.length ? data.zones : undefined,
+    areaServed: data.zones.length
+      ? data.zones.map((zone) => ({ "@type": "City", name: zone }))
+      : undefined,
     openingHours: data.openingHours || undefined,
     sameAs: sameAs.length ? sameAs : undefined,
     knowsAbout: [data.profession, ...data.services].filter(Boolean),
+    audience: data.customerTypes.length
+      ? data.customerTypes.map((audienceType) => ({
+          "@type": "Audience",
+          audienceType,
+        }))
+      : undefined,
+    subjectOf: data.inrBadgeUrl
+      ? {
+          "@type": "WebPage",
+          url: data.inrBadgeUrl,
+          name: `Fiche iNr'Badge de ${data.companyName}`,
+        }
+      : undefined,
     hasOfferCatalog: offers.length
       ? {
           "@type": "OfferCatalog",
@@ -180,7 +383,88 @@ function buildFaqJsonLd(data: InrSearchPublicPageData) {
   };
 }
 
-export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+function buildWebPageJsonLd(data: InrSearchPublicPageData) {
+  const url = buildInrSearchPublicUrl(data.slug);
+  return {
+    "@context": "https://schema.org",
+    "@type": "WebPage",
+    "@id": `${url}#webpage`,
+    url,
+    name: data.pageTitle,
+    description: data.pageDescription,
+    dateModified: data.updatedAt || undefined,
+    about: { "@id": `${url}#business` },
+    mainEntity: { "@id": `${url}#business` },
+    primaryImageOfPage: data.logoUrl || data.media[0]?.url
+      ? {
+          "@type": "ImageObject",
+          url: data.media[0]?.url || data.logoUrl,
+          caption: `${data.companyName}${data.city ? ` à ${data.city}` : ""}`,
+        }
+      : undefined,
+    hasPart: [
+      { "@type": "WebPageElement", "@id": `${url}#presentation`, name: "Présentation" },
+      ...(data.sections.services && data.services.length
+        ? [{ "@type": "WebPageElement", "@id": `${url}#prestations`, name: "Prestations" }]
+        : []),
+      ...(data.sections.media && data.media.length
+        ? [{ "@type": "WebPageElement", "@id": `${url}#realisations`, name: "Réalisations" }]
+        : []),
+      ...(data.sections.news && data.publications.length
+        ? [{ "@type": "WebPageElement", "@id": `${url}#actualites`, name: "Actualités" }]
+        : []),
+      ...(data.sections.areas && data.zones.length
+        ? [{ "@type": "WebPageElement", "@id": `${url}#zone`, name: "Zone d’intervention" }]
+        : []),
+      ...(data.sections.faq && data.faq.length
+        ? [{ "@type": "WebPageElement", "@id": `${url}#faq`, name: "Questions fréquentes" }]
+        : []),
+      ...(data.sections.cta
+        ? [{ "@type": "WebPageElement", "@id": `${url}#contact`, name: "Contact" }]
+        : []),
+    ],
+    inLanguage: "fr-FR",
+  };
+}
+
+function buildNewsJsonLd(data: InrSearchPublicPageData) {
+  if (!data.publications.length) return null;
+  return {
+    "@context": "https://schema.org",
+    "@type": "ItemList",
+    name: `Actualités de ${data.companyName}`,
+    itemListElement: data.publications.map((publication, index) => ({
+      "@type": "ListItem",
+      position: index + 1,
+      item: {
+        "@type": "BlogPosting",
+        "@id": `${buildInrSearchPublicUrl(data.slug)}#actualite-${index + 1}`,
+        url: `${buildInrSearchPublicUrl(data.slug)}#actualite-${index + 1}`,
+        headline: publication.title,
+        description: publication.content?.replace(/\s+/g, " ").trim().slice(0, 220) || undefined,
+        articleBody: publication.content || undefined,
+        articleSection: "Actualités",
+        inLanguage: "fr-FR",
+        datePublished: publication.createdAt || undefined,
+        dateModified: publication.createdAt || undefined,
+        image: publication.imageUrl || undefined,
+        mainEntityOfPage: { "@id": `${buildInrSearchPublicUrl(data.slug)}#webpage` },
+        author: { "@id": `${buildInrSearchPublicUrl(data.slug)}#business` },
+        publisher: {
+          "@id": `${buildInrSearchPublicUrl(data.slug)}#business`,
+          name: data.companyName,
+          logo: data.logoUrl
+            ? { "@type": "ImageObject", url: data.logoUrl }
+            : undefined,
+        },
+      },
+    })),
+  };
+}
+
+export async function generateMetadata({
+  params,
+}: PageProps): Promise<Metadata> {
   const { slug } = await params;
   const data = await loadInrSearchPublicPage(slug);
   if (!data) {
@@ -191,14 +475,17 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   }
 
   const canonical = buildInrSearchPublicUrl(data.slug);
-  const title = `${data.pageTitle} | iNr'Search`;
+  const title = data.pageTitle;
   const description = data.pageDescription.slice(0, 160);
   const image = data.logoUrl || data.media[0]?.url || undefined;
 
   return {
     title,
     description,
-    applicationName: "iNr'Search",
+    applicationName: data.companyName,
+    authors: [{ name: data.companyName, url: canonical }],
+    creator: data.companyName,
+    publisher: data.companyName,
     category: data.sectorLabel || data.profession || "Entreprise locale",
     referrer: "strict-origin-when-cross-origin",
     alternates: { canonical },
@@ -217,7 +504,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       type: "website",
       locale: "fr_FR",
       url: canonical,
-      siteName: "iNrCy",
+      siteName: data.companyName,
       title,
       description,
       images: image ? [{ url: image, alt: data.companyName }] : undefined,
@@ -239,408 +526,480 @@ export default async function InrSearchCompanyPage({ params }: PageProps) {
     permanentRedirect(`/entreprises/${data.slug}`);
   }
 
-  const updatedLabel = formatDate(data.updatedAt);
   const localBusinessJsonLd = buildJsonLd(data);
+  const webPageJsonLd = buildWebPageJsonLd(data);
   const faqJsonLd = buildFaqJsonLd(data);
-  const phoneHref = data.phone ? `tel:${data.phone.replace(/[^+\d]/g, "")}` : "";
+  const newsJsonLd = buildNewsJsonLd(data);
+  const factualSummary = buildFactualSummary(data);
+  const presentationLead = buildPresentationLead(data);
+  const phoneHref = data.phone
+    ? `tel:${data.phone.replace(/[^+\d]/g, "")}`
+    : "";
   const emailHref = data.email ? `mailto:${data.email}` : "";
   const contactHref = phoneHref || emailHref;
   const professionSlug = normalizeInrSearchDirectorySlug(data.profession);
-  const sectorSlug = normalizeInrSearchDirectorySlug(data.sectorLabel);
-  const citySlug = normalizeInrSearchDirectorySlug(data.city);
-  const professionUrl = professionSlug ? buildInrSearchProfessionUrl(professionSlug) : "";
-  const professionCityUrl = professionSlug && citySlug ? buildInrSearchProfessionUrl(professionSlug, citySlug) : "";
-  const sectorUrl = sectorSlug ? buildInrSearchSectorUrl(sectorSlug) : "";
-  const heroImage = data.media[0]?.url || "";
-  const heroImageTitle = data.media[0]?.title || data.companyName;
+  const professionUrl = professionSlug
+    ? buildInrSearchProfessionUrl(professionSlug)
+    : "";
   const inrBadgeOpenUrl = withSource(data.inrBadgeUrl, "inrsearch");
+  const navItems = [
+    { href: "#presentation", label: "Identité" },
+    ...(data.sections.services && data.services.length
+      ? [{ href: "#prestations", label: "Expertises" }]
+      : []),
+    ...(data.sections.media && data.media.length
+      ? [{ href: "#realisations", label: "Réalisations" }]
+      : []),
+    ...(data.sections.news
+      ? [{ href: "#actualites", label: "Actualités" }]
+      : []),
+    ...(data.sections.areas && data.zones.length
+      ? [{ href: "#zone", label: "Zone" }]
+      : []),
+    ...(data.sections.trust && (data.strengths.length || data.inrBadgeUrl)
+      ? [{ href: "#points-forts", label: "Confiance" }]
+      : []),
+    ...(data.sections.faq && data.faq.length
+      ? [{ href: "#faq", label: "FAQ" }]
+      : []),
+    ...(data.sections.socials && data.socialLinks.length
+      ? [{ href: "#reseaux", label: "Réseaux" }]
+      : []),
+    ...(data.sections.cta ? [{ href: "#contact", label: "Contact" }] : []),
+  ];
   const breadcrumbJsonLd = {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
     itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Entreprises", item: `${buildInrSearchPublicUrl(data.slug).split("/entreprises/")[0]}/entreprises` },
-      ...(data.profession && professionUrl ? [{ "@type": "ListItem", position: 2, name: data.profession, item: professionUrl }] : []),
-      { "@type": "ListItem", position: data.profession && professionUrl ? 3 : 2, name: data.pageTitle, item: buildInrSearchPublicUrl(data.slug) },
+      {
+        "@type": "ListItem",
+        position: 1,
+        name: "Entreprises",
+        item: `${buildInrSearchPublicUrl(data.slug).split("/entreprises/")[0]}/entreprises`,
+      },
+      ...(data.profession && professionUrl
+        ? [
+            {
+              "@type": "ListItem",
+              position: 2,
+              name: data.profession,
+              item: professionUrl,
+            },
+          ]
+        : []),
+      {
+        "@type": "ListItem",
+        position: data.profession && professionUrl ? 3 : 2,
+        name: data.pageTitle,
+        item: buildInrSearchPublicUrl(data.slug),
+      },
     ],
   };
 
+  const visualTheme = inferInrSearchVisualTheme(
+    `${data.profession} ${data.sectorLabel}`,
+  );
+  const visualPalette = buildInrSearchFallbackPalette(
+    `${data.companyName}|${data.profession}|${data.sectorLabel}`,
+    visualTheme,
+  );
+  const visualStyle = {
+    "--brand-primary-rgb": rgbTriplet(visualPalette.primary),
+    "--brand-secondary-rgb": rgbTriplet(visualPalette.secondary),
+    "--brand-tertiary-rgb": rgbTriplet(visualPalette.tertiary),
+    "--brand-ink-rgb": rgbTriplet(visualPalette.ink),
+  } as CSSProperties;
+
   const facts = [
-    data.sections.contact && data.addressLine
-      ? { icon: "location" as IconName, label: "Adresse", value: data.addressLine, href: data.googleBusinessUrl || "", actionKey: data.googleBusinessUrl ? "directions" : "" }
+    data.profession || data.sectorLabel
+      ? {
+          icon: "services" as IconName,
+          label: "Activité",
+          value: data.profession || data.sectorLabel,
+          href: "",
+          actionKey: "",
+        }
       : null,
-    data.sections.contact && (data.phone || data.email)
-      ? { icon: data.phone ? "phone" as IconName : "email" as IconName, label: "Contact", value: data.phone || data.email, href: phoneHref || emailHref, actionKey: data.phone ? "phone" : "email" }
+    data.city
+      ? {
+          icon: "location" as IconName,
+          label: "Ancrage",
+          value: data.city,
+          href: "",
+          actionKey: "",
+        }
+      : null,
+    data.customerTypes.length
+      ? {
+          icon: "users" as IconName,
+          label: "Pour qui",
+          value: joinFrenchList(data.customerTypes.slice(0, 2)),
+          href: "",
+          actionKey: "",
+        }
       : null,
     data.sections.hours && (data.openingDays || data.openingHours)
-      ? { icon: "clock" as IconName, label: "Horaires", value: [data.openingDays, data.openingHours].filter(Boolean).join(" · "), href: "", actionKey: "" }
+      ? {
+          icon: "clock" as IconName,
+          label: "Disponibilité",
+          value: [data.openingDays, data.openingHours].filter(Boolean).join(" · "),
+          href: "",
+          actionKey: "",
+        }
       : null,
-    data.sections.sectors && (data.profession || data.sectorLabel)
-      ? { icon: "services" as IconName, label: "Activité", value: data.profession || data.sectorLabel, href: professionUrl || sectorUrl, actionKey: "" }
-      : null,
-  ].filter(Boolean) as Array<{ icon: IconName; label: string; value: string; href: string; actionKey: string }>;
+  ].filter(Boolean) as Array<{
+    icon: IconName;
+    label: string;
+    value: string;
+    href: string;
+    actionKey: string;
+  }>;
 
   return (
-    <main className={styles.page}>
-      <a className={styles.skipLink} href="#contenu-principal">Aller au contenu principal</a>
+    <main
+      className={styles.page}
+      data-inrsearch-page
+      data-visual-theme={visualTheme}
+      data-motion="full"
+      data-active-section="presentation"
+      style={visualStyle}
+    >
+      <InrSearchVisualIdentity
+        companyName={data.companyName}
+        logoUrl={data.logoUrl}
+        profession={data.profession}
+        sector={data.sectorLabel}
+        initialTheme={visualTheme}
+      />
+      <a className={styles.skipLink} href="#presentation">
+        Aller au contenu principal
+      </a>
       <InrSearchAnalyticsClient slug={data.slug} />
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(localBusinessJsonLd) }} />
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumbJsonLd) }} />
-      {faqJsonLd ? <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: safeJsonLd(faqJsonLd) }} /> : null}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(localBusinessJsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(webPageJsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: safeJsonLd(breadcrumbJsonLd) }}
+      />
+      {faqJsonLd ? (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(faqJsonLd) }}
+        />
+      ) : null}
+      {newsJsonLd ? (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: safeJsonLd(newsJsonLd) }}
+        />
+      ) : null}
 
-      <header className={styles.topbar}>
-        <div className={styles.topbarInner}>
-          <a className={styles.brandLockup} href="https://inrcy.com" aria-label="iNrCy">
-            <img className={styles.inrcyLogo} src="/logo-inrcy.png" alt="iNrCy" width={160} height={64} decoding="async" />
-            <span className={styles.brandDivider} aria-hidden="true" />
-            <span className={styles.searchBrand}>
-              <img src="/icons/inr-search-bubble-128.png" alt="" aria-hidden="true" width={44} height={44} decoding="async" />
-              <span>iNr&apos;Search</span>
-            </span>
-          </a>
-          <nav className={styles.topbarLinks} aria-label="Annuaire iNr'Search">
-            <Link href="/entreprises">Entreprises</Link>
-            <Link href="/metiers">Métiers</Link>
-            <Link href="/secteurs">Secteurs</Link>
-          </nav>
-          <a className={styles.inrcyCta} href="https://inrcy.com">
-            Découvrir iNrCy
-            <Icon name="arrow" />
-          </a>
-        </div>
-      </header>
+      <InrSearchExperience
+        companyName={data.companyName}
+        logoUrl={data.logoUrl}
+        navItems={navItems}
+      />
 
-      <section className={styles.hero} id="contenu-principal" tabIndex={-1}>
-        <div className={styles.heroNoise} aria-hidden="true" />
-        <div className={styles.heroOrbOne} aria-hidden="true" />
-        <div className={styles.heroOrbTwo} aria-hidden="true" />
-        <div className={styles.heroGrid} aria-hidden="true" />
+      <p className={styles.visuallyHidden} id="orbit-instructions">
+        Parcourez les rubriques horizontalement avec les flèches, la molette, le balayage tactile ou les liens de navigation.
+      </p>
+      <div
+        className={styles.orbitViewport}
+        data-inrsearch-orbit
+        role="region"
+        aria-roledescription="carrousel"
+        aria-describedby="orbit-instructions"
+        aria-label={`Parcours de ${data.companyName}`}
+      >
+        <section
+          className={`${styles.orbitPanel} ${styles.presentationOrbit}`}
+          id="presentation"
+          tabIndex={-1}
+          data-orbit-section
+          aria-label="Présentation"
+        >
+          <div className={styles.presentationStage}>
+            <div className={styles.presentationAurora} aria-hidden="true" />
+            <div className={styles.presentationGrid} aria-hidden="true" />
+            <div className={styles.presentationRingOne} aria-hidden="true" />
+            <div className={styles.presentationRingTwo} aria-hidden="true" />
+            <div className={styles.presentationRingThree} aria-hidden="true" />
+            <div className={styles.presentationBeam} aria-hidden="true" />
 
-        <div className={styles.heroInner}>
-          <div className={styles.heroCopy}>
-            <div className={styles.profileBadge}>
-              <span><Icon name="search" /></span>
-              Page professionnelle iNr&apos;Search
-              {updatedLabel ? <small>Actualisée le <time dateTime={data.updatedAt || undefined}>{updatedLabel}</time></small> : null}
-            </div>
+            <div className={styles.presentationLayout}>
+              <div className={styles.presentationCopy}>
+                <div className={styles.presentationStatus}>
+                  <span><Icon name="sparkles" /></span>
+                  <strong>Profil professionnel vivant</strong>
+                  {data.city ? <small>{data.city}</small> : null}
+                </div>
 
-            {data.sections.identity ? (
-              <div className={styles.identity}>
-                {data.logoUrl ? (
-                  <div className={styles.logoWrap}>
-                    <img src={data.logoUrl} alt={`Logo ${data.companyName}`} width={160} height={160} decoding="async" />
+                <h1 className={styles.presentationTitle}>{data.companyName}</h1>
+
+                {data.sections.presentation ? (
+                  <p className={styles.presentationDescription}>{presentationLead}</p>
+                ) : null}
+
+                {data.strengths.length ? (
+                  <div className={styles.presentationProofs} aria-label="Premiers points forts">
+                    {data.strengths.slice(0, 3).map((strength) => (
+                      <span key={strength}><Icon name="check" /> {strength}</span>
+                    ))}
                   </div>
-                ) : (
-                  <div className={styles.logoFallback} aria-hidden="true">{data.companyName.slice(0, 1).toUpperCase()}</div>
-                )}
-                <div className={styles.identityText}>
-                  <div className={styles.eyebrow}>
-                    {data.profession && professionUrl ? <a href={professionUrl}>{data.profession}</a> : data.profession || data.sectorLabel}
-                    {data.city ? <><span>à</span>{professionCityUrl ? <a href={professionCityUrl}>{data.city}</a> : data.city}</> : null}
+                ) : null}
+
+                <details className={styles.presentationSummary}>
+                  <summary>Informations essentielles</summary>
+                  <p>{factualSummary}</p>
+                </details>
+
+                {data.sections.cta ? (
+                  <div className={styles.presentationActions}>
+                    <a className={styles.presentationPrimaryAction} href="#contact">
+                      <Icon name="sparkles" /> Présenter mon besoin
+                    </a>
+                    {navItems[1] ? (
+                      <a
+                        className={styles.presentationSecondaryAction}
+                        href={navItems[1].href}
+                      >
+                        <Icon name="arrow" /> Explorer l’univers
+                      </a>
+                    ) : null}
                   </div>
-                  <h1>{data.pageTitle}</h1>
-                  {data.contactName ? <p className={styles.contactName}>Votre interlocuteur : <strong>{data.contactName}</strong></p> : null}
+                ) : null}
+              </div>
+
+              <div className={styles.presentationUniverse} aria-label={`Identité visuelle de ${data.companyName}`}>
+                <div className={styles.presentationHalo} aria-hidden="true" />
+                <div className={styles.presentationMediaOrb}>
+                  {data.logoUrl ? (
+                    <div className={styles.presentationMediaFallback}>
+                      <img src={data.logoUrl} alt={`Logo de ${data.companyName}`} width={260} height={260} loading="eager" fetchPriority="high" />
+                    </div>
+                  ) : (
+                    <div className={styles.presentationMediaFallback}>
+                      <span>{data.companyName.slice(0, 1).toUpperCase()}</span>
+                    </div>
+                  )}
+                  <div className={styles.presentationMediaShade} />
+                  <div className={styles.presentationMediaCaption}>
+                    <small>{data.profession || data.sectorLabel}</small>
+                    <strong>{data.companyName}</strong>
+                    {data.city ? <span>{data.city}</span> : null}
+                  </div>
+                </div>
+
+                <div className={styles.presentationFactOrbit} aria-label="Informations principales">
+                  {facts.map((fact, index) => {
+                    const body = (
+                      <>
+                        <span className={styles.presentationFactIcon}><Icon name={fact.icon} /></span>
+                        <span className={styles.presentationFactText}>
+                          <small>{fact.label}</small>
+                          <strong>{fact.value}</strong>
+                        </span>
+                      </>
+                    );
+                    return fact.href ? (
+                      <a
+                        className={styles.presentationSatellite}
+                        data-slot={String(index)}
+                        href={fact.href}
+                        key={fact.label}
+                        target={fact.href.startsWith("http") ? "_blank" : undefined}
+                        rel={fact.href.startsWith("http") ? "noreferrer" : undefined}
+                        data-inrsearch-action={fact.actionKey || undefined}
+                        data-inrsearch-target={fact.actionKey ? fact.href : undefined}
+                      >
+                        {body}
+                      </a>
+                    ) : (
+                      <article className={styles.presentationSatellite} data-slot={String(index)} key={fact.label}>
+                        {body}
+                      </article>
+                    );
+                  })}
                 </div>
               </div>
-            ) : null}
-
-            {data.sections.presentation ? <p className={styles.heroDescription}>{data.description}</p> : null}
-
-            <div className={styles.heroSignals}>
-              {data.services.length ? <span><Icon name="services" />{data.services.length} prestation{data.services.length > 1 ? "s" : ""}</span> : null}
-              {data.zones.length ? <span><Icon name="location" />{data.zones.length} zone{data.zones.length > 1 ? "s" : ""} couverte{data.zones.length > 1 ? "s" : ""}</span> : null}
-              {data.socialLinks.length ? <span><Icon name="globe" />Présence en ligne active</span> : null}
-              {data.inrBadgeUrl ? <span><Icon name="qr" />iNr'Badge à scanner</span> : null}
             </div>
 
-            {data.sections.cta ? (
-              <div className={styles.heroActions}>
-                <a className={styles.primaryAction} href="#demande"><Icon name="sparkles" />Présenter mon besoin</a>
-                {phoneHref ? <a className={styles.secondaryAction} href={phoneHref} data-inrsearch-action="phone" data-inrsearch-target={phoneHref}><Icon name="phone" />Appeler maintenant</a> : null}
-                {!phoneHref && emailHref ? <a className={styles.secondaryAction} href={emailHref} data-inrsearch-action="email" data-inrsearch-target={emailHref}><Icon name="email" />Écrire à l’entreprise</a> : null}
-                {data.websiteUrl ? <a className={styles.secondaryAction} href={data.websiteUrl} target="_blank" rel="noopener noreferrer" data-inrsearch-action="website" data-inrsearch-target={data.websiteUrl}><Icon name="globe" />Voir le site</a> : null}
-                {data.googleBusinessUrl ? <a className={styles.secondaryAction} href={data.googleBusinessUrl} target="_blank" rel="noopener noreferrer" data-inrsearch-action="directions" data-inrsearch-target={data.googleBusinessUrl}><Icon name="location" />Itinéraire</a> : null}
-              </div>
-            ) : null}
+            <div className={styles.presentationSwipeHint} aria-hidden="true">
+              <span>Faites glisser pour découvrir</span>
+              <strong>→</strong>
+            </div>
           </div>
-
-          <div className={styles.heroVisual}>
-            <div className={styles.visualFrame}>
-              {heroImage ? (
-                <img src={heroImage} alt={heroImageTitle} loading="eager" fetchPriority="high" decoding="async" />
-              ) : (
-                <div className={styles.visualFallback}>
-                  {data.logoUrl ? <img src={data.logoUrl} alt="" aria-hidden="true" width={240} height={240} decoding="async" /> : <span>{data.companyName.slice(0, 1).toUpperCase()}</span>}
-                </div>
-              )}
-              <div className={styles.visualOverlay} />
-              <div className={styles.visualCaption}>
-                <span>Profil professionnel</span>
-                <strong>{data.companyName}</strong>
-                <small>{[data.profession, data.city].filter(Boolean).join(" · ")}</small>
-              </div>
-            </div>
-            <div className={styles.floatingCardOne}>
-              <span><Icon name="sparkles" /></span>
-              <div><strong>Une présence claire</strong><small>pour les moteurs de recherche et les IA</small></div>
-            </div>
-            {data.sections.hours && data.openingHours ? (
-              <div className={styles.floatingCardTwo}>
-                <span><Icon name="clock" /></span>
-                <div><small>Horaires</small><strong>{data.openingHours}</strong></div>
-              </div>
-            ) : null}
-          </div>
-        </div>
-      </section>
-
-      <div className={styles.content}>
-        {facts.length ? (
-          <section className={styles.factsGrid} aria-label="Informations principales">
-            {facts.map((fact) => {
-              const body = (
-                <>
-                  <span className={styles.factIcon}><Icon name={fact.icon} /></span>
-                  <span className={styles.factContent}>
-                    <small>{fact.label}</small>
-                    <strong>{fact.value}</strong>
-                  </span>
-                  {fact.href ? <span className={styles.factArrow}><Icon name="arrow" /></span> : null}
-                </>
-              );
-              return fact.href ? (
-                <a className={styles.factCard} href={fact.href} key={fact.label} target={fact.href.startsWith("http") ? "_blank" : undefined} rel={fact.href.startsWith("http") ? "noreferrer" : undefined} data-inrsearch-action={fact.actionKey || undefined} data-inrsearch-target={fact.actionKey ? fact.href : undefined}>{body}</a>
-              ) : (
-                <article className={styles.factCard} key={fact.label}>{body}</article>
-              );
-            })}
-          </section>
-        ) : null}
-
-        {data.inrBadgeUrl && data.inrBadgeQrUrl ? (
-          <section className={`${styles.section} ${styles.badgeSection}`} aria-labelledby="inrbadge-title">
-            <div className={styles.badgePanel}>
-              <div className={styles.badgeGlow} aria-hidden="true" />
-              <div className={styles.badgeCopy}>
-                <div className={styles.sectionKicker}><Icon name="qr" />iNr&apos;Badge</div>
-                <h2 id="inrbadge-title">Scannez et gardez {data.companyName} à portée de main</h2>
-                <p>Le QR code ouvre la fiche mobile iNr&apos;Badge de l’entreprise pour retrouver rapidement ses coordonnées, ses accès utiles et ses moyens de contact.</p>
-                <div className={styles.badgeBenefits} aria-label="Avantages iNr'Badge">
-                  <span><Icon name="check" />Fiche mobile immédiate</span>
-                  <span><Icon name="check" />Coordonnées faciles à conserver</span>
-                  <span><Icon name="check" />Accès direct aux actions utiles</span>
-                </div>
-                <a className={styles.badgeAction} href={inrBadgeOpenUrl} target="_blank" rel="noopener noreferrer" data-inrsearch-action="inrbadge" data-inrsearch-target={inrBadgeOpenUrl}>
-                  <Icon name="qr" />Ouvrir la fiche iNr&apos;Badge<Icon name="arrow" />
-                </a>
-              </div>
-              <div className={styles.badgeVisual}>
-                <div className={styles.badgeQrFrame}>
-                  <InrBadgeQr value={data.inrBadgeQrUrl} label={`QR Code iNr'Badge de ${data.companyName}`} />
-                </div>
-                <div className={styles.badgeScanLabel}>
-                  <span><Icon name="phone" /></span>
-                  <div><strong>Scannez avec votre téléphone</strong><small>La fiche s’ouvre instantanément</small></div>
-                </div>
-              </div>
-            </div>
-          </section>
-        ) : null}
+        </section>
 
         {data.sections.services && data.services.length ? (
-          <section className={`${styles.section} ${styles.servicesSection}`}>
-            <div className={styles.sectionIntro}>
-              <div className={styles.sectionKicker}><Icon name="sparkles" />Expertise</div>
-              <h2>Des prestations pensées pour vos besoins</h2>
-              <p>Découvrez les principaux savoir-faire proposés par {data.companyName}.</p>
-            </div>
-            <div className={styles.serviceGrid}>
-              {data.services.map((service, index) => (
-                <article className={styles.serviceCard} key={service}>
-                  <span className={styles.serviceNumber}>{String(index + 1).padStart(2, "0")}</span>
-                  <span className={styles.serviceIcon}><Icon name="check" /></span>
-                  <h3>{service}</h3>
-                  <div className={styles.serviceLine} aria-hidden="true" />
-                </article>
-              ))}
-            </div>
-            {data.customerTypes.length ? (
-              <div className={styles.audienceStrip}>
-                <span className={styles.audienceIcon}><Icon name="users" /></span>
-                <div>
-                  <small>Pour qui ?</small>
-                  <strong>{data.customerTypes.join(" · ")}</strong>
-                </div>
-              </div>
-            ) : null}
-          </section>
-        ) : null}
-
-        {data.sections.areas && data.zones.length ? (
-          <section className={`${styles.section} ${styles.areaSection}`}>
-            <div className={styles.areaPanel}>
-              <div className={styles.areaDecor} aria-hidden="true"><Icon name="location" /></div>
-              <div className={styles.sectionKicker}><Icon name="location" />Proximité</div>
-              <h2>Une entreprise proche de vous</h2>
-              <p>{data.companyName} intervient notamment dans ces zones :</p>
-              <div className={styles.zoneGrid}>
-                {data.zones.map((zone) => <span key={zone}><Icon name="location" />{zone}</span>)}
-              </div>
-            </div>
-          </section>
-        ) : null}
-
-        {data.sections.trust && data.strengths.length ? (
-          <section className={styles.section}>
-            <div className={styles.sectionIntro}>
-              <div className={styles.sectionKicker}><Icon name="check" />Vos garanties</div>
-              <h2>Pourquoi choisir {data.companyName} ?</h2>
-              <p>Les points forts mis en avant par l’entreprise pour vous accompagner sereinement.</p>
-            </div>
-            <div className={styles.strengthGrid}>
-              {data.strengths.map((strength, index) => (
-                <article className={styles.strengthCard} key={strength}>
-                  <span className={styles.strengthIndex}>{String(index + 1).padStart(2, "0")}</span>
-                  <span className={styles.strengthCheck}><Icon name="check" /></span>
-                  <strong>{strength}</strong>
-                </article>
-              ))}
-            </div>
+          <section
+            className={`${styles.section} ${styles.servicesSection} ${styles.orbitPanel}`}
+            id="prestations"
+            aria-labelledby="prestations-title"
+            data-reveal
+            tabIndex={-1}
+            data-orbit-section
+            aria-label="Prestations"
+          >
+            <InrSearchServicesOrbit
+              companyName={data.companyName}
+              services={data.services.map((service) => ({
+                name: service,
+                description: buildServiceDescription(service, data),
+              }))}
+              audiences={data.customerTypes}
+            />
           </section>
         ) : null}
 
         {data.sections.media && data.media.length ? (
-          <section className={styles.section}>
-            <div className={styles.sectionIntroRow}>
-              <div className={styles.sectionIntro}>
-                <div className={styles.sectionKicker}><Icon name="sparkles" />En images</div>
-                <h2>Plongez dans l’univers de l’entreprise</h2>
-              </div>
-              <p>Réalisations, savoir-faire et quotidien professionnel.</p>
-            </div>
-            <div className={styles.mediaGrid}>
-              {data.media.map((media, index) => (
-                <figure className={`${styles.mediaCard} ${index === 0 ? styles.mediaCardFeatured : ""}`} key={media.id}>
-                  <img src={media.url} alt={media.title} loading={index > 0 ? "lazy" : "eager"} decoding="async" />
-                  <figcaption>{media.title}</figcaption>
-                </figure>
-              ))}
-            </div>
+          <section
+            className={`${styles.section} ${styles.galleryOrbitSection} ${styles.orbitPanel}`}
+            id="realisations"
+            aria-labelledby="realisations-title"
+            data-reveal
+            tabIndex={-1}
+            data-orbit-section
+            aria-label="Réalisations"
+          >
+            <InrSearchGalleryOrbit
+              companyName={data.companyName}
+              profession={data.profession || data.sectorLabel}
+              city={data.city}
+              media={data.media}
+            />
           </section>
         ) : null}
 
-        {data.sections.news && data.publications.length ? (
-          <section className={styles.section}>
-            <div className={styles.sectionIntroRow}>
-              <div className={styles.sectionIntro}>
-                <div className={styles.sectionKicker}><Icon name="calendar" />Booster · Publier</div>
-                <h2>Les dernières publications</h2>
-              </div>
-              <p>Les contenus réellement publiés par l’entreprise depuis Booster sont repris automatiquement ici.</p>
-            </div>
-            <div className={styles.newsGrid}>
-              {data.publications.map((publication) => (
-                <article className={styles.newsCard} key={publication.id}>
-                  <div className={styles.newsMedia}>
-                    {publication.imageUrl ? <img src={publication.imageUrl} alt="" loading="lazy" decoding="async" /> : <div className={styles.newsFallback}><Icon name="sparkles" /></div>}
-                    {publication.createdAt ? <time dateTime={publication.createdAt}>{formatDate(publication.createdAt)}</time> : null}
-                  </div>
-                  <div className={styles.newsBody}>
-                    <span className={styles.newsSource}><Icon name="sparkles" />Publié avec Booster</span>
-                    <h3>{publication.title}</h3>
-                    {publication.content ? <p>{publication.content}</p> : null}
-                    <span className={styles.newsRead}>Publication de l’entreprise <Icon name="arrow" /></span>
-                  </div>
-                </article>
-              ))}
-            </div>
+        {data.sections.news ? (
+          <section
+            className={`${styles.section} ${styles.newsSection} ${styles.orbitPanel}`}
+            id="actualites"
+            aria-labelledby="actualites-title"
+            data-reveal
+            tabIndex={-1}
+            data-orbit-section
+            aria-label="Actualités"
+          >
+            <InrSearchNewsShowcase
+              companyName={data.companyName}
+              publications={data.publications}
+            />
+          </section>
+        ) : null}
+
+        {data.sections.areas && data.zones.length ? (
+          <section
+            className={`${styles.section} ${styles.areaSection} ${styles.zoneOrbitSection} ${styles.orbitPanel}`}
+            id="zone"
+            aria-labelledby="zones-title"
+            data-reveal
+            tabIndex={-1}
+            data-orbit-section
+            aria-label="Zone d’intervention"
+          >
+            <InrSearchZoneOrbit
+              companyName={data.companyName}
+              city={data.city}
+              profession={data.profession || data.sectorLabel}
+              zones={data.zones}
+            />
+          </section>
+        ) : null}
+
+        {data.sections.trust && (data.strengths.length || data.inrBadgeUrl) ? (
+          <section
+            className={`${styles.section} ${styles.strengthOrbitSection} ${styles.orbitPanel}`}
+            id="points-forts"
+            aria-labelledby="points-forts-title"
+            data-reveal
+            tabIndex={-1}
+            data-orbit-section
+            aria-label="Points forts"
+          >
+            <InrSearchStrengthsOrbit
+              companyName={data.companyName}
+              strengths={data.strengths}
+              inrBadgeUrl={inrBadgeOpenUrl}
+              inrBadgeQrUrl={data.inrBadgeQrUrl}
+            />
           </section>
         ) : null}
 
         {data.sections.faq && data.faq.length ? (
-          <section className={`${styles.section} ${styles.faqSection}`}>
-            <div className={styles.faqIntro}>
-              <div className={styles.sectionKicker}><Icon name="search" />FAQ</div>
-              <h2>Les réponses à vos questions</h2>
-              <p>Retrouvez rapidement les informations essentielles avant de contacter {data.companyName}.</p>
-              {contactHref ? <a href={contactHref} data-inrsearch-action="faq_contact" data-inrsearch-target={contactHref}>Une autre question ? Contactez-nous <Icon name="arrow" /></a> : null}
-            </div>
-            <div className={styles.faqList}>
-              {data.faq.map((item, index) => (
-                <details className={styles.faqItem} key={item.question} open={index === 0}>
-                  <summary><span>{item.question}</span><i aria-hidden="true" /></summary>
-                  <p>{item.answer}</p>
-                </details>
-              ))}
-            </div>
+          <section
+            className={`${styles.section} ${styles.faqSection} ${styles.faqOrbitSection} ${styles.orbitPanel}`}
+            id="faq"
+            aria-labelledby="faq-title"
+            data-reveal
+            tabIndex={-1}
+            data-orbit-section
+            aria-label="Questions fréquentes"
+          >
+            <InrSearchFaqOrbit
+              companyName={data.companyName}
+              items={data.faq}
+              contactHref={contactHref || "#contact"}
+            />
           </section>
         ) : null}
 
         {data.sections.socials && data.socialLinks.length ? (
-          <section className={styles.section}>
-            <div className={styles.sectionIntroRow}>
-              <div className={styles.sectionIntro}>
-                <div className={styles.sectionKicker}><Icon name="globe" />Présence en ligne</div>
-                <h2>Retrouvez {data.companyName}</h2>
-              </div>
-              <p>Explorez les différents espaces numériques de l’entreprise.</p>
-            </div>
-            <div className={styles.linkGrid}>
-              {data.socialLinks.map((link) => (
-                <a className={styles.socialCard} key={link.key} href={link.url} target="_blank" rel="noopener noreferrer" data-inrsearch-action={link.key} data-inrsearch-target={link.url}>
-                  <span className={`${styles.socialIcon} ${styles[`social_${link.key}`] || ""}`}>{link.label.slice(0, 1).toUpperCase()}</span>
-                  <span><small>Découvrir</small><strong>{link.label}</strong></span>
-                  <i><Icon name="arrow" /></i>
-                </a>
-              ))}
-            </div>
+          <section
+            className={`${styles.section} ${styles.socialOrbitSection} ${styles.orbitPanel}`}
+            id="reseaux"
+            data-reveal
+            tabIndex={-1}
+            data-orbit-section
+            aria-label="Réseaux et présence en ligne"
+          >
+            <InrSearchSocialOrbit
+              companyName={data.companyName}
+              logoUrl={data.logoUrl}
+              profession={data.profession || data.sectorLabel}
+              city={data.city}
+              links={data.socialLinks}
+            />
           </section>
         ) : null}
 
-
-        {data.sections.cta ? <InrSearchLeadForm slug={data.slug} companyName={data.companyName} /> : null}
-
         {data.sections.cta ? (
-          <section className={styles.finalCta}>
-            <div className={styles.finalCtaPattern} aria-hidden="true" />
-            <div className={styles.finalCtaIcon}><Icon name="sparkles" /></div>
-            <div className={styles.finalCtaText}>
-              <span>Parlons de votre projet</span>
-              <h2>Prêt à contacter {data.companyName} ?</h2>
-              <p>Échangez directement avec l’entreprise pour obtenir des informations ou présenter votre besoin.</p>
-            </div>
-            <div className={styles.finalCtaActions}>
-              <a className={styles.finalPrimary} href="#demande"><Icon name="sparkles" />Présenter mon besoin</a>
-              {phoneHref ? <a className={styles.finalSecondary} href={phoneHref} data-inrsearch-action="phone" data-inrsearch-target={phoneHref}><Icon name="phone" />{data.phone}</a> : null}
-              {!phoneHref && emailHref ? <a className={styles.finalSecondary} href={emailHref} data-inrsearch-action="email" data-inrsearch-target={emailHref}><Icon name="email" />Envoyer un email</a> : null}
-            </div>
+          <section
+            className={`${styles.orbitPanel} ${styles.contactOrbit}`}
+            id="contact"
+            tabIndex={-1}
+            data-orbit-section
+            aria-label="Contact"
+          >
+            <div className={styles.contactOrbitInner}>
+              <div data-reveal>
+                <InrSearchContactOrbit
+                  slug={data.slug}
+                  companyName={data.companyName}
+                  logoUrl={data.logoUrl}
+                  profession={data.profession || data.sectorLabel}
+                  city={data.city}
+                  phone={data.phone}
+                  phoneHref={phoneHref}
+                  email={data.email}
+                  emailHref={emailHref}
+                  addressLine={data.addressLine}
+                  websiteUrl={data.websiteUrl}
+                  directionsUrl={data.googleBusinessUrl}
+                />
+              </div>
+
+           </div>
           </section>
         ) : null}
       </div>
 
-      <footer className={styles.footer}>
-        <div className={styles.footerInner}>
-          <div className={styles.footerCompany}>
-            {data.logoUrl ? <img src={data.logoUrl} alt="" width={72} height={72} loading="lazy" decoding="async" /> : <span>{data.companyName.slice(0, 1).toUpperCase()}</span>}
-            <div><strong>{data.companyName}</strong>{updatedLabel ? <small>Informations mises à jour le <time dateTime={data.updatedAt || undefined}>{updatedLabel}</time></small> : null}</div>
-          </div>
-          <div className={styles.footerLinks}>
-            <Link href="/entreprises">Entreprises</Link>
-            <Link href="/metiers">Métiers</Link>
-            <Link href="/secteurs">Secteurs</Link>
-          </div>
-          <a className={styles.poweredBy} href="https://inrcy.com">
-            <img src="/icons/inr-search-bubble-128.png" alt="" width={44} height={44} loading="lazy" decoding="async" />
-            <span>Propulsé par <strong>iNr&apos;Search</strong></span>
-          </a>
-        </div>
-      </footer>
-
-      {data.sections.cta ? (
-        <div className={styles.mobileContactBar}>
-          <a href="#demande"><Icon name="sparkles" />Demander</a>
-          {phoneHref ? <a href={phoneHref} data-inrsearch-action="phone" data-inrsearch-target={phoneHref}><Icon name="phone" />Appeler</a> : emailHref ? <a href={emailHref} data-inrsearch-action="email" data-inrsearch-target={emailHref}><Icon name="email" />Écrire</a> : null}
-        </div>
-      ) : null}
     </main>
   );
 }

@@ -6,6 +6,13 @@ import StatusMessage from "../../_components/StatusMessage";
 
 const INR_SEARCH_PUBLIC_ORIGIN = ((process.env.NEXT_PUBLIC_INRSEARCH_PUBLIC_ORIGIN || "https://app.inrcy.com").replace(/\/$/, "") === "https://inrcy.com" ? "https://app.inrcy.com" : (process.env.NEXT_PUBLIC_INRSEARCH_PUBLIC_ORIGIN || "https://app.inrcy.com").replace(/\/$/, ""));
 
+function getRuntimeInrSearchOrigin() {
+  if (typeof window !== "undefined" && ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname)) {
+    return window.location.origin;
+  }
+  return INR_SEARCH_PUBLIC_ORIGIN;
+}
+
 type InrSearchPublicationState = {
   allowed: boolean;
   reason:
@@ -74,7 +81,7 @@ function normalizeSettings(value: unknown): InrSearchSettings {
 
 function emitDashboardUpdate(settings: InrSearchSettings, publicationAllowed: boolean) {
   if (typeof window === "undefined") return;
-  const pageUrl = settings.slug ? `${INR_SEARCH_PUBLIC_ORIGIN}/entreprises/${settings.slug}` : "";
+  const pageUrl = settings.slug ? `${getRuntimeInrSearchOrigin()}/entreprises/${settings.slug}` : "";
   window.dispatchEvent(new CustomEvent("inrcy:inr-search-settings-updated", {
     detail: {
       connected: Boolean(settings.enabled && settings.slug && publicationAllowed),
@@ -91,6 +98,10 @@ export default function InrSearchSettingsContent() {
 
   const publicUrl = useMemo(
     () => settings.slug ? `${INR_SEARCH_PUBLIC_ORIGIN}/entreprises/${settings.slug}` : "",
+    [settings.slug],
+  );
+  const previewUrl = useMemo(
+    () => settings.slug ? `/entreprises/${settings.slug}` : "",
     [settings.slug],
   );
 
@@ -231,7 +242,7 @@ export default function InrSearchSettingsContent() {
               {loading ? "Synchronisation…" : "Actualiser"}
             </button>
             {isPublished ? (
-              <a className={styles.primaryBtn} href={publicUrl} target="_blank" rel="noreferrer">
+              <a className={styles.primaryBtn} href={previewUrl} target="_blank" rel="noreferrer">
                 Voir ma page
               </a>
             ) : null}

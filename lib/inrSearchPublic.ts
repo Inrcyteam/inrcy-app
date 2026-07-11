@@ -288,7 +288,7 @@ function normalizeBoosterPublicationEvents(value: unknown): InrSearchPublication
     if (!publicationId || seen.has(publicationId)) continue;
 
     const byChannel = asRecord(payload.postByChannel);
-    const preferredPost = asRecord(byChannel.inr_search || byChannel.site_web || byChannel.inrcy_site || payload.post);
+    const preferredPost = asRecord(byChannel.inr_search || payload.post);
     const fallbackPost = asRecord(payload.post);
     const title = clean(preferredPost.title || fallbackPost.title || payload.idea, 180);
     const content = clean(preferredPost.content || preferredPost.text || fallbackPost.content || fallbackPost.text, 2400);
@@ -302,7 +302,7 @@ function normalizeBoosterPublicationEvents(value: unknown): InrSearchPublication
       imageUrl: publicationImageUrl(payload, preferredPost),
       createdAt: clean(record.created_at, 80) || null,
     });
-    if (publications.length >= 6) break;
+    if (publications.length >= 10) break;
   }
 
   return publications;
@@ -367,43 +367,132 @@ async function loadMedia(userId: string): Promise<InrSearchMedia[]> {
 
 function buildFaq(input: {
   companyName: string;
+  profession: string;
+  city: string;
   services: string[];
   zones: string[];
+  customerTypes: string[];
   phone: string;
   email: string;
   openingDays: string;
   openingHours: string;
 }): InrSearchFaq[] {
   const faq: InrSearchFaq[] = [];
+  if (input.profession || input.city) {
+    faq.push({
+      question: `Quelle est l’activité de ${input.companyName}${input.city ? ` à ${input.city}` : ""} ?`,
+      answer: `${input.companyName}${input.profession ? ` exerce l’activité de ${input.profession.toLocaleLowerCase("fr-FR")}` : " est une entreprise"}${input.city ? ` à ${input.city}` : ""}. Les informations de cette page sont synchronisées depuis le profil professionnel iNrCy.`,
+    });
+  }
   if (input.services.length) {
     faq.push({
       question: `Quels services propose ${input.companyName} ?`,
-      answer: `${input.companyName} propose notamment : ${input.services.join(", ")}.`,
+      answer: `${input.companyName} propose notamment ${input.services.join(", ")}. Le détail du besoin peut être précisé directement auprès de l’entreprise.`,
+    });
+  }
+  if (input.customerTypes.length) {
+    faq.push({
+      question: `À quels clients s’adresse ${input.companyName} ?`,
+      answer: `${input.companyName} s’adresse notamment aux ${input.customerTypes.map((value) => value.toLocaleLowerCase("fr-FR")).join(", ")}.`,
     });
   }
   if (input.zones.length) {
     faq.push({
       question: `Dans quelles zones intervient ${input.companyName} ?`,
-      answer: `${input.companyName} intervient notamment à ${input.zones.join(", ")}.`,
+      answer: `${input.companyName} intervient notamment à ${input.zones.join(", ")}. La disponibilité exacte dépend du besoin et peut être confirmée directement avec l’entreprise.`,
     });
   }
   if (input.openingDays || input.openingHours) {
     faq.push({
       question: `Quels sont les horaires de ${input.companyName} ?`,
-      answer: [input.openingDays, input.openingHours].filter(Boolean).join(" · "),
+      answer: `${input.companyName} est indiqué comme joignable ${[input.openingDays, input.openingHours].filter(Boolean).join(", ")}.`,
     });
   }
   if (input.phone || input.email) {
     const contactParts = [input.phone ? `par téléphone au ${input.phone}` : "", input.email ? `par email à ${input.email}` : ""].filter(Boolean);
     faq.push({
       question: `Comment contacter ${input.companyName} ?`,
-      answer: `Vous pouvez contacter ${input.companyName} ${contactParts.join(" ou ")}.`,
+      answer: `Vous pouvez contacter ${input.companyName} ${contactParts.join(" ou ")}. Le formulaire présent sur cette page permet également de transmettre une demande.`,
     });
   }
   return faq.slice(0, 6);
 }
 
 async function loadInrSearchPublicPageUncached(slug: string): Promise<InrSearchPublicPageData | null> {
+  // Aperçu visuel local, volontairement inaccessible en production.
+  // Il permet de contrôler toutes les scènes sans dépendre d’un compte Supabase.
+  if (process.env.NODE_ENV !== "production" && normalizeInrSearchDirectorySlug(slug) === "demo-gravity-engine") {
+    return {
+      userId: "preview-only",
+      slug: "demo-gravity-engine",
+      pageTitle: "iNrCy — démonstration iNr’Search",
+      pageDescription: "Une démonstration locale de la nouvelle expérience iNr’Search.",
+      enabled: true,
+      sections: { ...DEFAULT_SECTIONS },
+      updatedAt: "2026-07-11T12:00:00.000Z",
+      companyName: "iNrCy",
+      contactName: "Équipe iNrCy",
+      logoUrl: "/logo-inrcy.png",
+      phone: "06 22 08 21 79",
+      email: "j.wright@inrcy.com",
+      address: "1 rue de Fouquières",
+      zip: "62440",
+      city: "Harnes",
+      country: "France",
+      addressLine: "1 rue de Fouquières, 62440 Harnes, France",
+      description: "iNrCy transforme la présence numérique des professionnels en une expérience vivante, claire et directement utile à leurs futurs clients.",
+      sectorCategory: "communication",
+      sectorLabel: "Communication",
+      profession: "Agence de communication",
+      services: [
+        "Stratégie de communication",
+        "Conseil éditorial",
+        "Communication digitale",
+        "Identité visuelle",
+        "Campagne locale",
+        "Supports print",
+        "Plan d’action",
+      ],
+      zones: ["Arras", "Béthune", "Lens", "Liévin", "Douai", "Carvin"],
+      strengths: ["Créatif", "Réactif", "Sérieux", "Efficace", "Proche", "À l’écoute"],
+      customerTypes: ["professionnels", "collectivités", "associations"],
+      openingDays: "Lundi–vendredi",
+      openingHours: "8h00–18h00",
+      websiteUrl: "https://inrcy.com",
+      googleBusinessUrl: "https://www.google.com/maps",
+      socialLinks: [
+        { key: "website", label: "Site internet", url: "https://inrcy.com" },
+        { key: "google", label: "Google Business", url: "https://www.google.com" },
+        { key: "facebook", label: "Facebook", url: "https://www.facebook.com" },
+        { key: "instagram", label: "Instagram", url: "https://www.instagram.com" },
+        { key: "linkedin", label: "LinkedIn", url: "https://www.linkedin.com" },
+        { key: "tiktok", label: "TikTok", url: "https://www.tiktok.com" },
+        { key: "youtube", label: "YouTube", url: "https://www.youtube.com" },
+      ],
+      publications: [
+        { id: "preview-news-1", title: "iNr’Search donne une nouvelle gravité à votre présence en ligne", content: "Votre profil, vos expertises, vos réalisations et vos actualités se rejoignent désormais dans un parcours spectaculaire, lisible et conçu pour convertir.", imageUrl: "/icons/inr-search-logo.png", createdAt: "2026-07-11T09:00:00.000Z" },
+        { id: "preview-news-2", title: "Publiez une fois, rayonnez partout", content: "Les contenus envoyés depuis Booster Publier alimentent automatiquement la chronologie iNr’Search et montrent une entreprise réellement active.", imageUrl: "/icons/inr-search-bubble.png", createdAt: "2026-07-09T09:00:00.000Z" },
+        { id: "preview-news-3", title: "iNrBadge devient votre passeport de confiance", content: "Un QR code immédiatement accessible rassemble les informations essentielles et facilite le passage de la découverte au contact.", imageUrl: "/icons/inrbadge-dashboard.png", createdAt: "2026-07-06T09:00:00.000Z" },
+      ],
+      media: [
+        { id: "preview-media-1", title: "L’univers iNr’Search", url: "/icons/inr-search-logo.png" },
+        { id: "preview-media-2", title: "Le moteur de visibilité", url: "/icons/inr-search-bubble.png" },
+        { id: "preview-media-3", title: "Le passeport iNrBadge", url: "/icons/inrbadge-dashboard.png" },
+        { id: "preview-media-4", title: "L’écosystème iNrCy", url: "/logo-appli-inrcy.png" },
+      ],
+      faq: [
+        { question: "Qu’est-ce qu’iNr’Search ?", answer: "iNr’Search est une page professionnelle dynamique qui rassemble les informations utiles d’une entreprise dans un parcours horizontal original, lisible par les internautes comme par les moteurs." },
+        { question: "Les actualités sont-elles mises à jour automatiquement ?", answer: "Oui. Les publications diffusées vers iNr’Search depuis Booster Publier rejoignent automatiquement la scène Actualités." },
+        { question: "Comment présenter mon besoin ?", answer: "La scène Contact permet d’appeler, d’écrire, de localiser l’entreprise, de visiter son site ou d’ouvrir un formulaire de demande." },
+        { question: "Puis-je consulter les réalisations en grand ?", answer: "Oui. Chaque réalisation peut être ouverte dans un observatoire plein écran, avec navigation au clavier et restauration du focus." },
+        { question: "La page fonctionne-t-elle sur mobile ?", answer: "Oui. Chaque scène se simplifie sans perdre ses informations, tandis que le swipe, les contrôles tactiles et le clavier restent disponibles." },
+        { question: "Où intervient iNrCy ?", answer: "iNrCy intervient notamment à Harnes, Arras, Béthune, Lens, Liévin, Douai et Carvin, sous réserve de confirmer le besoin." },
+      ],
+      inrBadgeUrl: "https://app.inrcy.com/inrbadge/preview-only",
+      inrBadgeQrUrl: "https://app.inrcy.com/inrbadge/preview-only?src=inrsearch",
+    };
+  }
+
   const configRow = await findPublishedConfigBySlug(slug);
   if (!configRow?.user_id) return null;
 
@@ -445,7 +534,7 @@ async function loadInrSearchPublicPageUncached(slug: string): Promise<InrSearchP
       .eq("module", "booster")
       .eq("type", "publish")
       .order("created_at", { ascending: false })
-      .limit(30),
+      .limit(120),
     loadMedia(userId),
   ]);
 
@@ -521,7 +610,7 @@ async function loadInrSearchPublicPageUncached(slug: string): Promise<InrSearchP
     { key: "pinterest", label: "Pinterest", url: normalizeExternalUrl(channelStates.pinterest.profile_url) },
   ].filter((item) => Boolean(item.url));
 
-  const faq = buildFaq({ companyName, services, zones, phone, email, openingDays, openingHours });
+  const faq = buildFaq({ companyName, profession, city, services, zones, customerTypes, phone, email, openingDays, openingHours });
   const publications = normalizeBoosterPublicationEvents(boosterEventsRes.data);
   const updatedAt = latestIsoDate([config.updatedAt, business.updated_at, publications[0]?.createdAt]);
 

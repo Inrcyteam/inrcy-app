@@ -17,6 +17,9 @@ const cspReportOnly = [
 ].join("; ");
 
 const nextConfig: NextConfig = {
+  ...(process.env.INR_SEARCH_LOCAL_PREVIEW === "1"
+    ? { experimental: { workerThreads: true } }
+    : {}),
   async headers() {
     return [
       {
