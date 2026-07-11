@@ -466,6 +466,7 @@ export type PublicationPreviewLayout = {
 export const PUBLICATION_CHANNEL_PRESETS: Record<string, PublicationImageRenderPreset> = {
   inrcy_site: { width: 1440, height: 900, defaultFit: "contain", defaultBlurBackground: true },
   site_web: { width: 1440, height: 900, defaultFit: "contain", defaultBlurBackground: true },
+  inr_search: { width: 1440, height: 900, defaultFit: "contain", defaultBlurBackground: true },
   gmb: { width: 1200, height: 900, defaultFit: "contain", defaultBlurBackground: true },
   facebook: { width: 1200, height: 1200, defaultFit: "cover", defaultBlurBackground: false },
   instagram: { width: 1080, height: 1350, defaultFit: "cover", defaultBlurBackground: false },
@@ -1037,6 +1038,11 @@ export function normalizeChannelKey(channel: string): string {
     case "website":
     case "web":
       return "site_web";
+    case "inr_search":
+    case "inr search":
+    case "inr'search":
+    case "inr’search":
+      return "inr_search";
     case "gmb":
     case "google_business":
     case "google business":
@@ -1056,6 +1062,8 @@ export function formatChannelLabel(channel: string): string {
       return "Site iNrCy";
     case "site_web":
       return "Site web";
+    case "inr_search":
+      return "iNr’Search";
     case "gmb":
       return "Google Business";
     case "facebook":
@@ -1082,6 +1090,8 @@ export function channelApiPath(channel: string): string {
       return "site-inrcy";
     case "site_web":
       return "site-web";
+    case "inr_search":
+      return "inr-search";
     case "gmb":
       return "gmb";
     case "facebook":
@@ -1136,7 +1146,7 @@ export function isDeletedChannelResult(result: any): boolean {
 }
 
 export function orderChannelKeys(channels: string[]): string[] {
-  const priority = ["inrcy_site", "site_web", "gmb", "facebook", "instagram", "linkedin", "tiktok", "youtube_shorts", "pinterest"];
+  const priority = ["inrcy_site", "site_web", "inr_search", "gmb", "facebook", "instagram", "linkedin", "tiktok", "youtube_shorts", "pinterest"];
   const normalizedUnique = Array.from(new Set(channels.map((channel) => normalizeChannelKey(channel)).filter(Boolean)));
   return normalizedUnique.sort((a, b) => {
     const indexA = priority.indexOf(a);

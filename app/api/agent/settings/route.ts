@@ -13,6 +13,8 @@ import {
   type InrAgentSettings,
 } from "@/lib/inrAgentSettings";
 import { getChannelConnectionStates } from "@/lib/channelConnectionState";
+import { ensureSystemManagedInrSearch } from "@/lib/inrSearchProvisioning";
+import { getInrSearchPublicStatus } from "@/lib/inrSearchPublic";
 
 type DbAgentGlobalSettingsRow = {
   global_enabled?: boolean | null;
@@ -262,10 +264,11 @@ function rowToAutomation(row: DbAgentAutomationSettingsRow | null | undefined): 
   };
 }
 
-function connectedInrAgentChannels(states: Awaited<ReturnType<typeof getChannelConnectionStates>>): Set<InrAgentChannel> {
+function connectedInrAgentChannels(states: Awaited<ReturnType<typeof getChannelConnectionStates>>, inrSearchPublished = false): Set<InrAgentChannel> {
   const channels = new Set<InrAgentChannel>();
   if (states.site_inrcy.connected) channels.add("site_inrcy");
   if (states.site_web.connected) channels.add("site_web");
+  if (inrSearchPublished) channels.add("inr_search");
   if (states.gmb.connected && !states.gmb.requiresUpdate) channels.add("gmb");
   if (states.facebook.connected && !states.facebook.requiresUpdate) channels.add("facebook");
   if (states.instagram.connected && !states.instagram.requiresUpdate) channels.add("instagram");
@@ -309,10 +312,14 @@ function filterSettingsByConnectedChannels(
 }
 
 async function applyConnectedChannelFilter(settings: InrAgentSettings, userId: string) {
-  const states = await getChannelConnectionStates(supabaseAdmin, userId);
+  const [states, provisioned] = await Promise.all([
+    getChannelConnectionStates(supabaseAdmin, userId),
+    ensureSystemManagedInrSearch(supabaseAdmin as any, userId),
+  ]);
+  const inrSearchStatus = await getInrSearchPublicStatus(provisioned.inrSearch.slug);
   return filterSettingsByConnectedChannels(
     settings,
-    connectedInrAgentChannels(states),
+    connectedInrAgentChannels(states, inrSearchStatus.published),
   );
 }
 

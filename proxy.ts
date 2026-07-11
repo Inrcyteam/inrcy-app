@@ -69,6 +69,7 @@ const SENSITIVE_API_PREFIXES = [
   "/api/generator",
   "/api/inbox",
   "/api/inrbadge/settings",
+  "/api/inr-search",
   "/api/inrsend",
   "/api/inrstats",
   "/api/integrations",
@@ -618,9 +619,21 @@ export async function proxy(req: NextRequest) {
       (req.headers.get("sec-fetch-dest") === "document" ||
         req.headers.get("accept")?.includes("text/html"));
 
+    const isIndexablePublicDocument = pathname === "/entreprises" || pathname.startsWith("/entreprises/");
+    const isInrSearchCompanyDocument = pathname.startsWith("/entreprises/");
+
     if (pathname.startsWith("/api/")) {
       res.headers.set("cache-control", "no-store");
       res.headers.set("x-robots-tag", "noindex, nofollow");
+    } else if (isDocumentRequest && isInrSearchCompanyDocument) {
+      // A newly provisioned iNr’Search page must never inherit a cached 404.
+      res.headers.set("cache-control", "no-store, max-age=0");
+      res.headers.delete("pragma");
+      res.headers.delete("expires");
+    } else if (isDocumentRequest && isIndexablePublicDocument) {
+      res.headers.set("cache-control", "public, s-maxage=60, stale-while-revalidate=300");
+      res.headers.delete("pragma");
+      res.headers.delete("expires");
     } else if (isDocumentRequest) {
       res.headers.set("cache-control", "private, no-store, no-cache, max-age=0, must-revalidate");
       res.headers.set("pragma", "no-cache");

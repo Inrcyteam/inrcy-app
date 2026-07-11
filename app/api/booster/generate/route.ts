@@ -84,6 +84,7 @@ type JsonRecord = Record<string, unknown>;
 const allowedChannels: BoosterChannels[] = [
   "inrcy_site",
   "site_web",
+  "inr_search",
   "gmb",
   "facebook",
   "instagram",
@@ -103,7 +104,7 @@ const allowedThemes: BoosterTheme[] = [
   "autre",
 ];
 const allowedStyles: BoosterStyle[] = ["sobre", "equilibre", "dynamique"];
-const siteChannels = new Set<BoosterChannels>(["inrcy_site", "site_web"]);
+const siteChannels = new Set<BoosterChannels>(["inrcy_site", "site_web", "inr_search"]);
 const AI_IMAGE_MAX_COUNT = 5;
 const AI_IMAGE_MAX_DATA_URL_LENGTH = 3_500_000;
 const AI_IMAGE_MAX_TOTAL_DATA_URL_LENGTH = 10_000_000;

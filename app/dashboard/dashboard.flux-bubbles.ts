@@ -32,8 +32,8 @@ type BuildFluxBubbleItemsArgs = {
   tiktokUrl: string | null | undefined;
   pinterestConnected?: boolean;
   pinterestUrl?: string | null | undefined;
-  trustpilotConnected?: boolean;
-  trustpilotUrl?: string | null | undefined;
+  inrSearchConnected?: boolean | null;
+  inrSearchUrl?: string | null | undefined;
   youtubeShortsConnected: boolean;
   youtubeShortsUrl: string | null | undefined;
   openPanel: (panel: any) => void;
@@ -69,8 +69,8 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
     tiktokUrl,
     pinterestConnected = false,
     pinterestUrl,
-    trustpilotConnected = false,
-    trustpilotUrl,
+    inrSearchConnected = null,
+    inrSearchUrl,
     youtubeShortsConnected,
     youtubeShortsUrl,
     openPanel,
@@ -129,7 +129,12 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
           if (m.key === "tiktok") return tiktokConnected ? { status: "connected" as ModuleStatus, text: copy.status.connected } : { status: "available" as ModuleStatus, text: copy.status.toConnect };
           if (m.key === "youtube_shorts") return youtubeShortsConnected ? { status: "connected" as ModuleStatus, text: copy.status.connected } : { status: "available" as ModuleStatus, text: copy.status.toConnect };
           if (m.key === "pinterest") return pinterestConnected ? { status: "connected" as ModuleStatus, text: copy.status.connected } : { status: "available" as ModuleStatus, text: copy.status.toConnect };
-          if (m.key === "trustpilot") return trustpilotConnected ? { status: "connected" as ModuleStatus, text: copy.status.connected } : { status: "available" as ModuleStatus, text: copy.status.toConnect };
+          if (m.key === "inr_search") {
+            if (inrSearchConnected === null) return { status: "available" as ModuleStatus, text: "Synchronisation…" };
+            return inrSearchConnected
+              ? { status: "connected" as ModuleStatus, text: "Page publiée" }
+              : { status: "available" as ModuleStatus, text: "Page indisponible" };
+          }
           if (m.key === "inr_agent") return { status: "connected" as ModuleStatus, text: copy.status.connected };
           return { status: m.status, text: statusLabel(m.status, language) };
         })();
@@ -161,8 +166,8 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
                     ? (blockDrivenViewHref || normalizeExternalHref(youtubeShortsUrl) || "#")
                     : m.key === "pinterest"
                       ? (normalizeExternalHref(pinterestUrl) || "#")
-                      : m.key === "trustpilot"
-                        ? (normalizeExternalHref(trustpilotUrl) || "#")
+                      : m.key === "inr_search"
+                        ? (normalizeExternalHref(inrSearchUrl) || "#")
                         : undefined;
 
     const specialViewLabel = m.key === "inrbadge"
@@ -191,8 +196,8 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
                     ? Boolean(blockDrivenViewHref || youtubeShortsUrl)
                     : m.key === "pinterest"
                       ? Boolean(pinterestUrl)
-                      : m.key === "trustpilot"
-                        ? Boolean(trustpilotUrl)
+                      : m.key === "inr_search"
+                        ? Boolean(inrSearchConnected && inrSearchUrl)
                         : undefined;
 
     const onConfigure = () => {
@@ -214,8 +219,8 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
         openPanel("pinterest");
         return;
       }
-      if (m.key === "trustpilot") {
-        openPanel("trustpilot");
+      if (m.key === "inr_search") {
+        openPanel("inr_search");
         return;
       }
       if (m.key === "inr_agent") {

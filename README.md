@@ -265,3 +265,12 @@ centralisation admin
 self-host polices
 nouveaux gros modules
 ```
+
+## iNr'Search — génération de prospects
+
+La page publique iNr'Search contient un formulaire de demande directement relié à iNrCRM. Une demande valide :
+
+- ajoute ou actualise le contact sans doublon ;
+- crée une notification dans l'application ;
+- envoie un email transactionnel au professionnel lorsque SMTP est configuré ;
+- remonte comme contact généré dans iNrStats.

@@ -1,6 +1,7 @@
 export type BoosterVideoChannelKey =
   | "inrcy_site"
   | "site_web"
+  | "inr_search"
   | "gmb"
   | "facebook"
   | "instagram"
@@ -43,6 +44,7 @@ export const VIDEO_ADAPTATION_MODE_LABELS: Record<VideoAdaptationMode, string> =
 export const VIDEO_RECOMMENDED_FORMAT_BY_CHANNEL: Record<BoosterVideoChannelKey, VideoFormat> = {
   inrcy_site: "original",
   site_web: "original",
+  inr_search: "original",
   gmb: "original",
   facebook: "16_9",
   instagram: "16_9",
@@ -55,6 +57,7 @@ export const VIDEO_RECOMMENDED_FORMAT_BY_CHANNEL: Record<BoosterVideoChannelKey,
 export const VIDEO_FORMAT_OPTIONS_BY_CHANNEL: Record<BoosterVideoChannelKey, VideoFormat[]> = {
   inrcy_site: ["original", "16_9", "1_1", "9_16"],
   site_web: ["original", "16_9", "1_1", "9_16"],
+  inr_search: ["original", "16_9", "1_1", "9_16"],
   gmb: ["original", "16_9", "1_1", "9_16"],
   facebook: ["9_16", "1_1", "16_9", "original"],
   instagram: ["9_16", "1_1", "16_9", "original"],
@@ -65,7 +68,7 @@ export const VIDEO_FORMAT_OPTIONS_BY_CHANNEL: Record<BoosterVideoChannelKey, Vid
 };
 
 export function isBoosterVideoChannelKey(value: unknown): value is BoosterVideoChannelKey {
-  return ["inrcy_site", "site_web", "gmb", "facebook", "instagram", "linkedin", "tiktok", "youtube_shorts", "pinterest"].includes(String(value || ""));
+  return ["inrcy_site", "site_web", "inr_search", "gmb", "facebook", "instagram", "linkedin", "tiktok", "youtube_shorts", "pinterest"].includes(String(value || ""));
 }
 
 export function normalizeVideoFormat(channel: BoosterVideoChannelKey, value: unknown): VideoFormat {

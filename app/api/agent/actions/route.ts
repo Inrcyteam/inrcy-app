@@ -381,6 +381,7 @@ function buildCampaignPreviewText(
 type PublishChannelKey =
   | "inrcy_site"
   | "site_web"
+  | "inr_search"
   | "gmb"
   | "facebook"
   | "instagram"
@@ -394,6 +395,8 @@ const publishChannelAliases: Record<string, PublishChannelKey> = {
   siteInrcy: "inrcy_site",
   site_web: "site_web",
   siteWeb: "site_web",
+  inr_search: "inr_search",
+  inrSearch: "inr_search",
   gmb: "gmb",
   google_business: "gmb",
   facebook: "facebook",
@@ -407,6 +410,7 @@ const publishChannelAliases: Record<string, PublishChannelKey> = {
 const publishChannelReadAliases: Record<PublishChannelKey, string[]> = {
   inrcy_site: ["inrcy_site", "site_inrcy", "siteInrcy"],
   site_web: ["site_web", "siteWeb"],
+  inr_search: ["inr_search", "inrSearch"],
   gmb: ["gmb", "google_business"],
   facebook: ["facebook"],
   instagram: ["instagram"],
@@ -679,7 +683,7 @@ function buildPublishMediaAdaptation(
 type PublishDraftMedia = ReturnType<typeof cleanPublishMedia>;
 
 function publishCanRunWithoutMedia(channel: PublishChannelKey) {
-  return ["inrcy_site", "site_web", "gmb", "facebook", "linkedin"].includes(
+  return ["inrcy_site", "site_web", "inr_search", "gmb", "facebook", "linkedin"].includes(
     channel,
   );
 }

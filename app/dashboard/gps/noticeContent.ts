@@ -70,14 +70,14 @@ export const GPS_SECTIONS: GpsSection[] = [
       {
         id: "canaux-express",
         title: "Connecter les bonnes bulles",
-        keywords: ["canaux", "bulles", "connexion", "configurer", "connecter", "site inrcy", "site web", "google", "facebook", "instagram", "linkedin", "tiktok", "youtube", "shorts", "pinterest", "trustpilot", "mails", "inrbadge", "statistiques", "publications", "visibilité", "ereputation"],
+        keywords: ["canaux", "bulles", "connexion", "configurer", "connecter", "site inrcy", "site web", "google", "facebook", "instagram", "linkedin", "tiktok", "youtube", "shorts", "pinterest", "mails", "inrbadge", "statistiques", "publications", "visibilité", "ereputation"],
         duration: "5 min",
         goal: "Visibilité reliée",
         intro:
           "Les canaux iNrCy sont vos leviers de visibilité. Certains diffusent vos contenus, certains renforcent votre e-réputation, d’autres partagent votre carte de visite digitale ou alimentent le générateur et les statistiques.",
         steps: [
           "Ouvrir **Les canaux**, choisir la bulle concernée, puis cliquer sur **Configurer**.",
-          "Connecter les canaux utiles : iNr'Badge, Mails, Site iNrCy, Site web, Google Business, Facebook, Instagram, LinkedIn, TikTok, YouTube, Pinterest et Trustpilot.",
+          "Connecter les canaux utiles : iNr'Badge, Mails, Site iNrCy, Site web, Google Business, Facebook, Instagram, LinkedIn, TikTok, YouTube et Pinterest.",
           "Configurer chaque canal utile pour que le générateur, iNrStats, Booster et E-réputation exploitent les bons signaux.",
         ],
         checks: [
@@ -124,7 +124,7 @@ export const GPS_SECTIONS: GpsSection[] = [
         pitfalls: [
           "iNr'Agent ne remplace pas votre décision : il prépare, propose et accélère.",
           "Plus vos informations et vos canaux sont complets, plus ses propositions sont utiles.",
-          "Trustpilot se gère dans **E-réputation** : ce n’est pas un canal de publication iNr'Agent à ce stade.",
+          "Google Business se gère dans **E-réputation** pour le suivi des avis.",
           "Objectif : gagner du temps, garder une communication régulière et transformer vos idées en actions concrètes.",
         ],
         links: [

@@ -10,6 +10,7 @@ import {
 export type BoosterChannels =
   | "inrcy_site"
   | "site_web"
+  | "inr_search"
   | "gmb"
   | "facebook"
   | "instagram"
@@ -51,6 +52,7 @@ export type BoosterRecentPublication = {
 const CHANNEL_LABELS: Record<BoosterChannels, string> = {
   inrcy_site: "Site iNrCy",
   site_web: "Site web",
+  inr_search: "iNr'Search",
   gmb: "Google Business",
   facebook: "Facebook",
   instagram: "Instagram",
@@ -173,6 +175,8 @@ const CHANNEL_COMPACT_CONTRACTS: Record<BoosterChannels, string> = {
     "Actualité site iNrCy, utile et locale. SEO naturel + conversion douce. Titre 45–70. Paragraphes aérés. Jusqu’à 2–5 expressions **en gras** si utile. Liste SEO facultative, sans emoji.",
   site_web:
     "Contenu web durable, crédible et plus riche. SEO local naturel. Titre 45–70. Différent du Site iNrCy. Paragraphes aérés, liste SEO facultative, sans emoji.",
+  inr_search:
+    "Actualité publique iNr'Search, durable, locale et utile. SEO naturel, titre clair 45–75, paragraphes aérés, informations concrètes et CTA doux. Sans emoji ni hashtags.",
   gmb:
     "Google Business factuel, local, utile et sobre. Titre 40–70. Zéro hashtag, téléphone, email, URL, remise ou promesse invérifiable. CTA neutre seulement si utile.",
   facebook:
@@ -198,6 +202,7 @@ const CHANNEL_LENGTH_TARGETS: Record<
   short: {
     inrcy_site: "500–800 car.",
     site_web: "650–1000 car.",
+    inr_search: "700–1100 car.",
     gmb: "250–450 car.",
     facebook: "250–450 car.",
     instagram: "180–350 car.",
@@ -209,6 +214,7 @@ const CHANNEL_LENGTH_TARGETS: Record<
   medium: {
     inrcy_site: "900–1500 car.",
     site_web: "1100–1800 car.",
+    inr_search: "1100–1800 car.",
     gmb: "450–800 car.",
     facebook: "500–900 car.",
     instagram: "350–700 car.",
@@ -220,6 +226,7 @@ const CHANNEL_LENGTH_TARGETS: Record<
   detailed: {
     inrcy_site: "1300–2200 car.",
     site_web: "1600–2600 car.",
+    inr_search: "1600–2600 car.",
     gmb: "650–1000 car.",
     facebook: "750–1300 car.",
     instagram: "500–900 car.",
@@ -239,6 +246,7 @@ const CHANNEL_EMOJI_TARGETS: Record<
   none: {
     inrcy_site: "0 emoji.",
     site_web: "0 emoji.",
+    inr_search: "0 emoji.",
     gmb: "0 emoji.",
     facebook: "0 emoji.",
     instagram: "0 emoji.",
@@ -250,6 +258,7 @@ const CHANNEL_EMOJI_TARGETS: Record<
   light: {
     inrcy_site: "0 emoji.",
     site_web: "0 emoji.",
+    inr_search: "0 emoji.",
     gmb: "0–1 emoji seulement si naturel.",
     facebook: "1–3 emojis maximum, bien répartis.",
     instagram: "2–5 emojis utiles, sans décoration automatique.",
@@ -261,6 +270,7 @@ const CHANNEL_EMOJI_TARGETS: Record<
   dynamic: {
     inrcy_site: "0 emoji malgré le niveau Beaucoup : priorité SEO et lisibilité.",
     site_web: "0 emoji malgré le niveau Beaucoup : priorité SEO et lisibilité.",
+    inr_search: "0 emoji malgré le niveau Beaucoup : priorité SEO et lisibilité.",
     gmb: "1–2 emojis maximum et sobres.",
     facebook: "3–6 emojis visibles et naturellement répartis.",
     instagram: "4–8 emojis visibles et variés, sans suite artificielle.",
@@ -470,7 +480,7 @@ export function boosterUserPrompt(args: {
     channelSet.has("gmb")
       ? "- Google Business : reste strictement factuel et sans coordonnées, URL, hashtag ni promotion agressive ; CTA neutre seulement si utile."
       : "",
-    channelSet.has("inrcy_site") || channelSet.has("site_web")
+    channelSet.has("inrcy_site") || channelSet.has("site_web") || channelSet.has("inr_search")
       ? "- Canaux site : zéro emoji ; SEO local naturel uniquement avec les faits réellement fournis."
       : "",
     "- La politique emojis ci-dessous doit être perceptible : une intensité, pas un quota numérique exact ; les repères restent éditoriaux, non bloquants et compatibles avec chaque canal.",

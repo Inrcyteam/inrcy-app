@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/adminSecurity";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { revalidateInrSearchPublicRoutes } from "@/lib/inrSearchProvisioning";
 import {
   APP_BUBBLE_DEFAULT_ACCESS,
   APP_BUBBLE_KEYS,
@@ -28,7 +29,7 @@ const TOOL_LABELS: Record<AppBubbleKey, { label: string; group: string; descript
   site_inrcy: { label: "Site iNrCy", group: "Diffusion", description: "Site généré par iNrCy.", default_enabled: APP_BUBBLE_DEFAULT_ACCESS.site_inrcy },
   site_web: { label: "Site Web", group: "Diffusion", description: "Site externe du professionnel.", default_enabled: APP_BUBBLE_DEFAULT_ACCESS.site_web },
   gmb: { label: "Google Business", group: "Réseaux", description: "Fiche Google Business Profile.", default_enabled: APP_BUBBLE_DEFAULT_ACCESS.gmb },
-  trustpilot: { label: "Trustpilot", group: "Confiance", description: "Avis clients, preuve sociale et e-réputation.", default_enabled: APP_BUBBLE_DEFAULT_ACCESS.trustpilot },
+  inr_search: { label: "iNr'Search", group: "Visibilité", description: "Page publique créée par iNrCy et optimisée pour Google, Bing et les moteurs IA.", default_enabled: APP_BUBBLE_DEFAULT_ACCESS.inr_search },
   facebook: { label: "Facebook", group: "Réseaux", description: "Page Facebook.", default_enabled: APP_BUBBLE_DEFAULT_ACCESS.facebook },
   instagram: { label: "Instagram", group: "Réseaux", description: "Compte Instagram.", default_enabled: APP_BUBBLE_DEFAULT_ACCESS.instagram },
   linkedin: { label: "LinkedIn", group: "Réseaux", description: "Page ou profil LinkedIn.", default_enabled: APP_BUBBLE_DEFAULT_ACCESS.linkedin },
@@ -255,6 +256,7 @@ export async function PATCH(request: NextRequest) {
         .upsert(rows, { onConflict: "user_id,bubble_key" });
 
       if (error) throw error;
+      revalidateInrSearchPublicRoutes();
       return NextResponse.json({ ok: true, reset: true });
     }
 
@@ -275,6 +277,7 @@ export async function PATCH(request: NextRequest) {
         .upsert(rows, { onConflict: "user_id,bubble_key" });
 
       if (error) throw error;
+      if (rows.some((row) => row.bubble_key === "inr_search")) revalidateInrSearchPublicRoutes();
       return NextResponse.json({ ok: true, updated: rows.length });
     }
 
@@ -295,6 +298,7 @@ export async function PATCH(request: NextRequest) {
       );
 
     if (error) throw error;
+    if (bubbleKey === "inr_search") revalidateInrSearchPublicRoutes();
 
     return NextResponse.json({ ok: true, bubble_key: bubbleKey, enabled: Boolean(body?.enabled) });
   } catch (error: any) {

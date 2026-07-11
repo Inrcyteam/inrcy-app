@@ -78,7 +78,6 @@ test("major iNrCy modules have distinct Gateway feature tags", () => {
     "mails.attachment-image",
     "mails.attachment-video",
     "reviews.google",
-    "reviews.trustpilot",
     "agent.stats-report",
     "booster.transcript-cleanup",
   ];
@@ -93,7 +92,6 @@ test("major iNrCy modules have distinct Gateway feature tags", () => {
     "app/api/agent/actions/send-stats-report/route.ts",
     "app/api/booster/transcribe/route.ts",
     "app/api/e-reputation/google/generate-reply/route.ts",
-    "app/api/e-reputation/trustpilot/generate-reply/route.ts",
     "app/api/mails/generate-ai/route.ts",
   ].map(read).join("\n");
 

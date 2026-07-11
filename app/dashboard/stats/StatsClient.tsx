@@ -184,6 +184,75 @@ function normalizeInrBadgeStatsSnapshot(value: unknown, syncedAt?: number): InrB
   };
 }
 
+
+type InrSearchStatsSnapshot = {
+  loading: boolean;
+  error?: string;
+  syncedAt?: number;
+  enabled: boolean;
+  slug: string;
+  publicUrl: string;
+  pageTitle: string;
+  qualityScore: number;
+  views: InrBadgePeriodStats;
+  actions: InrBadgePeriodStats;
+  contactActions: { week: number; month: number };
+  actionsByKey: Record<string, number>;
+  sources: Record<string, number>;
+  topAction: { key: string; count: number } | null;
+  topSource: { key: string; count: number } | null;
+};
+
+const EMPTY_INR_SEARCH_STATS: InrSearchStatsSnapshot = {
+  loading: true,
+  enabled: false,
+  slug: "",
+  publicUrl: "",
+  pageTitle: "",
+  qualityScore: 0,
+  views: ZERO_INRBADGE_PERIOD,
+  actions: ZERO_INRBADGE_PERIOD,
+  contactActions: { week: 0, month: 0 },
+  actionsByKey: {},
+  sources: {},
+  topAction: null,
+  topSource: null,
+};
+
+function normalizeInrSearchStatsSnapshot(value: unknown): InrSearchStatsSnapshot {
+  const raw = value && typeof value === "object" ? value as Record<string, any> : {};
+  const analytics = raw.analytics && typeof raw.analytics === "object" ? raw.analytics as Record<string, any> : {};
+  const page = raw.page && typeof raw.page === "object" ? raw.page as Record<string, any> : {};
+  const contact = analytics.contactActions && typeof analytics.contactActions === "object" ? analytics.contactActions as Record<string, any> : {};
+  const actionsByKeyRaw = analytics.actionsByKey && typeof analytics.actionsByKey === "object" ? analytics.actionsByKey as Record<string, unknown> : {};
+  const sourcesRaw = analytics.sources && typeof analytics.sources === "object" ? analytics.sources as Record<string, unknown> : {};
+
+  return {
+    loading: false,
+    error: typeof raw.error === "string" ? raw.error : undefined,
+    syncedAt: Number.isFinite(Number(analytics.syncedAt)) ? Number(analytics.syncedAt) : Date.now(),
+    enabled: Boolean(page.enabled),
+    slug: String(page.slug || ""),
+    publicUrl: String(page.publicUrl || ""),
+    pageTitle: String(page.pageTitle || ""),
+    qualityScore: Math.max(0, Math.min(100, Math.round(safeNum(page.qualityScore)))),
+    views: normalizeInrBadgePeriodStats(analytics.views),
+    actions: normalizeInrBadgePeriodStats(analytics.actions),
+    contactActions: {
+      week: Math.max(0, Math.round(safeNum(contact.week))),
+      month: Math.max(0, Math.round(safeNum(contact.month))),
+    },
+    actionsByKey: Object.fromEntries(Object.entries(actionsByKeyRaw).map(([key, count]) => [key, Math.max(0, Math.round(safeNum(count)))])),
+    sources: Object.fromEntries(Object.entries(sourcesRaw).map(([key, count]) => [key, Math.max(0, Math.round(safeNum(count)))])),
+    topAction: analytics.topAction && typeof analytics.topAction === "object"
+      ? { key: String(analytics.topAction.key || ""), count: Math.max(0, Math.round(safeNum(analytics.topAction.count))) }
+      : null,
+    topSource: analytics.topSource && typeof analytics.topSource === "object"
+      ? { key: String(analytics.topSource.key || ""), count: Math.max(0, Math.round(safeNum(analytics.topSource.count))) }
+      : null,
+  };
+}
+
 const MAIL_STATS_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const DASHBOARD_CHANNEL_STATE_CACHE_KEY = "inrcy_dashboard_channel_state_v1";
 
@@ -561,7 +630,130 @@ function buildInrBadgeCubeModel(period: Period, stats: InrBadgeStatsSnapshot): C
   };
 }
 
-export default function StatsClient() {
+
+function buildInrSearchOpportunity30(stats: InrSearchStatsSnapshot) {
+  if (!stats.enabled) return 0;
+
+  const action = (key: string) => Math.max(0, safeNum(stats.actionsByKey[key]));
+  const directContacts = Math.max(0, safeNum(stats.contactActions.month));
+  const strongIntent = action("website") + action("directions") + action("inrbadge");
+  const qualityBase = 4 + Math.min(5, Math.max(0, safeNum(stats.qualityScore)) / 20);
+  const visibilityPotential = Math.min(30, Math.max(0, safeNum(stats.views.month)) / 6);
+  const intentPotential = Math.min(18, strongIntent * 0.75 + directContacts * 1.5);
+
+  // iNr'Search combine la logique d'une page web (visibilité et qualité)
+  // avec les signaux forts d'iNr'Badge (fiche, itinéraire, contact).
+  return Math.max(directContacts, Math.round(qualityBase + visibilityPotential + intentPotential));
+}
+
+function buildInrSearchCubeModel(period: Period, stats: InrSearchStatsSnapshot): CubeModel {
+  const actions = (key: string) => Math.max(0, Math.round(safeNum(stats.actionsByKey[key])));
+  const engines = Math.max(0, Math.round(safeNum(stats.sources.google) + safeNum(stats.sources.bing)));
+  const aiEngines = Math.max(0, Math.round(
+    safeNum(stats.sources.chatgpt) +
+    safeNum(stats.sources.gemini) +
+    safeNum(stats.sources.perplexity) +
+    safeNum(stats.sources.copilot),
+  ));
+  const social = Math.max(0, Math.round(safeNum(stats.sources.social)));
+  const direct = Math.max(0, Math.round(safeNum(stats.sources.direct) + safeNum(stats.sources.other)));
+  const opportunity30 = buildInrSearchOpportunity30(stats);
+  const hasActivity = stats.views.month > 0 || stats.actions.month > 0;
+  const qualityScore = Math.max(0, Math.min(100, Math.round(safeNum(stats.qualityScore))));
+  const qualityLabel = qualityScore >= 82 ? "Très complète" : qualityScore >= 68 ? "Solide" : qualityScore >= 50 ? "À enrichir" : "En préparation";
+  const qualityTone: CubeModel["qualityTone"] = qualityScore >= 82 ? "excellent" : qualityScore >= 68 ? "solid" : qualityScore >= 50 ? "ok" : "low";
+
+  return {
+    key: "inr_search",
+    title: "iNr’Search",
+    subtitle: "Votre page publique",
+    accountLabel: stats.loading ? "Analyse…" : stats.enabled ? (stats.pageTitle || "Page publiée") : "En préparation",
+    period,
+    loading: stats.loading,
+    error: stats.error,
+    connections: { main: stats.enabled },
+    provenance: [
+      { label: "Google & Bing", value: engines, colorVar: "--cGoogle" },
+      { label: "Moteurs IA", value: aiEngines, colorVar: "--cSocial" },
+      { label: "Réseaux sociaux", value: social, colorVar: "--cDirect" },
+      { label: "Accès direct", value: direct, colorVar: "--cOther" },
+    ],
+    provenanceHint: hasActivity
+      ? "Origine réelle des visites de votre page iNr’Search sur les 30 derniers jours."
+      : "Les sources apparaîtront dès les premières visites de la page publique.",
+    opportunity30,
+    opportunityLabel: opportunity30 > 0 ? "Potentiel estimé" : "Visibilité active",
+    capturedLeads: {
+      week: Math.max(0, Math.round(safeNum(stats.contactActions.week))),
+      month: Math.max(0, Math.round(safeNum(stats.contactActions.month))),
+    },
+    capturedLeadsHint: "Appels, emails et demandes envoyées depuis la page publique.",
+    visibilityStats: [
+      { label: "Vues 7j", value: fmtInt(stats.views.week) },
+      { label: "Vues 30j", value: fmtInt(stats.views.month), subValue: `${fmtInt(stats.views.total)} au total` },
+      { label: "Actions 30j", value: fmtInt(stats.actions.month), subValue: `${fmtInt(stats.actions.total)} au total` },
+      { label: "Taux d’action", value: stats.views.month > 0 ? `${Math.round((stats.actions.month / stats.views.month) * 100)}%` : "0%" },
+    ],
+    actionStats: [
+      { label: "Appels 30j", value: fmtInt(actions("phone")) },
+      { label: "Demandes formulaire 30j", value: fmtInt(actions("lead_form")) },
+      { label: "Emails 30j", value: fmtInt(actions("email") + actions("faq_contact")) },
+      { label: "Visites du site 30j", value: fmtInt(actions("website")) },
+      { label: "Ouvertures iNr'Badge 30j", value: fmtInt(actions("inrbadge")) },
+      { label: "Itinéraires 30j", value: fmtInt(actions("directions")) },
+    ],
+    inrcyActivityStats: {
+      publications: stats.views,
+      photos: stats.actions,
+      videos: {
+        week: Math.max(0, Math.round(safeNum(stats.contactActions.week))),
+        month: opportunity30,
+        total: Math.max(0, Math.round(safeNum(stats.contactActions.month))),
+      },
+    },
+    qualityScore,
+    qualityLabel,
+    qualityTone,
+    insights: hasActivity
+      ? [
+          `${fmtInt(stats.views.month)} vues sur 30 jours, dont ${fmtInt(stats.views.week)} sur 7 jours.`,
+          `${fmtInt(stats.actions.month)} actions utiles et un potentiel estimé de ${fmtInt(opportunity30)} opportunités sur 30 jours.`,
+          stats.topSource ? `Première source de trafic : ${stats.topSource.key}.` : "Les sources de trafic sont mesurées automatiquement.",
+        ]
+      : [
+          stats.enabled ? "La page iNr’Search est publiée et son suivi statistique est actif." : "La page iNr’Search est en préparation.",
+          "Les vues, sources, appels, emails et clics remonteront automatiquement dans iNr’Stats.",
+        ],
+    action: stats.enabled && stats.publicUrl
+      ? {
+          key: "booster_publier",
+          title: "Publier sur iNr’Search",
+          detail: "Diffusez une actualité web dédiée sur la page publique depuis Booster.",
+          href: "/dashboard?action=publish",
+          pill: "Booster",
+          effort: { level: "faible", label: "Rapide" },
+        }
+      : {
+          key: "connect",
+          title: "Page en préparation",
+          detail: "iNrCy publiera automatiquement la page dès que l’identité de l’entreprise sera disponible.",
+          href: "/dashboard?panel=inr_search",
+          pill: "Connexion",
+          effort: { level: "faible", label: "Automatique" },
+        },
+  };
+}
+
+type StatsClientProps = {
+  initialInrSearch?: {
+    published: boolean;
+    slug: string;
+    publicUrl: string;
+    pageTitle: string;
+  };
+};
+
+export default function StatsClient({ initialInrSearch }: StatsClientProps) {
   const router = useRouter();
   const [helpOpen, setHelpOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -578,11 +770,12 @@ export default function StatsClient() {
   const [summaryOpp, setSummaryOpp] = useState<{ loading: boolean; total: number; byCube: Record<CubeKey, number> }>({
     loading: true,
     total: 0,
-    byCube: { inrbadge: 0, site_inrcy: 0, site_web: 0, gmb: 0, facebook: 0, instagram: 0, linkedin: 0, mails: 0, tiktok: 0, youtube_shorts: 0, pinterest: 0 },
+    byCube: { inrbadge: 0, inr_search: 0, site_inrcy: 0, site_web: 0, gmb: 0, facebook: 0, instagram: 0, linkedin: 0, mails: 0, tiktok: 0, youtube_shorts: 0, pinterest: 0 },
   });
   const [summaryProfile, setSummaryProfile] = useState<{ lead_conversion_rate: number; avg_basket: number }>({ lead_conversion_rate: 0, avg_basket: 0 });
   const [summaryEstimatedByCube, setSummaryEstimatedByCube] = useState<Record<CubeKey, number>>({
     inrbadge: 0,
+    inr_search: 0,
     site_inrcy: 0,
     site_web: 0,
     gmb: 0,
@@ -600,6 +793,14 @@ export default function StatsClient() {
   const [dailyBootReady, setDailyBootReady] = useState(false);
   const [mailStats, setMailStats] = useState<MailStatsSnapshot>(() => buildInitialMailStatsSnapshot(period));
   const [inrBadgeStats, setInrBadgeStats] = useState<InrBadgeStatsSnapshot>(EMPTY_INRBADGE_STATS);
+  const [inrSearchStats, setInrSearchStats] = useState<InrSearchStatsSnapshot>(() => ({
+    ...EMPTY_INR_SEARCH_STATS,
+    loading: false,
+    enabled: Boolean(initialInrSearch?.published),
+    slug: String(initialInrSearch?.slug || ""),
+    publicUrl: String(initialInrSearch?.publicUrl || ""),
+    pageTitle: String(initialInrSearch?.pageTitle || ""),
+  }));
   const [channelIdentityHints, setChannelIdentityHints] = useState<ChannelIdentityHints>({});
 
   const scrollTo = (key: CubeKey) => {
@@ -688,6 +889,7 @@ export default function StatsClient() {
         total: safeNum(cachedSummary.total),
         byCube: {
           inrbadge: 0,
+          inr_search: 0,
           site_inrcy: safeNum(byCubePartial.site_inrcy),
           site_web: safeNum(byCubePartial.site_web),
           gmb: safeNum(byCubePartial.gmb),
@@ -706,6 +908,7 @@ export default function StatsClient() {
       });
       setSummaryEstimatedByCube({
         inrbadge: 0,
+        inr_search: 0,
         site_inrcy: safeNum(estimatedByCubePartial.site_inrcy),
         site_web: safeNum(estimatedByCubePartial.site_web),
         gmb: safeNum(estimatedByCubePartial.gmb),
@@ -832,6 +1035,7 @@ export default function StatsClient() {
           total: safeNum(cachedSummary.total),
           byCube: {
             inrbadge: 0,
+            inr_search: 0,
             site_inrcy: safeNum(cachedSummary.byCube?.site_inrcy),
             site_web: safeNum(cachedSummary.byCube?.site_web),
             gmb: safeNum(cachedSummary.byCube?.gmb),
@@ -850,6 +1054,7 @@ export default function StatsClient() {
         });
         setSummaryEstimatedByCube({
           inrbadge: 0,
+          inr_search: 0,
           site_inrcy: safeNum(cachedSummary.estimatedByCube?.site_inrcy),
           site_web: safeNum(cachedSummary.estimatedByCube?.site_web),
           gmb: safeNum(cachedSummary.estimatedByCube?.gmb),
@@ -965,6 +1170,7 @@ export default function StatsClient() {
           total: safeNum(payload?.opportunities?.total),
           byCube: {
             inrbadge: 0,
+            inr_search: 0,
             site_inrcy: safeNum(payload?.opportunities?.byCube?.site_inrcy),
             site_web: safeNum(payload?.opportunities?.byCube?.site_web),
             gmb: safeNum(payload?.opportunities?.byCube?.gmb),
@@ -983,6 +1189,7 @@ export default function StatsClient() {
         },
         estimatedByCube: {
           inrbadge: 0,
+          inr_search: 0,
           site_inrcy: safeNum(payload?.estimatedByCube?.site_inrcy),
           site_web: safeNum(payload?.estimatedByCube?.site_web),
           gmb: safeNum(payload?.estimatedByCube?.gmb),
@@ -1111,6 +1318,26 @@ export default function StatsClient() {
     }
   }, []);
 
+  const refreshInrSearchStats = useCallback(async () => {
+    setInrSearchStats((prev) => ({
+      ...prev,
+      loading: prev.enabled ? false : true,
+      error: undefined,
+    }));
+    try {
+      const res = await fetch("/api/inr-search/analytics", { cache: "no-store", credentials: "include" });
+      if (!res.ok) throw new Error(await getSimpleFrenchApiError(res));
+      const json = await res.json().catch(() => ({}));
+      setInrSearchStats(normalizeInrSearchStatsSnapshot(json));
+    } catch (error) {
+      setInrSearchStats((prev) => ({
+        ...prev,
+        loading: false,
+        error: getSimpleFrenchErrorMessage(error, "Impossible de charger les données iNr'Search pour le moment."),
+      }));
+    }
+  }, []);
+
   const refreshMailStats = useCallback(async () => {
     setMailStats((prev) => ({ ...prev, loading: true, error: undefined }));
     try {
@@ -1154,6 +1381,24 @@ export default function StatsClient() {
     };
   }, [refreshInrBadgeStats, refreshNonce]);
 
+  useEffect(() => {
+    void refreshInrSearchStats();
+    const handler = () => void refreshInrSearchStats();
+    const visibilityHandler = () => {
+      if (document.visibilityState === "visible") void refreshInrSearchStats();
+    };
+    const intervalId = window.setInterval(handler, 30_000);
+    window.addEventListener("focus", handler);
+    window.addEventListener("inrcy:inr-search-settings-updated", handler);
+    document.addEventListener("visibilitychange", visibilityHandler);
+    return () => {
+      window.clearInterval(intervalId);
+      window.removeEventListener("focus", handler);
+      window.removeEventListener("inrcy:inr-search-settings-updated", handler);
+      document.removeEventListener("visibilitychange", visibilityHandler);
+    };
+  }, [refreshInrSearchStats, refreshNonce]);
+
 
   const hydrateFromSessionCache = useCallback((targetPeriod: Period) => {
     hydrateMailStatsFromCache(targetPeriod);
@@ -1188,6 +1433,7 @@ export default function StatsClient() {
       total: safeNum(cachedSummary?.total),
       byCube: {
         inrbadge: 0,
+        inr_search: 0,
         site_inrcy: safeNum(byCubePartial.site_inrcy),
         site_web: safeNum(byCubePartial.site_web),
         gmb: safeNum(byCubePartial.gmb),
@@ -1206,6 +1452,7 @@ export default function StatsClient() {
     });
     setSummaryEstimatedByCube({
       inrbadge: 0,
+      inr_search: 0,
       site_inrcy: safeNum(estimatedByCubePartial.site_inrcy),
       site_web: safeNum(estimatedByCubePartial.site_web),
       gmb: safeNum(estimatedByCubePartial.gmb),
@@ -1240,6 +1487,7 @@ export default function StatsClient() {
         total: safeNum(json?.opportunities?.total),
         byCube: {
           inrbadge: 0,
+          inr_search: 0,
           site_inrcy: safeNum(byCubePartial.site_inrcy),
           site_web: safeNum(byCubePartial.site_web),
           gmb: safeNum(byCubePartial.gmb),
@@ -1258,6 +1506,7 @@ export default function StatsClient() {
       },
       estimatedByCube: {
         inrbadge: 0,
+        inr_search: 0,
         site_inrcy: safeNum(json?.estimatedByCube?.site_inrcy),
         site_web: safeNum(json?.estimatedByCube?.site_web),
         gmb: safeNum(json?.estimatedByCube?.gmb),
@@ -1375,6 +1624,7 @@ useEffect(() => {
         total: safeNum(cachedSummary.total),
         byCube: {
           inrbadge: 0,
+          inr_search: 0,
           site_inrcy: safeNum(cachedSummary.byCube?.site_inrcy),
           site_web: safeNum(cachedSummary.byCube?.site_web),
           gmb: safeNum(cachedSummary.byCube?.gmb),
@@ -1393,6 +1643,7 @@ useEffect(() => {
       });
       setSummaryEstimatedByCube({
         inrbadge: 0,
+        inr_search: 0,
         site_inrcy: safeNum(cachedSummary.estimatedByCube?.site_inrcy),
         site_web: safeNum(cachedSummary.estimatedByCube?.site_web),
         gmb: safeNum(cachedSummary.estimatedByCube?.gmb),
@@ -1534,18 +1785,21 @@ useEffect(() => {
 
   const mailOpportunity30 = useMemo(() => buildMailOpportunity30(mailStats), [mailStats]);
   const inrBadgeOpportunity30 = useMemo(() => Math.max(0, Math.round(safeNum(inrBadgeStats.opportunity30))), [inrBadgeStats.opportunity30]);
+  const inrSearchOpportunity30 = useMemo(() => buildInrSearchOpportunity30(inrSearchStats), [inrSearchStats]);
 
   const centralByCube = useMemo<Record<CubeKey, number>>(() => ({
     ...summaryOpp.byCube,
     inrbadge: inrBadgeOpportunity30,
+    inr_search: inrSearchOpportunity30,
     mails: mailOpportunity30,
-  }), [inrBadgeOpportunity30, mailOpportunity30, summaryOpp.byCube]);
+  }), [inrBadgeOpportunity30, inrSearchOpportunity30, mailOpportunity30, summaryOpp.byCube]);
 
-  const centralPotential30 = Math.max(0, safeNum(summaryOpp.total) + mailOpportunity30 + inrBadgeOpportunity30);
+  const centralPotential30 = Math.max(0, safeNum(summaryOpp.total) + mailOpportunity30 + inrBadgeOpportunity30 + inrSearchOpportunity30);
 
   const models: CubeModel[] = useMemo(() => {
     const baseModels: CubeModel[] = [
       buildInrBadgeCubeModel(period, inrBadgeStats),
+      buildInrSearchCubeModel(period, inrSearchStats),
       buildMailCubeModel(mailStats, period),
       buildCubeModel("site_inrcy", "Site iNrCy", "Optimisé pour convertir", period, dataByCube.site_inrcy, centralByCube),
       buildCubeModel("site_web", "Site Web", "Votre image", period, dataByCube.site_web, centralByCube),
@@ -1566,7 +1820,7 @@ useEffect(() => {
       // Elle prend donc le dessus sur un éventuel snapshot iNrStats plus ancien.
       return { ...model, accountLabel: identityHint };
     });
-  }, [centralByCube, channelIdentityHints, dataByCube, inrBadgeStats, mailStats, period]);
+  }, [centralByCube, channelIdentityHints, dataByCube, inrBadgeStats, inrSearchStats, mailStats, period]);
 
   const computedEstimatedByCube = useMemo<Record<CubeKey, number>>(() => {
     const rate = Math.max(0, safeNum(summaryProfile.lead_conversion_rate)) / 100;
@@ -1575,6 +1829,7 @@ useEffect(() => {
 
     return {
       inrbadge: estimate(centralByCube.inrbadge),
+      inr_search: estimate(centralByCube.inr_search),
       site_inrcy: estimate(centralByCube.site_inrcy),
       site_web: estimate(centralByCube.site_web),
       gmb: estimate(centralByCube.gmb),
@@ -1616,7 +1871,8 @@ useEffect(() => {
     : models.find((model) => model.key === activeStatsPanel) ?? models[0] ?? null;
 
   const navigateFromStats = (href: string) => {
-    if (href.startsWith("/api/")) window.location.href = href;
+    if (/^https?:\/\//i.test(href)) window.open(href, "_blank", "noopener,noreferrer");
+    else if (href.startsWith("/api/")) window.location.href = href;
     else router.push(href);
   };
 
@@ -1753,8 +2009,8 @@ useEffect(() => {
 
               {models.map((model) => {
                 const isSite = model.key === "site_inrcy" || model.key === "site_web";
-                const connectionPending = model.key === "mails" && !!model.connectionPending;
-                const connected = (connectionPending || (isSite ? !!model.connections.ga4 || !!model.connections.gsc : !!model.connections.main));
+                const connectionPending = (model.key === "mails" && !!model.connectionPending) || (model.key === "inr_search" && model.loading);
+                const connected = !connectionPending && (isSite ? !!model.connections.ga4 || !!model.connections.gsc : !!model.connections.main);
                 const isActive = activeStatsPanel === model.key;
 
                 return (
@@ -1767,7 +2023,7 @@ useEffect(() => {
                     <span className={styles.statsRailDot} aria-hidden />
                     <span className={styles.statsRailText}>
                       <b>{model.title}</b>
-                      <small>{connectionPending ? "Vérification" : connected ? "Connecté" : "Déconnecté"}</small>
+                      <small>{model.key === "inr_search" ? (connectionPending ? "Synchronisation…" : connected ? "Page publiée" : "Page indisponible") : connectionPending ? "Vérification" : connected ? "Connecté" : "Déconnecté"}</small>
                     </span>
                     <span className={styles.statsRailValue}>+{fmtInt(model.opportunity30)}</span>
                   </button>
@@ -1795,8 +2051,8 @@ useEffect(() => {
 
           {models.map((model) => {
             const isSite = model.key === "site_inrcy" || model.key === "site_web";
-            const connectionPending = model.key === "mails" && !!model.connectionPending;
-            const connected = (connectionPending || (isSite ? !!model.connections.ga4 || !!model.connections.gsc : !!model.connections.main));
+            const connectionPending = (model.key === "mails" && !!model.connectionPending) || (model.key === "inr_search" && model.loading);
+            const connected = !connectionPending && (isSite ? !!model.connections.ga4 || !!model.connections.gsc : !!model.connections.main);
             const isActive = activeStatsPanel === model.key;
 
             return (
@@ -1809,7 +2065,7 @@ useEffect(() => {
                 <span className={styles.statsRailDot} aria-hidden />
                 <span className={styles.statsRailText}>
                   <b>{model.title}</b>
-                  <small>{connectionPending ? "Vérification" : connected ? "Connecté" : "Déconnecté"}</small>
+                  <small>{model.key === "inr_search" ? (connectionPending ? "Synchronisation…" : connected ? "Page publiée" : "Page indisponible") : connectionPending ? "Vérification" : connected ? "Connecté" : "Déconnecté"}</small>
                 </span>
                 <span className={styles.statsRailValue}>+{fmtInt(model.opportunity30)}</span>
               </button>
@@ -1821,24 +2077,25 @@ useEffect(() => {
           {activeStatsPanel === "all" ? (
             <section className={styles.allStatsPanel} aria-label="Vue globale iNr’Stats">
               <div className={styles.allStatsHero}>
-                <div>
-                  <div className={styles.allStatsEyebrow}>Vue globale</div>
-                  <h2 className={styles.allStatsTitle}>Tous vos canaux en un coup d’œil</h2>
+                <div className={styles.allStatsHeaderMain}>
+                  <div className={styles.allStatsHeadingRow}>
+                    <h2 className={styles.allStatsTitle}>Vue globale — Tous vos canaux en un coup d’œil</h2>
+                    <button
+                      type="button"
+                      className={styles.allStatsReportButton}
+                      onClick={() => {
+                        void generateStatsReportNow();
+                      }}
+                      disabled={isGeneratingReport}
+                      aria-label="Générer un bilan iNr’Stats manuel"
+                      title="Créer et envoyer un bilan manuel maintenant"
+                    >
+                      {isGeneratingReport ? "Génération du bilan…" : "🧾 Générer un bilan"}
+                    </button>
+                  </div>
                   <p className={styles.allStatsText}>
                     Synthèse par canal : opportunités activables, CA potentiel et outil recommandé.
                   </p>
-                  <button
-                    type="button"
-                    className={styles.allStatsReportButton}
-                    onClick={() => {
-                      void generateStatsReportNow();
-                    }}
-                    disabled={isGeneratingReport}
-                    aria-label="Générer un bilan iNr’Stats manuel"
-                    title="Créer et envoyer un bilan manuel maintenant"
-                  >
-                    {isGeneratingReport ? "Génération du bilan…" : "🧾 Générer un bilan"}
-                  </button>
                 </div>
 
                 <div className={styles.allStatsKpis}>
@@ -1869,8 +2126,8 @@ useEffect(() => {
                   const channelText = model.insights.find((text) => !text.toLowerCase().startsWith("recommandation")) || model.capturedLeadsHint || model.subtitle;
                   const actionText = actionItem?.kicker || model.action.title;
                   const isSite = model.key === "site_inrcy" || model.key === "site_web";
-                    const connectionPending = model.key === "mails" && !!model.connectionPending;
-                  const connected = (connectionPending || (isSite ? !!model.connections.ga4 || !!model.connections.gsc : !!model.connections.main));
+                    const connectionPending = (model.key === "mails" && !!model.connectionPending) || (model.key === "inr_search" && model.loading);
+                  const connected = !connectionPending && (isSite ? !!model.connections.ga4 || !!model.connections.gsc : !!model.connections.main);
 
                   return (
                     <article

@@ -20,7 +20,7 @@ export type DashboardPanelName =
   | "instagram"
   | "linkedin"
   | "gmb"
-  | "trustpilot"
+  | "inr_search"
   | "facebook"
   | "tiktok"
   | "youtube_shorts"
@@ -45,7 +45,15 @@ export function useDashboardPanelRouting() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { requestNavigation } = useDashboardUnsavedNavigation();
-  const panel = searchParams.get("panel");
+  const rawPanel = searchParams.get("panel");
+  const panel = rawPanel === "trustpilot" ? "inr_search" : rawPanel;
+
+  useEffect(() => {
+    if (rawPanel !== "trustpilot") return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("panel", "inr_search");
+    router.replace(`/dashboard?${params.toString()}`, { scroll: false });
+  }, [rawPanel, router, searchParams]);
 
   const openPanel = useCallback(
     (name: DashboardPanelName) => {

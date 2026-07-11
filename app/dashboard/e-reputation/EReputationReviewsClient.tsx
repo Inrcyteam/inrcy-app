@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import styles from "./eReputation.module.css";
 
-export type EReputationPlatformId = "google" | "trustpilot";
+export type EReputationPlatformId = "google";
 
 export type EReputationReviewItem = {
   id: string;
@@ -139,7 +139,7 @@ function getReviewerFirstName(name: string) {
     .trim();
 
   if (!firstName || firstName.length < 2) return "";
-  if (["client", "google", "trustpilot", "user", "utilisateur"].includes(firstName.toLowerCase())) return "";
+  if (["client", "google", "user", "utilisateur"].includes(firstName.toLowerCase())) return "";
   return firstName;
 }
 
@@ -222,8 +222,8 @@ function formatReviewDate(value: string | null | undefined) {
   return date.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
-function platformDefaultReviewer(platform: EReputationPlatformId) {
-  return platform === "trustpilot" ? "Client Trustpilot" : "Client Google";
+function platformDefaultReviewer(_platform: EReputationPlatformId) {
+  return "Client Google";
 }
 
 function toReviewItem(review: ApiReview, platform: EReputationPlatformId): EReputationReviewItem {
@@ -385,8 +385,8 @@ function normalizePlatform(platform: EReputationReviewsPlatform): EReputationRev
   };
 }
 
-function apiBaseFor(platform: EReputationPlatformId) {
-  return platform === "trustpilot" ? "/api/e-reputation/trustpilot" : "/api/e-reputation/google";
+function apiBaseFor(_platform: EReputationPlatformId) {
+  return "/api/e-reputation/google";
 }
 
 export default function EReputationReviewsClient(props: Props) {
@@ -845,12 +845,7 @@ export default function EReputationReviewsClient(props: Props) {
           </div>
         ) : null}
 
-        {reviewsReady && !platformCanReply && activePlatform.id === "trustpilot" ? (
-          <div className={styles.noticeInfo}>
-            <strong>Lecture seule</strong>
-            <span>Connectez l’accès API Trustpilot OAuth pour répondre aux avis depuis iNrCy.</span>
-          </div>
-        ) : null}
+        {null}
 
         {listNotice ? <div className={listNotice.type === "success" ? styles.noticeSuccess : styles.noticeError} role="status">{listNotice.text}</div> : null}
 

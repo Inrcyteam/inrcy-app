@@ -23,6 +23,7 @@ export type { BoosterCtaMode } from "@/lib/boosterCta";
 export type ChannelKey =
   | "inrcy_site"
   | "site_web"
+  | "inr_search"
   | "gmb"
   | "facebook"
   | "instagram"
@@ -362,6 +363,7 @@ export function getImageFitLabel(
 export const DISPLAY_LABELS: Record<DisplayKey, string> = {
   inrcy_site: "Site iNrCy",
   site_web: "Site web",
+  inr_search: "iNr'Search",
   gmb: "Google Business",
   facebook: "Facebook",
   instagram: "Instagram",
@@ -375,6 +377,7 @@ export const CHANNEL_LABELS: Record<ChannelKey, string> = {
   inrcy_site: "Site iNrCy",
   site_web: "Site web",
   gmb: "Google Business",
+  inr_search: "iNr'Search",
   facebook: "Facebook",
   instagram: "Instagram",
   linkedin: "LinkedIn",
@@ -391,6 +394,12 @@ export const CHANNEL_PRESETS: Record<ChannelKey, RenderPreset> = {
     defaultBlurBackground: false,
   },
   site_web: {
+    width: 1440,
+    height: 900,
+    defaultFit: "contain",
+    defaultBlurBackground: false,
+  },
+  inr_search: {
     width: 1440,
     height: 900,
     defaultFit: "contain",
@@ -825,6 +834,11 @@ export const CHANNEL_TEXT_GUIDELINES: Record<
     content: 6000,
     cta: 180,
   },
+  inr_search: {
+    title: 100,
+    content: 6000,
+    cta: 180,
+  },
   gmb: {
     title: 90,
     content: 2000,
@@ -936,6 +950,13 @@ export const CTA_MODE_OPTIONS: Record<
     { value: "message", label: "Envoyer un message" },
     { value: "custom", label: "Lien personnalisé" },
   ],
+  inr_search: [
+    { value: "none", label: "Aucun bouton" },
+    { value: "website", label: "Voir le site" },
+    { value: "call", label: "Appeler" },
+    { value: "message", label: "Envoyer un message" },
+    { value: "custom", label: "Lien personnalisé" },
+  ],
   gmb: [
     { value: "none", label: "Aucun bouton" },
     { value: "website", label: "Voir le site" },
@@ -1039,7 +1060,7 @@ export function getCtaLabelForPreferredChoice(
 }
 
 export function isSiteDisplayKey(channel: DisplayKey) {
-  return channel === "inrcy_site" || channel === "site_web";
+  return channel === "inrcy_site" || channel === "site_web" || channel === "inr_search";
 }
 
 export function getWebsiteUrlForChannel(

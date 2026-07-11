@@ -18,6 +18,7 @@ type JsonRecord = Record<string, unknown>;
 type BoosterChannel =
   | "inrcy_site"
   | "site_web"
+  | "inr_search"
   | "gmb"
   | "facebook"
   | "instagram"
@@ -54,6 +55,8 @@ const agentToBoosterChannel: Record<string, BoosterChannel> = {
   inrcy_site: "inrcy_site",
   site_web: "site_web",
   siteWeb: "site_web",
+  inr_search: "inr_search",
+  inrSearch: "inr_search",
   gmb: "gmb",
   google_business: "gmb",
   facebook: "facebook",
@@ -66,7 +69,7 @@ const agentToBoosterChannel: Record<string, BoosterChannel> = {
 };
 
 function canPublishWithoutMedia(channel: BoosterChannel) {
-  return ["inrcy_site", "site_web", "gmb", "facebook", "linkedin"].includes(
+  return ["inrcy_site", "site_web", "inr_search", "gmb", "facebook", "linkedin"].includes(
     channel,
   );
 }
@@ -244,6 +247,7 @@ function normalizeBoosterChannels(input: unknown): BoosterChannel[] {
             [
               "inrcy_site",
               "site_web",
+              "inr_search",
               "gmb",
               "facebook",
               "instagram",

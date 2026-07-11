@@ -131,7 +131,7 @@ export type ChannelStates = {
     default_board_id: string | null;
     default_board_name: string | null;
   };
-  trustpilot: {
+  inr_search: {
     accountConnected: boolean;
     connected: boolean;
     expired: boolean;
@@ -348,25 +348,13 @@ export async function getChannelConnectionStates(
   const pinterestOAuthConnected = Boolean((pinterestStatus === "connected" || pinterestStatus === "account_connected") && pinterestHasToken && !pinterestExpired);
   const pinterestConnected = pinterestOAuthConnected;
 
-  const trustpilot = latestIntegration(rows, "trustpilot", "trustpilot", "trustpilot");
-  const trustpilotMeta = asRecord(trustpilot.meta);
-  const trustpilotSettings = asRecord(settings.trustpilot);
-  const trustpilotHasToken = hasTruthyString(trustpilot.access_token_enc) || hasTruthyString(trustpilot.refresh_token_enc);
-  const trustpilotHasRefreshToken = hasTruthyString(trustpilot.refresh_token_enc);
-  const trustpilotExpired = isExpired(trustpilot.expires_at) && !trustpilotHasRefreshToken;
-  const trustpilotStatus = asString(trustpilot.status);
-  const trustpilotOAuthConnected = Boolean((trustpilotStatus === "connected" || trustpilotStatus === "account_connected") && trustpilotHasToken && !trustpilotExpired);
-  const trustpilotProfileUrl =
-    asString(trustpilotMeta.profile_url) || asString(trustpilotSettings.profileUrl) || asString(trustpilotSettings.url) || null;
-  const trustpilotBusinessUnitId =
-    asString(trustpilot.resource_id) || asString(trustpilotMeta.business_unit_id) || asString(trustpilotSettings.businessUnitId) || asString(trustpilotSettings.business_unit_id) || null;
-  const trustpilotBusinessName =
-    asString(trustpilot.resource_label) || asString(trustpilotMeta.business_name) || asString(trustpilotSettings.businessName) || asString(trustpilotSettings.name) || null;
-  const trustpilotReviewInviteUrl =
-    asString(trustpilotMeta.review_invite_url) || asString(trustpilotSettings.reviewInviteUrl) || asString(trustpilotSettings.inviteUrl) || null;
-  const trustpilotConnected = Boolean(trustpilotOAuthConnected || trustpilotSettings.connected || trustpilotProfileUrl || trustpilotBusinessUnitId || trustpilotReviewInviteUrl);
-  const trustpilotConnectionStatus = getConnectionDisplayStatus(trustpilotConnected, "channel:trustpilot", trustpilotMeta);
-  const trustpilotRequiresUpdate = trustpilotConnectionStatus === "needs_update";
+  // iNr'Search est une page publique gérée par iNrCy, pas une connexion OAuth tierce.
+  const inrSearchSettings = asRecord(settings.inrSearch);
+  const inrSearchSlug = asString(inrSearchSettings.slug);
+  const inrSearchEnabled = Boolean(inrSearchSettings.enabled && inrSearchSlug);
+  const inrSearchOrigin = ((process.env.NEXT_PUBLIC_INRSEARCH_PUBLIC_ORIGIN || "https://app.inrcy.com").replace(/\/$/, "") === "https://inrcy.com" ? "https://app.inrcy.com" : (process.env.NEXT_PUBLIC_INRSEARCH_PUBLIC_ORIGIN || "https://app.inrcy.com").replace(/\/$/, ""));
+  const inrSearchProfileUrl = inrSearchEnabled ? `${inrSearchOrigin}/entreprises/${inrSearchSlug}` : null;
+  const inrSearchBusinessName = asString(inrSearchSettings.pageTitle) || null;
 
   const gmb = latestIntegration(rows, "google", "gmb", "gmb");
   const gmbSettings = asRecord(settings.gmb);
@@ -491,16 +479,16 @@ export async function getChannelConnectionStates(
       default_board_id: null,
       default_board_name: null,
     },
-    trustpilot: {
-      accountConnected: trustpilotOAuthConnected || trustpilotConnected,
-      connected: trustpilotConnected,
-      expired: trustpilotExpired,
-      requiresUpdate: trustpilotRequiresUpdate,
-      connection_status: trustpilotConnectionStatus,
-      business_unit_id: trustpilotConnected ? trustpilotBusinessUnitId : null,
-      business_name: trustpilotConnected ? trustpilotBusinessName : null,
-      profile_url: trustpilotConnected ? trustpilotProfileUrl : null,
-      review_invite_url: trustpilotConnected ? trustpilotReviewInviteUrl : null,
+    inr_search: {
+      accountConnected: inrSearchEnabled,
+      connected: inrSearchEnabled,
+      expired: false,
+      requiresUpdate: false,
+      connection_status: inrSearchEnabled ? "connected" : "disconnected",
+      business_unit_id: null,
+      business_name: inrSearchBusinessName,
+      profile_url: inrSearchProfileUrl,
+      review_invite_url: null,
     },
   };
 }

@@ -20,11 +20,23 @@
   --c2: rgba(120, 90, 255, 0.55);
   --c3: rgba(255, 55, 140, 0.50);
   --c4: rgba(255, 140, 0, 0.40);
+
+  /* Variables partagées par le cockpit iNrCy. */
+  --c-cyan: rgba(56, 189, 248, 1);
+  --c-purple: rgba(167, 139, 250, 1);
+  --c-pink: rgba(244, 114, 182, 1);
+  --c-orange: rgba(251, 146, 60, 1);
+  --bubbleSize: 320px;
 }
 
 html,
 body {
   height: 100%;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 body {

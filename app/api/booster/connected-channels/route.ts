@@ -3,6 +3,8 @@ import { requireUser } from "@/lib/requireUser";
 import { getChannelConnectionStates } from "@/lib/channelConnectionState";
 import { getAppBubbleAccessMapForUser } from "@/lib/appBubbleAccessServer";
 import { isBubbleEnabled } from "@/lib/bubbleAccess";
+import { ensureSystemManagedInrSearch } from "@/lib/inrSearchProvisioning";
+import { buildInrSearchPublicUrl, getInrSearchPublicStatus } from "@/lib/inrSearchPublic";
 
 
 function decodeDisplayText(value: unknown) {
@@ -143,15 +145,25 @@ export async function GET() {
     const { supabase, user, errorResponse, activeUserId } = await requireUser();
     if (errorResponse) return errorResponse;
 
-    const [states, bubbleAccess] = await Promise.all([
+    const [states, bubbleAccess, provisioned] = await Promise.all([
       getChannelConnectionStates(supabase, activeUserId),
       getAppBubbleAccessMapForUser(supabase, activeUserId),
+      ensureSystemManagedInrSearch(supabase, activeUserId),
     ]);
     const pinterestEnabled = isBubbleEnabled(bubbleAccess, "pinterest");
+    const inrSearchEnabled = isBubbleEnabled(bubbleAccess, "inr_search");
+    const inrSearchStatus = inrSearchEnabled
+      ? await getInrSearchPublicStatus(provisioned.inrSearch.slug)
+      : null;
+    const inrSearchPublished = Boolean(inrSearchStatus?.published);
+    const inrSearchUrl = provisioned.inrSearch.slug
+      ? buildInrSearchPublicUrl(provisioned.inrSearch.slug)
+      : null;
     return NextResponse.json({
       channels: {
         inrcy_site: states.site_inrcy.connected,
         site_web: states.site_web.connected,
+        inr_search: inrSearchPublished,
         gmb: states.gmb.connected && !states.gmb.requiresUpdate,
         facebook: states.facebook.connected && !states.facebook.requiresUpdate,
         instagram: states.instagram.connected && !states.instagram.requiresUpdate,
@@ -170,6 +182,11 @@ export async function GET() {
           type: "url",
           label: firstCleanLabel([states.site_web.url], "Site web connecté", displayDomain),
           href: states.site_web.url,
+        },
+        inr_search: {
+          type: "page",
+          label: inrSearchPublished ? "Page iNr'Search publiée" : "Page iNr'Search indisponible",
+          href: inrSearchPublished ? inrSearchUrl : null,
         },
         gmb: {
           type: "location",

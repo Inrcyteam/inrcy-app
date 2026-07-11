@@ -93,6 +93,8 @@ import {
   getVariantForChannel,
   type BoosterVideoTransformedVariant,
 } from "@/lib/boosterVideoTransforms";
+import { ensureSystemManagedInrSearch, revalidateInrSearchPublicRoutes } from "@/lib/inrSearchProvisioning";
+import { buildInrSearchPublicUrl, getInrSearchPublicStatus } from "@/lib/inrSearchPublic";
 import {
   sanitizeBoosterSiteText,
   stripSiteTextFormatting,
@@ -102,6 +104,7 @@ import {
 type ChannelKey =
   | "inrcy_site"
   | "site_web"
+  | "inr_search"
   | "gmb"
   | "facebook"
   | "instagram"
@@ -119,6 +122,7 @@ const errMessage = (e: unknown, fallback: string) =>
 const CHANNEL_LABELS: Record<ChannelKey, string> = {
   inrcy_site: "Site iNrCy",
   site_web: "Site web",
+  inr_search: "iNr'Search",
   gmb: "Google Business",
   facebook: "Facebook",
   instagram: "Instagram",
@@ -1487,8 +1491,10 @@ export async function POST(req: Request) {
         ? postByChannel?.inrcy_site || postByChannel?.site_web
         : channel === "site_web"
           ? postByChannel?.site_web || postByChannel?.inrcy_site
-          : postByChannel?.[channel]) || {}) as PostPayload;
-      const isSiteChannel = channel === "inrcy_site" || channel === "site_web";
+          : channel === "inr_search"
+            ? postByChannel?.inr_search || postByChannel?.site_web || postByChannel?.inrcy_site
+            : postByChannel?.[channel]) || {}) as PostPayload;
+      const isSiteChannel = channel === "inrcy_site" || channel === "site_web" || channel === "inr_search";
       const rawTitle = String(raw.title || fallbackTitle || "").trim();
       const rawContent = String(raw.content || fallbackContent || "").trim();
       const rawCta = String(raw.cta || fallbackCta || "").trim();
@@ -1978,6 +1984,33 @@ export async function POST(req: Request) {
             ok: false,
             error: disabledMessage,
             code: "bubble_access_disabled",
+          };
+          continue;
+        }
+
+        if (ch === "inr_search") {
+          if (!isBubbleEnabled(bubbleAccess, "inr_search")) {
+            const disabledMessage = "iNr'Search est désactivé dans Bubble Access.";
+            await setDelivery(ch, { status: "failed", error: disabledMessage });
+            results[ch] = { ok: false, error: disabledMessage, code: "bubble_access_disabled" };
+            continue;
+          }
+
+          const provisioned = await ensureSystemManagedInrSearch(supabaseAdmin as any, userId);
+          const publicStatus = await getInrSearchPublicStatus(provisioned.inrSearch.slug);
+          if (!publicStatus.published) {
+            const unavailableMessage = "La page iNr'Search n'est pas encore publiable.";
+            await setDelivery(ch, { status: "failed", error: unavailableMessage });
+            results[ch] = { ok: false, error: unavailableMessage, code: publicStatus.reason };
+            continue;
+          }
+
+          await setDelivery(ch, { status: "delivered", error: null });
+          results[ch] = {
+            ok: true,
+            internal: true,
+            status: "published",
+            external_url: buildInrSearchPublicUrl(provisioned.inrSearch.slug),
           };
           continue;
         }
@@ -3505,6 +3538,11 @@ export async function POST(req: Request) {
         summary,
       },
     });
+
+    if (summary.successChannels.includes("inr_search")) {
+      const provisioned = await ensureSystemManagedInrSearch(supabaseAdmin as any, userId);
+      revalidateInrSearchPublicRoutes(provisioned.inrSearch.slug);
+    }
 
     const responsePayload = {
       ok: true,

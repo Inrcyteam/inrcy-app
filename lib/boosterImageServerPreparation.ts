@@ -39,6 +39,7 @@ export type BoosterServerImagePreparationResult = {
 const CHANNEL_RENDER_BASE: Record<BoosterImageChannel, { width: number; height: number }> = {
   inrcy_site: { width: 1440, height: 900 },
   site_web: { width: 1440, height: 900 },
+  inr_search: { width: 1440, height: 900 },
   gmb: { width: 1200, height: 675 },
   facebook: { width: 1200, height: 1200 },
   instagram: { width: 1080, height: 1350 },

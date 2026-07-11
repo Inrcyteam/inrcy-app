@@ -7297,3 +7297,154 @@
     text-overflow: clip !important;
   }
 }
+
+/* iNr'Stats — vue globale compacte et sans scroll interne du tableau. */
+.allStatsHeaderMain {
+  min-width: 0;
+}
+
+.allStatsHeadingRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+@media (min-width: 901px) {
+  .page {
+    height: auto !important;
+    min-height: 100dvh !important;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+  }
+
+  .statsWorkspace {
+    height: auto !important;
+    min-height: calc(100dvh - 112px) !important;
+    max-height: none !important;
+    align-items: start !important;
+  }
+
+  .statsRail,
+  .statsPanel,
+  .allStatsPanel {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  .allStatsPanel {
+    display: block !important;
+  }
+
+  .allStatsHero {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    align-items: center !important;
+    gap: 10px 16px !important;
+    padding: 0 4px 8px !important;
+  }
+
+  .allStatsHeadingRow {
+    min-height: 40px;
+  }
+
+  .allStatsTitle {
+    margin: 0 !important;
+    font-size: 19px !important;
+    line-height: 1.08 !important;
+  }
+
+  .allStatsText {
+    margin: 2px 0 0 !important;
+    font-size: 11.5px !important;
+    line-height: 1.15 !important;
+  }
+
+  .allStatsReportButton {
+    flex: 0 0 auto !important;
+    min-height: 38px !important;
+    min-width: 160px !important;
+    margin: 0 !important;
+    padding-inline: 18px !important;
+    font-size: 12.5px !important;
+  }
+
+  .allStatsKpis {
+    display: grid !important;
+    grid-template-columns: repeat(4, minmax(104px, 1fr)) !important;
+    gap: 6px !important;
+    margin: 0 !important;
+  }
+
+  .allStatsKpi {
+    min-width: 104px !important;
+    min-height: 42px !important;
+    padding: 6px 8px !important;
+  }
+
+  .allStatsActions {
+    display: grid !important;
+    grid-auto-rows: minmax(46px, auto) !important;
+    align-content: start !important;
+    gap: 6px !important;
+    min-height: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+    padding: 0 !important;
+  }
+
+  .allStatsActionCard {
+    min-height: 46px !important;
+    height: auto !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .allStatsHeadingRow {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media (min-width: 901px) {
+  .allStatsHero > .allStatsHeaderMain {
+    display: block !important;
+    width: auto !important;
+    grid-template-columns: none !important;
+    grid-template-areas: none !important;
+  }
+
+  .allStatsHeaderMain > .allStatsText {
+    grid-area: auto !important;
+  }
+}
+
+@media (min-width: 901px) and (max-width: 1240px) {
+  .allStatsHero {
+    grid-template-columns: 1fr !important;
+  }
+
+  .allStatsKpis {
+    grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  }
+}
+
+/* Ajustement final : titre/bilan sur une ligne, KPI juste dessous sur toute la largeur. */
+@media (min-width: 901px) {
+  .allStatsHero {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}
+
+/* iNr'Stats — suppression du micro-scroll desktop sans modifier le contenu. */
+@media (min-width: 901px) {
+  .page {
+    box-sizing: border-box !important;
+    height: 100dvh !important;
+    min-height: 0 !important;
+    max-height: 100dvh !important;
+    overflow: hidden !important;
+    padding-bottom: 0 !important;
+  }
+}

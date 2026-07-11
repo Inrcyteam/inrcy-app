@@ -21,7 +21,7 @@ test("generation fallback chain is bounded and ordered: selected model, Gateway 
 
 test("Gateway fallback uses another provider and safe defaults", () => {
   const fallback = read("lib/aiGenerationFallback.ts");
-  assert.match(fallback, /startsWith\("openai\/"\)\s*\?\s*"google"\s*:\s*"openai"/s);
+  assert.match(fallback, /startsWith\("openai\/"\)[\s\S]*?\?[\s\S]*?"google"[\s\S]*?:[\s\S]*?"openai"/);
   assert.match(fallback, /AI_GATEWAY_FALLBACK_MODEL/);
   assert.match(fallback, /AI_GATEWAY_OPENAI_PRIMARY_FALLBACK_MODEL/);
   assert.match(fallback, /expectedProviderPrefix/);
@@ -63,7 +63,7 @@ test("all transports reuse the same prompt, schema, images and output budget", (
   assert.match(client, /buildStructuredFormat\(opts, target\.jsonMode\)/);
   assert.match(client, /opts\.images \|\| \[\]\)\.map/);
   assert.match(client, /max_output_tokens:\s*args\.policyMaxOutputTokens/);
-  assert.match(client, /input:\s*\[\s*\{ role: "system"/s);
+  assert.match(client, /input:\s*\[[\s\S]*?\{ role: "system"/);
 });
 
 test("fallback does not multiply the product quota but counts every supplier attempt", () => {

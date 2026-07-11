@@ -40,7 +40,7 @@ export default function DashboardFluxBubble({ item, itemKey }: Props) {
       title={isComingSoon ? item.configureTitle || item.configureLabel || "Option désactivée" : undefined}
     >
       <div className={styles.bubbleStack}>
-        <div className={`${styles.bubbleLogo} ${item.key === "mails" ? styles.bubbleLogoMail : ""} ${item.key === "inrbadge" ? styles.bubbleLogoProfile : ""} ${item.key === "inr_agent" ? styles.bubbleLogoAgent : ""} ${item.key === "youtube_shorts" ? styles.bubbleLogoYoutube : ""} ${item.key === "pinterest" ? styles.bubbleLogoPinterest : ""}`} aria-hidden>
+        <div className={`${styles.bubbleLogo} ${item.key === "mails" ? styles.bubbleLogoMail : ""} ${item.key === "inrbadge" ? styles.bubbleLogoProfile : ""} ${item.key === "inr_agent" ? styles.bubbleLogoAgent : ""} ${item.key === "youtube_shorts" ? styles.bubbleLogoYoutube : ""} ${item.key === "pinterest" ? styles.bubbleLogoPinterest : ""} ${item.key === "inr_search" ? styles.bubbleLogoInrSearch : ""}`} aria-hidden>
           <img
             className={styles.bubbleLogoImg}
             src={item.logoSrc}

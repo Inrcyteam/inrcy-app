@@ -129,6 +129,7 @@ type PendingImmediatePublishAfterSchedule = {
 const EMPTY_CHANNEL_DETAILS: Record<ChannelKey, ChannelConnectionDetail> = {
   inrcy_site: { type: "url", label: null, href: null },
   site_web: { type: "url", label: null, href: null },
+  inr_search: { type: "page", label: null, href: null },
   gmb: { type: "location", label: null, href: null },
   facebook: { type: "page", label: null, href: null },
   instagram: { type: "account", label: null, href: null },
@@ -141,6 +142,7 @@ const EMPTY_CHANNEL_DETAILS: Record<ChannelKey, ChannelConnectionDetail> = {
 const CHANNEL_KEYS: ChannelKey[] = [
   "inrcy_site",
   "site_web",
+  "inr_search",
   "gmb",
   "facebook",
   "instagram",
@@ -718,6 +720,7 @@ export default function PublishModal({
   const getInitialConnectedChannels = (): Record<ChannelKey, boolean> => ({
     inrcy_site: !!initialConnectedChannels?.inrcy_site,
     site_web: !!initialConnectedChannels?.site_web,
+    inr_search: !!initialConnectedChannels?.inr_search,
     gmb: !!initialConnectedChannels?.gmb,
     facebook: !!initialConnectedChannels?.facebook,
     instagram: !!initialConnectedChannels?.instagram,
@@ -815,6 +818,7 @@ export default function PublishModal({
               : ({
                   inrcy_site: !!nextConnected.inrcy_site,
                   site_web: !!nextConnected.site_web,
+                  inr_search: !!nextConnected.inr_search,
                   gmb: !!nextConnected.gmb,
                   facebook: !!nextConnected.facebook,
                   instagram: !!nextConnected.instagram,
@@ -840,6 +844,7 @@ export default function PublishModal({
     const nextConnected: Record<ChannelKey, boolean> = {
       inrcy_site: !!initialConnectedChannels.inrcy_site,
       site_web: !!initialConnectedChannels.site_web,
+      inr_search: !!initialConnectedChannels.inr_search,
       gmb: !!initialConnectedChannels.gmb,
       facebook: !!initialConnectedChannels.facebook,
       instagram: !!initialConnectedChannels.instagram,
@@ -2864,7 +2869,7 @@ export default function PublishModal({
           : post.hashtags || [],
       imageCount: selectedKeys.length,
       formatLabel:
-        channel === "inrcy_site" || channel === "site_web"
+        channel === "inrcy_site" || channel === "site_web" || channel === "inr_search"
           ? "Rendu site / iframe"
           : channel === "tiktok"
             ? `Image verticale TikTok : ${CHANNEL_PRESETS[channel].width}×${CHANNEL_PRESETS[channel].height}`

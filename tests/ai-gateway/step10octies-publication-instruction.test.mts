@@ -92,6 +92,6 @@ test("Step 10 octies propagates the same instruction through primary, repair and
       .length >= 4,
   );
   assert.match(generation, /compileBoosterGenerationPrompt\(\{/);
-  assert.match(prompt, /boosterSystemPrompt\(\s*args\.generationProfile,\s*args\.publicationInstruction/s);
+  assert.match(prompt, /boosterSystemPrompt\([\s\S]*?args\.generationProfile,[\s\S]*?args\.publicationInstruction/);
   assert.match(prompt, /const core = boosterUserPrompt\(args\)/);
 });

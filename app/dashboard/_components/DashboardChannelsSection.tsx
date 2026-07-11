@@ -21,7 +21,7 @@ type DashboardPanelName =
   | "instagram"
   | "linkedin"
   | "gmb"
-  | "trustpilot"
+  | "inr_search"
   | "facebook"
   | "tiktok"
   | "youtube_shorts"
@@ -171,7 +171,7 @@ export default function DashboardChannelsSection({
       aria-hidden
     >
       <div className={styles.desktopSideBubbleStack}>
-        <div className={`${styles.bubbleLogo} ${item.key === "mails" ? styles.bubbleLogoMail : ""} ${item.key === "inrbadge" ? styles.bubbleLogoProfile : ""} ${item.key === "youtube_shorts" ? styles.bubbleLogoYoutube : ""} ${item.key === "pinterest" ? styles.bubbleLogoPinterest : ""}`}>
+        <div className={`${styles.bubbleLogo} ${item.key === "mails" ? styles.bubbleLogoMail : ""} ${item.key === "inrbadge" ? styles.bubbleLogoProfile : ""} ${item.key === "youtube_shorts" ? styles.bubbleLogoYoutube : ""} ${item.key === "pinterest" ? styles.bubbleLogoPinterest : ""} ${item.key === "inr_search" ? styles.bubbleLogoInrSearch : ""}`}>
           <img
             className={styles.bubbleLogoImg}
             src={item.logoSrc}

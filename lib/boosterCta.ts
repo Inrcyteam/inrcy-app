@@ -4,7 +4,7 @@ import {
   stripSiteTextFormattingPreserveLayout,
 } from "@/lib/boosterFormatting";
 
-export type BoosterChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin" | "tiktok" | "youtube_shorts" | "pinterest";
+export type BoosterChannelKey = "inrcy_site" | "site_web" | "inr_search" | "gmb" | "facebook" | "instagram" | "linkedin" | "tiktok" | "youtube_shorts" | "pinterest";
 export type BoosterCtaMode = "none" | "website" | "call" | "message" | "custom";
 
 export type BoosterPostLike = {
@@ -130,7 +130,7 @@ export function buildCtaTextForChannel(channel: BoosterChannelKey, post: Partial
 }
 
 function buildPrimaryBoosterText(channel: BoosterChannelKey, post: Partial<BoosterPostLike> | null | undefined) {
-  const isSiteChannel = channel === "inrcy_site" || channel === "site_web";
+  const isSiteChannel = channel === "inrcy_site" || channel === "site_web" || channel === "inr_search";
   const title = collapseWhitespace(
     isSiteChannel
       ? sanitizeBoosterSiteText(post?.title || "")

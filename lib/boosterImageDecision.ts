@@ -9,6 +9,7 @@
 export type BoosterImageChannel =
   | "inrcy_site"
   | "site_web"
+  | "inr_search"
   | "gmb"
   | "facebook"
   | "instagram"
@@ -130,6 +131,7 @@ export const BOOSTER_IMAGE_CHANNEL_POLICIES: Readonly<
 > = Object.freeze({
   inrcy_site: { supportsImages: true },
   site_web: { supportsImages: true },
+  inr_search: { supportsImages: true },
   gmb: { supportsImages: true },
   facebook: { supportsImages: true },
   instagram: {

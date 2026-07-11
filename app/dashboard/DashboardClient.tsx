@@ -65,6 +65,7 @@ const GENERATOR_ACTIVE_CACHE_KEY = "inrcy_generator_active_v1";
 const SITE_BUBBLE_PROGRESS_CACHE_KEY = "inrcy_site_bubble_progress_v1";
 const DASHBOARD_CHANNEL_STATE_CACHE_KEY = "inrcy_dashboard_channel_state_v1";
 const BUBBLE_ACCESS_CACHE_KEY = "inrcy_bubble_access_map_v1";
+const INR_SEARCH_PUBLIC_ORIGIN = ((process.env.NEXT_PUBLIC_INRSEARCH_PUBLIC_ORIGIN || "https://app.inrcy.com").replace(/\/$/, "") === "https://inrcy.com" ? "https://app.inrcy.com" : (process.env.NEXT_PUBLIC_INRSEARCH_PUBLIC_ORIGIN || "https://app.inrcy.com").replace(/\/$/, ""));
 
 type SiteBubbleProgress = { status: ModuleStatus; text: string };
 type SiteBubbleProgressCache = Partial<Record<"site_inrcy" | "site_web", SiteBubbleProgress>>;
@@ -207,6 +208,15 @@ function readCachedInrBadgeProfileReady(): boolean | null {
   }
 }
 
+function readCachedInrSearchConnected(): boolean | null {
+  try {
+    const state = readCachedDashboardChannelState();
+    return typeof state?.inrSearchConnected === "boolean" ? state.inrSearchConnected : null;
+  } catch {
+    return null;
+  }
+}
+
 function writeCachedDashboardChannelState(state: Record<string, any>) {
   try {
     writeUiCacheValue(DASHBOARD_CHANNEL_STATE_CACHE_KEY, JSON.stringify({ cachedAt: Date.now(), state }));
@@ -297,8 +307,8 @@ export default function DashboardClient({ isAdmin = false }: DashboardClientProp
   const [youtubeShortsUrl, setYoutubeShortsUrl] = useState("");
   const [pinterestConnected, setPinterestConnected] = useState(false);
   const [pinterestUrl, setPinterestUrl] = useState("");
-  const [trustpilotConnected, setTrustpilotConnected] = useState(false);
-  const [trustpilotUrl, setTrustpilotUrl] = useState("");
+  const [inrSearchConnected, setInrSearchConnected] = useState<boolean | null>(() => readCachedInrSearchConnected());
+  const [inrSearchUrl, setInrSearchUrl] = useState("");
   const [inrBadgeProfile, setInrBadgeProfile] = useState<InrBadgeProfileSummary>(() => readCachedInrBadgeProfile());
   const [cachedInrBadgeProfileReady, setCachedInrBadgeProfileReady] = useState<boolean | null>(() => readCachedInrBadgeProfileReady());
   const [inrBadgeModalOpen, setInrBadgeModalOpen] = useState(false);
@@ -494,7 +504,7 @@ const [bubbleAccessMap, setBubbleAccessMap] = useState<AppBubbleAccessMap>(() =>
 const canAccessSiteInrcy = isBubbleEnabled(bubbleAccessMap, "site_inrcy");
 const canAccessInrAgent = isBubbleEnabled(bubbleAccessMap, "inr_agent");
 const canAccessPinterest = isBubbleEnabled(bubbleAccessMap, "pinterest");
-const canAccessTrustpilot = isBubbleEnabled(bubbleAccessMap, "trustpilot");
+const canAccessInrSearch = isBubbleEnabled(bubbleAccessMap, "inr_search");
 
 const patchChannelConnectionLocallyProxy = useCallback((
   channel: DashboardChannelKey,
@@ -891,8 +901,8 @@ const applyDashboardChannelState = useCallback((state: Record<string, any> | nul
   if (typeof state.youtubeShortsUrl === "string") setYoutubeShortsUrl(state.youtubeShortsUrl);
   if (typeof state.pinterestConnected === "boolean") setPinterestConnected(state.pinterestConnected);
   if (typeof state.pinterestUrl === "string") setPinterestUrl(state.pinterestUrl);
-  if (typeof state.trustpilotConnected === "boolean") setTrustpilotConnected(state.trustpilotConnected);
-  if (typeof state.trustpilotUrl === "string") setTrustpilotUrl(state.trustpilotUrl);
+  if (typeof state.inrSearchConnected === "boolean") setInrSearchConnected(state.inrSearchConnected);
+  if (typeof state.inrSearchUrl === "string") setInrSearchUrl(state.inrSearchUrl);
 
   if (typeof state.siteInrcyGa4Connected === "boolean") setSiteInrcyGa4Connected(state.siteInrcyGa4Connected);
   if (typeof state.siteInrcyGscConnected === "boolean") setSiteInrcyGscConnected(state.siteInrcyGscConnected);
@@ -928,7 +938,7 @@ const applyDashboardChannelState = useCallback((state: Record<string, any> | nul
   setSiteWebActusLimit, setSiteWebActusTheme, setSiteWebGa4Connected, setSiteWebGa4MeasurementId,
   setSiteWebGa4PropertyId, setSiteWebGscConnected, setSiteWebGscProperty, setSiteWebSavedUrl,
   setSiteWebSettingsError, setSiteWebSettingsText, setSiteWebUrl, setMailAccountsConnectedCount,
-  setYoutubeShortsConnected, setYoutubeShortsUrl, setPinterestConnected, setPinterestUrl, setTrustpilotConnected, setTrustpilotUrl,
+  setYoutubeShortsConnected, setYoutubeShortsUrl, setPinterestConnected, setPinterestUrl, setInrSearchConnected, setInrSearchUrl,
 ]);
 
 useEffect(() => {
@@ -941,22 +951,68 @@ useEffect(() => {
     mergeCachedDashboardChannelState({ pinterestConnected: connected, pinterestUrl: profileUrl });
   };
 
-  const handleTrustpilotUpdate = (event: Event) => {
+  const handleInrSearchUpdate = (event: Event) => {
     const detail = (event as CustomEvent)?.detail ?? {};
     const connected = Boolean(detail.connected);
     const profileUrl = typeof detail.profileUrl === "string" ? detail.profileUrl : "";
-    setTrustpilotConnected(connected);
-    setTrustpilotUrl(profileUrl);
-    mergeCachedDashboardChannelState({ trustpilotConnected: connected, trustpilotUrl: profileUrl });
+    setInrSearchConnected(connected);
+    setInrSearchUrl(profileUrl);
+    mergeCachedDashboardChannelState({ inrSearchConnected: connected, inrSearchUrl: profileUrl });
   };
 
   window.addEventListener("inrcy:pinterest-settings-updated", handlePinterestUpdate);
-  window.addEventListener("inrcy:trustpilot-settings-updated", handleTrustpilotUpdate);
+  window.addEventListener("inrcy:inr-search-settings-updated", handleInrSearchUpdate);
   return () => {
     window.removeEventListener("inrcy:pinterest-settings-updated", handlePinterestUpdate);
-    window.removeEventListener("inrcy:trustpilot-settings-updated", handleTrustpilotUpdate);
+    window.removeEventListener("inrcy:inr-search-settings-updated", handleInrSearchUpdate);
   };
 }, []);
+
+useEffect(() => {
+  let cancelled = false;
+
+  if (!canAccessInrSearch) {
+    setInrSearchConnected(false);
+    setInrSearchUrl("");
+    mergeCachedDashboardChannelState({ inrSearchConnected: false, inrSearchUrl: "" });
+    return () => {
+      cancelled = true;
+    };
+  }
+
+  const syncInrSearch = async () => {
+    try {
+      const response = await fetch("/api/inr-search/settings", { cache: "no-store", credentials: "include" });
+      const payload = await response.json().catch(() => null);
+      if (cancelled || !response.ok || !payload?.ok) return;
+      const config = payload.inrSearch && typeof payload.inrSearch === "object" ? payload.inrSearch : {};
+      const publication = payload.publication && typeof payload.publication === "object" ? payload.publication : {};
+      const slug = String(config.slug || "").trim();
+      const connected = Boolean(config.enabled && slug && publication.allowed);
+      const profileUrl = slug ? `${INR_SEARCH_PUBLIC_ORIGIN}/entreprises/${slug}` : "";
+      setInrSearchConnected(connected);
+      setInrSearchUrl(profileUrl);
+      mergeCachedDashboardChannelState({ inrSearchConnected: connected, inrSearchUrl: profileUrl });
+    } catch {
+      // Le dernier état connu reste affiché si la synchronisation réseau échoue.
+    }
+  };
+
+  void syncInrSearch();
+  const intervalId = window.setInterval(() => { void syncInrSearch(); }, 30_000);
+  const handleFocus = () => { void syncInrSearch(); };
+  const handleVisibility = () => {
+    if (document.visibilityState === "visible") void syncInrSearch();
+  };
+  window.addEventListener("focus", handleFocus);
+  document.addEventListener("visibilitychange", handleVisibility);
+  return () => {
+    cancelled = true;
+    window.clearInterval(intervalId);
+    window.removeEventListener("focus", handleFocus);
+    document.removeEventListener("visibilitychange", handleVisibility);
+  };
+}, [canAccessInrSearch]);
 
 useEffect(() => {
   const handleYoutubeShortsUpdate = (event: Event) => {
@@ -1350,10 +1406,13 @@ const loadSiteInrcy = useCallback(async () => {
   const fbObj = ((proSettingsObj as any)?.facebook ?? {}) as any;
   const ytObj = ((proSettingsObj as any)?.youtube_shorts ?? {}) as any;
   const pinterestObj = ((proSettingsObj as any)?.pinterest ?? {}) as any;
-  const trustpilotObj = ((proSettingsObj as any)?.trustpilot ?? {}) as any;
+  const inrSearchObj = ((proSettingsObj as any)?.inrSearch ?? {}) as any;
   const youtubeShortsUrlValue = String(ytObj?.channelUrl ?? ytObj?.url ?? "");
   const pinterestUrlValue = String(pinterestObj?.profileUrl ?? pinterestObj?.url ?? "");
-  const trustpilotUrlValue = String(trustpilotObj?.profileUrl ?? trustpilotObj?.url ?? "");
+  const inrSearchSlug = String(inrSearchObj?.slug ?? "").trim();
+  const inrSearchUrlValue = inrSearchObj?.enabled && inrSearchSlug
+    ? `${INR_SEARCH_PUBLIC_ORIGIN}/entreprises/${inrSearchSlug}`
+    : "";
 
   const nextState = {
     siteInrcyOwnership: ownership,
@@ -1410,8 +1469,8 @@ const loadSiteInrcy = useCallback(async () => {
     youtubeShortsUrl: youtubeShortsUrlValue,
     pinterestConnected: Boolean(pinterestObj?.connected),
     pinterestUrl: pinterestUrlValue,
-    trustpilotConnected: Boolean(trustpilotObj?.connected),
-    trustpilotUrl: trustpilotUrlValue,
+    inrSearchConnected: Boolean(inrSearchObj?.enabled && inrSearchSlug),
+    inrSearchUrl: inrSearchUrlValue,
     siteInrcyGa4Connected: !!(ga4MeasurementIdValue || ga4PropertyIdValue),
     siteInrcyGscConnected: !!gscPropertyValue,
     siteWebGa4Connected: !!((siteWebObj as any)?.ga4?.measurement_id || (siteWebObj as any)?.ga4?.property_id),
@@ -1476,8 +1535,9 @@ const loadSiteInrcy = useCallback(async () => {
       nextState.pinterestConnected = Boolean(states?.pinterest?.connected && !states?.pinterest?.requiresUpdate);
       nextState.pinterestUrl = String(states?.pinterest?.profile_url || pinterestUrlValue || "");
 
-      nextState.trustpilotConnected = Boolean(states?.trustpilot?.connected && !states?.trustpilot?.requiresUpdate);
-      nextState.trustpilotUrl = String(states?.trustpilot?.profile_url || trustpilotUrlValue || "");
+      // iNr'Search n'est pas une connexion OAuth : son état réel provient exclusivement
+      // de /api/inr-search/settings, qui vérifie que la page publique est réellement publiable.
+
     } else {
       const [inrcyGa4, inrcyGsc, webGa4, webGsc] = await Promise.all([
         fetchGoogleConnected("site_inrcy", "ga4"),
@@ -2892,8 +2952,8 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       youtubeShortsUrl,
       pinterestConnected,
       pinterestUrl,
-      trustpilotConnected,
-      trustpilotUrl,
+      inrSearchConnected,
+      inrSearchUrl,
       gmbUrl,
       gmbAccountConnected,
       gmbConfigured,
@@ -2970,8 +3030,8 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     tiktokUrl: tiktokProfileUrl,
     pinterestConnected,
     pinterestUrl,
-    trustpilotConnected,
-    trustpilotUrl,
+    inrSearchConnected,
+    inrSearchUrl,
     youtubeShortsConnected,
     youtubeShortsUrl,
     openPanel,
@@ -2984,7 +3044,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
   }), [
     bubbleAccessMap,
     canAccessPinterest,
-    canAccessTrustpilot,
+    canAccessInrSearch,
     canConfigureSite,
     canViewSite,
     channelBlocks,
@@ -3007,8 +3067,8 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     tiktokProfileUrl,
     pinterestConnected,
     pinterestUrl,
-    trustpilotConnected,
-    trustpilotUrl,
+    inrSearchConnected,
+    inrSearchUrl,
     youtubeShortsConnected,
     youtubeShortsUrl,
     openPanel,
@@ -3050,10 +3110,6 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         connected: Boolean(canAccessPinterest && pinterestConnected && pinterestUrl),
         url: canAccessPinterest ? pinterestUrl : null,
       },
-      trustpilot: {
-        connected: Boolean(canAccessTrustpilot && trustpilotConnected && trustpilotUrl),
-        url: canAccessTrustpilot ? trustpilotUrl : null,
-      },
       mails: {
         connected: mailAccountsConnectedCount > 0,
         url: null,
@@ -3074,7 +3130,6 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     inrBadgeProfile,
     inrBadgePublicUrl,
     canAccessPinterest,
-    canAccessTrustpilot,
     inrBadgeProfileReady,
     siteInrcyOwnership,
     siteInrcySavedUrl,
@@ -3092,8 +3147,6 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     tiktokProfileUrl,
     pinterestConnected,
     pinterestUrl,
-    trustpilotConnected,
-    trustpilotUrl,
     youtubeShortsConnected,
     youtubeShortsUrl,
     openPanel,
@@ -3256,6 +3309,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         initialConnectedChannels={{
           inrcy_site: Boolean(canAccessSiteInrcy && normalizeSiteUrl(siteInrcySavedUrl) && (siteInrcyGa4Connected || siteInrcyGscConnected)),
           site_web: Boolean(normalizeSiteUrl(siteWebSavedUrl) && (siteWebGa4Connected || siteWebGscConnected)),
+          inr_search: Boolean(canAccessInrSearch && inrSearchConnected),
           gmb: Boolean(gmbAccountConnected && gmbConfigured && gmbConnectionStatus !== "needs_update"),
           facebook: Boolean(facebookAccountConnected && facebookPageConnected && facebookConnectionStatus !== "needs_update"),
           instagram: Boolean(instagramAccountConnected && instagramConnected && instagramConnectionStatus !== "needs_update"),
@@ -3331,7 +3385,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
           tiktokPanelProps={tiktokPanelProps}
           inrBadgeSettingsProps={inrBadgeSettingsProps}
           pinterestAccessEnabled={canAccessPinterest}
-          trustpilotAccessEnabled={canAccessTrustpilot}
+          inrSearchAccessEnabled={canAccessInrSearch}
         />
       </SettingsDrawer>
 

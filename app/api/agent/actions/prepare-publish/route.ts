@@ -18,6 +18,8 @@ import {
 import { getChannelConnectionStates } from "@/lib/channelConnectionState";
 import { getAppBubbleAccessMapForUser } from "@/lib/appBubbleAccessServer";
 import { isBubbleEnabled } from "@/lib/bubbleAccess";
+import { ensureSystemManagedInrSearch } from "@/lib/inrSearchProvisioning";
+import { getInrSearchPublicStatus } from "@/lib/inrSearchPublic";
 import { decodeBusinessSector } from "@/lib/activitySectors";
 import {
   findJobValueByLabel,
@@ -123,6 +125,7 @@ const agentToBoosterChannel: Partial<Record<InrAgentChannel, BoosterChannels>> =
   {
     site_inrcy: "inrcy_site",
     site_web: "site_web",
+    inr_search: "inr_search",
     gmb: "gmb",
     facebook: "facebook",
     instagram: "instagram",
@@ -135,6 +138,7 @@ const agentToBoosterChannel: Partial<Record<InrAgentChannel, BoosterChannels>> =
 const boosterToAgentChannel: Record<BoosterChannels, string> = {
   inrcy_site: "site_inrcy",
   site_web: "site_web",
+  inr_search: "inr_search",
   gmb: "gmb",
   facebook: "facebook",
   instagram: "instagram",
@@ -161,6 +165,7 @@ const themeLabels: Partial<Record<InrAgentTheme, string>> = {
 const channelLabels: Record<string, string> = {
   site_inrcy: "Site iNrCy",
   site_web: "Site web",
+  inr_search: "iNr'Search",
   gmb: "Google Business",
   facebook: "Facebook",
   instagram: "Instagram",
@@ -170,10 +175,11 @@ const channelLabels: Record<string, string> = {
   pinterest: "Pinterest",
 };
 
-const siteChannels = new Set<BoosterChannels>(["inrcy_site", "site_web"]);
+const siteChannels = new Set<BoosterChannels>(["inrcy_site", "site_web", "inr_search"]);
 const allowedBoosterChannels = new Set<BoosterChannels>([
   "inrcy_site",
   "site_web",
+  "inr_search",
   "gmb",
   "facebook",
   "instagram",
@@ -851,10 +857,12 @@ async function selectConnectedChannels(args: {
   userId: string;
   automation: InrAgentAutomationSettings;
 }): Promise<BoosterChannels[]> {
-  const [states, bubbleAccess] = await Promise.all([
+  const [states, bubbleAccess, provisioned] = await Promise.all([
     getChannelConnectionStates(args.supabase, args.userId),
     getAppBubbleAccessMapForUser(args.supabase, args.userId),
+    ensureSystemManagedInrSearch(args.supabase as any, args.userId),
   ]);
+  const inrSearchStatus = await getInrSearchPublicStatus(provisioned.inrSearch.slug);
 
   const isAllowedBoosterChannel = (
     channel: BoosterChannels | undefined,
@@ -869,6 +877,7 @@ async function selectConnectedChannels(args: {
   const connected: Record<BoosterChannels, boolean> = {
     inrcy_site: states.site_inrcy.connected,
     site_web: states.site_web.connected,
+    inr_search: inrSearchStatus.published,
     gmb: states.gmb.connected && !states.gmb.requiresUpdate,
     facebook: states.facebook.connected && !states.facebook.requiresUpdate,
     instagram: states.instagram.connected && !states.instagram.requiresUpdate,
@@ -1341,6 +1350,7 @@ function buildPreviewText(
     "linkedin",
     "inrcy_site",
     "site_web",
+    "inr_search",
     "tiktok",
     "youtube_shorts",
   ];

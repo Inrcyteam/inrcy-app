@@ -5,8 +5,6 @@ import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 import { getChannelConnectionStates } from "@/lib/channelConnectionState";
 import { getGmbToken } from "@/lib/googleBusiness";
 import { getGmbReviewTargetFromRow, gmbListReviews, type NormalizedGmbReview } from "@/lib/googleBusinessReviews";
-import { buildBubbleAccessMap, isBubbleEnabled } from "@/lib/bubbleAccess";
-import { listTrustpilotReviewsForUser, type NormalizedTrustpilotReview } from "@/lib/trustpilotReviews";
 import EReputationReviewsClient, { type EReputationReviewItem, type EReputationReviewsPlatform } from "./EReputationReviewsClient";
 import styles from "./eReputation.module.css";
 
@@ -23,16 +21,6 @@ type GoogleBusinessStatus = {
   email?: string | null;
 } | null;
 
-type TrustpilotStatus = {
-  accountConnected?: boolean;
-  connected?: boolean;
-  requiresUpdate?: boolean;
-  business_unit_id?: string | null;
-  business_name?: string | null;
-  profile_url?: string | null;
-  review_invite_url?: string | null;
-} | null;
-
 type ReviewListItem = EReputationReviewItem;
 
 type ReviewsLoadResult = {
@@ -43,19 +31,6 @@ type ReviewsLoadResult = {
   totalReviewCount: number;
   nextPageToken: string | null;
   reviews: NormalizedGmbReview[];
-};
-
-type TrustpilotReviewsLoadResult = {
-  ready: boolean;
-  privateAccess: boolean;
-  error: string | null;
-  businessName: string | null;
-  profileUrl: string | null;
-  reviewInviteUrl: string | null;
-  trustScore: number | null;
-  totalReviewCount: number;
-  nextPageToken: string | null;
-  reviews: NormalizedTrustpilotReview[];
 };
 
 const previewGoogleReviews: ReviewListItem[] = [
@@ -92,64 +67,6 @@ const previewGoogleReviews: ReviewListItem[] = [
   },
 ];
 
-const previewTrustpilotReviews: ReviewListItem[] = [
-  {
-    id: "trustpilot:preview-1",
-    platform: "trustpilot",
-    reviewName: null,
-    name: "Client Trustpilot",
-    rating: 5,
-    date: "Aujourd’hui",
-    status: "À répondre",
-    comment: "Service très sérieux, communication claire et accompagnement efficace. Je recommande.",
-    verified: true,
-  },
-  {
-    id: "trustpilot:preview-2",
-    platform: "trustpilot",
-    reviewName: null,
-    name: "Acheteur vérifié",
-    rating: 4,
-    date: "Hier",
-    status: "Répondu",
-    comment: "Bonne expérience globale, réponse rapide et équipe professionnelle.",
-    reply: "Merci pour votre retour et votre confiance. Nous sommes ravis que l’expérience ait été positive.",
-    verified: true,
-  },
-];
-
-async function getCurrentUserId() {
-  const supabase = await createSupabaseServer();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return null;
-  return resolveActiveInrcyAccountId(supabase, user.id);
-}
-
-async function loadBubbleEnabled(bubbleKey: "trustpilot") {
-  noStore();
-  try {
-    const supabase = await createSupabaseServer();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return false;
-
-    const activeUserId = await resolveActiveInrcyAccountId(supabase, user.id);
-
-    const { data } = await supabase
-      .from("app_bubble_access")
-      .select("bubble_key,enabled")
-      .eq("user_id", activeUserId)
-      .eq("bubble_key", bubbleKey);
-    const map = buildBubbleAccessMap(data || []);
-    return isBubbleEnabled(map, bubbleKey);
-  } catch {
-    return false;
-  }
-}
-
 async function loadGoogleBusinessStatus(): Promise<GoogleBusinessStatus> {
   noStore();
   try {
@@ -161,22 +78,6 @@ async function loadGoogleBusinessStatus(): Promise<GoogleBusinessStatus> {
     const activeUserId = await resolveActiveInrcyAccountId(supabase, user.id);
     const states = await getChannelConnectionStates(supabase, activeUserId);
     return states.gmb ?? null;
-  } catch {
-    return null;
-  }
-}
-
-async function loadTrustpilotStatus(): Promise<TrustpilotStatus> {
-  noStore();
-  try {
-    const supabase = await createSupabaseServer();
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-    if (!user) return null;
-    const activeUserId = await resolveActiveInrcyAccountId(supabase, user.id);
-    const states = await getChannelConnectionStates(supabase, activeUserId);
-    return states.trustpilot ?? null;
   } catch {
     return null;
   }
@@ -211,37 +112,6 @@ async function loadGoogleReviews(): Promise<ReviewsLoadResult> {
   }
 }
 
-async function loadTrustpilotReviews(enabled: boolean): Promise<TrustpilotReviewsLoadResult> {
-  noStore();
-  if (!enabled) {
-    return { ready: false, privateAccess: false, error: null, businessName: null, profileUrl: null, reviewInviteUrl: null, trustScore: null, totalReviewCount: 0, nextPageToken: null, reviews: [] };
-  }
-
-  try {
-    const userId = await getCurrentUserId();
-    if (!userId) {
-      return { ready: false, privateAccess: false, error: null, businessName: null, profileUrl: null, reviewInviteUrl: null, trustScore: null, totalReviewCount: 0, nextPageToken: null, reviews: [] };
-    }
-
-    const payload = await listTrustpilotReviewsForUser(userId, { pageSize: 50 });
-    return {
-      ready: payload.configured,
-      privateAccess: payload.privateAccess,
-      error: null,
-      businessName: payload.businessName,
-      profileUrl: payload.profileUrl,
-      reviewInviteUrl: payload.reviewInviteUrl,
-      trustScore: payload.trustScore,
-      totalReviewCount: payload.totalReviewCount,
-      nextPageToken: payload.nextPageToken,
-      reviews: payload.reviews,
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Impossible de charger les avis Trustpilot pour le moment.";
-    return { ready: false, privateAccess: false, error: message, businessName: null, profileUrl: null, reviewInviteUrl: null, trustScore: null, totalReviewCount: 0, nextPageToken: null, reviews: [] };
-  }
-}
-
 function formatReviewDate(value: string | null) {
   if (!value) return "Date non précisée";
   const date = new Date(value);
@@ -252,12 +122,6 @@ function formatReviewDate(value: string | null) {
 function formatAverageRating(value: number | null) {
   if (!Number.isFinite(Number(value))) return "—";
   return Number(value).toLocaleString("fr-FR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
-}
-
-function buildEReputationTagline(trustpilotEnabled: boolean) {
-  return trustpilotEnabled
-    ? "Tous vos avis Google et Trustpilot, depuis une seule et même machine."
-    : "Tous vos avis Google, depuis une seule et même machine.";
 }
 
 function toGoogleReviewListItem(review: NormalizedGmbReview): ReviewListItem {
@@ -280,33 +144,10 @@ function toGoogleReviewListItem(review: NormalizedGmbReview): ReviewListItem {
   };
 }
 
-function toTrustpilotReviewListItem(review: NormalizedTrustpilotReview): ReviewListItem {
-  const hasReply = review.replyStatus === "answered";
-  return {
-    id: `trustpilot:${review.reviewId}`,
-    platform: "trustpilot",
-    reviewName: review.reviewId || null,
-    name: review.reviewerName || "Client Trustpilot",
-    rating: review.rating || 0,
-    date: formatReviewDate(review.updateTime || review.createTime),
-    status: hasReply ? "Répondu" : review.rating > 0 && review.rating <= 3 ? "À traiter" : "À répondre",
-    comment: review.comment || "Avis sans commentaire écrit.",
-    originalComment: review.comment || null,
-    translatedComment: null,
-    reply: review.reply?.comment || null,
-    live: true,
-    replyable: review.replyable,
-    verified: review.isVerified,
-  };
-}
-
 export default async function EReputationPage() {
-  const trustpilotEnabled = await loadBubbleEnabled("trustpilot");
-  const [gmb, trustpilot, googleReviewsData, trustpilotReviewsData] = await Promise.all([
+  const [gmb, googleReviewsData] = await Promise.all([
     loadGoogleBusinessStatus(),
-    trustpilotEnabled ? loadTrustpilotStatus() : Promise.resolve(null),
     loadGoogleReviews(),
-    loadTrustpilotReviews(trustpilotEnabled),
   ]);
 
   const gmbReady = Boolean(gmb?.connected && !gmb?.requiresUpdate);
@@ -324,21 +165,6 @@ export default async function EReputationPage() {
       : gmbAccountOnly
         ? "Établissement à choisir"
         : "Google Business à connecter";
-
-  const trustpilotReady = trustpilotReviewsData.ready;
-  const trustpilotLiveReviews = trustpilotReviewsData.reviews.map(toTrustpilotReviewListItem);
-  const trustpilotDisplayedReviews = trustpilotReady ? trustpilotLiveReviews : previewTrustpilotReviews;
-  const trustpilotLabel = String(trustpilotReviewsData.businessName || trustpilot?.business_name || "Trustpilot").trim();
-  const trustpilotConnected = Boolean(trustpilot?.connected && !trustpilot?.requiresUpdate);
-  const trustpilotStatusLabel = trustpilot?.requiresUpdate
-    ? "Connexion à actualiser"
-    : trustpilotReady
-      ? trustpilotReviewsData.privateAccess
-        ? "Avis Trustpilot chargés"
-        : "Lecture seule"
-      : trustpilotConnected
-        ? "Fiche connectée"
-        : "A connecter";
 
   const connectHref = `/api/integrations/google-business/start?returnTo=${encodeURIComponent("/dashboard/e-reputation")}`;
   const askReviewsHref = "/dashboard/propulser?action=recolter";
@@ -374,30 +200,6 @@ export default async function EReputationPage() {
     },
   ];
 
-  if (trustpilotEnabled) {
-    platforms.push({
-      id: "trustpilot",
-      label: "Trustpilot",
-      shortLabel: "Trustpilot",
-      iconSrc: "/icons/trustpilot.png",
-      modalKicker: "Avis Trustpilot",
-      replyLabel: "Réponse Trustpilot",
-      reviews: trustpilotDisplayedReviews,
-      reviewsReady: trustpilotReady,
-      reviewsError: trustpilotReviewsData.error,
-      initialNextPageToken: trustpilotReviewsData.nextPageToken,
-      totalReviewCount: trustpilotReviewsData.totalReviewCount,
-      averageRatingLabel: trustpilotReady ? formatAverageRating(trustpilotReviewsData.trustScore) : "—",
-      locationLabel: trustpilotLabel,
-      statusLabel: trustpilotStatusLabel,
-      connected: trustpilotConnected || trustpilotReady,
-      canReply: trustpilotReviewsData.privateAccess,
-      reportUrl: null,
-      profileUrl: trustpilotReviewsData.profileUrl || trustpilot?.profile_url || null,
-      inviteUrl: trustpilotReviewsData.reviewInviteUrl || trustpilot?.review_invite_url || null,
-    });
-  }
-
   return (
     <main className={styles.page}>
       <div className={styles.wrap}>
@@ -414,7 +216,7 @@ export default async function EReputationPage() {
             <div className={styles.brandText}>
               <div className={styles.brandRow}>
                 <h1>E-réputation</h1>
-                <span className={styles.tagline}>{buildEReputationTagline(trustpilotEnabled)}</span>
+                <span className={styles.tagline}>Tous vos avis Google, depuis une seule et même machine.</span>
               </div>
               <p className={styles.subline}>
                 <span className={styles.sublineDesktop}>

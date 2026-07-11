@@ -104,6 +104,7 @@ type AutomationKey = "publish" | "grow" | "loyalty" | "stats";
 type ChannelKey =
   | "siteInrcy"
   | "siteWeb"
+  | "inrSearch"
   | "gmb"
   | "facebook"
   | "instagram"
@@ -439,13 +440,14 @@ const ROBOT_SRC = "/agent/inr-agent-robot-cutout.webp";
 const channelOptions: Record<ChannelKey, { name: string; src: string }> = {
   siteInrcy: { name: "Site iNrCy", src: "/icons/inrcy.png" },
   siteWeb: { name: "Site Web", src: "/icons/site-web.jpg" },
+  inrSearch: { name: "iNr'Search", src: "/icons/inr-search-bubble-128.png" },
   gmb: { name: "Google Business", src: "/icons/google.jpg" },
   facebook: { name: "Facebook", src: "/icons/facebook.png" },
   instagram: { name: "Instagram", src: "/icons/instagram.jpg" },
   linkedin: { name: "LinkedIn", src: "/icons/linkedin.png" },
   tiktok: { name: "TikTok", src: "/icons/tiktok.png" },
   youtube: { name: "YouTube", src: "/icons/youtube-shorts.png" },
-  pinterest: { name: "Pinterest", src: "/icons/Pinterest-logo.webp" },
+  pinterest: { name: "Pinterest", src: "/icons/pinterest-logo-128.png" },
   mails: { name: "Mails", src: "/icons/mails-inrcy-dashboard-v2.png" },
 };
 
@@ -469,6 +471,11 @@ const statsRubriqueOptions: Record<
     name: "Site Web",
     src: "/icons/site-web.jpg",
     channelKey: "siteWeb",
+  },
+  "iNr'Search": {
+    name: "iNr'Search",
+    src: "/icons/inr-search-bubble-128.png",
+    channelKey: "inrSearch",
   },
   "Google Business": {
     name: "Google Business",
@@ -496,12 +503,13 @@ const statsRubriqueOptions: Record<
     src: "/icons/youtube-shorts.png",
     channelKey: "youtube",
   },
-  Pinterest: { name: "Pinterest", src: "/icons/Pinterest-logo.webp", channelKey: "pinterest" },
+  Pinterest: { name: "Pinterest", src: "/icons/pinterest-logo-128.png", channelKey: "pinterest" },
 };
 
 const channelOrder: ChannelKey[] = [
   "siteInrcy",
   "siteWeb",
+  "inrSearch",
   "gmb",
   "facebook",
   "instagram",
@@ -543,6 +551,8 @@ const apiChannelToUi: Record<string, ChannelKey> = {
   siteInrcy: "siteInrcy",
   site_web: "siteWeb",
   siteWeb: "siteWeb",
+  inr_search: "inrSearch",
+  inrSearch: "inrSearch",
   gmb: "gmb",
   google_business: "gmb",
   facebook: "facebook",
@@ -559,6 +569,7 @@ const apiChannelToUi: Record<string, ChannelKey> = {
 const channelPayloadKeys: Record<ChannelKey, string[]> = {
   siteInrcy: ["inrcy_site", "site_inrcy", "siteInrcy"],
   siteWeb: ["site_web", "siteWeb"],
+  inrSearch: ["inr_search", "inrSearch"],
   gmb: ["gmb", "google_business"],
   facebook: ["facebook"],
   instagram: ["instagram"],
@@ -574,6 +585,7 @@ const agentChannelToBoosterDisplay: Partial<
 > = {
   siteInrcy: "inrcy_site",
   siteWeb: "site_web",
+  inrSearch: "inr_search",
   gmb: "gmb",
   facebook: "facebook",
   instagram: "instagram",
@@ -1036,6 +1048,7 @@ const defaultConfigs: Record<AutomationKey, AutomationConfig> = {
 const channelToApi: Record<ChannelKey, InrAgentChannel> = {
   siteInrcy: "site_inrcy",
   siteWeb: "site_web",
+  inrSearch: "inr_search",
   gmb: "gmb",
   facebook: "facebook",
   instagram: "instagram",
@@ -1055,6 +1068,8 @@ const agentPublishChannelToBoosterChannel: Record<string, string> = {
   site_inrcy: "inrcy_site",
   siteWeb: "site_web",
   site_web: "site_web",
+  inrSearch: "inr_search",
+  inr_search: "inr_search",
   gmb: "gmb",
   google_business: "gmb",
   facebook: "facebook",
@@ -1089,6 +1104,7 @@ function channelMapFromConnectionStates(payload: unknown): ConnectedChannelMap {
   return {
     siteInrcy: isUsable("site_inrcy"),
     siteWeb: isUsable("site_web"),
+    inrSearch: isUsable("inr_search"),
     gmb: isUsable("gmb"),
     facebook: isUsable("facebook"),
     instagram: isUsable("instagram"),
@@ -1183,6 +1199,7 @@ const themeToApi: Record<string, InrAgentTheme> = {
   Mails: "mails",
   "Site iNrCy": "site_inrcy",
   "Site Web": "site_web",
+  "iNr'Search": "inr_search",
   "Google Business": "gmb",
   Facebook: "facebook",
   Instagram: "instagram",
@@ -3247,6 +3264,8 @@ function channelDisplayName(channel: string | null | undefined) {
     siteInrcy: "siteInrcy",
     site_web: "siteWeb",
     siteWeb: "siteWeb",
+    inr_search: "inrSearch",
+    inrSearch: "inrSearch",
     gmb: "gmb",
     google_business: "gmb",
     facebook: "facebook",

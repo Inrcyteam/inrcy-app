@@ -52,6 +52,27 @@ const nextConfig: NextConfig = {
         ],
       },
       {
+        source: "/entreprises/:path*",
+        headers: [
+          { key: "Cache-Control", value: "no-store, max-age=0" },
+          { key: "Content-Language", value: "fr" },
+        ],
+      },
+      {
+        source: "/metiers/:path*",
+        headers: [
+          { key: "Cache-Control", value: "public, s-maxage=300, stale-while-revalidate=86400" },
+          { key: "Content-Language", value: "fr" },
+        ],
+      },
+      {
+        source: "/secteurs/:path*",
+        headers: [
+          { key: "Cache-Control", value: "public, s-maxage=300, stale-while-revalidate=86400" },
+          { key: "Content-Language", value: "fr" },
+        ],
+      },
+      {
         source: "/((?!widgets/|embed/).*)",
         headers: [
           { key: "X-Content-Type-Options", value: "nosniff" },

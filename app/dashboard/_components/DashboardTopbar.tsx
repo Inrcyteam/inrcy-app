@@ -27,7 +27,7 @@ type DashboardPanelName =
   | "instagram"
   | "linkedin"
   | "gmb"
-  | "trustpilot"
+  | "inr_search"
   | "facebook"
   | "tiktok"
   | "youtube_shorts"

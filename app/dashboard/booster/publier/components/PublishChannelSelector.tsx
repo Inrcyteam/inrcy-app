@@ -40,13 +40,14 @@ type PublishChannelSelectorProps = {
 const CHANNEL_ICON_SRC: Record<ChannelKey, string> = {
   inrcy_site: "/icons/inrcy.png",
   site_web: "/icons/site-web.jpg",
+  inr_search: "/icons/inr-search-bubble-128.png",
   gmb: "/icons/google.jpg",
   facebook: "/icons/facebook.png",
   instagram: "/icons/instagram.jpg",
   linkedin: "/icons/linkedin.png",
   tiktok: "/icons/tiktok.png",
   youtube_shorts: "/icons/youtube-shorts.png",
-  pinterest: "/icons/Pinterest-logo.webp",
+  pinterest: "/icons/pinterest-logo-128.png",
 };
 
 function LinkIcon() {
@@ -375,9 +376,9 @@ export default function PublishChannelSelector({
               }}
               style={{
                 ...(!isConnected ? channelBtnDisabled : {}),
-                minHeight: 48,
+                minHeight: 45,
                 minWidth: 0,
-                padding: "6px 6px",
+                padding: "5px 4px",
                 position: "relative",
                 overflow: "visible",
                 borderRadius: 16,
@@ -440,9 +441,9 @@ export default function PublishChannelSelector({
                 decoding="sync"
                 fetchPriority="high"
                 style={{
-                  width: key === "site_web" ? 27 : 29,
-                  height: key === "site_web" ? 27 : 29,
-                  borderRadius: key === "site_web" ? 9 : 999,
+                  width: key === "site_web" ? 25 : 27,
+                  height: key === "site_web" ? 25 : 27,
+                  borderRadius: key === "site_web" ? 8 : 999,
                   objectFit: "cover",
                   opacity: isConnected ? 1 : 0.48,
                   filter: isConnected ? undefined : "grayscale(0.7)",

@@ -9,11 +9,12 @@ import {
   getSimpleFrenchErrorMessage,
 } from "@/lib/userFacingErrors";
 
-export type PublishDiagnosticChannel = "facebook" | "instagram" | "linkedin" | "gmb" | "inrcy_site" | "site_web" | "tiktok" | "youtube_shorts" | "pinterest";
+export type PublishDiagnosticChannel = "facebook" | "instagram" | "linkedin" | "gmb" | "inrcy_site" | "site_web" | "inr_search" | "tiktok" | "youtube_shorts" | "pinterest";
 
 const CHANNEL_LABELS: Record<PublishDiagnosticChannel, string> = {
   inrcy_site: "Site iNrCy",
   site_web: "Site web",
+  inr_search: "iNr’Search",
   gmb: "Google Business",
   facebook: "Facebook",
   instagram: "Instagram",
@@ -26,6 +27,7 @@ const CHANNEL_LABELS: Record<PublishDiagnosticChannel, string> = {
 const CHANNEL_FALLBACKS: Record<PublishDiagnosticChannel, string> = {
   inrcy_site: "Le site iNrCy n'a pas pu publier. Merci de réessayer.",
   site_web: "Le site web n'a pas pu publier. Merci de réessayer.",
+  inr_search: "La page iNr’Search n’a pas pu être mise à jour. Merci de réessayer.",
   gmb: "Google Business n'a pas pu publier. Merci de réessayer.",
   facebook: "Facebook n'a pas pu publier. Merci de réessayer.",
   instagram: "Instagram n'a pas pu publier. Merci de réessayer.",

@@ -88,7 +88,7 @@ export default function AdminToolsClient() {
     const disabled = tools.length - enabled;
     const tiktokEnabled = users.filter((user) => user.access_map?.tiktok).length;
     const pinterestEnabled = users.filter((user) => user.access_map?.pinterest).length;
-    const trustpilotEnabled = users.filter((user) => user.access_map?.trustpilot).length;
+    const inrSearchEnabled = users.filter((user) => user.access_map?.inr_search).length;
     const agentEnabled = users.filter((user) => user.access_map?.inr_agent).length;
 
     return {
@@ -97,7 +97,7 @@ export default function AdminToolsClient() {
       disabled,
       tiktokEnabled,
       pinterestEnabled,
-      trustpilotEnabled,
+      inrSearchEnabled,
       agentEnabled,
     };
   }, [selectedUser, tools.length, users]);
@@ -253,7 +253,7 @@ export default function AdminToolsClient() {
           </article>
           <article className={styles.metricCard}>
             <span className={styles.metricLabel}>Spéciaux activés</span>
-            <strong className={styles.metricValueSmall}>{metrics.tiktokEnabled} TikTok · {metrics.pinterestEnabled} Pinterest · {metrics.trustpilotEnabled} Trustpilot · {metrics.agentEnabled} Agent</strong>
+            <strong className={styles.metricValueSmall}>{metrics.tiktokEnabled} TikTok · {metrics.pinterestEnabled} Pinterest · {metrics.inrSearchEnabled} iNr'Search · {metrics.agentEnabled} Agent</strong>
             <small className={styles.metricSub}>Sur les comptes affichés</small>
           </article>
         </section>

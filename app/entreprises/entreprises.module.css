@@ -1,0 +1,21 @@
+.page { min-height: 100vh; padding: 0 18px 70px; background: radial-gradient(circle at 10% 0%, rgba(32,197,255,.14), transparent 28rem), radial-gradient(circle at 90% 0%, rgba(139,75,255,.14), transparent 30rem), #f6f8ff; color: #111936; }
+.header { width: min(1080px,100%); margin: 0 auto; padding: 34px 0 40px; }
+.header img { width: 120px; height: auto; }
+.header > div { margin-top: 72px; max-width: 760px; }
+.header span { color: #6259e8; font-size: 13px; font-weight: 950; text-transform: uppercase; letter-spacing: .09em; }
+.header h1 { margin: 10px 0 14px; font-size: clamp(38px,7vw,68px); letter-spacing: -.05em; line-height: 1; }
+.header p { color: #60708f; font-size: 19px; line-height: 1.65; }
+.grid { width: min(1080px,100%); margin: 0 auto; display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 16px; }
+.card { min-height: 260px; padding: 26px; border-radius: 24px; display: flex; flex-direction: column; color: inherit; text-decoration: none; background: rgba(255,255,255,.96); border: 1px solid #e2e7f7; box-shadow: 0 16px 42px rgba(31,45,94,.08); transition: transform .18s ease, box-shadow .18s ease; }
+.card:hover { transform: translateY(-4px); box-shadow: 0 24px 52px rgba(31,45,94,.14); }
+.meta { color: #6259e8; font-size: 12px; font-weight: 900; text-transform: uppercase; letter-spacing: .06em; }
+.card h2 { margin: 14px 0 10px; font-size: 25px; line-height: 1.15; }
+.card p { margin: 0; color: #65718d; line-height: 1.6; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.card > span { margin-top: auto; padding-top: 22px; color: #4d53cf; font-weight: 900; }
+.empty { grid-column: 1/-1; padding: 32px; border-radius: 22px; background: #fff; border: 1px solid #e2e7f7; color: #66728e; }
+@media (max-width: 850px) { .grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+@media (max-width: 560px) { .header > div { margin-top: 48px; } .grid { grid-template-columns: 1fr; } }
+
+.indexTopbar { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+.indexTopbar nav { display: flex; gap: 14px; }
+.indexTopbar nav a { color: #4f53cc; text-decoration: none; font-weight: 850; font-size: 13px; }

@@ -22,13 +22,15 @@ import {
 import { buildVideoSettingsByChannel, normalizeChannelVideoSettings } from "@/lib/boosterVideoSettings";
 import { INSTAGRAM_RECONNECT_USER_MESSAGE, isInstagramAuthorizationLikeMessage } from "@/lib/userFacingErrors";
 import { getPublishChannelUserMessage, logPublishChannelFailure } from "@/lib/channelPublishDiagnostics";
+import { ensureSystemManagedInrSearch, revalidateInrSearchPublicRoutes } from "@/lib/inrSearchProvisioning";
+import { getInrSearchPublicStatus } from "@/lib/inrSearchPublic";
 
 const FACEBOOK_GRAPH_VERSION = "v20.0";
 const LINKEDIN_VERSION = "202603";
 const TIKTOK_INRSEND_EXTERNAL_ACTION_MESSAGE =
   "TikTok ne permet pas la modification ou la suppression réelle depuis iNrCy. Ouvrez TikTok pour gérer cette publication.";
 
-export type ChannelKey = "inrcy_site" | "site_web" | "gmb" | "facebook" | "instagram" | "linkedin" | "tiktok" | "pinterest";
+export type ChannelKey = "inrcy_site" | "site_web" | "inr_search" | "gmb" | "facebook" | "instagram" | "linkedin" | "tiktok" | "pinterest";
 type JsonRecord = Record<string, unknown>;
 
 type InstagramDeleteTokenCandidate = {
@@ -343,7 +345,7 @@ function getRenderedImageUrl(value: unknown): string {
 
 function getChannelImageSet(eventPayload: JsonRecord, publication: JsonRecord, channel: ChannelKey): ImageSet {
   const postByChannel = asRecord(eventPayload.postByChannel);
-  const fallbackChannelPost = channel === "inrcy_site" ? postByChannel.site_web : channel === "site_web" ? postByChannel.inrcy_site : null;
+  const fallbackChannelPost = channel === "inrcy_site" ? postByChannel.site_web : channel === "site_web" ? postByChannel.inrcy_site : channel === "inr_search" ? (postByChannel.site_web || postByChannel.inrcy_site) : null;
   const raw = asRecord(postByChannel[channel] ?? fallbackChannelPost);
   const publicationImages = Array.isArray(publication.images)
     ? publication.images.map((value) => String(value || "").trim()).filter(Boolean)
@@ -376,7 +378,7 @@ function getChannelImageSet(eventPayload: JsonRecord, publication: JsonRecord, c
 
 function getChannelEditableAttachments(eventPayload: JsonRecord, publication: JsonRecord, channel: ChannelKey): EditableImageAttachment[] {
   const postByChannel = asRecord(eventPayload.postByChannel);
-  const fallbackChannelPost = channel === "inrcy_site" ? postByChannel.site_web : channel === "site_web" ? postByChannel.inrcy_site : null;
+  const fallbackChannelPost = channel === "inrcy_site" ? postByChannel.site_web : channel === "site_web" ? postByChannel.inrcy_site : channel === "inr_search" ? (postByChannel.site_web || postByChannel.inrcy_site) : null;
   const raw = asRecord(postByChannel[channel] ?? fallbackChannelPost);
   const imageSet = getChannelImageSet(eventPayload, publication, channel);
   const rawAttachments = Array.isArray(raw.attachments) ? raw.attachments : [];
@@ -549,7 +551,7 @@ function getEventPublicationMediaType(eventPayload: JsonRecord, publication: Jso
 
 function getChannelPost(eventPayload: JsonRecord, publication: JsonRecord, channel: ChannelKey): PostPayload {
   const postByChannel = asRecord(eventPayload.postByChannel);
-  const fallbackChannelPost = channel === "inrcy_site" ? postByChannel.site_web : channel === "site_web" ? postByChannel.inrcy_site : null;
+  const fallbackChannelPost = channel === "inrcy_site" ? postByChannel.site_web : channel === "site_web" ? postByChannel.inrcy_site : channel === "inr_search" ? (postByChannel.site_web || postByChannel.inrcy_site) : null;
   const raw = asRecord(postByChannel[channel] ?? fallbackChannelPost ?? eventPayload.post);
   const eventPost = asRecord(eventPayload.post);
   const publicationTags = Array.isArray(publication.hashtags) ? publication.hashtags : [];
@@ -1088,6 +1090,22 @@ async function replaceChannelDelivery(params: {
   const phone = String(profile.phone ?? "").trim();
 
   const canonMessage = buildBoosterMessage(channel, nextPost, { websiteUrl, phone });
+
+  if (channel === "inr_search") {
+    const provisioned = await ensureSystemManagedInrSearch(supabaseAdmin, userId);
+    const slug = String(provisioned.inrSearch?.publishedSlug || provisioned.inrSearch?.slug || "").trim();
+    const publicStatus = await getInrSearchPublicStatus(slug);
+    if (!publicStatus.published) {
+      throw new Error("La page iNr’Search n’est pas disponible. Vérifiez Bubble Access et les informations du profil.");
+    }
+    revalidateInrSearchPublicRoutes(slug);
+    return {
+      externalId: previousExternalId || publicationId || randomUUID(),
+      status: "delivered",
+      error: null,
+      externalUrl: publicStatus.publicUrl,
+    };
+  }
 
   if (channel === "inrcy_site" || channel === "site_web") {
     const { data: article, error: articleError } = await supabaseAdmin
@@ -1712,6 +1730,13 @@ async function removeChannelDelivery(params: {
     throw new Error(TIKTOK_INRSEND_EXTERNAL_ACTION_MESSAGE);
   }
 
+  if (channel === "inr_search") {
+    const provisioned = await ensureSystemManagedInrSearch(supabaseAdmin, userId);
+    const slug = String(provisioned.inrSearch?.publishedSlug || provisioned.inrSearch?.slug || "").trim();
+    revalidateInrSearchPublicRoutes(slug);
+    return;
+  }
+
   if (channel === "pinterest") {
     const accessToken = await getPinterestAccessToken(userId);
     if (!accessToken) throw new Error("Pinterest à reconnecter. Rendez-vous dans Canaux.");
@@ -1899,7 +1924,7 @@ function buildUpdatedPayload(params: {
       ...currentPostByChannel,
       [channel]: nextChannelPost,
     },
-    post: channel === "inrcy_site" || channel === "site_web" ? asRecord(eventPayload.post) : eventPayload.post,
+    post: channel === "inrcy_site" || channel === "site_web" || channel === "inr_search" ? asRecord(eventPayload.post) : eventPayload.post,
     results,
     mediaType: isVideoPublication ? "video" : (eventPayload.mediaType || eventPayload.media_type || "images"),
     ...(isVideoPublication && video ? { video, sourceVideo: originalVideoForWork || asRecord(video).sourceVideo || asRecord(video).source_video || null } : {}),
@@ -2059,6 +2084,10 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
 
       await persistEventPayload(activeUserId, publicationId, nextPayload);
       await syncDeliveryRow({ userId: activeUserId, publicationId, channel, status: replaceResult.status, error: replaceResult.error });
+      if (channel === "inr_search") {
+        const provisioned = await ensureSystemManagedInrSearch(supabaseAdmin, activeUserId);
+        revalidateInrSearchPublicRoutes(String(provisioned.inrSearch?.publishedSlug || provisioned.inrSearch?.slug || ""));
+      }
 
       return NextResponse.json({ ok: true, publication_id: publicationId, channel, external_id: replaceResult.externalId, payload: nextPayload });
     } catch (e: unknown) {
@@ -2104,6 +2133,10 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
       const nextPayload = buildDeletedPayload({ eventPayload: ctx.eventPayload, channel, previousExternalId });
       await persistEventPayload(activeUserId, publicationId, nextPayload);
       await syncDeliveryRow({ userId: activeUserId, publicationId, channel, status: "deleted", error: null });
+      if (channel === "inr_search") {
+        const provisioned = await ensureSystemManagedInrSearch(supabaseAdmin, activeUserId);
+        revalidateInrSearchPublicRoutes(String(provisioned.inrSearch?.publishedSlug || provisioned.inrSearch?.slug || ""));
+      }
 
       return NextResponse.json({ ok: true, deleted: true, removed_publication: false, payload: nextPayload });
     } catch (e: unknown) {

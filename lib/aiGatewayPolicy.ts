@@ -9,7 +9,6 @@ export type AiGenerationFeature =
   | "mails.attachment-image"
   | "mails.attachment-video"
   | "reviews.google"
-  | "reviews.trustpilot"
   | "agent.stats-report"
   | "booster.transcript-cleanup"
   | "booster.transcribe";
@@ -155,17 +154,6 @@ export const AI_FEATURE_POLICIES: Readonly<Record<AiGenerationFeature, AiFeature
     defaultOperationMaxDurationMs: 65_000,
   },
   "reviews.google": {
-    maxOutputTokens: 1000,
-    maxRetries: 1,
-    maxTimeoutMs: 40_000,
-    maxInputChars: 16_000,
-    maxImages: 0,
-    maxImageDataChars: 0,
-    defaultOperationMaxCalls: 1,
-    defaultOperationMaxReservedOutputTokens: 1000,
-    defaultOperationMaxDurationMs: 50_000,
-  },
-  "reviews.trustpilot": {
     maxOutputTokens: 1000,
     maxRetries: 1,
     maxTimeoutMs: 40_000,

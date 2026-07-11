@@ -4,7 +4,7 @@ import LegalTextContent from "./LegalTextContent";
 
 const CONFIDENTIALITE_TEXT = `La présente Politique de confidentialité explique comment la société iNrCy collecte, utilise, conserve, protège et partage certaines données personnelles dans le cadre de son site internet, de son logiciel en ligne, de ses générateurs iNrCy, de ses modules applicatifs et des services tiers connectés par les utilisateurs.
 
-Elle s’applique notamment au site internet iNrCy, à l’application iNrCy, aux générateurs iNrCy, aux modules de publication, de communication, de statistiques, de relation client, de devis, de factures, d’agenda, ainsi qu’aux connexions activées par l’utilisateur avec des services tiers tels que Google, YouTube, TikTok, Pinterest, Trustpilot, Meta, Facebook, Instagram, LinkedIn, Microsoft, Stripe ou tout autre service nécessaire au fonctionnement de l’application.
+Elle s’applique notamment au site internet iNrCy, à l’application iNrCy, aux générateurs iNrCy, aux modules de publication, de communication, de statistiques, de relation client, de devis, de factures, d’agenda, ainsi qu’aux connexions activées par l’utilisateur avec des services tiers tels que Google, YouTube, TikTok, Pinterest, Meta, Facebook, Instagram, LinkedIn, Microsoft, Stripe ou tout autre service nécessaire au fonctionnement de l’application.
 
 1. Responsable du traitement
 
@@ -285,7 +285,6 @@ Facebook ;
 Instagram ;
 LinkedIn ;
 Pinterest ;
-Trustpilot ;
 Microsoft ;
 services de messagerie ;
 protocoles ou outils de connexion mail ;
@@ -531,52 +530,7 @@ L’utilisateur peut révoquer l’accès de iNrCy à son compte Pinterest depui
 
 L’utilisateur peut également demander la suppression des données concernées en contactant iNrCy à l’adresse : contact@inrcy.com.
 
-18. Utilisation de Trustpilot et des avis clients
-
-Le logiciel iNrCy peut permettre à l’utilisateur de connecter ou configurer Trustpilot afin de consulter, gérer, préparer des réponses, publier des réponses ou exploiter certains avis clients dans le module E-réputation.
-
-Lorsque l’utilisateur connecte ou configure Trustpilot, iNrCy peut accéder ou traiter uniquement les données nécessaires au fonctionnement des fonctionnalités activées, notamment :
-
-identifiants de fiche ou d’entreprise Trustpilot ;
-nom affiché de l’entreprise ;
-lien de la page Trustpilot ;
-lien de demande d’avis ;
-identifiants nécessaires à la connexion sécurisée ;
-avis clients disponibles ;
-nom ou pseudonyme de l’auteur de l’avis lorsque cette information est fournie ;
-note ;
-titre ou contenu de l’avis ;
-date de création ou de mise à jour ;
-statut de réponse ;
-réponse déjà publiée ;
-statut de vérification lorsque cette information est fournie ;
-données statistiques ou indicateurs de réputation lorsque ces données sont disponibles ;
-erreurs ou retours techniques de Trustpilot.
-
-Ces données sont utilisées uniquement pour permettre à l’utilisateur de connecter ou configurer Trustpilot, afficher ses avis clients, préparer une réponse, publier ou supprimer une réponse lorsque la fonctionnalité est disponible, afficher des indicateurs de réputation, générer un brouillon de réponse avec l’assistance de l’intelligence artificielle lorsque l’utilisateur le demande, ou assurer le bon fonctionnement technique du module E-réputation.
-
-Les réponses publiées ou transmises vers Trustpilot sont envoyées à Trustpilot pour permettre l’exécution de l’action demandée par l’utilisateur.
-
-Lorsque l’utilisateur utilise une fonctionnalité de génération de réponse assistée par intelligence artificielle, le contenu de l’avis, la note, le contexte professionnel et les consignes de réponse peuvent être transmis au prestataire d’intelligence artificielle uniquement pour générer le brouillon demandé.
-
-iNrCy ne vend pas les données Trustpilot des utilisateurs, ne les loue pas, ne les utilise pas à des fins publicitaires propres et ne les utilise pas pour entraîner des modèles d’intelligence artificielle généraux.
-
-iNrCy ne transmet les données Trustpilot à des tiers que lorsque cela est nécessaire :
-
-pour fournir la fonctionnalité demandée par l’utilisateur ;
-pour assurer l’hébergement, le stockage, la sécurité ou le fonctionnement technique du service ;
-pour réaliser une action explicitement demandée par l’utilisateur ;
-pour afficher les avis, réponses, statistiques ou historiques dans l’application ;
-pour assurer le support ou le diagnostic technique avec l’accord de l’utilisateur ;
-pour respecter une obligation légale.
-
-L’utilisateur reste responsable des réponses qu’il prépare, valide ou publie sur Trustpilot depuis iNrCy, ainsi que du respect des règles applicables à la collecte d’avis, à la réponse aux avis, aux sollicitations envoyées à ses clients et à l’utilisation de Trustpilot.
-
-L’utilisateur peut révoquer ou modifier les accès Trustpilot selon les moyens proposés par Trustpilot ou depuis les paramètres du logiciel iNrCy lorsque cette option est disponible.
-
-L’utilisateur peut également demander la suppression des données concernées en contactant iNrCy à l’adresse : contact@inrcy.com.
-
-19. Utilisation de technologies d’intelligence artificielle
+18. Utilisation de technologies d’intelligence artificielle
 
 Le logiciel iNrCy peut intégrer des fonctionnalités reposant sur des technologies d’intelligence artificielle, notamment pour :
 
@@ -612,7 +566,7 @@ Les contenus générés doivent être vérifiés par le professionnel avant tout
 
 Sauf fonctionnalité expressément activée par l’utilisateur, iNrCy ne transmet pas les données issues de services connectés tels que Google, YouTube ou TikTok à un prestataire d’intelligence artificielle.
 
-20. Paiements
+19. Paiements
 
 Les paiements peuvent être traités par Stripe ou par tout autre prestataire de paiement accepté par iNrCy.
 
@@ -631,7 +585,7 @@ informations nécessaires à la gestion des abonnements.
 
 Ces traitements sont nécessaires à la gestion des abonnements, paiements, factures et incidents de paiement.
 
-21. Sites internet proposés en complément
+20. Sites internet proposés en complément
 
 iNrCy peut proposer la location, la mise à disposition, la création, la maintenance, la gestion ou la vente de sites internet.
 
@@ -643,7 +597,7 @@ le professionnel doit s’assurer que son site respecte les obligations applicab
 
 Lorsque iNrCy fournit ou administre un site pour le compte d’un professionnel, certaines données techniques, formulaires, statistiques, demandes de contact ou informations nécessaires au fonctionnement du site peuvent être traitées dans le cadre de la prestation.
 
-22. Finalités des traitements
+21. Finalités des traitements
 
 Les données personnelles peuvent être traitées pour les finalités suivantes :
 
@@ -657,7 +611,7 @@ Sécurité du service : intérêt légitime ;
 Prévention de la fraude : intérêt légitime ;
 Publication multicanale : exécution du contrat ;
 Connexion aux services tiers : exécution du contrat et autorisation de l’utilisateur ;
-Utilisation des API Google, YouTube, TikTok, LinkedIn, Pinterest et Trustpilot : exécution du contrat et autorisation de l’utilisateur ;
+Utilisation des API Google, YouTube, TikTok, LinkedIn, Pinterest : exécution du contrat et autorisation de l’utilisateur ;
 Gestion CRM : exécution du contrat entre iNrCy et le professionnel utilisateur ;
 Traitement des données clients du professionnel : sous-traitance pour le compte du professionnel ;
 Création de devis et factures : exécution du contrat ;
@@ -669,7 +623,7 @@ Mesure d’audience du site : consentement, sauf exemption applicable ;
 Cookies non nécessaires : consentement ;
 Respect des obligations légales : obligation légale ;
 Gestion des litiges : intérêt légitime.
-23. Destinataires des données
+22. Destinataires des données
 
 Les données peuvent être accessibles, selon les besoins et les fonctionnalités utilisées, aux destinataires suivants :
 
@@ -711,7 +665,6 @@ Facebook ;
 Instagram ;
 LinkedIn ;
 Pinterest ;
-Trustpilot ;
 services de messagerie ;
 fournisseurs techniques nécessaires au fonctionnement de l’application.
 
@@ -719,7 +672,7 @@ iNrCy ne vend pas les données personnelles de ses utilisateurs.
 
 iNrCy ne partage les données avec des tiers que lorsque cela est nécessaire au fonctionnement du service, à l’exécution d’une fonctionnalité demandée par l’utilisateur, au respect d’une obligation légale, à la sécurité ou au support.
 
-24. Transferts hors Union européenne
+23. Transferts hors Union européenne
 
 Certains prestataires ou services tiers peuvent impliquer des transferts de données hors de l’Union européenne.
 
@@ -730,9 +683,9 @@ décisions d’adéquation ;
 mesures contractuelles, techniques ou organisationnelles complémentaires ;
 mécanismes reconnus par la réglementation applicable.
 
-L’utilisateur reconnaît que certaines plateformes tierces connectées, notamment Google, YouTube, TikTok, Pinterest, Trustpilot, Meta, LinkedIn, Microsoft, Stripe ou OpenAI, peuvent traiter certaines données selon leurs propres conditions, politiques de confidentialité et infrastructures techniques.
+L’utilisateur reconnaît que certaines plateformes tierces connectées, notamment Google, YouTube, TikTok, Pinterest, Meta, LinkedIn, Microsoft, Stripe ou OpenAI, peuvent traiter certaines données selon leurs propres conditions, politiques de confidentialité et infrastructures techniques.
 
-25. Durées de conservation
+24. Durées de conservation
 
 Les données sont conservées pendant une durée adaptée à leur finalité.
 
@@ -759,7 +712,7 @@ Les durées d’affichage dans iNrSend ne remplacent pas les obligations légale
 
 Le professionnel reste responsable de la conservation légale de ses propres documents, notamment comptables, fiscaux et commerciaux.
 
-26. Sécurité
+25. Sécurité
 
 iNrCy met en œuvre des mesures techniques et organisationnelles destinées à protéger les données personnelles, notamment :
 
@@ -784,7 +737,7 @@ L’utilisateur doit également protéger ses identifiants, mots de passe et acc
 
 L’utilisateur est invité à révoquer les connexions aux services tiers qu’il n’utilise plus.
 
-27. Cookies et traceurs
+26. Cookies et traceurs
 
 Le site internet iNrCy peut utiliser :
 
@@ -799,7 +752,7 @@ L’utilisateur peut accepter, refuser ou paramétrer les cookies via le module 
 
 Le refus des cookies non nécessaires n’empêche pas l’accès au site.
 
-28. Droits des personnes
+27. Droits des personnes
 
 Conformément à la réglementation applicable, toute personne concernée peut exercer les droits suivants :
 
@@ -822,7 +775,7 @@ Lorsqu’une demande concerne des données traitées par iNrCy pour le compte d�
 
 La personne concernée peut également saisir la CNIL.
 
-29. Révocation des connexions aux services tiers
+28. Révocation des connexions aux services tiers
 
 L’utilisateur peut révoquer les connexions aux services tiers connectés à iNrCy.
 
@@ -840,8 +793,6 @@ depuis les paramètres du compte LinkedIn ;
 
 depuis les paramètres du compte Pinterest ;
 
-depuis les paramètres du compte Trustpilot lorsque ce service le permet ;
-
 depuis les paramètres du compte Facebook ;
 
 depuis les paramètres du compte Instagram ;
@@ -854,7 +805,7 @@ La révocation de l’accès n’entraîne pas nécessairement la suppression im
 
 L’utilisateur peut demander la suppression des données concernées à l’adresse : contact@inrcy.com.
 
-30. Suppression du compte
+29. Suppression du compte
 
 L’utilisateur peut demander la suppression de son compte iNrCy en contactant iNrCy à l’adresse : contact@inrcy.com.
 
@@ -869,7 +820,7 @@ des délais techniques de sauvegarde ou d’archivage.
 
 Lorsque iNrCy agit comme sous-traitant pour le compte d’un professionnel utilisateur, certaines demandes peuvent devoir être adressées directement au professionnel concerné.
 
-31. Mineurs
+30. Mineurs
 
 Les services iNrCy sont destinés exclusivement à des professionnels majeurs.
 
@@ -877,13 +828,13 @@ Aucun service iNrCy n’est destiné aux mineurs.
 
 Toute donnée concernant un mineur pourra être supprimée sur demande lorsque cela est applicable.
 
-32. Modification de la présente politique
+31. Modification de la présente politique
 
 La présente Politique de confidentialité peut être modifiée à tout moment afin de tenir compte des évolutions du site, du logiciel, des services, des modules, des API utilisées, de la réglementation ou des prestataires.
 
 La version applicable est celle publiée sur le site internet et/ou dans le logiciel iNrCy au moment de la consultation.
 
-En cas de modification importante concernant l’utilisation des données issues de services tiers connectés, notamment Google, YouTube, TikTok, LinkedIn, Pinterest ou Trustpilot, iNrCy pourra informer les utilisateurs concernés et demander une nouvelle autorisation lorsque cela est nécessaire.`;
+En cas de modification importante concernant l’utilisation des données issues de services tiers connectés, notamment Google, YouTube, TikTok, LinkedIn, Pinterest, iNrCy pourra informer les utilisateurs concernés et demander une nouvelle autorisation lorsque cela est nécessaire.`;
 
 export default function ConfidentialiteContent() {
   return <LegalTextContent text={CONFIDENTIALITE_TEXT} />;

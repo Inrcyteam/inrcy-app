@@ -78,7 +78,6 @@ test("shared writing modules consume the same canonical profile", () => {
     "lib/templateAiGeneration.ts",
     "app/api/mails/generate-ai/route.ts",
     "app/api/e-reputation/google/generate-reply/route.ts",
-    "app/api/e-reputation/trustpilot/generate-reply/route.ts",
     "app/api/agent/actions/send-stats-report/route.ts",
     "app/api/booster/transcribe/route.ts",
   ];

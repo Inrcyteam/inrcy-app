@@ -257,6 +257,7 @@ const BASE_TEMPLATES: TemplateDef[] = [
     ctaLabel: "Laisser un avis",
   },
 
+  
   {
     key: "booster_avis_trustpilot",
     module: "booster",

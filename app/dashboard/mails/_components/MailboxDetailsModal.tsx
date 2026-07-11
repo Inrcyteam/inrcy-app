@@ -523,7 +523,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
 
   const publicationDisplayKey = React.useMemo<DisplayKey>(() => {
     const key = String(activePublicationEditChannelKey || "");
-    if (["inrcy_site", "site_web", "gmb", "facebook", "instagram", "linkedin", "tiktok", "youtube_shorts", "pinterest"].includes(key)) {
+    if (["inrcy_site", "site_web", "inr_search", "gmb", "facebook", "instagram", "linkedin", "tiktok", "youtube_shorts", "pinterest"].includes(key)) {
       return key as DisplayKey;
     }
     return "facebook";

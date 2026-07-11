@@ -40,7 +40,6 @@ test("all Gateway feature tags have explicit economic policies", () => {
     "mails.attachment-video",
     "mails.generate",
     "reviews.google",
-    "reviews.trustpilot",
     "templates.generate",
   ].sort());
 

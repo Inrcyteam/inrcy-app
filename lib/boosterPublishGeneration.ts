@@ -56,6 +56,7 @@ type BoosterGenResponse = {
 const allowedChannels: BoosterChannels[] = [
   "inrcy_site",
   "site_web",
+  "inr_search",
   "gmb",
   "facebook",
   "instagram",
@@ -65,7 +66,7 @@ const allowedChannels: BoosterChannels[] = [
   "pinterest",
 ];
 
-const siteChannels = new Set<BoosterChannels>(["inrcy_site", "site_web"]);
+const siteChannels = new Set<BoosterChannels>(["inrcy_site", "site_web", "inr_search"]);
 
 // Seuils anti-réponse cassée uniquement. Ils sont volontairement très inférieurs
 // aux objectifs éditoriaux du prompt : une IA concise mais pertinente doit passer.
@@ -73,6 +74,7 @@ const siteChannels = new Set<BoosterChannels>(["inrcy_site", "site_web"]);
 const CHANNEL_MIN_CONTENT_LENGTH: Record<BoosterChannels, number> = {
   inrcy_site: 180,
   site_web: 220,
+  inr_search: 220,
   gmb: 80,
   facebook: 100,
   instagram: 80,
@@ -88,6 +90,7 @@ const CHANNEL_MIN_CONTENT_LENGTH: Record<BoosterChannels, number> = {
 const CHANNEL_DETAILED_ENRICHMENT_MIN: Record<BoosterChannels, number> = {
   inrcy_site: 1300,
   site_web: 1600,
+  inr_search: 1600,
   gmb: 650,
   facebook: 750,
   instagram: 500,
@@ -100,6 +103,7 @@ const CHANNEL_DETAILED_ENRICHMENT_MIN: Record<BoosterChannels, number> = {
 const CHANNEL_LABELS: Record<BoosterChannels, string> = {
   inrcy_site: "Site iNrCy",
   site_web: "Site web",
+  inr_search: "iNr'Search",
   gmb: "Google Business",
   facebook: "Facebook",
   instagram: "Instagram",
@@ -363,6 +367,7 @@ function normalizePost(channel: BoosterChannels, raw: Partial<ChannelPost> | und
 const CHANNEL_OUTPUT_ALIASES: Record<BoosterChannels, string[]> = {
   inrcy_site: ["inrcy_site", "inrcysite", "site_inrcy", "siteinrcy"],
   site_web: ["site_web", "siteweb", "website", "web_site"],
+  inr_search: ["inr_search", "inrsearch", "search_page", "public_page"],
   gmb: ["gmb", "google_business", "googlebusiness", "google_business_profile"],
   facebook: ["facebook", "fb"],
   instagram: ["instagram", "insta"],
@@ -680,6 +685,7 @@ function computeMaxOutputTokens(
   const expectedPerChannel: Record<BoosterChannels, number> = {
     inrcy_site: 950,
     site_web: 1100,
+    inr_search: 1100,
     gmb: 450,
     facebook: 550,
     instagram: 450,

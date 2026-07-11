@@ -141,7 +141,7 @@ function InrcyActivityBlock({ model }: { model: CubeModel }) {
   const stats = model.inrcyActivityStats;
   if (!stats) return null;
 
-  const title = model.key === "inrbadge" ? "Activité iNrBadge" : "Envoyé via iNrCy";
+  const title = model.key === "inrbadge" ? "Activité iNrBadge" : model.key === "inr_search" ? "Activité iNr'Search" : "Envoyé via iNrCy";
   const items = model.key === "mails"
     ? [
         { label: "Campagnes", data: stats.publications },
@@ -154,6 +154,12 @@ function InrcyActivityBlock({ model }: { model: CubeModel }) {
           { label: "Scans QR", data: stats.photos },
           { label: "Actions", data: stats.videos },
         ]
+      : model.key === "inr_search"
+        ? [
+            { label: "Vues", data: stats.publications },
+            { label: "Actions", data: stats.photos },
+            { label: "Contacts", data: stats.videos },
+          ]
       : model.key === "youtube_shorts"
         ? [
             { label: "Publications", data: stats.publications },
@@ -328,6 +334,8 @@ function getForcedCubeContextLabel(key: CubeModel["key"]) {
       return "URL associée";
     case "gmb":
       return "Fiche Google";
+    case "inr_search":
+      return "Page publique";
     case "facebook":
       return "Page Facebook";
     case "instagram":
@@ -504,12 +512,12 @@ export function Cube({
         <div className={`${styles.cubeBody} ${model.inrcyActivityStats ? styles.cubeBodyWithInrcyActivity : ""}`}>
           <div className={styles.detailTopRow}>
             <div className={`${styles.block} ${styles.metricOverviewBlock}`}>
-              <div className={styles.blockTitle}>{model.key === "mails" ? "Activité mail" : model.key === "inrbadge" ? "Configuration badge" : "Visibilité du canal"}</div>
+              <div className={styles.blockTitle}>{model.key === "mails" ? "Activité mail" : model.key === "inrbadge" ? "Configuration badge" : model.key === "inr_search" ? "Visibilité de la page" : "Visibilité du canal"}</div>
               <MiniMetricGrid items={model.visibilityStats} />
             </div>
 
             <div className={`${styles.block} ${styles.provenanceCompactBlock}`}>
-              <div className={styles.blockTitle}>{model.key === "mails" ? "Répartition des actions mail" : model.key === "inrbadge" ? "Suivi iNrBadge" : "Provenance"}</div>
+              <div className={styles.blockTitle}>{model.key === "mails" ? "Répartition des actions mail" : model.key === "inrbadge" ? "Suivi iNrBadge" : model.key === "inr_search" ? "Sources de trafic" : "Provenance"}</div>
               <Donut segments={model.provenance} />
               {model.provenanceHint ? <div className={styles.provenanceHint}>{model.provenanceHint}</div> : null}
             </div>
@@ -528,7 +536,7 @@ export function Cube({
             </div>
 
             <div className={`${styles.block} ${styles.metricOverviewBlock}`}>
-              <div className={styles.blockTitle}>{model.key === "mails" ? "Automatiques & business" : model.key === "inrbadge" ? "Actions rapides" : "Actions utiles"}</div>
+              <div className={styles.blockTitle}>{model.key === "mails" ? "Automatiques & business" : model.key === "inrbadge" ? "Actions rapides" : model.key === "inr_search" ? "Actions de contact" : "Actions utiles"}</div>
               <MiniMetricGrid items={model.actionStats} />
             </div>
           </div>

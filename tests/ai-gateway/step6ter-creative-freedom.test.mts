@@ -77,7 +77,6 @@ test("engine preference is passed into shared writing-freedom rules across writi
     "lib/templateAiGeneration.ts",
     "app/api/mails/generate-ai/route.ts",
     "app/api/e-reputation/google/generate-reply/route.ts",
-    "app/api/e-reputation/trustpilot/generate-reply/route.ts",
   ];
   for (const file of files) {
     const source = read(file);
