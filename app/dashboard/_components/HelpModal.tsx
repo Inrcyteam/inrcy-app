@@ -9,6 +9,9 @@ type Props = {
   children: React.ReactNode;
 };
 
+const MOBILE_DOCK_HEIGHT =
+  "var(--inrcy-mobile-bottom-nav-total-height, 0px)";
+
 export default function HelpModal({ open, title, onClose, children }: Props) {
   useEffect(() => {
     if (!open) return;
@@ -31,6 +34,9 @@ export default function HelpModal({ open, title, onClose, children }: Props) {
       style={{
         position: "fixed",
         inset: 0,
+        bottom: MOBILE_DOCK_HEIGHT,
+        height: `calc(100dvh - ${MOBILE_DOCK_HEIGHT})`,
+        maxHeight: `calc(100dvh - ${MOBILE_DOCK_HEIGHT})`,
         zIndex: 999999,
         display: "flex",
         alignItems: "center",
@@ -55,7 +61,7 @@ export default function HelpModal({ open, title, onClose, children }: Props) {
         style={{
           position: "relative",
           width: "min(980px, 100%)",
-          maxHeight: "min(92vh, 980px)",
+          maxHeight: `min(calc(100dvh - ${MOBILE_DOCK_HEIGHT} - 32px), 980px)`,
           overflowY: "auto",
           overflowX: "hidden",
           borderRadius: 18,

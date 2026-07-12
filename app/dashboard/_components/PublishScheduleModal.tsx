@@ -239,6 +239,7 @@ export default function PublishScheduleModal({
 
   return (
     <div
+      className={styles.fullscreenModalOverlay}
       style={{
         position: "fixed",
         inset: 0,
@@ -256,7 +257,8 @@ export default function PublishScheduleModal({
         className={styles.blockCard}
         style={{
           width: "min(780px, 100%)",
-          maxHeight: "calc(100vh - 32px)",
+          maxHeight:
+            "calc(100dvh - var(--inrcy-mobile-bottom-nav-total-height, 0px) - 32px)",
           overflowY: "auto",
           display: "grid",
           gap: 14,

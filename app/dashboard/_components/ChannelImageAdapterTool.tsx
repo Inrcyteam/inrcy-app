@@ -103,6 +103,9 @@ type CardsPanelProps = {
   publicationPreview?: PublicationPreview | null;
 };
 
+const MOBILE_DOCK_HEIGHT =
+  "var(--inrcy-mobile-bottom-nav-total-height, 0px)";
+
 type ModalProps = {
   open: boolean;
   title: string;
@@ -1411,7 +1414,7 @@ export function ChannelImageAdapterModal({
   const isCompact = viewportWidth <= 1180;
   const mobileOuterPadding = isTinyMobile ? 8 : 10;
   const mobileViewportWidth = `calc(100dvw - ${mobileOuterPadding * 2}px)`;
-  const mobileViewportHeight = `calc(100dvh - ${mobileOuterPadding * 2}px)`;
+  const mobileViewportHeight = `calc(100dvh - ${MOBILE_DOCK_HEIGHT} - ${mobileOuterPadding * 2}px)`;
   const modalWidth = isMobile ? mobileViewportWidth : "min(1580px, calc(100vw - 28px))";
   const modalHeight = isMobile ? mobileViewportHeight : "min(940px, calc(100dvh - 28px))";
   const modalPadding = isTinyMobile ? 10 : isMobile ? 12 : 18;
@@ -1436,7 +1439,7 @@ export function ChannelImageAdapterModal({
       : {}),
   });
   return (
-    <div role="dialog" aria-modal="true" onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 10020, background: "rgba(4, 8, 18, 0.78)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)", display: "grid", placeItems: isMobile ? "stretch" : "center", padding: isMobile ? mobileOuterPadding : 16, overflow: "hidden", boxSizing: "border-box" }}>
+    <div role="dialog" aria-modal="true" onClick={onClose} style={{ position: "fixed", inset: 0, bottom: isMobile ? MOBILE_DOCK_HEIGHT : undefined, height: isMobile ? `calc(100dvh - ${MOBILE_DOCK_HEIGHT})` : undefined, maxHeight: isMobile ? `calc(100dvh - ${MOBILE_DOCK_HEIGHT})` : undefined, zIndex: 10020, background: "rgba(4, 8, 18, 0.78)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)", display: "grid", placeItems: isMobile ? "stretch" : "center", padding: isMobile ? mobileOuterPadding : 16, overflow: "hidden", boxSizing: "border-box" }}>
       <div onClick={(event) => event.stopPropagation()} style={{ width: modalWidth, maxWidth: isMobile ? mobileViewportWidth : "100%", height: modalHeight, maxHeight: isMobile ? mobileViewportHeight : "100%", minWidth: 0, minHeight: 0, alignSelf: isMobile ? "stretch" : undefined, justifySelf: isMobile ? "stretch" : undefined, borderRadius: isMobile ? 20 : 28, border: "1px solid rgba(255,255,255,0.12)", background: "linear-gradient(180deg, rgba(24,28,42,0.985), rgba(14,17,28,0.985))", boxShadow: "0 28px 100px rgba(0,0,0,0.5)", padding: modalPadding, display: "grid", gridTemplateRows: "auto minmax(0, 1fr)", gap: isMobile ? 10 : 16, overflow: "hidden", boxSizing: "border-box" }}>
         <div style={{ display: isMobile ? "grid" : "flex", alignItems: isMobile ? "start" : "center", justifyContent: "space-between", gap: isMobile ? 8 : 12, minHeight: isMobile ? "auto" : 52, flexWrap: "wrap", minWidth: 0 }}>
           <div style={{ minWidth: 0, flex: "1 1 280px", paddingLeft: isMobile ? "max(6px, env(safe-area-inset-left))" : 0, paddingRight: isMobile ? 4 : 0, boxSizing: "border-box" }}>

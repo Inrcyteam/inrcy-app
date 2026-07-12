@@ -7,6 +7,9 @@ type PublishAiConfigurationDrawerProps = {
   onClose: () => void;
 };
 
+const MOBILE_DOCK_HEIGHT =
+  "var(--inrcy-mobile-bottom-nav-total-height, 0px)";
+
 export default function PublishAiConfigurationDrawer({
   open,
   isMobile,
@@ -24,6 +27,11 @@ export default function PublishAiConfigurationDrawer({
       style={{
         position: "fixed",
         inset: 0,
+        bottom: isMobile ? MOBILE_DOCK_HEIGHT : undefined,
+        height: isMobile ? `calc(100dvh - ${MOBILE_DOCK_HEIGHT})` : undefined,
+        maxHeight: isMobile
+          ? `calc(100dvh - ${MOBILE_DOCK_HEIGHT})`
+          : undefined,
         zIndex: 10020,
         background: "rgba(0,0,0,0.55)",
         display: "flex",
@@ -37,8 +45,8 @@ export default function PublishAiConfigurationDrawer({
         style={{
           width: isMobile ? "100vw" : "min(560px, 92vw)",
           maxWidth: "100vw",
-          height: drawerHeight,
-          maxHeight: drawerHeight,
+          height: isMobile ? "100%" : drawerHeight,
+          maxHeight: isMobile ? "100%" : drawerHeight,
           boxSizing: "border-box",
           background: "rgba(16,16,16,0.98)",
           borderLeft: isMobile ? 0 : "1px solid rgba(255,255,255,0.08)",

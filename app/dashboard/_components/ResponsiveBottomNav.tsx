@@ -255,6 +255,7 @@ function ResponsiveBottomNavMobile() {
   const currentLanguage = getAppLanguageOption(language);
   const pendingLabel = pendingInrAgentCount > 99 ? "99+" : String(pendingInrAgentCount);
   const homeActive = pathname === "/dashboard" && !searchParams.get("action") && !searchParams.get("panel");
+  const publishActive = pathname === "/dashboard" && searchParams.get("action") === "publish";
   const hasMenuWarning = profileIncomplete || activityIncomplete;
 
   return (
@@ -373,10 +374,12 @@ function ResponsiveBottomNavMobile() {
 
           <button
             type="button"
-            className={styles.publishItem}
+            className={`${styles.publishItem} ${publishActive ? styles.publishItemActive : ""}`}
             aria-label={labels.publish}
+            aria-current={publishActive ? "page" : undefined}
+            aria-disabled={publishActive ? "true" : undefined}
+            disabled={publishActive}
             onClick={() => {
-              if (pathname === "/dashboard" && searchParams.get("action") === "publish") return;
               navigate("/dashboard?action=publish");
             }}
           >

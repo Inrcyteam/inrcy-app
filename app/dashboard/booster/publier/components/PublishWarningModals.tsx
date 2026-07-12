@@ -22,6 +22,7 @@ function WarningShell({
 }) {
   return (
     <div
+      className={styles.fullscreenModalOverlay}
       style={{
         position: "fixed",
         inset: 0,
@@ -31,6 +32,8 @@ function WarningShell({
         display: "grid",
         placeItems: "center",
         padding: 16,
+        overflowY: "auto",
+        overscrollBehavior: "contain",
       }}
     >
       <div

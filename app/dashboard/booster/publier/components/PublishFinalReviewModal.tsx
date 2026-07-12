@@ -47,6 +47,7 @@ export default function PublishFinalReviewModal({
 
   return (
     <div
+      className={styles.fullscreenModalOverlay}
       style={{
         position: "fixed",
         inset: 0,
@@ -64,7 +65,8 @@ export default function PublishFinalReviewModal({
         className={styles.blockCard}
         style={{
           width: "min(760px, 100%)",
-          maxHeight: "calc(100vh - 32px)",
+          maxHeight:
+            "calc(100dvh - var(--inrcy-mobile-bottom-nav-total-height, 0px) - 32px)",
           overflowY: "auto",
           display: "grid",
           gap: 16,

@@ -31,6 +31,9 @@ type MediaLibraryPickerModalProps = {
   onConfirm: (items: MediaLibraryPickerItem[]) => void | Promise<void>;
 };
 
+const MOBILE_DOCK_HEIGHT =
+  "var(--inrcy-mobile-bottom-nav-total-height, 0px)";
+
 function formatBytes(value: number | null | undefined) {
   const bytes = Number(value || 0);
   if (!Number.isFinite(bytes) || bytes <= 0) return "—";
@@ -213,8 +216,8 @@ export default function MediaLibraryPickerModal({
     ? {
         ...modalStyle,
         width: "min(100%, calc(100vw - 12px))",
-        height: "calc(100svh - 12px)",
-        maxHeight: "calc(100svh - 12px)",
+        height: `calc(100dvh - ${MOBILE_DOCK_HEIGHT} - 12px)`,
+        maxHeight: `calc(100dvh - ${MOBILE_DOCK_HEIGHT} - 12px)`,
         padding: 10,
         borderRadius: 22,
         gap: 7,
@@ -426,6 +429,13 @@ export default function MediaLibraryPickerModal({
     <div
       style={{
         ...overlayStyle,
+        bottom: compact ? MOBILE_DOCK_HEIGHT : undefined,
+        height: compact
+          ? `calc(100dvh - ${MOBILE_DOCK_HEIGHT})`
+          : undefined,
+        maxHeight: compact
+          ? `calc(100dvh - ${MOBILE_DOCK_HEIGHT})`
+          : undefined,
         padding: compact ? 6 : overlayStyle.padding,
         alignItems: compact ? "start" : "center",
         justifyItems: "center",

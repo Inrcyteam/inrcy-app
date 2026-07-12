@@ -308,6 +308,7 @@ export default function TiktokPublicationSettingsModal({
 
   return (
     <div
+      className={styles.fullscreenModalOverlay}
       style={{
         position: "fixed",
         inset: 0,

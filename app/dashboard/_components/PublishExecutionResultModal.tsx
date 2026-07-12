@@ -38,6 +38,7 @@ export default function PublishExecutionResultModal({
 
   return (
     <div
+      className={styles.fullscreenModalOverlay}
       style={{
         position: "fixed",
         inset: 0,
@@ -46,12 +47,17 @@ export default function PublishExecutionResultModal({
         background: "rgba(3, 8, 20, 0.52)",
         zIndex: 110,
         padding: 16,
+        overflowY: "auto",
+        overscrollBehavior: "contain",
       }}
     >
       <div
         className={styles.blockCard}
         style={{
           width: "min(560px, 100%)",
+          maxHeight:
+            "calc(100dvh - var(--inrcy-mobile-bottom-nav-total-height, 0px) - 32px)",
+          overflowY: "auto",
           textAlign: "center",
           position: "relative",
           boxShadow: "0 30px 80px rgba(0,0,0,0.40)",
