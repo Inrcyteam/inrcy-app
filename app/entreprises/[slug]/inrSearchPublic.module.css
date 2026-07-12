@@ -12679,3 +12679,2525 @@
   .newsOrbitFocusMedia { grid-column: 1; grid-row: 1; }
   .newsOrbitFocusContent { grid-column: 1; grid-row: 2; }
 }
+
+/* NEWTON V2 — balance compacte, chromatique iNrCy et transmission d’impulsion. */
+.strengthNewtonScene {
+  --strength-ball-size: clamp(76px, 6vw, 96px);
+  isolation: isolate;
+  background:
+    radial-gradient(circle at 50% 33%, rgba(139, 92, 246, .2), transparent 22rem),
+    radial-gradient(circle at 15% 75%, rgba(255, 89, 121, .08), transparent 20rem),
+    linear-gradient(145deg, rgba(11, 19, 53, .96), rgba(19, 16, 62, .97));
+}
+
+.strengthNewtonScene::before {
+  left: 14%;
+  right: 14%;
+  bottom: 28%;
+  background: linear-gradient(90deg, transparent, rgba(255, 105, 105, .14), rgba(167, 91, 255, .32), rgba(56, 163, 255, .14), transparent);
+  box-shadow: 0 0 34px rgba(139, 92, 246, .16);
+}
+
+.strengthNewtonFrame {
+  left: 50%;
+  right: auto;
+  top: 9%;
+  width: min(72%, 680px);
+  height: 17px;
+  translate: -50% 0;
+  border: 0;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #26314a 0%, #111a31 48%, #080f23 100%);
+  box-shadow:
+    0 13px 32px rgba(0, 0, 0, .4),
+    0 0 0 1px rgba(153, 177, 235, .16),
+    inset 0 2px 1px rgba(255, 255, 255, .14),
+    inset 0 -2px 3px rgba(0, 0, 0, .45);
+}
+
+.strengthNewtonFrame::before {
+  left: 5%;
+  right: 5%;
+  top: 3px;
+  height: 2px;
+  border: 0;
+  background: linear-gradient(90deg, transparent, rgba(163, 189, 246, .42), transparent);
+  box-shadow: none;
+}
+
+.strengthNewtonFrame::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: -5px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(3, 7, 20, .72);
+  filter: blur(4px);
+}
+
+.strengthNewtonFrame > span:first-child,
+.strengthNewtonFrame > span:last-child {
+  display: none;
+}
+
+.strengthNewtonBalls {
+  left: 50%;
+  right: auto;
+  top: calc(9% + 16px);
+  width: min(78%, 720px);
+  height: 55%;
+  translate: -50% 0;
+  gap: 0;
+  overflow: visible;
+}
+
+.strengthNewtonBall {
+  flex: 0 0 var(--strength-ball-size);
+  min-width: 0;
+  max-width: none;
+  height: 100%;
+  padding: 0;
+  grid-template-rows: 1fr 36px;
+  transform: none;
+  transform-origin: 50% 0;
+}
+
+.strengthNewtonBalls[data-direction="left"] .strengthNewtonBall[data-edge="left"],
+.strengthNewtonBalls[data-direction="left"] .strengthNewtonBall[data-edge="right"],
+.strengthNewtonBalls[data-direction="right"] .strengthNewtonBall[data-edge="left"],
+.strengthNewtonBalls[data-direction="right"] .strengthNewtonBall[data-edge="right"] {
+  animation: none;
+}
+
+.strengthNewtonPendulum {
+  position: absolute;
+  z-index: 2;
+  inset: 0 0 34px;
+  display: block;
+  transform-origin: 50% 0;
+  will-change: transform;
+}
+
+.strengthNewtonStrings {
+  left: 50%;
+  top: 0;
+  bottom: clamp(38px, 3vw, 48px);
+  width: clamp(47px, 3.8vw, 60px);
+  height: auto;
+  translate: -50% 0;
+}
+
+.strengthNewtonStrings i {
+  width: 1.2px;
+  background: linear-gradient(180deg, rgba(224, 235, 255, .78), rgba(122, 145, 202, .48) 72%, rgba(255, 255, 255, .68));
+  box-shadow: 0 0 4px rgba(133, 164, 232, .18);
+}
+
+.strengthNewtonStrings i:first-child {
+  left: 8px;
+  transform: rotate(4.6deg);
+}
+
+.strengthNewtonStrings i:last-child {
+  right: 8px;
+  transform: rotate(-4.6deg);
+}
+
+.strengthNewtonSphere {
+  bottom: 0;
+  width: var(--strength-ball-size);
+  border-color: rgba(255, 255, 255, .3);
+  background:
+    radial-gradient(circle at 30% 22%, rgba(255, 255, 255, .98) 0 4%, rgba(255, 236, 228, .76) 5%, transparent 17%),
+    radial-gradient(circle at 22% 18%, rgba(255, 255, 255, .44), transparent 27%),
+    linear-gradient(135deg, #ff7a45 2%, #ff557f 29%, #b052ee 61%, #378df8 100%);
+  box-shadow:
+    inset -16px -18px 28px rgba(26, 13, 79, .28),
+    inset 10px 10px 18px rgba(255, 187, 155, .18),
+    0 18px 34px rgba(0, 0, 0, .38),
+    0 0 22px rgba(155, 83, 244, .18);
+  transition: box-shadow .25s ease, filter .25s ease, scale .25s ease;
+}
+
+.strengthNewtonSphere::after {
+  content: "";
+  position: absolute;
+  inset: 8%;
+  border-radius: inherit;
+  background: linear-gradient(145deg, rgba(255, 255, 255, .13), transparent 43%, rgba(16, 12, 61, .14));
+  pointer-events: none;
+}
+
+.strengthNewtonSphere i {
+  position: relative;
+  z-index: 2;
+  color: #fff;
+  font-size: clamp(10px, .9vw, 13px);
+  text-shadow: 0 2px 9px rgba(30, 13, 77, .7);
+}
+
+.strengthNewtonBall > strong {
+  left: -15px;
+  right: -15px;
+  bottom: -3px;
+  min-height: 34px;
+  color: rgba(240, 243, 255, .76);
+  font-size: clamp(10px, .88vw, 13px);
+  line-height: 1.2;
+}
+
+.strengthNewtonBall[data-active="true"] .strengthNewtonSphere {
+  border-color: rgba(114, 225, 255, .82);
+  filter: saturate(1.14) brightness(1.08);
+  scale: 1.04;
+  transform: none;
+  box-shadow:
+    inset -16px -18px 28px rgba(26, 13, 79, .24),
+    inset 10px 10px 18px rgba(255, 187, 155, .2),
+    0 20px 38px rgba(0, 0, 0, .4),
+    0 0 0 4px rgba(69, 204, 255, .07),
+    0 0 34px rgba(58, 192, 255, .34);
+}
+
+.strengthNewtonBalls[data-direction="left"] .strengthNewtonBall[data-edge="left"] .strengthNewtonPendulum {
+  animation: strengthNewtonV2SourceLeft 1.5s cubic-bezier(.22, .75, .22, 1) both;
+}
+
+.strengthNewtonBalls[data-direction="left"] .strengthNewtonBall[data-edge="right"] .strengthNewtonPendulum {
+  animation: strengthNewtonV2ResponseRight 1.5s cubic-bezier(.22, .75, .22, 1) both;
+}
+
+.strengthNewtonBalls[data-direction="right"] .strengthNewtonBall[data-edge="right"] .strengthNewtonPendulum {
+  animation: strengthNewtonV2SourceRight 1.5s cubic-bezier(.22, .75, .22, 1) both;
+}
+
+.strengthNewtonBalls[data-direction="right"] .strengthNewtonBall[data-edge="left"] .strengthNewtonPendulum {
+  animation: strengthNewtonV2ResponseLeft 1.5s cubic-bezier(.22, .75, .22, 1) both;
+}
+
+.strengthNewtonImpulse {
+  position: absolute;
+  z-index: 8;
+  left: 50%;
+  top: calc(100% - 87px);
+  width: 20px;
+  height: 20px;
+  translate: -50% -50%;
+  border: 1px solid rgba(255, 128, 100, .7);
+  border-radius: 50%;
+  box-shadow: 0 0 18px rgba(255, 94, 124, .55);
+  pointer-events: none;
+  animation: strengthNewtonV2Impulse 1.5s ease-out both;
+}
+
+.strengthNewtonImpulse i {
+  position: absolute;
+  inset: 5px;
+  border-radius: 50%;
+  background: #ff8061;
+  box-shadow: 0 0 16px #ff5f87, 0 0 30px rgba(139, 92, 246, .7);
+}
+
+.strengthNewtonDetail {
+  left: 9%;
+  right: 9%;
+  bottom: 5%;
+  min-height: 116px;
+  border-color: rgba(157, 186, 255, .18);
+  background:
+    radial-gradient(circle at 92% 15%, rgba(255, 91, 130, .09), transparent 17rem),
+    linear-gradient(145deg, rgba(13, 31, 72, .96), rgba(22, 15, 61, .96));
+}
+
+@keyframes strengthNewtonV2SourceLeft {
+  0%, 100% { transform: rotate(0); }
+  12% { transform: rotate(-18deg); }
+  38% { transform: rotate(0); }
+  54% { transform: rotate(-1.4deg); }
+}
+
+@keyframes strengthNewtonV2ResponseRight {
+  0%, 36% { transform: rotate(0); }
+  58% { transform: rotate(18deg); }
+  84%, 100% { transform: rotate(0); }
+}
+
+@keyframes strengthNewtonV2SourceRight {
+  0%, 100% { transform: rotate(0); }
+  12% { transform: rotate(18deg); }
+  38% { transform: rotate(0); }
+  54% { transform: rotate(1.4deg); }
+}
+
+@keyframes strengthNewtonV2ResponseLeft {
+  0%, 36% { transform: rotate(0); }
+  58% { transform: rotate(-18deg); }
+  84%, 100% { transform: rotate(0); }
+}
+
+@keyframes strengthNewtonV2Impulse {
+  0%, 28% { opacity: 0; scale: .35; }
+  39% { opacity: 1; scale: .7; }
+  58% { opacity: .65; scale: 2.2; }
+  82%, 100% { opacity: 0; scale: 3.2; }
+}
+
+@media (max-width: 900px) {
+  .strengthOrbitStage {
+    min-height: auto;
+    grid-template-rows: auto auto;
+  }
+
+  .strengthNewtonScene {
+    --strength-ball-size: clamp(70px, 20vw, 88px);
+    min-height: 500px;
+    overflow: hidden;
+  }
+
+  .strengthNewtonFrame {
+    left: 50%;
+    right: auto;
+    width: min(86%, 520px);
+  }
+
+  .strengthNewtonBalls {
+    left: 50%;
+    right: auto;
+    width: 92%;
+    height: 57%;
+  }
+
+  .strengthNewtonBall {
+    min-width: 0;
+  }
+
+  .strengthNewtonDetail {
+    left: 5%;
+    right: 5%;
+    width: auto;
+    min-height: 112px;
+  }
+}
+
+@media (max-width: 480px) {
+  .strengthNewtonScene {
+    --strength-ball-size: clamp(62px, 19vw, 72px);
+    min-height: 470px;
+  }
+
+  .strengthNewtonFrame {
+    top: 8%;
+    width: 82%;
+    height: 14px;
+  }
+
+  .strengthNewtonBalls {
+    top: calc(8% + 13px);
+    height: 54%;
+  }
+
+  .strengthNewtonPendulum {
+    bottom: 31px;
+  }
+
+  .strengthNewtonBall > strong {
+    left: -10px;
+    right: -10px;
+    min-height: 31px;
+    font-size: 10px;
+  }
+
+  .strengthNewtonImpulse {
+    top: calc(100% - 69px);
+  }
+
+  .strengthNewtonDetail {
+    bottom: 4%;
+    min-height: 118px;
+    padding: 15px 17px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .strengthNewtonPendulum,
+  .strengthNewtonImpulse {
+    animation: none !important;
+  }
+}
+
+/* ========================================================================== */
+/* GRAVITY ENGINE V2.1 — lisibilité, respiration et scènes sans collision      */
+/* ========================================================================== */
+
+.galleryOrbitCounter strong {
+  color: #ffffff !important;
+  opacity: 1 !important;
+  text-shadow: 0 0 18px rgba(73, 205, 255, .55);
+}
+
+.galleryOrbitCounter > span,
+.galleryOrbitCounter i {
+  color: rgba(239, 244, 255, .82);
+}
+
+.socialOrbitStage:hover .socialOrbitTrack,
+.socialOrbitStage:hover .socialOrbitNode,
+.socialOrbitStage:focus-within .socialOrbitTrack,
+.socialOrbitStage:focus-within .socialOrbitNode {
+  animation-play-state: running !important;
+}
+
+@media (min-width: 901px) {
+  .presentationLayout {
+    width: min(1540px, calc(100% - clamp(48px, 6vw, 112px)));
+    grid-template-columns: minmax(0, 1.04fr) minmax(520px, .96fr);
+    gap: clamp(30px, 3.8vw, 68px);
+  }
+
+  .presentationCopy {
+    max-width: 730px;
+  }
+
+  .presentationStatus {
+    font-size: 12px;
+  }
+
+  .presentationTitle {
+    font-size: clamp(58px, 6.2vw, 96px);
+  }
+
+  .presentationDescription {
+    max-width: 700px;
+    font-size: clamp(17px, 1.28vw, 20px);
+    line-height: 1.62;
+  }
+
+  .presentationProofs span {
+    min-height: 36px;
+    padding-inline: 13px;
+    font-size: 12px;
+  }
+
+  .presentationSummary {
+    max-width: 680px;
+    color: rgba(226, 235, 255, .76);
+    font-size: 13px;
+    line-height: 1.55;
+  }
+
+  .presentationSummary summary {
+    color: rgba(255, 255, 255, .9);
+    font-size: 11px;
+    font-weight: 900;
+    letter-spacing: .04em;
+  }
+
+  .presentationSummary p {
+    margin-top: 10px;
+  }
+
+  .presentationPrimaryAction,
+  .presentationSecondaryAction {
+    min-height: 50px;
+    padding-inline: 19px;
+    font-size: 12px;
+  }
+
+  .presentationUniverse {
+    width: min(43vw, calc(100dvh - 142px), 680px);
+    min-width: 520px;
+    justify-self: end;
+    align-self: center;
+  }
+
+  .presentationMediaOrb {
+    width: 48%;
+    box-shadow:
+      0 42px 110px rgba(0, 0, 0, .46),
+      0 0 0 1px rgba(255, 255, 255, .2),
+      0 0 0 20px rgba(111, 88, 245, .04),
+      0 0 90px rgba(64, 207, 255, .24);
+  }
+
+  .presentationFactOrbit {
+    inset: 1%;
+  }
+
+  .presentationSatellite {
+    width: clamp(190px, 14vw, 228px);
+    min-height: 76px;
+    padding: 12px 14px;
+    grid-template-columns: 42px minmax(0, 1fr);
+  }
+
+  .presentationSatellite[data-slot="0"] { left: -7%; top: 2%; }
+  .presentationSatellite[data-slot="1"] { right: 0; top: 2%; }
+  .presentationSatellite[data-slot="2"] { right: 0; top: 30%; bottom: auto; }
+  .presentationSatellite[data-slot="3"] { left: -7%; bottom: 2%; }
+
+  .presentationFactIcon {
+    width: 42px;
+    height: 42px;
+  }
+
+  .presentationFactText small {
+    font-size: 8px;
+  }
+
+  .presentationFactText strong {
+    font-size: 12px;
+    line-height: 1.28;
+  }
+
+  .servicesOrbitStage {
+    grid-template-columns: minmax(310px, .68fr) minmax(600px, 1.32fr);
+    gap: clamp(24px, 2.5vw, 42px);
+  }
+
+  .servicesOrbitFocus {
+    padding: clamp(25px, 2.4vw, 36px);
+  }
+
+  .servicesOrbitFocus > small {
+    margin-top: clamp(16px, 2vh, 24px);
+    font-size: 11px;
+  }
+
+  .servicesOrbitFocus h3 {
+    font-size: clamp(33px, 3vw, 47px);
+  }
+
+  .servicesOrbitFocus p {
+    margin-top: 16px;
+    font-size: 14px;
+    line-height: 1.58;
+  }
+
+  .servicesOrbitFocus > a {
+    min-height: 42px;
+    align-items: center;
+    font-size: 12px;
+  }
+
+  .servicesOrbitCard,
+  .servicesOrbitCard[data-active="true"] {
+    width: clamp(148px, 12vw, 188px);
+    min-height: 68px;
+    padding: 10px 13px;
+  }
+
+  .servicesOrbitCard strong {
+    font-size: 12px;
+    line-height: 1.2;
+  }
+
+  .servicesOrbitIndexList button,
+  .servicesOrbitAudience {
+    font-size: 10px;
+  }
+
+  .galleryOrbitMeta p,
+  .zoneOrbitDetail p,
+  .socialOrbitDetail p {
+    font-size: 13px;
+  }
+
+  .galleryOrbitMetaSignal,
+  .galleryOrbitMeta > small,
+  .zoneOrbitDetail > small,
+  .socialOrbitDetail > small {
+    font-size: 10px;
+  }
+
+  .zoneOrbitExperience {
+    grid-template-rows: auto minmax(0, 1fr) 44px;
+    gap: 12px;
+  }
+
+  .zoneOrbitStage {
+    height: 100%;
+    min-height: 0;
+    gap: clamp(20px, 2.2vw, 34px);
+  }
+
+  .zoneOrbitSatellite {
+    width: clamp(126px, 10.4vw, 156px);
+    min-height: 58px;
+  }
+
+  .zoneOrbitSatellite strong {
+    font-size: 12px;
+  }
+
+  .zoneOrbitSatellite small,
+  .zoneOrbitRail button {
+    font-size: 9px;
+  }
+
+  .zoneOrbitRail {
+    min-height: 44px;
+    padding: 4px 2px 5px;
+    align-items: center;
+  }
+
+  .zoneOrbitRail button {
+    min-height: 36px;
+    padding-inline: 13px;
+  }
+
+  .faqOrbitExperience {
+    grid-template-rows: auto minmax(0, 1fr) 46px;
+    gap: 13px;
+  }
+
+  .faqOrbitNavigator button,
+  .zoneOrbitNavigator button,
+  .galleryOrbitCounter button,
+  .servicesOrbitNavigator button {
+    width: 46px;
+    height: 46px;
+    font-size: 15px;
+  }
+
+  .faqOrbitNavigator > span,
+  .zoneOrbitNavigator > span,
+  .galleryOrbitCounter > span,
+  .servicesOrbitNavigator > span {
+    min-width: 74px;
+    font-size: 12px;
+  }
+
+  .faqCarouselCard {
+    padding: clamp(24px, 2.4vw, 36px);
+  }
+
+  .faqCarouselCard h3 {
+    font-size: clamp(20px, 1.75vw, 28px);
+  }
+
+  .faqCarouselCard[data-position="active"] h3 {
+    font-size: clamp(28px, 2.65vw, 42px);
+  }
+
+  .faqCarouselCard p {
+    font-size: 11px;
+  }
+
+  .faqCarouselCard[data-position="active"] p {
+    font-size: 14px;
+    line-height: 1.58;
+  }
+
+  .faqCarouselCard > a,
+  .faqCarouselCard > button {
+    min-height: 42px;
+    padding-inline: 14px;
+    font-size: 10px;
+  }
+
+  .faqOrbitIndex {
+    min-height: 46px;
+  }
+
+  .faqOrbitIndex button {
+    width: 34px;
+    height: 34px;
+    font-size: 9px;
+  }
+
+  .socialOrbitCount {
+    font-size: 10px;
+  }
+
+  .socialOrbitNode {
+    width: clamp(124px, 10.5vw, 154px);
+    min-height: 60px;
+    grid-template-columns: 40px minmax(0, 1fr);
+    padding: 8px 11px;
+  }
+
+  .socialOrbitGlyph {
+    width: 40px;
+    height: 40px;
+  }
+
+  .socialOrbitNode > strong {
+    font-size: 11px;
+  }
+
+  .socialOrbitDetail > a {
+    min-height: 46px;
+    padding-inline: 16px;
+    font-size: 11px;
+  }
+
+  .contactOrbitStatus {
+    min-height: 42px;
+    font-size: 11px;
+  }
+
+  .contactSignal {
+    min-height: 96px;
+    grid-template-columns: 48px minmax(0, 1fr);
+  }
+
+  .contactSignal > span {
+    width: 48px;
+    height: 48px;
+  }
+
+  .contactSignal small {
+    font-size: 10px;
+  }
+
+  .contactSignal strong {
+    font-size: 13px;
+  }
+
+  .contactCore small {
+    font-size: 9px;
+  }
+
+  .contactCore em {
+    font-size: 11px;
+  }
+
+  .contactCore > button {
+    min-height: 46px;
+    padding-inline: 17px;
+    font-size: 11px;
+  }
+
+  .contactLegalLinks {
+    bottom: 4px;
+    font-size: 9px;
+  }
+}
+
+/* Mobile/tablette : un chapitre horizontal, un contenu vertical réellement scrollable. */
+@media (max-width: 900px) {
+  .page {
+    --orbit-footer-safe: calc(100px + env(safe-area-inset-bottom));
+    height: 100dvh;
+    min-height: 100dvh;
+    overflow: hidden;
+  }
+
+  .orbitViewport {
+    height: 100dvh;
+    overflow: hidden;
+    touch-action: pan-y;
+    overscroll-behavior: none;
+  }
+
+  .orbitPanel,
+  .orbitPanel.section,
+  .servicesSection {
+    height: calc(100dvh - var(--orbit-header));
+    min-height: 0;
+    max-height: calc(100dvh - var(--orbit-header));
+    padding: 22px 20px var(--orbit-footer-safe) !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+    scroll-padding-bottom: var(--orbit-footer-safe);
+    scrollbar-width: none;
+  }
+
+  .orbitPanel::-webkit-scrollbar {
+    display: none;
+  }
+
+  .presentationOrbit {
+    padding: 0 !important;
+    overflow-y: auto !important;
+  }
+
+  .orbitControls {
+    bottom: max(8px, env(safe-area-inset-bottom));
+    min-height: 54px;
+    max-width: calc(100% - 18px);
+    padding: 7px 9px;
+  }
+
+  .orbitControls > button {
+    width: 40px;
+    height: 40px;
+    flex: 0 0 40px;
+  }
+
+  .orbitDots {
+    max-width: min(52vw, 360px);
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
+  }
+
+  .servicesOrbitExperience,
+  .galleryOrbitExperience,
+  .newsOrbitExperience,
+  .zoneOrbitExperience,
+  .strengthOrbitExperience,
+  .faqOrbitExperience,
+  .socialOrbitExperience,
+  .contactUniverse {
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+    overflow: visible;
+  }
+
+  .servicesOrbitHeader,
+  .galleryOrbitHeader,
+  .newsOrbitHeader,
+  .zoneOrbitHeader,
+  .strengthOrbitHeader,
+  .faqOrbitHeader,
+  .socialOrbitHeader,
+  .contactOrbitHeader {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .servicesOrbitHeader h2,
+  .galleryOrbitHeader h2,
+  .newsOrbitHeader h2,
+  .zoneOrbitHeader h2,
+  .strengthOrbitHeader h2,
+  .faqOrbitHeader h2,
+  .socialOrbitHeader h2,
+  .contactOrbitHeader h2 {
+    margin-top: 7px;
+    font-size: clamp(34px, 7vw, 48px);
+    line-height: .98;
+  }
+
+  .servicesOrbitHeader p,
+  .galleryOrbitHeader p,
+  .newsOrbitHeader p,
+  .zoneOrbitHeader p,
+  .strengthOrbitHeader p,
+  .faqOrbitHeader p,
+  .socialOrbitHeader p,
+  .contactOrbitHeader p {
+    display: block;
+    margin-top: 7px;
+    font-size: 14px;
+    line-height: 1.52;
+  }
+
+  .servicesOrbitNavigator,
+  .galleryOrbitCounter,
+  .newsOrbitNavigator,
+  .zoneOrbitNavigator,
+  .faqOrbitNavigator {
+    position: static;
+    inset: auto;
+    align-self: flex-end;
+    min-height: 52px;
+    transform: none;
+  }
+
+  .servicesOrbitNavigator button,
+  .galleryOrbitCounter button,
+  .newsOrbitNavigator button,
+  .zoneOrbitNavigator button,
+  .faqOrbitNavigator button {
+    width: 42px;
+    height: 42px;
+  }
+
+  .presentationStage {
+    height: auto;
+    min-height: 100%;
+    overflow: visible;
+  }
+
+  .presentationLayout {
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    padding: 28px 20px var(--orbit-footer-safe);
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 30px;
+  }
+
+  .presentationCopy {
+    width: 100%;
+    max-width: 760px;
+  }
+
+  .presentationTitle {
+    font-size: clamp(54px, 12vw, 78px);
+  }
+
+  .presentationDescription {
+    display: block;
+    width: 100%;
+    max-width: 720px;
+    font-size: 16px;
+    line-height: 1.58;
+  }
+
+  .presentationProofs span:nth-child(n) {
+    display: inline-flex;
+  }
+
+  .presentationSummary {
+    display: block;
+    width: 100%;
+    max-width: 720px;
+    color: rgba(229, 237, 255, .76);
+    font-size: 13px;
+    line-height: 1.55;
+  }
+
+  .presentationSummary summary {
+    color: rgba(255, 255, 255, .9);
+    font-size: 11px;
+    font-weight: 900;
+  }
+
+  .presentationPrimaryAction,
+  .presentationSecondaryAction {
+    min-height: 48px;
+    padding-inline: 16px;
+    font-size: 11px;
+  }
+
+  .presentationUniverse {
+    inset: auto;
+    width: 100%;
+    min-width: 0;
+    max-width: 620px;
+    height: auto;
+    aspect-ratio: auto;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .presentationMediaOrb {
+    position: relative;
+    left: auto;
+    top: auto;
+    width: min(58vw, 320px);
+    margin: 0 auto;
+    translate: none;
+  }
+
+  .presentationFactOrbit {
+    position: relative;
+    inset: auto;
+    margin-top: 20px;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .presentationSatellite,
+  .presentationSatellite[data-slot] {
+    position: relative;
+    inset: auto;
+    width: 100%;
+    min-height: 68px;
+    padding: 10px 12px;
+    transform: none;
+    animation: none;
+  }
+
+  .presentationFactText small {
+    font-size: 8px;
+  }
+
+  .presentationFactText strong {
+    font-size: 11px;
+  }
+
+  .servicesOrbitStage {
+    display: block;
+    width: 100%;
+    height: auto;
+    min-height: 0;
+  }
+
+  .servicesOrbitFocus {
+    height: auto;
+    min-height: 0;
+    padding: 28px 26px;
+  }
+
+  .servicesOrbitFocus h3 {
+    font-size: clamp(36px, 7vw, 48px);
+  }
+
+  .servicesOrbitFocus p {
+    font-size: 15px;
+    line-height: 1.58;
+  }
+
+  .servicesOrbitFocus > a {
+    min-height: 44px;
+    align-items: center;
+    font-size: 12px;
+  }
+
+  .servicesAccelerator {
+    display: none;
+  }
+
+  .servicesOrbitFooter {
+    display: block;
+  }
+
+  .servicesOrbitIndexList {
+    min-height: 50px;
+    padding-bottom: 5px;
+  }
+
+  .servicesOrbitIndexList button {
+    min-height: 44px;
+    font-size: 11px;
+  }
+
+  .galleryOrbitStage {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    gap: 13px;
+    padding: 12px;
+  }
+
+  .galleryOrbitFocus {
+    flex: 0 0 auto;
+    height: min(76vw, 440px);
+    min-height: 320px;
+  }
+
+  .galleryOrbitMeta {
+    min-height: 0;
+    padding: 25px;
+  }
+
+  .galleryOrbitMeta p {
+    font-size: 14px;
+  }
+
+  .galleryOrbitRail {
+    min-height: 74px;
+    justify-content: flex-start;
+  }
+
+  .newsOrbitStage {
+    display: block;
+    width: 100%;
+    height: auto;
+    min-height: 0;
+  }
+
+  .newsOrbitEmpty {
+    min-height: clamp(470px, 68dvh, 610px);
+    padding: 28px;
+  }
+
+  .newsOrbitFocus {
+    height: auto !important;
+    min-height: 0;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(280px, 42vw) auto;
+  }
+
+  .newsOrbitFocusMedia {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .newsOrbitFocusContent {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .newsOrbitSecondary {
+    margin-top: 14px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: auto;
+  }
+
+  .zoneOrbitStage {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    gap: 15px;
+  }
+
+  .zoneRadarCanvas {
+    height: 440px;
+    min-height: 440px;
+  }
+
+  .zoneOrbitRadar {
+    width: min(74vw, 390px);
+    max-width: 88%;
+  }
+
+  .zoneOrbitDetail {
+    min-height: 0;
+    padding: 26px 24px;
+  }
+
+  .zoneOrbitDetail p {
+    font-size: 14px;
+  }
+
+  .zoneOrbitDetail > a {
+    min-height: 44px;
+    font-size: 12px;
+  }
+
+  .zoneOrbitRail {
+    flex: 0 0 auto;
+    min-height: 48px;
+    padding: 4px 2px;
+  }
+
+  .zoneOrbitRail button {
+    min-height: 40px;
+    padding-inline: 13px;
+    font-size: 11px;
+  }
+
+  .strengthOrbitStage {
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    gap: 15px;
+  }
+
+  .strengthBadgeCard {
+    min-height: 0;
+    padding: 28px 24px;
+  }
+
+  .faqOrbitStage {
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .faqCarousel {
+    display: block;
+    height: auto;
+    padding: 13px;
+  }
+
+  .faqCarouselCard[data-position="previous"],
+  .faqCarouselCard[data-position="next"] {
+    display: none;
+  }
+
+  .faqCarouselCard[data-position="active"] {
+    width: 100%;
+    height: auto;
+    min-height: 360px;
+    padding: 28px 26px;
+  }
+
+  .faqCarouselCard[data-position="active"] h3 {
+    font-size: clamp(30px, 6vw, 40px);
+  }
+
+  .faqCarouselCard[data-position="active"] p {
+    font-size: 14px;
+    line-height: 1.58;
+  }
+
+  .faqCarouselCard > a,
+  .faqCarouselCard > button {
+    min-height: 44px;
+    font-size: 11px;
+  }
+
+  .faqOrbitIndex {
+    min-height: 54px;
+    margin-top: 0;
+    padding: 8px 10px;
+    flex-wrap: wrap;
+    border: 1px solid rgba(157, 186, 255, .14);
+    border-radius: 18px;
+    background: rgba(7, 15, 41, .7);
+  }
+
+  .faqOrbitIndex button {
+    width: 38px;
+    height: 38px;
+    font-size: 9px;
+  }
+
+  .socialOrbitCount {
+    align-self: flex-start;
+    font-size: 10px;
+  }
+
+  .socialOrbitStage {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    gap: 15px;
+  }
+
+  .socialSolarSystem {
+    min-height: 0;
+    padding: 24px 16px;
+    overflow: hidden;
+  }
+
+  .socialOrbitCore {
+    width: 170px;
+  }
+
+  .socialOrbitNodes {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 11px;
+  }
+
+  .socialOrbitNode {
+    min-height: 64px;
+  }
+
+  .socialOrbitNode > strong {
+    font-size: 12px;
+  }
+
+  .socialOrbitDetail {
+    min-height: 0;
+    padding: 26px 24px;
+  }
+
+  .socialOrbitDetail p {
+    font-size: 14px;
+  }
+
+  .contactOrbitInner,
+  .contactOrbitInner > div {
+    height: auto;
+    min-height: 0;
+  }
+
+  .contactConvergence {
+    width: 100%;
+    height: auto;
+    min-height: 0;
+    padding: 26px 18px 18px;
+    gap: 15px;
+  }
+
+  .contactCore {
+    flex: 0 0 260px;
+    width: 260px;
+  }
+
+  .contactSignals {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 13px;
+  }
+
+  .contactSignal {
+    min-height: 92px;
+  }
+
+  .contactSignal small {
+    font-size: 10px;
+  }
+
+  .contactSignal strong {
+    font-size: 14px;
+  }
+
+  .contactLegalLinks {
+    position: static;
+    left: auto;
+    bottom: auto;
+    translate: none;
+    order: 10;
+    min-height: 42px;
+    margin-top: 5px;
+    justify-content: center;
+    padding: 8px;
+    font-size: 10px;
+  }
+
+  .contactLegalLinks a {
+    min-height: 34px;
+    display: inline-flex;
+    align-items: center;
+    touch-action: manipulation;
+  }
+}
+
+@media (max-width: 700px) {
+  .page {
+    --orbit-header: 72px;
+    --orbit-footer-safe: calc(96px + env(safe-area-inset-bottom));
+  }
+
+  .orbitPanel,
+  .orbitPanel.section,
+  .servicesSection {
+    padding: 17px 14px var(--orbit-footer-safe) !important;
+  }
+
+  .presentationOrbit {
+    padding: 0 !important;
+  }
+
+  .servicesOrbitHeader h2,
+  .galleryOrbitHeader h2,
+  .newsOrbitHeader h2,
+  .zoneOrbitHeader h2,
+  .strengthOrbitHeader h2,
+  .faqOrbitHeader h2,
+  .socialOrbitHeader h2,
+  .contactOrbitHeader h2 {
+    font-size: clamp(31px, 9.4vw, 42px);
+  }
+
+  .servicesOrbitHeader p,
+  .galleryOrbitHeader p,
+  .newsOrbitHeader p,
+  .zoneOrbitHeader p,
+  .strengthOrbitHeader p,
+  .faqOrbitHeader p,
+  .socialOrbitHeader p,
+  .contactOrbitHeader p {
+    font-size: 13px;
+  }
+
+  .presentationLayout {
+    padding: 22px 14px var(--orbit-footer-safe);
+    gap: 28px;
+  }
+
+  .presentationTitle {
+    font-size: clamp(48px, 15vw, 68px);
+  }
+
+  .presentationDescription {
+    font-size: 15px;
+  }
+
+  .presentationUniverse {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .presentationMediaOrb {
+    width: min(72vw, 270px);
+  }
+
+  .servicesOrbitFocus {
+    padding: 25px 22px;
+  }
+
+  .servicesOrbitFocus h3 {
+    font-size: 34px;
+  }
+
+  .servicesOrbitFocus p {
+    font-size: 14px;
+  }
+
+  .galleryOrbitFocus {
+    height: min(92vw, 380px);
+    min-height: 280px;
+  }
+
+  .galleryOrbitMeta {
+    padding: 22px;
+  }
+
+  .newsOrbitFocus {
+    grid-template-rows: 250px auto;
+  }
+
+  .newsOrbitSecondary {
+    grid-template-columns: 1fr;
+  }
+
+  .zoneRadarCanvas {
+    height: 380px;
+    min-height: 380px;
+  }
+
+  .zoneOrbitRadar {
+    width: min(80vw, 300px);
+  }
+
+  .zoneOrbitCore {
+    width: 118px;
+  }
+
+  .zoneOrbitSatellite {
+    transform:
+      translate(-50%, -50%)
+      rotate(var(--zone-angle))
+      translateX(clamp(103px, 29vw, 132px))
+      rotate(calc(var(--zone-angle) * -1));
+  }
+
+  .zoneOrbitDetail {
+    padding: 24px 22px;
+  }
+
+  .faqCarouselCard[data-position="active"] {
+    min-height: 340px;
+    padding: 24px 22px;
+  }
+
+  .faqCarouselCard[data-position="active"] h3 {
+    font-size: 29px;
+  }
+
+  .socialOrbitCore {
+    width: 158px;
+  }
+
+  .socialOrbitDetail {
+    padding: 24px 22px;
+  }
+
+  .contactConvergence {
+    padding: 24px 14px 18px;
+  }
+
+  .contactCore {
+    flex-basis: 244px;
+    width: 244px;
+  }
+
+  .contactSignals {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .contactSignal {
+    min-height: 88px;
+  }
+}
+
+@media (max-width: 480px) {
+  .presentationFactOrbit {
+    grid-template-columns: 1fr;
+  }
+
+  .presentationSatellite,
+  .presentationSatellite[data-slot] {
+    min-height: 66px;
+  }
+
+  .socialOrbitNodes {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Étape 1 iNrSearch — ajustements desktop ciblés. */
+.strengthNewtonString {
+  position: absolute;
+  z-index: 0;
+  left: 50%;
+  top: 0;
+  bottom: clamp(38px, 3vw, 48px);
+  width: 1.2px;
+  translate: -50% 0;
+  background: linear-gradient(180deg, rgba(224, 235, 255, .78), rgba(122, 145, 202, .48) 72%, rgba(255, 255, 255, .68));
+  box-shadow: 0 0 4px rgba(133, 164, 232, .18);
+  pointer-events: none;
+}
+
+.strengthNewtonBall[data-filled="false"] {
+  cursor: default;
+  opacity: .2;
+}
+
+.strengthNewtonBall[data-filled="false"] .strengthNewtonSphere {
+  filter: saturate(.55) brightness(.72);
+  box-shadow: inset -12px -14px 24px rgba(4, 8, 30, .5), 0 12px 26px rgba(0, 0, 0, .25);
+}
+
+.strengthNewtonBall[data-filled="false"] > strong {
+  visibility: hidden;
+}
+
+@media (min-width: 901px) {
+  .servicesOrbitExperience {
+    gap: clamp(7px, 1.1vh, 12px);
+  }
+
+  .servicesOrbitFooter {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto;
+    align-items: start;
+    gap: 7px;
+    margin-top: -3px;
+  }
+
+  .servicesOrbitIndexList {
+    width: 100%;
+    min-height: 34px;
+  }
+
+  .servicesOrbitAudience {
+    width: 100%;
+    min-height: 0;
+    justify-content: flex-start;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    font-size: 9px;
+    line-height: 1.15;
+  }
+
+  .servicesOrbitAudience > span {
+    flex: 0 0 100%;
+  }
+
+  .servicesOrbitAudience > div {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  .servicesOrbitAudience strong {
+    padding: 5px 9px;
+    font-size: 9px;
+  }
+
+  .zoneOrbitExperience {
+    grid-template-rows: auto minmax(0, 1fr) 48px;
+    gap: 10px;
+  }
+
+  .zoneOrbitStage {
+    max-height: clamp(430px, 52dvh, 560px);
+    align-self: start;
+  }
+
+  .zoneRadarCanvas,
+  .zoneOrbitDetail {
+    min-height: 0;
+  }
+
+  .zoneOrbitRail {
+    position: relative;
+    z-index: 8;
+    min-height: 42px;
+    padding-bottom: 6px;
+  }
+
+  .faqOrbitExperience {
+    grid-template-rows: auto minmax(0, 1fr) 48px;
+    gap: 10px;
+  }
+
+  .faqOrbitStage {
+    max-height: clamp(410px, 48dvh, 500px);
+    align-self: start;
+  }
+
+  .faqCarousel {
+    padding-block: clamp(16px, 1.7vw, 26px);
+  }
+
+  .faqCarouselCard {
+    height: min(68%, 330px);
+    min-height: 190px;
+  }
+
+  .faqCarouselCard[data-position="active"] {
+    height: min(86%, 405px);
+  }
+
+  .faqOrbitIndex {
+    position: relative;
+    z-index: 8;
+  }
+
+  .strengthNewtonScene {
+    --strength-ball-size: clamp(68px, 5.2vw, 86px);
+  }
+
+  .strengthNewtonBalls {
+    width: min(84%, 760px);
+  }
+
+  .strengthNewtonBall {
+    flex-basis: var(--strength-ball-size);
+  }
+
+  .strengthNewtonBall > strong {
+    left: -12px;
+    right: -12px;
+  }
+}
+
+/* Étape 3 iNrSearch — ligne ciblage, 5 forces visibles, réseaux ronds et halos iNrCy. */
+@media (min-width: 901px) {
+  .orbitViewport {
+    background:
+      radial-gradient(circle at 18% 24%, rgba(50, 216, 255, .18), transparent 27rem),
+      radial-gradient(circle at 78% 16%, rgba(255, 91, 221, .13), transparent 30rem),
+      radial-gradient(circle at 82% 88%, rgba(255, 122, 69, .14), transparent 34rem),
+      linear-gradient(135deg, #07142f 0%, #12144a 44%, #281846 72%, #351b45 100%);
+  }
+
+  .orbitPanel:not(.presentationOrbit) {
+    background-image:
+      radial-gradient(circle at 11% 18%, rgba(50, 216, 255, .14), transparent 27rem),
+      radial-gradient(circle at 84% 20%, rgba(255, 91, 221, .1), transparent 31rem),
+      radial-gradient(circle at 72% 82%, rgba(255, 122, 69, .1), transparent 30rem);
+  }
+
+  .servicesOrbitFooter {
+    grid-template-rows: 38px 32px;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .servicesOrbitIndexList {
+    min-height: 38px;
+    align-items: center;
+  }
+
+  .servicesOrbitAudience {
+    min-height: 32px;
+    align-items: center;
+    flex-wrap: nowrap;
+    overflow: hidden;
+    white-space: nowrap;
+    gap: 10px;
+  }
+
+  .servicesOrbitAudience > span {
+    flex: 0 0 auto;
+  }
+
+  .servicesOrbitAudience > div {
+    min-width: 0;
+    flex-wrap: nowrap;
+    overflow: hidden;
+  }
+
+  .servicesOrbitAudience strong {
+    flex: 0 0 auto;
+  }
+
+  .servicesOrbitFocus,
+  .servicesAccelerator,
+  .galleryOrbitStage,
+  .zoneRadarCanvas,
+  .zoneOrbitDetail,
+  .strengthNewtonScene,
+  .strengthBadgeCard,
+  .faqOrbitStage,
+  .socialSolarSystem,
+  .socialOrbitDetail {
+    box-shadow:
+      0 32px 95px rgba(0, 0, 0, .3),
+      0 0 54px rgba(50, 216, 255, .08),
+      0 0 74px rgba(255, 91, 221, .055),
+      inset 0 1px rgba(255, 255, 255, .09);
+  }
+
+  .servicesOrbitFocus,
+  .zoneOrbitDetail,
+  .strengthBadgeCard,
+  .socialOrbitDetail {
+    background:
+      radial-gradient(circle at 15% 18%, rgba(50, 216, 255, .16), transparent 18rem),
+      radial-gradient(circle at 88% 18%, rgba(255, 91, 221, .13), transparent 18rem),
+      radial-gradient(circle at 75% 92%, rgba(255, 122, 69, .1), transparent 20rem),
+      linear-gradient(145deg, rgba(10, 34, 77, .96), rgba(22, 16, 62, .98));
+  }
+
+  .servicesOrbitCard,
+  .zoneOrbitSatellite,
+  .faqCarouselCard,
+  .socialOrbitNode {
+    box-shadow:
+      0 18px 46px rgba(0, 0, 0, .3),
+      0 0 22px color-mix(in srgb, var(--service-accent, #8b5cf6) 18%, transparent),
+      inset 0 1px rgba(255, 255, 255, .08);
+  }
+
+  .strengthNewtonBall[data-filled="false"] {
+    opacity: 1;
+  }
+
+  .strengthNewtonBall[data-filled="false"] > strong {
+    visibility: visible;
+  }
+
+  .strengthNewtonBalls {
+    justify-content: center;
+    gap: 0;
+  }
+
+  .strengthNewtonBall {
+    flex: 0 0 var(--strength-ball-size);
+  }
+
+  .strengthNewtonSphere {
+    box-shadow:
+      inset -16px -18px 28px rgba(26, 13, 79, .24),
+      inset 10px 10px 18px rgba(255, 187, 155, .2),
+      0 20px 42px rgba(0, 0, 0, .38),
+      0 0 30px rgba(255, 91, 221, .18),
+      0 0 38px rgba(50, 216, 255, .12);
+  }
+
+  .socialOrbitNode {
+    min-height: 60px;
+    grid-template-columns: 44px minmax(0, 1fr);
+    gap: 10px;
+    border-radius: 999px;
+    border-color: rgba(157, 186, 255, .22);
+    background:
+      radial-gradient(circle at 22% 30%, rgba(50, 216, 255, .16), transparent 62%),
+      linear-gradient(135deg, rgba(7, 25, 64, .97), rgba(20, 17, 62, .98));
+  }
+
+  .socialOrbitGlyph,
+  .socialOrbitDetailGlyph {
+    border-radius: 50%;
+    background: linear-gradient(135deg, #32d8ff, #8b5cf6, #ff5bdd);
+    box-shadow:
+      0 12px 28px rgba(0, 0, 0, .32),
+      0 0 0 3px rgba(255, 255, 255, .08),
+      0 0 28px rgba(139, 92, 246, .28);
+  }
+
+  .socialOrbitGlyph {
+    width: 44px;
+    height: 44px;
+  }
+
+  .socialOrbitGlyph img,
+  .socialOrbitDetailGlyph img {
+    border-radius: inherit;
+  }
+
+  .socialOrbitDetailGlyph {
+    width: 62px;
+    height: 62px;
+  }
+
+  .socialOrbitCoreGlow {
+    background:
+      radial-gradient(circle, rgba(139, 92, 246, .38), transparent 58%),
+      radial-gradient(circle, rgba(50, 216, 255, .2), transparent 73%);
+  }
+}
+
+/* Étape 5 iNrSearch — impulsion Newton inversée : 4 prend le mouvement de 5, 5 prend celui de 4. */
+.strengthNewtonBalls[data-direction] .strengthNewtonBall[data-edge="center"] .strengthNewtonPendulum {
+  animation: none !important;
+  transform: rotate(0deg);
+}
+
+.strengthNewtonBalls[data-direction] .strengthNewtonBall[data-edge="left"] .strengthNewtonPendulum {
+  animation: strengthNewtonStep4RightImpulse 2.8s cubic-bezier(.2, .78, .22, 1) infinite;
+}
+
+.strengthNewtonBalls[data-direction] .strengthNewtonBall[data-edge="right"] .strengthNewtonPendulum {
+  animation: strengthNewtonStep4LeftImpulse 2.8s cubic-bezier(.2, .78, .22, 1) infinite;
+}
+
+.strengthNewtonImpulse {
+  animation: strengthNewtonStep4Impact 2.8s ease-out infinite;
+}
+
+@keyframes strengthNewtonStep4LeftImpulse {
+  0%, 8% { transform: rotate(-18deg); }
+  28%, 70% { transform: rotate(0deg); }
+  88%, 100% { transform: rotate(-18deg); }
+}
+
+@keyframes strengthNewtonStep4RightImpulse {
+  0%, 34% { transform: rotate(0deg); }
+  54% { transform: rotate(18deg); }
+  78%, 100% { transform: rotate(0deg); }
+}
+
+@keyframes strengthNewtonStep4Impact {
+  0%, 23% { opacity: 0; scale: .35; }
+  29% { opacity: 1; scale: .7; }
+  48% { opacity: .62; scale: 2.15; }
+  76%, 100% { opacity: 0; scale: 3; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .strengthNewtonBalls[data-direction] .strengthNewtonPendulum,
+  .strengthNewtonImpulse {
+    animation: none !important;
+  }
+}
+
+/* Étape 6 iNrSearch — Identité plus dense, zones enrichies et textes orientés conversion. */
+@media (min-width: 901px) {
+  .presentationSummary {
+    margin-top: 22px;
+  }
+
+  .presentationSatellite[data-kind="activity"] {
+    left: 0;
+    top: 8%;
+    transform: rotate(-4deg);
+  }
+
+  .presentationSatellite[data-kind="anchor"] {
+    right: 0;
+    top: 8%;
+    transform: rotate(4deg);
+  }
+
+  .presentationSatellite[data-kind="audience"] {
+    right: 0;
+    top: 36%;
+    transform: rotate(-3deg);
+  }
+
+  .presentationSatellite[data-kind="strengths"] {
+    left: 4%;
+    top: 42%;
+    transform: rotate(3deg);
+    border-color: rgba(255, 91, 221, .28);
+    background:
+      radial-gradient(circle at 18% 26%, rgba(255, 91, 221, .22), transparent 60%),
+      linear-gradient(145deg, rgba(35, 28, 92, .9), rgba(12, 19, 54, .78));
+    box-shadow:
+      0 18px 50px rgba(0, 0, 0, .32),
+      0 0 28px rgba(255, 91, 221, .18),
+      inset 0 1px rgba(255, 255, 255, .12);
+  }
+
+  .presentationSatellite[data-kind="availability"] {
+    left: 2%;
+    bottom: 12%;
+    transform: rotate(4deg);
+  }
+
+  .presentationSatellite[data-kind="strengths"] .presentationFactIcon {
+    background: linear-gradient(135deg, #32d8ff, #8b5cf6, #ff5bdd);
+    box-shadow: 0 0 28px rgba(255, 91, 221, .22);
+  }
+}
+
+.zoneOrbitSatellite strong {
+  max-width: 100%;
+}
+
+.zoneOrbitSatellite[data-active="true"] strong {
+  overflow-wrap: anywhere;
+}
+
+/* Étape 7 iNrSearch — bulles lisibles, identité détachée et typographies desktop renforcées. */
+@media (min-width: 901px) {
+  .presentationSatellite[data-kind="strengths"] {
+    left: -4% !important;
+    right: auto !important;
+    top: 48% !important;
+    bottom: auto !important;
+    width: clamp(184px, 13.6vw, 226px) !important;
+    height: auto !important;
+    min-height: 74px !important;
+    max-height: none !important;
+    padding: 13px 15px !important;
+    display: grid !important;
+    grid-template-columns: 38px minmax(0, 1fr) !important;
+    align-items: center !important;
+    gap: 10px !important;
+    overflow: hidden !important;
+    border-color: rgba(255, 255, 255, .15) !important;
+    border-radius: 22px !important;
+    background: linear-gradient(145deg, rgba(23, 30, 70, .82), rgba(13, 18, 51, .72)) !important;
+    box-shadow: 0 18px 46px rgba(0, 0, 0, .28), inset 0 1px rgba(255, 255, 255, .08) !important;
+    transform: rotate(-4deg) !important;
+  }
+
+  .presentationSatellite[data-kind="availability"] {
+    left: 5% !important;
+    right: auto !important;
+    top: auto !important;
+    bottom: 8% !important;
+    height: auto !important;
+    transform: rotate(4deg) !important;
+  }
+
+  .presentationSatellite[data-kind="strengths"] .presentationFactIcon {
+    background: linear-gradient(135deg, #5262d9, #8b5cf6) !important;
+    box-shadow: 0 9px 24px rgba(0, 0, 0, .25) !important;
+  }
+
+  .presentationSummary {
+    font-size: 14px !important;
+    line-height: 1.72 !important;
+  }
+
+  .presentationSummary p,
+  .presentationDescription {
+    line-height: 1.7 !important;
+  }
+
+  .presentationFactText small {
+    font-size: 10px !important;
+    line-height: 1.15 !important;
+  }
+
+  .presentationFactText strong {
+    font-size: 14px !important;
+    line-height: 1.18 !important;
+  }
+
+  .topbarLinks a,
+  .headerCompanyName {
+    font-size: 12px !important;
+  }
+
+  .presentationStatus strong,
+  .orbitNavigation span,
+  .galleryOrbitCounter,
+  .newsOrbitNavigator,
+  .zoneOrbitNavigator,
+  .faqOrbitNavigator,
+  .socialOrbitCount {
+    font-size: 12px !important;
+  }
+
+  .presentationStatus small {
+    font-size: 10px !important;
+  }
+
+  .servicesOrbitHeader p,
+  .galleryOrbitHeader p,
+  .newsOrbitHeader p,
+  .zoneOrbitHeader p,
+  .strengthOrbitHeader p,
+  .faqOrbitHeader p,
+  .socialOrbitHeader p,
+  .contactOrbitHeader p {
+    max-width: 780px !important;
+    font-size: 15px !important;
+    line-height: 1.65 !important;
+  }
+
+  .servicesOrbitFocus p,
+  .galleryOrbitMeta p,
+  .newsOrbitFocusContent p,
+  .zoneOrbitDetail p,
+  .strengthNewtonDetail p,
+  .faqCarouselCard p,
+  .socialOrbitDetail p,
+  .contactSignal strong {
+    font-size: 14px !important;
+    line-height: 1.62 !important;
+  }
+
+  .faqCarouselCard[data-position="active"] p {
+    font-size: 15px !important;
+  }
+
+  .servicesOrbitCard strong,
+  .zoneOrbitSatellite strong,
+  .socialOrbitNode > strong {
+    font-size: 13px !important;
+    line-height: 1.22 !important;
+  }
+
+  .zoneOrbitSatellite small,
+  .servicesOrbitAudience,
+  .servicesOrbitAudience strong,
+  .galleryOrbitMeta small,
+  .newsOrbitFocusContent small,
+  .strengthNewtonDetail small,
+  .socialOrbitDetail > small,
+  .contactSignal small {
+    font-size: 11px !important;
+  }
+
+  .zoneOrbitRail button,
+  .servicesOrbitIndexList button,
+  .servicesOrbitFocus > a,
+  .galleryOrbitMeta > button,
+  .newsOrbitRead,
+  .faqCarouselCard > button,
+  .zoneOrbitDetail > a,
+  .presentationPrimaryAction,
+  .presentationSecondaryAction,
+  .strengthBadgeAction,
+  .socialOrbitDetail > a,
+  .contactCore > button {
+    font-size: 12px !important;
+  }
+
+  .zoneOrbitSatellite {
+    width: clamp(148px, 12vw, 188px) !important;
+    min-height: 66px !important;
+    padding: 12px 15px 12px 24px !important;
+  }
+
+  .zoneOrbitSatellite[data-active="true"] {
+    width: clamp(158px, 13vw, 204px) !important;
+    z-index: 9 !important;
+  }
+
+  .zoneOrbitCore small,
+  .zoneOrbitCore em {
+    font-size: 10px !important;
+  }
+
+  .zoneOrbitCore strong {
+    font-size: clamp(24px, 2.1vw, 33px) !important;
+  }
+
+  .strengthNewtonBall > strong {
+    font-size: clamp(12px, 1vw, 15px) !important;
+  }
+
+  .strengthNewtonDetail > strong {
+    font-size: clamp(25px, 2.3vw, 34px) !important;
+  }
+
+  .strengthNewtonDetail > span {
+    font-size: 10px !important;
+  }
+}
+
+/* Étape 8 iNrSearch — Zone en vraie orbite et expertises recentrées dans le cadre. */
+@media (min-width: 901px) {
+  .zoneOrbitSatellite {
+    width: clamp(142px, 11.4vw, 176px) !important;
+    min-height: 62px !important;
+    padding: 11px 14px 11px 24px !important;
+    border-radius: 20px !important;
+  }
+
+  .zoneOrbitSatellite[data-active="true"] {
+    width: auto !important;
+    min-width: clamp(128px, 10vw, 160px) !important;
+    max-width: 190px !important;
+    min-height: 44px !important;
+    padding: 0 18px 0 34px !important;
+    display: flex !important;
+    align-items: center !important;
+    border-radius: 999px !important;
+    background:
+      radial-gradient(circle at 12% 50%, rgba(50, 216, 255, .22), transparent 55%),
+      linear-gradient(135deg, rgba(8, 54, 92, .96), rgba(10, 22, 58, .95)) !important;
+    box-shadow:
+      0 18px 42px rgba(0, 0, 0, .3),
+      0 0 28px rgba(50, 216, 255, .2),
+      inset 0 1px rgba(255, 255, 255, .12) !important;
+  }
+
+  .zoneOrbitSatellite[data-active="true"] > span {
+    left: 15px !important;
+    top: 50% !important;
+    translate: 0 -50% !important;
+  }
+
+  .zoneOrbitSatellite[data-active="true"] strong {
+    font-size: 14px !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+  }
+
+  .zoneOrbitSatellite[data-active="true"] small {
+    display: none !important;
+  }
+
+  .servicesAccelerator {
+    overflow: hidden !important;
+  }
+
+  .servicesOrbitCard,
+  .servicesOrbitCard[data-active="true"] {
+    width: clamp(132px, 10.6vw, 168px) !important;
+    min-height: 62px !important;
+    transform:
+      translate(-50%, -50%)
+      rotate(var(--service-angle))
+      translateX(clamp(148px, 15.2vw, 216px))
+      rotate(calc(var(--service-angle) * -1)) !important;
+  }
+}
+
+/* Étape 9 iNrSearch — sélection expertise au centre et zones en lignes fixes. */
+@media (min-width: 901px) {
+  .servicesOrbitCard[data-active="true"] {
+    left: 50% !important;
+    top: 50% !important;
+    width: clamp(178px, 15vw, 230px) !important;
+    min-height: 78px !important;
+    z-index: 18 !important;
+    transform: translate(-50%, -50%) !important;
+  }
+
+  .zoneOrbitSatellite,
+  .zoneOrbitSatellite[data-active="true"] {
+    width: clamp(150px, 12vw, 190px) !important;
+    min-width: 0 !important;
+    max-width: 210px !important;
+    min-height: 62px !important;
+    padding: 11px 15px 11px 25px !important;
+    display: grid !important;
+    align-content: center !important;
+    justify-items: start !important;
+    border-radius: 20px !important;
+    transform: translate(-50%, -50%) !important;
+  }
+
+  .zoneOrbitSatellite[data-active="true"] {
+    background:
+      radial-gradient(circle at 16% 26%, rgba(50, 216, 255, .2), transparent 55%),
+      linear-gradient(145deg, rgba(10, 43, 83, .96), rgba(9, 20, 55, .96)) !important;
+  }
+
+  .zoneOrbitSatellite[data-active="true"] > span {
+    left: 13px !important;
+    top: 50% !important;
+    translate: 0 -50% !important;
+  }
+
+  .zoneOrbitSatellite[data-active="true"] strong {
+    font-size: 13px !important;
+    line-height: 1.2 !important;
+    white-space: normal !important;
+  }
+
+  .zoneOrbitSatellite[data-active="true"] small {
+    display: block !important;
+  }
+
+  .zoneOrbitSatellite[data-zone-key="saint-nicolas"] {
+    left: 50% !important;
+    top: 20% !important;
+  }
+
+  .zoneOrbitSatellite[data-zone-key="harnes"] {
+    left: 32% !important;
+    top: 50% !important;
+  }
+
+  .zoneOrbitSatellite[data-zone-key="beaurains"] {
+    left: 68% !important;
+    top: 50% !important;
+  }
+
+  .zoneOrbitSatellite[data-zone-key="arras"] {
+    left: 34% !important;
+    top: 79% !important;
+  }
+
+  .zoneOrbitSatellite[data-zone-key="lens"] {
+    left: 66% !important;
+    top: 79% !important;
+  }
+
+  .zoneOrbitSatellite[data-zone-key="department"] {
+    left: 18% !important;
+    top: 24% !important;
+    opacity: .88;
+  }
+}
+
+/* Étape 10 iNrSearch — abaisse les trois bulles hautes d'Expertises sans toucher à la sélection centrale. */
+@media (min-width: 901px) {
+  .servicesOrbitCard:not([data-active="true"])[data-orbit-position="0"],
+  .servicesOrbitCard:not([data-active="true"])[data-orbit-position="1"],
+  .servicesOrbitCard:not([data-active="true"])[data-orbit-position="6"] {
+    top: calc(50% + clamp(18px, 2.4vh, 28px)) !important;
+  }
+
+  .servicesOrbitCard[data-active="true"] {
+    top: 50% !important;
+  }
+}
+
+/* Étape 11 iNrSearch — zones en orbite circulaire et sélection en pastille sur l'ancrage. */
+@media (min-width: 901px) {
+  .zoneRadarCanvas {
+    overflow: hidden !important;
+  }
+
+  .zoneOrbitSatellite,
+  .zoneOrbitSatellite[data-zone-key],
+  .zoneOrbitSatellite[data-active="true"] {
+    left: 50% !important;
+    top: 50% !important;
+  }
+
+  .zoneOrbitSatellite:not([data-active="true"]) {
+    width: clamp(144px, 11.6vw, 184px) !important;
+    min-width: 0 !important;
+    max-width: 190px !important;
+    min-height: 60px !important;
+    padding: 10px 14px 10px 24px !important;
+    display: grid !important;
+    align-content: center !important;
+    justify-items: start !important;
+    border-radius: 20px !important;
+    opacity: .94 !important;
+    transform:
+      translate(-50%, -50%)
+      rotate(var(--zone-angle))
+      translateX(var(--zone-distance))
+      rotate(calc(var(--zone-angle) * -1)) !important;
+  }
+
+  .zoneOrbitSatellite[data-active="true"] {
+    width: auto !important;
+    min-width: clamp(118px, 9.5vw, 150px) !important;
+    max-width: clamp(180px, 15vw, 240px) !important;
+    min-height: 40px !important;
+    padding: 0 16px 0 32px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 0 !important;
+    border-radius: 999px !important;
+    z-index: 16 !important;
+    transform: translate(-50%, calc(-50% - var(--zone-distance))) !important;
+    background:
+      radial-gradient(circle at 14% 50%, rgba(50, 216, 255, .22), transparent 56%),
+      linear-gradient(135deg, rgba(8, 54, 92, .97), rgba(10, 22, 58, .96)) !important;
+    box-shadow:
+      0 18px 42px rgba(0, 0, 0, .3),
+      0 0 26px color-mix(in srgb, var(--zone-accent) 24%, transparent),
+      inset 0 1px rgba(255, 255, 255, .13) !important;
+  }
+
+  .zoneOrbitSatellite[data-active="true"] > span {
+    left: 14px !important;
+    top: 50% !important;
+    translate: 0 -50% !important;
+  }
+
+  .zoneOrbitSatellite[data-active="true"] strong {
+    min-width: 0 !important;
+    font-size: 13px !important;
+    line-height: 1 !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  .zoneOrbitSatellite[data-active="true"] small {
+    display: none !important;
+  }
+}
+
+/* Étape 12 iNrSearch — vrai radar : ancrage fixe, balayage CSS et villes sur un même cercle. */
+.zoneRadarCanvas {
+  isolation: isolate;
+  overflow: hidden !important;
+  background:
+    radial-gradient(circle at 50% 50%, rgba(43, 220, 255, .13) 0 7%, transparent 28%),
+    radial-gradient(circle at 50% 50%, rgba(123, 97, 255, .08), transparent 58%),
+    linear-gradient(145deg, rgba(6, 30, 65, .94), rgba(6, 16, 47, .98)) !important;
+}
+
+.zoneRadarCanvas::before,
+.zoneRadarCanvas::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  pointer-events: none;
+}
+
+.zoneRadarCanvas::before {
+  background:
+    linear-gradient(90deg, transparent calc(50% - .5px), rgba(65, 220, 255, .12) 50%, transparent calc(50% + .5px)),
+    linear-gradient(transparent calc(50% - .5px), rgba(65, 220, 255, .12) 50%, transparent calc(50% + .5px));
+  mask-image: radial-gradient(circle at 50% 50%, #000 0 44%, transparent 71%);
+}
+
+.zoneRadarCanvas::after {
+  background: radial-gradient(circle at 50% 50%, transparent 0 47%, rgba(50, 216, 255, .06) 48%, transparent 49%);
+  filter: drop-shadow(0 0 24px rgba(50, 216, 255, .1));
+}
+
+.zoneOrbitRadar {
+  z-index: 2 !important;
+  width: min(62%, 540px) !important;
+  max-width: 86% !important;
+  overflow: visible !important;
+  border: 1px solid rgba(64, 224, 255, .28) !important;
+  background:
+    repeating-radial-gradient(circle at 50% 50%, transparent 0 62px, rgba(75, 220, 255, .13) 63px, transparent 64px 78px),
+    radial-gradient(circle at 50% 50%, rgba(54, 217, 255, .08), transparent 69%) !important;
+  box-shadow:
+    0 0 0 1px rgba(123, 97, 255, .08),
+    0 0 70px rgba(38, 192, 255, .08),
+    inset 0 0 70px rgba(38, 192, 255, .045) !important;
+}
+
+.zoneOrbitRadar::before,
+.zoneOrbitRadar::after,
+.zoneOrbitRadar span {
+  border-color: rgba(72, 219, 255, .12) !important;
+}
+
+.zoneOrbitRadar::before { inset: 16.66% !important; }
+.zoneOrbitRadar::after { inset: 33.33% !important; }
+.zoneOrbitRadar span:nth-child(1) { inset: 44% !important; }
+.zoneOrbitRadar span:nth-child(2) { background: rgba(72, 219, 255, .1) !important; }
+.zoneOrbitRadar span:nth-child(3) { background: rgba(72, 219, 255, .1) !important; }
+
+.zoneOrbitRadar i {
+  inset: 0 !important;
+  width: auto !important;
+  height: auto !important;
+  border-radius: 50% !important;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0 298deg,
+    rgba(51, 217, 255, .015) 307deg,
+    rgba(51, 217, 255, .11) 332deg,
+    rgba(61, 226, 255, .42) 358deg,
+    rgba(132, 240, 255, .76) 360deg
+  ) !important;
+  transform-origin: 50% 50% !important;
+  animation: inrZoneRadarSweep 5.8s linear infinite !important;
+  filter: drop-shadow(0 0 9px rgba(68, 225, 255, .28));
+}
+
+.zoneOrbitRadar i::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: calc(50% - 1px);
+  width: 48%;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(123, 236, 255, .92), rgba(51, 217, 255, .18), transparent);
+  box-shadow: 0 0 14px rgba(51, 217, 255, .46);
+  transform-origin: 0 50%;
+}
+
+@keyframes inrZoneRadarSweep {
+  to { transform: rotate(360deg); }
+}
+
+.zoneOrbitCore {
+  z-index: 9 !important;
+  left: 50% !important;
+  top: 50% !important;
+  width: clamp(138px, 12vw, 170px) !important;
+  padding: 22px !important;
+  translate: -50% -50% !important;
+  transform: none !important;
+  border-color: rgba(103, 231, 255, .5) !important;
+  background:
+    radial-gradient(circle at 34% 22%, rgba(139, 239, 255, .34), transparent 29%),
+    radial-gradient(circle at 50% 50%, rgba(41, 139, 210, .28), transparent 61%),
+    linear-gradient(145deg, rgba(15, 62, 111, .98), rgba(10, 20, 60, .99)) !important;
+  box-shadow:
+    0 0 0 10px rgba(56, 216, 255, .035),
+    0 0 0 24px rgba(81, 110, 255, .025),
+    0 24px 72px rgba(0, 0, 0, .42),
+    0 0 42px rgba(51, 217, 255, .19),
+    inset 0 1px rgba(255, 255, 255, .2) !important;
+}
+
+.zoneOrbitCorePulse {
+  inset: -15px !important;
+  border-color: rgba(72, 225, 255, .34) !important;
+  animation: inrZoneAnchorPulse 3.2s ease-out infinite !important;
+}
+
+@keyframes inrZoneAnchorPulse {
+  0% { scale: .9; opacity: .72; }
+  75%, 100% { scale: 1.24; opacity: 0; }
+}
+
+.zoneOrbitSatellites {
+  z-index: 10 !important;
+}
+
+.zoneOrbitSatellite,
+.zoneOrbitSatellite[data-zone-key],
+.zoneOrbitSatellite[data-active="true"] {
+  left: 50% !important;
+  top: 50% !important;
+  width: clamp(138px, 11.2vw, 176px) !important;
+  min-width: 0 !important;
+  max-width: 184px !important;
+  height: auto !important;
+  min-height: 60px !important;
+  padding: 10px 14px 10px 24px !important;
+  display: grid !important;
+  align-content: center !important;
+  justify-items: start !important;
+  gap: 3px !important;
+  border-radius: 18px !important;
+  opacity: .96 !important;
+  transform:
+    translate(-50%, -50%)
+    rotate(var(--zone-angle))
+    translateX(var(--zone-distance))
+    rotate(calc(var(--zone-angle) * -1)) !important;
+  animation: none !important;
+  transition: border-color .25s ease, background .25s ease, box-shadow .25s ease, filter .25s ease !important;
+}
+
+.zoneOrbitSatellite[data-active="true"] {
+  z-index: 14 !important;
+  border-color: color-mix(in srgb, var(--zone-accent) 82%, white 8%) !important;
+  background:
+    radial-gradient(circle at 12% 50%, color-mix(in srgb, var(--zone-accent) 30%, transparent), transparent 58%),
+    linear-gradient(135deg, rgba(12, 54, 96, .98), rgba(10, 23, 60, .98)) !important;
+  box-shadow:
+    0 18px 42px rgba(0, 0, 0, .34),
+    0 0 0 4px color-mix(in srgb, var(--zone-accent) 8%, transparent),
+    0 0 28px color-mix(in srgb, var(--zone-accent) 28%, transparent),
+    inset 0 1px rgba(255, 255, 255, .14) !important;
+  filter: brightness(1.1);
+}
+
+.zoneOrbitSatellite:hover {
+  border-color: color-mix(in srgb, var(--zone-accent) 68%, white 6%) !important;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, .32), 0 0 24px color-mix(in srgb, var(--zone-accent) 22%, transparent) !important;
+}
+
+.zoneOrbitSatellite > span,
+.zoneOrbitSatellite[data-active="true"] > span {
+  left: 11px !important;
+  top: 50% !important;
+  width: 7px !important;
+  height: 7px !important;
+  translate: 0 -50% !important;
+}
+
+.zoneOrbitSatellite strong,
+.zoneOrbitSatellite[data-active="true"] strong {
+  display: block !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+  font-size: 12px !important;
+  line-height: 1.18 !important;
+  white-space: normal !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+.zoneOrbitSatellite small,
+.zoneOrbitSatellite[data-active="true"] small {
+  display: block !important;
+  font-size: 9px !important;
+  line-height: 1.1 !important;
+}
+
+@media (max-width: 900px) and (min-width: 701px) {
+  .zoneOrbitRadar {
+    width: min(78vw, 470px) !important;
+  }
+
+  .zoneOrbitSatellite,
+  .zoneOrbitSatellite[data-zone-key],
+  .zoneOrbitSatellite[data-active="true"] {
+    --zone-distance: clamp(150px, 24vw, 190px) !important;
+    width: clamp(124px, 18vw, 152px) !important;
+    min-height: 56px !important;
+  }
+}
+
+@media (max-width: 700px) {
+  .zoneRadarCanvas {
+    min-height: 390px !important;
+  }
+
+  .zoneOrbitRadar {
+    width: min(88vw, 350px) !important;
+    max-width: 94% !important;
+  }
+
+  .zoneOrbitCore {
+    top: 50% !important;
+    width: 112px !important;
+    padding: 16px !important;
+  }
+
+  .zoneOrbitCore strong {
+    font-size: 21px !important;
+  }
+
+  .zoneOrbitCore small,
+  .zoneOrbitCore em {
+    font-size: 7px !important;
+  }
+
+  .zoneOrbitSatellite,
+  .zoneOrbitSatellite[data-zone-key],
+  .zoneOrbitSatellite[data-active="true"] {
+    --zone-distance: clamp(105px, 30vw, 128px) !important;
+    width: 34px !important;
+    min-width: 34px !important;
+    max-width: 34px !important;
+    height: 34px !important;
+    min-height: 34px !important;
+    padding: 0 !important;
+    display: block !important;
+    border-radius: 50% !important;
+  }
+
+  .zoneOrbitSatellite[data-active="true"] {
+    width: 42px !important;
+    min-width: 42px !important;
+    max-width: 42px !important;
+    height: 42px !important;
+    min-height: 42px !important;
+  }
+
+  .zoneOrbitSatellite > span,
+  .zoneOrbitSatellite[data-active="true"] > span {
+    left: 50% !important;
+    top: 50% !important;
+    width: 10px !important;
+    height: 10px !important;
+    translate: -50% -50% !important;
+  }
+
+  .zoneOrbitSatellite strong,
+  .zoneOrbitSatellite small,
+  .zoneOrbitSatellite[data-active="true"] strong,
+  .zoneOrbitSatellite[data-active="true"] small {
+    display: none !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zoneOrbitRadar i,
+  .zoneOrbitCorePulse {
+    animation: none !important;
+  }
+}

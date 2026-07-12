@@ -23,6 +23,40 @@ function wrapIndex(index: number, length: number) {
   return (index + length) % length;
 }
 
+function isDepartmentZone(zone: string) {
+  return zone.toLocaleLowerCase("fr-FR").startsWith("département") || zone.toLocaleLowerCase("fr-FR").startsWith("departement");
+}
+
+function zoneName(zone: string) {
+  return isDepartmentZone(zone) ? zone.replace(/^d[ée]partement\s*:\s*/i, "") : zone;
+}
+
+function zoneLayoutKey(zone: string) {
+  const normalized = zoneName(zone)
+    .toLocaleLowerCase("fr-FR")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+  if (normalized.includes("saint-nicolas")) return "saint-nicolas";
+  if (normalized.includes("harnes")) return "harnes";
+  if (normalized.includes("beaurains")) return "beaurains";
+  if (normalized.includes("arras")) return "arras";
+  if (normalized.includes("lens")) return "lens";
+  if (isDepartmentZone(zone)) return "department";
+  return "other";
+}
+
+function zoneStatus(zone: string, active: boolean) {
+  if (isDepartmentZone(zone)) return active ? "Couverture élargie" : "Département";
+  return active ? "Signal actif" : "Sélectionner";
+}
+
+function zoneActionText(zone: string, companyName: string) {
+  if (isDepartmentZone(zone)) {
+    return `${companyName} peut confirmer si votre commune entre dans son périmètre d’intervention et vous orienter vers le bon échange.`;
+  }
+  return `Vous êtes à ${zone} ? Présentez votre besoin en quelques secondes : ${companyName} peut confirmer la disponibilité, le bon format d’intervention et la prochaine étape.`;
+}
+
 export default function InrSearchZoneOrbit({ companyName, city, profession, zones }: Props) {
   const [activeIndex, setActiveIndex] = useState(0);
   const total = zones.length;
@@ -31,16 +65,16 @@ export default function InrSearchZoneOrbit({ companyName, city, profession, zone
   const radarZones = useMemo(
     () =>
       zones.map((zone, index) => {
-        const forward = wrapIndex(index - activeIndex, total);
-        const signed = forward > total / 2 ? forward - total : forward;
-        const visible = total <= 7 || Math.abs(signed) <= 3;
-        const position = total <= 7 ? forward : signed + 3;
         const divisor = Math.min(total, 7);
-        const angle = divisor > 1 ? -90 + (position * 360) / divisor : -90;
-        const distance = index % 2 === 0 ? "clamp(122px, 14vw, 176px)" : "clamp(108px, 12.5vw, 158px)";
-        return { zone, index, visible, angle, distance };
+        const visible = index < divisor;
+        const position = index;
+        const angle = divisor > 1
+          ? -90 + 180 / divisor + (position * 360) / divisor
+          : -90;
+        const distance = "clamp(155px, 14vw, 195px)";
+        return { zone, index, visible, angle, distance, position };
       }),
-    [activeIndex, total, zones],
+    [total, zones],
   );
 
   const move = (offset: number) => {
@@ -69,7 +103,7 @@ export default function InrSearchZoneOrbit({ companyName, city, profession, zone
         <div>
           <span className={styles.zoneOrbitEyebrow}>Radar d’intervention</span>
           <h2 id="zones-title">La proximité devient un signal clair</h2>
-          <p>{companyName} rayonne depuis {city || "son point d’ancrage"}. Choisissez une zone pour préparer une demande locale.</p>
+          <p>Vérifiez vite si {companyName} peut intervenir près de vous, puis transformez une simple recherche locale en demande prête à traiter.</p>
         </div>
         <div className={styles.zoneOrbitNavigator} aria-label="Naviguer entre les zones d’intervention">
           <button type="button" onClick={() => move(-1)} aria-label="Zone précédente">←</button>
@@ -89,7 +123,7 @@ export default function InrSearchZoneOrbit({ companyName, city, profession, zone
           </div>
 
           <div className={styles.zoneOrbitSatellites} role="list" aria-label="Communes desservies sur le radar">
-            {radarZones.map(({ zone, index, visible, angle, distance }) => {
+            {radarZones.map(({ zone, index, visible, angle, distance, position }) => {
               const active = index === activeIndex;
               const style: ZoneStyle = {
                 "--zone-angle": `${angle}deg`,
@@ -101,6 +135,8 @@ export default function InrSearchZoneOrbit({ companyName, city, profession, zone
                   type="button"
                   className={styles.zoneOrbitSatellite}
                   data-active={active ? "true" : "false"}
+                  data-orbit-position={String(position)}
+                  data-zone-key={zoneLayoutKey(zone)}
                   data-visible={visible ? "true" : "false"}
                   style={style}
                   key={`${zone}-${index}`}
@@ -112,8 +148,8 @@ export default function InrSearchZoneOrbit({ companyName, city, profession, zone
                   role="listitem"
                 >
                   <span aria-hidden="true" />
-                  <strong>{zone}</strong>
-                  <small>{active ? "Signal actif" : "Sélectionner"}</small>
+                  <strong>{zoneName(zone)}</strong>
+                  <small>{zoneStatus(zone, active)}</small>
                 </button>
               );
             })}
@@ -123,9 +159,11 @@ export default function InrSearchZoneOrbit({ companyName, city, profession, zone
         <aside className={styles.zoneOrbitDetail} aria-live="polite">
           <span className={styles.zoneOrbitDetailIndex}>{String(activeIndex + 1).padStart(2, "0")}</span>
           <small>Zone sélectionnée</small>
-          <strong>{activeZone}</strong>
-          <p>Vous avez un projet à {activeZone} ? {companyName} peut confirmer la disponibilité et les modalités adaptées à votre besoin.</p>
-          <a href="#contact">Présenter mon besoin <span aria-hidden="true">↗</span></a>
+          <strong>{zoneName(activeZone)}</strong>
+          <p>{zoneActionText(activeZone, companyName)}</p>
+          <a href="#contact" data-inrsearch-contact-trigger data-inrsearch-action="zone_contact" data-inrsearch-target="#contact-modal">
+            Présenter mon besoin <span aria-hidden="true">↗</span>
+          </a>
           <div className={styles.zoneOrbitDetailPulse} aria-hidden="true"><span /><span /><span /></div>
         </aside>
       </div>

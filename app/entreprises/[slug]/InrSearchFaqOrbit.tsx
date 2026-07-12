@@ -71,7 +71,7 @@ export default function InrSearchFaqOrbit({ companyName, items, contactHref }: P
         <div>
           <span className={styles.faqOrbitEyebrow}>Capsules de réponses</span>
           <h2 id="faq-title">Une question. Une réponse qui arrive au centre.</h2>
-          <p>Trois cartes visibles, aucune zone perdue : parcourez les informations utiles avant de contacter {companyName}.</p>
+          <p>Levez les derniers doutes avant le contact : chaque réponse aide à savoir quoi demander, comment avancer et pourquoi faire appel à {companyName}.</p>
         </div>
         <div className={styles.faqOrbitNavigator} aria-label="Naviguer entre les questions fréquentes">
           <button type="button" onClick={() => move(-1)} aria-label="Question précédente">←</button>
@@ -101,7 +101,13 @@ export default function InrSearchFaqOrbit({ companyName, items, contactHref }: P
                 <h3>{item.question}</h3>
                 <p>{active ? item.answer : preview(item.answer)}</p>
                 {active ? (
-                  <a href={contactHref || "#contact"} data-inrsearch-action="faq_contact" data-inrsearch-target={contactHref || "#contact"}>
+                  <a
+                    href="#contact"
+                    data-inrsearch-contact-trigger
+                    data-inrsearch-action="faq_contact"
+                    data-inrsearch-target="#contact-modal"
+                    data-inrsearch-fallback={contactHref || undefined}
+                  >
                     Poser une autre question <span aria-hidden="true">↗</span>
                   </a>
                 ) : (

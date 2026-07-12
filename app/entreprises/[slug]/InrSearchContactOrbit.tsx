@@ -3,6 +3,10 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import InrSearchLeadForm from "./InrSearchLeadForm";
+import {
+  INR_SEARCH_OPEN_CONTACT_EVENT,
+  type InrSearchOpenContactDetail,
+} from "./inrSearchContactEvents";
 import styles from "./inrSearchPublic.module.css";
 
 type Props = {
@@ -48,10 +52,20 @@ export default function InrSearchContactOrbit({
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
 
-  const openForm = () => {
-    returnFocusRef.current = document.activeElement as HTMLElement | null;
+  const openForm = (trigger?: HTMLElement | null) => {
+    returnFocusRef.current = trigger || document.activeElement as HTMLElement | null;
     setFormOpen(true);
   };
+
+  useEffect(() => {
+    const onOpenContact = (event: Event) => {
+      const trigger = (event as CustomEvent<InrSearchOpenContactDetail>).detail?.trigger;
+      openForm(trigger);
+    };
+
+    window.addEventListener(INR_SEARCH_OPEN_CONTACT_EVENT, onOpenContact);
+    return () => window.removeEventListener(INR_SEARCH_OPEN_CONTACT_EVENT, onOpenContact);
+  }, []);
 
   useEffect(() => {
     if (!formOpen) return;
@@ -82,7 +96,7 @@ export default function InrSearchContactOrbit({
         <div>
           <span className={styles.contactOrbitEyebrow}>Générateur de convergence</span>
           <h2>Choisissez votre voie. L’énergie fait le lien.</h2>
-          <p>Quatre accès fixes, lisibles et immédiatement actionnables pour entrer en contact avec {companyName}.</p>
+          <p>Passez de l’intérêt à l’action : choisissez le canal le plus simple et envoyez à {companyName} une demande claire, utile et exploitable.</p>
         </div>
         <span className={styles.contactOrbitStatus}><i /> {signals.length} voie{signals.length > 1 ? "s" : ""} de contact</span>
       </div>
@@ -107,7 +121,7 @@ export default function InrSearchContactOrbit({
           <small>{profession || "Entreprise"}</small>
           <strong>{companyName}</strong>
           <em>{city || "À votre écoute"}</em>
-          <button type="button" onClick={openForm}>Présenter mon besoin <span aria-hidden="true">↗</span></button>
+          <button type="button" onClick={(event) => openForm(event.currentTarget)}>Présenter mon besoin <span aria-hidden="true">↗</span></button>
         </div>
 
         <div className={styles.contactSignals} role="list" aria-label="Moyens de contacter l’entreprise">
@@ -135,9 +149,9 @@ export default function InrSearchContactOrbit({
         </div>
 
         <div className={styles.contactLegalLinks}>
-          <a href="/legal/mentions-legales">Mentions légales</a>
+          <a href="/legal/mentions-legales" target="_blank" rel="noopener noreferrer" data-inrsearch-gesture-ignore>Mentions légales</a>
           <span aria-hidden="true">·</span>
-          <a href="/legal/confidentialite">Confidentialité</a>
+          <a href="/legal/confidentialite" target="_blank" rel="noopener noreferrer" data-inrsearch-gesture-ignore>Confidentialité</a>
         </div>
       </div>
 

@@ -22,6 +22,10 @@ function wrapIndex(index: number, length: number) {
   return (index + length) % length;
 }
 
+function mediaTitle(index: number) {
+  return `Média ${String(index + 1).padStart(2, "0")}`;
+}
+
 export default function InrSearchGalleryOrbit({ companyName, profession, city, media }: Props) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
@@ -29,6 +33,7 @@ export default function InrSearchGalleryOrbit({ companyName, profession, city, m
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const total = media.length;
   const activeMedia = media[activeIndex] || media[0];
+  const activeTitle = mediaTitle(activeIndex);
   const context = [profession, city].filter(Boolean).join(" · ");
 
   const move = useCallback((offset: number) => {
@@ -77,7 +82,7 @@ export default function InrSearchGalleryOrbit({ companyName, profession, city, m
         <div>
           <span className={styles.galleryOrbitEyebrow}>Observatoire créatif</span>
           <h2 id="realisations-title">Les idées deviennent visibles</h2>
-          <p>Une réalisation à la fois, plein cadre, pour découvrir le savoir-faire de {companyName} sans rien masquer.</p>
+          <p>Regardez le résultat avant de contacter {companyName} : les visuels donnent confiance et aident à imaginer votre propre demande.</p>
         </div>
         <div className={styles.galleryOrbitCounter} aria-label="Navigation dans la galerie">
           <button type="button" onClick={() => move(-1)} aria-label="Réalisation précédente">←</button>
@@ -98,20 +103,20 @@ export default function InrSearchGalleryOrbit({ companyName, profession, city, m
           type="button"
           className={styles.galleryOrbitFocus}
           onClick={openLightbox}
-          aria-label={`Agrandir ${activeMedia?.title || "la réalisation"}`}
+          aria-label={`Agrandir ${activeTitle}`}
           aria-haspopup="dialog"
           aria-controls="gallery-lightbox"
         >
           <span className={styles.galleryOrbitFocusGlow} aria-hidden="true" />
-          {activeMedia ? <img src={activeMedia.url} alt={activeMedia.title} loading="eager" decoding="async" /> : null}
+          {activeMedia ? <img src={activeMedia.url} alt={activeTitle} loading="eager" decoding="async" /> : null}
           <span className={styles.galleryOrbitFocusShade} />
         </button>
 
         <article className={styles.galleryOrbitMeta} aria-live="polite">
           <span className={styles.galleryOrbitMetaSignal}><i /> Signal {String(activeIndex + 1).padStart(2, "0")}</span>
           <small>{context || "Réalisation"}</small>
-          <h3>{activeMedia?.title}</h3>
-          <p>Une facette de l’univers de {companyName}, présentée dans son cadre original.</p>
+          <h3>{activeTitle}</h3>
+          <p>Ce média sert de preuve visuelle : il montre le style, le soin et le type de résultat que vous pouvez demander à {companyName}.</p>
           <button type="button" onClick={openLightbox}>Voir en plein écran <span aria-hidden="true">↗</span></button>
         </article>
 
@@ -127,10 +132,10 @@ export default function InrSearchGalleryOrbit({ companyName, profession, city, m
             key={`${item.id}-rail`}
             onClick={() => setActiveIndex(index)}
             role="listitem"
-            aria-label={`Afficher ${item.title}`}
+            aria-label={`Afficher ${mediaTitle(index)}`}
           >
             <img src={item.url} alt="" loading="lazy" decoding="async" />
-            <span>{item.title}</span>
+            <span>{mediaTitle(index)}</span>
           </button>
         ))}
       </div>
@@ -151,10 +156,10 @@ export default function InrSearchGalleryOrbit({ companyName, profession, city, m
               <button ref={closeButtonRef} type="button" className={styles.galleryLightboxClose} onClick={() => setLightboxOpen(false)} aria-label="Fermer la galerie">×</button>
               <button type="button" className={`${styles.galleryLightboxArrow} ${styles.galleryLightboxArrowPrevious}`} onClick={() => move(-1)} aria-label="Réalisation précédente">←</button>
               <figure className={styles.galleryLightboxFigure}>
-                <img src={activeMedia.url} alt={activeMedia.title} />
+                <img src={activeMedia.url} alt={activeTitle} />
                 <figcaption>
                   <small id="gallery-lightbox-context">{context || companyName}</small>
-                  <strong id="gallery-lightbox-title">{activeMedia.title}</strong>
+                  <strong id="gallery-lightbox-title">{activeTitle}</strong>
                   <span>{String(activeIndex + 1).padStart(2, "0")} / {String(total).padStart(2, "0")}</span>
                 </figcaption>
               </figure>

@@ -166,6 +166,33 @@ function lowerInitial(value: string) {
   return value.slice(0, 1).toLocaleLowerCase("fr-FR") + value.slice(1);
 }
 
+function normalizeServiceDescriptionKey(value: string) {
+  return value
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("fr-FR")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function hashText(value: string) {
+  return Array.from(value).reduce((hash, char) => (hash * 31 + char.charCodeAt(0)) >>> 0, 7);
+}
+
+function pickVariant(values: string[], seed: string) {
+  return values[hashText(seed) % values.length];
+}
+
+function storedServiceDescription(service: string, data: InrSearchPublicPageData) {
+  const key = normalizeServiceDescriptionKey(service);
+  return (
+    data.serviceDescriptions[service] ||
+    data.serviceDescriptions[key] ||
+    ""
+  ).trim();
+}
+
 function buildFactualSummary(data: InrSearchPublicPageData) {
   const identity = [
     data.companyName,
@@ -239,20 +266,170 @@ function buildPresentationLead(data: InrSearchPublicPageData) {
     .trim();
 }
 
+function buildConversionSummary(data: InrSearchPublicPageData) {
+  const serviceAngle = data.services.length
+    ? `Les prestations visibles ici permettent de transformer une intention en demande claire : ${joinFrenchList(data.services.slice(0, 4).map(lowerInitial))}.`
+    : "Cette page aide à comprendre rapidement ce que le professionnel peut prendre en charge.";
+  const zoneAngle = data.zones.length || data.city
+    ? `L’internaute peut vérifier la zone, le besoin et le bon point de contact avant de passer à l’action.`
+    : "L’internaute peut qualifier son besoin avant de prendre contact.";
+  const strengthAngle = data.strengths.length
+    ? `Les points forts comme ${joinFrenchList(data.strengths.slice(0, 3).map(lowerInitial))} donnent des repères concrets pour décider plus vite.`
+    : "";
+
+  return [serviceAngle, zoneAngle, strengthAngle]
+    .filter(Boolean)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildPresentationStrengthValue(strengths: string[]) {
+  const cleanStrengths = strengths.map((strength) => strength.trim()).filter(Boolean);
+  if (!cleanStrengths.length) return "";
+  if (cleanStrengths.length <= 3) return cleanStrengths.join(" · ");
+  return `${cleanStrengths.slice(0, 3).join(" · ")} +${cleanStrengths.length - 3}`;
+}
+
+function normalizePlaceKey(value: string) {
+  return value
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("fr-FR")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+const NEARBY_ZONE_SUGGESTIONS: Record<string, string[]> = {
+  harnes: ["Lens", "Carvin", "Courrières", "Noyelles-sous-Lens"],
+  arras: ["Achicourt", "Dainville", "Sainte-Catherine", "Saint-Laurent-Blangy"],
+  lens: ["Liévin", "Hénin-Beaumont", "Avion", "Loison-sous-Lens"],
+  bethune: ["Beuvry", "Annezin", "Bruay-la-Buissière", "Noeux-les-Mines"],
+  lille: ["Lambersart", "La Madeleine", "Marcq-en-Baroeul", "Villeneuve-d’Ascq"],
+};
+
+const DEPARTMENT_BY_ZIP_PREFIX: Record<string, string> = {
+  "59": "Département : Nord (59)",
+  "62": "Département : Pas-de-Calais (62)",
+  "75": "Département : Paris (75)",
+  "77": "Département : Seine-et-Marne (77)",
+  "78": "Département : Yvelines (78)",
+  "91": "Département : Essonne (91)",
+  "92": "Département : Hauts-de-Seine (92)",
+  "93": "Département : Seine-Saint-Denis (93)",
+  "94": "Département : Val-de-Marne (94)",
+  "95": "Département : Val-d’Oise (95)",
+};
+
+function inferDepartmentZone(data: InrSearchPublicPageData) {
+  const zipPrefix = data.zip.replace(/\D/g, "").slice(0, 2);
+  if (zipPrefix && DEPARTMENT_BY_ZIP_PREFIX[zipPrefix]) return DEPARTMENT_BY_ZIP_PREFIX[zipPrefix];
+  const haystack = [data.city, ...data.zones].map(normalizePlaceKey).join(" ");
+  if (/(harnes|arras|beaurains|saint-nicolas-lez-arras|lens|bethune|lievin|carvin)/.test(haystack)) {
+    return "Département : Pas-de-Calais (62)";
+  }
+  if (/(lille|roubaix|tourcoing|villeneuve-d-ascq|douai|valenciennes)/.test(haystack)) {
+    return "Département : Nord (59)";
+  }
+  return data.country === "France" ? "Département : secteur local" : "";
+}
+
+function buildEnhancedZones(data: InrSearchPublicPageData) {
+  const zones: string[] = [];
+  const seen = new Set<string>();
+  const addZone = (zone: string) => {
+    const cleanZone = zone.trim();
+    const key = normalizePlaceKey(cleanZone);
+    if (!cleanZone || seen.has(key)) return;
+    zones.push(cleanZone);
+    seen.add(key);
+  };
+
+  data.zones.forEach(addZone);
+  if (zones.length < 5) addZone(data.city);
+  const suggestions = NEARBY_ZONE_SUGGESTIONS[normalizePlaceKey(data.city)] || [];
+  for (const suggestion of suggestions) {
+    if (zones.length >= 5) break;
+    addZone(suggestion);
+  }
+  const department = inferDepartmentZone(data);
+  if (department) addZone(department);
+  return zones;
+}
+
 function buildServiceDescription(
   service: string,
   data: InrSearchPublicPageData,
 ) {
-  const professionContext = data.profession
-    ? ` dans le cadre de son activité de ${lowerInitial(data.profession)}`
+  const generated = storedServiceDescription(service, data);
+  if (generated) return generated;
+
+  const normalized = normalizeServiceDescriptionKey(service);
+  const serviceLabel = lowerInitial(service);
+  const profession = data.profession || data.sectorLabel;
+  const professionContext = profession
+    ? `dans son métier de ${lowerInitial(profession)}`
+    : "dans son activité";
+  const audiences = data.customerTypes.length
+    ? ` pour ${joinFrenchList(data.customerTypes.map(lowerInitial))}`
     : "";
-  const audience = data.customerTypes.length
-    ? ` Cette prestation s’adresse notamment aux ${joinFrenchList(data.customerTypes.map(lowerInitial))}.`
+  const zones = data.zones.length
+    ? ` autour de ${joinFrenchList(data.zones.slice(0, 3))}`
+    : data.city
+      ? ` depuis ${data.city}`
+      : "";
+  const strengths = data.strengths.length
+    ? ` L’approche s’appuie sur ${joinFrenchList(data.strengths.slice(0, 2).map(lowerInitial))}, afin de garder un accompagnement clair et utile.`
     : "";
-  const location = data.zones.length
-    ? ` Elle est proposée dans les zones d’intervention indiquées sur cette page.`
+  const localContext = data.description
+    ? ` Elle s’inscrit dans l’univers de ${data.companyName} : ${data.description.replace(/\s+/g, " ").slice(0, 150)}.`
     : "";
-  return `« ${service} » fait partie des prestations proposées par ${data.companyName}${professionContext}.${audience}${location} Contactez l’entreprise pour préciser le besoin et les modalités d’intervention.`;
+
+  const intent = (() => {
+    if (/(strategie|audit|diagnostic|conseil|plan|etude)/.test(normalized)) {
+      return "clarifie le point de départ, les priorités et les actions à mener pour éviter les décisions au hasard";
+    }
+    if (/(identite|logo|charte|visuel|marque|branding|image)/.test(normalized)) {
+      return "donne une forme reconnaissable à l’entreprise, avec des repères visuels cohérents sur chaque support";
+    }
+    if (/(digital|reseau|social|facebook|instagram|linkedin|google|seo|sea|campagne|publicite|ads)/.test(normalized)) {
+      return "sert à gagner en visibilité, toucher les bons contacts et transformer l’attention en demandes concrètes";
+    }
+    if (/(print|flyer|brochure|carte|affiche|enseigne|support|signalétique|signaletique)/.test(normalized)) {
+      return "matérialise le message de l’entreprise sur des supports lisibles, utiles et prêts à être diffusés";
+    }
+    if (/(editorial|redaction|contenu|article|texte|copywriting)/.test(normalized)) {
+      return "structure le message, choisit les bons mots et rend l’offre plus facile à comprendre";
+    }
+    if (/(pose|installation|creation|conception|fabrication|amenagement)/.test(normalized)) {
+      return "transforme le besoin initial en réalisation concrète, avec une préparation adaptée au contexte";
+    }
+    if (/(depannage|urgence|reparation|fuite|remplacement|debouchage)/.test(normalized)) {
+      return "répond à une situation précise avec une intervention lisible, rapide et orientée solution";
+    }
+    if (/(entretien|maintenance|nettoyage|suivi|controle)/.test(normalized)) {
+      return "préserve la qualité du résultat dans le temps et limite les problèmes évitables";
+    }
+    return "répond à un besoin précis en cadrant les attentes, les contraintes et le résultat recherché";
+  })();
+
+  const method = pickVariant([
+    "Le but est d’obtenir une réponse lisible, directement reliée au besoin exprimé.",
+    "Chaque demande peut ainsi être qualifiée plus simplement avant de passer à l’action.",
+    "Le visiteur comprend ce qui est proposé, pour qui, et dans quel contexte l’entreprise peut intervenir.",
+  ], `${service}-${data.companyName}`);
+
+  return [
+    `Avec ${serviceLabel}, ${data.companyName} ${intent}${audiences}${zones}.`,
+    method,
+    strengths || localContext,
+    `Cette expertise permet de présenter un besoin précis et d’obtenir un échange plus pertinent avec l’entreprise.`,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function withSource(value: string, source: string) {
@@ -532,6 +709,8 @@ export default async function InrSearchCompanyPage({ params }: PageProps) {
   const newsJsonLd = buildNewsJsonLd(data);
   const factualSummary = buildFactualSummary(data);
   const presentationLead = buildPresentationLead(data);
+  const conversionSummary = buildConversionSummary(data);
+  const enhancedZones = buildEnhancedZones(data);
   const phoneHref = data.phone
     ? `tel:${data.phone.replace(/[^+\d]/g, "")}`
     : "";
@@ -553,7 +732,7 @@ export default async function InrSearchCompanyPage({ params }: PageProps) {
     ...(data.sections.news
       ? [{ href: "#actualites", label: "Actualités" }]
       : []),
-    ...(data.sections.areas && data.zones.length
+    ...(data.sections.areas && enhancedZones.length
       ? [{ href: "#zone", label: "Zone" }]
       : []),
     ...(data.sections.trust && (data.strengths.length || data.inrBadgeUrl)
@@ -614,6 +793,7 @@ export default async function InrSearchCompanyPage({ params }: PageProps) {
     data.profession || data.sectorLabel
       ? {
           icon: "services" as IconName,
+          kind: "activity",
           label: "Activité",
           value: data.profession || data.sectorLabel,
           href: "",
@@ -623,6 +803,7 @@ export default async function InrSearchCompanyPage({ params }: PageProps) {
     data.city
       ? {
           icon: "location" as IconName,
+          kind: "anchor",
           label: "Ancrage",
           value: data.city,
           href: "",
@@ -632,15 +813,27 @@ export default async function InrSearchCompanyPage({ params }: PageProps) {
     data.customerTypes.length
       ? {
           icon: "users" as IconName,
+          kind: "audience",
           label: "Pour qui",
           value: joinFrenchList(data.customerTypes.slice(0, 2)),
           href: "",
           actionKey: "",
         }
       : null,
+    data.strengths.length
+      ? {
+          icon: "sparkles" as IconName,
+          kind: "strengths",
+          label: "Forces",
+          value: buildPresentationStrengthValue(data.strengths),
+          href: "#points-forts",
+          actionKey: "strengths_view",
+        }
+      : null,
     data.sections.hours && (data.openingDays || data.openingHours)
       ? {
           icon: "clock" as IconName,
+          kind: "availability",
           label: "Disponibilité",
           value: [data.openingDays, data.openingHours].filter(Boolean).join(" · "),
           href: "",
@@ -653,6 +846,7 @@ export default async function InrSearchCompanyPage({ params }: PageProps) {
     value: string;
     href: string;
     actionKey: string;
+    kind: string;
   }>;
 
   return (
@@ -746,17 +940,9 @@ export default async function InrSearchCompanyPage({ params }: PageProps) {
                   <p className={styles.presentationDescription}>{presentationLead}</p>
                 ) : null}
 
-                {data.strengths.length ? (
-                  <div className={styles.presentationProofs} aria-label="Premiers points forts">
-                    {data.strengths.slice(0, 3).map((strength) => (
-                      <span key={strength}><Icon name="check" /> {strength}</span>
-                    ))}
-                  </div>
-                ) : null}
-
-                <details className={styles.presentationSummary}>
+                <details className={styles.presentationSummary} open>
                   <summary>Informations essentielles</summary>
-                  <p>{factualSummary}</p>
+                  <p>{conversionSummary || factualSummary}</p>
                 </details>
 
                 {data.sections.cta ? (
@@ -811,6 +997,7 @@ export default async function InrSearchCompanyPage({ params }: PageProps) {
                       <a
                         className={styles.presentationSatellite}
                         data-slot={String(index)}
+                        data-kind={fact.kind}
                         href={fact.href}
                         key={fact.label}
                         target={fact.href.startsWith("http") ? "_blank" : undefined}
@@ -821,7 +1008,7 @@ export default async function InrSearchCompanyPage({ params }: PageProps) {
                         {body}
                       </a>
                     ) : (
-                      <article className={styles.presentationSatellite} data-slot={String(index)} key={fact.label}>
+                      <article className={styles.presentationSatellite} data-slot={String(index)} data-kind={fact.kind} key={fact.label}>
                         {body}
                       </article>
                     );
@@ -894,7 +1081,7 @@ export default async function InrSearchCompanyPage({ params }: PageProps) {
           </section>
         ) : null}
 
-        {data.sections.areas && data.zones.length ? (
+        {data.sections.areas && enhancedZones.length ? (
           <section
             className={`${styles.section} ${styles.areaSection} ${styles.zoneOrbitSection} ${styles.orbitPanel}`}
             id="zone"
@@ -908,7 +1095,7 @@ export default async function InrSearchCompanyPage({ params }: PageProps) {
               companyName={data.companyName}
               city={data.city}
               profession={data.profession || data.sectorLabel}
-              zones={data.zones}
+              zones={enhancedZones}
             />
           </section>
         ) : null}

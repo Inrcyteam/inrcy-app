@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { requestInrSearchContact } from "./inrSearchContactEvents";
 import styles from "./inrSearchPublic.module.css";
 
 type NavItem = { href: string; label: string };
@@ -155,16 +156,26 @@ export default function InrSearchExperience({
       if (!pointerFrame) pointerFrame = requestAnimationFrame(flushPointer);
     };
 
+    const onRootClick = (event: MouseEvent) => {
+      if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+        return;
+      }
+
+      const trigger = (event.target as Element | null)?.closest<HTMLElement>(
+        `[data-inrsearch-contact-trigger], .${styles.presentationPrimaryAction}`,
+      );
+      if (!trigger) return;
+
+      event.preventDefault();
+      requestInrSearchContact(trigger);
+    };
+
     const onWheel = (event: WheelEvent) => {
       const panel = (event.target as Element | null)?.closest<HTMLElement>("[data-orbit-section]");
-      if (panel && window.innerWidth <= 900 && Math.abs(event.deltaY) >= Math.abs(event.deltaX)) {
-        const canScroll = panel.scrollHeight > panel.clientHeight + 2;
-        const scrollingDown = event.deltaY > 0;
-        const atTop = panel.scrollTop <= 1;
-        const atBottom = panel.scrollTop + panel.clientHeight >= panel.scrollHeight - 1;
-        if (canScroll && ((scrollingDown && !atBottom) || (!scrollingDown && !atTop))) {
-          return;
-        }
+      if (panel && window.innerWidth <= 900 && Math.abs(event.deltaY) >= Math.abs(event.deltaX) * 1.1) {
+        // Sur mobile, le geste vertical appartient toujours au panneau courant,
+        // même lorsqu'il atteint sa limite. Le changement de chapitre reste horizontal.
+        return;
       }
 
       const dominantDelta = Math.abs(event.deltaY) >= Math.abs(event.deltaX)
@@ -198,7 +209,9 @@ export default function InrSearchExperience({
     const onPointerDown = (event: PointerEvent) => {
       if (event.pointerType !== "touch") return;
       const target = event.target as Element | null;
-      if (target?.closest("[data-local-carousel]")) {
+      if (target?.closest(
+        "[data-local-carousel], [data-inrsearch-gesture-ignore], a, button, input, textarea, select, summary, [contenteditable='true'], [role='dialog']",
+      )) {
         touchStartRef.current = null;
         return;
       }
@@ -213,9 +226,10 @@ export default function InrSearchExperience({
       const deltaY = event.clientY - start.y;
       const elapsed = Math.max(1, performance.now() - start.time);
       const velocity = Math.abs(deltaX) / elapsed;
-      const threshold = Math.max(84, orbit.clientWidth * 0.13);
-      const deliberate = Math.abs(deltaX) >= threshold || (Math.abs(deltaX) >= 64 && velocity > 0.58);
-      if (!deliberate || Math.abs(deltaX) < Math.abs(deltaY) * 1.25) return;
+      const threshold = Math.max(112, orbit.clientWidth * 0.22);
+      const deliberate = Math.abs(deltaX) >= threshold || (Math.abs(deltaX) >= 96 && velocity > 0.72);
+      if (!deliberate || Math.abs(deltaX) < Math.abs(deltaY) * 1.55) return;
+      event.preventDefault();
       wheelLock = true;
       moveToIndex(activeIndexRef.current + (deltaX < 0 ? 1 : -1));
       window.clearTimeout(wheelUnlockTimer);
@@ -275,7 +289,7 @@ export default function InrSearchExperience({
     orbit.addEventListener("scroll", syncFromScroll, { passive: true });
     orbit.addEventListener("wheel", onWheel, { passive: false });
     orbit.addEventListener("pointerdown", onPointerDown, { passive: true });
-    orbit.addEventListener("pointerup", onPointerUp, { passive: true });
+    orbit.addEventListener("pointerup", onPointerUp, { passive: false });
     orbit.addEventListener("pointercancel", onPointerCancel, { passive: true });
     if (!reducedMotionQuery.matches) {
       root.addEventListener("pointermove", updatePointer, { passive: true });
@@ -283,6 +297,7 @@ export default function InrSearchExperience({
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("resize", syncFromScroll, { passive: true });
     window.addEventListener("hashchange", onHashChange);
+    root.addEventListener("click", onRootClick);
 
     const initialIndex = window.location.hash
       ? getSectionIndex(sections, window.location.hash)
@@ -311,6 +326,7 @@ export default function InrSearchExperience({
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("resize", syncFromScroll);
       window.removeEventListener("hashchange", onHashChange);
+      root.removeEventListener("click", onRootClick);
     };
   }, [setCurrentIndex]);
 

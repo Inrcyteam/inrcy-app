@@ -97,7 +97,7 @@ export default function InrSearchNewsShowcase({ companyName, publications }: Pro
         <div>
           <span className={styles.newsOrbitEyebrow}>Générateur d’impulsions</span>
           <h2 id="actualites-title">L’entreprise en mouvement</h2>
-          <p>Les nouveautés de {companyName}, synchronisées depuis Booster Publier et organisées comme une ligne de signaux.</p>
+          <p>Suivez les signaux récents de {companyName} : une actualité à jour rassure, prouve l’activité et donne envie d’engager l’échange.</p>
         </div>
         {total ? (
           <div className={styles.newsOrbitNavigator} aria-label="Naviguer entre les actualités">

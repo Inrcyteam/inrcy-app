@@ -11,6 +11,38 @@ type Props = {
   inrBadgeQrUrl: string;
 };
 
+const NEWTON_SLOT_COUNT = 5;
+const CENTER_FIRST_SLOTS = [2, 1, 3, 0, 4];
+const DEFAULT_STRENGTHS = ["Rapide", "Efficace", "Sérieux", "Proche", "À l’écoute"];
+
+function normalizeStrength(value: string) {
+  return value
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("fr-FR");
+}
+
+function strengthDefinition(strength: string, companyName: string) {
+  const normalized = normalizeStrength(strength);
+  if (/rapide|reactif|reponse|vite/.test(normalized)) {
+    return `${companyName} aide l’internaute à réduire l’attente : une demande claire, une réponse plus rapide, moins d’allers-retours inutiles.`;
+  }
+  if (/efficace|precis|solution|resultat/.test(normalized)) {
+    return `Efficace veut dire aller droit au besoin : comprendre la demande, proposer la bonne suite et éviter les démarches qui n’apportent rien.`;
+  }
+  if (/serieux|fiable|rigoureux|confiance/.test(normalized)) {
+    return `Sérieux rassure avant le contact : cadre clair, informations lisibles et engagement professionnel pour avancer sans flou.`;
+  }
+  if (/proche|local|proximite|terrain/.test(normalized)) {
+    return `Proche transforme la recherche locale en relation humaine : le visiteur sait où se situe le professionnel et comment lancer l’échange.`;
+  }
+  if (/ecoute|attentif|humain|conseil/.test(normalized)) {
+    return `À l’écoute signifie que le besoin passe avant la réponse toute faite : le pro comprend le contexte avant de proposer la bonne action.`;
+  }
+  return `${strength} devient un repère concret pour décider : l’internaute comprend ce que ${companyName} peut apporter avant de prendre contact.`;
+}
+
 function InrBadgeQr({ value, label }: { value: string; label: string }) {
   let matrix: boolean[][] = [];
   try {
@@ -40,12 +72,27 @@ function InrBadgeQr({ value, label }: { value: string; label: string }) {
 }
 
 export default function InrSearchStrengthsOrbit({ companyName, strengths, inrBadgeUrl, inrBadgeQrUrl }: Props) {
-  const cradleStrengths = strengths.length ? strengths.slice(0, 7) : ["iNrBadge"];
-  const [activeIndex, setActiveIndex] = useState(0);
+  const normalizedStrengths = strengths.map((strength) => strength.trim()).filter(Boolean);
+  const completedStrengths = [...normalizedStrengths];
+  for (const fallback of DEFAULT_STRENGTHS) {
+    if (completedStrengths.length >= NEWTON_SLOT_COUNT) break;
+    if (!completedStrengths.some((strength) => strength.toLocaleLowerCase("fr-FR") === fallback.toLocaleLowerCase("fr-FR"))) {
+      completedStrengths.push(fallback);
+    }
+  }
+  const visibleStrengths = completedStrengths.slice(0, NEWTON_SLOT_COUNT);
+  const cradleSlots = Array.from({ length: NEWTON_SLOT_COUNT }, () => null as string | null);
+  visibleStrengths.forEach((strength, index) => {
+    cradleSlots[CENTER_FIRST_SLOTS[index] ?? index] = strength;
+  });
+  const firstFilledSlot = CENTER_FIRST_SLOTS.find((slot) => cradleSlots[slot]) ?? 0;
+  const [activeIndex, setActiveIndex] = useState(firstFilledSlot);
   const [impulse, setImpulse] = useState(0);
-  const activeStrength = cradleStrengths[activeIndex] || cradleStrengths[0];
+  const activeStrength = cradleSlots[activeIndex] || visibleStrengths[0];
+  const impulseDirection = activeIndex <= Math.floor(NEWTON_SLOT_COUNT / 2) ? "left" : "right";
 
   const activate = (index: number) => {
+    if (!cradleSlots[index]) return;
     setActiveIndex(index);
     setImpulse((value) => value + 1);
   };
@@ -56,34 +103,40 @@ export default function InrSearchStrengthsOrbit({ companyName, strengths, inrBad
         <div>
           <span className={styles.strengthOrbitEyebrow}>Confiance en mouvement</span>
           <h2 id="points-forts-title">Chaque engagement transmet son énergie</h2>
-          <p>Les points forts de {companyName} prennent vie dans une balance de Newton, avec iNrBadge comme passeport de contact.</p>
+          <p>Chaque force devient une raison claire de passer à l’action : comprenez ce qui rassure, puis contactez {companyName} avec un besoin déjà cadré.</p>
         </div>
       </div>
 
       <div className={styles.strengthOrbitStage}>
-        <div className={styles.strengthNewtonScene}>
+        <div className={styles.strengthNewtonScene} data-direction={impulseDirection}>
           <div className={styles.strengthNewtonFrame} aria-hidden="true"><span /><span /></div>
           <div
             className={styles.strengthNewtonBalls}
             key={impulse}
-            data-direction={activeIndex < cradleStrengths.length / 2 ? "left" : "right"}
+            data-direction={impulseDirection}
             role="list"
             aria-label="Points forts de l’entreprise"
           >
-            {cradleStrengths.map((strength, index) => (
+            <span className={styles.strengthNewtonImpulse} aria-hidden="true"><i /></span>
+            {cradleSlots.map((strength, index) => (
               <button
                 type="button"
                 className={styles.strengthNewtonBall}
-                data-active={index === activeIndex ? "true" : "false"}
-                data-edge={index === 0 ? "left" : index === cradleStrengths.length - 1 ? "right" : "center"}
-                key={`${strength}-${index}`}
+                data-active={Boolean(strength) && index === activeIndex ? "true" : "false"}
+                data-filled={strength ? "true" : "false"}
+                data-edge={index === 0 ? "left" : index === NEWTON_SLOT_COUNT - 1 ? "right" : "center"}
+                key={`${strength || "empty"}-${index}`}
                 onClick={() => activate(index)}
                 role="listitem"
-                aria-current={index === activeIndex ? "true" : undefined}
+                aria-current={Boolean(strength) && index === activeIndex ? "true" : undefined}
+                aria-disabled={strength ? undefined : true}
+                disabled={!strength}
               >
-                <span className={styles.strengthNewtonStrings} aria-hidden="true"><i /><i /></span>
-                <span className={styles.strengthNewtonSphere}><i>{String(index + 1).padStart(2, "0")}</i></span>
-                <strong>{strength}</strong>
+                <span className={styles.strengthNewtonPendulum} aria-hidden="true">
+                  <span className={styles.strengthNewtonString} />
+                  <span className={styles.strengthNewtonSphere}><i>{strength ? String(visibleStrengths.indexOf(strength) + 1).padStart(2, "0") : ""}</i></span>
+                </span>
+                <strong>{strength || ""}</strong>
               </button>
             ))}
           </div>
@@ -91,8 +144,8 @@ export default function InrSearchStrengthsOrbit({ companyName, strengths, inrBad
           <article className={styles.strengthNewtonDetail} aria-live="polite">
             <small>Engagement sélectionné</small>
             <strong>{activeStrength}</strong>
-            <p>« {activeStrength} » fait partie des points forts déclarés par {companyName} pour accompagner chaque projet.</p>
-            <span>Une impulsion, un engagement clair.</span>
+            <p>{strengthDefinition(activeStrength || "", companyName)}</p>
+            <span>Un repère concret avant le contact.</span>
           </article>
         </div>
 
@@ -129,9 +182,9 @@ export default function InrSearchStrengthsOrbit({ companyName, strengths, inrBad
         </aside>
       </div>
 
-      {strengths.length > cradleStrengths.length ? (
+      {normalizedStrengths.length > visibleStrengths.length ? (
         <div className={styles.strengthOrbitAll} aria-label="Tous les points forts">
-          {strengths.map((strength) => <span key={strength}>{strength}</span>)}
+          {normalizedStrengths.map((strength) => <span key={strength}>{strength}</span>)}
         </div>
       ) : null}
     </div>

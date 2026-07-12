@@ -48,6 +48,17 @@ Après installation des dépendances, lancer l'application en développement pui
 
 Cette démonstration locale est désactivée automatiquement en production.
 
+## Finitions V2.1
+
+- Identité recentrée : noyau à droite, informations en orbite sans chevauchement et résumé visible par défaut.
+- Typographies renforcées sur Expertises, Zone, FAQ, Réseaux et Contact.
+- Tous les appels à l’action de prise de contact ouvrent la modale « Présenter mon besoin ».
+- Balance de Newton reconstruite avec trois sphères iNrCy, fils réalistes et transfert d’énergie animé.
+- Rotation des réseaux continue, y compris au survol et au focus.
+- Swipe volontairement moins sensible et clairement séparé du scroll vertical.
+- Mobile et tablette : chaque univers reste un chapitre horizontal, mais devient une page verticale scrollable et correctement cadrée.
+- Liens légaux isolés du curseur inférieur et protégés contre les clics déclenchés par un geste.
+
 ## Certification
 
 La commande `npm run qa:inr-search:final` valide les contrôles iNr'Search, TypeScript et ESLint. Cette livraison passe **99 contrôles fonctionnels**, sans erreur TypeScript ni erreur ESLint.

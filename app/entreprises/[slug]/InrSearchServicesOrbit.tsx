@@ -69,7 +69,7 @@ export default function InrSearchServicesOrbit({ companyName, services, audience
         const position = total <= 7 ? forward : signed + 3;
         const divisor = Math.min(7, total);
         const angle = divisor > 1 ? -90 + (position * 360) / divisor : -90;
-        return { service, index, signed, visible, angle };
+        return { service, index, signed, visible, angle, position };
       }),
     [activeIndex, services, total],
   );
@@ -101,7 +101,7 @@ export default function InrSearchServicesOrbit({ companyName, services, audience
           <span className={styles.servicesOrbitEyebrow}>Accélérateur d’expertises</span>
           <h2 id="prestations-title">Votre besoin déclenche la bonne expertise</h2>
           <p>
-            Faites circuler les savoir-faire de {companyName}, puis injectez la bonne prestation au cœur de votre projet.
+            Choisissez le besoin qui ressemble au vôtre : iNrSearch le traduit en prestation claire pour contacter {companyName} avec une demande mieux cadrée.
           </p>
         </div>
 
@@ -122,7 +122,9 @@ export default function InrSearchServicesOrbit({ companyName, services, audience
           <small>Expertise sélectionnée</small>
           <h3>{activeService?.name}</h3>
           <p>{activeService?.description}</p>
-          <a href="#contact">Activer cette expertise <span aria-hidden="true">↗</span></a>
+          <a href="#contact" data-inrsearch-contact-trigger data-inrsearch-action="service_contact" data-inrsearch-target="#contact-modal">
+            Activer cette expertise <span aria-hidden="true">↗</span>
+          </a>
         </article>
 
         <div className={styles.servicesAccelerator} role="list" aria-label="Expertises proposées">
@@ -136,7 +138,7 @@ export default function InrSearchServicesOrbit({ companyName, services, audience
             <i />
           </div>
 
-          {orbitServices.map(({ service, index, signed, visible, angle }) => {
+          {orbitServices.map(({ service, index, signed, visible, angle, position }) => {
             const active = index === activeIndex;
             const style: ServiceStyle = {
               "--service-angle": `${angle}deg`,
@@ -151,6 +153,7 @@ export default function InrSearchServicesOrbit({ companyName, services, audience
                 className={styles.servicesOrbitCard}
                 data-active={active ? "true" : "false"}
                 data-visible={visible ? "true" : "false"}
+                data-orbit-position={String(position)}
                 style={style}
                 onClick={() => setActiveIndex(index)}
                 role="listitem"

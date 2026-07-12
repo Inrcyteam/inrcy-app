@@ -56,7 +56,7 @@ export default function InrSearchSocialOrbit({ companyName, logoUrl, profession,
         <div>
           <span className={styles.socialOrbitEyebrow}>Système solaire numérique</span>
           <h2>Tout l’écosystème de {companyName}, enfin visible.</h2>
-          <p>Chaque canal devient une planète : toutes restent visibles, tournent à leur propre rythme et s’arrêtent dès que vous les explorez.</p>
+          <p>Explorez les preuves en ligne avant de choisir : réseaux, site et profils publics renforcent la confiance avant le premier message.</p>
         </div>
         <span className={styles.socialOrbitCount}><strong>{String(total).padStart(2, "0")}</strong> présence{total > 1 ? "s" : ""} en ligne</span>
       </div>
@@ -113,7 +113,7 @@ export default function InrSearchSocialOrbit({ companyName, logoUrl, profession,
             </span>
             <small>Planète sélectionnée</small>
             <strong>{activeLink.label}</strong>
-            <p>Rejoignez l’espace officiel de {companyName} sur {activeLink.label}.</p>
+            <p>Ouvrez {activeLink.label} pour vérifier l’univers, les actualités et les signaux de confiance de {companyName} avant de passer à l’action.</p>
             <a href={activeLink.url} target="_blank" rel="noopener noreferrer" data-inrsearch-action={activeLink.key} data-inrsearch-target={activeLink.url}>
               Découvrir <span aria-hidden="true">↗</span>
             </a>

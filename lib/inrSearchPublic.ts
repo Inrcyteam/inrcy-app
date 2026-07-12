@@ -48,6 +48,8 @@ export type InrSearchFaq = {
   answer: string;
 };
 
+export type InrSearchServiceDescriptions = Record<string, string>;
+
 export type InrSearchPublicPageData = {
   userId: string;
   slug: string;
@@ -71,6 +73,7 @@ export type InrSearchPublicPageData = {
   sectorLabel: string;
   profession: string;
   services: string[];
+  serviceDescriptions: InrSearchServiceDescriptions;
   zones: string[];
   strengths: string[];
   customerTypes: string[];
@@ -217,6 +220,55 @@ function listFromUnknown(value: unknown): string[] {
         .filter(Boolean),
     ),
   ).slice(0, 40);
+}
+
+function normalizeServiceDescriptionMap(...values: unknown[]): InrSearchServiceDescriptions {
+  const result: InrSearchServiceDescriptions = {};
+
+  const store = (keyValue: unknown, descriptionValue: unknown) => {
+    const key = clean(keyValue, 180);
+    const description = clean(descriptionValue, 900);
+    if (!key || !description) return;
+    result[key] = description;
+    result[normalizeInrSearchDirectorySlug(key)] = description;
+  };
+
+  const visit = (value: unknown) => {
+    if (!value) return;
+    if (typeof value === "string") {
+      try {
+        visit(JSON.parse(value));
+      } catch {
+        return;
+      }
+      return;
+    }
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        const record = asRecord(item);
+        store(
+          record.service || record.name || record.title || record.key,
+          record.description || record.text || record.content || record.body,
+        );
+      }
+      return;
+    }
+    const record = asRecord(value);
+    for (const [key, rawDescription] of Object.entries(record)) {
+      if (typeof rawDescription === "string") {
+        store(key, rawDescription);
+      } else {
+        const descriptionRecord = asRecord(rawDescription);
+        store(
+          descriptionRecord.service || descriptionRecord.name || descriptionRecord.title || key,
+          descriptionRecord.description || descriptionRecord.text || descriptionRecord.content || descriptionRecord.body,
+        );
+      }
+    }
+  };
+
+  for (const value of values) visit(value);
+  return result;
 }
 
 function normalizeExternalUrl(value: unknown): string {
@@ -453,6 +505,7 @@ async function loadInrSearchPublicPageUncached(slug: string): Promise<InrSearchP
         "Supports print",
         "Plan d’action",
       ],
+      serviceDescriptions: {},
       zones: ["Arras", "Béthune", "Lens", "Liévin", "Douai", "Carvin"],
       strengths: ["Créatif", "Réactif", "Sérieux", "Efficace", "Proche", "À l’écoute"],
       customerTypes: ["professionnels", "collectivités", "associations"],
@@ -583,6 +636,14 @@ async function loadInrSearchPublicPageUncached(slug: string): Promise<InrSearchP
   const sectorLabel = getActivitySectorLabel(decodedSector.sectorCategory);
   const profession = clean(decodedSector.profession, 180);
   const services = listFromUnknown(Array.isArray(business.services) ? business.services : business.services_text);
+  const serviceDescriptions = normalizeServiceDescriptionMap(
+    config.serviceDescriptions,
+    config.service_descriptions,
+    business.service_descriptions,
+    business.services_descriptions,
+    business.service_details,
+    business.services_details,
+  );
   const zones = listFromUnknown(Array.isArray(business.intervention_zones) ? business.intervention_zones : business.intervention_zones_text);
   const strengths = listFromUnknown(Array.isArray(business.strengths) ? business.strengths : business.strengths_text);
   const customerTypes = listFromUnknown(business.customer_typologies);
@@ -637,6 +698,7 @@ async function loadInrSearchPublicPageUncached(slug: string): Promise<InrSearchP
     sectorLabel,
     profession,
     services,
+    serviceDescriptions,
     zones,
     strengths,
     customerTypes,
