@@ -69,6 +69,8 @@ test("Step 10 octies makes the local instruction priority without adding a punit
 
   assert.match(prompt, /CONSIGNE PONCTUELLE PRIORITAIRE/);
   assert.match(prompt, /prioritaire sur la Configuration IA générale/i);
+  assert.match(prompt, /message direct du pro au moteur IA actif/i);
+  assert.match(prompt, /propre jugement d’auteur/i);
   assert.match(prompt, /remplace temporairement les réglages généraux/i);
   assert.match(prompt, /ne peut jamais autoriser l’invention de faits/i);
   assert.match(generation, /applyPublicationInstructionOverrides/);

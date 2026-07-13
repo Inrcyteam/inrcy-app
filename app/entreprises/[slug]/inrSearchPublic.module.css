@@ -15465,10 +15465,10 @@
     display: grid !important;
     place-items: center !important;
     overflow: hidden !important;
-    border: 2px solid rgba(255, 255, 255, .2) !important;
+    border: 1px solid rgba(255, 255, 255, .18) !important;
     border-radius: 50% !important;
-    background: linear-gradient(135deg, #32d8ff, #8b5cf6, #ff5bdd) !important;
-    box-shadow: 0 9px 23px rgba(0, 0, 0, .3), 0 0 20px rgba(139, 92, 246, .2) !important;
+    background: transparent !important;
+    box-shadow: 0 9px 23px rgba(0, 0, 0, .24) !important;
   }
 
   .socialOrbitGlyph {
@@ -15486,7 +15486,7 @@
     width: 100% !important;
     height: 100% !important;
     display: block !important;
-    object-fit: cover !important;
+    object-fit: contain !important;
     border-radius: 50% !important;
   }
 }
@@ -15506,11 +15506,11 @@
     display: grid !important;
     place-items: center !important;
     overflow: hidden !important;
-    border: 2px solid rgba(255, 255, 255, .2) !important;
+    border: 1px solid rgba(255, 255, 255, .18) !important;
     border-radius: 999px !important;
     clip-path: circle(50%) !important;
-    background: linear-gradient(135deg, #32d8ff, #8b5cf6, #ff5bdd) !important;
-    box-shadow: 0 9px 23px rgba(0, 0, 0, .3), 0 0 20px rgba(139, 92, 246, .2) !important;
+    background: transparent !important;
+    box-shadow: 0 9px 23px rgba(0, 0, 0, .24) !important;
   }
 
   .socialOrbitGlyph {
@@ -15529,14 +15529,28 @@
     width: 100% !important;
     height: 100% !important;
     display: block !important;
-    object-fit: cover !important;
+    object-fit: contain !important;
     border-radius: 999px !important;
     clip-path: circle(50%) !important;
   }
 
   .socialOrbitNode[data-network="website"] .socialOrbitGlyph,
   .socialOrbitDetailGlyph.social_website {
+    background: linear-gradient(135deg, #32d8ff, #8b5cf6, #ff5bdd) !important;
+    box-shadow: 0 9px 23px rgba(0, 0, 0, .24), 0 0 18px rgba(139, 92, 246, .18) !important;
     font-size: 18px !important;
     line-height: 1 !important;
+  }
+}
+
+@media (max-width: 760px) {
+  .presentationSwipeHint {
+    bottom: 36px !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .presentationSwipeHint {
+    bottom: 34px !important;
   }
 }

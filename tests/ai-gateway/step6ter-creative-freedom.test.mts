@@ -36,12 +36,17 @@ test("creative latitude follows the user's originality setting without changing 
   assert.match(profile, /ai_creativity/i);
 });
 
-test("Booster keeps airy paragraphs but removes fixed layout and emoji quotas", () => {
+test("Booster keeps airy paragraphs and makes dynamic emojis channel-aware", () => {
   const prompt = read("lib/boosterPrompt.ts");
   assert.match(prompt, /paragraphes courts pour TOUS les canaux/i);
   assert.match(prompt, /deux sauts de ligne consécutifs/i);
   assert.match(prompt, /laisser le moteur choisir librement le nombre de paragraphes utile/i);
-  assert.match(prompt, /intensité, pas un quota numérique exact/i);
+  assert.match(prompt, /Les repères ci-dessous pilotent réellement la quantité attendue/i);
+  assert.match(prompt, /Pour BEAUCOUP, respecte au moins le bas de la plage/i);
+  assert.match(prompt, /canaux site restent strictement sans emoji/i);
+  assert.match(prompt, /facebook:\s*"6–10 emojis visibles/i);
+  assert.match(prompt, /instagram:\s*"8–12 emojis visibles/i);
+  assert.match(prompt, /inrcy_site:\s*"0 emoji malgré le niveau Beaucoup/i);
   assert.doesNotMatch(prompt, /3 à 5 emojis obligatoires/i);
   assert.doesNotMatch(prompt, /4 à 8 emojis obligatoires/i);
 });

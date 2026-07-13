@@ -416,7 +416,7 @@ LANGUE FINALE : toutes les valeurs visibles (title, content, cta, hashtags textu
 PRIORITÉ DE VÉRITÉ, DE SUJET ET D’INSTRUCTIONS :
 1. Vérité des faits, sécurité et contraintes techniques du canal.
 2. La phrase libre du pro définit le sujet obligatoire.
-3. Si elle existe, la consigne ponctuelle de cette publication est prioritaire sur la Configuration IA générale pour tous les points qu’elle précise.
+3. Si elle existe, lis la consigne ponctuelle comme un message direct du pro au moteur IA actif : applique-la avec ton propre jugement d’auteur. Elle est prioritaire sur la Configuration IA générale pour tous les points qu’elle précise.
 4. Les médias joints enrichissent le sujet sans jamais le changer.
 5. La Configuration IA générale s’applique sur tous les points non remplacés par la consigne ponctuelle.
 6. Le profil métier contextualise seulement avec des faits fournis.
@@ -471,7 +471,7 @@ export function boosterUserPrompt(args: {
   const executionRules = [
     "- Traite d’abord exactement la phrase libre ; le métier et la ville ne servent qu’à rendre le résultat crédible et local.",
     publicationInstruction
-      ? "- La consigne ponctuelle est une dérogation temporaire prioritaire : applique-la sur chaque point qu’elle précise, même si la Configuration IA générale indique autre chose. Les réglages généraux restent valables pour le reste."
+      ? "- La consigne ponctuelle est une dérogation temporaire prioritaire et doit être comprise comme un message direct du pro au moteur IA actif : applique-la sur chaque point qu’elle précise avec ton propre jugement d’auteur, même si la Configuration IA générale indique autre chose. Les réglages généraux restent valables pour le reste."
       : "",
     "- Respecte le contrat propre à chaque canal et les préférences du pro, sans transformer ces préférences en gabarit fixe.",
     channelSet.has("inrcy_site") && channelSet.has("site_web")
@@ -496,7 +496,7 @@ Phrase libre prioritaire — sujet obligatoire de la publication : ${cleanText(a
 
 CONSIGNE PONCTUELLE PRIORITAIRE — publication en cours uniquement
 ${publicationInstruction || "Aucune consigne ponctuelle. Appliquer intégralement la Configuration IA générale."}
-${publicationInstruction ? "Cette consigne remplace temporairement les réglages généraux uniquement sur les points qu’elle précise. Elle ne peut jamais autoriser l’invention de faits ni contourner les contraintes techniques et de sécurité." : ""}
+${publicationInstruction ? "Lis cette consigne comme si le pro parlait directement au moteur IA actif : utilise ton propre jugement d’auteur pour l’appliquer, sauf contradiction avec les règles dures iNrCy (vérité, sécurité, canal, JSON, contraintes techniques). Elle remplace temporairement les réglages généraux uniquement sur les points qu’elle précise. Elle ne peut jamais autoriser l’invention de faits ni contourner les contraintes techniques et de sécurité." : ""}
 
 Thème : ${THEME_LABELS[args.theme]}
 Style historique : ${STYLE_LABELS[args.style]} (secondaire face à la Configuration IA)
