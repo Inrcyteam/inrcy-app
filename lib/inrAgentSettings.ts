@@ -331,6 +331,7 @@ function sanitizeMetadata(value: unknown): Record<string, unknown> {
 }
 
 const INR_SEARCH_PUBLISH_MIGRATION_FLAG = "inrSearchChannelAdded";
+export const INR_AGENT_PINTEREST_PUBLISH_MIGRATION_FLAG = "pinterestChannelAdded";
 
 export function sanitizeInrAgentAutomationSettings(
   key: InrAgentAutomationKey,
@@ -350,9 +351,8 @@ export function sanitizeInrAgentAutomationSettings(
     allowedChannels.length > 0 &&
     !allowedChannels.includes("inr_search") &&
     metadata[INR_SEARCH_PUBLISH_MIGRATION_FLAG] !== true;
-  const normalizedAllowedChannels: InrAgentChannel[] = shouldMigratePublishChannels
-    ? [...allowedChannels, "inr_search"]
-    : allowedChannels;
+  const normalizedAllowedChannels: InrAgentChannel[] = [...allowedChannels];
+  if (shouldMigratePublishChannels) normalizedAllowedChannels.push("inr_search");
   const normalizedMetadata = shouldMigratePublishChannels
     ? { ...metadata, [INR_SEARCH_PUBLISH_MIGRATION_FLAG]: true }
     : metadata;

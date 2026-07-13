@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import {
+  INR_AGENT_PINTEREST_PUBLISH_MIGRATION_FLAG,
   INR_AGENT_AUTOMATION_KEYS,
   automationSettingsToDbRow,
   sanitizeInrAgentAutomationSettings,
@@ -275,6 +276,7 @@ function connectedInrAgentChannels(states: Awaited<ReturnType<typeof getChannelC
   if (states.linkedin.connected && !states.linkedin.requiresUpdate) channels.add("linkedin");
   if (states.tiktok.connected && !states.tiktok.requiresUpdate) channels.add("tiktok");
   if (states.youtube_shorts.connected && !states.youtube_shorts.requiresUpdate) channels.add("youtube");
+  if (states.pinterest.connected && !states.pinterest.requiresUpdate) channels.add("pinterest");
   if (states.mails.connected && !states.mails.requiresUpdate) channels.add("mails");
   return channels;
 }
@@ -282,17 +284,43 @@ function connectedInrAgentChannels(states: Awaited<ReturnType<typeof getChannelC
 function filterSettingsByConnectedChannels(
   settings: InrAgentSettings,
   connectedChannels: Set<InrAgentChannel>,
+  options: { hydrateMissingPublishDefaults?: boolean } = {},
 ): InrAgentSettings {
+  const { hydrateMissingPublishDefaults = true } = options;
   const automations = { ...settings.automations };
 
   for (const key of ["publish", "grow", "loyalty"] as const) {
     const automation = automations[key];
-    const allowedChannels = automation.allowedChannels.filter((channel) =>
+    let allowedChannels = automation.allowedChannels.filter((channel) =>
       connectedChannels.has(channel),
     );
+    let metadata = automation.metadata || {};
+
+    if (
+      key === "publish" &&
+      connectedChannels.has("pinterest") &&
+      !allowedChannels.includes("pinterest")
+    ) {
+      const pinterestAlreadyCustomized =
+        metadata[INR_AGENT_PINTEREST_PUBLISH_MIGRATION_FLAG] === true;
+      if (hydrateMissingPublishDefaults && !pinterestAlreadyCustomized) {
+        allowedChannels = [...allowedChannels, "pinterest"];
+        metadata = {
+          ...metadata,
+          [INR_AGENT_PINTEREST_PUBLISH_MIGRATION_FLAG]: true,
+        };
+      } else if (!hydrateMissingPublishDefaults) {
+        metadata = {
+          ...metadata,
+          [INR_AGENT_PINTEREST_PUBLISH_MIGRATION_FLAG]: true,
+        };
+      }
+    }
+
     automations[key] = {
       ...automation,
       allowedChannels,
+      metadata,
       enabled: allowedChannels.length > 0 ? automation.enabled : false,
       nextRunAt: allowedChannels.length > 0 ? automation.nextRunAt : null,
     };
@@ -311,7 +339,11 @@ function filterSettingsByConnectedChannels(
   });
 }
 
-async function applyConnectedChannelFilter(settings: InrAgentSettings, userId: string) {
+async function applyConnectedChannelFilter(
+  settings: InrAgentSettings,
+  userId: string,
+  options: { hydrateMissingPublishDefaults?: boolean } = {},
+) {
   const [states, provisioned] = await Promise.all([
     getChannelConnectionStates(supabaseAdmin, userId),
     ensureSystemManagedInrSearch(supabaseAdmin as any, userId),
@@ -320,6 +352,7 @@ async function applyConnectedChannelFilter(settings: InrAgentSettings, userId: s
   return filterSettingsByConnectedChannels(
     settings,
     connectedInrAgentChannels(states, inrSearchStatus.published),
+    options,
   );
 }
 
@@ -399,6 +432,7 @@ export async function POST(request: Request) {
       (body as { settings?: Partial<InrAgentSettings> } | null)?.settings,
     ),
     activeUserId,
+    { hydrateMissingPublishDefaults: false },
   );
   const now = new Date().toISOString();
 

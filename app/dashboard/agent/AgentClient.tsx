@@ -4659,6 +4659,7 @@ export default function AgentClient() {
     () => orderChannels(selectedConfig.channels, selectedAvailableChannels),
     [selectedAvailableChannels, selectedConfig.channels],
   );
+  const isPublishView = selected.key === "publish";
   const preparedChannels = useMemo(
     () =>
       selectedPreparedAction
@@ -4670,10 +4671,22 @@ export default function AgentClient() {
     [selectedAvailableChannels, selectedPreparedAction, selectedConfigChannels],
   );
   const preparedChannelsKey = preparedChannels.join("|");
-  const displayChannels = hasPreparedAction
+  const selectablePreviewChannels = hasPreparedAction
     ? preparedChannels
-    : loadState === "loading"
+    : selectedConfigChannels;
+  const displayChannels = isPublishView
+    ? loadState === "loading"
       ? []
+      : selectedAvailableChannels
+    : hasPreparedAction
+      ? preparedChannels
+      : loadState === "loading"
+        ? []
+        : selectedConfigChannels;
+  const previewNavigationChannels = isPublishView
+    ? selectablePreviewChannels
+    : displayChannels.length > 0
+      ? displayChannels
       : selectedConfigChannels;
   const selectedStatsRubriques =
     selected.key === "stats" && loadState !== "loading"
@@ -4682,9 +4695,7 @@ export default function AgentClient() {
         )
       : [];
   const placeholderPreviewChannels = !selectedPreparedAction
-    ? displayChannels.length > 0
-      ? displayChannels
-      : selectedConfigChannels
+    ? previewNavigationChannels
     : [];
   const selectedAutomationChannel = selectedChannelByAutomation[selected.key];
   const activePreviewChannel = selectedPreparedAction
@@ -4707,7 +4718,6 @@ export default function AgentClient() {
   const preparedParagraphs = previewParagraphs(
     preparedChannelPreview?.body || selectedPreparedAction?.summary || "",
   );
-  const isPublishView = selected.key === "publish";
   const publishMediaPreview = isPublishView
     ? extractPublishMediaPreview(selectedPreparedAction, activePreviewChannel)
     : null;
@@ -5032,8 +5042,7 @@ export default function AgentClient() {
   }
 
   function movePreviewChannel(direction: -1 | 1) {
-    const channels =
-      displayChannels.length > 0 ? displayChannels : placeholderPreviewChannels;
+    const channels = previewNavigationChannels;
     if (channels.length < 2) return;
 
     const currentIndex = activePreviewChannel
@@ -9271,7 +9280,9 @@ export default function AgentClient() {
                       ? "Sources :"
                       : isCampaignView
                         ? "Canal"
-                        : "Canaux :"}
+                        : isPublishView
+                          ? "Canaux"
+                          : "Canaux :"}
                   </small>
                   <div
                     className={`${styles.channelScrollerWrap} ${isPublishView ? styles.channelScrollerWrapPublish : ""}`}
@@ -9281,6 +9292,7 @@ export default function AgentClient() {
                         type="button"
                         className={styles.channelNavArrow}
                         onClick={() => movePreviewChannel(-1)}
+                        disabled={previewNavigationChannels.length < 2}
                         aria-label="Afficher le canal précédent"
                         title="Canal précédent"
                       >
@@ -9335,19 +9347,41 @@ export default function AgentClient() {
                       ) : displayChannels.length > 0 ? (
                         displayChannels.map((channelKey) => {
                           const channel = channelOptions[channelKey];
+                          const selectableChannel =
+                            !isPublishView ||
+                            selectablePreviewChannels.includes(channelKey);
                           const activeChannel =
+                            selectableChannel &&
                             channelKey === activePreviewChannel;
+                          const channelClassName = [
+                            activeChannel ? styles.channelPillActive : "",
+                            isPublishView && !selectableChannel
+                              ? styles.channelPillMuted
+                              : "",
+                          ]
+                            .filter(Boolean)
+                            .join(" ");
                           return (
                             <button
                               type="button"
                               key={channelKey}
                               data-channel={channelKey}
-                              className={
-                                activeChannel ? styles.channelPillActive : ""
+                              className={channelClassName || undefined}
+                              disabled={!selectableChannel}
+                              onClick={() => {
+                                if (selectableChannel)
+                                  selectPreviewChannel(channelKey);
+                              }}
+                              aria-label={
+                                selectableChannel
+                                  ? `Afficher l’aperçu ${channel.name}`
+                                  : `${channel.name} désélectionné`
                               }
-                              onClick={() => selectPreviewChannel(channelKey)}
-                              aria-label={`Afficher l’aperçu ${channel.name}`}
-                              title={channel.name}
+                              title={
+                                selectableChannel
+                                  ? channel.name
+                                  : `${channel.name} désélectionné`
+                              }
                             >
                               <img
                                 src={channel.src}
@@ -9368,6 +9402,7 @@ export default function AgentClient() {
                         type="button"
                         className={styles.channelNavArrow}
                         onClick={() => movePreviewChannel(1)}
+                        disabled={previewNavigationChannels.length < 2}
                         aria-label="Afficher le canal suivant"
                         title="Canal suivant"
                       >
@@ -9909,8 +9944,8 @@ export default function AgentClient() {
                 <>
                   <small>Canaux</small>
                   <strong>
-                    {(displayChannels.length
-                      ? displayChannels
+                    {(previewNavigationChannels.length
+                      ? previewNavigationChannels
                       : selectedConfigChannels
                     )
                       .map(

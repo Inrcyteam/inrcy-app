@@ -13188,3 +13188,313 @@ button.campaignInfoCard:focus-visible .campaignInfoEye {
     overflow-wrap: anywhere;
   }
 }
+
+/* Correctif iNrAgent Publier — 10 canaux visibles entre les flèches */
+@media (min-width: 761px) {
+  .previewMetaPublish {
+    grid-template-columns:
+      minmax(min(520px, 40vw), 1fr) minmax(190px, 220px)
+      50px 50px minmax(250px, max-content) !important;
+  }
+
+  .previewMetaPublish .channelsItem {
+    padding-inline: 12px !important;
+  }
+
+  .previewMetaPublish .channelScrollerWrapPublish {
+    gap: 5px !important;
+  }
+
+  .previewMetaPublish .channelScroller {
+    gap: 5px !important;
+    overflow: hidden !important;
+  }
+
+  .previewMetaPublish .channelScroller button {
+    width: 34px !important;
+    height: 34px !important;
+    min-height: 34px !important;
+    flex: 0 0 34px !important;
+  }
+
+  .previewMetaPublish .channelNavArrow {
+    width: 18px !important;
+    height: 18px !important;
+    font-size: 15px !important;
+  }
+
+  .previewMetaPublish .channelNavArrow:disabled {
+    opacity: 0.36;
+    cursor: not-allowed;
+    transform: none !important;
+    box-shadow: none !important;
+  }
+
+  .previewMetaPublish .dateItem {
+    min-width: 190px !important;
+  }
+
+  .previewMetaPublish .previewActions {
+    min-width: 250px !important;
+  }
+}
+
+@media (min-width: 761px) and (max-width: 1180px) {
+  .previewMetaPublish {
+    grid-template-columns:
+      minmax(390px, 1fr) minmax(174px, 200px)
+      48px 48px minmax(220px, max-content) !important;
+  }
+
+  .previewMetaPublish .channelScroller button {
+    width: 32px !important;
+    height: 32px !important;
+    min-height: 32px !important;
+    flex-basis: 32px !important;
+  }
+
+  .previewMetaPublish .dateItem {
+    min-width: 174px !important;
+  }
+
+  .previewMetaPublish .previewActions {
+    min-width: 220px !important;
+  }
+}
+
+/* Correctif iNrAgent Publier — libellé Canaux au-dessus, bulles alignées à gauche */
+@media (min-width: 761px) {
+  .previewMetaPublish .channelsItem {
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 4px !important;
+    padding-left: 0 !important;
+  }
+
+  .previewMetaPublish .channelsItem small {
+    margin: 0 !important;
+    padding-left: 1px;
+    line-height: 1 !important;
+  }
+
+  .previewMetaPublish .channelScrollerWrapPublish {
+    justify-content: flex-start !important;
+    align-self: stretch;
+  }
+
+  .previewMetaPublish .channelScroller {
+    justify-content: flex-start !important;
+  }
+}
+
+/* Correctif final iNrAgent Publier — footer compact, 10 bulles fixes, désélection grisées */
+@media (min-width: 761px) {
+  .previewMetaPublish {
+    grid-template-columns:
+      max-content minmax(230px, 250px)
+      52px 52px minmax(300px, 320px) !important;
+    justify-content: start !important;
+    justify-items: start !important;
+    column-gap: 10px !important;
+    overflow: visible !important;
+  }
+
+  .previewMetaPublish .channelsItem {
+    width: max-content !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    padding-inline: 0 !important;
+  }
+
+  .previewMetaPublish .channelsItem small {
+    width: 100% !important;
+    text-align: center !important;
+    padding-left: 0 !important;
+  }
+
+  .previewMetaPublish .channelScrollerWrapPublish {
+    width: max-content !important;
+    max-width: none !important;
+    align-self: center !important;
+    gap: 4px !important;
+  }
+
+  .previewMetaPublish .channelScroller {
+    width: auto !important;
+    max-width: none !important;
+    flex: 0 0 auto !important;
+    gap: 4px !important;
+    overflow: visible !important;
+  }
+
+  .previewMetaPublish .channelScroller button {
+    width: 34px !important;
+    height: 34px !important;
+    min-height: 34px !important;
+    flex: 0 0 34px !important;
+  }
+
+  .previewMetaPublish .channelNavArrow {
+    width: 18px !important;
+    height: 18px !important;
+    font-size: 15px !important;
+  }
+
+  .previewMetaPublish .channelPillMuted {
+    opacity: 0.34 !important;
+    filter: grayscale(1) saturate(0.25) brightness(0.82);
+    cursor: not-allowed;
+    transform: none !important;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
+      0 6px 12px rgba(0, 0, 0, 0.2) !important;
+  }
+
+  .previewMetaPublish .channelPillMuted img {
+    opacity: 0.74;
+  }
+
+  .previewMetaPublish .dateItem {
+    width: 100% !important;
+    min-width: 230px !important;
+    max-width: 250px !important;
+  }
+
+  .previewMetaPublish .saveCampaignDraftButton,
+  .previewMetaPublish .modifyCampaignButton {
+    width: 52px !important;
+    min-width: 52px !important;
+    max-width: 52px !important;
+  }
+
+  .previewMetaPublish .previewActions {
+    width: 100% !important;
+    min-width: 300px !important;
+    max-width: 320px !important;
+  }
+}
+
+@media (min-width: 761px) and (max-width: 1180px) {
+  .previewMetaPublish {
+    grid-template-columns:
+      max-content minmax(206px, 220px)
+      48px 48px minmax(250px, 270px) !important;
+    column-gap: 8px !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+  }
+
+  .previewMetaPublish .channelScroller button {
+    width: 32px !important;
+    height: 32px !important;
+    min-height: 32px !important;
+    flex-basis: 32px !important;
+  }
+
+  .previewMetaPublish .dateItem {
+    min-width: 206px !important;
+    max-width: 220px !important;
+  }
+
+  .previewMetaPublish .saveCampaignDraftButton,
+  .previewMetaPublish .modifyCampaignButton {
+    width: 48px !important;
+    min-width: 48px !important;
+    max-width: 48px !important;
+  }
+
+  .previewMetaPublish .previewActions {
+    min-width: 250px !important;
+    max-width: 270px !important;
+  }
+}
+
+/* Correctif iNrAgent Publier — responsive : 10 canaux en 2 lignes de 5 */
+@media (max-width: 760px) {
+  .previewMetaPublish {
+    grid-template-columns: 1fr 1fr 46px 46px !important;
+    grid-template-areas:
+      "channels channels channels channels"
+      "date date save edit"
+      "actions actions actions actions" !important;
+    gap: 8px !important;
+    overflow: visible !important;
+  }
+
+  .previewMetaPublish .channelsItem {
+    grid-area: channels !important;
+    width: 100% !important;
+    min-height: 96px !important;
+    height: auto !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 6px !important;
+    padding: 8px 10px 10px !important;
+    overflow: visible !important;
+  }
+
+  .previewMetaPublish .channelsItem small {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    text-align: center !important;
+    font-size: 11px !important;
+    line-height: 1 !important;
+    color: rgba(226, 242, 255, 0.74) !important;
+  }
+
+  .previewMetaPublish .channelScrollerWrapPublish {
+    width: max-content !important;
+    max-width: 100% !important;
+    display: grid !important;
+    grid-template-columns: 18px max-content 18px !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 5px !important;
+    overflow: visible !important;
+  }
+
+  .previewMetaPublish .channelScroller {
+    width: max-content !important;
+    max-width: none !important;
+    display: grid !important;
+    grid-template-columns: repeat(5, 30px) !important;
+    grid-auto-rows: 30px !important;
+    gap: 6px 5px !important;
+    justify-content: center !important;
+    align-items: center !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    scrollbar-width: none !important;
+  }
+
+  .previewMetaPublish .channelScroller::-webkit-scrollbar {
+    display: none !important;
+  }
+
+  .previewMetaPublish .channelScroller button {
+    width: 30px !important;
+    height: 30px !important;
+    min-height: 30px !important;
+    flex: 0 0 30px !important;
+    padding: 0 !important;
+  }
+
+  .previewMetaPublish .channelScroller img {
+    width: 100% !important;
+    height: 100% !important;
+    object-fit: contain !important;
+  }
+
+  .previewMetaPublish .channelNavArrow {
+    width: 18px !important;
+    height: 18px !important;
+    min-width: 18px !important;
+    align-self: center !important;
+    font-size: 15px !important;
+  }
+}

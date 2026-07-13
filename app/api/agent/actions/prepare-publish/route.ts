@@ -28,6 +28,7 @@ import {
   isValidJobForSector,
 } from "@/lib/activityCatalog";
 import {
+  INR_AGENT_PINTEREST_PUBLISH_MIGRATION_FLAG,
   sanitizeInrAgentAutomationSettings,
   type InrAgentAutomationSettings,
   type InrAgentChannel,
@@ -870,7 +871,17 @@ async function selectConnectedChannels(args: {
     return channel !== undefined && allowedBoosterChannels.has(channel);
   };
 
-  const allowedChannels = args.automation.allowedChannels
+  const allowedAgentChannels: InrAgentChannel[] = [...args.automation.allowedChannels];
+  if (
+    states.pinterest.connected &&
+    !states.pinterest.requiresUpdate &&
+    !allowedAgentChannels.includes("pinterest") &&
+    args.automation.metadata?.[INR_AGENT_PINTEREST_PUBLISH_MIGRATION_FLAG] !== true
+  ) {
+    allowedAgentChannels.push("pinterest");
+  }
+
+  const allowedChannels = allowedAgentChannels
     .map((channel) => agentToBoosterChannel[channel])
     .filter(isAllowedBoosterChannel);
 
