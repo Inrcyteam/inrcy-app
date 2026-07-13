@@ -15,6 +15,8 @@ export type AiEngineOption = {
   label: string;
   shortLabel: string;
   description: string;
+  naturalTendency: string;
+  bestFor: string;
   model: string;
   supportsVision: boolean;
   jsonMode: AiJsonMode;
@@ -34,6 +36,8 @@ export const AI_ENGINE_OPTIONS: readonly AiEngineOption[] = [
     label: "OpenAI — ChatGPT",
     shortLabel: "ChatGPT",
     description: "Polyvalent, rapide et très économique pour les contenus multicanaux.",
+    naturalTendency: "Polyvalent, équilibré, clair et efficace.",
+    bestFor: "Posts complets, contenus marketing locaux et adaptations multicanaux.",
     model: "openai/gpt-4o-mini",
     supportsVision: true,
     jsonMode: "strict",
@@ -43,6 +47,8 @@ export const AI_ENGINE_OPTIONS: readonly AiEngineOption[] = [
     label: "Anthropic — Claude",
     shortLabel: "Claude",
     description: "Écriture naturelle, nuancée et attentive au style.",
+    naturalTendency: "Fluide, humain, nuancé et moins mécanique.",
+    bestFor: "LinkedIn, storytelling, textes longs et contenus premium.",
     model: "anthropic/claude-3.5-haiku",
     supportsVision: true,
     jsonMode: "strict",
@@ -52,6 +58,8 @@ export const AI_ENGINE_OPTIONS: readonly AiEngineOption[] = [
     label: "Google — Gemini",
     shortLabel: "Gemini",
     description: "Rapide, multimodal et efficace sur les longs contextes.",
+    naturalTendency: "Structuré, contextuel, informatif et organisé.",
+    bestFor: "SEO, contenus explicatifs, articles et fiches détaillées.",
     model: "google/gemini-2.5-flash-lite",
     supportsVision: true,
     jsonMode: "strict",
@@ -61,6 +69,8 @@ export const AI_ENGINE_OPTIONS: readonly AiEngineOption[] = [
     label: "Mistral AI — Mistral",
     shortLabel: "Mistral",
     description: "Alternative européenne puissante, multilingue et multimodale.",
+    naturalTendency: "Direct, naturel en français, efficace et sans détour.",
+    bestFor: "Posts courts, messages simples et contenus pros rapides.",
     model: "mistral/mistral-medium-3.5",
     supportsVision: true,
     jsonMode: "strict",
@@ -70,6 +80,8 @@ export const AI_ENGINE_OPTIONS: readonly AiEngineOption[] = [
     label: "xAI — Grok",
     shortLabel: "Grok",
     description: "Direct, rapide et créatif pour varier les approches éditoriales.",
+    naturalTendency: "Plus vivant, punchy, créatif et moins lisse.",
+    bestFor: "Réseaux sociaux, accroches fortes et contenus dynamiques.",
     model: "xai/grok-4.1-fast-non-reasoning",
     supportsVision: true,
     jsonMode: "strict",
@@ -79,6 +91,8 @@ export const AI_ENGINE_OPTIONS: readonly AiEngineOption[] = [
     label: "Perplexity — Sonar",
     shortLabel: "Perplexity",
     description: "Recherche web intégrée et contenus ancrés dans des informations récentes.",
+    naturalTendency: "Factuel, précis, informatif et orienté synthèse.",
+    bestFor: "Contenus pédagogiques, veille, explications et résumés.",
     model: "perplexity/sonar",
     supportsVision: true,
     jsonMode: "prompt-only",
@@ -88,6 +102,8 @@ export const AI_ENGINE_OPTIONS: readonly AiEngineOption[] = [
     label: "DeepSeek",
     shortLabel: "DeepSeek",
     description: "Très bon rapport coût-performance pour les tâches de génération et d'instruction.",
+    naturalTendency: "Logique, argumenté, démonstratif et structuré.",
+    bestFor: "Conseils, argumentaires, contenus techniques et démonstrations.",
     model: "deepseek/deepseek-v3.2",
     supportsVision: false,
     jsonMode: "prompt-only",
@@ -97,6 +113,8 @@ export const AI_ENGINE_OPTIONS: readonly AiEngineOption[] = [
     label: "Meta — Llama",
     shortLabel: "Llama",
     description: "Modèle ouvert, multimodal et performant pour diversifier les contenus.",
+    naturalTendency: "Conversationnel, accessible, social et spontané.",
+    bestFor: "Facebook, Instagram et contenus communautaires accessibles.",
     model: "meta/llama-4-maverick",
     supportsVision: true,
     jsonMode: "prompt-only",

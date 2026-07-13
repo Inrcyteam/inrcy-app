@@ -11,6 +11,7 @@ import {
   getAiEngineOption,
   type AiPreferredEngine,
 } from "@/lib/aiEnginePreference";
+import AiEngineInfoModal from "../../../_components/AiEngineInfoModal";
 import {
   BOOSTER_MAX_IMAGE_COUNT,
   BOOSTER_IMAGE_ACCEPT,
@@ -302,6 +303,7 @@ export default function PublishIntentPanel({
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [mobileInstructionExpanded, setMobileInstructionExpanded] =
     useState(false);
+  const [engineInfoOpen, setEngineInfoOpen] = useState(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const voiceRecordingModeRef = useRef<VoiceRecordingMode | null>(null);
@@ -316,8 +318,6 @@ export default function PublishIntentPanel({
   const liveOnlyUnavailableRef = useRef(false);
   const [liveVoiceEnabled, setLiveVoiceEnabled] = useState(false);
   const selectedAiEngineOption = getAiEngineOption(aiPreferredEngine);
-  const defaultAiEngineOption = getAiEngineOption(defaultAiPreferredEngine);
-  const usesDefaultAiEngine = aiPreferredEngine === defaultAiPreferredEngine;
 
   const setVoiceTargetText = (
     target: VoiceTarget,
@@ -1488,23 +1488,57 @@ export default function PublishIntentPanel({
         ) : null}
         <div style={{ display: "grid", gap: 8, justifyItems: "start" }}>
           <div
-            style={{
-              display: "grid",
-              gap: 6,
-              width: "min(420px, 100%)",
-              minWidth: 0,
-            }}
-          >
-            <label
               style={{
                 display: "grid",
-                gap: 6,
-                color: "rgba(255,255,255,0.84)",
-                fontSize: 13,
-                fontWeight: 850,
+                gap: 4,
+                width: isMobile ? "100%" : "min(470px, 100%)",
+                minWidth: 0,
               }}
             >
-              <span>Moteur IA</span>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: isMobile ? "1fr" : "auto minmax(220px, 320px)",
+                  alignItems: "center",
+                  gap: isMobile ? 5 : 8,
+                  color: "rgba(255,255,255,0.84)",
+                  fontSize: 12.5,
+                  fontWeight: 850,
+              }}
+            >
+              <div
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  minWidth: 0,
+                }}
+              >
+                <span style={{ whiteSpace: "nowrap" }}>Moteur IA</span>
+                <button
+                  type="button"
+                  onClick={() => setEngineInfoOpen(true)}
+                  aria-label="Informations sur les moteurs IA"
+                  title="Informations sur les moteurs IA"
+                  style={{
+                    width: 18,
+                    height: 18,
+                    borderRadius: 999,
+                    border: "1px solid rgba(125,211,252,0.44)",
+                    background: "rgba(125,211,252,0.12)",
+                    color: "#bae6fd",
+                    display: "inline-grid",
+                    placeItems: "center",
+                    padding: 0,
+                    cursor: "pointer",
+                    fontSize: 11,
+                    fontWeight: 950,
+                    lineHeight: 1,
+                  }}
+                >
+                  i
+                </button>
+              </div>
               <select
                 value={aiPreferredEngine}
                 onChange={(event) =>
@@ -1515,13 +1549,13 @@ export default function PublishIntentPanel({
                 disabled={generationDisabled}
                 style={{
                   width: "100%",
-                  minHeight: 42,
-                  borderRadius: 14,
+                  minHeight: isMobile ? 36 : 38,
+                  borderRadius: 12,
                   border: "1px solid rgba(255,255,255,0.14)",
                   background: "rgba(255,255,255,0.055)",
                   color: "white",
-                  padding: "9px 12px",
-                  fontSize: 14,
+                  padding: isMobile ? "7px 10px" : "8px 11px",
+                  fontSize: 13,
                   fontWeight: 800,
                   outline: "none",
                   opacity: generationDisabled ? 0.68 : 1,
@@ -1541,17 +1575,6 @@ export default function PublishIntentPanel({
                   </option>
                 ))}
               </select>
-            </label>
-            <div
-              style={{
-                fontSize: 12,
-                lineHeight: 1.35,
-                color: "rgba(255,255,255,0.62)",
-              }}
-            >
-              {usesDefaultAiEngine
-                ? `${selectedAiEngineOption.shortLabel} — moteur par défaut de votre Configuration IA.`
-                : `${selectedAiEngineOption.shortLabel} — uniquement pour cette génération. Défaut : ${defaultAiEngineOption.shortLabel}.`}
             </div>
           </div>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
@@ -1649,6 +1672,11 @@ export default function PublishIntentPanel({
           ) : null}
         </div>
       </div>
+      <AiEngineInfoModal
+        open={engineInfoOpen}
+        activeEngine={aiPreferredEngine}
+        onClose={() => setEngineInfoOpen(false)}
+      />
     </div>
   );
 }

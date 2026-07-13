@@ -18,6 +18,7 @@ import {
   normalizeBoosterPreferredCta,
   type BoosterPreferredCta,
 } from "../../booster/publier/publishModal.shared";
+import AiEngineInfoModal from "../../_components/AiEngineInfoModal";
 
 type Props = { mode?: "page" | "drawer" };
 
@@ -171,6 +172,8 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
+  const [engineInfoOpen, setEngineInfoOpen] = useState(false);
+  const selectedEngineOption = getAiEngineOption(form.preferredEngine);
 
   const card: React.CSSProperties = useMemo(() => ({
     width: "100%",
@@ -426,7 +429,32 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
         ) : (
           <div style={{ display: "grid", gap: 18 }}>
             <div style={{ display: "grid", gap: 12 }}>
-              <div style={sectionTitle}>Moteur IA</div>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 7 }}>
+                <div style={sectionTitle}>Moteur IA</div>
+                <button
+                  type="button"
+                  onClick={() => setEngineInfoOpen(true)}
+                  aria-label="Informations sur les moteurs IA"
+                  title="Informations sur les moteurs IA"
+                  style={{
+                    width: 19,
+                    height: 19,
+                    borderRadius: 999,
+                    border: "1px solid rgba(125,211,252,0.44)",
+                    background: "rgba(125,211,252,0.12)",
+                    color: "#bae6fd",
+                    display: "inline-grid",
+                    placeItems: "center",
+                    padding: 0,
+                    cursor: "pointer",
+                    fontSize: 11,
+                    fontWeight: 950,
+                    lineHeight: 1,
+                  }}
+                >
+                  i
+                </button>
+              </div>
               <label style={label}>
                 <span style={labelTitle}>Choisir votre moteur préférentiel</span>
                 <select
@@ -441,9 +469,9 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
                   ))}
                 </select>
                 <span style={hint}>
-                  {getAiEngineOption(form.preferredEngine).description} iNrCy conserve ses règles métier, ses longueurs et ses adaptations par canal.
-                  {!getAiEngineOption(form.preferredEngine).supportsVision
-                    ? " Pour comprendre les images, iNrCy peut utiliser un module vision compatible, mais le moteur choisi reste l’auteur du contenu final."
+                  Tendance : {selectedEngineOption.naturalTendency} iNrCy garde vos règles métier.
+                  {!selectedEngineOption.supportsVision
+                    ? " Les images passent par une analyse compatible avant rédaction."
                     : ""}
                 </span>
               </label>
@@ -622,6 +650,11 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
       <div style={{ ...card, color: "rgba(255,255,255,0.62)", fontSize: 12, lineHeight: 1.45 }}>
         Astuce : plus “Mon activité” et votre “signature IA” sont précis, plus iNrCy peut générer des contenus naturels, locaux et à l’image du professionnel.
       </div>
+      <AiEngineInfoModal
+        open={engineInfoOpen}
+        activeEngine={form.preferredEngine}
+        onClose={() => setEngineInfoOpen(false)}
+      />
     </div>
   );
 }
