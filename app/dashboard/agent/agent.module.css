@@ -13498,3 +13498,65 @@ button.campaignInfoCard:focus-visible .campaignInfoEye {
     font-size: 15px !important;
   }
 }
+
+/* Correctif iNrAgent Publier — desktop : libellé sur ligne 1, commandes alignées ligne 2 */
+@media (min-width: 761px) {
+  .previewMetaPublish {
+    align-items: end !important;
+  }
+
+  .previewMetaPublish .channelsItem {
+    min-height: 70px !important;
+    height: 70px !important;
+    display: grid !important;
+    grid-template-rows: 14px 52px !important;
+    align-items: center !important;
+    justify-items: center !important;
+    gap: 4px !important;
+    padding: 0 !important;
+  }
+
+  .previewMetaPublish .channelsItem small {
+    align-self: end !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    text-align: center !important;
+    line-height: 1 !important;
+  }
+
+  .previewMetaPublish .channelScrollerWrapPublish {
+    grid-row: 2 !important;
+    height: 52px !important;
+    display: inline-grid !important;
+    grid-template-columns: 18px max-content 18px !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 4px !important;
+  }
+
+  .previewMetaPublish .dateItem,
+  .previewMetaPublish .saveCampaignDraftButton,
+  .previewMetaPublish .modifyCampaignButton,
+  .previewMetaPublish .previewActions {
+    align-self: end !important;
+  }
+
+  .previewMetaPublish .dateItem,
+  .previewMetaPublish .saveCampaignDraftButton,
+  .previewMetaPublish .modifyCampaignButton {
+    min-height: 52px !important;
+    height: 52px !important;
+  }
+
+  .previewMetaPublish .previewActions {
+    min-height: 52px !important;
+    height: 52px !important;
+  }
+
+  .previewMetaPublish .previewActions .validateButton,
+  .previewMetaPublish .previewActions .refuseButton {
+    min-height: 52px !important;
+    height: 52px !important;
+  }
+}

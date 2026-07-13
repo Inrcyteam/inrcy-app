@@ -12,7 +12,11 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabaseClient";
-import { readAccountCacheValue, resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
+import {
+  readAccountCacheValue,
+  resolveActiveBrowserUserId,
+  writeAccountCacheValue,
+} from "@/lib/browserAccountCache";
 import { ChannelImageAdapterModal } from "@/app/dashboard/_components/ChannelImageAdapterTool";
 import { requestBoosterVideoTransforms } from "@/lib/boosterVideoTransformClient";
 import type { BoosterVideoTransformedVariant } from "@/lib/boosterVideoTransforms";
@@ -1162,6 +1166,135 @@ function readCachedAgentConnectedChannels(): ConnectedChannelMap | null {
     return connected;
   } catch {
     return null;
+  }
+}
+
+const INR_AGENT_VIEW_CACHE_KEY = "inrcy_agent_view_cache_v1";
+const INR_AGENT_VIEW_CACHE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
+type CachedAgentViewSnapshot = {
+  version: 1;
+  savedAt: number;
+  settings?: InrAgentSettings;
+  connectedChannels?: ConnectedChannelMap;
+  actions?: AgentPreparedAction[];
+  scheduledActions?: AgentScheduledAction[];
+  tableMissing?: boolean;
+  scheduledActionsTableMissing?: boolean;
+};
+
+function sanitizeCachedConnectedChannels(
+  value: unknown,
+): ConnectedChannelMap | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const source = value as Record<string, unknown>;
+  const next: ConnectedChannelMap = {};
+
+  for (const channel of channelOrder) {
+    if (typeof source[channel] === "boolean") {
+      next[channel] = source[channel] as boolean;
+    }
+  }
+
+  return Object.keys(next).length > 0 ? next : null;
+}
+
+function isCachedPreparedAction(value: unknown): value is AgentPreparedAction {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const item = value as Record<string, unknown>;
+  return typeof item.id === "string" && item.id.length > 0;
+}
+
+function isCachedScheduledAction(value: unknown): value is AgentScheduledAction {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const item = value as Record<string, unknown>;
+  return typeof item.id === "string" && item.id.length > 0;
+}
+
+function readCachedAgentViewSnapshot(): CachedAgentViewSnapshot | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const raw = readAccountCacheValue(INR_AGENT_VIEW_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<CachedAgentViewSnapshot>;
+    const savedAt = Number(parsed?.savedAt || 0);
+    if (
+      parsed?.version !== 1 ||
+      !Number.isFinite(savedAt) ||
+      Date.now() - savedAt > INR_AGENT_VIEW_CACHE_MAX_AGE_MS
+    ) {
+      return null;
+    }
+
+    const settings = parsed.settings
+      ? sanitizeInrAgentSettings(parsed.settings)
+      : undefined;
+    const connectedChannels = sanitizeCachedConnectedChannels(
+      parsed.connectedChannels,
+    );
+    const actions = Array.isArray(parsed.actions)
+      ? parsed.actions.filter(isCachedPreparedAction).slice(0, 40)
+      : undefined;
+    const scheduledActions = Array.isArray(parsed.scheduledActions)
+      ? parsed.scheduledActions.filter(isCachedScheduledAction).slice(0, 80)
+      : undefined;
+
+    if (
+      !settings &&
+      !connectedChannels &&
+      !actions?.length &&
+      !scheduledActions?.length
+    ) {
+      return null;
+    }
+
+    return {
+      version: 1,
+      savedAt,
+      settings,
+      connectedChannels: connectedChannels || undefined,
+      actions,
+      scheduledActions,
+      tableMissing: Boolean(parsed.tableMissing),
+      scheduledActionsTableMissing: Boolean(
+        parsed.scheduledActionsTableMissing,
+      ),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedAgentViewSnapshot(
+  patch: Partial<Omit<CachedAgentViewSnapshot, "version" | "savedAt">>,
+) {
+  if (typeof window === "undefined") return;
+
+  try {
+    const current = readCachedAgentViewSnapshot();
+    const next: CachedAgentViewSnapshot = {
+      version: 1,
+      savedAt: Date.now(),
+      settings: patch.settings ?? current?.settings,
+      connectedChannels:
+        patch.connectedChannels ?? current?.connectedChannels,
+      actions: (patch.actions ?? current?.actions ?? []).slice(0, 40),
+      scheduledActions: (
+        patch.scheduledActions ??
+        current?.scheduledActions ??
+        []
+      ).slice(0, 80),
+      tableMissing: patch.tableMissing ?? current?.tableMissing ?? false,
+      scheduledActionsTableMissing:
+        patch.scheduledActionsTableMissing ??
+        current?.scheduledActionsTableMissing ??
+        false,
+    };
+
+    writeAccountCacheValue(INR_AGENT_VIEW_CACHE_KEY, JSON.stringify(next));
+  } catch {
+    // Le cache ne doit jamais bloquer l'interface iNrAgent.
   }
 }
 
@@ -4023,22 +4156,37 @@ function computeNextOccurrence(config: AutomationConfig): string | null {
 
 export default function AgentClient() {
   const router = useRouter();
-  const cachedInitialConnectedChannels = useMemo(() => readCachedAgentConnectedChannels(), []);
+  const cachedInitialAgentSnapshot = useMemo(
+    () => readCachedAgentViewSnapshot(),
+    [],
+  );
+  const cachedInitialConnectedChannels = useMemo(
+    () =>
+      cachedInitialAgentSnapshot?.connectedChannels ??
+      readCachedAgentConnectedChannels(),
+    [cachedInitialAgentSnapshot],
+  );
+  const cachedInitialSettings =
+    cachedInitialAgentSnapshot?.settings ?? INR_AGENT_DEFAULT_SETTINGS;
   const [selectedKey, setSelectedKey] = useState<AutomationKey>("publish");
   const [settingsKey, setSettingsKey] = useState<AutomationKey | null>(null);
   const [agentSettings, setAgentSettings] = useState<InrAgentSettings>(
-    INR_AGENT_DEFAULT_SETTINGS,
+    cachedInitialSettings,
   );
   const [configs, setConfigs] = useState<
     Record<AutomationKey, AutomationConfig>
-  >(() => settingsToConfigs(INR_AGENT_DEFAULT_SETTINGS));
+  >(() => settingsToConfigs(cachedInitialSettings));
   const [agentConnectedChannels, setAgentConnectedChannels] =
     useState<ConnectedChannelMap | null>(() => cachedInitialConnectedChannels);
   const [connectedChannelsLoadState, setConnectedChannelsLoadState] =
     useState<LoadState>(() => (cachedInitialConnectedChannels ? "ready" : "loading"));
-  const [loadState, setLoadState] = useState<LoadState>("loading");
+  const [loadState, setLoadState] = useState<LoadState>(() =>
+    cachedInitialAgentSnapshot?.settings ? "ready" : "loading",
+  );
   const [saveState, setSaveState] = useState<SaveState>("idle");
-  const [tableMissing, setTableMissing] = useState(false);
+  const [tableMissing, setTableMissing] = useState(() =>
+    Boolean(cachedInitialAgentSnapshot?.tableMissing),
+  );
   const [notice, setNotice] = useState<string | null>(null);
   const [agentConfirmDialog, setAgentConfirmDialog] =
     useState<AgentConfirmDialogState>(null);
@@ -4069,14 +4217,20 @@ export default function AgentClient() {
       channels: BoosterChannelKey[];
     } | null>(null);
   const [isMobileHeader, setIsMobileHeader] = useState(false);
-  const [actions, setActions] = useState<AgentPreparedAction[]>([]);
+  const [actions, setActions] = useState<AgentPreparedAction[]>(
+    () => cachedInitialAgentSnapshot?.actions ?? [],
+  );
   const [scheduledActions, setScheduledActions] = useState<
     AgentScheduledAction[]
-  >([]);
+  >(() => cachedInitialAgentSnapshot?.scheduledActions ?? []);
   const [scheduledActionsTableMissing, setScheduledActionsTableMissing] =
-    useState(false);
+    useState(() =>
+      Boolean(cachedInitialAgentSnapshot?.scheduledActionsTableMissing),
+    );
   const [actionsLoadState, setActionsLoadState] =
-    useState<ActionsLoadState>("loading");
+    useState<ActionsLoadState>(() =>
+      cachedInitialAgentSnapshot?.actions ? "ready" : "loading",
+    );
   const [actionMutationState, setActionMutationState] =
     useState<ActionMutationState>("idle");
   const [agentPublishExecutionProgress, setAgentPublishExecutionProgress] =
@@ -4294,7 +4448,7 @@ export default function AgentClient() {
     let alive = true;
 
     async function loadSettings() {
-      setLoadState("loading");
+      setLoadState((current) => (current === "ready" ? current : "loading"));
 
       try {
         const response = await fetch("/api/agent/settings", {
@@ -4320,15 +4474,21 @@ export default function AgentClient() {
         setConfigs(settingsToConfigs(nextSettings));
         setTableMissing((current) => current || Boolean(payload?.tableMissing));
         setLoadState("ready");
+        writeCachedAgentViewSnapshot({
+          settings: nextSettings,
+          tableMissing: Boolean(payload?.tableMissing),
+        });
       } catch (error) {
         if (!alive) return;
-        setLoadState("error");
-        setNotice(
-          error instanceof Error
-            ? error.message
-            : "Réglages iNr’Agent indisponibles.",
-        );
-        window.setTimeout(() => setNotice(null), 2600);
+        setLoadState((current) => (current === "ready" ? current : "error"));
+        if (!cachedInitialAgentSnapshot?.settings) {
+          setNotice(
+            error instanceof Error
+              ? error.message
+              : "Réglages iNr’Agent indisponibles.",
+          );
+          window.setTimeout(() => setNotice(null), 2600);
+        }
       }
     }
 
@@ -4343,7 +4503,9 @@ export default function AgentClient() {
     let alive = true;
 
     async function loadConnectedChannels() {
-      setConnectedChannelsLoadState((current) => current === "ready" ? current : "loading");
+      setConnectedChannelsLoadState((current) =>
+        current === "ready" ? current : "loading",
+      );
       try {
         const response = await fetch("/api/integrations/channel-states", {
           cache: "no-store",
@@ -4357,10 +4519,15 @@ export default function AgentClient() {
         const nextConnectedChannels = channelMapFromConnectionStates(payload);
         setAgentConnectedChannels(nextConnectedChannels);
         setConnectedChannelsLoadState("ready");
+        writeCachedAgentViewSnapshot({
+          connectedChannels: nextConnectedChannels,
+        });
       } catch {
         if (!alive) return;
         setAgentConnectedChannels((current) => current ?? null);
-        setConnectedChannelsLoadState((current) => current === "ready" ? current : "error");
+        setConnectedChannelsLoadState((current) =>
+          current === "ready" ? current : "error",
+        );
       }
     }
 
@@ -4378,7 +4545,10 @@ export default function AgentClient() {
     );
   }, [agentConnectedChannels, loadState]);
   async function refreshActions(silent = false) {
-    if (!silent) setActionsLoadState("loading");
+    if (!silent)
+      setActionsLoadState((current) =>
+        current === "ready" ? current : "loading",
+      );
 
     try {
       const response = await fetch("/api/agent/actions", {
@@ -4393,12 +4563,22 @@ export default function AgentClient() {
         throw new Error(payload?.error || "Actions iNr’Agent indisponibles.");
       }
 
-      setActions(Array.isArray(payload?.actions) ? payload.actions : []);
+      const nextActions = Array.isArray(payload?.actions)
+        ? payload.actions
+        : [];
+      const nextTableMissing = Boolean(payload?.tableMissing);
+      setActions(nextActions);
       if (payload?.tableMissing) setTableMissing(true);
       setActionsLoadState("ready");
+      writeCachedAgentViewSnapshot({
+        actions: nextActions,
+        tableMissing: nextTableMissing,
+      });
     } catch (error) {
-      setActionsLoadState("error");
-      if (!silent) {
+      setActionsLoadState((current) =>
+        current === "ready" ? current : "error",
+      );
+      if (!silent && actionsLoadState !== "ready") {
         showNotice(
           error instanceof Error
             ? error.message
@@ -4422,12 +4602,16 @@ export default function AgentClient() {
         throw new Error(payload?.error || "Actions programmées indisponibles.");
       }
 
-      setScheduledActions(
-        Array.isArray(payload?.scheduledActions)
-          ? payload.scheduledActions
-          : [],
-      );
-      setScheduledActionsTableMissing(Boolean(payload?.tableMissing));
+      const nextScheduledActions = Array.isArray(payload?.scheduledActions)
+        ? payload.scheduledActions
+        : [];
+      const nextScheduledTableMissing = Boolean(payload?.tableMissing);
+      setScheduledActions(nextScheduledActions);
+      setScheduledActionsTableMissing(nextScheduledTableMissing);
+      writeCachedAgentViewSnapshot({
+        scheduledActions: nextScheduledActions,
+        scheduledActionsTableMissing: nextScheduledTableMissing,
+      });
     } catch (error) {
       if (!silent) {
         showNotice(
@@ -6734,6 +6918,10 @@ export default function AgentClient() {
       setAgentSettings(savedSettings);
       setConfigs(settingsToConfigs(savedSettings));
       setTableMissing((current) => current || Boolean(payload?.tableMissing));
+      writeCachedAgentViewSnapshot({
+        settings: savedSettings,
+        tableMissing: Boolean(payload?.tableMissing),
+      });
       setSaveState("saved");
       if (closeModal) setSettingsKey(null);
       if (showSuccess) showNotice("Réglages iNr’Agent enregistrés.");
@@ -7458,6 +7646,10 @@ export default function AgentClient() {
       setAgentSettings(savedSettings);
       setConfigs(settingsToConfigs(savedSettings));
       setTableMissing((current) => current || Boolean(payload?.tableMissing));
+      writeCachedAgentViewSnapshot({
+        settings: savedSettings,
+        tableMissing: Boolean(payload?.tableMissing),
+      });
       setAutomationScheduleEdit(null);
       await refreshScheduledActions(true);
       showNotice("Programmation mise à jour.");
@@ -7556,6 +7748,7 @@ export default function AgentClient() {
       );
       setAgentSettings(savedSettings);
       setConfigs(settingsToConfigs(savedSettings));
+      writeCachedAgentViewSnapshot({ settings: savedSettings });
       showNotice("Automatisation désactivée.");
     } catch (error) {
       showNotice(
