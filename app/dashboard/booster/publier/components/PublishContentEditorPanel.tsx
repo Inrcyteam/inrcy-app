@@ -348,7 +348,11 @@ export default function PublishContentEditorPanel({
                     flexWrap: "wrap",
                   }}
                 >
-                  <div style={{ fontSize: 12, opacity: 0.85 }}>Contenu</div>
+                   <div style={{ fontSize: 12, opacity: 0.85 }}>
+                     {activeCard === "inr_search"
+                       ? "Phrase courte iNr'Search"
+                       : "Contenu"}
+                   </div>
                   <div
                     style={{
                       display: "flex",

@@ -12,6 +12,18 @@ type Props = {
   navItems: NavItem[];
 };
 
+type SwipeState = {
+  x: number;
+  y: number;
+  lastX: number;
+  lastY: number;
+  time: number;
+  pointerId: number;
+};
+
+const GESTURE_IGNORE_SELECTOR =
+  "[data-local-carousel], [data-inrsearch-gesture-ignore], a, button, input, textarea, select, summary, [contenteditable='true'], [role='dialog']";
+
 function getSectionIndex(sections: HTMLElement[], id: string) {
   const cleanId = id.replace(/^#/, "");
   const index = sections.findIndex((section) => section.id === cleanId);
@@ -31,7 +43,7 @@ export default function InrSearchExperience({
   const [menuOpen, setMenuOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const activeIndexRef = useRef(0);
-  const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const touchStartRef = useRef<SwipeState | null>(null);
   const sectionCount = navItems.length;
 
   const itemByHref = useMemo(
@@ -209,33 +221,56 @@ export default function InrSearchExperience({
     const onPointerDown = (event: PointerEvent) => {
       if (event.pointerType !== "touch") return;
       const target = event.target as Element | null;
-      if (target?.closest(
-        "[data-local-carousel], [data-inrsearch-gesture-ignore], a, button, input, textarea, select, summary, [contenteditable='true'], [role='dialog']",
-      )) {
+      if (target?.closest(GESTURE_IGNORE_SELECTOR)) {
         touchStartRef.current = null;
         return;
       }
-      touchStartRef.current = { x: event.clientX, y: event.clientY, time: performance.now() };
+      touchStartRef.current = {
+        x: event.clientX,
+        y: event.clientY,
+        lastX: event.clientX,
+        lastY: event.clientY,
+        time: performance.now(),
+        pointerId: event.pointerId,
+      };
+    };
+
+    const onPointerMove = (event: PointerEvent) => {
+      if (event.pointerType !== "touch" || !touchStartRef.current) return;
+      if (touchStartRef.current.pointerId !== event.pointerId) return;
+      touchStartRef.current.lastX = event.clientX;
+      touchStartRef.current.lastY = event.clientY;
     };
 
     const onPointerUp = (event: PointerEvent) => {
-      if (event.pointerType !== "touch" || !touchStartRef.current || wheelLock) return;
+      if (event.pointerType !== "touch" || !touchStartRef.current) return;
+      if (wheelLock) {
+        touchStartRef.current = null;
+        return;
+      }
       const start = touchStartRef.current;
       touchStartRef.current = null;
-      const deltaX = event.clientX - start.x;
-      const deltaY = event.clientY - start.y;
+      const pointerDeltaX = event.clientX - start.x;
+      const trackedDeltaX = start.lastX - start.x;
+      const endX = Math.abs(pointerDeltaX) >= Math.abs(trackedDeltaX)
+        ? event.clientX
+        : start.lastX;
+      const endY = endX === event.clientX ? event.clientY : start.lastY;
+      const deltaX = endX - start.x;
+      const deltaY = endY - start.y;
       const elapsed = Math.max(1, performance.now() - start.time);
       const velocity = Math.abs(deltaX) / elapsed;
-      const threshold = Math.max(112, orbit.clientWidth * 0.22);
-      const deliberate = Math.abs(deltaX) >= threshold || (Math.abs(deltaX) >= 96 && velocity > 0.72);
-      if (!deliberate || Math.abs(deltaX) < Math.abs(deltaY) * 1.55) return;
+      const threshold = Math.max(72, Math.min(112, orbit.clientWidth * 0.18));
+      const deliberate =
+        Math.abs(deltaX) >= threshold || (Math.abs(deltaX) >= 54 && velocity > 0.45);
+      if (!deliberate || Math.abs(deltaX) < Math.abs(deltaY) * 1.18) return;
       event.preventDefault();
       wheelLock = true;
       moveToIndex(activeIndexRef.current + (deltaX < 0 ? 1 : -1));
       window.clearTimeout(wheelUnlockTimer);
       wheelUnlockTimer = window.setTimeout(() => {
         wheelLock = false;
-      }, reducedMotionQuery.matches ? 260 : 820);
+      }, reducedMotionQuery.matches ? 260 : 620);
     };
 
     const onPointerCancel = () => {
@@ -289,6 +324,7 @@ export default function InrSearchExperience({
     orbit.addEventListener("scroll", syncFromScroll, { passive: true });
     orbit.addEventListener("wheel", onWheel, { passive: false });
     orbit.addEventListener("pointerdown", onPointerDown, { passive: true });
+    orbit.addEventListener("pointermove", onPointerMove, { passive: true });
     orbit.addEventListener("pointerup", onPointerUp, { passive: false });
     orbit.addEventListener("pointercancel", onPointerCancel, { passive: true });
     if (!reducedMotionQuery.matches) {
@@ -320,6 +356,7 @@ export default function InrSearchExperience({
       orbit.removeEventListener("scroll", syncFromScroll);
       orbit.removeEventListener("wheel", onWheel);
       orbit.removeEventListener("pointerdown", onPointerDown);
+      orbit.removeEventListener("pointermove", onPointerMove);
       orbit.removeEventListener("pointerup", onPointerUp);
       orbit.removeEventListener("pointercancel", onPointerCancel);
       root.removeEventListener("pointermove", updatePointer);

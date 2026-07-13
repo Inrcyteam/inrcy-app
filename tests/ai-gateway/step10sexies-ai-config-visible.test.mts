@@ -73,7 +73,8 @@ test("Step 10 sexies keeps engine info and AI configuration drawers above the mo
   assert.match(infoModal, /calc\(100dvh - \$\{MOBILE_DOCK_HEIGHT\} - 32px\)/);
 
   assert.match(aiConfig, /onSaved\?: \(\) => void/);
-  assert.match(aiConfig, /onSaved\?\.\(\)/);
+  assert.match(aiConfig, /Configuration IA enregistrée ✅/);
+  assert.match(aiConfig, /window\.setTimeout\(\(\) => onSaved\(\), 900\)/);
   assert.match(publishDrawer, /onSaved=\{onClose\}/);
   assert.match(dashboardDrawer, /onSaved=\{onCloseDrawer\}/);
 });

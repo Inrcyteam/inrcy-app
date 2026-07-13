@@ -23,6 +23,7 @@ import {
 import { buildVideoTransformSignature } from "@/lib/boosterVideoTransforms";
 import { readSanitizedElementHtml } from "@/lib/sanitizeHtml";
 import { confirmInrcy } from "@/lib/inrcyDialog";
+import { INR_SEARCH_CONTENT_MAX_LENGTH } from "@/lib/boosterChannelRules";
 import {
   editableHtmlToSiteText,
   stripSiteTextFormatting,
@@ -35,6 +36,7 @@ import {
   BOOSTER_MAX_IMAGE_COUNT,
   BOOSTER_MAX_VIDEO_BYTES,
   BOOSTER_MAX_VIDEO_MB_LABEL,
+  BOOSTER_CHANNEL_ORDER,
   CHANNEL_LABELS,
   CHANNEL_PRESETS,
   STYLE_OPTIONS,
@@ -149,18 +151,7 @@ const EMPTY_CHANNEL_DETAILS: Record<ChannelKey, ChannelConnectionDetail> = {
 
 const AI_CONFIGURATION_STORAGE_KEY = "inrcy_ai_configuration";
 
-const CHANNEL_KEYS: ChannelKey[] = [
-  "inrcy_site",
-  "site_web",
-  "inr_search",
-  "gmb",
-  "facebook",
-  "instagram",
-  "linkedin",
-  "tiktok",
-  "youtube_shorts",
-  "pinterest",
-];
+const CHANNEL_KEYS: ChannelKey[] = BOOSTER_CHANNEL_ORDER;
 
 function isChannelKey(value: unknown): value is ChannelKey {
   return CHANNEL_KEYS.includes(String(value || "") as ChannelKey);
@@ -341,6 +332,9 @@ function sanitizePatchForEditor(
       next.content = stripSiteTextFormattingPreserveLayout(next.content);
     if (typeof next.cta === "string")
       next.cta = stripSiteTextFormattingForEditor(next.cta);
+  }
+  if (channel === "inr_search" && typeof next.content === "string") {
+    next.content = next.content.slice(0, INR_SEARCH_CONTENT_MAX_LENGTH).trim();
   }
   if (next.ctaUrl !== undefined) next.ctaUrl = String(next.ctaUrl || "");
   if (next.ctaPhone !== undefined) next.ctaPhone = String(next.ctaPhone || "");
@@ -744,8 +738,8 @@ export default function PublishModal({
   const getInitialConnectedChannels = (): Record<ChannelKey, boolean> => ({
     inrcy_site: !!initialConnectedChannels?.inrcy_site,
     site_web: !!initialConnectedChannels?.site_web,
-    inr_search: !!initialConnectedChannels?.inr_search,
     gmb: !!initialConnectedChannels?.gmb,
+    inr_search: !!initialConnectedChannels?.inr_search,
     facebook: !!initialConnectedChannels?.facebook,
     instagram: !!initialConnectedChannels?.instagram,
     linkedin: !!initialConnectedChannels?.linkedin,
@@ -842,8 +836,8 @@ export default function PublishModal({
               : ({
                   inrcy_site: !!nextConnected.inrcy_site,
                   site_web: !!nextConnected.site_web,
-                  inr_search: !!nextConnected.inr_search,
                   gmb: !!nextConnected.gmb,
+                  inr_search: !!nextConnected.inr_search,
                   facebook: !!nextConnected.facebook,
                   instagram: !!nextConnected.instagram,
                   linkedin: !!nextConnected.linkedin,
@@ -868,8 +862,8 @@ export default function PublishModal({
     const nextConnected: Record<ChannelKey, boolean> = {
       inrcy_site: !!initialConnectedChannels.inrcy_site,
       site_web: !!initialConnectedChannels.site_web,
-      inr_search: !!initialConnectedChannels.inr_search,
       gmb: !!initialConnectedChannels.gmb,
+      inr_search: !!initialConnectedChannels.inr_search,
       facebook: !!initialConnectedChannels.facebook,
       instagram: !!initialConnectedChannels.instagram,
       linkedin: !!initialConnectedChannels.linkedin,
@@ -1304,18 +1298,7 @@ export default function PublishModal({
   }, []);
 
   const displayCards = useMemo(() => {
-    const ordered: DisplayKey[] = [
-      "inrcy_site",
-      "site_web",
-      "gmb",
-      "facebook",
-      "instagram",
-      "linkedin",
-      "tiktok",
-      "youtube_shorts",
-      "pinterest",
-    ];
-    return ordered.filter((key) => channels[key] && connected[key]);
+    return CHANNEL_KEYS.filter((key) => channels[key] && connected[key]);
   }, [channels, connected]);
 
   useEffect(() => {
@@ -1332,10 +1315,7 @@ export default function PublishModal({
   }, [displayCards, activeCard]);
 
   const selectedChannels = useMemo(
-    () =>
-      Object.entries(channels)
-        .filter(([k, v]) => v && connected[k as ChannelKey])
-        .map(([k]) => k) as ChannelKey[],
+    () => CHANNEL_KEYS.filter((key) => channels[key] && connected[key]),
     [channels, connected],
   );
 
@@ -1558,18 +1538,7 @@ export default function PublishModal({
   });
 
   const selectedForGeneration = useMemo(() => {
-    const out = new Set<ChannelKey>();
-    if (channels.inrcy_site && connected.inrcy_site) out.add("inrcy_site");
-    if (channels.site_web && connected.site_web) out.add("site_web");
-    if (channels.gmb && connected.gmb) out.add("gmb");
-    if (channels.facebook && connected.facebook) out.add("facebook");
-    if (channels.instagram && connected.instagram) out.add("instagram");
-    if (channels.linkedin && connected.linkedin) out.add("linkedin");
-    if (channels.tiktok && connected.tiktok) out.add("tiktok");
-    if (channels.youtube_shorts && connected.youtube_shorts)
-      out.add("youtube_shorts");
-    if (channels.pinterest && connected.pinterest) out.add("pinterest");
-    return Array.from(out);
+    return CHANNEL_KEYS.filter((channel) => channels[channel] && connected[channel]);
   }, [channels, connected]);
 
   const setSynchronizedActiveChannel = (channel: ChannelKey) => {
@@ -2782,11 +2751,16 @@ export default function PublishModal({
   ) => {
     setPostsByChannel((prev) => {
       const current = normalizePost(prev[channel]);
-      const nextPatch =
-        options?.sanitize === false
-          ? patch
-          : sanitizePatchForEditor(channel, patch);
-      const merged = {
+    const nextPatch =
+      options?.sanitize === false
+        ? patch
+        : sanitizePatchForEditor(channel, patch);
+    if (channel === "inr_search" && typeof nextPatch.content === "string") {
+      nextPatch.content = nextPatch.content
+        .slice(0, INR_SEARCH_CONTENT_MAX_LENGTH)
+        .trim();
+    }
+    const merged = {
         ...current,
         ...nextPatch,
       };

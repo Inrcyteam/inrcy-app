@@ -1,5 +1,6 @@
 import type { Dispatch, SetStateAction } from "react";
 import {
+  BOOSTER_CHANNEL_ORDER,
   CHANNEL_LABELS,
   type ChannelKey,
 } from "../publishModal.shared";
@@ -83,7 +84,7 @@ export default function PublishChannelSelector({
   setAllChannelsSelected,
   getChannelDetailInfo,
 }: PublishChannelSelectorProps) {
-  const channelKeys = Object.keys(CHANNEL_LABELS) as ChannelKey[];
+  const channelKeys = BOOSTER_CHANNEL_ORDER;
   const connectedChannelKeys = channelKeys.filter((key) => connected[key]);
   const selectedConnectedCount = connectedChannelKeys.filter((key) => channels[key]).length;
   const hasConnectedChannels = connectedChannelKeys.length > 0;

@@ -18,6 +18,7 @@ import {
   getCtaMode,
   type BoosterCtaMode,
 } from "@/lib/boosterCta";
+import { INR_SEARCH_CONTENT_MAX_LENGTH } from "@/lib/boosterChannelRules";
 export type { BoosterCtaMode } from "@/lib/boosterCta";
 
 export type ChannelKey =
@@ -32,6 +33,21 @@ export type ChannelKey =
   | "youtube_shorts"
   | "pinterest";
 export type DisplayKey = ChannelKey;
+
+// Ordre commun avec les bulles de canaux du dashboard.
+export const BOOSTER_CHANNEL_ORDER: ChannelKey[] = [
+  "inrcy_site",
+  "site_web",
+  "gmb",
+  "inr_search",
+  "facebook",
+  "instagram",
+  "linkedin",
+  "tiktok",
+  "youtube_shorts",
+  "pinterest",
+];
+
 export type ThemeKey =
   | ""
   | "promotion"
@@ -836,7 +852,7 @@ export const CHANNEL_TEXT_GUIDELINES: Record<
   },
   inr_search: {
     title: 100,
-    content: 6000,
+    content: INR_SEARCH_CONTENT_MAX_LENGTH,
     cta: 180,
   },
   gmb: {

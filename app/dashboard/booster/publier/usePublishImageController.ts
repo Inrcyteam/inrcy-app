@@ -22,6 +22,7 @@ import {
   BOOSTER_MAX_IMAGE_MB_LABEL,
   BOOSTER_MAX_MEDIA_BYTES,
   BOOSTER_MAX_MEDIA_MB_LABEL,
+  BOOSTER_CHANNEL_ORDER,
   CHANNEL_LABELS,
   CHANNEL_PRESETS,
   buildBoosterUploadPath,
@@ -132,19 +133,9 @@ export default function usePublishImageController({
   });
 
   const imageAdapterChannels = useMemo<ChannelKey[]>(() => {
-    const adapterChannels: ChannelKey[] = [];
-    if (selectedChannels.includes("inrcy_site"))
-      adapterChannels.push("inrcy_site");
-    if (selectedChannels.includes("site_web")) adapterChannels.push("site_web");
-    if (selectedChannels.includes("gmb")) adapterChannels.push("gmb");
-    if (selectedChannels.includes("facebook")) adapterChannels.push("facebook");
-    if (selectedChannels.includes("instagram"))
-      adapterChannels.push("instagram");
-    if (selectedChannels.includes("linkedin")) adapterChannels.push("linkedin");
-    if (selectedChannels.includes("tiktok")) adapterChannels.push("tiktok");
-    if (selectedChannels.includes("youtube_shorts")) adapterChannels.push("youtube_shorts");
-    if (selectedChannels.includes("pinterest")) adapterChannels.push("pinterest");
-    return adapterChannels;
+    return BOOSTER_CHANNEL_ORDER.filter((channel) =>
+      selectedChannels.includes(channel),
+    );
   }, [selectedChannels]);
 
   const getImageAdapterLabel = (channel: ChannelKey) => CHANNEL_LABELS[channel];

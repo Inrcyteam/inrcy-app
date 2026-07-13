@@ -380,7 +380,13 @@ export default function AiConfigurationContent({ mode = "drawer", onSaved }: Pro
       }
 
       setSaved(true);
-      onSaved?.();
+      if (onSaved) {
+        if (typeof window !== "undefined") {
+          window.setTimeout(() => onSaved(), 900);
+        } else {
+          onSaved();
+        }
+      }
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       if (/ai_preferred_engine|ai_commercial_level|ai_main_goal|ai_preferred_angle|ai_liked_example|ai_language/i.test(message)) {

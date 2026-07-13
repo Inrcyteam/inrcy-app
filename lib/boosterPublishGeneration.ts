@@ -35,6 +35,10 @@ import {
   stripSiteTextFormatting,
   stripSiteTextFormattingPreserveLayout,
 } from "@/lib/boosterFormatting";
+import {
+  INR_SEARCH_CONTENT_MAX_LENGTH,
+  limitBoosterChannelContent,
+} from "@/lib/boosterChannelRules";
 
 export type JsonRecord = Record<string, unknown>;
 
@@ -75,7 +79,7 @@ const siteChannels = new Set<BoosterChannels>(["inrcy_site", "site_web", "inr_se
 const CHANNEL_MIN_CONTENT_LENGTH: Record<BoosterChannels, number> = {
   inrcy_site: 180,
   site_web: 220,
-  inr_search: 220,
+  inr_search: 12,
   gmb: 80,
   facebook: 100,
   instagram: 80,
@@ -91,7 +95,7 @@ const CHANNEL_MIN_CONTENT_LENGTH: Record<BoosterChannels, number> = {
 const CHANNEL_DETAILED_ENRICHMENT_MIN: Record<BoosterChannels, number> = {
   inrcy_site: 1300,
   site_web: 1600,
-  inr_search: 1600,
+  inr_search: 0,
   gmb: 650,
   facebook: 750,
   instagram: 500,
@@ -371,7 +375,19 @@ function normalizePost(channel: BoosterChannels, raw: Partial<ChannelPost> | und
 
   return {
     title: (siteChannel ? sanitizeBoosterSiteText(title) : stripSiteTextFormatting(title)).slice(0, 90),
-    content: (siteChannel ? sanitizeBoosterSiteText(content) : stripSiteTextFormattingPreserveLayout(content)).slice(0, siteChannel ? 6000 : 2000),
+    content: limitBoosterChannelContent(
+      channel,
+      (siteChannel
+        ? sanitizeBoosterSiteText(content)
+        : stripSiteTextFormattingPreserveLayout(content)).slice(
+        0,
+        siteChannel
+          ? channel === "inr_search"
+            ? INR_SEARCH_CONTENT_MAX_LENGTH
+            : 6000
+          : 2000,
+      ),
+    ),
     cta: stripSiteTextFormatting(raw?.cta || "").slice(0, 180),
     hashtags: cleanHashtags(channel, raw?.hashtags),
   };
@@ -724,7 +740,7 @@ function computeMaxOutputTokens(
   const expectedPerChannel: Record<BoosterChannels, number> = {
     inrcy_site: 950,
     site_web: 1100,
-    inr_search: 1100,
+    inr_search: 220,
     gmb: 450,
     facebook: 550,
     instagram: 450,

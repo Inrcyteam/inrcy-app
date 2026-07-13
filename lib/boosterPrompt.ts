@@ -6,6 +6,7 @@ import {
   buildNormalizedAiGenerationProfile,
   type NormalizedAiGenerationProfile,
 } from "@/lib/aiGenerationProfile";
+import { INR_SEARCH_CONTENT_MAX_LENGTH } from "@/lib/boosterChannelRules";
 
 export type BoosterChannels =
   | "inrcy_site"
@@ -176,7 +177,7 @@ const CHANNEL_COMPACT_CONTRACTS: Record<BoosterChannels, string> = {
   site_web:
     "Contenu web durable, crédible et plus riche. SEO local naturel. Titre 45–70. Différent du Site iNrCy. Paragraphes aérés, liste SEO facultative, sans emoji.",
   inr_search:
-    "Actualité publique iNr'Search, durable, locale et utile. SEO naturel, titre clair 45–75, paragraphes aérés, informations concrètes et CTA doux. Sans emoji ni hashtags.",
+    `iNr'Search : titre clair et une seule phrase de contenu courte, utile et directement exploitable. Contenu limité à ${INR_SEARCH_CONTENT_MAX_LENGTH} caractères maximum. Sans emoji ni hashtags.`,
   gmb:
     "Google Business factuel, local, utile et sobre. Titre 40–70. Zéro hashtag, téléphone, email, URL, remise ou promesse invérifiable. CTA neutre seulement si utile.",
   facebook:
@@ -202,7 +203,7 @@ const CHANNEL_LENGTH_TARGETS: Record<
   short: {
     inrcy_site: "500–800 car.",
     site_web: "650–1000 car.",
-    inr_search: "700–1100 car.",
+    inr_search: `≤${INR_SEARCH_CONTENT_MAX_LENGTH} car.`,
     gmb: "250–450 car.",
     facebook: "250–450 car.",
     instagram: "180–350 car.",
@@ -214,7 +215,7 @@ const CHANNEL_LENGTH_TARGETS: Record<
   medium: {
     inrcy_site: "900–1500 car.",
     site_web: "1100–1800 car.",
-    inr_search: "1100–1800 car.",
+    inr_search: `≤${INR_SEARCH_CONTENT_MAX_LENGTH} car.`,
     gmb: "450–800 car.",
     facebook: "500–900 car.",
     instagram: "350–700 car.",
@@ -226,7 +227,7 @@ const CHANNEL_LENGTH_TARGETS: Record<
   detailed: {
     inrcy_site: "1300–2200 car.",
     site_web: "1600–2600 car.",
-    inr_search: "1600–2600 car.",
+    inr_search: `≤${INR_SEARCH_CONTENT_MAX_LENGTH} car.`,
     gmb: "650–1000 car.",
     facebook: "750–1300 car.",
     instagram: "500–900 car.",

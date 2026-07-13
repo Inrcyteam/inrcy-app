@@ -24,6 +24,7 @@ import { INSTAGRAM_RECONNECT_USER_MESSAGE, isInstagramAuthorizationLikeMessage }
 import { getPublishChannelUserMessage, logPublishChannelFailure } from "@/lib/channelPublishDiagnostics";
 import { ensureSystemManagedInrSearch, revalidateInrSearchPublicRoutes } from "@/lib/inrSearchProvisioning";
 import { getInrSearchPublicStatus } from "@/lib/inrSearchPublic";
+import { limitBoosterChannelContent } from "@/lib/boosterChannelRules";
 
 const FACEBOOK_GRAPH_VERSION = "v20.0";
 const LINKEDIN_VERSION = "202603";
@@ -560,7 +561,10 @@ function getChannelPost(eventPayload: JsonRecord, publication: JsonRecord, chann
 
   return {
     title: String(raw.title ?? publication.title ?? "").trim(),
-    content: String(raw.content ?? raw.text ?? raw.message ?? publication.content ?? "").trim(),
+    content: limitBoosterChannelContent(
+      channel,
+      String(raw.content ?? raw.text ?? raw.message ?? publication.content ?? "").trim(),
+    ),
     cta: String(raw.cta ?? publication.cta ?? "").trim(),
     ctaMode: String(raw.ctaMode ?? "").trim(),
     ctaUrl: String(raw.ctaUrl ?? "").trim(),

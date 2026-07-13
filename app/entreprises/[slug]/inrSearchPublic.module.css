@@ -13387,9 +13387,14 @@
 
   .orbitViewport {
     height: 100dvh;
-    overflow: hidden;
-    touch-action: pan-y;
-    overscroll-behavior: none;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    scroll-snap-type: x mandatory !important;
+    scroll-snap-stop: always;
+    touch-action: pan-x pan-y !important;
+    overscroll-behavior-x: contain;
+    overscroll-behavior-y: none;
+    -webkit-overflow-scrolling: touch;
   }
 
   .orbitPanel,

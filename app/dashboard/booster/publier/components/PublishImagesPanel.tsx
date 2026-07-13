@@ -431,28 +431,24 @@ export default function PublishImagesPanel({
         <div style={{ display: "grid", gap: 12 }}>
           <div
             style={{
-              display: isMobile ? "grid" : "flex",
-              gridTemplateColumns: isMobile ? "repeat(2, minmax(0, 1fr))" : undefined,
-              gap: 8,
+              display: "flex",
+              flexWrap: "nowrap",
+              gap: 6,
               width: "100%",
               minWidth: 0,
-              flexWrap: isMobile ? undefined : "nowrap",
               alignItems: "center",
-              justifyContent: isMobile ? undefined : "flex-start",
-              overflowX: isMobile ? undefined : "hidden",
+              overflowX: "auto",
+              overflowY: "hidden",
+              paddingBottom: 2,
             }}
           >
-            {selectedChannels.map((channel, index) => {
+            {selectedChannels.map((channel) => {
               const count = getMediaCountForChannel(channel);
               const mediaIcon = getMediaIconForChannel(channel);
               const tone = getMediaToneForChannel(channel);
               const toneReady = tone === "ready";
               const toneBlocked = tone === "blocked";
               const isActive = activeImageChannel === channel;
-              const isLastOddMobileItem =
-                isMobile &&
-                index === selectedChannels.length - 1 &&
-                selectedChannels.length % 2 === 1;
               return (
                 <button
                   key={channel}
@@ -460,14 +456,14 @@ export default function PublishImagesPanel({
                   onClick={() => setSynchronizedActiveChannel(channel)}
                   style={{
                     minWidth: 0,
-                    width: isMobile ? (isLastOddMobileItem ? "calc(50% - 4px)" : "100%") : "auto",
-                    gridColumn: isLastOddMobileItem ? "1 / -1" : undefined,
-                    justifySelf: isLastOddMobileItem ? "center" : undefined,
-                    flex: isMobile ? undefined : "0 1 calc((100% - 48px) / 7)",
-                    maxWidth: isMobile ? undefined : 172,
+                    flex: isMobile
+                      ? "0 0 132px"
+                      : "0 0 max(110px, calc((100% - 54px) / 10))",
+                    width: isMobile ? 132 : undefined,
+                    boxSizing: "border-box",
                     minHeight: 38,
                     borderRadius: 999,
-                    padding: isMobile ? "0 10px" : "0 8px",
+                    padding: isMobile ? "0 8px" : "0 6px",
                     border: isActive
                       ? toneReady
                         ? "2px solid rgba(74,222,128,0.90)"
@@ -492,21 +488,21 @@ export default function PublishImagesPanel({
                           ? "0 0 0 1px rgba(248,113,113,0.28) inset, 0 0 0 1px rgba(248,113,113,0.22), 0 0 18px rgba(248,113,113,0.18)"
                           : "0 0 0 1px rgba(250,204,21,0.28) inset, 0 0 0 1px rgba(250,204,21,0.22), 0 0 18px rgba(250,204,21,0.18)"
                       : undefined,
-                    fontSize: isMobile ? 12 : 13,
-                    fontWeight: 900,
+                    fontSize: isMobile ? 11.2 : 11.5,
+                    fontWeight: 850,
                     cursor: "pointer",
                     display: "inline-flex",
                     alignItems: "center",
                     justifyContent: "center",
                     gap: 7,
-                    overflow: "hidden",
+                    overflow: "visible",
                   }}
                 >
                   <span
                     style={{
                       minWidth: 0,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
+                      overflow: "visible",
+                      textOverflow: "clip",
                       whiteSpace: "nowrap",
                     }}
                   >

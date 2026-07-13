@@ -95,6 +95,7 @@ import {
 } from "@/lib/boosterVideoTransforms";
 import { ensureSystemManagedInrSearch, revalidateInrSearchPublicRoutes } from "@/lib/inrSearchProvisioning";
 import { buildInrSearchPublicUrl, getInrSearchPublicStatus } from "@/lib/inrSearchPublic";
+import { limitBoosterChannelContent } from "@/lib/boosterChannelRules";
 import {
   sanitizeBoosterSiteText,
   stripSiteTextFormatting,
@@ -1496,7 +1497,10 @@ export async function POST(req: Request) {
             : postByChannel?.[channel]) || {}) as PostPayload;
       const isSiteChannel = channel === "inrcy_site" || channel === "site_web" || channel === "inr_search";
       const rawTitle = String(raw.title || fallbackTitle || "").trim();
-      const rawContent = String(raw.content || fallbackContent || "").trim();
+      const rawContent = limitBoosterChannelContent(
+        channel,
+        String(raw.content || fallbackContent || "").trim(),
+      );
       const rawCta = String(raw.cta || fallbackCta || "").trim();
       const title = isSiteChannel
         ? sanitizeBoosterSiteText(rawTitle)
@@ -3397,9 +3401,13 @@ export async function POST(req: Request) {
 
     const persistedPostByChannel = Object.fromEntries(
       selected.map((channel) => {
-        const baseValue = (postByChannel as Record<string, unknown>)[
+        const rawBaseValue = (postByChannel as Record<string, unknown>)[
           channel
         ] as Record<string, unknown> | undefined;
+        const baseValue = {
+          ...(rawBaseValue || {}),
+          ...getChannelPost(channel),
+        };
         const channelPersistedVideo =
           mediaModeByChannel[channel] === "video"
             ? getPublicationVideoForChannel(channel)
