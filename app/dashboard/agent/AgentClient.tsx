@@ -12,7 +12,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabaseClient";
-import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
+import { readAccountCacheValue, resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
 import { ChannelImageAdapterModal } from "@/app/dashboard/_components/ChannelImageAdapterTool";
 import { requestBoosterVideoTransforms } from "@/lib/boosterVideoTransformClient";
 import type { BoosterVideoTransformedVariant } from "@/lib/boosterVideoTransforms";
@@ -1095,6 +1095,7 @@ function normalizeAgentExternalHref(input: unknown) {
 }
 
 type ConnectedChannelMap = Partial<Record<ChannelKey, boolean>>;
+const DASHBOARD_CHANNEL_STATE_CACHE_KEY = "inrcy_dashboard_channel_state_v1";
 
 function channelMapFromConnectionStates(payload: unknown): ConnectedChannelMap {
   const states = asRecord(payload) || {};
@@ -1116,6 +1117,52 @@ function channelMapFromConnectionStates(payload: unknown): ConnectedChannelMap {
     pinterest: isUsable("pinterest"),
     mails: isUsable("mails"),
   };
+}
+
+function readCachedAgentConnectedChannels(): ConnectedChannelMap | null {
+  if (typeof window === "undefined") return null;
+
+  try {
+    const raw = readAccountCacheValue(DASHBOARD_CHANNEL_STATE_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as any;
+    const state = parsed?.state && typeof parsed.state === "object" ? parsed.state : parsed;
+    if (!state || typeof state !== "object" || Array.isArray(state)) return null;
+    const hasConnectionHint = [
+      "siteInrcySavedUrl",
+      "siteInrcyUrl",
+      "siteWebSavedUrl",
+      "siteWebUrl",
+      "gmbConnected",
+      "inrSearchConnected",
+      "facebookPageConnected",
+      "instagramConnected",
+      "linkedinConnected",
+      "tiktokConnected",
+      "youtubeShortsConnected",
+      "pinterestConnected",
+      "mailAccountsConnectedCount",
+    ].some((key) => Object.prototype.hasOwnProperty.call(state, key));
+    if (!hasConnectionHint) return null;
+
+    const connected: ConnectedChannelMap = {
+      siteInrcy: Boolean(state.siteInrcySavedUrl || state.siteInrcyUrl),
+      siteWeb: Boolean(state.siteWebSavedUrl || state.siteWebUrl),
+      gmb: Boolean(state.gmbConnected && state.gmbConnectionStatus !== "needs_update"),
+      inrSearch: Boolean(state.inrSearchConnected),
+      facebook: Boolean(state.facebookPageConnected && state.facebookConnectionStatus !== "needs_update"),
+      instagram: Boolean(state.instagramConnected && state.instagramConnectionStatus !== "needs_update"),
+      linkedin: Boolean(state.linkedinConnected && state.linkedinConnectionStatus !== "needs_update"),
+      tiktok: Boolean(state.tiktokConnected),
+      youtube: Boolean(state.youtubeShortsConnected),
+      pinterest: Boolean(state.pinterestConnected),
+      mails: Math.max(0, Math.round(Number(state.mailAccountsConnectedCount) || 0)) > 0,
+    };
+
+    return connected;
+  } catch {
+    return null;
+  }
 }
 
 function connectedChannelsForAutomation(
@@ -3976,6 +4023,7 @@ function computeNextOccurrence(config: AutomationConfig): string | null {
 
 export default function AgentClient() {
   const router = useRouter();
+  const cachedInitialConnectedChannels = useMemo(() => readCachedAgentConnectedChannels(), []);
   const [selectedKey, setSelectedKey] = useState<AutomationKey>("publish");
   const [settingsKey, setSettingsKey] = useState<AutomationKey | null>(null);
   const [agentSettings, setAgentSettings] = useState<InrAgentSettings>(
@@ -3985,9 +4033,9 @@ export default function AgentClient() {
     Record<AutomationKey, AutomationConfig>
   >(() => settingsToConfigs(INR_AGENT_DEFAULT_SETTINGS));
   const [agentConnectedChannels, setAgentConnectedChannels] =
-    useState<ConnectedChannelMap | null>(null);
+    useState<ConnectedChannelMap | null>(() => cachedInitialConnectedChannels);
   const [connectedChannelsLoadState, setConnectedChannelsLoadState] =
-    useState<LoadState>("loading");
+    useState<LoadState>(() => (cachedInitialConnectedChannels ? "ready" : "loading"));
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [tableMissing, setTableMissing] = useState(false);
@@ -4295,7 +4343,7 @@ export default function AgentClient() {
     let alive = true;
 
     async function loadConnectedChannels() {
-      setConnectedChannelsLoadState("loading");
+      setConnectedChannelsLoadState((current) => current === "ready" ? current : "loading");
       try {
         const response = await fetch("/api/integrations/channel-states", {
           cache: "no-store",
@@ -4311,8 +4359,8 @@ export default function AgentClient() {
         setConnectedChannelsLoadState("ready");
       } catch {
         if (!alive) return;
-        setAgentConnectedChannels(null);
-        setConnectedChannelsLoadState("error");
+        setAgentConnectedChannels((current) => current ?? null);
+        setConnectedChannelsLoadState((current) => current === "ready" ? current : "error");
       }
     }
 

@@ -257,20 +257,31 @@ const MAIL_STATS_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const DASHBOARD_CHANNEL_STATE_CACHE_KEY = "inrcy_dashboard_channel_state_v1";
 
 type ChannelIdentityHints = Partial<Record<CubeKey, string>>;
+type CachedChannelConnectivity = Partial<Record<CubeKey, boolean>>;
 
 function cleanChannelIdentityHint(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
-function readCachedDashboardChannelIdentityHints(): ChannelIdentityHints {
-  if (typeof window === "undefined") return {};
+function readCachedDashboardChannelState(): Record<string, any> | null {
+  if (typeof window === "undefined") return null;
 
   try {
     const raw = readUiCacheValue(DASHBOARD_CHANNEL_STATE_CACHE_KEY);
-    if (!raw) return {};
+    if (!raw) return null;
     const parsed = JSON.parse(raw) as any;
     const state = parsed?.state && typeof parsed.state === "object" ? parsed.state : parsed;
-    if (!state || typeof state !== "object" || Array.isArray(state)) return {};
+    if (!state || typeof state !== "object" || Array.isArray(state)) return null;
+    return state;
+  } catch {
+    return null;
+  }
+}
+
+function readCachedDashboardChannelIdentityHints(): ChannelIdentityHints {
+  try {
+    const state = readCachedDashboardChannelState();
+    if (!state) return {};
 
     const instagramUsername = cleanChannelIdentityHint(state.instagramUsername).replace(/^@+/, "");
     const hints: ChannelIdentityHints = {
@@ -291,6 +302,54 @@ function readCachedDashboardChannelIdentityHints(): ChannelIdentityHints {
   } catch {
     return {};
   }
+}
+
+function readCachedDashboardChannelConnectivity(): CachedChannelConnectivity {
+  try {
+    const state = readCachedDashboardChannelState();
+    if (!state) return {};
+
+    return {
+      inrbadge: typeof state.inrBadgeProfileReady === "boolean" ? state.inrBadgeProfileReady : undefined,
+      inr_search: Boolean(state.inrSearchConnected),
+      site_inrcy: Boolean(state.siteInrcyGa4Connected || state.siteInrcyGscConnected),
+      site_web: Boolean(state.siteWebGa4Connected || state.siteWebGscConnected),
+      gmb: Boolean(state.gmbConnected && state.gmbConnectionStatus !== "needs_update"),
+      facebook: Boolean(state.facebookPageConnected && state.facebookConnectionStatus !== "needs_update"),
+      instagram: Boolean(state.instagramConnected && state.instagramConnectionStatus !== "needs_update"),
+      linkedin: Boolean(state.linkedinConnected && state.linkedinConnectionStatus !== "needs_update"),
+      mails: clampMailAccountCount(state.mailAccountsConnectedCount) > 0,
+      tiktok: Boolean(state.tiktokConnected),
+      youtube_shorts: Boolean(state.youtubeShortsConnected),
+      pinterest: Boolean(state.pinterestConnected),
+    };
+  } catch {
+    return {};
+  }
+}
+
+function channelConnectivityFromStates(payload: unknown): CachedChannelConnectivity {
+  const states = payload && typeof payload === "object" && !Array.isArray(payload)
+    ? payload as Record<string, any>
+    : {};
+  const isUsable = (key: string) => {
+    const state = states[key] && typeof states[key] === "object" ? states[key] : {};
+    return Boolean(state.connected) && state.requiresUpdate !== true;
+  };
+
+  return {
+    inr_search: isUsable("inr_search"),
+    site_inrcy: Boolean(states.site_inrcy?.ga4 || states.site_inrcy?.gsc || states.site_inrcy?.statsConnected),
+    site_web: Boolean(states.site_web?.ga4 || states.site_web?.gsc || states.site_web?.statsConnected),
+    gmb: isUsable("gmb"),
+    facebook: isUsable("facebook"),
+    instagram: isUsable("instagram"),
+    linkedin: isUsable("linkedin"),
+    mails: isUsable("mails"),
+    tiktok: isUsable("tiktok"),
+    youtube_shorts: isUsable("youtube_shorts"),
+    pinterest: isUsable("pinterest"),
+  };
 }
 
 function mailStatsSessionKey(period: Period) {
@@ -362,11 +421,8 @@ function readCachedMailStats(period: Period) {
 
 function readCachedDashboardMailAccountsConnectedCount(): number | null {
   try {
-    const raw = readUiCacheValue(DASHBOARD_CHANNEL_STATE_CACHE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as any;
-    const state = parsed?.state && typeof parsed.state === "object" ? parsed.state : parsed;
-    if (!state || typeof state !== "object" || Array.isArray(state)) return null;
+    const state = readCachedDashboardChannelState();
+    if (!state) return null;
 
     if (Object.prototype.hasOwnProperty.call(state, "mailAccountsConnectedCount")) {
       return clampMailAccountCount(state.mailAccountsConnectedCount);
@@ -802,6 +858,7 @@ export default function StatsClient({ initialInrSearch }: StatsClientProps) {
     pageTitle: String(initialInrSearch?.pageTitle || ""),
   }));
   const [channelIdentityHints, setChannelIdentityHints] = useState<ChannelIdentityHints>({});
+  const [cachedChannelConnectivity, setCachedChannelConnectivity] = useState<CachedChannelConnectivity>(() => readCachedDashboardChannelConnectivity());
 
   const scrollTo = (key: CubeKey) => {
     setActiveStatsPanel(key);
@@ -824,6 +881,7 @@ export default function StatsClient({ initialInrSearch }: StatsClientProps) {
     if (Object.keys(cachedHints).length > 0) {
       setChannelIdentityHints((current) => ({ ...current, ...cachedHints }));
     }
+    setCachedChannelConnectivity((current) => ({ ...current, ...readCachedDashboardChannelConnectivity() }));
 
     // Même source de connexion que les bulles du Dashboard. Pinterest est relu
     // en direct côté serveur afin de ne pas conserver durablement son profil.
@@ -841,6 +899,17 @@ export default function StatsClient({ initialInrSearch }: StatsClientProps) {
         ) as ChannelIdentityHints;
         if (Object.keys(freshHints).length === 0) return;
         setChannelIdentityHints((current) => ({ ...current, ...freshHints }));
+      })
+      .catch(() => null);
+
+    void fetch("/api/integrations/channel-states", {
+      cache: "no-store",
+      credentials: "include",
+    })
+      .then(async (response) => (response.ok ? response.json().catch(() => null) : null))
+      .then((payload) => {
+        if (cancelled || !payload) return;
+        setCachedChannelConnectivity((current) => ({ ...current, ...channelConnectivityFromStates(payload) }));
       })
       .catch(() => null);
 
@@ -1813,14 +1882,28 @@ useEffect(() => {
     ];
 
     return baseModels.map((model) => {
+      const cachedConnected = cachedChannelConnectivity[model.key] === true;
+      const isSite = model.key === "site_inrcy" || model.key === "site_web";
+      const liveConnected = isSite
+        ? Boolean(model.connections.ga4 || model.connections.gsc)
+        : Boolean(model.connections.main);
+      const hydratedModel = cachedConnected && !liveConnected
+        ? {
+            ...model,
+            connectionPending: false,
+            connections: isSite
+              ? { ...model.connections, ga4: true }
+              : { ...model.connections, main: true },
+          }
+        : model;
       const identityHint = cleanChannelIdentityHint(channelIdentityHints[model.key]);
-      if (!identityHint) return model;
+      if (!identityHint) return hydratedModel;
 
       // La source fraîche est la même que celle des bulles du Dashboard.
       // Elle prend donc le dessus sur un éventuel snapshot iNrStats plus ancien.
-      return { ...model, accountLabel: identityHint };
+      return { ...hydratedModel, accountLabel: identityHint };
     });
-  }, [centralByCube, channelIdentityHints, dataByCube, inrBadgeStats, inrSearchStats, mailStats, period]);
+  }, [cachedChannelConnectivity, centralByCube, channelIdentityHints, dataByCube, inrBadgeStats, inrSearchStats, mailStats, period]);
 
   const computedEstimatedByCube = useMemo<Record<CubeKey, number>>(() => {
     const rate = Math.max(0, safeNum(summaryProfile.lead_conversion_rate)) / 100;

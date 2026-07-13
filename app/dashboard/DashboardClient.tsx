@@ -224,6 +224,24 @@ function readCachedInrSearchConnected(): boolean | null {
   }
 }
 
+function readCachedDashboardBoolean(key: string): boolean {
+  try {
+    const state = readCachedDashboardChannelState();
+    return typeof state?.[key] === "boolean" ? state[key] : false;
+  } catch {
+    return false;
+  }
+}
+
+function readCachedDashboardString(key: string): string {
+  try {
+    const state = readCachedDashboardChannelState();
+    return typeof state?.[key] === "string" ? state[key] : "";
+  } catch {
+    return "";
+  }
+}
+
 function writeCachedDashboardChannelState(state: Record<string, any>) {
   try {
     writeUiCacheValue(DASHBOARD_CHANNEL_STATE_CACHE_KEY, JSON.stringify({ cachedAt: Date.now(), state }));
@@ -310,12 +328,12 @@ export default function DashboardClient({ isAdmin = false }: DashboardClientProp
   const [dashboardBoosterModal, setDashboardBoosterModal] = useState<null | "publish" | "stats">(null);
   const [siteConnectionsReady, setSiteConnectionsReady] = useState(false);
   const [mailAccountsConnectedCount, setMailAccountsConnectedCount] = useState(() => readCachedMailAccountsConnectedCount() ?? 0);
-  const [youtubeShortsConnected, setYoutubeShortsConnected] = useState(false);
-  const [youtubeShortsUrl, setYoutubeShortsUrl] = useState("");
-  const [pinterestConnected, setPinterestConnected] = useState(false);
-  const [pinterestUrl, setPinterestUrl] = useState("");
+  const [youtubeShortsConnected, setYoutubeShortsConnected] = useState(() => readCachedDashboardBoolean("youtubeShortsConnected"));
+  const [youtubeShortsUrl, setYoutubeShortsUrl] = useState(() => readCachedDashboardString("youtubeShortsUrl"));
+  const [pinterestConnected, setPinterestConnected] = useState(() => readCachedDashboardBoolean("pinterestConnected"));
+  const [pinterestUrl, setPinterestUrl] = useState(() => readCachedDashboardString("pinterestUrl"));
   const [inrSearchConnected, setInrSearchConnected] = useState<boolean | null>(() => readCachedInrSearchConnected());
-  const [inrSearchUrl, setInrSearchUrl] = useState("");
+  const [inrSearchUrl, setInrSearchUrl] = useState(() => readCachedDashboardString("inrSearchUrl"));
   const [inrBadgeProfile, setInrBadgeProfile] = useState<InrBadgeProfileSummary>(() => readCachedInrBadgeProfile());
   const [cachedInrBadgeProfileReady, setCachedInrBadgeProfileReady] = useState<boolean | null>(() => readCachedInrBadgeProfileReady());
   const [inrBadgeModalOpen, setInrBadgeModalOpen] = useState(false);
