@@ -431,13 +431,16 @@ export default function PublishImagesPanel({
         <div style={{ display: "grid", gap: 12 }}>
           <div
             style={{
-              display: "flex",
-              flexWrap: "nowrap",
-              gap: 6,
+              display: isMobile ? "grid" : "flex",
+              gridTemplateColumns: isMobile
+                ? "repeat(2, minmax(0, 1fr))"
+                : undefined,
+              flexWrap: isMobile ? undefined : "wrap",
+              gap: isMobile ? 8 : 6,
               width: "100%",
               minWidth: 0,
               alignItems: "center",
-              overflowX: "auto",
+              overflowX: "hidden",
               overflowY: "hidden",
               paddingBottom: 2,
             }}
@@ -456,10 +459,8 @@ export default function PublishImagesPanel({
                   onClick={() => setSynchronizedActiveChannel(channel)}
                   style={{
                     minWidth: 0,
-                    flex: isMobile
-                      ? "0 0 132px"
-                      : "0 0 max(110px, calc((100% - 54px) / 10))",
-                    width: isMobile ? 132 : undefined,
+                    flex: isMobile ? undefined : "1 1 140px",
+                    width: isMobile ? "100%" : undefined,
                     boxSizing: "border-box",
                     minHeight: 38,
                     borderRadius: 999,

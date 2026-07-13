@@ -6,6 +6,7 @@ import {
   INR_SEARCH_CONTENT_MAX_LENGTH,
   limitBoosterChannelContent,
 } from "../../lib/boosterChannelRules.ts";
+import { sanitizeInrAgentAutomationSettings } from "../../lib/inrAgentSettings.ts";
 
 const root = process.cwd();
 const read = (relativePath: string) =>
@@ -36,8 +37,9 @@ test("Booster exposes iNrSearch in content, generation and image channel flows",
   assert.match(modal, /CHANNEL_KEYS\.filter\(\(channel\) => channels\[channel\] && connected\[channel\]\)/);
   assert.match(imageController, /BOOSTER_CHANNEL_ORDER\.filter/);
   assert.match(contentEditor, /Phrase courte iNr'Search/);
-  assert.match(mediaPanel, /flexWrap: "nowrap"/);
-  assert.match(mediaPanel, /calc\(\(100% - 54px\) \/ 10\)/);
+  assert.match(mediaPanel, /gridTemplateColumns: isMobile/);
+  assert.match(mediaPanel, /repeat\(2, minmax\(0, 1fr\)\)/);
+  assert.match(mediaPanel, /overflowX: "hidden"/);
   assert.match(shared, /content: INR_SEARCH_CONTENT_MAX_LENGTH/);
   assert.match(shared, /"site_web",\s*"gmb",\s*"inr_search"/);
   assert.match(prompt, /INR_SEARCH_CONTENT_MAX_LENGTH/);
@@ -53,4 +55,31 @@ test("the immediate and iNrSend publication paths enforce the same iNrSearch lim
 
   assert.match(publishRoute, /limitBoosterChannelContent/);
   assert.match(inrSend, /limitBoosterChannelContent/);
+});
+
+test("iNrSearch is available in iNrAgent between Google Business and Facebook", async () => {
+  const [agentClient, agentSettings, preparePublish] = await Promise.all([
+    read("app/dashboard/agent/AgentClient.tsx"),
+    read("lib/inrAgentSettings.ts"),
+    read("app/api/agent/actions/prepare-publish/route.ts"),
+  ]);
+
+  assert.match(agentClient, /"gmb",\s*\n\s*"inrSearch",\s*\n\s*"facebook"/);
+  assert.match(agentSettings, /"gmb", "inr_search", "facebook"/);
+  assert.match(preparePublish, /inr_search/);
+});
+
+test("legacy iNrAgent publish settings receive iNrSearch once without overriding a later opt-out", () => {
+  const migrated = sanitizeInrAgentAutomationSettings("publish", {
+    allowedChannels: ["gmb", "facebook"],
+    metadata: {},
+  });
+  assert.deepEqual(migrated.allowedChannels, ["gmb", "facebook", "inr_search"]);
+  assert.equal(migrated.metadata.inrSearchChannelAdded, true);
+
+  const optedOut = sanitizeInrAgentAutomationSettings("publish", {
+    allowedChannels: ["gmb", "facebook"],
+    metadata: { inrSearchChannelAdded: true },
+  });
+  assert.deepEqual(optedOut.allowedChannels, ["gmb", "facebook"]);
 });

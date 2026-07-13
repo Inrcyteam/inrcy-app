@@ -3,7 +3,7 @@ export const INR_AGENT_FREQUENCIES = ["weekly", "twice_weekly", "biweekly", "mon
 export const INR_AGENT_VALIDATION_MODES = ["validation_required", "draft_only", "notify_before_validation", "automatic_report"] as const;
 export const INR_AGENT_GOALS = ["visibility", "acquisition", "loyalty", "stats"] as const;
 export const INR_AGENT_TONES = ["professional", "friendly", "premium", "local", "dynamic"] as const;
-export const INR_AGENT_CHANNELS = ["site_inrcy", "site_web", "inr_search", "gmb", "facebook", "instagram", "linkedin", "tiktok", "youtube", "pinterest", "mails"] as const;
+export const INR_AGENT_CHANNELS = ["site_inrcy", "site_web", "gmb", "inr_search", "facebook", "instagram", "linkedin", "tiktok", "youtube", "pinterest", "mails"] as const;
 export const INR_AGENT_THEMES = [
   "conseils",
   "realisations",
@@ -20,8 +20,8 @@ export const INR_AGENT_THEMES = [
   "mails",
   "site_inrcy",
   "site_web",
-  "inr_search",
   "gmb",
+  "inr_search",
   "facebook",
   "instagram",
   "linkedin",
@@ -92,7 +92,7 @@ const DEFAULT_AUTOMATIONS: Record<InrAgentAutomationKey, InrAgentAutomationSetti
     dayOfWeek: 1,
     time: "09:00",
     validationMode: "validation_required",
-    allowedChannels: ["site_inrcy", "site_web", "inr_search", "gmb", "facebook", "instagram", "linkedin", "tiktok", "youtube", "pinterest"],
+    allowedChannels: ["site_inrcy", "site_web", "gmb", "inr_search", "facebook", "instagram", "linkedin", "tiktok", "youtube", "pinterest"],
     allowedThemes: ["conseils", "realisations", "offres", "actualites"],
     useImageBank: true,
     imageRequired: true,
@@ -144,7 +144,7 @@ const DEFAULT_AUTOMATIONS: Record<InrAgentAutomationKey, InrAgentAutomationSetti
     time: "08:30",
     validationMode: "automatic_report",
     allowedChannels: [],
-    allowedThemes: ["vue_globale", "site_inrcy", "site_web", "inr_search", "gmb", "facebook", "instagram", "linkedin", "tiktok", "youtube", "pinterest", "mails", "inrbadge"],
+    allowedThemes: ["vue_globale", "site_inrcy", "site_web", "gmb", "inr_search", "facebook", "instagram", "linkedin", "tiktok", "youtube", "pinterest", "mails", "inrbadge"],
     useImageBank: false,
     imageRequired: false,
     recipientScope: "none",
@@ -169,7 +169,7 @@ export const INR_AGENT_DEFAULT_SETTINGS: InrAgentSettings = {
   mode: "validation_required",
   goal: "visibility",
   allowedActions: ["publication", "mailing", "review_request", "loyalty"],
-  allowedChannels: ["site_inrcy", "site_web", "inr_search", "gmb", "facebook", "instagram", "linkedin", "tiktok", "youtube", "pinterest", "mails"],
+  allowedChannels: ["site_inrcy", "site_web", "gmb", "inr_search", "facebook", "instagram", "linkedin", "tiktok", "youtube", "pinterest", "mails"],
   useMediaLibrary: true,
   allowAiImages: false,
 };
@@ -223,8 +223,8 @@ export const INR_AGENT_LABELS = {
   channels: {
     site_inrcy: "Site iNrCy",
     site_web: "Site Web",
-    inr_search: "iNr'Search",
     gmb: "Google Business",
+    inr_search: "iNr'Search",
     facebook: "Facebook",
     instagram: "Instagram",
     linkedin: "LinkedIn",
@@ -249,8 +249,8 @@ export const INR_AGENT_LABELS = {
     mails: "Mails",
     site_inrcy: "Site iNrCy",
     site_web: "Site Web",
-    inr_search: "iNr'Search",
     gmb: "Google Business",
+    inr_search: "iNr'Search",
     facebook: "Facebook",
     instagram: "Instagram",
     linkedin: "LinkedIn",
@@ -330,12 +330,32 @@ function sanitizeMetadata(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+const INR_SEARCH_PUBLISH_MIGRATION_FLAG = "inrSearchChannelAdded";
+
 export function sanitizeInrAgentAutomationSettings(
   key: InrAgentAutomationKey,
   input: Partial<InrAgentAutomationSettings> | null | undefined,
 ): InrAgentAutomationSettings {
   const defaults = DEFAULT_AUTOMATIONS[key];
   const source = input ?? {};
+  const allowedChannels = sanitizeMaybeEmptyStringArray(
+    INR_AGENT_CHANNELS,
+    source.allowedChannels,
+    defaults.allowedChannels,
+  );
+  const metadata = sanitizeMetadata(source.metadata);
+  const shouldMigratePublishChannels =
+    key === "publish" &&
+    Array.isArray(source.allowedChannels) &&
+    allowedChannels.length > 0 &&
+    !allowedChannels.includes("inr_search") &&
+    metadata[INR_SEARCH_PUBLISH_MIGRATION_FLAG] !== true;
+  const normalizedAllowedChannels: InrAgentChannel[] = shouldMigratePublishChannels
+    ? [...allowedChannels, "inr_search"]
+    : allowedChannels;
+  const normalizedMetadata = shouldMigratePublishChannels
+    ? { ...metadata, [INR_SEARCH_PUBLISH_MIGRATION_FLAG]: true }
+    : metadata;
 
   return {
     enabled: sanitizeBoolean(source.enabled, defaults.enabled),
@@ -343,7 +363,7 @@ export function sanitizeInrAgentAutomationSettings(
     dayOfWeek: sanitizeDay(source.dayOfWeek, defaults.dayOfWeek),
     time: sanitizeTime(source.time, defaults.time),
     validationMode: includesValue(INR_AGENT_VALIDATION_MODES, source.validationMode) ? source.validationMode : defaults.validationMode,
-    allowedChannels: sanitizeMaybeEmptyStringArray(INR_AGENT_CHANNELS, source.allowedChannels, defaults.allowedChannels),
+    allowedChannels: normalizedAllowedChannels,
     allowedThemes: sanitizeMaybeEmptyStringArray(INR_AGENT_THEMES, source.allowedThemes, defaults.allowedThemes),
     useImageBank: sanitizeBoolean(source.useImageBank, defaults.useImageBank),
     imageRequired: sanitizeBoolean(source.imageRequired, defaults.imageRequired),
@@ -352,7 +372,7 @@ export function sanitizeInrAgentAutomationSettings(
     lastPreparedAt: sanitizeNullableString(source.lastPreparedAt) ?? defaults.lastPreparedAt,
     lastExecutedAt: sanitizeNullableString(source.lastExecutedAt) ?? defaults.lastExecutedAt,
     nextRunAt: sanitizeNullableString(source.nextRunAt) ?? defaults.nextRunAt,
-    metadata: sanitizeMetadata(source.metadata),
+    metadata: normalizedMetadata,
   };
 }
 

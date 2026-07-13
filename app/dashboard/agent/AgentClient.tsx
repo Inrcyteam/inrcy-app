@@ -440,8 +440,8 @@ const ROBOT_SRC = "/agent/inr-agent-robot-cutout.webp";
 const channelOptions: Record<ChannelKey, { name: string; src: string }> = {
   siteInrcy: { name: "Site iNrCy", src: "/icons/inrcy.png" },
   siteWeb: { name: "Site Web", src: "/icons/site-web.jpg" },
-  inrSearch: { name: "iNr'Search", src: "/icons/inr-search-bubble-128.png" },
   gmb: { name: "Google Business", src: "/icons/google.jpg" },
+  inrSearch: { name: "iNr'Search", src: "/icons/inr-search-bubble-128.png" },
   facebook: { name: "Facebook", src: "/icons/facebook.png" },
   instagram: { name: "Instagram", src: "/icons/instagram.jpg" },
   linkedin: { name: "LinkedIn", src: "/icons/linkedin.png" },
@@ -472,15 +472,15 @@ const statsRubriqueOptions: Record<
     src: "/icons/site-web.jpg",
     channelKey: "siteWeb",
   },
-  "iNr'Search": {
-    name: "iNr'Search",
-    src: "/icons/inr-search-bubble-128.png",
-    channelKey: "inrSearch",
-  },
   "Google Business": {
     name: "Google Business",
     src: "/icons/google.jpg",
     channelKey: "gmb",
+  },
+  "iNr'Search": {
+    name: "iNr'Search",
+    src: "/icons/inr-search-bubble-128.png",
+    channelKey: "inrSearch",
   },
   Facebook: {
     name: "Facebook",
@@ -509,8 +509,8 @@ const statsRubriqueOptions: Record<
 const channelOrder: ChannelKey[] = [
   "siteInrcy",
   "siteWeb",
-  "inrSearch",
   "gmb",
+  "inrSearch",
   "facebook",
   "instagram",
   "linkedin",
@@ -891,6 +891,7 @@ const automations: Automation[] = [
       "siteInrcy",
       "siteWeb",
       "gmb",
+      "inrSearch",
       "facebook",
       "instagram",
       "linkedin",
@@ -979,6 +980,7 @@ const defaultConfigs: Record<AutomationKey, AutomationConfig> = {
       "siteInrcy",
       "siteWeb",
       "gmb",
+      "inrSearch",
       "facebook",
       "instagram",
       "linkedin",
@@ -1048,8 +1050,8 @@ const defaultConfigs: Record<AutomationKey, AutomationConfig> = {
 const channelToApi: Record<ChannelKey, InrAgentChannel> = {
   siteInrcy: "site_inrcy",
   siteWeb: "site_web",
-  inrSearch: "inr_search",
   gmb: "gmb",
+  inrSearch: "inr_search",
   facebook: "facebook",
   instagram: "instagram",
   linkedin: "linkedin",
@@ -1104,8 +1106,8 @@ function channelMapFromConnectionStates(payload: unknown): ConnectedChannelMap {
   return {
     siteInrcy: isUsable("site_inrcy"),
     siteWeb: isUsable("site_web"),
-    inrSearch: isUsable("inr_search"),
     gmb: isUsable("gmb"),
+    inrSearch: isUsable("inr_search"),
     facebook: isUsable("facebook"),
     instagram: isUsable("instagram"),
     linkedin: isUsable("linkedin"),
