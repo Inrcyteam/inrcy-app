@@ -1488,29 +1488,29 @@ export default function PublishIntentPanel({
         ) : null}
         <div style={{ display: "grid", gap: 8, justifyItems: "start" }}>
           <div
+            style={{
+              display: "grid",
+              gap: isMobile ? 5 : 0,
+              width: isMobile ? "100%" : "fit-content",
+              maxWidth: "100%",
+              minWidth: 0,
+            }}
+          >
+            <div
               style={{
-                display: "grid",
-                gap: 4,
-                width: isMobile ? "100%" : "min(470px, 100%)",
-                minWidth: 0,
-              }}
-            >
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: isMobile ? "1fr" : "auto minmax(220px, 320px)",
-                  alignItems: "center",
-                  gap: isMobile ? 5 : 8,
-                  color: "rgba(255,255,255,0.84)",
-                  fontSize: 12.5,
-                  fontWeight: 850,
+                display: isMobile ? "grid" : "inline-flex",
+                alignItems: isMobile ? "stretch" : "center",
+                gap: isMobile ? 5 : 7,
+                color: "rgba(255,255,255,0.84)",
+                fontSize: 12,
+                fontWeight: 850,
               }}
             >
               <div
                 style={{
                   display: "inline-flex",
                   alignItems: "center",
-                  gap: 6,
+                  gap: 5,
                   minWidth: 0,
                 }}
               >
@@ -1521,8 +1521,8 @@ export default function PublishIntentPanel({
                   aria-label="Informations sur les moteurs IA"
                   title="Informations sur les moteurs IA"
                   style={{
-                    width: 18,
-                    height: 18,
+                    width: 16,
+                    height: 16,
                     borderRadius: 999,
                     border: "1px solid rgba(125,211,252,0.44)",
                     background: "rgba(125,211,252,0.12)",
@@ -1531,7 +1531,7 @@ export default function PublishIntentPanel({
                     placeItems: "center",
                     padding: 0,
                     cursor: "pointer",
-                    fontSize: 11,
+                    fontSize: 10,
                     fontWeight: 950,
                     lineHeight: 1,
                   }}
@@ -1548,15 +1548,16 @@ export default function PublishIntentPanel({
                 }
                 disabled={generationDisabled}
                 style={{
-                  width: "100%",
-                  minHeight: isMobile ? 36 : 38,
-                  borderRadius: 12,
+                  width: isMobile ? "100%" : 280,
+                  maxWidth: "100%",
+                  minHeight: 34,
+                  borderRadius: 10,
                   border: "1px solid rgba(255,255,255,0.14)",
                   background: "rgba(255,255,255,0.055)",
                   color: "white",
-                  padding: isMobile ? "7px 10px" : "8px 11px",
-                  fontSize: 13,
-                  fontWeight: 800,
+                  padding: "6px 9px",
+                  fontSize: isMobile ? 12.5 : 12.25,
+                  fontWeight: 760,
                   outline: "none",
                   opacity: generationDisabled ? 0.68 : 1,
                   cursor: generationDisabled ? "wait" : "pointer",

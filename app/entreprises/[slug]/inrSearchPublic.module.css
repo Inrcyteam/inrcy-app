@@ -15490,3 +15490,53 @@
     border-radius: 50% !important;
   }
 }
+
+@media (max-width: 900px) {
+  /* iNrSearch mobile : logos de réseaux ronds, propres et alignés avec le desktop. */
+  .socialOrbitNode {
+    grid-template-columns: 44px minmax(0, 1fr) !important;
+    gap: 11px !important;
+    align-items: center !important;
+  }
+
+  .socialOrbitGlyph,
+  .socialOrbitDetailGlyph {
+    aspect-ratio: 1 / 1 !important;
+    padding: 0 !important;
+    display: grid !important;
+    place-items: center !important;
+    overflow: hidden !important;
+    border: 2px solid rgba(255, 255, 255, .2) !important;
+    border-radius: 999px !important;
+    clip-path: circle(50%) !important;
+    background: linear-gradient(135deg, #32d8ff, #8b5cf6, #ff5bdd) !important;
+    box-shadow: 0 9px 23px rgba(0, 0, 0, .3), 0 0 20px rgba(139, 92, 246, .2) !important;
+  }
+
+  .socialOrbitGlyph {
+    width: 44px !important;
+    height: 44px !important;
+    flex: 0 0 44px !important;
+  }
+
+  .socialOrbitDetailGlyph {
+    width: 58px !important;
+    height: 58px !important;
+  }
+
+  .socialOrbitGlyph img,
+  .socialOrbitDetailGlyph img {
+    width: 100% !important;
+    height: 100% !important;
+    display: block !important;
+    object-fit: cover !important;
+    border-radius: 999px !important;
+    clip-path: circle(50%) !important;
+  }
+
+  .socialOrbitNode[data-network="website"] .socialOrbitGlyph,
+  .socialOrbitDetailGlyph.social_website {
+    font-size: 18px !important;
+    line-height: 1 !important;
+  }
+}

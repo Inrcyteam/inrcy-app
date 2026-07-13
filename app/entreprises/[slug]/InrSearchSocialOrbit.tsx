@@ -28,7 +28,7 @@ const NETWORK_ICONS: Record<string, string> = {
   facebook: "/icons/facebook.png",
   instagram: "/icons/instagram.jpg",
   linkedin: "/icons/linkedin.png",
-  tiktok: "/icons/tiktok.svg",
+  tiktok: "/icons/tiktok.png",
   youtube: "/icons/youtube-shorts.png",
   pinterest: "/icons/pinterest-logo-128.png",
 };
