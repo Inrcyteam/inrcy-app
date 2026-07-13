@@ -121,7 +121,7 @@ export default function PublishAiConfigurationDrawer({
             WebkitOverflowScrolling: "touch",
           }}
         >
-          <AiConfigurationContent mode="drawer" />
+          <AiConfigurationContent mode="drawer" onSaved={onClose} />
         </div>
       </aside>
     </div>

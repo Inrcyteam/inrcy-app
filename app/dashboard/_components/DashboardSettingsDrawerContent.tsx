@@ -124,7 +124,7 @@ export default function DashboardSettingsDrawerContent({
       {panel === "preferences" && <GeneralPreferencesContent mode="drawer" />}
       {panel === "inrbadge" && <InrBadgeSettingsContent {...inrBadgeSettingsProps} />}
       {panel === "activite" && <ActivityContent mode="drawer" onActivitySaved={checkActivity} onActivityReset={checkActivity} onCloseDrawer={onCloseDrawer} />}
-      {panel === "ia" && <AiConfigurationContent mode="drawer" />}
+      {panel === "ia" && <AiConfigurationContent mode="drawer" onSaved={onCloseDrawer} />}
       {panel === "abonnement" && <AbonnementContent mode="drawer" />}
       {panel === "legal" && <LegalContent mode="drawer" />}
       {panel === "rgpd" && <RgpdContent mode="drawer" />}

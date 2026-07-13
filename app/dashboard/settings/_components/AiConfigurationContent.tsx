@@ -20,7 +20,10 @@ import {
 } from "../../booster/publier/publishModal.shared";
 import AiEngineInfoModal from "../../_components/AiEngineInfoModal";
 
-type Props = { mode?: "page" | "drawer" };
+type Props = {
+  mode?: "page" | "drawer";
+  onSaved?: () => void;
+};
 
 type AiConfigForm = {
   preferredEngine: AiPreferredEngine;
@@ -166,7 +169,7 @@ function markAiLanguageCustom() {
   try { window.localStorage.setItem(AI_LANGUAGE_CUSTOM_STORAGE_KEY, "1"); } catch {}
 }
 
-export default function AiConfigurationContent({ mode = "drawer" }: Props) {
+export default function AiConfigurationContent({ mode = "drawer", onSaved }: Props) {
   const [form, setForm] = useState<AiConfigForm>(initialForm);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -377,6 +380,7 @@ export default function AiConfigurationContent({ mode = "drawer" }: Props) {
       }
 
       setSaved(true);
+      onSaved?.();
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       if (/ai_preferred_engine|ai_commercial_level|ai_main_goal|ai_preferred_angle|ai_liked_example|ai_language/i.test(message)) {

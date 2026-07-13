@@ -13,6 +13,9 @@ type Props = {
   onClose: () => void;
 };
 
+const MOBILE_DOCK_HEIGHT =
+  "var(--inrcy-mobile-bottom-nav-total-height, 0px)";
+
 export default function AiEngineInfoModal({ open, activeEngine, onClose }: Props) {
   const activeOption = getAiEngineOption(activeEngine);
 
@@ -34,10 +37,16 @@ export default function AiEngineInfoModal({ open, activeEngine, onClose }: Props
       style={{
         position: "fixed",
         inset: 0,
+        bottom: MOBILE_DOCK_HEIGHT,
+        height: `calc(100dvh - ${MOBILE_DOCK_HEIGHT})`,
+        maxHeight: `calc(100dvh - ${MOBILE_DOCK_HEIGHT})`,
         zIndex: 10000,
         display: "grid",
         placeItems: "center",
         padding: 16,
+        boxSizing: "border-box",
+        overflow: "hidden",
+        overscrollBehavior: "contain",
         background: "rgba(2,6,23,0.64)",
         backdropFilter: "blur(8px)",
         WebkitBackdropFilter: "blur(8px)",
@@ -50,7 +59,7 @@ export default function AiEngineInfoModal({ open, activeEngine, onClose }: Props
         onMouseDown={(event) => event.stopPropagation()}
         style={{
           width: "min(620px, 100%)",
-          maxHeight: "min(760px, calc(100vh - 32px))",
+          maxHeight: `min(760px, calc(100dvh - ${MOBILE_DOCK_HEIGHT} - 32px))`,
           overflow: "auto",
           borderRadius: 18,
           border: "1px solid rgba(255,255,255,0.16)",

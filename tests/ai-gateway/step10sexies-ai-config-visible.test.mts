@@ -35,9 +35,9 @@ test("Step 10 sexies gives Booster a real non-blocking emoji policy per requeste
   assert.match(prompt, /POLITIQUE EMOJIS/);
   assert.match(prompt, /EMOJIS BEAUCOUP — INTENSITÉ VISIBLE|BEAUCOUP/);
   assert.match(prompt, /inrcy_site: "0 emoji malgré le niveau Beaucoup/i);
-  assert.match(prompt, /linkedin: "1–3 emojis maximum/i);
-  assert.match(prompt, /tiktok: "4–8 emojis visibles/i);
-  assert.match(prompt, /jamais un motif de 502 ou de réparation à eux seuls/i);
+  assert.match(prompt, /linkedin: "2–4 emojis maximum/i);
+  assert.match(prompt, /tiktok: "8–12 emojis visibles/i);
+  assert.match(prompt, /canaux site restent strictement sans emoji/i);
 });
 
 test("Step 10 sexies keeps the full liked-example allowance in the compact Booster payload", () => {
@@ -46,15 +46,34 @@ test("Step 10 sexies keeps the full liked-example allowance in the compact Boost
   assert.doesNotMatch(prompt, /exemple_aime: cleanText\(preferences\.likedExample, 700\)/);
 });
 
-test("Step 10 sexies does not add tone, emoji or commercial preferences to repair triggers", () => {
+test("Step 10 sexies keeps soft style preferences out of repair triggers while allowing targeted dynamic emoji repair", () => {
   const generation = read("lib/boosterPublishGeneration.ts");
   const repairTriggerBlock = generation.match(
     /const REPAIR_TRIGGER_ISSUES = new Set<ChannelQualityIssue>\(\[([\s\S]*?)\]\);/,
   );
   assert.ok(repairTriggerBlock, "repair trigger block must exist");
   const block = repairTriggerBlock[1];
-  assert.doesNotMatch(block, /emoji|tone|commercial|goal|style/i);
+  assert.doesNotMatch(block, /tone|commercial|goal|style/i);
   assert.match(block, /"missing"/);
   assert.match(block, /"meta_leak"/);
   assert.match(block, /"language_mismatch"/);
+  assert.match(block, /"emoji_under_target"/);
+  assert.match(generation, /niveau emoji Beaucoup déclenchent[\s\S]*seulement un enrichissement non bloquant/i);
+});
+
+test("Step 10 sexies keeps engine info and AI configuration drawers above the mobile dock", () => {
+  const infoModal = read("app/dashboard/_components/AiEngineInfoModal.tsx");
+  const aiConfig = read("app/dashboard/settings/_components/AiConfigurationContent.tsx");
+  const publishDrawer = read("app/dashboard/booster/publier/components/PublishAiConfigurationDrawer.tsx");
+  const dashboardDrawer = read("app/dashboard/_components/DashboardSettingsDrawerContent.tsx");
+
+  assert.match(infoModal, /MOBILE_DOCK_HEIGHT/);
+  assert.match(infoModal, /bottom:\s*MOBILE_DOCK_HEIGHT/);
+  assert.match(infoModal, /calc\(100dvh - \$\{MOBILE_DOCK_HEIGHT\}\)/);
+  assert.match(infoModal, /calc\(100dvh - \$\{MOBILE_DOCK_HEIGHT\} - 32px\)/);
+
+  assert.match(aiConfig, /onSaved\?: \(\) => void/);
+  assert.match(aiConfig, /onSaved\?\.\(\)/);
+  assert.match(publishDrawer, /onSaved=\{onClose\}/);
+  assert.match(dashboardDrawer, /onSaved=\{onCloseDrawer\}/);
 });
