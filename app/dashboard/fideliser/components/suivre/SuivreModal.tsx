@@ -8,6 +8,8 @@ import TemplateSubjectInlineEditor from "@/app/dashboard/_components/TemplateSub
 import { extractTemplatePlaceholders, textToRichMailHtml } from "@/lib/mailRichText";
 import { confirmInrcy } from "@/lib/inrcyDialog";
 import TemplateAttachmentPicker from "@/app/dashboard/_components/TemplateAttachmentPicker";
+import TemplateAiEngineSelector from "@/app/dashboard/_components/TemplateAiEngineSelector";
+import { useTemplateAiEngine } from "@/app/dashboard/_hooks/useTemplateAiEngine";
 import type { ComposeAttachmentRef } from "@/app/dashboard/mails/_lib/mailboxPhase1";
 import { storeWorkflowMailPrefillAttachments } from "@/app/dashboard/_lib/workflowMailPrefillAttachments";
 import { readWorkflowCampaignState, saveWorkflowCampaignDraft, saveWorkflowCampaignState } from "@/app/dashboard/_lib/workflowCampaignState";
@@ -66,6 +68,7 @@ export default function SuivreModal({
   const [bodyHtml, setBodyHtml] = useState("");
   const [aiGenerating, setAiGenerating] = useState(false);
   const [aiError, setAiError] = useState("");
+  const { engine: aiEngine, setEngine: setAiEngine, defaultEngine: defaultAiEngine } = useTemplateAiEngine();
   const [attachments, setAttachments] = useState<ComposeAttachmentRef[]>([]);
   const [workflowDraftId, setWorkflowDraftId] = useState<string | null>(null);
 
@@ -149,6 +152,7 @@ export default function SuivreModal({
           subject,
           body,
           attachments,
+          engine: aiEngine,
         }),
       });
       const j = await r.json().catch(() => ({}));
@@ -272,18 +276,26 @@ export default function SuivreModal({
         </div>
 
         <div style={{ marginBottom: isMobile ? 8 : 12 }}>
-          <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: '0.04em', color: 'rgba(255,255,255,0.64)', marginBottom: 8, textTransform: 'uppercase', display: isMobile ? 'none' : 'block' }}>
-            Modèle dédié
-          </div>
-          <div style={{ display: "flex", alignItems: "stretch", gap: 10, flexWrap: isMobile ? "wrap" : "nowrap" }}>
-            <select
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: isMobile ? "minmax(0, 1fr)" : "minmax(0, 1fr) 280px auto",
+              alignItems: "end",
+              gap: 10,
+              minWidth: 0,
+            }}
+          >
+            <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: "0.04em", color: "rgba(255,255,255,0.64)", textTransform: "uppercase" }}>
+                Modèle dédié
+              </div>
+              <select
               value={selectedKey}
               onChange={(e) => { restoredWorkflowKeyRef.current = ""; setSelectedKey(e.target.value); }}
               aria-label="Choisir un modèle"
               style={{
                 width: '100%',
-                flex: isMobile ? '1 1 100%' : '0 1 500px',
-                maxWidth: isMobile ? '100%' : 500,
+                minHeight: 46,
                 minWidth: 0,
                 borderRadius: 16,
                 padding: '14px 16px',
@@ -304,17 +316,27 @@ export default function SuivreModal({
                 </option>
               ))}
             </select>
-            <div style={{ flex: isMobile ? "1 1 100%" : "0 0 auto", display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", gap: isMobile ? 5 : 10, minWidth: isMobile ? 0 : 430, maxWidth: isMobile ? "100%" : 540 }}>
+            </div>
+
+            <TemplateAiEngineSelector
+              value={aiEngine}
+              defaultValue={defaultAiEngine}
+              onChange={setAiEngine}
+              disabled={aiGenerating}
+              isMobile={isMobile}
+            />
+
+            <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
+              <div aria-hidden="true" style={{ height: 14, display: isMobile ? "none" : "block" }} />
               <button
                 type="button"
                 className={`${styles.secondaryBtn} ${styles.aiGenerateBtn}`}
                 onClick={generateAiTemplateContent}
                 disabled={aiGenerating || !selected}
-                style={{ minHeight: 46, padding: "10px 16px", fontWeight: 900, borderRadius: 999, opacity: aiGenerating ? 0.7 : 1, whiteSpace: "nowrap", width: isMobile ? "100%" : undefined }}
+                style={{ minHeight: 46, height: 46, padding: "10px 16px", fontWeight: 900, borderRadius: 999, opacity: aiGenerating ? 0.7 : 1, whiteSpace: "nowrap", width: "100%" }}
               >
                 {aiGenerating ? "Génération…" : "✨ Générer avec iNrCy"}
               </button>
-              <span style={{ ...aiHintStyle, whiteSpace: isMobile ? "nowrap" : "normal", maxWidth: isMobile ? "100%" : 250 }}>Générez pour adapter la langue IA. La pièce jointe aide aussi.</span>
             </div>
           </div>
           {aiError ? <div style={{ marginTop: 8, width: "100%", color: "#fecaca", fontSize: 13, fontWeight: 700 }}>{aiError}</div> : null}
@@ -349,6 +371,7 @@ export default function SuivreModal({
               placeholder="Votre message…"
               toolbarTitle={<span style={{ ...sectionHeaderStyle, marginBottom: 0 }}>Message</span>}
               compactToolbar
+              mobileFullscreen={isMobile}
               minHeight={0}
               className={styles.textarea}
               editorStyle={{
@@ -360,16 +383,21 @@ export default function SuivreModal({
             />
           </div>
 
-          <div style={footerStyle}>
-            <TemplateAttachmentPicker
+          <div style={{ ...footerStyle, ...(isMobile ? { alignItems: "stretch", flexDirection: "column" as const } : {}) }}>
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 5, minWidth: 0 }}>
+              <TemplateAttachmentPicker
               styles={styles}
               attachments={attachments}
               setAttachments={setAttachments}
               isMobile={isMobile}
               inputIdPrefix="suivre-template-attachments"
               variant="footer"
-            />
-            <div style={footerActionsStyle}>
+              />
+              <div style={{ color: "rgba(255,255,255,0.62)", fontSize: 12, fontWeight: 650, lineHeight: 1.25 }}>
+                Le média est pris en compte dans la génération IA
+              </div>
+            </div>
+            <div style={{ ...footerActionsStyle, ...(isMobile ? { width: "100%", marginLeft: 0 } : {}) }}>
               <button type="button" onClick={() => void onClose()} className={styles.secondaryBtn}>
                 Annuler
               </button>

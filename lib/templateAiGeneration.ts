@@ -15,6 +15,7 @@ import {
   buildAiWritingProfileRules,
 } from "@/lib/aiWritingProfile";
 import { buildNormalizedAiGenerationProfile } from "@/lib/aiGenerationProfile";
+import { normalizeAiPreferredEngine } from "@/lib/aiEnginePreference";
 import { parseMailAttachmentRefs } from "@/lib/mailAttachmentRefs";
 import { buildMailAttachmentAiPromptSection } from "@/lib/aiAttachmentContext";
 import {
@@ -226,7 +227,9 @@ export async function generateTemplateAiContent(args: {
   const zones = listFrom(businessContext.interventionZones, 8);
   const strengths = listFrom(businessContext.strengths, 8);
 
-  const preferredEngine = generationProfile.preferences.engine;
+  const preferredEngine = body["engine"]
+    ? normalizeAiPreferredEngine(body["engine"])
+    : generationProfile.preferences.engine;
   const aiConfig = buildAiWritingProfilePromptSection(generationProfile);
   const aiRules = buildAiWritingProfileRules(generationProfile, preferredEngine);
   const aiLanguageInstruction = buildAiLanguageInstruction(generationProfile);

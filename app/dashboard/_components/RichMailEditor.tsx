@@ -15,6 +15,7 @@ type RichMailEditorProps = {
   hideToolbarLabel?: boolean;
   compactToolbar?: boolean;
   highlightTemplatePlaceholders?: boolean;
+  mobileFullscreen?: boolean;
 };
 
 export default function RichMailEditor({
@@ -29,6 +30,7 @@ export default function RichMailEditor({
   hideToolbarLabel = false,
   compactToolbar = false,
   highlightTemplatePlaceholders = true,
+  mobileFullscreen = false,
 }: RichMailEditorProps) {
   const editorRef = useRef<HTMLDivElement | null>(null);
   const lastHtmlRef = useRef("");
@@ -36,6 +38,7 @@ export default function RichMailEditor({
   const savedSelectionRef = useRef<Range | null>(null);
   const skipNextToolbarClickRef = useRef(false);
   const [isEmpty, setIsEmpty] = useState(() => !String(text || "").trim());
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const saveSelection = () => {
     const node = editorRef.current;
@@ -180,6 +183,19 @@ export default function RichMailEditor({
     lastTouchYRef.current = null;
   };
 
+  useEffect(() => {
+    if (!isExpanded || typeof document === "undefined") return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isExpanded]);
+
+  useEffect(() => {
+    if (!mobileFullscreen && isExpanded) setIsExpanded(false);
+  }, [mobileFullscreen, isExpanded]);
+
   const fillAvailable = minHeight === 0 || minHeight === "0" || minHeight === "0px";
   const buttonStyle = compactToolbar ? compactToolbarButtonStyle : toolbarButtonStyle;
   const toolbar = (
@@ -196,8 +212,13 @@ export default function RichMailEditor({
     </div>
   );
 
+  const showExpandControl = mobileFullscreen;
+
   return (
     <div
+      role={isExpanded ? "dialog" : undefined}
+      aria-modal={isExpanded ? true : undefined}
+      aria-label={isExpanded ? "Éditeur de message en plein écran" : undefined}
       style={{
         display: "flex",
         flexDirection: "column",
@@ -205,26 +226,50 @@ export default function RichMailEditor({
         flex: "1 1 auto",
         minHeight: 0,
         overflow: "hidden",
+        ...(isExpanded
+          ? {
+              position: "fixed" as const,
+              inset: 0,
+              bottom: "var(--inrcy-mobile-bottom-nav-total-height, calc(50px + env(safe-area-inset-bottom, 0px)))",
+              zIndex: 100000,
+              padding: "max(14px, env(safe-area-inset-top)) 14px 14px",
+              background: "linear-gradient(180deg, #10182b 0%, #12172a 55%, #0b1020 100%)",
+              boxSizing: "border-box" as const,
+            }
+          : {}),
       }}
     >
       <div
         style={{
-          display: "flex",
+          display: showExpandControl ? "grid" : "flex",
+          gridTemplateColumns: showExpandControl ? "minmax(0,1fr) auto minmax(0,1fr)" : undefined,
           alignItems: "center",
-          justifyContent: toolbarTitle || hideToolbarLabel ? "space-between" : "space-between",
+          justifyContent: showExpandControl ? undefined : "space-between",
           gap: 8,
           flexWrap: "nowrap",
           minWidth: 0,
+          flex: "0 0 auto",
         }}
       >
         {toolbarTitle ? (
-          <div style={{ minWidth: 0, flex: "1 1 auto" }}>{toolbarTitle}</div>
+          <div style={{ minWidth: 0, justifySelf: showExpandControl ? "start" : undefined }}>{toolbarTitle}</div>
         ) : hideToolbarLabel ? (
-          <span aria-hidden="true" style={{ flex: "1 1 auto" }} />
+          <span aria-hidden="true" style={{ minWidth: 0 }} />
         ) : (
           <span style={{ fontSize: 12, color: "rgba(255,255,255,0.62)", minWidth: 0 }}>Mise en forme du message</span>
         )}
-        {toolbar}
+        {showExpandControl ? (
+          <button
+            type="button"
+            onClick={() => setIsExpanded((value) => !value)}
+            aria-label={isExpanded ? "Rétrécir l’éditeur" : "Agrandir l’éditeur"}
+            title={isExpanded ? "Rétrécir" : "Agrandir"}
+            style={expandButtonStyle}
+          >
+            {isExpanded ? <CollapseIcon /> : <ExpandIcon />}
+          </button>
+        ) : null}
+        <div style={{ justifySelf: showExpandControl ? "end" : undefined }}>{toolbar}</div>
       </div>
 
       <div
@@ -279,6 +324,7 @@ export default function RichMailEditor({
           onTouchCancel={handleTouchEnd}
           style={{
             ...editorStyle,
+            ...(isExpanded ? { minHeight: 0, height: "100%", maxHeight: "100%", borderRadius: 16, padding: 14 } : {}),
             width: "100%",
             flex: "1 1 auto",
             minHeight: fillAvailable ? 0 : "100%",
@@ -328,6 +374,36 @@ function findScrollableParent(node: HTMLElement | null): HTMLElement | null {
   const scrollingElement = document.scrollingElement;
   return scrollingElement instanceof HTMLElement ? scrollingElement : null;
 }
+
+function ExpandIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function CollapseIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M8 8H3V3M16 8h5V3M8 16H3v5M16 16h5v5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+const expandButtonStyle: CSSProperties = {
+  width: 30,
+  height: 30,
+  borderRadius: 9,
+  border: "1px solid rgba(56,189,248,0.36)",
+  background: "linear-gradient(135deg, rgba(56,189,248,0.25), rgba(167,139,250,0.18))",
+  color: "#ffffff",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  cursor: "pointer",
+  boxShadow: "0 6px 14px rgba(0,0,0,0.14)",
+};
 
 const toolbarButtonStyle: CSSProperties = {
   minWidth: 32,
