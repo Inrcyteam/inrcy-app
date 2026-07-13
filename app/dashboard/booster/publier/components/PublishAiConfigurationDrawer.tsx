@@ -28,16 +28,21 @@ export default function PublishAiConfigurationDrawer({
         position: "fixed",
         inset: 0,
         bottom: isMobile ? MOBILE_DOCK_HEIGHT : undefined,
-        height: isMobile ? `calc(100dvh - ${MOBILE_DOCK_HEIGHT})` : undefined,
+        height: isMobile
+          ? `calc(100dvh - ${MOBILE_DOCK_HEIGHT})`
+          : "100dvh",
         maxHeight: isMobile
           ? `calc(100dvh - ${MOBILE_DOCK_HEIGHT})`
-          : undefined,
+          : "100dvh",
+        minHeight: 0,
         zIndex: 10020,
         background: "rgba(0,0,0,0.55)",
         display: "flex",
         justifyContent: isMobile ? "stretch" : "flex-end",
+        alignItems: "stretch",
         overflow: "hidden",
         padding: isMobile ? 0 : undefined,
+        overscrollBehavior: "contain",
       }}
     >
       <aside
@@ -47,14 +52,16 @@ export default function PublishAiConfigurationDrawer({
           maxWidth: "100vw",
           height: isMobile ? "100%" : drawerHeight,
           maxHeight: isMobile ? "100%" : drawerHeight,
+          minHeight: 0,
           boxSizing: "border-box",
           background: "rgba(16,16,16,0.98)",
           borderLeft: isMobile ? 0 : "1px solid rgba(255,255,255,0.08)",
           padding: isMobile
             ? "max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left))"
             : 16,
-          overflowY: "auto",
-          overflowX: "hidden",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
           overscrollBehavior: "contain",
           WebkitOverflowScrolling: "touch",
         }}
@@ -101,7 +108,19 @@ export default function PublishAiConfigurationDrawer({
             Fermer
           </button>
         </div>
-        <div style={{ marginTop: 12, minWidth: 0, maxWidth: "100%", overflowX: "hidden" }}>
+        <div
+          style={{
+            flex: "1 1 auto",
+            minHeight: 0,
+            marginTop: 12,
+            minWidth: 0,
+            maxWidth: "100%",
+            overflowY: "auto",
+            overflowX: "hidden",
+            overscrollBehavior: "contain",
+            WebkitOverflowScrolling: "touch",
+          }}
+        >
           <AiConfigurationContent mode="drawer" />
         </div>
       </aside>

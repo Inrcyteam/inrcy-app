@@ -175,6 +175,26 @@ export default function InrSearchZoneOrbit({ companyName, city, profession, zone
           </button>
         ))}
       </div>
+      <div className={styles.zoneMobileSelector} aria-label="Sélecteur compact des zones d’intervention">
+        <div className={styles.mobileSelectorActive} aria-live="polite">
+          <span>{String(activeIndex + 1).padStart(2, "0")}</span>
+          <i aria-hidden="true" />
+          <strong>{zoneName(activeZone)}</strong>
+        </div>
+        <div className={styles.mobileSelectorChoices}>
+          {zones.map((zone, index) => index === activeIndex ? null : (
+            <button
+              type="button"
+              key={`${zone}-mobile-index`}
+              onClick={() => setActiveIndex(index)}
+              aria-label={`Afficher la zone ${String(index + 1).padStart(2, "0")} : ${zoneName(zone)}`}
+              title={zoneName(zone)}
+            >
+              {String(index + 1).padStart(2, "0")}
+            </button>
+          ))}
+        </div>
+      </div>
       <p className={styles.zoneOrbitSeoCopy}>Zone d’intervention de {companyName} : {zones.join(", ")}.</p>
     </div>
   );

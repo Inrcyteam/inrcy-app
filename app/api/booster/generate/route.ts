@@ -19,6 +19,10 @@ import {
   type BoosterTheme,
   type BoosterRecentPublication,
 } from "@/lib/boosterPrompt";
+import {
+  normalizeAiPreferredEngine,
+  type AiPreferredEngine,
+} from "@/lib/aiEnginePreference";
 
 export const maxDuration = 120;
 
@@ -27,6 +31,7 @@ type Payload = {
   publicationInstruction?: string;
   theme?: BoosterTheme;
   style?: BoosterStyle;
+  aiPreferredEngine?: AiPreferredEngine;
   channels?: BoosterChannels[];
   mediaType?: "images" | "video";
   useImagesForAI?: boolean;
@@ -367,6 +372,9 @@ const handler = async (req: Request) => {
     const style = allowedStyles.includes(body?.style as BoosterStyle)
       ? (body.style as BoosterStyle)
       : "equilibre";
+    const aiPreferredEngine = body?.aiPreferredEngine
+      ? normalizeAiPreferredEngine(body.aiPreferredEngine)
+      : undefined;
 
     const channels = Array.from(
       new Set(
@@ -434,6 +442,7 @@ const handler = async (req: Request) => {
       publicationInstruction,
       theme,
       style,
+      preferredEngine: aiPreferredEngine,
       channels,
       profile: (profile ?? null) as JsonRecord | null,
       business,

@@ -29,6 +29,7 @@ import {
   applyAiEngineOutputTokenCalibration,
   applyAiEngineTimeoutCalibration,
 } from "@/lib/aiEngineCalibration";
+import type { AiPreferredEngine } from "@/lib/aiEnginePreference";
 import {
   sanitizeBoosterSiteText,
   stripSiteTextFormatting,
@@ -98,6 +99,19 @@ const CHANNEL_DETAILED_ENRICHMENT_MIN: Record<BoosterChannels, number> = {
   tiktok: 250,
   youtube_shorts: 900,
   pinterest: 320,
+};
+
+const CHANNEL_DYNAMIC_EMOJI_MIN: Record<BoosterChannels, number> = {
+  inrcy_site: 0,
+  site_web: 0,
+  inr_search: 0,
+  gmb: 1,
+  facebook: 6,
+  instagram: 8,
+  linkedin: 2,
+  tiktok: 8,
+  youtube_shorts: 4,
+  pinterest: 4,
 };
 
 const CHANNEL_LABELS: Record<BoosterChannels, string> = {
@@ -303,6 +317,7 @@ export type GenerateSharedBoosterPostsArgs = {
   publicationInstruction?: string;
   theme: BoosterTheme;
   style?: BoosterStyle;
+  preferredEngine?: AiPreferredEngine;
   channels: BoosterChannels[];
   profile: JsonRecord | null;
   business: JsonRecord | null;
@@ -664,6 +679,30 @@ function hasLanguageMismatch(languageCode: string, post: ChannelPost | undefined
   );
 }
 
+function countEmojis(input: unknown) {
+  return String(input || "").match(/\p{Extended_Pictographic}/gu)?.length || 0;
+}
+
+function countPostEmojis(post: ChannelPost | undefined) {
+  if (!post) return 0;
+  return countEmojis([post.title, post.content, post.cta].filter(Boolean).join("\n"));
+}
+
+function getDynamicEmojiMinimum(channel: BoosterChannels) {
+  return CHANNEL_DYNAMIC_EMOJI_MIN[channel] || 0;
+}
+
+function hasSufficientDynamicEmojiPresence(args: {
+  channel: BoosterChannels;
+  post: ChannelPost | undefined;
+  emojiLevel: NormalizedAiGenerationProfile["preferences"]["emojiLevel"];
+}) {
+  if (args.emojiLevel !== "dynamic") return true;
+  const minimum = getDynamicEmojiMinimum(args.channel);
+  if (minimum <= 0) return true;
+  return countPostEmojis(args.post) >= minimum;
+}
+
 function buildLanguageRetryInstructions(languageCode: string, channels: BoosterChannels[]) {
   if (!channels.length) return "";
   const languageLabel = getAiLanguageLabel({ ai_language: languageCode });
@@ -817,18 +856,20 @@ type ChannelQualityIssue =
   | "meta_leak"
   | "language_mismatch"
   | "too_similar"
-  | "too_short_editorial";
+  | "too_short_editorial"
+  | "emoji_under_target";
 
-// Une seconde passe reste unique et ciblée. Les trois défauts de sécurité ci-dessous
-// la déclenchent pour réparer une vraie sortie cassée. En mode « Détaillé »,
-// too_short_editorial déclenche seulement un enrichissement non bloquant : si cette
-// passe échoue ou reste trop concise, le contenu initial publiable est conservé.
+// Une seconde passe reste unique et ciblée. Les défauts de sécurité réparent une
+// vraie sortie cassée ; longueur détaillée et niveau emoji Beaucoup déclenchent
+// seulement un enrichissement non bloquant. Si la passe échoue, le contenu
+// initial publiable est conservé.
 // L'ancrage lexical et la similarité inter-canaux restent purement consultatifs.
 const REPAIR_TRIGGER_ISSUES = new Set<ChannelQualityIssue>([
   "missing",
   "meta_leak",
   "language_mismatch",
   "too_short_editorial",
+  "emoji_under_target",
 ]);
 
 function collectChannelQualityIssues(args: {
@@ -837,6 +878,7 @@ function collectChannelQualityIssues(args: {
   ideaKeywords: string[];
   languageCode: string;
   lengthPreference: NormalizedAiGenerationProfile["preferences"]["length"];
+  emojiLevel: NormalizedAiGenerationProfile["preferences"]["emojiLevel"];
 }) {
   const duplicateChannels = new Set(findOverSimilarChannels(args.channels, args.versions));
   const issues = new Map<BoosterChannels, ChannelQualityIssue[]>();
@@ -860,6 +902,16 @@ function collectChannelQualityIssues(args: {
     ) {
       channelIssues.push("too_short_editorial");
     }
+    if (
+      hasCorePublishableContent(channel, post) &&
+      !hasSufficientDynamicEmojiPresence({
+        channel,
+        post,
+        emojiLevel: args.emojiLevel,
+      })
+    ) {
+      channelIssues.push("emoji_under_target");
+    }
 
     if (channelIssues.length) issues.set(channel, channelIssues);
   }
@@ -881,6 +933,7 @@ function buildSingleRepairInstructions(args: {
     language_mismatch: "mauvaise langue",
     too_similar: "trop proche d'un autre canal",
     too_short_editorial: "contenu trop court pour la préférence Détaillé",
+    emoji_under_target: "pas assez d'emojis pour le niveau Beaucoup",
   };
 
   const diagnostics = args.channels
@@ -910,6 +963,14 @@ function buildSingleRepairInstructions(args: {
         `- ${CHANNEL_LABELS[channel]} : au moins ${CHANNEL_DETAILED_ENRICHMENT_MIN[channel]} caractères de contenu utile`,
     )
     .join("\n");
+  const dynamicEmojiTargets = args.channels
+    .filter((channel) => args.issues.get(channel)?.includes("emoji_under_target"))
+    .map((channel) => {
+      const minimum = getDynamicEmojiMinimum(channel);
+      const current = countPostEmojis(args.validVersions[channel]);
+      return `- ${CHANNEL_LABELS[channel]} : minimum ${minimum} emojis visibles, actuellement ${current}. Répartis-les naturellement dans title/content/cta.`;
+    })
+    .join("\n");
 
   return [
     `RÉPARATION CIBLÉE UNIQUE iNrCy. Regénère uniquement les canaux demandés dans cette passe.`,
@@ -918,6 +979,9 @@ function buildSingleRepairInstructions(args: {
     buildLanguageRetryInstructions(args.languageCode, languageMismatchChannels),
     detailedLengthTargets
       ? `ENRICHISSEMENT DE LONGUEUR — préférence DÉTAILLÉ :\n${detailedLengthTargets}\nDéveloppe avec contexte, explication, bénéfice, méthode, étapes ou portée du sujet selon le canal. Ne remplis pas artificiellement et n'invente aucun fait.`
+      : "",
+    dynamicEmojiTargets
+      ? `RENFORCEMENT EMOJIS — niveau BEAUCOUP :\n${dynamicEmojiTargets}\nAjoute de vrais emojis pertinents pour le métier, le sujet et le canal. Ne les regroupe pas tous à la fin ; fais-les vivre dans le texte. Ne mets aucun emoji sur les canaux site.`
       : "",
     `Retourne uniquement des contenus finaux prêts à publier. Aucun commentaire sur la rédaction, aucune explication technique.`,
     `Conserve la personnalité native du moteur choisi et toutes les préférences du pro. Ne transforme pas la réparation en texte standardisé.`,
@@ -1003,13 +1067,27 @@ async function repairChannelsOnce(args: {
     );
     const isLengthEnrichment =
       channelIssues.includes("too_short_editorial") && !hasSafetyRepairIssue;
+    const isEmojiEnrichment =
+      channelIssues.includes("emoji_under_target") && !hasSafetyRepairIssue;
     const originalLength = args.versions[channel]?.content?.trim().length || 0;
     const candidateLength = candidate.content.trim().length;
     const improvesLength = candidateLength > originalLength;
+    const originalEmojiCount = countPostEmojis(args.versions[channel]);
+    const candidateEmojiCount = countPostEmojis(candidate);
+    const reachesEmojiTarget = hasSufficientDynamicEmojiPresence({
+      channel,
+      post: candidate,
+      emojiLevel: args.generationProfile.preferences.emojiLevel,
+    });
+    const improvesEmoji = candidateEmojiCount > originalEmojiCount;
 
-    // Une passe de longueur ne doit jamais dégrader un contenu déjà publiable :
-    // on conserve l'original si l'enrichissement échoue ou revient encore plus court.
-    if (safeCandidate && (!isLengthEnrichment || improvesLength)) {
+    // Les enrichissements de style ne doivent jamais dégrader un contenu déjà
+    // publiable : on conserve l'original si la passe ne progresse pas.
+    if (
+      safeCandidate &&
+      (!isLengthEnrichment || improvesLength) &&
+      (!isEmojiEnrichment || reachesEmojiTarget || improvesEmoji)
+    ) {
       args.versions[channel] = candidate;
       recovered.push(channel);
     }
@@ -1107,10 +1185,21 @@ function detectPublicationInstructionEmojiLevel(
   ) {
     return "none";
   }
-  if (/\b(?:beaucoup|plein|plusieurs)\s+d['’]?emoji(?:s)?\b|\bemojis?\s+(?:tres\s+)?visibles?\b/.test(value)) {
+  const positiveValue = value
+    .replace(/\b(?:pas|jamais)\b[^.!?;]{0,28}\bemoji(?:s)?\b/g, " ")
+    .replace(/\bpas\s+trop\s+d['’]?emoji(?:s)?\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (
+    /\b(?:beaucoup|plein|plusieurs|davantage|max(?:imum)?|nombreux|nombreuses)\s+d['’]?emoji(?:s)?\b/.test(positiveValue) ||
+    /\bplus\s+d['’]?emoji(?:s)?\b/.test(positiveValue) ||
+    /\bemojis?\s+(?:tres\s+)?(?:visibles?|nombreux|nombreuses|partout)\b/.test(positiveValue) ||
+    /\bemojis?\s+(?:a|à)\s+chaque\s+phrase\b/.test(positiveValue) ||
+    /\b(?:mets|mettez|ajoute|ajoutez|utilise|utilisez|insere|inserez|parseme|parsemez)\b[^.!?;]{0,44}\b(?:beaucoup\s+d['’]?)?emoji(?:s)?\b/.test(positiveValue)
+  ) {
     return "dynamic";
   }
-  if (/\b(?:peu|quelques)\s+d['’]?emoji(?:s)?\b|\bemojis?\s+(?:legers?|discrets?)\b/.test(value)) {
+  if (/\b(?:peu|quelques|un\s+peu)\s+d['’]?emoji(?:s)?\b|\bemojis?\s+(?:legers?|discrets?)\b/.test(value)) {
     return "light";
   }
   return null;
@@ -1147,6 +1236,9 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
   const baseGenerationProfile = buildNormalizedAiGenerationProfile({
     profile: args.profile,
     business: args.business,
+    preferences: args.preferredEngine
+      ? { engine: args.preferredEngine }
+      : undefined,
     idea: args.idea,
     theme: args.theme,
     style,
@@ -1280,6 +1372,7 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
     ideaKeywords,
     languageCode,
     lengthPreference: generationProfile.preferences.length,
+    emojiLevel: generationProfile.preferences.emojiLevel,
   });
   const repairChannels = channels.filter((channel) =>
     (repairIssues.get(channel) || []).some((issue) => REPAIR_TRIGGER_ISSUES.has(issue)),
@@ -1288,7 +1381,7 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
     (repairIssues.get(channel) || []).some((issue) => !REPAIR_TRIGGER_ISSUES.has(issue)),
   );
   const qualityIssueCounts = Object.fromEntries(
-    (["missing", "off_topic", "meta_leak", "language_mismatch", "too_similar", "too_short_editorial"] as ChannelQualityIssue[])
+    (["missing", "off_topic", "meta_leak", "language_mismatch", "too_similar", "too_short_editorial", "emoji_under_target"] as ChannelQualityIssue[])
       .map((issue) => [
         issue,
         channels.filter((channel) => (repairIssues.get(channel) || []).includes(issue)).length,

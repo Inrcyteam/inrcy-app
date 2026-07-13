@@ -184,6 +184,26 @@ export default function InrSearchServicesOrbit({ companyName, services, audience
             </button>
           ))}
         </div>
+        <div className={styles.servicesMobileSelector} aria-label="Sélecteur compact des expertises">
+          <div className={styles.mobileSelectorActive} aria-live="polite">
+            <span>{String(activeIndex + 1).padStart(2, "0")}</span>
+            <i aria-hidden="true" />
+            <strong>{activeService?.name}</strong>
+          </div>
+          <div className={styles.mobileSelectorChoices}>
+            {services.map((service, index) => index === activeIndex ? null : (
+              <button
+                type="button"
+                key={`${service.name}-mobile-index`}
+                onClick={() => setActiveIndex(index)}
+                aria-label={`Afficher l’expertise ${String(index + 1).padStart(2, "0")} : ${service.name}`}
+                title={service.name}
+              >
+                {String(index + 1).padStart(2, "0")}
+              </button>
+            ))}
+          </div>
+        </div>
         {audiences.length ? (
           <div className={styles.servicesOrbitAudience}>
             <span>Conçu notamment pour</span>

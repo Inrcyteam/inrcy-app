@@ -137,7 +137,7 @@ const EMOJI_EXECUTION_DIRECTIVES: Record<string, string> = {
   light:
     "Emojis : présence discrète et réellement perceptible sur les canaux qui s'y prêtent ; quelques touches utiles, jamais une décoration automatique.",
   dynamic:
-    "Emojis : présence franchement visible sur les canaux sociaux qui s'y prêtent ; plusieurs touches réparties naturellement, sans suite artificielle ni surcharge.",
+    "Emojis : présence franchement visible sur les canaux sociaux qui s'y prêtent ; de nombreuses touches réparties naturellement dans le contenu, sans suite artificielle ni surcharge.",
 };
 
 const CTA_EXECUTION_DIRECTIVES: Record<string, string> = {

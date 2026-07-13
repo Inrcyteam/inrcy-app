@@ -12,7 +12,6 @@ type Props = {
 };
 
 const NEWTON_SLOT_COUNT = 5;
-const CENTER_FIRST_SLOTS = [2, 1, 3, 0, 4];
 const DEFAULT_STRENGTHS = ["Rapide", "Efficace", "Sérieux", "Proche", "À l’écoute"];
 
 function normalizeStrength(value: string) {
@@ -81,12 +80,8 @@ export default function InrSearchStrengthsOrbit({ companyName, strengths, inrBad
     }
   }
   const visibleStrengths = completedStrengths.slice(0, NEWTON_SLOT_COUNT);
-  const cradleSlots = Array.from({ length: NEWTON_SLOT_COUNT }, () => null as string | null);
-  visibleStrengths.forEach((strength, index) => {
-    cradleSlots[CENTER_FIRST_SLOTS[index] ?? index] = strength;
-  });
-  const firstFilledSlot = CENTER_FIRST_SLOTS.find((slot) => cradleSlots[slot]) ?? 0;
-  const [activeIndex, setActiveIndex] = useState(firstFilledSlot);
+  const cradleSlots = visibleStrengths;
+  const [activeIndex, setActiveIndex] = useState(0);
   const [impulse, setImpulse] = useState(0);
   const activeStrength = cradleSlots[activeIndex] || visibleStrengths[0];
   const impulseDirection = activeIndex <= Math.floor(NEWTON_SLOT_COUNT / 2) ? "left" : "right";
@@ -134,7 +129,7 @@ export default function InrSearchStrengthsOrbit({ companyName, strengths, inrBad
               >
                 <span className={styles.strengthNewtonPendulum} aria-hidden="true">
                   <span className={styles.strengthNewtonString} />
-                  <span className={styles.strengthNewtonSphere}><i>{strength ? String(visibleStrengths.indexOf(strength) + 1).padStart(2, "0") : ""}</i></span>
+                  <span className={styles.strengthNewtonSphere}><i>{strength ? String(index + 1).padStart(2, "0") : ""}</i></span>
                 </span>
                 <strong>{strength || ""}</strong>
               </button>

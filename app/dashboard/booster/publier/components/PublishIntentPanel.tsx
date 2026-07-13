@@ -7,6 +7,11 @@ import {
   type SetStateAction,
 } from "react";
 import {
+  AI_ENGINE_OPTIONS,
+  getAiEngineOption,
+  type AiPreferredEngine,
+} from "@/lib/aiEnginePreference";
+import {
   BOOSTER_MAX_IMAGE_COUNT,
   BOOSTER_IMAGE_ACCEPT,
   BOOSTER_MAX_MEDIA_MB_LABEL,
@@ -239,6 +244,9 @@ type PublishIntentPanelProps = {
   generating: boolean;
   generationStage: string;
   generationProgress: number;
+  aiPreferredEngine: AiPreferredEngine;
+  defaultAiPreferredEngine: AiPreferredEngine;
+  onAiPreferredEngineChange: (engine: AiPreferredEngine) => void;
   onGenerate: () => void;
   onReset: () => void;
   onCreateManually: () => void;
@@ -279,6 +287,9 @@ export default function PublishIntentPanel({
   generating,
   generationStage,
   generationProgress,
+  aiPreferredEngine,
+  defaultAiPreferredEngine,
+  onAiPreferredEngineChange,
   onGenerate,
   onReset,
   onCreateManually,
@@ -304,6 +315,9 @@ export default function PublishIntentPanel({
   const hasLiveVoiceDraftRef = useRef(false);
   const liveOnlyUnavailableRef = useRef(false);
   const [liveVoiceEnabled, setLiveVoiceEnabled] = useState(false);
+  const selectedAiEngineOption = getAiEngineOption(aiPreferredEngine);
+  const defaultAiEngineOption = getAiEngineOption(defaultAiPreferredEngine);
+  const usesDefaultAiEngine = aiPreferredEngine === defaultAiPreferredEngine;
 
   const setVoiceTargetText = (
     target: VoiceTarget,
@@ -1472,7 +1486,74 @@ export default function PublishIntentPanel({
             {generationNotice}
           </div>
         ) : null}
-        <div style={{ display: "grid", gap: 6, justifyItems: "start" }}>
+        <div style={{ display: "grid", gap: 8, justifyItems: "start" }}>
+          <div
+            style={{
+              display: "grid",
+              gap: 6,
+              width: "min(420px, 100%)",
+              minWidth: 0,
+            }}
+          >
+            <label
+              style={{
+                display: "grid",
+                gap: 6,
+                color: "rgba(255,255,255,0.84)",
+                fontSize: 13,
+                fontWeight: 850,
+              }}
+            >
+              <span>Moteur IA</span>
+              <select
+                value={aiPreferredEngine}
+                onChange={(event) =>
+                  onAiPreferredEngineChange(
+                    event.target.value as AiPreferredEngine,
+                  )
+                }
+                disabled={generationDisabled}
+                style={{
+                  width: "100%",
+                  minHeight: 42,
+                  borderRadius: 14,
+                  border: "1px solid rgba(255,255,255,0.14)",
+                  background: "rgba(255,255,255,0.055)",
+                  color: "white",
+                  padding: "9px 12px",
+                  fontSize: 14,
+                  fontWeight: 800,
+                  outline: "none",
+                  opacity: generationDisabled ? 0.68 : 1,
+                  cursor: generationDisabled ? "wait" : "pointer",
+                }}
+              >
+                {AI_ENGINE_OPTIONS.map((option) => (
+                  <option
+                    key={option.value}
+                    value={option.value}
+                    style={{ color: "#0b1020", background: "#ffffff" }}
+                  >
+                    {option.label}
+                    {option.value === defaultAiPreferredEngine
+                      ? " — défaut"
+                      : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div
+              style={{
+                fontSize: 12,
+                lineHeight: 1.35,
+                color: "rgba(255,255,255,0.62)",
+              }}
+            >
+              {usesDefaultAiEngine
+                ? `${selectedAiEngineOption.shortLabel} — moteur par défaut de votre Configuration IA.`
+                : `${selectedAiEngineOption.shortLabel} — uniquement pour cette génération. Défaut : ${defaultAiEngineOption.shortLabel}.`}
+            </div>
+          </div>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
             <button
               type="button"
@@ -1481,7 +1562,7 @@ export default function PublishIntentPanel({
               disabled={generationDisabled}
             >
               {generating
-                ? "Génération en cours..."
+                ? `Génération avec ${selectedAiEngineOption.shortLabel}...`
                 : voiceState !== "idle"
                   ? "Vocal en cours..."
                   : "✨ Générer avec iNrCy"}

@@ -15201,3 +15201,292 @@
     animation: none !important;
   }
 }
+
+/* Étape 13 iNrSearch — sélecteurs compacts et finitions responsive. */
+.servicesMobileSelector,
+.zoneMobileSelector {
+  display: none;
+}
+
+@media (max-width: 700px) {
+  /* Identité : contraste renforcé sans modifier la composition desktop. */
+  .presentationUniverse {
+    opacity: 1 !important;
+    filter: none !important;
+  }
+
+  .presentationMediaOrb {
+    border: 1px solid rgba(132, 230, 255, .4) !important;
+    background:
+      radial-gradient(circle at 34% 22%, rgba(255, 255, 255, .98), rgba(232, 226, 255, .9) 34%, rgba(102, 89, 174, .72) 68%, rgba(17, 20, 61, .96)) !important;
+    box-shadow:
+      0 22px 58px rgba(0, 0, 0, .36),
+      0 0 0 8px rgba(50, 216, 255, .035),
+      0 0 38px rgba(139, 92, 246, .2) !important;
+  }
+
+  .presentationMediaFallback img {
+    filter: saturate(1.2) contrast(1.12) !important;
+  }
+
+  .presentationMediaCaption small,
+  .presentationMediaCaption strong,
+  .presentationMediaCaption span {
+    color: #fff !important;
+    opacity: 1 !important;
+    text-shadow: 0 2px 12px rgba(3, 7, 28, .72);
+  }
+
+  .presentationSatellite,
+  .presentationSatellite[data-slot] {
+    opacity: 1 !important;
+    border-color: rgba(115, 218, 255, .34) !important;
+    color: #fff !important;
+    background:
+      radial-gradient(circle at 12% 24%, rgba(50, 216, 255, .2), transparent 54%),
+      linear-gradient(145deg, rgba(19, 43, 94, .98), rgba(17, 20, 65, .99)) !important;
+    box-shadow:
+      0 15px 34px rgba(0, 0, 0, .32),
+      0 0 22px rgba(50, 216, 255, .09),
+      inset 0 1px rgba(255, 255, 255, .13) !important;
+  }
+
+  .presentationFactIcon,
+  .presentationSatellite[data-kind="strengths"] .presentationFactIcon {
+    color: #fff !important;
+    background: linear-gradient(135deg, #22bff3, #7658ed 55%, #e64fde) !important;
+    box-shadow: 0 8px 22px rgba(72, 96, 236, .32) !important;
+  }
+
+  .presentationFactText small {
+    color: #83eaff !important;
+    font-size: 9px !important;
+    font-weight: 950 !important;
+    opacity: 1 !important;
+  }
+
+  .presentationFactText strong {
+    color: #fff !important;
+    font-size: 12px !important;
+    font-weight: 900 !important;
+    line-height: 1.28 !important;
+    opacity: 1 !important;
+    text-shadow: 0 2px 9px rgba(2, 6, 27, .58);
+  }
+
+}
+
+@media (max-width: 900px) {
+  /* Expertises et Zone : plus aucun rail horizontal. */
+  .servicesOrbitIndexList,
+  .zoneOrbitRail {
+    display: none !important;
+  }
+
+  .servicesMobileSelector,
+  .zoneMobileSelector {
+    width: 100%;
+    margin-top: 13px;
+    display: grid !important;
+    justify-items: center;
+    gap: 10px;
+    overflow: visible;
+  }
+
+  .mobileSelectorActive {
+    width: min(100%, 350px);
+    min-height: 48px;
+    padding: 7px 13px 7px 8px;
+    display: grid;
+    grid-template-columns: 34px 6px minmax(0, 1fr);
+    align-items: center;
+    gap: 9px;
+    overflow: hidden;
+    border: 1px solid rgba(72, 224, 255, .44);
+    border-radius: 18px;
+    color: #fff;
+    background:
+      radial-gradient(circle at 10% 50%, rgba(50, 216, 255, .2), transparent 48%),
+      linear-gradient(135deg, rgba(10, 45, 88, .98), rgba(17, 18, 63, .98));
+    box-shadow: 0 14px 32px rgba(0, 0, 0, .28), 0 0 22px rgba(50, 216, 255, .1), inset 0 1px rgba(255, 255, 255, .12);
+  }
+
+  .mobileSelectorActive > span {
+    width: 34px;
+    height: 34px;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(113, 234, 255, .42);
+    border-radius: 12px;
+    color: #fff;
+    background: linear-gradient(135deg, rgba(43, 196, 240, .28), rgba(119, 83, 237, .34));
+    font-size: 11px;
+    font-weight: 950;
+  }
+
+  .mobileSelectorActive > i {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #50e3ff;
+    box-shadow: 0 0 12px rgba(80, 227, 255, .85);
+  }
+
+  .mobileSelectorActive > strong {
+    min-width: 0;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 900;
+    line-height: 1.22;
+    overflow-wrap: anywhere;
+  }
+
+  .mobileSelectorChoices {
+    width: 100%;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 7px;
+    overflow: visible;
+  }
+
+  .mobileSelectorChoices button {
+    width: 36px;
+    height: 36px;
+    flex: 0 0 36px;
+    padding: 0;
+    display: grid;
+    place-items: center;
+    border: 1px solid rgba(157, 186, 255, .2);
+    border-radius: 50%;
+    color: rgba(235, 241, 255, .76);
+    background: linear-gradient(145deg, rgba(17, 31, 71, .96), rgba(13, 17, 52, .98));
+    box-shadow: 0 9px 22px rgba(0, 0, 0, .24), inset 0 1px rgba(255, 255, 255, .08);
+    cursor: pointer;
+    font: inherit;
+    font-size: 10px;
+    font-weight: 950;
+    touch-action: manipulation;
+  }
+
+  .mobileSelectorChoices button:focus-visible {
+    outline: 2px solid #55e4ff;
+    outline-offset: 3px;
+  }
+
+}
+
+@media (max-width: 700px) {
+  /* Newton : cinq billes centrées, numérotées dans l’ordre et sans sous-titres. */
+  .strengthNewtonScene {
+    --strength-ball-size: 52px !important;
+    width: 100% !important;
+    min-height: 420px !important;
+    height: 420px !important;
+    overflow: hidden !important;
+  }
+
+  .strengthNewtonFrame {
+    left: 50% !important;
+    right: auto !important;
+    top: 34px !important;
+    width: min(82%, 292px) !important;
+    height: 14px !important;
+    translate: -50% 0 !important;
+  }
+
+  .strengthNewtonBalls {
+    left: 50% !important;
+    right: auto !important;
+    top: 47px !important;
+    width: 276px !important;
+    height: 226px !important;
+    translate: -50% 0 !important;
+    justify-content: center !important;
+    gap: 0 !important;
+    overflow: visible !important;
+  }
+
+  .strengthNewtonBall {
+    flex: 0 0 52px !important;
+    min-width: 52px !important;
+    max-width: 52px !important;
+    height: 100% !important;
+  }
+
+  .strengthNewtonPendulum {
+    inset: 0 0 28px !important;
+  }
+
+  .strengthNewtonSphere {
+    width: 52px !important;
+  }
+
+  .strengthNewtonSphere i {
+    font-size: 11px !important;
+  }
+
+  .strengthNewtonBall > strong {
+    display: none !important;
+  }
+
+  .strengthNewtonDetail {
+    left: 14px !important;
+    right: 14px !important;
+    bottom: 14px !important;
+    width: auto !important;
+    min-height: 116px !important;
+    padding: 15px 17px !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .strengthNewtonDetail > strong {
+    font-size: 24px !important;
+  }
+
+  .strengthNewtonDetail p {
+    font-size: 11px !important;
+    line-height: 1.46 !important;
+  }
+
+  .strengthNewtonDetail > span {
+    display: none !important;
+  }
+
+  /* Réseaux : avatars circulaires identiques au système desktop. */
+  .socialOrbitNode {
+    grid-template-columns: 48px minmax(0, 1fr) !important;
+    gap: 11px !important;
+  }
+
+  .socialOrbitGlyph,
+  .socialOrbitDetailGlyph {
+    padding: 0 !important;
+    display: grid !important;
+    place-items: center !important;
+    overflow: hidden !important;
+    border: 2px solid rgba(255, 255, 255, .2) !important;
+    border-radius: 50% !important;
+    background: linear-gradient(135deg, #32d8ff, #8b5cf6, #ff5bdd) !important;
+    box-shadow: 0 9px 23px rgba(0, 0, 0, .3), 0 0 20px rgba(139, 92, 246, .2) !important;
+  }
+
+  .socialOrbitGlyph {
+    width: 48px !important;
+    height: 48px !important;
+  }
+
+  .socialOrbitDetailGlyph {
+    width: 62px !important;
+    height: 62px !important;
+  }
+
+  .socialOrbitGlyph img,
+  .socialOrbitDetailGlyph img {
+    width: 100% !important;
+    height: 100% !important;
+    display: block !important;
+    object-fit: cover !important;
+    border-radius: 50% !important;
+  }
+}

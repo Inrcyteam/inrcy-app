@@ -271,13 +271,13 @@ const CHANNEL_EMOJI_TARGETS: Record<
     inrcy_site: "0 emoji malgré le niveau Beaucoup : priorité SEO et lisibilité.",
     site_web: "0 emoji malgré le niveau Beaucoup : priorité SEO et lisibilité.",
     inr_search: "0 emoji malgré le niveau Beaucoup : priorité SEO et lisibilité.",
-    gmb: "1–2 emojis maximum et sobres.",
-    facebook: "3–6 emojis visibles et naturellement répartis.",
-    instagram: "4–8 emojis visibles et variés, sans suite artificielle.",
-    linkedin: "1–3 emojis maximum : présence visible mais professionnelle.",
-    tiktok: "4–8 emojis visibles, vivants et répartis naturellement.",
-    youtube_shorts: "2–5 emojis visibles, sans nuire aux mots-clés.",
-    pinterest: "2–5 emojis visibles si cohérents avec l'inspiration et la recherche.",
+    gmb: "1–2 emojis sobres et utiles, bien répartis.",
+    facebook: "6–10 emojis visibles et naturellement répartis.",
+    instagram: "8–12 emojis visibles, variés et répartis dans le texte.",
+    linkedin: "2–4 emojis maximum : présence visible mais professionnelle.",
+    tiktok: "8–12 emojis visibles, vivants et répartis naturellement.",
+    youtube_shorts: "4–7 emojis visibles, sans nuire aux mots-clés.",
+    pinterest: "4–7 emojis visibles si cohérents avec l'inspiration et la recherche.",
   },
 };
 
@@ -298,10 +298,10 @@ function buildBoosterEmojiDirective(
     emojiLevel === "none"
       ? "Consigne forte : aucun emoji sur les canaux demandés."
       : emojiLevel === "dynamic"
-        ? "Consigne éditoriale forte : la présence d'emojis doit être réellement visible sur les canaux sociaux compatibles, sans surcharge ni série mécanique."
+        ? "Consigne forte et contrôlée : sur les canaux sociaux compatibles, les emojis doivent être vraiment nombreux, visibles et répartis dans title/content/cta. Les canaux site restent strictement sans emoji."
         : "Consigne éditoriale : présence discrète mais perceptible sur les canaux compatibles.";
 
-  return `EMOJIS ${labels[emojiLevel]} — INTENSITÉ VISIBLE\n${priority}\nLes repères ci-dessous servent à rendre le réglage perceptible ; ils restent éditoriaux et non bloquants, jamais un motif de 502 ou de réparation à eux seuls.\n${targets}`;
+  return `EMOJIS ${labels[emojiLevel]} — INTENSITÉ VISIBLE\n${priority}\nLes repères ci-dessous pilotent réellement la quantité attendue. Pour BEAUCOUP, respecte au moins le bas de la plage sur chaque canal compatible, sans série mécanique ni emoji hors sujet.\n${targets}`;
 }
 
 function buildBoosterLengthDirective(
@@ -483,7 +483,9 @@ export function boosterUserPrompt(args: {
     channelSet.has("inrcy_site") || channelSet.has("site_web") || channelSet.has("inr_search")
       ? "- Canaux site : zéro emoji ; SEO local naturel uniquement avec les faits réellement fournis."
       : "",
-    "- La politique emojis ci-dessous doit être perceptible : une intensité, pas un quota numérique exact ; les repères restent éditoriaux, non bloquants et compatibles avec chaque canal.",
+    preferences.emojiLevel === "dynamic"
+      ? "- Niveau emojis BEAUCOUP : sur les canaux sociaux compatibles, le résultat doit contenir réellement beaucoup d'emojis visibles. Ne compense pas par un seul emoji dans le titre : répartis-les naturellement dans le contenu. Les canaux site restent à zéro emoji."
+      : "- La politique emojis ci-dessous doit être perceptible, compatible avec chaque canal et respectée sans décoration automatique.",
     "- Le CTA préféré est une orientation, pas une obligation.",
     "- Conserve les vrais retours à la ligne dans content avec \\n\\n entre paragraphes.",
     "- Renvoie uniquement le JSON attendu, sans explication.",
@@ -575,4 +577,3 @@ export function compileBoosterGenerationPrompt(args: {
     totalChars: system.length + input.length,
   };
 }
-

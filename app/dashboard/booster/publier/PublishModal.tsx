@@ -7,7 +7,15 @@ import {
   type MutableRefObject,
 } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
+import { createClient } from "@/lib/supabaseClient";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import {
+  DEFAULT_AI_PREFERRED_ENGINE,
+  getAiEngineOption,
+  normalizeAiPreferredEngine,
+  type AiPreferredEngine,
+} from "@/lib/aiEnginePreference";
 import {
   readPinterestBoardUiCache,
   writePinterestBoardUiCache,
@@ -138,6 +146,8 @@ const EMPTY_CHANNEL_DETAILS: Record<ChannelKey, ChannelConnectionDetail> = {
   youtube_shorts: { type: "channel", label: null, href: null },
   pinterest: { type: "board", label: null, href: null },
 };
+
+const AI_CONFIGURATION_STORAGE_KEY = "inrcy_ai_configuration";
 
 const CHANNEL_KEYS: ChannelKey[] = [
   "inrcy_site",
@@ -619,6 +629,10 @@ export default function PublishModal({
     };
   }, [openHelpActionRef]);
   const [aiConfigurationOpen, setAiConfigurationOpen] = useState(false);
+  const [defaultAiPreferredEngine, setDefaultAiPreferredEngine] =
+    useState<AiPreferredEngine>(DEFAULT_AI_PREFERRED_ENGINE);
+  const [selectedAiPreferredEngine, setSelectedAiPreferredEngine] =
+    useState<AiPreferredEngine>(DEFAULT_AI_PREFERRED_ENGINE);
   const [instagramHashtagsInput, setInstagramHashtagsInput] = useState("");
   const [emptyContentWarningChannels, setEmptyContentWarningChannels] =
     useState<ChannelKey[]>([]);
@@ -649,6 +663,16 @@ export default function PublishModal({
   >(null);
   const [tiktokPublicationSettings, setTiktokPublicationSettings] =
     useState<TiktokPublicationSettings | null>(null);
+
+  const applyDefaultAiPreferredEngine = useCallback((value: unknown) => {
+    const next = normalizeAiPreferredEngine(value);
+    setDefaultAiPreferredEngine((previousDefault) => {
+      setSelectedAiPreferredEngine((current) =>
+        current === previousDefault ? next : current,
+      );
+      return next;
+    });
+  }, []);
   const [pendingPublishPosts, setPendingPublishPosts] = useState<Partial<
     Record<ChannelKey, ChannelPost>
   > | null>(null);
@@ -1147,6 +1171,67 @@ export default function PublishModal({
       window.visualViewport?.removeEventListener("scroll", updateViewport);
     };
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    let cancelled = false;
+
+    const applyIfActive = (value: unknown) => {
+      if (!cancelled) applyDefaultAiPreferredEngine(value);
+    };
+
+    try {
+      const local = JSON.parse(
+        window.localStorage.getItem(AI_CONFIGURATION_STORAGE_KEY) || "{}",
+      ) as { preferredEngine?: unknown };
+      applyIfActive(local.preferredEngine || DEFAULT_AI_PREFERRED_ENGINE);
+    } catch {
+      applyIfActive(DEFAULT_AI_PREFERRED_ENGINE);
+    }
+
+    const loadPersistedEngine = async () => {
+      try {
+        const supabase = createClient();
+        const { data: authData } = await supabase.auth.getUser();
+        const userId = authData?.user?.id;
+        if (!userId) return;
+        const { data } = await supabase
+          .from("business_profiles")
+          .select("ai_preferred_engine")
+          .eq("user_id", resolveActiveBrowserUserId(userId))
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (data?.ai_preferred_engine) {
+          applyIfActive(data.ai_preferred_engine);
+        }
+      } catch {
+        // La génération reste utilisable avec la valeur locale ou le défaut.
+      }
+    };
+
+    const onAiConfigurationUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ aiPreferredEngine?: unknown }>)
+        .detail;
+      if (detail?.aiPreferredEngine) {
+        applyIfActive(detail.aiPreferredEngine);
+      }
+    };
+
+    loadPersistedEngine();
+    window.addEventListener(
+      "inrcy:ai-configuration-updated",
+      onAiConfigurationUpdated,
+    );
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener(
+        "inrcy:ai-configuration-updated",
+        onAiConfigurationUpdated,
+      );
+    };
+  }, [applyDefaultAiPreferredEngine]);
 
   const scrollToPublishArea = (behavior: ScrollBehavior = "smooth") => {
     if (typeof window === "undefined") return;
@@ -2154,6 +2239,7 @@ export default function PublishModal({
     setGenerationNotice("");
 
     const trimmed = idea.trim();
+    const selectedAiEngineOption = getAiEngineOption(selectedAiPreferredEngine);
     if (!selectedChannels.length) {
       setGenError("Veuillez sélectionner au moins 1 canal avant de générer.");
       return;
@@ -2188,7 +2274,7 @@ export default function PublishModal({
     clearGenerationTimers();
     setGenerating(true);
     setGenerationProgress(8);
-    setGenerationStage("Préparation");
+    setGenerationStage(`Préparation avec ${selectedAiEngineOption.shortLabel}`);
     setDuplicateFeedback(null);
 
     const generationSteps = [
@@ -2222,8 +2308,8 @@ export default function PublishModal({
       {
         percent: 62,
         label: hasVideoForGeneration
-          ? "Rédaction à partir de votre vidéo"
-          : "Rédaction du contenu principal",
+          ? `Rédaction avec ${selectedAiEngineOption.shortLabel} à partir de votre vidéo`
+          : `Rédaction avec ${selectedAiEngineOption.shortLabel}`,
         delay: hasVideoForGeneration ? 8200 : 6200,
       },
       { percent: 70, label: "Adaptation par canal", delay: 7600 },
@@ -2334,6 +2420,7 @@ export default function PublishModal({
           publicationInstruction: publicationInstruction.trim(),
           theme,
           style: contentStyle,
+          aiPreferredEngine: selectedAiPreferredEngine,
           channels: selectedForGeneration,
           mediaType: hasVideoForGeneration ? "video" : "images",
           useImagesForAI: imagesForAI.length > 0,
@@ -4246,11 +4333,11 @@ export default function PublishModal({
     setFinalReviewOpen(true);
   };
 
-  const aiDrawerHeight = isMobile
-    ? drawerViewportHeight
-      ? `${drawerViewportHeight}px`
-      : "100svh"
-    : "100%";
+  const aiDrawerHeight = drawerViewportHeight
+    ? `${drawerViewportHeight}px`
+    : isMobile
+      ? "100svh"
+      : "100dvh";
   const publicationImagesPanelVisible = true;
 
   useEffect(() => {
@@ -4480,6 +4567,11 @@ export default function PublishModal({
         generating={generating}
         generationStage={generationStage}
         generationProgress={generationProgress}
+        aiPreferredEngine={selectedAiPreferredEngine}
+        defaultAiPreferredEngine={defaultAiPreferredEngine}
+        onAiPreferredEngineChange={(engine) =>
+          setSelectedAiPreferredEngine(normalizeAiPreferredEngine(engine))
+        }
         onGenerate={onGenerate}
         onReset={onReset}
         onCreateManually={onCreateManually}

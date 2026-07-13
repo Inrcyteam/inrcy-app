@@ -443,7 +443,7 @@ export default function PublishChannelSelector({
                 style={{
                   width: key === "site_web" ? 25 : 27,
                   height: key === "site_web" ? 25 : 27,
-                  borderRadius: key === "site_web" ? 8 : 999,
+                  borderRadius: 999,
                   objectFit: "cover",
                   opacity: isConnected ? 1 : 0.48,
                   filter: isConnected ? undefined : "grayscale(0.7)",
