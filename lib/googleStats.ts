@@ -171,7 +171,7 @@ export async function getGoogleTokenFor(
 
     // Refresh silently without disconnecting the integration.
     // A token expiry is a technical refresh event, not a business disconnection.
-    await supabase
+    const { error: tokenUpdateError } = await supabaseAdmin
       .from("integrations")
       .update({
         access_token_enc: accessToken ? encryptToken(accessToken) : null,
@@ -180,6 +180,14 @@ export async function getGoogleTokenFor(
       })
       .eq("id", row.id)
       .eq("user_id", effectiveUserId);
+
+    if (tokenUpdateError) {
+      console.error("[googleStats] Unable to persist refreshed Google token", {
+        integrationId: row.id,
+        userId: effectiveUserId,
+        error: tokenUpdateError.message,
+      });
+    }
   }
 
   return { accessToken: accessToken!, row };
@@ -458,11 +466,19 @@ export async function getGoogleTokenForAnyGoogle(
     accessToken = refreshed.accessToken;
     expiresAt = refreshed.expiresAtIso;
 
-    await supabase
+    const { error: tokenUpdateError } = await supabaseAdmin
       .from("integrations")
       .update({ access_token_enc: accessToken ? encryptToken(accessToken) : null, expires_at: expiresAt })
       .eq("id", row.id)
       .eq("user_id", userId);
+
+    if (tokenUpdateError) {
+      console.error("[googleStats] Unable to persist refreshed Google token", {
+        integrationId: row.id,
+        userId,
+        error: tokenUpdateError.message,
+      });
+    }
   }
 
   return { accessToken, row };

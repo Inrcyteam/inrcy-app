@@ -1,5 +1,7 @@
 import "server-only";
 
+import { createHash } from "node:crypto";
+
 type SupabaseLike = {
   from: (table: string) => any;
 };
@@ -70,6 +72,12 @@ function clean(value: unknown, max = 160) {
     .trim()
     .replace(/[\u0000-\u001f\u007f]/g, "")
     .slice(0, max);
+}
+
+
+function deterministicEventId(value: string) {
+  const hex = createHash("sha256").update(value).digest("hex").slice(0, 32);
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
 function safeEventType(value: unknown): InrBadgeEventType {
@@ -187,20 +195,18 @@ export async function recordInrBadgeEvent(supabase: SupabaseLike, input: {
 
   try {
     if (dailyVisitKey) {
-      // Important : Supabase/PostgREST ne gère pas toujours bien un upsert
-      // sur un index unique partiel. On insère donc directement et on ignore
-      // uniquement les doublons journaliers. Sans ça, les vues et scans QR
-      // échouent silencieusement alors que les clics actions remontent bien.
-      const { error } = await supabase.from("inrbadge_events").insert(payload);
-      if (error) {
-        const dbError = error as { code?: string; message?: string };
-        const message = String(dbError.message || "").toLowerCase();
-        if (dbError.code === "23505" || message.includes("duplicate key")) {
-          return { ok: true, deduped: true };
-        }
-        throw error;
-      }
-      return { ok: true, deduped: false };
+      // Utilise un UUID déterministe par visite quotidienne puis un upsert
+      // sur la clé primaire. Cela évite les erreurs 23505 dans les logs tout
+      // en conservant la déduplication journalière déjà garantie par l'index.
+      const dailyPayload = {
+        ...payload,
+        id: deterministicEventId(dailyVisitKey),
+      };
+      const { error } = await supabase
+        .from("inrbadge_events")
+        .upsert(dailyPayload, { onConflict: "id", ignoreDuplicates: true });
+      if (error) throw error;
+      return { ok: true, deduped: true };
     }
 
     const { error } = await supabase.from("inrbadge_events").insert(payload);

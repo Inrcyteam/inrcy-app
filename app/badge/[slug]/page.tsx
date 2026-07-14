@@ -286,7 +286,7 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
       .maybeSingle(),
     supabaseAdmin
       .from("business_profiles")
-      .select("business_description,activity_description,services,services_text,intervention_zones,intervention_zones_text,opening_days,opening_hours,strengths,strengths_text")
+      .select("business_description,services,services_text,intervention_zones,intervention_zones_text,opening_days,opening_hours,strengths,strengths_text")
       .eq("user_id", userId)
       .order("updated_at", { ascending: false })
       .limit(1)
@@ -343,7 +343,7 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
   const zip = trim(profile.hq_zip);
   const city = trim(profile.hq_city);
   const country = trim(profile.hq_country) || "France";
-  const description = trim(business.business_description) || trim(business.activity_description);
+  const description = trim(business.business_description);
   const services = listFromUnknown(business.services).length ? listFromUnknown(business.services) : listFromUnknown(business.services_text);
   const zones = listFromUnknown(business.intervention_zones).length ? listFromUnknown(business.intervention_zones) : listFromUnknown(business.intervention_zones_text);
   const strengths = listFromUnknown(business.strengths).length ? listFromUnknown(business.strengths) : listFromUnknown(business.strengths_text);
