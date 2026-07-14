@@ -16,6 +16,7 @@ import ActiveAccountTabSync from "./_components/ActiveAccountTabSync";
 import ResponsiveBottomNav from "./_components/ResponsiveBottomNav";
 import DashboardUnsavedNavigationProvider from "./_components/DashboardUnsavedNavigationProvider";
 import SentryUserContext from "./_components/SentryUserContext";
+import ClientAuthSessionGuard from "./_components/ClientAuthSessionGuard";
 
 
 type SubscriptionGateRow = {
@@ -129,6 +130,7 @@ export default async function DashboardLayout({
       <ActiveAccountTabSync />
       <ProfileRealtimeBridge />
       <LastActiveTracker />
+      <ClientAuthSessionGuard />
       <SentryUserContext userId={user.id} accountId={accountScope.activeUserId} />
 
       <DashboardUnsavedNavigationProvider>
