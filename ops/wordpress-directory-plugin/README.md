@@ -1,6 +1,6 @@
 # Plugin iNrCy Annuaire
 
-Ce plugin affiche les profils iNrSearch publiés dans une vraie page HTML WordPress. Il évite l’iframe : les moteurs reçoivent les intitulés, les descriptions et les liens vers les profils dès le rendu initial.
+Ce plugin affiche les profils iNrSearch autorisés dans une vraie page HTML WordPress. Il évite l’iframe : les moteurs reçoivent les intitulés, les descriptions et les liens vers les profils dès le rendu initial. Les cartes sont présentées par 12, avec pagination.
 
 ## Installation
 
@@ -32,3 +32,5 @@ https://app.inrcy.com/api/public/inrsearch/directory
 ```
 
 Les filtres transmis sont `q`, `metier`, `secteur`, `ville`, `departement`, `region` et `page`. Les résultats sont mis en cache cinq minutes côté WordPress.
+
+Un profil n’est envoyé par l’API que si le professionnel a connecté sa page iNr’Search et autorisé séparément son affichage dans l’annuaire. La page peut donc rester publique et référencée tout en étant absente de l’annuaire.

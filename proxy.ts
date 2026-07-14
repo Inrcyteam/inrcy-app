@@ -647,6 +647,21 @@ export async function proxy(req: NextRequest) {
     return res;
   };
 
+  // L’annuaire public est hébergé sur inrcy.com. Les routes de classement
+  // de l’application restent internes et ne doivent pas devenir une seconde
+  // interface publique concurrente.
+  if (
+    pathname === "/entreprises"
+    || pathname.startsWith("/metiers")
+    || pathname.startsWith("/secteurs")
+  ) {
+    const url = req.nextUrl.clone();
+    url.protocol = "https:";
+    url.host = "inrcy.com";
+    url.pathname = "/annuaire/";
+    return applyResponseHeaders(NextResponse.redirect(url, 308));
+  }
+
   let userId: string | null | undefined;
   let subscriptionGate: SubscriptionGateRow | null | undefined;
 

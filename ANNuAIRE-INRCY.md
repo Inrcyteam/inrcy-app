@@ -8,8 +8,12 @@ Cette version de l’application contient la connexion entre iNrSearch et la pag
 - la recherche par entreprise, métier, secteur, ville, département et région ;
 - la pagination, les facettes et le cache ;
 - uniquement les profils iNrSearch publiés et éligibles ;
+- la connexion SEO et la présence dans l’annuaire sont deux choix séparés du professionnel ;
+- le code postal du profil alimente automatiquement le département et la région ;
 - des liens vers les pages publiques `/entreprises/{slug}` ;
 - le pont WordPress dans `ops/wordpress-directory-plugin/`.
+
+Les routes techniques `/entreprises`, `/metiers` et `/secteurs` redirigent vers `https://inrcy.com/annuaire/`. La fiche individuelle `/entreprises/{slug}` reste accessible uniquement lorsque la page du professionnel est connectée.
 
 ## Mise en ligne
 

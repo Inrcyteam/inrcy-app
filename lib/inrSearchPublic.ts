@@ -4,6 +4,7 @@ import { getChannelConnectionStates } from "@/lib/channelConnectionState";
 import { filterEligibleInrSearchAccountIds, getInrSearchPublicationEligibility } from "@/lib/inrSearchEligibility";
 import { resolveProfileLogoUrl } from "@/lib/profileLogo";
 import { createInrBadgePublicUrl, createInrBadgeQrTrackingUrl } from "@/lib/inrBadge";
+import { resolveFrenchGeography } from "@/lib/frenchGeography";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export type InrSearchSectionKey =
@@ -787,7 +788,10 @@ async function listPublishedInrSearchCompaniesUncached(): Promise<PublishedInrSe
     .map((row) => {
       const config = asRecord(asRecord(row.settings).inrSearch);
       const slug = normalizeInrSearchDirectorySlug(config.slug);
-      if (config.enabled !== true || !slug) return null;
+      const directoryEnabled = typeof config.directoryEnabled === "boolean"
+        ? config.directoryEnabled
+        : config.enabled === true;
+      if (config.enabled !== true || !directoryEnabled || !slug) return null;
       return { userId: row.user_id, slug, config };
     })
     .filter((item): item is { userId: string; slug: string; config: Record<string, unknown> } => Boolean(item));
@@ -825,18 +829,19 @@ async function listPublishedInrSearchCompaniesUncached(): Promise<PublishedInrSe
         || clean(business.business_description || business.activity_description, 300)
         || `${companyName}${clean(profile.hq_city, 120) ? ` à ${clean(profile.hq_city, 120)}` : ""}.`;
       const city = clean(profile.hq_city, 120);
+      const geography = resolveFrenchGeography(profile.hq_zip, city);
       const department = clean(
         profile.hq_department
           || profile.department
           || profile.address_department,
         120,
-      );
+      ) || geography?.department || "";
       const region = clean(
         profile.hq_region
           || profile.region
           || profile.address_region,
         160,
-      );
+      ) || geography?.region || "";
       const profession = clean(decodedSector.profession, 180);
       const sectorLabel = getActivitySectorLabel(decodedSector.sectorCategory);
       return {

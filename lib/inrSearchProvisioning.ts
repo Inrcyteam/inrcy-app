@@ -155,25 +155,38 @@ export async function ensureSystemManagedInrSearch(
 
   const canPublish = Boolean(companyName && slug);
   const now = new Date().toISOString();
+  // La synchronisation prépare la page, mais ne doit jamais la connecter à la
+  // place du professionnel. Les anciennes pages déjà publiées restent actives.
   const wasEnabled = current.enabled === true && Boolean(preservedSlug);
+  const pageEnabled = canPublish && current.enabled === true;
+  // Compatibilité : les anciennes configurations n'ont pas encore le choix
+  // annuaire. Leur présence actuelle doit être conservée sans modifier leur
+  // visibilité lors de cette migration.
+  const directoryEnabled = pageEnabled && (
+    typeof current.directoryEnabled === "boolean"
+      ? current.directoryEnabled
+      : wasEnabled
+  );
   const next = {
     ...current,
-    enabled: canPublish,
+    enabled: pageEnabled,
     slug,
     publishedSlug: canPublish ? slug : "",
+    directoryEnabled,
     slugLocked: canPublish,
-    publishedAt: canPublish ? clean(current.publishedAt, 80) || now : null,
+    publishedAt: pageEnabled ? clean(current.publishedAt, 80) || now : null,
     pageTitle: companyName,
     pageDescription: description,
     sections: { ...DEFAULT_SECTIONS },
     systemManaged: true,
     updatedAt: clean(current.updatedAt, 80) || now,
-    indexingRequestedAt: canPublish ? clean(current.indexingRequestedAt, 80) || now : null,
+    indexingRequestedAt: pageEnabled ? clean(current.indexingRequestedAt, 80) || now : null,
   };
 
   const changed =
     current.systemManaged !== true ||
     current.enabled !== next.enabled ||
+    current.directoryEnabled !== next.directoryEnabled ||
     normalizeSlug(current.slug) !== slug ||
     clean(current.pageTitle, 160) !== companyName ||
     clean(current.pageDescription, 320) !== description ||
@@ -181,16 +194,16 @@ export async function ensureSystemManagedInrSearch(
 
   if (changed) {
     next.updatedAt = now;
-    if (canPublish) next.indexingRequestedAt = now;
+    if (pageEnabled) next.indexingRequestedAt = now;
     await supabaseAdmin
       .from("pro_tools_configs")
       .upsert({ user_id: activeUserId, settings: { ...root, inrSearch: next } }, { onConflict: "user_id" });
 
     revalidateInrSearchPublicRoutes(slug);
-    if (canPublish) {
+    if (pageEnabled) {
       await notifyInrSearchIndexing(slug);
     }
-  } else if (!wasEnabled && canPublish) {
+  } else if (!wasEnabled && pageEnabled) {
     revalidateInrSearchPublicRoutes(slug);
   }
 

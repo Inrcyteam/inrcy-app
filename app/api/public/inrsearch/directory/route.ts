@@ -9,7 +9,7 @@ import {
 
 export const revalidate = 300;
 
-const DEFAULT_PAGE_SIZE = 24;
+const DEFAULT_PAGE_SIZE = 12;
 const MAX_PAGE_SIZE = 48;
 
 function normalizeText(value: string | null) {
