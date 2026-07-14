@@ -79,30 +79,14 @@ function normStatus(s: any) {
 }
 
 async function legacyOverrideDisconnected(
-  supabase: any,
-  userId: string,
-  provider: string,
-  source: string,
-  product: string
+  _supabase: any,
+  _userId: string,
+  _provider: string,
+  _source: string,
+  _product: string
 ) {
-  // Table legacy vue dans Supabase : public.integrations_statistiques (fournisseur/source/produit/statut)
-  try {
-    const { data } = await supabase
-      .from("integrations_statistiques")
-      .select("statut")
-      .eq("id_utilisateur", userId)
-      .eq("fournisseur", provider)
-      .eq("source", source)
-      .eq("produit", product)
-      .order("identifiant", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    const st = normStatus((data as any)?.statut);
-    if (st.includes("deconnect") || st.includes("disconnected")) return true;
-  } catch {
-    // ignore if table/columns do not exist
-  }
+  // The legacy integrations_statistiques table is no longer part of the current schema.
+  // Current connection state is sourced exclusively from public.integrations.
   return false;
 }
 

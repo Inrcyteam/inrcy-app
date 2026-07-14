@@ -381,12 +381,16 @@ async function verifySupabaseJwt(jwt: string): Promise<string | null> {
 }
 
 async function getUserId(req: NextRequest): Promise<string | null> {
-  for (const jwt of getJwtCandidates(req)) {
-    const verifiedUserId = await verifySupabaseJwt(jwt);
-    if (verifiedUserId) return verifiedUserId;
-  }
+  const candidates = getJwtCandidates(req)
+    .map((jwt) => ({ jwt, payload: tryGetJwtPayload(jwt) }))
+    .filter(({ jwt, payload }) => Boolean(tryGetUserIdFromJwt(jwt)) && !isJwtExpired(jwt) && typeof payload?.exp === "number")
+    .sort((a, b) => Number(b.payload?.exp || 0) - Number(a.payload?.exp || 0));
 
-  return null;
+  // Supabase can leave several historical auth-cookie candidates during refreshes.
+  // Checking only the newest valid candidate avoids repeated /auth/v1/user 403 warnings
+  // while preserving server-side verification of the active JWT.
+  const newest = candidates[0]?.jwt;
+  return newest ? verifySupabaseJwt(newest) : null;
 }
 
 function getSupabaseHeaders(): HeadersInit | null {

@@ -104,30 +104,6 @@ export async function buildStatsConnectionSignature(
     // best effort: the caller will still get a stable fallback signature
   }
 
-  try {
-    const { data = [] } = await supabase
-      .from("integrations_statistiques")
-      .select("provider,source,product,status,resource_id")
-      .eq("user_id", userId);
-
-    const rows = Array.isArray(data) ? data : [];
-    rows
-      .map((row) => {
-        const rec = asRecord(row);
-        return {
-          provider: String(rec.provider ?? ""),
-          source: String(rec.source ?? ""),
-          product: String(rec.product ?? ""),
-          status: String(rec.status ?? ""),
-          resource_id: String(rec.resource_id ?? ""),
-        };
-      })
-      .filter((row) => row.provider || row.source || row.product)
-      .sort((a, b) => stableStringify(a).localeCompare(stableStringify(b)))
-      .forEach((row) => pushPart(parts, "legacy_integration", row));
-  } catch {
-    // Legacy table may not exist on every install.
-  }
 
   try {
     const { data } = await supabase

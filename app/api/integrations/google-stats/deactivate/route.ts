@@ -30,9 +30,6 @@ export async function POST(req: Request) {
     if (source !== "site_inrcy") return NextResponse.json({ error: "La source demandée n'est pas reconnue." }, { status: 400 });
 
     await supabaseAdmin.from("integrations").update({ status: "disconnected", access_token_enc: null, refresh_token_enc: null, expires_at: null }).eq("user_id", userId).eq("provider", "google").eq("source", "site_inrcy").in("product", ["ga4", "gsc"]);
-    try {
-      await supabase.from("integrations_statistiques").update({ statut: "déconnecté" }).eq("id_utilisateur", userId).eq("fournisseur", "Google").eq("source", "site_inrcy").in("produit", ["ga4", "gsc"]);
-    } catch {}
 
     const { data: cfg } = await supabase.from("inrcy_site_configs").select("settings").eq("user_id", userId).maybeSingle();
     const current = safeJsonParse<SiteSettings>(asRecord(cfg)["settings"], {});

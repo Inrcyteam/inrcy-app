@@ -831,26 +831,6 @@ async function loadPreviousOverviewCandidate(args: {
     } catch {}
   }
 
-  for (const prefix of prefixes) {
-    try {
-      const { data: rows = [] } = await supabase
-        .from("cache_statistiques")
-        .select("charge_utile, cree_a")
-        .eq("id_utilisateur", userId)
-        .eq("source", "apercu")
-        .like("plage_cle", `${prefix}%`)
-        .order("cree_a", { ascending: false })
-        .limit(12);
-
-      for (const row of Array.isArray(rows) ? rows : []) {
-        const candidate = asRecord(asRecord(row)["charge_utile"]);
-        if (!candidate || Object.keys(candidate).length === 0) continue;
-        if (!identitiesCompatible(currentPayload, candidate, cube)) continue;
-        if (!cubeHasUsableData(candidate, cube)) continue;
-        return candidate;
-      }
-    } catch {}
-  }
 
   return null;
 }
@@ -1098,11 +1078,7 @@ export async function buildStatsOverview(args: {
     )
     .eq("user_id", userId);
 
-  // Legacy table (older installs) used by some utilities (keep best-effort).
-  const { data: integrationsLegacyAll = [] } = await supabase
-    .from("integrations_statistiques")
-    .select("provider,source,product,status,resource_id,updated_at,created_at")
-    .eq("user_id", userId);
+
 
   function latestIntegrationAny(
     provider: string,
@@ -1432,8 +1408,7 @@ export async function buildStatsOverview(args: {
   //
   // On fabrique donc un "snapshot" léger des statuts, en lisant :
   // - integrations (nouveau)
-  // - integrations_statistiques (legacy) si présent
-  async function buildConnectionsKey() {
+    async function buildConnectionsKey() {
     const keyParts: string[] = [];
 
     // 1) new system snapshot (integrations table)
@@ -1457,27 +1432,7 @@ export async function buildStatsOverview(args: {
       }
     } catch {}
 
-    // 2) legacy snapshot (integrations_statistiques)
-    try {
-      const rows = Array.isArray(integrationsLegacyAll)
-        ? (integrationsLegacyAll as unknown[])
-        : [];
-      for (const r of rows) {
-        const rr = asRecord(r);
-        const provider = String(rr["provider"] ?? "");
-        const source = String(rr["source"] ?? "");
-        const product = String(rr["product"] ?? "");
-        const status = String(rr["status"] ?? "");
-        const resource = String(rr["resource_id"] ?? "");
-        const updated = String(rr["updated_at"] ?? rr["created_at"] ?? "");
-        if (!provider || !source || !product) continue;
-        keyParts.push(
-          `legacy:${provider}:${source}:${product}:${status}:${resource}:${updated}`,
-        );
-      }
-    } catch {}
-
-    // 3) persisted site settings must also invalidate the cache, otherwise
+    // 2) persisted site settings must also invalidate the cache, otherwise
     // iNrStats can keep an old disconnected snapshot even after the bubble saved
     // GA4/GSC ids successfully.
     try {
@@ -1902,43 +1857,6 @@ export async function buildStatsOverview(args: {
       // Table stats_cache non présente ou non accessible : on ignore.
     }
 
-  // Cache legacy (best-effort)
-  if (!fresh)
-    try {
-      const { data: legacyHit } = await supabase
-        .from("cache_statistiques")
-        .select("charge_utile, cree_a")
-        .eq("id_utilisateur", userId)
-        .eq("source", "apercu")
-        .eq("plage_cle", rangeKey)
-        .order("cree_a", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-
-      if (asRecord(legacyHit)["charge_utile"]) {
-        let payload = stripPinterestApiMetricsFromPayload(asRecord(asRecord(legacyHit)["charge_utile"]));
-        // Rehydrate all live connection flags to avoid stale/missing keys in legacy cached payloads.
-        try {
-          const liveSources = await fetchLiveSourcesStatus();
-          payload["sources"] = mergeCachedSourcesWithLiveState(
-            payload["sources"],
-            liveSources,
-          );
-        } catch {}
-        payload = await hydratePinterestMetricsOnPayload(payload);
-        const stabilizedPayload = await stabilizeOverviewPayload({
-          supabase,
-          userId,
-          days,
-          includeRaw,
-          includeAll,
-          payload,
-        });
-        return stabilizedPayload as OverviewPayload;
-      }
-    } catch {
-      // ignore
-    }
 
   // --- GA4/GSC properties ---
   // iNrCy site settings live in `inrcy_site_configs.settings` (root ga4/gsc)
@@ -2964,33 +2882,7 @@ export async function buildStatsOverview(args: {
   try {
     const gmbRow = latestIntegrationAny("google", "gmb", "gmb");
 
-    // Legacy override (older table)
-    let legacyResource = "";
-    try {
-      const legacyRows = Array.isArray(integrationsLegacyAll)
-        ? (integrationsLegacyAll as unknown[])
-        : [];
-      const legacy = legacyRows
-        .map((r) => asRecord(r))
-        .filter(
-          (r) =>
-            r["provider"] === "google" &&
-            r["source"] === "gmb" &&
-            r["product"] === "gmb" &&
-            r["status"] === "connected",
-        )
-        .sort((a, b) => {
-          const aa = new Date(
-            String(a["updated_at"] ?? a["created_at"] ?? 0),
-          ).getTime();
-          const bb = new Date(
-            String(b["updated_at"] ?? b["created_at"] ?? 0),
-          ).getTime();
-          return bb - aa;
-        })[0];
-      legacyResource = String(asRecord(legacy)["resource_id"] || "");
-    } catch {}
-
+    const legacyResource = "";
     const resourceId = String(gmbRow["resource_id"] || legacyResource || "");
     sourcesStatus.gmb.connected = isStatsActiveConnection(channelStates.gmb);
 
@@ -3223,15 +3115,7 @@ export async function buildStatsOverview(args: {
     );
   } catch {}
 
-  // cache legacy write (best-effort)
-  try {
-    await supabase.from("cache_statistiques").insert({
-      id_utilisateur: userId,
-      source: "apercu",
-      plage_cle: rangeKey,
-      charge_utile: stripPinterestApiMetricsFromPayload(payload),
-    });
-  } catch {}
+
 
   return payload as OverviewPayload;
 }

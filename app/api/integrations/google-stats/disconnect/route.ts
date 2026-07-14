@@ -82,16 +82,6 @@ export async function POST(request: Request) {
   }
 
   try {
-    await supabaseAdmin
-      .from("integrations_statistiques")
-      .update({ statut: "déconnecté" })
-      .eq("id_utilisateur", userId)
-      .eq("fournisseur", "Google")
-      .eq("source", source)
-      .eq("produit", product);
-  } catch {}
-
-  try {
     if (source === "site_web") {
       const { data } = await supabaseAdmin.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();
       const current = asRecord(asRecord(data)["settings"]);
