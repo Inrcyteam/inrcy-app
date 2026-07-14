@@ -345,10 +345,14 @@ async function handler(req: Request) {
       });
     } catch (error) {
       if (!force) {
-        await supabase.rpc("release_daily_stats_refresh_claim", {
-          p_user_id: activeUserId,
-          p_snapshot_date: snapshotDate,
-        }).catch(() => undefined);
+        try {
+          await supabase.rpc("release_daily_stats_refresh_claim", {
+            p_user_id: activeUserId,
+            p_snapshot_date: snapshotDate,
+          });
+        } catch {
+          // Best-effort cleanup: the original refresh error remains the one returned.
+        }
       }
       throw error;
     }
