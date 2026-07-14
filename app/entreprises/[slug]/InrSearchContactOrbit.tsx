@@ -95,7 +95,7 @@ export default function InrSearchContactOrbit({
       <div className={styles.contactOrbitHeader}>
         <div>
           <span className={styles.contactOrbitEyebrow}>Générateur de convergence</span>
-          <h2>Choisissez votre voie. L’énergie fait le lien.</h2>
+          <h2>Contacter {companyName}</h2>
           <p>Passez de l’intérêt à l’action : choisissez le canal le plus simple et envoyez à {companyName} une demande claire, utile et exploitable.</p>
         </div>
         <span className={styles.contactOrbitStatus}><i /> {signals.length} voie{signals.length > 1 ? "s" : ""} de contact</span>

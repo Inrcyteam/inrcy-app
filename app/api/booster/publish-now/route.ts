@@ -95,7 +95,7 @@ import {
   getVariantForChannel,
   type BoosterVideoTransformedVariant,
 } from "@/lib/boosterVideoTransforms";
-import { ensureSystemManagedInrSearch, revalidateInrSearchPublicRoutes } from "@/lib/inrSearchProvisioning";
+import { ensureSystemManagedInrSearch, notifyInrSearchIndexing, revalidateInrSearchPublicRoutes } from "@/lib/inrSearchProvisioning";
 import { buildInrSearchPublicUrl, getInrSearchPublicStatus } from "@/lib/inrSearchPublic";
 import { limitBoosterChannelContent } from "@/lib/boosterChannelRules";
 import {
@@ -3551,7 +3551,9 @@ async function publishNowHandler(req: Request) {
 
     if (summary.successChannels.includes("inr_search")) {
       const provisioned = await ensureSystemManagedInrSearch(supabaseAdmin as any, userId);
-      revalidateInrSearchPublicRoutes(provisioned.inrSearch.slug);
+      const slug = String(provisioned.inrSearch?.publishedSlug || provisioned.inrSearch?.slug || "");
+      revalidateInrSearchPublicRoutes(slug);
+      await notifyInrSearchIndexing(slug);
     }
 
     const responsePayload = {

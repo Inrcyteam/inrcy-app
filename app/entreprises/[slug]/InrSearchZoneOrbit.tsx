@@ -102,7 +102,7 @@ export default function InrSearchZoneOrbit({ companyName, city, profession, zone
       <div className={styles.zoneOrbitHeader}>
         <div>
           <span className={styles.zoneOrbitEyebrow}>Radar d’intervention</span>
-          <h2 id="zones-title">La proximité devient un signal clair</h2>
+          <h2 id="zones-title">Zone d’intervention de {companyName}</h2>
           <p>Vérifiez vite si {companyName} peut intervenir près de vous, puis transformez une simple recherche locale en demande prête à traiter.</p>
         </div>
         <div className={styles.zoneOrbitNavigator} aria-label="Naviguer entre les zones d’intervention">

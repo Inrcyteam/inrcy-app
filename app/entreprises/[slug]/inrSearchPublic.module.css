@@ -3375,8 +3375,7 @@
   filter: blur(28px);
 }
 
-.page [data-orbit-section][aria-hidden="true"] *,
-.page [data-orbit-section][inert] * {
+.page [data-orbit-section][data-orbit-inactive] * {
   animation-play-state: paused !important;
 }
 
@@ -9439,7 +9438,7 @@
   outline-offset: 3px;
 }
 
-.orbitPanel[aria-hidden="true"] {
+.orbitPanel[data-orbit-inactive] {
   pointer-events: none;
 }
 
@@ -11563,6 +11562,65 @@
 .faqOrbitExperience { grid-template-rows: auto minmax(0, 1fr) auto; }
 .faqOrbitHeader > div:first-child { max-width: 900px; }
 
+/* iNr'Guide : recherche légère dans les réponses vérifiées, sans déplacer l'orbit. */
+.faqGuide {
+  width: min(100%, 690px);
+  margin-top: 16px;
+}
+.faqGuide > label {
+  display: block;
+  margin-bottom: 7px;
+  color: rgba(224, 232, 255, .55);
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.faqGuideRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px;
+  border: 1px solid rgba(126, 213, 255, .2);
+  border-radius: 999px;
+  background: rgba(7, 15, 41, .56);
+  box-shadow: inset 0 1px rgba(255, 255, 255, .04), 0 10px 30px rgba(0, 0, 0, .14);
+}
+.faqGuideRow input {
+  min-width: 0;
+  flex: 1 1 auto;
+  height: 34px;
+  padding: 0 12px;
+  border: 0;
+  outline: 0;
+  color: #f7f4ff;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+}
+.faqGuideRow input::placeholder { color: rgba(226, 233, 255, .42); }
+.faqGuideRow input:focus-visible { box-shadow: 0 0 0 2px rgba(84, 226, 255, .28); border-radius: 999px; }
+.faqGuideRow button {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 122, 69, .34);
+  border-radius: 999px;
+  color: #fff;
+  background: linear-gradient(90deg, rgba(139, 92, 246, .65), rgba(255, 122, 69, .7));
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 900;
+}
+.faqGuideRow button:hover { filter: brightness(1.12); transform: translateY(-1px); }
+.faqGuide output {
+  display: block;
+  margin-top: 7px;
+  color: rgba(228, 236, 255, .6);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
 .faqOrbitStage {
   position: relative;
   min-height: 0;
@@ -11946,8 +12004,7 @@
   overflow: hidden;
 }
 
-.page [data-orbit-section][aria-hidden="true"] *,
-.page [data-orbit-section][inert] * { animation-play-state: paused !important; }
+.page [data-orbit-section][data-orbit-inactive] * { animation-play-state: paused !important; }
 
 .topbar {
   position: fixed;

@@ -97,7 +97,7 @@ export default function InrSearchStrengthsOrbit({ companyName, strengths, inrBad
       <div className={styles.strengthOrbitHeader}>
         <div>
           <span className={styles.strengthOrbitEyebrow}>Confiance en mouvement</span>
-          <h2 id="points-forts-title">Chaque engagement transmet son énergie</h2>
+          <h2 id="points-forts-title">Les points forts de {companyName}</h2>
           <p>Chaque force devient une raison claire de passer à l’action : comprenez ce qui rassure, puis contactez {companyName} avec un besoin déjà cadré.</p>
         </div>
       </div>

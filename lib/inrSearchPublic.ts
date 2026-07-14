@@ -96,6 +96,10 @@ export type PublishedInrSearchCompany = {
   pageDescription: string;
   city: string;
   citySlug: string;
+  department: string;
+  departmentSlug: string;
+  region: string;
+  regionSlug: string;
   profession: string;
   professionSlug: string;
   sectorCategory: string;
@@ -300,6 +304,17 @@ function arrayFromUnknown(value: unknown): unknown[] {
   return Array.isArray(value) ? value : [];
 }
 
+async function loadRowsInBatches<T>(buildQuery: () => any, pageSize = 1000) {
+  const rows: T[] = [];
+  for (let offset = 0; offset < 100_000; offset += pageSize) {
+    const result = await buildQuery().range(offset, offset + pageSize - 1);
+    if (result.error || !Array.isArray(result.data)) return null;
+    rows.push(...(result.data as T[]));
+    if (result.data.length < pageSize) break;
+  }
+  return rows;
+}
+
 function publicationImageUrl(payload: Record<string, unknown>, post: Record<string, unknown>) {
   const video = asRecord(post.video || payload.video);
   const candidates = [
@@ -372,13 +387,15 @@ async function findPublishedConfigBySlug(slug: string) {
 
   if (!direct.error && direct.data) return direct.data as { user_id: string; settings: unknown };
 
-  const fallback = await supabaseAdmin
-    .from("pro_tools_configs")
-    .select("user_id,settings")
-    .limit(2000);
+  const fallback = await loadRowsInBatches<{ user_id: string; settings: unknown }>(
+    () => supabaseAdmin
+      .from("pro_tools_configs")
+      .select("user_id,settings")
+      .order("user_id", { ascending: true }),
+  );
 
-  if (fallback.error || !Array.isArray(fallback.data)) return null;
-  return (fallback.data as Array<{ user_id: string; settings: unknown }>).find((row) => {
+  if (!fallback) return null;
+  return fallback.find((row) => {
     const config = asRecord(asRecord(row.settings).inrSearch);
     return config.enabled === true && normalizeInrSearchDirectorySlug(config.slug) === normalizedSlug;
   }) ?? null;
@@ -673,7 +690,12 @@ async function loadInrSearchPublicPageUncached(slug: string): Promise<InrSearchP
 
   const faq = buildFaq({ companyName, profession, city, services, zones, customerTypes, phone, email, openingDays, openingHours });
   const publications = normalizeBoosterPublicationEvents(boosterEventsRes.data);
-  const updatedAt = latestIsoDate([config.updatedAt, business.updated_at, publications[0]?.createdAt]);
+  const updatedAt = latestIsoDate([
+    config.updatedAt,
+    profile.updated_at,
+    business.updated_at,
+    publications[0]?.createdAt,
+  ]);
 
   return {
     userId,
@@ -752,14 +774,16 @@ export async function getInrSearchPublicStatus(slugValue: unknown): Promise<InrS
 
 
 async function listPublishedInrSearchCompaniesUncached(): Promise<PublishedInrSearchCompany[]> {
-  const configsRes = await supabaseAdmin
-    .from("pro_tools_configs")
-    .select("user_id,settings")
-    .limit(2000);
+  const configRows = await loadRowsInBatches<{ user_id: string; settings: unknown }>(
+    () => supabaseAdmin
+      .from("pro_tools_configs")
+      .select("user_id,settings")
+      .order("user_id", { ascending: true }),
+  );
 
-  if (configsRes.error || !Array.isArray(configsRes.data)) return [];
+  if (!configRows) return [];
 
-  const configs = (configsRes.data as Array<{ user_id: string; settings: unknown }>)
+  const configs = configRows
     .map((row) => {
       const config = asRecord(asRecord(row.settings).inrSearch);
       const slug = normalizeInrSearchDirectorySlug(config.slug);
@@ -801,6 +825,18 @@ async function listPublishedInrSearchCompaniesUncached(): Promise<PublishedInrSe
         || clean(business.business_description || business.activity_description, 300)
         || `${companyName}${clean(profile.hq_city, 120) ? ` à ${clean(profile.hq_city, 120)}` : ""}.`;
       const city = clean(profile.hq_city, 120);
+      const department = clean(
+        profile.hq_department
+          || profile.department
+          || profile.address_department,
+        120,
+      );
+      const region = clean(
+        profile.hq_region
+          || profile.region
+          || profile.address_region,
+        160,
+      );
       const profession = clean(decodedSector.profession, 180);
       const sectorLabel = getActivitySectorLabel(decodedSector.sectorCategory);
       return {
@@ -810,12 +846,20 @@ async function listPublishedInrSearchCompaniesUncached(): Promise<PublishedInrSe
         pageDescription,
         city,
         citySlug: normalizeInrSearchDirectorySlug(city),
+        department,
+        departmentSlug: normalizeInrSearchDirectorySlug(department),
+        region,
+        regionSlug: normalizeInrSearchDirectorySlug(region),
         profession,
         professionSlug: normalizeInrSearchDirectorySlug(profession),
         sectorCategory: decodedSector.sectorCategory,
         sectorLabel,
         sectorSlug: normalizeInrSearchDirectorySlug(sectorLabel),
-        updatedAt: clean(item.config.updatedAt || business.updated_at, 80) || null,
+        updatedAt: latestIsoDate([
+          item.config.updatedAt,
+          profile.updated_at,
+          business.updated_at,
+        ]),
       };
     })
     .sort((a, b) => a.companyName.localeCompare(b.companyName, "fr"));

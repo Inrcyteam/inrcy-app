@@ -169,7 +169,7 @@ export default function InrSearchSettingsContent() {
           : publication.reason === "data_unavailable"
             ? "La page est en cours de synchronisation. Actualisez dans quelques secondes."
             : isPublished
-              ? "La page est publiée et mise à jour automatiquement par iNrCy."
+              ? "La page est publiée, mise à jour automatiquement et signalée aux moteurs lors des nouvelles publications."
               : "La page est en cours de synchronisation automatique.";
 
   return (
@@ -180,7 +180,7 @@ export default function InrSearchSettingsContent() {
         <div style={{ display: "grid", gap: 5 }}>
           <div className={styles.blockTitle}>Page publique iNr&apos;Search</div>
           <div className={styles.smallMuted}>
-            iNrCy crée, organise et actualise automatiquement cette page pour le professionnel.
+            iNrCy transforme les informations du professionnel en une présence publique claire, vivante et exploitable par les moteurs de recherche.
           </div>
         </div>
         <span
@@ -205,18 +205,18 @@ export default function InrSearchSettingsContent() {
       </div>
 
       <div style={cardStyle}>
-        <div className={styles.blockTitle}>Aucune saisie nécessaire</div>
+        <div className={styles.blockTitle}>Une page qui travaille en continu</div>
         <div className={styles.smallMuted}>
-          La page est alimentée automatiquement par les informations déjà présentes dans iNrCy. Le professionnel n’a pas à choisir ses rubriques ni à recopier ses données.
+          La page est alimentée automatiquement par les informations déjà présentes dans iNrCy. Le professionnel n’a pas à choisir ses rubriques ni à recopier ses données : son activité, ses preuves et ses réponses restent cohérentes partout.
         </div>
         <div style={{ display: "grid", gap: 8, gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))" }}>
           {[
-            ["Profil", "Identité, logo et coordonnées"],
-            ["Mon activité", "Métier, prestations et zones"],
-            ["Médiathèque", "Photos et visuels"],
-            ["Booster / Publier", "Actualités réellement diffusées"],
-            ["iNr’Badge", "QR Code et fiche de contact"],
-            ["Canaux connectés", "Site, Google Business et réseaux"],
+            ["Référencement", "Titre, description et données structurées"],
+            ["Moteurs IA", "Synthèse factuelle et source dédiée"],
+            ["Mon activité", "Métier, prestations et zones confirmées"],
+            ["Preuves", "Photos, réalisations et actualités"],
+            ["iNr’Guide", "Réponses vérifiées pour guider les visiteurs"],
+            ["Conversion", "Contact, téléphone, site et réseaux"],
           ].map(([title, text]) => (
             <div key={title} style={{ border: "1px solid rgba(255,255,255,0.10)", borderRadius: 12, padding: 11, background: "rgba(15,23,42,0.42)", display: "grid", gap: 3 }}>
               <strong>{title}</strong>

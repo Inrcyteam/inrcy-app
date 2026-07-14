@@ -23,7 +23,7 @@ import {
 import { buildVideoSettingsByChannel, normalizeChannelVideoSettings } from "@/lib/boosterVideoSettings";
 import { INSTAGRAM_RECONNECT_USER_MESSAGE, isInstagramAuthorizationLikeMessage } from "@/lib/userFacingErrors";
 import { getPublishChannelUserMessage, logPublishChannelFailure } from "@/lib/channelPublishDiagnostics";
-import { ensureSystemManagedInrSearch, revalidateInrSearchPublicRoutes } from "@/lib/inrSearchProvisioning";
+import { ensureSystemManagedInrSearch, notifyInrSearchIndexing, revalidateInrSearchPublicRoutes } from "@/lib/inrSearchProvisioning";
 import { getInrSearchPublicStatus } from "@/lib/inrSearchPublic";
 import { limitBoosterChannelContent } from "@/lib/boosterChannelRules";
 
@@ -1104,6 +1104,7 @@ async function replaceChannelDelivery(params: {
       throw new Error("La page iNr’Search n’est pas disponible. Vérifiez Bubble Access et les informations du profil.");
     }
     revalidateInrSearchPublicRoutes(slug);
+    await notifyInrSearchIndexing(slug);
     return {
       externalId: previousExternalId || publicationId || randomUUID(),
       status: "delivered",
@@ -1739,6 +1740,7 @@ async function removeChannelDelivery(params: {
     const provisioned = await ensureSystemManagedInrSearch(supabaseAdmin, userId);
     const slug = String(provisioned.inrSearch?.publishedSlug || provisioned.inrSearch?.slug || "").trim();
     revalidateInrSearchPublicRoutes(slug);
+    await notifyInrSearchIndexing(slug);
     return;
   }
 
@@ -2091,7 +2093,9 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
       await syncDeliveryRow({ userId: activeUserId, publicationId, channel, status: replaceResult.status, error: replaceResult.error });
       if (channel === "inr_search") {
         const provisioned = await ensureSystemManagedInrSearch(supabaseAdmin, activeUserId);
-        revalidateInrSearchPublicRoutes(String(provisioned.inrSearch?.publishedSlug || provisioned.inrSearch?.slug || ""));
+        const slug = String(provisioned.inrSearch?.publishedSlug || provisioned.inrSearch?.slug || "");
+        revalidateInrSearchPublicRoutes(slug);
+        await notifyInrSearchIndexing(slug);
       }
 
       return NextResponse.json({ ok: true, publication_id: publicationId, channel, external_id: replaceResult.externalId, payload: nextPayload });
@@ -2146,7 +2150,9 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
       await syncDeliveryRow({ userId: activeUserId, publicationId, channel, status: "deleted", error: null });
       if (channel === "inr_search") {
         const provisioned = await ensureSystemManagedInrSearch(supabaseAdmin, activeUserId);
-        revalidateInrSearchPublicRoutes(String(provisioned.inrSearch?.publishedSlug || provisioned.inrSearch?.slug || ""));
+        const slug = String(provisioned.inrSearch?.publishedSlug || provisioned.inrSearch?.slug || "");
+        revalidateInrSearchPublicRoutes(slug);
+        await notifyInrSearchIndexing(slug);
       }
 
       return NextResponse.json({ ok: true, deleted: true, removed_publication: false, payload: nextPayload });

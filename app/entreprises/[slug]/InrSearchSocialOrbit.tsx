@@ -55,7 +55,7 @@ export default function InrSearchSocialOrbit({ companyName, logoUrl, profession,
       <div className={styles.socialOrbitHeader}>
         <div>
           <span className={styles.socialOrbitEyebrow}>Système solaire numérique</span>
-          <h2>Tout l’écosystème de {companyName}, enfin visible.</h2>
+          <h2>Présence en ligne de {companyName}</h2>
           <p>Explorez les preuves en ligne avant de choisir : réseaux, site et profils publics renforcent la confiance avant le premier message.</p>
         </div>
         <span className={styles.socialOrbitCount}><strong>{String(total).padStart(2, "0")}</strong> présence{total > 1 ? "s" : ""} en ligne</span>

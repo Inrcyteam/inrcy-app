@@ -26,8 +26,10 @@ import {
   rgbTriplet,
 } from "@/lib/inrSearchVisualIdentity";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
+// Keep the visual experience server-rendered, while allowing crawlers and users
+// to benefit from a short-lived cache. Publication flows already invalidate
+// the public routes when the underlying profile changes.
+export const revalidate = 300;
 
 type PageProps = {
   params: Promise<{ slug: string }>;
@@ -234,10 +236,6 @@ function buildFactualSummary(data: InrSearchPublicPageData) {
 
 function buildPresentationLead(data: InrSearchPublicPageData) {
   const intro = data.description?.trim();
-  if (intro) {
-    return intro;
-  }
-
   const services = data.services.length
     ? `Elle accompagne ses clients sur ${joinFrenchList(data.services.slice(0, 4).map(lowerInitial))}.`
     : "";
@@ -248,7 +246,7 @@ function buildPresentationLead(data: InrSearchPublicPageData) {
     ? `Elle intervient notamment à ${joinFrenchList(data.zones.slice(0, 4))}.`
     : "";
 
-  return [
+  const generatedIdentity = [
     data.companyName,
     data.profession
       ? `est une ${lowerInitial(data.profession)}`
@@ -256,10 +254,9 @@ function buildPresentationLead(data: InrSearchPublicPageData) {
         ? `évolue dans le secteur ${lowerInitial(data.sectorLabel)}`
         : "est une entreprise locale",
     data.city ? `basée à ${data.city}.` : ".",
-    services,
-    audience,
-    zones,
-  ]
+  ].join(" ");
+
+  return [intro || generatedIdentity, services, audience, zones]
     .filter(Boolean)
     .join(" ")
     .replace(/\s+/g, " ")
@@ -301,40 +298,6 @@ function normalizePlaceKey(value: string) {
     .replace(/^-+|-+$/g, "");
 }
 
-const NEARBY_ZONE_SUGGESTIONS: Record<string, string[]> = {
-  harnes: ["Lens", "Carvin", "Courrières", "Noyelles-sous-Lens"],
-  arras: ["Achicourt", "Dainville", "Sainte-Catherine", "Saint-Laurent-Blangy"],
-  lens: ["Liévin", "Hénin-Beaumont", "Avion", "Loison-sous-Lens"],
-  bethune: ["Beuvry", "Annezin", "Bruay-la-Buissière", "Noeux-les-Mines"],
-  lille: ["Lambersart", "La Madeleine", "Marcq-en-Baroeul", "Villeneuve-d’Ascq"],
-};
-
-const DEPARTMENT_BY_ZIP_PREFIX: Record<string, string> = {
-  "59": "Département : Nord (59)",
-  "62": "Département : Pas-de-Calais (62)",
-  "75": "Département : Paris (75)",
-  "77": "Département : Seine-et-Marne (77)",
-  "78": "Département : Yvelines (78)",
-  "91": "Département : Essonne (91)",
-  "92": "Département : Hauts-de-Seine (92)",
-  "93": "Département : Seine-Saint-Denis (93)",
-  "94": "Département : Val-de-Marne (94)",
-  "95": "Département : Val-d’Oise (95)",
-};
-
-function inferDepartmentZone(data: InrSearchPublicPageData) {
-  const zipPrefix = data.zip.replace(/\D/g, "").slice(0, 2);
-  if (zipPrefix && DEPARTMENT_BY_ZIP_PREFIX[zipPrefix]) return DEPARTMENT_BY_ZIP_PREFIX[zipPrefix];
-  const haystack = [data.city, ...data.zones].map(normalizePlaceKey).join(" ");
-  if (/(harnes|arras|beaurains|saint-nicolas-lez-arras|lens|bethune|lievin|carvin)/.test(haystack)) {
-    return "Département : Pas-de-Calais (62)";
-  }
-  if (/(lille|roubaix|tourcoing|villeneuve-d-ascq|douai|valenciennes)/.test(haystack)) {
-    return "Département : Nord (59)";
-  }
-  return data.country === "France" ? "Département : secteur local" : "";
-}
-
 function buildEnhancedZones(data: InrSearchPublicPageData) {
   const zones: string[] = [];
   const seen = new Set<string>();
@@ -346,16 +309,42 @@ function buildEnhancedZones(data: InrSearchPublicPageData) {
     seen.add(key);
   };
 
+  // Never infer an intervention area from the company address. A nearby city
+  // may be useful as a suggestion in the dashboard, but it must not become a
+  // public SEO claim or an areaServed signal without professional confirmation.
   data.zones.forEach(addZone);
-  if (zones.length < 5) addZone(data.city);
-  const suggestions = NEARBY_ZONE_SUGGESTIONS[normalizePlaceKey(data.city)] || [];
-  for (const suggestion of suggestions) {
-    if (zones.length >= 5) break;
-    addZone(suggestion);
-  }
-  const department = inferDepartmentZone(data);
-  if (department) addZone(department);
   return zones;
+}
+
+function compactMetaText(value: string, maxLength: number) {
+  const cleanValue = value.replace(/\s+/g, " ").trim();
+  if (cleanValue.length <= maxLength) return cleanValue;
+  const clipped = cleanValue.slice(0, maxLength - 1).replace(/\s+\S*$/, "").trim();
+  return `${clipped}…`;
+}
+
+function buildSeoTitle(data: InrSearchPublicPageData) {
+  const activity = data.profession || data.sectorLabel || "entreprise";
+  const location = data.city ? ` à ${data.city}` : "";
+  const services = data.services.slice(0, 2).join(" et ");
+  const suffix = services ? ` | ${services}` : "";
+  return compactMetaText(`${data.companyName}, ${activity}${location}${suffix}`, 70);
+}
+
+function buildSeoDescription(data: InrSearchPublicPageData) {
+  const activity = data.profession || data.sectorLabel || "entreprise";
+  const location = data.city ? ` à ${data.city}` : "";
+  const services = data.services.length
+    ? ` Prestations : ${joinFrenchList(data.services.slice(0, 4))}.`
+    : "";
+  const zones = data.zones.length
+    ? ` Intervention : ${joinFrenchList(data.zones.slice(0, 3))}.`
+    : "";
+  const lead = data.description || data.pageDescription;
+  return compactMetaText(
+    `${data.companyName}, ${activity}${location}. ${lead}${services}${zones}`,
+    160,
+  );
 }
 
 function buildServiceDescription(
@@ -451,6 +440,40 @@ function safeJsonLd(value: unknown) {
     .replace(/\u2029/g, "\\u2029");
 }
 
+function buildOpeningHoursSpecification(data: InrSearchPublicPageData) {
+  const dayNames = [
+    ["lundi", "Monday"],
+    ["mardi", "Tuesday"],
+    ["mercredi", "Wednesday"],
+    ["jeudi", "Thursday"],
+    ["vendredi", "Friday"],
+    ["samedi", "Saturday"],
+    ["dimanche", "Sunday"],
+  ] as const;
+  const normalizedDays = data.openingDays.toLocaleLowerCase("fr-FR");
+  const days = dayNames
+    .filter(([label]) => normalizedDays.includes(label))
+    .map(([, schemaDay]) => `https://schema.org/${schemaDay}`);
+  const match = data.openingHours.match(
+    /(\d{1,2})\s*h?\s*(\d{2})?\s*(?:-|–|à|a)\s*(\d{1,2})\s*h?\s*(\d{2})?/i,
+  );
+  if (!days.length || !match) return undefined;
+  const time = (hour: string, minute?: string) =>
+    `${hour.padStart(2, "0")}:${(minute || "00").padStart(2, "0")}`;
+  return {
+    "@type": "OpeningHoursSpecification",
+    dayOfWeek: days,
+    opens: time(match[1], match[2]),
+    closes: time(match[3], match[4]),
+  };
+}
+
+function normalizeStructuredPhone(value: string) {
+  const compact = value.replace(/[^+\d]/g, "");
+  if (/^0\d{9}$/.test(compact)) return `+33${compact.slice(1)}`;
+  return compact || undefined;
+}
+
 function buildJsonLd(data: InrSearchPublicPageData) {
   const sameAs = data.socialLinks.map((link) => link.url).filter(Boolean);
   const offers = data.services.map((service) => ({
@@ -483,13 +506,13 @@ function buildJsonLd(data: InrSearchPublicPageData) {
       Boolean,
     ),
     logo: data.logoUrl || undefined,
-    telephone: data.phone || undefined,
+    telephone: normalizeStructuredPhone(data.phone),
     email: data.email || undefined,
     contactPoint:
       data.phone || data.email
         ? {
             "@type": "ContactPoint",
-            telephone: data.phone || undefined,
+            telephone: normalizeStructuredPhone(data.phone),
             email: data.email || undefined,
             contactType: "customer service",
             availableLanguage: ["fr"],
@@ -506,7 +529,7 @@ function buildJsonLd(data: InrSearchPublicPageData) {
               : `mailto:${data.email}`,
           }
         : undefined,
-    address: data.addressLine
+    address: data.addressLine || data.city || data.zip
       ? {
           "@type": "PostalAddress",
           streetAddress: data.address || undefined,
@@ -519,6 +542,7 @@ function buildJsonLd(data: InrSearchPublicPageData) {
       ? data.zones.map((zone) => ({ "@type": "City", name: zone }))
       : undefined,
     openingHours: data.openingHours || undefined,
+    openingHoursSpecification: buildOpeningHoursSpecification(data),
     sameAs: sameAs.length ? sameAs : undefined,
     knowsAbout: [data.profession, ...data.services].filter(Boolean),
     audience: data.customerTypes.length
@@ -567,8 +591,8 @@ function buildWebPageJsonLd(data: InrSearchPublicPageData) {
     "@type": "WebPage",
     "@id": `${url}#webpage`,
     url,
-    name: data.pageTitle,
-    description: data.pageDescription,
+    name: buildSeoTitle(data),
+    description: buildSeoDescription(data),
     dateModified: data.updatedAt || undefined,
     about: { "@id": `${url}#business` },
     mainEntity: { "@id": `${url}#business` },
@@ -652,8 +676,8 @@ export async function generateMetadata({
   }
 
   const canonical = buildInrSearchPublicUrl(data.slug);
-  const title = data.pageTitle;
-  const description = data.pageDescription.slice(0, 160);
+  const title = buildSeoTitle(data);
+  const description = buildSeoDescription(data);
   const image = data.logoUrl || data.media[0]?.url || undefined;
 
   return {
@@ -665,7 +689,10 @@ export async function generateMetadata({
     publisher: data.companyName,
     category: data.sectorLabel || data.profession || "Entreprise locale",
     referrer: "strict-origin-when-cross-origin",
-    alternates: { canonical },
+    alternates: {
+      canonical,
+      types: { "text/plain": `${canonical}/llms.txt` },
+    },
     robots: {
       index: true,
       follow: true,
@@ -729,7 +756,7 @@ export default async function InrSearchCompanyPage({ params }: PageProps) {
     ...(data.sections.media && data.media.length
       ? [{ href: "#realisations", label: "Réalisations" }]
       : []),
-    ...(data.sections.news
+    ...(data.sections.news && data.publications.length
       ? [{ href: "#actualites", label: "Actualités" }]
       : []),
     ...(data.sections.areas && enhancedZones.length
@@ -1064,7 +1091,7 @@ export default async function InrSearchCompanyPage({ params }: PageProps) {
           </section>
         ) : null}
 
-        {data.sections.news ? (
+        {data.sections.news && data.publications.length ? (
           <section
             className={`${styles.section} ${styles.newsSection} ${styles.orbitPanel}`}
             id="actualites"

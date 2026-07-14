@@ -81,6 +81,16 @@ export function revalidateInrSearchPublicRoutes(slug = "") {
   revalidatePath("/robots.txt");
 }
 
+/**
+ * Notifie les moteurs après une modification éditoriale réelle.
+ * IndexNow accélère la découverte ; il ne remplace pas la qualité de la page.
+ */
+export async function notifyInrSearchIndexing(slug = "") {
+  if (!slug) return { ok: true, submitted: 0, status: 204 };
+  const urls = await buildInrSearchIndexingUrls(slug);
+  return submitInrSearchUrlsToIndexNow(urls);
+}
+
 export async function ensureSystemManagedInrSearch(
   supabase: any,
   activeUserId: string,
@@ -178,8 +188,7 @@ export async function ensureSystemManagedInrSearch(
 
     revalidateInrSearchPublicRoutes(slug);
     if (canPublish) {
-      const urls = await buildInrSearchIndexingUrls(slug);
-      await submitInrSearchUrlsToIndexNow(urls);
+      await notifyInrSearchIndexing(slug);
     }
   } else if (!wasEnabled && canPublish) {
     revalidateInrSearchPublicRoutes(slug);

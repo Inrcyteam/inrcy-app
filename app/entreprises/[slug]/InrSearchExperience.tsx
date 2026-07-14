@@ -102,10 +102,19 @@ export default function InrSearchExperience({
       root.style.setProperty("--active-orbit-index", String(safeIndex));
       setCurrentIndex(safeIndex);
 
+      // Keep every section in the rendered document. The horizontal orbit is
+      // a visual navigation layer, not a reason to hide the business facts
+      // from assistive technology, crawlers, or no-JavaScript renderers.
       sections.forEach((item, itemIndex) => {
-        item.setAttribute("aria-hidden", itemIndex === safeIndex ? "false" : "true");
-        if (itemIndex === safeIndex) item.removeAttribute("inert");
-        else item.setAttribute("inert", "");
+        if (itemIndex === safeIndex) {
+          item.removeAttribute("data-orbit-inactive");
+          item.setAttribute("data-orbit-active", "true");
+        } else {
+          item.setAttribute("data-orbit-inactive", "true");
+          item.removeAttribute("data-orbit-active");
+        }
+        item.removeAttribute("aria-hidden");
+        item.removeAttribute("inert");
       });
 
       if (section?.id) {
@@ -350,6 +359,8 @@ export default function InrSearchExperience({
       window.clearTimeout(wheelResetTimer);
       revealObserver.disconnect();
       sections.forEach((section) => {
+        section.removeAttribute("data-orbit-inactive");
+        section.removeAttribute("data-orbit-active");
         section.removeAttribute("aria-hidden");
         section.removeAttribute("inert");
       });

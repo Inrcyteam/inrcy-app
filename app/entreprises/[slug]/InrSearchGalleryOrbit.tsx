@@ -81,7 +81,7 @@ export default function InrSearchGalleryOrbit({ companyName, profession, city, m
       <div className={styles.galleryOrbitHeader}>
         <div>
           <span className={styles.galleryOrbitEyebrow}>Observatoire créatif</span>
-          <h2 id="realisations-title">Les idées deviennent visibles</h2>
+          <h2 id="realisations-title">Les réalisations de {companyName}</h2>
           <p>Regardez le résultat avant de contacter {companyName} : les visuels donnent confiance et aident à imaginer votre propre demande.</p>
         </div>
         <div className={styles.galleryOrbitCounter} aria-label="Navigation dans la galerie">
@@ -134,7 +134,7 @@ export default function InrSearchGalleryOrbit({ companyName, profession, city, m
             role="listitem"
             aria-label={`Afficher ${mediaTitle(index)}`}
           >
-            <img src={item.url} alt="" loading="lazy" decoding="async" />
+            <img src={item.url} alt={`${mediaTitle(index)} — ${companyName}`} loading="lazy" decoding="async" />
             <span>{mediaTitle(index)}</span>
           </button>
         ))}

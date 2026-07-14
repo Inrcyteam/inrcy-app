@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type KeyboardEvent } from "react";
+import { useMemo, useState, type FormEvent, type KeyboardEvent } from "react";
 import styles from "./inrSearchPublic.module.css";
 
 type FaqItem = {
@@ -25,8 +25,44 @@ function preview(value: string, max = 135) {
   return `${clean.slice(0, max).replace(/\s+\S*$/, "")}…`;
 }
 
+function normalizeSearchValue(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("fr-FR")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function findBestFaq(items: FaqItem[], query: string) {
+  const tokens = normalizeSearchValue(query)
+    .split(/\s+/)
+    .filter((token) => token.length > 2);
+  if (!tokens.length) return -1;
+
+  let bestIndex = -1;
+  let bestScore = 0;
+  items.forEach((item, index) => {
+    const question = normalizeSearchValue(item.question);
+    const answer = normalizeSearchValue(item.answer);
+    const haystack = `${question} ${answer}`;
+    const score = tokens.reduce((total, token) => {
+      if (question.includes(token)) return total + 3;
+      if (answer.includes(token)) return total + 1;
+      return total;
+    }, 0) + (haystack.includes(normalizeSearchValue(query)) ? 4 : 0);
+    if (score > bestScore) {
+      bestIndex = index;
+      bestScore = score;
+    }
+  });
+  return bestIndex;
+}
+
 export default function InrSearchFaqOrbit({ companyName, items, contactHref }: Props) {
   const [activeIndex, setActiveIndex] = useState(0);
+  const [guideQuery, setGuideQuery] = useState("");
+  const [guideMessage, setGuideMessage] = useState("");
   const total = items.length;
 
   const cards = useMemo(() => {
@@ -65,13 +101,38 @@ export default function InrSearchFaqOrbit({ companyName, items, contactHref }: P
     }
   };
 
+  const onGuideSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const matchIndex = findBestFaq(items, guideQuery);
+    if (matchIndex >= 0) {
+      setActiveIndex(matchIndex);
+      setGuideMessage(`Réponse vérifiée sélectionnée pour « ${items[matchIndex].question} ».`);
+      return;
+    }
+    setGuideMessage("Je n’ai pas encore de réponse vérifiée pour cette formulation.");
+  };
+
   return (
     <div className={styles.faqOrbitExperience} onKeyDown={onKeyDown}>
       <div className={styles.faqOrbitHeader}>
         <div>
           <span className={styles.faqOrbitEyebrow}>Capsules de réponses</span>
-          <h2 id="faq-title">Une question. Une réponse qui arrive au centre.</h2>
+          <h2 id="faq-title">Questions fréquentes sur {companyName}</h2>
           <p>Levez les derniers doutes avant le contact : chaque réponse aide à savoir quoi demander, comment avancer et pourquoi faire appel à {companyName}.</p>
+          <form className={styles.faqGuide} onSubmit={onGuideSubmit} role="search" aria-label={`iNr'Guide pour ${companyName}`}>
+            <label htmlFor="faq-guide-query">iNr’Guide — trouver une réponse vérifiée</label>
+            <div className={styles.faqGuideRow}>
+              <input
+                id="faq-guide-query"
+                value={guideQuery}
+                onChange={(event) => setGuideQuery(event.target.value)}
+                placeholder="Ex. tarifs, délai, zone, rendez-vous…"
+                autoComplete="off"
+              />
+              <button type="submit">Explorer</button>
+            </div>
+            {guideMessage ? <output aria-live="polite">{guideMessage}</output> : null}
+          </form>
         </div>
         <div className={styles.faqOrbitNavigator} aria-label="Naviguer entre les questions fréquentes">
           <button type="button" onClick={() => move(-1)} aria-label="Question précédente">←</button>

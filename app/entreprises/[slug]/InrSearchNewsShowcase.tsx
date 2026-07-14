@@ -96,7 +96,7 @@ export default function InrSearchNewsShowcase({ companyName, publications }: Pro
       <div className={styles.newsOrbitHeader}>
         <div>
           <span className={styles.newsOrbitEyebrow}>Générateur d’impulsions</span>
-          <h2 id="actualites-title">L’entreprise en mouvement</h2>
+          <h2 id="actualites-title">Les actualités de {companyName}</h2>
           <p>Suivez les signaux récents de {companyName} : une actualité à jour rassure, prouve l’activité et donne envie d’engager l’échange.</p>
         </div>
         {total ? (
@@ -157,7 +157,7 @@ export default function InrSearchNewsShowcase({ companyName, publications }: Pro
                   aria-label={`Afficher l’actualité ${publication.title}`}
                 >
                   <span>
-                    {publication.imageUrl ? <img src={publication.imageUrl} alt="" loading="lazy" decoding="async" /> : <i aria-hidden="true">✦</i>}
+                    {publication.imageUrl ? <img src={publication.imageUrl} alt={`${publication.title} — ${companyName}`} loading="lazy" decoding="async" /> : <i aria-hidden="true">✦</i>}
                   </span>
                   <small>{publication.createdAt ? formatShortDate(publication.createdAt) : "Signal"}</small>
                   <strong>{publication.title}</strong>
