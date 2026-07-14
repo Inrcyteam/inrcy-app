@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { log } from "@/lib/observability/logger";
 import { getRequestId, getRequestMeta } from "@/lib/observability/request";
+import { captureApiException } from "@/lib/observability/sentry";
 
-type Handler = (_req: Request) => Promise<Response>;
+type Handler<Args extends [Request, ...unknown[]]> = (...args: Args) => Promise<Response>;
 
 function withRequestIdHeader(res: Response, request_id?: string): Response {
   if (!request_id) return res;
@@ -24,15 +25,19 @@ function withRequestIdHeader(res: Response, request_id?: string): Response {
   }
 }
 
-export function withApi(handler: Handler, opts?: { route?: string }) {
-  return async function wrapped(_req: Request): Promise<Response> {
+export function withApi<Args extends [Request, ...unknown[]]>(
+  handler: Handler<Args>,
+  opts?: { route?: string },
+) {
+  return async function wrapped(...args: Args): Promise<Response> {
+    const _req = args[0];
     const started = Date.now();
     const request_id = getRequestId(_req);
     const meta = getRequestMeta(_req);
     const route = opts?.route ?? meta.pathname;
 
     try {
-      const res = await handler(_req);
+      const res = await handler(...args);
       const duration_ms = Date.now() - started;
       const status_code = (res as any)?.status ?? 200;
 
@@ -49,6 +54,12 @@ export function withApi(handler: Handler, opts?: { route?: string }) {
     } catch (e: any) {
       const duration_ms = Date.now() - started;
       const message = e?.message || "Unhandled exception";
+
+      captureApiException(_req, e, {
+        route,
+        operation: `${meta.method} ${route}`,
+        statusCode: 500,
+      });
 
       log.error("api_error", {
         request_id,

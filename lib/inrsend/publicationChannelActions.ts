@@ -11,6 +11,7 @@ import { createHash, randomUUID } from "crypto";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { buildBoosterGmbSummary, buildBoosterInstagramCaption, buildBoosterMessage, getBoosterGmbCallToAction } from "@/lib/boosterCta";
 import { log } from "@/lib/observability/logger";
+import { captureApiException } from "@/lib/observability/sentry";
 import { getLinkedInAccessToken } from "@/lib/linkedinOAuth";
 import { getPinterestAccessToken, getPinterestApiEnvironment } from "@/lib/pinterestOAuth";
 import {
@@ -2095,6 +2096,12 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
 
       return NextResponse.json({ ok: true, publication_id: publicationId, channel, external_id: replaceResult.externalId, payload: nextPayload });
     } catch (e: unknown) {
+      captureApiException(req, e, {
+        area: "booster",
+        operation: `PATCH /api/inrsend/publications/:publicationId/${channel}`,
+        statusCode: 500,
+        provider: channel,
+      });
       const userMessage = getPublishChannelUserMessage(channel, e, "La modification de la publication a échoué.");
       logPublishChannelFailure({
         route: "inrsend_publication_channel_update",
@@ -2144,6 +2151,12 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
 
       return NextResponse.json({ ok: true, deleted: true, removed_publication: false, payload: nextPayload });
     } catch (e: unknown) {
+      captureApiException(req, e, {
+        area: "booster",
+        operation: `DELETE /api/inrsend/publications/:publicationId/${channel}`,
+        statusCode: 500,
+        provider: channel,
+      });
       const userMessage = getPublishChannelUserMessage(channel, e, "La suppression de la publication a échoué.");
       logPublishChannelFailure({
         route: "inrsend_publication_channel_delete",

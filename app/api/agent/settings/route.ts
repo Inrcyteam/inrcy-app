@@ -16,6 +16,8 @@ import {
 import { getChannelConnectionStates } from "@/lib/channelConnectionState";
 import { ensureSystemManagedInrSearch } from "@/lib/inrSearchProvisioning";
 import { getInrSearchPublicStatus } from "@/lib/inrSearchPublic";
+import { captureApiException } from "@/lib/observability/sentry";
+import { withApi } from "@/lib/observability/withApi";
 
 type DbAgentGlobalSettingsRow = {
   global_enabled?: boolean | null;
@@ -372,7 +374,7 @@ function rowsToSettings(globalRow: DbAgentGlobalSettingsRow | null | undefined, 
   });
 }
 
-export async function GET() {
+async function getAgentSettingsHandler() {
   const { user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
@@ -416,7 +418,7 @@ export async function GET() {
   });
 }
 
-export async function POST(request: Request) {
+async function saveAgentSettingsHandler(request: Request) {
   const { user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
@@ -528,3 +530,6 @@ export async function POST(request: Request) {
 
   return NextResponse.json({ settings: savedSettings, saved: true, tableMissing: false });
 }
+
+export const GET = withApi(async (_req: Request) => getAgentSettingsHandler(), { route: "/api/agent/settings" });
+export const POST = withApi(saveAgentSettingsHandler, { route: "/api/agent/settings" });

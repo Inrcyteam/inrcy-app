@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
+import { withApi } from "@/lib/observability/withApi";
 
 const ALLOWED_TARGET_STATUSES = new Set(["en_attente_paiement", "envoye", "paye"]);
 
@@ -21,7 +22,7 @@ function normalizeTargetStatus(value: unknown) {
   return "en_attente_paiement";
 }
 
-export async function POST(req: Request) {
+async function finalizeInvoiceHandler(req: Request) {
   const supabase = await createSupabaseServer();
 
   const { data: userData, error: userError } = await supabase.auth.getUser();
@@ -129,3 +130,5 @@ export async function POST(req: Request) {
     officialSequenceValue: officialSeq,
   });
 }
+
+export const POST = withApi(finalizeInvoiceHandler, { route: "/api/factures/finalize" });

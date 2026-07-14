@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 import { jsonUserFacingError } from '@/lib/apiUserFacingErrors';
+import { captureApiException } from '@/lib/observability/sentry';
+import { withApi } from '@/lib/observability/withApi';
 import { createSupabaseServer } from '@/lib/supabaseServer';
 import { resolveActiveInrcyAccountId } from '@/lib/multicompte/server';
 import { isAuthorizedCronRequest, getCronUserIdFromRequest } from '@/lib/cronAuth';
@@ -42,7 +44,7 @@ type BulkResponse = {
   };
 };
 
-export async function GET(req: Request) {
+async function dashboardStatsBulkHandler(req: Request) {
   try {
     if (!SUPABASE_URL) {
       return NextResponse.json({ error: 'Configuration serveur incomplète.' }, { status: 500 });
@@ -187,6 +189,9 @@ export async function GET(req: Request) {
         : undefined,
     });
   } catch (e) {
+    captureApiException(req, e, { area: 'inrstats', operation: 'GET /api/stats/dashboard-bulk', statusCode: 500 });
     return jsonUserFacingError(e, { status: 500 });
   }
 }
+
+export const GET = withApi(dashboardStatsBulkHandler, { route: "/api/stats/dashboard-bulk" });

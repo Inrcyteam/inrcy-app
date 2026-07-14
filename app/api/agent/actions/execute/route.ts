@@ -7,6 +7,8 @@ import { requireUser } from "@/lib/requireUser";
 import { enforceRateLimit } from "@/lib/rateLimit";
 import { rowToInrAgentAction } from "@/lib/inrAgentActions";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { captureApiException } from "@/lib/observability/sentry";
+import { withApi } from "@/lib/observability/withApi";
 
 export const maxDuration = 180;
 export const runtime = "nodejs";
@@ -681,7 +683,7 @@ async function executeCampaignAction(args: {
   }
 }
 
-export async function POST(request: Request) {
+async function executeAgentActionHandler(request: Request) {
   const { user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
@@ -976,6 +978,11 @@ export async function POST(request: Request) {
       executed: true,
     });
   } catch (error) {
+    captureApiException(request, error, {
+      area: "inragent",
+      operation: "POST /api/agent/actions/execute",
+      statusCode: 500,
+    });
     const message =
       error instanceof Error
         ? error.message
@@ -999,3 +1006,5 @@ export async function POST(request: Request) {
     );
   }
 }
+
+export const POST = withApi(executeAgentActionHandler, { route: "/api/agent/actions/execute" });

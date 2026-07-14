@@ -78,3 +78,44 @@ Même si tu n’ajoutes qu’un outil externe, choisis Sentry.
 - erreurs groupées
 - stack traces lisibles (avec sourcemaps)
 - alertes (spikes / first seen)
+
+## 7) Intégration Sentry iNrCy
+
+Le projet est désormais branché sur Sentry côté navigateur, serveur et runtime Edge.
+
+Les erreurs capturées par les routes critiques sont enrichies avec :
+
+- le module (`booster`, `crm_campaigns`, `inrstats`, `inrcalendar`, `documents`, `inragent`)
+- l’opération et la méthode HTTP
+- le `request_id` pour recroiser avec les logs Vercel
+- l’environnement et le commit déployé
+- un identifiant utilisateur/établissement pseudonymisé, sans email
+
+Parcours couverts en priorité :
+
+- Booster : génération IA, publication immédiate et actions par canal
+- Propulser/Fidéliser : création, relance et traitement des campagnes mails
+- iNrStats : synthèse, statistiques globales, opportunités, Mails, iNr’Badge et rafraîchissement des canaux
+- iNrCalendar : événements et paramètres
+- Factures : finalisation
+- iNrCRM : contacts et campagnes
+- iNrAgent : configuration, programmation et exécution
+
+Variables à renseigner dans Vercel :
+
+```text
+SENTRY_DSN=...
+NEXT_PUBLIC_SENTRY_DSN=...
+SENTRY_AUTH_TOKEN=...                 # uniquement pour l’upload des sourcemaps en CI
+SENTRY_TRACES_SAMPLE_RATE=0.1         # ajustable selon le volume
+```
+
+Le filtre Sentry retire les cookies, autorisations, paramètres OAuth (`code`, `state`, tokens),
+les corps de requête et les champs métier sensibles. `sendDefaultPii` reste désactivé.
+
+À vérifier après déploiement :
+
+1. provoquer une erreur de test contrôlée en Preview ;
+2. vérifier l’événement dans Sentry avec son module et son `request_id` ;
+3. ouvrir les logs Vercel et retrouver le même `request_id` ;
+4. créer des alertes séparées pour les erreurs `booster`, `crm_campaigns`, `inrstats`, `inrcalendar`, `documents` et `inragent`.

@@ -105,6 +105,7 @@ const nextConfig: NextConfig = {
 export default withSentryConfig(nextConfig, {
   org: "inrcy",
   project: "javascript-nextjs",
+  authToken: process.env.SENTRY_AUTH_TOKEN,
   silent: !process.env.CI,
   widenClientFileUpload: true,
   webpack: {

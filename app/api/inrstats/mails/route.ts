@@ -11,6 +11,8 @@ import {
   type InrcyWorkflowAction,
 } from "@/lib/inrcyWorkflow";
 import { getConnectionDisplayStatus, mailConnectionKind } from "@/lib/connectionVersions";
+import { captureApiException } from "@/lib/observability/sentry";
+import { withApi } from "@/lib/observability/withApi";
 
 export const runtime = "nodejs";
 
@@ -134,7 +136,7 @@ function isSentBusinessDocument(row: Record<string, unknown>, type: "facture" | 
   return status === "sent" && cleanString(row.type).toLowerCase() === type;
 }
 
-export async function GET(req: Request) {
+async function inrStatsMailsHandler(req: Request) {
   const cronUserId = isAuthorizedCronRequest(req) ? getCronUserIdFromRequest(req) : "";
   const supabase = cronUserId ? supabaseAdmin : await createSupabaseServer();
   let userId = cronUserId;
@@ -323,6 +325,13 @@ export async function GET(req: Request) {
       syncedAt: now,
     });
   } catch (error) {
+    captureApiException(req, error, {
+      area: "inrstats",
+      operation: "GET /api/inrstats/mails",
+      statusCode: 500,
+    });
     return jsonUserFacingError(error, { status: 500, fallback: "Impossible de charger les statistiques Mails pour le moment." });
   }
 }
+
+export const GET = withApi(inrStatsMailsHandler, { route: "/api/inrstats/mails" });

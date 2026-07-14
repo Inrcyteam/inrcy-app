@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { createSupabaseServer } from '@/lib/supabaseServer';
 import { resolveActiveInrcyAccountId } from '@/lib/multicompte/server';
 import { buildMetricsSummary } from '@/lib/metrics/summary';
+import { captureApiException } from '@/lib/observability/sentry';
+import { withApi } from '@/lib/observability/withApi';
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 
@@ -11,7 +13,7 @@ type AnyRec = Record<string, unknown>;
  * Compat route kept for the dashboard.
  * The real computation is now centralized in /api/metrics/summary via buildMetricsSummary().
  */
-export async function GET(req: Request) {
+async function generatorKpisHandler(req: Request) {
   const debug: AnyRec = {
     ok: false,
     errors: {},
@@ -78,6 +80,7 @@ export async function GET(req: Request) {
       ...(includeDebug ? { debug } : {}),
     });
   } catch (e: unknown) {
+    captureApiException(req, e, { area: 'inrstats', operation: 'GET /api/generator/kpis', statusCode: 500 });
     (debug.errors as Record<string, string>).unhandled = e instanceof Error ? e.message : String(e);
     const includeDebug = process.env.NODE_ENV === 'development' || req.headers.get('x-inrcy-debug') === '1';
     return NextResponse.json(
@@ -86,3 +89,5 @@ export async function GET(req: Request) {
     );
   }
 }
+
+export const GET = withApi(generatorKpisHandler, { route: "/api/generator/kpis" });

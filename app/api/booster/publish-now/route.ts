@@ -50,6 +50,8 @@ import {
   failExecutionIdempotencyLock,
 } from "@/lib/executionIdempotency";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
+import { captureApiException } from "@/lib/observability/sentry";
+import { withApi } from "@/lib/observability/withApi";
 import { getAppBubbleAccessMapForUser } from "@/lib/appBubbleAccessServer";
 import { isBubbleEnabled } from "@/lib/bubbleAccess";
 import {
@@ -1147,7 +1149,7 @@ async function getLatestIntegrationRow(
   return Array.isArray(data) ? (data[0] ?? null) : null;
 }
 
-export async function POST(req: Request) {
+async function publishNowHandler(req: Request) {
   try {
     const cronUserId = isAuthorizedCronRequest(req)
       ? getCronUserIdFromRequest(req)
@@ -3580,6 +3582,11 @@ export async function POST(req: Request) {
 
     return NextResponse.json(responsePayload);
   } catch (e: unknown) {
+    captureApiException(req, e, {
+      area: "booster",
+      operation: "POST /api/booster/publish-now",
+      statusCode: 500,
+    });
     return jsonUserFacingError(e, {
       status: 500,
       fallback: "L'action n'a pas pu être finalisée.",
@@ -3587,3 +3594,5 @@ export async function POST(req: Request) {
     });
   }
 }
+
+export const POST = withApi(publishNowHandler, { route: "/api/booster/publish-now" });

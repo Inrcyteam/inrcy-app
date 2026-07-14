@@ -1,8 +1,10 @@
 import { NextResponse } from 'next/server';
 import { jsonUserFacingError } from '@/lib/apiUserFacingErrors';
 import { computeOpportunitiesFromOverviews, fetchCubeOverviews, invalidateOverviewCache, toInrstatsSnapshot } from '@/lib/metrics/computeMetrics';
+import { captureApiException } from '@/lib/observability/sentry';
+import { withApi } from '@/lib/observability/withApi';
 
-export async function GET(request: Request) {
+async function inrStatsOpportunitiesHandler(request: Request) {
   try {
     const url = new URL(request.url);
     const qMode = (url.searchParams.get('mode') || '').toLowerCase();
@@ -37,9 +39,16 @@ export async function GET(request: Request) {
 
     return NextResponse.json(result);
   } catch (e: unknown) {
+    captureApiException(request, e, {
+      area: 'inrstats',
+      operation: 'GET /api/inrstats/opportunities',
+      statusCode: 500,
+    });
     return jsonUserFacingError(e, {
       status: 500,
       fallback: "Impossible de charger les opportunités pour le moment.",
     });
   }
 }
+
+export const GET = withApi(inrStatsOpportunitiesHandler, { route: "/api/inrstats/opportunities" });

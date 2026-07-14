@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
+import { withApi } from "@/lib/observability/withApi";
 import {
   resolveInrBadgeAppointmentSettings,
   sanitizeInrBadgeAppointmentSettingsPayload,
@@ -35,7 +36,7 @@ type MailIntegrationRow = {
   settings: unknown;
 };
 
-export async function GET() {
+async function getCalendarSettingsHandler() {
   const { supabase, user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
@@ -81,7 +82,7 @@ export async function GET() {
   });
 }
 
-export async function PATCH(req: Request) {
+async function updateCalendarSettingsHandler(req: Request) {
   const { supabase, user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
@@ -153,3 +154,6 @@ export async function PATCH(req: Request) {
     appointmentSettings,
   });
 }
+
+export const GET = withApi(async (_req: Request) => getCalendarSettingsHandler(), { route: "/api/calendar/settings" });
+export const PATCH = withApi(updateCalendarSettingsHandler, { route: "/api/calendar/settings" });

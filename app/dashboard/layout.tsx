@@ -15,6 +15,7 @@ import { resolveInrcyAccountScopeForUser } from "@/lib/multicompte/server";
 import ActiveAccountTabSync from "./_components/ActiveAccountTabSync";
 import ResponsiveBottomNav from "./_components/ResponsiveBottomNav";
 import DashboardUnsavedNavigationProvider from "./_components/DashboardUnsavedNavigationProvider";
+import SentryUserContext from "./_components/SentryUserContext";
 
 
 type SubscriptionGateRow = {
@@ -128,6 +129,7 @@ export default async function DashboardLayout({
       <ActiveAccountTabSync />
       <ProfileRealtimeBridge />
       <LastActiveTracker />
+      <SentryUserContext userId={user.id} accountId={accountScope.activeUserId} />
 
       <DashboardUnsavedNavigationProvider>
         <div className={styles.mobileViewport}>

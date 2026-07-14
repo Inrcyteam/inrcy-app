@@ -5,8 +5,10 @@ import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 import { isAuthorizedCronRequest, getCronUserIdFromRequest } from "@/lib/cronAuth";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { readInrBadgeStats } from "@/lib/inrBadgeAnalytics";
+import { captureApiException } from "@/lib/observability/sentry";
+import { withApi } from "@/lib/observability/withApi";
 
-export async function GET(req: Request) {
+async function inrStatsBadgeHandler(req: Request) {
   try {
     const cronUserId = isAuthorizedCronRequest(req) ? getCronUserIdFromRequest(req) : "";
     const supabase = cronUserId ? supabaseAdmin : await createSupabaseServer();
@@ -24,6 +26,13 @@ export async function GET(req: Request) {
     const stats = await readInrBadgeStats(supabase, userId);
     return NextResponse.json(stats, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
+    captureApiException(req, error, {
+      area: "inrstats",
+      operation: "GET /api/inrstats/inrbadge",
+      statusCode: 500,
+    });
     return jsonUserFacingError(error, { status: 500 });
   }
 }
+
+export const GET = withApi(inrStatsBadgeHandler, { route: "/api/inrstats/inrbadge" });

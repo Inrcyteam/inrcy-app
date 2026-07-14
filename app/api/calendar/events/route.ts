@@ -5,6 +5,7 @@ import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { optionalEnv } from "@/lib/env";
 import { sendTxMail } from "@/lib/txMailer";
 import { sendMailFromIntegration } from "@/lib/inrsend/sendMailFromIntegration";
+import { withApi } from "@/lib/observability/withApi";
 import {
   buildClientExchangePreferences,
   DEFAULT_CLIENT_EXCHANGE_PREFERENCES,
@@ -753,7 +754,7 @@ async function sendAgendaConfirmationEmails(args: {
   }
 }
 
-export async function GET(req: Request) {
+async function getCalendarEventsHandler(req: Request) {
   const { supabase, user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
@@ -806,7 +807,7 @@ export async function GET(req: Request) {
   });
 }
 
-export async function POST(req: Request) {
+async function createCalendarEventHandler(req: Request) {
   const { supabase, user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
@@ -868,7 +869,7 @@ export async function POST(req: Request) {
   return NextResponse.json({ ok: true, id: data?.id });
 }
 
-export async function PATCH(req: Request) {
+async function updateCalendarEventHandler(req: Request) {
   const { supabase, user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
@@ -977,7 +978,7 @@ export async function PATCH(req: Request) {
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(req: Request) {
+async function deleteCalendarEventHandler(req: Request) {
   const { supabase, user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
@@ -989,3 +990,8 @@ export async function DELETE(req: Request) {
   if (error) return jsonUserFacingError(error, { status: 500, extra: { ok: false } });
   return NextResponse.json({ ok: true });
 }
+
+export const GET = withApi(getCalendarEventsHandler, { route: "/api/calendar/events" });
+export const POST = withApi(createCalendarEventHandler, { route: "/api/calendar/events" });
+export const PATCH = withApi(updateCalendarEventHandler, { route: "/api/calendar/events" });
+export const DELETE = withApi(deleteCalendarEventHandler, { route: "/api/calendar/events" });

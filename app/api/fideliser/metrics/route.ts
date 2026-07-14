@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { requireUser } from "@/lib/requireUser";
 import { getIsoWeekStart, getIsoWeekId } from "@/lib/weeklyGoals";
+import { captureApiException } from "@/lib/observability/sentry";
+import { withApi } from "@/lib/observability/withApi";
 
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
@@ -61,7 +63,7 @@ function matchesCampaignType(row: CampaignRow, type: "newsletter_mail" | "thanks
   return false;
 }
 
-export async function GET(req: Request) {
+async function fideliserMetricsHandler(req: Request) {
   const url = new URL(req.url);
   const days = Math.max(1, Math.min(90, Number(url.searchParams.get("days") ?? 30)));
 
@@ -92,8 +94,14 @@ export async function GET(req: Request) {
     campaignsPromise,
   ]);
 
-  if (error) return jsonUserFacingError(error, { status: 500 });
-  if (campaignError) return jsonUserFacingError(campaignError, { status: 500 });
+  if (error) {
+    captureApiException(req, error, { area: "crm_campaigns", operation: "GET /api/fideliser/metrics", statusCode: 500 });
+    return jsonUserFacingError(error, { status: 500 });
+  }
+  if (campaignError) {
+    captureApiException(req, campaignError, { area: "crm_campaigns", operation: "GET /api/fideliser/metrics", statusCode: 500 });
+    return jsonUserFacingError(campaignError, { status: 500 });
+  }
 
   const events = (rows ?? []) as EventRow[];
   const campaigns = (campaignRows ?? []) as CampaignRow[];
@@ -197,3 +205,5 @@ export async function GET(req: Request) {
     },
   });
 }
+
+export const GET = withApi(fideliserMetricsHandler, { route: "/api/fideliser/metrics" });

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { processPendingMailCampaigns } from "@/lib/crmCampaigns";
+import { captureApiException } from "@/lib/observability/sentry";
 
 export const runtime = "nodejs";
 
@@ -22,6 +23,11 @@ export async function POST(req: Request) {
     const summary = await processPendingMailCampaigns({ maxCampaigns: 10 });
     return NextResponse.json({ success: true, summary });
   } catch (error) {
+    captureApiException(req, error, {
+      area: "crm_campaigns",
+      operation: "POST /api/cron/mail-campaigns",
+      statusCode: 500,
+    });
     const message = error instanceof Error ? error.message : "Traitement des campagnes impossible.";
     return NextResponse.json({ error: message }, { status: 500 });
   }

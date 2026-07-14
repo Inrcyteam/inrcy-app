@@ -3,6 +3,8 @@ import { evaluateCampaignDispatchState, getMailCampaignDeliveryConfig } from "@/
 import { requireUser } from "@/lib/requireUser";
 import { fetchSuppressedEmailsByUser } from "@/lib/mailSuppression";
 import { enforceRateLimit } from "@/lib/rateLimit";
+import { captureApiException } from "@/lib/observability/sentry";
+import { withApi } from "@/lib/observability/withApi";
 
 export const runtime = "nodejs";
 
@@ -11,7 +13,7 @@ async function getRouteId(ctx: any) {
   return String(params?.id || "").trim();
 }
 
-export async function POST(req: Request, ctx: any) {
+async function retryCampaignHandler(req: Request, ctx: any) {
   const { supabase, user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
@@ -37,6 +39,7 @@ export async function POST(req: Request, ctx: any) {
     .maybeSingle();
 
   if (campaignError) {
+    captureApiException(req, campaignError, { area: "crm_campaigns", operation: "POST /api/crm/campaigns/:id/retry", statusCode: 500 });
     return NextResponse.json({ error: campaignError.message }, { status: 500 });
   }
   if (!campaign?.id) {
@@ -53,6 +56,7 @@ export async function POST(req: Request, ctx: any) {
     .limit(1000);
 
   if (failedError) {
+    captureApiException(req, failedError, { area: "crm_campaigns", operation: "POST /api/crm/campaigns/:id/retry", statusCode: 500 });
     return NextResponse.json({ error: failedError.message }, { status: 500 });
   }
 
@@ -108,6 +112,7 @@ export async function POST(req: Request, ctx: any) {
     .eq("status", "failed");
 
   if (updateError) {
+    captureApiException(req, updateError, { area: "crm_campaigns", operation: "POST /api/crm/campaigns/:id/retry", statusCode: 500 });
     return NextResponse.json({ error: updateError.message }, { status: 500 });
   }
 
@@ -146,3 +151,5 @@ export async function POST(req: Request, ctx: any) {
     queuedForBackgroundDispatch: true,
   });
 }
+
+export const POST = withApi(retryCampaignHandler, { route: "/api/crm/campaigns/:id/retry" });

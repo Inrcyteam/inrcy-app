@@ -10,6 +10,8 @@ import {
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { findSimilarScheduledPublication } from "@/lib/scheduledPublicationDedupe";
 import { findSimilarScheduledCampaign } from "@/lib/scheduledCampaignDedupe";
+import { captureApiException } from "@/lib/observability/sentry";
+import { withApi } from "@/lib/observability/withApi";
 
 export const runtime = "nodejs";
 export const maxDuration = 90;
@@ -742,7 +744,7 @@ async function buildScheduledPayload(
   throw new Error("Cette action iNr’Agent ne peut pas être programmée.");
 }
 
-export async function POST(request: Request) {
+async function scheduleAgentActionHandler(request: Request) {
   const { user, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
@@ -1017,6 +1019,11 @@ export async function POST(request: Request) {
       tableMissing: false,
     });
   } catch (error) {
+    captureApiException(request, error, {
+      area: "inragent",
+      operation: "POST /api/agent/actions/schedule",
+      statusCode: 500,
+    });
     return NextResponse.json(
       {
         error:
@@ -1028,3 +1035,5 @@ export async function POST(request: Request) {
     );
   }
 }
+
+export const POST = withApi(scheduleAgentActionHandler, { route: "/api/agent/actions/schedule" });

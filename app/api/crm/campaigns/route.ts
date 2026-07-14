@@ -21,6 +21,7 @@ import {
   completeExecutionIdempotencyLock,
   failExecutionIdempotencyLock,
 } from "@/lib/executionIdempotency";
+import { withApi } from "@/lib/observability/withApi";
 
 export const runtime = "nodejs";
 
@@ -247,7 +248,7 @@ function buildCampaignDuplicateMessage(
   return `Cette campagne semble déjà programmée${recipientLabel} pour ${dateLabel}. Pour éviter un double envoi, annulez la programmation existante ou modifiez le contenu avant d’envoyer maintenant.`;
 }
 
-export async function POST(req: Request) {
+async function createCampaignHandler(req: Request) {
   const { supabase, user, activeUserId, errorResponse, isCron } = await resolveCampaignRequestUser(req);
   if (errorResponse) return errorResponse;
 
@@ -588,3 +589,5 @@ export async function POST(req: Request) {
 
   return NextResponse.json(responsePayload);
 }
+
+export const POST = withApi(createCampaignHandler, { route: "/api/crm/campaigns" });

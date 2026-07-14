@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
+import { captureApiException } from "@/lib/observability/sentry";
+import { withApi } from "@/lib/observability/withApi";
 import { DASHBOARD_CHANNEL_KEYS, isDashboardChannelKey, type DashboardChannelKey } from "@/lib/dashboardChannels";
 import { requireUser } from "@/lib/requireUser";
 import { getDefaultSnapshotDate } from "@/lib/stats/snapshotWindow";
@@ -123,7 +125,7 @@ async function buildChannelPeriodPayload(args: {
   };
 }
 
-export async function POST(req: Request) {
+async function channelStatsRefreshHandler(req: Request) {
   try {
     const { supabase, user, errorResponse, activeUserId } = await requireUser();
     if (errorResponse) return errorResponse;
@@ -198,6 +200,9 @@ export async function POST(req: Request) {
       },
     });
   } catch (error) {
+    captureApiException(req, error, { area: "inrstats", operation: "POST /api/stats/channel-refresh", statusCode: 500 });
     return jsonUserFacingError(error, { status: 500 });
   }
 }
+
+export const POST = withApi(channelStatsRefreshHandler, { route: "/api/stats/channel-refresh" });

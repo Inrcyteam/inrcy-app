@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { requireUser } from "@/lib/requireUser";
+import { captureApiException } from "@/lib/observability/sentry";
+import { withApi } from "@/lib/observability/withApi";
 
 type FideliserEventType = "newsletter_mail" | "thanks_mail" | "satisfaction_mail";
 
-export async function POST(req: Request) {
+async function fideliserEventsHandler(req: Request) {
   try {
     const { supabase, activeUserId, errorResponse } = await requireUser();
     if (errorResponse) return errorResponse;
@@ -25,6 +27,11 @@ const body = await req.json().catch(() => ({}));
     });
 
     if (error) {
+      captureApiException(req, error, {
+        area: "crm_campaigns",
+        operation: "POST /api/fideliser/events",
+        statusCode: 500,
+      });
       return jsonUserFacingError(error, { status: 500 });
     }
 
@@ -33,3 +40,5 @@ const body = await req.json().catch(() => ({}));
     return NextResponse.json({ error: "Requête invalide." }, { status: 400 });
   }
 }
+
+export const POST = withApi(fideliserEventsHandler, { route: "/api/fideliser/events" });

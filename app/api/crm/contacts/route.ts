@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
+import { withApi } from "@/lib/observability/withApi";
 
 type Category = "particulier" | "professionnel" | "collectivite_publique";
 type ContactType = "client" | "prospect" | "fournisseur" | "partenaire" | "autre";
@@ -398,7 +399,7 @@ async function buildSummary(
   } satisfies ContactSummary;
 }
 
-export async function GET(req: Request) {
+async function getContactsHandler(req: Request) {
   const supabase = await createSupabaseServer();
 
   const { data: userData, error: userError } = await supabase.auth.getUser();
@@ -459,7 +460,7 @@ export async function GET(req: Request) {
   });
 }
 
-export async function POST(req: Request) {
+async function createContactHandler(req: Request) {
   const supabase = await createSupabaseServer();
 
   const { data: userData, error: userError } = await supabase.auth.getUser();
@@ -531,7 +532,7 @@ export async function POST(req: Request) {
   return NextResponse.json({ ok: true, id: data?.id });
 }
 
-export async function PUT(req: Request) {
+async function updateContactHandler(req: Request) {
   const supabase = await createSupabaseServer();
 
   const { data: userData, error: userError } = await supabase.auth.getUser();
@@ -599,7 +600,7 @@ export async function PUT(req: Request) {
   return NextResponse.json({ ok: true });
 }
 
-export async function DELETE(req: Request) {
+async function deleteContactHandler(req: Request) {
   const supabase = await createSupabaseServer();
 
   const { data: userData, error: userError } = await supabase.auth.getUser();
@@ -626,3 +627,8 @@ export async function DELETE(req: Request) {
 
   return NextResponse.json({ ok: true });
 }
+
+export const GET = withApi(getContactsHandler, { route: "/api/crm/contacts" });
+export const POST = withApi(createContactHandler, { route: "/api/crm/contacts" });
+export const PUT = withApi(updateContactHandler, { route: "/api/crm/contacts" });
+export const DELETE = withApi(deleteContactHandler, { route: "/api/crm/contacts" });
