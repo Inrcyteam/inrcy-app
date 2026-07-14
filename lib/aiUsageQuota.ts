@@ -203,13 +203,14 @@ export async function reserveAiCredits(args: ReserveAiCreditsArgs): Promise<AiCr
     }
 
     return { reservation, errorResponse: null };
-  } catch {
+  } catch (error) {
+    console.warn("[ai-quota] reservation unavailable; bypassing quota temporarily", {
+      action: args.action,
+      message: error instanceof Error ? error.message : String(error),
+    });
     return {
-      reservation: null,
-      errorResponse: NextResponse.json({
-        error: "Le contrôle du quota IA est momentanément indisponible. Merci de réessayer dans quelques minutes.",
-        code: "ai_quota_unavailable",
-      }, { status: 503, headers: { "Retry-After": "300" } }),
+      reservation: { ...reservation, state: "bypassed" },
+      errorResponse: null,
     };
   }
 }

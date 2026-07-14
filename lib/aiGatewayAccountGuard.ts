@@ -364,11 +364,18 @@ export async function reserveAiGatewayAccountAttempt(
       ],
     ) as Array<number | string>;
   } catch (error) {
-    console.error("[ai-gateway-guard] atomic reservation unavailable", {
+    console.warn("[ai-gateway-guard] atomic reservation unavailable; bypassing guard temporarily", {
       accountId,
       message: error instanceof Error ? error.message : String(error),
     });
-    throw new AiGatewayGuardUnavailableError();
+    return {
+      id,
+      accountId,
+      estimatedInputTokens,
+      reservedOutputTokens,
+      estimatedCostMicroUsd,
+      state: "bypassed",
+    };
   }
 
   if (Number(result?.[0]) !== 1) {
@@ -468,4 +475,3 @@ export async function recordAiGatewayAccountFailure(args: { accountId: unknown; 
     await ensureExpiry(redis, key, next, "day");
   }
 }
-
