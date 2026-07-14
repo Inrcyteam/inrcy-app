@@ -80,6 +80,12 @@ function deterministicEventId(value: string) {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-4${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
 }
 
+function isUniqueViolation(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { code?: unknown; message?: unknown };
+  return String(candidate.code || "") === "23505" || /duplicate key|unique constraint/i.test(String(candidate.message || ""));
+}
+
 function safeEventType(value: unknown): InrBadgeEventType {
   const candidate = clean(value, 40) as InrBadgeEventType;
   return EVENT_TYPES.has(candidate) ? candidate : "action_click";
@@ -195,6 +201,14 @@ export async function recordInrBadgeEvent(supabase: SupabaseLike, input: {
 
   try {
     if (dailyVisitKey) {
+      const { data: existingDailyVisit, error: lookupError } = await supabase
+        .from("inrbadge_events")
+        .select("id")
+        .eq("daily_visit_key", dailyVisitKey)
+        .maybeSingle();
+      if (lookupError) throw lookupError;
+      if (existingDailyVisit?.id) return { ok: true, deduped: true };
+
       // Utilise un UUID déterministe par visite quotidienne puis un upsert
       // sur la clé primaire. Cela évite les erreurs 23505 dans les logs tout
       // en conservant la déduplication journalière déjà garantie par l'index.
@@ -204,8 +218,18 @@ export async function recordInrBadgeEvent(supabase: SupabaseLike, input: {
       };
       const { error } = await supabase
         .from("inrbadge_events")
-        .upsert(dailyPayload, { onConflict: "id", ignoreDuplicates: true });
-      if (error) throw error;
+        .insert(dailyPayload);
+      if (error) {
+        if (isUniqueViolation(error)) {
+          const { data: racedDailyVisit, error: raceLookupError } = await supabase
+            .from("inrbadge_events")
+            .select("id")
+            .eq("daily_visit_key", dailyVisitKey)
+            .maybeSingle();
+          if (!raceLookupError && racedDailyVisit?.id) return { ok: true, deduped: true };
+        }
+        throw error;
+      }
       return { ok: true, deduped: true };
     }
 
