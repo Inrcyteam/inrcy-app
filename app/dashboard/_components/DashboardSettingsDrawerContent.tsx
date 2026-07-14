@@ -84,6 +84,8 @@ type DashboardSettingsDrawerContentProps = {
   inrBadgeSettingsProps: any;
   pinterestAccessEnabled?: boolean;
   inrSearchAccessEnabled?: boolean;
+  inrSearchConnected?: boolean | null;
+  inrSearchUrl?: string;
 };
 
 export default function DashboardSettingsDrawerContent({
@@ -115,6 +117,8 @@ export default function DashboardSettingsDrawerContent({
   inrBadgeSettingsProps,
   pinterestAccessEnabled = false,
   inrSearchAccessEnabled = false,
+  inrSearchConnected = null,
+  inrSearchUrl = "",
 }: DashboardSettingsDrawerContentProps) {
   return (
     <>
@@ -163,7 +167,9 @@ export default function DashboardSettingsDrawerContent({
       {panel === "documents" && <DocumentsSettingsContent />}
       {panel === "youtube_shorts" && <YoutubeShortsSettingsContent />}
       {panel === "pinterest" && pinterestAccessEnabled && <PinterestSettingsContent />}
-      {panel === "inr_search" && inrSearchAccessEnabled && <InrSearchSettingsContent />}
+      {panel === "inr_search" && inrSearchAccessEnabled && (
+        <InrSearchSettingsContent initialConnected={inrSearchConnected} initialPublicUrl={inrSearchUrl} />
+      )}
 
       <SiteInrcyPanelBlock panel={panel} panelProps={siteInrcyPanelProps} />
       <SiteWebPanelBlock panel={panel} panelProps={siteWebPanelProps} />

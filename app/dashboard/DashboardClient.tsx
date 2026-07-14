@@ -3411,6 +3411,8 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
           inrBadgeSettingsProps={inrBadgeSettingsProps}
           pinterestAccessEnabled={canAccessPinterest}
           inrSearchAccessEnabled={canAccessInrSearch}
+          inrSearchConnected={inrSearchConnected}
+          inrSearchUrl={inrSearchUrl}
         />
       </SettingsDrawer>
 

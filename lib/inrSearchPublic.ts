@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { unstable_cache } from "next/cache";
 import { getActivitySectorLabel, decodeBusinessSector } from "@/lib/activitySectors";
 import { getChannelConnectionStates } from "@/lib/channelConnectionState";
 import { filterEligibleInrSearchAccountIds, getInrSearchPublicationEligibility } from "@/lib/inrSearchEligibility";
@@ -738,7 +739,25 @@ async function loadInrSearchPublicPageUncached(slug: string): Promise<InrSearchP
   };
 }
 
-export const loadInrSearchPublicPage = cache(loadInrSearchPublicPageUncached);
+export function getInrSearchPublicPageCacheTag(slugValue: unknown) {
+  const slug = normalizeInrSearchDirectorySlug(slugValue);
+  return `inr-search-page:${slug || "unknown"}`;
+}
+
+const loadInrSearchPublicPageRequestCached = cache(loadInrSearchPublicPageUncached);
+
+const loadInrSearchPublicPageCached = cache(async (slugValue: string) => {
+  const slug = normalizeInrSearchDirectorySlug(slugValue);
+  if (!slug) return null;
+  const readCachedPage = unstable_cache(
+    () => loadInrSearchPublicPageRequestCached(slug),
+    ["inr-search-public-page", slug],
+    { revalidate: 300, tags: [getInrSearchPublicPageCacheTag(slug)] },
+  );
+  return readCachedPage();
+});
+
+export const loadInrSearchPublicPage = loadInrSearchPublicPageCached;
 
 export async function getInrSearchPublicStatus(slugValue: unknown): Promise<InrSearchPublicStatus> {
   const slug = normalizeInrSearchDirectorySlug(slugValue);

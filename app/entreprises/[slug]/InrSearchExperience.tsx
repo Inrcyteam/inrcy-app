@@ -112,6 +112,8 @@ export default function InrSearchExperience({
         } else {
           item.setAttribute("data-orbit-inactive", "true");
           item.removeAttribute("data-orbit-active");
+          item.setAttribute("aria-hidden", "true");
+          item.setAttribute("inert", "");
         }
         item.removeAttribute("aria-hidden");
         item.removeAttribute("inert");

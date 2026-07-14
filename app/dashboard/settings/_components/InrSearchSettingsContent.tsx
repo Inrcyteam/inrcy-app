@@ -40,6 +40,11 @@ type InrSearchSettings = {
   systemManaged?: boolean;
 };
 
+type InrSearchPanelSnapshot = {
+  settings: InrSearchSettings;
+  publication: InrSearchPublicationState;
+};
+
 const EMPTY_SETTINGS: InrSearchSettings = {
   enabled: false,
   directoryEnabled: false,
@@ -52,6 +57,8 @@ const EMPTY_SETTINGS: InrSearchSettings = {
   updatedAt: null,
   systemManaged: true,
 };
+
+const INR_SEARCH_PANEL_CACHE_PREFIX = "inrcy:inr-search-panel:";
 
 const cardStyle = {
   border: "1px solid rgba(255,255,255,0.12)",
@@ -82,6 +89,73 @@ function normalizeSettings(value: unknown): InrSearchSettings {
   };
 }
 
+function slugFromPublicUrl(value: string) {
+  const match = value.match(/\/entreprises\/([^/?#]+)/i);
+  return match?.[1] || "";
+}
+
+function readPanelSnapshot(publicUrl: string, initialConnected: boolean | null) {
+  if (typeof window === "undefined") return null;
+  const slug = slugFromPublicUrl(publicUrl);
+  if (!slug) return null;
+  if (initialConnected === false) return null;
+
+  try {
+    const raw = window.sessionStorage.getItem(`${INR_SEARCH_PANEL_CACHE_PREFIX}${slug}`);
+    if (raw) {
+      const parsed = asRecord(JSON.parse(raw));
+      const publicationValue = asRecord(parsed.publication);
+      const reason = String(publicationValue.reason);
+      const validReasons = [
+        "published",
+        "slug_missing",
+        "config_missing",
+        "page_disabled",
+        "bubble_disabled",
+        "subscription_inactive",
+        "profile_missing",
+        "data_unavailable",
+      ];
+      return {
+        settings: normalizeSettings(parsed.settings),
+        publication: {
+          allowed: Boolean(publicationValue.allowed),
+          reason: (validReasons.includes(reason) ? reason : "data_unavailable") as InrSearchPublicationState["reason"],
+          subscriptionStatus: typeof publicationValue.subscriptionStatus === "string" ? publicationValue.subscriptionStatus : undefined,
+        },
+      } satisfies InrSearchPanelSnapshot;
+    }
+  } catch {
+    // sessionStorage is only an optimization; the live request remains the source of truth.
+  }
+
+  if (initialConnected === true) {
+    return {
+      settings: {
+        ...EMPTY_SETTINGS,
+        enabled: true,
+        slug,
+        publishedSlug: slug,
+        slugLocked: true,
+      },
+      publication: { allowed: true, reason: "published" },
+    } satisfies InrSearchPanelSnapshot;
+  }
+
+  return null;
+}
+
+function writePanelSnapshot(publicUrl: string, snapshot: InrSearchPanelSnapshot) {
+  if (typeof window === "undefined") return;
+  const slug = slugFromPublicUrl(publicUrl);
+  if (!slug) return;
+  try {
+    window.sessionStorage.setItem(`${INR_SEARCH_PANEL_CACHE_PREFIX}${slug}`, JSON.stringify(snapshot));
+  } catch {
+    // sessionStorage is only an optimization.
+  }
+}
+
 function emitDashboardUpdate(settings: InrSearchSettings, publicationAllowed: boolean) {
   if (typeof window === "undefined") return;
   const pageUrl = settings.slug ? `${getRuntimeInrSearchOrigin()}/entreprises/${settings.slug}` : "";
@@ -93,10 +167,22 @@ function emitDashboardUpdate(settings: InrSearchSettings, publicationAllowed: bo
   }));
 }
 
-export default function InrSearchSettingsContent() {
-  const [settings, setSettings] = useState<InrSearchSettings>(EMPTY_SETTINGS);
-  const [publication, setPublication] = useState<InrSearchPublicationState>({ allowed: false, reason: "bubble_disabled" });
-  const [loading, setLoading] = useState(true);
+type InrSearchSettingsContentProps = {
+  initialConnected?: boolean | null;
+  initialPublicUrl?: string;
+};
+
+export default function InrSearchSettingsContent({
+  initialConnected = null,
+  initialPublicUrl = "",
+}: InrSearchSettingsContentProps) {
+  const [initialSnapshot] = useState(() => readPanelSnapshot(initialPublicUrl, initialConnected));
+  const [settings, setSettings] = useState<InrSearchSettings>(() => initialSnapshot?.settings || EMPTY_SETTINGS);
+  const [publication, setPublication] = useState<InrSearchPublicationState>(() => initialSnapshot?.publication || {
+    allowed: initialConnected === true,
+    reason: initialConnected === true ? "published" : "bubble_disabled",
+  });
+  const [loading, setLoading] = useState(() => !initialSnapshot && initialConnected === null);
   const [actionLoading, setActionLoading] = useState(false);
   const [helperOpen, setHelperOpen] = useState(false);
   const [disconnectConfirmOpen, setDisconnectConfirmOpen] = useState(false);
@@ -112,8 +198,8 @@ export default function InrSearchSettingsContent() {
     [settings.slug],
   );
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async ({ blocking = false }: { blocking?: boolean } = {}) => {
+    if (blocking) setLoading(true);
     setError(null);
     try {
       const response = await fetch("/api/inr-search/settings", { cache: "no-store", credentials: "include" });
@@ -141,16 +227,20 @@ export default function InrSearchSettingsContent() {
 
       setSettings(next);
       setPublication(nextPublication);
+      writePanelSnapshot(
+        publicUrl || (next.slug ? `${INR_SEARCH_PUBLIC_ORIGIN}/entreprises/${next.slug}` : ""),
+        { settings: next, publication: nextPublication },
+      );
       emitDashboardUpdate(next, nextPublication.allowed);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Chargement de la page iNr'Search impossible.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [publicUrl]);
 
   useEffect(() => {
-    void load();
+    void load({ blocking: !initialSnapshot && initialConnected === null });
     const refresh = () => {
       if (document.visibilityState === "visible") void load();
     };
@@ -162,7 +252,7 @@ export default function InrSearchSettingsContent() {
       window.removeEventListener("focus", refresh);
       document.removeEventListener("visibilitychange", refresh);
     };
-  }, [load]);
+  }, [initialConnected, initialSnapshot, load]);
 
   const isPublished = Boolean(settings.enabled && settings.slug && publication.allowed);
   const hasPage = Boolean(settings.slug);

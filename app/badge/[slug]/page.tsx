@@ -286,7 +286,7 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
       .maybeSingle(),
     supabaseAdmin
       .from("business_profiles")
-      .select("business_description,services,services_text,intervention_zones,intervention_zones_text,opening_days,opening_hours,strengths,strengths_text")
+      .select("business_description,services,intervention_zones,opening_days,opening_hours,strengths")
       .eq("user_id", userId)
       .order("updated_at", { ascending: false })
       .limit(1)

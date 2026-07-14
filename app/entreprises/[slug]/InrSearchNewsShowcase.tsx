@@ -95,7 +95,7 @@ export default function InrSearchNewsShowcase({ companyName, publications }: Pro
     <div className={styles.newsOrbitExperience}>
       <div className={styles.newsOrbitHeader}>
         <div>
-          <span className={styles.newsOrbitEyebrow}>Générateur d’impulsions</span>
+          <span className={styles.newsOrbitEyebrow}>L’entreprise en mouvement</span>
           <h2 id="actualites-title">Les actualités de {companyName}</h2>
           <p>Suivez les signaux récents de {companyName} : une actualité à jour rassure, prouve l’activité et donne envie d’engager l’échange.</p>
         </div>

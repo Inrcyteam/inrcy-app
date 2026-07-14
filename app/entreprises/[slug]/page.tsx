@@ -611,7 +611,7 @@ function buildWebPageJsonLd(data: InrSearchPublicPageData) {
       ...(data.sections.media && data.media.length
         ? [{ "@type": "WebPageElement", "@id": `${url}#realisations`, name: "Réalisations" }]
         : []),
-      ...(data.sections.news && data.publications.length
+      ...(data.sections.news
         ? [{ "@type": "WebPageElement", "@id": `${url}#actualites`, name: "Actualités" }]
         : []),
       ...(data.sections.areas && data.zones.length
@@ -676,7 +676,7 @@ export async function generateMetadata({
   }
 
   const canonical = buildInrSearchPublicUrl(data.slug);
-  const title = buildSeoTitle(data);
+  const title = data.pageTitle || buildSeoTitle(data);
   const description = buildSeoDescription(data);
   const image = data.logoUrl || data.media[0]?.url || undefined;
 
@@ -756,7 +756,7 @@ export default async function InrSearchCompanyPage({ params }: PageProps) {
     ...(data.sections.media && data.media.length
       ? [{ href: "#realisations", label: "Réalisations" }]
       : []),
-    ...(data.sections.news && data.publications.length
+    ...(data.sections.news
       ? [{ href: "#actualites", label: "Actualités" }]
       : []),
     ...(data.sections.areas && enhancedZones.length
@@ -1091,7 +1091,7 @@ export default async function InrSearchCompanyPage({ params }: PageProps) {
           </section>
         ) : null}
 
-        {data.sections.news && data.publications.length ? (
+        {data.sections.news ? (
           <section
             className={`${styles.section} ${styles.newsSection} ${styles.orbitPanel}`}
             id="actualites"

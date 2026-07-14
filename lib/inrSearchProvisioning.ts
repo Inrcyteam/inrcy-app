@@ -1,7 +1,8 @@
 import "server-only";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 
+import { getInrSearchPublicPageCacheTag } from "@/lib/inrSearchPublic";
 import { buildInrSearchIndexingUrls, submitInrSearchUrlsToIndexNow } from "@/lib/inrSearchSeo";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { asRecord } from "@/lib/tsSafe";
@@ -71,7 +72,10 @@ function sameSections(value: unknown) {
 export function revalidateInrSearchPublicRoutes(slug = "") {
   revalidatePath("/entreprises");
   revalidatePath("/entreprises/[slug]", "page");
-  if (slug) revalidatePath(`/entreprises/${slug}`);
+  if (slug) {
+    revalidatePath(`/entreprises/${slug}`);
+    revalidateTag(getInrSearchPublicPageCacheTag(slug), "max");
+  }
   revalidatePath("/metiers");
   revalidatePath("/metiers/[metier]", "page");
   revalidatePath("/metiers/[metier]/[ville]", "page");
