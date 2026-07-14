@@ -73,7 +73,7 @@ export async function GET(request: NextRequest) {
   const { data, error } = await query;
   if (error) {
     return NextResponse.json(
-      { error: "Impossible de charger les images.", detail: error.message },
+      { error: "Impossible de charger les images." },
       { status: 500 },
     );
   }
@@ -155,7 +155,7 @@ export async function PATCH(request: NextRequest) {
 
   if (error) {
     return NextResponse.json(
-      { error: "Impossible de mettre à jour l’image.", detail: error.message },
+      { error: "Impossible de mettre à jour l’image." },
       { status: 500 },
     );
   }
@@ -197,7 +197,6 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json(
       {
         error: "Impossible de retrouver les images.",
-        detail: fetchError.message,
       },
       { status: 500 },
     );

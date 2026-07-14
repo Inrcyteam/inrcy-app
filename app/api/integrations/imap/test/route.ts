@@ -84,7 +84,6 @@ export const POST = withApi(async (req: Request) => {
     return NextResponse.json({ ok: true });
   } catch (e: unknown) {
     const friendly = translateMailConnectionError(e, "Test IMAP/SMTP impossible");
-    const detail = process.env.NODE_ENV === "development" ? ((e instanceof Error ? e.message : String(e)) || friendly) : undefined;
-    return NextResponse.json({ ...buildUserFacingErrorBody(friendly, { status: 400, code: "imap_test_failed" }), detail }, { status: 400 });
+    return NextResponse.json(buildUserFacingErrorBody(friendly, { status: 400, code: "imap_test_failed" }), { status: 400 });
   }
 }, { route: "/api/integrations/imap/test" });

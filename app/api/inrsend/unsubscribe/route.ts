@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { markQueuedRecipientsBlockedBySuppression, upsertSuppressionEntry } from "@/lib/mailSuppression";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
 export const runtime = "nodejs";
 
@@ -97,6 +98,6 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true });
   } catch (error: any) {
-    return NextResponse.json({ error: error?.message || "Désinscription impossible." }, { status: 500 });
+    return NextResponse.json({ error: getSimpleFrenchErrorMessage(error, "Désinscription impossible.") }, { status: 500 });
   }
 }

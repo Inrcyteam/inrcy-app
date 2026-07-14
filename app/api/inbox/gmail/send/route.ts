@@ -11,6 +11,7 @@ import { sanitizeRichMailHtml } from "@/lib/mailRichText";
 import { inferInrSendFileRole, saveInrSendHistoryFiles } from "@/lib/inrsend/historyFiles";
 import { getConnectionDisplayStatus } from "@/lib/connectionVersions";
 import { normalizeMailDeliveryError } from "@/lib/mailDeliveryErrors";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 function asRecord(v: unknown): Record<string, unknown> {
   return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {};
 }
@@ -263,7 +264,7 @@ const handler = async (req: Request) => {
 
   const { data: accounts, error: accErr } = await q.order("created_at", { ascending: true }).limit(1);
 
-  if (accErr) return NextResponse.json({ error: accErr.message }, { status: 500 });
+  if (accErr) return NextResponse.json({ error: getSimpleFrenchErrorMessage(accErr, "Impossible de retrouver la boîte Gmail.") }, { status: 500 });
 
   const account = accounts?.[0];
   if (!account) return NextResponse.json({ error: "Aucun compte Gmail connecté." }, { status: 400 });

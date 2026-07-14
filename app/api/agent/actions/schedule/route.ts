@@ -12,6 +12,7 @@ import { findSimilarScheduledPublication } from "@/lib/scheduledPublicationDedup
 import { findSimilarScheduledCampaign } from "@/lib/scheduledCampaignDedupe";
 import { captureApiException } from "@/lib/observability/sentry";
 import { withApi } from "@/lib/observability/withApi";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
 export const runtime = "nodejs";
 export const maxDuration = 90;
@@ -779,7 +780,6 @@ async function scheduleAgentActionHandler(request: Request) {
     return NextResponse.json(
       {
         error: "Lecture de l’action iNr’Agent impossible.",
-        detail: readError.message,
       },
       { status: 500 },
     );
@@ -951,7 +951,6 @@ async function scheduleAgentActionHandler(request: Request) {
       return NextResponse.json(
         {
           error: "Programmation de l’action impossible.",
-          detail: insertError.message,
         },
         { status: 500 },
       );
@@ -1003,7 +1002,6 @@ async function scheduleAgentActionHandler(request: Request) {
         {
           error:
             "Action programmée créée, mais mise à jour iNrAgent impossible.",
-          detail: updateError.message,
         },
         { status: 500 },
       );
@@ -1026,10 +1024,7 @@ async function scheduleAgentActionHandler(request: Request) {
     });
     return NextResponse.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Programmation de l’action impossible.",
+        error: getSimpleFrenchErrorMessage(error, "Programmation de l’action impossible."),
       },
       { status: 400 },
     );

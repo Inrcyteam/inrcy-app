@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
+import { getClientUserFacingErrorMessage } from "@/lib/userFacingErrors";
 
 import styles from "./diagnostic.module.css";
 
@@ -46,8 +47,7 @@ function statusLabel(severity: Severity) {
 }
 
 function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  return "Erreur inconnue";
+  return getClientUserFacingErrorMessage(error, "Une vérification n’a pas pu aboutir.");
 }
 
 async function fetchWithTimeout(url: string, init?: RequestInit): Promise<{ response: Response; durationMs: number }> {

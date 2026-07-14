@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { getClientUserFacingErrorMessage } from "@/lib/userFacingErrors";
 import styles from "./users.module.css";
 
 type RoleFilter = "all" | "user" | "admin" | "staff";
@@ -147,7 +148,7 @@ export default function AdminUsersClient() {
       if (!response.ok) throw new Error(json?.error || "Impossible de charger les comptes utilisateurs.");
       setUsers((json.users ?? []) as AdminUserRow[]);
     } catch (e: any) {
-      setError(e?.message || "Impossible de charger les comptes utilisateurs.");
+      setError(getClientUserFacingErrorMessage(e, "Impossible de charger les comptes utilisateurs."));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -187,7 +188,7 @@ export default function AdminUsersClient() {
       setSuccess(successMessage);
       await load(true);
     } catch (e: any) {
-      setError(e?.message || "Mise à jour impossible.");
+      setError(getClientUserFacingErrorMessage(e, "Mise à jour impossible."));
     } finally {
       setSavingId(null);
     }

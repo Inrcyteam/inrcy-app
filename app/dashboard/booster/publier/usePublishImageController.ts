@@ -9,6 +9,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from "react";
+import { getClientUserFacingErrorMessage } from "@/lib/userFacingErrors";
 import { confirmInrcy } from "@/lib/inrcyDialog";
 import {
   areBoosterImageTransformsEquivalent,
@@ -379,9 +380,10 @@ export default function usePublishImageController({
       );
     } catch (error) {
       setImgError(
-        error instanceof Error
-          ? error.message
-          : "Impossible de convertir cette image HEIC. Utilisez une image JPG, PNG ou WebP.",
+        getClientUserFacingErrorMessage(
+          error,
+          "Impossible de convertir cette image HEIC. Utilisez une image JPG, PNG ou WebP.",
+        ),
       );
       return;
     }

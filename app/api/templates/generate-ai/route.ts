@@ -5,6 +5,7 @@ import {
   generateTemplateAiContent,
   TemplateAiGenerationError,
 } from "@/lib/templateAiGeneration";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
 export const maxDuration = 60;
 
@@ -27,7 +28,7 @@ export async function POST(req: Request) {
     if (e instanceof TemplateAiGenerationError) {
       return NextResponse.json(
         {
-          error: e.message,
+          error: getSimpleFrenchErrorMessage(e, "La génération IA n’a pas pu aboutir."),
           ...(e.code ? { code: e.code } : {}),
         },
         { status: e.status, headers: e.headers },

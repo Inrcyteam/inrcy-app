@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { enforceRateLimit } from "@/lib/rateLimit";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import {
   INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
   INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL,
@@ -278,7 +279,7 @@ export async function POST(req: Request) {
 
     if (upload.error) {
       return NextResponse.json(
-        { error: upload.error.message || "Upload vidéo impossible." },
+        { error: getSimpleFrenchErrorMessage(upload.error, "Upload vidéo impossible.") },
         { status: 500 },
       );
     }

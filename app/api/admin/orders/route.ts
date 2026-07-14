@@ -52,7 +52,7 @@ export async function GET(request: NextRequest) {
   const { data, error } = await query;
   if (error) {
     return NextResponse.json(
-      { error: "Impossible de charger les commandes.", detail: error.message },
+      { error: "Impossible de charger les commandes." },
       { status: 500 }
     );
   }
@@ -84,7 +84,7 @@ export async function PATCH(request: NextRequest) {
 
   if (error) {
     return NextResponse.json(
-      { error: "Impossible de mettre à jour la commande.", detail: error.message },
+      { error: "Impossible de mettre à jour la commande." },
       { status: 500 }
     );
   }

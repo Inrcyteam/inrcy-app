@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { enforceRateLimit } from "@/lib/rateLimit";
 import { INR_MEDIA_IMAGE_MAX_BYTES } from "@/lib/mediaRules";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
 const MAX_IMAGE_BYTES = INR_MEDIA_IMAGE_MAX_BYTES;
 const DEFAULT_UPLOAD_FOLDER = "booster-prepublish";
@@ -244,7 +245,7 @@ export async function POST(req: Request) {
 
     if (upload.error) {
       return NextResponse.json(
-        { error: upload.error.message || "Upload impossible." },
+        { error: getSimpleFrenchErrorMessage(upload.error, "Upload impossible.") },
         { status: 500 },
       );
     }

@@ -43,7 +43,6 @@ export async function GET(request: NextRequest) {
       reports: [],
       tableReady: false,
       error: "Table diagnostics non disponible.",
-      detail: error.message,
       setupSql: "ops/sql/2026-06-10_admin_diagnostic_reports.sql",
     });
   }
@@ -86,7 +85,7 @@ export async function PATCH(request: NextRequest) {
     .select("id,status")
     .maybeSingle();
 
-  if (error) return NextResponse.json({ error: "Mise à jour impossible.", detail: error.message }, { status: 500 });
+  if (error) return NextResponse.json({ error: "Mise à jour impossible." }, { status: 500 });
   if (!data) return NextResponse.json({ error: "Diagnostic introuvable." }, { status: 404 });
 
   return NextResponse.json({ ok: true, report: data });

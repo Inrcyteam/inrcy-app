@@ -1,7 +1,188 @@
+import { normalizeAppLanguage, type AppLanguageCode } from "@/lib/appLanguage";
+
 export const FACEBOOK_RECONNECT_USER_MESSAGE = "Facebook à reconnecter. Rendez-vous dans Canaux.";
 export const INSTAGRAM_RECONNECT_USER_MESSAGE = "Instagram à reconnecter. Rendez-vous dans Canaux.";
 export const LINKEDIN_RECONNECT_USER_MESSAGE = "LinkedIn à reconnecter. Rendez-vous dans Canaux.";
 export const GOOGLE_BUSINESS_RECONNECT_USER_MESSAGE = "Google Business à reconnecter. Rendez-vous dans Canaux.";
+
+type UserFacingErrorKey =
+  | "generic"
+  | "action_failed"
+  | "rate_limit"
+  | "not_available"
+  | "network"
+  | "ssl"
+  | "credentials"
+  | "timeout"
+  | "session"
+  | "forbidden"
+  | "not_found"
+  | "conflict"
+  | "invalid"
+  | "service_unavailable"
+  | "cancelled"
+  | "expired"
+  | "facebook_reconnect"
+  | "instagram_reconnect"
+  | "linkedin_reconnect"
+  | "google_business_reconnect";
+
+const LOCALIZED_ERROR_COPY: Record<AppLanguageCode, Record<UserFacingErrorKey, string>> = {
+  fr: {
+    generic: "Cette action n’a pas pu aboutir. Merci de réessayer.",
+    action_failed: "L’action demandée n’a pas pu être finalisée. Merci de réessayer.",
+    rate_limit: "Le service est très sollicité. Merci de réessayer dans quelques minutes.",
+    not_available: "Cette action n’est pas encore disponible.",
+    network: "Connexion au serveur impossible pour le moment. Merci de réessayer.",
+    ssl: "La connexion sécurisée au serveur mail n’a pas pu être établie. Vérifiez ses réglages ou réessayez.",
+    credentials: "Identifiant ou mot de passe incorrect. Vérifiez vos informations puis réessayez.",
+    timeout: "Le serveur met trop de temps à répondre. Merci de réessayer.",
+    session: "Votre session a expiré. Merci de vous reconnecter.",
+    forbidden: "Vous n’avez pas l’autorisation d’effectuer cette action.",
+    not_found: "L’information demandée est introuvable.",
+    conflict: "Cette action est déjà en cours ou a déjà été effectuée.",
+    invalid: "Certaines informations sont manquantes ou incorrectes.",
+    service_unavailable: "Le service est momentanément indisponible. Merci de réessayer dans quelques minutes.",
+    cancelled: "La connexion a été annulée.",
+    expired: "Le lien ou l’accès a expiré. Merci de recommencer.",
+    facebook_reconnect: FACEBOOK_RECONNECT_USER_MESSAGE,
+    instagram_reconnect: INSTAGRAM_RECONNECT_USER_MESSAGE,
+    linkedin_reconnect: LINKEDIN_RECONNECT_USER_MESSAGE,
+    google_business_reconnect: GOOGLE_BUSINESS_RECONNECT_USER_MESSAGE,
+  },
+  en: {
+    generic: "This action could not be completed. Please try again.",
+    action_failed: "The requested action could not be completed. Please try again.",
+    rate_limit: "The service is busy right now. Please try again in a few minutes.",
+    not_available: "This action is not available yet.",
+    network: "We couldn’t connect to the server. Please try again.",
+    ssl: "We couldn’t establish a secure connection to the mail server. Check its settings or try again.",
+    credentials: "The username or password is incorrect. Check your details and try again.",
+    timeout: "The server is taking too long to respond. Please try again.",
+    session: "Your session has expired. Please sign in again.",
+    forbidden: "You are not allowed to perform this action.",
+    not_found: "The requested information could not be found.",
+    conflict: "This action is already in progress or has already been completed.",
+    invalid: "Some information is missing or incorrect.",
+    service_unavailable: "The service is temporarily unavailable. Please try again in a few minutes.",
+    cancelled: "The connection was cancelled.",
+    expired: "The link or access has expired. Please start again.",
+    facebook_reconnect: "Facebook needs to be reconnected. Go to Channels.",
+    instagram_reconnect: "Instagram needs to be reconnected. Go to Channels.",
+    linkedin_reconnect: "LinkedIn needs to be reconnected. Go to Channels.",
+    google_business_reconnect: "Google Business needs to be reconnected. Go to Channels.",
+  },
+  es: {
+    generic: "No se ha podido completar esta acción. Inténtalo de nuevo.",
+    action_failed: "No se ha podido completar la acción solicitada. Inténtalo de nuevo.",
+    rate_limit: "El servicio está muy solicitado. Inténtalo de nuevo en unos minutos.",
+    not_available: "Esta acción todavía no está disponible.",
+    network: "No se ha podido conectar con el servidor. Inténtalo de nuevo.",
+    ssl: "No se ha podido establecer una conexión segura con el servidor de correo. Comprueba su configuración o inténtalo de nuevo.",
+    credentials: "El usuario o la contraseña no son correctos. Comprueba los datos e inténtalo de nuevo.",
+    timeout: "El servidor tarda demasiado en responder. Inténtalo de nuevo.",
+    session: "Tu sesión ha caducado. Vuelve a iniciar sesión.",
+    forbidden: "No tienes permiso para realizar esta acción.",
+    not_found: "No se ha encontrado la información solicitada.",
+    conflict: "Esta acción ya está en curso o ya se ha realizado.",
+    invalid: "Faltan algunos datos o no son correctos.",
+    service_unavailable: "El servicio no está disponible temporalmente. Inténtalo de nuevo en unos minutos.",
+    cancelled: "La conexión se ha cancelado.",
+    expired: "El enlace o el acceso ha caducado. Vuelve a empezar.",
+    facebook_reconnect: "Hay que volver a conectar Facebook. Ve a Canales.",
+    instagram_reconnect: "Hay que volver a conectar Instagram. Ve a Canales.",
+    linkedin_reconnect: "Hay que volver a conectar LinkedIn. Ve a Canales.",
+    google_business_reconnect: "Hay que volver a conectar Google Business. Ve a Canales.",
+  },
+  it: {
+    generic: "Non è stato possibile completare questa azione. Riprova.",
+    action_failed: "Non è stato possibile completare l’azione richiesta. Riprova.",
+    rate_limit: "Il servizio è molto richiesto. Riprova tra qualche minuto.",
+    not_available: "Questa azione non è ancora disponibile.",
+    network: "Non è stato possibile connettersi al server. Riprova.",
+    ssl: "Non è stato possibile stabilire una connessione sicura al server di posta. Controlla le impostazioni o riprova.",
+    credentials: "Nome utente o password non corretti. Controlla i dati e riprova.",
+    timeout: "Il server impiega troppo tempo a rispondere. Riprova.",
+    session: "La sessione è scaduta. Accedi di nuovo.",
+    forbidden: "Non hai l’autorizzazione per eseguire questa azione.",
+    not_found: "Non è stato possibile trovare le informazioni richieste.",
+    conflict: "Questa azione è già in corso o è già stata eseguita.",
+    invalid: "Alcune informazioni mancano o non sono corrette.",
+    service_unavailable: "Il servizio è temporaneamente indisponibile. Riprova tra qualche minuto.",
+    cancelled: "La connessione è stata annullata.",
+    expired: "Il link o l’accesso è scaduto. Ricomincia.",
+    facebook_reconnect: "Facebook deve essere ricollegato. Vai su Canali.",
+    instagram_reconnect: "Instagram deve essere ricollegato. Vai su Canali.",
+    linkedin_reconnect: "LinkedIn deve essere ricollegato. Vai su Canali.",
+    google_business_reconnect: "Google Business deve essere ricollegato. Vai su Canali.",
+  },
+  de: {
+    generic: "Diese Aktion konnte nicht abgeschlossen werden. Bitte versuchen Sie es erneut.",
+    action_failed: "Die angeforderte Aktion konnte nicht abgeschlossen werden. Bitte versuchen Sie es erneut.",
+    rate_limit: "Der Dienst ist gerade stark ausgelastet. Bitte versuchen Sie es in einigen Minuten erneut.",
+    not_available: "Diese Aktion ist noch nicht verfügbar.",
+    network: "Die Verbindung zum Server war nicht möglich. Bitte versuchen Sie es erneut.",
+    ssl: "Eine sichere Verbindung zum Mailserver konnte nicht hergestellt werden. Prüfen Sie die Einstellungen oder versuchen Sie es erneut.",
+    credentials: "Benutzername oder Passwort ist falsch. Prüfen Sie Ihre Angaben und versuchen Sie es erneut.",
+    timeout: "Der Server antwortet zu langsam. Bitte versuchen Sie es erneut.",
+    session: "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.",
+    forbidden: "Sie sind nicht berechtigt, diese Aktion auszuführen.",
+    not_found: "Die angeforderten Informationen wurden nicht gefunden.",
+    conflict: "Diese Aktion läuft bereits oder wurde schon ausgeführt.",
+    invalid: "Einige Angaben fehlen oder sind nicht korrekt.",
+    service_unavailable: "Der Dienst ist vorübergehend nicht verfügbar. Bitte versuchen Sie es in einigen Minuten erneut.",
+    cancelled: "Die Verbindung wurde abgebrochen.",
+    expired: "Der Link oder Zugriff ist abgelaufen. Bitte beginnen Sie erneut.",
+    facebook_reconnect: "Facebook muss erneut verbunden werden. Öffnen Sie Kanäle.",
+    instagram_reconnect: "Instagram muss erneut verbunden werden. Öffnen Sie Kanäle.",
+    linkedin_reconnect: "LinkedIn muss erneut verbunden werden. Öffnen Sie Kanäle.",
+    google_business_reconnect: "Google Business muss erneut verbunden werden. Öffnen Sie Kanäle.",
+  },
+  nl: {
+    generic: "Deze actie kon niet worden voltooid. Probeer het opnieuw.",
+    action_failed: "De gevraagde actie kon niet worden voltooid. Probeer het opnieuw.",
+    rate_limit: "De dienst is momenteel druk. Probeer het over enkele minuten opnieuw.",
+    not_available: "Deze actie is nog niet beschikbaar.",
+    network: "Er kon geen verbinding met de server worden gemaakt. Probeer het opnieuw.",
+    ssl: "Er kon geen veilige verbinding met de mailserver worden gemaakt. Controleer de instellingen of probeer het opnieuw.",
+    credentials: "De gebruikersnaam of het wachtwoord is onjuist. Controleer uw gegevens en probeer het opnieuw.",
+    timeout: "De server reageert te langzaam. Probeer het opnieuw.",
+    session: "Uw sessie is verlopen. Meld u opnieuw aan.",
+    forbidden: "U bent niet gemachtigd om deze actie uit te voeren.",
+    not_found: "De gevraagde informatie kon niet worden gevonden.",
+    conflict: "Deze actie wordt al uitgevoerd of is al uitgevoerd.",
+    invalid: "Sommige gegevens ontbreken of zijn onjuist.",
+    service_unavailable: "De dienst is tijdelijk niet beschikbaar. Probeer het over enkele minuten opnieuw.",
+    cancelled: "De verbinding is geannuleerd.",
+    expired: "De link of toegang is verlopen. Begin opnieuw.",
+    facebook_reconnect: "Facebook moet opnieuw worden verbonden. Ga naar Kanalen.",
+    instagram_reconnect: "Instagram moet opnieuw worden verbonden. Ga naar Kanalen.",
+    linkedin_reconnect: "LinkedIn moet opnieuw worden verbonden. Ga naar Kanalen.",
+    google_business_reconnect: "Google Business moet opnieuw worden verbonden. Ga naar Kanalen.",
+  },
+  pt: {
+    generic: "Não foi possível concluir esta ação. Tente novamente.",
+    action_failed: "Não foi possível concluir a ação solicitada. Tente novamente.",
+    rate_limit: "O serviço está muito solicitado. Tente novamente dentro de alguns minutos.",
+    not_available: "Esta ação ainda não está disponível.",
+    network: "Não foi possível ligar ao servidor. Tente novamente.",
+    ssl: "Não foi possível estabelecer uma ligação segura ao servidor de correio. Verifique as definições ou tente novamente.",
+    credentials: "O utilizador ou a palavra-passe estão incorretos. Verifique os dados e tente novamente.",
+    timeout: "O servidor está a demorar demasiado a responder. Tente novamente.",
+    session: "A sua sessão expirou. Inicie sessão novamente.",
+    forbidden: "Não tem autorização para executar esta ação.",
+    not_found: "Não foi possível encontrar a informação pedida.",
+    conflict: "Esta ação já está em curso ou já foi concluída.",
+    invalid: "Faltam algumas informações ou estão incorretas.",
+    service_unavailable: "O serviço está temporariamente indisponível. Tente novamente dentro de alguns minutos.",
+    cancelled: "A ligação foi cancelada.",
+    expired: "A ligação ou o acesso expirou. Comece novamente.",
+    facebook_reconnect: "É necessário ligar novamente o Facebook. Aceda a Canais.",
+    instagram_reconnect: "É necessário ligar novamente o Instagram. Aceda a Canais.",
+    linkedin_reconnect: "É necessário ligar novamente o LinkedIn. Aceda a Canais.",
+    google_business_reconnect: "É necessário ligar novamente o Google Business. Aceda a Canais.",
+  },
+};
 
 function hasAuthSignal(raw: string): boolean {
   return matches(raw, [
@@ -202,6 +383,91 @@ export function getSimpleFrenchErrorMessage(input: unknown, fallback = "Cette ac
   return sanitizeSentence(raw);
 }
 
+export function getLocalizedErrorMessage(
+  input: unknown,
+  language: AppLanguageCode | string | null | undefined,
+  fallback?: string,
+): string {
+  const normalizedLanguage = normalizeAppLanguage(language);
+  const frenchMessage = getSimpleFrenchErrorMessage(input, fallback);
+  const key = resolveUserFacingErrorKey(input, frenchMessage);
+  if (!key) return frenchMessage;
+  return LOCALIZED_ERROR_COPY[normalizedLanguage][key];
+}
+
+export function getClientUserFacingErrorMessage(input: unknown, fallback?: string): string {
+  let language: AppLanguageCode = "fr";
+  if (typeof window !== "undefined") {
+    try {
+      language = normalizeAppLanguage(window.localStorage.getItem("inrcy_app_language_v1"));
+    } catch {
+      language = "fr";
+    }
+  }
+  return getLocalizedErrorMessage(input, language, fallback);
+}
+
+export async function getLocalizedApiError(
+  res: Response,
+  language: AppLanguageCode | string | null | undefined,
+  fallback?: string,
+): Promise<string> {
+  try {
+    const contentType = res.headers.get("content-type") || "";
+    if (contentType.includes("application/json")) {
+      const json = await res.clone().json().catch(() => null) as any;
+      return getLocalizedErrorMessage(
+        json?.user_message || json?.error || json?.message || `${res.status}`,
+        language,
+        fallbackForStatus(res.status, fallback),
+      );
+    }
+    const text = await res.clone().text().catch(() => "");
+    return getLocalizedErrorMessage(text || `${res.status}`, language, fallbackForStatus(res.status, fallback));
+  } catch {
+    return getLocalizedErrorMessage(fallbackForStatus(res.status, fallback), language, fallbackForStatus(res.status, fallback));
+  }
+}
+
+export async function getClientUserFacingApiError(res: Response, fallback?: string): Promise<string> {
+  let language: AppLanguageCode = "fr";
+  if (typeof window !== "undefined") {
+    try {
+      language = normalizeAppLanguage(window.localStorage.getItem("inrcy_app_language_v1"));
+    } catch {
+      language = "fr";
+    }
+  }
+  return getLocalizedApiError(res, language, fallback);
+}
+
+function resolveUserFacingErrorKey(input: unknown, frenchMessage: string): UserFacingErrorKey | null {
+  const raw = normalizeRawMessage(input).toLowerCase();
+  const message = `${raw} ${frenchMessage.toLowerCase()}`;
+
+  if (isFacebookAuthorizationLikeMessage(input)) return "facebook_reconnect";
+  if (isInstagramAuthorizationLikeMessage(input)) return "instagram_reconnect";
+  if (isLinkedInAuthorizationLikeMessage(input)) return "linkedin_reconnect";
+  if (isGoogleBusinessAuthorizationLikeMessage(input)) return "google_business_reconnect";
+  if (matches(message, ["rate limit", "rate-limit", "too many requests", "quota", "429", "resource_exhausted"])) return "rate_limit";
+  if (matches(message, ["not implemented", "501", "not available"])) return "not_available";
+  if (matches(message, ["failed to fetch", "networkerror", "network request failed", "load failed", "fetch failed", "econnreset", "econnrefused", "enotfound", "socket hang up"])) return "network";
+  if (matches(message, ["certificate", "ssl", "unable to verify", "issuer certificate"])) return "ssl";
+  if (matches(message, ["invalid login", "invalid credentials", "authentication failed", "login failed", "535 5.7.1", "username and password"])) return "credentials";
+  if (matches(message, ["timeout", "timed out", "deadline exceeded", "aborterror"])) return "timeout";
+  if (matches(message, ["jwt expired", "session has expired", "auth session missing", "401", "unauthorized", "not authenticated", "session a expir", "session has expired"])) return "session";
+  if (matches(message, ["403", "forbidden", "access denied", "not allowed", "non autoris"])) return "forbidden";
+  if (matches(message, ["404", "not found", "introuvable"])) return "not_found";
+  if (matches(message, ["409", "already exists", "duplicate", "conflit"])) return "conflict";
+  if (matches(message, ["400", "422", "unprocessable", "bad request", "missing ", "invalid", "incorrect", "incomplète", "incomplete"])) return "invalid";
+  if (matches(message, ["access_denied", "user_denied", "consent denied", "connexion a été annulée", "connexion a ete annulee"])) return "cancelled";
+  if (matches(message, ["expired link", "expired access", "accès a expiré", "acces a expire", "jeton expiré", "jeton expire"])) return "expired";
+  if (matches(message, ["500", "502", "503", "504", "server error", "internal server error", "service unavailable", "temporanément indisponible", "momentanément indisponible"])) return "service_unavailable";
+  if (matches(message, ["l'action demandée n'a pas pu être finalisée", "l’action demandée n’a pas pu être finalisée", "action requested could not be completed"])) return "action_failed";
+  if (looksTechnical(raw)) return "generic";
+  return null;
+}
+
 export async function getSimpleFrenchApiError(res: Response, fallback?: string): Promise<string> {
   try {
     const contentType = res.headers.get("content-type") || "";
@@ -254,5 +520,5 @@ function matches(message: string, needles: string[]) {
 }
 
 function looksTechnical(raw: string) {
-  return /(^http\s?\d+$)|(<!doctype|<html|stack|trace|sql|postgres|supabase|oauth|jwt|token|unexpected token|syntaxerror|typeerror|referenceerror|filereader|openai_api_key|ai_gateway_api_key|vercel_oidc_token|access token|client_secret|client_id|\{.*\}|\[object object\])/i.test(raw);
+  return /(^http\s?\d+$)|(<!doctype|<html|stack|trace|sql|sqlstate|postgres|postgrest|pgrst|supabase|graphql|prisma|drizzle|oauth|jwt|token|unexpected token|syntaxerror|typeerror|referenceerror|filereader|openai_api_key|ai_gateway_api_key|vercel_oidc_token|access token|client_secret|client_id|node:|errno|econn|violates|constraint|relation .* does not exist|column .* does not exist|permission denied for table|invalid input syntax|unhandled rejection|\{.*\}|\[object object\])/i.test(raw);
 }

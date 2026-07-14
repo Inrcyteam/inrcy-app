@@ -8,6 +8,7 @@ import { extractFacebookUserTokens, findAccessibleFacebookPage, listAccessibleFa
 
 import { withCurrentConnectionVersion } from "@/lib/connectionVersions";
 import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 type SupabaseServerClient = Awaited<ReturnType<typeof createSupabaseServer>>;
 
 async function invalidateUserStatsCache(supabase: SupabaseServerClient, userId: string) {
@@ -84,7 +85,7 @@ export async function POST(req: Request) {
     .select("id,status,resource_id,resource_label");
 
   if (updateErr) {
-    return NextResponse.json({ error: updateErr.message }, { status: 500 });
+    return NextResponse.json({ error: getSimpleFrenchErrorMessage(updateErr, "Impossible d’enregistrer le compte Instagram.") }, { status: 500 });
   }
 
   if (!updatedRows || updatedRows.length === 0) {

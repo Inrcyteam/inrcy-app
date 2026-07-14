@@ -217,7 +217,7 @@ export async function POST(request: NextRequest) {
 
   if (error) {
     return NextResponse.json(
-      { error: "Impossible de préparer le téléchargement.", detail: error.message },
+      { error: "Impossible de préparer le téléchargement." },
       { status: 500 },
     );
   }

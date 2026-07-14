@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { getClientUserFacingErrorMessage } from "@/lib/userFacingErrors";
 import styles from "./settings.module.css";
 
 type EnvItem = { name: string; ok: boolean; value: string };
@@ -50,7 +51,7 @@ export default function AdminSettingsClient() {
       if (!response.ok) throw new Error(json?.error || "Impossible de charger les paramètres système.");
       setSettings(json as AdminSettingsPayload);
     } catch (e: any) {
-      setError(e?.message || "Impossible de charger les paramètres système.");
+      setError(getClientUserFacingErrorMessage(e, "Impossible de charger les paramètres système."));
     } finally {
       setLoading(false);
       setRefreshing(false);

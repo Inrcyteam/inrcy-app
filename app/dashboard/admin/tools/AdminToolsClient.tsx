@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { getClientUserFacingErrorMessage } from "@/lib/userFacingErrors";
 import styles from "./tools.module.css";
 
 type ToolMeta = {
@@ -125,7 +126,7 @@ export default function AdminToolsClient() {
         setSelectedUserId(nextUsers[0]?.user_id ?? "");
       }
     } catch (e: any) {
-      setError(e?.message || "Impossible de charger les accès outils.");
+      setError(getClientUserFacingErrorMessage(e, "Impossible de charger les accès outils."));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -169,7 +170,7 @@ export default function AdminToolsClient() {
       updateLocalAccess(userId, { [toolKey]: enabled });
       setSuccess(enabled ? "Outil activé." : "Outil désactivé.");
     } catch (e: any) {
-      setError(e?.message || "Mise à jour impossible.");
+      setError(getClientUserFacingErrorMessage(e, "Mise à jour impossible."));
     } finally {
       setSaving(null);
     }
@@ -205,7 +206,7 @@ export default function AdminToolsClient() {
         setSuccess(mode === "all_on" ? "Tous les outils sont activés." : "Tous les outils sont désactivés.");
       }
     } catch (e: any) {
-      setError(e?.message || "Mise à jour impossible.");
+      setError(getClientUserFacingErrorMessage(e, "Mise à jour impossible."));
     } finally {
       setSaving(null);
     }

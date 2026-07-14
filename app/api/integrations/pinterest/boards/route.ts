@@ -16,6 +16,7 @@ import {
   setPinterestDefaultBoardId,
 } from "@/lib/pinterestPreferences";
 import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
 export async function GET(request: Request) {
   try {
@@ -120,10 +121,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ ok: true, board, defaultBoardId });
   } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Création du tableau Pinterest impossible.";
+    const message = getSimpleFrenchErrorMessage(error, "Création du tableau Pinterest impossible.");
     return NextResponse.json({ ok: false, error: message }, { status: 400 });
   }
 }

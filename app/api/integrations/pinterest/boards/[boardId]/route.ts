@@ -13,6 +13,7 @@ import {
 } from "@/lib/pinterestOAuth";
 import { ensurePinterestDefaultBoardId } from "@/lib/pinterestPreferences";
 import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
 async function resolvePinterestContext(request: Request) {
   const supabase = await createSupabaseServer();
@@ -84,10 +85,7 @@ export async function PATCH(
     );
     return NextResponse.json({ ok: true, board });
   } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Modification du tableau Pinterest impossible.";
+    const message = getSimpleFrenchErrorMessage(error, "Modification du tableau Pinterest impossible.");
     return NextResponse.json({ ok: false, error: message }, { status: 400 });
   }
 }
@@ -120,10 +118,7 @@ export async function DELETE(
       : "";
     return NextResponse.json({ ok: true, defaultBoardId });
   } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Suppression du tableau Pinterest impossible.";
+    const message = getSimpleFrenchErrorMessage(error, "Suppression du tableau Pinterest impossible.");
     return NextResponse.json({ ok: false, error: message }, { status: 400 });
   }
 }

@@ -3,6 +3,7 @@
 import styles from "./adminOrders.module.css";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { getClientUserFacingErrorMessage } from "@/lib/userFacingErrors";
 
 type OrderStatus = "pending" | "processed";
 type OrderMethod = "EUR" | "UI";
@@ -97,7 +98,7 @@ export default function AdminOrdersClient() {
 
         setRows((json.orders ?? []) as BoutiqueOrderRow[]);
       } catch (e: any) {
-        setError(e?.message || "Impossible de charger les commandes.");
+        setError(getClientUserFacingErrorMessage(e, "Impossible de charger les commandes."));
       } finally {
         setLoading(false);
         setRefreshing(false);
@@ -127,7 +128,7 @@ export default function AdminOrdersClient() {
       setRows((prev) => prev.map((row) => (row.id === updated.id ? updated : row)));
       setSuccess(status === "processed" ? "Commande marquée comme traitée." : "Commande remise en cours.");
     } catch (e: any) {
-      setError(e?.message || "Impossible de mettre à jour la commande.");
+        setError(getClientUserFacingErrorMessage(e, "Impossible de mettre à jour la commande."));
     } finally {
       setSavingId(null);
     }

@@ -18,7 +18,7 @@ export async function GET() {
     .order("sort_order", { ascending: true });
 
   if (error) {
-    return NextResponse.json({ error: "Impossible de charger les métiers.", detail: error.message }, { status: 500 });
+    return NextResponse.json({ error: "Impossible de charger les métiers." }, { status: 500 });
   }
 
   return NextResponse.json({ categories: data ?? [] });

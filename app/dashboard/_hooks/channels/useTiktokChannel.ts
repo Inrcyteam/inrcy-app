@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { getClientUserFacingErrorMessage } from "@/lib/userFacingErrors";
 
 import type { DashboardChannelKey } from "@/lib/dashboardChannels";
 import type { InrstatsChannelBlock } from "@/lib/inrstats/channelBlocks";
@@ -27,7 +28,7 @@ type UseTiktokChannelArgs = {
 async function readJson(res: Response) {
   const json = await res.json().catch(() => null);
   if (!res.ok || !json?.ok) {
-    throw new Error(String(json?.error || "Erreur TikTok"));
+    throw new Error(getClientUserFacingErrorMessage(json?.error, "Erreur TikTok"));
   }
   return json;
 }
@@ -113,7 +114,7 @@ export function useTiktokChannel({ panel, patchChannelConnectionLocally, trigger
       const json = await readJson(await fetch("/api/integrations/tiktok/status", { credentials: "include" }));
       applyTiktok(json.tiktok);
     } catch (error) {
-      setTiktokSettingsError(error instanceof Error ? error.message : "Impossible de charger TikTok.");
+      setTiktokSettingsError(getClientUserFacingErrorMessage(error, "Impossible de charger TikTok."));
     } finally {
       setTiktokLoading(false);
     }
@@ -148,7 +149,7 @@ export function useTiktokChannel({ panel, patchChannelConnectionLocally, trigger
       setTiktokProfileUrlError(null);
       setTiktokSettingsError(null);
     } catch (error) {
-      setTiktokProfileUrlError(error instanceof Error ? error.message : "Déconnexion TikTok impossible.");
+      setTiktokProfileUrlError(getClientUserFacingErrorMessage(error, "Déconnexion TikTok impossible."));
     } finally {
       setTiktokLoading(false);
     }
@@ -167,7 +168,7 @@ export function useTiktokChannel({ panel, patchChannelConnectionLocally, trigger
       setTiktokProfileUrlNotice("Lien TikTok enregistré.");
       setTiktokProfileUrlError(null);
     } catch (error) {
-      setTiktokProfileUrlError(error instanceof Error ? error.message : "Lien TikTok invalide.");
+      setTiktokProfileUrlError(getClientUserFacingErrorMessage(error, "Lien TikTok invalide."));
       setTiktokProfileUrlNotice(null);
     } finally {
       setTiktokLoading(false);
@@ -197,7 +198,7 @@ export function useTiktokChannel({ panel, patchChannelConnectionLocally, trigger
       setTiktokSettingsNotice("Réglages TikTok enregistrés.");
       setTiktokSettingsError(null);
     } catch (error) {
-      setTiktokSettingsError(error instanceof Error ? error.message : "Réglages TikTok impossibles à enregistrer.");
+      setTiktokSettingsError(getClientUserFacingErrorMessage(error, "Réglages TikTok impossibles à enregistrer."));
       setTiktokSettingsNotice(null);
     } finally {
       setTiktokLoading(false);

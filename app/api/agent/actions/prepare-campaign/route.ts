@@ -22,6 +22,7 @@ import { buildInrAgentCampaignValidationEmail } from "@/lib/inrAgentCampaignVali
 import { getInrcyBrandInlineAttachments } from "@/lib/txEmailAssets";
 import { sendTxMail } from "@/lib/txMailer";
 import { optionalEnv } from "@/lib/env";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
 export const maxDuration = 120;
 export const runtime = "nodejs";
@@ -807,7 +808,10 @@ export async function POST(request: Request) {
   } catch (error) {
     if (error instanceof TemplateAiGenerationError) {
       return NextResponse.json(
-        { error: error.message, ...(error.code ? { code: error.code } : {}) },
+        {
+          error: getSimpleFrenchErrorMessage(error, "La génération IA de la campagne a échoué."),
+          ...(error.code ? { code: error.code } : {}),
+        },
         { status: error.status, headers: error.headers },
       );
     }
@@ -831,9 +835,10 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error:
-          error instanceof Error
-            ? error.message
-            : "Impossible de conserver l’ancienne campagne en brouillon iNrSend.",
+          getSimpleFrenchErrorMessage(
+            error,
+            "Impossible de conserver l’ancienne campagne en brouillon iNrSend.",
+          ),
       },
       { status: 500 },
     );
@@ -931,7 +936,6 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error: "Impossible d’enregistrer la campagne préparée iNr’Agent.",
-        detail: insertError.message,
       },
       { status: 500 },
     );

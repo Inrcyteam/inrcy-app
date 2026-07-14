@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import ResponsiveActionButton from "../_components/ResponsiveActionButton";
 import HelpButton from "../_components/HelpButton";
 import HelpModal from "../_components/HelpModal";
-import { getSimpleFrenchApiError, getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { getClientUserFacingApiError as getSimpleFrenchApiError, getClientUserFacingErrorMessage as getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
 import { type DashboardChannelKey, isDashboardChannelKey } from "@/lib/dashboardChannels";
 import { markDailyStatsRefreshBootstrapChecked, markServerCacheSyncChecked, runDailyStatsRefreshBootstrap, wasDailyStatsRefreshBootstrapCheckedRecently, wasServerCacheSyncCheckedRecently, type DailyStatsRefreshBootstrapResponse } from "@/lib/dailyStatsRefreshClient";

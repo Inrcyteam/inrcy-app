@@ -1681,7 +1681,6 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error: "Impossible d’enregistrer l’action préparée iNr’Agent.",
-        detail: insertError.message,
       },
       { status: 500 },
     );

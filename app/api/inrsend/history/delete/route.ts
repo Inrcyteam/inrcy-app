@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 import { deleteInrSendHistoryItem, deleteInrSendHistoryItems } from "@/lib/inrsendRetentionCleanup";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
 type DeletePayload = {
   id?: string;
@@ -59,7 +60,7 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ success: true, deletedCount });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Suppression impossible pour le moment.";
+    const message = getSimpleFrenchErrorMessage(error, "Suppression impossible pour le moment.");
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

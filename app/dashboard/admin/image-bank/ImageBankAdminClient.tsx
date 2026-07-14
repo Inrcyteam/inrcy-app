@@ -9,6 +9,7 @@ import {
   type FormEvent,
 } from "react";
 import { createClient } from "@/lib/supabaseClient";
+import { getClientUserFacingErrorMessage } from "@/lib/userFacingErrors";
 import {
   INR_MEDIA_ALLOWED_IMAGE_MIME_TYPES,
   INR_MEDIA_IMAGE_MAX_BYTES,
@@ -348,7 +349,7 @@ export default function ImageBankAdminClient() {
         setCategoryId(nextCategories[0].id);
       }
     } catch (e: any) {
-      setError(e?.message || "Impossible de charger les métiers.");
+        setError(getClientUserFacingErrorMessage(e, "Impossible de charger les métiers."));
     } finally {
       setLoading(false);
     }
@@ -380,7 +381,7 @@ export default function ImageBankAdminClient() {
         setImages(nextImages);
         setSelectedImageIds([]);
       } catch (e: any) {
-        setError(e?.message || "Impossible de charger les images.");
+        setError(getClientUserFacingErrorMessage(e, "Impossible de charger les images."));
       } finally {
         setImagesLoading(false);
       }
@@ -568,7 +569,7 @@ export default function ImageBankAdminClient() {
       setTitle("");
       await loadImages(categoryId);
     } catch (e: any) {
-      setError(e?.message || "Import impossible.");
+      setError(getClientUserFacingErrorMessage(e, "Import impossible."));
     } finally {
       setUploadProgress(null);
       setUploading(false);
@@ -597,7 +598,7 @@ export default function ImageBankAdminClient() {
       setSuccess("Image supprimée définitivement.");
       await loadImages(categoryId);
     } catch (e: any) {
-      setError(e?.message || "Suppression impossible.");
+      setError(getClientUserFacingErrorMessage(e, "Suppression impossible."));
     } finally {
       setSavingId(null);
     }
@@ -653,7 +654,7 @@ export default function ImageBankAdminClient() {
       setSelectedImageIds([]);
       await loadImages(categoryId);
     } catch (e: any) {
-      setError(e?.message || "Suppression impossible.");
+      setError(getClientUserFacingErrorMessage(e, "Suppression impossible."));
     } finally {
       setBulkAction(null);
     }
@@ -696,7 +697,7 @@ export default function ImageBankAdminClient() {
 
       setSuccess(`${ids.length} image(s) préparée(s) en téléchargement ZIP.`);
     } catch (e: any) {
-      setError(e?.message || "Téléchargement impossible.");
+      setError(getClientUserFacingErrorMessage(e, "Téléchargement impossible."));
     } finally {
       setBulkAction(null);
     }

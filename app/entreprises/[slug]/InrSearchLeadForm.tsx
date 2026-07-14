@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react";
 import Link from "next/link";
 import styles from "./InrSearchLeadForm.module.css";
+import { getClientUserFacingErrorMessage } from "@/lib/userFacingErrors";
 
 const VISITOR_STORAGE_KEY = "inrcy.inrsearch.visitor";
 
@@ -110,7 +111,7 @@ export default function InrSearchLeadForm({ slug, companyName, modal = false }: 
       setSent(true);
       setForm(EMPTY_FORM);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Impossible d’envoyer votre demande pour le moment.");
+      setError(getClientUserFacingErrorMessage(err, "Impossible d’envoyer votre demande pour le moment."));
     } finally {
       setSubmitting(false);
     }

@@ -38,7 +38,7 @@ export async function POST(req: Request) {
       .eq("product", "facebook")
       .maybeSingle();
 
-    if (readErr) return NextResponse.json({ error: readErr.message }, { status: 500 });
+    if (readErr) return jsonUserFacingError(readErr, { status: 500, fallback: "Impossible de charger les pages Facebook." });
 
     const existingRec = asRecord(existing);
     const prevMeta = asRecord(existingRec["meta"]);
@@ -78,7 +78,7 @@ export async function POST(req: Request) {
       .eq("source", "facebook")
       .eq("product", "facebook");
 
-    if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 });
+    if (upErr) return jsonUserFacingError(upErr, { status: 500, fallback: "Impossible d’enregistrer la page Facebook." });
 
     try {
       const { data: scRow } = await supabaseAdmin.from("pro_tools_configs").select("settings").eq("user_id", userId).maybeSingle();

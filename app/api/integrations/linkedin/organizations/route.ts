@@ -3,6 +3,7 @@ import { createSupabaseServer } from "@/lib/supabaseServer";
 import { asRecord, asString } from "@/lib/tsSafe";
 import { getLinkedInAccessToken } from "@/lib/linkedinOAuth";
 import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
 type LinkedinOrg = {
   id: string;
@@ -144,6 +145,6 @@ export async function GET() {
 
     return NextResponse.json({ organizations: orgs });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Impossible de récupérer les pages LinkedIn.", organizations: [] }, { status: 500 });
+    return NextResponse.json({ error: getSimpleFrenchErrorMessage(error, "Impossible de récupérer les pages LinkedIn."), organizations: [] }, { status: 500 });
   }
 }

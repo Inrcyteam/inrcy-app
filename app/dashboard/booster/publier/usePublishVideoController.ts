@@ -1,5 +1,5 @@
 import { useMemo, useState, type Dispatch, type SetStateAction } from "react";
-import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { getClientUserFacingErrorMessage as getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { requestBoosterVideoStorageCleanup, requestBoosterVideoTransforms } from "@/lib/boosterVideoTransformClient";
 import { buildVideoTransformSignature } from "@/lib/boosterVideoTransforms";
 import {

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { safeErrorMessage } from "@/lib/tsSafe";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
 export const runtime = "nodejs";
 
@@ -34,7 +35,7 @@ export async function GET(_req: Request, context: RouteContext) {
       .maybeSingle();
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: getSimpleFrenchErrorMessage(error, "Impossible de télécharger ce fichier.") }, { status: 500 });
     }
     if (!file?.id) {
       return NextResponse.json({ error: "Fichier introuvable." }, { status: 404 });

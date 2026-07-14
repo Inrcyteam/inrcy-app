@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import styles from "./stats.module.css";
-import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { getClientUserFacingErrorMessage as getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { fmtInt, type CubeModel } from "./stats.shared";
 
 function Donut({ segments }: { segments: Array<{ label: string; value: number; colorVar: string }> }) {

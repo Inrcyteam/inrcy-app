@@ -9,6 +9,7 @@ import { rowToInrAgentAction } from "@/lib/inrAgentActions";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { captureApiException } from "@/lib/observability/sentry";
 import { withApi } from "@/lib/observability/withApi";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
 export const maxDuration = 180;
 export const runtime = "nodejs";
@@ -658,10 +659,7 @@ async function executeCampaignAction(args: {
       executed: true,
     });
   } catch (error) {
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Exécution de campagne iNr’Agent impossible.";
+    const message = getSimpleFrenchErrorMessage(error, "Exécution de campagne iNr’Agent impossible.");
     const failedAction = await updateActionRow(actionId, userId, {
       status: "failed",
       last_error: message,
@@ -723,7 +721,6 @@ async function executeAgentActionHandler(request: Request) {
     return NextResponse.json(
       {
         error: "Lecture de l’action iNr’Agent impossible.",
-        detail: readError.message,
       },
       { status: 500 },
     );
@@ -983,10 +980,7 @@ async function executeAgentActionHandler(request: Request) {
       operation: "POST /api/agent/actions/execute",
       statusCode: 500,
     });
-    const message =
-      error instanceof Error
-        ? error.message
-        : "Exécution iNr’Agent impossible.";
+    const message = getSimpleFrenchErrorMessage(error, "Exécution iNr’Agent impossible.");
     const failedAction = await updateActionRow(actionId, userId, {
       status: preserveActionStatus ? action.status : "failed",
       last_error: message,

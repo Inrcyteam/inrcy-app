@@ -5,6 +5,7 @@ import { buildInrSearchPublicUrl, getInrSearchPublicStatus } from "@/lib/inrSear
 import { ensureSystemManagedInrSearch } from "@/lib/inrSearchProvisioning";
 import { loadInrSearchQuality } from "@/lib/inrSearchQuality";
 import { requireUser } from "@/lib/requireUser";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
 export async function GET() {
   const { supabase, errorResponse, activeUserId } = await requireUser();
@@ -35,7 +36,7 @@ export async function GET() {
       publicStatus,
     }, { headers: { "Cache-Control": "no-store, max-age=0" } });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Statistiques iNr'Search indisponibles.";
+    const message = getSimpleFrenchErrorMessage(error, "Statistiques iNr'Search indisponibles.");
     return NextResponse.json({ ok: false, error: message }, { status: 400, headers: { "Cache-Control": "no-store" } });
   }
 }

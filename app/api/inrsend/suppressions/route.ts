@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
 import { markQueuedRecipientsBlockedBySuppression, normalizeSuppressionEmail, removeSuppressionEntry, upsertSuppressionEntry } from "@/lib/mailSuppression";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
 export const runtime = "nodejs";
 
@@ -17,7 +18,7 @@ export async function GET() {
     .order("created_at", { ascending: false })
     .limit(200);
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) return NextResponse.json({ error: getSimpleFrenchErrorMessage(error, "Impossible de charger la liste de désabonnement.") }, { status: 500 });
   return NextResponse.json({ items: data || [] });
 }
 

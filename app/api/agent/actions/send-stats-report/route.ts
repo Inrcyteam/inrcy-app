@@ -23,6 +23,7 @@ import {
 } from "@/lib/inrAgentSettings";
 import { rowToInrAgentAction } from "@/lib/inrAgentActions";
 import { buildAiLanguageInstruction } from "@/lib/aiWritingProfile";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
 export const runtime = "nodejs";
 export const maxDuration = 180;
@@ -1479,7 +1480,7 @@ export async function POST(request: Request) {
       ],
     });
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : "Envoi email impossible";
+    const errorMessage = getSimpleFrenchErrorMessage(error, "Envoi du rapport par mail impossible.");
     if (insertedAction && asRecord(insertedAction).id) {
       const { data } = await supabaseAdmin
         .from("inr_agent_actions")
@@ -1498,7 +1499,6 @@ export async function POST(request: Request) {
       return NextResponse.json(
         {
           error: "Le PDF a été généré, mais l’envoi du mail a échoué.",
-          detail: errorMessage,
           action: data ? rowToInrAgentAction(data as any) : null,
         },
         { status: 500 },
@@ -1507,7 +1507,7 @@ export async function POST(request: Request) {
 
     await rollbackAiCredits(quotaReservation);
     return NextResponse.json(
-      { error: "Le PDF a été généré, mais l’envoi du mail a échoué.", detail: errorMessage },
+      { error: "Le PDF a été généré, mais l’envoi du mail a échoué." },
       { status: 500 },
     );
   }

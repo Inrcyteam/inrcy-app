@@ -3,6 +3,7 @@ import { createSupabaseServer } from "@/lib/supabaseServer";
 import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 import { DASHBOARD_CHANNEL_KEYS, type DashboardChannelKey } from "@/lib/dashboardChannels";
 import { buildStatsConnectionSignature } from "@/lib/stats/connectionSignature";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
 const CACHE_TTL_MS = 12 * 60 * 60 * 1000;
 const PERIODS = [7, 30] as const;
@@ -182,7 +183,7 @@ export async function GET() {
     });
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Impossible de lire l'état du cache." },
+      { error: getSimpleFrenchErrorMessage(error, "Impossible de lire l'état du cache.") },
       { status: 500 },
     );
   }

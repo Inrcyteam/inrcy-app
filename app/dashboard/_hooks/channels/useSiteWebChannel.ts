@@ -3,7 +3,7 @@
 import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
 
 import { useCallback, useEffect, useState } from "react";
-import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { getClientUserFacingErrorMessage as getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { confirmInrcy } from "@/lib/inrcyDialog";
 import { createClient } from "@/lib/supabaseClient";
 import type { ActusFont, ActusTheme, GoogleProduct } from "../../dashboard.types";

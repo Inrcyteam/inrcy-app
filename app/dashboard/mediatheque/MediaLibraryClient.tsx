@@ -11,6 +11,7 @@ import {
   type MouseEvent,
 } from "react";
 import { createClient } from "@/lib/supabaseClient";
+import { getClientUserFacingErrorMessage } from "@/lib/userFacingErrors";
 import {
   INR_MEDIA_ALLOWED_IMAGE_MIME_TYPES,
   INR_MEDIA_ALLOWED_VIDEO_MIME_TYPES,
@@ -311,7 +312,7 @@ export default function MediaLibraryClient() {
         },
       );
     } catch (e: any) {
-      setError(e?.message || "Impossible de charger la médiathèque.");
+      setError(getClientUserFacingErrorMessage(e, "Impossible de charger la médiathèque."));
     } finally {
       setLoading(false);
     }
@@ -341,7 +342,7 @@ export default function MediaLibraryClient() {
       setFileInputKey((value) => value + 1);
     } catch (e: any) {
       setFileInputKey((value) => value + 1);
-      setError(e?.message || "Fichier non autorisé.");
+      setError(getClientUserFacingErrorMessage(e, "Fichier non autorisé."));
     }
   }
 
@@ -553,7 +554,7 @@ export default function MediaLibraryClient() {
       setTitle("");
       await loadItems();
     } catch (e: any) {
-      setError(e?.message || "Import impossible.");
+      setError(getClientUserFacingErrorMessage(e, "Import impossible."));
     } finally {
       setUploadProgress(null);
       setUploadPercent(null);
@@ -683,7 +684,7 @@ export default function MediaLibraryClient() {
       clearItemSelection();
       await loadItems();
     } catch (e: any) {
-      setError(e?.message || "Suppression impossible.");
+      setError(getClientUserFacingErrorMessage(e, "Suppression impossible."));
     } finally {
       setSavingId(null);
     }
@@ -708,7 +709,7 @@ export default function MediaLibraryClient() {
       });
       await loadItems();
     } catch (e: any) {
-      setError(e?.message || "Suppression impossible.");
+      setError(getClientUserFacingErrorMessage(e, "Suppression impossible."));
     } finally {
       setSavingId(null);
     }

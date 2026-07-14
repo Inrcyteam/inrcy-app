@@ -4,6 +4,7 @@ import { getInrSearchPublicStatus } from "@/lib/inrSearchPublic";
 import { ensureSystemManagedInrSearch } from "@/lib/inrSearchProvisioning";
 import { requireUser } from "@/lib/requireUser";
 import { clearAllToolCaches } from "@/lib/statsCache";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
 async function syncSystemManagedPage() {
   const { supabase, errorResponse, activeUserId } = await requireUser();
@@ -26,7 +27,7 @@ async function syncSystemManagedPage() {
       { headers: { "Cache-Control": "no-store, max-age=0" } },
     );
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Page iNr'Search indisponible.";
+    const message = getSimpleFrenchErrorMessage(error, "Page iNr'Search indisponible.");
     return NextResponse.json({ ok: false, error: message }, { status: 400, headers: { "Cache-Control": "no-store" } });
   }
 }

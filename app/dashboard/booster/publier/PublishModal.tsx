@@ -9,7 +9,7 @@ import {
 import { useRouter, useSearchParams } from "next/navigation";
 import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
 import { createClient } from "@/lib/supabaseClient";
-import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { getClientUserFacingErrorMessage as getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import {
   DEFAULT_AI_PREFERRED_ENGINE,
   getAiEngineOption,

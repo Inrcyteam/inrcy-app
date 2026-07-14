@@ -22,6 +22,7 @@ import {
   failExecutionIdempotencyLock,
 } from "@/lib/executionIdempotency";
 import { withApi } from "@/lib/observability/withApi";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
 export const runtime = "nodejs";
 
@@ -309,7 +310,7 @@ async function createCampaignHandler(req: Request) {
     .maybeSingle();
 
   if (accountError) {
-    return NextResponse.json({ error: accountError.message }, { status: 500 });
+    return NextResponse.json({ error: getSimpleFrenchErrorMessage(accountError, "Impossible de retrouver la boîte d’envoi.") }, { status: 500 });
   }
   if (!account?.id || !account?.provider) {
     return NextResponse.json({ error: "La boîte d’envoi sélectionnée est introuvable." }, { status: 404 });
@@ -542,15 +543,16 @@ async function createCampaignHandler(req: Request) {
   for (const chunk of chunkArray(rows, 500)) {
     const { error } = await supabase.from("mail_campaign_recipients").insert(chunk);
     if (error) {
+      const safeErrorMessage = getSimpleFrenchErrorMessage(error, "Impossible de préparer les destinataires de la campagne.");
       await supabase.from("mail_campaigns").delete().eq("id", campaign.id).eq("user_id", activeUserId);
       await failExecutionIdempotencyLock({
         supabase: supabaseAdmin,
         lockId: campaignIdempotencyLockId,
-        error: error.message,
-        result: { success: false, error: error.message, campaignId: campaign.id },
+        error: safeErrorMessage,
+        result: { success: false, error: safeErrorMessage, campaignId: campaign.id },
         metadata: { stage: "recipients_insert" },
       });
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: safeErrorMessage }, { status: 500 });
     }
   }
 

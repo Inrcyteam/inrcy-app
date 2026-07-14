@@ -5,6 +5,7 @@ import { createSupabaseServer } from "@/lib/supabaseServer";
 import { fetchPinterestBoards, getPinterestAccessToken } from "@/lib/pinterestOAuth";
 import { getPinterestDefaultBoardId, setPinterestDefaultBoardId } from "@/lib/pinterestPreferences";
 import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
 async function resolveContext(request: Request) {
   const supabase = await createSupabaseServer();
@@ -57,7 +58,7 @@ export async function PATCH(request: Request) {
     await setPinterestDefaultBoardId(resolved.activeUserId, boardId);
     return NextResponse.json({ ok: true, defaultBoardId: boardId });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Enregistrement du tableau par défaut impossible.";
+    const message = getSimpleFrenchErrorMessage(error, "Enregistrement du tableau par défaut impossible.");
     return NextResponse.json({ ok: false, error: message }, { status: 400 });
   }
 }

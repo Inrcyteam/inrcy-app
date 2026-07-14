@@ -27,7 +27,6 @@ function jsonError(message: string, status = 500, detail?: unknown) {
     {
       ok: false,
       error: message,
-      ...(detail ? { detail: String(detail) } : {}),
     },
     { status },
   );

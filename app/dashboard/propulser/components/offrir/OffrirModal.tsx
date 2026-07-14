@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MutableRefObject } from "react";
+import { getClientUserFacingErrorMessage } from "@/lib/userFacingErrors";
 import { useRouter, useSearchParams } from "next/navigation";
 import stylesDash from "../../../dashboard.module.css";
 import { getTemplates, type TemplateDef } from "@/lib/messageTemplates";
@@ -148,7 +149,7 @@ export default function OffrirModal({ styles, onClose, onDone = onClose, saveDra
         setBodyHtml(textToRichMailHtml(nextBody));
       }
     } catch (error) {
-      setAiError(error instanceof Error ? error.message : "La génération IA a échoué.");
+      setAiError(getClientUserFacingErrorMessage(error, "La génération IA a échoué."));
     } finally {
       setAiGenerating(false);
     }
@@ -188,7 +189,7 @@ export default function OffrirModal({ styles, onClose, onDone = onClose, saveDra
       saveWorkflowCampaignState(buildCurrentWorkflowState(nextDraftId), restoreKey || undefined);
       onDraftStatusChange?.("Brouillon enregistré ✅");
     } catch (error) {
-      onDraftStatusChange?.(error instanceof Error ? error.message : "Impossible d’enregistrer le brouillon.");
+      onDraftStatusChange?.(getClientUserFacingErrorMessage(error, "Impossible d’enregistrer le brouillon."));
     }
   }, [buildCurrentWorkflowState, onDraftStatusChange, restoreKey]);
 

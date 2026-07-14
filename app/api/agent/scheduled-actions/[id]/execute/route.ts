@@ -194,7 +194,7 @@ export async function POST(_request: Request, ctx: { params: Promise<{ id: strin
 
   if (readError) {
     return NextResponse.json(
-      { error: "Lecture de l’action programmée impossible.", detail: readError.message },
+      { error: "Lecture de l’action programmée impossible." },
       { status: 500 },
     );
   }
@@ -211,7 +211,7 @@ export async function POST(_request: Request, ctx: { params: Promise<{ id: strin
 
   if (insertError || !insertedAction?.id) {
     return NextResponse.json(
-      { error: "Préparation du lancement immédiat impossible.", detail: insertError?.message },
+      { error: "Préparation du lancement immédiat impossible." },
       { status: 500 },
     );
   }

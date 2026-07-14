@@ -14,7 +14,7 @@ import React, {
 import { useRouter, useSearchParams } from "next/navigation";
 import styles from "./mails.module.css";
 import { createClient } from "@/lib/supabaseClient";
-import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { getClientUserFacingErrorMessage as getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { requestBoosterVideoTransforms } from "@/lib/boosterVideoTransformClient";
 import { buildVideoTransformSignature } from "@/lib/boosterVideoTransforms";
 import { confirmInrcy } from "@/lib/inrcyDialog";
@@ -922,10 +922,7 @@ export default function MailboxClient() {
       setScheduledMailEdit(null);
       scheduledMailEditLoadRef.current = "";
     } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Enregistrement du mail programmé impossible.";
+      const message = getSimpleFrenchErrorMessage(error, "Enregistrement du mail programmé impossible.");
       setToast(message);
     } finally {
       setScheduledMailEditSaving(false);
@@ -955,11 +952,7 @@ export default function MailboxClient() {
       await loadHistory();
       updateFolder("mails");
     } catch (error) {
-      setToast(
-        error instanceof Error
-          ? error.message
-          : "Envoi immédiat du mail programmé impossible.",
-      );
+      setToast(getSimpleFrenchErrorMessage(error, "Envoi immédiat du mail programmé impossible."));
     } finally {
       setScheduledMailEditSaving(false);
     }
@@ -2702,11 +2695,7 @@ export default function MailboxClient() {
         setToast("Mail programmé ouvert en réédition.");
         router.replace("/dashboard/mails?folder=mails", { scroll: false });
       } catch (error) {
-        setToast(
-          error instanceof Error
-            ? error.message
-            : "Ouverture du mail programmé impossible.",
-        );
+        setToast(getSimpleFrenchErrorMessage(error, "Ouverture du mail programmé impossible."));
       }
     };
 
@@ -3078,10 +3067,7 @@ export default function MailboxClient() {
       );
       await loadHistory();
     } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Suppression impossible pour le moment.";
+      const message = getSimpleFrenchErrorMessage(error, "Suppression impossible pour le moment.");
       setToast(message);
     } finally {
       setDeletingHistorySelection(false);
@@ -3147,10 +3133,7 @@ export default function MailboxClient() {
       );
       await loadHistory();
     } catch (error) {
-      const message =
-        error instanceof Error
-          ? error.message
-          : "Suppression impossible pour le moment.";
+      const message = getSimpleFrenchErrorMessage(error, "Suppression impossible pour le moment.");
       setToast(message);
     } finally {
       setDeletingHistoryItemId(null);

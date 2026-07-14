@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { getClientUserFacingErrorMessage } from "@/lib/userFacingErrors";
 import styles from "./diagnostics.module.css";
 
 type DiagnosticStatus = "open" | "resolved" | "all";
@@ -74,7 +75,7 @@ export default function AdminDiagnosticsClient() {
       setTableReady(json.tableReady !== false);
       setSetupDetail(json.tableReady === false ? `${json.error || "Table indisponible"} · ${json.setupSql || "SQL manquant"}` : null);
     } catch (e: any) {
-      setError(e?.message || "Impossible de charger les diagnostics.");
+      setError(getClientUserFacingErrorMessage(e, "Impossible de charger les diagnostics."));
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -108,7 +109,7 @@ export default function AdminDiagnosticsClient() {
       setSuccess(nextStatus === "resolved" ? "Diagnostic marqué comme résolu." : "Diagnostic rouvert.");
       await load(true);
     } catch (e: any) {
-      setError(e?.message || "Mise à jour impossible.");
+      setError(getClientUserFacingErrorMessage(e, "Mise à jour impossible."));
     } finally {
       setSavingId(null);
     }

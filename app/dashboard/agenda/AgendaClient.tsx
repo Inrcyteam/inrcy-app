@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import styles from "./agenda.module.css";
 import { confirmInrcy } from "@/lib/inrcyDialog";
 import { useUnsavedExitGuard } from "../_hooks/useUnsavedExitGuard";
-import { getSimpleFrenchApiError, getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { getClientUserFacingApiError as getSimpleFrenchApiError, getClientUserFacingErrorMessage as getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import {
   addDays,
   buildCrmDisplayName,

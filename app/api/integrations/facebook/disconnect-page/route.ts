@@ -3,6 +3,7 @@ import { createSupabaseServer } from "@/lib/supabaseServer";
 import { clearAllToolCaches } from "@/lib/statsCache";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
+import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
 export async function POST() {
   const supabase = await createSupabaseServer();
@@ -24,7 +25,7 @@ export async function POST() {
     .eq("source", "facebook")
     .eq("product", "facebook");
 
-  if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 });
+  if (updErr) return NextResponse.json({ error: getSimpleFrenchErrorMessage(updErr, "Impossible de déconnecter la page Facebook.") }, { status: 500 });
   await clearAllToolCaches(supabase, activeUserId);
   return NextResponse.json({ ok: true });
 }

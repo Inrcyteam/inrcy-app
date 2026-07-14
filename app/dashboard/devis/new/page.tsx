@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabaseClient";
 import { resolveProfileLogoUrl } from "@/lib/profileLogo";
-import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { getClientUserFacingErrorMessage as getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { confirmInrcy, promptInrcy } from "@/lib/inrcyDialog";
 import styles from "../../_documents/documents.module.css";
 import dash from "../../dashboard.module.css";

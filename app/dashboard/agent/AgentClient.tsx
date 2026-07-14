@@ -12,6 +12,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabaseClient";
+import { getClientUserFacingErrorMessage } from "@/lib/userFacingErrors";
 import {
   readAccountCacheValue,
   resolveActiveBrowserUserId,
@@ -5206,7 +5207,7 @@ export default function AgentClient() {
   }, [selectedPreparedAction, preparedChannels, preparedChannelsKey]);
 
   function showNotice(message: string) {
-    setNotice(message);
+    setNotice(getClientUserFacingErrorMessage(message));
     window.setTimeout(() => setNotice(null), 2600);
   }
 
@@ -7655,9 +7656,7 @@ export default function AgentClient() {
       showNotice("Programmation mise à jour.");
     } catch (error) {
       const message =
-        error instanceof Error
-          ? error.message
-          : "Modification de la programmation impossible.";
+          getClientUserFacingErrorMessage(error, "Modification de la programmation impossible.");
       setAutomationScheduleEditError(message);
       throw new Error(message);
     }
@@ -7678,9 +7677,7 @@ export default function AgentClient() {
       showNotice("Programmation mise à jour.");
     } catch (error) {
       const message =
-        error instanceof Error
-          ? error.message
-          : "Modification de la programmation impossible.";
+          getClientUserFacingErrorMessage(error, "Modification de la programmation impossible.");
       setScheduleOnlyEditError(message);
       throw new Error(message);
     }

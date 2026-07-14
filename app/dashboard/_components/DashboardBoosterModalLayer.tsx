@@ -8,7 +8,7 @@ import BaseModal from "./WorkflowBaseModal";
 import StatusMessage from "./StatusMessage";
 import HelpButton from "./HelpButton";
 import { WEEKLY_GOALS, clampProgress, getGoalCopy } from "@/lib/weeklyGoals";
-import { getSimpleFrenchApiError, getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { getSimpleFrenchApiError, getClientUserFacingErrorMessage as getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { confirmInrcy } from "@/lib/inrcyDialog";
 import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
 import { useUnsavedExitGuard } from "../_hooks/useUnsavedExitGuard";
