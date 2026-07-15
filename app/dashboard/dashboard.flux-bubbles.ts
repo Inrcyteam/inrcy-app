@@ -262,11 +262,11 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
         : m.key === "site_inrcy" && !canConfigureSite
           ? moduleCopy?.siteOnlyTitle || copy.bubble.disabled
           : undefined,
+      // Toutes les bulles ouvrent leur panneau de configuration avec le même
+      // libellé. La connexion réelle se fait ensuite dans le panneau dédié.
       configureLabel: m.key === "inr_agent"
         ? moduleCopy?.view || "Ouvrir"
-        : m.key === "site_inrcy" || m.key === "site_web"
-          ? copy.bubble.configure
-          : moduleCopy?.connect || copy.bubble.configure,
+        : copy.bubble.configure,
       viewFallbackLabel: copy.bubble.viewFallback,
     };
   });

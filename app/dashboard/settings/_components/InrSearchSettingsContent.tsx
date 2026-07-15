@@ -94,7 +94,7 @@ function slugFromPublicUrl(value: string) {
   return match?.[1] || "";
 }
 
-function readPanelSnapshot(publicUrl: string, initialConnected: boolean | null) {
+function readPanelSnapshot(publicUrl: string, initialConnected: boolean | null, initialDirectoryEnabled: boolean | null) {
   if (typeof window === "undefined") return null;
   const slug = slugFromPublicUrl(publicUrl);
   if (!slug) return null;
@@ -116,8 +116,12 @@ function readPanelSnapshot(publicUrl: string, initialConnected: boolean | null) 
         "profile_missing",
         "data_unavailable",
       ];
+      const cachedSettings = normalizeSettings(parsed.settings);
+      if (typeof initialDirectoryEnabled === "boolean") {
+        cachedSettings.directoryEnabled = initialDirectoryEnabled;
+      }
       return {
-        settings: normalizeSettings(parsed.settings),
+        settings: cachedSettings,
         publication: {
           allowed: Boolean(publicationValue.allowed),
           reason: (validReasons.includes(reason) ? reason : "data_unavailable") as InrSearchPublicationState["reason"],
@@ -134,6 +138,7 @@ function readPanelSnapshot(publicUrl: string, initialConnected: boolean | null) 
       settings: {
         ...EMPTY_SETTINGS,
         enabled: true,
+        directoryEnabled: initialDirectoryEnabled === true,
         slug,
         publishedSlug: slug,
         slugLocked: true,
@@ -162,6 +167,7 @@ function emitDashboardUpdate(settings: InrSearchSettings, publicationAllowed: bo
   window.dispatchEvent(new CustomEvent("inrcy:inr-search-settings-updated", {
     detail: {
       connected: Boolean(settings.enabled && settings.slug && publicationAllowed),
+      directoryEnabled: Boolean(settings.enabled && settings.directoryEnabled && publicationAllowed),
       profileUrl: pageUrl,
     },
   }));
@@ -170,13 +176,15 @@ function emitDashboardUpdate(settings: InrSearchSettings, publicationAllowed: bo
 type InrSearchSettingsContentProps = {
   initialConnected?: boolean | null;
   initialPublicUrl?: string;
+  initialDirectoryEnabled?: boolean | null;
 };
 
 export default function InrSearchSettingsContent({
   initialConnected = null,
   initialPublicUrl = "",
+  initialDirectoryEnabled = null,
 }: InrSearchSettingsContentProps) {
-  const [initialSnapshot] = useState(() => readPanelSnapshot(initialPublicUrl, initialConnected));
+  const [initialSnapshot] = useState(() => readPanelSnapshot(initialPublicUrl, initialConnected, initialDirectoryEnabled));
   const [settings, setSettings] = useState<InrSearchSettings>(() => initialSnapshot?.settings || EMPTY_SETTINGS);
   const [publication, setPublication] = useState<InrSearchPublicationState>(() => initialSnapshot?.publication || {
     allowed: initialConnected === true,
@@ -333,7 +341,7 @@ export default function InrSearchSettingsContent({
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <button className={isPublished ? styles.ghostBtn : styles.primaryBtn} type="button" disabled={loading || actionLoading || !hasPage} onClick={() => { if (isPublished) setDisconnectConfirmOpen(true); else void performAction("connect"); }}>
+          <button className={isPublished ? `${styles.actionBtn} ${styles.disconnectBtn}` : styles.primaryBtn} type="button" disabled={loading || actionLoading || !hasPage} onClick={() => { if (isPublished) setDisconnectConfirmOpen(true); else void performAction("connect"); }}>
             {actionLoading ? "Mise à jour…" : isPublished ? "Déconnecter" : "Connecter"}
           </button>
           <span className={styles.smallMuted}>{isPublished ? "Votre page est publique et peut être référencée." : "Connectez la page pour activer sa visibilité SEO."}</span>
@@ -391,7 +399,7 @@ export default function InrSearchSettingsContent({
           <div style={{ width: "min(520px, 100%)", border: "1px solid rgba(248,113,113,.38)", borderRadius: 18, padding: 20, background: "#11131b", boxShadow: "0 30px 80px rgba(0,0,0,.48)" }}>
             <div id="inrsearch-disconnect-title" className={styles.blockTitle}>Déconnecter votre page iNr&apos;Search ?</div>
             <p className={styles.smallMuted} style={{ lineHeight: 1.6 }}>Votre page sera retirée de l’annuaire public et sa désindexation sera demandée progressivement à Google, Bing et aux moteurs de recherche IA. Le référencement et les signaux de visibilité obtenus pourront être perdus. Une reconnexion ne garantit pas un retour immédiat dans les résultats.</p>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}><button className={styles.ghostBtn} type="button" onClick={() => setDisconnectConfirmOpen(false)}>Annuler</button><button className={styles.primaryBtn} type="button" onClick={() => { setDisconnectConfirmOpen(false); void performAction("disconnect"); }}>Déconnecter quand même</button></div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}><button className={styles.ghostBtn} type="button" onClick={() => setDisconnectConfirmOpen(false)}>Annuler</button><button className={`${styles.actionBtn} ${styles.disconnectBtn}`} type="button" onClick={() => { setDisconnectConfirmOpen(false); void performAction("disconnect"); }}>Déconnecter quand même</button></div>
           </div>
         </div>
       ) : null}

@@ -224,6 +224,15 @@ function readCachedInrSearchConnected(): boolean | null {
   }
 }
 
+function readCachedInrSearchDirectoryEnabled(): boolean | null {
+  try {
+    const state = readCachedDashboardChannelState();
+    return typeof state?.inrSearchDirectoryEnabled === "boolean" ? state.inrSearchDirectoryEnabled : null;
+  } catch {
+    return null;
+  }
+}
+
 function readCachedDashboardBoolean(key: string): boolean {
   try {
     const state = readCachedDashboardChannelState();
@@ -334,6 +343,7 @@ export default function DashboardClient({ isAdmin = false }: DashboardClientProp
   const [pinterestUrl, setPinterestUrl] = useState(() => readCachedDashboardString("pinterestUrl"));
   const [inrSearchConnected, setInrSearchConnected] = useState<boolean | null>(() => readCachedInrSearchConnected());
   const [inrSearchUrl, setInrSearchUrl] = useState(() => readCachedDashboardString("inrSearchUrl"));
+  const [inrSearchDirectoryEnabled, setInrSearchDirectoryEnabled] = useState<boolean | null>(() => readCachedInrSearchDirectoryEnabled());
   const [inrBadgeProfile, setInrBadgeProfile] = useState<InrBadgeProfileSummary>(() => readCachedInrBadgeProfile());
   const [cachedInrBadgeProfileReady, setCachedInrBadgeProfileReady] = useState<boolean | null>(() => readCachedInrBadgeProfileReady());
   const [inrBadgeModalOpen, setInrBadgeModalOpen] = useState(false);
@@ -928,6 +938,7 @@ const applyDashboardChannelState = useCallback((state: Record<string, any> | nul
   if (typeof state.pinterestUrl === "string") setPinterestUrl(state.pinterestUrl);
   if (typeof state.inrSearchConnected === "boolean") setInrSearchConnected(state.inrSearchConnected);
   if (typeof state.inrSearchUrl === "string") setInrSearchUrl(state.inrSearchUrl);
+  if (typeof state.inrSearchDirectoryEnabled === "boolean") setInrSearchDirectoryEnabled(state.inrSearchDirectoryEnabled);
 
   if (typeof state.siteInrcyGa4Connected === "boolean") setSiteInrcyGa4Connected(state.siteInrcyGa4Connected);
   if (typeof state.siteInrcyGscConnected === "boolean") setSiteInrcyGscConnected(state.siteInrcyGscConnected);
@@ -963,7 +974,7 @@ const applyDashboardChannelState = useCallback((state: Record<string, any> | nul
   setSiteWebActusLimit, setSiteWebActusTheme, setSiteWebGa4Connected, setSiteWebGa4MeasurementId,
   setSiteWebGa4PropertyId, setSiteWebGscConnected, setSiteWebGscProperty, setSiteWebSavedUrl,
   setSiteWebSettingsError, setSiteWebSettingsText, setSiteWebUrl, setMailAccountsConnectedCount,
-  setYoutubeShortsConnected, setYoutubeShortsUrl, setPinterestConnected, setPinterestUrl, setInrSearchConnected, setInrSearchUrl,
+  setYoutubeShortsConnected, setYoutubeShortsUrl, setPinterestConnected, setPinterestUrl, setInrSearchConnected, setInrSearchUrl, setInrSearchDirectoryEnabled,
 ]);
 
 useEffect(() => {
@@ -980,9 +991,11 @@ useEffect(() => {
     const detail = (event as CustomEvent)?.detail ?? {};
     const connected = Boolean(detail.connected);
     const profileUrl = typeof detail.profileUrl === "string" ? detail.profileUrl : "";
+    const directoryEnabled = Boolean(detail.directoryEnabled && connected);
     setInrSearchConnected(connected);
     setInrSearchUrl(profileUrl);
-    mergeCachedDashboardChannelState({ inrSearchConnected: connected, inrSearchUrl: profileUrl });
+    setInrSearchDirectoryEnabled(directoryEnabled);
+    mergeCachedDashboardChannelState({ inrSearchConnected: connected, inrSearchUrl: profileUrl, inrSearchDirectoryEnabled: directoryEnabled });
   };
 
   window.addEventListener("inrcy:pinterest-settings-updated", handlePinterestUpdate);
@@ -999,7 +1012,8 @@ useEffect(() => {
   if (!canAccessInrSearch) {
     setInrSearchConnected(false);
     setInrSearchUrl("");
-    mergeCachedDashboardChannelState({ inrSearchConnected: false, inrSearchUrl: "" });
+    setInrSearchDirectoryEnabled(false);
+    mergeCachedDashboardChannelState({ inrSearchConnected: false, inrSearchUrl: "", inrSearchDirectoryEnabled: false });
     return () => {
       cancelled = true;
     };
@@ -1014,10 +1028,12 @@ useEffect(() => {
       const publication = payload.publication && typeof payload.publication === "object" ? payload.publication : {};
       const slug = String(config.slug || "").trim();
       const connected = Boolean(config.enabled && slug && publication.allowed);
+      const directoryEnabled = Boolean(config.enabled && config.directoryEnabled && publication.allowed);
       const profileUrl = slug ? `${getRuntimeInrSearchOrigin()}/entreprises/${slug}` : "";
       setInrSearchConnected(connected);
       setInrSearchUrl(profileUrl);
-      mergeCachedDashboardChannelState({ inrSearchConnected: connected, inrSearchUrl: profileUrl });
+      setInrSearchDirectoryEnabled(directoryEnabled);
+      mergeCachedDashboardChannelState({ inrSearchConnected: connected, inrSearchUrl: profileUrl, inrSearchDirectoryEnabled: directoryEnabled });
     } catch {
       // Le dernier état connu reste affiché si la synchronisation réseau échoue.
     }
@@ -1496,6 +1512,7 @@ const loadSiteInrcy = useCallback(async () => {
     pinterestUrl: pinterestUrlValue,
     inrSearchConnected: Boolean(inrSearchObj?.enabled && inrSearchSlug),
     inrSearchUrl: inrSearchUrlValue,
+    inrSearchDirectoryEnabled: Boolean(inrSearchObj?.enabled && inrSearchObj?.directoryEnabled),
     siteInrcyGa4Connected: !!(ga4MeasurementIdValue || ga4PropertyIdValue),
     siteInrcyGscConnected: !!gscPropertyValue,
     siteWebGa4Connected: !!((siteWebObj as any)?.ga4?.measurement_id || (siteWebObj as any)?.ga4?.property_id),
@@ -3413,6 +3430,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
           inrSearchAccessEnabled={canAccessInrSearch}
           inrSearchConnected={inrSearchConnected}
           inrSearchUrl={inrSearchUrl}
+          inrSearchDirectoryEnabled={inrSearchDirectoryEnabled}
         />
       </SettingsDrawer>
 
