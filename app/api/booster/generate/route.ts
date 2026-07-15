@@ -17,12 +17,13 @@ import {
   type BoosterChannels,
   type BoosterStyle,
   type BoosterTheme,
-  type BoosterRecentPublication,
 } from "@/lib/boosterPrompt";
 import {
   normalizeAiPreferredEngine,
   type AiPreferredEngine,
 } from "@/lib/aiEnginePreference";
+import { getBoosterGenerationContext } from "@/lib/boosterGenerationContext";
+import { readBoosterGenerationRequest } from "@/lib/boosterGenerationRequestTransport";
 
 export const maxDuration = 120;
 
@@ -300,47 +301,29 @@ Règles vidéo obligatoires :
 - Pour Site iNrCy / Site web : utiliser la vidéo comme preuve de terrain, sans affirmer de détails non fournis.`;
 }
 
-function cleanRecentPublicationField(value: unknown, maxLength: number) {
-  return String(value ?? "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, maxLength);
-}
-
-async function fetchRecentPublicationMemory(
-  supabase: { from: (table: string) => any },
-  userId: string,
-): Promise<BoosterRecentPublication[]> {
-  try {
-    const { data, error } = await supabase
-      .from("publications")
-      .select("title,content,cta,idea,created_at")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false })
-      .limit(5);
-
-    if (error || !Array.isArray(data)) return [];
-
-    return data
-      .map((row) => ({
-        title: cleanRecentPublicationField(row?.title, 90),
-        content: cleanRecentPublicationField(row?.content, 260),
-        cta: cleanRecentPublicationField(row?.cta, 90),
-        idea: cleanRecentPublicationField(row?.idea, 140),
-        created_at: cleanRecentPublicationField(row?.created_at, 40),
-      }))
-      .filter((row) => row.title || row.content || row.idea || row.cta);
-  } catch {
-    return [];
-  }
-}
-
 const handler = async (req: Request) => {
+  const routeStartedAt = Date.now();
   let quotaReservation: AiCreditReservation | null = null;
+  let generationMs = 0;
+  const timingContext: {
+    userId?: string;
+    engine?: AiPreferredEngine;
+    selectedChannels?: number;
+    mediaType?: string;
+    imageCount?: number;
+    videoFrameCount?: number;
+    contextLoadMs?: number;
+    professionalContextSource?: string;
+    publicationsContextSource?: string;
+    requestTransport?: "json" | "multipart";
+    requestParseMs?: number;
+    requestContentLength?: number;
+  } = {};
   try {
     const { supabase, authUserId, errorResponse, activeUserId } = await requireUser();
     if (errorResponse) return errorResponse;
     const userId = activeUserId;
+    timingContext.userId = userId;
 
     const isAdmin = await isAdminUserForAi(supabase, authUserId);
 
@@ -354,7 +337,17 @@ const handler = async (req: Request) => {
       if (rl) return rl;
     }
 
-    const body = (await req.json().catch(() => ({}))) as Payload;
+    const requestContentLength = Number(
+      req.headers.get("content-length") || 0,
+    );
+    if (Number.isFinite(requestContentLength) && requestContentLength > 0) {
+      timingContext.requestContentLength = requestContentLength;
+    }
+    const requestParseStartedAt = Date.now();
+    const parsedRequest = await readBoosterGenerationRequest(req);
+    const body = parsedRequest.body as Payload;
+    timingContext.requestTransport = parsedRequest.transport;
+    timingContext.requestParseMs = Date.now() - requestParseStartedAt;
     const idea = (body?.idea || "").trim();
     const publicationInstruction = String(
       body?.publicationInstruction || "",
@@ -375,6 +368,7 @@ const handler = async (req: Request) => {
     const aiPreferredEngine = body?.aiPreferredEngine
       ? normalizeAiPreferredEngine(body.aiPreferredEngine)
       : undefined;
+    timingContext.engine = aiPreferredEngine;
 
     const channels = Array.from(
       new Set(
@@ -387,6 +381,7 @@ const handler = async (req: Request) => {
     if (!channels.length) {
       return NextResponse.json({ error: "Canaux manquants." }, { status: 400 });
     }
+    timingContext.selectedChannels = channels.length;
 
     const mediaType = normalizeGenerationMediaType(body.mediaType);
     const imagesForAI = sanitizeImagesForAI({ ...body, mediaType });
@@ -397,6 +392,15 @@ const handler = async (req: Request) => {
     const videoForAI = sanitizeVideoForAI({ ...body, mediaType });
     const mediaGenerationInstructions =
       buildVideoGenerationInstructions(videoForAI);
+    timingContext.mediaType = mediaType;
+    timingContext.imageCount = imagesForAI.length;
+    timingContext.videoFrameCount = videoFrameImagesForAI.length;
+
+    const contextStartedAt = Date.now();
+    const generationContextPromise = getBoosterGenerationContext({
+      supabase,
+      userId,
+    });
 
     if (!isAdmin) {
       const quota = await reserveAiCredits({
@@ -413,53 +417,58 @@ const handler = async (req: Request) => {
       quotaReservation = quota.reservation;
     }
 
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("*")
-      .eq("user_id", userId)
-      .maybeSingle();
+    const generationContext = await generationContextPromise;
+    timingContext.contextLoadMs = Date.now() - contextStartedAt;
+    timingContext.professionalContextSource =
+      generationContext.cacheSource.professional;
+    timingContext.publicationsContextSource =
+      generationContext.cacheSource.publications;
 
-    let business: JsonRecord | null = null;
+    const { profile, business, recentPublications } = generationContext;
+    let generationResult: Awaited<ReturnType<typeof generateSharedBoosterPosts>> | null = null;
+    const generationStartedAt = Date.now();
     try {
-      const { data } = await supabase
-        .from("business_profiles")
-        .select("*")
-        .eq("user_id", userId)
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      business = data && typeof data === "object" ? (data as JsonRecord) : null;
-    } catch {
-      business = null;
+      generationResult = await generateSharedBoosterPosts({
+        idea,
+        publicationInstruction,
+        theme,
+        style,
+        preferredEngine: aiPreferredEngine,
+        channels,
+        profile: (profile ?? null) as JsonRecord | null,
+        business,
+        recentPublications,
+        imagesForAI:
+          mediaType === "video"
+            ? [...videoFrameImagesForAI, ...imagesForAI].slice(
+                0,
+                AI_IMAGE_MAX_COUNT,
+              )
+            : imagesForAI,
+        extraInstructions: mediaGenerationInstructions,
+        mediaType,
+        accountId: userId,
+      });
+    } finally {
+      generationMs = Date.now() - generationStartedAt;
     }
 
-    const recentPublications = await fetchRecentPublicationMemory(
-      supabase,
-      userId,
-    );
-    const { versions, recoveredChannels, aiFallback } = await generateSharedBoosterPosts({
-      idea,
-      publicationInstruction,
-      theme,
-      style,
-      preferredEngine: aiPreferredEngine,
-      channels,
-      profile: (profile ?? null) as JsonRecord | null,
-      business,
-      recentPublications,
-      imagesForAI:
-        mediaType === "video"
-          ? [...videoFrameImagesForAI, ...imagesForAI].slice(
-              0,
-              AI_IMAGE_MAX_COUNT,
-            )
-          : imagesForAI,
-      extraInstructions: mediaGenerationInstructions,
-      mediaType,
-      accountId: userId,
-    });
+    if (!generationResult) {
+      throw new Error("La génération IA n'a pas pu retourner de résultat.");
+    }
+
+    const { versions, recoveredChannels, aiFallback } = generationResult;
 
     await commitAiCredits(quotaReservation);
+    console.info("[booster-generate] route timing", {
+      ...timingContext,
+      generationMs,
+      totalMs: Date.now() - routeStartedAt,
+      recoveredChannels: recoveredChannels.length,
+      aiFallbackStage: aiFallback?.stage,
+      aiFallbackModel: aiFallback?.finalModel,
+      success: true,
+    });
     return NextResponse.json({
       versions,
       recoveredChannels,
@@ -467,6 +476,13 @@ const handler = async (req: Request) => {
     });
   } catch (e: unknown) {
     await rollbackAiCredits(quotaReservation);
+    console.warn("[booster-generate] route timing", {
+      ...timingContext,
+      generationMs,
+      totalMs: Date.now() - routeStartedAt,
+      success: false,
+      message: e instanceof Error ? e.message : String(e || "Erreur inconnue"),
+    });
     return jsonUserFacingError(e, {
       status: 502,
       fallback: "La génération IA n'a pas pu aboutir. Merci de réessayer.",

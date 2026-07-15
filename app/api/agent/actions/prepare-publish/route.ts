@@ -793,15 +793,39 @@ async function prepareAgentSelectedImageForAI(
   }
 }
 
+function hasUsefulAgentMediaMetadata(media: ImageBankAsset | null) {
+  if (!media) return false;
+  return Boolean(
+    cleanText(media.title, 160) ||
+      cleanText(media.sector, 80) ||
+      cleanText(media.job, 80) ||
+      cleanList(media.tags, 8, 60).length,
+  );
+}
+
+function shouldUseFastAgentMediaContext(media: ImageBankAsset | null) {
+  if (!media) return false;
+  const mediaKind = media.mediaType || media.kind || "image";
+  const source = cleanText(media.librarySource || media.source || "", 80);
+  const knownInternalSource =
+    source === "pro_media_library" || source === "inrcy_image_bank";
+
+  return mediaKind === "image" && knownInternalSource && hasUsefulAgentMediaMetadata(media);
+}
+
 function buildAgentSelectedMediaContext(
   media: ImageBankAsset | null,
   aiImageAvailable: boolean,
+  fastMetadataOnly = false,
 ) {
   if (!media) return "";
   const mediaKind = media.mediaType || media.kind || "image";
+  const tags = cleanList(media.tags, 8, 60);
   const metadata = [
     media.title ? `titre interne: ${cleanText(media.title, 160)}` : "",
-    media.tags?.length ? `tags: ${cleanList(media.tags, 8, 60).join(", ")}` : "",
+    media.sector ? `secteur: ${cleanText(media.sector, 80)}` : "",
+    media.job ? `métier: ${cleanText(media.job, 80)}` : "",
+    tags.length ? `tags: ${tags.join(", ")}` : "",
     media.orientation ? `orientation: ${cleanText(media.orientation, 40)}` : "",
   ].filter(Boolean);
 
@@ -809,7 +833,9 @@ function buildAgentSelectedMediaContext(
     `MÉDIA SÉLECTIONNÉ PAR iNrAgent : ${mediaKind}.`,
     metadata.length ? `Métadonnées internes factuelles : ${metadata.join(" | ")}.` : "",
     mediaKind === "image"
-      ? aiImageAvailable
+      ? fastMetadataOnly
+        ? "Mode rapide iNrAgent : l'image n'est pas transmise à l'analyse visuelle IA. Utilise uniquement la phrase libre et les métadonnées internes factuelles ; n'invente aucun détail visuel non fourni."
+        : aiImageAvailable
         ? "L'image est effectivement transmise à l'analyse IA : utilise uniquement les éléments raisonnablement visibles, sans inventer."
         : "L'image n'a pas pu être chargée pour analyse visuelle : n'invente aucun détail visuel à partir du seul nom du fichier."
       : "La vidéo est jointe à l'action finale mais aucune observation visuelle non fournie ne doit être inventée.",
@@ -827,6 +853,7 @@ async function generateBoosterPosts(args: {
   imagesForAI?: BoosterAiImage[];
   mediaContext?: string;
   accountId: string;
+  skipMediaVisionAnalysis?: boolean;
 }) {
   const { versions, recoveredChannels } = await generateSharedBoosterPosts({
     idea: args.idea,
@@ -841,6 +868,7 @@ async function generateBoosterPosts(args: {
     forceNonBlocking: true,
     aiFeature: "agent.publish",
     accountId: args.accountId,
+    skipMediaVisionAnalysis: args.skipMediaVisionAnalysis,
     extraInstructions: [
       `CONTEXTE iNrAgent : cette génération provient de l'automatisation Publier.
 Objectif : produire exactement la même logique éditoriale que Booster / Publier manuel, avec un contenu réellement adapté à chaque canal.
@@ -1383,6 +1411,11 @@ function buildSummary(
 }
 
 export async function POST(request: Request) {
+  const routeStartedAt = Date.now();
+  let mediaSelectionMs = 0;
+  let imagePreparationMs = 0;
+  let aiGenerationMs = 0;
+  let persistenceMs = 0;
   const context = await resolveInrAgentActionRequest(request);
   if (context.errorResponse) return context.errorResponse;
 
@@ -1458,6 +1491,7 @@ export async function POST(request: Request) {
   );
   const prefersVideo =
     channels.includes("youtube_shorts") || channels.includes("tiktok");
+  const mediaSelectionStartedAt = Date.now();
   const recentMediaUsage = await loadRecentMediaUsage(userId);
   const diversifiedMediaSelection = automation.useImageBank
     ? await pickDiversifiedMedia({
@@ -1480,6 +1514,7 @@ export async function POST(request: Request) {
         imageBankCandidate: null,
       };
   const media = diversifiedMediaSelection.media;
+  mediaSelectionMs = Date.now() - mediaSelectionStartedAt;
   const mediaSelectionTrace = {
     policyVersion: "media_selection_v5_strict_generic_sector_trace",
     triedSources: automation.useImageBank
@@ -1550,16 +1585,24 @@ export async function POST(request: Request) {
   const mediaKind = media?.mediaType || media?.kind || "image";
   const image = media && mediaKind === "image" ? media : null;
   const video = media && mediaKind === "video" ? media : null;
-  const imagesForAI = await prepareAgentSelectedImageForAI(image);
+  const fastMetadataOnlyMedia = shouldUseFastAgentMediaContext(image);
+  const imagePreparationStartedAt = Date.now();
+  const imagesForAI = fastMetadataOnlyMedia
+    ? []
+    : await prepareAgentSelectedImageForAI(image);
+  imagePreparationMs = Date.now() - imagePreparationStartedAt;
   const selectedMediaContext = buildAgentSelectedMediaContext(
     media,
     imagesForAI.length > 0,
+    fastMetadataOnlyMedia,
   );
 
   console.info("[inr-agent] selected media AI routing", {
     userId,
     mediaId: media?.id || undefined,
     mediaType: media ? mediaKind : "none",
+    mediaSource: media?.librarySource || media?.source || undefined,
+    fastMetadataOnly: fastMetadataOnlyMedia,
     imagesSentToGeneration: imagesForAI.length,
   });
 
@@ -1593,140 +1636,202 @@ export async function POST(request: Request) {
   }
 
   try {
-    const { versions, recoveredChannels } = await generateBoosterPosts({
-    idea,
-    theme: boosterTheme,
-    channels,
-    profile,
-    business,
-    recentPublications,
-    mediaType: mediaKind === "video" ? "video" : "images",
-    imagesForAI,
-    mediaContext: selectedMediaContext,
-    accountId: userId,
-  });
-
-  const now = new Date().toISOString();
-  const targetChannels = channels.map(
-    (channel) => boosterToAgentChannel[channel],
-  );
-  const previewText = buildPreviewText(versions);
-  const title = `Publication ${themeLabels[agentTheme] || "iNr’Agent"} prête`;
-  const payload = {
-    version: 1,
-    source: "inr_agent_publish_preparer",
-    idea,
-    theme: agentTheme,
-    boosterTheme,
-    postByChannel: versions,
-    selectedChannels: channels,
-    targetChannels,
-    media,
-    mediaAsset: media,
-    mediaSelectionTrace,
-    mediaType: media ? mediaKind : "none",
-    image,
-    imageAsset: image,
-    video,
-    videoAsset: video,
-    mediaReadinessByChannel,
-    mediaAdaptationByChannel,
-    mediaPolicy: "booster_publish_rules",
-    imageRequiredRequested: automation.imageRequired,
-    executionTarget: "booster_publish",
-  };
-
-  const { data: inserted, error: insertError } = await supabaseAdmin
-    .from("inr_agent_actions")
-    .insert({
-      user_id: userId,
-      automation_key: "publish",
-      action_type: "publication",
-      target_tool: "booster",
-      title,
-      summary: buildSummary(channels, media),
-      preview_text: previewText,
-      target_channels: targetChannels,
-      target_themes: [agentTheme],
-      recipients: [],
-      image_assets: media ? [media] : [],
-      payload,
-      validation_required: automation.validationMode !== "draft_only",
-      execution_policy: getExecutionPolicy(automation.validationMode),
-      status: getInitialStatus(automation.validationMode),
-      scheduled_for: null,
-      prepared_at: now,
-      metadata: {
-        automationFrequency: automation.frequency,
-        preparedManually: !isCron,
-        preparedByCron: isCron,
-        // Les canaux récupérés le sont désormais exclusivement par une nouvelle passe IA.
-        // Aucun texte éditorial générique local n'est injecté.
-        aiRecoveredChannels: recoveredChannels.map(
-          (channel) => boosterToAgentChannel[channel],
-        ),
-        fallbackAppliedChannels: [],
-        mediaSelectionTrace,
-      },
-      created_at: now,
-      updated_at: now,
-    })
-    .select(
-      "id, automation_key, action_type, target_tool, title, summary, preview_text, target_channels, target_themes, recipients, image_assets, payload, validation_required, execution_policy, status, scheduled_for, prepared_at, validated_at, refused_at, completed_at, last_error, created_at, updated_at",
-    )
-    .single();
-
-  if (insertError) {
-    await rollbackAiCredits(quotaReservation);
-    return NextResponse.json(
-      {
-        error: "Impossible d’enregistrer l’action préparée iNr’Agent.",
-      },
-      { status: 500 },
-    );
-  }
-
-  await supabaseAdmin
-    .from("inr_agent_automation_settings")
-    .update({ last_prepared_at: now, updated_at: now })
-    .eq("user_id", userId)
-    .eq("automation_key", "publish");
-
-  if (media?.id) {
+    let versions: Awaited<ReturnType<typeof generateBoosterPosts>>["versions"] = {};
+    let recoveredChannels: Awaited<ReturnType<typeof generateBoosterPosts>>["recoveredChannels"] = [];
+    const aiGenerationStartedAt = Date.now();
     try {
-      const imageTable =
-        media.source === "pro_media_library"
-          ? "pro_media_library"
-          : "inrcy_image_bank";
-      const { data: usageRow } = await supabaseAdmin
-        .from(imageTable)
-        .select("usage_count")
-        .eq("id", media.id)
-        .maybeSingle();
-      const nextUsageCount =
-        Number(
-          (usageRow as { usage_count?: unknown } | null)?.usage_count || 0,
-        ) + 1;
-      const usagePatch =
-        imageTable === "pro_media_library"
-          ? { usage_count: nextUsageCount, last_used_at: now, updated_at: now }
-          : { usage_count: nextUsageCount, updated_at: now };
-      await supabaseAdmin
-        .from(imageTable)
-        .update(usagePatch)
-        .eq("id", media.id);
-    } catch {
-      // Non bloquant : la publication préparée reste valide même si le compteur image n'est pas mis à jour.
+      ({ versions, recoveredChannels } = await generateBoosterPosts({
+        idea,
+        theme: boosterTheme,
+        channels,
+        profile,
+        business,
+        recentPublications,
+        mediaType: mediaKind === "video" ? "video" : "images",
+        imagesForAI,
+        mediaContext: selectedMediaContext,
+        accountId: userId,
+        skipMediaVisionAnalysis: fastMetadataOnlyMedia,
+      }));
+    } finally {
+      aiGenerationMs = Date.now() - aiGenerationStartedAt;
     }
-  }
+
+    const persistenceStartedAt = Date.now();
+    const now = new Date().toISOString();
+    const targetChannels = channels.map(
+      (channel) => boosterToAgentChannel[channel],
+    );
+    const previewText = buildPreviewText(versions);
+    const title = `Publication ${themeLabels[agentTheme] || "iNr’Agent"} prête`;
+    const payload = {
+      version: 1,
+      source: "inr_agent_publish_preparer",
+      idea,
+      theme: agentTheme,
+      boosterTheme,
+      postByChannel: versions,
+      selectedChannels: channels,
+      targetChannels,
+      media,
+      mediaAsset: media,
+      mediaSelectionTrace,
+      mediaType: media ? mediaKind : "none",
+      image,
+      imageAsset: image,
+      video,
+      videoAsset: video,
+      mediaReadinessByChannel,
+      mediaAdaptationByChannel,
+      mediaPolicy: "booster_publish_rules",
+      imageRequiredRequested: automation.imageRequired,
+      executionTarget: "booster_publish",
+    };
+
+    const { data: inserted, error: insertError } = await supabaseAdmin
+      .from("inr_agent_actions")
+      .insert({
+        user_id: userId,
+        automation_key: "publish",
+        action_type: "publication",
+        target_tool: "booster",
+        title,
+        summary: buildSummary(channels, media),
+        preview_text: previewText,
+        target_channels: targetChannels,
+        target_themes: [agentTheme],
+        recipients: [],
+        image_assets: media ? [media] : [],
+        payload,
+        validation_required: automation.validationMode !== "draft_only",
+        execution_policy: getExecutionPolicy(automation.validationMode),
+        status: getInitialStatus(automation.validationMode),
+        scheduled_for: null,
+        prepared_at: now,
+        metadata: {
+          automationFrequency: automation.frequency,
+          preparedManually: !isCron,
+          preparedByCron: isCron,
+          // Les canaux récupérés le sont désormais exclusivement par une nouvelle passe IA.
+          // Aucun texte éditorial générique local n'est injecté.
+          aiRecoveredChannels: recoveredChannels.map(
+            (channel) => boosterToAgentChannel[channel],
+          ),
+          fallbackAppliedChannels: [],
+          mediaSelectionTrace,
+        },
+        created_at: now,
+        updated_at: now,
+      })
+      .select(
+        "id, automation_key, action_type, target_tool, title, summary, preview_text, target_channels, target_themes, recipients, image_assets, payload, validation_required, execution_policy, status, scheduled_for, prepared_at, validated_at, refused_at, completed_at, last_error, created_at, updated_at",
+      )
+      .single();
+
+    if (insertError) {
+      persistenceMs = Date.now() - persistenceStartedAt;
+      await rollbackAiCredits(quotaReservation);
+      console.warn("[inr-agent] prepare-publish timing", {
+        userId,
+        isCron,
+        selectedChannels: channels.length,
+        mediaType: media ? mediaKind : "none",
+        mediaSource: media?.librarySource || media?.source || undefined,
+        fastMetadataOnly: fastMetadataOnlyMedia,
+        mediaSelectionMs,
+        imagePreparationMs,
+        aiGenerationMs,
+        persistenceMs,
+        totalMs: Date.now() - routeStartedAt,
+        success: false,
+        stage: "persist-action",
+        message: insertError.message,
+      });
+      return NextResponse.json(
+        {
+          error: "Impossible d’enregistrer l’action préparée iNr’Agent.",
+        },
+        { status: 500 },
+      );
+    }
+
+    await supabaseAdmin
+      .from("inr_agent_automation_settings")
+      .update({ last_prepared_at: now, updated_at: now })
+      .eq("user_id", userId)
+      .eq("automation_key", "publish");
+
+    if (media?.id) {
+      try {
+        const imageTable =
+          media.source === "pro_media_library"
+            ? "pro_media_library"
+            : "inrcy_image_bank";
+        const { data: usageRow } = await supabaseAdmin
+          .from(imageTable)
+          .select("usage_count")
+          .eq("id", media.id)
+          .maybeSingle();
+        const nextUsageCount =
+          Number(
+            (usageRow as { usage_count?: unknown } | null)?.usage_count || 0,
+          ) + 1;
+        const usagePatch =
+          imageTable === "pro_media_library"
+            ? { usage_count: nextUsageCount, last_used_at: now, updated_at: now }
+            : { usage_count: nextUsageCount, updated_at: now };
+        await supabaseAdmin
+          .from(imageTable)
+          .update(usagePatch)
+          .eq("id", media.id);
+      } catch {
+        // Non bloquant : la publication préparée reste valide même si le compteur image n'est pas mis à jour.
+      }
+    }
+    persistenceMs = Date.now() - persistenceStartedAt;
 
     await commitAiCredits(quotaReservation);
+    console.info("[inr-agent] prepare-publish timing", {
+      userId,
+      isCron,
+      selectedChannels: channels.length,
+      targetChannels,
+      mediaType: media ? mediaKind : "none",
+      mediaSource: media?.librarySource || media?.source || undefined,
+      fastMetadataOnly: fastMetadataOnlyMedia,
+      imagesSentToGeneration: imagesForAI.length,
+      validationRequired: automation.validationMode !== "draft_only",
+      mediaSelectionMs,
+      imagePreparationMs,
+      aiGenerationMs,
+      persistenceMs,
+      totalMs: Date.now() - routeStartedAt,
+      recoveredChannels: recoveredChannels.length,
+      success: true,
+    });
     return NextResponse.json({
       action: rowToInrAgentAction(inserted as any),
       prepared: true,
     });
   } catch (error) {
     await rollbackAiCredits(quotaReservation);
+    console.warn("[inr-agent] prepare-publish timing", {
+      userId,
+      isCron,
+      selectedChannels: channels.length,
+      mediaType: media ? mediaKind : "none",
+      mediaSource: media?.librarySource || media?.source || undefined,
+      fastMetadataOnly: fastMetadataOnlyMedia,
+      imagesSentToGeneration: imagesForAI.length,
+      mediaSelectionMs,
+      imagePreparationMs,
+      aiGenerationMs,
+      persistenceMs,
+      totalMs: Date.now() - routeStartedAt,
+      success: false,
+      stage: "generate-or-persist",
+      message: error instanceof Error ? error.message : String(error || "Erreur inconnue"),
+    });
     throw error;
   }
 }

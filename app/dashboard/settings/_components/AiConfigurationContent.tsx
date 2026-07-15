@@ -1,6 +1,7 @@
 "use client";
 
 import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
+import { invalidateBoosterGenerationContextClient } from "@/lib/boosterGenerationContextClient";
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabaseClient";
@@ -367,6 +368,7 @@ export default function AiConfigurationContent({ mode = "drawer", onSaved }: Pro
           { onConflict: "user_id" }
         );
         if (upErr) throw new Error(upErr.message);
+        await invalidateBoosterGenerationContextClient("professional");
       }
 
       if (typeof window !== "undefined") {

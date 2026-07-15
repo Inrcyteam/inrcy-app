@@ -1,6 +1,7 @@
 "use client";
 
 import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
+import { invalidateBoosterGenerationContextClient } from "@/lib/boosterGenerationContextClient";
 
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { confirmInrcy } from "@/lib/inrcyDialog";
@@ -345,6 +346,7 @@ export default function ActivityContent({
         .from(TABLE)
         .upsert(payload, { onConflict: "user_id" });
       if (upErr) throw new Error(upErr.message);
+      await invalidateBoosterGenerationContextClient("professional");
 
       const isComplete =
         form.sectorCategory.trim().length > 0 &&

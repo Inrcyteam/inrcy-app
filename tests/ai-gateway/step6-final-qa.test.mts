@@ -111,7 +111,10 @@ test("Step 6 does not reduce previous text-generation capacities", () => {
   assert.equal(AI_FEATURE_POLICIES["templates.generate"].maxOutputTokens, 3000);
 
   const boosterGeneration = read("lib/boosterPublishGeneration.ts");
-  assert.match(boosterGeneration, /siteChannel \? 6000 : 2000/);
+  assert.match(
+    boosterGeneration,
+    /siteChannel\s*\?\s*channel === "inr_search"\s*\?\s*INR_SEARCH_CONTENT_MAX_LENGTH\s*:\s*6000\s*:\s*2000/s,
+  );
   assert.match(boosterGeneration, /youtube_shorts:\s*950/);
   assert.match(boosterGeneration, /site_web:\s*1100/);
   assert.match(boosterGeneration, /Math\.min\(10_000, Math\.max\(minimum, contentBudget\)\)/);

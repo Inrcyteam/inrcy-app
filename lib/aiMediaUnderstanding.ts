@@ -7,6 +7,12 @@ import {
   getAiEngineOption,
   type AiPreferredEngine,
 } from "@/lib/aiEnginePreference";
+import {
+  buildVisionAnalysisCacheKey,
+  readVisionAnalysisCache,
+  writeVisionAnalysisCache,
+  type VisionAnalysisCacheSource,
+} from "@/lib/aiMediaUnderstandingCache";
 
 export type AiMediaImage = {
   dataUrl: string;
@@ -19,6 +25,7 @@ export type PreparedMediaForWriter = {
   usedNeutralVisionAnalysis: boolean;
   visionAnalysisAvailable: boolean;
   visionModel?: string;
+  visionCacheSource?: VisionAnalysisCacheSource;
 };
 
 type VisionFactsResponse = {
@@ -26,6 +33,8 @@ type VisionFactsResponse = {
   visible_text?: unknown;
   uncertainties?: unknown;
 };
+
+const VISION_FACTS_PROMPT_VERSION = "v1";
 
 const VISION_FACTS_SCHEMA: AiJsonResponseSchema = {
   name: "inrcy_media_facts",
@@ -107,6 +116,8 @@ function formatVisionFacts(result: VisionFactsResponse) {
  * - moteur vision : il reçoit directement les images et reste auteur ;
  * - moteur sans vision : un modèle vision neutre extrait uniquement des faits,
  *   puis le moteur choisi rédige le contenu final à partir de ce résumé factuel.
+ * - mode métadonnées : l'appelant peut désactiver toute analyse visuelle quand
+ *   un média interne est déjà cadré par des métadonnées factuelles.
  */
 export async function prepareMediaForSelectedWriter(args: {
   engine: AiPreferredEngine;
@@ -116,6 +127,7 @@ export async function prepareMediaForSelectedWriter(args: {
   accountId?: string;
   feature?: "booster.media-understanding" | "agent.media-understanding";
   deadlineAt?: number;
+  skipMediaVisionAnalysis?: boolean;
 }): Promise<PreparedMediaForWriter> {
   const images = Array.isArray(args.images)
     ? args.images.filter((image) => Boolean(image?.dataUrl)).slice(0, 5)
@@ -127,6 +139,18 @@ export async function prepareMediaForSelectedWriter(args: {
     return {
       imagesForWriter: undefined,
       writerContext: existingContext,
+      usedNeutralVisionAnalysis: false,
+      visionAnalysisAvailable: false,
+    };
+  }
+
+  if (args.skipMediaVisionAnalysis) {
+    return {
+      imagesForWriter: undefined,
+      writerContext: mergeContexts(
+        existingContext,
+        "MÉDIAS JOINTS : l'analyse visuelle automatique est volontairement ignorée pour cette génération. Utilise uniquement la phrase libre, les métadonnées et les faits fournis ; n'invente aucun détail visuel non fourni.",
+      ),
       usedNeutralVisionAnalysis: false,
       visionAnalysisAvailable: false,
     };
@@ -144,6 +168,34 @@ export async function prepareMediaForSelectedWriter(args: {
   const visionModel =
     cleanAiGatewayEnv(process.env.AI_GATEWAY_VISION_MODEL) ||
     DEFAULT_AI_VISION_FALLBACK_MODEL;
+  const normalizedIdea = cleanLine(args.idea, 1200);
+  const visionCacheKey = buildVisionAnalysisCacheKey({
+    accountId: args.accountId || "",
+    idea: normalizedIdea,
+    visionModel,
+    promptVersion: VISION_FACTS_PROMPT_VERSION,
+    images,
+  });
+  const cachedAnalysis = await readVisionAnalysisCache({
+    cacheKey: visionCacheKey,
+    visionModel,
+  });
+
+  if (cachedAnalysis.factsContext) {
+    return {
+      imagesForWriter: undefined,
+      writerContext: mergeContexts(
+        existingContext,
+        `ANALYSE VISUELLE FACTUELLE PRÉALABLE — source d'appui, jamais sujet de remplacement
+${cachedAnalysis.factsContext}`,
+        "RÈGLE MÉDIA : le moteur choisi reste l'auteur final. Utilise ces observations seulement si elles servent la phrase libre ; n'invente rien au-delà.",
+      ),
+      usedNeutralVisionAnalysis: true,
+      visionAnalysisAvailable: true,
+      visionModel,
+      visionCacheSource: "hit",
+    };
+  }
 
   try {
     const result = await aiGenerateJSON<VisionFactsResponse>({
@@ -160,7 +212,7 @@ export async function prepareMediaForSelectedWriter(args: {
         "Le moteur choisi par le professionnel rédigera ensuite le contenu final avec sa propre personnalité.",
       ].join("\n"),
       input: [
-        `Phrase libre du professionnel, uniquement pour comprendre ce qui peut être pertinent : ${cleanLine(args.idea, 1200) || "Non précisée"}`,
+        `Phrase libre du professionnel, uniquement pour comprendre ce qui peut être pertinent : ${normalizedIdea || "Non précisée"}`,
         `Analyse ${images.length} image(s) et retourne des faits visuels courts, le texte réellement lisible et les incertitudes.`,
       ].join("\n\n"),
       images,
@@ -172,6 +224,13 @@ export async function prepareMediaForSelectedWriter(args: {
     });
 
     const factsContext = formatVisionFacts(result);
+    if (factsContext) {
+      void writeVisionAnalysisCache({
+        cacheKey: visionCacheKey,
+        factsContext,
+        visionModel,
+      });
+    }
     return {
       imagesForWriter: undefined,
       writerContext: mergeContexts(
@@ -184,6 +243,7 @@ export async function prepareMediaForSelectedWriter(args: {
       usedNeutralVisionAnalysis: true,
       visionAnalysisAvailable: Boolean(factsContext),
       visionModel,
+      visionCacheSource: cachedAnalysis.source,
     };
   } catch (error) {
     const code = error && typeof error === "object" && "code" in error
@@ -207,6 +267,7 @@ export async function prepareMediaForSelectedWriter(args: {
       usedNeutralVisionAnalysis: true,
       visionAnalysisAvailable: false,
       visionModel,
+      visionCacheSource: cachedAnalysis.source,
     };
   }
 }

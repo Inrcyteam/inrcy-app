@@ -224,11 +224,16 @@ function generationErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error || "Erreur IA inconnue");
 }
 
+function elapsedMs(startedAt: number) {
+  return Date.now() - startedAt;
+}
+
 function logGenerationAttemptFailure(args: {
   stage: string;
   channels: BoosterChannels[];
   aiFeature: AiGenerationFeature;
   accountId?: string;
+  durationMs?: number;
   error: unknown;
 }) {
   console.warn("[booster-generation] generation attempt failed", {
@@ -236,6 +241,7 @@ function logGenerationAttemptFailure(args: {
     channels: args.channels,
     aiFeature: args.aiFeature,
     accountId: args.accountId || undefined,
+    durationMs: args.durationMs,
     message: generationErrorMessage(args.error),
   });
 }
@@ -334,6 +340,7 @@ export type GenerateSharedBoosterPostsArgs = {
   allowLocalFallback?: boolean;
   aiFeature?: "booster.publish" | "agent.publish";
   accountId?: string;
+  skipMediaVisionAnalysis?: boolean;
 };
 
 export type GenerateSharedBoosterPostsResult = {
@@ -1243,6 +1250,11 @@ function applyPublicationInstructionOverrides(
 
 export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPostsArgs): Promise<GenerateSharedBoosterPostsResult> {
   const generationStartedAt = Date.now();
+  const timing = {
+    mediaPrepMs: 0,
+    primaryGenerationMs: 0,
+    repairMs: 0,
+  };
   const aiFeature = args.aiFeature || "booster.publish";
   const budget = createAiOperationBudget(aiFeature);
   // Deadline absolue partagée entre préanalyse média, appel principal, retry réseau
@@ -1290,18 +1302,38 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
   // V2 Étape 4 : le moteur choisi reste toujours l'auteur final.
   // Pour un moteur sans vision (ex. DeepSeek), une passe visuelle neutre extrait
   // des faits puis l'auteur sélectionné rédige sans recevoir les images brutes.
-  const preparedMedia = await prepareMediaForSelectedWriter({
-    engine: baseGenerationProfile.preferences.engine,
-    images: args.imagesForAI,
-    idea: args.idea,
-    existingContext: args.extraInstructions,
-    accountId: args.accountId,
-    feature:
-      aiFeature === "agent.publish"
-        ? "agent.media-understanding"
-        : "booster.media-understanding",
-    deadlineAt: operationDeadlineAt,
-  });
+  const mediaPrepStartedAt = Date.now();
+  let preparedMedia: Awaited<ReturnType<typeof prepareMediaForSelectedWriter>>;
+  try {
+    preparedMedia = await prepareMediaForSelectedWriter({
+      engine: baseGenerationProfile.preferences.engine,
+      images: args.imagesForAI,
+      idea: args.idea,
+      existingContext: args.extraInstructions,
+      accountId: args.accountId,
+      feature:
+        aiFeature === "agent.publish"
+          ? "agent.media-understanding"
+          : "booster.media-understanding",
+      deadlineAt: operationDeadlineAt,
+      skipMediaVisionAnalysis: args.skipMediaVisionAnalysis,
+    });
+  } catch (error) {
+    timing.mediaPrepMs = elapsedMs(mediaPrepStartedAt);
+    console.warn("[booster-generation] media prep failed", {
+      aiFeature,
+      accountId: args.accountId || undefined,
+      engine: baseGenerationProfile.preferences.engine,
+      mediaType: baseGenerationProfile.request.media.type,
+      mediaCount: baseGenerationProfile.request.media.count,
+      mediaPrepMs: timing.mediaPrepMs,
+      totalMs: elapsedMs(generationStartedAt),
+      message: generationErrorMessage(error),
+    });
+    throw error;
+  } finally {
+    timing.mediaPrepMs = elapsedMs(mediaPrepStartedAt);
+  }
 
   const generationProfile: NormalizedAiGenerationProfile = {
     ...instructionAdjustedGenerationProfile,
@@ -1323,9 +1355,11 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
     writerEngine: generationProfile.preferences.engine,
     selectedImages: args.imagesForAI?.length || 0,
     imagesSentToWriter: preparedMedia.imagesForWriter?.length || 0,
+    skipMediaVisionAnalysis: Boolean(args.skipMediaVisionAnalysis),
     usedNeutralVisionAnalysis: preparedMedia.usedNeutralVisionAnalysis,
     visionAnalysisAvailable: preparedMedia.visionAnalysisAvailable,
     visionModel: preparedMedia.visionModel,
+    visionCacheSource: preparedMedia.visionCacheSource,
   });
 
   const languageCode = generationProfile.preferences.language;
@@ -1337,6 +1371,7 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
   // V2 Étape 3 : 1 appel principal quel que soit le nombre de canaux sélectionnés.
   // Le schéma JSON dynamique contient exactement ces canaux.
   let rawVersions: Partial<Record<BoosterChannels, Partial<ChannelPost>>> = {};
+  const primaryGenerationStartedAt = Date.now();
   try {
     const out = await generateVersions({
       idea: args.idea,
@@ -1366,10 +1401,13 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
       channels,
       aiFeature,
       accountId: args.accountId,
+      durationMs: elapsedMs(primaryGenerationStartedAt),
       error,
     });
     rethrowIfRecoveryMustStop(error);
     rawVersions = {};
+  } finally {
+    timing.primaryGenerationMs = elapsedMs(primaryGenerationStartedAt);
   }
 
   const safeVersions: Partial<Record<BoosterChannels, ChannelPost>> = {};
@@ -1420,6 +1458,7 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
   // Une seule réparation ciblée, regroupée dans un unique appel. Jamais de boucle
   // canal par canal, jamais de lots de 3, jamais de rescue YouTube séparé.
   if (repairChannels.length) {
+    const repairStartedAt = Date.now();
     try {
       const repaired = await repairChannelsOnce({
         channels: repairChannels,
@@ -1450,9 +1489,12 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
         channels: repairChannels,
         aiFeature,
         accountId: args.accountId,
+        durationMs: elapsedMs(repairStartedAt),
         error,
       });
       rethrowIfRecoveryMustStop(error);
+    } finally {
+      timing.repairMs = elapsedMs(repairStartedAt);
     }
   }
 
@@ -1467,6 +1509,7 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
         languageCode,
       }),
   );
+  const totalDurationMs = elapsedMs(generationStartedAt);
 
   if (unsafeChannels.length) {
     console.error("[booster-generation] unsafe channels after single repair", {
@@ -1475,6 +1518,10 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
       engine: generationProfile.preferences.engine,
       channels: unsafeChannels,
       selectedChannels: channels.length,
+      mediaPrepMs: timing.mediaPrepMs,
+      primaryGenerationMs: timing.primaryGenerationMs,
+      repairMs: timing.repairMs,
+      totalMs: totalDurationMs,
       diagnostics: unsafeChannels.map((channel) => ({
         channel,
         hasPost: Boolean(safeVersions[channel]),
@@ -1499,6 +1546,24 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
     );
   }
 
+  console.info("[booster-generation] timing", {
+    aiFeature,
+    accountId: args.accountId || undefined,
+    engine: generationProfile.preferences.engine,
+    selectedChannels: channels.length,
+    repairRequestedChannels: repairChannels.length,
+    recoveredChannels: recoveredChannels.size,
+    mediaType: baseGenerationProfile.request.media.type,
+    mediaCount: baseGenerationProfile.request.media.count,
+    mediaPrepMs: timing.mediaPrepMs,
+    primaryGenerationMs: timing.primaryGenerationMs,
+    repairMs: timing.repairMs,
+    totalMs: totalDurationMs,
+    primarySucceeded: !initialGenerationError,
+    aiFallbackStage: aiFallback?.stage,
+    aiFallbackModel: aiFallback?.finalModel,
+  });
+
   console.info("[booster-generation] quality outcome", {
     aiFeature,
     accountId: args.accountId || undefined,
@@ -1507,7 +1572,7 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
     repairRequestedChannels: repairChannels.length,
     recoveredChannels: recoveredChannels.size,
     repairUsed: repairChannels.length > 0,
-    durationMs: Date.now() - generationStartedAt,
+    durationMs: totalDurationMs,
     mediaType: baseGenerationProfile.request.media.type,
     mediaCount: baseGenerationProfile.request.media.count,
     language: generationProfile.preferences.language,

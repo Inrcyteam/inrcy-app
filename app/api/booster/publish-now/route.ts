@@ -52,6 +52,7 @@ import {
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { captureApiException } from "@/lib/observability/sentry";
 import { withApi } from "@/lib/observability/withApi";
+import { invalidateBoosterGenerationContext } from "@/lib/boosterGenerationContext";
 import { getAppBubbleAccessMapForUser } from "@/lib/appBubbleAccessServer";
 import { isBubbleEnabled } from "@/lib/bubbleAccess";
 import {
@@ -1677,6 +1678,8 @@ async function publishNowHandler(req: Request) {
         { status: 500 },
       );
     }
+
+    await invalidateBoosterGenerationContext(userId, "publications");
 
     // 3) Create deliveries
     const deliveries = selected.map((ch) => ({

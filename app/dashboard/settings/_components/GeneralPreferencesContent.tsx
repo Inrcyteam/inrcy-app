@@ -1,6 +1,7 @@
 "use client";
 
 import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
+import { invalidateBoosterGenerationContextClient } from "@/lib/boosterGenerationContextClient";
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabaseClient";
@@ -286,6 +287,7 @@ export default function GeneralPreferencesContent({ mode = "drawer" }: Props) {
           { onConflict: "user_id" }
         );
         if (upErr) throw new Error(upErr.message);
+        await invalidateBoosterGenerationContextClient("professional");
       }
 
       await saveMobileShortcutsPreference(mobileShortcuts);

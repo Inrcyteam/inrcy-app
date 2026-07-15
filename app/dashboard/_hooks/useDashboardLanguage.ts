@@ -1,6 +1,7 @@
 "use client";
 
 import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
+import { invalidateBoosterGenerationContextClient } from "@/lib/boosterGenerationContextClient";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -130,6 +131,7 @@ export function useDashboardLanguage() {
         { onConflict: "user_id" },
       );
       if (error) throw error;
+      await invalidateBoosterGenerationContextClient("professional");
     } catch {
       // Le choix reste actif localement même si la sauvegarde distante échoue.
     }

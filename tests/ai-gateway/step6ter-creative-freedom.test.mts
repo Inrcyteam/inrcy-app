@@ -99,7 +99,10 @@ test("text generation capacities remain unchanged after creative freedom changes
   assert.equal(AI_FEATURE_POLICIES["templates.generate"].maxOutputTokens, 3000);
 
   const generation = read("lib/boosterPublishGeneration.ts");
-  assert.match(generation, /siteChannel \? 6000 : 2000/);
+  assert.match(
+    generation,
+    /siteChannel\s*\?\s*channel === "inr_search"\s*\?\s*INR_SEARCH_CONTENT_MAX_LENGTH\s*:\s*6000\s*:\s*2000/s,
+  );
   assert.match(generation, /youtube_shorts:\s*950/);
   assert.match(generation, /site_web:\s*1100/);
   assert.match(generation, /Math\.min\(10_000, Math\.max\(minimum, contentBudget\)\)/);

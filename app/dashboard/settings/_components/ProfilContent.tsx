@@ -1,6 +1,7 @@
 "use client";
 
 import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
+import { invalidateBoosterGenerationContextClient } from "@/lib/boosterGenerationContextClient";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -359,6 +360,7 @@ export default function ProfilContent({
 
       const { error } = await supabase.from("profiles").upsert(payload, { onConflict: "user_id" });
       if (error) throw new Error(getSimpleFrenchErrorMessage(error));
+      await invalidateBoosterGenerationContextClient("professional");
 
       // ✅ Récompense : profil complet (100 UI) — idempotent via sourceId
       try {
