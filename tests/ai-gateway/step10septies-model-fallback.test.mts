@@ -15,7 +15,8 @@ test("generation fallback chain is bounded and ordered: selected model, Gateway 
   assert.ok(primary > 0);
   assert.ok(gatewayFallback > primary);
   assert.ok(directFallback > gatewayFallback);
-  assert.match(client, /retries:\s*0/g);
+  assert.match(client, /retries:\s*Math\.max\(0, Math\.min\(1, opts\.retries \?\? 0\)\)/);
+  assert.equal((client.match(/retries:\s*0/g) || []).length, 2);
   assert.match(client, /resolveNextStagesReserveMs/);
 });
 

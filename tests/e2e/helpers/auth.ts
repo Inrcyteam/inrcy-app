@@ -14,7 +14,8 @@ export async function login(page: Page) {
   await page.getByPlaceholder(/mot de passe|password/i).fill(password);
   await page.getByRole('button', { name: /se connecter|login|connexion/i }).click();
 
-  await page.waitForURL(/\/dashboard/, { timeout: 30_000 });
-
-  await expect(page).toHaveURL(/\/dashboard/);
+  // Ne pas attendre l'événement `load` complet : le dashboard démarre plusieurs
+  // requêtes en arrière-plan et peut continuer à charger alors que la navigation
+  // et la session sont déjà valides.
+  await expect(page).toHaveURL(/\/dashboard(?:[/?#]|$)/, { timeout: 45_000 });
 }

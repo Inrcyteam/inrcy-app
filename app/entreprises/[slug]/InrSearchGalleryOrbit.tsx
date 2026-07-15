@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import styles from "./inrSearchPublic.module.css";
@@ -108,7 +109,7 @@ export default function InrSearchGalleryOrbit({ companyName, profession, city, m
           aria-controls="gallery-lightbox"
         >
           <span className={styles.galleryOrbitFocusGlow} aria-hidden="true" />
-          {activeMedia ? <img src={activeMedia.url} alt={activeTitle} loading="eager" decoding="async" /> : null}
+          {activeMedia ? <Image src={activeMedia.url} alt={activeTitle} width={1600} height={1000} sizes="(max-width: 900px) 92vw, 650px" loading="eager" unoptimized /> : null}
           <span className={styles.galleryOrbitFocusShade} />
         </button>
 
@@ -134,7 +135,7 @@ export default function InrSearchGalleryOrbit({ companyName, profession, city, m
             role="listitem"
             aria-label={`Afficher ${mediaTitle(index)}`}
           >
-            <img src={item.url} alt={`${mediaTitle(index)} — ${companyName}`} loading="lazy" decoding="async" />
+            <Image src={item.url} alt={`${mediaTitle(index)} — ${companyName}`} width={320} height={220} sizes="128px" loading="lazy" unoptimized />
             <span>{mediaTitle(index)}</span>
           </button>
         ))}
@@ -156,7 +157,7 @@ export default function InrSearchGalleryOrbit({ companyName, profession, city, m
               <button ref={closeButtonRef} type="button" className={styles.galleryLightboxClose} onClick={() => setLightboxOpen(false)} aria-label="Fermer la galerie">×</button>
               <button type="button" className={`${styles.galleryLightboxArrow} ${styles.galleryLightboxArrowPrevious}`} onClick={() => move(-1)} aria-label="Réalisation précédente">←</button>
               <figure className={styles.galleryLightboxFigure}>
-                <img src={activeMedia.url} alt={activeTitle} />
+                <Image src={activeMedia.url} alt={activeTitle} width={1800} height={1200} sizes="86vw" unoptimized />
                 <figcaption>
                   <small id="gallery-lightbox-context">{context || companyName}</small>
                   <strong id="gallery-lightbox-title">{activeTitle}</strong>

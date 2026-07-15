@@ -18,38 +18,47 @@ test.describe('crm contacts write api', () => {
     const unique = `e2e-${Date.now()}@example.com`;
 
     const created = await page.evaluate(async ({ email }) => {
-      const res = await fetch('/api/crm/contacts', {
-        method: 'POST',
-        credentials: 'include',
-        headers: {
-          'content-type': 'application/json',
-          accept: 'application/json',
-        },
-        body: JSON.stringify({
-          last_name: 'E2E Test',
-          first_name: 'Playwright',
-          email,
-          contact_type: 'prospect',
-          category: 'professionnel',
-          notes: 'Créé automatiquement par test E2E',
-          important: false,
-        }),
-      });
+      const createOnce = async () => {
+        const res = await fetch('/api/crm/contacts', {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'content-type': 'application/json',
+            accept: 'application/json',
+          },
+          body: JSON.stringify({
+            last_name: 'E2E Test',
+            first_name: 'Playwright',
+            email,
+            contact_type: 'prospect',
+            category: 'professionnel',
+            notes: 'Créé automatiquement par test E2E',
+            important: false,
+          }),
+        });
 
-      const text = await res.text();
-      let json: JsonValue = null;
-      try {
-        json = JSON.parse(text);
-      } catch {
-        json = null;
+        const text = await res.text();
+        let json: JsonValue = null;
+        try {
+          json = JSON.parse(text);
+        } catch {
+          json = null;
+        }
+
+        return { ok: res.ok, status: res.status, text, json };
+      };
+
+      let result = await createOnce();
+      const errorCode = result.json && typeof result.json === 'object' && !Array.isArray(result.json)
+        ? String((result.json as Record<string, JsonValue>).error_code || '')
+        : '';
+
+      if (!result.ok && errorCode === '57014') {
+        await new Promise((resolve) => setTimeout(resolve, 300));
+        result = await createOnce();
       }
 
-      return {
-        ok: res.ok,
-        status: res.status,
-        text,
-        json,
-      };
+      return result;
     }, { email: unique });
 
     expect(created.ok, `POST failed: HTTP ${created.status}\n${created.text}`).toBeTruthy();

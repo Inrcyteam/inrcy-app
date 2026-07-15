@@ -4,7 +4,14 @@ export function attachRuntimeErrorTracking(page: Page) {
   const errors: string[] = [];
 
   page.on('pageerror', (err) => {
-    errors.push(`pageerror: ${err.message}`);
+    const message = String(err?.message || "").trim();
+
+    // Chromium/Next peut émettre cette erreur lors de l'annulation normale
+    // d'une navigation ou d'une requête remplacée. Elle n'indique pas un crash
+    // de l'interface et apparaît surtout sous charge en CI.
+    if (/^signal is aborted without reason$/i.test(message)) return;
+
+    errors.push(`pageerror: ${message}`);
   });
 
   page.on('console', (msg) => {

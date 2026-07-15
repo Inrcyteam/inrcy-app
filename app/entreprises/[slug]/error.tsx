@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect } from "react";
 import Link from "next/link";
 import styles from "./inrSearchPublic.module.css";
@@ -12,7 +13,7 @@ export default function InrSearchError({ error, reset }: { error: Error & { dige
   return (
     <main className={`${styles.page} ${styles.statePage}`}>
       <section className={styles.stateCard}>
-        <img src="/icons/inr-search-bubble-128.png" alt="" width={74} height={74} />
+        <Image src="/icons/inr-search-bubble-128.png" alt="" width={74} height={74} />
         <span className={styles.stateKicker}>iNr&apos;Search</span>
         <h1>La page n’a pas pu être chargée</h1>
         <p>Une erreur temporaire est survenue. Vous pouvez réessayer immédiatement.</p>

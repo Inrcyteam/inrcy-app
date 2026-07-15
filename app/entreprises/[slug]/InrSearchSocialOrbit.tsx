@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useMemo, useState, type CSSProperties } from "react";
 import styles from "./inrSearchPublic.module.css";
 
@@ -66,7 +67,7 @@ export default function InrSearchSocialOrbit({ companyName, logoUrl, profession,
           <div className={styles.socialOrbitRings} aria-hidden="true"><span /><span /><span /></div>
           <div className={styles.socialOrbitCore}>
             <span className={styles.socialOrbitCoreGlow} aria-hidden="true" />
-            {logoUrl ? <img src={logoUrl} alt="" width={132} height={132} loading="eager" decoding="async" /> : <span className={styles.socialOrbitFallback}>{companyName.slice(0, 1).toUpperCase()}</span>}
+            {logoUrl ? <Image src={logoUrl} alt="" width={132} height={132} loading="eager" unoptimized /> : <span className={styles.socialOrbitFallback}>{companyName.slice(0, 1).toUpperCase()}</span>}
             <small>{profession || "Entreprise"}</small>
             <strong>{companyName}</strong>
             {city ? <em>{city}</em> : null}
@@ -96,7 +97,7 @@ export default function InrSearchSocialOrbit({ companyName, logoUrl, profession,
                     onFocus={() => setActiveIndex(index)}
                   >
                     <span className={`${styles.socialOrbitGlyph} ${styles[`social_${link.key}`] || ""}`}>
-                      {icon ? <img src={icon} alt="" width={38} height={38} /> : link.key === "website" ? "◎" : link.label.slice(0, 1).toUpperCase()}
+                      {icon ? <Image src={icon} alt="" width={38} height={38} /> : link.key === "website" ? "◎" : link.label.slice(0, 1).toUpperCase()}
                     </span>
                     <strong>{link.label}</strong>
                   </a>
@@ -109,7 +110,7 @@ export default function InrSearchSocialOrbit({ companyName, logoUrl, profession,
         {activeLink ? (
           <aside className={styles.socialOrbitDetail} aria-live="polite">
             <span className={`${styles.socialOrbitDetailGlyph} ${styles[`social_${activeLink.key}`] || ""}`}>
-              {NETWORK_ICONS[activeLink.key] ? <img src={NETWORK_ICONS[activeLink.key]} alt="" width={48} height={48} /> : activeLink.key === "website" ? "◎" : activeLink.label.slice(0, 1).toUpperCase()}
+              {NETWORK_ICONS[activeLink.key] ? <Image src={NETWORK_ICONS[activeLink.key]} alt="" width={48} height={48} /> : activeLink.key === "website" ? "◎" : activeLink.label.slice(0, 1).toUpperCase()}
             </span>
             <small>Planète sélectionnée</small>
             <strong>{activeLink.label}</strong>

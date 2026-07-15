@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import InrSearchLeadForm from "./InrSearchLeadForm";
@@ -117,7 +118,7 @@ export default function InrSearchContactOrbit({
         <div className={styles.contactCore}>
           <span className={styles.contactCoreHalo} aria-hidden="true" />
           <span className={styles.contactCoreRotor} aria-hidden="true"><i /><i /><i /></span>
-          {logoUrl ? <img src={logoUrl} alt="" width={126} height={126} loading="eager" decoding="async" /> : <span className={styles.contactCoreFallback}>{companyName.slice(0, 1).toUpperCase()}</span>}
+          {logoUrl ? <Image src={logoUrl} alt="" width={126} height={126} loading="eager" unoptimized /> : <span className={styles.contactCoreFallback}>{companyName.slice(0, 1).toUpperCase()}</span>}
           <small>{profession || "Entreprise"}</small>
           <strong>{companyName}</strong>
           <em>{city || "À votre écoute"}</em>

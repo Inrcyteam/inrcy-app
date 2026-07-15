@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { requestInrSearchContact } from "./inrSearchContactEvents";
 import styles from "./inrSearchPublic.module.css";
@@ -407,14 +408,14 @@ export default function InrSearchExperience({
             }}
           >
             {logoUrl ? (
-              <img
+              <Image
                 className={styles.headerCompanyLogo}
                 src={logoUrl}
                 alt=""
                 width={48}
                 height={48}
-                decoding="async"
                 fetchPriority="high"
+                unoptimized
               />
             ) : (
               <span className={styles.headerLogoFallback} aria-hidden="true">

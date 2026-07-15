@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { notFound, permanentRedirect } from "next/navigation";
 import {
@@ -84,7 +85,7 @@ export default async function MetierVillePage({ params }: PageProps) {
     <main className={styles.page}>
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: serializeInrSearchJsonLd(jsonLd) }} />
       <nav className={styles.topbar}>
-        <a href="https://inrcy.com"><img src="/logo-inrcy.png" alt="iNrCy" /></a>
+        <a href="https://inrcy.com"><Image src="/logo-inrcy.png" alt="iNrCy" width={116} height={46} priority /></a>
         <div className={styles.topbarNav}><Link href="/entreprises">Entreprises</Link><Link href="/metiers">Métiers</Link><Link href="/secteurs">Secteurs</Link></div>
       </nav>
       <header className={styles.header}>

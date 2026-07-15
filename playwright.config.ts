@@ -17,7 +17,9 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: isCI,
   retries: isCI ? 1 : 0,
-  workers: isCI ? 2 : undefined,
+  // Le serveur Next local et le même compte E2E supportent mal plusieurs flux
+  // authentifiés concurrents. Sur une URL déjà déployée, deux workers restent sûrs.
+  workers: isCI ? (shouldStartWebServer ? 1 : 2) : undefined,
 
   reporter: isCI
     ? [['list'], ['html', { open: 'never' }]]

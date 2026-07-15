@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Image from "next/image";
 import type { CSSProperties, ReactNode } from "react";
 import { notFound, permanentRedirect } from "next/navigation";
 import {
@@ -356,10 +357,6 @@ function buildServiceDescription(
 
   const normalized = normalizeServiceDescriptionKey(service);
   const serviceLabel = lowerInitial(service);
-  const profession = data.profession || data.sectorLabel;
-  const professionContext = profession
-    ? `dans son métier de ${lowerInitial(profession)}`
-    : "dans son activité";
   const audiences = data.customerTypes.length
     ? ` pour ${joinFrenchList(data.customerTypes.map(lowerInitial))}`
     : "";
@@ -994,7 +991,7 @@ export default async function InrSearchCompanyPage({ params }: PageProps) {
                 <div className={styles.presentationMediaOrb}>
                   {data.logoUrl ? (
                     <div className={styles.presentationMediaFallback}>
-                      <img src={data.logoUrl} alt={`Logo de ${data.companyName}`} width={260} height={260} loading="eager" fetchPriority="high" />
+                      <Image src={data.logoUrl} alt={`Logo de ${data.companyName}`} width={260} height={260} loading="eager" fetchPriority="high" unoptimized />
                     </div>
                   ) : (
                     <div className={styles.presentationMediaFallback}>

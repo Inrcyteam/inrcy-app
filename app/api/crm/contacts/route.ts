@@ -78,6 +78,18 @@ function cleanString(v: unknown) {
   return v.trim();
 }
 
+function isTransientPostgresTimeout(error: unknown) {
+  if (!error || typeof error !== "object") return false;
+  const record = error as { code?: unknown; message?: unknown; details?: unknown };
+  const code = String(record.code || "").trim();
+  const message = `${String(record.message || "")} ${String(record.details || "")}`;
+  return code === "57014" || /statement timeout|canceling statement due to statement timeout/i.test(message);
+}
+
+async function waitBeforeDatabaseRetry() {
+  await new Promise((resolve) => setTimeout(resolve, 180));
+}
+
 function normalizeImportKey(value: unknown) {
   return String(value ?? "")
     .normalize("NFD")
@@ -523,13 +535,24 @@ async function createContactHandler(req: Request) {
     );
   }
 
-  const { data, error } = await supabase.from("crm_contacts").insert(payload).select("id").single();
+  const insertContact = () =>
+    supabase.from("crm_contacts").insert(payload).select("id").single();
 
-  if (error) {
-    return jsonUserFacingError(error, { status: 500 });
+  let result = await insertContact();
+  if (isTransientPostgresTimeout(result.error)) {
+    console.warn("[crm-contacts] transient insert timeout, retrying once", {
+      accountId: activeUserId,
+      code: String(result.error?.code || ""),
+    });
+    await waitBeforeDatabaseRetry();
+    result = await insertContact();
   }
 
-  return NextResponse.json({ ok: true, id: data?.id });
+  if (result.error) {
+    return jsonUserFacingError(result.error, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true, id: result.data?.id });
 }
 
 async function updateContactHandler(req: Request) {

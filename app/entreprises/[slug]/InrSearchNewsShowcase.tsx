@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import type { InrSearchPublication } from "@/lib/inrSearchPublic";
@@ -127,7 +128,7 @@ export default function InrSearchNewsShowcase({ companyName, publications }: Pro
           >
             <span className={styles.newsOrbitFocusMedia}>
               {activePublication.imageUrl ? (
-                <img src={activePublication.imageUrl} alt={`${activePublication.title} – ${companyName}`} loading="eager" decoding="async" />
+                <Image src={activePublication.imageUrl} alt={`${activePublication.title} – ${companyName}`} width={1600} height={1000} sizes="(max-width: 900px) 92vw, 720px" loading="eager" unoptimized />
               ) : (
                 <span className={styles.newsOrbitFallback} aria-hidden="true"><b>✦</b><i /></span>
               )}
@@ -157,7 +158,7 @@ export default function InrSearchNewsShowcase({ companyName, publications }: Pro
                   aria-label={`Afficher l’actualité ${publication.title}`}
                 >
                   <span>
-                    {publication.imageUrl ? <img src={publication.imageUrl} alt={`${publication.title} — ${companyName}`} loading="lazy" decoding="async" /> : <i aria-hidden="true">✦</i>}
+                    {publication.imageUrl ? <Image src={publication.imageUrl} alt={`${publication.title} — ${companyName}`} width={640} height={400} sizes="240px" loading="lazy" unoptimized /> : <i aria-hidden="true">✦</i>}
                   </span>
                   <small>{publication.createdAt ? formatShortDate(publication.createdAt) : "Signal"}</small>
                   <strong>{publication.title}</strong>
@@ -214,7 +215,7 @@ export default function InrSearchNewsShowcase({ companyName, publications }: Pro
               <button type="button" className={`${styles.newsOrbitModalArrow} ${styles.newsOrbitModalArrowPrevious}`} onClick={() => move(-1)} aria-label="Actualité précédente">←</button>
               <article className={styles.newsOrbitModal}>
                 {activePublication.imageUrl ? (
-                  <div className={styles.newsOrbitModalMedia}><img src={activePublication.imageUrl} alt={`${activePublication.title} – ${companyName}`} /><span /></div>
+                  <div className={styles.newsOrbitModalMedia}><Image src={activePublication.imageUrl} alt={`${activePublication.title} – ${companyName}`} width={1800} height={1200} sizes="86vw" unoptimized /><span /></div>
                 ) : null}
                 <div className={styles.newsOrbitModalContent}>
                   <span className={styles.newsOrbitModalKicker}>Actualité de {companyName}</span>

@@ -60,7 +60,7 @@ test("Booster uses JSON Schema structured output instead of provider-specific lo
 test("AI generation does not retry 429 immediately and Booster stops recovery storms", () => {
   const client = read("lib/aiGatewayClient.ts");
   const booster = read("lib/boosterPublishGeneration.ts");
-  assert.match(client, /retryStatuses:\s*\[408, 500, 502, 503, 504\]/);
+  assert.match(client, /retryStatuses:\s*\[404, 408, 500, 502, 503, 504\]/);
   assert.doesNotMatch(client, /retryStatuses:\s*\[[^\]]*429/);
   assert.match(booster, /shouldAbortAiRecovery/);
   assert.match(booster, /AI Gateway error/);
@@ -113,7 +113,7 @@ test("Step 6 does not reduce previous text-generation capacities", () => {
   const boosterGeneration = read("lib/boosterPublishGeneration.ts");
   assert.match(
     boosterGeneration,
-    /siteChannel\s*\?\s*channel === "inr_search"\s*\?\s*INR_SEARCH_CONTENT_MAX_LENGTH\s*:\s*6000\s*:\s*2000/s,
+    /siteChannel\s*\?[\s\S]*?channel === "inr_search"\s*\?\s*INR_SEARCH_CONTENT_MAX_LENGTH\s*:\s*6000\s*:\s*2000/,
   );
   assert.match(boosterGeneration, /youtube_shorts:\s*950/);
   assert.match(boosterGeneration, /site_web:\s*1100/);

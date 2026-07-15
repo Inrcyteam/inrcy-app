@@ -53,7 +53,7 @@ import {
 export type { AiGenerationFeature, AiOperationBudget } from "@/lib/aiGatewayPolicy";
 
 export class AiGatewayHttpError extends Error {
-  code: "ai_gateway_rate_limit" | "ai_gateway_auth" | "ai_gateway_unavailable" | "ai_gateway_request_failed";
+  code: "ai_gateway_rate_limit" | "ai_gateway_auth" | "ai_gateway_unavailable" | "ai_gateway_invalid_request" | "ai_gateway_request_failed";
   status: number;
   retryAfterSeconds?: number;
 
@@ -66,9 +66,11 @@ export class AiGatewayHttpError extends Error {
       ? "ai_gateway_rate_limit"
       : status === 401 || status === 403
         ? "ai_gateway_auth"
-        : status >= 500
+        : status === 404 || status >= 500
           ? "ai_gateway_unavailable"
-          : "ai_gateway_request_failed";
+          : [400, 409, 422].includes(status)
+            ? "ai_gateway_invalid_request"
+            : "ai_gateway_request_failed";
   }
 }
 
@@ -381,7 +383,7 @@ async function executeAiJsonAttempt<T extends AiResponseJSON>(args: {
       retries: target.retries,
       timeoutMs: target.timeoutMs,
       deadlineAt: target.deadlineAt,
-      retryStatuses: [408, 500, 502, 503, 504],
+      retryStatuses: [404, 408, 500, 502, 503, 504],
       onAttempt: async (attempt) => {
         httpAttempts = Math.max(httpAttempts, attempt + 1);
         const reservation = await reserveAiGatewayAccountAttempt(opts.accountId, {
@@ -695,7 +697,7 @@ export async function aiGenerateJSON<T extends AiResponseJSON>(opts: AiGenerateJ
           jsonMode: primaryRouting.jsonMode,
           credential: gatewayCredential,
           baseUrl: gatewayBaseUrl,
-          retries: 0,
+          retries: Math.max(0, Math.min(1, opts.retries ?? 0)),
           timeoutMs: primaryTimeoutMs,
           deadlineAt: hardDeadlineAt,
           engine: primaryEngine,

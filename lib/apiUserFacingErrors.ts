@@ -22,6 +22,12 @@ function getKnownStructuredErrorMessage(code: string): string | null {
   if (code === "ai_gateway_rate_limit") {
     return "Ce moteur IA est temporairement très sollicité. Réessayez dans quelques minutes ou choisissez un autre moteur IA.";
   }
+  if (code === "ai_gateway_unavailable" || code === "ai_gateway_request_failed") {
+    return "Ce moteur IA est temporairement indisponible. iNrCy a tenté les solutions de secours ; merci de relancer la génération.";
+  }
+  if (code === "ai_gateway_invalid_request") {
+    return "Les moteurs IA disponibles n’ont pas pu traiter cette demande. Merci de relancer ou de choisir un autre moteur IA.";
+  }
   if (code === "ai_gateway_account_limit_reached") {
     return "La limite de sécurité IA de ce compte est temporairement atteinte. Merci de réessayer plus tard.";
   }
@@ -54,6 +60,8 @@ function resolveKnownErrorStatus(input: unknown, requestedStatus: number): numbe
   }
   if (code === "ai_gateway_auth") return 503;
   if (code === "ai_gateway_unavailable") return 503;
+  if (code === "ai_gateway_request_failed") return 503;
+  if (code === "ai_gateway_invalid_request") return 502;
   if (code === "ai_gateway_guard_unavailable") return 503;
   if (code === "ai_operation_deadline_exceeded") return 504;
   return requestedStatus;

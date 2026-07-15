@@ -47,8 +47,8 @@ test("V2 step 8 prevents technical primary failures from triggering a repair cas
   const booster = read("lib/boosterPublishGeneration.ts");
   const client = read("lib/aiGatewayClient.ts");
   assert.match(booster, /ai_gateway_unavailable/);
-  assert.match(booster, /500\|502\|503\|504/);
-  assert.match(client, /retryStatuses: \[408, 500, 502, 503, 504\]/);
+  assert.match(booster, /404\|409\|422\|429\|500\|502\|503\|504/);
+  assert.match(client, /retryStatuses: \[404, 408, 500, 502, 503, 504\]/);
   assert.doesNotMatch(client, /retryStatuses: \[[^\]]*429/);
 });
 

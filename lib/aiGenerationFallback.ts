@@ -17,6 +17,7 @@ export type AiGenerationFallbackReason =
   | "gateway_auth"
   | "rate_limit"
   | "provider_unavailable"
+  | "provider_incompatible"
   | "transport_error"
   | "empty_output"
   | "invalid_output";
@@ -94,6 +95,21 @@ export function getOpenAiDirectAccountingModel(): string {
   return `openai/${getOpenAiDirectFallbackModel()}`;
 }
 
+const PROVIDER_CAPABILITY_ERROR_PATTERNS = [
+  /\bunsupported (?:parameter|field|option|feature|response[_ ]?format|structured output|json schema|tool(?:s| calling)?)\b/i,
+  /\b(?:json schema|response[_ ]?format|structured output|tool(?:s| calling)?).{0,100}\b(?:not supported|unsupported|unavailable)\b/i,
+  /\bmodel.{0,100}\b(?:does not support|is not supported|unsupported|unavailable|not available)\b/i,
+  /\b(?:no available endpoints?|no endpoints? found|provider unavailable|provider is unavailable)\b/i,
+  /\b(?:context length|maximum context length|max context length|too many (?:input )?tokens|input is too long).{0,100}\b(?:exceed(?:ed|s)?|too long|limit)\b/i,
+];
+
+export function isProviderCapabilityError(status: number, message: string): boolean {
+  if (![400, 409, 422].includes(status)) return false;
+  const normalized = String(message || "").replace(/\s+/g, " ").trim();
+  if (!normalized) return false;
+  return PROVIDER_CAPABILITY_ERROR_PATTERNS.some((pattern) => pattern.test(normalized));
+}
+
 export function getFallbackReason(error: unknown): {
   eligible: boolean;
   skipGatewayModelFallback: boolean;
@@ -124,9 +140,13 @@ export function getFallbackReason(error: unknown): {
     return { eligible: true, skipGatewayModelFallback: false, reason: "rate_limit" };
   }
 
+  if (isProviderCapabilityError(status, message)) {
+    return { eligible: true, skipGatewayModelFallback: false, reason: "provider_incompatible" };
+  }
+
   if (
     code === "ai_gateway_unavailable" ||
-    [408, 500, 502, 503, 504].includes(status)
+    [404, 408, 500, 502, 503, 504].includes(status)
   ) {
     return { eligible: true, skipGatewayModelFallback: false, reason: "provider_unavailable" };
   }
