@@ -1,4 +1,5 @@
 // proxy.ts
+import { createServerClient } from "@supabase/ssr";
 import { NextRequest, NextResponse } from "next/server";
 
 import { enforceQuota, enforceRateLimit } from "./lib/rateLimit";
@@ -122,7 +123,7 @@ function blockedAccountApiResponse(subscription?: SubscriptionGateRow | null): N
       code: "ACCOUNT_BLOCKED",
       status: getEffectiveSubscriptionStatus(subscription),
       redirectTo: "/compte-bloque",
-      message: "Compte bloqué : contactez iNrCy pour réactiver votre générateur.",
+      message: "Compte bloquÃ© : contactez iNrCy pour rÃ©activer votre gÃ©nÃ©rateur.",
     },
     { status: 403 }
   );
@@ -147,250 +148,44 @@ function isOauthCallback(pathname: string): boolean {
   return pathname.startsWith("/api/integrations/") && pathname.endsWith("/callback");
 }
 
-function base64UrlDecode(input: string): string {
-  // base64url -> base64
-  const pad = "=".repeat((4 - (input.length % 4)) % 4);
-  const b64 = (input + pad).replace(/-/g, "+").replace(/_/g, "/");
+function createProxySupabaseClient(
+  request: NextRequest,
+  requestHeaders: Headers,
+) {
+  let supabaseResponse = NextResponse.next({
+    request: { headers: requestHeaders },
+  });
 
-  // Edge: atob exists. Node: use Buffer.
-  if (typeof atob === "function") {
-    const bin = atob(b64);
-    const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
-    return new TextDecoder().decode(bytes);
-  }
+  const supabase = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value }) => {
+            request.cookies.set(name, value);
+          });
 
-  return Buffer.from(b64, "base64").toString("utf-8");
-}
+          requestHeaders.set("cookie", request.cookies.toString());
+          supabaseResponse = NextResponse.next({
+            request: { headers: requestHeaders },
+          });
 
-function tryGetJwtPayload(jwt?: string): Record<string, unknown> | null {
-  if (!jwt) return null;
-  const parts = jwt.split(".");
-  if (parts.length < 2) return null;
-  try {
-    return JSON.parse(base64UrlDecode(parts[1]));
-  } catch {
-    return null;
-  }
-}
-
-function tryGetUserIdFromJwt(jwt?: string): string | null {
-  const payload = tryGetJwtPayload(jwt);
-  return typeof payload?.sub === "string" ? payload.sub : null;
-}
-
-function decodeCookieValue(value: string): string {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
-}
-
-function stripWrappingQuotes(value: string): string {
-  if (
-    (value.startsWith('"') && value.endsWith('"')) ||
-    (value.startsWith("'") && value.endsWith("'"))
-  ) {
-    return value.slice(1, -1);
-  }
-  return value;
-}
-
-function tryParseJson(value: string): unknown {
-  try {
-    return JSON.parse(value);
-  } catch {
-    return null;
-  }
-}
-
-function tryDecodeBase64Utf8(value: string): string | null {
-  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
-  const pad = "=".repeat((4 - (normalized.length % 4)) % 4);
-
-  try {
-    if (typeof atob === "function") {
-      const bin = atob(normalized + pad);
-      const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
-      return new TextDecoder().decode(bytes);
-    }
-
-    return Buffer.from(normalized + pad, "base64").toString("utf-8");
-  } catch {
-    return null;
-  }
-}
-
-function collectJwtCandidates(value: string): string[] {
-  const raw = stripWrappingQuotes(decodeCookieValue(value).trim());
-  const candidates = new Set<string>();
-
-  const push = (candidate: unknown) => {
-    if (typeof candidate !== "string") return;
-    const cleaned = stripWrappingQuotes(candidate.trim());
-    if (!cleaned) return;
-
-    if (tryGetUserIdFromJwt(cleaned)) {
-      candidates.add(cleaned);
-      return;
-    }
-
-    if (cleaned.startsWith("base64-")) {
-      const decoded = tryDecodeBase64Utf8(cleaned.slice(7));
-      if (decoded) {
-        for (const nested of collectJwtCandidates(decoded)) candidates.add(nested);
-      }
-      return;
-    }
-
-    const decoded = tryDecodeBase64Utf8(cleaned);
-    if (decoded && decoded !== cleaned) {
-      for (const nested of collectJwtCandidates(decoded)) candidates.add(nested);
-      return;
-    }
-
-    const parsed = tryParseJson(cleaned);
-    if (Array.isArray(parsed)) {
-      const arr = parsed as unknown[];
-      push(arr[0]);
-      for (const item of arr) {
-        if (item && typeof item === "object") {
-          push((item as Record<string, unknown>).access_token);
-        }
-      }
-      return;
-    }
-
-    if (parsed && typeof parsed === "object") {
-      const obj = parsed as Record<string, unknown>;
-      push(obj.access_token);
-      push(
-        obj.currentSession && typeof obj.currentSession === "object"
-          ? (obj.currentSession as Record<string, unknown>).access_token
-          : null
-      );
-      push(
-        obj.session && typeof obj.session === "object"
-          ? (obj.session as Record<string, unknown>).access_token
-          : null
-      );
-      return;
-    }
-  };
-
-  push(raw);
-  return [...candidates];
-}
-
-function getJwtCandidates(req: NextRequest): string[] {
-  const candidates = new Set<string>();
-
-  const pushCandidate = (candidate: unknown) => {
-    if (typeof candidate !== "string") return;
-    const cleaned = candidate.trim();
-    if (!cleaned || !tryGetUserIdFromJwt(cleaned)) return;
-    candidates.add(cleaned);
-  };
-
-  // 1) Authorization header (best for API calls)
-  const auth = req.headers.get("authorization") || "";
-  if (auth.toLowerCase().startsWith("bearer ")) {
-    pushCandidate(auth.slice(7).trim());
-  }
-
-  // 2) Common direct cookies
-  const directCookieNames = [
-    "sb-access-token",
-    "supabase-auth-token",
-  ] as const;
-
-  for (const name of directCookieNames) {
-    const value = req.cookies.get(name)?.value;
-    if (!value) continue;
-    for (const candidate of collectJwtCandidates(value)) {
-      pushCandidate(candidate);
-    }
-  }
-
-  // 3) Supabase SSR cookies, including chunked cookies such as:
-  //    sb-<project>-auth-token
-  //    sb-<project>-auth-token.0 / .1 / .2 ...
-  const grouped = new Map<string, Array<{ index: number; value: string }>>();
-
-  for (const cookie of req.cookies.getAll()) {
-    if (!cookie.name.startsWith("sb-") || !cookie.name.includes("-auth-token")) continue;
-
-    const match = cookie.name.match(/^(.*-auth-token)(?:\.(\d+))?$/);
-    if (!match) continue;
-
-    const baseName = match[1];
-    const index = Number(match[2] ?? 0);
-    const current = grouped.get(baseName) ?? [];
-    current.push({ index, value: cookie.value });
-    grouped.set(baseName, current);
-  }
-
-  for (const parts of grouped.values()) {
-    const combined = parts
-      .sort((a, b) => a.index - b.index)
-      .map((part) => part.value)
-      .join("");
-
-    for (const candidate of collectJwtCandidates(combined)) {
-      pushCandidate(candidate);
-    }
-  }
-
-  return [...candidates];
-}
-
-type SupabaseAuthUser = {
-  id?: string | null;
-};
-
-function isJwtExpired(jwt: string): boolean {
-  const payload = tryGetJwtPayload(jwt);
-  if (typeof payload?.exp !== "number") return false;
-  return payload.exp * 1000 <= Date.now();
-}
-
-async function verifySupabaseJwt(jwt: string): Promise<string | null> {
-  const payloadSub = tryGetUserIdFromJwt(jwt);
-  if (!payloadSub || isJwtExpired(jwt)) return null;
-
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!supabaseUrl || !anonKey) return null;
-
-  try {
-    const res = await fetch(`${supabaseUrl}/auth/v1/user`, {
-      headers: {
-        apikey: anonKey,
-        Authorization: `Bearer ${jwt}`,
+          cookiesToSet.forEach(({ name, value, options }) => {
+            supabaseResponse.cookies.set(name, value, options);
+          });
+        },
       },
-      cache: "no-store",
-    });
+    },
+  );
 
-    if (!res.ok) return null;
-
-    const user = (await res.json()) as SupabaseAuthUser;
-    return user.id === payloadSub ? user.id : null;
-  } catch {
-    return null;
-  }
-}
-
-async function getUserId(req: NextRequest): Promise<string | null> {
-  const candidates = getJwtCandidates(req)
-    .map((jwt) => ({ jwt, payload: tryGetJwtPayload(jwt) }))
-    .filter(({ jwt, payload }) => Boolean(tryGetUserIdFromJwt(jwt)) && !isJwtExpired(jwt) && typeof payload?.exp === "number")
-    .sort((a, b) => Number(b.payload?.exp || 0) - Number(a.payload?.exp || 0));
-
-  // Supabase can leave several historical auth-cookie candidates during refreshes.
-  // Checking only the newest valid candidate avoids repeated /auth/v1/user 403 warnings
-  // while preserving server-side verification of the active JWT.
-  const newest = candidates[0]?.jwt;
-  return newest ? verifySupabaseJwt(newest) : null;
+  return {
+    supabase,
+    getResponse: () => supabaseResponse,
+  };
 }
 
 function getSupabaseHeaders(): HeadersInit | null {
@@ -612,7 +407,29 @@ export async function proxy(req: NextRequest) {
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set("x-request-id", requestId);
 
+  const { supabase, getResponse: getSupabaseResponse } = createProxySupabaseClient(
+    req,
+    requestHeaders,
+  );
+
+  // Refresh/validate the Supabase session before any other proxy logic.
+  // The SSR client also writes refreshed or cleared cookies to the response.
+  let authenticatedUserId: string | null = null;
+  try {
+    const { data, error } = await supabase.auth.getClaims();
+    const claimSub = data?.claims?.sub;
+
+    if (!error && typeof claimSub === "string" && claimSub) {
+      authenticatedUserId = claimSub;
+    }
+  } catch {
+    authenticatedUserId = null;
+  }
+
   const applyResponseHeaders = (res: NextResponse) => {
+    for (const cookie of getSupabaseResponse().cookies.getAll()) {
+      res.cookies.set(cookie);
+    }
     // Correlate request/response across Vercel logs + Sentry
     res.headers.set("x-request-id", requestId);
 
@@ -630,7 +447,7 @@ export async function proxy(req: NextRequest) {
       res.headers.set("cache-control", "no-store");
       res.headers.set("x-robots-tag", "noindex, nofollow");
     } else if (isDocumentRequest && isInrSearchCompanyDocument) {
-      // A newly provisioned iNr’Search page must never inherit a cached 404.
+      // A newly provisioned iNrâ€™Search page must never inherit a cached 404.
       res.headers.set("cache-control", "no-store, max-age=0");
       res.headers.delete("pragma");
       res.headers.delete("expires");
@@ -647,8 +464,8 @@ export async function proxy(req: NextRequest) {
     return res;
   };
 
-  // L’annuaire public est hébergé sur inrcy.com. Les routes de classement
-  // de l’application restent internes et ne doivent pas devenir une seconde
+  // Lâ€™annuaire public est hÃ©bergÃ© sur inrcy.com. Les routes de classement
+  // de lâ€™application restent internes et ne doivent pas devenir une seconde
   // interface publique concurrente.
   if (
     pathname === "/entreprises"
@@ -662,14 +479,9 @@ export async function proxy(req: NextRequest) {
     return applyResponseHeaders(NextResponse.redirect(url, 308));
   }
 
-  let userId: string | null | undefined;
   let subscriptionGate: SubscriptionGateRow | null | undefined;
 
-  const getCurrentUserId = async () => {
-    if (userId !== undefined) return userId;
-    userId = await getUserId(req);
-    return userId;
-  };
+  const getCurrentUserId = async () => authenticatedUserId;
 
   const getCurrentSubscriptionGate = async () => {
     const currentUserId = await getCurrentUserId();
@@ -735,7 +547,7 @@ export async function proxy(req: NextRequest) {
 
   const ip = getIp(req);
   const lim = pickLimit(pathname, req.method);
-  const currentUserId = userId ?? null;
+  const currentUserId = await getCurrentUserId();
   const identifier = currentUserId ? `u:${currentUserId}` : `ip:${ip}`;
 
   // Optional: quota enforcement (per-day). Only enabled for specific endpoints.

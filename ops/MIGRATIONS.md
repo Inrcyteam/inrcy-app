@@ -34,3 +34,13 @@ Prefer **forward-fix** migrations rather than "down" in production.
 If you must restore:
 - Use Supabase backup/PITR
 - Redeploy last-known-good Vercel build
+
+## 2026-07-15 — iNrAgent Lot C, contexte vidéo persistant
+
+Exécuter avant ou juste après le déploiement :
+
+```text
+ops/sql/2026-07-15_inragent_video_ai_context_cache.sql
+```
+
+La migration ajoute uniquement des colonnes et un index à `pro_media_library`. Elle est idempotente et le code garde un fallback non bloquant tant qu'elle n'est pas appliquée.

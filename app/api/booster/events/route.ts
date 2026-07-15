@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { requireUser } from "@/lib/requireUser";
 import { cleanupReplacedBoosterVideoStorage } from "@/lib/boosterVideoStorageCleanup";
+import { preserveVideoAiContextReferenceOnDraftUpdate } from "@/lib/videoAiContextReference";
 
 type BoosterEventType = "publish" | "publish_draft" | "review_mail" | "promo_mail";
 
@@ -58,9 +59,14 @@ export async function POST(req: Request) {
         .eq("type", "publish_draft")
         .maybeSingle();
 
+      const nextPayload = preserveVideoAiContextReferenceOnDraftUpdate({
+        previousPayload: previousDraft?.payload,
+        nextPayload: payload,
+      });
+
       const { data, error } = await supabase
         .from("app_events")
-        .update({ payload })
+        .update({ payload: nextPayload })
         .eq("id", draftId)
         .eq("user_id", userId)
         .eq("module", "booster")
@@ -71,7 +77,7 @@ export async function POST(req: Request) {
       if (error) return jsonUserFacingError(error, { status: 500 });
       if (!data) return NextResponse.json({ error: "Brouillon introuvable." }, { status: 404 });
 
-      cleanupReplacedBoosterVideoStorage(userId, previousDraft?.payload, payload).catch((cleanupError) => {
+      cleanupReplacedBoosterVideoStorage(userId, previousDraft?.payload, nextPayload).catch((cleanupError) => {
         console.warn("[Booster] draft video cleanup skipped", cleanupError);
       });
 

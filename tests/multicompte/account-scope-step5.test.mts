@@ -17,7 +17,6 @@ const microsoftSend = read("app/api/inbox/microsoft/send/route.ts");
 const crmContacts = read("app/api/crm/contacts/route.ts");
 const agentPrepare = read("app/api/agent/actions/prepare-publish/route.ts");
 const statsBulk = read("app/api/stats/dashboard-bulk/route.ts");
-const trustpilotAi = read("app/api/e-reputation/trustpilot/generate-reply/route.ts");
 const googleAi = read("app/api/e-reputation/google/generate-reply/route.ts");
 const subscriptionUi = read("app/dashboard/settings/_components/AbonnementContent.tsx");
 const accountExport = read("app/api/account/export/route.ts");
@@ -62,17 +61,16 @@ test("les trois moteurs d'envoi mail utilisent l'établissement actif", () => {
 
 test("CRM, iNrAgent et statistiques sont isolés par établissement actif", () => {
   assert.match(crmContacts, /resolveActiveInrcyAccountId/);
-  assert.match(agentPrepare, /quotaUserId/);
+  assert.match(agentPrepare, /const quotaAccountId = userId/);
   assert.match(read("lib/inrAgentRequest.ts"), /userId:\s*activeUserId/);
   assert.match(statsBulk, /resolveActiveInrcyAccountId/);
 });
 
-test("l'e-réputation lit le métier actif mais conserve le quota IA au niveau AUTH", () => {
-  for (const source of [trustpilotAi, googleAi]) {
-    assert.match(source, /const userId = activeUserId/);
-    assert.match(source, /isAdminUserForAi\(supabase, authUserId\)/);
-    assert.match(source, /userId:\s*authUserId/);
-  }
+test("Google e-réputation utilise l’établissement actif pour le contexte et le quota IA", () => {
+  assert.match(googleAi, /const userId = activeUserId/);
+  assert.match(googleAi, /isAdminUserForAi\(supabase, authUserId\)/);
+  assert.match(googleAi, /reserveAiCredits\(\{[\s\S]*?userId,/);
+  assert.match(googleAi, /accountId:\s*userId/);
 });
 
 

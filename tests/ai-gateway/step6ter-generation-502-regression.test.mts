@@ -35,7 +35,7 @@ test("Gateway validates the exact effective prompt sent to prompt-only engines",
 test("Booster bounds media context and keeps the root failure visible after the single repair", () => {
   const generation = read("lib/boosterPublishGeneration.ts");
   assert.match(generation, /MAX_BOOSTER_EXTRA_INSTRUCTIONS_CHARS = 8_000/);
-  assert.match(generation, /compactPromptContext\(args\.extraInstructions\)/);
+  assert.match(generation, /compactPromptContext\(args\.mediaContext\)/);
   assert.match(generation, /stage: "primary-single-pass"/);
   assert.match(generation, /stage: "targeted-repair-once"/);
   assert.match(generation, /if \(initialGenerationError && unsafeChannels\.length === channels\.length\)/);

@@ -6,7 +6,14 @@ import { invalidateBoosterGenerationContextClient } from "@/lib/boosterGeneratio
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabaseClient";
-import { createSignedLogoUrl, extractLogoPathFromUrl, resolveProfileLogoUrl, revokeBlobUrl } from "@/lib/profileLogo";
+import {
+  createSignedLogoUrl,
+  extractLogoPathFromUrl,
+  resolveProfileLogoUrl,
+  revokeBlobUrl,
+  LOGO_BUCKET,
+  validateProfileLogoFile,
+} from "@/lib/profileLogo";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { confirmInrcy } from "@/lib/inrcyDialog";
 
@@ -114,6 +121,7 @@ export default function ProfilContent({
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [globalError, setGlobalError] = useState<string>("");
+  const [logoError, setLogoError] = useState<string>("");
 
   useEffect(() => {
     const load = async () => {
@@ -265,6 +273,7 @@ export default function ProfilContent({
   const onChange = <K extends keyof ProfilForm>(key: K, value: ProfilForm[K]) => {
     setSaved(false);
     setGlobalError("");
+    if (String(key).startsWith("logo")) setLogoError("");
 
     // efface l'erreur du champ en cours si elle existait
     setErrors((prev) => {
@@ -277,7 +286,8 @@ export default function ProfilContent({
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  async function uploadLogoIfNeeded(supabase: ReturnType<typeof createClient>, userId: string, file: File) {
+  // Kept for backward compatibility with older drafts; saves now use the authenticated API below.
+  async function uploadLogoIfNeededLegacy(supabase: ReturnType<typeof createClient>, userId: string, file: File) {
     const ext = file.name.split(".").pop()?.toLowerCase() || "png";
     const path = `${userId}/logo.${ext}`;
 
@@ -290,6 +300,78 @@ export default function ProfilContent({
     } catch (signError) {
       throw new Error(getSimpleFrenchErrorMessage(signError, "Impossible de préparer le logo pour le moment."));
     }
+  }
+
+  async function uploadLogoViaApi(file: File) {
+    const formData = new FormData();
+    formData.append("file", file);
+
+    const response = await fetch("/api/profile/logo", {
+      method: "POST",
+      body: formData,
+    });
+
+    let payload: { ok?: boolean; path?: string; signedUrl?: string; error?: string } = {};
+    try {
+      payload = await response.json();
+    } catch {
+      // Keep the generic message below for malformed server responses.
+    }
+
+    if (!response.ok || !payload.ok || !payload.path || !payload.signedUrl) {
+      throw new Error(payload.error || "Impossible d’enregistrer le logo pour le moment.");
+    }
+
+    return { path: payload.path, signedUrl: payload.signedUrl };
+  }
+
+  async function uploadLogoDirect(file: File) {
+    const prepareResponse = await fetch("/api/profile/logo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fileName: file.name,
+        fileType: file.type,
+        fileSize: file.size,
+      }),
+    });
+
+    let prepared: { ok?: boolean; path?: string; token?: string; mimeType?: string; error?: string } = {};
+    try {
+      prepared = await prepareResponse.json();
+    } catch {
+      // Keep the generic message below for malformed server responses.
+    }
+
+    if (!prepareResponse.ok || !prepared.ok || !prepared.path || !prepared.token || !prepared.mimeType) {
+      throw new Error(prepared.error || "Impossible d’enregistrer le logo pour le moment.");
+    }
+
+    const supabase = createClient();
+    const { error: uploadError } = await supabase.storage
+      .from(LOGO_BUCKET)
+      .uploadToSignedUrl(prepared.path, prepared.token, file, {
+        cacheControl: "3600",
+        contentType: prepared.mimeType,
+      });
+
+    if (uploadError) {
+      throw new Error("Le logo n’a pas pu être envoyé. Vérifie le fichier puis réessaie.");
+    }
+
+    const completeResponse = await fetch(`/api/profile/logo?path=${encodeURIComponent(prepared.path)}`);
+    let completed: { ok?: boolean; path?: string; signedUrl?: string; error?: string } = {};
+    try {
+      completed = await completeResponse.json();
+    } catch {
+      // Keep the generic message below for malformed server responses.
+    }
+
+    if (!completeResponse.ok || !completed.ok || !completed.path || !completed.signedUrl) {
+      throw new Error(completed.error || "Impossible de préparer l’aperçu du logo.");
+    }
+
+    return { path: completed.path, signedUrl: completed.signedUrl };
   }
 
   const handleSave = async () => {
@@ -314,7 +396,9 @@ export default function ProfilContent({
       let logoPath = form.logoPath || extractLogoPathFromUrl(form.logoPreview) || "";
 
       if (form.logoFile) {
-        const uploaded = await uploadLogoIfNeeded(supabase, resolveActiveBrowserUserId(user.id), form.logoFile);
+        const previousPreview = form.logoPreview;
+        const uploaded = await uploadLogoDirect(form.logoFile);
+        revokeBlobUrl(previousPreview);
         logoUrl = uploaded.signedUrl;
         logoPath = uploaded.path;
 
@@ -405,6 +489,7 @@ export default function ProfilContent({
     // reset juste en UI pour l’instant (on fera un delete en DB plus tard si tu veux)
     setErrors({});
     setGlobalError("");
+    setLogoError("");
     setForm(initial);
     setSaved(false);
     onProfileReset?.();
@@ -480,7 +565,7 @@ export default function ProfilContent({
         </div>
       </div>
 
-      <label style={{ ...labelStyle, marginTop: 6 }}>
+      <div style={{ ...labelStyle, marginTop: 6 }}>
         <span style={labelTextStyle}>Logo de l’entreprise</span>
 
         <div
@@ -496,11 +581,20 @@ export default function ProfilContent({
           <input
             ref={fileInputRef}
             type="file"
-            accept="image/png,image/jpeg,image/svg+xml"
+            accept=".png,.jpg,.jpeg,.webp,.svg,image/png,image/jpeg,image/webp,image/svg+xml"
             style={{ display: "none" }}
             onChange={(e) => {
               const file = e.target.files?.[0];
               if (!file) return;
+
+              const validationError = validateProfileLogoFile(file);
+              if (validationError) {
+                setLogoError(validationError);
+                e.currentTarget.value = "";
+                return;
+              }
+
+              setLogoError("");
 
               revokeBlobUrl(form.logoPreview);
 
@@ -556,7 +650,24 @@ export default function ProfilContent({
 
           {/* Infos fichier */}
           <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
-            <span style={{ fontSize: 13, opacity: 0.85 }}>Choisir un fichier :</span>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              style={{
+                width: "fit-content",
+                border: "1px solid rgba(125,211,252,0.35)",
+                background: "rgba(56,189,248,0.10)",
+                color: "white",
+                borderRadius: 10,
+                padding: "7px 10px",
+                cursor: "pointer",
+                fontSize: 12,
+                fontWeight: 700,
+              }}
+            >
+              Ajouter un logo
+            </button>
+            <span style={{ fontSize: 11, opacity: 0.62 }}>PNG, JPG/JPEG, WebP ou SVG · 20 Mo maximum</span>
 
             {form.logoFile ? (
               <div
@@ -576,7 +687,10 @@ export default function ProfilContent({
               <div style={{ fontSize: 12, opacity: 0.6 }}>Aucun fichier sélectionné</div>
             )}
           </div>
+
         </div>
+
+        {logoError ? <div style={errorTextStyle}>{logoError}</div> : null}
 
         {/* Bouton supprimer */}
         <div style={{ marginTop: 8 }}>
@@ -610,7 +724,7 @@ export default function ProfilContent({
             Supprimer le logo
           </button>
         </div>
-      </label>
+      </div>
 
       {/* CARTE 2 — Informations légales */}
       <div style={cardStyle}>

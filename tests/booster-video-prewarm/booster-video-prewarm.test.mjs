@@ -7,6 +7,14 @@ const sourcePath = new URL(
   import.meta.url,
 );
 const source = await readFile(sourcePath, "utf8");
+const audioClient = await readFile(
+  new URL("../../lib/boosterVideoAudioClient.ts", import.meta.url),
+  "utf8",
+);
+const transcribeRoute = await readFile(
+  new URL("../../app/api/booster/transcribe/route.ts", import.meta.url),
+  "utf8",
+);
 
 test("les captures vidéo sont préchauffées et mises en cache par fichier", () => {
   assert.match(source, /type VideoFramesPreparationCache = \{/);
@@ -16,20 +24,36 @@ test("les captures vidéo sont préchauffées et mises en cache par fichier", ()
   assert.match(source, /videoFramesForAiCacheRef\.current = null/);
 });
 
-test("la transcription et les captures sont attendues en parallèle", () => {
+test("l'audio local et les captures sont préparés avant puis attendus en parallèle", () => {
+  assert.match(source, /const getOrPrepareVideoAudioFileForAI = useCallback/);
+  assert.match(source, /void getOrPrepareVideoAudioFileForAI\(normalizedFile\)/);
+  assert.match(source, /void getOrPrepareVideoAudioFileForAI\(videoFile\)/);
   assert.match(
     source,
-    /Promise\.allSettled\(\[\s*[\s\S]*transcribeVideoAudioForAI\(videoFile\)[\s\S]*getOrPrepareVideoFramesForAI\(videoFile\)[\s\S]*\]\)/,
+    /const transcriptionPromise = cachedTranscript[\s\S]*getOrPrepareVideoAudioFileForAI\(videoFile\)[\s\S]*transcribeVideoAudioForAI\(videoFile, preparedAudio\)/,
+  );
+  assert.match(
+    source,
+    /Promise\.allSettled\(\[\s*transcriptionPromise,\s*getOrPrepareVideoFramesForAI\(videoFile\),?\s*\]\)/,
   );
 });
 
-test("une vidéo supérieure à 40 Mo n'est pas téléversée pour transcription", () => {
+test("la transcription vidéo envoie l'audio seul et évite le 413 des grosses vidéos", () => {
+  assert.match(audioClient, /new OfflineAudioContext\(/);
+  assert.match(audioClient, /targetSampleRate \|\| DEFAULT_TARGET_SAMPLE_RATE/);
+  assert.match(audioClient, /type: "audio\/wav"/);
+  assert.match(source, /prepareVideoAudioTransport\(preparedAudio\)/);
+  assert.match(source, /formData\.append\("audio", transport\.file, transport\.file\.name\)/);
+  assert.match(source, /audioStoragePath: transport\.storagePath/);
+  assert.match(source, /formData\.append\("origin", "video"\)/);
   assert.match(
     source,
-    /const MAX_VIDEO_TRANSCRIBE_BYTES = 40 \* 1024 \* 1024;/,
+    /const MAX_DIRECT_VIDEO_TRANSCRIBE_BYTES = 4 \* 1024 \* 1024;/,
   );
   assert.match(
     source,
-    /if \(file\.size > MAX_VIDEO_TRANSCRIBE_BYTES\) return null;[\s\S]*const formData = new FormData\(\);/,
+    /else if \(file\.size <= MAX_DIRECT_VIDEO_TRANSCRIBE_BYTES\)[\s\S]*formData\.append\("video", file/,
   );
+  assert.match(transcribeRoute, /const audioFromVideo =/);
+  assert.match(transcribeRoute, /source: audioFromVideo \? "video_audio_client" : "audio"/);
 });

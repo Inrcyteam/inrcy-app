@@ -7448,3 +7448,178 @@
     padding-bottom: 0 !important;
   }
 }
+
+/* iNrStats — zoom-safe layout.
+   The desktop view used a fixed viewport and hidden overflow, which clipped
+   charts and CTA columns as soon as browser zoom reduced the CSS viewport.
+   Keep the desktop presentation when there is room, but let every section
+   grow naturally and reflow inside the available panel width. */
+@media (min-width: 901px) {
+  .page {
+    height: auto !important;
+    min-height: 100dvh !important;
+    max-height: none !important;
+    overflow-x: hidden !important;
+    overflow-y: visible !important;
+    padding-bottom: 64px !important;
+  }
+
+  .statsWorkspace {
+    height: auto !important;
+    min-height: 0 !important;
+    align-items: start !important;
+  }
+
+  .statsPanel,
+  .allStatsPanel,
+  .channelStatsPanel {
+    min-width: 0 !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  .channelStatsPanel {
+    container: channelStats / inline-size;
+    display: block !important;
+  }
+
+  .channelStatsPanel .cube {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+
+  .channelStatsPanel .cubeBody,
+  .channelStatsPanel .cubeBodyWithInrcyActivity,
+  .channelStatsPanel .cubeBody:not(.cubeBodyWithInrcyActivity) {
+    flex: none !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    grid-template-rows: none !important;
+    align-content: normal !important;
+  }
+
+  .channelStatsPanel .detailTopRow,
+  .channelStatsPanel .blockRow {
+    height: auto !important;
+    min-height: 0 !important;
+  }
+
+  .channelStatsPanel .detailTopRow > .block,
+  .channelStatsPanel .blockRow > .block,
+  .channelStatsPanel .cubeBody > .block {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+  }
+
+  .channelStatsPanel .metricMiniGridSingle {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .channelStatsPanel .metricMiniGridTwo {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .channelStatsPanel .metricMiniCard {
+    width: auto !important;
+    max-width: none !important;
+  }
+
+  .channelStatsPanel .provenanceCompactBlock .donutWrap {
+    grid-template-columns: minmax(64px, 30%) minmax(0, 1fr) !important;
+    min-width: 0 !important;
+  }
+
+  .channelStatsPanel .provenanceCompactBlock .donut {
+    width: 100% !important;
+    max-width: 88px !important;
+    height: auto !important;
+    aspect-ratio: 1 / 1 !important;
+    flex: 0 0 auto !important;
+  }
+
+  .channelStatsPanel .provenanceCompactBlock .legend,
+  .channelStatsPanel .provenanceCompactBlock .legendRow,
+  .channelStatsPanel .inrcyActivityItem,
+  .channelStatsPanel .channelInlineActionStack {
+    min-width: 0 !important;
+  }
+
+  .channelStatsPanel .channelInlineActionStack {
+    width: auto !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .channelStatsPanel .ring {
+    flex: 0 0 auto !important;
+  }
+}
+
+/* Reflow the two-column blocks when the panel itself becomes narrow because
+   of browser zoom or a smaller desktop window. */
+@container channelStats (max-width: 800px) {
+  .channelStatsPanel .detailTopRow,
+  .channelStatsPanel .blockRow {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .channelStatsPanel .inrcyActivityBlock {
+    grid-template-columns: minmax(0, 1fr) !important;
+    min-height: 0 !important;
+  }
+
+  .channelStatsPanel .lectureBusinessActionBlock,
+  .channelStatsPanel .cubeBody > .block:last-child {
+    grid-template-columns: minmax(0, 1fr) !important;
+    text-align: left !important;
+  }
+
+  .channelStatsPanel .lectureBusinessToolCol,
+  .channelStatsPanel .lectureBusinessEffortCol {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+}
+
+@container channelStats (max-width: 560px) {
+  .channelStatsPanel .channelStatsHeader {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .channelStatsPanel .channelStatsKpis,
+  .channelStatsPanel .allStatsKpis {
+    width: 100% !important;
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .channelStatsPanel .channelStatsKpis .allStatsKpi,
+  .channelStatsPanel .allStatsKpis .allStatsKpi {
+    width: auto !important;
+    min-width: 0 !important;
+    max-width: none !important;
+    flex: initial !important;
+  }
+
+  .channelStatsPanel .inrcyActivityItems {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .channelStatsPanel .inrcyActivityItem {
+    min-height: 52px !important;
+  }
+
+  .channelStatsPanel .metricMiniGridTwo {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .channelStatsPanel .channelInlineActionStack {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+}

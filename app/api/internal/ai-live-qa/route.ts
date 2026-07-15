@@ -211,7 +211,7 @@ export async function POST(request: NextRequest) {
         recentPublications: [],
         imagesForAI,
         mediaType,
-        extraInstructions: videoContext
+        mediaContext: videoContext
           ? `CONTEXTE VIDÉO/TRANSCRIPTION FOURNI POUR LE TEST QA :\n${videoContext}`
           : "",
         aiFeature: "booster.publish",

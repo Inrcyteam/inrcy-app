@@ -48,3 +48,15 @@ test("full live QA certifies all seven supported languages", () => {
     assert.match(script, new RegExp(`language:\\s*"${code}"`));
   }
 });
+
+test("iNrAgent reuses Booster cached professional and publication context", () => {
+  const route = read("app/api/agent/actions/prepare-publish/route.ts");
+
+  assert.match(route, /getBoosterGenerationContext/);
+  assert.match(route, /const \{ profile, business, recentPublications \}/);
+  assert.match(route, /professionalContextSource/);
+  assert.match(route, /publicationsContextSource/);
+  assert.doesNotMatch(route, /fetchRecentPublicationMemory/);
+  assert.doesNotMatch(route, /from\("profiles"\)\s*\.select\("\*"\)/);
+  assert.doesNotMatch(route, /from\("business_profiles"\)\s*\.select\("\*"\)/);
+});

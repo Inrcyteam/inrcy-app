@@ -6,6 +6,7 @@ import { buildNormalizedAiGenerationProfile } from "@/lib/aiGenerationProfile";
 import { withApi } from "@/lib/observability/withApi";
 import { enforceRateLimit } from "@/lib/rateLimit";
 import { requireUser } from "@/lib/requireUser";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { INR_MEDIA_ALLOWED_VIDEO_MIME_TYPES } from "@/lib/mediaRules";
 import {
   commitAiCredits,
@@ -27,6 +28,7 @@ type CorrectionResponse = {
 const MAX_AUDIO_BYTES = 25 * 1024 * 1024;
 const MAX_VIDEO_TRANSCRIBE_BYTES = 40 * 1024 * 1024;
 const MIN_AUDIO_BYTES = 900;
+const TEMP_AUDIO_FOLDER = "booster-transcription-audio";
 const ALLOWED_AUDIO_PREFIXES = ["audio/"];
 const ALLOWED_VIDEO_MIME_TYPES = new Set<string>(
   INR_MEDIA_ALLOWED_VIDEO_MIME_TYPES,
@@ -74,6 +76,33 @@ function isAllowedVideoFile(file: File) {
   return (
     ALLOWED_VIDEO_MIME_TYPES.has(type) || /\.(mp4|mov|webm|m4v)$/i.test(name)
   );
+}
+
+function safeStorageUserId(value: string) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9_-]+/g, "-")
+    .replace(/[-_]{2,}/g, "-")
+    .replace(/^[-_]+|[-_]+$/g, "");
+}
+
+function isOwnedTemporaryAudioPath(storagePath: string, userId: string) {
+  const path = String(storagePath || "").replace(/^\/+/, "");
+  const prefix = `${safeStorageUserId(userId)}/${TEMP_AUDIO_FOLDER}/`;
+  return Boolean(prefix && path.startsWith(prefix) && !path.includes(".."));
+}
+
+async function downloadTemporaryAudio(storagePath: string, userId: string) {
+  if (!isOwnedTemporaryAudioPath(storagePath, userId)) return null;
+  const { data, error } = await supabaseAdmin.storage
+    .from("booster")
+    .download(storagePath);
+  if (error || !data) return null;
+  const fileName = storagePath.split("/").pop() || "video-audio.wav";
+  return new File([await data.arrayBuffer()], fileName, {
+    type: data.type || "audio/wav",
+  });
 }
 
 function cleanTranscriptText(value: unknown, maxLength = 1400) {
@@ -148,6 +177,7 @@ ${fallback}`,
 
 const handler = async (request: Request) => {
   let quotaReservation: AiCreditReservation | null = null;
+  let temporaryAudioStoragePath: string | null = null;
   try {
     const { supabase, authUserId, errorResponse, activeUserId } = await requireUser();
     if (errorResponse) return errorResponse;
@@ -175,10 +205,44 @@ const handler = async (request: Request) => {
     });
     if (rateLimit) return rateLimit;
 
-    const formData = await request.formData().catch(() => null);
-    const audio = formData?.get("audio");
+    const requestContentType = String(
+      request.headers.get("content-type") || "",
+    ).toLowerCase();
+    const jsonBody = requestContentType.includes("application/json")
+      ? await request.json().catch(() => null)
+      : null;
+    const formData = jsonBody ? null : await request.formData().catch(() => null);
+    let audio: FormDataEntryValue | File | null | undefined = formData?.get("audio");
     const video = formData?.get("video");
-    const textEntry = formData?.get("text");
+    const originEntry = formData?.get("origin") ?? (jsonBody as any)?.origin;
+    const audioFromVideo =
+      typeof originEntry === "string" && originEntry.trim() === "video";
+    const storagePathEntry = String(
+      (jsonBody as any)?.audioStoragePath || "",
+    ).trim();
+    if (storagePathEntry) {
+      if (!isOwnedTemporaryAudioPath(storagePathEntry, activeUserId)) {
+        if (audioFromVideo) {
+          return videoTranscriptionSkipped("video_audio_storage_invalid");
+        }
+        return jsonUserFacingError("Chemin audio temporaire invalide.", {
+          status: 400,
+          code: "audio_storage_invalid",
+        });
+      }
+      temporaryAudioStoragePath = storagePathEntry;
+      audio = await downloadTemporaryAudio(storagePathEntry, activeUserId);
+      if (!audio) {
+        if (audioFromVideo) {
+          return videoTranscriptionSkipped("video_audio_storage_unavailable");
+        }
+        return jsonUserFacingError("Fichier audio temporaire introuvable.", {
+          status: 400,
+          code: "audio_storage_missing",
+        });
+      }
+    }
+    const textEntry = formData?.get("text") ?? (jsonBody as any)?.text;
     const liveText = cleanTranscriptText(
       typeof textEntry === "string" ? textEntry : "",
     );
@@ -297,6 +361,9 @@ const handler = async (request: Request) => {
     }
 
     if (!isFileLike(audio)) {
+      if (audioFromVideo) {
+        return videoTranscriptionSkipped("video_audio_payload_unavailable_skipped");
+      }
       return jsonUserFacingError("Fichier audio manquant.", {
         status: 400,
         code: "audio_missing",
@@ -304,6 +371,9 @@ const handler = async (request: Request) => {
     }
 
     if (audio.size < MIN_AUDIO_BYTES) {
+      if (audioFromVideo) {
+        return videoTranscriptionSkipped("video_audio_too_short_skipped");
+      }
       return jsonUserFacingError("Le vocal est trop court ou vide.", {
         status: 400,
         code: "audio_too_short",
@@ -311,6 +381,9 @@ const handler = async (request: Request) => {
     }
 
     if (audio.size > MAX_AUDIO_BYTES) {
+      if (audioFromVideo) {
+        return videoTranscriptionSkipped("video_audio_too_large_skipped");
+      }
       return jsonUserFacingError(
         "Le vocal est trop lourd. Réessaie avec un message plus court.",
         {
@@ -321,6 +394,9 @@ const handler = async (request: Request) => {
     }
 
     if (!isAllowedAudioFile(audio)) {
+      if (audioFromVideo) {
+        return videoTranscriptionSkipped("video_audio_unsupported_skipped");
+      }
       return jsonUserFacingError("Format audio non supporté.", {
         status: 415,
         code: "audio_unsupported",
@@ -332,15 +408,29 @@ const handler = async (request: Request) => {
         supabase,
         userId: activeUserId,
         action: "transcription",
-        credits: 2,
+        credits: audioFromVideo ? 3 : 2,
       });
       if (quota.errorResponse) return quota.errorResponse;
       quotaReservation = quota.reservation;
     }
 
-    const transcript = await transcribeMedia(audio, { source: "audio", accountId: activeUserId });
+    let transcript = "";
+    try {
+      transcript = await transcribeMedia(audio, {
+        source: "audio",
+        accountId: activeUserId,
+      });
+    } catch (error) {
+      if (!audioFromVideo) throw error;
+      await rollbackAiCredits(quotaReservation);
+      return videoTranscriptionSkipped("video_audio_client_unavailable");
+    }
+
     if (!transcript) {
       await rollbackAiCredits(quotaReservation);
+      if (audioFromVideo) {
+        return videoTranscriptionSkipped("video_audio_client_empty");
+      }
       return jsonUserFacingError("Aucun texte n’a été détecté dans le vocal.", {
         status: 422,
         code: "empty_transcript",
@@ -349,6 +439,16 @@ const handler = async (request: Request) => {
 
     const correctedText = await correctTranscript(transcript, preferredEngine, activeUserId);
     if (!correctedText) {
+      if (audioFromVideo) {
+        await commitAiCredits(quotaReservation);
+        return NextResponse.json({
+          ok: true,
+          text: transcript,
+          raw_text: transcript,
+          source: "video_audio_client_raw",
+          skipped_cleanup: true,
+        });
+      }
       await rollbackAiCredits(quotaReservation);
       return jsonUserFacingError(
         "Le vocal n’a pas pu être converti en texte.",
@@ -364,7 +464,7 @@ const handler = async (request: Request) => {
       ok: true,
       text: correctedText,
       raw_text: transcript,
-      source: "audio",
+      source: audioFromVideo ? "video_audio_client" : "audio",
     });
   } catch (error) {
     await rollbackAiCredits(quotaReservation);
@@ -373,6 +473,13 @@ const handler = async (request: Request) => {
       fallback: "Le vocal n’a pas pu être transcrit. Merci de réessayer.",
       code: "booster_transcription_failed",
     });
+  } finally {
+    if (temporaryAudioStoragePath) {
+      await supabaseAdmin.storage
+        .from("booster")
+        .remove([temporaryAudioStoragePath])
+        .catch(() => undefined);
+    }
   }
 };
 

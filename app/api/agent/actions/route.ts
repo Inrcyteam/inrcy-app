@@ -11,6 +11,12 @@ import { textToRichMailHtml } from "@/lib/mailRichText";
 import { buildVideoSettingsByChannel } from "@/lib/boosterVideoSettings";
 import { randomUUID } from "crypto";
 import {
+  buildVideoAiContextReference,
+  normalizeVideoAiContextReference,
+  videoAiContextReferenceAliases,
+  type VideoAiContextReference,
+} from "@/lib/videoAiContextReference";
+import {
   INR_MEDIA_IMAGE_MAX_BYTES,
   INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
 } from "@/lib/mediaRules";
@@ -853,6 +859,7 @@ async function buildPublishDraftMediaPayload(args: {
   userId: string;
   actionId: string;
   media: PublishDraftMedia;
+  videoAiContextRef: VideoAiContextReference | null;
 }) {
   const { media } = args;
   if (!media) return { imageDrafts: [] as Record<string, unknown>[], videoDraft: null as Record<string, unknown> | null };
@@ -901,6 +908,7 @@ async function buildPublishDraftMediaPayload(args: {
         publicUrl: copied.publicUrl,
         url: copied.publicUrl,
         transformedVariants,
+        ...videoAiContextReferenceAliases(args.videoAiContextRef),
       },
     };
   }
@@ -1231,10 +1239,24 @@ async function savePublishActionAsBoosterDraft(args: {
     channels.map((channel) => [channel, activeMediaMode]),
   );
 
+  const videoPreparation = asRecord(payload.videoAiPreparation) || {};
+  const videoAiContextRef =
+    normalizeVideoAiContextReference(payload.videoAiContextRef) ||
+    buildVideoAiContextReference({
+      mediaAssetId: payload.mediaAssetId || media?.id,
+      mediaSource: media?.source,
+      preparationVersion:
+        payload.videoAiContextVersion || videoPreparation.version,
+      sourceFingerprint:
+        payload.videoFingerprint || videoPreparation.sourceFingerprint,
+      persisted: videoPreparation.persisted,
+    });
+
   const { imageDrafts, videoDraft } = await buildPublishDraftMediaPayload({
     userId: args.userId,
     actionId: action.id,
     media,
+    videoAiContextRef,
   });
 
   const videoSettingsSource =
@@ -1306,6 +1328,7 @@ async function savePublishActionAsBoosterDraft(args: {
     videoSourceMetadata: videoDraft?.sourceMetadata || null,
     imageDrafts,
     videoDraft,
+    ...videoAiContextReferenceAliases(videoAiContextRef),
     useImagesForAI: true,
     imageSettingsByChannel: asRecord(payload.imageSettingsByChannel) || {},
     instagramHashtagsInput,

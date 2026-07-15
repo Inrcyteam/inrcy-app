@@ -5,8 +5,70 @@ type LogoSource = {
   logo_url?: string | null;
 };
 
-const LOGO_BUCKET = "logos";
+export const LOGO_BUCKET = "logos";
+export const PROFILE_LOGO_MAX_BYTES = 20 * 1024 * 1024;
+export const PROFILE_LOGO_MIME_TYPES = [
+  "image/png",
+  "image/jpeg",
+  "image/webp",
+  "image/svg+xml",
+] as const;
 const SIGNED_URL_TTL_SECONDS = 60 * 60 * 24 * 30;
+
+const LOGO_EXTENSION_TO_MIME: Record<string, (typeof PROFILE_LOGO_MIME_TYPES)[number]> = {
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+  svg: "image/svg+xml",
+};
+
+type LogoFileLike = {
+  name?: string | null;
+  type?: string | null;
+  size?: number | null;
+};
+
+function normalizeLogoMimeType(value: string | null | undefined) {
+  const mime = String(value || "").trim().toLowerCase();
+  return mime === "image/jpg" ? "image/jpeg" : mime;
+}
+
+export function getProfileLogoMimeType(file: LogoFileLike): (typeof PROFILE_LOGO_MIME_TYPES)[number] | null {
+  const declaredMime = normalizeLogoMimeType(file.type);
+  if ((PROFILE_LOGO_MIME_TYPES as readonly string[]).includes(declaredMime)) {
+    return declaredMime as (typeof PROFILE_LOGO_MIME_TYPES)[number];
+  }
+
+  const extension = String(file.name || "")
+    .split(".")
+    .pop()
+    ?.trim()
+    .toLowerCase();
+
+  return extension ? LOGO_EXTENSION_TO_MIME[extension] || null : null;
+}
+
+export function getProfileLogoExtension(file: LogoFileLike) {
+  const mime = getProfileLogoMimeType(file);
+  if (mime === "image/jpeg") return "jpg";
+  if (mime === "image/webp") return "webp";
+  if (mime === "image/svg+xml") return "svg";
+  return "png";
+}
+
+export function validateProfileLogoFile(file: LogoFileLike | null | undefined): string | null {
+  if (!file) return "Sélectionne un fichier logo.";
+
+  const size = Number(file.size || 0);
+  if (!size) return "Le fichier logo est vide ou illisible.";
+  if (size > PROFILE_LOGO_MAX_BYTES) return "Le logo doit peser 20 Mo maximum.";
+  if (!getProfileLogoMimeType(file)) {
+    return "Format accepté : PNG, JPG/JPEG, WebP ou SVG.";
+  }
+
+  return null;
+}
 
 function trimSlashes(value: string) {
   return value.replace(/^\/+|\/+$/g, "");

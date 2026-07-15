@@ -24,6 +24,11 @@ import {
 } from "@/lib/aiEnginePreference";
 import { getBoosterGenerationContext } from "@/lib/boosterGenerationContext";
 import { readBoosterGenerationRequest } from "@/lib/boosterGenerationRequestTransport";
+import { loadPersistedInrAgentVideoForAi } from "@/lib/inrAgentVideoContextCache";
+import {
+  normalizeVideoAiContextReference,
+  type VideoAiContextReference,
+} from "@/lib/videoAiContextReference";
 
 export const maxDuration = 120;
 
@@ -56,6 +61,7 @@ type Payload = {
     }>;
     audioTranscript?: string | null;
     rawAudioTranscript?: string | null;
+    contextRef?: VideoAiContextReference | null;
     analysisPlan?: {
       visualFrames?: "pending" | "ready";
       audioTranscript?: "pending" | "ready" | "unavailable";
@@ -318,6 +324,8 @@ const handler = async (req: Request) => {
     requestTransport?: "json" | "multipart";
     requestParseMs?: number;
     requestContentLength?: number;
+    videoContextLoadMs?: number;
+    videoContextReferenceSource?: "none" | "hit" | "invalid";
   } = {};
   try {
     const { supabase, authUserId, errorResponse, activeUserId } = await requireUser();
@@ -384,12 +392,75 @@ const handler = async (req: Request) => {
     timingContext.selectedChannels = channels.length;
 
     const mediaType = normalizeGenerationMediaType(body.mediaType);
-    const imagesForAI = sanitizeImagesForAI({ ...body, mediaType });
+    let effectiveBody: Payload = body;
+    timingContext.videoContextReferenceSource = "none";
+
+    if (mediaType === "video") {
+      const contextRef = normalizeVideoAiContextReference(
+        body.videoForAI?.contextRef,
+      );
+      if (contextRef) {
+        const contextLoadStartedAt = Date.now();
+        const persistedVideoContext = await loadPersistedInrAgentVideoForAi({
+          userId,
+          reference: contextRef,
+        });
+        timingContext.videoContextLoadMs = Date.now() - contextLoadStartedAt;
+        timingContext.videoContextReferenceSource = persistedVideoContext
+          ? "hit"
+          : "invalid";
+
+        if (persistedVideoContext) {
+          const existingVideo = body.videoForAI || {};
+          const existingFrames = Array.isArray(existingVideo.visualFrames)
+            ? existingVideo.visualFrames
+            : [];
+          const persistedFrames = persistedVideoContext.frames.map(
+            (frame, index) => ({
+              name: `inragent-frame-${index + 1}.jpg`,
+              type: "image/jpeg",
+              dataUrl: frame.dataUrl,
+              frameTarget: (["start", "middle", "end"] as const)[index],
+            }),
+          );
+          const audioTranscript =
+            cleanVideoTranscript(existingVideo.audioTranscript) ||
+            persistedVideoContext.transcript;
+
+          effectiveBody = {
+            ...body,
+            videoForAI: {
+              ...existingVideo,
+              contextRef,
+              visualFrames: existingFrames.length
+                ? existingFrames
+                : persistedFrames,
+              audioTranscript,
+              rawAudioTranscript:
+                cleanVideoTranscript(existingVideo.rawAudioTranscript) ||
+                persistedVideoContext.rawTranscript ||
+                audioTranscript,
+              analysisPlan: {
+                ...existingVideo.analysisPlan,
+                visualFrames:
+                  existingFrames.length || persistedFrames.length
+                    ? "ready"
+                    : "pending",
+                audioTranscript: audioTranscript ? "ready" : "unavailable",
+                frameTargets: ["start", "middle", "end"],
+              },
+            },
+          };
+        }
+      }
+    }
+
+    const imagesForAI = sanitizeImagesForAI({ ...effectiveBody, mediaType });
     const videoFrameImagesForAI = sanitizeVideoFramesForAI({
-      ...body,
+      ...effectiveBody,
       mediaType,
     });
-    const videoForAI = sanitizeVideoForAI({ ...body, mediaType });
+    const videoForAI = sanitizeVideoForAI({ ...effectiveBody, mediaType });
     const mediaGenerationInstructions =
       buildVideoGenerationInstructions(videoForAI);
     timingContext.mediaType = mediaType;
@@ -445,7 +516,7 @@ const handler = async (req: Request) => {
                 AI_IMAGE_MAX_COUNT,
               )
             : imagesForAI,
-        extraInstructions: mediaGenerationInstructions,
+        mediaContext: mediaGenerationInstructions,
         mediaType,
         accountId: userId,
       });

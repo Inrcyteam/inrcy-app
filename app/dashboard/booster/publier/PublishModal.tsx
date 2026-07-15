@@ -23,7 +23,17 @@ import {
   writePinterestBoardUiCache,
 } from "@/lib/pinterestUiSessionCache";
 import { buildVideoTransformSignature } from "@/lib/boosterVideoTransforms";
+import {
+  cleanupPreparedVideoAudioStorage,
+  extractVideoAudioForTranscription,
+  prepareVideoAudioTransport,
+} from "@/lib/boosterVideoAudioClient";
 import { readSanitizedElementHtml } from "@/lib/sanitizeHtml";
+import {
+  normalizeVideoAiContextReference,
+  videoAiContextReferenceAliases,
+  type VideoAiContextReference,
+} from "@/lib/videoAiContextReference";
 import { confirmInrcy } from "@/lib/inrcyDialog";
 import { INR_SEARCH_CONTENT_MAX_LENGTH } from "@/lib/boosterChannelRules";
 import {
@@ -508,8 +518,16 @@ type VideoFramesPreparationCache = {
   promise: Promise<VideoFramesForAI>;
 };
 
+type VideoAudioFilePreparationCache = {
+  key: string;
+  promise: Promise<File | null>;
+};
+
 const VIDEO_TRANSCRIPTION_TIMEOUT_MS = 55_000;
-const MAX_VIDEO_TRANSCRIBE_BYTES = 40 * 1024 * 1024;
+// Une Function Vercel peut refuser un gros multipart avant même que la route
+// Next.js ne puisse l'analyser. La vidéo complète n'est donc conservée qu'en
+// secours pour les très petits fichiers ; le chemin normal envoie l'audio seul.
+const MAX_DIRECT_VIDEO_TRANSCRIBE_BYTES = 4 * 1024 * 1024;
 
 function makeVideoTranscriptCacheKey(file: File) {
   return `${file.name}__${file.size}__${file.lastModified}`;
@@ -517,13 +535,48 @@ function makeVideoTranscriptCacheKey(file: File) {
 
 async function transcribeVideoAudioForAI(
   file: File,
+  preparedAudio: File | null,
 ): Promise<Omit<VideoAudioTranscriptCache, "key"> | null> {
-  // La route serveur applique déjà cette même limite. La vérifier ici évite
-  // d'envoyer inutilement une vidéo lourde avant d'obtenir le même fallback.
-  if (file.size > MAX_VIDEO_TRANSCRIBE_BYTES) return null;
+  let storagePathToCleanup = "";
+  let requestBody: BodyInit;
+  let requestHeaders: HeadersInit | undefined;
 
-  const formData = new FormData();
-  formData.append("video", file, buildVideoFileName(file));
+  try {
+    if (preparedAudio) {
+      const transport = await prepareVideoAudioTransport(preparedAudio);
+      if (transport.mode === "storage") {
+        storagePathToCleanup = transport.storagePath;
+        requestHeaders = { "Content-Type": "application/json" };
+        requestBody = JSON.stringify({
+          origin: "video",
+          audioStoragePath: transport.storagePath,
+          audioName: transport.name,
+          audioType: transport.type,
+          audioSize: transport.size,
+          videoName: buildVideoFileName(file),
+        });
+      } else {
+        const formData = new FormData();
+        formData.append("audio", transport.file, transport.file.name);
+        formData.append("origin", "video");
+        formData.append("video_name", buildVideoFileName(file));
+        requestBody = formData;
+      }
+    } else if (file.size <= MAX_DIRECT_VIDEO_TRANSCRIBE_BYTES) {
+      // Compatibilité historique pour une petite vidéo si le navigateur ne sait
+      // pas extraire localement sa piste audio.
+      const formData = new FormData();
+      formData.append("video", file, buildVideoFileName(file));
+      requestBody = formData;
+    } else {
+      return null;
+    }
+  } catch {
+    if (storagePathToCleanup) {
+      void cleanupPreparedVideoAudioStorage(storagePathToCleanup);
+    }
+    return null;
+  }
 
   const controller =
     typeof AbortController !== "undefined" ? new AbortController() : null;
@@ -538,7 +591,8 @@ async function transcribeVideoAudioForAI(
   try {
     const res = await fetch("/api/booster/transcribe", {
       method: "POST",
-      body: formData,
+      ...(requestHeaders ? { headers: requestHeaders } : {}),
+      body: requestBody,
       ...(controller ? { signal: controller.signal } : {}),
     });
     const json = await res.json().catch(() => ({}));
@@ -551,6 +605,9 @@ async function transcribeVideoAudioForAI(
       rawText: String(json?.raw_text || text).trim() || text,
     };
   } catch {
+    if (storagePathToCleanup) {
+      void cleanupPreparedVideoAudioStorage(storagePathToCleanup);
+    }
     return null;
   } finally {
     if (timeoutId !== null) window.clearTimeout(timeoutId);
@@ -608,6 +665,8 @@ export default function PublishModal({
   const videoFramesForAiCacheRef = useRef<VideoFramesPreparationCache | null>(
     null,
   );
+  const videoAudioFileForAiCacheRef =
+    useRef<VideoAudioFilePreparationCache | null>(null);
   const aiImagePayloadCacheRef = useRef<
     Map<string, Promise<BoosterAiImagePayload>>
   >(new Map());
@@ -630,6 +689,24 @@ export default function PublishModal({
     };
     return preparationPromise;
   }, []);
+
+  const getOrPrepareVideoAudioFileForAI = useCallback((file: File) => {
+    const key = makeVideoTranscriptCacheKey(file);
+    const cached = videoAudioFileForAiCacheRef.current;
+    if (cached?.key === key) return cached.promise;
+
+    // L'extraction reste locale et ne consomme aucun crédit IA. Un échec est
+    // mémorisé comme indisponible pour éviter de refaire 30 secondes de travail
+    // au clic ; les petites vidéos conservent ensuite le fallback historique.
+    const preparationPromise = extractVideoAudioForTranscription(file).catch(
+      () => null,
+    );
+    videoAudioFileForAiCacheRef.current = {
+      key,
+      promise: preparationPromise,
+    };
+    return preparationPromise;
+  }, []);
   const [genError, setGenError] = useState("");
   const [generationNotice, setGenerationNotice] = useState("");
   const [publishError, setPublishError] = useState("");
@@ -637,6 +714,8 @@ export default function PublishModal({
   const [draftMessage, setDraftMessage] = useState("");
   const [lastPublicationDraftSnapshot, setLastPublicationDraftSnapshot] =
     useState<string | null>(null);
+  const [videoAiContextRef, setVideoAiContextRef] =
+    useState<VideoAiContextReference | null>(null);
 
   useEffect(() => {
     onDraftHeaderStateChange?.({ saving, draftSaving, draftMessage });
@@ -1445,17 +1524,24 @@ export default function PublishModal({
   });
 
   useEffect(() => {
-    if (!videoFile) return;
+    if (!videoFile || videoAiContextRef) return;
 
     void getOrPrepareVideoFramesForAI(videoFile).catch(() => {
       // Une extraction anticipée défaillante n'est jamais conservée : la
       // génération retentera avec le comportement de secours historique.
     });
-  }, [getOrPrepareVideoFramesForAI, videoFile]);
+    void getOrPrepareVideoAudioFileForAI(videoFile);
+  }, [
+    getOrPrepareVideoAudioFileForAI,
+    getOrPrepareVideoFramesForAI,
+    videoAiContextRef,
+    videoFile,
+  ]);
 
   useEffect(() => {
     return () => {
       videoFramesForAiCacheRef.current = null;
+      videoAudioFileForAiCacheRef.current = null;
     };
   }, []);
 
@@ -1791,6 +1877,7 @@ export default function PublishModal({
       videoTransformedVariants: normalizeRestoredVideoVariants(
         videoTransformedVariants,
       ),
+      videoAiContextRef,
       useImagesForAI,
       imageSettingsByChannel: channelImageEditors,
     });
@@ -1814,6 +1901,7 @@ export default function PublishModal({
     videoDurationSeconds,
     videoSourceMetadata,
     videoTransformedVariants,
+    videoAiContextRef,
     useImagesForAI,
     channelImageEditors,
   ]);
@@ -1958,6 +2046,9 @@ export default function PublishModal({
           payload.videoDraft && typeof payload.videoDraft === "object"
             ? payload.videoDraft
             : null;
+        const nextVideoAiContextRef =
+          normalizeVideoAiContextReference(payload.videoAiContextRef) ||
+          normalizeVideoAiContextReference(videoDraft?.videoAiContextRef);
         const nextMediaType = normalizePublicationMediaType(payload.mediaType);
         const nextChannelMediaModes =
           payload.channelMediaModes &&
@@ -2075,6 +2166,7 @@ export default function PublishModal({
         setImages(restoredFiles);
         setImagePreviews(restoredPreviews);
         setVideoFile(restoredVideo.file);
+        setVideoAiContextRef(restoredVideo.file ? nextVideoAiContextRef : null);
         setVideoPreviewUrl(restoredVideo.previewUrl);
         setVideoDurationSeconds(restoredVideo.duration);
         setVideoSourceMetadata(restoredVideo.sourceMetadata || null);
@@ -2131,6 +2223,7 @@ export default function PublishModal({
             imageNames,
             videoName,
             videoTransformedVariants: restoredVideo.transformedVariants,
+            videoAiContextRef: nextVideoAiContextRef,
             useImagesForAI: nextUseImagesForAI,
             imageSettingsByChannel: nextEditors,
           }),
@@ -2242,6 +2335,8 @@ export default function PublishModal({
     clearVideoMediaState(options);
     videoAudioTranscriptCacheRef.current = null;
     videoFramesForAiCacheRef.current = null;
+    videoAudioFileForAiCacheRef.current = null;
+    setVideoAiContextRef(null);
   };
 
   const clearPublicationWork = () => {
@@ -2420,7 +2515,7 @@ export default function PublishModal({
       let videoAudioTranscriptStatus: "pending" | "ready" | "unavailable" =
         "pending";
 
-      if (hasVideoForGeneration && videoFile) {
+      if (hasVideoForGeneration && videoFile && !videoAiContextRef) {
         setGenerationProgress((current) => Math.max(current, 36));
         setGenerationStage("Analyse audio + images de la vidéo");
 
@@ -2430,10 +2525,14 @@ export default function PublishModal({
             ? videoAudioTranscriptCacheRef.current
             : null;
 
+        const transcriptionPromise = cachedTranscript
+          ? Promise.resolve(cachedTranscript)
+          : getOrPrepareVideoAudioFileForAI(videoFile).then((preparedAudio) =>
+              transcribeVideoAudioForAI(videoFile, preparedAudio),
+            );
+
         const [transcriptResult, framesResult] = await Promise.allSettled([
-          cachedTranscript
-            ? Promise.resolve(cachedTranscript)
-            : transcribeVideoAudioForAI(videoFile),
+          transcriptionPromise,
           getOrPrepareVideoFramesForAI(videoFile),
         ]);
 
@@ -2467,6 +2566,9 @@ export default function PublishModal({
                 ? "Analyse audio de la vidéo"
                 : "Analyse vidéo limitée, génération maintenue",
         );
+      } else if (hasVideoForGeneration && videoAiContextRef) {
+        setGenerationProgress((current) => Math.max(current, 60));
+        setGenerationStage("Réutilisation de l’analyse vidéo iNrAgent");
       }
 
       const generationPayload = {
@@ -2484,6 +2586,7 @@ export default function PublishModal({
           hasVideoForGeneration && videoGenerationContext
             ? {
                 ...videoGenerationContext,
+                contextRef: videoAiContextRef,
                 visualFrames: videoFramesForAI,
                 audioTranscript: videoAudioTranscript,
                 rawAudioTranscript: videoRawAudioTranscript,
@@ -2669,6 +2772,7 @@ export default function PublishModal({
     void getOrPrepareVideoFramesForAI(normalizedFile).catch(() => {
       // Le useEffect et la génération conserveront le fallback existant.
     });
+    void getOrPrepareVideoAudioFileForAI(normalizedFile);
 
     let sourceMetadata: BoosterVideoSourceMetadata | null = null;
     try {
@@ -3573,7 +3677,13 @@ export default function PublishModal({
       const imageDrafts = images.length
         ? await uploadPublicationDraftImages()
         : [];
-      const videoDraft = await buildPublicationDraftVideoPayload();
+      const rawVideoDraft = await buildPublicationDraftVideoPayload();
+      const videoDraft = rawVideoDraft
+        ? {
+            ...rawVideoDraft,
+            ...videoAiContextReferenceAliases(videoAiContextRef),
+          }
+        : null;
       const response = await fetch("/api/booster/events", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -3603,6 +3713,7 @@ export default function PublishModal({
             videoSourceMetadata,
             imageDrafts,
             videoDraft,
+            ...videoAiContextReferenceAliases(videoAiContextRef),
             useImagesForAI,
             imageSettingsByChannel: getDraftImageSettingsByChannel(),
             instagramHashtagsInput,

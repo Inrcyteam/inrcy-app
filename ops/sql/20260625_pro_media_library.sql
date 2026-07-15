@@ -39,6 +39,14 @@ create table if not exists public.pro_media_library (
   width integer,
   height integer,
   duration_seconds numeric,
+  ai_status text constraint pro_media_library_ai_status_check check (ai_status is null or ai_status in ('ready', 'partial', 'unavailable')),
+  ai_transcript text,
+  ai_frame_paths text[] not null default '{}',
+  ai_prepared_at timestamptz,
+  ai_preparation_version integer,
+  ai_source_fingerprint text,
+  ai_warnings text[] not null default '{}',
+  ai_timings jsonb not null default '{}'::jsonb,
   is_active boolean not null default true,
   usage_count integer not null default 0,
   last_used_at timestamptz,
@@ -47,6 +55,38 @@ create table if not exists public.pro_media_library (
   constraint pro_media_library_storage_path_unique unique (storage_path),
   constraint pro_media_library_size_positive check (size_bytes >= 0)
 );
+
+
+-- 2 bis) Contexte vidéo IA persistant pour iNrAgent.
+-- Ces ADD COLUMN rendent aussi ce script compatible avec une table déjà créée.
+alter table public.pro_media_library
+  add column if not exists ai_status text,
+  add column if not exists ai_transcript text,
+  add column if not exists ai_frame_paths text[] not null default '{}',
+  add column if not exists ai_prepared_at timestamptz,
+  add column if not exists ai_preparation_version integer,
+  add column if not exists ai_source_fingerprint text,
+  add column if not exists ai_warnings text[] not null default '{}',
+  add column if not exists ai_timings jsonb not null default '{}'::jsonb;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'pro_media_library_ai_status_check'
+      and conrelid = 'public.pro_media_library'::regclass
+  ) then
+    alter table public.pro_media_library
+      add constraint pro_media_library_ai_status_check
+      check (ai_status is null or ai_status in ('ready', 'partial', 'unavailable'));
+  end if;
+end
+$$;
+
+create index if not exists pro_media_library_video_ai_status_idx
+  on public.pro_media_library (user_id, ai_status, ai_prepared_at desc)
+  where media_type = 'video';
 
 create index if not exists pro_media_library_user_created_idx
   on public.pro_media_library (user_id, created_at desc);

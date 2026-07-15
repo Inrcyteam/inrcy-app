@@ -334,6 +334,7 @@ export type GenerateSharedBoosterPostsArgs = {
   recentPublications?: BoosterRecentPublication[];
   hiddenAngle?: BoosterHiddenAngle;
   imagesForAI?: BoosterAiImage[];
+  mediaContext?: string;
   extraInstructions?: string;
   mediaType?: "images" | "video";
   forceNonBlocking?: boolean;
@@ -802,6 +803,7 @@ async function generateVersions(args: {
   business: JsonRecord | null;
   generationProfile: NormalizedAiGenerationProfile;
   recentPublications?: BoosterRecentPublication[];
+  mediaContext?: string;
   extraInstructions?: string;
   hiddenAngle?: BoosterHiddenAngle;
   imagesForAI?: BoosterAiImage[];
@@ -825,7 +827,8 @@ async function generateVersions(args: {
     recentPublications: args.recentPublications,
     imageCount: args.generationProfile.request.media.count || args.imagesForAI?.length || 0,
     mediaContext:
-      args.extraInstructions || args.generationProfile.request.media.context,
+      args.mediaContext || args.generationProfile.request.media.context,
+    extraInstructions: args.extraInstructions,
   });
 
   return aiGenerateJSON<BoosterGenResponse>({
@@ -1029,6 +1032,7 @@ async function repairChannelsOnce(args: {
   recentPublications?: BoosterRecentPublication[];
   hiddenAngle?: BoosterHiddenAngle;
   imagesForAI?: BoosterAiImage[];
+  mediaContext?: string;
   extraInstructions?: string;
   languageCode: string;
   aiFeature: AiGenerationFeature;
@@ -1060,6 +1064,7 @@ async function repairChannelsOnce(args: {
     budget: args.budget,
     deadlineAt: args.deadlineAt,
     mode: "repair",
+    mediaContext: args.mediaContext,
     extraInstructions: [
       args.extraInstructions,
       buildSingleRepairInstructions({
@@ -1274,8 +1279,8 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
       type: args.mediaType || (args.imagesForAI?.length ? "images" : "none"),
       count: args.imagesForAI?.length || 0,
       hasVisualContext: Boolean(args.imagesForAI?.length),
-      hasAudioTranscript: /transcription audio/i.test(String(args.extraInstructions || "")),
-      context: compactPromptContext(args.extraInstructions),
+      hasAudioTranscript: /transcription audio/i.test(String(args.mediaContext || "")),
+      context: compactPromptContext(args.mediaContext),
     },
   });
   const instructionAdjustedGenerationProfile =
@@ -1309,7 +1314,7 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
       engine: baseGenerationProfile.preferences.engine,
       images: args.imagesForAI,
       idea: args.idea,
-      existingContext: args.extraInstructions,
+      existingContext: args.mediaContext,
       accountId: args.accountId,
       feature:
         aiFeature === "agent.publish"
@@ -1385,7 +1390,8 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
       recentPublications: args.recentPublications,
       hiddenAngle: operationHiddenAngle,
       imagesForAI: preparedMedia.imagesForWriter,
-      extraInstructions: preparedMedia.writerContext,
+      mediaContext: preparedMedia.writerContext,
+      extraInstructions: args.extraInstructions,
       aiFeature,
       accountId: args.accountId,
       budget,
@@ -1474,7 +1480,8 @@ export async function generateSharedBoosterPosts(args: GenerateSharedBoosterPost
         recentPublications: args.recentPublications,
         hiddenAngle: operationHiddenAngle,
         imagesForAI: preparedMedia.imagesForWriter,
-        extraInstructions: preparedMedia.writerContext,
+        mediaContext: preparedMedia.writerContext,
+        extraInstructions: args.extraInstructions,
         languageCode,
         aiFeature,
         accountId: args.accountId,

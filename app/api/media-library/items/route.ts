@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { loadInrAgentVideoDerivativePaths } from "@/lib/inrAgentVideoContextCache";
 
 export const runtime = "nodejs";
 
@@ -437,6 +438,14 @@ export async function DELETE(request: NextRequest) {
     }
   }
 
+  const foundIds = (foundRows as any[])
+    .map((row) => String(row.id || ""))
+    .filter(Boolean);
+  const videoDerivativePaths = await loadInrAgentVideoDerivativePaths({
+    userId: activeUserId,
+    mediaIds: foundIds,
+  });
+
   const pathsByBucket = new Map<string, string[]>();
   for (const row of foundRows as any[]) {
     const bucket = String(row.bucket_name || BUCKET);
@@ -444,15 +453,23 @@ export async function DELETE(request: NextRequest) {
     if (!storagePath) continue;
     const paths = pathsByBucket.get(bucket) || [];
     paths.push(storagePath);
+    const derivatives = videoDerivativePaths.get(String(row.id || ""));
+    if (derivatives?.bucket === bucket) {
+      paths.push(...derivatives.paths);
+    } else if (derivatives?.paths.length) {
+      const derivativeBucketPaths = pathsByBucket.get(derivatives.bucket) || [];
+      derivativeBucketPaths.push(...derivatives.paths);
+      pathsByBucket.set(derivatives.bucket, derivativeBucketPaths);
+    }
     pathsByBucket.set(bucket, paths);
   }
 
-  for (const [bucket, paths] of pathsByBucket.entries()) {
+  for (const [bucket, rawPaths] of pathsByBucket.entries()) {
+    const paths = Array.from(new Set(rawPaths));
     const remove = await supabaseAdmin.storage.from(bucket).remove(paths);
     if (remove.error) return jsonError("Impossible de supprimer les fichiers Storage.", 500, remove.error.message);
   }
 
-  const foundIds = (foundRows as any[]).map((row) => String(row.id || "")).filter(Boolean);
   const del = await supabaseAdmin
     .from("pro_media_library")
     .delete()

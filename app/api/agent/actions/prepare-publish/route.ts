@@ -16,6 +16,12 @@ import {
   type BoosterTheme,
 } from "@/lib/boosterPrompt";
 import { getChannelConnectionStates } from "@/lib/channelConnectionState";
+import { getBoosterGenerationContext } from "@/lib/boosterGenerationContext";
+import { INR_AGENT_VIDEO_AI_PREPARATION_VERSION } from "@/lib/inrAgentVideoPreparation";
+import {
+  getOrPrepareInrAgentVideoForAi,
+  type InrAgentCachedVideoPreparationResult,
+} from "@/lib/inrAgentVideoContextCache";
 import { getAppBubbleAccessMapForUser } from "@/lib/appBubbleAccessServer";
 import { isBubbleEnabled } from "@/lib/bubbleAccess";
 import { ensureSystemManagedInrSearch } from "@/lib/inrSearchProvisioning";
@@ -36,6 +42,10 @@ import {
   type InrAgentValidationMode,
 } from "@/lib/inrAgentSettings";
 import { rowToInrAgentAction } from "@/lib/inrAgentActions";
+import {
+  buildVideoAiContextReference,
+  videoAiContextReferenceAliases,
+} from "@/lib/videoAiContextReference";
 import {
   generateSharedBoosterPosts,
   type BoosterAiImage,
@@ -312,6 +322,16 @@ function cleanText(value: unknown, maxLength = 220) {
     .slice(0, maxLength);
 }
 
+function cleanLongContext(value: unknown, maxLength = 4_200) {
+  return String(value ?? "")
+    .replace(/\u0000/g, "")
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
+    .slice(0, maxLength)
+    .trim();
+}
+
 function cleanList(value: unknown, maxItems = 8, maxItemLength = 80) {
   const rawItems = Array.isArray(value)
     ? value
@@ -530,41 +550,6 @@ function getRecentMediaTrace(usage: RecentMediaUsage) {
     excludedImageBankCount: usage.imageBankIds.size,
     excludedStoragePathCount: usage.storageKeys.size,
   };
-}
-
-function cleanRecentPublicationField(value: unknown, maxLength: number) {
-  return cleanText(value, maxLength);
-}
-
-async function fetchRecentPublicationMemory(
-  supabase: { from: (table: string) => any },
-  userId: string,
-): Promise<BoosterRecentPublication[]> {
-  try {
-    const { data, error } = await supabase
-      .from("publications")
-      .select("title,content,cta,idea,created_at")
-      .eq("user_id", userId)
-      .order("created_at", { ascending: false })
-      .limit(5);
-
-    if (error || !Array.isArray(data)) return [];
-
-    return data
-      .map((row: any) => ({
-        title: cleanRecentPublicationField(row?.title, 90),
-        content: cleanRecentPublicationField(row?.content, 260),
-        cta: cleanRecentPublicationField(row?.cta, 90),
-        idea: cleanRecentPublicationField(row?.idea, 140),
-        created_at: cleanRecentPublicationField(row?.created_at, 40),
-      }))
-      .filter(
-        (row: BoosterRecentPublication) =>
-          row.title || row.content || row.idea || row.cta,
-      );
-  } catch {
-    return [];
-  }
 }
 
 function chooseTheme(allowedThemes: InrAgentTheme[]): InrAgentTheme {
@@ -817,9 +802,14 @@ function buildAgentSelectedMediaContext(
   media: ImageBankAsset | null,
   aiImageAvailable: boolean,
   fastMetadataOnly = false,
+  videoPreparation: InrAgentCachedVideoPreparationResult | null = null,
 ) {
   if (!media) return "";
   const mediaKind = media.mediaType || media.kind || "image";
+  const transcript =
+    mediaKind === "video"
+      ? cleanLongContext(videoPreparation?.transcript, 4_200)
+      : "";
   const tags = cleanList(media.tags, 8, 60);
   const metadata = [
     media.title ? `titre interne: ${cleanText(media.title, 160)}` : "",
@@ -836,10 +826,28 @@ function buildAgentSelectedMediaContext(
       ? fastMetadataOnly
         ? "Mode rapide iNrAgent : l'image n'est pas transmise à l'analyse visuelle IA. Utilise uniquement la phrase libre et les métadonnées internes factuelles ; n'invente aucun détail visuel non fourni."
         : aiImageAvailable
-        ? "L'image est effectivement transmise à l'analyse IA : utilise uniquement les éléments raisonnablement visibles, sans inventer."
-        : "L'image n'a pas pu être chargée pour analyse visuelle : n'invente aucun détail visuel à partir du seul nom du fichier."
-      : "La vidéo est jointe à l'action finale mais aucune observation visuelle non fournie ne doit être inventée.",
+          ? "L'image est effectivement transmise à l'analyse IA : utilise uniquement les éléments raisonnablement visibles, sans inventer."
+          : "L'image n'a pas pu être chargée pour analyse visuelle : n'invente aucun détail visuel à partir du seul nom du fichier."
+      : videoPreparation?.frames.length
+        ? `Des captures de la vidéo sont transmises à l'analyse IA (${videoPreparation.frames.length} disponible${videoPreparation.frames.length > 1 ? "s" : ""}). Utilise uniquement les éléments raisonnablement visibles, sans inventer.`
+        : "Les captures de la vidéo sont indisponibles : n'invente aucune observation visuelle à partir du seul nom du fichier.",
+    mediaKind === "video" && transcript
+      ? `Transcription audio détectée dans la vidéo :\n"""${transcript}"""\nLa phrase libre et le contexte métier restent prioritaires. Utilise la transcription uniquement comme contexte factuel complémentaire, sans inventer.`
+      : mediaKind === "video"
+        ? "La transcription audio de la vidéo est indisponible. Continue sans bloquer la génération."
+        : "",
   ].filter(Boolean).join("\n");
+}
+
+function getVideoGenerationContextMode(
+  videoPreparation: InrAgentCachedVideoPreparationResult | null,
+) {
+  const hasFrames = Boolean(videoPreparation?.frames.length);
+  const hasTranscript = Boolean(cleanLongContext(videoPreparation?.transcript, 1));
+  if (hasFrames && hasTranscript) return "full" as const;
+  if (hasFrames) return "visual_only" as const;
+  if (hasTranscript) return "audio_only" as const;
+  return "metadata_only" as const;
 }
 
 async function generateBoosterPosts(args: {
@@ -869,13 +877,11 @@ async function generateBoosterPosts(args: {
     aiFeature: "agent.publish",
     accountId: args.accountId,
     skipMediaVisionAnalysis: args.skipMediaVisionAnalysis,
-    extraInstructions: [
-      `CONTEXTE iNrAgent : cette génération provient de l'automatisation Publier.
+    mediaContext: args.mediaContext,
+    extraInstructions: `CONTEXTE iNrAgent : cette génération provient de l'automatisation Publier.
 Objectif : produire exactement la même logique éditoriale que Booster / Publier manuel, avec un contenu réellement adapté à chaque canal.
 Ne fournis jamais des copies entre canaux. Adapte réellement l'angle, la profondeur, le vocabulaire et le rythme, sans imposer artificiellement une structure différente à chaque version.
 Préserve la voix native du moteur IA choisi par l'établissement. Le titre et le contenu sont prioritaires ; un CTA séparé reste facultatif lorsqu'il serait artificiel.`,
-      args.mediaContext || "",
-    ].filter(Boolean).join("\n\n"),
   });
 
   return { versions, recoveredChannels };
@@ -1414,8 +1420,14 @@ export async function POST(request: Request) {
   const routeStartedAt = Date.now();
   let mediaSelectionMs = 0;
   let imagePreparationMs = 0;
+  let videoPreparationMs = 0;
   let aiGenerationMs = 0;
   let persistenceMs = 0;
+  let generationContextMs = 0;
+  let professionalContextSource: "hit" | "database" | "disabled" | "not_loaded" =
+    "not_loaded";
+  let publicationsContextSource: "hit" | "database" | "disabled" | "not_loaded" =
+    "not_loaded";
   const context = await resolveInrAgentActionRequest(request);
   if (context.errorResponse) return context.errorResponse;
 
@@ -1442,11 +1454,25 @@ export async function POST(request: Request) {
     );
   }
 
-  const channels = await selectConnectedChannels({
+  const generationContextStartedAt = Date.now();
+  const generationContextPromise = getBoosterGenerationContext({
     supabase,
     userId,
-    automation,
+  }).then((generationContext) => {
+    generationContextMs = Date.now() - generationContextStartedAt;
+    professionalContextSource = generationContext.cacheSource.professional;
+    publicationsContextSource = generationContext.cacheSource.publications;
+    return generationContext;
   });
+
+  const [channels, generationContext] = await Promise.all([
+    selectConnectedChannels({
+      supabase,
+      userId,
+      automation,
+    }),
+    generationContextPromise,
+  ]);
   if (!channels.length) {
     return NextResponse.json(
       {
@@ -1457,38 +1483,12 @@ export async function POST(request: Request) {
     );
   }
 
-  const { data: profileData } = await supabase
-    .from("profiles")
-    .select("*")
-    .eq("user_id", userId)
-    .maybeSingle();
-  const profile =
-    profileData && typeof profileData === "object"
-      ? (profileData as JsonRecord)
-      : null;
-
-  let business: JsonRecord | null = null;
-  try {
-    const { data } = await supabase
-      .from("business_profiles")
-      .select("*")
-      .eq("user_id", userId)
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    business = data && typeof data === "object" ? (data as JsonRecord) : null;
-  } catch {
-    business = null;
-  }
+  const { profile, business, recentPublications } = generationContext;
 
   const businessProfession = getBusinessProfession(business);
   const agentTheme = chooseTheme(automation.allowedThemes);
   const boosterTheme = agentThemeToBoosterTheme[agentTheme] || "conseil";
   const idea = buildAgentIdea({ business, profile, theme: agentTheme });
-  const recentPublications = await fetchRecentPublicationMemory(
-    supabase,
-    userId,
-  );
   const prefersVideo =
     channels.includes("youtube_shorts") || channels.includes("tiktok");
   const mediaSelectionStartedAt = Date.now();
@@ -1585,39 +1585,6 @@ export async function POST(request: Request) {
   const mediaKind = media?.mediaType || media?.kind || "image";
   const image = media && mediaKind === "image" ? media : null;
   const video = media && mediaKind === "video" ? media : null;
-  const fastMetadataOnlyMedia = shouldUseFastAgentMediaContext(image);
-  const imagePreparationStartedAt = Date.now();
-  const imagesForAI = fastMetadataOnlyMedia
-    ? []
-    : await prepareAgentSelectedImageForAI(image);
-  imagePreparationMs = Date.now() - imagePreparationStartedAt;
-  const selectedMediaContext = buildAgentSelectedMediaContext(
-    media,
-    imagesForAI.length > 0,
-    fastMetadataOnlyMedia,
-  );
-
-  console.info("[inr-agent] selected media AI routing", {
-    userId,
-    mediaId: media?.id || undefined,
-    mediaType: media ? mediaKind : "none",
-    mediaSource: media?.librarySource || media?.source || undefined,
-    fastMetadataOnly: fastMetadataOnlyMedia,
-    imagesSentToGeneration: imagesForAI.length,
-  });
-
-  // Même logique que Booster / Publier : l'absence de média ne bloque jamais
-  // la préparation du texte. Les canaux compatibles restent prêts en texte seul,
-  // les canaux qui exigent un média sont marqués comme incomplets canal par canal.
-  const mediaReadinessByChannel = Object.fromEntries(
-    channels.map((channel) => [channel, channelMediaReadiness(channel, media)]),
-  );
-  const mediaAdaptationByChannel = Object.fromEntries(
-    channels.map((channel) => [
-      channel,
-      channelMediaAdaptation(channel, media),
-    ]),
-  );
 
   let quotaReservation: AiCreditReservation | null = null;
   if (!isAdmin) {
@@ -1634,6 +1601,81 @@ export async function POST(request: Request) {
     if (quota.errorResponse) return quota.errorResponse;
     quotaReservation = quota.reservation;
   }
+
+  const fastMetadataOnlyMedia = shouldUseFastAgentMediaContext(image);
+  let videoPreparation: InrAgentCachedVideoPreparationResult | null = null;
+  if (video) {
+    const videoPreparationStartedAt = Date.now();
+    videoPreparation = await getOrPrepareInrAgentVideoForAi({
+      mediaId: video.id,
+      userId,
+      accountId: userId,
+      source: {
+        id: video.id,
+        bucket: video.bucket,
+        storagePath: video.storagePath,
+        url: video.url,
+        mimeType: video.mimeType,
+        size: video.size,
+        duration: video.duration,
+      },
+    });
+    videoPreparationMs = Date.now() - videoPreparationStartedAt;
+  }
+
+  const imagePreparationStartedAt = Date.now();
+  const imagesForAI = video
+    ? videoPreparation?.frames || []
+    : fastMetadataOnlyMedia
+      ? []
+      : await prepareAgentSelectedImageForAI(image);
+  imagePreparationMs = video ? 0 : Date.now() - imagePreparationStartedAt;
+  const selectedMediaContext = buildAgentSelectedMediaContext(
+    media,
+    imagesForAI.length > 0,
+    fastMetadataOnlyMedia,
+    videoPreparation,
+  );
+  const videoGenerationContextMode = video
+    ? getVideoGenerationContextMode(videoPreparation)
+    : undefined;
+  const videoAiContextRef = video
+    ? buildVideoAiContextReference({
+        mediaAssetId: video.id,
+        mediaSource: video.librarySource || video.source,
+        preparationVersion: INR_AGENT_VIDEO_AI_PREPARATION_VERSION,
+        sourceFingerprint: videoPreparation?.cache.fingerprint,
+        persisted: videoPreparation?.cache.persisted,
+      })
+    : null;
+
+  console.info("[inr-agent] selected media AI routing", {
+    userId,
+    mediaId: media?.id || undefined,
+    mediaType: media ? mediaKind : "none",
+    mediaSource: media?.librarySource || media?.source || undefined,
+    fastMetadataOnly: fastMetadataOnlyMedia,
+    imagesSentToGeneration: imagesForAI.length,
+    videoPreparationStatus: videoPreparation?.status,
+    videoTranscriptAvailable: Boolean(videoPreparation?.transcript),
+    videoPreparationWarnings: videoPreparation?.warnings.length || 0,
+    videoContextCacheSource: videoPreparation?.cache.source,
+    videoContextPersisted: videoPreparation?.cache.persisted,
+    videoGenerationContextMode,
+  });
+
+  // Même logique que Booster / Publier : l'absence de média ne bloque jamais
+  // la préparation du texte. Les canaux compatibles restent prêts en texte seul,
+  // les canaux qui exigent un média sont marqués comme incomplets canal par canal.
+  const mediaReadinessByChannel = Object.fromEntries(
+    channels.map((channel) => [channel, channelMediaReadiness(channel, media)]),
+  );
+  const mediaAdaptationByChannel = Object.fromEntries(
+    channels.map((channel) => [
+      channel,
+      channelMediaAdaptation(channel, media),
+    ]),
+  );
 
   try {
     let versions: Awaited<ReturnType<typeof generateBoosterPosts>>["versions"] = {};
@@ -1677,6 +1719,24 @@ export async function POST(request: Request) {
       mediaAsset: media,
       mediaSelectionTrace,
       mediaType: media ? mediaKind : "none",
+      ...videoAiContextReferenceAliases(videoAiContextRef),
+      videoAiPreparation: videoPreparation
+        ? {
+            version: INR_AGENT_VIDEO_AI_PREPARATION_VERSION,
+            status: videoPreparation.status,
+            frameCount: videoPreparation.frames.length,
+            transcriptAvailable: Boolean(videoPreparation.transcript),
+            warningCodes: videoPreparation.warnings.map((warning) =>
+              warning.split(":", 1)[0],
+            ),
+            cacheSource: videoPreparation.cache.source,
+            persisted: videoPreparation.cache.persisted,
+            sourceFingerprint: videoPreparation.cache.fingerprint,
+            framePaths: videoPreparation.cache.framePaths,
+            timings: videoPreparation.timings,
+            generationContextMode: videoGenerationContextMode,
+          }
+        : null,
       image,
       imageAsset: image,
       video,
@@ -1738,8 +1798,17 @@ export async function POST(request: Request) {
         mediaType: media ? mediaKind : "none",
         mediaSource: media?.librarySource || media?.source || undefined,
         fastMetadataOnly: fastMetadataOnlyMedia,
+        generationContextMs,
+        professionalContextSource,
+        publicationsContextSource,
         mediaSelectionMs,
         imagePreparationMs,
+        videoPreparationMs,
+        videoPreparationStatus: videoPreparation?.status,
+        videoFramesSentToGeneration: videoPreparation?.frames.length || 0,
+        videoTranscriptAvailable: Boolean(videoPreparation?.transcript),
+        videoContextCacheSource: videoPreparation?.cache.source,
+        videoContextPersisted: videoPreparation?.cache.persisted,
         aiGenerationMs,
         persistenceMs,
         totalMs: Date.now() - routeStartedAt,
@@ -1801,8 +1870,17 @@ export async function POST(request: Request) {
       fastMetadataOnly: fastMetadataOnlyMedia,
       imagesSentToGeneration: imagesForAI.length,
       validationRequired: automation.validationMode !== "draft_only",
+      generationContextMs,
+      professionalContextSource,
+      publicationsContextSource,
       mediaSelectionMs,
       imagePreparationMs,
+      videoPreparationMs,
+      videoPreparationStatus: videoPreparation?.status,
+      videoFramesSentToGeneration: videoPreparation?.frames.length || 0,
+      videoTranscriptAvailable: Boolean(videoPreparation?.transcript),
+      videoContextCacheSource: videoPreparation?.cache.source,
+      videoContextPersisted: videoPreparation?.cache.persisted,
       aiGenerationMs,
       persistenceMs,
       totalMs: Date.now() - routeStartedAt,
@@ -1823,8 +1901,17 @@ export async function POST(request: Request) {
       mediaSource: media?.librarySource || media?.source || undefined,
       fastMetadataOnly: fastMetadataOnlyMedia,
       imagesSentToGeneration: imagesForAI.length,
+      generationContextMs,
+      professionalContextSource,
+      publicationsContextSource,
       mediaSelectionMs,
       imagePreparationMs,
+      videoPreparationMs,
+      videoPreparationStatus: videoPreparation?.status,
+      videoFramesSentToGeneration: videoPreparation?.frames.length || 0,
+      videoTranscriptAvailable: Boolean(videoPreparation?.transcript),
+      videoContextCacheSource: videoPreparation?.cache.source,
+      videoContextPersisted: videoPreparation?.cache.persisted,
       aiGenerationMs,
       persistenceMs,
       totalMs: Date.now() - routeStartedAt,
