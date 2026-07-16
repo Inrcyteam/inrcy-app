@@ -190,6 +190,35 @@ export const ACTIVITY_CATALOG: Record<ActivitySectorCategory, SectorCatalog> = {
       centre_loisirs: { label: 'Centre de loisirs', services: ['Accueil vacances', 'Mercredis', 'Activités créatives', 'Sorties', 'Sports / jeux', 'Inscription', 'Planning activités', 'Communication parents'] },
     },
   },
+  formation_enseignement: {
+    label: 'Formation & Enseignement',
+    jobs: {
+      auto_ecole: {
+        label: 'Auto-école',
+        services: ['Permis B', 'Conduite accompagnée', 'Conduite supervisée', 'Leçons de conduite', 'Évaluation de départ', 'Boîte manuelle / automatique', 'Passerelle boîte automatique', 'Formation en ligne'],
+      },
+      moto_ecole: {
+        label: 'Moto-école',
+        services: ['Permis AM / scooter', 'Permis A1', 'Permis A2', 'Passerelle A2 vers A', 'Formation 125 cm³', 'Cours plateau', 'Cours circulation', 'Équipement / sécurité'],
+      },
+      bateau_ecole: {
+        label: 'Bateau-école',
+        services: ['Permis côtier', 'Permis fluvial', 'Extension hauturière', 'Cours théoriques', 'Formation pratique', 'Examen blanc', 'Dossier d’inscription', 'Révision en ligne'],
+      },
+      formation_poids_lourd_transport: {
+        label: 'Formation poids lourd et transport',
+        services: ['Permis C', 'Permis CE', 'Permis D', 'FIMO', 'FCO', 'Titre professionnel transport', 'Formation marchandises / voyageurs', 'Accompagnement financement'],
+      },
+      recuperation_points: {
+        label: 'Stage de récupération de points',
+        services: ['Stage volontaire', 'Stage obligatoire', 'Récupération jusqu’à 4 points', 'Inscription rapide', 'Dates disponibles', 'Centre agréé', 'Informations permis', 'Attestation de stage'],
+      },
+      formation_code_route: {
+        label: 'Centre de formation au Code de la route',
+        services: ['Cours de code en salle', 'Code en ligne', 'Examens blancs', 'Suivi pédagogique', 'Préparation ETG', 'Préparation ETM', 'Inscription examen', 'Remise à niveau'],
+      },
+    },
+  },
 
   evenementiel: {
     label: 'Événementiel',
@@ -387,6 +416,41 @@ export const ACTIVITY_CATALOG: Record<ActivitySectorCategory, SectorCatalog> = {
     },
   },};
 
+const FORMATION_ENSEIGNEMENT_JOB_ALIASES: Record<string, string> = {
+  'auto ecole': 'auto_ecole',
+  'ecole de conduite': 'auto_ecole',
+  'auto ecole en ligne': 'auto_ecole',
+  'permis b': 'auto_ecole',
+  'conduite accompagnee': 'auto_ecole',
+  'conduite supervisee': 'auto_ecole',
+  'moto ecole': 'moto_ecole',
+  'permis moto': 'moto_ecole',
+  'formation 125': 'moto_ecole',
+  'bateau ecole': 'bateau_ecole',
+  'permis bateau': 'bateau_ecole',
+  'formation poids lourd': 'formation_poids_lourd_transport',
+  'centre de formation poids lourd': 'formation_poids_lourd_transport',
+  'permis poids lourd': 'formation_poids_lourd_transport',
+  'permis remorque': 'formation_poids_lourd_transport',
+  'formation transport': 'formation_poids_lourd_transport',
+  'stage de recuperation de points': 'recuperation_points',
+  'recuperation de points': 'recuperation_points',
+  'centre de recuperation de points': 'recuperation_points',
+  'formation au code de la route': 'formation_code_route',
+  'centre de formation au code de la route': 'formation_code_route',
+  'code de la route': 'formation_code_route',
+  'formation code de la route': 'formation_code_route',
+};
+
+function normalizeJobLabel(value: string) {
+  return String(value || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
 export function getJobsForSector(sector: string) {
   const pack = ACTIVITY_CATALOG[sector as ActivitySectorCategory] ?? ACTIVITY_CATALOG.autre;
   return Object.entries(pack.jobs).map(([value, job]) => ({ value, label: job.label }));
@@ -411,9 +475,12 @@ export function isValidJobForSector(sector: string, job: string) {
 
 export function findJobValueByLabel(sector: string, label: string) {
   const pack = ACTIVITY_CATALOG[sector as ActivitySectorCategory] ?? ACTIVITY_CATALOG.autre;
-  const normalized = String(label || '').trim().toLowerCase();
+  const normalized = normalizeJobLabel(label);
   for (const [value, job] of Object.entries(pack.jobs)) {
-    if (job.label.trim().toLowerCase() === normalized) return value;
+    if (normalizeJobLabel(job.label) === normalized) return value;
+  }
+  if (sector === 'formation_enseignement') {
+    return FORMATION_ENSEIGNEMENT_JOB_ALIASES[normalized] || '';
   }
   return '';
 }

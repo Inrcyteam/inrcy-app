@@ -13,6 +13,7 @@ export const ACTIVITY_SECTOR_OPTIONS = [
   { value: 'commerce_boutique', label: 'Commerce / Boutique' },
   { value: 'communication', label: 'Communication' },
   { value: 'education_enfance', label: 'Éducation / Enfance' },
+  { value: 'formation_enseignement', label: 'Formation & Enseignement' },
   { value: 'evenementiel', label: 'Événementiel' },
   { value: 'exterieur_jardin', label: 'Extérieur / Jardin' },
   { value: 'finance', label: 'Finance' },
@@ -62,6 +63,7 @@ export function inferSectorCategoryFromProfession(input?: string | null): Activi
   if (/(ébéniste|ebeniste|ferronnier d’art|ferronnier d'art|ferronnerie d’art|ferronnerie d'art|céramiste|ceramiste|couturier|couture|retouches|tapissier décorateur|tapissier decorateur|artisanat d’art|artisanat d'art|métiers d’art|metiers d'art)/.test(value)) return 'metiers_art';
   if (/(paysag|piscin|jardin|élag|elag|clôture|cloture|portail|arrosage|espace vert|espaces verts|terrassement paysager)/.test(value)) return 'exterieur_jardin';
   if (/(métallurgie|metallurgie|usinage|chaudronnerie|plasturgie|fabrication industrielle|maintenance industrielle|mécanique industrielle|mecanique industrielle|soudure industrielle|traitement de surface|industrie|industriel)/.test(value)) return 'industrie';
+  if (/(auto[- ]?école|auto[- ]?ecole|école de conduite|ecole de conduite|moto[- ]?école|moto[- ]?ecole|bateau[- ]?école|bateau[- ]?ecole|permis bateau|permis moto|permis poids lourd|permis remorque|formation poids lourd|formation transport|formation au code|formation code de la route|code de la route|stage de récupération de points|stage de recuperation de points|récupération de points|recuperation de points|sécurité routière|securite routiere|conduite accompagnée|conduite accompagnee|conduite supervisée|conduite supervisee)/.test(value)) return 'formation_enseignement';
   if (/(plomb|chauffag|électric|electric|maçon|macon|couvreur|menuis|carrel|peintre|charpent|construction|clim|serrur|bât|bat|travaux|renov|rénov|terrassement|façade|facade|isolation|plaquiste|placo|cuisiniste|cuisine sur mesure|agenceur|agencement|poseur de sols|poseur sols|parquet|étancheur|etancheur|étanchéité|etancheite)/.test(value)) return 'artisan_btp';
   if (/(assur|mutuelle|prévoyance|prevoyance|courtier en assurance|courtier assurance|agent général d’assurance|agent general d'assurance|agent general assurance|cabinet d’assurance|cabinet d'assurance|sinistre|responsabilité civile pro|responsabilite civile pro|rc pro)/.test(value)) return 'assurance';
   if (/(crèche|creche|micro-crèche|micro creche|soutien scolaire|cours particuliers|aide aux devoirs|école privée|ecole privee|coach scolaire|centre de loisirs|accueil de loisirs|périscolaire|periscolaire|projet pédagogique|projet pedagogique)/.test(value)) return 'education_enfance';
