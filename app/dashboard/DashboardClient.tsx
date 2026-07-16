@@ -1007,6 +1007,34 @@ useEffect(() => {
 }, []);
 
 useEffect(() => {
+  if (!canAccessPinterest || !pinterestConnected || pinterestUrl) return;
+
+  let cancelled = false;
+  void fetch("/api/integrations/pinterest/status?live=1", { cache: "no-store" })
+    .then(async (response) => {
+      if (!response.ok) return null;
+      return response.json().catch(() => null);
+    })
+    .then((status) => {
+      if (cancelled || !status?.ok) return;
+      const profileUrl = String(
+        status.publicProfileUrl || status.profileUrl || "",
+      ).trim();
+      if (!profileUrl) return;
+      setPinterestUrl(profileUrl);
+      mergeCachedDashboardChannelState({
+        pinterestConnected: true,
+        pinterestUrl: profileUrl,
+      });
+    })
+    .catch(() => null);
+
+  return () => {
+    cancelled = true;
+  };
+}, [canAccessPinterest, pinterestConnected, pinterestUrl]);
+
+useEffect(() => {
   let cancelled = false;
 
   if (!canAccessInrSearch) {
@@ -1449,7 +1477,7 @@ const loadSiteInrcy = useCallback(async () => {
   const pinterestObj = ((proSettingsObj as any)?.pinterest ?? {}) as any;
   const inrSearchObj = ((proSettingsObj as any)?.inrSearch ?? {}) as any;
   const youtubeShortsUrlValue = String(ytObj?.channelUrl ?? ytObj?.url ?? "");
-  const pinterestUrlValue = String(pinterestObj?.profileUrl ?? pinterestObj?.url ?? "");
+  const pinterestUrlValue = String(pinterestObj?.publicProfileUrl ?? pinterestObj?.profileUrl ?? pinterestObj?.url ?? "");
   const inrSearchSlug = String(inrSearchObj?.slug ?? "").trim();
   const inrSearchUrlValue = inrSearchObj?.enabled && inrSearchSlug
     ? `${getRuntimeInrSearchOrigin()}/entreprises/${inrSearchSlug}`
@@ -3149,7 +3177,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         url: linkedinUrl,
       },
       pinterest: {
-        connected: Boolean(canAccessPinterest && pinterestConnected && pinterestUrl),
+        connected: Boolean(canAccessPinterest && pinterestConnected),
         url: canAccessPinterest ? pinterestUrl : null,
       },
       mails: {

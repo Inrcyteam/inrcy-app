@@ -8,6 +8,7 @@ import {
   type AiPreferredEngine,
 } from "@/lib/aiEnginePreference";
 import { asRecord } from "@/lib/tsSafe";
+import { combineOpeningSchedule } from "@/lib/openingSchedule";
 
 export type AiLanguageCode = "fr" | "en" | "es" | "it" | "de" | "nl" | "pt";
 export type AiTone = "serious" | "warm" | "fun" | "premium" | "direct";
@@ -504,8 +505,13 @@ export function buildNormalizedAiGenerationProfile(
         ["intervention_zones", "intervention_zones_text", "zones"],
         10,
       ),
-      openingDays: cleanText(firstValue(activitySources, ["opening_days"]), 120),
-      openingHours: cleanText(firstValue(activitySources, ["opening_hours"]), 120),
+      // Profil canonique : tous les anciens et nouveaux formats deviennent un
+      // seul planning libre. openingDays reste vide pour éviter les doublons.
+      openingDays: "",
+      openingHours: combineOpeningSchedule(
+        firstValue(activitySources, ["opening_days"]),
+        firstValue(activitySources, ["opening_hours"]),
+      ),
       strengths: firstList(activitySources, ["strengths", "strengths_text"], 8),
       customerTypologies: firstList(
         activitySources,

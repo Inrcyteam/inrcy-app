@@ -5,6 +5,7 @@ import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
 import { useCallback, useEffect, useState } from "react";
 import { decodeBusinessSector } from "@/lib/activitySectors";
 import { createClient } from "@/lib/supabaseClient";
+import { combineOpeningSchedule } from "@/lib/openingSchedule";
 
 const REQUIRED_PROFILE_FIELDS = [
   "first_name",
@@ -23,8 +24,6 @@ const REQUIRED_PROFILE_FIELDS = [
 const REQUIRED_ACTIVITY_FIELDS = [
   "services",
   "intervention_zones",
-  "opening_days",
-  "opening_hours",
   "strengths",
   "customer_typologies",
 ] as const;
@@ -99,9 +98,16 @@ export function useDashboardCompletionChecks() {
     const hasSectorCategory = !!decodedSector.sectorCategory;
     const hasProfession = decodedSector.profession.trim().length > 0;
 
+    const hasOpeningSchedule =
+      combineOpeningSchedule(
+        businessRecord.opening_days,
+        businessRecord.opening_hours,
+      ).length > 0;
+
     const incomplete =
       !hasSectorCategory ||
       !hasProfession ||
+      !hasOpeningSchedule ||
       REQUIRED_ACTIVITY_FIELDS.some((field) => {
         const value = businessRecord[field];
         if (Array.isArray(value)) return value.filter(Boolean).length === 0;

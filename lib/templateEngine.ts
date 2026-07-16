@@ -1,5 +1,6 @@
 import { decodeBusinessSector, getActivitySectorLabel } from "@/lib/activitySectors";
 import { getJobLabel } from "@/lib/activityCatalog";
+import { combineOpeningSchedule } from "@/lib/openingSchedule";
 
 // Lightweight placeholder renderer for iNrCy templates.
 // Replaces {{key}} tokens with values derived from:
@@ -33,6 +34,7 @@ export function buildDefaultContext(args: {
   const decodedSector = decodeBusinessSector(b.sector);
   const profession = getJobLabel(decodedSector.sectorCategory, decodedSector.profession) || decodedSector.profession;
   const sectorCategoryLabel = getActivitySectorLabel(decodedSector.sectorCategory);
+  const openingSchedule = combineOpeningSchedule(b.opening_days, b.opening_hours);
 
   const nomEntreprise = String(p.company_legal_name || "").trim();
   const ville = String(p.hq_city || "").trim();
@@ -76,8 +78,10 @@ return {
     secteur_activite: sectorCategoryLabel,
     services,
     zones,
-    jours_ouverture: String(b.opening_days || "").trim(),
-    horaires_ouverture: String(b.opening_hours || "").trim(),
+    // jours_ouverture reste disponible pour les anciens modèles, mais tous les
+    // modèles actuels utilisent désormais le champ unifié horaires_ouverture.
+    jours_ouverture: openingSchedule,
+    horaires_ouverture: openingSchedule,
     forces: strengths,
     ton: String(b.tone || "").trim(),
     cta_preferee: String(b.preferred_cta || "").trim(),

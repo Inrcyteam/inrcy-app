@@ -7,6 +7,7 @@ import { extractInrBadgeUserIdFromSlug } from "@/lib/inrBadge";
 import { normalizeInrBadgeShareSettings } from "@/lib/inrBadgeSettings";
 import { getInrBadgeTexts, normalizeInrBadgeLanguage } from "@/lib/inrBadgeLanguage";
 import { getChannelConnectionStates } from "@/lib/channelConnectionState";
+import { fetchPinterestUserAccount, getPinterestAccessToken } from "@/lib/pinterestOAuth";
 import inrBadgeIcon from "@/public/icons/inrbadge-dashboard.png";
 import inrcyIcon from "@/public/icons/inrcy.png";
 import siteWebIcon from "@/public/icons/site-web.jpg";
@@ -44,14 +45,6 @@ function trim(value: unknown) {
 
 function safeObj(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
-}
-
-function listFromUnknown(value: unknown) {
-  if (Array.isArray(value)) return value.map((item) => trim(item)).filter(Boolean);
-  return trim(value)
-    .split(/\n|,|;/)
-    .map((item) => item.trim())
-    .filter(Boolean);
 }
 
 function normalizeUrl(value: unknown) {
@@ -286,7 +279,7 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
       .maybeSingle(),
     supabaseAdmin
       .from("business_profiles")
-      .select("business_description,services,intervention_zones,opening_days,opening_hours,strengths")
+      .select("business_description")
       .eq("user_id", userId)
       .order("updated_at", { ascending: false })
       .limit(1)
@@ -344,11 +337,6 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
   const city = trim(profile.hq_city);
   const country = trim(profile.hq_country) || "France";
   const description = trim(business.business_description);
-  const services = listFromUnknown(business.services).length ? listFromUnknown(business.services) : listFromUnknown(business.services_text);
-  const zones = listFromUnknown(business.intervention_zones).length ? listFromUnknown(business.intervention_zones) : listFromUnknown(business.intervention_zones_text);
-  const strengths = listFromUnknown(business.strengths).length ? listFromUnknown(business.strengths) : listFromUnknown(business.strengths_text);
-  const openingDays = trim(business.opening_days);
-  const openingHours = trim(business.opening_hours);
 
   const siteWebSettings = safeObj(toolSettings.site_web);
   const gmbSettings = safeObj(toolSettings.gmb);
@@ -378,7 +366,14 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
     (instagramUsername ? `https://www.instagram.com/${instagramUsername}/` : ""),
   );
   const linkedinUrl = normalizeUrl(channelStates.linkedin.organization_url || channelStates.linkedin.profile_url || linkedinSettings.orgUrl || linkedinSettings.profileUrl || linkedinSettings.url);
-  const pinterestUrl = normalizeUrl(channelStates.pinterest.profile_url || pinterestSettings.profileUrl || pinterestSettings.url);
+  let pinterestUrl = normalizeUrl(channelStates.pinterest.profile_url || pinterestSettings.publicProfileUrl || pinterestSettings.profileUrl || pinterestSettings.url);
+  if (shareSettings.pinterest && channelStates.pinterest.connected && !pinterestUrl) {
+    const pinterestAccessToken = await getPinterestAccessToken(userId).catch(() => "");
+    if (pinterestAccessToken) {
+      const pinterestAccount = await fetchPinterestUserAccount(pinterestAccessToken).catch(() => null);
+      pinterestUrl = normalizeUrl(pinterestAccount?.profileUrl);
+    }
+  }
   const tiktokUrl = normalizeUrl(channelStates.tiktok.profile_url || tiktokSettings.url);
   const youtubeShortsUrl = normalizeUrl(channelStates.youtube_shorts.channel_url || youtubeShortsSettings.channelUrl || youtubeShortsSettings.url);
   const primaryWebsite = siteWebUrl || siteInrcyUrl;
@@ -527,28 +522,6 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
             </div>
           ) : null}
 
-          {(openingDays || openingHours || zones.length > 0) ? (
-            <div className={styles.infoGrid}>
-              {(openingDays || openingHours) ? (
-                <div className={styles.infoItem}>
-                  <strong>{badgeText.openingHours}</strong>
-                  {[openingDays, openingHours].filter(Boolean).join(" · ")}
-                </div>
-              ) : null}
-              {zones.length > 0 ? (
-                <div className={styles.infoItem}>
-                  <strong>{badgeText.interventionZones}</strong>
-                  {zones.slice(0, 8).join(", ")}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
-
-          {(services.length > 0 || strengths.length > 0) ? (
-            <div className={styles.services}>
-              {[...services.slice(0, 8), ...strengths.slice(0, 4)].slice(0, 10).map((item) => <span key={item}>{item}</span>)}
-            </div>
-          ) : null}
         </div>
 
         <div className={styles.footer}>

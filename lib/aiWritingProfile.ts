@@ -1,5 +1,6 @@
 import { getAiEngineOption, type AiPreferredEngine } from "@/lib/aiEnginePreference";
 import { applyAiEngineTemperatureCalibration } from "@/lib/aiEngineCalibration";
+import { buildOpeningScheduleAiInstruction } from "@/lib/openingSchedule";
 import {
   normalizeAiGenerationSource,
   normalizeAiLanguageCode,
@@ -352,6 +353,7 @@ export function buildCompactAiWritingDirective(
     `LIBERTÉ : ${getCreativeLatitude(normalized)}`,
     "ARBITRAGE : phrase libre = mission ; médias = preuves/contextes ; Configuration IA = préférences du pro et direction éditoriale visible ; personnalité du moteur = manière d'écrire.",
     "RÈGLES DURES : vérité, langue, canal, format, consigne explicite du pro, pronom, tutoiement/vouvoiement et interdits personnalisés.",
+    buildOpeningScheduleAiInstruction(normalized),
     "PRÉFÉRENCES SOUPLES MAIS VISIBLES : ton, style, intensité commerciale, objectif, emojis, angle, CTA, longueur et exemple aimé doivent influencer concrètement le résultat sans imposer de gabarit ni devenir des motifs de rejet technique.",
     ...visiblePreferenceDirectives.map((directive) => `EXÉCUTION CONFIG IA : ${directive}`),
     "Choisis librement accroche, rythme, narration, ordre des idées et structure. N'imite aucun autre moteur et n'applique pas une recette iNrCy uniforme.",
@@ -394,6 +396,7 @@ export function buildAiWritingProfileRules(
     "- Pour les emails : rester lisible, humain et prêt à envoyer. Choisir librement salutation, transition, CTA et formule de fin selon la mission ; ne pas forcer quatre blocs identiques à chaque génération.",
     "- Respecter l'angle préféré quand il sert le sujet ; l'ignorer s'il rend le texte artificiel ou détourne l'intention.",
     "- Respecter les éléments à éviter absolument, sauf si cela contredit une obligation de vérité, de conformité ou de sécurité.",
+    buildOpeningScheduleAiInstruction(normalized),
     "- Ne jamais réécrire un bon texte uniquement pour le faire rentrer dans un gabarit éditorial. La singularité naturelle du moteur est une qualité tant que les règles dures sont respectées.",
   ].join("\n");
 }

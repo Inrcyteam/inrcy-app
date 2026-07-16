@@ -7,6 +7,7 @@ import { resolveProfileLogoUrl } from "@/lib/profileLogo";
 import { createInrBadgePublicUrl, createInrBadgeQrTrackingUrl } from "@/lib/inrBadge";
 import { resolveFrenchGeography } from "@/lib/frenchGeography";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { combineOpeningSchedule } from "@/lib/openingSchedule";
 
 export type InrSearchSectionKey =
   | "identity"
@@ -566,8 +567,8 @@ async function loadInrSearchPublicPageUncached(slug: string): Promise<InrSearchP
       zones: ["Arras", "Béthune", "Lens", "Liévin", "Douai", "Carvin"],
       strengths: ["Créatif", "Réactif", "Sérieux", "Efficace", "Proche", "À l’écoute"],
       customerTypes: ["professionnels", "collectivités", "associations"],
-      openingDays: "Lundi–vendredi",
-      openingHours: "8h00–18h00",
+      openingDays: "",
+      openingHours: "Lundi–vendredi : 8h00–18h00",
       websiteUrl: "https://inrcy.com",
       googleBusinessUrl: "https://www.google.com/maps",
       socialLinks: [
@@ -704,8 +705,11 @@ async function loadInrSearchPublicPageUncached(slug: string): Promise<InrSearchP
   const zones = listFromUnknown(Array.isArray(business.intervention_zones) ? business.intervention_zones : business.intervention_zones_text);
   const strengths = listFromUnknown(Array.isArray(business.strengths) ? business.strengths : business.strengths_text);
   const customerTypes = listFromUnknown(business.customer_typologies);
-  const openingDays = clean(business.opening_days, 160);
-  const openingHours = clean(business.opening_hours, 160);
+  const openingDays = "";
+  const openingHours = combineOpeningSchedule(
+    business.opening_days,
+    business.opening_hours,
+  );
   const description = clean(config.pageDescription, 500)
     || clean(business.business_description || business.activity_description, 3000)
     || `${companyName}${profession ? `, ${profession.toLowerCase()}` : ""}${city ? ` à ${city}` : ""}.`;

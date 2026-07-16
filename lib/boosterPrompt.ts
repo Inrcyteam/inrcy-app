@@ -363,8 +363,10 @@ function buildCompactBusinessPayload(profile: NormalizedAiGenerationProfile) {
     zones: cleanList(business.interventionZones, 6, 80),
     forces: cleanList(business.strengths, 5, 80),
     clienteles: cleanList(business.customerTypologies, 5, 60),
-    jours: cleanText(business.openingDays, 80),
-    horaires: cleanText(business.openingHours, 80),
+    jours_et_horaires_ouverture: cleanText(
+      business.openingHours || business.openingDays,
+      1_200,
+    ),
     telephone: cleanText(business.phone, 60),
     email: cleanText(business.email, 100),
   });

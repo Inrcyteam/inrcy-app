@@ -51,6 +51,7 @@ type PinterestSettings = {
   accountName: string;
   username: string;
   profileUrl: string;
+  publicProfileUrl: string;
   preferredMedia: "image" | "video" | "auto";
   autoHashtags: boolean;
   boards: PinterestBoard[];
@@ -66,6 +67,7 @@ const DEFAULT_SETTINGS: PinterestSettings = {
   accountName: "",
   username: "",
   profileUrl: "",
+  publicProfileUrl: "",
   preferredMedia: "auto",
   autoHashtags: true,
   boards: [],
@@ -244,7 +246,14 @@ function mergeSettings(
   const liveBoards = normalizeBoards(status.boards);
   const boards = liveBoards.length > 0 ? liveBoards : saved.boards;
   const accountConnected = Boolean(status.connected);
-  const profileUrl = String(status.profileUrl || "");
+  const hasPublicProfileUrl = Object.prototype.hasOwnProperty.call(status, "publicProfileUrl");
+  const publicProfileUrl = hasPublicProfileUrl
+    ? String(status.publicProfileUrl || "")
+    : saved.publicProfileUrl;
+  const hasProfileUrl = Object.prototype.hasOwnProperty.call(status, "profileUrl");
+  const profileUrl = hasProfileUrl
+    ? String(status.profileUrl || publicProfileUrl || "")
+    : String(publicProfileUrl || saved.profileUrl || "");
   return {
     ...saved,
     connected: accountConnected,
@@ -254,7 +263,8 @@ function mergeSettings(
       status.accountName || status.username || saved.accountName || "",
     ),
     username: String(status.username || saved.username || ""),
-    profileUrl: profileUrl || saved.profileUrl,
+    profileUrl,
+    publicProfileUrl,
     boards,
     defaultBoardId: String(
       status.defaultBoardId || saved.defaultBoardId || "",
@@ -270,7 +280,7 @@ function emitDashboardUpdate(settings: PinterestSettings) {
     new CustomEvent("inrcy:pinterest-settings-updated", {
       detail: {
         connected: settings.connected,
-        profileUrl: settings.profileUrl,
+        profileUrl: settings.publicProfileUrl || settings.profileUrl,
         accountName: settings.accountName || settings.username,
       },
     }),
@@ -289,6 +299,8 @@ export default function PinterestSettingsContent() {
   const [editingBoardName, setEditingBoardName] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [profileLinkDraft, setProfileLinkDraft] = useState("");
+  const [savingProfileLink, setSavingProfileLink] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -324,6 +336,10 @@ export default function PinterestSettingsContent() {
   useEffect(() => {
     cachePinterestSettings(settings);
   }, [settings]);
+
+  useEffect(() => {
+    setProfileLinkDraft(settings.publicProfileUrl || "");
+  }, [settings.publicProfileUrl]);
 
   const connectPinterest = useCallback(() => {
     if (typeof window === "undefined") return;
@@ -385,7 +401,12 @@ export default function PinterestSettingsContent() {
       })
       .then((status) => {
         if (cancelled || !status?.ok) return;
-        setSettings((current) => mergeSettings(current, status));
+        setSettings((current) => {
+          const nextSettings = mergeSettings(current, status);
+          cachePinterestSettings(nextSettings);
+          emitDashboardUpdate(nextSettings);
+          return nextSettings;
+        });
       })
       .catch(() => null);
 
@@ -595,6 +616,40 @@ export default function PinterestSettingsContent() {
     }
   }, []);
 
+  const savePublicProfileUrl = useCallback(async () => {
+    setSavingProfileLink(true);
+    setNotice(null);
+    setError(null);
+    try {
+      const response = await fetch("/api/integrations/pinterest/preferences", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ publicProfileUrl: profileLinkDraft }),
+      });
+      const json = await response.json().catch(() => ({}));
+      if (!response.ok || !json?.ok) {
+        throw new Error(String(json?.error || "Enregistrement du lien Pinterest impossible."));
+      }
+      const publicProfileUrl = String(json.publicProfileUrl || "");
+      setSettings((current) => {
+        const next = {
+          ...current,
+          publicProfileUrl,
+          profileUrl: publicProfileUrl || current.profileUrl,
+        };
+        cachePinterestSettings(next);
+        emitDashboardUpdate(next);
+        return next;
+      });
+      setProfileLinkDraft(publicProfileUrl);
+      setNotice(publicProfileUrl ? "Lien public Pinterest enregistré." : "Lien public Pinterest supprimé.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Enregistrement du lien Pinterest impossible.");
+    } finally {
+      setSavingProfileLink(false);
+    }
+  }, [profileLinkDraft]);
+
   const disconnectPinterest = useCallback(async () => {
     setSyncing(true);
     setNotice(null);
@@ -613,7 +668,8 @@ export default function PinterestSettingsContent() {
         mode: "manual" as const,
         accountName: "",
         username: "",
-        profileUrl: "",
+        profileUrl: settings.publicProfileUrl || "",
+        publicProfileUrl: settings.publicProfileUrl,
         boards: [],
         defaultBoardId: "",
         scopes: "",
@@ -717,6 +773,43 @@ export default function PinterestSettingsContent() {
             disabled={loading || !settings.accountConnected}
           />
         </div>
+
+        {settings.accountConnected ? (
+          <div style={{ display: "grid", gap: 7 }}>
+            <label style={{ color: "rgba(255,255,255,0.88)", fontSize: 13, fontWeight: 750 }}>
+              Lien public de votre profil Pinterest
+            </label>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <input
+                style={{ ...inputStyle, flex: "1 1 280px" }}
+                value={profileLinkDraft}
+                onChange={(event) => setProfileLinkDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    void savePublicProfileUrl();
+                  }
+                }}
+                placeholder="https://www.pinterest.fr/votre-profil/"
+                disabled={savingProfileLink || loading}
+                inputMode="url"
+                autoComplete="url"
+              />
+              <button
+                type="button"
+                className={`${styles.actionBtn} ${styles.pinterestConfigActionBtn} ${styles.connectBtn}`}
+                onClick={() => void savePublicProfileUrl()}
+                disabled={savingProfileLink || loading}
+                style={{ flex: "0 0 auto" }}
+              >
+                {savingProfileLink ? "Enregistrement..." : "Enregistrer le lien"}
+              </button>
+            </div>
+            <small style={{ color: "rgba(255,255,255,0.58)", fontSize: 12 }}>
+              Ce lien permet d’afficher Pinterest dans iNr’Badge.
+            </small>
+          </div>
+        ) : null}
 
         <div
           style={{

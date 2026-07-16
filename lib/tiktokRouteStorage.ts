@@ -1,6 +1,7 @@
 import "server-only";
 
 import { normalizeTiktokSettings, type TiktokSettings } from "@/lib/tiktokSettings";
+import { buildTiktokProfileUrl } from "@/lib/tiktokOAuth";
 
 type IntegrationLite = {
   status?: string | null;
@@ -89,7 +90,7 @@ export function applyTiktokIntegrationState(settings: unknown, integration: unkn
 
   const rawUsername = asString(meta.username) || asString(row.resource_label) || base.username;
   const username = rawUsername ? withAtUsername(rawUsername.replace(/^@+/, "")) : base.username;
-  const profileUrl = base.profileUrl || asString(meta.profile_url);
+  const profileUrl = base.profileUrl || asString(meta.profile_url) || buildTiktokProfileUrl(username);
 
   return {
     ...base,

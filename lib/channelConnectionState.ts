@@ -3,6 +3,7 @@ import { getConnectionDisplayStatus, mailConnectionKind, type ConnectionDisplayS
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { hasActiveInrcySite } from "@/lib/inrcySite";
 import { normalizeTiktokSettings } from "@/lib/tiktokSettings";
+import { buildTiktokProfileUrl } from "@/lib/tiktokOAuth";
 import { applyYoutubeShortsIntegrationState } from "@/lib/youtubeShortsOAuth";
 
 type JsonRecord = Record<string, unknown>;
@@ -317,7 +318,7 @@ export async function getChannelConnectionStates(
     : getConnectionDisplayStatus(tiktokConnected, "channel:tiktok", tkMeta);
   const tiktokRequiresUpdate = tiktokConnectionStatus === "needs_update";
   const tiktokUsername = tiktokConnected ? (asString(tkMeta.username) || asString(tk.resource_label) || tiktokSettings.username || null) : null;
-  const tiktokProfileUrl = tiktokConnected ? (asString(tkMeta.profile_url) || tiktokSettings.profileUrl || null) : null;
+  const tiktokProfileUrl = tiktokConnected ? (asString(tkMeta.profile_url) || tiktokSettings.profileUrl || buildTiktokProfileUrl(tiktokUsername) || null) : null;
 
   const yt = latestIntegration(rows, "youtube", "youtube_shorts", "youtube_shorts");
   const ytMeta = asRecord(yt.meta);
@@ -475,10 +476,10 @@ export async function getChannelConnectionStates(
       expired: pinterestExpired,
       requiresUpdate: false,
       connection_status: pinterestConnected ? "connected" : "disconnected",
-      // Profil et tableaux Pinterest sont lus en direct via /api/integrations/pinterest/status.
+      // Le lien public est renseigné par le professionnel et reste indépendant des données API Pinterest.
       resource_id: pinterestDefaultBoardId,
       username: null,
-      profile_url: null,
+      profile_url: asString(pinterestSettings.publicProfileUrl) || null,
       default_board_id: pinterestDefaultBoardId,
       default_board_name: pinterestDefaultBoardName,
     },

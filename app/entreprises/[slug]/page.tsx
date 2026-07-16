@@ -21,6 +21,7 @@ import InrSearchContactOrbit from "./InrSearchContactOrbit";
 import InrSearchVisualIdentity from "./InrSearchVisualIdentity";
 import InrSearchSocialOrbit from "./InrSearchSocialOrbit";
 import InrSearchStrengthsOrbit from "./InrSearchStrengthsOrbit";
+import { buildOpeningHoursSpecifications } from "@/lib/openingSchedule";
 import {
   buildInrSearchFallbackPalette,
   inferInrSearchVisualTheme,
@@ -438,31 +439,9 @@ function safeJsonLd(value: unknown) {
 }
 
 function buildOpeningHoursSpecification(data: InrSearchPublicPageData) {
-  const dayNames = [
-    ["lundi", "Monday"],
-    ["mardi", "Tuesday"],
-    ["mercredi", "Wednesday"],
-    ["jeudi", "Thursday"],
-    ["vendredi", "Friday"],
-    ["samedi", "Saturday"],
-    ["dimanche", "Sunday"],
-  ] as const;
-  const normalizedDays = data.openingDays.toLocaleLowerCase("fr-FR");
-  const days = dayNames
-    .filter(([label]) => normalizedDays.includes(label))
-    .map(([, schemaDay]) => `https://schema.org/${schemaDay}`);
-  const match = data.openingHours.match(
-    /(\d{1,2})\s*h?\s*(\d{2})?\s*(?:-|–|à|a)\s*(\d{1,2})\s*h?\s*(\d{2})?/i,
+  return buildOpeningHoursSpecifications(
+    [data.openingDays, data.openingHours].filter(Boolean).join("\n"),
   );
-  if (!days.length || !match) return undefined;
-  const time = (hour: string, minute?: string) =>
-    `${hour.padStart(2, "0")}:${(minute || "00").padStart(2, "0")}`;
-  return {
-    "@type": "OpeningHoursSpecification",
-    dayOfWeek: days,
-    opens: time(match[1], match[2]),
-    closes: time(match[3], match[4]),
-  };
 }
 
 function normalizeStructuredPhone(value: string) {

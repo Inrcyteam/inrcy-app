@@ -401,7 +401,7 @@ const fideliserInformationsSeeds: VariantSeed[] = [
       'Bonjour,\n\n' +
       'Voici un point utile concernant notre activité.\n\n' +
       '📍 Zone : {{zones}}\n' +
-      '🕒 Horaires : {{jours_ouverture}} — {{horaires_ouverture}}\n' +
+      '🕒 Horaires : {{horaires_ouverture}}\n' +
       '🧩 Prestations : {{services}}\n\n' +
       'Si vous avez une question : {{telephone}}\n\n' +
       'Bien à vous,\n{{prenom}} — {{nom_entreprise}}',

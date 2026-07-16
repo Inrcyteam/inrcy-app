@@ -13,7 +13,7 @@ import {
   getPinterestApiEnvironment,
   getPinterestIntegration,
 } from "@/lib/pinterestOAuth";
-import { getPinterestDefaultBoardId } from "@/lib/pinterestPreferences";
+import { getPinterestDefaultBoardId, getPinterestPublicProfileUrl } from "@/lib/pinterestPreferences";
 import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 
 export async function GET(request: Request) {
@@ -34,10 +34,11 @@ export async function GET(request: Request) {
       return bubbleAccessDisabledResponse("Pinterest");
     }
 
-    const [states, integrationRaw, defaultBoardId] = await Promise.all([
+    const [states, integrationRaw, defaultBoardId, publicProfileUrl] = await Promise.all([
       getChannelConnectionStates(supabase, activeUserId),
       getPinterestIntegration(activeUserId).catch(() => ({})),
       getPinterestDefaultBoardId(activeUserId).catch(() => ""),
+      getPinterestPublicProfileUrl(activeUserId).catch(() => ""),
     ]);
     const integration = asRecord(integrationRaw);
     const connected = Boolean(
@@ -69,7 +70,8 @@ export async function GET(request: Request) {
       status: connected ? "connected" : states.pinterest.connection_status,
       accountName: account?.displayName || account?.username || null,
       username: account?.username || null,
-      profileUrl: account?.profileUrl || null,
+      profileUrl: account?.profileUrl || publicProfileUrl || null,
+      publicProfileUrl: publicProfileUrl || null,
       boards: [],
       defaultBoardId: connected ? defaultBoardId : "",
       apiEnvironment: getPinterestApiEnvironment(),

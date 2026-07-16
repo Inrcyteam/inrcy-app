@@ -340,7 +340,7 @@ const BASE_TEMPLATES: TemplateDef[] = [
       "🔎 Pourquoi c’est pertinent avec notre métier ({{secteur}})\n" +
       "Nous intervenons régulièrement sur : {{services}}. Ce produit complète très bien ces prestations et permet d’obtenir un résultat plus durable.\n\n" +
       "📍 Disponible sur : {{zones}}\n" +
-      "🕒 Horaires : {{jours_ouverture}} — {{horaires_ouverture}}\n\n" +
+      "🕒 Horaires : {{horaires_ouverture}}\n\n" +
       "Pour en profiter : {{cta_url}}\n\n" +
       "Notre objectif reste toujours le même : proposer une solution utile, claire et durable à nos clients.\n\n" +
       "{{prenom}} — {{nom_entreprise}}\nTél : {{telephone}}",
@@ -411,7 +411,7 @@ const BASE_TEMPLATES: TemplateDef[] = [
       "✅ Idéal si vous recherchez : {{services}}\n\n" +
       "Pour réserver un créneau : {{cta_url}}\n" +
       "Cette offre est proposée dans la limite des créneaux actuellement disponibles.\n" +
-      "Horaires : {{jours_ouverture}} — {{horaires_ouverture}}\n\n" +
+      "Horaires : {{horaires_ouverture}}\n\n" +
       "{{nom_entreprise}} — {{telephone}}",
     ctaLabel: "{{cta_label}}",
   },
@@ -545,7 +545,7 @@ const BASE_TEMPLATES: TemplateDef[] = [
       "• Ce que ça apporte : [bénéfice principal] \n" +
       "• Comment ça se déroule : [étapes] \n\n" +
       "📍 Zone d’intervention : {{zones}}\n" +
-      "🕒 Horaires : {{jours_ouverture}} — {{horaires_ouverture}}\n\n" +
+      "🕒 Horaires : {{horaires_ouverture}}\n\n" +
       "👉 En savoir plus / réserver : {{cta_url}}\n\n" +
       "{{prenom}} — {{nom_entreprise}}",
     ctaLabel: "{{cta_label}}",
@@ -708,7 +708,7 @@ const BASE_TEMPLATES: TemplateDef[] = [
       "🔎 Si vous pouvez, dites-nous simplement :\n" +
       "1) Est-ce que le résultat est conforme à vos attentes ?\n" +
       "2) Avez-vous une question / un point à ajuster ?\n\n" +
-      "Nous restons disponibles sur {{zones}} ({{jours_ouverture}} — {{horaires_ouverture}}).\n\n" +
+      "Nous restons disponibles sur {{zones}} ({{horaires_ouverture}}).\n\n" +
       "Réponse rapide par mail, ou par téléphone : {{telephone}}\n\n" +
       "{{prenom}} — {{nom_entreprise}}",
   },
