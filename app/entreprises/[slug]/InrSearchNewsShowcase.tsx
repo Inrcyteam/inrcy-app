@@ -241,6 +241,8 @@ export default function InrSearchNewsShowcase({ companyName, publications }: Pro
                   <div className={styles.newsOrbitModalMedia}>
                     <video
                       controls
+                      autoPlay
+                      muted
                       playsInline
                       preload="metadata"
                       poster={activePublication.videoThumbnailUrl || activePublication.imageUrl || undefined}
