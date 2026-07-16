@@ -218,7 +218,10 @@ export async function recordInrBadgeEvent(supabase: SupabaseLike, input: {
       };
       const { error } = await supabase
         .from("inrbadge_events")
-        .insert(dailyPayload);
+        .upsert(dailyPayload, {
+          onConflict: "id",
+          ignoreDuplicates: true,
+        });
       if (error) {
         if (isUniqueViolation(error)) {
           const { data: racedDailyVisit, error: raceLookupError } = await supabase

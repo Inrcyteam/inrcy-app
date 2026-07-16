@@ -240,19 +240,19 @@ export default function InrSearchNewsShowcase({ companyName, publications }: Pro
                 {activePublication.videoUrl ? (
                   <div className={styles.newsOrbitModalMedia}>
                     <video
+                      key={activePublication.id}
                       controls
-                      autoPlay
-                      muted
                       playsInline
                       preload="metadata"
                       poster={activePublication.videoThumbnailUrl || activePublication.imageUrl || undefined}
+                      aria-label={`Vidéo de l’actualité ${activePublication.title}`}
                     >
                       <source src={activePublication.videoUrl} type={activePublication.videoMime || "video/mp4"} />
                     </video>
                     <span />
                   </div>
                 ) : activePublication.imageUrl ? (
-                  <div className={styles.newsOrbitModalMedia}><Image src={activePublication.imageUrl} alt={`${activePublication.title} – ${companyName}`} width={1800} height={1200} sizes="86vw" unoptimized /><span /></div>
+                  <div className={styles.newsOrbitModalMedia}><Image key={activePublication.id} src={activePublication.imageUrl} alt={`${activePublication.title} – ${companyName}`} width={1800} height={1200} sizes="(max-width: 920px) 94vw, 70vw" unoptimized /><span /></div>
                 ) : null}
                 <div className={styles.newsOrbitModalContent}>
                   <span className={styles.newsOrbitModalKicker}>Actualité de {companyName}</span>
