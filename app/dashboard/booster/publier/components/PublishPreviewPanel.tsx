@@ -50,15 +50,14 @@ export default function PublishPreviewPanel({
     >
       <div
         style={{
-          display: isMobile ? "grid" : "flex",
-          gridTemplateColumns: isMobile ? "1fr" : undefined,
+          display: "grid",
+          gridTemplateColumns: "minmax(0, 1fr) auto",
+          gridTemplateRows: "auto auto",
           alignItems: "center",
-          justifyContent: "space-between",
           gap: 12,
-          flexWrap: isMobile ? undefined : "wrap",
         }}
       >
-        <div style={{ minWidth: 0, width: isMobile ? "100%" : undefined }}>
+        <div style={{ display: "contents" }}>
           <div
             className={styles.blockTitle}
             style={{
@@ -66,6 +65,9 @@ export default function PublishPreviewPanel({
               display: "inline-flex",
               alignItems: "center",
               gap: 8,
+              gridColumn: 1,
+              gridRow: 1,
+              minWidth: 0,
             }}
           >
             <span
@@ -91,24 +93,19 @@ export default function PublishPreviewPanel({
           <div
             className={styles.subtitle}
             style={{
-              display: isMobile ? "grid" : "flex",
-              gridTemplateColumns: isMobile
-                ? "repeat(2, minmax(0, 1fr))"
-                : undefined,
-              gap: 6,
-              flexWrap: isMobile ? undefined : "wrap",
-              overflowX: "hidden",
+              display: "grid",
+              gridTemplateColumns: "repeat(10, minmax(0, 1fr))",
+              gap: isMobile ? 2 : 6,
               width: "100%",
               maxWidth: "100%",
               paddingBottom: 2,
               marginBottom: 0,
+              minWidth: 0,
+              gridColumn: "1 / -1",
+              gridRow: 2,
             }}
           >
-            {previewReadinessTabs.map((tab, index) => {
-              const isLastOddMobileItem =
-                isMobile &&
-                index === previewReadinessTabs.length - 1 &&
-                previewReadinessTabs.length % 2 === 1;
+            {previewReadinessTabs.map((tab) => {
               const previewStatusStyle =
                 tab.tone === "ready"
                   ? {
@@ -158,18 +155,18 @@ export default function PublishPreviewPanel({
                                 : "0 0 0 1px rgba(250,204,21,0.26) inset, 0 0 0 1px rgba(250,204,21,0.20), 0 0 18px rgba(250,204,21,0.16)",
                         }
                       : {}),
-                    padding: "6px 10px",
-                    fontSize: 11,
+                    width: "100%",
+                    boxSizing: "border-box",
+                    padding: isMobile ? "0 3px" : "0 6px",
+                    fontSize: "clamp(8px, 0.78vw, 11px)",
                     whiteSpace: "nowrap",
-                    flex: isMobile ? undefined : "0 0 auto",
-                    width: isMobile ? (isLastOddMobileItem ? "calc(50% - 3px)" : "100%") : undefined,
-                    gridColumn: isLastOddMobileItem ? "1 / -1" : undefined,
-                    justifySelf: isLastOddMobileItem ? "center" : undefined,
                     minWidth: 0,
-                    minHeight: isMobile ? 32 : undefined,
+                    minHeight: isMobile ? 30 : 34,
                     display: "inline-flex",
                     alignItems: "center",
                     justifyContent: "center",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
                   }}
                 >
                   {tab.label}
@@ -183,7 +180,12 @@ export default function PublishPreviewPanel({
           className={styles.secondaryBtn}
           onClick={() => setShowPublicationPreview((visible) => !visible)}
           aria-expanded={showPublicationPreview}
-          style={isMobile ? { width: "100%", justifyContent: "center" } : undefined}
+          style={{
+            gridColumn: 2,
+            gridRow: 1,
+            justifyContent: "center",
+            whiteSpace: "nowrap",
+          }}
         >
           {showPublicationPreview ? "Masquer" : "Afficher"}
         </button>

@@ -15616,3 +15616,31 @@
     bottom: 34px !important;
   }
 }
+
+.newsOrbitFocusMedia > video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  transition: transform .7s cubic-bezier(.2,.7,.2,1), filter .5s ease;
+}
+
+.newsOrbitFocus:hover .newsOrbitFocusMedia > video {
+  transform: scale(1.055);
+  filter: saturate(1.08) contrast(1.03);
+}
+
+.newsOrbitSecondaryCard > span video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+
+.newsOrbitModalMedia video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  background: #050b20;
+}

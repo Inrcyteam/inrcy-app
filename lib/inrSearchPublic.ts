@@ -30,6 +30,9 @@ export type InrSearchPublication = {
   title: string;
   content: string;
   imageUrl: string | null;
+  videoUrl: string | null;
+  videoMime: string;
+  videoThumbnailUrl: string | null;
   createdAt: string | null;
 };
 
@@ -334,6 +337,36 @@ function publicationImageUrl(payload: Record<string, unknown>, post: Record<stri
   return firstImageUrl(candidates);
 }
 
+function publicationVideoUrl(payload: Record<string, unknown>, post: Record<string, unknown>) {
+  const video = asRecord(post.video || payload.video);
+  const candidates = [
+    video.publicUrl,
+    video.public_url,
+    video.url,
+    payload.videoUrl,
+    payload.video_url,
+  ];
+  for (const candidate of candidates) {
+    const url = normalizeExternalUrl(candidate);
+    if (url) return url;
+  }
+  return null;
+}
+
+function publicationVideoMime(payload: Record<string, unknown>, post: Record<string, unknown>) {
+  const video = asRecord(post.video || payload.video);
+  return clean(video.type || video.mime || payload.video_mime || "video/mp4", 120) || "video/mp4";
+}
+
+function publicationVideoThumbnailUrl(payload: Record<string, unknown>, post: Record<string, unknown>) {
+  const video = asRecord(post.video || payload.video);
+  return firstImageUrl([
+    video.thumbnailUrl,
+    video.thumbnail_url,
+    payload.video_thumbnail_url,
+  ]);
+}
+
 function hasLivePublicationChannel(payload: Record<string, unknown>) {
   const result = asRecord(asRecord(payload.results).inr_search);
   if (!Object.keys(result).length) return false;
@@ -363,12 +396,17 @@ function normalizeBoosterPublicationEvents(value: unknown): InrSearchPublication
     const content = clean(preferredPost.content || preferredPost.text || fallbackPost.content || fallbackPost.text, 2400);
     if (!title && !content) continue;
 
+    const videoUrl = publicationVideoUrl(payload, preferredPost);
+
     seen.add(publicationId);
     publications.push({
       id: publicationId,
       title: title || "Actualité",
       content,
       imageUrl: publicationImageUrl(payload, preferredPost),
+      videoUrl,
+      videoMime: publicationVideoMime(payload, preferredPost),
+      videoThumbnailUrl: publicationVideoThumbnailUrl(payload, preferredPost),
       createdAt: clean(record.created_at, 80) || null,
     });
     if (publications.length >= 10) break;
@@ -542,9 +580,9 @@ async function loadInrSearchPublicPageUncached(slug: string): Promise<InrSearchP
         { key: "youtube", label: "YouTube", url: "https://www.youtube.com" },
       ],
       publications: [
-        { id: "preview-news-1", title: "iNr’Search donne une nouvelle gravité à votre présence en ligne", content: "Votre profil, vos expertises, vos réalisations et vos actualités se rejoignent désormais dans un parcours spectaculaire, lisible et conçu pour convertir.", imageUrl: "/icons/inr-search-logo.png", createdAt: "2026-07-11T09:00:00.000Z" },
-        { id: "preview-news-2", title: "Publiez une fois, rayonnez partout", content: "Les contenus envoyés depuis Booster Publier alimentent automatiquement la chronologie iNr’Search et montrent une entreprise réellement active.", imageUrl: "/icons/inr-search-bubble.png", createdAt: "2026-07-09T09:00:00.000Z" },
-        { id: "preview-news-3", title: "iNrBadge devient votre passeport de confiance", content: "Un QR code immédiatement accessible rassemble les informations essentielles et facilite le passage de la découverte au contact.", imageUrl: "/icons/inrbadge-dashboard.png", createdAt: "2026-07-06T09:00:00.000Z" },
+        { id: "preview-news-1", title: "iNr’Search donne une nouvelle gravité à votre présence en ligne", content: "Votre profil, vos expertises, vos réalisations et vos actualités se rejoignent désormais dans un parcours spectaculaire, lisible et conçu pour convertir.", imageUrl: "/icons/inr-search-logo.png", videoUrl: null, videoMime: "video/mp4", videoThumbnailUrl: null, createdAt: "2026-07-11T09:00:00.000Z" },
+        { id: "preview-news-2", title: "Publiez une fois, rayonnez partout", content: "Les contenus envoyés depuis Booster Publier alimentent automatiquement la chronologie iNr’Search et montrent une entreprise réellement active.", imageUrl: "/icons/inr-search-bubble.png", videoUrl: null, videoMime: "video/mp4", videoThumbnailUrl: null, createdAt: "2026-07-09T09:00:00.000Z" },
+        { id: "preview-news-3", title: "iNrBadge devient votre passeport de confiance", content: "Un QR code immédiatement accessible rassemble les informations essentielles et facilite le passage de la découverte au contact.", imageUrl: "/icons/inrbadge-dashboard.png", videoUrl: null, videoMime: "video/mp4", videoThumbnailUrl: null, createdAt: "2026-07-06T09:00:00.000Z" },
       ],
       media: [
         { id: "preview-media-1", title: "L’univers iNr’Search", url: "/icons/inr-search-logo.png" },

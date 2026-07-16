@@ -431,17 +431,12 @@ export default function PublishImagesPanel({
         <div style={{ display: "grid", gap: 12 }}>
           <div
             style={{
-              display: isMobile ? "grid" : "flex",
-              gridTemplateColumns: isMobile
-                ? "repeat(2, minmax(0, 1fr))"
-                : undefined,
-              flexWrap: isMobile ? undefined : "wrap",
-              gap: isMobile ? 8 : 6,
+              display: "grid",
+              gridTemplateColumns: "repeat(10, minmax(0, 1fr))",
+              gap: isMobile ? 2 : 6,
               width: "100%",
               minWidth: 0,
               alignItems: "center",
-              overflowX: "hidden",
-              overflowY: "hidden",
               paddingBottom: 2,
             }}
           >
@@ -459,12 +454,11 @@ export default function PublishImagesPanel({
                   onClick={() => setSynchronizedActiveChannel(channel)}
                   style={{
                     minWidth: 0,
-                    flex: isMobile ? undefined : "1 1 140px",
-                    width: isMobile ? "100%" : undefined,
+                    width: "100%",
                     boxSizing: "border-box",
-                    minHeight: 38,
+                    minHeight: isMobile ? 32 : 38,
                     borderRadius: 999,
-                    padding: isMobile ? "0 8px" : "0 6px",
+                    padding: isMobile ? "0 2px" : "0 5px",
                     border: isActive
                       ? toneReady
                         ? "2px solid rgba(74,222,128,0.90)"
@@ -489,21 +483,21 @@ export default function PublishImagesPanel({
                           ? "0 0 0 1px rgba(248,113,113,0.28) inset, 0 0 0 1px rgba(248,113,113,0.22), 0 0 18px rgba(248,113,113,0.18)"
                           : "0 0 0 1px rgba(250,204,21,0.28) inset, 0 0 0 1px rgba(250,204,21,0.22), 0 0 18px rgba(250,204,21,0.18)"
                       : undefined,
-                    fontSize: isMobile ? 11.2 : 11.5,
+                    fontSize: "clamp(8px, 0.72vw, 11.5px)",
                     fontWeight: 850,
                     cursor: "pointer",
                     display: "inline-flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    gap: 7,
-                    overflow: "visible",
+                    gap: isMobile ? 2 : 5,
+                    overflow: "hidden",
                   }}
                 >
                   <span
                     style={{
                       minWidth: 0,
-                      overflow: "visible",
-                      textOverflow: "clip",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
                       whiteSpace: "nowrap",
                     }}
                   >
@@ -512,13 +506,13 @@ export default function PublishImagesPanel({
                   <span
                     style={{
                       flex: "0 0 auto",
-                      minWidth: 20,
-                      height: 20,
-                      padding: "0 6px",
+                      minWidth: isMobile ? 14 : 20,
+                      height: isMobile ? 16 : 20,
+                      padding: isMobile ? "0 3px" : "0 6px",
                       borderRadius: 999,
                       display: "inline-grid",
                       placeItems: "center",
-                      fontSize: 11,
+                      fontSize: "clamp(7px, 0.7vw, 11px)",
                       fontWeight: 900,
                       background: "rgba(255,255,255,0.12)",
                     }}
@@ -529,14 +523,14 @@ export default function PublishImagesPanel({
                     aria-hidden="true"
                     style={{
                       flex: "0 0 auto",
-                      width: 16,
-                      height: 16,
+                      width: isMobile ? 12 : 16,
+                      height: isMobile ? 12 : 16,
                       display: "inline-grid",
                       placeItems: "center",
                       opacity: toneReady ? 0.96 : 0.72,
                     }}
                   >
-                    <MediaModeGlyph mode={mediaIcon} size={14} />
+                    <MediaModeGlyph mode={mediaIcon} size={isMobile ? 11 : 14} />
                   </span>
                   {getModeForChannel(channel) === "video" && hasVideoMedia && videoVariantPreparationByChannel[channel]?.status ? (
                     <span

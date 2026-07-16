@@ -127,7 +127,19 @@ export default function InrSearchNewsShowcase({ companyName, publications }: Pro
             aria-controls="news-orbit-modal"
           >
             <span className={styles.newsOrbitFocusMedia}>
-              {activePublication.imageUrl ? (
+              {activePublication.videoUrl ? (
+                <video
+                  className={styles.newsOrbitFocusVideo}
+                  src={activePublication.videoUrl}
+                  poster={activePublication.videoThumbnailUrl || activePublication.imageUrl || undefined}
+                  muted
+                  autoPlay
+                  loop
+                  playsInline
+                  preload="metadata"
+                  aria-hidden="true"
+                />
+              ) : activePublication.imageUrl ? (
                 <Image src={activePublication.imageUrl} alt={`${activePublication.title} – ${companyName}`} width={1600} height={1000} sizes="(max-width: 900px) 92vw, 720px" loading="eager" unoptimized />
               ) : (
                 <span className={styles.newsOrbitFallback} aria-hidden="true"><b>✦</b><i /></span>
@@ -158,7 +170,18 @@ export default function InrSearchNewsShowcase({ companyName, publications }: Pro
                   aria-label={`Afficher l’actualité ${publication.title}`}
                 >
                   <span>
-                    {publication.imageUrl ? <Image src={publication.imageUrl} alt={`${publication.title} — ${companyName}`} width={640} height={400} sizes="240px" loading="lazy" unoptimized /> : <i aria-hidden="true">✦</i>}
+                    {publication.videoUrl ? (
+                      <video
+                        src={publication.videoUrl}
+                        poster={publication.videoThumbnailUrl || publication.imageUrl || undefined}
+                        muted
+                        playsInline
+                        preload="metadata"
+                        aria-hidden="true"
+                      />
+                    ) : publication.imageUrl ? (
+                      <Image src={publication.imageUrl} alt={`${publication.title} — ${companyName}`} width={640} height={400} sizes="240px" loading="lazy" unoptimized />
+                    ) : <i aria-hidden="true">✦</i>}
                   </span>
                   <small>{publication.createdAt ? formatShortDate(publication.createdAt) : "Signal"}</small>
                   <strong>{publication.title}</strong>
@@ -214,7 +237,19 @@ export default function InrSearchNewsShowcase({ companyName, publications }: Pro
               <button ref={closeButtonRef} type="button" className={styles.newsOrbitModalClose} onClick={() => setModalOpen(false)} aria-label="Fermer l’actualité">×</button>
               <button type="button" className={`${styles.newsOrbitModalArrow} ${styles.newsOrbitModalArrowPrevious}`} onClick={() => move(-1)} aria-label="Actualité précédente">←</button>
               <article className={styles.newsOrbitModal}>
-                {activePublication.imageUrl ? (
+                {activePublication.videoUrl ? (
+                  <div className={styles.newsOrbitModalMedia}>
+                    <video
+                      controls
+                      playsInline
+                      preload="metadata"
+                      poster={activePublication.videoThumbnailUrl || activePublication.imageUrl || undefined}
+                    >
+                      <source src={activePublication.videoUrl} type={activePublication.videoMime || "video/mp4"} />
+                    </video>
+                    <span />
+                  </div>
+                ) : activePublication.imageUrl ? (
                   <div className={styles.newsOrbitModalMedia}><Image src={activePublication.imageUrl} alt={`${activePublication.title} – ${companyName}`} width={1800} height={1200} sizes="86vw" unoptimized /><span /></div>
                 ) : null}
                 <div className={styles.newsOrbitModalContent}>

@@ -233,6 +233,7 @@ export async function getChannelConnectionStates(
   const inrcyCfgSettings = asRecord(inrcyCfg.settings);
   const proCfg = asRecord((proCfgRes as { data?: unknown }).data);
   const settings = asRecord(proCfg.settings);
+  const pinterestSettings = asRecord(settings.pinterest);
   const rowsRaw = (integrationsRes as { data?: unknown }).data;
   const rows = Array.isArray(rowsRaw) ? (rowsRaw as IntegrationLite[]) : [];
 
@@ -347,6 +348,8 @@ export async function getChannelConnectionStates(
   const pinterestStatus = asString(pinterest.status);
   const pinterestOAuthConnected = Boolean((pinterestStatus === "connected" || pinterestStatus === "account_connected") && pinterestHasToken && !pinterestExpired);
   const pinterestConnected = pinterestOAuthConnected;
+  const pinterestDefaultBoardId = asString(pinterestSettings.defaultBoardId) || null;
+  const pinterestDefaultBoardName = asString(pinterestSettings.defaultBoardName) || null;
 
   // iNr'Search est une page publique gérée par iNrCy, pas une connexion OAuth tierce.
   const inrSearchSettings = asRecord(settings.inrSearch);
@@ -473,11 +476,11 @@ export async function getChannelConnectionStates(
       requiresUpdate: false,
       connection_status: pinterestConnected ? "connected" : "disconnected",
       // Profil et tableaux Pinterest sont lus en direct via /api/integrations/pinterest/status.
-      resource_id: null,
+      resource_id: pinterestDefaultBoardId,
       username: null,
       profile_url: null,
-      default_board_id: null,
-      default_board_name: null,
+      default_board_id: pinterestDefaultBoardId,
+      default_board_name: pinterestDefaultBoardName,
     },
     inr_search: {
       accountConnected: inrSearchEnabled,

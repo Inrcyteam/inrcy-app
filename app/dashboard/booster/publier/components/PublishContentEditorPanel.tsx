@@ -148,22 +148,16 @@ export default function PublishContentEditorPanel({
         <>
           <div
             style={{
-              display: isMobile ? "grid" : "flex",
-              gridTemplateColumns: isMobile
-                ? "repeat(2, minmax(0, 1fr))"
-                : undefined,
-              gap: 8,
-              flexWrap: isMobile ? undefined : "wrap",
+              display: "grid",
+              gridTemplateColumns: "repeat(10, minmax(0, 1fr))",
+              gap: isMobile ? 3 : 6,
               marginBottom: 12,
-              overflowX: "hidden",
+              minWidth: 0,
+              width: "100%",
             }}
           >
-            {displayCards.map((key, index) => {
+            {displayCards.map((key) => {
               const post = getDisplayPost(key);
-              const isLastOddMobileItem =
-                isMobile &&
-                index === displayCards.length - 1 &&
-                displayCards.length % 2 === 1;
               const hasText = !!(
                 String(post.title || "").trim() ||
                 String(post.content || "").trim()
@@ -198,26 +192,19 @@ export default function PublishContentEditorPanel({
                             : "0 0 0 1px rgba(250,204,21,0.26) inset, 0 0 0 1px rgba(250,204,21,0.20), 0 0 18px rgba(250,204,21,0.16)",
                         }
                       : {}),
-                    ...(isMobile
-                      ? {
-                          width: isLastOddMobileItem
-                            ? "calc(50% - 4px)"
-                            : "100%",
-                          gridColumn: isLastOddMobileItem
-                            ? "1 / -1"
-                            : undefined,
-                          justifySelf: isLastOddMobileItem
-                            ? "center"
-                            : undefined,
-                          minWidth: 0,
-                          minHeight: 36,
-                          padding: "0 8px",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontSize: 13,
-                        }
-                      : {}),
+                    width: "100%",
+                    minWidth: 0,
+                    minHeight: isMobile ? 32 : 36,
+                    boxSizing: "border-box",
+                    padding: isMobile ? "0 3px" : "0 6px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    overflow: "hidden",
+                    whiteSpace: "nowrap",
+                    textOverflow: "ellipsis",
+                    fontSize: "clamp(8px, 0.78vw, 13px)",
+                    lineHeight: 1.1,
                   }}
                 >
                   {DISPLAY_LABELS[key]}
