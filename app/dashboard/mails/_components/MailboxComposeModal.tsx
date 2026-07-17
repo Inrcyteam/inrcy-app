@@ -474,7 +474,7 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
   };
 
   return (
-    <div className={styles.modalOverlay} onClick={(e) => e.stopPropagation()}>
+    <div className={`${styles.modalOverlay} ${styles.composeModalOverlay}`} onClick={(e) => e.stopPropagation()}>
       <MediaLibraryPickerModal
         open={mediaLibraryOpen}
         title="Joindre depuis la Médiathèque"

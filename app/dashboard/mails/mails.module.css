@@ -4333,6 +4333,47 @@
   }
 }
 
+/* Compose responsive tablette/mobile : une seule page verticale.
+   Le header, le formulaire, les pièces jointes, les actions et les messages
+   défilent ensemble ; le footer n'occupe plus l'écran en permanence. */
+@media (max-width: 900px) {
+  .composeModalOverlay {
+    align-items: flex-start;
+    justify-content: center;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding: 12px;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .composeModalCard {
+    width: min(100%, 820px);
+    height: auto;
+    max-height: none;
+    flex: 0 0 auto;
+    margin: 0 auto;
+  }
+
+  .composeModalBody {
+    flex: 0 0 auto;
+    min-height: auto;
+    overflow: visible;
+    overscroll-behavior: auto;
+    scrollbar-gutter: auto;
+  }
+
+  .composeModalFooter {
+    flex: 0 0 auto;
+    position: static;
+  }
+
+  .composeToast {
+    position: static;
+    bottom: auto;
+  }
+}
+
 /* Mobile compose header: compact and readable */
 @media (max-width: 640px) {
   .composeModalHeader {

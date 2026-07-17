@@ -70,7 +70,9 @@ const handler = async (req: Request) => {
       identifier: userId,
       limit: 30,
       window: "1 m",
-      failClosed: true,
+      // L'envoi d'un mail ne doit pas être bloqué si Upstash est temporairement
+      // indisponible. La limite reste appliquée normalement dès que Redis répond.
+      failClosed: false,
     });
     if (rateLimited) return rateLimited;
     const ct = req.headers.get("content-type") || "";
