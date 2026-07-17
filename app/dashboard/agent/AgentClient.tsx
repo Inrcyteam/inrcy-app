@@ -165,6 +165,7 @@ type LoadState = "idle" | "loading" | "ready" | "error";
 type SaveState = "idle" | "saving" | "saved" | "error";
 type ActionsLoadState = "idle" | "loading" | "ready" | "error";
 type ActionMutationState = "idle" | "saving";
+type ActionMutationIntent = "validated" | "refused" | null;
 type PrepareActionState = "idle" | "saving";
 type StatsProgressState = { label: string; percent: number } | null;
 type PrepareProgressState = {
@@ -4234,6 +4235,8 @@ export default function AgentClient() {
     );
   const [actionMutationState, setActionMutationState] =
     useState<ActionMutationState>("idle");
+  const [actionMutationIntent, setActionMutationIntent] =
+    useState<ActionMutationIntent>(null);
   const [agentPublishExecutionProgress, setAgentPublishExecutionProgress] =
     useState<AgentPublishExecutionProgressState>(null);
   const [agentPublishSuccessSummary, setAgentPublishSuccessSummary] = useState<
@@ -8133,6 +8136,7 @@ export default function AgentClient() {
     channels: BoosterChannelKey[];
   }) {
     if (!request.channels.length || actionMutationState === "saving") return;
+    setActionMutationIntent("validated");
     setActionMutationState("saving");
     setNotice(null);
     setAgentCampaignLaunchNotice(null);
@@ -8204,6 +8208,7 @@ export default function AgentClient() {
       );
     } finally {
       setActionMutationState("idle");
+      setActionMutationIntent(null);
     }
   }
 
@@ -8218,6 +8223,7 @@ export default function AgentClient() {
       actionToExecute.actionType === "publication";
     const isCampaignExecution = !isPublishExecution;
 
+    setActionMutationIntent("validated");
     setActionMutationState("saving");
     setNotice(null);
     setValidationChoiceOpen(false);
@@ -8313,6 +8319,7 @@ export default function AgentClient() {
       );
     } finally {
       setActionMutationState("idle");
+      setActionMutationIntent(null);
     }
   }
 
@@ -8342,6 +8349,7 @@ export default function AgentClient() {
         actionToExecute.actionType === "mailing" ||
         actionToExecute.actionType === "campaign");
 
+    setActionMutationIntent(status);
     setActionMutationState("saving");
     setNotice(null);
     setAgentCampaignLaunchNotice(null);
@@ -8456,6 +8464,7 @@ export default function AgentClient() {
       );
     } finally {
       setActionMutationState("idle");
+      setActionMutationIntent(null);
     }
   }
 
@@ -9685,48 +9694,64 @@ export default function AgentClient() {
                       </button>
                     )}
                     <div className={styles.previewActions}>
-                      <button
-                        type="button"
-                        className={styles.validateButton}
-                        disabled={
-                          !hasPreparedAction || actionMutationState === "saving"
-                        }
-                        onClick={() => {
-                          if (scheduledEditSession) {
-                            void updateActionStatus("validated");
-                            return;
-                          }
-                          if (
-                            canSchedulePreparedAction(selectedPreparedAction)
-                          ) {
-                            setValidationChoiceOpen(true);
-                          } else {
-                            void updateActionStatus("validated");
-                          }
-                        }}
-                      >
-                        <span aria-hidden>
-                          <ValidateActionIcon />
-                        </span>
-                        {actionMutationState === "saving"
-                          ? "Traitement..."
-                          : "Valider"}
-                      </button>
-                      <button
-                        type="button"
-                        className={styles.refuseButton}
-                        disabled={
-                          !hasPreparedAction || actionMutationState === "saving"
-                        }
-                        onClick={() => updateActionStatus("refused")}
-                      >
-                        <span aria-hidden>
-                          <RefuseActionIcon />
-                        </span>
-                        {actionMutationState === "saving"
-                          ? "Traitement..."
-                          : "Refuser"}
-                      </button>
+                      {actionMutationState === "saving" ? (
+                        <button
+                          type="button"
+                          className={`${styles.actionProcessingButton} ${
+                            actionMutationIntent === "refused"
+                              ? styles.actionProcessingButtonRefused
+                              : styles.actionProcessingButtonValidated
+                          }`}
+                          disabled
+                          aria-live="polite"
+                          aria-busy="true"
+                        >
+                          <span
+                            className={styles.actionProcessingSpinner}
+                            aria-hidden
+                          />
+                          {actionMutationIntent === "refused"
+                            ? "Refus en cours…"
+                            : "Validation en cours…"}
+                        </button>
+                      ) : (
+                        <>
+                          <button
+                            type="button"
+                            className={styles.validateButton}
+                            disabled={!hasPreparedAction}
+                            onClick={() => {
+                              if (scheduledEditSession) {
+                                void updateActionStatus("validated");
+                                return;
+                              }
+                              if (
+                                canSchedulePreparedAction(selectedPreparedAction)
+                              ) {
+                                setValidationChoiceOpen(true);
+                              } else {
+                                void updateActionStatus("validated");
+                              }
+                            }}
+                          >
+                            <span aria-hidden>
+                              <ValidateActionIcon />
+                            </span>
+                            Valider
+                          </button>
+                          <button
+                            type="button"
+                            className={styles.refuseButton}
+                            disabled={!hasPreparedAction}
+                            onClick={() => updateActionStatus("refused")}
+                          >
+                            <span aria-hidden>
+                              <RefuseActionIcon />
+                            </span>
+                            Refuser
+                          </button>
+                        </>
+                      )}
                     </div>
                   </>
                 )}
