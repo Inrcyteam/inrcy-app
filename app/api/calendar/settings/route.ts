@@ -62,7 +62,12 @@ async function getCalendarSettingsHandler() {
   const reminderOffsetsMinutes = normalizeReminderOffsets(inrcalendar.reminder_offsets_minutes);
   const appointmentSettings = resolveInrBadgeAppointmentSettings(rootSettings);
 
-  const accounts = (accountsRes.data ?? []).map((row: MailIntegrationRow) => {
+  const accounts: Array<{
+    id: string;
+    provider: string | null;
+    email_address: string;
+    display_name: string | null;
+  }> = (accountsRes.data ?? []).map((row: MailIntegrationRow) => {
     const settings = safeObj(row.settings);
     return {
       id: row.id,
@@ -72,9 +77,15 @@ async function getCalendarSettingsHandler() {
     };
   });
 
+  const effectiveSelectedMailAccountId = accounts.some(
+    (account) => account.id === selectedMailAccountId,
+  )
+    ? selectedMailAccountId
+    : "";
+
   return NextResponse.json({
     ok: true,
-    selectedMailAccountId,
+    selectedMailAccountId: effectiveSelectedMailAccountId,
     sendConfirmationOnSave,
     reminderOffsetsMinutes,
     appointmentSettings,

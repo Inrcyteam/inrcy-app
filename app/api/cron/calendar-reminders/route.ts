@@ -6,6 +6,7 @@ import { sendTxMail } from "@/lib/txMailer";
 import { optionalEnv } from "@/lib/env";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { sendMailFromIntegration } from "@/lib/inrsend/sendMailFromIntegration";
+import { getConnectionDisplayStatus, mailConnectionKind } from "@/lib/connectionVersions";
 import {
   buildClientExchangePreferences,
   DEFAULT_CLIENT_EXCHANGE_PREFERENCES,
@@ -46,6 +47,13 @@ type ReminderRow = {
   location: string | null;
   start_at: string | null;
   end_at: string | null;
+};
+
+type ReminderMailAccountRow = {
+  id: string;
+  provider: string | null;
+  status: string | null;
+  settings: unknown;
 };
 
 function isAuthorizedCron(req: Request) {
@@ -322,6 +330,36 @@ function getCalendarReminderSettingsFromSettings(settings: unknown): CalendarRem
     selectedMailAccountId: getSelectedMailAccountIdFromSettings(settings),
     reminderOffsetsMinutes: normalizeReminderOffsets(inrcalendar.reminder_offsets_minutes),
   };
+}
+
+async function resolveUsableReminderMailAccountId(userId: string, accountId: string) {
+  const normalizedUserId = String(userId || "").trim();
+  const normalizedAccountId = String(accountId || "").trim();
+  if (!normalizedUserId || !normalizedAccountId) return "";
+
+  const { data, error } = await supabaseAdmin
+    .from("integrations")
+    .select("id,provider,status,settings")
+    .eq("id", normalizedAccountId)
+    .eq("user_id", normalizedUserId)
+    .eq("category", "mail")
+    .maybeSingle();
+
+  if (error) throw error;
+
+  const account = (data || null) as ReminderMailAccountRow | null;
+  if (!account?.id || account.status !== "connected") return "";
+
+  const connectionKind = mailConnectionKind(account.provider || "");
+  if (!connectionKind) return "";
+
+  const displayStatus = getConnectionDisplayStatus(
+    true,
+    connectionKind,
+    account.settings,
+  );
+
+  return displayStatus === "connected" ? account.id : "";
 }
 
 async function getClientExchangePreferences(userId: string): Promise<ClientExchangePreferences> {
@@ -696,6 +734,7 @@ export async function GET(req: Request) {
   let emailSent = 0;
   const userSettingsCache = new Map<string, CalendarReminderSettings>();
   const userClientPreferencesCache = new Map<string, ClientExchangePreferences>();
+  const usableMailAccountCache = new Map<string, Promise<string>>();
 
   for (const row of data ?? []) {
     const meta = safeObj(row.meta);
@@ -752,7 +791,30 @@ export async function GET(req: Request) {
       userClientPreferencesCache.set(String(row.user_id), clientPreferences);
     }
 
-    const selectedMailAccountId = userSettings.selectedMailAccountId || getReminderMailAccountId(meta);
+    const configuredMailAccountId = userSettings.selectedMailAccountId || getReminderMailAccountId(meta);
+    let selectedMailAccountId = "";
+
+    if (configuredMailAccountId) {
+      const accountCacheKey = `${String(row.user_id)}:${configuredMailAccountId}`;
+      let accountPromise = usableMailAccountCache.get(accountCacheKey);
+      if (!accountPromise) {
+        accountPromise = resolveUsableReminderMailAccountId(
+          String(row.user_id),
+          configuredMailAccountId,
+        );
+        usableMailAccountCache.set(accountCacheKey, accountPromise);
+      }
+
+      try {
+        selectedMailAccountId = await accountPromise;
+      } catch (accountResolutionError) {
+        console.error("[calendar-reminders] mail account resolution failed", {
+          eventId: row.id,
+          accountId: configuredMailAccountId,
+          error: accountResolutionError,
+        });
+      }
+    }
 
     for (const offsetMinutes of userSettings.reminderOffsetsMinutes) {
       if (minutesUntil > offsetMinutes) continue;

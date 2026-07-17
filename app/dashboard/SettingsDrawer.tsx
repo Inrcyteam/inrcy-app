@@ -9,10 +9,22 @@ type Props = {
   onClose: () => void;
   /** Ajout optionnel (ex: bouton ? d'aide) placé à gauche de "Fermer" */
   headerActions?: React.ReactNode;
+  /** Autorise la fermeture en cliquant sur l'arrière-plan. Activé par défaut. */
+  closeOnBackdrop?: boolean;
+  /** Autorise la fermeture avec la touche Échap. Activé par défaut. */
+  closeOnEscape?: boolean;
   children: React.ReactNode;
 };
 
-export default function SettingsDrawer({ title, isOpen, onClose, headerActions, children }: Props) {
+export default function SettingsDrawer({
+  title,
+  isOpen,
+  onClose,
+  headerActions,
+  closeOnBackdrop = true,
+  closeOnEscape = true,
+  children,
+}: Props) {
   const t = useDashboardI18n();
   // Valeurs stables côté serveur/client au premier rendu : évite les erreurs React #418
   // quand le drawer est ouvert directement via /dashboard?panel=ia sur mobile.
@@ -53,7 +65,7 @@ export default function SettingsDrawer({ title, isOpen, onClose, headerActions, 
     document.body.style.overflow = "hidden";
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
+      if (closeOnEscape && event.key === "Escape") {
         onClose();
       }
     };
@@ -64,13 +76,13 @@ export default function SettingsDrawer({ title, isOpen, onClose, headerActions, 
       document.body.style.overflow = "";
       window.removeEventListener("keydown", onKeyDown);
     };
-  }, [isOpen, onClose]);
+  }, [closeOnEscape, isOpen, onClose]);
 
   if (!isOpen) return null;
 
   return (
     <div
-      onClick={onClose}
+      onClick={closeOnBackdrop ? onClose : undefined}
       style={{
         position: "fixed",
         inset: 0,

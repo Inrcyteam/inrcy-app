@@ -167,24 +167,37 @@ export async function awardInertiaActionForUser(args: {
 
   const insertRes = await supabaseAdmin
     .from("loyalty_ledger")
-    .insert({
-      user_id: userId,
-      action_key: actionKey,
-      source_id: sourceId,
-      amount,
-      label: args.label,
-      meta: {
-        ...(args.meta || {}),
-        turbo_multiplier: turbo,
-        base_amount: baseAmount,
+    .upsert(
+      {
+        user_id: userId,
+        action_key: actionKey,
+        source_id: sourceId,
+        amount,
+        label: args.label,
+        meta: {
+          ...(args.meta || {}),
+          turbo_multiplier: turbo,
+          base_amount: baseAmount,
+        },
       },
-    })
+      {
+        onConflict: "user_id,action_key,source_id",
+        ignoreDuplicates: true,
+      },
+    )
     .select("id,amount")
     .maybeSingle();
 
   if (insertRes.error) {
     if (isDuplicateError(insertRes.error)) return { ok: true, skipped: true };
     return { ok: false, skipped: true, error: insertRes.error.message };
+  }
+
+  // Une autre requête peut avoir inséré la même récompense entre le SELECT
+  // initial et cet UPSERT. `ignoreDuplicates` évite alors le 23505/409 côté
+  // Supabase et ne renvoie aucune ligne : surtout ne pas créditer le solde.
+  if (!insertRes.data?.id) {
+    return { ok: true, skipped: true };
   }
 
   const balanceRes = await supabaseAdmin

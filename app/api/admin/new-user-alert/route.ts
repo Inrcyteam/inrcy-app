@@ -10,11 +10,14 @@ type SupabaseAuthWebhookPayload = {
   schema?: string;
   record?: {
     id?: string;
+    user_id?: string;
+    auth_user_id?: string;
     email?: string;
     phone?: string | null;
     created_at?: string;
     email_confirmed_at?: string | null;
     raw_user_meta_data?: Record<string, unknown> | null;
+    metadata?: Record<string, unknown> | null;
     app_metadata?: Record<string, unknown> | null;
   };
 };
@@ -29,7 +32,7 @@ function escapeHtml(value: unknown) {
 }
 
 function getDisplayName(record: SupabaseAuthWebhookPayload["record"]) {
-  const meta = record?.raw_user_meta_data || {};
+  const meta = record?.raw_user_meta_data || record?.metadata || {};
   return (
     meta.full_name ||
     meta.name ||
@@ -45,18 +48,27 @@ export async function POST(req: NextRequest) {
     if (!secret.ok) return secret.response;
 
     const payload = (await req.json()) as SupabaseAuthWebhookPayload;
-    const record = payload.record;
+    const record = payload.record || {};
 
-    if (
-      payload.type !== "INSERT" ||
-      payload.schema !== "auth" ||
-      payload.table !== "users" ||
-      !record?.id
-    ) {
+    const isAuthUserInsert =
+      payload.type === "INSERT" &&
+      payload.schema === "auth" &&
+      payload.table === "users";
+
+    const isSignupAlertInsert =
+      payload.type === "INSERT" &&
+      payload.schema === "public" &&
+      payload.table === "signup_alerts";
+
+    const userId = isAuthUserInsert
+      ? record?.id
+      : record?.user_id || record?.auth_user_id;
+
+    if ((!isAuthUserInsert && !isSignupAlertInsert) || !userId) {
       return NextResponse.json({
         ok: true,
         skipped: true,
-        reason: "Not an auth.users INSERT event",
+        reason: "Not a supported signup INSERT event",
       });
     }
 
@@ -109,7 +121,7 @@ export async function POST(req: NextRequest) {
         "",
         `Email : ${email}`,
         `Nom : ${String(displayName)}`,
-        `User ID : ${record.id}`,
+        `User ID : ${userId}`,
         `Date : ${createdAt}`,
         `Provider : ${String(provider)}`,
         `Email confirmé : ${emailConfirmed}`,
@@ -136,7 +148,7 @@ export async function POST(req: NextRequest) {
               </tr>
               <tr>
                 <td style="padding:8px 0;color:#64748b;">User ID</td>
-                <td style="padding:8px 0;">${escapeHtml(record.id)}</td>
+                <td style="padding:8px 0;">${escapeHtml(userId)}</td>
               </tr>
               <tr>
                 <td style="padding:8px 0;color:#64748b;">Date</td>

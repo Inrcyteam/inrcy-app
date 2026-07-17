@@ -3417,6 +3417,8 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         title={getDrawerTitle(panel, dashboardLanguage)}
         isOpen={isDrawerPanel(panel)}
         onClose={closePanel}
+        closeOnBackdrop={panel !== "profil" && panel !== "activite"}
+        closeOnEscape={panel !== "profil" && panel !== "activite"}
         headerActions={
           panel === "inertie" ? (
             <HelpButton onClick={() => setHelpInertieOpen(true)} title="Aide : Mon inertie" />

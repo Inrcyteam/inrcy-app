@@ -78,13 +78,11 @@ export default function ProfilContent({
   onProfileReset,
   onCloseDrawer,
 }: Props) {
-  const defaultEmail = "pro@exemple.com";    // placeholder tant que Supabase n'est pas branché
-
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const initial: ProfilForm = useMemo(
     () => ({
-      contactEmail: defaultEmail,
+      contactEmail: "",
       firstName: "",
       lastName: "",
       phone: "",
@@ -133,6 +131,8 @@ export default function ProfilContent({
         const user = authData?.user;
         if (!user) return;
 
+        const authenticatedEmail = user.email?.trim() || "";
+
         const { data, error } = await supabase
           .from("profiles")
           .select("*")
@@ -140,7 +140,13 @@ export default function ProfilContent({
           .maybeSingle();
 
         if (error) throw new Error(getSimpleFrenchErrorMessage(error));
-        if (!data) return;
+        if (!data) {
+          setForm((prev) => ({
+            ...prev,
+            contactEmail: authenticatedEmail || prev.contactEmail,
+          }));
+          return;
+        }
 
         const resolvedLogo = await resolveProfileLogoUrl(supabase, {
           logo_path: data.logo_path ?? null,
@@ -149,7 +155,7 @@ export default function ProfilContent({
 
         setForm((prev) => ({
           ...prev,
-          contactEmail: data.contact_email ?? prev.contactEmail,
+          contactEmail: data.contact_email?.trim() || authenticatedEmail || "",
           firstName: data.first_name ?? "",
           lastName: data.last_name ?? "",
           phone: data.phone ?? "",
@@ -202,72 +208,45 @@ export default function ProfilContent({
 
   const validate = () => {
     const e: Record<string, string> = {};
+    const contactEmail = form.contactEmail.trim();
 
-    const requiredStr = (key: keyof ProfilForm, label: string) => {
-      const v = form[key];
-      if (typeof v === "string" && v.trim() === "") {
-        e[String(key)] = `${label} est obligatoire.`;
-      }
-    };
-
-    // =====================
-    // Carte 1 — Compte
-    // =====================
-    requiredStr("firstName", "Prénom");
-    requiredStr("lastName", "Nom");
-    requiredStr("phone", "Téléphone");
-    requiredStr("contactEmail", "Email");
-
-    // Format email
-    if (!e.contactEmail && !/^\S+@\S+\.\S+$/.test(form.contactEmail.trim())) {
+    // Les champs vides sont autorisés afin de pouvoir enregistrer le profil
+    // progressivement. On bloque uniquement les valeurs renseignées mais incohérentes.
+    if (contactEmail && !/^\S+@\S+\.\S+$/.test(contactEmail)) {
       e.contactEmail = "Email invalide.";
     }
 
-    // =====================
-    // Carte 2 — Légal
-    // =====================
-    requiredStr("companyLegalName", "Raison sociale");
-    requiredStr("hqAddress", "Adresse du siège social");
-    requiredStr("hqZip", "Code postal");
-    requiredStr("hqCity", "Ville");
-    requiredStr("hqCountry", "Pays");
-    requiredStr("siren", "SIREN");
-    requiredStr("rcsCity", "RCS (ville)");
-
-    if (form.legalForm === "AUTRE" && form.legalFormOther.trim() === "") {
-      e.legalFormOther = "Merci de préciser la forme juridique.";
+    if (form.avgBasket < 0) {
+      e.avgBasket = "Le panier moyen ne peut pas être négatif.";
     }
 
-    // Capital social
-    if (!form.capitalDispenseEI && form.capitalSocial.trim() === "") {
-      e.capitalSocial = "Capital social requis (ou coche Dispensé).";
+    if (form.leadConversionRate < 0 || form.leadConversionRate > 100) {
+      e.leadConversionRate = "Le taux de conversion doit être compris entre 0 et 100.";
     }
 
-    // TVA
-    if (!form.vatDispense && form.vatNumber.trim() === "") {
-      e.vatNumber = "TVA intracommunautaire requise (ou coche Dispensé TVA).";
-    }
-
-    // =====================
-    // Carte 3 — Business
-    // =====================
-    if (!form.avgBasket || form.avgBasket <= 0) {
-      e.avgBasket = "Panier moyen > 0 requis.";
-    }
-
-    if (!form.leadConversionRate || form.leadConversionRate <= 0) {
-      e.leadConversionRate = "Taux de conversion > 0 requis.";
-    }
-
-    if (form.leadConversionRate > 100) {
-      e.leadConversionRate = "Taux de conversion ≤ 100 requis.";
-    }
-
-    // =====================
-    // Final
-    // =====================
     setErrors(e);
     return Object.keys(e).length === 0;
+  };
+
+  const isProfileComplete = () => {
+    const requiredValues = [
+      form.firstName,
+      form.lastName,
+      form.phone,
+      form.contactEmail,
+      form.companyLegalName,
+      form.hqAddress,
+      form.hqZip,
+      form.hqCity,
+      form.hqCountry,
+      form.siren,
+      form.rcsCity,
+    ];
+
+    return (
+      requiredValues.every((value) => value.trim().length > 0) &&
+      /^\S+@\S+\.\S+$/.test(form.contactEmail.trim())
+    );
   };
 
   const onChange = <K extends keyof ProfilForm>(key: K, value: ProfilForm[K]) => {
@@ -379,7 +358,7 @@ export default function ProfilContent({
     const ok = validate();
     if (!ok) {
       setSaved(false);
-      setGlobalError("Merci de compléter tous les champs obligatoires avant d’enregistrer.");
+      setGlobalError("Certaines informations renseignées sont invalides. Vérifie les champs signalés.");
       return;
     }
 
@@ -446,21 +425,24 @@ export default function ProfilContent({
       if (error) throw new Error(getSimpleFrenchErrorMessage(error));
       await invalidateBoosterGenerationContextClient("professional");
 
-      // ✅ Récompense : profil complet (100 UI) — idempotent via sourceId
-      try {
-        await fetch("/api/loyalty/award", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            actionKey: "profile_complete",
-            amount: 100,
-            sourceId: "once",
-            label: "Profil complété",
-            meta: { origin: "profile" },
-          }),
-        });
-      } catch {
-        // ignore
+      // Récompense uniquement lorsque les mêmes informations que celles
+      // contrôlées par le triangle d'avertissement sont réellement complètes.
+      if (isProfileComplete()) {
+        try {
+          await fetch("/api/loyalty/award", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              actionKey: "profile_complete",
+              amount: 100,
+              sourceId: "once",
+              label: "Profil complété",
+              meta: { origin: "profile" },
+            }),
+          });
+        } catch {
+          // ignore
+        }
       }
 
       setSaved(true);
