@@ -144,9 +144,7 @@ RL_WIDGET_ISSUE_TOKEN_PER_MIN
 QUOTA_WIDGET_ISSUE_TOKEN_PER_DAY
 ```
 
-État actuel documenté : certains endpoints coûteux sont configurés en fail-open côté code pour éviter de bloquer les utilisateurs si KV / Upstash est indisponible.
-
-C'est un choix de continuité de service. Le passage en fail-closed est une amélioration sécurité/coûts à tester en Preview, car il peut bloquer la génération IA ou la publication en cas d'incident KV.
+Booster Generate reste protégé par un mode fail-closed pour éviter une génération IA sans garde économique. Les crédits IA sont suivis uniquement par quotas hebdomadaire et mensuel. Booster Publish reste plafonné à cinq publications immédiates par compte et par jour pour l'anti-abus ; Microsoft Send et Booster Publish restent disponibles si KV / Upstash est momentanément indisponible grâce à une limite locale d'urgence. Redis reste le limiteur global normal ; ce mode local est seulement un filet de sécurité temporaire.
 
 ## Build et polices
 

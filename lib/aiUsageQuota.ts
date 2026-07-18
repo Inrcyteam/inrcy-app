@@ -158,8 +158,24 @@ function quotaKeys(userId: string, id: string) {
 }
 
 export async function reserveAiCredits(args: ReserveAiCreditsArgs): Promise<AiCreditReservationResult> {
-  if (shouldBypassUpstashInCurrentEnv() || !args.userId || await isAdminUserForAi(args.supabase, args.userId)) {
+  if (!args.userId || await isAdminUserForAi(args.supabase, args.userId)) {
     return { reservation: null, errorResponse: null };
+  }
+
+  if (shouldBypassUpstashInCurrentEnv()) {
+    if (process.env.NODE_ENV !== "production") {
+      return { reservation: null, errorResponse: null };
+    }
+    return {
+      reservation: null,
+      errorResponse: NextResponse.json(
+        {
+          error: "La protection de quota IA est momentanément indisponible. Merci de réessayer dans quelques minutes.",
+          code: "ai_quota_unavailable",
+        },
+        { status: 503, headers: { "Retry-After": "5" } },
+      ),
+    };
   }
 
   const credits = Math.max(1, Math.floor(args.credits || 1));
@@ -204,13 +220,19 @@ export async function reserveAiCredits(args: ReserveAiCreditsArgs): Promise<AiCr
 
     return { reservation, errorResponse: null };
   } catch (error) {
-    console.warn("[ai-quota] reservation unavailable; bypassing quota temporarily", {
+    console.error("[ai-quota] reservation unavailable; quota enforcement is unavailable", {
       action: args.action,
       message: error instanceof Error ? error.message : String(error),
     });
     return {
-      reservation: { ...reservation, state: "bypassed" },
-      errorResponse: null,
+      reservation: null,
+      errorResponse: NextResponse.json(
+        {
+          error: "La protection de quota IA est momentanément indisponible. Merci de réessayer dans quelques minutes.",
+          code: "ai_quota_unavailable",
+        },
+        { status: 503, headers: { "Retry-After": "5" } },
+      ),
     };
   }
 }

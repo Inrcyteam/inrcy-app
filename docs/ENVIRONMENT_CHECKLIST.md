@@ -51,7 +51,6 @@ STRICT=1 npm run verify:env
 
 - [ ] `KV_REST_API_URL`
 - [ ] `KV_REST_API_TOKEN`
-- [ ] `DISABLE_UPSTASH` uniquement en besoin local contrôlé
 - [ ] `ENABLE_UPSTASH_IN_DEV` uniquement en besoin local contrôlé
 
 Limites optionnelles :

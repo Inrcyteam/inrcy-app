@@ -1167,6 +1167,8 @@ async function publishNowHandler(req: Request) {
         identifier: userId,
         limit: 20,
         window: "1 m",
+        failClosed: false,
+        fallbackLimit: 5,
       });
       if (rl) return rl;
     }

@@ -1,5 +1,4 @@
 export function isUpstashEnabled() {
-  if (process.env.DISABLE_UPSTASH === "1") return false;
   if (process.env.NODE_ENV !== "production" && process.env.ENABLE_UPSTASH_IN_DEV !== "1") {
     return false;
   }

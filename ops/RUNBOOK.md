@@ -69,12 +69,12 @@ Si le health interne retourne `503`, vérifier dans cet ordre :
 
 L'application utilise KV pour rate limiting et quotas.
 
-État actuel : certains endpoints coûteux sont en fail-open pour préserver la continuité de service si KV tombe.
+Booster Generate reste en fail-closed pour éviter une génération IA sans garde économique. Les crédits IA sont suivis uniquement à la semaine et au mois. Booster Publish est plafonné à cinq publications immédiates par compte et par jour pour l'anti-abus ; Microsoft Send et Booster Publish basculent sur une limite locale d'urgence afin de rester disponibles si KV tombe. Les autres endpoints doivent être vérifiés selon leur configuration propre.
 
 Conséquence :
 
-- les utilisateurs sont moins susceptibles d'être bloqués ;
-- le risque de coût / abus est plus élevé pendant l'incident KV.
+- Microsoft Send et Booster Publish restent disponibles avec une limite de secours ;
+- la limite de secours n'est pas globale entre toutes les instances Vercel, donc Redis doit rester la référence dès que possible.
 
 Actions :
 
@@ -82,7 +82,7 @@ Actions :
 2. Surveiller les endpoints IA et publication.
 3. Surveiller les coûts OpenAI et volumes de publication.
 4. Si abus réel : baisser temporairement les quotas via env ou désactiver le flux concerné avec une hotfix ciblée.
-5. Ne passer en fail-closed global qu'après test Preview dédié.
+5. Ne pas supprimer les protections pour contourner un quota Upstash ; corriger d'abord la connexion et le plan du compte.
 
 ### D. OpenAI / IA indisponible ou coûteuse
 

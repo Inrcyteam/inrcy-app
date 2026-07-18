@@ -7,6 +7,74 @@ import { shouldBypassUpstashInCurrentEnv } from "@/lib/upstashMode";
 
 type Window = `${number} ${"ms" | "s" | "m" | "h" | "d"}`;
 
+type LocalLimitState = {
+  count: number;
+  resetAt: number;
+};
+
+function windowToMs(window: Window) {
+  const match = /^(\d+)\s+(ms|s|m|h|d)$/.exec(window);
+  if (!match) return 60_000;
+  const amount = Number(match[1]);
+  const multiplier = {
+    ms: 1,
+    s: 1_000,
+    m: 60_000,
+    h: 60 * 60_000,
+    d: 24 * 60 * 60_000,
+  }[match[2] as "ms" | "s" | "m" | "h" | "d"];
+  return Math.max(1, amount * multiplier);
+}
+
+function localLimitResponse(args: {
+  name: string;
+  identifier: string;
+  limit: number;
+  windowMs: number;
+  error: string;
+  periodSeconds?: number;
+}) {
+  const g = globalThis as typeof globalThis & {
+    __inrcy_local_limit_fallback?: Map<string, LocalLimitState>;
+  };
+  const states = (g.__inrcy_local_limit_fallback ||= new Map());
+  const now = Date.now();
+
+  // Best-effort cleanup for warm serverless instances. Redis remains authoritative.
+  if (states.size > 5_000) {
+    for (const [key, state] of states) {
+      if (state.resetAt <= now) states.delete(key);
+    }
+  }
+
+  const limit = Math.max(1, Math.floor(args.limit));
+  const key = `${args.name}:${args.identifier}`;
+  const current = states.get(key);
+  const state = !current || current.resetAt <= now
+    ? { count: 0, resetAt: now + args.windowMs }
+    : current;
+  state.count += 1;
+  states.set(key, state);
+
+  if (state.count <= limit) return null;
+  const retryAfter = Math.max(1, Math.ceil((state.resetAt - now) / 1_000));
+  return NextResponse.json(
+    {
+      error: args.error,
+      name: args.name,
+      limit,
+      ...(args.periodSeconds ? { periodSeconds: args.periodSeconds } : {}),
+    },
+    {
+      status: 429,
+      headers: {
+        "Retry-After": String(retryAfter),
+        "X-InrCy-Limit-Mode": "emergency-local",
+      },
+    },
+  );
+}
+
 /**
  * Upstash-backed rate limiting.
  *
@@ -36,6 +104,8 @@ type RateLimitConfig = {
   limit: number;
   /** e.g. "1 m", "10 s", "1 h" */
   window: Window;
+  /** lower emergency limit used if Redis is temporarily unavailable */
+  fallbackLimit?: number;
   /**
    * If true, block when the rate limiter backend is unavailable.
    * Use this for expensive endpoints to protect costs/abuse.
@@ -63,9 +133,22 @@ function getLimiter(name: string, limit: number, window: Window) {
  * Returns `null` if allowed, otherwise a NextResponse(429).
  */
 export async function enforceRateLimit(config: RateLimitConfig): Promise<NextResponse | null> {
-  // If KV not configured yet, do not block (but keep app functional).
-  // You can remove this try/catch once KV is mandatory.
-  if (shouldBypassUpstashInCurrentEnv()) return null;
+  if (shouldBypassUpstashInCurrentEnv()) {
+    if (process.env.NODE_ENV !== "production") return null;
+    if (config.failClosed) {
+      return NextResponse.json(
+        { error: "Le service est momentanément indisponible. Merci de réessayer dans quelques minutes." },
+        { status: 503, headers: { "Retry-After": "5" } },
+      );
+    }
+    return localLimitResponse({
+      name: config.name,
+      identifier: config.identifier,
+      limit: config.fallbackLimit || config.limit,
+      windowMs: windowToMs(config.window),
+      error: "Trop de tentatives en peu de temps. Merci de réessayer dans quelques instants.",
+    });
+  }
 
   try {
     const limiter = getLimiter(config.name, config.limit, config.window);
@@ -100,7 +183,13 @@ export async function enforceRateLimit(config: RateLimitConfig): Promise<NextRes
         }
       );
     }
-    return null;
+    return localLimitResponse({
+      name: config.name,
+      identifier: config.identifier,
+      limit: config.fallbackLimit || config.limit,
+      windowMs: windowToMs(config.window),
+      error: "Trop de tentatives en peu de temps. Merci de réessayer dans quelques instants.",
+    });
   }
 }
 
@@ -113,6 +202,8 @@ type QuotaConfig = {
   limit: number;
   /** period in seconds (e.g. 86400 for day) */
   periodSeconds: number;
+  /** lower emergency limit used if Redis is temporarily unavailable */
+  fallbackLimit?: number;
   /** if true, block when KV is unavailable */
   failClosed?: boolean;
 };
@@ -122,7 +213,23 @@ type QuotaConfig = {
  * Returns `null` if allowed, otherwise a NextResponse(429).
  */
 export async function enforceQuota(config: QuotaConfig): Promise<NextResponse | null> {
-  if (shouldBypassUpstashInCurrentEnv()) return null;
+  if (shouldBypassUpstashInCurrentEnv()) {
+    if (process.env.NODE_ENV !== "production") return null;
+    if (config.failClosed) {
+      return NextResponse.json(
+        { error: "Le service est momentanément indisponible. Merci de réessayer dans quelques minutes." },
+        { status: 503, headers: { "Retry-After": "5" } },
+      );
+    }
+    return localLimitResponse({
+      name: config.name,
+      identifier: config.identifier,
+      limit: config.fallbackLimit || config.limit,
+      windowMs: config.periodSeconds * 1_000,
+      periodSeconds: config.periodSeconds,
+      error: "Le quota de cette action a été atteint. Merci de réessayer plus tard.",
+    });
+  }
 
   try {
     const redis = getRedis();
@@ -166,7 +273,14 @@ export async function enforceQuota(config: QuotaConfig): Promise<NextResponse | 
         }
       );
     }
-    return null;
+    return localLimitResponse({
+      name: config.name,
+      identifier: config.identifier,
+      limit: config.fallbackLimit || config.limit,
+      windowMs: config.periodSeconds * 1_000,
+      periodSeconds: config.periodSeconds,
+      error: "Le quota de cette action a été atteint. Merci de réessayer plus tard.",
+    });
   }
 }
 

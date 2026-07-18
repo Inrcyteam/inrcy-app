@@ -299,8 +299,12 @@ type LimitPlan = {
   name: string;
   /** block when KV/rate limiter is unavailable */
   failClosed?: boolean;
+  /** lower emergency limit used while Redis is unavailable */
+  fallbackTokens?: number;
   /** optional daily quota (requests per day) */
   dailyQuota?: number;
+  /** lower emergency daily quota used while Redis is unavailable */
+  fallbackDailyQuota?: number;
 };
 
 function pickLimit(pathname: string, method: string): LimitPlan {
@@ -315,7 +319,7 @@ function pickLimit(pathname: string, method: string): LimitPlan {
           tokens: Number(process.env.RL_BOOSTER_GENERATE_PER_MIN || 8),
           windowSeconds: 60,
           name: "booster-generate-write",
-          failClosed: false,
+          failClosed: true,
         }
       : { tokens: 30, windowSeconds: 60, name: "booster-generate-read" };
   }
@@ -351,9 +355,12 @@ function pickLimit(pathname: string, method: string): LimitPlan {
       tokens: Number(process.env.RL_PUBLISH_NOW_PER_MIN || 6),
       windowSeconds: 60,
       name: "publish-now",
-      // Keep publication available even if KV / rate limiting is unavailable.
       failClosed: false,
-      dailyQuota: Number(process.env.QUOTA_PUBLISH_NOW_PER_DAY || 80),
+      fallbackTokens: 3,
+      // Publication safety cap: five successful publish-now actions per account/day.
+      // AI generation credits remain governed separately by weekly/monthly quotas.
+      dailyQuota: Number(process.env.QUOTA_PUBLISH_NOW_PER_DAY || 5),
+      fallbackDailyQuota: 5,
     };
   }
 
@@ -558,6 +565,7 @@ export async function proxy(req: NextRequest) {
       limit: lim.dailyQuota,
       periodSeconds: 60 * 60 * 24,
       failClosed: !!lim.failClosed,
+      fallbackLimit: lim.fallbackDailyQuota,
     });
     if (q) return applyResponseHeaders(q);
   }
@@ -571,6 +579,7 @@ export async function proxy(req: NextRequest) {
       limit: lim.tokens,
       window: `${lim.windowSeconds} s`,
       failClosed: !!lim.failClosed,
+      fallbackLimit: lim.fallbackTokens,
     });
     if (res) {
       return applyResponseHeaders(res);

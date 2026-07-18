@@ -341,6 +341,7 @@ const handler = async (req: Request) => {
         identifier: authUserId,
         limit: 10,
         window: "1 m",
+        failClosed: true,
       });
       if (rl) return rl;
     }
