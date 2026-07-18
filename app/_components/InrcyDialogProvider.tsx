@@ -205,20 +205,25 @@ export default function InrcyDialogProvider() {
 const overlayStyle: CSSProperties = {
   position: "fixed",
   inset: 0,
-  zIndex: 10000,
+  // The dialog is mounted at the app root and must stay above every drawer,
+  // modal and mobile overlay opened by a feature below it.
+  zIndex: 2147483646,
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  padding: 18,
+  padding: 12,
   background: "rgba(2, 6, 23, 0.68)",
   backdropFilter: "blur(16px)",
   WebkitBackdropFilter: "blur(16px)",
 };
 
 const cardStyle: CSSProperties = {
-  width: "min(520px, 100%)",
+  width: "min(520px, calc(100vw - 24px))",
+  maxHeight: "calc(100dvh - 24px)",
+  boxSizing: "border-box",
   position: "relative",
-  overflow: "hidden",
+  overflowY: "auto",
+  overscrollBehavior: "contain",
   padding: 20,
   borderRadius: 24,
   background: "linear-gradient(180deg, rgba(30, 41, 72, 0.96), rgba(15, 23, 42, 0.96))",

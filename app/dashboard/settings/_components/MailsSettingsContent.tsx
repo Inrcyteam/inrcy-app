@@ -900,6 +900,7 @@ Email : {{email}}`));
                     signatureImagePath: nextSignatureImagePath,
                     signatureImageWidth: nextSignatureImageWidth,
                   });
+                  onUnsavedChange?.(false);
                   setSignatureToast("✅ Signature enregistrée.");
                   if (typeof window !== "undefined") {
                     window.dispatchEvent(new CustomEvent("inrsend:signature-updated"));

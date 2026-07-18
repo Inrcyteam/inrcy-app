@@ -322,6 +322,9 @@ export default function GeneralPreferencesContent({ mode = "drawer", onUnsavedCh
       }
 
       savedPreferencesSignatureRef.current = JSON.stringify({ form, mobileShortcuts });
+      // Updating the baseline ref alone does not trigger the dirty-state
+      // effect because the form values themselves did not change.
+      onUnsavedChange?.(false);
       setSaved(true);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);

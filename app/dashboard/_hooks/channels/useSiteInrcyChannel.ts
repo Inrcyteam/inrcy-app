@@ -7,7 +7,7 @@ import { getClientUserFacingErrorMessage as getSimpleFrenchErrorMessage } from "
 import { confirmInrcy } from "@/lib/inrcyDialog";
 import { createClient } from "@/lib/supabaseClient";
 import { isManagedInrcySite } from "@/lib/inrcySite";
-import type { ActusFont, ActusTheme, GoogleProduct, Ownership } from "../../dashboard.types";
+import type { ActusDesign, ActusFont, ActusLayout, ActusTheme, GoogleProduct, Ownership } from "../../dashboard.types";
 import type { DashboardChannelKey } from "@/lib/dashboardChannels";
 import type { InrstatsChannelBlock } from "@/lib/inrstats/channelBlocks";
 
@@ -76,8 +76,10 @@ export function useSiteInrcyChannel({
   const [siteInrcyGscNotice, setSiteInrcyGscNotice] = useState<string | null>(null);
   const [siteInrcyUrlNotice, setSiteInrcyUrlNotice] = useState<string | null>(null);
   const [widgetTokenInrcySite, setWidgetTokenInrcySite] = useState<string>("");
-  const [siteInrcyActusLayout, setSiteInrcyActusLayout] = useState<"list" | "carousel">("list");
+  const [siteInrcyActusLayout, setSiteInrcyActusLayout] = useState<ActusLayout>("list");
   const [siteInrcyActusLimit, setSiteInrcyActusLimit] = useState<number>(5);
+  const [siteInrcyActusDesign, setSiteInrcyActusDesign] = useState<ActusDesign>("contemporary");
+  const [siteInrcyActusAccent, setSiteInrcyActusAccent] = useState<string>("");
   const [siteInrcyActusFont, setSiteInrcyActusFont] = useState<ActusFont>("site");
   const [siteInrcyActusTheme, setSiteInrcyActusTheme] = useState<ActusTheme>("nature");
   const [showSiteInrcyWidgetCode, setShowSiteInrcyWidgetCode] = useState(false);
@@ -626,7 +628,8 @@ export function useSiteInrcyChannel({
     parsed.actus_widget = {
       layout: siteInrcyActusLayout,
       limit: siteInrcyActusLimit,
-      font: siteInrcyActusFont,
+      design: siteInrcyActusDesign,
+      accent: siteInrcyActusAccent,
       theme: siteInrcyActusTheme,
       generated_at: new Date().toISOString(),
     };
@@ -636,7 +639,7 @@ export function useSiteInrcyChannel({
     setSiteInrcyUrlNotice("✅ Widget enregistré. Code généré.");
     window.setTimeout(() => setSiteInrcyUrlNotice(null), 2500);
     return true;
-  }, [siteInrcyActusFont, siteInrcyActusLayout, siteInrcyActusLimit, siteInrcyActusTheme, siteInrcyOwnership, siteInrcySavedUrl, siteInrcySettingsText, updateSiteInrcySettings]);
+  }, [siteInrcyActusAccent, siteInrcyActusDesign, siteInrcyActusLayout, siteInrcyActusLimit, siteInrcyActusTheme, siteInrcyOwnership, siteInrcySavedUrl, siteInrcySettingsText, updateSiteInrcySettings]);
 
   return {
     siteInrcyOwnership,
@@ -662,6 +665,10 @@ export function useSiteInrcyChannel({
     setSiteInrcyActusLayout,
     siteInrcyActusLimit,
     setSiteInrcyActusLimit,
+    siteInrcyActusDesign,
+    setSiteInrcyActusDesign,
+    siteInrcyActusAccent,
+    setSiteInrcyActusAccent,
     siteInrcyActusFont,
     setSiteInrcyActusFont,
     siteInrcyActusTheme,

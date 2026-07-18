@@ -396,6 +396,10 @@ export default function AiConfigurationContent({ mode = "drawer", onSaved, onUns
       }
 
       savedFormSignatureRef.current = JSON.stringify(form);
+      // The saved signature changes without changing `form`, so the dirty
+      // effect does not necessarily rerun. Clear the parent guard immediately
+      // before the drawer's delayed close callback executes.
+      onUnsavedChange?.(false);
       setSaved(true);
       if (onSaved) {
         if (typeof window !== "undefined") {

@@ -228,6 +228,7 @@ export default function DocumentsSettingsContent({ onUnsavedChange }: Props) {
       const nextSettings = normalizeInrDocumentsSettings(json?.settings);
       setSettings(nextSettings);
       savedSettingsSignatureRef.current = JSON.stringify(nextSettings);
+      onUnsavedChange?.(false);
       setNotice("Réglages enregistrés.");
       dispatchUpdated();
     } catch (e: any) {

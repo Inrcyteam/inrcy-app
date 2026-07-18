@@ -137,7 +137,10 @@ export default function PublishAiConfigurationDrawer({
         >
           <AiConfigurationContent
             mode="drawer"
-            onSaved={onClose}
+            onSaved={() => {
+              setHasUnsavedChanges(false);
+              onClose();
+            }}
             onUnsavedChange={setHasUnsavedChanges}
           />
         </div>

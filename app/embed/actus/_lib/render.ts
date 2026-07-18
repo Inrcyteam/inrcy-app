@@ -1,8 +1,9 @@
 import { renderBoosterSiteContentHtml } from "@/lib/boosterFormatting";
 
-export type LayoutMode = "list" | "carousel";
+export type LayoutMode = "list" | "carousel" | "grid" | "compact";
 export type FontMode = "site" | "inter" | "poppins" | "montserrat" | "lora";
-export type ThemeMode = "white" | "dark" | "gray" | "nature" | "sand";
+export type DesignMode = "essential" | "classic" | "contemporary" | "futuristic" | "elegant";
+export type ThemeMode = "white" | "dark" | "gray" | "nature" | "sand" | "blue" | "terracotta" | "anthracite";
 
 type ThemePalette = {
   bg: string;
@@ -156,7 +157,7 @@ function renderMediaBlock(article: Record<string, unknown>, idPrefix: string) {
         <video class="media mediaVideo" src="${safeAttr(src)}" ${poster ? `poster="${safeAttr(poster)}"` : ""} controls playsinline preload="metadata" controlslist="nodownload" data-original-src="${safeAttr(video.url)}">
           <source src="${safeAttr(src)}" type="${safeAttr(video.mime)}" />
         </video>
-        <div class="mediaFallback" aria-hidden="true">Vidéo indisponible</div>
+        <div class="mediaFallback" aria-hidden="true">VidÃƒÂ©o indisponible</div>
       </div>`;
   }
 
@@ -183,9 +184,9 @@ function renderMediaBlock(article: Record<string, unknown>, idPrefix: string) {
         </div>
         <div class="mediaFallback" aria-hidden="true">Image indisponible</div>
         <div class="mediaNavWrap">
-          <button class="mediaNavBtn" type="button" data-media-prev aria-label="Photo précédente">‹</button>
+          <button class="mediaNavBtn" type="button" data-media-prev aria-label="Photo prÃƒÂ©cÃƒÂ©dente">Ã¢â‚¬Â¹</button>
           <div class="mediaDots" aria-label="Navigation des photos">${dots}</div>
-          <button class="mediaNavBtn" type="button" data-media-next aria-label="Photo suivante">›</button>
+          <button class="mediaNavBtn" type="button" data-media-next aria-label="Photo suivante">Ã¢â‚¬Âº</button>
         </div>
       </div>
     </div>`;
@@ -203,6 +204,32 @@ function fontStack(mode: FontMode) {
       return "Lora, Georgia, Cambria, 'Times New Roman', serif";
     default:
       return "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif";
+  }
+}
+
+type DesignSettings = {
+  font: string;
+  radiusXl: string;
+  radiusLg: string;
+  radiusControl: string;
+};
+
+function getDesignSettings(design: DesignMode | undefined, legacyFont: FontMode): DesignSettings {
+  if (!design) {
+    return { font: fontStack(legacyFont), radiusXl: "28px", radiusLg: "24px", radiusControl: "999px" };
+  }
+  switch (design) {
+    case "essential":
+      return { font: "Arial, Helvetica, sans-serif", radiusXl: "12px", radiusLg: "10px", radiusControl: "8px" };
+    case "classic":
+      return { font: "Georgia, 'Times New Roman', Times, serif", radiusXl: "12px", radiusLg: "10px", radiusControl: "6px" };
+    case "futuristic":
+      return { font: "Montserrat, Arial, sans-serif", radiusXl: "8px", radiusLg: "6px", radiusControl: "5px" };
+    case "elegant":
+      return { font: "Lora, Georgia, 'Times New Roman', serif", radiusXl: "30px", radiusLg: "26px", radiusControl: "999px" };
+    case "contemporary":
+    default:
+      return { font: "Inter, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif", radiusXl: "28px", radiusLg: "24px", radiusControl: "999px" };
   }
 }
 
@@ -256,6 +283,54 @@ function getThemePalette(mode: ThemeMode): ThemePalette {
         shadowSoft: "0 10px 24px rgba(84,52,20,.06)",
         colorScheme: "light",
       };
+    case "blue":
+      return {
+        bg: "#eef6ff",
+        surface: "#ffffff",
+        surfaceSoft: "#f7fbff",
+        line: "rgba(22,74,129,.12)",
+        lineStrong: "rgba(22,74,129,.22)",
+        text: "#10233f",
+        muted: "#53677f",
+        brand: "#4f8fe8",
+        brandDeep: "#1f5fae",
+        mediaBg: "#e5f0ff",
+        shadow: "0 18px 42px rgba(22,74,129,.10)",
+        shadowSoft: "0 10px 24px rgba(22,74,129,.06)",
+        colorScheme: "light",
+      };
+    case "terracotta":
+      return {
+        bg: "#fff4ed",
+        surface: "#fffaf7",
+        surfaceSoft: "#fff7f2",
+        line: "rgba(125,59,39,.12)",
+        lineStrong: "rgba(125,59,39,.22)",
+        text: "#3b2118",
+        muted: "#795a4c",
+        brand: "#c86b4a",
+        brandDeep: "#8f3f2b",
+        mediaBg: "#f8e3d8",
+        shadow: "0 18px 42px rgba(125,59,39,.10)",
+        shadowSoft: "0 10px 24px rgba(125,59,39,.06)",
+        colorScheme: "light",
+      };
+    case "anthracite":
+      return {
+        bg: "#23262b",
+        surface: "#2b3036",
+        surfaceSoft: "#333943",
+        line: "rgba(243,244,246,.12)",
+        lineStrong: "rgba(243,244,246,.24)",
+        text: "#f3f4f6",
+        muted: "#c4cad3",
+        brand: "#8bd3ff",
+        brandDeep: "#b8e7ff",
+        mediaBg: "#363d46",
+        shadow: "0 18px 42px rgba(0,0,0,.30)",
+        shadowSoft: "0 10px 24px rgba(0,0,0,.20)",
+        colorScheme: "dark",
+      };
     case "white":
       return {
         bg: "#ffffff",
@@ -299,10 +374,56 @@ function renderListItems(articles: Array<Record<string, unknown>>) {
       const hasMedia = images.length > 0 || !!getVideoAttachment(article);
       const media = renderMediaBlock(article, `actu-${index}-media`);
       const date = formatDate(article.created_at);
-      const articleTitle = String(article.title ?? "Actualité").trim() || "Actualité";
+      const articleTitle = String(article.title ?? "Actualit\\u00e9").trim() || "Actualit\\u00e9";
       const body = renderArticleBody(article, `actu-${index}`);
       return `
         <article class="newsCard reveal ${hasMedia ? "hasMedia" : "noMedia"}" style="animation-delay:${Math.min(index * 80, 320)}ms">
+          ${media}
+          <div class="copyCol">
+            ${date ? `<div class="newsDate">${escapeHtml(date)}</div>` : ""}
+            <h2 class="newsTitle">${escapeHtml(articleTitle)}</h2>
+            ${body}
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function renderGridItems(articles: Array<Record<string, unknown>>) {
+  return articles
+    .map((article, index) => {
+      const images = parseArrayLike(article.images);
+      const hasMedia = images.length > 0 || !!getVideoAttachment(article);
+      const media = renderMediaBlock(article, `grid-${index}-media`);
+      const date = formatDate(article.created_at);
+      const articleTitle = String(article.title ?? "ActualitÃƒÆ’Ã‚Â©").trim() || "ActualitÃƒÆ’Ã‚Â©";
+      const body = renderArticleBody(article, `grid-${index}`);
+      return `
+        <article class="newsCard gridCard reveal ${hasMedia ? "hasMedia" : "noMedia"}" style="animation-delay:${Math.min(index * 80, 320)}ms">
+          ${media}
+          <div class="copyCol">
+            ${date ? `<div class="newsDate">${escapeHtml(date)}</div>` : ""}
+            <h2 class="newsTitle">${escapeHtml(articleTitle)}</h2>
+            ${body}
+          </div>
+        </article>
+      `;
+    })
+    .join("");
+}
+
+function renderCompactItems(articles: Array<Record<string, unknown>>) {
+  return articles
+    .map((article, index) => {
+      const images = parseArrayLike(article.images);
+      const hasMedia = images.length > 0 || !!getVideoAttachment(article);
+      const media = renderMediaBlock(article, `compact-${index}-media`);
+      const date = formatDate(article.created_at);
+      const articleTitle = String(article.title ?? "ActualitÃƒÆ’Ã‚Â©").trim() || "ActualitÃƒÆ’Ã‚Â©";
+      const body = renderArticleBody(article, `compact-${index}`);
+      return `
+        <article class="newsCard compactCard reveal ${hasMedia ? "hasMedia" : "noMedia"}" style="animation-delay:${Math.min(index * 80, 320)}ms">
           ${media}
           <div class="copyCol">
             ${date ? `<div class="newsDate">${escapeHtml(date)}</div>` : ""}
@@ -322,7 +443,7 @@ function renderCarouselItems(articles: Array<Record<string, unknown>>) {
       const hasMedia = images.length > 0 || !!getVideoAttachment(article);
       const media = renderMediaBlock(article, `carousel-${index}-media`);
       const date = formatDate(article.created_at);
-      const articleTitle = String(article.title ?? "Actualité").trim() || "Actualité";
+      const articleTitle = String(article.title ?? "Actualit\\u00e9").trim() || "Actualit\\u00e9";
       const body = renderArticleBody(article, `carousel-${index}`);
       return `
         <article class="slide reveal ${hasMedia ? "hasMedia" : "noMedia"}" data-slide style="animation-delay:${Math.min(index * 80, 320)}ms">
@@ -343,17 +464,25 @@ export function renderEmbedHtml(params: {
   articles: Array<Record<string, unknown>>;
   layout: LayoutMode;
   font: FontMode;
+  design?: DesignMode;
   theme: ThemeMode;
+  accent?: string;
   frameId?: string;
 }) {
-  const { title, articles, layout, font, theme, frameId = "inrcy-embed" } = params;
-  const fontFamily = fontStack(font);
+  const { title, articles, layout, font, design, theme, accent, frameId = "inrcy-embed" } = params;
+  const designSettings = getDesignSettings(design, font);
+  const fontFamily = designSettings.font;
   const palette = getThemePalette(theme);
   const listItems = renderListItems(articles);
+  const gridItems = renderGridItems(articles);
+  const compactItems = renderCompactItems(articles);
   const carouselItems = renderCarouselItems(articles);
-  const dots = articles.map((_, i) => `<button class="dot" type="button" aria-label="Actualité ${i + 1}" data-dot="${i}"></button>`).join("");
+  const safeAccent = /^#[0-9A-F]{6}$/i.test(String(accent || "").trim()) ? String(accent).trim().toUpperCase() : "";
+  const brand = safeAccent || palette.brand;
+  const brandDeep = safeAccent ? `color-mix(in srgb, ${safeAccent} 68%, ${palette.text})` : palette.brandDeep;
+  const dots = articles.map((_, i) => `<button class="dot" type="button" aria-label="Actualit\\u00e9 ${i + 1}" data-dot="${i}"></button>`).join("");
   const counter = articles.length > 0 ? `<div class="counter" aria-live="polite"><span data-current>1</span>/<span data-total>${articles.length}</span></div>` : "";
-  const empty = `<section class="empty reveal"><h2>Aucune actualité pour le moment</h2><p>Les prochaines publications apparaîtront ici automatiquement.</p></section>`;
+  const empty = `<section class="empty reveal"><h2>Aucune actualitÃƒÂ© pour le moment</h2><p>Les prochaines publications apparaÃƒÂ®tront ici automatiquement.</p></section>`;
   return `<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -367,9 +496,16 @@ export function renderEmbedHtml(params: {
 :root{color-scheme:${palette.colorScheme};--font:${fontFamily};--bg:${palette.bg};--surface:${palette.surface};--surface-soft:${palette.surfaceSoft};--line:${palette.line};--line-strong:${palette.lineStrong};--text:${palette.text};--muted:${palette.muted};--brand:${palette.brand};--brand-deep:${palette.brandDeep};--media-bg:${palette.mediaBg};--radius-xl:28px;--radius-lg:24px;--shadow:${palette.shadow};--shadow-soft:${palette.shadowSoft}}
 *{box-sizing:border-box}html,body{margin:0;padding:0;background:transparent;color:var(--text);font-family:var(--font);overflow:hidden}body{width:100%}img{display:block;max-width:100%}.shell{width:100%;padding:0}.frame{width:100%;display:grid;gap:18px;background:var(--bg);border:1px solid var(--line);border-radius:var(--radius-xl);box-shadow:var(--shadow);padding:28px}.header{display:flex;align-items:flex-end;justify-content:space-between;gap:16px}.title{margin:0;font-size:clamp(28px,3vw,40px);line-height:1.02;letter-spacing:-.045em;font-weight:800}.stack,.carouselWrap{display:grid;gap:18px}.newsCard,.slide{width:100%;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius-lg);box-shadow:var(--shadow-soft);overflow:clip}.newsCard.hasMedia,.slide.hasMedia{display:grid;grid-template-columns:minmax(360px,46%) minmax(0,1fr);align-items:start}.newsCard.noMedia,.slide.noMedia{display:block}.mediaCol{position:relative;display:flex;align-items:center;justify-content:center;align-self:start;width:100%;aspect-ratio:4/3;min-height:340px;height:auto;overflow:hidden;isolation:isolate;padding:12px;background:linear-gradient(145deg,color-mix(in srgb, var(--media-bg) 72%, white),color-mix(in srgb, var(--surface-soft) 84%, var(--media-bg) 16%))}.mediaCol::before{content:"";position:absolute;inset:12px;border-radius:24px;background:linear-gradient(180deg,rgba(255,255,255,.58),rgba(255,255,255,.18));border:1px solid rgba(255,255,255,.55);box-shadow:inset 0 1px 0 rgba(255,255,255,.45)}.mediaCol::after{content:"";position:absolute;inset:auto auto -34px -28px;width:140px;height:140px;border-radius:999px;background:radial-gradient(circle,rgba(255,255,255,.42),rgba(255,255,255,0) 72%);pointer-events:none}.media{position:relative;z-index:1;width:100%;height:100%;max-width:100%;max-height:100%;object-fit:contain;object-position:center;border-radius:20px;box-shadow:0 18px 34px rgba(15,23,42,.16)}.mediaColVideo{background:#050816}.mediaVideo{object-fit:contain;background:#050816}.media.is-fallback-img{object-fit:contain;box-shadow:none;background:var(--surface-soft);padding:34px}.mediaFallback{position:absolute;z-index:2;inset:12px;border-radius:20px;display:none;align-items:center;justify-content:center;text-align:center;padding:20px;color:var(--muted);font-weight:800;background:linear-gradient(180deg,rgba(255,255,255,.70),rgba(255,255,255,.30));border:1px dashed var(--line-strong)}.mediaCol.has-fallback-image .mediaFallback{display:none}.mediaCol.is-media-error .mediaFallback{display:flex}.mediaCarousel{position:relative;z-index:1;width:100%;height:100%;min-height:0}.mediaViewport{overflow:hidden;height:100%;border-radius:20px}.mediaTrack{display:flex;width:100%;height:100%;transition:transform .35s cubic-bezier(.22,.61,.36,1);will-change:transform}.mediaSlide{position:relative;min-width:100%;height:100%;display:flex}.mediaNavWrap{position:absolute;left:12px;right:12px;bottom:12px;z-index:3;display:flex;align-items:center;justify-content:space-between;gap:10px}.mediaNavBtn{width:36px;height:36px;border:1px solid rgba(255,255,255,.28);border-radius:999px;background:rgba(10,16,30,.58);backdrop-filter:blur(8px);color:#fff;font-size:22px;line-height:1;cursor:pointer}.mediaDots{display:flex;align-items:center;justify-content:center;gap:6px;flex:1}.mediaDot{width:8px;height:8px;border:0;border-radius:999px;background:rgba(255,255,255,.42);padding:0;cursor:pointer}.mediaDot.is-active{width:22px;background:#fff}.copyCol{padding:24px 26px;min-width:0;display:grid;align-content:start}.newsDate{margin:0 0 10px;font-size:12px;line-height:1;color:var(--brand-deep);font-weight:800;letter-spacing:.09em;text-transform:uppercase}.newsTitle{margin:0 0 14px;font-size:clamp(28px,2.6vw,42px);line-height:1.08;letter-spacing:-.045em;font-weight:800;text-wrap:balance}.newsBody{display:grid;gap:14px}.newsContent{display:grid;gap:12px;color:var(--muted);font-size:18px;line-height:1.75}.newsContent p{margin:0}.newsContent.is-collapsed{position:relative;overflow:hidden;max-height:14.5em}.newsContent.is-collapsed::after{content:"";position:absolute;left:0;right:0;bottom:0;height:76px;background:linear-gradient(180deg,rgba(255,255,255,0),var(--surface) 78%)}.newsMore{justify-self:start;border:1px solid var(--line-strong);background:var(--surface);color:var(--text);font:inherit;font-size:14px;font-weight:800;border-radius:999px;padding:10px 14px;cursor:pointer;box-shadow:var(--shadow-soft);transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease}.newsMore:hover{transform:translateY(-1px);border-color:var(--brand)}.carouselWrap{align-items:start}.carouselHead{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}.carouselControls{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.counter{display:inline-flex;align-items:center;justify-content:center;min-width:62px;padding:8px 12px;border-radius:999px;border:1px solid var(--line-strong);background:var(--surface);font-size:13px;font-weight:800;color:var(--text)}.nav{display:flex;gap:10px}.navBtn{width:44px;height:44px;border-radius:999px;border:1px solid var(--line-strong);background:var(--surface);color:var(--text);cursor:pointer;font-size:20px;font-weight:800;transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease}.navBtn:hover{transform:translateY(-1px);box-shadow:var(--shadow-soft);border-color:var(--line-strong)}.navBtn:disabled{opacity:.35;cursor:not-allowed;transform:none;box-shadow:none}.dots{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.dot{width:10px;height:10px;border:0;border-radius:999px;background:rgba(0,0,0,.12);padding:0;cursor:pointer;transition:all .2s ease}.dot.is-active{width:30px;background:linear-gradient(90deg,var(--brand),color-mix(in srgb, var(--brand) 60%, white))}.viewport{overflow:hidden;width:100%}.track{display:flex;gap:0;will-change:transform;transition:transform .45s cubic-bezier(.22,.61,.36,1);align-items:flex-start}.slide{min-width:100%;flex:0 0 100%;max-width:100%}.empty{padding:34px 22px;border-radius:var(--radius-lg);border:1px dashed var(--line-strong);background:var(--surface-soft);text-align:center}.empty h2{margin:0 0 10px;font-size:24px;line-height:1.1;letter-spacing:-.03em}.empty p{margin:0;color:var(--muted);font-size:15px;line-height:1.7}.reveal{opacity:0;transform:translateY(12px);animation:fadeUp .55s ease forwards}@keyframes fadeUp{to{opacity:1;transform:translateY(0)}}@media (max-width:940px){.frame{padding:22px 18px;border-radius:24px}.newsCard.hasMedia,.slide.hasMedia{grid-template-columns:1fr}.mediaCol{aspect-ratio:16/10;min-height:280px}.copyCol{padding:20px 18px}}@media (max-width:640px){.frame{padding:18px 14px;border-radius:20px}.title{font-size:clamp(24px,8vw,32px)}.newsTitle{font-size:clamp(22px,7vw,30px)}.newsContent{font-size:16px;line-height:1.68}.newsContent.is-collapsed{max-height:12.2em}.mediaCol{aspect-ratio:1/1;min-height:230px;padding:10px}.carouselHead{justify-content:flex-end}.carouselControls{width:100%;justify-content:space-between}}@media (prefers-reduced-motion:reduce){.reveal,.track,.dot,.navBtn,.newsMore{animation:none;transition:none}}
 </style>
+<style>
+:root{--font:${designSettings.font};--brand:${brand};--brand-deep:${brandDeep};--radius-xl:${designSettings.radiusXl};--radius-lg:${designSettings.radiusLg};--radius-control:${designSettings.radiusControl}}
+.newsMore,.navBtn,.counter{border-radius:var(--radius-control)}
+.gridStack{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}.newsCard.gridCard.hasMedia{display:flex;flex-direction:column;grid-template-columns:none}.gridCard .mediaCol{aspect-ratio:16/10;min-height:0}.gridCard .copyCol{padding:18px 20px}
+.compactStack{display:grid;gap:12px}.compactCard.hasMedia{display:grid;grid-template-columns:minmax(110px,22%) minmax(0,1fr);align-items:center}.compactCard.noMedia{display:block}.compactCard .mediaCol{aspect-ratio:16/10;min-height:0;padding:8px;background:transparent}.compactCard .mediaCol::before,.compactCard .mediaCol::after{display:none}.compactCard .media{border-radius:var(--radius-lg);box-shadow:none}.compactCard .copyCol{padding:16px 18px}.compactCard .newsTitle{font-size:clamp(18px,2vw,25px);margin-bottom:8px}.compactCard .newsContent{font-size:15px;line-height:1.55}.compactCard .newsContent.is-collapsed{max-height:5.6em}
+@media (max-width:640px){.gridStack{grid-template-columns:1fr}.compactCard.hasMedia{grid-template-columns:110px minmax(0,1fr)}.compactCard .copyCol{padding:12px 14px}.compactCard .newsContent{font-size:14px}.compactCard .newsDate{font-size:10px}}
+</style>
 </head>
 <body>
-<div class="shell"><section class="frame" id="root"><header class="header reveal"><h1 class="title">${escapeHtml(title)}</h1></header>${articles.length === 0 ? empty : layout === "carousel" ? `<section class="carouselWrap" id="carouselRoot"><div class="carouselHead reveal"><div class="dots" aria-label="Navigation des actualités">${dots}</div><div class="carouselControls">${counter}<div class="nav"><button class="navBtn" type="button" data-prev aria-label="Actualité précédente">‹</button><button class="navBtn" type="button" data-next aria-label="Actualité suivante">›</button></div></div></div><div class="viewport"><div class="track" id="track">${carouselItems}</div></div></section>` : `<section class="stack">${listItems}</section>`}</section></div>
+<div class="shell"><section class="frame" id="root"><header class="header reveal"><h1 class="title">${escapeHtml(title)}</h1></header>${articles.length === 0 ? empty : layout === "carousel" ? `<section class="carouselWrap" id="carouselRoot"><div class="carouselHead reveal"><div class="dots" aria-label="Navigation des actualitÃƒÂ©s">${dots}</div><div class="carouselControls">${counter}<div class="nav"><button class="navBtn" type="button" data-prev aria-label="Actualit\\u00e9 prÃƒÂ©cÃƒÂ©dente">Ã¢â‚¬Â¹</button><button class="navBtn" type="button" data-next aria-label="Actualit\\u00e9 suivante">Ã¢â‚¬Âº</button></div></div></div><div class="viewport"><div class="track" id="track">${carouselItems}</div></div></section>` : layout === "grid" ? `<section class="gridStack">${gridItems}</section>` : layout === "compact" ? `<section class="compactStack">${compactItems}</section>` : `<section class="stack">${listItems}</section>`}</section></div>
 <script>
 (function(){
 var EMBED_ID=${JSON.stringify(frameId)};var root=document.getElementById('root');var parentOrigin='*';var sentHeight=0;var resizeTimer=null;var settleTicks=0;
@@ -390,3 +526,5 @@ var shell=document.getElementById('carouselRoot');if(!shell)return;var track=doc
 </script>
 </body></html>`;
 }
+
+

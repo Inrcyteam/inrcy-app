@@ -47,7 +47,8 @@ import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/pr
 import { resolveProfileLogoUrl } from "@/lib/profileLogo";
 import { getDrawerTitle, isDrawerPanel } from "./dashboard.utils";
 import { inferChannelsFromRealtimePayload, inferChannelsFromSearchParams } from "./dashboard.shared";
-import type { ActusFont, ActusLayout, ActusTheme, GoogleProduct, GoogleSource, ModuleStatus, Ownership } from "./dashboard.types";
+import type { ActusFont, GoogleProduct, GoogleSource, ModuleStatus, Ownership } from "./dashboard.types";
+import { normalizeActusAccent, normalizeActusDesign, normalizeActusLayout, normalizeActusTheme } from "./dashboard.types";
 import { DASHBOARD_CHANNEL_KEYS, type DashboardChannelKey } from "@/lib/dashboardChannels";
 import { buildFluxBubbleItems } from "./dashboard.flux-bubbles";
 import { createInrBadgePublicUrl, type InrBadgeProfileSummary } from "@/lib/inrBadge";
@@ -643,8 +644,12 @@ const {
   setSiteInrcyActusLimit,
   siteInrcyActusFont,
   setSiteInrcyActusFont,
+  siteInrcyActusDesign,
+  setSiteInrcyActusDesign,
   siteInrcyActusTheme,
   setSiteInrcyActusTheme,
+  siteInrcyActusAccent,
+  setSiteInrcyActusAccent,
   showSiteInrcyWidgetCode,
   setShowSiteInrcyWidgetCode,
   siteInrcyGa4Connected,
@@ -702,8 +707,12 @@ const {
   setSiteWebActusLimit,
   siteWebActusFont,
   setSiteWebActusFont,
+  siteWebActusDesign,
+  setSiteWebActusDesign,
   siteWebActusTheme,
   setSiteWebActusTheme,
+  siteWebActusAccent,
+  setSiteWebActusAccent,
   showSiteWebWidgetCode,
   setShowSiteWebWidgetCode,
   siteWebGa4Connected,
@@ -927,10 +936,12 @@ const applyDashboardChannelState = useCallback((state: Record<string, any> | nul
   if (typeof state.ga4MeasurementId === "string") setGa4MeasurementId(state.ga4MeasurementId);
   if (typeof state.ga4PropertyId === "string") setGa4PropertyId(state.ga4PropertyId);
   if (typeof state.gscProperty === "string") setGscProperty(state.gscProperty);
-  if (state.siteInrcyActusLayout === "list" || state.siteInrcyActusLayout === "carousel") setSiteInrcyActusLayout(state.siteInrcyActusLayout);
+  if (["list", "carousel", "grid", "compact"].includes(String(state.siteInrcyActusLayout))) setSiteInrcyActusLayout(normalizeActusLayout(state.siteInrcyActusLayout));
   if ([3, 5, 10].includes(Number(state.siteInrcyActusLimit))) setSiteInrcyActusLimit(Number(state.siteInrcyActusLimit));
   if (["site", "inter", "poppins", "montserrat", "lora"].includes(String(state.siteInrcyActusFont))) setSiteInrcyActusFont(state.siteInrcyActusFont);
-  if (["white", "dark", "gray", "nature", "sand"].includes(String(state.siteInrcyActusTheme))) setSiteInrcyActusTheme(state.siteInrcyActusTheme);
+  if (["essential", "classic", "contemporary", "futuristic", "elegant"].includes(String(state.siteInrcyActusDesign))) setSiteInrcyActusDesign(normalizeActusDesign(state.siteInrcyActusDesign));
+  if (["white", "dark", "gray", "nature", "sand", "blue", "terracotta", "anthracite"].includes(String(state.siteInrcyActusTheme))) setSiteInrcyActusTheme(normalizeActusTheme(state.siteInrcyActusTheme));
+  setSiteInrcyActusAccent(normalizeActusAccent(state.siteInrcyActusAccent));
 
   if (typeof state.siteWebSettingsText === "string") setSiteWebSettingsText(state.siteWebSettingsText);
   if (typeof state.siteWebUrl === "string") setSiteWebUrl(state.siteWebUrl);
@@ -938,10 +949,12 @@ const applyDashboardChannelState = useCallback((state: Record<string, any> | nul
   if (typeof state.siteWebGa4MeasurementId === "string") setSiteWebGa4MeasurementId(state.siteWebGa4MeasurementId);
   if (typeof state.siteWebGa4PropertyId === "string") setSiteWebGa4PropertyId(state.siteWebGa4PropertyId);
   if (typeof state.siteWebGscProperty === "string") setSiteWebGscProperty(state.siteWebGscProperty);
-  if (state.siteWebActusLayout === "list" || state.siteWebActusLayout === "carousel") setSiteWebActusLayout(state.siteWebActusLayout);
+  if (["list", "carousel", "grid", "compact"].includes(String(state.siteWebActusLayout))) setSiteWebActusLayout(normalizeActusLayout(state.siteWebActusLayout));
   if ([3, 5, 10].includes(Number(state.siteWebActusLimit))) setSiteWebActusLimit(Number(state.siteWebActusLimit));
   if (["site", "inter", "poppins", "montserrat", "lora"].includes(String(state.siteWebActusFont))) setSiteWebActusFont(state.siteWebActusFont);
-  if (["white", "dark", "gray", "nature", "sand"].includes(String(state.siteWebActusTheme))) setSiteWebActusTheme(state.siteWebActusTheme);
+  if (["essential", "classic", "contemporary", "futuristic", "elegant"].includes(String(state.siteWebActusDesign))) setSiteWebActusDesign(normalizeActusDesign(state.siteWebActusDesign));
+  if (["white", "dark", "gray", "nature", "sand", "blue", "terracotta", "anthracite"].includes(String(state.siteWebActusTheme))) setSiteWebActusTheme(normalizeActusTheme(state.siteWebActusTheme));
+  setSiteWebActusAccent(normalizeActusAccent(state.siteWebActusAccent));
 
   if (typeof state.instagramUrl === "string") setInstagramUrl(state.instagramUrl);
   if (typeof state.instagramAccountConnected === "boolean") setInstagramAccountConnected(state.instagramAccountConnected);
@@ -1010,10 +1023,10 @@ const applyDashboardChannelState = useCallback((state: Record<string, any> | nul
   setGscProperty, setInstagramAccountConnected, setInstagramConnected, setInstagramConnectionStatus, setInstagramUrl,
   setInstagramUsername, setLinkedinAccountConnected, setLinkedinConnected, setLinkedinConnectionStatus,
   setLinkedinDisplayName, setLinkedinSelectedOrganizationId, setLinkedinSelectedOrganizationName, setLinkedinUrl,
-  setSiteInrcyActusFont, setSiteInrcyActusLayout, setSiteInrcyActusLimit, setSiteInrcyActusTheme, setSiteInrcyContactEmail,
+  setSiteInrcyActusFont, setSiteInrcyActusLayout, setSiteInrcyActusLimit, setSiteInrcyActusDesign, setSiteInrcyActusTheme, setSiteInrcyActusAccent, setSiteInrcyContactEmail,
   setSiteInrcyGa4Connected, setSiteInrcyGscConnected, setSiteInrcyOwnership, setSiteInrcySavedUrl,
   setSiteInrcySettingsError, setSiteInrcySettingsText, setSiteInrcyUrl, setSiteWebActusFont, setSiteWebActusLayout,
-  setSiteWebActusLimit, setSiteWebActusTheme, setSiteWebGa4Connected, setSiteWebGa4MeasurementId,
+  setSiteWebActusLimit, setSiteWebActusDesign, setSiteWebActusTheme, setSiteWebActusAccent, setSiteWebGa4Connected, setSiteWebGa4MeasurementId,
   setSiteWebGa4PropertyId, setSiteWebGscConnected, setSiteWebGscProperty, setSiteWebSavedUrl,
   setSiteWebSettingsError, setSiteWebSettingsText, setSiteWebUrl, setMailAccountsConnectedCount,
   setYoutubeShortsConnected, setYoutubeShortsUrl, setPinterestConnected, setPinterestUrl, setInrSearchConnected, setInrSearchUrl, setInrSearchDirectoryEnabled,
@@ -1534,20 +1547,24 @@ const loadSiteInrcy = useCallback(async () => {
     ga4MeasurementId: ga4MeasurementIdValue,
     ga4PropertyId: ga4PropertyIdValue,
     gscProperty: gscPropertyValue,
-    siteInrcyActusLayout: ((inrcySettingsObj as any)?.actus_widget?.layout === "carousel" ? "carousel" : "list") as ActusLayout,
+    siteInrcyActusLayout: normalizeActusLayout((inrcySettingsObj as any)?.actus_widget?.layout),
     siteInrcyActusLimit: [3, 5, 10].includes(Number((inrcySettingsObj as any)?.actus_widget?.limit)) ? Number((inrcySettingsObj as any)?.actus_widget?.limit) : 5,
     siteInrcyActusFont: (["site", "inter", "poppins", "montserrat", "lora"] as const).includes((inrcySettingsObj as any)?.actus_widget?.font as never) ? (inrcySettingsObj as any)?.actus_widget?.font as ActusFont : "site" as ActusFont,
-    siteInrcyActusTheme: (["white", "dark", "gray", "nature", "sand"] as const).includes((inrcySettingsObj as any)?.actus_widget?.theme as never) ? (inrcySettingsObj as any)?.actus_widget?.theme as ActusTheme : "nature" as ActusTheme,
+    siteInrcyActusDesign: normalizeActusDesign((inrcySettingsObj as any)?.actus_widget?.design),
+    siteInrcyActusTheme: normalizeActusTheme((inrcySettingsObj as any)?.actus_widget?.theme),
+    siteInrcyActusAccent: normalizeActusAccent((inrcySettingsObj as any)?.actus_widget?.accent),
     siteWebSettingsText: siteWebSettingsTextValue,
     siteWebUrl: (siteWebObj as any)?.url ?? "",
     siteWebSavedUrl: (siteWebObj as any)?.url ?? "",
     siteWebGa4MeasurementId: (siteWebObj as any)?.ga4?.measurement_id ?? "",
     siteWebGa4PropertyId: String((siteWebObj as any)?.ga4?.property_id ?? ""),
     siteWebGscProperty: (siteWebObj as any)?.gsc?.property ?? "",
-    siteWebActusLayout: ((siteWebObj as any)?.actus_widget?.layout === "carousel" ? "carousel" : "list") as ActusLayout,
+    siteWebActusLayout: normalizeActusLayout((siteWebObj as any)?.actus_widget?.layout),
     siteWebActusLimit: [3, 5, 10].includes(Number((siteWebObj as any)?.actus_widget?.limit)) ? Number((siteWebObj as any)?.actus_widget?.limit) : 5,
     siteWebActusFont: (["site", "inter", "poppins", "montserrat", "lora"] as const).includes((siteWebObj as any)?.actus_widget?.font as never) ? (siteWebObj as any)?.actus_widget?.font as ActusFont : "site" as ActusFont,
-    siteWebActusTheme: (["white", "dark", "gray", "nature", "sand"] as const).includes((siteWebObj as any)?.actus_widget?.theme as never) ? (siteWebObj as any)?.actus_widget?.theme as ActusTheme : "nature" as ActusTheme,
+    siteWebActusDesign: normalizeActusDesign((siteWebObj as any)?.actus_widget?.design),
+    siteWebActusTheme: normalizeActusTheme((siteWebObj as any)?.actus_widget?.theme),
+    siteWebActusAccent: normalizeActusAccent((siteWebObj as any)?.actus_widget?.accent),
     instagramUrl: igObj?.url ?? "",
     instagramAccountConnected: !!igObj?.accountConnected,
     instagramConnected: !!igObj?.connected,
@@ -3032,7 +3049,9 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       siteInrcyActusLayout,
       siteInrcyActusLimit,
       siteInrcyActusFont,
+      siteInrcyActusDesign,
       siteInrcyActusTheme,
+      siteInrcyActusAccent,
       siteWebSettingsText,
       siteWebUrl,
       siteWebSavedUrl,
@@ -3042,7 +3061,9 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       siteWebActusLayout,
       siteWebActusLimit,
       siteWebActusFont,
+      siteWebActusDesign,
       siteWebActusTheme,
+      siteWebActusAccent,
       instagramUrl,
       instagramAccountConnected,
       instagramConnected,
@@ -3318,13 +3339,13 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     saveFacebookPageFromDrawer, saveGmbLocationFromDrawer, saveInstagramProfileFromDrawer, saveLinkedinProfileUrlFromDrawer, saveSiteInrcyUrlFromDrawer, saveSiteWebUrlFromDrawer,
     setFbSelectedPageId, setIgSelectedPageId, setGmbLocationName, setLinkedinUrl, setLinkedinUrlNotice,
     setShowSiteInrcyWidgetCode, setShowSiteWebWidgetCode,
-    setSiteInrcyActusFont, setSiteInrcyActusLayout, setSiteInrcyActusLimit, setSiteInrcyActusTheme, setSiteInrcyUrl,
-    setSiteWebActusFont, setSiteWebActusLayout, setSiteWebActusLimit, setSiteWebActusTheme, setSiteWebUrl,
+    setSiteInrcyActusFont, setSiteInrcyActusLayout, setSiteInrcyActusLimit, setSiteInrcyActusDesign, setSiteInrcyActusTheme, setSiteInrcyActusAccent, setSiteInrcyUrl,
+    setSiteWebActusFont, setSiteWebActusLayout, setSiteWebActusLimit, setSiteWebActusDesign, setSiteWebActusTheme, setSiteWebActusAccent, setSiteWebUrl,
     showSiteInrcyWidgetCode, showSiteWebWidgetCode,
-    siteInrcyActusFont, siteInrcyActusLayout, siteInrcyActusLimit, siteInrcyActusTheme, siteInrcyAllGreen, siteInrcyContactEmail,
+    siteInrcyActusFont, siteInrcyActusLayout, siteInrcyActusLimit, siteInrcyActusDesign, siteInrcyActusTheme, siteInrcyActusAccent, siteInrcyAllGreen, siteInrcyContactEmail,
     siteInrcyGa4Connected, siteInrcyGa4Notice, siteInrcyGscConnected, siteInrcyGscNotice, siteInrcyOwnership, siteInrcySavedUrl, siteInrcySettingsError,
     siteInrcyUrl, siteInrcyUrlNotice,
-    siteWebActusFont, siteWebActusLayout, siteWebActusLimit, siteWebActusTheme, siteWebAllGreen,
+    siteWebActusFont, siteWebActusLayout, siteWebActusLimit, siteWebActusDesign, siteWebActusTheme, siteWebActusAccent, siteWebAllGreen,
     siteWebGa4Connected, siteWebGa4MeasurementId, siteWebGa4Notice, siteWebGa4PropertyId, siteWebGscConnected, siteWebGscNotice, siteWebGscProperty,
     siteWebSavedUrl, siteWebSettingsError, siteWebUrl, siteWebUrlNotice,
     widgetTokenInrcySite, widgetTokenSiteWeb, hasSiteInrcyUrl, hasSiteWebUrl,

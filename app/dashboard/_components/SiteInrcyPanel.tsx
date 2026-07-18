@@ -4,6 +4,7 @@ import styles from "../dashboard.module.css";
 import ConnectionPill from "./ConnectionPill";
 import StatusMessage from "./StatusMessage";
 import SiteActusWidgetCode from "./SiteActusWidgetCode";
+import ActusWidgetControls from "./ActusWidgetControls";
 import SaveIcon from "./SaveIcon";
 
 export default function SiteInrcyPanel(props: any) {
@@ -38,10 +39,12 @@ export default function SiteInrcyPanel(props: any) {
     setSiteInrcyActusLayout,
     siteInrcyActusLimit,
     setSiteInrcyActusLimit,
-    siteInrcyActusFont,
-    setSiteInrcyActusFont,
+    siteInrcyActusDesign,
+    setSiteInrcyActusDesign,
     siteInrcyActusTheme,
     setSiteInrcyActusTheme,
+    siteInrcyActusAccent,
+    setSiteInrcyActusAccent,
     siteInrcySavedUrl,
     widgetTokenInrcySite,
     showSiteInrcyWidgetCode,
@@ -82,7 +85,7 @@ export default function SiteInrcyPanel(props: any) {
                     : "rgba(59,130,246,0.95)",
             }}
           />
-          Statut : <strong>{siteInrcyOwnership === "none" ? "Aucun site" : hasSiteInrcyUrl ? "Connecté" : "À connecter"}</strong>
+          Statut : <strong>{siteInrcyOwnership === "none" ? "Aucun site" : hasSiteInrcyUrl ? "ConnectÃ©" : "Ã€ connecter"}</strong>
         </span>
 
         {!!siteInrcyContactEmail && (
@@ -127,7 +130,7 @@ export default function SiteInrcyPanel(props: any) {
             onChange={(e) => setSiteInrcyUrl(e.target.value)}
             disabled={siteInrcyOwnership === "none" || hasSiteInrcyUrl}
             placeholder="https://..."
-            title={hasSiteInrcyUrl ? "Supprimez d'abord le lien enregistré pour en saisir un nouveau." : undefined}
+            title={hasSiteInrcyUrl ? "Supprimez d'abord le lien enregistrÃ© pour en saisir un nouveau." : undefined}
             style={{
               flex: "1 1 280px",
               minWidth: 0,
@@ -153,7 +156,7 @@ export default function SiteInrcyPanel(props: any) {
               aria-label="Supprimer le lien"
               style={{ minWidth: 44, paddingInline: 0, fontSize: 22, fontWeight: 900, lineHeight: 1 }}
             >
-              ×
+              Ã—
             </button>
           ) : (
             <button
@@ -161,7 +164,7 @@ export default function SiteInrcyPanel(props: any) {
               className={`${styles.actionBtn} ${styles.iconBtn}`}
               onClick={() => void saveSiteInrcyUrl()}
               disabled={siteInrcyOwnership === "none" || siteInrcyUrlBusy}
-              title={siteInrcyOwnership === "none" ? "Aucun site iNrCy associé" : "Enregistrer le lien"}
+              title={siteInrcyOwnership === "none" ? "Aucun site iNrCy associÃ©" : "Enregistrer le lien"}
               aria-label="Enregistrer le lien"
             >
               <SaveIcon />
@@ -194,7 +197,7 @@ export default function SiteInrcyPanel(props: any) {
           <div className={styles.blockTitle}>Google Analytics (GA4)</div>
           <ConnectionPill connected={siteInrcyGa4Connected} />
         </div>
-        <div className={styles.blockSub}>Remplissage automatique des identifiants GA4 après connexion</div>
+        <div className={styles.blockSub}>Remplissage automatique des identifiants GA4 aprÃ¨s connexion</div>
 
         <label style={{ display: "grid", gap: 8 }}>
           <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>ID de mesure (ex: G-XXXXXXXXXX)</span>
@@ -202,7 +205,7 @@ export default function SiteInrcyPanel(props: any) {
             value={ga4MeasurementId}
             readOnly
             aria-readonly="true"
-            placeholder="Remplissage automatique après connexion"
+            placeholder="Remplissage automatique aprÃ¨s connexion"
             style={{
               width: "100%",
               borderRadius: 12,
@@ -219,13 +222,13 @@ export default function SiteInrcyPanel(props: any) {
 
 
         <label style={{ display: "grid", gap: 8 }}>
-          <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>Property ID (numérique, ex: 123456789)</span>
+          <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>Property ID (numÃ©rique, ex: 123456789)</span>
           <input
             value={ga4PropertyId}
             readOnly
             aria-readonly="true"
             inputMode="numeric"
-            placeholder="Remplissage automatique après connexion"
+            placeholder="Remplissage automatique aprÃ¨s connexion"
             style={{
               width: "100%",
               borderRadius: 12,
@@ -247,9 +250,9 @@ export default function SiteInrcyPanel(props: any) {
               className={`${styles.actionBtn} ${styles.disconnectBtn}`}
               onClick={() => void disconnectSiteInrcyGa4()}
               disabled={siteInrcyOwnership === "none" || siteInrcyGa4Busy}
-              title={siteInrcyOwnership === "none" ? "Aucun site iNrCy associé" : "Déconnecter (GA4)"}
+              title={siteInrcyOwnership === "none" ? "Aucun site iNrCy associÃ©" : "DÃ©connecter (GA4)"}
             >
-              {siteInrcyGa4Busy ? "Déconnexion..." : "Déconnecter"}
+              {siteInrcyGa4Busy ? "DÃ©connexion..." : "DÃ©connecter"}
             </button>
           ) : (
             <button
@@ -259,7 +262,7 @@ export default function SiteInrcyPanel(props: any) {
               disabled={!canConnectSiteInrcyGoogle}
               title={
                 !canConfigureSite
-                  ? "Aucun site iNrCy associé"
+                  ? "Aucun site iNrCy associÃ©"
                   : !hasSiteInrcyUrl
                     ? "Renseigne le lien du site iNrCy avant de connecter Google Analytics."
                     : "Connecter Google Analytics"
@@ -285,17 +288,17 @@ export default function SiteInrcyPanel(props: any) {
           <div className={styles.blockTitle}>Google Search Console</div>
           <ConnectionPill connected={siteInrcyGscConnected} />
         </div>
-        <div className={styles.blockSub}>Remplissage automatique des identifiants GSC après connexion</div>
+        <div className={styles.blockSub}>Remplissage automatique des identifiants GSC aprÃ¨s connexion</div>
 
         <label style={{ display: "grid", gap: 8 }}>
           <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>
-            Propriété (ex: <code>sc-domain:monsite.fr</code> ou <code>https://monsite.fr/</code>)
+            PropriÃ©tÃ© (ex: <code>sc-domain:monsite.fr</code> ou <code>https://monsite.fr/</code>)
           </span>
           <input
             value={gscProperty}
             readOnly
             aria-readonly="true"
-            placeholder="Remplissage automatique après connexion"
+            placeholder="Remplissage automatique aprÃ¨s connexion"
             style={{
               width: "100%",
               borderRadius: 12,
@@ -317,9 +320,9 @@ export default function SiteInrcyPanel(props: any) {
               className={`${styles.actionBtn} ${styles.disconnectBtn}`}
               onClick={() => void disconnectSiteInrcyGsc()}
               disabled={siteInrcyOwnership === "none" || siteInrcyGscBusy}
-              title={siteInrcyOwnership === "none" ? "Aucun site iNrCy associé" : "Déconnecter (GSC)"}
+              title={siteInrcyOwnership === "none" ? "Aucun site iNrCy associÃ©" : "DÃ©connecter (GSC)"}
             >
-              {siteInrcyGscBusy ? "Déconnexion..." : "Déconnecter"}
+              {siteInrcyGscBusy ? "DÃ©connexion..." : "DÃ©connecter"}
             </button>
           ) : (
             <button
@@ -329,7 +332,7 @@ export default function SiteInrcyPanel(props: any) {
               disabled={!canConnectSiteInrcyGoogle}
               title={
                 !canConfigureSite
-                  ? "Aucun site iNrCy associé"
+                  ? "Aucun site iNrCy associÃ©"
                   : !hasSiteInrcyUrl
                     ? "Renseigne le lien du site iNrCy avant de connecter Google Search Console."
                     : "Connecter Google Search Console"
@@ -352,105 +355,33 @@ export default function SiteInrcyPanel(props: any) {
         }}
       >
         <div className={styles.blockHeaderRow}>
-          <div className={styles.blockTitle}>Widget « Actus »</div>
+          <div className={styles.blockTitle}>Widget Â« Actus Â»</div>
         </div>
         <div className={styles.blockSub}>
-          Collez ce code iframe dans votre site iNrCy (Elementor → widget HTML) pour afficher automatiquement vos dernières actus publiées depuis Booster.
+          Collez ce code iframe dans votre site iNrCy (Elementor â†’ widget HTML) pour afficher automatiquement vos derniÃ¨res actus publiÃ©es depuis Booster.
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 10 }}>
-          <label style={{ display: "grid", gap: 6 }}>
-            <span className={styles.blockSub}><strong>Affichage</strong></span>
-            <select
-              value={siteInrcyActusLayout}
-              onChange={(e) => setSiteInrcyActusLayout(e.target.value === "carousel" ? "carousel" : "list")}
-              style={{
-                borderRadius: 12,
-                border: "1px solid rgba(255,255,255,0.14)",
-                background: "rgba(15,23,42,0.65)",
-                colorScheme: "dark",
-                padding: "10px 12px",
-                color: "rgba(255,255,255,0.92)",
-                outline: "none",
-              }}
-            >
-              <option value="list">Liste</option>
-              <option value="carousel">Carousel</option>
-            </select>
-          </label>
-          <label style={{ display: "grid", gap: 6 }}>
-            <span className={styles.blockSub}><strong>Nombre d'actus</strong></span>
-            <select
-              value={String(siteInrcyActusLimit)}
-              onChange={(e) => setSiteInrcyActusLimit(Math.min(10, Math.max(3, Number(e.target.value) || 5)))}
-              style={{
-                borderRadius: 12,
-                border: "1px solid rgba(255,255,255,0.14)",
-                background: "rgba(15,23,42,0.65)",
-                colorScheme: "dark",
-                padding: "10px 12px",
-                color: "rgba(255,255,255,0.92)",
-                outline: "none",
-              }}
-            >
-              {[3, 5, 10].map((n) => (
-                <option key={n} value={n}>{n} dernières actus</option>
-              ))}
-            </select>
-          </label>
-          <label style={{ display: "grid", gap: 6 }}>
-            <span className={styles.blockSub}><strong>Police</strong></span>
-            <select
-              value={siteInrcyActusFont}
-              onChange={(e) => setSiteInrcyActusFont((( ["site", "inter", "poppins", "montserrat", "lora"] as const).includes(e.target.value as never) ? e.target.value : "site") as "site" | "inter" | "poppins" | "montserrat" | "lora")}
-              style={{
-                borderRadius: 12,
-                border: "1px solid rgba(255,255,255,0.14)",
-                background: "rgba(15,23,42,0.65)",
-                colorScheme: "dark",
-                padding: "10px 12px",
-                color: "rgba(255,255,255,0.92)",
-                outline: "none",
-              }}
-            >
-              <option value="site">Adaptative site</option>
-              <option value="inter">Inter</option>
-              <option value="poppins">Poppins</option>
-              <option value="montserrat">Montserrat</option>
-              <option value="lora">Lora</option>
-            </select>
-          </label>
-          <label style={{ display: "grid", gap: 6 }}>
-            <span className={styles.blockSub}><strong>Couleur de fond</strong></span>
-            <select
-              value={siteInrcyActusTheme}
-              onChange={(e) => setSiteInrcyActusTheme((( ["white", "dark", "gray", "nature", "sand"] as const).includes(e.target.value as never) ? e.target.value : "nature") as "white" | "dark" | "gray" | "nature" | "sand")}
-              style={{
-                borderRadius: 12,
-                border: "1px solid rgba(255,255,255,0.14)",
-                background: "rgba(15,23,42,0.65)",
-                colorScheme: "dark",
-                padding: "10px 12px",
-                color: "rgba(255,255,255,0.92)",
-                outline: "none",
-              }}
-            >
-              <option value="white">Blanc</option>
-              <option value="dark">Noir</option>
-              <option value="gray">Gris</option>
-              <option value="nature">Vert doux</option>
-              <option value="sand">Sable</option>
-            </select>
-          </label>
-        </div>
+        <ActusWidgetControls
+          layout={siteInrcyActusLayout}
+          setLayout={setSiteInrcyActusLayout}
+          limit={siteInrcyActusLimit}
+          setLimit={setSiteInrcyActusLimit}
+          design={siteInrcyActusDesign}
+          setDesign={setSiteInrcyActusDesign}
+          theme={siteInrcyActusTheme}
+          setTheme={setSiteInrcyActusTheme}
+          accent={siteInrcyActusAccent}
+          setAccent={setSiteInrcyActusAccent}
+        />
 
         <SiteActusWidgetCode
           savedUrl={siteInrcySavedUrl}
           source="inrcy_site"
           layout={siteInrcyActusLayout}
           limit={siteInrcyActusLimit}
-          font={siteInrcyActusFont}
+          design={siteInrcyActusDesign}
           theme={siteInrcyActusTheme}
+          accent={siteInrcyActusAccent}
           token={widgetTokenInrcySite}
           showCode={showSiteInrcyWidgetCode}
           onToggle={() => setShowSiteInrcyWidgetCode((prev: boolean) => !prev)}
@@ -469,11 +400,12 @@ export default function SiteInrcyPanel(props: any) {
           className={`${styles.actionBtn} ${styles.resetBtn}`}
           onClick={resetSiteInrcyAll}
           disabled={siteInrcyOwnership === "none"}
-          title={siteInrcyOwnership === "none" ? "Aucun site iNrCy" : "Réinitialiser (lien + GA4 + Search Console)"}
+          title={siteInrcyOwnership === "none" ? "Aucun site iNrCy" : "RÃ©initialiser (lien + GA4 + Search Console)"}
         >
-          Réinitialiser
+          RÃ©initialiser
         </button>
       </div>
     </div>
   );
 }
+
