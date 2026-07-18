@@ -69,7 +69,7 @@ function clampDesign(value: string | null): DesignMode {
 
 function clampTheme(value: string | null): ThemeMode {
   const v = (value || "nature").trim().toLowerCase();
-  return v === "white" || v === "dark" || v === "gray" || v === "nature" || v === "sand" || v === "blue" || v === "terracotta" || v === "anthracite" ? v : "nature";
+  return v === "white" || v === "dark" || v === "gray" || v === "nature" || v === "sand" || v === "blue" || v === "terracotta" || v === "anthracite" || v === "custom" ? v : "nature";
 }
 
 function clampAccent(value: string | null) {

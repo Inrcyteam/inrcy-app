@@ -940,7 +940,7 @@ const applyDashboardChannelState = useCallback((state: Record<string, any> | nul
   if ([3, 5, 10].includes(Number(state.siteInrcyActusLimit))) setSiteInrcyActusLimit(Number(state.siteInrcyActusLimit));
   if (["site", "inter", "poppins", "montserrat", "lora"].includes(String(state.siteInrcyActusFont))) setSiteInrcyActusFont(state.siteInrcyActusFont);
   if (["essential", "classic", "contemporary", "futuristic", "elegant"].includes(String(state.siteInrcyActusDesign))) setSiteInrcyActusDesign(normalizeActusDesign(state.siteInrcyActusDesign));
-  if (["white", "dark", "gray", "nature", "sand", "blue", "terracotta", "anthracite"].includes(String(state.siteInrcyActusTheme))) setSiteInrcyActusTheme(normalizeActusTheme(state.siteInrcyActusTheme));
+  if (["white", "dark", "gray", "nature", "sand", "blue", "terracotta", "anthracite", "custom"].includes(String(state.siteInrcyActusTheme))) setSiteInrcyActusTheme(normalizeActusTheme(state.siteInrcyActusTheme));
   setSiteInrcyActusAccent(normalizeActusAccent(state.siteInrcyActusAccent));
 
   if (typeof state.siteWebSettingsText === "string") setSiteWebSettingsText(state.siteWebSettingsText);
@@ -953,7 +953,7 @@ const applyDashboardChannelState = useCallback((state: Record<string, any> | nul
   if ([3, 5, 10].includes(Number(state.siteWebActusLimit))) setSiteWebActusLimit(Number(state.siteWebActusLimit));
   if (["site", "inter", "poppins", "montserrat", "lora"].includes(String(state.siteWebActusFont))) setSiteWebActusFont(state.siteWebActusFont);
   if (["essential", "classic", "contemporary", "futuristic", "elegant"].includes(String(state.siteWebActusDesign))) setSiteWebActusDesign(normalizeActusDesign(state.siteWebActusDesign));
-  if (["white", "dark", "gray", "nature", "sand", "blue", "terracotta", "anthracite"].includes(String(state.siteWebActusTheme))) setSiteWebActusTheme(normalizeActusTheme(state.siteWebActusTheme));
+  if (["white", "dark", "gray", "nature", "sand", "blue", "terracotta", "anthracite", "custom"].includes(String(state.siteWebActusTheme))) setSiteWebActusTheme(normalizeActusTheme(state.siteWebActusTheme));
   setSiteWebActusAccent(normalizeActusAccent(state.siteWebActusAccent));
 
   if (typeof state.instagramUrl === "string") setInstagramUrl(state.instagramUrl);

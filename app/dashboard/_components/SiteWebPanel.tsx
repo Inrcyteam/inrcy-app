@@ -81,7 +81,7 @@ export default function SiteWebPanel(props: any) {
                   : "rgba(148,163,184,0.9)",
             }}
           />
-          Statut : <strong>{hasSiteWebUrl ? ("ConnectÃ©") : "Ã€ configurer"}</strong>
+          Statut : <strong>{hasSiteWebUrl ? ("Connecté") : "À configurer"}</strong>
         </span>
       </div>
 
@@ -109,7 +109,7 @@ export default function SiteWebPanel(props: any) {
             onChange={(e) => setSiteWebUrl(e.target.value)}
             disabled={hasSiteWebUrl}
             placeholder="https://votre-site.fr"
-            title={hasSiteWebUrl ? "Supprimez d'abord le lien enregistrÃ© pour en saisir un nouveau." : undefined}
+            title={hasSiteWebUrl ? "Supprimez d'abord le lien enregistré pour en saisir un nouveau." : undefined}
             style={{
               flex: "1 1 280px",
               minWidth: 0,
@@ -135,7 +135,7 @@ export default function SiteWebPanel(props: any) {
               aria-label="Supprimer le lien"
               style={{ minWidth: 44, paddingInline: 0, fontSize: 22, fontWeight: 900, lineHeight: 1 }}
             >
-              Ã—
+              ×
             </button>
           ) : (
             <button
@@ -176,7 +176,7 @@ export default function SiteWebPanel(props: any) {
           <div className={styles.blockTitle}>Google Analytics (GA4)</div>
           <ConnectionPill connected={siteWebGa4Connected} />
         </div>
-        <div className={styles.blockSub}>Remplissage automatique des identifiants GA4 aprÃ¨s connexion</div>
+        <div className={styles.blockSub}>Remplissage automatique des identifiants GA4 après connexion</div>
 
         <label style={{ display: "grid", gap: 8 }}>
           <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>ID de mesure (ex: G-XXXXXXXXXX)</span>
@@ -184,7 +184,7 @@ export default function SiteWebPanel(props: any) {
             value={siteWebGa4MeasurementId}
             readOnly
             aria-readonly="true"
-            placeholder="Remplissage automatique aprÃ¨s connexion"
+            placeholder="Remplissage automatique après connexion"
             style={{
               width: "100%",
               borderRadius: 12,
@@ -200,13 +200,13 @@ export default function SiteWebPanel(props: any) {
         </label>
 
         <label style={{ display: "grid", gap: 8 }}>
-          <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>Property ID (numÃ©rique, ex: 123456789)</span>
+          <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>Property ID (numérique, ex: 123456789)</span>
           <input
             value={siteWebGa4PropertyId}
             readOnly
             aria-readonly="true"
             inputMode="numeric"
-            placeholder="Remplissage automatique aprÃ¨s connexion"
+            placeholder="Remplissage automatique après connexion"
             style={{
               width: "100%",
               borderRadius: 12,
@@ -228,9 +228,9 @@ export default function SiteWebPanel(props: any) {
               className={`${styles.actionBtn} ${styles.disconnectBtn}`}
               onClick={() => void disconnectSiteWebGa4()}
               disabled={siteWebGa4Busy}
-              title="DÃ©connecter (GA4)"
+              title="Déconnecter (GA4)"
             >
-              {siteWebGa4Busy ? "DÃ©connexion..." : "DÃ©connecter"}
+              {siteWebGa4Busy ? "Déconnexion..." : "Déconnecter"}
             </button>
           ) : (
             <button
@@ -261,17 +261,17 @@ export default function SiteWebPanel(props: any) {
           <div className={styles.blockTitle}>Google Search Console</div>
           <ConnectionPill connected={siteWebGscConnected} />
         </div>
-        <div className={styles.blockSub}>Remplissage automatique des identifiants GSC aprÃ¨s connexion</div>
+        <div className={styles.blockSub}>Remplissage automatique des identifiants GSC après connexion</div>
 
         <label style={{ display: "grid", gap: 8 }}>
           <span style={{ color: "rgba(255,255,255,0.85)", fontSize: 13 }}>
-            PropriÃ©tÃ© (ex: <code>sc-domain:monsite.fr</code> ou <code>https://monsite.fr/</code>)
+            Propriété (ex: <code>sc-domain:monsite.fr</code> ou <code>https://monsite.fr/</code>)
           </span>
           <input
             value={siteWebGscProperty}
             readOnly
             aria-readonly="true"
-            placeholder="Remplissage automatique aprÃ¨s connexion"
+            placeholder="Remplissage automatique après connexion"
             style={{
               width: "100%",
               borderRadius: 12,
@@ -293,9 +293,9 @@ export default function SiteWebPanel(props: any) {
               className={`${styles.actionBtn} ${styles.disconnectBtn}`}
               onClick={() => void disconnectSiteWebGsc()}
               disabled={siteWebGscBusy}
-              title="DÃ©connecter (GSC)"
+              title="Déconnecter (GSC)"
             >
-              {siteWebGscBusy ? "DÃ©connexion..." : "DÃ©connecter"}
+              {siteWebGscBusy ? "Déconnexion..." : "Déconnecter"}
             </button>
           ) : (
             <button
@@ -323,10 +323,10 @@ export default function SiteWebPanel(props: any) {
         }}
       >
         <div className={styles.blockHeaderRow}>
-          <div className={styles.blockTitle}>Widget Â« Actus Â»</div>
+          <div className={styles.blockTitle}>Widget « Actus »</div>
         </div>
         <div className={styles.blockSub}>
-          Collez ce code iframe dans votre site (WordPress, Wix, Webflow, HTMLâ€¦) pour afficher automatiquement vos derniÃ¨res actus publiÃ©es depuis Booster.
+          Collez ce code iframe dans votre site (WordPress, Wix, Webflow, HTML…) pour afficher automatiquement vos dernières actus publiées depuis Booster.
         </div>
 
         <ActusWidgetControls
@@ -367,12 +367,14 @@ export default function SiteWebPanel(props: any) {
           type="button"
           className={`${styles.actionBtn} ${styles.resetBtn}`}
           onClick={resetSiteWebAll}
-          title="RÃ©initialiser (lien + GA4 + Search Console)"
+          title="Réinitialiser (lien + GA4 + Search Console)"
         >
-          RÃ©initialiser
+          Réinitialiser
         </button>
       </div>
     </div>
   );
 }
+
+
 

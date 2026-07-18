@@ -78,28 +78,28 @@ export default function ActusWidgetControls({
         </select>
       </label>
 
-      <label style={{ ...labelStyle, gridColumn: "1 / -1" }}>
-        <span style={labelTextStyle}><strong>Couleur d&apos;accent personnalis&eacute;e</strong> <span>(facultatif)</span></span>
+      {theme === "custom" ? <label style={{ ...labelStyle, gridColumn: "1 / -1" }}>
+        <span style={labelTextStyle}><strong>Couleur de l&apos;iFrame</strong></span>
         <div style={{ display: "grid", gridTemplateColumns: "52px minmax(0, 1fr)", gap: 8, minWidth: 0 }}>
           <input
             type="color"
             value={pickerValue}
             onChange={(event) => setAccent(event.target.value.toUpperCase())}
-            aria-label="Choisir la couleur d'accent"
+            aria-label="Choisir la couleur de l'iFrame"
             style={{ width: 52, height: 42, padding: 3, borderRadius: 12, border: "1px solid rgba(255,255,255,0.14)", background: "rgba(15,23,42,0.65)", cursor: "pointer" }}
           />
           <input
             type="text"
             value={accent}
             onChange={(event) => setAccent(event.target.value.toUpperCase())}
-            placeholder={"Automatique selon le th\u00e8me \u2014 ex. #D97706"}
+            placeholder={"Choisissez une couleur — ex. #D97706"}
             inputMode="text"
-            aria-label={"Code hexad\u00e9cimal de la couleur d'accent"}
+            aria-label={"Code hexad\u00e9cimal de la couleur de l'iFrame"}
             style={fieldStyle}
           />
         </div>
-        <span style={{ ...labelTextStyle, opacity: 0.72 }}>Laissez vide pour utiliser l&apos;accent du thème choisi.</span>
-      </label>
+        <span style={{ ...labelTextStyle, opacity: 0.72 }}>Choisissez la couleur principale de votre iFrame.</span>
+      </label> : null}
     </div>
   );
 }

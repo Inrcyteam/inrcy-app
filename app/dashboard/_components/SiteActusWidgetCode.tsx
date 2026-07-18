@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import styles from "../dashboard.module.css";
 import { getNormalizedSiteDomain } from "../dashboard.utils";
+import { normalizeActusAccent } from "../dashboard.types";
 import type { ActusDesign, ActusLayout, ActusTheme } from "../dashboard.types";
 
 type GeneratedActusWidgetConfig = {
@@ -41,7 +42,8 @@ const buildSnippet = (config: GeneratedActusWidgetConfig) => {
   embedUrl.searchParams.set("limit", String(config.limit));
   embedUrl.searchParams.set("design", config.design);
   embedUrl.searchParams.set("theme", config.theme);
-  if (config.accent) embedUrl.searchParams.set("accent", config.accent);
+  const customColor = config.theme === "custom" ? normalizeActusAccent(config.accent) : "";
+  if (customColor) embedUrl.searchParams.set("accent", customColor);
   embedUrl.searchParams.set("title", "Actualités");
   embedUrl.searchParams.set("token", config.token);
   const src = embedUrl.toString();

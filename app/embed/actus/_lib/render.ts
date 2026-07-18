@@ -3,7 +3,7 @@ import { renderBoosterSiteContentHtml } from "@/lib/boosterFormatting";
 export type LayoutMode = "list" | "carousel" | "grid" | "compact";
 export type FontMode = "site" | "inter" | "poppins" | "montserrat" | "lora";
 export type DesignMode = "essential" | "classic" | "contemporary" | "futuristic" | "elegant";
-export type ThemeMode = "white" | "dark" | "gray" | "nature" | "sand" | "blue" | "terracotta" | "anthracite";
+export type ThemeMode = "white" | "dark" | "gray" | "nature" | "sand" | "blue" | "terracotta" | "anthracite" | "custom";
 
 type ThemePalette = {
   bg: string;
@@ -157,7 +157,7 @@ function renderMediaBlock(article: Record<string, unknown>, idPrefix: string) {
         <video class="media mediaVideo" src="${safeAttr(src)}" ${poster ? `poster="${safeAttr(poster)}"` : ""} controls playsinline preload="metadata" controlslist="nodownload" data-original-src="${safeAttr(video.url)}">
           <source src="${safeAttr(src)}" type="${safeAttr(video.mime)}" />
         </video>
-        <div class="mediaFallback" aria-hidden="true">VidÃƒÂ©o indisponible</div>
+        <div class="mediaFallback" aria-hidden="true">Vidï¿½o indisponible</div>
       </div>`;
   }
 
@@ -184,9 +184,9 @@ function renderMediaBlock(article: Record<string, unknown>, idPrefix: string) {
         </div>
         <div class="mediaFallback" aria-hidden="true">Image indisponible</div>
         <div class="mediaNavWrap">
-          <button class="mediaNavBtn" type="button" data-media-prev aria-label="Photo prÃƒÂ©cÃƒÂ©dente">Ã¢â‚¬Â¹</button>
+          <button class="mediaNavBtn" type="button" data-media-prev aria-label="Photo prï¿½cï¿½dente">ï¿½</button>
           <div class="mediaDots" aria-label="Navigation des photos">${dots}</div>
-          <button class="mediaNavBtn" type="button" data-media-next aria-label="Photo suivante">Ã¢â‚¬Âº</button>
+          <button class="mediaNavBtn" type="button" data-media-next aria-label="Photo suivante">ï¿½</button>
         </div>
       </div>
     </div>`;
@@ -374,7 +374,7 @@ function renderListItems(articles: Array<Record<string, unknown>>) {
       const hasMedia = images.length > 0 || !!getVideoAttachment(article);
       const media = renderMediaBlock(article, `actu-${index}-media`);
       const date = formatDate(article.created_at);
-      const articleTitle = String(article.title ?? "Actualit\\u00e9").trim() || "Actualit\\u00e9";
+      const articleTitle = String(article.title ?? "Actualité").trim() || "Actualité";
       const body = renderArticleBody(article, `actu-${index}`);
       return `
         <article class="newsCard reveal ${hasMedia ? "hasMedia" : "noMedia"}" style="animation-delay:${Math.min(index * 80, 320)}ms">
@@ -397,7 +397,7 @@ function renderGridItems(articles: Array<Record<string, unknown>>) {
       const hasMedia = images.length > 0 || !!getVideoAttachment(article);
       const media = renderMediaBlock(article, `grid-${index}-media`);
       const date = formatDate(article.created_at);
-      const articleTitle = String(article.title ?? "ActualitÃƒÆ’Ã‚Â©").trim() || "ActualitÃƒÆ’Ã‚Â©";
+      const articleTitle = String(article.title ?? "Actualité").trim() || "Actualité";
       const body = renderArticleBody(article, `grid-${index}`);
       return `
         <article class="newsCard gridCard reveal ${hasMedia ? "hasMedia" : "noMedia"}" style="animation-delay:${Math.min(index * 80, 320)}ms">
@@ -420,7 +420,7 @@ function renderCompactItems(articles: Array<Record<string, unknown>>) {
       const hasMedia = images.length > 0 || !!getVideoAttachment(article);
       const media = renderMediaBlock(article, `compact-${index}-media`);
       const date = formatDate(article.created_at);
-      const articleTitle = String(article.title ?? "ActualitÃƒÆ’Ã‚Â©").trim() || "ActualitÃƒÆ’Ã‚Â©";
+      const articleTitle = String(article.title ?? "Actualité").trim() || "Actualité";
       const body = renderArticleBody(article, `compact-${index}`);
       return `
         <article class="newsCard compactCard reveal ${hasMedia ? "hasMedia" : "noMedia"}" style="animation-delay:${Math.min(index * 80, 320)}ms">
@@ -443,7 +443,7 @@ function renderCarouselItems(articles: Array<Record<string, unknown>>) {
       const hasMedia = images.length > 0 || !!getVideoAttachment(article);
       const media = renderMediaBlock(article, `carousel-${index}-media`);
       const date = formatDate(article.created_at);
-      const articleTitle = String(article.title ?? "Actualit\\u00e9").trim() || "Actualit\\u00e9";
+      const articleTitle = String(article.title ?? "Actualité").trim() || "Actualité";
       const body = renderArticleBody(article, `carousel-${index}`);
       return `
         <article class="slide reveal ${hasMedia ? "hasMedia" : "noMedia"}" data-slide style="animation-delay:${Math.min(index * 80, 320)}ms">
@@ -480,9 +480,9 @@ export function renderEmbedHtml(params: {
   const safeAccent = /^#[0-9A-F]{6}$/i.test(String(accent || "").trim()) ? String(accent).trim().toUpperCase() : "";
   const brand = safeAccent || palette.brand;
   const brandDeep = safeAccent ? `color-mix(in srgb, ${safeAccent} 68%, ${palette.text})` : palette.brandDeep;
-  const dots = articles.map((_, i) => `<button class="dot" type="button" aria-label="Actualit\\u00e9 ${i + 1}" data-dot="${i}"></button>`).join("");
+  const dots = articles.map((_, i) => `<button class="dot" type="button" aria-label="Actualité ${i + 1}" data-dot="${i}"></button>`).join("");
   const counter = articles.length > 0 ? `<div class="counter" aria-live="polite"><span data-current>1</span>/<span data-total>${articles.length}</span></div>` : "";
-  const empty = `<section class="empty reveal"><h2>Aucune actualitÃƒÂ© pour le moment</h2><p>Les prochaines publications apparaÃƒÂ®tront ici automatiquement.</p></section>`;
+  const empty = `<section class="empty reveal"><h2>Aucune actualitï¿½ pour le moment</h2><p>Les prochaines publications apparaï¿½tront ici automatiquement.</p></section>`;
   return `<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -505,7 +505,7 @@ export function renderEmbedHtml(params: {
 </style>
 </head>
 <body>
-<div class="shell"><section class="frame" id="root"><header class="header reveal"><h1 class="title">${escapeHtml(title)}</h1></header>${articles.length === 0 ? empty : layout === "carousel" ? `<section class="carouselWrap" id="carouselRoot"><div class="carouselHead reveal"><div class="dots" aria-label="Navigation des actualitÃƒÂ©s">${dots}</div><div class="carouselControls">${counter}<div class="nav"><button class="navBtn" type="button" data-prev aria-label="Actualit\\u00e9 prÃƒÂ©cÃƒÂ©dente">Ã¢â‚¬Â¹</button><button class="navBtn" type="button" data-next aria-label="Actualit\\u00e9 suivante">Ã¢â‚¬Âº</button></div></div></div><div class="viewport"><div class="track" id="track">${carouselItems}</div></div></section>` : layout === "grid" ? `<section class="gridStack">${gridItems}</section>` : layout === "compact" ? `<section class="compactStack">${compactItems}</section>` : `<section class="stack">${listItems}</section>`}</section></div>
+<div class="shell"><section class="frame" id="root"><header class="header reveal"><h1 class="title">${escapeHtml(title)}</h1></header>${articles.length === 0 ? empty : layout === "carousel" ? `<section class="carouselWrap" id="carouselRoot"><div class="carouselHead reveal"><div class="dots" aria-label="Navigation des actualitï¿½s">${dots}</div><div class="carouselControls">${counter}<div class="nav"><button class="navBtn" type="button" data-prev aria-label="Actualité prï¿½cï¿½dente">ï¿½</button><button class="navBtn" type="button" data-next aria-label="Actualité suivante">ï¿½</button></div></div></div><div class="viewport"><div class="track" id="track">${carouselItems}</div></div></section>` : layout === "grid" ? `<section class="gridStack">${gridItems}</section>` : layout === "compact" ? `<section class="compactStack">${compactItems}</section>` : `<section class="stack">${listItems}</section>`}</section></div>
 <script>
 (function(){
 var EMBED_ID=${JSON.stringify(frameId)};var root=document.getElementById('root');var parentOrigin='*';var sentHeight=0;var resizeTimer=null;var settleTicks=0;
@@ -526,5 +526,4 @@ var shell=document.getElementById('carouselRoot');if(!shell)return;var track=doc
 </script>
 </body></html>`;
 }
-
 

@@ -212,16 +212,22 @@ const overlayStyle: CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
   padding: 12,
+  boxSizing: "border-box",
+  overflowX: "hidden",
+  overflowY: "auto",
   background: "rgba(2, 6, 23, 0.68)",
   backdropFilter: "blur(16px)",
   WebkitBackdropFilter: "blur(16px)",
 };
 
 const cardStyle: CSSProperties = {
-  width: "min(520px, calc(100vw - 24px))",
+  width: "min(680px, calc(100vw - 24px))",
+  maxWidth: "100%",
   maxHeight: "calc(100dvh - 24px)",
   boxSizing: "border-box",
   position: "relative",
+  minWidth: 0,
+  overflowX: "hidden",
   overflowY: "auto",
   overscrollBehavior: "contain",
   padding: 20,
@@ -353,15 +359,19 @@ const errorStyle: CSSProperties = {
 const actionsStyle: CSSProperties = {
   position: "relative",
   display: "grid",
-  gridTemplateColumns: "1fr 1fr",
+  gridTemplateColumns: "repeat(auto-fit, minmax(min(220px, 100%), 1fr))",
   gap: 10,
   marginTop: 20,
+  minWidth: 0,
 };
 
 const buttonStyle: CSSProperties = {
+  width: "100%",
+  minWidth: 0,
   minHeight: 44,
   borderRadius: 14,
   fontSize: 13,
+  overflowWrap: "anywhere",
 };
 
 const dangerButtonStyle: CSSProperties = {

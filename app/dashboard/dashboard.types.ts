@@ -38,7 +38,7 @@ export type NotificationItem = {
 export type ActusLayout = "list" | "carousel" | "grid" | "compact";
 export type ActusFont = "site" | "inter" | "poppins" | "montserrat" | "lora";
 export type ActusDesign = "essential" | "classic" | "contemporary" | "futuristic" | "elegant";
-export type ActusTheme = "white" | "dark" | "gray" | "nature" | "sand" | "blue" | "terracotta" | "anthracite";
+export type ActusTheme = "white" | "dark" | "gray" | "nature" | "sand" | "blue" | "terracotta" | "anthracite" | "custom";
 
 export const ACTUS_DESIGN_OPTIONS: Array<{ value: ActusDesign; label: string }> = [
   { value: "essential", label: "Essentiel \u2014 Arial, formes nettes" },
@@ -57,6 +57,7 @@ export const ACTUS_THEME_OPTIONS: Array<{ value: ActusTheme; label: string }> = 
   { value: "blue", label: "Bleu profond" },
   { value: "terracotta", label: "Marron orang\u00e9" },
   { value: "anthracite", label: "Gris anthracite" },
+  { value: "custom", label: "Personnalis\u00e9e" },
 ];
 
 export function normalizeActusLayout(value: unknown): ActusLayout {
