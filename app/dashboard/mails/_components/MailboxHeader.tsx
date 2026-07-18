@@ -1,9 +1,10 @@
-import React from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import SettingsDrawer from "../../SettingsDrawer";
 import HelpButton from "../../_components/HelpButton";
 import HelpModal from "../../_components/HelpModal";
 import MailsSettingsContent from "../../settings/_components/MailsSettingsContent";
+import { useUnsavedExitGuard } from "../../_hooks/useUnsavedExitGuard";
 import ResponsiveActionButton from "../../_components/ResponsiveActionButton";
 import { getInrSendRetentionLabel } from "@/lib/inrsendRetention";
 import styles from "../mails.module.css";
@@ -27,6 +28,26 @@ export default function MailboxHeader({
   onOpenSettings,
   onCloseSettings,
 }: Props) {
+  const [settingsHasUnsavedChanges, setSettingsHasUnsavedChanges] = useState(false);
+  useEffect(() => {
+    if (!settingsOpen) setSettingsHasUnsavedChanges(false);
+  }, [settingsOpen]);
+
+  const { confirmExit: confirmSettingsExit } = useUnsavedExitGuard({
+    active: settingsOpen,
+    shouldBlock: settingsHasUnsavedChanges,
+    onConfirmExit: onCloseSettings,
+    eyebrow: "Réglages Mails",
+    title: "Quitter sans enregistrer ?",
+    message: "Ces réglages contiennent des modifications non enregistrées. Si vous fermez maintenant, elles seront perdues.",
+    confirmLabel: "Fermer sans enregistrer",
+    cancelLabel: "Continuer l’édition",
+    variant: "warning",
+  });
+  const requestCloseSettings = useCallback(() => {
+    void confirmSettingsExit();
+  }, [confirmSettingsExit]);
+
   return (
     <>
       <div className={styles.header}>
@@ -72,9 +93,11 @@ export default function MailboxHeader({
           <SettingsDrawer
             title="Réglages Mails"
             isOpen={settingsOpen}
-            onClose={onCloseSettings}
+            onClose={requestCloseSettings}
+            closeOnBackdrop={false}
+            closeOnEscape={false}
           >
-            <MailsSettingsContent />
+            <MailsSettingsContent onUnsavedChange={setSettingsHasUnsavedChanges} />
           </SettingsDrawer>
 
           <ResponsiveActionButton

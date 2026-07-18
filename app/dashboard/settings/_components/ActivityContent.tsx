@@ -5,7 +5,7 @@ import { invalidateBoosterGenerationContextClient } from "@/lib/boosterGeneratio
 
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { confirmInrcy } from "@/lib/inrcyDialog";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabaseClient";
 import {
   ACTIVITY_SECTOR_OPTIONS,
@@ -33,6 +33,7 @@ type Props = {
   onActivitySaved?: () => void;
   onActivityReset?: () => void;
   onCloseDrawer?: () => void;
+  onUnsavedChange?: (hasUnsavedChanges: boolean) => void;
 };
 
 type BusinessActivityForm = {
@@ -54,6 +55,7 @@ export default function ActivityContent({
   onActivitySaved,
   onActivityReset,
   onCloseDrawer,
+  onUnsavedChange,
 }: Props) {
   const initial: BusinessActivityForm = useMemo(
     () => ({
@@ -78,6 +80,9 @@ export default function ActivityContent({
   const [jobSearch, setJobSearch] = useState("");
   const [jobSearchOpen, setJobSearchOpen] = useState(false);
   const [manualSelectionOpen, setManualSelectionOpen] = useState(false);
+  const activityBaselineRef = useRef("");
+
+  const activitySnapshot = (value: BusinessActivityForm) => JSON.stringify(value);
 
   const currentJobOptions = useMemo(() => {
     const base = getJobsForSector(form.sectorCategory);
@@ -281,6 +286,13 @@ export default function ActivityContent({
     load();
   }, []);
 
+  useEffect(() => {
+    if (loading) return;
+    const snapshot = activitySnapshot(form);
+    if (!activityBaselineRef.current) activityBaselineRef.current = snapshot;
+    onUnsavedChange?.(snapshot !== activityBaselineRef.current);
+  }, [form, loading, onUnsavedChange]);
+
   const set = <K extends keyof BusinessActivityForm>(
     key: K,
     value: BusinessActivityForm[K],
@@ -434,6 +446,8 @@ export default function ActivityContent({
         }
       }
 
+      activityBaselineRef.current = activitySnapshot(form);
+      onUnsavedChange?.(false);
       setSaved(true);
       onActivitySaved?.();
       if (mode === "drawer") {
@@ -468,6 +482,8 @@ export default function ActivityContent({
     setManualSelectionOpen(false);
     setSaved(false);
     setError("");
+    activityBaselineRef.current = activitySnapshot(initial);
+    onUnsavedChange?.(false);
     onActivityReset?.();
   };
 

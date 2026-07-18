@@ -12,6 +12,7 @@ import styles from "../../_documents/documents.module.css";
 import dash from "../../dashboard.module.css";
 import SettingsDrawer from "../../SettingsDrawer";
 import DocumentsSettingsContent from "../../settings/_components/DocumentsSettingsContent";
+import { useUnsavedExitGuard } from "../../_hooks/useUnsavedExitGuard";
 import {
   DEFAULT_INRDOCUMENTS_SETTINGS,
   INRDOCUMENTS_SETTINGS_UPDATED_EVENT,
@@ -336,6 +337,24 @@ export default function NewFacturePage() {
   const searchParams = useSearchParams();
   const supabase = createClient();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsHasUnsavedChanges, setSettingsHasUnsavedChanges] = useState(false);
+  useEffect(() => {
+    if (!settingsOpen) setSettingsHasUnsavedChanges(false);
+  }, [settingsOpen]);
+  const { confirmExit: confirmSettingsExit } = useUnsavedExitGuard({
+    active: settingsOpen,
+    shouldBlock: settingsHasUnsavedChanges,
+    onConfirmExit: () => setSettingsOpen(false),
+    eyebrow: "Réglages par défaut",
+    title: "Quitter sans enregistrer ?",
+    message: "Ces réglages contiennent des modifications non enregistrées. Si vous fermez maintenant, elles seront perdues.",
+    confirmLabel: "Fermer sans enregistrer",
+    cancelLabel: "Continuer l’édition",
+    variant: "warning",
+  });
+  const requestCloseSettings = useCallback(() => {
+    void confirmSettingsExit();
+  }, [confirmSettingsExit]);
   const [documentsSettings, setDocumentsSettings] =
     useState<InrDocumentsSettings>(DEFAULT_INRDOCUMENTS_SETTINGS);
 
@@ -2309,9 +2328,11 @@ export default function NewFacturePage() {
           <SettingsDrawer
             title="Réglages par défaut"
             isOpen={settingsOpen}
-            onClose={() => setSettingsOpen(false)}
+            onClose={requestCloseSettings}
+            closeOnBackdrop={false}
+            closeOnEscape={false}
           >
-            <DocumentsSettingsContent />
+            <DocumentsSettingsContent onUnsavedChange={setSettingsHasUnsavedChanges} />
           </SettingsDrawer>
 
           {isFinalized ? (

@@ -12,6 +12,7 @@ import {
 } from "react";
 import { createClient } from "@/lib/supabaseClient";
 import { getClientUserFacingErrorMessage } from "@/lib/userFacingErrors";
+import { confirmInrcy } from "@/lib/inrcyDialog";
 import {
   INR_MEDIA_ALLOWED_IMAGE_MIME_TYPES,
   INR_MEDIA_ALLOWED_VIDEO_MIME_TYPES,
@@ -657,7 +658,14 @@ export default function MediaLibraryClient() {
       json?.requiresConfirmation &&
       !force
     ) {
-      const ok = window.confirm(buildDeleteUsageConfirmMessage(json, ids.length));
+      const ok = await confirmInrcy({
+        eyebrow: "Médiathèque",
+        title: "Supprimer malgré les utilisations ?",
+        message: buildDeleteUsageConfirmMessage(json, ids.length),
+        confirmLabel: "Supprimer définitivement",
+        cancelLabel: "Annuler",
+        variant: "danger",
+      });
       if (!ok) return { ok: false, cancelled: true };
       return await requestMediaDelete(ids, true);
     }
@@ -669,9 +677,14 @@ export default function MediaLibraryClient() {
     const ids = selectedItems.map((item) => item.id);
     if (!ids.length) return;
 
-    const ok = window.confirm(
-      `Supprimer définitivement ${ids.length} média(s) de votre médiathèque ?`,
-    );
+    const ok = await confirmInrcy({
+      eyebrow: "Médiathèque",
+      title: "Supprimer les médias sélectionnés ?",
+      message: `Supprimer définitivement ${ids.length} média(s) de votre médiathèque ?`,
+      confirmLabel: "Supprimer",
+      cancelLabel: "Annuler",
+      variant: "danger",
+    });
     if (!ok) return;
 
     setSavingId("__bulk__");
@@ -691,9 +704,14 @@ export default function MediaLibraryClient() {
   }
 
   async function deleteItem(item: MediaItem) {
-    const ok = window.confirm(
-      "Supprimer définitivement ce média de votre médiathèque ?",
-    );
+    const ok = await confirmInrcy({
+      eyebrow: "Médiathèque",
+      title: "Supprimer ce média ?",
+      message: "Ce média sera supprimé définitivement de votre médiathèque.",
+      confirmLabel: "Supprimer",
+      cancelLabel: "Annuler",
+      variant: "danger",
+    });
     if (!ok) return;
     setSavingId(item.id);
     setError(null);

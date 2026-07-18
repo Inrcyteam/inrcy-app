@@ -1,4 +1,6 @@
+import React from "react";
 import AiConfigurationContent from "../../../settings/_components/AiConfigurationContent";
+import { useUnsavedExitGuard } from "../../../_hooks/useUnsavedExitGuard";
 
 type PublishAiConfigurationDrawerProps = {
   open: boolean;
@@ -16,6 +18,19 @@ export default function PublishAiConfigurationDrawer({
   drawerHeight,
   onClose,
 }: PublishAiConfigurationDrawerProps) {
+  const [hasUnsavedChanges, setHasUnsavedChanges] = React.useState(false);
+  const { confirmExit } = useUnsavedExitGuard({
+    active: open,
+    shouldBlock: hasUnsavedChanges,
+    onConfirmExit: onClose,
+    eyebrow: "Configuration IA",
+    title: "Quitter sans enregistrer ?",
+    message: "Cette configuration contient des modifications non enregistrées. Si vous la fermez maintenant, elles seront perdues.",
+    confirmLabel: "Fermer sans enregistrer",
+    cancelLabel: "Continuer l’édition",
+    variant: "warning",
+  });
+
   if (!open) return null;
 
   return (
@@ -23,7 +38,6 @@ export default function PublishAiConfigurationDrawer({
       role="dialog"
       aria-modal="true"
       aria-label="Configuration IA"
-      onClick={onClose}
       style={{
         position: "fixed",
         inset: 0,
@@ -94,7 +108,7 @@ export default function PublishAiConfigurationDrawer({
           </h2>
           <button
             type="button"
-            onClick={onClose}
+            onClick={() => void confirmExit()}
             style={{
               border: "1px solid rgba(255,255,255,0.12)",
               background: "transparent",
@@ -121,7 +135,11 @@ export default function PublishAiConfigurationDrawer({
             WebkitOverflowScrolling: "touch",
           }}
         >
-          <AiConfigurationContent mode="drawer" onSaved={onClose} />
+          <AiConfigurationContent
+            mode="drawer"
+            onSaved={onClose}
+            onUnsavedChange={setHasUnsavedChanges}
+          />
         </div>
       </aside>
     </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useUnsavedExitGuard } from "../../../_hooks/useUnsavedExitGuard";
 
 export type TiktokPrivacyLevel =
   | "PUBLIC_TO_EVERYONE"
@@ -268,6 +269,17 @@ export default function TiktokPublicationSettingsModal({
   const clearFinalConsent = () => {
     if (musicUsageConfirmed) setMusicUsageConfirmed(false);
   };
+  const { confirmExit } = useUnsavedExitGuard({
+    active: open,
+    shouldBlock: Boolean(privacyLevel || commercialContent || aiContent || photoAutoMusic || musicUsageConfirmed || allowComments || allowDuo || allowStitch),
+    onConfirmExit: onCancel,
+    eyebrow: "Publication TikTok",
+    title: "Quitter sans enregistrer ?",
+    message: "Les choix TikTok en cours seront perdus si vous revenez à la publication.",
+    confirmLabel: "Revenir sans enregistrer",
+    cancelLabel: "Continuer",
+    variant: "warning",
+  });
 
   if (!open) return null;
 
@@ -732,7 +744,7 @@ export default function TiktokPublicationSettingsModal({
           <button
             type="button"
             className={styles.secondaryBtn}
-            onClick={onCancel}
+            onClick={() => void confirmExit()}
             style={{ width: isMobile ? "100%" : undefined, minHeight: 42 }}
           >
             Retour modifier

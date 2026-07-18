@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import styles from "../dashboard.module.css";
 
 type ReferralPanelProps = {
@@ -15,6 +16,7 @@ type ReferralPanelProps = {
   onReferralEmailChange: (value: string) => void;
   onReferralFromChange: (value: string) => void;
   onSubmit: () => void;
+  onUnsavedChange?: (hasUnsavedChanges: boolean) => void;
 };
 
 const inputStyle = {
@@ -41,7 +43,14 @@ export default function ReferralPanel({
   onReferralEmailChange,
   onReferralFromChange,
   onSubmit,
+  onUnsavedChange,
 }: ReferralPanelProps) {
+  const hasUnsavedChanges = Boolean(referralName || referralPhone || referralEmail || referralFrom);
+
+  useEffect(() => {
+    onUnsavedChange?.(hasUnsavedChanges);
+  }, [hasUnsavedChanges, onUnsavedChange]);
+
   return (
     <div style={{ display: "grid", gap: 14 }}>
       <div

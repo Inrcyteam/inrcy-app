@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import styles from "./CampaignScheduleModal.module.css";
+import { useUnsavedExitGuard } from "../_hooks/useUnsavedExitGuard";
 
 export type CampaignScheduleModalProps = {
   open: boolean;
@@ -118,16 +119,31 @@ export default function CampaignScheduleModal({
   const [doneMessage, setDoneMessage] = useState("");
   const dateInputRef = useRef<HTMLInputElement | null>(null);
   const timeInputRef = useRef<HTMLInputElement | null>(null);
+  const [baseline, setBaseline] = useState("");
 
   useEffect(() => {
     if (!open) return;
     const next = dateTimeFromIso(initialScheduledAt);
     setDate(next.date);
     setTime(next.time);
+    setBaseline(JSON.stringify(next));
     setLocalError("");
     setSubmitting(false);
     setDoneMessage("");
   }, [open, initialScheduledAt]);
+
+  const hasUnsavedChanges = open && Boolean(baseline) && JSON.stringify({ date, time }) !== baseline;
+  const { confirmExit } = useUnsavedExitGuard({
+    active: open,
+    shouldBlock: hasUnsavedChanges,
+    onConfirmExit: onClose,
+    eyebrow: "Programmation",
+    title: "Quitter sans enregistrer ?",
+    message: "Cet horaire contient des modifications non enregistrées. Si vous fermez maintenant, elles seront perdues.",
+    confirmLabel: "Fermer sans enregistrer",
+    cancelLabel: "Continuer l’édition",
+    variant: "warning",
+  });
 
   if (!open) return null;
 
@@ -170,7 +186,6 @@ export default function CampaignScheduleModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="campaign-schedule-title"
-      onMouseDown={() => !busy && onClose()}
     >
       <div
         className={styles.card}
@@ -187,7 +202,7 @@ export default function CampaignScheduleModal({
           <button
             className={styles.closeBtn}
             type="button"
-            onClick={onClose}
+            onClick={() => void confirmExit()}
             disabled={busy}
             aria-label="Fermer"
           >
@@ -276,7 +291,7 @@ export default function CampaignScheduleModal({
           <button
             className={styles.secondaryBtn}
             type="button"
-            onClick={onClose}
+            onClick={() => void confirmExit()}
             disabled={busy}
           >
             Annuler

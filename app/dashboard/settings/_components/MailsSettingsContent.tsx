@@ -2,6 +2,11 @@
 
 import React from "react";
 import { getSimpleFrenchApiError, getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { confirmInrcy } from "@/lib/inrcyDialog";
+
+type Props = {
+  onUnsavedChange?: (hasUnsavedChanges: boolean) => void;
+};
 
 type MailAccount = {
   id: string;
@@ -209,7 +214,7 @@ const SIGNATURE_WIDTH_OPTIONS = [
   { value: 600, label: "Très grand (600 px)" },
 ];
 
-export default function MailsSettingsContent() {
+export default function MailsSettingsContent({ onUnsavedChange }: Props) {
   const [loading, setLoading] = React.useState(true);
   const [mailAccounts, setMailAccounts] = React.useState<MailAccount[]>([]);
   const [error, setError] = React.useState<string | null>(null);
@@ -236,6 +241,7 @@ Email : {{email}}`);
   const [signatureImageWidth, setSignatureImageWidth] = React.useState(400);
   const [signatureToast, setSignatureToast] = React.useState<string | null>(null);
   const signatureFileInputRef = React.useRef<HTMLInputElement | null>(null);
+  const savedSignatureSignatureRef = React.useRef("");
 
   // --- IMAP (slot 4 only) ---
   type ImapPresetKey = "ovh" | "ionos" | "orange" | "sfr" | "other";
@@ -278,6 +284,59 @@ Email : {{email}}`);
   const [imapConnectBusy, setImapConnectBusy] = React.useState(false);
   const [imapFormError, setImapFormError] = React.useState<string | null>(null);
   const [imapAssistMessage, setImapAssistMessage] = React.useState<string | null>(null);
+  const imapModalBaselineSignatureRef = React.useRef("");
+
+  const signatureDraftSignature = JSON.stringify({
+    signatureEnabled,
+    signatureTemplate,
+    signatureImageUrl,
+    signatureImagePath,
+    signatureImageWidth,
+  });
+  const imapDraftSignature = JSON.stringify({
+    imapPresetKey,
+    imapLogin,
+    imapPassword,
+    imapCustom,
+  });
+
+  const requestCloseImapModal = React.useCallback(async () => {
+    const hasUnsavedImapChanges = imapModalOpen
+      && imapModalBaselineSignatureRef.current !== ""
+      && imapModalBaselineSignatureRef.current !== imapDraftSignature;
+    if (hasUnsavedImapChanges) {
+      const confirmed = await confirmInrcy({
+        eyebrow: "Connexion IMAP",
+        title: "Fermer sans enregistrer ?",
+        message: "Les informations de connexion saisies seront perdues.",
+        confirmLabel: "Fermer sans enregistrer",
+        cancelLabel: "Continuer la saisie",
+        variant: "warning",
+      });
+      if (!confirmed) return;
+    }
+    imapModalBaselineSignatureRef.current = "";
+    setImapModalOpen(false);
+  }, [imapDraftSignature, imapModalOpen]);
+
+  React.useEffect(() => {
+    if (loading) {
+      onUnsavedChange?.(false);
+      return;
+    }
+
+    // Si le chargement de la signature échoue, on considère l’état affiché
+    // comme la référence afin de ne pas bloquer la fermeture inutilement.
+    if (savedSignatureSignatureRef.current === "") {
+      savedSignatureSignatureRef.current = signatureDraftSignature;
+    }
+
+    const signatureHasUnsavedChanges = savedSignatureSignatureRef.current !== signatureDraftSignature;
+    const imapHasUnsavedChanges = imapModalOpen
+      && imapModalBaselineSignatureRef.current !== ""
+      && imapModalBaselineSignatureRef.current !== imapDraftSignature;
+    onUnsavedChange?.(signatureHasUnsavedChanges || imapHasUnsavedChanges);
+  }, [imapDraftSignature, imapModalOpen, loading, onUnsavedChange, signatureDraftSignature]);
 
   const smtpSecurityModeFromSettings = React.useCallback((settings: ImapSettings): SmtpSecurityMode => {
     if (settings.smtp_secure) return "ssl";
@@ -543,6 +602,20 @@ Email : {{email}}`));
                         setImapPassword("");
                         setImapPresetKey("ovh");
                         applyImapPreset("ovh");
+                        imapModalBaselineSignatureRef.current = JSON.stringify({
+                          imapPresetKey: "ovh",
+                          imapLogin: "",
+                          imapPassword: "",
+                          imapCustom: {
+                            imap_host: IMAP_PRESETS.ovh.imap_host,
+                            imap_port: IMAP_PRESETS.ovh.imap_port,
+                            imap_secure: IMAP_PRESETS.ovh.imap_secure,
+                            smtp_host: IMAP_PRESETS.ovh.smtp_host,
+                            smtp_port: IMAP_PRESETS.ovh.smtp_port,
+                            smtp_secure: IMAP_PRESETS.ovh.smtp_secure,
+                            smtp_starttls: IMAP_PRESETS.ovh.smtp_starttls,
+                          },
+                        });
                         setImapShowPassword(false);
                         setImapModalOpen(true);
                       }}
@@ -809,12 +882,24 @@ Email : {{email}}`));
                   });
                   const data = await res.json().catch(() => ({}));
                   if (!res.ok) throw new Error(await getSimpleFrenchApiError(res, "Impossible d’enregistrer la signature."));
-                  setSignatureEnabled(data?.enabled !== false);
-                  setSignatureTemplate(String(data?.template || signatureTemplate));
-                  setSignatureImagePath(String(data?.imagePath || signatureImagePath));
-                  setSignatureImageUrl(String(data?.imageUrl || ""));
+                  const nextSignatureEnabled = data?.enabled !== false;
+                  const nextSignatureTemplate = String(data?.template || signatureTemplate);
+                  const nextSignatureImagePath = String(data?.imagePath || signatureImagePath);
+                  const nextSignatureImageUrl = String(data?.imageUrl || "");
+                  const nextSignatureImageWidth = Number(data?.imageWidth || signatureImageWidth) || 400;
+                  setSignatureEnabled(nextSignatureEnabled);
+                  setSignatureTemplate(nextSignatureTemplate);
+                  setSignatureImagePath(nextSignatureImagePath);
+                  setSignatureImageUrl(nextSignatureImageUrl);
                   setSignaturePreview(String(data?.preview || ""));
-                  setSignatureImageWidth(Number(data?.imageWidth || signatureImageWidth) || 400);
+                  setSignatureImageWidth(nextSignatureImageWidth);
+                  savedSignatureSignatureRef.current = JSON.stringify({
+                    signatureEnabled: nextSignatureEnabled,
+                    signatureTemplate: nextSignatureTemplate,
+                    signatureImageUrl: nextSignatureImageUrl,
+                    signatureImagePath: nextSignatureImagePath,
+                    signatureImageWidth: nextSignatureImageWidth,
+                  });
                   setSignatureToast("✅ Signature enregistrée.");
                   if (typeof window !== "undefined") {
                     window.dispatchEvent(new CustomEvent("inrsend:signature-updated"));
@@ -865,7 +950,7 @@ Email : {{email}}`));
               </div>
               <button
                 type="button"
-                onClick={() => setImapModalOpen(false)}
+                onClick={() => void requestCloseImapModal()}
                 disabled={imapTestBusy || imapConnectBusy}
                 style={{
                   borderRadius: 12,
@@ -1134,6 +1219,7 @@ Email : {{email}}`));
                       });
                       const j = await r.json().catch(() => ({}));
                       if (!r.ok) throw new Error(await getSimpleFrenchApiError(r, "Connexion impossible"));
+                      imapModalBaselineSignatureRef.current = "";
                       setImapModalOpen(false);
                       await refreshMailAccounts(true);
                       setToast("imap_connected");

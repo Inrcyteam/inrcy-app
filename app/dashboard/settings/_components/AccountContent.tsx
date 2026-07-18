@@ -6,6 +6,7 @@ import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
 type Props = {
   mode?: "page" | "drawer";
+  onUnsavedChange?: (hasUnsavedChanges: boolean) => void;
 };
 
 function getPasswordStrength(pw: string) {
@@ -30,7 +31,7 @@ function Rule({ ok, label }: { ok: boolean; label: string }) {
   );
 }
 
-export default function AccountContent({ mode: _mode = "page" }: Props) {
+export default function AccountContent({ mode: _mode = "page", onUnsavedChange }: Props) {
   const [email, setEmail] = useState<string>("");
   const [createdAt, setCreatedAt] = useState<string>("");
   const [loading, setLoading] = useState(true);
@@ -41,6 +42,10 @@ export default function AccountContent({ mode: _mode = "page" }: Props) {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string>("");
   const [ok, setOk] = useState<string>("");
+
+  useEffect(() => {
+    onUnsavedChange?.(Boolean(currentPassword || newPassword || confirm));
+  }, [confirm, currentPassword, newPassword, onUnsavedChange]);
 
   useEffect(() => {
     const load = async () => {

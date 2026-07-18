@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { renderBoosterSiteInlineHtml, stripSiteTextFormatting } from "@/lib/boosterFormatting";
 import { sanitizeHtml } from "@/lib/sanitizeHtml";
+import { useUnsavedExitGuard } from "../_hooks/useUnsavedExitGuard";
 
 type BackgroundMode = "blur" | "transparent" | "color" | "white" | "black" | "gray" | "sand" | "brand";
 
@@ -1391,6 +1392,24 @@ export function ChannelImageAdapterModal({
 }: ModalProps) {
   const [viewportWidth, setViewportWidth] = useState<number>(typeof window === "undefined" ? 1440 : window.innerWidth);
   const [showBefore, setShowBefore] = useState(false);
+  const [adapterBaseline, setAdapterBaseline] = useState("");
+  const adapterSnapshot = JSON.stringify({ backgroundMode, backgroundColor, fitLabel, zoomLabel });
+
+  useEffect(() => {
+    setAdapterBaseline(open ? adapterSnapshot : "");
+  }, [open]);
+
+  const { confirmExit } = useUnsavedExitGuard({
+    active: open,
+    shouldBlock: Boolean(adapterBaseline) && adapterSnapshot !== adapterBaseline,
+    onConfirmExit: onClose,
+    eyebrow: "Adaptation d’image",
+    title: "Quitter sans enregistrer ?",
+    message: "Cette adaptation contient des modifications non enregistrées. Si vous la fermez maintenant, elles seront perdues.",
+    confirmLabel: "Fermer sans enregistrer",
+    cancelLabel: "Continuer l’édition",
+    variant: "warning",
+  });
 
   useEffect(() => {
     if (!open) return;
@@ -1439,7 +1458,7 @@ export function ChannelImageAdapterModal({
       : {}),
   });
   return (
-    <div role="dialog" aria-modal="true" onClick={onClose} style={{ position: "fixed", inset: 0, bottom: isMobile ? MOBILE_DOCK_HEIGHT : undefined, height: isMobile ? `calc(100dvh - ${MOBILE_DOCK_HEIGHT})` : undefined, maxHeight: isMobile ? `calc(100dvh - ${MOBILE_DOCK_HEIGHT})` : undefined, zIndex: 10020, background: "rgba(4, 8, 18, 0.78)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)", display: "grid", placeItems: isMobile ? "stretch" : "center", padding: isMobile ? mobileOuterPadding : 16, overflow: "hidden", boxSizing: "border-box" }}>
+    <div role="dialog" aria-modal="true" style={{ position: "fixed", inset: 0, bottom: isMobile ? MOBILE_DOCK_HEIGHT : undefined, height: isMobile ? `calc(100dvh - ${MOBILE_DOCK_HEIGHT})` : undefined, maxHeight: isMobile ? `calc(100dvh - ${MOBILE_DOCK_HEIGHT})` : undefined, zIndex: 10020, background: "rgba(4, 8, 18, 0.78)", backdropFilter: "blur(10px)", WebkitBackdropFilter: "blur(10px)", display: "grid", placeItems: isMobile ? "stretch" : "center", padding: isMobile ? mobileOuterPadding : 16, overflow: "hidden", boxSizing: "border-box" }}>
       <div onClick={(event) => event.stopPropagation()} style={{ width: modalWidth, maxWidth: isMobile ? mobileViewportWidth : "100%", height: modalHeight, maxHeight: isMobile ? mobileViewportHeight : "100%", minWidth: 0, minHeight: 0, alignSelf: isMobile ? "stretch" : undefined, justifySelf: isMobile ? "stretch" : undefined, borderRadius: isMobile ? 20 : 28, border: "1px solid rgba(255,255,255,0.12)", background: "linear-gradient(180deg, rgba(24,28,42,0.985), rgba(14,17,28,0.985))", boxShadow: "0 28px 100px rgba(0,0,0,0.5)", padding: modalPadding, display: "grid", gridTemplateRows: "auto minmax(0, 1fr)", gap: isMobile ? 10 : 16, overflow: "hidden", boxSizing: "border-box" }}>
         <div style={{ display: isMobile ? "grid" : "flex", alignItems: isMobile ? "start" : "center", justifyContent: "space-between", gap: isMobile ? 8 : 12, minHeight: isMobile ? "auto" : 52, flexWrap: "wrap", minWidth: 0 }}>
           <div style={{ minWidth: 0, flex: "1 1 280px", paddingLeft: isMobile ? "max(6px, env(safe-area-inset-left))" : 0, paddingRight: isMobile ? 4 : 0, boxSizing: "border-box" }}>
@@ -1453,7 +1472,7 @@ export function ChannelImageAdapterModal({
             {onApplyToSelectedChannels ? <button type="button" className={buttonClassName} onClick={onApplyToSelectedChannels} style={{ minWidth: 0, minHeight: isMobile ? 42 : 44, height: isMobile ? 42 : 44, flex: isMobile ? "1 1 0" : undefined, justifyContent: "center", alignItems: "center", fontSize: isMobile ? 11 : undefined, lineHeight: 1.1, padding: isMobile ? "0 6px" : "0 16px", whiteSpace: "normal", textAlign: "center", boxSizing: "border-box" }}>Appliquer aux canaux</button> : null}
             {onResetChannel ? <button type="button" className={buttonClassName} onClick={onResetChannel} style={{ minWidth: 0, minHeight: isMobile ? 42 : 44, height: isMobile ? 42 : 44, flex: isMobile ? "1 1 0" : undefined, justifyContent: "center", alignItems: "center", fontSize: isMobile ? 11 : undefined, lineHeight: 1.1, padding: isMobile ? "0 6px" : "0 16px", whiteSpace: "nowrap", textAlign: "center", boxSizing: "border-box" }}>Réinit. canal</button> : null}
             <button type="button" className={primaryButtonClassName || buttonClassName} onClick={onSave} aria-label="Enregistrer" title="Enregistrer" style={{ minWidth: 0, minHeight: isMobile ? 42 : 44, height: isMobile ? 42 : 44, flex: isMobile ? "0 0 42px" : undefined, width: isMobile ? 42 : undefined, padding: isMobile ? 0 : "0 16px", justifyContent: "center", alignItems: "center", fontSize: isMobile ? 18 : undefined, boxSizing: "border-box" }}>{isMobile ? "💾" : "Enregistrer"}</button>
-            <button type="button" className={buttonClassName} onClick={onClose} aria-label="Fermer" title="Fermer" style={{ minWidth: 0, minHeight: isMobile ? 42 : 44, height: isMobile ? 42 : 44, flex: isMobile ? "0 0 42px" : undefined, width: isMobile ? 42 : undefined, padding: isMobile ? 0 : "0 16px", justifyContent: "center", alignItems: "center", fontSize: isMobile ? 20 : undefined, boxSizing: "border-box" }}>{isMobile ? "×" : "Fermer"}</button>
+            <button type="button" className={buttonClassName} onClick={() => void confirmExit()} aria-label="Fermer" title="Fermer" style={{ minWidth: 0, minHeight: isMobile ? 42 : 44, height: isMobile ? 42 : 44, flex: isMobile ? "0 0 42px" : undefined, width: isMobile ? 42 : undefined, padding: isMobile ? 0 : "0 16px", justifyContent: "center", alignItems: "center", fontSize: isMobile ? 20 : undefined, boxSizing: "border-box" }}>{isMobile ? "×" : "Fermer"}</button>
           </div>
         </div>
 

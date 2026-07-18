@@ -10,6 +10,7 @@ import {
 } from "@/lib/pinterestUiSessionCache";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { confirmInrcy } from "@/lib/inrcyDialog";
 
 import styles from "../../dashboard.module.css";
 import ConnectionPill from "../../_components/ConnectionPill";
@@ -287,7 +288,7 @@ function emitDashboardUpdate(settings: PinterestSettings) {
   );
 }
 
-export default function PinterestSettingsContent() {
+export default function PinterestSettingsContent({ onUnsavedChange }: { onUnsavedChange?: (hasUnsavedChanges: boolean) => void }) {
   const [settings, setSettings] = useState<PinterestSettings>(() =>
     getInitialPinterestSettings(),
   );
@@ -301,6 +302,17 @@ export default function PinterestSettingsContent() {
   const [error, setError] = useState<string | null>(null);
   const [profileLinkDraft, setProfileLinkDraft] = useState("");
   const [savingProfileLink, setSavingProfileLink] = useState(false);
+
+  const editingBoard = editingBoardId ? settings.boards.find((board) => board.id === editingBoardId) : null;
+  const hasUnsavedChanges = Boolean(
+    newBoardName.trim() ||
+      (editingBoard && editingBoardName.trim() !== editingBoard.name) ||
+      profileLinkDraft !== (settings.publicProfileUrl || ""),
+  );
+
+  useEffect(() => {
+    onUnsavedChange?.(hasUnsavedChanges);
+  }, [hasUnsavedChanges, onUnsavedChange]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -538,12 +550,15 @@ export default function PinterestSettingsContent() {
 
   const deleteBoard = useCallback(
     async (board: PinterestBoard) => {
-      if (typeof window !== "undefined") {
-        const confirmed = window.confirm(
-          `Supprimer le tableau « ${board.name} » ?\n\nCette action sera effectuée directement sur votre compte Pinterest.`,
-        );
-        if (!confirmed) return;
-      }
+      const confirmed = await confirmInrcy({
+        eyebrow: "Réglages Pinterest",
+        title: "Supprimer ce tableau ?",
+        message: `Le tableau « ${board.name} » sera supprimé directement sur votre compte Pinterest.`,
+        confirmLabel: "Supprimer",
+        cancelLabel: "Annuler",
+        variant: "danger",
+      });
+      if (!confirmed) return;
 
       setBoardAction(`delete:${board.id}`);
       setNotice(null);

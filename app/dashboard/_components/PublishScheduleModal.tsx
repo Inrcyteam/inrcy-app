@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { confirmInrcy } from "@/lib/inrcyDialog";
 import type { ChannelKey } from "../booster/publier/publishModal.shared";
+import { useUnsavedExitGuard } from "../_hooks/useUnsavedExitGuard";
 
 export type PublishScheduleSelection = {
   channel: ChannelKey;
@@ -128,6 +129,7 @@ export default function PublishScheduleModal({
   const timeInputRefs = useRef<
     Partial<Record<ChannelKey, HTMLInputElement | null>>
   >({});
+  const [baseline, setBaseline] = useState("");
 
   useEffect(() => {
     if (!open) return;
@@ -155,6 +157,7 @@ export default function PublishScheduleModal({
     setSelected(nextSelected);
     setDateByChannel(nextDates);
     setTimeByChannel(nextTimes);
+    setBaseline(JSON.stringify({ selected: nextSelected, dates: nextDates, times: nextTimes }));
     setLocalError("");
     setSubmitting(false);
     setDoneMessage("");
@@ -165,6 +168,20 @@ export default function PublishScheduleModal({
       .map((selection) => `${selection.channel}:${selection.scheduledAt}`)
       .join("|"),
   ]);
+
+  const currentSignature = JSON.stringify({ selected, dates: dateByChannel, times: timeByChannel });
+  const hasUnsavedChanges = open && Boolean(baseline) && currentSignature !== baseline;
+  const { confirmExit } = useUnsavedExitGuard({
+    active: open,
+    shouldBlock: hasUnsavedChanges,
+    onConfirmExit: onClose,
+    eyebrow: "Programmation",
+    title: "Quitter sans enregistrer ?",
+    message: "Cette programmation contient des modifications non enregistrées. Si vous fermez maintenant, elles seront perdues.",
+    confirmLabel: "Fermer sans enregistrer",
+    cancelLabel: "Continuer l’édition",
+    variant: "warning",
+  });
 
   if (!open) return null;
 
@@ -297,7 +314,7 @@ export default function PublishScheduleModal({
           <button
             type="button"
             className={styles.secondaryBtn}
-            onClick={onClose}
+            onClick={() => void confirmExit()}
             disabled={busy}
           >
             Fermer
@@ -487,7 +504,7 @@ export default function PublishScheduleModal({
           <button
             type="button"
             className={styles.secondaryBtn}
-            onClick={onClose}
+            onClick={() => void confirmExit()}
             disabled={busy}
           >
             Annuler

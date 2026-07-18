@@ -57,6 +57,7 @@ type DashboardPanelName =
 
 type DashboardSettingsDrawerContentProps = {
   panel: string | null;
+  onUnsavedChange?: (hasUnsavedChanges: boolean) => void;
   checkProfile: () => void | Promise<void>;
   checkActivity: () => void | Promise<void>;
   inertiaSnapshot: any;
@@ -91,6 +92,7 @@ type DashboardSettingsDrawerContentProps = {
 
 export default function DashboardSettingsDrawerContent({
   panel,
+  onUnsavedChange,
   checkProfile,
   checkActivity,
   inertiaSnapshot,
@@ -125,16 +127,16 @@ export default function DashboardSettingsDrawerContent({
   return (
     <>
       {panel === "contact" && <ContactContent mode="drawer" />}
-      {panel === "compte" && <AccountContent mode="drawer" />}
-      {panel === "profil" && <ProfilContent mode="drawer" onProfileSaved={checkProfile} onProfileReset={checkProfile} onCloseDrawer={onCloseDrawer} />}
-      {panel === "preferences" && <GeneralPreferencesContent mode="drawer" />}
+      {panel === "compte" && <AccountContent mode="drawer" onUnsavedChange={onUnsavedChange} />}
+      {panel === "profil" && <ProfilContent mode="drawer" onProfileSaved={checkProfile} onProfileReset={checkProfile} onCloseDrawer={onCloseDrawer} onUnsavedChange={onUnsavedChange} />}
+      {panel === "preferences" && <GeneralPreferencesContent mode="drawer" onUnsavedChange={onUnsavedChange} />}
       {panel === "inrbadge" && <InrBadgeSettingsContent {...inrBadgeSettingsProps} />}
-      {panel === "activite" && <ActivityContent mode="drawer" onActivitySaved={checkActivity} onActivityReset={checkActivity} onCloseDrawer={onCloseDrawer} />}
-      {panel === "ia" && <AiConfigurationContent mode="drawer" onSaved={onCloseDrawer} />}
+      {panel === "activite" && <ActivityContent mode="drawer" onActivitySaved={checkActivity} onActivityReset={checkActivity} onCloseDrawer={onCloseDrawer} onUnsavedChange={onUnsavedChange} />}
+      {panel === "ia" && <AiConfigurationContent mode="drawer" onSaved={onCloseDrawer} onUnsavedChange={onUnsavedChange} />}
       {panel === "abonnement" && <AbonnementContent mode="drawer" />}
       {panel === "legal" && <LegalContent mode="drawer" />}
       {panel === "rgpd" && <RgpdContent mode="drawer" />}
-      {panel === "mails" && <MailsSettingsContent />}
+      {panel === "mails" && <MailsSettingsContent onUnsavedChange={onUnsavedChange} />}
       {panel === "agenda" && <AgendaSettingsContent />}
       {panel === "inertie" && (
         <InertiaContent
@@ -163,12 +165,13 @@ export default function DashboardSettingsDrawerContent({
           onReferralEmailChange={onReferralEmailChange}
           onReferralFromChange={onReferralFromChange}
           onSubmit={submitReferral}
+          onUnsavedChange={onUnsavedChange}
         />
       )}
       {panel === "notifications" && <NotificationsSettingsContent />}
-      {panel === "documents" && <DocumentsSettingsContent />}
-      {panel === "youtube_shorts" && <YoutubeShortsSettingsContent />}
-      {panel === "pinterest" && pinterestAccessEnabled && <PinterestSettingsContent />}
+      {panel === "documents" && <DocumentsSettingsContent onUnsavedChange={onUnsavedChange} />}
+      {panel === "youtube_shorts" && <YoutubeShortsSettingsContent onUnsavedChange={onUnsavedChange} />}
+      {panel === "pinterest" && pinterestAccessEnabled && <PinterestSettingsContent onUnsavedChange={onUnsavedChange} />}
       {panel === "inr_search" && inrSearchAccessEnabled && (
         <InrSearchSettingsContent
           initialConnected={inrSearchConnected}

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { confirmInrcy } from "@/lib/inrcyDialog";
 import styles from "./eReputation.module.css";
 
 export type EReputationPlatformId = "google";
@@ -740,7 +741,14 @@ export default function EReputationReviewsClient(props: Props) {
 
   async function deleteReply() {
     if (!selectedReview?.reviewName || !selectedReview.reply) return;
-    const confirmed = window.confirm(`Supprimer la réponse publiée sur ${platformLabel} pour cet avis ?`);
+    const confirmed = await confirmInrcy({
+      eyebrow: "e-Réputation",
+      title: "Supprimer cette réponse ?",
+      message: `La réponse publiée sur ${platformLabel} sera supprimée définitivement pour cet avis.`,
+      confirmLabel: "Supprimer",
+      cancelLabel: "Annuler",
+      variant: "danger",
+    });
     if (!confirmed) return;
     setDeleting(true);
     setNotice(null);

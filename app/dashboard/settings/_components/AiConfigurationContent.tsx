@@ -3,7 +3,7 @@
 import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
 import { invalidateBoosterGenerationContextClient } from "@/lib/boosterGenerationContextClient";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabaseClient";
 import { APP_LANGUAGE_OPTIONS, APP_LANGUAGE_STORAGE_KEY, type AppLanguageCode, normalizeAppLanguage } from "@/lib/appLanguage";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
@@ -24,6 +24,7 @@ import AiEngineInfoModal from "../../_components/AiEngineInfoModal";
 type Props = {
   mode?: "page" | "drawer";
   onSaved?: () => void;
+  onUnsavedChange?: (hasUnsavedChanges: boolean) => void;
 };
 
 type AiConfigForm = {
@@ -170,14 +171,25 @@ function markAiLanguageCustom() {
   try { window.localStorage.setItem(AI_LANGUAGE_CUSTOM_STORAGE_KEY, "1"); } catch {}
 }
 
-export default function AiConfigurationContent({ mode = "drawer", onSaved }: Props) {
+export default function AiConfigurationContent({ mode = "drawer", onSaved, onUnsavedChange }: Props) {
   const [form, setForm] = useState<AiConfigForm>(initialForm);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
   const [engineInfoOpen, setEngineInfoOpen] = useState(false);
+  const savedFormSignatureRef = useRef("");
   const selectedEngineOption = getAiEngineOption(form.preferredEngine);
+
+  useEffect(() => {
+    if (loading) {
+      onUnsavedChange?.(false);
+      return;
+    }
+    onUnsavedChange?.(
+      savedFormSignatureRef.current !== "" && savedFormSignatureRef.current !== JSON.stringify(form),
+    );
+  }, [form, loading, onUnsavedChange]);
 
   const card: React.CSSProperties = useMemo(() => ({
     width: "100%",
@@ -308,10 +320,12 @@ export default function AiConfigurationContent({ mode = "drawer", onSaved }: Pro
         };
 
         const merged = { ...initialForm, language: appDefaultLanguage, ...migratedLocal, ...dbTone } as AiConfigForm;
-        setForm({
+        const nextForm = {
           ...merged,
           preferredCta: normalizeBoosterPreferredCta(merged.preferredCta),
-        });
+        } as AiConfigForm;
+        setForm(nextForm);
+        savedFormSignatureRef.current = JSON.stringify(nextForm);
       } catch (e) {
         setError(getSimpleFrenchErrorMessage(e, "Impossible de charger la configuration IA."));
       } finally {
@@ -381,6 +395,7 @@ export default function AiConfigurationContent({ mode = "drawer", onSaved }: Pro
         }));
       }
 
+      savedFormSignatureRef.current = JSON.stringify(form);
       setSaved(true);
       if (onSaved) {
         if (typeof window !== "undefined") {

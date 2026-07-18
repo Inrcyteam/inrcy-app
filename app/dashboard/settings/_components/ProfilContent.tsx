@@ -22,6 +22,7 @@ type Props = {
   onProfileSaved?: () => void;
   onProfileReset?: () => void;
   onCloseDrawer?: () => void;
+  onUnsavedChange?: (hasUnsavedChanges: boolean) => void;
 };
 
 // Petit helper pour éviter les crashs sur JSON invalide
@@ -72,11 +73,16 @@ type ProfilForm = {
 
 const STORAGE_KEY = "inrcy_profile_preview_v1";
 
+function profileSnapshot(form: ProfilForm) {
+  return JSON.stringify({ ...form, logoFile: form.logoFile ? `${form.logoFile.name}:${form.logoFile.size}:${form.logoFile.lastModified}` : null });
+}
+
 export default function ProfilContent({
   mode = "page",
   onProfileSaved,
   onProfileReset,
   onCloseDrawer,
+  onUnsavedChange,
 }: Props) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -115,6 +121,8 @@ export default function ProfilContent({
   );
 
   const [form, setForm] = useState<ProfilForm>(initial);
+  const [profileLoaded, setProfileLoaded] = useState(false);
+  const profileBaselineRef = useRef("");
   const [saved, setSaved] = useState(false);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -190,8 +198,15 @@ export default function ProfilContent({
       }
     };
 
-    load();
+    void load().finally(() => setProfileLoaded(true));
   }, []);
+
+  useEffect(() => {
+    if (!profileLoaded) return;
+    const snapshot = profileSnapshot(form);
+    if (!profileBaselineRef.current) profileBaselineRef.current = snapshot;
+    onUnsavedChange?.(snapshot !== profileBaselineRef.current);
+  }, [form, onUnsavedChange, profileLoaded]);
 
   // Auto règles EI / TVA
   useEffect(() => {
@@ -445,6 +460,12 @@ export default function ProfilContent({
         }
       }
 
+      const savedForm = form.logoFile
+        ? { ...form, logoPreview: logoUrl, logoPath, logoFile: null }
+        : form;
+      if (form.logoFile) setForm(savedForm);
+      profileBaselineRef.current = profileSnapshot(savedForm);
+      onUnsavedChange?.(false);
       setSaved(true);
       onProfileSaved?.();
       if (mode === "drawer") {
@@ -473,6 +494,8 @@ export default function ProfilContent({
     setGlobalError("");
     setLogoError("");
     setForm(initial);
+    profileBaselineRef.current = profileSnapshot(initial);
+    onUnsavedChange?.(false);
     setSaved(false);
     onProfileReset?.();
   };

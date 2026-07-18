@@ -2,7 +2,7 @@
 
 import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import styles from "../../dashboard.module.css";
 import { createClient } from "@/lib/supabaseClient";
@@ -203,8 +203,9 @@ function emitDashboardUpdate(settings: YoutubeShortsSettings) {
   }));
 }
 
-export default function YoutubeShortsSettingsContent() {
+export default function YoutubeShortsSettingsContent({ onUnsavedChange }: { onUnsavedChange?: (hasUnsavedChanges: boolean) => void }) {
   const [settings, setSettings] = useState<YoutubeShortsSettings>(DEFAULT_SETTINGS);
+  const settingsBaselineRef = useRef("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -224,6 +225,7 @@ export default function YoutubeShortsSettingsContent() {
 
       const nextSettings = normalizeSettings(json?.youtube_shorts);
       setSettings(nextSettings);
+      settingsBaselineRef.current = JSON.stringify(nextSettings);
       emitDashboardUpdate(nextSettings);
     } catch (err) {
       console.warn("[youtube-shorts-settings] status failed", err);
@@ -236,6 +238,12 @@ export default function YoutubeShortsSettingsContent() {
   useEffect(() => {
     void loadSettings();
   }, [loadSettings]);
+
+  useEffect(() => {
+    if (!loading && settingsBaselineRef.current) {
+      onUnsavedChange?.(JSON.stringify(settings) !== settingsBaselineRef.current);
+    }
+  }, [loading, onUnsavedChange, settings]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -276,6 +284,8 @@ export default function YoutubeShortsSettingsContent() {
       if (upsertError) throw upsertError;
 
       setSettings(nextSettings);
+      settingsBaselineRef.current = JSON.stringify(nextSettings);
+      onUnsavedChange?.(false);
       emitDashboardUpdate(nextSettings);
       setNotice("Réglages YouTube enregistrés.");
     } catch (err) {
@@ -302,6 +312,8 @@ export default function YoutubeShortsSettingsContent() {
       if (!res.ok || json?.ok === false) throw new Error(String(json?.error || "disconnect_failed"));
       const nextSettings = normalizeSettings(json?.youtube_shorts);
       setSettings(nextSettings);
+      settingsBaselineRef.current = JSON.stringify(nextSettings);
+      onUnsavedChange?.(false);
       emitDashboardUpdate(nextSettings);
       setNotice("Chaîne YouTube déconnectée.");
     } catch (err) {

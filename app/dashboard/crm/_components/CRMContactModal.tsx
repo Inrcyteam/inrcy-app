@@ -1,6 +1,7 @@
-import type { Dispatch, SetStateAction } from "react";
+import { useEffect, useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import styles from "../crm.module.css";
 import type { Category, ContactType, CrmDraft } from "../crm.types";
+import { useUnsavedExitGuard } from "../../_hooks/useUnsavedExitGuard";
 
 type Props = {
   open: boolean;
@@ -33,14 +34,37 @@ export default function CRMContactModal({
   onClose,
   onSave,
 }: Props) {
+  const [baseline, setBaseline] = useState("");
+  const snapshot = useMemo(
+    () => JSON.stringify({ draft, deliverySameAsPrimary }),
+    [draft, deliverySameAsPrimary],
+  );
+
+  useEffect(() => {
+    if (open) setBaseline(snapshot);
+  }, [open]);
+
+  const hasUnsavedChanges = open && Boolean(baseline) && snapshot !== baseline;
+  const { confirmExit } = useUnsavedExitGuard({
+    active: open,
+    shouldBlock: hasUnsavedChanges,
+    onConfirmExit: onClose,
+    eyebrow: "Contacts",
+    title: "Quitter sans enregistrer ?",
+    message: "Ce contact contient des modifications non enregistrées. Si vous fermez maintenant, elles seront perdues.",
+    confirmLabel: "Fermer sans enregistrer",
+    cancelLabel: "Continuer l’édition",
+    variant: "warning",
+  });
+
   if (!open) return null;
 
   return (
-    <div className={styles.modalOverlay} role="dialog" aria-modal="true" onClick={onClose}>
+    <div className={styles.modalOverlay} role="dialog" aria-modal="true">
       <div className={styles.modalCard} onClick={(e) => e.stopPropagation()}>
         <div className={styles.modalHead}>
           <div className={styles.modalTitle}>{editingId ? "Modifier un contact" : "Ajouter un contact"}</div>
-          <button type="button" className={styles.modalClose} onClick={onClose} aria-label="Fermer">
+          <button type="button" className={styles.modalClose} onClick={() => void confirmExit()} aria-label="Fermer">
             ✕
           </button>
         </div>
@@ -301,7 +325,7 @@ export default function CRMContactModal({
         )}
 
         <div className={styles.modalFooter}>
-          <button type="button" className={styles.ghostBtn} onClick={onClose}>
+          <button type="button" className={styles.ghostBtn} onClick={() => void confirmExit()}>
             Annuler
           </button>
           <button type="button" className={styles.primaryBtn} onClick={onSave} disabled={saving}>

@@ -3,7 +3,7 @@
 import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
 import { invalidateBoosterGenerationContextClient } from "@/lib/boosterGenerationContextClient";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabaseClient";
 import { APP_LANGUAGE_STORAGE_KEY, normalizeAppLanguage, type AppLanguageCode } from "@/lib/appLanguage";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
@@ -18,7 +18,10 @@ import {
   type MobileShortcutId,
 } from "@/lib/mobileShortcuts";
 
-type Props = { mode?: "page" | "drawer" };
+type Props = {
+  mode?: "page" | "drawer";
+  onUnsavedChange?: (hasUnsavedChanges: boolean) => void;
+};
 
 type ClientLanguage = AppLanguageCode;
 type DateFormat = "dd/MM/yyyy" | "MM/dd/yyyy" | "yyyy-MM-dd" | "d MMMM yyyy";
@@ -119,7 +122,7 @@ const normalizePartialPreferences = (source: Record<string, unknown> | null | un
   return preferences;
 };
 
-export default function GeneralPreferencesContent({ mode = "drawer" }: Props) {
+export default function GeneralPreferencesContent({ mode = "drawer", onUnsavedChange }: Props) {
   const t = useDashboardI18n();
   const [form, setForm] = useState<PreferencesForm>(initialForm);
   const [loading, setLoading] = useState(true);
@@ -127,6 +130,18 @@ export default function GeneralPreferencesContent({ mode = "drawer" }: Props) {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
   const [mobileShortcuts, setMobileShortcuts] = useState<MobileShortcutId[]>([...DEFAULT_MOBILE_SHORTCUTS]);
+  const savedPreferencesSignatureRef = useRef("");
+
+  useEffect(() => {
+    if (loading) {
+      onUnsavedChange?.(false);
+      return;
+    }
+    onUnsavedChange?.(
+      savedPreferencesSignatureRef.current !== ""
+        && savedPreferencesSignatureRef.current !== JSON.stringify({ form, mobileShortcuts }),
+    );
+  }, [form, loading, mobileShortcuts, onUnsavedChange]);
 
   const card: React.CSSProperties = useMemo(() => ({
     width: "100%",
@@ -240,8 +255,11 @@ export default function GeneralPreferencesContent({ mode = "drawer" }: Props) {
 
         const migratedLocal = normalizePartialPreferences(local);
 
-        setForm({ ...initialForm, clientLanguage: appDefaultLanguage, ...migratedLocal, ...dbPreferences });
-        setMobileShortcuts(await loadMobileShortcutsPreference());
+        const nextForm = { ...initialForm, clientLanguage: appDefaultLanguage, ...migratedLocal, ...dbPreferences };
+        const nextMobileShortcuts = await loadMobileShortcutsPreference();
+        setForm(nextForm);
+        setMobileShortcuts(nextMobileShortcuts);
+        savedPreferencesSignatureRef.current = JSON.stringify({ form: nextForm, mobileShortcuts: nextMobileShortcuts });
       } catch (e) {
         setError(getSimpleFrenchErrorMessage(e, "Impossible de charger les préférences générales."));
       } finally {
@@ -303,6 +321,7 @@ export default function GeneralPreferencesContent({ mode = "drawer" }: Props) {
         }));
       }
 
+      savedPreferencesSignatureRef.current = JSON.stringify({ form, mobileShortcuts });
       setSaved(true);
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);

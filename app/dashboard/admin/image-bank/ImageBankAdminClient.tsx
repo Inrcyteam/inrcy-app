@@ -10,6 +10,7 @@ import {
 } from "react";
 import { createClient } from "@/lib/supabaseClient";
 import { getClientUserFacingErrorMessage } from "@/lib/userFacingErrors";
+import { confirmInrcy, promptInrcy } from "@/lib/inrcyDialog";
 import {
   INR_MEDIA_ALLOWED_IMAGE_MIME_TYPES,
   INR_MEDIA_IMAGE_MAX_BYTES,
@@ -577,9 +578,14 @@ export default function ImageBankAdminClient() {
   }
 
   async function deleteImage(image: ImageBankRow) {
-    const ok = window.confirm(
-      "Supprimer définitivement cette image de la banque iNrCy ?",
-    );
+    const ok = await confirmInrcy({
+      eyebrow: "Banque d’images",
+      title: "Supprimer cette image ?",
+      message: "Cette image sera supprimée définitivement de la banque iNrCy.",
+      confirmLabel: "Supprimer",
+      cancelLabel: "Annuler",
+      variant: "danger",
+    });
     if (!ok) return;
 
     setSavingId(image.id);
@@ -627,11 +633,25 @@ export default function ImageBankAdminClient() {
 
     const confirmationMessage = `Supprimer définitivement ${ids.length} image(s) sélectionnée(s) de la banque iNrCy ?`;
     if (ids.length >= 50) {
-      const typed = window.prompt(
-        `${confirmationMessage}\n\nPour confirmer cette suppression de masse, tape SUPPRIMER.`,
-      );
+      const typed = await promptInrcy({
+        eyebrow: "Banque d’images",
+        title: "Confirmer la suppression de masse",
+        message: `${confirmationMessage}\n\nPour confirmer cette suppression de masse, tape SUPPRIMER.`,
+        placeholder: "SUPPRIMER",
+        required: true,
+        confirmLabel: "Supprimer définitivement",
+        cancelLabel: "Annuler",
+        variant: "danger",
+      });
       if (typed !== "SUPPRIMER") return;
-    } else if (!window.confirm(confirmationMessage)) {
+    } else if (!(await confirmInrcy({
+      eyebrow: "Banque d’images",
+      title: "Supprimer les images sélectionnées ?",
+      message: confirmationMessage,
+      confirmLabel: "Supprimer",
+      cancelLabel: "Annuler",
+      variant: "danger",
+    }))) {
       return;
     }
 

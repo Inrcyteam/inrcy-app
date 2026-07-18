@@ -162,12 +162,27 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
-export default function DocumentsSettingsContent() {
+type Props = {
+  onUnsavedChange?: (hasUnsavedChanges: boolean) => void;
+};
+
+export default function DocumentsSettingsContent({ onUnsavedChange }: Props) {
   const [settings, setSettings] = React.useState<InrDocumentsSettings>(DEFAULT_INRDOCUMENTS_SETTINGS);
   const [loading, setLoading] = React.useState(true);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [notice, setNotice] = React.useState<string | null>(null);
+  const savedSettingsSignatureRef = React.useRef("");
+
+  React.useEffect(() => {
+    if (loading) {
+      onUnsavedChange?.(false);
+      return;
+    }
+    onUnsavedChange?.(
+      savedSettingsSignatureRef.current !== "" && savedSettingsSignatureRef.current !== JSON.stringify(settings),
+    );
+  }, [loading, onUnsavedChange, settings]);
 
   const loadSettings = React.useCallback(async () => {
     try {
@@ -176,7 +191,9 @@ export default function DocumentsSettingsContent() {
       const response = await fetch("/api/documents/settings", { cache: "no-store" });
       if (!response.ok) throw new Error(await getSimpleFrenchApiError(response, "Impossible de charger les réglages Devis & Factures."));
       const json = await response.json().catch(() => ({}));
-      setSettings(normalizeInrDocumentsSettings(json?.settings));
+      const nextSettings = normalizeInrDocumentsSettings(json?.settings);
+      setSettings(nextSettings);
+      savedSettingsSignatureRef.current = JSON.stringify(nextSettings);
     } catch (e: any) {
       setError(getSimpleFrenchErrorMessage(e, "Impossible de charger les réglages Devis & Factures."));
     } finally {
@@ -208,7 +225,9 @@ export default function DocumentsSettingsContent() {
       });
       if (!response.ok) throw new Error(await getSimpleFrenchApiError(response, "Impossible d’enregistrer les réglages Devis & Factures."));
       const json = await response.json().catch(() => ({}));
-      setSettings(normalizeInrDocumentsSettings(json?.settings));
+      const nextSettings = normalizeInrDocumentsSettings(json?.settings);
+      setSettings(nextSettings);
+      savedSettingsSignatureRef.current = JSON.stringify(nextSettings);
       setNotice("Réglages enregistrés.");
       dispatchUpdated();
     } catch (e: any) {

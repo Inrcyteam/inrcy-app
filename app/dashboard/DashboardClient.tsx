@@ -14,6 +14,7 @@ import DashboardBoosterModalLayer from "./_components/DashboardBoosterModalLayer
 import DashboardSettingsDrawerContent from "./_components/DashboardSettingsDrawerContent";
 import InrBadgePreviewModal from "./_components/InrBadgePreviewModal";
 import { useDrawerMutationGuard } from "./_hooks/useDrawerMutationGuard";
+import { useUnsavedExitGuard } from "./_hooks/useUnsavedExitGuard";
 import { useDashboardNotifications } from "./_hooks/useDashboardNotifications";
 import { useReferralForm } from "./_hooks/useReferralForm";
 import { useDashboardPanelRouting } from "./_hooks/useDashboardPanelRouting";
@@ -356,6 +357,47 @@ export default function DashboardClient({ isAdmin = false }: DashboardClientProp
   const { language: dashboardLanguage } = useDashboardLanguage();
   const dashboardCopy = useMemo(() => getDashboardTranslations(dashboardLanguage), [dashboardLanguage]);
   const { panel, openPanel, closePanel, goToModule } = useDashboardPanelRouting();
+  const [settingsDrawerHasUnsavedChanges, setSettingsDrawerHasUnsavedChanges] = useState(false);
+  const settingsDrawerGuardActive = panel === "ia" || panel === "preferences" || panel === "documents" || panel === "mails" || panel === "compte" || panel === "parrainage" || panel === "profil" || panel === "activite" || panel === "youtube_shorts" || panel === "pinterest";
+  const settingsDrawerRequiresExplicitClose = settingsDrawerGuardActive || panel === "profil" || panel === "activite";
+
+  useEffect(() => {
+    setSettingsDrawerHasUnsavedChanges(false);
+  }, [panel]);
+
+  const { confirmExit: confirmSettingsDrawerExit } = useUnsavedExitGuard({
+    active: settingsDrawerGuardActive,
+    shouldBlock: settingsDrawerHasUnsavedChanges,
+    onConfirmExit: closePanel,
+    eyebrow: "Réglages",
+    title: "Quitter sans enregistrer ?",
+    message: "Cette fenêtre contient des modifications non enregistrées. Si vous la fermez maintenant, elles seront perdues.",
+    confirmLabel: "Fermer sans enregistrer",
+    cancelLabel: "Continuer l’édition",
+    variant: "warning",
+  });
+
+  const requestCloseSettingsDrawer = useCallback(() => {
+    if (!settingsDrawerGuardActive) {
+      closePanel();
+      return;
+    }
+    void confirmSettingsDrawerExit();
+  }, [closePanel, confirmSettingsDrawerExit, settingsDrawerGuardActive]);
+
+  const handleSettingsDrawerUnsavedChange = useCallback((hasUnsavedChanges: boolean) => {
+    setSettingsDrawerHasUnsavedChanges(hasUnsavedChanges);
+  }, []);
+
+  const openBoosterPublish = useCallback(() => {
+    void requestNavigation(() => {
+      // L'URL est aussi l'état partagé avec le bandeau mobile. Sans ce
+      // paramètre, l'ouverture locale de la modale laisse le bouton « Publier »
+      // actif sur le Dashboard.
+      setDashboardBoosterModal("publish");
+      router.replace("/dashboard?action=publish", { scroll: false });
+    });
+  }, [requestNavigation, router]);
 
   const openStatsModule = useCallback(() => {
     void requestNavigation(() => {
@@ -3370,7 +3412,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         openPanel={openPanel}
         onOpenChannelsHelp={() => setHelpCanauxOpen(true)}
         onOpenStats={openStatsModule}
-        onOpenBoosterPublish={() => setDashboardBoosterModal("publish")}
+        onOpenBoosterPublish={openBoosterPublish}
         onOpenBoosterStats={() => setDashboardBoosterModal("stats")}
       />
 
@@ -3416,9 +3458,9 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       <SettingsDrawer
         title={getDrawerTitle(panel, dashboardLanguage)}
         isOpen={isDrawerPanel(panel)}
-        onClose={closePanel}
-        closeOnBackdrop={panel !== "profil" && panel !== "activite"}
-        closeOnEscape={panel !== "profil" && panel !== "activite"}
+        onClose={requestCloseSettingsDrawer}
+        closeOnBackdrop={!settingsDrawerRequiresExplicitClose}
+        closeOnEscape={!settingsDrawerRequiresExplicitClose}
         headerActions={
           panel === "inertie" ? (
             <HelpButton onClick={() => setHelpInertieOpen(true)} title="Aide : Mon inertie" />
@@ -3431,11 +3473,12 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       >
         <DashboardSettingsDrawerContent
           panel={panel}
+          onUnsavedChange={handleSettingsDrawerUnsavedChange}
           checkProfile={checkProfile}
           checkActivity={checkActivity}
           inertiaSnapshot={inertiaSnapshot}
           openPanel={openPanel}
-          onCloseDrawer={closePanel}
+          onCloseDrawer={requestCloseSettingsDrawer}
           referralName={referralName}
           referralPhone={referralPhone}
           referralEmail={referralEmail}

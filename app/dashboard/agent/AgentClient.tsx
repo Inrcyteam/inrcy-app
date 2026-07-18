@@ -33,6 +33,7 @@ import {
 import { makeAttachmentPath } from "@/app/dashboard/mails/_lib/mailboxPhase25";
 import HelpButton from "../_components/HelpButton";
 import { useUnsavedExitGuard } from "../_hooks/useUnsavedExitGuard";
+import { confirmInrcy } from "@/lib/inrcyDialog";
 import PublishExecutionProgress from "../_components/PublishExecutionProgress";
 import PublishExecutionResultModal from "../_components/PublishExecutionResultModal";
 import CampaignScheduleModal from "../_components/CampaignScheduleModal";
@@ -7314,15 +7315,19 @@ export default function AgentClient() {
 
     if (!options.force) {
       const hasChanges = session.dirty;
-      openAgentConfirmDialog({
-        title: hasChanges ? "Continuer sans sauvegarder ?" : "Quitter l’édition ?",
-        message: hasChanges
-          ? "Les modifications en cours seront perdues. L’action programmée restera inchangée."
-          : "Vous allez quitter l’édition temporaire. L’action programmée restera inchangée.",
-        confirmLabel: hasChanges ? "Continuer" : "Quitter",
+      if (!hasChanges) {
+        restorePreviousState();
+        return true;
+      }
+      void confirmInrcy({
+        eyebrow: "Édition iNrAgent",
+        title: "Continuer sans sauvegarder ?",
+        message: "Les modifications en cours seront perdues. L’action programmée restera inchangée.",
+        confirmLabel: "Continuer",
         cancelLabel: "Annuler",
-        tone: hasChanges ? "danger" : "warning",
-        onConfirm: restorePreviousState,
+        variant: "danger",
+      }).then((confirmed) => {
+        if (confirmed) restorePreviousState();
       });
       return false;
     }
