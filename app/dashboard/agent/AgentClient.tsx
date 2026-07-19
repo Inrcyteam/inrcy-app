@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type MutableRefObject,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
   type WheelEvent as ReactWheelEvent,
@@ -19,6 +20,7 @@ import {
   writeAccountCacheValue,
 } from "@/lib/browserAccountCache";
 import { ChannelImageAdapterModal } from "@/app/dashboard/_components/ChannelImageAdapterTool";
+import EmojiPickerButton from "../_components/EmojiPickerButton";
 import { requestBoosterVideoTransforms } from "@/lib/boosterVideoTransformClient";
 import type { BoosterVideoTransformedVariant } from "@/lib/boosterVideoTransforms";
 import {
@@ -4370,6 +4372,8 @@ export default function AgentClient() {
   );
   const publishBodyEditorRef = useRef<HTMLDivElement | null>(null);
   const campaignBodyEditorRef = useRef<HTMLDivElement | null>(null);
+  const publishEmojiSelectionRef = useRef<Range | null>(null);
+  const campaignEmojiSelectionRef = useRef<Range | null>(null);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -6144,6 +6148,30 @@ export default function AgentClient() {
     );
   }
 
+  function saveRichEditorSelection(
+    editor: HTMLDivElement | null,
+    selectionRef: MutableRefObject<Range | null>,
+  ) {
+    if (!editor || typeof window === "undefined") return;
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+    const range = selection.getRangeAt(0);
+    if (!editor.contains(range.commonAncestorContainer)) return;
+    selectionRef.current = range.cloneRange();
+  }
+
+  function restoreRichEditorSelection(
+    editor: HTMLDivElement,
+    selectionRef: MutableRefObject<Range | null>,
+  ) {
+    const range = selectionRef.current;
+    if (!range || !editor.contains(range.commonAncestorContainer)) return;
+    const selection = window.getSelection();
+    if (!selection) return;
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+
   function applyRichEditorFormat(
     editor: HTMLDivElement | null,
     kind: "bold" | "italic" | "underline",
@@ -6182,6 +6210,23 @@ export default function AgentClient() {
     sync(editor);
   }
 
+  function insertRichEditorEmoji(
+    editor: HTMLDivElement | null,
+    selectionRef: MutableRefObject<Range | null>,
+    emoji: string,
+    sync: (editor: HTMLDivElement) => void,
+  ) {
+    if (!editor || typeof document === "undefined") return;
+    try {
+      editor.focus({ preventScroll: true });
+    } catch {
+      editor.focus();
+    }
+    restoreRichEditorSelection(editor, selectionRef);
+    document.execCommand("insertText", false, emoji);
+    sync(editor);
+  }
+
   function applyCampaignTextFormat(kind: "bold" | "italic" | "underline") {
     applyRichEditorFormat(
       campaignBodyEditorRef.current,
@@ -6195,6 +6240,24 @@ export default function AgentClient() {
       publishBodyEditorRef.current,
       kind,
       syncPublishBodyFromEditor,
+    );
+  }
+
+  function insertPublishEmoji(emoji: string) {
+    insertRichEditorEmoji(
+      publishBodyEditorRef.current,
+      publishEmojiSelectionRef,
+      emoji,
+      syncPublishBodyFromEditor,
+    );
+  }
+
+  function insertCampaignEmoji(emoji: string) {
+    insertRichEditorEmoji(
+      campaignBodyEditorRef.current,
+      campaignEmojiSelectionRef,
+      emoji,
+      syncCampaignBodyFromEditor,
     );
   }
 
@@ -9884,6 +9947,15 @@ export default function AgentClient() {
                 >
                   <span className={styles.underlineToolbarLabel}>U</span>
                 </button>
+                <EmojiPickerButton
+                  onBeforeOpen={() =>
+                    saveRichEditorSelection(
+                      publishBodyEditorRef.current,
+                      publishEmojiSelectionRef,
+                    )
+                  }
+                  onSelect={insertPublishEmoji}
+                />
               </div>
               <RichSiteContentEditor
                 value={publishTextDraft.body}
@@ -10344,6 +10416,15 @@ export default function AgentClient() {
                 >
                   <span className={styles.underlineToolbarLabel}>U</span>
                 </button>
+                <EmojiPickerButton
+                  onBeforeOpen={() =>
+                    saveRichEditorSelection(
+                      campaignBodyEditorRef.current,
+                      campaignEmojiSelectionRef,
+                    )
+                  }
+                  onSelect={insertCampaignEmoji}
+                />
               </div>
               <RichSiteContentEditor
                 value={campaignTextDraft.body}

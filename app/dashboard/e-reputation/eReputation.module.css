@@ -788,6 +788,36 @@
   background: rgba(255, 229, 143, 0.09);
 }
 
+.aiChipButton {
+  appearance: none;
+  font: inherit;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.aiChipButton:hover {
+  transform: translateY(-1px);
+  border-color: rgba(255, 229, 143, 0.52);
+  background: rgba(255, 229, 143, 0.16);
+}
+
+.aiChipButton:focus-visible {
+  outline: 2px solid rgba(125, 211, 252, 0.86);
+  outline-offset: 2px;
+}
+
+.replyTools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  min-height: 32px;
+  margin-top: 12px;
+  color: rgba(255, 255, 255, 0.58);
+  font-size: 12px;
+  font-weight: 750;
+}
+
 .replyDetailCard textarea {
   width: 100%;
   flex: 1 1 210px;

@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState, type CSSProperties } from "react";
 import { highlightTemplatePlaceholdersInHtml, normalizeRichMailHtmlForSend, richMailHtmlToText, sanitizeRichMailHtml, stripTemplatePlaceholderHighlights, textToRichMailHtml } from "@/lib/mailRichText";
+import EmojiPickerButton from "./EmojiPickerButton";
 
 type RichMailEditorProps = {
   text: string;
@@ -99,6 +100,20 @@ export default function RichMailEditor({
     restoreSelection();
     try {
       document.execCommand(command, false);
+    } catch {
+      // Les navigateurs anciens peuvent ignorer la commande.
+    }
+    emitChange();
+    saveSelection();
+  };
+
+  const insertEmoji = (emoji: string) => {
+    const node = editorRef.current;
+    if (!node) return;
+    focusEditableWithoutScroll(node);
+    restoreSelection();
+    try {
+      document.execCommand("insertText", false, emoji);
     } catch {
       // Les navigateurs anciens peuvent ignorer la commande.
     }
@@ -209,6 +224,7 @@ export default function RichMailEditor({
       <button type="button" onMouseDown={keepEditorSelection} onTouchStart={(event) => applyToolbarCommandFromTouch(event, "underline")} onClick={() => applyToolbarCommandFromClick("underline")} aria-label="Souligné" title="Souligné" style={buttonStyle}>
         <span style={{ textDecoration: "underline" }}>U</span>
       </button>
+      <EmojiPickerButton onBeforeOpen={saveSelection} onSelect={insertEmoji} buttonStyle={buttonStyle} />
     </div>
   );
 

@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { confirmInrcy } from "@/lib/inrcyDialog";
+import EmojiPickerButton from "@/app/dashboard/_components/EmojiPickerButton";
+import PublishAiConfigurationDrawer from "@/app/dashboard/booster/publier/components/PublishAiConfigurationDrawer";
 import styles from "./eReputation.module.css";
 
 export type EReputationPlatformId = "google";
@@ -412,6 +414,19 @@ export default function EReputationReviewsClient(props: Props) {
   const [refreshing, setRefreshing] = useState(false);
   const [notice, setNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [listNotice, setListNotice] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [aiConfigurationOpen, setAiConfigurationOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+  const replyTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const replySelectionRef = useRef<{ start: number; end: number } | null>(null);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mediaQuery = window.matchMedia("(max-width: 760px)");
+    const update = () => setIsMobile(mediaQuery.matches);
+    update();
+    mediaQuery.addEventListener?.("change", update);
+    return () => mediaQuery.removeEventListener?.("change", update);
+  }, []);
 
   useEffect(() => {
     setPlatformData(normalizedPlatforms);
@@ -516,6 +531,7 @@ export default function EReputationReviewsClient(props: Props) {
 
   useEffect(() => {
     setReplyText(defaultReplyFor(selectedReview));
+    replySelectionRef.current = null;
     setNotice(null);
   }, [selectedReview?.id]);
 
@@ -554,8 +570,37 @@ export default function EReputationReviewsClient(props: Props) {
   function openDetails(review: EReputationReviewItem) {
     setSelectedId(review.id);
     setReplyText(defaultReplyFor(review));
+    replySelectionRef.current = null;
     setNotice(null);
     setDetailsOpen(true);
+  }
+
+  function saveReplySelection() {
+    const textarea = replyTextareaRef.current;
+    if (!textarea) return;
+    replySelectionRef.current = {
+      start: textarea.selectionStart,
+      end: textarea.selectionEnd,
+    };
+  }
+
+  function insertReplyEmoji(emoji: string) {
+    const textarea = replyTextareaRef.current;
+    if (!textarea) return;
+    const selection = replySelectionRef.current || {
+      start: textarea.selectionStart,
+      end: textarea.selectionEnd,
+    };
+    const nextText = `${replyText.slice(0, selection.start)}${emoji}${replyText.slice(selection.end)}`;
+    const nextCursor = selection.start + emoji.length;
+    setReplyText(nextText);
+    replySelectionRef.current = { start: nextCursor, end: nextCursor };
+    window.requestAnimationFrame(() => {
+      const currentTextarea = replyTextareaRef.current;
+      if (!currentTextarea) return;
+      currentTextarea.focus({ preventScroll: true });
+      currentTextarea.setSelectionRange(nextCursor, nextCursor);
+    });
   }
 
   function changePlatform(platformId: EReputationPlatformId) {
@@ -777,6 +822,12 @@ export default function EReputationReviewsClient(props: Props) {
 
   return (
     <>
+      <PublishAiConfigurationDrawer
+        open={aiConfigurationOpen}
+        isMobile={isMobile}
+        drawerHeight="100dvh"
+        onClose={() => setAiConfigurationOpen(false)}
+      />
       <section className={styles.mailboxPanel} aria-label={`Gestion des avis ${platformLabel}`}>
         <div className={styles.toolbar}>
           <div className={styles.toolbarLeft}>
@@ -966,11 +1017,33 @@ export default function EReputationReviewsClient(props: Props) {
                         <span className={styles.modalKicker}>{activePlatform.replyLabel}</span>
                         <h3>{selectedAlreadyAnswered ? "Modifier la réponse" : "Préparer la réponse"}</h3>
                       </div>
-                      <span className={styles.aiChip}>IA</span>
+                      <button
+                        type="button"
+                        className={`${styles.aiChip} ${styles.aiChipButton}`}
+                        onClick={() => setAiConfigurationOpen(true)}
+                        aria-label="Ouvrir la Configuration IA"
+                        title="Configuration IA"
+                      >
+                        IA
+                      </button>
+                    </div>
+                    <div className={styles.replyTools} aria-label="Outils de réponse Google">
+                      <span>Ajouter un emoji</span>
+                      <EmojiPickerButton
+                        onBeforeOpen={saveReplySelection}
+                        onSelect={insertReplyEmoji}
+                        disabled={!selectedCanReply || busy}
+                        buttonStyle={{ minWidth: 34, height: 32, borderRadius: 10, border: "1px solid rgba(125,211,252,0.32)", background: "rgba(56,189,248,0.16)", color: "white", cursor: "pointer", fontSize: 17 }}
+                      />
                     </div>
                     <textarea
+                      ref={replyTextareaRef}
                       value={replyText}
                       onChange={(event) => setReplyText(event.target.value)}
+                      onFocus={saveReplySelection}
+                      onClick={saveReplySelection}
+                      onSelect={saveReplySelection}
+                      onKeyUp={saveReplySelection}
                       disabled={!selectedCanReply || busy}
                       maxLength={4096}
                       placeholder={`Rédigez votre réponse ${platformLabel}...`}
