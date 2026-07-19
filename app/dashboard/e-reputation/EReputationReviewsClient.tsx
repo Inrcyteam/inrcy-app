@@ -1013,10 +1013,7 @@ export default function EReputationReviewsClient(props: Props) {
 
                   <article className={styles.replyDetailCard}>
                     <div className={styles.replyHeaderLine}>
-                      <div>
-                        <span className={styles.modalKicker}>{activePlatform.replyLabel}</span>
-                        <h3>{selectedAlreadyAnswered ? "Modifier la réponse" : "Préparer la réponse"}</h3>
-                      </div>
+                      <span className={styles.modalKicker}>{activePlatform.replyLabel}</span>
                       <button
                         type="button"
                         className={`${styles.aiChip} ${styles.aiChipButton}`}
@@ -1027,8 +1024,8 @@ export default function EReputationReviewsClient(props: Props) {
                         IA
                       </button>
                     </div>
-                    <div className={styles.replyTools} aria-label="Outils de réponse Google">
-                      <span>Ajouter un emoji</span>
+                    <div className={styles.replyHeaderTitleLine}>
+                      <h3>{selectedAlreadyAnswered ? "Modifier la réponse" : "Préparer la réponse"}</h3>
                       <EmojiPickerButton
                         onBeforeOpen={saveReplySelection}
                         onSelect={insertReplyEmoji}

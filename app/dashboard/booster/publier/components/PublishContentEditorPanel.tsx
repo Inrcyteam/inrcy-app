@@ -4,7 +4,10 @@ import type {
   MutableRefObject,
   SetStateAction,
 } from "react";
-import { stripSiteTextFormatting } from "@/lib/boosterFormatting";
+import { useRef } from "react";
+import { editableHtmlToSiteText, stripSiteTextFormatting } from "@/lib/boosterFormatting";
+import { readSanitizedElementHtml } from "@/lib/sanitizeHtml";
+import EmojiPickerButton from "@/app/dashboard/_components/EmojiPickerButton";
 import {
   BOOSTER_PREFERRED_CTA_OPTIONS,
   CHANNEL_TEXT_GUIDELINES,
@@ -95,6 +98,9 @@ export default function PublishContentEditorPanel({
   pinterestBoardsError,
   onPinterestBoardChange,
 }: PublishContentEditorPanelProps) {
+  const siteEmojiSelectionRef = useRef<Range | null>(null);
+  const plainEmojiSelectionRef = useRef<{ start: number; end: number } | null>(null);
+
   const keepEditorTypingInsideField = (
     event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) => {
@@ -102,6 +108,68 @@ export default function PublishContentEditorPanel({
     // Quand on édite un titre ou un contenu, on bloque seulement la propagation
     // pour éviter qu'un parent intercepte la touche Espace, sans empêcher la saisie.
     event.stopPropagation();
+  };
+
+  const saveEmojiSelection = () => {
+    if (isSiteDisplayKey(activeCard)) {
+      const editor = siteContentEditorRef.current;
+      const selection = typeof window !== "undefined" ? window.getSelection() : null;
+      if (!editor || !selection || selection.rangeCount === 0) return;
+      const range = selection.getRangeAt(0);
+      if (!editor.contains(range.commonAncestorContainer)) return;
+      siteEmojiSelectionRef.current = range.cloneRange();
+      return;
+    }
+
+    const textarea = contentTextAreaRef.current;
+    if (!textarea) return;
+    plainEmojiSelectionRef.current = {
+      start: textarea.selectionStart,
+      end: textarea.selectionEnd,
+    };
+  };
+
+  const insertEmoji = (emoji: string) => {
+    if (isSiteDisplayKey(activeCard)) {
+      const editor = siteContentEditorRef.current;
+      if (!editor) return;
+      try {
+        editor.focus({ preventScroll: true });
+      } catch {
+        editor.focus();
+      }
+      const range = siteEmojiSelectionRef.current;
+      if (range && editor.contains(range.commonAncestorContainer)) {
+        const selection = window.getSelection();
+        if (selection) {
+          selection.removeAllRanges();
+          selection.addRange(range);
+        }
+      }
+      document.execCommand("insertText", false, emoji);
+      updatePost(activeCard, {
+        content: editableHtmlToSiteText(readSanitizedElementHtml(editor)),
+      });
+      return;
+    }
+
+    const textarea = contentTextAreaRef.current;
+    if (!textarea) return;
+    const currentContent = getDisplayPost(activeCard).content;
+    const selection = plainEmojiSelectionRef.current || {
+      start: textarea.selectionStart,
+      end: textarea.selectionEnd,
+    };
+    const nextContent = `${currentContent.slice(0, selection.start)}${emoji}${currentContent.slice(selection.end)}`;
+    const nextCursor = selection.start + emoji.length;
+    updatePost(activeCard, { content: nextContent }, { sanitize: false });
+    plainEmojiSelectionRef.current = { start: nextCursor, end: nextCursor };
+    window.requestAnimationFrame(() => {
+      const currentTextarea = contentTextAreaRef.current;
+      if (!currentTextarea) return;
+      currentTextarea.focus({ preventScroll: true });
+      currentTextarea.setSelectionRange(nextCursor, nextCursor);
+    });
   };
 
   return (
@@ -405,6 +473,20 @@ export default function PublishContentEditorPanel({
                         {label}
                       </button>
                     ))}
+                    <EmojiPickerButton
+                      onBeforeOpen={saveEmojiSelection}
+                      onSelect={insertEmoji}
+                      buttonStyle={{
+                        minWidth: 32,
+                        height: 30,
+                        borderRadius: 9,
+                        border: "1px solid rgba(76,195,255,0.35)",
+                        background: "rgba(76,195,255,0.12)",
+                        color: "#eaf7ff",
+                        fontSize: 16,
+                        cursor: "pointer",
+                      }}
+                    />
                   </div>
                 </div>
                 {isSiteDisplayKey(activeCard) ? (

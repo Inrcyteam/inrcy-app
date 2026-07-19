@@ -647,7 +647,8 @@
 }
 
 .modalHeader h2,
-.replyHeaderLine h3 {
+.replyHeaderLine h3,
+.replyHeaderTitleLine h3 {
   margin: 8px 0 0;
   color: rgba(255, 255, 255, 0.96);
   line-height: 1.04;
@@ -658,7 +659,8 @@
   font-size: 26px;
 }
 
-.replyHeaderLine h3 {
+.replyHeaderLine h3,
+.replyHeaderTitleLine h3 {
   font-size: 22px;
 }
 
@@ -806,16 +808,17 @@
   outline-offset: 2px;
 }
 
-.replyTools {
+.replyHeaderTitleLine {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 8px;
   min-height: 32px;
   margin-top: 12px;
-  color: rgba(255, 255, 255, 0.58);
-  font-size: 12px;
-  font-weight: 750;
+}
+
+.replyHeaderTitleLine h3 {
+  margin: 0;
 }
 
 .replyDetailCard textarea {
@@ -1980,7 +1983,8 @@
     margin-top: 14px !important;
   }
 
-  .replyHeaderLine h3 {
+  .replyHeaderLine h3,
+  .replyHeaderTitleLine h3 {
     margin-top: 8px !important;
     font-size: 21px !important;
   }
