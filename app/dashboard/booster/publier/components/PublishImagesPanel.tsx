@@ -458,9 +458,9 @@ export default function PublishImagesPanel({
                     minWidth: 0,
                     width: "100%",
                     boxSizing: "border-box",
-                    minHeight: isMobile ? 44 : 38,
+                    minHeight: isMobile ? 43 : 38,
                     borderRadius: 999,
-                    padding: isMobile ? "7px 6px" : "0 5px",
+                    padding: isMobile ? "4px 6px" : "0 5px",
                     border: isActive
                       ? toneReady
                         ? "2px solid rgba(74,222,128,0.90)"

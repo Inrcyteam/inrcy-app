@@ -2,6 +2,10 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { getClientUserFacingErrorMessage } from "@/lib/userFacingErrors";
+import {
+  readAccountCacheValue,
+  writeAccountCacheValue,
+} from "@/lib/browserAccountCache";
 
 import type { DashboardChannelKey } from "@/lib/dashboardChannels";
 import type { InrstatsChannelBlock } from "@/lib/inrstats/channelBlocks";
@@ -25,6 +29,65 @@ type UseTiktokChannelArgs = {
   triggerChannelRefresh?: (channel: DashboardChannelKey) => Promise<void>;
 };
 
+const DASHBOARD_CHANNEL_STATE_CACHE_KEY = "inrcy_dashboard_channel_state_v1";
+
+type CachedTiktokState = {
+  connected: boolean;
+  username: string;
+  profileUrl: string;
+};
+
+function readCachedTiktokState(): CachedTiktokState {
+  const fallback: CachedTiktokState = {
+    connected: false,
+    username: "",
+    profileUrl: "",
+  };
+
+  try {
+    const raw = readAccountCacheValue(DASHBOARD_CHANNEL_STATE_CACHE_KEY);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const state =
+      parsed?.state && typeof parsed.state === "object" && !Array.isArray(parsed.state)
+        ? (parsed.state as Record<string, unknown>)
+        : parsed;
+    if (!state || typeof state !== "object" || Array.isArray(state)) return fallback;
+    return {
+      connected: typeof state.tiktokConnected === "boolean" ? state.tiktokConnected : false,
+      username: typeof state.tiktokUsername === "string" ? state.tiktokUsername : "",
+      profileUrl: typeof state.tiktokProfileUrl === "string" ? state.tiktokProfileUrl : "",
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function writeCachedTiktokState(next: CachedTiktokState) {
+  try {
+    const raw = readAccountCacheValue(DASHBOARD_CHANNEL_STATE_CACHE_KEY);
+    const parsed = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+    const currentState =
+      parsed?.state && typeof parsed.state === "object" && !Array.isArray(parsed.state)
+        ? (parsed.state as Record<string, unknown>)
+        : parsed;
+    writeAccountCacheValue(
+      DASHBOARD_CHANNEL_STATE_CACHE_KEY,
+      JSON.stringify({
+        cachedAt: Date.now(),
+        state: {
+          ...(currentState && typeof currentState === "object" ? currentState : {}),
+          tiktokConnected: next.connected,
+          tiktokUsername: next.username,
+          tiktokProfileUrl: next.profileUrl,
+        },
+      }),
+    );
+  } catch {
+    // Le cache reste optionnel : l’état serveur demeure la source de vérité.
+  }
+}
+
 async function readJson(res: Response) {
   const json = await res.json().catch(() => null);
   if (!res.ok || !json?.ok) {
@@ -34,9 +97,10 @@ async function readJson(res: Response) {
 }
 
 export function useTiktokChannel({ panel, patchChannelConnectionLocally, triggerChannelRefresh }: UseTiktokChannelArgs) {
-  const [tiktokConnected, setTiktokConnected] = useState(false);
-  const [tiktokUsername, setTiktokUsername] = useState("");
-  const [tiktokProfileUrl, setTiktokProfileUrl] = useState("");
+  const [cachedTiktokState] = useState<CachedTiktokState>(readCachedTiktokState);
+  const [tiktokConnected, setTiktokConnected] = useState(cachedTiktokState.connected);
+  const [tiktokUsername, setTiktokUsername] = useState(cachedTiktokState.username);
+  const [tiktokProfileUrl, setTiktokProfileUrl] = useState(cachedTiktokState.profileUrl);
   const [tiktokProfileUrlNotice, setTiktokProfileUrlNotice] = useState<string | null>(null);
   const [tiktokProfileUrlError, setTiktokProfileUrlError] = useState<string | null>(null);
   const [tiktokSettingsNotice, setTiktokSettingsNotice] = useState<string | null>(null);
@@ -74,6 +138,7 @@ export function useTiktokChannel({ panel, patchChannelConnectionLocally, trigger
     setTiktokConnected(connected);
     setTiktokUsername(username);
     setTiktokProfileUrl(profileUrl);
+    writeCachedTiktokState({ connected, username, profileUrl });
     setTiktokPreferredMediaState(defaults.preferredMedia);
     setTiktokAllowComments(defaults.allowComments);
     setTiktokAllowDuo(defaults.allowDuo);

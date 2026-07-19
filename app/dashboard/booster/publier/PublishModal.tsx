@@ -924,6 +924,9 @@ export default function PublishModal({
   const [didInitChannels, setDidInitChannels] = useState(
     () => !!initialConnectedChannels,
   );
+  const lastInitialConnectedChannelsRef = useRef<Record<ChannelKey, boolean> | null>(
+    null,
+  );
   const [ctaDefaults, setCtaDefaults] = useState<BoosterCtaDefaults | null>(
     null,
   );
@@ -1022,23 +1025,28 @@ export default function PublishModal({
   }, []);
 
   useEffect(() => {
-    if (!initialConnectedChannels || didInitChannels) return;
-    const nextConnected: Record<ChannelKey, boolean> = {
-      inrcy_site: !!initialConnectedChannels.inrcy_site,
-      site_web: !!initialConnectedChannels.site_web,
-      gmb: !!initialConnectedChannels.gmb,
-      inr_search: !!initialConnectedChannels.inr_search,
-      facebook: !!initialConnectedChannels.facebook,
-      instagram: !!initialConnectedChannels.instagram,
-      linkedin: !!initialConnectedChannels.linkedin,
-      tiktok: !!initialConnectedChannels.tiktok,
-      youtube_shorts: !!initialConnectedChannels.youtube_shorts,
-      pinterest: !!initialConnectedChannels.pinterest,
-    };
-    setConnected(nextConnected);
-    setChannels(nextConnected);
-    setDidInitChannels(true);
-  }, [initialConnectedChannels, didInitChannels]);
+    if (!initialConnectedChannels) return;
+    const nextConnected = getInitialConnectedChannels();
+    const previousConnected = lastInitialConnectedChannelsRef.current;
+    lastInitialConnectedChannelsRef.current = nextConnected;
+
+    // Les valeurs initiales sont déjà utilisées par les state initializers.
+    // On ne resynchronise ensuite que les clés qui changent réellement, afin
+    // de ne pas écraser une réponse plus fraîche de /connected-channels.
+    if (!previousConnected) return;
+    const changedKeys = CHANNEL_KEYS.filter(
+      (key) => nextConnected[key] !== previousConnected[key],
+    );
+    if (!changedKeys.length) return;
+
+    setConnected((current) => {
+      const next = { ...current };
+      changedKeys.forEach((key) => {
+        next[key] = nextConnected[key];
+      });
+      return next;
+    });
+  }, [initialConnectedChannels]);
 
   const loadPinterestBoardsForPublish = useCallback(async () => {
     if (!connected.pinterest) {
