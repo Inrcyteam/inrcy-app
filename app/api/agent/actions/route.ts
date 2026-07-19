@@ -5,6 +5,7 @@ import {
   summarizeInrAgentActions,
 } from "@/lib/inrAgentActions";
 import { requireUser } from "@/lib/requireUser";
+import { createSafeStorageSignedUrl } from "@/lib/safeStorageSignedUrl";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { normalizeMailSubject } from "@/lib/mailEncoding";
 import { textToRichMailHtml } from "@/lib/mailRichText";
@@ -100,14 +101,16 @@ async function refreshImageAssetUrls(assets: unknown[]) {
       if (!storagePath || !bucket) return record;
 
       try {
-        const signed = await supabaseAdmin.storage
-          .from(bucket)
-          .createSignedUrl(storagePath, 60 * 60);
+        const signedUrl = await createSafeStorageSignedUrl(
+          bucket,
+          storagePath,
+          60 * 60,
+        );
         return {
           ...record,
           bucket,
           storagePath,
-          url: signed.data?.signedUrl || record.url || record.publicUrl || "",
+          url: signedUrl || record.url || record.publicUrl || "",
         };
       } catch {
         return record;
@@ -140,11 +143,8 @@ async function refreshPublishMediaUrl(media: unknown) {
   if (!storagePath || !bucket) return record;
 
   try {
-    const signed = await supabaseAdmin.storage
-      .from(bucket)
-      .createSignedUrl(storagePath, 60 * 60);
     const url =
-      signed.data?.signedUrl ||
+      (await createSafeStorageSignedUrl(bucket, storagePath, 60 * 60)) ||
       String(record.url || record.publicUrl || "").trim();
     return {
       ...record,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/adminSecurity";
+import { createSafeStorageSignedUrl } from "@/lib/safeStorageSignedUrl";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
@@ -81,26 +82,16 @@ export async function GET(request: NextRequest) {
   const rows = data ?? [];
   const withUrls = await Promise.all(
     rows.map(async (row: any) => {
-      const storage = supabaseAdmin.storage.from(BUCKET);
-      const [thumbnailSigned, originalSigned] = await Promise.all([
-        storage.createSignedUrl(row.storage_path, 60 * 30, {
-          transform: {
-            width: 320,
-            height: 320,
-            resize: "cover",
-            quality: 72,
-          },
-        }),
-        storage.createSignedUrl(row.storage_path, 60 * 30),
-      ]);
+      const signedUrl = await createSafeStorageSignedUrl(
+        BUCKET,
+        row.storage_path,
+        60 * 30,
+      );
 
       return {
         ...row,
-        signed_url:
-          thumbnailSigned.data?.signedUrl ??
-          originalSigned.data?.signedUrl ??
-          null,
-        original_signed_url: originalSigned.data?.signedUrl ?? null,
+        signed_url: signedUrl,
+        original_signed_url: signedUrl,
       };
     }),
   );

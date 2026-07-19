@@ -16,6 +16,7 @@ import {
   type BoosterTheme,
 } from "@/lib/boosterPrompt";
 import { getChannelConnectionStates } from "@/lib/channelConnectionState";
+import { createSafeStorageSignedUrl } from "@/lib/safeStorageSignedUrl";
 import { getBoosterGenerationContext } from "@/lib/boosterGenerationContext";
 import { INR_AGENT_VIDEO_AI_PREPARATION_VERSION } from "@/lib/inrAgentVideoPreparation";
 import {
@@ -981,9 +982,11 @@ async function pickMediaFromProLibrary(args: {
   ): Promise<ImageBankAsset | null> {
     if (!row?.storage_path) return null;
     const bucket = cleanText(row.bucket_name, 80) || PRO_MEDIA_BUCKET;
-    const signed = await supabaseAdmin.storage
-      .from(bucket)
-      .createSignedUrl(String(row.storage_path), 60 * 60);
+    const signedUrl = await createSafeStorageSignedUrl(
+      bucket,
+      String(row.storage_path),
+      60 * 60,
+    );
     const mediaType = row.media_type === "video" ? "video" : "image";
     const size = Number(row.size_bytes || 0);
     const duration = Number(row.duration_seconds || 0);
@@ -992,7 +995,7 @@ async function pickMediaFromProLibrary(args: {
       id: String(row.id || ""),
       bucket,
       storagePath: String(row.storage_path || ""),
-      url: signed.data?.signedUrl || "",
+      url: signedUrl || "",
       title: cleanText(row.title, 180),
       sector: cleanText(sector, 80),
       job: cleanText(profession, 80),
@@ -1132,15 +1135,17 @@ async function pickImageFromBank(args: {
     matchLevel: "image_bank_job_exact" | "image_bank_sector_generic",
   ): Promise<ImageBankAsset | null> {
     if (!row?.storage_path) return null;
-    const signed = await supabaseAdmin.storage
-      .from(BUCKET)
-      .createSignedUrl(String(row.storage_path), 60 * 60);
+    const signedUrl = await createSafeStorageSignedUrl(
+      BUCKET,
+      String(row.storage_path),
+      60 * 60,
+    );
 
     return {
       id: String(row.id || ""),
       bucket: BUCKET,
       storagePath: String(row.storage_path || ""),
-      url: signed.data?.signedUrl || "",
+      url: signedUrl || "",
       title: cleanText(row.title, 180),
       sector: cleanText(row.sector, 80),
       job: cleanText(row.job, 80),

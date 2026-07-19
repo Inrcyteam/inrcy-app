@@ -3,6 +3,7 @@ import { buildVideoSettingsByChannel } from "@/lib/boosterVideoSettings";
 import { prepareBoosterImagesByChannelOnServer } from "@/lib/boosterImageServerPreparation";
 import { requireUser } from "@/lib/requireUser";
 import { rowToInrAgentAction } from "@/lib/inrAgentActions";
+import { createSafeStorageSignedUrl } from "@/lib/safeStorageSignedUrl";
 import {
   rowToInrAgentScheduledAction,
   scheduledActionToDbRow,
@@ -425,11 +426,9 @@ async function buildVideoPayloadFromAgentAction(payload: JsonRecord) {
     2000,
   );
   if (!publicUrl && storagePath) {
-    const signed = await supabaseAdmin.storage
-      .from(bucket)
-      .createSignedUrl(storagePath, 60 * 60 * 24)
-      .catch(() => null);
-    publicUrl = signed?.data?.signedUrl || "";
+    publicUrl =
+      (await createSafeStorageSignedUrl(bucket, storagePath, 60 * 60 * 24)) ||
+      "";
   }
   if (!publicUrl && !storagePath) return null;
 

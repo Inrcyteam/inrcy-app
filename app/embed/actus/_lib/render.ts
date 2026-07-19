@@ -483,7 +483,7 @@ export function renderEmbedHtml(params: {
   const dots = articles.map((_, i) => `<button class="dot" type="button" aria-label="Actualité ${i + 1}" data-dot="${i}"></button>`).join("");
   const counter = articles.length > 0 ? `<div class="counter" aria-live="polite"><span data-current>1</span>/<span data-total>${articles.length}</span></div>` : "";
   const empty = `<section class="empty reveal"><h2>Aucune actualitï¿½ pour le moment</h2><p>Les prochaines publications apparaï¿½tront ici automatiquement.</p></section>`;
-  return `<!DOCTYPE html>
+  const html = `<!DOCTYPE html>
 <html lang="fr">
 <head>
 <meta charset="utf-8" />
@@ -525,5 +525,7 @@ var shell=document.getElementById('carouselRoot');if(!shell)return;var track=doc
 })();
 </script>
 </body></html>`;
+  return html
+    .replace(/(<button\b[^>]*\bdata-prev\b[^>]*>)[^<]*(<\/button>)/, "$1&lsaquo;$2")
+    .replace(/(<button\b[^>]*\bdata-next\b[^>]*>)[^<]*(<\/button>)/, "$1&rsaquo;$2");
 }
-

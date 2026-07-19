@@ -151,6 +151,7 @@ export async function awardInertiaActionForUser(args: {
     .eq("user_id", userId)
     .eq("action_key", actionKey)
     .eq("source_id", sourceId)
+    .limit(1)
     .maybeSingle();
 
   if (!existingRes.error && existingRes.data?.id) {
@@ -167,7 +168,7 @@ export async function awardInertiaActionForUser(args: {
 
   const insertRes = await supabaseAdmin
     .from("loyalty_ledger")
-    .upsert(
+    .insert(
       {
         user_id: userId,
         action_key: actionKey,
@@ -180,10 +181,6 @@ export async function awardInertiaActionForUser(args: {
           base_amount: baseAmount,
         },
       },
-      {
-        onConflict: "user_id,action_key,source_id",
-        ignoreDuplicates: true,
-      },
     )
     .select("id,amount")
     .maybeSingle();
@@ -194,8 +191,8 @@ export async function awardInertiaActionForUser(args: {
   }
 
   // Une autre requête peut avoir inséré la même récompense entre le SELECT
-  // initial et cet UPSERT. `ignoreDuplicates` évite alors le 23505/409 côté
-  // Supabase et ne renvoie aucune ligne : surtout ne pas créditer le solde.
+  // initial et cet INSERT. Sans contrainte unique active, la vérification
+  // préalable reste la protection disponible côté application.
   if (!insertRes.data?.id) {
     return { ok: true, skipped: true };
   }
