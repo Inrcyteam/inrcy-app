@@ -527,5 +527,7 @@ var shell=document.getElementById('carouselRoot');if(!shell)return;var track=doc
 </body></html>`;
   return html
     .replace(/(<button\b[^>]*\bdata-prev\b[^>]*>)[^<]*(<\/button>)/, "$1&lsaquo;$2")
-    .replace(/(<button\b[^>]*\bdata-next\b[^>]*>)[^<]*(<\/button>)/, "$1&rsaquo;$2");
+    .replace(/(<button\b[^>]*\bdata-next\b[^>]*>)[^<]*(<\/button>)/, "$1&rsaquo;$2")
+    .replace(/(<button\b[^>]*\bdata-media-prev\b[^>]*>)[^<]*(<\/button>)/, "$1&lsaquo;$2")
+    .replace(/(<button\b[^>]*\bdata-media-next\b[^>]*>)[^<]*(<\/button>)/, "$1&rsaquo;$2");
 }

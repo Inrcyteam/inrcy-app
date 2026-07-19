@@ -47,8 +47,9 @@ const buildSnippet = (config: GeneratedActusWidgetConfig) => {
   embedUrl.searchParams.set("title", "Actualités");
   embedUrl.searchParams.set("token", config.token);
   const src = embedUrl.toString();
+  const htmlSrc = src.replaceAll("&", "&amp;");
 
-  return `<iframe id="${iframeId}" src="${src}" width="100%" height="${initialHeight}" style="border:0;width:100%;max-width:100%;overflow:hidden;border-radius:24px;background:transparent;display:block;" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" scrolling="no" title="Actualités iNrCy"></iframe>
+  return `<iframe id="${iframeId}" src="${htmlSrc}" width="100%" height="${initialHeight}" style="border:0;width:100%;max-width:100%;overflow:hidden;border-radius:24px;background:transparent;display:block;" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" scrolling="no" title="Actualités iNrCy"></iframe>
 <script>
 (function(){
   var iframe=document.getElementById("${iframeId}");

@@ -106,13 +106,11 @@ const REMINDER_INLINE_ATTACHMENT_SPECS = [
     filename: "inrcalendar-logo-email.png",
     mimeType: "image/png",
     cid: INR_CALENDAR_LOGO_CID,
-    filePath: path.join(process.cwd(), "public/email/inrcalendar-logo-email.png"),
   },
   {
     filename: "inrcy-logo-email.png",
     mimeType: "image/png",
     cid: INRCY_LOGO_CID,
-    filePath: path.join(process.cwd(), "public/email/inrcy-logo-email.png"),
   },
 ] as const;
 
@@ -120,15 +118,21 @@ let reminderInlineAttachmentsPromise: Promise<InlineMailAttachment[]> | null = n
 
 function getReminderInlineAttachments() {
   if (!reminderInlineAttachmentsPromise) {
-    reminderInlineAttachmentsPromise = Promise.all(
-      REMINDER_INLINE_ATTACHMENT_SPECS.map(async (asset) => ({
-        filename: asset.filename,
-        mimeType: asset.mimeType,
-        content: await readFile(asset.filePath),
+    reminderInlineAttachmentsPromise = Promise.all([
+      readFile(path.join(/*turbopackIgnore: true*/ process.cwd(), "public/email/inrcalendar-logo-email.png")),
+      readFile(path.join(/*turbopackIgnore: true*/ process.cwd(), "public/email/inrcy-logo-email.png")),
+    ]).then(([calendarLogo, inrcyLogo]) => [
+      {
+        ...REMINDER_INLINE_ATTACHMENT_SPECS[0],
+        content: calendarLogo,
         inline: true,
-        cid: asset.cid,
-      }))
-    );
+      },
+      {
+        ...REMINDER_INLINE_ATTACHMENT_SPECS[1],
+        content: inrcyLogo,
+        inline: true,
+      },
+    ]);
   }
 
   return reminderInlineAttachmentsPromise.then((attachments) =>
