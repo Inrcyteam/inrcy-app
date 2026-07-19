@@ -217,8 +217,10 @@ export default function PublishContentEditorPanel({
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(10, minmax(0, 1fr))",
-              gap: isMobile ? 3 : 6,
+              gridTemplateColumns: isMobile
+                ? "repeat(2, minmax(0, 1fr))"
+                : "repeat(10, minmax(0, 1fr))",
+              gap: isMobile ? 8 : 6,
               marginBottom: 12,
               minWidth: 0,
               width: "100%",
@@ -262,17 +264,17 @@ export default function PublishContentEditorPanel({
                       : {}),
                     width: "100%",
                     minWidth: 0,
-                    minHeight: isMobile ? 32 : 36,
+                    minHeight: isMobile ? 44 : 36,
                     boxSizing: "border-box",
-                    padding: isMobile ? "0 3px" : "0 6px",
+                    padding: isMobile ? "7px 6px" : "0 6px",
                     display: "inline-flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    overflow: "hidden",
-                    whiteSpace: "nowrap",
-                    textOverflow: "ellipsis",
-                    fontSize: "clamp(8px, 0.78vw, 13px)",
-                    lineHeight: 1.1,
+                    overflow: isMobile ? "visible" : "hidden",
+                    whiteSpace: isMobile ? "normal" : "nowrap",
+                    textOverflow: isMobile ? "clip" : "ellipsis",
+                    fontSize: isMobile ? "clamp(10px, 3.1vw, 13px)" : "clamp(8px, 0.78vw, 13px)",
+                    lineHeight: isMobile ? 1.18 : 1.1,
                   }}
                 >
                   {DISPLAY_LABELS[key]}

@@ -94,8 +94,10 @@ export default function PublishPreviewPanel({
             className={styles.subtitle}
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(10, minmax(0, 1fr))",
-              gap: isMobile ? 2 : 6,
+              gridTemplateColumns: isMobile
+                ? "repeat(2, minmax(0, 1fr))"
+                : "repeat(10, minmax(0, 1fr))",
+              gap: isMobile ? 8 : 6,
               width: "100%",
               maxWidth: "100%",
               paddingBottom: 2,
@@ -157,16 +159,17 @@ export default function PublishPreviewPanel({
                       : {}),
                     width: "100%",
                     boxSizing: "border-box",
-                    padding: isMobile ? "0 3px" : "0 6px",
-                    fontSize: "clamp(8px, 0.78vw, 11px)",
-                    whiteSpace: "nowrap",
+                    padding: isMobile ? "7px 6px" : "0 6px",
+                    fontSize: isMobile ? "clamp(10px, 2.9vw, 12px)" : "clamp(8px, 0.78vw, 11px)",
+                    whiteSpace: isMobile ? "normal" : "nowrap",
                     minWidth: 0,
-                    minHeight: isMobile ? 30 : 34,
+                    minHeight: isMobile ? 44 : 34,
                     display: "inline-flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
+                    overflow: isMobile ? "visible" : "hidden",
+                    textOverflow: isMobile ? "clip" : "ellipsis",
+                    lineHeight: isMobile ? 1.18 : undefined,
                   }}
                 >
                   {tab.label}

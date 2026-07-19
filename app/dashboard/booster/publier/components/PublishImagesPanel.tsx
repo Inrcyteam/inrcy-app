@@ -432,8 +432,10 @@ export default function PublishImagesPanel({
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "repeat(10, minmax(0, 1fr))",
-              gap: isMobile ? 2 : 6,
+              gridTemplateColumns: isMobile
+                ? "repeat(2, minmax(0, 1fr))"
+                : "repeat(10, minmax(0, 1fr))",
+              gap: isMobile ? 8 : 6,
               width: "100%",
               minWidth: 0,
               alignItems: "center",
@@ -456,9 +458,9 @@ export default function PublishImagesPanel({
                     minWidth: 0,
                     width: "100%",
                     boxSizing: "border-box",
-                    minHeight: isMobile ? 32 : 38,
+                    minHeight: isMobile ? 44 : 38,
                     borderRadius: 999,
-                    padding: isMobile ? "0 2px" : "0 5px",
+                    padding: isMobile ? "7px 6px" : "0 5px",
                     border: isActive
                       ? toneReady
                         ? "2px solid rgba(74,222,128,0.90)"
@@ -483,22 +485,24 @@ export default function PublishImagesPanel({
                           ? "0 0 0 1px rgba(248,113,113,0.28) inset, 0 0 0 1px rgba(248,113,113,0.22), 0 0 18px rgba(248,113,113,0.18)"
                           : "0 0 0 1px rgba(250,204,21,0.28) inset, 0 0 0 1px rgba(250,204,21,0.22), 0 0 18px rgba(250,204,21,0.18)"
                       : undefined,
-                    fontSize: "clamp(8px, 0.72vw, 11.5px)",
+                    fontSize: isMobile ? "clamp(10px, 2.9vw, 12px)" : "clamp(8px, 0.72vw, 11.5px)",
                     fontWeight: 850,
                     cursor: "pointer",
                     display: "inline-flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    gap: isMobile ? 2 : 5,
-                    overflow: "hidden",
+                    gap: isMobile ? 4 : 5,
+                    overflow: isMobile ? "visible" : "hidden",
                   }}
                 >
                   <span
                     style={{
                       minWidth: 0,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
+                      overflow: isMobile ? "visible" : "hidden",
+                      textOverflow: isMobile ? "clip" : "ellipsis",
+                      whiteSpace: isMobile ? "normal" : "nowrap",
+                      overflowWrap: isMobile ? "anywhere" : undefined,
+                      textAlign: isMobile ? "center" : undefined,
                     }}
                   >
                     {getCompactChannelLabel(channel, getImageAdapterLabel(channel))}
