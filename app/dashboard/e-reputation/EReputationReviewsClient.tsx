@@ -822,12 +822,17 @@ export default function EReputationReviewsClient(props: Props) {
 
   return (
     <>
-      <PublishAiConfigurationDrawer
-        open={aiConfigurationOpen}
-        isMobile={isMobile}
-        drawerHeight="100dvh"
-        onClose={() => setAiConfigurationOpen(false)}
-      />
+      {aiConfigurationOpen && typeof document !== "undefined"
+        ? createPortal(
+            <PublishAiConfigurationDrawer
+              open={aiConfigurationOpen}
+              isMobile={isMobile}
+              drawerHeight="100dvh"
+              onClose={() => setAiConfigurationOpen(false)}
+            />,
+            document.body,
+          )
+        : null}
       <section className={styles.mailboxPanel} aria-label={`Gestion des avis ${platformLabel}`}>
         <div className={styles.toolbar}>
           <div className={styles.toolbarLeft}>
