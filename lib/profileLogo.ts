@@ -74,6 +74,23 @@ function trimSlashes(value: string) {
   return value.replace(/^\/+|\/+$/g, "");
 }
 
+async function logoObjectExists(supabase: SupabaseClient, path: string) {
+  const lastSlash = path.lastIndexOf("/");
+  const folder = lastSlash >= 0 ? path.slice(0, lastSlash) : "";
+  const fileName = lastSlash >= 0 ? path.slice(lastSlash + 1) : path;
+  if (!fileName) return false;
+
+  const { data, error } = await supabase.storage
+    .from(LOGO_BUCKET)
+    .list(folder, { limit: 100, search: fileName });
+
+  return Boolean(
+    !error &&
+      Array.isArray(data) &&
+      data.some((entry) => String(entry?.name || "") === fileName),
+  );
+}
+
 export function extractLogoPathFromUrl(url: string | null | undefined): string | null {
   if (!url) return null;
 
@@ -117,6 +134,10 @@ export async function createSignedLogoUrl(
   const cleanPath = trimSlashes(logoPath || "");
   if (!cleanPath) return "";
 
+  if (!(await logoObjectExists(supabase, cleanPath))) {
+    throw new Error("Le fichier du logo n’existe plus dans le stockage.");
+  }
+
   const { data, error } = await supabase.storage
     .from(LOGO_BUCKET)
     .createSignedUrl(cleanPath, SIGNED_URL_TTL_SECONDS);
@@ -144,7 +165,7 @@ export async function resolveProfileLogoUrl(
     const logoUrl = await createSignedLogoUrl(supabase, finalPath);
     return { logoPath: finalPath, logoUrl };
   } catch {
-    return { logoPath: finalPath, logoUrl: source?.logo_url?.trim() || "" };
+    return { logoPath: finalPath, logoUrl: "" };
   }
 }
 

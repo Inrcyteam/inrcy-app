@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createSafeStorageSignedUrl } from "@/lib/safeStorageSignedUrl";
 
 export const runtime = "nodejs";
 
@@ -50,13 +50,7 @@ export async function GET(req: Request) {
   const path = extractBoosterStoragePath(src);
   if (!path) return jsonError(400);
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !serviceRoleKey) return jsonError(500);
-
-  const supabase = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false } });
-  const signed = await supabase.storage.from("booster").createSignedUrl(path, 60 * 60);
-  const target = signed.data?.signedUrl;
+  const target = await createSafeStorageSignedUrl("booster", path, 60 * 60);
   if (!target) return jsonError(404);
 
   return NextResponse.redirect(target, {

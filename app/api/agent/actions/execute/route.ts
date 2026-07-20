@@ -341,15 +341,9 @@ async function buildVideoPayloadFromAgentAction(payload: JsonRecord) {
       media.bucket || media.bucketName || media.bucket_name || "booster",
       120,
     ) || "booster";
-  let publicUrl = cleanText(
-    media.url || media.publicUrl || media.src || "",
-    2000,
-  );
-  if (!publicUrl && storagePath) {
-    publicUrl =
-      (await createSafeStorageSignedUrl(bucket, storagePath, 60 * 60 * 24)) ||
-      "";
-  }
+  let publicUrl = storagePath
+    ? (await createSafeStorageSignedUrl(bucket, storagePath, 60 * 60 * 24)) || ""
+    : cleanText(media.url || media.publicUrl || media.src || "", 2000);
   if (!publicUrl && !storagePath) return null;
   const transformedVariants = Array.isArray(media.transformedVariants)
     ? media.transformedVariants.filter(Boolean).slice(0, 12)

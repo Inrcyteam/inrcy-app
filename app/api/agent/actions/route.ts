@@ -69,18 +69,14 @@ function withFreshReportDocument(payload: Record<string, unknown>) {
   const bucket = String(reportRecord.bucket || "inr-agent-reports").trim();
   if (!storagePath || !bucket) return payload;
 
-  return supabaseAdmin.storage
-    .from(bucket)
-    .createSignedUrl(storagePath, 60 * 60)
-    .then(({ data }: { data: { signedUrl?: string } | null }) => ({
+  return createSafeStorageSignedUrl(bucket, storagePath, 60 * 60)
+    .then((signedUrl) => ({
       ...payload,
       reportDocument: {
         ...reportRecord,
         bucket,
         storagePath,
-        downloadUrl:
-          data?.signedUrl ||
-          String(reportRecord.downloadUrl || reportRecord.url || "").trim(),
+        downloadUrl: signedUrl || "",
       },
     }))
     .catch(() => payload);
@@ -110,7 +106,7 @@ async function refreshImageAssetUrls(assets: unknown[]) {
           ...record,
           bucket,
           storagePath,
-          url: signedUrl || record.url || record.publicUrl || "",
+          url: signedUrl || "",
         };
       } catch {
         return record;
@@ -144,8 +140,7 @@ async function refreshPublishMediaUrl(media: unknown) {
 
   try {
     const url =
-      (await createSafeStorageSignedUrl(bucket, storagePath, 60 * 60)) ||
-      String(record.url || record.publicUrl || "").trim();
+      (await createSafeStorageSignedUrl(bucket, storagePath, 60 * 60)) || "";
     return {
       ...record,
       bucket,
@@ -768,17 +763,18 @@ async function readAgentMediaBuffer(media: NonNullable<PublishDraftMedia>) {
     const downloaded = await supabaseAdmin.storage
       .from(bucket)
       .download(storagePath);
-    if (!downloaded.error && downloaded.data) {
-      return {
-        buffer: Buffer.from(await downloaded.data.arrayBuffer()),
-        mimeType:
-          downloaded.data.type ||
-          cleanText(media.mimeType || media.type, 140) ||
-          "application/octet-stream",
-        sourceBucket: bucket,
-        sourceStoragePath: storagePath,
-      };
+    if (downloaded.error || !downloaded.data) {
+      throw new Error("Média iNrAgent supprimé ou indisponible dans le stockage.");
     }
+    return {
+      buffer: Buffer.from(await downloaded.data.arrayBuffer()),
+      mimeType:
+        downloaded.data.type ||
+        cleanText(media.mimeType || media.type, 140) ||
+        "application/octet-stream",
+      sourceBucket: bucket,
+      sourceStoragePath: storagePath,
+    };
   }
 
   const url = cleanText(media.url || media.publicUrl, 2000);

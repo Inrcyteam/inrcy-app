@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
+import { createSafeStorageSignedUrl } from "@/lib/safeStorageSignedUrl";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { loadInrAgentVideoDerivativePaths } from "@/lib/inrAgentVideoContextCache";
 
@@ -306,10 +307,14 @@ export async function GET(request: NextRequest) {
   const withUrls = await Promise.all(
     rows.map(async (row: any) => {
       const bucket = String(row.bucket_name || BUCKET);
-      const signed = await supabaseAdmin.storage.from(bucket).createSignedUrl(row.storage_path, 60 * 60);
+      const signedUrl = await createSafeStorageSignedUrl(
+        bucket,
+        String(row.storage_path || ""),
+        60 * 60,
+      );
       return {
         ...row,
-        signed_url: signed.data?.signedUrl ?? null,
+        signed_url: signedUrl,
       };
     }),
   );

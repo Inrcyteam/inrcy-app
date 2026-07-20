@@ -15,6 +15,7 @@ import {
 } from "@/lib/mediaRules";
 
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { createSafeStorageSignedUrl } from "@/lib/safeStorageSignedUrl";
 import {
   facebookPublishToPage,
   facebookPublishVideoToPage,
@@ -463,12 +464,14 @@ async function buildUrlsFromStoragePath(
   const publicUrl =
     supabaseAdmin.storage.from(bucket).getPublicUrl(path)?.data?.publicUrl ||
     null;
-  const signed = await supabaseAdmin.storage
-    .from(bucket)
-    .createSignedUrl(path, 60 * 60 * 24);
+  const signedUrl = await createSafeStorageSignedUrl(
+    bucket,
+    path,
+    60 * 60 * 24,
+  );
   return {
-    publicUrl,
-    signedUrl: signed?.data?.signedUrl || publicUrl,
+    publicUrl: signedUrl ? publicUrl : null,
+    signedUrl,
   };
 }
 
@@ -887,16 +890,13 @@ async function uploadImageSet(
             stage: "instagramUpload",
           });
         } else {
-          const igSigned = await supabaseAdmin.storage
-            .from("booster")
-            .createSignedUrl(igPath, 60 * 60 * 24);
-          const igPublic = supabaseAdmin.storage
-            .from("booster")
-            .getPublicUrl(igPath);
-          if (igSigned?.data?.signedUrl) {
-            instagramPublishableUrls.push(igSigned.data.signedUrl);
-          } else if (igPublic?.data?.publicUrl) {
-            instagramPublishableUrls.push(igPublic.data.publicUrl);
+          const igSigned = await createSafeStorageSignedUrl(
+            "booster",
+            igPath,
+            60 * 60 * 24,
+          );
+          if (igSigned) {
+            instagramPublishableUrls.push(igSigned);
           } else {
             uploadErrors.push({
               name: img?.name || "image",
@@ -951,17 +951,13 @@ async function uploadImageSet(
             stage: "socialFeedUpload",
           });
         } else {
-          const socialSigned = await supabaseAdmin.storage
-            .from("booster")
-            .createSignedUrl(socialPath, 60 * 60 * 24);
-          const socialPublic = supabaseAdmin.storage
-            .from("booster")
-            .getPublicUrl(socialPath);
-          if (socialSigned?.data?.signedUrl) {
-            socialFeedPublishableUrls.push(socialSigned.data.signedUrl);
-            socialFeedStoragePaths.push(socialPath);
-          } else if (socialPublic?.data?.publicUrl) {
-            socialFeedPublishableUrls.push(socialPublic.data.publicUrl);
+          const socialSigned = await createSafeStorageSignedUrl(
+            "booster",
+            socialPath,
+            60 * 60 * 24,
+          );
+          if (socialSigned) {
+            socialFeedPublishableUrls.push(socialSigned);
             socialFeedStoragePaths.push(socialPath);
           } else {
             uploadErrors.push({
@@ -1014,16 +1010,13 @@ async function uploadImageSet(
             stage: "siteCardUpload",
           });
         } else {
-          const siteSigned = await supabaseAdmin.storage
-            .from("booster")
-            .createSignedUrl(sitePath, 60 * 60 * 24);
-          const sitePublic = supabaseAdmin.storage
-            .from("booster")
-            .getPublicUrl(sitePath);
-          if (siteSigned?.data?.signedUrl) {
-            siteCardPublishableUrls.push(siteSigned.data.signedUrl);
-          } else if (sitePublic?.data?.publicUrl) {
-            siteCardPublishableUrls.push(sitePublic.data.publicUrl);
+          const siteSigned = await createSafeStorageSignedUrl(
+            "booster",
+            sitePath,
+            60 * 60 * 24,
+          );
+          if (siteSigned) {
+            siteCardPublishableUrls.push(siteSigned);
           } else {
             uploadErrors.push({
               name: img?.name || "image",

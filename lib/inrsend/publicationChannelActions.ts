@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { createSafeStorageSignedUrl } from "@/lib/safeStorageSignedUrl";
 import { tryDecryptToken } from "@/lib/oauthCrypto";
 import { facebookPublishToPage, facebookPublishVideoToPage } from "@/lib/facebookPublish";
 import { instagramPublishCarouselWithTokenFallback, instagramPublishPhotoWithTokenFallback, instagramPublishVideoWithTokenFallback, isInstagramAuthorizationErrorResult } from "@/lib/instagramPublish";
@@ -225,13 +226,13 @@ function isGoogleBusinessImageError(error: unknown): boolean {
 
 async function getGoogleBusinessPublishableUrl(path: string): Promise<string | null> {
   const publicUrl = String(supabaseAdmin.storage.from("booster").getPublicUrl(path)?.data?.publicUrl || "").trim();
+  const signedUrl = await createSafeStorageSignedUrl("booster", path, 60 * 60 * 24);
+  if (!signedUrl) return null;
   if (publicUrl && await canGoogleFetchImageUrl(publicUrl)) return publicUrl;
 
-  const signed = await supabaseAdmin.storage.from("booster").createSignedUrl(path, 60 * 60 * 24);
-  const signedUrl = String(signed?.data?.signedUrl || "").trim();
-  if (signedUrl && await canGoogleFetchImageUrl(signedUrl)) return signedUrl;
+  if (await canGoogleFetchImageUrl(signedUrl)) return signedUrl;
 
-  return publicUrl || signedUrl || null;
+  return null;
 }
 
 async function uploadPublicationImages(userId: string, newImages: ImagePayload[]): Promise<ImageSet> {
@@ -279,9 +280,10 @@ async function uploadPublicationImages(userId: string, newImages: ImagePayload[]
       upsert: false,
     });
     if (instagramUpload.error) throw instagramUpload.error;
-    const instagramSigned = await supabaseAdmin.storage.from("booster").createSignedUrl(instagramPath, 60 * 60 * 24);
-    const instagramPublic = supabaseAdmin.storage.from("booster").getPublicUrl(instagramPath);
-    const instagramUrl = String(instagramSigned?.data?.signedUrl || instagramPublic?.data?.publicUrl || "").trim();
+    const instagramUrl = String(
+      (await createSafeStorageSignedUrl("booster", instagramPath, 60 * 60 * 24)) ||
+        "",
+    ).trim();
     if (!instagramUrl) throw new Error(`URL Instagram introuvable pour ${img?.name || "image"}.`);
     instagramPublishableUrls.push(instagramUrl);
 
@@ -294,9 +296,10 @@ async function uploadPublicationImages(userId: string, newImages: ImagePayload[]
       upsert: false,
     });
     if (socialUpload.error) throw socialUpload.error;
-    const socialSigned = await supabaseAdmin.storage.from("booster").createSignedUrl(socialPath, 60 * 60 * 24);
-    const socialPublic = supabaseAdmin.storage.from("booster").getPublicUrl(socialPath);
-    const socialUrl = String(socialSigned?.data?.signedUrl || socialPublic?.data?.publicUrl || "").trim();
+    const socialUrl = String(
+      (await createSafeStorageSignedUrl("booster", socialPath, 60 * 60 * 24)) ||
+        "",
+    ).trim();
     if (!socialUrl) throw new Error(`URL social introuvable pour ${img?.name || "image"}.`);
     socialFeedPublishableUrls.push(socialUrl);
 
@@ -307,9 +310,9 @@ async function uploadPublicationImages(userId: string, newImages: ImagePayload[]
       upsert: false,
     });
     if (siteUpload.error) throw siteUpload.error;
-    const siteSigned = await supabaseAdmin.storage.from("booster").createSignedUrl(sitePath, 60 * 60 * 24);
-    const sitePublic = supabaseAdmin.storage.from("booster").getPublicUrl(sitePath);
-    const siteUrl = String(siteSigned?.data?.signedUrl || sitePublic?.data?.publicUrl || "").trim();
+    const siteUrl = String(
+      (await createSafeStorageSignedUrl("booster", sitePath, 60 * 60 * 24)) || "",
+    ).trim();
     if (!siteUrl) throw new Error(`URL site introuvable pour ${img?.name || "image"}.`);
     siteCardPublishableUrls.push(siteUrl);
 

@@ -3,6 +3,7 @@ import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { createSafeStorageSignedUrl } from "@/lib/safeStorageSignedUrl";
 import { getInrSendRetentionCutoffIso, getOldestAutoRetentionCutoffIso, isInrSendItemRetained } from "@/lib/inrsendRetention";
 import { fetchInrSendHistoryFiles } from "@/lib/inrsend/historyFiles";
 import {
@@ -185,10 +186,8 @@ async function withStatsReportSignedUrls(items: OutboxItem[]): Promise<OutboxIte
     if (!storagePath) return;
 
     try {
-      const { data } = await supabaseAdmin.storage
-        .from(bucket)
-        .createSignedUrl(storagePath, 60 * 60);
-      const signedUrl = data?.signedUrl || "";
+      const signedUrl =
+        (await createSafeStorageSignedUrl(bucket, storagePath, 60 * 60)) || "";
       if (!signedUrl) return;
       item.attachments = (item.attachments || []).map((current) => (
         current.storagePath === storagePath

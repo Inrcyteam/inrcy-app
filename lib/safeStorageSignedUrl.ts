@@ -1,22 +1,20 @@
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
-const IMAGE_BANK_BUCKET = "inrcy-image-bank";
-
 function normalizePath(value: unknown) {
   const path = String(value ?? "").trim().replace(/^\/+/, "");
   if (!path || path.includes("..")) return "";
   return path;
 }
 
-async function imageBankObjectExists(path: string) {
+async function storageObjectExists(bucket: string, path: string) {
   const lastSlash = path.lastIndexOf("/");
   const folder = lastSlash >= 0 ? path.slice(0, lastSlash) : "";
   const fileName = lastSlash >= 0 ? path.slice(lastSlash + 1) : path;
   if (!fileName) return false;
 
   const { data, error } = await supabaseAdmin.storage
-    .from(IMAGE_BANK_BUCKET)
-    .list(folder, { limit: 1, search: fileName });
+    .from(bucket)
+    .list(folder, { limit: 100, search: fileName });
 
   return Boolean(
     !error &&
@@ -26,8 +24,9 @@ async function imageBankObjectExists(path: string) {
 }
 
 /**
- * Generates a signed URL without asking Supabase to sign stale image-bank rows.
- * Other buckets keep the normal signing behavior.
+ * Generates a signed URL only for an object that still exists.
+ * Supabase can sign a stale path and only return the failure when a browser
+ * later requests the URL, which creates noisy Storage 400 warnings.
  */
 export async function createSafeStorageSignedUrl(
   bucket: string,
@@ -39,10 +38,7 @@ export async function createSafeStorageSignedUrl(
   if (!normalizedBucket || !normalizedPath) return null;
 
   try {
-    if (
-      normalizedBucket === IMAGE_BANK_BUCKET &&
-      !(await imageBankObjectExists(normalizedPath))
-    ) {
+    if (!(await storageObjectExists(normalizedBucket, normalizedPath))) {
       return null;
     }
 

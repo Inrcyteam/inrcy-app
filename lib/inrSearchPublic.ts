@@ -4,6 +4,7 @@ import { getActivitySectorLabel, decodeBusinessSector } from "@/lib/activitySect
 import { getChannelConnectionStates } from "@/lib/channelConnectionState";
 import { filterEligibleInrSearchAccountIds, getInrSearchPublicationEligibility } from "@/lib/inrSearchEligibility";
 import { resolveProfileLogoUrl } from "@/lib/profileLogo";
+import { createSafeStorageSignedUrl } from "@/lib/safeStorageSignedUrl";
 import { createInrBadgePublicUrl, createInrBadgeQrTrackingUrl } from "@/lib/inrBadge";
 import { resolveFrenchGeography } from "@/lib/frenchGeography";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
@@ -459,10 +460,12 @@ async function loadMedia(userId: string): Promise<InrSearchMedia[]> {
       const bucket = clean(row.bucket_name, 120) || "pro-media";
       const storagePath = clean(row.storage_path, 600);
       if (!storagePath) return null;
-      const signed = await supabaseAdmin.storage
-        .from(bucket)
-        .createSignedUrl(storagePath, MEDIA_SIGNED_URL_TTL_SECONDS);
-      const url = normalizeExternalUrl(signed.data?.signedUrl);
+      const signedUrl = await createSafeStorageSignedUrl(
+        bucket,
+        storagePath,
+        MEDIA_SIGNED_URL_TTL_SECONDS,
+      );
+      const url = normalizeExternalUrl(signedUrl);
       if (!url) return null;
       return {
         id: clean(row.id, 120) || storagePath,
