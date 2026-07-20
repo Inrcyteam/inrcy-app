@@ -278,7 +278,7 @@ const ENGINE_NATIVE_BOUNDARIES: Record<AiPreferredEngine, string> = {
   google: "Évite les listes systématiques, les sous-parties scolaires et les résumés mécaniques.",
   mistral: "Évite le style télégraphique, les répétitions sèches et les traductions littérales.",
   xai: "Évite la provocation gratuite, le sarcasme et les effets de manche quand ils ne servent pas la marque.",
-  perplexity: "N'ajoute pas de faits externes, citations, statistiques ou actualités non demandés et non fournis comme s'ils étaient nécessaires au post.",
+  perplexity: "Utilise tes connaissances pour expliquer le sujet demandé, mais ne restitue jamais de citations, sources, références ou marqueurs comme [1]. N'ajoute aucun chiffre, statistique, date, actualité, nom de quartier, lieu précis, entreprise ou fait local absent du contexte fourni.",
   deepseek: "Évite les plans rigides, les transitions de dissertation et la sur-explication analytique.",
   meta: "Évite les clichés sociaux, les suites d'emojis automatiques et le ton influenceur générique.",
 };

@@ -44,7 +44,7 @@ test("Booster exposes iNrSearch in content, generation and image channel flows",
   assert.match(shared, /"site_web",\s*"gmb",\s*"inr_search"/);
   assert.match(prompt, /INR_SEARCH_CONTENT_MAX_LENGTH/);
   assert.match(generation, /inr_search:\s*12/);
-  assert.match(generation, /limitBoosterChannelContent/);
+  assert.match(generation, /limitBoosterGeneratedContent/);
 });
 
 test("the immediate and iNrSend publication paths enforce the same iNrSearch limit", async () => {

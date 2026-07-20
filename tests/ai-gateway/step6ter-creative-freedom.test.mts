@@ -93,16 +93,17 @@ test("engine preference is passed into shared writing-freedom rules across writi
   }
 });
 
-test("text generation capacities remain unchanged after creative freedom changes", () => {
+test("token budgets stay unchanged while generated channel ceilings are centralized", () => {
   assert.equal(AI_FEATURE_POLICIES["booster.publish"].maxOutputTokens, 10_000);
   assert.equal(AI_FEATURE_POLICIES["agent.publish"].maxOutputTokens, 10_000);
   assert.equal(AI_FEATURE_POLICIES["templates.generate"].maxOutputTokens, 3000);
 
   const generation = read("lib/boosterPublishGeneration.ts");
-  assert.match(
-    generation,
-    /siteChannel\s*\?[\s\S]*?channel === "inr_search"\s*\?\s*INR_SEARCH_CONTENT_MAX_LENGTH\s*:\s*6000\s*:\s*2000/,
-  );
+  const channelRules = read("lib/boosterChannelRules.ts");
+  assert.match(generation, /limitBoosterGeneratedContent/);
+  assert.match(channelRules, /inrcy_site:[\s\S]*?max:\s*2600/);
+  assert.match(channelRules, /site_web:[\s\S]*?max:\s*2600/);
+  assert.match(channelRules, /pinterest:[\s\S]*?max:\s*400/);
   assert.match(generation, /youtube_shorts:\s*950/);
   assert.match(generation, /site_web:\s*1100/);
   assert.match(generation, /Math\.min\(10_000, Math\.max\(minimum, contentBudget\)\)/);
@@ -132,12 +133,15 @@ test("creative synonym reformulations and normal same-topic overlap are advisory
 test("detailed Booster length is a strong editorial target but never a final 502 condition", () => {
   const prompt = read("lib/boosterPrompt.ts");
   const generation = read("lib/boosterPublishGeneration.ts");
+  const channelRules = read("lib/boosterChannelRules.ts");
 
   assert.match(prompt, /detailed: "DÉTAILLÉ"/i);
   assert.match(prompt, /PRIORITÉ ÉDITORIALE/i);
-  assert.match(prompt, /site_web: "1600–2600 car\."/i);
-  assert.match(prompt, /youtube_shorts: "900–1700 car\."/i);
-  assert.match(prompt, /Les plages ci-dessous pilotent réellement la quantité de texte attendue/i);
+  assert.match(prompt, /formatBoosterGeneratedContentRule/);
+  assert.match(prompt, /maximum absolu propre à chaque canal/i);
+  assert.match(channelRules, /site_web:[\s\S]*?detailed:\s*\{ min:\s*1800, max:\s*2400 \}[\s\S]*?max:\s*2600/i);
+  assert.match(channelRules, /youtube_shorts:[\s\S]*?detailed:\s*\{ min:\s*1000, max:\s*1600 \}[\s\S]*?max:\s*2000/i);
+  assert.match(prompt, /Les plages ci-dessous concernent exclusivement le champ content/i);
 
   assert.match(generation, /CHANNEL_DETAILED_ENRICHMENT_MIN/);
   assert.match(generation, /too_short_editorial/);

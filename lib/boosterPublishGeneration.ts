@@ -36,9 +36,12 @@ import {
   stripSiteTextFormattingPreserveLayout,
 } from "@/lib/boosterFormatting";
 import {
-  INR_SEARCH_CONTENT_MAX_LENGTH,
-  limitBoosterChannelContent,
+  limitBoosterGeneratedContent,
 } from "@/lib/boosterChannelRules";
+import {
+  hasAiGeneratedCitationArtifacts,
+  sanitizeAiGeneratedEditorialText,
+} from "@/lib/aiGeneratedTextSafety";
 
 export type JsonRecord = Record<string, unknown>;
 
@@ -90,8 +93,10 @@ const CHANNEL_MIN_CONTENT_LENGTH: Record<BoosterChannels, number> = {
 };
 
 // Planchers éditoriaux utilisés uniquement quand le pro choisit « Détaillé ».
-// Contrairement aux seuils anti-casse ci-dessus, ils peuvent déclencher une unique
-// passe d'enrichissement mais ne rendent jamais le résultat final invalide.
+// Ils restent volontairement conservateurs par rapport aux plages préférentielles :
+// la nouvelle grille ne doit pas multiplier les secondes passes IA ni rallonger la
+// génération. Ils peuvent déclencher l'unique enrichissement historique, mais ne
+// rendent jamais le résultat final invalide.
 const CHANNEL_DETAILED_ENRICHMENT_MIN: Record<BoosterChannels, number> = {
   inrcy_site: 1300,
   site_web: 1600,
@@ -102,7 +107,9 @@ const CHANNEL_DETAILED_ENRICHMENT_MIN: Record<BoosterChannels, number> = {
   linkedin: 900,
   tiktok: 250,
   youtube_shorts: 900,
-  pinterest: 320,
+  // 280 est le bas de la nouvelle plage Détaillé Pinterest : ne pas
+  // déclencher une réparation IA sur un contenu déjà conforme.
+  pinterest: 280,
 };
 
 const CHANNEL_DYNAMIC_EMOJI_MIN: Record<BoosterChannels, number> = {
@@ -355,48 +362,43 @@ function cleanHashtags(channel: BoosterChannels, input: unknown) {
   const limit = channel === "instagram" || channel === "tiktok" || channel === "youtube_shorts" || channel === "pinterest" ? 8 : channel === "linkedin" ? 3 : 2;
   return Array.isArray(input)
     ? input
-        .map((h) => String(h || "").trim().replace(/^#+/, ""))
+        .map((h) => sanitizeAiGeneratedEditorialText(h).trim().replace(/^#+/, ""))
         .filter(Boolean)
         .slice(0, limit)
     : [];
 }
 
 function normalizePost(channel: BoosterChannels, raw: Partial<ChannelPost> | undefined): ChannelPost {
+  const generatedTitle = sanitizeAiGeneratedEditorialText(raw?.title);
+  const generatedContent = sanitizeAiGeneratedEditorialText(raw?.content);
+  const generatedCta = sanitizeAiGeneratedEditorialText(raw?.cta);
+
   if (channel === "gmb") {
     const safe = sanitizeGmbGeneratedPost({
-      title: String(raw?.title || ""),
-      content: String(raw?.content || ""),
-      cta: String(raw?.cta || ""),
+      title: generatedTitle,
+      content: generatedContent,
+      cta: generatedCta,
       hashtags: [],
     });
     return {
       title: safe.title,
-      content: safe.content.slice(0, 2000),
+      content: limitBoosterGeneratedContent(channel, safe.content),
       cta: safe.cta,
       hashtags: [],
     };
   }
 
   const siteChannel = siteChannels.has(channel);
-  const title = String(raw?.title || "").trim();
-  const content = String(raw?.content || "").trim();
 
   return {
-    title: (siteChannel ? sanitizeBoosterSiteText(title) : stripSiteTextFormatting(title)).slice(0, 90),
-    content: limitBoosterChannelContent(
+    title: (siteChannel ? sanitizeBoosterSiteText(generatedTitle) : stripSiteTextFormatting(generatedTitle)).slice(0, 90),
+    content: limitBoosterGeneratedContent(
       channel,
-      (siteChannel
-        ? sanitizeBoosterSiteText(content)
-        : stripSiteTextFormattingPreserveLayout(content)).slice(
-        0,
-        siteChannel
-          ? channel === "inr_search"
-            ? INR_SEARCH_CONTENT_MAX_LENGTH
-            : 6000
-          : 2000,
-      ),
+      siteChannel
+        ? sanitizeBoosterSiteText(generatedContent)
+        : stripSiteTextFormattingPreserveLayout(generatedContent),
     ),
-    cta: stripSiteTextFormatting(raw?.cta || "").slice(0, 180),
+    cta: stripSiteTextFormatting(generatedCta).slice(0, 180),
     hashtags: cleanHashtags(channel, raw?.hashtags),
   };
 }
@@ -1010,6 +1012,8 @@ function buildSingleRepairInstructions(args: {
       ? `RENFORCEMENT EMOJIS — niveau BEAUCOUP :\n${dynamicEmojiTargets}\nAjoute de vrais emojis pertinents pour le métier, le sujet et le canal. Ne les regroupe pas tous à la fin ; fais-les vivre dans le texte. Ne mets aucun emoji sur les canaux site.`
       : "",
     `Retourne uniquement des contenus finaux prêts à publier. Aucun commentaire sur la rédaction, aucune explication technique.`,
+    `Relis silencieusement chaque title, content et cta avant le JSON final : orthographe, grammaire, conjugaison, accords, ponctuation et typographie doivent être irréprochables dans la langue configurée.`,
+    `N'ajoute aucune citation, note, référence, bibliographie ni bloc Sources. Les marqueurs comme [1], [2][4], [1, 2] ou 【1†source】 sont strictement interdits.`,
     `Conserve la personnalité native du moteur choisi et toutes les préférences du pro. Ne transforme pas la réparation en texte standardisé.`,
     `Chaque canal doit rester réellement adapté à son usage et distinct des autres.`,
     referenceSnippets

@@ -6,19 +6,13 @@ import {
   buildNormalizedAiGenerationProfile,
   type NormalizedAiGenerationProfile,
 } from "@/lib/aiGenerationProfile";
-import { INR_SEARCH_CONTENT_MAX_LENGTH } from "@/lib/boosterChannelRules";
+import {
+  formatBoosterGeneratedContentRule,
+  INR_SEARCH_CONTENT_MAX_LENGTH,
+  type BoosterChannelKey,
+} from "@/lib/boosterChannelRules";
 
-export type BoosterChannels =
-  | "inrcy_site"
-  | "site_web"
-  | "inr_search"
-  | "gmb"
-  | "facebook"
-  | "instagram"
-  | "linkedin"
-  | "tiktok"
-  | "youtube_shorts"
-  | "pinterest";
+export type BoosterChannels = BoosterChannelKey;
 
 export type BoosterTheme =
   | ""
@@ -196,47 +190,12 @@ const CHANNEL_COMPACT_CONTRACTS: Record<BoosterChannels, string> = {
 
 type BoosterLengthPreference = NormalizedAiGenerationProfile["preferences"]["length"];
 
-const CHANNEL_LENGTH_TARGETS: Record<
-  BoosterLengthPreference,
-  Record<BoosterChannels, string>
-> = {
-  short: {
-    inrcy_site: "500–800 car.",
-    site_web: "650–1000 car.",
-    inr_search: `≤${INR_SEARCH_CONTENT_MAX_LENGTH} car.`,
-    gmb: "250–450 car.",
-    facebook: "250–450 car.",
-    instagram: "180–350 car.",
-    linkedin: "350–650 car.",
-    tiktok: "100–220 car.",
-    youtube_shorts: "300–650 car.",
-    pinterest: "150–300 car.",
-  },
-  medium: {
-    inrcy_site: "900–1500 car.",
-    site_web: "1100–1800 car.",
-    inr_search: `≤${INR_SEARCH_CONTENT_MAX_LENGTH} car.`,
-    gmb: "450–800 car.",
-    facebook: "500–900 car.",
-    instagram: "350–700 car.",
-    linkedin: "700–1200 car.",
-    tiktok: "180–450 car.",
-    youtube_shorts: "500–1200 car. (700–1500 si vidéo longue)",
-    pinterest: "220–500 car.",
-  },
-  detailed: {
-    inrcy_site: "1300–2200 car.",
-    site_web: "1600–2600 car.",
-    inr_search: `≤${INR_SEARCH_CONTENT_MAX_LENGTH} car.`,
-    gmb: "650–1000 car.",
-    facebook: "750–1300 car.",
-    instagram: "500–900 car.",
-    linkedin: "900–1600 car.",
-    tiktok: "250–500 car.",
-    youtube_shorts: "900–1700 car.",
-    pinterest: "320–500 car.",
-  },
-};
+function getChannelLengthTarget(
+  length: BoosterLengthPreference,
+  channel: BoosterChannels,
+) {
+  return formatBoosterGeneratedContentRule(channel, length);
+}
 
 type BoosterEmojiPreference = NormalizedAiGenerationProfile["preferences"]["emojiLevel"];
 
@@ -317,7 +276,7 @@ function buildBoosterLengthDirective(
   const targets = Array.from(new Set(channels))
     .map(
       (channel) =>
-        `- ${CHANNEL_LABELS[channel]} : ${CHANNEL_LENGTH_TARGETS[length][channel]}`,
+        `- ${CHANNEL_LABELS[channel]} : ${getChannelLengthTarget(length, channel)}`,
     )
     .join("\n");
 
@@ -328,7 +287,7 @@ function buildBoosterLengthDirective(
         ? "Reste volontairement concis tout en conservant un contenu complet et publiable."
         : "Produis un contenu suffisamment développé, sans remplissage ni résumé excessif.";
 
-  return `LONGUEUR ${labels[length]} — PRIORITÉ ÉDITORIALE\n${priority}\nLes plages ci-dessous pilotent réellement la quantité de texte attendue ; elles ne sont pas décoratives. Si le contexte factuel est limité, développe l'explication, le bénéfice, la méthode ou le contexte sans inventer de faits.\n${targets}`;
+  return `LONGUEUR ${labels[length]} — PRIORITÉ ÉDITORIALE\n${priority}\nLes plages ci-dessous concernent exclusivement le champ content : title, cta et hashtags sont séparés. Elles pilotent réellement la quantité de texte attendue et ne sont pas décoratives. Le maximum absolu propre à chaque canal est un plafond technique iNrCy confortable : ne le dépasse jamais, même en mode DÉTAILLÉ ou si une consigne ponctuelle demande un texte plus long. Si le contexte factuel est limité, développe l'explication, le bénéfice, la méthode ou le contexte sans inventer de faits.\n${targets}`;
 }
 
 function compactRecord(record: Record<string, unknown>) {
@@ -394,12 +353,14 @@ function buildCompactPreferencePayload(profile: NormalizedAiGenerationProfile) {
 
 function formatCompactChannelContracts(
   channels: BoosterChannels[],
-  length: BoosterLengthPreference,
+  _length: BoosterLengthPreference,
 ) {
+  // La grille de longueur est détaillée une seule fois dans POLITIQUE DE LONGUEUR
+  // afin de ne pas alourdir le prompt ni le temps de génération.
   return Array.from(new Set(channels))
     .map(
       (channel) =>
-        `- ${channel} (${CHANNEL_LABELS[channel]}) : ${CHANNEL_COMPACT_CONTRACTS[channel]} Longueur attendue : ${CHANNEL_LENGTH_TARGETS[length][channel]}`,
+        `- ${channel} (${CHANNEL_LABELS[channel]}) : ${CHANNEL_COMPACT_CONTRACTS[channel]}`,
     )
     .join("\n");
 }
@@ -430,6 +391,8 @@ RÈGLES DURES :
 - Respecte les préférences explicites du pro : langue, pronom, tutoiement/vouvoiement et interdits personnalisés.
 - Chaque canal demandé reçoit une vraie adaptation, jamais un copier-coller.
 - Écris comme un professionnel réel : naturel, concret, crédible, sans jargon marketing ni formules IA génériques.
+- Relis silencieusement l'intégralité de chaque title, content et cta avant de produire le JSON final. Orthographe, grammaire, conjugaison, accords, ponctuation et typographie doivent être irréprochables dans la langue finale.
+- Aucune citation, note de bas de page, référence, bibliographie, mention de source ni bloc « Sources ». Interdits notamment : [1], [2][4], [1, 2], 【1†source】 et tout marqueur équivalent.
 - Aucun commentaire méta sur la rédaction. Interdits : « la description doit », « ce contenu sert à », « cette publication peut », ou équivalent.
 - Utilise des paragraphes courts pour TOUS les canaux. Au-delà de 2–3 phrases, sépare les idées par deux sauts de ligne consécutifs ; ces retours font partie du texte final, ne jamais les supprimer. Laisser le moteur choisir librement le nombre de paragraphes utile. Les listes restent facultatives.
 - Hors Site iNrCy/Site web : aucun Markdown ni HTML. Sur les sites seulement, **gras Markdown** modéré si utile.
@@ -490,6 +453,9 @@ export function boosterUserPrompt(args: {
       ? "- Niveau emojis BEAUCOUP : sur les canaux sociaux compatibles, le résultat doit contenir réellement beaucoup d'emojis visibles. Ne compense pas par un seul emoji dans le titre : répartis-les naturellement dans le contenu. Les canaux site restent à zéro emoji."
       : "- La politique emojis ci-dessous doit être perceptible, compatible avec chaque canal et respectée sans décoration automatique.",
     "- Le CTA préféré est une orientation, pas une obligation.",
+    preferences.engine === "perplexity"
+      ? "- SÉCURITÉ SONAR : utilise tes connaissances uniquement pour expliquer le sujet demandé, mais ne restitue jamais de citations, sources ou références de recherche. N'ajoute aucun chiffre, statistique, date, actualité, nom de quartier, lieu précis, entreprise ou fait local absent du contexte fourni."
+      : "",
     "- Conserve les vrais retours à la ligne dans content avec \\n\\n entre paragraphes.",
     "- Renvoie uniquement le JSON attendu, sans explication.",
   ].filter(Boolean).join("\n");
