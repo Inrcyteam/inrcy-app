@@ -1705,15 +1705,6 @@
   color: rgba(255, 255, 255, 0.64);
 }
 
-.moduleGrid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  padding: 26px 22px 34px;
-  margin: -26px -22px -34px;
-  overflow: visible;
-}
-
 .moduleCard {
   position: relative;
   overflow: visible;
@@ -1746,7 +1737,6 @@
   .secondaryBtn,
   .ghostBtn,
   .connectBtn,
-  .moduleBubbleCard,
   .loopNode,
   .loopGearBtn,
   .gearCapsule {
@@ -1760,7 +1750,6 @@
   .secondaryBtn:hover,
   .ghostBtn:hover,
   .connectBtn:hover,
-  .moduleBubbleCard:hover,
   .loopNode:hover,
   .loopGearBtn:hover,
   .gearCapsule:hover {
@@ -2649,683 +2638,12 @@
   }
 }
 
-/* =========================
-   Flux - Site iNrCy en BULLE
-========================= */
-
-.moduleBubble {
-  position: relative; /* ✅ ajoute ça */
-  border-radius: 9999px;
-  padding: 22px 26px;
-  overflow: hidden;
-  padding: 26px 22px 28px; /* + de padding en bas */
-  min-height: 220px;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: rgba(255, 255, 255, 0.045);
-  box-shadow:
-    0 30px 120px rgba(0, 0, 0, 0.55),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.06);
-
-  /* ✅ AJOUTE ÇA */
-  max-width: 560px; /* empêche la bulle géante */
-  margin: 0 auto; /* centre dans la cellule */
-  display: flex; /* centre le contenu */
-  flex-direction: column;
-  justify-content: center;
-}
-
-/* ✅ Sur la bulle : on coupe le gros décor des cartes */
-.moduleBubble .moduleGlow {
-  display: none !important;
-}
-
-/* Si ta carte utilise aussi des pseudo-éléments décoratifs */
-.moduleBubble::after {
-  content: none !important;
-  display: none !important;
-}
-
-/* Halo “bulle” (vraiment rond) */
-.moduleBubble::before {
-  content: "";
-  position: absolute;
-  inset: -15%;
-  border-radius: 9999px;
-  background:
-    radial-gradient(
-      circle at 25% 35%,
-      rgba(56, 189, 248, 0.22),
-      transparent 55%
-    ),
-    radial-gradient(
-      circle at 70% 45%,
-      rgba(167, 139, 250, 0.16),
-      transparent 60%
-    ),
-    radial-gradient(
-      circle at 55% 80%,
-      rgba(244, 114, 182, 0.14),
-      transparent 62%
-    );
-  opacity: 0.9;
-  pointer-events: none;
-  z-index: 0;
-}
-
-.moduleBubble > * {
-  position: relative;
-  z-index: 1;
-}
-
-/* texte */
-.moduleBubble .moduleDesc {
-  min-height: unset;
-  margin-top: 10px;
-}
-
-/* Footer version bulle */
-.moduleBottomBubble {
-  margin-top: 16px;
-}
-
-/* ✅ seulement 2 boutons */
-.moduleActionsBubble {
-  display: flex;
-  gap: 10px;
-  justify-content: center;
-  align-items: center;
-  flex-wrap: wrap;
-}
-
 /* bouton principal “Configurer” */
 .actionMain {
   min-width: 180px;
   justify-content: center;
   padding: 12px 16px;
   font-size: 12px;
-}
-
-/* Mobile : 2 boutons en colonne */
-@media (max-width: 560px) {
-  .moduleActionsBubble {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
-  .moduleActionsBubble .actionBtn {
-    width: 100%;
-    justify-content: center;
-  }
-}
-
-/* =========================
-   Bulle verticale - étages
-========================= */
-
-.moduleBubble {
-  position: relative;
-
-  /* ✅ vraie forme de bulle (stable) */
-  width: 100%;
-  max-width: 360px;
-  aspect-ratio: 2.8 / 4;
-  margin: 0 auto;
-
-  border-radius: 9999px;
-  padding: 26px 22px 30px; /* + padding en bas (pour le bouton) */
-  overflow: hidden;
-
-  border: 1px solid rgba(255, 255, 255, 0.16);
-
-  /* ✅ fond “orb” */
-  background:
-    radial-gradient(
-      circle at 28% 22%,
-      rgba(56, 189, 248, 0.16),
-      rgba(255, 255, 255, 0.04) 44%,
-      rgba(255, 255, 255, 0.01) 60%,
-      rgba(0, 0, 0, 0) 75%
-    ),
-    rgba(255, 255, 255, 0.04);
-
-  box-shadow:
-    0 40px 140px rgba(0, 0, 0, 0.6),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
-    inset 0 -40px 80px rgba(0, 0, 0, 0.25);
-
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* ✅ halo couleur interne */
-.moduleBubble::before {
-  content: "";
-  position: absolute;
-  inset: -15%;
-  border-radius: 9999px;
-  background:
-    radial-gradient(
-      circle at 25% 35%,
-      rgba(56, 189, 248, 0.18),
-      transparent 58%
-    ),
-    radial-gradient(
-      circle at 75% 55%,
-      rgba(167, 139, 250, 0.14),
-      transparent 62%
-    ),
-    radial-gradient(
-      circle at 55% 85%,
-      rgba(244, 114, 182, 0.12),
-      transparent 64%
-    );
-  opacity: 0.9;
-  pointer-events: none;
-  z-index: 0;
-}
-
-/* ✅ reflet “bulle” */
-.moduleBubble::after {
-  content: "";
-  position: absolute;
-  left: 10%;
-  top: 7%;
-  width: 58%;
-  height: 36%;
-  border-radius: 9999px;
-  background: radial-gradient(
-    circle at 30% 30%,
-    rgba(255, 255, 255, 0.22),
-    rgba(255, 255, 255, 0.1) 35%,
-    transparent 70%
-  );
-  filter: blur(2px);
-  opacity: 0.85;
-  pointer-events: none;
-  z-index: 0;
-}
-
-.moduleBubble > * {
-  position: relative;
-  z-index: 1;
-}
-
-/* coupe le décor des autres cartes sur la bulle */
-.moduleBubble .moduleGlow {
-  display: none !important;
-}
-.moduleBubble::after {
-  content: none !important;
-  display: none !important;
-}
-
-/* Contenu vertical */
-.bubbleStack {
-  height: 100%;
-  display: grid;
-  grid-template-rows: auto auto auto 1fr auto;
-  gap: 10px;
-  justify-items: center;
-  text-align: center;
-}
-
-/* Picto couleur */
-.bubbleIcon {
-  width: 44px;
-  height: 44px;
-  border-radius: 999px;
-  display: grid;
-  place-items: center;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  background: rgba(255, 255, 255, 0.06);
-  box-shadow:
-    0 12px 40px rgba(0, 0, 0, 0.35),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.06);
-}
-
-.bubbleIconDot {
-  width: 18px;
-  height: 18px;
-  border-radius: 999px;
-  background: rgba(56, 189, 248, 0.95);
-  box-shadow: 0 0 18px rgba(56, 189, 248, 0.55);
-}
-
-.bubbleTitle {
-  font-size: 20px;
-  font-weight: 900;
-  letter-spacing: -0.4px;
-  margin-top: 2px;
-}
-
-.bubbleTitleRow {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  flex-wrap: nowrap;
-}
-
-/* Statut */
-.bubbleStatusRow {
-  display: flex;
-  justify-content: center;
-}
-
-/* “Accélération” */
-.bubbleBoost {
-  width: 92%;
-  border-radius: 999px;
-  padding: 10px 12px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.05);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.bubbleBoostLabel {
-  opacity: 0.8;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.bubbleBoostValue {
-  font-size: 12px;
-  font-weight: 900;
-  opacity: 0.95;
-}
-
-/* Boutons en colonne */
-.bubbleActions {
-  margin-top: auto;
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-
-  align-items: center;
-  align-self: center !important; /* ✅ annule l'ancien "end" */
-  text-align: center;
-
-  transform: translateY(-45px); /* 🔼 remonte les 2 boutons */
-}
-
-.bubbleActions > * {
-  margin-left: auto;
-  margin-right: auto;
-}
-
-.bubbleActions .actionBtn {
-  justify-content: center;
-}
-
-.bubbleActions .actionMain {
-  margin-left: auto;
-  margin-right: auto;
-  border-radius: 999px;
-}
-
-.bubbleActions .actionBtn,
-.bubbleActions .actionMain {
-  /* ✅ plus étroit par défaut (évite les boutons “trop larges” en responsive) */
-  width: min(62%, 190px);
-  justify-content: center;
-}
-
-.bubbleActions .actionBtn,
-.bubbleActions .actionMain {
-  font-size: 14px; /* même taille */
-  line-height: 1; /* évite les hauteurs différentes */
-  font-weight: 600; /* même épaisseur */
-  letter-spacing: 0.01em;
-}
-
-/* Mobile */
-@media (max-width: 560px) {
-  .moduleBubble {
-    max-width: 100%;
-  }
-  .bubbleBoost {
-    width: 100%;
-  }
-  /* ✅ mobile : boutons lisibles sans plein écran */
-  .bubbleActions .actionBtn,
-  .bubbleActions .actionMain {
-    width: 100%;
-    max-width: 176px;
-    box-sizing: border-box;
-  }
-}
-
-/* Mini logo au-dessus */
-.bubbleLogo {
-  width: 54px;
-  height: 54px;
-  border-radius: 10px;
-  display: grid;
-  place-items: center;
-  overflow: hidden;
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.22);
-}
-
-.bubbleLogoImg {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-
-  transform: none; /* ✅ plus de zoom */
-  border-radius: 0; /* ✅ plus rond */
-  mix-blend-mode: normal; /* ✅ pas d'effet screen */
-
-  filter: none; /* option: on peut remettre un petit glow après */
-}
-
-.bubbleLogo {
-  box-shadow:
-    0 10px 30px rgba(0, 0, 0, 0.35),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
-    0 0 12px rgba(56, 189, 248, 0.25); /* glow léger */
-}
-
-/* Status compact (dot + label) */
-.bubbleStatusCompact {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  padding: 6px 10px;
-  font-size: 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.statusDot {
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  box-shadow: 0 0 14px rgba(56, 189, 248, 0.35);
-}
-
-.dotAvailable {
-  background: rgba(56, 189, 248, 0.95); /* bleu */
-}
-.dotConnected {
-  background: rgba(34, 197, 94, 0.95); /* vert */
-  box-shadow: 0 0 14px rgba(34, 197, 94, 0.35);
-}
-
-.dotComing {
-  background: rgba(251, 146, 60, 0.95); /* orange */
-  box-shadow: 0 0 14px rgba(251, 146, 60, 0.3);
-}
-
-.bubbleStatusText {
-  font-weight: 800;
-  font-size: 12px;
-  opacity: 0.92;
-}
-
-.bubbleStack {
-  gap: 10px;
-}
-.bubbleTitle {
-  margin-top: 2px;
-}
-
-.bubbleActions {
-  align-self: center; /* ✅ recentre horizontalement */
-  justify-self: center; /* ✅ si parent = grid */
-  margin-bottom: 6px;
-}
-
-/* === Flux de contacts : bulles sphériques === */
-
-.moduleGrid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  column-gap: 36px; /* espace entre les bulles horizontalement */
-  row-gap: 10px; /* 🔽 espace entre la rangée du haut et celle du bas */
-}
-
-/* ✅ Sur mobile: 1 colonne + centrage strict */
-@media (max-width: 560px) {
-  .moduleGrid {
-    grid-template-columns: 1fr;
-    justify-items: center;
-    column-gap: 0;
-    padding-inline: 0;
-    margin-inline: 0;
-  }
-
-  .moduleBubbleCard {
-    width: min(92vw, 360px);
-    margin-inline: auto;
-  }
-}
-
-/* La sphère */
-.moduleBubbleCard {
-  position: relative;
-  aspect-ratio: 1 / 1;
-  min-height: 260px;
-  border-radius: 9999px;
-  overflow: visible;
-
-  /* important: 1er layer "vide" pour que border-box marche nickel */
-  border: 4px solid transparent;
-
-  background:
-    /* 1) couche neutre pour séparer */
-    linear-gradient(rgba(0, 0, 0, 0), rgba(0, 0, 0, 0)) padding-box,
-    /* 2) rim / contour lumineux (dans la bordure) */
-    radial-gradient(
-        circle at 50% 50%,
-        rgba(56, 189, 248, 0.85),
-        rgba(168, 85, 247, 0.45),
-        rgba(255, 255, 255, 0.18)
-      )
-      border-box,
-    /* 3) fond sphère */
-    radial-gradient(
-        circle at 30% 25%,
-        rgba(255, 255, 255, 0.22),
-        rgba(255, 255, 255, 0.08) 35%,
-        rgba(0, 0, 0, 0) 60%
-      ),
-    radial-gradient(
-      circle at 70% 80%,
-      rgba(56, 189, 248, 0.14),
-      rgba(0, 0, 0, 0) 55%
-    ),
-    rgba(255, 255, 255, 0.04);
-
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.18),
-    /* ✅ trait blanc net */ 0 0 22px rgba(56, 189, 248, 0.18),
-    /* ✅ glow léger */ 0 30px 90px rgba(0, 0, 0, 0.85),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.07),
-    inset 0 -40px 80px rgba(56, 189, 248, 0.08);
-}
-
-/* Layout interne */
-.bubbleStack {
-  position: relative;
-  z-index: 1;
-  height: 100%;
-  padding: 22px 20px 18px;
-
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-
-  gap: 8px;
-}
-
-/* Titre */
-.bubbleTitle {
-  margin-top: 4px;
-}
-
-/* Phrase */
-.bubbleTagline {
-  max-width: 220px;
-  line-height: 1.35;
-  opacity: 0.9;
-}
-
-/* Boutons en bas */
-.bubbleActions {
-  margin-top: auto;
-  width: 82%;
-  display: grid;
-  gap: 10px;
-  justify-items: center;
-}
-
-/* Bulle logo */
-.bubbleLogo {
-  width: 34px;
-  height: 34px;
-  border-radius: 999px;
-  overflow: hidden;
-}
-
-/* Mobile */
-@media (max-width: 560px) {
-  .moduleGrid {
-    grid-template-columns: 1fr;
-    gap: 18px;
-    justify-items: center;
-    align-items: start;
-  }
-
-  .moduleBubbleCard {
-    margin-inline: auto;
-    aspect-ratio: 1 / 1; /* ✅ on garde rond */
-    border-radius: 9999px; /* ✅ on garde rond */
-    width: min(92vw, 360px); /* ✅ taille propre sur mobile */
-    justify-self: center; /* ✅ centre dans la grille */
-    min-height: unset; /* ✅ évite la hauteur chelou */
-  }
-
-  /* On annule les "triches" de placement sur mobile */
-  .bubbleStack {
-    transform: none;
-    padding: 4px 16px 16px;
-    gap: 8px;
-  }
-
-  .bubbleTagline {
-    transform: none;
-    margin: 12px 0;
-    line-height: 1.25;
-    max-width: 240px;
-  }
-
-  .bubbleActions {
-    transform: none; /* 🔑 stop la remontée qui superpose */
-    align-items: center; /* centre horizontalement */
-    margin-top: 10px; /* espace naturel */
-    /* ✅ conteneur de boutons plus étroit sur mobile */
-    width: min(56%, 176px);
-    max-width: 176px;
-    gap: 10px;
-  }
-
-  @media (max-width: 560px) {
-    .moduleBubbleCard {
-      width: min(92vw, 360px);
-      margin-inline: auto;
-      padding-inline: 6px; /* marge de sécurité anti découpe */
-    }
-  }
-
-  /* ✅ mêmes dimensions pour les 2 boutons */
-  .bubbleActions .actionBtn {
-    width: 100%;
-    max-width: none; /* ✅ la largeur est pilotée par .bubbleActions */
-    padding: 12px 16px; /* ✅ même hauteur/épaisseur */
-    border-radius: 999px;
-  }
-
-  /* ✅ override du bouton principal */
-  .bubbleActions .actionMain {
-    min-width: 0 !important; /* ✅ annule ton min-width desktop */
-  }
-}
-
-/* Le conteneur garde sa largeur -> le texte ne bouge pas */
-.moduleBubbleCard {
-  position: relative;
-  overflow: visible;
-  isolation: isolate;
-  border: none;
-  background: transparent;
-  box-shadow: none;
-}
-
-/* On dessine la bulle (plus petite) en arrière-plan */
-.moduleBubbleCard::before {
-  content: "";
-  position: absolute;
-  inset: 50% auto auto 50%;
-  width: min(88vw, 330px);
-  height: min(88vw, 330px);
-  transform: translate(-50%, -50%);
-  border-radius: 9999px;
-  pointer-events: none;
-
-  /* ✅ fond sphère */
-  background:
-    radial-gradient(
-      circle at 30% 25%,
-      rgba(255, 255, 255, 0.2),
-      rgba(255, 255, 255, 0.07) 35%,
-      rgba(0, 0, 0, 0) 60%
-    ),
-    radial-gradient(
-      circle at 70% 80%,
-      rgba(56, 189, 248, 0.12),
-      rgba(0, 0, 0, 0) 55%
-    ),
-    rgba(255, 255, 255, 0.03);
-
-  /* ✅ trait blanc net + glow */
-  border: 1px solid rgba(255, 255, 255, 0.28);
-
-  box-shadow:
-    0 0 22px rgba(56, 189, 248, 0.18),
-    0 30px 90px rgba(0, 0, 0, 0.85),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.07),
-    inset 0 -40px 80px rgba(56, 189, 248, 0.08);
-}
-
-/* Le contenu reste au-dessus, inchangé */
-.bubbleStack {
-  position: relative;
-  z-index: 1;
-  transform: translateY(
-    6px
-  ); /* 🔽 centre optiquement le contenu dans la bulle */
-}
-
-.bubbleTagline {
-  transform: translateY(10px);
-}
-
-/* ========== Effets iNrCy ========== */
-
-.moduleBubbleCard:hover {
-  transform: scale(1.03);
-}
-
-.bubbleLogo {
-  animation: glow 4s ease-in-out infinite;
 }
 
 @keyframes glow {
@@ -3340,110 +2658,6 @@
   }
 }
 
-/* ✅ Mobile normal (app + web mobile) */
-@media (any-hover: none) and (any-pointer: coarse) and (max-width: 560px) {
-  .bubbleStack {
-    padding: 18px 16px 16px;
-    gap: 10px;
-  }
-
-  .bubbleTitle {
-    font-size: 18px;
-  }
-
-  .bubbleTagline {
-    font-size: 13px;
-    line-height: 1.25;
-    max-width: 240px;
-  }
-
-  .bubbleActions {
-    width: min(56%, 176px);
-    max-width: 176px;
-    gap: 10px;
-  }
-
-  .bubbleActions .actionBtn,
-  .bubbleActions .actionMain {
-    width: 100% !important;
-    max-width: 176px !important;
-    min-width: 0 !important;
-    padding: 11px 16px !important;
-    white-space: nowrap !important;
-    box-sizing: border-box !important;
-  }
-
-  /* ✅ taille sphère en mobile */
-  .moduleBubbleCard::before {
-    width: min(92vw, 330px);
-    height: min(92vw, 330px);
-  }
-}
-
-/* ✅ Mobile + "Version ordinateur" : rendu PC dans les bulles */
-@media (any-hover: none) and (any-pointer: coarse) and (min-width: 560px) {
-  /* 1) bulles : géométrie fixe */
-  .moduleBubbleCard {
-    width: 330px !important;
-    height: 330px !important;
-    min-height: 330px !important;
-    margin-inline: auto;
-    justify-self: center;
-  }
-
-  .moduleBubbleCard::before {
-    width: 330px !important;
-    height: 330px !important;
-  }
-
-  /* 2) intérieur : spacing PC */
-  .bubbleStack {
-    padding: 22px 20px 18px !important;
-    gap: 8px !important;
-    transform: translateY(6px) !important;
-  }
-
-  .bubbleTagline {
-    transform: translateY(10px) !important;
-    max-width: 220px !important;
-    line-height: 1.35 !important;
-  }
-
-  .bubbleActions {
-    width: min(56%, 176px) !important;
-    max-width: 176px !important;
-    gap: 10px !important;
-  }
-
-  /* 3) ✅ boutons STRICTEMENT identiques */
-  .bubbleActions .actionBtn,
-  .bubbleActions .actionMain {
-    width: 100% !important;
-    max-width: 176px !important;
-    min-width: 0 !important;
-    padding: 11px 16px !important;
-    white-space: nowrap !important;
-    box-sizing: border-box !important;
-  }
-}
-
-/* ✅ Grille en mode "Version ordinateur" sur mobile : 2 colonnes par défaut */
-@media (any-hover: none) and (any-pointer: coarse) and (min-width: 560px) {
-  .moduleGrid {
-    grid-template-columns: repeat(2, 330px) !important;
-    justify-content: center !important;
-    column-gap: 28px !important;
-    row-gap: 12px !important;
-  }
-}
-
-/* ✅ Si ça a la place -> 3 colonnes (toujours en any-pointer/any-hover) */
-@media (any-hover: none) and (any-pointer: coarse) and (min-width: 980px) {
-  .moduleGrid {
-    grid-template-columns: repeat(3, 330px) !important;
-  }
-}
-
 /* ✅ anti-scroll horizontal */
 .page {
   overflow-x: hidden;
@@ -3453,76 +2667,6 @@
   .page {
     padding-left: clamp(8px, 3vw, 14px);
     padding-right: clamp(8px, 3vw, 14px);
-  }
-}
-
-/* ✅ Téléphone détecté (même en “Version ordinateur”) */
-:global(html.isTouch) .bubbleActions .actionBtn,
-:global(html.isTouch) .bubbleActions .actionMain {
-  /* ✅ téléphone : largeur pilotée par .bubbleActions */
-  width: 100% !important;
-  max-width: 176px !important;
-  min-width: 0 !important;
-  padding: 11px 16px !important;
-  white-space: nowrap !important;
-  box-sizing: border-box !important;
-}
-
-/* ✅ Mobile "Version ordinateur" : 4 lignes fixes, plus de chevauchement */
-@media (min-width: 560px) {
-  :global(html.isTouch) .bubbleStack {
-    height: 100% !important;
-    padding: 1px 18px 14px !important;
-
-    display: grid !important;
-    grid-template-rows: auto auto auto auto !important; /* 4 lignes */
-    justify-items: center !important;
-    align-content: start !important;
-
-    gap: 8px !important;
-    transform: none !important;
-  }
-
-  /* ✅ Ligne 1 : logo + titre (on les serre ensemble) */
-  :global(html.isTouch) .bubbleLogo {
-    margin: 0 !important;
-  }
-  :global(html.isTouch) .bubbleTitle {
-    margin: 0 !important;
-  }
-
-  /* ✅ Ligne 2 : badge "À connecter" */
-  :global(html.isTouch) .bubbleStatusRow {
-    margin: 0 !important;
-  }
-
-  /* ✅ Ligne 3 : tagline */
-  :global(html.isTouch) .bubbleTagline {
-    margin: 2px 0 0 !important;
-    transform: none !important;
-    max-width: 220px !important;
-    line-height: 1.25 !important;
-  }
-
-  /* ✅ Ligne 4 : boutons (et surtout : on enlève le margin-top:auto) */
-  :global(html.isTouch) .bubbleActions {
-    margin-top: 6px !important; /* au lieu de auto */
-    width: 82% !important;
-    display: grid !important;
-    gap: 10px !important;
-    justify-items: center !important;
-    transform: none !important;
-  }
-
-  /* ✅ mêmes tailles pour les 2 boutons */
-  :global(html.isTouch) .bubbleActions .actionBtn,
-  :global(html.isTouch) .bubbleActions .actionMain {
-    width: 100% !important;
-    max-width: 176px !important;
-    min-width: 0 !important;
-    padding: 11px 16px !important;
-    white-space: nowrap !important;
-    box-sizing: border-box !important;
   }
 }
 
@@ -4579,15 +3723,6 @@
     margin: 0 auto !important;
     box-sizing: border-box;
   }
-}
-
-:global(html.isTouch) .bubbleActions .actionBtn,
-:global(html.isTouch) .bubbleActions .actionMain {
-  /* ✅ responsive : largeur pilotée par .bubbleActions */
-  width: 100% !important;
-  max-width: 176px !important;
-  box-sizing: border-box !important;
-  white-space: nowrap !important;
 }
 
 /* ✅ Mobile + "Version ordinateur" : espace entre le flux et la barre de puissance */
@@ -6992,189 +6127,8 @@
   overflow: visible;
 }
 
-.desktopCoverflowStage {
-  position: relative;
-  display: grid;
-  grid-template-columns: minmax(220px, 255px) minmax(318px, 344px) minmax(
-      220px,
-      255px
-    );
-  align-items: center;
-  justify-content: center;
-  gap: clamp(14px, 3vw, 34px);
-  width: min(100%, 1000px);
-  min-height: 360px;
-  touch-action: pan-y;
-  user-select: none;
-}
-
-.desktopCoverflowItem {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-inline: auto;
-  transition:
-    transform 0.22s ease,
-    opacity 0.22s ease,
-    filter 0.22s ease;
-}
-
-.desktopCoverflowCenter {
-  width: 344px;
-  height: 344px;
-  z-index: 3;
-  filter: drop-shadow(0 28px 56px rgba(0, 0, 0, 0.38));
-}
-
-.desktopCoverflowSide {
-  width: 255px;
-  height: 255px;
-  z-index: 2;
-  opacity: 0.64;
-  filter: saturate(0.84) blur(0.1px);
-  cursor: pointer;
-}
-
-.desktopCoverflowSide:hover {
-  opacity: 0.82;
-  transform: translateY(-2px) scale(1.02);
-}
-
-.desktopCoverflowLeft {
-  transform: translateX(10px) scale(0.96);
-}
-
-.desktopCoverflowRight {
-  transform: translateX(-10px) scale(0.96);
-}
-
-.desktopCoverflowItem .moduleBubbleCard {
-  width: 100% !important;
-  height: 100% !important;
-  min-height: 0 !important;
-  aspect-ratio: 1 / 1 !important;
-  margin: 0 !important;
-}
-
-.desktopCoverflowItem .moduleBubbleCard::before {
-  width: 100% !important;
-  height: 100% !important;
-}
-
-.desktopCoverflowItem .bubbleStack {
-  height: 100%;
-}
-
-.desktopCoverflowCenter .bubbleStack {
-  padding: 24px 28px 28px !important;
-  gap: 8px !important;
-  transform: none !important;
-}
-
-.desktopCoverflowCenter .bubbleLogo {
-  width: 38px !important;
-  height: 38px !important;
-  margin-bottom: 4px !important;
-  border-radius: 999px !important;
-  overflow: hidden !important;
-  background: rgba(255, 255, 255, 0.08) !important;
-}
-
-.desktopCoverflowCenter .bubbleLogoImg {
-  width: 100% !important;
-  height: 100% !important;
-  object-fit: contain !important;
-  border-radius: 999px !important;
-  transform: none !important;
-  display: block !important;
-}
-
-.desktopCoverflowCenter .bubbleTitle {
-  margin-top: 2px !important;
-}
-
-.desktopCoverflowCenter .bubbleTagline {
-  transform: none !important;
-  margin: 8px 0 0 !important;
-  max-width: 240px !important;
-  line-height: 1.35 !important;
-}
-
-.desktopCoverflowCenter .bubbleActions {
-  transform: none !important;
-  margin-top: auto !important;
-  margin-bottom: 12px !important;
-  width: min(70%, 216px) !important;
-  max-width: 216px !important;
-  gap: 10px !important;
-}
-
-.desktopCoverflowCenter .bubbleActions .actionBtn,
-.desktopCoverflowCenter .bubbleActions .actionMain {
-  width: 100% !important;
-  min-width: 0 !important;
-  max-width: 216px !important;
-  padding-inline: 16px !important;
-  white-space: nowrap !important;
-  box-sizing: border-box !important;
-}
-
 .desktopSideBubbleCard {
   pointer-events: none;
-}
-
-.desktopSideBubbleStack {
-  position: relative;
-  z-index: 1;
-  height: 100%;
-  padding: 18px 18px 26px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 19px;
-  text-align: center;
-}
-
-.desktopSideBubbleCard .bubbleLogo {
-  width: 36px !important;
-  height: 36px !important;
-  margin: 0 !important;
-  border-radius: 999px !important;
-  overflow: hidden !important;
-  background: rgba(255, 255, 255, 0.08) !important;
-}
-
-.desktopSideBubbleCard .bubbleLogoImg {
-  width: 100% !important;
-  height: 100% !important;
-  object-fit: contain !important;
-  border-radius: 999px !important;
-  transform: none !important;
-  display: block !important;
-}
-
-.desktopSideBubbleTitle {
-  font-size: 17px;
-  line-height: 1.1;
-  font-weight: 950;
-  letter-spacing: -0.2px;
-  color: rgba(255, 255, 255, 0.92);
-  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.28);
-}
-
-.desktopSideBubbleCard .bubbleStatusCompact {
-  margin: 0 !important;
-  align-self: center;
-}
-
-.desktopSideBubbleTagline {
-  max-width: 210px;
-  font-size: 13px;
-  line-height: 1.22;
-  color: rgba(255, 255, 255, 0.76);
-  white-space: nowrap;
 }
 
 .desktopChannelArrow {
@@ -7249,47 +6203,6 @@
   .desktopChannelsCarousel {
     padding-inline: 48px;
   }
-
-  .desktopCoverflowStage {
-    grid-template-columns: minmax(188px, 218px) minmax(292px, 318px) minmax(
-        188px,
-        218px
-      );
-    gap: 12px;
-  }
-
-  .desktopCoverflowCenter {
-    width: 318px;
-    height: 318px;
-  }
-
-  .desktopCoverflowCenter .bubbleStack {
-    padding: 22px 24px 24px !important;
-  }
-
-  .desktopCoverflowSide {
-    width: 218px;
-    height: 218px;
-  }
-
-  .desktopSideBubbleStack {
-    padding: 16px 16px 22px;
-    gap: 16px;
-  }
-
-  .desktopSideBubbleCard .bubbleLogo {
-    width: 34px !important;
-    height: 34px !important;
-  }
-
-  .desktopSideBubbleTitle {
-    font-size: 16px;
-  }
-
-  .desktopSideBubbleTagline {
-    max-width: 184px;
-    font-size: 12px;
-  }
 }
 
 @media (max-width: 560px) {
@@ -7352,83 +6265,6 @@
   position: relative;
   z-index: 20;
   pointer-events: auto;
-}
-
-/* Bulle désactivée par l'accès Supabase : visible mais grisée, comme les autres accès verrouillés. */
-.moduleBubbleCardComingSoon {
-  opacity: 0.58;
-  filter: grayscale(0.9) saturate(0.55);
-}
-
-.moduleBubbleCardComingSoon:hover {
-  transform: none;
-}
-
-.moduleBubbleCardComingSoon .moduleGlow {
-  opacity: 0.25;
-}
-
-.moduleBubbleCardComingSoon .bubbleActions .actionMain,
-.moduleBubbleCardComingSoon .bubbleActions .actionView {
-  cursor: not-allowed;
-  opacity: 0.55 !important;
-  filter: grayscale(1) saturate(0.45);
-}
-
-/* ✅ Mails : même gabarit que les autres bulles du coverflow.
-   Cause du décalage précédent : Mails avait un logo central à 42px + position:absolute,
-   alors que tous les autres canaux utilisent 38px dans le flux normal.
-   On conserve l'icône dédiée, mais on réaligne le conteneur sur le standard commun. */
-.bubbleLogoMail {
-  border-radius: 999px !important;
-  overflow: hidden !important;
-  padding: 0 !important;
-  background: rgba(255, 255, 255, 0.08) !important;
-}
-
-.bubbleLogoMail .bubbleLogoImg {
-  width: 100% !important;
-  height: 100% !important;
-  object-fit: contain !important;
-  object-position: center center !important;
-  border-radius: 999px !important;
-  display: block !important;
-  transform: none !important;
-  clip-path: none !important;
-}
-
-.desktopCoverflowCenter .bubbleLogoMail {
-  position: relative !important;
-  display: block !important;
-  flex: 0 0 38px !important;
-  width: 38px !important;
-  height: 38px !important;
-  min-width: 38px !important;
-  min-height: 38px !important;
-  max-width: 38px !important;
-  max-height: 38px !important;
-  margin: 0 0 4px 0 !important;
-  padding: 0 !important;
-  overflow: hidden !important;
-  border-radius: 999px !important;
-  line-height: 0 !important;
-  z-index: 10 !important;
-}
-
-.desktopCoverflowCenter .bubbleLogoMail .bubbleLogoImg {
-  position: static !important;
-  inset: auto !important;
-  width: 100% !important;
-  height: 100% !important;
-  min-width: 0 !important;
-  min-height: 0 !important;
-  max-width: 100% !important;
-  max-height: 100% !important;
-}
-
-.desktopCoverflowCenter .bubbleLogoMail ~ .bubbleTagline {
-  max-width: none !important;
-  white-space: nowrap !important;
 }
 
 .publishFooterRoot {
@@ -8147,125 +6983,6 @@
   }
 }
 
-/* ✅ YouTube : icône ronde et homogène avec les autres bulles. */
-.bubbleLogoYoutube {
-  border-radius: 999px !important;
-  overflow: hidden !important;
-  padding: 0 !important;
-  background: rgba(255, 255, 255, 0.1) !important;
-}
-
-.bubbleLogoYoutube .bubbleLogoImg {
-  width: 100% !important;
-  height: 100% !important;
-  object-fit: cover !important;
-  object-position: center center !important;
-  border-radius: 999px !important;
-  display: block !important;
-  transform: none !important;
-  clip-path: none !important;
-}
-
-.desktopCoverflowCenter .bubbleLogoYoutube {
-  position: relative !important;
-  display: block !important;
-  flex: 0 0 38px !important;
-  width: 38px !important;
-  height: 38px !important;
-  min-width: 38px !important;
-  min-height: 38px !important;
-  max-width: 38px !important;
-  max-height: 38px !important;
-  margin: 0 0 4px 0 !important;
-  padding: 0 !important;
-  overflow: hidden !important;
-  border-radius: 999px !important;
-  line-height: 0 !important;
-  z-index: 10 !important;
-}
-
-.desktopCoverflowCenter .bubbleLogoYoutube .bubbleLogoImg {
-  position: static !important;
-  inset: auto !important;
-  width: 100% !important;
-  height: 100% !important;
-  min-width: 0 !important;
-  min-height: 0 !important;
-  max-width: 100% !important;
-  max-height: 100% !important;
-  object-fit: cover !important;
-}
-
-/* ✅ iNr'Agent : logo officiel rond, même logique que Mails. */
-.bubbleLogoAgent {
-  border-radius: 999px !important;
-  overflow: hidden !important;
-  padding: 0 !important;
-  background: rgba(255, 255, 255, 0.08) !important;
-}
-
-.bubbleLogoAgent .bubbleLogoImg {
-  width: 100% !important;
-  height: 100% !important;
-  object-fit: contain !important;
-  object-position: center center !important;
-  border-radius: 999px !important;
-  display: block !important;
-  transform: none !important;
-  clip-path: none !important;
-}
-
-.desktopCoverflowCenter .bubbleLogoAgent {
-  position: relative !important;
-  display: block !important;
-  flex: 0 0 38px !important;
-  width: 38px !important;
-  height: 38px !important;
-  min-width: 38px !important;
-  min-height: 38px !important;
-  max-width: 38px !important;
-  max-height: 38px !important;
-  margin: 0 0 4px 0 !important;
-  padding: 0 !important;
-  overflow: hidden !important;
-  border-radius: 999px !important;
-  line-height: 0 !important;
-  z-index: 10 !important;
-}
-
-.desktopCoverflowCenter .bubbleLogoAgent .bubbleLogoImg {
-  position: static !important;
-  inset: auto !important;
-  width: 100% !important;
-  height: 100% !important;
-  min-width: 0 !important;
-  min-height: 0 !important;
-  max-width: 100% !important;
-  max-height: 100% !important;
-  object-fit: contain !important;
-}
-
-/* =========================================================
-   iNrBadge — étapes 1/2 : bulle Dashboard + URL badge automatique
-========================================================= */
-.bubbleLogoProfile {
-  border-radius: 999px !important;
-  overflow: hidden !important;
-  padding: 0 !important;
-  background: rgba(255, 255, 255, 0.08) !important;
-}
-
-.bubbleLogoProfile .bubbleLogoImg {
-  width: 100% !important;
-  height: 100% !important;
-  object-fit: cover !important;
-  object-position: center center !important;
-  border-radius: 999px !important;
-  display: block !important;
-  transform: scale(1.06) !important;
-  clip-path: none !important;
-}
-
 .inrBadgeModalCard {
   width: 100%;
   display: flex;
@@ -8470,64 +7187,6 @@
     width: min(76vw, 260px);
     padding: 12px;
     border-radius: 24px;
-  }
-}
-
-/* === Dashboard bulles mobile : équilibre Android / iPhone === */
-/* Sécurité globale mobile : les boutons gardent la largeur du conteneur */
-@media (max-width: 560px) {
-  .mobileCarousel .bubbleActions,
-  .desktopCoverflowCenter .bubbleActions {
-    width: min(56%, 176px) !important;
-    max-width: 176px !important;
-  }
-
-  .mobileCarousel .bubbleActions .actionBtn,
-  .mobileCarousel .bubbleActions .actionMain,
-  .desktopCoverflowCenter .bubbleActions .actionBtn,
-  .desktopCoverflowCenter .bubbleActions .actionMain {
-    width: 100% !important;
-    max-width: 176px !important;
-    min-width: 0 !important;
-    padding-inline: 12px !important;
-    white-space: nowrap !important;
-    box-sizing: border-box !important;
-  }
-}
-
-/* Android uniquement : petit écran, on remonte légèrement le contenu sans toucher iPhone */
-@media (max-width: 560px) {
-  :global(html.isAndroid) .mobileCarousel .moduleBubbleCard .bubbleStack {
-    transform: translateY(-4px) !important;
-  }
-}
-
-/* iPhone uniquement : on conserve la largeur validée et le contenu légèrement descendu */
-@supports (-webkit-touch-callout: none) {
-  @media (any-hover: none) and (any-pointer: coarse) and (max-width: 560px) {
-    .mobileCarousel .bubbleActions,
-    .desktopCoverflowCenter .bubbleActions {
-      width: min(54%, 168px) !important;
-      max-width: 168px !important;
-    }
-
-    .mobileCarousel .bubbleActions .actionBtn,
-    .mobileCarousel .bubbleActions .actionMain,
-    .desktopCoverflowCenter .bubbleActions .actionBtn,
-    .desktopCoverflowCenter .bubbleActions .actionMain {
-      max-width: 168px !important;
-      padding-inline: 12px !important;
-    }
-
-    .mobileCarousel .bubbleStack,
-    .desktopCoverflowCenter .bubbleStack {
-      transform: translateY(13px) !important;
-    }
-
-    .mobileCarousel .bubbleTagline,
-    .desktopCoverflowCenter .bubbleTagline {
-      margin-top: 11px !important;
-    }
   }
 }
 
@@ -9109,39 +7768,6 @@
     transform: translateZ(0) !important;
   }
 
-  .moduleBubbleCard .bubbleLogo {
-    box-sizing: border-box !important;
-    width: 34px !important;
-    height: 34px !important;
-    min-width: 34px !important;
-    min-height: 34px !important;
-    max-width: 34px !important;
-    max-height: 34px !important;
-    inline-size: 34px !important;
-    block-size: 34px !important;
-    min-inline-size: 34px !important;
-    min-block-size: 34px !important;
-    max-inline-size: 34px !important;
-    max-block-size: 34px !important;
-    flex: none !important;
-    aspect-ratio: 1 / 1 !important;
-    border-radius: 9999px !important;
-    overflow: hidden !important;
-  }
-
-  .moduleBubbleCard .bubbleLogoImg {
-    display: block !important;
-    width: 100% !important;
-    height: 100% !important;
-    max-width: 100% !important;
-    max-height: 100% !important;
-    inline-size: 100% !important;
-    block-size: 100% !important;
-    aspect-ratio: 1 / 1 !important;
-    object-fit: contain !important;
-    object-position: center center !important;
-    transform: translateZ(0) !important;
-  }
 }
 
 @media (max-width: 380px) {
@@ -9443,14 +8069,6 @@
 .scheduleDateTimePickerButton:disabled {
   cursor: not-allowed;
   opacity: 0.55;
-}
-
-/* Pinterest : asset optimisé, sans zoom artificiel. */
-.bubbleLogoPinterest .bubbleLogoImg,
-.desktopCoverflowCenter .bubbleLogoPinterest .bubbleLogoImg,
-.desktopSideBubbleCard .bubbleLogoPinterest .bubbleLogoImg {
-  object-fit: contain !important;
-  transform: none !important;
 }
 
 @media (max-width: 560px) {
@@ -10117,7 +8735,7 @@
   display: contents;
 }
 
-@media (max-width: 560px) {
+@media (max-width: 1100px) {
   .shell {
     --inrcy-mobile-bottom-nav-height: 50px;
     --inrcy-mobile-bottom-nav-total-height:
@@ -10155,7 +8773,7 @@
 }
 
 @supports not (height: 100dvh) {
-  @media (max-width: 560px) {
+  @media (max-width: 1100px) {
     .shell {
       --inrcy-mobile-content-height:
         calc(100vh - var(--inrcy-mobile-bottom-nav-total-height));
@@ -10178,7 +8796,7 @@
   display: none;
 }
 
-@media (max-width: 560px) {
+@media (max-width: 1100px) {
   .topbar {
     display: none !important;
   }
@@ -10260,7 +8878,7 @@
 }
 
 /* Mobile dock overlays: bottom-anchored, content-sized, then internally scrollable at the viewport ceiling. */
-@media (max-width: 560px) {
+@media (max-width: 1100px) {
   .notificationPanelMobile {
     top: auto;
     bottom: calc(var(--inrcy-mobile-bottom-nav-height, 50px) + env(safe-area-inset-bottom, 0px) + 8px);
@@ -10301,7 +8919,7 @@
 
 
 /* Mobile notification header: two compact rows, actions aligned right. */
-@media (max-width: 560px) {
+@media (max-width: 1100px) {
   .notificationPanelHeaderMobile {
     display: grid !important;
     grid-template-columns: minmax(0, 1fr) auto;
@@ -10356,22 +8974,165 @@
   transform: none;
 }
 
-/* iNr'Search : même taille exacte que le médaillon, sans zoom. */
-.bubbleLogoInrSearch {
-  border-radius: 999px !important;
-  overflow: hidden !important;
-  padding: 0 !important;
-  background: transparent !important;
+/* Téléphone et tablette : navigation compacte commune par logos. */
+@media (min-width: 561px) and (max-width: 1100px) {
+  .channelSummaryBadge,
+  .channelPillRail {
+    display: none;
+  }
+
+  .mobileChannelSummary {
+    display: inline-flex;
+  }
+
+  .carouselNav {
+    width: 100%;
+    gap: 12px;
+  }
+
+  .carouselIconRail {
+    flex-wrap: nowrap;
+    overflow: visible;
+  }
 }
 
-.bubbleLogoInrSearch .bubbleLogoImg,
-.desktopCoverflowCenter .bubbleLogoInrSearch .bubbleLogoImg,
-.desktopSideBubbleCard .bubbleLogoInrSearch .bubbleLogoImg {
-  width: 100% !important;
-  height: 100% !important;
-  object-fit: contain !important;
-  object-position: center !important;
-  border-radius: 999px !important;
-  transform: none !important;
-  display: block !important;
+/*
+ * Header desktop compact
+ *
+ * Le zoom navigateur réduit la largeur CSS disponible sans transformer un PC
+ * en tablette. Ces deux paliers empêchent donc les actions de pousser la
+ * signature de marque sur le logo avant le passage au dock (<= 1100px).
+ */
+@media (min-width: 1101px) and (max-width: 1700px) {
+  .topbar {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+    gap: 8px;
+  }
+
+  .brand {
+    flex: 0 0 auto;
+    min-width: 0;
+    gap: 8px;
+  }
+
+  .logoImg {
+    width: 64px;
+    height: 64px;
+    flex: 0 0 64px;
+  }
+
+  .brandText {
+    display: block;
+    max-width: 170px;
+  }
+
+  .brandTag {
+    font-size: 15px;
+    line-height: 1.12;
+  }
+
+  .topbarActions {
+    flex: 1 1 auto;
+    min-width: 0;
+    justify-content: flex-end;
+    gap: 6px !important;
+  }
+
+  .topbarActions .ghostBtn {
+    padding-inline: 9px;
+    font-size: 11px;
+  }
+
+  .establishmentTopbarBtn {
+    min-width: 126px;
+    max-width: 166px;
+    padding-inline: 8px !important;
+  }
+
+  .establishmentTopbarName {
+    max-width: 94px;
+    font-size: 11px;
+  }
+
+  .notificationBellBtnWithLabel {
+    padding-inline: 10px;
+  }
+
+  .notificationBellLabel {
+    font-size: 11px;
+  }
+
+  .agentTopbarBtn {
+    gap: 5px !important;
+  }
+
+  .agentTopbarIconSlot,
+  .agentTopbarIcon {
+    width: 25px !important;
+    height: 25px !important;
+  }
+
+  .agentTopbarIconSlot {
+    flex-basis: 25px !important;
+  }
+
+  .languageSelectorBtn {
+    min-width: 70px;
+    padding-inline: 8px;
+  }
+}
+
+@media (min-width: 1101px) and (max-width: 1700px) {
+  .adminTopbarBtn,
+  .agentTopbarBtn,
+  .gpsTopbarBtn,
+  .contactTopbarBtn {
+    width: 42px;
+    min-width: 42px;
+    max-width: 42px;
+    padding: 0 !important;
+    gap: 0 !important;
+    overflow: visible;
+    font-size: 0 !important;
+  }
+
+  .adminTopbarIcon,
+  .gpsTopbarIcon,
+  .contactTopbarIcon {
+    margin: 0;
+  }
+
+  .gpsTopbarIcon {
+    font-size: 20px !important;
+  }
+
+  .establishmentTopbarBtn {
+    width: 42px;
+    min-width: 42px;
+    max-width: 42px;
+    justify-content: center !important;
+    padding: 0 !important;
+  }
+
+  .establishmentTopbarText,
+  .establishmentTopbarChevron {
+    display: none;
+  }
+
+  .notificationBellBtnWithLabel {
+    width: 42px;
+    min-width: 42px;
+    max-width: 42px;
+    padding: 0 !important;
+  }
+
+  .notificationBellLabel {
+    display: none;
+  }
+
+  .languageSelectorBtn {
+    min-width: 64px;
+  }
 }

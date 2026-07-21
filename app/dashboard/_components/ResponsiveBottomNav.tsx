@@ -41,7 +41,7 @@ type DashboardPanelName =
   | "rgpd"
   | "notifications";
 
-const MOBILE_QUERY = "(max-width: 560px)";
+const MOBILE_QUERY = "(max-width: 1100px)";
 
 function HomeIcon() {
   return (

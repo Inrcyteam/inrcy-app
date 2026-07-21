@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
-import { createSafeStorageSignedUrl } from "@/lib/safeStorageSignedUrl";
+import { buildMediaLibraryContentUrl } from "@/lib/mediaLibraryContentUrl";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { loadInrAgentVideoDerivativePaths } from "@/lib/inrAgentVideoContextCache";
 
@@ -304,20 +304,12 @@ export async function GET(request: NextRequest) {
     : rawRows
   ).slice(0, limit);
 
-  const withUrls = await Promise.all(
-    rows.map(async (row: any) => {
-      const bucket = String(row.bucket_name || BUCKET);
-      const signedUrl = await createSafeStorageSignedUrl(
-        bucket,
-        String(row.storage_path || ""),
-        60 * 60,
-      );
-      return {
-        ...row,
-        signed_url: signedUrl,
-      };
-    }),
-  );
+  const withUrls = rows.map((row: any) => ({
+    ...row,
+    // URL applicative stable : aucun token Supabase temporaire n'est conservé
+    // dans l'interface après expiration.
+    signed_url: buildMediaLibraryContentUrl(String(row.id || "")),
+  }));
 
   const stats = {
     total: rows.length,

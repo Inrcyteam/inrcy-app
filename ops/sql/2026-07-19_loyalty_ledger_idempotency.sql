@@ -1,5 +1,6 @@
 -- Renforce l'idempotence des recompenses de fidelite.
--- Le code applicatif n'utilise plus ON CONFLICT tant que cet index n'est pas present.
+-- Le code applicatif utilise ON CONFLICT sur ces trois colonnes afin que deux
+-- appels concurrents restent idempotents sans produire de 23505/409.
 -- Si des doublons historiques existent, les traiter avant d'appliquer ce script
 -- plutot que de supprimer automatiquement des mouvements de solde.
 

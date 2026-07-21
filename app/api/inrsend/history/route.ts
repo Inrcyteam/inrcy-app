@@ -3,7 +3,7 @@ import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { createSafeStorageSignedUrl } from "@/lib/safeStorageSignedUrl";
+import { buildStorageContentUrl } from "@/lib/storageContentUrl";
 import { getInrSendRetentionCutoffIso, getOldestAutoRetentionCutoffIso, isInrSendItemRetained } from "@/lib/inrsendRetention";
 import { fetchInrSendHistoryFiles } from "@/lib/inrsend/historyFiles";
 import {
@@ -173,7 +173,7 @@ function extractStoredReportDocument(value: unknown): StoredReportDocument | nul
   return { bucket, storagePath, filename, mimeType, bytes, createdAt };
 }
 
-async function withStatsReportSignedUrls(items: OutboxItem[]): Promise<OutboxItem[]> {
+async function withStatsReportContentUrls(items: OutboxItem[]): Promise<OutboxItem[]> {
   const statsItems = items.filter((item) => item.source === "inr_agent_actions");
   if (!statsItems.length) return items;
 
@@ -185,29 +185,24 @@ async function withStatsReportSignedUrls(items: OutboxItem[]): Promise<OutboxIte
     const bucket = document?.bucket || "inr-agent-reports";
     if (!storagePath) return;
 
-    try {
-      const signedUrl =
-        (await createSafeStorageSignedUrl(bucket, storagePath, 60 * 60)) || "";
-      if (!signedUrl) return;
-      item.attachments = (item.attachments || []).map((current) => (
-        current.storagePath === storagePath
-          ? { ...current, url: signedUrl, downloadUrl: signedUrl }
-          : current
-      ));
-      const documentPayload = asRecord(rawPayload.reportDocument);
-      item.raw = {
-        ...(item.raw as Record<string, unknown>),
-        payload: {
-          ...rawPayload,
-          reportDocument: {
-            ...documentPayload,
-            downloadUrl: signedUrl,
-          },
+    const contentUrl = buildStorageContentUrl(bucket, storagePath) || "";
+    if (!contentUrl) return;
+    item.attachments = (item.attachments || []).map((current) => (
+      current.storagePath === storagePath
+        ? { ...current, url: contentUrl, downloadUrl: contentUrl }
+        : current
+    ));
+    const documentPayload = asRecord(rawPayload.reportDocument);
+    item.raw = {
+      ...(item.raw as Record<string, unknown>),
+      payload: {
+        ...rawPayload,
+        reportDocument: {
+          ...documentPayload,
+          downloadUrl: contentUrl,
         },
-      };
-    } catch {
-      // Le bilan reste visible même si l'URL temporaire ne peut pas être générée.
-    }
+      },
+    };
   }));
 
   return items;
@@ -1331,7 +1326,7 @@ export async function GET(req: Request) {
       }
     }
 
-    await withStatsReportSignedUrls(items);
+    await withStatsReportContentUrls(items);
 
     const [folderCounts, draftFolderCounts] = await Promise.all([
       computeFolderCounts(supabase, activeUserId, "sent", filterAccountId, query),

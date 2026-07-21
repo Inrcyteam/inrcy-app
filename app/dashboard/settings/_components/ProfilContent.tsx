@@ -938,6 +938,12 @@ export default function ProfilContent({
               min={1}
               value={form.avgBasket}
               onChange={(e) => onChange("avgBasket", Number(e.target.value))}
+              onFocus={(e) => {
+                if (form.avgBasket === 0) e.currentTarget.select();
+              }}
+              onClick={(e) => {
+                if (form.avgBasket === 0) e.currentTarget.select();
+              }}
               style={fieldStyle("avgBasket")}
             />
             {errors.avgBasket ? <div style={errorTextStyle}>{errors.avgBasket}</div> : null}
@@ -951,6 +957,12 @@ export default function ProfilContent({
               max={100}
               value={form.leadConversionRate}
               onChange={(e) => onChange("leadConversionRate", Number(e.target.value))}
+              onFocus={(e) => {
+                if (form.leadConversionRate === 0) e.currentTarget.select();
+              }}
+              onClick={(e) => {
+                if (form.leadConversionRate === 0) e.currentTarget.select();
+              }}
               style={fieldStyle("leadConversionRate")}
             />
             {errors.leadConversionRate ? <div style={errorTextStyle}>{errors.leadConversionRate}</div> : null}

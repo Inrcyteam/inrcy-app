@@ -1,4 +1,5 @@
 import styles from "../dashboard.module.css";
+import bubbleStyles from "./DashboardChannelBubble.module.css";
 import DashboardActionButton from "./DashboardActionButton";
 import type { ModuleAction, ModuleStatus } from "../dashboard.types";
 
@@ -36,13 +37,13 @@ export default function DashboardFluxBubble({ item, itemKey }: Props) {
   return (
     <article
       key={itemKey ?? item.key}
-      className={`${styles.moduleCard} ${styles.moduleBubbleCard} ${styles[`accent_${item.accent}`]} ${isComingSoon ? styles.moduleBubbleCardComingSoon : ""}`}
+      className={`${bubbleStyles.card} ${styles[`accent_${item.accent}`]} ${isComingSoon ? bubbleStyles.comingSoon : ""}`}
       title={isComingSoon ? item.configureTitle || item.configureLabel || "Option désactivée" : undefined}
     >
-      <div className={styles.bubbleStack}>
-        <div className={`${styles.bubbleLogo} ${item.key === "mails" ? styles.bubbleLogoMail : ""} ${item.key === "inrbadge" ? styles.bubbleLogoProfile : ""} ${item.key === "inr_agent" ? styles.bubbleLogoAgent : ""} ${item.key === "youtube_shorts" ? styles.bubbleLogoYoutube : ""} ${item.key === "pinterest" ? styles.bubbleLogoPinterest : ""} ${item.key === "inr_search" ? styles.bubbleLogoInrSearch : ""}`} aria-hidden>
+      <div className={bubbleStyles.stack}>
+        <div className={bubbleStyles.logo} aria-hidden>
           <img
-            className={styles.bubbleLogoImg}
+            className={bubbleStyles.logoImage}
             src={item.logoSrc}
             alt={item.logoAlt}
             width={96}
@@ -53,32 +54,30 @@ export default function DashboardFluxBubble({ item, itemKey }: Props) {
           />
         </div>
 
-        <div className={styles.bubbleTitleRow}>
-          <div className={styles.bubbleTitle}>{item.name}</div>
-        </div>
+        <div className={bubbleStyles.title}>{item.name}</div>
 
-        <div className={styles.bubbleStatusCompact}>
+        <div className={bubbleStyles.status}>
           <span
             className={[
-              styles.statusDot,
+              bubbleStyles.dot,
               item.bubbleStatus === "connected"
-                ? styles.dotConnected
+                ? bubbleStyles.connected
                 : item.bubbleStatus === "available"
-                  ? styles.dotAvailable
-                  : styles.dotComing,
+                  ? bubbleStyles.available
+                  : bubbleStyles.coming,
             ].join(" ")}
             aria-hidden
           />
-          <span className={styles.bubbleStatusText}>{item.bubbleStatusText}</span>
+          <span className={bubbleStyles.statusText}>{item.bubbleStatusText}</span>
         </div>
 
-        <div className={styles.bubbleTagline}>{item.description}</div>
+        <div className={bubbleStyles.tagline} title={item.description}>{item.description}</div>
 
-        <div className={styles.bubbleActions}>
+        <div className={bubbleStyles.actions}>
           {item.onSpecialView && item.specialViewLabel ? (
             <button
               type="button"
-              className={`${styles.actionBtn} ${styles.actionView}`}
+              className={bubbleStyles.action}
               onClick={item.onSpecialView}
               disabled={!item.canViewSpecial}
               aria-disabled={!item.canViewSpecial}
@@ -89,7 +88,7 @@ export default function DashboardFluxBubble({ item, itemKey }: Props) {
           ) : item.specialViewHref && item.specialViewLabel ? (
             <a
               href={item.canViewSpecial ? item.specialViewHref : "#"}
-              className={`${styles.actionBtn} ${styles.actionView}`}
+              className={bubbleStyles.action}
               target={item.canViewSpecial && /^https?:\/\//.test(item.specialViewHref) ? "_blank" : undefined}
               rel={item.canViewSpecial && /^https?:\/\//.test(item.specialViewHref) ? "noreferrer" : undefined}
               aria-disabled={!item.canViewSpecial}
@@ -98,15 +97,15 @@ export default function DashboardFluxBubble({ item, itemKey }: Props) {
               {item.specialViewLabel}
             </a>
           ) : item.viewAction ? (
-            <DashboardActionButton action={item.viewAction} />
+            <DashboardActionButton action={item.viewAction} className={bubbleStyles.action} />
           ) : (
-            <button className={`${styles.actionBtn} ${styles.actionView}`} type="button" disabled>
+            <button className={bubbleStyles.action} type="button" disabled>
               {item.viewFallbackLabel || "Voir"}
             </button>
           )}
 
           <button
-            className={`${styles.actionBtn} ${styles.connectBtn} ${styles.actionMain}`}
+            className={`${bubbleStyles.action} ${bubbleStyles.actionMain}`}
             type="button"
             onClick={item.onConfigure}
             disabled={item.configureDisabled}
@@ -116,8 +115,6 @@ export default function DashboardFluxBubble({ item, itemKey }: Props) {
           </button>
         </div>
       </div>
-
-      <div className={styles.moduleGlow} aria-hidden />
     </article>
   );
 }

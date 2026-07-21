@@ -73,13 +73,6 @@ function normalize(value: unknown) {
   return String(value || "").trim().toLowerCase();
 }
 
-function isDuplicateError(error: unknown) {
-  const err = error as { code?: string; message?: string } | null;
-  const code = String(err?.code || "").toLowerCase();
-  const message = String(err?.message || "").toLowerCase();
-  return code === "23505" || message.includes("duplicate") || message.includes("unique");
-}
-
 export function getWeeklyMissionForCampaign(campaign: CampaignLike): "propulser" | "fideliser" | null {
   const kind = normalize(campaign.trackKind);
   const type = normalize(campaign.trackType);
@@ -145,30 +138,16 @@ export async function awardInertiaActionForUser(args: {
     return { ok: false, skipped: true, error: "award_invalid_args" };
   }
 
-  const existingRes = await supabaseAdmin
-    .from("loyalty_ledger")
-    .select("id")
-    .eq("user_id", userId)
-    .eq("action_key", actionKey)
-    .eq("source_id", sourceId)
-    .limit(1)
-    .maybeSingle();
-
-  if (!existingRes.error && existingRes.data?.id) {
-    return { ok: true, skipped: true };
-  }
-
-  if (existingRes.error) {
-    return { ok: false, skipped: true, error: existingRes.error.message };
-  }
-
   const turbo = MULTIPLIED_ACTION_KEYS.has(actionKey) ? await getTurboMultiplier(userId) : 1;
   const amount = MULTIPLIED_ACTION_KEYS.has(actionKey) ? Math.round(baseAmount * turbo) : baseAmount;
   const updatedAt = new Date().toISOString();
 
+  // Écriture atomique : deux requêtes concurrentes sur la même mission ne
+  // provoquent plus de 23505/409. La contrainte unique existante choisit une
+  // seule gagnante et l'autre est ignorée proprement par Postgres.
   const insertRes = await supabaseAdmin
     .from("loyalty_ledger")
-    .insert(
+    .upsert(
       {
         user_id: userId,
         action_key: actionKey,
@@ -181,18 +160,19 @@ export async function awardInertiaActionForUser(args: {
           base_amount: baseAmount,
         },
       },
+      {
+        onConflict: "user_id,action_key,source_id",
+        ignoreDuplicates: true,
+      },
     )
     .select("id,amount")
     .maybeSingle();
 
   if (insertRes.error) {
-    if (isDuplicateError(insertRes.error)) return { ok: true, skipped: true };
     return { ok: false, skipped: true, error: insertRes.error.message };
   }
 
-  // Une autre requête peut avoir inséré la même récompense entre le SELECT
-  // initial et cet INSERT. Sans contrainte unique active, la vérification
-  // préalable reste la protection disponible côté application.
+  // `ignoreDuplicates` renvoie zéro ligne pour la requête concurrente perdante.
   if (!insertRes.data?.id) {
     return { ok: true, skipped: true };
   }
@@ -217,32 +197,51 @@ export async function awardInertiaActionForUser(args: {
 
   const createBalanceRes = await supabaseAdmin
     .from("loyalty_balance")
-    .insert({ user_id: userId, balance: amount });
+    .upsert(
+      { user_id: userId, balance: amount },
+      { onConflict: "user_id", ignoreDuplicates: true },
+    )
+    .select("balance")
+    .maybeSingle();
 
   if (createBalanceRes.error) {
-    if (!isDuplicateError(createBalanceRes.error)) {
-      return { ok: false, skipped: true, amount, error: createBalanceRes.error.message };
-    }
-
-    const retryBalanceRes = await supabaseAdmin
-      .from("loyalty_balance")
-      .select("balance")
-      .eq("user_id", userId)
-      .maybeSingle();
-    const current = Number((retryBalanceRes.data as { balance?: number | null } | null)?.balance ?? 0);
-    const retryUpdateRes = await supabaseAdmin
-      .from("loyalty_balance")
-      .update({ balance: (Number.isFinite(current) ? current : 0) + amount })
-      .eq("user_id", userId);
-
-    if (retryUpdateRes.error) {
-      return { ok: false, skipped: true, amount, error: retryUpdateRes.error.message };
-    }
-
-    return { ok: true, amount, balance: (Number.isFinite(current) ? current : 0) + amount, updatedAt };
+    return { ok: false, skipped: true, amount, error: createBalanceRes.error.message };
   }
 
-  return { ok: true, amount, balance: amount, updatedAt };
+  if (createBalanceRes.data) {
+    return { ok: true, amount, balance: amount, updatedAt };
+  }
+
+  // Une autre récompense vient de créer le solde : on l'incrémente sans
+  // déclencher de violation unique visible dans les logs.
+  const retryBalanceRes = await supabaseAdmin
+    .from("loyalty_balance")
+    .select("balance")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (retryBalanceRes.error || !retryBalanceRes.data) {
+    return {
+      ok: false,
+      skipped: true,
+      amount,
+      error: retryBalanceRes.error?.message || "loyalty_balance_missing",
+    };
+  }
+
+  const current = Number(
+    (retryBalanceRes.data as { balance?: number | null }).balance ?? 0,
+  );
+  const next = (Number.isFinite(current) ? current : 0) + amount;
+  const retryUpdateRes = await supabaseAdmin
+    .from("loyalty_balance")
+    .update({ balance: next })
+    .eq("user_id", userId);
+
+  if (retryUpdateRes.error) {
+    return { ok: false, skipped: true, amount, error: retryUpdateRes.error.message };
+  }
+
+  return { ok: true, amount, balance: next, updatedAt };
 }
 
 export async function awardWeeklyFeatureUseForCampaign(args: CampaignLike & {

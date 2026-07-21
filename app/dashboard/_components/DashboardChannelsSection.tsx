@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent, type TouchEvent as ReactTouchEvent } from "react";
 import styles from "../dashboard.module.css";
+import bubbleStyles from "./DashboardChannelBubble.module.css";
 import HelpButton from "./HelpButton";
 import DashboardFluxBubble, { type DashboardFluxBubbleData } from "./DashboardFluxBubble";
 import DashboardModulesCard from "./DashboardModulesCard";
@@ -110,7 +111,7 @@ export default function DashboardChannelsSection({
   useEffect(() => {
     if (typeof window === "undefined") return;
 
-    const mq = window.matchMedia("(max-width: 560px)");
+    const mq = window.matchMedia("(max-width: 1100px)");
     const update = () => setIsMobile(mq.matches);
     update();
 
@@ -148,12 +149,12 @@ export default function DashboardChannelsSection({
   }, [bubbleView, isMobile]);
 
   const getStatusDotClassName = (item: DashboardFluxBubbleData) => [
-    styles.statusDot,
+    bubbleStyles.dot,
     item.bubbleStatus === "connected"
-      ? styles.dotConnected
+      ? bubbleStyles.connected
       : item.bubbleStatus === "available"
-        ? styles.dotAvailable
-        : styles.dotComing,
+        ? bubbleStyles.available
+        : bubbleStyles.coming,
   ].join(" ");
 
   const renderFluxBubble = (item: DashboardFluxBubbleData, keyOverride?: string) => (
@@ -166,14 +167,14 @@ export default function DashboardChannelsSection({
     return (
     <article
       key={keyOverride ?? item.key}
-      className={`${styles.moduleCard} ${styles.moduleBubbleCard} ${styles.desktopSideBubbleCard} ${styles[`accent_${item.accent}`]} ${isComingSoon ? styles.moduleBubbleCardComingSoon : ""}`}
+      className={`${bubbleStyles.card} ${styles.desktopSideBubbleCard} ${styles[`accent_${item.accent}`]} ${isComingSoon ? bubbleStyles.comingSoon : ""}`}
       title={isComingSoon ? item.configureTitle || item.configureLabel || "Option désactivée" : undefined}
       aria-hidden
     >
-      <div className={styles.desktopSideBubbleStack}>
-        <div className={`${styles.bubbleLogo} ${item.key === "mails" ? styles.bubbleLogoMail : ""} ${item.key === "inrbadge" ? styles.bubbleLogoProfile : ""} ${item.key === "youtube_shorts" ? styles.bubbleLogoYoutube : ""} ${item.key === "pinterest" ? styles.bubbleLogoPinterest : ""} ${item.key === "inr_search" ? styles.bubbleLogoInrSearch : ""}`}>
+      <div className={bubbleStyles.sideStack}>
+        <div className={bubbleStyles.logo}>
           <img
-            className={styles.bubbleLogoImg}
+            className={bubbleStyles.logoImage}
             src={item.logoSrc}
             alt={item.logoAlt}
             width={96}
@@ -184,17 +185,15 @@ export default function DashboardChannelsSection({
           />
         </div>
 
-        <div className={styles.desktopSideBubbleTitle}>{item.name}</div>
+        <div className={bubbleStyles.title}>{item.name}</div>
 
-        <div className={styles.bubbleStatusCompact}>
+        <div className={bubbleStyles.status}>
           <span className={getStatusDotClassName(item)} aria-hidden />
-          <span className={styles.bubbleStatusText}>{item.bubbleStatusText}</span>
+          <span className={bubbleStyles.statusText}>{item.bubbleStatusText}</span>
         </div>
 
-        <div className={styles.desktopSideBubbleTagline}>{item.description}</div>
+        <div className={bubbleStyles.tagline} title={item.description}>{item.description}</div>
       </div>
-
-      <div className={styles.moduleGlow} aria-hidden />
     </article>
     );
   };
@@ -535,7 +534,7 @@ export default function DashboardChannelsSection({
         </>
       ) : isMobile && bubbleView === "list" ? (
         <>
-          <div className={styles.moduleGrid}>
+          <div className={bubbleStyles.grid}>
             {fluxBubbleItems.map((item) => renderFluxBubble(item, item.key))}
           </div>
 
@@ -561,7 +560,7 @@ export default function DashboardChannelsSection({
             )}
 
             <div
-              className={styles.desktopCoverflowStage}
+              className={bubbleStyles.desktopStage}
               onPointerDown={onDesktopPointerDown}
               onPointerUp={onDesktopPointerUp}
               onPointerCancel={onDesktopPointerCancel}
@@ -569,7 +568,7 @@ export default function DashboardChannelsSection({
             >
               {hasCarousel && desktopPrevItem && (
                 <div
-                  className={`${styles.desktopCoverflowItem} ${styles.desktopCoverflowSide} ${styles.desktopCoverflowLeft}`}
+                  className={`${bubbleStyles.desktopItem} ${bubbleStyles.desktopSide} ${bubbleStyles.desktopLeft}`}
                   role="button"
                   tabIndex={0}
                   onClick={goPrevDesktop}
@@ -586,14 +585,14 @@ export default function DashboardChannelsSection({
               )}
 
               {desktopActiveItem && (
-                <div className={`${styles.desktopCoverflowItem} ${styles.desktopCoverflowCenter}`}>
+                <div className={`${bubbleStyles.desktopItem} ${bubbleStyles.desktopCenter}`}>
                   {renderFluxBubble(desktopActiveItem, `${desktopActiveItem.key}_desktop_active`)}
                 </div>
               )}
 
               {showDesktopRightSide && desktopNextItem && (
                 <div
-                  className={`${styles.desktopCoverflowItem} ${styles.desktopCoverflowSide} ${styles.desktopCoverflowRight}`}
+                  className={`${bubbleStyles.desktopItem} ${bubbleStyles.desktopSide} ${bubbleStyles.desktopRight}`}
                   role="button"
                   tabIndex={0}
                   onClick={goNextDesktop}

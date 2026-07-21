@@ -28,6 +28,10 @@ function normalizeText(value: unknown) {
   return String(value || "").trim();
 }
 
+function isPlausibleTokenHash(value: string) {
+  return /^[a-zA-Z0-9_-]{32,256}$/.test(value);
+}
+
 function getExpectedType(mode: FinishMode): EmailOtpType {
   return mode === "invite" ? "invite" : "recovery";
 }
@@ -93,7 +97,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Ce lien ne correspond pas à cette action." }, { status: 400 });
     }
 
-    if (!tokenHash) {
+    if (!tokenHash || !isPlausibleTokenHash(tokenHash)) {
       return NextResponse.json({ error: "Lien incomplet. Merci de demander un nouveau lien." }, { status: 400 });
     }
 
@@ -120,7 +124,13 @@ export async function POST(req: Request) {
     });
 
     if (verifyError) {
-      return NextResponse.json({ error: getFriendlyOtpError(verifyError, mode) }, { status: 400 });
+      return NextResponse.json(
+        {
+          code: "auth_link_invalid",
+          error: getFriendlyOtpError(verifyError, mode),
+        },
+        { status: 400 },
+      );
     }
 
     const authUser = data.user;

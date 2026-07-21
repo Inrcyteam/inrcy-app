@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/adminSecurity";
-import { createSafeStorageSignedUrl } from "@/lib/safeStorageSignedUrl";
+import { buildStorageContentUrl } from "@/lib/storageContentUrl";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
@@ -80,21 +80,14 @@ export async function GET(request: NextRequest) {
   }
 
   const rows = data ?? [];
-  const withUrls = await Promise.all(
-    rows.map(async (row: any) => {
-      const signedUrl = await createSafeStorageSignedUrl(
-        BUCKET,
-        row.storage_path,
-        60 * 30,
-      );
-
-      return {
-        ...row,
-        signed_url: signedUrl,
-        original_signed_url: signedUrl,
-      };
-    }),
-  );
+  const withUrls = rows.map((row: any) => {
+    const contentUrl = buildStorageContentUrl(BUCKET, String(row.storage_path || ""));
+    return {
+      ...row,
+      signed_url: contentUrl,
+      original_signed_url: contentUrl,
+    };
+  });
 
   return NextResponse.json({ images: withUrls });
 }

@@ -15,6 +15,7 @@ type Props = {
 
 type FinishPasswordResponse = {
   ok?: boolean;
+  code?: string;
   error?: string;
   user_id?: string;
   email?: string | null;
@@ -95,6 +96,7 @@ export default function FinishEmailLinkClient({ mode }: Props) {
   const [resendInfo, setResendInfo] = useState<string | null>(null);
   const [resendError, setResendError] = useState<string | null>(null);
   const [resendCooldown, setResendCooldown] = useState(0);
+  const [linkRejected, setLinkRejected] = useState(false);
 
   const tokenHash = searchParams.get("token_hash") || "";
   const rawType = searchParams.get("type");
@@ -200,6 +202,11 @@ export default function FinishEmailLinkClient({ mode }: Props) {
     setResendInfo(null);
     setResendError(null);
 
+    if (linkRejected) {
+      setMessage("Ce lien n’est plus valide. Merci d’en demander un nouveau.");
+      return;
+    }
+
     if (!tokenHash) {
       setMessage("Lien incomplet. Merci de demander un nouveau lien.");
       return;
@@ -229,6 +236,11 @@ export default function FinishEmailLinkClient({ mode }: Props) {
       const payload = (await res.json().catch(() => null)) as FinishPasswordResponse | null;
 
       if (!res.ok || !payload?.ok) {
+        if (payload?.code === "auth_link_invalid") {
+          // Empêche les nouveaux POST /auth/v1/verify avec le même lien déjà
+          // refusé pendant que cette page reste ouverte.
+          setLinkRejected(true);
+        }
         setMessage(payload?.error || "Impossible de finaliser le mot de passe pour le moment.");
         return;
       }
@@ -276,7 +288,7 @@ export default function FinishEmailLinkClient({ mode }: Props) {
 
   const confirmTouched = confirm.length > 0;
   const confirmOk = confirmTouched && password === confirm;
-  const canSubmit = ready && !loading && Boolean(tokenHash) && strength.isStrong && password === confirm;
+  const canSubmit = ready && !loading && !linkRejected && Boolean(tokenHash) && strength.isStrong && password === confirm;
   const canResend = shouldOfferResendLink(message, mode, expectedEmail);
   const title = isInvite ? "Créer votre mot de passe" : "Définir un nouveau mot de passe";
   const body = isInvite

@@ -48,7 +48,9 @@ export async function GET(req: Request, ctx: { params: Promise<{ slug: string }>
   if (!logoUrl) return redirectToFallback(req);
 
   try {
-    const imageRes = await fetch(logoUrl, { cache: "force-cache" });
+    // Some profile logos exceed Next.js' 2 MB data-cache limit. The route
+    // response is already cached below, so do not cache the upstream bytes.
+    const imageRes = await fetch(logoUrl, { cache: "no-store" });
     if (!imageRes.ok) return redirectToFallback(req);
 
     const body = await imageRes.arrayBuffer();

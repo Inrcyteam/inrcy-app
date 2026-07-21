@@ -2,7 +2,7 @@
   display: none;
 }
 
-@media (max-width: 560px) {
+@media (max-width: 1100px) {
   .root {
     /*
       Architecture hybride : ce bloc conserve physiquement la place du dock
@@ -416,13 +416,13 @@
   }
 }
 
-@media (max-width: 560px) {
+@media (max-width: 1100px) {
   .rootHidden .bar {
     pointer-events: none;
   }
 }
 
-@media (max-width: 560px) {
+@media (max-width: 1100px) {
   .shortcutPreloader {
     position: fixed;
     left: -9999px;

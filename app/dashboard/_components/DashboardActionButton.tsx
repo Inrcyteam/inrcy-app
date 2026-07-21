@@ -7,28 +7,30 @@ import type { ModuleAction } from "../dashboard.types";
 
 type DashboardActionButtonProps = {
   action: ModuleAction;
+  className?: string;
 };
 
-export default function DashboardActionButton({ action }: DashboardActionButtonProps) {
-  const className =
+export default function DashboardActionButton({ action, className }: DashboardActionButtonProps) {
+  const resolvedClassName = className || (
     action.variant === "connect"
       ? `${styles.actionBtn} ${styles.connectBtn}`
       : action.variant === "danger"
-      ? `${styles.actionBtn} ${styles.actionDanger}`
-      : `${styles.actionBtn} ${styles.actionView}`;
+        ? `${styles.actionBtn} ${styles.actionDanger}`
+        : `${styles.actionBtn} ${styles.actionView}`
+  );
 
   if (action.href) {
     const isExternal = action.href.startsWith("http");
 
     return (
-      <Link href={action.href} className={className} target={isExternal ? "_blank" : undefined} rel={isExternal ? "noreferrer" : undefined}>
+      <Link href={action.href} className={resolvedClassName} target={isExternal ? "_blank" : undefined} rel={isExternal ? "noreferrer" : undefined}>
         {action.label}
       </Link>
     );
   }
 
   return (
-    <button type="button" className={className} onClick={action.onClick} disabled={action.disabled}>
+    <button type="button" className={resolvedClassName} onClick={action.onClick} disabled={action.disabled}>
       {action.label}
     </button>
   );

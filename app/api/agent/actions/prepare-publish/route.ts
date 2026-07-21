@@ -16,7 +16,8 @@ import {
   type BoosterTheme,
 } from "@/lib/boosterPrompt";
 import { getChannelConnectionStates } from "@/lib/channelConnectionState";
-import { createSafeStorageSignedUrl } from "@/lib/safeStorageSignedUrl";
+import { probeStorageObject } from "@/lib/safeStorageSignedUrl";
+import { buildStorageContentUrl } from "@/lib/storageContentUrl";
 import { getBoosterGenerationContext } from "@/lib/boosterGenerationContext";
 import { INR_AGENT_VIDEO_AI_PREPARATION_VERSION } from "@/lib/inrAgentVideoPreparation";
 import {
@@ -735,7 +736,9 @@ async function prepareAgentSelectedImageForAI(
 ): Promise<BoosterAiImage[]> {
   const mediaKind = media?.mediaType || media?.kind || "image";
   const sourceUrl = cleanText(media?.url, 4_000);
-  if (!media || mediaKind !== "image" || !sourceUrl) return [];
+  const bucket = cleanText(media?.bucket, 120);
+  const storagePath = cleanText(media?.storagePath, 1_000);
+  if (!media || mediaKind !== "image" || (!sourceUrl && !storagePath)) return [];
 
   if (/^data:image\//i.test(sourceUrl)) {
     return [{ dataUrl: sourceUrl, detail: "low" }];
@@ -744,21 +747,39 @@ async function prepareAgentSelectedImageForAI(
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), AGENT_AI_IMAGE_FETCH_TIMEOUT_MS);
   try {
-    const response = await fetch(sourceUrl, { signal: controller.signal });
-    if (!response.ok) throw new Error(`image_download_${response.status}`);
+    let buffer: Buffer;
+    let mimeType: string;
 
-    const declaredLength = Number(response.headers.get("content-length") || 0);
-    if (Number.isFinite(declaredLength) && declaredLength > AGENT_AI_IMAGE_MAX_BYTES) {
-      throw new Error("image_too_large");
+    if (bucket && storagePath) {
+      const probe = await probeStorageObject(bucket, storagePath);
+      if (probe !== "exists") throw new Error(`image_storage_${probe}`);
+      const download = await supabaseAdmin.storage.from(bucket).download(storagePath);
+      if (download.error || !download.data) {
+        throw new Error(download.error?.message || "image_storage_download");
+      }
+      buffer = Buffer.from(await download.data.arrayBuffer());
+      mimeType = cleanText(
+        download.data.type || media.mimeType || "image/jpeg",
+        120,
+      ).split(";")[0] || "image/jpeg";
+    } else {
+      const response = await fetch(sourceUrl, { signal: controller.signal });
+      if (!response.ok) throw new Error(`image_download_${response.status}`);
+
+      const declaredLength = Number(response.headers.get("content-length") || 0);
+      if (Number.isFinite(declaredLength) && declaredLength > AGENT_AI_IMAGE_MAX_BYTES) {
+        throw new Error("image_too_large");
+      }
+
+      mimeType = cleanText(
+        response.headers.get("content-type") || media.mimeType || "image/jpeg",
+        120,
+      ).split(";")[0] || "image/jpeg";
+      buffer = Buffer.from(await response.arrayBuffer());
     }
 
-    const mimeType = cleanText(
-      response.headers.get("content-type") || media.mimeType || "image/jpeg",
-      120,
-    ).split(";")[0] || "image/jpeg";
     if (!mimeType.startsWith("image/")) throw new Error("invalid_image_mime");
 
-    const buffer = Buffer.from(await response.arrayBuffer());
     if (!buffer.length || buffer.length > AGENT_AI_IMAGE_MAX_BYTES) {
       throw new Error(buffer.length ? "image_too_large" : "image_empty");
     }
@@ -982,11 +1003,8 @@ async function pickMediaFromProLibrary(args: {
   ): Promise<ImageBankAsset | null> {
     if (!row?.storage_path) return null;
     const bucket = cleanText(row.bucket_name, 80) || PRO_MEDIA_BUCKET;
-    const signedUrl = await createSafeStorageSignedUrl(
-      bucket,
-      String(row.storage_path),
-      60 * 60,
-    );
+    const storagePath = String(row.storage_path);
+    const contentUrl = buildStorageContentUrl(bucket, storagePath);
     const mediaType = row.media_type === "video" ? "video" : "image";
     const size = Number(row.size_bytes || 0);
     const duration = Number(row.duration_seconds || 0);
@@ -994,8 +1012,8 @@ async function pickMediaFromProLibrary(args: {
     return {
       id: String(row.id || ""),
       bucket,
-      storagePath: String(row.storage_path || ""),
-      url: signedUrl || "",
+      storagePath,
+      url: contentUrl || "",
       title: cleanText(row.title, 180),
       sector: cleanText(sector, 80),
       job: cleanText(profession, 80),
@@ -1135,17 +1153,14 @@ async function pickImageFromBank(args: {
     matchLevel: "image_bank_job_exact" | "image_bank_sector_generic",
   ): Promise<ImageBankAsset | null> {
     if (!row?.storage_path) return null;
-    const signedUrl = await createSafeStorageSignedUrl(
-      BUCKET,
-      String(row.storage_path),
-      60 * 60,
-    );
+    const storagePath = String(row.storage_path);
+    const contentUrl = buildStorageContentUrl(BUCKET, storagePath);
 
     return {
       id: String(row.id || ""),
       bucket: BUCKET,
-      storagePath: String(row.storage_path || ""),
-      url: signedUrl || "",
+      storagePath,
+      url: contentUrl || "",
       title: cleanText(row.title, 180),
       sector: cleanText(row.sector, 80),
       job: cleanText(row.job, 80),

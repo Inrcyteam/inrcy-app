@@ -4198,6 +4198,7 @@ export default function AgentClient() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [aiConfigurationOpen, setAiConfigurationOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [robotPanelOpen, setRobotPanelOpen] = useState(false);
   const [scheduledEditSession, setScheduledEditSession] =
     useState<ScheduledActionEditSession | null>(null);
   const [scheduleOnlyEdit, setScheduleOnlyEdit] =
@@ -4383,6 +4384,34 @@ export default function AgentClient() {
     mq.addEventListener?.("change", update);
     return () => mq.removeEventListener?.("change", update);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia(
+      "(min-width: 761px) and (max-width: 1700px)",
+    );
+    const closeOutsideCompactLayout = () => {
+      if (!mq.matches) setRobotPanelOpen(false);
+    };
+    closeOutsideCompactLayout();
+    mq.addEventListener?.("change", closeOutsideCompactLayout);
+    return () =>
+      mq.removeEventListener?.("change", closeOutsideCompactLayout);
+  }, []);
+
+  useEffect(() => {
+    if (!robotPanelOpen || typeof document === "undefined") return;
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setRobotPanelOpen(false);
+    };
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [robotPanelOpen]);
 
   useEffect(() => {
     if (!publishImageAdapterOpen || !publishImageAdapterStageRef.current)
@@ -8910,10 +8939,37 @@ export default function AgentClient() {
         </nav>
 
         <div className={styles.mainGrid}>
+          {robotPanelOpen && (
+            <button
+              type="button"
+              className={styles.robotPanelBackdrop}
+              onClick={() => setRobotPanelOpen(false)}
+              aria-label="Fermer le panneau des missions"
+            />
+          )}
           <aside
-            className={`${styles.robotCard} ${scheduledEditSession ? styles.scheduledEditCard : ""}`}
+            id="inr-agent-robot-panel"
+            className={`${styles.robotCard} ${robotPanelOpen ? styles.robotCardCompactOpen : styles.robotCardCompactClosed} ${scheduledEditSession ? styles.scheduledEditCard : ""}`}
             aria-label={scheduledEditSession ? "Édition temporaire d’une action programmée" : "Fonctionnement iNr’Agent"}
           >
+            <button
+              type="button"
+              className={styles.robotPanelToggle}
+              onClick={() => setRobotPanelOpen((open) => !open)}
+              aria-expanded={robotPanelOpen}
+              aria-controls="inr-agent-robot-panel"
+              title={robotPanelOpen ? "Replier les missions" : "Afficher les missions"}
+            >
+              <img
+                src="/icons/inr-agent-header.png"
+                alt=""
+                aria-hidden
+                width={30}
+                height={30}
+              />
+              <span>{robotPanelOpen ? "Missions iNr’Agent" : "Missions"}</span>
+              <b aria-hidden>{robotPanelOpen ? "×" : "›"}</b>
+            </button>
             {scheduledEditSession ? (
               <div className={styles.scheduledEditPanel}>
                 <div className={styles.scheduledEditPanelIcon} aria-hidden>

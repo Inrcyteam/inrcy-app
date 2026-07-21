@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
-import { createSafeStorageSignedUrl } from "@/lib/safeStorageSignedUrl";
+import { buildMediaLibraryContentUrl } from "@/lib/mediaLibraryContentUrl";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import {
   INR_MEDIA_ALLOWED_IMAGE_MIME_TYPES,
@@ -312,11 +312,7 @@ async function insertMediaRows(userId: string, body: Record<string, unknown>) {
         throw insert.error;
       }
 
-      const signedUrl = await createSafeStorageSignedUrl(
-        BUCKET,
-        storagePath,
-        60 * 60,
-      );
+      const contentUrl = buildMediaLibraryContentUrl(String(insert.data?.id || ""));
 
       results.push({
         ok: true,
@@ -331,7 +327,7 @@ async function insertMediaRows(userId: string, body: Record<string, unknown>) {
         width,
         height,
         duration_seconds: durationSeconds,
-        signed_url: signedUrl,
+        signed_url: contentUrl,
       });
     } catch (error: any) {
       if (storagePath && isOwnedStoragePath(userId, storagePath)) {

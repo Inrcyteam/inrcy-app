@@ -5,7 +5,7 @@ import {
   summarizeInrAgentActions,
 } from "@/lib/inrAgentActions";
 import { requireUser } from "@/lib/requireUser";
-import { createSafeStorageSignedUrl } from "@/lib/safeStorageSignedUrl";
+import { buildStorageContentUrl } from "@/lib/storageContentUrl";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { normalizeMailSubject } from "@/lib/mailEncoding";
 import { textToRichMailHtml } from "@/lib/mailRichText";
@@ -69,17 +69,15 @@ function withFreshReportDocument(payload: Record<string, unknown>) {
   const bucket = String(reportRecord.bucket || "inr-agent-reports").trim();
   if (!storagePath || !bucket) return payload;
 
-  return createSafeStorageSignedUrl(bucket, storagePath, 60 * 60)
-    .then((signedUrl) => ({
-      ...payload,
-      reportDocument: {
-        ...reportRecord,
-        bucket,
-        storagePath,
-        downloadUrl: signedUrl || "",
-      },
-    }))
-    .catch(() => payload);
+  return Promise.resolve({
+    ...payload,
+    reportDocument: {
+      ...reportRecord,
+      bucket,
+      storagePath,
+      downloadUrl: buildStorageContentUrl(bucket, storagePath) || "",
+    },
+  });
 }
 
 async function refreshImageAssetUrls(assets: unknown[]) {
@@ -96,21 +94,12 @@ async function refreshImageAssetUrls(assets: unknown[]) {
 
       if (!storagePath || !bucket) return record;
 
-      try {
-        const signedUrl = await createSafeStorageSignedUrl(
-          bucket,
-          storagePath,
-          60 * 60,
-        );
-        return {
-          ...record,
-          bucket,
-          storagePath,
-          url: signedUrl || "",
-        };
-      } catch {
-        return record;
-      }
+      return {
+        ...record,
+        bucket,
+        storagePath,
+        url: buildStorageContentUrl(bucket, storagePath) || "",
+      };
     }),
   );
 }
@@ -138,20 +127,15 @@ async function refreshPublishMediaUrl(media: unknown) {
   const bucket = String(record.bucket || IMAGE_BANK_BUCKET).trim();
   if (!storagePath || !bucket) return record;
 
-  try {
-    const url =
-      (await createSafeStorageSignedUrl(bucket, storagePath, 60 * 60)) || "";
-    return {
-      ...record,
-      bucket,
-      storagePath,
-      path: storagePath,
-      url,
-      publicUrl: url,
-    };
-  } catch {
-    return record;
-  }
+  const url = buildStorageContentUrl(bucket, storagePath) || "";
+  return {
+    ...record,
+    bucket,
+    storagePath,
+    path: storagePath,
+    url,
+    publicUrl: url,
+  };
 }
 
 async function refreshPostByChannelMediaUrls(postByChannel: unknown) {

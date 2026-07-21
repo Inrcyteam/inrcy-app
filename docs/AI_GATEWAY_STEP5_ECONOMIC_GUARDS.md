@@ -105,7 +105,23 @@ Les erreurs :
 
 sont rendues en HTTP 429 par `jsonUserFacingError`, même si une route appelante avait prévu un fallback 502.
 
-## 8. Supabase / Vercel
+## 8. Tarifs AI Gateway dans Vercel
+
+Le garde-fou monétaire attend une table de tarifs par identifiant exact de modèle.
+Dans Vercel > Project > Settings > Environment Variables, ajouter :
+
+- nom : `AI_GATEWAY_MODEL_PRICING_JSON`
+- environnements : Production, Preview et Development
+- valeur vérifiée dans le catalogue Vercel le 21 juillet 2026 :
+
+```json
+{"openai/gpt-4o-mini":{"inputUsdPerMillion":0.15,"outputUsdPerMillion":0.6},"mistral/mistral-medium-3.5":{"inputUsdPerMillion":1.5,"outputUsdPerMillion":7.5}}
+```
+
+Les clés sont en USD par million de tokens. Mettre à jour cette variable si le
+modèle ou son tarif change, puis redéployer l'application.
+
+## 9. Supabase / Vercel
 
 - Aucun SQL supplémentaire Étape 5.
 - Aucune variable Vercel obligatoire supplémentaire : les limites ont des valeurs sûres par défaut.

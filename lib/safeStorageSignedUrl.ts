@@ -6,21 +6,29 @@ function normalizePath(value: unknown) {
   return path;
 }
 
-async function storageObjectExists(bucket: string, path: string) {
+export type StorageObjectProbe = "exists" | "missing" | "unknown";
+
+export async function probeStorageObject(
+  bucket: string,
+  storagePath: string,
+): Promise<StorageObjectProbe> {
+  const normalizedBucket = String(bucket || "").trim();
+  const path = normalizePath(storagePath);
+  if (!normalizedBucket || !path) return "missing";
+
   const lastSlash = path.lastIndexOf("/");
   const folder = lastSlash >= 0 ? path.slice(0, lastSlash) : "";
   const fileName = lastSlash >= 0 ? path.slice(lastSlash + 1) : path;
-  if (!fileName) return false;
+  if (!fileName) return "missing";
 
   const { data, error } = await supabaseAdmin.storage
-    .from(bucket)
+    .from(normalizedBucket)
     .list(folder, { limit: 100, search: fileName });
 
-  return Boolean(
-    !error &&
-      Array.isArray(data) &&
-      data.some((entry) => String(entry?.name || "") === fileName),
-  );
+  if (error || !Array.isArray(data)) return "unknown";
+  return data.some((entry) => String(entry?.name || "") === fileName)
+    ? "exists"
+    : "missing";
 }
 
 /**
@@ -38,7 +46,7 @@ export async function createSafeStorageSignedUrl(
   if (!normalizedBucket || !normalizedPath) return null;
 
   try {
-    if (!(await storageObjectExists(normalizedBucket, normalizedPath))) {
+    if ((await probeStorageObject(normalizedBucket, normalizedPath)) !== "exists") {
       return null;
     }
 
