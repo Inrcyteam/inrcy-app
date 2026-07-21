@@ -15,9 +15,11 @@ test.describe('dashboard panels', () => {
     await page.goto('/dashboard?panel=notifications', { waitUntil: 'domcontentloaded' });
 
     await expect(page).toHaveURL(/panel=notifications/, { timeout: 30_000 });
+    const notificationsDrawer = page.getByRole('dialog', { name: /Notifications/i });
+    await expect(notificationsDrawer).toBeVisible({ timeout: 20_000 });
     await expect(
-      page.getByText(/Notifications iNrCy|Notifications/i).first()
-    ).toBeVisible({ timeout: 20_000 });
+      notificationsDrawer.getByRole('heading', { name: /Notifications/i })
+    ).toBeVisible();
 
     await runtime.expectNoErrors();
   });
