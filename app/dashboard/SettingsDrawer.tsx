@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useId, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { useDashboardI18n } from "./_hooks/useDashboardI18n";
 
 type Props = {
@@ -16,6 +17,11 @@ type Props = {
   children: React.ReactNode;
 };
 
+const RESPONSIVE_BREAKPOINT = 1100;
+const PHONE_BREAKPOINT = 640;
+const MOBILE_BOTTOM_NAV_HEIGHT =
+  "calc(50px + env(safe-area-inset-bottom, 0px))";
+
 export default function SettingsDrawer({
   title,
   isOpen,
@@ -29,16 +35,25 @@ export default function SettingsDrawer({
   const titleId = useId();
   // Valeurs stables côté serveur/client au premier rendu : évite les erreurs React #418
   // quand le drawer est ouvert directement via /dashboard?panel=ia sur mobile.
+  const [portalReady, setPortalReady] = useState(false);
   const [viewportWidth, setViewportWidth] = useState<number>(1440);
   const [viewportHeight, setViewportHeight] = useState<number | null>(null);
-  const isMobile = viewportWidth <= 640;
+  const [viewportOffsetTop, setViewportOffsetTop] = useState(0);
+  const isResponsive = viewportWidth <= RESPONSIVE_BREAKPOINT;
+  const isPhone = viewportWidth <= PHONE_BREAKPOINT;
+
+  useEffect(() => {
+    setPortalReady(true);
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
 
     const updateViewport = () => {
-      setViewportWidth(window.innerWidth);
-      setViewportHeight(Math.round(window.visualViewport?.height || window.innerHeight));
+      const visualViewport = window.visualViewport;
+      setViewportWidth(Math.round(visualViewport?.width || window.innerWidth));
+      setViewportHeight(Math.round(visualViewport?.height || window.innerHeight));
+      setViewportOffsetTop(Math.max(0, Math.round(visualViewport?.offsetTop || 0)));
     };
 
     updateViewport();
@@ -55,14 +70,17 @@ export default function SettingsDrawer({
     };
   }, []);
 
-  const drawerHeight = useMemo(
-    () => (isMobile ? (viewportHeight ? `${viewportHeight}px` : "100svh") : "100%"),
-    [isMobile, viewportHeight],
-  );
+  const responsiveDrawerHeight = useMemo(() => {
+    const visibleViewportHeight = viewportHeight ? `${viewportHeight}px` : "100svh";
+    return `calc(${visibleViewportHeight} - ${MOBILE_BOTTOM_NAV_HEIGHT})`;
+  }, [viewportHeight]);
+
+  const drawerHeight = isResponsive ? responsiveDrawerHeight : "100%";
 
   useEffect(() => {
     if (!isOpen) return;
 
+    const previousBodyOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
     const onKeyDown = (event: KeyboardEvent) => {
@@ -74,25 +92,32 @@ export default function SettingsDrawer({
     window.addEventListener("keydown", onKeyDown);
 
     return () => {
-      document.body.style.overflow = "";
+      document.body.style.overflow = previousBodyOverflow;
       window.removeEventListener("keydown", onKeyDown);
     };
   }, [closeOnEscape, isOpen, onClose]);
 
-  if (!isOpen) return null;
+  if (!isOpen || !portalReady) return null;
 
-  return (
+  const drawer = (
     <div
       onClick={closeOnBackdrop ? onClose : undefined}
       style={{
         position: "fixed",
-        inset: 0,
+        top: isResponsive ? viewportOffsetTop : 0,
+        left: 0,
+        right: 0,
+        bottom: "auto",
+        width: "100%",
+        height: drawerHeight,
+        maxHeight: drawerHeight,
         background: "rgba(0,0,0,0.55)",
         zIndex: 10050,
         display: "flex",
-        justifyContent: isMobile ? "stretch" : "flex-end",
+        justifyContent: isPhone ? "stretch" : "flex-end",
         overflow: "hidden",
-        padding: isMobile ? 0 : undefined,
+        padding: isPhone ? 0 : undefined,
+        boxSizing: "border-box",
       }}
     >
       <aside
@@ -101,18 +126,22 @@ export default function SettingsDrawer({
         aria-labelledby={titleId}
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: isMobile ? "100vw" : "min(560px, 92vw)",
+          width: isPhone ? "100vw" : "min(560px, 92vw)",
           maxWidth: "100vw",
-          height: drawerHeight,
-          maxHeight: drawerHeight,
+          height: "100%",
+          maxHeight: "100%",
+          minHeight: 0,
           boxSizing: "border-box",
           background: "rgba(16,16,16,0.98)",
-          borderLeft: isMobile ? 0 : "1px solid rgba(255,255,255,0.08)",
-          padding: isMobile ? "max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(12px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left))" : 16,
+          borderLeft: isPhone ? 0 : "1px solid rgba(255,255,255,0.08)",
+          padding: isPhone
+            ? "max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) 24px max(12px, env(safe-area-inset-left))"
+            : 16,
           overflowY: "auto",
           overflowX: "hidden",
           overscrollBehavior: "contain",
           WebkitOverflowScrolling: "touch",
+          scrollPaddingBottom: 24,
         }}
       >
         <div
@@ -144,7 +173,17 @@ export default function SettingsDrawer({
           </h2>
 
           {/* Zone actions (ex: ?) + Fermer avec gap */}
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end", maxWidth: "100%" }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 10,
+              flexShrink: 0,
+              flexWrap: "wrap",
+              justifyContent: "flex-end",
+              maxWidth: "100%",
+            }}
+          >
             {headerActions}
             <button
               type="button"
@@ -163,8 +202,20 @@ export default function SettingsDrawer({
           </div>
         </div>
 
-        <div style={{ marginTop: 12, minWidth: 0, maxWidth: "100%", overflowX: "hidden" }}>{children}</div>
+        <div
+          style={{
+            marginTop: 12,
+            minWidth: 0,
+            maxWidth: "100%",
+            overflowX: "hidden",
+            paddingBottom: isResponsive ? 8 : 0,
+          }}
+        >
+          {children}
+        </div>
       </aside>
     </div>
   );
+
+  return createPortal(drawer, document.body);
 }
