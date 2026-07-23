@@ -224,15 +224,6 @@
   box-shadow: 0 18px 50px rgba(255, 108, 51, 0.16);
 }
 
-.helpBtn {
-  width: 40px;
-  height: 40px;
-  padding: 0;
-  border-radius: 999px;
-  color: #fff;
-  background: linear-gradient(135deg, rgba(56, 189, 248, 0.32), rgba(167, 139, 250, 0.32), rgba(244, 114, 182, 0.26));
-}
-
 .btnGhost:hover,
 .btnPrimary:hover,
 .btnGhostSmall:hover,
@@ -267,37 +258,6 @@
   grid-template-columns: minmax(220px, 1fr);
   gap: 8px;
   padding: 12px 12px 10px;
-}
-
-.folderTab {
-  min-height: 50px;
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.9);
-  font: inherit;
-  font-weight: 950;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-}
-
-.folderTabActive {
-  border-color: rgba(56, 189, 248, 0.42);
-  background: linear-gradient(135deg, rgba(21, 132, 232, 0.9), rgba(177, 75, 255, 0.76));
-  box-shadow: 0 16px 44px rgba(56, 189, 248, 0.16);
-}
-
-.folderTab span {
-  min-width: 34px;
-  min-height: 28px;
-  padding: 6px 10px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.16);
 }
 
 .toolbar {
@@ -351,8 +311,6 @@
   box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.12);
 }
 
-.connectionChip,
-.metricChip,
 .todoBadge,
 .answeredBadge,
 .aiChip,
@@ -371,20 +329,10 @@
   white-space: nowrap;
 }
 
-.connectionChipReady,
 .answeredBadge {
   color: rgba(220, 252, 231, 0.96);
   border-color: rgba(80, 255, 160, 0.25);
   background: rgba(80, 255, 160, 0.11);
-}
-
-.connectionChipReady::before {
-  content: "";
-  width: 7px;
-  height: 7px;
-  border-radius: 999px;
-  background: rgba(80, 255, 160, 0.98);
-  box-shadow: 0 0 14px rgba(80, 255, 160, 0.48);
 }
 
 .todoBadge {
@@ -893,8 +841,8 @@
   }
 
   .header,
-  .brand,
-  .modalBody {
+.brand,
+.modalBody {
     flex-direction: column;
     align-items: stretch;
   }
@@ -908,7 +856,7 @@
   }
 
   .tagline,
-  .subline {
+.subline {
     white-space: normal;
   }
 
@@ -917,20 +865,20 @@
   }
 
   .actions,
-  .toolbarLeft,
-  .toolbarRight,
-  .modalActions {
+.toolbarLeft,
+.toolbarRight,
+.modalActions {
     width: 100%;
     align-items: stretch;
   }
 
   .btnGhost,
-  .btnPrimary,
-  .btnGhostSmall,
-  .btnPrimarySmall,
-  .btnDangerSmall,
-  .select,
-  .searchInput {
+.btnPrimary,
+.btnGhostSmall,
+.btnPrimarySmall,
+.btnDangerSmall,
+.select,
+.searchInput {
     width: 100%;
   }
 
@@ -968,7 +916,7 @@
   }
 
   .reviewDetailTop,
-  .replyHeaderLine {
+.replyHeaderLine {
     align-items: flex-start;
   }
 }
@@ -1104,7 +1052,7 @@
   }
 
   .modalKicker,
-  .modalClose {
+.modalClose {
     font-size: 11px;
     min-width: 0;
   }
@@ -1262,7 +1210,7 @@
   }
 
   .toolbarLeft,
-  .toolbarRight {
+.toolbarRight {
     width: 100%;
   }
 
@@ -1277,7 +1225,7 @@
   }
 
   .select,
-  .searchInput {
+.searchInput {
     width: 100%;
     min-width: 0;
   }
@@ -1289,29 +1237,14 @@
     gap: 7px;
   }
 
-  .connectionChip,
-  .metricChip {
-    min-width: 0;
-    width: 100%;
-    padding: 8px 6px;
-    justify-content: center;
-    font-size: 11px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .toolbarRight .metricChip:nth-of-type(2) {
-    display: none;
-  }
-
   .toolbarRight .btnGhostSmall {
     grid-column: 1 / -1;
     width: 100%;
   }
 
   .noticeInfo,
-  .noticeSuccess,
-  .noticeError {
+.noticeSuccess,
+.noticeError {
     margin: 0 10px 10px;
     align-items: flex-start;
     flex-direction: column;
@@ -1365,8 +1298,8 @@
   }
 
   .reviewsTable td:nth-child(2),
-  .reviewsTable td:nth-child(3),
-  .reviewsTable td:nth-child(4) {
+.reviewsTable td:nth-child(3),
+.reviewsTable td:nth-child(4) {
     display: none;
   }
 
@@ -1418,7 +1351,7 @@
   }
 
   .mobileStatusAnswered,
-  .mobileStatusTodo {
+.mobileStatusTodo {
     border-radius: 999px;
     padding: 4px 7px;
     font-weight: 900;
@@ -1487,7 +1420,7 @@
   }
 
   .reviewDetailCard,
-  .replyDetailCard {
+.replyDetailCard {
     max-height: none;
   }
 
@@ -1503,7 +1436,7 @@
 
 @media (min-width: 761px) {
   .reviewMainCell .mobileReviewMeta,
-  .reviewMainCell .mobileReviewMeta * {
+.reviewMainCell .mobileReviewMeta * {
     display: none !important;
   }
 }
@@ -1515,44 +1448,6 @@
     gap: 7px;
     width: 100%;
     overflow: visible;
-  }
-
-  .toolbarRight .connectionChip,
-  .toolbarRight .metricChip {
-    display: inline-flex !important;
-    width: 100%;
-    min-width: 0;
-    max-width: none;
-    height: 34px;
-    padding: 7px 6px;
-    justify-content: center;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    font-size: 11px;
-  }
-
-  .toolbarRight .connectionChip {
-    font-size: 0;
-  }
-
-  .toolbarRight .connectionChip::after {
-    content: "Avis Google";
-    font-size: 11px;
-  }
-
-  .toolbarRight .metricChip:nth-of-type(2) {
-    display: inline-flex !important;
-  }
-
-  .toolbarRight .metricChip:nth-of-type(3) {
-    display: inline-flex !important;
-    font-size: 0;
-  }
-
-  .toolbarRight .metricChip:nth-of-type(3)::after {
-    content: "Fiche";
-    font-size: 11px;
   }
 
   .toolbarRight .btnGhostSmall {
@@ -1586,13 +1481,13 @@
   }
 
   .reviewMainCell .mobileReviewStars .starOn,
-  .reviewMainCell .stars .starOn {
+.reviewMainCell .stars .starOn {
     display: inline !important;
     color: #facc15 !important;
   }
 
   .reviewMainCell .mobileReviewStars .starOff,
-  .reviewMainCell .stars .starOff {
+.reviewMainCell .stars .starOff {
     display: inline !important;
     color: rgba(250, 204, 21, 0.42) !important;
   }
@@ -1771,7 +1666,7 @@
   }
 
   .reviewDetailCard,
-  .replyDetailCard {
+.replyDetailCard {
     max-height: none !important;
     overflow: visible !important;
   }
@@ -1919,7 +1814,7 @@
   }
 
   .modalHeader .modalKicker,
-  .modalHeader .modalClose {
+.modalHeader .modalClose {
     min-width: 0 !important;
     height: 34px !important;
     padding: 0 10px !important;
@@ -1940,7 +1835,7 @@
   }
 
   .reviewDetailCard,
-  .replyDetailCard {
+.replyDetailCard {
     flex: 0 0 auto !important;
     display: block !important;
     width: 100% !important;
@@ -1952,7 +1847,7 @@
   }
 
   .reviewDetailTop,
-  .replyHeaderLine {
+.replyHeaderLine {
     display: flex !important;
     align-items: flex-start !important;
     justify-content: space-between !important;
@@ -1969,8 +1864,8 @@
   }
 
   .reviewLanguageGroup,
-  .reviewLanguageBlock,
-  .reviewLanguageText {
+.reviewLanguageBlock,
+.reviewLanguageText {
     width: 100% !important;
     min-width: 0 !important;
   }
@@ -1984,7 +1879,7 @@
   }
 
   .replyHeaderLine h3,
-  .replyHeaderTitleLine h3 {
+.replyHeaderTitleLine h3 {
     margin-top: 8px !important;
     font-size: 21px !important;
   }
@@ -2006,9 +1901,9 @@
   }
 
   .modalActions button,
-  .replyDetailCard .btnGhostSmall,
-  .replyDetailCard .btnPrimarySmall,
-  .replyDetailCard .btnDangerSmall {
+.replyDetailCard .btnGhostSmall,
+.replyDetailCard .btnPrimarySmall,
+.replyDetailCard .btnDangerSmall {
     width: 100% !important;
   }
 
@@ -2090,9 +1985,9 @@
   }
 
   .paginationPage,
-  .paginationActive,
-  .paginationArrow,
-  .paginationEllipsis {
+.paginationActive,
+.paginationArrow,
+.paginationEllipsis {
     min-width: 32px;
     height: 32px;
     font-size: 12px;
@@ -2256,12 +2151,6 @@
   display: none;
 }
 
-.modalDangerTools {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-}
-
 .reportReviewButton {
   position: relative;
   width: 40px;
@@ -2331,11 +2220,6 @@
 
   .sublineMobile {
     display: inline;
-  }
-
-  .modalDangerTools {
-    width: 100%;
-    justify-content: stretch;
   }
 
   .reportReviewButton {
@@ -2417,37 +2301,6 @@
 }
 
 /* Step 7 — Google + iNr'Search dans E-réputation */
-.brandIconStack {
-  width: 76px;
-  height: 64px;
-  flex: 0 0 76px;
-  position: relative;
-  display: grid;
-  place-items: center;
-}
-
-.brandIconStack .brandIcon {
-  position: absolute;
-  width: 48px;
-  height: 48px;
-  border-radius: 999px;
-  object-fit: cover;
-  border: 1px solid rgba(255,255,255,0.16);
-  background: rgba(8, 12, 28, 0.88);
-  box-shadow: 0 16px 36px rgba(0,0,0,0.24);
-}
-
-.brandIconStack .brandIcon:first-child {
-  left: 0;
-  top: 8px;
-  z-index: 2;
-}
-
-.brandIconStack .brandIcon:last-child {
-  right: 0;
-  bottom: 8px;
-  z-index: 1;
-}
 
 .platformTabs {
   display: inline-flex;
@@ -2500,24 +2353,6 @@
 }
 
 @media (max-width: 760px) {
-  .brandIconStack {
-    width: 56px;
-    height: 48px;
-    flex-basis: 56px;
-  }
-
-  .brandIconStack .brandIcon {
-    width: 38px;
-    height: 38px;
-  }
-
-  .brandIconStack .brandIcon:first-child {
-    top: 4px;
-  }
-
-  .brandIconStack .brandIcon:last-child {
-    bottom: 4px;
-  }
 
   .platformTabs {
     width: 100%;
@@ -2527,7 +2362,7 @@
   }
 
   .platformTab,
-  .platformTabActive {
+.platformTabActive {
     width: 100%;
     min-width: 0;
     padding: 8px 9px;

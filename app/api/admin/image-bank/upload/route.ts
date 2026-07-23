@@ -4,6 +4,7 @@ import sharp from "sharp";
 import { requireAdminApi } from "@/lib/adminSecurity";
 import { ensureImageBankCategories } from "@/lib/imageBankCategories";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { createSignedUploadUrlWithRetry } from "@/lib/supabaseStorageUpload";
 import {
   INR_MEDIA_ALLOWED_IMAGE_MIME_TYPES,
   INR_MEDIA_IMAGE_MAX_BYTES,
@@ -182,9 +183,9 @@ async function handlePrepareUpload(body: Record<string, unknown>) {
 
     assertAllowedFile(name, mime, size);
     const storagePath = buildStoragePath(category, name, mime, index);
-    const signed = await supabaseAdmin.storage
-      .from(BUCKET)
-      .createSignedUploadUrl(storagePath);
+    const signed = await createSignedUploadUrlWithRetry(() =>
+      supabaseAdmin.storage.from(BUCKET).createSignedUploadUrl(storagePath),
+    );
     if (signed.error || !signed.data?.token) {
       throw new Error(
         signed.error?.message || "Impossible de préparer l’upload Supabase.",

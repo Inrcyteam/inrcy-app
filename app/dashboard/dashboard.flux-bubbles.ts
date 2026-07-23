@@ -11,6 +11,7 @@ import { getDashboardModuleCopy, getDashboardTranslations, translateDashboardSta
 
 type BuildFluxBubbleItemsArgs = {
   bubbleAccessMap: AppBubbleAccessMap;
+  canAccessPinterest: boolean;
   canConfigureSite: boolean;
   canViewSite: boolean;
   channelBlocks: any;
@@ -48,6 +49,7 @@ type BuildFluxBubbleItemsArgs = {
 export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardFluxBubbleData[] {
   const {
     bubbleAccessMap,
+    canAccessPinterest,
     canConfigureSite,
     canViewSite,
     channelBlocks,
@@ -91,6 +93,15 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
     const channelBlock = channelBlocks?.[channelKey] ?? null;
     const blockDrivenStatus = getBubbleStatusFromBlock(channelKey, channelBlock as InrstatsChannelBlock);
     const blockDrivenViewHref = getBubbleViewHrefFromBlock(channelKey, channelBlock);
+    const immediateConnectedStatus =
+      (m.key === "tiktok" && tiktokConnected) || (m.key === "pinterest" && canAccessPinterest && pinterestConnected)
+        ? { status: "connected" as ModuleStatus, text: copy.status.connected }
+        : null;
+    const blockRequiresAttention = Boolean(
+      channelBlock?.connection?.requiresUpdate ||
+      channelBlock?.connection?.connectionStatus === "needs_update" ||
+      channelBlock?.connection?.expired,
+    );
     const moduleCopy = getDashboardModuleCopy(m.key, language);
 
     const localizeViewAction = (action: ModuleAction | undefined): ModuleAction | undefined => action
@@ -114,7 +125,9 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
       ? getSiteBubbleProgress("site_inrcy")
       : (m.key === "site_web")
         ? getSiteBubbleProgress("site_web")
-        : blockDrivenStatus ?? (() => {
+        : (immediateConnectedStatus && !blockRequiresAttention)
+          ? immediateConnectedStatus
+          : blockDrivenStatus ?? (() => {
           if (m.key === "inrbadge") return inrBadgeProfileReady ? { status: "connected" as ModuleStatus, text: copy.status.connected } : { status: "available" as ModuleStatus, text: copy.status.disconnected };
           if (m.key === "instagram") return instagramConnected ? { status: "connected" as ModuleStatus, text: copy.status.connected } : { status: "available" as ModuleStatus, text: copy.status.toConnect };
           if (m.key === "linkedin") return linkedinConnected ? { status: "connected" as ModuleStatus, text: copy.status.connected } : { status: "available" as ModuleStatus, text: copy.status.toConnect };
@@ -137,7 +150,7 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
           }
           if (m.key === "inr_agent") return { status: "connected" as ModuleStatus, text: copy.status.connected };
           return { status: m.status, text: statusLabel(m.status, language) };
-        })();
+          })();
 
     const resolvedBubbleProgress = {
       ...resolvedBubbleProgressRaw,

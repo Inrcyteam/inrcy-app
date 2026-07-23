@@ -142,14 +142,6 @@
   line-height: 1.5;
 }
 
-.heroChips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 14px;
-}
-
-.heroChip,
 .galleryChip,
 .galleryChipSecondary {
   display: inline-flex;
@@ -162,7 +154,6 @@
   font-weight: 800;
 }
 
-.heroChip,
 .galleryChipSecondary {
   background: rgba(255, 255, 255, 0.06);
 }
@@ -452,26 +443,6 @@
   display: block;
 }
 
-.imageInfo {
-  padding: 10px;
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-
-.imageInfo strong {
-  font-size: 13px;
-  font-weight: 900;
-}
-
-.imageInfo span,
-.imageInfo small {
-  opacity: 0.72;
-  font-size: 11px;
-  line-height: 1.25;
-  overflow-wrap: anywhere;
-}
-
 @media (max-width: 1100px) {
   .metricsGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -502,14 +473,14 @@
   }
 
   .metricsGrid,
-  .twoCols,
-  .imageGrid {
+.twoCols,
+.imageGrid {
     grid-template-columns: 1fr;
   }
 
   .ghostButton,
-  .closeButton,
-  .primaryButton {
+.closeButton,
+.primaryButton {
     width: 100%;
     justify-content: center;
   }
@@ -543,8 +514,7 @@
 }
 
 .compactSelect,
-.compactInput,
-.miniInput {
+.compactInput {
   width: 100%;
   min-height: 38px;
   padding: 9px 10px;
@@ -556,8 +526,7 @@
 }
 
 .compactSelect:focus,
-.compactInput:focus,
-.miniInput:focus {
+.compactInput:focus {
   border-color: rgba(110, 218, 255, 0.34);
   box-shadow: 0 0 0 3px rgba(110, 218, 255, 0.08);
 }
@@ -624,55 +593,13 @@
   position: relative;
 }
 
-.activePill,
-.inactivePill {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  z-index: 2;
-  border-radius: 999px;
-  padding: 5px 8px;
-  font-size: 10px;
-  font-weight: 950;
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  backdrop-filter: blur(10px);
-}
-
-.activePill {
-  background: rgba(80, 255, 160, 0.18);
-  color: rgba(220, 255, 235, 0.98);
-}
-
-.inactivePill {
-  background: rgba(255, 200, 80, 0.18);
-  color: rgba(255, 238, 200, 0.98);
-}
-
-.imageActions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 7px;
-}
-
-.editBlock {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-}
-
-.editBlock .miniInput {
-  min-height: 34px;
-  font-size: 12px;
-}
-
 @media (max-width: 980px) {
   .filtersBar {
     grid-template-columns: 1fr 1fr;
   }
 
   .searchLabel,
-  .filtersBar .smallButton {
+.filtersBar .smallButton {
     grid-column: 1 / -1;
   }
 }
@@ -683,14 +610,10 @@
   }
 
   .smallButton,
-  .smallGhostButton,
-  .dangerButton {
+.smallGhostButton,
+.dangerButton {
     flex: 1 1 auto;
   }
-}
-
-.heroChips {
-  display: none !important;
 }
 
 .reportList::-webkit-scrollbar,
@@ -701,8 +624,7 @@
 .ruleList::-webkit-scrollbar,
 .quickLinks::-webkit-scrollbar,
 .tableWrap::-webkit-scrollbar,
-.listWrap::-webkit-scrollbar,
-.galleryWrap::-webkit-scrollbar {
+.listWrap::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
@@ -714,8 +636,7 @@
 .ruleList::-webkit-scrollbar-thumb,
 .quickLinks::-webkit-scrollbar-thumb,
 .tableWrap::-webkit-scrollbar-thumb,
-.listWrap::-webkit-scrollbar-thumb,
-.galleryWrap::-webkit-scrollbar-thumb {
+.listWrap::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.16);
   border-radius: 999px;
 }
@@ -747,9 +668,6 @@
   margin: 2px 0 0 !important;
   line-height: 1.25 !important;
   max-width: 620px !important;
-}
-.heroChips {
-  display: none !important;
 }
 .headerActions,
 .heroActions {
@@ -823,8 +741,7 @@
 .fileInput,
 .miniSelect,
 .compactSelect,
-.compactInput,
-.miniInput {
+.compactInput {
   min-height: 34px !important;
   padding: 7px 10px !important;
   border-radius: 12px !important;
@@ -928,18 +845,6 @@
 .thumbWrap {
   aspect-ratio: 1.25 !important;
 }
-.imageInfo {
-  padding: 7px !important;
-  gap: 3px !important;
-}
-.imageInfo strong {
-  font-size: 12px !important;
-}
-.imageInfo span,
-.imageInfo small {
-  font-size: 10px !important;
-  line-height: 1.15 !important;
-}
 .filtersBar {
   grid-template-columns: 112px 145px minmax(130px, 1fr) 92px !important;
   gap: 7px !important;
@@ -1019,7 +924,7 @@
   }
 
   .heroCard,
-  .hero {
+.hero {
     min-height: 74px !important;
     padding: 14px !important;
     flex-direction: row !important;
@@ -1029,7 +934,7 @@
   }
 
   .heroContent,
-  .heroText {
+.heroText {
     flex: 1 1 auto !important;
     min-width: 0 !important;
   }
@@ -1053,7 +958,7 @@
   }
 
   .headerActions,
-  .heroActions {
+.heroActions {
     width: auto !important;
     flex: 0 0 auto !important;
     align-items: center !important;
@@ -1062,9 +967,9 @@
   }
 
   .headerActions .ghostButton,
-  .headerActions .closeButton,
-  .heroActions .ghostButton,
-  .heroActions .closeButton {
+.headerActions .closeButton,
+.heroActions .ghostButton,
+.heroActions .closeButton {
     width: 38px !important;
     min-width: 38px !important;
     max-width: 38px !important;
@@ -1099,24 +1004,20 @@
     font-size: 19px !important;
   }
 
-  .imageBankButton .actionIcon {
-    font-size: 16px !important;
-  }
-
   .metricsGrid,
-  .statsGrid {
+.statsGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     gap: 8px !important;
   }
 
   .metricCard,
-  .statCard {
+.statCard {
     min-height: 58px !important;
     padding: 10px !important;
   }
 
   .metricValue,
-  .statValue {
+.statValue {
     font-size: 20px !important;
   }
 }
@@ -1131,9 +1032,9 @@
   }
 
   .headerActions .ghostButton,
-  .headerActions .closeButton,
-  .heroActions .ghostButton,
-  .heroActions .closeButton {
+.headerActions .closeButton,
+.heroActions .ghostButton,
+.heroActions .closeButton {
     width: 36px !important;
     min-width: 36px !important;
     max-width: 36px !important;
@@ -1154,7 +1055,7 @@
   }
 
   .grid > form.card,
-  .card {
+.card {
     min-height: auto !important;
     overflow: visible !important;
   }
@@ -1239,7 +1140,7 @@
   }
 
   .headerActions .ghostButton,
-  .headerActions .closeButton {
+.headerActions .closeButton {
     width: 38px !important;
     min-width: 38px !important;
     max-width: 38px !important;
@@ -1290,7 +1191,7 @@
   }
 
   .twoCols,
-  .filtersBar {
+.filtersBar {
     grid-template-columns: 1fr !important;
   }
 }
@@ -1553,14 +1454,14 @@
   }
 
   .galleryHeaderInfo,
-  .bulkActions {
+.bulkActions {
     width: 100%;
     justify-content: flex-start;
   }
 
   .bulkActions .smallButton,
-  .bulkActions .smallGhostButton,
-  .bulkActions .dangerButton {
+.bulkActions .smallGhostButton,
+.bulkActions .dangerButton {
     flex: 1 1 132px;
   }
 

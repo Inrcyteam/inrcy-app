@@ -560,20 +560,8 @@
 }
 
 .steps strong,
-.list strong,
-.warningLine strong {
+.list strong {
   color: var(--text);
-}
-
-.warningLine {
-  padding: 10px 12px;
-  border: 1px solid rgba(245, 158, 11, 0.20);
-  border-radius: 15px;
-  background: rgba(245, 158, 11, 0.055);
-  color: rgba(255, 255, 255, 0.78);
-  font-size: 13px;
-  line-height: 1.35;
-  font-weight: 750;
 }
 
 .linksRow {
@@ -616,7 +604,6 @@
 .infoCard p,
 .steps,
 .list,
-.warningLine,
 .navLabel {
   overflow-wrap: anywhere;
   word-break: break-word;
@@ -714,11 +701,10 @@
   }
 
   .subtitle,
-  .panelDesc,
-  .infoCard p,
-  .steps,
-  .list,
-  .warningLine {
+.panelDesc,
+.infoCard p,
+.steps,
+.list {
     font-size: 12.8px;
   }
 
@@ -749,12 +735,12 @@
   }
 
   .sidebar,
-  .content {
+.content {
     border-radius: 18px;
   }
 
   .sidebar,
-  .content {
+.content {
     padding: 10px;
   }
 
@@ -964,11 +950,11 @@
   }
 
   .main,
-  .content,
-  .panel,
-  .grid,
-  .panelHeader,
-  .infoCard {
+.content,
+.panel,
+.grid,
+.panelHeader,
+.infoCard {
     height: auto;
     max-height: none;
     min-height: 0;
@@ -987,7 +973,7 @@
   }
 
   .mobilePickerMenu,
-  .searchResults {
+.searchResults {
     overflow-y: auto;
     overscroll-behavior: contain;
     -webkit-overflow-scrolling: touch;

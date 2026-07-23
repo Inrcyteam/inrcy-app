@@ -76,7 +76,7 @@
   }
 
   .item,
-  .publishItem {
+.publishItem {
     position: relative;
     z-index: 1;
     min-width: 0;
@@ -101,7 +101,7 @@
   }
 
   .item:active,
-  .publishItem:active {
+.publishItem:active {
     transform: scale(0.97);
   }
 
@@ -135,31 +135,10 @@
   }
 
   .homeIcon,
-  .menuIcon {
+.menuIcon {
     width: 24px;
     height: 24px;
     display: block;
-  }
-
-  .assetIcon {
-    width: 27px;
-    height: 27px;
-    object-fit: contain;
-    display: block;
-    filter: drop-shadow(0 0 9px rgba(167, 139, 250, 0.34));
-  }
-
-  .inrSendIcon {
-    width: 29px;
-    height: 29px;
-    border-radius: 8px;
-    filter: drop-shadow(0 0 10px rgba(56, 189, 248, 0.38));
-  }
-
-  .agentIcon {
-    width: 29px;
-    height: 29px;
-    filter: drop-shadow(0 0 10px rgba(167, 139, 250, 0.58));
   }
 
   .publishItem {
@@ -410,8 +389,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .root,
-  .item,
-  .publishItem {
+.item,
+.publishItem {
     transition: none;
   }
 }

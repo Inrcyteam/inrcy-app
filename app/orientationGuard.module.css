@@ -90,14 +90,8 @@
   border: 1px solid rgba(255,255,255,.16);
 }
 
-.closeBtn,
-.closeSpacer{
+.closeBtn{
   justify-self: end;
-}
-
-.closeSpacer{
-  width: 44px;
-  height: 44px;
 }
 
 .closeBtn{
@@ -223,20 +217,12 @@
 
 /* Animations */
 .rotateToLandscape{ animation: rotateLandscape 1.05s ease-in-out infinite; }
-.rotateToPortrait{ animation: rotatePortrait 1.05s ease-in-out infinite; }
 
 @keyframes rotateLandscape{
   0%   { transform: rotate(0deg); }
   45%  { transform: rotate(90deg); }
   70%  { transform: rotate(90deg); }
   100% { transform: rotate(0deg); }
-}
-
-@keyframes rotatePortrait{
-  0%   { transform: rotate(90deg); }
-  45%  { transform: rotate(0deg); }
-  70%  { transform: rotate(0deg); }
-  100% { transform: rotate(90deg); }
 }
 
 /* ✅ Mode paysage: compacte en 2 colonnes (évite coupe) */
@@ -269,6 +255,5 @@
 }
 
 @media (prefers-reduced-motion: reduce){
-  .rotateToLandscape,
-  .rotateToPortrait{ animation: none; }
+  .rotateToLandscape{ animation: none; }
 }

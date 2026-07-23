@@ -87,8 +87,7 @@
   min-width:0;
 }
 
-.kicker,
-.sectionKicker{
+.kicker{
   display:inline-flex;
   align-items:center;
   gap:8px;
@@ -100,10 +99,6 @@
 }
 
 .kicker{
-  margin-bottom:8px;
-}
-
-.sectionKicker{
   margin-bottom:8px;
 }
 
@@ -123,27 +118,6 @@
   font-weight:750;
 }
 
-.heroBadges{
-  display:flex;
-  flex-wrap:wrap;
-  gap:10px;
-  margin-top:16px;
-}
-
-.heroBadge{
-  display:inline-flex;
-  align-items:center;
-  gap:8px;
-  padding:10px 14px;
-  border-radius:999px;
-  background:rgba(255,255,255,.06);
-  border:1px solid rgba(255,255,255,.10);
-  color:#eef6ff;
-  font-weight:850;
-  font-size:12px;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.04);
-}
-
 .headerActions{
   display:flex;
   align-items:center;
@@ -159,7 +133,6 @@
 .applyButton,
 .smallButton,
 .smallGhostButton,
-.smallDangerButton,
 .clearSelectionButton,
 .removeFileButton,
 .previewClose{
@@ -196,7 +169,6 @@
 .applyButton:hover,
 .smallButton:hover,
 .smallGhostButton:hover,
-.smallDangerButton:hover,
 .clearSelectionButton:hover,
 .removeFileButton:hover,
 .previewClose:hover{
@@ -342,8 +314,7 @@ button:disabled{
 
 .input,
 .select,
-.fileInput,
-.inlineInput{
+.fileInput{
   width:100%;
   min-width:0;
   border:1px solid rgba(139,161,255,.18);
@@ -356,15 +327,13 @@ button:disabled{
   box-shadow:inset 0 1px 0 rgba(255,255,255,.03);
 }
 
-.input::placeholder,
-.inlineInput::placeholder{
+.input::placeholder{
   color:#7587b0;
 }
 
 .input:focus,
 .select:focus,
-.fileInput:focus,
-.inlineInput:focus{
+.fileInput:focus{
   border-color:rgba(87,212,255,.7);
   box-shadow:0 0 0 3px rgba(87,212,255,.12);
 }
@@ -571,87 +540,12 @@ button:disabled{
   line-height:1.5;
 }
 
-.mediaGrid{
-  display:grid;
-  grid-template-columns:repeat(auto-fill, minmax(248px, 1fr));
-  gap:14px;
-}
-
-.mediaCard{
-  overflow:hidden;
-  border-radius:24px;
-  background:linear-gradient(180deg, rgba(4,12,30,.94), rgba(8,17,40,.94));
-  border:1px solid rgba(131,155,255,.18);
-  box-shadow:0 16px 44px rgba(0,0,0,.22);
-}
-
-.mediaCardDisabled{
-  opacity:.58;
-}
-
-.previewButton{
-  width:100%;
-  height:188px;
-  position:relative;
-  border:0;
-  background:linear-gradient(135deg, rgba(75,203,255,.12), rgba(171,72,255,.12));
-  display:block;
-  padding:0;
-  cursor:pointer;
-  overflow:hidden;
-}
-
-.mediaThumb{
-  width:100%;
-  height:100%;
-  object-fit:cover;
-  display:block;
-}
-
 .noPreview{
   height:100%;
   display:grid;
   place-items:center;
   color:#9eadcc;
   font-weight:900;
-}
-
-.mediaTypeBadge{
-  position:absolute;
-  top:12px;
-  left:12px;
-  border-radius:999px;
-  padding:7px 11px;
-  background:rgba(4,8,22,.72);
-  border:1px solid rgba(255,255,255,.14);
-  color:#fff;
-  font-weight:900;
-  font-size:12px;
-  backdrop-filter:blur(8px);
-}
-
-.mediaBody{
-  padding:15px;
-}
-
-.mediaBody h3{
-  margin:0;
-  font-size:17px;
-  line-height:1.2;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
-}
-
-.mediaBody p{
-  margin:8px 0 0;
-  min-height:18px;
-  color:#9fb0d2;
-  font-weight:800;
-  font-size:13px;
-  overflow:hidden;
-  text-overflow:ellipsis;
-  white-space:nowrap;
 }
 
 .metaRow{
@@ -671,16 +565,8 @@ button:disabled{
   font-weight:900;
 }
 
-.cardActions{
-  display:flex;
-  flex-wrap:wrap;
-  gap:7px;
-  margin-top:14px;
-}
-
 .smallButton,
-.smallGhostButton,
-.smallDangerButton{
+.smallGhostButton{
   border-radius:12px;
   padding:8px 10px;
   color:#fff;
@@ -695,18 +581,6 @@ button:disabled{
 .smallGhostButton{
   background:rgba(255,255,255,.08);
   border:1px solid rgba(255,255,255,.10);
-}
-
-.smallDangerButton{
-  background:rgba(255,61,99,.12);
-  border:1px solid rgba(255,61,99,.26);
-}
-
-.inlineInput{
-  padding:10px 11px;
-  margin-bottom:8px;
-  border-radius:12px;
-  font-size:13px;
 }
 
 .previewOverlay{
@@ -809,19 +683,18 @@ button:disabled{
   .heroCard{padding:18px;border-radius:24px;grid-template-columns:auto 1fr;}
   .title{font-size:clamp(30px, 7vw, 38px);}
   .subtitle{font-size:14px;}
-  .heroBadges{gap:8px;}
-  .heroBadge{font-size:11px;padding:9px 12px;}
   .headerActions{grid-column:1 / -1;display:grid;grid-template-columns:1fr 1fr;width:100%;}
-  .ghostButton,.closeButton{width:100%;padding:12px 14px;}
+  .ghostButton,
+.closeButton{width:100%;padding:12px 14px;}
   .metricsGrid{grid-template-columns:1fr 1fr;}
   .metricCard{min-height:114px;padding:14px 16px;border-radius:18px;}
   .metricValue{font-size:30px;}
   .metricValueSmall{font-size:22px;}
-  .card,.libraryCard{padding:16px;border-radius:22px;}
-  .cardHeader h2,.libraryHeader h2{font-size:25px;}
+  .card,
+.libraryCard{padding:16px;border-radius:22px;}
+  .cardHeader h2,
+.libraryHeader h2{font-size:25px;}
   .filters{grid-template-columns:1fr;padding:14px;}
-  .mediaGrid{grid-template-columns:1fr;}
-  .previewButton{height:220px;}
 }
 
 
@@ -870,16 +743,6 @@ button:disabled{
   max-width:720px;
   font-size:14px;
   line-height:1.28;
-}
-
-.heroBadges{
-  margin-top:10px;
-  gap:7px;
-}
-
-.heroBadge{
-  padding:7px 10px;
-  font-size:11px;
 }
 
 .ghostButton,
@@ -962,10 +825,6 @@ button:disabled{
   line-height:1.28;
 }
 
-.sectionKicker{
-  display:none;
-}
-
 .label,
 .filters label{
   margin-top:10px;
@@ -975,8 +834,7 @@ button:disabled{
 
 .input,
 .select,
-.fileInput,
-.inlineInput{
+.fileInput{
   padding:11px 12px;
   border-radius:14px;
 }
@@ -1034,30 +892,6 @@ button:disabled{
   font-size:25px;
 }
 
-.mediaGrid{
-  min-height:0;
-  overflow:auto;
-  padding-right:4px;
-  align-content:start;
-  grid-template-columns:repeat(auto-fill, minmax(228px, 1fr));
-}
-
-.previewButton{
-  height:160px;
-}
-
-.mediaBody{
-  padding:12px;
-}
-
-.mediaBody h3{
-  font-size:15px;
-}
-
-.cardActions{
-  margin-top:10px;
-}
-
 @media (max-height: 820px) and (min-width: 981px){
   .page{
     padding-top:12px;
@@ -1090,15 +924,6 @@ button:disabled{
     margin-top:5px;
   }
 
-  .heroBadges{
-    margin-top:8px;
-  }
-
-  .heroBadge{
-    padding:6px 9px;
-    font-size:10.5px;
-  }
-
   .metricCard{
     min-height:62px;
     padding:8px 14px;
@@ -1113,17 +938,17 @@ button:disabled{
   }
 
   .card,
-  .libraryCard{
+.libraryCard{
     padding:15px;
   }
 
   .cardHeader h2,
-  .libraryHeader h2{
+.libraryHeader h2{
     font-size:22px;
   }
 
   .cardHeader p,
-  .libraryHeader p{
+.libraryHeader p{
     font-size:12px;
   }
 
@@ -1151,16 +976,12 @@ button:disabled{
   }
 
   .card,
-  .libraryCard{
+.libraryCard{
     height:auto;
   }
 
   .libraryCard{
     display:block;
-  }
-
-  .mediaGrid{
-    overflow:visible;
   }
 }
 
@@ -1237,13 +1058,6 @@ button:disabled{
   min-height:40px;
 }
 
-.helperWrap{
-  position:relative;
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-}
-
 .helperButton{
   width:40px;
   height:40px;
@@ -1267,49 +1081,6 @@ button:disabled{
   transform:translateY(-1px);
   box-shadow:0 12px 24px rgba(0,0,0,.18), 0 0 36px rgba(105,239,255,.24);
   outline:none;
-}
-
-.helperPanel{
-  position:absolute;
-  top:calc(100% + 10px);
-  right:0;
-  z-index:8;
-  width:280px;
-  display:grid;
-  gap:8px;
-  padding:13px;
-  border-radius:18px;
-  background:linear-gradient(180deg, rgba(12,25,57,.98), rgba(5,12,30,.98));
-  border:1px solid rgba(137,160,255,.24);
-  box-shadow:0 24px 60px rgba(0,0,0,.38);
-  color:#dce9ff;
-  font-weight:850;
-  font-size:12px;
-  opacity:0;
-  pointer-events:none;
-  transform:translateY(-4px) scale(.98);
-  transition:opacity .15s ease, transform .15s ease;
-}
-
-.helperPanel strong{
-  color:#69efff;
-  text-transform:uppercase;
-  letter-spacing:.12em;
-  font-size:11px;
-}
-
-.helperPanel span{
-  padding:7px 9px;
-  border-radius:12px;
-  background:rgba(255,255,255,.055);
-  border:1px solid rgba(255,255,255,.07);
-}
-
-.helperWrap:hover .helperPanel,
-.helperWrap:focus-within .helperPanel{
-  opacity:1;
-  pointer-events:auto;
-  transform:translateY(0) scale(1);
 }
 
 .metricsGrid{
@@ -1373,8 +1144,7 @@ button:disabled{
 
 .input,
 .select,
-.fileInput,
-.inlineInput{
+.fileInput{
   padding:10px 12px;
 }
 
@@ -1391,11 +1161,6 @@ button:disabled{
   .subtitle{
     white-space:normal;
   }
-
-  .helperPanel{
-    right:auto;
-    left:0;
-  }
 }
 
 @media (max-width: 680px){
@@ -1406,12 +1171,6 @@ button:disabled{
   .helperButton{
     width:40px;
     height:40px;
-  }
-
-  .helperPanel{
-    left:0;
-    right:auto;
-    width:min(280px, calc(100vw - 34px));
   }
 }
 
@@ -1713,9 +1472,6 @@ button:disabled{
 }
 
 /* Étape 25 — Médiathèque en lignes : stockage simple + suppression en fin de ligne */
-.mediaGrid{
-  display:none;
-}
 
 .mediaList{
   min-height:0;
@@ -1908,7 +1664,7 @@ button:disabled{
   }
 
   .mediaRowPill,
-  .mediaRowMeta{
+.mediaRowMeta{
     justify-self:start;
   }
 
@@ -1930,7 +1686,7 @@ button:disabled{
   }
 
   .mediaRowThumb,
-  .mediaRowPreview .noPreview{
+.mediaRowPreview .noPreview{
     width:64px;
     height:50px;
   }
@@ -1983,8 +1739,8 @@ button:disabled{
   }
 
   .mediaRowPreview,
-  .mediaRowThumb,
-  .mediaRowPreview .noPreview{
+.mediaRowThumb,
+.mediaRowPreview .noPreview{
     width:64px;
     height:50px;
   }
@@ -2126,7 +1882,7 @@ button:disabled{
     grid-column:2 / -1 !important;
   }
   .mediaRowPill,
-  .mediaRowMeta{
+.mediaRowMeta{
     grid-column:2;
   }
   .mediaRowDelete{
@@ -2141,8 +1897,8 @@ button:disabled{
     align-items:stretch;
   }
   .bulkToolbar .smallGhostButton,
-  .bulkToolbar .bulkDangerButton,
-  .bulkToolbar .selectedCount{
+.bulkToolbar .bulkDangerButton,
+.bulkToolbar .selectedCount{
     width:100%;
     justify-content:center;
   }
@@ -2153,8 +1909,8 @@ button:disabled{
     grid-column:2 !important;
   }
   .mediaRowPill,
-  .mediaRowMeta,
-  .mediaRowDelete{
+.mediaRowMeta,
+.mediaRowDelete{
     grid-column:1 / -1 !important;
   }
 }
@@ -2285,8 +2041,8 @@ button:disabled{
   }
 
   .helperButton,
-  .ghostButton,
-  .closeButton{
+.ghostButton,
+.closeButton{
     width:38px;
     height:38px;
     min-height:38px;
@@ -2300,7 +2056,7 @@ button:disabled{
   }
 
   .actionText,
-  .closeText{
+.closeText{
     position:absolute;
     width:1px;
     height:1px;
@@ -2349,7 +2105,7 @@ button:disabled{
   }
 
   .card,
-  .libraryCard{
+.libraryCard{
     width:100%;
     height:auto;
     min-height:0;
@@ -2364,12 +2120,12 @@ button:disabled{
   }
 
   .cardHeader h2,
-  .libraryHeader h2{
+.libraryHeader h2{
     font-size:21px;
   }
 
   .cardHeader p,
-  .libraryHeader p{
+.libraryHeader p{
     font-size:12px;
   }
 
@@ -2412,8 +2168,8 @@ button:disabled{
   }
 
   .bulkToolbar .smallGhostButton,
-  .bulkToolbar .bulkDangerButton,
-  .bulkToolbar .selectedCount{
+.bulkToolbar .bulkDangerButton,
+.bulkToolbar .selectedCount{
     width:100%;
     justify-content:center;
     text-align:center;
@@ -2473,8 +2229,8 @@ button:disabled{
   }
 
   .mediaRowPreview,
-  .mediaRowThumb,
-  .mediaRowPreview .noPreview{
+.mediaRowThumb,
+.mediaRowPreview .noPreview{
     width:62px;
     height:48px;
     border-radius:13px;
@@ -2559,12 +2315,12 @@ button:disabled{
   }
 
   .mediaRowPill,
-  .mediaRowMeta{
+.mediaRowMeta{
     display:none;
   }
 
   .mediaRowDetailsOpen .mediaRowPill,
-  .mediaRowDetailsOpen .mediaRowMeta{
+.mediaRowDetailsOpen .mediaRowMeta{
     grid-column:1 / -1 !important;
     width:100%;
     display:flex;
@@ -2580,7 +2336,7 @@ button:disabled{
   }
 
   .mediaRowPill::before,
-  .mediaRowMeta::before{
+.mediaRowMeta::before{
     content:attr(data-label);
     color:#8295bf;
     font-size:11px;
@@ -2611,8 +2367,8 @@ button:disabled{
   }
 
   .helperButton,
-  .ghostButton,
-  .closeButton{
+.ghostButton,
+.closeButton{
     width:36px;
     height:36px;
     min-height:36px;

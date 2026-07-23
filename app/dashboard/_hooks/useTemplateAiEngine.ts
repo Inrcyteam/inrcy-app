@@ -22,12 +22,15 @@ export function useTemplateAiEngine() {
         const user = authData?.user;
         if (!user) return;
         const activeUserId = resolveActiveBrowserUserId(user.id);
-        const [{ data: profile }, { data: business }] = await Promise.all([
-          supabase.from("profiles").select("*").eq("user_id", activeUserId).maybeSingle(),
-          supabase.from("business_profiles").select("*").eq("user_id", activeUserId).order("updated_at", { ascending: false }).limit(1).maybeSingle(),
-        ]);
+        const { data: business } = await supabase
+          .from("business_profiles")
+          .select("ai_preferred_engine,updated_at")
+          .eq("user_id", activeUserId)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
         if (cancelled) return;
-        const resolved = getAiPreferredEngineFromBusiness({ ...(profile || {}), ...(business || {}) });
+        const resolved = getAiPreferredEngineFromBusiness(business || {});
         setDefaultEngine(resolved);
         setEngine(resolved);
       } catch {

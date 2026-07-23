@@ -165,15 +165,15 @@ export async function awardInertiaActionForUser(args: {
         ignoreDuplicates: true,
       },
     )
-    .select("id,amount")
-    .maybeSingle();
+    .select("id,amount");
 
   if (insertRes.error) {
     return { ok: false, skipped: true, error: insertRes.error.message };
   }
 
   // `ignoreDuplicates` renvoie zéro ligne pour la requête concurrente perdante.
-  if (!insertRes.data?.id) {
+  const insertedLedger = insertRes.data?.[0];
+  if (!insertedLedger?.id) {
     return { ok: true, skipped: true };
   }
 
@@ -201,14 +201,13 @@ export async function awardInertiaActionForUser(args: {
       { user_id: userId, balance: amount },
       { onConflict: "user_id", ignoreDuplicates: true },
     )
-    .select("balance")
-    .maybeSingle();
+    .select("balance");
 
   if (createBalanceRes.error) {
     return { ok: false, skipped: true, amount, error: createBalanceRes.error.message };
   }
 
-  if (createBalanceRes.data) {
+  if (createBalanceRes.data?.[0]) {
     return { ok: true, amount, balance: amount, updatedAt };
   }
 

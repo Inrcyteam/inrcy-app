@@ -536,13 +536,18 @@ export default function DashboardClient({ isAdmin = false }: DashboardClientProp
 
   const fetchWidgetToken = useCallback(async (domain: string, source: "inrcy_site" | "site_web") => {
     if (!domain) return "";
-    const res = await fetch(
-      `/api/widgets/issue-token?domain=${encodeURIComponent(domain)}&source=${encodeURIComponent(source)}`,
-      { method: "GET", credentials: "include" }
-    );
-    const json = await res.json().catch(() => null);
-    if (!res.ok || !json?.ok) return "";
-    return String(json.token || "");
+    try {
+      const res = await fetch(
+        `/api/widgets/issue-token?domain=${encodeURIComponent(domain)}&source=${encodeURIComponent(source)}`,
+        { method: "GET", credentials: "include" }
+      );
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json?.ok) return "";
+      return String(json.token || "");
+    } catch {
+      // Une indisponibilité réseau ne doit pas faire échouer le dashboard.
+      return "";
+    }
   }, []);
 
   const [userEmail, setUserEmail] = useState<string | null>(null);
@@ -917,6 +922,7 @@ const {
   tiktokAiContent,
   setTiktokAiContent,
   saveTiktokDefaults,
+  applyTiktokConnectionState,
 } = useTiktokChannel({
   panel,
   patchChannelConnectionLocally: patchChannelConnectionLocallyProxy,
@@ -989,6 +995,14 @@ const applyDashboardChannelState = useCallback((state: Record<string, any> | nul
   if (typeof state.fbSelectedPageName === "string") setFbSelectedPageName(state.fbSelectedPageName);
   if (typeof state.youtubeShortsConnected === "boolean") setYoutubeShortsConnected(state.youtubeShortsConnected);
   if (typeof state.youtubeShortsUrl === "string") setYoutubeShortsUrl(state.youtubeShortsUrl);
+  if (typeof state.tiktokConnected === "boolean") {
+    applyTiktokConnectionState({
+      connected: state.tiktokConnected,
+      requiresUpdate: Boolean(state.tiktokRequiresUpdate),
+      username: typeof state.tiktokUsername === "string" ? state.tiktokUsername : "",
+      profileUrl: typeof state.tiktokProfileUrl === "string" ? state.tiktokProfileUrl : "",
+    });
+  }
   if (typeof state.pinterestConnected === "boolean") setPinterestConnected(state.pinterestConnected);
   if (typeof state.pinterestUrl === "string") setPinterestUrl(state.pinterestUrl);
   if (typeof state.inrSearchConnected === "boolean") setInrSearchConnected(state.inrSearchConnected);
@@ -1030,6 +1044,7 @@ const applyDashboardChannelState = useCallback((state: Record<string, any> | nul
   setSiteWebGa4PropertyId, setSiteWebGscConnected, setSiteWebGscProperty, setSiteWebSavedUrl,
   setSiteWebSettingsError, setSiteWebSettingsText, setSiteWebUrl, setMailAccountsConnectedCount,
   setYoutubeShortsConnected, setYoutubeShortsUrl, setPinterestConnected, setPinterestUrl, setInrSearchConnected, setInrSearchUrl, setInrSearchDirectoryEnabled,
+  applyTiktokConnectionState,
 ]);
 
 useEffect(() => {
@@ -1439,7 +1454,7 @@ const loadSiteInrcy = useCallback(async () => {
     return;
   }
 
-  const [profileRes, bubbleAccessEnsureRes] = await Promise.all([
+  const [profileRes, bubbleAccessEnsureRes, channelStates] = await Promise.all([
     supabase
       .from("profiles")
       .select("inrcy_site_ownership,logo_url,logo_path,company_legal_name,first_name,last_name,phone,contact_email")
@@ -1448,8 +1463,25 @@ const loadSiteInrcy = useCallback(async () => {
     fetch("/api/bubble-access/ensure", { method: "GET", cache: "no-store" })
       .then((res) => (res.ok ? res.json() : null))
       .catch(() => null),
+    fetch("/api/integrations/channel-states", { cache: "no-store", credentials: "include" })
+      .then((res) => (res.ok ? res.json().catch(() => null) : null))
+      .catch(() => null),
   ]);
   if (requestSeq !== siteConfigRequestSeqRef.current) return;
+
+  // TikTok et Pinterest ne doivent pas attendre les lectures de profil, logo
+  // et réglages qui suivent. Leur état commun est appliqué dès cette première
+  // vague de chargement, comme pour les autres bulles du dashboard.
+  if (channelStates && typeof channelStates === "object") {
+    applyDashboardChannelState({
+      tiktokConnected: Boolean(channelStates?.tiktok?.connected && !channelStates?.tiktok?.requiresUpdate),
+      tiktokRequiresUpdate: Boolean(channelStates?.tiktok?.requiresUpdate),
+      tiktokUsername: String(channelStates?.tiktok?.username || ""),
+      tiktokProfileUrl: String(channelStates?.tiktok?.profile_url || ""),
+      pinterestConnected: Boolean(channelStates?.pinterest?.connected && !channelStates?.pinterest?.requiresUpdate),
+      pinterestUrl: String(channelStates?.pinterest?.profile_url || ""),
+    });
+  }
 
   const nextBubbleAccessMap =
     bubbleAccessEnsureRes?.bubbleAccessMap && typeof bubbleAccessEnsureRes.bubbleAccessMap === "object"
@@ -1538,7 +1570,7 @@ const loadSiteInrcy = useCallback(async () => {
     ? `${getRuntimeInrSearchOrigin()}/entreprises/${inrSearchSlug}`
     : "";
 
-  const nextState = {
+  const nextState: Record<string, any> = {
     siteInrcyOwnership: ownership,
     siteInrcyUrl: siteInrcyUrlValue,
     siteInrcySavedUrl: siteInrcyUrlValue,
@@ -1608,10 +1640,7 @@ const loadSiteInrcy = useCallback(async () => {
   };
 
   try {
-    const statesResponse = await fetch("/api/integrations/channel-states", { cache: "no-store" });
-    const states = statesResponse.ok ? await statesResponse.json().catch(() => null) as any : null;
-    if (requestSeq !== siteConfigRequestSeqRef.current) return;
-
+    const states = channelStates as any;
     if (states) {
       nextState.siteInrcyGa4Connected = Boolean(states?.site_inrcy?.ga4 || ga4MeasurementIdValue || ga4PropertyIdValue);
       nextState.siteInrcyGscConnected = Boolean(states?.site_inrcy?.gsc || gscPropertyValue);
@@ -1660,6 +1689,11 @@ const loadSiteInrcy = useCallback(async () => {
 
       nextState.youtubeShortsConnected = Boolean(states?.youtube_shorts?.connected && !states?.youtube_shorts?.requiresUpdate);
       nextState.youtubeShortsUrl = String(states?.youtube_shorts?.channel_url || "");
+
+      nextState.tiktokConnected = Boolean(states?.tiktok?.connected && !states?.tiktok?.requiresUpdate);
+      nextState.tiktokRequiresUpdate = Boolean(states?.tiktok?.requiresUpdate);
+      nextState.tiktokUsername = String(states?.tiktok?.username || "");
+      nextState.tiktokProfileUrl = String(states?.tiktok?.profile_url || "");
 
       nextState.pinterestConnected = Boolean(states?.pinterest?.connected && !states?.pinterest?.requiresUpdate);
       nextState.pinterestUrl = String(states?.pinterest?.profile_url || pinterestUrlValue || "");
@@ -3161,6 +3195,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     mailAccountsConnectedCount,
     tiktokConnected,
     tiktokUrl: tiktokProfileUrl,
+    canAccessPinterest,
     pinterestConnected,
     pinterestUrl,
     inrSearchConnected,

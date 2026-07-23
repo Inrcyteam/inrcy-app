@@ -95,7 +95,6 @@
   gap: 10px;
 }
 
-.headerSettingsButton,
 .headerAiButton,
 .headerInrSendButton,
 .headerCloseButton {
@@ -115,7 +114,6 @@
     box-shadow 0.16s ease;
 }
 
-.headerSettingsButton,
 .headerInrSendButton {
   background: linear-gradient(
     135deg,
@@ -161,7 +159,6 @@
     0 12px 28px rgba(0, 0, 0, 0.16);
 }
 
-.headerSettingsButton:hover,
 .headerInrSendLabel {
   display: inline;
 }
@@ -212,57 +209,6 @@
   gap: 18px;
 }
 
-.headerCopy {
-  min-width: 0;
-}
-
-.titleRow {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  flex-wrap: wrap;
-}
-
-.titleRow h1 {
-  margin: 0;
-  color: #ffffff;
-  font-size: clamp(34px, 3vw, 48px);
-  line-height: 0.95;
-  letter-spacing: -0.055em;
-  font-weight: 950;
-  text-shadow: 0 0 34px rgba(148, 163, 255, 0.18);
-}
-
-.titleRow span {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 38px;
-  border-radius: 999px;
-  padding: 0 22px;
-  color: #fff;
-  font-size: clamp(16px, 1.3vw, 19px);
-  font-weight: 760;
-  letter-spacing: -0.015em;
-  background: linear-gradient(
-    135deg,
-    rgba(37, 99, 235, 0.94),
-    rgba(124, 58, 237, 0.9)
-  );
-  border: 1px solid rgba(196, 181, 253, 0.34);
-  box-shadow:
-    inset 0 0 16px rgba(255, 255, 255, 0.1),
-    0 0 24px rgba(79, 70, 229, 0.24);
-}
-
-.headerCopy p {
-  margin: 10px 0 0;
-  color: rgba(226, 242, 255, 0.85);
-  font-size: clamp(14px, 1.1vw, 18px);
-  line-height: 1.35;
-  font-weight: 450;
-}
-
 .statusPill {
   flex: 0 0 auto;
   height: 72px;
@@ -278,33 +224,6 @@
   box-shadow:
     inset 0 0 34px rgba(255, 255, 255, 0.025),
     0 20px 54px rgba(0, 0, 0, 0.2);
-}
-
-.statusAvatar {
-  width: 54px;
-  height: 54px;
-  position: relative;
-  display: grid;
-  place-items: center;
-  border-radius: 999px;
-  overflow: hidden;
-  background:
-    radial-gradient(
-      circle at 50% 48%,
-      rgba(14, 165, 233, 0.44),
-      transparent 52%
-    ),
-    linear-gradient(135deg, rgba(30, 64, 175, 0.38), rgba(88, 28, 135, 0.38));
-  border: 1px solid rgba(96, 165, 250, 0.42);
-}
-
-.statusAvatar img {
-  width: 56px;
-  height: 56px;
-  object-fit: contain;
-  object-position: center;
-  transform: translateY(6px) scale(1.16);
-  filter: drop-shadow(0 0 13px rgba(96, 165, 250, 0.7));
 }
 
 .statusPill strong {
@@ -911,12 +830,6 @@
   gap: 2px;
 }
 
-.actionBar {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: clamp(16px, 2vw, 28px);
-}
-
 .validateButton,
 .refuseButton,
 .modalAction {
@@ -1304,14 +1217,6 @@
     gap: 12px;
   }
 
-  .titleRow h1 {
-    font-size: 40px;
-  }
-
-  .headerCopy p {
-    margin-top: 6px;
-  }
-
   .moduleHeader {
     min-height: 56px;
   }
@@ -1334,7 +1239,7 @@
   }
 
   .robotCard,
-  .previewCard {
+.previewCard {
     border-radius: 22px;
   }
 
@@ -1365,7 +1270,7 @@
   }
 
   .validateButton,
-  .refuseButton {
+.refuseButton {
     min-height: 60px;
   }
 }
@@ -1449,8 +1354,7 @@
   }
 
   .previewMeta,
-  .actionBar,
-  .modalGrid {
+.modalGrid {
     grid-template-columns: 1fr;
   }
 
@@ -1459,15 +1363,12 @@
   }
 
   .validateButton,
-  .refuseButton {
+.refuseButton {
     min-height: 62px;
   }
 }
 
 /* Ajustements V2 — iNrAgent automatisations */
-.headerSettingsButton {
-  min-width: 116px;
-}
 
 .automationCard {
   min-height: clamp(86px, 9.2vh, 112px);
@@ -1837,31 +1738,6 @@
 }
 
 /* Étape 4 — préparation manuelle Booster / Publier */
-.prepareButton {
-  min-height: 46px;
-  margin-top: 4px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  padding: 0 20px;
-  color: #ffffff;
-  font-size: 14px;
-  font-weight: 900;
-  letter-spacing: -0.01em;
-  cursor: pointer;
-  background: linear-gradient(135deg, #1d4ed8, #7c3aed 58%, #d946ef);
-  border: 1px solid rgba(125, 211, 252, 0.34);
-  box-shadow:
-    0 0 24px rgba(59, 130, 246, 0.24),
-    0 0 30px rgba(217, 70, 239, 0.16),
-    inset 0 0 14px rgba(255, 255, 255, 0.08);
-  transition:
-    transform 0.18s ease,
-    opacity 0.18s ease,
-    border-color 0.18s ease,
-    box-shadow 0.18s ease;
-}
 
 .prepareButton:hover:not(:disabled) {
   transform: translateY(-1px);
@@ -1870,12 +1746,6 @@
     0 0 30px rgba(59, 130, 246, 0.3),
     0 0 36px rgba(217, 70, 239, 0.2),
     inset 0 0 16px rgba(255, 255, 255, 0.1);
-}
-
-.prepareButton:disabled {
-  cursor: wait;
-  opacity: 0.58;
-  transform: none;
 }
 
 /* Étape 13 — aperçu compact iNrAgent */
@@ -2024,13 +1894,6 @@
   height: 22px;
 }
 
-.actionBar {
-  width: 100%;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: clamp(16px, 2vw, 28px);
-}
-
 .robotCard {
   height: 100%;
 }
@@ -2067,7 +1930,7 @@
   }
 
   .channelsItem,
-  .dateItem {
+.dateItem {
     width: 100%;
   }
 
@@ -2075,10 +1938,6 @@
     padding: 10px 0 0;
     border-left: 0;
     border-top: 1px solid rgba(148, 163, 255, 0.18);
-  }
-
-  .actionBar {
-    grid-template-columns: 1fr;
   }
 }
 
@@ -2432,10 +2291,6 @@
   font-size: 22px;
 }
 
-.actionBar {
-  display: none;
-}
-
 @media (max-width: 1180px) {
   .workColumn {
     grid-template-rows: auto;
@@ -2447,7 +2302,7 @@
   }
 
   .dateItem,
-  .previewActions {
+.previewActions {
     padding: 10px 0 0;
     border-left: 0;
     border-top: 1px solid rgba(148, 163, 255, 0.18);
@@ -2577,24 +2432,6 @@
   box-shadow: none;
 }
 
-.channelIconWrap {
-  width: 40px;
-  height: 40px;
-  display: grid;
-  place-items: center;
-  overflow: hidden;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.96);
-  border: 2px solid rgba(255, 255, 255, 0.55);
-  box-shadow:
-    0 0 16px rgba(96, 165, 250, 0.22),
-    0 8px 16px rgba(0, 0, 0, 0.24);
-  transition:
-    transform 0.16s ease,
-    box-shadow 0.16s ease,
-    border-color 0.16s ease;
-}
-
 .channelScroller button:hover:not(:disabled) .channelIconWrap,
 .channelScroller .channelPillActive .channelIconWrap {
   transform: translateY(-1px) scale(1.04);
@@ -2672,8 +2509,7 @@
 }
 
 @media (max-width: 760px) {
-  .channelScroller button,
-  .channelIconWrap {
+  .channelScroller button {
     width: 36px;
     height: 36px;
   }
@@ -3323,7 +3159,7 @@
 
 @keyframes agentStarTwinkle {
   0%,
-  100% {
+100% {
     opacity: 0.7;
     filter: brightness(0.98);
     box-shadow:
@@ -3345,7 +3181,7 @@
 
 @keyframes agentHaloPulse {
   0%,
-  100% {
+100% {
     transform: translate(-50%, -50%) scale(0.985);
     opacity: 0.7;
   }
@@ -3357,7 +3193,7 @@
 
 @keyframes agentHaloPulseSecondary {
   0%,
-  100% {
+100% {
     transform: translate(-50%, -50%) scale(1);
     opacity: 0.4;
   }
@@ -3369,24 +3205,21 @@
 
 @media (prefers-reduced-motion: reduce) {
   .starOne,
-  .starTwo,
-  .starThree,
-  .starFour,
-  .starFive,
-  .starSix,
-  .starSeven,
-  .starEight,
-  .starNine,
-  .robotHalo::before,
-  .robotHalo::after {
+.starTwo,
+.starThree,
+.starFour,
+.starFive,
+.starSix,
+.starSeven,
+.starEight,
+.starNine,
+.robotHalo::before,
+.robotHalo::after {
     animation: none !important;
   }
 }
 
 /* Étape 24 — réglages par bloc uniquement + modales compactes sans scroll */
-.moduleHeaderActions .headerSettingsButton {
-  display: none !important;
-}
 
 .settingsModal:not(.helpModal) {
   width: min(780px, calc(100vw - 40px));
@@ -3679,12 +3512,12 @@
   }
 
   .settingsModal:not(.helpModal) .modalGrid label,
-  .settingsModal:not(.helpModal) .modalSection {
+.settingsModal:not(.helpModal) .modalSection {
     padding: 9px 11px;
   }
 
   .settingsModal:not(.helpModal) .modalGrid select,
-  .settingsModal:not(.helpModal) .modalGrid input {
+.settingsModal:not(.helpModal) .modalGrid input {
     min-height: 34px;
   }
 
@@ -3777,7 +3610,7 @@
   }
 
   .headerSyncPill,
-  .headerWarningPill {
+.headerWarningPill {
     display: none;
   }
 
@@ -3851,8 +3684,8 @@
   }
 
   .settingsModal,
-  .settingsModal:not(.helpModal),
-  .helpModal {
+.settingsModal:not(.helpModal),
+.helpModal {
     width: min(100%, 430px);
     max-height: calc(100svh - 28px);
   }
@@ -4599,37 +4432,6 @@
   width: 100%;
 }
 
-.statsHero {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 18px;
-  padding: 18px;
-  border-radius: 20px;
-  background: linear-gradient(
-    135deg,
-    rgba(37, 99, 235, 0.16),
-    rgba(14, 165, 233, 0.1)
-  );
-  border: 1px solid rgba(125, 211, 252, 0.18);
-}
-
-.statsEyebrow {
-  margin: 0 0 8px;
-  color: rgba(125, 211, 252, 0.86);
-  font-size: 11px;
-  font-weight: 900;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
-.statsHero h3 {
-  margin: 0;
-  color: #fff;
-  font-size: 26px;
-  line-height: 1.05;
-}
-
 .statsLead {
   margin: 10px 0 0;
   max-width: 760px;
@@ -4638,33 +4440,6 @@
   line-height: 1.6;
 }
 
-.statsHeroActions {
-  min-width: 260px;
-  display: grid;
-  gap: 10px;
-}
-
-.statsPrimaryLink {
-  min-height: 52px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  border-radius: 16px;
-  padding: 0 18px;
-  color: #fff;
-  text-decoration: none;
-  font-weight: 850;
-  background: linear-gradient(
-    135deg,
-    rgba(14, 165, 233, 0.92),
-    rgba(37, 99, 235, 0.92)
-  );
-  border: 1px solid rgba(125, 211, 252, 0.28);
-  box-shadow: 0 14px 26px rgba(2, 12, 27, 0.22);
-}
-
-.statsPrimaryLink span,
 .statsHistoryIcon {
   width: 28px;
   height: 28px;
@@ -4675,7 +4450,6 @@
   background: rgba(255, 255, 255, 0.12);
 }
 
-.statsPrimaryLink span svg,
 .statsHistoryIcon svg {
   width: 16px;
   height: 16px;
@@ -4684,12 +4458,6 @@
   stroke-width: 2;
   stroke-linecap: round;
   stroke-linejoin: round;
-}
-
-.statsSummaryGrid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
 }
 
 .statsMiniCard {
@@ -4705,7 +4473,6 @@
 
 .statsMiniCard small,
 .statsHistoryHeader span,
-.statsHint,
 .statsFooterNote small {
   color: rgba(226, 242, 255, 0.68);
 }
@@ -4778,12 +4545,6 @@
   letter-spacing: -0.01em;
 }
 
-.statsHint {
-  margin: 0;
-  font-size: 13px;
-  line-height: 1.5;
-}
-
 .statsFooterNote {
   min-height: 68px;
   display: flex;
@@ -4797,14 +4558,6 @@
 }
 
 @media (max-width: 1180px) {
-  .statsHero {
-    flex-direction: column;
-  }
-
-  .statsHeroActions {
-    width: 100%;
-    min-width: 0;
-  }
 
   .statsHistoryRow {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -4812,7 +4565,6 @@
 }
 
 @media (max-width: 760px) {
-  .statsSummaryGrid,
   .statsHistoryRow {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
@@ -4879,24 +4631,6 @@
 .statsMiniCard strong {
   font-size: 19px;
   line-height: 1.25;
-}
-
-.statsActionRow {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 12px;
-  padding-top: 2px;
-}
-
-.statsActionRow .prepareButton,
-.statsActionRow .statsPrimaryLink {
-  min-width: 300px;
-}
-
-.statsPrimaryLink {
-  min-height: 54px;
 }
 
 .statsHistorySection {
@@ -5000,12 +4734,6 @@
   .statsTopGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-
-  .statsActionRow .prepareButton,
-  .statsActionRow .statsPrimaryLink {
-    min-width: 0;
-    width: 100%;
-  }
 }
 
 /* ===== iNrStats final polish ===== */
@@ -5072,10 +4800,7 @@
   background: rgba(255, 255, 255, 0.06);
 }
 
-.statsMiniIcon svg,
-.statsActionRow .prepareButton span svg,
-.statsPrimaryLink span svg,
-.statsSecondaryButton span svg {
+.statsMiniIcon svg {
   width: 18px;
   height: 18px;
   fill: none;
@@ -5122,58 +4847,6 @@
   background: rgba(244, 114, 182, 0.12);
 }
 
-.statsActionRow {
-  padding-top: 6px;
-}
-
-.statsActionRow .prepareButton,
-.statsActionRow .statsPrimaryLink,
-.statsActionRow .statsSecondaryButton {
-  min-width: 330px;
-  max-width: 430px;
-  min-height: 56px;
-  border-radius: 18px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-}
-
-.statsActionRow .prepareButton {
-  box-shadow: 0 10px 28px rgba(124, 58, 237, 0.22);
-}
-
-.statsPrimaryLink,
-.statsSecondaryButton {
-  padding: 0 24px;
-  font-weight: 850;
-  text-decoration: none;
-}
-
-.statsPrimaryLink {
-  color: #f5f7ff;
-  background: rgba(8, 15, 40, 0.36);
-  border: 1px solid rgba(198, 137, 255, 0.46);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.03);
-}
-
-.statsSecondaryButton {
-  color: rgba(226, 232, 240, 0.56);
-  background: rgba(9, 14, 35, 0.26);
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  cursor: not-allowed;
-}
-
-.statsSecondaryButton span,
-.statsPrimaryLink span,
-.statsActionRow .prepareButton span {
-  width: 22px;
-  height: 22px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
 .previewMetaStats {
   grid-template-columns: minmax(0, 1fr) minmax(300px, auto) auto;
 }
@@ -5203,12 +4876,6 @@
     min-height: 0;
   }
 
-  .statsActionRow .prepareButton,
-  .statsActionRow .statsPrimaryLink,
-  .statsActionRow .statsSecondaryButton {
-    min-width: 280px;
-  }
-
   .previewMetaStats {
     grid-template-columns: 1fr;
   }
@@ -5221,14 +4888,6 @@
 @media (max-width: 760px) {
   .statsHeadCard {
     align-items: flex-start;
-  }
-
-  .statsActionRow .prepareButton,
-  .statsActionRow .statsPrimaryLink,
-  .statsActionRow .statsSecondaryButton {
-    width: 100%;
-    max-width: none;
-    min-width: 0;
   }
 }
 
@@ -5312,17 +4971,6 @@
 .statsMiniCard:nth-child(3) strong,
 .statsMiniCard:nth-child(4) strong {
   font-size: 17px;
-}
-
-.statsActionRow {
-  padding-top: 0;
-  gap: 12px;
-}
-
-.statsActionRow .prepareButton,
-.statsActionRow .statsPrimaryLink,
-.statsActionRow .statsSecondaryButton {
-  min-height: 52px;
 }
 
 .statsHistorySection {
@@ -5584,50 +5232,6 @@
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.16),
     0 0 18px rgba(244, 114, 182, 0.16);
-}
-
-.statsActionRow .prepareButton {
-  position: relative;
-  overflow: hidden;
-  background: linear-gradient(135deg, #2563eb 0%, #7c3aed 52%, #d946ef 100%);
-  border: 1px solid rgba(191, 219, 254, 0.2);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.2),
-    0 14px 34px rgba(124, 58, 237, 0.3),
-    0 0 28px rgba(217, 70, 239, 0.14);
-}
-
-.statsActionRow .prepareButton::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    115deg,
-    rgba(255, 255, 255, 0.18),
-    transparent 36%,
-    transparent 70%,
-    rgba(255, 255, 255, 0.08)
-  );
-  pointer-events: none;
-}
-
-.statsPrimaryLink,
-.statsSecondaryButton {
-  background:
-    linear-gradient(
-      180deg,
-      rgba(255, 255, 255, 0.055),
-      rgba(255, 255, 255, 0.026)
-    ),
-    rgba(8, 15, 40, 0.54);
-  border-color: rgba(192, 132, 252, 0.34);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 12px 28px rgba(2, 8, 23, 0.18);
-}
-
-.statsSecondaryButton {
-  border-color: rgba(148, 163, 184, 0.2);
 }
 
 .statsHistorySection {
@@ -6047,63 +5651,6 @@ button.campaignInfoCard:hover {
   overflow: hidden;
 }
 
-.campaignMailHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.campaignMailTitle {
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
-  color: #ffffff;
-  font-size: clamp(18px, 1.35vw, 24px);
-  font-weight: 850;
-  letter-spacing: -0.03em;
-}
-
-.campaignMailIcon {
-  width: 34px;
-  height: 34px;
-  display: grid;
-  place-items: center;
-  border-radius: 10px;
-  color: #dbeafe;
-  background: linear-gradient(
-    135deg,
-    rgba(37, 99, 235, 0.84),
-    rgba(124, 58, 237, 0.62)
-  );
-  border: 1px solid rgba(196, 181, 253, 0.18);
-  box-shadow: 0 0 18px rgba(59, 130, 246, 0.22);
-}
-
-.campaignMailEditButton {
-  width: 42px;
-  height: 42px;
-  flex: 0 0 42px;
-  display: grid;
-  place-items: center;
-  border-radius: 12px;
-  color: rgba(226, 242, 255, 0.94);
-  font-size: 21px;
-  cursor: pointer;
-  background: rgba(255, 255, 255, 0.055);
-  border: 1px solid rgba(148, 163, 255, 0.2);
-  transition:
-    transform 0.16s ease,
-    border-color 0.16s ease,
-    background 0.16s ease;
-}
-
-.campaignMailEditButton:hover {
-  transform: translateY(-1px);
-  border-color: rgba(125, 211, 252, 0.42);
-  background: rgba(255, 255, 255, 0.08);
-}
-
 .campaignMailSubject {
   display: flex;
   align-items: baseline;
@@ -6139,25 +5686,6 @@ button.campaignInfoCard:hover {
   font-size: clamp(15px, 1.08vw, 18px);
   line-height: 1.55;
   font-weight: 470;
-}
-
-.campaignSignatureLine {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding-top: 14px;
-  border-top: 1px solid rgba(148, 163, 255, 0.15);
-  color: rgba(237, 244, 255, 0.88);
-  font-size: clamp(14px, 1vw, 16px);
-}
-
-.campaignSignatureLine strong {
-  font-weight: 720;
-}
-
-.campaignSignatureLine small {
-  color: rgba(226, 242, 255, 0.62);
-  cursor: help;
 }
 
 .previewMetaCampaign {
@@ -6361,40 +5889,6 @@ button.campaignInfoCard:hover {
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12);
 }
 
-.attachmentPreviewBox {
-  display: grid;
-  justify-items: center;
-  gap: 12px;
-  margin-top: 18px;
-  padding: 28px;
-  border-radius: 20px;
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.055);
-  border: 1px solid rgba(148, 163, 255, 0.16);
-}
-
-.attachmentPreviewBox span {
-  font-size: 42px;
-}
-
-.attachmentPreviewBox p {
-  margin: 0;
-  color: rgba(226, 242, 255, 0.78);
-}
-
-.attachmentPreviewBox a {
-  min-height: 42px;
-  display: inline-flex;
-  align-items: center;
-  border-radius: 999px;
-  padding: 0 18px;
-  color: #ffffff;
-  text-decoration: none;
-  font-weight: 850;
-  background: linear-gradient(135deg, #1d4ed8, #7c3aed 58%, #d946ef);
-  border: 1px solid rgba(125, 211, 252, 0.32);
-}
-
 @media (max-width: 1180px) {
   .previewCardNoFrame {
     overflow: visible;
@@ -6415,8 +5909,8 @@ button.campaignInfoCard:hover {
 
 @media (max-width: 760px) {
   .campaignInfoGrid,
-  .campaignEditGrid,
-  .previewMetaCampaign {
+.campaignEditGrid,
+.previewMetaCampaign {
     grid-template-columns: 1fr;
   }
 
@@ -6485,17 +5979,6 @@ button.campaignInfoCard:disabled:hover {
     0 12px 28px rgba(0, 0, 0, 0.16);
 }
 
-.campaignMailEditButton:disabled {
-  cursor: not-allowed;
-  opacity: 0.45;
-}
-
-.campaignMailEditButton:disabled:hover {
-  transform: none;
-  border-color: rgba(148, 163, 255, 0.2);
-  background: rgba(255, 255, 255, 0.055);
-}
-
 .campaignEmptyHint {
   display: flex;
   flex-wrap: wrap;
@@ -6504,13 +5987,6 @@ button.campaignInfoCard:disabled:hover {
   margin-top: clamp(12px, 1.2vw, 18px);
   color: rgba(226, 242, 255, 0.72);
   font-size: clamp(14px, 1vw, 16px);
-}
-
-.campaignEmptyHint .prepareButton {
-  min-height: 42px;
-  padding: 0 20px;
-  font-size: 14px;
-  box-shadow: 0 12px 26px rgba(124, 58, 237, 0.22);
 }
 
 /* Correctif iNrAgent campagnes — bandeau bas compact sur une seule ligne */
@@ -6673,10 +6149,10 @@ button.campaignInfoCard:disabled:hover {
   }
 
   .previewMetaCampaign .channelsItem,
-  .previewMetaCampaign .dateItem,
-  .previewMetaCampaign .modifyCampaignButton,
-  .previewMetaCampaign .previewActions .validateButton,
-  .previewMetaCampaign .previewActions .refuseButton {
+.previewMetaCampaign .dateItem,
+.previewMetaCampaign .modifyCampaignButton,
+.previewMetaCampaign .previewActions .validateButton,
+.previewMetaCampaign .previewActions .refuseButton {
     min-height: 52px !important;
     height: 52px !important;
   }
@@ -6702,10 +6178,6 @@ button.campaignInfoCard:disabled:hover {
   line-height: 1.48 !important;
 }
 
-.campaignSignatureLine {
-  display: none !important;
-}
-
 .campaignEmptyHint {
   margin-top: clamp(8px, 0.8vw, 12px) !important;
 }
@@ -6718,69 +6190,9 @@ button.campaignInfoCard:disabled:hover {
 }
 
 .previewMetaCampaign .metaItem,
-.previewMetaCampaign .modifyCampaignButton,
-.previewMetaCampaign .manualCampaignButton {
+.previewMetaCampaign .modifyCampaignButton {
   min-height: clamp(54px, 5.8vh, 64px) !important;
   height: clamp(54px, 5.8vh, 64px) !important;
-}
-
-.manualCampaignButton {
-  width: 100%;
-  min-width: 0;
-  display: inline-flex;
-  flex-direction: column;
-  align-items: flex-start;
-  justify-content: center;
-  gap: 3px;
-  padding: 8px 16px;
-  border-radius: 18px;
-  color: rgba(255, 255, 255, 0.94);
-  text-align: left;
-  cursor: pointer;
-  background:
-    radial-gradient(
-      circle at 14% 20%,
-      rgba(125, 211, 252, 0.12),
-      transparent 34%
-    ),
-    linear-gradient(135deg, rgba(8, 24, 56, 0.72), rgba(88, 28, 135, 0.34));
-  border: 1px solid rgba(148, 163, 255, 0.24);
-  box-shadow: inset 0 0 24px rgba(255, 255, 255, 0.026);
-  transition:
-    transform 0.16s ease,
-    border-color 0.16s ease,
-    background 0.16s ease;
-}
-
-.manualCampaignButton:hover {
-  transform: translateY(-1px);
-  border-color: rgba(125, 211, 252, 0.46);
-  background:
-    radial-gradient(
-      circle at 14% 20%,
-      rgba(125, 211, 252, 0.18),
-      transparent 34%
-    ),
-    linear-gradient(135deg, rgba(16, 38, 85, 0.78), rgba(109, 40, 217, 0.42));
-}
-
-.manualCampaignButton strong {
-  display: block;
-  font-size: clamp(14px, 1vw, 17px);
-  line-height: 1.05;
-  font-weight: 900;
-}
-
-.manualCampaignButton small {
-  display: block;
-  max-width: 100%;
-  color: rgba(226, 242, 255, 0.72);
-  font-size: clamp(10px, 0.78vw, 12px);
-  line-height: 1.12;
-  font-weight: 700;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .campaignSettingsPair {
@@ -6848,15 +6260,6 @@ button.campaignInfoCard:disabled:hover {
   .previewMetaCampaign {
     grid-template-columns: 1fr !important;
   }
-
-  .manualCampaignButton {
-    align-items: center;
-    text-align: center;
-  }
-
-  .manualCampaignButton small {
-    white-space: normal;
-  }
 }
 
 /* Correctif iNrAgent campagnes — rendu final Propulser / Fidéliser */
@@ -6873,19 +6276,6 @@ button.campaignInfoCard:disabled:hover {
   min-height: 0 !important;
   grid-template-rows: auto minmax(0, 1fr) !important;
   align-content: stretch !important;
-}
-
-.campaignMailHeader,
-.campaignMailTitle,
-.campaignMailIcon {
-  display: none !important;
-}
-
-.campaignMailEditButton {
-  position: absolute !important;
-  top: clamp(14px, 1.2vw, 18px) !important;
-  right: clamp(14px, 1.2vw, 18px) !important;
-  z-index: 2 !important;
 }
 
 .campaignMailSubject {
@@ -7000,10 +6390,6 @@ button.campaignInfoCard:disabled:hover {
   grid-template-rows: auto auto minmax(0, 1fr) !important;
 }
 
-.statsActionRow {
-  display: none !important;
-}
-
 .statsHistorySection {
   align-self: stretch;
 }
@@ -7039,9 +6425,9 @@ button.campaignInfoCard:disabled:hover {
   }
 
   .headerAiButton,
-  .headerToolButton,
-  .headerInrSendButton,
-  .headerCloseButton {
+.headerToolButton,
+.headerInrSendButton,
+.headerCloseButton {
     width: 32px !important;
     min-width: 32px !important;
     max-width: 32px !important;
@@ -7061,7 +6447,7 @@ button.campaignInfoCard:disabled:hover {
   }
 
   .headerToolLetter,
-  .headerToolLogo {
+.headerToolLogo {
     width: 32px !important;
     height: 32px !important;
     flex: 0 0 32px !important;
@@ -7323,7 +6709,7 @@ button.campaignInfoCard:disabled:hover {
 
 @media (max-width: 760px) {
   .cardStatus,
-  .cardPendingCount + .cardStatus {
+.cardPendingCount + .cardStatus {
     right: 6px !important;
     bottom: 6px !important;
     width: 5px !important;
@@ -7372,7 +6758,7 @@ button.campaignInfoCard:disabled:hover {
 /* ===== Correctif final Stats 21/06 : responsive + recommandations du dernier bilan ===== */
 @media (max-width: 760px) {
   .cardStatus,
-  .cardPendingCount + .cardStatus {
+.cardPendingCount + .cardStatus {
     right: 9px !important;
     bottom: 8px !important;
     width: 5px !important;
@@ -7514,7 +6900,7 @@ button.campaignInfoCard:disabled:hover {
   }
 
   .statsHeadCard,
-  .statsMiniCard {
+.statsMiniCard {
     min-height: 0 !important;
   }
 
@@ -7538,7 +6924,7 @@ button.campaignInfoCard:disabled:hover {
 /* ===== Correctif final 21/06 — responsive tuiles + stats recommandations propres ===== */
 @media (max-width: 760px) {
   .automationCard .cardStatus,
-  .automationCard .cardPendingCount + .cardStatus {
+.automationCard .cardPendingCount + .cardStatus {
     top: 50% !important;
     right: 38px !important;
     bottom: auto !important;
@@ -7849,7 +7235,7 @@ button.campaignInfoCard:disabled:hover {
 
 @media (max-width: 760px) {
   .automationCard .cardStatus,
-  .automationCard .cardPendingCount + .cardStatus {
+.automationCard .cardPendingCount + .cardStatus {
     top: 50% !important;
     right: 38px !important;
     bottom: auto !important;
@@ -8039,9 +7425,9 @@ button.campaignInfoCard:disabled:hover {
   }
 
   .previewMetaCampaign .saveCampaignDraftButton,
-  .previewMetaCampaign .modifyCampaignButton,
-  .previewMetaCampaign .previewActions .validateButton,
-  .previewMetaCampaign .previewActions .refuseButton {
+.previewMetaCampaign .modifyCampaignButton,
+.previewMetaCampaign .previewActions .validateButton,
+.previewMetaCampaign .previewActions .refuseButton {
     min-height: 52px !important;
     height: 52px !important;
   }
@@ -8355,18 +7741,18 @@ button.campaignInfoRecipients:hover {
   }
 
   .agentListModal,
-  .recipientsPickerModal {
+.recipientsPickerModal {
     width: min(430px, calc(100vw - 20px));
     max-height: calc(100dvh - 24px);
   }
 
   .agentListRow,
-  .agentSelectableRow {
+.agentSelectableRow {
     grid-template-columns: auto minmax(0, 1fr);
   }
 
   .agentSelectableRow input,
-  .agentListTag {
+.agentListTag {
     grid-column: 1;
   }
 
@@ -8375,8 +7761,8 @@ button.campaignInfoRecipients:hover {
   }
 
   .agentPickerToolbar,
-  .newRecipientBox,
-  .attachmentListRow {
+.newRecipientBox,
+.attachmentListRow {
     grid-template-columns: 1fr;
   }
 
@@ -8567,13 +7953,13 @@ button.campaignInfoRecipients:hover {
 
 @media (max-width: 760px) {
   .manualRecipientRow,
-  .recipientsPickerModal .agentPickerToolbar,
-  .agentFiltersPanel {
+.recipientsPickerModal .agentPickerToolbar,
+.agentFiltersPanel {
     grid-template-columns: 1fr;
   }
 
   .agentToolbarCount,
-  .agentImportantToggle {
+.agentImportantToggle {
     justify-content: center;
     width: 100%;
   }
@@ -8775,21 +8161,21 @@ button.campaignInfoRecipients:hover {
   }
 
   .recipientsPickerModal .manualRecipientRow,
-  .recipientsPickerModal .agentPickerToolbar,
-  .recipientsPickerModal .agentFiltersPanel,
-  .recipientsPickerModal .newRecipientBox {
+.recipientsPickerModal .agentPickerToolbar,
+.recipientsPickerModal .agentFiltersPanel,
+.recipientsPickerModal .newRecipientBox {
     grid-template-columns: 1fr 1fr;
   }
 
   .recipientsPickerModal .manualRecipientRow input,
-  .recipientsPickerModal .agentPickerToolbar input {
+.recipientsPickerModal .agentPickerToolbar input {
     grid-column: 1 / -1;
   }
 
   .recipientsPickerModal .agentToolbarCount,
-  .recipientsPickerModal .agentImportantToggle,
-  .recipientsPickerModal .newRecipientBox input,
-  .recipientsPickerModal .newRecipientBox button {
+.recipientsPickerModal .agentImportantToggle,
+.recipientsPickerModal .newRecipientBox input,
+.recipientsPickerModal .newRecipientBox button {
     width: 100%;
   }
 
@@ -8845,7 +8231,7 @@ button.campaignInfoRecipients:hover {
   }
 
   .automationCard .cardStatus,
-  .automationCard .cardPendingCount + .cardStatus {
+.automationCard .cardPendingCount + .cardStatus {
     top: 50% !important;
     right: 39px !important;
     bottom: auto !important;
@@ -8961,47 +8347,6 @@ button.campaignInfoRecipients:hover {
   overflow: hidden;
 }
 
-.scheduleSummaryGrid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 14px;
-}
-
-.scheduleSummaryGrid div {
-  min-height: 74px;
-  display: grid;
-  align-content: center;
-  gap: 4px;
-  border-radius: 18px;
-  padding: 12px 14px;
-  background: rgba(255, 255, 255, 0.055);
-  border: 1px solid rgba(148, 163, 255, 0.15);
-  box-shadow: inset 0 0 26px rgba(255, 255, 255, 0.03);
-}
-
-.scheduleSummaryGrid strong {
-  color: #ffffff;
-  font-size: 25px;
-  line-height: 1;
-  font-weight: 950;
-}
-
-.scheduleSummaryGrid small {
-  color: rgba(226, 242, 255, 0.72);
-  font-size: 12px;
-  font-weight: 750;
-}
-
-.scheduleSections {
-  min-height: 0;
-  margin-top: 16px;
-  display: grid;
-  gap: 14px;
-  overflow: auto;
-  padding-right: 4px;
-}
-
 .scheduleSection {
   display: grid;
   gap: 10px;
@@ -9028,140 +8373,6 @@ button.campaignInfoRecipients:hover {
   white-space: nowrap;
 }
 
-.scheduleRows {
-  display: grid;
-  gap: 8px;
-}
-
-.scheduleRow {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.055);
-  border: 1px solid rgba(148, 163, 255, 0.15);
-  box-shadow:
-    inset 0 0 26px rgba(255, 255, 255, 0.03),
-    0 12px 26px rgba(0, 0, 0, 0.14);
-}
-
-.scheduleRow[data-status="pending"] {
-  border-color: rgba(96, 165, 250, 0.34);
-  background: linear-gradient(
-    135deg,
-    rgba(37, 99, 235, 0.14),
-    rgba(124, 58, 237, 0.12)
-  );
-}
-
-.scheduleRow[data-status="running"] {
-  border-color: rgba(251, 191, 36, 0.34);
-  background: linear-gradient(
-    135deg,
-    rgba(251, 191, 36, 0.12),
-    rgba(249, 115, 22, 0.08)
-  );
-}
-
-.scheduleRow[data-status="failed"] {
-  border-color: rgba(248, 113, 113, 0.38);
-  background: linear-gradient(
-    135deg,
-    rgba(239, 68, 68, 0.13),
-    rgba(127, 29, 29, 0.08)
-  );
-}
-
-.scheduleRow[data-status="done"] {
-  border-color: rgba(52, 211, 153, 0.32);
-  background: linear-gradient(
-    135deg,
-    rgba(16, 185, 129, 0.11),
-    rgba(20, 184, 166, 0.07)
-  );
-}
-
-.scheduleRow[data-status="cancelled"] {
-  opacity: 0.78;
-}
-
-.scheduleRowMain,
-.scheduleRowMeta {
-  min-width: 0;
-  display: grid;
-  gap: 3px;
-}
-
-.scheduleRowMain strong,
-.scheduleRowMain small {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.scheduleRowMain strong {
-  color: #ffffff;
-  font-size: 14px;
-  font-weight: 900;
-}
-
-.scheduleRowMain small,
-.scheduleRowMeta small {
-  color: rgba(226, 242, 255, 0.66);
-  font-size: 12px;
-  font-weight: 650;
-}
-
-.scheduleRowMeta {
-  text-align: right;
-}
-
-.scheduleRowMeta strong {
-  color: #ffffff;
-  font-size: 13px;
-  font-weight: 860;
-  white-space: nowrap;
-}
-
-.scheduleStatus {
-  min-height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  padding: 0 10px;
-  color: #ffffff;
-  font-size: 11px;
-  font-weight: 880;
-  white-space: nowrap;
-  background: rgba(59, 130, 246, 0.2);
-  border: 1px solid rgba(125, 211, 252, 0.22);
-}
-
-.scheduleRow[data-status="running"] .scheduleStatus {
-  background: rgba(251, 191, 36, 0.18);
-  border-color: rgba(251, 191, 36, 0.3);
-}
-
-.scheduleRow[data-status="failed"] .scheduleStatus {
-  background: rgba(248, 113, 113, 0.17);
-  border-color: rgba(248, 113, 113, 0.34);
-}
-
-.scheduleRow[data-status="done"] .scheduleStatus {
-  background: rgba(52, 211, 153, 0.16);
-  border-color: rgba(52, 211, 153, 0.3);
-}
-
-.scheduleRow[data-status="cancelled"] .scheduleStatus {
-  background: rgba(148, 163, 184, 0.12);
-  border-color: rgba(148, 163, 184, 0.22);
-}
-
 .scheduleEmpty {
   margin: 0;
   padding: 13px 14px;
@@ -9179,7 +8390,7 @@ button.campaignInfoRecipients:hover {
   }
 
   .moduleSubtitleMobile,
-  .moduleSubtitleDesktop {
+.moduleSubtitleDesktop {
     display: none !important;
   }
 
@@ -9203,7 +8414,7 @@ button.campaignInfoRecipients:hover {
   }
 
   .headerScheduleIcon,
-  .headerScheduleIcon svg {
+.headerScheduleIcon svg {
     width: 20px !important;
     height: 20px !important;
   }
@@ -9211,26 +8422,6 @@ button.campaignInfoRecipients:hover {
   .scheduleModal {
     width: min(430px, calc(100vw - 20px));
     max-height: calc(100dvh - 24px);
-  }
-
-  .scheduleSummaryGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 7px;
-  }
-
-  .scheduleSummaryGrid div {
-    min-height: 58px;
-    padding: 9px;
-    border-radius: 15px;
-  }
-
-  .scheduleSummaryGrid strong {
-    font-size: 19px;
-  }
-
-  .scheduleSummaryGrid small {
-    font-size: 10px;
-    line-height: 1.15;
   }
 
   .scheduleSectionHeader {
@@ -9243,65 +8434,11 @@ button.campaignInfoRecipients:hover {
     font-size: 11px;
     white-space: normal;
   }
-
-  .scheduleRow {
-    grid-template-columns: minmax(0, 1fr) auto;
-    gap: 8px;
-    padding: 10px;
-    border-radius: 16px;
-  }
-
-  .scheduleStatus {
-    grid-column: 1 / -1;
-    justify-self: start;
-    min-height: 24px;
-    font-size: 10px;
-  }
-
-  .scheduleRowMain strong {
-    font-size: 13px;
-  }
-
-  .scheduleRowMain small,
-  .scheduleRowMeta small {
-    font-size: 11px;
-  }
 }
 
 /* Planning iNrAgent — listing chronologique compact */
 .scheduleModal {
   grid-template-rows: auto auto auto minmax(0, 1fr) !important;
-}
-
-.scheduleSummaryLine {
-  margin-top: 14px;
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  width: fit-content;
-  max-width: 100%;
-  min-height: 42px;
-  padding: 8px 13px;
-  border-radius: 999px;
-  color: rgba(226, 242, 255, 0.78);
-  background: rgba(255, 255, 255, 0.055);
-  border: 1px solid rgba(148, 163, 255, 0.16);
-}
-
-.scheduleSummaryLine strong {
-  color: #fff;
-  font-size: 21px;
-  line-height: 1;
-  font-weight: 950;
-}
-
-.scheduleSummaryLine span {
-  min-width: 0;
-  font-size: 12px;
-  font-weight: 760;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .scheduleTable {
@@ -9391,45 +8528,12 @@ button.campaignInfoRecipients:hover {
   white-space: nowrap;
 }
 
-.scheduleMiniButton {
-  width: 100%;
-  min-height: 28px;
-  border: 1px solid rgba(125, 211, 252, 0.22);
-  border-radius: 999px;
-  color: #ffffff;
-  background: rgba(59, 130, 246, 0.18);
-  font-size: 11px;
-  font-weight: 850;
-  cursor: pointer;
-}
-
-.scheduleMiniButton:disabled {
-  opacity: 0.48;
-  cursor: not-allowed;
-}
-
-.scheduleMiniDanger {
-  border-color: rgba(248, 113, 113, 0.26);
-  background: rgba(248, 113, 113, 0.13);
-}
-
 
 @media (max-width: 760px) {
   .scheduleModal {
     width: min(430px, calc(100vw - 18px)) !important;
     max-height: calc(100dvh - 18px) !important;
     grid-template-rows: auto auto auto minmax(0, 1fr) !important;
-  }
-
-  .scheduleSummaryLine {
-    width: 100%;
-    min-height: 38px;
-    border-radius: 15px;
-  }
-
-  .scheduleSummaryLine span {
-    white-space: normal;
-    line-height: 1.2;
   }
 
   .scheduleTableHeader {
@@ -9469,15 +8573,15 @@ button.campaignInfoRecipients:hover {
   }
 
   .scheduleTableRow > span:nth-child(2),
-  .scheduleTableRow > span:nth-child(3),
-  .scheduleTableRow > span:nth-child(4),
-  .scheduleTableRow > span:nth-child(5) {
+.scheduleTableRow > span:nth-child(3),
+.scheduleTableRow > span:nth-child(4),
+.scheduleTableRow > span:nth-child(5) {
     grid-column: 1 / -1;
     font-size: 11px;
   }
 
   .scheduleTableRow > span:nth-child(6),
-  .scheduleTableRow > span:nth-child(7) {
+.scheduleTableRow > span:nth-child(7) {
     min-width: 0;
   }
 }
@@ -9502,9 +8606,9 @@ button.campaignInfoRecipients:hover {
   }
 
   .headerAiButton,
-  .headerScheduleButton,
-  .headerToolButton,
-  .headerCloseButton {
+.headerScheduleButton,
+.headerToolButton,
+.headerCloseButton {
     width: 28px !important;
     min-width: 28px !important;
     max-width: 28px !important;
@@ -9516,14 +8620,14 @@ button.campaignInfoRecipients:hover {
   }
 
   .headerScheduleIcon,
-  .headerScheduleIcon svg,
-  .headerToolLogo {
+.headerScheduleIcon svg,
+.headerToolLogo {
     width: 18px !important;
     height: 18px !important;
   }
 
   .headerToolLabel,
-  .headerScheduleLabel {
+.headerScheduleLabel {
     display: none !important;
   }
 }
@@ -9830,18 +8934,18 @@ button.campaignInfoRecipients:hover {
   }
 
   .scheduleTableRow > span:nth-child(2),
-  .scheduleTableRow > span:nth-child(3),
-  .scheduleTableRow > span:nth-child(4),
-  .scheduleTableRow > span:nth-child(5) {
+.scheduleTableRow > span:nth-child(3),
+.scheduleTableRow > span:nth-child(4),
+.scheduleTableRow > span:nth-child(5) {
     grid-column: 1 / 2 !important;
     font-size: 11px !important;
     color: rgba(226, 242, 255, 0.72);
   }
 
   .scheduleTableRow > span:nth-child(2)::before,
-  .scheduleTableRow > span:nth-child(3)::before,
-  .scheduleTableRow > span:nth-child(4)::before,
-  .scheduleTableRow > span:nth-child(5)::before {
+.scheduleTableRow > span:nth-child(3)::before,
+.scheduleTableRow > span:nth-child(4)::before,
+.scheduleTableRow > span:nth-child(5)::before {
     content: none !important;
   }
 
@@ -9864,9 +8968,9 @@ button.campaignInfoRecipients:hover {
   }
 
   .headerAiButton,
-  .headerScheduleButton,
-  .headerToolButton,
-  .headerCloseButton {
+.headerScheduleButton,
+.headerToolButton,
+.headerCloseButton {
     width: 28px !important;
     min-width: 28px !important;
     max-width: 28px !important;
@@ -9921,10 +9025,10 @@ button.campaignInfoRecipients:hover {
   }
 
   .scheduleTableRow > span:nth-child(1),
-  .scheduleTableRow > span:nth-child(2),
-  .scheduleTableRow > span:nth-child(4),
-  .scheduleTableRow > span:nth-child(5),
-  .scheduleTableRow > span:nth-child(6) {
+.scheduleTableRow > span:nth-child(2),
+.scheduleTableRow > span:nth-child(4),
+.scheduleTableRow > span:nth-child(5),
+.scheduleTableRow > span:nth-child(6) {
     grid-column: 1 / 2 !important;
     font-size: 11px !important;
     color: rgba(226, 242, 255, 0.72) !important;
@@ -9957,7 +9061,7 @@ button.campaignInfoRecipients:hover {
   }
 
   .scheduleTableRow > span:nth-child(1)::after,
-  .scheduleTableRow > span:nth-child(2)::after {
+.scheduleTableRow > span:nth-child(2)::after {
     content: none !important;
   }
 }
@@ -10047,72 +9151,6 @@ button.campaignInfoRecipients:hover {
   overflow: hidden;
 }
 
-.publishPostHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid rgba(148, 163, 255, 0.15);
-}
-
-.publishPostHeader > div:first-child {
-  min-width: 0;
-  display: grid;
-  gap: 3px;
-}
-
-.publishPostHeader span {
-  color: rgba(125, 211, 252, 0.9);
-  font-size: 12px;
-  font-weight: 900;
-  letter-spacing: 0.09em;
-  text-transform: uppercase;
-}
-
-.publishPostHeader strong {
-  min-width: 0;
-  color: #ffffff;
-  font-size: clamp(19px, 1.45vw, 25px);
-  line-height: 1.12;
-  font-weight: 900;
-  letter-spacing: -0.04em;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.publishPostBadges {
-  flex: 0 0 auto;
-  display: inline-flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.publishPostBadges span {
-  min-height: 28px;
-  display: inline-flex;
-  align-items: center;
-  border-radius: 999px;
-  padding: 0 10px;
-  color: rgba(236, 253, 255, 0.94);
-  font-size: 11px;
-  font-weight: 850;
-  letter-spacing: 0;
-  text-transform: none;
-  background: rgba(14, 165, 233, 0.13);
-  border: 1px solid rgba(125, 211, 252, 0.2);
-}
-
-.publishPostLayout {
-  min-height: 0;
-  display: grid;
-  grid-template-columns: minmax(220px, 0.36fr) minmax(0, 1fr);
-  gap: clamp(16px, 1.7vw, 24px);
-  align-items: stretch;
-}
-
 .publishMediaPreview {
   min-height: 0;
   border-radius: 18px;
@@ -10130,62 +9168,6 @@ button.campaignInfoRecipients:hover {
   min-height: clamp(230px, 34vh, 420px);
   object-fit: cover;
   background: rgba(2, 6, 23, 0.55);
-}
-
-.publishMediaFallback {
-  min-height: clamp(230px, 34vh, 420px);
-  height: 100%;
-  display: grid;
-  place-items: center;
-  align-content: center;
-  gap: 10px;
-  padding: 22px;
-  text-align: center;
-  color: rgba(226, 242, 255, 0.78);
-  background:
-    radial-gradient(
-      circle at 50% 0%,
-      rgba(59, 130, 246, 0.13),
-      transparent 44%
-    ),
-    rgba(7, 20, 48, 0.34);
-  border: 1px dashed rgba(148, 163, 255, 0.25);
-}
-
-.publishMediaFallbackWarning {
-  color: rgba(254, 215, 170, 0.96);
-  background:
-    radial-gradient(
-      circle at 50% 0%,
-      rgba(249, 115, 22, 0.15),
-      transparent 44%
-    ),
-    rgba(48, 24, 7, 0.25);
-  border-color: rgba(251, 146, 60, 0.3);
-}
-
-.publishMediaFallback svg {
-  width: 42px;
-  height: 42px;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.9;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-.publishMediaFallback strong {
-  color: #ffffff;
-  font-size: 15px;
-  font-weight: 900;
-}
-
-.publishMediaFallback span {
-  max-width: 260px;
-  color: rgba(226, 242, 255, 0.72);
-  font-size: 12px;
-  line-height: 1.4;
-  font-weight: 700;
 }
 
 .publishPostText {
@@ -10214,10 +9196,6 @@ button.campaignInfoRecipients:hover {
 
 .publishPreviewEmpty .publishPostCard {
   min-height: 0;
-}
-
-.publishPreviewEmpty .publishMediaFallback {
-  opacity: 0.9;
 }
 
 .publishEmptyHint {
@@ -10250,22 +9228,13 @@ button.campaignInfoRecipients:hover {
   font-weight: 700;
 }
 
-.publishEmptyHint .prepareButton {
-  margin-top: 6px;
-}
-
 @media (max-width: 1180px) {
   .publishInfoGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .publishPostLayout {
-    grid-template-columns: 1fr;
-  }
-
   .publishMediaPreview img,
-  .publishMediaPreview video,
-  .publishMediaFallback {
+.publishMediaPreview video {
     min-height: 220px;
     max-height: 340px;
   }
@@ -10282,18 +9251,8 @@ button.campaignInfoRecipients:hover {
     border-radius: 18px;
   }
 
-  .publishPostHeader {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .publishPostBadges {
-    justify-content: flex-start;
-  }
-
   .publishMediaPreview img,
-  .publishMediaPreview video,
-  .publishMediaFallback {
+.publishMediaPreview video {
     min-height: 190px;
     max-height: 260px;
   }
@@ -10318,36 +9277,10 @@ button.campaignInfoRecipients:hover {
   padding: clamp(18px, 1.8vw, 26px) !important;
 }
 
-.publishEditButton {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  z-index: 3;
-  width: 44px;
-  height: 44px;
-  display: inline-grid;
-  place-items: center;
-  border-radius: 14px;
-  color: #ffffff;
-  font-size: 17px;
-  font-weight: 950;
-  cursor: pointer;
-  background: rgba(30, 41, 96, 0.82);
-  border: 1px solid rgba(148, 163, 255, 0.22);
-  box-shadow:
-    0 16px 34px rgba(0, 0, 0, 0.18),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
-}
-
 .publishEditButton:hover:not(:disabled) {
   transform: translateY(-1px);
   border-color: rgba(125, 211, 252, 0.38);
   box-shadow: 0 0 24px rgba(96, 165, 250, 0.2);
-}
-
-.publishEditButton:disabled {
-  opacity: 0.42;
-  cursor: not-allowed;
 }
 
 .publishPostText {
@@ -10449,30 +9382,22 @@ button.campaignInfoRecipients:hover {
     padding: 14px !important;
   }
 
-  .publishEditButton {
-    top: 12px;
-    right: 12px;
-    width: 38px;
-    height: 38px;
-    border-radius: 12px;
-  }
-
   .publishPostText {
     padding-right: 44px;
   }
 
   .publishTitleLine,
-  .publishCtaLine {
+.publishCtaLine {
     gap: 6px;
   }
 
   .publishTitleLine span,
-  .publishCtaLine span {
+.publishCtaLine span {
     font-size: 13px;
   }
 
   .publishTitleLine strong,
-  .publishCtaLine strong {
+.publishCtaLine strong {
     font-size: 13px;
   }
 
@@ -10622,10 +9547,10 @@ button.campaignInfoRecipients:hover {
   }
 
   .previewMetaPublish .metaItem,
-  .previewMetaPublish .saveCampaignDraftButton,
-  .previewMetaPublish .modifyCampaignButton,
-  .previewMetaPublish .previewActions .validateButton,
-  .previewMetaPublish .previewActions .refuseButton {
+.previewMetaPublish .saveCampaignDraftButton,
+.previewMetaPublish .modifyCampaignButton,
+.previewMetaPublish .previewActions .validateButton,
+.previewMetaPublish .previewActions .refuseButton {
     min-height: 46px !important;
     height: 46px !important;
     border-radius: 14px;
@@ -10677,7 +9602,7 @@ button.campaignInfoRecipients:hover {
   }
 
   .previewMetaPublish .saveCampaignDraftButton span,
-  .previewMetaPublish .modifyCampaignButton span {
+.previewMetaPublish .modifyCampaignButton span {
     font-size: 17px;
   }
 
@@ -10686,14 +9611,14 @@ button.campaignInfoRecipients:hover {
   }
 
   .previewMetaPublish .previewActions .validateButton,
-  .previewMetaPublish .previewActions .refuseButton {
+.previewMetaPublish .previewActions .refuseButton {
     gap: 4px;
     padding: 0 8px;
     font-size: 0;
   }
 
   .previewMetaPublish .previewActions .validateButton span,
-  .previewMetaPublish .previewActions .refuseButton span {
+.previewMetaPublish .previewActions .refuseButton span {
     margin: 0;
   }
 }
@@ -10834,8 +9759,8 @@ button.campaignInfoRecipients:hover {
   }
 
   .robotCard,
-  .workColumn,
-  .previewCard {
+.workColumn,
+.previewCard {
     min-height: 0 !important;
   }
 
@@ -10846,7 +9771,7 @@ button.campaignInfoRecipients:hover {
   }
 
   .workColumn,
-  .previewCard {
+.previewCard {
     overflow: hidden !important;
   }
 
@@ -10860,12 +9785,12 @@ button.campaignInfoRecipients:hover {
   }
 
   .previewBody::-webkit-scrollbar,
-  .robotCard::-webkit-scrollbar {
+.robotCard::-webkit-scrollbar {
     width: 7px;
   }
 
   .previewBody::-webkit-scrollbar-thumb,
-  .robotCard::-webkit-scrollbar-thumb {
+.robotCard::-webkit-scrollbar-thumb {
     border-radius: 999px;
     background: rgba(125, 211, 252, 0.36);
   }
@@ -10887,8 +9812,8 @@ button.campaignInfoRecipients:hover {
   }
 
   .workColumn,
-  .previewCard,
-  .previewBody {
+.previewCard,
+.previewBody {
     overflow: visible !important;
   }
 }
@@ -11014,10 +9939,10 @@ button.campaignInfoRecipients:hover {
   }
 
   .previewMetaPublish .metaItem,
-  .previewMetaPublish .saveCampaignDraftButton,
-  .previewMetaPublish .modifyCampaignButton,
-  .previewMetaPublish .previewActions .validateButton,
-  .previewMetaPublish .previewActions .refuseButton {
+.previewMetaPublish .saveCampaignDraftButton,
+.previewMetaPublish .modifyCampaignButton,
+.previewMetaPublish .previewActions .validateButton,
+.previewMetaPublish .previewActions .refuseButton {
     min-height: 50px !important;
     height: 50px !important;
     border-radius: 15px;
@@ -11046,14 +9971,14 @@ button.campaignInfoRecipients:hover {
   }
 
   .previewMetaPublish .previewActions .validateButton,
-  .previewMetaPublish .previewActions .refuseButton {
+.previewMetaPublish .previewActions .refuseButton {
     gap: 7px;
     padding: 0 10px;
     font-size: 14px;
   }
 
   .previewMetaPublish .previewActions .validateButton span,
-  .previewMetaPublish .previewActions .refuseButton span {
+.previewMetaPublish .previewActions .refuseButton span {
     width: 26px;
     height: 26px;
   }
@@ -11073,13 +9998,13 @@ button.campaignInfoRecipients:hover {
   }
 
   .previewMetaPublish .previewActions .validateButton,
-  .previewMetaPublish .previewActions .refuseButton {
+.previewMetaPublish .previewActions .refuseButton {
     font-size: 0;
     padding: 0 12px;
   }
 
   .previewMetaPublish .previewActions .validateButton span,
-  .previewMetaPublish .previewActions .refuseButton span {
+.previewMetaPublish .previewActions .refuseButton span {
     margin: 0;
   }
 }
@@ -11140,7 +10065,7 @@ button.campaignInfoRecipients:hover {
   }
 
   .previewMetaPublish .previewActions .validateButton,
-  .previewMetaPublish .previewActions .refuseButton {
+.previewMetaPublish .previewActions .refuseButton {
     min-height: 48px !important;
     height: 48px !important;
     gap: 6px;
@@ -11297,7 +10222,7 @@ button.campaignInfoRecipients:hover {
   }
 
   .automationCard .cardStatus,
-  .automationCard .cardPendingCount + .cardStatus {
+.automationCard .cardPendingCount + .cardStatus {
     top: 50% !important;
     right: 34px !important;
     bottom: auto !important;
@@ -11355,7 +10280,7 @@ button.campaignInfoRecipients:hover {
   }
 
   .automationCard .cardStatus,
-  .automationCard .cardPendingCount + .cardStatus {
+.automationCard .cardPendingCount + .cardStatus {
     right: 31px !important;
   }
 }
@@ -11523,7 +10448,7 @@ button.campaignInfoRecipients:hover {
   }
 
   .previewMetaPublish .saveCampaignDraftButton,
-  .previewMetaPublish .modifyCampaignButton {
+.previewMetaPublish .modifyCampaignButton {
     width: 50px !important;
     min-width: 50px !important;
     max-width: 50px !important;
@@ -11548,7 +10473,7 @@ button.campaignInfoRecipients:hover {
   }
 
   .previewMetaPublish .saveCampaignDraftButton,
-  .previewMetaPublish .modifyCampaignButton {
+.previewMetaPublish .modifyCampaignButton {
     width: 50px !important;
     min-width: 50px !important;
     max-width: 50px !important;
@@ -11565,22 +10490,13 @@ button.campaignInfoRecipients:hover {
     padding: 13px !important;
   }
 
-  .publishPostHeader {
-    display: grid !important;
-    grid-template-columns: minmax(0, 1fr) 38px !important;
-    gap: 10px !important;
-    align-items: start !important;
-  }
-
-  .publishPostHeader > div:first-child,
   .publishPostText,
-  .publishPostContent,
-  .publishPostContent p {
+.publishPostContent,
+.publishPostContent p {
     width: 100% !important;
     max-width: none !important;
   }
 
-  .publishPostHeader strong,
   .publishTitleLine strong {
     white-space: normal !important;
   }
@@ -11609,7 +10525,7 @@ button.campaignInfoRecipients:hover {
   }
 
   .previewMetaPublish .saveCampaignDraftButton,
-  .previewMetaPublish .modifyCampaignButton {
+.previewMetaPublish .modifyCampaignButton {
     width: 46px !important;
     min-width: 46px !important;
     max-width: 46px !important;
@@ -11620,9 +10536,9 @@ button.campaignInfoRecipients:hover {
   }
 
   .publishCtaGrid,
-  .publishCtaGrid[data-mode="call"],
-  .publishCtaGrid[data-mode="none"],
-  .publishCtaGrid[data-mode="message"] {
+.publishCtaGrid[data-mode="call"],
+.publishCtaGrid[data-mode="none"],
+.publishCtaGrid[data-mode="message"] {
     grid-template-columns: 1fr !important;
   }
 
@@ -11678,13 +10594,13 @@ button.campaignInfoRecipients:hover {
 /* iNrAgent Publier — libellés au survol des boutons icônes du bandeau desktop */
 @media (min-width: 761px) and (hover: hover) and (pointer: fine) {
   .previewMetaPublish .saveCampaignDraftButton,
-  .previewMetaPublish .modifyCampaignButton {
+.previewMetaPublish .modifyCampaignButton {
     position: relative !important;
     overflow: visible !important;
   }
 
   .previewMetaPublish .saveCampaignDraftButton::after,
-  .previewMetaPublish .modifyCampaignButton::after {
+.previewMetaPublish .modifyCampaignButton::after {
     content: attr(data-tooltip);
     position: absolute;
     left: 50%;
@@ -11714,7 +10630,7 @@ button.campaignInfoRecipients:hover {
   }
 
   .previewMetaPublish .saveCampaignDraftButton::before,
-  .previewMetaPublish .modifyCampaignButton::before {
+.previewMetaPublish .modifyCampaignButton::before {
     content: "";
     position: absolute;
     left: 50%;
@@ -11734,20 +10650,20 @@ button.campaignInfoRecipients:hover {
   }
 
   .previewMetaPublish .saveCampaignDraftButton:hover:not(:disabled)::after,
-  .previewMetaPublish .modifyCampaignButton:hover:not(:disabled)::after,
-  .previewMetaPublish
+.previewMetaPublish .modifyCampaignButton:hover:not(:disabled)::after,
+.previewMetaPublish
     .saveCampaignDraftButton:focus-visible:not(:disabled)::after,
-  .previewMetaPublish
+.previewMetaPublish
     .modifyCampaignButton:focus-visible:not(:disabled)::after {
     opacity: 1;
     transform: translate(-50%, 0) scale(1);
   }
 
   .previewMetaPublish .saveCampaignDraftButton:hover:not(:disabled)::before,
-  .previewMetaPublish .modifyCampaignButton:hover:not(:disabled)::before,
-  .previewMetaPublish
+.previewMetaPublish .modifyCampaignButton:hover:not(:disabled)::before,
+.previewMetaPublish
     .saveCampaignDraftButton:focus-visible:not(:disabled)::before,
-  .previewMetaPublish
+.previewMetaPublish
     .modifyCampaignButton:focus-visible:not(:disabled)::before {
     opacity: 1;
     transform: translate(-50%, 0) rotate(45deg) scale(1);
@@ -11778,30 +10694,6 @@ button.campaignInfoCard:focus-visible .campaignInfoEye {
 /* iNrAgent Publier — modale média depuis l'œil du bloc Média */
 .publishMediaModal {
   max-width: min(92vw, 760px) !important;
-}
-
-.publishMediaCurrent {
-  display: grid;
-  grid-template-columns: minmax(180px, 0.42fr) minmax(0, 1fr);
-  gap: 16px;
-  align-items: stretch;
-  margin: 14px 0 18px;
-  padding: 14px;
-  border-radius: 20px;
-  background: rgba(4, 12, 30, 0.34);
-  border: 1px solid rgba(148, 163, 255, 0.16);
-}
-
-.publishMediaCurrent img,
-.publishMediaCurrent video {
-  width: 100%;
-  min-height: 180px;
-  max-height: 260px;
-  display: block;
-  object-fit: cover;
-  border-radius: 16px;
-  background: rgba(2, 6, 23, 0.62);
-  border: 1px solid rgba(96, 165, 250, 0.18);
 }
 
 .publishMediaEmpty {
@@ -11843,79 +10735,11 @@ button.campaignInfoCard:focus-visible .campaignInfoEye {
 }
 
 @media (max-width: 760px) {
-  .publishMediaCurrent {
-    grid-template-columns: 1fr;
-  }
 
-  .publishMediaCurrent img,
-  .publishMediaCurrent video,
   .publishMediaEmpty {
     min-height: 160px;
     max-height: 220px;
   }
-}
-
-.publishMediaLibraryBlock {
-  margin: 14px 0 18px;
-  padding: 14px;
-  border-radius: 20px;
-  background: rgba(5, 15, 35, 0.32);
-  border: 1px solid rgba(148, 163, 255, 0.14);
-}
-
-.publishMediaLibraryHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-}
-
-.publishMediaLibraryHeader strong {
-  color: #fff;
-  font-weight: 900;
-}
-
-.publishMediaLibraryHeader button {
-  border: 1px solid rgba(125, 211, 252, 0.28);
-  background: rgba(59, 130, 246, 0.16);
-  color: rgba(226, 242, 255, 0.92);
-  border-radius: 999px;
-  padding: 8px 12px;
-  font-weight: 850;
-  cursor: pointer;
-}
-
-.publishMediaLibraryHeader button:disabled {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-.publishMediaLibraryGrid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  max-height: 250px;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding-right: 2px;
-}
-
-.publishMediaLibraryItem {
-  min-width: 0;
-  border: 1px solid rgba(148, 163, 255, 0.16);
-  background: rgba(2, 6, 23, 0.42);
-  color: rgba(226, 242, 255, 0.9);
-  border-radius: 16px;
-  padding: 8px;
-  text-align: left;
-  display: grid;
-  gap: 6px;
-  cursor: pointer;
-  transition:
-    border-color 0.18s ease,
-    background 0.18s ease,
-    transform 0.18s ease;
 }
 
 .publishMediaLibraryItem:hover:not(:disabled),
@@ -11923,67 +10747,6 @@ button.campaignInfoCard:focus-visible .campaignInfoEye {
   transform: translateY(-1px);
   border-color: rgba(125, 211, 252, 0.42);
   background: rgba(15, 23, 42, 0.62);
-}
-
-.publishMediaLibraryItem:disabled {
-  opacity: 0.48;
-  cursor: not-allowed;
-}
-
-.publishMediaLibraryItem img,
-.publishMediaLibraryItem video {
-  width: 100%;
-  aspect-ratio: 1.35 / 1;
-  object-fit: cover;
-  border-radius: 12px;
-  background: rgba(2, 6, 23, 0.74);
-  border: 1px solid rgba(96, 165, 250, 0.16);
-}
-
-.publishMediaLibraryItem > span[aria-hidden] {
-  width: 100%;
-  aspect-ratio: 1.35 / 1;
-  display: grid;
-  place-items: center;
-  border-radius: 12px;
-  background: rgba(2, 6, 23, 0.74);
-  font-size: 24px;
-}
-
-.publishMediaLibraryItem strong,
-.publishMediaLibraryItem small {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.publishMediaLibraryItem strong {
-  color: #fff;
-  font-size: 12px;
-  font-weight: 900;
-}
-
-.publishMediaLibraryItem small,
-.publishMediaLibraryEmpty {
-  color: rgba(226, 242, 255, 0.68);
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.publishMediaLibraryEmpty {
-  margin: 0;
-  padding: 12px;
-  border-radius: 14px;
-  background: rgba(2, 6, 23, 0.34);
-  border: 1px dashed rgba(148, 163, 255, 0.18);
-}
-
-@media (max-width: 760px) {
-  .publishMediaLibraryGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    max-height: 280px;
-  }
 }
 
 /* Étape 26 — iNrAgent média : adaptation automatique par canal */
@@ -12033,15 +10796,6 @@ button.campaignInfoCard:focus-visible .campaignInfoEye {
   overflow: auto;
 }
 
-.publishMediaModal .publishMediaCurrent {
-  margin: 10px 0 12px;
-  padding: 12px;
-  grid-template-columns: minmax(150px, 0.35fr) minmax(0, 1fr);
-  gap: 12px;
-}
-
-.publishMediaModal .publishMediaCurrent img,
-.publishMediaModal .publishMediaCurrent video,
 .publishMediaModal .publishMediaEmpty {
   min-height: 130px;
   max-height: 180px;
@@ -12101,17 +10855,13 @@ button.campaignInfoCard:focus-visible .campaignInfoEye {
     width: calc(100vw - 18px);
   }
 
-  .publishMediaModal .publishMediaCurrent {
-    grid-template-columns: 1fr;
-  }
-
   .publishMediaActionButtons {
     display: grid;
     grid-template-columns: 1fr 1fr;
   }
 
   .publishMediaActionButtons label,
-  .publishMediaActionButtons button {
+.publishMediaActionButtons button {
     min-height: 40px;
     padding: 0 10px;
     font-size: 12px;
@@ -12161,7 +10911,7 @@ button.campaignInfoCard:focus-visible .campaignInfoEye {
   }
 
   .campaignAttachmentActionButtons label,
-  .campaignAttachmentActionButtons button {
+.campaignAttachmentActionButtons button {
     min-height: 40px;
     padding: 0 10px;
     font-size: 12px;
@@ -12431,7 +11181,7 @@ button.campaignInfoCard:focus-visible .campaignInfoEye {
 
 @media (max-width: 760px) {
   .publishMediaModalHeader,
-  .publishMediaSourceHeader {
+.publishMediaSourceHeader {
     flex-direction: column;
     align-items: flex-start;
   }
@@ -12457,7 +11207,7 @@ button.campaignInfoCard:focus-visible .campaignInfoEye {
   }
 
   .publishMediaVisual img,
-  .publishMediaVisual video {
+.publishMediaVisual video {
     width: 100% !important;
     max-width: 100% !important;
     height: auto !important;
@@ -12470,7 +11220,7 @@ button.campaignInfoCard:focus-visible .campaignInfoEye {
   }
 
   .publishMediaSourcePanel .publishMediaActionButtons label,
-  .publishMediaSourcePanel .publishMediaActionButtons button {
+.publishMediaSourcePanel .publishMediaActionButtons button {
     min-height: 86px;
   }
 }
@@ -12501,7 +11251,7 @@ button.campaignInfoCard:focus-visible .campaignInfoEye {
   }
 
   .publishVideoAdapterModal > div,
-  .publishVideoAdapterModal video {
+.publishVideoAdapterModal video {
     max-width: 100% !important;
   }
 
@@ -12563,9 +11313,9 @@ button.campaignInfoCard:focus-visible .campaignInfoEye {
 
 @media (max-width: 1180px) {
   .publishInfoGrid .campaignInfoCard strong,
-  .campaignInfoGrid .campaignInfoCard strong,
-  .publishInfoGrid .campaignInfoMailLabel,
-  .campaignInfoGrid .campaignInfoMailLabel {
+.campaignInfoGrid .campaignInfoCard strong,
+.publishInfoGrid .campaignInfoMailLabel,
+.campaignInfoGrid .campaignInfoMailLabel {
     font-size: 12px !important;
     line-height: 1.05 !important;
   }
@@ -13123,7 +11873,7 @@ button.campaignInfoCard:focus-visible .campaignInfoEye {
   }
 
   .automationCard .cardStatus,
-  .automationCard .cardPendingCount + .cardStatus {
+.automationCard .cardPendingCount + .cardStatus {
     top: 50% !important;
     right: 8px !important;
     bottom: auto !important;
@@ -13181,7 +11931,7 @@ button.campaignInfoCard:focus-visible .campaignInfoEye {
   }
 
   .automationCard .cardStatus,
-  .automationCard .cardPendingCount + .cardStatus {
+.automationCard .cardPendingCount + .cardStatus {
     right: 8px !important;
   }
 }
@@ -13383,7 +12133,7 @@ button.campaignInfoCard:focus-visible .campaignInfoEye {
   }
 
   .previewMetaPublish .saveCampaignDraftButton,
-  .previewMetaPublish .modifyCampaignButton {
+.previewMetaPublish .modifyCampaignButton {
     width: 52px !important;
     min-width: 52px !important;
     max-width: 52px !important;
@@ -13419,7 +12169,7 @@ button.campaignInfoCard:focus-visible .campaignInfoEye {
   }
 
   .previewMetaPublish .saveCampaignDraftButton,
-  .previewMetaPublish .modifyCampaignButton {
+.previewMetaPublish .modifyCampaignButton {
     width: 48px !important;
     min-width: 48px !important;
     max-width: 48px !important;
@@ -13557,15 +12307,15 @@ button.campaignInfoCard:focus-visible .campaignInfoEye {
   }
 
   .previewMetaPublish .dateItem,
-  .previewMetaPublish .saveCampaignDraftButton,
-  .previewMetaPublish .modifyCampaignButton,
-  .previewMetaPublish .previewActions {
+.previewMetaPublish .saveCampaignDraftButton,
+.previewMetaPublish .modifyCampaignButton,
+.previewMetaPublish .previewActions {
     align-self: end !important;
   }
 
   .previewMetaPublish .dateItem,
-  .previewMetaPublish .saveCampaignDraftButton,
-  .previewMetaPublish .modifyCampaignButton {
+.previewMetaPublish .saveCampaignDraftButton,
+.previewMetaPublish .modifyCampaignButton {
     min-height: 52px !important;
     height: 52px !important;
   }
@@ -13576,7 +12326,7 @@ button.campaignInfoCard:focus-visible .campaignInfoEye {
   }
 
   .previewMetaPublish .previewActions .validateButton,
-  .previewMetaPublish .previewActions .refuseButton {
+.previewMetaPublish .previewActions .refuseButton {
     min-height: 52px !important;
     height: 52px !important;
   }
@@ -13711,7 +12461,7 @@ button.campaignInfoCard:focus-visible .campaignInfoEye {
   }
 
   .previewMetaPublish .previewActions,
-  .previewMetaCampaign .previewActions {
+.previewMetaCampaign .previewActions {
     overflow: visible;
   }
 }
@@ -13806,14 +12556,14 @@ button.campaignInfoCard:focus-visible .campaignInfoEye {
   }
 
   .previewCard,
-  .previewBody {
+.previewBody {
     width: 100%;
     overflow-x: hidden !important;
   }
 
   .previewMetaPublish,
-  .previewMetaCampaign,
-  .previewMetaStats {
+.previewMetaCampaign,
+.previewMetaStats {
     max-width: 100%;
   }
 }
@@ -13832,9 +12582,9 @@ button.campaignInfoCard:focus-visible .campaignInfoEye {
   }
 
   .headerScheduleButton,
-  .headerToolButton,
-  .headerInrSendButton,
-  .headerCloseButton {
+.headerToolButton,
+.headerInrSendButton,
+.headerCloseButton {
     width: 40px;
     min-width: 40px;
     max-width: 40px;
@@ -13845,9 +12595,9 @@ button.campaignInfoCard:focus-visible .campaignInfoEye {
   }
 
   .headerScheduleLabel,
-  .headerToolLabel,
-  .headerInrSendLabel,
-  .headerCloseLabel {
+.headerToolLabel,
+.headerInrSendLabel,
+.headerCloseLabel {
     display: none;
   }
 
@@ -13972,7 +12722,7 @@ button.campaignInfoCard:focus-visible .campaignInfoEye {
   }
 
   .previewMetaPublish .saveCampaignDraftButton,
-  .previewMetaPublish .modifyCampaignButton {
+.previewMetaPublish .modifyCampaignButton {
     width: 48px !important;
     min-width: 48px !important;
     max-width: 48px !important;

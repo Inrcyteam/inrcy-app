@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
 import { buildMediaLibraryContentUrl } from "@/lib/mediaLibraryContentUrl";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { createSignedUploadUrlWithRetry } from "@/lib/supabaseStorageUpload";
 import {
   INR_MEDIA_ALLOWED_IMAGE_MIME_TYPES,
   INR_MEDIA_ALLOWED_VIDEO_MIME_TYPES,
@@ -190,9 +191,9 @@ async function handlePrepareUpload(
 
     assertAllowedFile(name, mime, size);
     const storagePath = buildStoragePath(userId, name, mime, index);
-    const signed = await supabaseAdmin.storage
-      .from(BUCKET)
-      .createSignedUploadUrl(storagePath);
+    const signed = await createSignedUploadUrlWithRetry(() =>
+      supabaseAdmin.storage.from(BUCKET).createSignedUploadUrl(storagePath),
+    );
     if (signed.error || !signed.data?.token) {
       throw new Error(
         signed.error?.message || "Impossible de préparer l’upload Supabase.",

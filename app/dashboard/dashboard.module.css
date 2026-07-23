@@ -411,7 +411,7 @@
    User menu (desktop)
 ========================= */
 
-/* User menu moved to _components/UserMenu.module.css */
+/* User menu styles are kept in this shared dashboard module. */
 
 /* =========================
    Mobile hamburger menu
@@ -3759,7 +3759,7 @@
    Profil incomplete indicator (mini)
 ========================= */
 
-/* Profile completion tooltip moved to _components/UserMenu.module.css */
+/* Profile completion styles are kept in this shared dashboard module. */
 
 /* =========================
    Hamburger – profil incomplet
@@ -4181,7 +4181,7 @@
   position: relative;
 }
 
-/* Notification panel moved to _components/NotificationMenu.module.css */
+/* Notification panel styles are kept in this shared dashboard module. */
 
 /* =========================
    Dashboard topbar user menu (restored)

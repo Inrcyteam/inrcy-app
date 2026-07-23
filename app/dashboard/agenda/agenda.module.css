@@ -565,49 +565,7 @@
 
 .inputMultiline{min-height:44px;height:auto;padding-top:10px;padding-bottom:10px;line-height:1.35;resize:none;overflow-y:auto;font:inherit}
 
-
-
-.dateTimeRow{
-  display:grid;
-  grid-template-columns: minmax(0,0.84fr) minmax(0,1fr) minmax(0,1fr);
-  gap:10px;
-}
-
-.dateTimeRow > *{
-  min-width:0;
-}
-
-@media (max-width: 640px){
-  .dateTimeRow{
-    grid-template-columns: repeat(2, minmax(0,1fr));
-  }
-
-  .dateTimeRow > :first-child{
-    grid-column: 1 / -1;
-  }
-
-  .dateTimeRow input[type="date"]{
-    font-size:14px;
-    padding-left:10px;
-    padding-right:10px;
-  }
-}
-
 /* --- Contact/Coordonnées block (Agenda ↔ CRM) --- */
-.contactRow{
-  display:flex;
-  align-items:flex-end;
-  gap:10px;
-  flex-wrap: wrap;
-}
-
-.coordsBlock{
-  margin-top: 10px;
-  padding: 12px;
-  border-radius: 16px;
-  border: 1px solid rgba(255,255,255,0.12);
-  background: rgba(255,255,255,0.03);
-}
 
 .coordsTitle{
   font-size: 12px;
@@ -616,22 +574,6 @@
   color: rgba(255,255,255,0.88);
   margin-bottom: 10px;
 }
-
-.importantToggle{
-  display:flex;
-  align-items:center;
-  gap:8px;
-  user-select:none;
-  font-size: 12px;
-  font-weight: 800;
-  color: rgba(255,255,255,0.85);
-  padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid rgba(255,255,255,0.14);
-  background: rgba(255,255,255,0.04);
-  height: 42px;
-}
-.importantToggle input{ transform: translateY(1px); }
 .btnDanger{display:inline-flex;align-items:center;justify-content:center;text-align:center;border:1px solid rgba(248,113,113,0.55);background:rgba(248,113,113,0.12);color:white;border-radius:14px;padding:10px 12px;font-weight:900;cursor:pointer}
 
 /* --- Modal --- */
@@ -1051,11 +993,9 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .formSectionTitle{font-size:15px;font-weight:950;color:rgba(255,255,255,0.95);letter-spacing:-.2px}
 .formSectionHint{font-size:12px;color:rgba(255,255,255,0.58);margin-top:2px}
 .formGrid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:12px}
-.formGrid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
 .eventMainGrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:10px}
 .eventTimeGrid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;margin-top:10px}
 .eventMainGrid > *, .eventTimeGrid > *{min-width:0}
-.gridSpan2{grid-column:span 2}
 .dateField{min-width:0}
 .dateInputWrap{position:relative;width:100%;min-width:0}
 .dateInput{padding-right:42px;min-width:0;appearance:none;-webkit-appearance:none}
@@ -1120,10 +1060,10 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 .guestHeader{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
 
 @media (max-width: 760px){
-  .formGrid2,.formGrid3,.eventMainGrid{grid-template-columns:1fr}
+  .formGrid2,
+.eventMainGrid{grid-template-columns:1fr}
   .eventTimeGrid{grid-template-columns:repeat(2,minmax(0,1fr))}
   .dateField{grid-column:1 / -1}
-  .gridSpan2{grid-column:auto}
   .contactPickerRow{grid-template-columns:1fr}
   .sectionAction{width:100%}
   .formSectionHeader{align-items:flex-start}

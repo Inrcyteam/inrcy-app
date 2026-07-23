@@ -46,6 +46,8 @@ STRICT=1 npm run verify:env
 - [ ] `SENTRY_DSN`
 - [ ] `NEXT_PUBLIC_SENTRY_DSN`
 - [ ] `SENTRY_AUTH_TOKEN`
+- [ ] `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` — clé base64 stable de 16, 24 ou 32 octets, définie avant le build et identique entre les instances
+- [ ] `NEXT_DEPLOYMENT_ID` — identifiant de déploiement stable par version si l'hébergement ne fournit pas déjà une valeur de version
 
 ## Upstash / Vercel KV
 

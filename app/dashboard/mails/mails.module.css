@@ -547,7 +547,7 @@
     - Tagline stays under the logo
   */
   .header,
-  .topbar {
+.topbar {
     flex-direction: row;
     align-items: flex-start;
     gap: 12px;
@@ -555,7 +555,7 @@
   }
 
   .header .actions,
-  .topbar .actions {
+.topbar .actions {
     width: auto;
     display: flex;
     align-items: flex-start;
@@ -567,9 +567,9 @@
 
   /* Ensure icon buttons stay compact on mobile */
   .header .actions > a,
-  .header .actions > button,
-  .topbar .actions > a,
-  .topbar .actions > button {
+.header .actions > button,
+.topbar .actions > a,
+.topbar .actions > button {
     width: 44px;
     height: 44px;
     padding: 0;
@@ -587,7 +587,7 @@
 
 @media (max-width: 420px) {
   .btnGhost,
-  .btnPrimary {
+.btnPrimary {
     padding: 9px 10px;
     border-radius: 12px;
   }
@@ -768,10 +768,6 @@
   justify-self: stretch;
 }
 
-.listHeaderCellPublications {
-  transform: translateX(-10px);
-}
-
 .listHeaderCellRight {
   text-align: right;
   padding-right: 54px;
@@ -821,14 +817,6 @@
 }
 
 /* Titre (ex: titre de publication / objet) */
-
-.itemRight {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  justify-content: flex-end;
-  min-width: 0;
-}
 
 .rowActions {
   display: inline-flex;
@@ -900,10 +888,6 @@
   .from {
     min-width: 0;
     flex: 1 1 auto;
-  }
-  .itemRight {
-    justify-content: space-between;
-    width: 100%;
   }
 }
 
@@ -1094,42 +1078,15 @@
 
 /* ✅ Nouveau layout 2 colonnes (gauche: titre+extrait / droite: source+date+checkbox) */
 
-.itemRight {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 12px;
-  flex: 0 0 auto;
-}
-
-@media (max-width: 720px) {
-  .itemRight {
-    gap: 8px;
-  }
-}
-
 /* ✅ Réserve la place là où le texte est réellement rendu (les rows) */
 
 /* le “couloir” anti-overlay : appliqué à la liste ET aux lignes */
-.scrollAreaMessages .list,
-.scrollAreaMessages .itemRow {
-  /*
-    ✅ Objectif: rapprocher la checkbox de la scrollbar.
-    On s'appuie sur `scrollbar-gutter: stable` (déjà sur .scrollArea)
-    et on garde seulement une micro-marge de confort.
-  */
-  padding-right: 6px;
-  box-sizing: border-box;
-}
 
 /* 🔧 Réduit aussi le padding interne des lignes pour coller la colonne droite */
 
 /* garde ton style scrollbar */
 
 /* optionnel, rend encore plus safe */
-.scrollAreaMessages .item {
-  box-sizing: border-box;
-}
 
 /* optionnel : assure que l’icône SVG est bien centrée */
 
@@ -3000,7 +2957,6 @@
 /* (debug) outlines removed */
 
 /* Ensure native <select> options are readable (Windows/Chrome) */
-.formInput option,
 .selectDark option {
   color: #0b1020;
   background: #ffffff;
@@ -3198,12 +3154,6 @@
 /* =========================
    CRM picker (compose modal)
    ========================= */
-.crmFilterRow {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  align-items: center;
-}
 
 .crmSelect {
   background: rgba(0, 0, 0, 0.22);
@@ -3215,60 +3165,6 @@
   max-width: 190px;
 }
 
-.crmIconBtn {
-  width: 40px;
-  padding: 0;
-  position: relative;
-}
-
-.iconWrap {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-}
-
-.searchDot {
-  position: absolute;
-  top: 9px;
-  right: 9px;
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: rgba(120, 200, 255, 0.95);
-  box-shadow: 0 0 0 2px rgba(10, 12, 26, 0.92);
-}
-
-.starToggleBtn {
-  font-size: 18px;
-  line-height: 1;
-}
-
-.starActive {
-  color: #facc15;
-}
-
-.starInactive {
-  color: rgba(255, 255, 255, 0.72);
-}
-
-.crmSearchRow {
-  margin-top: 10px;
-  /* Force Rechercher + X sur UNE seule ligne */
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  gap: 8px;
-  align-items: center;
-  width: 100%;
-  min-width: 0;
-}
-
-.crmSearchRow > :first-child {
-  min-width: 0;
-}
-
 .crmSearchInput {
   flex: 1 1 220px;
   min-width: 0;
@@ -3278,10 +3174,6 @@
   border: 1px solid rgba(255, 255, 255, 0.18);
   background: rgba(0, 0, 0, 0.22);
   color: rgba(255, 255, 255, 0.9);
-}
-
-.crmSearchRow .crmSearchInput {
-  width: 100%;
 }
 
 @media (max-width: 520px) {
@@ -3323,11 +3215,6 @@
 
 .channelStatusLabel {
   min-width: 0;
-}
-
-.channelStatusSeparator {
-  color: rgba(255, 255, 255, 0.55);
-  margin: 0 4px;
 }
 
 .channelFailedDot {
@@ -3522,12 +3409,12 @@
   }
 
   .item,
-  .list .item {
+.list .item {
     padding: 0 12px !important;
   }
 
   .itemTop,
-  .itemTop[style] {
+.itemTop[style] {
     grid-template-columns: minmax(0, 1fr) 40px !important;
     grid-template-areas:
       "title action"
@@ -3623,10 +3510,6 @@
   font-size: 15px;
   font-weight: 900;
   letter-spacing: -0.1px;
-}
-
-.detailsBtnText {
-  display: none;
 }
 
 .detailsBtnIcon {
@@ -3998,17 +3881,6 @@
   flex: 0 0 auto;
 }
 
-.composeSettingsBtn {
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  border-radius: 12px;
-  justify-content: center;
-  font-size: 15px;
-  line-height: 1;
-  background: rgba(255, 255, 255, 0.07);
-}
-
 .composeSignaturePreviewHint {
   margin-top: 3px;
   color: rgba(255, 255, 255, 0.58);
@@ -4083,10 +3955,6 @@
   gap: 10px;
 }
 
-.composeAttachmentTitle {
-  display: none;
-}
-
 .composeAttachmentStatus {
   color: rgba(255, 255, 255, 0.62);
   font-size: 12px;
@@ -4147,12 +4015,6 @@
   display: inline;
 }
 
-.composeDraftBtn {
-  border-radius: 16px;
-  padding: 12px 16px;
-  font-weight: 850;
-}
-
 .composeSendBtn {
   border-radius: 16px;
   padding: 12px 18px;
@@ -4210,7 +4072,7 @@
   }
 
   .composeHeaderIconBtn,
-  .composeCloseBtn {
+.composeCloseBtn {
     width: 40px;
     height: 40px;
     border-radius: 14px;
@@ -4389,7 +4251,7 @@
   }
 
   .composeTitleIcon,
-  .composeTypeBadge {
+.composeTypeBadge {
     display: none;
   }
 
@@ -4668,8 +4530,8 @@
     gap: 7px;
   }
   .crmFilterField .crmSelect,
-  .crmFilterField .crmInput,
-  .crmImportantToggle {
+.crmFilterField .crmInput,
+.crmImportantToggle {
     height: 36px;
   }
   .crmContactsList {
@@ -4808,10 +4670,6 @@
   white-space: nowrap;
 }
 
-.channelStatusSeparator {
-  display: none !important;
-}
-
 /* --- Correction UX Brouillons actif --- */
 .toolbarBtnActive {
   border-color: rgba(56, 189, 248, 0.62);
@@ -4896,7 +4754,7 @@
 
 @media (max-width: 820px) {
   .draftsToggleBtn,
-  .draftsToggleBtn.toolbarBtnActive {
+.draftsToggleBtn.toolbarBtnActive {
     flex: 0 0 auto;
     min-width: 0;
     max-width: calc(100vw - 48px);
@@ -4930,13 +4788,13 @@
   }
 
   .publicationChannelsCell .itemMidContentDesktopOnly,
-  .publicationChannelsCell .channelStatusInlineWrap {
+.publicationChannelsCell .channelStatusInlineWrap {
     display: none !important;
   }
 
   .itemMid .mobileMetaDate::before,
-  .itemMid .mobileWorkflowMeta::before,
-  .itemMid .mobilePublicationMeta::before {
+.itemMid .mobileWorkflowMeta::before,
+.itemMid .mobilePublicationMeta::before {
     content: "";
   }
 }
@@ -4980,7 +4838,7 @@
   }
 
   .draftsToggleBtn,
-  .draftsToggleBtn.toolbarBtnActive {
+.draftsToggleBtn.toolbarBtnActive {
     max-width: none;
     height: 34px;
     padding: 0 9px;
@@ -4993,7 +4851,7 @@
   }
 
   .draftsToggleBtn .badgeCount,
-  .toolbarBtn .badgeCount {
+.toolbarBtn .badgeCount {
     min-width: 23px;
     height: 23px;
     padding: 0 7px;
@@ -5028,7 +4886,7 @@
   }
 
   .draftsToggleBtn,
-  .draftsToggleBtn.toolbarBtnActive {
+.draftsToggleBtn.toolbarBtnActive {
     height: 32px;
     padding: 0 7px;
     gap: 4px;
@@ -5039,7 +4897,7 @@
   }
 
   .draftsToggleBtn .badgeCount,
-  .toolbarBtn .badgeCount {
+.toolbarBtn .badgeCount {
     min-width: 21px;
     height: 21px;
     padding: 0 6px;
@@ -5166,14 +5024,6 @@
   white-space: nowrap;
 }
 
-.composeAiHint {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.58);
-  font-weight: 700;
-  line-height: 1.35;
-  text-align: right;
-}
-
 .composeAiError {
   font-size: 12px;
   color: #fecaca;
@@ -5184,7 +5034,7 @@
 
 @media (max-width: 900px) {
   .composeSubjectHeaderGrid,
-  .composeSubjectInlineAiRow {
+.composeSubjectInlineAiRow {
     grid-template-columns: 1fr;
   }
 
@@ -5193,7 +5043,7 @@
   }
 
   .composeWritingTypeStack,
-  .composeSubjectAiInline {
+.composeSubjectAiInline {
     align-items: stretch;
     min-width: 0;
     width: 100%;
@@ -5203,7 +5053,6 @@
     width: 100%;
   }
 
-  .composeAiHint,
   .composeAiError {
     text-align: left;
   }
@@ -5388,118 +5237,6 @@
   white-space: nowrap;
 }
 
-.scheduleOverlay {
-  position: fixed;
-  inset: 0;
-  z-index: 10020;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 18px;
-  background: rgba(1, 6, 20, 0.62);
-  backdrop-filter: blur(8px);
-}
-
-.scheduleCard {
-  width: min(560px, calc(100vw - 30px));
-  border-radius: 24px;
-  border: 1px solid rgba(125, 211, 252, 0.22);
-  background: linear-gradient(
-    135deg,
-    rgba(14, 39, 78, 0.96),
-    rgba(34, 23, 72, 0.96)
-  );
-  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.48);
-  padding: 18px;
-  color: rgba(255, 255, 255, 0.94);
-}
-
-.scheduleHeader {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 14px;
-}
-
-.scheduleKicker {
-  color: #67e8f9;
-  font-size: 11px;
-  font-weight: 950;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  margin-bottom: 6px;
-}
-
-.scheduleTitle {
-  margin: 0;
-  font-size: clamp(24px, 3vw, 32px);
-  line-height: 1.02;
-  letter-spacing: -0.04em;
-}
-
-.scheduleHint {
-  margin: 8px 0 0;
-  color: rgba(226, 232, 240, 0.78);
-  font-size: 13px;
-  line-height: 1.45;
-}
-
-.scheduleCloseBtn {
-  width: 38px;
-  height: 38px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.88);
-  font-size: 24px;
-  line-height: 1;
-  cursor: pointer;
-}
-
-.scheduleFields {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  margin-top: 18px;
-}
-
-.scheduleField {
-  display: grid;
-  gap: 7px;
-  color: rgba(226, 232, 240, 0.82);
-  font-size: 12px;
-  font-weight: 850;
-}
-
-.scheduleField input {
-  width: 100%;
-  min-height: 46px;
-  border-radius: 15px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(7, 10, 24, 0.72);
-  color: rgba(255, 255, 255, 0.94);
-  padding: 0 12px;
-  font-size: 15px;
-  font-weight: 750;
-  color-scheme: dark;
-}
-
-.scheduleSummary {
-  display: grid;
-  gap: 4px;
-  margin-top: 14px;
-  padding: 12px;
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(3, 7, 18, 0.25);
-  color: rgba(226, 232, 240, 0.8);
-  font-size: 13px;
-}
-
-.scheduleSummary strong {
-  color: rgba(255, 255, 255, 0.94);
-}
-
 .scheduleError {
   margin-top: 10px;
   padding: 9px 11px;
@@ -5509,20 +5246,6 @@
   color: #fecdd3;
   font-size: 12px;
   font-weight: 800;
-}
-
-.scheduleFooter {
-  display: flex;
-  justify-content: flex-end;
-  gap: 10px;
-  margin-top: 16px;
-}
-
-.scheduleFooter button {
-  min-height: 42px;
-  border-radius: 15px;
-  padding: 10px 16px;
-  font-weight: 950;
 }
 
 @media (max-width: 640px) {
@@ -5537,20 +5260,6 @@
 
   .composeScheduleText {
     display: none;
-  }
-
-  .scheduleCard {
-    padding: 15px;
-    border-radius: 20px;
-  }
-
-  .scheduleFields {
-    grid-template-columns: 1fr;
-  }
-
-  .scheduleFooter {
-    display: grid;
-    grid-template-columns: 1fr;
   }
 }
 
@@ -5611,15 +5320,15 @@
   }
 
   .composeScheduleBtn,
-  .composePreviousBtn,
-  .composeSendBtn {
+.composePreviousBtn,
+.composeSendBtn {
     height: 42px;
     min-height: 42px;
     border-radius: 14px;
   }
 
   .composeScheduleBtn,
-  .composePreviousBtn {
+.composePreviousBtn {
     width: 42px;
     min-width: 42px;
     padding: 0;
@@ -5697,8 +5406,8 @@
   }
 
   .wrap,
-  .grid,
-  .listCard {
+.grid,
+.listCard {
     min-height: 0;
   }
 

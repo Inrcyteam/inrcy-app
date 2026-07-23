@@ -128,25 +128,6 @@
   line-height: 1.3;
 }
 
-.heroChips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 14px;
-}
-
-.heroChip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  padding: 7px 11px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  background: rgba(255, 255, 255, 0.06);
-  font-size: 12px;
-  font-weight: 850;
-}
-
 .headerActions {
   display: flex;
   gap: 10px;
@@ -586,19 +567,19 @@
 
 @media (max-width: 760px) {
   .heroCard,
-  .cardHeaderRow {
+.cardHeaderRow {
     flex-direction: column;
   }
 
   .headerActions,
-  .presetActions {
+.presetActions {
     justify-content: flex-start;
   }
 
   .metricsGrid,
-  .filters,
-  .toolGrid,
-  .accountList {
+.filters,
+.toolGrid,
+.accountList {
     grid-template-columns: 1fr;
   }
 }
@@ -613,10 +594,10 @@
   }
 
   .ghostButton,
-  .closeButton,
-  .primaryButton,
-  .smallButton,
-  .smallGhostButton {
+.closeButton,
+.primaryButton,
+.smallButton,
+.smallGhostButton {
     width: 100%;
   }
 
@@ -625,48 +606,121 @@
   }
 }
 
-.heroChips{display:none !important}
-
-.reportList::-webkit-scrollbar,.accountList::-webkit-scrollbar,.toolGroups::-webkit-scrollbar,.envList::-webkit-scrollbar,.statusList::-webkit-scrollbar,.ruleList::-webkit-scrollbar,.quickLinks::-webkit-scrollbar,.tableWrap::-webkit-scrollbar,.listWrap::-webkit-scrollbar,.galleryWrap::-webkit-scrollbar{width:8px;height:8px}
-.reportList::-webkit-scrollbar-thumb,.accountList::-webkit-scrollbar-thumb,.toolGroups::-webkit-scrollbar-thumb,.envList::-webkit-scrollbar-thumb,.statusList::-webkit-scrollbar-thumb,.ruleList::-webkit-scrollbar-thumb,.quickLinks::-webkit-scrollbar-thumb,.tableWrap::-webkit-scrollbar-thumb,.listWrap::-webkit-scrollbar-thumb,.galleryWrap::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16);border-radius:999px}
+.reportList::-webkit-scrollbar,
+.accountList::-webkit-scrollbar,
+.toolGroups::-webkit-scrollbar,
+.envList::-webkit-scrollbar,
+.statusList::-webkit-scrollbar,
+.ruleList::-webkit-scrollbar,
+.quickLinks::-webkit-scrollbar,
+.tableWrap::-webkit-scrollbar,
+.listWrap::-webkit-scrollbar{width:8px;height:8px}
+.reportList::-webkit-scrollbar-thumb,
+.accountList::-webkit-scrollbar-thumb,
+.toolGroups::-webkit-scrollbar-thumb,
+.envList::-webkit-scrollbar-thumb,
+.statusList::-webkit-scrollbar-thumb,
+.ruleList::-webkit-scrollbar-thumb,
+.quickLinks::-webkit-scrollbar-thumb,
+.tableWrap::-webkit-scrollbar-thumb,
+.listWrap::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16);border-radius:999px}
 
 
 /* Step 9 — Admin compact final */
 .page{padding:8px 12px !important}
 .wrap{gap:8px !important}
-.heroCard,.hero{padding:9px 12px !important;border-radius:18px !important;align-items:center !important}
+.heroCard,
+.hero{padding:9px 12px !important;border-radius:18px !important;align-items:center !important}
 .kicker{font-size:10px !important;letter-spacing:.07em !important}
 .title{font-size:22px !important;margin:2px 0 0 !important;line-height:1.05 !important}
 .subtitle{font-size:12px !important;margin:2px 0 0 !important;line-height:1.25 !important;max-width:620px !important}
-.heroChips{display:none !important}
-.headerActions,.heroActions{gap:7px !important}
-.ghostButton,.closeButton,.primaryButton,.quickLink{min-height:34px !important;padding:7px 11px !important;font-size:13px !important}
-.metricsGrid,.statsGrid{gap:8px !important}
-.metricCard,.statCard{padding:8px 10px !important;border-radius:16px !important}
-.metricLabel,.statLabel{font-size:11px !important}
-.metricValue,.statValue{font-size:19px !important;margin-top:2px !important}
+.headerActions,
+.heroActions{gap:7px !important}
+.ghostButton,
+.closeButton,
+.primaryButton,
+.quickLink{min-height:34px !important;padding:7px 11px !important;font-size:13px !important}
+.metricsGrid,
+.statsGrid{gap:8px !important}
+.metricCard,
+.statCard{padding:8px 10px !important;border-radius:16px !important}
+.metricLabel,
+.statLabel{font-size:11px !important}
+.metricValue,
+.statValue{font-size:19px !important;margin-top:2px !important}
 .metricValueSmall{font-size:16px !important;margin-top:2px !important}
-.metricSub,.statSub{font-size:10px !important;margin-top:2px !important}
+.metricSub,
+.statSub{font-size:10px !important;margin-top:2px !important}
 .filterCard{padding:10px 12px !important;border-radius:18px !important}
-.sectionTop,.sectionTopRow,.cardHeader,.cardHeaderRow{margin-bottom:7px !important}
-.sectionTop h2,.sectionTopRow h2,.cardHeader h2,.cardHeaderRow h2{font-size:17px !important}
-.sectionTop p,.sectionTopRow p,.cardHeader p,.cardHeaderRow p{display:none !important}
+.sectionTop,
+.sectionTopRow,
+.cardHeader,
+.cardHeaderRow{margin-bottom:7px !important}
+.sectionTop h2,
+.sectionTopRow h2,
+.cardHeader h2,
+.cardHeaderRow h2{font-size:17px !important}
+.sectionTop p,
+.sectionTopRow p,
+.cardHeader p,
+.cardHeaderRow p{display:none !important}
 .label{gap:4px !important}
 .label span{font-size:11px !important}
-.input,.select,.fileInput,.miniSelect,.compactSelect,.compactInput,.miniInput{min-height:34px !important;padding:7px 10px !important;border-radius:12px !important}
-.smallButton,.smallGhostButton,.dangerButton,.ghostSmallButton{min-height:30px !important;padding:6px 9px !important;font-size:10px !important}
-.error,.success,.warning,.loading,.empty{padding:9px 12px !important;border-radius:14px !important}
-.tableCard,.listCard,.accountsCard,.toolsCard,.card{padding:10px 12px !important;border-radius:18px !important}
-.usersList,.reportList,.accountList,.toolGroups,.imageGrid,.envList,.statusList,.ruleList,.quickLinks{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent}
-.usersList::-webkit-scrollbar,.reportList::-webkit-scrollbar,.accountList::-webkit-scrollbar,.toolGroups::-webkit-scrollbar,.imageGrid::-webkit-scrollbar,.envList::-webkit-scrollbar,.statusList::-webkit-scrollbar,.ruleList::-webkit-scrollbar,.quickLinks::-webkit-scrollbar{width:7px;height:7px}
-.usersList::-webkit-scrollbar-thumb,.reportList::-webkit-scrollbar-thumb,.accountList::-webkit-scrollbar-thumb,.toolGroups::-webkit-scrollbar-thumb,.imageGrid::-webkit-scrollbar-thumb,.envList::-webkit-scrollbar-thumb,.statusList::-webkit-scrollbar-thumb,.ruleList::-webkit-scrollbar-thumb,.quickLinks::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16);border-radius:999px}
+.input,
+.select,
+.fileInput,
+.miniSelect,
+.compactSelect,
+.compactInput{min-height:34px !important;padding:7px 10px !important;border-radius:12px !important}
+.smallButton,
+.smallGhostButton,
+.dangerButton,
+.ghostSmallButton{min-height:30px !important;padding:6px 9px !important;font-size:10px !important}
+.error,
+.success,
+.warning,
+.loading,
+.empty{padding:9px 12px !important;border-radius:14px !important}
+.tableCard,
+.listCard,
+.accountsCard,
+.toolsCard,
+.card{padding:10px 12px !important;border-radius:18px !important}
+.usersList,
+.reportList,
+.accountList,
+.toolGroups,
+.imageGrid,
+.envList,
+.statusList,
+.ruleList,
+.quickLinks{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent}
+.usersList::-webkit-scrollbar,
+.reportList::-webkit-scrollbar,
+.accountList::-webkit-scrollbar,
+.toolGroups::-webkit-scrollbar,
+.imageGrid::-webkit-scrollbar,
+.envList::-webkit-scrollbar,
+.statusList::-webkit-scrollbar,
+.ruleList::-webkit-scrollbar,
+.quickLinks::-webkit-scrollbar{width:7px;height:7px}
+.usersList::-webkit-scrollbar-thumb,
+.reportList::-webkit-scrollbar-thumb,
+.accountList::-webkit-scrollbar-thumb,
+.toolGroups::-webkit-scrollbar-thumb,
+.imageGrid::-webkit-scrollbar-thumb,
+.envList::-webkit-scrollbar-thumb,
+.statusList::-webkit-scrollbar-thumb,
+.ruleList::-webkit-scrollbar-thumb,
+.quickLinks::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16);border-radius:999px}
 
 .mainGrid{gap:10px !important;grid-template-columns:minmax(260px,320px) minmax(0,1fr) !important}
 .accountItem{padding:8px !important;gap:8px !important}
 .accountAvatar{width:36px !important;height:36px !important;border-radius:13px !important}
 .toolCard{min-height:82px !important;padding:9px !important;border-radius:15px !important}
 .toolText strong{font-size:13px !important}
-.toolText span,.toolText small{font-size:10px !important}
+.toolText span,
+.toolText small{font-size:10px !important}
 .toggle{width:62px !important;height:30px !important}
 .toggle span{width:21px !important;height:21px !important}
 .toggleOn span{transform:translateX(30px) !important}
@@ -735,7 +789,7 @@
   }
 
   .heroCard,
-  .hero {
+.hero {
     min-height: 74px !important;
     padding: 14px !important;
     flex-direction: row !important;
@@ -745,7 +799,7 @@
   }
 
   .heroContent,
-  .heroText {
+.heroText {
     flex: 1 1 auto !important;
     min-width: 0 !important;
   }
@@ -769,7 +823,7 @@
   }
 
   .headerActions,
-  .heroActions {
+.heroActions {
     width: auto !important;
     flex: 0 0 auto !important;
     align-items: center !important;
@@ -778,9 +832,9 @@
   }
 
   .headerActions .ghostButton,
-  .headerActions .closeButton,
-  .heroActions .ghostButton,
-  .heroActions .closeButton {
+.headerActions .closeButton,
+.heroActions .ghostButton,
+.heroActions .closeButton {
     width: 38px !important;
     min-width: 38px !important;
     max-width: 38px !important;
@@ -815,24 +869,20 @@
     font-size: 19px !important;
   }
 
-  .imageBankButton .actionIcon {
-    font-size: 16px !important;
-  }
-
   .metricsGrid,
-  .statsGrid {
+.statsGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     gap: 8px !important;
   }
 
   .metricCard,
-  .statCard {
+.statCard {
     min-height: 58px !important;
     padding: 10px !important;
   }
 
   .metricValue,
-  .statValue {
+.statValue {
     font-size: 20px !important;
   }
 }
@@ -847,9 +897,9 @@
   }
 
   .headerActions .ghostButton,
-  .headerActions .closeButton,
-  .heroActions .ghostButton,
-  .heroActions .closeButton {
+.headerActions .closeButton,
+.heroActions .ghostButton,
+.heroActions .closeButton {
     width: 36px !important;
     min-width: 36px !important;
     max-width: 36px !important;
@@ -867,13 +917,13 @@
   }
 
   .accountsCard,
-  .toolsCard {
+.toolsCard {
     min-height: auto !important;
     overflow: visible !important;
   }
 
   .accountList,
-  .toolGroups {
+.toolGroups {
     overflow: visible !important;
     max-height: none !important;
     padding-right: 0 !important;
@@ -887,16 +937,16 @@
 
 @media (max-width: 760px) {
   .mainGrid,
-  .metricsGrid,
-  .filters,
-  .toolGrid,
-  .accountList {
+.metricsGrid,
+.filters,
+.toolGrid,
+.accountList {
     grid-template-columns: 1fr !important;
   }
 
   .filterCard,
-  .accountsCard,
-  .toolsCard {
+.accountsCard,
+.toolsCard {
     width: 100% !important;
     box-sizing: border-box !important;
   }

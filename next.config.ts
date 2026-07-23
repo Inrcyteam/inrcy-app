@@ -17,6 +17,10 @@ const cspReportOnly = [
 ].join("; ");
 
 const nextConfig: NextConfig = {
+  // Évite qu'un client encore ouvert mélange les assets/actions d'un ancien
+  // déploiement avec le nouveau. Vercel fournit le SHA au moment du build ;
+  // NEXT_DEPLOYMENT_ID peut être défini explicitement pour un autre hébergeur.
+  deploymentId: process.env.NEXT_DEPLOYMENT_ID || process.env.VERCEL_GIT_COMMIT_SHA || undefined,
   ...(process.env.INR_SEARCH_LOCAL_PREVIEW === "1"
     ? { experimental: { workerThreads: true } }
     : {}),

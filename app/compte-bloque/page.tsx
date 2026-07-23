@@ -179,14 +179,6 @@ function copyForStatus(rawStatus: unknown): BlockedCopy {
   };
 }
 
-async function signOut() {
-  "use server";
-
-  const supabase = await createSupabaseServer();
-  await supabase.auth.signOut();
-  redirect("/login");
-}
-
 export default async function BlockedAccountPage() {
   const supabase = await createSupabaseServer();
   const {
@@ -246,7 +238,7 @@ export default async function BlockedAccountPage() {
                   Contacter iNrCy
                 </a>
 
-                <form action={signOut}>
+                <form action="/api/auth/sign-out" method="post">
                   <button type="submit" className={styles.secondaryBtn}>
                     Se déconnecter
                   </button>

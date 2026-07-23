@@ -54,8 +54,7 @@
 .heroCard,
 .metricCard,
 .filterCard,
-.tableCard,
-.hintCard {
+.tableCard {
   border-radius: var(--admin-radius);
   border: 1px solid var(--admin-border);
   background: var(--admin-card);
@@ -66,8 +65,7 @@
 .heroCard,
 .metricCard,
 .filterCard,
-.tableCard,
-.hintCard {
+.tableCard {
   position: relative;
   overflow: hidden;
 }
@@ -75,8 +73,7 @@
 .heroCard::before,
 .metricCard::before,
 .filterCard::before,
-.tableCard::before,
-.hintCard::before {
+.tableCard::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -98,8 +95,7 @@
 .heroContent,
 .headerActions,
 .filterCard,
-.tableCard,
-.hintCard {
+.tableCard {
   position: relative;
 }
 
@@ -126,14 +122,6 @@
   line-height: 1.3;
 }
 
-.heroChips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.heroChip,
 .badgeEur,
 .badgeUi,
 .badgeOk,
@@ -146,10 +134,6 @@
   border: 1px solid rgba(255, 255, 255, 0.14);
   font-size: 12px;
   font-weight: 800;
-}
-
-.heroChip {
-  background: rgba(255, 255, 255, 0.06);
 }
 
 .headerActions,
@@ -332,8 +316,7 @@
 .error,
 .success,
 .loading,
-.empty,
-.hintCard {
+.empty {
   padding: 13px 15px;
   border-radius: 18px;
 }
@@ -454,12 +437,6 @@
   border-color: rgba(80, 255, 160, 0.22);
 }
 
-.hintCard {
-  flex: 0 0 auto;
-  color: rgba(255, 255, 255, 0.82);
-  font-size: 13px;
-}
-
 @media (max-width: 1100px) {
   .metricsGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -470,19 +447,19 @@
   }
 
   .filters .primaryButton,
-  .filters .label:nth-child(3) {
+.filters .label:nth-child(3) {
     grid-column: 1 / -1;
   }
 }
 
 @media (max-width: 860px) {
   .heroCard,
-  .sectionTopRow {
+.sectionTopRow {
     flex-direction: column;
   }
 
   .headerActions,
-  .sectionActions {
+.sectionActions {
     justify-content: flex-start;
   }
 }
@@ -497,62 +474,131 @@
   }
 
   .metricsGrid,
-  .filters {
+.filters {
     grid-template-columns: 1fr;
   }
 
   .filters .primaryButton,
-  .filters .label:nth-child(3) {
+.filters .label:nth-child(3) {
     grid-column: auto;
   }
 
   .ghostButton,
-  .closeButton,
-  .primaryButton,
-  .ghostSmallButton {
+.closeButton,
+.primaryButton,
+.ghostSmallButton {
     width: 100%;
     justify-content: center;
   }
 }
 
-.heroChips{display:none !important}
-
-.reportList::-webkit-scrollbar,.accountList::-webkit-scrollbar,.toolGroups::-webkit-scrollbar,.envList::-webkit-scrollbar,.statusList::-webkit-scrollbar,.ruleList::-webkit-scrollbar,.quickLinks::-webkit-scrollbar,.tableWrap::-webkit-scrollbar,.listWrap::-webkit-scrollbar,.galleryWrap::-webkit-scrollbar{width:8px;height:8px}
-.reportList::-webkit-scrollbar-thumb,.accountList::-webkit-scrollbar-thumb,.toolGroups::-webkit-scrollbar-thumb,.envList::-webkit-scrollbar-thumb,.statusList::-webkit-scrollbar-thumb,.ruleList::-webkit-scrollbar-thumb,.quickLinks::-webkit-scrollbar-thumb,.tableWrap::-webkit-scrollbar-thumb,.listWrap::-webkit-scrollbar-thumb,.galleryWrap::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16);border-radius:999px}
+.reportList::-webkit-scrollbar,
+.accountList::-webkit-scrollbar,
+.toolGroups::-webkit-scrollbar,
+.envList::-webkit-scrollbar,
+.statusList::-webkit-scrollbar,
+.ruleList::-webkit-scrollbar,
+.quickLinks::-webkit-scrollbar,
+.tableWrap::-webkit-scrollbar,
+.listWrap::-webkit-scrollbar{width:8px;height:8px}
+.reportList::-webkit-scrollbar-thumb,
+.accountList::-webkit-scrollbar-thumb,
+.toolGroups::-webkit-scrollbar-thumb,
+.envList::-webkit-scrollbar-thumb,
+.statusList::-webkit-scrollbar-thumb,
+.ruleList::-webkit-scrollbar-thumb,
+.quickLinks::-webkit-scrollbar-thumb,
+.tableWrap::-webkit-scrollbar-thumb,
+.listWrap::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16);border-radius:999px}
 
 
 /* Step 9 — Admin compact final */
 .page{padding:8px 12px !important}
 .wrap{gap:8px !important}
-.heroCard,.hero{padding:9px 12px !important;border-radius:18px !important;align-items:center !important}
+.heroCard,
+.hero{padding:9px 12px !important;border-radius:18px !important;align-items:center !important}
 .kicker{font-size:10px !important;letter-spacing:.07em !important}
 .title{font-size:22px !important;margin:2px 0 0 !important;line-height:1.05 !important}
 .subtitle{font-size:12px !important;margin:2px 0 0 !important;line-height:1.25 !important;max-width:620px !important}
-.heroChips{display:none !important}
-.headerActions,.heroActions{gap:7px !important}
-.ghostButton,.closeButton,.primaryButton,.quickLink{min-height:34px !important;padding:7px 11px !important;font-size:13px !important}
-.metricsGrid,.statsGrid{gap:8px !important}
-.metricCard,.statCard{padding:8px 10px !important;border-radius:16px !important}
-.metricLabel,.statLabel{font-size:11px !important}
-.metricValue,.statValue{font-size:19px !important;margin-top:2px !important}
+.headerActions,
+.heroActions{gap:7px !important}
+.ghostButton,
+.closeButton,
+.primaryButton,
+.quickLink{min-height:34px !important;padding:7px 11px !important;font-size:13px !important}
+.metricsGrid,
+.statsGrid{gap:8px !important}
+.metricCard,
+.statCard{padding:8px 10px !important;border-radius:16px !important}
+.metricLabel,
+.statLabel{font-size:11px !important}
+.metricValue,
+.statValue{font-size:19px !important;margin-top:2px !important}
 .metricValueSmall{font-size:16px !important;margin-top:2px !important}
-.metricSub,.statSub{font-size:10px !important;margin-top:2px !important}
+.metricSub,
+.statSub{font-size:10px !important;margin-top:2px !important}
 .filterCard{padding:10px 12px !important;border-radius:18px !important}
-.sectionTop,.sectionTopRow,.cardHeader,.cardHeaderRow{margin-bottom:7px !important}
-.sectionTop h2,.sectionTopRow h2,.cardHeader h2,.cardHeaderRow h2{font-size:17px !important}
-.sectionTop p,.sectionTopRow p,.cardHeader p,.cardHeaderRow p{display:none !important}
+.sectionTop,
+.sectionTopRow,
+.cardHeader,
+.cardHeaderRow{margin-bottom:7px !important}
+.sectionTop h2,
+.sectionTopRow h2,
+.cardHeader h2,
+.cardHeaderRow h2{font-size:17px !important}
+.sectionTop p,
+.sectionTopRow p,
+.cardHeader p,
+.cardHeaderRow p{display:none !important}
 .label{gap:4px !important}
 .label span{font-size:11px !important}
-.input,.select,.fileInput,.miniSelect,.compactSelect,.compactInput,.miniInput{min-height:34px !important;padding:7px 10px !important;border-radius:12px !important}
-.smallButton,.smallGhostButton,.dangerButton,.ghostSmallButton{min-height:30px !important;padding:6px 9px !important;font-size:10px !important}
-.error,.success,.warning,.loading,.empty{padding:9px 12px !important;border-radius:14px !important}
-.tableCard,.listCard,.accountsCard,.toolsCard,.card{padding:10px 12px !important;border-radius:18px !important}
-.usersList,.reportList,.accountList,.toolGroups,.imageGrid,.envList,.statusList,.ruleList,.quickLinks{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent}
-.usersList::-webkit-scrollbar,.reportList::-webkit-scrollbar,.accountList::-webkit-scrollbar,.toolGroups::-webkit-scrollbar,.imageGrid::-webkit-scrollbar,.envList::-webkit-scrollbar,.statusList::-webkit-scrollbar,.ruleList::-webkit-scrollbar,.quickLinks::-webkit-scrollbar{width:7px;height:7px}
-.usersList::-webkit-scrollbar-thumb,.reportList::-webkit-scrollbar-thumb,.accountList::-webkit-scrollbar-thumb,.toolGroups::-webkit-scrollbar-thumb,.imageGrid::-webkit-scrollbar-thumb,.envList::-webkit-scrollbar-thumb,.statusList::-webkit-scrollbar-thumb,.ruleList::-webkit-scrollbar-thumb,.quickLinks::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16);border-radius:999px}
-
-.hintCard{display:none !important}
-.filterGrid{gap:8px !important}
+.input,
+.select,
+.fileInput,
+.miniSelect,
+.compactSelect,
+.compactInput{min-height:34px !important;padding:7px 10px !important;border-radius:12px !important}
+.smallButton,
+.smallGhostButton,
+.dangerButton,
+.ghostSmallButton{min-height:30px !important;padding:6px 9px !important;font-size:10px !important}
+.error,
+.success,
+.warning,
+.loading,
+.empty{padding:9px 12px !important;border-radius:14px !important}
+.tableCard,
+.listCard,
+.accountsCard,
+.toolsCard,
+.card{padding:10px 12px !important;border-radius:18px !important}
+.usersList,
+.reportList,
+.accountList,
+.toolGroups,
+.imageGrid,
+.envList,
+.statusList,
+.ruleList,
+.quickLinks{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.18) transparent}
+.usersList::-webkit-scrollbar,
+.reportList::-webkit-scrollbar,
+.accountList::-webkit-scrollbar,
+.toolGroups::-webkit-scrollbar,
+.imageGrid::-webkit-scrollbar,
+.envList::-webkit-scrollbar,
+.statusList::-webkit-scrollbar,
+.ruleList::-webkit-scrollbar,
+.quickLinks::-webkit-scrollbar{width:7px;height:7px}
+.usersList::-webkit-scrollbar-thumb,
+.reportList::-webkit-scrollbar-thumb,
+.accountList::-webkit-scrollbar-thumb,
+.toolGroups::-webkit-scrollbar-thumb,
+.imageGrid::-webkit-scrollbar-thumb,
+.envList::-webkit-scrollbar-thumb,
+.statusList::-webkit-scrollbar-thumb,
+.ruleList::-webkit-scrollbar-thumb,
+.quickLinks::-webkit-scrollbar-thumb{background:rgba(255,255,255,.16);border-radius:999px}
 .tableCard{min-height:0 !important}
 
 
@@ -619,7 +665,7 @@
   }
 
   .heroCard,
-  .hero {
+.hero {
     min-height: 74px !important;
     padding: 14px !important;
     flex-direction: row !important;
@@ -629,7 +675,7 @@
   }
 
   .heroContent,
-  .heroText {
+.heroText {
     flex: 1 1 auto !important;
     min-width: 0 !important;
   }
@@ -653,7 +699,7 @@
   }
 
   .headerActions,
-  .heroActions {
+.heroActions {
     width: auto !important;
     flex: 0 0 auto !important;
     align-items: center !important;
@@ -662,9 +708,9 @@
   }
 
   .headerActions .ghostButton,
-  .headerActions .closeButton,
-  .heroActions .ghostButton,
-  .heroActions .closeButton {
+.headerActions .closeButton,
+.heroActions .ghostButton,
+.heroActions .closeButton {
     width: 38px !important;
     min-width: 38px !important;
     max-width: 38px !important;
@@ -699,24 +745,20 @@
     font-size: 19px !important;
   }
 
-  .imageBankButton .actionIcon {
-    font-size: 16px !important;
-  }
-
   .metricsGrid,
-  .statsGrid {
+.statsGrid {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     gap: 8px !important;
   }
 
   .metricCard,
-  .statCard {
+.statCard {
     min-height: 58px !important;
     padding: 10px !important;
   }
 
   .metricValue,
-  .statValue {
+.statValue {
     font-size: 20px !important;
   }
 }
@@ -731,9 +773,9 @@
   }
 
   .headerActions .ghostButton,
-  .headerActions .closeButton,
-  .heroActions .ghostButton,
-  .heroActions .closeButton {
+.headerActions .closeButton,
+.heroActions .ghostButton,
+.heroActions .closeButton {
     width: 36px !important;
     min-width: 36px !important;
     max-width: 36px !important;

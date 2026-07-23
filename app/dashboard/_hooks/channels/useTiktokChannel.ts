@@ -158,6 +158,9 @@ export function useTiktokChannel({ panel, patchChannelConnectionLocally, trigger
       resourceId: connected ? (username || profileUrl || null) : null,
       resourceLabel: connected ? (username || null) : null,
       resourceUrl: connected ? (profileUrl || null) : null,
+    // Cette synchronisation est une hydratation de démarrage : on ne doit
+    // pas effacer un bloc iNrStats encore valide pendant que le serveur
+    // confirme l'état courant.
     }, { clearData: !connected, clearError: true });
 
     if (options?.refresh !== false) {
@@ -172,6 +175,41 @@ export function useTiktokChannel({ panel, patchChannelConnectionLocally, trigger
       }));
     }
   }, [patchChannelConnectionLocally, triggerChannelRefresh]);
+
+  // Le dashboard peut recevoir l'état de connexion commun avant la réponse
+  // détaillée de /api/integrations/tiktok/status. On hydrate uniquement la
+  // connexion pour éviter le flash "à connecter" sans réinitialiser les
+  // réglages TikTok ni lancer un refresh statistiques coûteux.
+  const applyTiktokConnectionState = useCallback((payload: unknown) => {
+    const source = payload && typeof payload === "object" && !Array.isArray(payload)
+      ? payload as Record<string, unknown>
+      : {};
+    const connected = Boolean(source.connected);
+    const requiresUpdate = Boolean(source.requiresUpdate);
+    const username = connected && typeof source.username === "string" ? source.username : "";
+    const profileUrl = connected && typeof source.profileUrl === "string" ? source.profileUrl : "";
+
+    setTiktokConnected(connected);
+    setTiktokUsername(username);
+    setTiktokProfileUrl(profileUrl);
+    writeCachedTiktokState({ connected, username, profileUrl });
+
+    patchChannelConnectionLocally?.("tiktok", {
+      connected,
+      accountConnected: connected || requiresUpdate,
+      configured: connected || requiresUpdate,
+      statsConnected: connected && !requiresUpdate,
+      expired: false,
+      requiresUpdate,
+      connectionStatus: requiresUpdate ? "needs_update" : connected ? "connected" : "disconnected",
+      resourceId: connected ? (username || profileUrl || null) : null,
+      resourceLabel: connected ? (username || null) : null,
+      resourceUrl: connected ? (profileUrl || null) : null,
+    // Cette synchronisation est une hydratation de démarrage : on ne doit
+    // pas effacer un bloc iNrStats encore valide pendant que le serveur
+    // confirme l'état courant.
+    }, { clearData: false, clearError: true });
+  }, [patchChannelConnectionLocally]);
 
   const loadTiktokStatus = useCallback(async () => {
     setTiktokLoading(true);
@@ -298,6 +336,7 @@ export function useTiktokChannel({ panel, patchChannelConnectionLocally, trigger
     tiktokAiContent,
     setTiktokAiContent,
     saveTiktokDefaults,
+    applyTiktokConnectionState,
     loadTiktokStatus,
   };
 }
