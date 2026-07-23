@@ -14,7 +14,17 @@ function cleanDisplayName(value: unknown) {
   return typeof value === "string" ? value.trim().replace(/\s+/g, " ").slice(0, 120) : "";
 }
 
-function creationErrorMessage(message: string) {
+type EstablishmentCreationError = {
+  code?: string | null;
+  message?: string | null;
+  details?: string | null;
+  hint?: string | null;
+};
+
+function creationErrorMessage(error?: EstablishmentCreationError | null) {
+  const message = String(error?.message || "");
+  const code = String(error?.code || "");
+
   if (message.includes("INRCY_MULTICOMPTE_DISABLED")) {
     return { status: 403, error: "Le multicompte n’est pas activé pour ce compte." };
   }
@@ -23,6 +33,18 @@ function creationErrorMessage(message: string) {
   }
   if (message.includes("INRCY_ESTABLISHMENT_NAME_INVALID")) {
     return { status: 400, error: "Le nom de l’établissement doit contenir entre 2 et 120 caractères." };
+  }
+  if (code === "23503" || message.includes("INRCY_ACCOUNT_SCOPE_CONSTRAINT")) {
+    return {
+      status: 503,
+      error: "La configuration multicompte doit être resynchronisée. Merci de réessayer dans quelques instants.",
+    };
+  }
+  if (code === "23505") {
+    return {
+      status: 409,
+      error: "Un conflit de données empêche la création de cet établissement. Rafraîchissez la page puis réessayez.",
+    };
   }
   return { status: 500, error: "Impossible de créer l’établissement." };
 }
@@ -76,7 +98,16 @@ export async function POST(request: Request) {
   });
 
   if (createError || !isUuidLike(accountId)) {
-    const mapped = creationErrorMessage(createError?.message || "");
+    console.error("[multicompte] establishment creation failed", {
+      authUserId: data.user.id,
+      code: createError?.code || null,
+      message: createError?.message || null,
+      details: createError?.details || null,
+      hint: createError?.hint || null,
+      returnedAccountId: typeof accountId === "string" ? accountId : null,
+    });
+
+    const mapped = creationErrorMessage(createError);
     return NextResponse.json(
       { ok: false, error: mapped.error },
       { status: mapped.status },
