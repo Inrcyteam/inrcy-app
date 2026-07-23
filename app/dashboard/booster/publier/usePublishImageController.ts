@@ -1120,23 +1120,6 @@ export default function usePublishImageController({
     restorePublishScroll();
   };
 
-  const fileToImagePayload = (file: File): Promise<ImagePayload> =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () =>
-        resolve({
-          name: file.name || "image.jpg",
-          type: file.type || "image/jpeg",
-          dataUrl: String(reader.result || ""),
-        });
-      reader.onerror = () =>
-        reject(
-          reader.error ??
-            new Error("Impossible de préparer l'image originale."),
-        );
-      reader.readAsDataURL(file);
-    });
-
   const buildAutomaticRenderPreset = (
     channel: ChannelKey,
     targetRatio: number | null,
@@ -1154,9 +1137,11 @@ export default function usePublishImageController({
     onProgress?: (current: number, total: number) => void,
   ): Promise<Record<string, ImagePayload>> => {
     if (!images.length) return {};
-    const originalPayloads = await Promise.all(
-      images.map((file) => fileToImagePayload(file)),
-    );
+    const originalPayloads: ImagePayload[] = images.map((file) => ({
+      name: file.name || "image.jpg",
+      type: file.type || "image/jpeg",
+      sourceFile: file,
+    }));
     const uploadedOriginals = await uploadPreparedImages(
       originalPayloads,
       onProgress,
@@ -1243,7 +1228,11 @@ export default function usePublishImageController({
         let outputTransform: ImageTransform;
 
         if (displayPlan.decision.mode === "original") {
-          payload = await fileToImagePayload(file);
+          payload = {
+            name: file.name || "image.jpg",
+            type: file.type || "image/jpeg",
+            sourceFile: file,
+          };
           outputTransform = automaticTransform;
         } else if (displayPlan.decision.mode === "adapted") {
           outputTransform = {

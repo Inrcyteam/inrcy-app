@@ -294,6 +294,8 @@ export function getPreferredCtaChoiceFromPost(
 export type ImagePayload = {
   name: string;
   type: string;
+  /** Fichier local transitoire, supprimé du payload dès que l'upload est terminé. */
+  sourceFile?: File;
   dataUrl?: string;
   storagePath?: string;
   publicUrl?: string;
@@ -1822,9 +1824,29 @@ export function loadHtmlImage(src: string): Promise<HTMLImageElement> {
 }
 
 export async function dataUrlToBlob(dataUrl: string): Promise<Blob> {
-  const res = await fetch(dataUrl);
-  if (!res.ok) throw new Error("Impossible de préparer l'image.");
-  return await res.blob();
+  const value = String(dataUrl || "").trim();
+  const match = /^data:([^;,]*)(;base64)?,([\s\S]*)$/i.exec(value);
+  if (!match) throw new Error("Impossible de préparer l'image.");
+
+  const mimeType = match[1] || "application/octet-stream";
+  const encoded = match[3] || "";
+
+  try {
+    if (match[2]) {
+      // Ne pas faire fetch(dataUrl) : Safari iOS peut interrompre ce fetch local
+      // avec "Load failed" lorsque plusieurs photos sont préparées en mémoire.
+      const binary = atob(encoded.replace(/\s/g, ""));
+      const bytes = new Uint8Array(binary.length);
+      for (let index = 0; index < binary.length; index += 1) {
+        bytes[index] = binary.charCodeAt(index);
+      }
+      return new Blob([bytes], { type: mimeType });
+    }
+
+    return new Blob([decodeURIComponent(encoded)], { type: mimeType });
+  } catch {
+    throw new Error("Impossible de préparer l'image.");
+  }
 }
 
 const ALLOWED_UPLOAD_EXTENSIONS = new Set([
@@ -2146,16 +2168,21 @@ export async function uploadPreparedImages(
   onProgress?: (current: number, total: number) => void,
 ): Promise<ImagePayload[]> {
   const uploaded: ImagePayload[] = [];
-  const total = images.filter((image) => !!image?.dataUrl).length;
+  const total = images.filter(
+    (image) => !!image?.sourceFile || !!image?.dataUrl,
+  ).length;
   let done = 0;
 
   for (const image of images) {
-    if (!image?.dataUrl) {
+    const localFile = image?.sourceFile;
+    if (!localFile && !image?.dataUrl) {
       uploaded.push(image);
       continue;
     }
 
-    const blob = await dataUrlToBlob(image.dataUrl);
+    // Les photos originales sont envoyées directement comme File. On évite ainsi
+    // File -> Base64 -> fetch(dataUrl) -> Blob, très coûteux et instable sur iPhone.
+    const blob = localFile ?? (await dataUrlToBlob(String(image.dataUrl || "")));
     const uploadBlob = await compressImageBlobForUpload(blob);
     const uploadName =
       uploadBlob.type === "image/jpeg"
@@ -2187,8 +2214,10 @@ export async function uploadPreparedImages(
         String(json?.error || "Impossible d'uploader l'image préparée."),
       );
 
+    const serializableImage = { ...image };
+    delete serializableImage.sourceFile;
     uploaded.push({
-      ...image,
+      ...serializableImage,
       dataUrl: undefined,
       name: image.name,
       type:
