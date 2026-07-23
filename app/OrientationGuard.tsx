@@ -5,6 +5,23 @@ import Image from "next/image";
 import styles from "./orientationGuard.module.css";
 import { usePathname, useRouter } from "next/navigation";
 
+type ScreenOrientationWithLock = ScreenOrientation & {
+  lock?: (_mode: "landscape") => Promise<void>;
+  unlock?: () => void;
+};
+
+function readPhysicalLandscape() {
+  const orientationType = window.screen.orientation?.type;
+  if (orientationType) return orientationType.startsWith("landscape");
+
+  const legacyOrientation = (window as Window & { orientation?: number }).orientation;
+  if (typeof legacyOrientation === "number") {
+    return Math.abs(legacyOrientation) === 90;
+  }
+
+  return window.matchMedia("(orientation: landscape)").matches;
+}
+
 export default function OrientationGuard() {
   const pathname = usePathname();
   const router = useRouter();
@@ -15,7 +32,7 @@ export default function OrientationGuard() {
     () => false
   );
 
-  // ✅ Mobile + tablette uniquement (≤ 1024px)
+  // Mobile + tablette uniquement.
   const [isMobileOrTablet, setIsMobileOrTablet] = useState(false);
   const [isLandscape, setIsLandscape] = useState(false);
   const [isCameraCaptureActive, setIsCameraCaptureActive] = useState(false);
@@ -25,24 +42,35 @@ export default function OrientationGuard() {
     []
   );
 
-  const mustBeLandscape = landscapeRoutes.some((r) => pathname?.startsWith(r));
+  const mustBeLandscape = landscapeRoutes.some((route) =>
+    pathname?.startsWith(route)
+  );
 
   useEffect(() => {
     const check = () => {
-      setIsMobileOrTablet(window.innerWidth <= 1024);
-      setIsLandscape(window.innerWidth > window.innerHeight);
+      const touchDevice = navigator.maxTouchPoints > 0;
+      const tabletSizedScreen =
+        Math.min(window.screen.width, window.screen.height) <= 1024;
+
+      setIsMobileOrTablet(
+        window.innerWidth <= 1024 || (touchDevice && tabletSizedScreen)
+      );
+      setIsLandscape(readPhysicalLandscape());
     };
+
+    const screenOrientation = window.screen.orientation;
 
     check();
     window.addEventListener("resize", check);
     window.addEventListener("orientationchange", check);
+    screenOrientation?.addEventListener?.("change", check);
 
     return () => {
       window.removeEventListener("resize", check);
       window.removeEventListener("orientationchange", check);
+      screenOrientation?.removeEventListener?.("change", check);
     };
   }, []);
-
 
   useEffect(() => {
     const readCameraState = () => {
@@ -64,60 +92,52 @@ export default function OrientationGuard() {
     window.addEventListener("inrcy-camera-capture-active", onCameraStateChange);
 
     return () => {
-      window.removeEventListener("inrcy-camera-capture-active", onCameraStateChange);
+      window.removeEventListener(
+        "inrcy-camera-capture-active",
+        onCameraStateChange
+      );
     };
   }, []);
 
   useEffect(() => {
-    if (!pathname || !isMobileOrTablet) return;
+    if (!isMobileOrTablet) return;
 
-    if (isCameraCaptureActive) {
+    const orientation = window.screen.orientation as
+      | ScreenOrientationWithLock
+      | undefined;
+
+    // En dehors des devis/factures, iNrCy ne force plus aucune orientation.
+    // Cela évite que l'ouverture du clavier dans un formulaire soit prise pour
+    // une rotation et déclenche un verrouillage portrait/paysage.
+    if (!mustBeLandscape || isCameraCaptureActive) {
       try {
-        const anyScreen = screen as Screen & {
-          orientation?: {
-            unlock?: () => void;
-          };
-        };
-        anyScreen.orientation?.unlock?.();
+        orientation?.unlock?.();
       } catch {
-        // Best effort: certains navigateurs refusent unlock(), l’overlay est quand même désactivé.
+        // Certains navigateurs refusent unlock() hors plein écran.
       }
       return;
     }
 
-    const target = mustBeLandscape ? "landscape" : "portrait";
     let cancelled = false;
 
     (async () => {
       try {
-        const anyScreen = screen as Screen & {
-          orientation?: {
-            lock?: (_mode: string) => Promise<void>;
-            unlock?: () => void;
-          };
-        };
-        if (anyScreen.orientation?.lock) {
-          await anyScreen.orientation.lock(target);
-          if (!cancelled) {
-            setTimeout(() => {
-              if (!cancelled) {
-                setIsLandscape(window.innerWidth > window.innerHeight);
-              }
-            }, 120);
-          }
+        await orientation?.lock?.("landscape");
+        if (!cancelled) {
+          window.setTimeout(() => {
+            if (!cancelled) setIsLandscape(readPhysicalLandscape());
+          }, 120);
         }
       } catch {
-        // iOS Safari / navigateurs non compatibles: le fallback visuel prendra le relais
+        // iOS Safari et certains navigateurs utilisent simplement l'overlay.
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [pathname, mustBeLandscape, isMobileOrTablet, isCameraCaptureActive]);
+  }, [mustBeLandscape, isMobileOrTablet, isCameraCaptureActive]);
 
-
-  // ✅ Logo: on tente png puis svg puis sans extension
   const logoCandidates = [
     "/logo-appli-inrcy.png",
     "/logo-appli-inrcy.svg",
@@ -127,28 +147,10 @@ export default function OrientationGuard() {
   const [logoIdx, setLogoIdx] = useState(0);
   const logoSrc = logoCandidates[logoIdx] || logoCandidates[0];
 
-  if (!isClient) return null;
+  if (!isClient || !isMobileOrTablet || isCameraCaptureActive) return null;
 
-  // ✅ Desktop large → jamais d’overlay
-  if (!isMobileOrTablet) return null;
-
-  // ✅ Pendant la prise de photo intégrée iNrCy, on autorise le paysage.
-  if (isCameraCaptureActive) return null;
-
-  const showLandscapeBlock = mustBeLandscape && !isLandscape;
-  const showPortraitBlock = !mustBeLandscape && isLandscape;
-
-  if (!showLandscapeBlock && !showPortraitBlock) return null;
-
-  const title = showLandscapeBlock
-    ? "Passe en mode paysage"
-    : "Revenez en mode portrait";
-
-  const subtitle = showLandscapeBlock
-    ? "Pour une meilleure lisibilité de ce module."
-    : "Pour une meilleure expérience, l’app fonctionne en vertical.";
-
-  const badge = showLandscapeBlock ? "Paysage requis" : "Portrait requis";
+  // L'overlay n'existe désormais que sur les modules réellement prévus en paysage.
+  if (!mustBeLandscape || isLandscape) return null;
 
   return (
     <div className={styles.overlay}>
@@ -165,40 +167,34 @@ export default function OrientationGuard() {
                 priority
                 unoptimized
                 onError={() => {
-                  setLogoIdx((i) => (i + 1 < logoCandidates.length ? i + 1 : i));
+                  setLogoIdx((index) =>
+                    index + 1 < logoCandidates.length ? index + 1 : index
+                  );
                 }}
               />
               <div className={styles.brandName}>iNrCy</div>
             </div>
 
-            <span className={styles.badge}>{badge}</span>
+            <span className={styles.badge}>Paysage requis</span>
 
-            {showLandscapeBlock ? (
-              <button
-                type="button"
-                className={styles.closeBtn}
-                aria-label="Fermer et revenir au dashboard"
-                onClick={() => router.push("/dashboard")}
-              >
-                ×
-              </button>
-            ) : (
-              <span className={styles.closeSpacer} aria-hidden />
-            )}
+            <button
+              type="button"
+              className={styles.closeBtn}
+              aria-label="Fermer et revenir au dashboard"
+              onClick={() => router.push("/dashboard")}
+            >
+              ×
+            </button>
           </div>
 
-          <h2 className={styles.title}>{title}</h2>
-          <p className={styles.subtitle}>{subtitle}</p>
+          <h2 className={styles.title}>Passe en mode paysage</h2>
+          <p className={styles.subtitle}>
+            Pour une meilleure lisibilité de ce module.
+          </p>
 
           <div className={styles.grid} aria-hidden>
             <div className={styles.phoneWrap}>
-              <div
-                className={`${styles.phone} ${
-                  showLandscapeBlock
-                    ? styles.rotateToLandscape
-                    : styles.rotateToPortrait
-                }`}
-              >
+              <div className={`${styles.phone} ${styles.rotateToLandscape}`}>
                 <div className={styles.notch} />
                 <div className={styles.screen} />
               </div>
@@ -211,7 +207,7 @@ export default function OrientationGuard() {
                 <span className={styles.pill}>⟳</span>
               </div>
               <div className={styles.hintSmall}>
-                Astuce : désactivez le verrouillage d’orientation si besoin.
+                Astuce : désactivez le verrouillage d'orientation si besoin.
               </div>
             </div>
           </div>
