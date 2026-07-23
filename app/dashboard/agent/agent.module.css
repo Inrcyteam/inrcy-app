@@ -1243,6 +1243,27 @@
   font-weight: 750;
 }
 
+@media (max-width: 1100px){
+  .modalBackdrop{
+    bottom:var(--inrcy-mobile-bottom-nav-total-height, calc(50px + env(safe-area-inset-bottom, 0px)));
+    height:calc(100dvh - var(--inrcy-mobile-bottom-nav-total-height, calc(50px + env(safe-area-inset-bottom, 0px))));
+    max-height:calc(100dvh - var(--inrcy-mobile-bottom-nav-total-height, calc(50px + env(safe-area-inset-bottom, 0px))));
+    z-index:10050;
+    box-sizing:border-box;
+  }
+
+  .notice{
+    bottom:calc(var(--inrcy-mobile-bottom-nav-total-height, calc(50px + env(safe-area-inset-bottom, 0px))) + 12px);
+    z-index:10060;
+  }
+
+  .robotPanelBackdrop{
+    bottom:var(--inrcy-mobile-bottom-nav-total-height, calc(50px + env(safe-area-inset-bottom, 0px)));
+    height:calc(100dvh - var(--inrcy-mobile-bottom-nav-total-height, calc(50px + env(safe-area-inset-bottom, 0px))));
+    max-height:calc(100dvh - var(--inrcy-mobile-bottom-nav-total-height, calc(50px + env(safe-area-inset-bottom, 0px))));
+  }
+}
+
 .cardIcon svg,
 .settingsButton svg,
 .metaIcon svg,

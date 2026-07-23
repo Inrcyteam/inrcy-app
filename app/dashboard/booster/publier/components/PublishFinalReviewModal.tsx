@@ -66,7 +66,7 @@ export default function PublishFinalReviewModal({
         style={{
           width: "min(760px, 100%)",
           maxHeight:
-            "calc(100dvh - var(--inrcy-mobile-bottom-nav-total-height, 0px) - 32px)",
+            "calc(100dvh - var(--inrcy-mobile-bottom-nav-total-height, calc(50px + env(safe-area-inset-bottom, 0px))) - 32px)",
           overflowY: "auto",
           display: "grid",
           gap: 16,

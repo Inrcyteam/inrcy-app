@@ -515,7 +515,14 @@ export default function ProfilContent({
   };
 
   return (
-    <div style={{ display: "grid", gap: 12 }}>
+    <div
+      style={{
+        display: "grid",
+        gap: 12,
+        color: "rgba(255,255,255,0.92)",
+        paddingBottom: "max(24px, env(safe-area-inset-bottom, 0px))",
+      }}
+    >
       {/* CARTE 1 — Compte */}
       <div style={cardStyle}>
         <h2 style={titleAccent}>Cordonnées</h2>

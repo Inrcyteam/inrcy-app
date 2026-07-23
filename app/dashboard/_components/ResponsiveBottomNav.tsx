@@ -208,6 +208,24 @@ function ResponsiveBottomNavMobile() {
   const landscapeDocumentRoute = pathname.startsWith("/dashboard/factures") || pathname.startsWith("/dashboard/devis");
   const hidden = cameraCaptureOpen || explicitImmersiveModeOpen || (landscapeDocumentRoute && isLandscapeViewport);
 
+  // Les modales rendues dans document.body ne reçoivent pas les variables du
+  // shell. On expose donc la hauteur du dock au niveau racine, avec 0 lorsque
+  // le dock est volontairement masqué (capture caméra / mode immersif).
+  useEffect(() => {
+    const root = document.documentElement;
+    const property = "--inrcy-mobile-bottom-nav-total-height";
+    const previousValue = root.style.getPropertyValue(property);
+    root.style.setProperty(
+      property,
+      hidden ? "0px" : "calc(50px + env(safe-area-inset-bottom, 0px))",
+    );
+
+    return () => {
+      if (previousValue) root.style.setProperty(property, previousValue);
+      else root.style.removeProperty(property);
+    };
+  }, [hidden]);
+
   useEffect(() => {
     if (!hidden) return;
     setMenuOpen(false);

@@ -4994,7 +4994,7 @@
 
 /* Le dock mobile reste visible dans les workflows métier (Booster, campagnes, etc.).
    Les surfaces plein écran s'arrêtent physiquement au-dessus du dock. */
-@media (max-width: 560px) {
+@media (max-width: 1100px) {
   .fullscreenModalOverlay {
     bottom: var(
       --inrcy-mobile-bottom-nav-total-height,

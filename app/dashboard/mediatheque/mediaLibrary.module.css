@@ -731,6 +731,20 @@ button:disabled{
   position:relative;
 }
 
+@media (max-width: 1100px){
+  .previewOverlay{
+    bottom:var(--inrcy-mobile-bottom-nav-total-height, calc(50px + env(safe-area-inset-bottom, 0px)));
+    height:calc(100dvh - var(--inrcy-mobile-bottom-nav-total-height, calc(50px + env(safe-area-inset-bottom, 0px))));
+    max-height:calc(100dvh - var(--inrcy-mobile-bottom-nav-total-height, calc(50px + env(safe-area-inset-bottom, 0px))));
+    z-index:10050;
+    box-sizing:border-box;
+  }
+
+  .previewModal{
+    max-height:calc(100dvh - var(--inrcy-mobile-bottom-nav-total-height, calc(50px + env(safe-area-inset-bottom, 0px))) - 32px);
+  }
+}
+
 .previewClose{
   position:absolute;
   top:12px;
@@ -2605,4 +2619,3 @@ button:disabled{
     flex-basis:36px;
   }
 }
-

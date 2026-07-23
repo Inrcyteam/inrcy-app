@@ -382,7 +382,7 @@ export default function InrSearchSettingsContent({
       ) : null}
 
       {helperOpen ? (
-        <div role="dialog" aria-modal="true" aria-labelledby="inrsearch-helper-title" style={{ position: "fixed", inset: 0, zIndex: 100, display: "grid", placeItems: "center", padding: 20, background: "rgba(2,6,23,.76)" }}>
+        <div role="dialog" aria-modal="true" aria-labelledby="inrsearch-helper-title" style={{ position: "fixed", inset: 0, zIndex: 10050, display: "grid", placeItems: "center", padding: 20, background: "rgba(2,6,23,.76)" }}>
           <div style={{ width: "min(680px, 100%)", maxHeight: "min(760px, 90vh)", overflowY: "auto", border: "1px solid rgba(167,139,250,.35)", borderRadius: 18, padding: 20, background: "linear-gradient(145deg, #111827, #0b1020)", boxShadow: "0 30px 80px rgba(0,0,0,.45)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}><div id="inrsearch-helper-title" className={styles.blockTitle}>À quoi sert iNr&apos;Search ?</div><button className={styles.ghostBtn} type="button" onClick={() => setHelperOpen(false)}>Fermer</button></div>
             <p className={styles.smallMuted} style={{ marginTop: 12 }}>iNr&apos;Search transforme automatiquement les informations déjà enregistrées dans iNrCy en une page professionnelle publique, conçue pour les internautes, Google, Bing et les moteurs de réponse IA.</p>
@@ -395,7 +395,7 @@ export default function InrSearchSettingsContent({
       ) : null}
 
       {disconnectConfirmOpen ? (
-        <div role="dialog" aria-modal="true" aria-labelledby="inrsearch-disconnect-title" style={{ position: "fixed", inset: 0, zIndex: 101, display: "grid", placeItems: "center", padding: 20, background: "rgba(2,6,23,.78)" }}>
+        <div role="dialog" aria-modal="true" aria-labelledby="inrsearch-disconnect-title" style={{ position: "fixed", inset: 0, zIndex: 10051, display: "grid", placeItems: "center", padding: 20, background: "rgba(2,6,23,.78)" }}>
           <div style={{ width: "min(520px, 100%)", border: "1px solid rgba(248,113,113,.38)", borderRadius: 18, padding: 20, background: "#11131b", boxShadow: "0 30px 80px rgba(0,0,0,.48)" }}>
             <div id="inrsearch-disconnect-title" className={styles.blockTitle}>Déconnecter votre page iNr&apos;Search ?</div>
             <p className={styles.smallMuted} style={{ lineHeight: 1.6 }}>Votre page sera retirée de l’annuaire public et sa désindexation sera demandée progressivement à Google, Bing et aux moteurs de recherche IA. Le référencement et les signaux de visibilité obtenus pourront être perdus. Une reconnexion ne garantit pas un retour immédiat dans les résultats.</p>

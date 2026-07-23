@@ -488,7 +488,14 @@ export default function ActivityContent({
   };
 
   return (
-    <div style={{ display: "grid", gap: 12 }}>
+    <div
+      style={{
+        display: "grid",
+        gap: 12,
+        color: "rgba(255,255,255,0.92)",
+        paddingBottom: "max(24px, env(safe-area-inset-bottom, 0px))",
+      }}
+    >
       <div style={card}>
         <p style={{ margin: "8px 0 0", opacity: 0.85, lineHeight: 1.5 }}>
           Ces informations servent à générer des contenus cohérents avec votre
