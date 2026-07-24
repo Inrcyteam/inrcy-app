@@ -70,6 +70,7 @@ function sameSections(value: unknown) {
 }
 
 export function revalidateInrSearchPublicRoutes(slug = "") {
+  revalidatePath("/api/public/inrsearch/directory");
   revalidatePath("/entreprises");
   revalidatePath("/entreprises/[slug]", "page");
   if (slug) {

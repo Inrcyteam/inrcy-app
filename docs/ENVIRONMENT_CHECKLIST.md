@@ -30,6 +30,8 @@ STRICT=1 npm run verify:env
 
 - [ ] `INRCY_CREDENTIALS_SECRET`
 - [ ] `INRCY_WIDGETS_SIGNING_SECRET`
+- [ ] `INRCY_DIRECTORY_PURGE_SECRET` — secret HMAC d’au moins 32 caractères, identique dans Vercel et `wp-config.php`
+- [ ] `INRCY_DIRECTORY_PURGE_URL` — facultatif, défaut `https://inrcy.com/wp-json/inrcy/v1/directory-cache/purge`
 - [ ] `INRCY_WIDGET_ALLOWED_ORIGINS`
 - [ ] `SUPABASE_NEW_USER_WEBHOOK_SECRET`
 - [ ] `INRCY_NEW_USER_ALERT_EMAIL`

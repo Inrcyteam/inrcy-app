@@ -2,7 +2,7 @@
 /**
  * Plugin Name: iNrCy Annuaire
  * Description: Affiche dans WordPress un annuaire server-side des pages iNrSearch publiées.
- * Version: 1.1.0
+ * Version: 1.2.0
  * Author: iNrCy
  * License: GPL-2.0-or-later
  */
@@ -13,6 +13,93 @@ if (!defined('ABSPATH')) {
 
 define('INRCY_DIRECTORY_API_URL', 'https://app.inrcy.com/api/public/inrsearch/directory');
 define('INRCY_DIRECTORY_CACHE_TTL', 300);
+define('INRCY_DIRECTORY_CACHE_VERSION_OPTION', 'inrcy_directory_cache_version');
+
+function inrcy_directory_cache_version() {
+    $version = absint(get_option(INRCY_DIRECTORY_CACHE_VERSION_OPTION, 1));
+    return max(1, $version);
+}
+
+function inrcy_directory_bump_cache_version() {
+    $version = inrcy_directory_cache_version() + 1;
+    update_option(INRCY_DIRECTORY_CACHE_VERSION_OPTION, $version, false);
+    return $version;
+}
+
+function inrcy_directory_purge_secret() {
+    if (defined('INRCY_DIRECTORY_PURGE_SECRET')) {
+        return trim((string) constant('INRCY_DIRECTORY_PURGE_SECRET'));
+    }
+
+    $secret = getenv('INRCY_DIRECTORY_PURGE_SECRET');
+    return is_string($secret) ? trim($secret) : '';
+}
+
+function inrcy_directory_verify_purge_request($request) {
+    $secret = inrcy_directory_purge_secret();
+    if (strlen($secret) < 32) {
+        return new WP_Error(
+            'inrcy_directory_purge_not_configured',
+            'La purge sécurisée de l’annuaire n’est pas configurée.',
+            array('status' => 503)
+        );
+    }
+
+    $timestamp = trim((string) $request->get_header('x-inrcy-timestamp'));
+    $signature = strtolower(trim((string) $request->get_header('x-inrcy-signature')));
+    if (!preg_match('/^[0-9]{10}$/', $timestamp) || abs(time() - (int) $timestamp) > 300) {
+        return new WP_Error(
+            'inrcy_directory_purge_expired',
+            'Horodatage de purge invalide ou expiré.',
+            array('status' => 401)
+        );
+    }
+    if (!preg_match('/^[a-f0-9]{64}$/', $signature)) {
+        return new WP_Error(
+            'inrcy_directory_purge_signature_missing',
+            'Signature de purge invalide.',
+            array('status' => 401)
+        );
+    }
+
+    $expected = hash_hmac('sha256', $timestamp . '.' . $request->get_body(), $secret);
+    if (!hash_equals($expected, $signature)) {
+        return new WP_Error(
+            'inrcy_directory_purge_signature_mismatch',
+            'Signature de purge refusée.',
+            array('status' => 403)
+        );
+    }
+
+    return true;
+}
+
+function inrcy_directory_purge_cache($request) {
+    $response = new WP_REST_Response(
+        array(
+            'ok' => true,
+            'cacheVersion' => inrcy_directory_bump_cache_version(),
+            'purgedAt' => gmdate('c'),
+        ),
+        200
+    );
+    $response->header('Cache-Control', 'no-store, max-age=0');
+    return $response;
+}
+
+function inrcy_directory_register_rest_routes() {
+    register_rest_route(
+        'inrcy/v1',
+        '/directory-cache/purge',
+        array(
+            'methods' => WP_REST_Server::CREATABLE,
+            'callback' => 'inrcy_directory_purge_cache',
+            'permission_callback' => 'inrcy_directory_verify_purge_request',
+        )
+    );
+}
+
+add_action('rest_api_init', 'inrcy_directory_register_rest_routes');
 
 function inrcy_directory_get_filter($key) {
     if (!isset($_GET[$key]) || is_array($_GET[$key])) {
@@ -39,7 +126,7 @@ function inrcy_directory_api_url($filters, $page = 1) {
 
 function inrcy_directory_fetch($filters, $page = 1) {
     $url = inrcy_directory_api_url($filters, $page);
-    $cache_key = 'inrcy_directory_' . md5($url);
+    $cache_key = 'inrcy_directory_' . inrcy_directory_cache_version() . '_' . md5($url);
     $cached = get_transient($cache_key);
 
     if (is_array($cached)) {
@@ -309,7 +396,7 @@ function inrcy_directory_enqueue_styles() {
         return;
     }
 
-    wp_register_style('inrcy-directory', false, array(), '1.1.0');
+    wp_register_style('inrcy-directory', false, array(), '1.2.0');
     wp_enqueue_style('inrcy-directory');
     $css = <<<'INRCY_DIRECTORY_CSS'
         .inrcy-directory{max-width:1180px;margin:0 auto;padding:72px 24px 96px;color:#101a38}

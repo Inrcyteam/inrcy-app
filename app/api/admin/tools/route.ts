@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdminApi } from "@/lib/adminSecurity";
+import { purgeInrSearchDirectoryCache } from "@/lib/inrSearchDirectoryCache";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { revalidateInrSearchPublicRoutes } from "@/lib/inrSearchProvisioning";
 import {
@@ -13,6 +14,17 @@ import {
 } from "@/lib/bubbleAccess";
 
 export const runtime = "nodejs";
+
+async function syncInrSearchDirectoryAfterAdminChange() {
+  revalidateInrSearchPublicRoutes();
+  try {
+    await purgeInrSearchDirectoryCache({ reason: "admin_access_changed" });
+  } catch (error) {
+    console.error("[admin-tools] WordPress directory cache purge failed", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
 
 const PROFILE_SELECT_WITH_ROLE =
   "user_id,admin_email,contact_email,first_name,last_name,company_legal_name,phone,role,updated_at";
@@ -256,7 +268,7 @@ export async function PATCH(request: NextRequest) {
         .upsert(rows, { onConflict: "user_id,bubble_key" });
 
       if (error) throw error;
-      revalidateInrSearchPublicRoutes();
+      await syncInrSearchDirectoryAfterAdminChange();
       return NextResponse.json({ ok: true, reset: true });
     }
 
@@ -277,7 +289,9 @@ export async function PATCH(request: NextRequest) {
         .upsert(rows, { onConflict: "user_id,bubble_key" });
 
       if (error) throw error;
-      if (rows.some((row) => row.bubble_key === "inr_search")) revalidateInrSearchPublicRoutes();
+      if (rows.some((row) => row.bubble_key === "inr_search")) {
+        await syncInrSearchDirectoryAfterAdminChange();
+      }
       return NextResponse.json({ ok: true, updated: rows.length });
     }
 
@@ -298,7 +312,7 @@ export async function PATCH(request: NextRequest) {
       );
 
     if (error) throw error;
-    if (bubbleKey === "inr_search") revalidateInrSearchPublicRoutes();
+    if (bubbleKey === "inr_search") await syncInrSearchDirectoryAfterAdminChange();
 
     return NextResponse.json({ ok: true, bubble_key: bubbleKey, enabled: Boolean(body?.enabled) });
   } catch (error: any) {

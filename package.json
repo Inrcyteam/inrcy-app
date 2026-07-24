@@ -33,7 +33,8 @@
     "qa:ai-gateway:calibrate": "node scripts/calibrate-ai-engines.mjs",
     "qa:ai-gateway:certify": "node scripts/qa-ai-gateway-live.mjs --mode=certify",
     "qa:inr-search": "node scripts/qa-inr-search.mjs",
-    "qa:inr-search:final": "npm run qa:inr-search && npm run typecheck && eslint app/entreprises app/metiers app/secteurs app/api/inr-search lib/inrSearch*.ts app/dashboard/settings/_components/InrSearchSettingsContent.tsx --max-warnings=9999",
+    "test:inr-search": "node --test --test-isolation=none --experimental-strip-types tests/inr-search/*.test.mts",
+    "qa:inr-search:final": "npm run qa:inr-search && npm run test:inr-search && npm run typecheck && eslint app/entreprises app/metiers app/secteurs app/api/inr-search lib/inrSearch*.ts app/dashboard/settings/_components/InrSearchSettingsContent.tsx --max-warnings=9999",
     "test:booster-content-safety": "node --test --experimental-strip-types tests/booster-content-safety/*.test.mts"
   },
   "dependencies": {

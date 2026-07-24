@@ -282,6 +282,9 @@ export default function InrSearchSettingsContent({
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok || !payload?.ok) throw new Error(payload?.error || "Mise à jour impossible.");
+      const directoryWarning = payload?.directoryCache?.ok === false
+        ? String(payload.directoryCache.warning || "L’annuaire public n’a pas pu être actualisé immédiatement.")
+        : "";
       setSuccess(
         action === "connect"
           ? "Votre page iNr’Search est maintenant connectée."
@@ -292,6 +295,7 @@ export default function InrSearchSettingsContent({
               : "Votre page reste publique, mais elle n’est plus proposée dans l’annuaire.",
       );
       await load();
+      if (directoryWarning) setError(directoryWarning);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Mise à jour iNr’Search impossible.");
     } finally {

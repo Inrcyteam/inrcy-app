@@ -7,7 +7,8 @@ import {
   type PublishedInrSearchCompany,
 } from "@/lib/inrSearchPublic";
 
-export const revalidate = 300;
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 const DEFAULT_PAGE_SIZE = 12;
 const MAX_PAGE_SIZE = 48;
@@ -101,7 +102,7 @@ function responseHeaders() {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "GET, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
-    "Cache-Control": "public, s-maxage=300, stale-while-revalidate=600",
+    "Cache-Control": "no-store, max-age=0",
     Vary: "Origin",
   };
 }

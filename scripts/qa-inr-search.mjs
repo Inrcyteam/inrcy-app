@@ -48,6 +48,9 @@ const requiredFiles = [
   "lib/inrSearchQuality.ts",
   "lib/inrSearchProvisioning.ts",
   "lib/inrSearchEligibility.ts",
+  "lib/inrSearchDirectoryCache.ts",
+  "app/api/public/inrsearch/directory/route.ts",
+  "ops/wordpress-directory-plugin/inrcy-directory.php",
   "ops/sql/2026-07-11_app_bubble_access_inr_search.sql",
 ];
 
@@ -84,6 +87,9 @@ const sitemap = read("app/sitemap.ts");
 const robots = read("app/robots.ts");
 const bubbleAccessLib = read("lib/bubbleAccess.ts");
 const bubbleAccessMigration = read("ops/sql/2026-07-11_app_bubble_access_inr_search.sql");
+const directoryCacheLib = read("lib/inrSearchDirectoryCache.ts");
+const directoryApi = read("app/api/public/inrsearch/directory/route.ts");
+const wordpressDirectoryPlugin = read("ops/wordpress-directory-plugin/inrcy-directory.php");
 
 check("URL canonique entreprise conservée", publicPage.includes("buildInrSearchPublicUrl(data.slug)"));
 check("Domaine public app.inrcy.com verrouillé", publicData.includes("https://app.inrcy.com") && !publicData.includes('|| "https://inrcy.com"'));
@@ -152,6 +158,11 @@ check("FAQ plein écran à trois cartes", publicFaq.includes("faqCarousel") && p
 check("Réseaux animés comme un système solaire complet", publicSocials.includes("socialOrbitTrack") && publicSocials.includes("--social-speed") && publicSocials.includes("links.map"));
 check("Radar réservé à la Zone", publicZone.includes("zoneOrbitRadar") && !contactOrbit.includes("contactConvergenceField"));
 check("Actualités visibles même avant la première publication", publicPage.includes("data.sections.news ?") && publicNews.includes("newsOrbitEmpty"));
+
+check("API annuaire sans cache intermédiaire obsolète", directoryApi.includes('dynamic = "force-dynamic"') && directoryApi.includes('"Cache-Control": "no-store, max-age=0"'));
+check("Purge WordPress signée après changement annuaire", settingsApi.includes("await purgeInrSearchDirectoryCache") && directoryCacheLib.includes('createHmac("sha256", secret)'));
+check("Cache WordPress invalidé pour toutes les variantes", wordpressDirectoryPlugin.includes("inrcy_directory_bump_cache_version") && wordpressDirectoryPlugin.includes("/directory-cache/purge"));
+check("Masquage administrateur propagé à WordPress", adminToolsApi.includes("syncInrSearchDirectoryAfterAdminChange") && adminToolsApi.includes('reason: "admin_access_changed"'));
 
 for (const result of checks) {
   console.log(`${result.condition ? "✓" : "✗"} ${result.label}`);

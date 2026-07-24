@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { purgeInrSearchDirectoryCache } from "@/lib/inrSearchDirectoryCache";
 import { getInrSearchPublicStatus } from "@/lib/inrSearchPublic";
 import { getInrSearchPublicationEligibility } from "@/lib/inrSearchEligibility";
 import { ensureSystemManagedInrSearch } from "@/lib/inrSearchProvisioning";
@@ -9,7 +10,13 @@ import { clearAllToolCaches } from "@/lib/statsCache";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
-async function syncSystemManagedPage() {
+type DirectoryCacheSync = {
+  ok: boolean;
+  cacheVersion?: number | null;
+  warning?: string;
+};
+
+async function syncSystemManagedPage(directoryCache?: DirectoryCacheSync) {
   const { supabase, errorResponse, activeUserId } = await requireUser();
   if (errorResponse) return errorResponse;
 
@@ -26,6 +33,7 @@ async function syncSystemManagedPage() {
           reason: publicStatus.reason,
         },
         publicStatus,
+        ...(directoryCache ? { directoryCache } : {}),
       },
       { headers: { "Cache-Control": "no-store, max-age=0" } },
     );
@@ -87,7 +95,30 @@ async function applyAction(request: Request) {
 
     revalidateInrSearchPublicRoutes(slug);
     await clearAllToolCaches(supabase, activeUserId);
-    return syncSystemManagedPage();
+    let directoryCache: DirectoryCacheSync;
+    try {
+      const purge = await purgeInrSearchDirectoryCache({
+        reason: action === "directory"
+          ? (Boolean(body.enabled) ? "directory_enabled" : "directory_disabled")
+          : action,
+        slug,
+      });
+      directoryCache = {
+        ok: true,
+        cacheVersion: purge.cacheVersion,
+      };
+    } catch (error) {
+      console.error("[inr-search] WordPress directory cache purge failed", {
+        action,
+        activeUserId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      directoryCache = {
+        ok: false,
+        warning: "Le réglage est enregistré, mais l’annuaire public n’a pas pu être actualisé immédiatement.",
+      };
+    }
+    return syncSystemManagedPage(directoryCache);
   } catch (error) {
     const message = getSimpleFrenchErrorMessage(error, "Mise à jour de la page iNr'Search impossible.");
     return NextResponse.json({ ok: false, error: message }, { status: 400, headers: { "Cache-Control": "no-store" } });

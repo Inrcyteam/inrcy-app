@@ -29,6 +29,7 @@ const required = [
   // Widgets / encrypted credentials
   "INRCY_WIDGETS_SIGNING_SECRET",
   "INRCY_CREDENTIALS_SECRET",
+  "INRCY_DIRECTORY_PURGE_SECRET",
 
   // SMTP / transactional email
   "TX_SMTP_HOST",
@@ -65,6 +66,7 @@ const optionalButRecommended = [
   "SUPABASE_NEW_USER_WEBHOOK_SECRET",
   "INRCY_NEW_USER_ALERT_EMAIL",
   "INRCY_TRIAL_SIGNUP_SECRET",
+  "INRCY_DIRECTORY_PURGE_URL",
 
   // SMTP identity
   "TX_MAIL_FROM",
