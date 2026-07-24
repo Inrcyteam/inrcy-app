@@ -29,6 +29,20 @@ const JOB_ALIASES: Partial<
       "webmaster",
     ],
   },
+  evenementiel: {
+    magicien: [
+      "magie",
+      "illusionniste",
+      "prestidigitateur",
+      "close up",
+      "close-up",
+      "spectacle de magie",
+      "animation magie",
+      "magicien mariage",
+      "magicien anniversaire",
+      "magicien entreprise",
+    ],
+  },
   formation_enseignement: {
     auto_ecole: [
       "école de conduite",

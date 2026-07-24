@@ -1,5 +1,6 @@
 import { buildSectorTemplates } from "@/lib/templates/sectorCatalog";
 import { type ActivitySectorCategory } from "@/lib/activitySectors";
+import { findJobValueByLabel, isValidJobForSector } from "@/lib/activityCatalog";
 import type { IntelligentTemplateContext, IntelligentTemplateMetadata } from "@/lib/templates/intelligentContext";
 import { buildIntelligentTemplateContext, mergeIntelligentTemplateContext, sortTemplatesByIntelligentContext } from "@/lib/templates/intelligentContext";
 import { stripTemplateSignatureBlock } from "@/lib/mailTemplateCleanup";
@@ -859,6 +860,12 @@ export function getTemplates(
     buildIntelligentTemplateContext({ action, module: inferredModule, channel: "email" }),
     intelligentContext
   );
+  const resolvedProfessionKey =
+    sectorCategory && professionKey
+      ? isValidJobForSector(sectorCategory, professionKey)
+        ? professionKey
+        : findJobValueByLabel(sectorCategory, professionKey)
+      : "";
 
   const scoped = TEMPLATES.filter((t) => {
     if (t.action !== action || t.module !== inferredModule) return false;
@@ -867,11 +874,10 @@ export function getTemplates(
     return true;
   });
 
-  if (sectorCategory && professionKey) {
-    const dedicated = scoped.filter((t) => t.professionKey === professionKey);
+  if (sectorCategory && resolvedProfessionKey) {
+    const dedicated = scoped.filter((t) => t.professionKey === resolvedProfessionKey);
     if (dedicated.length) return sortTemplatesByIntelligentContext(dedicated, effectiveContext);
   }
 
   return sortTemplatesByIntelligentContext(scoped.filter((t) => !t.professionKey), effectiveContext);
 }
-

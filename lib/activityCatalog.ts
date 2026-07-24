@@ -226,6 +226,7 @@ export const ACTIVITY_CATALOG: Record<ActivitySectorCategory, SectorCatalog> = {
       decorateur_evenementiel: { label: 'Décoration événementielle', services: ['Location décoration', 'Location de mobilier', 'Location de vaisselle', 'Scénographie', 'Projet sur mesure', 'Coordination', 'Installation', 'Personnalisation'] },
       dj: { label: 'DJ / Animation', services: ['Mariage', 'Anniversaire', 'Soirée entreprise', 'Sonorisation', 'Éclairage', 'Playlist sur mesure', 'Pack animation', 'Devis événement'] },
       location_materiel: { label: 'Location de matériel', services: ['Location mobilier', 'Sonorisation', 'Éclairage', 'Vaisselle', 'Structures', 'Livraison', 'Installation', 'Devis sur mesure'] },
+      magicien: { label: 'Magicien', services: ['Magie close-up', 'Spectacle de magie', 'Mariage', 'Anniversaire', 'Événement d’entreprise', 'Cocktail / réception', 'Soirée privée', 'Animation sur mesure'] },
       photographe: { label: 'Photographe', services: ['Mariage', 'Portrait', 'Famille', 'Entreprise', 'Événement', 'Shooting extérieur', 'Album / tirages', 'Séance découverte'] },
       salle_reception: { label: 'Salle de réception', services: ['Location salle', 'Mariage', 'Séminaire', 'Anniversaire', 'Capacité accueil', 'Visite salle', 'Options réception', 'Devis événement'] },
       traiteur_evenementiel: { label: 'Traiteur événementiel', services: ['Cocktail', 'Buffet', 'Repas assis', 'Brunch', 'Entreprise', 'Mariage', 'Livraison', 'Devis sur mesure'] },
@@ -442,6 +443,16 @@ const FORMATION_ENSEIGNEMENT_JOB_ALIASES: Record<string, string> = {
   'formation code de la route': 'formation_code_route',
 };
 
+const EVENEMENTIEL_JOB_ALIASES: Record<string, string> = {
+  'magie': 'magicien',
+  'magie close up': 'magicien',
+  'spectacle de magie': 'magicien',
+  'animation magie': 'magicien',
+  'illusionniste': 'magicien',
+  'prestidigitateur': 'magicien',
+  'magicien professionnel': 'magicien',
+};
+
 function normalizeJobLabel(value: string) {
   return String(value || '')
     .normalize('NFD')
@@ -481,6 +492,9 @@ export function findJobValueByLabel(sector: string, label: string) {
   }
   if (sector === 'formation_enseignement') {
     return FORMATION_ENSEIGNEMENT_JOB_ALIASES[normalized] || '';
+  }
+  if (sector === 'evenementiel') {
+    return EVENEMENTIEL_JOB_ALIASES[normalized] || '';
   }
   return '';
 }

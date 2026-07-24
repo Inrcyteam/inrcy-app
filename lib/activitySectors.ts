@@ -82,7 +82,7 @@ export function inferSectorCategoryFromProfession(input?: string | null): Activi
   if (/(communication|community manager|social media|attaché de presse|attache de presse|branding|studio créa|studio crea|graphiste|seo|sea|marketing digital|content manager)/.test(value)) return 'communication';
   if (/(juridique|avocat|notaire|juriste|huissier|commissaire de justice|cabinet juridique|droit)/.test(value)) return 'juridique';
   if (/(finance|courtage financier|gestion de patrimoine|patrimoine|cgp|conseiller financier|audit financier|daf|expert financier|trésorerie|tresorerie)/.test(value)) return 'finance';
-  if (/(dj|photograph|vidéaste|videaste|wedding|événement|evenement|salle de réception|salle de reception|location matériel|location materiel|traiteur évènement|traiteur evenement)/.test(value)) return 'evenementiel';
+  if (/(dj|photograph|vidéaste|videaste|wedding|événement|evenement|salle de réception|salle de reception|location matériel|location materiel|traiteur évènement|traiteur evenement|magicien|magie|illusionniste|prestidigitateur|close[- ]?up)/.test(value)) return 'evenementiel';
   if (/(animal|vétér|veter|toilett|écurie|ecurie|éleveur|élevage|elevage|pension canine|pension féline|pension feline|maréchal|marechal)/.test(value)) return 'animalier';
   if (/(transport|taxi|vtc|chauffeur|ambulance|ambulancier|livraison|coursier|messagerie|fret|marchandises|logistique|demenagement)/.test(value)) return 'transport';
   if (/(sécurité|securite|gardiennage|incendie|télésurveillance|telesurveillance|vidéosurveillance|videosurveillance|contrôle d’accès|controle d'acces|agent de sécurité|agent de securite)/.test(value)) return 'securite';
