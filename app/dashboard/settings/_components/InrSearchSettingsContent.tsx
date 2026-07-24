@@ -45,6 +45,8 @@ type InrSearchPanelSnapshot = {
   publication: InrSearchPublicationState;
 };
 
+type InrSearchAction = "connect" | "disconnect" | "directory";
+
 const EMPTY_SETTINGS: InrSearchSettings = {
   enabled: false,
   directoryEnabled: false,
@@ -192,6 +194,7 @@ export default function InrSearchSettingsContent({
   });
   const [loading, setLoading] = useState(() => !initialSnapshot && initialConnected === null);
   const [actionLoading, setActionLoading] = useState(false);
+  const [feedbackAction, setFeedbackAction] = useState<InrSearchAction | null>(null);
   const [helperOpen, setHelperOpen] = useState(false);
   const [disconnectConfirmOpen, setDisconnectConfirmOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -265,8 +268,9 @@ export default function InrSearchSettingsContent({
   const isPublished = Boolean(settings.enabled && settings.slug && publication.allowed);
   const hasPage = Boolean(settings.slug);
 
-  const performAction = useCallback(async (action: "connect" | "disconnect" | "directory", enabled?: boolean) => {
+  const performAction = useCallback(async (action: InrSearchAction, enabled?: boolean) => {
     setActionLoading(true);
+    setFeedbackAction(action);
     setError(null);
     setSuccess(null);
     try {
@@ -320,8 +324,8 @@ export default function InrSearchSettingsContent({
 
   return (
     <div style={{ display: "grid", gap: 14 }}>
-      {error ? <StatusMessage variant="error">{error}</StatusMessage> : null}
-      {success ? <StatusMessage variant="success">{success}</StatusMessage> : null}
+      {error && feedbackAction !== "directory" ? <StatusMessage variant="error">{error}</StatusMessage> : null}
+      {success && feedbackAction !== "directory" ? <StatusMessage variant="success">{success}</StatusMessage> : null}
 
       <div style={{ ...cardStyle, gap: 12 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, flexWrap: "wrap" }}>
@@ -342,7 +346,7 @@ export default function InrSearchSettingsContent({
 
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           <button className={isPublished ? `${styles.actionBtn} ${styles.disconnectBtn}` : styles.primaryBtn} type="button" disabled={loading || actionLoading || !hasPage} onClick={() => { if (isPublished) setDisconnectConfirmOpen(true); else void performAction("connect"); }}>
-            {actionLoading ? "Mise à jour…" : isPublished ? "Déconnecter" : "Connecter"}
+            {actionLoading && feedbackAction !== "directory" ? "Mise à jour…" : isPublished ? "Déconnecter" : "Connecter"}
           </button>
           <span className={styles.smallMuted}>{isPublished ? "Votre page est publique et peut être référencée." : "Connectez la page pour activer sa visibilité SEO."}</span>
         </div>
@@ -361,8 +365,15 @@ export default function InrSearchSettingsContent({
             <strong>{settings.directoryEnabled && isPublished ? "Page ajoutée à l’annuaire iNrCy" : "Ajouter ma page à l’annuaire iNrCy"}</strong>
             <span className={styles.smallMuted}>{isPublished ? "Vous pouvez modifier ce choix à tout moment." : "Connectez d’abord votre page iNr’Search."}</span>
           </span>
-          <span aria-hidden style={{ width: 38, height: 22, padding: 3, borderRadius: 999, background: settings.directoryEnabled && isPublished ? "#22c55e" : "rgba(148,163,184,.28)", flex: "0 0 auto" }}><span style={{ display: "block", width: 16, height: 16, borderRadius: 999, background: "#fff", transform: settings.directoryEnabled && isPublished ? "translateX(16px)" : "translateX(0)", transition: "transform .18s ease" }} /></span>
+         <span aria-hidden style={{ width: 38, height: 22, padding: 3, borderRadius: 999, background: settings.directoryEnabled && isPublished ? "#22c55e" : "rgba(148,163,184,.28)", flex: "0 0 auto" }}><span style={{ display: "block", width: 16, height: 16, borderRadius: 999, background: "#fff", transform: settings.directoryEnabled && isPublished ? "translateX(16px)" : "translateX(0)", transition: "transform .18s ease" }} /></span>
         </button>
+        {feedbackAction === "directory" && actionLoading ? (
+          <div role="status" aria-live="polite" className={styles.smallMuted} style={{ border: "1px solid rgba(167,139,250,.28)", borderRadius: 10, padding: "9px 11px", color: "#ddd6fe" }}>
+            Mise à jour de votre présence dans l’annuaire iNrCy…
+          </div>
+        ) : null}
+        {feedbackAction === "directory" && error ? <StatusMessage variant="error">{error}</StatusMessage> : null}
+        {feedbackAction === "directory" && success ? <StatusMessage variant="success">{success}</StatusMessage> : null}
       </div>
 
       <div style={cardStyle}>
