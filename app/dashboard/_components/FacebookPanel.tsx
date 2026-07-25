@@ -32,10 +32,6 @@ export default function FacebookPanel(props: any) {
     facebookPageAction,
   } = props;
 
-  const hasSelectedPageInList = Boolean(
-    fbSelectedPageId && fbPages.some((p: { id: string; name?: string | null }) => p.id === fbSelectedPageId)
-  );
-  const selectedPageLabel = (fbSelectedPageName || facebookUrl || fbSelectedPageId || "").trim();
   const facebookNeedsUpdate = facebookConnectionStatus === "needs_update" && (facebookPageConnected || facebookAccountConnected);
   const facebookStatusLabel = facebookNeedsUpdate ? "À actualiser" : facebookPageConnected ? "Connecté" : facebookAccountConnected ? "Compte connecté" : "À connecter";
   const facebookStatusDot = facebookNeedsUpdate
@@ -61,13 +57,33 @@ export default function FacebookPanel(props: any) {
         : facebookPageActivity === "connecting"
           ? "Connexion en cours…"
           : undefined;
+
   const [facebookPagePickerUnlocked, setFacebookPagePickerUnlocked] = useState(!facebookPageConnected);
+  const [facebookConnectedPageId, setFacebookConnectedPageId] = useState("");
+  const [facebookConnectedPageLabel, setFacebookConnectedPageLabel] = useState("");
 
   useEffect(() => {
-    setFacebookPagePickerUnlocked(!facebookPageConnected);
-  }, [facebookPageConnected]);
+    if (!facebookPageConnected) {
+      setFacebookPagePickerUnlocked(true);
+      setFacebookConnectedPageId("");
+      setFacebookConnectedPageLabel("");
+      return;
+    }
+
+    if (!facebookPagePickerUnlocked && !facebookPageBusy && fbSelectedPageId) {
+      setFacebookConnectedPageId(fbSelectedPageId);
+      setFacebookConnectedPageLabel((fbSelectedPageName || "").trim());
+    }
+  }, [facebookPageConnected, facebookPagePickerUnlocked, facebookPageBusy, fbSelectedPageId, fbSelectedPageName]);
 
   const facebookPagePickerLocked = facebookPageConnected && !facebookPagePickerUnlocked;
+  const selectedPageValue = fbSelectedPageId || facebookConnectedPageId;
+  const hasSelectedPageInList = Boolean(
+    selectedPageValue && fbPages.some((p: { id: string; name?: string | null }) => p.id === selectedPageValue)
+  );
+  const selectedPageLabel = (fbSelectedPageName || facebookConnectedPageLabel || facebookUrl || selectedPageValue || "").trim();
+  const canConnectFacebookPage = Boolean(selectedPageValue) && !fbPagesLoading && !facebookPageBusy;
+  const canChangeFacebookPage = Boolean(selectedPageValue) && selectedPageValue !== facebookConnectedPageId && !fbPagesLoading && !facebookPageBusy;
 
   const startStandard = () => {
     connectFacebookAccount();
@@ -81,14 +97,14 @@ export default function FacebookPanel(props: any) {
     void disconnectFacebookAccount();
   };
 
-  const handlePageConnect = () => {
-    setFacebookPagePickerUnlocked(false);
-    void saveFacebookPage();
+  const handlePageConnect = async () => {
+    const saved = await saveFacebookPage();
+    if (saved) setFacebookPagePickerUnlocked(false);
   };
 
-  const handlePageDisconnect = () => {
+  const handlePageDisconnect = async () => {
+    await disconnectFacebookPage();
     setFacebookPagePickerUnlocked(true);
-    void disconnectFacebookPage();
   };
 
   return (
@@ -214,11 +230,11 @@ export default function FacebookPanel(props: any) {
               }}
               disabled={fbPagesLoading || facebookPageBusy}
             >
-              {fbPagesPhase === "connecting" ? "Connexion..." : fbPagesPhase === "searching" || fbPagesLoading ? "Recherche..." : "Charger mes pages"}
+              Charger mes pages
             </button>
 
             <select
-              value={fbSelectedPageId}
+              value={selectedPageValue}
               onChange={(e) => setFbSelectedPageId(e.target.value)}
               disabled={fbPagesLoading || facebookPageBusy || facebookPagePickerLocked}
               style={{
@@ -236,7 +252,7 @@ export default function FacebookPanel(props: any) {
               }}
             >
               <option value="">Sélectionner une page</option>
-              {!hasSelectedPageInList && fbSelectedPageId ? <option value={fbSelectedPageId}>{selectedPageLabel}</option> : null}
+              {!hasSelectedPageInList && selectedPageValue ? <option value={selectedPageValue}>{selectedPageLabel}</option> : null}
               {fbPages.map((p: { id: string; name?: string | null }) => (
                 <option key={p.id} value={p.id}>
                   {p.name || p.id}
@@ -244,21 +260,36 @@ export default function FacebookPanel(props: any) {
               ))}
             </select>
 
-            <button
-              type="button"
-              className={`${styles.actionBtn} ${facebookPageConnected ? styles.disconnectBtn : styles.connectBtn} ${facebookPageBusy && facebookPageAction === "connect" ? styles.connectingActionBtn : ""}`}
-              onClick={facebookPageConnected ? handlePageDisconnect : handlePageConnect}
-              disabled={!fbSelectedPageId || fbPagesLoading || facebookPageBusy}
-            >
-              {facebookPageBusy ? (facebookPageAction === "disconnect" ? "Déconnexion..." : "Connexion...") : (facebookPageConnected ? "Déconnecter la page" : "Connecter la page")}
-            </button>
+            {facebookPageConnected ? (
+              <>
+                <button
+                  type="button"
+                  className={`${styles.actionBtn} ${styles.connectBtn} ${facebookPageBusy && facebookPageAction === "connect" ? styles.connectingActionBtn : ""}`}
+                  onClick={() => void handlePageConnect()}
+                  disabled={!canChangeFacebookPage}
+                >
+                  Changer de page
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.actionBtn} ${styles.disconnectBtn} ${facebookPageBusy && facebookPageAction === "disconnect" ? styles.connectingActionBtn : ""}`}
+                  onClick={() => void handlePageDisconnect()}
+                  disabled={fbPagesLoading || facebookPageBusy}
+                >
+                  Déconnecter la page
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className={`${styles.actionBtn} ${styles.connectBtn} ${facebookPageBusy && facebookPageAction === "connect" ? styles.connectingActionBtn : ""}`}
+                onClick={() => void handlePageConnect()}
+                disabled={!canConnectFacebookPage}
+              >
+                Connecter la page
+              </button>
+            )}
           </div>
-
-          {facebookPagePickerLocked ? (
-            <div style={{ color: "rgba(255,255,255,0.68)", fontSize: 12, marginTop: -2 }}>
-              Page connectée et verrouillée. Cliquez sur <strong>Charger mes pages</strong> pour pouvoir en sélectionner une autre.
-            </div>
-          ) : null}
 
           {fbPagesError && <StatusMessage variant="error">{fbPagesError}</StatusMessage>}
         </div>

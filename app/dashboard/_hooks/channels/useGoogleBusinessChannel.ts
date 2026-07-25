@@ -215,7 +215,7 @@ export function useGoogleBusinessChannel({
   ]);
 
   const saveGmbLocation = useCallback(async () => {
-    if (!gmbAccountName || !gmbLocationName) return;
+    if (!gmbAccountName || !gmbLocationName) return false;
     try {
       const picked = gmbLocations.find((l) => l.name === gmbLocationName);
       const res = await fetch("/api/integrations/google-business/select-location", {
@@ -244,8 +244,10 @@ export function useGoogleBusinessChannel({
       });
       triggerChannelRefresh("gmb");
       setPanelSuccess("Établissement Google Business enregistré.", 1800);
+      return true;
     } catch (error) {
       setPanelError(error, "Impossible d'enregistrer l'établissement Google Business.");
+      return false;
     }
   }, [gmbAccountName, gmbLocationName, gmbLocations, patchChannelConnectionLocally, triggerChannelRefresh, setPanelError, setPanelSuccess]);
 

@@ -59,31 +59,48 @@ export default function GoogleBusinessPanel(props: any) {
         : gmbLocationActivity === "connecting"
           ? "Connexion en cours…"
           : undefined;
+
   const [gmbPickerUnlocked, setGmbPickerUnlocked] = useState(!gmbConfigured);
+  const [gmbConnectedLocationName, setGmbConnectedLocationName] = useState("");
+  const [gmbConnectedLocationLabel, setGmbConnectedLocationLabel] = useState("");
 
   useEffect(() => {
-    setGmbPickerUnlocked(!gmbConfigured);
-  }, [gmbConfigured]);
+    if (!gmbConfigured) {
+      setGmbPickerUnlocked(true);
+      setGmbConnectedLocationName("");
+      setGmbConnectedLocationLabel("");
+      return;
+    }
+
+    if (!gmbPickerUnlocked && !gmbLocationBusy && gmbLocationName) {
+      setGmbConnectedLocationName(gmbLocationName);
+      setGmbConnectedLocationLabel((gmbLocationLabel || "").trim());
+    }
+  }, [gmbConfigured, gmbPickerUnlocked, gmbLocationBusy, gmbLocationName, gmbLocationLabel]);
 
   const gmbPickerLocked = gmbConfigured && !gmbPickerUnlocked;
+  const selectedLocationName = gmbLocationName || gmbConnectedLocationName;
 
   const hasSelectedLocationInList = Boolean(
-    gmbLocationName && gmbLocations.some((l: { name: string; title?: string | null }) => l.name === gmbLocationName)
+    selectedLocationName && gmbLocations.some((l: { name: string; title?: string | null }) => l.name === selectedLocationName)
   );
 
   const selectedLocationLabel = useMemo(() => {
-    const picked = gmbLocations.find((l: { name: string; title?: string | null }) => l.name === gmbLocationName);
-    return String(picked?.title || gmbLocationLabel || gmbUrl || gmbLocationName || "").trim();
-  }, [gmbLocations, gmbLocationName, gmbLocationLabel, gmbUrl]);
+    const picked = gmbLocations.find((l: { name: string; title?: string | null }) => l.name === selectedLocationName);
+    return String(picked?.title || gmbConnectedLocationLabel || gmbLocationLabel || gmbUrl || selectedLocationName || "").trim();
+  }, [gmbLocations, selectedLocationName, gmbConnectedLocationLabel, gmbLocationLabel, gmbUrl]);
 
-  const handleLocationConnect = () => {
-    setGmbPickerUnlocked(false);
-    void saveGmbLocation();
+  const canConnectLocation = Boolean(selectedLocationName) && !gmbLoadingList && !gmbLocationBusy;
+  const canChangeLocation = Boolean(selectedLocationName) && selectedLocationName !== gmbConnectedLocationName && !gmbLoadingList && !gmbLocationBusy;
+
+  const handleLocationConnect = async () => {
+    const saved = await saveGmbLocation();
+    if (saved) setGmbPickerUnlocked(false);
   };
 
-  const handleLocationDisconnect = () => {
+  const handleLocationDisconnect = async () => {
+    await disconnectGmbBusiness();
     setGmbPickerUnlocked(true);
-    void disconnectGmbBusiness();
   };
 
   return (
@@ -202,11 +219,11 @@ export default function GoogleBusinessPanel(props: any) {
               }}
               disabled={gmbLoadingList || gmbLocationBusy}
             >
-              {gmbLocationsPhase === "connecting" ? "Connexion..." : gmbLocationsPhase === "searching" || gmbLoadingList ? "Recherche..." : "Charger mes établissements"}
+              Charger mes établissements
             </button>
 
             <select
-              value={gmbLocationName}
+              value={selectedLocationName}
               onChange={(e) => setGmbLocationName(e.target.value)}
               disabled={gmbLoadingList || gmbLocationBusy || gmbPickerLocked}
               style={{
@@ -224,7 +241,7 @@ export default function GoogleBusinessPanel(props: any) {
               }}
             >
               <option value="">Sélectionner un établissement</option>
-              {!hasSelectedLocationInList && gmbLocationName ? <option value={gmbLocationName}>{selectedLocationLabel}</option> : null}
+              {!hasSelectedLocationInList && selectedLocationName ? <option value={selectedLocationName}>{selectedLocationLabel}</option> : null}
               {gmbLocations.map((l: { name: string; title?: string | null }) => (
                 <option key={l.name} value={l.name}>
                   {l.title || l.name}
@@ -232,21 +249,36 @@ export default function GoogleBusinessPanel(props: any) {
               ))}
             </select>
 
-            <button
-              type="button"
-              className={`${styles.actionBtn} ${gmbConfigured ? styles.disconnectBtn : styles.connectBtn} ${gmbLocationBusy && gmbLocationAction === "connect" ? styles.connectingActionBtn : ""}`}
-              onClick={gmbConfigured ? handleLocationDisconnect : handleLocationConnect}
-              disabled={!gmbLocationName || gmbLoadingList || gmbLocationBusy}
-            >
-              {gmbLocationBusy ? (gmbLocationAction === "disconnect" ? "Déconnexion..." : "Connexion...") : (gmbConfigured ? "Déconnecter l'établissement" : "Connecter l'établissement")}
-            </button>
+            {gmbConfigured ? (
+              <>
+                <button
+                  type="button"
+                  className={`${styles.actionBtn} ${styles.connectBtn} ${gmbLocationBusy && gmbLocationAction === "connect" ? styles.connectingActionBtn : ""}`}
+                  onClick={() => void handleLocationConnect()}
+                  disabled={!canChangeLocation}
+                >
+                  Changer d'établissement
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.actionBtn} ${styles.disconnectBtn} ${gmbLocationBusy && gmbLocationAction === "disconnect" ? styles.connectingActionBtn : ""}`}
+                  onClick={() => void handleLocationDisconnect()}
+                  disabled={gmbLoadingList || gmbLocationBusy}
+                >
+                  Déconnecter l'établissement
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className={`${styles.actionBtn} ${styles.connectBtn} ${gmbLocationBusy && gmbLocationAction === "connect" ? styles.connectingActionBtn : ""}`}
+                onClick={() => void handleLocationConnect()}
+                disabled={!canConnectLocation}
+              >
+                Connecter l'établissement
+              </button>
+            )}
           </div>
-
-          {gmbPickerLocked ? (
-            <div style={{ color: "rgba(255,255,255,0.68)", fontSize: 12, marginTop: -2 }}>
-              Établissement connecté et verrouillé. Cliquez sur <strong>Charger mes établissements</strong> pour pouvoir en sélectionner un autre.
-            </div>
-          ) : null}
 
           {gmbAccounts?.length > 1 ? (
             <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12, marginTop: -2 }}>

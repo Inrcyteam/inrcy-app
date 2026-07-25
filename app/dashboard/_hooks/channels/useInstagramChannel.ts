@@ -233,6 +233,7 @@ export function useInstagramChannel({
         await triggerChannelRefresh("instagram");
         await syncInstagramStateFromServer({ preserveSelection: true });
         setPanelSuccess("Compte Instagram enregistré.");
+      return true;
       }
     } catch (e: any) {
       setIgAccountsError(getSimpleFrenchErrorMessage(e, "Impossible de charger vos comptes Instagram."));
@@ -267,7 +268,7 @@ export function useInstagramChannel({
 
   const saveInstagramProfile = useCallback(async () => {
     const picked = igAccounts.find((a) => a.page_id === igSelectedPageId);
-    if (!picked?.page_id) return;
+    if (!picked?.page_id) return false;
 
     const r = await fetch("/api/integrations/instagram/select-profile", {
       method: "POST",
@@ -300,8 +301,10 @@ export function useInstagramChannel({
       await triggerChannelRefresh("instagram");
       await syncInstagramStateFromServer({ preserveSelection: true });
       setPanelSuccess("Compte Instagram enregistré.");
+      return true;
     } else {
       setPanelError(j?.error, "Impossible d'enregistrer Instagram.");
+      return false;
     }
   }, [igAccounts, igSelectedPageId, patchChannelConnectionLocally, triggerChannelRefresh, updateRootSettingsKey, setPanelSuccess, setPanelError, syncInstagramStateFromServer]);
 

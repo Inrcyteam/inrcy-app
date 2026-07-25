@@ -191,6 +191,7 @@ export function useFacebookChannel({
           });
           await triggerChannelRefresh("facebook");
           setPanelSuccess("Page Facebook enregistrée.");
+      return true;
         }
       }
     } catch (e: any) {
@@ -226,7 +227,7 @@ export function useFacebookChannel({
 
   const saveFacebookPage = useCallback(async () => {
     const picked = fbPages.find((p) => p.id === fbSelectedPageId);
-    if (!picked?.id) return;
+    if (!picked?.id) return false;
 
     const r = await fetch("/api/integrations/facebook/select-page", {
       method: "POST",
@@ -261,8 +262,10 @@ export function useFacebookChannel({
       });
       await triggerChannelRefresh("facebook");
       setPanelSuccess("Page Facebook enregistrée.");
+      return true;
     } else {
       setPanelError(j?.error, "Impossible d'enregistrer la page Facebook.");
+      return false;
     }
   }, [fbPages, fbSelectedPageId, facebookAccountEmail, patchChannelConnectionLocally, triggerChannelRefresh, updateRootSettingsKey, setPanelSuccess, setPanelError]);
 

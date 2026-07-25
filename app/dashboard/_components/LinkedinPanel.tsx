@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import styles from "../dashboard.module.css";
 import ConnectionPill from "./ConnectionPill";
 import StatusMessage from "./StatusMessage";
@@ -57,6 +58,14 @@ export default function LinkedinPanel(props: any) {
     selectLinkedinOrganization,
   } = props;
 
+  const [linkedinPendingOrganizationId, setLinkedinPendingOrganizationId] = useState(linkedinSelectedOrganizationId || "");
+
+  useEffect(() => {
+    if (!linkedinOrganizationPickerOpen) {
+      setLinkedinPendingOrganizationId(linkedinSelectedOrganizationId || "");
+    }
+  }, [linkedinOrganizationPickerOpen, linkedinSelectedOrganizationId]);
+
   const hasCompanyPage = !!linkedinSelectedOrganizationId || !!linkedinSelectedOrganizationName;
   const profileReady = !!linkedinAccountConnected;
   const linkedinNeedsUpdate = linkedinConnectionStatus === "needs_update" && linkedinAccountConnected;
@@ -88,6 +97,7 @@ export default function LinkedinPanel(props: any) {
     ? "Lien public de la page entreprise utilisée dans iNrStats et dans le bouton Voir."
     : "Lien public du profil personnel utilisé dans iNrStats et dans le bouton Voir.";
   const linkPlaceholder = hasCompanyPage ? "Lien de la page entreprise LinkedIn" : "Lien du profil LinkedIn";
+  const canApplyLinkedinOrganization = Boolean(linkedinPendingOrganizationId) && (!hasCompanyPage || linkedinPendingOrganizationId !== linkedinSelectedOrganizationId) && !linkedinOrganizationsLoading && linkedinOrganizationsPhase === "idle" && !linkedinOrganizationBusy;
 
   return (
     <div style={{ display: "grid", gap: 14 }}>
@@ -193,13 +203,12 @@ export default function LinkedinPanel(props: any) {
 
               <button
                 type="button"
-                className={`${styles.actionBtn} ${styles.connectBtn} ${linkedinOrganizationsPhase === "connecting" ? styles.connectingActionBtn : linkedinOrganizationsPhase === "searching" || linkedinOrganizationsLoading ? styles.searchingActionBtn : ""}`}
-                onClick={() => void loadLinkedinOrganizations?.({ resetSelection: true })}
+                className={`${styles.actionBtn} ${styles.secondaryBtn} ${linkedinOrganizationsPhase === "connecting" ? styles.connectingActionBtn : linkedinOrganizationsPhase === "searching" || linkedinOrganizationsLoading ? styles.searchingActionBtn : ""}`}
+                onClick={() => void loadLinkedinOrganizations?.()}
                 disabled={linkedinOrganizationsLoading || linkedinOrganizationsPhase !== "idle" || linkedinOrganizationBusy}
               >
-                {linkedinOrganizationsPhase === "connecting" ? "Connexion..." : linkedinOrganizationsPhase === "searching" || linkedinOrganizationsLoading ? "Recherche..." : hasCompanyPage ? "Changer de page" : "Connecter une page"}
+                Charger mes pages
               </button>
-
             </div>
 
             {hasCompanyPage ? (
@@ -228,22 +237,10 @@ export default function LinkedinPanel(props: any) {
               </label>
             ) : null}
 
-            {hasCompanyPage ? (
-              <button
-                type="button"
-                className={`${styles.actionBtn} ${styles.disconnectBtn}`}
-                onClick={() => void disconnectLinkedinOrganization?.()}
-                disabled={linkedinOrganizationsLoading || linkedinOrganizationsPhase !== "idle" || linkedinOrganizationBusy}
-                style={{ width: "fit-content" }}
-              >
-                {linkedinOrganizationAction === "disconnect" ? "Déconnexion..." : "Déconnecter la page"}
-              </button>
-            ) : null}
-
             {linkedinOrganizationPickerOpen && linkedinOrganizations.length > 1 ? (
               <select
-                value={linkedinSelectedOrganizationId || ""}
-                onChange={(event) => void selectLinkedinOrganization?.(event.target.value)}
+                value={linkedinPendingOrganizationId || ""}
+                onChange={(event) => setLinkedinPendingOrganizationId(event.target.value)}
                 disabled={linkedinOrganizationsLoading || linkedinOrganizationsPhase !== "idle" || linkedinOrganizationBusy}
                 style={{
                   width: "100%",
@@ -262,6 +259,41 @@ export default function LinkedinPanel(props: any) {
                 ))}
               </select>
             ) : null}
+
+            <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+              {hasCompanyPage ? (
+                <>
+                  <button
+                    type="button"
+                    className={`${styles.actionBtn} ${styles.connectBtn} ${linkedinOrganizationsPhase === "connecting" ? styles.connectingActionBtn : ""}`}
+                    onClick={() => void selectLinkedinOrganization?.(linkedinPendingOrganizationId)}
+                    disabled={!canApplyLinkedinOrganization}
+                    style={{ width: "fit-content" }}
+                  >
+                    Changer de page
+                  </button>
+                  <button
+                    type="button"
+                    className={`${styles.actionBtn} ${styles.disconnectBtn} ${linkedinOrganizationAction === "disconnect" ? styles.connectingActionBtn : ""}`}
+                    onClick={() => void disconnectLinkedinOrganization?.()}
+                    disabled={linkedinOrganizationsLoading || linkedinOrganizationsPhase !== "idle" || linkedinOrganizationBusy}
+                    style={{ width: "fit-content" }}
+                  >
+                    Déconnecter la page
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className={`${styles.actionBtn} ${styles.connectBtn} ${linkedinOrganizationsPhase === "connecting" ? styles.connectingActionBtn : ""}`}
+                  onClick={() => void selectLinkedinOrganization?.(linkedinPendingOrganizationId)}
+                  disabled={!canApplyLinkedinOrganization}
+                  style={{ width: "fit-content" }}
+                >
+                  Connecter la page
+                </button>
+              )}
+            </div>
           </div>
         </div>
       ) : null}

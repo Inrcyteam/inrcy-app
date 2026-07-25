@@ -43,16 +43,6 @@ export default function InstagramPanel(props: any) {
     void disconnectInstagramAccount();
   };
 
-  const handleProfileConnect = () => {
-    setInstagramPickerUnlocked(false);
-    void saveInstagramProfile();
-  };
-
-  const handleProfileDisconnect = () => {
-    setInstagramPickerUnlocked(true);
-    void disconnectInstagramProfile();
-  };
-
   const instagramNeedsUpdate = instagramConnectionStatus === "needs_update" && (instagramConnected || instagramAccountConnected);
   const instagramStatusLabel = instagramNeedsUpdate ? "À actualiser" : instagramConnected ? "Connecté" : instagramAccountConnected ? "Compte connecté" : "À connecter";
   const instagramStatusDot = instagramNeedsUpdate
@@ -78,14 +68,26 @@ export default function InstagramPanel(props: any) {
         : instagramProfileActivity === "connecting"
           ? "Connexion en cours…"
           : undefined;
+
   const [instagramPickerUnlocked, setInstagramPickerUnlocked] = useState(!instagramConnected);
+  const [instagramConnectedPageId, setInstagramConnectedPageId] = useState("");
 
   useEffect(() => {
-    setInstagramPickerUnlocked(!instagramConnected);
-  }, [instagramConnected]);
+    if (!instagramConnected) {
+      setInstagramPickerUnlocked(true);
+      setInstagramConnectedPageId("");
+      return;
+    }
+
+    if (!instagramPickerUnlocked && !instagramProfileBusy && igSelectedPageId) {
+      setInstagramConnectedPageId(igSelectedPageId);
+    }
+  }, [instagramConnected, instagramPickerUnlocked, instagramProfileBusy, igSelectedPageId]);
 
   const instagramPickerLocked = instagramConnected && !instagramPickerUnlocked;
-
+  const selectedInstagramPageId = igSelectedPageId || instagramConnectedPageId;
+  const canConnectInstagramProfile = Boolean(selectedInstagramPageId) && !igAccountsLoading && !instagramProfileBusy;
+  const canChangeInstagramProfile = Boolean(selectedInstagramPageId) && selectedInstagramPageId !== instagramConnectedPageId && !igAccountsLoading && !instagramProfileBusy;
   const displayAccountsError = !instagramConnected && !instagramAccountConnected ? null : igAccountsError;
 
   const singleFieldStyle = {
@@ -108,6 +110,16 @@ export default function InstagramPanel(props: any) {
     alignItems: "center",
     width: "100%",
   } as const;
+
+  const handleProfileConnect = async () => {
+    const saved = await saveInstagramProfile();
+    if (saved) setInstagramPickerUnlocked(false);
+  };
+
+  const handleProfileDisconnect = async () => {
+    await disconnectInstagramProfile();
+    setInstagramPickerUnlocked(true);
+  };
 
   return (
     <div style={{ display: "grid", gap: 14, minWidth: 0 }}>
@@ -227,11 +239,11 @@ export default function InstagramPanel(props: any) {
               disabled={igAccountsLoading || instagramProfileBusy}
               style={{ width: "100%" }}
             >
-              {igAccountsPhase === "connecting" ? "Connexion..." : igAccountsPhase === "searching" || igAccountsLoading ? "Recherche..." : "Charger mes comptes"}
+              Charger mes comptes
             </button>
 
             <select
-              value={igSelectedPageId}
+              value={selectedInstagramPageId}
               onChange={(e) => setIgSelectedPageId(e.target.value)}
               disabled={igAccountsLoading || instagramProfileBusy || instagramPickerLocked}
               style={{
@@ -248,22 +260,39 @@ export default function InstagramPanel(props: any) {
               ))}
             </select>
 
-            <button
-              type="button"
-              className={`${styles.actionBtn} ${instagramConnected ? styles.disconnectBtn : styles.connectBtn} ${instagramProfileBusy && instagramProfileAction === "connect" ? styles.connectingActionBtn : ""}`}
-              onClick={instagramConnected ? handleProfileDisconnect : handleProfileConnect}
-              disabled={!igSelectedPageId || igAccountsLoading || instagramProfileBusy}
-              style={{ width: "100%" }}
-            >
-              {instagramProfileBusy ? (instagramProfileAction === "disconnect" ? "Déconnexion..." : "Connexion...") : (instagramConnected ? "Déconnecter le compte" : "Connecter")}
-            </button>
+            {instagramConnected ? (
+              <>
+                <button
+                  type="button"
+                  className={`${styles.actionBtn} ${styles.connectBtn} ${instagramProfileBusy && instagramProfileAction === "connect" ? styles.connectingActionBtn : ""}`}
+                  onClick={() => void handleProfileConnect()}
+                  disabled={!canChangeInstagramProfile}
+                  style={{ width: "100%" }}
+                >
+                  Changer de compte
+                </button>
+                <button
+                  type="button"
+                  className={`${styles.actionBtn} ${styles.disconnectBtn} ${instagramProfileBusy && instagramProfileAction === "disconnect" ? styles.connectingActionBtn : ""}`}
+                  onClick={() => void handleProfileDisconnect()}
+                  disabled={igAccountsLoading || instagramProfileBusy}
+                  style={{ width: "100%" }}
+                >
+                  Déconnecter le compte
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className={`${styles.actionBtn} ${styles.connectBtn} ${instagramProfileBusy && instagramProfileAction === "connect" ? styles.connectingActionBtn : ""}`}
+                onClick={() => void handleProfileConnect()}
+                disabled={!canConnectInstagramProfile}
+                style={{ width: "100%" }}
+              >
+                Connecter le compte
+              </button>
+            )}
           </div>
-
-          {instagramPickerLocked ? (
-            <div style={{ color: "rgba(255,255,255,0.68)", fontSize: 12, marginTop: -2 }}>
-              Compte connecté et verrouillé. Cliquez sur <strong>Charger mes comptes</strong> pour pouvoir en sélectionner un autre.
-            </div>
-          ) : null}
 
           {displayAccountsError && <StatusMessage variant="error">{displayAccountsError}</StatusMessage>}
         </div>
