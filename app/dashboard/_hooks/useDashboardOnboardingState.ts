@@ -9,6 +9,7 @@ import {
   isDashboardOnboardingFirstOpening,
   normalizeDashboardOnboardingRow,
   shouldRunDashboardOnboarding,
+  type DashboardOnboardingInitialState,
   type DashboardOnboardingRow,
   type DashboardOnboardingStatus,
   type DashboardOnboardingStep,
@@ -99,13 +100,21 @@ async function persistOnboardingRow(
   return row;
 }
 
-export function useDashboardOnboardingState() {
-  const [state, setState] = useState<OnboardingState>(
-    INITIAL_ONBOARDING_STATE,
+export function useDashboardOnboardingState(
+  initialState?: DashboardOnboardingInitialState,
+) {
+  const [state, setState] = useState<OnboardingState>(() =>
+    initialState
+      ? {
+          ...initialState,
+          onboardingReady: true,
+        }
+      : INITIAL_ONBOARDING_STATE,
   );
   const requestSequenceRef = useRef(0);
   const mutationSequenceRef = useRef(0);
-  const activeAccountIdRef = useRef<string | null>(null);
+  const activeAccountIdRef = useRef<string | null>(initialState?.accountId ?? null);
+  const hasServerInitialStateRef = useRef(Boolean(initialState));
 
   const refreshOnboarding = useCallback(
     async (options?: { force?: boolean; startPending?: boolean }) => {
@@ -233,7 +242,11 @@ export function useDashboardOnboardingState() {
   );
 
   useEffect(() => {
-    void refreshOnboarding();
+    if (hasServerInitialStateRef.current) {
+      hasServerInitialStateRef.current = false;
+    } else {
+      void refreshOnboarding();
+    }
 
     const handleActiveAccountChange = () => {
       requestSequenceRef.current += 1;

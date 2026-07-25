@@ -55,6 +55,14 @@ export type DashboardOnboardingRow = {
   updatedAt: string | null;
 };
 
+export type DashboardOnboardingInitialState = {
+  accountId: string | null;
+  row: DashboardOnboardingRow | null;
+  onboardingAvailable: boolean;
+  onboardingError: boolean;
+  firstOpeningDetected: boolean;
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

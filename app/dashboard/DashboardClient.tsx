@@ -12,6 +12,8 @@ import { useDashboardUnsavedNavigation } from "./_components/DashboardUnsavedNav
 import DashboardChannelsSection from "./_components/DashboardChannelsSection";
 import DashboardBoosterModalLayer from "./_components/DashboardBoosterModalLayer";
 import DashboardSettingsDrawerContent from "./_components/DashboardSettingsDrawerContent";
+import DashboardOnboardingAiChoice from "./_components/DashboardOnboardingAiChoice";
+import { StableBootScreen } from "./_components/ClientHydrationGate";
 import InrBadgePreviewModal from "./_components/InrBadgePreviewModal";
 import { useDrawerMutationGuard } from "./_hooks/useDrawerMutationGuard";
 import { useUnsavedExitGuard } from "./_hooks/useUnsavedExitGuard";
@@ -51,7 +53,11 @@ import { inferChannelsFromRealtimePayload, inferChannelsFromSearchParams } from 
 import type { ActusFont, GoogleProduct, GoogleSource, ModuleStatus, Ownership } from "./dashboard.types";
 import { normalizeActusAccent, normalizeActusDesign, normalizeActusLayout, normalizeActusTheme } from "./dashboard.types";
 import { DASHBOARD_CHANNEL_KEYS, type DashboardChannelKey } from "@/lib/dashboardChannels";
-import { getDashboardOnboardingPanel, getDashboardOnboardingProgress } from "@/lib/dashboardOnboarding";
+import {
+  getDashboardOnboardingPanel,
+  getDashboardOnboardingProgress,
+  type DashboardOnboardingInitialState,
+} from "@/lib/dashboardOnboarding";
 import { buildFluxBubbleItems } from "./dashboard.flux-bubbles";
 import { createInrBadgePublicUrl, type InrBadgeProfileSummary } from "@/lib/inrBadge";
 import { buildDashboardPanelProps } from "./dashboard.panel-props";
@@ -59,6 +65,7 @@ import { createEmptyChannelBlock, createEmptyChannelBlocks, type InrstatsChannel
 import { getDashboardTranslations } from "@/lib/dashboardI18n";
 import type { ConnectionDisplayStatus } from "@/lib/connectionVersions";
 import { isDashboardRequiredSetupProtectedDestination, isDashboardRequiredSetupProtectedLocation } from "@/lib/dashboardRequiredSetupAccess";
+import { confirmInrcy } from "@/lib/inrcyDialog";
 
 
 const useBrowserLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
@@ -329,9 +336,13 @@ function mergeCachedDashboardChannelState(patch: Record<string, any>) {
 
 type DashboardClientProps = {
   isAdmin?: boolean;
+  initialOnboardingState?: DashboardOnboardingInitialState;
 };
 
-export default function DashboardClient({ isAdmin = false }: DashboardClientProps) {
+export default function DashboardClient({
+  isAdmin = false,
+  initialOnboardingState,
+}: DashboardClientProps) {
   const [helpGeneratorOpen, setHelpGeneratorOpen] = useState(false);
   const [helpCanauxOpen, setHelpCanauxOpen] = useState(false);
   const [helpSiteInrcyOpen, setHelpSiteInrcyOpen] = useState(false);
@@ -376,7 +387,7 @@ export default function DashboardClient({ isAdmin = false }: DashboardClientProp
   } = useDashboardCompletionChecks();
   const requiredSetupAccessAllowed = completionCheckReady && requiredSetupCompleted;
   const requiredSetupLockVisible = completionCheckReady && requiredSetupIncomplete;
-  const onboardingState = useDashboardOnboardingState();
+  const onboardingState = useDashboardOnboardingState(initialOnboardingState);
   const {
     accountId: onboardingAccountId,
     onboardingStatus,
@@ -395,7 +406,13 @@ export default function DashboardClient({ isAdmin = false }: DashboardClientProp
   const onboardingProgressLabel = isGuidedOnboardingPanel && guidedOnboardingProgress
     ? `Configuration initiale · Étape ${guidedOnboardingProgress.current}/${guidedOnboardingProgress.total}`
     : undefined;
+  const onboardingBootBlocking =
+    !onboardingState.onboardingReady ||
+    (guidedOnboardingActive && guidedOnboardingPanel !== null && panel !== guidedOnboardingPanel);
   const onboardingAutoOpenKeyRef = useRef<string | null>(null);
+  const onboardingSkipConfirmingRef = useRef(false);
+  const [onboardingAiMode, setOnboardingAiMode] = useState<"choice" | "configure">("choice");
+  const [onboardingAiCompleting, setOnboardingAiCompleting] = useState(false);
   const [settingsDrawerHasUnsavedChanges, setSettingsDrawerHasUnsavedChanges] = useState(false);
   const settingsDrawerGuardActive = panel === "ia" || panel === "preferences" || panel === "documents" || panel === "mails" || panel === "compte" || panel === "parrainage" || panel === "profil" || panel === "activite" || panel === "youtube_shorts" || panel === "pinterest";
   const settingsDrawerRequiresExplicitClose = settingsDrawerGuardActive || panel === "profil" || panel === "activite";
@@ -405,19 +422,31 @@ export default function DashboardClient({ isAdmin = false }: DashboardClientProp
   }, [panel]);
 
   useEffect(() => {
+    setOnboardingAiMode("choice");
+    setOnboardingAiCompleting(false);
+  }, [onboardingAccountId, onboardingCurrentStep]);
+
+  useEffect(() => {
     if (!guidedOnboardingActive || !guidedOnboardingPanel) {
       onboardingAutoOpenKeyRef.current = null;
       return;
     }
 
     const autoOpenKey = `${onboardingAccountId ?? "unknown"}:${onboardingCurrentStep}`;
+    const openingKey = `opening:${autoOpenKey}`;
+    const openedKey = `opened:${autoOpenKey}`;
+
     if (panel === guidedOnboardingPanel) {
-      onboardingAutoOpenKeyRef.current = autoOpenKey;
+      onboardingAutoOpenKeyRef.current = openedKey;
+      try {
+        sessionStorage.setItem("inrcy_panel_explicit_open", "1");
+        sessionStorage.setItem("inrcy_last_panel", guidedOnboardingPanel);
+      } catch {}
       return;
     }
-    if (onboardingAutoOpenKeyRef.current === autoOpenKey) return;
+    if (onboardingAutoOpenKeyRef.current === openingKey) return;
 
-    onboardingAutoOpenKeyRef.current = autoOpenKey;
+    onboardingAutoOpenKeyRef.current = openingKey;
     openPanel(guidedOnboardingPanel);
   }, [
     guidedOnboardingActive,
@@ -430,7 +459,7 @@ export default function DashboardClient({ isAdmin = false }: DashboardClientProp
 
   const closeSettingsDrawer = useCallback(async () => {
     if (isGuidedOnboardingPanel) {
-      onboardingAutoOpenKeyRef.current = `${onboardingAccountId ?? "unknown"}:${onboardingCurrentStep}`;
+      onboardingAutoOpenKeyRef.current = `closing:${onboardingAccountId ?? "unknown"}:${onboardingCurrentStep}`;
       if (onboardingCurrentStep === "ai") {
         await completeOnboarding();
       } else {
@@ -447,27 +476,79 @@ export default function DashboardClient({ isAdmin = false }: DashboardClientProp
     onboardingCurrentStep,
   ]);
 
+  const guidedSkipIsAiStep = isGuidedOnboardingPanel && onboardingCurrentStep === "ai";
+  const guidedSkipUnsavedPrefix = settingsDrawerHasUnsavedChanges
+    ? "Les modifications non enregistrées seront perdues. "
+    : "";
+  const guidedSkipTitle = guidedSkipIsAiStep
+    ? "Conserver les réglages par défaut ?"
+    : "Continuer plus tard ?";
+  const guidedSkipMessage = guidedSkipIsAiStep
+    ? `${guidedSkipUnsavedPrefix}Votre IA conservera les réglages recommandés par défaut. Vous pourrez les personnaliser plus tard depuis Configuration IA.`
+    : `${guidedSkipUnsavedPrefix}Passer cette étape ne permet pas l’activation de tous les outils iNrCy. Vous pourrez reprendre la configuration depuis le dashboard. Voulez-vous continuer plus tard ?`;
+  const guidedSkipConfirmLabel = guidedSkipIsAiStep
+    ? "Conserver par défaut"
+    : "Continuer plus tard";
+
   const { confirmExit: confirmSettingsDrawerExit } = useUnsavedExitGuard({
     active: settingsDrawerGuardActive,
-    shouldBlock: settingsDrawerHasUnsavedChanges,
+    shouldBlock: isGuidedOnboardingPanel || settingsDrawerHasUnsavedChanges,
     onConfirmExit: () => {
       void closeSettingsDrawer();
     },
-    eyebrow: "Réglages",
-    title: "Quitter sans enregistrer ?",
-    message: "Cette fenêtre contient des modifications non enregistrées. Si vous la fermez maintenant, elles seront perdues.",
-    confirmLabel: "Fermer sans enregistrer",
-    cancelLabel: "Continuer l’édition",
+    eyebrow: isGuidedOnboardingPanel ? "Configuration initiale" : "Réglages",
+    title: isGuidedOnboardingPanel ? guidedSkipTitle : "Quitter sans enregistrer ?",
+    message: isGuidedOnboardingPanel
+      ? guidedSkipMessage
+      : "Cette fenêtre contient des modifications non enregistrées. Si vous la fermez maintenant, elles seront perdues.",
+    confirmLabel: isGuidedOnboardingPanel ? guidedSkipConfirmLabel : "Fermer sans enregistrer",
+    cancelLabel: isGuidedOnboardingPanel ? "Revenir à la configuration" : "Continuer l’édition",
     variant: "warning",
   });
 
+  const requestSkipGuidedOnboarding = useCallback(async () => {
+    if (!isGuidedOnboardingPanel || onboardingSkipConfirmingRef.current) return;
+
+    onboardingSkipConfirmingRef.current = true;
+    try {
+      const confirmed = await confirmInrcy({
+        eyebrow: "Configuration initiale",
+        title: guidedSkipTitle,
+        message: guidedSkipMessage,
+        confirmLabel: guidedSkipConfirmLabel,
+        cancelLabel: "Revenir à la configuration",
+        variant: "warning",
+      });
+      if (!confirmed) return;
+      await closeSettingsDrawer();
+    } finally {
+      onboardingSkipConfirmingRef.current = false;
+    }
+  }, [
+    closeSettingsDrawer,
+    guidedSkipConfirmLabel,
+    guidedSkipMessage,
+    guidedSkipTitle,
+    isGuidedOnboardingPanel,
+  ]);
+
   const requestCloseSettingsDrawer = useCallback(() => {
+    if (isGuidedOnboardingPanel) {
+      void requestSkipGuidedOnboarding();
+      return;
+    }
     if (!settingsDrawerGuardActive) {
       void closeSettingsDrawer();
       return;
     }
     void confirmSettingsDrawerExit();
-  }, [closeSettingsDrawer, confirmSettingsDrawerExit, settingsDrawerGuardActive]);
+  }, [
+    closeSettingsDrawer,
+    confirmSettingsDrawerExit,
+    isGuidedOnboardingPanel,
+    requestSkipGuidedOnboarding,
+    settingsDrawerGuardActive,
+  ]);
 
   const handleSettingsDrawerUnsavedChange = useCallback((hasUnsavedChanges: boolean) => {
     setSettingsDrawerHasUnsavedChanges(hasUnsavedChanges);
@@ -486,16 +567,22 @@ export default function DashboardClient({ isAdmin = false }: DashboardClientProp
     const completion = await checkActivity();
     if (!completion?.activityCompleted) return;
 
+    setOnboardingAiMode("choice");
     const row = await setCurrentOnboardingStep("ai");
     if (!row) return;
     openPanel("ia");
   }, [checkActivity, openPanel, setCurrentOnboardingStep]);
 
   const completeOnboardingFromAi = useCallback(async () => {
+    if (onboardingAiCompleting) return;
+    setOnboardingAiCompleting(true);
     const row = await completeOnboarding();
-    if (!row) return;
+    if (!row) {
+      setOnboardingAiCompleting(false);
+      return;
+    }
     closePanel();
-  }, [closePanel, completeOnboarding]);
+  }, [closePanel, completeOnboarding, onboardingAiCompleting]);
 
   const goToRequiredSetupAwareModule = useCallback((path: string) => {
     if (isDashboardRequiredSetupProtectedDestination(path) && !requiredSetupAccessAllowed) return;
@@ -3544,6 +3631,10 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     tiktokPanelProps,
   } = buildDashboardPanelProps(locals);
 
+  if (onboardingBootBlocking) {
+    return <StableBootScreen label="Préparation de votre configuration initiale..." />;
+  }
+
   return (
     <main
       className={styles.page}
@@ -3660,6 +3751,8 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         onClose={requestCloseSettingsDrawer}
         closeOnBackdrop={!settingsDrawerRequiresExplicitClose}
         closeOnEscape={!settingsDrawerRequiresExplicitClose}
+        presentation={isGuidedOnboardingPanel ? "onboarding" : "drawer"}
+        closeLabel={isGuidedOnboardingPanel ? "Passer" : undefined}
         headerActions={
           panel === "inertie" ? (
             <HelpButton onClick={() => setHelpInertieOpen(true)} title="Aide : Mon inertie" />
@@ -3670,44 +3763,52 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
           ) : null
         }
       >
-        <DashboardSettingsDrawerContent
-          panel={panel}
-          onUnsavedChange={handleSettingsDrawerUnsavedChange}
-          checkProfile={checkProfile}
-          checkActivity={checkActivity}
-          inertiaSnapshot={inertiaSnapshot}
-          openPanel={openPanel}
-          onCloseDrawer={requestCloseSettingsDrawer}
-          guidedOnboardingStep={isGuidedOnboardingPanel ? onboardingCurrentStep as "profile" | "activity" | "ai" : null}
-          onAdvanceOnboardingProfile={advanceOnboardingFromProfile}
-          onAdvanceOnboardingActivity={advanceOnboardingFromActivity}
-          onCompleteOnboardingAi={completeOnboardingFromAi}
-          referralName={referralName}
-          referralPhone={referralPhone}
-          referralEmail={referralEmail}
-          referralFrom={referralFrom}
-          referralSubmitting={referralSubmitting}
-          referralNotice={referralNotice}
-          referralError={referralError}
-          onReferralNameChange={setReferralName}
-          onReferralPhoneChange={setReferralPhone}
-          onReferralEmailChange={setReferralEmail}
-          onReferralFromChange={setReferralFrom}
-          submitReferral={submitReferral}
-          siteInrcyPanelProps={siteInrcyPanelProps}
-          siteWebPanelProps={siteWebPanelProps}
-          instagramPanelProps={instagramPanelProps}
-          linkedinPanelProps={linkedinPanelProps}
-          gmbPanelProps={gmbPanelProps}
-          facebookPanelProps={facebookPanelProps}
-          tiktokPanelProps={tiktokPanelProps}
-          inrBadgeSettingsProps={inrBadgeSettingsProps}
-          pinterestAccessEnabled={canAccessPinterest}
-          inrSearchAccessEnabled={canAccessInrSearch}
-          inrSearchConnected={inrSearchConnected}
-          inrSearchUrl={inrSearchUrl}
-          inrSearchDirectoryEnabled={inrSearchDirectoryEnabled}
-        />
+        {isGuidedOnboardingPanel && onboardingCurrentStep === "ai" && onboardingAiMode === "choice" ? (
+          <DashboardOnboardingAiChoice
+            onCustomize={() => setOnboardingAiMode("configure")}
+            onKeepDefaults={completeOnboardingFromAi}
+            busy={onboardingAiCompleting}
+          />
+        ) : (
+          <DashboardSettingsDrawerContent
+            panel={panel}
+            onUnsavedChange={handleSettingsDrawerUnsavedChange}
+            checkProfile={checkProfile}
+            checkActivity={checkActivity}
+            inertiaSnapshot={inertiaSnapshot}
+            openPanel={openPanel}
+            onCloseDrawer={requestCloseSettingsDrawer}
+            guidedOnboardingStep={isGuidedOnboardingPanel ? onboardingCurrentStep as "profile" | "activity" | "ai" : null}
+            onAdvanceOnboardingProfile={advanceOnboardingFromProfile}
+            onAdvanceOnboardingActivity={advanceOnboardingFromActivity}
+            onCompleteOnboardingAi={completeOnboardingFromAi}
+            referralName={referralName}
+            referralPhone={referralPhone}
+            referralEmail={referralEmail}
+            referralFrom={referralFrom}
+            referralSubmitting={referralSubmitting}
+            referralNotice={referralNotice}
+            referralError={referralError}
+            onReferralNameChange={setReferralName}
+            onReferralPhoneChange={setReferralPhone}
+            onReferralEmailChange={setReferralEmail}
+            onReferralFromChange={setReferralFrom}
+            submitReferral={submitReferral}
+            siteInrcyPanelProps={siteInrcyPanelProps}
+            siteWebPanelProps={siteWebPanelProps}
+            instagramPanelProps={instagramPanelProps}
+            linkedinPanelProps={linkedinPanelProps}
+            gmbPanelProps={gmbPanelProps}
+            facebookPanelProps={facebookPanelProps}
+            tiktokPanelProps={tiktokPanelProps}
+            inrBadgeSettingsProps={inrBadgeSettingsProps}
+            pinterestAccessEnabled={canAccessPinterest}
+            inrSearchAccessEnabled={canAccessInrSearch}
+            inrSearchConnected={inrSearchConnected}
+            inrSearchUrl={inrSearchUrl}
+            inrSearchDirectoryEnabled={inrSearchDirectoryEnabled}
+          />
+        )}
       </SettingsDrawer>
 
       <DashboardHelpModals

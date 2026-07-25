@@ -16,6 +16,10 @@ type Props = {
   closeOnBackdrop?: boolean;
   /** Autorise la fermeture avec la touche Échap. Activé par défaut. */
   closeOnEscape?: boolean;
+  /** Présentation dédiée au tout premier parcours, sans dashboard visible sur desktop. */
+  presentation?: "drawer" | "onboarding";
+  /** Libellé du bouton de fermeture. */
+  closeLabel?: string;
   children: React.ReactNode;
 };
 
@@ -32,6 +36,8 @@ export default function SettingsDrawer({
   progressLabel,
   closeOnBackdrop = true,
   closeOnEscape = true,
+  presentation = "drawer",
+  closeLabel,
   children,
 }: Props) {
   const t = useDashboardI18n();
@@ -44,6 +50,7 @@ export default function SettingsDrawer({
   const [viewportOffsetTop, setViewportOffsetTop] = useState(0);
   const isResponsive = viewportWidth <= RESPONSIVE_BREAKPOINT;
   const isPhone = viewportWidth <= PHONE_BREAKPOINT;
+  const isDesktopOnboarding = presentation === "onboarding" && !isResponsive;
 
   useEffect(() => {
     setPortalReady(true);
@@ -114,12 +121,14 @@ export default function SettingsDrawer({
         width: "100%",
         height: drawerHeight,
         maxHeight: drawerHeight,
-        background: "rgba(0,0,0,0.55)",
+        background: isDesktopOnboarding
+          ? "radial-gradient(circle at 50% 15%, rgba(56,189,248,.16), transparent 34%), radial-gradient(circle at 78% 76%, rgba(236,72,153,.12), transparent 30%), #06101f"
+          : "rgba(0,0,0,0.55)",
         zIndex: 10050,
         display: "flex",
-        justifyContent: isPhone ? "stretch" : "flex-end",
+        justifyContent: isPhone ? "stretch" : isDesktopOnboarding ? "center" : "flex-end",
         overflow: "hidden",
-        padding: isPhone ? 0 : undefined,
+        padding: isPhone ? 0 : isDesktopOnboarding ? "0 24px" : undefined,
         boxSizing: "border-box",
       }}
     >
@@ -129,7 +138,11 @@ export default function SettingsDrawer({
         aria-labelledby={titleId}
         onClick={(e) => e.stopPropagation()}
         style={{
-          width: isPhone ? "100vw" : "min(560px, 92vw)",
+          width: isPhone
+            ? "100vw"
+            : isDesktopOnboarding
+              ? "min(780px, calc(100vw - 48px))"
+              : "min(560px, 92vw)",
           maxWidth: "100vw",
           height: "100%",
           maxHeight: "100%",
@@ -138,6 +151,8 @@ export default function SettingsDrawer({
           background: "rgba(16,16,16,0.98)",
           color: "rgba(255,255,255,0.92)",
           borderLeft: isPhone ? 0 : "1px solid rgba(255,255,255,0.08)",
+          borderRight: isDesktopOnboarding ? "1px solid rgba(255,255,255,0.08)" : 0,
+          boxShadow: isDesktopOnboarding ? "0 0 80px rgba(0,0,0,.45)" : undefined,
           padding: isPhone
             ? "max(12px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom, 0px)) max(12px, env(safe-area-inset-left))"
             : 16,
@@ -219,7 +234,7 @@ export default function SettingsDrawer({
                 cursor: "pointer",
               }}
             >
-              {t.drawer.close}
+              {closeLabel ?? t.drawer.close}
             </button>
           </div>
         </div>

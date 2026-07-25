@@ -4,6 +4,7 @@ import ClientHydrationGate from "./_components/ClientHydrationGate";
 import { getMyRole } from "@/lib/roles";
 import { isDashboardRequiredSetupProtectedLocation } from "@/lib/dashboardRequiredSetupAccess";
 import { requireDashboardRequiredSetupCompleted } from "@/lib/dashboardRequiredSetupServer";
+import { getDashboardInitialOnboardingStateServer } from "@/lib/dashboardOnboardingServer";
 
 type DashboardPageSearchParams = Record<string, string | string[] | undefined>;
 
@@ -34,12 +35,18 @@ export default async function Page({
     await requireDashboardRequiredSetupCompleted();
   }
 
-  const { isAdmin } = await getMyRole();
+  const [{ isAdmin }, initialOnboardingState] = await Promise.all([
+    getMyRole(),
+    getDashboardInitialOnboardingStateServer(),
+  ]);
 
   return (
     <Suspense fallback={null}>
       <ClientHydrationGate label="Chargement de votre tableau de bord...">
-        <DashboardClient isAdmin={isAdmin} />
+        <DashboardClient
+          isAdmin={isAdmin}
+          initialOnboardingState={initialOnboardingState ?? undefined}
+        />
       </ClientHydrationGate>
     </Suspense>
   );

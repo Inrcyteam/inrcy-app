@@ -137,3 +137,51 @@ test("stale onboarding mutations cannot restore the previous establishment", () 
   assert.match(onboardingHookSource, /mutationSequenceRef\.current \+= 1/);
   assert.match(onboardingHookSource, /activeAccountIdRef\.current = null/);
 });
+
+const settingsDrawerSource = readFileSync(
+  new URL("../../app/dashboard/SettingsDrawer.tsx", import.meta.url),
+  "utf8",
+);
+const aiChoiceSource = readFileSync(
+  new URL("../../app/dashboard/_components/DashboardOnboardingAiChoice.tsx", import.meta.url),
+  "utf8",
+);
+const dashboardPageSource = readFileSync(
+  new URL("../../app/dashboard/page.tsx", import.meta.url),
+  "utf8",
+);
+const onboardingServerSource = readFileSync(
+  new URL("../../lib/dashboardOnboardingServer.ts", import.meta.url),
+  "utf8",
+);
+
+test("first onboarding uses a dedicated desktop presentation and a Passer action", () => {
+  assert.match(settingsDrawerSource, /presentation\?: "drawer" \| "onboarding"/);
+  assert.match(settingsDrawerSource, /isDesktopOnboarding/);
+  assert.match(settingsDrawerSource, /#06101f/);
+  assert.match(dashboardClientSource, /presentation=\{isGuidedOnboardingPanel \? "onboarding" : "drawer"\}/);
+  assert.match(dashboardClientSource, /closeLabel=\{isGuidedOnboardingPanel \? "Passer" : undefined\}/);
+});
+
+test("dashboard stays behind a boot screen until the initial onboarding panel is ready", () => {
+  assert.match(dashboardClientSource, /onboardingBootBlocking/);
+  assert.match(dashboardClientSource, /StableBootScreen label="Préparation de votre configuration initiale/);
+  assert.match(dashboardPageSource, /getDashboardInitialOnboardingStateServer/);
+  assert.match(dashboardPageSource, /initialOnboardingState=\{initialOnboardingState \?\? undefined\}/);
+  assert.match(onboardingServerSource, /p_status: "in_progress"/);
+});
+
+test("skipping required onboarding warns that tools remain unavailable", () => {
+  assert.match(dashboardClientSource, /Passer cette étape ne permet pas l’activation de tous les outils iNrCy/);
+  assert.match(dashboardClientSource, /Continuer plus tard/);
+  assert.match(dashboardClientSource, /Revenir à la configuration/);
+});
+
+test("step three offers defaults before opening the existing AI configuration", () => {
+  assert.match(aiChoiceSource, /Votre IA est déjà prête/);
+  assert.match(aiChoiceSource, /Personnaliser mon IA/);
+  assert.match(aiChoiceSource, /Conserver les réglages par défaut/);
+  assert.match(dashboardClientSource, /onboardingAiMode === "choice"/);
+  assert.match(dashboardClientSource, /setOnboardingAiMode\("configure"\)/);
+  assert.match(dashboardClientSource, /onKeepDefaults=\{completeOnboardingFromAi\}/);
+});
