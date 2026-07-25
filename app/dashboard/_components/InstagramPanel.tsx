@@ -1,6 +1,6 @@
 "use client";
 
-
+import { useEffect, useState } from "react";
 import styles from "../dashboard.module.css";
 import ConnectionPill from "./ConnectionPill";
 import StatusMessage from "./StatusMessage";
@@ -44,10 +44,12 @@ export default function InstagramPanel(props: any) {
   };
 
   const handleProfileConnect = () => {
+    setInstagramPickerUnlocked(false);
     void saveInstagramProfile();
   };
 
   const handleProfileDisconnect = () => {
+    setInstagramPickerUnlocked(true);
     void disconnectInstagramProfile();
   };
 
@@ -76,6 +78,13 @@ export default function InstagramPanel(props: any) {
         : instagramProfileActivity === "connecting"
           ? "Connexion en cours…"
           : undefined;
+  const [instagramPickerUnlocked, setInstagramPickerUnlocked] = useState(!instagramConnected);
+
+  useEffect(() => {
+    setInstagramPickerUnlocked(!instagramConnected);
+  }, [instagramConnected]);
+
+  const instagramPickerLocked = instagramConnected && !instagramPickerUnlocked;
 
   const displayAccountsError = !instagramConnected && !instagramAccountConnected ? null : igAccountsError;
 
@@ -211,7 +220,10 @@ export default function InstagramPanel(props: any) {
             <button
               type="button"
               className={`${styles.actionBtn} ${styles.secondaryBtn} ${igAccountsPhase === "connecting" ? styles.connectingActionBtn : igAccountsPhase === "searching" || igAccountsLoading ? styles.searchingActionBtn : ""}`}
-              onClick={() => loadInstagramAccounts()}
+              onClick={() => {
+                setInstagramPickerUnlocked(true);
+                loadInstagramAccounts();
+              }}
               disabled={igAccountsLoading || instagramProfileBusy}
               style={{ width: "100%" }}
             >
@@ -221,8 +233,12 @@ export default function InstagramPanel(props: any) {
             <select
               value={igSelectedPageId}
               onChange={(e) => setIgSelectedPageId(e.target.value)}
-              disabled={igAccountsLoading || instagramProfileBusy}
-              style={singleFieldStyle}
+              disabled={igAccountsLoading || instagramProfileBusy || instagramPickerLocked}
+              style={{
+                ...singleFieldStyle,
+                opacity: instagramPickerLocked ? 0.88 : 1,
+                cursor: instagramPickerLocked ? "not-allowed" : "pointer",
+              }}
             >
               <option value="">Sélectionner un compte</option>
               {igAccounts.map((a: { page_id: string; username?: string | null; page_name?: string | null }) => (
@@ -242,6 +258,12 @@ export default function InstagramPanel(props: any) {
               {instagramProfileBusy ? (instagramProfileAction === "disconnect" ? "Déconnexion..." : "Connexion...") : (instagramConnected ? "Déconnecter le compte" : "Connecter")}
             </button>
           </div>
+
+          {instagramPickerLocked ? (
+            <div style={{ color: "rgba(255,255,255,0.68)", fontSize: 12, marginTop: -2 }}>
+              Compte connecté et verrouillé. Cliquez sur <strong>Charger mes comptes</strong> pour pouvoir en sélectionner un autre.
+            </div>
+          ) : null}
 
           {displayAccountsError && <StatusMessage variant="error">{displayAccountsError}</StatusMessage>}
         </div>

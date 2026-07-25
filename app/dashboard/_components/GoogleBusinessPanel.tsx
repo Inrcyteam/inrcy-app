@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import styles from "../dashboard.module.css";
 import ConnectionPill from "./ConnectionPill";
 import StatusMessage from "./StatusMessage";
@@ -59,6 +59,13 @@ export default function GoogleBusinessPanel(props: any) {
         : gmbLocationActivity === "connecting"
           ? "Connexion en cours…"
           : undefined;
+  const [gmbPickerUnlocked, setGmbPickerUnlocked] = useState(!gmbConfigured);
+
+  useEffect(() => {
+    setGmbPickerUnlocked(!gmbConfigured);
+  }, [gmbConfigured]);
+
+  const gmbPickerLocked = gmbConfigured && !gmbPickerUnlocked;
 
   const hasSelectedLocationInList = Boolean(
     gmbLocationName && gmbLocations.some((l: { name: string; title?: string | null }) => l.name === gmbLocationName)
@@ -70,10 +77,12 @@ export default function GoogleBusinessPanel(props: any) {
   }, [gmbLocations, gmbLocationName, gmbLocationLabel, gmbUrl]);
 
   const handleLocationConnect = () => {
+    setGmbPickerUnlocked(false);
     void saveGmbLocation();
   };
 
   const handleLocationDisconnect = () => {
+    setGmbPickerUnlocked(true);
     void disconnectGmbBusiness();
   };
 
@@ -187,7 +196,10 @@ export default function GoogleBusinessPanel(props: any) {
             <button
               type="button"
               className={`${styles.actionBtn} ${styles.secondaryBtn} ${gmbLocationsPhase === "connecting" ? styles.connectingActionBtn : gmbLocationsPhase === "searching" || gmbLoadingList ? styles.searchingActionBtn : ""}`}
-              onClick={() => loadGmbAccountsAndLocations()}
+              onClick={() => {
+                setGmbPickerUnlocked(true);
+                loadGmbAccountsAndLocations();
+              }}
               disabled={gmbLoadingList || gmbLocationBusy}
             >
               {gmbLocationsPhase === "connecting" ? "Connexion..." : gmbLocationsPhase === "searching" || gmbLoadingList ? "Recherche..." : "Charger mes établissements"}
@@ -196,7 +208,7 @@ export default function GoogleBusinessPanel(props: any) {
             <select
               value={gmbLocationName}
               onChange={(e) => setGmbLocationName(e.target.value)}
-              disabled={gmbLoadingList || gmbLocationBusy}
+              disabled={gmbLoadingList || gmbLocationBusy || gmbPickerLocked}
               style={{
                 flex: "1 1 260px",
                 minWidth: 0,
@@ -207,6 +219,8 @@ export default function GoogleBusinessPanel(props: any) {
                 padding: "10px 12px",
                 color: "white",
                 outline: "none",
+                opacity: gmbPickerLocked ? 0.88 : 1,
+                cursor: gmbPickerLocked ? "not-allowed" : "pointer",
               }}
             >
               <option value="">Sélectionner un établissement</option>
@@ -227,6 +241,12 @@ export default function GoogleBusinessPanel(props: any) {
               {gmbLocationBusy ? (gmbLocationAction === "disconnect" ? "Déconnexion..." : "Connexion...") : (gmbConfigured ? "Déconnecter l'établissement" : "Connecter l'établissement")}
             </button>
           </div>
+
+          {gmbPickerLocked ? (
+            <div style={{ color: "rgba(255,255,255,0.68)", fontSize: 12, marginTop: -2 }}>
+              Établissement connecté et verrouillé. Cliquez sur <strong>Charger mes établissements</strong> pour pouvoir en sélectionner un autre.
+            </div>
+          ) : null}
 
           {gmbAccounts?.length > 1 ? (
             <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12, marginTop: -2 }}>

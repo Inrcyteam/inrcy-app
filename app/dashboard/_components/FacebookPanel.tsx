@@ -1,6 +1,6 @@
 "use client";
 
-
+import { useEffect, useState } from "react";
 import styles from "../dashboard.module.css";
 import ConnectionPill from "./ConnectionPill";
 import StatusMessage from "./StatusMessage";
@@ -61,6 +61,13 @@ export default function FacebookPanel(props: any) {
         : facebookPageActivity === "connecting"
           ? "Connexion en cours…"
           : undefined;
+  const [facebookPagePickerUnlocked, setFacebookPagePickerUnlocked] = useState(!facebookPageConnected);
+
+  useEffect(() => {
+    setFacebookPagePickerUnlocked(!facebookPageConnected);
+  }, [facebookPageConnected]);
+
+  const facebookPagePickerLocked = facebookPageConnected && !facebookPagePickerUnlocked;
 
   const startStandard = () => {
     connectFacebookAccount();
@@ -75,10 +82,12 @@ export default function FacebookPanel(props: any) {
   };
 
   const handlePageConnect = () => {
+    setFacebookPagePickerUnlocked(false);
     void saveFacebookPage();
   };
 
   const handlePageDisconnect = () => {
+    setFacebookPagePickerUnlocked(true);
     void disconnectFacebookPage();
   };
 
@@ -199,7 +208,10 @@ export default function FacebookPanel(props: any) {
             <button
               type="button"
               className={`${styles.actionBtn} ${styles.secondaryBtn} ${fbPagesPhase === "connecting" ? styles.connectingActionBtn : fbPagesPhase === "searching" || fbPagesLoading ? styles.searchingActionBtn : ""}`}
-              onClick={() => loadFacebookPages()}
+              onClick={() => {
+                setFacebookPagePickerUnlocked(true);
+                loadFacebookPages();
+              }}
               disabled={fbPagesLoading || facebookPageBusy}
             >
               {fbPagesPhase === "connecting" ? "Connexion..." : fbPagesPhase === "searching" || fbPagesLoading ? "Recherche..." : "Charger mes pages"}
@@ -208,7 +220,7 @@ export default function FacebookPanel(props: any) {
             <select
               value={fbSelectedPageId}
               onChange={(e) => setFbSelectedPageId(e.target.value)}
-              disabled={fbPagesLoading || facebookPageBusy}
+              disabled={fbPagesLoading || facebookPageBusy || facebookPagePickerLocked}
               style={{
                 flex: "1 1 260px",
                 minWidth: 0,
@@ -219,6 +231,8 @@ export default function FacebookPanel(props: any) {
                 padding: "10px 12px",
                 color: "white",
                 outline: "none",
+                opacity: facebookPagePickerLocked ? 0.88 : 1,
+                cursor: facebookPagePickerLocked ? "not-allowed" : "pointer",
               }}
             >
               <option value="">Sélectionner une page</option>
@@ -239,6 +253,12 @@ export default function FacebookPanel(props: any) {
               {facebookPageBusy ? (facebookPageAction === "disconnect" ? "Déconnexion..." : "Connexion...") : (facebookPageConnected ? "Déconnecter la page" : "Connecter la page")}
             </button>
           </div>
+
+          {facebookPagePickerLocked ? (
+            <div style={{ color: "rgba(255,255,255,0.68)", fontSize: 12, marginTop: -2 }}>
+              Page connectée et verrouillée. Cliquez sur <strong>Charger mes pages</strong> pour pouvoir en sélectionner une autre.
+            </div>
+          ) : null}
 
           {fbPagesError && <StatusMessage variant="error">{fbPagesError}</StatusMessage>}
         </div>
