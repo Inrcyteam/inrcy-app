@@ -17,6 +17,7 @@ export default function GoogleBusinessPanel(props: any) {
     gmbAccountName,
     gmbAccounts,
     gmbLoadingList,
+    gmbLocationsPhase = "idle",
     loadGmbAccountsAndLocations,
     gmbLocationName,
     gmbLocationLabel,
@@ -42,6 +43,22 @@ export default function GoogleBusinessPanel(props: any) {
       : gmbAccountConnected
         ? "rgba(59,130,246,0.95)"
         : "rgba(148,163,184,0.9)";
+  const gmbLocationActivity =
+    gmbLocationBusy && gmbLocationAction === "disconnect"
+      ? "disconnecting"
+      : gmbLocationBusy || gmbLocationsPhase === "connecting"
+        ? "connecting"
+        : gmbLocationsPhase === "searching" || gmbLoadingList
+          ? "searching"
+          : undefined;
+  const gmbLocationActivityLabel =
+    gmbLocationActivity === "searching"
+      ? "Recherche des établissements…"
+      : gmbLocationActivity === "disconnecting"
+        ? "Déconnexion en cours…"
+        : gmbLocationActivity === "connecting"
+          ? "Connexion en cours…"
+          : undefined;
 
   const hasSelectedLocationInList = Boolean(
     gmbLocationName && gmbLocations.some((l: { name: string; title?: string | null }) => l.name === gmbLocationName)
@@ -157,24 +174,29 @@ export default function GoogleBusinessPanel(props: any) {
         >
           <div className={styles.blockHeaderRow}>
             <div className={styles.blockTitle}>Établissement à connecter</div>
-            <ConnectionPill connected={gmbConfigured} status={gmbNeedsUpdate ? "needs_update" : undefined} />
+            <ConnectionPill
+              connected={gmbConfigured}
+              status={gmbNeedsUpdate ? "needs_update" : undefined}
+              activity={gmbLocationActivity}
+              label={gmbLocationActivityLabel}
+            />
           </div>
           <div className={styles.blockSub}>Choisissez la fiche Google Business à relier à iNrCy.</div>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
             <button
               type="button"
-              className={`${styles.actionBtn} ${styles.secondaryBtn}`}
+              className={`${styles.actionBtn} ${styles.secondaryBtn} ${gmbLocationsPhase === "connecting" ? styles.connectingActionBtn : gmbLocationsPhase === "searching" || gmbLoadingList ? styles.searchingActionBtn : ""}`}
               onClick={() => loadGmbAccountsAndLocations()}
               disabled={gmbLoadingList || gmbLocationBusy}
             >
-              {gmbLoadingList ? "Chargement..." : "Charger mes établissements"}
+              {gmbLocationsPhase === "connecting" ? "Connexion..." : gmbLocationsPhase === "searching" || gmbLoadingList ? "Recherche..." : "Charger mes établissements"}
             </button>
 
             <select
               value={gmbLocationName}
               onChange={(e) => setGmbLocationName(e.target.value)}
-              disabled={gmbLocationBusy}
+              disabled={gmbLoadingList || gmbLocationBusy}
               style={{
                 flex: "1 1 260px",
                 minWidth: 0,
@@ -198,9 +220,9 @@ export default function GoogleBusinessPanel(props: any) {
 
             <button
               type="button"
-              className={`${styles.actionBtn} ${gmbConfigured ? styles.disconnectBtn : styles.connectBtn}`}
+              className={`${styles.actionBtn} ${gmbConfigured ? styles.disconnectBtn : styles.connectBtn} ${gmbLocationBusy && gmbLocationAction === "connect" ? styles.connectingActionBtn : ""}`}
               onClick={gmbConfigured ? handleLocationDisconnect : handleLocationConnect}
-              disabled={!gmbLocationName || gmbLocationBusy}
+              disabled={!gmbLocationName || gmbLoadingList || gmbLocationBusy}
             >
               {gmbLocationBusy ? (gmbLocationAction === "disconnect" ? "Déconnexion..." : "Connexion...") : (gmbConfigured ? "Déconnecter l'établissement" : "Connecter l'établissement")}
             </button>
@@ -210,12 +232,6 @@ export default function GoogleBusinessPanel(props: any) {
             <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 12, marginTop: -2 }}>
               Plusieurs comptes détectés : iNrCy utilise actuellement <strong>{gmbAccountName || "(non défini)"}</strong>.
             </div>
-          ) : null}
-
-          {gmbLocationBusy ? (
-            <StatusMessage variant="success">
-              {gmbLocationAction === "disconnect" ? "Déconnexion en cours..." : "Connexion en cours..."}
-            </StatusMessage>
           ) : null}
 
           {gmbListError && <StatusMessage variant="error">{gmbListError}</StatusMessage>}

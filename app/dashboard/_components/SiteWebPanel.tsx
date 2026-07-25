@@ -134,8 +134,9 @@ export default function SiteWebPanel(props: any) {
               title="Supprimer le lien"
               aria-label="Supprimer le lien"
               style={{ minWidth: 44, paddingInline: 0, fontSize: 22, fontWeight: 900, lineHeight: 1 }}
+              aria-busy={siteWebUrlBusy}
             >
-              ×
+              {siteWebUrlBusy ? "…" : "×"}
             </button>
           ) : (
             <button
@@ -143,10 +144,11 @@ export default function SiteWebPanel(props: any) {
               className={`${styles.actionBtn} ${styles.iconBtn}`}
               onClick={() => void saveSiteWebUrl()}
               disabled={siteWebUrlBusy}
-              title="Enregistrer le lien"
-              aria-label="Enregistrer le lien"
+              title={siteWebUrlBusy ? "Enregistrement en cours" : "Enregistrer le lien"}
+              aria-label={siteWebUrlBusy ? "Enregistrement en cours" : "Enregistrer le lien"}
+              aria-busy={siteWebUrlBusy}
             >
-              <SaveIcon />
+              {siteWebUrlBusy ? <span aria-hidden>…</span> : <SaveIcon />}
             </button>
           )}
 

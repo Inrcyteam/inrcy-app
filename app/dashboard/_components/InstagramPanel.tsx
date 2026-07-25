@@ -15,6 +15,7 @@ export default function InstagramPanel(props: any) {
     connectInstagramBusinessAccount,
     disconnectInstagramAccount,
     igAccountsLoading,
+    igAccountsPhase = "idle",
     loadInstagramAccounts,
     igSelectedPageId,
     setIgSelectedPageId,
@@ -59,6 +60,22 @@ export default function InstagramPanel(props: any) {
       : instagramAccountConnected
         ? "rgba(59,130,246,0.95)"
         : "rgba(148,163,184,0.9)";
+  const instagramProfileActivity =
+    instagramProfileBusy && instagramProfileAction === "disconnect"
+      ? "disconnecting"
+      : instagramProfileBusy || igAccountsPhase === "connecting"
+        ? "connecting"
+        : igAccountsPhase === "searching" || igAccountsLoading
+          ? "searching"
+          : undefined;
+  const instagramProfileActivityLabel =
+    instagramProfileActivity === "searching"
+      ? "Recherche des comptes…"
+      : instagramProfileActivity === "disconnecting"
+        ? "Déconnexion en cours…"
+        : instagramProfileActivity === "connecting"
+          ? "Connexion en cours…"
+          : undefined;
 
   const displayAccountsError = !instagramConnected && !instagramAccountConnected ? null : igAccountsError;
 
@@ -181,25 +198,30 @@ export default function InstagramPanel(props: any) {
         >
           <div className={styles.blockHeaderRow}>
             <div className={styles.blockTitle}>Compte Instagram à connecter</div>
-            <ConnectionPill connected={instagramConnected} status={instagramNeedsUpdate ? "needs_update" : undefined} />
+            <ConnectionPill
+              connected={instagramConnected}
+              status={instagramNeedsUpdate ? "needs_update" : undefined}
+              activity={instagramProfileActivity}
+              label={instagramProfileActivityLabel}
+            />
           </div>
           <div className={styles.blockSub}>On liste les Pages Facebook qui possèdent un Instagram Business/Creator.</div>
 
           <div style={responsiveActionsRow}>
             <button
               type="button"
-              className={`${styles.actionBtn} ${styles.secondaryBtn}`}
+              className={`${styles.actionBtn} ${styles.secondaryBtn} ${igAccountsPhase === "connecting" ? styles.connectingActionBtn : igAccountsPhase === "searching" || igAccountsLoading ? styles.searchingActionBtn : ""}`}
               onClick={() => loadInstagramAccounts()}
               disabled={igAccountsLoading || instagramProfileBusy}
               style={{ width: "100%" }}
             >
-              {igAccountsLoading ? "Chargement..." : "Charger mes comptes"}
+              {igAccountsPhase === "connecting" ? "Connexion..." : igAccountsPhase === "searching" || igAccountsLoading ? "Recherche..." : "Charger mes comptes"}
             </button>
 
             <select
               value={igSelectedPageId}
               onChange={(e) => setIgSelectedPageId(e.target.value)}
-              disabled={instagramProfileBusy}
+              disabled={igAccountsLoading || instagramProfileBusy}
               style={singleFieldStyle}
             >
               <option value="">Sélectionner un compte</option>
@@ -212,20 +234,15 @@ export default function InstagramPanel(props: any) {
 
             <button
               type="button"
-              className={`${styles.actionBtn} ${instagramConnected ? styles.disconnectBtn : styles.connectBtn}`}
+              className={`${styles.actionBtn} ${instagramConnected ? styles.disconnectBtn : styles.connectBtn} ${instagramProfileBusy && instagramProfileAction === "connect" ? styles.connectingActionBtn : ""}`}
               onClick={instagramConnected ? handleProfileDisconnect : handleProfileConnect}
-              disabled={!igSelectedPageId || instagramProfileBusy}
+              disabled={!igSelectedPageId || igAccountsLoading || instagramProfileBusy}
               style={{ width: "100%" }}
             >
               {instagramProfileBusy ? (instagramProfileAction === "disconnect" ? "Déconnexion..." : "Connexion...") : (instagramConnected ? "Déconnecter le compte" : "Connecter")}
             </button>
           </div>
 
-          {instagramProfileBusy ? (
-            <StatusMessage variant="success">
-              {instagramProfileAction === "disconnect" ? "Déconnexion en cours..." : "Connexion en cours..."}
-            </StatusMessage>
-          ) : null}
           {displayAccountsError && <StatusMessage variant="error">{displayAccountsError}</StatusMessage>}
         </div>
       ) : null}

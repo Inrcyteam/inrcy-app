@@ -5,6 +5,7 @@ import { getClientUserFacingApiError as getSimpleFrenchApiError, getClientUserFa
 import type { ConnectionDisplayStatus } from "@/lib/connectionVersions";
 import type { DashboardChannelKey } from "@/lib/dashboardChannels";
 import type { InrstatsChannelBlock } from "@/lib/inrstats/channelBlocks";
+import type { ChannelResourcePhase } from "./channelResourcePhase";
 
 type PatchChannelConnectionLocally = (
   channel: DashboardChannelKey,
@@ -41,6 +42,7 @@ export function useInstagramChannel({
 
   const [igAccounts, setIgAccounts] = useState<Array<{ page_id: string; page_name?: string; ig_id: string; username?: string; page_access_token?: string }>>([]);
   const [igAccountsLoading, setIgAccountsLoading] = useState(false);
+  const [igAccountsPhase, setIgAccountsPhase] = useState<ChannelResourcePhase>("idle");
   const [igSelectedPageId, setIgSelectedPageId] = useState<string>("");
   const [igAccountsError, setIgAccountsError] = useState<string | null>(null);
   const igAccountsAutoLoadRef = useRef(false);
@@ -134,6 +136,7 @@ export function useInstagramChannel({
     setInstagramUrl("");
     setIgAccounts([]);
     setIgSelectedPageId("");
+    setIgAccountsPhase("idle");
     patchChannelConnectionLocally("instagram", {
       connected: false,
       accountConnected: false,
@@ -162,6 +165,7 @@ export function useInstagramChannel({
     setInstagramUsername("");
     setInstagramUrl("");
     setIgSelectedPageId("");
+    setIgAccountsPhase("idle");
     patchChannelConnectionLocally("instagram", {
       connected: false,
       accountConnected: true,
@@ -186,6 +190,7 @@ export function useInstagramChannel({
   const loadInstagramAccounts = useCallback(async () => {
     if (!instagramAccountConnected) return;
     setIgAccountsLoading(true);
+    setIgAccountsPhase("searching");
     setIgAccountsError(null);
     try {
       const r = await fetch("/api/integrations/instagram/accounts", { cache: "no-store" });
@@ -196,6 +201,7 @@ export function useInstagramChannel({
 
       if ((j.accounts || []).length === 1) {
         const only = j.accounts[0];
+        setIgAccountsPhase("connecting");
         const autoRes = await fetch("/api/integrations/instagram/select-profile", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -232,6 +238,7 @@ export function useInstagramChannel({
       setIgAccountsError(getSimpleFrenchErrorMessage(e, "Impossible de charger vos comptes Instagram."));
     } finally {
       setIgAccountsLoading(false);
+      setIgAccountsPhase("idle");
     }
   }, [instagramAccountConnected, igSelectedPageId, patchChannelConnectionLocally, setPanelSuccess, triggerChannelRefresh, updateRootSettingsKey, syncInstagramStateFromServer]);
 
@@ -314,6 +321,7 @@ export function useInstagramChannel({
     igAccounts,
     setIgAccounts,
     igAccountsLoading,
+    igAccountsPhase,
     igSelectedPageId,
     setIgSelectedPageId,
     igAccountsError,

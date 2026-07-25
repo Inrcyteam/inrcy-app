@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { getClientUserFacingApiError as getSimpleFrenchApiError, getClientUserFacingErrorMessage as getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import type { DashboardChannelKey } from "@/lib/dashboardChannels";
 import type { InrstatsChannelBlock } from "@/lib/inrstats/channelBlocks";
+import type { ChannelResourcePhase } from "./channelResourcePhase";
 
 type PatchChannelConnectionLocally = (
   channel: DashboardChannelKey,
@@ -40,6 +41,7 @@ export function useFacebookChannel({
 
   const [fbPages, setFbPages] = useState<Array<{ id: string; name?: string; access_token?: string }>>([]);
   const [fbPagesLoading, setFbPagesLoading] = useState(false);
+  const [fbPagesPhase, setFbPagesPhase] = useState<ChannelResourcePhase>("idle");
   const [fbSelectedPageId, setFbSelectedPageId] = useState<string>("");
   const [fbSelectedPageName, setFbSelectedPageName] = useState<string>("");
   const [fbPagesError, setFbPagesError] = useState<string | null>(null);
@@ -101,6 +103,7 @@ export function useFacebookChannel({
     setFbPages([]);
     setFbSelectedPageId("");
     setFbSelectedPageName("");
+    setFbPagesPhase("idle");
     setPanelSuccess("Compte Facebook déconnecté.");
   }, [patchChannelConnectionLocally, updateRootSettingsKey, triggerChannelRefresh, setPanelSuccess]);
 
@@ -127,12 +130,14 @@ export function useFacebookChannel({
     setFacebookUrl("");
     setFbSelectedPageId("");
     setFbSelectedPageName("");
+    setFbPagesPhase("idle");
     setPanelSuccess("Page Facebook déconnectée.");
   }, [patchChannelConnectionLocally, updateRootSettingsKey, triggerChannelRefresh, setPanelSuccess]);
 
   const loadFacebookPages = useCallback(async () => {
     if (!facebookAccountConnected) return;
     setFbPagesLoading(true);
+    setFbPagesPhase("searching");
     setFbPagesError(null);
     try {
       const r = await fetch("/api/integrations/facebook/pages", { cache: "no-store" });
@@ -152,6 +157,7 @@ export function useFacebookChannel({
       if (pages.length === 1) {
         const only = pages[0];
         if (only?.id) {
+          setFbPagesPhase("connecting");
           const autoRes = await fetch("/api/integrations/facebook/select-page", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -191,6 +197,7 @@ export function useFacebookChannel({
       setFbPagesError(getSimpleFrenchErrorMessage(e, "Impossible de charger vos pages Facebook."));
     } finally {
       setFbPagesLoading(false);
+      setFbPagesPhase("idle");
     }
   }, [facebookAccountConnected, fbSelectedPageId, facebookAccountEmail, patchChannelConnectionLocally, setPanelSuccess, triggerChannelRefresh, updateRootSettingsKey]);
 
@@ -275,6 +282,7 @@ export function useFacebookChannel({
     fbPages,
     setFbPages,
     fbPagesLoading,
+    fbPagesPhase,
     fbSelectedPageId,
     setFbSelectedPageId,
     fbSelectedPageName,

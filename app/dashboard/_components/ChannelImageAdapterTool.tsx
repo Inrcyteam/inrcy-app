@@ -137,6 +137,7 @@ type ModalProps = {
   onCover: () => void;
   onReset: () => void;
   onSave: () => void;
+  saving?: boolean;
   onApplyToSelectedChannels?: () => void;
   onApplyToChannelImages?: () => void;
   onResetChannel?: () => void;
@@ -1380,6 +1381,7 @@ export function ChannelImageAdapterModal({
   onCover,
   onReset,
   onSave,
+  saving = false,
   onApplyToSelectedChannels,
   onApplyToChannelImages,
   onResetChannel,
@@ -1471,7 +1473,7 @@ export function ChannelImageAdapterModal({
             <button type="button" className={buttonClassName} onClick={onApplyToChannelImages} disabled={!onApplyToChannelImages} title={onApplyToChannelImages ? "Appliquer ce cadrage à toutes les images de ce canal" : "Disponible avec au moins 2 images sur ce canal"} style={{ minWidth: 0, minHeight: isMobile ? 42 : 44, height: isMobile ? 42 : 44, flex: isMobile ? "1 1 0" : undefined, maxWidth: isMobile ? "none" : undefined, justifyContent: "center", alignItems: "center", fontSize: isMobile ? 11 : undefined, lineHeight: 1.1, padding: isMobile ? "0 6px" : "0 16px", whiteSpace: "normal", textAlign: "center", boxSizing: "border-box", opacity: onApplyToChannelImages ? 1 : 0.48, cursor: onApplyToChannelImages ? "pointer" : "not-allowed" }}>Appliquer partout</button>
             {onApplyToSelectedChannels ? <button type="button" className={buttonClassName} onClick={onApplyToSelectedChannels} style={{ minWidth: 0, minHeight: isMobile ? 42 : 44, height: isMobile ? 42 : 44, flex: isMobile ? "1 1 0" : undefined, justifyContent: "center", alignItems: "center", fontSize: isMobile ? 11 : undefined, lineHeight: 1.1, padding: isMobile ? "0 6px" : "0 16px", whiteSpace: "normal", textAlign: "center", boxSizing: "border-box" }}>Appliquer aux canaux</button> : null}
             {onResetChannel ? <button type="button" className={buttonClassName} onClick={onResetChannel} style={{ minWidth: 0, minHeight: isMobile ? 42 : 44, height: isMobile ? 42 : 44, flex: isMobile ? "1 1 0" : undefined, justifyContent: "center", alignItems: "center", fontSize: isMobile ? 11 : undefined, lineHeight: 1.1, padding: isMobile ? "0 6px" : "0 16px", whiteSpace: "nowrap", textAlign: "center", boxSizing: "border-box" }}>Réinit. canal</button> : null}
-            <button type="button" className={primaryButtonClassName || buttonClassName} onClick={onSave} aria-label="Enregistrer" title="Enregistrer" style={{ minWidth: 0, minHeight: isMobile ? 42 : 44, height: isMobile ? 42 : 44, flex: isMobile ? "0 0 42px" : undefined, width: isMobile ? 42 : undefined, padding: isMobile ? 0 : "0 16px", justifyContent: "center", alignItems: "center", fontSize: isMobile ? 18 : undefined, boxSizing: "border-box" }}>{isMobile ? "💾" : "Enregistrer"}</button>
+            <button type="button" className={primaryButtonClassName || buttonClassName} onClick={onSave} disabled={saving} aria-busy={saving} aria-label={saving ? "Enregistrement en cours" : "Enregistrer"} title={saving ? "Enregistrement en cours" : "Enregistrer"} style={{ minWidth: 0, minHeight: isMobile ? 42 : 44, height: isMobile ? 42 : 44, flex: isMobile ? "0 0 42px" : undefined, width: isMobile ? 42 : undefined, padding: isMobile ? 0 : "0 16px", justifyContent: "center", alignItems: "center", fontSize: isMobile ? 18 : undefined, boxSizing: "border-box", cursor: saving ? "wait" : undefined, opacity: saving ? 0.68 : 1 }}>{saving ? (isMobile ? "…" : "Enregistrement…") : isMobile ? "💾" : "Enregistrer"}</button>
             <button type="button" className={buttonClassName} onClick={() => void confirmExit()} aria-label="Fermer" title="Fermer" style={{ minWidth: 0, minHeight: isMobile ? 42 : 44, height: isMobile ? 42 : 44, flex: isMobile ? "0 0 42px" : undefined, width: isMobile ? 42 : undefined, padding: isMobile ? 0 : "0 16px", justifyContent: "center", alignItems: "center", fontSize: isMobile ? 20 : undefined, boxSizing: "border-box" }}>{isMobile ? "×" : "Fermer"}</button>
           </div>
         </div>

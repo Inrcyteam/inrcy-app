@@ -9760,19 +9760,32 @@ export default function AgentClient() {
                         type="button"
                         className={styles.saveCampaignDraftButton}
                         aria-label={
-                          isPublishView
-                            ? "Enregistrer la publication en brouillon"
-                            : "Enregistrer la campagne en brouillon"
+                          actionMutationState === "saving" ||
+                          campaignDraftSaveState === "saving"
+                            ? "Enregistrement en cours"
+                            : isPublishView
+                              ? "Enregistrer la publication en brouillon"
+                              : "Enregistrer la campagne en brouillon"
                         }
                         title={
-                          isPublishView
-                            ? "Enregistrer"
-                            : "Enregistrer la campagne"
+                          actionMutationState === "saving" ||
+                          campaignDraftSaveState === "saving"
+                            ? "Enregistrement en cours"
+                            : isPublishView
+                              ? "Enregistrer"
+                              : "Enregistrer la campagne"
                         }
                         data-tooltip={
-                          isPublishView
-                            ? "Enregistrer"
-                            : "Enregistrer la campagne"
+                          actionMutationState === "saving" ||
+                          campaignDraftSaveState === "saving"
+                            ? "Enregistrement en cours"
+                            : isPublishView
+                              ? "Enregistrer"
+                              : "Enregistrer la campagne"
+                        }
+                        aria-busy={
+                          actionMutationState === "saving" ||
+                          campaignDraftSaveState === "saving"
                         }
                         disabled={
                           !hasPreparedAction ||
@@ -9783,8 +9796,16 @@ export default function AgentClient() {
                           setCampaignDraftConfirmOpen(true);
                         }}
                       >
-                        <span aria-hidden>💾</span>
-                        Enregistrer
+                        <span aria-hidden>
+                          {actionMutationState === "saving" ||
+                          campaignDraftSaveState === "saving"
+                            ? "…"
+                            : "💾"}
+                        </span>
+                        {actionMutationState === "saving" ||
+                        campaignDraftSaveState === "saving"
+                          ? "Enregistrement…"
+                          : "Enregistrer"}
                       </button>
                     )}
                     {(isCampaignView || isPublishView) && (
@@ -11365,6 +11386,7 @@ export default function AgentClient() {
             setPublishImageAdapterTransform(nextTransform);
           }}
           onSave={savePublishImageAdapter}
+          saving={publishImageAdapterSaving}
           isolationNote="Ce réglage utilise l’outil Adapter image existant de Booster et remplacera le média iNrAgent par la version adaptée."
           onBackgroundModeChange={(mode) =>
             updatePublishImageAdapterTransform(
@@ -11489,8 +11511,11 @@ export default function AgentClient() {
                 disabled={
                   publishVideoAdapterSaving || !publishMediaPreview?.url
                 }
+                aria-busy={publishVideoAdapterSaving}
               >
-                Enregistrer l’adaptation
+                {publishVideoAdapterSaving
+                  ? "Enregistrement…"
+                  : "Enregistrer l’adaptation"}
               </button>
             </div>
           </section>

@@ -155,8 +155,9 @@ export default function SiteInrcyPanel(props: any) {
               title="Supprimer le lien"
               aria-label="Supprimer le lien"
               style={{ minWidth: 44, paddingInline: 0, fontSize: 22, fontWeight: 900, lineHeight: 1 }}
+              aria-busy={siteInrcyUrlBusy}
             >
-              ×
+              {siteInrcyUrlBusy ? "…" : "×"}
             </button>
           ) : (
             <button
@@ -164,10 +165,17 @@ export default function SiteInrcyPanel(props: any) {
               className={`${styles.actionBtn} ${styles.iconBtn}`}
               onClick={() => void saveSiteInrcyUrl()}
               disabled={siteInrcyOwnership === "none" || siteInrcyUrlBusy}
-              title={siteInrcyOwnership === "none" ? "Aucun site iNrCy associé" : "Enregistrer le lien"}
-              aria-label="Enregistrer le lien"
+              title={
+                siteInrcyOwnership === "none"
+                  ? "Aucun site iNrCy associé"
+                  : siteInrcyUrlBusy
+                    ? "Enregistrement en cours"
+                    : "Enregistrer le lien"
+              }
+              aria-label={siteInrcyUrlBusy ? "Enregistrement en cours" : "Enregistrer le lien"}
+              aria-busy={siteInrcyUrlBusy}
             >
-              <SaveIcon />
+              {siteInrcyUrlBusy ? <span aria-hidden>…</span> : <SaveIcon />}
             </button>
           )}
 

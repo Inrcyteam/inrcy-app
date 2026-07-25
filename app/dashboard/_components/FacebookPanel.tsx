@@ -15,6 +15,7 @@ export default function FacebookPanel(props: any) {
     connectFacebookBusinessAccount,
     disconnectFacebookAccount,
     fbPagesLoading,
+    fbPagesPhase = "idle",
     loadFacebookPages,
     fbSelectedPageId,
     fbSelectedPageName,
@@ -44,6 +45,22 @@ export default function FacebookPanel(props: any) {
       : facebookAccountConnected
         ? "rgba(59,130,246,0.95)"
         : "rgba(148,163,184,0.9)";
+  const facebookPageActivity =
+    facebookPageBusy && facebookPageAction === "disconnect"
+      ? "disconnecting"
+      : facebookPageBusy || fbPagesPhase === "connecting"
+        ? "connecting"
+        : fbPagesPhase === "searching" || fbPagesLoading
+          ? "searching"
+          : undefined;
+  const facebookPageActivityLabel =
+    facebookPageActivity === "searching"
+      ? "Recherche des pages…"
+      : facebookPageActivity === "disconnecting"
+        ? "Déconnexion en cours…"
+        : facebookPageActivity === "connecting"
+          ? "Connexion en cours…"
+          : undefined;
 
   const startStandard = () => {
     connectFacebookAccount();
@@ -169,24 +186,29 @@ export default function FacebookPanel(props: any) {
         >
           <div className={styles.blockHeaderRow}>
             <div className={styles.blockTitle}>Page à connecter</div>
-            <ConnectionPill connected={facebookPageConnected} status={facebookNeedsUpdate ? "needs_update" : undefined} />
+            <ConnectionPill
+              connected={facebookPageConnected}
+              status={facebookNeedsUpdate ? "needs_update" : undefined}
+              activity={facebookPageActivity}
+              label={facebookPageActivityLabel}
+            />
           </div>
           <div className={styles.blockSub}>Choisissez la page Facebook à analyser (et éventuellement publier).</div>
 
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
             <button
               type="button"
-              className={`${styles.actionBtn} ${styles.secondaryBtn}`}
+              className={`${styles.actionBtn} ${styles.secondaryBtn} ${fbPagesPhase === "connecting" ? styles.connectingActionBtn : fbPagesPhase === "searching" || fbPagesLoading ? styles.searchingActionBtn : ""}`}
               onClick={() => loadFacebookPages()}
               disabled={fbPagesLoading || facebookPageBusy}
             >
-              {fbPagesLoading ? "Chargement..." : "Charger mes pages"}
+              {fbPagesPhase === "connecting" ? "Connexion..." : fbPagesPhase === "searching" || fbPagesLoading ? "Recherche..." : "Charger mes pages"}
             </button>
 
             <select
               value={fbSelectedPageId}
               onChange={(e) => setFbSelectedPageId(e.target.value)}
-              disabled={facebookPageBusy}
+              disabled={fbPagesLoading || facebookPageBusy}
               style={{
                 flex: "1 1 260px",
                 minWidth: 0,
@@ -210,19 +232,14 @@ export default function FacebookPanel(props: any) {
 
             <button
               type="button"
-              className={`${styles.actionBtn} ${facebookPageConnected ? styles.disconnectBtn : styles.connectBtn}`}
+              className={`${styles.actionBtn} ${facebookPageConnected ? styles.disconnectBtn : styles.connectBtn} ${facebookPageBusy && facebookPageAction === "connect" ? styles.connectingActionBtn : ""}`}
               onClick={facebookPageConnected ? handlePageDisconnect : handlePageConnect}
-              disabled={!fbSelectedPageId || facebookPageBusy}
+              disabled={!fbSelectedPageId || fbPagesLoading || facebookPageBusy}
             >
               {facebookPageBusy ? (facebookPageAction === "disconnect" ? "Déconnexion..." : "Connexion...") : (facebookPageConnected ? "Déconnecter la page" : "Connecter la page")}
             </button>
           </div>
 
-          {facebookPageBusy ? (
-            <StatusMessage variant="success">
-              {facebookPageAction === "disconnect" ? "Déconnexion en cours..." : "Connexion en cours..."}
-            </StatusMessage>
-          ) : null}
           {fbPagesError && <StatusMessage variant="error">{fbPagesError}</StatusMessage>}
         </div>
       ) : null}

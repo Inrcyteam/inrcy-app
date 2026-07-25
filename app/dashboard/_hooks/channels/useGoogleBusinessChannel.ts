@@ -5,6 +5,7 @@ import { getClientUserFacingApiError as getSimpleFrenchApiError, getClientUserFa
 import type { ConnectionDisplayStatus } from "@/lib/connectionVersions";
 import type { DashboardChannelKey } from "@/lib/dashboardChannels";
 import type { InrstatsChannelBlock } from "@/lib/inrstats/channelBlocks";
+import type { ChannelResourcePhase } from "./channelResourcePhase";
 
 type PatchChannelConnectionLocally = (
   channel: DashboardChannelKey,
@@ -46,6 +47,7 @@ export function useGoogleBusinessChannel({
   const [gmbLocationName, setGmbLocationName] = useState<string>("");
   const [gmbLocationLabel, setGmbLocationLabel] = useState<string>("");
   const [gmbLoadingList, setGmbLoadingList] = useState(false);
+  const [gmbLocationsPhase, setGmbLocationsPhase] = useState<ChannelResourcePhase>("idle");
   const [gmbListError, setGmbListError] = useState<string | null>(null);
   const gmbLocationsAutoLoadRef = useRef(false);
 
@@ -85,6 +87,7 @@ export function useGoogleBusinessChannel({
     setGmbAccountName("");
     setGmbLocationName("");
     setGmbLocationLabel("");
+    setGmbLocationsPhase("idle");
     await updateRootSettingsKey("gmb", { url: "", connected: false, configured: false, accountEmail: "", accountName: "", locationName: "", locationTitle: "", resource_id: "" });
     patchChannelConnectionLocally("gmb", {
       connected: false,
@@ -111,6 +114,7 @@ export function useGoogleBusinessChannel({
     setGmbUrl("");
     setGmbLocationName("");
     setGmbLocationLabel("");
+    setGmbLocationsPhase("idle");
     await updateRootSettingsKey("gmb", { url: "", resource_id: "", locationName: "", locationTitle: "", configured: false, connected: true });
     patchChannelConnectionLocally("gmb", {
       connected: false,
@@ -127,6 +131,7 @@ export function useGoogleBusinessChannel({
   const loadGmbAccountsAndLocations = useCallback(async () => {
     if (!gmbAccountConnected) return;
     setGmbLoadingList(true);
+    setGmbLocationsPhase("searching");
     setGmbListError(null);
     try {
       const r = await fetch(`/api/integrations/google-business/locations`, { cache: "no-store" });
@@ -150,6 +155,7 @@ export function useGoogleBusinessChannel({
 
       if (locations.length === 1 && j.accountName) {
         const only = locations[0];
+        setGmbLocationsPhase("connecting");
         const autoRes = await fetch("/api/integrations/google-business/select-location", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -181,6 +187,7 @@ export function useGoogleBusinessChannel({
       setGmbListError(getSimpleFrenchErrorMessage(e, "Impossible de charger les établissements Google Business."));
     } finally {
       setGmbLoadingList(false);
+      setGmbLocationsPhase("idle");
     }
   }, [gmbAccountConnected, gmbLocationName, patchChannelConnectionLocally, setPanelSuccess, triggerChannelRefresh]);
 
@@ -268,6 +275,7 @@ export function useGoogleBusinessChannel({
     gmbLocationLabel,
     setGmbLocationLabel,
     gmbLoadingList,
+    gmbLocationsPhase,
     gmbListError,
     connectGmbAccount,
     disconnectGmbAccount,

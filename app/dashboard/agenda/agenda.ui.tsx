@@ -777,10 +777,11 @@ export function AgendaEventModal(props: AgendaEventModalProps) {
                 className={`${styles.btnGhost} ${styles.modalDraftButton}`}
                 onClick={props.onSaveDraft}
                 disabled={props.rdvSaving}
-                aria-label="Enregistrer en brouillon"
-                title="Enregistrer en brouillon"
+                aria-label={props.rdvSaving ? "Enregistrement en cours" : "Enregistrer en brouillon"}
+                title={props.rdvSaving ? "Enregistrement en cours" : "Enregistrer en brouillon"}
+                aria-busy={props.rdvSaving}
               >
-                💾
+                {props.rdvSaving ? "…" : "💾"}
               </button>
             )}
             <button className={styles.btnGhost} onClick={() => void props.onClose()} aria-label="Fermer">

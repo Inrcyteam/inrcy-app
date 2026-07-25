@@ -44,6 +44,7 @@ export default function LinkedinPanel(props: any) {
     linkedinUrlBusy,
     linkedinOrganizations = [],
     linkedinOrganizationsLoading,
+    linkedinOrganizationsPhase = "idle",
     linkedinOrganizationBusy,
     linkedinOrganizationAction,
     linkedinSelectedOrganizationId,
@@ -65,6 +66,22 @@ export default function LinkedinPanel(props: any) {
     : profileReady
       ? "rgba(34,197,94,0.95)"
       : "rgba(148,163,184,0.9)";
+  const linkedinOrganizationActivity =
+    linkedinOrganizationBusy && linkedinOrganizationAction === "disconnect"
+      ? "disconnecting"
+      : linkedinOrganizationsPhase === "connecting"
+        ? "connecting"
+        : linkedinOrganizationsPhase === "searching" || linkedinOrganizationsLoading
+          ? "searching"
+          : undefined;
+  const linkedinOrganizationActivityLabel =
+    linkedinOrganizationActivity === "searching"
+      ? "Recherche des pages…"
+      : linkedinOrganizationActivity === "disconnecting"
+        ? "Déconnexion en cours…"
+        : linkedinOrganizationActivity === "connecting"
+          ? "Connexion en cours…"
+          : undefined;
 
   const linkBlockTitle = hasCompanyPage ? "Lien page entreprise LinkedIn" : "Lien profil personnel LinkedIn";
   const linkBlockHelp = hasCompanyPage
@@ -153,7 +170,11 @@ export default function LinkedinPanel(props: any) {
         <div style={cardStyle}>
           <div className={styles.blockHeaderRow}>
             <div className={styles.blockTitle}>{hasCompanyPage ? "Page entreprise LinkedIn" : "Connecter une page entreprise"}</div>
-            <ConnectionPill connected={hasCompanyPage} />
+            <ConnectionPill
+              connected={hasCompanyPage}
+              activity={linkedinOrganizationActivity}
+              label={linkedinOrganizationActivityLabel}
+            />
           </div>
           <div className={styles.blockSub}>
             {hasCompanyPage
@@ -172,11 +193,11 @@ export default function LinkedinPanel(props: any) {
 
               <button
                 type="button"
-                className={`${styles.actionBtn} ${styles.connectBtn}`}
+                className={`${styles.actionBtn} ${styles.connectBtn} ${linkedinOrganizationsPhase === "connecting" ? styles.connectingActionBtn : linkedinOrganizationsPhase === "searching" || linkedinOrganizationsLoading ? styles.searchingActionBtn : ""}`}
                 onClick={() => void loadLinkedinOrganizations?.({ resetSelection: true })}
-                disabled={linkedinOrganizationsLoading || linkedinOrganizationBusy}
+                disabled={linkedinOrganizationsLoading || linkedinOrganizationsPhase !== "idle" || linkedinOrganizationBusy}
               >
-                {linkedinOrganizationsLoading ? "Chargement..." : hasCompanyPage ? "Changer de page" : "Connecter une page"}
+                {linkedinOrganizationsPhase === "connecting" ? "Connexion..." : linkedinOrganizationsPhase === "searching" || linkedinOrganizationsLoading ? "Recherche..." : hasCompanyPage ? "Changer de page" : "Connecter une page"}
               </button>
 
             </div>
@@ -200,7 +221,7 @@ export default function LinkedinPanel(props: any) {
                   type="checkbox"
                   checked={!!linkedinShareToPersonalProfile}
                   onChange={(event) => void updateLinkedinShareToPersonalProfile?.(event.target.checked)}
-                  disabled={linkedinShareToPersonalProfileBusy || linkedinOrganizationsLoading || linkedinOrganizationBusy}
+                  disabled={linkedinShareToPersonalProfileBusy || linkedinOrganizationsLoading || linkedinOrganizationsPhase !== "idle" || linkedinOrganizationBusy}
                   style={{ width: 16, height: 16, accentColor: "#0A66C2" }}
                 />
                 Autoriser le partage auto sur mon profil personnel
@@ -212,7 +233,7 @@ export default function LinkedinPanel(props: any) {
                 type="button"
                 className={`${styles.actionBtn} ${styles.disconnectBtn}`}
                 onClick={() => void disconnectLinkedinOrganization?.()}
-                disabled={linkedinOrganizationsLoading || linkedinOrganizationBusy}
+                disabled={linkedinOrganizationsLoading || linkedinOrganizationsPhase !== "idle" || linkedinOrganizationBusy}
                 style={{ width: "fit-content" }}
               >
                 {linkedinOrganizationAction === "disconnect" ? "Déconnexion..." : "Déconnecter la page"}
@@ -223,6 +244,7 @@ export default function LinkedinPanel(props: any) {
               <select
                 value={linkedinSelectedOrganizationId || ""}
                 onChange={(event) => void selectLinkedinOrganization?.(event.target.value)}
+                disabled={linkedinOrganizationsLoading || linkedinOrganizationsPhase !== "idle" || linkedinOrganizationBusy}
                 style={{
                   width: "100%",
                   borderRadius: 12,

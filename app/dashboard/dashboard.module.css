@@ -3929,12 +3929,195 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 10px;
+  min-width: 0;
 }
 
 .blockTitle {
   color: rgba(255, 255, 255, 0.92);
   font-weight: 650;
+  min-width: 0;
+  flex: 1 1 180px;
+}
+
+.connectionPill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 30px;
+  max-width: 100%;
+  padding: 6px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.65);
+  color: rgba(255, 255, 255, 0.92);
+  color-scheme: dark;
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
+  flex: 0 1 auto;
+  transition:
+    border-color 0.18s ease,
+    background 0.18s ease,
+    box-shadow 0.18s ease,
+    color 0.18s ease;
+}
+
+.connectionPillText {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.connectionPillDot,
+.connectionPillPulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+.connectionPillSpinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(219, 234, 254, 0.32);
+  border-top-color: currentColor;
+  border-radius: 999px;
+  flex: 0 0 auto;
+  animation: connectionPillSpin 0.78s linear infinite;
+}
+
+.connectionPillSearching {
+  color: rgba(219, 234, 254, 0.98);
+  border-color: rgba(59, 130, 246, 0.5);
+  background:
+    linear-gradient(135deg, rgba(37, 99, 235, 0.24), rgba(14, 165, 233, 0.12)),
+    rgba(15, 23, 42, 0.86);
+  box-shadow:
+    0 0 0 1px rgba(59, 130, 246, 0.08),
+    0 8px 28px rgba(37, 99, 235, 0.16);
+}
+
+.connectionPillConnecting {
+  color: rgba(220, 252, 231, 0.98);
+  border-color: rgba(34, 197, 94, 0.54);
+  background:
+    linear-gradient(135deg, rgba(22, 163, 74, 0.3), rgba(16, 185, 129, 0.14)),
+    rgba(15, 23, 42, 0.86);
+  box-shadow:
+    0 0 0 1px rgba(34, 197, 94, 0.1),
+    0 8px 30px rgba(34, 197, 94, 0.2);
+}
+
+.connectionPillDisconnecting {
+  color: rgba(254, 226, 226, 0.98);
+  border-color: rgba(248, 113, 113, 0.48);
+  background:
+    linear-gradient(135deg, rgba(220, 38, 38, 0.24), rgba(249, 115, 22, 0.11)),
+    rgba(15, 23, 42, 0.86);
+  box-shadow:
+    0 0 0 1px rgba(248, 113, 113, 0.08),
+    0 8px 28px rgba(220, 38, 38, 0.16);
+}
+
+.connectionPillConnecting .connectionPillPulse,
+.connectionPillDisconnecting .connectionPillPulse {
+  background: currentColor;
+  box-shadow: 0 0 0 0 currentColor;
+  animation: connectionPillPulse 1.25s ease-out infinite;
+}
+
+.searchingActionBtn,
+.searchingActionBtn:disabled,
+.connectingActionBtn,
+.connectingActionBtn:disabled {
+  opacity: 1;
+  cursor: wait;
+  transform: none;
+}
+
+.searchingActionBtn,
+.searchingActionBtn:disabled {
+  color: rgba(219, 234, 254, 0.98);
+  border-color: rgba(59, 130, 246, 0.5);
+  background: linear-gradient(135deg, rgba(37, 99, 235, 0.25), rgba(14, 165, 233, 0.13));
+  box-shadow: 0 8px 24px rgba(37, 99, 235, 0.16);
+}
+
+.connectingActionBtn,
+.connectingActionBtn:disabled {
+  color: rgba(220, 252, 231, 0.98);
+  border-color: rgba(34, 197, 94, 0.52);
+  background: linear-gradient(135deg, rgba(22, 163, 74, 0.3), rgba(16, 185, 129, 0.14));
+  box-shadow: 0 8px 24px rgba(34, 197, 94, 0.18);
+}
+
+.searchingActionBtn::before,
+.connectingActionBtn::before {
+  content: "";
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+.searchingActionBtn::before {
+  border: 2px solid rgba(219, 234, 254, 0.32);
+  border-top-color: currentColor;
+  animation: connectionPillSpin 0.78s linear infinite;
+}
+
+.connectingActionBtn::before {
+  background: currentColor;
+  box-shadow: 0 0 0 0 currentColor;
+  animation: connectionPillPulse 1.25s ease-out infinite;
+}
+
+@keyframes connectionPillSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes connectionPillPulse {
+  0% {
+    transform: scale(0.86);
+    opacity: 0.72;
+    box-shadow: 0 0 0 0 currentColor;
+  }
+  70% {
+    transform: scale(1);
+    opacity: 1;
+    box-shadow: 0 0 0 6px transparent;
+  }
+  100% {
+    transform: scale(0.86);
+    opacity: 0.78;
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+@media (max-width: 560px) {
+  .blockHeaderRow {
+    align-items: flex-start;
+  }
+
+  .connectionPill {
+    min-height: 28px;
+    padding: 6px 9px;
+    font-size: 11px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .connectionPillSpinner,
+  .connectionPillPulse,
+  .searchingActionBtn::before,
+  .connectingActionBtn::before {
+    animation: none;
+  }
 }
 
 .blockSub {

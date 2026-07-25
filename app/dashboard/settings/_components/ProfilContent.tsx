@@ -124,6 +124,7 @@ export default function ProfilContent({
   const [profileLoaded, setProfileLoaded] = useState(false);
   const profileBaselineRef = useRef("");
   const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [globalError, setGlobalError] = useState<string>("");
@@ -369,6 +370,8 @@ export default function ProfilContent({
   }
 
   const handleSave = async () => {
+    if (saving) return;
+
     setGlobalError("");
     const ok = validate();
     if (!ok) {
@@ -377,6 +380,7 @@ export default function ProfilContent({
       return;
     }
 
+    setSaving(true);
     try {
       const supabase = createClient();
 
@@ -477,6 +481,8 @@ export default function ProfilContent({
       console.error(err);
       setSaved(false);
       setGlobalError(getSimpleFrenchErrorMessage(err, "Impossible d’enregistrer le profil."));
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -991,14 +997,15 @@ export default function ProfilContent({
           <button
             type="button"
             onClick={handleReset}
+            disabled={saving}
             style={{
               border: "1px solid rgba(255,255,255,0.12)",
               background: "transparent",
               color: "white",
               borderRadius: 12,
               padding: "10px 12px",
-              cursor: "pointer",
-              opacity: 0.95,
+              cursor: saving ? "not-allowed" : "pointer",
+              opacity: saving ? 0.55 : 0.95,
             }}
           >
             Réinitialiser
@@ -1007,6 +1014,8 @@ export default function ProfilContent({
           <button
             type="button"
             onClick={handleSave}
+            disabled={saving}
+            aria-busy={saving}
             style={{
               border: "1px solid rgba(255,255,255,0.14)",
               background:
@@ -1014,11 +1023,13 @@ export default function ProfilContent({
               color: "white",
               borderRadius: 12,
               padding: "10px 12px",
-              cursor: "pointer",
+              cursor: saving ? "wait" : "pointer",
+              opacity: saving ? 0.72 : 1,
               fontWeight: 800,
+              minWidth: 118,
             }}
           >
-            Enregistrer
+            {saving ? "Enregistrement…" : "Enregistrer"}
           </button>
         </div>
       </div>

@@ -1254,11 +1254,14 @@ export default function MailboxComposeModal(props: MailboxComposeModalProps) {
                 onClick={() => void onSaveScheduledEdit()}
                 type="button"
                 disabled={sendBusy || scheduleBusy || attachBusy || scheduledEditSaving}
-                title="Enregistrer les modifications sans changer la programmation"
-                aria-label="Enregistrer le mail programmé"
+                title={scheduledEditSaving ? "Enregistrement en cours" : "Enregistrer les modifications sans changer la programmation"}
+                aria-label={scheduledEditSaving ? "Enregistrement en cours" : "Enregistrer le mail programmé"}
+                aria-busy={scheduledEditSaving}
               >
-                <span aria-hidden>💾</span>
-                <span className={styles.composeScheduledSaveText}>Enregistrer</span>
+                <span aria-hidden>{scheduledEditSaving ? "…" : "💾"}</span>
+                <span className={styles.composeScheduledSaveText}>
+                  {scheduledEditSaving ? "Enregistrement…" : "Enregistrer"}
+                </span>
               </button>
             ) : null}
             {scheduleWorkflowCampaign ? (

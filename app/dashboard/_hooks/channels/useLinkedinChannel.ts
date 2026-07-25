@@ -5,6 +5,7 @@ import { getClientUserFacingErrorMessage as getSimpleFrenchErrorMessage } from "
 import type { ConnectionDisplayStatus } from "@/lib/connectionVersions";
 import type { DashboardChannelKey } from "@/lib/dashboardChannels";
 import type { InrstatsChannelBlock } from "@/lib/inrstats/channelBlocks";
+import type { ChannelResourcePhase } from "./channelResourcePhase";
 
 type PatchChannelConnectionLocally = (
   channel: DashboardChannelKey,
@@ -43,6 +44,7 @@ export function useLinkedinChannel({
   const [linkedinUrlError, setLinkedinUrlError] = useState<string | null>(null);
   const [linkedinOrganizations, setLinkedinOrganizations] = useState<LinkedinOrganization[]>([]);
   const [linkedinOrganizationsLoading, setLinkedinOrganizationsLoading] = useState(false);
+  const [linkedinOrganizationsPhase, setLinkedinOrganizationsPhase] = useState<ChannelResourcePhase>("idle");
   const [linkedinOrganizationPickerOpen, setLinkedinOrganizationPickerOpen] = useState(false);
   const [linkedinSelectedOrganizationId, setLinkedinSelectedOrganizationId] = useState<string>("");
   const [linkedinSelectedOrganizationName, setLinkedinSelectedOrganizationName] = useState<string>("");
@@ -91,6 +93,7 @@ export function useLinkedinChannel({
     setLinkedinSelectedOrganizationName("");
     setLinkedinShareToPersonalProfile(false);
     organizationsAutoLoadRef.current = false;
+    setLinkedinOrganizationsPhase("idle");
     patchChannelConnectionLocally("linkedin", {
       connected: false,
       accountConnected: false,
@@ -167,6 +170,7 @@ export function useLinkedinChannel({
     }
 
     setLinkedinOrganizationsLoading(true);
+    setLinkedinOrganizationsPhase("searching");
     try {
       const res = await fetch("/api/integrations/linkedin/organizations", { cache: "no-store" });
       const data = await res.json().catch(() => ({}));
@@ -198,8 +202,12 @@ export function useLinkedinChannel({
         if (alreadyConnected) {
           setLinkedinSelectedOrganizationName(only.name);
           if (only.url) setLinkedinUrl(only.url);
-          if (shouldRefreshStoredLabel) await persistLinkedinOrganization(only, { silent: true });
+          if (shouldRefreshStoredLabel) {
+            setLinkedinOrganizationsPhase("connecting");
+            await persistLinkedinOrganization(only, { silent: true });
+          }
         } else {
+          setLinkedinOrganizationsPhase("connecting");
           const ok = await persistLinkedinOrganization(only, { silent: true });
           if (ok) setPanelSuccess(`Page LinkedIn « ${only.name} » connectée automatiquement.`, 2600);
         }
@@ -215,6 +223,7 @@ export function useLinkedinChannel({
           matchedSelected.name !== linkedinSelectedOrganizationName ||
           (matchedSelected.url && matchedSelected.url !== linkedinUrl)
         )) {
+          setLinkedinOrganizationsPhase("connecting");
           await persistLinkedinOrganization(matchedSelected, { silent: true });
         }
       }
@@ -236,6 +245,7 @@ export function useLinkedinChannel({
       setPanelError(error, "Impossible de récupérer les pages LinkedIn.", 4200);
     } finally {
       setLinkedinOrganizationsLoading(false);
+      setLinkedinOrganizationsPhase("idle");
     }
   }, [linkedinAccountConnected, linkedinConnected, linkedinSelectedOrganizationId, linkedinSelectedOrganizationName, linkedinUrl, persistLinkedinOrganization, setPanelSuccess, setPanelError]);
 
@@ -259,7 +269,12 @@ export function useLinkedinChannel({
   const selectLinkedinOrganization = useCallback(async (orgId: string) => {
     const org = linkedinOrganizations.find((item: LinkedinOrganization) => item.id === orgId);
     if (!org) return;
-    await persistLinkedinOrganization(org);
+    setLinkedinOrganizationsPhase("connecting");
+    try {
+      await persistLinkedinOrganization(org);
+    } finally {
+      setLinkedinOrganizationsPhase("idle");
+    }
   }, [linkedinOrganizations, persistLinkedinOrganization]);
 
   const useLinkedinPersonalProfile = useCallback(async () => {
@@ -399,6 +414,7 @@ export function useLinkedinChannel({
     saveLinkedinProfileUrl,
     linkedinOrganizations,
     linkedinOrganizationsLoading,
+    linkedinOrganizationsPhase,
     linkedinOrganizationPickerOpen,
     linkedinSelectedOrganizationId,
     setLinkedinSelectedOrganizationId,
