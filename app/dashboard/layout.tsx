@@ -17,6 +17,7 @@ import ResponsiveBottomNav from "./_components/ResponsiveBottomNav";
 import DashboardUnsavedNavigationProvider from "./_components/DashboardUnsavedNavigationProvider";
 import SentryUserContext from "./_components/SentryUserContext";
 import ClientAuthSessionGuard from "./_components/ClientAuthSessionGuard";
+import DashboardRequiredSetupGate from "./_components/DashboardRequiredSetupGate";
 
 
 type SubscriptionGateRow = {
@@ -134,10 +135,12 @@ export default async function DashboardLayout({
       <SentryUserContext userId={user.id} accountId={accountScope.activeUserId} />
 
       <DashboardUnsavedNavigationProvider>
-        <div className={styles.mobileViewport}>
-          {children}
-        </div>
-        <ResponsiveBottomNav />
+        <DashboardRequiredSetupGate>
+          <div className={styles.mobileViewport}>
+            {children}
+          </div>
+          <ResponsiveBottomNav />
+        </DashboardRequiredSetupGate>
       </DashboardUnsavedNavigationProvider>
     </div>
   );

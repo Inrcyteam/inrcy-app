@@ -22,7 +22,7 @@ export async function GET(
 
   const { data: row, error } = await supabaseAdmin
     .from("pro_media_library")
-    .select("id,bucket_name,storage_path,mime_type,is_active")
+    .select("id,user_id,bucket_name,storage_path,mime_type,is_active")
     .eq("id", id)
     .maybeSingle();
 
@@ -43,7 +43,8 @@ export async function GET(
     await supabaseAdmin
       .from("pro_media_library")
       .update({ is_active: false })
-      .eq("id", id);
+      .eq("id", id)
+      .eq("user_id", row.user_id);
     return notFound();
   }
 

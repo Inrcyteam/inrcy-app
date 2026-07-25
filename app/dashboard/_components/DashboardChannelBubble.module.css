@@ -258,3 +258,17 @@
   .card { transition: none; }
   .card:hover { transform: none; }
 }
+
+.requiredSetupLock {
+  position: absolute !important;
+  z-index: 8;
+  top: 10%;
+  right: 13%;
+}
+
+@media (max-width: 560px) {
+  .requiredSetupLock {
+    top: 9%;
+    right: 12%;
+  }
+}

@@ -1,7 +1,6 @@
 "use client";
 
 import { getActiveBrowserUserId, purgeAllBrowserAccountCaches, setActiveBrowserUserId } from "@/lib/browserAccountCache";
-import { ACTIVE_INRCY_ACCOUNT_EVENT } from "./constants";
 import { isUuidLike, normalizeAccountSummary, normalizeMultiAccountConfig, pickDefaultAccount } from "./normalize";
 import type { InrcyAccountScope, InrcyAccountSummary } from "./types";
 
@@ -83,7 +82,6 @@ export async function switchActiveInrcyAccount(accountId: string) {
 
   purgeAllBrowserAccountCaches();
   setActiveBrowserUserId(payload.activeUserId);
-  window.dispatchEvent(new CustomEvent(ACTIVE_INRCY_ACCOUNT_EVENT, { detail: { activeUserId: payload.activeUserId } }));
 
   return payload.activeUserId;
 }

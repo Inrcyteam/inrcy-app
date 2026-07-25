@@ -1,4 +1,8 @@
-import { ACTIVE_INRCY_ACCOUNT_COOKIE, ACTIVE_INRCY_ACCOUNT_STORAGE_KEY } from "@/lib/multicompte/constants";
+import {
+  ACTIVE_INRCY_ACCOUNT_COOKIE,
+  ACTIVE_INRCY_ACCOUNT_EVENT,
+  ACTIVE_INRCY_ACCOUNT_STORAGE_KEY,
+} from "@/lib/multicompte/constants";
 
 export const ACTIVE_USER_COOKIE = ACTIVE_INRCY_ACCOUNT_COOKIE;
 const ACTIVE_USER_STORAGE_KEY = ACTIVE_INRCY_ACCOUNT_STORAGE_KEY;
@@ -81,6 +85,8 @@ export function resolveActiveBrowserUserId(authUserId: string): string {
 export function setActiveBrowserUserId(userId: string | null) {
   if (!canUseWindow()) return;
 
+  const previousUserId = getActiveBrowserUserId();
+
   if (!userId) {
     try {
       window.localStorage.removeItem(ACTIVE_USER_STORAGE_KEY);
@@ -88,15 +94,22 @@ export function setActiveBrowserUserId(userId: string | null) {
       // ignore
     }
     writeCookie(ACTIVE_USER_COOKIE, null);
-    return;
+  } else {
+    try {
+      window.localStorage.setItem(ACTIVE_USER_STORAGE_KEY, userId);
+    } catch {
+      // ignore
+    }
+    writeCookie(ACTIVE_USER_COOKIE, userId);
   }
 
-  try {
-    window.localStorage.setItem(ACTIVE_USER_STORAGE_KEY, userId);
-  } catch {
-    // ignore
+  if (previousUserId !== userId) {
+    window.dispatchEvent(
+      new CustomEvent(ACTIVE_INRCY_ACCOUNT_EVENT, {
+        detail: { activeUserId: userId },
+      }),
+    );
   }
-  writeCookie(ACTIVE_USER_COOKIE, userId);
 }
 
 export function accountScopedStorageKey(baseKey: string, userId = getActiveBrowserUserId()): string | null {

@@ -1,6 +1,7 @@
 import styles from "../dashboard.module.css";
 import bubbleStyles from "./DashboardChannelBubble.module.css";
 import DashboardActionButton from "./DashboardActionButton";
+import RequiredSetupLock from "./RequiredSetupLock";
 import type { ModuleAction, ModuleStatus } from "../dashboard.types";
 
 export type DashboardFluxBubbleData = {
@@ -30,9 +31,11 @@ export type DashboardFluxBubbleData = {
 type Props = {
   item: DashboardFluxBubbleData;
   itemKey?: string;
+  requiredSetupLocked?: boolean;
+  requiredSetupLockMessage?: string;
 };
 
-export default function DashboardFluxBubble({ item, itemKey }: Props) {
+export default function DashboardFluxBubble({ item, itemKey, requiredSetupLocked = false, requiredSetupLockMessage = "" }: Props) {
   const isComingSoon = item.bubbleStatus === "coming";
   return (
     <article
@@ -40,6 +43,12 @@ export default function DashboardFluxBubble({ item, itemKey }: Props) {
       className={`${bubbleStyles.card} ${styles[`accent_${item.accent}`]} ${isComingSoon ? bubbleStyles.comingSoon : ""}`}
       title={isComingSoon ? item.configureTitle || item.configureLabel || "Option désactivée" : undefined}
     >
+      {requiredSetupLocked ? (
+        <RequiredSetupLock
+          message={requiredSetupLockMessage}
+          className={bubbleStyles.requiredSetupLock}
+        />
+      ) : null}
       <div className={bubbleStyles.stack}>
         <div className={bubbleStyles.logo} aria-hidden>
           <img

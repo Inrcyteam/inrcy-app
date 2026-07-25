@@ -19,6 +19,7 @@ import { useDashboardNotifications } from "./_hooks/useDashboardNotifications";
 import { useReferralForm } from "./_hooks/useReferralForm";
 import { useDashboardPanelRouting } from "./_hooks/useDashboardPanelRouting";
 import { useDashboardCompletionChecks } from "./_hooks/useDashboardCompletionChecks";
+import { useDashboardOnboardingState } from "./_hooks/useDashboardOnboardingState";
 import { useDashboardMenus } from "./_hooks/useDashboardMenus";
 import { useDashboardLanguage } from "./_hooks/useDashboardLanguage";
 import { useFacebookChannel } from "./_hooks/channels/useFacebookChannel";
@@ -50,12 +51,14 @@ import { inferChannelsFromRealtimePayload, inferChannelsFromSearchParams } from 
 import type { ActusFont, GoogleProduct, GoogleSource, ModuleStatus, Ownership } from "./dashboard.types";
 import { normalizeActusAccent, normalizeActusDesign, normalizeActusLayout, normalizeActusTheme } from "./dashboard.types";
 import { DASHBOARD_CHANNEL_KEYS, type DashboardChannelKey } from "@/lib/dashboardChannels";
+import { getDashboardOnboardingPanel, getDashboardOnboardingProgress } from "@/lib/dashboardOnboarding";
 import { buildFluxBubbleItems } from "./dashboard.flux-bubbles";
 import { createInrBadgePublicUrl, type InrBadgeProfileSummary } from "@/lib/inrBadge";
 import { buildDashboardPanelProps } from "./dashboard.panel-props";
 import { createEmptyChannelBlock, createEmptyChannelBlocks, type InrstatsChannelBlock, type InrstatsChannelBlocksByChannel } from "@/lib/inrstats/channelBlocks";
 import { getDashboardTranslations } from "@/lib/dashboardI18n";
 import type { ConnectionDisplayStatus } from "@/lib/connectionVersions";
+import { isDashboardRequiredSetupProtectedDestination, isDashboardRequiredSetupProtectedLocation } from "@/lib/dashboardRequiredSetupAccess";
 
 
 const useBrowserLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
@@ -358,6 +361,41 @@ export default function DashboardClient({ isAdmin = false }: DashboardClientProp
   const { language: dashboardLanguage } = useDashboardLanguage();
   const dashboardCopy = useMemo(() => getDashboardTranslations(dashboardLanguage), [dashboardLanguage]);
   const { panel, openPanel, closePanel, goToModule } = useDashboardPanelRouting();
+  const {
+    profileIncomplete,
+    activityIncomplete,
+    profileCompleted,
+    activityCompleted,
+    profileCheckReady,
+    activityCheckReady,
+    completionCheckReady,
+    requiredSetupCompleted,
+    requiredSetupIncomplete,
+    checkProfile,
+    checkActivity,
+  } = useDashboardCompletionChecks();
+  const requiredSetupAccessAllowed = completionCheckReady && requiredSetupCompleted;
+  const requiredSetupLockVisible = completionCheckReady && requiredSetupIncomplete;
+  const onboardingState = useDashboardOnboardingState();
+  const {
+    accountId: onboardingAccountId,
+    onboardingStatus,
+    onboardingCurrentStep,
+    setCurrentOnboardingStep,
+    deferOnboarding,
+    completeOnboarding,
+  } = onboardingState;
+  const guidedOnboardingPanel = getDashboardOnboardingPanel(onboardingCurrentStep);
+  const guidedOnboardingProgress = getDashboardOnboardingProgress(onboardingCurrentStep);
+  const guidedOnboardingActive =
+    onboardingStatus === "in_progress" &&
+    guidedOnboardingPanel !== null &&
+    guidedOnboardingProgress !== null;
+  const isGuidedOnboardingPanel = guidedOnboardingActive && panel === guidedOnboardingPanel;
+  const onboardingProgressLabel = isGuidedOnboardingPanel && guidedOnboardingProgress
+    ? `Configuration initiale · Étape ${guidedOnboardingProgress.current}/${guidedOnboardingProgress.total}`
+    : undefined;
+  const onboardingAutoOpenKeyRef = useRef<string | null>(null);
   const [settingsDrawerHasUnsavedChanges, setSettingsDrawerHasUnsavedChanges] = useState(false);
   const settingsDrawerGuardActive = panel === "ia" || panel === "preferences" || panel === "documents" || panel === "mails" || panel === "compte" || panel === "parrainage" || panel === "profil" || panel === "activite" || panel === "youtube_shorts" || panel === "pinterest";
   const settingsDrawerRequiresExplicitClose = settingsDrawerGuardActive || panel === "profil" || panel === "activite";
@@ -366,10 +404,55 @@ export default function DashboardClient({ isAdmin = false }: DashboardClientProp
     setSettingsDrawerHasUnsavedChanges(false);
   }, [panel]);
 
+  useEffect(() => {
+    if (!guidedOnboardingActive || !guidedOnboardingPanel) {
+      onboardingAutoOpenKeyRef.current = null;
+      return;
+    }
+
+    const autoOpenKey = `${onboardingAccountId ?? "unknown"}:${onboardingCurrentStep}`;
+    if (panel === guidedOnboardingPanel) {
+      onboardingAutoOpenKeyRef.current = autoOpenKey;
+      return;
+    }
+    if (onboardingAutoOpenKeyRef.current === autoOpenKey) return;
+
+    onboardingAutoOpenKeyRef.current = autoOpenKey;
+    openPanel(guidedOnboardingPanel);
+  }, [
+    guidedOnboardingActive,
+    guidedOnboardingPanel,
+    onboardingAccountId,
+    onboardingCurrentStep,
+    openPanel,
+    panel,
+  ]);
+
+  const closeSettingsDrawer = useCallback(async () => {
+    if (isGuidedOnboardingPanel) {
+      onboardingAutoOpenKeyRef.current = `${onboardingAccountId ?? "unknown"}:${onboardingCurrentStep}`;
+      if (onboardingCurrentStep === "ai") {
+        await completeOnboarding();
+      } else {
+        await deferOnboarding();
+      }
+    }
+    closePanel();
+  }, [
+    closePanel,
+    completeOnboarding,
+    deferOnboarding,
+    isGuidedOnboardingPanel,
+    onboardingAccountId,
+    onboardingCurrentStep,
+  ]);
+
   const { confirmExit: confirmSettingsDrawerExit } = useUnsavedExitGuard({
     active: settingsDrawerGuardActive,
     shouldBlock: settingsDrawerHasUnsavedChanges,
-    onConfirmExit: closePanel,
+    onConfirmExit: () => {
+      void closeSettingsDrawer();
+    },
     eyebrow: "Réglages",
     title: "Quitter sans enregistrer ?",
     message: "Cette fenêtre contient des modifications non enregistrées. Si vous la fermez maintenant, elles seront perdues.",
@@ -380,17 +463,60 @@ export default function DashboardClient({ isAdmin = false }: DashboardClientProp
 
   const requestCloseSettingsDrawer = useCallback(() => {
     if (!settingsDrawerGuardActive) {
-      closePanel();
+      void closeSettingsDrawer();
       return;
     }
     void confirmSettingsDrawerExit();
-  }, [closePanel, confirmSettingsDrawerExit, settingsDrawerGuardActive]);
+  }, [closeSettingsDrawer, confirmSettingsDrawerExit, settingsDrawerGuardActive]);
 
   const handleSettingsDrawerUnsavedChange = useCallback((hasUnsavedChanges: boolean) => {
     setSettingsDrawerHasUnsavedChanges(hasUnsavedChanges);
   }, []);
 
+  const advanceOnboardingFromProfile = useCallback(async () => {
+    const completion = await checkProfile();
+    if (!completion?.profileCompleted) return;
+
+    const row = await setCurrentOnboardingStep("activity");
+    if (!row) return;
+    openPanel("activite");
+  }, [checkProfile, openPanel, setCurrentOnboardingStep]);
+
+  const advanceOnboardingFromActivity = useCallback(async () => {
+    const completion = await checkActivity();
+    if (!completion?.activityCompleted) return;
+
+    const row = await setCurrentOnboardingStep("ai");
+    if (!row) return;
+    openPanel("ia");
+  }, [checkActivity, openPanel, setCurrentOnboardingStep]);
+
+  const completeOnboardingFromAi = useCallback(async () => {
+    const row = await completeOnboarding();
+    if (!row) return;
+    closePanel();
+  }, [closePanel, completeOnboarding]);
+
+  const goToRequiredSetupAwareModule = useCallback((path: string) => {
+    if (isDashboardRequiredSetupProtectedDestination(path) && !requiredSetupAccessAllowed) return;
+    goToModule(path);
+  }, [goToModule, requiredSetupAccessAllowed]);
+
+  const navigateDashboardCta = useCallback((ctaUrl: string) => {
+    if (isDashboardRequiredSetupProtectedDestination(ctaUrl) && !requiredSetupAccessAllowed) return;
+
+    void requestNavigation(() => {
+      if (ctaUrl.startsWith("/")) {
+        router.push(ctaUrl);
+      } else {
+        window.location.href = ctaUrl;
+      }
+    });
+  }, [requestNavigation, requiredSetupAccessAllowed, router]);
+
   const openBoosterPublish = useCallback(() => {
+    if (!requiredSetupAccessAllowed) return;
+
     void requestNavigation(() => {
       // L'URL est aussi l'état partagé avec le bandeau mobile. Sans ce
       // paramètre, l'ouverture locale de la modale laisse le bouton « Publier »
@@ -398,7 +524,12 @@ export default function DashboardClient({ isAdmin = false }: DashboardClientProp
       setDashboardBoosterModal("publish");
       router.replace("/dashboard?action=publish", { scroll: false });
     });
-  }, [requestNavigation, router]);
+  }, [requestNavigation, requiredSetupAccessAllowed, router]);
+
+  const openBoosterStats = useCallback(() => {
+    if (!requiredSetupAccessAllowed) return;
+    setDashboardBoosterModal("stats");
+  }, [requiredSetupAccessAllowed]);
 
   const openStatsModule = useCallback(() => {
     void requestNavigation(() => {
@@ -417,6 +548,17 @@ export default function DashboardClient({ isAdmin = false }: DashboardClientProp
   }, [requestNavigation, router]);
 
   useEffect(() => {
+    if (!completionCheckReady) return;
+
+    if (
+      !requiredSetupCompleted &&
+      isDashboardRequiredSetupProtectedLocation("/dashboard", searchParams)
+    ) {
+      setDashboardBoosterModal(null);
+      router.replace("/dashboard", { scroll: false });
+      return;
+    }
+
     const action = searchParams.get("action");
     const stats = searchParams.get("stats");
     if (action === "publish") {
@@ -424,7 +566,7 @@ export default function DashboardClient({ isAdmin = false }: DashboardClientProp
     } else if (stats === "1") {
       setDashboardBoosterModal("stats");
     }
-  }, [searchParams]);
+  }, [completionCheckReady, requiredSetupCompleted, router, searchParams]);
 
   // Orientation: gérée globalement via <OrientationGuard />
 
@@ -932,8 +1074,6 @@ const {
   patchChannelConnectionLocally: patchChannelConnectionLocallyProxy,
   triggerChannelRefresh: triggerChannelRefreshProxy,
 });
-
-const { profileIncomplete, activityIncomplete, profileCheckReady, activityCheckReady, checkProfile, checkActivity } = useDashboardCompletionChecks();
 
 const applyDashboardChannelState = useCallback((state: Record<string, any> | null, options?: { markReady?: boolean }) => {
   if (!state) return false;
@@ -1749,8 +1889,6 @@ const siteInrcyProgressCount = (hasSiteInrcyUrl ? 1 : 0) + (hasSiteInrcyUrl && s
 const siteWebProgressCount = (hasSiteWebUrl ? 1 : 0) + (hasSiteWebUrl && siteWebGa4Connected ? 1 : 0) + (hasSiteWebUrl && siteWebGscConnected ? 1 : 0);
 const siteInrcyAllGreen = canAccessSiteInrcy && siteInrcyProgressCount === 3;
 const siteWebAllGreen = siteWebProgressCount === 3;
-const profileCompleted = profileCheckReady && !profileIncomplete;
-const activityCompleted = activityCheckReady && !activityIncomplete;
 const sitePowerLinkConnected = hasSiteInrcyUrl || hasSiteWebUrl;
 const sitePowerGa4Connected = (hasSiteInrcyUrl && siteInrcyGa4Connected) || (hasSiteWebUrl && siteWebGa4Connected);
 const sitePowerGscConnected = (hasSiteInrcyUrl && siteInrcyGscConnected) || (hasSiteWebUrl && siteWebGscConnected);
@@ -3193,7 +3331,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     inrBadgeLogoUrl: inrBadgeProfile.logoUrl,
     inrBadgeProfileReady,
     onOpenInrBadgeModal: openInrBadgeModal,
-    onOpenInrAgent: () => goToModule("/dashboard/agent"),
+    onOpenInrAgent: () => goToRequiredSetupAwareModule("/dashboard/agent"),
     linkedinConnected,
     linkedinUrl,
     mailAccountsConnectedCount,
@@ -3224,7 +3362,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     facebookPageConnected,
     facebookUrl,
     getSiteBubbleProgress,
-    goToModule,
+    goToRequiredSetupAwareModule,
     gmbConnected,
     gmbUrl,
     instagramConnected,
@@ -3407,7 +3545,12 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
   } = buildDashboardPanelProps(locals);
 
   return (
-    <main className={styles.page}>
+    <main
+      className={styles.page}
+      data-onboarding-ready={onboardingState.onboardingReady ? "true" : "false"}
+      data-onboarding-status={onboardingState.onboardingStatus ?? undefined}
+      data-onboarding-step={onboardingState.onboardingCurrentStep ?? undefined}
+    >
       <DashboardTopbar
         desktopNotificationMenuRef={desktopNotificationMenuRef}
         mobileNotificationMenuRef={mobileNotificationMenuRef}
@@ -3422,17 +3565,10 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         markAllNotificationsRead={markAllNotificationsRead}
         markNotificationRead={markNotificationRead}
         deleteNotification={deleteNotification}
-        onNavigateCta={(ctaUrl) => {
-          void requestNavigation(() => {
-            if (ctaUrl.startsWith('/')) {
-              router.push(ctaUrl);
-            } else {
-              window.location.href = ctaUrl;
-            }
-          });
-        }}
+        onNavigateCta={navigateDashboardCta}
         openPanel={openPanel}
         inrAgentEnabled={canAccessInrAgent}
+        requiredSetupLockVisible={requiredSetupLockVisible}
         isAdmin={isAdmin}
         userEmail={userEmail}
         userFirstLetter={userFirstLetter}
@@ -3468,16 +3604,18 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
 
       <DashboardChannelsSection
         fluxBubbleItems={fluxBubbleItems}
-        goToModule={goToModule}
+        goToModule={goToRequiredSetupAwareModule}
         openPanel={openPanel}
+        requiredSetupAccessAllowed={requiredSetupAccessAllowed}
+        requiredSetupLockVisible={requiredSetupLockVisible}
         onOpenChannelsHelp={() => setHelpCanauxOpen(true)}
         onOpenStats={openStatsModule}
         onOpenBoosterPublish={openBoosterPublish}
-        onOpenBoosterStats={() => setDashboardBoosterModal("stats")}
+        onOpenBoosterStats={openBoosterStats}
       />
 
       <DashboardBoosterModalLayer
-        mode={dashboardBoosterModal}
+        mode={requiredSetupAccessAllowed ? dashboardBoosterModal : null}
         initialConnectedChannels={{
           inrcy_site: Boolean(canAccessSiteInrcy && normalizeSiteUrl(siteInrcySavedUrl) && (siteInrcyGa4Connected || siteInrcyGscConnected)),
           site_web: Boolean(normalizeSiteUrl(siteWebSavedUrl) && (siteWebGa4Connected || siteWebGscConnected)),
@@ -3517,6 +3655,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
 
       <SettingsDrawer
         title={getDrawerTitle(panel, dashboardLanguage)}
+        progressLabel={onboardingProgressLabel}
         isOpen={isDrawerPanel(panel)}
         onClose={requestCloseSettingsDrawer}
         closeOnBackdrop={!settingsDrawerRequiresExplicitClose}
@@ -3539,6 +3678,10 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
           inertiaSnapshot={inertiaSnapshot}
           openPanel={openPanel}
           onCloseDrawer={requestCloseSettingsDrawer}
+          guidedOnboardingStep={isGuidedOnboardingPanel ? onboardingCurrentStep as "profile" | "activity" | "ai" : null}
+          onAdvanceOnboardingProfile={advanceOnboardingFromProfile}
+          onAdvanceOnboardingActivity={advanceOnboardingFromActivity}
+          onCompleteOnboardingAi={completeOnboardingFromAi}
           referralName={referralName}
           referralPhone={referralPhone}
           referralEmail={referralEmail}

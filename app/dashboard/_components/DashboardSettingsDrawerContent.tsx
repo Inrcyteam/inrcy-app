@@ -58,11 +58,15 @@ type DashboardPanelName =
 type DashboardSettingsDrawerContentProps = {
   panel: string | null;
   onUnsavedChange?: (hasUnsavedChanges: boolean) => void;
-  checkProfile: () => void | Promise<void>;
-  checkActivity: () => void | Promise<void>;
+  checkProfile: () => unknown | Promise<unknown>;
+  checkActivity: () => unknown | Promise<unknown>;
   inertiaSnapshot: any;
   openPanel: (name: DashboardPanelName) => void;
   onCloseDrawer: () => void;
+  guidedOnboardingStep?: "profile" | "activity" | "ai" | null;
+  onAdvanceOnboardingProfile?: () => void | Promise<void>;
+  onAdvanceOnboardingActivity?: () => void | Promise<void>;
+  onCompleteOnboardingAi?: () => void | Promise<void>;
   referralName: string;
   referralPhone: string;
   referralEmail: string;
@@ -98,6 +102,10 @@ export default function DashboardSettingsDrawerContent({
   inertiaSnapshot,
   openPanel,
   onCloseDrawer,
+  guidedOnboardingStep = null,
+  onAdvanceOnboardingProfile,
+  onAdvanceOnboardingActivity,
+  onCompleteOnboardingAi,
   referralName,
   referralPhone,
   referralEmail,
@@ -128,11 +136,33 @@ export default function DashboardSettingsDrawerContent({
     <>
       {panel === "contact" && <ContactContent mode="drawer" />}
       {panel === "compte" && <AccountContent mode="drawer" onUnsavedChange={onUnsavedChange} />}
-      {panel === "profil" && <ProfilContent mode="drawer" onProfileSaved={checkProfile} onProfileReset={checkProfile} onCloseDrawer={onCloseDrawer} onUnsavedChange={onUnsavedChange} />}
+      {panel === "profil" && (
+        <ProfilContent
+          mode="drawer"
+          onProfileSaved={guidedOnboardingStep === "profile" ? undefined : checkProfile}
+          onProfileReset={checkProfile}
+          onCloseDrawer={guidedOnboardingStep === "profile" ? onAdvanceOnboardingProfile : onCloseDrawer}
+          onUnsavedChange={onUnsavedChange}
+        />
+      )}
       {panel === "preferences" && <GeneralPreferencesContent mode="drawer" onUnsavedChange={onUnsavedChange} />}
       {panel === "inrbadge" && <InrBadgeSettingsContent {...inrBadgeSettingsProps} />}
-      {panel === "activite" && <ActivityContent mode="drawer" onActivitySaved={checkActivity} onActivityReset={checkActivity} onCloseDrawer={onCloseDrawer} onUnsavedChange={onUnsavedChange} />}
-      {panel === "ia" && <AiConfigurationContent mode="drawer" onSaved={onCloseDrawer} onUnsavedChange={onUnsavedChange} />}
+      {panel === "activite" && (
+        <ActivityContent
+          mode="drawer"
+          onActivitySaved={guidedOnboardingStep === "activity" ? undefined : checkActivity}
+          onActivityReset={checkActivity}
+          onCloseDrawer={guidedOnboardingStep === "activity" ? onAdvanceOnboardingActivity : onCloseDrawer}
+          onUnsavedChange={onUnsavedChange}
+        />
+      )}
+      {panel === "ia" && (
+        <AiConfigurationContent
+          mode="drawer"
+          onSaved={guidedOnboardingStep === "ai" ? onCompleteOnboardingAi : onCloseDrawer}
+          onUnsavedChange={onUnsavedChange}
+        />
+      )}
       {panel === "abonnement" && <AbonnementContent mode="drawer" />}
       {panel === "legal" && <LegalContent mode="drawer" />}
       {panel === "rgpd" && <RgpdContent mode="drawer" />}

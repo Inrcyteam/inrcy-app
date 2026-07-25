@@ -1,156 +1,250 @@
 "use client";
 
+import { useCallback, useEffect, useRef, useState } from "react";
+
 import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
-
-import { useCallback, useEffect, useState } from "react";
-import { decodeBusinessSector } from "@/lib/activitySectors";
+import {
+  DASHBOARD_ACTIVITY_COMPLETION_SELECT,
+  DASHBOARD_PROFILE_COMPLETION_SELECT,
+  evaluateDashboardRequiredSetupCompletion,
+  type DashboardActivityCompletionField,
+  type DashboardCompletionSection,
+  type DashboardProfileCompletionField,
+} from "@/lib/dashboardCompletion";
+import { ACTIVE_INRCY_ACCOUNT_EVENT } from "@/lib/multicompte/constants";
 import { createClient } from "@/lib/supabaseClient";
-import { combineOpeningSchedule } from "@/lib/openingSchedule";
-
-const REQUIRED_PROFILE_FIELDS = [
-  "first_name",
-  "last_name",
-  "phone",
-  "contact_email",
-  "company_legal_name",
-  "hq_address",
-  "hq_zip",
-  "hq_city",
-  "hq_country",
-  "siren",
-  "rcs_city",
-] as const;
-
-const REQUIRED_ACTIVITY_FIELDS = [
-  "services",
-  "intervention_zones",
-  "strengths",
-  "customer_typologies",
-] as const;
 
 type CompletionSnapshot = {
+  accountId: string;
   profile: Record<string, unknown> | null;
   business: Record<string, unknown> | null;
 };
 
-// DashboardClient et ResponsiveBottomNav utilisent tous deux ce hook. Une
-// seule lecture groupée évite de lancer deux fois le même appel Supabase au
-// démarrage et supprime le warning N+1 observé dans Sentry.
-let inFlightCompletionCheck: Promise<CompletionSnapshot> | null = null;
+export const DASHBOARD_COMPLETION_STATE_EVENT = "inrcy:dashboard-completion-state";
 
-async function loadCompletionSnapshot(): Promise<CompletionSnapshot> {
-  if (inFlightCompletionCheck) return inFlightCompletionCheck;
+export type DashboardCompletionState = {
+  accountId: string | null;
+  profileIncomplete: boolean;
+  activityIncomplete: boolean;
+  profileCompleted: boolean;
+  activityCompleted: boolean;
+  requiredSetupCompleted: boolean;
+  requiredSetupIncomplete: boolean;
+  missingSections: DashboardCompletionSection[];
+  profileMissingFields: DashboardProfileCompletionField[];
+  activityMissingFields: DashboardActivityCompletionField[];
+  profileCheckReady: boolean;
+  activityCheckReady: boolean;
+  completionCheckReady: boolean;
+};
+
+const INITIAL_COMPLETION_STATE: DashboardCompletionState = {
+  accountId: null,
+  profileIncomplete: false,
+  activityIncomplete: false,
+  profileCompleted: false,
+  activityCompleted: false,
+  requiredSetupCompleted: false,
+  requiredSetupIncomplete: false,
+  missingSections: [],
+  profileMissingFields: [],
+  activityMissingFields: [],
+  profileCheckReady: false,
+  activityCheckReady: false,
+  completionCheckReady: false,
+};
+
+// DashboardClient et ResponsiveBottomNav utilisent tous deux ce hook.
+// Les requêtes sont mutualisées par établissement pour éviter les doublons,
+// sans jamais partager le résultat d'un établissement avec un autre.
+const inFlightCompletionChecks = new Map<string, Promise<CompletionSnapshot>>();
+const completionRefreshGenerationByAccount = new Map<string, number>();
+
+function beginCompletionRefresh(accountId: string, force: boolean) {
+  const currentGeneration = completionRefreshGenerationByAccount.get(accountId) ?? 0;
+  const generation = force || currentGeneration === 0
+    ? currentGeneration + 1
+    : currentGeneration;
+  completionRefreshGenerationByAccount.set(accountId, generation);
+  return generation;
+}
+
+function broadcastCompletionState(state: DashboardCompletionState) {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new CustomEvent<DashboardCompletionState>(DASHBOARD_COMPLETION_STATE_EVENT, { detail: state }));
+}
+
+async function resolveCompletionAccountId() {
+  const supabase = createClient();
+  const { data: authData, error } = await supabase.auth.getUser();
+  const user = authData?.user;
+  if (error || !user) return null;
+
+  return resolveActiveBrowserUserId(user.id);
+}
+
+async function loadCompletionSnapshot(
+  accountId: string,
+  options?: { force?: boolean },
+): Promise<CompletionSnapshot> {
+  if (options?.force) inFlightCompletionChecks.delete(accountId);
+
+  const existingRequest = inFlightCompletionChecks.get(accountId);
+  if (existingRequest) return existingRequest;
 
   const request = (async () => {
     const supabase = createClient();
-    const { data: authData } = await supabase.auth.getUser();
-    const user = authData?.user;
-    if (!user) return { profile: null, business: null };
-
-    const activeUserId = resolveActiveBrowserUserId(user.id);
     const [profileRes, businessRes] = await Promise.all([
       supabase
         .from("profiles")
-        .select(
-          "first_name,last_name,phone,contact_email,company_legal_name,hq_address,hq_zip,hq_city,hq_country,siren,rcs_city",
-        )
-        .eq("user_id", activeUserId)
+        .select(DASHBOARD_PROFILE_COMPLETION_SELECT)
+        .eq("user_id", accountId)
         .maybeSingle(),
       supabase
         .from("business_profiles")
-        .select("sector,opening_days,opening_hours,services,intervention_zones,strengths,customer_typologies")
-        .eq("user_id", activeUserId)
+        .select(DASHBOARD_ACTIVITY_COMPLETION_SELECT)
+        .eq("user_id", accountId)
         .maybeSingle(),
     ]);
 
+    if (profileRes.error) throw profileRes.error;
+    if (businessRes.error) throw businessRes.error;
+
     return {
+      accountId,
       profile: (profileRes.data as Record<string, unknown> | null) ?? null,
       business: (businessRes.data as Record<string, unknown> | null) ?? null,
     };
   })();
 
-  inFlightCompletionCheck = request;
+  inFlightCompletionChecks.set(accountId, request);
   try {
     return await request;
   } finally {
-    if (inFlightCompletionCheck === request) inFlightCompletionCheck = null;
+    if (inFlightCompletionChecks.get(accountId) === request) {
+      inFlightCompletionChecks.delete(accountId);
+    }
   }
 }
 
-export function useDashboardCompletionChecks() {
-  const [profileIncomplete, setProfileIncomplete] = useState(false);
-  const [activityIncomplete, setActivityIncomplete] = useState(false);
-  const [profileCheckReady, setProfileCheckReady] = useState(false);
-  const [activityCheckReady, setActivityCheckReady] = useState(false);
-
-  const checkProfile = useCallback(async () => {
-    const { profile } = await loadCompletionSnapshot();
-    if (!profile) {
-      setProfileIncomplete(true);
-      setProfileCheckReady(true);
-      return;
-    }
-
-    const incomplete = REQUIRED_PROFILE_FIELDS.some((field) => {
-      const value = profile[field];
-      return !value || String(value).trim() === "";
-    });
-
-    setProfileIncomplete(incomplete);
-    setProfileCheckReady(true);
-  }, []);
-
-  const checkActivity = useCallback(async () => {
-    const { business } = await loadCompletionSnapshot();
-    if (!business) {
-      setActivityIncomplete(true);
-      setActivityCheckReady(true);
-      return;
-    }
-
-    const businessRecord = business;
-    const decodedSector = decodeBusinessSector(
-      String(businessRecord.sector ?? ""),
-    );
-    const hasSectorCategory = !!decodedSector.sectorCategory;
-    const hasProfession = decodedSector.profession.trim().length > 0;
-
-    const hasOpeningSchedule =
-      combineOpeningSchedule(
-        businessRecord.opening_days,
-        businessRecord.opening_hours,
-      ).length > 0;
-
-    const incomplete =
-      !hasSectorCategory ||
-      !hasProfession ||
-      !hasOpeningSchedule ||
-      REQUIRED_ACTIVITY_FIELDS.some((field) => {
-        const value = businessRecord[field];
-        if (Array.isArray(value)) return value.filter(Boolean).length === 0;
-        return !value || String(value).trim() === "";
-      });
-
-    setActivityIncomplete(incomplete);
-    setActivityCheckReady(true);
-  }, []);
-
-  useEffect(() => {
-    void checkProfile().catch(() => {
-      setProfileIncomplete(true);
-      setProfileCheckReady(true);
-    });
-    void checkActivity().catch(() => {
-      setActivityIncomplete(true);
-      setActivityCheckReady(true);
-    });
-  }, [checkProfile, checkActivity]);
+function buildReadyState(snapshot: CompletionSnapshot): DashboardCompletionState {
+  const completion = evaluateDashboardRequiredSetupCompletion(
+    snapshot.profile,
+    snapshot.business,
+  );
 
   return {
-    profileIncomplete,
-    activityIncomplete,
-    profileCheckReady,
-    activityCheckReady,
+    accountId: snapshot.accountId,
+    profileIncomplete: completion.profile.incomplete,
+    activityIncomplete: completion.activity.incomplete,
+    profileCompleted: completion.profile.completed,
+    activityCompleted: completion.activity.completed,
+    requiredSetupCompleted: completion.completed,
+    requiredSetupIncomplete: completion.incomplete,
+    missingSections: completion.missingSections,
+    profileMissingFields: completion.profile.missingFields,
+    activityMissingFields: completion.activity.missingFields,
+    profileCheckReady: true,
+    activityCheckReady: true,
+    completionCheckReady: true,
+  };
+}
+
+function buildFailedState(accountId: string | null): DashboardCompletionState {
+  return {
+    accountId,
+    profileIncomplete: true,
+    activityIncomplete: true,
+    profileCompleted: false,
+    activityCompleted: false,
+    requiredSetupCompleted: false,
+    requiredSetupIncomplete: true,
+    missingSections: ["profile", "activity"],
+    profileMissingFields: [],
+    activityMissingFields: [],
+    profileCheckReady: true,
+    activityCheckReady: true,
+    completionCheckReady: true,
+  };
+}
+
+export function useDashboardCompletionChecks() {
+  const [completionState, setCompletionState] = useState<DashboardCompletionState>(
+    INITIAL_COMPLETION_STATE,
+  );
+  const refreshSequenceRef = useRef(0);
+  const activeAccountIdRef = useRef<string | null>(null);
+
+  const refreshCompletion = useCallback(async (options?: { force?: boolean }) => {
+    const refreshSequence = ++refreshSequenceRef.current;
+    const accountId = await resolveCompletionAccountId();
+    if (refreshSequence !== refreshSequenceRef.current) return null;
+    activeAccountIdRef.current = accountId;
+
+    if (!accountId) {
+      const failedState = buildFailedState(null);
+      setCompletionState(failedState);
+      broadcastCompletionState(failedState);
+      return failedState;
+    }
+
+    const accountRefreshGeneration = beginCompletionRefresh(accountId, Boolean(options?.force));
+
+    try {
+      const snapshot = await loadCompletionSnapshot(accountId, options);
+      if (refreshSequence !== refreshSequenceRef.current) return null;
+      if (completionRefreshGenerationByAccount.get(accountId) !== accountRefreshGeneration) return null;
+      const readyState = buildReadyState(snapshot);
+      setCompletionState(readyState);
+      broadcastCompletionState(readyState);
+      return readyState;
+    } catch {
+      if (refreshSequence !== refreshSequenceRef.current) return null;
+      if (completionRefreshGenerationByAccount.get(accountId) !== accountRefreshGeneration) return null;
+      const failedState = buildFailedState(accountId);
+      setCompletionState(failedState);
+      broadcastCompletionState(failedState);
+      return failedState;
+    }
+  }, []);
+
+  // Conservés pour les formulaires existants : les deux callbacks rafraîchissent
+  // désormais le même état atomique Profil + Activité.
+  const checkProfile = useCallback(
+    () => refreshCompletion({ force: true }),
+    [refreshCompletion],
+  );
+  const checkActivity = useCallback(
+    () => refreshCompletion({ force: true }),
+    [refreshCompletion],
+  );
+
+  useEffect(() => {
+    void refreshCompletion();
+
+    const handleCompletionState = (event: Event) => {
+      const nextState = (event as CustomEvent<DashboardCompletionState>).detail;
+      if (!nextState?.accountId || nextState.accountId !== activeAccountIdRef.current) return;
+      setCompletionState(nextState);
+    };
+
+    const handleActiveAccountChange = () => {
+      activeAccountIdRef.current = null;
+      setCompletionState(INITIAL_COMPLETION_STATE);
+      void refreshCompletion({ force: true });
+    };
+
+    window.addEventListener(DASHBOARD_COMPLETION_STATE_EVENT, handleCompletionState);
+    window.addEventListener(ACTIVE_INRCY_ACCOUNT_EVENT, handleActiveAccountChange);
+    return () => {
+      window.removeEventListener(DASHBOARD_COMPLETION_STATE_EVENT, handleCompletionState);
+      window.removeEventListener(ACTIVE_INRCY_ACCOUNT_EVENT, handleActiveAccountChange);
+    };
+  }, [refreshCompletion]);
+
+  return {
+    ...completionState,
+    refreshCompletion,
     checkProfile,
     checkActivity,
   };

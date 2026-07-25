@@ -8,6 +8,7 @@ import NotificationMenu from "./NotificationMenu";
 import UserMenu from "./UserMenu";
 import LanguageSelector from "./LanguageSelector";
 import EstablishmentMenu from "./EstablishmentMenu";
+import RequiredSetupLock from "./RequiredSetupLock";
 import { useDashboardI18n } from "../_hooks/useDashboardI18n";
 import type { NotificationItem } from "../dashboard.types";
 
@@ -132,6 +133,7 @@ type DashboardTopbarProps = {
   onNavigateCta: (ctaUrl: string) => void;
   openPanel: (panel: DashboardPanelName) => void;
   inrAgentEnabled: boolean;
+  requiredSetupLockVisible: boolean;
   isAdmin?: boolean;
   userEmail: string | null;
   userFirstLetter: string;
@@ -160,6 +162,7 @@ export default function DashboardTopbar({
   onNavigateCta,
   openPanel,
   inrAgentEnabled,
+  requiredSetupLockVisible,
   isAdmin = false,
   userEmail,
   userFirstLetter,
@@ -173,6 +176,7 @@ export default function DashboardTopbar({
   const router = useRouter();
   const t = useDashboardI18n();
   const [pendingInrAgentCount, setPendingInrAgentCount] = useState(0);
+  const inrAgentSetupLocked = inrAgentEnabled && requiredSetupLockVisible;
 
   const refreshPendingInrAgentCount = useCallback(async () => {
     if (!inrAgentEnabled) {
@@ -337,6 +341,13 @@ export default function DashboardTopbar({
             />
           </span>
           iNr'Agent
+          {inrAgentSetupLocked ? (
+            <RequiredSetupLock
+              message={t.modules.requiredSetupLocked}
+              className={styles.requiredSetupLockTopbar}
+              compact
+            />
+          ) : null}
           {pendingInrAgentCount > 0 && (
             <span className={styles.agentTopbarBadge} aria-hidden="true">
               {pendingInrAgentLabel}

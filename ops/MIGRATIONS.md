@@ -44,3 +44,13 @@ ops/sql/2026-07-15_inragent_video_ai_context_cache.sql
 ```
 
 La migration ajoute uniquement des colonnes et un index à `pro_media_library`. Elle est idempotente et le code garde un fallback non bloquant tant qu'elle n'est pas appliquée.
+
+## 2026-07-25 - Dashboard onboarding state
+
+Run before deploying onboarding step 2:
+
+```text
+ops/sql/2026-07-25_dashboard_onboarding_state.sql
+```
+
+This migration creates an account-scoped onboarding state. Existing accounts are backfilled as completed; future accounts start at profile / pending.

@@ -120,6 +120,7 @@ export type DashboardCopy = {
     connectedAria: string;
   };
   modules: {
+    requiredSetupLocked: string;
     dashboardTitle: string;
     dashboardSub: string;
     statsSub: string;
@@ -338,6 +339,7 @@ const fr: DashboardCopy = {
     connectedAria: "canaux connectés sur",
   },
   modules: {
+    requiredSetupLocked: "Mon profil et/ou Mon activité sont incomplets.",
     dashboardTitle: "Tableau de bord",
     dashboardSub: "Pilotage",
     statsSub: "Tous vos leads, enfin visibles",
@@ -572,6 +574,7 @@ const en: DashboardCopy = {
     connectedAria: "channels connected out of",
   },
   modules: {
+    requiredSetupLocked: "Your profile and/or business activity are incomplete.",
     dashboardTitle: "Dashboard",
     dashboardSub: "Control",
     statsSub: "All your leads, finally visible",

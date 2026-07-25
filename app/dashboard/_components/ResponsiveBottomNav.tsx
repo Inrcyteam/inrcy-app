@@ -13,6 +13,7 @@ import { setActiveBrowserUserId } from "@/lib/browserAccountCache";
 import { useDashboardUnsavedNavigation } from "./DashboardUnsavedNavigationProvider";
 import NotificationMenu from "./NotificationMenu";
 import EstablishmentMenu from "./EstablishmentMenu";
+import RequiredSetupLock from "./RequiredSetupLock";
 import {
   DEFAULT_MOBILE_SHORTCUTS,
   MOBILE_SHORTCUTS_EVENT,
@@ -24,6 +25,7 @@ import {
   type MobileShortcutId,
 } from "@/lib/mobileShortcuts";
 import { APP_LANGUAGE_OPTIONS, getAppLanguageOption, type AppLanguageCode } from "@/lib/appLanguage";
+import { isDashboardRequiredSetupProtectedDestination } from "@/lib/dashboardRequiredSetupAccess";
 
 
 type DashboardPanelName =
@@ -79,7 +81,16 @@ function ResponsiveBottomNavMobile() {
   const t = useDashboardI18n();
   const { language, setLanguage } = useDashboardLanguage();
   const labels = useMemo(() => compactLabels(t.locale), [t.locale]);
-  const { profileIncomplete, activityIncomplete } = useDashboardCompletionChecks();
+  const {
+    profileIncomplete,
+    activityIncomplete,
+    completionCheckReady,
+    requiredSetupCompleted,
+    requiredSetupIncomplete,
+  } = useDashboardCompletionChecks();
+  const requiredSetupAccessAllowed = completionCheckReady && requiredSetupCompleted;
+  const requiredSetupLocked = completionCheckReady && requiredSetupIncomplete;
+  const requiredSetupLockMessage = t.modules.requiredSetupLocked;
   const notificationsApi = useDashboardNotifications();
 
   const [menuOpen, setMenuOpen] = useState(false);
@@ -234,6 +245,8 @@ function ResponsiveBottomNavMobile() {
   }, [hidden]);
 
   const navigate = useCallback((href: string) => {
+    if (isDashboardRequiredSetupProtectedDestination(href) && !requiredSetupAccessAllowed) return;
+
     void requestNavigation(() => {
       setMenuOpen(false);
       setLanguageOpen(false);
@@ -241,7 +254,7 @@ function ResponsiveBottomNavMobile() {
       if (/^https?:\/\//i.test(href)) window.location.assign(href);
       else router.push(href);
     });
-  }, [requestNavigation, router]);
+  }, [requestNavigation, requiredSetupAccessAllowed, router]);
 
   const openDashboardPanel = useCallback((panel: DashboardPanelName) => {
     void requestNavigation(() => {
@@ -299,10 +312,11 @@ function ResponsiveBottomNavMobile() {
                 {shortcuts.map((id) => {
                   const option = getMobileShortcutOption(id);
                   const label = getMobileShortcutLabel(id, t.locale);
+                  const shortcutLocked = requiredSetupLocked && isDashboardRequiredSetupProtectedDestination(option.href);
                   return (
                     <button
                       key={id}
-                      className={styles.shortcutItem}
+                      className={`${styles.shortcutItem} ${shortcutLocked ? styles.shortcutItemLocked : ""}`}
                       type="button"
                       role="menuitem"
                       onClick={() => navigate(option.href)}
@@ -312,6 +326,13 @@ function ResponsiveBottomNavMobile() {
                         {id === "agent" && pendingInrAgentCount > 0 ? <span className={styles.shortcutBadge}>{pendingLabel}</span> : null}
                       </span>
                       <span className={styles.shortcutLabel}>{label}</span>
+                      {shortcutLocked ? (
+                        <RequiredSetupLock
+                          message={requiredSetupLockMessage}
+                          className={styles.requiredSetupLockShortcut}
+                          compact
+                        />
+                      ) : null}
                     </button>
                   );
                 })}
@@ -402,6 +423,13 @@ function ResponsiveBottomNavMobile() {
             }}
           >
             <span className={styles.publishButton}>{labels.publish}</span>
+            {requiredSetupLocked ? (
+              <RequiredSetupLock
+                message={requiredSetupLockMessage}
+                className={styles.requiredSetupLockPublish}
+                compact
+              />
+            ) : null}
           </button>
 
           <div className={styles.notificationDockWrap}>

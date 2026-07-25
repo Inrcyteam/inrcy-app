@@ -10,6 +10,8 @@ type Props = {
   onClose: () => void;
   /** Ajout optionnel (ex: bouton ? d'aide) placé à gauche de "Fermer" */
   headerActions?: React.ReactNode;
+  /** Libellé discret affiché au-dessus du titre pendant le parcours initial. */
+  progressLabel?: string;
   /** Autorise la fermeture en cliquant sur l'arrière-plan. Activé par défaut. */
   closeOnBackdrop?: boolean;
   /** Autorise la fermeture avec la touche Échap. Activé par défaut. */
@@ -27,6 +29,7 @@ export default function SettingsDrawer({
   isOpen,
   onClose,
   headerActions,
+  progressLabel,
   closeOnBackdrop = true,
   closeOnEscape = true,
   children,
@@ -155,23 +158,41 @@ export default function SettingsDrawer({
             width: "100%",
           }}
         >
-          <h2
-            id={titleId}
-            style={{
-              margin: 0,
-              color: "white",
-              fontSize: "clamp(16px, 4.3vw, 18px)",
-              fontWeight: 800,
-              minWidth: 0,
-              maxWidth: "100%",
-              overflowWrap: "break-word",
-              wordBreak: "normal",
-              hyphens: "auto",
-              lineHeight: 1.25,
-            }}
-          >
-            {title}
-          </h2>
+          <div style={{ minWidth: 0, maxWidth: "100%" }}>
+            {progressLabel ? (
+              <div
+                data-dashboard-onboarding-progress={progressLabel}
+                style={{
+                  marginBottom: 4,
+                  color: "rgba(255,255,255,0.62)",
+                  fontSize: 12,
+                  fontWeight: 800,
+                  letterSpacing: "0.04em",
+                  lineHeight: 1.2,
+                  textTransform: "uppercase",
+                }}
+              >
+                {progressLabel}
+              </div>
+            ) : null}
+            <h2
+              id={titleId}
+              style={{
+                margin: 0,
+                color: "white",
+                fontSize: "clamp(16px, 4.3vw, 18px)",
+                fontWeight: 800,
+                minWidth: 0,
+                maxWidth: "100%",
+                overflowWrap: "break-word",
+                wordBreak: "normal",
+                hyphens: "auto",
+                lineHeight: 1.25,
+              }}
+            >
+              {title}
+            </h2>
+          </div>
 
           {/* Zone actions (ex: ?) + Fermer avec gap */}
           <div

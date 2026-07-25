@@ -9319,3 +9319,32 @@
     min-width: 64px;
   }
 }
+
+/* Onboarding — cadenas des outils dépendant de Mon profil + Mon activité */
+.requiredSetupLockLoop {
+  position: absolute !important;
+  top: 13px;
+  left: 43px;
+}
+
+.requiredSetupLockGear {
+  position: absolute !important;
+  top: 12px;
+  left: 22px;
+}
+
+.requiredSetupLockTopbar {
+  margin-left: 2px;
+}
+
+@media (max-width: 1100px) {
+  .requiredSetupLockLoop {
+    top: 12px;
+    left: 40px;
+  }
+
+  .requiredSetupLockGear {
+    top: 10px;
+    left: 18px;
+  }
+}

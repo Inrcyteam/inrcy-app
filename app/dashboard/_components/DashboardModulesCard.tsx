@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import styles from "../dashboard.module.css";
 import BaseModal from "./WorkflowBaseModal";
+import RequiredSetupLock from "./RequiredSetupLock";
 import { useDashboardI18n } from "../_hooks/useDashboardI18n";
 
 type DashboardPanelName =
@@ -33,20 +34,28 @@ type DashboardPanelName =
 type DashboardModulesCardProps = {
   goToModule: (path: string) => void;
   openPanel: (panel: DashboardPanelName) => void;
+  requiredSetupAccessAllowed: boolean;
+  requiredSetupLockVisible: boolean;
   onOpenStats?: () => void;
   onOpenBoosterPublish?: () => void;
   onOpenBoosterStats?: () => void;
 };
 
-export default function DashboardModulesCard({ goToModule, openPanel, onOpenStats, onOpenBoosterPublish, onOpenBoosterStats }: DashboardModulesCardProps) {
+export default function DashboardModulesCard({ goToModule, openPanel, requiredSetupAccessAllowed, requiredSetupLockVisible, onOpenStats, onOpenBoosterPublish, onOpenBoosterStats }: DashboardModulesCardProps) {
   const t = useDashboardI18n();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [cashModalOpen, setCashModalOpen] = useState(false);
+  const requiredSetupLocked = requiredSetupLockVisible;
+  const requiredSetupLockMessage = t.modules.requiredSetupLocked;
 
   useEffect(() => {
-    if (searchParams.get("action") === "cash") setCashModalOpen(true);
-  }, [searchParams]);
+    if (searchParams.get("action") === "cash" && requiredSetupAccessAllowed) {
+      setCashModalOpen(true);
+      return;
+    }
+    if (!requiredSetupAccessAllowed) setCashModalOpen(false);
+  }, [requiredSetupAccessAllowed, searchParams]);
 
   const closeCashModal = () => {
     setCashModalOpen(false);
@@ -151,6 +160,13 @@ export default function DashboardModulesCard({ goToModule, openPanel, onOpenStat
 
     <div className={`${styles.loopNode} ${styles.loopRight} ${styles.loop_purple}`}>
 <span className={`${styles.loopBadge} ${styles.badgePurple}`}></span>
+      {requiredSetupLocked ? (
+        <RequiredSetupLock
+          message={requiredSetupLockMessage}
+          className={styles.requiredSetupLockLoop}
+          compact
+        />
+      ) : null}
 
      <div className={styles.loopTopRow}>
   <div className={styles.loopTitle}>COMS</div>
@@ -263,6 +279,12 @@ export default function DashboardModulesCard({ goToModule, openPanel, onOpenStat
                     else goToModule("/dashboard?action=publish");
                   }}
                 >
+                  {requiredSetupLocked ? (
+                    <RequiredSetupLock
+                      message={requiredSetupLockMessage}
+                      className={styles.requiredSetupLockGear}
+                    />
+                  ) : null}
                   <span
                     className={`${styles.gearSettingsBtn} ${styles.gearStatsBtn}`}
                     role="button"
@@ -297,6 +319,12 @@ export default function DashboardModulesCard({ goToModule, openPanel, onOpenStat
                   className={`${styles.gearCapsule} ${styles.gear_purple}`}
                   onClick={() => goToModule("/dashboard/propulser")}
                 >
+                  {requiredSetupLocked ? (
+                    <RequiredSetupLock
+                      message={requiredSetupLockMessage}
+                      className={styles.requiredSetupLockGear}
+                    />
+                  ) : null}
                   <div className={styles.gearInner}>
                     <div className={styles.gearTitle}>{t.modules.propulserTitle}</div>
                     <div className={styles.gearSub}>{t.modules.propulserSub}</div>
@@ -309,6 +337,12 @@ export default function DashboardModulesCard({ goToModule, openPanel, onOpenStat
                   className={`${styles.gearCapsule} ${styles.gear_purple}`}
                   onClick={() => goToModule("/dashboard/fideliser")}
                 >
+                  {requiredSetupLocked ? (
+                    <RequiredSetupLock
+                      message={requiredSetupLockMessage}
+                      className={styles.requiredSetupLockGear}
+                    />
+                  ) : null}
                   <div className={styles.gearInner}>
                     <div className={styles.gearTitle}>{t.modules.fideliserTitle}</div>
                     <div className={styles.gearSub}>{t.modules.fideliserSub}</div>
@@ -319,8 +353,17 @@ export default function DashboardModulesCard({ goToModule, openPanel, onOpenStat
                 <button
                   className={`${styles.gearCapsule} ${styles.gear_orange}`}
                   type="button"
-                  onClick={() => setCashModalOpen(true)}
+                  onClick={() => {
+                    if (!requiredSetupAccessAllowed) return;
+                    setCashModalOpen(true);
+                  }}
                 >
+                  {requiredSetupLocked ? (
+                    <RequiredSetupLock
+                      message={requiredSetupLockMessage}
+                      className={styles.requiredSetupLockGear}
+                    />
+                  ) : null}
                   <span
                     className={styles.gearSettingsBtn}
                     role="button"

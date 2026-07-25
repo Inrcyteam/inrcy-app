@@ -8,7 +8,7 @@ type ClientHydrationGateProps = {
   label?: string;
 };
 
-function StableBootScreen({ label = "Chargement de votre espace iNrCy..." }: { label?: string }) {
+export function StableBootScreen({ label = "Chargement de votre espace iNrCy..." }: { label?: string }) {
   return (
     <main
       aria-busy="true"
