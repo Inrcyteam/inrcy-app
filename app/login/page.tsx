@@ -8,6 +8,7 @@ import {
   setActiveBrowserUserId,
 } from "@/lib/browserAccountCache";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { waitForServerAuthSession } from "@/lib/browserAuthSessionReady";
 import styles from "./login.module.css";
 
 type WanderDot = {
@@ -292,7 +293,21 @@ export default function LoginPage() {
 
         if (!cancelled && !error && user) {
           setActiveBrowserUserId(user.id);
-          redirectToDashboard();
+          const serverSessionReady = await waitForServerAuthSession();
+          if (!cancelled && serverSessionReady) {
+            redirectToDashboard();
+          } else if (!cancelled) {
+            setError(
+              makeLoginError(
+                "Session non synchronisée",
+                "Votre session locale est active, mais le serveur ne la reconnaît pas encore.",
+                {
+                  hint: "Rechargez la page puis reconnectez-vous. Si le problème persiste, lancez le diagnostic.",
+                  diagnosticReason: "storage",
+                },
+              ),
+            );
+          }
         }
       } finally {
         if (!cancelled && !redirectingToDashboardRef.current)
@@ -316,8 +331,12 @@ export default function LoginPage() {
           event === "TOKEN_REFRESHED" ||
           event === "INITIAL_SESSION"
         ) {
+          // Keep the local account cache synchronized, but do not navigate from
+          // the auth listener. The explicit login flow (or ensureExistingSession
+          // on page load) performs the redirect only after the session has been
+          // read back successfully. Redirecting here could race cookie persistence
+          // and bounce /dashboard back to /login indefinitely.
           setActiveBrowserUserId(session.user.id);
-          redirectToDashboard();
         }
       },
     );
@@ -580,9 +599,23 @@ export default function LoginPage() {
         setActiveBrowserUserId(userData.user.id);
       }
 
-      // Utilise une redirection navigateur complète pour fiabiliser la navigation
-      // après création de session. En CI/Playwright, router.replace()+refresh()
-      // pouvait laisser l'utilisateur sur /login et faire échouer l'attente de /dashboard.
+      const serverSessionReady = await waitForServerAuthSession();
+      if (!serverSessionReady) {
+        setError(
+          makeLoginError(
+            "Session non synchronisée",
+            "La connexion a réussi, mais le serveur ne reconnaît pas encore votre session.",
+            {
+              hint: "Rechargez la page puis reconnectez-vous. Si le problème persiste, lancez le diagnostic.",
+              diagnosticReason: "storage",
+            },
+          ),
+        );
+        return;
+      }
+
+      // Redirection complète uniquement après confirmation que la session est
+      // lisible côté serveur. Cela évite un rebond /dashboard -> /login.
       window.location.replace("/dashboard");
     } catch (err: unknown) {
       setError(

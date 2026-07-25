@@ -4,6 +4,7 @@ import React, { Suspense, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabaseClient";
+import { waitForServerAuthSession } from "@/lib/browserAuthSessionReady";
 import { setActiveBrowserUserId } from "@/lib/browserAccountCache";
 
 type WanderDot = {
@@ -303,9 +304,18 @@ function SetPasswordInner() {
 
       setOk(
         isInvite
-          ? "Mot de passe créé avec succès. Redirection vers votre espace…"
-          : "Mot de passe réinitialisé. Redirection…"
+          ? "Mot de passe créé avec succès. Préparation de votre espace…"
+          : "Mot de passe réinitialisé. Préparation de votre espace…"
       );
+
+      const serverSessionReady = await waitForServerAuthSession();
+      if (!serverSessionReady) {
+        setOk(null);
+        setMsg(
+          "Le mot de passe est bien enregistré, mais la session n’a pas pu être synchronisée. Rechargez la page puis connectez-vous avec votre nouveau mot de passe."
+        );
+        return;
+      }
 
       window.location.replace("/dashboard");
     } finally {

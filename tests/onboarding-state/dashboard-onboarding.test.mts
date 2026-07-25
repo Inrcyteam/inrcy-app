@@ -150,11 +150,6 @@ const dashboardPageSource = readFileSync(
   new URL("../../app/dashboard/page.tsx", import.meta.url),
   "utf8",
 );
-const onboardingServerSource = readFileSync(
-  new URL("../../lib/dashboardOnboardingServer.ts", import.meta.url),
-  "utf8",
-);
-
 test("first onboarding uses a dedicated desktop presentation and a Passer action", () => {
   assert.match(settingsDrawerSource, /presentation\?: "drawer" \| "onboarding"/);
   assert.match(settingsDrawerSource, /isDesktopOnboarding/);
@@ -163,12 +158,42 @@ test("first onboarding uses a dedicated desktop presentation and a Passer action
   assert.match(dashboardClientSource, /closeLabel=\{isGuidedOnboardingPanel \? "Passer" : undefined\}/);
 });
 
-test("dashboard stays behind a boot screen until the initial onboarding panel is ready", () => {
+test("dashboard stays behind a client boot screen until the initial onboarding panel is ready", () => {
   assert.match(dashboardClientSource, /onboardingBootBlocking/);
   assert.match(dashboardClientSource, /StableBootScreen label="Préparation de votre configuration initiale/);
-  assert.match(dashboardPageSource, /getDashboardInitialOnboardingStateServer/);
-  assert.match(dashboardPageSource, /initialOnboardingState=\{initialOnboardingState \?\? undefined\}/);
-  assert.match(onboardingServerSource, /p_status: "in_progress"/);
+  assert.doesNotMatch(dashboardPageSource, /getDashboardInitialOnboardingStateServer/);
+  assert.doesNotMatch(dashboardPageSource, /initialOnboardingState=/);
+});
+
+test("login auth events cannot race the explicit dashboard redirect", () => {
+  const loginSource = readFileSync(
+    new URL("../../app/login/page.tsx", import.meta.url),
+    "utf8",
+  );
+  const listenerBlock = loginSource.match(/supabase\.auth\.onAuthStateChange\([\s\S]*?return \(\) =>/i)?.[0] || "";
+  assert.match(listenerBlock, /setActiveBrowserUserId\(session\.user\.id\)/);
+  assert.doesNotMatch(listenerBlock, /redirectToDashboard\(\)/);
+  assert.match(loginSource, /waitForServerAuthSession\(\)/);
+  assert.match(loginSource, /window\.location\.replace\("\/dashboard"\)/);
+});
+
+test("dashboard navigation waits until the SSR session is readable", () => {
+  const readyRouteSource = readFileSync(
+    new URL("../../app/api/auth/session-ready/route.ts", import.meta.url),
+    "utf8",
+  );
+  const browserReadySource = readFileSync(
+    new URL("../../lib/browserAuthSessionReady.ts", import.meta.url),
+    "utf8",
+  );
+  const setPasswordSource = readFileSync(
+    new URL("../../app/set-password/page.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(readyRouteSource, /supabase\.auth\.getUser\(\)/);
+  assert.match(browserReadySource, /fetch\("\/api\/auth\/session-ready"/);
+  assert.match(browserReadySource, /credentials: "include"/);
+  assert.match(setPasswordSource, /waitForServerAuthSession\(\)/);
 });
 
 test("skipping required onboarding warns that tools remain unavailable", () => {
