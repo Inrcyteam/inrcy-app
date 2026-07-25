@@ -6,6 +6,7 @@ export const DASHBOARD_REQUIRED_SETUP_BLOCKED_PREFIXES = [
   "/dashboard/booster",
   "/dashboard/factures",
   "/dashboard/devis",
+  "/dashboard/e-reputation",
 ] as const;
 
 function isBlockedPathname(pathname: string) {
@@ -20,6 +21,10 @@ function isBlockedDashboardQuery(searchParams: URLSearchParams) {
   if (action === "publish" || action === "cash") return true;
   if (searchParams.get("stats") === "1") return true;
   if (searchParams.has("draftId")) return true;
+
+  const panel = String(searchParams.get("panel") || "").trim().toLowerCase();
+  if (panel === "inrbadge" || panel === "inr_search" || panel === "trustpilot") return true;
+
   return false;
 }
 

@@ -34,14 +34,15 @@ test("the lock only explains the block and never redirects to a settings panel",
   assert.doesNotMatch(lockSource, /router\.|openPanel|window\.location/);
 });
 
-test("desktop modules display locks on Booster, Propulser, Fidéliser, iNrSend and Encaisser", () => {
-  assert.match(modulesSource, /requiredSetupLockLoop/);
-  assert.equal((modulesSource.match(/requiredSetupLockGear/g) || []).length >= 4, true);
+test("desktop modules integrate locks into COMS and every gearbox title", () => {
+  assert.match(modulesSource, /requiredSetupLockLoopBadge/);
+  assert.equal((modulesSource.match(/renderGearTitle\(t\.modules\./g) || []).length >= 5, true);
+  assert.match(modulesSource, /t\.modules\.reputationTitle/);
   assert.match(modulesSource, /t\.modules\.requiredSetupLocked/);
 });
 
-test("iNrAgent and the iNrSend channel bubble display the same lock", () => {
-  assert.match(channelsSource, /\["inr_agent", "mails"\]\.includes\(item\.key\)/);
+test("iNrAgent, iNrSend, iNrBadge and iNrSearch display the same status lock", () => {
+  assert.match(channelsSource, /\["inr_agent", "mails", "inrbadge", "inr_search"\]\.includes\(item\.key\)/);
   assert.match(topbarSource, /inrAgentSetupLocked/);
   assert.match(topbarSource, /RequiredSetupLock/);
 });

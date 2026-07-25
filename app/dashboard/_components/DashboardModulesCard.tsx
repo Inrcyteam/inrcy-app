@@ -71,6 +71,22 @@ export default function DashboardModulesCard({ goToModule, openPanel, requiredSe
     }
     goToModule("/dashboard/stats");
   };
+
+  const renderGearTitle = (title: string) => (
+    <div className={styles.gearTitleRow}>
+      {requiredSetupLocked ? (
+        <RequiredSetupLock
+          message={requiredSetupLockMessage}
+          className={styles.gearTitleLock}
+          compact
+        />
+      ) : (
+        <span className={styles.gearTitleSpacer} aria-hidden />
+      )}
+      <div className={styles.gearTitle}>{title}</div>
+      <span className={styles.gearTitleSpacer} aria-hidden />
+    </div>
+  );
   return (
     <>
         <div className={styles.lowerRow}>
@@ -159,14 +175,15 @@ export default function DashboardModulesCard({ goToModule, openPanel, requiredSe
     </div>
 
     <div className={`${styles.loopNode} ${styles.loopRight} ${styles.loop_purple}`}>
-<span className={`${styles.loopBadge} ${styles.badgePurple}`}></span>
-      {requiredSetupLocked ? (
+{requiredSetupLocked ? (
         <RequiredSetupLock
           message={requiredSetupLockMessage}
-          className={styles.requiredSetupLockLoop}
+          className={styles.requiredSetupLockLoopBadge}
           compact
         />
-      ) : null}
+      ) : (
+        <span className={`${styles.loopBadge} ${styles.badgePurple}`}></span>
+      )}
 
      <div className={styles.loopTopRow}>
   <div className={styles.loopTitle}>COMS</div>
@@ -177,7 +194,11 @@ export default function DashboardModulesCard({ goToModule, openPanel, requiredSe
   type="button"
   aria-label={t.modules.mailsSettingsAria}
   title={t.notifications.settings}
-  onClick={() => openPanel("mails")}
+  onClick={() => {
+    if (requiredSetupLocked) return;
+    openPanel("mails");
+  }}
+  disabled={requiredSetupLocked}
 >
   <svg className={styles.loopGearSvg} viewBox="0 0 24 24" aria-hidden="true">
   <path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z" />
@@ -279,12 +300,6 @@ export default function DashboardModulesCard({ goToModule, openPanel, requiredSe
                     else goToModule("/dashboard?action=publish");
                   }}
                 >
-                  {requiredSetupLocked ? (
-                    <RequiredSetupLock
-                      message={requiredSetupLockMessage}
-                      className={styles.requiredSetupLockGear}
-                    />
-                  ) : null}
                   <span
                     className={`${styles.gearSettingsBtn} ${styles.gearStatsBtn}`}
                     role="button"
@@ -308,7 +323,7 @@ export default function DashboardModulesCard({ goToModule, openPanel, requiredSe
                     <span className={styles.gearStatsIcon} aria-hidden="true" />
                   </span>
                   <div className={styles.gearInner}>
-                    <div className={styles.gearTitle}>{t.modules.publishTitle}</div>
+                    {renderGearTitle(t.modules.publishTitle)}
                     <div className={styles.gearSub}>{t.modules.boosterSub}</div>
                     <div className={styles.gearBtn}>{t.modules.publishCta}</div>
                   </div>
@@ -319,14 +334,8 @@ export default function DashboardModulesCard({ goToModule, openPanel, requiredSe
                   className={`${styles.gearCapsule} ${styles.gear_purple}`}
                   onClick={() => goToModule("/dashboard/propulser")}
                 >
-                  {requiredSetupLocked ? (
-                    <RequiredSetupLock
-                      message={requiredSetupLockMessage}
-                      className={styles.requiredSetupLockGear}
-                    />
-                  ) : null}
                   <div className={styles.gearInner}>
-                    <div className={styles.gearTitle}>{t.modules.propulserTitle}</div>
+                    {renderGearTitle(t.modules.propulserTitle)}
                     <div className={styles.gearSub}>{t.modules.propulserSub}</div>
                     <div className={styles.gearBtn}>{t.modules.propulserCta}</div>
                   </div>
@@ -337,14 +346,8 @@ export default function DashboardModulesCard({ goToModule, openPanel, requiredSe
                   className={`${styles.gearCapsule} ${styles.gear_purple}`}
                   onClick={() => goToModule("/dashboard/fideliser")}
                 >
-                  {requiredSetupLocked ? (
-                    <RequiredSetupLock
-                      message={requiredSetupLockMessage}
-                      className={styles.requiredSetupLockGear}
-                    />
-                  ) : null}
                   <div className={styles.gearInner}>
-                    <div className={styles.gearTitle}>{t.modules.fideliserTitle}</div>
+                    {renderGearTitle(t.modules.fideliserTitle)}
                     <div className={styles.gearSub}>{t.modules.fideliserSub}</div>
                     <div className={styles.gearBtn}>{t.modules.fideliserCta}</div>
                   </div>
@@ -358,12 +361,6 @@ export default function DashboardModulesCard({ goToModule, openPanel, requiredSe
                     setCashModalOpen(true);
                   }}
                 >
-                  {requiredSetupLocked ? (
-                    <RequiredSetupLock
-                      message={requiredSetupLockMessage}
-                      className={styles.requiredSetupLockGear}
-                    />
-                  ) : null}
                   <span
                     className={styles.gearSettingsBtn}
                     role="button"
@@ -372,12 +369,14 @@ export default function DashboardModulesCard({ goToModule, openPanel, requiredSe
                     aria-label={t.modules.cashSettingsTitle}
                     onClick={(event) => {
                       event.stopPropagation();
+                      if (requiredSetupLocked) return;
                       openPanel("documents");
                     }}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" || event.key === " ") {
                         event.preventDefault();
                         event.stopPropagation();
+                        if (requiredSetupLocked) return;
                         openPanel("documents");
                       }
                     }}
@@ -385,7 +384,7 @@ export default function DashboardModulesCard({ goToModule, openPanel, requiredSe
                     <span className={styles.gearSettingsIcon} aria-hidden="true" />
                   </span>
                   <div className={styles.gearInner}>
-                    <div className={styles.gearTitle}>{t.modules.cashTitle}</div>
+                    {renderGearTitle(t.modules.cashTitle)}
                     <div className={styles.gearSub}>{t.modules.cashSub}</div>
                     <div className={styles.gearBtn}>{t.modules.cashCta}</div>
                   </div>
@@ -397,7 +396,7 @@ export default function DashboardModulesCard({ goToModule, openPanel, requiredSe
                   onClick={() => goToModule("/dashboard/e-reputation")}
                 >
                   <div className={styles.gearInner}>
-                    <div className={styles.gearTitle}>{t.modules.reputationTitle}</div>
+                    {renderGearTitle(t.modules.reputationTitle)}
                     <div className={styles.gearSub}>{t.modules.reputationSub}</div>
                     <div className={styles.gearBtn}>{t.modules.reputationCta}</div>
                   </div>

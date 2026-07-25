@@ -21,6 +21,9 @@ const protectedDestinations = [
   "/dashboard/factures/new",
   "/dashboard/devis",
   "/dashboard/devis/new?saveId=abc",
+  "/dashboard/e-reputation",
+  "/dashboard?panel=inrbadge",
+  "/dashboard?panel=inr_search",
   "https://app.inrcy.com/dashboard/agent",
 ];
 
@@ -32,7 +35,6 @@ const allowedDestinations = [
   "/dashboard/stats",
   "/dashboard/crm",
   "/dashboard/agenda",
-  "/dashboard/e-reputation",
   "/dashboard/mediatheque",
   "/dashboard/gps",
 ];
@@ -115,7 +117,7 @@ test("protected pages are also rejected server-side", () => {
   assert.match(serverGuardSource, /redirect\("\/dashboard"\)/);
   assert.match(dashboardPageSource, /requireDashboardRequiredSetupCompleted/);
 
-  for (const directory of ["agent", "mails", "propulser", "fideliser", "booster", "factures", "devis"]) {
+  for (const directory of ["agent", "mails", "propulser", "fideliser", "booster", "factures", "devis", "e-reputation"]) {
     const source = readFileSync(
       new URL(`../../app/dashboard/${directory}/layout.tsx`, import.meta.url),
       "utf8",

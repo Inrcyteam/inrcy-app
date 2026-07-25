@@ -259,16 +259,16 @@
   .card:hover { transform: none; }
 }
 
-.requiredSetupLock {
-  position: absolute !important;
-  z-index: 8;
-  top: 10%;
-  right: 13%;
+
+.statusLock {
+  width: 20px !important;
+  height: 20px !important;
+  flex-basis: 20px !important;
+  border-width: 1px !important;
+  box-shadow: 0 0 12px rgba(251, 191, 36, 0.22) !important;
 }
 
-@media (max-width: 560px) {
-  .requiredSetupLock {
-    top: 9%;
-    right: 12%;
-  }
+.statusLock svg {
+  width: 11px !important;
+  height: 11px !important;
 }

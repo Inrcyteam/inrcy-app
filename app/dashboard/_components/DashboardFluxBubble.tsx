@@ -43,12 +43,6 @@ export default function DashboardFluxBubble({ item, itemKey, requiredSetupLocked
       className={`${bubbleStyles.card} ${styles[`accent_${item.accent}`]} ${isComingSoon ? bubbleStyles.comingSoon : ""}`}
       title={isComingSoon ? item.configureTitle || item.configureLabel || "Option désactivée" : undefined}
     >
-      {requiredSetupLocked ? (
-        <RequiredSetupLock
-          message={requiredSetupLockMessage}
-          className={bubbleStyles.requiredSetupLock}
-        />
-      ) : null}
       <div className={bubbleStyles.stack}>
         <div className={bubbleStyles.logo} aria-hidden>
           <img
@@ -66,17 +60,25 @@ export default function DashboardFluxBubble({ item, itemKey, requiredSetupLocked
         <div className={bubbleStyles.title}>{item.name}</div>
 
         <div className={bubbleStyles.status}>
-          <span
-            className={[
-              bubbleStyles.dot,
-              item.bubbleStatus === "connected"
-                ? bubbleStyles.connected
-                : item.bubbleStatus === "available"
-                  ? bubbleStyles.available
-                  : bubbleStyles.coming,
-            ].join(" ")}
-            aria-hidden
-          />
+          {requiredSetupLocked ? (
+            <RequiredSetupLock
+              message={requiredSetupLockMessage}
+              className={bubbleStyles.statusLock}
+              compact
+            />
+          ) : (
+            <span
+              className={[
+                bubbleStyles.dot,
+                item.bubbleStatus === "connected"
+                  ? bubbleStyles.connected
+                  : item.bubbleStatus === "available"
+                    ? bubbleStyles.available
+                    : bubbleStyles.coming,
+              ].join(" ")}
+              aria-hidden
+            />
+          )}
           <span className={bubbleStyles.statusText}>{item.bubbleStatusText}</span>
         </div>
 
@@ -87,25 +89,28 @@ export default function DashboardFluxBubble({ item, itemKey, requiredSetupLocked
             <button
               type="button"
               className={bubbleStyles.action}
-              onClick={item.onSpecialView}
-              disabled={!item.canViewSpecial}
-              aria-disabled={!item.canViewSpecial}
-              style={{ opacity: !item.canViewSpecial ? 0.5 : 1, pointerEvents: !item.canViewSpecial ? "none" : "auto" }}
+              onClick={requiredSetupLocked ? undefined : item.onSpecialView}
+              disabled={requiredSetupLocked || !item.canViewSpecial}
+              aria-disabled={requiredSetupLocked || !item.canViewSpecial}
+              style={{ opacity: requiredSetupLocked || !item.canViewSpecial ? 0.5 : 1, pointerEvents: requiredSetupLocked || !item.canViewSpecial ? "none" : "auto" }}
             >
               {item.specialViewLabel}
             </button>
           ) : item.specialViewHref && item.specialViewLabel ? (
             <a
-              href={item.canViewSpecial ? item.specialViewHref : "#"}
+              href={!requiredSetupLocked && item.canViewSpecial ? item.specialViewHref : "#"}
               className={bubbleStyles.action}
-              target={item.canViewSpecial && /^https?:\/\//.test(item.specialViewHref) ? "_blank" : undefined}
-              rel={item.canViewSpecial && /^https?:\/\//.test(item.specialViewHref) ? "noreferrer" : undefined}
-              aria-disabled={!item.canViewSpecial}
-              style={{ opacity: !item.canViewSpecial ? 0.5 : 1, pointerEvents: !item.canViewSpecial ? "none" : "auto" }}
+              target={!requiredSetupLocked && item.canViewSpecial && /^https?:\/\//.test(item.specialViewHref) ? "_blank" : undefined}
+              rel={!requiredSetupLocked && item.canViewSpecial && /^https?:\/\//.test(item.specialViewHref) ? "noreferrer" : undefined}
+              aria-disabled={requiredSetupLocked || !item.canViewSpecial}
+              onClick={(event) => {
+                if (requiredSetupLocked || !item.canViewSpecial) event.preventDefault();
+              }}
+              style={{ opacity: requiredSetupLocked || !item.canViewSpecial ? 0.5 : 1, pointerEvents: requiredSetupLocked || !item.canViewSpecial ? "none" : "auto" }}
             >
               {item.specialViewLabel}
             </a>
-          ) : item.viewAction ? (
+          ) : item.viewAction && !requiredSetupLocked ? (
             <DashboardActionButton action={item.viewAction} className={bubbleStyles.action} />
           ) : (
             <button className={bubbleStyles.action} type="button" disabled>
@@ -116,9 +121,9 @@ export default function DashboardFluxBubble({ item, itemKey, requiredSetupLocked
           <button
             className={`${bubbleStyles.action} ${bubbleStyles.actionMain}`}
             type="button"
-            onClick={item.onConfigure}
-            disabled={item.configureDisabled}
-            title={item.configureTitle}
+            onClick={requiredSetupLocked ? undefined : item.onConfigure}
+            disabled={requiredSetupLocked || item.configureDisabled}
+            title={requiredSetupLocked ? requiredSetupLockMessage : item.configureTitle}
           >
             {item.configureLabel || "Configurer"}
           </button>

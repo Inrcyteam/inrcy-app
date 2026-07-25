@@ -406,9 +406,11 @@ export default function DashboardClient({
   const onboardingProgressLabel = isGuidedOnboardingPanel && guidedOnboardingProgress
     ? `Configuration initiale · Étape ${guidedOnboardingProgress.current}/${guidedOnboardingProgress.total}`
     : undefined;
-  const onboardingBootBlocking =
-    !onboardingState.onboardingReady ||
-    (guidedOnboardingActive && guidedOnboardingPanel !== null && panel !== guidedOnboardingPanel);
+  const onboardingStateLoading = !onboardingState.onboardingReady;
+  const onboardingInitialPreparationBlocking =
+    guidedOnboardingActive &&
+    guidedOnboardingPanel !== null &&
+    panel !== guidedOnboardingPanel;
   const onboardingAutoOpenKeyRef = useRef<string | null>(null);
   const onboardingSkipConfirmingRef = useRef(false);
   const [onboardingAiMode, setOnboardingAiMode] = useState<"choice" | "configure">("choice");
@@ -3631,7 +3633,11 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     tiktokPanelProps,
   } = buildDashboardPanelProps(locals);
 
-  if (onboardingBootBlocking) {
+  if (onboardingStateLoading) {
+    return <StableBootScreen label="Chargement de votre dashboard iNrCy..." />;
+  }
+
+  if (onboardingInitialPreparationBlocking) {
     return <StableBootScreen label="Préparation de votre configuration initiale..." />;
   }
 

@@ -150,6 +150,11 @@ const dashboardPageSource = readFileSync(
   new URL("../../app/dashboard/page.tsx", import.meta.url),
   "utf8",
 );
+
+const eReputationSource = readFileSync(
+  new URL("../../app/dashboard/e-reputation/page.tsx", import.meta.url),
+  "utf8",
+);
 test("first onboarding uses a dedicated desktop presentation and a Passer action", () => {
   assert.match(settingsDrawerSource, /presentation\?: "drawer" \| "onboarding"/);
   assert.match(settingsDrawerSource, /isDesktopOnboarding/);
@@ -158,8 +163,10 @@ test("first onboarding uses a dedicated desktop presentation and a Passer action
   assert.match(dashboardClientSource, /closeLabel=\{isGuidedOnboardingPanel \? "Passer" : undefined\}/);
 });
 
-test("dashboard stays behind a client boot screen until the initial onboarding panel is ready", () => {
-  assert.match(dashboardClientSource, /onboardingBootBlocking/);
+test("dashboard uses a generic boot screen after onboarding and reserves preparation for the first run", () => {
+  assert.match(dashboardClientSource, /onboardingStateLoading/);
+  assert.match(dashboardClientSource, /StableBootScreen label="Chargement de votre dashboard iNrCy/);
+  assert.match(dashboardClientSource, /onboardingInitialPreparationBlocking/);
   assert.match(dashboardClientSource, /StableBootScreen label="Préparation de votre configuration initiale/);
   assert.doesNotMatch(dashboardPageSource, /getDashboardInitialOnboardingStateServer/);
   assert.doesNotMatch(dashboardPageSource, /initialOnboardingState=/);
@@ -209,4 +216,16 @@ test("step three offers defaults before opening the existing AI configuration", 
   assert.match(dashboardClientSource, /onboardingAiMode === "choice"/);
   assert.match(dashboardClientSource, /setOnboardingAiMode\("configure"\)/);
   assert.match(dashboardClientSource, /onKeepDefaults=\{completeOnboardingFromAi\}/);
+});
+
+test("returning to the dashboard reuses the establishment onboarding cache", () => {
+  assert.match(onboardingHookSource, /ONBOARDING_CACHE_KEY/);
+  assert.match(onboardingHookSource, /readAccountCacheValue/);
+  assert.match(onboardingHookSource, /writeAccountCacheValue/);
+  assert.match(onboardingHookSource, /readCachedOnboardingState\(\) \?\? INITIAL_ONBOARDING_STATE/);
+});
+
+test("Google OAuth starts from a classic anchor and is not prefetched by Next", () => {
+  assert.match(eReputationSource, /primaryAction\.href\.startsWith\("\/api\/integrations\/google-business\/start"\)/);
+  assert.match(eReputationSource, /<a className=\{styles\.btnPrimary\} href=\{primaryAction\.href\}>/);
 });

@@ -38,7 +38,7 @@ export default async function Page({
 
   return (
     <Suspense fallback={null}>
-      <ClientHydrationGate label="Chargement de votre tableau de bord...">
+      <ClientHydrationGate label="Chargement de votre dashboard iNrCy...">
         <DashboardClient isAdmin={isAdmin} />
       </ClientHydrationGate>
     </Suspense>

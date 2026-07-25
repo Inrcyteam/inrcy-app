@@ -230,6 +230,8 @@ export default async function EReputationPage() {
           <div className={styles.actions}>
             {primaryAction.external ? (
               <a className={styles.btnPrimary} href={primaryAction.href} target="_blank" rel="noreferrer">{primaryAction.label}</a>
+            ) : primaryAction.href.startsWith("/api/integrations/google-business/start") ? (
+              <a className={styles.btnPrimary} href={primaryAction.href}>{primaryAction.label}</a>
             ) : (
               <Link className={styles.btnPrimary} href={primaryAction.href}>{primaryAction.label}</Link>
             )}

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
+import { readAccountCacheValue, resolveActiveBrowserUserId, writeAccountCacheValue } from "@/lib/browserAccountCache";
 import {
   DASHBOARD_ONBOARDING_SELECT,
   DASHBOARD_ONBOARDING_VERSION,
@@ -34,6 +34,55 @@ const INITIAL_ONBOARDING_STATE: OnboardingState = {
   onboardingError: false,
   firstOpeningDetected: false,
 };
+
+const ONBOARDING_CACHE_KEY = "inrcy_dashboard_onboarding_state_v1";
+
+function readCachedOnboardingState(): OnboardingState | null {
+  try {
+    const raw = readAccountCacheValue(ONBOARDING_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const row = normalizeDashboardOnboardingRow(parsed.row);
+    if (!row) return null;
+
+    return {
+      accountId: row.accountId,
+      row,
+      onboardingReady: true,
+      onboardingAvailable: true,
+      onboardingError: false,
+      firstOpeningDetected: Boolean(parsed.firstOpeningDetected),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function cacheOnboardingState(state: OnboardingState) {
+  if (!state.accountId || !state.row) return;
+  try {
+    writeAccountCacheValue(
+      ONBOARDING_CACHE_KEY,
+      JSON.stringify({
+        row: {
+          account_id: state.row.accountId,
+          version: state.row.version,
+          status: state.row.status,
+          current_step: state.row.currentStep,
+          started_at: state.row.startedAt,
+          completed_at: state.row.completedAt,
+          deferred_at: state.row.deferredAt,
+          created_at: state.row.createdAt,
+          updated_at: state.row.updatedAt,
+        },
+        firstOpeningDetected: state.firstOpeningDetected,
+      }),
+      state.accountId,
+    );
+  } catch {
+    // Le cache est seulement une optimisation d'affichage.
+  }
+}
 
 const inFlightOnboardingLoads = new Map<
   string,
@@ -109,7 +158,7 @@ export function useDashboardOnboardingState(
           ...initialState,
           onboardingReady: true,
         }
-      : INITIAL_ONBOARDING_STATE,
+      : readCachedOnboardingState() ?? INITIAL_ONBOARDING_STATE,
   );
   const requestSequenceRef = useRef(0);
   const mutationSequenceRef = useRef(0);
@@ -156,14 +205,16 @@ export function useDashboardOnboardingState(
         }
 
         if (requestSequence !== requestSequenceRef.current) return null;
-        setState({
+        const nextState: OnboardingState = {
           accountId,
           row,
           onboardingReady: true,
           onboardingAvailable: Boolean(row),
           onboardingError: false,
           firstOpeningDetected,
-        });
+        };
+        setState(nextState);
+        cacheOnboardingState(nextState);
         return row;
       } catch {
         if (requestSequence !== requestSequenceRef.current) return null;
@@ -199,14 +250,16 @@ export function useDashboardOnboardingState(
         if (mutationSequence !== mutationSequenceRef.current) return null;
         if (activeAccountIdRef.current !== accountId) return null;
 
-        setState({
+        const nextState: OnboardingState = {
           accountId,
           row,
           onboardingReady: true,
           onboardingAvailable: true,
           onboardingError: false,
           firstOpeningDetected: state.firstOpeningDetected,
-        });
+        };
+        setState(nextState);
+        cacheOnboardingState(nextState);
         return row;
       } catch {
         if (mutationSequence !== mutationSequenceRef.current) return null;
@@ -252,7 +305,7 @@ export function useDashboardOnboardingState(
       requestSequenceRef.current += 1;
       mutationSequenceRef.current += 1;
       activeAccountIdRef.current = null;
-      setState(INITIAL_ONBOARDING_STATE);
+      setState(readCachedOnboardingState() ?? INITIAL_ONBOARDING_STATE);
       void refreshOnboarding({ force: true });
     };
 

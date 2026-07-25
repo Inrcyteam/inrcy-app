@@ -166,7 +166,7 @@ export default function DashboardChannelsSection({
       key={keyOverride ?? item.key}
       item={item}
       itemKey={keyOverride ?? item.key}
-      requiredSetupLocked={["inr_agent", "mails"].includes(item.key) && requiredSetupLockVisible}
+      requiredSetupLocked={["inr_agent", "mails", "inrbadge", "inr_search"].includes(item.key) && requiredSetupLockVisible}
       requiredSetupLockMessage={t.modules.requiredSetupLocked}
     />
   );
