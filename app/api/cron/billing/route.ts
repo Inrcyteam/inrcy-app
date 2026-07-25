@@ -8,6 +8,7 @@ import { deleteUserAccountEverywhere } from "@/lib/deleteUserAccount";
 import { sendAdminSubscriptionAlertForUser } from "@/lib/subscriptionAdmin";
 import { computeTrialDatesFromStartDate, TRIAL_REMINDER_OFFSETS } from "@/lib/trialSubscription";
 import { getInrcyBrandInlineAttachments } from "@/lib/txEmailAssets";
+import { shouldAutoDeleteCanceledAccount } from "@/lib/stripeWebhookPayload";
 
 export const runtime = "nodejs";
 
@@ -388,7 +389,10 @@ export async function GET(req: Request) {
       "user_id, contact_email, plan, status, stripe_customer_id, stripe_subscription_id, stripe_price_id, end_date, cancel_requested_at"
     )
     .not("stripe_subscription_id", "is", null)
-    .not("end_date", "is", null);
+    .not("end_date", "is", null)
+    // Seules les résiliations explicitement demandées peuvent suivre le nettoyage historique.
+    // Une annulation Stripe après impayé reste bloquée mais le compte et ses données sont conservés.
+    .not("cancel_requested_at", "is", null);
 
   if (cErr) return NextResponse.json({ error: "Impossible de vérifier les résiliations arrivées à échéance pour le moment." }, { status: 500 });
 
@@ -418,6 +422,8 @@ export async function GET(req: Request) {
   let deletedCancelledAccounts = 0;
 
   for (const s of (cancelledRows || []) as CancelledRow[]) {
+    if (!shouldAutoDeleteCanceledAccount(s.cancel_requested_at)) continue;
+
     const profile = profileEmails.get(s.user_id);
     const accountEmail =
       profile?.admin_email?.trim() ||

@@ -137,7 +137,7 @@ function copyForStatus(rawStatus: unknown): BlockedCopy {
         "Votre abonnement iNrCy a été résilié. Contactez iNrCy si vous souhaitez réactiver votre générateur.",
       statusLabel: "Résilié",
       accessLabel: "Accès bloqué",
-      dataLabel: "Données conservées temporairement",
+      dataLabel: "Données conservées",
     };
   }
 

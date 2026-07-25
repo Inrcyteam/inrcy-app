@@ -4,6 +4,16 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { stripeGet, verifyStripeWebhookSignature } from "@/lib/stripeRest";
 import { optionalEnv } from "@/lib/env";
 import { sendAdminSubscriptionAlertForUser } from "@/lib/subscriptionAdmin";
+import {
+  invoiceCustomerEmail,
+  invoiceCustomerId,
+  invoiceSubscriptionId,
+  invoiceUserId,
+  paymentFailureStatus,
+  paymentSuccessStatus,
+  stripeObjectId,
+  subscriptionCancellationReason,
+} from "@/lib/stripeWebhookPayload";
 
 export const runtime = "nodejs";
 
@@ -104,30 +114,120 @@ async function resolveStripeStoredPrice(
   }
 }
 
-async function getSubscriptionRow(userId?: string | null, customerId?: string | null) {
-  if (userId) {
-    const { data } = await supabaseAdmin
-      .from("subscriptions")
-      .select(
-        "user_id, contact_email, plan, scheduled_plan, status, trial_start_at, trial_end_at, cancel_requested_at, end_date, next_renewal_date, stripe_customer_id, stripe_subscription_id, stripe_price_id, monthly_price_eur"
-      )
-      .eq("user_id", userId)
-      .maybeSingle();
-    return (data as SubscriptionSnapshot | null) ?? null;
+const SUBSCRIPTION_SELECT =
+  "user_id, contact_email, plan, scheduled_plan, status, trial_start_at, trial_end_at, cancel_requested_at, end_date, next_renewal_date, stripe_customer_id, stripe_subscription_id, stripe_price_id, monthly_price_eur";
+
+function normalizedEmailVariants(email?: string | null) {
+  const raw = String(email || "").trim();
+  if (!raw) return [];
+  return Array.from(new Set([raw, raw.toLowerCase()]));
+}
+
+async function findUniqueSubscriptionBy(column: string, value?: string | null) {
+  const cleaned = String(value || "").trim();
+  if (!cleaned) return null;
+
+  const { data, error } = await supabaseAdmin
+    .from("subscriptions")
+    .select(SUBSCRIPTION_SELECT)
+    .eq(column, cleaned)
+    .limit(2);
+
+  if (error) throw error;
+  const rows = (data as SubscriptionSnapshot[] | null) ?? [];
+  if (rows.length === 1) return rows[0];
+  if (rows.length > 1) {
+    console.warn(`[stripe-webhook] Correspondance subscriptions ambigue pour ${column}.`);
+  }
+  return null;
+}
+
+async function findUserIdByEmail(email?: string | null) {
+  const variants = normalizedEmailVariants(email);
+  if (!variants.length) return null;
+
+  const userIds = new Set<string>();
+  for (const value of variants) {
+    for (const column of ["admin_email", "contact_email"]) {
+      const { data, error } = await supabaseAdmin
+        .from("profiles")
+        .select("user_id")
+        .eq(column, value)
+        .limit(2);
+
+      if (error) throw error;
+      for (const row of data ?? []) {
+        if (typeof row.user_id === "string" && row.user_id) userIds.add(row.user_id);
+      }
+    }
   }
 
-  if (customerId) {
-    const { data } = await supabaseAdmin
-      .from("subscriptions")
-      .select(
-        "user_id, contact_email, plan, scheduled_plan, status, trial_start_at, trial_end_at, cancel_requested_at, end_date, next_renewal_date, stripe_customer_id, stripe_subscription_id, stripe_price_id, monthly_price_eur"
-      )
-      .eq("stripe_customer_id", customerId)
-      .maybeSingle();
-    return (data as SubscriptionSnapshot | null) ?? null;
+  return userIds.size === 1 ? Array.from(userIds)[0] : null;
+}
+
+async function getStripeCustomerHints(customerId?: string | null) {
+  if (!customerId) return { userId: null as string | null, email: null as string | null };
+
+  try {
+    const customer = (await stripeGet(`/customers/${encodeURIComponent(customerId)}`)) as StripeObjectLoose;
+    const metadata = (customer?.metadata as StripeObjectLoose | undefined) ?? undefined;
+    return {
+      userId: typeof metadata?.user_id === "string" ? metadata.user_id : null,
+      email: typeof customer?.email === "string" ? customer.email : null,
+    };
+  } catch {
+    return { userId: null as string | null, email: null as string | null };
   }
+}
+
+async function getSubscriptionRow(
+  userId?: string | null,
+  customerId?: string | null,
+  subscriptionId?: string | null,
+  email?: string | null
+) {
+  let resolvedUserId = userId || null;
+  let resolvedEmail = email || null;
+
+  for (const lookup of [
+    ["user_id", resolvedUserId],
+    ["stripe_subscription_id", subscriptionId],
+    ["stripe_customer_id", customerId],
+  ] as const) {
+    const row = await findUniqueSubscriptionBy(lookup[0], lookup[1]);
+    if (row) return row;
+  }
+
+  if (!resolvedUserId && customerId) {
+    const hints = await getStripeCustomerHints(customerId);
+    resolvedUserId = hints.userId;
+    resolvedEmail = resolvedEmail || hints.email;
+
+    if (resolvedUserId) {
+      const row = await findUniqueSubscriptionBy("user_id", resolvedUserId);
+      if (row) return row;
+    }
+  }
+
+  for (const emailVariant of normalizedEmailVariants(resolvedEmail)) {
+    const row = await findUniqueSubscriptionBy("contact_email", emailVariant);
+    if (row) return row;
+  }
+
+  const profileUserId = await findUserIdByEmail(resolvedEmail);
+  if (profileUserId) return findUniqueSubscriptionBy("user_id", profileUserId);
 
   return null;
+}
+
+async function getStripeSubscriptionStatus(subscriptionId?: string | null) {
+  if (!subscriptionId) return null;
+  try {
+    const subscription = (await stripeGet(`/subscriptions/${encodeURIComponent(subscriptionId)}`)) as StripeObjectLoose;
+    return normalizeStripeStatus(String(subscription?.status || ""));
+  } catch {
+    return null;
+  }
 }
 
 export async function POST(req: Request) {
@@ -150,11 +250,31 @@ export async function POST(req: Request) {
   const updateSubscriptionRow = async (
     userId: string | null | undefined,
     customerId: string | null | undefined,
-    patch: Record<string, unknown>
+    patch: Record<string, unknown>,
+    subscriptionId?: string | null,
+    email?: string | null
   ) => {
-    if (userId) return supabaseAdmin.from("subscriptions").update(patch).eq("user_id", userId);
-    if (customerId) return supabaseAdmin.from("subscriptions").update(patch).eq("stripe_customer_id", customerId);
-    return null;
+    const existingRow = await getSubscriptionRow(userId, customerId, subscriptionId, email);
+    if (!existingRow?.user_id) {
+      console.warn("[stripe-webhook] Aucun compte Supabase unique ne correspond a l'evenement Stripe.", {
+        hasUserId: Boolean(userId),
+        hasCustomerId: Boolean(customerId),
+        hasSubscriptionId: Boolean(subscriptionId),
+        hasEmail: Boolean(email),
+      });
+      return null;
+    }
+
+    const { data, error } = await supabaseAdmin
+      .from("subscriptions")
+      .update({ ...patch, updated_at: new Date().toISOString() })
+      .eq("user_id", existingRow.user_id)
+      .select(SUBSCRIPTION_SELECT)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!data) throw new Error("La synchronisation Stripe n'a modifie aucun abonnement Supabase.");
+    return data as SubscriptionSnapshot;
   };
 
   try {
@@ -166,17 +286,28 @@ export async function POST(req: Request) {
       const session = obj;
       const metadata = (session?.metadata as StripeObjectLoose | undefined) ?? undefined;
       const userId = typeof metadata?.user_id === "string" ? metadata.user_id : null;
-      const customerId = typeof session?.customer === "string" ? session.customer : null;
-      const subId = typeof session?.subscription === "string" ? session.subscription : null;
+      const customerId = stripeObjectId(session?.customer);
+      const subId = stripeObjectId(session?.subscription);
+      const customerDetails = (session?.customer_details as StripeObjectLoose | undefined) ?? undefined;
+      const email =
+        (typeof customerDetails?.email === "string" ? customerDetails.email : null) ||
+        (typeof session?.customer_email === "string" ? session.customer_email : null);
       const billingCycle = typeof metadata?.billing_cycle === "string" ? metadata.billing_cycle : null;
 
-      await updateSubscriptionRow(userId, customerId, {
-        stripe_customer_id: customerId || null,
-        stripe_subscription_id: subId || null,
-      });
+      await updateSubscriptionRow(
+        userId,
+        customerId,
+        {
+          stripe_customer_id: customerId || null,
+          stripe_subscription_id: subId || null,
+          ...(email ? { contact_email: email } : {}),
+        },
+        subId,
+        email
+      );
 
       if (userId) {
-        const row = await getSubscriptionRow(userId, customerId);
+        const row = await getSubscriptionRow(userId, customerId, subId, email);
         await sendAdminSubscriptionAlertForUser({
           type: "checkout_completed",
           source: "stripe.webhook.checkout.session.completed",
@@ -202,8 +333,8 @@ export async function POST(req: Request) {
       const sub = obj;
       const metadata = (sub?.metadata as StripeObjectLoose | undefined) ?? undefined;
       const userId = typeof metadata?.user_id === "string" ? metadata.user_id : null;
-      const customerId = typeof sub?.customer === "string" ? sub.customer : null;
-      const subId = typeof sub?.id === "string" ? sub.id : null;
+      const customerId = stripeObjectId(sub?.customer);
+      const subId = stripeObjectId(sub?.id);
       const stripeStatus = normalizeStripeStatus(String(sub?.status || ""));
       const currentPeriodEnd = sub?.current_period_end
         ? new Date(Number(sub.current_period_end) * 1000).toISOString()
@@ -220,7 +351,7 @@ export async function POST(req: Request) {
       const inrcyPlan = planFromPriceId(priceId);
       const quantityRaw = Number(firstItem?.quantity ?? 1);
       const quantity = Number.isFinite(quantityRaw) && quantityRaw > 0 ? quantityRaw : 1;
-      const existingRow = await getSubscriptionRow(userId, customerId);
+      const existingRow = await getSubscriptionRow(userId, customerId, subId);
       const currentStoredPrice = storedDbPrice(existingRow?.monthly_price_eur);
       const stripeStoredPrice = await resolveStripeStoredPrice(priceObj, priceId, quantity);
       const shouldKeepTrialPlan = stripeStatus === "trialing";
@@ -261,9 +392,9 @@ export async function POST(req: Request) {
         next_renewal_date: currentPeriodEnd ? currentPeriodEnd.slice(0, 10) : null,
         cancel_requested_at: cancellationTimestamp,
         end_date: cancelAt ? cancelAt.slice(0, 10) : null,
-      });
+      }, subId);
 
-      const row = await getSubscriptionRow(userId, customerId);
+      const row = await getSubscriptionRow(userId, customerId, subId);
       const resolvedUserId = userId || row?.user_id || null;
       if (resolvedUserId) {
         const previousStatus = normalizeStripeStatus(String(previous?.status || ""));
@@ -330,16 +461,26 @@ export async function POST(req: Request) {
       const sub = obj;
       const metadata = (sub?.metadata as StripeObjectLoose | undefined) ?? undefined;
       const userId = typeof metadata?.user_id === "string" ? metadata.user_id : null;
-      const customerId = typeof sub?.customer === "string" ? sub.customer : null;
-      const subId = typeof sub?.id === "string" ? sub.id : null;
+      const customerId = stripeObjectId(sub?.customer);
+      const subId = stripeObjectId(sub?.id);
       const endedAt = sub?.ended_at ? new Date(Number(sub.ended_at) * 1000).toISOString() : null;
+      const cancellationReason = subscriptionCancellationReason(sub);
 
-      await updateSubscriptionRow(userId, customerId, {
-        status: "canceled",
-        end_date: endedAt ? endedAt.slice(0, 10) : null,
-      });
+      await updateSubscriptionRow(
+        userId,
+        customerId,
+        {
+          status: "canceled",
+          stripe_customer_id: customerId || null,
+          stripe_subscription_id: subId || null,
+          end_date: endedAt ? endedAt.slice(0, 10) : null,
+          // Une annulation automatique pour impaye bloque le compte, sans demander sa suppression.
+          ...(cancellationReason === "payment_failed" ? { cancel_requested_at: null } : {}),
+        },
+        subId
+      );
 
-      const row = await getSubscriptionRow(userId, customerId);
+      const row = await getSubscriptionRow(userId, customerId, subId);
       const resolvedUserId = userId || row?.user_id || null;
       if (resolvedUserId) {
         await sendAdminSubscriptionAlertForUser({
@@ -354,16 +495,68 @@ export async function POST(req: Request) {
           stripeSubscriptionId: subId,
           stripePriceId: row?.stripe_price_id ?? null,
           endDate: endedAt ? endedAt.slice(0, 10) : row?.end_date ?? null,
-          note: "Stripe a confirmé la fin effective de l'abonnement.",
+          note: cancellationReason === "payment_failed"
+              ? "Stripe a annulé l’abonnement après l’échec définitif des relances. Le compte reste conservé mais bloqué."
+              : "Stripe a confirmé la fin effective de l’abonnement.",
         }).catch(() => null);
       }
     }
 
     if (type === "invoice.payment_failed") {
       const invoice = obj;
-      const subId = typeof invoice?.subscription === "string" ? invoice.subscription : null;
+      const subId = invoiceSubscriptionId(invoice);
+
+      // Une facture ponctuelle ne doit jamais modifier l'accès à l'abonnement iNrCy.
       if (subId) {
-        await supabaseAdmin.from("subscriptions").update({ status: "past_due" }).eq("stripe_subscription_id", subId);
+        const customerId = invoiceCustomerId(invoice);
+        const userId = invoiceUserId(invoice);
+        const email = invoiceCustomerEmail(invoice);
+        const existingRow = await getSubscriptionRow(userId, customerId, subId, email);
+        const stripeStatus = await getStripeSubscriptionStatus(subId);
+        const targetStatus = paymentFailureStatus(existingRow?.status, stripeStatus);
+
+        await updateSubscriptionRow(
+          userId,
+          customerId,
+          {
+            status: targetStatus,
+            stripe_customer_id: customerId || existingRow?.stripe_customer_id || null,
+            stripe_subscription_id: subId || existingRow?.stripe_subscription_id || null,
+            ...(email ? { contact_email: email } : {}),
+          },
+          subId,
+          email
+        );
+      }
+    }
+
+    if (type === "invoice.paid" || type === "invoice.payment_succeeded") {
+      const invoice = obj;
+      const subId = invoiceSubscriptionId(invoice);
+
+      // Même protection : seuls les paiements liés à un abonnement peuvent rétablir l'accès.
+      if (subId) {
+        const customerId = invoiceCustomerId(invoice);
+        const userId = invoiceUserId(invoice);
+        const email = invoiceCustomerEmail(invoice);
+        const existingRow = await getSubscriptionRow(userId, customerId, subId, email);
+        const stripeStatus = await getStripeSubscriptionStatus(subId);
+        const targetStatus = paymentSuccessStatus(existingRow?.status, stripeStatus);
+
+        if (targetStatus) {
+          await updateSubscriptionRow(
+            userId,
+            customerId,
+            {
+              status: targetStatus,
+              stripe_customer_id: customerId || existingRow?.stripe_customer_id || null,
+              stripe_subscription_id: subId || existingRow?.stripe_subscription_id || null,
+              ...(email ? { contact_email: email } : {}),
+            },
+            subId,
+            email
+          );
+        }
       }
     }
 
