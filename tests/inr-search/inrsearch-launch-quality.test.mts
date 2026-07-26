@@ -38,7 +38,8 @@ test("public logos have both a corrected internal URL and a visual fallback", ()
   const pageSource = read("app/entreprises/[slug]/page.tsx");
   const experienceSource = read("app/entreprises/[slug]/InrSearchExperience.tsx");
 
-  assert.match(logoSource, /onError=\{\(\) => setFailed\(true\)\}/);
+  assert.match(logoSource, /onError=\{\(\) => setFailedSrc\(src\)\}/);
+  assert.doesNotMatch(logoSource, /useEffect/);
   assert.match(logoSource, /initialsFor\(companyName\)/);
   assert.match(pageSource, /<InrSearchLogo/);
   assert.match(experienceSource, /<InrSearchLogo/);

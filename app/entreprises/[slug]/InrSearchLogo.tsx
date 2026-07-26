@@ -1,7 +1,7 @@
 "use client";
 
 import Image, { type ImageProps } from "next/image";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 
 type Props = {
   src: string;
@@ -38,12 +38,9 @@ export default function InrSearchLogo({
   loading = "eager",
   fetchPriority,
 }: Props) {
-  const [failed, setFailed] = useState(!src);
+  const [failedSrc, setFailedSrc] = useState("");
   const initials = useMemo(() => initialsFor(companyName), [companyName]);
-
-  useEffect(() => {
-    setFailed(!src);
-  }, [src]);
+  const failed = !src || failedSrc === src;
 
   if (failed) {
     return (
@@ -67,7 +64,7 @@ export default function InrSearchLogo({
       height={height}
       loading={loading}
       fetchPriority={fetchPriority}
-      onError={() => setFailed(true)}
+      onError={() => setFailedSrc(src)}
       unoptimized
     />
   );
