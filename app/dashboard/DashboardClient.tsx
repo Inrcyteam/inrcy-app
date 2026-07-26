@@ -231,15 +231,6 @@ function readCachedInrBadgeProfile() {
   }
 }
 
-function readCachedInrBadgeProfileReady(): boolean | null {
-  try {
-    const state = readCachedDashboardChannelState();
-    return typeof state?.inrBadgeProfileReady === "boolean" ? state.inrBadgeProfileReady : null;
-  } catch {
-    return null;
-  }
-}
-
 function readCachedInrSearchConnected(): boolean | null {
   try {
     const state = readCachedDashboardChannelState();
@@ -374,7 +365,6 @@ export default function DashboardClient({
   const [inrSearchUrl, setInrSearchUrl] = useState(() => readCachedDashboardString("inrSearchUrl"));
   const [inrSearchDirectoryEnabled, setInrSearchDirectoryEnabled] = useState<boolean | null>(() => readCachedInrSearchDirectoryEnabled());
   const [inrBadgeProfile, setInrBadgeProfile] = useState<InrBadgeProfileSummary>(() => readCachedInrBadgeProfile());
-  const [cachedInrBadgeProfileReady, setCachedInrBadgeProfileReady] = useState<boolean | null>(() => readCachedInrBadgeProfileReady());
   const [inrBadgeModalOpen, setInrBadgeModalOpen] = useState(false);
   const [displayedGeneratorPower, setDisplayedGeneratorPower] = useState<number | null>(() => readCachedGeneratorPowerPercent());
   const [displayedGeneratorIsActive, setDisplayedGeneratorIsActive] = useState<boolean | null>(() => readCachedGeneratorIsActive());
@@ -1268,9 +1258,6 @@ const applyDashboardChannelState = useCallback((state: Record<string, any> | nul
     setInrBadgeProfile(sanitizeCachedInrBadgeProfile(state.inrBadgeProfile));
   }
 
-  if (typeof state.inrBadgeProfileReady === "boolean") {
-    setCachedInrBadgeProfileReady(state.inrBadgeProfileReady);
-  }
 
   setSiteInrcySettingsError(null);
   setSiteWebSettingsError(null);
@@ -3395,18 +3382,9 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
   });
 
   const inrBadgeProfileReady = useMemo(() => {
-    // iNr'Badge se connecte quand "Mon profil" est complété.
-    // Pendant l'hydratation, on garde le dernier état connu pour éviter le flash Déconnecté -> Connecté.
-    // Si aucun cache n'existe encore, on reste optimiste comme les autres bulles : le contrôle profil corrigera ensuite si besoin.
-    if (profileCheckReady) return !profileIncomplete;
-    return cachedInrBadgeProfileReady ?? !profileIncomplete;
-  }, [cachedInrBadgeProfileReady, profileCheckReady, profileIncomplete]);
-
-  useEffect(() => {
-    if (!profileCheckReady) return;
-    const ready = !profileIncomplete;
-    setCachedInrBadgeProfileReady(ready);
-    mergeCachedDashboardChannelState({ inrBadgeProfileReady: ready });
+    // Fail closed: iNr'Badge ne doit jamais être affiché comme connecté
+    // avant la réponse autoritative du contrôle "Mon profil".
+    return profileCheckReady && !profileIncomplete;
   }, [profileCheckReady, profileIncomplete]);
 
   const inrBadgePublicUrl = useMemo(() => {
@@ -3432,6 +3410,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     instagramUrl,
     inrBadgeLogoUrl: inrBadgeProfile.logoUrl,
     inrBadgeProfileReady,
+    inrBadgeProfileCheckReady: profileCheckReady,
     onOpenInrBadgeModal: openInrBadgeModal,
     onOpenInrAgent: () => goToRequiredSetupAwareModule("/dashboard/agent"),
     linkedinConnected,
@@ -3471,6 +3450,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     instagramUrl,
     inrBadgeProfile.logoUrl,
     inrBadgeProfileReady,
+    profileCheckReady,
     openInrBadgeModal,
     linkedinConnected,
     linkedinUrl,

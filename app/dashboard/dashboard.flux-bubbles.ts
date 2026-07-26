@@ -24,6 +24,7 @@ type BuildFluxBubbleItemsArgs = {
   instagramUrl: string | null | undefined;
   inrBadgeLogoUrl?: string | null;
   inrBadgeProfileReady: boolean;
+  inrBadgeProfileCheckReady: boolean;
   onOpenInrBadgeModal: () => void;
   onOpenInrAgent: () => void;
   linkedinConnected: boolean;
@@ -62,6 +63,7 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
     instagramUrl,
     inrBadgeLogoUrl,
     inrBadgeProfileReady,
+    inrBadgeProfileCheckReady,
     onOpenInrBadgeModal,
     onOpenInrAgent,
     linkedinConnected,
@@ -128,7 +130,14 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
         : (immediateConnectedStatus && !blockRequiresAttention)
           ? immediateConnectedStatus
           : blockDrivenStatus ?? (() => {
-          if (m.key === "inrbadge") return inrBadgeProfileReady ? { status: "connected" as ModuleStatus, text: copy.status.connected } : { status: "available" as ModuleStatus, text: copy.status.disconnected };
+          if (m.key === "inrbadge") {
+            if (!inrBadgeProfileCheckReady) {
+              return { status: "available" as ModuleStatus, text: "Synchronisation…" };
+            }
+            return inrBadgeProfileReady
+              ? { status: "connected" as ModuleStatus, text: copy.status.connected }
+              : { status: "available" as ModuleStatus, text: copy.status.disconnected };
+          }
           if (m.key === "instagram") return instagramConnected ? { status: "connected" as ModuleStatus, text: copy.status.connected } : { status: "available" as ModuleStatus, text: copy.status.toConnect };
           if (m.key === "linkedin") return linkedinConnected ? { status: "connected" as ModuleStatus, text: copy.status.connected } : { status: "available" as ModuleStatus, text: copy.status.toConnect };
           if (m.key === "gmb") return gmbConnected ? { status: "connected" as ModuleStatus, text: copy.status.connected } : { status: "available" as ModuleStatus, text: copy.status.toConnect };
@@ -241,6 +250,7 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
         return;
       }
       if (m.key === "inrbadge") {
+        if (!inrBadgeProfileCheckReady) return;
         openPanel("inrbadge");
         return;
       }
@@ -269,12 +279,17 @@ export function buildFluxBubbleItems(args: BuildFluxBubbleItemsArgs): DashboardF
       onSpecialView: accessEnabled && m.key === "inrbadge" ? onOpenInrBadgeModal : undefined,
       viewAction: accessEnabled && !(specialViewHref || m.key === "inrbadge") ? viewAction : undefined,
       onConfigure,
-      configureDisabled: !accessEnabled || (m.key === "site_inrcy" ? !canConfigureSite : false),
+      configureDisabled:
+        !accessEnabled ||
+        (m.key === "site_inrcy" ? !canConfigureSite : false) ||
+        (m.key === "inrbadge" ? !inrBadgeProfileCheckReady : false),
       configureTitle: !accessEnabled
         ? copy.bubble.disabled
         : m.key === "site_inrcy" && !canConfigureSite
           ? moduleCopy?.siteOnlyTitle || copy.bubble.disabled
-          : undefined,
+          : m.key === "inrbadge" && !inrBadgeProfileCheckReady
+            ? "Vérification de votre profil…"
+            : undefined,
       // Toutes les bulles ouvrent leur panneau de configuration avec le même
       // libellé. La connexion réelle se fait ensuite dans le panneau dédié.
       configureLabel: m.key === "inr_agent"
