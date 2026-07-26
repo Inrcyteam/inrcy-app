@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Image from "next/image";
 import type { CSSProperties, ReactNode } from "react";
 import { notFound, permanentRedirect } from "next/navigation";
 import {
@@ -12,6 +11,7 @@ import {
 import styles from "./inrSearchPublic.module.css";
 import InrSearchAnalyticsClient from "./InrSearchAnalyticsClient";
 import InrSearchExperience from "./InrSearchExperience";
+import InrSearchLogo from "./InrSearchLogo";
 import InrSearchNewsShowcase from "./InrSearchNewsShowcase";
 import InrSearchServicesOrbit from "./InrSearchServicesOrbit";
 import InrSearchGalleryOrbit from "./InrSearchGalleryOrbit";
@@ -237,15 +237,9 @@ function buildFactualSummary(data: InrSearchPublicPageData) {
 
 
 function buildPresentationLead(data: InrSearchPublicPageData) {
-  const intro = data.description?.trim();
+  const intro = data.description?.trim().replace(/\s+/g, " ");
   const services = data.services.length
-    ? `Elle accompagne ses clients sur ${joinFrenchList(data.services.slice(0, 4).map(lowerInitial))}.`
-    : "";
-  const audience = data.customerTypes.length
-    ? `Ses prestations s’adressent aux ${joinFrenchList(data.customerTypes.map(lowerInitial))}.`
-    : "";
-  const zones = data.zones.length
-    ? `Elle intervient notamment dans les zones suivantes : ${joinFrenchList(data.zones.slice(0, 4))}.`
+    ? `Découvrez notamment ${joinFrenchList(data.services.slice(0, 3).map(lowerInitial))}.`
     : "";
 
   const generatedIdentity = [
@@ -258,7 +252,11 @@ function buildPresentationLead(data: InrSearchPublicPageData) {
     data.city ? `basée à ${data.city}.` : ".",
   ].join(" ");
 
-  return [intro || generatedIdentity, services, audience, zones]
+  const identity = intro && intro.length <= 180
+    ? intro
+    : generatedIdentity;
+
+  return [identity, services]
     .filter(Boolean)
     .join(" ")
     .replace(/\s+/g, " ")
@@ -266,21 +264,16 @@ function buildPresentationLead(data: InrSearchPublicPageData) {
 }
 
 function buildConversionSummary(data: InrSearchPublicPageData) {
-  const serviceAngle = data.services.length
-    ? `Les prestations visibles ici permettent de transformer une intention en demande claire : ${joinFrenchList(data.services.slice(0, 4).map(lowerInitial))}.`
-    : "Cette page aide à comprendre rapidement ce que le professionnel peut prendre en charge.";
-  const zoneAngle = data.zones.length || data.city
-    ? `L’internaute peut vérifier la zone, le besoin et le bon point de contact avant de passer à l’action.`
-    : "L’internaute peut qualifier son besoin avant de prendre contact.";
-  const strengthAngle = data.strengths.length
-    ? `Les points forts comme ${joinFrenchList(data.strengths.slice(0, 3).map(lowerInitial))} donnent des repères concrets pour décider plus vite.`
-    : "";
+  const details = [
+    data.services.length ? "ses prestations" : "",
+    data.zones.length || data.city ? "sa zone d’intervention" : "",
+    data.strengths.length ? "ses points forts" : "",
+  ].filter(Boolean);
+  const usefulDetails = details.length
+    ? joinFrenchList(details)
+    : "les informations utiles";
 
-  return [serviceAngle, zoneAngle, strengthAngle]
-    .filter(Boolean)
-    .join(" ")
-    .replace(/\s+/g, " ")
-    .trim();
+  return `Retrouvez ${usefulDetails} avant de prendre contact. Vous pouvez ensuite présenter directement votre besoin à ${data.companyName}.`;
 }
 
 function buildPresentationStrengthValue(strengths: string[]) {
@@ -992,15 +985,17 @@ export default async function InrSearchCompanyPage({ params }: PageProps) {
               <div className={styles.presentationUniverse} aria-label={`Identité visuelle de ${data.companyName}`}>
                 <div className={styles.presentationHalo} aria-hidden="true" />
                 <div className={styles.presentationMediaOrb}>
-                  {data.logoUrl ? (
-                    <div className={styles.presentationMediaFallback}>
-                      <Image src={data.logoUrl} alt={`Logo de ${data.companyName}`} width={260} height={260} loading="eager" fetchPriority="high" unoptimized />
-                    </div>
-                  ) : (
-                    <div className={styles.presentationMediaFallback}>
-                      <span>{data.companyName.slice(0, 1).toUpperCase()}</span>
-                    </div>
-                  )}
+                  <div className={styles.presentationMediaFallback}>
+                    <InrSearchLogo
+                      src={data.logoUrl}
+                      alt={`Logo de ${data.companyName}`}
+                      companyName={data.companyName}
+                      width={260}
+                      height={260}
+                      fallbackClassName={styles.presentationLogoFallback}
+                      fetchPriority="high"
+                    />
+                  </div>
                   <div className={styles.presentationMediaShade} />
                   <div className={styles.presentationMediaCaption}>
                     <small>{data.profession || data.sectorLabel}</small>

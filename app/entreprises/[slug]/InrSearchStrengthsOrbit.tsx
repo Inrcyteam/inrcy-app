@@ -25,21 +25,21 @@ function normalizeStrength(value: string) {
 function strengthDefinition(strength: string, companyName: string) {
   const normalized = normalizeStrength(strength);
   if (/rapide|reactif|reponse|vite/.test(normalized)) {
-    return `${companyName} aide l’internaute à réduire l’attente : une demande claire, une réponse plus rapide, moins d’allers-retours inutiles.`;
+    return `${companyName} met en avant sa réactivité pour répondre aux demandes et faciliter les échanges.`;
   }
   if (/efficace|precis|solution|resultat/.test(normalized)) {
-    return `Efficace veut dire aller droit au besoin : comprendre la demande, proposer la bonne suite et éviter les démarches qui n’apportent rien.`;
+    return `${companyName} s’attache à comprendre le besoin et à proposer une réponse claire et adaptée.`;
   }
   if (/serieux|fiable|rigoureux|confiance/.test(normalized)) {
-    return `Sérieux rassure avant le contact : cadre clair, informations lisibles et engagement professionnel pour avancer sans flou.`;
+    return `${companyName} met en avant son sérieux et un accompagnement professionnel à chaque étape.`;
   }
   if (/proche|local|proximite|terrain/.test(normalized)) {
-    return `Proche transforme la recherche locale en relation humaine : le visiteur sait où se situe le professionnel et comment lancer l’échange.`;
+    return `${companyName} privilégie une relation de proximité et des échanges simples avec ses clients.`;
   }
   if (/ecoute|attentif|humain|conseil/.test(normalized)) {
-    return `À l’écoute signifie que le besoin passe avant la réponse toute faite : le pro comprend le contexte avant de proposer la bonne action.`;
+    return `${companyName} prend le temps d’écouter le besoin avant de proposer une réponse adaptée.`;
   }
-  return `${strength} devient un repère concret pour décider : l’internaute comprend ce que ${companyName} peut apporter avant de prendre contact.`;
+  return `${strength} fait partie des engagements mis en avant par ${companyName} pour accompagner ses clients.`;
 }
 
 function InrBadgeQr({ value, label }: { value: string; label: string }) {
@@ -98,7 +98,7 @@ export default function InrSearchStrengthsOrbit({ companyName, strengths, inrBad
         <div>
           <span className={styles.strengthOrbitEyebrow}>Confiance en mouvement</span>
           <h2 id="points-forts-title">Les points forts de {companyName}</h2>
-          <p>Chaque force devient une raison claire de passer à l’action : comprenez ce qui rassure, puis contactez {companyName} avec un besoin déjà cadré.</p>
+          <p>Découvrez les qualités et engagements que {companyName} met en avant pour ses clients.</p>
         </div>
       </div>
 
@@ -140,7 +140,7 @@ export default function InrSearchStrengthsOrbit({ companyName, strengths, inrBad
             <small>Engagement sélectionné</small>
             <strong>{activeStrength}</strong>
             <p>{strengthDefinition(activeStrength || "", companyName)}</p>
-            <span>Un repère concret avant le contact.</span>
+            <span>Un engagement mis en avant par l’entreprise.</span>
           </article>
         </div>
 

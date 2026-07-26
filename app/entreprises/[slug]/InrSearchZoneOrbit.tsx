@@ -52,9 +52,9 @@ function zoneStatus(zone: string, active: boolean) {
 
 function zoneActionText(zone: string, companyName: string) {
   if (isDepartmentZone(zone)) {
-    return `${companyName} peut confirmer si votre commune entre dans son périmètre d’intervention et vous orienter vers le bon échange.`;
+    return `Contactez ${companyName} pour vérifier si votre commune fait partie de sa zone d’intervention.`;
   }
-  return `Vous êtes à ${zone} ? Présentez votre besoin en quelques secondes : ${companyName} peut confirmer la disponibilité, le bon format d’intervention et la prochaine étape.`;
+  return `Vous êtes à ${zone} ? Présentez votre besoin à ${companyName} pour vérifier les disponibilités et organiser la suite.`;
 }
 
 export default function InrSearchZoneOrbit({ companyName, city, profession, zones }: Props) {
@@ -103,7 +103,7 @@ export default function InrSearchZoneOrbit({ companyName, city, profession, zone
         <div>
           <span className={styles.zoneOrbitEyebrow}>Radar d’intervention</span>
           <h2 id="zones-title">Zone d’intervention de {companyName}</h2>
-          <p>Vérifiez vite si {companyName} peut intervenir près de vous, puis transformez une simple recherche locale en demande prête à traiter.</p>
+          <p>Consultez les villes et secteurs couverts par {companyName} avant de prendre contact.</p>
         </div>
         <div className={styles.zoneOrbitNavigator} aria-label="Naviguer entre les zones d’intervention">
           <button type="button" onClick={() => move(-1)} aria-label="Zone précédente">←</button>

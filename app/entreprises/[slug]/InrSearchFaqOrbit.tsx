@@ -118,7 +118,7 @@ export default function InrSearchFaqOrbit({ companyName, items, contactHref }: P
         <div>
           <span className={styles.faqOrbitEyebrow}>Capsules de réponses</span>
           <h2 id="faq-title">Questions fréquentes sur {companyName}</h2>
-          <p>Levez les derniers doutes avant le contact : chaque réponse aide à savoir quoi demander, comment avancer et pourquoi faire appel à {companyName}.</p>
+          <p>Retrouvez les réponses aux questions les plus fréquentes avant de contacter {companyName}.</p>
           <form className={styles.faqGuide} onSubmit={onGuideSubmit} role="search" aria-label={`iNr'Guide pour ${companyName}`}>
             <label htmlFor="faq-guide-query">iNr’Guide — trouver une réponse vérifiée</label>
             <div className={styles.faqGuideRow}>

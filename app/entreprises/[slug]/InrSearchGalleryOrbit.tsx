@@ -71,8 +71,8 @@ function buildMediaTitles(
     const zone = zonePool.length ? zonePool[zoneIndex % zonePool.length] : "";
     const subject = [service || profession, zone ? `à ${zone}` : ""].filter(Boolean).join(" ");
     const baseTitle = subject
-      ? `${subject} — ${companyName}`
-      : `Réalisation — ${companyName}`;
+      ? subject
+      : `Réalisation de ${companyName}`;
 
     return index < combinationCount
       ? baseTitle
@@ -95,7 +95,7 @@ export default function InrSearchGalleryOrbit({
   const total = media.length;
   const activeMedia = media[activeIndex] || media[0];
   const mediaTitles = buildMediaTitles(media, companyName, profession, city, services, zones);
-  const activeTitle = mediaTitles[activeIndex] || `Réalisation — ${companyName}`;
+  const activeTitle = mediaTitles[activeIndex] || `Réalisation de ${companyName}`;
   const context = [profession, city].filter(Boolean).join(" · ");
 
   const move = useCallback((offset: number) => {
@@ -144,7 +144,7 @@ export default function InrSearchGalleryOrbit({
         <div>
           <span className={styles.galleryOrbitEyebrow}>Observatoire créatif</span>
           <h2 id="realisations-title">Les réalisations de {companyName}</h2>
-          <p>Regardez le résultat avant de contacter {companyName} : les visuels donnent confiance et aident à imaginer votre propre demande.</p>
+          <p>Parcourez les photos de {companyName} pour découvrir son univers, son activité et ses réalisations.</p>
         </div>
         <div className={styles.galleryOrbitCounter} aria-label="Navigation dans la galerie">
           <button type="button" onClick={() => move(-1)} aria-label="Réalisation précédente">←</button>
@@ -178,7 +178,7 @@ export default function InrSearchGalleryOrbit({
           <span className={styles.galleryOrbitMetaSignal}><i /> Signal {String(activeIndex + 1).padStart(2, "0")}</span>
           <small>{context || "Réalisation"}</small>
           <h3>{activeTitle}</h3>
-          <p>Ce média sert de preuve visuelle : il montre le style, le soin et le type de résultat que vous pouvez demander à {companyName}.</p>
+          <p>Cette photo vous permet de mieux découvrir l’activité et l’univers de {companyName}.</p>
           <button type="button" onClick={openLightbox}>Voir en plein écran <span aria-hidden="true">↗</span></button>
         </article>
 
@@ -187,7 +187,7 @@ export default function InrSearchGalleryOrbit({
 
       <div className={styles.galleryOrbitRail} data-local-carousel role="list" aria-label="Toutes les réalisations">
         {media.map((item, index) => {
-          const itemTitle = mediaTitles[index] || `Réalisation — ${companyName}`;
+          const itemTitle = mediaTitles[index] || `Réalisation de ${companyName}`;
           return (
             <button
               type="button"

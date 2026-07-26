@@ -11,7 +11,9 @@ function read(relativePath: string) {
 
 test("stable internal logo URLs remain on the public iNrSearch origin", () => {
   const source = read("lib/inrSearchPublic.ts");
-  assert.match(source, /raw\.startsWith\("\/"\)\s*\?\s*new URL\(raw, PUBLIC_ORIGIN\)/);
+  assert.match(source, /const isInternalPath/);
+  assert.match(source, /raw\.startsWith\("\/"\) \|\| isInternalPath/);
+  assert.match(source, /new URL\(`\/\$\{raw\.replace/);
   assert.match(source, /channelStates\.site_inrcy\.url\s*\|\|\s*channelStates\.site_web\.url/);
 });
 
@@ -23,11 +25,41 @@ test("gallery labels are generated from reliable public profile context", () => 
   assert.match(source, /const servicePool = uniqueLabels\(services\.length \? services : \[profession\]\)/);
   assert.match(source, /const zonePool = uniqueLabels\(zones\.length \? zones : \[city\]\)/);
   assert.match(source, /stableHash\(`\$\{companyName\}:\$\{item\.id\}`\)/);
-  assert.match(source, /`\$\{subject\} — \$\{companyName\}`/);
+  assert.match(source, /\? subject\s*: `Réalisation de \$\{companyName\}`/);
+  assert.doesNotMatch(source, /`\$\{subject\} — \$\{companyName\}`/);
   assert.match(pageSource, /services=\{data\.services\}/);
   assert.match(pageSource, /zones=\{data\.zones\}/);
   assert.doesNotMatch(source, /return `Média \$\{/);
   assert.doesNotMatch(source, /Math\.random/);
+});
+
+test("public logos have both a corrected internal URL and a visual fallback", () => {
+  const logoSource = read("app/entreprises/[slug]/InrSearchLogo.tsx");
+  const pageSource = read("app/entreprises/[slug]/page.tsx");
+  const experienceSource = read("app/entreprises/[slug]/InrSearchExperience.tsx");
+
+  assert.match(logoSource, /onError=\{\(\) => setFailed\(true\)\}/);
+  assert.match(logoSource, /initialsFor\(companyName\)/);
+  assert.match(pageSource, /<InrSearchLogo/);
+  assert.match(experienceSource, /<InrSearchLogo/);
+});
+
+test("visible scene copy addresses visitors without technical conversion jargon", () => {
+  const files = [
+    "app/entreprises/[slug]/page.tsx",
+    "app/entreprises/[slug]/InrSearchServicesOrbit.tsx",
+    "app/entreprises/[slug]/InrSearchGalleryOrbit.tsx",
+    "app/entreprises/[slug]/InrSearchNewsShowcase.tsx",
+    "app/entreprises/[slug]/InrSearchZoneOrbit.tsx",
+    "app/entreprises/[slug]/InrSearchStrengthsOrbit.tsx",
+    "app/entreprises/[slug]/InrSearchFaqOrbit.tsx",
+    "app/entreprises/[slug]/InrSearchSocialOrbit.tsx",
+    "app/entreprises/[slug]/InrSearchContactOrbit.tsx",
+  ];
+  const source = files.map(read).join("\n");
+
+  assert.doesNotMatch(source, /L’internaute|l’internaute/);
+  assert.doesNotMatch(source, /demande mieux cadrée|preuve visuelle|signaux de confiance/);
 });
 
 test("metadata enriches default company-only titles and avoids duplicated identity leads", () => {

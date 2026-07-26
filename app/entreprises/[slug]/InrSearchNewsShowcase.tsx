@@ -98,7 +98,7 @@ export default function InrSearchNewsShowcase({ companyName, publications }: Pro
         <div>
           <span className={styles.newsOrbitEyebrow}>L’entreprise en mouvement</span>
           <h2 id="actualites-title">Les actualités de {companyName}</h2>
-          <p>Suivez les signaux récents de {companyName} : une actualité à jour rassure, prouve l’activité et donne envie d’engager l’échange.</p>
+          <p>Découvrez les dernières nouvelles, réalisations et temps forts partagés par {companyName}.</p>
         </div>
         {total ? (
           <div className={styles.newsOrbitNavigator} aria-label="Naviguer entre les actualités">
@@ -195,8 +195,8 @@ export default function InrSearchNewsShowcase({ companyName, publications }: Pro
         <div className={styles.newsOrbitEmpty} role="status">
           <div className={styles.newsOrbitEmptyGenerator} aria-hidden="true"><span /><span /><i /></div>
           <small>Signal en préparation</small>
-          <h3>La prochaine actualité arrive bientôt.</h3>
-          <p>Les publications envoyées vers iNr’Search depuis Booster Publier apparaîtront automatiquement ici.</p>
+          <h3>Les prochaines nouvelles seront publiées ici.</h3>
+          <p>{companyName} partagera prochainement ses actualités et ses temps forts.</p>
         </div>
       )}
 

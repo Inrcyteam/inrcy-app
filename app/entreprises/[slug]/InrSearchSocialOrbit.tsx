@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import { useMemo, useState, type CSSProperties } from "react";
+import InrSearchLogo from "./InrSearchLogo";
 import styles from "./inrSearchPublic.module.css";
 
 type SocialLink = {
@@ -57,7 +58,7 @@ export default function InrSearchSocialOrbit({ companyName, logoUrl, profession,
         <div>
           <span className={styles.socialOrbitEyebrow}>Système solaire numérique</span>
           <h2>Présence en ligne de {companyName}</h2>
-          <p>Explorez les preuves en ligne avant de choisir : réseaux, site et profils publics renforcent la confiance avant le premier message.</p>
+          <p>Retrouvez {companyName} sur son site internet et ses réseaux sociaux.</p>
         </div>
         <span className={styles.socialOrbitCount}><strong>{String(total).padStart(2, "0")}</strong> présence{total > 1 ? "s" : ""} en ligne</span>
       </div>
@@ -67,7 +68,14 @@ export default function InrSearchSocialOrbit({ companyName, logoUrl, profession,
           <div className={styles.socialOrbitRings} aria-hidden="true"><span /><span /><span /></div>
           <div className={styles.socialOrbitCore}>
             <span className={styles.socialOrbitCoreGlow} aria-hidden="true" />
-            {logoUrl ? <Image src={logoUrl} alt="" width={132} height={132} loading="eager" unoptimized /> : <span className={styles.socialOrbitFallback}>{companyName.slice(0, 1).toUpperCase()}</span>}
+            <InrSearchLogo
+              src={logoUrl}
+              alt=""
+              companyName={companyName}
+              width={132}
+              height={132}
+              fallbackClassName={styles.socialOrbitFallback}
+            />
             <small>{profession || "Entreprise"}</small>
             <strong>{companyName}</strong>
             {city ? <em>{city}</em> : null}
@@ -114,7 +122,7 @@ export default function InrSearchSocialOrbit({ companyName, logoUrl, profession,
             </span>
             <small>Planète sélectionnée</small>
             <strong>{activeLink.label}</strong>
-            <p>Ouvrez {activeLink.label} pour vérifier l’univers, les actualités et les signaux de confiance de {companyName} avant de passer à l’action.</p>
+            <p>Consultez {activeLink.label} pour découvrir les contenus et les informations publiés par {companyName}.</p>
             <a href={activeLink.url} target="_blank" rel="noopener noreferrer" data-inrsearch-action={activeLink.key} data-inrsearch-target={activeLink.url}>
               Découvrir <span aria-hidden="true">↗</span>
             </a>

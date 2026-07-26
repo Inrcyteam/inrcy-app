@@ -1,9 +1,9 @@
 "use client";
 
-import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import InrSearchLeadForm from "./InrSearchLeadForm";
+import InrSearchLogo from "./InrSearchLogo";
 import {
   INR_SEARCH_OPEN_CONTACT_EVENT,
   type InrSearchOpenContactDetail,
@@ -120,7 +120,7 @@ export default function InrSearchContactOrbit({
         <div>
           <span className={styles.contactOrbitEyebrow}>Générateur de convergence</span>
           <h2>Contacter {companyName}</h2>
-          <p>Passez de l’intérêt à l’action : choisissez le canal le plus simple et envoyez à {companyName} une demande claire, utile et exploitable.</p>
+          <p>Choisissez le moyen qui vous convient pour joindre {companyName} ou présenter directement votre besoin.</p>
         </div>
         <span className={styles.contactOrbitStatus}><i /> {signals.length} voie{signals.length > 1 ? "s" : ""} de contact</span>
       </div>
@@ -141,7 +141,14 @@ export default function InrSearchContactOrbit({
         <div className={styles.contactCore}>
           <span className={styles.contactCoreHalo} aria-hidden="true" />
           <span className={styles.contactCoreRotor} aria-hidden="true"><i /><i /><i /></span>
-          {logoUrl ? <Image src={logoUrl} alt="" width={126} height={126} loading="eager" unoptimized /> : <span className={styles.contactCoreFallback}>{companyName.slice(0, 1).toUpperCase()}</span>}
+          <InrSearchLogo
+            src={logoUrl}
+            alt=""
+            companyName={companyName}
+            width={126}
+            height={126}
+            fallbackClassName={styles.contactCoreFallback}
+          />
           <small>{profession || "Entreprise"}</small>
           <strong>{companyName}</strong>
           <em>{city || "À votre écoute"}</em>

@@ -294,10 +294,19 @@ function normalizeExternalUrl(value: unknown): string {
   const raw = clean(value, 1000);
   if (!raw) return "";
   try {
+    const firstSegment = raw.split(/[/?#]/, 1)[0] || "";
+    const looksLikeHostname =
+      firstSegment.includes(".") ||
+      firstSegment.includes(":") ||
+      firstSegment.toLocaleLowerCase("en-US") === "localhost";
+    const isInternalPath =
+      !/^https?:\/\//i.test(raw) &&
+      !raw.startsWith("//") &&
+      !looksLikeHostname;
     const url = raw.startsWith("//")
       ? new URL(`https:${raw}`)
-      : raw.startsWith("/")
-        ? new URL(raw, PUBLIC_ORIGIN)
+      : raw.startsWith("/") || isInternalPath
+        ? new URL(`/${raw.replace(/^\/+/, "")}`, PUBLIC_ORIGIN)
         : new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
     if (!/^https?:$/.test(url.protocol)) return "";
     return url.toString();
@@ -505,7 +514,7 @@ function buildFaq(input: {
   if (input.profession || input.city) {
     faq.push({
       question: `Quelle est l’activité de ${input.companyName}${input.city ? ` à ${input.city}` : ""} ?`,
-      answer: `${input.companyName}${input.profession ? ` exerce l’activité de ${input.profession.toLocaleLowerCase("fr-FR")}` : " est une entreprise"}${input.city ? ` à ${input.city}` : ""}. Les informations de cette page sont synchronisées depuis le profil professionnel iNrCy.`,
+      answer: `${input.companyName}${input.profession ? ` exerce l’activité de ${input.profession.toLocaleLowerCase("fr-FR")}` : " est une entreprise"}${input.city ? ` à ${input.city}` : ""}. Retrouvez sur cette page ses services, sa zone d’intervention et ses coordonnées.`,
     });
   }
   if (input.services.length) {
@@ -554,33 +563,38 @@ async function loadInrSearchPublicPageUncached(slug: string): Promise<InrSearchP
       enabled: true,
       sections: { ...DEFAULT_SECTIONS },
       updatedAt: "2026-07-11T12:00:00.000Z",
-      companyName: "iNrCy",
-      contactName: "Équipe iNrCy",
+      // Fixture volontairement longue : elle protège les scènes contre les
+      // débordements rencontrés sur de vraies fiches professionnelles.
+      companyName: "Écurie et élevage des frênes",
+      contactName: "Équipe des frênes",
       logoUrl: "/logo-inrcy.png",
       phone: "06 22 08 21 79",
       email: "j.wright@inrcy.com",
       address: "1 rue de Fouquières",
       zip: "62440",
-      city: "Harnes",
+      city: "Haut-Lieu",
       country: "France",
       addressLine: "1 rue de Fouquières, 62440 Harnes, France",
-      description: "iNrCy transforme la présence numérique des professionnels en une expérience vivante, claire et directement utile à leurs futurs clients.",
-      sectorCategory: "communication",
-      sectorLabel: "Communication",
-      profession: "Agence de communication",
+      description: "Écurie et centre équestre à taille humaine, avec un accompagnement attentif pour les cavaliers et les chevaux.",
+      sectorCategory: "equitation",
+      sectorLabel: "Équitation",
+      profession: "Écurie / Centre équestre",
       services: [
-        "Stratégie de communication",
-        "Conseil éditorial",
-        "Communication digitale",
-        "Identité visuelle",
-        "Campagne locale",
-        "Supports print",
-        "Plan d’action",
+        "Pension cheval",
+        "Balades",
+        "Demi-pension",
+        "Travail du cheval",
+        "Cours",
+        "Stage",
+        "Sorties concours",
+        "Visite découverte",
+        "Élevage de chevaux de sport",
+        "Vente de chevaux",
       ],
       serviceDescriptions: {},
-      zones: ["Arras", "Béthune", "Lens", "Liévin", "Douai", "Carvin"],
-      strengths: ["Créatif", "Réactif", "Sérieux", "Efficace", "Proche", "À l’écoute"],
-      customerTypes: ["professionnels", "collectivités", "associations"],
+      zones: ["Aulnoye-Aymeries", "La Capelle", "Trélon", "Maubeuge", "Fourmies", "Le Quesnoy", "Valenciennes", "Nord", "Aisne", "Pas-de-Calais"],
+      strengths: ["Environnement naturel", "Accompagnement", "Écurie familiale", "À l’écoute", "Sérieux"],
+      customerTypes: ["particuliers"],
       openingDays: "",
       openingHours: "Lundi–vendredi : 8h00–18h00",
       websiteUrl: "https://inrcy.com",
