@@ -15838,17 +15838,31 @@
     text-wrap: balance;
   }
 
+  .servicesOrbitCard[data-orbit-position="3"],
+  .servicesOrbitCard[data-orbit-position="4"] {
+    transform:
+      translate(-50%, -50%)
+      rotate(var(--service-angle))
+      translateX(clamp(168px, 14vw, 212px))
+      rotate(calc(var(--service-angle) * -1)) !important;
+  }
+
   .servicesAccelerator {
     overflow: hidden !important;
   }
 
   .servicesOrbitFooter {
-    grid-template-columns: minmax(0, 1fr) auto !important;
-    gap: 10px !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    grid-template-rows: auto auto !important;
+    align-items: start !important;
+    gap: 7px !important;
   }
 
   .servicesOrbitIndexList {
+    grid-column: 1;
+    grid-row: 1;
     min-width: 0;
+    width: 100%;
     justify-content: flex-start !important;
     overflow-x: auto !important;
     overflow-y: hidden !important;
@@ -15857,6 +15871,18 @@
 
   .servicesOrbitIndexList::-webkit-scrollbar {
     display: none;
+  }
+
+  .servicesOrbitAudience {
+    grid-column: 1;
+    grid-row: 2;
+    width: 100%;
+    min-height: 28px !important;
+    margin: 0 !important;
+    display: flex !important;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px;
   }
 
   .galleryOrbitMeta {
@@ -16016,13 +16042,18 @@
   }
 
   .strengthNewtonFrame {
-    left: 28% !important;
-    right: 7% !important;
+    left: 30% !important;
+    right: 6% !important;
+    width: auto !important;
+    translate: none !important;
   }
 
   .strengthNewtonBalls {
-    left: 31% !important;
-    right: 10% !important;
+    left: 32% !important;
+    right: 8% !important;
+    width: auto !important;
+    translate: none !important;
+    justify-content: center !important;
   }
 
   .strengthNewtonBall > strong {
