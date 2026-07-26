@@ -792,7 +792,7 @@ export default function LoginPage() {
                 height={120}
                 priority
                 className="inrcy-logo"
-                style={{ height: "auto" }}
+                style={{ width: 120, height: 120 }}
               />
             </div>
 

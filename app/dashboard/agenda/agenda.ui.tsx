@@ -247,6 +247,7 @@ export function AgendaHeader({ helpOpen, setHelpOpen, settingsOpen, onOpenSettin
               width={154}
               height={64}
               priority
+              style={{ width: 154, height: 64 }}
             />
           </div>
 

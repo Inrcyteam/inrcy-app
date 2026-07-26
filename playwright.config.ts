@@ -40,6 +40,10 @@ export default defineConfig({
         url: baseURL,
         reuseExistingServer: !isCI,
         timeout: 300_000,
+        env: {
+          ...process.env,
+          E2E_BYPASS_REQUIRED_SETUP: 'true',
+        },
       }
     : undefined,
 

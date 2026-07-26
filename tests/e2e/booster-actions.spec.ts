@@ -17,7 +17,7 @@ test.describe('booster actions', () => {
 
     await expect(page).toHaveURL(/\/dashboard(?:\?.*action=publish)?/);
     await expect(page.getByText(/Publier|Module Booster/i).first()).toBeVisible({ timeout: 20_000 });
-    await expect(page.getByText(/Phrase libre|Votre intention/i).first()).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByTestId('booster-intention-title').or(page.getByText(/Votre intention/i)).first()).toBeVisible({ timeout: 20_000 });
     await expect(page.locator('button, a, textarea').first()).toBeVisible({ timeout: 15_000 });
   });
 });

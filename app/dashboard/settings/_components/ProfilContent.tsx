@@ -355,18 +355,18 @@ export default function ProfilContent({
     }
 
     const completeResponse = await fetch(`/api/profile/logo?path=${encodeURIComponent(prepared.path)}`);
-    let completed: { ok?: boolean; path?: string; signedUrl?: string; error?: string } = {};
+    let completed: { ok?: boolean; path?: string; displayUrl?: string; error?: string } = {};
     try {
       completed = await completeResponse.json();
     } catch {
       // Keep the generic message below for malformed server responses.
     }
 
-    if (!completeResponse.ok || !completed.ok || !completed.path || !completed.signedUrl) {
+    if (!completeResponse.ok || !completed.ok || !completed.path || !completed.displayUrl) {
       throw new Error(completed.error || "Impossible de préparer l’aperçu du logo.");
     }
 
-    return { path: completed.path, signedUrl: completed.signedUrl };
+    return { path: completed.path, signedUrl: completed.displayUrl };
   }
 
   const handleSave = async () => {
@@ -437,7 +437,7 @@ export default function ProfilContent({
         lead_conversion_rate: form.leadConversionRate,
 
         logo_path: logoPath || null,
-        logo_url: logoUrl || null,
+        logo_url: logoPath ? `/api/public/logo?path=${encodeURIComponent(logoPath)}` : (logoUrl || null),
       };
 
       const { error } = await supabase.from("profiles").upsert(payload, { onConflict: "user_id" });

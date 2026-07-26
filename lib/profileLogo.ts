@@ -13,8 +13,6 @@ export const PROFILE_LOGO_MIME_TYPES = [
   "image/webp",
   "image/svg+xml",
 ] as const;
-const SIGNED_URL_TTL_SECONDS = 60 * 60 * 24 * 30;
-
 const LOGO_EXTENSION_TO_MIME: Record<string, (typeof PROFILE_LOGO_MIME_TYPES)[number]> = {
   png: "image/png",
   jpg: "image/jpeg",
@@ -74,23 +72,6 @@ function trimSlashes(value: string) {
   return value.replace(/^\/+|\/+$/g, "");
 }
 
-async function logoObjectExists(supabase: SupabaseClient, path: string) {
-  const lastSlash = path.lastIndexOf("/");
-  const folder = lastSlash >= 0 ? path.slice(0, lastSlash) : "";
-  const fileName = lastSlash >= 0 ? path.slice(lastSlash + 1) : path;
-  if (!fileName) return false;
-
-  const { data, error } = await supabase.storage
-    .from(LOGO_BUCKET)
-    .list(folder, { limit: 100, search: fileName });
-
-  return Boolean(
-    !error &&
-      Array.isArray(data) &&
-      data.some((entry) => String(entry?.name || "") === fileName),
-  );
-}
-
 export function extractLogoPathFromUrl(url: string | null | undefined): string | null {
   if (!url) return null;
 
@@ -98,12 +79,23 @@ export function extractLogoPathFromUrl(url: string | null | undefined): string |
   if (!raw) return null;
 
   if (!/^https?:\/\//i.test(raw)) {
+    if (raw.startsWith("/api/public/logo")) {
+      try {
+        return trimSlashes(new URL(raw, "https://app.inrcy.com").searchParams.get("path") || "") || null;
+      } catch {
+        return null;
+      }
+    }
     const normalized = trimSlashes(raw.replace(new RegExp(`^${LOGO_BUCKET}\/`), ""));
     return normalized || null;
   }
 
   try {
     const parsed = new URL(raw);
+    if (parsed.pathname === "/api/public/logo") {
+      return trimSlashes(parsed.searchParams.get("path") || "") || null;
+    }
+
     const pathname = decodeURIComponent(parsed.pathname);
     const markers = [
       `/storage/v1/object/sign/${LOGO_BUCKET}/`,
@@ -127,30 +119,26 @@ export function extractLogoPathFromUrl(url: string | null | undefined): string |
   return null;
 }
 
+export function getProfileLogoDisplayUrl(logoPath: string | null | undefined) {
+  const cleanPath = trimSlashes(logoPath || "");
+  return cleanPath ? `/api/public/logo?path=${encodeURIComponent(cleanPath)}` : "";
+}
+
+/**
+ * Backward-compatible name retained for callers. Logos are now served through
+ * a stable application URL instead of exposing expiring Supabase signed URLs.
+ */
 export async function createSignedLogoUrl(
-  supabase: SupabaseClient,
+  _supabase: SupabaseClient,
   logoPath: string | null | undefined
 ): Promise<string> {
-  const cleanPath = trimSlashes(logoPath || "");
-  if (!cleanPath) return "";
-
-  if (!(await logoObjectExists(supabase, cleanPath))) {
-    throw new Error("Le fichier du logo n’existe plus dans le stockage.");
-  }
-
-  const { data, error } = await supabase.storage
-    .from(LOGO_BUCKET)
-    .createSignedUrl(cleanPath, SIGNED_URL_TTL_SECONDS);
-
-  if (error || !data?.signedUrl) {
-    throw error || new Error("Impossible de générer l’URL du logo.");
-  }
-
-  return data.signedUrl;
+  const displayUrl = getProfileLogoDisplayUrl(logoPath);
+  if (!displayUrl) throw new Error("Chemin de logo invalide.");
+  return displayUrl;
 }
 
 export async function resolveProfileLogoUrl(
-  supabase: SupabaseClient,
+  _supabase: SupabaseClient,
   source: LogoSource | null | undefined
 ): Promise<{ logoPath: string; logoUrl: string }> {
   const storedPath = trimSlashes(source?.logo_path || "");
@@ -161,12 +149,8 @@ export async function resolveProfileLogoUrl(
     return { logoPath: "", logoUrl: source?.logo_url?.trim() || "" };
   }
 
-  try {
-    const logoUrl = await createSignedLogoUrl(supabase, finalPath);
-    return { logoPath: finalPath, logoUrl };
-  } catch {
-    return { logoPath: finalPath, logoUrl: "" };
-  }
+  const logoUrl = getProfileLogoDisplayUrl(finalPath);
+  return { logoPath: finalPath, logoUrl };
 }
 
 export function revokeBlobUrl(url: string | null | undefined) {

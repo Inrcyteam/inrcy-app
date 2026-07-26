@@ -978,6 +978,7 @@ export default function PublishIntentPanel({
       >
         <div
           className={styles.blockTitle}
+          data-testid="booster-intention-title"
           style={{ display: "inline-flex", alignItems: "center", gap: 8 }}
         >
           <span

@@ -4,11 +4,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 type BrowserSupabaseClient = SupabaseClient;
 
 let browserClient: BrowserSupabaseClient | null = null;
-
 const AUTH_USER_PATH = "/auth/v1/user";
-const AUTH_FAILURE_COOLDOWN_MS = 15_000;
-let authFailureAt = 0;
-let authFailureEventSent = false;
+let authUserRequest: Promise<Response> | null = null;
+let invalidSessionHandled = false;
 
 function getRequestUrl(input: RequestInfo | URL) {
   if (typeof input === "string") return input;
@@ -20,39 +18,41 @@ function isAuthUserRequest(input: RequestInfo | URL) {
   return getRequestUrl(input).includes(AUTH_USER_PATH);
 }
 
-function authFailureResponse() {
-  return new Response(
-    JSON.stringify({ error: "invalid_token", error_description: "Session expirée." }),
-    { status: 401, headers: { "Content-Type": "application/json" } },
-  );
+async function handleInvalidBrowserSession() {
+  if (invalidSessionHandled || typeof window === "undefined") return;
+  invalidSessionHandled = true;
+
+  try {
+    // Local scope removes the stale browser session without another Auth API call.
+    await browserClient?.auth.signOut({ scope: "local" });
+  } catch {
+    // The server-side proxy will also clear invalid cookies on the next navigation.
+  }
+
+  window.dispatchEvent(new CustomEvent("inrcy:auth-session-invalid"));
 }
 
 async function guardedFetch(input: RequestInfo | URL, init?: RequestInit) {
-  const isAuthUser = isAuthUserRequest(input);
-  const now = Date.now();
+  if (!isAuthUserRequest(input)) return fetch(input, init);
 
-  if (isAuthUser && authFailureAt && now - authFailureAt < AUTH_FAILURE_COOLDOWN_MS) {
-    return authFailureResponse();
-  }
+  // A dashboard render may mount many hooks at once. Supabase getUser() calls are
+  // identical, so coalesce them into one request instead of producing a 403 storm.
+  if (authUserRequest) return (await authUserRequest).clone();
 
-  const response = await fetch(input, init);
-  if (!isAuthUser) return response;
+  const request = fetch(input, init)
+    .then(async (response) => {
+      if (response.ok) invalidSessionHandled = false;
+      else if (response.status === 401 || response.status === 403) {
+        await handleInvalidBrowserSession();
+      }
+      return response;
+    })
+    .finally(() => {
+      authUserRequest = null;
+    });
 
-  if (response.ok) {
-    authFailureAt = 0;
-    authFailureEventSent = false;
-    return response;
-  }
-
-  if (response.status === 401 || response.status === 403) {
-    authFailureAt = now;
-    if (!authFailureEventSent && typeof window !== "undefined") {
-      authFailureEventSent = true;
-      window.dispatchEvent(new CustomEvent("inrcy:auth-session-invalid"));
-    }
-  }
-
-  return response;
+  authUserRequest = request;
+  return (await request).clone();
 }
 
 export function createClient() {
@@ -68,7 +68,7 @@ export function createClient() {
         autoRefreshToken: true,
       },
       global: { fetch: guardedFetch },
-    }
+    },
   );
 
   return browserClient;

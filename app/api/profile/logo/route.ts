@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import { createSupabaseServer } from "@/lib/supabaseServer";
 import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { probeStorageObject } from "@/lib/safeStorageSignedUrl";
 import {
-  createSignedLogoUrl,
+  getProfileLogoDisplayUrl,
   getProfileLogoExtension,
   getProfileLogoMimeType,
   LOGO_BUCKET,
@@ -36,7 +37,12 @@ function isOwnedLogoPath(path: string, accountId: string) {
 }
 
 async function completeLogoUpload(accountId: string, path: string) {
-  const signedUrl = await createSignedLogoUrl(supabaseAdmin, path);
+  const objectState = await probeStorageObject(LOGO_BUCKET, path);
+  if (objectState !== "exists") {
+    throw new Error(objectState === "missing" ? "Logo absent après envoi." : "Stockage temporairement indisponible.");
+  }
+
+  const displayUrl = getProfileLogoDisplayUrl(path);
   const stalePaths = LOGO_EXTENSIONS
     .map((extension) => `${accountId}/logo.${extension}`)
     .filter((candidate) => candidate !== path);
@@ -45,7 +51,7 @@ async function completeLogoUpload(accountId: string, path: string) {
     await supabaseAdmin.storage.from(LOGO_BUCKET).remove(stalePaths).catch(() => undefined);
   }
 
-  return signedUrl;
+  return displayUrl;
 }
 
 // Prepare a short-lived signed upload URL. The image bytes go directly from
@@ -103,8 +109,8 @@ export async function GET(request: Request) {
       return errorResponse("Logo non autorisé.", 403);
     }
 
-    const signedUrl = await completeLogoUpload(authenticated.accountId, path);
-    return NextResponse.json({ ok: true, path, signedUrl });
+    const displayUrl = await completeLogoUpload(authenticated.accountId, path);
+    return NextResponse.json({ ok: true, path, displayUrl });
   } catch (error) {
     console.error("[profile/logo] completion failed", error);
     return errorResponse("Le logo a été envoyé, mais son aperçu n’a pas pu être préparé.", 502);

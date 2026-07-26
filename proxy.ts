@@ -421,21 +421,39 @@ export async function proxy(req: NextRequest) {
 
   // Refresh/validate the Supabase session before any other proxy logic.
   // The SSR client also writes refreshed or cleared cookies to the response.
+  const supabaseAuthCookiePattern = /^sb-.+-auth-token(?:\.\d+)?$/;
+  const requestCookies = req.cookies.getAll();
+  const hasSupabaseAuthCookie = requestCookies.some(({ name }) =>
+    supabaseAuthCookiePattern.test(name),
+  );
+
   let authenticatedUserId: string | null = null;
+  let invalidAuthSession = false;
   try {
     const { data, error } = await supabase.auth.getClaims();
     const claimSub = data?.claims?.sub;
 
     if (!error && typeof claimSub === "string" && claimSub) {
       authenticatedUserId = claimSub;
+    } else if (error && hasSupabaseAuthCookie) {
+      invalidAuthSession = true;
     }
   } catch {
     authenticatedUserId = null;
+    invalidAuthSession = hasSupabaseAuthCookie;
   }
 
   const applyResponseHeaders = (res: NextResponse) => {
     for (const cookie of getSupabaseResponse().cookies.getAll()) {
       res.cookies.set(cookie);
+    }
+
+    if (invalidAuthSession) {
+      for (const { name } of requestCookies) {
+        if (supabaseAuthCookiePattern.test(name)) {
+          res.cookies.set(name, "", { path: "/", maxAge: 0 });
+        }
+      }
     }
     // Correlate request/response across Vercel logs + Sentry
     res.headers.set("x-request-id", requestId);
@@ -450,7 +468,10 @@ export async function proxy(req: NextRequest) {
     const isIndexablePublicDocument = pathname === "/entreprises" || pathname.startsWith("/entreprises/");
     const isInrSearchCompanyDocument = pathname.startsWith("/entreprises/");
 
-    if (pathname.startsWith("/api/")) {
+    if (pathname === "/api/public/logo") {
+      // Keep the immutable-ish logo response cache configured by the route.
+      res.headers.set("x-robots-tag", "noindex, nofollow");
+    } else if (pathname.startsWith("/api/")) {
       res.headers.set("cache-control", "no-store");
       res.headers.set("x-robots-tag", "noindex, nofollow");
     } else if (isDocumentRequest && isInrSearchCompanyDocument) {
@@ -470,6 +491,20 @@ export async function proxy(req: NextRequest) {
 
     return res;
   };
+
+  if (invalidAuthSession) {
+    if (pathname.startsWith("/api/")) {
+      return applyResponseHeaders(NextResponse.json(
+        { error: "SESSION_EXPIRED", code: "SESSION_EXPIRED", redirectTo: "/login" },
+        { status: 401 },
+      ));
+    }
+
+    const loginUrl = req.nextUrl.clone();
+    loginUrl.pathname = "/login";
+    loginUrl.searchParams.set("reason", "session-expired");
+    return applyResponseHeaders(NextResponse.redirect(loginUrl));
+  }
 
   // Lâ€™annuaire public est hÃ©bergÃ© sur inrcy.com. Les routes de classement
   // de lâ€™application restent internes et ne doivent pas devenir une seconde
