@@ -3,6 +3,7 @@ import { createSupabaseServer } from "@/lib/supabaseServer";
 import { ACTIVE_INRCY_ACCOUNT_COOKIE } from "@/lib/multicompte/constants";
 import { isUuidLike } from "@/lib/multicompte/normalize";
 import { listAccessibleInrcyAccounts, resolveInrcyAccountScopeForUser } from "@/lib/multicompte/server";
+import { provisionNewAccountBubbleAccess } from "@/lib/appBubbleAccessProvisioning";
 
 export const dynamic = "force-dynamic";
 
@@ -111,6 +112,22 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { ok: false, error: mapped.error },
       { status: mapped.status },
+    );
+  }
+
+  try {
+    // The database migration also provisions these defaults, but the API repeats
+    // the operation deliberately so a stale SQL function can never grant Site iNrCy.
+    await provisionNewAccountBubbleAccess(accountId);
+  } catch (provisioningError) {
+    console.error("[multicompte] bubble access provisioning failed", {
+      authUserId: data.user.id,
+      accountId,
+      error: provisioningError instanceof Error ? provisioningError.message : String(provisioningError),
+    });
+    return NextResponse.json(
+      { ok: false, error: "L’établissement a été créé, mais ses accès n’ont pas pu être initialisés. Merci de réessayer." },
+      { status: 503 },
     );
   }
 

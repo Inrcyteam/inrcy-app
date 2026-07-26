@@ -6,6 +6,7 @@ import { ensureNotificationPreferences, seedOnboardingNotifications } from "@/li
 import { ensureTrialSubscription } from "@/lib/trialSubscription";
 import { ensureProfileRow } from "@/lib/ensureProfileRow";
 import { requireAdminApi } from "@/lib/adminSecurity";
+import { provisionNewAccountBubbleAccess } from "@/lib/appBubbleAccessProvisioning";
 
 export const runtime = "nodejs";
 
@@ -39,6 +40,8 @@ export async function POST(req: Request) {
 
     const userId = invite.user.id;
 
+    // New accounts always start from the canonical Bubble Access defaults.
+    await provisionNewAccountBubbleAccess(userId);
     await ensureProfileRow(invite.user);
     await ensureNotificationPreferences(userId);
     await seedOnboardingNotifications(userId);

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { optionalEnv, requireEnv } from "@/lib/env";
 import { ensureNotificationPreferences, seedOnboardingNotifications } from "@/lib/notifications";
 import { ensureProfileRow } from "@/lib/ensureProfileRow";
+import { provisionNewAccountBubbleAccess } from "@/lib/appBubbleAccessProvisioning";
 import { getClientIp, enforceRateLimit } from "@/lib/rateLimit";
 import { sendAdminSubscriptionAlertForUser } from "@/lib/subscriptionAdmin";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
@@ -358,6 +359,9 @@ export async function POST(req: Request) {
     const userId = invitedUser.id;
     const nowIso = new Date().toISOString();
 
+    // Apply authoritative defaults after the Auth trigger has completed.
+    // In particular, Site iNrCy must remain opt-in (false) for every new account.
+    await provisionNewAccountBubbleAccess(userId);
     await ensureProfileRow(invitedUser);
 
     const profilePatch: LooseRecord = {
