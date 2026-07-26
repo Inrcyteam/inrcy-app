@@ -3,6 +3,7 @@ import { createSupabaseServer } from "@/lib/supabaseServer";
 import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import {
+  APP_BUBBLE_ALWAYS_ENABLED_KEYS,
   buildBubbleAccessMap,
   createDefaultBubbleAccessRows,
   type AppBubbleAccessRow,
@@ -34,18 +35,28 @@ export async function GET() {
       .map((row) => row.bubble_key)
       .filter((key): key is string => typeof key === "string"),
   );
-  const mustEnableInrAgent = ((existingRows as AppBubbleAccessRow[] | null) ?? [])
-    .some((row) => row.bubble_key === "inr_agent" && row.enabled !== true);
+  const rowsToForceEnabled = APP_BUBBLE_ALWAYS_ENABLED_KEYS
+    .filter((bubbleKey) =>
+      ((existingRows as AppBubbleAccessRow[] | null) ?? [])
+        .some((row) => row.bubble_key === bubbleKey && row.enabled !== true),
+    )
+    .map((bubbleKey) => ({
+      user_id: activeUserId,
+      bubble_key: bubbleKey,
+      enabled: true,
+    }));
 
   const missingRows = createDefaultBubbleAccessRows(activeUserId)
     .filter((row) => !existingBubbleKeys.has(row.bubble_key));
 
   let rows = existingRows as AppBubbleAccessRow[] | null;
 
-  if (missingRows.length > 0 || mustEnableInrAgent) {
-    const rowsToUpsert = mustEnableInrAgent
-      ? [...missingRows.filter((row) => row.bubble_key !== "inr_agent"), { user_id: activeUserId, bubble_key: "inr_agent" as const, enabled: true }]
-      : missingRows;
+  if (missingRows.length > 0 || rowsToForceEnabled.length > 0) {
+    const forcedKeySet = new Set(rowsToForceEnabled.map((row) => row.bubble_key));
+    const rowsToUpsert = [
+      ...missingRows.filter((row) => !forcedKeySet.has(row.bubble_key)),
+      ...rowsToForceEnabled,
+    ];
 
     const { error: upsertError } = await supabaseAdmin
       .from("app_bubble_access")
@@ -73,5 +84,6 @@ export async function GET() {
     bubbleAccessMap: buildBubbleAccessMap(rows),
     rowsCreated: missingRows.length,
     inrAgentEnabled: true,
+    tiktokEnabled: true,
   });
 }

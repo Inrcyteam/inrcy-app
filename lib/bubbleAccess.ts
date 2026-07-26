@@ -22,6 +22,11 @@ export const APP_BUBBLE_KEYS = [
 export type AppBubbleKey = (typeof APP_BUBBLE_KEYS)[number];
 export type AppBubbleAccessMap = Record<AppBubbleKey, boolean>;
 
+export const APP_BUBBLE_ALWAYS_ENABLED_KEYS: readonly AppBubbleKey[] = [
+  "inr_agent",
+  "tiktok",
+];
+
 export type AppBubbleAccessRow = {
   bubble_key: string | null;
   enabled: boolean | null;
@@ -43,7 +48,7 @@ export const APP_BUBBLE_DEFAULT_ACCESS: AppBubbleAccessMap = {
   facebook: true,
   instagram: true,
   linkedin: true,
-  tiktok: false,
+  tiktok: true,
   youtube_shorts: true,
   pinterest: false,
   inr_agent: true,
@@ -55,6 +60,9 @@ export const APP_BUBBLE_DEFAULT_ACCESS: AppBubbleAccessMap = {
 };
 
 const APP_BUBBLE_KEY_SET = new Set<string>(APP_BUBBLE_KEYS);
+const APP_BUBBLE_ALWAYS_ENABLED_KEY_SET = new Set<AppBubbleKey>(
+  APP_BUBBLE_ALWAYS_ENABLED_KEYS,
+);
 
 export function isAppBubbleKey(value: unknown): value is AppBubbleKey {
   return typeof value === "string" && APP_BUBBLE_KEY_SET.has(value);
@@ -63,6 +71,10 @@ export function isAppBubbleKey(value: unknown): value is AppBubbleKey {
 export function normalizeAppBubbleKey(value: unknown): AppBubbleKey | null {
   if (isAppBubbleKey(value)) return value;
   return null;
+}
+
+export function isAppBubbleAlwaysEnabled(bubbleKey: AppBubbleKey): boolean {
+  return APP_BUBBLE_ALWAYS_ENABLED_KEY_SET.has(bubbleKey);
 }
 
 export function createDefaultBubbleAccessMap(): AppBubbleAccessMap {
@@ -87,6 +99,10 @@ export function buildBubbleAccessMap(rows?: AppBubbleAccessRow[] | null): AppBub
     accessMap[bubbleKey] = Boolean(row.enabled);
   }
 
+  for (const bubbleKey of APP_BUBBLE_ALWAYS_ENABLED_KEYS) {
+    accessMap[bubbleKey] = true;
+  }
+
   return accessMap;
 }
 
@@ -94,5 +110,6 @@ export function isBubbleEnabled(
   accessMap: Partial<Record<AppBubbleKey, boolean>> | null | undefined,
   bubbleKey: AppBubbleKey,
 ): boolean {
+  if (isAppBubbleAlwaysEnabled(bubbleKey)) return true;
   return accessMap?.[bubbleKey] ?? APP_BUBBLE_DEFAULT_ACCESS[bubbleKey];
 }

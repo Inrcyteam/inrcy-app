@@ -37,6 +37,8 @@ type Props = {
 
 export default function DashboardFluxBubble({ item, itemKey, requiredSetupLocked = false, requiredSetupLockMessage = "" }: Props) {
   const isComingSoon = item.bubbleStatus === "coming";
+  const isAvailableToConnect = item.bubbleStatus === "available" && !requiredSetupLocked;
+  const shouldHighlightConfigure = isAvailableToConnect && !item.configureDisabled;
   return (
     <article
       key={itemKey ?? item.key}
@@ -59,7 +61,7 @@ export default function DashboardFluxBubble({ item, itemKey, requiredSetupLocked
 
         <div className={bubbleStyles.title}>{item.name}</div>
 
-        <div className={bubbleStyles.status}>
+        <div className={`${bubbleStyles.status} ${isAvailableToConnect ? bubbleStyles.statusAvailable : ""}`}>
           {requiredSetupLocked ? (
             <RequiredSetupLock
               message={requiredSetupLockMessage}
@@ -119,7 +121,7 @@ export default function DashboardFluxBubble({ item, itemKey, requiredSetupLocked
           )}
 
           <button
-            className={`${bubbleStyles.action} ${bubbleStyles.actionMain}`}
+            className={`${bubbleStyles.action} ${bubbleStyles.actionMain} ${shouldHighlightConfigure ? bubbleStyles.actionMainAvailable : ""}`}
             type="button"
             onClick={requiredSetupLocked ? undefined : item.onConfigure}
             disabled={requiredSetupLocked || item.configureDisabled}

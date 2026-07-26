@@ -4,10 +4,12 @@ import { purgeInrSearchDirectoryCache } from "@/lib/inrSearchDirectoryCache";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { revalidateInrSearchPublicRoutes } from "@/lib/inrSearchProvisioning";
 import {
+  APP_BUBBLE_ALWAYS_ENABLED_KEYS,
   APP_BUBBLE_DEFAULT_ACCESS,
   APP_BUBBLE_KEYS,
   buildBubbleAccessMap,
   createDefaultBubbleAccessRows,
+  isAppBubbleAlwaysEnabled,
   normalizeAppBubbleKey,
   type AppBubbleAccessRow,
   type AppBubbleKey,
@@ -141,15 +143,32 @@ async function ensureAccessRows(userIds: string[]) {
     if (row.bubble_key) existingKeysByUser.get(userId)!.add(row.bubble_key);
   }
 
+  const forcedRows = userIds.flatMap((userId) => {
+    const existingUserRows = byUser.get(userId) ?? [];
+    return APP_BUBBLE_ALWAYS_ENABLED_KEYS
+      .filter((bubbleKey) =>
+        existingUserRows.some((row) => row.bubble_key === bubbleKey && row.enabled !== true),
+      )
+      .map((bubbleKey) => ({ user_id: userId, bubble_key: bubbleKey, enabled: true }));
+  });
+  const forcedKeyByUser = new Set(
+    forcedRows.map((row) => `${row.user_id}:${row.bubble_key}`),
+  );
+
   const missingRows = userIds.flatMap((userId) => {
     const existingKeys = existingKeysByUser.get(userId) ?? new Set<string>();
-    return createDefaultBubbleAccessRows(userId).filter((row) => !existingKeys.has(row.bubble_key));
+    return createDefaultBubbleAccessRows(userId).filter(
+      (row) =>
+        !existingKeys.has(row.bubble_key) &&
+        !forcedKeyByUser.has(`${row.user_id}:${row.bubble_key}`),
+    );
   });
+  const rowsToUpsert = [...missingRows, ...forcedRows];
 
-  if (missingRows.length > 0) {
+  if (rowsToUpsert.length > 0) {
     const { error: upsertError } = await supabaseAdmin
       .from("app_bubble_access")
-      .upsert(missingRows, { onConflict: "user_id,bubble_key", ignoreDuplicates: true });
+      .upsert(rowsToUpsert, { onConflict: "user_id,bubble_key" });
 
     if (upsertError) throw upsertError;
 
@@ -277,7 +296,11 @@ export async function PATCH(request: NextRequest) {
       const rows = Object.entries(accessMap).flatMap(([rawKey, enabled]) => {
         const bubbleKey = normalizeAppBubbleKey(rawKey);
         if (!bubbleKey) return [];
-        return [{ user_id: userId, bubble_key: bubbleKey, enabled: Boolean(enabled) }];
+        return [{
+          user_id: userId,
+          bubble_key: bubbleKey,
+          enabled: isAppBubbleAlwaysEnabled(bubbleKey) ? true : Boolean(enabled),
+        }];
       });
 
       if (!rows.length) {
@@ -300,13 +323,15 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Outil invalide." }, { status: 400 });
     }
 
+    const enabled = isAppBubbleAlwaysEnabled(bubbleKey) ? true : Boolean(body?.enabled);
+
     const { error } = await supabaseAdmin
       .from("app_bubble_access")
       .upsert(
         {
           user_id: userId,
           bubble_key: bubbleKey,
-          enabled: Boolean(body?.enabled),
+          enabled,
         },
         { onConflict: "user_id,bubble_key" }
       );
@@ -314,7 +339,7 @@ export async function PATCH(request: NextRequest) {
     if (error) throw error;
     if (bubbleKey === "inr_search") await syncInrSearchDirectoryAfterAdminChange();
 
-    return NextResponse.json({ ok: true, bubble_key: bubbleKey, enabled: Boolean(body?.enabled) });
+    return NextResponse.json({ ok: true, bubble_key: bubbleKey, enabled });
   } catch (error: any) {
     return NextResponse.json(
       { error: "Impossible de mettre à jour l’accès outil.", detail: error?.message || String(error) },
