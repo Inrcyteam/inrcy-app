@@ -18,6 +18,8 @@ import DashboardUnsavedNavigationProvider from "./_components/DashboardUnsavedNa
 import SentryUserContext from "./_components/SentryUserContext";
 import ClientAuthSessionGuard from "./_components/ClientAuthSessionGuard";
 import DashboardRequiredSetupGate from "./_components/DashboardRequiredSetupGate";
+import { DashboardRequiredSetupBypassProvider } from "./_components/DashboardRequiredSetupBypassProvider";
+import { isRequiredSetupE2EBypassEnabled } from "@/lib/e2eServerFlags";
 
 
 type SubscriptionGateRow = {
@@ -86,6 +88,8 @@ export default async function DashboardLayout({
 }) {
   noStore();
 
+  const bypassRequiredSetup = isRequiredSetupE2EBypassEnabled();
+
   const supabase = await createSupabaseServer();
 
   const {
@@ -134,14 +138,16 @@ export default async function DashboardLayout({
       <ClientAuthSessionGuard />
       <SentryUserContext userId={user.id} accountId={accountScope.activeUserId} />
 
-      <DashboardUnsavedNavigationProvider>
-        <DashboardRequiredSetupGate>
-          <div className={styles.mobileViewport}>
-            {children}
-          </div>
-          <ResponsiveBottomNav />
-        </DashboardRequiredSetupGate>
-      </DashboardUnsavedNavigationProvider>
+      <DashboardRequiredSetupBypassProvider enabled={bypassRequiredSetup}>
+        <DashboardUnsavedNavigationProvider>
+          <DashboardRequiredSetupGate>
+            <div className={styles.mobileViewport}>
+              {children}
+            </div>
+            <ResponsiveBottomNav />
+          </DashboardRequiredSetupGate>
+        </DashboardUnsavedNavigationProvider>
+      </DashboardRequiredSetupBypassProvider>
     </div>
   );
 }

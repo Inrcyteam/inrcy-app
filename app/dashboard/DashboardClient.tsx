@@ -92,19 +92,32 @@ type ChannelRefreshOptions = { force?: boolean; dedupeMs?: number };
 type ChannelStatsRefreshResult = { preferredBlock: InrstatsChannelBlock | null; syncAt: number };
 type GeneratorChannelRefreshResult = { block: unknown | null; syncAt: number };
 
+function createUnverifiedBubbleAccessMap(): AppBubbleAccessMap {
+  const accessMap = createDefaultBubbleAccessMap();
+
+  // Site iNrCy is a Supabase-controlled entitlement. A browser cache must
+  // never be able to grant it before the authoritative API has answered.
+  accessMap.site_inrcy = false;
+  return accessMap;
+}
+
 function readCachedBubbleAccessMap(): AppBubbleAccessMap {
   try {
     const raw = readUiCacheValue(BUBBLE_ACCESS_CACHE_KEY);
-    if (!raw) return createDefaultBubbleAccessMap();
+    if (!raw) return createUnverifiedBubbleAccessMap();
     const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return createDefaultBubbleAccessMap();
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return createUnverifiedBubbleAccessMap();
     const rows = Object.entries(parsed as Record<string, unknown>).map(([bubble_key, enabled]) => ({
       bubble_key,
       enabled: Boolean(enabled),
     }));
-    return buildBubbleAccessMap(rows);
+    const accessMap = buildBubbleAccessMap(rows);
+
+    // Keep the UI fail-closed until /api/bubble-access/ensure confirms access.
+    accessMap.site_inrcy = false;
+    return accessMap;
   } catch {
-    return createDefaultBubbleAccessMap();
+    return createUnverifiedBubbleAccessMap();
   }
 }
 

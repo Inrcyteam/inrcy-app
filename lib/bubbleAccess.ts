@@ -41,7 +41,9 @@ export type AppBubbleAccessInsertRow = {
 export const APP_BUBBLE_DEFAULT_ACCESS: AppBubbleAccessMap = {
   inrbadge: true,
   mails: true,
-  site_inrcy: true,
+  // Site iNrCy is an opt-in entitlement managed from Supabase/admin.
+  // Fail closed when no authoritative row exists.
+  site_inrcy: false,
   site_web: true,
   gmb: true,
   inr_search: true,

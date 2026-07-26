@@ -8,11 +8,12 @@ import {
   evaluateDashboardRequiredSetupCompletion,
 } from "@/lib/dashboardCompletion";
 import { requireUser } from "@/lib/requireUser";
+import { isRequiredSetupE2EBypassEnabled } from "@/lib/e2eServerFlags";
 
 export async function isDashboardRequiredSetupCompletedServer() {
   // The dedicated Playwright server may opt in to bypassing onboarding locks.
   // This is never enabled by the application itself and does not affect production.
-  if (process.env.E2E_BYPASS_REQUIRED_SETUP === "true") return true;
+  if (isRequiredSetupE2EBypassEnabled()) return true;
   const { supabase, activeUserId, errorResponse } = await requireUser();
   if (errorResponse || !supabase || !activeUserId) return false;
 

@@ -13,6 +13,7 @@ import {
 } from "@/lib/dashboardCompletion";
 import { ACTIVE_INRCY_ACCOUNT_EVENT } from "@/lib/multicompte/constants";
 import { createClient } from "@/lib/supabaseClient";
+import { useDashboardRequiredSetupBypass } from "../_components/DashboardRequiredSetupBypassProvider";
 
 type CompletionSnapshot = {
   accountId: string;
@@ -52,6 +53,22 @@ const INITIAL_COMPLETION_STATE: DashboardCompletionState = {
   profileCheckReady: false,
   activityCheckReady: false,
   completionCheckReady: false,
+};
+
+const BYPASSED_COMPLETION_STATE: DashboardCompletionState = {
+  accountId: "e2e-required-setup-bypass",
+  profileIncomplete: false,
+  activityIncomplete: false,
+  profileCompleted: true,
+  activityCompleted: true,
+  requiredSetupCompleted: true,
+  requiredSetupIncomplete: false,
+  missingSections: [],
+  profileMissingFields: [],
+  activityMissingFields: [],
+  profileCheckReady: true,
+  activityCheckReady: true,
+  completionCheckReady: true,
 };
 
 // DashboardClient et ResponsiveBottomNav utilisent tous deux ce hook.
@@ -169,6 +186,7 @@ function buildFailedState(accountId: string | null): DashboardCompletionState {
 }
 
 export function useDashboardCompletionChecks() {
+  const bypassRequiredSetup = useDashboardRequiredSetupBypass();
   const [completionState, setCompletionState] = useState<DashboardCompletionState>(
     INITIAL_COMPLETION_STATE,
   );
@@ -176,6 +194,8 @@ export function useDashboardCompletionChecks() {
   const activeAccountIdRef = useRef<string | null>(null);
 
   const refreshCompletion = useCallback(async (options?: { force?: boolean }) => {
+    if (bypassRequiredSetup) return BYPASSED_COMPLETION_STATE;
+
     const refreshSequence = ++refreshSequenceRef.current;
     const accountId = await resolveCompletionAccountId();
     if (refreshSequence !== refreshSequenceRef.current) return null;
@@ -206,7 +226,7 @@ export function useDashboardCompletionChecks() {
       broadcastCompletionState(failedState);
       return failedState;
     }
-  }, []);
+  }, [bypassRequiredSetup]);
 
   // Conservés pour les formulaires existants : les deux callbacks rafraîchissent
   // désormais le même état atomique Profil + Activité.
@@ -220,6 +240,8 @@ export function useDashboardCompletionChecks() {
   );
 
   useEffect(() => {
+    if (bypassRequiredSetup) return;
+
     void refreshCompletion();
 
     const handleCompletionState = (event: Event) => {
@@ -240,10 +262,14 @@ export function useDashboardCompletionChecks() {
       window.removeEventListener(DASHBOARD_COMPLETION_STATE_EVENT, handleCompletionState);
       window.removeEventListener(ACTIVE_INRCY_ACCOUNT_EVENT, handleActiveAccountChange);
     };
-  }, [refreshCompletion]);
+  }, [bypassRequiredSetup, refreshCompletion]);
+
+  const effectiveCompletionState = bypassRequiredSetup
+    ? BYPASSED_COMPLETION_STATE
+    : completionState;
 
   return {
-    ...completionState,
+    ...effectiveCompletionState,
     refreshCompletion,
     checkProfile,
     checkActivity,

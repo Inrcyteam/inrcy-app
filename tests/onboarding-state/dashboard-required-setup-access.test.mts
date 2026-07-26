@@ -85,6 +85,10 @@ const serverGuardSource = readFileSync(
   new URL("../../lib/dashboardRequiredSetupServer.ts", import.meta.url),
   "utf8",
 );
+const e2eServerFlagsSource = readFileSync(
+  new URL("../../lib/e2eServerFlags.ts", import.meta.url),
+  "utf8",
+);
 const dashboardPageSource = readFileSync(
   new URL("../../app/dashboard/page.tsx", import.meta.url),
   "utf8",
@@ -124,4 +128,22 @@ test("protected pages are also rejected server-side", () => {
     );
     assert.match(source, /requireDashboardRequiredSetupCompleted/);
   }
+});
+
+const bypassProviderSource = readFileSync(
+  new URL("../../app/dashboard/_components/DashboardRequiredSetupBypassProvider.tsx", import.meta.url),
+  "utf8",
+);
+
+test("Playwright required-setup bypass is propagated from the server without a public env variable", () => {
+  assert.match(layoutSource, /isRequiredSetupE2EBypassEnabled\(\)/);
+  assert.match(serverGuardSource, /isRequiredSetupE2EBypassEnabled\(\)/);
+  assert.match(e2eServerFlagsSource, /process\.env\.E2E_BYPASS_REQUIRED_SETUP === "true"/);
+  assert.match(layoutSource, /DashboardRequiredSetupBypassProvider enabled=\{bypassRequiredSetup\}/);
+  assert.match(bypassProviderSource, /createContext<boolean>\(false\)/);
+  assert.match(gateSource, /useDashboardRequiredSetupBypass/);
+  assert.match(completionHookSource, /BYPASSED_COMPLETION_STATE/);
+  assert.match(completionHookSource, /requiredSetupCompleted: true/);
+  assert.doesNotMatch(bypassProviderSource, /NEXT_PUBLIC_/);
+  assert.doesNotMatch(e2eServerFlagsSource, /NEXT_PUBLIC_/);
 });

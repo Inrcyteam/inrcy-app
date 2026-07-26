@@ -402,10 +402,10 @@ function SetPasswordInner() {
                 src="/logo-inrcy.png"
                 alt="iNrCy"
                 width={120}
-                height={120}
+                height={45}
                 priority
                 className="inrcy-logo"
-                style={{ height: "auto" }}
+                style={{ width: 120, height: "auto" }}
               />
             </div>
 
