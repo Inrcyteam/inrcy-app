@@ -15,6 +15,8 @@ type Props = {
   companyName: string;
   profession: string;
   city: string;
+  services: string[];
+  zones: string[];
   media: GalleryMedia[];
 };
 
@@ -23,18 +25,77 @@ function wrapIndex(index: number, length: number) {
   return (index + length) % length;
 }
 
-function mediaTitle(index: number) {
-  return `Média ${String(index + 1).padStart(2, "0")}`;
+function uniqueLabels(values: string[]) {
+  return Array.from(new Set(values.map((value) => value.replace(/\s+/g, " ").trim()).filter(Boolean)));
 }
 
-export default function InrSearchGalleryOrbit({ companyName, profession, city, media }: Props) {
+function stableHash(value: string) {
+  let hash = 2166136261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function buildMediaTitles(
+  media: GalleryMedia[],
+  companyName: string,
+  profession: string,
+  city: string,
+  services: string[],
+  zones: string[],
+) {
+  const servicePool = uniqueLabels(services.length ? services : [profession]);
+  const zonePool = uniqueLabels(zones.length ? zones : [city]);
+  const combinationCount = Math.max(servicePool.length, 1) * Math.max(zonePool.length, 1);
+  const usedCombinations = new Set<number>();
+
+  return media.map((item, index) => {
+    const initialCombination = stableHash(`${companyName}:${item.id}`) % combinationCount;
+    let combination = initialCombination;
+
+    for (let attempt = 0; attempt < combinationCount; attempt += 1) {
+      const candidate = (initialCombination + attempt) % combinationCount;
+      if (!usedCombinations.has(candidate)) {
+        combination = candidate;
+        usedCombinations.add(candidate);
+        break;
+      }
+    }
+
+    const service = servicePool.length ? servicePool[combination % servicePool.length] : "";
+    const zoneIndex = servicePool.length
+      ? Math.floor(combination / servicePool.length)
+      : combination;
+    const zone = zonePool.length ? zonePool[zoneIndex % zonePool.length] : "";
+    const subject = [service || profession, zone ? `à ${zone}` : ""].filter(Boolean).join(" ");
+    const baseTitle = subject
+      ? `${subject} — ${companyName}`
+      : `Réalisation — ${companyName}`;
+
+    return index < combinationCount
+      ? baseTitle
+      : `${baseTitle} · ${String(index + 1).padStart(2, "0")}`;
+  });
+}
+
+export default function InrSearchGalleryOrbit({
+  companyName,
+  profession,
+  city,
+  services,
+  zones,
+  media,
+}: Props) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
   const returnFocusRef = useRef<HTMLElement | null>(null);
   const total = media.length;
   const activeMedia = media[activeIndex] || media[0];
-  const activeTitle = mediaTitle(activeIndex);
+  const mediaTitles = buildMediaTitles(media, companyName, profession, city, services, zones);
+  const activeTitle = mediaTitles[activeIndex] || `Réalisation — ${companyName}`;
   const context = [profession, city].filter(Boolean).join(" · ");
 
   const move = useCallback((offset: number) => {
@@ -125,20 +186,23 @@ export default function InrSearchGalleryOrbit({ companyName, profession, city, m
       </div>
 
       <div className={styles.galleryOrbitRail} data-local-carousel role="list" aria-label="Toutes les réalisations">
-        {media.map((item, index) => (
-          <button
-            type="button"
-            className={styles.galleryOrbitRailItem}
-            data-active={activeIndex === index ? "true" : "false"}
-            key={`${item.id}-rail`}
-            onClick={() => setActiveIndex(index)}
-            role="listitem"
-            aria-label={`Afficher ${mediaTitle(index)}`}
-          >
-            <Image src={item.url} alt={`${mediaTitle(index)} — ${companyName}`} width={320} height={220} sizes="128px" loading="lazy" unoptimized />
-            <span>{mediaTitle(index)}</span>
-          </button>
-        ))}
+        {media.map((item, index) => {
+          const itemTitle = mediaTitles[index] || `Réalisation — ${companyName}`;
+          return (
+            <button
+              type="button"
+              className={styles.galleryOrbitRailItem}
+              data-active={activeIndex === index ? "true" : "false"}
+              key={`${item.id}-rail`}
+              onClick={() => setActiveIndex(index)}
+              role="listitem"
+              aria-label={`Afficher ${itemTitle}`}
+            >
+              <Image src={item.url} alt={`${itemTitle} — ${companyName}`} width={320} height={220} sizes="128px" loading="lazy" unoptimized />
+              <span>{itemTitle}</span>
+            </button>
+          );
+        })}
       </div>
 
       {typeof document !== "undefined" && lightboxOpen && activeMedia

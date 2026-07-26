@@ -142,6 +142,7 @@ export default function InrSearchLeadForm({ slug, companyName, modal = false }: 
           <form onSubmit={submit} noValidate>
             <input
               className={styles.honeypot}
+              name="website"
               tabIndex={-1}
               autoComplete="off"
               aria-hidden="true"
@@ -153,6 +154,7 @@ export default function InrSearchLeadForm({ slug, companyName, modal = false }: 
               <label>
                 <span>Nom et prénom <b>*</b></span>
                 <input
+                  name="displayName"
                   value={form.displayName}
                   onChange={(event) => update("displayName", event.target.value)}
                   autoComplete="name"
@@ -163,6 +165,7 @@ export default function InrSearchLeadForm({ slug, companyName, modal = false }: 
               <label>
                 <span>Entreprise</span>
                 <input
+                  name="companyName"
                   value={form.companyName}
                   onChange={(event) => update("companyName", event.target.value)}
                   autoComplete="organization"
@@ -173,6 +176,7 @@ export default function InrSearchLeadForm({ slug, companyName, modal = false }: 
               <label>
                 <span>Téléphone</span>
                 <input
+                  name="phone"
                   value={form.phone}
                   onChange={(event) => update("phone", event.target.value)}
                   autoComplete="tel"
@@ -184,6 +188,7 @@ export default function InrSearchLeadForm({ slug, companyName, modal = false }: 
               <label>
                 <span>Email</span>
                 <input
+                  name="email"
                   value={form.email}
                   onChange={(event) => update("email", event.target.value)}
                   autoComplete="email"
@@ -198,6 +203,7 @@ export default function InrSearchLeadForm({ slug, companyName, modal = false }: 
             <label className={styles.messageField}>
               <span>Votre demande</span>
               <textarea
+                name="message"
                 value={form.message}
                 onChange={(event) => update("message", event.target.value)}
                 rows={5}
@@ -207,7 +213,7 @@ export default function InrSearchLeadForm({ slug, companyName, modal = false }: 
             </label>
 
             <label className={styles.consent}>
-              <input type="checkbox" checked={form.consent} onChange={(event) => update("consent", event.target.checked)} />
+              <input name="consent" type="checkbox" checked={form.consent} onChange={(event) => update("consent", event.target.checked)} />
               <span>J’accepte que mes coordonnées soient transmises à {companyName} afin d’être recontacté. Consultez la <Link href="/legal/confidentialite" target="_blank">politique de confidentialité</Link>.</span>
             </label>
 

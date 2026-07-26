@@ -101,7 +101,7 @@ export default function InrSearchServicesOrbit({ companyName, services, audience
           <span className={styles.servicesOrbitEyebrow}>Accélérateur d’expertises</span>
           <h2 id="prestations-title">Les prestations de {companyName}</h2>
           <p>
-            Choisissez le besoin qui ressemble au vôtre : iNrSearch le traduit en prestation claire pour contacter {companyName} avec une demande mieux cadrée.
+            Choisissez le besoin qui ressemble au vôtre : iNr’Search le traduit en prestation claire pour contacter {companyName} avec une demande mieux cadrée.
           </p>
         </div>
 

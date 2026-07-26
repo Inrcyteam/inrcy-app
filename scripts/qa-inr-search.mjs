@@ -149,7 +149,7 @@ check("Animations respectent la réduction des mouvements", publicExperience.inc
 check("Version imprimable verticale disponible", publicCss.includes("@media print") && publicCss.includes(".orbitViewport") && publicCss.includes("display: block !important"));
 check("Mode contraste forcé pris en charge", publicCss.includes("@media (forced-colors: active)"));
 check("Modales restaurent le focus", publicNews.includes("returnFocusRef") && publicGallery.includes("returnFocusRef") && publicNews.includes("closeButtonRef") && publicGallery.includes("closeButtonRef"));
-check("Métadonnées publiques centrées sur l’entreprise", publicPage.includes("const title = data.pageTitle") && publicPage.includes("siteName: data.companyName"));
+check("Métadonnées publiques centrées sur l’entreprise", publicPage.includes("const title = resolveSeoTitle(data)") && publicPage.includes("siteName: data.companyName"));
 check("Prestations structurées avec description et fournisseur", publicPage.includes("serviceType: service") && publicPage.includes("description: buildServiceDescription(service, data)") && publicPage.includes('provider: { "@id"'));
 check("Actualités structurées avec URL d’ancrage", publicPage.includes("#actualite-${index + 1}") && publicNews.includes('id={`actualite-${index + 1}`}'));
 check("Sections décrites comme éléments de page", publicPage.includes('"@type": "WebPageElement"') && publicPage.includes("hasPart:"));

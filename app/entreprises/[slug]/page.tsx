@@ -214,7 +214,7 @@ function buildFactualSummary(data: InrSearchPublicPageData) {
     ? `Elle propose notamment les prestations suivantes : ${joinFrenchList(data.services.slice(0, 5))}.`
     : "";
   const zoneSentence = data.zones.length
-    ? `Elle intervient notamment à ${joinFrenchList(data.zones.slice(0, 8))}.`
+    ? `Elle intervient notamment dans les zones suivantes : ${joinFrenchList(data.zones.slice(0, 8))}.`
     : "";
   const audienceSentence = data.customerTypes.length
     ? `Ses prestations s’adressent notamment aux ${joinFrenchList(data.customerTypes.map(lowerInitial))}.`
@@ -245,7 +245,7 @@ function buildPresentationLead(data: InrSearchPublicPageData) {
     ? `Ses prestations s’adressent aux ${joinFrenchList(data.customerTypes.map(lowerInitial))}.`
     : "";
   const zones = data.zones.length
-    ? `Elle intervient notamment à ${joinFrenchList(data.zones.slice(0, 4))}.`
+    ? `Elle intervient notamment dans les zones suivantes : ${joinFrenchList(data.zones.slice(0, 4))}.`
     : "";
 
   const generatedIdentity = [
@@ -333,6 +333,26 @@ function buildSeoTitle(data: InrSearchPublicPageData) {
   return compactMetaText(`${data.companyName}, ${activity}${location}${suffix}`, 70);
 }
 
+function normalizeMetaComparison(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("fr-FR")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function resolveSeoTitle(data: InrSearchPublicPageData) {
+  const customTitle = data.pageTitle.trim();
+  if (
+    !customTitle
+    || normalizeMetaComparison(customTitle) === normalizeMetaComparison(data.companyName)
+  ) {
+    return buildSeoTitle(data);
+  }
+  return compactMetaText(customTitle, 70);
+}
+
 function buildSeoDescription(data: InrSearchPublicPageData) {
   const activity = data.profession || data.sectorLabel || "entreprise";
   const location = data.city ? ` à ${data.city}` : "";
@@ -342,9 +362,13 @@ function buildSeoDescription(data: InrSearchPublicPageData) {
   const zones = data.zones.length
     ? ` Intervention : ${joinFrenchList(data.zones.slice(0, 3))}.`
     : "";
-  const lead = data.description || data.pageDescription;
+  const identity = `${data.companyName}, ${activity}${location}`;
+  const lead = (data.pageDescription || data.description).trim();
+  const base = lead && normalizeMetaComparison(lead).startsWith(normalizeMetaComparison(identity))
+    ? lead
+    : `${identity}. ${lead}`;
   return compactMetaText(
-    `${data.companyName}, ${activity}${location}. ${lead}${services}${zones}`,
+    `${base}${services}${zones}`,
     160,
   );
 }
@@ -461,7 +485,7 @@ function buildJsonLd(data: InrSearchPublicPageData) {
       description: buildServiceDescription(service, data),
       provider: { "@id": `${buildInrSearchPublicUrl(data.slug)}#business` },
       areaServed: data.zones.length
-        ? data.zones.map((zone) => ({ "@type": "City", name: zone }))
+        ? data.zones.map((zone) => ({ "@type": "AdministrativeArea", name: zone }))
         : undefined,
     },
   }));
@@ -515,7 +539,7 @@ function buildJsonLd(data: InrSearchPublicPageData) {
         }
       : undefined,
     areaServed: data.zones.length
-      ? data.zones.map((zone) => ({ "@type": "City", name: zone }))
+      ? data.zones.map((zone) => ({ "@type": "AdministrativeArea", name: zone }))
       : undefined,
     openingHours: data.openingHours || undefined,
     openingHoursSpecification: buildOpeningHoursSpecification(data),
@@ -652,7 +676,7 @@ export async function generateMetadata({
   }
 
   const canonical = buildInrSearchPublicUrl(data.slug);
-  const title = data.pageTitle || buildSeoTitle(data);
+  const title = resolveSeoTitle(data);
   const description = buildSeoDescription(data);
   const image = data.logoUrl || data.media[0]?.url || undefined;
 
@@ -1062,6 +1086,8 @@ export default async function InrSearchCompanyPage({ params }: PageProps) {
               companyName={data.companyName}
               profession={data.profession || data.sectorLabel}
               city={data.city}
+              services={data.services}
+              zones={data.zones}
               media={data.media}
             />
           </section>

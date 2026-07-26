@@ -36,7 +36,7 @@ test("directory changes trigger an authenticated WordPress purge", () => {
 test("the WordPress plugin invalidates every filter and page cache atomically", () => {
   const plugin = read("ops/wordpress-directory-plugin/inrcy-directory.php");
 
-  assert.match(plugin, /Version: 1\.2\.0/);
+  assert.match(plugin, /Version: 1\.3\.0/);
   assert.match(plugin, /register_rest_route\(/);
   assert.match(plugin, /'\/directory-cache\/purge'/);
   assert.match(plugin, /hash_hmac\('sha256', \$timestamp \. '\.' \. \$request->get_body\(\), \$secret\)/);
@@ -47,4 +47,21 @@ test("the WordPress plugin invalidates every filter and page cache atomically", 
     plugin,
     /'inrcy_directory_' \. inrcy_directory_cache_version\(\) \. '_' \. md5\(\$url\)/,
   );
+});
+
+test("the WordPress directory 1.3 is accessible, responsive and machine-readable", () => {
+  const plugin = read("ops/wordpress-directory-plugin/inrcy-directory.php");
+
+  assert.match(plugin, /'@type' => 'CollectionPage'/);
+  assert.match(plugin, /'@type' => 'LocalBusiness'/);
+  assert.match(plugin, /function inrcy_directory_body_class/);
+  assert.match(plugin, /\.ast-article-single>\.entry-header\{display:none\}/);
+  assert.doesNotMatch(plugin, /<h2><a href=/);
+  assert.match(plugin, /Voir le profil iNr’Search de %s/);
+  assert.match(plugin, /inrcy-directory__join/);
+  assert.match(plugin, /min-width:44px;min-height:44px/);
+  assert.match(plugin, /@media \(max-width:700px\)/);
+  assert.match(plugin, /@media \(prefers-reduced-motion:reduce\)/);
+  assert.match(plugin, /rank_math\/opengraph\/facebook\/image/);
+  assert.match(plugin, /rank_math\/opengraph\/twitter\/image/);
 });

@@ -219,7 +219,9 @@ function normalizeSections(value: unknown): InrSearchSections {
 
 function listFromUnknown(value: unknown): string[] {
   const raw = Array.isArray(value)
-    ? value
+    ? value.flatMap((item) =>
+      typeof item === "string" ? item.split(/\r?\n/) : [item],
+    )
     : typeof value === "string"
       ? value.split(/\r?\n|,|;/)
       : [];
@@ -227,7 +229,13 @@ function listFromUnknown(value: unknown): string[] {
   return Array.from(
     new Set(
       raw
-        .map((item) => clean(item, 180))
+        .map((item) =>
+          clean(item, 180)
+            .replace(/^(?:[-–—•·▪◦*]+|\d+[.)])\s*/u, "")
+            .replace(/^(?:et|ou)\s+/iu, "")
+            .replace(/\s+/g, " ")
+            .trim(),
+        )
         .filter(Boolean),
     ),
   ).slice(0, 40);
@@ -285,9 +293,12 @@ function normalizeServiceDescriptionMap(...values: unknown[]): InrSearchServiceD
 function normalizeExternalUrl(value: unknown): string {
   const raw = clean(value, 1000);
   if (!raw) return "";
-  const withProtocol = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
   try {
-    const url = new URL(withProtocol);
+    const url = raw.startsWith("//")
+      ? new URL(`https:${raw}`)
+      : raw.startsWith("/")
+        ? new URL(raw, PUBLIC_ORIGIN)
+        : new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`);
     if (!/^https?:$/.test(url.protocol)) return "";
     return url.toString();
   } catch {
@@ -512,7 +523,7 @@ function buildFaq(input: {
   if (input.zones.length) {
     faq.push({
       question: `Dans quelles zones intervient ${input.companyName} ?`,
-      answer: `${input.companyName} intervient notamment à ${input.zones.join(", ")}. La disponibilité exacte dépend du besoin et peut être confirmée directement avec l’entreprise.`,
+      answer: `${input.companyName} intervient notamment dans les zones suivantes : ${input.zones.join(", ")}. La disponibilité exacte dépend du besoin et peut être confirmée directement avec l’entreprise.`,
     });
   }
   if (input.openingDays || input.openingHours) {
@@ -718,8 +729,8 @@ async function loadInrSearchPublicPageUncached(slug: string): Promise<InrSearchP
     || `${companyName}${profession ? `, ${profession.toLowerCase()}` : ""}${city ? ` à ${city}` : ""}.`;
 
   const websiteUrl = normalizeExternalUrl(
-    channelStates.site_web.url
-      || channelStates.site_inrcy.url
+    channelStates.site_inrcy.url
+      || channelStates.site_web.url
       || siteConfig.site_url,
   );
   const googleBusinessUrl = normalizeExternalUrl(channelStates.gmb.url);

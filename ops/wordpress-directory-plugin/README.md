@@ -6,7 +6,7 @@ Ce plugin affiche les profils iNr’Search autorisés dans une page HTML WordPre
 
 1. Déployer d’abord la version iNr’Search qui contient `/api/public/inrsearch/directory`.
 2. Dans WordPress : **Extensions → Ajouter une extension → Téléverser une extension**.
-3. Installer puis activer `inrcy-directory.zip`.
+3. Installer puis activer `inrcy-directory-1.3.0.zip`.
 
 ## Configuration de la purge immédiate
 
@@ -57,7 +57,18 @@ Un profil n’est envoyé par l’API que si le professionnel a connecté sa pag
 
 ## Ordre de déploiement
 
-1. Installer cette version `1.2.0` du plugin.
+1. Installer cette version `1.3.0` du plugin.
 2. Ajouter `INRCY_DIRECTORY_PURGE_SECRET` dans `wp-config.php`.
 3. Déployer l’application corrigée avec le même secret dans Vercel.
 4. Tester successivement l’inclusion puis l’exclusion d’une fiche.
+
+## Nouveautés de la version 1.3
+
+- design de l’annuaire isolé du thème WordPress pour éviter les collisions de styles ;
+- titre WordPress dupliqué masqué sur la page contenant le shortcode ;
+- grille plus dense sur ordinateur et cartes plus lisibles sur mobile ;
+- carte entièrement cliquable avec libellé accessible et zones tactiles d’au moins 44 px ;
+- appel à l’action pour activer iNr’Search et choisir la diffusion dans l’annuaire ;
+- données structurées `CollectionPage`, `ItemList` et `LocalBusiness` ;
+- titre, description et image de partage Rank Math renforcés ;
+- animations neutralisées lorsque le visiteur préfère réduire les mouvements.
