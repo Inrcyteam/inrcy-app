@@ -105,6 +105,21 @@ export default function InrSearchStrengthsOrbit({ companyName, strengths, inrBad
       <div className={styles.strengthOrbitStage}>
         <div className={styles.strengthNewtonScene} data-direction={impulseDirection}>
           <div className={styles.strengthNewtonFrame} aria-hidden="true"><span /><span /></div>
+          <div className={styles.strengthDesktopList} aria-label="Liste des points forts">
+            {cradleSlots.map((strength, index) => (
+              <button
+                type="button"
+                key={`${strength || "empty"}-desktop-list-${index}`}
+                data-active={Boolean(strength) && index === activeIndex ? "true" : "false"}
+                onClick={() => activate(index)}
+                aria-current={Boolean(strength) && index === activeIndex ? "true" : undefined}
+                disabled={!strength}
+              >
+                <span>{String(index + 1).padStart(2, "0")}</span>
+                <strong>{strength}</strong>
+              </button>
+            ))}
+          </div>
           <div
             className={styles.strengthNewtonBalls}
             key={impulse}

@@ -15686,6 +15686,10 @@
   letter-spacing: -.06em;
 }
 
+.strengthDesktopList {
+  display: none;
+}
+
 @media (min-width: 901px) {
   .servicesOrbitExperience,
   .galleryOrbitExperience,
@@ -15806,13 +15810,32 @@
 
   .servicesOrbitCard,
   .servicesOrbitCard[data-active="true"] {
-    width: clamp(126px, 10.5vw, 158px) !important;
+    width: clamp(142px, 11.2vw, 174px) !important;
     min-height: 58px !important;
+    padding: 8px 10px !important;
+    grid-template-columns: 32px minmax(0, 1fr) !important;
+    gap: 8px !important;
     transform:
       translate(-50%, -50%)
       rotate(var(--service-angle))
       translateX(clamp(145px, 12.5vw, 185px))
       rotate(calc(var(--service-angle) * -1)) !important;
+  }
+
+  .servicesOrbitCard .servicesOrbitGlyph {
+    width: 32px !important;
+    height: 32px !important;
+  }
+
+  .servicesOrbitCard strong {
+    min-width: 0;
+    font-size: 11px !important;
+    line-height: 1.18 !important;
+    overflow-wrap: normal !important;
+    word-break: normal !important;
+    hyphens: none !important;
+    white-space: normal !important;
+    text-wrap: balance;
   }
 
   .servicesAccelerator {
@@ -15931,6 +15954,79 @@
   .strengthBadgeAction,
   .faqCarouselCard > button {
     flex: 0 0 auto;
+  }
+
+  .strengthDesktopList {
+    position: absolute;
+    z-index: 8;
+    left: 3.2%;
+    top: 12%;
+    width: clamp(180px, 17vw, 232px);
+    display: grid;
+    gap: 7px;
+  }
+
+  .strengthDesktopList button {
+    width: 100%;
+    min-height: 38px;
+    padding: 6px 11px;
+    display: grid;
+    grid-template-columns: 29px minmax(0, 1fr);
+    align-items: center;
+    gap: 9px;
+    border: 1px solid rgba(157, 186, 255, .13);
+    border-radius: 13px;
+    color: rgba(232, 238, 255, .7);
+    text-align: left;
+    background: rgba(8, 18, 50, .72);
+    box-shadow: inset 0 1px rgba(255, 255, 255, .04);
+    cursor: pointer;
+    font: inherit;
+    transition: color .2s ease, border-color .2s ease, background .2s ease, transform .2s ease;
+  }
+
+  .strengthDesktopList button:hover,
+  .strengthDesktopList button:focus-visible,
+  .strengthDesktopList button[data-active="true"] {
+    color: #fff;
+    border-color: rgba(78, 224, 255, .4);
+    background: linear-gradient(135deg, rgba(21, 62, 103, .92), rgba(32, 25, 78, .92));
+    transform: translateX(4px);
+  }
+
+  .strengthDesktopList button:focus-visible {
+    outline: 2px solid rgba(91, 229, 255, .72);
+    outline-offset: 2px;
+  }
+
+  .strengthDesktopList button > span {
+    color: #73e9ff;
+    font-size: 9px;
+    font-weight: 950;
+    letter-spacing: .08em;
+  }
+
+  .strengthDesktopList button > strong {
+    min-width: 0;
+    font-size: 11px;
+    line-height: 1.18;
+    overflow-wrap: normal;
+    word-break: normal;
+    hyphens: none;
+  }
+
+  .strengthNewtonFrame {
+    left: 28% !important;
+    right: 7% !important;
+  }
+
+  .strengthNewtonBalls {
+    left: 31% !important;
+    right: 10% !important;
+  }
+
+  .strengthNewtonBall > strong {
+    display: none !important;
   }
 }
 
