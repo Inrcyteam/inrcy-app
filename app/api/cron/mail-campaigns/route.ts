@@ -3,6 +3,7 @@ import { processPendingMailCampaigns } from "@/lib/crmCampaigns";
 import { captureApiException } from "@/lib/observability/sentry";
 
 export const runtime = "nodejs";
+export const maxDuration = 120;
 
 function isAuthorizedCron(req: Request) {
   const cronSecret = process.env.VERCEL_CRON_SECRET || process.env.CRON_SECRET || "";

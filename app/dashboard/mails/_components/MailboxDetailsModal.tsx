@@ -40,6 +40,7 @@ import { getUserFacingMailError } from "@/lib/mailDeliveryErrors";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import {
   MAILBOX_RECIPIENTS_PAGE_SIZE,
+  type CampaignExperienceReport,
   type CampaignRecipientsFilterId,
   type PublicationEditForm,
   campaignCounts,
@@ -49,6 +50,7 @@ import {
   extractPublicationParts,
   firstNonEmpty,
   folderLabel,
+  formatCampaignDuration,
   formatCampaignFilterLabel,
   formatCampaignProgress,
   formatChannelLabel,
@@ -80,11 +82,31 @@ function formatCampaignProgressFromHealth(raw: any, health: any | null) {
   const queued = Math.max(0, Number(health.queued ?? raw?.queued_count ?? 0) || 0);
   const failed = Math.max(0, Number(health.failed ?? raw?.failed_count ?? 0) || 0);
 
-  const bits = [`${sent}/${total || sent} envoyés`];
+  const bits = [`${sent}/${total || sent} acceptés`];
   if (processing > 0) bits.push(`${processing} en cours`);
   if (queued > 0) bits.push(`${queued} en attente`);
   if (failed > 0) bits.push(`${failed} en échec`);
   return bits.join(" • ");
+}
+
+function campaignStatusLabel(statusValue: unknown) {
+  const status = String(statusValue || "").toLowerCase();
+  if (status === "queued") return "En attente de distribution";
+  if (status === "processing") return "Distribution en cours";
+  if (status === "paused") return "Campagne en pause";
+  if (status === "partial") return "Terminée avec des erreurs";
+  if (status === "failed") return "Campagne en échec";
+  if (status === "completed" || status === "sent") return "Campagne terminée";
+  return "Suivi de campagne";
+}
+
+function completionEmailLabel(statusValue: unknown) {
+  const status = String(statusValue || "pending").toLowerCase();
+  if (status === "sent") return "Bilan envoyé";
+  if (status === "sending") return "Envoi du bilan en cours";
+  if (status === "failed") return "Bilan non envoyé";
+  if (status === "skipped") return "Bilan non configuré";
+  return "Bilan en attente";
 }
 
 type PublicationEditVideoState = {
@@ -131,6 +153,8 @@ type MailboxDetailsModalProps = {
   setCampaignRecipientsFilter: React.Dispatch<React.SetStateAction<CampaignRecipientsFilterId>>;
   campaignHealth: any | null;
   campaignHealthLoading: boolean;
+  campaignReport: CampaignExperienceReport | null;
+  campaignSummaryBusyId: string | null;
   campaignActionBusyId: string | null;
   publicationEditForm: PublicationEditForm;
   setPublicationEditForm: React.Dispatch<React.SetStateAction<PublicationEditForm>>;
@@ -155,6 +179,7 @@ type MailboxDetailsModalProps = {
   saveChannelPublication: () => Promise<void>;
   deleteChannelPublication: () => Promise<void>;
   retryCampaignFailedRecipients: (campaignId: string) => Promise<void>;
+  resendCampaignCompletionSummary: (campaignId: string) => Promise<void>;
   openCampaignComposeFromHistory: (item: any, mode: "reuse" | "resend") => Promise<void>;
   deleteHistoryEntry: (item: any) => Promise<void>;
   loadCampaignRecipients: (campaignId: string, targetPage?: number, targetFilter?: CampaignRecipientsFilterId) => Promise<void>;
@@ -345,6 +370,8 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
     setCampaignRecipientsFilter,
     campaignHealth,
     campaignHealthLoading,
+    campaignReport,
+    campaignSummaryBusyId,
     campaignActionBusyId,
     publicationEditForm,
     setPublicationEditForm,
@@ -369,6 +396,7 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
     saveChannelPublication,
     deleteChannelPublication,
     retryCampaignFailedRecipients,
+    resendCampaignCompletionSummary,
     openCampaignComposeFromHistory,
     deleteHistoryEntry,
     loadCampaignRecipients,
@@ -935,6 +963,73 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                             </>
                           ) : detailsItem.source === "mail_campaigns" ? (
                             <>
+                              <div
+                                style={{
+                                  padding: 16,
+                                  borderRadius: 16,
+                                  border: "1px solid rgba(76,195,255,0.20)",
+                                  background: "rgba(76,195,255,0.06)",
+                                  marginBottom: 14,
+                                }}
+                              >
+                                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                                  <div>
+                                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)", marginBottom: 4 }}>Suivi automatique toutes les 10 secondes</div>
+                                    <div style={{ fontSize: 17, fontWeight: 800 }}>
+                                      {campaignStatusLabel(campaignReport?.status || (detailsItem as any).raw?.status)}
+                                    </div>
+                                  </div>
+                                  <div style={{ fontSize: 28, fontWeight: 900 }}>
+                                    {campaignReport?.progressPercent ?? Math.max(0, Number((detailsItem as any).raw?.progress_percent || 0))}%
+                                  </div>
+                                </div>
+                                <div style={{ height: 9, borderRadius: 999, background: "rgba(255,255,255,0.10)", overflow: "hidden", marginTop: 12 }}>
+                                  <div
+                                    style={{
+                                      width: `${Math.max(0, Math.min(100, campaignReport?.progressPercent ?? Number((detailsItem as any).raw?.progress_percent || 0)))}%`,
+                                      height: "100%",
+                                      borderRadius: 999,
+                                      background: "linear-gradient(90deg, rgba(76,195,255,0.85), rgba(120,105,255,0.90))",
+                                      transition: "width 300ms ease",
+                                    }}
+                                  />
+                                </div>
+                                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10, marginTop: 14 }}>
+                                  <div>
+                                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.58)" }}>Temps restant estimé</div>
+                                    <div style={{ marginTop: 3, fontWeight: 700 }}>
+                                      {campaignReport?.estimatedRemainingMs != null
+                                        ? formatCampaignDuration(campaignReport.estimatedRemainingMs)
+                                        : "Calcul en cours"}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.58)" }}>Fin estimée</div>
+                                    <div style={{ marginTop: 3, fontWeight: 700 }}>
+                                      {campaignReport?.estimatedCompletionAt
+                                        ? new Date(campaignReport.estimatedCompletionAt).toLocaleString()
+                                        : "—"}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.58)" }}>Durée écoulée</div>
+                                    <div style={{ marginTop: 3, fontWeight: 700 }}>
+                                      {campaignReport?.elapsedMs != null ? formatCampaignDuration(campaignReport.elapsedMs) : "—"}
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <div style={{ fontSize: 11, color: "rgba(255,255,255,0.58)" }}>Bilan de campagne</div>
+                                    <div style={{ marginTop: 3, fontWeight: 700 }}>
+                                      {completionEmailLabel(campaignReport?.completionEmail.status || (detailsItem as any).raw?.completion_email_status)}
+                                    </div>
+                                  </div>
+                                </div>
+                                {campaignReport?.completionEmail.lastError ? (
+                                  <div style={{ marginTop: 10, color: "#ffb0b0", fontSize: 12 }}>
+                                    {campaignReport.completionEmail.lastError}
+                                  </div>
+                                ) : null}
+                              </div>
                               <div className={styles.metaGrid}>
                                 <div className={styles.metaRow}>
                                   <div className={styles.metaKey}>Boîte d’envoi</div>
@@ -948,6 +1043,16 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                   <div className={styles.metaKey}>Progression</div>
                                   <div className={styles.metaVal}>{formatCampaignProgressFromHealth((detailsItem as any).raw || {}, campaignHealth)}</div>
                                 </div>
+                                {String((detailsItem as any).raw?.status || "").toLowerCase() === "paused" ? (
+                                  <div className={styles.metaRow}>
+                                    <div className={styles.metaKey}>Reprise</div>
+                                    <div className={styles.metaVal}>
+                                      {(detailsItem as any).raw?.resume_at
+                                        ? `Automatique le ${new Date((detailsItem as any).raw.resume_at).toLocaleString()}`
+                                        : "Manuelle après correction de la boîte"}
+                                    </div>
+                                  </div>
+                                ) : null}
                                 <div className={styles.metaRow}>
                                   <div className={styles.metaKey}>Objet</div>
                                   <div className={styles.metaVal}>{detailsItem.subject || detailsItem.title || "—"}</div>
@@ -961,7 +1066,11 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                     onClick={() => void retryCampaignFailedRecipients(detailsItem.id)}
                                     disabled={campaignActionBusyId === detailsItem.id}
                                   >
-                                    {campaignActionBusyId === detailsItem.id ? "Relance…" : "Relancer les échecs"}
+                                    {campaignActionBusyId === detailsItem.id
+                                      ? "Relance…"
+                                      : String((detailsItem as any).raw?.status || "").toLowerCase() === "paused"
+                                        ? "Reprendre la campagne"
+                                        : "Relancer les échecs"}
                                   </button>
                                 ) : null}
                                 <button
@@ -978,6 +1087,20 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                 >
                                   {campaignRecipientsLoading || campaignHealthLoading ? "Actualisation…" : "Rafraîchir le suivi"}
                                 </button>
+                                {["completed", "partial", "failed"].includes(String(campaignReport?.status || (detailsItem as any).raw?.status || "").toLowerCase()) ? (
+                                  <button
+                                    type="button"
+                                    className={styles.btnGhost}
+                                    onClick={() => void resendCampaignCompletionSummary(detailsItem.id)}
+                                    disabled={campaignSummaryBusyId === detailsItem.id}
+                                  >
+                                    {campaignSummaryBusyId === detailsItem.id
+                                      ? "Envoi du bilan…"
+                                      : campaignReport?.completionEmail.status === "sent"
+                                        ? "Renvoyer le bilan"
+                                        : "Envoyer le bilan"}
+                                  </button>
+                                ) : null}
                                 <button
                                   type="button"
                                   className={styles.btnGhost}
@@ -1933,9 +2056,27 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                             <div className={styles.detailSectionHeader}>
                               <div className={styles.messageHeaderTitle}>Suivi destinataires</div>
                             </div>
+                            {campaignReport ? (
+                              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 10, marginBottom: 14 }}>
+                                {[
+                                  { label: "Acceptés par le provider", value: campaignReport.counts.accepted },
+                                  { label: "Livraisons confirmées", value: campaignReport.counts.delivered },
+                                  { label: "Rebonds durs", value: campaignReport.counts.hardBounce },
+                                  { label: "Rebonds temporaires", value: campaignReport.counts.softBounce },
+                                ].map((stat) => (
+                                  <div
+                                    key={stat.label}
+                                    style={{ padding: "12px 14px", borderRadius: 14, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.10)" }}
+                                  >
+                                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.68)", marginBottom: 4 }}>{stat.label}</div>
+                                    <div style={{ fontSize: 22, fontWeight: 700 }}>{stat.value}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null}
                             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10, marginBottom: 14 }}>
                               {[
-                                { key: "sent", label: "Envoyés au provider", value: campaignHealth?.sent ?? campaignCounts((detailsItem as any).raw || {}).sent },
+                                { key: "sent", label: "Acceptés par le provider", value: campaignHealth?.sent ?? campaignCounts((detailsItem as any).raw || {}).sent },
                                 { key: "queued", label: "En attente", value: campaignHealth?.queued ?? campaignCounts((detailsItem as any).raw || {}).queued },
                                 { key: "processing", label: "En cours", value: campaignHealth?.processing ?? campaignCounts((detailsItem as any).raw || {}).processing },
                                 { key: "failed", label: "Échecs", value: campaignHealth?.failed ?? campaignCounts((detailsItem as any).raw || {}).failed },

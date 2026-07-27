@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { evaluateCampaignDispatchState, getMailCampaignDeliveryConfig } from "@/lib/crmCampaigns";
+import { evaluateCampaignDispatchState } from "@/lib/crmCampaigns";
+import { getMailCampaignDeliveryConfig } from "@/lib/mailCampaignPacing";
 import { requireUser } from "@/lib/requireUser";
 import { fetchSuppressedEmailsByUser } from "@/lib/mailSuppression";
 import { enforceRateLimit } from "@/lib/rateLimit";
@@ -33,7 +34,7 @@ async function retryCampaignHandler(req: Request, ctx: any) {
 
   const { data: campaign, error: campaignError } = await supabase
     .from("mail_campaigns")
-    .select("id,user_id,status,integration_id")
+    .select("id,user_id,status,integration_id,pause_reason,resume_at")
     .eq("id", campaignId)
     .eq("user_id", activeUserId)
     .maybeSingle();
@@ -87,33 +88,39 @@ async function retryCampaignHandler(req: Request, ctx: any) {
     .map((row: any) => String(row.id || ""))
     .filter(Boolean);
 
-  if (ids.length === 0) {
+  const isPausedCampaign = String(campaign.status || "").toLowerCase() === "paused";
+  if (ids.length === 0 && !isPausedCampaign) {
     return NextResponse.json({ error: blocked > 0 ? "Aucun échec relançable (adresses bloquées ou rebonds durs)." : "Aucun échec à relancer." }, { status: 400 });
   }
 
-  const { error: updateError } = await supabase
-    .from("mail_campaign_recipients")
-    .update({
-      status: "queued",
-      error: null,
-      last_error: null,
-      attempt_count: 0,
-      next_attempt_at: now,
-      processing_started_at: null,
-      updated_at: now,
-      delivery_status: null,
-      delivery_event: null,
-      delivery_last_event_at: null,
-      delivered_at: null,
-      bounced_at: null,
-    })
-    .in("id", ids)
-    .eq("user_id", activeUserId)
-    .eq("status", "failed");
+  if (ids.length > 0) {
+    const { error: updateError } = await supabase
+      .from("mail_campaign_recipients")
+      .update({
+        status: "queued",
+        error: null,
+        last_error: null,
+        attempt_count: 0,
+        next_attempt_at: now,
+        processing_started_at: null,
+        updated_at: now,
+        delivery_status: null,
+        delivery_event: null,
+        delivery_last_event_at: null,
+        delivered_at: null,
+        bounced_at: null,
+        failure_kind: null,
+        failure_retryable: null,
+        provider_status: null,
+      })
+      .in("id", ids)
+      .eq("user_id", activeUserId)
+      .eq("status", "failed");
 
-  if (updateError) {
-    captureApiException(req, updateError, { area: "crm_campaigns", operation: "POST /api/crm/campaigns/:id/retry", statusCode: 500 });
-    return NextResponse.json({ error: updateError.message }, { status: 500 });
+    if (updateError) {
+      captureApiException(req, updateError, { area: "crm_campaigns", operation: "POST /api/crm/campaigns/:id/retry", statusCode: 500 });
+      return NextResponse.json({ error: updateError.message }, { status: 500 });
+    }
   }
 
   const dispatchState = await evaluateCampaignDispatchState({
@@ -130,6 +137,8 @@ async function retryCampaignHandler(req: Request, ctx: any) {
       status: targetStatus,
       finished_at: null,
       last_error: dispatchState.state === "ready" ? null : dispatchState.reason,
+      pause_reason: dispatchState.pauseReason,
+      resume_at: dispatchState.resumeAt,
       updated_at: now,
       last_activity_at: now,
     })
@@ -140,10 +149,12 @@ async function retryCampaignHandler(req: Request, ctx: any) {
     success: true,
     campaignId,
     retried: ids.length,
+    resumed: isPausedCampaign,
     blocked,
     campaignStatus: targetStatus,
     distributionState: dispatchState.state,
     deferredReason: dispatchState.reason,
+    resumeAt: dispatchState.resumeAt,
     batchSize: dispatchState.state === "ready" ? Math.max(1, dispatchState.availableNow) : deliveryConfig.batchSize,
     hourlyLimit: deliveryConfig.hourlyLimit,
     dailyLimit: deliveryConfig.dailyLimit,

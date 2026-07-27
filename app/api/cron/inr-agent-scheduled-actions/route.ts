@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { buildInternalCronHeaders, getAppOriginFromRequest, isAuthorizedCronRequest } from "@/lib/cronAuth";
-import { processPendingMailCampaigns } from "@/lib/crmCampaigns";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export const runtime = "nodejs";
@@ -610,11 +609,8 @@ async function executeMailCampaign(row: ScheduledActionCronRow, origin: string, 
       };
     }
 
-    try {
-      await processPendingMailCampaigns({ campaignIds: [campaignId], maxCampaigns: 1 });
-    } catch (dispatchError) {
-      console.warn("[inr-agent-scheduled-actions] immediate campaign dispatch failed", dispatchError);
-    }
+    // La campagne reste en file d’attente. Le cron dédié /api/cron/mail-campaigns
+    // applique le verrou par boîte, la cadence et les pauses anti-spam.
 
     return {
       ok: true,

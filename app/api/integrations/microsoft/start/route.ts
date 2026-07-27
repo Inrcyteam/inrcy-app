@@ -37,6 +37,7 @@ export async function GET(req: Request) {
       "email",
       "offline_access",
       "Mail.Send",
+      "Mail.Read",
       "User.Read",
     ].join(" ")
   );

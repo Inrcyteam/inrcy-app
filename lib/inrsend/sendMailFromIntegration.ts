@@ -109,6 +109,7 @@ async function buildGmailRawMessage(opts: {
   text: string;
   html: string;
   attachments?: SendMailBinaryAttachment[];
+  unsubscribeUrl?: string;
 }) {
   const rawMessage = await new Promise<Buffer>((resolve, reject) => {
     const composer = new MailComposer({
@@ -118,6 +119,12 @@ async function buildGmailRawMessage(opts: {
       text: opts.text ?? "",
       html: opts.html ?? "",
       date: new Date(),
+      ...(opts.unsubscribeUrl ? {
+        headers: {
+          "List-Unsubscribe": `<${opts.unsubscribeUrl}>`,
+          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        },
+      } : {}),
       attachments: (opts.attachments ?? []).map((attachment) => ({
         filename: attachment.filename || "piece-jointe",
         content: attachment.content,
@@ -142,7 +149,8 @@ async function sendViaGmail(
   subject: string,
   text: string,
   html: string,
-  attachments: SendMailBinaryAttachment[] = []
+  attachments: SendMailBinaryAttachment[] = [],
+  unsubscribeUrl?: string
 ) {
   const accountId = asString(account.id) || "";
   const accessTokenPlain = tryDecryptToken(asString(account.access_token_enc));
@@ -160,7 +168,7 @@ async function sendViaGmail(
   }
 
   const from = asString(account.account_email) || "";
-  const raw = await buildGmailRawMessage({ from, to, subject, text, html, attachments });
+  const raw = await buildGmailRawMessage({ from, to, subject, text, html, attachments, unsubscribeUrl });
   let sendRes = await fetch("https://gmail.googleapis.com/gmail/v1/users/me/messages/send", {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
@@ -186,7 +194,12 @@ async function sendViaGmail(
       await supabaseAdmin.from("integrations").update({ status: "expired" }).eq("id", accountId).eq("user_id", asString(account.user_id) || "");
     }
     const data = await sendRes.text().catch(() => "");
-    throw createMailProviderSendError(data || `Envoi Gmail impossible (${sendRes.status})`, "gmail", sendRes.status);
+    throw createMailProviderSendError(
+      data || `Envoi Gmail impossible (${sendRes.status})`,
+      "gmail",
+      sendRes.status,
+      sendRes.headers.get("retry-after"),
+    );
   }
 
   const data = await sendRes.json().catch(() => ({}));
@@ -244,7 +257,12 @@ async function sendViaMicrosoft(
 
   if (!graphRes.ok) {
     const details = await graphRes.text().catch(() => "");
-    throw createMailProviderSendError(details || `Envoi Outlook impossible (${graphRes.status})`, "microsoft", graphRes.status);
+    throw createMailProviderSendError(
+      details || `Envoi Outlook impossible (${graphRes.status})`,
+      "microsoft",
+      graphRes.status,
+      graphRes.headers.get("retry-after"),
+    );
   }
 
   return { provider: "microsoft" as const, providerMessageId: null, providerThreadId: null };
@@ -256,7 +274,8 @@ async function sendViaImap(
   subject: string,
   text: string,
   html: string,
-  attachments: SendMailBinaryAttachment[] = []
+  attachments: SendMailBinaryAttachment[] = [],
+  unsubscribeUrl?: string
 ) {
   const settings = asRecord(account.settings);
   const imapSettings = asRecord(settings.imap);
@@ -295,6 +314,12 @@ async function sendViaImap(
       subject,
       text,
       html,
+      ...(unsubscribeUrl ? {
+        headers: {
+          "List-Unsubscribe": `<${unsubscribeUrl}>`,
+          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        },
+      } : {}),
       attachments: attachments.map((attachment) => ({
         filename: attachment.filename || "piece-jointe",
         content: attachment.content,
@@ -304,7 +329,28 @@ async function sendViaImap(
       })),
     });
   } catch (error) {
-    throw createMailProviderSendError(error, "imap");
+    const smtpError = asRecord(error);
+    const responseCode = Number(smtpError.responseCode || smtpError.statusCode || 0);
+    throw createMailProviderSendError(
+      error,
+      "imap",
+      Number.isFinite(responseCode) && responseCode > 0 ? responseCode : null,
+    );
+  }
+
+  const acceptedRecipients = Array.isArray(smtpResult?.accepted)
+    ? smtpResult.accepted.map((value: unknown) => String(value || "").trim().toLowerCase()).filter(Boolean)
+    : [];
+  const rejectedRecipients = Array.isArray(smtpResult?.rejected)
+    ? smtpResult.rejected.map((value: unknown) => String(value || "").trim().toLowerCase()).filter(Boolean)
+    : [];
+  const normalizedRecipient = to.trim().toLowerCase();
+  if (rejectedRecipients.includes(normalizedRecipient) || (acceptedRecipients.length > 0 && !acceptedRecipients.includes(normalizedRecipient))) {
+    const smtpResponse = typeof smtpResult?.response === "string" ? smtpResult.response : "";
+    throw createMailProviderSendError(
+      smtpResponse || `Le serveur SMTP n’a pas accepté le destinataire ${to}.`,
+      "imap",
+    );
   }
 
   try {
@@ -316,6 +362,12 @@ async function sendViaImap(
         text,
         html,
         date: new Date(),
+        ...(unsubscribeUrl ? {
+          headers: {
+            "List-Unsubscribe": `<${unsubscribeUrl}>`,
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+          },
+        } : {}),
         attachments: attachments.map((attachment) => ({
           filename: attachment.filename || "piece-jointe",
           content: attachment.content,
@@ -412,13 +464,13 @@ export async function sendMailFromIntegration(params: {
   }
 
   if (provider === "gmail") {
-    return sendViaGmail(account, to, subject, finalText, finalHtml, attachments);
+    return sendViaGmail(account, to, subject, finalText, finalHtml, attachments, params.unsubscribeUrl);
   }
   if (provider === "microsoft") {
     return sendViaMicrosoft(account, to, subject, finalHtml, attachments);
   }
   if (provider === "imap") {
-    return sendViaImap(account, to, subject, finalText, finalHtml, attachments);
+    return sendViaImap(account, to, subject, finalText, finalHtml, attachments, params.unsubscribeUrl);
   }
 
   throw new Error("Provider de messagerie non supporté.");

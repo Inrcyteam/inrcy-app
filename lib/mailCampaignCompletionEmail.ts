@@ -22,7 +22,6 @@ type ProfileRow = {
   first_name?: string | null;
   last_name?: string | null;
   company_legal_name?: string | null;
-  company_name?: string | null;
 };
 
 const FINAL_CAMPAIGN_STATUSES = new Set<MailCampaignStatus>(["completed", "partial", "failed"]);
@@ -95,7 +94,7 @@ function getProfileContactEmail(profile: ProfileRow | null, fallback?: string | 
 function greeting(profile: ProfileRow | null) {
   const firstName = cleanText(profile?.first_name, 80);
   if (firstName) return `Bonjour ${firstName},`;
-  const company = cleanText(profile?.company_legal_name || profile?.company_name, 140);
+  const company = cleanText(profile?.company_legal_name, 140);
   if (company) return `Bonjour ${company},`;
   return "Bonjour,";
 }
@@ -141,22 +140,22 @@ function resolveCampaignToolLabel(row: CampaignRow) {
 function resolveStatusInfo(status: MailCampaignStatus, sentCount: number, failedCount: number) {
   if (status === "completed") {
     return {
-      label: "Campagne réussie",
-      badge: "RÉUSSIE",
+      label: "Campagne terminée",
+      badge: "TERMINÉE",
       color: "#15803d",
       background: "#dcfce7",
       border: "#bbf7d0",
-      intro: "Tous les emails de votre campagne ont bien été pris en charge.",
+      intro: "Tous les emails ont été acceptés par les messageries d’envoi. La réception finale dépend ensuite des serveurs destinataires.",
     };
   }
   if (status === "partial" || (sentCount > 0 && failedCount > 0)) {
     return {
-      label: "Campagne partiellement réussie",
-      badge: "PARTIELLE",
+      label: "Campagne terminée avec des erreurs",
+      badge: "À VÉRIFIER",
       color: "#b45309",
       background: "#fef3c7",
       border: "#fde68a",
-      intro: "Une partie des emails est partie, mais certains destinataires ont rencontré une erreur.",
+      intro: "Une partie des emails a été acceptée par les messageries d’envoi, tandis que certains destinataires ont rencontré une erreur.",
     };
   }
   return {
@@ -265,7 +264,7 @@ function buildCampaignCompletionMail(args: {
                         <tr>
                           ${buildMetric("Statut", statusLabel, statusInfo.background, statusInfo.color)}
                           ${buildMetric("Emails envoyés", String(args.sentCount), "#ecfeff", "#0e7490")}
-                          ${buildMetric("Taux de réussite", `${successRate}%`, "#eef2ff", "#3730a3")}
+                          ${buildMetric("Taux accepté", `${successRate}%`, "#eef2ff", "#3730a3")}
                         </tr>
                         <tr>
                           ${buildMetric("Destinataires", String(args.totalCount), "#f8fafc", "#0f172a")}
@@ -340,7 +339,7 @@ function buildCampaignCompletionMail(args: {
     `Destinataires : ${args.totalCount}`,
     `Emails envoyés : ${args.sentCount}`,
     `Échecs : ${args.failedCount}`,
-    `Taux de réussite : ${successRate}%`,
+    `Taux accepté par les messageries : ${successRate}%`,
     `Démarrage : ${startedAt}`,
     `Fin : ${finishedAt}`,
     lastError ? `Information : ${lastError}` : "",
@@ -358,7 +357,7 @@ function buildCampaignCompletionMail(args: {
 async function fetchProfile(userId: string) {
   const { data, error } = await supabaseAdmin
     .from("profiles")
-    .select("admin_email,contact_email,first_name,last_name,company_legal_name,company_name")
+    .select("admin_email,contact_email,first_name,last_name,company_legal_name")
     .eq("user_id", userId)
     .maybeSingle();
 
@@ -367,6 +366,58 @@ async function fetchProfile(userId: string) {
     return null;
   }
   return (data || null) as ProfileRow | null;
+}
+
+
+function isMissingCompletionClaimRpc(error: unknown) {
+  const code = String((error as { code?: unknown } | null)?.code || "");
+  const message = String((error as { message?: unknown } | null)?.message || "").toLowerCase();
+  return code === "PGRST202" || code === "42883" || message.includes("claim_mail_campaign_completion_email");
+}
+
+async function claimCompletionEmail(campaignId: string, force: boolean) {
+  const { data, error } = await supabaseAdmin.rpc("claim_mail_campaign_completion_email", {
+    p_campaign_id: campaignId,
+    p_force: force,
+  });
+  if (!error) return Boolean(data);
+  if (!isMissingCompletionClaimRpc(error)) throw error;
+
+  const { data: current, error: currentError } = await supabaseAdmin
+    .from("mail_campaigns")
+    .select("id,status,completion_email_status,completion_email_attempts")
+    .eq("id", campaignId)
+    .maybeSingle();
+  if (currentError) throw currentError;
+  if (!current?.id || !["completed", "partial", "failed"].includes(String(current.status || "").toLowerCase())) return false;
+  const emailStatus = String((current as any).completion_email_status || "pending").toLowerCase();
+  if (!force && !["pending", "failed"].includes(emailStatus)) return false;
+  const { error: updateError } = await supabaseAdmin
+    .from("mail_campaigns")
+    .update({
+      completion_email_status: "sending",
+      completion_email_attempts: Math.max(0, Number((current as any).completion_email_attempts || 0)) + 1,
+      completion_email_last_error: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", campaignId);
+  if (updateError) {
+    const message = String((updateError as any)?.message || "").toLowerCase();
+    if (String((updateError as any)?.code || "") === "42703" || message.includes("completion_email_status")) return true;
+    throw updateError;
+  }
+  return true;
+}
+
+async function updateCompletionEmailTracking(campaignId: string, patch: Record<string, unknown>) {
+  const { error } = await supabaseAdmin
+    .from("mail_campaigns")
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq("id", campaignId);
+  if (!error) return;
+  const message = String((error as any)?.message || "").toLowerCase();
+  if (String((error as any)?.code || "") === "42703" || message.includes("completion_email_")) return;
+  throw error;
 }
 
 export async function sendMailCampaignCompletionSummary(campaignId: string, counters?: CampaignCounters) {
@@ -433,4 +484,41 @@ export async function sendMailCampaignCompletionSummary(campaignId: string, coun
   });
 
   return { sent: true, skippedReason: null };
+}
+
+
+export async function sendTrackedMailCampaignCompletionSummary(
+  campaignId: string,
+  counters?: CampaignCounters,
+  options?: { force?: boolean },
+) {
+  const safeCampaignId = cleanText(campaignId, 120);
+  if (!safeCampaignId) return { sent: false, skippedReason: "missing_campaign_id" };
+
+  const claimed = await claimCompletionEmail(safeCampaignId, Boolean(options?.force));
+  if (!claimed) return { sent: false, skippedReason: "completion_email_already_handled" };
+
+  try {
+    const result = await sendMailCampaignCompletionSummary(safeCampaignId, counters);
+    if (result.sent) {
+      await updateCompletionEmailTracking(safeCampaignId, {
+        completion_email_status: "sent",
+        completion_email_sent_at: new Date().toISOString(),
+        completion_email_last_error: null,
+      });
+    } else {
+      await updateCompletionEmailTracking(safeCampaignId, {
+        completion_email_status: "skipped",
+        completion_email_last_error: result.skippedReason || "Bilan non envoyé.",
+      });
+    }
+    return result;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error || "Bilan non envoyé.");
+    await updateCompletionEmailTracking(safeCampaignId, {
+      completion_email_status: "failed",
+      completion_email_last_error: message.slice(0, 1000),
+    });
+    throw error;
+  }
 }

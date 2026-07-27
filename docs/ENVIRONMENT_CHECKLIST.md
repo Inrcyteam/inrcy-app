@@ -88,10 +88,13 @@ Limites optionnelles :
 - [ ] `TX_MAIL_FROM`
 - [ ] `INRSEND_MAIL_WEBHOOK_SECRET`
 - [ ] `INRSEND_WEBHOOK_SECRET`
-- [ ] `INRSEND_CAMPAIGN_BATCH_SIZE`
-- [ ] `INRSEND_CAMPAIGN_HOURLY_LIMIT`
-- [ ] `INRSEND_CAMPAIGN_DAILY_LIMIT`
-- [ ] `INRSEND_CAMPAIGN_MAX_ACTIVE_PER_BOX`
+- [ ] `INRSEND_CAMPAIGN_BATCH_SIZE` (optionnel, maximum de securite : 5)
+- [ ] `INRSEND_CAMPAIGN_DELAY_MS` (optionnel, minimum de securite : 8000)
+- [ ] `INRSEND_CAMPAIGN_BATCH_PAUSE_MS` (optionnel, minimum de securite : 60000)
+- [ ] `INRSEND_CAMPAIGN_HOURLY_LIMIT` (optionnel, maximum de securite : 150)
+- [ ] `INRSEND_CAMPAIGN_DAILY_LIMIT` (optionnel, maximum de securite : 300)
+- [ ] `INRSEND_CAMPAIGN_MAX_ACTIVE_PER_BOX` (verrouille a 1)
+- [ ] `INRSEND_CAMPAIGN_LOCK_LEASE_SECONDS` (optionnel, defaut : 180)
 
 ## IA / Vercel AI Gateway
 
@@ -204,4 +207,4 @@ Configurer les variables canoniques de Production. Le code iNrCy ne route plus v
 - [ ] `NEXT_PUBLIC_INRBADGE_BASE_URL`
 - [ ] `NEXT_PUBLIC_COMMIT_SHA`
 - [ ] `VERCEL_GIT_COMMIT_SHA`
-- [ ] `CRM_CAMPAIGN_MAX_RECIPIENTS`
+- [ ] `CRM_CAMPAIGN_MAX_RECIPIENTS` (optionnel, plafond dur : 300)

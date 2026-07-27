@@ -84,9 +84,17 @@ export async function GET(req: Request) {
 
 export async function POST(req: Request) {
   try {
-    const body = await req.json().catch(() => ({}));
-    const campaignId = String(body?.campaignId || "").trim();
-    const recipientId = String(body?.recipientId || "").trim();
+    const url = new URL(req.url);
+    const contentType = String(req.headers.get("content-type") || "").toLowerCase();
+    let body: Record<string, unknown> = {};
+    if (contentType.includes("application/json")) {
+      body = await req.json().catch(() => ({}));
+    } else if (contentType.includes("application/x-www-form-urlencoded")) {
+      const form = await req.formData().catch(() => null);
+      body = form ? Object.fromEntries(form.entries()) : {};
+    }
+    const campaignId = String(body?.campaignId || url.searchParams.get("campaignId") || "").trim();
+    const recipientId = String(body?.recipientId || url.searchParams.get("recipientId") || "").trim();
     if (!campaignId || !recipientId) {
       return NextResponse.json({ error: "Lien de désinscription incomplet." }, { status: 400 });
     }

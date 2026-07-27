@@ -54,3 +54,25 @@ ops/sql/2026-07-25_dashboard_onboarding_state.sql
 ```
 
 This migration creates an account-scoped onboarding state. Existing accounts are backfilled as completed; future accounts start at profile / pending.
+
+## 2026-07-27 - iNr'Send safe campaigns
+
+Run in this order before deploying Step 2:
+
+```text
+ops/sql/2026-07-27_inrsend_step1_safe_dispatch.sql
+ops/sql/2026-07-27_inrsend_step2_intelligent_campaigns.sql
+```
+
+Step 1 creates the distributed mailbox lock. Step 2 adds campaign pause metadata, failure diagnostics, the per-campaign deduplication key and the atomic recipient claim function.
+
+
+## 2026-07-27 - iNr'Send reputation protection
+
+Run after the Step 1 and Step 2 migrations, before deploying Step 3:
+
+```text
+ops/sql/2026-07-27_inrsend_step3_reputation_protection.sql
+```
+
+Step 3 adds the server-managed mailbox reputation state, DNS authentication audit cache and protected delivery-feedback storage.

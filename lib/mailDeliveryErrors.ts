@@ -10,6 +10,7 @@ export type MailDeliveryErrorKind =
   | "blocked_recipient"
   | "attachment_too_large"
   | "provider_unavailable"
+  | "temporary_recipient"
   | "configuration"
   | "unknown";
 
@@ -23,6 +24,7 @@ export type NormalizedMailDeliveryError = {
   accountLevel: boolean;
   retryable: boolean;
   rawMessage: string;
+  retryAfterMs: number | null;
 };
 
 function providerLabel(provider: MailDeliveryProvider) {
@@ -46,15 +48,37 @@ function rawToString(value: unknown): string {
 
 function extractProviderStatus(raw: string, explicit?: number | null) {
   if (Number.isFinite(Number(explicit))) return Number(explicit);
-  const match = /\b(?:HTTP|status|impossible)\s*\(?\s*(4\d\d|5\d\d)\)?/i.exec(raw) || /\((4\d\d|5\d\d)\)/.exec(raw);
+  const match =
+    /\b(?:HTTP|status|impossible)\s*\(?\s*(4\d\d|5\d\d)\)?/i.exec(raw) ||
+    /\((4\d\d|5\d\d)\)/.exec(raw) ||
+    /(?:^|\s)(4\d\d|5\d\d)(?:\s|$)/.exec(raw);
   return match?.[1] ? Number(match[1]) : null;
+}
+
+export function parseRetryAfterMs(value: unknown) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+
+  const seconds = Number(raw);
+  if (Number.isFinite(seconds) && seconds >= 0) {
+    return Math.min(24 * 60 * 60_000, Math.round(seconds * 1000));
+  }
+
+  const dateMs = Date.parse(raw);
+  if (!Number.isFinite(dateMs)) return null;
+  return Math.max(0, Math.min(24 * 60 * 60_000, dateMs - Date.now()));
 }
 
 function hasAny(rawLower: string, patterns: string[]) {
   return patterns.some((pattern) => rawLower.includes(pattern));
 }
 
-export function normalizeMailDeliveryError(input: unknown, provider?: MailDeliveryProvider, status?: number | null): NormalizedMailDeliveryError {
+export function normalizeMailDeliveryError(
+  input: unknown,
+  provider?: MailDeliveryProvider,
+  status?: number | null,
+  retryAfter?: unknown,
+): NormalizedMailDeliveryError {
   if (input instanceof MailProviderSendError) {
     return input.normalized;
   }
@@ -63,11 +87,13 @@ export function normalizeMailDeliveryError(input: unknown, provider?: MailDelive
   const rawLower = rawMessage.toLowerCase();
   const statusCode = extractProviderStatus(rawMessage, status);
   const label = providerLabel(provider);
+  const retryAfterMs = parseRetryAfterMs(retryAfter);
 
-  const build = (patch: Omit<NormalizedMailDeliveryError, "provider" | "providerStatus" | "rawMessage">): NormalizedMailDeliveryError => ({
+  const build = (patch: Omit<NormalizedMailDeliveryError, "provider" | "providerStatus" | "rawMessage" | "retryAfterMs">): NormalizedMailDeliveryError => ({
     provider: label,
     providerStatus: statusCode,
     rawMessage,
+    retryAfterMs,
     ...patch,
   });
 
@@ -125,13 +151,61 @@ export function normalizeMailDeliveryError(input: unknown, provider?: MailDelive
     });
   }
 
-  if (hasAny(rawLower, ["daily user sending limit exceeded", "user-rate limit exceeded", "quota exceeded", "send quota", "sending limit", "too many messages", "rate limit", "throttl"])) {
+  if (hasAny(rawLower, ["mailbox full", "recipient mailbox full", "over quota", "4.2.2"])) {
     return build({
-      kind: rawLower.includes("rate") || rawLower.includes("throttl") ? "rate_limited" : "quota_exceeded",
+      kind: "temporary_recipient",
+      title: "Boîte destinataire temporairement indisponible",
+      message: "La boîte du destinataire est temporairement pleine ou indisponible. iNrSend réessaiera automatiquement sans interrompre les autres envois.",
+      action: "Laissez iNrSend effectuer un nouvel essai.",
+      accountLevel: false,
+      retryable: true,
+    });
+  }
+
+  if (hasAny(rawLower, [
+    "daily user sending limit exceeded",
+    "daily limit exceeded",
+    "dailylimitexceeded",
+    "user-rate limit exceeded",
+    "userratelimitexceeded",
+    "ratelimitexceeded",
+    "quota exceeded",
+    "quotaexceeded",
+    "send quota",
+    "sending limit",
+    "too many messages",
+    "toomanyrequests",
+    "rate limit",
+    "throttl",
+  ])) {
+    return build({
+      kind: rawLower.includes("rate") || rawLower.includes("throttl") || rawLower.includes("too many") || rawLower.includes("toomany") ? "rate_limited" : "quota_exceeded",
       title: `Limite d’envoi ${label} atteinte`,
       message: `La limite d’envoi de cette boîte ${label} est atteinte pour le moment. Attendez le délai imposé par le fournisseur, puis relancez les échecs.`,
       action: "Attendez le délai fournisseur avant de relancer.",
       accountLevel: true,
+      retryable: true,
+    });
+  }
+
+  if (statusCode === 421 || statusCode === 429) {
+    return build({
+      kind: statusCode === 429 ? "rate_limited" : "provider_unavailable",
+      title: `${label} limite temporairement les envois`,
+      message: `${label} demande de ralentir les envois. La campagne reprendra automatiquement après le délai de sécurité.`,
+      action: "Laissez iNrSend reprendre automatiquement.",
+      accountLevel: true,
+      retryable: true,
+    });
+  }
+
+  if ([450, 451, 452].includes(statusCode || 0)) {
+    return build({
+      kind: "temporary_recipient",
+      title: "Destinataire temporairement indisponible",
+      message: "Le serveur destinataire refuse temporairement ce message. iNrSend réessaiera automatiquement et poursuit les autres contacts.",
+      action: "Laissez iNrSend effectuer un nouvel essai.",
+      accountLevel: false,
       retryable: true,
     });
   }
@@ -180,7 +254,19 @@ export function normalizeMailDeliveryError(input: unknown, provider?: MailDelive
     });
   }
 
-  if (statusCode === 429 || statusCode === 503 || statusCode === 504 || hasAny(rawLower, ["timeout", "etimedout", "econnreset", "econnrefused", "enotfound", "temporarily unavailable", "service unavailable"])) {
+  if (statusCode === 429 || statusCode === 503 || statusCode === 504 || hasAny(rawLower, [
+    "timeout",
+    "etimedout",
+    "econnection",
+    "econnreset",
+    "econnrefused",
+    "enotfound",
+    "connection closed",
+    "socket closed",
+    "temporarily unavailable",
+    "service unavailable",
+    "errorserverbusy",
+  ])) {
     return build({
       kind: "provider_unavailable",
       title: `${label} temporairement indisponible`,
@@ -223,8 +309,13 @@ export class MailProviderSendError extends Error {
   }
 }
 
-export function createMailProviderSendError(input: unknown, provider?: MailDeliveryProvider, status?: number | null) {
-  return new MailProviderSendError(normalizeMailDeliveryError(input, provider, status));
+export function createMailProviderSendError(
+  input: unknown,
+  provider?: MailDeliveryProvider,
+  status?: number | null,
+  retryAfter?: unknown,
+) {
+  return new MailProviderSendError(normalizeMailDeliveryError(input, provider, status, retryAfter));
 }
 
 export function getUserFacingMailError(input: unknown, provider?: MailDeliveryProvider, status?: number | null) {

@@ -1,6 +1,7 @@
 import React from "react";
 import styles from "../mails.module.css";
 import type { MailCampaignRecipientInput } from "@/lib/crmRecipients";
+import type { MailCampaignExperienceReport } from "@/lib/mailCampaignReport";
 import { getUserFacingMailError } from "@/lib/mailDeliveryErrors";
 import {
   getDefaultChannelVideoSettings,
@@ -261,6 +262,9 @@ export type CampaignRecipientLog = {
   delivery_event?: string | null;
   delivery_last_event_at?: string | null;
   delivered_at?: string | null;
+  failure_kind?: string | null;
+  failure_retryable?: boolean | null;
+  provider_status?: number | null;
 };
 
 export type CampaignRecipientsFilterId =
@@ -284,6 +288,8 @@ export type CampaignHealthSummary = {
   blacklist: number;
   retryable: number;
 };
+
+export type CampaignExperienceReport = MailCampaignExperienceReport;
 
 export type SendItem = {
   id: string;
@@ -1514,11 +1520,37 @@ export function campaignCounts(raw: any) {
 
 export function formatCampaignProgress(raw: any) {
   const counts = campaignCounts(raw);
-  const bits = [`${counts.sent}/${counts.total || counts.sent} envoyés`];
+  const bits = [`${counts.sent}/${counts.total || counts.sent} acceptés`];
   if (counts.processing > 0) bits.push(`${counts.processing} en cours`);
   if (counts.queued > 0) bits.push(`${counts.queued} en attente`);
   if (counts.failed > 0) bits.push(`${counts.failed} en échec`);
   return bits.join(" • ");
+}
+
+export function formatCampaignDuration(value: number | null | undefined) {
+  const totalSeconds = Math.max(0, Math.round(Number(value || 0) / 1000));
+  if (!Number.isFinite(totalSeconds) || totalSeconds <= 0) return "moins d’une minute";
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) return `${hours} h ${minutes.toString().padStart(2, "0")}`;
+  if (minutes > 0) return `${minutes} min${seconds >= 30 ? " 30 s" : ""}`;
+  return `${seconds} s`;
+}
+
+export function campaignReportToHealth(report: CampaignExperienceReport | null | undefined): CampaignHealthSummary | null {
+  if (!report) return null;
+  return {
+    total: report.counts.total,
+    queued: report.counts.queued,
+    processing: report.counts.processing,
+    sent: report.counts.sent,
+    failed: report.counts.failed,
+    blocked: report.counts.blocked,
+    opt_out: report.counts.unsubscribed,
+    blacklist: report.counts.blacklist,
+    retryable: report.counts.retryable,
+  };
 }
 
 
@@ -1533,7 +1565,7 @@ export function applyCampaignRecipientsFilter(query: any, filter: CampaignRecipi
     case "failed":
       return query.eq("status", "failed");
     case "blocked":
-      return query.eq("status", "failed").in("suppression_reason", ["opt_out", "blacklist"]);
+      return query.eq("status", "failed").not("suppression_reason", "is", null);
     case "opt_out":
       return query.eq("suppression_reason", "opt_out");
     case "blacklist":
@@ -1573,7 +1605,9 @@ export function getCampaignRecipientStatusLabel(recipient: CampaignRecipientLog)
       return `Délivré • ${new Date(recipient.delivered_at).toLocaleString()}`;
     }
     if (recipient.delivery_status === "accepted") {
-      return recipient.sent_at ? `Envoyé au provider • ${new Date(recipient.sent_at).toLocaleString()}` : "Envoyé au provider";
+      return recipient.sent_at
+        ? `Accepté par la messagerie d’envoi • ${new Date(recipient.sent_at).toLocaleString()}`
+        : "Accepté par la messagerie d’envoi";
     }
     if (recipient.sent_at) {
       return `Envoyé • ${new Date(recipient.sent_at).toLocaleString()}`;
@@ -1588,12 +1622,15 @@ export function getCampaignRecipientStatusLabel(recipient: CampaignRecipientLog)
     if (recipient.suppression_reason === "complaint") return "Bloqué • plainte spam";
     if (recipient.bounce_type === "hard") return "Échec final • rebond dur";
     if (recipient.bounce_type === "soft") return "Échec final • rebond souple";
+    if (recipient.failure_kind === "invalid_recipient") return "Échec final • adresse invalide";
+    if (recipient.failure_kind === "blocked_recipient") return "Échec final • refus destinataire";
     return "Échec final";
   }
 
   if (recipient.status === "processing") return "En cours";
   if (recipient.next_attempt_at) {
-    return `En attente • prochain essai ${new Date(recipient.next_attempt_at).toLocaleString()}`;
+    const retryLabel = recipient.failure_retryable ? "Nouvel essai" : "En attente";
+    return `${retryLabel} • ${new Date(recipient.next_attempt_at).toLocaleString()}`;
   }
   return "En attente";
 }
@@ -1606,7 +1643,14 @@ export function formatOutboxStatusLabel(item: OutboxItem) {
     const counts = campaignCounts(raw);
     if (status === "queued") return `En attente • ${formatCampaignProgress(raw)}`;
     if (status === "processing") return `Campagne en cours • ${formatCampaignProgress(raw)}`;
-    if (status === "paused") return raw?.last_error ? `Campagne en pause • ${getUserFacingMailError(raw.last_error, raw?.provider)}` : `Campagne en pause • ${formatCampaignProgress(raw)}`;
+    if (status === "paused") {
+      const resumeAt = raw?.resume_at ? new Date(raw.resume_at) : null;
+      const hasValidResumeAt = resumeAt && Number.isFinite(resumeAt.getTime());
+      if (hasValidResumeAt) return `Campagne en pause • reprise automatique le ${resumeAt.toLocaleString()}`;
+      return raw?.last_error
+        ? `Campagne en pause • ${getUserFacingMailError(raw.last_error, raw?.provider)}`
+        : `Campagne en pause • ${formatCampaignProgress(raw)}`;
+    }
     if (status === "partial") return `Campagne partielle • ${formatCampaignProgress(raw)}`;
     if (status === "failed") return `Campagne en échec • ${counts.failed}/${counts.total || counts.failed} en échec`;
     if (status === "sent" || status === "completed") return item.sent_at ? `Campagne terminée • ${new Date(item.sent_at).toLocaleString()}` : `Campagne terminée • ${formatCampaignProgress(raw)}`;
@@ -1623,8 +1667,9 @@ export function formatOutboxStatusLabel(item: OutboxItem) {
 
 export function isRetryableCampaignItem(item: OutboxItem | null) {
   if (!item || item.source !== "mail_campaigns") return false;
-  const counts = campaignCounts((item.raw || {}) as any);
-  return counts.failed > 0;
+  const raw = (item.raw || {}) as any;
+  const counts = campaignCounts(raw);
+  return String(raw?.status || item.status || "").toLowerCase() === "paused" || counts.failed > 0;
 }
 
 export function isProtectedSentInvoiceHistoryItem(item: OutboxItem | null | undefined) {

@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { evaluateCampaignDispatchState, getMailCampaignDeliveryConfig } from "@/lib/crmCampaigns";
+import { evaluateCampaignDispatchState } from "@/lib/crmCampaigns";
+import { getMailCampaignDeliveryConfig } from "@/lib/mailCampaignPacing";
+import { estimateCampaignDurationMs } from "@/lib/mailCampaignReport";
+import { resolveMailboxReputationPolicy } from "@/lib/mailboxReputation";
 import { requireUser } from "@/lib/requireUser";
 import { getCronUserIdFromRequest, isAuthorizedCronRequest } from "@/lib/cronAuth";
 import { normalizeCampaignRecipients } from "@/lib/crmRecipients";
@@ -35,6 +38,7 @@ type CampaignRecipientRow = {
   contact_id: string | null;
   display_name: string | null;
   email: string;
+  dispatch_key: string;
   status: "queued";
 };
 
@@ -118,9 +122,22 @@ function isMissingMetadataColumnError(error: { code?: string; message?: string }
   return error?.code === "42703" && message.includes("metadata");
 }
 
+function isMissingStep4CampaignColumnError(error: { code?: string; message?: string } | null | undefined) {
+  const message = String(error?.message || "").toLowerCase();
+  return error?.code === "42703" && (
+    message.includes("progress_percent")
+    || message.includes("estimated_completion_at")
+    || message.includes("report_summary")
+    || message.includes("completion_email_status")
+  );
+}
+
+const HARD_MAX_CAMPAIGN_RECIPIENTS = 300;
+
 function getMaxCampaignRecipients() {
-  const raw = Number(process.env.CRM_CAMPAIGN_MAX_RECIPIENTS || "1000");
-  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 1000;
+  const raw = Number(process.env.CRM_CAMPAIGN_MAX_RECIPIENTS || String(HARD_MAX_CAMPAIGN_RECIPIENTS));
+  if (!Number.isFinite(raw) || raw <= 0) return HARD_MAX_CAMPAIGN_RECIPIENTS;
+  return Math.max(1, Math.min(HARD_MAX_CAMPAIGN_RECIPIENTS, Math.floor(raw)));
 }
 
 function chunkArray<T>(items: T[], size: number) {
@@ -302,7 +319,7 @@ async function createCampaignHandler(req: Request) {
 
   const { data: account, error: accountError } = await supabase
     .from("integrations")
-    .select("id,user_id,provider,category,status,settings")
+    .select("id,user_id,provider,category,status,account_email,settings")
     .eq("id", accountId)
     .eq("user_id", activeUserId)
     .eq("category", "mail")
@@ -446,11 +463,44 @@ async function createCampaignHandler(req: Request) {
       : {}),
   };
 
-  const dispatchState = await evaluateCampaignDispatchState({ userId: activeUserId, integrationId: accountId });
-  const deliveryConfig = getMailCampaignDeliveryConfig();
+  const reputationPolicy = await resolveMailboxReputationPolicy({
+    userId: activeUserId,
+    integrationId: accountId,
+    provider: account.provider,
+    accountEmail: String(account.account_email || "").trim() || null,
+    settings: account.settings && typeof account.settings === "object" ? account.settings as Record<string, unknown> : null,
+  });
+  const deliveryConfig = reputationPolicy.config || getMailCampaignDeliveryConfig();
+  const dispatchState = reputationPolicy.blocked
+    ? {
+        state: "paused" as const,
+        reason: reputationPolicy.blockedReason,
+        pauseReason: "mailbox_reputation_paused",
+        resumeAt: reputationPolicy.resumeAt,
+      }
+    : await evaluateCampaignDispatchState({
+        userId: activeUserId,
+        integrationId: accountId,
+        config: deliveryConfig,
+      });
   const now = new Date().toISOString();
+  campaignMetadata.mailboxReputation = {
+    mode: reputationPolicy.mode,
+    healthStatus: reputationPolicy.healthStatus,
+    domain: reputationPolicy.domainAudit?.domain || null,
+    spf: reputationPolicy.domainAudit?.spf || null,
+    dkim: reputationPolicy.domainAudit?.dkim || null,
+    dmarc: reputationPolicy.domainAudit?.dmarc || null,
+    warnings: reputationPolicy.domainAudit?.warnings || [],
+  };
   const initialStatus = dispatchState.state === "paused" ? "paused" : "queued";
   const initialLastError = dispatchState.state === "ready" ? null : dispatchState.reason;
+  const estimatedDurationMs = estimateCampaignDurationMs({
+    remaining: recipients.length,
+    config: deliveryConfig,
+    resumeAt: dispatchState.resumeAt,
+  });
+  const estimatedCompletionAt = new Date(Date.now() + estimatedDurationMs).toISOString();
 
   const campaignInsertPayload: Record<string, unknown> = {
     user_id: activeUserId,
@@ -477,6 +527,13 @@ async function createCampaignHandler(req: Request) {
     started_at: null,
     finished_at: null,
     last_error: initialLastError,
+    pause_reason: dispatchState.pauseReason,
+    resume_at: dispatchState.resumeAt,
+    progress_percent: 0,
+    estimated_completion_at: estimatedCompletionAt,
+    report_summary: {},
+    report_updated_at: now,
+    completion_email_status: "pending",
     created_at: now,
     updated_at: now,
     last_activity_at: now,
@@ -488,12 +545,16 @@ async function createCampaignHandler(req: Request) {
     .select("id,status")
     .single();
 
-  if (campaignError && isMissingMetadataColumnError(campaignError)) {
-    // Sécurité déploiement : si le SQL étape 9 n'a pas encore été lancé,
-    // les campagnes manuelles continuent de fonctionner. L'icône iNr'Agent
-    // apparaîtra pour les campagnes dès que la colonne metadata existera.
+  if (campaignError && (isMissingMetadataColumnError(campaignError) || isMissingStep4CampaignColumnError(campaignError))) {
+    // Repli de déploiement : une migration optionnelle manquante ne bloque pas
+    // la création de la campagne. Les fonctions avancées s'activent après SQL.
     const legacyCampaignInsertPayload = { ...campaignInsertPayload };
-    delete legacyCampaignInsertPayload.metadata;
+    if (isMissingMetadataColumnError(campaignError)) delete legacyCampaignInsertPayload.metadata;
+    delete legacyCampaignInsertPayload.progress_percent;
+    delete legacyCampaignInsertPayload.estimated_completion_at;
+    delete legacyCampaignInsertPayload.report_summary;
+    delete legacyCampaignInsertPayload.report_updated_at;
+    delete legacyCampaignInsertPayload.completion_email_status;
     const legacyInsert = await supabase
       .from("mail_campaigns")
       .insert(legacyCampaignInsertPayload)
@@ -537,11 +598,14 @@ async function createCampaignHandler(req: Request) {
     contact_id: recipient.contact_id || null,
     display_name: recipient.display_name || null,
     email: recipient.email,
+    dispatch_key: `${campaign.id}:${recipient.email.trim().toLowerCase()}`,
     status: "queued",
   }));
 
   for (const chunk of chunkArray(rows, 500)) {
-    const { error } = await supabase.from("mail_campaign_recipients").insert(chunk);
+    const { error } = await supabase
+      .from("mail_campaign_recipients")
+      .upsert(chunk, { onConflict: "dispatch_key", ignoreDuplicates: true });
     if (error) {
       const safeErrorMessage = getSimpleFrenchErrorMessage(error, "Impossible de préparer les destinataires de la campagne.");
       await supabase.from("mail_campaigns").delete().eq("id", campaign.id).eq("user_id", activeUserId);
@@ -562,6 +626,7 @@ async function createCampaignHandler(req: Request) {
     campaignStatus: initialStatus,
     distributionState: dispatchState.state,
     deferredReason: dispatchState.reason,
+    resumeAt: dispatchState.resumeAt,
     queued: recipients.length,
     blockedDuplicates: recipientStats.duplicateCount,
     ignoredInvalid: recipientStats.invalidCount,
@@ -573,6 +638,15 @@ async function createCampaignHandler(req: Request) {
     hourlyLimit: deliveryConfig.hourlyLimit,
     dailyLimit: deliveryConfig.dailyLimit,
     activeLimit: deliveryConfig.maxActivePerIntegration,
+    mailboxHealthStatus: reputationPolicy.healthStatus,
+    mailboxPacingMode: reputationPolicy.mode,
+    domainAuthentication: reputationPolicy.domainAudit,
+    estimatedDurationMs,
+    estimatedCompletionAt,
+    pacing: {
+      delayMs: deliveryConfig.sendDelayMs,
+      batchPauseMs: deliveryConfig.batchPauseMs,
+    },
     queuedForBackgroundDispatch: true,
     idempotencyKey: campaignIdempotencyKey || null,
     idempotencyLockId: campaignIdempotencyLockId || null,

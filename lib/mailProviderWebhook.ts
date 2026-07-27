@@ -2,6 +2,7 @@ import crypto from "crypto";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { classifyMailFailure, markQueuedRecipientsBlockedBySuppression, normalizeSuppressionEmail, upsertSuppressionEntry } from "@/lib/mailSuppression";
 import { refreshCampaignCounters } from "@/lib/crmCampaigns";
+import { recordMailboxReputationOutcome } from "@/lib/mailboxReputation";
 
 export type MailWebhookEventKind = "delivered" | "bounce" | "complaint" | "unsubscribe" | "ignored";
 export type MailWebhookBounceType = "hard" | "soft" | null;
@@ -454,6 +455,23 @@ async function markComplaint(recipient: RecipientRow, event: NormalizedMailWebho
   });
 }
 
+async function recordFeedbackReputation(recipient: RecipientRow, event: NormalizedMailWebhookEvent) {
+  if (event.kind !== "bounce" && event.kind !== "complaint") return;
+  const { data: campaign, error } = await supabaseAdmin
+    .from("mail_campaigns")
+    .select("integration_id,provider")
+    .eq("id", recipient.campaign_id)
+    .maybeSingle();
+  if (error || !campaign?.integration_id) return;
+  await recordMailboxReputationOutcome({
+    integrationId: String(campaign.integration_id),
+    userId: recipient.user_id,
+    provider: String(campaign.provider || event.provider || "imap").toLowerCase() as "gmail" | "microsoft" | "imap",
+    outcome: event.kind === "complaint" ? "complaint" : event.bounceType === "hard" ? "hard_bounce" : "temporary_failure",
+    errorKind: event.kind === "complaint" ? "complaint" : `${event.bounceType || "soft"}_bounce`,
+  }).catch((trackingError) => console.warn("[mailProviderWebhook] reputation tracking skipped", trackingError));
+}
+
 async function markUnsubscribe(recipient: RecipientRow, event: NormalizedMailWebhookEvent) {
   const now = new Date().toISOString();
   const eventAt = event.occurredAt || now;
@@ -521,6 +539,7 @@ export async function processMailWebhookEvent(event: NormalizedMailWebhookEvent)
     await markUnsubscribe(recipient, event);
   }
 
+  await recordFeedbackReputation(recipient, event);
   await refreshCampaignCounters(recipient.campaign_id);
   await updateWebhookEvent(inserted.id, {
     processed_at: new Date().toISOString(),

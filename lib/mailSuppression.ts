@@ -69,12 +69,10 @@ const SOFT_BOUNCE_PATTERNS = [
 
 const COMPLAINT_PATTERNS = [
   /spam complaint/i,
+  /complaint feedback/i,
+  /feedback loop complaint/i,
+  /abuse report/i,
   /complaint/i,
-  /abuse/i,
-  /blocked for abuse/i,
-  /message rejected as spam/i,
-  /policy rejection/i,
-  /denied by policy/i,
 ];
 
 export function normalizeSuppressionEmail(value: unknown) {
@@ -106,12 +104,14 @@ export function classifyMailFailure(input: unknown): FailureClassification {
     return { kind: "complaint", bounceType: null, suppressionReason: "complaint", shouldSuppress: true, shouldRetry: false };
   }
 
-  if (HARD_BOUNCE_PATTERNS.some((pattern) => pattern.test(message))) {
-    return { kind: "hard_bounce", bounceType: "hard", suppressionReason: "hard_bounce", shouldSuppress: true, shouldRetry: false };
-  }
-
+  // A temporary SMTP response can also contain words such as "mailbox unavailable".
+  // Soft signals must therefore win before permanent-address patterns.
   if (SOFT_BOUNCE_PATTERNS.some((pattern) => pattern.test(message))) {
     return { kind: "soft_bounce", bounceType: "soft", suppressionReason: null, shouldSuppress: false, shouldRetry: true };
+  }
+
+  if (HARD_BOUNCE_PATTERNS.some((pattern) => pattern.test(message))) {
+    return { kind: "hard_bounce", bounceType: "hard", suppressionReason: "hard_bounce", shouldSuppress: true, shouldRetry: false };
   }
 
   return { kind: "generic", bounceType: null, suppressionReason: null, shouldSuppress: false, shouldRetry: true };
@@ -211,6 +211,9 @@ export async function markQueuedRecipientsBlockedBySuppression(args: {
       next_attempt_at: now,
       error: message,
       last_error: message,
+      failure_kind: args.reason,
+      failure_retryable: false,
+      provider_status: null,
       unsubscribed_at: args.reason === "opt_out" ? now : null,
       updated_at: now,
     })

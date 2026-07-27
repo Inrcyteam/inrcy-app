@@ -45,6 +45,7 @@ import {
   buildDefaultMailText,
   bulkConfirmationMessage,
   campaignCounts,
+  campaignReportToHealth,
   campaignTitleFromFolder,
   canBulkDeleteHistoryItem,
   canDeleteHistoryItem,
@@ -61,6 +62,7 @@ import {
   folderFromTrack,
   folderLabel,
   folderTheme,
+  formatCampaignDuration,
   formatCampaignFilterLabel,
   formatCampaignProgress,
   formatChannelLabel,
@@ -104,6 +106,7 @@ import {
   toolbarActionTheme,
   withPublicationBackgroundMode,
   type BoxView,
+  type CampaignExperienceReport,
   type CampaignHealthSummary,
   type CampaignRecipientLog,
   type CampaignRecipientsFilterId,
@@ -189,6 +192,8 @@ type CampaignDistributionNotice = {
   batchSize: number;
   deferredReason: string;
   extras: string[];
+  estimatedDurationMs: number | null;
+  estimatedCompletionAt: string | null;
 };
 
 function normalizeBoosterChannelKeyForVideo(value: string): BoosterChannelKey {
@@ -363,6 +368,9 @@ export default function MailboxClient() {
   const [campaignHealth, setCampaignHealth] =
     useState<CampaignHealthSummary | null>(null);
   const [campaignHealthLoading, setCampaignHealthLoading] = useState(false);
+  const [campaignReport, setCampaignReport] =
+    useState<CampaignExperienceReport | null>(null);
+  const [campaignSummaryBusyId, setCampaignSummaryBusyId] = useState<string | null>(null);
   const [campaignActionBusyId, setCampaignActionBusyId] = useState<
     string | null
   >(null);
@@ -1564,7 +1572,7 @@ export default function MailboxClient() {
         let query: any = supabase
           .from("mail_campaign_recipients")
           .select(
-            "id,email,display_name,status,error,last_error,attempt_count,max_attempts,next_attempt_at,sent_at,updated_at,suppression_reason,bounce_type,bounced_at,unsubscribed_at,delivery_status,delivery_event,delivery_last_event_at,delivered_at",
+            "id,email,display_name,status,error,last_error,attempt_count,max_attempts,next_attempt_at,sent_at,updated_at,suppression_reason,bounce_type,bounced_at,unsubscribed_at,delivery_status,delivery_event,delivery_last_event_at,delivered_at,failure_kind,failure_retryable,provider_status",
             { count: "exact" },
           )
           .eq("user_id", userId)
@@ -1597,6 +1605,9 @@ export default function MailboxClient() {
             delivery_event: row.delivery_event || null,
             delivery_last_event_at: row.delivery_last_event_at || null,
             delivered_at: row.delivered_at || null,
+            failure_kind: row.failure_kind || null,
+            failure_retryable: row.failure_retryable == null ? null : Boolean(row.failure_retryable),
+            provider_status: row.provider_status == null ? null : Number(row.provider_status),
           })),
         );
         setCampaignRecipientsTotal(total);
@@ -1618,6 +1629,7 @@ export default function MailboxClient() {
   const loadCampaignHealth = useCallback(
     async (campaignId: string, raw?: any) => {
       if (!campaignId) {
+        setCampaignReport(null);
         setCampaignHealth(null);
         return;
       }
@@ -1625,54 +1637,51 @@ export default function MailboxClient() {
       const baseCounts = campaignCounts(raw || {});
       setCampaignHealthLoading(true);
       try {
-        const { data: auth } = await supabase.auth.getUser();
-        const userId = auth?.user?.id ? resolveActiveBrowserUserId(auth.user.id) : null;
-        if (!userId) throw new Error("Établissement actif indisponible.");
-
-        const countRecipients = async (
-          filter: CampaignRecipientsFilterId | "__blocked__",
-        ) => {
-          let query: any = supabase
-            .from("mail_campaign_recipients")
-            .select("id", { count: "exact", head: true })
-            .eq("user_id", userId)
-            .eq("campaign_id", campaignId);
-          if (filter === "__blocked__") {
-            query = query
-              .eq("status", "failed")
-              .not("suppression_reason", "is", null);
-          } else {
-            query = applyCampaignRecipientsFilter(query, filter);
-          }
-          const { count, error } = await query;
-          if (error) throw error;
-          return Math.max(0, Number(count || 0));
-        };
-
-        const [total, queued, processing, sent, failed, optOut, blacklist] = await Promise.all([
-          countRecipients("all"),
-          countRecipients("queued"),
-          countRecipients("processing"),
-          countRecipients("sent"),
-          countRecipients("failed"),
-          countRecipients("opt_out"),
-          countRecipients("blacklist"),
-        ]);
-        const blocked = optOut + blacklist;
-
-        setCampaignHealth({
-          total,
-          queued,
-          processing,
-          sent,
-          failed,
-          blocked,
-          opt_out: optOut,
-          blacklist,
-          retryable: Math.max(0, failed - blocked),
-        });
+        const response = await fetch(
+          `/api/inrsend/campaigns/${encodeURIComponent(campaignId)}/report`,
+          { cache: "no-store" },
+        );
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok || !data?.report) {
+          throw new Error(data?.error || "Suivi de campagne indisponible.");
+        }
+        const report = data.report as CampaignExperienceReport;
+        setCampaignReport(report);
+        setCampaignHealth(campaignReportToHealth(report));
+        setItems((current) =>
+          current.map((item) => {
+            if (item.source !== "mail_campaigns" || item.id !== campaignId) return item;
+            const nextRaw = {
+              ...((item.raw || {}) as Record<string, unknown>),
+              status: report.status,
+              total_count: report.counts.total,
+              queued_count: report.counts.queued,
+              processing_count: report.counts.processing,
+              sent_count: report.counts.sent,
+              failed_count: report.counts.failed,
+              progress_percent: report.progressPercent,
+              estimated_completion_at: report.estimatedCompletionAt,
+              report_summary: report,
+              report_updated_at: report.generatedAt,
+              completion_email_status: report.completionEmail.status,
+              completion_email_attempts: report.completionEmail.attempts,
+              completion_email_sent_at: report.completionEmail.sentAt,
+              completion_email_last_error: report.completionEmail.lastError,
+              finished_at: report.finishedAt,
+              last_activity_at: report.lastActivityAt,
+            };
+            return {
+              ...item,
+              status: report.status as Status,
+              sent_at: report.finishedAt,
+              preview: formatCampaignProgress(nextRaw),
+              raw: nextRaw,
+            };
+          }),
+        );
       } catch (error) {
         console.error(error);
+        setCampaignReport(null);
         setCampaignHealth({
           ...baseCounts,
           blocked: 0,
@@ -1684,7 +1693,7 @@ export default function MailboxClient() {
         setCampaignHealthLoading(false);
       }
     },
-    [supabase],
+    [],
   );
 
   useEffect(() => {
@@ -1693,12 +1702,13 @@ export default function MailboxClient() {
       !detailsItem ||
       detailsItem.source !== "mail_campaigns"
     ) {
+      setCampaignReport(null);
       setCampaignHealth(null);
       setCampaignHealthLoading(false);
       return;
     }
     void loadCampaignHealth(detailsItem.id, (detailsItem as any).raw || {});
-  }, [detailsOpen, detailsItem, loadCampaignHealth]);
+  }, [detailsOpen, detailsItem?.id, detailsItem?.source, loadCampaignHealth]);
 
   useEffect(() => {
     if (
@@ -1721,7 +1731,8 @@ export default function MailboxClient() {
     campaignRecipientsFilter,
     campaignRecipientsPage,
     detailsOpen,
-    detailsItem,
+    detailsItem?.id,
+    detailsItem?.source,
     loadCampaignRecipients,
   ]);
 
@@ -1743,6 +1754,28 @@ export default function MailboxClient() {
     if (campaignRecipientsPage <= campaignRecipientsPageCount) return;
     setCampaignRecipientsPage(campaignRecipientsPageCount);
   }, [campaignRecipientsPage, campaignRecipientsPageCount]);
+
+  useEffect(() => {
+    if (!detailsOpen || !detailsItem || detailsItem.source !== "mail_campaigns") return;
+    const status = String(campaignReport?.status || (detailsItem as any).raw?.status || "").toLowerCase();
+    if (["completed", "partial", "failed"].includes(status)) return;
+
+    const campaignId = detailsItem.id;
+    const timer = window.setInterval(() => {
+      void loadCampaignHealth(campaignId, (detailsItem as any).raw || {});
+      void loadCampaignRecipients(campaignId, campaignRecipientsPage, campaignRecipientsFilter);
+    }, 10_000);
+    return () => window.clearInterval(timer);
+  }, [
+    campaignRecipientsFilter,
+    campaignRecipientsPage,
+    campaignReport?.status,
+    detailsItem?.id,
+    detailsItem?.source,
+    detailsOpen,
+    loadCampaignHealth,
+    loadCampaignRecipients,
+  ]);
 
   useEffect(() => {
     let cancelled = false;
@@ -3478,6 +3511,10 @@ export default function MailboxClient() {
           batchSize,
           deferredReason,
           extras,
+          estimatedDurationMs: Number.isFinite(Number(data?.estimatedDurationMs))
+            ? Math.max(0, Number(data.estimatedDurationMs))
+            : null,
+          estimatedCompletionAt: String(data?.estimatedCompletionAt || "").trim() || null,
         });
         setComposeOpen(false);
         resetCompose();
@@ -4585,7 +4622,9 @@ export default function MailboxClient() {
       const batchSize = Math.max(1, Number(data?.batchSize || 50));
       const baseRetryMessage = data?.retried
         ? `${data.retried} contact${data.retried > 1 ? "s" : ""} relancé${data.retried > 1 ? "s" : ""}.${blocked > 0 ? ` ${blocked} blocage${blocked > 1 ? "s" : ""} ignoré${blocked > 1 ? "s" : ""}.` : ""}`
-        : "Échecs relancés.";
+        : data?.resumed
+          ? "Campagne remise en route."
+          : "Échecs relancés.";
       const stateMessage =
         deliveryState === "paused"
           ? " Campagne mise en pause automatiquement."
@@ -4604,6 +4643,26 @@ export default function MailboxClient() {
       }
     } finally {
       setCampaignActionBusyId(null);
+    }
+  }
+
+  async function resendCampaignCompletionSummary(campaignId: string) {
+    if (!campaignId || campaignSummaryBusyId) return;
+    setCampaignSummaryBusyId(campaignId);
+    try {
+      const response = await fetch(
+        `/api/inrsend/campaigns/${encodeURIComponent(campaignId)}/completion-summary`,
+        { method: "POST" },
+      );
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setToast(data?.error || "Le bilan n’a pas pu être renvoyé.");
+        return;
+      }
+      setToast("Bilan de campagne envoyé.");
+      await loadCampaignHealth(campaignId, (detailsItem as any)?.raw || {});
+    } finally {
+      setCampaignSummaryBusyId(null);
     }
   }
 
@@ -4856,6 +4915,8 @@ export default function MailboxClient() {
           setCampaignRecipientsFilter={setCampaignRecipientsFilter}
           campaignHealth={campaignHealth}
           campaignHealthLoading={campaignHealthLoading}
+          campaignReport={campaignReport}
+          campaignSummaryBusyId={campaignSummaryBusyId}
           campaignActionBusyId={campaignActionBusyId}
           publicationEditForm={publicationEditForm}
           setPublicationEditForm={setPublicationEditForm}
@@ -4886,6 +4947,7 @@ export default function MailboxClient() {
           saveChannelPublication={saveChannelPublication}
           deleteChannelPublication={deleteChannelPublication}
           retryCampaignFailedRecipients={retryCampaignFailedRecipients}
+          resendCampaignCompletionSummary={resendCampaignCompletionSummary}
           openCampaignComposeFromHistory={openCampaignComposeFromHistory}
           deleteHistoryEntry={deleteHistoryEntry}
           loadCampaignRecipients={loadCampaignRecipients}
@@ -5052,6 +5114,14 @@ export default function MailboxClient() {
                 Vous pouvez fermer cette fenêtre : le suivi reste disponible
                 dans iNrSend.
               </p>
+              {campaignDistributionNotice.estimatedDurationMs != null ? (
+                <p className={styles.campaignDistributionNote}>
+                  Durée estimée : {formatCampaignDuration(campaignDistributionNotice.estimatedDurationMs)}
+                  {campaignDistributionNotice.estimatedCompletionAt
+                    ? ` • fin prévue vers ${new Date(campaignDistributionNotice.estimatedCompletionAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`
+                    : ""}
+                </p>
+              ) : null}
               {campaignDistributionNotice.deferredReason ? (
                 <p className={styles.campaignDistributionNote}>
                   {campaignDistributionNotice.deferredReason}

@@ -35,6 +35,10 @@
     {
       "path": "/api/cron/inrsend-retention",
       "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/cron/mail-bounces",
+      "schedule": "*/15 * * * *"
     }
   ],
   "functions": {
