@@ -1758,13 +1758,13 @@ export default function MailboxClient() {
   useEffect(() => {
     if (!detailsOpen || !detailsItem || detailsItem.source !== "mail_campaigns") return;
     const status = String(campaignReport?.status || (detailsItem as any).raw?.status || "").toLowerCase();
-    if (["completed", "partial", "failed"].includes(status)) return;
+    if (["completed", "partial", "failed", "sent"].includes(status)) return;
 
     const campaignId = detailsItem.id;
     const timer = window.setInterval(() => {
       void loadCampaignHealth(campaignId, (detailsItem as any).raw || {});
       void loadCampaignRecipients(campaignId, campaignRecipientsPage, campaignRecipientsFilter);
-    }, 10_000);
+    }, 120_000);
     return () => window.clearInterval(timer);
   }, [
     campaignRecipientsFilter,

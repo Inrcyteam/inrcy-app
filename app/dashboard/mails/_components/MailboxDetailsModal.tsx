@@ -89,6 +89,12 @@ function formatCampaignProgressFromHealth(raw: any, health: any | null) {
   return bits.join(" • ");
 }
 
+function isCampaignFinishedStatus(statusValue: unknown) {
+  return ["completed", "partial", "failed", "sent"].includes(
+    String(statusValue || "").toLowerCase(),
+  );
+}
+
 function campaignStatusLabel(statusValue: unknown) {
   const status = String(statusValue || "").toLowerCase();
   if (status === "queued") return "En attente de distribution";
@@ -974,7 +980,11 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                               >
                                 <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
                                   <div>
-                                    <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)", marginBottom: 4 }}>Suivi automatique toutes les 10 secondes</div>
+                                    {!isCampaignFinishedStatus(campaignReport?.status || (detailsItem as any).raw?.status) ? (
+                                      <div style={{ fontSize: 12, color: "rgba(255,255,255,0.62)", marginBottom: 4 }}>
+                                        Suivi automatique toutes les 2 minutes
+                                      </div>
+                                    ) : null}
                                     <div style={{ fontSize: 17, fontWeight: 800 }}>
                                       {campaignStatusLabel(campaignReport?.status || (detailsItem as any).raw?.status)}
                                     </div>
