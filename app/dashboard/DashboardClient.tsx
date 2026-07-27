@@ -249,13 +249,17 @@ function readCachedInrSearchDirectoryEnabled(): boolean | null {
   }
 }
 
-function readCachedDashboardBoolean(key: string): boolean {
+function readCachedDashboardOptionalBoolean(key: string): boolean | null {
   try {
     const state = readCachedDashboardChannelState();
-    return typeof state?.[key] === "boolean" ? state[key] : false;
+    return typeof state?.[key] === "boolean" ? state[key] : null;
   } catch {
-    return false;
+    return null;
   }
+}
+
+function readCachedDashboardBoolean(key: string): boolean {
+  return readCachedDashboardOptionalBoolean(key) ?? false;
 }
 
 function readCachedDashboardString(key: string): string {
@@ -365,6 +369,9 @@ export default function DashboardClient({
   const [inrSearchUrl, setInrSearchUrl] = useState(() => readCachedDashboardString("inrSearchUrl"));
   const [inrSearchDirectoryEnabled, setInrSearchDirectoryEnabled] = useState<boolean | null>(() => readCachedInrSearchDirectoryEnabled());
   const [inrBadgeProfile, setInrBadgeProfile] = useState<InrBadgeProfileSummary>(() => readCachedInrBadgeProfile());
+  const [lastKnownInrBadgeProfileReady, setLastKnownInrBadgeProfileReady] = useState<boolean | null>(
+    () => readCachedDashboardOptionalBoolean("inrBadgeProfileReady"),
+  );
   const [inrBadgeModalOpen, setInrBadgeModalOpen] = useState(false);
   const [displayedGeneratorPower, setDisplayedGeneratorPower] = useState<number | null>(() => readCachedGeneratorPowerPercent());
   const [displayedGeneratorIsActive, setDisplayedGeneratorIsActive] = useState<boolean | null>(() => readCachedGeneratorIsActive());
@@ -374,7 +381,7 @@ export default function DashboardClient({
   const { requestNavigation } = useDashboardUnsavedNavigation();
   const { language: dashboardLanguage } = useDashboardLanguage();
   const dashboardCopy = useMemo(() => getDashboardTranslations(dashboardLanguage), [dashboardLanguage]);
-  const { panel, openPanel, closePanel, goToModule } = useDashboardPanelRouting();
+  const { panel, openPanel, replacePanelDirect, closePanel, goToModule } = useDashboardPanelRouting();
   const {
     profileIncomplete,
     activityIncomplete,
@@ -563,31 +570,47 @@ export default function DashboardClient({
     const completion = await checkProfile();
     if (!completion?.profileCompleted) return;
 
+    // La sauvegarde a déjà nettoyé le formulaire. On prépare la prochaine
+    // étape avant la mutation afin que l'effet d'auto-ouverture ne repasse pas
+    // par le guard pendant le changement d'état React.
+    setSettingsDrawerHasUnsavedChanges(false);
+    onboardingAutoOpenKeyRef.current = `opening:${onboardingAccountId ?? "unknown"}:activity`;
     const row = await setCurrentOnboardingStep("activity");
-    if (!row) return;
-    openPanel("activite");
-  }, [checkProfile, openPanel, setCurrentOnboardingStep]);
+    if (!row) {
+      onboardingAutoOpenKeyRef.current = null;
+      return;
+    }
+    replacePanelDirect("activite");
+  }, [checkProfile, onboardingAccountId, replacePanelDirect, setCurrentOnboardingStep]);
 
   const advanceOnboardingFromActivity = useCallback(async () => {
     const completion = await checkActivity();
     if (!completion?.activityCompleted) return;
 
+    setSettingsDrawerHasUnsavedChanges(false);
     setOnboardingAiMode("choice");
+    onboardingAutoOpenKeyRef.current = `opening:${onboardingAccountId ?? "unknown"}:ai`;
     const row = await setCurrentOnboardingStep("ai");
-    if (!row) return;
-    openPanel("ia");
-  }, [checkActivity, openPanel, setCurrentOnboardingStep]);
+    if (!row) {
+      onboardingAutoOpenKeyRef.current = null;
+      return;
+    }
+    replacePanelDirect("ia");
+  }, [checkActivity, onboardingAccountId, replacePanelDirect, setCurrentOnboardingStep]);
 
   const completeOnboardingFromAi = useCallback(async () => {
     if (onboardingAiCompleting) return;
     setOnboardingAiCompleting(true);
+    setSettingsDrawerHasUnsavedChanges(false);
+    onboardingAutoOpenKeyRef.current = `closing:${onboardingAccountId ?? "unknown"}:ai`;
     const row = await completeOnboarding();
     if (!row) {
+      onboardingAutoOpenKeyRef.current = null;
       setOnboardingAiCompleting(false);
       return;
     }
     closePanel();
-  }, [closePanel, completeOnboarding, onboardingAiCompleting]);
+  }, [closePanel, completeOnboarding, onboardingAccountId, onboardingAiCompleting]);
 
   const goToRequiredSetupAwareModule = useCallback((path: string) => {
     if (isDashboardRequiredSetupProtectedDestination(path) && !requiredSetupAccessAllowed) return;
@@ -1256,6 +1279,9 @@ const applyDashboardChannelState = useCallback((state: Record<string, any> | nul
 
   if (state.inrBadgeProfile && typeof state.inrBadgeProfile === "object") {
     setInrBadgeProfile(sanitizeCachedInrBadgeProfile(state.inrBadgeProfile));
+  }
+  if (typeof state.inrBadgeProfileReady === "boolean") {
+    setLastKnownInrBadgeProfileReady(state.inrBadgeProfileReady);
   }
 
 
@@ -3381,11 +3407,21 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     writeCachedDashboardChannelState(state);
   });
 
-  const inrBadgeProfileReady = useMemo(() => {
-    // Fail closed: iNr'Badge ne doit jamais être affiché comme connecté
-    // avant la réponse autoritative du contrôle "Mon profil".
-    return profileCheckReady && !profileIncomplete;
+  useEffect(() => {
+    if (!profileCheckReady) return;
+
+    // La réponse Supabase devient la nouvelle valeur autoritative. Elle est
+    // mémorisée par établissement pour que le prochain affichage commence
+    // directement dans le dernier état connu, sans flash "Synchronisation…".
+    const nextReady = !profileIncomplete;
+    setLastKnownInrBadgeProfileReady(nextReady);
+    mergeCachedDashboardChannelState({ inrBadgeProfileReady: nextReady });
   }, [profileCheckReady, profileIncomplete]);
+
+  const inrBadgeProfileCheckReady = profileCheckReady || lastKnownInrBadgeProfileReady !== null;
+  const inrBadgeProfileReady = profileCheckReady
+    ? !profileIncomplete
+    : lastKnownInrBadgeProfileReady === true;
 
   const inrBadgePublicUrl = useMemo(() => {
     if (!inrBadgeProfileReady) return "";
@@ -3410,7 +3446,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     instagramUrl,
     inrBadgeLogoUrl: inrBadgeProfile.logoUrl,
     inrBadgeProfileReady,
-    inrBadgeProfileCheckReady: profileCheckReady,
+    inrBadgeProfileCheckReady,
     onOpenInrBadgeModal: openInrBadgeModal,
     onOpenInrAgent: () => goToRequiredSetupAwareModule("/dashboard/agent"),
     linkedinConnected,
@@ -3449,8 +3485,8 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
     instagramConnected,
     instagramUrl,
     inrBadgeProfile.logoUrl,
+    inrBadgeProfileCheckReady,
     inrBadgeProfileReady,
-    profileCheckReady,
     openInrBadgeModal,
     linkedinConnected,
     linkedinUrl,

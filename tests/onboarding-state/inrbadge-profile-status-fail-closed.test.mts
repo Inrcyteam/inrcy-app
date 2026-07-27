@@ -11,22 +11,37 @@ const fluxBubblesSource = readFileSync(
   "utf8",
 );
 
-test("iNrBadge never reports connected before the profile check is authoritative", () => {
+test("iNrBadge reuses the last account-scoped authoritative state during refresh", () => {
   assert.match(
     dashboardClientSource,
-    /return profileCheckReady && !profileIncomplete;/,
+    /readCachedDashboardOptionalBoolean\("inrBadgeProfileReady"\)/,
   );
-  assert.doesNotMatch(
+  assert.match(
     dashboardClientSource,
-    /cachedInrBadgeProfileReady \?\? !profileIncomplete/,
+    /profileCheckReady \|\| lastKnownInrBadgeProfileReady !== null/,
   );
+  assert.match(
+    dashboardClientSource,
+    /profileCheckReady[\s\S]*\? !profileIncomplete[\s\S]*: lastKnownInrBadgeProfileReady === true/,
+  );
+  assert.match(
+    dashboardClientSource,
+    /mergeCachedDashboardChannelState\(\{ inrBadgeProfileReady: nextReady \}\)/,
+  );
+});
+
+test("iNrBadge still falls back to synchronization only when no known state exists", () => {
   assert.match(
     fluxBubblesSource,
     /if \(!inrBadgeProfileCheckReady\) \{[\s\S]*text: "Synchronisation…"/,
   );
+  assert.match(
+    dashboardClientSource,
+    /inrBadgeProfileCheckReady,/,
+  );
 });
 
-test("iNrBadge actions stay disabled while the profile check is pending", () => {
+test("iNrBadge actions stay disabled only while neither cache nor profile check is ready", () => {
   assert.match(
     fluxBubblesSource,
     /\(m\.key === "inrbadge" \? !inrBadgeProfileCheckReady : false\)/,

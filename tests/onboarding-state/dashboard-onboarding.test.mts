@@ -117,10 +117,10 @@ const dashboardClientSource = readFileSync(
 test("dashboard chains existing drawers without creating replacement forms", () => {
   assert.match(dashboardClientSource, /checkProfile\(\)[\s\S]*profileCompleted/);
   assert.match(dashboardClientSource, /setCurrentOnboardingStep\("activity"\)/);
-  assert.match(dashboardClientSource, /openPanel\("activite"\)/);
+  assert.match(dashboardClientSource, /replacePanelDirect\("activite"\)/);
   assert.match(dashboardClientSource, /checkActivity\(\)[\s\S]*activityCompleted/);
   assert.match(dashboardClientSource, /setCurrentOnboardingStep\("ai"\)/);
-  assert.match(dashboardClientSource, /openPanel\("ia"\)/);
+  assert.match(dashboardClientSource, /replacePanelDirect\("ia"\)/);
   assert.match(dashboardClientSource, /completeOnboardingFromAi/);
   assert.match(dashboardClientSource, /Configuration initiale · Étape/);
 });
@@ -129,6 +129,27 @@ const onboardingHookSource = readFileSync(
   new URL("../../app/dashboard/_hooks/useDashboardOnboardingState.ts", import.meta.url),
   "utf8",
 );
+const panelRoutingSource = readFileSync(
+  new URL("../../app/dashboard/_hooks/useDashboardPanelRouting.ts", import.meta.url),
+  "utf8",
+);
+
+test("successful onboarding saves use a direct guarded-safe panel transition", () => {
+  const directTransition = panelRoutingSource.match(
+    /const replacePanelDirect = useCallback\([\s\S]*?\n  \);/,
+  )?.[0] ?? "";
+
+  assert.match(directTransition, /router\.replace/);
+  assert.doesNotMatch(directTransition, /requestNavigation/);
+  assert.match(
+    dashboardClientSource,
+    /setSettingsDrawerHasUnsavedChanges\(false\)[\s\S]*replacePanelDirect\("activite"\)/,
+  );
+  assert.match(
+    dashboardClientSource,
+    /setSettingsDrawerHasUnsavedChanges\(false\)[\s\S]*replacePanelDirect\("ia"\)/,
+  );
+});
 
 test("stale onboarding mutations cannot restore the previous establishment", () => {
   assert.match(onboardingHookSource, /mutationSequenceRef/);

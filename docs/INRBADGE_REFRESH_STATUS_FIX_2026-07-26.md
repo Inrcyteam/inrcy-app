@@ -1,29 +1,30 @@
-# iNrBadge - suppression du faux statut Connecté au rafraîchissement
+# iNrBadge - statut stable au rafraîchissement
 
-## Cause
+## Problème initial
 
-Au premier rendu du Dashboard, le contrôle Supabase de complétude de « Mon profil » n'avait pas encore répondu.
-L'état initial `profileIncomplete = false` était interprété de manière optimiste comme un profil complet :
+Le premier correctif empêchait un nouveau compte incomplet d'afficher brièvement iNrBadge comme connecté. Pour rester fail-closed, la bulle affichait toutefois `Synchronisation…` à chaque actualisation, y compris pour un professionnel dont le profil était déjà complet.
 
-```ts
-cachedInrBadgeProfileReady ?? !profileIncomplete
-```
+## Correction finale
 
-La bulle affichait donc brièvement `Connecté`, puis le contrôle réel remplaçait cet état par le verrou.
+- Le dernier état autoritatif de complétude du profil est mémorisé dans le cache déjà séparé par établissement.
+- Au prochain affichage, iNrBadge reprend immédiatement cet état connu :
+  - profil complet : `Connecté` sans clignotement ;
+  - profil incomplet : `Déconnecté` sans faux vert ;
+  - aucun état connu : `Synchronisation…` jusqu'au premier contrôle.
+- Le contrôle Supabase continue en arrière-plan et remplace le cache si l'état réel a changé.
+- Le cache ne donne aucun droit serveur : il stabilise uniquement l'affichage et les actions visuelles du badge.
 
-## Correction
+## Parcours d'inscription
 
-- iNrBadge est maintenant **fail-closed** : il ne peut être connecté que si le contrôle profil est terminé et positif.
-- Pendant le contrôle, le statut affiche `Synchronisation…`.
-- Les actions `Voir mon badge` et `Configurer` restent indisponibles jusqu'à la fin du contrôle.
-- Le cache d'un ancien rendu n'est plus utilisé pour accorder visuellement l'état connecté.
+Les transitions après sauvegarde utilisent maintenant une navigation interne directe :
 
-Condition autoritative :
+1. Mon profil -> Mon activité
+2. Mon activité -> Configuration IA
+3. Configuration IA -> Dashboard
 
-```ts
-profileCheckReady && !profileIncomplete
-```
+Cette navigation ne passe pas par le guard « modifications non enregistrées » puisque chaque formulaire vient d'être sauvegardé et remis à l'état propre. Le guard reste actif lors d'une fermeture manuelle, d'un clic sur « Passer » ou d'une vraie tentative de quitter avec des modifications non enregistrées.
 
 ## Validation
 
-Suite ciblée onboarding : 34 tests réussis.
+- Suite ciblée onboarding : 36 tests réussis.
+- Transpilation TypeScript des fichiers modifiés : réussie.

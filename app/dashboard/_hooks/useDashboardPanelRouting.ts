@@ -55,23 +55,42 @@ export function useDashboardPanelRouting() {
     router.replace(`/dashboard?${params.toString()}`, { scroll: false });
   }, [rawPanel, router, searchParams]);
 
+  const markPanelAsExplicitlyOpened = useCallback((name: DashboardPanelName) => {
+    // Marqueur: panneau ouvert volontairement par l'utilisateur ou par une
+    // transition interne déjà validée (ex. sauvegarde d'une étape onboarding).
+    try {
+      sessionStorage.setItem("inrcy_panel_explicit_open", "1");
+      sessionStorage.setItem("inrcy_last_panel", name);
+    } catch {}
+  }, []);
+
   const openPanel = useCallback(
     (name: DashboardPanelName) => {
       void requestNavigation(() => {
         const params = new URLSearchParams(searchParams.toString());
         params.set("panel", name);
-        // ✅ Marqueur: panneau ouvert volontairement par l'utilisateur.
-        // Sert à éviter l'ouverture automatique en boucle lors d'un refresh/connexion.
-        try {
-          sessionStorage.setItem("inrcy_panel_explicit_open", "1");
-          sessionStorage.setItem("inrcy_last_panel", name);
-        } catch {}
+        markPanelAsExplicitlyOpened(name);
         // ✅ En mobile, on garde la position de scroll (pas de jump en haut)
         rememberDashboardScroll();
         router.push(`/dashboard?${params.toString()}`, { scroll: false });
       });
     },
-    [requestNavigation, router, searchParams]
+    [markPanelAsExplicitlyOpened, requestNavigation, router, searchParams]
+  );
+
+  // Transition interne après une sauvegarde réussie. Elle ne passe pas par le
+  // guard "modifications non enregistrées", car la sauvegarde a déjà remis le
+  // formulaire à l'état propre. Le guard reste actif pour toute fermeture ou
+  // navigation déclenchée manuellement par le professionnel.
+  const replacePanelDirect = useCallback(
+    (name: DashboardPanelName) => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("panel", name);
+      markPanelAsExplicitlyOpened(name);
+      rememberDashboardScroll();
+      router.replace(`/dashboard?${params.toString()}`, { scroll: false });
+    },
+    [markPanelAsExplicitlyOpened, router, searchParams],
   );
 
   const closePanel = useCallback(() => {
@@ -134,5 +153,5 @@ export function useDashboardPanelRouting() {
     } catch {}
   }, [panel]);
 
-  return { panel, openPanel, closePanel, goToModule };
+  return { panel, openPanel, replacePanelDirect, closePanel, goToModule };
 }
