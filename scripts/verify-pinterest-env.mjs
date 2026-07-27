@@ -8,7 +8,6 @@ const required = [
   "PINTEREST_CLIENT_SECRET",
   "PINTEREST_REDIRECT_URI",
   "PINTEREST_OAUTH_SCOPES",
-  "PINTEREST_API_ENV",
   "NEXT_PUBLIC_APP_URL",
   "INRCY_CREDENTIALS_SECRET",
 ];
@@ -66,10 +65,10 @@ if (redirect.origin !== appOrigin) {
   process.exit(1);
 }
 
-const apiEnvironment = value("PINTEREST_API_ENV").toLowerCase();
-if (!["sandbox", "production"].includes(apiEnvironment)) {
+const apiEnvironment = (value("PINTEREST_API_ENV") || "production").toLowerCase();
+if (apiEnvironment !== "production") {
   console.error(
-    "[pinterest-env] PINTEREST_API_ENV doit valoir sandbox ou production.",
+    "[pinterest-env] Pinterest est officiel dans iNrCy : PINTEREST_API_ENV doit valoir production ou être supprimée.",
   );
   process.exit(1);
 }

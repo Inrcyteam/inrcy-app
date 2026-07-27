@@ -126,7 +126,7 @@ export default function DashboardSettingsDrawerContent({
   facebookPanelProps,
   tiktokPanelProps,
   inrBadgeSettingsProps,
-  pinterestAccessEnabled = false,
+  pinterestAccessEnabled = true,
   inrSearchAccessEnabled = false,
   inrSearchConnected = null,
   inrSearchUrl = "",

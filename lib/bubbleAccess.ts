@@ -52,7 +52,7 @@ export const APP_BUBBLE_DEFAULT_ACCESS: AppBubbleAccessMap = {
   linkedin: true,
   tiktok: true,
   youtube_shorts: true,
-  pinterest: false,
+  pinterest: true,
   inr_agent: true,
   inr_calendar: true,
   inr_crm: true,

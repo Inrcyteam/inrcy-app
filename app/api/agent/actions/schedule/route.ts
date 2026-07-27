@@ -647,7 +647,7 @@ async function buildScheduledPayload(
         ? "images"
         : "none";
     const publishChannels = selectedChannels.filter((channel) => {
-      if (activeMediaMode === "video") return channel !== "pinterest";
+      if (activeMediaMode === "video") return true;
       if (isVideoOnlyChannel(channel)) return false;
       if (isImageRequiredChannel(channel)) return hasImagePayload;
       return canPublishWithoutMedia(channel) || hasImagePayload;

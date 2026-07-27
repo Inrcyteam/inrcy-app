@@ -1,3 +1,5 @@
+-- HISTORIQUE TRIAL : ne plus executer apres l'approbation Standard.
+-- Utiliser ops/sql/2026-07-27_app_bubble_access_pinterest_enabled.sql.
 -- iNrCy - Pinterest Trial - accès multicompte
 -- Idempotent et non destructif.
 -- Crée la ligne Bubble Access Pinterest pour chaque établissement iNrCy existant.

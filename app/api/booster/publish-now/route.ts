@@ -91,7 +91,10 @@ import {
 } from "@/lib/youtubeShortsOAuth";
 import { uploadYoutubeShort } from "@/lib/youtubeShortsPublish";
 import { getPinterestAccessToken } from "@/lib/pinterestOAuth";
-import { createPinterestImagePin } from "@/lib/pinterestPublish";
+import {
+  createPinterestImagePin,
+  createPinterestVideoPin,
+} from "@/lib/pinterestPublish";
 import { buildVideoSettingsByChannel } from "@/lib/boosterVideoSettings";
 import {
   getVariantForChannel,
@@ -105,6 +108,9 @@ import {
   stripSiteTextFormatting,
   stripSiteTextFormattingPreserveLayout,
 } from "@/lib/boosterFormatting";
+
+export const runtime = "nodejs";
+export const maxDuration = 180;
 
 type ChannelKey =
   | "inrcy_site"
@@ -3092,9 +3098,99 @@ async function publishNowHandler(req: Request) {
             continue;
           }
 
+          const pinterestTags = Array.isArray(channelPost.hashtags)
+            ? channelPost.hashtags
+                .map((tag) => normalizeHashtag(String(tag)))
+                .filter(Boolean)
+                .slice(0, 8)
+            : [];
+          const pinterestTagLine = pinterestTags.length
+            ? pinterestTags.map((tag) => `#${tag}`).join(" ")
+            : "";
+          const pinterestContent = stripSiteTextFormattingPreserveLayout(
+            channelPost.content || "",
+          );
+          if (pinterestContent.length > 500) {
+            const pinterestUserError =
+              "Le contenu Pinterest dépasse 500 caractères. Raccourcissez-le avant de publier pour conserver exactement votre mise en page.";
+            await setDelivery(ch, {
+              status: "failed",
+              error: pinterestUserError,
+            });
+            results[ch] = { ok: false, error: pinterestUserError };
+            continue;
+          }
+
+          const pinterestCta = buildCtaTextForChannel("pinterest", channelPost, {
+            websiteUrl: siteWebUrl || inrcySiteUrl,
+            phone: businessPhone,
+          });
+          let description = pinterestContent;
+          for (const optionalPart of [pinterestCta, pinterestTagLine]) {
+            if (!optionalPart) continue;
+            const candidate = [description, optionalPart].filter(Boolean).join("\n\n");
+            if (candidate.length <= 500) description = candidate;
+          }
+          const pinterestLink =
+            normalizePublicHttpUrl(channelPost.ctaUrl) ||
+            normalizePublicHttpUrl(siteWebUrl) ||
+            normalizePublicHttpUrl(inrcySiteUrl);
+
+          if (mediaModeByChannel[ch] === "video") {
+            const pinterestVideoUrl = String(
+              channelVideo?.publicUrl || channelVideo?.url || "",
+            ).trim();
+            if (
+              !channelVideo ||
+              (!pinterestVideoUrl &&
+                !String(channelVideo.storagePath || "").trim())
+            ) {
+              const pinterestUserError =
+                "Veuillez ajouter une vidéo valide pour publier sur Pinterest.";
+              await setDelivery(ch, {
+                status: "failed",
+                error: pinterestUserError,
+              });
+              results[ch] = { ok: false, error: pinterestUserError };
+              continue;
+            }
+
+            const pin = await createPinterestVideoPin({
+              accessToken: pinterestAccessToken,
+              userId,
+              boardId,
+              title: channelPost.title || post.title || "Publication iNrCy",
+              description,
+              videoUrl: pinterestVideoUrl,
+              videoStoragePath: channelVideo.storagePath,
+              videoContentType: channelVideo.type,
+              videoFileName: channelVideo.name,
+              coverImageUrl: channelVideo.thumbnailUrl,
+              coverStoragePath: channelVideo.thumbnailStoragePath,
+              link: pinterestLink,
+            });
+
+            await setDelivery(ch, {
+              status: "delivered",
+              error: null,
+            });
+            results[ch] = {
+              ok: true,
+              external_id: pin.id || null,
+              external_url: pin.url || null,
+              board_id: boardId,
+              board_name: boardName || null,
+              media_type: "video",
+              media_id: pin.media_id || null,
+              media_status: pin.media_status || null,
+              cover_image_url: pin.cover_image_url || null,
+            };
+            continue;
+          }
+
           if (mediaModeByChannel[ch] !== "images") {
             const pinterestUserError =
-              "Les Video Pins ne sont pas disponibles dans le Sandbox Pinterest actuel. Utilisez une image.";
+              "Pinterest nécessite une image ou une vidéo.";
             await setDelivery(ch, {
               status: "failed",
               error: pinterestUserError,
@@ -3136,50 +3232,13 @@ async function publishNowHandler(req: Request) {
             continue;
           }
 
-          const pinterestTags = Array.isArray(channelPost.hashtags)
-            ? channelPost.hashtags
-                .map((tag) => normalizeHashtag(String(tag)))
-                .filter(Boolean)
-                .slice(0, 8)
-            : [];
-          const pinterestTagLine = pinterestTags.length
-            ? pinterestTags.map((tag) => `#${tag}`).join(" ")
-            : "";
-          const pinterestContent = stripSiteTextFormattingPreserveLayout(
-            channelPost.content || "",
-          );
-          if (pinterestContent.length > 500) {
-            const pinterestUserError =
-              "Le contenu Pinterest dépasse 500 caractères. Raccourcissez-le avant de publier pour conserver exactement votre mise en page.";
-            await setDelivery(ch, {
-              status: "failed",
-              error: pinterestUserError,
-            });
-            results[ch] = { ok: false, error: pinterestUserError };
-            continue;
-          }
-
-          const pinterestCta = buildCtaTextForChannel("pinterest", channelPost, {
-            websiteUrl: siteWebUrl || inrcySiteUrl,
-            phone: businessPhone,
-          });
-          let description = pinterestContent;
-          for (const optionalPart of [pinterestCta, pinterestTagLine]) {
-            if (!optionalPart) continue;
-            const candidate = [description, optionalPart].filter(Boolean).join("\n\n");
-            if (candidate.length <= 500) description = candidate;
-          }
-
           const pin = await createPinterestImagePin({
             accessToken: pinterestAccessToken,
             boardId,
             title: channelPost.title || post.title || "Publication iNrCy",
             description,
             imageUrl: pinterestImageUrls[0],
-            link:
-              normalizePublicHttpUrl(channelPost.ctaUrl) ||
-              normalizePublicHttpUrl(siteWebUrl) ||
-              normalizePublicHttpUrl(inrcySiteUrl),
+            link: pinterestLink,
           });
 
           await setDelivery(ch, {

@@ -35,9 +35,10 @@ test("iNrSend edit restarts from the preserved original without cumulative crop"
   assert.match(details, /\? "Originale"\s*:\s*"Personnalisée"/);
 });
 
-test("iNrAgent scheduled publication keeps Pinterest image parity and excludes video pins", async () => {
+test("iNrAgent scheduled publication keeps Pinterest image parity and includes video pins", async () => {
   const schedule = await read("app/api/agent/actions/schedule/route.ts");
   assert.match(schedule, /\| "pinterest";/);
   assert.match(schedule, /pinterest: "pinterest"/);
-  assert.match(schedule, /activeMediaMode === "video"\) return channel !== "pinterest"/);
+  assert.match(schedule, /activeMediaMode === "video"\) return true/);
+  assert.doesNotMatch(schedule, /channel !== "pinterest"/);
 });

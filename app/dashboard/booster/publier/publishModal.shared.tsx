@@ -524,8 +524,8 @@ export function getUnavailableMediaModeMessage(
   if (channel === "tiktok" && mode === "none") {
     return "TikTok nécessite au moins une photo ou une vidéo.";
   }
-  if (channel === "pinterest" && mode !== "images") {
-    return "Les Video Pins ne sont pas disponibles dans le Sandbox Pinterest actuel. Utilisez une image.";
+  if (channel === "pinterest" && mode === "none") {
+    return "Pinterest nécessite une image ou une vidéo.";
   }
   return "";
 }
@@ -618,9 +618,9 @@ export function getChannelPublicationRequirements({
       );
     }
 
-    if (channel === "pinterest") {
-      blockers.push(
-        "Les Video Pins ne sont pas disponibles dans le Sandbox Pinterest actuel. Utilisez une image.",
+    if (channel === "pinterest" && hasVideo) {
+      warnings.push(
+        "Pinterest publiera la vidéo avec une image de couverture générée automatiquement si nécessaire.",
       );
     }
 
@@ -683,7 +683,7 @@ export function getChannelPublicationRequirements({
     } else if (channel === "youtube_shorts") {
       blockers.push("YouTube nécessite une vidéo.");
     } else if (channel === "pinterest") {
-      blockers.push("Pinterest nécessite au moins 1 image.");
+      blockers.push("Pinterest nécessite une image ou une vidéo.");
     }
   }
 

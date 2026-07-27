@@ -1559,7 +1559,6 @@ export default function PublishModal({
     const hasImages = images.length > 0;
 
     if (channel === "youtube_shorts") return hasVideo ? "video" : "none";
-    if (channel === "pinterest") return hasImages ? "images" : "none";
 
     if (channel === "tiktok") {
       if (explicit === "video" && hasVideo) return "video";
@@ -3367,14 +3366,20 @@ export default function PublishModal({
         setPublishError("Choisissez un tableau Pinterest avant de publier.");
         return;
       }
+      const pinterestMode = publishMediaModeByChannel.pinterest || "none";
       const pinterestImages = channelImageEditors.pinterest?.imageKeys || [];
-      if (
-        publishMediaModeByChannel.pinterest !== "images" ||
-        !pinterestImages.length
-      ) {
+      if (pinterestMode === "none") {
+        setImgError("Pinterest nécessite une image ou une vidéo.");
+        return;
+      }
+      if (pinterestMode === "images" && !pinterestImages.length) {
         setImgError(
           "Veuillez ajouter au moins 1 image pour publier sur Pinterest.",
         );
+        return;
+      }
+      if (pinterestMode === "video" && !videoFile) {
+        setImgError("Veuillez ajouter une vidéo pour publier sur Pinterest.");
         return;
       }
     }

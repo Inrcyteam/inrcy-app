@@ -40,6 +40,12 @@
   "functions": {
     "app/api/booster/video-transform/route.ts": {
       "includeFiles": "node_modules/ffmpeg-static/**/*"
+    },
+    "app/api/booster/publish-now/route.ts": {
+      "includeFiles": "node_modules/ffmpeg-static/**/*"
+    },
+    "app/api/inrsend/publications/[publicationId]/pinterest/route.ts": {
+      "includeFiles": "node_modules/ffmpeg-static/**/*"
     }
   }
 }

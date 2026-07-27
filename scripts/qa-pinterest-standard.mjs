@@ -28,8 +28,22 @@ const stats = read("lib/stats/buildOverview.ts");
 const connectedChannels = read("app/api/booster/connected-channels/route.ts");
 const privacy = read("app/legal/_components/ConfidentialiteContent.tsx");
 const pinterestPublish = read("lib/pinterestPublish.ts");
+const pinterestVideoProtocol = read("lib/pinterestVideoProtocol.ts");
 const publishRules = read("app/dashboard/booster/publier/publishModal.shared.tsx");
 const inrsendDetails = read("app/dashboard/mails/_components/MailboxDetailsModal.tsx");
+const bubbleAccess = read("lib/bubbleAccess.ts");
+const pinterestAccessMigration = read(
+  "ops/sql/2026-07-27_app_bubble_access_pinterest_enabled.sql",
+);
+const pinterestProductionCutover = read(
+  "ops/sql/2026-07-27_pinterest_production_cutover.sql",
+);
+const settingsDrawer = read(
+  "app/dashboard/_components/DashboardSettingsDrawerContent.tsx",
+);
+const agentExecute = read("app/api/agent/actions/execute/route.ts");
+const agentSchedule = read("app/api/agent/actions/schedule/route.ts");
+const vercelConfig = JSON.parse(read("vercel.json"));
 
 for (const scope of [
   "user_accounts:read",
@@ -100,10 +114,10 @@ check(
   "Le nom du tableau doit rester lu en direct depuis Pinterest.",
 );
 check(
-  "Environnement Sandbox/Production",
-  oauth.includes("PINTEREST_API_ENV") &&
-    oauth.includes("api-sandbox.pinterest.com"),
-  "Le routage Trial Sandbox doit être configurable.",
+  "Environnement Pinterest production uniquement",
+  oauth.includes('return "https://api.pinterest.com"') &&
+    !oauth.includes("api-sandbox.pinterest.com"),
+  "L'intégration Pinterest officielle ne doit plus router vers le Sandbox.",
 );
 check(
   "Pinterest connecté sans board imposé",
@@ -123,9 +137,26 @@ check(
   "Booster doit lire les tableaux via /boards et non via /status.",
 );
 check(
-  "Création Pin réelle",
-  publish.includes("createPinterestImagePin"),
-  "Création de Pin absente.",
+  "Création Pins image et vidéo réelle",
+  publish.includes("createPinterestImagePin") &&
+    publish.includes("createPinterestVideoPin") &&
+    pinterestPublish.includes("publishPinterestVideoWithProtocol"),
+  "La création Pinterest doit couvrir les images et les vidéos.",
+);
+check(
+  "Booster autorise Pinterest en vidéo",
+  !publishModal.includes(
+    'if (channel === "pinterest") return hasImages ? "images" : "none"',
+  ) &&
+    publishModal.includes('pinterestMode === "video" && !videoFile') &&
+    publishRules.includes('channel === "pinterest" && hasVideo'),
+  "Le sélecteur Booster ne doit plus forcer Pinterest en mode image.",
+);
+check(
+  "iNrAgent conserve Pinterest en vidéo",
+  agentExecute.includes('if (activeMediaMode === "video") return true;') &&
+    agentSchedule.includes('if (activeMediaMode === "video") return true;'),
+  "Les publications immédiates et programmées iNrAgent doivent garder Pinterest en mode vidéo.",
 );
 check(
   "Modification Pin réelle",
@@ -139,11 +170,40 @@ check(
   "Suppression Pinterest absente.",
 );
 check(
-  "Fallback édition Sandbox",
-  inrsend.includes("pinterest_sandbox_pin_replaced") &&
+  "Fallback édition production",
+  inrsend.includes("pinterest_pin_replaced") &&
     inrsend.includes("isPinterestPinEditRestrictedError") &&
     pinterestPublish.includes("pin_edit"),
-  "Le fallback de remplacement Sandbox pour pin_edit manque.",
+  "Le fallback de remplacement production pour pin_edit manque.",
+);
+check(
+  "Protocole Video Pin complet",
+  pinterestVideoProtocol.includes('"/media"') &&
+    pinterestVideoProtocol.includes("new FormData") &&
+    pinterestVideoProtocol.includes("upload_parameters") &&
+    pinterestVideoProtocol.includes("/media/${encodeURIComponent(mediaId)}") &&
+    pinterestVideoProtocol.includes('source_type: "video_id"') &&
+    pinterestVideoProtocol.includes("cover_image_url"),
+  "Le flux register/upload/poll/create des Video Pins est incomplet.",
+);
+check(
+  "Couverture vidéo automatique",
+  pinterestPublish.includes("pinterest-video-covers") &&
+    pinterestPublish.includes("pinterest-cover.jpg") &&
+    pinterestPublish.includes("createPinterestVideoPin"),
+  "Pinterest doit disposer d'une couverture publique même sans miniature fournie.",
+);
+check(
+  "FFmpeg embarqué pour les routes Pinterest",
+  [
+    "app/api/booster/publish-now/route.ts",
+    "app/api/inrsend/publications/[publicationId]/pinterest/route.ts",
+  ].every(
+    (route) =>
+      vercelConfig.functions?.[route]?.includeFiles ===
+      "node_modules/ffmpeg-static/**/*",
+  ),
+  "Vercel doit embarquer FFmpeg dans les routes qui génèrent les couvertures Pinterest.",
 );
 check(
   "Pas de perte silencieuse multi-images",
@@ -177,6 +237,41 @@ check(
   ) && privacy.includes("action explicite de l’utilisateur"),
   "Politique Pinterest non alignée avec le flux réel.",
 );
+check(
+  "Pinterest actif par défaut",
+  /pinterest:\s*true/.test(bubbleAccess),
+  "APP_BUBBLE_DEFAULT_ACCESS doit activer Pinterest pour les nouveaux comptes.",
+);
+check(
+  "Fallback panneau Pinterest actif",
+  settingsDrawer.includes("pinterestAccessEnabled = true"),
+  "Le fallback du panneau Pinterest doit suivre le statut Standard.",
+);
+check(
+  "Migration activation Pinterest",
+  pinterestAccessMigration.includes("select account.id, 'pinterest', true") &&
+    pinterestAccessMigration.includes("(new.id, 'pinterest', true)") &&
+    pinterestAccessMigration.includes("(new.id, 'site_inrcy', false)"),
+  "La migration doit activer Pinterest existant/futur sans ouvrir Site iNrCy.",
+);
+check(
+  "Bascule des anciens jetons Sandbox",
+  pinterestProductionCutover.includes("pinterest_api_environment") &&
+    pinterestProductionCutover.includes("= 'sandbox'") &&
+    pinterestProductionCutover.includes("status = 'disconnected'") &&
+    pinterestProductionCutover.includes("access_token_enc = null"),
+  "Les anciennes connexions Sandbox explicites doivent demander une reconnexion Production.",
+);
+check(
+  "Code Pinterest sans Sandbox",
+  !oauth.includes("api-sandbox.pinterest.com") &&
+    !publishRules.includes("Sandbox Pinterest") &&
+    !publish.includes("Sandbox Pinterest") &&
+    !inrsend.includes("Sandbox Pinterest") &&
+    !inrsend.includes("pinterest_sandbox"),
+  "Le code Pinterest officiel ne doit plus contenir de chemin ou message Sandbox.",
+);
+
 check(
   "SQL nettoyage historique",
   fs.existsSync(

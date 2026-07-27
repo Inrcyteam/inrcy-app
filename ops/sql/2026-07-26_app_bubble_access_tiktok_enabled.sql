@@ -1,5 +1,5 @@
 -- TikTok est désormais validé et accessible par défaut pour tous les comptes.
--- Pinterest reste le seul canal désactivé par défaut.
+-- Pinterest est active par la migration Standard du 27 juillet 2026.
 
 begin;
 

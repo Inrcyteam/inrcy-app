@@ -8,18 +8,18 @@ import {
   isBubbleEnabled,
 } from "../../lib/bubbleAccess.ts";
 
-test("TikTok est actif par défaut tandis que Site iNrCy et Pinterest restent en opt-in", () => {
+test("TikTok et Pinterest sont actifs par défaut tandis que Site iNrCy reste en opt-in", () => {
   assert.equal(APP_BUBBLE_DEFAULT_ACCESS.tiktok, true);
+  assert.equal(APP_BUBBLE_DEFAULT_ACCESS.pinterest, true);
   assert.equal(APP_BUBBLE_DEFAULT_ACCESS.site_inrcy, false);
-  assert.equal(APP_BUBBLE_DEFAULT_ACCESS.pinterest, false);
 
   const rows = createDefaultBubbleAccessRows("00000000-0000-0000-0000-000000000001");
   assert.equal(rows.find((row) => row.bubble_key === "tiktok")?.enabled, true);
+  assert.equal(rows.find((row) => row.bubble_key === "pinterest")?.enabled, true);
   assert.equal(rows.find((row) => row.bubble_key === "site_inrcy")?.enabled, false);
-  assert.equal(rows.find((row) => row.bubble_key === "pinterest")?.enabled, false);
 });
 
-test("TikTok reste accessible même si une ancienne ligne est encore à false", () => {
+test("TikTok reste forcé actif, tandis qu'une désactivation admin explicite de Pinterest reste respectée", () => {
   const accessMap = buildBubbleAccessMap([
     { bubble_key: "tiktok", enabled: false },
     { bubble_key: "pinterest", enabled: false },
@@ -28,6 +28,7 @@ test("TikTok reste accessible même si une ancienne ligne est encore à false", 
   assert.equal(accessMap.tiktok, true);
   assert.equal(accessMap.pinterest, false);
   assert.equal(isBubbleEnabled({ tiktok: false }, "tiktok"), true);
+  assert.equal(isBubbleEnabled(undefined, "pinterest"), true);
 });
 
 test("Site iNrCy reste fermé sans ligne Supabase et ne s'ouvre qu'avec enabled=true", () => {

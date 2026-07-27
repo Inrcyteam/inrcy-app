@@ -1,3 +1,5 @@
+-- HISTORIQUE TRIAL : ne plus executer apres l'approbation Standard.
+-- Utiliser ops/sql/2026-07-27_app_bubble_access_pinterest_enabled.sql.
 -- iNrCy - accès bulles Pinterest + Trustpilot
 -- Objectif : créer les accès activables/désactivables pour tous les comptes existants.
 -- Défaut volontaire : désactivé, pour laisser l'admin iNrCy activer depuis Bubble Access.

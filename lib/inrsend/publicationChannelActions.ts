@@ -14,9 +14,10 @@ import { buildBoosterGmbSummary, buildBoosterInstagramCaption, buildBoosterMessa
 import { log } from "@/lib/observability/logger";
 import { captureApiException } from "@/lib/observability/sentry";
 import { getLinkedInAccessToken } from "@/lib/linkedinOAuth";
-import { getPinterestAccessToken, getPinterestApiEnvironment } from "@/lib/pinterestOAuth";
+import { getPinterestAccessToken } from "@/lib/pinterestOAuth";
 import {
   createPinterestImagePin,
+  createPinterestVideoPin,
   deletePinterestPin,
   isPinterestPinEditRestrictedError,
   updatePinterestPin,
@@ -1610,18 +1611,10 @@ async function replaceChannelDelivery(params: {
     const accessToken = await getPinterestAccessToken(userId);
     if (!accessToken) throw new Error("Pinterest à reconnecter. Rendez-vous dans Canaux.");
     if (!previousExternalId) throw new Error("Épingle Pinterest introuvable dans l’historique iNrSend.");
-    if (isVideoPublication) {
-      throw new Error(
-        "Les Video Pins ne sont pas disponibles dans le Sandbox Pinterest actuel. Utilisez une image.",
-      );
-    }
 
     const channelResult = asRecord(asRecord(eventPayload.results).pinterest);
     const boardId = String(channelResult.board_id || "").trim();
     if (!boardId) throw new Error("Tableau Pinterest introuvable. Configurez Pinterest puis réessayez.");
-
-    const pinterestImageUrls = socialFeedImageUrls.filter(Boolean).slice(0, 1);
-    if (!pinterestImageUrls.length) throw new Error("Pinterest nécessite au moins 1 image.");
 
     const pinterestTags = nextPost.hashtags
       .map((tag) => normalizeHashtag(tag))
@@ -1630,6 +1623,56 @@ async function replaceChannelDelivery(params: {
     const tagLine = pinterestTags.length ? pinterestTags.map((tag) => `#${tag}`).join(" ") : "";
     const description = [canonMessage, tagLine].filter(Boolean).join("\n\n").slice(0, 500);
     const link = normalizePublicHttpUrl(nextPost.ctaUrl) || normalizePublicHttpUrl(websiteUrl) || null;
+
+    if (isVideoPublication && videoUrl && video) {
+      const created = await createPinterestVideoPin({
+        accessToken,
+        userId,
+        boardId,
+        title: nextPost.title || "Publication iNrCy",
+        description,
+        videoUrl,
+        videoStoragePath: video.storagePath,
+        videoContentType: video.type,
+        videoFileName: video.name,
+        coverImageUrl: video.thumbnailUrl,
+        coverStoragePath: video.thumbnailStoragePath,
+        link,
+      });
+      if (!created.id) {
+        throw new Error(
+          "Pinterest n'a pas renvoyé l’identifiant de la nouvelle épingle vidéo.",
+        );
+      }
+
+      try {
+        await deletePinterestPin(accessToken, previousExternalId);
+      } catch (deleteOldError) {
+        try {
+          await deletePinterestPin(accessToken, created.id);
+        } catch {
+          // Rollback best effort : on conserve l’erreur originale, plus utile au pro.
+        }
+        throw deleteOldError;
+      }
+
+      return {
+        externalId: created.id,
+        status: "delivered",
+        error: null,
+        pinterestMeta: {
+          board_id: boardId,
+          external_url: created.url || null,
+          media_type: "video",
+          media_id: created.media_id || null,
+          media_status: created.media_status || null,
+          cover_image_url: created.cover_image_url || null,
+        },
+      };
+    }
+
+    const pinterestImageUrls = socialFeedImageUrls.filter(Boolean).slice(0, 1);
+    if (!pinterestImageUrls.length) throw new Error("Pinterest nécessite au moins 1 image.");
     const currentImageSet = getChannelImageSet(eventPayload, publication, channel);
     const currentPinterestImageUrls = (
       currentImageSet.socialFeedPublishableUrls.length
@@ -1703,9 +1746,7 @@ async function replaceChannelDelivery(params: {
           },
         };
       } catch (updateError) {
-        const canFallbackReplace =
-          getPinterestApiEnvironment() === "sandbox" &&
-          isPinterestPinEditRestrictedError(updateError);
+        const canFallbackReplace = isPinterestPinEditRestrictedError(updateError);
         if (!canFallbackReplace) throw updateError;
 
         const stableExistingImageUrl =
@@ -1713,9 +1754,9 @@ async function replaceChannelDelivery(params: {
           pinterestImageUrls[0];
         return replacePinterestPin({
           imageUrl: stableExistingImageUrl,
-          warning: "pinterest_sandbox_pin_replaced",
+          warning: "pinterest_pin_replaced",
           warningMessage:
-            "Pinterest Sandbox a remplacé l’épingle pour appliquer la modification. Son identifiant et ses statistiques de test repartent de zéro.",
+            "Pinterest a remplacé l’épingle pour appliquer la modification. Son identifiant et ses statistiques repartent de zéro.",
         });
       }
     }
@@ -2046,8 +2087,15 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
           { status: 400, code: "pinterest_single_image_required" },
         );
       }
-      if (mediaType === "video" && !video?.publicUrl) {
-        return jsonUserFacingError("Vidéo introuvable. Merci de relancer la publication depuis Booster.", { status: 400, code: "video_missing" });
+      if (
+        mediaType === "video" &&
+        !video?.publicUrl &&
+        !video?.storagePath
+      ) {
+        return jsonUserFacingError(
+          "Vidéo introuvable. Merci de relancer la publication depuis Booster.",
+          { status: 400, code: "video_missing" },
+        );
       }
 
       const imageSet = mediaType === "images"

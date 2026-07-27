@@ -51,18 +51,14 @@ function trimSlash(value: string) {
   return value.replace(/\/+$/g, "");
 }
 
-export type PinterestApiEnvironment = "sandbox" | "production";
+export type PinterestApiEnvironment = "production";
 
 export function getPinterestApiEnvironment(): PinterestApiEnvironment {
-  return String(process.env.PINTEREST_API_ENV || "production").trim().toLowerCase() === "sandbox"
-    ? "sandbox"
-    : "production";
+  return "production";
 }
 
 export function getPinterestApiBaseUrl() {
-  return getPinterestApiEnvironment() === "sandbox"
-    ? "https://api-sandbox.pinterest.com"
-    : "https://api.pinterest.com";
+  return "https://api.pinterest.com";
 }
 
 export function getPinterestClientId() {

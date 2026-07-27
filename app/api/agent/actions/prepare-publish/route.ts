@@ -232,25 +232,12 @@ function channelMediaReadiness(
     };
   }
 
-  if (channel === "pinterest" && mediaKind === "video") {
-    return {
-      ready: false,
-      publishable: false,
-      status: "blocked",
-      label: "Bloquant",
-      reason: "Pinterest publie les images dans cette version.",
-      blockers: ["Pinterest publie les images dans cette version."],
-      warnings: [] as string[],
-      canPublishTextOnly: false,
-    };
-  }
-
   if (mediaRequiredChannels.has(channel) && !media) {
     const reason =
       channel === "instagram"
         ? "Instagram nécessite au moins 1 image ou 1 vidéo."
         : channel === "pinterest"
-          ? "Pinterest nécessite au moins 1 image."
+          ? "Pinterest nécessite une image ou une vidéo."
           : "TikTok nécessite au moins 1 photo ou 1 vidéo.";
     return {
       ready: false,

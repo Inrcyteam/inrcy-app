@@ -17,7 +17,7 @@ begin
   insert into public.app_bubble_access (user_id, bubble_key, enabled)
   values
     (new.id, 'site_inrcy', false),
-    (new.id, 'pinterest', false),
+    (new.id, 'pinterest', true),
     (new.id, 'tiktok', true),
     (new.id, 'inr_agent', true)
   on conflict (user_id, bubble_key) do update
@@ -45,7 +45,7 @@ from public.inrcy_accounts account
 cross join (
   values
     ('site_inrcy'::text, false),
-    ('pinterest'::text, false),
+    ('pinterest'::text, true),
     ('tiktok'::text, true),
     ('inr_agent'::text, true)
 ) as defaults(bubble_key, enabled)

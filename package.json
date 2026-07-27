@@ -21,7 +21,7 @@
     "test:booster-images": "node --test --experimental-strip-types tests/booster-image-decision/booster-image-decision.test.mts && node --test tests/booster-image-decision/*.test.mjs",
     "qa:booster-images": "npm run test:booster-images && npm run test:media-rules",
     "verify:pinterest-env": "node scripts/verify-pinterest-env.mjs",
-    "qa:pinterest": "node scripts/qa-pinterest-standard.mjs && npm run verify:pinterest-env",
+    "qa:pinterest": "node scripts/qa-pinterest-standard.mjs && npm run test:pinterest && npm run verify:pinterest-env",
     "audit:ai-gateway": "node scripts/audit-ai-gateway.mjs",
     "test:ai-gateway": "node --test --experimental-strip-types tests/ai-gateway/*.test.mts",
     "qa:ai-gateway": "npm run audit:ai-gateway && npm run test:ai-gateway && npm run typecheck",
@@ -37,7 +37,8 @@
     "qa:inr-search:final": "npm run qa:inr-search && npm run test:inr-search && npm run typecheck && eslint app/entreprises app/metiers app/secteurs app/api/inr-search lib/inrSearch*.ts app/dashboard/settings/_components/InrSearchSettingsContent.tsx --max-warnings=9999",
     "test:booster-content-safety": "node --test --experimental-strip-types tests/booster-content-safety/*.test.mts",
     "test:onboarding-state": "node --test --experimental-strip-types tests/onboarding-state/*.test.mts",
-    "qa:onboarding": "npm run test:onboarding-state && npm run test:multicompte && npm run typecheck && npm run lint && npm run build"
+    "qa:onboarding": "npm run test:onboarding-state && npm run test:multicompte && npm run typecheck && npm run lint && npm run build",
+    "test:pinterest": "node --test --experimental-strip-types tests/pinterest/*.test.mts"
   },
   "dependencies": {
     "@sentry/nextjs": "^10.39.0",

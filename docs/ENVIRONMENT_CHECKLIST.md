@@ -167,9 +167,9 @@ La clé directe reste exclusivement côté serveur. Elle ne contourne jamais les
 - [ ] `TIKTOK_MEDIA_BASE_URL`
 - [ ] `TIKTOK_MEDIA_SIGNING_SECRET`
 
-## Pinterest — Trial approuvé
+## Pinterest — Accès Standard approuvé (Production)
 
-Configurer les variables canoniques en Production avant le premier OAuth réel.
+Configurer les variables canoniques de Production. Le code iNrCy ne route plus vers le Sandbox.
 
 - [ ] `PINTEREST_CLIENT_ID`
 - [ ] `PINTEREST_CLIENT_SECRET`
