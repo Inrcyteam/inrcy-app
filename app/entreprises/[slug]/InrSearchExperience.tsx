@@ -35,6 +35,20 @@ function prefersReducedMotion() {
   return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
 }
 
+const MOBILE_VIEWPORT_WIDTH_DELTA = 24;
+const MOBILE_VIEWPORT_SETTLE_MS = 140;
+
+function readLayoutViewport() {
+  const width = Math.max(1, Math.round(window.innerWidth));
+  const height = Math.max(1, Math.round(window.innerHeight));
+
+  return {
+    width,
+    height,
+    orientation: width >= height ? "landscape" : "portrait",
+  } as const;
+}
+
 export default function InrSearchExperience({
   companyName,
   logoUrl,
@@ -87,8 +101,14 @@ export default function InrSearchExperience({
     let wheelUnlockTimer = 0;
     let wheelResetTimer = 0;
     let wheelAccumulator = 0;
+    let viewportSettleTimer = 0;
+    let viewportFrame = 0;
+    let stableViewport = readLayoutViewport();
     let lastPointerEvent: PointerEvent | null = null;
     const reducedMotionQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const mobileStabilityQuery = window.matchMedia(
+      "(max-width: 900px), (hover: none) and (pointer: coarse)",
+    );
 
     const applySectionState = (index: number) => {
       const safeIndex = Math.max(0, Math.min(sections.length - 1, index));
@@ -149,6 +169,57 @@ export default function InrSearchExperience({
       });
     };
 
+    const applyStableViewportHeight = () => {
+      const nextViewport = readLayoutViewport();
+      stableViewport = nextViewport;
+
+      if (mobileStabilityQuery.matches) {
+        root.style.setProperty(
+          "--inrsearch-viewport-height",
+          `${nextViewport.height}px`,
+        );
+        root.dataset.viewportHeight = "locked";
+      } else {
+        root.style.removeProperty("--inrsearch-viewport-height");
+        root.dataset.viewportHeight = "dynamic";
+      }
+    };
+
+    const syncAfterViewportChange = (force = false) => {
+      const nextViewport = readLayoutViewport();
+      const widthChanged =
+        Math.abs(nextViewport.width - stableViewport.width) >=
+        MOBILE_VIEWPORT_WIDTH_DELTA;
+      const orientationChanged =
+        nextViewport.orientation !== stableViewport.orientation;
+
+      if (!mobileStabilityQuery.matches) {
+        stableViewport = nextViewport;
+        root.style.removeProperty("--inrsearch-viewport-height");
+        root.dataset.viewportHeight = "dynamic";
+        syncFromScroll();
+        return;
+      }
+
+      // Les barres d'adresse des navigateurs mobiles changent seulement la
+      // hauteur du viewport. On les ignore pour ne pas faire sauter la scène.
+      if (!force && !widthChanged && !orientationChanged) return;
+
+      window.clearTimeout(viewportSettleTimer);
+      viewportSettleTimer = window.setTimeout(() => {
+        applyStableViewportHeight();
+        cancelAnimationFrame(viewportFrame);
+        viewportFrame = requestAnimationFrame(() => {
+          moveToIndex(activeIndexRef.current, "auto");
+          syncFromScroll();
+        });
+      }, MOBILE_VIEWPORT_SETTLE_MS);
+    };
+
+    const onViewportResize = () => syncAfterViewportChange(false);
+    const onOrientationChange = () => syncAfterViewportChange(true);
+    const onMobileStabilityChange = () => syncAfterViewportChange(true);
+
     const flushPointer = () => {
       pointerFrame = 0;
       const event = lastPointerEvent;
@@ -176,6 +247,13 @@ export default function InrSearchExperience({
     };
 
     const updatePointer = (event: PointerEvent) => {
+      if (
+        event.pointerType !== "mouse" ||
+        reducedMotionQuery.matches ||
+        mobileStabilityQuery.matches
+      ) {
+        return;
+      }
       lastPointerEvent = event;
       if (!pointerFrame) pointerFrame = requestAnimationFrame(flushPointer);
     };
@@ -333,17 +411,26 @@ export default function InrSearchExperience({
       .querySelectorAll<HTMLElement>("[data-reveal]")
       .forEach((element) => revealObserver.observe(element));
 
+    applyStableViewportHeight();
+
     orbit.addEventListener("scroll", syncFromScroll, { passive: true });
     orbit.addEventListener("wheel", onWheel, { passive: false });
     orbit.addEventListener("pointerdown", onPointerDown, { passive: true });
     orbit.addEventListener("pointermove", onPointerMove, { passive: true });
     orbit.addEventListener("pointerup", onPointerUp, { passive: false });
     orbit.addEventListener("pointercancel", onPointerCancel, { passive: true });
-    if (!reducedMotionQuery.matches) {
+    if (!reducedMotionQuery.matches && !mobileStabilityQuery.matches) {
       root.addEventListener("pointermove", updatePointer, { passive: true });
     }
     window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("resize", syncFromScroll, { passive: true });
+    window.addEventListener("resize", onViewportResize, { passive: true });
+    window.addEventListener("orientationchange", onOrientationChange, {
+      passive: true,
+    });
+    window.visualViewport?.addEventListener("resize", onViewportResize, {
+      passive: true,
+    });
+    mobileStabilityQuery.addEventListener?.("change", onMobileStabilityChange);
     window.addEventListener("hashchange", onHashChange);
     root.addEventListener("click", onRootClick);
 
@@ -358,8 +445,10 @@ export default function InrSearchExperience({
     return () => {
       cancelAnimationFrame(scrollFrame);
       cancelAnimationFrame(pointerFrame);
+      cancelAnimationFrame(viewportFrame);
       window.clearTimeout(wheelUnlockTimer);
       window.clearTimeout(wheelResetTimer);
+      window.clearTimeout(viewportSettleTimer);
       revealObserver.disconnect();
       sections.forEach((section) => {
         section.removeAttribute("data-orbit-inactive");
@@ -375,9 +464,17 @@ export default function InrSearchExperience({
       orbit.removeEventListener("pointercancel", onPointerCancel);
       root.removeEventListener("pointermove", updatePointer);
       window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("resize", syncFromScroll);
+      window.removeEventListener("resize", onViewportResize);
+      window.removeEventListener("orientationchange", onOrientationChange);
+      window.visualViewport?.removeEventListener("resize", onViewportResize);
+      mobileStabilityQuery.removeEventListener?.(
+        "change",
+        onMobileStabilityChange,
+      );
       window.removeEventListener("hashchange", onHashChange);
       root.removeEventListener("click", onRootClick);
+      root.style.removeProperty("--inrsearch-viewport-height");
+      delete root.dataset.viewportHeight;
     };
   }, [setCurrentIndex]);
 

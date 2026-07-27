@@ -1,4 +1,16 @@
 /* =========================
+   Dashboard rendering surface
+   A continuous dark layer prevents white compositor flashes on mobile.
+========================= */
+.shell {
+  position: relative;
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  background-color: #080b1c;
+}
+
+/* =========================
    Page / Background
 ========================= */
 .page {
@@ -8932,8 +8944,10 @@
     height: 100dvh;
     min-height: 100dvh;
     overflow: hidden;
+    overscroll-behavior: none;
     box-sizing: border-box;
     padding-bottom: 0;
+    background-color: #080b1c;
   }
 
   .mobileViewport {
@@ -8944,9 +8958,11 @@
     min-height: 0;
     overflow-x: hidden;
     overflow-y: auto;
+    overscroll-behavior-y: contain;
     -webkit-overflow-scrolling: touch;
     scroll-padding-bottom: 12px;
     box-sizing: border-box;
+    background-color: #080b1c;
   }
 
   .mobileViewport > * {

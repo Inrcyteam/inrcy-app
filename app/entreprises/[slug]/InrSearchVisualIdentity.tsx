@@ -171,19 +171,32 @@ export default function InrSearchVisualIdentity({
     root.dataset.visualTheme = inferredTheme;
 
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const mobileStabilityMedia = window.matchMedia(
+      "(max-width: 900px), (hover: none) and (pointer: coarse)",
+    );
     const updateMotionMode = () => {
       const hardware = navigator.hardwareConcurrency || 8;
       const memory = (navigator as Navigator & { deviceMemory?: number }).deviceMemory || 8;
-      root.dataset.motion = media.matches || hardware <= 4 || memory <= 4 ? "lite" : "full";
+      const mobileStability = mobileStabilityMedia.matches;
+
+      root.dataset.mobileStability = mobileStability ? "true" : "false";
+      root.dataset.motion =
+        media.matches || mobileStability || hardware <= 4 || memory <= 4
+          ? "lite"
+          : "full";
     };
     updateMotionMode();
     media.addEventListener?.("change", updateMotionMode);
+    mobileStabilityMedia.addEventListener?.("change", updateMotionMode);
 
     const fallback = buildInrSearchFallbackPalette(seed, inferredTheme);
     applyPalette(root, fallback, "fallback");
 
     if (!logoUrl) {
-      return () => media.removeEventListener?.("change", updateMotionMode);
+      return () => {
+        media.removeEventListener?.("change", updateMotionMode);
+        mobileStabilityMedia.removeEventListener?.("change", updateMotionMode);
+      };
     }
 
     let cancelled = false;
@@ -213,6 +226,7 @@ export default function InrSearchVisualIdentity({
     return () => {
       cancelled = true;
       media.removeEventListener?.("change", updateMotionMode);
+      mobileStabilityMedia.removeEventListener?.("change", updateMotionMode);
     };
   }, [initialTheme, logoUrl, profession, sector, seed]);
 

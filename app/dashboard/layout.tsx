@@ -126,7 +126,7 @@ export default async function DashboardLayout({
   }
 
   return (
-    <div className={styles.shell}>
+    <div className={`${styles.shell} inrcy-dashboard-shell`}>
       {DASHBOARD_CRITICAL_IMAGE_PRELOADS.map((src) => (
         <link key={src} rel="preload" as="image" href={src} />
       ))}
