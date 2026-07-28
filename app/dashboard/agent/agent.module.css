@@ -12982,3 +12982,85 @@ button.campaignInfoCard:focus-visible .campaignInfoEye {
     transition: none !important;
   }
 }
+
+/* Correctifs programmation 2026-07-28 : confirmation toujours au-dessus du planning. */
+.confirmModalBackdrop {
+  z-index: 140;
+}
+
+/* Galerie des médias réellement enregistrés canal par canal. */
+.publishMediaGallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(72px, 92px));
+  gap: 10px;
+  margin: 0 0 12px;
+  padding: 10px;
+  border-radius: 18px;
+  background: rgba(5, 14, 34, 0.56);
+  border: 1px solid rgba(148, 163, 255, 0.16);
+}
+
+.publishMediaGalleryItem {
+  position: relative;
+  min-width: 0;
+  aspect-ratio: 1 / 1;
+  padding: 3px;
+  overflow: hidden;
+  border-radius: 14px;
+  cursor: pointer;
+  background: rgba(2, 6, 23, 0.72);
+  border: 1px solid rgba(148, 163, 255, 0.22);
+  box-shadow: none;
+}
+
+.publishMediaGalleryItem img,
+.publishMediaGalleryItem video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  border-radius: 10px;
+}
+
+.publishMediaGalleryItem span {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  min-width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  padding: 0 5px;
+  border-radius: 999px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 950;
+  background: rgba(2, 6, 23, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+}
+
+.publishMediaGalleryItemActive {
+  border-color: rgba(34, 211, 238, 0.9);
+  box-shadow:
+    0 0 0 2px rgba(34, 211, 238, 0.18),
+    0 0 18px rgba(34, 211, 238, 0.28);
+}
+
+.publishMediaGalleryItem:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+@media (max-width: 1100px) {
+  .confirmModalBackdrop {
+    z-index: 10090;
+  }
+}
+
+@media (max-width: 760px) {
+  .publishMediaGallery {
+    grid-template-columns: repeat(5, minmax(52px, 1fr));
+    gap: 7px;
+    overflow-x: auto;
+  }
+}

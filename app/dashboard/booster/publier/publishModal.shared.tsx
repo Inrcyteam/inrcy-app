@@ -2163,6 +2163,33 @@ function withJpegExtension(name: string) {
   return safeName.replace(/\.[^.]+$/, "") + ".jpg";
 }
 
+type PreparedUploadCacheEntry = {
+  storagePath: string;
+  publicUrl: string;
+};
+
+// Cache mémoire de l'onglet : une image déjà envoyée pendant la préparation
+// d'une publication n'est pas renvoyée si le même rendu est réutilisé sur un
+// autre canal ou après une reprise immédiate. Le cache disparaît au rechargement.
+const preparedUploadCache = new Map<string, PreparedUploadCacheEntry>();
+
+async function preparedUploadCacheKey(
+  blob: Blob,
+  fileName: string,
+): Promise<string | null> {
+  if (typeof crypto === "undefined" || !crypto.subtle) return null;
+  try {
+    const base = `${sanitizeUploadName(fileName)}:${blob.type}:${blob.size}`;
+    const digest = await crypto.subtle.digest("SHA-256", await blob.arrayBuffer());
+    const hash = Array.from(new Uint8Array(digest))
+      .map((value) => value.toString(16).padStart(2, "0"))
+      .join("");
+    return `${base}:${hash}`;
+  } catch {
+    return null;
+  }
+}
+
 export async function uploadPreparedImages(
   images: ImagePayload[],
   onProgress?: (current: number, total: number) => void,
@@ -2200,19 +2227,38 @@ export async function uploadPreparedImages(
         blob.type ||
         "application/octet-stream",
     });
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("path", buildBoosterUploadPath(image.name));
+    const cacheKey = await preparedUploadCacheKey(uploadBlob, uploadName);
+    let cachedUpload = cacheKey
+      ? preparedUploadCache.get(cacheKey) || null
+      : null;
 
-    const res = await fetch("/api/booster/upload-prepared", {
-      method: "POST",
-      body: formData,
-    });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok)
-      throw new Error(
-        String(json?.error || "Impossible d'uploader l'image préparée."),
-      );
+    if (!cachedUpload) {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("path", buildBoosterUploadPath(image.name));
+
+      const res = await fetch("/api/booster/upload-prepared", {
+        method: "POST",
+        body: formData,
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok)
+        throw new Error(
+          String(json?.error || "Impossible d'uploader l'image préparée."),
+        );
+
+      cachedUpload = {
+        storagePath: String(json?.storagePath || ""),
+        publicUrl: String(json?.publicUrl || ""),
+      };
+      if (cacheKey && cachedUpload.storagePath && cachedUpload.publicUrl) {
+        if (preparedUploadCache.size >= 300) {
+          const oldestKey = preparedUploadCache.keys().next().value;
+          if (oldestKey) preparedUploadCache.delete(oldestKey);
+        }
+        preparedUploadCache.set(cacheKey, cachedUpload);
+      }
+    }
 
     const serializableImage = { ...image };
     delete serializableImage.sourceFile;
@@ -2225,8 +2271,8 @@ export async function uploadPreparedImages(
         image.type ||
         blob.type ||
         "application/octet-stream",
-      storagePath: String(json?.storagePath || ""),
-      publicUrl: String(json?.publicUrl || ""),
+      storagePath: cachedUpload.storagePath,
+      publicUrl: cachedUpload.publicUrl,
     });
     done += 1;
     onProgress?.(done, total);

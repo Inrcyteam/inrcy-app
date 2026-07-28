@@ -198,10 +198,16 @@ type AgentImageAsset = {
   url?: string;
   src?: string;
   publicUrl?: string;
+  renderedUrl?: string;
+  originalUrl?: string;
+  originalPublicUrl?: string;
   path?: string;
   alt?: string;
   title?: string;
   name?: string;
+  type?: string;
+  mimeType?: string;
+  mime_type?: string;
 };
 
 type AgentPreparedAction = {
@@ -257,6 +263,13 @@ type AgentChannelPreview = {
   hashtags: string[];
 };
 
+type AgentPublishMediaItem = {
+  record: Record<string, unknown>;
+  name: string;
+  url: string;
+  kind: "image" | "video" | "file";
+};
+
 type AgentPublishMediaPreview = {
   name: string;
   typeLabel: string;
@@ -265,6 +278,9 @@ type AgentPublishMediaPreview = {
   url: string;
   kind: "image" | "video" | "file" | "none";
   note: string;
+  items: AgentPublishMediaItem[];
+  count: number;
+  activeIndex: number;
 };
 
 type AgentMediaAdaptationPreview = {
@@ -2118,7 +2134,15 @@ function extractImageAsset(
 
 function imageAssetUrl(asset: AgentImageAsset | null): string {
   if (!asset) return "";
-  return firstSafeString(asset.url, asset.publicUrl, asset.src, asset.path);
+  return firstSafeString(
+    asset.url,
+    asset.publicUrl,
+    asset.renderedUrl,
+    asset.src,
+    asset.path,
+    asset.originalPublicUrl,
+    asset.originalUrl,
+  );
 }
 
 function imageAssetAlt(asset: AgentImageAsset | null): string {
@@ -2314,15 +2338,6 @@ function mediaKindFromHints(
   return "file";
 }
 
-function assetFromUnknown(value: unknown): AgentImageAsset | null {
-  if (!value) return null;
-  if (typeof value === "string")
-    return { url: value, name: filenameFromUrl(value) };
-  const record = asRecord(value);
-  if (!record) return null;
-  return record as AgentImageAsset;
-}
-
 function firstAttachmentCandidate(value: unknown): unknown {
   if (Array.isArray(value)) return value.find(Boolean) || null;
   return value || null;
@@ -2407,21 +2422,141 @@ function channelSupportsHashtags(channelKey: ChannelKey | null): boolean {
   );
 }
 
-function extractPublishMediaPreview(
+function publishPayloadRecord(
+  action: AgentPreparedAction,
+): Record<string, unknown> {
+  return asRecord(action.payload?.publishPayload) || {};
+}
+
+function publishPayloadValue(
+  action: AgentPreparedAction,
+  key: string,
+): unknown {
+  const payload = action.payload || {};
+  if (Object.prototype.hasOwnProperty.call(payload, key)) return payload[key];
+  return publishPayloadRecord(action)[key];
+}
+
+function publishMediaRecord(value: unknown): Record<string, unknown> | null {
+  if (!value) return null;
+  if (typeof value === "string") {
+    return { url: value, name: filenameFromUrl(value) };
+  }
+  return asRecord(value);
+}
+
+function publishMediaItemFromRecord(
+  record: Record<string, unknown> | null,
+): AgentPublishMediaItem | null {
+  if (!record) return null;
+  const asset = record as AgentImageAsset;
+  const url = imageAssetUrl(asset);
+  if (!url) return null;
+  const type = firstSafeString(
+    record.type,
+    record.mimeType,
+    record.mime_type,
+    record.contentType,
+  );
+  const kind = mediaKindFromHints(type, url);
+  const name =
+    firstSafeString(record.name, record.title, record.alt, record.filename) ||
+    filenameFromUrl(url);
+  return { record, name, url, kind };
+}
+
+function publishChannelImages(
+  action: AgentPreparedAction,
+  channelKey: ChannelKey | null,
+): Record<string, unknown>[] {
+  if (!channelKey) return [];
+  const imagesByChannel =
+    asRecord(publishPayloadValue(action, "imagesByChannel")) || {};
+  const raw = recordValueForUiChannel(imagesByChannel, channelKey);
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item) => publishMediaRecord(item))
+    .filter((item): item is Record<string, unknown> => Boolean(item));
+}
+
+function publishChannelMediaMode(
+  action: AgentPreparedAction,
+  channelKey: ChannelKey | null,
+): string {
+  if (!channelKey) return "";
+  const mediaModeByChannel =
+    asRecord(publishPayloadValue(action, "mediaModeByChannel")) || {};
+  return String(recordValueForUiChannel(mediaModeByChannel, channelKey) || "")
+    .trim()
+    .toLowerCase();
+}
+
+function publishChannelVideoSettings(
+  action: AgentPreparedAction,
+  channelKey: ChannelKey | null,
+): Record<string, unknown> | null {
+  if (!channelKey) return null;
+  const settingsByChannel =
+    asRecord(publishPayloadValue(action, "videoSettingsByChannel")) || {};
+  return asRecord(recordValueForUiChannel(settingsByChannel, channelKey));
+}
+
+function publishChannelVideo(
+  action: AgentPreparedAction,
+  channelKey: ChannelKey | null,
+): Record<string, unknown> | null {
+  const baseVideo =
+    publishMediaRecord(publishPayloadValue(action, "video")) ||
+    publishMediaRecord(publishPayloadValue(action, "videoAsset"));
+  if (!baseVideo) return null;
+
+  const transformedVariants = Array.isArray(baseVideo.transformedVariants)
+    ? baseVideo.transformedVariants
+        .map((variant) => publishMediaRecord(variant))
+        .filter((variant): variant is Record<string, unknown> => Boolean(variant))
+    : [];
+  const channel = boosterChannelKeyFromAgentChannel(channelKey);
+  const settings = publishChannelVideoSettings(action, channelKey);
+  const signature = settings
+    ? `${String(settings.format || "original")}:${String(
+        settings.adaptationMode || settings.adaptation_mode || "safe_blur",
+      )}`
+    : "";
+  const selectedVariant =
+    transformedVariants.find(
+      (variant) => String(variant.channel || "") === channel,
+    ) ||
+    transformedVariants.find(
+      (variant) => signature && String(variant.signature || "") === signature,
+    ) ||
+    null;
+
+  return {
+    ...baseVideo,
+    ...(selectedVariant || {}),
+    transformedVariants,
+    videoSettings: settings || asRecord(baseVideo.videoSettings) || null,
+    videoSettingsByChannel:
+      asRecord(publishPayloadValue(action, "videoSettingsByChannel")) ||
+      asRecord(baseVideo.videoSettingsByChannel) ||
+      {},
+    originalVideo: baseVideo,
+  };
+}
+
+function getPublishMediaRecords(
   action: AgentPreparedAction | null,
   channelKey: ChannelKey | null,
-): AgentPublishMediaPreview {
-  if (!action) {
-    return {
-      name: "Aucune",
-      typeLabel: "Texte",
-      statusLabel: "—",
-      statusTone: "neutral",
-      url: "",
-      kind: "none",
-      note: "Aucune publication préparée.",
-    };
-  }
+): Record<string, unknown>[] {
+  if (!action) return [];
+  const mode = publishChannelMediaMode(action, channelKey);
+  const channelImages = publishChannelImages(action, channelKey);
+  const video = publishChannelVideo(action, channelKey);
+
+  if (mode === "video" && video) return [video];
+  if (mode === "images" && channelImages.length) return channelImages;
+  if (channelImages.length) return channelImages;
+  if (video) return [video];
 
   const payload = action.payload || {};
   const post = channelPostRecord(action, channelKey);
@@ -2449,51 +2584,88 @@ function extractPublishMediaPreview(
     firstAttachmentCandidate(payload.files),
   ];
 
-  const asset =
-    directCandidates.map(assetFromUnknown).find(Boolean) ||
-    extractImageAsset(action);
-  const url = imageAssetUrl(asset);
-  const assetRecord = asRecord(asset);
-  const type = firstSafeString(
-    assetRecord?.type,
-    assetRecord?.mimeType,
-    assetRecord?.mime_type,
-  );
-  const name =
-    firstSafeString(asset?.name, asset?.title, asset?.alt) ||
-    filenameFromUrl(url);
-  const kind = url ? mediaKindFromHints(type, url) : "none";
+  const direct = directCandidates
+    .map((candidate) => publishMediaRecord(candidate))
+    .find(Boolean);
+  if (direct) return [direct];
+
+  const genericImages = Array.isArray(publishPayloadValue(action, "images"))
+    ? (publishPayloadValue(action, "images") as unknown[])
+        .map((item) => publishMediaRecord(item))
+        .filter((item): item is Record<string, unknown> => Boolean(item))
+    : [];
+  if (genericImages.length) return genericImages;
+
+  const fallback = extractImageAsset(action);
+  const fallbackRecord = publishMediaRecord(fallback);
+  return fallbackRecord ? [fallbackRecord] : [];
+}
+
+function extractPublishMediaPreview(
+  action: AgentPreparedAction | null,
+  channelKey: ChannelKey | null,
+  requestedIndex = 0,
+): AgentPublishMediaPreview {
+  const emptyItems: AgentPublishMediaItem[] = [];
+  if (!action) {
+    return {
+      name: "Aucune",
+      typeLabel: "Texte",
+      statusLabel: "—",
+      statusTone: "neutral",
+      url: "",
+      kind: "none",
+      note: "Aucune publication préparée.",
+      items: emptyItems,
+      count: 0,
+      activeIndex: 0,
+    };
+  }
+
+  const items = getPublishMediaRecords(action, channelKey)
+    .map((record) => publishMediaItemFromRecord(record))
+    .filter((item): item is AgentPublishMediaItem => Boolean(item));
+  const activeIndex = items.length
+    ? Math.min(Math.max(0, requestedIndex), items.length - 1)
+    : 0;
+  const selected = items[activeIndex] || null;
   const needsVideo = channelRequiresVideo(channelKey);
   const needsMedia = channelRequiresMedia(channelKey);
   const readiness = channelReadinessRecord(action, channelKey);
   const readinessBlocks = channelReadinessIsBlocking(readiness);
   const readinessReason = channelReadinessReason(readiness);
 
-  if (url) {
-    const invalidVideo = needsVideo && kind !== "video";
-    return {
-      name:
-        name ||
-        (kind === "video"
+  if (selected) {
+    const invalidVideo = needsVideo && selected.kind !== "video";
+    const countLabel =
+      items.length > 1 && selected.kind === "image"
+        ? `${items.length} images`
+        : selected.kind === "video"
           ? "Vidéo"
-          : kind === "image"
+          : selected.kind === "image"
             ? "Image"
-            : "Pièce jointe"),
-      typeLabel:
-        kind === "video" ? "Vidéo" : kind === "image" ? "Image" : "Fichier",
+            : "Fichier";
+    return {
+      name: selected.name || countLabel,
+      typeLabel: countLabel,
       statusLabel: invalidVideo || readinessBlocks ? "Bloquant" : "Prêt",
       statusTone: invalidVideo || readinessBlocks ? "blocked" : "ready",
-      url,
-      kind,
+      url: selected.url,
+      kind: selected.kind,
       note: invalidVideo
         ? "Ce canal exige une vidéo. Remplacez le média avant validation."
         : readinessBlocks
           ? readinessReason || "Ce canal doit être complété avant publication."
-          : kind === "video"
-            ? "Vidéo prête pour ce canal."
-            : kind === "image"
-              ? "Image prête pour ce canal."
-              : "Fichier associé à ce canal.",
+          : selected.kind === "video"
+            ? "Vidéo préparée pour ce canal."
+            : items.length > 1
+              ? `${items.length} images préparées pour ce canal.`
+              : selected.kind === "image"
+                ? "Image préparée pour ce canal."
+                : "Fichier associé à ce canal.",
+      items,
+      count: items.length,
+      activeIndex,
     };
   }
 
@@ -2510,6 +2682,9 @@ function extractPublishMediaPreview(
         (needsVideo
           ? "YouTube nécessite une vidéo avant publication."
           : "Ce canal nécessite un média avant publication."),
+      items: emptyItems,
+      count: 0,
+      activeIndex: 0,
     };
   }
 
@@ -2521,62 +2696,21 @@ function extractPublishMediaPreview(
     url: "",
     kind: "none",
     note: "Publication texte prête pour ce canal.",
+    items: emptyItems,
+    count: 0,
+    activeIndex: 0,
   };
 }
 
 function getPublishMediaRecord(
   action: AgentPreparedAction | null,
   channelKey: ChannelKey | null,
+  requestedIndex = 0,
 ): Record<string, unknown> | null {
-  if (!action) return null;
-  const payload = action.payload || {};
-  const post = channelPostRecord(action, channelKey);
-  const directCandidates = [
-    post?.media,
-    post?.mediaAsset,
-    post?.image,
-    post?.imageAsset,
-    post?.imageUrl,
-    post?.visual,
-    post?.cover,
-    post?.video,
-    post?.videoAsset,
-    post?.file,
-    post?.attachment,
-    firstAttachmentCandidate(post?.attachments),
-    payload.media,
-    payload.mediaAsset,
-    payload.image,
-    payload.imageAsset,
-    payload.video,
-    payload.videoAsset,
-    payload.selectedImage,
-    payload.visual,
-    payload.cover,
-    firstAttachmentCandidate(payload.attachments),
-    firstAttachmentCandidate(payload.files),
-  ];
-
-  for (const candidate of directCandidates) {
-    if (!candidate) continue;
-    if (typeof candidate === "string") {
-      return { url: candidate, name: filenameFromUrl(candidate) };
-    }
-    const record = asRecord(candidate);
-    if (record) return record;
-  }
-
-  const asset = action.imageAssets
-    .map((item) =>
-      typeof item === "string"
-        ? ({ url: item, name: filenameFromUrl(item) } as Record<
-            string,
-            unknown
-          >)
-        : asRecord(item),
-    )
-    .find(Boolean);
-  return asset || null;
+  const records = getPublishMediaRecords(action, channelKey);
+  if (!records.length) return null;
+  const activeIndex = Math.min(Math.max(0, requestedIndex), records.length - 1);
+  return records[activeIndex] || null;
 }
 
 function getMediaVideoSettingsRecord(
@@ -3565,12 +3699,24 @@ function scheduledActionToPreparedAction(
       : Array.isArray(payload.images)
         ? payload.images.filter(Boolean)
         : [];
+    const imagesByChannel =
+      asRecord(publishPayload.imagesByChannel) ||
+      asRecord(payload.imagesByChannel) ||
+      {};
+    const firstChannelImagesRaw = firstRecordValueForUiChannels(
+      imagesByChannel,
+      finalChannels,
+    );
+    const firstChannelImages = Array.isArray(firstChannelImagesRaw)
+      ? firstChannelImagesRaw.filter(Boolean)
+      : [];
     const video = asRecord(publishPayload.video) || asRecord(payload.video) || null;
     const firstChannelPost = asRecord(
       firstRecordValueForUiChannels(postByChannel, finalChannels),
     );
     const mediaAsset =
       video ||
+      (asRecord(firstChannelImages[0]) as Record<string, unknown> | null) ||
       (asRecord(images[0]) as Record<string, unknown> | null) ||
       asRecord(firstChannelPost?.media) ||
       asRecord(firstChannelPost?.mediaAsset) ||
@@ -3627,7 +3773,13 @@ function scheduledActionToPreparedAction(
       targetChannels: finalChannels,
       targetThemes: [],
       recipients: [],
-      imageAssets: mediaAsset ? [mediaAsset] : video ? [video] : images,
+      imageAssets: video
+        ? [video]
+        : firstChannelImages.length
+          ? firstChannelImages
+          : mediaAsset
+            ? [mediaAsset]
+            : images,
       payload: actionPayload,
       validationRequired: true,
       executionPolicy: "manual_validation",
@@ -3777,35 +3929,217 @@ function updateScheduledEditPublishMedia(
   action: AgentPreparedAction,
   channel: ChannelKey,
   media: Record<string, unknown> | null,
+  requestedIndex = 0,
 ): AgentPreparedAction {
   const displayKey = boosterDisplayKeyFromAgentChannel(channel);
   const payload = jsonClone(action.payload || {});
+  const currentPublishPayload = asRecord(payload.publishPayload) || {};
   const postByChannel = {
-    ...(asRecord(payload.postByChannel) || {}),
+    ...(asRecord(payload.postByChannel) ||
+      asRecord(currentPublishPayload.postByChannel) ||
+      {}),
+  };
+  const imagesByChannel = {
+    ...(asRecord(payload.imagesByChannel) ||
+      asRecord(currentPublishPayload.imagesByChannel) ||
+      {}),
+  };
+  const mediaModeByChannel = {
+    ...(asRecord(payload.mediaModeByChannel) ||
+      asRecord(currentPublishPayload.mediaModeByChannel) ||
+      {}),
+  };
+  const videoSettingsByChannel = {
+    ...(asRecord(payload.videoSettingsByChannel) ||
+      asRecord(currentPublishPayload.videoSettingsByChannel) ||
+      {}),
+  };
+  const videoFormatByChannel = {
+    ...(asRecord(payload.videoFormatByChannel) ||
+      asRecord(currentPublishPayload.videoFormatByChannel) ||
+      {}),
+  };
+  const videoAdaptationModeByChannel = {
+    ...(asRecord(payload.videoAdaptationModeByChannel) ||
+      asRecord(currentPublishPayload.videoAdaptationModeByChannel) ||
+      {}),
   };
   const currentPost = asRecord(postByChannel[displayKey]) || {};
-  postByChannel[displayKey] = media
-    ? { ...currentPost, media, mediaAsset: media, imageAsset: media, image: media, videoAsset: media, video: media }
-    : { ...currentPost, media: null, mediaAsset: null, imageAsset: null, image: null, videoAsset: null, video: null };
-  const images = media && !String(media.type || media.mimeType || media.kind || "").toLowerCase().includes("video")
-    ? [media]
+  const currentImages = Array.isArray(imagesByChannel[displayKey])
+    ? [...(imagesByChannel[displayKey] as unknown[])]
     : [];
-  const video = media && String(media.type || media.mimeType || media.kind || "").toLowerCase().includes("video")
-    ? media
-    : null;
-  return {
-    ...action,
-    imageAssets: media ? [media] : [],
-    payload: {
-      ...payload,
-      postByChannel,
+  const currentMode = String(mediaModeByChannel[displayKey] || "").toLowerCase();
+  const mediaAsset = media ? (media as AgentImageAsset) : null;
+  const mediaUrl = imageAssetUrl(mediaAsset);
+  const mediaType = firstSafeString(
+    media?.type,
+    media?.mimeType,
+    media?.mime_type,
+    media?.kind,
+  );
+  const mediaKind = media && mediaUrl
+    ? mediaKindFromHints(mediaType, mediaUrl)
+    : "none";
+  let nextImages = currentImages;
+  let nextVideo =
+    asRecord(payload.video) || asRecord(currentPublishPayload.video) || null;
+
+  if (mediaKind === "image" && media) {
+    const replaceIndex = currentImages.length
+      ? Math.min(Math.max(0, requestedIndex), currentImages.length - 1)
+      : 0;
+    nextImages = currentImages.length ? [...currentImages] : [];
+    if (nextImages.length) nextImages[replaceIndex] = media;
+    else nextImages.push(media);
+    imagesByChannel[displayKey] = nextImages;
+    mediaModeByChannel[displayKey] = "images";
+    delete videoSettingsByChannel[displayKey];
+    delete videoFormatByChannel[displayKey];
+    delete videoAdaptationModeByChannel[displayKey];
+    postByChannel[displayKey] = {
+      ...currentPost,
       media,
       mediaAsset: media,
-      imageAsset: images[0] || null,
-      image: images[0] || null,
-      images,
-      videoAsset: video,
-      video,
+      imageAsset: media,
+      image: media,
+      imageUrl: mediaUrl,
+      videoAsset: null,
+      video: null,
+      mediaMode: "images",
+    };
+  } else if (mediaKind === "video" && media) {
+    const originalVideo = asRecord(media.originalVideo);
+    const mediaSettingsByChannel = asRecord(media.videoSettingsByChannel);
+    const selectedVideoSettings =
+      asRecord(mediaSettingsByChannel?.[displayKey]) ||
+      asRecord(media.videoSettings);
+    const transformedVariants = Array.isArray(media.transformedVariants)
+      ? media.transformedVariants
+      : Array.isArray(originalVideo?.transformedVariants)
+        ? originalVideo.transformedVariants
+        : [];
+
+    // L'aperçu peut pointer vers la variante transformée du canal. On garde
+    // toutefois la vidéo source comme racine du payload et les variantes dans
+    // transformedVariants, afin de ne pas remplacer l'original pour les autres
+    // canaux lors d'une simple modification de format.
+    nextVideo = originalVideo
+      ? {
+          ...originalVideo,
+          transformedVariants,
+          videoSettingsByChannel:
+            mediaSettingsByChannel ||
+            asRecord(originalVideo.videoSettingsByChannel) ||
+            {},
+        }
+      : media;
+
+    if (selectedVideoSettings) {
+      videoSettingsByChannel[displayKey] = selectedVideoSettings;
+      const format = firstSafeString(selectedVideoSettings.format);
+      const adaptationMode = firstSafeString(
+        selectedVideoSettings.adaptationMode,
+        selectedVideoSettings.adaptation_mode,
+      );
+      if (format) videoFormatByChannel[displayKey] = format;
+      if (adaptationMode) {
+        videoAdaptationModeByChannel[displayKey] = adaptationMode;
+      }
+    }
+    imagesByChannel[displayKey] = [];
+    mediaModeByChannel[displayKey] = "video";
+    postByChannel[displayKey] = {
+      ...currentPost,
+      media,
+      mediaAsset: media,
+      imageAsset: null,
+      image: null,
+      imageUrl: "",
+      videoAsset: media,
+      video: media,
+      mediaMode: "video",
+    };
+  } else if (!media) {
+    if (currentMode === "images" && currentImages.length) {
+      const removeIndex = Math.min(
+        Math.max(0, requestedIndex),
+        currentImages.length - 1,
+      );
+      nextImages = currentImages.filter((_, index) => index !== removeIndex);
+      imagesByChannel[displayKey] = nextImages;
+      mediaModeByChannel[displayKey] = nextImages.length ? "images" : "none";
+      delete videoSettingsByChannel[displayKey];
+      delete videoFormatByChannel[displayKey];
+      delete videoAdaptationModeByChannel[displayKey];
+      const fallbackImage = asRecord(nextImages[0]);
+      postByChannel[displayKey] = {
+        ...currentPost,
+        media: fallbackImage,
+        mediaAsset: fallbackImage,
+        imageAsset: fallbackImage,
+        image: fallbackImage,
+        imageUrl: fallbackImage ? imageAssetUrl(fallbackImage as AgentImageAsset) : "",
+        videoAsset: null,
+        video: null,
+        mediaMode: nextImages.length ? "images" : "none",
+      };
+    } else {
+      imagesByChannel[displayKey] = [];
+      mediaModeByChannel[displayKey] = "none";
+      delete videoSettingsByChannel[displayKey];
+      delete videoFormatByChannel[displayKey];
+      delete videoAdaptationModeByChannel[displayKey];
+      postByChannel[displayKey] = {
+        ...currentPost,
+        media: null,
+        mediaAsset: null,
+        imageAsset: null,
+        image: null,
+        imageUrl: "",
+        videoAsset: null,
+        video: null,
+        mediaMode: "none",
+      };
+    }
+  }
+
+  const nextPublishPayload = {
+    ...currentPublishPayload,
+    postByChannel,
+    imagesByChannel,
+    mediaModeByChannel,
+    videoSettingsByChannel,
+    videoFormatByChannel,
+    videoAdaptationModeByChannel,
+    video: nextVideo,
+  };
+  const selectedChannelAssets =
+    mediaModeByChannel[displayKey] === "video" && nextVideo
+      ? [nextVideo]
+      : Array.isArray(imagesByChannel[displayKey])
+        ? (imagesByChannel[displayKey] as unknown[])
+        : [];
+  const primaryAsset = asRecord(selectedChannelAssets[0]);
+
+  return {
+    ...action,
+    imageAssets: selectedChannelAssets,
+    payload: {
+      ...payload,
+      publishPayload: nextPublishPayload,
+      postByChannel,
+      imagesByChannel,
+      mediaModeByChannel,
+      videoSettingsByChannel,
+      videoFormatByChannel,
+      videoAdaptationModeByChannel,
+      media: primaryAsset,
+      mediaAsset: primaryAsset,
+      imageAsset:
+        mediaModeByChannel[displayKey] === "images" ? primaryAsset : null,
+      image: mediaModeByChannel[displayKey] === "images" ? primaryAsset : null,
+      videoAsset: nextVideo,
+      video: nextVideo,
     },
   };
 }
@@ -4312,6 +4646,7 @@ export default function AgentClient() {
   const [campaignMediaLibraryPickerOpen, setCampaignMediaLibraryPickerOpen] =
     useState(false);
   const [publishMediaPreviewOpen, setPublishMediaPreviewOpen] = useState(false);
+  const [publishMediaActiveIndex, setPublishMediaActiveIndex] = useState(0);
   const [publishMediaLibraryPickerOpen, setPublishMediaLibraryPickerOpen] =
     useState(false);
   const [publishMediaUploadState, setPublishMediaUploadState] = useState<
@@ -4941,7 +5276,11 @@ export default function AgentClient() {
     preparedChannelPreview?.body || selectedPreparedAction?.summary || "",
   );
   const publishMediaPreview = isPublishView
-    ? extractPublishMediaPreview(selectedPreparedAction, activePreviewChannel)
+    ? extractPublishMediaPreview(
+        selectedPreparedAction,
+        activePreviewChannel,
+        publishMediaActiveIndex,
+      )
     : null;
   const publishMediaAdaptationPreview = isPublishView
     ? extractPublishMediaAdaptationPreview(
@@ -4990,7 +5329,10 @@ export default function AgentClient() {
   const currentPublishMediaRecord = getPublishMediaRecord(
     selectedPreparedAction,
     activePreviewChannel,
+    publishMediaActiveIndex,
   );
+
+
   const publishParagraphs = isPublishView
     ? publishPostParagraphs(
         preparedChannelPreview?.body || selectedPreparedAction?.summary || "",
@@ -5249,6 +5591,7 @@ export default function AgentClient() {
   }
 
   function selectPreviewChannel(channelKey: ChannelKey) {
+    setPublishMediaActiveIndex(0);
     if (selectedPreparedAction) {
       setSelectedChannelByAction((current) => ({
         ...current,
@@ -5579,6 +5922,7 @@ export default function AgentClient() {
       return;
     }
     setPublishEditChoiceOpen(false);
+    setPublishMediaActiveIndex(0);
     setPublishMediaPreviewOpen(true);
   }
 
@@ -5941,7 +6285,12 @@ export default function AgentClient() {
 
     if (scheduledEditSession) {
       updateScheduledEditAction((action) =>
-        updateScheduledEditPublishMedia(action, activePreviewChannel, media),
+        updateScheduledEditPublishMedia(
+          action,
+          activePreviewChannel,
+          media,
+          publishMediaActiveIndex,
+        ),
       );
       return;
     }
@@ -8664,7 +9013,7 @@ export default function AgentClient() {
 
       {agentConfirmDialog ? (
         <div
-          className={styles.modalBackdrop}
+          className={`${styles.modalBackdrop} ${styles.confirmModalBackdrop}`}
           role="presentation"
           onClick={() => setAgentConfirmDialog(null)}
         >
@@ -11176,6 +11525,37 @@ export default function AgentClient() {
               </div>
             </div>
 
+            {publishMediaPreview && publishMediaPreview.items.length > 1 ? (
+              <div
+                className={styles.publishMediaGallery}
+                role="list"
+                aria-label={`Médias ${activePreviewChannelLabel}`}
+              >
+                {publishMediaPreview.items.map((item, index) => (
+                  <button
+                    key={`${item.url}-${index}`}
+                    type="button"
+                    role="listitem"
+                    className={`${styles.publishMediaGalleryItem} ${
+                      index === publishMediaPreview.activeIndex
+                        ? styles.publishMediaGalleryItemActive
+                        : ""
+                    }`}
+                    onClick={() => setPublishMediaActiveIndex(index)}
+                    disabled={publishMediaUploadState === "saving"}
+                    aria-label={`Afficher l’image ${index + 1} sur ${publishMediaPreview.items.length}`}
+                  >
+                    {item.kind === "video" ? (
+                      <video src={item.url} muted preload="metadata" />
+                    ) : (
+                      <img src={item.url} alt={item.name || `Image ${index + 1}`} />
+                    )}
+                    <span>{index + 1}</span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+
             <div className={styles.publishMediaAdaptationBox}>
               <div>
                 <strong>Adaptation du canal</strong>
@@ -11193,7 +11573,13 @@ export default function AgentClient() {
             <div className={styles.publishMediaSourcePanel}>
               <div className={styles.publishMediaSourceHeader}>
                 <strong>Ajouter ou remplacer</strong>
-                <span>1 média utilisé pour toute la publication iNrAgent.</span>
+                <span>
+                  {publishMediaPreview?.count && publishMediaPreview.count > 1
+                    ? `${publishMediaPreview.count} images enregistrées pour ce canal.`
+                    : publishMediaPreview?.kind === "video"
+                      ? "Vidéo préparée pour ce canal."
+                      : "Média enregistré pour ce canal."}
+                </span>
               </div>
               <input
                 id="agent-publish-media-image"
@@ -11306,7 +11692,9 @@ export default function AgentClient() {
                   !publishMediaPreview?.url
                 }
               >
-                Supprimer le média
+                {publishMediaPreview?.count && publishMediaPreview.count > 1
+                  ? "Supprimer cette image"
+                  : "Supprimer le média"}
               </button>
             </div>
           </section>

@@ -171,8 +171,13 @@ export async function POST(req: Request) {
     const rateLimited = await enforceRateLimit({
       name: "booster_upload_prepared",
       identifier: activeUserId,
-      limit: 80,
-      window: "1 m",
+      // Une programmation multicanale peut préparer l'original + une version
+      // par canal pour chaque image. La marge couvre plusieurs canaux et une
+      // reprise immédiate après une coupure réseau, sans ouvrir l'endpoint aux
+      // rafales illimitées.
+      limit: 180,
+      window: "2 m",
+      fallbackLimit: 180,
       // Ne bloque pas l upload si Upstash / KV est momentanement indisponible.
       // Sinon l ajout d une photo empeche la publication avec une erreur 503.
       failClosed: false,
