@@ -663,13 +663,11 @@ export function getChannelPublicationRequirements({
     }
 
     if (channel === "pinterest" && hasImage) {
-      if (imageCount > 1) {
-        blockers.push(
-          "Cette intégration Pinterest publie 1 image par épingle. Sélectionnez une seule image.",
-        );
-      } else {
-        warnings.push("Pinterest créera une épingle dans le tableau choisi.");
-      }
+      warnings.push(
+        imageCount > 1
+          ? `Pinterest créera une épingle multi-images avec ${Math.min(imageCount, 5)} images.`
+          : "Pinterest créera une épingle dans le tableau choisi.",
+      );
     }
 
     if (channel === "youtube_shorts" && hasImage) {

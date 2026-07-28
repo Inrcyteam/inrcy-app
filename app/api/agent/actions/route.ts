@@ -19,6 +19,7 @@ import {
 } from "@/lib/videoAiContextReference";
 import {
   INR_MEDIA_IMAGE_MAX_BYTES,
+  INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT,
   INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
 } from "@/lib/mediaRules";
 
@@ -450,6 +451,18 @@ function readPublishPost(
     if (text) return { content: text };
   }
   return {};
+}
+
+function readPublishChannelValue(
+  valuesByChannel: Record<string, unknown>,
+  channel: PublishChannelKey,
+) {
+  for (const key of publishChannelReadAliases[channel]) {
+    if (Object.prototype.hasOwnProperty.call(valuesByChannel, key)) {
+      return valuesByChannel[key];
+    }
+  }
+  return undefined;
 }
 
 function buildPublishPreviewTextFromPosts(
@@ -1609,6 +1622,8 @@ export async function PATCH(request: Request) {
     hashtags?: unknown;
     media?: unknown;
     removeMedia?: unknown;
+    mediaOperation?: unknown;
+    mediaIndex?: unknown;
   } | null;
   const actionId =
     typeof requestBody?.actionId === "string" ? requestBody.actionId : "";
@@ -1800,6 +1815,16 @@ export async function PATCH(request: Request) {
     if (!removeMedia && !media) {
       return NextResponse.json({ error: "Média invalide." }, { status: 400 });
     }
+    const requestedOperation = cleanText(requestBody?.mediaOperation, 20);
+    const mediaOperation: "append" | "replace" | "remove" = removeMedia
+      ? "remove"
+      : requestedOperation === "append"
+        ? "append"
+        : "replace";
+    const mediaIndex = Math.max(
+      0,
+      Math.floor(Number(requestBody?.mediaIndex) || 0),
+    );
 
     const { data: currentRow, error: readError } = await supabaseAdmin
       .from("inr_agent_actions")
@@ -1836,62 +1861,216 @@ export async function PATCH(request: Request) {
     }
 
     const currentPayload = currentAction.payload || {};
-    const currentPostByChannel = asRecord(currentPayload.postByChannel) || {};
+    const currentPublishPayload = asRecord(currentPayload.publishPayload) || {};
+    const currentPostByChannel =
+      asRecord(currentPayload.postByChannel) ||
+      asRecord(currentPublishPayload.postByChannel) ||
+      {};
+    const currentImagesByChannel =
+      asRecord(currentPayload.imagesByChannel) ||
+      asRecord(currentPublishPayload.imagesByChannel) ||
+      {};
+    const currentMediaModeByChannel =
+      asRecord(currentPayload.mediaModeByChannel) ||
+      asRecord(currentPublishPayload.mediaModeByChannel) ||
+      {};
     const editedAt = new Date().toISOString();
-    const selectedChannels = Array.isArray(currentPayload.selectedChannels)
+    const selectedChannelsSource = Array.isArray(currentPayload.selectedChannels)
       ? currentPayload.selectedChannels
-          .map((item) => cleanPublishChannel(item))
-          .filter((item): item is PublishChannelKey => Boolean(item))
-      : [];
+      : Array.isArray(currentPublishPayload.selectedChannels)
+        ? currentPublishPayload.selectedChannels
+        : [];
+    const selectedChannels = selectedChannelsSource
+      .map((item) => cleanPublishChannel(item))
+      .filter((item): item is PublishChannelKey => Boolean(item));
     const targetChannels = selectedChannels.length
       ? selectedChannels
       : [channel];
 
-    const buildNextPost = (rawPost: unknown) => {
-      const currentPostRecord = asRecord(rawPost) || {};
-      return media
-        ? {
-            ...currentPostRecord,
-            media,
-            mediaAsset: media,
-            image: media.kind === "image" ? media : null,
-            imageAsset: media.kind === "image" ? media : null,
-            imageUrl: media.kind === "image" ? media.url : "",
-            video: media.kind === "video" ? media : null,
-            videoAsset: media.kind === "video" ? media : null,
-            mediaMode:
-              media.kind === "video"
-                ? "video"
-                : media.kind === "image"
-                  ? "images"
-                  : "file",
-            editedByUser: true,
-            editedAt,
-          }
-        : {
-            ...currentPostRecord,
-            media: null,
-            mediaAsset: null,
-            image: null,
-            imageAsset: null,
-            imageUrl: "",
-            visual: null,
-            cover: null,
-            video: null,
-            videoAsset: null,
-            file: null,
-            attachment: null,
-            attachments: [],
-            mediaMode: "none",
-            editedByUser: true,
-            editedAt,
-          };
+    const fallbackPayloadMedia = cleanPublishMedia(
+      currentPayload.media ||
+        currentPayload.mediaAsset ||
+        currentPayload.image ||
+        currentPayload.imageAsset ||
+        currentPublishPayload.media ||
+        currentPublishPayload.mediaAsset ||
+        currentPublishPayload.image ||
+        currentPublishPayload.imageAsset,
+    );
+    const fallbackActionImage = currentAction.imageAssets
+      .map((item) => cleanPublishMedia(item))
+      .find((item) => item?.kind === "image");
+
+    const readCurrentChannelImages = (targetChannel: PublishChannelKey) => {
+      const raw = readPublishChannelValue(
+        currentImagesByChannel,
+        targetChannel,
+      );
+      const images = Array.isArray(raw)
+        ? raw
+            .map((item) => cleanPublishMedia(item))
+            .filter(
+              (item): item is NonNullable<ReturnType<typeof cleanPublishMedia>> =>
+                Boolean(item && item.kind === "image"),
+            )
+        : [];
+      if (images.length) return images;
+
+      const post = readPublishPost(currentPostByChannel, targetChannel);
+      const postMedia = cleanPublishMedia(
+        post.media ||
+          post.mediaAsset ||
+          post.image ||
+          post.imageAsset ||
+          post.imageUrl,
+      );
+      if (postMedia?.kind === "image") return [postMedia];
+      if (fallbackPayloadMedia?.kind === "image") return [fallbackPayloadMedia];
+      if (fallbackActionImage?.kind === "image") return [fallbackActionImage];
+      return [];
     };
 
+    if (media?.kind === "image" && mediaOperation === "append") {
+      const fullChannel = targetChannels.find(
+        (targetChannel) =>
+          readCurrentChannelImages(targetChannel).length >=
+          INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT,
+      );
+      if (fullChannel) {
+        return NextResponse.json(
+          {
+            error: `Maximum de ${INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT} images atteint pour ce canal.`,
+          },
+          { status: 409 },
+        );
+      }
+    }
+
     const nextPostByChannel = { ...currentPostByChannel };
+    const nextImagesByChannel = { ...currentImagesByChannel };
+    const nextMediaModeByChannel = { ...currentMediaModeByChannel };
+    const effectiveMediaByChannel = new Map<
+      PublishChannelKey,
+      ReturnType<typeof cleanPublishMedia>
+    >();
+
+    const buildNextPost = (
+      rawPost: unknown,
+      effectiveMedia: ReturnType<typeof cleanPublishMedia>,
+      mediaMode: "images" | "video" | "none",
+    ) => {
+      const currentPostRecord = asRecord(rawPost) || {};
+      if (effectiveMedia && mediaMode === "images") {
+        return {
+          ...currentPostRecord,
+          media: effectiveMedia,
+          mediaAsset: effectiveMedia,
+          image: effectiveMedia,
+          imageAsset: effectiveMedia,
+          imageUrl: effectiveMedia.url,
+          video: null,
+          videoAsset: null,
+          mediaMode: "images",
+          editedByUser: true,
+          editedAt,
+        };
+      }
+      if (effectiveMedia && mediaMode === "video") {
+        return {
+          ...currentPostRecord,
+          media: effectiveMedia,
+          mediaAsset: effectiveMedia,
+          image: null,
+          imageAsset: null,
+          imageUrl: "",
+          video: effectiveMedia,
+          videoAsset: effectiveMedia,
+          mediaMode: "video",
+          editedByUser: true,
+          editedAt,
+        };
+      }
+      return {
+        ...currentPostRecord,
+        media: null,
+        mediaAsset: null,
+        image: null,
+        imageAsset: null,
+        imageUrl: "",
+        visual: null,
+        cover: null,
+        video: null,
+        videoAsset: null,
+        file: null,
+        attachment: null,
+        attachments: [],
+        mediaMode: "none",
+        editedByUser: true,
+        editedAt,
+      };
+    };
+
     for (const targetChannel of targetChannels) {
+      const currentImages = readCurrentChannelImages(targetChannel);
+      const rawMode = String(
+        readPublishChannelValue(currentMediaModeByChannel, targetChannel) ||
+          readPublishPost(currentPostByChannel, targetChannel).mediaMode ||
+          "",
+      )
+        .trim()
+        .toLowerCase();
+      let nextImages = currentImages;
+      let nextMode: "images" | "video" | "none" =
+        rawMode === "video"
+          ? "video"
+          : currentImages.length || rawMode === "images"
+            ? "images"
+            : "none";
+      let effectiveMedia: ReturnType<typeof cleanPublishMedia> = null;
+
+      if (media?.kind === "image") {
+        const sourceImages = nextMode === "images" ? currentImages : [];
+        if (mediaOperation === "append") {
+          nextImages = [...sourceImages, media].slice(
+            0,
+            INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT,
+          );
+        } else {
+          const replaceIndex = sourceImages.length
+            ? Math.min(mediaIndex, sourceImages.length - 1)
+            : 0;
+          nextImages = sourceImages.length ? [...sourceImages] : [];
+          if (nextImages.length) nextImages[replaceIndex] = media;
+          else nextImages.push(media);
+        }
+        nextMode = "images";
+        effectiveMedia = nextImages[0] || null;
+      } else if (media?.kind === "video") {
+        nextImages = [];
+        nextMode = "video";
+        effectiveMedia = media;
+      } else if (mediaOperation === "remove") {
+        if (nextMode === "images" && currentImages.length) {
+          const removeIndex = Math.min(mediaIndex, currentImages.length - 1);
+          nextImages = currentImages.filter((_, index) => index !== removeIndex);
+          nextMode = nextImages.length ? "images" : "none";
+          effectiveMedia = nextImages[0] || null;
+        } else {
+          nextImages = [];
+          nextMode = "none";
+          effectiveMedia = null;
+        }
+      }
+
+      nextImagesByChannel[targetChannel] = nextImages;
+      nextMediaModeByChannel[targetChannel] = nextMode;
+      effectiveMediaByChannel.set(targetChannel, effectiveMedia);
       const currentPost = readPublishPost(currentPostByChannel, targetChannel);
-      nextPostByChannel[targetChannel] = buildNextPost(currentPost);
+      nextPostByChannel[targetChannel] = buildNextPost(
+        currentPost,
+        effectiveMedia,
+        nextMode,
+      );
     }
 
     const currentReadiness =
@@ -1901,34 +2080,78 @@ export async function PATCH(request: Request) {
       asRecord(currentPayload.mediaAdaptationByChannel) || {};
     const nextAdaptation = { ...currentAdaptation };
     for (const targetChannel of targetChannels) {
+      const effectiveMedia = effectiveMediaByChannel.get(targetChannel) || null;
       nextReadiness[targetChannel] = buildPublishMediaReadiness(
         targetChannel,
-        media,
+        effectiveMedia,
       );
       nextAdaptation[targetChannel] = buildPublishMediaAdaptation(
         targetChannel,
-        media,
+        effectiveMedia,
       );
     }
 
+    const primaryChannel = targetChannels[0];
+    const primaryMode = String(
+      nextMediaModeByChannel[primaryChannel] || "none",
+    );
+    const primaryImages = Array.isArray(nextImagesByChannel[primaryChannel])
+      ? (nextImagesByChannel[primaryChannel] as unknown[])
+          .map((item) => cleanPublishMedia(item))
+          .filter(
+            (item): item is NonNullable<ReturnType<typeof cleanPublishMedia>> =>
+              Boolean(item && item.kind === "image"),
+          )
+      : [];
+    const primaryMedia =
+      primaryMode === "images"
+        ? primaryImages[0] || null
+        : effectiveMediaByChannel.get(primaryChannel) || null;
+    const actionImageAssets =
+      primaryMode === "images"
+        ? primaryImages
+        : primaryMode === "video" && primaryMedia
+          ? [primaryMedia]
+          : [];
+
+    const nextPublishPayload = {
+      ...currentPublishPayload,
+      postByChannel: nextPostByChannel,
+      imagesByChannel: nextImagesByChannel,
+      mediaModeByChannel: nextMediaModeByChannel,
+      media: primaryMedia,
+      mediaAsset: primaryMedia,
+      image: primaryMode === "images" ? primaryMedia : null,
+      imageAsset: primaryMode === "images" ? primaryMedia : null,
+      video: primaryMode === "video" ? primaryMedia : null,
+      videoAsset: primaryMode === "video" ? primaryMedia : null,
+    };
+
     const nextPayload = {
       ...currentPayload,
-      media,
-      mediaAsset: media,
-      mediaType: media ? media.kind : "none",
-      image: media?.kind === "image" ? media : null,
-      imageAsset: media?.kind === "image" ? media : null,
-      video: media?.kind === "video" ? media : null,
-      videoAsset: media?.kind === "video" ? media : null,
+      media: primaryMedia,
+      mediaAsset: primaryMedia,
+      mediaType: primaryMode === "images" ? "image" : primaryMode,
+      image: primaryMode === "images" ? primaryMedia : null,
+      imageAsset: primaryMode === "images" ? primaryMedia : null,
+      video: primaryMode === "video" ? primaryMedia : null,
+      videoAsset: primaryMode === "video" ? primaryMedia : null,
       postByChannel: nextPostByChannel,
-      image_assets: media ? [media] : [],
+      imagesByChannel: nextImagesByChannel,
+      mediaModeByChannel: nextMediaModeByChannel,
+      image_assets: actionImageAssets,
       mediaReadinessByChannel: nextReadiness,
       mediaAdaptationByChannel: nextAdaptation,
+      ...(Object.keys(currentPublishPayload).length
+        ? { publishPayload: nextPublishPayload }
+        : {}),
       lastManualEdit: {
         channel,
         appliedToChannels: targetChannels,
         editedAt,
         editType: "publish_channel_media",
+        mediaOperation,
+        mediaIndex,
       },
     };
 
@@ -1936,7 +2159,7 @@ export async function PATCH(request: Request) {
       .from("inr_agent_actions")
       .update({
         payload: nextPayload,
-        image_assets: media ? [media] : [],
+        image_assets: actionImageAssets,
         updated_at: editedAt,
         last_error: null,
       })

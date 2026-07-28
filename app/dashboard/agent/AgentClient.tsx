@@ -26,9 +26,9 @@ import type { BoosterVideoTransformedVariant } from "@/lib/boosterVideoTransform
 import {
   INR_MEDIA_ALLOWED_IMAGE_MIME_TYPES,
   INR_MEDIA_ALLOWED_VIDEO_MIME_TYPES,
-  INR_MEDIA_AGENT_MAX_MEDIA_COUNT,
   INR_MEDIA_IMAGE_MAX_BYTES,
   INR_MEDIA_IMAGE_MAX_MB_LABEL,
+  INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT,
   INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
   INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL,
 } from "@/lib/mediaRules";
@@ -130,6 +130,8 @@ const AGENT_MEDIA_ALLOWED_IMAGE_TYPES = new Set<string>(
 const AGENT_MEDIA_ALLOWED_VIDEO_TYPES = new Set<string>(
   INR_MEDIA_ALLOWED_VIDEO_MIME_TYPES,
 );
+
+type PublishMediaMutation = "append" | "replace" | "remove";
 
 type Automation = {
   key: AutomationKey;
@@ -3930,6 +3932,7 @@ function updateScheduledEditPublishMedia(
   channel: ChannelKey,
   media: Record<string, unknown> | null,
   requestedIndex = 0,
+  mutation: PublishMediaMutation = media ? "replace" : "remove",
 ): AgentPreparedAction {
   const displayKey = boosterDisplayKeyFromAgentChannel(channel);
   const payload = jsonClone(action.payload || {});
@@ -3985,12 +3988,20 @@ function updateScheduledEditPublishMedia(
     asRecord(payload.video) || asRecord(currentPublishPayload.video) || null;
 
   if (mediaKind === "image" && media) {
-    const replaceIndex = currentImages.length
-      ? Math.min(Math.max(0, requestedIndex), currentImages.length - 1)
-      : 0;
-    nextImages = currentImages.length ? [...currentImages] : [];
-    if (nextImages.length) nextImages[replaceIndex] = media;
-    else nextImages.push(media);
+    const channelImages = currentMode === "images" ? currentImages : [];
+    if (mutation === "append") {
+      nextImages = [...channelImages, media].slice(
+        0,
+        INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT,
+      );
+    } else {
+      const replaceIndex = channelImages.length
+        ? Math.min(Math.max(0, requestedIndex), channelImages.length - 1)
+        : 0;
+      nextImages = channelImages.length ? [...channelImages] : [];
+      if (nextImages.length) nextImages[replaceIndex] = media;
+      else nextImages.push(media);
+    }
     imagesByChannel[displayKey] = nextImages;
     mediaModeByChannel[displayKey] = "images";
     delete videoSettingsByChannel[displayKey];
@@ -5282,6 +5293,10 @@ export default function AgentClient() {
         publishMediaActiveIndex,
       )
     : null;
+  const publishImageCount =
+    publishMediaPreview?.kind === "image" ? publishMediaPreview.count : 0;
+  const publishImageLimitReached =
+    publishImageCount >= INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT;
   const publishMediaAdaptationPreview = isPublishView
     ? extractPublishMediaAdaptationPreview(
         selectedPreparedAction,
@@ -5897,10 +5912,29 @@ export default function AgentClient() {
       showNotice("YouTube nécessite une vidéo.");
       return;
     }
+    if (item.media_type === "image" && publishImageLimitReached) {
+      showNotice(
+        `Maximum de ${INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT} images atteint pour ce canal.`,
+      );
+      return;
+    }
     setPublishMediaUploadState("saving");
     try {
-      await savePublishMediaPatch(mediaPatchFromLibraryItem(item));
-      showNotice("Média iNrAgent mis à jour.");
+      const mutation: PublishMediaMutation =
+        item.media_type === "image" ? "append" : "replace";
+      await savePublishMediaPatch(mediaPatchFromLibraryItem(item), mutation);
+      if (item.media_type === "image") {
+        setPublishMediaActiveIndex(
+          Math.min(
+            publishImageCount,
+            INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT - 1,
+          ),
+        );
+        showNotice("Image ajoutée à la publication.");
+      } else {
+        setPublishMediaActiveIndex(0);
+        showNotice("Vidéo iNrAgent mise à jour.");
+      }
     } catch (error) {
       showNotice(
         error instanceof Error
@@ -6154,7 +6188,7 @@ export default function AgentClient() {
         throw new Error("Image adaptée introuvable.");
       }
       const renderedFile = dataUrlToFile(rendered.dataUrl, safeName);
-      await uploadPublishMedia(renderedFile);
+      await uploadPublishMedia(renderedFile, "replace");
       closePublishImageAdapter();
       showNotice("Image adaptée et enregistrée pour iNrAgent.");
     } catch (error) {
@@ -6236,14 +6270,17 @@ export default function AgentClient() {
         [publishBoosterChannel]: nextSettings,
       };
 
-      await savePublishMediaPatch({
-        ...currentPublishMediaRecord,
-        videoSettings: nextSettings,
-        videoSettingsByChannel,
-        videoFormat: publishVideoFormat,
-        videoAdaptationMode: publishVideoAdaptationMode,
-        transformedVariants,
-      });
+      await savePublishMediaPatch(
+        {
+          ...currentPublishMediaRecord,
+          videoSettings: nextSettings,
+          videoSettingsByChannel,
+          videoFormat: publishVideoFormat,
+          videoAdaptationMode: publishVideoAdaptationMode,
+          transformedVariants,
+        },
+        "replace",
+      );
 
       setPublishVideoPreparationState({
         status: generatedVariants.length ? "ready" : "ready",
@@ -6280,7 +6317,10 @@ export default function AgentClient() {
     }
   }
 
-  async function savePublishMediaPatch(media: Record<string, unknown> | null) {
+  async function savePublishMediaPatch(
+    media: Record<string, unknown> | null,
+    mutation: PublishMediaMutation = media ? "replace" : "remove",
+  ) {
     if (!selectedPreparedAction || !activePreviewChannel) return;
 
     if (scheduledEditSession) {
@@ -6290,6 +6330,7 @@ export default function AgentClient() {
           activePreviewChannel,
           media,
           publishMediaActiveIndex,
+          mutation,
         ),
       );
       return;
@@ -6304,6 +6345,8 @@ export default function AgentClient() {
         channel: activePreviewChannel,
         media,
         removeMedia: media === null,
+        mediaOperation: mutation,
+        mediaIndex: publishMediaActiveIndex,
       }),
     });
     const payload = (await response.json().catch(() => null)) as {
@@ -6323,7 +6366,10 @@ export default function AgentClient() {
     );
   }
 
-  async function uploadPublishMedia(file: File | null | undefined) {
+  async function uploadPublishMedia(
+    file: File | null | undefined,
+    mutation: Extract<PublishMediaMutation, "append" | "replace"> = "append",
+  ) {
     if (
       !file ||
       !selectedPreparedAction ||
@@ -6337,6 +6383,17 @@ export default function AgentClient() {
       mediaKind = validateAgentPublishMediaFile(file);
     } catch (error) {
       showNotice(error instanceof Error ? error.message : "Média invalide.");
+      return;
+    }
+
+    if (
+      mediaKind === "image" &&
+      mutation === "append" &&
+      publishImageLimitReached
+    ) {
+      showNotice(
+        `Maximum de ${INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT} images atteint pour ce canal.`,
+      );
       return;
     }
 
@@ -6423,45 +6480,62 @@ export default function AgentClient() {
         : null;
       if (!result?.storage_path) throw new Error("Média finalisé introuvable.");
 
-      await savePublishMediaPatch({
-        id: result.id || null,
-        bucket: result.bucket_name || prepared.bucket || "inrcy-pro-media",
-        bucketName: result.bucket_name || prepared.bucket || "inrcy-pro-media",
-        path: result.storage_path,
-        storagePath: result.storage_path,
-        publicUrl: result.signed_url || "",
-        url: result.signed_url || "",
-        name:
-          result.title ||
-          prepared.original_name ||
-          file.name ||
-          (mediaKind === "video" ? "Vidéo" : "Image"),
-        title: result.title || prepared.original_name || file.name || "",
-        type:
-          result.mime_type ||
-          prepared.content_type ||
-          file.type ||
-          "application/octet-stream",
-        mimeType:
-          result.mime_type ||
-          prepared.content_type ||
-          file.type ||
-          "application/octet-stream",
-        size: result.size_bytes || file.size || 0,
-        width: result.width || mediaInfo.width || null,
-        height: result.height || mediaInfo.height || null,
-        duration: result.duration_seconds || mediaInfo.duration_seconds || null,
-        duration_seconds:
-          result.duration_seconds || mediaInfo.duration_seconds || null,
-        kind: result.media_type || mediaKind,
-        mediaType: result.media_type || mediaKind,
-        source: "pro_media_library",
-      });
+      await savePublishMediaPatch(
+        {
+          id: result.id || null,
+          bucket: result.bucket_name || prepared.bucket || "inrcy-pro-media",
+          bucketName:
+            result.bucket_name || prepared.bucket || "inrcy-pro-media",
+          path: result.storage_path,
+          storagePath: result.storage_path,
+          publicUrl: result.signed_url || "",
+          url: result.signed_url || "",
+          name:
+            result.title ||
+            prepared.original_name ||
+            file.name ||
+            (mediaKind === "video" ? "Vidéo" : "Image"),
+          title: result.title || prepared.original_name || file.name || "",
+          type:
+            result.mime_type ||
+            prepared.content_type ||
+            file.type ||
+            "application/octet-stream",
+          mimeType:
+            result.mime_type ||
+            prepared.content_type ||
+            file.type ||
+            "application/octet-stream",
+          size: result.size_bytes || file.size || 0,
+          width: result.width || mediaInfo.width || null,
+          height: result.height || mediaInfo.height || null,
+          duration:
+            result.duration_seconds || mediaInfo.duration_seconds || null,
+          duration_seconds:
+            result.duration_seconds || mediaInfo.duration_seconds || null,
+          kind: result.media_type || mediaKind,
+          mediaType: result.media_type || mediaKind,
+          source: "pro_media_library",
+        },
+        mediaKind === "video" ? "replace" : mutation,
+      );
+      if (mediaKind === "image" && mutation === "append") {
+        setPublishMediaActiveIndex(
+          Math.min(
+            publishImageCount,
+            INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT - 1,
+          ),
+        );
+      } else if (mediaKind === "video") {
+        setPublishMediaActiveIndex(0);
+      }
       await loadPublishMediaLibrary();
       showNotice(
         mediaKind === "video"
           ? "Vidéo iNrAgent mise à jour."
-          : "Image iNrAgent mise à jour.",
+          : mutation === "append"
+            ? "Image ajoutée à la publication."
+            : "Image iNrAgent mise à jour.",
       );
     } catch (error) {
       showNotice(
@@ -6488,7 +6562,17 @@ export default function AgentClient() {
     setNotice(null);
 
     try {
-      await savePublishMediaPatch(null);
+      await savePublishMediaPatch(null, "remove");
+      if (publishMediaPreview?.kind === "image") {
+        setPublishMediaActiveIndex((current) =>
+          Math.max(
+            0,
+            Math.min(current, Math.max(0, publishImageCount - 2)),
+          ),
+        );
+      } else {
+        setPublishMediaActiveIndex(0);
+      }
       showNotice("Média retiré de la publication.");
     } catch (error) {
       showNotice(
@@ -11456,7 +11540,8 @@ export default function AgentClient() {
                 <p className={styles.modalEyebrow}>Média iNr’Agent</p>
                 <h2>Gérer le média {activePreviewChannelLabel}</h2>
                 <span>
-                  Choisissez, remplacez ou préparez le média avant validation.
+                  Choisissez, ajoutez, remplacez ou préparez le média avant
+                  validation.
                 </span>
               </div>
               <div
@@ -11574,8 +11659,10 @@ export default function AgentClient() {
               <div className={styles.publishMediaSourceHeader}>
                 <strong>Ajouter ou remplacer</strong>
                 <span>
-                  {publishMediaPreview?.count && publishMediaPreview.count > 1
-                    ? `${publishMediaPreview.count} images enregistrées pour ce canal.`
+                  {publishMediaPreview?.kind === "image"
+                    ? publishImageLimitReached
+                      ? `${publishImageCount}/${INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT} images enregistrées. Maximum atteint.`
+                      : `${publishImageCount}/${INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT} image${publishImageCount > 1 ? "s" : ""} enregistrée${publishImageCount > 1 ? "s" : ""} pour ce canal.`
                     : publishMediaPreview?.kind === "video"
                       ? "Vidéo préparée pour ce canal."
                       : "Média enregistré pour ce canal."}
@@ -11589,7 +11676,10 @@ export default function AgentClient() {
                   void uploadPublishMedia(event.currentTarget.files?.[0]);
                   event.currentTarget.value = "";
                 }}
-                disabled={publishMediaUploadState === "saving"}
+                disabled={
+                  publishMediaUploadState === "saving" ||
+                  publishImageLimitReached
+                }
               />
               <input
                 id="agent-publish-media-video"
@@ -11611,14 +11701,38 @@ export default function AgentClient() {
                   event.currentTarget.value = "";
                 }}
                 disabled={
-                  !isMobileHeader || publishMediaUploadState === "saving"
+                  !isMobileHeader ||
+                  publishMediaUploadState === "saving" ||
+                  publishImageLimitReached
                 }
               />
               <div className={styles.publishMediaActionButtons}>
-                <label htmlFor="agent-publish-media-image">
+                <label
+                  htmlFor={
+                    publishImageLimitReached
+                      ? undefined
+                      : "agent-publish-media-image"
+                  }
+                  aria-disabled={
+                    publishMediaUploadState === "saving" ||
+                    publishImageLimitReached
+                  }
+                  title={
+                    publishImageLimitReached
+                      ? `Maximum de ${INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT} images atteint`
+                      : "Ajouter une image à la publication"
+                  }
+                  onClick={(event) => {
+                    if (publishImageLimitReached) event.preventDefault();
+                  }}
+                >
                   <span aria-hidden>🖼️</span>
                   <strong>Ajouter une image</strong>
-                  <small>JPG, PNG ou WebP</small>
+                  <small>
+                    {publishImageLimitReached
+                      ? `Maximum de ${INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT} images atteint`
+                      : "JPG, PNG ou WebP"}
+                  </small>
                 </label>
                 <label htmlFor="agent-publish-media-video">
                   <span aria-hidden>🎬</span>
@@ -11639,15 +11753,21 @@ export default function AgentClient() {
                     isMobileHeader ? "agent-publish-media-camera" : undefined
                   }
                   aria-disabled={
-                    !isMobileHeader || publishMediaUploadState === "saving"
+                    !isMobileHeader ||
+                    publishMediaUploadState === "saving" ||
+                    publishImageLimitReached
                   }
                   title={
-                    isMobileHeader
+                    publishImageLimitReached
+                      ? `Maximum de ${INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT} images atteint`
+                      : isMobileHeader
                       ? "Prendre une photo dans iNrCy"
                       : "Disponible sur mobile"
                   }
                   onClick={(event) => {
-                    if (!isMobileHeader) event.preventDefault();
+                    if (!isMobileHeader || publishImageLimitReached) {
+                      event.preventDefault();
+                    }
                   }}
                 >
                   <span aria-hidden>📷</span>
@@ -11671,7 +11791,11 @@ export default function AgentClient() {
               multiple={false}
               maxSelection={1}
               confirmLabel="Utiliser ce média"
-              selectedHint="Choisissez un média pour iNrAgent."
+              selectedHint={
+                publishImageLimitReached
+                  ? `Maximum de ${INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT} images atteint : choisissez une vidéo ou supprimez d’abord une image.`
+                  : "Choisissez un média pour iNrAgent."
+              }
               onClose={() => setPublishMediaLibraryPickerOpen(false)}
               onConfirm={(items) => selectPublishMediaFromPicker(items)}
             />

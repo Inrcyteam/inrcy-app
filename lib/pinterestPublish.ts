@@ -2,6 +2,7 @@ import { getPinterestApiBaseUrl } from "@/lib/pinterestOAuth";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { asRecord, asString } from "@/lib/tsSafe";
 import { publishPinterestVideoWithProtocol } from "@/lib/pinterestVideoProtocol";
+import { buildPinterestImageMediaSource } from "@/lib/pinterestImagePinPayload";
 import { INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES } from "@/lib/mediaRules";
 import { randomUUID } from "crypto";
 import { execFile } from "child_process";
@@ -16,7 +17,8 @@ export type PinterestCreateImagePinArgs = {
   boardId: string;
   title: string;
   description?: string;
-  imageUrl: string;
+  imageUrl?: string;
+  imageUrls?: string[];
   link?: string | null;
 };
 
@@ -459,28 +461,27 @@ export async function createPinterestImagePin({
   title,
   description,
   imageUrl,
+  imageUrls,
   link,
 }: PinterestCreateImagePinArgs): Promise<PinterestCreatePinResult> {
   const token = String(accessToken || "").trim();
   const cleanBoardId = String(boardId || "").trim();
-  const cleanImageUrl = normalizePublicUrl(imageUrl);
+  const requestedImageUrls = Array.isArray(imageUrls) && imageUrls.length
+    ? imageUrls
+    : [imageUrl];
 
   if (!token)
     throw new Error("Pinterest à connecter. Rendez-vous dans Canaux.");
   if (!cleanBoardId)
     throw new Error("Choisissez un tableau Pinterest avant de publier.");
-  if (!cleanImageUrl)
-    throw new Error("Pinterest nécessite une image publique valide.");
+
+  const mediaSource = buildPinterestImageMediaSource(requestedImageUrls);
 
   const payload: Record<string, unknown> = {
     board_id: cleanBoardId,
     title: cleanSingleLineText(title || "Publication iNrCy", 100),
     description: cleanMultilineText(description || "", 500),
-    media_source: {
-      source_type: "image_url",
-      url: cleanImageUrl,
-      is_standard: true,
-    },
+    media_source: mediaSource,
   };
 
   const cleanLink = normalizePublicUrl(link);

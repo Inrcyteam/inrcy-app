@@ -1671,18 +1671,18 @@ async function replaceChannelDelivery(params: {
       };
     }
 
-    const pinterestImageUrls = socialFeedImageUrls.filter(Boolean).slice(0, 1);
+    const pinterestImageUrls = socialFeedImageUrls.filter(Boolean).slice(0, 5);
     if (!pinterestImageUrls.length) throw new Error("Pinterest nécessite au moins 1 image.");
     const currentImageSet = getChannelImageSet(eventPayload, publication, channel);
     const currentPinterestImageUrls = (
       currentImageSet.socialFeedPublishableUrls.length
         ? currentImageSet.socialFeedPublishableUrls
         : currentImageSet.images
-    ).filter(Boolean).slice(0, 1);
+    ).filter(Boolean).slice(0, 5);
     const imageChanged = !areImageListsEqual(currentPinterestImageUrls, pinterestImageUrls);
 
     const replacePinterestPin = async (params: {
-      imageUrl: string;
+      imageUrls: string[];
       warning?: string | null;
       warningMessage?: string | null;
     }) => {
@@ -1691,7 +1691,7 @@ async function replaceChannelDelivery(params: {
         boardId,
         title: nextPost.title || "Publication iNrCy",
         description,
-        imageUrl: params.imageUrl,
+        imageUrls: params.imageUrls,
         link,
       });
       if (!created.id) {
@@ -1721,6 +1721,7 @@ async function replaceChannelDelivery(params: {
           board_id: boardId,
           external_url: created.url || null,
           media_type: "image",
+          image_count: params.imageUrls.length,
         },
       };
     };
@@ -1743,17 +1744,18 @@ async function replaceChannelDelivery(params: {
             board_id: boardId,
             external_url: updated.url || null,
             media_type: "image",
+            image_count: currentPinterestImageUrls.length || pinterestImageUrls.length,
           },
         };
       } catch (updateError) {
         const canFallbackReplace = isPinterestPinEditRestrictedError(updateError);
         if (!canFallbackReplace) throw updateError;
 
-        const stableExistingImageUrl =
-          normalizePublicHttpUrl(currentImageSet.images[0]) ||
-          pinterestImageUrls[0];
+        const stableExistingImageUrls = currentPinterestImageUrls.length
+          ? currentPinterestImageUrls
+          : pinterestImageUrls;
         return replacePinterestPin({
-          imageUrl: stableExistingImageUrl,
+          imageUrls: stableExistingImageUrls,
           warning: "pinterest_pin_replaced",
           warningMessage:
             "Pinterest a remplacé l’épingle pour appliquer la modification. Son identifiant et ses statistiques repartent de zéro.",
@@ -1761,7 +1763,7 @@ async function replaceChannelDelivery(params: {
       }
     }
 
-    return replacePinterestPin({ imageUrl: pinterestImageUrls[0] });
+    return replacePinterestPin({ imageUrls: pinterestImageUrls });
   }
 
   throw new Error("Canal non supporté.");
@@ -2080,12 +2082,6 @@ export function createPublicationChannelHandlers(channel: ChannelKey) {
         : [];
       if (retainedImages.length + newImages.length > 5) {
         return jsonUserFacingError("Maximum 5 images par publication.", { status: 400, code: "too_many_images" });
-      }
-      if (channel === "pinterest" && retainedImages.length + newImages.length > 1) {
-        return jsonUserFacingError(
-          "Cette intégration Pinterest publie 1 image par épingle. Sélectionnez une seule image.",
-          { status: 400, code: "pinterest_single_image_required" },
-        );
       }
       if (
         mediaType === "video" &&

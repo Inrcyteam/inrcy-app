@@ -3221,23 +3221,12 @@ async function publishNowHandler(req: Request) {
             continue;
           }
 
-          if (pinterestImageUrls.length > 1) {
-            const pinterestUserError =
-              "Cette intégration Pinterest publie 1 image par épingle. Sélectionnez une seule image.";
-            await setDelivery(ch, {
-              status: "failed",
-              error: pinterestUserError,
-            });
-            results[ch] = { ok: false, error: pinterestUserError };
-            continue;
-          }
-
           const pin = await createPinterestImagePin({
             accessToken: pinterestAccessToken,
             boardId,
             title: channelPost.title || post.title || "Publication iNrCy",
             description,
-            imageUrl: pinterestImageUrls[0],
+            imageUrls: pinterestImageUrls,
             link: pinterestLink,
           });
 
@@ -3252,6 +3241,7 @@ async function publishNowHandler(req: Request) {
             board_id: boardId,
             board_name: boardName || null,
             media_type: "image",
+            image_count: pinterestImageUrls.length,
           };
           continue;
         }
