@@ -19,7 +19,8 @@ test("iNrAgent immediate and scheduled publications use the shared intelligent i
   assert.match(helper, /getBoosterImageDecision/);
   assert.match(helper, /getBoosterImageSequenceTargetRatio/);
   assert.match(helper, /canUseAutomaticCover/);
-  assert.match(helper, /policy: "booster_intelligent_matrix_v1"/);
+  assert.match(helper, /"booster_intelligent_matrix_v1"/);
+  assert.match(helper, /"booster_workspace_exact_settings_v1"/);
 });
 
 test("iNrSend edit restarts from the preserved original without cumulative crop", async () => {

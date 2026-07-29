@@ -108,6 +108,15 @@ import {
   stripSiteTextFormatting,
   stripSiteTextFormattingPreserveLayout,
 } from "@/lib/boosterFormatting";
+import {
+  MediaWorkspaceConsumptionError,
+  resolveWorkspacePublicationConsumption,
+  syncPublicationWorkspaceContext,
+  type WorkspacePublicationConsumption,
+} from "@/lib/mediaWorkspaceConsumption";
+import { isLegacyMediaTransportCutoverEnabled } from "@/lib/mediaPipelineLegacyCutoverPolicy";
+import { prepareBoosterImagesByChannelOnServer } from "@/lib/boosterImageServerPreparation";
+import { prepareBoosterVideoVariantsOnServer } from "@/lib/boosterVideoVariantServer";
 
 export const runtime = "nodejs";
 export const maxDuration = 180;
@@ -251,7 +260,8 @@ type ImagePayload = {
   name: string;
   type: string;
   dataUrl?: string; // base64 data URL
-  storagePath?: string; // Supabase Storage path (bucket: booster)
+  storagePath?: string; // Supabase Storage path
+  bucket?: string;
   publicUrl?: string;
   renderedUrl?: string;
   originalUrl?: string;
@@ -282,6 +292,7 @@ type VideoPayload = {
   url?: string;
   thumbnailUrl?: string | null;
   thumbnailStoragePath?: string | null;
+  thumbnailBucket?: string | null;
 };
 
 type PersistedVideoAttachment = {
@@ -295,6 +306,7 @@ type PersistedVideoAttachment = {
   bucket?: string | null;
   thumbnailUrl: string | null;
   thumbnailStoragePath: string | null;
+  thumbnailBucket: string | null;
   transformedVariants?: BoosterVideoTransformedVariant[];
   transformedVariant?: BoosterVideoTransformedVariant | null;
   sourceVideo?: PersistedVideoAttachment | null;
@@ -394,6 +406,7 @@ type ResolvedImageInput = {
   originalPublicUrl: string | null;
   originalPublishableUrl: string | null;
   storagePath?: string;
+  bucket?: string;
 };
 
 function dataUrlToBuffer(dataUrl: string) {
@@ -402,6 +415,24 @@ function dataUrlToBuffer(dataUrl: string) {
   const mime = match[1];
   const b64 = match[2];
   return { mime, buffer: Buffer.from(b64, "base64") };
+}
+
+function imageExtensionFromMime(mimeType: unknown, fallbackName: unknown) {
+  const mime = String(mimeType || "")
+    .toLowerCase()
+    .split(";")[0]
+    ?.trim();
+  if (mime === "image/png") return "png";
+  if (mime === "image/webp") return "webp";
+  if (mime === "image/avif") return "avif";
+  if (mime === "image/gif") return "gif";
+  if (mime === "image/jpeg" || mime === "image/jpg") return "jpg";
+  const fallbackExtension = String(fallbackName || "")
+    .split(".")
+    .pop()
+    ?.toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+  return fallbackExtension || "jpg";
 }
 
 function normalizeHashtag(input: string): string {
@@ -496,6 +527,22 @@ async function normalizeVideoPayload(
     ).trim() || "booster";
   const directPublicUrl = String(raw["publicUrl"] || raw["url"] || "").trim();
   let publicUrl = directPublicUrl;
+  const thumbnailStoragePath = String(
+    raw["thumbnailStoragePath"] ||
+      raw["thumbnail_storage_path"] ||
+      raw["video_thumbnail_storage_path"] ||
+      "",
+  ).trim();
+  const thumbnailBucket =
+    String(
+      raw["thumbnailBucket"] ||
+        raw["thumbnail_bucket"] ||
+        raw["video_thumbnail_bucket"] ||
+        bucket,
+    ).trim() || bucket;
+  let thumbnailUrl = String(
+    raw["thumbnailUrl"] || raw["thumbnail_url"] || raw["video_thumbnail_url"] || "",
+  ).trim();
 
   if (storagePath) {
     const urls = await buildUrlsFromStoragePath(storagePath, bucket);
@@ -503,6 +550,23 @@ async function normalizeVideoPayload(
       bucket === "booster"
         ? publicUrl || urls.publicUrl || urls.signedUrl || ""
         : urls.signedUrl || publicUrl || urls.publicUrl || "";
+  }
+
+  if (thumbnailStoragePath) {
+    const thumbnailUrls = await buildUrlsFromStoragePath(
+      thumbnailStoragePath,
+      thumbnailBucket,
+    );
+    thumbnailUrl =
+      thumbnailBucket === "booster"
+        ? thumbnailUrl ||
+          thumbnailUrls.publicUrl ||
+          thumbnailUrls.signedUrl ||
+          ""
+        : thumbnailUrls.signedUrl ||
+          thumbnailUrl ||
+          thumbnailUrls.publicUrl ||
+          "";
   }
 
   if (!publicUrl)
@@ -540,12 +604,9 @@ async function normalizeVideoPayload(
       publicUrl,
       storagePath: storagePath || null,
       bucket,
-      thumbnailUrl:
-        String(
-          raw["thumbnailUrl"] || raw["video_thumbnail_url"] || "",
-        ).trim() || null,
-      thumbnailStoragePath:
-        String(raw["thumbnailStoragePath"] || "").trim() || null,
+      thumbnailUrl: thumbnailUrl || null,
+      thumbnailStoragePath: thumbnailStoragePath || null,
+      thumbnailBucket: thumbnailBucket || null,
       transformedVariants,
     },
   };
@@ -612,8 +673,9 @@ async function resolveImageInput(
   img: ImagePayload,
 ): Promise<ResolvedImageInput | null> {
   if (img?.storagePath) {
+    const bucket = String(img.bucket || "booster").trim() || "booster";
     const download = await supabaseAdmin.storage
-      .from("booster")
+      .from(bucket)
       .download(img.storagePath);
     if (download.error || !download.data) {
       throw new Error(
@@ -623,13 +685,18 @@ async function resolveImageInput(
 
     const arrayBuffer = await download.data.arrayBuffer();
     const mime = download.data.type || img.type || "application/octet-stream";
-    const urls = await buildUrlsFromStoragePath(img.storagePath);
+    const urls = await buildUrlsFromStoragePath(img.storagePath, bucket);
+    const privateBucket = bucket !== "booster";
     return {
       mime,
       buffer: Buffer.from(arrayBuffer),
-      originalPublicUrl: img.publicUrl || urls.publicUrl,
-      originalPublishableUrl: urls.signedUrl || img.publicUrl || urls.publicUrl,
+      originalPublicUrl: privateBucket
+        ? urls.signedUrl || img.publicUrl || urls.publicUrl
+        : img.publicUrl || urls.publicUrl,
+      originalPublishableUrl:
+        urls.signedUrl || img.publicUrl || urls.publicUrl,
       storagePath: img.storagePath,
+      bucket,
     };
   }
 
@@ -813,8 +880,10 @@ async function uploadImageSet(
     let originalPublishableUrl = source.originalPublishableUrl;
     let sourceStoragePath = source.storagePath || "";
 
-    if (!source.storagePath) {
-      const ext = (img.name || "image").split(".").pop() || "jpg";
+    const needsPublicationCopy =
+      !source.storagePath || source.bucket !== "booster";
+    if (needsPublicationCopy) {
+      const ext = imageExtensionFromMime(parsed.mime || img.type, img.name);
       const path = `${userId}/${randomUUID()}.${ext}`;
 
       const up = await supabaseAdmin.storage
@@ -1150,6 +1219,8 @@ async function getLatestIntegrationRow(
 }
 
 async function publishNowHandler(req: Request) {
+  let lifecycleWorkspaceId = "";
+  let lifecycleUserId = "";
   try {
     const cronUserId = isAuthorizedCronRequest(req)
       ? getCronUserIdFromRequest(req)
@@ -1185,8 +1256,90 @@ async function publishNowHandler(req: Request) {
     const post = (body.post || {}) as PostPayload;
     const postByChannel = ((body.postByChannel || {}) as PostByChannel) || {};
     const idea = String(body.idea || "").trim();
-    const mediaType = normalizePublicationMediaType(body.mediaType);
     const selected = Array.from(new Set(channels)).filter(Boolean);
+    const mediaWorkspaceId = String(body.mediaWorkspaceId || "").trim();
+    const strictMediaCutover =
+      body.mediaPipelineCutoverV1 === true &&
+      isLegacyMediaTransportCutoverEnabled();
+    lifecycleWorkspaceId = mediaWorkspaceId;
+    lifecycleUserId = userId;
+
+    const requestedOriginSource = String(
+      body.source || body.origin?.source || "",
+    )
+      .trim()
+      .toLowerCase();
+    const workspacePurpose =
+      Boolean(cronUserId) ||
+      requestedOriginSource === "booster_scheduled" ||
+      Boolean(body.origin?.scheduledActionId)
+        ? "schedule"
+        : "publish";
+    let workspaceConsumption: WorkspacePublicationConsumption | null = null;
+    let workspaceFallbackCode = "";
+
+    if (mediaWorkspaceId) {
+      try {
+        workspaceConsumption = await resolveWorkspacePublicationConsumption({
+          accountId: userId,
+          workspaceId: mediaWorkspaceId,
+          purpose: workspacePurpose,
+        });
+      } catch (workspaceError) {
+        workspaceFallbackCode =
+          workspaceError instanceof MediaWorkspaceConsumptionError
+            ? workspaceError.code
+            : "workspace_read_failed";
+        console.warn("[booster-publish] workspace media fallback", {
+          workspaceId: mediaWorkspaceId,
+          purpose: workspacePurpose,
+          code: workspaceFallbackCode,
+          message:
+            workspaceError instanceof Error
+              ? workspaceError.message
+              : String(workspaceError || "Erreur inconnue"),
+        });
+        if (strictMediaCutover) {
+          const status =
+            workspaceError instanceof MediaWorkspaceConsumptionError
+              ? workspaceError.status
+              : 503;
+          return NextResponse.json(
+            {
+              ok: false,
+              code: workspaceFallbackCode,
+              error:
+                workspaceError instanceof Error
+                  ? workspaceError.message
+                  : "Le workspace média n'est pas prêt. Réessayez dans quelques instants.",
+            },
+            { status },
+          );
+        }
+      }
+    }
+
+    const requestedMediaType = normalizePublicationMediaType(body.mediaType);
+    const rawRequestedModes = asRecord(body.mediaModeByChannel);
+    const requestContainsMedia = selected.some((channel) => {
+      const mode = String(rawRequestedModes[channel] || requestedMediaType).trim();
+      return mode === "images" || mode === "video";
+    });
+    if (strictMediaCutover && requestContainsMedia && !mediaWorkspaceId) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "media_workspace_required",
+          error: "Le workspace média est requis pour publier avec le nouveau pipeline.",
+        },
+        { status: 409 },
+      );
+    }
+
+    let mediaType = requestedMediaType;
+    if (workspaceConsumption?.mediaType === "video") mediaType = "video";
+    if (workspaceConsumption?.mediaType === "images") mediaType = "images";
+
     const bubbleAccess = await getAppBubbleAccessMapForUser(
       supabaseAdmin as any,
       userId,
@@ -1231,22 +1384,158 @@ async function publishNowHandler(req: Request) {
     const hasAnyVideoChannel = selected.some(
       (channel) => mediaModeByChannel[channel] === "video",
     );
-    const images = hasAnyImageChannel
+
+    if (strictMediaCutover) {
+      const workspaceMediaMismatch =
+        (hasAnyImageChannel && workspaceConsumption?.mediaType !== "images") ||
+        (hasAnyVideoChannel && workspaceConsumption?.mediaType !== "video");
+      if (workspaceMediaMismatch) {
+        return NextResponse.json(
+          {
+            ok: false,
+            code: "workspace_media_mismatch",
+            error:
+              workspaceConsumption?.mediaType === "none"
+                ? "Le média est encore absent du workspace. Réessayez dans quelques instants."
+                : "Le type de média du workspace ne correspond plus aux canaux sélectionnés.",
+          },
+          { status: 409 },
+        );
+      }
+    }
+
+    let images = hasAnyImageChannel
       ? ((Array.isArray(body.images) ? body.images : []) as ImagePayload[])
       : [];
-    const imagesByChannel = hasAnyImageChannel
-      ? ((body.imagesByChannel || {}) as ImagesByChannel) || {}
+    if (
+      hasAnyImageChannel &&
+      workspaceConsumption?.mediaType === "images" &&
+      workspaceConsumption.images.length
+    ) {
+      images = workspaceConsumption.images;
+    }
+
+    let imagesByChannel = hasAnyImageChannel
+      ? (((body.imagesByChannel || {}) as ImagesByChannel) || {})
       : {};
-    const imageSettingsByChannel = hasAnyImageChannel
+    let imageSettingsByChannel = hasAnyImageChannel
       ? ((body.imageSettingsByChannel || {}) as Record<string, unknown>)
       : {};
-    const { video: publicationVideo, error: videoPayloadError } =
-      hasAnyVideoChannel
-        ? await normalizeVideoPayload(body.video)
-        : {
-            video: null as PersistedVideoAttachment | null,
-            error: undefined as string | undefined,
-          };
+
+    if (
+      strictMediaCutover &&
+      hasAnyImageChannel &&
+      workspaceConsumption?.mediaType === "images"
+    ) {
+      const imageChannels = selected.filter(
+        (channel) => mediaModeByChannel[channel] === "images",
+      );
+      const serverPreparation = await prepareBoosterImagesByChannelOnServer({
+        channels: imageChannels,
+        images: workspaceConsumption.images,
+        settingsByChannel: imageSettingsByChannel as any,
+      });
+      imagesByChannel = serverPreparation.imagesByChannel as ImagesByChannel;
+      imageSettingsByChannel = serverPreparation.imageSettingsByChannel;
+      if (
+        imageChannels.some(
+          (channel) => !Array.isArray(imagesByChannel[channel]) || !imagesByChannel[channel]?.length,
+        )
+      ) {
+        return NextResponse.json(
+          {
+            ok: false,
+            code: "workspace_image_preparation_failed",
+            error: "Les images du workspace n'ont pas pu être préparées pour tous les canaux.",
+            warnings: serverPreparation.warnings,
+          },
+          { status: 422 },
+        );
+      }
+    }
+
+    const legacyVideoResult = hasAnyVideoChannel && !strictMediaCutover
+      ? await normalizeVideoPayload(body.video)
+      : {
+          video: null as PersistedVideoAttachment | null,
+          error: undefined as string | undefined,
+        };
+    let publicationVideo = legacyVideoResult.video;
+    let videoPayloadError = legacyVideoResult.error;
+
+    if (
+      hasAnyVideoChannel &&
+      workspaceConsumption?.mediaType === "video" &&
+      workspaceConsumption.video
+    ) {
+      const workspaceVideoResult = await normalizeVideoPayload(
+        workspaceConsumption.video,
+      );
+      if (workspaceVideoResult.video) {
+        publicationVideo = {
+          ...workspaceVideoResult.video,
+          thumbnailUrl:
+            workspaceVideoResult.video.thumbnailUrl ||
+            legacyVideoResult.video?.thumbnailUrl ||
+            null,
+          thumbnailStoragePath:
+            workspaceVideoResult.video.thumbnailStoragePath ||
+            legacyVideoResult.video?.thumbnailStoragePath ||
+            null,
+          thumbnailBucket:
+            workspaceVideoResult.video.thumbnailBucket ||
+            legacyVideoResult.video?.thumbnailBucket ||
+            null,
+          transformedVariants: strictMediaCutover
+            ? []
+            : legacyVideoResult.video?.transformedVariants || [],
+        };
+        videoPayloadError = undefined;
+      } else if (!publicationVideo) {
+        videoPayloadError = workspaceVideoResult.error;
+      }
+    }
+
+    if (strictMediaCutover && hasAnyVideoChannel && publicationVideo) {
+      const videoVariantRequest = selected
+        .filter((channel) => mediaModeByChannel[channel] === "video")
+        .map((channel) => ({
+          key: `${channel}-${videoSettingsByChannel[channel]?.format || "original"}-${videoSettingsByChannel[channel]?.adaptationMode || "safe_blur"}`,
+          channel: channel as any,
+          format: videoSettingsByChannel[channel]?.format,
+          adaptationMode: videoSettingsByChannel[channel]?.adaptationMode,
+        }));
+      const variantResult = await prepareBoosterVideoVariantsOnServer({
+        accountId: userId,
+        source: {
+          bucket: publicationVideo.bucket || "booster",
+          storagePath: publicationVideo.storagePath,
+          publicUrl: publicationVideo.publicUrl,
+          url: publicationVideo.url,
+          name: publicationVideo.name,
+          type: publicationVideo.type,
+          size: publicationVideo.size,
+          duration: publicationVideo.duration,
+        },
+        variants: videoVariantRequest,
+      });
+      publicationVideo = {
+        ...publicationVideo,
+        transformedVariants: variantResult.variants,
+      };
+      if (!variantResult.ok && !variantResult.fallbackToOriginal) {
+        return NextResponse.json(
+          {
+            ok: false,
+            code: "workspace_video_preparation_failed",
+            error: "La vidéo du workspace n'a pas pu être préparée.",
+            errors: variantResult.errors,
+          },
+          { status: 422 },
+        );
+      }
+    }
+
     const getPublicationVideoForChannel = (
       channel: ChannelKey,
     ): PersistedVideoAttachment | null => {
@@ -1371,6 +1660,40 @@ async function publishNowHandler(req: Request) {
       body.skipScheduledDuplicateCheck !== true &&
       body.allowDuplicateImmediatePublish !== true;
 
+    const syncMediaWorkspaceLifecycle = async (
+      status: "publishing" | "published" | "failed",
+      metadata: Record<string, unknown> = {},
+    ) => {
+      if (!mediaWorkspaceId) return;
+      await syncPublicationWorkspaceContext({
+        accountId: userId,
+        workspaceId: mediaWorkspaceId,
+        operation: "publish",
+        idea,
+        selectedChannels: selected,
+        generatedContent: { postByChannel },
+        status,
+        metadata: {
+          executionSource: origin?.source || originSource || "manual",
+          scheduledExecution: isScheduledExecution,
+          consumptionSource: strictMediaCutover ? "workspace_cutover_v1" : workspaceConsumption?.source || "legacy_fallback",
+          consumptionPurpose: workspacePurpose,
+          workspaceRevisionRead: workspaceConsumption?.workspaceRevision || null,
+          workspaceFallbackCode: workspaceFallbackCode || null,
+          ...metadata,
+        },
+      }).catch((workspaceSyncError) => {
+        console.warn("[booster-publish] workspace lifecycle sync skipped", {
+          workspaceId: mediaWorkspaceId,
+          status,
+          message:
+            workspaceSyncError instanceof Error
+              ? workspaceSyncError.message
+              : String(workspaceSyncError || "Erreur inconnue"),
+        });
+      });
+    };
+
     if (shouldCheckImmediateDuplicate) {
       const duplicate = await findSimilarUpcomingScheduledPublication({
         supabase: supabaseAdmin,
@@ -1437,6 +1760,7 @@ async function publishNowHandler(req: Request) {
     const hadAnyImageInput =
       hasAnyImageChannel &&
       (images.length > 0 ||
+        workspaceConsumption?.mediaType === "images" ||
         Object.values(imagesByChannel).some(
           (value) => Array.isArray(value) && value.length > 0,
         ));
@@ -1527,6 +1851,11 @@ async function publishNowHandler(req: Request) {
 
     const firstPost = getChannelPost(selected[0]);
 
+    await syncMediaWorkspaceLifecycle("publishing", {
+      publicationId,
+      attemptedChannels: selected,
+    });
+
     const selectedImageFormats = hasAnyImageChannel
       ? mergeImageFormats(
           ...selected
@@ -1614,6 +1943,10 @@ async function publishNowHandler(req: Request) {
       !publicationImageSet.siteCardPublishableUrls.length &&
       !publicationImageSet.gmbPublishableUrls.length
     ) {
+      await syncMediaWorkspaceLifecycle("failed", {
+        publicationId,
+        failureStage: "image_upload",
+      });
       await failExecutionIdempotencyLock({
         supabase: supabaseAdmin,
         lockId: publishIdempotencyLockId,
@@ -1664,6 +1997,10 @@ async function publishNowHandler(req: Request) {
       .insert(publicationInsert);
 
     if (pubErr) {
+      await syncMediaWorkspaceLifecycle("failed", {
+        publicationId,
+        failureStage: "publication_insert",
+      });
       await failExecutionIdempotencyLock({
         supabase: supabaseAdmin,
         lockId: publishIdempotencyLockId,
@@ -1881,11 +2218,15 @@ async function publishNowHandler(req: Request) {
       }
     }
 
-    async function loadBoosterVideoForTikTok(storagePath: string) {
+    async function loadStorageVideoForTikTok(
+      storagePath: string,
+      bucket = "booster",
+    ) {
       const cleanPath = String(storagePath || "").trim();
+      const cleanBucket = String(bucket || "booster").trim() || "booster";
       if (!cleanPath) return null;
       const { data, error } = await supabaseAdmin.storage
-        .from("booster")
+        .from(cleanBucket)
         .download(cleanPath);
       if (error || !data) return null;
       const buffer = Buffer.from(await data.arrayBuffer());
@@ -2923,7 +3264,9 @@ async function publishNowHandler(req: Request) {
 
           const isVideo = tiktokMode === "video";
           const videoUrl =
-            isVideo && channelVideo?.storagePath
+            isVideo &&
+            channelVideo?.storagePath &&
+            channelVideo.bucket === "booster"
               ? buildTiktokMediaProxyUrl(req.url, channelVideo.storagePath)
               : isVideo
                 ? String(
@@ -2960,7 +3303,10 @@ async function publishNowHandler(req: Request) {
             "Publication iNrCy";
           const tiktokVideoFile =
             isVideo && channelVideo?.storagePath
-              ? await loadBoosterVideoForTikTok(channelVideo.storagePath)
+              ? await loadStorageVideoForTikTok(
+                  channelVideo.storagePath,
+                  channelVideo.bucket || "booster",
+                )
               : null;
 
           const tiktokResult = isVideo
@@ -3528,6 +3874,11 @@ async function publishNowHandler(req: Request) {
     // Sécurité compteur/stats : on ne valide l'action Booster que si au moins un canal a réellement publié.
     // Ainsi, les compteurs, missions et UI ne montent pas quand tous les canaux échouent.
     if (summary.successCount <= 0) {
+      await syncMediaWorkspaceLifecycle("failed", {
+        publicationId,
+        failureStage: "publish_results",
+        summary,
+      });
       await failExecutionIdempotencyLock({
         supabase: supabaseAdmin,
         lockId: publishIdempotencyLockId,
@@ -3589,6 +3940,10 @@ async function publishNowHandler(req: Request) {
         gmbPublishableUrls,
         uploadErrors,
         publication_id: publicationId,
+        mediaWorkspaceId: mediaWorkspaceId || null,
+        mediaWorkspaceRevision: workspaceConsumption?.workspaceRevision || null,
+        mediaWorkspaceConsumptionSource:
+          strictMediaCutover ? "workspace_cutover_v1" : workspaceConsumption?.source || "legacy_fallback",
         idempotencyKey: publishIdempotencyKey || null,
         idempotencyLockId: publishIdempotencyLockId || null,
         results,
@@ -3620,7 +3975,17 @@ async function publishNowHandler(req: Request) {
       results,
       summary,
       idempotencyKey: publishIdempotencyKey || null,
+      mediaWorkspaceId: mediaWorkspaceId || null,
+      mediaWorkspaceRevision: workspaceConsumption?.workspaceRevision || null,
+      mediaWorkspaceConsumptionSource:
+        strictMediaCutover ? "workspace_cutover_v1" : workspaceConsumption?.source || "legacy_fallback",
     };
+
+    await syncMediaWorkspaceLifecycle("published", {
+      publicationId,
+      successfulChannels: summary.successChannels,
+      summary,
+    });
 
     await completeExecutionIdempotencyLock({
       supabase: supabaseAdmin,
@@ -3631,6 +3996,18 @@ async function publishNowHandler(req: Request) {
 
     return NextResponse.json(responsePayload);
   } catch (e: unknown) {
+    if (lifecycleWorkspaceId && lifecycleUserId) {
+      await syncPublicationWorkspaceContext({
+        accountId: lifecycleUserId,
+        workspaceId: lifecycleWorkspaceId,
+        operation: "publish",
+        status: "failed",
+        metadata: {
+          failureStage: "unhandled_exception",
+          failureMessage: e instanceof Error ? e.message : String(e || "Erreur inconnue"),
+        },
+      }).catch(() => undefined);
+    }
     captureApiException(req, e, {
       area: "booster",
       operation: "POST /api/booster/publish-now",

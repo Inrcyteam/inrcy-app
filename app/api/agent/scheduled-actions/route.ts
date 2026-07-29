@@ -10,6 +10,7 @@ import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { findSimilarScheduledPublication } from "@/lib/scheduledPublicationDedupe";
 import { findSimilarScheduledCampaign } from "@/lib/scheduledCampaignDedupe";
+import { syncPublicationWorkspaceContext } from "@/lib/mediaWorkspaceConsumption";
 
 export const runtime = "nodejs";
 
@@ -185,6 +186,52 @@ export async function POST(request: Request) {
 
     console.warn("[inr-agent-scheduled-actions] insert failed", error);
     return NextResponse.json({ error: "Programmation de l’action impossible" }, { status: 500 });
+  }
+
+  if (row.action_type === "publication" && row.target_tool === "booster") {
+    const scheduledPayload = asRecord(row.payload) || {};
+    const publishPayload = asRecord(scheduledPayload.publishPayload) || {};
+    const mediaWorkspaceId = String(
+      publishPayload.mediaWorkspaceId || scheduledPayload.mediaWorkspaceId || "",
+    ).trim();
+
+    if (mediaWorkspaceId) {
+      await syncPublicationWorkspaceContext({
+        accountId: activeUserId,
+        workspaceId: mediaWorkspaceId,
+        operation: "schedule",
+        idea: String(publishPayload.idea || "").trim(),
+        theme: String(publishPayload.theme || "").trim(),
+        selectedChannels: row.channels,
+        generatedContent: {
+          postByChannel: asRecord(publishPayload.postByChannel) || {},
+        },
+        generationOptions: {
+          mediaType: String(publishPayload.mediaType || "images"),
+          mediaModeByChannel:
+            asRecord(publishPayload.mediaModeByChannel) || {},
+          videoSettingsByChannel:
+            asRecord(publishPayload.videoSettingsByChannel) || {},
+          imageSettingsByChannel:
+            asRecord(publishPayload.imageSettingsByChannel) || {},
+        },
+        scheduledFor: scheduledAt,
+        status: "scheduled",
+        metadata: {
+          scheduledActionId: String(data?.id || "").trim() || null,
+          scheduleSource: source,
+          scheduleTimezone: row.timezone,
+        },
+      }).catch((workspaceSyncError) => {
+        console.warn("[inr-agent-scheduled-actions] workspace schedule sync skipped", {
+          workspaceId: mediaWorkspaceId,
+          message:
+            workspaceSyncError instanceof Error
+              ? workspaceSyncError.message
+              : String(workspaceSyncError || "Erreur inconnue"),
+        });
+      });
+    }
   }
 
   return NextResponse.json({ scheduledAction: rowToInrAgentScheduledAction(data), tableMissing: false });

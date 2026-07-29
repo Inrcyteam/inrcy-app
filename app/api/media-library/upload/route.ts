@@ -4,27 +4,21 @@ import { requireUser } from "@/lib/requireUser";
 import { buildMediaLibraryContentUrl } from "@/lib/mediaLibraryContentUrl";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { createSignedUploadUrlWithRetry } from "@/lib/supabaseStorageUpload";
+import { INR_MEDIA_UPLOAD_BATCH_SIZE } from "@/lib/mediaRules";
 import {
-  INR_MEDIA_ALLOWED_IMAGE_MIME_TYPES,
-  INR_MEDIA_ALLOWED_VIDEO_MIME_TYPES,
-  INR_MEDIA_IMAGE_MAX_BYTES,
-  INR_MEDIA_IMAGE_MAX_MB_LABEL,
-  INR_MEDIA_UPLOAD_BATCH_SIZE,
-  INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
-  INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL,
-} from "@/lib/mediaRules";
+  UNIVERSAL_MEDIA_IMAGE_HARD_MAX_BYTES,
+  UNIVERSAL_MEDIA_VIDEO_HARD_MAX_BYTES,
+  detectUniversalUploadMediaType,
+  getUniversalMediaContentType,
+  getUniversalMediaSafeExtension,
+} from "@/lib/mediaUploadPolicy";
 
 export const runtime = "nodejs";
 
 const BUCKET = "inrcy-pro-media";
 const MAX_FILES = INR_MEDIA_UPLOAD_BATCH_SIZE;
-const MAX_IMAGE_BYTES = INR_MEDIA_IMAGE_MAX_BYTES;
-const MAX_VIDEO_BYTES = INR_MEDIA_VIDEO_SOURCE_MAX_BYTES;
-const MAX_IMAGE_MB_LABEL = INR_MEDIA_IMAGE_MAX_MB_LABEL;
-const MAX_VIDEO_MB_LABEL = INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL;
-
-const ALLOWED_IMAGE_TYPES = new Set<string>(INR_MEDIA_ALLOWED_IMAGE_MIME_TYPES);
-const ALLOWED_VIDEO_TYPES = new Set<string>(INR_MEDIA_ALLOWED_VIDEO_MIME_TYPES);
+const MAX_IMAGE_BYTES = UNIVERSAL_MEDIA_IMAGE_HARD_MAX_BYTES;
+const MAX_VIDEO_BYTES = UNIVERSAL_MEDIA_VIDEO_HARD_MAX_BYTES;
 
 type PrepareFile = {
   client_id?: unknown;
@@ -42,6 +36,7 @@ type FinalizeUpload = {
   width?: unknown;
   height?: unknown;
   duration_seconds?: unknown;
+  upload_protocol?: unknown;
 };
 
 function jsonError(message: string, status = 500, detail?: unknown) {
@@ -93,20 +88,17 @@ function cleanTags(raw: unknown) {
     .slice(0, 30);
 }
 
-function mediaTypeFromMime(mime: string): "image" | "video" | null {
-  if (ALLOWED_IMAGE_TYPES.has(mime)) return "image";
-  if (ALLOWED_VIDEO_TYPES.has(mime)) return "video";
-  return null;
+function mediaTypeFromFile(name: string, mime: string): "image" | "video" | null {
+  return detectUniversalUploadMediaType({ name, mimeType: mime });
 }
 
-function extFromMime(mime: string) {
-  if (mime === "image/png") return "png";
-  if (mime === "image/webp") return "webp";
-  if (mime === "video/webm") return "webm";
-  if (mime === "video/quicktime") return "mov";
-  if (mime === "video/x-m4v") return "m4v";
-  if (mime === "video/mp4") return "mp4";
-  return "jpg";
+function extFromFile(name: string, mime: string) {
+  const mediaType = mediaTypeFromFile(name, mime) || "image";
+  return getUniversalMediaSafeExtension({
+    name,
+    mimeType: mime,
+    mediaType,
+  });
 }
 
 function safeFileStem(name: string) {
@@ -122,10 +114,10 @@ function safeFileStem(name: string) {
 }
 
 function assertAllowedFile(name: string, mime: string, size: number) {
-  const type = mediaTypeFromMime(mime);
+  const type = mediaTypeFromFile(name, mime);
   if (!type) {
     throw new Error(
-      `${name || "Fichier"} : format non autorisé. Utilise JPG, PNG, WebP, MP4, WebM ou MOV.`,
+      `${name || "Fichier"} : format non reconnu par le moteur média iNrCy.`,
     );
   }
   if (!Number.isFinite(size) || size <= 0) {
@@ -133,12 +125,12 @@ function assertAllowedFile(name: string, mime: string, size: number) {
   }
   if (type === "image" && size > MAX_IMAGE_BYTES) {
     throw new Error(
-      `${name || "Image"} : image trop lourde. Maximum ${MAX_IMAGE_MB_LABEL}.`,
+      `${name || "Image"} : fichier exceptionnellement volumineux.`,
     );
   }
   if (type === "video" && size > MAX_VIDEO_BYTES) {
     throw new Error(
-      `${name || "Vidéo"} : vidéo trop lourde. Maximum ${MAX_VIDEO_MB_LABEL}.`,
+      `${name || "Vidéo"} : fichier exceptionnellement volumineux.`,
     );
   }
 }
@@ -149,8 +141,8 @@ function buildStoragePath(
   mime: string,
   index: number,
 ) {
-  const type = mediaTypeFromMime(mime) || "image";
-  const extension = extFromMime(mime);
+  const type = mediaTypeFromFile(name, mime) || "image";
+  const extension = extFromFile(name, mime);
   const safeIndex = String(index + 1).padStart(3, "0");
   const unique = randomUUID().slice(0, 10);
   const year = new Date().getFullYear();
@@ -207,8 +199,12 @@ async function handlePrepareUpload(
       storage_path: storagePath,
       token: signed.data.token,
       signed_url: signed.data.signedUrl,
-      content_type: mime,
-      media_type: mediaTypeFromMime(mime),
+      content_type: getUniversalMediaContentType({
+        name,
+        mimeType: mime,
+        mediaType: mediaTypeFromFile(name, mime) || "image",
+      }),
+      media_type: mediaTypeFromFile(name, mime),
       max_image_bytes: MAX_IMAGE_BYTES,
       max_video_bytes: MAX_VIDEO_BYTES,
     });
@@ -268,6 +264,10 @@ async function insertMediaRows(userId: string, body: Record<string, unknown>) {
     const width = cleanNullableDimension(upload.width);
     const height = cleanNullableDimension(upload.height);
     const durationSeconds = cleanNullableDuration(upload.duration_seconds);
+    const uploadProtocol =
+      cleanText(upload.upload_protocol, "signed", 20) === "tus"
+        ? "tus"
+        : "signed";
 
     try {
       assertAllowedFile(originalName, mimeType, sizeBytes);
@@ -275,7 +275,7 @@ async function insertMediaRows(userId: string, body: Record<string, unknown>) {
         throw new Error("Chemin Storage invalide pour votre médiathèque.");
       }
 
-      const mediaType = mediaTypeFromMime(mimeType);
+      const mediaType = mediaTypeFromFile(originalName, mimeType);
       if (!mediaType) throw new Error("Format non autorisé.");
 
       const safeIndex = String(index + 1).padStart(3, "0");
@@ -299,6 +299,12 @@ async function insertMediaRows(userId: string, body: Record<string, unknown>) {
           height,
           duration_seconds: durationSeconds,
           is_active: true,
+          original_file_name: originalName,
+          upload_protocol: uploadProtocol,
+          upload_status: "uploaded",
+          upload_progress: 100,
+          uploaded_at: new Date().toISOString(),
+          pipeline_version: 1,
         })
         .select("id,storage_path")
         .single();

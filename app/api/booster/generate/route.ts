@@ -29,10 +29,20 @@ import {
   normalizeVideoAiContextReference,
   type VideoAiContextReference,
 } from "@/lib/videoAiContextReference";
+import { aiTranscribeMedia } from "@/lib/aiGatewayTranscription";
+import {
+  MediaWorkspaceConsumptionError,
+  resolveWorkspaceAiConsumption,
+  syncPublicationWorkspaceContext,
+} from "@/lib/mediaWorkspaceConsumption";
+import { isLegacyMediaTransportCutoverEnabled } from "@/lib/mediaPipelineLegacyCutoverPolicy";
 
 export const maxDuration = 120;
 
 type Payload = {
+  mediaWorkspaceId?: string;
+  mediaPipelineCutoverV1?: boolean;
+  mediaWorkspaceExpected?: boolean;
   idea?: string;
   publicationInstruction?: string;
   theme?: BoosterTheme;
@@ -326,6 +336,11 @@ const handler = async (req: Request) => {
     requestContentLength?: number;
     videoContextLoadMs?: number;
     videoContextReferenceSource?: "none" | "hit" | "invalid";
+    mediaWorkspaceId?: string;
+    mediaWorkspaceLoadMs?: number;
+    mediaWorkspaceRevision?: number;
+    mediaWorkspaceSource?: "none" | "workspace" | "workspace_cutover_v1" | "legacy_fallback";
+    mediaWorkspaceFallbackCode?: string;
   } = {};
   try {
     const { supabase, authUserId, errorResponse, activeUserId } = await requireUser();
@@ -392,11 +407,35 @@ const handler = async (req: Request) => {
     }
     timingContext.selectedChannels = channels.length;
 
-    const mediaType = normalizeGenerationMediaType(body.mediaType);
-    let effectiveBody: Payload = body;
+    let mediaType = normalizeGenerationMediaType(body.mediaType);
+    const strictMediaCutover =
+      body.mediaPipelineCutoverV1 === true &&
+      isLegacyMediaTransportCutoverEnabled();
+    let effectiveBody: Payload = strictMediaCutover
+      ? {
+          ...body,
+          imagesForAI: [],
+          imageCount: 0,
+          useImagesForAI: false,
+          videoForAI: null,
+        }
+      : body;
+    const mediaWorkspaceId = String(body.mediaWorkspaceId || "").trim();
+    const mediaWorkspaceExpected = body.mediaWorkspaceExpected === true;
+    if (strictMediaCutover && mediaWorkspaceExpected && !mediaWorkspaceId) {
+      return NextResponse.json(
+        {
+          code: "media_workspace_required",
+          error: "Le workspace média est requis pour générer avec le nouveau pipeline.",
+        },
+        { status: 409 },
+      );
+    }
+    timingContext.mediaWorkspaceId = mediaWorkspaceId || undefined;
+    timingContext.mediaWorkspaceSource = "none";
     timingContext.videoContextReferenceSource = "none";
 
-    if (mediaType === "video") {
+    if (mediaType === "video" && !strictMediaCutover) {
       const contextRef = normalizeVideoAiContextReference(
         body.videoForAI?.contextRef,
       );
@@ -452,6 +491,136 @@ const handler = async (req: Request) => {
               },
             },
           };
+        }
+      }
+    }
+
+    if (mediaWorkspaceId) {
+      const workspaceLoadStartedAt = Date.now();
+      try {
+        const workspaceMedia = await resolveWorkspaceAiConsumption({
+          accountId: userId,
+          workspaceId: mediaWorkspaceId,
+        });
+        timingContext.mediaWorkspaceLoadMs = Date.now() - workspaceLoadStartedAt;
+        timingContext.mediaWorkspaceRevision = workspaceMedia.workspaceRevision;
+        timingContext.mediaWorkspaceSource = strictMediaCutover ? "workspace_cutover_v1" : "workspace";
+
+        if (strictMediaCutover && mediaWorkspaceExpected) {
+          const expectedWorkspaceMediaType = mediaType === "video" ? "video" : "images";
+          if (workspaceMedia.mediaType !== expectedWorkspaceMediaType) {
+            return NextResponse.json(
+              {
+                code: "workspace_media_mismatch",
+                error:
+                  workspaceMedia.mediaType === "none"
+                    ? "Le média est encore absent du workspace. Réessayez dans quelques instants."
+                    : "Le type de média du workspace ne correspond plus à la publication.",
+              },
+              { status: 409 },
+            );
+          }
+        }
+
+        if (workspaceMedia.mediaType === "images") {
+          mediaType = "images";
+          effectiveBody = {
+            ...effectiveBody,
+            mediaType: "images",
+            useImagesForAI: workspaceMedia.imagesForAI.length > 0,
+            imageCount: workspaceMedia.imagesForAI.length,
+            imagesForAI: workspaceMedia.imagesForAI,
+            videoForAI: null,
+          };
+        } else if (workspaceMedia.mediaType === "video" && workspaceMedia.videoForAI) {
+          mediaType = "video";
+          const existingVideo = effectiveBody.videoForAI || {};
+          let audioTranscript = cleanVideoTranscript(
+            existingVideo.audioTranscript || existingVideo.rawAudioTranscript,
+          );
+
+          if (!audioTranscript && workspaceMedia.videoForAI.audioTrackFile) {
+            try {
+              const transcription = await aiTranscribeMedia({
+                file: workspaceMedia.videoForAI.audioTrackFile,
+                accountId: userId,
+                mediaType: workspaceMedia.videoForAI.audioTrackFile.type || "audio/mpeg",
+                retries: 1,
+                timeoutMs: 70_000,
+              });
+              audioTranscript = cleanVideoTranscript(transcription.text);
+            } catch (transcriptionError) {
+              console.warn("[booster-generate] workspace audio transcription unavailable", {
+                workspaceId: mediaWorkspaceId,
+                message:
+                  transcriptionError instanceof Error
+                    ? transcriptionError.message
+                    : String(transcriptionError || "Erreur inconnue"),
+              });
+            }
+          }
+
+          effectiveBody = {
+            ...effectiveBody,
+            mediaType: "video",
+            useImagesForAI: false,
+            imageCount: 0,
+            imagesForAI: [],
+            videoForAI: {
+              ...existingVideo,
+              name: workspaceMedia.videoForAI.name,
+              type: workspaceMedia.videoForAI.type,
+              size: workspaceMedia.videoForAI.size,
+              duration: workspaceMedia.videoForAI.duration,
+              source: workspaceMedia.videoForAI.source,
+              storagePath: workspaceMedia.videoForAI.storagePath,
+              visualFrames: workspaceMedia.videoForAI.visualFrames,
+              audioTranscript,
+              rawAudioTranscript: audioTranscript,
+              analysisPlan: {
+                visualFrames: workspaceMedia.videoForAI.visualFrames.length
+                  ? "ready"
+                  : "pending",
+                audioTranscript: audioTranscript
+                  ? "ready"
+                  : workspaceMedia.videoForAI.audioAvailable
+                    ? "pending"
+                    : "unavailable",
+                frameTargets: ["start", "middle", "end"],
+              },
+            },
+          };
+        }
+      } catch (workspaceError) {
+        timingContext.mediaWorkspaceLoadMs = Date.now() - workspaceLoadStartedAt;
+        timingContext.mediaWorkspaceSource = "legacy_fallback";
+        timingContext.mediaWorkspaceFallbackCode =
+          workspaceError instanceof MediaWorkspaceConsumptionError
+            ? workspaceError.code
+            : "workspace_read_failed";
+        console.warn("[booster-generate] workspace media fallback", {
+          workspaceId: mediaWorkspaceId,
+          code: timingContext.mediaWorkspaceFallbackCode,
+          message:
+            workspaceError instanceof Error
+              ? workspaceError.message
+              : String(workspaceError || "Erreur inconnue"),
+        });
+        if (strictMediaCutover) {
+          const status =
+            workspaceError instanceof MediaWorkspaceConsumptionError
+              ? workspaceError.status
+              : 503;
+          return NextResponse.json(
+            {
+              code: timingContext.mediaWorkspaceFallbackCode,
+              error:
+                workspaceError instanceof Error
+                  ? workspaceError.message
+                  : "Le workspace média n'est pas prêt. Réessayez dans quelques instants.",
+            },
+            { status },
+          );
         }
       }
     }
@@ -530,6 +699,42 @@ const handler = async (req: Request) => {
     }
 
     const { versions, recoveredChannels, aiFallback } = generationResult;
+
+    if (mediaWorkspaceId) {
+      await syncPublicationWorkspaceContext({
+        accountId: userId,
+        workspaceId: mediaWorkspaceId,
+        operation: "generate",
+        idea,
+        theme,
+        selectedChannels: channels,
+        generatedContent: {
+          postByChannel: versions,
+          generatedAt: new Date().toISOString(),
+        },
+        generationOptions: {
+          style,
+          publicationInstruction,
+          aiPreferredEngine: aiPreferredEngine || null,
+          mediaType,
+        },
+        ...((timingContext.mediaWorkspaceSource === "workspace" || timingContext.mediaWorkspaceSource === "workspace_cutover_v1")
+          ? { status: "ready" as const }
+          : {}),
+        metadata: {
+          consumptionSource: timingContext.mediaWorkspaceSource,
+          workspaceRevisionRead: timingContext.mediaWorkspaceRevision || null,
+        },
+      }).catch((workspaceSyncError) => {
+        console.warn("[booster-generate] workspace context sync skipped", {
+          workspaceId: mediaWorkspaceId,
+          message:
+            workspaceSyncError instanceof Error
+              ? workspaceSyncError.message
+              : String(workspaceSyncError || "Erreur inconnue"),
+        });
+      });
+    }
 
     await commitAiCredits(quotaReservation);
     console.info("[booster-generate] route timing", {

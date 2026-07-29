@@ -119,3 +119,29 @@ les corps de requête et les champs métier sensibles. `sendDefaultPii` reste d�
 2. vérifier l’événement dans Sentry avec son module et son `request_id` ;
 3. ouvrir les logs Vercel et retrouver le même `request_id` ;
 4. créer des alertes séparées pour les erreurs `booster`, `crm_campaigns`, `inrstats`, `inrcalendar`, `documents` et `inragent`.
+
+## 8) Supervision du pipeline média universel
+
+À partir de l'Étape 9, le healthcheck interne expose `checks.media_pipeline`
+dès qu'au moins un flag média est actif.
+
+Le contrôle privé vérifie :
+
+- la cohérence des flags serveur et `NEXT_PUBLIC_*` ;
+- le palier de déploiement courant ;
+- l'accès aux tables du registre ;
+- la présence des buckets `booster` et `inrcy-pro-media` ;
+- le caractère privé du bucket source ;
+- les leases de worker expirées ;
+- les workspaces bloqués en publication ;
+- le volume de jobs échoués sur 24 heures.
+
+Commande post-déploiement :
+
+```bash
+APP_BASE_URL=https://app.inrcy.com HEALTHCHECK_TOKEN=... npm run smoke:media-pipeline
+```
+
+En bascule finale, ajouter `REQUIRE_MEDIA_PIPELINE_CUTOVER=1`. Le cron santé
+journalise le détail média afin de permettre un rapprochement avec Sentry et
+les logs Vercel.

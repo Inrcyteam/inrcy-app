@@ -11,17 +11,23 @@ import {
   type MouseEvent,
 } from "react";
 import { createClient } from "@/lib/supabaseClient";
+import {
+  isUniversalMediaUploadEnabled,
+  uploadFileToPreparedUniversalIntent,
+  type UniversalMediaUploadIntent,
+} from "@/lib/universalMediaUploadClient";
+import {
+  buildDirectStorageResumableEndpoint,
+  selectUniversalMediaUploadProtocol,
+} from "@/lib/mediaUploadPolicy";
 import { getClientUserFacingErrorMessage } from "@/lib/userFacingErrors";
 import { confirmInrcy } from "@/lib/inrcyDialog";
+import { INR_MEDIA_UPLOAD_BATCH_SIZE } from "@/lib/mediaRules";
 import {
-  INR_MEDIA_ALLOWED_IMAGE_MIME_TYPES,
-  INR_MEDIA_ALLOWED_VIDEO_MIME_TYPES,
-  INR_MEDIA_IMAGE_MAX_BYTES,
-  INR_MEDIA_IMAGE_MAX_MB_LABEL,
-  INR_MEDIA_UPLOAD_BATCH_SIZE,
-  INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
-  INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL,
-} from "@/lib/mediaRules";
+  UNIVERSAL_MEDIA_IMAGE_HARD_MAX_BYTES,
+  UNIVERSAL_MEDIA_VIDEO_HARD_MAX_BYTES,
+  detectUniversalUploadMediaType,
+} from "@/lib/mediaUploadPolicy";
 import styles from "./mediaLibrary.module.css";
 
 type MediaTypeFilter = "all" | "image" | "video";
@@ -66,16 +72,13 @@ type UploadFinalizeItem = {
   width: number | null;
   height: number | null;
   duration_seconds: number | null;
+  upload_protocol?: "signed" | "tus";
 };
 
 
-const MAX_IMAGE_BYTES = INR_MEDIA_IMAGE_MAX_BYTES;
-const MAX_VIDEO_BYTES = INR_MEDIA_VIDEO_SOURCE_MAX_BYTES;
-const MAX_IMAGE_MB_LABEL = INR_MEDIA_IMAGE_MAX_MB_LABEL;
-const MAX_VIDEO_MB_LABEL = INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL;
+const MAX_IMAGE_BYTES = UNIVERSAL_MEDIA_IMAGE_HARD_MAX_BYTES;
+const MAX_VIDEO_BYTES = UNIVERSAL_MEDIA_VIDEO_HARD_MAX_BYTES;
 const UPLOAD_BATCH_SIZE = INR_MEDIA_UPLOAD_BATCH_SIZE;
-const ALLOWED_IMAGE_TYPES = new Set<string>(INR_MEDIA_ALLOWED_IMAGE_MIME_TYPES);
-const ALLOWED_VIDEO_TYPES = new Set<string>(INR_MEDIA_ALLOWED_VIDEO_MIME_TYPES);
 
 async function readApiJson(response: Response, fallbackMessage: string) {
   const contentType = response.headers.get("content-type") || "";
@@ -104,28 +107,34 @@ function chunkFiles<T>(items: T[], size: number) {
 }
 
 function isImageFile(file: File) {
-  return ALLOWED_IMAGE_TYPES.has(file.type);
+  return (
+    detectUniversalUploadMediaType({ name: file.name, mimeType: file.type }) ===
+    "image"
+  );
 }
 
 function isVideoFile(file: File) {
-  return ALLOWED_VIDEO_TYPES.has(file.type);
+  return (
+    detectUniversalUploadMediaType({ name: file.name, mimeType: file.type }) ===
+    "video"
+  );
 }
 
 function validateUploadFiles(selectedFiles: File[]) {
   for (const file of selectedFiles) {
     if (!isImageFile(file) && !isVideoFile(file)) {
       throw new Error(
-        `${formatUploadName(file)} : format non autorisé. Utilise JPG, PNG, WebP, MP4, WebM ou MOV.`,
+        `${formatUploadName(file)} : format non reconnu par le moteur média iNrCy.`,
       );
     }
     if (isImageFile(file) && file.size > MAX_IMAGE_BYTES) {
       throw new Error(
-        `${formatUploadName(file)} : image trop lourde. Maximum ${MAX_IMAGE_MB_LABEL}.`,
+        `${formatUploadName(file)} : image exceptionnellement volumineuse.`,
       );
     }
     if (isVideoFile(file) && file.size > MAX_VIDEO_BYTES) {
       throw new Error(
-        `${formatUploadName(file)} : vidéo trop lourde. Maximum ${MAX_VIDEO_MB_LABEL}.`,
+        `${formatUploadName(file)} : vidéo exceptionnellement volumineuse.`,
       );
     }
   }
@@ -453,20 +462,78 @@ export default function MediaLibraryClient() {
           }
 
           try {
+            let completedProtocol: "signed" | "tus" = "signed";
             setUploadProgress(
               `Import du lot ${batchNumber}/${batches.length} · fichier ${localIndex + 1}/${batch.length}…`,
             );
             const info = await getMediaInfo(file);
-            const { error: uploadError } = await supabase.storage
-              .from(prepared.bucket || "inrcy-pro-media")
-              .uploadToSignedUrl(prepared.storage_path, prepared.token, file, {
-                contentType:
-                  prepared.content_type ||
-                  file.type ||
-                  "application/octet-stream",
-              });
+            const contentType =
+              prepared.content_type || file.type || "application/octet-stream";
 
-            if (uploadError) throw uploadError;
+            if (isUniversalMediaUploadEnabled()) {
+              const intent: UniversalMediaUploadIntent = {
+                ok: true,
+                target: "media_library_source",
+                mediaType: prepared.media_type,
+                protocol: selectUniversalMediaUploadProtocol(file.size),
+                bucket: prepared.bucket || "inrcy-pro-media",
+                storagePath: prepared.storage_path,
+                token: prepared.token,
+                signedUrl: null,
+                publicUrl: null,
+                contentType,
+                resumableEndpoint: buildDirectStorageResumableEndpoint(
+                  process.env.NEXT_PUBLIC_SUPABASE_URL || "",
+                ),
+                mediaId: null,
+                clientMediaKey: clientId,
+              };
+
+              try {
+                const uploadResult = await uploadFileToPreparedUniversalIntent(file, intent, {
+                  onProgress(progress) {
+                    setUploadPercent(
+                      Math.min(
+                        90,
+                        Math.max(
+                          5,
+                          Math.round(
+                            ((processed + progress.percent / 100) /
+                              uploadFiles.length) *
+                              90,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                });
+                completedProtocol = uploadResult.protocol;
+              } catch (universalError) {
+                console.warn(
+                  "[media-pipeline] media library signed fallback",
+                  universalError,
+                );
+                const { error: uploadError } = await supabase.storage
+                  .from(prepared.bucket || "inrcy-pro-media")
+                  .uploadToSignedUrl(
+                    prepared.storage_path,
+                    prepared.token,
+                    file,
+                    { contentType },
+                  );
+                if (uploadError) throw uploadError;
+              }
+            } else {
+              const { error: uploadError } = await supabase.storage
+                .from(prepared.bucket || "inrcy-pro-media")
+                .uploadToSignedUrl(
+                  prepared.storage_path,
+                  prepared.token,
+                  file,
+                  { contentType },
+                );
+              if (uploadError) throw uploadError;
+            }
 
             processed += 1;
             setUploadPercent(
@@ -488,6 +555,7 @@ export default function MediaLibraryClient() {
               width: info.width,
               height: info.height,
               duration_seconds: info.duration_seconds,
+              upload_protocol: completedProtocol,
             });
           } catch (uploadError: any) {
             processed += 1;
@@ -847,7 +915,7 @@ export default function MediaLibraryClient() {
               <small className={styles.helper}>
                 {selectedFiles.length
                   ? `${selectedFiles.length} fichier(s) · ${selectedStats.images} image(s) · ${selectedStats.videos} vidéo(s) · ${formatBytes(selectedStats.bytes)}`
-                  : `Glissez-déposez ou sélectionnez vos médias. Images ${MAX_IMAGE_MB_LABEL} max · Vidéos ${MAX_VIDEO_MB_LABEL} max · import par lots de ${UPLOAD_BATCH_SIZE}.`}
+                  : `Glissez-déposez ou sélectionnez vos médias. iNrCy prépare automatiquement les formats et les fichiers volumineux · import par lots de ${UPLOAD_BATCH_SIZE}.`}
               </small>
             </label>
 
@@ -1222,8 +1290,8 @@ export default function MediaLibraryClient() {
             </div>
             <div className={styles.helperModalPills}>
               <span>🔒 Privé</span>
-              <span>🖼️ Images {MAX_IMAGE_MB_LABEL}</span>
-              <span>🎬 Vidéos {MAX_VIDEO_MB_LABEL}</span>
+              <span>🖼️ Images · préparation automatique</span>
+              <span>🎬 Vidéos · envoi résumable</span>
               <span>🤖 Priorité iNrAgent</span>
             </div>
             <div className={styles.helperModalGrid}>
@@ -1233,11 +1301,11 @@ export default function MediaLibraryClient() {
               </div>
               <div className={styles.helperInfoCard}>
                 <strong>🖼️ Images</strong>
-                <span>JPG, PNG ou WebP · {MAX_IMAGE_MB_LABEL} maximum par image.</span>
+                <span>Formats image courants · préparation automatique par iNrCy.</span>
               </div>
               <div className={styles.helperInfoCard}>
                 <strong>🎬 Vidéos</strong>
-                <span>MP4, WebM ou MOV · {MAX_VIDEO_MB_LABEL} maximum par vidéo.</span>
+                <span>Formats vidéo courants · envoi direct et résumable.</span>
               </div>
               <div className={styles.helperInfoCard}>
                 <strong>🤖 iNrAgent</strong>

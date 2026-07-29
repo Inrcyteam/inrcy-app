@@ -148,8 +148,24 @@ if (!establishmentMenu.includes('placeholder={`${copy.establishment} ${slot}`}')
 }
 
 const bubbleEnsureRoute = read(join(root, "app/api/bubble-access/ensure/route.ts"));
-if (!bubbleEnsureRoute.includes('row.bubble_key === "inr_agent"') || !bubbleEnsureRoute.includes("mustEnableInrAgent")) {
-  errors.push("bubble-access ensure: iNr'Agent non force par defaut");
+const bubbleAccessPolicy = read(join(root, "lib/bubbleAccess.ts"));
+const alwaysEnabledStart = bubbleAccessPolicy.indexOf(
+  "export const APP_BUBBLE_ALWAYS_ENABLED_KEYS",
+);
+const alwaysEnabledEnd =
+  alwaysEnabledStart >= 0
+    ? bubbleAccessPolicy.indexOf("];", alwaysEnabledStart)
+    : -1;
+const alwaysEnabledBlock =
+  alwaysEnabledStart >= 0 && alwaysEnabledEnd > alwaysEnabledStart
+    ? bubbleAccessPolicy.slice(alwaysEnabledStart, alwaysEnabledEnd + 2)
+    : "";
+if (
+  !bubbleEnsureRoute.includes("APP_BUBBLE_ALWAYS_ENABLED_KEYS") ||
+  !bubbleEnsureRoute.includes("rowsToForceEnabled") ||
+  !alwaysEnabledBlock.includes('"inr_agent"')
+) {
+  errors.push("bubble-access ensure: iNr'Agent absent de la politique toujours active");
 }
 
 const lockdownSql = read(join(root, "ops/sql/2026-07-05_multicompte_step6_1_scope_lockdown.sql"));

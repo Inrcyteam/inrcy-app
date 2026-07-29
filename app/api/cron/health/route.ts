@@ -39,6 +39,8 @@ function buildAlertBody(report: Awaited<ReturnType<typeof runDeepHealthChecks>>)
       if (check.skipped) parts.push("skipped");
       if (typeof check.ms === "number") parts.push(`${check.ms} ms`);
       if (check.error) parts.push(`error=${check.error}`);
+      if (check.warning) parts.push(`warning=${check.warning}`);
+      if (check.details) parts.push(`details=${JSON.stringify(check.details)}`);
       return `- ${parts.join(" | ")}`;
     }),
   ];
@@ -107,6 +109,7 @@ export const GET = withApi(async (req) => {
     log.info("cron_health_ok", {
       route: "/api/cron/health",
       total_ms: report.total_ms,
+      media_pipeline: report.checks.media_pipeline,
     });
   }
 

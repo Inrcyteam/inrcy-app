@@ -42,6 +42,7 @@ import {
   renderChannelImage,
   syncChannelImageEditors,
   uploadPreparedImages,
+  uploadBoosterImageFileDirect,
   type ChannelImageEditorState,
   type ChannelImagePayload,
   type ChannelImageSettingsPayload,
@@ -89,6 +90,7 @@ type UsePublishImageControllerParams = {
   >;
   preservePublishScroll: () => void;
   restorePublishScroll: () => void;
+  syncPersistentWorkspaceImages?: (files: readonly File[]) => Promise<void> | void;
 };
 
 export default function usePublishImageController({
@@ -120,6 +122,7 @@ export default function usePublishImageController({
   setChannelMediaModes,
   preservePublishScroll,
   restorePublishScroll,
+  syncPersistentWorkspaceImages,
 }: UsePublishImageControllerParams) {
   const dragStateRef = useRef<{
     pointerId: number;
@@ -352,6 +355,7 @@ export default function usePublishImageController({
     setImageMetaByKey({});
     setChannelImageEditors({});
     setActiveImageKeyByChannel({});
+    void syncPersistentWorkspaceImages?.([]);
   };
 
   const onPickImagesClick = () => {
@@ -463,6 +467,7 @@ export default function usePublishImageController({
     setImages(nextFiles);
     setImagePreviews(nextPreviews);
     setImageMetaByKey((prev) => ({ ...prev, ...nextMetaMap }));
+    void syncPersistentWorkspaceImages?.(nextFiles);
 
     if (!hasVideoMedia) {
       setChannelMediaModes((prev) => {
@@ -541,6 +546,7 @@ export default function usePublishImageController({
 
     setImages(nextFiles);
     setImagePreviews(nextPreviews);
+    void syncPersistentWorkspaceImages?.(nextFiles);
     setImageMetaByKey((prev) => {
       const next = { ...prev };
       delete next[removedKey];
@@ -626,28 +632,18 @@ export default function usePublishImageController({
     for (let index = 0; index < images.length; index += 1) {
       const file = images[index];
       if (!file) continue;
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("path", getSafeDraftImagePath(file, index));
-      const response = await fetch("/api/booster/upload-prepared", {
-        method: "POST",
-        body: formData,
+      const stored = await uploadBoosterImageFileDirect({
+        file,
+        path: getSafeDraftImagePath(file, index),
+        target: "booster_draft_image",
       });
-      const json = await response.json().catch(() => ({}));
-      if (!response.ok) {
-        throw new Error(
-          String(
-            json?.error || "Impossible d’enregistrer les images du brouillon.",
-          ),
-        );
-      }
       uploaded.push({
         name: file.name,
         type: file.type,
         size: file.size,
         lastModified: file.lastModified,
-        storagePath: String(json?.storagePath || ""),
-        publicUrl: String(json?.publicUrl || ""),
+        storagePath: stored.storagePath,
+        publicUrl: stored.publicUrl,
       });
     }
     return uploaded;
@@ -1154,6 +1150,83 @@ export default function usePublishImageController({
     );
   };
 
+  const buildChannelImageSettingsPayload = (): ChannelImageSettingsPayload => {
+    const channelSettings = {} as ChannelImageSettingsPayload;
+    const getEditorForPublish = (channel: ChannelKey) =>
+      channelImageEditors[channel] || { imageKeys: [], transforms: {} };
+
+    for (const channel of selectedChannels) {
+      if (!channelSupportsImages(channel)) {
+        channelSettings[channel] = {
+          imageKeys: [],
+          transforms: {},
+          customizedImageKeys: [],
+        };
+        continue;
+      }
+
+      const editor = getEditorForPublish(channel);
+      const imageKeysToRender =
+        channel === "gmb" ? editor.imageKeys.slice(0, 1) : editor.imageKeys;
+      const firstImageKey = imageKeysToRender[0] || "";
+      const sequenceTargetRatio = getBoosterImageSequenceTargetRatio({
+        channel,
+        metas: imageKeysToRender.map((key) => imageMetaByKey[key]),
+        firstImageCustomizedTargetRatio:
+          channel === "instagram" &&
+          firstImageKey &&
+          (editor.customizedImageKeys || []).includes(firstImageKey)
+            ? CHANNEL_PRESETS.instagram.width / CHANNEL_PRESETS.instagram.height
+            : null,
+      });
+      const transforms: Record<string, ImageTransform> = {};
+      const customizedImageKeys: string[] = [];
+
+      for (const imageKey of imageKeysToRender) {
+        const imageMeta = imageMetaByKey[imageKey];
+        const automaticTransform = getOptimizedTransform(channel, imageMeta);
+        const currentTransform = editor.transforms[imageKey] || automaticTransform;
+        const explicitlyCustomized = (editor.customizedImageKeys || []).includes(
+          imageKey,
+        );
+        const displayPlan = getBoosterImageDisplayPlan({
+          channel,
+          meta: imageMeta,
+          customized: explicitlyCustomized,
+          currentTransform,
+          automaticTransform,
+          requiredTargetRatio: sequenceTargetRatio,
+        });
+        if (displayPlan.decision.mode === "adapted") {
+          transforms[imageKey] = {
+            ...automaticTransform,
+            fit: displayPlan.automaticFit,
+            zoom: 1,
+            offsetX: 0,
+            offsetY: 0,
+            blurBackground: false,
+            backgroundMode:
+              displayPlan.automaticFit === "contain" ? "color" : "black",
+            backgroundColor: "#ffffff",
+          };
+        } else {
+          transforms[imageKey] = { ...currentTransform };
+          if (displayPlan.decision.mode === "customized") {
+            customizedImageKeys.push(imageKey);
+          }
+        }
+      }
+
+      channelSettings[channel] = {
+        imageKeys: [...imageKeysToRender],
+        transforms,
+        customizedImageKeys,
+      };
+    }
+
+    return channelSettings;
+  };
+
   const buildChannelImagesPayload = async (
     onProgress?: (current: number, total: number) => void,
   ): Promise<{
@@ -1343,6 +1416,7 @@ export default function usePublishImageController({
     closeImageEditor,
     uploadOriginalImagesForPublication,
     buildChannelImagesPayload,
+    buildChannelImageSettingsPayload,
     getPublishImageKeysForChannel,
   };
 }

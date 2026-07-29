@@ -76,3 +76,74 @@ ops/sql/2026-07-27_inrsend_step3_reputation_protection.sql
 ```
 
 Step 3 adds the server-managed mailbox reputation state, DNS authentication audit cache and protected delivery-feedback storage.
+
+## 2026-07-29 — Pipeline média universel Étape 7
+
+Exécuter après les migrations Étapes 2 à 6 et avant d’activer la consommation unifiée :
+
+```text
+ops/sql/2026-07-29_media_pipeline_step7_unified_consumption.sql
+```
+
+La migration ajoute uniquement des index de lecture pour les workspaces et variantes normalisées. Vérification sans écriture :
+
+```text
+ops/sql/2026-07-29_media_pipeline_step7_verify.sql
+```
+
+Activer ensuite, pendant la bascule contrôlée :
+
+```text
+MEDIA_PIPELINE_UNIFIED_CONSUMPTION_V1=true
+NEXT_PUBLIC_MEDIA_PIPELINE_UNIFIED_CONSUMPTION_V1=true
+```
+
+## 2026-07-29 — Pipeline média universel Étape 8
+
+Exécuter après l’Étape 7 et avant la bascule stricte finale :
+
+```text
+ops/sql/2026-07-29_media_pipeline_step8_legacy_cutover.sql
+```
+
+La migration ajoute uniquement deux index de lecture. Vérification sans écriture :
+
+```text
+ops/sql/2026-07-29_media_pipeline_step8_verify.sql
+```
+
+Les anciens transports restent disponibles pour rollback. Leur sortie du parcours actif est commandée par :
+
+```text
+MEDIA_PIPELINE_LEGACY_CUTOVER_V1=true
+NEXT_PUBLIC_MEDIA_PIPELINE_LEGACY_CUTOVER_V1=true
+```
+
+Ne pas activer ces deux variables avant la certification finale de toutes les étapes.
+
+
+## 2026-07-29 — Pipeline média universel Étape 9
+
+L'Étape 9 ne possède aucune migration d'écriture. Après les migrations Étapes
+2, 3, 5, 6, 7 et 8, exécuter le rapport final strictement en lecture seule :
+
+```text
+ops/sql/2026-07-29_media_pipeline_step9_final_certification.sql
+```
+
+Puis suivre la procédure :
+
+```text
+ops/MEDIA_PIPELINE_PRODUCTION_CUTOVER_2026-07-29.md
+```
+
+Commandes de certification :
+
+```text
+npm run certify:media-pipeline
+npm run verify:media-pipeline:rollout
+npm run smoke:media-pipeline
+```
+
+Aucun rollback SQL n'est prévu. Le retour arrière s'effectue par désactivation
+des flags de cutover, puis de consommation unifiée si nécessaire.

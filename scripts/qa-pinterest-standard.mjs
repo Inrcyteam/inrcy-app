@@ -29,6 +29,7 @@ const connectedChannels = read("app/api/booster/connected-channels/route.ts");
 const privacy = read("app/legal/_components/ConfidentialiteContent.tsx");
 const pinterestPublish = read("lib/pinterestPublish.ts");
 const pinterestVideoProtocol = read("lib/pinterestVideoProtocol.ts");
+const pinterestImagePayload = read("lib/pinterestImagePinPayload.ts");
 const publishRules = read("app/dashboard/booster/publier/publishModal.shared.tsx");
 const inrsendDetails = read("app/dashboard/mails/_components/MailboxDetailsModal.tsx");
 const bubbleAccess = read("lib/bubbleAccess.ts");
@@ -207,9 +208,11 @@ check(
 );
 check(
   "Pas de perte silencieuse multi-images",
-  publish.includes("pinterestImageUrls.length > 1") &&
-    publishRules.includes("Sélectionnez une seule image"),
-  "Pinterest ne doit jamais ignorer silencieusement les images supplémentaires.",
+  publish.includes("imageUrls: pinterestImageUrls") &&
+    publish.includes("limit: 5") &&
+    pinterestPublish.includes("buildPinterestImageMediaSource(requestedImageUrls)") &&
+    pinterestImagePayload.includes('source_type: "multiple_image_urls"'),
+  "Pinterest doit transmettre réellement les 2 à 5 images au payload multiple_image_urls.",
 );
 check(
   "Erreurs publication non mappées en erreur mail",

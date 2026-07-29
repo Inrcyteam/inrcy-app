@@ -19,6 +19,10 @@ import {
   type BoosterCtaMode,
 } from "@/lib/boosterCta";
 import { INR_SEARCH_CONTENT_MAX_LENGTH } from "@/lib/boosterChannelRules";
+import {
+  isUniversalMediaUploadEnabled,
+  uploadUniversalMediaFile,
+} from "@/lib/universalMediaUploadClient";
 export type { BoosterCtaMode } from "@/lib/boosterCta";
 
 export type ChannelKey =
@@ -2040,6 +2044,33 @@ export async function uploadBoosterVideo(
   const path =
     options?.path ||
     buildBoosterVideoUploadPath(file.name, options?.folder, file.type);
+
+  if (isUniversalMediaUploadEnabled()) {
+    try {
+      const result = await uploadUniversalMediaFile(file, {
+        target: "booster_video_source",
+        requestedPath: path,
+        requestedFolder: options?.folder || "booster-videos",
+        source: "booster",
+      });
+      return {
+        name: file.name || "video-inrcy.mp4",
+        type: result.contentType || file.type || "video/mp4",
+        size: Number(file.size || 0),
+        lastModified: file.lastModified,
+        duration: typeof options?.duration === "number" ? options.duration : null,
+        sourceMetadata: options?.sourceMetadata || null,
+        storagePath: result.storagePath,
+        publicUrl: result.publicUrl || undefined,
+        url: result.publicUrl || undefined,
+      };
+    } catch (error) {
+      // Filet de sécurité Étape 3 : le pipeline historique reste disponible
+      // jusqu'à la certification finale du transport universel.
+      console.warn("[media-pipeline] universal video upload fallback", error);
+    }
+  }
+
   const signedRes = await fetch("/api/booster/video-upload-url", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -2171,6 +2202,58 @@ type PreparedUploadCacheEntry = {
 // autre canal ou après une reprise immédiate. Le cache disparaît au rechargement.
 const preparedUploadCache = new Map<string, PreparedUploadCacheEntry>();
 
+export async function uploadBoosterImageFileDirect(params: {
+  file: File;
+  path: string;
+  target?: "booster_prepared_image" | "booster_draft_image";
+  clientMediaKey?: string | null;
+}): Promise<PreparedUploadCacheEntry> {
+  if (isUniversalMediaUploadEnabled()) {
+    try {
+      const result = await uploadUniversalMediaFile(params.file, {
+        target: params.target || "booster_prepared_image",
+        requestedPath: params.path,
+        requestedFolder:
+          params.target === "booster_draft_image"
+            ? "booster-drafts"
+            : "booster-prepublish",
+        clientMediaKey: params.clientMediaKey || undefined,
+        source: "booster",
+      });
+      if (!result.storagePath || !result.publicUrl) {
+        throw new Error("L’URL publique du média préparé est indisponible.");
+      }
+      return {
+        storagePath: result.storagePath,
+        publicUrl: result.publicUrl,
+      };
+    } catch (error) {
+      // L'ancien endpoint reste un secours temporaire tant que le pipeline
+      // universel n'est pas certifié sur tous les parcours.
+      console.warn("[media-pipeline] universal image upload fallback", error);
+    }
+  }
+
+  const formData = new FormData();
+  formData.append("file", params.file);
+  formData.append("path", params.path);
+
+  const response = await fetch("/api/booster/upload-prepared", {
+    method: "POST",
+    body: formData,
+  });
+  const json = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(
+      String(json?.error || "Impossible d'uploader l'image préparée."),
+    );
+  }
+  return {
+    storagePath: String(json?.storagePath || ""),
+    publicUrl: String(json?.publicUrl || ""),
+  };
+}
+
 async function preparedUploadCacheKey(
   blob: Blob,
   fileName: string,
@@ -2231,24 +2314,12 @@ export async function uploadPreparedImages(
       : null;
 
     if (!cachedUpload) {
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("path", buildBoosterUploadPath(image.name));
-
-      const res = await fetch("/api/booster/upload-prepared", {
-        method: "POST",
-        body: formData,
+      cachedUpload = await uploadBoosterImageFileDirect({
+        file,
+        path: buildBoosterUploadPath(image.name),
+        target: "booster_prepared_image",
+        clientMediaKey: cacheKey,
       });
-      const json = await res.json().catch(() => ({}));
-      if (!res.ok)
-        throw new Error(
-          String(json?.error || "Impossible d'uploader l'image préparée."),
-        );
-
-      cachedUpload = {
-        storagePath: String(json?.storagePath || ""),
-        publicUrl: String(json?.publicUrl || ""),
-      };
       if (cacheKey && cachedUpload.storagePath && cachedUpload.publicUrl) {
         if (preparedUploadCache.size >= 300) {
           const oldestKey = preparedUploadCache.keys().next().value;

@@ -6,14 +6,22 @@ import { requireEnv, optionalEnv } from "@/lib/env";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { shouldBypassUpstashInCurrentEnv } from "@/lib/upstashMode";
 import { stripeGet } from "@/lib/stripeRest";
+import { buildMediaPipelineCertificationSnapshot } from "@/lib/mediaPipelineCertification";
 
-export type HealthCheckName = "supabase" | "kv" | "stripe" | "smtp";
+export type HealthCheckName =
+  | "supabase"
+  | "kv"
+  | "stripe"
+  | "smtp"
+  | "media_pipeline";
 
 export type HealthCheckResult = {
   ok: boolean;
   ms: number | null;
   skipped?: boolean;
   error?: string | null;
+  warning?: string | null;
+  details?: Readonly<Record<string, string | number | boolean | null>>;
 };
 
 export type DeepHealthReport = {
@@ -103,6 +111,131 @@ async function checkStripe() {
   });
 }
 
+async function checkMediaPipeline(): Promise<HealthCheckResult> {
+  const started = Date.now();
+  const snapshot = buildMediaPipelineCertificationSnapshot();
+
+  if (snapshot.stage === "disabled") {
+    return {
+      ok: true,
+      ms: null,
+      skipped: true,
+      error: null,
+      warning: null,
+      details: {
+        stage: snapshot.stage,
+        full_cutover: false,
+      },
+    };
+  }
+
+  if (snapshot.errors.length > 0) {
+    return {
+      ok: false,
+      ms: Date.now() - started,
+      error: `invalid_flags:${snapshot.errors.join(" | ")}`,
+      warning: snapshot.warnings.join(" | ") || null,
+      details: {
+        stage: snapshot.stage,
+        full_cutover: snapshot.fullCutoverEnabled,
+      },
+    };
+  }
+
+  try {
+    const tableChecks = await Promise.all(
+      [
+        "pro_media_library",
+        "publication_workspaces",
+        "publication_workspace_media",
+        "media_variants",
+        "media_processing_jobs",
+      ].map(async (table) => {
+        const { error } = await supabaseAdmin.from(table).select("*").limit(1);
+        if (error) throw new Error(`table_${table}:${error.message}`);
+      }),
+    );
+    void tableChecks;
+
+    const [boosterBucket, privateBucket] = await Promise.all([
+      supabaseAdmin.storage.getBucket("booster"),
+      supabaseAdmin.storage.getBucket("inrcy-pro-media"),
+    ]);
+    if (boosterBucket.error) {
+      throw new Error(`bucket_booster:${boosterBucket.error.message}`);
+    }
+    if (privateBucket.error) {
+      throw new Error(`bucket_inrcy_pro_media:${privateBucket.error.message}`);
+    }
+    if (privateBucket.data?.public) {
+      throw new Error("bucket_inrcy_pro_media_must_be_private");
+    }
+
+    const nowIso = new Date().toISOString();
+    const staleWorkspaceIso = new Date(Date.now() - 30 * 60_000).toISOString();
+    const [expiredJobs, stalePublishing, failedJobs] = await Promise.all([
+      supabaseAdmin
+        .from("media_processing_jobs")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "processing")
+        .lt("lock_expires_at", nowIso),
+      supabaseAdmin
+        .from("publication_workspaces")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "publishing")
+        .lt("updated_at", staleWorkspaceIso),
+      supabaseAdmin
+        .from("media_processing_jobs")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "failed")
+        .gte("updated_at", new Date(Date.now() - 24 * 60 * 60_000).toISOString()),
+    ]);
+
+    for (const [label, result] of [
+      ["expired_jobs", expiredJobs],
+      ["stale_publishing", stalePublishing],
+      ["failed_jobs_24h", failedJobs],
+    ] as const) {
+      if (result.error) throw new Error(`metric_${label}:${result.error.message}`);
+    }
+
+    const expiredJobCount = expiredJobs.count || 0;
+    const stalePublishingCount = stalePublishing.count || 0;
+    const warningParts = [...snapshot.warnings];
+    if (expiredJobCount > 0) {
+      warningParts.push(`${expiredJobCount} job(s) avec lease expirée`);
+    }
+    if (stalePublishingCount > 0) {
+      warningParts.push(`${stalePublishingCount} workspace(s) publishing depuis plus de 30 min`);
+    }
+
+    return {
+      ok: true,
+      ms: Date.now() - started,
+      error: null,
+      warning: warningParts.join(" | ") || null,
+      details: {
+        stage: snapshot.stage,
+        full_cutover: snapshot.fullCutoverEnabled,
+        expired_processing_jobs: expiredJobCount,
+        stale_publishing_workspaces: stalePublishingCount,
+        failed_jobs_24h: failedJobs.count || 0,
+      },
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      ms: Date.now() - started,
+      error: normalizeError(error),
+      warning: snapshot.warnings.join(" | ") || null,
+      details: {
+        stage: snapshot.stage,
+        full_cutover: snapshot.fullCutoverEnabled,
+      },
+    };
+  }
+}
+
 async function checkSmtp(): Promise<HealthCheckResult> {
   if (!canCheckSmtp()) {
     return {
@@ -157,11 +290,12 @@ export async function runPublicHealthCheck() {
 export async function runDeepHealthChecks(): Promise<DeepHealthReport> {
   const started = Date.now();
 
-  const [supabase, kv, stripe, smtp] = await Promise.all([
+  const [supabase, kv, stripe, smtp, mediaPipeline] = await Promise.all([
     checkSupabase(),
     checkKv(),
     checkStripe(),
     checkSmtp(),
+    checkMediaPipeline(),
   ]);
 
   const checks: Record<HealthCheckName, HealthCheckResult> = {
@@ -169,6 +303,7 @@ export async function runDeepHealthChecks(): Promise<DeepHealthReport> {
     kv,
     stripe,
     smtp,
+    media_pipeline: mediaPipeline,
   };
 
   const ok = Object.values(checks).every((check) => check.ok);

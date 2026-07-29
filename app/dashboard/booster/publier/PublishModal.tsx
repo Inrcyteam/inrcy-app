@@ -123,6 +123,10 @@ import PublishPreviewPanel from "./components/PublishPreviewPanel";
 import PublishHelpModal from "./components/PublishHelpModal";
 import PublishWarningModals from "./components/PublishWarningModals";
 import usePublishImageController from "./usePublishImageController";
+import usePersistentMediaWorkspace from "./usePersistentMediaWorkspace";
+import { isUnifiedMediaConsumptionClientEnabled } from "@/lib/mediaPipelineUnifiedConsumptionPolicy";
+import { isLegacyMediaTransportCutoverClientEnabled } from "@/lib/mediaPipelineLegacyCutoverPolicy";
+import { loadMediaPublicationWorkspace } from "@/lib/mediaWorkspaceClient";
 import usePublishVideoController, {
   normalizeRestoredVideoVariants,
   type VideoVariantPreparationState,
@@ -1493,6 +1497,31 @@ export default function PublishModal({
   );
 
   const {
+    enabled: persistentMediaWorkspaceEnabled,
+    workspaceId: mediaWorkspaceId,
+    clientWorkspaceKey: mediaWorkspaceClientKey,
+    adoptWorkspace: adoptMediaWorkspace,
+    syncImages: syncPersistentWorkspaceImages,
+    syncVideo: syncPersistentWorkspaceVideo,
+    clearWorkspaceMedia: clearPersistentWorkspaceMedia,
+    linkDraft: linkPersistentWorkspaceDraft,
+    archiveWorkspace: archivePersistentMediaWorkspace,
+  } = usePersistentMediaWorkspace({
+    draftId: publicationDraftIdParam,
+    selectedChannels,
+    onError: setImgError,
+  });
+  const legacyMediaCutoverClientAvailable =
+    persistentMediaWorkspaceEnabled &&
+    isUnifiedMediaConsumptionClientEnabled() &&
+    isLegacyMediaTransportCutoverClientEnabled();
+  const unifiedMediaConsumptionEnabled =
+    persistentMediaWorkspaceEnabled &&
+    isUnifiedMediaConsumptionClientEnabled() &&
+    Boolean(mediaWorkspaceId);
+  const mediaPipelineCutoverEnabled = legacyMediaCutoverClientAvailable;
+
+  const {
     videoFormatByChannel,
     setVideoFormatByChannel,
     videoAdaptationModeByChannel,
@@ -1532,7 +1561,7 @@ export default function PublishModal({
   });
 
   useEffect(() => {
-    if (!videoFile || videoAiContextRef) return;
+    if (!videoFile || videoAiContextRef || mediaPipelineCutoverEnabled) return;
 
     void getOrPrepareVideoFramesForAI(videoFile).catch(() => {
       // Une extraction anticipée défaillante n'est jamais conservée : la
@@ -1544,6 +1573,7 @@ export default function PublishModal({
     getOrPrepareVideoFramesForAI,
     videoAiContextRef,
     videoFile,
+    mediaPipelineCutoverEnabled,
   ]);
 
   useEffect(() => {
@@ -1586,6 +1616,17 @@ export default function PublishModal({
   };
 
   async function applyVideoFormatForChannel(channel: ChannelKey) {
+    if (mediaPipelineCutoverEnabled) {
+      setVideoVariantPreparationByChannel((prev) => ({
+        ...prev,
+        [channel]: {
+          status: "ready",
+          label: "Réglage enregistré",
+          detail: "La variante sera créée côté serveur au moment de publier.",
+        },
+      }));
+      return;
+    }
     const mediaModeByChannel = {
       [channel]: resolveChannelMediaMode(channel),
     } as Partial<Record<ChannelKey, ChannelMediaMode>>;
@@ -1652,12 +1693,57 @@ export default function PublishModal({
       return next;
     });
 
+    if (mediaPipelineCutoverEnabled) {
+      setVideoVariantPreparationByChannel((prev) => ({
+        ...prev,
+        ...Object.fromEntries(
+          videoChannels.map((channel) => [
+            channel,
+            {
+              status: "ready" as const,
+              label: "Réglage enregistré",
+              detail: "La variante sera créée côté serveur au moment de publier.",
+            },
+          ]),
+        ),
+      }));
+      return;
+    }
+
     await applyVideoFormatsForChannels({
       channels: videoChannels,
       mediaModeByChannel: publishMediaModeByChannel,
       settingsByChannel: sharedSettingsByChannel,
     });
   }
+
+  const syncActiveImagesToPersistentWorkspace = useCallback(
+    async (nextImages: readonly File[]) => {
+      if (!persistentMediaWorkspaceEnabled) return;
+      if (publicationMediaType === "video" && videoFile) {
+        await syncPersistentWorkspaceVideo(videoFile, {
+          duration: videoDurationSeconds,
+          source_metadata: videoSourceMetadata,
+        });
+        return;
+      }
+      if (nextImages.length) {
+        await syncPersistentWorkspaceImages(nextImages);
+      } else {
+        await clearPersistentWorkspaceMedia();
+      }
+    },
+    [
+      clearPersistentWorkspaceMedia,
+      persistentMediaWorkspaceEnabled,
+      publicationMediaType,
+      syncPersistentWorkspaceImages,
+      syncPersistentWorkspaceVideo,
+      videoDurationSeconds,
+      videoFile,
+      videoSourceMetadata,
+    ],
+  );
 
   const {
     imageAdapterChannels,
@@ -1699,6 +1785,7 @@ export default function PublishModal({
     closeImageEditor,
     uploadOriginalImagesForPublication,
     buildChannelImagesPayload,
+    buildChannelImageSettingsPayload,
     getPublishImageKeysForChannel,
   } = usePublishImageController({
     fileInputRef,
@@ -1729,6 +1816,7 @@ export default function PublishModal({
     setChannelMediaModes,
     preservePublishScroll,
     restorePublishScroll,
+    syncPersistentWorkspaceImages: syncActiveImagesToPersistentWorkspace,
   });
 
   const selectedForGeneration = useMemo(() => {
@@ -2011,6 +2099,10 @@ export default function PublishModal({
             String(result?.error || "Brouillon publication introuvable."),
           );
         const payload = (result?.payload || {}) as any;
+        adoptMediaWorkspace(
+          payload.mediaWorkspaceId,
+          payload.mediaWorkspaceClientKey,
+        );
 
         const rawChannels = Array.isArray(payload.channels)
           ? payload.channels
@@ -2046,13 +2138,68 @@ export default function PublishModal({
           typeof payload.useImagesForAI === "boolean"
             ? payload.useImagesForAI
             : true;
-        const imageDrafts = Array.isArray(payload.imageDrafts)
+        let imageDrafts = Array.isArray(payload.imageDrafts)
           ? payload.imageDrafts
           : [];
-        const videoDraft =
+        let videoDraft =
           payload.videoDraft && typeof payload.videoDraft === "object"
             ? payload.videoDraft
             : null;
+
+        const linkedWorkspaceId = String(payload.mediaWorkspaceId || "").trim();
+        if (
+          legacyMediaCutoverClientAvailable &&
+          linkedWorkspaceId &&
+          !imageDrafts.length &&
+          !videoDraft
+        ) {
+          const snapshot = await loadMediaPublicationWorkspace({
+            workspaceId: linkedWorkspaceId,
+          });
+          const workspaceImages = snapshot.media.filter(
+            (media) => media.mediaType === "image" && Boolean(media.publicUrl),
+          );
+          const workspaceVideo = snapshot.media.find(
+            (media) => media.mediaType === "video" && Boolean(media.publicUrl),
+          );
+          imageDrafts = workspaceImages.map((media) => {
+            const keyParts = String(media.clientMediaKey || "").split(":");
+            const lastModified = Number(keyParts[keyParts.length - 1] || 0);
+            return {
+              name: media.fileName,
+              type: media.mimeType,
+              size: media.sizeBytes,
+              lastModified:
+                Number.isFinite(lastModified) && lastModified > 0
+                  ? lastModified
+                  : Date.now(),
+              storagePath: media.storagePath,
+              publicUrl: media.publicUrl,
+            };
+          });
+          if (workspaceVideo) {
+            const keyParts = String(workspaceVideo.clientMediaKey || "").split(":");
+            const lastModified = Number(keyParts[keyParts.length - 1] || 0);
+            videoDraft = {
+              name: workspaceVideo.fileName,
+              type: workspaceVideo.mimeType,
+              size: workspaceVideo.sizeBytes,
+              lastModified:
+                Number.isFinite(lastModified) && lastModified > 0
+                  ? lastModified
+                  : Date.now(),
+              duration: workspaceVideo.durationSeconds,
+              storagePath: workspaceVideo.storagePath,
+              publicUrl: workspaceVideo.publicUrl,
+              url: workspaceVideo.publicUrl,
+              sourceMetadata: {
+                width: workspaceVideo.width,
+                height: workspaceVideo.height,
+                duration: workspaceVideo.durationSeconds,
+              },
+            };
+          }
+        }
         const nextVideoAiContextRef =
           normalizeVideoAiContextReference(payload.videoAiContextRef) ||
           normalizeVideoAiContextReference(videoDraft?.videoAiContextRef);
@@ -2252,7 +2399,12 @@ export default function PublishModal({
     return () => {
       cancelled = true;
     };
-  }, [publicationDraftIdParam, loadedPublicationDraftId, onUnsavedChange]);
+  }, [
+    publicationDraftIdParam,
+    loadedPublicationDraftId,
+    onUnsavedChange,
+    legacyMediaCutoverClientAvailable,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -2508,7 +2660,8 @@ export default function PublishModal({
 
     let didGenerate = false;
     try {
-      const imagePreparationResults = shouldUseImagesForAI
+      const imagePreparationResults =
+        shouldUseImagesForAI && !mediaPipelineCutoverEnabled
         ? await Promise.allSettled(
             images.map((file) => getOrPrepareAiImagePayload(file)),
           )
@@ -2522,7 +2675,12 @@ export default function PublishModal({
       let videoAudioTranscriptStatus: "pending" | "ready" | "unavailable" =
         "pending";
 
-      if (hasVideoForGeneration && videoFile && !videoAiContextRef) {
+      if (
+        hasVideoForGeneration &&
+        videoFile &&
+        !videoAiContextRef &&
+        !mediaPipelineCutoverEnabled
+      ) {
         setGenerationProgress((current) => Math.max(current, 36));
         setGenerationStage("Analyse audio + images de la vidéo");
 
@@ -2573,12 +2731,22 @@ export default function PublishModal({
                 ? "Analyse audio de la vidéo"
                 : "Analyse vidéo limitée, génération maintenue",
         );
-      } else if (hasVideoForGeneration && videoAiContextRef) {
+      } else if (
+        hasVideoForGeneration &&
+        videoAiContextRef &&
+        !mediaPipelineCutoverEnabled
+      ) {
         setGenerationProgress((current) => Math.max(current, 60));
         setGenerationStage("Réutilisation de l’analyse vidéo iNrAgent");
       }
 
       const generationPayload = {
+        mediaWorkspaceId: unifiedMediaConsumptionEnabled
+          ? mediaWorkspaceId
+          : undefined,
+        mediaPipelineCutoverV1: mediaPipelineCutoverEnabled,
+        mediaWorkspaceExpected:
+          hasVideoForGeneration || images.length > 0,
         idea: trimmed,
         publicationInstruction: publicationInstruction.trim(),
         theme,
@@ -2586,11 +2754,14 @@ export default function PublishModal({
         aiPreferredEngine: selectedAiPreferredEngine,
         channels: selectedForGeneration,
         mediaType: hasVideoForGeneration ? "video" : "images",
-        useImagesForAI: imagesForAI.length > 0,
-        imageCount: imagesForAI.length,
-        imagesForAI,
+        useImagesForAI:
+          !mediaPipelineCutoverEnabled && imagesForAI.length > 0,
+        imageCount: mediaPipelineCutoverEnabled ? 0 : imagesForAI.length,
+        imagesForAI: mediaPipelineCutoverEnabled ? [] : imagesForAI,
         videoForAI:
-          hasVideoForGeneration && videoGenerationContext
+          !mediaPipelineCutoverEnabled &&
+          hasVideoForGeneration &&
+          videoGenerationContext
             ? {
                 ...videoGenerationContext,
                 contextRef: videoAiContextRef,
@@ -2743,6 +2914,11 @@ export default function PublishModal({
     setImgError("");
     clearVideoMedia({ cleanupStorage: true, reason: "remove-video" });
     setPublicationMediaType("images");
+    if (images.length) {
+      void syncPersistentWorkspaceImages(images);
+    } else {
+      void clearPersistentWorkspaceMedia();
+    }
     setChannelMediaModes((prev) => {
       const next: Partial<Record<ChannelKey, ChannelMediaMode>> = { ...prev };
       for (const key of Object.keys(next) as ChannelKey[]) {
@@ -2795,6 +2971,10 @@ export default function PublishModal({
     setVideoDurationSeconds(duration);
     setVideoSourceMetadata(sourceMetadata);
     setVideoStorageContext(null);
+    void syncPersistentWorkspaceVideo(normalizedFile, {
+      duration,
+      source_metadata: sourceMetadata,
+    });
     setVideoFormatByChannel((prev) => {
       const next: Partial<Record<ChannelKey, VideoFormat>> = { ...prev };
       for (const channel of selectedChannels.length
@@ -3401,7 +3581,12 @@ export default function PublishModal({
             channelImages: emptyChannelImages,
             channelSettings: emptyChannelSettings,
           }
-        : await buildChannelImagesPayload((current, total) => {
+        : mediaPipelineCutoverEnabled
+          ? {
+              channelImages: emptyChannelImages,
+              channelSettings: buildChannelImageSettingsPayload(),
+            }
+          : await buildChannelImagesPayload((current, total) => {
             if (!total) {
               setPublishProgress(25);
               setPublishProgressLabel("Préparation des contenus...");
@@ -3415,7 +3600,7 @@ export default function PublishModal({
           });
 
       const originalImageByKey: Record<string, ImagePayload> =
-        !hasAnyImagePublish
+        !hasAnyImagePublish || mediaPipelineCutoverEnabled
           ? {}
           : await (async () => {
               setPublishProgress((prev) => Math.max(prev, 35));
@@ -3448,7 +3633,7 @@ export default function PublishModal({
             0,
           );
       let uploadedCount = 0;
-      if (hasAnyImagePublish) {
+      if (hasAnyImagePublish && !mediaPipelineCutoverEnabled) {
         for (const channel of publishableChannels) {
           if (publishMediaModeByChannel[channel] !== "images") continue;
           const uploadedImages = await uploadPreparedImages(
@@ -3501,7 +3686,7 @@ export default function PublishModal({
       }
 
       let publicationVideo: any = null;
-      if (hasAnyVideoPublish) {
+      if (hasAnyVideoPublish && !mediaPipelineCutoverEnabled) {
         setPublishProgress((prev) => Math.max(prev, 35));
         setPublishProgressLabel("Upload de la vidéo...");
         publicationVideo = await uploadPublicationVideoForPublish();
@@ -3564,7 +3749,14 @@ export default function PublishModal({
       }, 500);
 
       const result = await trackEvent("publish", {
-        mediaType: publicationVideo ? "video" : "images",
+        mediaWorkspaceId: unifiedMediaConsumptionEnabled
+          ? mediaWorkspaceId
+          : undefined,
+        mediaWorkspaceClientKey: unifiedMediaConsumptionEnabled
+          ? mediaWorkspaceClientKey
+          : undefined,
+        mediaPipelineCutoverV1: mediaPipelineCutoverEnabled,
+        mediaType: hasAnyVideoPublish ? "video" : "images",
         mediaModeByChannel: publishMediaModeByChannel,
         videoFormatByChannel,
         videoAdaptationModeByChannel,
@@ -3605,6 +3797,9 @@ export default function PublishModal({
           normalizeExternalHref(channelDetails[channel]?.href),
         ]),
       );
+      void archivePersistentMediaWorkspace().catch((error) => {
+        console.warn("[media-pipeline] workspace archive skipped", error);
+      });
       if (!options?.suppressPublishSuccess) {
         onPublishSuccess?.({ ...result, channelLinks, skippedChannels });
       }
@@ -3687,10 +3882,13 @@ export default function PublishModal({
     setDraftSaving(true);
     try {
       setDraftMessage(videoFile ? "Sauvegarde vidéo…" : "Enregistrement…");
-      const imageDrafts = images.length
-        ? await uploadPublicationDraftImages()
-        : [];
-      const rawVideoDraft = await buildPublicationDraftVideoPayload();
+      const imageDrafts =
+        images.length && !(mediaPipelineCutoverEnabled && mediaWorkspaceId)
+          ? await uploadPublicationDraftImages()
+          : [];
+      const rawVideoDraft = mediaPipelineCutoverEnabled && mediaWorkspaceId
+        ? null
+        : await buildPublicationDraftVideoPayload();
       const videoDraft = rawVideoDraft
         ? {
             ...rawVideoDraft,
@@ -3706,6 +3904,9 @@ export default function PublishModal({
             loadedPublicationDraftId || publicationDraftIdParam || undefined,
           payload: {
             status: "draft",
+            mediaWorkspaceId,
+            mediaWorkspaceClientKey,
+            mediaPipelineCutoverV1: mediaPipelineCutoverEnabled,
             title: firstTitle || "Brouillon publication",
             preview: firstContent || idea.trim() || channelLabels,
             content: firstContent || "",
@@ -3770,6 +3971,9 @@ export default function PublishModal({
         }
       }
       if (savedDraftId) {
+        await linkPersistentWorkspaceDraft(savedDraftId).catch((error) => {
+          console.warn("[media-pipeline] workspace draft link skipped", error);
+        });
         setLoadedPublicationDraftId(savedDraftId);
         router.replace(
           `/dashboard?action=publish&draftId=${encodeURIComponent(savedDraftId)}`,
@@ -3917,7 +4121,12 @@ export default function PublishModal({
             channelImages: emptyChannelImages,
             channelSettings: emptyChannelSettings,
           }
-        : await buildChannelImagesPayload((current, total) => {
+        : mediaPipelineCutoverEnabled
+          ? {
+              channelImages: emptyChannelImages,
+              channelSettings: buildChannelImageSettingsPayload(),
+            }
+          : await buildChannelImagesPayload((current, total) => {
             if (!total) {
               setPublishProgress(20);
               setPublishProgressLabel("Préparation des contenus...");
@@ -3931,7 +4140,7 @@ export default function PublishModal({
           });
 
       const originalImageByKey: Record<string, ImagePayload> =
-        !hasAnyImagePublish
+        !hasAnyImagePublish || mediaPipelineCutoverEnabled
           ? {}
           : await (async () => {
               setPublishProgress(32);
@@ -3949,7 +4158,7 @@ export default function PublishModal({
             })();
 
       const uploadedChannelImages = {} as ChannelImagePayload;
-      if (hasAnyImagePublish) {
+      if (hasAnyImagePublish && !mediaPipelineCutoverEnabled) {
         setPublishProgress(48);
         setPublishProgressLabel("Upload des images adaptées...");
         let uploadedCount = 0;
@@ -4007,7 +4216,7 @@ export default function PublishModal({
       }
 
       let publicationVideo: any = null;
-      if (hasAnyVideoPublish) {
+      if (hasAnyVideoPublish && !mediaPipelineCutoverEnabled) {
         setPublishProgress(48);
         setPublishProgressLabel("Upload de la vidéo...");
         publicationVideo = await uploadPublicationVideoForPublish();
@@ -4081,6 +4290,13 @@ export default function PublishModal({
                 createdFrom: "booster_publish_schedule",
               },
               publishPayload: {
+                mediaWorkspaceId: unifiedMediaConsumptionEnabled
+                  ? mediaWorkspaceId
+                  : undefined,
+                mediaWorkspaceClientKey: unifiedMediaConsumptionEnabled
+                  ? mediaWorkspaceClientKey
+                  : undefined,
+                mediaPipelineCutoverV1: mediaPipelineCutoverEnabled,
                 source: "booster_scheduled",
                 origin: {
                   source: "booster_scheduled",
@@ -4088,7 +4304,7 @@ export default function PublishModal({
                   workflowTool: "booster",
                   workflowAction: "publier",
                 },
-                mediaType: publicationVideo ? "video" : "images",
+                mediaType: hasAnyVideoPublish ? "video" : "images",
                 mediaModeByChannel: buildChannelUnknownRecord(
                   publishMediaModeByChannel,
                   groupChannels,

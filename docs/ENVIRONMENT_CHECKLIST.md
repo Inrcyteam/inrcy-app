@@ -208,3 +208,32 @@ Configurer les variables canoniques de Production. Le code iNrCy ne route plus v
 - [ ] `NEXT_PUBLIC_COMMIT_SHA`
 - [ ] `VERCEL_GIT_COMMIT_SHA`
 - [ ] `CRM_CAMPAIGN_MAX_RECIPIENTS` (optionnel, plafond dur : 300)
+
+## Pipeline média universel — activation progressive
+
+- [ ] `NEXT_PUBLIC_MEDIA_PIPELINE_UPLOADS_V1=true` uniquement pendant la phase de test contrôlée puis à la bascule finale.
+- [ ] `NEXT_PUBLIC_MEDIA_PIPELINE_WORKSPACE_V1=true` uniquement après la migration Storage étape 3 et pour activer la persistance dès insertion de l’étape 4.
+- [ ] `MEDIA_PIPELINE_IMAGE_NORMALIZATION_V1=true` uniquement après la migration SQL Étape 5 pour activer le worker Sharp et les variantes canonique / IA / miniature.
+- [ ] Migration `2026-07-29_media_pipeline_step3_universal_direct_upload.sql` exécutée avant activation.
+- [ ] Migration `2026-07-29_media_pipeline_step5_image_normalization.sql` exécutée avant activation du flag image.
+- [ ] Buckets `booster` et `inrcy-pro-media` contrôlés avec le SQL de vérification Étape 3.
+- [ ] Dans Supabase > Storage > Settings, vérifier que la limite globale d’upload est au moins égale au plafond réellement retenu pour iNrCy ; la limite globale reste prioritaire sur celle des buckets.
+- [ ] `MEDIA_PIPELINE_VIDEO_NORMALIZATION_V1=true` uniquement après la migration SQL Étape 6 pour activer le worker FFmpeg et les variantes vidéo.
+- [ ] `MEDIA_PIPELINE_UNIFIED_CONSUMPTION_V1=true` uniquement après la migration SQL Étape 7 pour faire relire les variantes normalisées par les routes serveur.
+- [ ] `NEXT_PUBLIC_MEDIA_PIPELINE_UNIFIED_CONSUMPTION_V1=true` avec le flag serveur Étape 7 pour joindre la référence du workspace à Générer, Publier et Programmer.
+
+## Pipeline média universel — certification Étape 9
+
+Avant chaque redéploiement de palier :
+
+- [ ] lancer `npm run verify:media-pipeline:rollout` avec les variables du déploiement ;
+- [ ] vérifier que le palier annoncé correspond à `disabled`, `server_foundation`, `workspace_canary`, `unified_canary` ou `full_cutover` ;
+- [ ] refuser tout déploiement classé `invalid` ;
+- [ ] se rappeler que chaque modification d'un `NEXT_PUBLIC_*` exige un nouveau build Vercel ;
+- [ ] lancer `npm run smoke:media-pipeline` après le déploiement ;
+- [ ] au palier final, lancer les deux commandes avec `REQUIRE_MEDIA_PIPELINE_CUTOVER=1` ;
+- [ ] exécuter `ops/sql/2026-07-29_media_pipeline_step9_final_certification.sql` ;
+- [ ] vérifier `checks.media_pipeline` dans `/api/health/internal` ;
+- [ ] vérifier que `inrcy-pro-media` reste privé ;
+- [ ] vérifier l'absence de jobs avec lease expirée persistante ;
+- [ ] conserver les routes historiques tant que la période d'observation n'est pas terminée.

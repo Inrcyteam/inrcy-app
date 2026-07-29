@@ -272,3 +272,15 @@ La page publique iNr'Search contient un formulaire de demande directement relié
 - crée une notification dans l'application ;
 - envoie un email transactionnel au professionnel lorsque SMTP est configuré ;
 - remonte comme contact généré dans iNrStats.
+
+## Pipeline média universel — certification finale
+
+La chaîne Étapes 1 à 9 se certifie avec :
+
+```bash
+npm run certify:media-pipeline
+```
+
+La procédure de déploiement progressive et de rollback se trouve dans
+`ops/MEDIA_PIPELINE_PRODUCTION_CUTOVER_2026-07-29.md`. L'Étape 9 n'ajoute aucune
+migration d'écriture ; son SQL final est strictement en lecture seule.

@@ -59,6 +59,7 @@ export type BoosterVideoTransformedVariant =
   };
 
 export type BoosterVideoTransformSource = {
+  bucket?: string | null;
   storagePath?: string | null;
   publicUrl?: string | null;
   url?: string | null;

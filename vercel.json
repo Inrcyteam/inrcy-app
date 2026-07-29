@@ -39,6 +39,14 @@
     {
       "path": "/api/cron/mail-bounces",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/media-image-normalization",
+      "schedule": "*/1 * * * *"
+    },
+    {
+      "path": "/api/cron/media-video-normalization",
+      "schedule": "*/1 * * * *"
     }
   ],
   "functions": {
@@ -49,6 +57,9 @@
       "includeFiles": "node_modules/ffmpeg-static/**/*"
     },
     "app/api/inrsend/publications/[publicationId]/pinterest/route.ts": {
+      "includeFiles": "node_modules/ffmpeg-static/**/*"
+    },
+    "app/api/cron/media-video-normalization/route.ts": {
       "includeFiles": "node_modules/ffmpeg-static/**/*"
     }
   }

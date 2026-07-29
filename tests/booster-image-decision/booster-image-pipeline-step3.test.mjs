@@ -6,7 +6,12 @@ const read = (path) => readFile(new URL(`../../${path}`, import.meta.url), "utf8
 
 test("Step 3 publishes Originale from the source payload and Adaptée from the matrix plan", async () => {
   const source = await read("app/dashboard/booster/publier/usePublishImageController.ts");
-  assert.match(source, /displayPlan\.decision\.mode === "original"[\s\S]*fileToImagePayload\(file\)/);
+  const originalBranch = source.slice(
+    source.indexOf('if (displayPlan.decision.mode === "original")'),
+    source.indexOf('} else if (displayPlan.decision.mode === "adapted")'),
+  );
+  assert.match(originalBranch, /sourceFile:\s*file/);
+  assert.doesNotMatch(originalBranch, /renderChannelImage\(/);
   assert.match(source, /displayPlan\.decision\.mode === "adapted"[\s\S]*buildAutomaticRenderPreset/);
   assert.match(source, /requiredTargetRatio: sequenceTargetRatio/);
 });
