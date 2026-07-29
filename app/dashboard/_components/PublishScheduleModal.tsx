@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { confirmInrcy } from "@/lib/inrcyDialog";
 import type { ChannelKey } from "../booster/publier/publishModal.shared";
 import { useUnsavedExitGuard } from "../_hooks/useUnsavedExitGuard";
+import PublishExecutionProgress from "./PublishExecutionProgress";
 
 export type PublishScheduleSelection = {
   channel: ChannelKey;
@@ -24,6 +25,8 @@ type PublishScheduleModalProps = {
   isMobile: boolean;
   saving: boolean;
   error: string;
+  progress?: number;
+  progressLabel?: string;
   successMessage?: string;
   savingLabel?: string;
   enableImmediateUnselectedWarning?: boolean;
@@ -100,6 +103,8 @@ export default function PublishScheduleModal({
   isMobile,
   saving,
   error,
+  progress = 0,
+  progressLabel = "Préparation de la programmation...",
   successMessage = "Programmation réussie.",
   savingLabel = "Programmation en cours…",
   enableImmediateUnselectedWarning = false,
@@ -470,6 +475,15 @@ export default function PublishScheduleModal({
             );
           })}
         </div>
+
+        {busy ? (
+          <PublishExecutionProgress
+            styles={styles}
+            scheduling
+            publishProgress={progress}
+            publishProgressLabel={progressLabel}
+          />
+        ) : null}
 
         {localError || error ? (
           <div style={{ color: "#fecaca", fontSize: 13, lineHeight: 1.45 }}>

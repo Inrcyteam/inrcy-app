@@ -85,3 +85,35 @@ test("les scripts de contrôle vérifient le palier local et le palier déployé
   assert.match(smoke, /checks\?\.media_pipeline/);
   assert.match(smoke, /full_cutover/);
 });
+
+test("le clic immédiat absorbe l'upload dans Générer, Publier et Programmer", () => {
+  const modal = read("app/dashboard/booster/publier/PublishModal.tsx");
+  const workspaceHook = read(
+    "app/dashboard/booster/publier/usePersistentMediaWorkspace.ts",
+  );
+  const scheduleModal = read(
+    "app/dashboard/_components/PublishScheduleModal.tsx",
+  );
+
+  assert.match(workspaceHook, /const waitForIdle = useCallback/);
+  assert.match(workspaceHook, /Upload du média/);
+  assert.match(
+    modal,
+    /readyMediaWorkspaceId\s*=\s*await waitForPersistentWorkspaceReadiness\("generate"/,
+  );
+  assert.match(
+    modal,
+    /readyMediaWorkspaceId\s*=\s*await waitForPersistentWorkspaceReadiness\("publish"/,
+  );
+  assert.match(
+    modal,
+    /readyMediaWorkspaceId\s*=\s*await waitForPersistentWorkspaceReadiness\("schedule"/,
+  );
+  assert.match(
+    modal,
+    /unifiedMediaConsumptionClientAvailable && readyMediaWorkspaceId/,
+  );
+  assert.match(scheduleModal, /PublishExecutionProgress/);
+  assert.match(scheduleModal, /publishProgress=\{progress\}/);
+  assert.match(scheduleModal, /publishProgressLabel=\{progressLabel\}/);
+});

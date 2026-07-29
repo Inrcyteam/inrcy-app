@@ -50,6 +50,7 @@ export default function usePersistentMediaWorkspace({
   const [mediaStates, setMediaStates] = useState<
     Record<string, PersistentWorkspaceMediaState>
   >({});
+  const mediaStatesRef = useRef<Record<string, PersistentWorkspaceMediaState>>({});
   const referenceRef = useRef<MediaWorkspaceReference | null>(null);
   const ensurePromiseRef = useRef<Promise<MediaWorkspaceReference> | null>(null);
   const clientWorkspaceKeyRef = useRef("");
@@ -288,6 +289,70 @@ export default function usePersistentMediaWorkspace({
     });
   }, [enabled, ensureWorkspace]);
 
+  const waitForIdle = useCallback(
+    async (
+      onProgress?: (progress: number, label: string) => void,
+    ) => {
+      while (true) {
+        const states = Object.values(mediaStatesRef.current).sort(
+          (a, b) => a.position - b.position,
+        );
+        const total = states.length;
+        const averageProgress = total
+          ? Math.round(
+              states.reduce(
+                (sum, item) =>
+                  sum +
+                  (item.status === "ready"
+                    ? 100
+                    : Math.max(0, Math.min(100, item.progress || 0))),
+                0,
+              ) / total,
+            )
+          : 0;
+        const uploadingCount = states.filter(
+          (item) => item.status === "uploading" || item.status === "queued",
+        ).length;
+        const failedCount = states.filter((item) => item.status === "failed")
+          .length;
+
+        if (onProgress) {
+          if (failedCount > 0) {
+            onProgress(
+              averageProgress,
+              "Un ou plusieurs médias ont échoué pendant l’envoi.",
+            );
+          } else if (uploadingCount > 0) {
+            onProgress(
+              averageProgress,
+              total > 1
+                ? `Upload des médias ${averageProgress}%`
+                : `Upload du média ${averageProgress}%`,
+            );
+          } else if (total > 0) {
+            onProgress(
+              100,
+              total > 1 ? "Upload des médias terminé" : "Upload du média terminé",
+            );
+          }
+        }
+
+        const settled = await Promise.race<"done" | "tick">([
+          activeTaskRef.current
+            .then(() => "done" as const)
+            .catch(() => "done" as const),
+          new Promise<"tick">((resolve) =>
+            window.setTimeout(() => resolve("tick"), 220),
+          ),
+        ]);
+        if (settled === "done") break;
+      }
+
+      await activeTaskRef.current.catch(() => undefined);
+    },
+    [],
+  );
+
   const archiveWorkspace = useCallback(async () => {
     if (!enabled) return;
     operationVersionRef.current += 1;
@@ -300,6 +365,10 @@ export default function usePersistentMediaWorkspace({
     });
     clearBoosterWorkspaceClientKey();
   }, [enabled]);
+
+  useEffect(() => {
+    mediaStatesRef.current = mediaStates;
+  }, [mediaStates]);
 
   useEffect(() => {
     return () => {
@@ -320,6 +389,7 @@ export default function usePersistentMediaWorkspace({
     syncVideo,
     clearWorkspaceMedia,
     linkDraft,
+    waitForIdle,
     archiveWorkspace,
   };
 }
