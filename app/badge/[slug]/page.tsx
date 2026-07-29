@@ -4,6 +4,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { extractInrBadgeUserIdFromSlug } from "@/lib/inrBadge";
+import { getProfileLogoVersion } from "@/lib/profileLogo";
 import { normalizeInrBadgeShareSettings } from "@/lib/inrBadgeSettings";
 import { getInrBadgeTexts, normalizeInrBadgeLanguage } from "@/lib/inrBadgeLanguage";
 import { getChannelConnectionStates } from "@/lib/channelConnectionState";
@@ -35,8 +36,9 @@ function getBadgeManifestUrl(slug: string) {
   return `/badge/${encodeURIComponent(slug)}/manifest.webmanifest`;
 }
 
-function getBadgeIconUrl(slug: string) {
-  return `/badge/${encodeURIComponent(slug)}/icon.png`;
+function getBadgeIconUrl(slug: string, version = "") {
+  const baseUrl = `/badge/${encodeURIComponent(slug)}/icon.png`;
+  return version ? `${baseUrl}?v=${encodeURIComponent(version)}` : baseUrl;
 }
 
 function trim(value: unknown) {
@@ -454,7 +456,8 @@ export default async function BadgePage({ params }: { params: Promise<{ slug: st
     shareSettings.name ? displayName : "",
   ].filter(Boolean).join(" / ");
   const hasCustomLogo = Boolean(trim(profile.logo_path) || trim(profile.logo_url));
-  const headerLogoSrc = hasCustomLogo ? getBadgeIconUrl(slug) : DEFAULT_INRBADGE_LOGO_SRC;
+  const logoVersion = getProfileLogoVersion(trim(profile.logo_url));
+  const headerLogoSrc = hasCustomLogo ? getBadgeIconUrl(slug, logoVersion) : DEFAULT_INRBADGE_LOGO_SRC;
   const iconPreloads = Array.from(new Set([
     headerLogoSrc,
     inrCalendarLogo.src,

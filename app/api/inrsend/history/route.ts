@@ -4,6 +4,7 @@ import { createSupabaseServer } from "@/lib/supabaseServer";
 import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { buildStorageContentUrl } from "@/lib/storageContentUrl";
+import { runTransientPostgrestRead } from "@/lib/supabaseTransientRetry";
 import { getInrSendRetentionCutoffIso, getOldestAutoRetentionCutoffIso, isInrSendItemRetained } from "@/lib/inrsendRetention";
 import { fetchInrSendHistoryFiles } from "@/lib/inrsend/historyFiles";
 import {
@@ -1042,7 +1043,7 @@ async function computeFolderCounts(
 
   const campaignsPromise = boxView === "drafts"
     ? Promise.resolve([] as any[])
-    : fetchAllRows<any>(async (from, to) => {
+    : fetchAllRows<any>(async (from, to) => runTransientPostgrestRead<any[]>(() => {
         let builder: any = supabase
           .from("mail_campaigns")
           .select("*")
@@ -1052,7 +1053,7 @@ async function computeFolderCounts(
         if (filterAccountId) builder = builder.eq("integration_id", filterAccountId);
 
         return builder.range(from, to);
-      });
+      }));
 
   const eventsPromise = fetchAllRows<any>(async (from, to) => {
     let builder: any = supabase
@@ -1194,19 +1195,19 @@ export async function GET(req: Request) {
 
       if (!sourceState.mail_campaigns.exhausted) {
         tasks.push((async () => {
-          let builder: any = supabase
-            .from("mail_campaigns")
-            .select("*")
-            .eq("user_id", activeUserId)
-            .order("created_at", { ascending: false });
-
-          if (folderCutoffIso) builder = builder.gte("created_at", folderCutoffIso);
-
-          if (filterAccountId) builder = builder.eq("integration_id", filterAccountId);
-
           const from = sourceState.mail_campaigns.offset;
           const to = from + SOURCE_BATCH_SIZE - 1;
-          const { data, error } = await builder.range(from, to);
+          const { data, error } = await runTransientPostgrestRead<any[]>(() => {
+            let builder: any = supabase
+              .from("mail_campaigns")
+              .select("*")
+              .eq("user_id", activeUserId)
+              .order("created_at", { ascending: false });
+
+            if (folderCutoffIso) builder = builder.gte("created_at", folderCutoffIso);
+            if (filterAccountId) builder = builder.eq("integration_id", filterAccountId);
+            return builder.range(from, to);
+          });
           if (error) throw error;
           const rows = (data || []) as any[];
           sourceState.mail_campaigns.offset += rows.length;

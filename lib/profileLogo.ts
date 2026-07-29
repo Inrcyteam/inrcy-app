@@ -119,22 +119,41 @@ export function extractLogoPathFromUrl(url: string | null | undefined): string |
   return null;
 }
 
-export function getProfileLogoDisplayUrl(logoPath: string | null | undefined) {
-  const cleanPath = trimSlashes(logoPath || "");
-  return cleanPath ? `/api/public/logo?path=${encodeURIComponent(cleanPath)}` : "";
+function normalizeLogoVersion(value: string | null | undefined) {
+  return String(value || "")
+    .trim()
+    .replace(/[^a-zA-Z0-9_-]/g, "")
+    .slice(0, 80);
 }
 
-/**
- * Backward-compatible name retained for callers. Logos are now served through
- * a stable application URL instead of exposing expiring Supabase signed URLs.
- */
-export async function createSignedLogoUrl(
-  _supabase: SupabaseClient,
-  logoPath: string | null | undefined
-): Promise<string> {
-  const displayUrl = getProfileLogoDisplayUrl(logoPath);
-  if (!displayUrl) throw new Error("Chemin de logo invalide.");
-  return displayUrl;
+export function getProfileLogoVersion(url: string | null | undefined) {
+  const raw = String(url || "").trim();
+  if (!raw) return "";
+
+  try {
+    const parsed = new URL(raw, "https://app.inrcy.com");
+    if (parsed.pathname !== "/api/public/logo") return "";
+    return normalizeLogoVersion(parsed.searchParams.get("v"));
+  } catch {
+    return "";
+  }
+}
+
+export function createProfileLogoVersion(now = Date.now()) {
+  return Math.max(0, Math.trunc(now)).toString(36);
+}
+
+export function getProfileLogoDisplayUrl(
+  logoPath: string | null | undefined,
+  version?: string | null,
+) {
+  const cleanPath = trimSlashes(logoPath || "");
+  if (!cleanPath) return "";
+
+  const params = new URLSearchParams({ path: cleanPath });
+  const cleanVersion = normalizeLogoVersion(version);
+  if (cleanVersion) params.set("v", cleanVersion);
+  return `/api/public/logo?${params.toString()}`;
 }
 
 export async function resolveProfileLogoUrl(
@@ -149,7 +168,8 @@ export async function resolveProfileLogoUrl(
     return { logoPath: "", logoUrl: source?.logo_url?.trim() || "" };
   }
 
-  const logoUrl = getProfileLogoDisplayUrl(finalPath);
+  const logoVersion = getProfileLogoVersion(source?.logo_url);
+  const logoUrl = getProfileLogoDisplayUrl(finalPath, logoVersion);
   return { logoPath: finalPath, logoUrl };
 }
 

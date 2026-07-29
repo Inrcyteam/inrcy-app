@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { extractInrBadgeUserIdFromSlug } from "@/lib/inrBadge";
 import { getInrBadgeTexts, normalizeInrBadgeLanguage } from "@/lib/inrBadgeLanguage";
+import { getProfileLogoVersion } from "@/lib/profileLogo";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,11 +29,12 @@ export async function GET(req: Request, ctx: { params: Promise<{ slug: string }>
 
   let name = "iNr'Badge";
   let language = normalizeInrBadgeLanguage(null);
+  let logoVersion = "";
   if (userId) {
     const [{ data }, toolsRes, businessRes] = await Promise.all([
       supabaseAdmin
         .from("profiles")
-        .select("company_legal_name,first_name,last_name")
+        .select("company_legal_name,first_name,last_name,logo_url")
         .eq("user_id", userId)
         .maybeSingle(),
       supabaseAdmin
@@ -52,6 +54,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ slug: string }>
     const rootSettings = safeObj((toolsRes.data as { settings?: unknown } | null)?.settings);
     const business = (businessRes.data ?? {}) as Record<string, unknown>;
     language = normalizeInrBadgeLanguage(business.client_language || rootSettings.inrBadgeLanguage);
+    logoVersion = getProfileLogoVersion(trim(profile?.logo_url));
     const company = trim(profile?.company_legal_name);
     const displayName = [trim(profile?.first_name), trim(profile?.last_name)].filter(Boolean).join(" ");
     name = company || displayName || name;
@@ -60,7 +63,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ slug: string }>
   const badgeText = getInrBadgeTexts(language);
   const origin = getOrigin(req);
   const encodedSlug = encodeURIComponent(slug);
-  const iconUrl = `${origin}/badge/${encodedSlug}/icon.png`;
+  const iconUrl = `${origin}/badge/${encodedSlug}/icon.png${logoVersion ? `?v=${encodeURIComponent(logoVersion)}` : ""}`;
   const startUrl = `${origin}/badge/${encodedSlug}`;
 
   return NextResponse.json(

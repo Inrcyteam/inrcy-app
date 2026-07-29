@@ -4,10 +4,14 @@ import { createSafeStorageSignedUrl } from "@/lib/safeStorageSignedUrl";
 export const runtime = "nodejs";
 
 function jsonError(status: number) {
+  const cacheControl = status === 404
+    ? "public, s-maxage=3600, max-age=300, stale-while-revalidate=86400"
+    : "private, no-store, max-age=0";
+
   return new NextResponse(null, {
     status,
     headers: {
-      "cache-control": "private, no-store, max-age=0",
+      "cache-control": cacheControl,
       "x-robots-tag": "noindex, nofollow",
     },
   });

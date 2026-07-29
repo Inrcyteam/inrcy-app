@@ -15,12 +15,18 @@ function getOrigin(req: Request) {
   return `${url.protocol}//${url.host}`.replace(/\/+$/, "");
 }
 
+function responseCacheControl(req: Request) {
+  return new URL(req.url).searchParams.get("v")
+    ? "public, max-age=31536000, immutable"
+    : "no-store, max-age=0";
+}
+
 function redirectToFallback(req: Request) {
   const fallbackUrl = `${getOrigin(req)}/icons/inrbadge-dashboard.png`;
   return NextResponse.redirect(fallbackUrl, {
     status: 307,
     headers: {
-      "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400",
+      "Cache-Control": responseCacheControl(req),
     },
   });
 }
@@ -50,7 +56,8 @@ export async function GET(req: Request, ctx: { params: Promise<{ slug: string }>
   try {
     // Some profile logos exceed Next.js' 2 MB data-cache limit. The route
     // response is already cached below, so do not cache the upstream bytes.
-    const imageRes = await fetch(logoUrl, { cache: "no-store" });
+    const absoluteLogoUrl = new URL(logoUrl, getOrigin(req)).toString();
+    const imageRes = await fetch(absoluteLogoUrl, { cache: "no-store" });
     if (!imageRes.ok) return redirectToFallback(req);
 
     const body = await imageRes.arrayBuffer();
@@ -60,7 +67,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ slug: string }>
       status: 200,
       headers: {
         "Content-Type": contentType,
-        "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800",
+        "Cache-Control": responseCacheControl(req),
       },
     });
   } catch {

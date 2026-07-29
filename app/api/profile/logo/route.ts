@@ -4,6 +4,7 @@ import { resolveActiveInrcyAccountId } from "@/lib/multicompte/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { probeStorageObject } from "@/lib/safeStorageSignedUrl";
 import {
+  createProfileLogoVersion,
   getProfileLogoDisplayUrl,
   getProfileLogoExtension,
   getProfileLogoMimeType,
@@ -42,7 +43,7 @@ async function completeLogoUpload(accountId: string, path: string) {
     throw new Error(objectState === "missing" ? "Logo absent après envoi." : "Stockage temporairement indisponible.");
   }
 
-  const displayUrl = getProfileLogoDisplayUrl(path);
+  const displayUrl = getProfileLogoDisplayUrl(path, createProfileLogoVersion());
   const stalePaths = LOGO_EXTENSIONS
     .map((extension) => `${accountId}/logo.${extension}`)
     .filter((candidate) => candidate !== path);

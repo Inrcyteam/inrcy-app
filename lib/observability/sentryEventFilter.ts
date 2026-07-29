@@ -1,5 +1,9 @@
+import { isExpectedRateLimitError, isTransientBrowserNetworkError } from "@/lib/clientExpectedErrors";
+
 type SentryLikeEvent = {
   message?: string;
+  logger?: string;
+  level?: string;
   user?: Record<string, unknown>;
   request?: {
     url?: string;
@@ -7,13 +11,15 @@ type SentryLikeEvent = {
     headers?: Record<string, unknown>;
     data?: unknown;
   };
-  exception?: { values?: Array<{ type?: string; value?: string }> };
+  exception?: { values?: Array<{ type?: string; value?: string; mechanism?: { handled?: boolean; type?: string } }> };
   breadcrumbs?: Array<{ message?: string }>;
   extra?: Record<string, unknown>;
 };
 
 type FilterOptions = {
   scrubHeaders?: boolean;
+  /** Drop only client-side, already-handled expected control-flow noise. */
+  dropExpectedClientErrors?: boolean;
 };
 
 function compactLower(value: unknown): string {
@@ -41,6 +47,17 @@ function scrubQueryString(value: unknown): unknown {
   return value.replace(/(^|&)(code|state|token|access_token|refresh_token|id_token|key|secret|password|signature|sig)=[^&]*/gi, "$1$2=[Filtered]");
 }
 
+
+function collectPrimaryEventText(event: SentryLikeEvent): string {
+  const parts: string[] = [];
+  if (event.message) parts.push(String(event.message));
+  for (const item of event.exception?.values || []) {
+    if (item.type) parts.push(String(item.type));
+    if (item.value) parts.push(String(item.value));
+  }
+  return compactLower(parts.join(" | "));
+}
+
 function collectEventText(event: SentryLikeEvent): string {
   const parts: string[] = [];
   if (event.message) parts.push(String(event.message));
@@ -52,6 +69,26 @@ function collectEventText(event: SentryLikeEvent): string {
     if (crumb.message) parts.push(String(crumb.message));
   }
   return compactLower(parts.join(" | "));
+}
+
+
+function isHandledExceptionEvent(event: SentryLikeEvent): boolean {
+  const values = event.exception?.values || [];
+  if (!values.length) return compactLower(event.logger).includes("console");
+  return values.every((value) => value.mechanism?.handled !== false);
+}
+
+function shouldDropExpectedClientEvent(event: SentryLikeEvent): boolean {
+  const text = collectPrimaryEventText(event);
+  if (!text) return false;
+
+  // A 429 is expected control flow. It remains enforced by the API and should
+  // not appear as an application crash when a client promise is not awaited.
+  if (isExpectedRateLimitError(text)) return true;
+
+  // Generic Safari/browser fetch interruptions are dropped only when Sentry
+  // marks them as handled. Unhandled network crashes remain visible.
+  return isHandledExceptionEvent(event) && isTransientBrowserNetworkError(text);
 }
 
 function shouldDropNoisyEvent(event: SentryLikeEvent): boolean {
@@ -77,6 +114,7 @@ export function filterSentryEvent<T>(event: T, options: FilterOptions = {}): T |
   const mutableEvent = event as unknown as SentryLikeEvent;
 
   if (shouldDropNoisyEvent(mutableEvent)) return null;
+  if (options.dropExpectedClientErrors && shouldDropExpectedClientEvent(mutableEvent)) return null;
 
   if (mutableEvent.user) {
     delete mutableEvent.user.email;

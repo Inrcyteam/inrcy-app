@@ -16,7 +16,9 @@ function contentTypeFromPath(path: string) {
 }
 
 export async function GET(request: Request) {
-  const path = new URL(request.url).searchParams.get("path")?.trim().replace(/^\/+/, "") || "";
+  const requestUrl = new URL(request.url);
+  const path = requestUrl.searchParams.get("path")?.trim().replace(/^\/+/, "") || "";
+  const hasVersion = Boolean(requestUrl.searchParams.get("v"));
   if (!ALLOWED_LOGO_PATH.test(path) || path.includes("..")) {
     return NextResponse.json({ error: "Logo invalide." }, { status: 400 });
   }
@@ -34,7 +36,9 @@ export async function GET(request: Request) {
     status: 200,
     headers: {
       "Content-Type": data.type || contentTypeFromPath(path),
-      "Cache-Control": "public, max-age=3600, s-maxage=86400, stale-while-revalidate=604800",
+      "Cache-Control": hasVersion
+        ? "public, max-age=31536000, s-maxage=31536000, immutable"
+        : "no-store, max-age=0",
       "X-Content-Type-Options": "nosniff",
       ...(path.toLowerCase().endsWith(".svg")
         ? { "Content-Security-Policy": "sandbox; default-src 'none'; style-src 'unsafe-inline'" }

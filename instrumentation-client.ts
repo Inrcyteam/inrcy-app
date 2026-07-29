@@ -4,6 +4,9 @@
 
 import * as Sentry from "@sentry/nextjs";
 import { filterSentryEvent } from "@/lib/observability/sentryEventFilter";
+import { installExpectedClientRejectionGuard } from "@/lib/clientExpectedErrors";
+
+installExpectedClientRejectionGuard();
 
 const sentryDsn = process.env.NEXT_PUBLIC_SENTRY_DSN;
 
@@ -17,7 +20,7 @@ if (sentryDsn) {
     sendDefaultPii: false,
     tracesSampleRate: Number.isFinite(tracesSampleRate) ? Math.min(1, Math.max(0, tracesSampleRate)) : 0.1,
     beforeSend(event) {
-      return filterSentryEvent(event);
+      return filterSentryEvent(event, { dropExpectedClientErrors: true });
     },
   });
 }

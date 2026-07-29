@@ -7,13 +7,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabaseClient";
 import {
-  createSignedLogoUrl,
   extractLogoPathFromUrl,
+  getProfileLogoDisplayUrl,
   resolveProfileLogoUrl,
   revokeBlobUrl,
   LOGO_BUCKET,
   validateProfileLogoFile,
 } from "@/lib/profileLogo";
+import { refreshPublicProfileDependents } from "@/lib/publicProfileRefreshClient";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { confirmInrcy } from "@/lib/inrcyDialog";
 
@@ -281,45 +282,6 @@ export default function ProfilContent({
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  // Kept for backward compatibility with older drafts; saves now use the authenticated API below.
-  async function uploadLogoIfNeededLegacy(supabase: ReturnType<typeof createClient>, userId: string, file: File) {
-    const ext = file.name.split(".").pop()?.toLowerCase() || "png";
-    const path = `${userId}/logo.${ext}`;
-
-    const { error: uploadError } = await supabase.storage.from("logos").upload(path, file, { upsert: true });
-    if (uploadError) throw new Error(getSimpleFrenchErrorMessage(uploadError));
-
-    try {
-      const signedUrl = await createSignedLogoUrl(supabase, path);
-      return { path, signedUrl };
-    } catch (signError) {
-      throw new Error(getSimpleFrenchErrorMessage(signError, "Impossible de préparer le logo pour le moment."));
-    }
-  }
-
-  async function uploadLogoViaApi(file: File) {
-    const formData = new FormData();
-    formData.append("file", file);
-
-    const response = await fetch("/api/profile/logo", {
-      method: "POST",
-      body: formData,
-    });
-
-    let payload: { ok?: boolean; path?: string; signedUrl?: string; error?: string } = {};
-    try {
-      payload = await response.json();
-    } catch {
-      // Keep the generic message below for malformed server responses.
-    }
-
-    if (!response.ok || !payload.ok || !payload.path || !payload.signedUrl) {
-      throw new Error(payload.error || "Impossible d’enregistrer le logo pour le moment.");
-    }
-
-    return { path: payload.path, signedUrl: payload.signedUrl };
-  }
-
   async function uploadLogoDirect(file: File) {
     const prepareResponse = await fetch("/api/profile/logo", {
       method: "POST",
@@ -437,12 +399,19 @@ export default function ProfilContent({
         lead_conversion_rate: form.leadConversionRate,
 
         logo_path: logoPath || null,
-        logo_url: logoPath ? `/api/public/logo?path=${encodeURIComponent(logoPath)}` : (logoUrl || null),
+        logo_url: logoPath ? (logoUrl || getProfileLogoDisplayUrl(logoPath)) : (logoUrl || null),
       };
 
       const { error } = await supabase.from("profiles").upsert(payload, { onConflict: "user_id" });
       if (error) throw new Error(getSimpleFrenchErrorMessage(error));
-      await invalidateBoosterGenerationContextClient("professional");
+
+      const [publicProfileRefreshed] = await Promise.all([
+        refreshPublicProfileDependents("profile"),
+        invalidateBoosterGenerationContextClient("professional"),
+      ]);
+      if (!publicProfileRefreshed) {
+        console.warn("[profile] iNrBadge/iNrSearch refresh deferred");
+      }
 
       // Récompense uniquement lorsque les mêmes informations que celles
       // contrôlées par le triangle d'avertissement sont réellement complètes.

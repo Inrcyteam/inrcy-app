@@ -48,6 +48,7 @@ import { buildBubbleAccessMap, createDefaultBubbleAccessMap, isBubbleEnabled, ty
 import { computeInertiaSnapshot } from "@/lib/loyalty/inertia";
 import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
 import { resolveProfileLogoUrl } from "@/lib/profileLogo";
+import { PUBLIC_PROFILE_DATA_SAVED_EVENT } from "@/lib/publicProfileRefreshClient";
 import { getDrawerTitle, isDrawerPanel } from "./dashboard.utils";
 import { inferChannelsFromRealtimePayload, inferChannelsFromSearchParams } from "./dashboard.shared";
 import type { ActusFont, GoogleProduct, GoogleSource, ModuleStatus, Ownership } from "./dashboard.types";
@@ -66,12 +67,14 @@ import { getDashboardTranslations } from "@/lib/dashboardI18n";
 import type { ConnectionDisplayStatus } from "@/lib/connectionVersions";
 import { isDashboardRequiredSetupProtectedDestination, isDashboardRequiredSetupProtectedLocation } from "@/lib/dashboardRequiredSetupAccess";
 import { confirmInrcy } from "@/lib/inrcyDialog";
+import { reportHandledClientError } from "@/lib/clientExpectedErrors";
 
 
 const useBrowserLayoutEffect = typeof window !== "undefined" ? useLayoutEffect : useEffect;
 const FORCED_SERVER_CACHE_CHECK_DEDUP_MS = 30_000;
 const AUTO_DAILY_REFRESH_DEDUP_MS = 5 * 60_000;
 const CHANNEL_REFRESH_DEDUP_MS = 30_000;
+const GENERATOR_POWER_SETTLE_MS = 700;
 const GENERATOR_POWER_CACHE_KEY = "inrcy_generator_power_percent_v1";
 const GENERATOR_ACTIVE_CACHE_KEY = "inrcy_generator_active_v1";
 const SITE_BUBBLE_PROGRESS_CACHE_KEY = "inrcy_site_bubble_progress_v1";
@@ -1567,6 +1570,15 @@ const setPanelError = useCallback((kind: "facebook" | "instagram" | "linkedin" |
     const supabase = createClient();
     let cancelled = false;
 
+    const hydrateActiveAccountCaches = () => {
+      // Les useState initiaux peuvent s'exécuter avant que le compte actif soit
+      // restauré après un retour OAuth. On relit alors immédiatement le cache
+      // du bon compte pour conserver la dernière puissance confirmée.
+      applyDashboardChannelState(readCachedDashboardChannelState());
+      const cachedPower = readCachedGeneratorPowerPercent();
+      if (cachedPower !== null) setDisplayedGeneratorPower(cachedPower);
+    };
+
     const syncActiveAccountFromServer = async (authUserId: string) => {
       try {
         const response = await fetch("/api/multicompte/accounts", { cache: "no-store", credentials: "include" });
@@ -1580,6 +1592,7 @@ const setPanelError = useCallback((kind: "facebook" | "instagram" | "linkedin" |
             purgeAllBrowserAccountCaches();
           }
           setActiveBrowserUserId(activeUserId);
+          hydrateActiveAccountCaches();
           return;
         }
       } catch {
@@ -1588,6 +1601,7 @@ const setPanelError = useCallback((kind: "facebook" | "instagram" | "linkedin" |
 
       if (!cancelled && !getActiveBrowserUserId()) {
         setActiveBrowserUserId(authUserId);
+        hydrateActiveAccountCaches();
       }
     };
 
@@ -1626,7 +1640,7 @@ const setPanelError = useCallback((kind: "facebook" | "instagram" | "linkedin" |
       cancelled = true;
       authListener.subscription.unsubscribe();
     };
-  }, []);
+  }, [applyDashboardChannelState]);
 
 
   // =============================
@@ -1986,6 +2000,17 @@ useEffect(() => {
   loadSiteInrcy();
 }, [loadSiteInrcy]);
 
+useEffect(() => {
+  const refreshProfileDependentChannels = () => {
+    void loadSiteInrcy();
+  };
+
+  window.addEventListener(PUBLIC_PROFILE_DATA_SAVED_EVENT, refreshProfileDependentChannels);
+  return () => {
+    window.removeEventListener(PUBLIC_PROFILE_DATA_SAVED_EVENT, refreshProfileDependentChannels);
+  };
+}, [loadSiteInrcy]);
+
 const savedSiteInrcyUrlMeta = normalizeSiteUrl(siteInrcySavedUrl);
 const savedSiteWebUrlMeta = normalizeSiteUrl(siteWebSavedUrl);
 const draftSiteInrcyUrlMeta = normalizeSiteUrl(siteInrcyUrl);
@@ -2028,22 +2053,32 @@ const generatorPowerSteps = [
 
 const computedGeneratorPower = generatorPowerSteps.reduce((sum, step) => sum + (step.completed ? step.weight : 0), 0);
 const generatorPowerReady = siteConnectionsReady && profileCheckReady && activityCheckReady;
-const usingCachedGeneratorPower = !generatorPowerReady && displayedGeneratorPower !== null && displayedGeneratorPower > computedGeneratorPower;
-const generatorPower = usingCachedGeneratorPower ? displayedGeneratorPower : computedGeneratorPower;
+
+// La valeur visible est toujours la dernière puissance confirmée.
+// Pendant un retour OAuth, une connexion ou une déconnexion, les états des
+// canaux peuvent arriver en plusieurs vagues : on ne montre jamais ces valeurs
+// transitoires et on ne les écrit jamais dans le cache.
+const generatorPower = displayedGeneratorPower ?? 0;
+const generatorPowerIsSettling = generatorPowerReady && generatorPower !== computedGeneratorPower;
 const computedNextGeneratorPowerStep = generatorPowerSteps.find((step) => !step.completed) ?? null;
 const computedRemainingGeneratorPowerSteps = generatorPowerSteps.filter((step) => !step.completed).length;
-const nextGeneratorPowerStep = usingCachedGeneratorPower && generatorPower >= 100 ? null : computedNextGeneratorPowerStep;
-const remainingGeneratorPowerSteps = usingCachedGeneratorPower && generatorPower >= 100 ? 0 : computedRemainingGeneratorPowerSteps;
+const nextGeneratorPowerStep = generatorPowerIsSettling && generatorPower >= 100 ? null : computedNextGeneratorPowerStep;
+const remainingGeneratorPowerSteps = generatorPowerIsSettling && generatorPower >= 100 ? 0 : computedRemainingGeneratorPowerSteps;
 
 useEffect(() => {
-  if (!generatorPowerReady) return;
-  setDisplayedGeneratorPower(computedGeneratorPower);
-  try {
-    writeUiCacheValue(GENERATOR_POWER_CACHE_KEY, String(computedGeneratorPower));
-  } catch {
-    // ignore browser storage failures
-  }
-}, [computedGeneratorPower, generatorPowerReady]);
+  if (!generatorPowerReady || displayedGeneratorPower === computedGeneratorPower) return;
+
+  const settleTimer = window.setTimeout(() => {
+    setDisplayedGeneratorPower(computedGeneratorPower);
+    try {
+      writeUiCacheValue(GENERATOR_POWER_CACHE_KEY, String(computedGeneratorPower));
+    } catch {
+      // ignore browser storage failures
+    }
+  }, GENERATOR_POWER_SETTLE_MS);
+
+  return () => window.clearTimeout(settleTimer);
+}, [computedGeneratorPower, displayedGeneratorPower, generatorPowerReady]);
 
 const applyGeneratorCacheToState = useCallback(() => {
     const mergedPayload = readGeneratorCache()?.payload;
@@ -2148,7 +2183,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
       }
     } catch (err) {
       if (requestSeq !== kpisRequestSeqRef.current) return;
-      console.error(err);
+      reportHandledClientError(err, "dashboard-kpis");
       // Keep the last known KPIs to avoid a visual "blink".
       // If nothing exists yet, we'll display 0.
     } finally {
@@ -2808,7 +2843,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
 
       notifyStatsRefresh(syncAt, [channel]);
     } catch (error) {
-      console.error(error);
+      reportHandledClientError(error, "dashboard-channel-refresh");
       await fallbackToServerSyncThenGlobal();
     }
   }, [clearScheduledGeneratorRefreshes, fallbackToServerSyncThenGlobal, loadSiteInrcy, notifyStatsRefresh, refreshChannelBlocksFromApi, refreshGeneratorChannelFromApi, syncInstagramStateFromServer]);
@@ -2843,7 +2878,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
 
       notifyStatsRefresh(syncAt, channels);
     } catch (error) {
-      console.error(error);
+      reportHandledClientError(error, "dashboard-channels-refresh");
       await fallbackToServerSyncThenGlobal();
     }
   }, [clearScheduledGeneratorRefreshes, fallbackToServerSyncThenGlobal, loadSiteInrcy, notifyStatsRefresh, refreshChannelBlocksFromApi, refreshGeneratorChannelsFromApi, triggerChannelRefresh, syncInstagramStateFromServer]);
@@ -2864,7 +2899,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
         await syncFromServerCacheIfNeeded(true);
       }
     } catch (error) {
-      console.error(error);
+      reportHandledClientError(error, "dashboard-generator-refresh");
     } finally {
       setKpisLoading(false);
     }
@@ -3149,7 +3184,7 @@ const refreshKpis = useCallback(async (options?: { fresh?: boolean; syncedAt?: n
           await latestSyncFromServerCacheIfNeededRef.current?.(true);
         }
       } catch (error) {
-        console.error(error);
+        reportHandledClientError(error, "dashboard-daily-bootstrap");
       } finally {
         if (!cancelled) setDailyBootReady(true);
       }

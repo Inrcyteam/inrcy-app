@@ -6,6 +6,7 @@ import { sanitizeRichMailHtml } from "@/lib/mailRichText";
 import { normalizeMailSubject } from "@/lib/mailEncoding";
 import { awardWeeklyFeatureUseForCampaign } from "@/lib/loyalty/serverAward";
 import { normalizeMailDeliveryError } from "@/lib/mailDeliveryErrors";
+import { runTransientPostgrestRead } from "@/lib/supabaseTransientRetry";
 import { downloadMailAttachmentRefs, parseMailAttachmentRefs, type MailAttachmentRef } from "@/lib/mailAttachmentRefs";
 import { providerBatchLimit } from "@/lib/crmRecipients";
 import { sendTrackedMailCampaignCompletionSummary } from "@/lib/mailCampaignCompletionEmail";
@@ -1224,16 +1225,17 @@ export async function processPendingMailCampaigns(opts?: {
   const campaignIds = Array.isArray(opts?.campaignIds) ? opts.campaignIds.filter(Boolean) : [];
 
   const nowIso = new Date().toISOString();
-  let query = supabaseAdmin
-    .from("mail_campaigns")
-    .select("id,user_id,integration_id,provider,type,subject,body_text,body_html,attachments,status,folder,track_kind,track_type,pause_reason,resume_at")
-    .or(`status.in.(queued,processing),and(status.eq.paused,resume_at.not.is.null,resume_at.lte.${nowIso})`)
-    .order("created_at", { ascending: true })
-    .limit(maxCampaigns);
+  const { data: campaigns, error } = await runTransientPostgrestRead<Record<string, unknown>[]>(() => {
+    let query = supabaseAdmin
+      .from("mail_campaigns")
+      .select("id,user_id,integration_id,provider,type,subject,body_text,body_html,attachments,status,folder,track_kind,track_type,pause_reason,resume_at")
+      .or(`status.in.(queued,processing),and(status.eq.paused,resume_at.not.is.null,resume_at.lte.${nowIso})`)
+      .order("created_at", { ascending: true })
+      .limit(maxCampaigns);
 
-  if (campaignIds.length > 0) query = query.in("id", campaignIds);
-
-  const { data: campaigns, error } = await query;
+    if (campaignIds.length > 0) query = query.in("id", campaignIds);
+    return query;
+  });
   if (error) throw error;
 
   const config = getMailCampaignDeliveryConfig();

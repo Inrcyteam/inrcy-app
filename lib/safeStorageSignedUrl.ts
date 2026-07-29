@@ -15,16 +15,54 @@ type SignedUrlCacheEntry = {
 
 const signedUrlCache = new Map<string, SignedUrlCacheEntry>();
 const signingInFlight = new Map<string, Promise<string | null>>();
+const missingObjectCache = new Map<string, number>();
 const MAX_CACHE_ENTRIES = 500;
+const MISSING_OBJECT_TTL_MS = 10 * 60_000;
 const RETRY_DELAYS_MS = [180, 550, 1_250] as const;
 
 function cacheKey(bucket: string, path: string, expiresIn: number) {
   return `${bucket}:${path}:${expiresIn}`;
 }
 
+function objectKey(bucket: string, path: string) {
+  return `${bucket}:${path}`;
+}
+
+function rememberMissingObject(bucket: string, path: string) {
+  missingObjectCache.set(objectKey(bucket, path), Date.now() + MISSING_OBJECT_TTL_MS);
+}
+
+function isKnownMissingObject(bucket: string, path: string, now = Date.now()) {
+  const key = objectKey(bucket, path);
+  const validUntil = missingObjectCache.get(key) || 0;
+  if (validUntil <= now) {
+    missingObjectCache.delete(key);
+    return false;
+  }
+  return true;
+}
+
+function clearMissingObject(bucket: string, path: string) {
+  missingObjectCache.delete(objectKey(bucket, path));
+}
+
 function pruneCache(now: number) {
+  for (const [key, validUntil] of missingObjectCache) {
+    if (validUntil <= now) missingObjectCache.delete(key);
+  }
+
   for (const [key, entry] of signedUrlCache) {
     if (entry.validUntil <= now) signedUrlCache.delete(key);
+  }
+
+  if (missingObjectCache.size > MAX_CACHE_ENTRIES) {
+    const overflow = missingObjectCache.size - MAX_CACHE_ENTRIES;
+    let removedMissing = 0;
+    for (const key of missingObjectCache.keys()) {
+      missingObjectCache.delete(key);
+      removedMissing += 1;
+      if (removedMissing >= overflow) break;
+    }
   }
 
   if (signedUrlCache.size <= MAX_CACHE_ENTRIES) return;
@@ -68,6 +106,7 @@ export async function probeStorageObject(
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!normalizedBucket || !path) return "missing";
+  if (isKnownMissingObject(normalizedBucket, path)) return "missing";
   if (!supabaseUrl || !serviceRoleKey) return "unknown";
 
   try {
@@ -84,8 +123,14 @@ export async function probeStorageObject(
       },
     );
 
-    if (response.ok) return "exists";
-    if (response.status === 400 || response.status === 404) return "missing";
+    if (response.ok) {
+      clearMissingObject(normalizedBucket, path);
+      return "exists";
+    }
+    if (response.status === 400 || response.status === 404) {
+      rememberMissingObject(normalizedBucket, path);
+      return "missing";
+    }
     return "unknown";
   } catch {
     return "unknown";
@@ -101,11 +146,17 @@ async function signWithRetry(bucket: string, path: string, expiresIn: number): P
         .from(bucket)
         .createSignedUrl(path, expiresIn);
 
-      if (!error && data?.signedUrl) return data.signedUrl;
+      if (!error && data?.signedUrl) {
+        clearMissingObject(bucket, path);
+        return data.signedUrl;
+      }
       lastError = error;
 
       // A stale/non-existent path is deterministic: retrying only creates more 400s.
-      if (isMissingObjectError(error)) return null;
+      if (isMissingObjectError(error)) {
+        rememberMissingObject(bucket, path);
+        return null;
+      }
       if (!isTransientStorageError(error)) return null;
     } catch (error) {
       lastError = error;
@@ -146,6 +197,7 @@ export async function createSafeStorageSignedUrl(
   const key = cacheKey(normalizedBucket, normalizedPath, ttlSeconds);
   const now = Date.now();
   pruneCache(now);
+  if (isKnownMissingObject(normalizedBucket, normalizedPath, now)) return null;
 
   const cached = signedUrlCache.get(key);
   if (cached && cached.validUntil > now) return cached.url;
