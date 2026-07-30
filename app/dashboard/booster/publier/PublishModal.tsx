@@ -128,6 +128,7 @@ import usePublishImageController from "./usePublishImageController";
 import usePersistentMediaWorkspace from "./usePersistentMediaWorkspace";
 import { isUnifiedMediaConsumptionClientEnabled } from "@/lib/mediaPipelineUnifiedConsumptionPolicy";
 import { isLegacyMediaTransportCutoverClientEnabled } from "@/lib/mediaPipelineLegacyCutoverPolicy";
+import { canPublishVideoSourceDirectly } from "@/lib/mediaVideoSourceCompatibility";
 import {
   loadMediaPublicationWorkspace,
   prepareMediaPublicationWorkspace,
@@ -1657,26 +1658,6 @@ export default function PublishModal({
     setPublishProgressLabel,
   });
 
-  useEffect(() => {
-    if (!persistentMediaWorkspaceEnabled || !videoFile) return;
-    const timeoutId = window.setTimeout(() => {
-      void prewarmPersistentMediaWorkspace({
-        videoSettingsByChannel: videoSettingsByChannel as Record<
-          string,
-          unknown
-        >,
-        deferUntilReady: true,
-      }).catch(() => undefined);
-    }, 900);
-    return () => window.clearTimeout(timeoutId);
-  }, [
-    persistentMediaWorkspaceEnabled,
-    prewarmPersistentMediaWorkspace,
-    videoFile,
-    videoSettingsByChannel,
-  ]);
-
-
   const waitForPersistentWorkspaceReadiness = useCallback(
     async (
       purpose: "generate" | "publish" | "schedule",
@@ -1745,6 +1726,31 @@ export default function PublishModal({
           );
         }
 
+        const allUploaded =
+          hasAllExpectedMedia &&
+          relevantMedia.every((item) => item.uploadStatus === "uploaded");
+        const directVideoSource =
+          expectedMediaType === "video" &&
+          Boolean(videoFile) &&
+          canPublishVideoSourceDirectly({
+            name: videoFile?.name,
+            type: videoFile?.type,
+            storagePath: relevantMedia[0]?.storagePath,
+          });
+
+        if (allUploaded && directVideoSource) {
+          // La source MP4/M4V est déjà stockée et exploitable par les canaux.
+          // Publier et programmer ne doivent jamais attendre un second
+          // téléchargement puis un réencodage complet dans une fonction Vercel.
+          onProgress?.(
+            purpose === "generate" ? 32 : 42,
+            purpose === "generate"
+              ? "Vidéo envoyée · analyse locale rapide"
+              : "Vidéo sécurisée · prête à être utilisée",
+          );
+          return activeWorkspaceId;
+        }
+
         const processingFailure = relevantMedia.find(
           (item) =>
             String(item.processingStatus || "") === "failed_terminal" ||
@@ -1759,9 +1765,6 @@ export default function PublishModal({
           );
         }
 
-        const allUploaded =
-          hasAllExpectedMedia &&
-          relevantMedia.every((item) => item.uploadStatus === "uploaded");
         const allProcessed =
           hasAllExpectedMedia &&
           relevantMedia.every(
@@ -1775,19 +1778,6 @@ export default function PublishModal({
                 const status = String(item.publicationStatus || "");
                 return status === "ready" || status === "legacy_ready";
               });
-
-        if (
-          purpose === "generate" &&
-          expectedMediaType === "video" &&
-          allUploaded &&
-          videoFile
-        ) {
-          // La source est déjà sécurisée dans Storage. Les captures et l'audio
-          // préparés localement suffisent à l'IA ; la compression canonique
-          // continue en arrière-plan pour publier/programmer ensuite.
-          onProgress?.(32, "Vidéo envoyée · analyse locale rapide");
-          return activeWorkspaceId;
-        }
 
         if (!allUploaded) {
           const uploadProgress = hasAllExpectedMedia
@@ -2007,16 +1997,99 @@ export default function PublishModal({
     clearPreparedVideoVariantsForChannel(channel);
   };
 
-  async function applyVideoFormatForChannel(channel: ChannelKey) {
-    if (mediaPipelineCutoverEnabled) {
+  async function prepareCutoverVideoVariants(
+    channels: ChannelKey[],
+    settingsByChannel: Partial<
+      Record<
+        ChannelKey,
+        { format: VideoFormat; adaptationMode: VideoAdaptationMode }
+      >
+    >,
+  ) {
+    if (!videoFile) {
+      setImgError("Ajoutez d’abord une vidéo.");
+      return;
+    }
+
+    setImgError("");
+    setVideoVariantPreparationByChannel((prev) => ({
+      ...prev,
+      ...Object.fromEntries(
+        channels.map((channel) => [
+          channel,
+          {
+            status: "preparing" as const,
+            label: "Adaptation en cours",
+            detail: "Création de la variante demandée sur le serveur…",
+          },
+        ]),
+      ),
+    }));
+
+    try {
+      await waitForPersistentWorkspaceIdle();
+      const workspace = await ensurePersistentMediaWorkspace();
+      if (!workspace) {
+        throw new Error("L’espace média de cette publication est indisponible.");
+      }
+
+      const result = await prewarmPersistentMediaWorkspace({
+        selectedChannels: channels,
+        videoSettingsByChannel: settingsByChannel as Record<string, unknown>,
+      });
+      if (!result || result.ok === false) {
+        const firstError = Array.isArray(result?.errors)
+          ? String(result.errors[0] || "").trim()
+          : "";
+        throw new Error(
+          firstError || "La variante vidéo demandée n’a pas pu être préparée.",
+        );
+      }
+
       setVideoVariantPreparationByChannel((prev) => ({
         ...prev,
-        [channel]: {
-          status: "ready",
-          label: "Réglage enregistré",
-          detail: "La variante sera créée côté serveur au moment de publier.",
-        },
+        ...Object.fromEntries(
+          channels.map((channel) => [
+            channel,
+            {
+              status: "ready" as const,
+              label: "Variante prête",
+              detail:
+                "Cette adaptation est enregistrée et sera réutilisée sans nouveau traitement.",
+            },
+          ]),
+        ),
       }));
+    } catch (error) {
+      const message = getSimpleFrenchErrorMessage(
+        error,
+        "La préparation de la variante vidéo a échoué.",
+      );
+      setVideoVariantPreparationByChannel((prev) => ({
+        ...prev,
+        ...Object.fromEntries(
+          channels.map((channel) => [
+            channel,
+            {
+              status: "error" as const,
+              label: "Adaptation impossible",
+              detail: message,
+            },
+          ]),
+        ),
+      }));
+      setImgError(message);
+    }
+  }
+
+  async function applyVideoFormatForChannel(channel: ChannelKey) {
+    if (mediaPipelineCutoverEnabled) {
+      const settings = videoSettingsByChannel[channel];
+      if (!settings) {
+        setImgError("Choisissez d’abord le format vidéo à appliquer.");
+        return;
+      }
+      await prepareCutoverVideoVariants([channel], { [channel]: settings });
       return;
     }
     const mediaModeByChannel = {
@@ -2086,19 +2159,10 @@ export default function PublishModal({
     });
 
     if (mediaPipelineCutoverEnabled) {
-      setVideoVariantPreparationByChannel((prev) => ({
-        ...prev,
-        ...Object.fromEntries(
-          videoChannels.map((channel) => [
-            channel,
-            {
-              status: "ready" as const,
-              label: "Réglage enregistré",
-              detail: "La variante sera créée côté serveur au moment de publier.",
-            },
-          ]),
-        ),
-      }));
+      await prepareCutoverVideoVariants(
+        videoChannels,
+        sharedSettingsByChannel,
+      );
       return;
     }
 
@@ -4063,32 +4127,6 @@ export default function PublishModal({
           setPublishProgressLabel(label || "Vérification des médias...");
         });
 
-      if (readyMediaWorkspaceId && mediaPipelineCutoverEnabled) {
-        setPublishProgress((current) => Math.max(current, 26));
-        setPublishProgressLabel("Validation des variantes déjà préparées...");
-        const prewarmResult = await prewarmPersistentMediaWorkspace({
-          imageSettingsByChannel: channelImageEditors as Record<
-            string,
-            unknown
-          >,
-          videoSettingsByChannel: videoSettingsByChannel as Record<
-            string,
-            unknown
-          >,
-        });
-        if (prewarmResult?.ok === false) {
-          const firstError = Array.isArray(prewarmResult.errors)
-            ? prewarmResult.errors[0]?.message
-            : "";
-          throw new Error(
-            String(
-              firstError ||
-                "Une variante média n’a pas pu être préparée pour la publication.",
-            ),
-          );
-        }
-      }
-
       const emptyChannelImages = {} as ChannelImagePayload;
       const emptyChannelSettings = {} as ChannelImageSettingsPayload;
       const { channelImages, channelSettings } = !hasAnyImagePublish
@@ -4644,32 +4682,6 @@ export default function PublishModal({
           setPublishProgress((current) => Math.max(current, progress));
           setPublishProgressLabel(label || "Vérification des médias...");
         });
-
-      if (readyMediaWorkspaceId && mediaPipelineCutoverEnabled) {
-        setPublishProgress((current) => Math.max(current, 26));
-        setPublishProgressLabel("Sécurisation des médias programmés...");
-        const prewarmResult = await prewarmPersistentMediaWorkspace({
-          imageSettingsByChannel: channelImageEditors as Record<
-            string,
-            unknown
-          >,
-          videoSettingsByChannel: videoSettingsByChannel as Record<
-            string,
-            unknown
-          >,
-        });
-        if (prewarmResult?.ok === false) {
-          const firstError = Array.isArray(prewarmResult.errors)
-            ? prewarmResult.errors[0]?.message
-            : "";
-          throw new Error(
-            String(
-              firstError ||
-                "Une variante média n’a pas pu être préparée pour la programmation.",
-            ),
-          );
-        }
-      }
 
       const emptyChannelImages = {} as ChannelImagePayload;
       const emptyChannelSettings = {} as ChannelImageSettingsPayload;

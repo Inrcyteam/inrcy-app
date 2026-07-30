@@ -26,6 +26,7 @@ import { UNIVERSAL_MEDIA_PIPELINE_VERSION } from "@/lib/mediaPipelineRegistry";
 import { enqueueImageNormalization } from "@/lib/mediaImageNormalizationQueue";
 import { enqueueVideoNormalization } from "@/lib/mediaVideoNormalizationQueue";
 import { refreshPublicationWorkspaceMediaStatus } from "@/lib/mediaWorkspaceServer";
+import { canPublishVideoSourceDirectly } from "@/lib/mediaVideoSourceCompatibility";
 
 export const runtime = "nodejs";
 
@@ -605,7 +606,44 @@ export async function POST(request: Request) {
           }
         }
 
-        if (alreadyUploaded && mediaType === "video") {
+        const directVideoSource =
+          mediaType === "video" &&
+          canPublishVideoSourceDirectly({
+            name: fileName,
+            mimeType: contentType,
+            storagePath,
+          });
+
+        if (alreadyUploaded && mediaType === "video" && directVideoSource) {
+          try {
+            const now = new Date().toISOString();
+            const markedReady = await supabaseAdmin
+              .from("pro_media_library")
+              .update({
+                processing_status: "ready",
+                processing_progress: 100,
+                publication_status: "ready",
+                detected_mime_type: contentType || "video/mp4",
+                processing_error_code: null,
+                processing_error_message: null,
+                processing_completed_at: now,
+              })
+              .eq("id", mediaId)
+              .eq("user_id", activeUserId);
+            if (markedReady.error) throw markedReady.error;
+            await refreshPublicationWorkspaceMediaStatus({
+              workspaceId,
+              accountId: activeUserId,
+            });
+          } catch (readyError) {
+            console.error(
+              "[media-pipeline] reused direct video readiness failed",
+              { mediaId, workspaceId, error: readyError },
+            );
+          }
+        }
+
+        if (alreadyUploaded && mediaType === "video" && !directVideoSource) {
           try {
             await enqueueVideoNormalization({
               mediaId,

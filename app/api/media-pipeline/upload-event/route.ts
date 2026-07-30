@@ -12,6 +12,7 @@ import {
   type VideoNormalizationEnqueueResult,
 } from "@/lib/mediaVideoNormalizationQueue";
 import { refreshPublicationWorkspaceStatusesForMedia } from "@/lib/mediaWorkspaceServer";
+import { canPublishVideoSourceDirectly } from "@/lib/mediaVideoSourceCompatibility";
 
 export const runtime = "nodejs";
 
@@ -113,7 +114,7 @@ export async function POST(request: Request) {
     const current = await supabaseAdmin
       .from("pro_media_library")
       .select(
-        "id,user_id,media_type,media_metadata,bucket_name,storage_path,size_bytes",
+        "id,user_id,media_type,media_metadata,bucket_name,storage_path,size_bytes,original_file_name,mime_type",
       )
       .eq("id", mediaId)
       .eq("user_id", activeUserId)
@@ -133,6 +134,13 @@ export async function POST(request: Request) {
       ...cleanMetadata(body?.metadata),
     };
     const patch: Record<string, unknown> = { media_metadata: metadata };
+    const directVideoSource =
+      current.data.media_type === "video" &&
+      canPublishVideoSourceDirectly({
+        name: current.data.original_file_name,
+        mimeType: current.data.mime_type,
+        storagePath: current.data.storage_path,
+      });
 
     if (event === "uploaded") {
       const verified = await verifyStoredUpload({
@@ -165,6 +173,16 @@ export async function POST(request: Request) {
       patch.uploaded_at = now;
       patch.upload_error_code = null;
       patch.upload_error_message = null;
+      if (directVideoSource) {
+        patch.processing_status = "ready";
+        patch.processing_progress = 100;
+        patch.publication_status = "ready";
+        patch.detected_mime_type =
+          cleanText(current.data.mime_type, "video/mp4", 120) || "video/mp4";
+        patch.processing_error_code = null;
+        patch.processing_error_message = null;
+        patch.processing_completed_at = now;
+      }
     } else if (event === "failed") {
       patch.upload_status = "failed";
       patch.upload_progress = 0;
@@ -223,7 +241,11 @@ export async function POST(request: Request) {
       }
     }
 
-    if (event === "uploaded" && current.data.media_type === "video") {
+    if (
+      event === "uploaded" &&
+      current.data.media_type === "video" &&
+      !directVideoSource
+    ) {
       const workspaceId = cleanText(
         current.data.media_metadata?.workspace_id,
         "",
@@ -247,6 +269,12 @@ export async function POST(request: Request) {
           reason: "enqueue_failed",
         };
       }
+    } else if (event === "uploaded" && directVideoSource) {
+      videoNormalization = {
+        enabled: true,
+        queued: false,
+        reason: "source_direct_ready",
+      };
     }
 
     await refreshPublicationWorkspaceStatusesForMedia({

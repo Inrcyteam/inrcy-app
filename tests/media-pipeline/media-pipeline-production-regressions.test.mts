@@ -100,7 +100,7 @@ test("les aperçus locaux restent affichés pendant la préparation serveur", as
   assert.match(source, /makeImageKey\(currentFile\) !== expectedImageKey/);
 });
 
-test("le préchauffage attend la préparation principale et n'émet plus de 409 prématuré", async () => {
+test("les vidéos MP4 directes ne déclenchent plus de préchauffage automatique", async () => {
   const hook = await readSource(
     "app/dashboard/booster/publier/usePersistentMediaWorkspace.ts",
   );
@@ -112,9 +112,14 @@ test("le préchauffage attend la préparation principale et n'émet plus de 409 
   assert.match(hook, /corePreparationReadyRef\.current = true/);
   assert.match(
     hook,
-    /settings\?\.deferUntilReady && !corePreparationReadyRef\.current/,
+    /request\.mediaType === "video" &&[\s\S]{0,120}request\.directVideoSource/,
   );
-  assert.match(modal, /deferUntilReady:\s*true/);
+  assert.match(hook, /loadMediaPublicationWorkspace\(/);
+  assert.match(modal, /async function prepareCutoverVideoVariants/);
+  assert.equal(
+    (modal.match(/prewarmPersistentMediaWorkspace\(/g) || []).length,
+    1,
+  );
 });
 
 test("un 413 TUS explique la limite globale Supabase à configurer", async () => {

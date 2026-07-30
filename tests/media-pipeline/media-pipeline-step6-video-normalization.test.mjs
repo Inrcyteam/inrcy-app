@@ -69,12 +69,14 @@ test("la piste audio est facultative et ne bloque pas une vidéo silencieuse", (
   assert.match(source, /available:\s*audioAvailable/);
 });
 
-test("l'upload terminé met la vidéo en file et répare les reprises", () => {
+test("l'upload normalise les conteneurs non directs et valide immédiatement MP4/M4V", () => {
   const event = read("app/api/media-pipeline/upload-event/route.ts");
   const intent = read("app/api/media-pipeline/upload-intent/route.ts");
-  assert.match(event, /event === "uploaded" && current\.data\.media_type === "video"/);
+  assert.match(event, /current\.data\.media_type === "video" &&[\s\S]{0,80}!directVideoSource/);
   assert.match(event, /enqueueVideoNormalization\(/);
-  assert.match(intent, /alreadyUploaded && mediaType === "video"/);
+  assert.match(event, /reason:\s*"source_direct_ready"/);
+  assert.match(intent, /alreadyUploaded && mediaType === "video" && directVideoSource/);
+  assert.match(intent, /alreadyUploaded && mediaType === "video" && !directVideoSource/);
   assert.match(intent, /enqueueVideoNormalization\(/);
 });
 

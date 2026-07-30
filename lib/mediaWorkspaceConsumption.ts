@@ -17,6 +17,7 @@ import {
   isUnifiedMediaConsumptionEnabled,
   type MediaPipelineUnifiedPurpose,
 } from "@/lib/mediaPipelineUnifiedConsumptionPolicy";
+import { canPublishVideoSourceDirectly } from "@/lib/mediaVideoSourceCompatibility";
 
 const PRIVATE_MEDIA_BUCKET = "inrcy-pro-media";
 const MAX_AI_IMAGE_BYTES = 2_500_000;
@@ -278,6 +279,7 @@ async function readWorkspaceGraph(params: {
   accountId: string;
   workspaceId: string;
   allowProcessingVideoForAi?: boolean;
+  allowUploadedVideoSource?: boolean;
 }) {
   if (!isUnifiedMediaConsumptionEnabled()) {
     throw new MediaWorkspaceConsumptionError(
@@ -355,16 +357,23 @@ async function readWorkspaceGraph(params: {
     return { workspace, media, variants: [] as ReadyVariant[] };
   }
 
-  const invalid = media.find(
-    (item) =>
-      item.uploadStatus !== "uploaded" ||
-      (!(
-        params.allowProcessingVideoForAi &&
-        item.mediaType === "video"
-      ) &&
-        (item.processingStatus !== "ready" ||
-          item.publicationStatus !== "ready")),
-  );
+  const invalid = media.find((item) => {
+    if (item.uploadStatus !== "uploaded") return true;
+    const uploadedVideoIsUsable =
+      item.mediaType === "video" &&
+      ((params.allowProcessingVideoForAi ?? false) ||
+        ((params.allowUploadedVideoSource ?? false) &&
+          canPublishVideoSourceDirectly({
+            name: item.originalFileName,
+            mimeType: item.detectedMimeType || item.sourceMimeType,
+            storagePath: item.sourceStoragePath,
+          })));
+    if (uploadedVideoIsUsable) return false;
+    return (
+      item.processingStatus !== "ready" ||
+      !["ready", "legacy_ready"].includes(item.publicationStatus)
+    );
+  });
   if (invalid) {
     throw new MediaWorkspaceConsumptionError(
       "Les médias sont encore en cours de préparation.",
@@ -881,7 +890,10 @@ export async function resolveWorkspacePublicationConsumption(params: {
   workspaceId: string;
   purpose: "publish" | "schedule";
 }): Promise<WorkspacePublicationConsumption> {
-  const graph = await readWorkspaceGraph(params);
+  const graph = await readWorkspaceGraph({
+    ...params,
+    allowUploadedVideoSource: true,
+  });
   const { workspace, media, variants } = graph;
 
   if (!media.length) {
@@ -973,7 +985,14 @@ export async function resolveWorkspacePublicationConsumption(params: {
 
   const item = media[0];
   const canonical = pickReadyVariant(variants, item.mediaId, "canonical");
-  if (!canonical) {
+  const directSourceReady =
+    Boolean(item.sourceStoragePath) &&
+    canPublishVideoSourceDirectly({
+      name: item.originalFileName,
+      mimeType: item.detectedMimeType || item.sourceMimeType,
+      storagePath: item.sourceStoragePath,
+    });
+  if (!canonical && !directSourceReady) {
     throw new MediaWorkspaceConsumptionError(
       "La version canonique de la vidéo n'est pas prête.",
       "workspace_canonical_missing",
@@ -982,7 +1001,37 @@ export async function resolveWorkspacePublicationConsumption(params: {
   }
   const thumbnail = pickReadyVariant(variants, item.mediaId, "thumbnail");
 
-  const canonicalMimeType = normalizeMime(canonical.mimeType, "video/mp4");
+  const videoMimeType = normalizeMime(
+    canonical?.mimeType || item.detectedMimeType || item.sourceMimeType,
+    "video/mp4",
+  );
+  const directSourceMetadata = asObject(item.mediaSettings.source_metadata);
+  const nestedMediaSettings = asObject(item.mediaMetadata.media_settings);
+  const sourceMetadata = Object.keys(directSourceMetadata).length
+    ? directSourceMetadata
+    : asObject(
+        item.mediaMetadata.source_metadata ||
+          nestedMediaSettings.source_metadata,
+      );
+  const sourceWidth =
+    Number.isFinite(Number(sourceMetadata.width)) &&
+    Number(sourceMetadata.width) > 0
+      ? Number(sourceMetadata.width)
+      : null;
+  const sourceHeight =
+    Number.isFinite(Number(sourceMetadata.height)) &&
+    Number(sourceMetadata.height) > 0
+      ? Number(sourceMetadata.height)
+      : null;
+  const videoWidth = canonical?.width ?? sourceWidth;
+  const videoHeight = canonical?.height ?? sourceHeight;
+  const sourceDuration =
+    Number.isFinite(Number(sourceMetadata.duration)) &&
+    Number(sourceMetadata.duration) > 0
+      ? Number(sourceMetadata.duration)
+      : null;
+  const videoDuration =
+    canonical?.durationSeconds ?? item.durationSeconds ?? sourceDuration;
 
   return {
     source: "media_workspace_v1",
@@ -994,21 +1043,23 @@ export async function resolveWorkspacePublicationConsumption(params: {
     images: [],
     video: {
       mediaId: item.mediaId,
-      name: canonicalVideoName(item.originalFileName),
-      type: canonicalMimeType,
-      size: canonical.sizeBytes || item.sourceSizeBytes,
-      duration: canonical.durationSeconds ?? item.durationSeconds,
-      bucket: canonical.bucket,
-      storagePath: canonical.storagePath,
+      name: canonical
+        ? canonicalVideoName(item.originalFileName)
+        : item.originalFileName,
+      type: videoMimeType,
+      size: canonical?.sizeBytes || item.sourceSizeBytes,
+      duration: videoDuration,
+      bucket: canonical?.bucket || item.sourceBucket,
+      storagePath: canonical?.storagePath || item.sourceStoragePath,
       thumbnailUrl: null,
       thumbnailStoragePath: thumbnail?.storagePath || null,
       thumbnailBucket: thumbnail?.bucket || null,
       transformedVariants: [],
       sourceMetadata: {
-        width: canonical.width,
-        height: canonical.height,
-        duration: canonical.durationSeconds ?? item.durationSeconds,
-        orientation: orientationFromDimensions(canonical.width, canonical.height),
+        width: videoWidth,
+        height: videoHeight,
+        duration: videoDuration,
+        orientation: orientationFromDimensions(videoWidth, videoHeight),
       },
     },
   };

@@ -15,10 +15,8 @@ import {
   type BoosterVideoTransformVariantPlan,
   type BoosterVideoTransformedVariant,
 } from "@/lib/boosterVideoTransforms";
-import {
-  INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
-  INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
-} from "@/lib/mediaRules";
+import { INR_MEDIA_VIDEO_SOURCE_MAX_BYTES } from "@/lib/mediaRules";
+import { canPublishVideoSourceDirectly } from "@/lib/mediaVideoSourceCompatibility";
 
 const execFileAsync = promisify(execFile);
 const BOOSTER_BUCKET = "booster";
@@ -98,6 +96,16 @@ function getSourceExtension(source: BoosterVideoTransformSource) {
   if (type.includes("quicktime") || name.endsWith(".mov")) return "mov";
   if (name.endsWith(".m4v")) return "m4v";
   return "mp4";
+}
+
+function compactFfmpegError(error: any, fallback: string) {
+  const raw = String(error?.stderr || error?.message || fallback).trim();
+  if (!raw) return fallback;
+  const lines = raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  return (lines.slice(-12).join(" | ") || raw).slice(-1_200);
 }
 
 async function downloadSourceVideo(source: BoosterVideoTransformSource) {
@@ -498,8 +506,12 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
       variant.format === "original" &&
       sourcePath &&
       Number(params.source.size || 0) > 0 &&
-      Number(params.source.size || 0) <= INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES &&
-      sourceUrl
+      sourceUrl &&
+      canPublishVideoSourceDirectly({
+        name: params.source.name,
+        type: params.source.type,
+        storagePath: sourcePath,
+      })
     ) {
       readyVariants.push({
         ...variant,
@@ -536,8 +548,8 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
 
   if (params.generateMissing === false) {
     return {
-      ok: false,
-      fallbackToOriginal: false,
+      ok: true,
+      fallbackToOriginal: true,
       source: {
         ...emptySource,
         size: Number(params.source.size || 0),
@@ -548,7 +560,7 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
         format: variant.format,
         adaptationMode: variant.adaptationMode,
         message:
-          "Cette variante n’est pas encore prête. La préparation en arrière-plan doit être relancée.",
+          "Variante non préparée : la vidéo source compatible sera utilisée sans nouveau réencodage.",
       })),
     };
   }
@@ -638,7 +650,7 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
           key: variant.key,
           format: variant.format,
           adaptationMode: variant.adaptationMode,
-          message: String(error?.stderr || error?.message || "Transformation impossible.").slice(0, 1200),
+          message: compactFfmpegError(error, "Transformation impossible."),
         });
       }
     };
@@ -669,9 +681,9 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
       variants: readyVariants,
       errors: [
         {
-          message: String(
-            error?.message ||
-              "Adaptation automatique indisponible : la vidéo originale sera utilisée.",
+          message: compactFfmpegError(
+            error,
+            "Adaptation automatique indisponible : la vidéo originale sera utilisée.",
           ),
         },
       ],

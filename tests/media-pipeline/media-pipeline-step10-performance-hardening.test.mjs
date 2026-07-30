@@ -70,7 +70,7 @@ test("les dépendances de production médias sont corrigées et verrouillées", 
   assert.equal(pkg.overrides["fast-uri"], "3.1.4");
 });
 
-test("les sources partent en parallèle et déclenchent la préparation anticipée", () => {
+test("les sources image partent en parallèle et les MP4 directs évitent FFmpeg", () => {
   const hook = read(
     "app/dashboard/booster/publier/usePersistentMediaWorkspace.ts",
   );
@@ -81,7 +81,11 @@ test("les sources partent en parallèle et déclenchent la préparation anticip�
   assert.match(hook, /mediaType\s*===\s*"video"\s*\?\s*1\s*:\s*3/);
   assert.match(hook, /Promise\.all\(/);
   assert.match(hook, /queueBackgroundPreparation/);
-  assert.match(hook, /prewarmMediaPublicationWorkspace/);
+  assert.match(
+    hook,
+    /request\.mediaType === "video" &&[\s\S]{0,120}request\.directVideoSource/,
+  );
+  assert.match(hook, /loadMediaPublicationWorkspace\(/);
   assert.match(prepare, /processImageNormalizationJobsForMedia/);
   assert.match(prepare, /limit:\s*120/);
   assert.match(prepare, /window:\s*"10 m"/);

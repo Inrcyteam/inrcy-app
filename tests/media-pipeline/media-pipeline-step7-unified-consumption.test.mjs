@@ -31,8 +31,10 @@ test("le résolveur relit le workspace dans le scope établissement et dans son 
   assert.match(source, /eq\("pro_media_library\.user_id", params\.accountId\)/);
   assert.match(source, /order\("position", \{ ascending: true \}\)/);
   assert.match(source, /item\.uploadStatus !== "uploaded"/);
+  assert.match(source, /const uploadedVideoIsUsable/);
+  assert.match(source, /canPublishVideoSourceDirectly\(/);
   assert.match(source, /item\.processingStatus !== "ready"/);
-  assert.match(source, /item\.publicationStatus !== "ready"/);
+  assert.match(source, /\["ready", "legacy_ready"\]\.includes\(item\.publicationStatus\)/);
   assert.match(source, /eq\("status", "ready"\)/);
 });
 

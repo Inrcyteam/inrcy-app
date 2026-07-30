@@ -8,8 +8,6 @@ import { enforceRateLimit } from "@/lib/rateLimit";
 import { encryptToken, tryDecryptToken } from "@/lib/oauthCrypto";
 import { randomUUID } from "crypto";
 import {
-  INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
-  INR_MEDIA_VIDEO_PUBLISH_MAX_MB_LABEL,
   INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
   INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL,
 } from "@/lib/mediaRules";
@@ -318,8 +316,6 @@ type PersistedVideoAttachment = {
 
 const BOOSTER_MAX_VIDEO_SOURCE_BYTES = INR_MEDIA_VIDEO_SOURCE_MAX_BYTES;
 const BOOSTER_MAX_VIDEO_SOURCE_MB_LABEL = INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL;
-const BOOSTER_MAX_VIDEO_PUBLISH_BYTES = INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES;
-const BOOSTER_MAX_VIDEO_PUBLISH_MB_LABEL = INR_MEDIA_VIDEO_PUBLISH_MAX_MB_LABEL;
 
 function normalizePublicationMediaType(value: unknown): PublicationMediaType {
   return value === "video" ? "video" : "images";
@@ -1828,23 +1824,6 @@ async function publishNowHandler(req: Request) {
 
     const publicationId = randomUUID();
     const publicationVideoByChannel = buildPublicationVideoByChannel();
-    const oversizedPublicationVideo = Object.entries(
-      publicationVideoByChannel,
-    ).find(([, video]) => {
-      const size = Number(
-        (video as PersistedVideoAttachment | null)?.size || 0,
-      );
-      return Number.isFinite(size) && size > BOOSTER_MAX_VIDEO_PUBLISH_BYTES;
-    });
-    if (oversizedPublicationVideo) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: `La vidéo source est acceptée, mais la version prête à publier dépasse encore ${BOOSTER_MAX_VIDEO_PUBLISH_MB_LABEL}. Préparez les formats vidéo avant de publier.`,
-        },
-        { status: 400 },
-      );
-    }
 
     const fallbackTitle = String(post.title || "").trim();
     const fallbackContent = String(post.content || "").trim();

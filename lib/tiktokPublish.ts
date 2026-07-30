@@ -3,6 +3,9 @@ import "server-only";
 import { asRecord, asString } from "@/lib/tsSafe";
 import { fetchTiktokCreatorInfo } from "@/lib/tiktokOAuth";
 import type { TiktokCommercialContent } from "@/lib/tiktokSettings";
+import { buildTikTokVideoUploadPlan } from "@/lib/tiktokUploadPlan";
+
+export { buildTikTokVideoUploadPlan } from "@/lib/tiktokUploadPlan";
 
 export type TiktokPublishStatus = {
   ok: boolean;
@@ -176,44 +179,78 @@ async function postTikTokJson(accessToken: string, url: string, body: unknown) {
   return { ok: true, raw: data, data: asRecord(rec.data) };
 }
 
-async function uploadTikTokVideoChunk({
+async function uploadTikTokVideoChunks({
   uploadUrl,
   videoBuffer,
   contentType,
+  chunkSize,
+  totalChunkCount,
 }: {
   uploadUrl: string;
   videoBuffer: Buffer;
   contentType?: string | null;
+  chunkSize: number;
+  totalChunkCount: number;
 }) {
   const size = videoBuffer.length;
-  if (!uploadUrl || size <= 0) {
+  if (!uploadUrl || size <= 0 || chunkSize <= 0 || totalChunkCount <= 0) {
     return { ok: false, error: "TikTok n'a pas renvoyé d'URL d'upload vidéo.", raw: null as unknown };
   }
 
   const uploadContentType = contentType && contentType.startsWith("video/") ? contentType : "video/mp4";
-  const uploadBody = new Blob([new Uint8Array(videoBuffer)], { type: uploadContentType });
+  const responses: Array<{ status: number; body: string }> = [];
 
-  const res = await fetch(uploadUrl, {
-    method: "PUT",
-    headers: {
-      "Content-Type": uploadContentType,
-      "Content-Length": String(size),
-      "Content-Range": `bytes 0-${size - 1}/${size}`,
-    },
-    body: uploadBody,
-    cache: "no-store",
-  });
+  for (let index = 0; index < totalChunkCount; index += 1) {
+    const firstByte = index * chunkSize;
+    const lastChunk = index === totalChunkCount - 1;
+    const endExclusive = lastChunk
+      ? size
+      : Math.min(size, firstByte + chunkSize);
+    const byteLength = endExclusive - firstByte;
+    const chunk = videoBuffer.subarray(firstByte, endExclusive);
+    const chunkBytes = new Uint8Array(byteLength);
+    chunkBytes.set(chunk);
+    const uploadBody = new Blob([chunkBytes.buffer], {
+      type: uploadContentType,
+    });
 
-  const raw = await res.text().catch(() => "");
-  if (!res.ok) {
-    return {
-      ok: false,
-      error: raw || `TikTok upload vidéo HTTP ${res.status}`,
-      raw,
-    };
+    let lastStatus = 0;
+    let lastBody = "";
+    let uploaded = false;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const res = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: {
+          "Content-Type": uploadContentType,
+          "Content-Length": String(byteLength),
+          "Content-Range": `bytes ${firstByte}-${endExclusive - 1}/${size}`,
+        },
+        body: uploadBody,
+        cache: "no-store",
+      });
+      lastStatus = res.status;
+      lastBody = await res.text().catch(() => "");
+      if (res.ok) {
+        uploaded = true;
+        responses.push({ status: res.status, body: lastBody });
+        break;
+      }
+      if (res.status !== 429 && res.status < 500) break;
+      await sleep(600 * 2 ** attempt);
+    }
+
+    if (!uploaded) {
+      return {
+        ok: false,
+        error:
+          lastBody ||
+          `TikTok upload vidéo HTTP ${lastStatus || "inconnu"} (morceau ${index + 1}/${totalChunkCount})`,
+        raw: responses,
+      };
+    }
   }
 
-  return { ok: true, raw };
+  return { ok: true, raw: responses };
 }
 
 function normalizeStatus(value: unknown) {
@@ -416,13 +453,14 @@ export async function tiktokDirectPostVideoFileUpload({
     };
   }
 
+  const uploadPlan = buildTikTokVideoUploadPlan(videoSize);
   const response = await postTikTokJson(accessToken, "https://open.tiktokapis.com/v2/post/publish/video/init/", {
     post_info: postInfo,
     source_info: {
       source: "FILE_UPLOAD",
       video_size: videoSize,
-      chunk_size: videoSize,
-      total_chunk_count: 1,
+      chunk_size: uploadPlan.chunkSize,
+      total_chunk_count: uploadPlan.totalChunkCount,
     },
   });
 
@@ -431,7 +469,13 @@ export async function tiktokDirectPostVideoFileUpload({
   const data = asRecord(response.data);
   const publishId = asString(data.publish_id);
   const uploadUrl = asString(data.upload_url);
-  const upload = await uploadTikTokVideoChunk({ uploadUrl: uploadUrl || "", videoBuffer, contentType });
+  const upload = await uploadTikTokVideoChunks({
+    uploadUrl: uploadUrl || "",
+    videoBuffer,
+    contentType,
+    chunkSize: uploadPlan.chunkSize,
+    totalChunkCount: uploadPlan.totalChunkCount,
+  });
   if (!upload.ok) {
     return {
       ok: false,

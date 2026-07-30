@@ -17,6 +17,7 @@ import {
   type MediaWorkspaceReference,
 } from "@/lib/mediaWorkspaceClient";
 import { uploadUniversalMediaFile } from "@/lib/universalMediaUploadClient";
+import { canPublishVideoSourceDirectly } from "@/lib/mediaVideoSourceCompatibility";
 
 export type PersistentWorkspaceMediaState = {
   localKey: string;
@@ -71,6 +72,8 @@ export default function usePersistentMediaWorkspace({
   const backgroundPreparationRequestRef = useRef<{
     workspaceId: string;
     operationVersion: number;
+    mediaType: "image" | "video";
+    directVideoSource: boolean;
   } | null>(null);
   const corePreparationReadyRef = useRef(false);
   const activeUploadFailureRef = useRef("");
@@ -139,10 +142,17 @@ export default function usePersistentMediaWorkspace({
   );
 
   const queueBackgroundPreparation = useCallback(
-    (workspaceId: string, operationVersion: number): Promise<void> => {
+    (
+      workspaceId: string,
+      operationVersion: number,
+      mediaType: "image" | "video",
+      directVideoSource: boolean,
+    ): Promise<void> => {
       backgroundPreparationRequestRef.current = {
         workspaceId,
         operationVersion,
+        mediaType,
+        directVideoSource,
       };
       if (backgroundPreparationRunningRef.current) {
         return backgroundPreparationTaskRef.current;
@@ -160,6 +170,25 @@ export default function usePersistentMediaWorkspace({
             }
 
             try {
+              if (
+                request.mediaType === "video" &&
+                request.directVideoSource
+              ) {
+                // Une source MP4/M4V déjà sécurisée est directement publiable.
+                // Ne jamais la télécharger puis la réencoder dans une fonction
+                // Vercel : les variantes restent réservées à une adaptation
+                // explicitement demandée par le pro.
+                corePreparationReadyRef.current = true;
+                const snapshot = await loadMediaPublicationWorkspace({
+                  workspaceId: request.workspaceId,
+                  includeUrls: true,
+                });
+                if (request.operationVersion === operationVersionRef.current) {
+                  onPreparedMediaRef.current?.(snapshot.media);
+                }
+                continue;
+              }
+
               const preparation = await prepareMediaPublicationWorkspace({
                 workspaceId: request.workspaceId,
               });
@@ -183,17 +212,18 @@ export default function usePersistentMediaWorkspace({
               // Les variantes propres aux réseaux sont calculées tant que le pro
               // travaille encore dans la modale. Une erreur ici ne bloque jamais
               // l’upload ni la préparation canonique.
-              void prewarmMediaPublicationWorkspace({
-                workspaceId: request.workspaceId,
-                selectedChannels: selectedChannelsRef.current,
-                imageSettingsByChannel: imageSettingsByChannelRef.current,
-                videoSettingsByChannel: videoSettingsByChannelRef.current,
-              }).catch((error) => {
-                console.warn(
-                  "[media-pipeline] background prewarm skipped",
-                  error,
-                );
-              });
+              if (request.mediaType === "image") {
+                void prewarmMediaPublicationWorkspace({
+                  workspaceId: request.workspaceId,
+                  selectedChannels: selectedChannelsRef.current,
+                  imageSettingsByChannel: imageSettingsByChannelRef.current,
+                }).catch((error) => {
+                  console.warn(
+                    "[media-pipeline] background prewarm skipped",
+                    error,
+                  );
+                });
+              }
             } catch (error) {
               if (!isAbortError(error)) {
                 console.warn(
@@ -337,6 +367,12 @@ export default function usePersistentMediaWorkspace({
               void queueBackgroundPreparation(
                 workspace.workspaceId,
                 operationVersion,
+                mediaType,
+                mediaType === "video" &&
+                  canPublishVideoSourceDirectly({
+                    name: file.name,
+                    type: file.type,
+                  }),
               );
             } catch (error) {
               if (
@@ -381,6 +417,14 @@ export default function usePersistentMediaWorkspace({
         void queueBackgroundPreparation(
           workspace.workspaceId,
           operationVersion,
+          mediaType,
+          mediaType === "video" &&
+            entries.every(({ file }) =>
+              canPublishVideoSourceDirectly({
+                name: file.name,
+                type: file.type,
+              }),
+            ),
         );
       })().catch((error) => {
         if (!isAbortError(error)) {
@@ -422,6 +466,7 @@ export default function usePersistentMediaWorkspace({
     async (settings?: {
       imageSettingsByChannel?: Record<string, unknown>;
       videoSettingsByChannel?: Record<string, unknown>;
+      selectedChannels?: readonly string[];
       deferUntilReady?: boolean;
     }) => {
       if (settings?.imageSettingsByChannel) {
@@ -435,7 +480,8 @@ export default function usePersistentMediaWorkspace({
       if (settings?.deferUntilReady && !corePreparationReadyRef.current) return;
       return await prewarmMediaPublicationWorkspace({
         workspaceId,
-        selectedChannels: selectedChannelsRef.current,
+        selectedChannels:
+          settings?.selectedChannels || selectedChannelsRef.current,
         imageSettingsByChannel: imageSettingsByChannelRef.current,
         videoSettingsByChannel: videoSettingsByChannelRef.current,
       });
@@ -482,8 +528,11 @@ export default function usePersistentMediaWorkspace({
               ) / total,
             )
           : 0;
+        const queuedCount = states.filter(
+          (item) => item.status === "queued",
+        ).length;
         const uploadingCount = states.filter(
-          (item) => item.status === "uploading" || item.status === "queued",
+          (item) => item.status === "uploading",
         ).length;
         const failedCount = states.filter((item) => item.status === "failed")
           .length;
@@ -494,7 +543,14 @@ export default function usePersistentMediaWorkspace({
               averageProgress,
               "Un ou plusieurs médias ont échoué pendant l’envoi.",
             );
-          } else if (uploadingCount > 0) {
+          } else if (queuedCount > 0 && uploadingCount === 0) {
+            onProgress(
+              averageProgress,
+              total > 1
+                ? "Initialisation des envois sécurisés..."
+                : "Initialisation de l’envoi sécurisé...",
+            );
+          } else if (uploadingCount > 0 || queuedCount > 0) {
             onProgress(
               averageProgress,
               total > 1
