@@ -6,6 +6,7 @@ import os from "os";
 import path from "path";
 import ffmpegStaticPath from "ffmpeg-static";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { toExactStorageArrayBuffer } from "@/lib/supabaseStorageBinary";
 import {
   buildVideoTransformPlan,
   getVideoTransformQualityProfile,
@@ -596,7 +597,7 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
         );
         const upload = await supabaseAdmin.storage
           .from(BOOSTER_BUCKET)
-          .upload(storagePath, outputBuffer, {
+          .upload(storagePath, toExactStorageArrayBuffer(outputBuffer), {
             contentType: OUTPUT_CONTENT_TYPE,
             cacheControl: "31536000",
             upsert: true,

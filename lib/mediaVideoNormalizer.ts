@@ -26,6 +26,7 @@ const FFMPEG_PROBE_TIMEOUT_MS = 30_000;
 const FFMPEG_CANONICAL_TIMEOUT_MS = 240_000;
 const FFMPEG_DERIVATIVE_TIMEOUT_MS = 75_000;
 const FFMPEG_STALL_TIMEOUT_MS = 55_000;
+const VIDEO_ULTRAFAST_SOURCE_THRESHOLD_BYTES = 80 * 1024 * 1024;
 
 export type VideoSourceProbe = {
   width: number;
@@ -72,6 +73,7 @@ type CanonicalPreparation = {
   bitrateKbps: number | null;
   attempts: number;
   mode: "stream_copy" | "video_copy_audio_transcode" | "full_transcode";
+  encoderPreset: "ultrafast" | "superfast" | null;
 };
 
 function compactError(error: unknown) {
@@ -360,6 +362,7 @@ async function encodeMp4(params: {
   includeAudio: boolean;
   fps?: number;
   timeoutMs: number;
+  encoderPreset?: "ultrafast" | "superfast";
   onProgress?: (ratio: number) => void;
 }) {
   const initialBitrate = getVideoTargetBitrateKbps({
@@ -371,6 +374,7 @@ async function encodeMp4(params: {
   });
 
   let bitrate = initialBitrate;
+  const encoderPreset = params.encoderPreset || "superfast";
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     const args = [
       "-y",
@@ -390,7 +394,9 @@ async function encodeMp4(params: {
       "-c:v",
       "libx264",
       "-preset",
-      "superfast",
+      encoderPreset,
+      "-threads",
+      "0",
       "-b:v",
       `${bitrate}k`,
       "-maxrate",
@@ -435,6 +441,7 @@ async function encodeMp4(params: {
         bitrateKbps: bitrate,
         attempts: attempt,
         mode: "full_transcode" as const,
+        encoderPreset,
       };
     }
     if (attempt === 2) {
@@ -527,6 +534,7 @@ async function remuxCanonical(params: {
     bitrateKbps: null,
     attempts: 1,
     mode: copyAudio ? "stream_copy" : "video_copy_audio_transcode",
+    encoderPreset: null,
   };
 }
 
@@ -560,6 +568,10 @@ async function prepareCanonical(params: {
     audioBitrateKbps: 128,
     includeAudio: params.source.hasAudio,
     timeoutMs: FFMPEG_CANONICAL_TIMEOUT_MS,
+    encoderPreset:
+      params.sourceSizeBytes >= VIDEO_ULTRAFAST_SOURCE_THRESHOLD_BYTES
+        ? "ultrafast"
+        : "superfast",
     onProgress: params.onProgress,
   });
 }
@@ -878,6 +890,7 @@ export async function normalizeVideoSource(params: {
           bitrate_kbps: canonicalEncoding.bitrateKbps,
           mode: canonicalEncoding.mode,
           attempts: canonicalEncoding.attempts,
+          encoder_preset: canonicalEncoding.encoderPreset,
         },
         metadata: sourceMetadata,
       }),

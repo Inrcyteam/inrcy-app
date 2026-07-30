@@ -847,12 +847,16 @@ export async function uploadFileToPreparedUniversalIntent(
 
   let lastPersistAt = 0;
   let lastPersistedProgress = -1;
+  let progressPersistenceChain: Promise<void> = Promise.resolve();
   const persistProgress = async (percent: number) => {
     if (!options.persistProgress || !intent.mediaId) return;
     const now = Date.now();
     const normalized = clampUniversalUploadProgress(percent);
+    // Le seul événement "uploaded" autoritaire est envoyé après la fin du
+    // protocole et après vidage de cette file. Cela évite qu'un callback 100 %
+    // devance encore le commit Storage et provoque un 409 transitoire.
+    if (normalized >= 100) return;
     if (
-      normalized !== 100 &&
       normalized - lastPersistedProgress < 5 &&
       now - lastPersistAt < PROGRESS_PERSIST_INTERVAL_MS
     ) {
@@ -862,7 +866,7 @@ export async function uploadFileToPreparedUniversalIntent(
     lastPersistedProgress = normalized;
     await postUniversalUploadEvent({
       intent,
-      event: normalized >= 100 ? "uploaded" : "uploading",
+      event: "uploading",
       progress: normalized,
       file,
       signal: options.signal,
@@ -871,7 +875,9 @@ export async function uploadFileToPreparedUniversalIntent(
 
   const emitProgress = (progress: UniversalMediaUploadProgress) => {
     options.onProgress?.(progress);
-    void persistProgress(progress.percent);
+    progressPersistenceChain = progressPersistenceChain
+      .catch(() => undefined)
+      .then(() => persistProgress(progress.percent));
   };
 
   let storageUploadCompleted = false;
@@ -898,6 +904,7 @@ export async function uploadFileToPreparedUniversalIntent(
     }
     storageUploadCompleted = true;
 
+    await progressPersistenceChain.catch(() => undefined);
     await postUniversalUploadEvent({
       intent,
       event: "uploaded",

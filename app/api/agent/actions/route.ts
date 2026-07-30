@@ -7,6 +7,7 @@ import {
 import { requireUser } from "@/lib/requireUser";
 import { buildStorageContentUrl } from "@/lib/storageContentUrl";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { toExactStorageArrayBuffer } from "@/lib/supabaseStorageBinary";
 import { normalizeMailSubject } from "@/lib/mailEncoding";
 import { textToRichMailHtml } from "@/lib/mailRichText";
 import { buildVideoSettingsByChannel } from "@/lib/boosterVideoSettings";
@@ -823,7 +824,7 @@ async function copyAgentMediaToBoosterDraft(args: {
   const storagePath = `${args.userId}/${args.folder}/${randomUUID()}-${baseName}.${extension}`;
   const { error: uploadError } = await supabaseAdmin.storage
     .from("booster")
-    .upload(storagePath, read.buffer, {
+    .upload(storagePath, toExactStorageArrayBuffer(read.buffer), {
       contentType: read.mimeType,
       upsert: false,
       cacheControl: "3600",

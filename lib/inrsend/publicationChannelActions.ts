@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { toExactStorageArrayBuffer } from "@/lib/supabaseStorageBinary";
 import { createSafeStorageSignedUrl } from "@/lib/safeStorageSignedUrl";
 import { tryDecryptToken } from "@/lib/oauthCrypto";
 import { facebookPublishToPage, facebookPublishVideoToPage } from "@/lib/facebookPublish";
@@ -250,7 +251,7 @@ async function uploadPublicationImages(userId: string, newImages: ImagePayload[]
 
     const ext = (img.name || "image").split(".").pop() || "jpg";
     const originalPath = `${userId}/${randomUUID()}.${ext}`;
-    const originalUpload = await supabaseAdmin.storage.from("booster").upload(originalPath, parsed.buffer, {
+    const originalUpload = await supabaseAdmin.storage.from("booster").upload(originalPath, toExactStorageArrayBuffer(parsed.buffer), {
       contentType: parsed.mime || img.type || "application/octet-stream",
       upsert: false,
     });
@@ -276,7 +277,7 @@ async function uploadPublicationImages(userId: string, newImages: ImagePayload[]
 
     const instagramOptimized = await optimizeForInstagram(parsed.buffer);
     const instagramPath = `${userId}/instagram/${randomUUID()}.${instagramOptimized.extension}`;
-    const instagramUpload = await supabaseAdmin.storage.from("booster").upload(instagramPath, instagramOptimized.buffer, {
+    const instagramUpload = await supabaseAdmin.storage.from("booster").upload(instagramPath, toExactStorageArrayBuffer(instagramOptimized.buffer), {
       contentType: instagramOptimized.mime,
       upsert: false,
     });
@@ -292,7 +293,7 @@ async function uploadPublicationImages(userId: string, newImages: ImagePayload[]
       nativeFirst: true,
     });
     const socialPath = `${userId}/social-feed/${randomUUID()}.${socialOptimized.extension}`;
-    const socialUpload = await supabaseAdmin.storage.from("booster").upload(socialPath, socialOptimized.buffer, {
+    const socialUpload = await supabaseAdmin.storage.from("booster").upload(socialPath, toExactStorageArrayBuffer(socialOptimized.buffer), {
       contentType: socialOptimized.mime,
       upsert: false,
     });
@@ -306,7 +307,7 @@ async function uploadPublicationImages(userId: string, newImages: ImagePayload[]
 
     const siteOptimized = await optimizeForSiteCard(parsed.buffer);
     const sitePath = `${userId}/site-card/${randomUUID()}.${siteOptimized.extension}`;
-    const siteUpload = await supabaseAdmin.storage.from("booster").upload(sitePath, siteOptimized.buffer, {
+    const siteUpload = await supabaseAdmin.storage.from("booster").upload(sitePath, toExactStorageArrayBuffer(siteOptimized.buffer), {
       contentType: siteOptimized.mime,
       upsert: false,
     });
@@ -319,7 +320,7 @@ async function uploadPublicationImages(userId: string, newImages: ImagePayload[]
 
     const gmbOptimized = await optimizeForGoogleBusiness(parsed.buffer);
     const gmbPath = `${userId}/gmb/${randomUUID()}.${gmbOptimized.extension}`;
-    const gmbUpload = await supabaseAdmin.storage.from("booster").upload(gmbPath, gmbOptimized.buffer, {
+    const gmbUpload = await supabaseAdmin.storage.from("booster").upload(gmbPath, toExactStorageArrayBuffer(gmbOptimized.buffer), {
       contentType: gmbOptimized.mime,
       upsert: false,
     });

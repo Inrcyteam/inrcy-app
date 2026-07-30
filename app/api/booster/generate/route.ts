@@ -339,7 +339,12 @@ const handler = async (req: Request) => {
     mediaWorkspaceId?: string;
     mediaWorkspaceLoadMs?: number;
     mediaWorkspaceRevision?: number;
-    mediaWorkspaceSource?: "none" | "workspace" | "workspace_cutover_v1" | "legacy_fallback";
+    mediaWorkspaceSource?:
+      | "none"
+      | "workspace"
+      | "workspace_cutover_v1"
+      | "workspace_verified_client_ai_preview"
+      | "legacy_fallback";
     mediaWorkspaceFallbackCode?: string;
   } = {};
   try {
@@ -417,7 +422,11 @@ const handler = async (req: Request) => {
           imagesForAI: [],
           imageCount: 0,
           useImagesForAI: false,
-          videoForAI: null,
+          // Pour une vidéo fraîchement envoyée, les trois captures JPEG et la
+          // transcription peuvent déjà être prêtes dans le navigateur alors
+          // que la compression MP4 canonique continue. Elles ne remplacent
+          // jamais le workspace : celui-ci reste obligatoire et vérifié.
+          videoForAI: mediaType === "video" ? body.videoForAI : null,
         }
       : body;
     const mediaWorkspaceId = String(body.mediaWorkspaceId || "").trim();
@@ -535,6 +544,9 @@ const handler = async (req: Request) => {
         } else if (workspaceMedia.mediaType === "video" && workspaceMedia.videoForAI) {
           mediaType = "video";
           const existingVideo = effectiveBody.videoForAI || {};
+          const existingVideoFrames = Array.isArray(existingVideo.visualFrames)
+            ? existingVideo.visualFrames
+            : [];
           let audioTranscript = cleanVideoTranscript(
             existingVideo.audioTranscript || existingVideo.rawAudioTranscript,
           );
@@ -574,11 +586,15 @@ const handler = async (req: Request) => {
               duration: workspaceMedia.videoForAI.duration,
               source: workspaceMedia.videoForAI.source,
               storagePath: workspaceMedia.videoForAI.storagePath,
-              visualFrames: workspaceMedia.videoForAI.visualFrames,
+              visualFrames: existingVideoFrames.length
+                ? existingVideoFrames
+                : workspaceMedia.videoForAI.visualFrames,
               audioTranscript,
               rawAudioTranscript: audioTranscript,
               analysisPlan: {
-                visualFrames: workspaceMedia.videoForAI.visualFrames.length
+                visualFrames:
+                  existingVideoFrames.length ||
+                  workspaceMedia.videoForAI.visualFrames.length
                   ? "ready"
                   : "pending",
                 audioTranscript: audioTranscript
@@ -607,6 +623,28 @@ const handler = async (req: Request) => {
               : String(workspaceError || "Erreur inconnue"),
         });
         if (strictMediaCutover) {
+          const fallbackCode = timingContext.mediaWorkspaceFallbackCode;
+          const localVideo = effectiveBody.videoForAI;
+          const localFrames = Array.isArray(localVideo?.visualFrames)
+            ? localVideo.visualFrames
+            : [];
+          const localTranscript = cleanVideoTranscript(
+            localVideo?.audioTranscript || localVideo?.rawAudioTranscript,
+          );
+          const canUseVerifiedLocalVideoPreview =
+            mediaType === "video" &&
+            [
+              "workspace_ai_preview_missing",
+              "workspace_video_frames_missing",
+              "workspace_variant_download_failed",
+              "workspace_variant_binary_invalid",
+            ].includes(String(fallbackCode || "")) &&
+            (localFrames.length > 0 || Boolean(localTranscript));
+
+          if (canUseVerifiedLocalVideoPreview) {
+            timingContext.mediaWorkspaceSource =
+              "workspace_verified_client_ai_preview";
+          } else {
           const status =
             workspaceError instanceof MediaWorkspaceConsumptionError
               ? workspaceError.status
@@ -621,6 +659,7 @@ const handler = async (req: Request) => {
             },
             { status },
           );
+          }
         }
       }
     }

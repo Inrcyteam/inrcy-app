@@ -8,6 +8,7 @@ import {
   INR_MEDIA_IMAGE_MAX_MB_LABEL,
 } from "@/lib/mediaRules";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { toExactStorageArrayBuffer } from "@/lib/supabaseStorageBinary";
 
 const MAX_IMAGE_BYTES = INR_MEDIA_IMAGE_MAX_BYTES;
 const DEFAULT_UPLOAD_FOLDER = "booster-prepublish";
@@ -159,7 +160,7 @@ async function uploadToBoosterStorage(
 ) {
   return await supabaseAdmin.storage
     .from("booster")
-    .upload(storagePath, buffer, {
+    .upload(storagePath, toExactStorageArrayBuffer(buffer), {
       contentType: contentType || "application/octet-stream",
       upsert: false,
       cacheControl: "3600",

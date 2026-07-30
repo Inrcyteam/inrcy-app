@@ -15,6 +15,7 @@ import {
 } from "@/lib/mediaRules";
 
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { toExactStorageArrayBuffer } from "@/lib/supabaseStorageBinary";
 import { createSafeStorageSignedUrl } from "@/lib/safeStorageSignedUrl";
 import {
   facebookPublishToPage,
@@ -923,7 +924,7 @@ async function uploadImageSet(
 
       const up = await supabaseAdmin.storage
         .from("booster")
-        .upload(path, parsed.buffer, {
+        .upload(path, toExactStorageArrayBuffer(parsed.buffer), {
           contentType: parsed.mime || img.type || "application/octet-stream",
           upsert: false,
         });
@@ -988,7 +989,7 @@ async function uploadImageSet(
         const igPath = `${userId}/instagram/${randomUUID()}.${optimized.extension}`;
         const igUpload = await supabaseAdmin.storage
           .from("booster")
-          .upload(igPath, optimized.buffer, {
+          .upload(igPath, toExactStorageArrayBuffer(optimized.buffer), {
             contentType: optimized.mime,
             upsert: false,
           });
@@ -1049,7 +1050,7 @@ async function uploadImageSet(
         const socialPath = `${userId}/social-feed/${randomUUID()}.${optimized.extension}`;
         const socialUpload = await supabaseAdmin.storage
           .from("booster")
-          .upload(socialPath, optimized.buffer, {
+          .upload(socialPath, toExactStorageArrayBuffer(optimized.buffer), {
             contentType: optimized.mime,
             upsert: false,
           });
@@ -1108,7 +1109,7 @@ async function uploadImageSet(
         const sitePath = `${userId}/site-card/${randomUUID()}.${optimized.extension}`;
         const siteUpload = await supabaseAdmin.storage
           .from("booster")
-          .upload(sitePath, optimized.buffer, {
+          .upload(sitePath, toExactStorageArrayBuffer(optimized.buffer), {
             contentType: optimized.mime,
             upsert: false,
           });
@@ -1152,7 +1153,7 @@ async function uploadImageSet(
         const gmbPath = `${userId}/gmb/${randomUUID()}.${optimized.extension}`;
         const gmbUpload = await supabaseAdmin.storage
           .from("booster")
-          .upload(gmbPath, optimized.buffer, {
+          .upload(gmbPath, toExactStorageArrayBuffer(optimized.buffer), {
             contentType: optimized.mime,
             upsert: false,
           });

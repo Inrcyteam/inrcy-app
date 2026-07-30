@@ -4,6 +4,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
 import { asRecord, asString } from "@/lib/tsSafe";
 import type { SupabaseLike } from "@/lib/inrsendSignature";
+import { toExactStorageArrayBuffer } from "@/lib/supabaseStorageBinary";
 
 const BUCKET = "booster";
 const MAX_SIZE = 5 * 1024 * 1024;
@@ -43,7 +44,7 @@ export async function POST(req: Request) {
   const path = `signatures/${activeUserId}/${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
   const buffer = Buffer.from(await file.arrayBuffer());
 
-  const upload = await supabaseAdmin.storage.from(BUCKET).upload(path, buffer, {
+  const upload = await supabaseAdmin.storage.from(BUCKET).upload(path, toExactStorageArrayBuffer(buffer), {
     contentType: file.type,
     upsert: false,
     cacheControl: "3600",

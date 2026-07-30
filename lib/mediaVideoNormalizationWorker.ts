@@ -27,6 +27,10 @@ import {
   normalizeVideoSource,
   type NormalizedVideoVariant,
 } from "@/lib/mediaVideoNormalizer";
+import {
+  toExactStorageArrayBuffer,
+  withStorageBinaryMetadata,
+} from "@/lib/supabaseStorageBinary";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 type ClaimedVideoJob = {
@@ -354,7 +358,7 @@ async function uploadVariant(params: {
     }
     const upload = await supabaseAdmin.storage
       .from(bucket)
-      .upload(storagePath, buffer, {
+      .upload(storagePath, toExactStorageArrayBuffer(buffer), {
         upsert: true,
         contentType: params.normalized.mimeType,
         cacheControl: "31536000",
@@ -383,10 +387,10 @@ async function uploadVariant(params: {
       duration_seconds: params.normalized.durationSeconds,
       pipeline_version: VIDEO_NORMALIZATION_PIPELINE_VERSION,
       transform_spec: params.normalized.transformSpec,
-      variant_metadata: {
+      variant_metadata: withStorageBinaryMetadata({
         ...params.normalized.metadata,
         available: params.normalized.available,
-      },
+      }),
       error_code: null,
       error_message: null,
       ready_at: new Date().toISOString(),

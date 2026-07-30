@@ -21,6 +21,10 @@ import {
   type ImageNormalizationPurpose,
 } from "@/lib/mediaImageNormalizationPolicy";
 import { refreshPublicationWorkspaceStatusesForMedia } from "@/lib/mediaWorkspaceServer";
+import {
+  toExactStorageArrayBuffer,
+  withStorageBinaryMetadata,
+} from "@/lib/supabaseStorageBinary";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 type ClaimedImageJob = {
@@ -312,11 +316,15 @@ async function uploadVariant(params: {
   const bucket = "inrcy-pro-media";
   const upload = await supabaseAdmin.storage
     .from(bucket)
-    .upload(storagePath, params.normalized.buffer, {
+    .upload(
+      storagePath,
+      toExactStorageArrayBuffer(params.normalized.buffer),
+      {
       upsert: true,
       contentType: params.normalized.mimeType,
       cacheControl: "31536000",
-    });
+      },
+    );
   if (upload.error) {
     throw new ImageNormalizationError(
       "image_variant_upload_failed",
@@ -338,7 +346,7 @@ async function uploadVariant(params: {
       duration_seconds: null,
       pipeline_version: IMAGE_NORMALIZATION_PIPELINE_VERSION,
       transform_spec: params.normalized.transformSpec,
-      variant_metadata: params.normalized.metadata,
+      variant_metadata: withStorageBinaryMetadata(params.normalized.metadata),
       error_code: null,
       error_message: null,
       ready_at: new Date().toISOString(),

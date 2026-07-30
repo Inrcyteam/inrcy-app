@@ -454,6 +454,7 @@ export default function PublishImagesPanel({
               gap: isMobile ? 8 : 6,
               width: "100%",
               minWidth: 0,
+              overflowX: "hidden",
               alignItems: "center",
               paddingBottom: 2,
             }}

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import sharp from "sharp";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { toExactStorageArrayBuffer } from "@/lib/supabaseStorageBinary";
 import {
   canUseAutomaticCover,
   getBoosterImageDecision,
@@ -170,7 +171,7 @@ async function persistChannelImageVariant(params: {
   const storagePath = `${account}/workspace-channel-images/${media}/${params.hash}.${params.extension}`;
   const uploaded = await supabaseAdmin.storage
     .from(CHANNEL_IMAGE_VARIANT_BUCKET)
-    .upload(storagePath, params.output, {
+    .upload(storagePath, toExactStorageArrayBuffer(params.output), {
       contentType: params.mime,
       cacheControl: "31536000",
       upsert: true,

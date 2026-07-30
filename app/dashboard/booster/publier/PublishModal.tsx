@@ -1776,6 +1776,19 @@ export default function PublishModal({
                 return status === "ready" || status === "legacy_ready";
               });
 
+        if (
+          purpose === "generate" &&
+          expectedMediaType === "video" &&
+          allUploaded &&
+          videoFile
+        ) {
+          // La source est déjà sécurisée dans Storage. Les captures et l'audio
+          // préparés localement suffisent à l'IA ; la compression canonique
+          // continue en arrière-plan pour publier/programmer ensuite.
+          onProgress?.(32, "Vidéo envoyée · analyse locale rapide");
+          return activeWorkspaceId;
+        }
+
         if (!allUploaded) {
           const uploadProgress = hasAllExpectedMedia
             ? Math.round(
@@ -1937,6 +1950,22 @@ export default function PublishModal({
     videoAiContextRef,
     videoFile,
     mediaPipelineCutoverEnabled,
+  ]);
+
+  useEffect(() => {
+    if (!videoFile || videoAiContextRef || !mediaPipelineCutoverEnabled) return;
+
+    // Le nouveau pipeline conserve son upload direct. Seuls trois JPEG légers
+    // et une piste audio locale sont anticipés pour ne plus faire dépendre
+    // Générer du transcodage canonique sur le serveur.
+    void getOrPrepareVideoFramesForAI(videoFile).catch(() => undefined);
+    void getOrPrepareVideoAudioFileForAI(videoFile);
+  }, [
+    getOrPrepareVideoAudioFileForAI,
+    getOrPrepareVideoFramesForAI,
+    mediaPipelineCutoverEnabled,
+    videoAiContextRef,
+    videoFile,
   ]);
 
   useEffect(() => {
@@ -3052,12 +3081,14 @@ export default function PublishModal({
       let videoRawAudioTranscript = "";
       let videoAudioTranscriptStatus: "pending" | "ready" | "unavailable" =
         "pending";
+      const useWorkspaceVideoFastAiPreview =
+        mediaPipelineCutoverEnabled && Boolean(readyMediaWorkspaceId);
 
       if (
         hasVideoForGeneration &&
         videoFile &&
         !videoAiContextRef &&
-        !mediaPipelineCutoverEnabled
+        (!mediaPipelineCutoverEnabled || useWorkspaceVideoFastAiPreview)
       ) {
         setGenerationProgress((current) => Math.max(current, 36));
         setGenerationStage("Analyse audio + images de la vidéo");
@@ -3111,8 +3142,7 @@ export default function PublishModal({
         );
       } else if (
         hasVideoForGeneration &&
-        videoAiContextRef &&
-        !mediaPipelineCutoverEnabled
+        videoAiContextRef
       ) {
         setGenerationProgress((current) => Math.max(current, 60));
         setGenerationStage("Réutilisation de l’analyse vidéo iNrAgent");
@@ -3138,7 +3168,6 @@ export default function PublishModal({
         imageCount: mediaPipelineCutoverEnabled ? 0 : imagesForAI.length,
         imagesForAI: mediaPipelineCutoverEnabled ? [] : imagesForAI,
         videoForAI:
-          !mediaPipelineCutoverEnabled &&
           hasVideoForGeneration &&
           videoGenerationContext
             ? {

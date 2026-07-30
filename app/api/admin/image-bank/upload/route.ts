@@ -5,6 +5,7 @@ import { requireAdminApi } from "@/lib/adminSecurity";
 import { ensureImageBankCategories } from "@/lib/imageBankCategories";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { createSignedUploadUrlWithRetry } from "@/lib/supabaseStorageUpload";
+import { toExactStorageArrayBuffer } from "@/lib/supabaseStorageBinary";
 import {
   INR_MEDIA_ALLOWED_IMAGE_MIME_TYPES,
   INR_MEDIA_IMAGE_FORMATS_LABEL,
@@ -400,7 +401,7 @@ async function handleMultipartUpload(request: NextRequest) {
 
       const upload = await supabaseAdmin.storage
         .from(BUCKET)
-        .upload(storagePath, optimized, {
+        .upload(storagePath, toExactStorageArrayBuffer(optimized), {
           contentType: "image/webp",
           upsert: false,
         });

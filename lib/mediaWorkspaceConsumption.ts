@@ -1,6 +1,18 @@
 import { createHash } from "node:crypto";
 import sharp from "sharp";
+import { normalizeImageBuffer } from "@/lib/mediaImageNormalizer";
+import {
+  IMAGE_NORMALIZATION_PIPELINE_VERSION,
+  IMAGE_NORMALIZATION_PURPOSES,
+  buildImageNormalizationStoragePath,
+  type ImageNormalizationPurpose,
+} from "@/lib/mediaImageNormalizationPolicy";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import {
+  SUPABASE_STORAGE_BINARY_UPLOAD_VERSION,
+  toExactStorageArrayBuffer,
+  withStorageBinaryMetadata,
+} from "@/lib/supabaseStorageBinary";
 import {
   isUnifiedMediaConsumptionEnabled,
   type MediaPipelineUnifiedPurpose,
@@ -52,7 +64,11 @@ type WorkspaceMediaRow = {
   clientMediaKey: string | null;
   sourceMimeType: string;
   sourceSizeBytes: number;
+  sourceBucket: string;
+  sourceStoragePath: string;
+  detectedMimeType: string;
   durationSeconds: number | null;
+  mediaMetadata: Record<string, unknown>;
   mediaSettings: Record<string, unknown>;
   channelSettings: Record<string, unknown>;
 };
@@ -261,6 +277,7 @@ function orientationFromDimensions(width: number | null, height: number | null) 
 async function readWorkspaceGraph(params: {
   accountId: string;
   workspaceId: string;
+  allowProcessingVideoForAi?: boolean;
 }) {
   if (!isUnifiedMediaConsumptionEnabled()) {
     throw new MediaWorkspaceConsumptionError(
@@ -291,7 +308,7 @@ async function readWorkspaceGraph(params: {
   const mediaResult = await supabaseAdmin
     .from("publication_workspace_media")
     .select(
-      "position,media_settings,channel_settings,media_id,pro_media_library!inner(id,user_id,media_type,upload_status,processing_status,publication_status,original_file_name,client_media_key,mime_type,size_bytes,duration_seconds)",
+      "position,media_settings,channel_settings,media_id,pro_media_library!inner(id,user_id,media_type,upload_status,processing_status,publication_status,original_file_name,client_media_key,mime_type,detected_mime_type,size_bytes,duration_seconds,bucket_name,storage_path,media_metadata)",
     )
     .eq("workspace_id", params.workspaceId)
     .eq("pro_media_library.user_id", params.accountId)
@@ -316,11 +333,19 @@ async function readWorkspaceGraph(params: {
         item?.media_type === "video" ? "video/mp4" : "image/jpeg",
       ),
       sourceSizeBytes: Number(item?.size_bytes || 0),
+      sourceBucket: cleanText(item?.bucket_name, PRIVATE_MEDIA_BUCKET),
+      sourceStoragePath: cleanText(item?.storage_path),
+      detectedMimeType: normalizeMime(
+        item?.detected_mime_type,
+        item?.mime_type ||
+          (item?.media_type === "video" ? "video/mp4" : "image/jpeg"),
+      ),
       durationSeconds:
         Number.isFinite(Number(item?.duration_seconds)) &&
         Number(item?.duration_seconds) > 0
           ? Number(item.duration_seconds)
           : null,
+      mediaMetadata: asObject(item?.media_metadata),
       mediaSettings: asObject(row.media_settings),
       channelSettings: asObject(row.channel_settings),
     };
@@ -333,8 +358,12 @@ async function readWorkspaceGraph(params: {
   const invalid = media.find(
     (item) =>
       item.uploadStatus !== "uploaded" ||
-      item.processingStatus !== "ready" ||
-      item.publicationStatus !== "ready",
+      (!(
+        params.allowProcessingVideoForAi &&
+        item.mediaType === "video"
+      ) &&
+        (item.processingStatus !== "ready" ||
+          item.publicationStatus !== "ready")),
   );
   if (invalid) {
     throw new MediaWorkspaceConsumptionError(
@@ -439,8 +468,295 @@ async function downloadVariant(variant: ReadyVariant) {
   };
 }
 
+const imageRepairInFlight = new Map<string, Promise<ReadyVariant[]>>();
+let imageRepairTail: Promise<void> = Promise.resolve();
+
+function hasTrustedBinaryUpload(variant: ReadyVariant) {
+  return (
+    Number(variant.metadata.storage_binary_upload_version || 0) ===
+    SUPABASE_STORAGE_BINARY_UPLOAD_VERSION
+  );
+}
+
+async function markVariantBinaryUploadTrusted(variant: ReadyVariant) {
+  if (hasTrustedBinaryUpload(variant)) return;
+  const metadata = withStorageBinaryMetadata(variant.metadata);
+  const updated = await supabaseAdmin
+    .from("media_variants")
+    .update({ variant_metadata: metadata })
+    .eq("id", variant.id)
+    .eq("media_id", variant.mediaId);
+  if (updated.error) {
+    console.warn("[media-pipeline] binary marker persistence skipped", {
+      variantId: variant.id,
+      message: updated.error.message,
+    });
+    return;
+  }
+  variant.metadata = metadata;
+}
+
+async function assertStoredImageVariantIsValid(variant: ReadyVariant) {
+  if (hasTrustedBinaryUpload(variant)) return;
+
+  const { buffer } = await downloadVariant(variant);
+  if (variant.sizeBytes > 0 && buffer.byteLength !== variant.sizeBytes) {
+    throw new Error(
+      `image_variant_size_mismatch:${buffer.byteLength}:${variant.sizeBytes}`,
+    );
+  }
+
+  const expectedSha256 = cleanText(variant.metadata.output_sha256).toLowerCase();
+  if (
+    expectedSha256.length === 64 &&
+    expectedSha256 !== sha256(buffer)
+  ) {
+    throw new Error("image_variant_hash_mismatch");
+  }
+
+  const metadata = await sharp(buffer, {
+    failOn: "error",
+    limitInputPixels: AI_PROVIDER_SAFE_MAX_INPUT_PIXELS,
+    pages: 1,
+  }).metadata();
+  if (!metadata.width || !metadata.height) {
+    throw new Error("image_variant_dimensions_missing");
+  }
+  await markVariantBinaryUploadTrusted(variant);
+}
+
+async function downloadWorkspaceImageSource(params: {
+  accountId: string;
+  media: WorkspaceMediaRow;
+}) {
+  const bucket = cleanText(params.media.sourceBucket, PRIVATE_MEDIA_BUCKET);
+  const storagePath = cleanText(params.media.sourceStoragePath).replace(
+    /^\/+/,
+    "",
+  );
+  const expectedPrefixes =
+    bucket === "booster"
+      ? [`${params.accountId}/`]
+      : [`users/${params.accountId}/`];
+  if (
+    !bucket ||
+    !storagePath ||
+    !expectedPrefixes.some((prefix) => storagePath.startsWith(prefix)) ||
+    params.media.mediaType !== "image"
+  ) {
+    throw new MediaWorkspaceConsumptionError(
+      "La source image n'est plus accessible pour sa réparation.",
+      "workspace_image_source_invalid",
+      409,
+    );
+  }
+
+  const downloaded = await supabaseAdmin.storage.from(bucket).download(storagePath);
+  if (downloaded.error || !downloaded.data) {
+    throw new MediaWorkspaceConsumptionError(
+      downloaded.error?.message ||
+        "Impossible de relire la source image pour la réparer.",
+      "workspace_image_source_download_failed",
+      503,
+    );
+  }
+  const buffer = Buffer.from(await downloaded.data.arrayBuffer());
+  if (!buffer.byteLength) {
+    throw new MediaWorkspaceConsumptionError(
+      "La source image est vide.",
+      "workspace_image_source_empty",
+      422,
+    );
+  }
+  return buffer;
+}
+
+async function performImageVariantRepair(params: {
+  accountId: string;
+  media: WorkspaceMediaRow;
+  variants: ReadyVariant[];
+}) {
+  const sourceBuffer = await downloadWorkspaceImageSource(params);
+  const normalized = await normalizeImageBuffer({
+    buffer: sourceBuffer,
+    mimeType: params.media.detectedMimeType || params.media.sourceMimeType,
+    originalFileName: params.media.originalFileName,
+  });
+  const repairedAt = new Date().toISOString();
+  const outputs: Record<string, Record<string, unknown>> = {};
+
+  for (const purpose of IMAGE_NORMALIZATION_PURPOSES) {
+    const target = params.variants.find(
+      (variant) =>
+        variant.mediaId === params.media.mediaId &&
+        variant.purpose === purpose,
+    );
+    if (!target) {
+      throw new MediaWorkspaceConsumptionError(
+        `La variante ${purpose} est absente du registre.`,
+        "workspace_image_variant_registry_missing",
+        409,
+      );
+    }
+
+    const output = normalized.variants[purpose];
+    const storagePath = buildImageNormalizationStoragePath({
+      accountId: params.accountId,
+      mediaId: params.media.mediaId,
+      purpose,
+      extension: output.extension,
+    });
+    const variantMetadata = withStorageBinaryMetadata({
+      ...output.metadata,
+      repaired_from_source_at: repairedAt,
+    });
+    const uploaded = await supabaseAdmin.storage
+      .from(PRIVATE_MEDIA_BUCKET)
+      .upload(storagePath, toExactStorageArrayBuffer(output.buffer), {
+        upsert: true,
+        contentType: output.mimeType,
+        cacheControl: "31536000",
+      });
+    if (uploaded.error) {
+      throw new MediaWorkspaceConsumptionError(
+        uploaded.error.message,
+        "workspace_image_repair_upload_failed",
+        503,
+      );
+    }
+
+    const updated = await supabaseAdmin
+      .from("media_variants")
+      .update({
+        status: "ready",
+        bucket_name: PRIVATE_MEDIA_BUCKET,
+        storage_path: storagePath,
+        mime_type: output.mimeType,
+        size_bytes: output.sizeBytes,
+        width: output.width,
+        height: output.height,
+        duration_seconds: null,
+        pipeline_version: IMAGE_NORMALIZATION_PIPELINE_VERSION,
+        transform_spec: output.transformSpec,
+        variant_metadata: variantMetadata,
+        error_code: null,
+        error_message: null,
+        ready_at: repairedAt,
+      })
+      .eq("id", target.id)
+      .eq("account_id", params.accountId)
+      .eq("media_id", params.media.mediaId);
+    if (updated.error) throw updated.error;
+
+    Object.assign(target, {
+      bucket: PRIVATE_MEDIA_BUCKET,
+      storagePath,
+      mimeType: output.mimeType,
+      sizeBytes: output.sizeBytes,
+      width: output.width,
+      height: output.height,
+      durationSeconds: null,
+      metadata: variantMetadata,
+    });
+    outputs[purpose] = {
+      variantId: target.id,
+      bucket: PRIVATE_MEDIA_BUCKET,
+      storagePath,
+      mimeType: output.mimeType,
+      sizeBytes: output.sizeBytes,
+      width: output.width,
+      height: output.height,
+    };
+  }
+
+  const canonical = params.variants.find(
+    (variant) =>
+      variant.mediaId === params.media.mediaId &&
+      variant.purpose === "canonical",
+  );
+  if (!canonical) {
+    throw new MediaWorkspaceConsumptionError(
+      "La variante canonique réparée est introuvable.",
+      "workspace_image_repair_canonical_missing",
+      409,
+    );
+  }
+  const mediaUpdate = await supabaseAdmin
+    .from("pro_media_library")
+    .update({
+      canonical_bucket_name: canonical.bucket,
+      canonical_storage_path: canonical.storagePath,
+      canonical_mime_type: canonical.mimeType,
+      canonical_size_bytes: canonical.sizeBytes,
+      processing_status: "ready",
+      publication_status: "ready",
+      processing_progress: 100,
+      processing_error_code: null,
+      processing_error_message: null,
+      processing_completed_at: repairedAt,
+      pipeline_version: IMAGE_NORMALIZATION_PIPELINE_VERSION,
+      media_metadata: {
+        ...params.media.mediaMetadata,
+        image_binary_repair: {
+          version: SUPABASE_STORAGE_BINARY_UPLOAD_VERSION,
+          repaired_at: repairedAt,
+          source: normalized.source,
+          variants: outputs,
+        },
+      },
+    })
+    .eq("id", params.media.mediaId)
+    .eq("user_id", params.accountId);
+  if (mediaUpdate.error) throw mediaUpdate.error;
+
+  params.media.mediaMetadata = {
+    ...params.media.mediaMetadata,
+    image_binary_repair: {
+      version: SUPABASE_STORAGE_BINARY_UPLOAD_VERSION,
+      repaired_at: repairedAt,
+    },
+  };
+  return params.variants;
+}
+
+async function repairImageVariantsFromSource(params: {
+  accountId: string;
+  media: WorkspaceMediaRow;
+  variants: ReadyVariant[];
+}) {
+  const repairKey = `${params.accountId}:${params.media.mediaId}`;
+  const existing = imageRepairInFlight.get(repairKey);
+  if (existing) return await existing;
+
+  // Une source peut peser 50 Mo et se décompresser en plusieurs centaines de
+  // Mo. Les réparations historiques sont donc sérialisées, alors que les
+  // aperçus déjà sains restent lus en parallèle.
+  const repair = imageRepairTail
+    .catch(() => undefined)
+    .then(() => performImageVariantRepair(params))
+    .finally(() => {
+      imageRepairInFlight.delete(repairKey);
+    });
+  imageRepairTail = repair.then(
+    () => undefined,
+    () => undefined,
+  );
+  imageRepairInFlight.set(repairKey, repair);
+  return await repair;
+}
+
 async function variantToDataUrl(variant: ReadyVariant) {
   const { buffer, mimeType } = await downloadVariant(variant);
+  if (
+    (variant.sizeBytes > 0 && buffer.byteLength !== variant.sizeBytes) ||
+    (mimeType === "image/jpeg" && !isCompleteJpeg(buffer))
+  ) {
+    throw new MediaWorkspaceConsumptionError(
+      "Une capture vidéo stockée est illisible.",
+      "workspace_variant_binary_invalid",
+      422,
+    );
+  }
   if (buffer.byteLength > MAX_AI_IMAGE_BYTES) {
     throw new MediaWorkspaceConsumptionError(
       "L'aperçu IA dépasse le plafond de sécurité.",
@@ -467,6 +783,7 @@ async function imageVariantToProviderSafeDataUrl(variant: ReadyVariant) {
     isCompleteJpeg(buffer) &&
     buffer.byteLength <= MAX_AI_IMAGE_BYTES
   ) {
+    await markVariantBinaryUploadTrusted(variant);
     return `data:image/jpeg;base64,${buffer.toString("base64")}`;
   }
 
@@ -511,12 +828,15 @@ async function imageVariantToProviderSafeDataUrl(variant: ReadyVariant) {
   return `data:image/jpeg;base64,${rendered.toString("base64")}`;
 }
 
-async function resolveProviderSafeImageDataUrl(
-  variants: readonly ReadyVariant[],
-  mediaId: string,
-) {
+async function resolveProviderSafeImageDataUrl(params: {
+  accountId: string;
+  media: WorkspaceMediaRow;
+  variants: ReadyVariant[];
+}) {
   const candidates = ["ai_preview", "canonical", "thumbnail"]
-    .map((purpose) => pickReadyVariant(variants, mediaId, purpose))
+    .map((purpose) =>
+      pickReadyVariant(params.variants, params.media.mediaId, purpose),
+    )
     .filter(
       (variant, index, all): variant is ReadyVariant =>
         Boolean(variant) &&
@@ -534,6 +854,17 @@ async function resolveProviderSafeImageDataUrl(
     } catch (error) {
       lastError = error;
     }
+  }
+
+  try {
+    const repaired = await repairImageVariantsFromSource(params);
+    const repairedPreview =
+      pickReadyVariant(repaired, params.media.mediaId, "ai_preview") ||
+      pickReadyVariant(repaired, params.media.mediaId, "canonical");
+    if (!repairedPreview) throw new Error("image_repair_preview_missing");
+    return await imageVariantToProviderSafeDataUrl(repairedPreview);
+  } catch (repairError) {
+    lastError = repairError;
   }
 
   throw new MediaWorkspaceConsumptionError(
@@ -568,12 +899,26 @@ export async function resolveWorkspacePublicationConsumption(params: {
 
   const mediaType = media[0]?.mediaType === "video" ? "video" : "images";
   if (mediaType === "images") {
-    const images = media.slice(0, MAX_AI_IMAGE_COUNT).map((item) => {
-      const canonical = pickReadyVariant(
+    const images = await mapWithConcurrency(
+      media.slice(0, MAX_AI_IMAGE_COUNT),
+      AI_PROVIDER_SAFE_CONCURRENCY,
+      async (item) => {
+      let canonical = pickReadyVariant(
         variants,
         item.mediaId,
         "canonical",
       );
+      try {
+        if (!canonical) throw new Error("image_canonical_missing");
+        await assertStoredImageVariantIsValid(canonical);
+      } catch {
+        await repairImageVariantsFromSource({
+          accountId: params.accountId,
+          media: item,
+          variants,
+        });
+        canonical = pickReadyVariant(variants, item.mediaId, "canonical");
+      }
       if (!canonical) {
         throw new MediaWorkspaceConsumptionError(
           "La version canonique d'une image n'est pas prête.",
@@ -611,7 +956,8 @@ export async function resolveWorkspacePublicationConsumption(params: {
             }
           : {}),
       };
-    });
+      },
+    );
 
     return {
       source: "media_workspace_v1",
@@ -672,7 +1018,10 @@ export async function resolveWorkspaceAiConsumption(params: {
   accountId: string;
   workspaceId: string;
 }): Promise<WorkspaceAiConsumption> {
-  const graph = await readWorkspaceGraph(params);
+  const graph = await readWorkspaceGraph({
+    ...params,
+    allowProcessingVideoForAi: true,
+  });
   const { workspace, media, variants } = graph;
 
   if (!media.length) {
@@ -696,10 +1045,11 @@ export async function resolveWorkspaceAiConsumption(params: {
         return {
           name: item.originalFileName || `image-${item.position + 1}.jpg`,
           type: "image/jpeg",
-          dataUrl: await resolveProviderSafeImageDataUrl(
+          dataUrl: await resolveProviderSafeImageDataUrl({
+            accountId: params.accountId,
+            media: item,
             variants,
-            item.mediaId,
-          ),
+          }),
           mediaId: item.mediaId,
           position: item.position,
         };

@@ -256,8 +256,12 @@ async function normalizeWithSharp(
   };
 }
 
-async function convertHeicSource(inputPath: string) {
-  const input = await readFile(inputPath);
+async function readSharpInput(input: SharpInput) {
+  return typeof input === "string" ? await readFile(input) : input;
+}
+
+async function convertHeicSource(source: SharpInput) {
+  const input = await readSharpInput(source);
   if (input.byteLength > IMAGE_NORMALIZATION_HEIC_FALLBACK_MAX_BYTES) {
     throw new Error("heic_fallback_source_too_large");
   }
@@ -271,8 +275,8 @@ async function convertHeicSource(inputPath: string) {
   return buffer;
 }
 
-async function convertBmpSource(inputPath: string) {
-  const input = await readFile(inputPath);
+async function convertBmpSource(source: SharpInput) {
+  const input = await readSharpInput(source);
   if (input.byteLength > IMAGE_NORMALIZATION_BMP_FALLBACK_MAX_BYTES) {
     throw new Error("bmp_fallback_source_too_large");
   }
@@ -344,22 +348,51 @@ async function convertBmpSource(inputPath: string) {
     .toBuffer();
 }
 
+async function normalizeImageInput(params: {
+  input: SharpInput;
+  mimeType: string;
+  originalFileName?: string | null;
+}) {
+  try {
+    return await normalizeWithSharp(params.input, "sharp");
+  } catch (sharpError) {
+    if (isHeicMimeOrName(params.mimeType, params.originalFileName || "")) {
+      const converted = await convertHeicSource(params.input);
+      return await normalizeWithSharp(converted, "heic-convert");
+    }
+    if (isBmpMimeOrName(params.mimeType, params.originalFileName || "")) {
+      const converted = await convertBmpSource(params.input);
+      return await normalizeWithSharp(converted, "bmp-js");
+    }
+    throw sharpError;
+  }
+}
+
 export async function normalizeImageSource(params: {
   inputPath: string;
   mimeType: string;
   originalFileName?: string | null;
 }) {
-  try {
-    return await normalizeWithSharp(params.inputPath, "sharp");
-  } catch (sharpError) {
-    if (isHeicMimeOrName(params.mimeType, params.originalFileName || "")) {
-      const converted = await convertHeicSource(params.inputPath);
-      return await normalizeWithSharp(converted, "heic-convert");
-    }
-    if (isBmpMimeOrName(params.mimeType, params.originalFileName || "")) {
-      const converted = await convertBmpSource(params.inputPath);
-      return await normalizeWithSharp(converted, "bmp-js");
-    }
-    throw sharpError;
-  }
+  return await normalizeImageInput({
+    input: params.inputPath,
+    mimeType: params.mimeType,
+    originalFileName: params.originalFileName,
+  });
+}
+
+/**
+ * Même normalisation que le worker, sans fichier temporaire. Elle sert au
+ * contrôle/rattrapage à la lecture des variantes créées avant le correctif
+ * binaire.
+ */
+export async function normalizeImageBuffer(params: {
+  buffer: Buffer;
+  mimeType: string;
+  originalFileName?: string | null;
+}) {
+  return await normalizeImageInput({
+    input: params.buffer,
+    mimeType: params.mimeType,
+    originalFileName: params.originalFileName,
+  });
 }

@@ -4,6 +4,7 @@ import { asRecord, asString } from "@/lib/tsSafe";
 import { publishPinterestVideoWithProtocol } from "@/lib/pinterestVideoProtocol";
 import { buildPinterestImageMediaSource } from "@/lib/pinterestImagePinPayload";
 import { INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES } from "@/lib/mediaRules";
+import { toExactStorageArrayBuffer } from "@/lib/supabaseStorageBinary";
 import { randomUUID } from "crypto";
 import { execFile } from "child_process";
 import { promisify } from "util";
@@ -281,7 +282,7 @@ async function uploadPinterestCover(params: {
   const storagePath = `${safeUserId}/pinterest-video-covers/${randomUUID()}.jpg`;
   const { error } = await supabaseAdmin.storage
     .from(PINTEREST_COVER_BUCKET)
-    .upload(storagePath, params.coverBuffer, {
+    .upload(storagePath, toExactStorageArrayBuffer(params.coverBuffer), {
       contentType: "image/jpeg",
       cacheControl: "31536000",
       upsert: false,

@@ -9,6 +9,7 @@ import {
   type InrAgentVideoPreparationSource,
 } from "@/lib/inrAgentVideoPreparation";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { toExactStorageArrayBuffer } from "@/lib/supabaseStorageBinary";
 import type { VideoAiContextReference } from "@/lib/videoAiContextReference";
 
 const DEFAULT_BUCKET = "inrcy-pro-media";
@@ -276,7 +277,7 @@ async function persistPreparation(args: {
       const path = newFramePaths[index];
       const { error } = await supabaseAdmin.storage.from(bucket).upload(
         path,
-        frameBuffers[index],
+        toExactStorageArrayBuffer(frameBuffers[index]),
         {
           contentType: "image/jpeg",
           cacheControl: "31536000",

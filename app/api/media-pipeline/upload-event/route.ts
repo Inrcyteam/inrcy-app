@@ -45,30 +45,44 @@ async function verifyStoredUpload(params: {
   const folder = segments.join("/");
   if (!params.bucket || !objectName || params.expectedSize <= 0) return false;
 
-  const listed = await supabaseAdmin.storage.from(params.bucket).list(folder, {
-    limit: 20,
-    search: objectName,
-  });
-  if (listed.error) throw listed.error;
-  const stored = (listed.data || []).find(
-    (entry: any) => String(entry?.name || "") === objectName,
-  ) as any;
-  const metadata =
-    stored?.metadata && typeof stored.metadata === "object"
-      ? stored.metadata
-      : {};
-  const storedSize = Number(
-    metadata.size ??
-      metadata.contentLength ??
-      metadata.content_length ??
-      stored?.size ??
-      0,
-  );
-  return (
-    Boolean(stored) &&
-    Number.isFinite(storedSize) &&
-    storedSize === params.expectedSize
-  );
+  const retryDelays = [0, 250, 650, 1_200];
+  let lastError: unknown = null;
+  for (const delayMs of retryDelays) {
+    if (delayMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+    }
+    const listed = await supabaseAdmin.storage.from(params.bucket).list(folder, {
+      limit: 20,
+      search: objectName,
+    });
+    if (listed.error) {
+      lastError = listed.error;
+      continue;
+    }
+    const stored = (listed.data || []).find(
+      (entry: any) => String(entry?.name || "") === objectName,
+    ) as any;
+    const metadata =
+      stored?.metadata && typeof stored.metadata === "object"
+        ? stored.metadata
+        : {};
+    const storedSize = Number(
+      metadata.size ??
+        metadata.contentLength ??
+        metadata.content_length ??
+        stored?.size ??
+        0,
+    );
+    if (
+      Boolean(stored) &&
+      Number.isFinite(storedSize) &&
+      storedSize === params.expectedSize
+    ) {
+      return true;
+    }
+  }
+  if (lastError) throw lastError;
+  return false;
 }
 
 export async function POST(request: Request) {

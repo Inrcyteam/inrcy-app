@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { enforceRateLimit } from "@/lib/rateLimit";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { toExactStorageArrayBuffer } from "@/lib/supabaseStorageBinary";
 import {
   INR_MEDIA_VIDEO_FORMATS_LABEL,
   INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
@@ -184,7 +185,7 @@ async function uploadToBoosterStorage(
 ) {
   return await supabaseAdmin.storage
     .from("booster")
-    .upload(storagePath, buffer, {
+    .upload(storagePath, toExactStorageArrayBuffer(buffer), {
       contentType: contentType || "application/octet-stream",
       upsert: false,
       cacheControl: "3600",
