@@ -186,16 +186,9 @@ export default function usePersistentMediaWorkspace({
                 });
                 if (request.operationVersion === operationVersionRef.current) {
                   onPreparedMediaRef.current?.(snapshot.media);
-                  void prewarmMediaPublicationWorkspace({
-                    workspaceId: request.workspaceId,
-                    selectedChannels: selectedChannelsRef.current,
-                    videoSettingsByChannel: videoSettingsByChannelRef.current,
-                  }).catch((error) => {
-                    console.warn(
-                      "[media-pipeline] background video prewarm skipped",
-                      error,
-                    );
-                  });
+                  // La source compatible reste immédiatement publiable.
+                  // Les variantes vidéo ne sont générées que sur action explicite
+                  // « Appliquer ce format », jamais silencieusement en arrière-plan.
                 }
                 continue;
               }
@@ -223,21 +216,14 @@ export default function usePersistentMediaWorkspace({
               // Les variantes propres aux réseaux sont calculées tant que le pro
               // travaille encore dans la modale. Une erreur ici ne bloque jamais
               // l’upload ni la préparation canonique.
-              if (request.mediaType === "image" || request.mediaType === "video") {
+              if (request.mediaType === "image") {
                 void prewarmMediaPublicationWorkspace({
                   workspaceId: request.workspaceId,
                   selectedChannels: selectedChannelsRef.current,
-                  imageSettingsByChannel:
-                    request.mediaType === "image"
-                      ? imageSettingsByChannelRef.current
-                      : undefined,
-                  videoSettingsByChannel:
-                    request.mediaType === "video"
-                      ? videoSettingsByChannelRef.current
-                      : undefined,
+                  imageSettingsByChannel: imageSettingsByChannelRef.current,
                 }).catch((error) => {
                   console.warn(
-                    "[media-pipeline] background prewarm skipped",
+                    "[media-pipeline] background image prewarm skipped",
                     error,
                   );
                 });
@@ -490,6 +476,8 @@ export default function usePersistentMediaWorkspace({
       videoSettingsByChannel?: Record<string, unknown>;
       selectedChannels?: readonly string[];
       deferUntilReady?: boolean;
+      generateMissingVideoVariants?: boolean;
+      allowOriginalVideoFallback?: boolean;
     }) => {
       if (settings?.imageSettingsByChannel) {
         imageSettingsByChannelRef.current = settings.imageSettingsByChannel;
@@ -506,6 +494,10 @@ export default function usePersistentMediaWorkspace({
           settings?.selectedChannels || selectedChannelsRef.current,
         imageSettingsByChannel: imageSettingsByChannelRef.current,
         videoSettingsByChannel: videoSettingsByChannelRef.current,
+        generateMissingVideoVariants:
+          settings?.generateMissingVideoVariants,
+        allowOriginalVideoFallback:
+          settings?.allowOriginalVideoFallback,
       });
     },
     [enabled],

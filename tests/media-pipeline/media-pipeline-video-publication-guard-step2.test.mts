@@ -116,8 +116,9 @@ test("les uploads ne forcent plus une compression globale au-dessus de 40 Mo", a
   for (const source of [intent, event, workspace, hook]) {
     assert.match(source, /maxBytes:\s*INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES/);
   }
-  assert.match(hook, /background video prewarm skipped/);
-  assert.match(
+  assert.doesNotMatch(hook, /background video prewarm skipped/);
+  assert.match(hook, /request\.mediaType === "image"/);
+  assert.doesNotMatch(
     hook,
     /request\.mediaType === "image" \|\| request\.mediaType === "video"/,
   );
@@ -138,8 +139,8 @@ test("la préparation réseau et la validation par canal précèdent la publicat
   const variants = await readSource("lib/boosterVideoVariantServer.ts");
 
   assert.match(modal, /async function ensureCutoverVideoVariantsReady/);
-  assert.match(modal, /Préparation et adaptation de la vidéo pour les réseaux/);
-  assert.match(modal, /Préparation et adaptation de la vidéo pour la programmation/);
+  assert.match(modal, /Vérification de la vidéo pour les réseaux/);
+  assert.match(modal, /Vérification de la vidéo pour la programmation/);
   assert.match(controller, /validateVideoPublicationForChannel/);
   assert.match(prewarm, /invalidSignatures/);
   assert.match(prewarm, /invalidChannels/);

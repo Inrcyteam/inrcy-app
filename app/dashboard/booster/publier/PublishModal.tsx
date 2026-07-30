@@ -2036,6 +2036,10 @@ export default function PublishModal({
         { format: VideoFormat; adaptationMode: VideoAdaptationMode }
       >
     >,
+    options?: {
+      generateMissingVideoVariants?: boolean;
+      allowOriginalVideoFallback?: boolean;
+    },
   ) {
     if (!mediaPipelineCutoverEnabled || !channels.length) return null;
 
@@ -2048,6 +2052,10 @@ export default function PublishModal({
     const result = await prewarmPersistentMediaWorkspace({
       selectedChannels: channels,
       videoSettingsByChannel: settingsByChannel as Record<string, unknown>,
+      generateMissingVideoVariants:
+        options?.generateMissingVideoVariants !== false,
+      allowOriginalVideoFallback:
+        options?.allowOriginalVideoFallback === true,
     });
     if (
       !result ||
@@ -2091,7 +2099,10 @@ export default function PublishModal({
     }));
 
     try {
-      await ensureCutoverVideoVariantsReady(channels, settingsByChannel);
+      await ensureCutoverVideoVariantsReady(channels, settingsByChannel, {
+        generateMissingVideoVariants: true,
+        allowOriginalVideoFallback: false,
+      });
 
       setVideoVariantPreparationByChannel((prev) => ({
         ...prev,
@@ -4145,14 +4156,18 @@ export default function PublishModal({
         );
         setPublishProgress((current) => Math.max(current, 43));
         setPublishProgressLabel(
-          "Préparation et adaptation de la vidéo pour les réseaux...",
+          "Vérification de la vidéo pour les réseaux...",
         );
         await ensureCutoverVideoVariantsReady(
           videoChannels,
           videoSettingsByChannel,
+          {
+            generateMissingVideoVariants: false,
+            allowOriginalVideoFallback: true,
+          },
         );
         setPublishProgress((current) => Math.max(current, 57));
-        setPublishProgressLabel("Vidéo optimisée et prête à publier.");
+        setPublishProgressLabel("Vidéo compatible et prête à publier.");
       }
 
       const emptyChannelImages = {} as ChannelImagePayload;
@@ -4775,14 +4790,18 @@ export default function PublishModal({
         );
         setPublishProgress((current) => Math.max(current, 43));
         setPublishProgressLabel(
-          "Préparation et adaptation de la vidéo pour la programmation...",
+          "Vérification de la vidéo pour la programmation...",
         );
         await ensureCutoverVideoVariantsReady(
           videoChannels,
           videoSettingsByChannel,
+          {
+            generateMissingVideoVariants: false,
+            allowOriginalVideoFallback: true,
+          },
         );
         setPublishProgress((current) => Math.max(current, 57));
-        setPublishProgressLabel("Vidéo optimisée et prête à programmer.");
+        setPublishProgressLabel("Vidéo compatible et prête à programmer.");
       }
 
       const emptyChannelImages = {} as ChannelImagePayload;

@@ -135,7 +135,14 @@ test("les variantes par canal sont persistantes et la publication reste légère
   assert.match(videos, /purpose:\s*"channel_publish"/);
   assert.match(videos, /workspace-channel-videos/);
   assert.match(videos, /generateMissing\s*===\s*false/);
-  assert.match(prewarm, /generateMissing:\s*true/);
+  assert.match(
+    prewarm,
+    /generateMissing:\s*generateMissingVideoVariants/,
+  );
+  assert.match(
+    prewarm,
+    /body\?\.generateMissingVideoVariants\s*!==\s*false/,
+  );
   assert.match(publish, /generateMissing:\s*false/);
   assert.match(publish, /img\.publicationReady\s*===\s*true/);
   assert.match(publish, /strictMediaCutover\s*\?\s*\[\]\s*:\s*images/);

@@ -2471,17 +2471,15 @@ export function syncChannelImageEditors(params: {
     const nextImageKeys = (prevState?.imageKeys || []).filter((key) =>
       imageKeys.includes(key),
     );
-    const autoSelectedNewKeys =
-      channel === "gmb" || !channelSupportsImages(channel)
-        ? []
-        : imageKeys.filter((key) => !nextImageKeys.includes(key));
-    const mergedKeys = !channelSupportsImages(channel)
+    const supportsImages = channelSupportsImages(channel);
+    const autoSelectedNewKeys = supportsImages
+      ? imageKeys.filter((key) => !nextImageKeys.includes(key))
+      : [];
+    const mergedKeys = !supportsImages
       ? []
       : (nextImageKeys.length
           ? [...nextImageKeys, ...autoSelectedNewKeys]
-          : channel === "gmb"
-            ? []
-            : [...imageKeys]
+          : [...imageKeys]
         ).filter((key, index, arr) => arr.indexOf(key) === index);
     const transforms: Record<string, ImageTransform> = {};
     if (channelSupportsImages(channel)) {

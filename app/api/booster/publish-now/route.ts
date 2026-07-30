@@ -1737,12 +1737,21 @@ async function publishNowHandler(req: Request) {
           (candidate) => candidate.signature === signature,
         );
         if (!variant?.publicUrl || !variant?.storagePath) {
+          const sourceValidation = validateVideoPublicationForChannel({
+            channel: request.channel,
+            name: publicationVideo?.name || "video.mp4",
+            type: publicationVideo?.type,
+            storagePath: publicationVideo?.storagePath,
+            sizeBytes: publicationVideo?.size,
+            durationSeconds: publicationVideo?.duration,
+          });
+          if (sourceValidation.ok) return [];
           return [
             {
               channel: request.channel,
               signature,
-              reason: !variant ? "variant_missing" : "variant_storage_missing",
-              message: "La variante vidéo demandée n’est pas encore prête.",
+              reason: sourceValidation.reason,
+              message: sourceValidation.message,
             },
           ];
         }
@@ -1754,18 +1763,26 @@ async function publishNowHandler(req: Request) {
           sizeBytes: variant.size,
           durationSeconds: variant.duration ?? publicationVideo?.duration,
         });
-        return validation.ok
-          ? []
-          : [
-              {
-                channel: request.channel,
-                signature,
-                reason: validation.reason,
-                message: validation.message,
-              },
-            ];
+        if (validation.ok) return [];
+        const sourceValidation = validateVideoPublicationForChannel({
+          channel: request.channel,
+          name: publicationVideo?.name || "video.mp4",
+          type: publicationVideo?.type,
+          storagePath: publicationVideo?.storagePath,
+          sizeBytes: publicationVideo?.size,
+          durationSeconds: publicationVideo?.duration,
+        });
+        if (sourceValidation.ok) return [];
+        return [
+          {
+            channel: request.channel,
+            signature,
+            reason: validation.reason,
+            message: validation.message,
+          },
+        ];
       });
-      if (!variantResult.ok || invalidVideoChannels.length > 0) {
+      if (invalidVideoChannels.length > 0) {
         return NextResponse.json(
           {
             ok: false,
@@ -1793,8 +1810,27 @@ async function publishNowHandler(req: Request) {
         settings.format,
         settings.adaptationMode,
       );
-      if (!variant?.publicUrl) {
-        return strictMediaCutover ? null : publicationVideo;
+      const sourceValidation = validateVideoPublicationForChannel({
+        channel,
+        name: publicationVideo.name,
+        type: publicationVideo.type,
+        storagePath: publicationVideo.storagePath,
+        sizeBytes: publicationVideo.size,
+        durationSeconds: publicationVideo.duration,
+      });
+      if (!variant?.publicUrl || !variant?.storagePath) {
+        return sourceValidation.ok ? publicationVideo : null;
+      }
+      const variantValidation = validateVideoPublicationForChannel({
+        channel,
+        name: variant.name || `video-${channel}.mp4`,
+        type: variant.contentType,
+        storagePath: variant.storagePath,
+        sizeBytes: variant.size,
+        durationSeconds: variant.duration ?? publicationVideo.duration,
+      });
+      if (!variantValidation.ok) {
+        return sourceValidation.ok ? publicationVideo : null;
       }
 
       return {

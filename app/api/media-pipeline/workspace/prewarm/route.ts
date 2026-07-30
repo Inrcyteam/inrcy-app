@@ -119,6 +119,10 @@ export async function POST(request: Request) {
 
     if (consumption.mediaType === "video" && consumption.video) {
       const video = consumption.video;
+      const generateMissingVideoVariants =
+        body?.generateMissingVideoVariants !== false;
+      const allowOriginalVideoFallback =
+        body?.allowOriginalVideoFallback === true;
       const settings = buildVideoSettingsByChannel({
         channels: selectedChannels,
         videoSettingsByChannel: body?.videoSettingsByChannel,
@@ -139,7 +143,7 @@ export async function POST(request: Request) {
         accountId: activeUserId,
         workspaceId,
         mediaId: video.mediaId,
-        generateMissing: true,
+        generateMissing: generateMissingVideoVariants,
         source: {
           ...video,
           publicUrl: signedSourceUrl,
@@ -166,12 +170,25 @@ export async function POST(request: Request) {
           (candidate) => candidate.signature === signature,
         );
         if (!variant?.publicUrl || !variant?.storagePath) {
+          const sourceValidation = validateVideoPublicationForChannel({
+            channel: request.channel,
+            name: video.name,
+            type: video.type,
+            storagePath: video.storagePath,
+            sizeBytes: video.size,
+            durationSeconds: video.duration,
+          });
+          if (allowOriginalVideoFallback && sourceValidation.ok) return [];
           return [
             {
               channel: request.channel,
               signature,
-              reason: "variant_missing",
-              message: "La variante vidéo demandée n’est pas encore prête.",
+              reason: sourceValidation.ok
+                ? "variant_missing"
+                : sourceValidation.reason,
+              message: sourceValidation.ok
+                ? "La variante vidéo demandée n’est pas encore prête."
+                : sourceValidation.message,
             },
           ];
         }
@@ -183,21 +200,62 @@ export async function POST(request: Request) {
           sizeBytes: variant.size,
           durationSeconds: variant.duration ?? video.duration,
         });
-        return validation.ok
-          ? []
-          : [
-              {
-                channel: request.channel,
-                signature,
-                reason: validation.reason,
-                message: validation.message,
-              },
-            ];
+        if (validation.ok) return [];
+        const sourceValidation = validateVideoPublicationForChannel({
+          channel: request.channel,
+          name: video.name,
+          type: video.type,
+          storagePath: video.storagePath,
+          sizeBytes: video.size,
+          durationSeconds: video.duration,
+        });
+        if (allowOriginalVideoFallback && sourceValidation.ok) return [];
+        return [
+          {
+            channel: request.channel,
+            signature,
+            reason: validation.reason,
+            message: validation.message,
+          },
+        ];
       });
       const invalidSignatures = Array.from(
         new Set(invalidChannels.map((item) => item.signature)),
       );
-      const ready = prepared.ok && invalidChannels.length === 0;
+      const fallbackOriginalChannels = allowOriginalVideoFallback
+        ? requestedVariants
+            .filter((request) => {
+              const signature = buildVideoTransformSignature(
+                request.format || "original",
+                request.adaptationMode || "safe_blur",
+              );
+              const variant = prepared.variants.find(
+                (candidate) => candidate.signature === signature,
+              );
+              const variantValidation =
+                variant?.publicUrl && variant?.storagePath
+                  ? validateVideoPublicationForChannel({
+                      channel: request.channel,
+                      name: variant.name || `video-${request.channel}.mp4`,
+                      type: variant.contentType,
+                      storagePath: variant.storagePath,
+                      sizeBytes: variant.size,
+                      durationSeconds: variant.duration ?? video.duration,
+                    })
+                  : null;
+              if (variantValidation?.ok) return false;
+              return validateVideoPublicationForChannel({
+                channel: request.channel,
+                name: video.name,
+                type: video.type,
+                storagePath: video.storagePath,
+                sizeBytes: video.size,
+                durationSeconds: video.duration,
+              }).ok;
+            })
+            .map((request) => request.channel)
+        : [];
+      const ready = invalidChannels.length === 0;
       return NextResponse.json({
         ok: ready,
         workspaceId,
@@ -207,6 +265,7 @@ export async function POST(request: Request) {
         requiredVariants: requiredSignatures.length,
         invalidSignatures,
         invalidChannels,
+        fallbackOriginalChannels,
         errors: prepared.errors,
       });
     }

@@ -24,6 +24,19 @@ test("Google Business keeps up to five images through Booster publication", asyn
   assert.match(googleBusiness, /videoUrls[^\n]*slice\(0, 1\)/);
 });
 
+test("Google Business selects every uploaded image by default like the other channels", async () => {
+  const shared = await read(
+    "app/dashboard/booster/publier/publishModal.shared.tsx",
+  );
+
+  assert.match(shared, /const supportsImages = channelSupportsImages\(channel\)/);
+  assert.doesNotMatch(
+    shared,
+    /channel === "gmb" \|\| !channelSupportsImages\(channel\)/,
+  );
+  assert.doesNotMatch(shared, /channel === "gmb"\s*\? \[\]\s*:\s*\[\.\.\.imageKeys\]/);
+});
+
 test("Booster no longer shows Google Business single-photo warnings", async () => {
   const [panel, modal, warningModals, shared] = await Promise.all([
     read("app/dashboard/booster/publier/components/PublishImagesPanel.tsx"),

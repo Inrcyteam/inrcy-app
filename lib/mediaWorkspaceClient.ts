@@ -274,6 +274,8 @@ export async function prewarmMediaPublicationWorkspace(params: {
   selectedChannels?: readonly string[];
   imageSettingsByChannel?: Record<string, unknown>;
   videoSettingsByChannel?: Record<string, unknown>;
+  generateMissingVideoVariants?: boolean;
+  allowOriginalVideoFallback?: boolean;
   signal?: AbortSignal;
 }) {
   const response = await fetch("/api/media-pipeline/workspace/prewarm", {
@@ -284,6 +286,10 @@ export async function prewarmMediaPublicationWorkspace(params: {
       selectedChannels: params.selectedChannels || [],
       imageSettingsByChannel: params.imageSettingsByChannel || {},
       videoSettingsByChannel: params.videoSettingsByChannel || {},
+      generateMissingVideoVariants:
+        params.generateMissingVideoVariants !== false,
+      allowOriginalVideoFallback:
+        params.allowOriginalVideoFallback === true,
     }),
     signal: params.signal,
     cache: "no-store",
