@@ -13,6 +13,7 @@ import { getClientUserFacingErrorMessage } from "@/lib/userFacingErrors";
 import { confirmInrcy, promptInrcy } from "@/lib/inrcyDialog";
 import {
   INR_MEDIA_ALLOWED_IMAGE_MIME_TYPES,
+  INR_MEDIA_IMAGE_FORMATS_LABEL,
   INR_MEDIA_IMAGE_MAX_BYTES,
   INR_MEDIA_IMAGE_MAX_MB_LABEL,
   INR_MEDIA_UPLOAD_BATCH_SIZE,
@@ -203,7 +204,7 @@ function validateUploadFiles(selectedFiles: File[]) {
   for (const file of selectedFiles) {
     if (!ALLOWED_IMAGE_TYPES.has(file.type)) {
       throw new Error(
-        `${formatUploadName(file)} : format non autorisé. Utilise JPG, PNG ou WebP.`,
+        `${formatUploadName(file)} : format non autorisé. Formats acceptés : ${INR_MEDIA_IMAGE_FORMATS_LABEL}.`,
       );
     }
     if (file.size > MAX_IMAGE_BYTES) {
@@ -853,17 +854,17 @@ export default function ImageBankAdminClient() {
                 key={fileInputKey}
                 className={styles.fileInput}
                 type="file"
-                accept="image/jpeg,image/png,image/webp"
+                accept={INR_MEDIA_ALLOWED_IMAGE_MIME_TYPES.join(",")}
                 multiple
                 onChange={(event) => setFiles(event.target.files)}
               />
               <small className={styles.helper}>
                 {files?.length
                   ? `${files.length} fichier(s) sélectionné(s)`
-                  : "JPEG, PNG ou WebP · import multiple autorisé"}
+                  : `${INR_MEDIA_IMAGE_FORMATS_LABEL} · import multiple autorisé`}
               </small>
               <small className={styles.uploadRules}>
-                JPG, PNG ou WebP · {MAX_IMAGE_MB_LABEL} maximum par image ·
+                {INR_MEDIA_IMAGE_FORMATS_LABEL} · {MAX_IMAGE_MB_LABEL} maximum par image ·
                 optimisation WebP automatique avant import.
               </small>
             </label>

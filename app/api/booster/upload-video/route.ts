@@ -5,6 +5,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { enforceRateLimit } from "@/lib/rateLimit";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import {
+  INR_MEDIA_VIDEO_FORMATS_LABEL,
   INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
   INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL,
 } from "@/lib/mediaRules";
@@ -224,8 +225,7 @@ export async function POST(req: Request) {
     if (!isAllowedVideoFile(file)) {
       return NextResponse.json(
         {
-          error:
-            "Format vidéo non autorisé. Formats acceptés : MP4/M4V, MOV ou WebM.",
+          error: `Format vidéo non autorisé. Formats acceptés : ${INR_MEDIA_VIDEO_FORMATS_LABEL}.`,
         },
         { status: 400 },
       );

@@ -10,6 +10,7 @@ import {
   VIDEO_NORMALIZATION_DEFAULT_BATCH_SIZE,
   VIDEO_NORMALIZATION_MAX_BATCH_SIZE,
   VIDEO_NORMALIZATION_MAX_SOURCE_BYTES,
+  VIDEO_NORMALIZATION_MAX_SOURCE_MB_LABEL,
   VIDEO_NORMALIZATION_PIPELINE_VERSION,
   VIDEO_NORMALIZATION_VARIANT_KEYS,
   VIDEO_NORMALIZATION_WORKER_LEASE_SECONDS,
@@ -232,7 +233,7 @@ async function downloadSourceToTemp(media: MediaRow, jobId: string) {
   if (declaredSize > VIDEO_NORMALIZATION_MAX_SOURCE_BYTES) {
     throw new VideoNormalizationError(
       "video_source_too_large",
-      "La source dépasse le plafond technique de 100 Mo du worker vidéo.",
+      `La source dépasse le plafond technique de ${VIDEO_NORMALIZATION_MAX_SOURCE_MB_LABEL} du worker vidéo.`,
       false,
     );
   }
@@ -261,7 +262,7 @@ async function downloadSourceToTemp(media: MediaRow, jobId: string) {
   if (contentLength > VIDEO_NORMALIZATION_MAX_SOURCE_BYTES) {
     throw new VideoNormalizationError(
       "video_source_too_large",
-      "La source dépasse le plafond technique de 100 Mo du worker vidéo.",
+      `La source dépasse le plafond technique de ${VIDEO_NORMALIZATION_MAX_SOURCE_MB_LABEL} du worker vidéo.`,
       false,
     );
   }
@@ -278,7 +279,7 @@ async function downloadSourceToTemp(media: MediaRow, jobId: string) {
         callback(
           new VideoNormalizationError(
             "video_source_too_large",
-            "La source dépasse le plafond technique de 100 Mo du worker vidéo.",
+            `La source dépasse le plafond technique de ${VIDEO_NORMALIZATION_MAX_SOURCE_MB_LABEL} du worker vidéo.`,
             false,
           ),
         );
@@ -698,7 +699,7 @@ export async function processVideoNormalizationJobs(params?: {
   const jobs = await claimVideoJobs({ workerId, limit });
   const summaries: ProcessedJobSummary[] = [];
 
-  // Un seul encodage vidéo à la fois : la source peut atteindre 100 Mo et
+  // Un seul encodage vidéo à la fois : la source peut atteindre 300 Mo et
   // FFmpeg utilise déjà plusieurs threads pour le MP4 canonique.
   for (const job of jobs) {
     summaries.push(await processClaimedVideoJob(job));

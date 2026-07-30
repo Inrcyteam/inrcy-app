@@ -24,13 +24,15 @@ import EmojiPickerButton from "../_components/EmojiPickerButton";
 import { requestBoosterVideoTransforms } from "@/lib/boosterVideoTransformClient";
 import type { BoosterVideoTransformedVariant } from "@/lib/boosterVideoTransforms";
 import {
-  INR_MEDIA_ALLOWED_IMAGE_MIME_TYPES,
-  INR_MEDIA_ALLOWED_VIDEO_MIME_TYPES,
+  INR_MEDIA_IMAGE_FORMATS_LABEL,
   INR_MEDIA_IMAGE_MAX_BYTES,
   INR_MEDIA_IMAGE_MAX_MB_LABEL,
   INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT,
+  INR_MEDIA_VIDEO_FORMATS_LABEL,
   INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
   INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL,
+  isInrMediaImageFile,
+  isInrMediaVideoFile,
 } from "@/lib/mediaRules";
 import { makeAttachmentPath } from "@/app/dashboard/mails/_lib/mailboxPhase25";
 import HelpButton from "../_components/HelpButton";
@@ -124,12 +126,6 @@ type ChannelKey =
 
 const AGENT_MEDIA_MAX_IMAGE_BYTES = INR_MEDIA_IMAGE_MAX_BYTES;
 const AGENT_MEDIA_MAX_VIDEO_BYTES = INR_MEDIA_VIDEO_SOURCE_MAX_BYTES;
-const AGENT_MEDIA_ALLOWED_IMAGE_TYPES = new Set<string>(
-  INR_MEDIA_ALLOWED_IMAGE_MIME_TYPES,
-);
-const AGENT_MEDIA_ALLOWED_VIDEO_TYPES = new Set<string>(
-  INR_MEDIA_ALLOWED_VIDEO_MIME_TYPES,
-);
 
 type PublishMediaMutation = "append" | "replace" | "remove";
 
@@ -5752,18 +5748,18 @@ export default function AgentClient() {
   }
 
   function validateAgentPublishMediaFile(file: File) {
-    const isImage = AGENT_MEDIA_ALLOWED_IMAGE_TYPES.has(file.type);
-    const isVideo = AGENT_MEDIA_ALLOWED_VIDEO_TYPES.has(file.type);
+    const isImage = isInrMediaImageFile(file);
+    const isVideo = isInrMediaVideoFile(file);
     if (!isImage && !isVideo) {
       throw new Error(
-        "Format non autorisé. Utilise JPG, PNG, WebP, MP4, WebM ou MOV.",
+        `Format non autorisé. Images : ${INR_MEDIA_IMAGE_FORMATS_LABEL}. Vidéos : ${INR_MEDIA_VIDEO_FORMATS_LABEL}.`,
       );
     }
     if (isImage && file.size > AGENT_MEDIA_MAX_IMAGE_BYTES) {
-      throw new Error("Image trop lourde. Taille maximale : 40 Mo.");
+      throw new Error(`Image trop lourde. Taille maximale : ${INR_MEDIA_IMAGE_MAX_MB_LABEL}.`);
     }
     if (isVideo && file.size > AGENT_MEDIA_MAX_VIDEO_BYTES) {
-      throw new Error("Vidéo trop lourde. Taille maximale : 100 Mo.");
+      throw new Error(`Vidéo trop lourde. Taille maximale : ${INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL}.`);
     }
     if (activePreviewChannel === "youtube" && !isVideo) {
       throw new Error(
@@ -11731,13 +11727,13 @@ export default function AgentClient() {
                   <small>
                     {publishImageLimitReached
                       ? `Maximum de ${INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT} images atteint`
-                      : "JPG, PNG ou WebP"}
+                      : INR_MEDIA_IMAGE_FORMATS_LABEL}
                   </small>
                 </label>
                 <label htmlFor="agent-publish-media-video">
                   <span aria-hidden>🎬</span>
                   <strong>Ajouter une vidéo</strong>
-                  <small>MP4, WebM ou MOV</small>
+                  <small>{INR_MEDIA_VIDEO_FORMATS_LABEL}</small>
                 </label>
                 <button
                   type="button"

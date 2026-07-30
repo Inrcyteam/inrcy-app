@@ -3,7 +3,10 @@ import { randomUUID } from "crypto";
 import { requireUser } from "@/lib/requireUser";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { enforceRateLimit } from "@/lib/rateLimit";
-import { INR_MEDIA_IMAGE_MAX_BYTES } from "@/lib/mediaRules";
+import {
+  INR_MEDIA_IMAGE_MAX_BYTES,
+  INR_MEDIA_IMAGE_MAX_MB_LABEL,
+} from "@/lib/mediaRules";
 import { getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 
 const MAX_IMAGE_BYTES = INR_MEDIA_IMAGE_MAX_BYTES;
@@ -205,7 +208,9 @@ export async function POST(req: Request) {
 
     if (file.size > MAX_IMAGE_BYTES) {
       return NextResponse.json(
-        { error: "Image trop lourde. Taille maximale : 40 Mo." },
+        {
+          error: `Image trop lourde. Taille maximale : ${INR_MEDIA_IMAGE_MAX_MB_LABEL}.`,
+        },
         { status: 413 },
       );
     }

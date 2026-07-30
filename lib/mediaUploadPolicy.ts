@@ -1,3 +1,10 @@
+import {
+  INR_MEDIA_IMAGE_MAX_BYTES,
+  INR_MEDIA_IMAGE_MAX_MB_LABEL,
+  INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
+  INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL,
+} from "./mediaRules.ts";
+
 /**
  * Règles de transport du pipeline média universel iNrCy.
  *
@@ -195,7 +202,8 @@ export function getUniversalMediaSafeExtension(params: {
   if (byMime) return byMime;
 
   const extension = getUniversalMediaFileExtension(params.name);
-  const allowed = params.mediaType === "image" ? IMAGE_EXTENSIONS : VIDEO_EXTENSIONS;
+  const allowed =
+    params.mediaType === "image" ? IMAGE_EXTENSIONS : VIDEO_EXTENSIONS;
   if (allowed.has(extension)) return extension === "jpeg" ? "jpg" : extension;
   return params.mediaType === "video" ? "mp4" : "jpg";
 }
@@ -206,6 +214,22 @@ export function selectUniversalMediaUploadProtocol(
   return Number(sizeBytes || 0) > UNIVERSAL_MEDIA_STANDARD_UPLOAD_MAX_BYTES
     ? "tus"
     : "signed";
+}
+
+export function getUniversalMediaProductMaxBytes(
+  mediaType: UniversalUploadMediaType,
+): number {
+  return mediaType === "video"
+    ? INR_MEDIA_VIDEO_SOURCE_MAX_BYTES
+    : INR_MEDIA_IMAGE_MAX_BYTES;
+}
+
+export function getUniversalMediaProductMaxLabel(
+  mediaType: UniversalUploadMediaType,
+): string {
+  return mediaType === "video"
+    ? INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL
+    : INR_MEDIA_IMAGE_MAX_MB_LABEL;
 }
 
 export function getUniversalMediaHardMaxBytes(

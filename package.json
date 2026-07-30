@@ -70,7 +70,8 @@
     "smoke:media-pipeline": "node scripts/smoke-media-pipeline.mjs",
     "qa:media-pipeline:step9": "npm run qa:media-pipeline:step8 && npm run audit:media-pipeline:step9 && npm run test:media-pipeline:step9",
     "certify:media-pipeline": "npm run qa:media-pipeline:step9 && npm run qa:booster-images && npm run test:pinterest && npm run test:multicompte && npm run test:inrsend",
-    "certify:media-pipeline:full": "npm run certify:media-pipeline && npm run typecheck"
+    "certify:media-pipeline:full": "npm run certify:media-pipeline && npm run typecheck",
+    "test:dashboard": "node --test --experimental-strip-types tests/dashboard/*.test.mts"
   },
   "dependencies": {
     "@sentry/nextjs": "^10.39.0",
