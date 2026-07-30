@@ -24,8 +24,8 @@ test("règles médias iNrCy centralisées", () => {
   expectExport(source, "INR_MEDIA_IMAGE_MAX_MB_LABEL", '"50 Mo"');
   expectExport(source, "INR_MEDIA_VIDEO_SOURCE_MAX_BYTES", "300\\s*\\*\\s*1024\\s*\\*\\s*1024");
   expectExport(source, "INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL", '"300 Mo"');
-  expectExport(source, "INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES", "40\\s*\\*\\s*1024\\s*\\*\\s*1024");
-  expectExport(source, "INR_MEDIA_VIDEO_PUBLISH_MAX_MB_LABEL", '"40 Mo"');
+  expectExport(source, "INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES", "INR_MEDIA_VIDEO_SOURCE_MAX_BYTES");
+  expectExport(source, "INR_MEDIA_VIDEO_PUBLISH_MAX_MB_LABEL", "INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL");
   expectExport(source, "INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT", "5");
   expectExport(source, "INR_MEDIA_PUBLICATION_IMAGE_COUNT_LABEL", '"5 images"');
   expectExport(source, "INR_MEDIA_PUBLICATION_IMAGES_TOTAL_MAX_BYTES", "150\\s*\\*\\s*1024\\s*\\*\\s*1024");

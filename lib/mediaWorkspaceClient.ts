@@ -46,6 +46,39 @@ export type MediaWorkspacePreparationResult = {
 
 const BOOSTER_WORKSPACE_SESSION_KEY = "inrcy:booster:media-workspace:v1";
 
+const WORKSPACE_READ_TRANSIENT_STATUS = new Set([502, 503, 504]);
+
+async function waitWorkspaceRetry(ms: number) {
+  await new Promise<void>((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchWorkspaceSnapshotWithRetry(
+  input: RequestInfo | URL,
+  init: RequestInit,
+) {
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const response = await fetch(input, init);
+      if (
+        attempt === 0 &&
+        WORKSPACE_READ_TRANSIENT_STATUS.has(response.status)
+      ) {
+        await waitWorkspaceRetry(700);
+        continue;
+      }
+      return response;
+    } catch (error) {
+      lastError = error;
+      if (init.signal?.aborted || attempt > 0) throw error;
+      await waitWorkspaceRetry(700);
+    }
+  }
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("Impossible de charger l’espace média.");
+}
+
 function randomClientKey() {
   const randomPart =
     typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
@@ -204,10 +237,13 @@ export async function loadMediaPublicationWorkspace(params: {
     workspaceId: params.workspaceId,
     includeUrls: params.includeUrls === false ? "0" : "1",
   });
-  const response = await fetch(`/api/media-pipeline/workspace?${query}`, {
-    signal: params.signal,
-    cache: "no-store",
-  });
+  const response = await fetchWorkspaceSnapshotWithRetry(
+    `/api/media-pipeline/workspace?${query}`,
+    {
+      signal: params.signal,
+      cache: "no-store",
+    },
+  );
   const json = await readWorkspaceResponse(
     response,
     "Impossible de charger l’espace média.",

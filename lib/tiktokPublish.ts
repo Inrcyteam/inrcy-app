@@ -16,6 +16,12 @@ export type TiktokPublishStatus = {
   complete: boolean;
   failed: boolean;
   pending: boolean;
+  statusFetchFailed?: boolean;
+  retryable?: boolean;
+  providerErrorCode?: string | null;
+  uploadedBytes?: number | null;
+  downloadedBytes?: number | null;
+  publiclyAvailablePostIds?: string[];
 };
 
 export type TiktokPublishResult = {
@@ -160,23 +166,53 @@ function buildPostInfo({
 }
 
 async function postTikTokJson(accessToken: string, url: string, body: unknown) {
-  const res = await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json; charset=UTF-8",
-    },
-    body: JSON.stringify(body),
-    cache: "no-store",
-  });
-  const data: unknown = await res.json().catch(() => ({}));
-  const rec = asRecord(data);
-  const error = asRecord(rec.error);
-  const code = asString(error.code);
-  if (!res.ok || (code && code !== "ok")) {
-    return { ok: false, error: extractErrorMessage(data, `TikTok HTTP ${res.status}`), raw: data };
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json; charset=UTF-8",
+      },
+      body: JSON.stringify(body),
+      cache: "no-store",
+    });
+    const data: unknown = await res.json().catch(() => ({}));
+    const rec = asRecord(data);
+    const error = asRecord(rec.error);
+    const code = (asString(error.code) || "").trim();
+    if (!res.ok || (code && code !== "ok")) {
+      const retryable =
+        res.status === 429 ||
+        res.status >= 500 ||
+        code === "rate_limit_exceeded" ||
+        code === "internal_error";
+      return {
+        ok: false,
+        error: extractErrorMessage(data, `TikTok HTTP ${res.status}`),
+        errorCode: code || null,
+        statusCode: res.status,
+        retryable,
+        raw: data,
+      };
+    }
+    return {
+      ok: true,
+      raw: data,
+      data: asRecord(rec.data),
+      errorCode: null,
+      statusCode: res.status,
+      retryable: false,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      error: error instanceof Error ? error.message : "TikTok est momentanément inaccessible.",
+      errorCode: "network_error",
+      statusCode: 0,
+      retryable: true,
+      raw: null,
+    };
   }
-  return { ok: true, raw: data, data: asRecord(rec.data) };
 }
 
 async function uploadTikTokVideoChunks({
@@ -257,6 +293,18 @@ function normalizeStatus(value: unknown) {
   return String(asString(value) || "").trim().toUpperCase();
 }
 
+function numberOrNull(value: unknown) {
+  const numberValue = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(numberValue) && numberValue >= 0 ? numberValue : null;
+}
+
+function stringArray(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => String(entry ?? "").trim())
+    .filter(Boolean);
+}
+
 function extractShareUrl(data: Record<string, unknown>) {
   return (
     asString(data.share_url) ||
@@ -288,8 +336,18 @@ export function getTiktokUserFacingError(error: unknown) {
   if (message.includes("privacy_level_option_mismatch")) return "TikTok refuse le niveau de confidentialité. Reconnecte le compte TikTok puis réessaie.";
   if (message.includes("scope_not_authorized")) return "TikTok n'a pas autorisé le scope nécessaire. Reconnecte TikTok avec toutes les autorisations.";
   if (message.includes("access_token_invalid")) return "Connexion TikTok expirée. Reconnecte TikTok dans Canaux.";
-  if (message.includes("spam_risk") || message.includes("rate_limit") || message.includes("quota")) return "TikTok limite temporairement la publication. Réessaie plus tard.";
-  if (message.includes("video_pull_failed")) return "TikTok n'arrive pas à récupérer la vidéo depuis l'URL iNrCy. Le nouvel envoi utilise un upload direct fichier pour éviter ce blocage.";
+  if (
+    message.includes("spam_risk") ||
+    message.includes("rate_limit") ||
+    message.includes("rate limit") ||
+    message.includes("too many requests") ||
+    message.includes("quota")
+  ) return "TikTok limite temporairement la publication. Réessaie plus tard.";
+  if (message.includes("video_pull_failed")) return "TikTok n'arrive pas à récupérer la vidéo depuis une URL. Les vidéos iNrCy utilisent désormais uniquement l'upload direct fichier.";
+  if (message.includes("tiktok_video_file_upload_required")) return "La vidéo TikTok doit être disponible dans le stockage iNrCy pour être envoyée directement. Réimporte la vidéo puis relance la publication.";
+  if (message.includes("invalid_publish_id")) return "TikTok ne reconnaît plus l'identifiant de suivi de cette publication.";
+  if (message.includes("token_not_authorized_for_specified_publish_id")) return "TikTok refuse le suivi de cette publication avec le compte actuellement connecté.";
+  if (message.includes("internal_error") || message.includes("network_error")) return "TikTok ne permet pas de vérifier le statut pour le moment. iNrCy réessaiera automatiquement.";
   if (message.includes("file_format_check_failed")) return "TikTok refuse le format vidéo. Réessaie avec une vidéo MP4/H.264 courte et légère.";
   if (message.includes("duration_check_failed")) return "TikTok refuse la durée de cette vidéo. Réessaie avec une vidéo plus courte.";
   if (message.includes("frame_rate_check_failed")) return "TikTok refuse la fréquence d'image de cette vidéo. Réessaie avec une vidéo standard en 30 fps.";
@@ -310,6 +368,9 @@ export async function fetchTiktokPublishStatus(accessToken: string, publishId: s
       complete: false,
       failed: true,
       pending: false,
+      statusFetchFailed: false,
+      retryable: false,
+      providerErrorCode: "missing_publish_id",
     };
   }
 
@@ -319,13 +380,16 @@ export async function fetchTiktokPublishStatus(accessToken: string, publishId: s
 
   if (!response.ok) {
     return {
-      ok: true,
-      status: "STATUS_FETCH_PENDING",
-      failReason: null,
+      ok: false,
+      status: "STATUS_FETCH_ERROR",
+      failReason: response.error || response.errorCode || "TikTok n'a pas permis de lire le statut.",
       raw: response.raw,
       complete: false,
       failed: false,
       pending: true,
+      statusFetchFailed: true,
+      retryable: Boolean(response.retryable),
+      providerErrorCode: response.errorCode || null,
     };
   }
 
@@ -338,6 +402,9 @@ export async function fetchTiktokPublishStatus(accessToken: string, publishId: s
   const failed = status === "FAILED" || status === "PUBLISH_FAILED" || status === "ERROR";
   const complete = status === "PUBLISH_COMPLETE" || status === "DONE" || status === "SUCCESS";
   const failReason = failed ? extractStatusFailReason(data, response.raw) || "TikTok a refusé la publication." : null;
+  const publiclyAvailablePostIds = stringArray(
+    data.publicaly_available_post_id || data.publicly_available_post_id || data.post_ids,
+  );
 
   return {
     ok: !failed,
@@ -348,6 +415,12 @@ export async function fetchTiktokPublishStatus(accessToken: string, publishId: s
     complete,
     failed,
     pending: !complete && !failed,
+    statusFetchFailed: false,
+    retryable: false,
+    providerErrorCode: null,
+    uploadedBytes: numberOrNull(data.uploaded_bytes),
+    downloadedBytes: numberOrNull(data.downloaded_bytes),
+    publiclyAvailablePostIds,
   };
 }
 
@@ -381,12 +454,17 @@ function statusToError(status: TiktokPublishStatus | null) {
   return getTiktokUserFacingError(status.status || "tiktok_publish_not_complete");
 }
 
+/**
+ * Garde-fou de compatibilité : les vidéos TikTok ne doivent plus repasser par
+ * PULL_FROM_URL. Cette fonction reste exportée pour éviter une rupture d'import,
+ * mais refuse volontairement tout envoi vidéo par URL.
+ */
 export async function tiktokDirectPostVideo({
-  accessToken,
-  videoUrl,
-  title,
-  publicationSettings,
-  videoDurationSeconds,
+  accessToken: _accessToken,
+  videoUrl: _videoUrl,
+  title: _title,
+  publicationSettings: _publicationSettings,
+  videoDurationSeconds: _videoDurationSeconds,
 }: {
   accessToken: string;
   videoUrl: string;
@@ -394,35 +472,14 @@ export async function tiktokDirectPostVideo({
   publicationSettings: TiktokPublicationSettings;
   videoDurationSeconds?: number | null;
 }): Promise<TiktokPublishResult> {
-  const creatorInfo = await fetchTiktokCreatorInfo(accessToken);
-  const postInfo = buildPostInfo({ title, publicationSettings, creatorInfo, isPhoto: false, videoDurationSeconds });
-
-  const response = await postTikTokJson(accessToken, "https://open.tiktokapis.com/v2/post/publish/video/init/", {
-    post_info: postInfo,
-    source_info: {
-      source: "PULL_FROM_URL",
-      video_url: videoUrl,
+  return {
+    ok: false,
+    error: getTiktokUserFacingError("tiktok_video_file_upload_required"),
+    raw: {
+      code: "tiktok_video_file_upload_required",
+      transfer: "FILE_UPLOAD_ONLY",
     },
-  });
-
-  if (!response.ok) return { ok: false, error: getTiktokUserFacingError(response.error), raw: response.raw, creatorInfo, privacyLevel: postInfo.privacy_level };
-  const data = asRecord(response.data);
-  const publishId = asString(data.publish_id);
-  const status = await waitForTiktokInitialStatus(accessToken, publishId || "");
-
-  if (status.failed) {
-    return {
-      ok: false,
-      publishId,
-      error: statusToError(status),
-      raw: response.raw,
-      creatorInfo,
-      privacyLevel: postInfo.privacy_level,
-      status,
-    };
-  }
-
-  return { ok: true, publishId, raw: response.raw, creatorInfo, privacyLevel: postInfo.privacy_level, status, shareUrl: status.shareUrl || null };
+  };
 }
 
 export async function tiktokDirectPostVideoFileUpload({

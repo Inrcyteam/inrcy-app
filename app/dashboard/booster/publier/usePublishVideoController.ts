@@ -2,6 +2,7 @@ import { useMemo, useState, type Dispatch, type SetStateAction } from "react";
 import { getClientUserFacingErrorMessage as getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { requestBoosterVideoStorageCleanup, requestBoosterVideoTransforms } from "@/lib/boosterVideoTransformClient";
 import { buildVideoTransformSignature } from "@/lib/boosterVideoTransforms";
+import { validateVideoPublicationForChannel } from "@/lib/videoPublicationPolicy";
 import {
   buildVideoSettingsByChannel,
   getRecommendedVideoFormatForSource,
@@ -419,28 +420,98 @@ export default function usePublishVideoController({
       );
     }
 
+    const sourceValidationByChannel = Object.fromEntries(
+      videoChannels.map((channel) => [
+        channel,
+        validateVideoPublicationForChannel({
+          channel,
+          name: baseVideo.name,
+          type: baseVideo.type,
+          storagePath: baseVideo.storagePath,
+          sizeBytes: baseVideo.size,
+          durationSeconds: baseVideo.duration,
+        }),
+      ]),
+    ) as Record<ChannelKey, ReturnType<typeof validateVideoPublicationForChannel>>;
+    const sourceCanFallbackToOriginal = videoChannels.every(
+      (channel) => sourceValidationByChannel[channel]?.ok,
+    );
+    let fallbackAllowed = sourceCanFallbackToOriginal;
+
     if (!variantsToGenerate.length) {
-      const readyState = Object.fromEntries(
+      const existingState = Object.fromEntries(
         videoChannels.map((channel) => {
           const settings = effectiveVideoSettingsByChannel[channel];
-          const formatLabel = settings
-            ? getVideoFormatLabel(channel, settings.format, videoSourceMetadata)
-            : "Format vidéo";
-          const adaptationMode = settings?.adaptationMode as VideoAdaptationMode | undefined;
-          const adaptationLabel = adaptationMode
-            ? VIDEO_ADAPTATION_MODE_LABELS[adaptationMode]
-            : "Adaptation vidéo";
+          if (!settings) {
+            return [
+              channel,
+              {
+                status: "error" as const,
+                label: "Réglage vidéo incomplet",
+                detail: "Choisissez un format vidéo pour ce canal.",
+              },
+            ];
+          }
+
+          const signature = buildVideoTransformSignature(
+            settings.format,
+            settings.adaptationMode,
+          );
+          const foundVariant = existingVariants.find(
+            (variant) => variant.signature === signature,
+          );
+          const validation =
+            foundVariant?.publicUrl && foundVariant?.storagePath
+              ? validateVideoPublicationForChannel({
+                  channel,
+                  name: foundVariant.name || `video-${channel}.mp4`,
+                  type: foundVariant.contentType,
+                  storagePath: foundVariant.storagePath,
+                  sizeBytes: foundVariant.size,
+                  durationSeconds: foundVariant.duration ?? baseVideo.duration,
+                })
+              : null;
+          const formatLabel = getVideoFormatLabel(
+            channel,
+            settings.format,
+            videoSourceMetadata,
+          );
+          const adaptationLabel =
+            VIDEO_ADAPTATION_MODE_LABELS[settings.adaptationMode];
+
           return [
             channel,
-            {
-              status: "ready" as const,
-              label: "Format appliqué",
-              detail: `${formatLabel} · ${adaptationLabel}`,
-            },
+            validation?.ok
+              ? {
+                  status: "ready" as const,
+                  label: "Format appliqué",
+                  detail: `${formatLabel} · ${adaptationLabel}`,
+                }
+              : {
+                  status: "error" as const,
+                  label: "Préparation vidéo requise",
+                  detail:
+                    (!validation?.ok && validation?.message) ||
+                    "La variante réseau doit être préparée de nouveau.",
+                },
           ];
         }),
       ) as Partial<Record<ChannelKey, VideoVariantPreparationState>>;
-      setVideoVariantPreparationByChannel((prev) => ({ ...prev, ...readyState }));
+
+      setVideoVariantPreparationByChannel((prev) => ({
+        ...prev,
+        ...existingState,
+      }));
+      const firstError = Object.values(existingState).find(
+        (state) => state?.status === "error",
+      );
+      if (firstError) {
+        const message =
+          firstError.detail || "La vidéo n’est pas compatible avec tous les canaux sélectionnés.";
+        setImgError(message);
+        throw new Error(message);
+      }
+
       setVideoTransformedVariants(existingVariants);
       if (options?.previewOnly) setImgError("");
       return { ...baseVideo, transformedVariants: existingVariants };
@@ -461,11 +532,20 @@ export default function usePublishVideoController({
         variants: variantsToGenerate,
       });
 
+      fallbackAllowed =
+        sourceCanFallbackToOriginal && response.fallbackToOriginal !== false;
       const transformedVariants = [
         ...existingVariants,
         ...(Array.isArray(response.variants) ? response.variants : []),
       ];
       if (!transformedVariants.length && !response.ok) {
+        if (!fallbackAllowed) {
+          throw new Error(
+            response.errors?.[0]?.message ||
+              response.error ||
+              "La vidéo optimisée n’a pas pu être préparée.",
+          );
+        }
         const fallbackDetail =
           "Adaptation automatique indisponible : la vidéo originale sera publiée.";
         setVideoVariantPreparationByChannel((prev) => ({
@@ -513,7 +593,18 @@ export default function usePublishVideoController({
           const adaptationMode = settings.adaptationMode as VideoAdaptationMode;
           const adaptationLabel = VIDEO_ADAPTATION_MODE_LABELS[adaptationMode];
 
-          if (foundVariant?.publicUrl) {
+          const variantValidation =
+            foundVariant?.publicUrl && foundVariant?.storagePath
+              ? validateVideoPublicationForChannel({
+                  channel,
+                  name: foundVariant.name || `video-${channel}.mp4`,
+                  type: foundVariant.contentType,
+                  storagePath: foundVariant.storagePath,
+                  sizeBytes: foundVariant.size,
+                  durationSeconds: foundVariant.duration ?? baseVideo.duration,
+                })
+              : null;
+          if (variantValidation?.ok) {
             return [
               channel,
               {
@@ -524,14 +615,26 @@ export default function usePublishVideoController({
             ];
           }
 
+          const sourceValidation = sourceValidationByChannel[channel];
+          const channelFallbackAllowed =
+            fallbackAllowed && Boolean(sourceValidation?.ok);
           return [
             channel,
-            {
-              status: "ready" as const,
-              label: "Vidéo originale conservée",
-              detail:
-                "Adaptation automatique indisponible : la vidéo originale sera publiée.",
-            },
+            channelFallbackAllowed
+              ? {
+                  status: "ready" as const,
+                  label: "Vidéo originale conservée",
+                  detail:
+                    "Adaptation automatique indisponible : la source reste compatible avec ce canal.",
+                }
+              : {
+                  status: "error" as const,
+                  label: "Préparation vidéo requise",
+                  detail:
+                    (!variantValidation?.ok && variantValidation?.message) ||
+                    (!sourceValidation?.ok && sourceValidation?.message) ||
+                    "La variante réseau doit être prête avant publication.",
+                },
           ];
         }),
       ) as Partial<Record<ChannelKey, VideoVariantPreparationState>>;
@@ -540,6 +643,14 @@ export default function usePublishVideoController({
         ...prev,
         ...nextState,
       }));
+      if (
+        Object.values(nextState).some((state) => state?.status === "error")
+      ) {
+        throw new Error(
+          responseErrors[0]?.message ||
+            "La vidéo optimisée n’est pas prête pour tous les canaux.",
+        );
+      }
       setVideoTransformedVariants(transformedVariants);
       if (options?.previewOnly && !responseErrors.length) setImgError("");
 
@@ -554,8 +665,30 @@ export default function usePublishVideoController({
         transformedVariants,
       };
     } catch (error) {
+      if (!fallbackAllowed) {
+        const message = getSimpleFrenchErrorMessage(
+          error,
+          "La vidéo optimisée n’a pas pu être préparée.",
+        );
+        setVideoVariantPreparationByChannel((prev) => ({
+          ...prev,
+          ...Object.fromEntries(
+            videoChannels.map((channel) => [
+              channel,
+              {
+                status: "error" as const,
+                label: "Préparation vidéo requise",
+                detail: message,
+              },
+            ]),
+          ),
+        }));
+        setImgError(message);
+        throw error;
+      }
+
       const fallbackDetail =
-        "Adaptation automatique indisponible : la vidéo originale sera publiée.";
+        "Adaptation automatique indisponible : la source reste compatible avec les canaux sélectionnés.";
       setVideoVariantPreparationByChannel((prev) => ({
         ...prev,
         ...Object.fromEntries(
@@ -573,7 +706,7 @@ export default function usePublishVideoController({
       if (options?.previewOnly) setImgError("");
       if (!options?.previewOnly) {
         setPublishProgressLabel(
-          "Adaptation vidéo indisponible : publication de la vidéo originale.",
+          "Adaptation indisponible : source compatible conservée.",
         );
       }
       return { ...baseVideo, transformedVariants: existingVariants };

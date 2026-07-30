@@ -9,7 +9,6 @@ import { refreshTiktokAccessToken } from "@/lib/tiktokOAuth";
 import {
   getTiktokUserFacingError,
   tiktokDirectPostPhotos,
-  tiktokDirectPostVideo,
   tiktokDirectPostVideoFileUpload,
   type TiktokPublicationSettings,
 } from "@/lib/tiktokPublish";
@@ -182,9 +181,11 @@ function buildRetryResult({
   mediaUrls: string[];
   settings: TiktokPublicationSettings;
 }) {
-  const pendingMessage = result.status?.pending
-    ? "TikTok a accepté le nouvel envoi. La publication peut apparaître dans quelques instants sur le compte connecté."
-    : null;
+  const pendingMessage = result.status?.statusFetchFailed
+    ? `TikTok a accepté le nouvel envoi, mais le statut n'est pas lisible pour le moment : ${result.status.failReason || "vérification temporairement indisponible"}.`
+    : result.status?.pending
+      ? "TikTok a accepté le nouvel envoi. iNrSend vérifie automatiquement sa finalisation."
+      : null;
   const profileUrl = firstString(previous.profile_url, previous.external_url, previous.externalUrl);
   const shareUrl = firstString(result.shareUrl);
   const openUrl = shareUrl || profileUrl || null;
@@ -199,8 +200,18 @@ function buildRetryResult({
     external_url: openUrl,
     share_url: shareUrl || null,
     tiktok_status: result.status?.status || "PUBLISH_COMPLETE",
-    tiktok_status_label: result.status?.pending ? "En traitement" : "Publié",
+    tiktok_status_label: result.status?.statusFetchFailed
+      ? "Vérification impossible"
+      : result.status?.pending
+        ? "En traitement"
+        : "Publié",
+    tiktok_status_message: pendingMessage,
     tiktok_status_checked_at: new Date().toISOString(),
+    tiktok_submitted_at: new Date().toISOString(),
+    tiktok_status_fetch_failed: Boolean(result.status?.statusFetchFailed),
+    tiktok_uploaded_bytes: result.status?.uploadedBytes ?? null,
+    tiktok_downloaded_bytes: result.status?.downloadedBytes ?? null,
+    tiktok_public_post_ids: result.status?.publiclyAvailablePostIds || [],
     tiktok_media_type: mediaType,
     media_type: mediaType,
     media_count: mediaType === "video" ? 1 : mediaUrls.length,
@@ -299,29 +310,22 @@ async function handler(request: Request, context: { params: Promise<{ publicatio
       const storagePath = firstString(video.storagePath, video.storage_path, video.path, payload.video_path);
       const videoDurationSeconds = asNumber(video.duration) ?? asNumber(video.durationSeconds) ?? asNumber(video.video_duration_seconds);
       const file = storagePath ? await loadBoosterVideo(storagePath) : null;
-      if (file) {
-        publishResult = await tiktokDirectPostVideoFileUpload({
-          accessToken,
-          videoBuffer: file.buffer,
-          contentType: file.contentType,
-          title,
-          publicationSettings,
-          videoDurationSeconds,
-        });
-        const proxyUrl = buildTiktokMediaProxyUrl(request.url, storagePath);
-        nextMediaUrls = proxyUrl ? [proxyUrl] : mediaUrls;
-      } else {
-        const videoUrl = firstString(mediaUrls[0], video.publicUrl, video.url, previous.video_url);
-        if (!videoUrl) return jsonUserFacingError("Vidéo TikTok introuvable pour retenter l'envoi.", { status: 404, code: "missing_tiktok_video" });
-        publishResult = await tiktokDirectPostVideo({
-          accessToken,
-          videoUrl,
-          title,
-          publicationSettings,
-          videoDurationSeconds,
-        });
-        nextMediaUrls = [videoUrl];
+      if (!storagePath || !file) {
+        return jsonUserFacingError(
+          "La vidéo TikTok n'est plus disponible dans le stockage iNrCy. Réimporte-la depuis Booster avant de retenter.",
+          { status: 404, code: "tiktok_video_file_upload_required" },
+        );
       }
+      publishResult = await tiktokDirectPostVideoFileUpload({
+        accessToken,
+        videoBuffer: file.buffer,
+        contentType: file.contentType,
+        title,
+        publicationSettings,
+        videoDurationSeconds,
+      });
+      const proxyUrl = buildTiktokMediaProxyUrl(request.url, storagePath);
+      nextMediaUrls = proxyUrl ? [proxyUrl] : mediaUrls;
     } else {
       nextMediaUrls = mediaUrls.filter(Boolean).slice(0, 35);
       if (!nextMediaUrls.length) return jsonUserFacingError("Photos TikTok introuvables pour retenter l'envoi.", { status: 404, code: "missing_tiktok_photos" });
@@ -345,6 +349,8 @@ async function handler(request: Request, context: { params: Promise<{ publicatio
         external_id: publishResult.publishId || previous.external_id || null,
         tiktok_status: publishResult.status?.status || "FAILED",
         tiktok_status_label: "Échec",
+        tiktok_status_message: message,
+        tiktok_fail_reason: publishResult.status?.failReason || null,
         tiktok_status_checked_at: new Date().toISOString(),
         diagnostics: {
           ...diagnostics,

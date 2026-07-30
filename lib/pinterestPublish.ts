@@ -3,7 +3,7 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { asRecord, asString } from "@/lib/tsSafe";
 import { publishPinterestVideoWithProtocol } from "@/lib/pinterestVideoProtocol";
 import { buildPinterestImageMediaSource } from "@/lib/pinterestImagePinPayload";
-import { INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES } from "@/lib/mediaRules";
+import { getVideoPublicationPolicy } from "@/lib/videoPublicationPolicy";
 import { toExactStorageArrayBuffer } from "@/lib/supabaseStorageBinary";
 import { randomUUID } from "crypto";
 import { execFile } from "child_process";
@@ -141,6 +141,7 @@ async function pinterestApiRequest<T = unknown>(
 }
 
 const execFileAsync = promisify(execFile);
+const PINTEREST_VIDEO_POLICY = getVideoPublicationPolicy("pinterest");
 const PINTEREST_COVER_BUCKET = "booster";
 const PINTEREST_VIDEO_TIMEOUT_MS = 120000;
 
@@ -384,9 +385,9 @@ async function preparePinterestVideoAsset(params: {
     if (!finalBuffer.length) {
       throw new Error("La préparation vidéo Pinterest a produit un fichier vide.");
     }
-    if (finalBuffer.length > INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES) {
+    if (finalBuffer.length > PINTEREST_VIDEO_POLICY.maxBytes) {
       throw new Error(
-        "La vidéo préparée pour Pinterest dépasse 40 Mo. Appliquez un format vidéo plus léger avant de publier.",
+        `La vidéo préparée pour Pinterest dépasse ${PINTEREST_VIDEO_POLICY.maxBytesLabel}, limite source iNrCy.`,
       );
     }
 
@@ -538,9 +539,9 @@ export async function createPinterestVideoPin({
     videoUrl: cleanVideoUrl,
     storagePath: videoStoragePath,
   });
-  if (sourceBuffer.length > INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES) {
+  if (sourceBuffer.length > PINTEREST_VIDEO_POLICY.maxBytes) {
     throw new Error(
-      "La vidéo Pinterest dépasse 40 Mo. Appliquez un format vidéo plus léger avant de publier.",
+      `La vidéo Pinterest dépasse ${PINTEREST_VIDEO_POLICY.maxBytesLabel}, limite source iNrCy.`,
     );
   }
 

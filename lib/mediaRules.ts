@@ -9,11 +9,13 @@ export const INR_MEDIA_PUBLICATION_IMAGE_COUNT_LABEL = "5 images";
 export const INR_MEDIA_PUBLICATION_IMAGES_TOTAL_MAX_BYTES = 150 * 1024 * 1024;
 export const INR_MEDIA_PUBLICATION_IMAGES_TOTAL_MAX_MB_LABEL = "150 Mo";
 
-// Les sources peuvent être plus lourdes : iNrCy les normalise ensuite selon
-// les contraintes propres à chaque canal. Les variantes réellement envoyées
-// restent plafonnées à 40 Mo lorsqu'un canal l'exige.
-export const INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES = 40 * 1024 * 1024;
-export const INR_MEDIA_VIDEO_PUBLISH_MAX_MB_LABEL = "40 Mo";
+// Plafond technique interne pour une vidéo prête à publier. Il reste aligné
+// sur la limite source iNrCy ; les contraintes de durée et de format sont
+// ensuite contrôlées canal par canal, sans plafond global artificiel à 40 Mo.
+export const INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES =
+  INR_MEDIA_VIDEO_SOURCE_MAX_BYTES;
+export const INR_MEDIA_VIDEO_PUBLISH_MAX_MB_LABEL =
+  INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL;
 
 export const INR_MEDIA_AGENT_MAX_MEDIA_COUNT = 1;
 export const INR_MEDIA_UPLOAD_BATCH_SIZE = 10;
@@ -23,7 +25,7 @@ export const INR_MEDIA_IMAGE_FORMATS_LABEL =
 export const INR_MEDIA_VIDEO_FORMATS_LABEL =
   "MP4, M4V, MOV, WebM, MPEG, AVI, MKV, 3GP, TS, WMV, FLV ou OGV";
 export const INR_MEDIA_IMAGE_LIMITS_LABEL = `${INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT} images maximum · ${INR_MEDIA_IMAGE_MAX_MB_LABEL} par image · ${INR_MEDIA_PUBLICATION_IMAGES_TOTAL_MAX_MB_LABEL} au total`;
-export const INR_MEDIA_VIDEO_LIMITS_LABEL = `1 vidéo source maximum · ${INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL} · compression automatique`;
+export const INR_MEDIA_VIDEO_LIMITS_LABEL = `1 vidéo source maximum · ${INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL} · préparation automatique`;
 
 export const INR_MEDIA_ALLOWED_IMAGE_MIME_TYPES = [
   "image/jpeg",

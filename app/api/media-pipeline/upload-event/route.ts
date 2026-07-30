@@ -13,6 +13,7 @@ import {
 } from "@/lib/mediaVideoNormalizationQueue";
 import { refreshPublicationWorkspaceStatusesForMedia } from "@/lib/mediaWorkspaceServer";
 import { canPublishVideoSourceDirectly } from "@/lib/mediaVideoSourceCompatibility";
+import { INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES } from "@/lib/mediaRules";
 
 export const runtime = "nodejs";
 
@@ -140,6 +141,8 @@ export async function POST(request: Request) {
         name: current.data.original_file_name,
         mimeType: current.data.mime_type,
         storagePath: current.data.storage_path,
+        sizeBytes: current.data.size_bytes,
+        maxBytes: INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
       });
 
     if (event === "uploaded") {

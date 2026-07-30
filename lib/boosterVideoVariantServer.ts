@@ -15,7 +15,10 @@ import {
   type BoosterVideoTransformVariantPlan,
   type BoosterVideoTransformedVariant,
 } from "@/lib/boosterVideoTransforms";
-import { INR_MEDIA_VIDEO_SOURCE_MAX_BYTES } from "@/lib/mediaRules";
+import {
+  INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
+  INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
+} from "@/lib/mediaRules";
 import { canPublishVideoSourceDirectly } from "@/lib/mediaVideoSourceCompatibility";
 
 const execFileAsync = promisify(execFile);
@@ -483,6 +486,15 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
         ? params.source.duration
         : (params.source.sourceMetadata?.duration ?? null),
   };
+  const sourceCanPublishDirectly =
+    Boolean(sourcePath && sourceUrl) &&
+    canPublishVideoSourceDirectly({
+      name: params.source.name,
+      type: params.source.type,
+      storagePath: sourcePath,
+      sizeBytes: params.source.size,
+      maxBytes: INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
+    });
 
   if (!plan.length) {
     return {
@@ -504,20 +516,14 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
   for (const variant of plan) {
     if (
       variant.format === "original" &&
-      sourcePath &&
       Number(params.source.size || 0) > 0 &&
-      sourceUrl &&
-      canPublishVideoSourceDirectly({
-        name: params.source.name,
-        type: params.source.type,
-        storagePath: sourcePath,
-      })
+      sourceCanPublishDirectly
     ) {
       readyVariants.push({
         ...variant,
-        storagePath: sourcePath,
-        publicUrl: sourceUrl,
-        contentType: String(params.source.type || OUTPUT_CONTENT_TYPE),
+        storagePath: sourcePath || "",
+        publicUrl: sourceUrl || "",
+        contentType: OUTPUT_CONTENT_TYPE,
         size: Number(params.source.size || 0),
         duration: emptySource.duration,
         generatedAt: new Date().toISOString(),
@@ -548,8 +554,8 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
 
   if (params.generateMissing === false) {
     return {
-      ok: true,
-      fallbackToOriginal: true,
+      ok: false,
+      fallbackToOriginal: sourceCanPublishDirectly,
       source: {
         ...emptySource,
         size: Number(params.source.size || 0),
@@ -559,8 +565,9 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
         key: variant.key,
         format: variant.format,
         adaptationMode: variant.adaptationMode,
-        message:
-          "Variante non préparée : la vidéo source compatible sera utilisée sans nouveau réencodage.",
+        message: sourceCanPublishDirectly
+          ? "Variante non préparée : la préparation doit être terminée avant la publication."
+          : "Variante vidéo obligatoire manquante : la source originale dépasse le plafond de publication ou n'est pas directement compatible.",
       })),
     };
   }
@@ -662,7 +669,7 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
 
     return {
       ok: errors.length === 0,
-      fallbackToOriginal: errors.length > 0,
+      fallbackToOriginal: errors.length > 0 && sourceCanPublishDirectly,
       source: {
         bucket: downloaded.bucket,
         storagePath: downloaded.storagePath || null,
@@ -676,14 +683,16 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
   } catch (error: any) {
     return {
       ok: false,
-      fallbackToOriginal: true,
+      fallbackToOriginal: sourceCanPublishDirectly,
       source: emptySource,
       variants: readyVariants,
       errors: [
         {
           message: compactFfmpegError(
             error,
-            "Adaptation automatique indisponible : la vidéo originale sera utilisée.",
+            sourceCanPublishDirectly
+              ? "Adaptation automatique indisponible : la vidéo originale compatible peut être conservée."
+              : "Adaptation vidéo indisponible : la source originale ne peut pas être publiée directement.",
           ),
         },
       ],

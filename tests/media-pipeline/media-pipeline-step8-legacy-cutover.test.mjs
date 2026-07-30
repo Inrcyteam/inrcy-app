@@ -45,7 +45,7 @@ test("Publier recrée images et vidéos côté serveur depuis le workspace", () 
   assert.match(publish, /code:\s*"media_workspace_required"/);
   assert.match(publish, /workspace_media_mismatch/);
   assert.match(publish, /workspace_image_preparation_failed/);
-  assert.match(publish, /workspace_video_preparation_failed/);
+  assert.match(publish, /workspace_video_preparation_pending/);
   assert.match(imageServer, /supabaseAdmin\.storage\.from\(bucket\)\.download\(storagePath\)/);
   assert.match(imageServer, /settingsByChannel/);
   assert.match(imageServer, /sharp\(params\.buffer/);

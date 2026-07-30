@@ -99,6 +99,7 @@ function ResponsiveBottomNavMobile() {
   const [isLandscapeViewport, setIsLandscapeViewport] = useState(false);
   const [cameraCaptureOpen, setCameraCaptureOpen] = useState(false);
   const [explicitImmersiveModeOpen, setExplicitImmersiveModeOpen] = useState(false);
+  const [publishModalOpen, setPublishModalOpen] = useState(false);
   const [pendingInrAgentCount, setPendingInrAgentCount] = useState(0);
   const [shortcuts, setShortcuts] = useState<MobileShortcutId[]>([...DEFAULT_MOBILE_SHORTCUTS]);
   const [isAdmin, setIsAdmin] = useState(false);
@@ -112,6 +113,30 @@ function ResponsiveBottomNavMobile() {
       window.removeEventListener("resize", syncViewport);
       window.removeEventListener("orientationchange", syncViewport);
     };
+  }, []);
+
+  useEffect(() => {
+    const syncPublishModalState = (event?: Event) => {
+      const detail = (event as CustomEvent<{ open?: unknown }> | undefined)
+        ?.detail;
+      const openFromEvent = detail?.open;
+      const open =
+        typeof openFromEvent === "boolean"
+          ? openFromEvent
+          : document.documentElement.dataset.inrcyPublishOpen === "1";
+      setPublishModalOpen(open);
+    };
+
+    syncPublishModalState();
+    window.addEventListener(
+      "inrcy:publish-modal-state",
+      syncPublishModalState as EventListener,
+    );
+    return () =>
+      window.removeEventListener(
+        "inrcy:publish-modal-state",
+        syncPublishModalState as EventListener,
+      );
   }, []);
 
   useEffect(() => {
@@ -286,7 +311,9 @@ function ResponsiveBottomNavMobile() {
   const currentLanguage = getAppLanguageOption(language);
   const pendingLabel = pendingInrAgentCount > 99 ? "99+" : String(pendingInrAgentCount);
   const homeActive = pathname === "/dashboard" && !searchParams.get("action") && !searchParams.get("panel");
-  const publishActive = pathname === "/dashboard" && searchParams.get("action") === "publish";
+  const publishActive =
+    publishModalOpen ||
+    (pathname === "/dashboard" && searchParams.get("action") === "publish");
   const hasMenuWarning = profileIncomplete || activityIncomplete;
 
   return (

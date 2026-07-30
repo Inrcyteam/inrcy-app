@@ -12,11 +12,15 @@ type PublishExecutionSummary = {
     channel: string;
     label: string;
     ok?: boolean;
+    status?: "published" | "processing" | "failed" | string;
+    code?: string | null;
+    retryable?: boolean;
     error?: string | null;
     warning?: string | null;
     warning_message?: string | null;
   }>;
   channelLinks?: Record<string, string>;
+  retryableFailureCount?: number;
 };
 
 export default function PublishExecutionResultModal({
@@ -24,17 +28,25 @@ export default function PublishExecutionResultModal({
   summary,
   onClose,
   onOpenInrSend,
+  onRetryFailed,
+  retrying = false,
 }: {
   styles: DashboardStyles;
   summary: PublishExecutionSummary | null | undefined;
   onClose: () => void;
   onOpenInrSend: () => void;
+  onRetryFailed?: () => void | Promise<void>;
+  retrying?: boolean;
 }) {
   const failureCount = Number(summary?.failureCount || 0);
   const successCount = Number(summary?.successCount || 0);
   const allFailed = Boolean(summary?.allFailed);
   const entries = Array.isArray(summary?.entries) ? summary.entries : [];
   const pendingCount = entries.filter((entry) => entry.ok && entry.warning).length;
+  const retryableFailureCount = Math.max(
+    0,
+    Number(summary?.retryableFailureCount || 0),
+  );
 
   return (
     <div
@@ -196,7 +208,19 @@ export default function PublishExecutionResultModal({
             flexWrap: "wrap",
           }}
         >
-          <button type="button" className={styles.primaryBtn} onClick={onOpenInrSend}>
+          {onRetryFailed && retryableFailureCount > 0 ? (
+            <button
+              type="button"
+              className={styles.primaryBtn}
+              onClick={() => void onRetryFailed()}
+              disabled={retrying}
+            >
+              {retrying
+                ? "Relance en cours…"
+                : `Retenter ${retryableFailureCount} canal${retryableFailureCount > 1 ? "aux" : ""} en échec`}
+            </button>
+          ) : null}
+          <button type="button" className={styles.secondaryBtn} onClick={onOpenInrSend}>
             Voir dans iNr'Send
           </button>
         </div>

@@ -23,23 +23,39 @@ function fileExtension(value: unknown) {
   return match?.[1] || "";
 }
 
+function isKnownPositiveNumber(value: unknown) {
+  const number = Number(value);
+  return Number.isFinite(number) && number > 0 ? number : null;
+}
+
 /**
- * MP4/M4V H.264 is the common denominator of the publication APIs used by
- * Booster. These sources can be forwarded as-is instead of being downloaded
- * and re-encoded by a Vercel function. Other containers keep the normalization
- * path so MOV/WebM/AVI/MKV sources are converted before publication.
+ * MP4/M4V est le conteneur commun aux APIs de publication utilisées par
+ * Booster. Le contrôle de taille reste optionnel pour les usages qui vérifient
+ * uniquement le conteneur (analyse IA, affichage, etc.).
+ *
+ * Pour une publication directe, les appelants doivent fournir `sizeBytes` et
+ * `maxBytes`. Une taille inconnue ou supérieure au plafond force alors la
+ * normalisation serveur au lieu d'envoyer silencieusement la source originale.
  */
 export function canPublishVideoSourceDirectly(input: {
   name?: unknown;
   type?: unknown;
   mimeType?: unknown;
   storagePath?: unknown;
+  sizeBytes?: unknown;
+  maxBytes?: unknown;
 }) {
   const mimeType = cleanMimeType(input.type || input.mimeType);
-  if (DIRECT_VIDEO_MIME_TYPES.has(mimeType)) return true;
-
   const extension =
     fileExtension(input.name) || fileExtension(input.storagePath);
-  return DIRECT_VIDEO_EXTENSIONS.has(extension);
-}
+  const compatibleContainer =
+    DIRECT_VIDEO_MIME_TYPES.has(mimeType) ||
+    DIRECT_VIDEO_EXTENSIONS.has(extension);
+  if (!compatibleContainer) return false;
 
+  const maxBytes = isKnownPositiveNumber(input.maxBytes);
+  if (!maxBytes) return true;
+
+  const sizeBytes = isKnownPositiveNumber(input.sizeBytes);
+  return Boolean(sizeBytes && sizeBytes <= maxBytes);
+}

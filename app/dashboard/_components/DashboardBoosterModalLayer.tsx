@@ -8,9 +8,10 @@ import BaseModal from "./WorkflowBaseModal";
 import StatusMessage from "./StatusMessage";
 import HelpButton from "./HelpButton";
 import { WEEKLY_GOALS, clampProgress, getGoalCopy } from "@/lib/weeklyGoals";
-import { getSimpleFrenchApiError, getClientUserFacingErrorMessage as getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
+import { getClientUserFacingErrorMessage as getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import { confirmInrcy } from "@/lib/inrcyDialog";
 import { PROFILE_VERSION_EVENT, type ProfileVersionChangeDetail } from "@/lib/profileVersioning";
+import { postBoosterPublication } from "@/lib/boosterPublishClient";
 import { useUnsavedExitGuard } from "../_hooks/useUnsavedExitGuard";
 import PublishModal from "../booster/publier/PublishModal";
 import PublishExecutionResultModal from "./PublishExecutionResultModal";
@@ -44,6 +45,8 @@ export default function DashboardBoosterModalLayer({
   const [publishSummary, setPublishSummary] = useState<any>(null);
   const [publishEditorOverlayOpen, setPublishEditorOverlayOpen] = useState(false);
   const [publishHasUnsavedChanges, setPublishHasUnsavedChanges] = useState(false);
+  const [publishRetrying, setPublishRetrying] = useState(false);
+  const publishRetryFailedRef = useRef<(() => Promise<void>) | null>(null);
   const publishSaveDraftRef = useRef<(() => void) | null>(null);
   const publishOpenHelpRef = useRef<(() => void) | null>(null);
   const [publishDraftHeaderState, setPublishDraftHeaderState] = useState<PublishDraftHeaderState>({
@@ -74,6 +77,26 @@ export default function DashboardBoosterModalLayer({
   }, [mode, refreshMetrics]);
 
   useEffect(() => {
+    const open = mode === "publish";
+    const root = document.documentElement;
+    if (open) root.dataset.inrcyPublishOpen = "1";
+    else delete root.dataset.inrcyPublishOpen;
+    window.dispatchEvent(
+      new CustomEvent("inrcy:publish-modal-state", { detail: { open } }),
+    );
+
+    return () => {
+      if (!open) return;
+      delete root.dataset.inrcyPublishOpen;
+      window.dispatchEvent(
+        new CustomEvent("inrcy:publish-modal-state", {
+          detail: { open: false },
+        }),
+      );
+    };
+  }, [mode]);
+
+  useEffect(() => {
     const handleProfileVersionChange = (event: Event) => {
       const detail = (event as CustomEvent<ProfileVersionChangeDetail>).detail;
       if (!(detail?.field === "publications_version" || detail?.field === "loyalty_version")) return;
@@ -87,6 +110,8 @@ export default function DashboardBoosterModalLayer({
   const closePublishModal = useCallback(() => {
     setPublishEditorOverlayOpen(false);
     setPublishHasUnsavedChanges(false);
+    publishRetryFailedRef.current = null;
+    setPublishRetrying(false);
     onClose();
   }, [onClose]);
 
@@ -180,33 +205,19 @@ export default function DashboardBoosterModalLayer({
       };
 
       try {
-        const res = await fetch("/api/booster/publish-now", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ...payload,
-            source: payload.source || "booster_manual",
-            origin: {
-              ...(payload.origin || {}),
-              source: payload.source || payload.origin?.source || "booster_manual",
-              label: payload.origin?.label || "Booster",
-              workflowTool: payload.origin?.workflowTool || "booster",
-              workflowAction: payload.origin?.workflowAction || "publier",
-            },
-          }),
+        const json = await postBoosterPublication({
+          ...payload,
+          source: payload.source || "booster_manual",
+          origin: {
+            ...(payload.origin || {}),
+            source: payload.source || payload.origin?.source || "booster_manual",
+            label: payload.origin?.label || "Booster",
+            workflowTool: payload.origin?.workflowTool || "booster",
+            workflowAction: payload.origin?.workflowAction || "publier",
+          },
         });
-        const json = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          throw new Error(
-            String(
-              json?.user_message ||
-                json?.error ||
-                (await getSimpleFrenchApiError(res, "La publication a échoué.")),
-            ),
-          );
-        }
 
-        const summary = json?.summary || null;
+        const summary = (json?.summary || null) as Record<string, any> | null;
         const failed = Object.entries((json?.results || {}) as Record<string, any>).filter(([, value]) => value && value.ok === false);
 
         // Si l’API renvoie un bilan canal par canal, on laisse toujours la modale
@@ -424,8 +435,20 @@ export default function DashboardBoosterModalLayer({
             onDraftHeaderStateChange={handlePublishDraftHeaderStateChange}
             initialConnectedChannels={initialConnectedChannels}
             onPublishSuccess={(result) => {
+              publishRetryFailedRef.current =
+                typeof result?.retryFailed === "function"
+                  ? result.retryFailed
+                  : null;
               const summary = result?.summary
-                ? { ...result.summary, channelLinks: result?.channelLinks || {} }
+                ? {
+                    ...result.summary,
+                    channelLinks: result?.channelLinks || {},
+                    retryableFailureCount: Array.isArray(
+                      result?.retryFailedChannels,
+                    )
+                      ? result.retryFailedChannels.length
+                      : 0,
+                  }
                 : null;
               setPublishSummary(summary);
               setPublishSuccessOpen(true);
@@ -447,6 +470,21 @@ export default function DashboardBoosterModalLayer({
           styles={styles}
           summary={publishSummary}
           onClose={() => setPublishSuccessOpen(false)}
+          retrying={publishRetrying}
+          onRetryFailed={
+            publishRetryFailedRef.current
+              ? async () => {
+                  if (publishRetrying) return;
+                  setPublishSuccessOpen(false);
+                  setPublishRetrying(true);
+                  try {
+                    await publishRetryFailedRef.current?.();
+                  } finally {
+                    setPublishRetrying(false);
+                  }
+                }
+              : undefined
+          }
           onOpenInrSend={() => {
             setPublishSuccessOpen(false);
             closePublishModal();

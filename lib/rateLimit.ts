@@ -32,6 +32,7 @@ function localLimitResponse(args: {
   limit: number;
   windowMs: number;
   error: string;
+  code?: string;
   periodSeconds?: number;
 }) {
   const g = globalThis as typeof globalThis & {
@@ -61,6 +62,8 @@ function localLimitResponse(args: {
   return NextResponse.json(
     {
       error: args.error,
+      code: args.code || "rate_limit_burst",
+      error_code: args.code || "rate_limit_burst",
       name: args.name,
       limit,
       ...(args.periodSeconds ? { periodSeconds: args.periodSeconds } : {}),
@@ -111,6 +114,8 @@ type RateLimitConfig = {
    * Use this for expensive endpoints to protect costs/abuse.
    */
   failClosed?: boolean;
+  /** typed response code used by clients to distinguish anti-burst from quotas */
+  code?: string;
 };
 
 function getLimiter(name: string, limit: number, window: Window) {
@@ -137,7 +142,11 @@ export async function enforceRateLimit(config: RateLimitConfig): Promise<NextRes
     if (process.env.NODE_ENV !== "production") return null;
     if (config.failClosed) {
       return NextResponse.json(
-        { error: "Le service est momentanément indisponible. Merci de réessayer dans quelques minutes." },
+        {
+          error: "Le service est momentanément indisponible. Merci de réessayer dans quelques minutes.",
+          code: "rate_limiter_unavailable",
+          error_code: "rate_limiter_unavailable",
+        },
         { status: 503, headers: { "Retry-After": "5" } },
       );
     }
@@ -147,6 +156,7 @@ export async function enforceRateLimit(config: RateLimitConfig): Promise<NextRes
       limit: config.fallbackLimit || config.limit,
       windowMs: windowToMs(config.window),
       error: "Trop de tentatives en peu de temps. Merci de réessayer dans quelques instants.",
+      code: config.code,
     });
   }
 
@@ -160,6 +170,8 @@ export async function enforceRateLimit(config: RateLimitConfig): Promise<NextRes
     return NextResponse.json(
       {
         error: "Trop de tentatives en peu de temps. Merci de réessayer dans quelques instants.",
+        code: config.code || "rate_limit_burst",
+        error_code: config.code || "rate_limit_burst",
         name: config.name,
         limit: config.limit,
         window: config.window,
@@ -174,7 +186,11 @@ export async function enforceRateLimit(config: RateLimitConfig): Promise<NextRes
   } catch {
     if (config.failClosed) {
       return NextResponse.json(
-        { error: "Le service est momentanément indisponible. Merci de réessayer dans quelques minutes." },
+        {
+          error: "Le service est momentanément indisponible. Merci de réessayer dans quelques minutes.",
+          code: "rate_limiter_unavailable",
+          error_code: "rate_limiter_unavailable",
+        },
         {
           status: 503,
           headers: {
@@ -189,6 +205,7 @@ export async function enforceRateLimit(config: RateLimitConfig): Promise<NextRes
       limit: config.fallbackLimit || config.limit,
       windowMs: windowToMs(config.window),
       error: "Trop de tentatives en peu de temps. Merci de réessayer dans quelques instants.",
+      code: config.code,
     });
   }
 }
@@ -228,6 +245,7 @@ export async function enforceQuota(config: QuotaConfig): Promise<NextResponse | 
       windowMs: config.periodSeconds * 1_000,
       periodSeconds: config.periodSeconds,
       error: "Le quota de cette action a été atteint. Merci de réessayer plus tard.",
+      code: "action_quota_reached",
     });
   }
 
@@ -280,6 +298,7 @@ export async function enforceQuota(config: QuotaConfig): Promise<NextResponse | 
       windowMs: config.periodSeconds * 1_000,
       periodSeconds: config.periodSeconds,
       error: "Le quota de cette action a été atteint. Merci de réessayer plus tard.",
+      code: "action_quota_reached",
     });
   }
 }

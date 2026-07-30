@@ -27,6 +27,7 @@ import { enqueueImageNormalization } from "@/lib/mediaImageNormalizationQueue";
 import { enqueueVideoNormalization } from "@/lib/mediaVideoNormalizationQueue";
 import { refreshPublicationWorkspaceMediaStatus } from "@/lib/mediaWorkspaceServer";
 import { canPublishVideoSourceDirectly } from "@/lib/mediaVideoSourceCompatibility";
+import { INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES } from "@/lib/mediaRules";
 
 export const runtime = "nodejs";
 
@@ -612,6 +613,8 @@ export async function POST(request: Request) {
             name: fileName,
             mimeType: contentType,
             storagePath,
+            sizeBytes: sizeBytes,
+            maxBytes: INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
           });
 
         if (alreadyUploaded && mediaType === "video" && directVideoSource) {

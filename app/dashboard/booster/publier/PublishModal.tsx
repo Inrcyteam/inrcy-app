@@ -11,6 +11,10 @@ import { resolveActiveBrowserUserId } from "@/lib/browserAccountCache";
 import { createClient } from "@/lib/supabaseClient";
 import { prewarmBoosterGenerationContextClient } from "@/lib/boosterGenerationContextClient";
 import { buildBoosterGenerationRequest } from "@/lib/boosterGenerationTransportClient";
+import {
+  getBoosterGenerationSpecialErrorMessage,
+  isAutomaticBoosterGenerationRetryEligible,
+} from "@/lib/boosterGenerationErrorPolicy";
 import { getClientUserFacingErrorMessage as getSimpleFrenchErrorMessage } from "@/lib/userFacingErrors";
 import {
   DEFAULT_AI_PREFERRED_ENGINE,
@@ -53,6 +57,7 @@ import {
   BOOSTER_MAX_IMAGE_COUNT,
   BOOSTER_MAX_VIDEO_BYTES,
   BOOSTER_MAX_VIDEO_MB_LABEL,
+  BOOSTER_MAX_VIDEO_PUBLISH_BYTES,
   BOOSTER_VIDEO_FORMATS_LABEL,
   BOOSTER_CHANNEL_ORDER,
   CHANNEL_LABELS,
@@ -1743,6 +1748,8 @@ export default function PublishModal({
             name: videoFile?.name,
             type: videoFile?.type,
             storagePath: relevantMedia[0]?.storagePath,
+            sizeBytes: relevantMedia[0]?.sizeBytes || videoFile?.size,
+            maxBytes: BOOSTER_MAX_VIDEO_PUBLISH_BYTES,
           });
 
         if (allUploaded && directVideoSource) {
@@ -2004,6 +2011,56 @@ export default function PublishModal({
     clearPreparedVideoVariantsForChannel(channel);
   };
 
+  function getCutoverVideoPreparationError(result: any) {
+    const firstInvalidChannel = Array.isArray(result?.invalidChannels)
+      ? result.invalidChannels[0]
+      : null;
+    const firstError = Array.isArray(result?.errors) ? result.errors[0] : null;
+    const message = String(
+      firstInvalidChannel?.message ||
+        (typeof firstError === "string" ? firstError : firstError?.message) ||
+        result?.error ||
+        "",
+    ).trim();
+    return (
+      message ||
+      "La vidéo n’est pas encore prête pour tous les réseaux. Réessayez dans quelques instants."
+    );
+  }
+
+  async function ensureCutoverVideoVariantsReady(
+    channels: ChannelKey[],
+    settingsByChannel: Partial<
+      Record<
+        ChannelKey,
+        { format: VideoFormat; adaptationMode: VideoAdaptationMode }
+      >
+    >,
+  ) {
+    if (!mediaPipelineCutoverEnabled || !channels.length) return null;
+
+    await waitForPersistentWorkspaceIdle();
+    const workspace = await ensurePersistentMediaWorkspace();
+    if (!workspace) {
+      throw new Error("L’espace média de cette publication est indisponible.");
+    }
+
+    const result = await prewarmPersistentMediaWorkspace({
+      selectedChannels: channels,
+      videoSettingsByChannel: settingsByChannel as Record<string, unknown>,
+    });
+    if (
+      !result ||
+      result.ok === false ||
+      result.status !== "ready" ||
+      (Array.isArray(result.invalidSignatures) &&
+        result.invalidSignatures.length > 0)
+    ) {
+      throw new Error(getCutoverVideoPreparationError(result));
+    }
+    return result;
+  }
+
   async function prepareCutoverVideoVariants(
     channels: ChannelKey[],
     settingsByChannel: Partial<
@@ -2034,24 +2091,7 @@ export default function PublishModal({
     }));
 
     try {
-      await waitForPersistentWorkspaceIdle();
-      const workspace = await ensurePersistentMediaWorkspace();
-      if (!workspace) {
-        throw new Error("L’espace média de cette publication est indisponible.");
-      }
-
-      const result = await prewarmPersistentMediaWorkspace({
-        selectedChannels: channels,
-        videoSettingsByChannel: settingsByChannel as Record<string, unknown>,
-      });
-      if (!result || result.ok === false) {
-        const firstError = Array.isArray(result?.errors)
-          ? String(result.errors[0] || "").trim()
-          : "";
-        throw new Error(
-          firstError || "La variante vidéo demandée n’a pas pu être préparée.",
-        );
-      }
+      await ensureCutoverVideoVariantsReady(channels, settingsByChannel);
 
       setVideoVariantPreparationByChannel((prev) => ({
         ...prev,
@@ -3027,6 +3067,7 @@ export default function PublishModal({
   const onGenerate = async () => {
     if (generating) return;
     setGenError("");
+    setImgError("");
     setGenerationNotice("");
 
     const trimmed = idea.trim();
@@ -3273,42 +3314,16 @@ export default function PublishModal({
         return { response, responseJson };
       };
 
-      const isAutomaticAiRetryEligible = (
-        response: Response,
-        responseJson: Record<string, unknown>,
-      ) => {
-        const errorCode = String(
-          responseJson?.error_code || responseJson?.code || "",
-        ).trim();
-        if (
-          [
-            "ai_gateway_account_limit_reached",
-            "ai_gateway_guard_unavailable",
-            "ai_operation_budget_exceeded",
-            "ai_gateway_auth",
-          ].includes(errorCode)
-        ) {
-          return false;
-        }
-        return (
-          [429, 502, 503, 504].includes(response.status) ||
-          [
-            "ai_gateway_rate_limit",
-            "ai_gateway_unavailable",
-            "ai_gateway_request_failed",
-            "ai_gateway_invalid_request",
-            "ai_operation_deadline_exceeded",
-          ].includes(errorCode)
-        );
-      };
-
       let { response: res, responseJson: json } =
         await executeGenerationRequest(selectedAiPreferredEngine);
       let automaticRetry:
         | { primaryEngine: AiPreferredEngine; finalEngine: AiPreferredEngine }
         | null = null;
 
-      if (!res.ok && isAutomaticAiRetryEligible(res, json)) {
+      if (
+        !res.ok &&
+        isAutomaticBoosterGenerationRetryEligible(res.status, json)
+      ) {
         const retryEngine = getAutomaticAiRetryEngine(
           selectedAiPreferredEngine,
         );
@@ -3331,11 +3346,17 @@ export default function PublishModal({
       }
 
       if (!res.ok) {
+        const specialMessage = getBoosterGenerationSpecialErrorMessage({
+          status: res.status,
+          payload: json,
+          retryAfterHeader: res.headers.get("Retry-After"),
+        });
         setGenError(
-          getSimpleFrenchErrorMessage(
-            json?.user_message || json?.error,
-            "La génération n'a pas pu aboutir. Merci de réessayer.",
-          ),
+          specialMessage ||
+            getSimpleFrenchErrorMessage(
+              json?.user_message || json?.error,
+              "La génération n'a pas pu aboutir. Merci de réessayer.",
+            ),
         );
         return;
       }
@@ -4109,12 +4130,30 @@ export default function PublishModal({
         : "Préparation de la publication...",
     );
 
+    let publishDispatchStarted = false;
+
     try {
       const readyMediaWorkspaceId =
         await waitForPersistentWorkspaceReadiness("publish", (progress, label) => {
           setPublishProgress((current) => Math.max(current, progress));
           setPublishProgressLabel(label || "Vérification des médias...");
         });
+
+      if (hasAnyVideoPublish && mediaPipelineCutoverEnabled) {
+        const videoChannels = publishableChannels.filter(
+          (channel) => publishMediaModeByChannel[channel] === "video",
+        );
+        setPublishProgress((current) => Math.max(current, 43));
+        setPublishProgressLabel(
+          "Préparation et adaptation de la vidéo pour les réseaux...",
+        );
+        await ensureCutoverVideoVariantsReady(
+          videoChannels,
+          videoSettingsByChannel,
+        );
+        setPublishProgress((current) => Math.max(current, 57));
+        setPublishProgressLabel("Vidéo optimisée et prête à publier.");
+      }
 
       const emptyChannelImages = {} as ChannelImagePayload;
       const emptyChannelSettings = {} as ChannelImageSettingsPayload;
@@ -4298,6 +4337,7 @@ export default function PublishModal({
         );
       }, 500);
 
+      publishDispatchStarted = true;
       const result = await trackEvent("publish", {
         mediaWorkspaceId:
           unifiedMediaConsumptionClientAvailable && readyMediaWorkspaceId
@@ -4339,23 +4379,72 @@ export default function PublishModal({
         window.clearInterval(publishPulseTimerRef.current);
         publishPulseTimerRef.current = null;
       }
+      const resultEntries = Array.isArray(result?.summary?.entries)
+        ? result.summary.entries
+        : [];
+      const retryFailedChannels = resultEntries
+        .filter(
+          (entry: any) =>
+            entry?.ok === false &&
+            entry?.retryable !== false &&
+            publishableChannels.includes(entry?.channel as ChannelKey),
+        )
+        .map((entry: any) => entry.channel as ChannelKey);
+      const failureCount = Math.max(
+        0,
+        Number(result?.summary?.failureCount || retryFailedChannels.length),
+      );
+      const publicationComplete = failureCount === 0;
+
       setPublishProgress(100);
-      setPublishProgressLabel(result?.summary?.allFailed ? "Échec" : "Publié");
+      setPublishProgressLabel(
+        result?.summary?.allFailed
+          ? "Échec"
+          : publicationComplete
+            ? "Publié"
+            : "Publication partielle",
+      );
       await sleep(220);
-      onUnsavedChange?.(false);
+      if (publicationComplete) {
+        onUnsavedChange?.(false);
+      }
       const channelLinks = Object.fromEntries(
         publishableChannels.map((channel) => [
           channel,
           normalizeExternalHref(channelDetails[channel]?.href),
         ]),
       );
-      void archivePersistentMediaWorkspace().catch((error) => {
-        console.warn("[media-pipeline] workspace archive skipped", error);
-      });
-      if (!options?.suppressPublishSuccess) {
-        onPublishSuccess?.({ ...result, channelLinks, skippedChannels });
+      if (publicationComplete) {
+        void archivePersistentMediaWorkspace().catch((error) => {
+          console.warn("[media-pipeline] workspace archive skipped", error);
+        });
       }
-      if (options?.closeOnSuccess !== false) {
+
+      const retryFailed = retryFailedChannels.length
+        ? async () => {
+            await runPublish({
+              channels: retryFailedChannels,
+              preparedPostsByChannel,
+              tiktokPublicationSettings:
+                options?.tiktokPublicationSettings ||
+                tiktokPublicationSettings,
+              closeOnSuccess: true,
+              suppressPublishSuccess: false,
+              throwOnError: true,
+            });
+          }
+        : undefined;
+
+      if (!options?.suppressPublishSuccess) {
+        onPublishSuccess?.({
+          ...result,
+          channelLinks,
+          skippedChannels,
+          retryFailedChannels,
+          retryFailed,
+        });
+      }
+      if (options?.closeOnSuccess !== false && publicationComplete) {
         onClose();
       }
     } catch (e) {
@@ -4365,10 +4454,18 @@ export default function PublishModal({
       }
       setPublishProgress(0);
       setPublishProgressLabel("");
-      const message = getSimpleFrenchErrorMessage(
+      const baseMessage = getSimpleFrenchErrorMessage(
         e,
         "La publication n'a pas pu être envoyée. Merci de réessayer.",
       );
+      const networkLike = /connexion au serveur impossible|connexion interrompue|failed to fetch|networkerror|network request failed/i.test(
+        `${e instanceof Error ? e.message : String(e || "")} ${baseMessage}`,
+      );
+      const message = networkLike
+        ? publishDispatchStarted
+          ? "Connexion interrompue pendant la publication. L’envoi peut encore être en cours : vérifiez iNr’Send avant de relancer."
+          : "Connexion interrompue pendant la préparation des médias. Aucun envoi n’a été confirmé : réessayez dans quelques instants."
+        : baseMessage;
       setPublishError(message);
       if (options?.throwOnError) {
         throw new Error(message);
@@ -4671,6 +4768,22 @@ export default function PublishModal({
           setPublishProgress((current) => Math.max(current, progress));
           setPublishProgressLabel(label || "Vérification des médias...");
         });
+
+      if (hasAnyVideoPublish && mediaPipelineCutoverEnabled) {
+        const videoChannels = channelsToSchedule.filter(
+          (channel) => publishMediaModeByChannel[channel] === "video",
+        );
+        setPublishProgress((current) => Math.max(current, 43));
+        setPublishProgressLabel(
+          "Préparation et adaptation de la vidéo pour la programmation...",
+        );
+        await ensureCutoverVideoVariantsReady(
+          videoChannels,
+          videoSettingsByChannel,
+        );
+        setPublishProgress((current) => Math.max(current, 57));
+        setPublishProgressLabel("Vidéo optimisée et prête à programmer.");
+      }
 
       const emptyChannelImages = {} as ChannelImagePayload;
       const emptyChannelSettings = {} as ChannelImageSettingsPayload;

@@ -171,7 +171,9 @@ export async function reserveAiCredits(args: ReserveAiCreditsArgs): Promise<AiCr
       errorResponse: NextResponse.json(
         {
           error: "La protection de quota IA est momentanément indisponible. Merci de réessayer dans quelques minutes.",
+          user_message: "La protection de quota IA est momentanément indisponible. Merci de réessayer dans quelques minutes.",
           code: "ai_quota_unavailable",
+          error_code: "ai_quota_unavailable",
         },
         { status: 503, headers: { "Retry-After": "5" } },
       ),
@@ -203,7 +205,9 @@ export async function reserveAiCredits(args: ReserveAiCreditsArgs): Promise<AiCr
         reservation: null,
         errorResponse: NextResponse.json({
           error: buildQuotaError(period),
+          user_message: buildQuotaError(period),
           code: "ai_quota_reached",
+          error_code: "ai_quota_reached",
           quota_period: period,
           quota_limit: limit,
           quota_used: used,
@@ -229,7 +233,9 @@ export async function reserveAiCredits(args: ReserveAiCreditsArgs): Promise<AiCr
       errorResponse: NextResponse.json(
         {
           error: "La protection de quota IA est momentanément indisponible. Merci de réessayer dans quelques minutes.",
+          user_message: "La protection de quota IA est momentanément indisponible. Merci de réessayer dans quelques minutes.",
           code: "ai_quota_unavailable",
+          error_code: "ai_quota_unavailable",
         },
         { status: 503, headers: { "Retry-After": "5" } },
       ),

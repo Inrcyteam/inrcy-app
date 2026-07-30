@@ -325,6 +325,9 @@ export default function PublishIntentPanel({
   const liveOnlyUnavailableRef = useRef(false);
   const [liveVoiceEnabled, setLiveVoiceEnabled] = useState(false);
   const selectedAiEngineOption = getAiEngineOption(aiPreferredEngine);
+  const visibleErrors = Array.from(
+    new Set([imgError.trim(), genError.trim()].filter(Boolean)),
+  );
 
   const setVoiceTargetText = (
     target: VoiceTarget,
@@ -1484,12 +1487,15 @@ export default function PublishIntentPanel({
             </div>
           ) : null}
         </div>
-        {imgError ? (
-          <div style={{ fontSize: 13, color: "#ffb4b4" }}>{imgError}</div>
-        ) : null}
-        {genError ? (
-          <div style={{ fontSize: 13, color: "#ffb4b4" }}>{genError}</div>
-        ) : null}
+        {visibleErrors.map((message) => (
+          <div
+            key={message}
+            role="alert"
+            style={{ fontSize: 13, color: "#ffb4b4" }}
+          >
+            {message}
+          </div>
+        ))}
         {generationNotice ? (
           <div
             role="status"

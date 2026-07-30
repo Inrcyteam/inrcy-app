@@ -18,6 +18,7 @@ import {
   type MediaPipelineUnifiedPurpose,
 } from "@/lib/mediaPipelineUnifiedConsumptionPolicy";
 import { canPublishVideoSourceDirectly } from "@/lib/mediaVideoSourceCompatibility";
+import { INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES } from "@/lib/mediaRules";
 
 const PRIVATE_MEDIA_BUCKET = "inrcy-pro-media";
 const MAX_AI_IMAGE_BYTES = 2_500_000;
@@ -367,6 +368,8 @@ async function readWorkspaceGraph(params: {
             name: item.originalFileName,
             mimeType: item.detectedMimeType || item.sourceMimeType,
             storagePath: item.sourceStoragePath,
+            sizeBytes: item.sourceSizeBytes,
+            maxBytes: INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
           })));
     if (uploadedVideoIsUsable) return false;
     return (
@@ -991,6 +994,8 @@ export async function resolveWorkspacePublicationConsumption(params: {
       name: item.originalFileName,
       mimeType: item.detectedMimeType || item.sourceMimeType,
       storagePath: item.sourceStoragePath,
+      sizeBytes: item.sourceSizeBytes,
+      maxBytes: INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
     });
   if (!canonical && !directSourceReady) {
     throw new MediaWorkspaceConsumptionError(

@@ -84,24 +84,56 @@ async function getTiktokAccessToken(userId: string, rowLike: unknown) {
   return accessToken;
 }
 
-function tiktokStatusLabel(status: string | null | undefined) {
+function tiktokStatusLabel(
+  status: string | null | undefined,
+  statusFetchFailed = false,
+  stalled = false,
+) {
+  if (statusFetchFailed) return "Vérification impossible";
+  if (stalled) return "Traitement prolongé";
   const value = String(status || "").toUpperCase();
   if (value === "PUBLISH_COMPLETE" || value === "DONE" || value === "SUCCESS") return "Publié";
   if (value === "FAILED" || value === "PUBLISH_FAILED" || value === "ERROR") return "Échec";
-  if (value.includes("UPLOAD")) return "Upload en cours";
-  if (value.includes("DOWNLOAD")) return "Traitement TikTok";
+  if (value === "PROCESSING_UPLOAD") return "Upload TikTok en cours";
+  if (value === "PROCESSING_DOWNLOAD") return "Téléchargement TikTok en cours";
   if (value.includes("PROCESS")) return "En traitement";
   return value || "En traitement";
 }
 
-function tiktokStatusMessage(status: Awaited<ReturnType<typeof fetchTiktokPublishStatus>>) {
+function formatBytes(value: number | null | undefined) {
+  const bytes = Number(value || 0);
+  if (!Number.isFinite(bytes) || bytes <= 0) return "";
+  if (bytes >= 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
+  if (bytes >= 1024) return `${Math.round(bytes / 1024)} Ko`;
+  return `${Math.round(bytes)} octets`;
+}
+
+function tiktokStatusMessage(
+  status: Awaited<ReturnType<typeof fetchTiktokPublishStatus>>,
+  stalled = false,
+) {
+  if (status.statusFetchFailed) {
+    return getTiktokUserFacingError(status.failReason || status.providerErrorCode || "tiktok_status_fetch_failed");
+  }
   if (status.failed) {
     return getTiktokUserFacingError(status.failReason || status.status || "tiktok_publish_failed");
   }
   if (status.complete) {
     return "TikTok confirme que la publication est terminée. Si la visibilité est privée, elle peut apparaître uniquement sur le compte connecté.";
   }
-  return "TikTok traite encore la publication. Relancez la vérification dans quelques instants.";
+  if (stalled) {
+    return "TikTok conserve la publication en traitement sans progression récente. iNrSend continue le suivi ; vérifiez le compte avant toute relance pour éviter un doublon.";
+  }
+  const uploaded = formatBytes(status.uploadedBytes);
+  if (String(status.status || "").toUpperCase() === "PROCESSING_UPLOAD" && uploaded) {
+    return `TikTok a reçu ${uploaded} et traite encore la vidéo. iNrSend vérifiera automatiquement la suite.`;
+  }
+  return "TikTok traite encore la publication. iNrSend vérifiera automatiquement son résultat.";
+}
+
+function dateMs(value: unknown) {
+  const timestamp = Date.parse(String(value || ""));
+  return Number.isFinite(timestamp) ? timestamp : null;
 }
 
 async function loadAppEvent(userId: string, publicationId: string) {
@@ -134,25 +166,65 @@ async function persistTiktokStatus({
   const results = asRecord(payload.results);
   const current = asRecord(results.tiktok);
   const diagnostics = asRecord(current.diagnostics);
-  const message = tiktokStatusMessage(status);
+  const nowIso = new Date().toISOString();
+  const previousStatus = String(current.tiktok_status || asRecord(diagnostics.status).status || "").toUpperCase();
+  const previousUploadedBytes = Number(current.tiktok_uploaded_bytes ?? asRecord(diagnostics.status).uploadedBytes ?? -1);
+  const previousDownloadedBytes = Number(current.tiktok_downloaded_bytes ?? asRecord(diagnostics.status).downloadedBytes ?? -1);
+  const nextUploadedBytes = status.uploadedBytes ?? null;
+  const nextDownloadedBytes = status.downloadedBytes ?? null;
+  const progressChanged =
+    Boolean(status.status && String(status.status).toUpperCase() !== previousStatus) ||
+    (nextUploadedBytes !== null && nextUploadedBytes !== previousUploadedBytes) ||
+    (nextDownloadedBytes !== null && nextDownloadedBytes !== previousDownloadedBytes);
+  const submittedAt = String(current.tiktok_submitted_at || diagnostics.submitted_at || nowIso);
+  const previousProgressAt = String(current.tiktok_status_progress_at || diagnostics.status_progress_at || submittedAt);
+  const progressAt = progressChanged ? nowIso : previousProgressAt;
+  const submittedAtMs = dateMs(submittedAt);
+  const progressAtMs = dateMs(progressAt);
+  const nowMs = Date.now();
+  const stalled = Boolean(
+    status.pending &&
+      !status.statusFetchFailed &&
+      submittedAtMs !== null &&
+      progressAtMs !== null &&
+      nowMs - submittedAtMs >= 15 * 60 * 1000 &&
+      nowMs - progressAtMs >= 10 * 60 * 1000,
+  );
+  const message = tiktokStatusMessage(status, stalled);
   const nextResult: JsonRecord = {
     ...current,
-    ok: !status.failed,
+    ok: status.complete ? true : status.failed ? false : current.ok !== false,
     external_id: publishId,
     share_url: status.shareUrl || current.share_url || null,
     external_url: status.shareUrl || current.share_url || current.external_url || current.profile_url || null,
     tiktok_status: status.status || current.tiktok_status || null,
-    tiktok_status_label: tiktokStatusLabel(status.status),
-    tiktok_status_checked_at: new Date().toISOString(),
-    warning: status.pending,
-    warning_message: status.pending ? message : null,
+    tiktok_status_label: tiktokStatusLabel(status.status, Boolean(status.statusFetchFailed), stalled),
+    tiktok_status_message: message,
+    tiktok_status_checked_at: nowIso,
+    tiktok_submitted_at: submittedAt,
+    tiktok_status_progress_at: progressAt,
+    tiktok_status_fetch_failed: Boolean(status.statusFetchFailed),
+    tiktok_status_fetch_error: status.statusFetchFailed ? status.failReason || status.providerErrorCode || null : null,
+    tiktok_fail_reason: status.failed ? status.failReason || null : null,
+    tiktok_provider_error_code: status.providerErrorCode || null,
+    tiktok_uploaded_bytes: nextUploadedBytes,
+    tiktok_downloaded_bytes: nextDownloadedBytes,
+    tiktok_public_post_ids: status.publiclyAvailablePostIds?.length
+      ? status.publiclyAvailablePostIds
+      : current.tiktok_public_post_ids || [],
+    tiktok_stalled: stalled,
+    warning: Boolean(status.pending || status.statusFetchFailed),
+    warning_message: status.pending || status.statusFetchFailed ? message : null,
     error: status.failed ? message : null,
     diagnostics: {
       ...diagnostics,
       publish_id: publishId,
       status,
       share_url: status.shareUrl || diagnostics.share_url || null,
-      status_checked_at: new Date().toISOString(),
+      submitted_at: submittedAt,
+      status_progress_at: progressAt,
+      status_checked_at: nowIso,
+      stalled,
     },
   };
 
@@ -178,7 +250,7 @@ async function persistTiktokStatus({
     .eq("publication_id", publicationId)
     .eq("channel", "tiktok");
 
-  return { nextPayload, nextResult, message };
+  return { nextPayload, nextResult, message, stalled };
 }
 
 async function handler(_request: Request, context: { params: Promise<{ publicationId: string }> }) {
@@ -220,12 +292,12 @@ async function handler(_request: Request, context: { params: Promise<{ publicati
     const persisted = await persistTiktokStatus({ userId: activeUserId, publicationId, publishId, status });
 
     return NextResponse.json({
-      ok: !status.failed,
+      ok: status.ok,
       publication_id: publicationId,
       channel: "tiktok",
       publish_id: publishId,
       status,
-      status_label: tiktokStatusLabel(status.status),
+      status_label: tiktokStatusLabel(status.status, Boolean(status.statusFetchFailed), persisted.stalled),
       message: persisted.message,
       result: persisted.nextResult,
       payload: persisted.nextPayload,

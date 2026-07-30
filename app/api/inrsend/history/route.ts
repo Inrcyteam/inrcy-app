@@ -631,6 +631,8 @@ const TECHNICAL_APP_EVENT_TYPES = new Set([
   "publish_idempotency_lock",
   "execution_idempotency_lock",
   "idempotency_lock",
+  "publish_async_job",
+  "publish_async_channel",
 ]);
 
 function isTechnicalAppEvent(raw: any) {
@@ -915,6 +917,16 @@ function mapEventItems(rows: any[]): OutboxItem[] {
           );
       const preview = safeS(payload.preview || payload.text || payload.message || payload.content, "").slice(0, 140);
       const extracted = extractMessageFromPayload(payload);
+      const payloadStatus = String(payload?.status || "").toLowerCase();
+      const eventStatus: Status = isDraft
+        ? "draft"
+        : payloadStatus === "failed"
+          ? "failed"
+          : payloadStatus === "partial"
+            ? "partial"
+            : payloadStatus === "processing" || payloadStatus === "queued"
+              ? "processing"
+              : "sent";
       return {
         id: e.id,
         source: "app_events",
@@ -922,7 +934,7 @@ function mapEventItems(rows: any[]): OutboxItem[] {
         folder,
         ...workflowMeta,
         provider: eventModule === "fideliser" ? "Fidéliser" : eventModule === "propulser" ? "Propulser" : "Booster",
-        status: isDraft ? "draft" : "sent",
+        status: eventStatus,
         created_at: e.created_at,
         title,
         subTitle: subTitle || undefined,

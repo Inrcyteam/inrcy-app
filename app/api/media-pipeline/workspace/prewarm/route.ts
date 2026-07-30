@@ -14,6 +14,8 @@ import {
   isBoosterVideoChannelKey,
   type BoosterVideoChannelKey,
 } from "@/lib/boosterVideoSettings";
+import { buildVideoTransformSignature } from "@/lib/boosterVideoTransforms";
+import { validateVideoPublicationForChannel } from "@/lib/videoPublicationPolicy";
 import type { BoosterImageChannel } from "@/lib/boosterImageDecision";
 import { createSafeStorageSignedUrl } from "@/lib/safeStorageSignedUrl";
 
@@ -127,6 +129,12 @@ export async function POST(request: Request) {
         video.storagePath,
         60 * 60,
       );
+      const requestedVariants = selectedChannels.map((channel) => ({
+        key: `${channel}-${settings[channel]?.format || "original"}-${settings[channel]?.adaptationMode || "safe_blur"}`,
+        channel,
+        format: settings[channel]?.format,
+        adaptationMode: settings[channel]?.adaptationMode,
+      }));
       const prepared = await prepareBoosterVideoVariantsOnServer({
         accountId: activeUserId,
         workspaceId,
@@ -137,19 +145,68 @@ export async function POST(request: Request) {
           publicUrl: signedSourceUrl,
           url: signedSourceUrl,
         },
-        variants: selectedChannels.map((channel) => ({
-          key: `${channel}-${settings[channel]?.format || "original"}-${settings[channel]?.adaptationMode || "safe_blur"}`,
-          channel,
-          format: settings[channel]?.format,
-          adaptationMode: settings[channel]?.adaptationMode,
-        })),
+        variants: requestedVariants,
       });
+      const requiredSignatures = Array.from(
+        new Set(
+          requestedVariants.map((variant) =>
+            buildVideoTransformSignature(
+              variant.format || "original",
+              variant.adaptationMode || "safe_blur",
+            ),
+          ),
+        ),
+      );
+      const invalidChannels = requestedVariants.flatMap((request) => {
+        const signature = buildVideoTransformSignature(
+          request.format || "original",
+          request.adaptationMode || "safe_blur",
+        );
+        const variant = prepared.variants.find(
+          (candidate) => candidate.signature === signature,
+        );
+        if (!variant?.publicUrl || !variant?.storagePath) {
+          return [
+            {
+              channel: request.channel,
+              signature,
+              reason: "variant_missing",
+              message: "La variante vidéo demandée n’est pas encore prête.",
+            },
+          ];
+        }
+        const validation = validateVideoPublicationForChannel({
+          channel: request.channel,
+          name: variant.name || `video-${request.channel}.mp4`,
+          type: variant.contentType,
+          storagePath: variant.storagePath,
+          sizeBytes: variant.size,
+          durationSeconds: variant.duration ?? video.duration,
+        });
+        return validation.ok
+          ? []
+          : [
+              {
+                channel: request.channel,
+                signature,
+                reason: validation.reason,
+                message: validation.message,
+              },
+            ];
+      });
+      const invalidSignatures = Array.from(
+        new Set(invalidChannels.map((item) => item.signature)),
+      );
+      const ready = prepared.ok && invalidChannels.length === 0;
       return NextResponse.json({
-        ok: prepared.ok,
+        ok: ready,
         workspaceId,
-        status: prepared.ok ? "ready" : "partial",
+        status: ready ? "ready" : "partial",
         mediaType: "video",
         preparedVariants: prepared.variants.length,
+        requiredVariants: requiredSignatures.length,
+        invalidSignatures,
+        invalidChannels,
         errors: prepared.errors,
       });
     }

@@ -51,6 +51,10 @@
     {
       "path": "/api/cron/media-orphan-cleanup",
       "schedule": "17 * * * *"
+    },
+    {
+      "path": "/api/cron/booster-publications",
+      "schedule": "*/1 * * * *"
     }
   ],
   "functions": {

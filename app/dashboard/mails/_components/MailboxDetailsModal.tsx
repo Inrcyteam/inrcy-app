@@ -291,27 +291,60 @@ function getTiktokStatusMeta(result: any) {
     getNestedString(result, ["diagnostics", "status", "status"]),
     getNestedString(result, ["diagnostics", "status", "raw", "data", "status"]),
   ).toUpperCase();
-  const failed = result?.ok === false || ["FAILED", "PUBLISH_FAILED", "ERROR"].includes(status);
+  const statusFetchFailed = Boolean(
+    result?.tiktok_status_fetch_failed ||
+      status === "STATUS_FETCH_ERROR" ||
+      getNestedString(result, ["diagnostics", "status", "statusFetchFailed"]) === "true",
+  );
+  const stalled = Boolean(result?.tiktok_stalled || getNestedString(result, ["diagnostics", "stalled"]) === "true");
+  const failed = ["FAILED", "PUBLISH_FAILED", "ERROR"].includes(status) || (result?.ok === false && !statusFetchFailed);
   const complete = ["PUBLISH_COMPLETE", "DONE", "SUCCESS"].includes(status);
-  const pending = !failed && !complete && Boolean(result?.warning || status || getTiktokPublishId(result));
+  const pending = !failed && !complete && Boolean(statusFetchFailed || result?.warning || status || getTiktokPublishId(result));
   const label = failed
     ? "Échec"
     : complete
       ? "Publié"
-      : status.includes("UPLOAD")
-        ? "Upload en cours"
-        : status.includes("DOWNLOAD")
-          ? "Traitement TikTok"
-          : pending
-            ? "En traitement"
-            : "Statut inconnu";
-  const message = firstStringDeep(
-    result?.error,
-    result?.warning_message,
-    result?.tiktok_status_message,
+      : statusFetchFailed
+        ? "Vérification impossible"
+        : stalled
+          ? "Traitement prolongé"
+          : status === "PROCESSING_UPLOAD"
+            ? "Upload TikTok en cours"
+            : status === "PROCESSING_DOWNLOAD"
+              ? "Téléchargement TikTok en cours"
+              : pending
+                ? "En traitement"
+                : "Statut inconnu";
+  const failReason = firstStringDeep(
+    result?.tiktok_fail_reason,
     getNestedString(result, ["diagnostics", "status", "failReason"]),
   );
-  return { status, failed, complete, pending, label, message };
+  const message = firstStringDeep(
+    result?.tiktok_status_message,
+    result?.error,
+    result?.warning_message,
+    result?.tiktok_status_fetch_error,
+    failReason,
+  );
+  const uploadedBytes = Number(result?.tiktok_uploaded_bytes ?? getNestedString(result, ["diagnostics", "status", "uploadedBytes"]) ?? 0) || 0;
+  return { status, failed, complete, pending, label, message, failReason, statusFetchFailed, stalled, uploadedBytes };
+}
+
+function getTiktokAutoPollTarget(detailsItem: any) {
+  if (!detailsItem || detailsItem.source !== "app_events") return null;
+  const payload = detailsItem?.raw?.payload;
+  if (!payload || typeof payload !== "object") return null;
+  const publicationId = String(payload?.publication_id || "").trim();
+  const result = payload?.results && typeof payload.results === "object" ? payload.results.tiktok : null;
+  const publishId = getTiktokPublishId(result);
+  const statusMeta = getTiktokStatusMeta(result);
+  if (!publicationId || !publishId || statusMeta.failed || statusMeta.complete || !statusMeta.pending) return null;
+  return {
+    publicationId,
+    publishId,
+    checkedAt: firstStringDeep(result?.tiktok_status_checked_at, getNestedString(result, ["diagnostics", "status_checked_at"])),
+    statusFetchFailed: statusMeta.statusFetchFailed,
+  };
 }
 
 function getYoutubeShortsPublicationUrl(result: any) {
@@ -419,7 +452,67 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
   const [isMobileViewport, setIsMobileViewport] = React.useState(false);
   const detailsBodyRef = React.useRef<HTMLDivElement | null>(null);
   const detailsScrollSnapshotRef = React.useRef<number | null>(null);
+  const tiktokAutoPollInFlightRef = React.useRef(false);
+  const tiktokAutoPollTarget = React.useMemo(
+    () => (open ? getTiktokAutoPollTarget(detailsItem) : null),
+    [open, detailsItem],
+  );
   const detailsMailProvider = String(detailsItem?.provider || detailsItem?.payload?.provider || "").trim();
+
+  React.useEffect(() => {
+    if (!open || !tiktokAutoPollTarget || tiktokRetrying || tiktokStatusChecking) return;
+
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const startedAt = Date.now();
+    const lastCheckedAt = Date.parse(tiktokAutoPollTarget.checkedAt || "");
+    const initialIntervalMs = tiktokAutoPollTarget.statusFetchFailed ? 60_000 : 20_000;
+    const initialDelay = Number.isFinite(lastCheckedAt)
+      ? Math.max(3_000, initialIntervalMs - Math.max(0, Date.now() - lastCheckedAt))
+      : 8_000;
+
+    const schedule = (delayMs: number) => {
+      timer = setTimeout(async () => {
+        if (cancelled || tiktokAutoPollInFlightRef.current) return;
+        tiktokAutoPollInFlightRef.current = true;
+        let shouldContinue = true;
+        let nextDelay = Date.now() - startedAt >= 5 * 60_000 ? 60_000 : 20_000;
+        try {
+          const res = await fetch(
+            `/api/inrsend/publications/${encodeURIComponent(tiktokAutoPollTarget.publicationId)}/tiktok/status`,
+            { method: "POST", headers: { "Content-Type": "application/json" } },
+          );
+          const json = await res.json().catch(() => ({}));
+          const status = String(json?.status?.status || "").toUpperCase();
+          shouldContinue = !["PUBLISH_COMPLETE", "DONE", "SUCCESS", "FAILED", "PUBLISH_FAILED", "ERROR"].includes(status);
+          if (!res.ok || json?.status?.statusFetchFailed) nextDelay = 60_000;
+          await refreshHistory?.();
+        } catch {
+          nextDelay = 60_000;
+        } finally {
+          tiktokAutoPollInFlightRef.current = false;
+        }
+        if (!cancelled && shouldContinue && Date.now() - startedAt < 30 * 60_000) {
+          schedule(nextDelay);
+        }
+      }, delayMs);
+    };
+
+    schedule(initialDelay);
+    return () => {
+      cancelled = true;
+      if (timer) clearTimeout(timer);
+    };
+  }, [
+    open,
+    refreshHistory,
+    tiktokAutoPollTarget?.checkedAt,
+    tiktokAutoPollTarget?.publicationId,
+    tiktokAutoPollTarget?.publishId,
+    tiktokAutoPollTarget?.statusFetchFailed,
+    tiktokRetrying,
+    tiktokStatusChecking,
+  ]);
 
   async function checkTiktokPublicationStatus(publicationId: string) {
     if (!publicationId || tiktokStatusChecking) return;
@@ -1348,13 +1441,23 @@ export default function MailboxDetailsModal(props: MailboxDetailsModalProps) {
                                 {tiktokPublishId ? (
                                   <span style={{ opacity: 0.72 }}>ID suivi : {tiktokPublishId}</span>
                                 ) : null}
+                                {tiktokStatusMeta?.uploadedBytes ? (
+                                  <span style={{ opacity: 0.72 }}>
+                                    Reçu par TikTok : {(tiktokStatusMeta.uploadedBytes / (1024 * 1024)).toFixed(1)} Mo
+                                  </span>
+                                ) : null}
                               </div>
                               <div style={{ marginTop: 6, color: tiktokStatusMeta?.failed ? "#fecaca" : tiktokStatusMeta?.pending ? "#fde68a" : "rgba(225,245,255,0.88)" }}>
                                 {tiktokStatusMeta?.message ||
                                   (tiktokStatusMeta?.pending
-                                    ? "TikTok traite encore la vidéo. Utilisez “Vérifier le statut” pour savoir si elle est publiée ou refusée."
+                                    ? "TikTok traite encore la publication. iNrSend vérifie automatiquement son résultat ; le bouton permet aussi une vérification immédiate."
                                     : "iNrSend garde l’historique et le suivi TikTok. La modification ou suppression réelle se fait dans TikTok.")}
                               </div>
+                              {tiktokStatusMeta?.failReason ? (
+                                <div style={{ marginTop: 5, opacity: 0.8 }}>
+                                  Motif technique TikTok : <code>{tiktokStatusMeta.failReason}</code>
+                                </div>
+                              ) : null}
                             </div>
                           ) : null}
 

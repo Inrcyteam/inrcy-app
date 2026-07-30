@@ -21,8 +21,8 @@ export const VIDEO_FRAME_MAX_SIDE = 1280;
 export const VIDEO_THUMBNAIL_MAX_SIDE = 720;
 export const VIDEO_AI_PREVIEW_FPS = 15;
 
-// Le canonique doit pouvoir partir directement vers tous les réseaux. Une
-// petite marge est conservée sous le plafond de publication de 40 Mo.
+// Le canonique doit rester sous le plafond technique iNrCy. Les limites de
+// durée et de format sont ensuite contrôlées séparément pour chaque canal.
 export const VIDEO_CANONICAL_MAX_BYTES =
   INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES - 1 * 1024 * 1024;
 export const VIDEO_AI_PREVIEW_MAX_BYTES = 32 * 1024 * 1024;

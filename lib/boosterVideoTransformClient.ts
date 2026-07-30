@@ -6,6 +6,7 @@ import type {
 
 export type BoosterVideoTransformResponse = {
   ok: boolean;
+  fallbackToOriginal?: boolean;
   source?: {
     storagePath?: string | null;
     publicUrl?: string | null;

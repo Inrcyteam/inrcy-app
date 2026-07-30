@@ -18,6 +18,7 @@ import {
 } from "@/lib/mediaWorkspaceClient";
 import { uploadUniversalMediaFile } from "@/lib/universalMediaUploadClient";
 import { canPublishVideoSourceDirectly } from "@/lib/mediaVideoSourceCompatibility";
+import { INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES } from "@/lib/mediaRules";
 
 export type PersistentWorkspaceMediaState = {
   localKey: string;
@@ -185,6 +186,16 @@ export default function usePersistentMediaWorkspace({
                 });
                 if (request.operationVersion === operationVersionRef.current) {
                   onPreparedMediaRef.current?.(snapshot.media);
+                  void prewarmMediaPublicationWorkspace({
+                    workspaceId: request.workspaceId,
+                    selectedChannels: selectedChannelsRef.current,
+                    videoSettingsByChannel: videoSettingsByChannelRef.current,
+                  }).catch((error) => {
+                    console.warn(
+                      "[media-pipeline] background video prewarm skipped",
+                      error,
+                    );
+                  });
                 }
                 continue;
               }
@@ -212,11 +223,18 @@ export default function usePersistentMediaWorkspace({
               // Les variantes propres aux réseaux sont calculées tant que le pro
               // travaille encore dans la modale. Une erreur ici ne bloque jamais
               // l’upload ni la préparation canonique.
-              if (request.mediaType === "image") {
+              if (request.mediaType === "image" || request.mediaType === "video") {
                 void prewarmMediaPublicationWorkspace({
                   workspaceId: request.workspaceId,
                   selectedChannels: selectedChannelsRef.current,
-                  imageSettingsByChannel: imageSettingsByChannelRef.current,
+                  imageSettingsByChannel:
+                    request.mediaType === "image"
+                      ? imageSettingsByChannelRef.current
+                      : undefined,
+                  videoSettingsByChannel:
+                    request.mediaType === "video"
+                      ? videoSettingsByChannelRef.current
+                      : undefined,
                 }).catch((error) => {
                   console.warn(
                     "[media-pipeline] background prewarm skipped",
@@ -372,6 +390,8 @@ export default function usePersistentMediaWorkspace({
                   canPublishVideoSourceDirectly({
                     name: file.name,
                     type: file.type,
+                    sizeBytes: file.size,
+                    maxBytes: INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
                   }),
               );
             } catch (error) {
@@ -423,6 +443,8 @@ export default function usePersistentMediaWorkspace({
               canPublishVideoSourceDirectly({
                 name: file.name,
                 type: file.type,
+                sizeBytes: file.size,
+                maxBytes: INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
               }),
             ),
         );

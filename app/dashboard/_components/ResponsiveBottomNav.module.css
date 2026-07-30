@@ -215,7 +215,8 @@
     text-shadow: 0 1px 8px rgba(0, 0, 0, 0.24);
   }
 
-  .publishItemActive .publishButton {
+  .publishItemActive .publishButton,
+  .publishItem:disabled .publishButton {
     color: rgba(255, 255, 255, 0.76);
     background-color: rgba(148, 163, 184, 0.22);
     background-image: linear-gradient(
@@ -230,7 +231,8 @@
     text-shadow: none;
   }
 
-  .publishItemActive::after {
+  .publishItemActive::after,
+  .publishItem:disabled::after {
     content: "";
     position: absolute;
     left: 50%;

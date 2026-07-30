@@ -39,6 +39,8 @@ import { isLegacyMediaTransportCutoverEnabled } from "@/lib/mediaPipelineLegacyC
 
 export const maxDuration = 120;
 
+const BOOSTER_GENERATION_BURST_LIMIT = 20;
+
 type Payload = {
   mediaWorkspaceId?: string;
   mediaPipelineCutoverV1?: boolean;
@@ -359,9 +361,10 @@ const handler = async (req: Request) => {
       const rl = await enforceRateLimit({
         name: "booster_generate",
         identifier: authUserId,
-        limit: 10,
+        limit: BOOSTER_GENERATION_BURST_LIMIT,
         window: "1 m",
         failClosed: true,
+        code: "booster_generation_burst_limit",
       });
       if (rl) return rl;
     }

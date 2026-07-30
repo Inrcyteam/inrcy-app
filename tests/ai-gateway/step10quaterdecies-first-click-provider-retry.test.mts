@@ -11,8 +11,8 @@ test("Booster retries a recoverable provider failure automatically with a fresh 
 
   assert.match(modal, /getAutomaticAiRetryEngine/);
   assert.match(modal, /executeGenerationRequest\(selectedAiPreferredEngine\)/);
-  assert.match(modal, /isAutomaticAiRetryEligible/);
-  assert.match(modal, /\[429, 502, 503, 504\]\.includes\(response\.status\)/);
+  assert.match(modal, /isAutomaticBoosterGenerationRetryEligible/);
+  assert.doesNotMatch(modal, /\[429, 502, 503, 504\]\.includes\(response\.status\)/);
   assert.match(modal, /executeGenerationRequest\(retryEngine\)/);
   assert.match(modal, /secours automatique avec/);
   assert.match(modal, /sans modifier votre moteur par défaut/);
