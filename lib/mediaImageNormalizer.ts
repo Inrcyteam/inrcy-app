@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import bmp from "bmp-js";
 import heicConvert from "heic-convert";
 import sharp, { type Sharp } from "sharp";
 import {
@@ -6,13 +7,16 @@ import {
   IMAGE_AI_PREVIEW_MAX_SIDE,
   IMAGE_CANONICAL_JPEG_QUALITY,
   IMAGE_CANONICAL_MAX_SIDE,
+  IMAGE_NORMALIZATION_BMP_FALLBACK_MAX_BYTES,
+  IMAGE_NORMALIZATION_BMP_MAX_INPUT_PIXELS,
   IMAGE_NORMALIZATION_HEIC_FALLBACK_MAX_BYTES,
   IMAGE_NORMALIZATION_MAX_INPUT_PIXELS,
   IMAGE_THUMBNAIL_JPEG_QUALITY,
   IMAGE_THUMBNAIL_MAX_SIDE,
+  isBmpMimeOrName,
   isHeicMimeOrName,
   type ImageNormalizationPurpose,
-} from "@/lib/mediaImageNormalizationPolicy";
+} from "./mediaImageNormalizationPolicy.ts";
 
 const WHITE_BACKGROUND = { r: 255, g: 255, b: 255, alpha: 1 } as const;
 
@@ -38,7 +42,7 @@ export type NormalizedImageBundle = {
     hasAlpha: boolean;
     pages: number;
     orientation: number | null;
-    decoder: "sharp" | "heic-convert";
+    decoder: "sharp" | "heic-convert" | "bmp-js";
   };
   variants: Record<ImageNormalizationPurpose, NormalizedImageVariant>;
 };
@@ -166,7 +170,7 @@ async function renderCanonical(params: {
 
 async function normalizeWithSharp(
   input: SharpInput,
-  decoder: "sharp" | "heic-convert",
+  decoder: "sharp" | "heic-convert" | "bmp-js",
 ): Promise<NormalizedImageBundle> {
   const meta = await sharp(input, {
     failOn: "error",
@@ -242,6 +246,79 @@ async function convertHeicSource(inputPath: string) {
   return buffer;
 }
 
+async function convertBmpSource(inputPath: string) {
+  const input = await readFile(inputPath);
+  if (input.byteLength > IMAGE_NORMALIZATION_BMP_FALLBACK_MAX_BYTES) {
+    throw new Error("bmp_fallback_source_too_large");
+  }
+  if (
+    input.byteLength < 54 ||
+    input.toString("ascii", 0, 2) !== "BM" ||
+    input.readUInt32LE(14) < 40
+  ) {
+    throw new Error("bmp_header_invalid");
+  }
+
+  const declaredWidth = input.readInt32LE(18);
+  const declaredHeight = Math.abs(input.readInt32LE(22));
+  const declaredPixels = declaredWidth * declaredHeight;
+  if (
+    declaredWidth <= 0 ||
+    declaredHeight <= 0 ||
+    !Number.isSafeInteger(declaredPixels) ||
+    declaredPixels > IMAGE_NORMALIZATION_BMP_MAX_INPUT_PIXELS
+  ) {
+    throw new Error("bmp_dimensions_unsafe");
+  }
+
+  const decoded = bmp.decode(input);
+  const width = Number(decoded.width || 0);
+  const height = Number(decoded.height || 0);
+  const pixelCount = width * height;
+  if (
+    width !== declaredWidth ||
+    height !== declaredHeight ||
+    !Number.isSafeInteger(pixelCount) ||
+    pixelCount <= 0 ||
+    pixelCount > IMAGE_NORMALIZATION_BMP_MAX_INPUT_PIXELS ||
+    decoded.data.byteLength !== pixelCount * 4
+  ) {
+    throw new Error("bmp_decode_dimensions_invalid");
+  }
+
+  let meaningfulAlpha = false;
+  if (decoded.bitPP === 32) {
+    for (let offset = 0; offset < decoded.data.length; offset += 4) {
+      if (decoded.data[offset] !== 0) {
+        meaningfulAlpha = true;
+        break;
+      }
+    }
+  }
+
+  const channels: 3 | 4 = meaningfulAlpha ? 4 : 3;
+  const pixels = Buffer.allocUnsafe(pixelCount * channels);
+  for (
+    let sourceOffset = 0, targetOffset = 0;
+    sourceOffset < decoded.data.length;
+    sourceOffset += 4, targetOffset += channels
+  ) {
+    pixels[targetOffset] = decoded.data[sourceOffset + 3];
+    pixels[targetOffset + 1] = decoded.data[sourceOffset + 2];
+    pixels[targetOffset + 2] = decoded.data[sourceOffset + 1];
+    if (meaningfulAlpha) {
+      pixels[targetOffset + 3] = decoded.data[sourceOffset];
+    }
+  }
+
+  return await sharp(pixels, {
+    raw: { width, height, channels },
+    limitInputPixels: IMAGE_NORMALIZATION_BMP_MAX_INPUT_PIXELS,
+  })
+    .png({ compressionLevel: 6, adaptiveFiltering: true })
+    .toBuffer();
+}
+
 export async function normalizeImageSource(params: {
   inputPath: string;
   mimeType: string;
@@ -250,11 +327,14 @@ export async function normalizeImageSource(params: {
   try {
     return await normalizeWithSharp(params.inputPath, "sharp");
   } catch (sharpError) {
-    if (!isHeicMimeOrName(params.mimeType, params.originalFileName || "")) {
-      throw sharpError;
+    if (isHeicMimeOrName(params.mimeType, params.originalFileName || "")) {
+      const converted = await convertHeicSource(params.inputPath);
+      return await normalizeWithSharp(converted, "heic-convert");
     }
-
-    const converted = await convertHeicSource(params.inputPath);
-    return await normalizeWithSharp(converted, "heic-convert");
+    if (isBmpMimeOrName(params.mimeType, params.originalFileName || "")) {
+      const converted = await convertBmpSource(params.inputPath);
+      return await normalizeWithSharp(converted, "bmp-js");
+    }
+    throw sharpError;
   }
 }

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
 
@@ -14,12 +14,15 @@ const modal = () => read("app/dashboard/booster/publier/PublishModal.tsx");
 const shared = () =>
   read("app/dashboard/booster/publier/publishModal.shared.tsx");
 
-test("baseline image : insertion, conversion, brouillon et publication sont cartographiés", () => {
-  assert.match(
-    imageController(),
-    /incoming\.map\(\(file\)\s*=>\s*convertHeicOrHeifImageFile\(file\)\)/,
+test("insertion image : la source part directement au workspace sans conversion Vercel", () => {
+  assert.doesNotMatch(imageController(), /convertHeicOrHeifImageFile/);
+  assert.doesNotMatch(shared(), /\/api\/booster\/convert-image/);
+  assert.equal(
+    existsSync(resolve(ROOT, "app/api/booster/convert-image/route.ts")),
+    false,
   );
-  assert.match(shared(), /fetch\("\/api\/booster\/convert-image"/);
+  assert.match(imageController(), /buildLocalImagePresentation/);
+  assert.match(imageController(), /syncPersistentWorkspaceImages/);
   assert.match(imageController(), /async function uploadPublicationDraftImages\(\)/);
   assert.match(imageController(), /uploadBoosterImageFileDirect\(/);
   assert.match(shared(), /fetch\("\/api\/booster\/upload-prepared"/);

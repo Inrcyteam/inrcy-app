@@ -320,6 +320,33 @@ function hasTimeForFallback(deadlineAt: number, minimumMs = 5_750) {
   return deadlineAt - Date.now() > minimumMs;
 }
 
+function classifyAiAttemptFallback(error: unknown, hasImages: boolean) {
+  const classification = getFallbackReason(error);
+  if (classification.eligible) return classification;
+
+  const record = error && typeof error === "object"
+    ? (error as { code?: unknown; status?: unknown })
+    : null;
+  const code = String(record?.code || "");
+  const status = Number(record?.status || 0);
+
+  // Les fournisseurs multimodaux ne décrivent pas tous de la même manière une
+  // incompatibilité vision + JSON Schema. Lorsqu'un autre moteur peut traiter
+  // exactement les mêmes captures, on bascule au lieu de renvoyer un 502.
+  if (
+    hasImages &&
+    (code === "ai_gateway_invalid_request" || [400, 409, 422].includes(status))
+  ) {
+    return {
+      eligible: true,
+      skipGatewayModelFallback: false,
+      reason: "provider_incompatible" as const,
+    };
+  }
+
+  return classification;
+}
+
 async function executeAiJsonAttempt<T extends AiResponseJSON>(args: {
   opts: AiGenerateJsonOptions;
   policyMaxOutputTokens: number;
@@ -705,7 +732,7 @@ export async function aiGenerateJSON<T extends AiResponseJSON>(opts: AiGenerateJ
       });
     } catch (error) {
       lastError = error;
-      const classification = getFallbackReason(error);
+      const classification = classifyAiAttemptFallback(error, hasImages);
       if (!classification.eligible) throw error;
       fallbackReason = classification.reason;
 
@@ -772,7 +799,7 @@ export async function aiGenerateJSON<T extends AiResponseJSON>(opts: AiGenerateJ
           );
         } catch (error) {
           lastError = error;
-          const fallbackClassification = getFallbackReason(error);
+          const fallbackClassification = classifyAiAttemptFallback(error, hasImages);
           if (!fallbackClassification.eligible) throw error;
           fallbackReason = fallbackClassification.reason;
         }

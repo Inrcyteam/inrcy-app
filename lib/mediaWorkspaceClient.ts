@@ -19,6 +19,8 @@ export type MediaWorkspaceMediaSummary = {
   bucket: string;
   storagePath: string;
   publicUrl?: string | null;
+  previewUrl?: string | null;
+  canonicalUrl?: string | null;
   fileName: string;
   clientMediaKey?: string;
   mimeType: string;
@@ -229,4 +231,29 @@ export async function prepareMediaPublicationWorkspace(params: {
     "Impossible de lancer la préparation du média.",
   );
   return json as MediaWorkspacePreparationResult;
+}
+
+export async function prewarmMediaPublicationWorkspace(params: {
+  workspaceId: string;
+  selectedChannels?: readonly string[];
+  imageSettingsByChannel?: Record<string, unknown>;
+  videoSettingsByChannel?: Record<string, unknown>;
+  signal?: AbortSignal;
+}) {
+  const response = await fetch("/api/media-pipeline/workspace/prewarm", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      workspaceId: params.workspaceId,
+      selectedChannels: params.selectedChannels || [],
+      imageSettingsByChannel: params.imageSettingsByChannel || {},
+      videoSettingsByChannel: params.videoSettingsByChannel || {},
+    }),
+    signal: params.signal,
+    cache: "no-store",
+  });
+  return await readWorkspaceResponse(
+    response,
+    "Impossible d’anticiper les variantes de publication.",
+  );
 }

@@ -26,7 +26,7 @@ test("V2 step 3 performs local validation then at most one grouped targeted repa
   assert.match(generation, /async function repairChannelsOnce\(/);
   assert.match(generation, /stage: "targeted-repair-once"/);
   assert.match(generation, /mode: "repair"/);
-  assert.match(generation, /retries: mode === "repair" \? 0 : 1/);
+  assert.match(generation, /retries: mode === "repair" \|\| Boolean\(args\.imagesForAI\?\.length\) \? 0 : 1/);
   assert.doesNotMatch(generation, /focused-recovery-/);
   assert.doesNotMatch(generation, /standard-retry/);
   assert.doesNotMatch(generation, /youtube-rescue-/);

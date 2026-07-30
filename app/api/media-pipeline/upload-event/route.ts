@@ -34,6 +34,43 @@ function isUploadEvent(value: unknown): value is UploadEvent {
   );
 }
 
+async function verifyStoredUpload(params: {
+  bucket: string;
+  storagePath: string;
+  expectedSize: number;
+}) {
+  const cleanPath = String(params.storagePath || "").replace(/^\/+/, "");
+  const segments = cleanPath.split("/").filter(Boolean);
+  const objectName = segments.pop() || "";
+  const folder = segments.join("/");
+  if (!params.bucket || !objectName || params.expectedSize <= 0) return false;
+
+  const listed = await supabaseAdmin.storage.from(params.bucket).list(folder, {
+    limit: 20,
+    search: objectName,
+  });
+  if (listed.error) throw listed.error;
+  const stored = (listed.data || []).find(
+    (entry: any) => String(entry?.name || "") === objectName,
+  ) as any;
+  const metadata =
+    stored?.metadata && typeof stored.metadata === "object"
+      ? stored.metadata
+      : {};
+  const storedSize = Number(
+    metadata.size ??
+      metadata.contentLength ??
+      metadata.content_length ??
+      stored?.size ??
+      0,
+  );
+  return (
+    Boolean(stored) &&
+    Number.isFinite(storedSize) &&
+    storedSize === params.expectedSize
+  );
+}
+
 export async function POST(request: Request) {
   try {
     const { errorResponse, activeUserId } = await requireUser();
@@ -61,7 +98,9 @@ export async function POST(request: Request) {
 
     const current = await supabaseAdmin
       .from("pro_media_library")
-      .select("id,user_id,media_type,media_metadata")
+      .select(
+        "id,user_id,media_type,media_metadata,bucket_name,storage_path,size_bytes",
+      )
       .eq("id", mediaId)
       .eq("user_id", activeUserId)
       .maybeSingle();
@@ -81,6 +120,25 @@ export async function POST(request: Request) {
     };
     const patch: Record<string, unknown> = { media_metadata: metadata };
 
+    if (event === "uploaded") {
+      const verified = await verifyStoredUpload({
+        bucket: String(current.data.bucket_name || ""),
+        storagePath: String(current.data.storage_path || ""),
+        expectedSize: Number(current.data.size_bytes || 0),
+      });
+      if (!verified) {
+        return NextResponse.json(
+          {
+            ok: false,
+            code: "upload_storage_unverified",
+            error:
+              "Le stockage n’a pas encore confirmé le fichier complet. L’envoi peut reprendre sans recommencer.",
+          },
+          { status: 409 },
+        );
+      }
+    }
+
     if (event === "uploading") {
       patch.upload_status = "uploading";
       patch.upload_progress = Math.min(99, progress);
@@ -93,11 +151,6 @@ export async function POST(request: Request) {
       patch.uploaded_at = now;
       patch.upload_error_code = null;
       patch.upload_error_message = null;
-      if (Number.isFinite(Number(body?.sizeBytes)) && Number(body.sizeBytes) > 0) {
-        patch.size_bytes = Math.round(Number(body.sizeBytes));
-      }
-      const detectedMimeType = cleanText(body?.detectedMimeType, "", 120);
-      if (detectedMimeType) patch.detected_mime_type = detectedMimeType;
     } else if (event === "failed") {
       patch.upload_status = "failed";
       patch.upload_progress = 0;

@@ -43,14 +43,20 @@ export type UniversalUploadMediaType = "image" | "video";
 const IMAGE_MIME_TYPES = new Set([
   "image/jpeg",
   "image/jpg",
+  "image/x-png",
   "image/png",
   "image/webp",
   "image/gif",
   "image/avif",
   "image/heic",
   "image/heif",
+  "image/heic-sequence",
+  "image/heif-sequence",
+  "image/tif",
   "image/tiff",
   "image/bmp",
+  "image/x-bmp",
+  "image/x-ms-bmp",
 ]);
 
 const VIDEO_MIME_TYPES = new Set([
@@ -63,11 +69,17 @@ const VIDEO_MIME_TYPES = new Set([
   "video/x-matroska",
   "video/3gpp",
   "video/3gpp2",
+  "video/mp2t",
+  "video/x-ms-wmv",
+  "video/x-flv",
+  "video/ogg",
 ]);
 
 const IMAGE_EXTENSIONS = new Set([
   "jpg",
   "jpeg",
+  "jpe",
+  "jfif",
   "png",
   "webp",
   "gif",
@@ -90,19 +102,32 @@ const VIDEO_EXTENSIONS = new Set([
   "mkv",
   "3gp",
   "3g2",
+  "ts",
+  "mts",
+  "m2ts",
+  "wmv",
+  "flv",
+  "ogv",
+  "qt",
 ]);
 
 const MIME_TO_EXTENSION: Readonly<Record<string, string>> = {
   "image/jpeg": "jpg",
   "image/jpg": "jpg",
+  "image/x-png": "png",
   "image/png": "png",
   "image/webp": "webp",
   "image/gif": "gif",
   "image/avif": "avif",
   "image/heic": "heic",
   "image/heif": "heif",
+  "image/heic-sequence": "heic",
+  "image/heif-sequence": "heif",
+  "image/tif": "tiff",
   "image/tiff": "tiff",
   "image/bmp": "bmp",
+  "image/x-bmp": "bmp",
+  "image/x-ms-bmp": "bmp",
   "video/mp4": "mp4",
   "video/quicktime": "mov",
   "video/x-m4v": "m4v",
@@ -112,6 +137,10 @@ const MIME_TO_EXTENSION: Readonly<Record<string, string>> = {
   "video/x-matroska": "mkv",
   "video/3gpp": "3gp",
   "video/3gpp2": "3g2",
+  "video/mp2t": "ts",
+  "video/x-ms-wmv": "wmv",
+  "video/x-flv": "flv",
+  "video/ogg": "ogv",
 };
 
 export function normalizeUniversalMediaMime(value: unknown): string {
@@ -165,6 +194,8 @@ export function getUniversalMediaContentType(params: {
   const extensionMime: Readonly<Record<string, string>> = {
     jpg: "image/jpeg",
     jpeg: "image/jpeg",
+    jpe: "image/jpeg",
+    jfif: "image/jpeg",
     png: "image/png",
     webp: "image/webp",
     gif: "image/gif",
@@ -184,6 +215,13 @@ export function getUniversalMediaContentType(params: {
     mkv: "video/x-matroska",
     "3gp": "video/3gpp",
     "3g2": "video/3gpp2",
+    ts: "video/mp2t",
+    mts: "video/mp2t",
+    m2ts: "video/mp2t",
+    wmv: "video/x-ms-wmv",
+    flv: "video/x-flv",
+    ogv: "video/ogg",
+    qt: "video/quicktime",
   };
 
   return (

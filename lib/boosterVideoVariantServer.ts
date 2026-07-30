@@ -1,4 +1,4 @@
-import { randomUUID } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import { execFile } from "child_process";
 import { promisify } from "util";
 import { access, chmod, mkdir, readFile, rm, writeFile } from "fs/promises";
@@ -14,13 +14,29 @@ import {
   type BoosterVideoTransformVariantPlan,
   type BoosterVideoTransformedVariant,
 } from "@/lib/boosterVideoTransforms";
-import { INR_MEDIA_VIDEO_SOURCE_MAX_BYTES } from "@/lib/mediaRules";
+import {
+  INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
+  INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
+} from "@/lib/mediaRules";
 
 const execFileAsync = promisify(execFile);
 const BOOSTER_BUCKET = "booster";
 const MAX_VARIANTS_PER_REQUEST = 8;
 const OUTPUT_CONTENT_TYPE = "video/mp4";
-const FFMPEG_TRANSFORM_TIMEOUT_MS = 120000;
+const FFMPEG_TRANSFORM_TIMEOUT_MS = 90000;
+const CHANNEL_VIDEO_VARIANT_PIPELINE_VERSION = 2;
+
+type CachedVideoVariantRow = {
+  id: string;
+  media_id: string;
+  signature: string | null;
+  bucket_name: string | null;
+  storage_path: string | null;
+  mime_type: string | null;
+  size_bytes: number | null;
+  duration_seconds: number | null;
+  variant_metadata: Record<string, unknown> | null;
+};
 
 export type BoosterVideoVariantServerResult = {
   ok: boolean;
@@ -274,18 +290,170 @@ async function runFfmpegVariant(
   });
 }
 
+function buildPersistentSignature(plan: BoosterVideoTransformVariantPlan) {
+  return `inrcy:video:channel_publish:v${CHANNEL_VIDEO_VARIANT_PIPELINE_VERSION}:${plan.signature}`;
+}
+
 function buildOutputStoragePath(
   userId: string,
+  mediaId: string,
   plan: BoosterVideoTransformVariantPlan,
 ) {
   const safeUserId = sanitizeUserId(userId);
-  const folderId = randomUUID();
-  const safeKey = normalizeSafeSegment(plan.key, "variant").toLowerCase();
-  return `${safeUserId}/booster-video-variants/${folderId}/${safeKey}.mp4`;
+  const safeMediaId = normalizeSafeSegment(mediaId, "media").toLowerCase();
+  const hash = createHash("sha256")
+    .update(buildPersistentSignature(plan))
+    .digest("hex");
+  return `${safeUserId}/workspace-channel-videos/${safeMediaId}/${hash}.mp4`;
+}
+
+async function loadCachedVideoVariants(params: {
+  accountId: string;
+  workspaceId?: string;
+  mediaId?: string;
+}) {
+  const cache = new Map<string, CachedVideoVariantRow>();
+  if (!params.workspaceId || !params.mediaId) return cache;
+  const result = await supabaseAdmin
+    .from("media_variants")
+    .select(
+      "id,media_id,signature,bucket_name,storage_path,mime_type,size_bytes,duration_seconds,variant_metadata",
+    )
+    .eq("account_id", params.accountId)
+    .eq("workspace_id", params.workspaceId)
+    .eq("media_id", params.mediaId)
+    .eq("purpose", "channel_publish")
+    .eq("status", "ready");
+  if (result.error) throw result.error;
+  for (const row of (result.data || []) as CachedVideoVariantRow[]) {
+    if (row.signature) cache.set(row.signature, row);
+  }
+  return cache;
+}
+
+function cachedRowToVideoVariant(
+  row: CachedVideoVariantRow,
+  plan: BoosterVideoTransformVariantPlan,
+): BoosterVideoTransformedVariant {
+  const bucket = String(row.bucket_name || BOOSTER_BUCKET);
+  const storagePath = String(row.storage_path || "");
+  const publicUrl =
+    supabaseAdmin.storage.from(bucket).getPublicUrl(storagePath).data
+      .publicUrl || "";
+  const metadata =
+    row.variant_metadata &&
+    typeof row.variant_metadata === "object" &&
+    !Array.isArray(row.variant_metadata)
+      ? row.variant_metadata
+      : {};
+  return {
+    ...plan,
+    storagePath,
+    publicUrl,
+    contentType: String(row.mime_type || OUTPUT_CONTENT_TYPE),
+    size: Number(row.size_bytes || 0),
+    duration:
+      Number.isFinite(Number(row.duration_seconds)) &&
+      Number(row.duration_seconds) >= 0
+        ? Number(row.duration_seconds)
+        : null,
+    generatedAt: String(metadata.generatedAt || new Date().toISOString()),
+    quality: getVideoTransformQualityProfile(plan.format),
+  };
+}
+
+async function persistVideoVariant(params: {
+  accountId: string;
+  workspaceId: string;
+  mediaId: string;
+  plan: BoosterVideoTransformVariantPlan;
+  storagePath: string;
+  outputSize: number;
+  duration: number | null;
+  generatedAt: string;
+}) {
+  const signature = buildPersistentSignature(params.plan);
+  const quality = getVideoTransformQualityProfile(params.plan.format);
+  const record = {
+    account_id: params.accountId,
+    media_id: params.mediaId,
+    workspace_id: params.workspaceId,
+    purpose: "channel_publish",
+    channel: params.plan.channel,
+    signature,
+    status: "ready",
+    bucket_name: BOOSTER_BUCKET,
+    storage_path: params.storagePath,
+    mime_type: OUTPUT_CONTENT_TYPE,
+    size_bytes: params.outputSize,
+    width: params.plan.target.width,
+    height: params.plan.target.height,
+    duration_seconds: params.duration,
+    pipeline_version: CHANNEL_VIDEO_VARIANT_PIPELINE_VERSION,
+    transform_spec: {
+      format: params.plan.format,
+      adaptationMode: params.plan.adaptationMode,
+      target: params.plan.target,
+    },
+    variant_metadata: {
+      generatedAt: params.generatedAt,
+      quality,
+      plan: params.plan,
+    },
+    error_code: null,
+    error_message: null,
+    ready_at: params.generatedAt,
+  };
+  const existing = await supabaseAdmin
+    .from("media_variants")
+    .select("id")
+    .eq("account_id", params.accountId)
+    .eq("workspace_id", params.workspaceId)
+    .eq("media_id", params.mediaId)
+    .eq("purpose", "channel_publish")
+    .eq("signature", signature)
+    .maybeSingle();
+  if (existing.error) throw existing.error;
+  const saved = existing.data?.id
+    ? await supabaseAdmin
+        .from("media_variants")
+        .update(record)
+        .eq("id", existing.data.id)
+        .select(
+          "id,media_id,signature,bucket_name,storage_path,mime_type,size_bytes,duration_seconds,variant_metadata",
+        )
+        .single()
+    : await supabaseAdmin
+        .from("media_variants")
+        .insert(record)
+        .select(
+          "id,media_id,signature,bucket_name,storage_path,mime_type,size_bytes,duration_seconds,variant_metadata",
+        )
+        .single();
+  if (saved.error?.code === "23505") {
+    const winner = await supabaseAdmin
+      .from("media_variants")
+      .select(
+        "id,media_id,signature,bucket_name,storage_path,mime_type,size_bytes,duration_seconds,variant_metadata",
+      )
+      .eq("account_id", params.accountId)
+      .eq("workspace_id", params.workspaceId)
+      .eq("media_id", params.mediaId)
+      .eq("purpose", "channel_publish")
+      .eq("signature", signature)
+      .single();
+    if (winner.error) throw winner.error;
+    return winner.data as CachedVideoVariantRow;
+  }
+  if (saved.error) throw saved.error;
+  return saved.data as CachedVideoVariantRow;
 }
 
 export async function prepareBoosterVideoVariantsOnServer(params: {
   accountId: string;
+  workspaceId?: string;
+  mediaId?: string;
+  generateMissing?: boolean;
   source: BoosterVideoTransformSource;
   variants: readonly BoosterVideoTransformRequestVariant[];
 }): Promise<BoosterVideoVariantServerResult> {
@@ -317,6 +485,73 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
     };
   }
 
+  const cached = await loadCachedVideoVariants({
+    accountId: params.accountId,
+    workspaceId: params.workspaceId,
+    mediaId: params.mediaId,
+  });
+  const readyVariants: BoosterVideoTransformedVariant[] = [];
+  const missingPlan: BoosterVideoTransformVariantPlan[] = [];
+  for (const variant of plan) {
+    if (
+      variant.format === "original" &&
+      sourcePath &&
+      Number(params.source.size || 0) > 0 &&
+      Number(params.source.size || 0) <= INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES &&
+      sourceUrl
+    ) {
+      readyVariants.push({
+        ...variant,
+        storagePath: sourcePath,
+        publicUrl: sourceUrl,
+        contentType: String(params.source.type || OUTPUT_CONTENT_TYPE),
+        size: Number(params.source.size || 0),
+        duration: emptySource.duration,
+        generatedAt: new Date().toISOString(),
+        quality: getVideoTransformQualityProfile("original"),
+      });
+      continue;
+    }
+    const cachedRow = cached.get(buildPersistentSignature(variant));
+    if (cachedRow?.storage_path) {
+      readyVariants.push(cachedRowToVideoVariant(cachedRow, variant));
+    } else {
+      missingPlan.push(variant);
+    }
+  }
+
+  if (!missingPlan.length) {
+    return {
+      ok: true,
+      fallbackToOriginal: false,
+      source: {
+        ...emptySource,
+        size: Number(params.source.size || 0),
+      },
+      variants: readyVariants,
+      errors: [],
+    };
+  }
+
+  if (params.generateMissing === false) {
+    return {
+      ok: false,
+      fallbackToOriginal: false,
+      source: {
+        ...emptySource,
+        size: Number(params.source.size || 0),
+      },
+      variants: readyVariants,
+      errors: missingPlan.map((variant) => ({
+        key: variant.key,
+        format: variant.format,
+        adaptationMode: variant.adaptationMode,
+        message:
+          "Cette variante n’est pas encore prête. La préparation en arrière-plan doit être relancée.",
+      })),
+    };
+  }
+
   try {
     const ffmpegPath = await ensureFfmpegAvailable();
     const downloaded = await downloadSourceVideo(params.source);
@@ -341,7 +576,9 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
     const errors: BoosterVideoVariantServerResult["errors"] = [];
     const generatedAt = new Date().toISOString();
 
-    for (const variant of plan) {
+    const generateVariant = async (
+      variant: BoosterVideoTransformVariantPlan,
+    ) => {
       const outputPath = path.join(tempDir, `${variant.key}.mp4`);
       try {
         await runFfmpegVariant(ffmpegPath, inputPath, outputPath, variant);
@@ -352,13 +589,17 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
             `La variante ${variant.target.label} reste trop lourde après compression (${Math.ceil(outputBuffer.length / 1024 / 1024)} Mo).`,
           );
         }
-        const storagePath = buildOutputStoragePath(params.accountId, variant);
+        const storagePath = buildOutputStoragePath(
+          params.accountId,
+          params.mediaId || randomUUID(),
+          variant,
+        );
         const upload = await supabaseAdmin.storage
           .from(BOOSTER_BUCKET)
           .upload(storagePath, outputBuffer, {
             contentType: OUTPUT_CONTENT_TYPE,
-            cacheControl: "3600",
-            upsert: false,
+            cacheControl: "31536000",
+            upsert: true,
           });
         if (upload.error) {
           throw new Error(
@@ -367,7 +608,20 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
         }
         const publicUrl =
           supabaseAdmin.storage.from(BOOSTER_BUCKET).getPublicUrl(storagePath)
-            ?.data?.publicUrl || "";
+              ?.data?.publicUrl || "";
+        if (params.workspaceId && params.mediaId) {
+          const saved = await persistVideoVariant({
+            accountId: params.accountId,
+            workspaceId: params.workspaceId,
+            mediaId: params.mediaId,
+            plan: variant,
+            storagePath,
+            outputSize: outputBuffer.length,
+            duration,
+            generatedAt,
+          });
+          cached.set(buildPersistentSignature(variant), saved);
+        }
         generated.push({
           ...variant,
           storagePath,
@@ -386,6 +640,11 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
           message: String(error?.stderr || error?.message || "Transformation impossible.").slice(0, 1200),
         });
       }
+    };
+    for (let index = 0; index < missingPlan.length; index += 2) {
+      await Promise.all(
+        missingPlan.slice(index, index + 2).map(generateVariant),
+      );
     }
 
     return {
@@ -398,7 +657,7 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
         size: downloaded.buffer.length,
         duration,
       },
-      variants: generated,
+      variants: [...readyVariants, ...generated],
       errors,
     };
   } catch (error: any) {
@@ -406,7 +665,7 @@ export async function prepareBoosterVideoVariantsOnServer(params: {
       ok: false,
       fallbackToOriginal: true,
       source: emptySource,
-      variants: [],
+      variants: readyVariants,
       errors: [
         {
           message: String(

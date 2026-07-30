@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import sharp from "sharp";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import {
@@ -30,6 +31,7 @@ type ChannelSettings = {
 };
 
 export type BoosterServerImagePayload = {
+  mediaId?: string;
   name: string;
   type: string;
   dataUrl?: string;
@@ -48,6 +50,7 @@ export type BoosterServerImagePayload = {
   imageDecisionMode?: "original" | "adapted" | "customized" | "unsupported";
   imageDecisionLabel?: "Originale" | "Adaptée" | "Personnalisée" | "Indisponible";
   isCustomized?: boolean;
+  publicationReady?: boolean;
 };
 
 export type BoosterServerImagePreparationResult = {
@@ -68,6 +71,205 @@ const CHANNEL_RENDER_BASE: Record<BoosterImageChannel, { width: number; height: 
   youtube_shorts: { width: 1080, height: 1920 },
   pinterest: { width: 1000, height: 1500 },
 };
+
+const CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION = 2;
+const CHANNEL_IMAGE_VARIANT_BUCKET = "booster";
+
+type ChannelImageVariantRow = {
+  id: string;
+  media_id: string;
+  channel: string | null;
+  signature: string | null;
+  bucket_name: string | null;
+  storage_path: string | null;
+  mime_type: string | null;
+  size_bytes: number | null;
+  width: number | null;
+  height: number | null;
+};
+
+function safeStorageSegment(value: unknown, fallback: string) {
+  const clean = String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9_-]+/g, "-")
+    .replace(/-{2,}/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 100);
+  return clean || fallback;
+}
+
+function buildChannelImageSignature(value: Record<string, unknown>) {
+  const hash = createHash("sha256")
+    .update(JSON.stringify(value))
+    .digest("hex");
+  return {
+    hash,
+    signature: `inrcy:image:channel_publish:v${CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION}:${hash}`,
+  };
+}
+
+function cachedVariantKey(mediaId: string, channel: string, signature: string) {
+  return `${mediaId}:${channel}:${signature}`;
+}
+
+async function loadCachedChannelImageVariants(params: {
+  accountId?: string;
+  workspaceId?: string;
+  mediaIds: string[];
+  channels: BoosterImageChannel[];
+}) {
+  const cache = new Map<string, ChannelImageVariantRow>();
+  if (
+    !params.accountId ||
+    !params.workspaceId ||
+    !params.mediaIds.length ||
+    !params.channels.length
+  ) {
+    return cache;
+  }
+  const result = await supabaseAdmin
+    .from("media_variants")
+    .select(
+      "id,media_id,channel,signature,bucket_name,storage_path,mime_type,size_bytes,width,height",
+    )
+    .eq("account_id", params.accountId)
+    .eq("workspace_id", params.workspaceId)
+    .eq("purpose", "channel_publish")
+    .eq("status", "ready")
+    .in("media_id", params.mediaIds)
+    .in("channel", params.channels);
+  if (result.error) throw result.error;
+  for (const row of (result.data || []) as ChannelImageVariantRow[]) {
+    if (!row.media_id || !row.channel || !row.signature) continue;
+    cache.set(
+      cachedVariantKey(row.media_id, row.channel, row.signature),
+      row,
+    );
+  }
+  return cache;
+}
+
+async function persistChannelImageVariant(params: {
+  accountId: string;
+  workspaceId: string;
+  mediaId: string;
+  channel: BoosterImageChannel;
+  signature: string;
+  hash: string;
+  output: Buffer;
+  mime: string;
+  extension: string;
+  width: number;
+  height: number;
+  transform: Record<string, unknown>;
+  metadata: Record<string, unknown>;
+}) {
+  const account = safeStorageSegment(params.accountId, "account");
+  const media = safeStorageSegment(params.mediaId, "media");
+  const storagePath = `${account}/workspace-channel-images/${media}/${params.hash}.${params.extension}`;
+  const uploaded = await supabaseAdmin.storage
+    .from(CHANNEL_IMAGE_VARIANT_BUCKET)
+    .upload(storagePath, params.output, {
+      contentType: params.mime,
+      cacheControl: "31536000",
+      upsert: true,
+    });
+  if (uploaded.error) throw uploaded.error;
+
+  const readyAt = new Date().toISOString();
+  const record = {
+    account_id: params.accountId,
+    media_id: params.mediaId,
+    workspace_id: params.workspaceId,
+    purpose: "channel_publish",
+    channel: params.channel,
+    signature: params.signature,
+    status: "ready",
+    bucket_name: CHANNEL_IMAGE_VARIANT_BUCKET,
+    storage_path: storagePath,
+    mime_type: params.mime,
+    size_bytes: params.output.length,
+    width: params.width,
+    height: params.height,
+    duration_seconds: null,
+    pipeline_version: CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION,
+    transform_spec: params.transform,
+    variant_metadata: params.metadata,
+    error_code: null,
+    error_message: null,
+    ready_at: readyAt,
+  };
+  const existing = await supabaseAdmin
+    .from("media_variants")
+    .select("id")
+    .eq("account_id", params.accountId)
+    .eq("media_id", params.mediaId)
+    .eq("workspace_id", params.workspaceId)
+    .eq("purpose", "channel_publish")
+    .eq("channel", params.channel)
+    .eq("signature", params.signature)
+    .maybeSingle();
+  if (existing.error) throw existing.error;
+  const saved = existing.data?.id
+    ? await supabaseAdmin
+        .from("media_variants")
+        .update(record)
+        .eq("id", existing.data.id)
+        .select(
+          "id,media_id,channel,signature,bucket_name,storage_path,mime_type,size_bytes,width,height",
+        )
+        .single()
+    : await supabaseAdmin
+        .from("media_variants")
+        .insert(record)
+        .select(
+          "id,media_id,channel,signature,bucket_name,storage_path,mime_type,size_bytes,width,height",
+        )
+        .single();
+  if (saved.error?.code === "23505") {
+    const winner = await supabaseAdmin
+      .from("media_variants")
+      .select(
+        "id,media_id,channel,signature,bucket_name,storage_path,mime_type,size_bytes,width,height",
+      )
+      .eq("account_id", params.accountId)
+      .eq("media_id", params.mediaId)
+      .eq("workspace_id", params.workspaceId)
+      .eq("purpose", "channel_publish")
+      .eq("channel", params.channel)
+      .eq("signature", params.signature)
+      .single();
+    if (winner.error) throw winner.error;
+    return winner.data as ChannelImageVariantRow;
+  }
+  if (saved.error) throw saved.error;
+  return saved.data as ChannelImageVariantRow;
+}
+
+function channelImagePayloadFromVariant(params: {
+  row: ChannelImageVariantRow;
+  name: string;
+  mediaId: string;
+}) {
+  const bucket = String(
+    params.row.bucket_name || CHANNEL_IMAGE_VARIANT_BUCKET,
+  );
+  const storagePath = String(params.row.storage_path || "");
+  const publicUrl =
+    supabaseAdmin.storage.from(bucket).getPublicUrl(storagePath).data
+      .publicUrl || "";
+  return {
+    mediaId: params.mediaId,
+    name: params.name,
+    type: String(params.row.mime_type || "image/jpeg"),
+    bucket,
+    storagePath,
+    publicUrl,
+    renderedUrl: publicUrl,
+    publicationReady: true,
+  } satisfies BoosterServerImagePayload;
+}
 
 function asObject(value: unknown): JsonRecord {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -131,6 +333,25 @@ async function readImageMeta(buffer: Buffer): Promise<BoosterImageMetaLike> {
     width: oriented.width,
     height: oriented.height,
     ratio: oriented.width / oriented.height,
+  };
+}
+
+function readKnownImageMeta(value: unknown): BoosterImageMetaLike | null {
+  const raw = asObject(value);
+  const width = Number(raw.width || 0);
+  const height = Number(raw.height || 0);
+  if (
+    !Number.isFinite(width) ||
+    !Number.isFinite(height) ||
+    width <= 0 ||
+    height <= 0
+  ) {
+    return null;
+  }
+  return {
+    width,
+    height,
+    ratio: width / height,
   };
 }
 
@@ -351,6 +572,30 @@ async function renderAutomaticAdaptation(params: {
   return { ...rendered, fit: transform.fit } as const;
 }
 
+async function renderPublicationOriginal(buffer: Buffer) {
+  const { data, info } = await sharp(buffer, { failOn: "none" })
+    .rotate()
+    .resize({
+      width: 2048,
+      height: 2048,
+      fit: "inside",
+      withoutEnlargement: true,
+    })
+    .flatten({ background: "#ffffff" })
+    .jpeg({ quality: 90, mozjpeg: true, progressive: true })
+    .toBuffer({ resolveWithObject: true });
+  if (!info.width || !info.height) {
+    throw new Error("image_publication_dimensions_missing");
+  }
+  return {
+    output: data,
+    mime: "image/jpeg",
+    extension: "jpg",
+    width: info.width,
+    height: info.height,
+  } as const;
+}
+
 /**
  * Server counterpart of Booster's client image preparation.
  *
@@ -360,6 +605,8 @@ async function renderAutomaticAdaptation(params: {
  * plus le navigateur lors de Générer / Publier / Programmer.
  */
 export async function prepareBoosterImagesByChannelOnServer(params: {
+  accountId?: string;
+  workspaceId?: string;
   channels: BoosterImageChannel[];
   images: BoosterServerImagePayload[];
   settingsByChannel?: Partial<Record<BoosterImageChannel, unknown>>;
@@ -370,18 +617,36 @@ export async function prepareBoosterImagesByChannelOnServer(params: {
 
   const resolved = await Promise.all(
     sourceImages.map(async (image, index) => {
-      const input = await resolveImageBuffer(image);
-      if (!input) return null;
-      const meta = await readImageMeta(input.buffer);
+      let inputPromise: ReturnType<typeof resolveImageBuffer> | null = null;
+      const resolveInput = async () => {
+        inputPromise ||= resolveImageBuffer(image);
+        const input = await inputPromise;
+        if (!input) throw new Error("image_source_unavailable");
+        return input;
+      };
+      let meta = readKnownImageMeta(image.imageMeta);
+      if (!meta) {
+        const input = await resolveInput().catch(() => null);
+        if (!input) return null;
+        meta = await readImageMeta(input.buffer);
+      }
       return {
         image,
-        input,
         meta,
         imageKey: String(image.imageKey || `image-${index + 1}`),
+        resolveInput,
       };
     }),
   );
   const valid = resolved.filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
+  const cachedVariants = await loadCachedChannelImageVariants({
+    accountId: params.accountId,
+    workspaceId: params.workspaceId,
+    mediaIds: valid
+      .map((entry) => String(entry.image.mediaId || ""))
+      .filter(Boolean),
+    channels,
+  });
 
   const imagesByChannel: BoosterServerImagePreparationResult["imagesByChannel"] = {};
   const imageSettingsByChannel: BoosterServerImagePreparationResult["imageSettingsByChannel"] = {};
@@ -455,7 +720,10 @@ export async function prepareBoosterImagesByChannelOnServer(params: {
           originalPublicUrl: originalUrl,
           originalStoragePath: entry.image.originalStoragePath || entry.image.storagePath || null,
           originalName: entry.image.originalName || entry.image.name,
-          originalType: entry.image.originalType || entry.image.type || entry.input.mime,
+          originalType:
+            entry.image.originalType ||
+            entry.image.type ||
+            "application/octet-stream",
           imageKey: entry.imageKey,
           imageMeta: mergeImageMeta(entry.image.imageMeta, entry.meta),
           imageDecisionMode: displayPlan.decision.mode,
@@ -463,8 +731,133 @@ export async function prepareBoosterImagesByChannelOnServer(params: {
           isCustomized: displayPlan.decision.mode === "customized",
         } as const;
 
+        const getPreparedVariantIdentity = (
+          mode: "original" | "adapted" | "customized",
+          transform: ServerImageTransform,
+        ) =>
+          buildChannelImageSignature({
+            pipelineVersion: CHANNEL_IMAGE_VARIANT_PIPELINE_VERSION,
+            mediaId: String(entry.image.mediaId || "").trim(),
+            sourcePath: entry.image.storagePath || "",
+            imageKey: entry.imageKey,
+            channel,
+            mode,
+            transform,
+          });
+
+        const readCachedPreparedVariant = (
+          mode: "original" | "adapted" | "customized",
+          name: string,
+          transform: ServerImageTransform,
+        ) => {
+          const mediaId = String(entry.image.mediaId || "").trim();
+          if (!params.accountId || !params.workspaceId || !mediaId) return null;
+          const identity = getPreparedVariantIdentity(mode, transform);
+          const row = cachedVariants.get(
+            cachedVariantKey(mediaId, channel, identity.signature),
+          );
+          if (!row?.storage_path) return null;
+          return {
+            ...channelImagePayloadFromVariant({ row, name, mediaId }),
+            ...common,
+            transform,
+          };
+        };
+
+        const buildPreparedVariant = async (variant: {
+          mode: "original" | "adapted" | "customized";
+          name: string;
+          transform: ServerImageTransform;
+          output: Buffer;
+          mime: string;
+          extension: string;
+          width: number;
+          height: number;
+        }) => {
+          const mediaId = String(entry.image.mediaId || "").trim();
+          const signed = getPreparedVariantIdentity(
+            variant.mode,
+            variant.transform,
+          );
+          if (params.accountId && params.workspaceId && mediaId) {
+            const key = cachedVariantKey(mediaId, channel, signed.signature);
+            let row = cachedVariants.get(key);
+            if (!row?.storage_path) {
+              row = await persistChannelImageVariant({
+                accountId: params.accountId,
+                workspaceId: params.workspaceId,
+                mediaId,
+                channel,
+                signature: signed.signature,
+                hash: signed.hash,
+                output: variant.output,
+                mime: variant.mime,
+                extension: variant.extension,
+                width: variant.width,
+                height: variant.height,
+                transform: { ...variant.transform },
+                metadata: {
+                  imageKey: entry.imageKey,
+                  decisionMode: variant.mode,
+                  sourceStoragePath: entry.image.storagePath || null,
+                },
+              });
+              cachedVariants.set(key, row);
+            }
+            return {
+              ...channelImagePayloadFromVariant({
+                row,
+                name: variant.name,
+                mediaId,
+              }),
+              ...common,
+              transform: variant.transform,
+            };
+          }
+          return {
+            mediaId: mediaId || undefined,
+            name: variant.name,
+            type: variant.mime,
+            dataUrl: `data:${variant.mime};base64,${variant.output.toString("base64")}`,
+            ...common,
+            transform: variant.transform,
+          };
+        };
+
         if (displayPlan.decision.mode === "original") {
-          prepared.push({ ...entry.image, ...common, transform: automaticTransform });
+          if (!params.accountId || !params.workspaceId || !entry.image.mediaId) {
+            prepared.push({
+              ...entry.image,
+              ...common,
+              transform: automaticTransform,
+            });
+            transforms[entry.imageKey] = automaticTransform;
+            continue;
+          }
+          const nameBase = String(
+            entry.image.name || `image-${entry.imageKey}`,
+          ).replace(/\.[^.]+$/, "");
+          const outputName = `${nameBase}-${channel}-publication.jpg`;
+          const cached = readCachedPreparedVariant(
+            "original",
+            outputName,
+            automaticTransform,
+          );
+          if (cached) {
+            prepared.push(cached);
+            transforms[entry.imageKey] = automaticTransform;
+            continue;
+          }
+          const input = await entry.resolveInput();
+          const original = await renderPublicationOriginal(input.buffer);
+          prepared.push(
+            await buildPreparedVariant({
+              mode: "original",
+              name: outputName,
+              transform: automaticTransform,
+              ...original,
+            }),
+          );
           transforms[entry.imageKey] = automaticTransform;
           continue;
         }
@@ -474,24 +867,37 @@ export async function prepareBoosterImagesByChannelOnServer(params: {
           if (!(sourceRatio > 0 && adaptedTargetRatio > 0)) {
             throw new Error("missing_ratio_for_adaptation");
           }
-          const adapted = await renderAutomaticAdaptation({
-            buffer: entry.input.buffer,
-            channel,
-            sourceRatio,
-            targetRatio: adaptedTargetRatio,
-          });
           const transform = automaticTransformForDecision({
             sourceRatio,
             targetRatio: adaptedTargetRatio,
           });
           const nameBase = String(entry.image.name || `image-${entry.imageKey}`).replace(/\.[^.]+$/, "");
-          prepared.push({
-            name: `${nameBase}-${channel}-adaptee.${adapted.extension}`,
-            type: adapted.mime,
-            dataUrl: `data:${adapted.mime};base64,${adapted.output.toString("base64")}`,
-            ...common,
+          const outputName = `${nameBase}-${channel}-adaptee.jpg`;
+          const cached = readCachedPreparedVariant(
+            "adapted",
+            outputName,
             transform,
+          );
+          if (cached) {
+            prepared.push(cached);
+            transforms[entry.imageKey] = transform;
+            continue;
+          }
+          const input = await entry.resolveInput();
+          const adapted = await renderAutomaticAdaptation({
+            buffer: input.buffer,
+            channel,
+            sourceRatio,
+            targetRatio: adaptedTargetRatio,
           });
+          prepared.push(
+            await buildPreparedVariant({
+              mode: "adapted",
+              name: outputName,
+              transform,
+              ...adapted,
+            }),
+          );
           transforms[entry.imageKey] = transform;
           continue;
         }
@@ -499,20 +905,38 @@ export async function prepareBoosterImagesByChannelOnServer(params: {
         const customizedTargetRatio = channel === "instagram" && sequenceTargetRatio
           ? sequenceTargetRatio
           : CHANNEL_RENDER_BASE[channel].width / CHANNEL_RENDER_BASE[channel].height;
+        const nameBase = String(entry.image.name || `image-${entry.imageKey}`).replace(/\.[^.]+$/, "");
+        const customizedExtension =
+          currentTransform.backgroundMode === "transparent" && channel !== "gmb"
+            ? "png"
+            : "jpg";
+        const outputName = `${nameBase}-${channel}-personnalisee.${customizedExtension}`;
+        const cached = readCachedPreparedVariant(
+          "customized",
+          outputName,
+          currentTransform,
+        );
+        if (cached) {
+          prepared.push(cached);
+          transforms[entry.imageKey] = currentTransform;
+          customizedImageKeys.push(entry.imageKey);
+          continue;
+        }
+        const input = await entry.resolveInput();
         const customized = await renderImageTransform({
-          buffer: entry.input.buffer,
+          buffer: input.buffer,
           channel,
           transform: currentTransform,
           targetRatio: customizedTargetRatio,
         });
-        const nameBase = String(entry.image.name || `image-${entry.imageKey}`).replace(/\.[^.]+$/, "");
-        prepared.push({
-          name: `${nameBase}-${channel}-personnalisee.${customized.extension}`,
-          type: customized.mime,
-          dataUrl: `data:${customized.mime};base64,${customized.output.toString("base64")}`,
-          ...common,
-          transform: currentTransform,
-        });
+        prepared.push(
+          await buildPreparedVariant({
+            mode: "customized",
+            name: `${nameBase}-${channel}-personnalisee.${customized.extension}`,
+            transform: currentTransform,
+            ...customized,
+          }),
+        );
         transforms[entry.imageKey] = currentTransform;
         customizedImageKeys.push(entry.imageKey);
       } catch (error) {

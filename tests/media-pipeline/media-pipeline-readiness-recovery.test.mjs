@@ -34,7 +34,7 @@ test("Générer peut relancer immédiatement les workers du workspace", () => {
   assert.match(route, /requireUser\(\)/);
   assert.match(route, /enqueueImageNormalization\(/);
   assert.match(route, /enqueueVideoNormalization\(/);
-  assert.match(route, /processImageNormalizationJobs\(/);
+  assert.match(route, /processImageNormalizationJobsForMedia\(/);
   assert.match(route, /processVideoNormalizationJobsForMedia\(/);
   assert.match(route, /priority: 10_000/);
   assert.match(client, /\/api\/media-pipeline\/workspace\/prepare/);
@@ -69,4 +69,3 @@ test("la préparation vidéo cible le média du workspace au lieu d'un job arbit
   assert.match(targetedClaim, /\.eq\("media_id", mediaId\)/);
   assert.match(targetedClaim, /\.eq\("job_type", jobType\)/);
 });
-

@@ -19,31 +19,45 @@ export const INR_MEDIA_AGENT_MAX_MEDIA_COUNT = 1;
 export const INR_MEDIA_UPLOAD_BATCH_SIZE = 10;
 
 export const INR_MEDIA_IMAGE_FORMATS_LABEL =
-  "JPG, PNG, WebP, GIF, AVIF, HEIC ou HEIF";
-export const INR_MEDIA_VIDEO_FORMATS_LABEL = "MP4, M4V, MOV ou WebM";
+  "JPG/JFIF, PNG, WebP, GIF, AVIF, HEIC, HEIF, TIFF ou BMP";
+export const INR_MEDIA_VIDEO_FORMATS_LABEL =
+  "MP4, M4V, MOV, WebM, MPEG, AVI, MKV, 3GP, TS, WMV, FLV ou OGV";
 export const INR_MEDIA_IMAGE_LIMITS_LABEL = `${INR_MEDIA_PUBLICATION_MAX_IMAGE_COUNT} images maximum · ${INR_MEDIA_IMAGE_MAX_MB_LABEL} par image · ${INR_MEDIA_PUBLICATION_IMAGES_TOTAL_MAX_MB_LABEL} au total`;
 export const INR_MEDIA_VIDEO_LIMITS_LABEL = `1 vidéo source maximum · ${INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL} · compression automatique`;
 
 export const INR_MEDIA_ALLOWED_IMAGE_MIME_TYPES = [
   "image/jpeg",
   "image/jpg",
+  "image/x-png",
   "image/png",
   "image/webp",
   "image/gif",
   "image/avif",
   "image/heic",
   "image/heif",
+  "image/heic-sequence",
+  "image/heif-sequence",
+  "image/tif",
+  "image/tiff",
+  "image/bmp",
+  "image/x-bmp",
+  "image/x-ms-bmp",
 ] as const;
 
 export const INR_MEDIA_ALLOWED_IMAGE_EXTENSIONS = [
   "jpg",
   "jpeg",
+  "jpe",
+  "jfif",
   "png",
   "webp",
   "gif",
   "avif",
   "heic",
   "heif",
+  "tif",
+  "tiff",
+  "bmp",
 ] as const;
 
 export const INR_MEDIA_ALLOWED_VIDEO_MIME_TYPES = [
@@ -51,6 +65,15 @@ export const INR_MEDIA_ALLOWED_VIDEO_MIME_TYPES = [
   "video/webm",
   "video/quicktime",
   "video/x-m4v",
+  "video/mpeg",
+  "video/x-msvideo",
+  "video/x-matroska",
+  "video/3gpp",
+  "video/3gpp2",
+  "video/mp2t",
+  "video/x-ms-wmv",
+  "video/x-flv",
+  "video/ogg",
 ] as const;
 
 export const INR_MEDIA_ALLOWED_VIDEO_EXTENSIONS = [
@@ -58,6 +81,19 @@ export const INR_MEDIA_ALLOWED_VIDEO_EXTENSIONS = [
   "mov",
   "webm",
   "m4v",
+  "mpeg",
+  "mpg",
+  "avi",
+  "mkv",
+  "3gp",
+  "3g2",
+  "ts",
+  "mts",
+  "m2ts",
+  "wmv",
+  "flv",
+  "ogv",
+  "qt",
 ] as const;
 
 function normalizeInrMediaMimeType(value: unknown) {

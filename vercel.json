@@ -47,6 +47,10 @@
     {
       "path": "/api/cron/media-video-normalization",
       "schedule": "*/1 * * * *"
+    },
+    {
+      "path": "/api/cron/media-orphan-cleanup",
+      "schedule": "17 * * * *"
     }
   ],
   "functions": {
@@ -63,6 +67,9 @@
       "includeFiles": "node_modules/ffmpeg-static/**/*"
     },
     "app/api/media-pipeline/workspace/prepare/route.ts": {
+      "includeFiles": "node_modules/ffmpeg-static/**/*"
+    },
+    "app/api/media-pipeline/workspace/prewarm/route.ts": {
       "includeFiles": "node_modules/ffmpeg-static/**/*"
     }
   }

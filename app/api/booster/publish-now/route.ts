@@ -257,6 +257,7 @@ function slugify(input: string): string {
 }
 
 type ImagePayload = {
+  mediaId?: string;
   name: string;
   type: string;
   dataUrl?: string; // base64 data URL
@@ -276,6 +277,7 @@ type ImagePayload = {
   imageDecisionLabel?:
     "Originale" | "Adaptée" | "Personnalisée" | "Indisponible";
   isCustomized?: boolean;
+  publicationReady?: boolean;
 };
 
 type PublicationMediaType = "images" | "video";
@@ -296,6 +298,7 @@ type VideoPayload = {
 };
 
 type PersistedVideoAttachment = {
+  mediaId?: string | null;
   name: string;
   type: string;
   size: number;
@@ -596,6 +599,7 @@ async function normalizeVideoPayload(
 
   return {
     video: {
+      mediaId: String(raw["mediaId"] || raw["media_id"] || "").trim() || null,
       name: String(raw["name"] || "video-inrcy.mp4"),
       type: String(raw["type"] || "video/mp4"),
       size: Number.isFinite(size) && size > 0 ? size : 0,
@@ -852,6 +856,37 @@ async function uploadImageSet(
     [];
 
   for (const img of images.slice(0, 5)) {
+    const preparedStoragePath = String(img.storagePath || "").trim();
+    const preparedPublicUrl = String(
+      img.publicUrl || img.renderedUrl || "",
+    ).trim();
+    if (
+      img.publicationReady === true &&
+      String(img.bucket || "") === "booster" &&
+      preparedStoragePath &&
+      preparedPublicUrl
+    ) {
+      uploadedUrls.push(preparedPublicUrl);
+      publishableUrls.push(preparedPublicUrl);
+      storagePaths.push(preparedStoragePath);
+      publishableStoragePaths.push(preparedStoragePath);
+      imageKeys.push(String(img.imageKey || "").trim());
+      if (formats.instagram) {
+        instagramPublishableUrls.push(preparedPublicUrl);
+      }
+      if (formats.socialFeed) {
+        socialFeedPublishableUrls.push(preparedPublicUrl);
+        socialFeedStoragePaths.push(preparedStoragePath);
+      }
+      if (formats.siteCard) {
+        siteCardPublishableUrls.push(preparedPublicUrl);
+      }
+      if (formats.gmb) {
+        gmbPublishableUrls.push(preparedPublicUrl);
+      }
+      continue;
+    }
+
     let source: ResolvedImageInput | null = null;
     try {
       source = await resolveImageInput(img);
@@ -1431,6 +1466,8 @@ async function publishNowHandler(req: Request) {
         (channel) => mediaModeByChannel[channel] === "images",
       );
       const serverPreparation = await prepareBoosterImagesByChannelOnServer({
+        accountId: userId,
+        workspaceId: mediaWorkspaceId,
         channels: imageChannels,
         images: workspaceConsumption.images,
         settingsByChannel: imageSettingsByChannel as any,
@@ -1507,6 +1544,9 @@ async function publishNowHandler(req: Request) {
         }));
       const variantResult = await prepareBoosterVideoVariantsOnServer({
         accountId: userId,
+        workspaceId: mediaWorkspaceId,
+        mediaId: publicationVideo.mediaId || undefined,
+        generateMissing: false,
         source: {
           bucket: publicationVideo.bucket || "booster",
           storagePath: publicationVideo.storagePath,
@@ -1868,7 +1908,7 @@ async function publishNowHandler(req: Request) {
     // Only prepare the image derivatives required by the selected channels.
     const { imageSet: baseImageSet, uploadErrors } = await uploadImageSet(
       userId,
-      images,
+      strictMediaCutover ? [] : images,
       selectedImageFormats,
     );
     const uploadedUrls = baseImageSet.images;

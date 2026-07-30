@@ -329,6 +329,9 @@ async function createOrReuseRegistryRow(params: {
         upload_progress: uploaded ? 100 : 0,
         upload_error_code: null,
         upload_error_message: null,
+        is_active: true,
+        original_retention_until: null,
+        original_deleted_at: null,
         upload_started_at: uploaded ? undefined : new Date().toISOString(),
         media_metadata: {
           ...params.metadata,

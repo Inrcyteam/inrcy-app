@@ -5,7 +5,7 @@ import { enforceRateLimit } from "@/lib/rateLimit";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { enqueueImageNormalization } from "@/lib/mediaImageNormalizationQueue";
 import { enqueueVideoNormalization } from "@/lib/mediaVideoNormalizationQueue";
-import { processImageNormalizationJobs } from "@/lib/mediaImageNormalizationWorker";
+import { processImageNormalizationJobsForMedia } from "@/lib/mediaImageNormalizationWorker";
 import { processVideoNormalizationJobsForMedia } from "@/lib/mediaVideoNormalizationWorker";
 import { refreshPublicationWorkspaceMediaStatus } from "@/lib/mediaWorkspaceServer";
 
@@ -292,9 +292,9 @@ export async function POST(request: Request) {
     const limited = await enforceRateLimit({
       name: "media_pipeline_workspace_prepare",
       identifier: activeUserId,
-      limit: 36,
-      fallbackLimit: 36,
-      window: "5 m",
+      limit: 120,
+      fallbackLimit: 120,
+      window: "10 m",
       failClosed: false,
     });
     if (limited) return limited;
@@ -347,16 +347,6 @@ export async function POST(request: Request) {
       });
     }
 
-    if (initialStatus.status === "uploading") {
-      return NextResponse.json({
-        ok: true,
-        workspaceId,
-        status: initialStatus.status,
-        message: initialStatus.message,
-        media: graph.media,
-      });
-    }
-
     const processingEnabled = await enqueueWorkspaceMedia({
       accountId: activeUserId,
       workspaceId,
@@ -386,8 +376,9 @@ export async function POST(request: Request) {
     const pendingVideos = pending.filter((item) => item.mediaType === "video");
 
     if (pendingImages.length) {
-      await processImageNormalizationJobs({
-        limit: Math.min(2, pendingImages.length),
+      await processImageNormalizationJobsForMedia({
+        accountId: activeUserId,
+        mediaIds: pendingImages.map((item) => item.mediaId),
         workerId: `workspace-prepare-image-${requestId}`,
       });
     }

@@ -860,9 +860,10 @@ async function generateVersions(args: {
       engine: args.generationProfile.preferences.engine,
     }),
     deadlineAt: args.deadlineAt,
-    // Le primaire conserve une seule reprise réseau sur erreurs transitoires 5xx.
-    // La réparation ne relance jamais une seconde cascade.
-    retries: mode === "repair" ? 0 : 1,
+    // Avec des médias, une nouvelle tentative du même fournisseur consomme la
+    // fenêtre Vercel sans améliorer la fiabilité. On bascule immédiatement vers
+    // un autre moteur ; sans média, l'unique reprise historique reste autorisée.
+    retries: mode === "repair" || Boolean(args.imagesForAI?.length) ? 0 : 1,
   });
 }
 

@@ -808,42 +808,6 @@ export function unsupportedBrowserImageMessage(
   return `${prefix} Utilisez un format compatible : ${BOOSTER_IMAGE_FORMATS_LABEL}.`;
 }
 
-export async function convertHeicOrHeifImageFile(file: File): Promise<File> {
-  if (!isHeicOrHeifImageFile(file)) return file;
-
-  const formData = new FormData();
-  formData.append("file", file);
-
-  const response = await fetch("/api/booster/convert-image", {
-    method: "POST",
-    body: formData,
-  });
-
-  if (!response.ok) {
-    const json = await response.json().catch(() => ({}));
-    throw new Error(
-      String(
-        json?.error ||
-          `Impossible de convertir cette image HEIC. Utilisez un format compatible : ${BOOSTER_IMAGE_FORMATS_LABEL}.`,
-      ),
-    );
-  }
-
-  const converted = await response.blob();
-  if (!converted.size || !String(converted.type || "").startsWith("image/")) {
-    throw new Error("Image HEIC convertie invalide.");
-  }
-
-  const convertedName =
-    response.headers.get("X-Inrcy-Filename") ||
-    withJpegExtension(file.name || "image-inrcy.heic");
-
-  return new File([converted], convertedName, {
-    type: converted.type || "image/jpeg",
-    lastModified: file.lastModified || Date.now(),
-  });
-}
-
 export function isBoosterVideoFile(file: Pick<File, "type" | "name">) {
   const type =
     String(file?.type || "")

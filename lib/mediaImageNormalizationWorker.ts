@@ -6,8 +6,10 @@ import path from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { normalizeImageSource } from "@/lib/mediaImageNormalizer";
+import { claimTargetedProcessingJob } from "@/lib/mediaProcessingTargetedClaim";
 import {
   IMAGE_NORMALIZATION_DEFAULT_BATCH_SIZE,
+  IMAGE_NORMALIZATION_JOB_TYPE,
   IMAGE_NORMALIZATION_MAX_BATCH_SIZE,
   IMAGE_NORMALIZATION_MAX_SOURCE_BYTES,
   IMAGE_NORMALIZATION_PIPELINE_VERSION,
@@ -205,6 +207,18 @@ async function markVariantsProcessing(job: ClaimedImageJob, variants: VariantRow
 }
 
 async function downloadSourceToTemp(media: MediaRow, jobId: string) {
+  const expectedPrefix = `users/${media.user_id}/workspace-source/`;
+  if (
+    media.bucket_name !== "inrcy-pro-media" ||
+    !String(media.storage_path || "").startsWith(expectedPrefix)
+  ) {
+    throw new ImageNormalizationError(
+      "image_source_scope_invalid",
+      "La source image ne se trouve pas dans l’espace de stockage autorisé.",
+      false,
+    );
+  }
+
   const declaredSize = Number(media.size_bytes || 0);
   if (declaredSize > IMAGE_NORMALIZATION_MAX_SOURCE_BYTES) {
     throw new ImageNormalizationError(
@@ -622,13 +636,92 @@ export async function processImageNormalizationJobs(params?: {
 
   // Séquentiel par défaut : une image 4K et ses trois sorties peuvent déjà
   // consommer une quantité significative de mémoire dans un runtime serverless.
-  for (const job of jobs) {
-    summaries.push(await processClaimedImageJob(job));
+  for (let index = 0; index < jobs.length; index += 2) {
+    summaries.push(
+      ...(await Promise.all(
+        jobs.slice(index, index + 2).map(processClaimedImageJob),
+      )),
+    );
   }
 
   return {
     enabled: true,
     claimed: jobs.length,
+    succeeded: summaries.filter((item) => item.status === "succeeded").length,
+    retrying: summaries.filter((item) => item.status === "retry_wait").length,
+    failed: summaries.filter((item) => item.status === "failed").length,
+    cancelled: summaries.filter((item) => item.status === "cancelled").length,
+    jobs: summaries,
+  };
+}
+
+export async function processImageNormalizationJobsForMedia(params: {
+  accountId: string;
+  mediaIds: readonly string[];
+  workerId?: string;
+}) {
+  if (!isImageNormalizationEnabled()) {
+    return {
+      enabled: false,
+      requested: 0,
+      claimed: 0,
+      succeeded: 0,
+      retrying: 0,
+      failed: 0,
+      cancelled: 0,
+      jobs: [] as ProcessedJobSummary[],
+    };
+  }
+
+  const accountId = String(params.accountId || "").trim();
+  const mediaIds = Array.from(
+    new Set(
+      params.mediaIds
+        .map((value) => String(value || "").trim())
+        .filter(Boolean),
+    ),
+  ).slice(0, 5);
+  if (!accountId || mediaIds.length === 0) {
+    return {
+      enabled: true,
+      requested: mediaIds.length,
+      claimed: 0,
+      succeeded: 0,
+      retrying: 0,
+      failed: 0,
+      cancelled: 0,
+      jobs: [] as ProcessedJobSummary[],
+    };
+  }
+
+  const workerId =
+    String(params.workerId || "").trim() ||
+    `image-workspace-${process.env.VERCEL_REGION || "local"}-${randomUUID()}`;
+  const claimedJobs: ClaimedImageJob[] = [];
+  for (const mediaId of mediaIds) {
+    const job = await claimTargetedProcessingJob({
+      accountId,
+      mediaId,
+      jobType: IMAGE_NORMALIZATION_JOB_TYPE,
+      workerId: workerId.slice(0, 180),
+      leaseSeconds: IMAGE_NORMALIZATION_WORKER_LEASE_SECONDS,
+    });
+    if (job) claimedJobs.push(job as ClaimedImageJob);
+  }
+
+  const summaries: ProcessedJobSummary[] = [];
+  for (let index = 0; index < claimedJobs.length; index += 2) {
+    summaries.push(
+      ...(await Promise.all(
+        claimedJobs.slice(index, index + 2).map(processClaimedImageJob),
+      )),
+    );
+  }
+
+  return {
+    enabled: true,
+    requested: mediaIds.length,
+    claimed: claimedJobs.length,
     succeeded: summaries.filter((item) => item.status === "succeeded").length,
     retrying: summaries.filter((item) => item.status === "retry_wait").length,
     failed: summaries.filter((item) => item.status === "failed").length,

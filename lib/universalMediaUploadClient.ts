@@ -920,7 +920,6 @@ export async function uploadFileToPreparedUniversalIntent(
         progress: 0,
         error,
         file,
-        signal: options.signal,
       });
     }
     throw error;

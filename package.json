@@ -69,7 +69,10 @@
     "verify:media-pipeline:rollout": "node --experimental-strip-types scripts/verify-media-pipeline-rollout.mjs",
     "smoke:media-pipeline": "node scripts/smoke-media-pipeline.mjs",
     "qa:media-pipeline:step9": "npm run qa:media-pipeline:step8 && npm run audit:media-pipeline:step9 && npm run test:media-pipeline:step9",
-    "certify:media-pipeline": "npm run qa:media-pipeline:step9 && npm run qa:booster-images && npm run test:pinterest && npm run test:multicompte && npm run test:inrsend",
+    "audit:media-pipeline:step10": "node scripts/audit-media-pipeline-step10.mjs",
+    "test:media-pipeline:step10": "node --test --test-isolation=none --experimental-strip-types tests/media-pipeline/media-pipeline-bmp-normalization.test.mts tests/media-pipeline/media-pipeline-step10-performance-hardening.test.mjs",
+    "qa:media-pipeline:step10": "npm run qa:media-pipeline:step9 && npm run audit:media-pipeline:step10 && npm run test:media-pipeline:step10",
+    "certify:media-pipeline": "npm run qa:media-pipeline:step10 && npm run qa:booster-images && npm run test:pinterest && npm run test:multicompte && npm run test:inrsend",
     "certify:media-pipeline:full": "npm run certify:media-pipeline && npm run typecheck",
     "test:dashboard": "node --test --experimental-strip-types tests/dashboard/*.test.mts"
   },
@@ -79,16 +82,17 @@
     "@supabase/supabase-js": "^2.90.1",
     "@upstash/ratelimit": "^2.0.5",
     "@upstash/redis": "^1.34.4",
+    "bmp-js": "^0.1.0",
     "ffmpeg-static": "^5.2.0",
     "heic-convert": "^2.1.0",
     "html2canvas": "^1.4.1",
     "imapflow": "^1.2.9",
     "jspdf": "^4.0.0",
-    "next": "^16.1.6",
+    "next": "^16.2.11",
     "nodemailer": "^9.0.3",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "sharp": "^0.34.4"
+    "sharp": "0.35.3"
   },
   "devDependencies": {
     "@playwright/test": "^1.50.1",
@@ -106,11 +110,14 @@
   "allowScripts": {
     "core-js@3.48.0": true,
     "ffmpeg-static@5.3.0": true,
-    "sharp@0.34.5": true,
+    "sharp@0.35.3": true,
     "unrs-resolver@1.11.1": true,
     "@sentry/cli@2.58.6": true
   },
   "overrides": {
-    "postcss": "8.5.19"
+    "postcss": "8.5.19",
+    "brace-expansion@5.0.7": "5.0.9",
+    "fast-uri": "3.1.4",
+    "sharp": "0.35.3"
   }
 }

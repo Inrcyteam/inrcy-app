@@ -9,7 +9,6 @@ import {
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from "react";
-import { getClientUserFacingErrorMessage } from "@/lib/userFacingErrors";
 import { confirmInrcy } from "@/lib/inrcyDialog";
 import {
   areBoosterImageTransformsEquivalent,
@@ -18,7 +17,6 @@ import {
   getBoosterImageSequenceTargetRatio,
 } from "@/lib/boosterImageDecision";
 import {
-  BOOSTER_IMAGE_FORMATS_LABEL,
   BOOSTER_MAX_IMAGE_BYTES,
   BOOSTER_MAX_IMAGE_COUNT,
   BOOSTER_MAX_IMAGE_MB_LABEL,
@@ -31,7 +29,6 @@ import {
   channelSupportsImages,
   clamp,
   computePreviewLayout,
-  convertHeicOrHeifImageFile,
   getBackgroundFill,
   getBackgroundMode,
   getEffectiveTransformZoom,
@@ -55,6 +52,39 @@ import {
   type ImageTransform,
   type PublicationMediaType,
 } from "./publishModal.shared";
+
+function buildServerPreviewPlaceholder(file: Pick<File, "name">) {
+  const safeName = String(file.name || "Image")
+    .replace(/[<>&"']/g, "")
+    .slice(0, 54);
+  const svg = [
+    '<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1080" viewBox="0 0 1080 1080">',
+    '<rect width="1080" height="1080" fill="#f2f4f7"/>',
+    '<rect x="220" y="260" width="640" height="430" rx="34" fill="#fff" stroke="#d0d5dd" stroke-width="14"/>',
+    '<circle cx="380" cy="410" r="62" fill="#d0d5dd"/>',
+    '<path d="M260 640l190-190 120 120 90-90 160 160H260z" fill="#98a2b3"/>',
+    '<text x="540" y="790" text-anchor="middle" font-family="Arial,sans-serif" font-size="40" fill="#344054">Aperçu préparé sur le serveur</text>',
+    `<text x="540" y="850" text-anchor="middle" font-family="Arial,sans-serif" font-size="28" fill="#667085">${safeName}</text>`,
+    "</svg>",
+  ].join("");
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+async function buildLocalImagePresentation(file: File) {
+  try {
+    return {
+      meta: await readImageMeta(file),
+      preview: URL.createObjectURL(file),
+    };
+  } catch {
+    // Certains formats (HEIC/HEIF/TIFF notamment) sont acceptés par le
+    // pipeline mais ne sont pas décodables par tous les navigateurs.
+    return {
+      meta: { width: 1080, height: 1080, ratio: 1 } satisfies ImageMeta,
+      preview: buildServerPreviewPlaceholder(file),
+    };
+  }
+}
 
 type UsePublishImageControllerParams = {
   fileInputRef: MutableRefObject<HTMLInputElement | null>;
@@ -378,27 +408,12 @@ export default function usePublishImageController({
       return;
     }
 
-    let browserReadyImages: File[];
-    try {
-      browserReadyImages = await Promise.all(
-        incoming.map((file) => convertHeicOrHeifImageFile(file)),
-      );
-    } catch (error) {
-      setImgError(
-        getClientUserFacingErrorMessage(
-          error,
-          `Impossible de convertir cette image HEIC. Utilisez un format compatible : ${BOOSTER_IMAGE_FORMATS_LABEL}.`,
-        ),
-      );
-      return;
-    }
-
     if (!hasVideoMedia) {
       setPublicationMediaType("images");
     }
 
     const existingKeys = new Set(images.map((file) => makeImageKey(file)));
-    const deduped = browserReadyImages.filter(
+    const deduped = incoming.filter(
       (file) => !existingKeys.has(makeImageKey(file)),
     );
     const allowed = deduped.slice(
@@ -415,7 +430,7 @@ export default function usePublishImageController({
       return;
     }
 
-    if (browserReadyImages.length > allowed.length) {
+    if (incoming.length > allowed.length) {
       setImgError(
         images.length + allowed.length >= BOOSTER_MAX_IMAGE_COUNT
           ? `Maximum ${BOOSTER_MAX_IMAGE_COUNT} images.`
@@ -443,21 +458,16 @@ export default function usePublishImageController({
     }
 
     const nextFiles = [...images, ...allowed].slice(0, BOOSTER_MAX_IMAGE_COUNT);
-    let nextMetaEntries: Array<readonly [string, ImageMeta]>;
-    try {
-      nextMetaEntries = await Promise.all(
-        allowed.map(
-          async (file) =>
-            [makeImageKey(file), await readImageMeta(file)] as const,
-        ),
-      );
-    } catch {
-      setImgError(`Une image n'est pas lisible. Formats compatibles : ${BOOSTER_IMAGE_FORMATS_LABEL}.`);
-      return;
-    }
+    const presentations = await Promise.all(
+      allowed.map((file) => buildLocalImagePresentation(file)),
+    );
+    const nextMetaEntries = allowed.map(
+      (file, index) =>
+        [makeImageKey(file), presentations[index].meta] as const,
+    );
     const nextPreviews = [
       ...imagePreviews,
-      ...allowed.map((file) => URL.createObjectURL(file)),
+      ...presentations.map((item) => item.preview),
     ].slice(0, BOOSTER_MAX_IMAGE_COUNT);
     const nextMetaMap = Object.fromEntries(nextMetaEntries) as Record<
       string,
@@ -669,9 +679,10 @@ export default function usePublishImageController({
         const lastModified = Number(image?.lastModified || Date.now());
         const file = new File([blob], name, { type, lastModified });
         const key = makeImageKey(file);
+        const presentation = await buildLocalImagePresentation(file);
         restoredFiles.push(file);
-        restoredPreviews.push(URL.createObjectURL(file));
-        restoredMeta[key] = await readImageMeta(file);
+        restoredPreviews.push(presentation.preview);
+        restoredMeta[key] = presentation.meta;
       } catch {
         // Une ancienne image de brouillon peut ne plus être disponible : on recharge le reste du brouillon.
       }

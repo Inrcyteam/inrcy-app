@@ -162,6 +162,31 @@ export async function GET(request: Request) {
       .order("position", { ascending: true });
     if (mediaResult.error) throw mediaResult.error;
 
+    const mediaIds = (mediaResult.data || [])
+      .map((row: any) => String(row.media_id || ""))
+      .filter(Boolean);
+    const variantsResult = mediaIds.length
+      ? await supabaseAdmin
+          .from("media_variants")
+          .select(
+            "media_id,purpose,status,bucket_name,storage_path,width,height",
+          )
+          .eq("account_id", activeUserId)
+          .in("media_id", mediaIds)
+          .eq("status", "ready")
+          .in("purpose", ["thumbnail", "canonical"])
+      : { data: [], error: null };
+    if (variantsResult.error) throw variantsResult.error;
+    const variantsByMedia = new Map<string, any[]>();
+    for (const variant of variantsResult.data || []) {
+      const mediaId = String((variant as any).media_id || "");
+      if (!mediaId) continue;
+      variantsByMedia.set(mediaId, [
+        ...(variantsByMedia.get(mediaId) || []),
+        variant,
+      ]);
+    }
+
     const media = await Promise.all(
       (mediaResult.data || []).map(async (row: any) => {
         const item = Array.isArray(row.pro_media_library)
@@ -172,6 +197,35 @@ export async function GET(request: Request) {
         const publicUrl =
           includeUrls && bucket && storagePath
             ? await createSafeStorageSignedUrl(bucket, storagePath, 60 * 60 * 24)
+            : null;
+        const normalizedVariants = variantsByMedia.get(
+          String(row.media_id || item?.id || ""),
+        ) || [];
+        const canonicalVariant = normalizedVariants.find(
+          (variant) => variant.purpose === "canonical",
+        );
+        const previewVariant =
+          normalizedVariants.find((variant) => variant.purpose === "thumbnail") ||
+          canonicalVariant;
+        const previewUrl =
+          includeUrls &&
+          previewVariant?.bucket_name &&
+          previewVariant?.storage_path
+            ? await createSafeStorageSignedUrl(
+                String(previewVariant.bucket_name),
+                String(previewVariant.storage_path),
+                60 * 60 * 24,
+              )
+            : null;
+        const canonicalUrl =
+          includeUrls &&
+          canonicalVariant?.bucket_name &&
+          canonicalVariant?.storage_path
+            ? await createSafeStorageSignedUrl(
+                String(canonicalVariant.bucket_name),
+                String(canonicalVariant.storage_path),
+                60 * 60 * 24,
+              )
             : null;
         return {
           mediaId: String(row.media_id || item?.id || ""),
@@ -191,6 +245,8 @@ export async function GET(request: Request) {
           bucket,
           storagePath,
           publicUrl,
+          previewUrl,
+          canonicalUrl,
           fileName: String(item?.original_file_name || "media-inrcy"),
           clientMediaKey: String(item?.client_media_key || ""),
           mimeType: String(item?.mime_type || "application/octet-stream"),
@@ -273,11 +329,41 @@ export async function POST(request: Request) {
     if (!workspace) return jsonError("Espace média introuvable.", 404);
 
     if (body.action === "clear_media") {
+      const linked = await supabaseAdmin
+        .from("publication_workspace_media")
+        .select("media_id")
+        .eq("workspace_id", workspaceId);
+      if (linked.error) throw linked.error;
+      const detachedMediaIds = Array.from(
+        new Set(
+          (linked.data || [])
+            .map((row: any) => String(row.media_id || ""))
+            .filter(Boolean),
+        ),
+      );
       const deleted = await supabaseAdmin
         .from("publication_workspace_media")
         .delete()
         .eq("workspace_id", workspaceId);
       if (deleted.error) throw deleted.error;
+      const retentionUntil = new Date(
+        Date.now() + 24 * 60 * 60 * 1_000,
+      ).toISOString();
+      for (const mediaId of detachedMediaIds) {
+        const remaining = await supabaseAdmin
+          .from("publication_workspace_media")
+          .select("media_id", { count: "exact", head: true })
+          .eq("media_id", mediaId);
+        if (remaining.error) throw remaining.error;
+        if ((remaining.count || 0) > 0) continue;
+        const retained = await supabaseAdmin
+          .from("pro_media_library")
+          .update({ original_retention_until: retentionUntil })
+          .eq("id", mediaId)
+          .eq("user_id", activeUserId)
+          .eq("source", "booster_workspace");
+        if (retained.error) throw retained.error;
+      }
       const updated = await supabaseAdmin
         .from("publication_workspaces")
         .update({

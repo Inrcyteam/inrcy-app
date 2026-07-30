@@ -15,6 +15,7 @@ import { getClientUserFacingErrorMessage as getSimpleFrenchErrorMessage } from "
 import {
   DEFAULT_AI_PREFERRED_ENGINE,
   getAiEngineOption,
+  getAutomaticAiRetryEngine,
   normalizeAiPreferredEngine,
   type AiPreferredEngine,
 } from "@/lib/aiEnginePreference";
@@ -130,6 +131,7 @@ import { isLegacyMediaTransportCutoverClientEnabled } from "@/lib/mediaPipelineL
 import {
   loadMediaPublicationWorkspace,
   prepareMediaPublicationWorkspace,
+  type MediaWorkspaceMediaSummary,
 } from "@/lib/mediaWorkspaceClient";
 import usePublishVideoController, {
   normalizeRestoredVideoVariants,
@@ -1500,6 +1502,49 @@ export default function PublishModal({
     [channels, connected],
   );
 
+  const handlePreparedWorkspaceMedia = useCallback(
+    (preparedMedia: readonly MediaWorkspaceMediaSummary[]) => {
+      const preparedImages = preparedMedia.filter(
+        (item) =>
+          item.mediaType === "image" &&
+          item.processingStatus === "ready" &&
+          Boolean(item.previewUrl),
+      );
+      if (!preparedImages.length) return;
+
+      setImagePreviews((current) => {
+        const next = current.slice();
+        for (const item of preparedImages) {
+          if (item.position < 0 || item.position >= images.length) continue;
+          const previewUrl = String(item.previewUrl || "");
+          if (!previewUrl) continue;
+          const previous = next[item.position];
+          if (previous?.startsWith("blob:") && previous !== previewUrl) {
+            URL.revokeObjectURL(previous);
+          }
+          next[item.position] = previewUrl;
+        }
+        return next;
+      });
+      setImageMetaByKey((current) => {
+        const next = { ...current };
+        for (const item of preparedImages) {
+          const file = images[item.position];
+          const width = Number(item.width || 0);
+          const height = Number(item.height || 0);
+          if (!file || width <= 0 || height <= 0) continue;
+          next[makeImageKey(file)] = {
+            width,
+            height,
+            ratio: width / height,
+          };
+        }
+        return next;
+      });
+    },
+    [images],
+  );
+
   const {
     enabled: persistentMediaWorkspaceEnabled,
     workspaceId: mediaWorkspaceId,
@@ -1507,6 +1552,7 @@ export default function PublishModal({
     adoptWorkspace: adoptMediaWorkspace,
     syncImages: syncPersistentWorkspaceImages,
     syncVideo: syncPersistentWorkspaceVideo,
+    prewarmWorkspace: prewarmPersistentMediaWorkspace,
     clearWorkspaceMedia: clearPersistentWorkspaceMedia,
     linkDraft: linkPersistentWorkspaceDraft,
     ensureWorkspace: ensurePersistentMediaWorkspace,
@@ -1515,7 +1561,9 @@ export default function PublishModal({
   } = usePersistentMediaWorkspace({
     draftId: publicationDraftIdParam,
     selectedChannels,
+    imageSettingsByChannel: channelImageEditors as Record<string, unknown>,
     onError: setImgError,
+    onPreparedMedia: handlePreparedWorkspaceMedia,
   });
   const legacyMediaCutoverClientAvailable =
     persistentMediaWorkspaceEnabled &&
@@ -1565,6 +1613,24 @@ export default function PublishModal({
     setPublishProgress,
     setPublishProgressLabel,
   });
+
+  useEffect(() => {
+    if (!persistentMediaWorkspaceEnabled || !videoFile) return;
+    const timeoutId = window.setTimeout(() => {
+      void prewarmPersistentMediaWorkspace({
+        videoSettingsByChannel: videoSettingsByChannel as Record<
+          string,
+          unknown
+        >,
+      }).catch(() => undefined);
+    }, 900);
+    return () => window.clearTimeout(timeoutId);
+  }, [
+    persistentMediaWorkspaceEnabled,
+    prewarmPersistentMediaWorkspace,
+    videoFile,
+    videoSettingsByChannel,
+  ]);
 
 
   const waitForPersistentWorkspaceReadiness = useCallback(
@@ -1748,7 +1814,7 @@ export default function PublishModal({
           }
 
           if (!preparationKick && now >= nextPreparationKickAt) {
-            nextPreparationKickAt = now + 12_000;
+            nextPreparationKickAt = now + 4_000;
             preparationKick = prepareMediaPublicationWorkspace({
               workspaceId: activeWorkspaceId,
             })
@@ -1771,7 +1837,7 @@ export default function PublishModal({
                     : new Error(
                         "Impossible de relancer la préparation du média.",
                       );
-                nextPreparationKickAt = Date.now() + 12_000;
+                nextPreparationKickAt = Date.now() + 4_000;
               })
               .finally(() => {
                 preparationKick = null;
@@ -3046,18 +3112,77 @@ export default function PublishModal({
               }
             : null,
       };
-      const generationRequest = buildBoosterGenerationRequest(
-        generationPayload,
-      );
-      const res = await fetch("/api/booster/generate", {
-        method: "POST",
-        ...(generationRequest.headers
-          ? { headers: generationRequest.headers }
-          : {}),
-        body: generationRequest.body,
-      });
+      const executeGenerationRequest = async (engine: AiPreferredEngine) => {
+        const request = buildBoosterGenerationRequest({
+          ...generationPayload,
+          aiPreferredEngine: engine,
+        });
+        const response = await fetch("/api/booster/generate", {
+          method: "POST",
+          ...(request.headers ? { headers: request.headers } : {}),
+          body: request.body,
+        });
+        const responseJson = await response.json().catch(() => ({}));
+        return { response, responseJson };
+      };
 
-      const json = await res.json().catch(() => ({}));
+      const isAutomaticAiRetryEligible = (
+        response: Response,
+        responseJson: Record<string, unknown>,
+      ) => {
+        const errorCode = String(
+          responseJson?.error_code || responseJson?.code || "",
+        ).trim();
+        if (
+          [
+            "ai_gateway_account_limit_reached",
+            "ai_gateway_guard_unavailable",
+            "ai_operation_budget_exceeded",
+            "ai_gateway_auth",
+          ].includes(errorCode)
+        ) {
+          return false;
+        }
+        return (
+          [429, 502, 503, 504].includes(response.status) ||
+          [
+            "ai_gateway_rate_limit",
+            "ai_gateway_unavailable",
+            "ai_gateway_request_failed",
+            "ai_gateway_invalid_request",
+            "ai_operation_deadline_exceeded",
+          ].includes(errorCode)
+        );
+      };
+
+      let { response: res, responseJson: json } =
+        await executeGenerationRequest(selectedAiPreferredEngine);
+      let automaticRetry:
+        | { primaryEngine: AiPreferredEngine; finalEngine: AiPreferredEngine }
+        | null = null;
+
+      if (!res.ok && isAutomaticAiRetryEligible(res, json)) {
+        const retryEngine = getAutomaticAiRetryEngine(
+          selectedAiPreferredEngine,
+        );
+        const primaryLabel = getAiEngineOption(
+          selectedAiPreferredEngine,
+        ).shortLabel;
+        const retryLabel = getAiEngineOption(retryEngine).shortLabel;
+
+        automaticRetry = {
+          primaryEngine: selectedAiPreferredEngine,
+          finalEngine: retryEngine,
+        };
+        setGenerationProgress(94);
+        setGenerationStage(
+          `${primaryLabel} n'a pas répondu, secours automatique avec ${retryLabel}`,
+        );
+
+        ({ response: res, responseJson: json } =
+          await executeGenerationRequest(retryEngine));
+      }
+
       if (!res.ok) {
         setGenError(
           getSimpleFrenchErrorMessage(
@@ -3089,6 +3214,16 @@ export default function PublishModal({
             : "via le moteur de secours";
         setGenerationNotice(
           `${primaryLabel} était temporairement indisponible. Le contenu a été généré avec ${finalLabel} ${transportLabel}.`,
+        );
+      } else if (automaticRetry) {
+        const primaryLabel = getAiEngineOption(
+          automaticRetry.primaryEngine,
+        ).shortLabel;
+        const finalLabel = getAiEngineOption(
+          automaticRetry.finalEngine,
+        ).shortLabel;
+        setGenerationNotice(
+          `${primaryLabel} n'a pas répondu au premier essai. iNrCy a automatiquement terminé la génération avec ${finalLabel}, sans modifier votre moteur par défaut.`,
         );
       }
       didGenerate = true;
@@ -3855,6 +3990,32 @@ export default function PublishModal({
           setPublishProgressLabel(label || "Vérification des médias...");
         });
 
+      if (readyMediaWorkspaceId && mediaPipelineCutoverEnabled) {
+        setPublishProgress((current) => Math.max(current, 26));
+        setPublishProgressLabel("Validation des variantes déjà préparées...");
+        const prewarmResult = await prewarmPersistentMediaWorkspace({
+          imageSettingsByChannel: channelImageEditors as Record<
+            string,
+            unknown
+          >,
+          videoSettingsByChannel: videoSettingsByChannel as Record<
+            string,
+            unknown
+          >,
+        });
+        if (prewarmResult?.ok === false) {
+          const firstError = Array.isArray(prewarmResult.errors)
+            ? prewarmResult.errors[0]?.message
+            : "";
+          throw new Error(
+            String(
+              firstError ||
+                "Une variante média n’a pas pu être préparée pour la publication.",
+            ),
+          );
+        }
+      }
+
       const emptyChannelImages = {} as ChannelImagePayload;
       const emptyChannelSettings = {} as ChannelImageSettingsPayload;
       const { channelImages, channelSettings } = !hasAnyImagePublish
@@ -4410,6 +4571,32 @@ export default function PublishModal({
           setPublishProgress((current) => Math.max(current, progress));
           setPublishProgressLabel(label || "Vérification des médias...");
         });
+
+      if (readyMediaWorkspaceId && mediaPipelineCutoverEnabled) {
+        setPublishProgress((current) => Math.max(current, 26));
+        setPublishProgressLabel("Sécurisation des médias programmés...");
+        const prewarmResult = await prewarmPersistentMediaWorkspace({
+          imageSettingsByChannel: channelImageEditors as Record<
+            string,
+            unknown
+          >,
+          videoSettingsByChannel: videoSettingsByChannel as Record<
+            string,
+            unknown
+          >,
+        });
+        if (prewarmResult?.ok === false) {
+          const firstError = Array.isArray(prewarmResult.errors)
+            ? prewarmResult.errors[0]?.message
+            : "";
+          throw new Error(
+            String(
+              firstError ||
+                "Une variante média n’a pas pu être préparée pour la programmation.",
+            ),
+          );
+        }
+      }
 
       const emptyChannelImages = {} as ChannelImagePayload;
       const emptyChannelSettings = {} as ChannelImageSettingsPayload;

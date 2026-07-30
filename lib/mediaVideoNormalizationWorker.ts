@@ -117,10 +117,6 @@ function classifyWorkerError(error: unknown) {
     message.includes("could not find codec parameters") ||
     message.includes("unsupported codec") ||
     message.includes("video_probe_failed") ||
-    message.includes("video_ffmpeg_stalled") ||
-    message.includes("video_ffmpeg_timeout") ||
-    message.includes("video_ffmpeg_spawn_failed") ||
-    message.includes("video_frames_unavailable") ||
     message.includes("corrupt") ||
     message.includes("decode");
 
@@ -235,6 +231,18 @@ async function markVariantsProcessing(
 }
 
 async function downloadSourceToTemp(media: MediaRow, jobId: string) {
+  const expectedPrefix = `users/${media.user_id}/workspace-source/`;
+  if (
+    media.bucket_name !== "inrcy-pro-media" ||
+    !String(media.storage_path || "").startsWith(expectedPrefix)
+  ) {
+    throw new VideoNormalizationError(
+      "video_source_scope_invalid",
+      "La source vidéo ne se trouve pas dans l’espace de stockage autorisé.",
+      false,
+    );
+  }
+
   const declaredSize = Number(media.size_bytes || 0);
   if (declaredSize > VIDEO_NORMALIZATION_MAX_SOURCE_BYTES) {
     throw new VideoNormalizationError(
@@ -830,4 +838,3 @@ export async function processVideoNormalizationJobsForMedia(params: {
     jobs: summaries,
   };
 }
-

@@ -76,6 +76,11 @@ export type WorkspacePublicationImage = {
   storagePath: string;
   publicUrl?: string;
   workspacePosition: number;
+  imageMeta?: {
+    width: number;
+    height: number;
+    ratio: number;
+  };
 };
 
 export type WorkspacePublicationVideo = {
@@ -458,6 +463,15 @@ export async function resolveWorkspacePublicationConsumption(params: {
         bucket: canonical.bucket,
         storagePath: canonical.storagePath,
         workspacePosition: item.position,
+        ...(canonical.width && canonical.height
+          ? {
+              imageMeta: {
+                width: canonical.width,
+                height: canonical.height,
+                ratio: canonical.width / canonical.height,
+              },
+            }
+          : {}),
       };
     });
 

@@ -8,6 +8,8 @@ export const IMAGE_NORMALIZATION_MAX_BATCH_SIZE = 4;
 export const IMAGE_NORMALIZATION_MAX_INPUT_PIXELS = 100_000_000;
 export const IMAGE_NORMALIZATION_MAX_SOURCE_BYTES = 500 * 1024 * 1024;
 export const IMAGE_NORMALIZATION_HEIC_FALLBACK_MAX_BYTES = 120 * 1024 * 1024;
+export const IMAGE_NORMALIZATION_BMP_FALLBACK_MAX_BYTES = 50 * 1024 * 1024;
+export const IMAGE_NORMALIZATION_BMP_MAX_INPUT_PIXELS = 25_000_000;
 
 export const IMAGE_CANONICAL_MAX_SIDE = 4096;
 export const IMAGE_AI_PREVIEW_MAX_SIDE = 1280;
@@ -94,7 +96,23 @@ export function isHeicMimeOrName(mimeType: string, fileName = "") {
   return (
     mime === "image/heic" ||
     mime === "image/heif" ||
+    mime === "image/heic-sequence" ||
+    mime === "image/heif-sequence" ||
     name.endsWith(".heic") ||
     name.endsWith(".heif")
+  );
+}
+
+export function isBmpMimeOrName(mimeType: string, fileName = "") {
+  const mime = String(mimeType || "")
+    .toLowerCase()
+    .split(";")[0]
+    ?.trim();
+  const name = String(fileName || "").toLowerCase();
+  return (
+    mime === "image/bmp" ||
+    mime === "image/x-bmp" ||
+    mime === "image/x-ms-bmp" ||
+    name.endsWith(".bmp")
   );
 }

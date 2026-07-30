@@ -157,6 +157,16 @@ export function getAiEngineOption(value: unknown): AiEngineOption {
   return AI_ENGINE_OPTIONS.find((option) => option.value === engine) || AI_ENGINE_OPTIONS[0];
 }
 
+/**
+ * Moteur utilisé pour l'unique nouvelle tentative automatique côté client.
+ * La préférence enregistrée du professionnel n'est jamais modifiée : cette
+ * valeur ne sert qu'à terminer l'action en cours lorsqu'un fournisseur échoue.
+ */
+export function getAutomaticAiRetryEngine(value: unknown): AiPreferredEngine {
+  const primary = normalizeAiPreferredEngine(value);
+  return primary === "openai" ? "google" : "openai";
+}
+
 
 export function resolveAiEngineRequestRouting(
   value: unknown,

@@ -38,6 +38,14 @@ test("les formats courants sont reconnus même lorsque le navigateur fournit peu
     "video",
   );
   assert.equal(
+    detectUniversalUploadMediaType({ name: "photo.JFIF", mimeType: "" }),
+    "image",
+  );
+  assert.equal(
+    detectUniversalUploadMediaType({ name: "camera.MTS", mimeType: "" }),
+    "video",
+  );
+  assert.equal(
     detectUniversalUploadMediaType({ name: "sans-extension", mimeType: "video/mp4" }),
     "video",
   );
@@ -48,6 +56,14 @@ test("les formats courants sont reconnus même lorsque le navigateur fournit peu
       mediaType: "video",
     }),
     "video/quicktime",
+  );
+  assert.equal(
+    getUniversalMediaContentType({
+      name: "camera.m2ts",
+      mimeType: "",
+      mediaType: "video",
+    }),
+    "video/mp2t",
   );
 });
 

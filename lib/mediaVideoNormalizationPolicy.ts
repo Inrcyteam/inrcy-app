@@ -1,5 +1,6 @@
 import path from "node:path";
 import {
+  INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES,
   INR_MEDIA_VIDEO_SOURCE_MAX_BYTES,
   INR_MEDIA_VIDEO_SOURCE_MAX_MB_LABEL,
 } from "./mediaRules.ts";
@@ -20,7 +21,10 @@ export const VIDEO_FRAME_MAX_SIDE = 1280;
 export const VIDEO_THUMBNAIL_MAX_SIDE = 720;
 export const VIDEO_AI_PREVIEW_FPS = 15;
 
-export const VIDEO_CANONICAL_MAX_BYTES = 94 * 1024 * 1024;
+// Le canonique doit pouvoir partir directement vers tous les réseaux. Une
+// petite marge est conservée sous le plafond de publication de 40 Mo.
+export const VIDEO_CANONICAL_MAX_BYTES =
+  INR_MEDIA_VIDEO_PUBLISH_MAX_BYTES - 1 * 1024 * 1024;
 export const VIDEO_AI_PREVIEW_MAX_BYTES = 32 * 1024 * 1024;
 export const VIDEO_AUDIO_TRACK_MAX_BYTES = 40 * 1024 * 1024;
 export const VIDEO_FRAME_MAX_BYTES = 5 * 1024 * 1024;
