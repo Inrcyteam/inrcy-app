@@ -127,7 +127,10 @@ import usePublishImageController from "./usePublishImageController";
 import usePersistentMediaWorkspace from "./usePersistentMediaWorkspace";
 import { isUnifiedMediaConsumptionClientEnabled } from "@/lib/mediaPipelineUnifiedConsumptionPolicy";
 import { isLegacyMediaTransportCutoverClientEnabled } from "@/lib/mediaPipelineLegacyCutoverPolicy";
-import { loadMediaPublicationWorkspace } from "@/lib/mediaWorkspaceClient";
+import {
+  loadMediaPublicationWorkspace,
+  triggerMediaPublicationWorkspaceProcessing,
+} from "@/lib/mediaWorkspaceClient";
 import usePublishVideoController, {
   normalizeRestoredVideoVariants,
   type VideoVariantPreparationState,
@@ -1595,8 +1598,18 @@ export default function PublishModal({
         throw new Error("Impossible de préparer l’espace média.");
       }
 
-      const timeoutMs = purpose === "generate" ? 90_000 : 120_000;
+      const timeoutMs =
+        expectedMediaType === "video"
+          ? purpose === "generate"
+            ? 420_000
+            : 480_000
+          : purpose === "generate"
+            ? 300_000
+            : 360_000;
       const startedAt = Date.now();
+      let processingKick: Promise<unknown> | null = null;
+      let lastProcessingKickAt = 0;
+      let lastProcessingKickError = "";
 
       while (true) {
         const snapshot = await loadMediaPublicationWorkspace({
@@ -1611,6 +1624,21 @@ export default function PublishModal({
         const allUploaded =
           hasAllExpectedMedia &&
           relevantMedia.every((item) => item.uploadStatus === "uploaded");
+        const terminalFailure = relevantMedia.find((item) => {
+          const processingStatus = String(item.processingStatus || "");
+          const publicationStatus = String(item.publicationStatus || "");
+          return (
+            processingStatus === "failed_terminal" ||
+            publicationStatus === "failed"
+          );
+        });
+        if (terminalFailure) {
+          throw new Error(
+            String(terminalFailure.processingErrorMessage || "").trim() ||
+              "Un média n’a pas pu être préparé. Retirez-le puis ajoutez-le à nouveau.",
+          );
+        }
+
         const allProcessed =
           hasAllExpectedMedia &&
           relevantMedia.every(
@@ -1644,7 +1672,43 @@ export default function PublishModal({
           onProgress?.(24, expectedCount > 1 ? "Médias envoyés" : "Média envoyé");
           return activeWorkspaceId;
         } else if (!allProcessed) {
-          onProgress?.(32, `Préparation des ${mediaLabel} sur le serveur...`);
+          const now = Date.now();
+          if (!processingKick && now - lastProcessingKickAt >= 8_000) {
+            lastProcessingKickAt = now;
+            processingKick = triggerMediaPublicationWorkspaceProcessing({
+              workspaceId: activeWorkspaceId,
+            })
+              .catch((error) => {
+                lastProcessingKickError =
+                  error instanceof Error ? error.message : String(error || "");
+              })
+              .finally(() => {
+                processingKick = null;
+              });
+          }
+
+          const readyCount = relevantMedia.filter(
+            (item) => String(item.processingStatus || "") === "ready",
+          ).length;
+          const processingPercent = hasAllExpectedMedia
+            ? Math.round(
+                relevantMedia.reduce((sum, item) => {
+                  if (String(item.processingStatus || "") === "ready") {
+                    return sum + 100;
+                  }
+                  return sum + clampPercent(item.processingProgress || 0);
+                }, 0) / expectedCount,
+              )
+            : 0;
+          onProgress?.(
+            Math.max(
+              25,
+              Math.min(37, 25 + Math.round(processingPercent * 0.12)),
+            ),
+            expectedCount > 1
+              ? `Préparation serveur : ${readyCount}/${expectedCount} médias prêts (${processingPercent}%)`
+              : `Préparation du média sur le serveur (${processingPercent}%)`,
+          );
         } else if (!publicationReady) {
           onProgress?.(38, `Finalisation des ${mediaLabel} pour la publication...`);
         } else {
@@ -1654,9 +1718,9 @@ export default function PublishModal({
 
         if (Date.now() - startedAt > timeoutMs) {
           throw new Error(
-            purpose === "generate"
-              ? "Le média est encore en préparation. Réessayez dans quelques secondes."
-              : "Les médias sont encore en préparation. Réessayez dans quelques secondes.",
+            lastProcessingKickError
+              ? "La préparation immédiate des médias a rencontré un problème. Merci de réessayer."
+              : "La préparation serveur prend plus de temps que prévu. Merci de réessayer.",
           );
         }
         await sleep(1200);

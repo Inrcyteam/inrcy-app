@@ -6,8 +6,10 @@ import path from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { refreshPublicationWorkspaceStatusesForMedia } from "@/lib/mediaWorkspaceServer";
+import { claimTargetedProcessingJob } from "@/lib/mediaProcessingTargetedClaim";
 import {
   VIDEO_NORMALIZATION_DEFAULT_BATCH_SIZE,
+  VIDEO_NORMALIZATION_JOB_TYPE,
   VIDEO_NORMALIZATION_MAX_BATCH_SIZE,
   VIDEO_NORMALIZATION_MAX_SOURCE_BYTES,
   VIDEO_NORMALIZATION_MAX_SOURCE_MB_LABEL,
@@ -708,6 +710,76 @@ export async function processVideoNormalizationJobs(params?: {
   return {
     enabled: true,
     claimed: jobs.length,
+    succeeded: summaries.filter((item) => item.status === "succeeded").length,
+    retrying: summaries.filter((item) => item.status === "retry_wait").length,
+    failed: summaries.filter((item) => item.status === "failed").length,
+    cancelled: summaries.filter((item) => item.status === "cancelled").length,
+    jobs: summaries,
+  };
+}
+
+export async function processVideoNormalizationJobsForMedia(params: {
+  accountId: string;
+  mediaIds: readonly string[];
+  workerId?: string;
+}) {
+  if (!isVideoNormalizationEnabled()) {
+    return {
+      enabled: false,
+      requested: 0,
+      claimed: 0,
+      succeeded: 0,
+      retrying: 0,
+      failed: 0,
+      cancelled: 0,
+      jobs: [] as ProcessedJobSummary[],
+    };
+  }
+
+  const accountId = String(params.accountId || "").trim();
+  const mediaIds = Array.from(
+    new Set(
+      params.mediaIds
+        .map((value) => String(value || "").trim())
+        .filter(Boolean),
+    ),
+  ).slice(0, 1);
+  if (!accountId || mediaIds.length === 0) {
+    return {
+      enabled: true,
+      requested: mediaIds.length,
+      claimed: 0,
+      succeeded: 0,
+      retrying: 0,
+      failed: 0,
+      cancelled: 0,
+      jobs: [] as ProcessedJobSummary[],
+    };
+  }
+
+  const workerId =
+    String(params.workerId || "").trim() ||
+    `video-workspace-${process.env.VERCEL_REGION || "local"}-${randomUUID()}`;
+  const summaries: ProcessedJobSummary[] = [];
+  let claimed = 0;
+
+  for (const mediaId of mediaIds) {
+    const job = await claimTargetedProcessingJob({
+      accountId,
+      mediaId,
+      jobType: VIDEO_NORMALIZATION_JOB_TYPE,
+      workerId: workerId.slice(0, 180),
+      leaseSeconds: VIDEO_NORMALIZATION_WORKER_LEASE_SECONDS,
+    });
+    if (!job) continue;
+    claimed += 1;
+    summaries.push(await processClaimedVideoJob(job as ClaimedVideoJob));
+  }
+
+  return {
+    enabled: true,
+    requested: mediaIds.length,
+    claimed,
     succeeded: summaries.filter((item) => item.status === "succeeded").length,
     retrying: summaries.filter((item) => item.status === "retry_wait").length,
     failed: summaries.filter((item) => item.status === "failed").length,

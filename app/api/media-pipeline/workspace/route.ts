@@ -154,7 +154,7 @@ export async function GET(request: Request) {
     const mediaResult = await supabaseAdmin
       .from("publication_workspace_media")
       .select(
-        "position,media_id,pro_media_library!inner(id,user_id,media_type,upload_status,upload_progress,bucket_name,storage_path,original_file_name,client_media_key,mime_type,size_bytes,width,height,duration_seconds,processing_status,publication_status)",
+        "position,media_id,pro_media_library!inner(id,user_id,media_type,upload_status,upload_progress,bucket_name,storage_path,original_file_name,client_media_key,mime_type,size_bytes,width,height,duration_seconds,processing_status,processing_progress,processing_error_code,processing_error_message,publication_status)",
       )
       .eq("workspace_id", workspaceId)
       .eq("pro_media_library.user_id", activeUserId)
@@ -179,6 +179,9 @@ export async function GET(request: Request) {
           uploadStatus: item?.upload_status,
           uploadProgress: Number(item?.upload_progress || 0),
           processingStatus: String(item?.processing_status || "not_requested"),
+          processingProgress: Number(item?.processing_progress || 0),
+          processingErrorCode: String(item?.processing_error_code || ""),
+          processingErrorMessage: String(item?.processing_error_message || ""),
           publicationStatus: String(item?.publication_status || "not_requested"),
           bucket,
           storagePath,

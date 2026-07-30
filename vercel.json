@@ -61,6 +61,9 @@
     },
     "app/api/cron/media-video-normalization/route.ts": {
       "includeFiles": "node_modules/ffmpeg-static/**/*"
+    },
+    "app/api/media-pipeline/process-workspace/route.ts": {
+      "includeFiles": "node_modules/ffmpeg-static/**/*"
     }
   }
 }

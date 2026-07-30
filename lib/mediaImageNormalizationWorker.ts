@@ -8,6 +8,7 @@ import { pipeline } from "node:stream/promises";
 import { normalizeImageSource } from "@/lib/mediaImageNormalizer";
 import {
   IMAGE_NORMALIZATION_DEFAULT_BATCH_SIZE,
+  IMAGE_NORMALIZATION_JOB_TYPE,
   IMAGE_NORMALIZATION_MAX_BATCH_SIZE,
   IMAGE_NORMALIZATION_MAX_SOURCE_BYTES,
   IMAGE_NORMALIZATION_PIPELINE_VERSION,
@@ -19,6 +20,7 @@ import {
   type ImageNormalizationPurpose,
 } from "@/lib/mediaImageNormalizationPolicy";
 import { refreshPublicationWorkspaceStatusesForMedia } from "@/lib/mediaWorkspaceServer";
+import { claimTargetedProcessingJob } from "@/lib/mediaProcessingTargetedClaim";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 type ClaimedImageJob = {
@@ -629,6 +631,90 @@ export async function processImageNormalizationJobs(params?: {
   return {
     enabled: true,
     claimed: jobs.length,
+    succeeded: summaries.filter((item) => item.status === "succeeded").length,
+    retrying: summaries.filter((item) => item.status === "retry_wait").length,
+    failed: summaries.filter((item) => item.status === "failed").length,
+    cancelled: summaries.filter((item) => item.status === "cancelled").length,
+    jobs: summaries,
+  };
+}
+
+export async function processImageNormalizationJobsForMedia(params: {
+  accountId: string;
+  mediaIds: readonly string[];
+  workerId?: string;
+  concurrency?: number;
+}) {
+  if (!isImageNormalizationEnabled()) {
+    return {
+      enabled: false,
+      requested: 0,
+      claimed: 0,
+      succeeded: 0,
+      retrying: 0,
+      failed: 0,
+      cancelled: 0,
+      jobs: [] as ProcessedJobSummary[],
+    };
+  }
+
+  const accountId = String(params.accountId || "").trim();
+  const mediaIds = Array.from(
+    new Set(
+      params.mediaIds
+        .map((value) => String(value || "").trim())
+        .filter(Boolean),
+    ),
+  ).slice(0, 5);
+  if (!accountId || mediaIds.length === 0) {
+    return {
+      enabled: true,
+      requested: mediaIds.length,
+      claimed: 0,
+      succeeded: 0,
+      retrying: 0,
+      failed: 0,
+      cancelled: 0,
+      jobs: [] as ProcessedJobSummary[],
+    };
+  }
+
+  const concurrency = Math.max(
+    1,
+    Math.min(2, Math.round(params.concurrency || 2)),
+  );
+  const workerPrefix =
+    String(params.workerId || "").trim() ||
+    `image-workspace-${process.env.VERCEL_REGION || "local"}-${randomUUID()}`;
+  const summaries: ProcessedJobSummary[] = [];
+  let claimed = 0;
+
+  for (let index = 0; index < mediaIds.length; index += concurrency) {
+    const batchIds = mediaIds.slice(index, index + concurrency);
+    const jobs = await Promise.all(
+      batchIds.map((mediaId, offset) =>
+        claimTargetedProcessingJob({
+          accountId,
+          mediaId,
+          jobType: IMAGE_NORMALIZATION_JOB_TYPE,
+          workerId: `${workerPrefix}-${index + offset}`.slice(0, 180),
+          leaseSeconds: IMAGE_NORMALIZATION_WORKER_LEASE_SECONDS,
+        }),
+      ),
+    );
+    const claimedJobs = jobs.filter(Boolean) as ClaimedImageJob[];
+    claimed += claimedJobs.length;
+    summaries.push(
+      ...(await Promise.all(
+        claimedJobs.map((job) => processClaimedImageJob(job)),
+      )),
+    );
+  }
+
+  return {
+    enabled: true,
+    requested: mediaIds.length,
+    claimed,
     succeeded: summaries.filter((item) => item.status === "succeeded").length,
     retrying: summaries.filter((item) => item.status === "retry_wait").length,
     failed: summaries.filter((item) => item.status === "failed").length,

@@ -12,6 +12,9 @@ export type MediaWorkspaceMediaSummary = {
   uploadStatus: "pending" | "uploading" | "uploaded" | "failed" | "removed";
   uploadProgress: number;
   processingStatus?: string;
+  processingProgress?: number;
+  processingErrorCode?: string;
+  processingErrorMessage?: string;
   publicationStatus?: string;
   bucket: string;
   storagePath: string;
@@ -196,4 +199,22 @@ export async function loadMediaPublicationWorkspace(params: {
     "Impossible de charger l’espace média.",
   );
   return json.workspace as MediaWorkspaceSnapshot;
+}
+
+
+export async function triggerMediaPublicationWorkspaceProcessing(params: {
+  workspaceId: string;
+  signal?: AbortSignal;
+}) {
+  const response = await fetch("/api/media-pipeline/process-workspace", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ workspaceId: params.workspaceId }),
+    signal: params.signal,
+    cache: "no-store",
+  });
+  return await readWorkspaceResponse(
+    response,
+    "Impossible de lancer la préparation immédiate des médias.",
+  );
 }
