@@ -68,10 +68,12 @@ import {
 import { hasActiveInrcySite } from "@/lib/inrcySite";
 import {
   buildBoosterGmbSummary,
+  buildBoosterHashtagLine,
   buildBoosterInstagramCaption,
   buildBoosterMessage,
   buildCtaTextForChannel,
   getBoosterGmbCallToAction,
+  sanitizeBoosterPostForStructuredCta,
 } from "@/lib/boosterCta";
 import { getLinkedInAccessToken } from "@/lib/linkedinOAuth";
 import { normalizeTiktokSettings } from "@/lib/tiktokSettings";
@@ -3090,9 +3092,11 @@ async function publishNowHandler(req: Request) {
           const youtubeTags = autoHashtags
             ? Array.from(new Set(["iNrCy", ...normalizedTags]))
             : normalizedTags;
-          const tagLine = youtubeTags.length
-            ? youtubeTags.map((tag) => `#${tag}`).join(" ")
-            : "";
+          const tagLine = buildBoosterHashtagLine(
+            { ...channelPost, hashtags: youtubeTags },
+            canonMessage,
+            8,
+          );
           const description = [canonMessage, tagLine]
             .filter(Boolean)
             .join("\n\n");
@@ -3315,8 +3319,16 @@ async function publishNowHandler(req: Request) {
             continue;
           }
 
+          const tiktokHashtagLine = buildBoosterHashtagLine(
+            channelPost,
+            canonMessage,
+            8,
+          );
           const tiktokTitle =
-            canonMessage ||
+            [canonMessage, tiktokHashtagLine]
+              .filter(Boolean)
+              .join("\n\n")
+              .slice(0, 2200) ||
             channelPost.content ||
             channelPost.title ||
             "Publication iNrCy";
@@ -3463,17 +3475,15 @@ async function publishNowHandler(req: Request) {
             continue;
           }
 
-          const pinterestTags = Array.isArray(channelPost.hashtags)
-            ? channelPost.hashtags
-                .map((tag) => normalizeHashtag(String(tag)))
-                .filter(Boolean)
-                .slice(0, 8)
-            : [];
-          const pinterestTagLine = pinterestTags.length
-            ? pinterestTags.map((tag) => `#${tag}`).join(" ")
-            : "";
+          const pinterestPost = sanitizeBoosterPostForStructuredCta(
+            channelPost,
+            {
+              websiteUrl: siteWebUrl || inrcySiteUrl,
+              phone: businessPhone,
+            },
+          );
           const pinterestContent = stripSiteTextFormattingPreserveLayout(
-            channelPost.content || "",
+            pinterestPost.content || "",
           );
           if (pinterestContent.length > 500) {
             const pinterestUserError =
@@ -3486,10 +3496,15 @@ async function publishNowHandler(req: Request) {
             continue;
           }
 
-          const pinterestCta = buildCtaTextForChannel("pinterest", channelPost, {
+          const pinterestCta = buildCtaTextForChannel("pinterest", pinterestPost, {
             websiteUrl: siteWebUrl || inrcySiteUrl,
             phone: businessPhone,
           });
+          const pinterestTagLine = buildBoosterHashtagLine(
+            pinterestPost,
+            [pinterestContent, pinterestCta].filter(Boolean).join("\n\n"),
+            8,
+          );
           let description = pinterestContent;
           for (const optionalPart of [pinterestCta, pinterestTagLine]) {
             if (!optionalPart) continue;
@@ -3683,7 +3698,10 @@ async function publishNowHandler(req: Request) {
             mediaModeByChannel[ch] === "video" && channelVideo
               ? [channelVideo.publicUrl].filter(Boolean).slice(0, 1)
               : [];
-          const gmbSummary = buildBoosterGmbSummary(channelPost);
+          const gmbSummary = buildBoosterGmbSummary(channelPost, {
+            websiteUrl: siteWebUrl || inrcySiteUrl,
+            phone: businessPhone,
+          });
           const gmbCallToAction = getBoosterGmbCallToAction(channelPost, {
             websiteUrl: siteWebUrl || inrcySiteUrl,
             phone: businessPhone,

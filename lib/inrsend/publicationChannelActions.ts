@@ -11,7 +11,7 @@ import { getGmbToken, gmbCreateLocalPost } from "@/lib/googleBusiness";
 import { optimizeForGoogleBusiness, optimizeForInstagram, optimizeForSiteCard, optimizeForSocialFeed } from "@/lib/imageOptimizer";
 import { createHash, randomUUID } from "crypto";
 import { jsonUserFacingError } from "@/lib/apiUserFacingErrors";
-import { buildBoosterGmbSummary, buildBoosterInstagramCaption, buildBoosterMessage, getBoosterGmbCallToAction } from "@/lib/boosterCta";
+import { buildBoosterGmbSummary, buildBoosterHashtagLine, buildBoosterInstagramCaption, buildBoosterMessage, getBoosterGmbCallToAction } from "@/lib/boosterCta";
 import { log } from "@/lib/observability/logger";
 import { captureApiException } from "@/lib/observability/sentry";
 import { getLinkedInAccessToken } from "@/lib/linkedinOAuth";
@@ -1516,7 +1516,7 @@ async function replaceChannelDelivery(params: {
       if (previousExternalId) await deleteGmbPost(previousExternalId, token.accessToken);
       let gmbWarning: { code: string; message: string } | null = null;
       let resp: unknown;
-      const gmbSummary = buildBoosterGmbSummary(nextPost);
+      const gmbSummary = buildBoosterGmbSummary(nextPost, { websiteUrl, phone });
       const gmbCallToAction = getBoosterGmbCallToAction(nextPost, { websiteUrl, phone });
       const gmbVideoUrls = isVideoPublication && videoUrl ? [videoUrl] : [];
       const hasMedia = Boolean(gmbImageUrls.length || gmbVideoUrls.length);
@@ -1617,11 +1617,7 @@ async function replaceChannelDelivery(params: {
     const boardId = String(channelResult.board_id || "").trim();
     if (!boardId) throw new Error("Tableau Pinterest introuvable. Configurez Pinterest puis réessayez.");
 
-    const pinterestTags = nextPost.hashtags
-      .map((tag) => normalizeHashtag(tag))
-      .filter(Boolean)
-      .slice(0, 8);
-    const tagLine = pinterestTags.length ? pinterestTags.map((tag) => `#${tag}`).join(" ") : "";
+    const tagLine = buildBoosterHashtagLine(nextPost, canonMessage, 8);
     const description = [canonMessage, tagLine].filter(Boolean).join("\n\n").slice(0, 500);
     const link = normalizePublicHttpUrl(nextPost.ctaUrl) || normalizePublicHttpUrl(websiteUrl) || null;
 

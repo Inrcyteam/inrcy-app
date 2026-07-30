@@ -396,6 +396,9 @@ RÈGLES DURES :
 - Aucun commentaire méta sur la rédaction. Interdits : « la description doit », « ce contenu sert à », « cette publication peut », ou équivalent.
 - Utilise des paragraphes courts pour TOUS les canaux. Au-delà de 2–3 phrases, sépare les idées par deux sauts de ligne consécutifs ; ces retours font partie du texte final, ne jamais les supprimer. Laisser le moteur choisir librement le nombre de paragraphes utile. Les listes restent facultatives.
 - Hors Site iNrCy/Site web : aucun Markdown ni HTML. Sur les sites seulement, **gras Markdown** modéré si utile.
+- Les coordonnées de l’entreprise sont gérées par les champs CTA structurés d’iNrCy : ne recopie jamais téléphone, email ni URL dans title, content ou cta. Même si une coordonnée figure dans le contexte entreprise, elle sert uniquement à comprendre l’activité.
+- Le champ cta contient seulement une formule d’action courte, sans téléphone, sans email, sans URL et sans répétition dans content.
+- Tous les hashtags doivent être placés exclusivement dans le tableau hashtags, sans #. N’écris aucun hashtag dans title, content ou cta.
 - La personnalité native du moteur est souhaitée : iNrCy impose les faits, la conformité et les préférences, pas une recette éditoriale uniforme.
 
 SORTIE : JSON strict. Objet racine {"versions":{...}}. Renvoie uniquement les canaux demandés. Pour chacun : {"title":string,"content":string,"cta":string,"hashtags":string[]}. title/content non vides. La clé cta doit toujours exister mais peut contenir "". hashtags sans #. Aucun texte hors JSON.`;
@@ -452,7 +455,9 @@ export function boosterUserPrompt(args: {
     preferences.emojiLevel === "dynamic"
       ? "- Niveau emojis BEAUCOUP : sur les canaux sociaux compatibles, le résultat doit contenir réellement beaucoup d'emojis visibles. Ne compense pas par un seul emoji dans le titre : répartis-les naturellement dans le contenu. Les canaux site restent à zéro emoji."
       : "- La politique emojis ci-dessous doit être perceptible, compatible avec chaque canal et respectée sans décoration automatique.",
-    "- Le CTA préféré est une orientation, pas une obligation.",
+    "- Le CTA préféré est une orientation, pas une obligation. Le champ cta reste un libellé court : aucune coordonnée et aucune répétition du CTA dans content.",
+    "- Téléphone, email et URL du contexte entreprise ne doivent jamais être recopiés dans title, content ou cta : iNrCy les ajoute séparément uniquement lorsque le CTA structuré le demande.",
+    "- Place tous les hashtags uniquement dans le tableau hashtags, jamais dans title, content ou cta.",
     preferences.engine === "perplexity"
       ? "- SÉCURITÉ SONAR : utilise tes connaissances uniquement pour expliquer le sujet demandé, mais ne restitue jamais de citations, sources ou références de recherche. N'ajoute aucun chiffre, statistique, date, actualité, nom de quartier, lieu précis, entreprise ou fait local absent du contexte fourni."
       : "",

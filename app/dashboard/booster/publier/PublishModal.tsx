@@ -38,6 +38,10 @@ import {
 import { confirmInrcy } from "@/lib/inrcyDialog";
 import { INR_SEARCH_CONTENT_MAX_LENGTH } from "@/lib/boosterChannelRules";
 import {
+  buildCtaTextForChannel,
+  sanitizeBoosterPostForStructuredCta,
+} from "@/lib/boosterCta";
+import {
   editableHtmlToSiteText,
   stripSiteTextFormatting,
   stripSiteTextFormattingForEditor,
@@ -67,6 +71,7 @@ import {
   getDefaultCtaModeForChannel,
   normalizeBoosterPreferredCta,
   getPublicationMediaLabel,
+  getWebsiteUrlForChannel,
   getImageFitLabel,
   getOptimizedTransform,
   getRecommendedVideoFormatForSource,
@@ -1336,8 +1341,16 @@ export default function PublishModal({
             return String(patchValue || "").trim();
           },
         );
-        if (!hasMeaningfulPatch) continue;
-        const merged = sanitizePostForEditor(key, { ...current, ...patch });
+        const merged = sanitizePostForEditor(
+          key,
+          sanitizeBoosterPostForStructuredCta(
+            hasMeaningfulPatch ? { ...current, ...patch } : current,
+            {
+              websiteUrl: getWebsiteUrlForChannel(key, ctaDefaults),
+              phone: ctaDefaults.phone,
+            },
+          ),
+        );
         const before = JSON.stringify(current);
         const after = JSON.stringify(merged);
         if (before === after) continue;
@@ -3712,22 +3725,11 @@ export default function PublishModal({
     return normalizePost(postsByChannel[key]);
   };
 
-  const getPreviewCtaForDisplayKey = (key: DisplayKey, post: ChannelPost) => {
-    const mode = post.ctaMode || "none";
-    const explicit = String(post.cta || "").trim();
-    const phone = String(post.ctaPhone || "").trim();
-    if (mode === "none") return "";
-    if (mode === "call") {
-      const label =
-        explicit || getChannelDefaultCtaLabel(key, "call") || "Appeler";
-      return phone ? `${label} · ${phone}` : label;
-    }
-    if (explicit) return explicit;
-    if (mode === "website") return getChannelDefaultCtaLabel(key, mode);
-    if (mode === "message")
-      return key === "instagram" ? "Message privé" : "Envoyer un message";
-    return "";
-  };
+  const getPreviewCtaForDisplayKey = (key: DisplayKey, post: ChannelPost) =>
+    buildCtaTextForChannel(key, post, {
+      websiteUrl: getWebsiteUrlForChannel(key, ctaDefaults),
+      phone: ctaDefaults?.phone || "",
+    });
 
   const getLiveInstagramHashtags = () =>
     parseInstagramHashtagsInput(instagramHashtagsInput);
@@ -3743,15 +3745,25 @@ export default function PublishModal({
       }),
     };
     for (const key of CHANNEL_KEYS) {
-      if (isSiteDisplayKey(key)) continue;
       if (!prepared[key]) continue;
+      const structuredSafePost = sanitizeBoosterPostForStructuredCta(
+        prepared[key],
+        {
+          websiteUrl: getWebsiteUrlForChannel(key, ctaDefaults),
+          phone: ctaDefaults?.phone || "",
+        },
+      );
+      if (isSiteDisplayKey(key)) {
+        prepared[key] = normalizePost(structuredSafePost);
+        continue;
+      }
       prepared[key] = normalizePost({
-        ...prepared[key],
-        title: stripSiteTextFormatting(prepared[key]?.title || ""),
+        ...structuredSafePost,
+        title: stripSiteTextFormatting(structuredSafePost.title || ""),
         content: stripSiteTextFormattingPreserveLayout(
-          prepared[key]?.content || "",
+          structuredSafePost.content || "",
         ),
-        cta: stripSiteTextFormatting(prepared[key]?.cta || ""),
+        cta: stripSiteTextFormatting(structuredSafePost.cta || ""),
       });
     }
 

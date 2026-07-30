@@ -22,7 +22,9 @@ import {
 } from "@/lib/mediaRules";
 import {
   buildBoosterGmbSummary,
+  buildBoosterHashtagLine,
   buildBoosterInstagramCaption,
+  buildBoosterMessage,
   getCtaMode,
   type BoosterCtaMode,
 } from "@/lib/boosterCta";
@@ -886,19 +888,9 @@ export const CHANNEL_TEXT_GUIDELINES: Record<
     totalLabel: "Légende TikTok finale",
     totalMax: 2200,
     totalValue: (post) => {
-      const body = [post.title, post.content, post.cta]
-        .filter(Boolean)
-        .join("\n");
-      const hashtags = (post.hashtags || [])
-        .map(
-          (tag) =>
-            `#${String(tag || "")
-              .replace(/^#+/, "")
-              .trim()}`,
-        )
-        .filter(Boolean)
-        .join(" ");
-      return [body, hashtags].filter(Boolean).join("\n").length;
+      const body = buildBoosterMessage("tiktok", post);
+      const hashtags = buildBoosterHashtagLine(post, body, 8);
+      return [body, hashtags].filter(Boolean).join("\n\n").length;
     },
   },
   youtube_shorts: {
@@ -909,19 +901,9 @@ export const CHANNEL_TEXT_GUIDELINES: Record<
     totalLabel: "Légende YouTube finale",
     totalMax: 2200,
     totalValue: (post) => {
-      const body = [post.title, post.content, post.cta]
-        .filter(Boolean)
-        .join("\n");
-      const hashtags = (post.hashtags || [])
-        .map(
-          (tag) =>
-            `#${String(tag || "")
-              .replace(/^#+/, "")
-              .trim()}`,
-        )
-        .filter(Boolean)
-        .join(" ");
-      return [body, hashtags].filter(Boolean).join("\n").length;
+      const body = buildBoosterMessage("youtube_shorts", post);
+      const hashtags = buildBoosterHashtagLine(post, body, 8);
+      return [body, hashtags].filter(Boolean).join("\n\n").length;
     },
   },
   pinterest: {
@@ -932,14 +914,9 @@ export const CHANNEL_TEXT_GUIDELINES: Record<
     totalLabel: "Description Pinterest finale",
     totalMax: 500,
     totalValue: (post) => {
-      const body = [post.title, post.content, post.cta]
-        .filter(Boolean)
-        .join("\n");
-      const hashtags = (post.hashtags || [])
-        .map((tag) => `#${String(tag || "").replace(/^#+/, "").trim()}`)
-        .filter(Boolean)
-        .join(" ");
-      return [body, hashtags].filter(Boolean).join("\n").length;
+      const body = buildBoosterMessage("pinterest", { ...post, title: "" });
+      const hashtags = buildBoosterHashtagLine(post, body, 8);
+      return [body, hashtags].filter(Boolean).join("\n\n").length;
     },
   },
 };

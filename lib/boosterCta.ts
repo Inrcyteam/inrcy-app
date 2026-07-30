@@ -3,6 +3,13 @@ import {
   stripSiteTextFormatting,
   stripSiteTextFormattingPreserveLayout,
 } from "@/lib/boosterFormatting";
+import {
+  buildUniqueBoosterHashtagLine,
+  dedupeBoosterHashtagsInText,
+  getBoosterPhoneDisplayValue,
+  sanitizeBoosterPostForStructuredCta as sanitizeStructuredCtaPost,
+  sanitizeGoogleBusinessPublicationText,
+} from "@/lib/boosterPublicationSafety";
 
 export type BoosterChannelKey = "inrcy_site" | "site_web" | "inr_search" | "gmb" | "facebook" | "instagram" | "linkedin" | "tiktok" | "youtube_shorts" | "pinterest";
 export type BoosterCtaMode = "none" | "website" | "call" | "message" | "custom";
@@ -99,11 +106,32 @@ export function getCtaPhone(post: Partial<BoosterPostLike> | null | undefined, c
   return normalizePhone(String(post?.ctaPhone || "")) || normalizePhone(String(context?.phone || ""));
 }
 
+function joinCtaLabelAndValue(label: string, value: string, fallbackLabel: string) {
+  const cleanLabel = collapseWhitespace(label || fallbackLabel);
+  if (!cleanLabel) return value;
+  if (/[:!?]$/u.test(cleanLabel)) return `${cleanLabel} ${value}`;
+  return `${cleanLabel} : ${value}`;
+}
+
+export function sanitizeBoosterPostForStructuredCta<
+  T extends Partial<BoosterPostLike> | null | undefined,
+>(
+  post: T,
+  context?: BoosterCtaContext,
+): T extends null | undefined ? BoosterPostLike : T {
+  return sanitizeStructuredCtaPost(
+    post,
+    getCtaMode(post),
+    context,
+  ) as T extends null | undefined ? BoosterPostLike : T;
+}
+
 export function buildCtaTextForChannel(channel: BoosterChannelKey, post: Partial<BoosterPostLike> | null | undefined, context?: BoosterCtaContext) {
   const mode = getCtaMode(post);
-  const label = getCtaLabel(post, mode);
+  const sanitizedPost = sanitizeStructuredCtaPost(post, mode, context);
+  const label = getCtaLabel(sanitizedPost, mode);
   const websiteUrl = getCtaWebsiteUrl(post, context);
-  const phone = getCtaPhone(post, context);
+  const phone = getBoosterPhoneDisplayValue(post, context);
 
   if (channel === "gmb") {
     return mode === "custom" ? label : "";
@@ -114,14 +142,14 @@ export function buildCtaTextForChannel(channel: BoosterChannelKey, post: Partial
       return "";
     case "website":
       if (!websiteUrl) return label && label !== "En savoir plus" ? label : "";
-      return `${label || "En savoir plus"} : ${websiteUrl}`;
+      return joinCtaLabelAndValue(label, websiteUrl, "En savoir plus");
     case "call":
-      return phone ? `${label || "Appelez-nous"} : ${phone}` : label;
+      return phone ? joinCtaLabelAndValue(label, phone, "Appelez-nous") : label;
     case "message":
       return label || (channel === "instagram" || channel === "tiktok" || channel === "youtube_shorts" ? "Écrivez-nous en commentaire ou message privé." : "Envoyez-nous un message privé.");
     case "custom": {
       const customUrl = ensureUrl(String(post?.ctaUrl || ""));
-      if (customUrl) return `${label || "En savoir plus"} : ${customUrl}`;
+      if (customUrl) return joinCtaLabelAndValue(label, customUrl, "En savoir plus");
       return label;
     }
     default:
@@ -142,40 +170,44 @@ function buildPrimaryBoosterText(channel: BoosterChannelKey, post: Partial<Boost
 
   // The professional's edited paragraph layout is the source of truth for
   // social-channel bodies. Do not collapse repeated blank lines here.
-  return [title, content].filter(Boolean).join("\n\n").trim();
+  return dedupeBoosterHashtagsInText(
+    [title, content].filter(Boolean).join("\n\n").trim(),
+  );
 }
 
 export function buildBoosterMessage(channel: BoosterChannelKey, post: Partial<BoosterPostLike> | null | undefined, context?: BoosterCtaContext) {
+  const sanitizedPost = sanitizeBoosterPostForStructuredCta(post, context);
   const parts = [
-    buildPrimaryBoosterText(channel, post),
-    buildCtaTextForChannel(channel, post, context),
+    buildPrimaryBoosterText(channel, sanitizedPost),
+    buildCtaTextForChannel(channel, sanitizedPost, context),
   ].filter(Boolean);
   return parts.join("\n\n").trim();
 }
 
-function normalizeHashtag(input: string) {
-  return String(input || "")
-    .trim()
-    .replace(/^#+/, "")
-    .replace(/[^\p{L}\p{N}_]/gu, "")
-    .slice(0, 40);
+export function buildBoosterHashtagLine(
+  post: Partial<BoosterPostLike> | null | undefined,
+  baseText: string,
+  maxTags = 8,
+) {
+  return buildUniqueBoosterHashtagLine(baseText, post?.hashtags, maxTags);
 }
 
 export function buildBoosterInstagramCaption(post: Partial<BoosterPostLike> | null | undefined, context?: BoosterCtaContext) {
   const base = buildBoosterMessage("instagram", post, context);
-  const tags = Array.isArray(post?.hashtags)
-    ? post!.hashtags!.map(normalizeHashtag).filter(Boolean).slice(0, 8).map((tag) => `#${tag}`)
-    : [];
-  return (tags.length ? `${base}\n\n${tags.join(" ")}` : base).trim().slice(0, 2200);
+  const tagLine = buildBoosterHashtagLine(post, base, 8);
+  return (tagLine ? `${base}\n\n${tagLine}` : base).trim().slice(0, 2200);
 }
 
-export function buildBoosterGmbSummary(post: Partial<BoosterPostLike> | null | undefined) {
+export function buildBoosterGmbSummary(post: Partial<BoosterPostLike> | null | undefined, context?: BoosterCtaContext) {
+  const sanitizedPost = sanitizeBoosterPostForStructuredCta(post, context);
   const parts = [
-    collapseWhitespace(stripSiteTextFormatting(post?.title || "")),
-    stripSiteTextFormattingPreserveLayout(post?.content || ""),
-    getCtaMode(post) === "custom" ? getCtaLabel(post, "custom") : "",
+    collapseWhitespace(stripSiteTextFormatting(sanitizedPost?.title || "")),
+    stripSiteTextFormattingPreserveLayout(sanitizedPost?.content || ""),
+    getCtaMode(sanitizedPost) === "custom" ? getCtaLabel(sanitizedPost, "custom") : "",
   ].filter(Boolean);
-  return parts.join("\n\n").trim().slice(0, 1498);
+  return sanitizeGoogleBusinessPublicationText(parts.join("\n\n"))
+    .trim()
+    .slice(0, 1498);
 }
 
 export function getBoosterGmbCallToAction(post: Partial<BoosterPostLike> | null | undefined, context?: BoosterCtaContext): BoosterGmbCallToAction {
