@@ -129,7 +129,7 @@ import { isUnifiedMediaConsumptionClientEnabled } from "@/lib/mediaPipelineUnifi
 import { isLegacyMediaTransportCutoverClientEnabled } from "@/lib/mediaPipelineLegacyCutoverPolicy";
 import {
   loadMediaPublicationWorkspace,
-  triggerMediaPublicationWorkspaceProcessing,
+  prepareMediaPublicationWorkspace,
 } from "@/lib/mediaWorkspaceClient";
 import usePublishVideoController, {
   normalizeRestoredVideoVariants,
@@ -1601,19 +1601,20 @@ export default function PublishModal({
       const timeoutMs =
         expectedMediaType === "video"
           ? purpose === "generate"
-            ? 420_000
-            : 480_000
+            ? 360_000
+            : 420_000
           : purpose === "generate"
-            ? 300_000
-            : 360_000;
+            ? 210_000
+            : 240_000;
       const startedAt = Date.now();
-      let processingKick: Promise<unknown> | null = null;
-      let lastProcessingKickAt = 0;
-      let lastProcessingKickError = "";
+      let nextPreparationKickAt = 0;
+      let preparationFailures = 0;
+      let lastPreparationError: Error | null = null;
 
       while (true) {
         const snapshot = await loadMediaPublicationWorkspace({
           workspaceId: activeWorkspaceId,
+          includeUrls: false,
         });
         const relevantMedia = (snapshot.media || [])
           .filter((item) => item.mediaType === expectedMediaType)
@@ -1621,24 +1622,34 @@ export default function PublishModal({
           .slice(0, expectedCount);
 
         const hasAllExpectedMedia = relevantMedia.length >= expectedCount;
-        const allUploaded =
-          hasAllExpectedMedia &&
-          relevantMedia.every((item) => item.uploadStatus === "uploaded");
-        const terminalFailure = relevantMedia.find((item) => {
-          const processingStatus = String(item.processingStatus || "");
-          const publicationStatus = String(item.publicationStatus || "");
-          return (
-            processingStatus === "failed_terminal" ||
-            publicationStatus === "failed"
-          );
-        });
-        if (terminalFailure) {
+        const uploadFailure = relevantMedia.find(
+          (item) =>
+            item.uploadStatus === "failed" || item.uploadStatus === "removed",
+        );
+        if (uploadFailure) {
           throw new Error(
-            String(terminalFailure.processingErrorMessage || "").trim() ||
-              "Un média n’a pas pu être préparé. Retirez-le puis ajoutez-le à nouveau.",
+            uploadFailure.processingErrorMessage ||
+              "L’envoi du média a échoué. Retirez-le puis ajoutez-le de nouveau.",
           );
         }
 
+        const processingFailure = relevantMedia.find(
+          (item) =>
+            String(item.processingStatus || "") === "failed_terminal" ||
+            ["failed", "removed"].includes(
+              String(item.publicationStatus || ""),
+            ),
+        );
+        if (processingFailure) {
+          throw new Error(
+            processingFailure.processingErrorMessage ||
+              "La préparation du média a échoué. Retirez-le puis ajoutez-le de nouveau.",
+          );
+        }
+
+        const allUploaded =
+          hasAllExpectedMedia &&
+          relevantMedia.every((item) => item.uploadStatus === "uploaded");
         const allProcessed =
           hasAllExpectedMedia &&
           relevantMedia.every(
@@ -1669,61 +1680,72 @@ export default function PublishModal({
               : `Upload du ${mediaLabel} ${uploadProgress}%`,
           );
         } else if (!unifiedMediaConsumptionClientAvailable) {
-          onProgress?.(24, expectedCount > 1 ? "Médias envoyés" : "Média envoyé");
-          return activeWorkspaceId;
-        } else if (!allProcessed) {
-          const now = Date.now();
-          if (!processingKick && now - lastProcessingKickAt >= 8_000) {
-            lastProcessingKickAt = now;
-            processingKick = triggerMediaPublicationWorkspaceProcessing({
-              workspaceId: activeWorkspaceId,
-            })
-              .catch((error) => {
-                lastProcessingKickError =
-                  error instanceof Error ? error.message : String(error || "");
-              })
-              .finally(() => {
-                processingKick = null;
-              });
-          }
-
-          const readyCount = relevantMedia.filter(
-            (item) => String(item.processingStatus || "") === "ready",
-          ).length;
-          const processingPercent = hasAllExpectedMedia
-            ? Math.round(
-                relevantMedia.reduce((sum, item) => {
-                  if (String(item.processingStatus || "") === "ready") {
-                    return sum + 100;
-                  }
-                  return sum + clampPercent(item.processingProgress || 0);
-                }, 0) / expectedCount,
-              )
-            : 0;
           onProgress?.(
-            Math.max(
-              25,
-              Math.min(37, 25 + Math.round(processingPercent * 0.12)),
-            ),
-            expectedCount > 1
-              ? `Préparation serveur : ${readyCount}/${expectedCount} médias prêts (${processingPercent}%)`
-              : `Préparation du média sur le serveur (${processingPercent}%)`,
+            24,
+            expectedCount > 1 ? "Médias envoyés" : "Média envoyé",
           );
-        } else if (!publicationReady) {
-          onProgress?.(38, `Finalisation des ${mediaLabel} pour la publication...`);
+          return activeWorkspaceId;
+        } else if (!allProcessed || !publicationReady) {
+          const processingProgress = Math.round(
+            relevantMedia.reduce(
+              (sum, item) =>
+                sum +
+                (String(item.processingStatus || "") === "ready"
+                  ? 100
+                  : clampPercent(item.processingProgress || 0)),
+              0,
+            ) / Math.max(1, relevantMedia.length),
+          );
+          onProgress?.(
+            Math.max(25, Math.min(41, 25 + Math.round(processingProgress * 0.16))),
+            !allProcessed
+              ? `Préparation des ${mediaLabel} sur le serveur ${processingProgress}%`
+              : `Finalisation des ${mediaLabel} pour la publication...`,
+          );
+
+          if (Date.now() >= nextPreparationKickAt) {
+            nextPreparationKickAt = Date.now() + 8_000;
+            try {
+              const preparation = await prepareMediaPublicationWorkspace({
+                workspaceId: activeWorkspaceId,
+              });
+              preparationFailures = 0;
+              lastPreparationError = null;
+              if (preparation.status === "failed") {
+                throw new Error(
+                  preparation.message ||
+                    "La préparation du média a échoué sur le serveur.",
+                );
+              }
+              if (preparation.status === "ready") continue;
+            } catch (error) {
+              preparationFailures += 1;
+              lastPreparationError =
+                error instanceof Error
+                  ? error
+                  : new Error("Impossible de relancer la préparation du média.");
+              if (
+                preparationFailures >= 3 &&
+                Date.now() - startedAt > 30_000
+              ) {
+                throw lastPreparationError;
+              }
+            }
+          }
         } else {
           onProgress?.(42, expectedCount > 1 ? "Médias prêts" : "Média prêt");
           return activeWorkspaceId;
         }
 
         if (Date.now() - startedAt > timeoutMs) {
+          if (lastPreparationError) throw lastPreparationError;
           throw new Error(
-            lastProcessingKickError
-              ? "La préparation immédiate des médias a rencontré un problème. Merci de réessayer."
-              : "La préparation serveur prend plus de temps que prévu. Merci de réessayer.",
+            expectedMediaType === "video"
+              ? "La vidéo est encore en préparation. Réessayez dans quelques instants."
+              : "Les images sont encore en préparation. Réessayez dans quelques instants.",
           );
         }
-        await sleep(1200);
+        await sleep(1_800);
       }
     },
     [
@@ -3018,15 +3040,15 @@ export default function PublishModal({
       }
       didGenerate = true;
     } catch (error) {
-      const fallbackMessage = shouldUseImagesForAI
+      const fallback = shouldUseImagesForAI
         ? "Impossible de préparer ou d’analyser les images pour le moment. Merci de réessayer."
         : hasVideoForGeneration
           ? "Impossible de préparer l’analyse vidéo pour le moment. Merci de réessayer."
           : "Connexion impossible pour le moment. Merci de réessayer.";
       setGenError(
         getSimpleFrenchErrorMessage(
-          error instanceof Error ? error.message : "",
-          fallbackMessage,
+          error instanceof Error ? error.message : error,
+          fallback,
         ),
       );
     } finally {

@@ -68,26 +68,29 @@ type PreparedIntentOptions = Pick<
 // 3 s garde une progression fluide tout en restant sous le rate limit même
 // lorsque 5 images sont envoyées en parallèle à l'étape suivante.
 const PROGRESS_PERSIST_INTERVAL_MS = 3_000;
-const SIGNED_TUS_STORAGE_VERSION = "signed-tus-v1";
 
-function getSupabasePublicApiKey() {
-  const apiKey = String(process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "").trim();
-  if (!apiKey) {
-    throw new Error("Clé publique Supabase absente pour l’envoi résumable.");
-  }
-  return apiKey;
+// Versionne le format de reprise locale. La version 2 correspond au transport
+// TUS signé Supabase via /upload/resumable/sign. Toute ancienne entrée créée
+// avec l'endpoint non signé est volontairement invalidée.
+const TUS_RESUME_STORAGE_VERSION = 2;
+const TUS_RESUME_STORAGE_TTL_MS = 110 * 60 * 1_000;
+
+function makePermanentTusError(message: string, status = 400) {
+  const error = new Error(message) as Error & { status?: number };
+  error.status = status;
+  return error;
 }
 
-function buildSignedTusHeaders(
-  intent: UniversalMediaUploadIntent,
-  extra: Record<string, string> = {},
-) {
-  return {
-    apikey: getSupabasePublicApiKey(),
-    "x-signature": intent.token,
-    "x-upsert": "true",
-    ...extra,
-  };
+function getSupabasePublicApiKey() {
+  const apiKey = String(
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "",
+  ).trim();
+  if (!apiKey) {
+    throw makePermanentTusError(
+      "La configuration publique Supabase nécessaire à l’envoi du média est absente.",
+    );
+  }
+  return apiKey;
 }
 
 function makeAbortError() {
@@ -178,6 +181,8 @@ async function postUniversalUploadEvent(params: {
   error?: unknown;
   file?: File;
   metadata?: Record<string, unknown>;
+  signal?: AbortSignal;
+  required?: boolean;
 }) {
   if (!params.intent.mediaId) return;
   const errorMessage =
@@ -187,23 +192,67 @@ async function postUniversalUploadEvent(params: {
         ? String(params.error)
         : null;
 
-  await fetch("/api/media-pipeline/upload-event", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      mediaId: params.intent.mediaId,
-      event: params.event,
-      progress:
-        typeof params.progress === "number"
-          ? clampUniversalUploadProgress(params.progress)
-          : undefined,
-      errorMessage,
-      detectedMimeType: params.file?.type || params.intent.contentType,
-      sizeBytes: params.file?.size,
-      metadata: params.metadata || {},
-    }),
-    keepalive: params.event === "failed" || params.event === "removed",
-  }).catch(() => null);
+  const requestBody = JSON.stringify({
+    mediaId: params.intent.mediaId,
+    event: params.event,
+    progress:
+      typeof params.progress === "number"
+        ? clampUniversalUploadProgress(params.progress)
+        : undefined,
+    errorMessage,
+    detectedMimeType: params.file?.type || params.intent.contentType,
+    sizeBytes: params.file?.size,
+    metadata: params.metadata || {},
+  });
+
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      throwIfAborted(params.signal);
+      const response = await fetch("/api/media-pipeline/upload-event", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: requestBody,
+        keepalive: params.event === "failed" || params.event === "removed",
+        signal: params.signal,
+        cache: "no-store",
+      });
+      const json = await response.json().catch(() => null);
+      if (response.ok) return json;
+
+      const failure = new Error(
+        String(
+          json?.error ||
+            `Confirmation de l’envoi refusée (${response.status}).`,
+        ),
+      ) as Error & { status?: number };
+      failure.status = response.status;
+      lastError = failure;
+      if (
+        response.status !== 408 &&
+        response.status !== 409 &&
+        response.status !== 423 &&
+        response.status !== 429 &&
+        response.status < 500
+      ) {
+        break;
+      }
+    } catch (error) {
+      lastError = error;
+      if (params.signal?.aborted) break;
+    }
+
+    if (attempt < 2) {
+      await wait(500 * (attempt + 1), params.signal).catch(() => undefined);
+    }
+  }
+
+  if (params.required) {
+    throw lastError instanceof Error
+      ? lastError
+      : new Error("Impossible de confirmer l’envoi du média.");
+  }
+  return null;
 }
 
 function isTransientSignedUploadError(error: unknown) {
@@ -326,28 +375,47 @@ function tusStorageKey(intent: UniversalMediaUploadIntent, file: File) {
   ].join(":")}`;
 }
 
-function readStoredTusUrl(key: string, endpoint: string): string | null {
+function readStoredTusUrl(
+  key: string,
+  intent: UniversalMediaUploadIntent,
+): string | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = window.localStorage.getItem(key);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as {
+      version?: unknown;
       url?: unknown;
       endpoint?: unknown;
-      version?: unknown;
       expiresAt?: unknown;
     };
+    const version = Number(parsed.version || 0);
+    const endpoint = String(parsed.endpoint || "");
+    const uploadUrl = String(parsed.url || "");
     const expiresAt = Number(parsed.expiresAt || 0);
-    const valid =
-      Boolean(parsed.url) &&
-      expiresAt > Date.now() &&
-      parsed.version === SIGNED_TUS_STORAGE_VERSION &&
-      String(parsed.endpoint || "") === endpoint;
-    if (!valid) {
+
+    let sameOrigin = false;
+    try {
+      sameOrigin =
+        new URL(uploadUrl).origin === new URL(intent.resumableEndpoint).origin;
+    } catch {
+      sameOrigin = false;
+    }
+
+    if (
+      version !== TUS_RESUME_STORAGE_VERSION ||
+      endpoint !== intent.resumableEndpoint ||
+      !uploadUrl ||
+      !sameOrigin ||
+      !expiresAt ||
+      expiresAt <= Date.now()
+    ) {
+      // Les anciennes reprises utilisant /upload/resumable sans /sign sont
+      // supprimées ici afin qu'elles ne puissent jamais polluer le nouveau flux.
       window.localStorage.removeItem(key);
       return null;
     }
-    return String(parsed.url);
+    return uploadUrl;
   } catch {
     try {
       window.localStorage.removeItem(key);
@@ -356,18 +424,22 @@ function readStoredTusUrl(key: string, endpoint: string): string | null {
   }
 }
 
-function storeTusUrl(key: string, url: string, endpoint: string) {
+function storeTusUrl(
+  key: string,
+  url: string,
+  intent: UniversalMediaUploadIntent,
+) {
   if (typeof window === "undefined") return;
   try {
     window.localStorage.setItem(
       key,
       JSON.stringify({
+        version: TUS_RESUME_STORAGE_VERSION,
         url,
-        endpoint,
-        version: SIGNED_TUS_STORAGE_VERSION,
-        // Supabase conserve une URL TUS jusqu'à 24 h. On garde une marge pour
-        // éviter de reprendre une URL arrivée à expiration.
-        expiresAt: Date.now() + 23 * 60 * 60 * 1_000,
+        endpoint: intent.resumableEndpoint,
+        // Le token créé par createSignedUploadUrl est temporaire. Une durée
+        // inférieure à 2 h évite toute reprise avec une signature expirée.
+        expiresAt: Date.now() + TUS_RESUME_STORAGE_TTL_MS,
       }),
     );
   } catch {
@@ -384,7 +456,61 @@ function clearStoredTusUrl(key: string) {
 }
 
 function isTransientTusStatus(status: number) {
-  return status === 0 || status === 408 || status === 409 || status === 423 || status === 429 || status >= 500;
+  return (
+    status === 0 ||
+    status === 408 ||
+    status === 409 ||
+    status === 423 ||
+    status === 429 ||
+    status >= 500
+  );
+}
+
+function makeTusHttpError(
+  status: number,
+  fallback: string,
+  responseBody?: string | null,
+) {
+  let detail = String(responseBody || "").trim();
+  if (detail) {
+    try {
+      const parsed = JSON.parse(detail) as {
+        error?: unknown;
+        message?: unknown;
+        msg?: unknown;
+      };
+      detail = String(parsed.message || parsed.error || parsed.msg || detail).trim();
+    } catch {
+      detail = detail.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    }
+  }
+  const message = detail
+    ? `${fallback} (${status}) : ${detail}`
+    : `${fallback} (${status}).`;
+  const error = new Error(message) as Error & { status?: number };
+  error.status = status;
+  return error;
+}
+
+async function readTusResponseError(response: Response, fallback: string) {
+  const body = await response.text().catch(() => "");
+  return makeTusHttpError(response.status, fallback, body);
+}
+
+function assertSignedTusEndpoint(endpoint: string) {
+  let parsed: URL;
+  try {
+    parsed = new URL(endpoint);
+  } catch {
+    throw makePermanentTusError(
+      "Endpoint d’envoi résumable Supabase invalide.",
+    );
+  }
+  if (!parsed.pathname.endsWith("/storage/v1/upload/resumable/sign")) {
+    throw makePermanentTusError(
+      "L’envoi résumable signé Supabase est mal configuré. Rechargez l’application puis réessayez.",
+    );
+  }
 }
 
 async function readTusOffset(
@@ -394,18 +520,59 @@ async function readTusOffset(
 ): Promise<number | null> {
   const response = await fetch(uploadUrl, {
     method: "HEAD",
-    headers: buildSignedTusHeaders(intent, {
+    headers: {
       "Tus-Resumable": "1.0.0",
-    }),
+      apikey: getSupabasePublicApiKey(),
+      "x-signature": intent.token,
+      "x-upsert": "true",
+    },
     signal,
     cache: "no-store",
   });
   if (response.status === 404 || response.status === 410) return null;
   if (!response.ok) {
-    throw new Error(`Reprise de l’envoi impossible (${response.status}).`);
+    throw await readTusResponseError(
+      response,
+      "Reprise de l’envoi impossible",
+    );
   }
   const offset = Number(response.headers.get("Upload-Offset") || 0);
   return Number.isFinite(offset) && offset >= 0 ? offset : 0;
+}
+
+async function createTusUploadUrlOnce(
+  file: File,
+  intent: UniversalMediaUploadIntent,
+  signal?: AbortSignal,
+) {
+  assertSignedTusEndpoint(intent.resumableEndpoint);
+  const response = await fetch(intent.resumableEndpoint, {
+    method: "POST",
+    headers: {
+      "Tus-Resumable": "1.0.0",
+      "Upload-Length": String(file.size),
+      "Upload-Metadata": buildTusMetadata(intent),
+      apikey: getSupabasePublicApiKey(),
+      "x-signature": intent.token,
+      "x-upsert": "true",
+    },
+    signal,
+    cache: "no-store",
+  });
+  if (!response.ok) {
+    throw await readTusResponseError(
+      response,
+      "Initialisation de l’envoi résumable impossible",
+    );
+  }
+  const location = response.headers.get("Location");
+  if (!location) {
+    throw makePermanentTusError(
+      "URL de reprise Supabase manquante.",
+      422,
+    );
+  }
+  return new URL(location, intent.resumableEndpoint).toString();
 }
 
 async function createTusUploadUrl(
@@ -413,24 +580,29 @@ async function createTusUploadUrl(
   intent: UniversalMediaUploadIntent,
   signal?: AbortSignal,
 ) {
-  const response = await fetch(intent.resumableEndpoint, {
-    method: "POST",
-    headers: buildSignedTusHeaders(intent, {
-      "Tus-Resumable": "1.0.0",
-      "Upload-Length": String(file.size),
-      "Upload-Metadata": buildTusMetadata(intent),
-    }),
-    signal,
-    cache: "no-store",
-  });
-  if (!response.ok) {
-    throw new Error(`Initialisation de l’envoi résumable impossible (${response.status}).`);
+  let lastError: unknown = null;
+  for (
+    let attempt = 0;
+    attempt < UNIVERSAL_MEDIA_TUS_RETRY_DELAYS_MS.length;
+    attempt += 1
+  ) {
+    throwIfAborted(signal);
+    const delay = UNIVERSAL_MEDIA_TUS_RETRY_DELAYS_MS[attempt];
+    if (delay > 0) await wait(delay, signal);
+    try {
+      return await createTusUploadUrlOnce(file, intent, signal);
+    } catch (error) {
+      lastError = error;
+      if (signal?.aborted) throw makeAbortError();
+      const status = Number((error as { status?: unknown })?.status || 0);
+      // Les erreurs de signature, de clé publique ou de métadonnées sont
+      // définitives : elles remontent immédiatement au lieu d'attendre les retries.
+      if (!isTransientTusStatus(status)) throw error;
+    }
   }
-  const location = response.headers.get("Location");
-  if (!location) {
-    throw new Error("URL de reprise Supabase manquante.");
-  }
-  return new URL(location, intent.resumableEndpoint).toString();
+  throw lastError instanceof Error
+    ? lastError
+    : new Error("Initialisation de l’envoi résumable interrompue.");
 }
 
 function patchTusChunk(params: {
@@ -461,14 +633,12 @@ function patchTusChunk(params: {
     };
 
     xhr.open("PATCH", params.uploadUrl, true);
-    const headers = buildSignedTusHeaders(params.intent, {
-      "Tus-Resumable": "1.0.0",
-      "Upload-Offset": String(params.offset),
-      "Content-Type": "application/offset+octet-stream",
-    });
-    Object.entries(headers).forEach(([name, value]) => {
-      xhr.setRequestHeader(name, value);
-    });
+    xhr.setRequestHeader("Tus-Resumable", "1.0.0");
+    xhr.setRequestHeader("Upload-Offset", String(params.offset));
+    xhr.setRequestHeader("Content-Type", "application/offset+octet-stream");
+    xhr.setRequestHeader("apikey", getSupabasePublicApiKey());
+    xhr.setRequestHeader("x-signature", params.intent.token);
+    xhr.setRequestHeader("x-upsert", "true");
     xhr.upload.onprogress = (event) => {
       const loaded = Math.min(params.chunk.size, Number(event.loaded || 0));
       params.onProgress?.(
@@ -487,11 +657,13 @@ function patchTusChunk(params: {
       if (settled) return;
       const status = xhr.status;
       if (status < 200 || status >= 300) {
-        const error = new Error(`Envoi résumable refusé (${status}).`) as Error & {
-          status?: number;
-        };
-        error.status = status;
-        fail(error);
+        fail(
+          makeTusHttpError(
+            status,
+            "Envoi résumable refusé",
+            xhr.responseText,
+          ),
+        );
         return;
       }
       const nextOffset = Number(xhr.getResponseHeader("Upload-Offset"));
@@ -524,7 +696,7 @@ async function uploadWithTus(
   }
 
   const storageKey = tusStorageKey(intent, file);
-  let uploadUrl = readStoredTusUrl(storageKey, intent.resumableEndpoint);
+  let uploadUrl = readStoredTusUrl(storageKey, intent);
   let offset = 0;
 
   if (uploadUrl) {
@@ -545,7 +717,7 @@ async function uploadWithTus(
 
   if (!uploadUrl) {
     uploadUrl = await createTusUploadUrl(file, intent, options.signal);
-    storeTusUrl(storageKey, uploadUrl, intent.resumableEndpoint);
+    storeTusUrl(storageKey, uploadUrl, intent);
   }
 
   const report = (bytesUploaded: number) => {
@@ -613,7 +785,7 @@ async function uploadWithTus(
           if (serverOffset === null) {
             clearStoredTusUrl(storageKey);
             uploadUrl = await createTusUploadUrl(file, intent, options.signal);
-            storeTusUrl(storageKey, uploadUrl, intent.resumableEndpoint);
+            storeTusUrl(storageKey, uploadUrl, intent);
             offset = 0;
           } else {
             offset = Math.min(file.size, serverOffset);
@@ -687,6 +859,7 @@ export async function uploadFileToPreparedUniversalIntent(
       event: normalized >= 100 ? "uploaded" : "uploading",
       progress: normalized,
       file,
+      signal: options.signal,
     });
   };
 
@@ -695,12 +868,14 @@ export async function uploadFileToPreparedUniversalIntent(
     void persistProgress(progress.percent);
   };
 
+  let storageUploadCompleted = false;
   try {
     await postUniversalUploadEvent({
       intent,
       event: "uploading",
       progress: 0,
       file,
+      signal: options.signal,
     });
     const protocol =
       intent.protocol || selectUniversalMediaUploadProtocol(file.size);
@@ -715,12 +890,15 @@ export async function uploadFileToPreparedUniversalIntent(
         onProgress: emitProgress,
       });
     }
+    storageUploadCompleted = true;
 
     await postUniversalUploadEvent({
       intent,
       event: "uploaded",
       progress: 100,
       file,
+      signal: options.signal,
+      required: true,
     });
 
     return {
@@ -735,13 +913,16 @@ export async function uploadFileToPreparedUniversalIntent(
       reused: Boolean(intent.reused),
     };
   } catch (error) {
-    await postUniversalUploadEvent({
-      intent,
-      event: options.signal?.aborted ? "removed" : "failed",
-      progress: 0,
-      error,
-      file,
-    });
+    if (!storageUploadCompleted || options.signal?.aborted) {
+      await postUniversalUploadEvent({
+        intent,
+        event: options.signal?.aborted ? "removed" : "failed",
+        progress: 0,
+        error,
+        file,
+        signal: options.signal,
+      });
+    }
     throw error;
   }
 }

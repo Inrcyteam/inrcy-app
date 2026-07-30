@@ -13,8 +13,8 @@ export type MediaWorkspaceMediaSummary = {
   uploadProgress: number;
   processingStatus?: string;
   processingProgress?: number;
-  processingErrorCode?: string;
-  processingErrorMessage?: string;
+  processingErrorCode?: string | null;
+  processingErrorMessage?: string | null;
   publicationStatus?: string;
   bucket: string;
   storagePath: string;
@@ -31,6 +31,14 @@ export type MediaWorkspaceMediaSummary = {
 export type MediaWorkspaceSnapshot = MediaWorkspaceReference & {
   status: string;
   revision: number;
+  media: MediaWorkspaceMediaSummary[];
+};
+
+export type MediaWorkspacePreparationResult = {
+  ok: true;
+  workspaceId: string;
+  status: "uploading" | "processing" | "ready" | "failed";
+  message?: string | null;
   media: MediaWorkspaceMediaSummary[];
 };
 
@@ -188,8 +196,12 @@ export async function linkMediaPublicationWorkspaceDraft(params: {
 export async function loadMediaPublicationWorkspace(params: {
   workspaceId: string;
   signal?: AbortSignal;
+  includeUrls?: boolean;
 }): Promise<MediaWorkspaceSnapshot> {
-  const query = new URLSearchParams({ workspaceId: params.workspaceId });
+  const query = new URLSearchParams({
+    workspaceId: params.workspaceId,
+    includeUrls: params.includeUrls === false ? "0" : "1",
+  });
   const response = await fetch(`/api/media-pipeline/workspace?${query}`, {
     signal: params.signal,
     cache: "no-store",
@@ -201,20 +213,20 @@ export async function loadMediaPublicationWorkspace(params: {
   return json.workspace as MediaWorkspaceSnapshot;
 }
 
-
-export async function triggerMediaPublicationWorkspaceProcessing(params: {
+export async function prepareMediaPublicationWorkspace(params: {
   workspaceId: string;
   signal?: AbortSignal;
-}) {
-  const response = await fetch("/api/media-pipeline/process-workspace", {
+}): Promise<MediaWorkspacePreparationResult> {
+  const response = await fetch("/api/media-pipeline/workspace/prepare", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ workspaceId: params.workspaceId }),
     signal: params.signal,
     cache: "no-store",
   });
-  return await readWorkspaceResponse(
+  const json = await readWorkspaceResponse(
     response,
-    "Impossible de lancer la préparation immédiate des médias.",
+    "Impossible de lancer la préparation du média.",
   );
+  return json as MediaWorkspacePreparationResult;
 }

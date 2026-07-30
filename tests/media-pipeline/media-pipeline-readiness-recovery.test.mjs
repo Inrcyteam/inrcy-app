@@ -1,0 +1,56 @@
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import test from "node:test";
+
+const ROOT = process.cwd();
+const read = (file) => readFileSync(resolve(ROOT, file), "utf8");
+
+test("la confirmation finale d'upload est obligatoire et rejouée", () => {
+  const source = read("lib/universalMediaUploadClient.ts");
+  assert.match(source, /required\?: boolean/);
+  assert.match(source, /for \(let attempt = 0; attempt < 3; attempt \+= 1\)/);
+  assert.match(source, /event: "uploaded"[\s\S]{0,180}required: true/);
+  assert.match(source, /Impossible de confirmer l’envoi du média/);
+});
+
+test("le polling de statut ne régénère pas des URLs signées à chaque passage", () => {
+  const client = read("lib/mediaWorkspaceClient.ts");
+  const route = read("app/api/media-pipeline/workspace/route.ts");
+  const modal = read("app/dashboard/booster/publier/PublishModal.tsx");
+  assert.match(client, /includeUrls\?: boolean/);
+  assert.match(client, /includeUrls: params\.includeUrls === false \? "0" : "1"/);
+  assert.match(route, /const includeUrls = url\.searchParams\.get\("includeUrls"\) !== "0"/);
+  assert.match(route, /includeUrls && bucket && storagePath/);
+  assert.match(modal, /includeUrls: false/);
+});
+
+test("Générer peut relancer immédiatement les workers du workspace", () => {
+  const route = read("app/api/media-pipeline/workspace/prepare/route.ts");
+  const client = read("lib/mediaWorkspaceClient.ts");
+  const modal = read("app/dashboard/booster/publier/PublishModal.tsx");
+  const vercel = JSON.parse(read("vercel.json"));
+
+  assert.match(route, /requireUser\(\)/);
+  assert.match(route, /enqueueImageNormalization\(/);
+  assert.match(route, /enqueueVideoNormalization\(/);
+  assert.match(route, /processImageNormalizationJobs\(/);
+  assert.match(route, /processVideoNormalizationJobs\(/);
+  assert.match(route, /priority: 10_000/);
+  assert.match(client, /\/api\/media-pipeline\/workspace\/prepare/);
+  assert.match(modal, /prepareMediaPublicationWorkspace\(/);
+  assert.match(modal, /processingProgress/);
+  assert.match(modal, /preparationFailures >= 3/);
+  assert.match(
+    vercel.functions["app/api/media-pipeline/workspace/prepare/route.ts"]
+      .includeFiles,
+    /ffmpeg-static/,
+  );
+});
+
+test("le rattrapage reconnaît un fichier déjà présent dans Storage", () => {
+  const source = read("app/api/media-pipeline/workspace/prepare/route.ts");
+  assert.match(source, /repairCompletedStorageUploads/);
+  assert.match(source, /storedSize !== item\.sizeBytes/);
+  assert.match(source, /upload_status: "uploaded"/);
+});

@@ -14,6 +14,9 @@ const imageController = read(
   "app/dashboard/booster/publier/usePublishImageController.ts",
 );
 const mediaLibrary = read("app/dashboard/mediatheque/MediaLibraryClient.tsx");
+const workspaceHook = read(
+  "app/dashboard/booster/publier/usePersistentMediaWorkspace.ts",
+);
 const migration = read(
   "ops/sql/2026-07-29_media_pipeline_step3_universal_direct_upload.sql",
 );
@@ -24,6 +27,7 @@ test("aucun binaire lourd ne traverse la nouvelle route Vercel", () => {
   assert.doesNotMatch(intentRoute, /arrayBuffer\(/);
   assert.doesNotMatch(intentRoute, /Buffer\.from\(/);
   assert.match(intentRoute, /resumableEndpoint/);
+  assert.match(intentRoute, /buildDirectStorageResumableEndpoint/);
 });
 
 test("le client TUS possède reprise locale, chunks de 6 Mo, progression et annulation", () => {
@@ -33,21 +37,20 @@ test("le client TUS possède reprise locale, chunks de 6 Mo, progression et annu
   assert.match(client, /UNIVERSAL_MEDIA_TUS_CHUNK_SIZE_BYTES/);
   assert.match(client, /window\.localStorage/);
   assert.match(client, /Upload-Offset/);
+  assert.match(client, /upload\/resumable\/sign/);
+  assert.ok((client.match(/apikey/g) || []).length >= 3);
   assert.match(client, /x-signature/);
   assert.match(client, /x-upsert/);
-  assert.match(client, /apikey/);
-  assert.match(client, /SIGNED_TUS_STORAGE_VERSION/);
+  assert.match(client, /TUS_RESUME_STORAGE_VERSION/);
+  assert.match(client, /endpoint !== intent\.resumableEndpoint/);
   assert.match(client, /AbortSignal/);
   assert.match(client, /onProgress/);
 });
 
-
-
-test("le transport TUS signé utilise l’endpoint Supabase /sign", () => {
-  assert.match(intentRoute, /buildDirectStorageResumableEndpoint/);
-  assert.match(client, /resumableEndpoint/);
-  assert.match(client, /buildSignedTusHeaders/);
-  assert.match(client, /NEXT_PUBLIC_SUPABASE_ANON_KEY/);
+test("un échec TUS réel remonte immédiatement au bouton Générer", () => {
+  assert.match(workspaceHook, /activeUploadFailureRef/);
+  assert.match(workspaceHook, /throw new Error\(activeUploadFailureRef\.current\)/);
+  assert.match(workspaceHook, /onError\?\.\(message\)/);
 });
 
 test("les images, vidéos et la médiathèque utilisent le moteur commun avec secours historique", () => {

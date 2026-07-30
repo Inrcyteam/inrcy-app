@@ -146,6 +146,7 @@ export async function GET(request: Request) {
 
     const url = new URL(request.url);
     const workspaceId = cleanText(url.searchParams.get("workspaceId"), "", 80);
+    const includeUrls = url.searchParams.get("includeUrls") !== "0";
     if (!workspaceId) return jsonError("Espace média manquant.");
 
     const workspace = await readOwnedWorkspace(workspaceId, activeUserId);
@@ -169,7 +170,7 @@ export async function GET(request: Request) {
         const bucket = String(item?.bucket_name || "");
         const storagePath = String(item?.storage_path || "");
         const publicUrl =
-          bucket && storagePath
+          includeUrls && bucket && storagePath
             ? await createSafeStorageSignedUrl(bucket, storagePath, 60 * 60 * 24)
             : null;
         return {
@@ -180,8 +181,12 @@ export async function GET(request: Request) {
           uploadProgress: Number(item?.upload_progress || 0),
           processingStatus: String(item?.processing_status || "not_requested"),
           processingProgress: Number(item?.processing_progress || 0),
-          processingErrorCode: String(item?.processing_error_code || ""),
-          processingErrorMessage: String(item?.processing_error_message || ""),
+          processingErrorCode: item?.processing_error_code
+            ? String(item.processing_error_code)
+            : null,
+          processingErrorMessage: item?.processing_error_message
+            ? String(item.processing_error_message)
+            : null,
           publicationStatus: String(item?.publication_status || "not_requested"),
           bucket,
           storagePath,
