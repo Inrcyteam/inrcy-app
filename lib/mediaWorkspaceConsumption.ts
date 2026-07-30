@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import sharp from "sharp";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import {
   isUnifiedMediaConsumptionEnabled,
@@ -7,6 +9,11 @@ import {
 const PRIVATE_MEDIA_BUCKET = "inrcy-pro-media";
 const MAX_AI_IMAGE_BYTES = 2_500_000;
 const MAX_AI_IMAGE_COUNT = 5;
+const AI_PROVIDER_SAFE_VERSION = 1;
+const AI_PROVIDER_SAFE_MAX_SIDE = 1280;
+const AI_PROVIDER_SAFE_JPEG_QUALITY = 74;
+const AI_PROVIDER_SAFE_CONCURRENCY = 3;
+const AI_PROVIDER_SAFE_MAX_INPUT_PIXELS = 100_000_000;
 
 export class MediaWorkspaceConsumptionError extends Error {
   readonly code: string;
@@ -162,6 +169,43 @@ function cleanText(value: unknown, fallback = "") {
 function normalizeMime(value: unknown, fallback: string) {
   const mime = cleanText(value).toLowerCase().split(";")[0]?.trim() || "";
   return mime || fallback;
+}
+
+function sha256(buffer: Buffer) {
+  return createHash("sha256").update(buffer).digest("hex");
+}
+
+function isCompleteJpeg(buffer: Buffer) {
+  return (
+    buffer.byteLength >= 4 &&
+    buffer[0] === 0xff &&
+    buffer[1] === 0xd8 &&
+    buffer[buffer.byteLength - 2] === 0xff &&
+    buffer[buffer.byteLength - 1] === 0xd9
+  );
+}
+
+async function mapWithConcurrency<T, R>(
+  values: readonly T[],
+  concurrency: number,
+  mapper: (value: T, index: number) => Promise<R>,
+) {
+  const results = new Array<R>(values.length);
+  let nextIndex = 0;
+  const worker = async () => {
+    while (nextIndex < values.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      results[index] = await mapper(values[index], index);
+    }
+  };
+  await Promise.all(
+    Array.from(
+      { length: Math.min(Math.max(1, concurrency), values.length) },
+      () => worker(),
+    ),
+  );
+  return results;
 }
 
 function fileStem(value: unknown, fallback: string) {
@@ -407,6 +451,100 @@ async function variantToDataUrl(variant: ReadyVariant) {
   return `data:${mimeType};base64,${buffer.toString("base64")}`;
 }
 
+async function imageVariantToProviderSafeDataUrl(variant: ReadyVariant) {
+  const { buffer } = await downloadVariant(variant);
+  const expectedSha256 = cleanText(variant.metadata.output_sha256).toLowerCase();
+  const declaredProviderSafe =
+    Number(variant.metadata.ai_provider_safe_version || 0) ===
+    AI_PROVIDER_SAFE_VERSION;
+
+  // Les nouvelles variantes sont déjà des JPEG baseline sRGB. Le hash permet
+  // de les envoyer directement sans recompression ni latence supplémentaire.
+  if (
+    declaredProviderSafe &&
+    expectedSha256.length === 64 &&
+    expectedSha256 === sha256(buffer) &&
+    isCompleteJpeg(buffer) &&
+    buffer.byteLength <= MAX_AI_IMAGE_BYTES
+  ) {
+    return `data:image/jpeg;base64,${buffer.toString("base64")}`;
+  }
+
+  // Auto-réparation des variantes historiques ou atypiques : même si leur
+  // en-tête Storage est incorrect, Sharp lit les octets puis recrée une image
+  // strictement compatible avec les fournisseurs IA.
+  const rendered = await sharp(buffer, {
+    failOn: "error",
+    limitInputPixels: AI_PROVIDER_SAFE_MAX_INPUT_PIXELS,
+    pages: 1,
+  })
+    .rotate()
+    .resize({
+      width: AI_PROVIDER_SAFE_MAX_SIDE,
+      height: AI_PROVIDER_SAFE_MAX_SIDE,
+      fit: "inside",
+      withoutEnlargement: true,
+      fastShrinkOnLoad: true,
+    })
+    .toColourspace("srgb")
+    .flatten({ background: { r: 255, g: 255, b: 255, alpha: 1 } })
+    .jpeg({
+      quality: AI_PROVIDER_SAFE_JPEG_QUALITY,
+      mozjpeg: false,
+      progressive: false,
+      chromaSubsampling: "4:2:0",
+      optimiseCoding: true,
+    })
+    .toBuffer();
+
+  if (
+    !isCompleteJpeg(rendered) ||
+    rendered.byteLength <= 0 ||
+    rendered.byteLength > MAX_AI_IMAGE_BYTES
+  ) {
+    throw new MediaWorkspaceConsumptionError(
+      "Une image n'a pas pu être sécurisée pour l'analyse IA.",
+      "workspace_ai_variant_invalid",
+      422,
+    );
+  }
+  return `data:image/jpeg;base64,${rendered.toString("base64")}`;
+}
+
+async function resolveProviderSafeImageDataUrl(
+  variants: readonly ReadyVariant[],
+  mediaId: string,
+) {
+  const candidates = ["ai_preview", "canonical", "thumbnail"]
+    .map((purpose) => pickReadyVariant(variants, mediaId, purpose))
+    .filter(
+      (variant, index, all): variant is ReadyVariant =>
+        Boolean(variant) &&
+        all.findIndex(
+          (candidate) =>
+            candidate?.bucket === variant?.bucket &&
+            candidate?.storagePath === variant?.storagePath,
+        ) === index,
+    );
+
+  let lastError: unknown = null;
+  for (const candidate of candidates) {
+    try {
+      return await imageVariantToProviderSafeDataUrl(candidate);
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw new MediaWorkspaceConsumptionError(
+    lastError instanceof Error
+      ? `L'aperçu IA d'une image est illisible : ${lastError.message}`
+      : "L'aperçu IA d'une image est illisible.",
+    "workspace_ai_variant_invalid",
+    422,
+  );
+}
+
 export async function resolveWorkspacePublicationConsumption(params: {
   accountId: string;
   workspaceId: string;
@@ -550,28 +688,23 @@ export async function resolveWorkspaceAiConsumption(params: {
   }
 
   if (media[0]?.mediaType === "image") {
-    const imagesForAI = [] as WorkspaceAiConsumption["imagesForAI"];
-    for (const item of media.slice(0, MAX_AI_IMAGE_COUNT)) {
-      const preview = pickReadyVariant(
-        variants,
-        item.mediaId,
-        "ai_preview",
-      );
-      if (!preview) {
-        throw new MediaWorkspaceConsumptionError(
-          "L'aperçu IA d'une image n'est pas prêt.",
-          "workspace_ai_preview_missing",
-          409,
-        );
-      }
-      imagesForAI.push({
-        name: item.originalFileName || `image-${item.position + 1}.jpg`,
-        type: normalizeMime(preview.mimeType, "image/jpeg"),
-        dataUrl: await variantToDataUrl(preview),
-        mediaId: item.mediaId,
-        position: item.position,
-      });
-    }
+    const selectedMedia = media.slice(0, MAX_AI_IMAGE_COUNT);
+    const imagesForAI = await mapWithConcurrency(
+      selectedMedia,
+      AI_PROVIDER_SAFE_CONCURRENCY,
+      async (item) => {
+        return {
+          name: item.originalFileName || `image-${item.position + 1}.jpg`,
+          type: "image/jpeg",
+          dataUrl: await resolveProviderSafeImageDataUrl(
+            variants,
+            item.mediaId,
+          ),
+          mediaId: item.mediaId,
+          position: item.position,
+        };
+      },
+    );
 
     return {
       source: "media_workspace_v1",

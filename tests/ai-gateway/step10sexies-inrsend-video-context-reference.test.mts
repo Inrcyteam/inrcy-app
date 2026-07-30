@@ -91,10 +91,13 @@ test("iNrAgent transmet la référence persistante au brouillon iNrSend", () => 
 test("l'ouverture iNrSend saute l'extraction locale et transmet la référence au serveur", () => {
   const modal = read("app/dashboard/booster/publier/PublishModal.tsx");
 
-  assert.match(modal, /if \(!videoFile \|\| videoAiContextRef\) return;/);
   assert.match(
     modal,
-    /if \(hasVideoForGeneration && videoFile && !videoAiContextRef\)/,
+    /if \(!videoFile \|\| videoAiContextRef \|\| mediaPipelineCutoverEnabled\) return;/,
+  );
+  assert.match(
+    modal,
+    /hasVideoForGeneration &&[\s\S]*videoFile &&[\s\S]*!videoAiContextRef &&[\s\S]*!mediaPipelineCutoverEnabled/,
   );
   assert.match(modal, /contextRef: videoAiContextRef/);
   assert.match(modal, /Réutilisation de l’analyse vidéo iNrAgent/);

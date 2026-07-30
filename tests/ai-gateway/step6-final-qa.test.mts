@@ -111,9 +111,17 @@ test("Step 6 does not reduce previous text-generation capacities", () => {
   assert.equal(AI_FEATURE_POLICIES["templates.generate"].maxOutputTokens, 3000);
 
   const boosterGeneration = read("lib/boosterPublishGeneration.ts");
+  const channelRules = read("lib/boosterChannelRules.ts");
   assert.match(
     boosterGeneration,
-    /siteChannel\s*\?[\s\S]*?channel === "inr_search"\s*\?\s*INR_SEARCH_CONTENT_MAX_LENGTH\s*:\s*6000\s*:\s*2000/,
+    /content:\s*limitBoosterGeneratedContent\([\s\S]*?channel,[\s\S]*?siteChannel/,
+  );
+  assert.match(channelRules, /inrcy_site:\s*\{[\s\S]*?max:\s*2600/);
+  assert.match(channelRules, /site_web:\s*\{[\s\S]*?max:\s*2600/);
+  assert.match(channelRules, /inr_search:\s*\{[\s\S]*?max:\s*300/);
+  assert.match(
+    channelRules,
+    /return truncateAtNaturalBoundary\([\s\S]*?BOOSTER_CHANNEL_CONTENT_RULES\[channel\]\.max/,
   );
   assert.match(boosterGeneration, /youtube_shorts:\s*950/);
   assert.match(boosterGeneration, /site_web:\s*1100/);

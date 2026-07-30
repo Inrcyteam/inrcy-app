@@ -72,6 +72,7 @@ export default function usePersistentMediaWorkspace({
     workspaceId: string;
     operationVersion: number;
   } | null>(null);
+  const corePreparationReadyRef = useRef(false);
   const activeUploadFailureRef = useRef("");
   const selectedChannelsRef = useRef(selectedChannels);
   const imageSettingsByChannelRef = useRef(imageSettingsByChannel);
@@ -125,6 +126,7 @@ export default function usePersistentMediaWorkspace({
           cleanClientKey || resolveClientWorkspaceKey(),
       };
       operationVersionRef.current += 1;
+      corePreparationReadyRef.current = false;
       operationAbortRef.current?.abort();
       operationAbortRef.current = null;
       ensurePromiseRef.current = null;
@@ -167,6 +169,7 @@ export default function usePersistentMediaWorkspace({
               ) {
                 continue;
               }
+              corePreparationReadyRef.current = true;
 
               const snapshot = await loadMediaPublicationWorkspace({
                 workspaceId: request.workspaceId,
@@ -224,6 +227,7 @@ export default function usePersistentMediaWorkspace({
 
       const operationVersion = operationVersionRef.current + 1;
       operationVersionRef.current = operationVersion;
+      corePreparationReadyRef.current = false;
       activeUploadFailureRef.current = "";
       operationAbortRef.current?.abort();
       const controller = new AbortController();
@@ -418,6 +422,7 @@ export default function usePersistentMediaWorkspace({
     async (settings?: {
       imageSettingsByChannel?: Record<string, unknown>;
       videoSettingsByChannel?: Record<string, unknown>;
+      deferUntilReady?: boolean;
     }) => {
       if (settings?.imageSettingsByChannel) {
         imageSettingsByChannelRef.current = settings.imageSettingsByChannel;
@@ -427,6 +432,7 @@ export default function usePersistentMediaWorkspace({
       }
       const workspaceId = referenceRef.current?.workspaceId;
       if (!enabled || !workspaceId) return;
+      if (settings?.deferUntilReady && !corePreparationReadyRef.current) return;
       return await prewarmMediaPublicationWorkspace({
         workspaceId,
         selectedChannels: selectedChannelsRef.current,
@@ -558,6 +564,7 @@ export default function usePersistentMediaWorkspace({
   useEffect(() => {
     const workspaceId = reference?.workspaceId;
     if (!enabled || !workspaceId || !imageSettingsByChannel) return;
+    if (!corePreparationReadyRef.current) return;
     const timeoutId = window.setTimeout(() => {
       void prewarmMediaPublicationWorkspace({
         workspaceId,

@@ -465,6 +465,29 @@ function getVideoOrientationLabel(
   return "Orientation inconnue";
 }
 
+function preloadPreparedImagePreview(url: string, timeoutMs = 8_000) {
+  if (typeof window === "undefined" || !url) {
+    return Promise.resolve(false);
+  }
+  return new Promise<boolean>((resolve) => {
+    const image = new window.Image();
+    let settled = false;
+    const finish = (loaded: boolean) => {
+      if (settled) return;
+      settled = true;
+      window.clearTimeout(timeoutId);
+      image.onload = null;
+      image.onerror = null;
+      resolve(loaded);
+    };
+    const timeoutId = window.setTimeout(() => finish(false), timeoutMs);
+    image.onload = () => finish(true);
+    image.onerror = () => finish(false);
+    image.decoding = "async";
+    image.src = url;
+  });
+}
+
 function readVideoSourceMetadata(
   file: File,
 ): Promise<BoosterVideoSourceMetadata> {
@@ -835,6 +858,7 @@ export default function PublishModal({
     Partial<Record<ChannelKey, ChannelMediaMode>>
   >({});
   const [images, setImages] = useState<File[]>([]);
+  const imagesRef = useRef<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [imgError, setImgError] = useState("");
   const [useImagesForAI, setUseImagesForAI] = useState(true);
@@ -849,6 +873,10 @@ export default function PublishModal({
   const [activeImageKeyByChannel, setActiveImageKeyByChannel] = useState<
     Partial<Record<ChannelKey, string>>
   >({});
+
+  useEffect(() => {
+    imagesRef.current = images;
+  }, [images]);
 
   const getOrPrepareAiImagePayload = useCallback((file: File) => {
     const key = makeImageKey(file);
@@ -1512,20 +1540,35 @@ export default function PublishModal({
       );
       if (!preparedImages.length) return;
 
-      setImagePreviews((current) => {
-        const next = current.slice();
-        for (const item of preparedImages) {
-          if (item.position < 0 || item.position >= images.length) continue;
-          const previewUrl = String(item.previewUrl || "");
-          if (!previewUrl) continue;
-          const previous = next[item.position];
-          if (previous?.startsWith("blob:") && previous !== previewUrl) {
-            URL.revokeObjectURL(previous);
+      for (const item of preparedImages) {
+        if (item.position < 0 || item.position >= images.length) continue;
+        const previewUrl = String(item.previewUrl || "");
+        const expectedImageKey = makeImageKey(images[item.position]);
+        if (!previewUrl) continue;
+
+        void preloadPreparedImagePreview(previewUrl).then((loaded) => {
+          const currentFile = imagesRef.current[item.position];
+          if (
+            !loaded ||
+            !currentFile ||
+            makeImageKey(currentFile) !== expectedImageKey
+          ) {
+            return;
           }
-          next[item.position] = previewUrl;
-        }
-        return next;
-      });
+          setImagePreviews((current) => {
+            const previous = current[item.position];
+            // Un aperçu blob local décodable reste le plus rapide et le plus
+            // fiable pendant la session. Le serveur remplace uniquement les
+            // placeholders des formats que le navigateur ne sait pas lire.
+            if (previous?.startsWith("blob:") || previous === previewUrl) {
+              return current;
+            }
+            const next = current.slice();
+            next[item.position] = previewUrl;
+            return next;
+          });
+        });
+      }
       setImageMetaByKey((current) => {
         const next = { ...current };
         for (const item of preparedImages) {
@@ -1622,6 +1665,7 @@ export default function PublishModal({
           string,
           unknown
         >,
+        deferUntilReady: true,
       }).catch(() => undefined);
     }, 900);
     return () => window.clearTimeout(timeoutId);

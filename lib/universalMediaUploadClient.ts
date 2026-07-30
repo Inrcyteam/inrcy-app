@@ -494,6 +494,12 @@ function makeTusHttpError(
 
 async function readTusResponseError(response: Response, fallback: string) {
   const body = await response.text().catch(() => "");
+  if (response.status === 413) {
+    return makePermanentTusError(
+      "La plateforme de stockage n'est pas encore configurée pour ce poids de fichier (limite requise : 320 Mo).",
+      413,
+    );
+  }
   return makeTusHttpError(response.status, fallback, body);
 }
 

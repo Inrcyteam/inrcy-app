@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import bmp from "bmp-js";
 import heicConvert from "heic-convert";
@@ -75,7 +76,12 @@ function createBasePipeline(input: SharpInput, maxSide: number): Sharp {
       fit: "inside",
       withoutEnlargement: true,
       fastShrinkOnLoad: true,
-    });
+    })
+    .toColourspace("srgb");
+}
+
+function outputSha256(buffer: Buffer) {
+  return createHash("sha256").update(buffer).digest("hex");
 }
 
 async function renderJpeg(params: {
@@ -89,11 +95,16 @@ async function renderJpeg(params: {
     .flatten({ background: WHITE_BACKGROUND })
     .jpeg({
       quality: params.quality,
-      mozjpeg: true,
-      progressive: true,
+      // JPEG baseline + sRGB est le dénominateur commun le plus fiable pour
+      // les navigateurs, Mistral, OpenAI et les APIs sociales.
+      mozjpeg: false,
+      progressive: false,
       chromaSubsampling: "4:2:0",
+      optimiseCoding: true,
     })
     .toBuffer({ resolveWithObject: true });
+  const sha256 = outputSha256(rendered.data);
+  const providerSafe = params.purpose === "ai_preview";
 
   return {
     purpose: params.purpose,
@@ -113,9 +124,17 @@ async function renderJpeg(params: {
       flatten_background: "#ffffff",
       output: "jpeg",
       quality: params.quality,
+      colourspace: "srgb",
+      progressive: false,
+      ...(providerSafe ? { ai_provider_safe_version: 1 } : {}),
       metadata_stripped: true,
     },
-    metadata: params.sourceMetadata,
+    metadata: {
+      ...params.sourceMetadata,
+      output_sha256: sha256,
+      output_format: "jpeg",
+      ...(providerSafe ? { ai_provider_safe_version: 1 } : {}),
+    },
   } satisfies NormalizedImageVariant;
 }
 
@@ -135,6 +154,7 @@ async function renderCanonical(params: {
         palette: false,
       })
       .toBuffer({ resolveWithObject: true });
+    const sha256 = outputSha256(rendered.data);
 
     return {
       purpose: "canonical",
@@ -153,9 +173,14 @@ async function renderCanonical(params: {
         crop: false,
         preserve_alpha: true,
         output: "png",
+        colourspace: "srgb",
         metadata_stripped: true,
       },
-      metadata: params.sourceMetadata,
+      metadata: {
+        ...params.sourceMetadata,
+        output_sha256: sha256,
+        output_format: "png",
+      },
     } satisfies NormalizedImageVariant;
   }
 
